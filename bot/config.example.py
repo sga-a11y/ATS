@@ -12,21 +12,20 @@ ACCOUNTS = [
     # ("acc2", "password2"),
 ]
 
-# API login
-API_KEY = "YOUR_API_KEY"
+# API login - API_KEY la HANG SO co dinh cua game, KHONG can sua.
+# (device_id & tracking_id duoc login.py tu sinh tu username -> khong can dien)
+API_KEY = "17ade453e0892461edb01969b6e17e3a"
 LOGIN_URL = f"https://graph.mobiplay.vn/accountapiv4/server/login?api_key={API_KEY}"
-DEVICE_ID = "YOUR_DEVICE_ID"
-TRACKING_ID = "YOUR_TRACKING_ID"
 
-# Game server TCP
+# Game server TCP - co dinh, KHONG can sua
 GAME_HOST = "103.82.28.98"
 GAME_PORT = 6614
 
-# ==== TOOL TREO MAY (bot_standalone.py) ====
+# ==== TOOL TREO MAY (bot_standalone.py) - chi can quan tam phan nay ====
 LEADER_NAME = "ten_chu_party"   # ten chu party (tham khao/log)
-START_CITY_ID = 12001           # thanh xuat phat de chu party moi vao (Trac Quan)
-START_CITY_FLAG = 0             # flag tuong ung thanh (xem cities.json)
-CHANNEL = 6                     # kenh can o cung voi chu party (0 = bo qua)
+START_CITY_ID = 12061           # 12061 = Ng.Thanh | 12001 = Trac Quan | 12011 = Cu Loc
+START_CITY_FLAG = 2             # Ng.Thanh=2, Trac Quan=0, Cu Loc=3 (xem cities.json)
+CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)
 RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
 
 # Combat tuning
