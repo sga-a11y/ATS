@@ -1,0 +1,22 @@
+# ==== SECRETS (KHONG push) ====
+bot/config.py
+accounts.py
+certs/
+
+# ==== File nang / nhi phan (capture, apk, dump) ====
+*.pcap
+*.apk
+*.zpk
+*.bin
+frida-server
+frida-server.xz
+libtolua.so
+gamedata/
+lua/
+lua_dump/
+
+# ==== Log / tam ====
+*.log
+command.txt
+__pycache__/
+*.pyc

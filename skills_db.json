@@ -1,0 +1,84 @@
+{
+  "_note": "Skill database for TS Online bot. Explore and update as discovered.",
+  "skills": {
+    "10000": {
+      "id": 10000,
+      "name": "Danh thuong",
+      "type": "attack",
+      "aoe": false,
+      "cooldown": 0,
+      "priority": 1,
+      "notes": "Normal attack, always available"
+    },
+    "12003": {
+      "id": 12003,
+      "name": "Hoa Tien",
+      "type": "attack",
+      "target": "enemy",
+      "splash": "horizontal",
+      "splash_desc": "gay dame target + 2 ben phuong ngang",
+      "optimal_target": "enemy co nhieu ke ben canh nhat (thuong la giua)",
+      "sp_cost": 15,
+      "cooldown": null,
+      "priority": 10,
+      "notes": "Skill hay dung nhat. Gay dame cho target va 2 ke ben theo hang ngang."
+    },
+    "12006": {
+      "id": 12006,
+      "name": "Skill_12006",
+      "type": "unknown",
+      "aoe": null,
+      "cooldown": null,
+      "priority": null,
+      "notes": "Pet skill. TBD."
+    },
+    "17001": {
+      "id": 17001,
+      "name": "Phong_Thu",
+      "type": "defense",
+      "target": "self",
+      "aoe": false,
+      "sp_cost": 0,
+      "priority": 3,
+      "notes": "Giam dame nhan vao. Ca char va pet deu co. Khong mat SP. Dung khi HP thap can bao toan."
+    },
+    "11004": {
+      "id": 11004,
+      "name": "Thanh Luu",
+      "type": "heal",
+      "target": "ally",
+      "aoe": false,
+      "sp_cost": 22,
+      "priority": 8,
+      "notes": "Hoi HP+Mana cho 1 dong doi. Char skill. Dung khi dong doi can hoi don."
+    },
+    "11010": {
+      "id": 11010,
+      "name": "Toan Tri Lieu",
+      "type": "heal",
+      "target": "ally",
+      "aoe": true,
+      "sp_cost": 42,
+      "priority": 9,
+      "notes": "Hoi HP toan bo party. Char skill. AoE ally. Dung khi nhieu nguoi bi thuong."
+    }
+  },
+  "targeting_rules": {
+    "enemy": "chon target co nhieu ke ben canh nhat (toi da hoa splash)",
+    "ally": "chon dong doi HP thap nhat",
+    "any": "default: target dau tien"
+  },
+  "game_mechanics": {
+    "hp_restore": "Chi hoi khi len level, KHONG tu hoi sau tran",
+    "sp_restore": "Chua ro co tu hoi khong - can theo doi",
+    "level_up": "Len level -> hoi day HP va tang max HP",
+    "sp_stat": "SP (Special Points) = mana de dung skill, type=0x1a trong S2C 0x33"
+  },
+  "combat_logic": {
+    "note": "Priority: use highest-priority available skill (du SP). Fall back to normal attack.",
+    "default_skill_char": 10000,
+    "default_skill_pet": 10000,
+    "sp_fallback": "neu SP < sp_cost cua skill thi danh thuong (10000)",
+    "hp_management": "HP khong hoi sau tran -> can tinh toan de khong chet truoc khi len level"
+  }
+}
