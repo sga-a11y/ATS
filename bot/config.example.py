@@ -22,8 +22,12 @@ TRACKING_ID = "YOUR_TRACKING_ID"
 GAME_HOST = "103.82.28.98"
 GAME_PORT = 6614
 
-# Teleport
-START_CITY_ID = 12001  # Trac Quan
+# ==== TOOL TREO MAY (bot_standalone.py) ====
+LEADER_NAME = "ten_chu_party"   # ten chu party (tham khao/log)
+START_CITY_ID = 12001           # thanh xuat phat de chu party moi vao (Trac Quan)
+START_CITY_FLAG = 0             # flag tuong ung thanh (xem cities.json)
+CHANNEL = 6                     # kenh can o cung voi chu party (0 = bo qua)
+RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
 
 # Combat tuning
 CHAR_FIRE_MIN_SP = 100      # SP >= 100 -> Hoa Tien
