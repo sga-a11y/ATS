@@ -103,7 +103,9 @@ class GameClient:
                 self.self_entity = pkt[9:17]
                 self.state.self_entity = self.self_entity
                 log.info("self_entity = %s", self.self_entity.hex())
-        elif opcode == 0x07 and len(pkt) > 100:   # danh sach kenh (channel list)
+        elif opcode == 0x07 and pkt[7:9] == b"\x01\x00" and len(pkt) >= 16:
+            # danh sach kenh (channel list): payload bat dau '01 00 [count]'
+            # (phan biet voi 0x07 broadcast di chuyen bat dau '00 00 [entity]')
             self._on_channel_list(pkt)
         elif opcode == protocol.OP_PLAYER_STATE:  # 0x0d - party
             self._on_party(pkt)

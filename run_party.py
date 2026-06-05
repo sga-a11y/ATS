@@ -18,6 +18,7 @@ ACCOUNTS = config.ACCOUNTS
 MINUTES = int(sys.argv[1]) if len(sys.argv) > 1 else 30
 
 clients = []
+_chosen_channel = {"ch": None}   # bot dau chon kenh it nguoi -> bot sau theo cung kenh
 
 def run_account(username, password, idx=0):
     try:
@@ -31,8 +32,20 @@ def run_account(username, password, idx=0):
         time.sleep(4)
         c.teleport(12001, 0)   # Trac Quan
         time.sleep(3)
-        c.switch_channel(6)    # cung kenh voi haba
-        log.info("[%s] da connect + Trac Quan + kenh 6, cho moi party + danh", username)
+        if idx == 0:
+            ch = c.pick_best_channel()         # bot dau: chon kenh it nguoi nhat
+            _chosen_channel["ch"] = ch
+        else:
+            # cho bot dau chon xong roi vao CUNG kenh (de cung party)
+            for _ in range(20):
+                if _chosen_channel["ch"]:
+                    break
+                time.sleep(0.5)
+            ch = _chosen_channel["ch"]
+            if ch:
+                c.switch_channel(ch)
+        log.info("[%s] da connect + Trac Quan + KENH %s (it nguoi nhat), cho moi party + danh",
+                 username, ch)
     except Exception as e:
         log.error("[%s] LOI: %s", username, e)
 
