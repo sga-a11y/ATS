@@ -39,17 +39,25 @@ def _same_row(a, b):
 
 
 def _aoe_target(enemy_slots, offered):
-    """Hoa Tien trung 3 o hang ngang lien tiep [t-1, t, t+1] CUNG hang.
-    Chon t phu NHIEU quai nhat; hoa thi uu tien t LON hon (bo qua con dau hang)."""
-    cands = [t for t in offered if t in enemy_slots] or offered
-    if not cands:
-        return None
-
-    def coverage(t):
-        return sum(1 for n in (t - 1, t, t + 1)
-                   if n in enemy_slots and _same_row(n, t))
-
-    return max(cands, key=lambda t: (coverage(t), t))
+    """Chon target theo uu tien:
+      1. Nhom 3 con lien nhau (cung hang) DAU TIEN -> con GIUA nhom 3 do
+      2. Khong co nhom 3 -> nhom 2 con lien nhau dau tien -> con VI TRI THAP NHAT
+      3. Chi con le -> con VI TRI THAP NHAT
+    """
+    if not enemy_slots:
+        return offered[0] if offered else None
+    s = sorted(set(enemy_slots))
+    es = set(enemy_slots)
+    # 1) nhom 3 lien tiep cung hang (a, a+1, a+2) -> con giua a+1
+    for a in s:
+        if (a + 1) in es and (a + 2) in es and _same_row(a, a + 2):
+            return a + 1
+    # 2) nhom 2 lien tiep cung hang (a, a+1) -> con thap nhat a
+    for a in s:
+        if (a + 1) in es and _same_row(a, a + 1):
+            return a
+    # 3) toan le -> con thap nhat
+    return s[0]
 
 
 def _single_target(state, offered):
