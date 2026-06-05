@@ -31,6 +31,7 @@ def run_account(username, password, idx=0):
         clients.append(c)
         time.sleep(4)
         time.sleep(2)   # cho broadcast cap nhat map_id hien tai
+        log.info("[%s] map_id hien tai = %s (Di Gioi=%s)", username, c.current_map, config.DIGIOI_MAP_ID)
         # neu dang KET trong Di Gioi (map_id = Di Gioi) -> thoat truoc khi teleport
         if c.in_di_gioi():
             log.info("[%s] Dang trong Di Gioi (map %s) -> thoat...", username, c.current_map)

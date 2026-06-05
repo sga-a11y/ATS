@@ -93,9 +93,12 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
-        # Track map_id hien tai: broadcast 0x0c/0x07/0x03 = [00 00][entity 8B][map_id 2B]...
-        if opcode in (0x0c, 0x07, 0x03) and len(pkt) >= 19 and pkt[7:9] == b"\x00\x00":
-            self.current_map = int.from_bytes(pkt[17:19], "little")
+        # Track map_id hien tai: broadcast 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
+        # (KHONG dung 0x03: goi stat, offset 10 la field khac -> doc nham 0x0202/0x0301)
+        if opcode in (0x0c, 0x07) and len(pkt) >= 19 and pkt[7:9] == b"\x00\x00":
+            mid = int.from_bytes(pkt[17:19], "little")
+            if mid > 1000:   # loc gia tri rac (map_id that >1000)
+                self.current_map = mid
         if opcode == protocol.OP_STAT_UPD:        # 0x33
             self.state.update_0x33(pkt)
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
