@@ -53,8 +53,13 @@ def run_account(username: str, password: str, idx: int = 0):
             if config.CHANNEL:
                 time.sleep(3)
                 client.switch_channel(config.CHANNEL)
-            log.info("[%s] San sang - cho chu party '%s' moi + tu dong danh",
-                     label, config.LEADER_NAME)
+            if getattr(config, "ENTER_DIGIOI", False):
+                time.sleep(2)
+                client.enter_di_gioi()   # solo train Di Gioi (khong party)
+                log.info("[%s] Da vao Di Gioi - tu dong danh quai", label)
+            else:
+                log.info("[%s] San sang - cho chu party '%s' moi + tu dong danh",
+                         label, config.LEADER_NAME)
 
             # giu song den khi rot ket noi hoac duoc yeu cau dung
             while client.running and not _stop.is_set():

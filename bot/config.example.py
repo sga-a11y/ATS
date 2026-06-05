@@ -27,6 +27,7 @@ START_CITY_ID = 12061           # 12061 = Ng.Thanh | 12001 = Trac Quan | 12011 =
 START_CITY_FLAG = 2             # Ng.Thanh=2, Trac Quan=0, Cu Loc=3 (xem cities.json)
 CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)
 RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
+ENTER_DIGIOI = False            # True = sau khi connect tu vao Di Gioi train (solo, KHONG party)
 
 # Combat tuning
 CHAR_FIRE_MIN_SP = 100      # SP >= 100 -> Hoa Tien

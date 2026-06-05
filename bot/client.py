@@ -199,6 +199,15 @@ class GameClient:
         self.send(0x07, b"\x02\x00" + struct.pack("<H", channel))
         log.info("Chuyen kenh -> %d", channel)
 
+    def enter_di_gioi(self):
+        """Vao map Di Gioi (map train chinh). Chi 2 goi co dinh: 0x61 010001 -> 0x61 020002.
+        LUU Y: KHONG vao duoc khi dang trong party."""
+        self.send(0x61, bytes.fromhex("010001"))   # mo/load zone Di Gioi
+        log.info("[%s] Vao Di Gioi: gui 0x61 010001", self._label)
+        time.sleep(1.5)                              # cho server load zone
+        self.send(0x61, bytes.fromhex("020002"))   # xac nhan vao
+        log.info("[%s] Vao Di Gioi: gui 0x61 020002 (xong)", self._label)
+
     def teleport(self, city_id: int, flag: int = 0):
         """flag bat buoc dung dung cho tung thanh (xem cities.json)."""
         payload = b"\x01\x00" + struct.pack("<H", city_id) + bytes([flag])
