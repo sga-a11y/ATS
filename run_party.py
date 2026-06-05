@@ -22,17 +22,25 @@ _chosen_channel = {"ch": None}   # bot dau chon kenh it nguoi -> bot sau theo cu
 
 def run_account(username, password, idx=0):
     try:
-        cred = login(username, password)
-        log.info("[%s] login OK user_id=%s", username, cred["user_id"])
-        c = GameClient(cred["user_id"], cred["access_token"])
-        c._label = username
-        c.state.has_fire = username not in getattr(config, "NO_FIRE_ACCOUNTS", set())
+        c = None
+        # Login + dam bao VAO WORLD (co self_entity). Chua duoc -> thu lai.
+        for attempt in range(5):
+            cred = login(username, password)
+            log.info("[%s] login OK user_id=%s (lan %d)", username, cred["user_id"], attempt + 1)
+            c = GameClient(cred["user_id"], cred["access_token"])
+            c._label = username
+            c.state.has_fire = username not in getattr(config, "NO_FIRE_ACCOUNTS", set())
+            c.submit_delay = 1.0 + 1.5 * idx
+            c.connect()
+            time.sleep(5)
+            if c.self_entity is not None:
+                break   # da vao world
+            log.warning("[%s] CHUA vao world (no self_entity) -> login lai sau 5s...", username)
+            c.close()
+            time.sleep(5)
         if not c.state.has_fire:
             log.info("[%s] Account KHONG co Hoa Tien -> chi danh thuong + ho tro", username)
-        c.submit_delay = 1.0 + 1.5 * idx   # stagger nhe
-        c.connect()
         clients.append(c)
-        time.sleep(4)
         time.sleep(2)   # cho broadcast cap nhat map_id hien tai
         log.info("[%s] map_id hien tai = %s (Di Gioi=%s)", username, c.current_map, config.DIGIOI_MAP_ID)
         # neu dang KET trong Di Gioi (map_id = Di Gioi) -> thoat truoc khi teleport

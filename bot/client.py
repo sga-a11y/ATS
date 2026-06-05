@@ -159,9 +159,13 @@ class GameClient:
                 self.party_members = members
                 # slot cua minh = vi tri trong danh sach member (1-based) -> map B2 trong 0x33
                 if self.self_entity in members:
-                    self.state.self_slot = members.index(self.self_entity) + 1
-                    log.info("[%s] Party roster: %d member, minh o slot %d",
-                             self._label, count, self.state.self_slot)
+                    idx = members.index(self.self_entity)
+                    self.state.self_slot = idx + 1
+                    # atype = VI TRI BATTLE (0-4, leader LUON o giua=2). Member dien [1,3,0,4] theo thu tu.
+                    FILL = [1, 3, 0, 4]
+                    self.state.my_atype = FILL[idx] if idx < len(FILL) else idx
+                    log.info("[%s] Party roster: %d member, minh slot %d, atype(vi tri)=%d",
+                             self._label, count, self.state.self_slot, self.state.my_atype)
                 else:
                     log.warning("[%s] self_entity %s KHONG co trong roster %s",
                                 self._label, self.self_entity.hex() if self.self_entity else None,

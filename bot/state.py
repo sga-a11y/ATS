@@ -35,6 +35,7 @@ class BattleState:
         self.pet = Unit("pet")
         self.self_entity = None   # entity 8 byte cua nhan vat minh (set tu client)
         self.has_fire = True      # nhan vat co skill Hoa Tien khong (sga003 = False)
+        self.my_atype = 3         # atype = vi tri formation cua minh (leader o giua)
         # dong doi trong party (entity_id -> Unit), khong gom char/pet cua minh
         self.allies = {}
         self.mobs = []  # list HP_max cua quai (theo thu tu xuat hien)
