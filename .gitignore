@@ -20,3 +20,4 @@ lua_dump/
 command.txt
 __pycache__/
 *.pyc
+test_digioi.py

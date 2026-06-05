@@ -36,6 +36,7 @@ class GameClient:
         self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
         self._chan_event = threading.Event()
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
+        self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
 
     # ---- ket noi + auth ----
     def connect(self):
@@ -102,6 +103,11 @@ class GameClient:
         if opcode == protocol.OP_STAT_UPD:        # 0x33
             self.state.update_0x33(pkt)
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
+            if self.self_entity is None:
+                # chua biet self_entity -> buffer lai de xu khi co (tranh mat goi stat luc login)
+                self._pending_0b.append(pkt)
+                if len(self._pending_0b) > 20:
+                    self._pending_0b.pop(0)
             self.state.update_0x0b(pkt)
         elif opcode == protocol.OP_ACTIONS:       # 0x35
             self._on_actions(pkt)
@@ -109,7 +115,11 @@ class GameClient:
             if self.self_entity is None and len(pkt) >= 17:
                 self.self_entity = pkt[9:17]
                 self.state.self_entity = self.self_entity
-                log.info("self_entity = %s", self.self_entity.hex())
+                log.info("[%s] self_entity = %s", self._label, self.self_entity.hex())
+                # xu lai cac goi 0x0b da buffer (co the chua stat cua minh den truoc 0x69)
+                for p in self._pending_0b:
+                    self.state.update_0x0b(p)
+                self._pending_0b = []
         elif opcode == 0x07 and pkt[7:9] == b"\x01\x00" and len(pkt) >= 16:
             # danh sach kenh (channel list): payload bat dau '01 00 [count]'
             # (phan biet voi 0x07 broadcast di chuyen bat dau '00 00 [entity]')
@@ -167,6 +177,13 @@ class GameClient:
     def _make_decisions(self):
         if self._acted_turn:
             return
+        # PHONG VE: chua load duoc stats cua minh (hp_max=0) = chua dong bo voi server
+        # -> submit combat se bi da (loi 2a). Bo qua luot nay, giu ket noi.
+        if self.state.char.hp_max == 0 and self.state.pet.hp_max == 0:
+            log.warning("[%s] Stats chua load (hp_max=0) -> BO QUA luot (tranh bi da)", self._label)
+            self.available = {}
+            threading.Timer(1.5, self._reset_turn).start()
+            return
         self._acted_turn = True
         try:
             char_opts = self.available.get(config.UNIT_CHAR, [])
@@ -175,9 +192,10 @@ class GameClient:
             if char_opts:
                 d = combat.decide_char(self.state, char_opts, ft)
                 self._send_combat(d)
-                log.info("[%s] CHAR %s | %s | quai@%s hp=%s",
+                offered = sorted({t for a, t in char_opts if a == 1})
+                log.info("[%s] CHAR %s | %s | quai@%s | offered=%s",
                          self._label, d, self.state.char,
-                         self.state.enemy_slots, self.state.enemy_hp)
+                         self.state.enemy_slots, offered)
             if pet_opts:
                 d = combat.decide_pet(self.state, pet_opts, ft)
                 self._send_combat(d)

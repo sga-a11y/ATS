@@ -26,7 +26,10 @@ def run_account(username, password, idx=0):
         log.info("[%s] login OK user_id=%s", username, cred["user_id"])
         c = GameClient(cred["user_id"], cred["access_token"])
         c._label = username
-        c.submit_delay = 1.0 + 6.0 * idx   # stagger ro: sga001=1s, sga002=7s (trong 20s)
+        c.state.has_fire = username not in getattr(config, "NO_FIRE_ACCOUNTS", set())
+        if not c.state.has_fire:
+            log.info("[%s] Account KHONG co Hoa Tien -> chi danh thuong + ho tro", username)
+        c.submit_delay = 1.0 + 1.5 * idx   # stagger nhe (tranh submit tre)
         c.connect()
         clients.append(c)
         time.sleep(4)
@@ -36,7 +39,7 @@ def run_account(username, password, idx=0):
         if c.in_di_gioi():
             log.info("[%s] Dang trong Di Gioi (map %s) -> thoat...", username, c.current_map)
             c.exit_di_gioi()
-        c.teleport(12001, 0)   # Trac Quan
+        c.teleport(config.START_CITY_ID, config.START_CITY_FLAG)   # mac dinh Ng.Thanh (config)
         time.sleep(3)
         if idx == 0:
             ch = c.pick_best_channel()         # bot dau: chon kenh it nguoi nhat
