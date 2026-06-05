@@ -33,6 +33,7 @@ DIGIOI_MAP_ID = 49942           # map_id Di Gioi (0xc316) - doc tu broadcast de 
 # Combat tuning
 CHAR_FIRE_MIN_SP = 100      # SP >= 100 -> Hoa Tien
 HEAL_HP_THRESHOLD = 0.60    # ally HP <= 60% max -> Toan Tri Lieu
+HEAL_SP_COST = 42
 PET_FIRE_MIN_SP = 15        # pet SP >= 15 -> Hoa Tien
 
 # Skill IDs

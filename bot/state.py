@@ -99,6 +99,16 @@ class BattleState:
                 if T_HP_MAX in cd: self.char.hp_max = cd[T_HP_MAX]
                 if T_HP_CUR in cd: self.char.hp = cd[T_HP_CUR]
                 if T_SP_CUR in cd: self.char.sp = cd[T_SP_CUR]
+        # Cap nhat HP TAT CA dong doi (char B1=3, pet B1=2 cua moi slot) -> de quyet dinh hoi mau
+        for (b1, b2), d in groups.items():
+            if b1 in (0x02, 0x03) and (T_HP_CUR in d or T_HP_MAX in d):
+                u = self.allies.get((b1, b2))
+                if u is None:
+                    u = Unit(f"{'char' if b1==3 else 'pet'}{b2}")
+                    self.allies[(b1, b2)] = u
+                if T_HP_MAX in d: u.hp_max = d[T_HP_MAX]
+                if T_HP_CUR in d: u.hp = d[T_HP_CUR]
+                u.slot = b2
 
     # ---- parse 0x0b (full stats char/pet) ----
     def update_0x0b(self, pkt: bytes):
@@ -127,16 +137,15 @@ class BattleState:
         who.sp = struct.unpack_from("<I", pkt, off + 14)[0]
 
     def lowest_hp_ally(self):
-        """Tra ve (target_ref, hp_pct) cua dong doi/pet thap mau nhat. None neu khong co."""
-        candidates = [self.pet] + list(self.allies.values())
-        alive = [u for u in candidates if u.hp_max > 0]
+        """Unit (char/pet bat ky thanh vien) thap mau nhat. None neu khong co."""
+        alive = [u for u in self.allies.values() if u.hp_max > 0]
         if not alive:
             return None
         return min(alive, key=lambda u: u.hp_pct)
 
     def any_ally_low(self, threshold: float):
-        """Co dong doi/pet nao HP% <= threshold khong."""
-        for u in [self.pet] + list(self.allies.values()):
+        """Co thanh vien nao (char/pet) HP% <= threshold khong (gom ca minh)."""
+        for u in self.allies.values():
             if u.hp_max > 0 and u.hp_pct <= threshold:
                 return True
         return False

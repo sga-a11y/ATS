@@ -30,7 +30,7 @@ def run_account(username, password, idx=0):
             c = GameClient(cred["user_id"], cred["access_token"])
             c._label = username
             c.state.has_fire = username not in getattr(config, "NO_FIRE_ACCOUNTS", set())
-            c.submit_delay = 1.0 + 1.5 * idx
+            c.submit_delay = 0.2   # chi debounce gom du options 0x35, ko stagger nua (atype da fix)
             c.connect()
             time.sleep(5)
             if c.self_entity is not None:
@@ -47,8 +47,8 @@ def run_account(username, password, idx=0):
         if c.in_di_gioi():
             log.info("[%s] Dang trong Di Gioi (map %s) -> thoat...", username, c.current_map)
             c.exit_di_gioi()
-        c.teleport(config.START_CITY_ID, config.START_CITY_FLAG)   # mac dinh Ng.Thanh (config)
-        time.sleep(3)
+        # ve thanh (lap lai neu dang ket o bai quai/battle)
+        c.go_to_town(config.START_CITY_ID, config.START_CITY_FLAG)
         if idx == 0:
             ch = c.pick_best_channel()         # bot dau: chon kenh it nguoi nhat
             _chosen_channel["ch"] = ch
@@ -93,6 +93,12 @@ def poll_commands():
         try:
             if cmd == "tp" and len(parts) >= 3:
                 for c in clients: c.teleport(int(parts[1]), int(parts[2]))
+            elif cmd == "gather":
+                # gom bot ve thanh (lap teleport neu dang ket o bai quai/battle)
+                city = int(parts[1]) if len(parts) >= 2 else 12001
+                flag = int(parts[2]) if len(parts) >= 3 else 0
+                for c in clients:
+                    threading.Thread(target=c.go_to_town, args=(city, flag), daemon=True).start()
             elif cmd == "channel" and len(parts) >= 2:
                 for c in clients: c.switch_channel(int(parts[1]))
             elif cmd == "digioi":

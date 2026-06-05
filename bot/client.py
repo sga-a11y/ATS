@@ -244,7 +244,7 @@ class GameClient:
             else:
                 tail = b"\x00\x00"
         payload = (b"\x01\x00"
-                   + bytes([d.unit, d.atype, 0x00, d.target])
+                   + bytes([d.unit, d.atype, getattr(d, "b", 0), d.target])
                    + struct.pack("<H", d.skill)
                    + tail)
         self.send(protocol.OP_COMBAT, payload)
@@ -337,6 +337,25 @@ class GameClient:
         time.sleep(1.5)                              # cho server load zone
         self.send(0x61, bytes.fromhex("020002"))   # xac nhan vao
         log.info("[%s] Vao Di Gioi: gui 0x61 020002 (xong)", self._label)
+
+    def go_to_town(self, city_id: int, flag: int = 0, tries: int = 30, wait: float = 2.0):
+        """Teleport ve thanh, LAP LAI cho toi khi RA KHOI map hien tai (neu dang o bai quai/
+        battle thi teleport bi chan, phai cho khoang trong giua 2 tran). Xac nhan = map da doi
+        (city_id != map_id voi 1 so thanh nhu Ng.Thanh, nen check 'da roi map cu')."""
+        log.info("[%s] Ve thanh %d (lap lai neu con battle chan teleport)...", self._label, city_id)
+        ok = 0
+        for _ in range(tries):
+            self.teleport(city_id, flag)
+            time.sleep(wait)
+            if self.current_map == city_id:
+                ok += 1
+                if ok >= 2:   # 2 lan lien tiep == city_id -> on dinh (tranh nhieu luc chuyen map)
+                    log.info("[%s] Da ve thanh %d", self._label, city_id)
+                    return True
+            else:
+                ok = 0
+        log.warning("[%s] Chua ve duoc thanh %d (map=%s)", self._label, city_id, self.current_map)
+        return False
 
     def teleport(self, city_id: int, flag: int = 0):
         """flag bat buoc dung dung cho tung thanh (xem cities.json)."""

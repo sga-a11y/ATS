@@ -18,14 +18,16 @@ from . import config
 
 
 class Decision:
-    def __init__(self, unit, atype, target, skill):
+    # b = loai dich cua skill: 0=danh quai, 2=1 dong doi, 3=toan party (tu defend_test.pcap)
+    def __init__(self, unit, atype, target, skill, b=0):
         self.unit = unit
         self.atype = atype
         self.target = target
         self.skill = skill
+        self.b = b
 
     def __repr__(self):
-        return f"Decision(unit={self.unit} atype={self.atype} target={self.target} skill={self.skill})"
+        return f"Decision(unit={self.unit} atype={self.atype} b={self.b} target={self.target} skill={self.skill})"
 
 
 def _offered_targets(options, atype):
@@ -79,28 +81,38 @@ def _single_target(state, offered):
     return min(cands, key=lambda t: state.enemy_hp.get(t, 1 << 30))
 
 
+def _has_group3(enemy_slots):
+    """Co 3 con quai lien nhau cung hang khong (de Hoa Tien dang dong SP)."""
+    es = set(enemy_slots)
+    for a in sorted(es):
+        if (a + 1) in es and (a + 2) in es and _same_row(a, a + 2):
+            return True
+    return False
+
+
 def decide_char(state, options, first_turn=False):
     at = state.my_atype
     offered = _offered_targets(options, at)
-    # Hoa Tien: SP du VA nhan vat co skill nay
-    if state.has_fire and state.char.sp >= config.CHAR_FIRE_MIN_SP:
-        tgt = _aoe_target(state.enemy_slots, offered) or (offered[0] if offered else 1)
+    fb = offered[0] if offered else 1
+    # 1) UU TIEN HOI MAU: co thanh vien (gom minh) HP yeu + du SP. Toan Tri Lieu: B=3, target=vi tri minh
+    if state.any_ally_low(config.HEAL_HP_THRESHOLD) and state.char.sp >= config.HEAL_SP_COST:
+        return Decision(config.UNIT_CHAR, at, at, config.SKILL_HEAL_ALL, b=3)
+    # 2) HOA TIEN: co skill + du SP + CO nhom 3 quai gan nhau (else danh thuong de dong SP)
+    if state.has_fire and state.char.sp >= config.CHAR_FIRE_MIN_SP and _has_group3(state.enemy_slots):
+        tgt = _aoe_target(state.enemy_slots, offered) or fb
         return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_FIRE)
-    # Hoi mau toan party neu co dong doi yeu
-    if state.any_ally_low(config.HEAL_HP_THRESHOLD) and state.char.sp >= 42:
-        tgt = _single_target(state, offered) or (offered[0] if offered else 1)
-        return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_HEAL_ALL)
-    # Danh thuong -> dung CUNG rule target nhu Hoa Tien (con giua/con thu 2, bo con dau)
-    tgt = _aoe_target(state.enemy_slots, offered) or (offered[0] if offered else 1)
+    # 3) Danh thuong (focus con it mau)
+    tgt = _single_target(state, offered) or fb
     return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_NORMAL)
 
 
 def decide_pet(state, options, first_turn=False):
     at = state.my_atype
     offered = _offered_targets(options, at)
-    if state.pet.sp >= config.PET_FIRE_MIN_SP:
-        tgt = _aoe_target(state.enemy_slots, offered) or (offered[0] if offered else 1)
+    fb = offered[0] if offered else 1
+    # Hoa Tien chi khi co nhom 3 quai (dong SP); else danh thuong
+    if state.pet.sp >= config.PET_FIRE_MIN_SP and _has_group3(state.enemy_slots):
+        tgt = _aoe_target(state.enemy_slots, offered) or fb
         return Decision(config.UNIT_PET, at, tgt, config.SKILL_FIRE)
-    # Danh thuong -> cung rule target nhu Hoa Tien
-    tgt = _aoe_target(state.enemy_slots, offered) or (offered[0] if offered else 1)
+    tgt = _single_target(state, offered) or fb
     return Decision(config.UNIT_PET, at, tgt, config.SKILL_NORMAL)
