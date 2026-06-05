@@ -80,21 +80,24 @@ class BattleState:
                     enemies.append(b2)
         if saw_enemy_group:
             self.enemy_slots = sorted(enemies)   # ke ca rong (het quai) -> tranh target o chet
-        # xac dinh slot cua minh qua maxHP pet (doc tu 0x0b), roi cap nhat HP/SP
-        for (b1, b2), d in groups.items():
-            hpmax = d.get(T_HP_MAX)
-            if b1 == 0x02 and self.pet.hp_max and hpmax == self.pet.hp_max:
-                self.self_slot = b2
-                if T_HP_CUR in d: self.pet.hp = d[T_HP_CUR]
-                if T_SP_CUR in d: self.pet.sp = d[T_SP_CUR]
-        # char cua minh: cung B2 voi pet
+        # Neu CHUA biet slot tu roster (0x0d) -> thu khop qua maxHP pet (doc tu 0x0b)
+        if self.self_slot is None:
+            for (b1, b2), d in groups.items():
+                if b1 == 0x02 and self.pet.hp_max and d.get(T_HP_MAX) == self.pet.hp_max:
+                    self.self_slot = b2
+                    break
+        # Doc HP/SP char+pet cua minh theo slot (uu tien roster -> chinh xac, KHONG can 0x0b)
         if self.self_slot is not None:
-            d = groups.get((0x03, self.self_slot))
-            if d:
-                if T_HP_MAX in d and not self.char.hp_max:
-                    self.char.hp_max = d[T_HP_MAX]
-                if T_HP_CUR in d: self.char.hp = d[T_HP_CUR]
-                if T_SP_CUR in d: self.char.sp = d[T_SP_CUR]
+            pd = groups.get((0x02, self.self_slot))
+            if pd:
+                if T_HP_MAX in pd: self.pet.hp_max = pd[T_HP_MAX]
+                if T_HP_CUR in pd: self.pet.hp = pd[T_HP_CUR]
+                if T_SP_CUR in pd: self.pet.sp = pd[T_SP_CUR]
+            cd = groups.get((0x03, self.self_slot))
+            if cd:
+                if T_HP_MAX in cd: self.char.hp_max = cd[T_HP_MAX]
+                if T_HP_CUR in cd: self.char.hp = cd[T_HP_CUR]
+                if T_SP_CUR in cd: self.char.sp = cd[T_SP_CUR]
 
     # ---- parse 0x0b (full stats char/pet) ----
     def update_0x0b(self, pkt: bytes):

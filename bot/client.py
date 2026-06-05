@@ -37,6 +37,8 @@ class GameClient:
         self._chan_event = threading.Event()
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
+        self.party_leader = None     # entity chu party (tu 0x0d sub=06)
+        self.party_members = []      # list entity cac member theo thu tu (= slot B2)
 
     # ---- ket noi + auth ----
     def connect(self):
@@ -135,16 +137,35 @@ class GameClient:
         # cac opcode khac: bo qua
 
     def _on_party(self, pkt: bytes):
-        """S2C 0x0d. sub=09 = co loi moi -> tu accept."""
+        """S2C 0x0d. sub=09 = loi moi -> accept. sub=06 = roster [leader][count][members]."""
         if len(pkt) < 9:
             return
         sub = pkt[7]
         if sub == 0x09 and self.auto_accept_party and len(pkt) >= 17:
-            entity = pkt[9:17]
-            if self.self_entity is None:
-                self.self_entity = entity
+            entity = pkt[9:17]   # entity nguoi MOI (leader), KHONG set lam self_entity
             self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
             log.info("[%s] Nhan loi moi party -> da gui ACCEPT", self._label)
+        elif sub == 0x06 and len(pkt) >= 18:
+            # roster: [sub 06][00][leader 8B][count 1B][member 8B]*count
+            leader = pkt[9:17]
+            count = pkt[17]
+            members = []
+            for i in range(count):
+                off = 18 + i * 8
+                if off + 8 <= len(pkt):
+                    members.append(pkt[off:off + 8])
+            if members:
+                self.party_leader = leader
+                self.party_members = members
+                # slot cua minh = vi tri trong danh sach member (1-based) -> map B2 trong 0x33
+                if self.self_entity in members:
+                    self.state.self_slot = members.index(self.self_entity) + 1
+                    log.info("[%s] Party roster: %d member, minh o slot %d",
+                             self._label, count, self.state.self_slot)
+                else:
+                    log.warning("[%s] self_entity %s KHONG co trong roster %s",
+                                self._label, self.self_entity.hex() if self.self_entity else None,
+                                [m.hex()[:8] for m in members])
 
     # ---- xu ly available actions (0x35) ----
     def _on_actions(self, pkt: bytes):

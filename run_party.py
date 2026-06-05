@@ -29,7 +29,7 @@ def run_account(username, password, idx=0):
         c.state.has_fire = username not in getattr(config, "NO_FIRE_ACCOUNTS", set())
         if not c.state.has_fire:
             log.info("[%s] Account KHONG co Hoa Tien -> chi danh thuong + ho tro", username)
-        c.submit_delay = 1.0 + 1.5 * idx   # stagger nhe (tranh submit tre)
+        c.submit_delay = 1.0 + 1.5 * idx   # stagger nhe
         c.connect()
         clients.append(c)
         time.sleep(4)
