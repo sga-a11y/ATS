@@ -35,6 +35,7 @@ class GameClient:
         self._battle_entered = False # da gui 0x41 "vao tran" chua
         self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
         self._chan_event = threading.Event()
+        self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
 
     # ---- ket noi + auth ----
     def connect(self):
@@ -92,6 +93,9 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        # Track map_id hien tai: broadcast 0x0c/0x07/0x03 = [00 00][entity 8B][map_id 2B]...
+        if opcode in (0x0c, 0x07, 0x03) and len(pkt) >= 19 and pkt[7:9] == b"\x00\x00":
+            self.current_map = int.from_bytes(pkt[17:19], "little")
         if opcode == protocol.OP_STAT_UPD:        # 0x33
             self.state.update_0x33(pkt)
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
@@ -242,6 +246,51 @@ class GameClient:
                  self._label, best[0], best[1], best[2])
         self.switch_channel(best[0])
         return best[0]
+
+    def move_to(self, x: int, y: int):
+        """C2S 0x06: di chuyen nhan vat toi (x,y). Server tu di toi do."""
+        self.send(0x06, b"\x01\x00\x01" + struct.pack("<HH", x, y))
+
+    def in_di_gioi(self) -> bool:
+        """Dang o map Di Gioi? Doc map_id thuc te (khong dua vao so kenh)."""
+        return self.current_map == config.DIGIOI_MAP_ID
+
+    def _left_di_gioi(self) -> bool:
+        """Da ra khoi Di Gioi chua (map_id da khac Di Gioi)."""
+        return self.current_map is not None and self.current_map != config.DIGIOI_MAP_ID
+
+    def exit_di_gioi(self):
+        """Di Gioi KHONG co lenh thoat: phai DI toi CONG THOAT (~270,210) roi xac nhan 0x14.
+        Replay dung chuoi tu capture thoat that:
+          move(749,592)->(650,470)->(430,350)->[0x14 04000100]->move(270,210)
+          ->[0x14 08000100]->[0x0c 0100]->[0x14 0600]
+        """
+        log.info("[%s] Thoat Di Gioi: di toi cong (270,210) + xac nhan...", self._label)
+        seq = [
+            ("move", (749, 592)), ("move", (650, 470)), ("move", (430, 350)),
+            ("raw14", "04000100"),
+            ("move", (270, 210)),
+            ("raw14", "08000100"),
+            ("raw0c", "0100"),
+            ("raw14", "0600"),
+        ]
+        for _ in range(4):   # lap lai vai lan neu chua ra (di xa can thoi gian)
+            for kind, val in seq:
+                if kind == "move":
+                    self.move_to(*val)
+                    time.sleep(2.5)
+                elif kind == "raw14":
+                    self.send(0x14, bytes.fromhex(val))
+                    time.sleep(0.8)
+                elif kind == "raw0c":
+                    self.send(0x0c, bytes.fromhex(val))
+                    time.sleep(0.5)
+            if self._left_di_gioi():
+                log.info("[%s] Da THOAT Di Gioi (con %d kenh = thanh)",
+                         self._label, len(self.channels))
+                return True
+        log.warning("[%s] Van chua thoat duoc Di Gioi", self._label)
+        return False
 
     def enter_di_gioi(self):
         """Vao map Di Gioi (map train chinh). Chi 2 goi co dinh: 0x61 010001 -> 0x61 020002.

@@ -10,8 +10,11 @@
     "di_gioi": {
       "name": "Di Gioi",
       "note": "Map TRAIN quan trong (treo may). Dang o map nay KHONG teleport ve thanh duoc (0x44 bi tu choi).",
-      "map_id_tentative": 11971,
-      "map_id": "TBD - capture sach luc buoc vao Di Gioi de chac chan"
+      "map_id": 49942,
+      "map_id_hex": "0xc316",
+      "map_id_note": "XAC NHAN tu broadcast 0x0c/0x07/0x03 offset 10 (LE). Gia tri cu 11971 la SAI.",
+      "exit_gate": [270, 210],
+      "exit_note": "Khong co lenh thoat. Phai DI BO tung buoc nho toi cong (270,210) roi 0x14 04000100/08000100. 0x06 = bao vi tri di tung buoc, KHONG nhay xa duoc."
     }
   }
 }

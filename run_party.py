@@ -30,6 +30,11 @@ def run_account(username, password, idx=0):
         c.connect()
         clients.append(c)
         time.sleep(4)
+        time.sleep(2)   # cho broadcast cap nhat map_id hien tai
+        # neu dang KET trong Di Gioi (map_id = Di Gioi) -> thoat truoc khi teleport
+        if c.in_di_gioi():
+            log.info("[%s] Dang trong Di Gioi (map %s) -> thoat...", username, c.current_map)
+            c.exit_di_gioi()
         c.teleport(12001, 0)   # Trac Quan
         time.sleep(3)
         if idx == 0:
@@ -82,6 +87,13 @@ def poll_commands():
                 for c in clients: c.enter_di_gioi()
             elif cmd == "bestchannel":
                 for c in clients: c.pick_best_channel()
+            elif cmd == "outdigioi":
+                # thoat Di Gioi -> teleport ve Trac Quan -> chon kenh it nguoi
+                for c in clients:
+                    c.exit_di_gioi()
+                    c.teleport(12001, 0)
+                    time.sleep(3)
+                    c.pick_best_channel()
             elif cmd == "quit":
                 for c in clients: c.close()
             else:
