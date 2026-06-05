@@ -262,37 +262,28 @@ class GameClient:
         """Da ra khoi Di Gioi chua (map_id da khac Di Gioi)."""
         return self.current_map is not None and self.current_map != config.DIGIOI_MAP_ID
 
-    def exit_di_gioi(self):
-        """Di Gioi KHONG co lenh thoat: phai DI toi CONG THOAT (~270,210) roi xac nhan 0x14.
-        Replay dung chuoi tu capture thoat that:
-          move(749,592)->(650,470)->(430,350)->[0x14 04000100]->move(270,210)
-          ->[0x14 08000100]->[0x0c 0100]->[0x14 0600]
-        """
-        log.info("[%s] Thoat Di Gioi: di toi cong (270,210) + xac nhan...", self._label)
-        seq = [
-            ("move", (749, 592)), ("move", (650, 470)), ("move", (430, 350)),
-            ("raw14", "04000100"),
-            ("move", (270, 210)),
-            ("raw14", "08000100"),
-            ("raw0c", "0100"),
-            ("raw14", "0600"),
-        ]
-        for _ in range(4):   # lap lai vai lan neu chua ra (di xa can thoi gian)
-            for kind, val in seq:
-                if kind == "move":
-                    self.move_to(*val)
-                    time.sleep(2.5)
-                elif kind == "raw14":
-                    self.send(0x14, bytes.fromhex(val))
-                    time.sleep(0.8)
-                elif kind == "raw0c":
-                    self.send(0x0c, bytes.fromhex(val))
-                    time.sleep(0.5)
+    def exit_di_gioi(self, step_wait: float = 2.0):
+        """Di Gioi KHONG co lenh thoat: phai DI BO tung buoc nho toi CONG (270,210).
+        Replay DUNG chuoi buoc THAT tu capture (cac buoc ~50-110px, da chung minh hop le)
+        + cho step_wait giay moi buoc cho nhan vat di toi noi. Toi cong -> map tu doi.
+        Kiem tra thoat bang map_id THAT (khong dua so kenh)."""
+        log.info("[%s] Thoat Di Gioi: di bo tung buoc toi cong (270,210)...", self._label)
+        # chuoi buoc THAT tu exit_new.pcap (x,y)
+        steps = [(738, 648), (682, 609), (625, 569), (570, 530),
+                 (462, 411), (417, 360), (390, 330)]
+        for _ in range(3):   # lap lai vai vong neu chua ra
+            for x, y in steps:
+                self.move_to(x, y)
+                time.sleep(step_wait)
+            self.send(0x14, bytes.fromhex("04000100")); time.sleep(0.8)
+            self.move_to(270, 210);                     time.sleep(step_wait)
+            self.send(0x14, bytes.fromhex("08000100")); time.sleep(0.8)
+            self.send(0x0c, bytes.fromhex("0100"));     time.sleep(0.5)
+            self.send(0x14, bytes.fromhex("0600"));     time.sleep(1.5)
             if self._left_di_gioi():
-                log.info("[%s] Da THOAT Di Gioi (con %d kenh = thanh)",
-                         self._label, len(self.channels))
+                log.info("[%s] Da THOAT Di Gioi -> map %s", self._label, self.current_map)
                 return True
-        log.warning("[%s] Van chua thoat duoc Di Gioi", self._label)
+        log.warning("[%s] Van chua thoat duoc Di Gioi (map %s)", self._label, self.current_map)
         return False
 
     def enter_di_gioi(self):
