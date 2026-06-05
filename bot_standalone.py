@@ -56,7 +56,9 @@ def run_account(username: str, password: str, idx: int = 0):
             if getattr(config, "ENTER_DIGIOI", False):
                 time.sleep(2)
                 client.enter_di_gioi()   # solo train Di Gioi (khong party)
-                log.info("[%s] Da vao Di Gioi - tu dong danh quai", label)
+                time.sleep(2)
+                client.pick_best_channel()   # tu chuyen sang kenh it nguoi nhat
+                log.info("[%s] Da vao Di Gioi + chon kenh it nguoi - tu dong danh", label)
             else:
                 log.info("[%s] San sang - cho chu party '%s' moi + tu dong danh",
                          label, config.LEADER_NAME)

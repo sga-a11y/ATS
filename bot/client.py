@@ -33,6 +33,8 @@ class GameClient:
         self.submit_delay = 0.5      # delay truoc khi gui combat
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
+        self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
+        self._chan_event = threading.Event()
 
     # ---- ket noi + auth ----
     def connect(self):
@@ -101,6 +103,8 @@ class GameClient:
                 self.self_entity = pkt[9:17]
                 self.state.self_entity = self.self_entity
                 log.info("self_entity = %s", self.self_entity.hex())
+        elif opcode == 0x07 and len(pkt) > 100:   # danh sach kenh (channel list)
+            self._on_channel_list(pkt)
         elif opcode == protocol.OP_PLAYER_STATE:  # 0x0d - party
             self._on_party(pkt)
         elif opcode == protocol.OP_BATTLE_START:   # 0x34 - mốc battle that (KHONG dung 0x41!)
@@ -198,6 +202,44 @@ class GameClient:
         """Chuyen sang sub-channel (vd Di Gioi dong nguoi). C2S 0x07 = 02 00 [ch LE]."""
         self.send(0x07, b"\x02\x00" + struct.pack("<H", channel))
         log.info("Chuyen kenh -> %d", channel)
+
+    def _on_channel_list(self, pkt: bytes):
+        """S2C 0x07 list: payload = [01 00][count 1B][ block 6B: ch2 cur2 cap2 ]*count."""
+        data = pkt[10:]   # bo header(6)+op(1)+ '01 00 count'(3)
+        chans = {}
+        for i in range(0, len(data) - 5, 6):
+            ch, cur, cap = struct.unpack_from("<HHH", data, i)
+            if 0 < ch < 1000 and cap > 0:
+                chans[ch] = (cur, cap)
+        if chans:
+            self.channels = chans
+            self._chan_event.set()
+            log.info("[%s] Nhan danh sach %d kenh", self._label, len(chans))
+
+    def request_channel_list(self):
+        """Gui 0x07 0100 de server tra ve danh sach kenh + so nguoi."""
+        self._chan_event.clear()
+        self.channels = {}
+        self.send(0x07, b"\x01\x00")
+
+    def pick_best_channel(self, wait: float = 2.0, exclude=(1,)):
+        """Hoi danh sach kenh -> chuyen sang kenh IT NGUOI nhat (con cho trong).
+        exclude: bo qua kenh nao (vd kenh 1 thuong dong/mac dinh)."""
+        self.request_channel_list()
+        if not self._chan_event.wait(wait):
+            log.warning("[%s] Khong nhan duoc danh sach kenh", self._label)
+            return None
+        # uu tien kenh con cho (cur<cap), it nguoi nhat
+        cand = [(ch, cur, cap) for ch, (cur, cap) in self.channels.items()
+                if ch not in exclude]
+        if not cand:
+            return None
+        open_ch = [c for c in cand if c[1] < c[2]] or cand
+        best = min(open_ch, key=lambda c: c[1])
+        log.info("[%s] Kenh it nguoi nhat: kenh %d (%d/%d) -> chuyen sang",
+                 self._label, best[0], best[1], best[2])
+        self.switch_channel(best[0])
+        return best[0]
 
     def enter_di_gioi(self):
         """Vao map Di Gioi (map train chinh). Chi 2 goi co dinh: 0x61 010001 -> 0x61 020002.
