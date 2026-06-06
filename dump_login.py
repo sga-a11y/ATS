@@ -1,12 +1,14 @@
 """Login 1 account, dump het S2C packet ra file de phan tich pet.
 Chay: python dump_login.py <username> <outfile>"""
 import sys, time
+from bot import config
 from bot.login import login
 from bot.client import GameClient
 
 user = sys.argv[1]
 out = sys.argv[2]
-pw = "s112233"
+# Lay password tu config.ACCOUNTS (neu co), khong thi mac dinh
+pw = dict(config.ACCOUNTS).get(user, "s112233")
 
 cred = login(user, pw)
 c = GameClient(cred["user_id"], cred["access_token"])

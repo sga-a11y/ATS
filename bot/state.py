@@ -47,7 +47,7 @@ class BattleState:
         # vi tri quai con song (slot B2) - decode tu 0x33; dung lam target combat
         self.enemy_slots = []          # vd [2] = co 1 quai o slot 2
         self.enemy_hp = {}             # slot -> curHP
-        self.self_slot = None          # B2 cua minh (xac dinh qua maxHP pet)
+        self.self_slot = None          # B2 (vi tri tran) cua minh - tu 0x0b battle (entity-based)
 
     def reset_battle(self):
         self.mobs = []
@@ -92,12 +92,7 @@ class BattleState:
             # enemy_slots = TAT CA slot con song theo enemy_hp TICH LUY (khong chi goi nay).
             # Tranh mat con khong bi danh trong turn (vd giet 1-2-3 con con o slot 7 van song).
             self.enemy_slots = sorted(s for s, hp in self.enemy_hp.items() if hp > 0)
-        # Neu CHUA biet slot tu roster (0x0d) -> thu khop qua maxHP pet (doc tu 0x0b)
-        if self.self_slot is None:
-            for (b1, b2), d in groups.items():
-                if b1 == 0x02 and self.pet.hp_max and d.get(T_HP_MAX) == self.pet.hp_max:
-                    self.self_slot = b2
-                    break
+        # self_slot xac dinh tu 0x0b battle (entity-based, o client) hoac roster. KHONG dua HP.
         # Doc HP/SP char+pet cua minh theo slot (uu tien roster -> chinh xac, KHONG can 0x0b)
         if self.self_slot is not None:
             pd = groups.get((0x02, self.self_slot))

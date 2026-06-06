@@ -172,6 +172,16 @@ class GameClient:
                 self._pending_0b.append(pkt)
                 if len(self._pending_0b) > 20:
                     self._pending_0b.pop(0)
+            # 0x0b battle (full stat): [entity][10x00][03][SLOT] -> vi tri tran cua minh.
+            # Entity-based, dang tin (khong dua HP). Cap nhat moi tran (vi tri co the doi).
+            if self.self_entity and len(pkt) > 100:
+                idx = pkt.find(self.self_entity)
+                if idx >= 0 and idx + 19 < len(pkt) and pkt[idx + 18] == 0x03:
+                    slot = pkt[idx + 19]
+                    if slot < 10 and slot != self.state.self_slot:
+                        self.state.self_slot = slot
+                        self.state.my_atype = slot
+                        log.info("[%s] self_slot=%d (tu 0x0b battle, entity)", self._label, slot)
             self.state.update_0x0b(pkt)
         elif opcode == protocol.OP_ACTIONS:       # 0x35
             self._on_actions(pkt)
@@ -209,6 +219,9 @@ class GameClient:
             # danh sach kenh (channel list): payload bat dau '01 00 [count]'
             # (phan biet voi 0x07 broadcast di chuyen bat dau '00 00 [entity]')
             self._on_channel_list(pkt)
+        # DEBUG kenh: log 0x07 (tru broadcast di chuyen 00 00) de tim "kenh hien tai"
+        if __import__("os").environ.get("CHANDBG") and opcode == 0x07 and pkt[7:9] != b"\x00\x00":
+            log.info("[%s] CHANDBG 0x07 %s", self._label, pkt.hex())
         elif opcode == protocol.OP_PLAYER_STATE:  # 0x0d - party
             self._on_party(pkt)
         elif opcode == protocol.OP_BATTLE_START:   # 0x34 - mốc battle that (KHONG dung 0x41!)
@@ -316,21 +329,15 @@ class GameClient:
         body = pkt[7:]
         # bo 2 byte dau (01 00), moi entry 5 byte: unit atype target 00 00
         i = 2
-        char_atype = None
         while i + 3 <= len(body):
             unit, atype, target = body[i], body[i + 1], body[i + 2]
             if unit in (config.UNIT_CHAR, config.UNIT_PET):
                 self.available.setdefault(unit, [])
                 if (atype, target) not in self.available[unit]:
                     self.available[unit].append((atype, target))
-                if unit == config.UNIT_CHAR:
-                    char_atype = atype
             i += 5
-        # atype char trong 0x35 = VI TRI TRAN cua minh -> dung lam self_slot/my_atype.
-        # Tin cay hon roster (self_entity the gioi co the KHONG khop entity trong tran).
-        if char_atype is not None:
-            self.state.my_atype = char_atype
-            self.state.self_slot = char_atype
+        # KHONG lay atype tu 0x35 (no liet ke ca 5 vi tri party -> khong on dinh).
+        # self_slot xac dinh qua roster (FILL) hoac khop char maxHP trong update_0x33.
         # debounce: quyet dinh 0.4s sau goi 0x35 cuoi cung
         if self.auto_combat:
             self._arm_decision()
