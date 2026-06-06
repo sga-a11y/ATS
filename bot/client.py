@@ -6,10 +6,61 @@ import time
 import logging
 
 from . import config, protocol, combat
+
+
 from .auth import build_auth_packet
 from .state import BattleState
 
 log = logging.getLogger("bot")
+
+
+_GIFT_FILE = "gift_state.json"
+_gift_lock = threading.Lock()
+
+
+def _gift_key(label: str) -> str:
+    import datetime
+    return f"{label}:{datetime.date.today().isoformat()}"
+
+
+def _load_gift_state(label: str) -> dict:
+    """Load state qua online HOM NAY: {'online_sec': float, 'claimed': set}."""
+    import json, os
+    default = {"online_sec": 0.0, "claimed": set()}
+    if not os.path.exists(_GIFT_FILE):
+        return default
+    try:
+        with open(_GIFT_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        rec = data.get(_gift_key(label))
+        if not rec:
+            return default
+        return {"online_sec": float(rec.get("online_sec", 0)),
+                "claimed": set(rec.get("claimed", []))}
+    except Exception:
+        return default
+
+
+def _save_gift_state(label: str, online_sec: float, claimed: set):
+    """Luu online_sec + claimed cho hom nay; don key ngay cu."""
+    import json, os, datetime
+    today = datetime.date.today().isoformat()
+    with _gift_lock:
+        data = {}
+        if os.path.exists(_GIFT_FILE):
+            try:
+                with open(_GIFT_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+        data = {k: v for k, v in data.items() if k.endswith(today)}
+        data[_gift_key(label)] = {"online_sec": round(online_sec, 1),
+                                  "claimed": sorted(claimed)}
+        try:
+            with open(_GIFT_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
 
 
 class GameClient:
@@ -39,9 +90,19 @@ class GameClient:
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
         self.party_leader = None     # entity chu party (tu 0x0d sub=06)
         self.party_members = []      # list entity cac member theo thu tu (= slot B2)
+        self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x27
+        self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
+        self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
+        self._connect_time = None    # thoi diem connect phien nay
+        self._online_base = 0.0      # giay online TICH LUY hom nay (load tu file, truoc phien nay)
+        self.claimed_gifts = set()   # cac moc qua online da nhan hom nay (load tu file)
 
     # ---- ket noi + auth ----
     def connect(self):
+        self._connect_time = time.time()
+        st = _load_gift_state(self._label)
+        self._online_base = st["online_sec"]   # online tich luy truoc phien nay (hom nay)
+        self.claimed_gifts = st["claimed"]
         self.sock = socket.create_connection((config.GAME_HOST, config.GAME_PORT), timeout=15)
         log.info("Da ket noi %s:%s", config.GAME_HOST, config.GAME_PORT)
         self.sock.sendall(build_auth_packet(self.user_id, self.access_token))
@@ -113,6 +174,17 @@ class GameClient:
             self.state.update_0x0b(pkt)
         elif opcode == protocol.OP_ACTIONS:       # 0x35
             self._on_actions(pkt)
+        elif opcode == 0x54:                      # exp offline
+            self._on_offline_exp(pkt)
+        elif opcode == 0x55 and len(pkt) >= 19 and pkt[13] == 0x1b:  # so phut Di Gioi
+            self.digioi_minutes = int.from_bytes(pkt[15:17], "little")
+            self._last_digioi_ts = time.time()
+        elif opcode == 0x57:                      # qua online
+            self._on_gift(pkt)
+        elif opcode == 0x28:                      # skill bar char/pet
+            self._on_skill_bar(pkt)
+        elif opcode == 0x27:                      # player info co ten (entity + UTF-16LE name)
+            self._on_player_info(pkt)
         elif opcode == 0x69:                      # chua self_entity
             if self.self_entity is None and len(pkt) >= 17:
                 self.self_entity = pkt[9:17]
@@ -143,6 +215,20 @@ class GameClient:
         sub = pkt[7]
         if sub == 0x09 and self.auto_accept_party and len(pkt) >= 17:
             entity = pkt[9:17]   # entity nguoi MOI (leader), KHONG set lam self_entity
+            # --- Loc theo whitelist PARTY_LEADERS ---
+            leaders = getattr(config, "PARTY_LEADERS", [])
+            if leaders:
+                known = self.entity_names.get(entity, set())
+                if known:
+                    # Biet strings cua entity nay: accept neu BAT KY string nao khop
+                    if not any(s in leaders for s in known):
+                        log.info("[%s] TU CHOI loi moi tu entity=%s strings=%s (khong trong PARTY_LEADERS=%s)",
+                                 self._label, entity.hex()[:12], known, leaders)
+                        return
+                else:
+                    # Chua biet ten -> cho qua, log canh bao
+                    log.info("[%s] Chua biet ten entity=%s -> CHAP NHAN (chua co 0x27)",
+                             self._label, entity.hex()[:12])
             self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
             log.info("[%s] Nhan loi moi party -> da gui ACCEPT", self._label)
         elif sub == 0x06 and len(pkt) >= 18:
@@ -160,12 +246,13 @@ class GameClient:
                 # slot cua minh = vi tri trong danh sach member (1-based) -> map B2 trong 0x33
                 if self.self_entity in members:
                     idx = members.index(self.self_entity)
-                    self.state.self_slot = idx + 1
                     # atype = VI TRI BATTLE (0-4, leader LUON o giua=2). Member dien [1,3,0,4] theo thu tu.
                     FILL = [1, 3, 0, 4]
                     self.state.my_atype = FILL[idx] if idx < len(FILL) else idx
-                    log.info("[%s] Party roster: %d member, minh slot %d, atype(vi tri)=%d",
-                             self._label, count, self.state.self_slot, self.state.my_atype)
+                    # slot stats trong 0x33 = VI TRI BATTLE (= atype), KHONG phai idx+1
+                    self.state.self_slot = self.state.my_atype
+                    log.info("[%s] Party roster: %d member, minh slot=atype=%d",
+                             self._label, count, self.state.my_atype)
                 else:
                     log.warning("[%s] self_entity %s KHONG co trong roster %s",
                                 self._label, self.self_entity.hex() if self.self_entity else None,
@@ -202,13 +289,17 @@ class GameClient:
     def _make_decisions(self):
         if self._acted_turn:
             return
-        # PHONG VE: chua load duoc stats cua minh (hp_max=0) = chua dong bo voi server
-        # -> submit combat se bi da (loi 2a). Bo qua luot nay, giu ket noi.
+        # Neu stats chua load (hp_max=0) -> doi toi da 1s cho 0x0b kip den
         if self.state.char.hp_max == 0 and self.state.pet.hp_max == 0:
-            log.warning("[%s] Stats chua load (hp_max=0) -> BO QUA luot (tranh bi da)", self._label)
-            self.available = {}
-            threading.Timer(1.5, self._reset_turn).start()
-            return
+            for _ in range(10):
+                time.sleep(0.1)
+                if self.state.char.hp_max != 0 or self.state.pet.hp_max != 0:
+                    break
+            else:
+                log.warning("[%s] Stats chua load sau 1s -> bo qua luot", self._label)
+                self.available = {}
+                threading.Timer(1.5, self._reset_turn).start()
+                return
         self._acted_turn = True
         try:
             char_opts = self.available.get(config.UNIT_CHAR, [])
@@ -218,9 +309,10 @@ class GameClient:
                 d = combat.decide_char(self.state, char_opts, ft)
                 self._send_combat(d)
                 offered = sorted({t for a, t in char_opts if a == 1})
-                log.info("[%s] CHAR %s | %s | quai@%s | offered=%s",
+                log.info("[%s] CHAR %s | %s | skills=%s | quai@%s",
                          self._label, d, self.state.char,
-                         self.state.enemy_slots, offered)
+                         [hex(s) for s in sorted(self.state.skills_char)],
+                         self.state.enemy_slots)
             if pet_opts:
                 d = combat.decide_pet(self.state, pet_opts, ft)
                 self._send_combat(d)
@@ -248,6 +340,137 @@ class GameClient:
                    + struct.pack("<H", d.skill)
                    + tail)
         self.send(protocol.OP_COMBAT, payload)
+
+    # ---- qua online (0x57) ----
+    def request_offline_exp(self, exp_type: int = 0x1c):
+        """Hoi info exp offline (type 0x1c). Neu co exp -> tu nhan (xu ly o _on_offline_exp)."""
+        self.send(0x54, b"\x01\x00" + struct.pack("<H", exp_type))
+
+    def _on_offline_exp(self, pkt: bytes):
+        """S2C 0x54.
+        sub=1: [01 00][type 2B][flag 1B][exp 4B LE] -> neu exp>0 thi gui nhan.
+        sub=2: [02 00][type 2B][status 1B] -> status=1: nhan thanh cong.
+        """
+        if len(pkt) < 11:
+            return
+        body = pkt[7:]
+        sub = int.from_bytes(body[0:2], "little")
+        if sub == 0x01 and len(body) >= 9:
+            exp_type = int.from_bytes(body[2:4], "little")
+            exp = int.from_bytes(body[5:9], "little")
+            if exp > 0:
+                log.info("[%s] Co %d exp offline (type=0x%x) -> nhan", self._label, exp, exp_type)
+                self.send(0x54, b"\x02\x00\x02" + struct.pack("<H", exp_type))
+        elif sub == 0x02 and len(body) >= 5:
+            status = body[4]
+            if status:
+                log.info("[%s] Nhan exp offline THANH CONG", self._label)
+
+    def claim_online_gifts(self):
+        """Nhan qua online GIONG client that: chi claim moc da DU GIO online.
+        Thoi gian online TICH LUY hom nay = online_base (luu tu cac phien truoc) +
+        uptime phien hien tai. Tich luy nay <= online time that nen khi >= moc thi qua
+        CHAC CHAN da san sang (khong claim som -> khong bi nghi bot). Luu lai moi lan goi
+        de reconnect khong mat tien do.
+        Tra ve True neu da nhan het tat ca moc.
+        """
+        milestones = getattr(config, "GIFT_MILESTONES", [])
+        if not milestones or self._connect_time is None:
+            return False
+        online_sec = self._online_base + (time.time() - self._connect_time)
+        online_min = online_sec / 60.0
+        for m in milestones:
+            if m in self.claimed_gifts:
+                continue
+            if online_min >= m:
+                self.send(0x57, b"\x02\x00\x03" + struct.pack("<I", m) + b"\x01")
+                self.claimed_gifts.add(m)
+                log.info("[%s] Nhan qua online moc %d phut (online=%.1f phut)",
+                         self._label, m, online_min)
+        # luu online tich luy + claimed (de reconnect tiep tuc dung)
+        _save_gift_state(self._label, online_sec, self.claimed_gifts)
+        return all(m in self.claimed_gifts for m in milestones)
+
+    def _on_gift(self, pkt: bytes):
+        """S2C 0x57 sub=2: [02 00][type 1B][status 1B] — status=0: nhan thanh cong."""
+        if len(pkt) < 11:
+            return
+        if int.from_bytes(pkt[7:9], "little") == 0x02:
+            status = pkt[10]
+            if status == 0:
+                log.info("[%s] Qua online: nhan THANH CONG", self._label)
+            else:
+                log.info("[%s] Qua online: status=%d", self._label, status)
+
+    # ---- parse skill bar (0x28) ----
+    def _on_skill_bar(self, pkt: bytes):
+        """S2C 0x28: skill bar cua char/pet.
+        Format: [01 00][unit 1B][count 1B][skill_id 2B LE * count]...
+        unit=3: CHAR, unit=2: PET. 0x0000 = slot trong.
+        """
+        if len(pkt) < 12:
+            return
+        payload = pkt[7:]
+        i = 2  # bo prefix 01 00
+        while i + 2 <= len(payload):
+            unit  = payload[i]
+            count = payload[i + 1]
+            i += 2
+            if unit not in (2, 3) or count == 0 or count > 20:
+                break
+            skills = set()
+            for _ in range(count):
+                if i + 2 > len(payload):
+                    break
+                sid = int.from_bytes(payload[i:i+2], 'little')
+                if sid != 0:
+                    skills.add(sid)
+                i += 2
+            if unit == 3:
+                self.state.skills_char = skills
+                log.info("[%s] Char skills: %s", self._label,
+                         [hex(s) for s in sorted(skills)])
+            elif unit == 2:
+                self.state.skills_pet = skills
+                log.info("[%s] Pet skills: %s", self._label,
+                         [hex(s) for s in sorted(skills)])
+
+    # ---- parse player info (0x27) ----
+    def _on_player_info(self, pkt: bytes):
+        """S2C 0x27 sub=0x02: danh sach thanh vien guild.
+        Format: [sub 2B=0200][guild_len 1B][guild_name UTF-16LE][01][count 1B]
+                [entry: entity(8B) + name_len(1B) + name(UTF-16LE name_len B) + 32B extra] x count
+        Chi xu ly sub=0x02; bo qua cac sub khac (0x09 la guild-join notify, khong co ten nhan vat).
+        """
+        if len(pkt) < 14:
+            return
+        payload = pkt[7:]
+        sub = int.from_bytes(payload[0:2], 'little')
+        if sub != 0x02:
+            return
+        guild_len = payload[2]
+        # entries bat dau sau: 2B(sub) + 1B(guild_len) + guild_len + 1B(unknown) + 1B(count) = guild_len+5
+        entries_off = 3 + guild_len + 2
+        if entries_off > len(payload):
+            return
+        off = entries_off
+        parsed = 0
+        while off + 9 <= len(payload):
+            entity = payload[off:off + 8]
+            name_len = payload[off + 8]
+            if name_len == 0 or off + 9 + name_len > len(payload):
+                break
+            try:
+                name = payload[off + 9:off + 9 + name_len].decode('utf-16-le')
+            except Exception:
+                name = ''
+            if name:
+                self.entity_names.setdefault(entity, set()).add(name)
+                log.debug("[%s] guild member: %s -> '%s'", self._label, entity.hex()[:12], name)
+            off += 9 + name_len + 32
+            parsed += 1
+        if parsed:
+            log.info("[%s] 0x27 parsed %d guild members (entity_names cap nhat)", self._label, parsed)
 
     # ---- lenh tien ich ----
     def switch_channel(self, channel: int):

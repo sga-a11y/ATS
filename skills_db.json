@@ -10,6 +10,19 @@
       "priority": 1,
       "notes": "Normal attack, always available"
     },
+    "10005": {
+      "id": 10005,
+      "name": "Nem Da",
+      "type": "attack",
+      "target": "enemy",
+      "splash": "horizontal",
+      "splash_desc": "gay dame target + 2 ben phuong ngang (giong Hoa Tien)",
+      "optimal_target": "enemy co nhieu ke ben canh nhat",
+      "sp_cost": 22,
+      "cooldown": null,
+      "priority": 8,
+      "notes": "AoE 3 ngang giong Hoa Tien. SP cost 22. Dung khi SP >= 22 nhung < 100."
+    },
     "12003": {
       "id": 12003,
       "name": "Hoa Tien",

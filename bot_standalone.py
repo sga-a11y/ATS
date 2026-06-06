@@ -44,15 +44,30 @@ def run_account(username: str, password: str, idx: int = 0):
 
             client = GameClient(cred["user_id"], cred["access_token"])
             client._label = label
-            # stagger nhe giua cac acc (tranh dong loat trong 20s quyet dinh)
-            client.submit_delay = 1.0 + 1.5 * idx
+            client.submit_delay = 1
             client.connect()
 
-            time.sleep(4)
-            client.teleport(config.START_CITY_ID, config.START_CITY_FLAG)
+            # Cho vao world (co self_entity)
+            for _ in range(10):
+                if client.self_entity:
+                    break
+                time.sleep(1)
+            time.sleep(2)   # cho broadcast cap nhat map_id
+
+            client.request_offline_exp()   # nhan exp offline neu co
+
+            # Neu dang ket trong Di Gioi -> di ra truoc khi teleport
+            if client.in_di_gioi():
+                log.info("[%s] Dang trong Di Gioi -> di ra...", label)
+                client.exit_di_gioi()
+
+            # Ve thanh (lap lai neu battle chan teleport) roi chuyen kenh
+            client.go_to_town(config.START_CITY_ID, config.START_CITY_FLAG)
             if config.CHANNEL:
-                time.sleep(3)
+                time.sleep(2)
                 client.switch_channel(config.CHANNEL)
+                log.info("[%s] Da ve %d + kenh %d", label, config.START_CITY_ID, config.CHANNEL)
+
             if getattr(config, "ENTER_DIGIOI", False):
                 time.sleep(2)
                 client.enter_di_gioi()   # solo train Di Gioi (khong party)
@@ -63,9 +78,14 @@ def run_account(username: str, password: str, idx: int = 0):
                 log.info("[%s] San sang - cho chu party '%s' moi + tu dong danh",
                          label, config.LEADER_NAME)
 
-            # giu song den khi rot ket noi hoac duoc yeu cau dung
+            # giu song, tu nhan qua online (kiem tra moi 60s, ngung khi nhan het)
+            last_gift = time.time()
+            gifts_done = False
             while client.running and not _stop.is_set():
                 time.sleep(2)
+                if not gifts_done and time.time() - last_gift >= 60:
+                    gifts_done = client.claim_online_gifts()
+                    last_gift = time.time()
 
         except Exception as e:
             log.error("[%s] Loi: %s", label, e)

@@ -134,6 +134,11 @@ Pattern entries: `03 02 [type] [4-byte LE]`
 
 **Mob:** offset 31 = HP_max (4B LE), offset 35 = SP_max (4B LE)
 
+### QUAN TRONG: slot stats trong 0x33 = VI TRI BATTLE (atype), KHONG phai member-index
+- self_slot (key b2 doc HP/SP cua minh) PHAI = my_atype (vi tri tran, FILL=[1,3,0,4]).
+- Dung idx+1 (vi tri trong member list) = SAI -> doc nham SP/HP cua char khac.
+  Trieu chung: SP doc duoc giam 15/luot (cost Hoa Tien cua char KHAC) du minh danh thuong.
+
 ### S2C 0x35 — Available actions (34 bytes)
 Format: `01 00 [entries: unit action_type target 00 00]`
 - Bot đọc entry của unit=3 (char) và unit=2 (pet) → lấy action_type
@@ -242,9 +247,43 @@ C2S 0x07 = c0 91 0b 00 00 00 07 02 00 [channel_id 2B LE]
 
 S2C 0x55 (len 23): `c0 91 17 00 00 00 55 01 00 01 00 00 00 [id 1B] 00 [value 2B LE] 00 00 ff ff ff 7f`
 - byte[13] = id counter, byte[15:17] = value (uint16 LE)
-- **id=0xac => THOI GIAN DI GIOI CON LAI (giay).** Vd 480 = 8 phut. Khop voi game hien thi 7m53s.
+- **id=0xac => THOI GIAN DI GIOI CON LAI (PHUT).** Vd 111 = 1h51m. (KHONG phai giay - da xac nhan thuc te)
 - Di Gioi gioi han 2h/ngay. Bot doc 0xac de biet con bao nhieu giay -> tu dung/roi khi sap het.
 - id khac: 0x1b (tang dan, elapsed?), 0x01 (=1). Chua can.
+
+## 7g. QUA ONLINE (opcode 0x57)
+
+Nhan qua khi online du so phut. **id qua = so phut moc.**
+
+```
+C2S 0x57 nhan qua: c0 91 ... 57 [02 00][03][id 4B LE][01]
+S2C 0x57 ket qua:  c0 91 ... 57 [02 00][03][status 1B]   (status=0: thanh cong)
+```
+
+- **6 moc qua:** 10, 20, 30, 60, 90, 180 phut (id = so phut, vd moc 20p -> id=0x14)
+- Qua online tinh theo TONG THOI GIAN ONLINE (ke ca o thanh, da xac nhan nhan duoc khi dung o thanh).
+- **0x1b (S2C 0x55) = thoi gian DI GIOI**, KHONG phai online time -> KHONG dung cho qua online.
+- LUU Y: C2S 0x57 [03 00] (query list) tra ve 3 entry tinh 50/70/100 - FEATURE KHAC, KHONG lien quan qua online.
+- ANTI-CHEAT: client that disable nut claim khi chua du gio -> KHONG bao gio gui claim som.
+  Bot phai lam giong: chi claim khi DA DU GIO. Dung uptime cua bot (time tu connect) lam
+  moc online (uptime <= online time that -> uptime>=moc thi chac chan da san sang).
+  Luu trang thai da nhan ra gift_claims.json theo ngay (tranh re-claim khi reconnect).
+- Logic o client.claim_online_gifts().
+
+## 7h. EXP OFFLINE (opcode 0x54)
+
+Nhan exp tich luy khi offline (bang hien luc login).
+
+```
+C2S 0x54 hoi info:  c0 91 ... 54 [01 00][type 2B=1c00]
+S2C 0x54 tra ve:    c0 91 ... 54 [01 00][type 2B][flag 1B][exp 4B LE]  (exp>0 = co the nhan)
+C2S 0x54 nhan:      c0 91 ... 54 [02 00][02][type 2B]
+S2C 0x54 ket qua:   c0 91 ... 54 [02 00][type 2B][status 1B]  (status=1: thanh cong)
+S2C 0x1a sau do:    +exp vao nhan vat (vd 0x12c = 300 exp)
+```
+
+- type = 0x1c (28). Bot: request_offline_exp() -> auto nhan neu exp>0 (giong client, an toan).
+- Logic o client.request_offline_exp() + _on_offline_exp().
 
 ## 8. GAME MECHANICS
 

@@ -23,6 +23,11 @@ GAME_PORT = 6614
 
 # ==== TOOL TREO MAY (bot_standalone.py) - chi can quan tam phan nay ====
 LEADER_NAME = "ten_chu_party"   # ten chu party (tham khao/log)
+
+# Danh sach ten CHU PARTY duoc phep moi (whitelist).
+# Bot chi NHAN loi moi party khi ten nguoi moi co trong list nay.
+# De RONG [] = nhan moi tu bat ky ai (hanh vi cu).
+PARTY_LEADERS = []  # vi du: ["haba", "sga001"]
 START_CITY_ID = 12061           # 12061 = Ng.Thanh | 12001 = Trac Quan | 12011 = Cu Loc
 START_CITY_FLAG = 2             # Ng.Thanh=2, Trac Quan=0, Cu Loc=3 (xem cities.json)
 CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)

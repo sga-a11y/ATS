@@ -18,6 +18,9 @@ lua_dump/
 # ==== Log / tam ====
 *.log
 command.txt
+gift_state.json
+frida-server-16
+frida-server-16.xz
 __pycache__/
 *.pyc
 test_digioi.py

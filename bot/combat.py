@@ -90,19 +90,44 @@ def _has_group3(enemy_slots):
     return False
 
 
+def _has_group2(enemy_slots):
+    """Co >=2 con quai lien nhau cung hang khong (Hoa Tien trung >=2 con)."""
+    es = set(enemy_slots)
+    for a in sorted(es):
+        if (a + 1) in es and _same_row(a, a + 1):
+            return True
+    return False
+
+
+def _has_skill(state, unit, skill_id):
+    """Kiem tra char/pet co skill nay khong (tu 0x28). Neu chua co thong tin -> False."""
+    skills = state.skills_char if unit == config.UNIT_CHAR else state.skills_pet
+    return skill_id in skills
+
+
 def decide_char(state, options, first_turn=False):
     at = state.my_atype
     offered = _offered_targets(options, at)
     fb = offered[0] if offered else 1
-    # 1) UU TIEN HOI MAU: co thanh vien (gom minh) HP yeu + du SP. Toan Tri Lieu: B=3, target=vi tri minh
-    if state.any_ally_low(config.HEAL_HP_THRESHOLD) and state.char.sp >= config.HEAL_SP_COST:
+    # 1) HOI MAU: co thanh vien HP yeu + du SP + co skill
+    if (state.any_ally_low(config.HEAL_HP_THRESHOLD)
+            and state.char.sp >= config.HEAL_SP_COST
+            and _has_skill(state, config.UNIT_CHAR, config.SKILL_HEAL_ALL)):
         return Decision(config.UNIT_CHAR, at, at, config.SKILL_HEAL_ALL, b=3)
-    # 2) HOA TIEN: co skill + du SP + CO nhom 3 quai gan nhau (else danh thuong de dong SP)
-    if state.has_fire and state.char.sp >= config.CHAR_FIRE_MIN_SP and _has_group3(state.enemy_slots):
+    # 2) HOA TIEN: co skill + du SP (>=100, da chua reserve heal) + co >=2 quai lien nhau
+    if (_has_skill(state, config.UNIT_CHAR, config.SKILL_FIRE)
+            and state.char.sp >= config.CHAR_FIRE_MIN_SP
+            and _has_group2(state.enemy_slots)):
         tgt = _aoe_target(state.enemy_slots, offered) or fb
         return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_FIRE)
-    # 3) Danh thuong (focus con it mau)
-    tgt = _single_target(state, offered) or fb
+    # 3) NEM DA: co skill + du SP + co >=2 quai lien nhau
+    if (_has_skill(state, config.UNIT_CHAR, config.SKILL_ROCK)
+            and state.char.sp >= config.CHAR_ROCK_MIN_SP
+            and _has_group2(state.enemy_slots)):
+        tgt = _aoe_target(state.enemy_slots, offered) or fb
+        return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_ROCK)
+    # 4) Danh thuong - chon target giong Hoa Tien/Nem Da (nham cum quai)
+    tgt = _aoe_target(state.enemy_slots, offered) or fb
     return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_NORMAL)
 
 
@@ -110,9 +135,12 @@ def decide_pet(state, options, first_turn=False):
     at = state.my_atype
     offered = _offered_targets(options, at)
     fb = offered[0] if offered else 1
-    # Hoa Tien chi khi co nhom 3 quai (dong SP); else danh thuong
-    if state.pet.sp >= config.PET_FIRE_MIN_SP and _has_group3(state.enemy_slots):
+    # Hoa Tien: pet SP du thua (khong dung heal) -> ban khi co >=2 con lien nhau.
+    # (PET skill KHONG doc duoc tu 0x28 -> gate bang SP)
+    if (state.pet.sp >= config.PET_FIRE_MIN_SP
+            and _has_group2(state.enemy_slots)):
         tgt = _aoe_target(state.enemy_slots, offered) or fb
         return Decision(config.UNIT_PET, at, tgt, config.SKILL_FIRE)
-    tgt = _single_target(state, offered) or fb
+    # Danh thuong - chon target giong Hoa Tien/Nem Da (nham cum quai)
+    tgt = _aoe_target(state.enemy_slots, offered) or fb
     return Decision(config.UNIT_PET, at, tgt, config.SKILL_NORMAL)
