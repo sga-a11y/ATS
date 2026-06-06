@@ -64,19 +64,22 @@ def run_account(username: str, password: str, idx: int = 0):
             client.request_offline_exp()   # nhan exp offline neu co
 
             if config.START_CITY_ID == 0:
-                # Dung yen tai cho login, khong teleport. Vao tran thi cu danh.
-                log.info("[%s] START_CITY_ID=0 -> dung yen tai cho, tu danh khi vao tran", label)
+                # Khong teleport ve thanh, dung yen tai cho login. Vao tran thi cu danh.
+                log.info("[%s] START_CITY_ID=0 -> khong ve thanh", label)
             else:
                 # Neu dang ket trong Di Gioi -> di ra truoc khi teleport
                 if client.in_di_gioi():
                     log.info("[%s] Dang trong Di Gioi -> di ra...", label)
                     client.exit_di_gioi()
-                # Ve thanh (lap lai neu battle chan teleport) roi chuyen kenh
+                # Ve thanh (lap lai neu battle chan teleport)
                 client.go_to_town(config.START_CITY_ID, config.START_CITY_FLAG)
-                if config.CHANNEL:
-                    time.sleep(2)
-                    client.switch_channel(config.CHANNEL)
-                    log.info("[%s] Da ve %d + kenh %d", label, config.START_CITY_ID, config.CHANNEL)
+                log.info("[%s] Da ve thanh %d", label, config.START_CITY_ID)
+
+            # Chuyen kenh (lam ca khi START_CITY_ID=0) de cung kenh voi chu party
+            if config.CHANNEL:
+                time.sleep(2)
+                client.switch_channel(config.CHANNEL)
+                log.info("[%s] Da chuyen kenh %d", label, config.CHANNEL)
 
             if getattr(config, "ENTER_DIGIOI", False):
                 time.sleep(2)

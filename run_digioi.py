@@ -45,8 +45,8 @@ def run_account(username: str, password: str, idx: int = 0):
 
             client = GameClient(cred["user_id"], cred["access_token"])
             client._label = label
-            client.auto_combat = False          # chi ngam canh, khong danh
-            client.auto_accept_party = False    # khong nhan invite party
+            client.auto_combat = True           # tu danh neu vao battle
+            client.auto_accept_party = True     # nhan invite party + pho ban
             DIGIOI_LIMIT = 120
 
             client.connect()
@@ -86,6 +86,12 @@ def run_account(username: str, password: str, idx: int = 0):
                 time.sleep(60)
                 if not gifts_done:
                     gifts_done = client.claim_online_gifts()
+
+                # Dang trong battle (vd bi keo vao party/pho ban) -> KHONG xet het gio,
+                # de bot danh xong, tranh tu ngat giua chung.
+                if client.in_combat(idle_secs=120):
+                    no_timer_count = 0
+                    continue
 
                 # Timer "cu" hoac chua bao gio nhan -> server ngung gui = het gio Di Gioi
                 stale = (client._last_digioi_ts == 0

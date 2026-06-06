@@ -183,6 +183,8 @@ class GameClient:
             name = getattr(config, "PET_NAMES", {}).get(pid, "?")
             log.info("[%s] Pet id=0x%x '%s' -> skills=%s",
                      self._label, pid, name, [hex(s) for s in sorted(self.state.pet_skills)])
+        elif opcode == 0x2f:                      # party PHO BAN (dungeon)
+            self._on_dungeon(pkt)
         elif opcode == 0x54:                      # exp offline
             self._on_offline_exp(pkt)
         elif opcode == 0x55 and len(pkt) >= 19 and pkt[13] == 0x1b:  # so phut Di Gioi
@@ -266,6 +268,41 @@ class GameClient:
                     log.warning("[%s] self_entity %s KHONG co trong roster %s",
                                 self._label, self.self_entity.hex() if self.self_entity else None,
                                 [m.hex()[:8] for m in members])
+
+    def _on_dungeon(self, pkt: bytes):
+        """S2C 0x2f - party PHO BAN.
+        sub=0x0f: loi moi [0f 00][id 4B][01 00][leader entity 8B][namelen][ten UTF-16LE]
+          -> ten leader trong PARTY_LEADERS thi DONG Y: C2S 0x2f [03 00][id 4B][00]
+          -> sau do tu an CHUAN BI: C2S 0x2f [0b 00]
+        """
+        if len(pkt) < 9:
+            return
+        body = pkt[7:]
+        sub = int.from_bytes(body[0:2], "little")
+        if sub == 0x0f and self.auto_accept_party and len(body) >= 17:
+            invite_id = body[2:6]
+            nl = body[16]
+            name = ""
+            try:
+                name = body[17:17 + nl].decode("utf-16-le")
+            except Exception:
+                pass
+            leaders = getattr(config, "PARTY_LEADERS", [])
+            if leaders and name and name not in leaders:
+                log.info("[%s] TU CHOI moi pho ban tu '%s' (khong trong PARTY_LEADERS)",
+                         self._label, name)
+                return
+            # Dong y vao pho ban
+            self.send(0x2f, b"\x03\x00" + invite_id + b"\x00")
+            log.info("[%s] Nhan moi PHO BAN tu '%s' -> da DONG Y", self._label, name or "?")
+            # Tu an CHUAN BI sau 2.5s (cho load scene pho ban)
+            threading.Timer(2.5, self._dungeon_ready).start()
+
+    def _dungeon_ready(self):
+        if not self.running:
+            return
+        self.send(0x2f, b"\x0b\x00")
+        log.info("[%s] Pho ban: da an CHUAN BI", self._label)
 
     # ---- xu ly available actions (0x35) ----
     def _on_actions(self, pkt: bytes):
