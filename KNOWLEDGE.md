@@ -285,6 +285,18 @@ S2C 0x1a sau do:    +exp vao nhan vat (vd 0x12c = 300 exp)
 - type = 0x1c (28). Bot: request_offline_exp() -> auto nhan neu exp>0 (giong client, an toan).
 - Logic o client.request_offline_exp() + _on_offline_exp().
 
+## 7i. PET DANG DUNG (opcode 0x13)
+
+- **C2S 0x13** `01 00 [pet_id 2B LE]` = doi pet (chon pet tu tui).
+- **S2C 0x13** `01 00 [pet_id]` = xac nhan doi pet.
+- **S2C 0x13** `04 00 [pet_id]` = pet dang dung, gui luc LOGIN.
+- pet_id (vd 0xa051, 0xa0db) = id pet -> bot doc luc login de biet pet nao.
+- Pet skill KHONG gui qua mang (client-side, theo loai pet). Server CHI gui pet_id (0x13).
+- Khi pet ko co skill ma gui -> server cho DUNG YEN (phi luot). Server VAN echo skill yeu cau
+  trong 0x32 va SP khong tru on dinh (co quan su hoi) -> KHONG detect tu choi dang tin.
+- => Dung config.PET_AOE_SKILL { pet_id: skill_aoe } (None=danh thuong). Bot doc pet_id luc
+  login -> tra map -> decide_pet dung dung skill. Tong quat moi skill combo (Hoa Tien/Nem Da/...).
+
 ## 8. GAME MECHANICS
 
 | Mechanic | Mô tả |

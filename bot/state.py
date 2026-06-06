@@ -37,6 +37,9 @@ class BattleState:
         self.skills_char = set()  # skill ID char co (tu 0x28 login)
         self.skills_pet  = set()  # skill ID pet co (tu 0x28 login)
         self.my_atype = 3         # atype = vi tri formation cua minh (leader o giua)
+        self.label = ""           # nhan account (de tao key dieu phoi heal)
+        self.pet_skills = set()   # TAT CA skill cua pet dang dung (tra tu pets.json theo pet_id)
+        self.active_pet_id = None # id pet dang dung (tu S2C 0x13)
         # dong doi trong party (entity_id -> Unit), khong gom char/pet cua minh
         self.allies = {}
         self.mobs = []  # list HP_max cua quai (theo thu tu xuat hien)

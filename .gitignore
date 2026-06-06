@@ -24,3 +24,4 @@ frida-server-16.xz
 __pycache__/
 *.pyc
 test_digioi.py
+dump_*.txt

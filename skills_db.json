@@ -23,6 +23,26 @@
       "priority": 8,
       "notes": "AoE 3 ngang giong Hoa Tien. SP cost 22. Dung khi SP >= 22 nhung < 100."
     },
+    "11009": {
+      "id": 11009,
+      "name": "Toan Hoi Ma",
+      "type": "support",
+      "target": "ally_team_except_self",
+      "sp_cost": 40,
+      "priority": 9,
+      "notes": "Hoi SP cho TOAN TEAM (tru nguoi dung). Quan trong de duy tri SP cho combo AoE lien tuc."
+    },
+    "13013": {
+      "id": 13013,
+      "name": "Loan Kich",
+      "type": "attack",
+      "target": "enemy",
+      "splash": "horizontal",
+      "splash_desc": "gay dame target + 2 ben (combo giong Hoa Tien)",
+      "sp_cost": 49,
+      "priority": 9,
+      "notes": "Skill train quan trong. Pet Quan Vu (0xa05a) co skill nay. AoE combo training."
+    },
     "12003": {
       "id": 12003,
       "name": "Hoa Tien",

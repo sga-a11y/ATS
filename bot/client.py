@@ -99,6 +99,7 @@ class GameClient:
 
     # ---- ket noi + auth ----
     def connect(self):
+        self.state.label = self._label
         self._connect_time = time.time()
         st = _load_gift_state(self._label)
         self._online_base = st["online_sec"]   # online tich luy truoc phien nay (hom nay)
@@ -174,6 +175,14 @@ class GameClient:
             self.state.update_0x0b(pkt)
         elif opcode == protocol.OP_ACTIONS:       # 0x35
             self._on_actions(pkt)
+        elif opcode == 0x13 and len(pkt) >= 11 and pkt[7:9] in (b"\x04\x00", b"\x01\x00"):
+            # pet dang dung: [04 00] luc login, [01 00] khi doi pet. id = 2B LE
+            pid = int.from_bytes(pkt[9:11], "little")
+            self.state.active_pet_id = pid
+            self.state.pet_skills = getattr(config, "PET_SKILLS", {}).get(pid, set())
+            name = getattr(config, "PET_NAMES", {}).get(pid, "?")
+            log.info("[%s] Pet id=0x%x '%s' -> skills=%s",
+                     self._label, pid, name, [hex(s) for s in sorted(self.state.pet_skills)])
         elif opcode == 0x54:                      # exp offline
             self._on_offline_exp(pkt)
         elif opcode == 0x55 and len(pkt) >= 19 and pkt[13] == 0x1b:  # so phut Di Gioi
@@ -269,13 +278,21 @@ class GameClient:
         body = pkt[7:]
         # bo 2 byte dau (01 00), moi entry 5 byte: unit atype target 00 00
         i = 2
+        char_atype = None
         while i + 3 <= len(body):
             unit, atype, target = body[i], body[i + 1], body[i + 2]
             if unit in (config.UNIT_CHAR, config.UNIT_PET):
                 self.available.setdefault(unit, [])
                 if (atype, target) not in self.available[unit]:
                     self.available[unit].append((atype, target))
+                if unit == config.UNIT_CHAR:
+                    char_atype = atype
             i += 5
+        # atype char trong 0x35 = VI TRI TRAN cua minh -> dung lam self_slot/my_atype.
+        # Tin cay hon roster (self_entity the gioi co the KHONG khop entity trong tran).
+        if char_atype is not None:
+            self.state.my_atype = char_atype
+            self.state.self_slot = char_atype
         # debounce: quyet dinh 0.4s sau goi 0x35 cuoi cung
         if self.auto_combat:
             self._arm_decision()

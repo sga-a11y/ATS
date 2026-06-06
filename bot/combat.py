@@ -10,7 +10,39 @@ Target Hoa Tien (AOE 3 o hang ngang, trung [t-1, t, t+1]):
   - 3 con sat nhau -> con giua; 2 con sat nhau -> con thu 2.
 Target skill don (danh thuong/hoa tien khong AOE) -> focus con it mau nhat.
 """
+import threading, time
 from . import config
+
+# --- Dieu phoi HEAL: ca party chi 1 unit heal/luot, chon con SP CAO NHAT ---
+# bot_standalone chay moi nick trong cung 1 process (thread) -> chia se bien nay.
+# Co che: unit muon heal -> DANG KY (key, SP) -> cho HEAL_BARRIER giay cho cac con khac
+# dang ky -> chi con SP CAO NHAT moi heal, con lai danh quai. Tranh thua heal thieu dame.
+_heal_lock = threading.Lock()
+_heal_pool = {}          # key -> (sp, ts) ung vien heal
+_heal_done = {"t": 0.0}  # thoi diem heal gan nhat (ca party)
+HEAL_BARRIER = 0.4       # giay cho cac unit khac dang ky truoc khi chon
+HEAL_COOLDOWN = 2.5      # giay: trong cua so nay chi 1 unit heal
+
+
+def _heal_decide(key, sp):
+    """Dang ky ung vien heal, cho barrier, tra ve True neu minh la SP cao nhat + gianh quyen."""
+    now = time.time()
+    with _heal_lock:
+        if now - _heal_done["t"] < HEAL_COOLDOWN:
+            return False                 # da co nguoi heal turn nay
+        _heal_pool[key] = (sp, now)
+    time.sleep(HEAL_BARRIER)             # cho cac unit khac trong party dang ky
+    with _heal_lock:
+        if time.time() - _heal_done["t"] < HEAL_COOLDOWN:
+            return False                 # ai do da heal trong luc cho
+        recent = {k: v for k, v in _heal_pool.items() if now - v[1] <= HEAL_BARRIER + 1.0}
+        # con SP cao nhat (tie-break: key) -> winner
+        winner = max(recent, key=lambda k: (recent[k][0], k))
+        if winner == key:
+            _heal_done["t"] = time.time()
+            return True
+        return False
+
 
 # atype = VI TRI FORMATION cua member (leader o giua). Tinh tu roster, luu o state.my_atype.
 # vd: 2 member + leader -> member1=vi tri 1 (atype1), leader=2, member2=vi tri 3 (atype3).
@@ -99,34 +131,37 @@ def _has_group2(enemy_slots):
     return False
 
 
-def _has_skill(state, unit, skill_id):
-    """Kiem tra char/pet co skill nay khong (tu 0x28). Neu chua co thong tin -> False."""
-    skills = state.skills_char if unit == config.UNIT_CHAR else state.skills_pet
-    return skill_id in skills
+def pick_combo_skill(skills):
+    """Tu set skill cua unit, chon skill COMBO TRAINING dau tien (uu tien). None neu khong co.
+    Dung chung cho char (skill tu 0x28) va pet (skill tu pets.json)."""
+    for s in getattr(config, "COMBO_TRAIN_SKILLS", []):
+        if s in skills:
+            return s
+    return None
+
+
+def _skill_cost(skill):
+    """SP cost cua skill (0 neu chua biet)."""
+    return getattr(config, "SKILL_SP_COST", {}).get(skill, 0)
 
 
 def decide_char(state, options, first_turn=False):
     at = state.my_atype
     offered = _offered_targets(options, at)
     fb = offered[0] if offered else 1
-    # 1) HOI MAU: co thanh vien HP yeu + du SP + co skill
+    # 1) HOI MAU: co thanh vien HP yeu + du SP + co skill heal + la con SP cao nhat duoc heal
     if (state.any_ally_low(config.HEAL_HP_THRESHOLD)
             and state.char.sp >= config.HEAL_SP_COST
-            and _has_skill(state, config.UNIT_CHAR, config.SKILL_HEAL_ALL)):
+            and config.SKILL_HEAL_ALL in state.skills_char
+            and _heal_decide(state.label + ":char", state.char.sp)):
         return Decision(config.UNIT_CHAR, at, at, config.SKILL_HEAL_ALL, b=3)
-    # 2) HOA TIEN: co skill + du SP (>=100, da chua reserve heal) + co >=2 quai lien nhau
-    if (_has_skill(state, config.UNIT_CHAR, config.SKILL_FIRE)
-            and state.char.sp >= config.CHAR_FIRE_MIN_SP
+    # 2) COMBO: char co skill combo + du SP (>=reserve VA >=cost skill) + >=2 quai lien nhau
+    combo = pick_combo_skill(state.skills_char)
+    if (combo and state.char.sp >= max(config.CHAR_FIRE_MIN_SP, _skill_cost(combo))
             and _has_group2(state.enemy_slots)):
         tgt = _aoe_target(state.enemy_slots, offered) or fb
-        return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_FIRE)
-    # 3) NEM DA: co skill + du SP + co >=2 quai lien nhau
-    if (_has_skill(state, config.UNIT_CHAR, config.SKILL_ROCK)
-            and state.char.sp >= config.CHAR_ROCK_MIN_SP
-            and _has_group2(state.enemy_slots)):
-        tgt = _aoe_target(state.enemy_slots, offered) or fb
-        return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_ROCK)
-    # 4) Danh thuong - chon target giong Hoa Tien/Nem Da (nham cum quai)
+        return Decision(config.UNIT_CHAR, at, tgt, combo)
+    # 3) Danh thuong - chon target nham cum quai (combo)
     tgt = _aoe_target(state.enemy_slots, offered) or fb
     return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_NORMAL)
 
@@ -135,12 +170,18 @@ def decide_pet(state, options, first_turn=False):
     at = state.my_atype
     offered = _offered_targets(options, at)
     fb = offered[0] if offered else 1
-    # Hoa Tien: pet SP du thua (khong dung heal) -> ban khi co >=2 con lien nhau.
-    # (PET skill KHONG doc duoc tu 0x28 -> gate bang SP)
-    if (state.pet.sp >= config.PET_FIRE_MIN_SP
+    # 1) HOI MAU: pet co skill heal (tu pets.json) + dong doi yeu + du SP + la con SP cao nhat
+    if (state.any_ally_low(config.HEAL_HP_THRESHOLD)
+            and state.pet.sp >= config.HEAL_SP_COST
+            and config.SKILL_HEAL_ALL in state.pet_skills
+            and _heal_decide(state.label + ":pet", state.pet.sp)):
+        return Decision(config.UNIT_PET, at, at, config.SKILL_HEAL_ALL, b=3)
+    # 2) COMBO: pet co skill combo (tu pets.json) + du SP (>=cost skill) + >=2 quai lien nhau
+    combo = pick_combo_skill(state.pet_skills)
+    if (combo and state.pet.sp >= max(config.PET_FIRE_MIN_SP, _skill_cost(combo))
             and _has_group2(state.enemy_slots)):
         tgt = _aoe_target(state.enemy_slots, offered) or fb
-        return Decision(config.UNIT_PET, at, tgt, config.SKILL_FIRE)
+        return Decision(config.UNIT_PET, at, tgt, combo)
     # Danh thuong - chon target giong Hoa Tien/Nem Da (nham cum quai)
     tgt = _aoe_target(state.enemy_slots, offered) or fb
     return Decision(config.UNIT_PET, at, tgt, config.SKILL_NORMAL)

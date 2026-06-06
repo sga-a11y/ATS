@@ -9,6 +9,12 @@ import time
 import logging
 import threading
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 from bot import config
 from bot.login import login
 from bot.client import GameClient
