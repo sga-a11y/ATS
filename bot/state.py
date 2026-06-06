@@ -53,6 +53,11 @@ class BattleState:
         self.mobs = []
         self.in_battle = False
 
+    def reset_enemies(self):
+        """Xoa HP/slot quai (goi luc battle moi bat dau, tranh dinh quai tran cu)."""
+        self.enemy_hp = {}
+        self.enemy_slots = []
+
     # ---- parse 0x33 (stat update theo luot) ----
     def update_0x33(self, pkt: bytes):
         """Block 7 byte: [00][B1][B2][type][val 2B LE][00].
@@ -84,7 +89,9 @@ class BattleState:
                 if hp > 0:
                     enemies.append(b2)
         if saw_enemy_group:
-            self.enemy_slots = sorted(enemies)   # ke ca rong (het quai) -> tranh target o chet
+            # enemy_slots = TAT CA slot con song theo enemy_hp TICH LUY (khong chi goi nay).
+            # Tranh mat con khong bi danh trong turn (vd giet 1-2-3 con con o slot 7 van song).
+            self.enemy_slots = sorted(s for s, hp in self.enemy_hp.items() if hp > 0)
         # Neu CHUA biet slot tu roster (0x0d) -> thu khop qua maxHP pet (doc tu 0x0b)
         if self.self_slot is None:
             for (b1, b2), d in groups.items():

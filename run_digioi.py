@@ -87,9 +87,9 @@ def run_account(username: str, password: str, idx: int = 0):
                 if not gifts_done:
                     gifts_done = client.claim_online_gifts()
 
-                # Dang trong battle (vd bi keo vao party/pho ban) -> KHONG xet het gio,
-                # de bot danh xong, tranh tu ngat giua chung.
-                if client.in_combat(idle_secs=120):
+                # Da ROI map Di Gioi (vd bi keo vao party/pho ban) -> KHONG xet het gio,
+                # khong tu ngat. Chi xet timeout khi VAN CON trong map Di Gioi.
+                if not client.in_di_gioi():
                     no_timer_count = 0
                     continue
 

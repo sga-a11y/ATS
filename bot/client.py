@@ -213,6 +213,7 @@ class GameClient:
             self._on_party(pkt)
         elif opcode == protocol.OP_BATTLE_START:   # 0x34 - mốc battle that (KHONG dung 0x41!)
             self.state.in_battle = True
+            self.state.reset_enemies()   # tran moi -> xoa HP quai tran cu
             self.last_turn_time = time.time()
             # KHONG reset _first_turn: atype=2 chi cho tran DAU TIEN ca phien, sau do=3
             # (moi tran chi 1 turn; client that dung 2 cho tran dau, 3 cac tran sau)
@@ -362,7 +363,6 @@ class GameClient:
             if char_opts:
                 d = combat.decide_char(self.state, char_opts, ft)
                 self._send_combat(d)
-                offered = sorted({t for a, t in char_opts if a == 1})
                 log.info("[%s] CHAR %s | %s | skills=%s | quai@%s",
                          self._label, d, self.state.char,
                          [hex(s) for s in sorted(self.state.skills_char)],
