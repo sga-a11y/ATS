@@ -6,7 +6,7 @@ Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitigno
 USERNAME = "your_username"
 PASSWORD = "your_password"
 
-# Danh sach account cho run_party.py (multi-bot)
+# Danh sach account cho bot_standalone.py / run_digioi.py (multi-bot)
 ACCOUNTS = [
     ("acc1", "password1"),
     # ("acc2", "password2"),
@@ -24,29 +24,68 @@ GAME_PORT = 6614
 # ==== TOOL TREO MAY (bot_standalone.py) - chi can quan tam phan nay ====
 LEADER_NAME = "ten_chu_party"   # ten chu party (tham khao/log)
 
-# Danh sach ten CHU PARTY duoc phep moi (whitelist).
-# Bot chi NHAN loi moi party khi ten nguoi moi co trong list nay.
-# De RONG [] = nhan moi tu bat ky ai (hanh vi cu).
-PARTY_LEADERS = []  # vi du: ["haba", "sga001"]
-START_CITY_ID = 12061           # 12061 = Ng.Thanh | 12001 = Trac Quan | 12011 = Cu Loc
+# Danh sach ten CHU PARTY duoc phep moi (whitelist) - cho ca party thuong va PHO BAN.
+# Bot chi NHAN loi moi khi ten nguoi moi nam trong list nay. De RONG [] = nhan tu bat ky ai.
+PARTY_LEADERS = []  # vi du: ["chihao", "haabo", "nasau"]
+
+# START_CITY_ID: thanh ve sau khi login. 12061=Ng.Thanh | 12001=Trac Quan | 12011=Cu Loc
+#   = 0  -> KHONG teleport: dung yen tai cho login (van chuyen CHANNEL, van tu danh khi vao tran).
+START_CITY_ID = 12061
 START_CITY_FLAG = 2             # Ng.Thanh=2, Trac Quan=0, Cu Loc=3 (xem cities.json)
 CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)
 RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
 ENTER_DIGIOI = False            # True = sau khi connect tu vao Di Gioi train (solo, KHONG party)
 DIGIOI_MAP_ID = 49942           # map_id Di Gioi (0xc316) - doc tu broadcast de biet dang o Di Gioi
 
+# Qua online: nhan khi online du so phut. id qua = so phut moc.
+GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
+
 # Combat tuning
-CHAR_FIRE_MIN_SP = 100      # SP >= 100 -> Hoa Tien
 HEAL_HP_THRESHOLD = 0.60    # ally HP <= 60% max -> Toan Tri Lieu
 HEAL_SP_COST = 42
-PET_FIRE_MIN_SP = 15        # pet SP >= 15 -> Hoa Tien
+PET_FIRE_MIN_SP = 15        # pet SP >= 15 moi xet skill AoE
+
+# DATA PET: doc tu pets.json (pet_id hex -> LIST skill cua pet). pet_id tu S2C 0x13 luc login.
+def _load_pets():
+    import json, os
+    f = os.path.join(os.path.dirname(__file__), os.pardir, "pets.json")
+    skills, names = {}, {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.get("pets", {}).items():
+            pid = int(k, 16)
+            skills[pid] = set(v.get("skills", []))
+            names[pid] = v.get("name", "")
+    except Exception:
+        pass
+    return skills, names
+PET_SKILLS, PET_NAMES = _load_pets()   # pet_id -> set(skill_id) / ten pet
+
+# Skill dung de COMBO TRAINING (AoE hang ngang). Uu tien tu trai sang (re SP truoc).
+# Unit nao co 1 trong cac skill nay -> dung de combo. Sau nay event/boss co list khac.
+COMBO_TRAIN_SKILLS = [12003, 10005, 13013]   # Hoa Tien(15), Nem Da(22), Loan Kich(49)
+
+# SP cost tung skill (de check du SP truoc khi dung, tranh bi da khi thieu SP).
+SKILL_SP_COST = {
+    12003: 15,   # Hoa Tien
+    10005: 22,   # Nem Da
+    13013: 49,   # Loan Kich
+    11010: 42,   # Toan Tri Lieu
+    11004: 22,   # Thanh Luu
+}
 
 # Skill IDs
 SKILL_NORMAL = 10000        # Danh thuong
-SKILL_FIRE = 12003          # Hoa Tien
-SKILL_HEAL_ALL = 11010      # Toan Tri Lieu
-SKILL_HEAL_ONE = 11004      # Thanh Luu
+SKILL_ROCK = 10005          # Nem Da - AoE 3 ngang
+SKILL_FIRE = 12003          # Hoa Tien - AoE 3 ngang
+SKILL_HEAL_ALL = 11010      # Toan Tri Lieu (hoi HP toan party)
+SKILL_HEAL_ONE = 11004      # Thanh Luu (hoi 1 dong doi)
 SKILL_DEFEND = 17001        # Phong thu
+
+# SP threshold (de danh SP cho heal): chi dung skill AoE khi SP >= nguong nay
+CHAR_ROCK_MIN_SP = 100      # Nem Da
+CHAR_FIRE_MIN_SP = 100      # Hoa Tien
 
 # Unit IDs
 UNIT_CHAR = 3
