@@ -25,9 +25,10 @@ try:
 except Exception:
     pass
 
+import datetime
 from bot import config
 from bot.login import login
-from bot.client import GameClient
+from bot.client import GameClient, mail_window_now
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,6 +63,7 @@ def run_account(username: str, password: str, idx: int = 0):
             time.sleep(2)   # cho broadcast cap nhat map_id
 
             client.request_offline_exp()   # nhan exp offline neu co
+            client.claim_mail()            # nhan qua mail + xoa mail da doc
 
             if config.START_CITY_ID == 0:
                 # Khong teleport ve thanh, dung yen tai cho login. Vao tran thi cu danh.
@@ -91,14 +93,19 @@ def run_account(username: str, password: str, idx: int = 0):
                 log.info("[%s] San sang - cho chu party '%s' moi + tu dong danh",
                          label, config.LEADER_NAME)
 
-            # giu song, tu nhan qua online (kiem tra moi 60s, ngung khi nhan het)
+            # giu song, tu nhan qua online (60s) + mail theo khung gio (12-14,16-18,22-24)
             last_gift = time.time()
+            mail_done = None   # (ngay, khung_gio) da nhan trong khung do
             gifts_done = False
             while client.running and not _stop.is_set():
                 time.sleep(2)
                 if not gifts_done and time.time() - last_gift >= 60:
                     gifts_done = client.claim_online_gifts()
                     last_gift = time.time()
+                w = mail_window_now()
+                if w is not None and (datetime.date.today(), w) != mail_done:
+                    client.claim_mail()
+                    mail_done = (datetime.date.today(), w)
 
         except Exception as e:
             log.error("[%s] Loi: %s", label, e)

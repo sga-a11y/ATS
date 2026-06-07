@@ -14,6 +14,20 @@ from .state import BattleState
 log = logging.getLogger("bot")
 
 
+# Khung gio nhan mail (gio bat dau, moi khung 2h): 12-14, 16-18, 22-24.
+MAIL_WINDOWS = [12, 16, 22]
+
+
+def mail_window_now():
+    """Tra ve gio bat dau cua khung mail hien tai (12/16/22), hoac None neu ngoai khung."""
+    import datetime
+    h = datetime.datetime.now().hour
+    for ws in MAIL_WINDOWS:
+        if ws <= h < ws + 2:
+            return ws
+    return None
+
+
 _GIFT_FILE = "gift_state.json"
 _gift_lock = threading.Lock()
 
@@ -96,6 +110,7 @@ class GameClient:
         self._connect_time = None    # thoi diem connect phien nay
         self._online_base = 0.0      # giay online TICH LUY hom nay (load tu file, truoc phien nay)
         self.claimed_gifts = set()   # cac moc qua online da nhan hom nay (load tu file)
+        self._mail_ids = []          # mail_id thu thap tu S2C 0x53 (de nhan + xoa)
 
     # ---- ket noi + auth ----
     def connect(self):
@@ -183,6 +198,11 @@ class GameClient:
                         self.state.my_atype = slot
                         log.info("[%s] self_slot=%d (tu 0x0b battle, entity)", self._label, slot)
             self.state.update_0x0b(pkt)
+        elif opcode == 0x53:                      # mail: S2C sub=01 = 1 mail (co mail_id)
+            if pkt[7:9] == b"\x01\x00" and len(pkt) >= 17:
+                mid = pkt[13:17]   # mail_id 4B LE (sau [01 00][01000000])
+                if mid not in self._mail_ids:
+                    self._mail_ids.append(mid)
         elif opcode == protocol.OP_ACTIONS:       # 0x35
             self._on_actions(pkt)
         elif opcode == 0x13 and len(pkt) >= 11 and pkt[7:9] in (b"\x04\x00", b"\x01\x00"):
@@ -406,6 +426,24 @@ class GameClient:
     def request_offline_exp(self, exp_type: int = 0x1c):
         """Hoi info exp offline (type 0x1c). Neu co exp -> tu nhan (xu ly o _on_offline_exp)."""
         self.send(0x54, b"\x01\x00" + struct.pack("<H", exp_type))
+
+    def claim_mail(self):
+        """Mail (opcode 0x53): mo mail list -> voi MOI mail: nhan qua + xoa.
+        mail_id la account-specific (doc tu S2C 0x53 sub=01), KHONG hardcode."""
+        # mo/refresh mail list (server push tung mail S2C 0x53 sub=01 -> _mail_ids).
+        # KHONG xoa _mail_ids o dau (server push luc login truoc khi ham nay chay).
+        self.send(0x53, b"\x03\x00\x01\x00\x00\x00\x05\x00\x00\x00")
+        time.sleep(2.0)                          # cho mail list ve
+        ids = list(self._mail_ids)
+        self._mail_ids = []                      # consume sau khi gom
+        if not ids:
+            return
+        for mid in ids:
+            self.send(0x53, b"\x01\x00\x01\x00\x00\x00" + mid)   # nhan qua mail nay
+            time.sleep(0.3)
+            self.send(0x53, b"\x02\x00\x01\x00\x00\x00" + mid)   # xoa mail nay
+            time.sleep(0.3)
+        log.info("[%s] Mail: da nhan qua + xoa %d mail", self._label, len(ids))
 
     def _on_offline_exp(self, pkt: bytes):
         """S2C 0x54.

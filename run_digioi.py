@@ -15,9 +15,10 @@ try:
 except Exception:
     pass
 
+import datetime
 from bot import config
 from bot.login import login
-from bot.client import GameClient
+from bot.client import GameClient, mail_window_now
 
 MINUTES = int(sys.argv[1]) if len(sys.argv) > 1 else 0   # 0 = vo han
 
@@ -61,6 +62,7 @@ def run_account(username: str, password: str, idx: int = 0):
             time.sleep(2 + idx * 3)
 
             client.request_offline_exp()   # nhan exp offline neu co
+            client.claim_mail()            # nhan qua mail + xoa mail da doc
 
             if client.in_di_gioi():
                 # Da o Di Gioi roi -> dung yen luon
@@ -82,10 +84,15 @@ def run_account(username: str, password: str, idx: int = 0):
             t_end = time.time() + MINUTES * 60 if MINUTES else float('inf')
             gifts_done = False
             no_timer_count = 0
+            mail_done = None
             while client.running and not _stop.is_set() and time.time() < t_end:
                 time.sleep(60)
                 if not gifts_done:
                     gifts_done = client.claim_online_gifts()
+                w = mail_window_now()
+                if w is not None and (datetime.date.today(), w) != mail_done:
+                    client.claim_mail()
+                    mail_done = (datetime.date.today(), w)
 
                 # Da ROI map Di Gioi (vd bi keo vao party/pho ban) -> KHONG xet het gio,
                 # khong tu ngat. Chi xet timeout khi VAN CON trong map Di Gioi.
