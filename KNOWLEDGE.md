@@ -176,11 +176,14 @@ Format: `01 00 [entries: unit action_type target 00 00]`
 | 11010 | Toàn Trị Liệu | heal AoE | 42 | all ally | Hồi HP toàn party, char only |
 | 12006 | ??? | ? | ? | ? | Pet skill, chưa khám phá |
 
-### Targeting Rules
-- **Attack AoE ngang (Hỏa Tiễn):** chọn target có nhiều kẻ bên cạnh nhất
-- **Heal single:** chọn ally HP% thấp nhất
-- **Heal AoE:** dùng khi nhiều ally bị thương
-- **Defense:** khi HP < 30% (tùy config)
+### Targeting Rules (TRAIN - dùng CHUNG đánh thường + combo để đồng target → combo ăn)
+- **Chọn target (đánh thường & combo):**
+  1. Block 3 quái liền nhau cùng hàng (đầu tiên) → con **GIỮA** (AoE trúng cả 3)
+  2. Không có → block 2 quái (đầu tiên) → con **ĐẦU** (thấp nhất)
+  3. Không có → con **LẺ** đầu tiên
+  - ⚠️ KHÔNG focus lowest-HP (mỗi unit ra target khác nhau → vỡ combo)
+- **Heal AoE:** dùng khi nhiều ally bị thương (Toàn Trị Liệu)
+- **Defense:** khi HP thấp (tùy config)
 
 ---
 

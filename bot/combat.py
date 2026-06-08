@@ -5,10 +5,11 @@ Quy tac skill:
   CHAR (unit 3): SP>=100 -> Hoa Tien (AOE 3 hang ngang); ally HP<=60% -> Toan Tri Lieu; con lai -> danh thuong
   PET  (unit 2): SP>=15 -> Hoa Tien; con lai -> danh thuong
 
-Target Hoa Tien (AOE 3 o hang ngang, trung [t-1, t, t+1]):
-  - Chon o phu NHIEU quai nhat. Hoa -> uu tien o sau (bo qua con dau hang).
-  - 3 con sat nhau -> con giua; 2 con sat nhau -> con thu 2.
-Target skill don (danh thuong/hoa tien khong AOE) -> focus con it mau nhat.
+RULE TARGET (dung CHUNG cho danh thuong + combo -> moi unit dong target, combo moi an):
+  1. Block 3 quai lien nhau cung hang (dau tien) -> con GIUA (AoE trung ca 3)
+  2. Khong co -> block 2 quai (dau tien) -> con DAU
+  3. Khong co -> con LE dau tien
+(KHONG dung focus lowest-HP nua vi moi unit ra target khac nhau -> vo combo.)
 """
 import threading, time
 from . import config
@@ -82,12 +83,12 @@ def _same_row(a, b):
     return a // 10 == b // 10
 
 
-def _aoe_target(enemy_slots, offered):
-    """Chon VI TRI quai (pos) theo uu tien. 'offered' = danh sach COT hop le (0x35).
-    Tra ve pos (hang*10+cot); con None neu khong co. Gui combat: b=hang, target=cot.
-      1. Nhom 3 lien nhau cung hang -> con GIUA
-      2. Nhom 2 -> con VI TRI THAP NHAT
-      3. Le -> con thap nhat
+def _train_target(enemy_slots, offered):
+    """RULE TARGET KHI TRAIN (dung CHUNG cho danh thuong + combo -> moi unit dong target,
+    combo moi an). 'offered' = danh sach COT hop le (0x35). Tra ve pos (hang*10+cot).
+      1. Block 3 quai lien nhau cung hang (DAU TIEN) -> con GIUA (AoE trung ca 3)
+      2. Khong co -> block 2 quai (DAU TIEN) -> con DAU (thap nhat)
+      3. Khong co -> con LE dau tien (thap nhat)
     """
     off = set(offered)
     es = set(enemy_slots)
@@ -107,15 +108,6 @@ def _aoe_target(enemy_slots, offered):
         if _col(t) in off:
             return t
     return None
-
-
-def _single_target(state, offered):
-    """Skill don -> focus con quai it mau nhat (cot phai offered). Tra ve pos."""
-    off = set(offered)
-    cands = [p for p in state.enemy_slots if _col(p) in off] or list(state.enemy_slots)
-    if not cands:
-        return None
-    return min(cands, key=lambda p: state.enemy_hp.get(p, 1 << 30))
 
 
 def _attack(unit, atype, pos, skill, fb_col):
@@ -172,9 +164,9 @@ def decide_char(state, options, first_turn=False):
     combo = pick_combo_skill(state.skills_char)
     if (combo and state.char.sp >= max(config.CHAR_FIRE_MIN_SP, _skill_cost(combo))
             and _has_group2(state.enemy_slots)):
-        return _attack(config.UNIT_CHAR, at, _aoe_target(state.enemy_slots, offered), combo, fb)
-    # 3) Danh thuong - focus con it mau nhat
-    return _attack(config.UNIT_CHAR, at, _single_target(state, offered), config.SKILL_NORMAL, fb)
+        return _attack(config.UNIT_CHAR, at, _train_target(state.enemy_slots, offered), combo, fb)
+    # 3) Danh thuong - DUNG CHUNG rule target (de combo + dong target voi pet/member)
+    return _attack(config.UNIT_CHAR, at, _train_target(state.enemy_slots, offered), config.SKILL_NORMAL, fb)
 
 
 def decide_pet(state, options, first_turn=False):
@@ -191,6 +183,6 @@ def decide_pet(state, options, first_turn=False):
     combo = pick_combo_skill(state.pet_skills)
     if (combo and state.pet.sp >= max(config.PET_FIRE_MIN_SP, _skill_cost(combo))
             and _has_group2(state.enemy_slots)):
-        return _attack(config.UNIT_PET, at, _aoe_target(state.enemy_slots, offered), combo, fb)
-    # Danh thuong - focus con it mau nhat
-    return _attack(config.UNIT_PET, at, _single_target(state, offered), config.SKILL_NORMAL, fb)
+        return _attack(config.UNIT_PET, at, _train_target(state.enemy_slots, offered), combo, fb)
+    # Danh thuong - DUNG CHUNG rule target (de combo + dong target voi char/member)
+    return _attack(config.UNIT_PET, at, _train_target(state.enemy_slots, offered), config.SKILL_NORMAL, fb)
