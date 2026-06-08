@@ -1,5 +1,5 @@
 {
-  "_note": "Skill database for TS Online bot. Explore and update as discovered.",
+  "_note": "Skill database for TS Online bot (skill_id sap xep TANG DAN). Explore and update as discovered.",
   "skills": {
     "10000": {
       "id": 10000,
@@ -23,6 +23,16 @@
       "priority": 8,
       "notes": "AoE 3 ngang giong Hoa Tien. SP cost 22. Dung khi SP >= 22 nhung < 100."
     },
+    "11004": {
+      "id": 11004,
+      "name": "Thanh Luu",
+      "type": "heal",
+      "target": "ally",
+      "aoe": false,
+      "sp_cost": 22,
+      "priority": 8,
+      "notes": "Hoi HP+Mana cho 1 dong doi. Char skill. Dung khi dong doi can hoi don."
+    },
     "11009": {
       "id": 11009,
       "name": "Toan Hoi Ma",
@@ -32,16 +42,15 @@
       "priority": 9,
       "notes": "Hoi SP cho TOAN TEAM (tru nguoi dung). Quan trong de duy tri SP cho combo AoE lien tuc."
     },
-    "13013": {
-      "id": 13013,
-      "name": "Loan Kich",
-      "type": "attack",
-      "target": "enemy",
-      "splash": "horizontal",
-      "splash_desc": "gay dame target + 2 ben (combo giong Hoa Tien)",
-      "sp_cost": 49,
+    "11010": {
+      "id": 11010,
+      "name": "Toan Tri Lieu",
+      "type": "heal",
+      "target": "ally",
+      "aoe": true,
+      "sp_cost": 42,
       "priority": 9,
-      "notes": "Skill train quan trong. Pet Quan Vu (0xa05a) co skill nay. AoE combo training."
+      "notes": "Hoi HP toan bo party. Char skill. AoE ally. Dung khi nhieu nguoi bi thuong."
     },
     "12003": {
       "id": 12003,
@@ -65,6 +74,17 @@
       "priority": null,
       "notes": "Pet skill. TBD."
     },
+    "13013": {
+      "id": 13013,
+      "name": "Loan Kich",
+      "type": "attack",
+      "target": "enemy",
+      "splash": "horizontal",
+      "splash_desc": "gay dame target + 2 ben (combo giong Hoa Tien)",
+      "sp_cost": 49,
+      "priority": 9,
+      "notes": "Skill train quan trong. Pet Quan Vu (0xa05a) co skill nay. AoE combo training."
+    },
     "17001": {
       "id": 17001,
       "name": "Phong_Thu",
@@ -74,26 +94,6 @@
       "sp_cost": 0,
       "priority": 3,
       "notes": "Giam dame nhan vao. Ca char va pet deu co. Khong mat SP. Dung khi HP thap can bao toan."
-    },
-    "11004": {
-      "id": 11004,
-      "name": "Thanh Luu",
-      "type": "heal",
-      "target": "ally",
-      "aoe": false,
-      "sp_cost": 22,
-      "priority": 8,
-      "notes": "Hoi HP+Mana cho 1 dong doi. Char skill. Dung khi dong doi can hoi don."
-    },
-    "11010": {
-      "id": 11010,
-      "name": "Toan Tri Lieu",
-      "type": "heal",
-      "target": "ally",
-      "aoe": true,
-      "sp_cost": 42,
-      "priority": 9,
-      "notes": "Hoi HP toan bo party. Char skill. AoE ally. Dung khi nhieu nguoi bi thuong."
     }
   },
   "targeting_rules": {
