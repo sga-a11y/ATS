@@ -26,6 +26,10 @@ ACCOUNTS = [acc for party in PARTIES for acc in party]
 # username -> chi so party (bot nhan moi tu cung party qua entity, KHONG can dien ten)
 ACCOUNT_PARTY = {acc[0]: i for i, party in enumerate(PARTIES) for acc in party}
 
+# Whitelist TEN NHAN VAT chu party duoc phep moi - cho acc TU DIEU KHIEN tay + pho ban.
+# [] = nhan tu bat ky ai. (Bot cung party tu nhan nhau qua entity, KHONG can ghi o day.)
+PARTY_LEADERS = []  # vi du: ["chihao", "haabo", "nasau"]
+
 # API login - API_KEY la HANG SO co dinh cua game, KHONG can sua.
 # (device_id & tracking_id duoc login.py tu sinh tu username -> khong can dien)
 API_KEY = "17ade453e0892461edb01969b6e17e3a"
@@ -37,10 +41,6 @@ GAME_PORT = 6614
 
 # ==== TOOL TREO MAY (bot_standalone.py) - chi can quan tam phan nay ====
 LEADER_NAME = "ten_chu_party"   # ten chu party (tham khao/log)
-
-# Danh sach ten CHU PARTY duoc phep moi (whitelist) - cho ca party thuong va PHO BAN.
-# Bot chi NHAN loi moi khi ten nguoi moi nam trong list nay. De RONG [] = nhan tu bat ky ai.
-PARTY_LEADERS = []  # vi du: ["chihao", "haabo", "nasau"]
 
 # START_CITY_ID: thanh ve sau khi login. 12061=Ng.Thanh | 12001=Trac Quan | 12011=Cu Loc
 #   = 0  -> KHONG teleport: dung yen tai cho login (van chuyen CHANNEL, van tu danh khi vao tran).
