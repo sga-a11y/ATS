@@ -6,11 +6,23 @@ Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitigno
 USERNAME = "your_username"
 PASSWORD = "your_password"
 
-# Danh sach account cho bot_standalone.py / run_digioi.py (multi-bot)
-ACCOUNTS = [
-    ("acc1", "password1"),
-    # ("acc2", "password2"),
+# ==== DANH SACH PARTY ====
+# Moi party = 1 list toi da 5 acc (username, password) - pass co the khac nhau.
+# acc[0] cua moi party = CHU PARTY.
+PARTIES = [
+    [   # Party 1
+        ("acc1", "password1"),
+        ("acc2", "password2"),
+        ("acc3", "password3"),
+        ("acc4", "password4"),
+        ("acc5", "password5"),
+    ],
+    # [   # Party 2
+    #     ("acc6", "password6"), ...
+    # ],
 ]
+# Gop phang -> ACCOUNTS (cac runner dung cai nay)
+ACCOUNTS = [acc for party in PARTIES for acc in party]
 
 # API login - API_KEY la HANG SO co dinh cua game, KHONG can sua.
 # (device_id & tracking_id duoc login.py tu sinh tu username -> khong can dien)
