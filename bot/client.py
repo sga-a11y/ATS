@@ -111,7 +111,9 @@ class GameClient:
         self.auto_accept_party = True
         self.self_entity = None      # entity 8 byte cua nhan vat minh
         self.last_turn_time = 0.0    # thoi diem nhan luot/battle gan nhat
-        self._label = ""             # nhan account (de log multi-account)
+        self._label = ""             # nhan log: username luc dau, doi sang TEN NHAN VAT khi biet
+        self._username = ""          # username login (giu lai de tham chieu)
+        self.char_name = None        # ten nhan vat trong game (tu 0x27 theo self_entity)
         self.submit_delay = 0.5      # delay truoc khi gui combat
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
@@ -589,6 +591,11 @@ class GameClient:
                 name = ''
             if name:
                 self.entity_names.setdefault(entity, set()).add(name)
+                # Neu la entity CUA MINH -> dung lam ten nhan vat trong log
+                if self.self_entity and entity == self.self_entity and self.char_name != name:
+                    self.char_name = name
+                    self._label = name
+                    log.info("[%s] Ten nhan vat = '%s'", self._username, name)
                 log.debug("[%s] guild member: %s -> '%s'", self._label, entity.hex()[:12], name)
             off += 9 + name_len + 32
             parsed += 1
