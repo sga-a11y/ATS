@@ -293,6 +293,22 @@ S2C 0x57 ket qua:  c0 91 ... 57 [02 00][03][status 1B]   (status=0: thanh cong)
   Luu trang thai da nhan ra gift_claims.json theo ngay (tranh re-claim khi reconnect).
 - Logic o client.claim_online_gifts().
 
+## 7g2. DIEM DANH HANG NGAY (opcode 0x57, type=01)
+
+Diem danh theo **SO LAN da diem danh** (hom nay ngay N -> mai N+1; bo ngay thi KHONG tang).
+Mo menu = duoc tinh. Moi ngay nhan 1 lan.
+
+```
+C2S 0x57 nhan: c0 91 ... 57 [02 00][01][day 4B LE][01]   (type=01 khac qua online type=03)
+S2C 0x57 ket qua: [02 00][01][status]
+  status=0: OK (dung ngay hom nay) | status=2: ngay DA nhan | status=5: ngay CHUA toi (tuong lai)
+```
+
+- Bot tu dem + luu checkin_state.json {label:{date,day}}. 1 lan/ngay.
+- Lan dau/desync: quet day=1..40, server chi chap nhan dung ngay hom nay (status=0), con lai 2/5
+  -> scan AN TOAN (chi 1 ngay status=0). Xac nhan checkin.pcap + test sga001/003.
+- Logic o client.claim_checkin(). Goi luc login trong run_party_digioi + bot_standalone.
+
 ## 7h. EXP OFFLINE (opcode 0x54)
 
 Nhan exp tich luy khi offline (bang hien luc login).

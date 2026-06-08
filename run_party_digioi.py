@@ -67,6 +67,7 @@ def run_account(username, password, pidx, is_leader):
             c.close(); time.sleep(5)
         _clients.append(c)
         log.info("[%s] (%s) vao world. map=%s", label, role, c.current_map)
+        c.claim_checkin()   # diem danh hang ngay (tu dem so lan)
 
         # --- Vao Di Gioi (solo) - ne battle/chua login xong, retry ---
         # Neu DA o trong DG (login lai khi con ket DG) -> CHAY LUON, KHONG thoat/vao lai

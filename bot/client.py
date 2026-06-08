@@ -128,6 +128,38 @@ def _save_gift_state(label: str, online_sec: float, claimed: set):
             pass
 
 
+# ---- State DIEM DANH (so lan da diem danh) ----
+_CHECKIN_FILE = "checkin_state.json"
+
+def _load_checkin(label: str) -> dict:
+    """{'date': 'YYYY-MM-DD', 'day': N} - lan diem danh gan nhat."""
+    import json, os
+    if not os.path.exists(_CHECKIN_FILE):
+        return {"date": "", "day": 0}
+    try:
+        with open(_CHECKIN_FILE, encoding="utf-8") as f:
+            return json.load(f).get(label, {"date": "", "day": 0})
+    except Exception:
+        return {"date": "", "day": 0}
+
+def _save_checkin(label: str, date: str, day: int):
+    import json, os
+    with _gift_lock:
+        data = {}
+        if os.path.exists(_CHECKIN_FILE):
+            try:
+                with open(_CHECKIN_FILE, encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+        data[label] = {"date": date, "day": day}
+        try:
+            with open(_CHECKIN_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
+
 class GameClient:
     def __init__(self, user_id: str, access_token: str):
         self.user_id = user_id
@@ -149,6 +181,7 @@ class GameClient:
         self._username = ""          # username login (giu lai de tham chieu)
         self.char_name = None        # ten nhan vat trong game (tu 0x27 theo self_entity)
         self.char_int = None         # chi so INT (tri luc) - tu S2C 0x08 id=0x1b
+        self._checkin_status = None   # status phan hoi diem danh (S2C 0x57 type=01)
         self.submit_delay = 0.5      # delay truoc khi gui combat
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
@@ -577,16 +610,57 @@ class GameClient:
         _save_gift_state(self._label, online_sec, self.claimed_gifts)
         return all(m in self.claimed_gifts for m in milestones)
 
+    def _checkin_claim(self, day: int, wait: float = 1.5) -> int:
+        """Gui 1 goi nhan diem danh ngay 'day': C2S 0x57 02 00 01 [day 4B LE] 01.
+        Tra ve status (0=OK; !=0 that bai/da nhan; -1 khong co phan hoi)."""
+        self._checkin_status = None
+        self.send(0x57, b"\x02\x00\x01" + struct.pack("<I", day) + b"\x01")
+        t = time.time()
+        while time.time() - t < wait:
+            if self._checkin_status is not None:
+                return self._checkin_status
+            time.sleep(0.1)
+        return -1
+
+    def claim_checkin(self):
+        """DIEM DANH hang ngay (theo SO LAN diem danh: hom nay day=N -> mai N+1).
+        Bot tu dem + luu (checkin_state.json). 1 lan/ngay. Lan dau chua biet so dem ->
+        quet day=1..40, server chi chap nhan dung ngay hien tai (status=0), cac ngay khac fail."""
+        import datetime
+        today = datetime.date.today().isoformat()
+        st = _load_checkin(self._label)
+        if st.get("date") == today:
+            return True   # da diem danh hom nay
+        # 1) Biet so dem -> thu day = day+1 trc
+        if st.get("day", 0) > 0:
+            nd = st["day"] + 1
+            if self._checkin_claim(nd) == 0:
+                _save_checkin(self._label, today, nd)
+                log.info("[%s] Diem danh ngay %d OK", self._label, nd)
+                return True
+        # 2) Lan dau / desync -> quet tim ngay hien tai
+        for d in range(1, 41):
+            if self._checkin_claim(d) == 0:
+                _save_checkin(self._label, today, d)
+                log.info("[%s] Diem danh ngay %d OK (scan)", self._label, d)
+                return True
+        log.info("[%s] Diem danh: khong nhan duoc (co the da diem danh hom nay roi)", self._label)
+        return False
+
     def _on_gift(self, pkt: bytes):
-        """S2C 0x57 sub=2: [02 00][type 1B][status 1B] — status=0: nhan thanh cong."""
+        """S2C 0x57 sub=2: [02 00][type 1B][status 1B]. type=03 qua online, type=01 DIEM DANH.
+        status=0 = thanh cong."""
         if len(pkt) < 11:
             return
         if int.from_bytes(pkt[7:9], "little") == 0x02:
-            status = pkt[10]
-            if status == 0:
-                log.info("[%s] Qua online: nhan THANH CONG", self._label)
-            else:
-                log.info("[%s] Qua online: status=%d", self._label, status)
+            gtype = pkt[9]; status = pkt[10]
+            if gtype == 0x01:                      # DIEM DANH
+                self._checkin_status = status
+                log.info("[%s] Diem danh: status=%d (%s)", self._label, status,
+                         "OK" if status == 0 else "that bai/da nhan")
+            else:                                  # qua online (type=03)
+                log.info("[%s] Qua online: %s", self._label,
+                         "THANH CONG" if status == 0 else f"status={status}")
 
     # ---- parse skill bar (0x28) ----
     def _on_skill_bar(self, pkt: bytes):
