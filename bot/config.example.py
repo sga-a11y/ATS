@@ -46,6 +46,10 @@ CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)
 RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
 ENTER_DIGIOI = False            # True = sau khi connect tu vao Di Gioi train (solo, KHONG party)
 DIGIOI_MAP_ID = 49942           # map_id Di Gioi (0xc316) - doc tu broadcast de biet dang o Di Gioi
+# Duong auto-chay trong Di Gioi de gap quai (vong lap 8 diem hinh so 8).
+DIGIOI_RUN_ROUTE = [(770, 630), (670, 730), (770, 830), (870, 730),
+                    (970, 630), (1070, 730), (970, 830), (870, 730)]
+DIGIOI_STEP_WAIT = 2.5          # giay moi buoc di chuyen
 
 # Qua online: nhan khi online du so phut. id qua = so phut moc.
 GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]

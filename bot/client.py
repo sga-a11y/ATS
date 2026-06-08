@@ -125,6 +125,7 @@ class GameClient:
         self.party_members = []      # list entity cac member theo thu tu (= slot B2)
         self.party_idx = None        # chi so party cua bot (tu config.ACCOUNT_PARTY) - de nhan moi cung party
         self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x27
+        self._running_route = False   # dang chay auto-route trong Di Gioi
         self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
         self._connect_time = None    # thoi diem connect phien nay
@@ -681,6 +682,32 @@ class GameClient:
                 return True
         log.warning("[%s] Van chua thoat duoc Di Gioi (map %s)", self._label, self.current_map)
         return False
+
+    def start_di_gioi_run(self):
+        """Bat auto-chay theo route trong Di Gioi de gap quai (chay nen). Chi leader/solo goi."""
+        if self._running_route:
+            return
+        self._running_route = True
+        threading.Thread(target=self._di_gioi_route_loop, daemon=True).start()
+
+    def _di_gioi_route_loop(self):
+        route = getattr(config, "DIGIOI_RUN_ROUTE", [])
+        wait = getattr(config, "DIGIOI_STEP_WAIT", 2.5)
+        if not route:
+            self._running_route = False
+            return
+        log.info("[%s] Bat auto-chay Di Gioi (%d waypoint)", self._label, len(route))
+        i = 0
+        while self.running and self._running_route and self.in_di_gioi():
+            if self.in_combat():          # dang danh -> dung di chuyen, cho het tran
+                time.sleep(1.5)
+                continue
+            x, y = route[i % len(route)]
+            self.move_to(x, y)
+            i += 1
+            time.sleep(wait)
+        self._running_route = False
+        log.info("[%s] Dung auto-chay Di Gioi", self._label)
 
     def enter_di_gioi(self):
         """Vao map Di Gioi (map train chinh). Chi 2 goi co dinh: 0x61 010001 -> 0x61 020002.
