@@ -91,7 +91,7 @@ def run_account(username: str, password: str, idx: int = 0):
                 time.sleep(2)
                 client.pick_best_channel()   # tu chuyen sang kenh it nguoi nhat
                 time.sleep(2)
-                client.start_di_gioi_run()   # auto-chay theo route de gap quai
+                client.start_run_around()   # auto-chay theo route de gap quai
                 log.info("[%s] Da vao Di Gioi + chon kenh + auto-chay - tu dong danh", label)
             else:
                 log.info("[%s] San sang - cho chu party '%s' moi + tu dong danh",

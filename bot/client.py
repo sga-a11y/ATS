@@ -125,7 +125,8 @@ class GameClient:
         self.party_members = []      # list entity cac member theo thu tu (= slot B2)
         self.party_idx = None        # chi so party cua bot (tu config.ACCOUNT_PARTY) - de nhan moi cung party
         self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x27
-        self._running_route = False   # dang chay auto-route trong Di Gioi
+        self._running_route = False   # dang chay auto run-around
+        self.pos = None              # vi tri hien tai (x,y) cua minh - doc tu S2C 0x06 self
         self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
         self._connect_time = None    # thoi diem connect phien nay
@@ -200,6 +201,11 @@ class GameClient:
             mid = int.from_bytes(pkt[17:19], "little")
             if mid > 1000:   # loc gia tri rac (map_id that >1000)
                 self.current_map = mid
+        # Track vi tri CUA MINH: S2C 0x06 = [01 00][entity 8B][dir 1B][x 2B][y 2B]
+        if (opcode == 0x06 and len(pkt) >= 22 and pkt[7:9] == b"\x01\x00"
+                and self.self_entity and pkt[9:17] == self.self_entity):
+            self.pos = (int.from_bytes(pkt[18:20], "little"),
+                        int.from_bytes(pkt[20:22], "little"))
         if opcode == protocol.OP_STAT_UPD:        # 0x33
             self.state.update_0x33(pkt)
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
@@ -683,31 +689,48 @@ class GameClient:
         log.warning("[%s] Van chua thoat duoc Di Gioi (map %s)", self._label, self.current_map)
         return False
 
-    def start_di_gioi_run(self):
-        """Bat auto-chay theo route trong Di Gioi de gap quai (chay nen). Chi leader/solo goi."""
+    def start_run_around(self, stay_in_di_gioi=True):
+        """Bat auto run-around: chay vong quanh DIEM DANG DUNG (anchor = vi tri hien tai)
+        + offset hinh so 8. Dung quanh quai -> battle -> het tran chay tiep. Chay nen."""
         if self._running_route:
             return
         self._running_route = True
-        threading.Thread(target=self._di_gioi_route_loop, daemon=True).start()
+        threading.Thread(target=self._run_around_loop, args=(stay_in_di_gioi,), daemon=True).start()
 
-    def _di_gioi_route_loop(self):
-        route = getattr(config, "DIGIOI_RUN_ROUTE", [])
-        wait = getattr(config, "DIGIOI_STEP_WAIT", 2.5)
-        if not route:
+    def stop_run_around(self):
+        self._running_route = False
+
+    def _run_around_loop(self, stay_in_di_gioi):
+        offsets = getattr(config, "RUN_AROUND_OFFSETS", [])
+        wait = getattr(config, "RUN_STEP_WAIT", 2.5)
+        if not offsets:
             self._running_route = False
             return
-        log.info("[%s] Bat auto-chay Di Gioi (%d waypoint)", self._label, len(route))
+        # cho biet vi tri hien tai (anchor) - move 1 phat de server tra vi tri neu chua co
+        for _ in range(10):
+            if self.pos:
+                break
+            time.sleep(0.5)
+        anchor = self.pos
+        if anchor is None:
+            log.warning("[%s] Chua biet vi tri -> khong run-around", self._label)
+            self._running_route = False
+            return
+        ax, ay = anchor
+        log.info("[%s] Run-around quanh (%d,%d), %d waypoint", self._label, ax, ay, len(offsets))
         i = 0
-        while self.running and self._running_route and self.in_di_gioi():
+        while self.running and self._running_route:
+            if stay_in_di_gioi and not self.in_di_gioi():
+                break
             if self.in_combat():          # dang danh -> dung di chuyen, cho het tran
                 time.sleep(1.5)
                 continue
-            x, y = route[i % len(route)]
-            self.move_to(x, y)
+            dx, dy = offsets[i % len(offsets)]
+            self.move_to(ax + dx, ay + dy)
             i += 1
             time.sleep(wait)
         self._running_route = False
-        log.info("[%s] Dung auto-chay Di Gioi", self._label)
+        log.info("[%s] Dung run-around", self._label)
 
     def enter_di_gioi(self):
         """Vao map Di Gioi (map train chinh). Chi 2 goi co dinh: 0x61 010001 -> 0x61 020002.

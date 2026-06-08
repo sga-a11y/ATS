@@ -106,9 +106,9 @@ def poll_commands():
             elif cmd == "run":
                 # bat auto-chay route Di Gioi (test). 'run X' = chi bot thu X (idx)
                 if len(parts) >= 2:
-                    clients[int(parts[1])].start_di_gioi_run()
+                    clients[int(parts[1])].start_run_around()
                 else:
-                    for c in clients: c.start_di_gioi_run()
+                    for c in clients: c.start_run_around()
             elif cmd == "bestchannel":
                 for c in clients: c.pick_best_channel()
             elif cmd == "outdigioi":
