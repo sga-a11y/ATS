@@ -68,49 +68,62 @@ def _offered_targets(options, atype):
     return t or [o[1] for o in options]
 
 
+# Vi tri quai noi bo: pos = hang*10 + cot. hang(b byte)=pos//10, cot(target)=pos%10.
+def _row(pos):
+    return pos // 10
+
+
+def _col(pos):
+    return pos % 10
+
+
 def _same_row(a, b):
-    """Game: toi da 10 quai, 2 hang x 5 con. Hang = slot//5 (slot 0-based: 0-4 hang 0, 5-9 hang 1).
-    Slot 4 va 5 KHONG cung hang."""
-    return a // 5 == b // 5
+    """Cung hang battle? (2 hang: pos//10 = 0 hang truoc, 1 hang sau)."""
+    return a // 10 == b // 10
 
 
 def _aoe_target(enemy_slots, offered):
-    """Chon target theo uu tien (CHI chon trong cac o duoc phep = offered, tranh loi 2a):
-      1. Nhom 3 con lien nhau (cung hang) DAU TIEN -> con GIUA nhom 3 do
-      2. Khong co nhom 3 -> nhom 2 con lien nhau dau tien -> con VI TRI THAP NHAT
-      3. Chi con le -> con VI TRI THAP NHAT
-    Target chon ra phai nam trong 'offered'; neu khong, fallback o offered hop le.
+    """Chon VI TRI quai (pos) theo uu tien. 'offered' = danh sach COT hop le (0x35).
+    Tra ve pos (hang*10+cot); con None neu khong co. Gui combat: b=hang, target=cot.
+      1. Nhom 3 lien nhau cung hang -> con GIUA
+      2. Nhom 2 -> con VI TRI THAP NHAT
+      3. Le -> con thap nhat
     """
     off = set(offered)
     es = set(enemy_slots)
     if not es:
-        return offered[0] if offered else None
+        return None
     s = sorted(es)
-    # 1) nhom 3 lien tiep cung hang -> con giua (neu duoc phep target)
-    for a in s:
-        if (a + 1) in es and (a + 2) in es and _same_row(a, a + 2) and (a + 1) in off:
+    for a in s:   # nhom 3 cung hang -> con giua (cot phai offered)
+        if (a + 1) in es and (a + 2) in es and _same_row(a, a + 2) and _col(a + 1) in off:
             return a + 1
-    # 2) nhom 2 lien tiep cung hang -> con thap nhat (uu tien a, roi a+1)
-    for a in s:
+    for a in s:   # nhom 2 cung hang -> con thap nhat
         if (a + 1) in es and _same_row(a, a + 1):
-            if a in off:
+            if _col(a) in off:
                 return a
-            if (a + 1) in off:
+            if _col(a + 1) in off:
                 return a + 1
-    # 3) le -> con quai thap nhat ma duoc phep target
-    for t in s:
-        if t in off:
+    for t in s:   # le -> con thap nhat co cot offered
+        if _col(t) in off:
             return t
-    # fallback: o offered dau tien
-    return offered[0] if offered else None
+    return None
 
 
 def _single_target(state, offered):
-    """Skill don -> focus con quai it mau nhat (trong so o duoc phep + co quai)."""
-    cands = [t for t in offered if t in state.enemy_slots] or offered
+    """Skill don -> focus con quai it mau nhat (cot phai offered). Tra ve pos."""
+    off = set(offered)
+    cands = [p for p in state.enemy_slots if _col(p) in off] or list(state.enemy_slots)
     if not cands:
         return None
-    return min(cands, key=lambda t: state.enemy_hp.get(t, 1 << 30))
+    return min(cands, key=lambda p: state.enemy_hp.get(p, 1 << 30))
+
+
+def _attack(unit, atype, pos, skill, fb_col):
+    """Tao Decision tan cong: pos -> b=hang(pos//10), target=cot(pos%10).
+    pos None -> fallback cot fb_col (hang truoc, b=0)."""
+    if pos is None:
+        return Decision(unit, atype, fb_col, skill, b=0)
+    return Decision(unit, atype, _col(pos), skill, b=_row(pos))
 
 
 def _has_group3(enemy_slots):
@@ -159,11 +172,9 @@ def decide_char(state, options, first_turn=False):
     combo = pick_combo_skill(state.skills_char)
     if (combo and state.char.sp >= max(config.CHAR_FIRE_MIN_SP, _skill_cost(combo))
             and _has_group2(state.enemy_slots)):
-        tgt = _aoe_target(state.enemy_slots, offered) or fb
-        return Decision(config.UNIT_CHAR, at, tgt, combo)
-    # 3) Danh thuong - chon target nham cum quai (combo)
-    tgt = _aoe_target(state.enemy_slots, offered) or fb
-    return Decision(config.UNIT_CHAR, at, tgt, config.SKILL_NORMAL)
+        return _attack(config.UNIT_CHAR, at, _aoe_target(state.enemy_slots, offered), combo, fb)
+    # 3) Danh thuong - focus con it mau nhat
+    return _attack(config.UNIT_CHAR, at, _single_target(state, offered), config.SKILL_NORMAL, fb)
 
 
 def decide_pet(state, options, first_turn=False):
@@ -180,8 +191,6 @@ def decide_pet(state, options, first_turn=False):
     combo = pick_combo_skill(state.pet_skills)
     if (combo and state.pet.sp >= max(config.PET_FIRE_MIN_SP, _skill_cost(combo))
             and _has_group2(state.enemy_slots)):
-        tgt = _aoe_target(state.enemy_slots, offered) or fb
-        return Decision(config.UNIT_PET, at, tgt, combo)
-    # Danh thuong - chon target giong Hoa Tien/Nem Da (nham cum quai)
-    tgt = _aoe_target(state.enemy_slots, offered) or fb
-    return Decision(config.UNIT_PET, at, tgt, config.SKILL_NORMAL)
+        return _attack(config.UNIT_PET, at, _aoe_target(state.enemy_slots, offered), combo, fb)
+    # Danh thuong - focus con it mau nhat
+    return _attack(config.UNIT_PET, at, _single_target(state, offered), config.SKILL_NORMAL, fb)

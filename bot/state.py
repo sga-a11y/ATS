@@ -72,22 +72,21 @@ class BattleState:
         i = 0
         while i + 7 <= len(p):
             a, b1, b2, tt = p[i], p[i + 1], p[i + 2], p[i + 3]
-            if a == 0x00 and b1 in (0x00, 0x02, 0x03) and tt in (T_HP_CUR, T_SP_CUR, T_HP_MAX):
+            # b1: 0=quai hang truoc, 1=quai hang sau, 2=pet, 3=nhan vat
+            if a == 0x00 and b1 in (0x00, 0x01, 0x02, 0x03) and tt in (T_HP_CUR, T_SP_CUR, T_HP_MAX):
                 val = int.from_bytes(p[i + 4:i + 6], "little")
                 groups.setdefault((b1, b2), {})[tt] = val
                 i += 7
             else:
                 i += 1
-        # quai = B1==0. Neu goi nay co liet ke quai -> cap nhat lai danh sach song
-        enemies = []
+        # QUAI = b1 in (0,1): hang truoc b1=0, hang sau b1=1; cot = b2.
+        # Vi tri noi bo = b1*10 + b2 -> hang=pos//10, cot=pos%10 (gui combat: b=hang, target=cot)
         saw_enemy_group = False
         for (b1, b2), d in groups.items():
-            if b1 == 0x00:
+            if b1 in (0x00, 0x01):
                 saw_enemy_group = True
-                hp = d.get(T_HP_CUR, 0)
-                self.enemy_hp[b2] = hp
-                if hp > 0:
-                    enemies.append(b2)
+                pos = b1 * 10 + b2
+                self.enemy_hp[pos] = d.get(T_HP_CUR, 0)
         if saw_enemy_group:
             # enemy_slots = TAT CA slot con song theo enemy_hp TICH LUY (khong chi goi nay).
             # Tranh mat con khong bi danh trong turn (vd giet 1-2-3 con con o slot 7 van song).
