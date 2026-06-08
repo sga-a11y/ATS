@@ -8,7 +8,7 @@ PASSWORD = "your_password"
 
 # ==== DANH SACH PARTY ====
 # Moi party = 1 list toi da 5 acc (username, password) - pass co the khac nhau.
-# acc[0] cua moi party = CHU PARTY.
+# SLOT 0 = CHU PARTY (bot tu moi + dan train). ("","") = khong co bot-leader (chi member).
 PARTIES = [
     [   # Party 1
         ("acc1", "password1"),
@@ -107,5 +107,8 @@ XOR_KEY = 0xAD
 # ============================================================
 #  TU SINH tu PARTIES - KHONG can doc/sua
 # ============================================================
-ACCOUNTS = [acc for party in PARTIES for acc in party]
-ACCOUNT_PARTY = {acc[0]: i for i, party in enumerate(PARTIES) for acc in party}
+ACCOUNTS = [acc for party in PARTIES for acc in party if acc and acc[0]]
+ACCOUNT_PARTY = {acc[0]: i for i, party in enumerate(PARTIES) for acc in party if acc and acc[0]}
+PARTY_LEADER_ACC = {i: party[0][0] for i, party in enumerate(PARTIES)
+                    if party and party[0] and party[0][0]}
+LEADER_ACCOUNTS = set(PARTY_LEADER_ACC.values())
