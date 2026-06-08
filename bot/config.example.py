@@ -23,6 +23,8 @@ PARTIES = [
 ]
 # Gop phang -> ACCOUNTS (cac runner dung cai nay)
 ACCOUNTS = [acc for party in PARTIES for acc in party]
+# username -> chi so party (bot nhan moi tu cung party qua entity, KHONG can dien ten)
+ACCOUNT_PARTY = {acc[0]: i for i, party in enumerate(PARTIES) for acc in party}
 
 # API login - API_KEY la HANG SO co dinh cua game, KHONG can sua.
 # (device_id & tracking_id duoc login.py tu sinh tu username -> khong can dien)

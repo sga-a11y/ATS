@@ -52,6 +52,7 @@ def run_account(username: str, password: str, idx: int = 0):
 
             client = GameClient(cred["user_id"], cred["access_token"])
             client._label = label
+            client.party_idx = config.ACCOUNT_PARTY.get(username)
             client.submit_delay = 1
             client.connect()
 

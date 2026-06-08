@@ -13,6 +13,23 @@ from .state import BattleState
 
 log = logging.getLogger("bot")
 
+# Registry entity cac bot cung party (chia se trong process). party_idx -> set(entity bytes).
+# Bot dang ky self_entity luc login -> khi nhan loi moi, accept neu nguoi moi cung party.
+_PARTY_ENTITIES = {}
+_PARTY_LOCK = threading.Lock()
+
+def _register_party_entity(party_idx, entity):
+    if party_idx is None or not entity:
+        return
+    with _PARTY_LOCK:
+        _PARTY_ENTITIES.setdefault(party_idx, set()).add(bytes(entity))
+
+def _is_party_member(party_idx, entity):
+    if party_idx is None:
+        return False
+    with _PARTY_LOCK:
+        return bytes(entity) in _PARTY_ENTITIES.get(party_idx, set())
+
 
 # Khung gio nhan mail (gio bat dau, moi khung 2h): 12-14, 16-18, 22-24.
 MAIL_WINDOWS = [12, 16, 22]
@@ -104,6 +121,7 @@ class GameClient:
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
         self.party_leader = None     # entity chu party (tu 0x0d sub=06)
         self.party_members = []      # list entity cac member theo thu tu (= slot B2)
+        self.party_idx = None        # chi so party cua bot (tu config.ACCOUNT_PARTY) - de nhan moi cung party
         self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x27
         self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
@@ -231,6 +249,7 @@ class GameClient:
                 self.self_entity = pkt[9:17]
                 self.state.self_entity = self.self_entity
                 log.info("[%s] self_entity = %s", self._label, self.self_entity.hex())
+                _register_party_entity(self.party_idx, self.self_entity)  # chia se cho cung party
                 # xu lai cac goi 0x0b da buffer (co the chua stat cua minh den truoc 0x69)
                 for p in self._pending_0b:
                     self.state.update_0x0b(p)
@@ -260,7 +279,12 @@ class GameClient:
         sub = pkt[7]
         if sub == 0x09 and self.auto_accept_party and len(pkt) >= 17:
             entity = pkt[9:17]   # entity nguoi MOI (leader), KHONG set lam self_entity
-            # --- Loc theo whitelist PARTY_LEADERS ---
+            # --- Uu tien: nguoi moi la THANH VIEN CUNG PARTY (theo entity chia se) -> accept luon ---
+            if _is_party_member(self.party_idx, entity):
+                self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
+                log.info("[%s] Loi moi tu THANH VIEN CUNG PARTY -> ACCEPT", self._label)
+                return
+            # --- Loc theo whitelist PARTY_LEADERS (nguoi ngoai/leader nguoi that) ---
             leaders = getattr(config, "PARTY_LEADERS", [])
             if leaders:
                 known = self.entity_names.get(entity, set())

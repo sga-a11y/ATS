@@ -46,6 +46,7 @@ def run_account(username: str, password: str, idx: int = 0):
 
             client = GameClient(cred["user_id"], cred["access_token"])
             client._label = label
+            client.party_idx = config.ACCOUNT_PARTY.get(username)
             client.auto_combat = True           # tu danh neu vao battle
             client.auto_accept_party = True     # nhan invite party + pho ban
             DIGIOI_LIMIT = 120
