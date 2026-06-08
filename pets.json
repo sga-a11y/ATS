@@ -4,6 +4,9 @@
     "0xa051": { "name": "Thái Văn Cơ", "skills": [12003, 12009, 12010] },
     "0xa0db": { "name": "Tưởng Nghĩa Cừ", "skills": [] },
     "0xa149": { "name": "Cát Bình", "skills": [11010] },
-    "0xa05a": { "name": "Quan Vũ", "skills": [13009, 13011, 13013] }
+    "0xa05a": { "name": "Quan Vũ", "skills": [13009, 13011, 13013] },
+    "0x3715": { "name": "?", "skills": [12003] },
+    "0x371f": { "name": "?", "skills": [] },
+    "0x426b": { "name": "?", "skills": [] }
   }
 }
