@@ -171,6 +171,7 @@ Format: `01 00 [entries: unit action_type target 00 00]`
 | 10000 | Đánh thường | attack | 0 | enemy | Always available, fallback |
 | 12003 | Hỏa Tiễn | attack AoE | 15 | enemy | Splash ngang (target ± 2 bên), priority=10 |
 | 17001 | Phòng thủ | defense | 0 | self | Giảm dame nhận, cả char+pet |
+| 17997 | Bỏ chạy | flee | 0 | self | 0x4651. Thoát khỏi trận. Gửi 0x32 skill này cho cả char (b=3,target=2) + pet (b=2,target=2). Xác nhận flee.pcap |
 | 11004 | Thanh Lưu | heal | 22 | 1 ally | Hồi HP+SP 1 người, char only |
 | 11010 | Toàn Trị Liệu | heal AoE | 42 | all ally | Hồi HP toàn party, char only |
 | 12006 | ??? | ? | ? | ? | Pet skill, chưa khám phá |

@@ -500,6 +500,15 @@ class GameClient:
                    + tail)
         self.send(protocol.OP_COMBAT, payload)
 
+    def flee_battle(self):
+        """BO CHAY khoi tran: gui 0x32 skill=0x4651 cho ca char + pet, TARGET = chinh minh
+        (target = vi tri tran cua minh = atype; flee.pcap: char atype=2->target=2).
+        char b=3, pet b=2 (tu flee.pcap)."""
+        at = self.state.my_atype
+        self._send_combat(combat.Decision(unit=config.UNIT_CHAR, atype=at, target=at, skill=config.SKILL_FLEE, b=3))
+        self._send_combat(combat.Decision(unit=config.UNIT_PET,  atype=at, target=at, skill=config.SKILL_FLEE, b=2))
+        log.info("[%s] BO CHAY khoi tran (skill %d, target=atype=%d)", self._label, config.SKILL_FLEE, at)
+
     # ---- qua online (0x57) ----
     def request_offline_exp(self, exp_type: int = 0x1c):
         """Hoi info exp offline (type 0x1c). Neu co exp -> tu nhan (xu ly o _on_offline_exp)."""
