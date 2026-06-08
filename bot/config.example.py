@@ -21,10 +21,6 @@ PARTIES = [
     #     ("acc6", "password6"), ...
     # ],
 ]
-# Gop phang -> ACCOUNTS (cac runner dung cai nay)
-ACCOUNTS = [acc for party in PARTIES for acc in party]
-# username -> chi so party (bot nhan moi tu cung party qua entity, KHONG can dien ten)
-ACCOUNT_PARTY = {acc[0]: i for i, party in enumerate(PARTIES) for acc in party}
 
 # Whitelist TEN NHAN VAT chu party duoc phep moi - cho acc TU DIEU KHIEN tay + pho ban.
 # [] = nhan tu bat ky ai. (Bot cung party tu nhan nhau qua entity, KHONG can ghi o day.)
@@ -106,3 +102,10 @@ UNIT_CHAR = 3
 UNIT_PET = 2
 
 XOR_KEY = 0xAD
+
+
+# ============================================================
+#  TU SINH tu PARTIES - KHONG can doc/sua
+# ============================================================
+ACCOUNTS = [acc for party in PARTIES for acc in party]
+ACCOUNT_PARTY = {acc[0]: i for i, party in enumerate(PARTIES) for acc in party}
