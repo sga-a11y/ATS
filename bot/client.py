@@ -30,6 +30,40 @@ def _is_party_member(party_idx, entity):
     with _PARTY_LOCK:
         return bytes(entity) in _PARTY_ENTITIES.get(party_idx, set())
 
+# Member da ACCEPT loi moi tu party-mate (tin hieu chia se de LEADER biet party da thanh).
+# party_idx -> set(self_entity cua cac member da join). Tin cay hon doc roster broadcast.
+_PARTY_JOINED = {}
+
+def _mark_joined(party_idx, entity):
+    if party_idx is None or not entity:
+        return
+    with _PARTY_LOCK:
+        _PARTY_JOINED.setdefault(party_idx, set()).add(bytes(entity))
+
+def joined_member_count(party_idx):
+    with _PARTY_LOCK:
+        return len(_PARTY_JOINED.get(party_idx, set()))
+
+# Chi so INT (tri luc) tung char trong party (chia se de leader chon quan su INT cao nhat).
+# party_idx -> {entity: int_value}.  STAT_INT = id 0x1b (xac nhan tu int.pcap).
+STAT_INT = 0x1b
+_PARTY_INT = {}
+
+def _register_party_int(party_idx, entity, value):
+    if party_idx is None or not entity:
+        return
+    with _PARTY_LOCK:
+        _PARTY_INT.setdefault(party_idx, {})[bytes(entity)] = value
+
+def best_int_member(party_idx, candidates):
+    """Tra entity co INT cao nhat trong 'candidates' (list entity). None neu khong biet INT."""
+    with _PARTY_LOCK:
+        ints = _PARTY_INT.get(party_idx, {})
+    known = [(e, ints[e]) for e in candidates if e in ints]
+    if not known:
+        return None
+    return max(known, key=lambda x: x[1])[0]
+
 
 # Khung gio nhan mail (gio bat dau, moi khung 2h): 12-14, 16-18, 22-24.
 MAIL_WINDOWS = [12, 16, 22]
@@ -114,6 +148,7 @@ class GameClient:
         self._label = ""             # nhan log: username luc dau, doi sang TEN NHAN VAT khi biet
         self._username = ""          # username login (giu lai de tham chieu)
         self.char_name = None        # ten nhan vat trong game (tu 0x27 theo self_entity)
+        self.char_int = None         # chi so INT (tri luc) - tu S2C 0x08 id=0x1b
         self.submit_delay = 0.5      # delay truoc khi gui combat
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
@@ -195,17 +230,24 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        # INT (tri luc): gui luc login trong gói char-info S2C 0x05 (payload ~252B), INT o payload[9]
+        # = pkt[16]. (Xac nhan int2.pcap: 2 lan login INT 4->5, byte nay doi 4->5). INT cao = hoi SP
+        # tot hon khi lam quan su -> leader chon member INT cao nhat. Cap nhat khi cong diem cung qua day.
+        if opcode == 0x05 and len(pkt) > 200 and len(pkt) > 16:
+            self.char_int = pkt[16]
+            _register_party_int(self.party_idx, self.self_entity, self.char_int)
+        # Cap nhat INT khi cong diem (S2C 0x08: 01 00 1b 01 [val 2B])
+        elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
+            self.char_int = int.from_bytes(pkt[11:13], "little")
+            _register_party_int(self.party_idx, self.self_entity, self.char_int)
         # Track map_id hien tai: broadcast 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
-        # (KHONG dung 0x03: goi stat, offset 10 la field khac -> doc nham 0x0202/0x0301)
+        # (map suy tu broadcast nguoi xung quanh - co the lan map la nguoi khac; run-around
+        #  xu ly bang PAUSE chu khong break de chong doc nham)
         if opcode in (0x0c, 0x07) and len(pkt) >= 19 and pkt[7:9] == b"\x00\x00":
             mid = int.from_bytes(pkt[17:19], "little")
             if mid > 1000:   # loc gia tri rac (map_id that >1000)
                 self.current_map = mid
-        # Track vi tri CUA MINH: S2C 0x06 = [01 00][entity 8B][dir 1B][x 2B][y 2B]
-        if (opcode == 0x06 and len(pkt) >= 22 and pkt[7:9] == b"\x01\x00"
-                and self.self_entity and pkt[9:17] == self.self_entity):
-            self.pos = (int.from_bytes(pkt[18:20], "little"),
-                        int.from_bytes(pkt[20:22], "little"))
+        # (Server KHONG echo vi tri CUA MINH qua 0x06 -> dung dead-reckoning trong move_to/enter)
         if opcode == protocol.OP_STAT_UPD:        # 0x33
             self.state.update_0x33(pkt)
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
@@ -259,6 +301,8 @@ class GameClient:
                 self.state.self_entity = self.self_entity
                 log.info("[%s] self_entity = %s", self._label, self.self_entity.hex())
                 _register_party_entity(self.party_idx, self.self_entity)  # chia se cho cung party
+                if self.char_int is not None:   # INT da nhan truoc 0x69 -> dang ky lai khi co entity
+                    _register_party_int(self.party_idx, self.self_entity, self.char_int)
                 # xu lai cac goi 0x0b da buffer (co the chua stat cua minh den truoc 0x69)
                 for p in self._pending_0b:
                     self.state.update_0x0b(p)
@@ -291,7 +335,8 @@ class GameClient:
             # --- Uu tien: nguoi moi la THANH VIEN CUNG PARTY (theo entity chia se) -> accept luon ---
             if _is_party_member(self.party_idx, entity):
                 self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
-                log.info("[%s] Loi moi tu THANH VIEN CUNG PARTY -> ACCEPT", self._label)
+                _mark_joined(self.party_idx, self.self_entity)   # bao LEADER: minh da join
+                log.info("[%s] Loi moi tu THANH VIEN CUNG PARTY -> ACCEPT (da join)", self._label)
                 return
             # --- Loc theo whitelist PARTY_LEADERS (nguoi ngoai/leader nguoi that) ---
             leaders = getattr(config, "PARTY_LEADERS", [])
@@ -653,9 +698,68 @@ class GameClient:
         self.switch_channel(best[0])
         return best[0]
 
+    def invite_entity(self, entity: bytes):
+        """Moi 1 nguoi vao party BANG ENTITY. C2S 0x0d sub=07 = 07 00 [entity 8B].
+        (Da xac nhan tu capture invite_dg.pcap - moi theo entity, KHONG phai index 0x52!)"""
+        if not entity:
+            return
+        self.send(protocol.OP_PLAYER_STATE, b"\x07\x00" + bytes(entity))
+
+    def invite_members(self, gap: float = 1.0):
+        """Leader moi TAT CA entity member cung party (tru minh) bang 0x0d sub=07.
+        Bot da biet entity member qua _PARTY_ENTITIES (chia se trong process khi login)."""
+        ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
+        log.info("[%s] (LEADER) moi %d member theo entity: %s",
+                 self._label, len(ents), [e.hex()[:8] for e in ents])
+        for e in ents:
+            self.invite_entity(e)
+            time.sleep(gap)
+
+    def leave_party(self):
+        """Roi/giai tan party hien tai (de co the VAO DI GIOI - khong vao duoc khi dang trong party).
+        Gui giai tan 0x0d sub=04 voi self_entity: neu minh la leader -> tan ca party;
+        member -> server bo qua (vo hai). Goi cho MOI bot truoc khi vao DG de don party sot."""
+        if not self.self_entity:
+            return
+        self.send(protocol.OP_PLAYER_STATE, b"\x04\x00" + self.self_entity)
+        log.info("[%s] Roi/giai tan party cu (truoc khi vao DG)", self._label)
+
+    def set_strategist(self, entity: bytes = None):
+        """Set quan su (SP regen moi turn). C2S 0x0d sub=05 = 0d 05 00 [entity].
+        entity=None -> dung self_entity (party 2 nguoi target ngam = nguoi con lai)."""
+        ent = entity or self.self_entity
+        if not ent:
+            return
+        self.send(protocol.OP_PLAYER_STATE, b"\x05\x00" + ent)
+        log.info("[%s] Set quan su entity=%s", self._label, ent.hex()[:12])
+
+    def set_party_strategist(self):
+        """Leader set quan su -> SP regen cho party. CHON member da JOIN co INT CAO NHAT
+        (INT cao = hoi SP tot hon khi lam quan su). Chua biet INT thi lay member dau tien."""
+        joined = [e for e in _PARTY_JOINED.get(self.party_idx, set()) if e != self.self_entity]
+        ents = joined or [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
+        if not ents:
+            log.warning("[%s] (LEADER) khong co member de set quan su", self._label)
+            return
+        best = best_int_member(self.party_idx, ents)
+        chosen = best or ents[0]
+        ival = _PARTY_INT.get(self.party_idx, {}).get(chosen)
+        self.set_strategist(chosen)
+        log.info("[%s] (LEADER) set quan su = member %s (INT=%s)%s",
+                 self._label, chosen.hex()[:8], ival,
+                 "" if best else " [chua biet INT -> chon dau tien]")
+
+    def increase_stat(self, stat_id: int, amount: int = 1):
+        """Tang 1 chi so. C2S 0x08 = 01 00 00 00 [stat_id] [amount] 00 00 00 00
+        (xac nhan tu int.pcap: tang INT id=0x1b). Dung cho auto cong diem sau nay."""
+        self.send(0x08, b"\x01\x00\x00\x00" + bytes([stat_id & 0xFF, amount & 0xFF]) + b"\x00\x00\x00\x00")
+        log.info("[%s] Tang stat id=0x%02x +%d", self._label, stat_id, amount)
+
     def move_to(self, x: int, y: int):
-        """C2S 0x06: di chuyen nhan vat toi (x,y). Server tu di toi do."""
+        """C2S 0x06: di chuyen nhan vat toi (x,y). Server tu di toi do.
+        Dead-reckoning: server KHONG echo vi tri minh -> tu nho pos = diem vua gui di."""
         self.send(0x06, b"\x01\x00\x01" + struct.pack("<HH", x, y))
+        self.pos = (x, y)
 
     def in_di_gioi(self) -> bool:
         """Dang o map Di Gioi? Doc map_id thuc te (khong dua vao so kenh)."""
@@ -701,34 +805,43 @@ class GameClient:
         self._running_route = False
 
     def _run_around_loop(self, stay_in_di_gioi):
-        offsets = getattr(config, "RUN_AROUND_OFFSETS", [])
-        wait = getattr(config, "RUN_STEP_WAIT", 2.5)
-        if not offsets:
+        if not getattr(config, "RUN_AROUND_OFFSETS", []):
             self._running_route = False
             return
-        # cho biet vi tri hien tai (anchor) - move 1 phat de server tra vi tri neu chua co
-        for _ in range(10):
-            if self.pos:
-                break
-            time.sleep(0.5)
-        anchor = self.pos
-        if anchor is None:
-            log.warning("[%s] Chua biet vi tri -> khong run-around", self._label)
-            self._running_route = False
-            return
+        # Anchor = vi tri hien tai (dead-reckoning: set khi vao Di Gioi / lenh move cuoi).
+        # Server KHONG echo vi tri minh -> dua vao pos tu nho. Chua biet -> fallback spawn Di Gioi.
+        anchor = self.pos or getattr(config, "RUN_FALLBACK_ANCHOR", (870, 740))
         ax, ay = anchor
-        log.info("[%s] Run-around quanh (%d,%d), %d waypoint", self._label, ax, ay, len(offsets))
+        log.info("[%s] Run-around quanh (%d,%d)", self._label, ax, ay)
         i = 0
         while self.running and self._running_route:
-            if stay_in_di_gioi and not self.in_di_gioi():
-                break
-            if self.in_combat():          # dang danh -> dung di chuyen, cho het tran
-                time.sleep(1.5)
+            # neu (co ve) da roi DG -> TAM DUNG, KHONG break (phong doc nham map nguoi khac:
+            # map se flip lai DG -> chay tiep; neu roi that su -> pause vo hai). map=None -> cu chay.
+            if stay_in_di_gioi and self.current_map is not None and self.current_map != config.DIGIOI_MAP_ID:
+                time.sleep(1.0)
                 continue
+            if self.in_combat(getattr(config, "RUN_RESUME_IDLE", 2.0)):
+                # dang danh -> TAM DUNG di chuyen, GIU nguyen diem dang di.
+                # nguong 2.0s (thay 4.0) -> het tran resume nhanh hon; van an toan vi co logic
+                # "khong tang i khi bi gian doan" + move giua tran bi server bo qua.
+                time.sleep(0.3)
+                continue
+            offsets = getattr(config, "RUN_AROUND_OFFSETS", []) or [(0, 0)]   # doc lai moi vong (tune live)
             dx, dy = offsets[i % len(offsets)]
             self.move_to(ax + dx, ay + dy)
-            i += 1
-            time.sleep(wait)
+            # cho char di toi diem; neu GIUA CHUNG vao combat -> KHONG tang i (lan sau gui lai diem nay,
+            # tranh "bo diem/di tat"). Chi sang diem ke khi di tron 1 buoc khong bi gian doan.
+            wait = getattr(config, "RUN_STEP_WAIT", 0.8)
+            interrupted = False
+            slept = 0.0
+            while slept < wait:
+                step = min(0.1, wait - slept)
+                time.sleep(step); slept += step
+                if self.in_combat():
+                    interrupted = True
+                    break
+            if not interrupted:
+                i += 1
         self._running_route = False
         log.info("[%s] Dung run-around", self._label)
 
@@ -739,7 +852,33 @@ class GameClient:
         log.info("[%s] Vao Di Gioi: gui 0x61 010001", self._label)
         time.sleep(1.5)                              # cho server load zone
         self.send(0x61, bytes.fromhex("020002"))   # xac nhan vao
-        log.info("[%s] Vao Di Gioi: gui 0x61 020002 (xong)", self._label)
+        # spawn Di Gioi co dinh -> set pos (server khong echo, dung dead-reckoning tu day)
+        self.pos = getattr(config, "RUN_FALLBACK_ANCHOR", (870, 740))
+        log.info("[%s] Vao Di Gioi: gui 0x61 020002 (xong), spawn pos=%s", self._label, self.pos)
+
+    def enter_di_gioi_safe(self, tries: int = 12, wait: float = 3.0) -> bool:
+        """Vao DI GIOI co retry, ne 2 case fail:
+          - current_map=None  -> CHUA vao world xong (login chua xong) -> cho.
+          - in_combat()       -> dang KET BATTLE (login ngay bai quai) -> cho het tran (battle chan vao DG).
+        Gui 0x61 khi san sang, lap lai cho toi khi in_di_gioi()=True."""
+        for i in range(tries):
+            if self.in_di_gioi():
+                return True
+            if self.current_map is None:
+                log.info("[%s] cho vao world xong (map chua co)... (%d)", self._label, i + 1)
+                time.sleep(wait); continue
+            if self.in_combat():
+                log.info("[%s] dang ket battle -> cho het tran roi vao DG... (%d)", self._label, i + 1)
+                time.sleep(wait); continue
+            self.enter_di_gioi()
+            time.sleep(wait)
+            if self.in_di_gioi():
+                log.info("[%s] da VAO DI GIOI (map=%s)", self._label, self.current_map)
+                return True
+        log.warning("[%s] VAO DI GIOI THAT BAI sau %d lan (map=%s, combat=%s) "
+                    "-> nhieu kha nang HET GIO DI GIOI hom nay",
+                    self._label, tries, self.current_map, self.in_combat())
+        return False
 
     def go_to_town(self, city_id: int, flag: int = 0, tries: int = 30, wait: float = 2.0):
         """Teleport ve thanh, LAP LAI cho toi khi RA KHOI map hien tai (neu dang o bai quai/

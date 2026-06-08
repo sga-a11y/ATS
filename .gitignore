@@ -25,3 +25,7 @@ __pycache__/
 *.pyc
 test_digioi.py
 dump_*.txt
+test_run.py
+
+# Helper capture tam
+capture_member.py

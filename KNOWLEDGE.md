@@ -141,7 +141,11 @@ Pattern entries: `03 02 [type] [4-byte LE]`
 |------|-----|---------|
 | 25 | 0x19 | HP current |
 | 26 | 0x1a | SP current |
+| 27 | 0x1b | **INT (tri luc)** — tang dame skill + hoi SP tot khi lam quan su (KHONG tang SP max). Khi CONG DIEM: S2C 0x08 `01 00 1b 01 [val 2B]`. LUC LOGIN: nam trong gói char-info **S2C 0x05** (payload ~252B) tai **payload offset 9** (=pkt[16]). Xac nhan int2.pcap (login 4->5). |
 | 205 | 0xcd | HP max |
+
+### Tang chi so (cong diem stat)
+- **C2S 0x08:** `01 00 00 00 [stat_id 1B] [amount 1B] 00 00 00 00` — vd tang INT 1 diem = `01 00 00 00 1b 01 00 00 00 00`. Xac nhan int.pcap. Dung cho auto cong diem.
 
 ### S2C 0x0b — Full stats
 **Char/Pet:** `03 0X [HP_max 4B] [SP_max 4B] [HP_cur 4B] [SP_cur 4B]`
@@ -190,7 +194,7 @@ Byte SUB quyết định hành động. Tất cả reference **self entity** (ta
 
 | Hành động | Dir | Opcode | SUB | Cấu trúc | Ghi chú |
 |-----------|-----|--------|-----|----------|---------|
-| Mời vào party | C2S | 0x52 | — | `c0910c00000052 0100 [01 16 00]` | 0x16 = index người mời trong list |
+| Mời vào party | C2S | 0x0d | **07** | `0d 07 00 [member_entity 8B]` | MỜI THEO ENTITY người được mời — ĐÃ XÁC NHẬN (invite_dg.pcap). KHÔNG dùng 0x52/index! |
 | Set quân sư | C2S | 0x0d | **05** | `0d 05 00 [self_entity]` | cho SP regen — ĐÃ XÁC NHẬN |
 | Demote → thường | C2S | 0x0d | **06** | `0d 06 00 [self_entity]` | bỏ quân sư — ĐÃ XÁC NHẬN |
 | Kick member | C2S | 0x0d | **0a** | `0d 0a 00 [self_entity]` | đuổi member — ĐÃ XÁC NHẬN (isolated) |
