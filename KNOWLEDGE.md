@@ -120,6 +120,21 @@ S2C 0x34 (battle start — thay cho 0x41!)
 
 ## 6. STATS PACKETS
 
+### LƯỚI BATTLE: 4 HÀNG × tối đa 5 CỘT (KEY cho target + buff)
+Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 = CỘT.**
+
+| b1 | Hàng | Ghi chú |
+|----|------|---------|
+| 0 | Quái hàng 1 (trước) | b2 = cột quái |
+| 1 | Quái hàng 2 (sau) | b2 = cột quái |
+| 2 | **Pet** đội mình | b2 = vị trí member (0-4) |
+| 3 | **Char** đội mình | b2 = vị trí member (0-4) |
+
+**Combat 0x32 target encoding:** `byte b = HÀNG ĐÍCH`, `target = CỘT`:
+- Đánh quái hàng trước: b=0, target=cột | hàng sau: b=1, target=cột
+- (Heal/buff đồng đội → b=2 nhắm pet, b=3 nhắm char; target=cột member). 0x35 offer = danh sách CỘT.
+- Vị trí nội bộ bot dùng: `pos = b1*10 + b2` (hàng=pos//10, cột=pos%10).
+
 ### S2C 0x33 — Stats per turn
 Pattern entries: `03 02 [type] [4-byte LE]`
 | type | Hex | Thông số |
