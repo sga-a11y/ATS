@@ -309,6 +309,13 @@ S2C 0x57 ket qua: [02 00][01][status]
   -> scan AN TOAN (chi 1 ngay status=0). Xac nhan checkin.pcap + test sga001/003.
 - Logic o client.claim_checkin(). Goi luc login trong run_party_digioi + bot_standalone.
 
+**0x57 type khac (cung co che [02 00][type][day 4B][01], status 0=OK/2=da nhan/5=chua toi):**
+- type=01: diem danh hang ngay
+- type=03: qua online (id = so phut moc)
+- type=04: **QUA 14 NGAY user moi** (day 1..14, nhan het thi dung). client.claim_14day_gift().
+- Code chung: client._claim_daily_gift(kind, gtype, max_day, name, finite). State checkin_state.json
+  key "label:kind".
+
 ## 7h. EXP OFFLINE (opcode 0x54)
 
 Nhan exp tich luy khi offline (bang hien luc login).

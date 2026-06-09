@@ -152,18 +152,18 @@ def _save_gift_state(label: str, online_sec: float, claimed: set):
 # ---- State DIEM DANH (so lan da diem danh) ----
 _CHECKIN_FILE = "checkin_state.json"
 
-def _load_checkin(label: str) -> dict:
-    """{'date': 'YYYY-MM-DD', 'day': N} - lan diem danh gan nhat."""
+def _load_checkin(label: str, kind: str = "checkin") -> dict:
+    """{'date': 'YYYY-MM-DD', 'day': N} - lan nhan gan nhat (kind: checkin / gift14 / ...)."""
     import json, os
     if not os.path.exists(_CHECKIN_FILE):
         return {"date": "", "day": 0}
     try:
         with open(_CHECKIN_FILE, encoding="utf-8") as f:
-            return json.load(f).get(label, {"date": "", "day": 0})
+            return json.load(f).get(f"{label}:{kind}", {"date": "", "day": 0})
     except Exception:
         return {"date": "", "day": 0}
 
-def _save_checkin(label: str, date: str, day: int):
+def _save_checkin(label: str, kind: str, date: str, day: int):
     import json, os
     with _gift_lock:
         data = {}
@@ -173,7 +173,7 @@ def _save_checkin(label: str, date: str, day: int):
                     data = json.load(f)
             except Exception:
                 data = {}
-        data[label] = {"date": date, "day": day}
+        data[f"{label}:{kind}"] = {"date": date, "day": day}
         try:
             with open(_CHECKIN_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f)
@@ -236,7 +236,7 @@ class GameClient:
         self._username = ""          # username login (giu lai de tham chieu)
         self.char_name = None        # ten nhan vat trong game (tu 0x27 theo self_entity)
         self.char_int = None         # chi so INT (tri luc) - tu S2C 0x08 id=0x1b
-        self._checkin_status = None   # status phan hoi diem danh (S2C 0x57 type=01)
+        self._gift_status = {}        # gtype -> status phan hoi (S2C 0x57: 01 diem danh, 04 qua 14 ngay)
         self._last_guild_pkt = None   # cache goi 0x27 (guild) de resolve ten neu toi truoc 0x69
         self.flee_mode = False        # True = dang di chuyen -> vao battle thi BO CHAY (khong danh)
         self.submit_delay = 0.5      # delay truoc khi gui combat
@@ -700,49 +700,55 @@ class GameClient:
         _save_gift_state(self._label, online_sec, self.claimed_gifts)
         return all(m in self.claimed_gifts for m in milestones)
 
-    def _checkin_claim(self, day: int, wait: float = 1.5) -> int:
-        """Gui 1 goi nhan diem danh ngay 'day': C2S 0x57 02 00 01 [day 4B LE] 01.
-        Tra ve status (0=OK; !=0 that bai/da nhan; -1 khong co phan hoi)."""
-        self._checkin_status = None
-        self.send(0x57, b"\x02\x00\x01" + struct.pack("<I", day) + b"\x01")
+    def _gift_claim(self, gtype: int, day: int, wait: float = 1.5) -> int:
+        """Gui 1 goi nhan qua ngay 'day': C2S 0x57 02 00 [gtype] [day 4B LE] 01.
+        gtype: 01=diem danh, 04=qua 14 ngay. Tra ve status (0=OK; 2=da nhan; 5=chua toi; -1 ko phan hoi)."""
+        self._gift_status[gtype] = None
+        self.send(0x57, b"\x02\x00" + bytes([gtype]) + struct.pack("<I", day) + b"\x01")
         t = time.time()
         while time.time() - t < wait:
-            if self._checkin_status is not None:
-                return self._checkin_status
+            if self._gift_status.get(gtype) is not None:
+                return self._gift_status[gtype]
             time.sleep(0.1)
         return -1
 
-    def claim_checkin(self):
-        """DIEM DANH hang ngay (theo SO LAN diem danh: hom nay day=N -> mai N+1).
-        Bot tu dem + luu (checkin_state.json). 1 lan/ngay. LUU 'da xong hom nay' du khong
-        nhan duoc gi -> lan login sau KHONG scan lai (tranh spam)."""
+    def _claim_daily_gift(self, kind: str, gtype: int, max_day: int, name: str, finite: bool = False):
+        """Nhan qua theo NGAY (so lan nhan: hom nay day=N -> mai N+1). 1 lan/ngay, tu dem + luu.
+        finite=True (vd qua 14 ngay): nhan het max_day thi DUNG han. Status: 0=OK,2=da nhan,5=chua toi."""
         import datetime
         today = datetime.date.today().isoformat()
-        st = _load_checkin(self._label)
+        st = _load_checkin(self._label, kind)
         if st.get("date") == today:
-            return True   # da xu ly hom nay roi -> bo qua (khong scan)
-        # 1) Biet so dem -> thu day = day+1 (truong hop binh thuong, 1 goi la xong)
-        if st.get("day", 0) > 0:
-            if self._checkin_claim(st["day"] + 1) == 0:
-                _save_checkin(self._label, today, st["day"] + 1)
-                log.info("[%s] Diem danh ngay %d OK", self._label, st["day"] + 1)
+            return True
+        if finite and st.get("day", 0) >= max_day:
+            return True   # da nhan het (vd ngay 14) -> khong lam nua
+        # 1) Biet so dem -> thu day+1 (binh thuong 1 goi la xong)
+        if 0 < st.get("day", 0) < max_day:
+            if self._gift_claim(gtype, st["day"] + 1) == 0:
+                _save_checkin(self._label, kind, today, st["day"] + 1)
+                log.info("[%s] %s ngay %d OK", self._label, name, st["day"] + 1)
                 return True
-        # 2) Lan dau / desync -> quet tim ngay hien tai. status=2 = ngay da nhan (luu so dem).
-        last_claimed = st.get("day", 0)
-        for d in range(1, 41):
-            s = self._checkin_claim(d)
+        # 2) Lan dau / desync -> quet 1..max_day
+        last = st.get("day", 0)
+        for d in range(1, max_day + 1):
+            s = self._gift_claim(gtype, d)
             if s == 0:
-                _save_checkin(self._label, today, d)
-                log.info("[%s] Diem danh ngay %d OK (scan)", self._label, d)
+                _save_checkin(self._label, kind, today, d)
+                log.info("[%s] %s ngay %d OK (scan)", self._label, name, d)
                 return True
             if s == 2:
-                last_claimed = max(last_claimed, d)
-        # Khong co ngay nao nhan duoc -> da diem danh hom nay roi. LUU lai (date=today + so dem)
-        # de lan login sau khoi scan.
-        _save_checkin(self._label, today, last_claimed)
-        log.info("[%s] Da diem danh hom nay roi (ngay %d) -> luu, lan sau khoi scan",
-                 self._label, last_claimed)
+                last = max(last, d)
+        _save_checkin(self._label, kind, today, last)
+        log.info("[%s] %s: da nhan hom nay roi (ngay %d) -> luu", self._label, name, last)
         return True
+
+    def claim_checkin(self):
+        """DIEM DANH hang ngay (0x57 type=01)."""
+        return self._claim_daily_gift("checkin", 0x01, 40, "Diem danh")
+
+    def claim_14day_gift(self):
+        """QUA 14 NGAY user moi (0x57 type=04). Nhan het 14 ngay thi dung."""
+        return self._claim_daily_gift("gift14", 0x04, 14, "Qua 14 ngay", finite=True)
 
     def claim_legion_gift(self):
         """Nhan qua QUAN DOAN hang ngay. C2S 0x27 [69 00] -> server tra reward (0x17).
@@ -762,9 +768,9 @@ class GameClient:
             return
         if int.from_bytes(pkt[7:9], "little") == 0x02:
             gtype = pkt[9]; status = pkt[10]
-            if gtype == 0x01:                      # DIEM DANH (log DEBUG -> khong spam khi scan)
-                self._checkin_status = status
-                log.debug("[%s] Diem danh: status=%d", self._label, status)
+            if gtype in (0x01, 0x04):              # diem danh / qua 14 ngay (log DEBUG -> ko spam scan)
+                self._gift_status[gtype] = status
+                log.debug("[%s] Gift type=%d: status=%d", self._label, gtype, status)
             else:                                  # qua online (type=03)
                 log.info("[%s] Qua online: %s", self._label,
                          "THANH CONG" if status == 0 else f"status={status}")

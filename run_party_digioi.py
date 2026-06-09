@@ -73,7 +73,8 @@ def run_account(username, password, pidx, is_leader):
         log.info("[%s] (%s) vao world.", label, role)
         log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
                  label, c.current_map)
-        c.claim_checkin()   # diem danh hang ngay (tu dem so lan)
+        c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
+        c.claim_14day_gift()    # qua 14 ngay user moi
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
 
         # MODE theo START_CITY_ID: CO trong train_maps.json -> MAP-TRAIN; con lai (0 / DG / bat ky)
