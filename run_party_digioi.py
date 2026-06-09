@@ -45,9 +45,10 @@ def _pstate(pidx):
     return _party_state[pidx]
 
 
-def run_account(username, password, pidx, is_leader):
+def run_account(username, password, pidx, is_leader, is_picker=False):
     label = username
     role = "LEADER" if is_leader else "member"
+    has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None
     st = _pstate(pidx)
     try:
         # --- Login + cho vao world THUC SU (co self_entity VA co current_map) ---
@@ -110,16 +111,17 @@ def run_account(username, password, pidx, is_leader):
                     log.warning("[%s] (member) KHONG o map train %s (dang o %s) -> THOAT GAME acc nay",
                                 label, sc, c.current_map)
                     _quit(); return
-                # doi leader quyet dinh (ok / huy), toi da 150s
-                t0 = time.time()
-                while not (st["leader_ok"].is_set() or st["leader_bad"].is_set()):
-                    if time.time() - t0 > 150:
-                        log.warning("[%s] (member) khong thay leader quyet dinh -> THOAT", label)
+                # CO bot-leader -> doi leader quyet dinh (ok/huy). KHONG co leader -> tu di tiep.
+                if has_leader:
+                    t0 = time.time()
+                    while not (st["leader_ok"].is_set() or st["leader_bad"].is_set()):
+                        if time.time() - t0 > 150:
+                            log.warning("[%s] (member) khong thay leader quyet dinh -> THOAT", label)
+                            _quit(); return
+                        time.sleep(0.5)
+                    if st["leader_bad"].is_set():
+                        log.warning("[%s] (member) leader sai map -> ca party huy -> THOAT", label)
                         _quit(); return
-                    time.sleep(0.5)
-                if st["leader_bad"].is_set():
-                    log.warning("[%s] (member) leader sai map -> ca party huy -> THOAT", label)
-                    _quit(); return
             # --- MAP-TRAIN: chay toi diem AN TOAN (dinh battle -> flee) ---
             log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem an toan %s",
                      label, role, sc, tm["safe"])
@@ -135,24 +137,22 @@ def run_account(username, password, pidx, is_leader):
                 if c in _clients: _clients.remove(c)
                 return
 
-        # ===== LAP PARTY + CAY (map-train hoac DI GIOI deu lap party) =====
-        # --- Chon / dong bo KENH ---
-        if is_leader:
+        # ===== DONG BO KENH (1 dua chon kenh it nguoi -> ca lu sang cung) =====
+        if is_picker:
             ch = c.pick_best_channel()
             st["channel"] = ch
             st["channel_ready"].set()
-            log.info("[%s] (LEADER) chon kenh %s cho ca party", label, ch)
+            log.info("[%s] (%s) chon kenh %s cho ca party", label, role, ch)
         else:
             st["channel_ready"].wait(60)
             ch = st["channel"]
             if ch:
                 c.switch_channel(ch)
-                log.info("[%s] (member) chuyen sang kenh leader = %s", label, ch)
+                log.info("[%s] (member) chuyen sang kenh chung = %s", label, ch)
             time.sleep(2)
+        if not is_leader:
             with st["lock"]:
                 st["ready_members"].add(username)
-            log.info("[%s] (member) SAN SANG (%d/%d) - cho leader moi",
-                     label, len(st["ready_members"]), st["n_members"])
         time.sleep(2)
 
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
@@ -200,11 +200,16 @@ def run_account(username, password, pidx, is_leader):
                 c.start_run_around()        # DG: chay long vong tim quai
                 log.info("[%s] (LEADER) bat dau chay long vong.", label)
         else:
-            st["invited"].wait(120)
+            if has_leader:
+                st["invited"].wait(120)   # cho bot-leader moi
             if train_on_map:
                 c.combat_ready()   # combat-active de join tran chung; KHONG chay (dung yen tai safe)
-                c.flee_mode = False   # da lap party xong -> ngung flee (de join tran chung voi leader)
-            log.info("[%s] (member) da vao party - dung yen, tu danh (chung tran voi leader)", label)
+                c.flee_mode = False   # ngung flee -> join tran chung khi co leader (bot/tay) dan
+            if has_leader:
+                log.info("[%s] (member) da vao party - dung yen tai safe, tu danh", label)
+            else:
+                log.info("[%s] (member) KHONG co bot-leader -> dung yen tai safe (kenh %s), "
+                         "auto-accept - CHO ban moi party tay", label, st.get("channel"))
 
         # --- Giu song ---
         out_cnt = 0
@@ -238,9 +243,14 @@ for pidx, party in enumerate(config.PARTIES):
     valid = [(u, p) for u, p in party if u and u.strip()]
     st = _pstate(pidx)
     st["n_members"] = sum(1 for u, p in valid if u != leader_acc)   # so member (khong tinh leader)
+    # Nguoi CHON KENH de gom ca party ve cung kenh: leader neu co, khong thi acc DAU TIEN.
+    # (chi chon kenh, KHONG lam leader: khong moi/khong set quan su.)
+    picker_acc = leader_acc if leader_acc else (valid[0][0] if valid else None)
     for u, p in valid:
         is_leader = (u == leader_acc)
-        threading.Thread(target=run_account, args=(u, p, pidx, is_leader), daemon=True).start()
+        is_picker = (u == picker_acc)
+        threading.Thread(target=run_account, args=(u, p, pidx, is_leader, is_picker),
+                         daemon=True).start()
         time.sleep(1.5)
 
 log.info(">>> Party train Di Gioi dang chay. %s", "vo han" if MINUTES == 0 else f"{MINUTES} phut")
