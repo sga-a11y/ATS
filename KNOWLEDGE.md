@@ -336,6 +336,33 @@ S2C 0x1a sau do:    +exp vao nhan vat (vd 0x12c = 300 exp)
 - => Dung config.PET_AOE_SKILL { pet_id: skill_aoe } (None=danh thuong). Bot doc pet_id luc
   login -> tra map -> decide_pet dung dung skill. Tong quat moi skill combo (Hoa Tien/Nem Da/...).
 
+## 7j. PARTY-TRAIN MAP THUONG + COMBAT-ACTIVE (QUAN TRONG!)
+
+**Van de:** bot dung yen tren map thuong -> quai CHAY NGANG QUA, KHONG aggro (trong khi char that
+dung yen thi quai lao vao danh). Di Gioi thi danh duoc binh thuong.
+
+**Goc re:** char phai o trang thai **COMBAT-ACTIVE** thi mob-AI moi aggro. Trang thai nay bat bang
+**chuoi C2S gui NGAY SAU AUTH** (client that gui luc login, bot khong gui -> server coi bot
+"co mat nhung AI bo qua"). Chuoi (xem login.pcap), gui ngay sau auth trong `connect()`:
+```
+0x19 2900f0 | 0x2b 0400 | 0x01 1000 | 0x7c 0400 | 0x41 0200 | 0x0c 0100 |
+0x57 0300 | 0x01 1000 | 0x62 020001000000 | 0x41 01003235010100000101000000
+```
+Quan trong nhat: **0x41 `01003235010100000101000000`** = "dang ky san sang battle".
+
+**Bay cuc khó:** DOI KENH (0x07 switch_channel) + LAP PARTY **RESET** trang thai combat-active.
+Gui lai MOI 1 goi 0x41 KHONG du -> phai gui lai **TOAN BO chuoi setup** (`combat_ready()` =
+`_login_setup()`) SAU khi da doi kenh + lap party + toi diem quai. Luc do quai moi aggro.
+
+**Di Gioi KHAC:** vao tran kieu va-cham/dong quai khi DI CHUYEN -> khong can combat-active.
+Map thuong DUNG YEN -> BAT BUOC combat-active.
+
+**Toa do:** packet == toa do UI trong game (590,870 UI = 590,870 packet). (Luu y: dung capture
+nham DEVICE khac -> toa do/hanh vi sai lung tung. Luon capture dung MuMu dang dieu khien!)
+
+**Code:** client._login_setup() goi trong connect(); client.combat_ready() goi o diem quai sau
+khi lap party; run_party_digioi mode map-train doc train_maps.json.
+
 ## 8. GAME MECHANICS
 
 | Mechanic | Mô tả |
