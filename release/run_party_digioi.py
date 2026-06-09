@@ -91,15 +91,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
         train_on_map = tm is not None
 
-        # SOLO daily dungeon: map-train chay mai khong co "luc xong" -> lam NGAY luc login
-        # (truoc khi vao party-train). DG thi lam SAU khi het gio (xem cuoi vong lap).
-        # Daily-count chong lam trung trong ngay nen an toan.
-        if train_on_map:
-            try:
-                c.do_daily_dungeon()
-            except Exception as e:
-                log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
-
         if train_on_map:
             # PHAI dung map login (toa do safe/mobs chi dung tren map do).
             self_map_ok = (login_map == sc)
@@ -135,6 +126,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem an toan %s",
                      label, role, sc, tm["safe"])
             c.navigate_to(*tm["safe"])
+            # SOLO daily dungeon: map-train chay mai khong co "luc xong" -> lam o day
+            # (da ve safe, flee sach tran, dang dung yen -> vao dungeon chac chan).
+            # DG thi lam SAU khi het gio (xem cuoi vong lap). Daily-count chong lam trung.
+            try:
+                c.do_daily_dungeon()
+            except Exception as e:
+                log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
+            c.navigate_to(*tm["safe"])   # dungeon xong tra ve map cu -> ve lai safe
         else:
             # --- DI GIOI (solo) - ne battle/chua login xong, retry ---
             if c.in_di_gioi():
