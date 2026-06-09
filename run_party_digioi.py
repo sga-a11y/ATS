@@ -76,7 +76,10 @@ def run_account(username, password, pidx, is_leader):
         if c.in_di_gioi():
             log.info("[%s] (%s) da o trong DG san -> chay luon (khong vao lai)", label, role)
         elif not c.enter_di_gioi_safe():
-            log.error("[%s] (%s) khong vao duoc DG -> bo qua acc nay", label, role)
+            log.warning("[%s] (%s) khong vao duoc DG (het gio?) -> TAT acc nay", label, role)
+            try: c.close()
+            except Exception: pass
+            if c in _clients: _clients.remove(c)
             return
 
         # --- Chon / dong bo KENH ---
@@ -137,11 +140,24 @@ def run_account(username, password, pidx, is_leader):
             st["invited"].wait(120)             # cho leader moi xong
             log.info("[%s] (member) da vao party - tu follow leader + tu danh", label)
 
-        # --- Giu song ---
+        # --- Giu song ---  (het gio DG giua chung -> bi day ra thanh -> TAT acc)
+        out_cnt = 0
         while c.running:
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
+            # roi DG (map biet & khac DG) lien tuc -> het gio DG -> dong acc
+            if c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
+                out_cnt += 1
+                if out_cnt >= 4:   # ~20s lien tuc ngoai DG
+                    log.warning("[%s] (%s) het gio DG (ra thanh map=%s) -> TAT acc",
+                                label, role, c.current_map)
+                    break
+            else:
+                out_cnt = 0
+        try: c.close()
+        except Exception: pass
+        if c in _clients: _clients.remove(c)
     except Exception as e:
         log.error("[%s] LOI: %s", label, e)
 
