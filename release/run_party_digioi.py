@@ -97,6 +97,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             # PHAI dung map login (toa do safe/mobs chi dung tren map do).
             self_map_ok = (login_map == sc)
             def _quit():
+                # member thoat -> giam n_members de leader khong cho phantom member (treo 180s)
+                if not is_leader:
+                    with st["lock"]:
+                        st["n_members"] = max(0, st["n_members"] - 1)
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
