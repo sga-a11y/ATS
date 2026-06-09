@@ -152,7 +152,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             st["channel_ready"].set()
             log.info("[%s] (%s) chon kenh %s cho ca party", label, role, ch)
         else:
-            st["channel_ready"].wait(60)
+            # cho LAU (420s): picker co the dang danh dungeon, xong moi chon kenh -> dung time-out som
+            st["channel_ready"].wait(420)
             ch = st["channel"]
             if ch:
                 c.switch_channel(ch)
