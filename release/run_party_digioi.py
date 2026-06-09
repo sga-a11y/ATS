@@ -76,6 +76,10 @@ def run_account(username, password, pidx, is_leader):
         log.info("[%s] (%s) vao world.", label, role)
         log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
                  label, login_map)
+        # MAP-TRAIN: bat flee NGAY tu login -> moi tran (truoc khi lap party) deu BO CHAY,
+        # khong danh lung tung; chi tat flee khi da vao diem train.
+        if config.TRAIN_MAPS.get(getattr(config, "START_CITY_ID", 0)) is not None:
+            c.flee_mode = True
         c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
         c.claim_14day_gift()    # qua 14 ngay user moi
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
@@ -190,6 +194,7 @@ def run_account(username, password, pidx, is_leader):
             if train_on_map:
                 c.move_to(*tm["mobs"][0])   # ra diem quai, dung yen cho quai toi (toa do == UI)
                 c.combat_ready()            # combat-active lai (doi kenh da reset) -> quai aggro
+                c.flee_mode = False         # toi noi roi -> NGUNG flee, bat dau DANH
                 log.info("[%s] (LEADER) ra diem quai %s dung cay.", label, tm["mobs"][0])
             else:
                 c.start_run_around()        # DG: chay long vong tim quai
@@ -198,6 +203,7 @@ def run_account(username, password, pidx, is_leader):
             st["invited"].wait(120)
             if train_on_map:
                 c.combat_ready()   # combat-active de join tran chung; KHONG chay (dung yen tai safe)
+                c.flee_mode = False   # da lap party xong -> ngung flee (de join tran chung voi leader)
             log.info("[%s] (member) da vao party - dung yen, tu danh (chung tran voi leader)", label)
 
         # --- Giu song ---

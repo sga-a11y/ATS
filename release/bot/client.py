@@ -985,22 +985,20 @@ class GameClient:
                     max_iter: int = 30):
         """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> BO CHAY (flee_mode)
         roi di tiep. Coi nhu da toi sau 'clean_needed' chu ky di KHONG bi battle.
-        (Server khong echo vi tri minh -> dung heuristic so chu ky sach.)"""
+        (Server khong echo vi tri minh -> dung heuristic so chu ky sach.)
+        LUU Y: KHONG tu tat flee_mode - caller quan ly (flee suot tu login den khi vao train)."""
         self.flee_mode = True
         clean = 0
-        try:
-            for _ in range(max_iter):
-                if self.in_combat():
-                    time.sleep(1.0)     # turn handler dang lo flee
-                    clean = 0
-                    continue
-                self.move_to(x, y)
-                time.sleep(step)
-                clean += 1
-                if clean >= clean_needed:
-                    break
-        finally:
-            self.flee_mode = False
+        for _ in range(max_iter):
+            if self.in_combat():
+                time.sleep(1.0)     # turn handler dang lo flee
+                clean = 0
+                continue
+            self.move_to(x, y)
+            time.sleep(step)
+            clean += 1
+            if clean >= clean_needed:
+                break
         self.pos = (x, y)
         log.info("[%s] da toi diem (%d,%d)", self._label, x, y)
 
