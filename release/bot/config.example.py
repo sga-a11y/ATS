@@ -82,7 +82,7 @@ PET_FIRE_MIN_SP = 15        # pet SP >= 15 moi xet skill AoE
 def _load_pets():
     import json, os
     f = os.path.join(os.path.dirname(__file__), os.pardir, "pets.json")
-    skills, names = {}, {}
+    skills, names, boss = {}, {}, {}
     try:
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh)
@@ -90,10 +90,12 @@ def _load_pets():
             pid = int(k, 16)
             skills[pid] = set(v.get("skills", []))
             names[pid] = v.get("name", "")
+            if v.get("boss_skill"):
+                boss[pid] = v["boss_skill"]
     except Exception:
         pass
-    return skills, names
-PET_SKILLS, PET_NAMES = _load_pets()   # pet_id -> set(skill_id) / ten pet
+    return skills, names, boss
+PET_SKILLS, PET_NAMES, PET_BOSS_SKILL = _load_pets()   # pet_id -> set(skill_id) / ten pet
 
 # Skill dung de COMBO TRAINING (AoE hang ngang). Uu tien tu trai sang (re SP truoc).
 # Unit nao co 1 trong cac skill nay -> dung de combo. Sau nay event/boss co list khac.
@@ -106,6 +108,7 @@ SKILL_SP_COST = {
     13013: 49,   # Loan Kich
     11010: 42,   # Toan Tri Lieu
     11004: 22,   # Thanh Luu
+    12009: 30,   # Hoa Kiem (danh don, boss)
 }
 
 # Skill IDs

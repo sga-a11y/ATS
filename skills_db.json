@@ -74,6 +74,15 @@
       "priority": null,
       "notes": "Pet skill. TBD."
     },
+    "12009": {
+      "id": 12009,
+      "name": "Hoa Kiem",
+      "type": "attack",
+      "aoe": false,
+      "cooldown": 0,
+      "priority": 5,
+      "notes": "Danh don manh - pet dung khi danh BOSS (dungeon). SP 30."
+    },
     "13013": {
       "id": 13013,
       "name": "Loan Kich",
