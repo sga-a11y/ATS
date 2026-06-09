@@ -65,6 +65,27 @@ def best_int_member(party_idx, candidates):
     return max(known, key=lambda x: x[1])[0]
 
 
+def check_duplicate_accounts(parties):
+    """Kiem tra 1 username dien o NHIEU noi trong config.PARTIES -> raise ValueError de bao loi
+    ngay luc khoi dong (con biet duong sua config)."""
+    seen = {}          # username -> (party_idx, slot_idx)
+    dups = []
+    for pi, party in enumerate(parties or []):
+        for si, acc in enumerate(party or []):
+            if not (acc and acc[0] and acc[0].strip()):
+                continue
+            u = acc[0].strip()
+            if u in seen:
+                dups.append((u, seen[u], (pi, si)))
+            else:
+                seen[u] = (pi, si)
+    if dups:
+        lines = [f"  - '{u}' dien o party{a[0]} slot{a[1]} VA party{b[0]} slot{b[1]}"
+                 for u, a, b in dups]
+        raise ValueError("CONFIG LOI - co user dien TRUNG o nhieu noi, sua lai config.PARTIES:\n"
+                         + "\n".join(lines))
+
+
 # Khung gio nhan mail (gio bat dau, moi khung 2h): 12-14, 16-18, 22-24.
 MAIL_WINDOWS = [12, 16, 22]
 
@@ -216,6 +237,8 @@ class GameClient:
         self.char_name = None        # ten nhan vat trong game (tu 0x27 theo self_entity)
         self.char_int = None         # chi so INT (tri luc) - tu S2C 0x08 id=0x1b
         self._checkin_status = None   # status phan hoi diem danh (S2C 0x57 type=01)
+        self._last_guild_pkt = None   # cache goi 0x27 (guild) de resolve ten neu toi truoc 0x69
+        self.flee_mode = False        # True = dang di chuyen -> vao battle thi BO CHAY (khong danh)
         self.submit_delay = 0.5      # delay truoc khi gui combat
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
@@ -250,6 +273,27 @@ class GameClient:
         self.running = True
         threading.Thread(target=self._recv_loop, daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        self._login_setup()   # chuoi setup sau auth -> char thanh combat-active (quai moi aggro)
+
+    def _login_setup(self):
+        """Chuoi C2S client THAT gui NGAY sau auth (capture login.pcap). Thieu chuoi nay ->
+        char ket noi nhung KHONG combat-active -> quai tren map thuong NGO LO bot (khong aggro).
+        Quan trong nhat la 0x41 'dang ky san sang battle'. (DG van danh duoc du thieu, nhung map
+        thuong thi BAT BUOC.)"""
+        seq = [(0x19, "2900f0"), (0x2b, "0400"), (0x01, "1000"), (0x7c, "0400"),
+               (0x41, "0200"), (0x0c, "0100"), (0x57, "0300"), (0x01, "1000"),
+               (0x62, "020001000000"), (0x41, "01003235010100000101000000")]
+        for op, pl in seq:
+            try:
+                self.send(op, bytes.fromhex(pl))
+            except OSError:
+                return
+            time.sleep(0.2)
+
+    def combat_ready(self):
+        """Sau khi DOI KENH / lap party, char co the mat combat-active -> gui LAI toan bo
+        chuoi setup (gom 0x41 'san sang battle') de quai aggro lai."""
+        self._login_setup()
 
     def send(self, opcode: int, payload: bytes):
         if opcode != protocol.OP_HEARTBEAT:
@@ -287,7 +331,7 @@ class GameClient:
             except OSError:
                 break
             if not data:
-                log.warning("Server dong ket noi")
+                log.warning("[%s] Server dong ket noi", self._label or self._username)
                 break
             self.recv_buf += protocol.xor(data)
             pkts, consumed = protocol.parse_stream(self.recv_buf)
@@ -370,6 +414,8 @@ class GameClient:
                 _register_party_entity(self.party_idx, self.self_entity)  # chia se cho cung party
                 if self.char_int is not None:   # INT da nhan truoc 0x69 -> dang ky lai khi co entity
                     _register_party_int(self.party_idx, self.self_entity, self.char_int)
+                # ten nhan vat: neu 0x27 (guild list) da toi TRUOC 0x69 -> resolve tu goi da cache
+                self._resolve_self_name(self._last_guild_pkt)
                 # xu lai cac goi 0x0b da buffer (co the chua stat cua minh den truoc 0x69)
                 for p in self._pending_0b:
                     self.state.update_0x0b(p)
@@ -532,6 +578,16 @@ class GameClient:
             char_opts = self.available.get(config.UNIT_CHAR, [])
             pet_opts = self.available.get(config.UNIT_PET, [])
             ft = self._first_turn
+            # FLEE MODE: dang di chuyen -> bo chay thay vi danh (atype lay tu option offered)
+            if getattr(self, "flee_mode", False):
+                if char_opts:
+                    at = char_opts[0][0]
+                    self._send_combat(combat.Decision(config.UNIT_CHAR, at, at, config.SKILL_FLEE, b=3))
+                if pet_opts:
+                    at = pet_opts[0][0]
+                    self._send_combat(combat.Decision(config.UNIT_PET, at, at, config.SKILL_FLEE, b=2))
+                log.info("[%s] BO CHAY (flee_mode)", self._label)
+                return
             if char_opts:
                 d = combat.decide_char(self.state, char_opts, ft)
                 self._send_combat(d)
@@ -658,28 +714,35 @@ class GameClient:
 
     def claim_checkin(self):
         """DIEM DANH hang ngay (theo SO LAN diem danh: hom nay day=N -> mai N+1).
-        Bot tu dem + luu (checkin_state.json). 1 lan/ngay. Lan dau chua biet so dem ->
-        quet day=1..40, server chi chap nhan dung ngay hien tai (status=0), cac ngay khac fail."""
+        Bot tu dem + luu (checkin_state.json). 1 lan/ngay. LUU 'da xong hom nay' du khong
+        nhan duoc gi -> lan login sau KHONG scan lai (tranh spam)."""
         import datetime
         today = datetime.date.today().isoformat()
         st = _load_checkin(self._label)
         if st.get("date") == today:
-            return True   # da diem danh hom nay
-        # 1) Biet so dem -> thu day = day+1 trc
+            return True   # da xu ly hom nay roi -> bo qua (khong scan)
+        # 1) Biet so dem -> thu day = day+1 (truong hop binh thuong, 1 goi la xong)
         if st.get("day", 0) > 0:
-            nd = st["day"] + 1
-            if self._checkin_claim(nd) == 0:
-                _save_checkin(self._label, today, nd)
-                log.info("[%s] Diem danh ngay %d OK", self._label, nd)
+            if self._checkin_claim(st["day"] + 1) == 0:
+                _save_checkin(self._label, today, st["day"] + 1)
+                log.info("[%s] Diem danh ngay %d OK", self._label, st["day"] + 1)
                 return True
-        # 2) Lan dau / desync -> quet tim ngay hien tai
+        # 2) Lan dau / desync -> quet tim ngay hien tai. status=2 = ngay da nhan (luu so dem).
+        last_claimed = st.get("day", 0)
         for d in range(1, 41):
-            if self._checkin_claim(d) == 0:
+            s = self._checkin_claim(d)
+            if s == 0:
                 _save_checkin(self._label, today, d)
                 log.info("[%s] Diem danh ngay %d OK (scan)", self._label, d)
                 return True
-        log.info("[%s] Diem danh: khong nhan duoc (co the da diem danh hom nay roi)", self._label)
-        return False
+            if s == 2:
+                last_claimed = max(last_claimed, d)
+        # Khong co ngay nao nhan duoc -> da diem danh hom nay roi. LUU lai (date=today + so dem)
+        # de lan login sau khoi scan.
+        _save_checkin(self._label, today, last_claimed)
+        log.info("[%s] Da diem danh hom nay roi (ngay %d) -> luu, lan sau khoi scan",
+                 self._label, last_claimed)
+        return True
 
     def claim_legion_gift(self):
         """Nhan qua QUAN DOAN hang ngay. C2S 0x27 [69 00] -> server tra reward (0x17).
@@ -699,10 +762,9 @@ class GameClient:
             return
         if int.from_bytes(pkt[7:9], "little") == 0x02:
             gtype = pkt[9]; status = pkt[10]
-            if gtype == 0x01:                      # DIEM DANH
+            if gtype == 0x01:                      # DIEM DANH (log DEBUG -> khong spam khi scan)
                 self._checkin_status = status
-                log.info("[%s] Diem danh: status=%d (%s)", self._label, status,
-                         "OK" if status == 0 else "that bai/da nhan")
+                log.debug("[%s] Diem danh: status=%d", self._label, status)
             else:                                  # qua online (type=03)
                 log.info("[%s] Qua online: %s", self._label,
                          "THANH CONG" if status == 0 else f"status={status}")
@@ -741,6 +803,26 @@ class GameClient:
                          [hex(s) for s in sorted(skills)])
 
     # ---- parse player info (0x27) ----
+    def _resolve_self_name(self, pkt: bytes):
+        """Doc TEN NHAN VAT cua minh tu goi guild 0x27: tim self_entity roi name ngay sau
+        (entity 8B + name_len 1B + name UTF-16LE)."""
+        if self.char_name or not self.self_entity or not pkt:
+            return
+        k = pkt.find(self.self_entity)
+        if k < 0 or k + 9 > len(pkt):
+            return
+        nl = pkt[k + 8]
+        if not (0 < nl <= 40) or k + 9 + nl > len(pkt):
+            return
+        try:
+            nm = pkt[k + 9:k + 9 + nl].decode('utf-16-le')
+        except Exception:
+            return
+        if nm:
+            self.char_name = nm
+            self._label = nm
+            log.info("[%s] Ten nhan vat = '%s'", self._username, nm)
+
     def _on_player_info(self, pkt: bytes):
         """S2C 0x27 sub=0x02: danh sach thanh vien guild.
         Format: [sub 2B=0200][guild_len 1B][guild_name UTF-16LE][01][count 1B]
@@ -753,6 +835,10 @@ class GameClient:
         sub = int.from_bytes(payload[0:2], 'little')
         if sub != 0x02:
             return
+        # --- TEN NHAN VAT CUA MINH: quet truc tiep self_entity trong goi roi doc name ngay sau
+        # (parser entry ben duoi tinh stride khong chuan -> bo sot self; cach nay chac chan) ---
+        self._last_guild_pkt = pkt   # cache de 0x69 retry neu 0x27 toi TRUOC 0x69
+        self._resolve_self_name(pkt)
         guild_len = payload[2]
         # entries bat dau sau: 2B(sub) + 1B(guild_len) + guild_len + 1B(unknown) + 1B(count) = guild_len+5
         entries_off = 3 + guild_len + 2
@@ -888,6 +974,29 @@ class GameClient:
         Dead-reckoning: server KHONG echo vi tri minh -> tu nho pos = diem vua gui di."""
         self.send(0x06, b"\x01\x00\x01" + struct.pack("<HH", x, y))
         self.pos = (x, y)
+
+    def navigate_to(self, x: int, y: int, clean_needed: int = 3, step: float = 2.5,
+                    max_iter: int = 30):
+        """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> BO CHAY (flee_mode)
+        roi di tiep. Coi nhu da toi sau 'clean_needed' chu ky di KHONG bi battle.
+        (Server khong echo vi tri minh -> dung heuristic so chu ky sach.)"""
+        self.flee_mode = True
+        clean = 0
+        try:
+            for _ in range(max_iter):
+                if self.in_combat():
+                    time.sleep(1.0)     # turn handler dang lo flee
+                    clean = 0
+                    continue
+                self.move_to(x, y)
+                time.sleep(step)
+                clean += 1
+                if clean >= clean_needed:
+                    break
+        finally:
+            self.flee_mode = False
+        self.pos = (x, y)
+        log.info("[%s] da toi diem (%d,%d)", self._label, x, y)
 
     def in_di_gioi(self) -> bool:
         """Dang o map Di Gioi? Doc map_id thuc te (khong dua vao so kenh)."""

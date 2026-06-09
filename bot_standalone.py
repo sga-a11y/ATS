@@ -28,7 +28,7 @@ except Exception:
 import datetime
 from bot import config
 from bot.login import login
-from bot.client import GameClient, mail_window_now
+from bot.client import GameClient, mail_window_now, check_duplicate_accounts
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,6 +63,9 @@ def run_account(username: str, password: str, idx: int = 0):
                     break
                 time.sleep(1)
             time.sleep(2)   # cho broadcast cap nhat map_id
+            label = client.char_name or username   # log theo TEN NHAN VAT neu da resolve
+            log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
+                     label, client.current_map)
 
             client.request_offline_exp()   # nhan exp offline neu co
             client.claim_mail()            # nhan qua mail + xoa mail da doc
@@ -132,6 +135,7 @@ def run_account(username: str, password: str, idx: int = 0):
 
 
 def main():
+    check_duplicate_accounts(getattr(config, "PARTIES", []))   # bao loi neu user dien trung
     accounts = getattr(config, "ACCOUNTS", None) or [(config.USERNAME, config.PASSWORD)]
     log.info("=== TS Online Bot - treo may %d account. Nhan Ctrl+C de dung. ===",
              len(accounts))

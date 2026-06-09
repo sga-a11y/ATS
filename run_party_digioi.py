@@ -9,18 +9,21 @@ Flow moi party (slot 0 = chu party / leader, slot 1-4 = member):
 
 Chay:  python run_party_digioi.py [so_phut]   (mac dinh chay vo han)
 """
-import sys, time, logging, threading
+import os, sys, time, logging, threading
 try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass
 from bot import config
 from bot.login import login
-from bot.client import GameClient
+from bot.client import GameClient, check_duplicate_accounts
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S",
+_lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
+logging.basicConfig(level=_lvl, format="%(asctime)s %(message)s", datefmt="%H:%M:%S",
                     handlers=[logging.FileHandler("party.log", "w", "utf-8"), logging.StreamHandler()])
 log = logging.getLogger("partydg")
+
+check_duplicate_accounts(config.PARTIES)   # bao loi neu 1 user dien trung nhieu noi
 
 MINUTES = int(sys.argv[1]) if len(sys.argv) > 1 else 0   # 0 = vo han
 
@@ -66,22 +69,36 @@ def run_account(username, password, pidx, is_leader):
                         label, c.self_entity is not None, c.current_map)
             c.close(); time.sleep(5)
         _clients.append(c)
-        log.info("[%s] (%s) vao world. map=%s", label, role, c.current_map)
+        label = c.char_name or username   # log theo TEN NHAN VAT (neu da resolve), fallback username
+        log.info("[%s] (%s) vao world.", label, role)
+        log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
+                 label, c.current_map)
         c.claim_checkin()   # diem danh hang ngay (tu dem so lan)
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
 
-        # --- Vao Di Gioi (solo) - ne battle/chua login xong, retry ---
-        # Neu DA o trong DG (login lai khi con ket DG) -> CHAY LUON, KHONG thoat/vao lai
-        # (thoat = di bo ra cong, de dinh combat + rot mang). Chi vao moi neu chua o DG.
-        if c.in_di_gioi():
-            log.info("[%s] (%s) da o trong DG san -> chay luon (khong vao lai)", label, role)
-        elif not c.enter_di_gioi_safe():
-            log.warning("[%s] (%s) khong vao duoc DG (het gio?) -> TAT acc nay", label, role)
-            try: c.close()
-            except Exception: pass
-            if c in _clients: _clients.remove(c)
-            return
+        # MODE theo START_CITY_ID: CO trong train_maps.json -> MAP-TRAIN; con lai (0 / DG / bat ky)
+        # -> DI GIOI. (Muon login dung yen thi dung bot_standalone.py.)
+        sc = getattr(config, "START_CITY_ID", 0)
+        tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
+        train_on_map = tm is not None
 
+        if train_on_map:
+            # --- MAP-TRAIN: chay toi diem AN TOAN (dinh battle -> flee) ---
+            log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem an toan %s",
+                     label, role, sc, tm["safe"])
+            c.navigate_to(*tm["safe"])
+        else:
+            # --- DI GIOI (solo) - ne battle/chua login xong, retry ---
+            if c.in_di_gioi():
+                log.info("[%s] (%s) da o trong DG san -> chay luon (khong vao lai)", label, role)
+            elif not c.enter_di_gioi_safe():
+                log.warning("[%s] (%s) khong vao duoc DG (het gio?) -> TAT acc nay", label, role)
+                try: c.close()
+                except Exception: pass
+                if c in _clients: _clients.remove(c)
+                return
+
+        # ===== LAP PARTY + CAY (map-train hoac DI GIOI deu lap party) =====
         # --- Chon / dong bo KENH ---
         if is_leader:
             ch = c.pick_best_channel()
@@ -95,28 +112,24 @@ def run_account(username, password, pidx, is_leader):
                 c.switch_channel(ch)
                 log.info("[%s] (member) chuyen sang kenh leader = %s", label, ch)
             time.sleep(2)
-            # bao hieu: minh da SAN SANG (vao DG + dung kenh leader)
             with st["lock"]:
                 st["ready_members"].add(username)
             log.info("[%s] (member) SAN SANG (%d/%d) - cho leader moi",
                      label, len(st["ready_members"]), st["n_members"])
         time.sleep(2)
 
-        # --- Leader: CHO du member san sang roi MOI, roi CHAY ---
+        # --- Leader: CHO du member san sang roi MOI, roi CAY ---
         if is_leader:
-            # cho tat ca member vao DG + cung kenh (toi da 90s)
             for _ in range(45):
                 if len(st["ready_members"]) >= st["n_members"]:
                     break
                 time.sleep(2)
             log.info("[%s] (LEADER) %d/%d member san sang -> MOI (theo entity)",
                      label, len(st["ready_members"]), st["n_members"])
-            # moi LAP LAI (theo entity) den khi du member JOIN. Neu member het gio DG (khong
-            # vao duoc) -> moi vai lan roi CHAY 1 MINH (khong cho mai).
             from bot.client import joined_member_count
             for r in range(6):
                 c.invite_members(gap=1.0)
-                st["invited"].set()             # member biet da bat dau moi
+                st["invited"].set()
                 time.sleep(4)
                 njoined = joined_member_count(pidx)
                 log.info("[%s] (LEADER) sau moi lan %d: joined=%d/%d",
@@ -126,35 +139,50 @@ def run_account(username, password, pidx, is_leader):
                     break
                 time.sleep(2)
             else:
-                log.warning("[%s] (LEADER) chua du member (%d/%d) - co the member het gio DG",
+                log.warning("[%s] (LEADER) chua du member (%d/%d)",
                             label, joined_member_count(pidx), st["n_members"])
-            # Set quan su neu co IT NHAT 1 member da join (du party day hay le)
             if joined_member_count(pidx) >= 1:
                 time.sleep(1)
-                c.set_party_strategist()        # set 1 member da join lam quan su -> SP regen
+                c.set_party_strategist()    # set member INT cao nhat lam quan su
             else:
-                log.info("[%s] (LEADER) khong co member join -> CHAY 1 MINH (khong quan su)", label)
-            c.start_run_around()                # chay long vong (party / le / solo)
-            log.info("[%s] (LEADER) bat dau chay long vong.", label)
+                log.info("[%s] (LEADER) khong co member join -> CAY 1 MINH", label)
+            # --- VI TRI CAY ---
+            if train_on_map:
+                c.move_to(*tm["mobs"][0])   # ra diem quai, dung yen cho quai toi (toa do == UI)
+                c.combat_ready()            # combat-active lai (doi kenh da reset) -> quai aggro
+                log.info("[%s] (LEADER) ra diem quai %s dung cay.", label, tm["mobs"][0])
+            else:
+                c.start_run_around()        # DG: chay long vong tim quai
+                log.info("[%s] (LEADER) bat dau chay long vong.", label)
         else:
-            st["invited"].wait(120)             # cho leader moi xong
-            log.info("[%s] (member) da vao party - tu follow leader + tu danh", label)
+            st["invited"].wait(120)
+            if train_on_map:
+                # member ra DUNG CHO QUAI cung leader (party tren map thuong can dung gan nhau)
+                c.move_to(*tm["mobs"][0])
+                c.combat_ready()
+                log.info("[%s] (member) ra diem quai %s dung cung leader", label, tm["mobs"][0])
+            else:
+                log.info("[%s] (member) da vao party - tu danh (chung tran voi leader)", label)
 
-        # --- Giu song ---  (het gio DG giua chung -> bi day ra thanh -> TAT acc)
+        # --- Giu song ---
         out_cnt = 0
+        last_remove = time.time()
         while c.running:
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
-            # roi DG (map biet & khac DG) lien tuc -> het gio DG -> dong acc
-            if c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
-                out_cnt += 1
-                if out_cnt >= 4:   # ~20s lien tuc ngoai DG
-                    log.warning("[%s] (%s) het gio DG (ra thanh map=%s) -> TAT acc",
-                                label, role, c.current_map)
-                    break
+            if train_on_map:
+                pass   # leader da chay long vong (run-around) tu dong tim quai
             else:
-                out_cnt = 0
+                # DG: roi DG (map biet & khac DG) lien tuc -> het gio DG -> dong acc
+                if c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
+                    out_cnt += 1
+                    if out_cnt >= 4:   # ~20s lien tuc ngoai DG
+                        log.warning("[%s] (%s) het gio DG (ra thanh map=%s) -> TAT acc",
+                                    label, role, c.current_map)
+                        break
+                else:
+                    out_cnt = 0
         try: c.close()
         except Exception: pass
         if c in _clients: _clients.remove(c)

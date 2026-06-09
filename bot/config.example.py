@@ -40,7 +40,26 @@ LEADER_NAME = "ten_chu_party"   # ten chu party (tham khao/log)
 
 # START_CITY_ID: thanh ve sau khi login. 12061=Ng.Thanh | 12001=Trac Quan | 12011=Cu Loc
 #   = 0  -> KHONG teleport: dung yen tai cho login (van chuyen CHANNEL, van tu danh khi vao tran).
+#   = MAP ID trung voi map LUC LOGIN -> vao che do PARTY-TRAIN tren map do (chay toi TRAIN_SAFE,
+#     dong bo kenh, moi party, leader ra TRAIN_MOB_SPOTS dung cay). Xem log "MAP HIEN TAI" luc login.
 START_CITY_ID = 12061
+# Data map party-train doc tu train_maps.json (map_id -> {safe, mobs}).
+#   START_CITY_ID CO trong data  -> MAP-TRAIN (chay toi safe, lap party, ra mobs cay)
+#   START_CITY_ID == DIGIOI_MAP_ID -> train Di Gioi (run-around)
+#   con lai -> dung i tai cho
+def _load_train_maps():
+    import json, os
+    f = os.path.join(os.path.dirname(__file__), os.pardir, "train_maps.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.get("maps", {}).items():
+            out[int(k)] = {"safe": tuple(v["safe"]), "mobs": [tuple(m) for m in v.get("mobs", [])]}
+    except Exception:
+        pass
+    return out
+TRAIN_MAPS = _load_train_maps()
 START_CITY_FLAG = 2             # Ng.Thanh=2, Trac Quan=0, Cu Loc=3 (xem cities.json)
 CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)
 RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
