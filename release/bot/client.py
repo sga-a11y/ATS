@@ -769,25 +769,36 @@ class GameClient:
     def _run_one_dungeon(self, max_sec: int) -> bool:
         """Chay 1 luot dungeon: query -> vao -> danh boss -> nhan thuong -> ra. True neu vao duoc."""
         orig = self.current_map
-        self.send(0x2f, b"\x01\x00"); time.sleep(0.6)             # query pho ban
-        self.send(0x2f, b"\x02\x00\x02\x00\x00"); time.sleep(0.6)  # VAO dungeon
-        dmap = None
-        for _ in range(12):
-            if self.current_map is not None and self.current_map != orig:
-                dmap = self.current_map; break
-            time.sleep(1)
-        if dmap is None:
-            log.info("[%s] Khong vao duoc dungeon (het luot/het vang?)", self._label)
-            return False
-        log.info("[%s] Da vao dungeon map=%s -> khoi dong tran boss", self._label, dmap)
         self.flee_mode = False        # TAT flee (navigate bat True) -> trong dungeon PHAI danh, khong bo chay
         self.state.boss_mode = True
         self.dungeon_complete = False
-        # KHOI DONG tran boss (capture dungeon.pcap): sau khi vao map -> 0x14 08000100 bat tran
-        # -> 0x0c 0100 xin info -> 0x14 0600 confirm. Khong co cai nay boss khong xuat hien.
-        self.send(0x14, b"\x08\x00\x01\x00"); time.sleep(0.4)
-        self.send(0x0c, b"\x01\x00"); time.sleep(0.4)
-        self.send(0x14, b"\x06\x00"); time.sleep(0.4)
+        self.state.in_battle = False
+        # Chuoi vao dungeon (capture dungeon.pcap), GUI LIEN khong cho map doi:
+        #   0x2f 0100 query -> 0x2f 0200020000 VAO -> 0x14 08000100 KHOI DONG tran boss
+        #   -> 0x0c 0100 xin info -> 0x14 0600 confirm.
+        # LUU Y: map CHI doi sang dungeon SAU KHI gui 0x14 08000100 (gdeveloper truoc cho map
+        #   code cu cho map doi truoc roi moi gui 0x14 -> deadlock -> ket o map boss khong danh).
+        self.send(0x2f, b"\x01\x00"); time.sleep(0.6)             # query pho ban
+        self.send(0x2f, b"\x02\x00\x02\x00\x00"); time.sleep(0.6)  # VAO dungeon
+        self.send(0x14, b"\x08\x00\x01\x00"); time.sleep(0.4)      # khoi dong tran boss
+        self.send(0x0c, b"\x01\x00"); time.sleep(0.4)              # xin info tran
+        self.send(0x14, b"\x06\x00"); time.sleep(0.4)              # confirm
+        # Xac nhan da vao: map doi KHAC orig HOAC da vao tran (in_battle). Cho toi 25s.
+        dmap = None
+        for _ in range(25):
+            if self.current_map is not None and self.current_map != orig:
+                dmap = self.current_map; break
+            if self.state.in_battle:
+                dmap = self.current_map; break
+            time.sleep(1)
+        if dmap is None and not self.state.in_battle:
+            log.info("[%s] Khong vao duoc dungeon (het luot/het vang?)", self._label)
+            self.state.boss_mode = False
+            return False
+        if dmap is None:
+            dmap = self.current_map
+        log.info("[%s] Da vao dungeon map=%s in_battle=%s -> danh boss",
+                 self._label, dmap, self.state.in_battle)
         try:
             t0 = time.time()
             last_dbg = 0.0

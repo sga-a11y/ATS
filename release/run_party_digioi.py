@@ -133,6 +133,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 c.do_daily_dungeon()
             except Exception as e:
                 log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
+            # An toan: phai ve dung map train moi train tiep (tranh ket trong map boss)
+            for _ in range(15):
+                if c.current_map == sc:
+                    break
+                time.sleep(1)
+            if c.current_map != sc:
+                log.warning("[%s] (%s) sau dungeon KHONG ve map train (dang o %s) -> THOAT acc nay",
+                            label, role, c.current_map)
+                _quit(); return
             c.navigate_to(*tm["safe"])   # dungeon xong tra ve map cu -> ve lai safe
         else:
             # --- DI GIOI (solo) - ne battle/chua login xong, retry ---
