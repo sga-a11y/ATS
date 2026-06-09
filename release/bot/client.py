@@ -239,6 +239,7 @@ class GameClient:
         self._gift_status = {}        # gtype -> status phan hoi (S2C 0x57: 01 diem danh, 04 qua 14 ngay)
         self._last_guild_pkt = None   # cache goi 0x27 (guild) de resolve ten neu toi truoc 0x69
         self.flee_mode = False        # True = dang di chuyen -> vao battle thi BO CHAY (khong danh)
+        self.dungeon_complete = False  # True khi nhan goi hoan thanh dungeon (S2C 0x14 sub 0x64)
         self.submit_delay = 0.5      # delay truoc khi gui combat
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
@@ -341,6 +342,9 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        # Hoan thanh dungeon: S2C 0x14 sub 0x64 (man tong ket) -> set co de do_daily_dungeon biet xong
+        if opcode == 0x14 and len(pkt) >= 8 and pkt[7] == 0x64:
+            self.dungeon_complete = True
         # INT (tri luc): gui luc login trong gói char-info S2C 0x05 (payload ~252B), INT o payload[9]
         # = pkt[16]. (Xac nhan int2.pcap: 2 lan login INT 4->5, byte nay doi 4->5). INT cao = hoi SP
         # tot hon khi lam quan su -> leader chon member INT cao nhat. Cap nhat khi cong diem cung qua day.
@@ -784,23 +788,26 @@ class GameClient:
             return
         log.info("[%s] Da vao dungeon map=%s -> danh boss", self._label, dmap)
         self.state.boss_mode = True
+        self.dungeon_complete = False
         try:
-            fought = False; idle = 0; t0 = time.time()
+            t0 = time.time()
+            # danh den khi nhan goi HOAN THANH (0x14 sub 0x64) hoac da ra khoi dungeon
             while self.running and time.time() - t0 < max_sec:
-                time.sleep(3)
-                if self.current_map != dmap:        # da ra khoi dungeon (tu thoat sau khi xong)
+                time.sleep(2)
+                if self.dungeon_complete:
+                    log.info("[%s] Dungeon HOAN THANH (0x14 sub64) -> nhan thuong + ra", self._label)
+                    self.send(0x52, b"\x01\x00\x01\x1d\x00")   # claim/confirm tong ket
+                    time.sleep(0.6)
+                    self.leave_party()                          # huy -> trigger thoat dungeon
+                    break
+                if self.current_map != dmap:        # da ra khoi dungeon (vi ly do khac)
                     log.info("[%s] Da ra khoi dungeon (map=%s)", self._label, self.current_map)
                     break
-                if self.in_combat():
-                    fought = True; idle = 0
-                elif fought:
-                    idle += 1
-                    if idle >= 6:   # ~18s khong danh sau khi da danh -> boss chet -> claim + ra
-                        self.send(0x52, b"\x01\x00\x01\x1d\x00")   # claim/confirm complete
-                        time.sleep(0.6)
-                        self.leave_party()                          # huy -> trigger thoat dungeon
-                        time.sleep(2)
-                        idle = 0
+            # cho ra khoi dungeon (map ve goc)
+            for _ in range(10):
+                if self.current_map != dmap:
+                    break
+                time.sleep(1)
         finally:
             self.state.boss_mode = False
         _mark_daily(self._label, "dungeon")
