@@ -1,0 +1,20 @@
+{
+  "_note": "Danh sach thanh de teleport (opcode 0x44). Moi thanh co city_id + flag rieng (CA HAI deu bat buoc).",
+  "_packet_format": "c0 91 0c 00 00 00 44 01 00 [city_id 2B LE] [flag 1B]",
+  "cities": {
+    "trac_quan": { "name": "Trac Quan", "city_id": 12001, "flag": 0, "hex": "2ee1" },
+    "ng_thanh": { "name": "Ng.Thanh", "city_id": 12061, "flag": 2, "hex": "2f1d" },
+    "cu_loc": { "name": "Cu Loc", "city_id": 12011, "flag": 3, "hex": "2eeb" }
+  },
+  "special_maps": {
+    "di_gioi": {
+      "name": "Di Gioi",
+      "note": "Map TRAIN quan trong (treo may). Dang o map nay KHONG teleport ve thanh duoc (0x44 bi tu choi).",
+      "map_id": 49942,
+      "map_id_hex": "0xc316",
+      "map_id_note": "XAC NHAN tu broadcast 0x0c/0x07/0x03 offset 10 (LE). Gia tri cu 11971 la SAI.",
+      "exit_gate": [270, 210],
+      "exit_note": "Khong co lenh thoat. Phai DI BO tung buoc nho toi cong (270,210) roi 0x14 04000100/08000100. 0x06 = bao vi tri di tung buoc, KHONG nhay xa duoc."
+    }
+  }
+}

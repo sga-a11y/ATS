@@ -1,0 +1,10 @@
+{
+  "_note": "Database pet: pet_id (hex, sap xep TANG DAN). name = ten pet. skills = danh sach skill id (combo train). Danh thuong (10000) luon co, khong can liet ke. Pet KHONG co skill combo thi KHONG can them (bot tu danh thuong). pet_id doc tu log 'Pet id=0x...' luc login; skill xac nhan qua combat (goi 0x32 unit=2).",
+  "pets": {
+    "0x3715": { "name": "Thái Văn Cơ rb0", "skills": [12003] },
+    "0xa051": { "name": "Thái Văn Cơ", "skills": [12003, 12009, 12010] },
+    "0xa05a": { "name": "Quan Vũ", "skills": [13009, 13011, 13013] },
+    "0xa0db": { "name": "Tưởng Nghĩa Cừ", "skills": [] },
+    "0xa149": { "name": "Cát Bình", "skills": [11010] }
+  }
+}
