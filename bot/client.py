@@ -297,9 +297,14 @@ class GameClient:
         self._login_setup()
 
     def send(self, opcode: int, payload: bytes):
+        if not self.running or self.sock is None:
+            return   # da rot ket noi -> bo qua (timer combat co the fire sau khi socket dong)
         if opcode != protocol.OP_HEARTBEAT:
             log.debug("[%s] SEND op=0x%02x: %s", self._label, opcode, payload.hex())
-        self.sock.sendall(protocol.encode(opcode, payload))
+        try:
+            self.sock.sendall(protocol.encode(opcode, payload))
+        except OSError:
+            self.running = False   # socket dong -> dung gui, dung moi vong lap
 
     def close(self):
         self.running = False
