@@ -780,6 +780,8 @@ class GameClient:
             log.info("[%s] Khong vao duoc dungeon (het luot/het vang?)", self._label)
             return False
         log.info("[%s] Da vao dungeon map=%s -> danh boss", self._label, dmap)
+        self.flee_mode = False        # TAT flee (navigate bat True) -> trong dungeon PHAI danh, khong bo chay
+        self.combat_ready()           # re-send setup combat-active (teleport reset giong doi kenh)
         self.state.boss_mode = True
         self.dungeon_complete = False
         try:
