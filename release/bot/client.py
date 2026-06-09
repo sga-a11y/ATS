@@ -801,27 +801,34 @@ class GameClient:
         self.send(0x14, b"\x08\x00\x01\x00"); time.sleep(0.4)      # khoi dong tran boss
         self.send(0x0c, b"\x01\x00"); time.sleep(0.4)              # xin info tran
         self.send(0x14, b"\x06\x00")                               # confirm
-        # (3) Cho map doi sang dungeon (KHAC orig). Giu flee BAT toi luc xac nhan -> neu vao
-        #     hut thi van NE quai train (khong danh lung tung). Poll 0.5s cho nhanh nhay.
-        dmap = None
-        for _ in range(50):          # ~25s
+        # (3) Xac nhan DA vao dungeon. SOLO dungeon KHONG co nguoi xung quanh -> current_map
+        #     (doc tu broadcast nguoi KHAC) KHONG cap nhat sang map dungeon -> KHONG dua vao map.
+        #     Dung tin hieu IN_BATTLE (boss giao chien) lam dau hieu da vao: da sach tran truoc
+        #     do nen in_battle bat LAI = chinh la tran BOSS. Map doi cung tinh la vao.
+        entered = False
+        t0 = time.time()
+        while time.time() - t0 < 15:
             if not self.running:
                 self.state.boss_mode = False; return False
+            if self.state.in_battle:
+                self.flee_mode = False   # boss giao chien -> DANH ngay (tat flee TRUOC khi timer fire)
+                entered = True; break
             if self.current_map is not None and self.current_map != orig:
-                dmap = self.current_map; break
-            time.sleep(0.5)
-        if dmap is None:
+                self.flee_mode = False
+                entered = True; break
+            time.sleep(0.1)
+        if not entered:
+            # khong vao duoc -> van o map train, GIU flee BAT de ne quai (khong tat)
             log.info("[%s] Khong vao duoc dungeon (het luot/het vang?)", self._label)
             self.state.boss_mode = False
             return False
-        # (4) DA vao dungeon -> TAT flee, danh boss
-        self.flee_mode = False
-        log.info("[%s] Da vao dungeon map=%s -> danh boss", self._label, dmap)
+        log.info("[%s] Da vao dungeon (in_battle=%s map=%s) -> danh boss",
+                 self._label, self.state.in_battle, self.current_map)
         try:
             t0 = time.time()
             last_dbg = 0.0
             while self.running and time.time() - t0 < max_sec:
-                time.sleep(2)
+                time.sleep(1)
                 now = time.time()
                 if now - last_dbg >= 6:   # log chan doan moi 6s: co trong tran ko, quai, HP
                     last_dbg = now
@@ -833,17 +840,16 @@ class GameClient:
                     log.info("[%s] Dungeon HOAN THANH -> nhan thuong + ra", self._label)
                     self.send(0x52, b"\x01\x00\x01\x1d\x00")   # claim/confirm tong ket
                     time.sleep(0.6)
-                    self.leave_party()                          # thoat dungeon
+                    self.leave_party()                          # thoat dungeon (game tu dua ve map cu)
                     break
-                if self.current_map != dmap:
-                    log.info("[%s] Da ra khoi dungeon (map=%s)", self._label, self.current_map)
-                    break
-            for _ in range(10):    # cho map ve goc
-                if self.current_map != dmap:
+            # cho game tu dua ve map train (current_map cap nhat lai khi thay nguoi o safe)
+            for _ in range(15):
+                if not self.running or self.current_map == orig:
                     break
                 time.sleep(1)
         finally:
             self.state.boss_mode = False
+            self.flee_mode = True    # ra khoi dungeon -> bat lai flee (con phai ve safe/lap party)
         return True
 
     def do_daily_dungeon(self, max_sec: int = 360):
