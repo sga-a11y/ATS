@@ -786,8 +786,16 @@ class GameClient:
         self.dungeon_complete = False
         try:
             t0 = time.time()
+            last_dbg = 0.0
             while self.running and time.time() - t0 < max_sec:
                 time.sleep(2)
+                now = time.time()
+                if now - last_dbg >= 6:   # log chan doan moi 6s: co trong tran ko, quai, HP
+                    last_dbg = now
+                    log.info("[%s] dungeon: map=%s in_battle=%s quai=%s char_hp=%s/%s pet_sp=%s",
+                             self._label, self.current_map, self.state.in_battle,
+                             self.state.enemy_slots, self.state.char.hp, self.state.char.hp_max,
+                             self.state.pet.sp)
                 if self.dungeon_complete:
                     log.info("[%s] Dungeon HOAN THANH -> nhan thuong + ra", self._label)
                     self.send(0x52, b"\x01\x00\x01\x1d\x00")   # claim/confirm tong ket
