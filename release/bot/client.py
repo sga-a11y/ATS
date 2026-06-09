@@ -779,11 +779,15 @@ class GameClient:
         if dmap is None:
             log.info("[%s] Khong vao duoc dungeon (het luot/het vang?)", self._label)
             return False
-        log.info("[%s] Da vao dungeon map=%s -> danh boss", self._label, dmap)
+        log.info("[%s] Da vao dungeon map=%s -> khoi dong tran boss", self._label, dmap)
         self.flee_mode = False        # TAT flee (navigate bat True) -> trong dungeon PHAI danh, khong bo chay
-        self.combat_ready()           # re-send setup combat-active (teleport reset giong doi kenh)
         self.state.boss_mode = True
         self.dungeon_complete = False
+        # KHOI DONG tran boss (capture dungeon.pcap): sau khi vao map -> 0x14 08000100 bat tran
+        # -> 0x0c 0100 xin info -> 0x14 0600 confirm. Khong co cai nay boss khong xuat hien.
+        self.send(0x14, b"\x08\x00\x01\x00"); time.sleep(0.4)
+        self.send(0x0c, b"\x01\x00"); time.sleep(0.4)
+        self.send(0x14, b"\x06\x00"); time.sleep(0.4)
         try:
             t0 = time.time()
             last_dbg = 0.0
