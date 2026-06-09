@@ -225,8 +225,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 if c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
                     out_cnt += 1
                     if out_cnt >= 4:   # ~20s lien tuc ngoai DG
-                        log.warning("[%s] (%s) het gio DG (ra thanh map=%s) -> TAT acc",
-                                    label, role, c.current_map)
+                        log.warning("[%s] (%s) het gio DG -> thoat party + danh solo daily dungeon",
+                                    label, role)
+                        c.do_daily_dungeon()   # xong DG -> huy party -> solo dungeon
                         break
                 else:
                     out_cnt = 0

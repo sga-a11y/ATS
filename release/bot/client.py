@@ -390,6 +390,7 @@ class GameClient:
             pid = int.from_bytes(pkt[9:11], "little")
             self.state.active_pet_id = pid
             self.state.pet_skills = getattr(config, "PET_SKILLS", {}).get(pid, set())
+            self.state.pet_boss_skill = getattr(config, "PET_BOSS_SKILL", {}).get(pid)
             name = getattr(config, "PET_NAMES", {}).get(pid, "?")
             log.info("[%s] Pet id=0x%x '%s' -> skills=%s",
                      self._label, pid, name, [hex(s) for s in sorted(self.state.pet_skills)])
@@ -760,6 +761,50 @@ class GameClient:
         self.send(0x27, b"\x69\x00")   # nhan qua quan doan
         _mark_daily(self._label, "legion")
         log.info("[%s] Nhan qua quan doan hang ngay", self._label)
+
+    def do_daily_dungeon(self, max_sec: int = 360):
+        """SOLO daily dungeon (1 lan/ngay). Huy party -> vao dungeon (0x2f) -> tu danh BOSS
+        (boss_mode -> pet dung boss_skill) -> nhan thuong -> ra. Xac nhan dungeon.pcap."""
+        if _daily_done(self._label, "dungeon"):
+            return
+        orig = self.current_map
+        log.info("[%s] Vao SOLO daily dungeon...", self._label)
+        self.leave_party(); time.sleep(1.5)
+        self.send(0x2f, b"\x01\x00"); time.sleep(0.6)          # query pho ban
+        self.send(0x2f, b"\x02\x00\x02\x00\x00"); time.sleep(0.6)  # VAO dungeon
+        # cho vao dungeon (map doi khac orig)
+        dmap = None
+        for _ in range(12):
+            if self.current_map is not None and self.current_map != orig:
+                dmap = self.current_map; break
+            time.sleep(1)
+        if dmap is None:
+            log.info("[%s] Khong vao duoc dungeon (het luot hom nay?) -> bo qua", self._label)
+            _mark_daily(self._label, "dungeon")   # danh dau de khoi thu lai trong ngay
+            return
+        log.info("[%s] Da vao dungeon map=%s -> danh boss", self._label, dmap)
+        self.state.boss_mode = True
+        try:
+            fought = False; idle = 0; t0 = time.time()
+            while self.running and time.time() - t0 < max_sec:
+                time.sleep(3)
+                if self.current_map != dmap:        # da ra khoi dungeon (tu thoat sau khi xong)
+                    log.info("[%s] Da ra khoi dungeon (map=%s)", self._label, self.current_map)
+                    break
+                if self.in_combat():
+                    fought = True; idle = 0
+                elif fought:
+                    idle += 1
+                    if idle >= 6:   # ~18s khong danh sau khi da danh -> boss chet -> claim + ra
+                        self.send(0x52, b"\x01\x00\x01\x1d\x00")   # claim/confirm complete
+                        time.sleep(0.6)
+                        self.leave_party()                          # huy -> trigger thoat dungeon
+                        time.sleep(2)
+                        idle = 0
+        finally:
+            self.state.boss_mode = False
+        _mark_daily(self._label, "dungeon")
+        log.info("[%s] Xong SOLO daily dungeon", self._label)
 
     def _on_gift(self, pkt: bytes):
         """S2C 0x57 sub=2: [02 00][type 1B][status 1B]. type=03 qua online, type=01 DIEM DANH.

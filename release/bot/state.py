@@ -40,6 +40,8 @@ class BattleState:
         self.label = ""           # nhan account (de tao key dieu phoi heal)
         self.pet_skills = set()   # TAT CA skill cua pet dang dung (tra tu pets.json theo pet_id)
         self.active_pet_id = None # id pet dang dung (tu S2C 0x13)
+        self.pet_boss_skill = None # skill danh don cua pet dung khi danh BOSS (pets.json boss_skill)
+        self.boss_mode = False    # True = dang trong dungeon danh boss -> pet dung boss_skill (danh don)
         # dong doi trong party (entity_id -> Unit), khong gom char/pet cua minh
         self.allies = {}
         self.mobs = []  # list HP_max cua quai (theo thu tu xuat hien)

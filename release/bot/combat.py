@@ -179,7 +179,12 @@ def decide_pet(state, options, first_turn=False):
             and config.SKILL_HEAL_ALL in state.pet_skills
             and _heal_decide(state.label + ":pet", state.pet.sp)):
         return Decision(config.UNIT_PET, at, at, config.SKILL_HEAL_ALL, b=3)
-    # 2) COMBO: pet co skill combo (tu pets.json) + du SP (>=cost skill) + >=2 quai lien nhau
+    # 2) BOSS (dungeon): danh BOSS bang boss_skill (danh don manh) - khi boss_mode + du SP
+    if (getattr(state, "boss_mode", False) and state.pet_boss_skill
+            and state.pet.sp >= _skill_cost(state.pet_boss_skill) and state.enemy_slots):
+        return _attack(config.UNIT_PET, at, _train_target(state.enemy_slots, offered),
+                       state.pet_boss_skill, fb)
+    # 3) COMBO: pet co skill combo (tu pets.json) + du SP (>=cost skill) + >=2 quai lien nhau
     combo = pick_combo_skill(state.pet_skills)
     if (combo and state.pet.sp >= max(config.PET_FIRE_MIN_SP, _skill_cost(combo))
             and _has_group2(state.enemy_slots)):
