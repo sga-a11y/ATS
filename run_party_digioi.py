@@ -39,7 +39,9 @@ def _pstate(pidx):
                               "invited": threading.Event(),
                               "lock": threading.Lock(),
                               "ready_members": set(),   # member da vao DG + dung kenh leader
-                              "n_members": 0}            # tong so member can cho
+                              "n_members": 0,            # tong so member can cho
+                              "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
+                              "leader_bad": threading.Event()}  # leader SAI map -> huy ca party
     return _party_state[pidx]
 
 
@@ -70,9 +72,10 @@ def run_account(username, password, pidx, is_leader):
             c.close(); time.sleep(5)
         _clients.append(c)
         label = c.char_name or username   # log theo TEN NHAN VAT (neu da resolve), fallback username
+        login_map = c.current_map         # map LUC LOGIN (doc som, it bi pollution) - dung de check train
         log.info("[%s] (%s) vao world.", label, role)
         log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
-                 label, c.current_map)
+                 label, login_map)
         c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
         c.claim_14day_gift()    # qua 14 ngay user moi
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
@@ -84,14 +87,35 @@ def run_account(username, password, pidx, is_leader):
         train_on_map = tm is not None
 
         if train_on_map:
-            # PHAI dung map login (toa do safe/mobs chi dung tren map do). Sai map -> bo qua acc.
-            if c.current_map != sc:
-                log.warning("[%s] (%s) KHONG o map train %s (dang o %s) -> bo qua acc nay. "
-                            "Hay login char tren map %s truoc.", label, role, sc, c.current_map, sc)
+            # PHAI dung map login (toa do safe/mobs chi dung tren map do).
+            self_map_ok = (login_map == sc)
+            def _quit():
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
-                return
+            if is_leader:
+                if not self_map_ok:
+                    # LEADER sai map -> HUY ca party (bao member thoat het)
+                    log.warning("[%s] (LEADER) KHONG o map train %s (dang o %s) -> HUY CA PARTY",
+                                label, sc, c.current_map)
+                    st["leader_bad"].set()
+                    _quit(); return
+                st["leader_ok"].set()   # leader ok -> member duoc tiep tuc
+            else:
+                if not self_map_ok:
+                    log.warning("[%s] (member) KHONG o map train %s (dang o %s) -> THOAT GAME acc nay",
+                                label, sc, c.current_map)
+                    _quit(); return
+                # doi leader quyet dinh (ok / huy), toi da 150s
+                t0 = time.time()
+                while not (st["leader_ok"].is_set() or st["leader_bad"].is_set()):
+                    if time.time() - t0 > 150:
+                        log.warning("[%s] (member) khong thay leader quyet dinh -> THOAT", label)
+                        _quit(); return
+                    time.sleep(0.5)
+                if st["leader_bad"].is_set():
+                    log.warning("[%s] (member) leader sai map -> ca party huy -> THOAT", label)
+                    _quit(); return
             # --- MAP-TRAIN: chay toi diem AN TOAN (dinh battle -> flee) ---
             log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem an toan %s",
                      label, role, sc, tm["safe"])
@@ -153,8 +177,15 @@ def run_account(username, password, pidx, is_leader):
             if joined_member_count(pidx) >= 1:
                 time.sleep(1)
                 c.set_party_strategist()    # set member INT cao nhat lam quan su
+            elif train_on_map:
+                # map-train CAN >=1 member (de set quan su hoi SP) -> 0 member thi THOAT
+                log.warning("[%s] (LEADER) 0 member dung map -> khong du quan su -> THOAT", label)
+                try: c.close()
+                except Exception: pass
+                if c in _clients: _clients.remove(c)
+                return
             else:
-                log.info("[%s] (LEADER) khong co member join -> CAY 1 MINH", label)
+                log.info("[%s] (LEADER) khong co member join -> CAY 1 MINH (DG)", label)
             # --- VI TRI CAY ---
             if train_on_map:
                 c.move_to(*tm["mobs"][0])   # ra diem quai, dung yen cho quai toi (toa do == UI)
