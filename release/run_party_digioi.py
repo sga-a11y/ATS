@@ -40,6 +40,8 @@ def _pstate(pidx):
                               "lock": threading.Lock(),
                               "ready_members": set(),   # member da vao DG + dung kenh leader
                               "n_members": 0,            # tong so member can cho
+                              "started_train": 0,        # so acc da qua check map -> vao train (de barrier dungeon)
+                              "dungeon_done": 0,         # so acc da danh xong dungeon (barrier)
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event()}  # leader SAI map -> huy ca party
     return _party_state[pidx]
@@ -123,6 +125,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         log.warning("[%s] (member) leader sai map -> ca party huy -> THOAT", label)
                         _quit(); return
             # --- MAP-TRAIN: chay toi diem AN TOAN (dinh battle -> flee) ---
+            with st["lock"]:
+                st["started_train"] += 1   # da qua check map -> tinh vao barrier dungeon
             log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem an toan %s",
                      label, role, sc, tm["safe"])
             c.navigate_to(*tm["safe"])
@@ -141,8 +145,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             if c.current_map != sc:
                 log.warning("[%s] (%s) sau dungeon KHONG ve map train (dang o %s) -> THOAT acc nay",
                             label, role, c.current_map)
+                with st["lock"]:
+                    st["started_train"] -= 1   # bo khoi barrier -> khong bat ca party doi
                 _quit(); return
             c.navigate_to(*tm["safe"])   # dungeon xong tra ve map cu -> ve lai safe
+            # BARRIER: cho CA PARTY danh xong dungeon roi moi dong bo kenh + lap party
+            # (dungeon xong ra kenh ngau nhien + thoi gian lech nhau -> phai gom dung luc).
+            with st["lock"]:
+                st["dungeon_done"] += 1
+            log.info("[%s] (%s) xong dungeon -> cho ca party (%d/%d)...",
+                     label, role, st["dungeon_done"], st["started_train"])
+            t0 = time.time()
+            while time.time() - t0 < 300:
+                with st["lock"]:
+                    if st["started_train"] > 0 and st["dungeon_done"] >= st["started_train"]:
+                        break
+                time.sleep(1)
+            log.info("[%s] (%s) ca party xong dungeon -> dong bo kenh", label, role)
         else:
             # --- DI GIOI (solo) - ne battle/chua login xong, retry ---
             if c.in_di_gioi():
