@@ -960,7 +960,7 @@ class GameClient:
     def switch_channel(self, channel: int):
         """Chuyen sang sub-channel (vd Di Gioi dong nguoi). C2S 0x07 = 02 00 [ch LE]."""
         self.send(0x07, b"\x02\x00" + struct.pack("<H", channel))
-        log.info("Chuyen kenh -> %d", channel)
+        log.info("[%s] Chuyen kenh -> %d", self._label, channel)
 
     def _on_channel_list(self, pkt: bytes):
         """S2C 0x07 list: payload = [01 00][count 1B][ block 6B: ch2 cur2 cap2 ]*count."""
