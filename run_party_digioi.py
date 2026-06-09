@@ -104,19 +104,27 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
+            # Sai map train -> KHONG train, nhung VAN lam not viec hang ngay (check-in da xong
+            # o tren; con solo dungeon) roi moi quit.
+            def _daily_then_quit():
+                try:
+                    c.do_daily_dungeon()
+                except Exception as e:
+                    log.warning("[%s] loi daily dungeon (sai map, bo qua): %s", label, e)
+                _quit()
             if is_leader:
                 if not self_map_ok:
                     # LEADER sai map -> HUY ca party (bao member thoat het)
-                    log.warning("[%s] (LEADER) KHONG o map train %s (dang o %s) -> HUY CA PARTY",
+                    log.warning("[%s] (LEADER) KHONG o map train %s (dang o %s) -> lam dungeon roi HUY CA PARTY",
                                 label, sc, c.current_map)
                     st["leader_bad"].set()
-                    _quit(); return
+                    _daily_then_quit(); return
                 st["leader_ok"].set()   # leader ok -> member duoc tiep tuc
             else:
                 if not self_map_ok:
-                    log.warning("[%s] (member) KHONG o map train %s (dang o %s) -> THOAT GAME acc nay",
+                    log.warning("[%s] (member) KHONG o map train %s (dang o %s) -> lam dungeon roi THOAT",
                                 label, sc, c.current_map)
-                    _quit(); return
+                    _daily_then_quit(); return
                 # CO bot-leader -> doi leader quyet dinh (ok/huy). KHONG co leader -> tu di tiep.
                 if has_leader:
                     t0 = time.time()
