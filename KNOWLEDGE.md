@@ -370,6 +370,22 @@ nham DEVICE khac -> toa do/hanh vi sai lung tung. Luon capture dung MuMu dang di
 **Code:** client._login_setup() goi trong connect(); client.combat_ready() goi o diem quai sau
 khi lap party; run_party_digioi mode map-train doc train_maps.json.
 
+## 7k. SOLO DAILY DUNGEON + DUNG ITEM TRONG BATTLE (chua implement, ghi nho)
+
+**Vao solo daily dungeon** (capture dungeon.pcap): huy party -> query -> vao -> danh -> thuong -> ra.
+- Huy party: C2S 0x0d `04 00 [self_entity]`
+- Query pho ban: C2S 0x2f `01 00` -> S2C 0x2f tra info
+- **VAO: C2S 0x2f `02 00 02 00 00`** -> map doi sang dungeon (~61969) -> tu danh (combat 0x32/0x35 nhu thuong)
+- Xong: S2C 0x14 sub 64 (man complete) -> claim thuong (C2S 0x52 ...) -> S2C 0x55 (vat pham)
+- Ra: C2S 0x0d `04 00 [self]` (don)
+- TODO: implement auto (vao -> danh -> nhan thuong -> ra -> danh dau 1 lan/ngay).
+
+**DUNG ITEM trong battle:** C2S `0x32` prefix `02 00` (skill la `01 00`):
+- `02 00 02 02 02 02 [item_id 2B LE] [tail 2B]`
+- **item 26461 (0x675d) = hoi ~62 SP** (xac nhan: SP nhay len 89 sau khi dung). Dung cho auto hoi SP.
+
+**Pet skill don (dungeon):** pet dung skill **12009 (0x2ee9)** = danh don (them vao pets.json theo pet_id khi can).
+
 ## 8. GAME MECHANICS
 
 | Mechanic | Mô tả |
