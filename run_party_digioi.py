@@ -84,6 +84,14 @@ def run_account(username, password, pidx, is_leader):
         train_on_map = tm is not None
 
         if train_on_map:
+            # PHAI dung map login (toa do safe/mobs chi dung tren map do). Sai map -> bo qua acc.
+            if c.current_map != sc:
+                log.warning("[%s] (%s) KHONG o map train %s (dang o %s) -> bo qua acc nay. "
+                            "Hay login char tren map %s truoc.", label, role, sc, c.current_map, sc)
+                try: c.close()
+                except Exception: pass
+                if c in _clients: _clients.remove(c)
+                return
             # --- MAP-TRAIN: chay toi diem AN TOAN (dinh battle -> flee) ---
             log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem an toan %s",
                      label, role, sc, tm["safe"])
@@ -158,12 +166,8 @@ def run_account(username, password, pidx, is_leader):
         else:
             st["invited"].wait(120)
             if train_on_map:
-                # member ra DUNG CHO QUAI cung leader (party tren map thuong can dung gan nhau)
-                c.move_to(*tm["mobs"][0])
-                c.combat_ready()
-                log.info("[%s] (member) ra diem quai %s dung cung leader", label, tm["mobs"][0])
-            else:
-                log.info("[%s] (member) da vao party - tu danh (chung tran voi leader)", label)
+                c.combat_ready()   # combat-active de join tran chung; KHONG chay (dung yen tai safe)
+            log.info("[%s] (member) da vao party - dung yen, tu danh (chung tran voi leader)", label)
 
         # --- Giu song ---
         out_cnt = 0
