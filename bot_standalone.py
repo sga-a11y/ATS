@@ -67,6 +67,7 @@ def run_account(username: str, password: str, idx: int = 0):
             client.request_offline_exp()   # nhan exp offline neu co
             client.claim_mail()            # nhan qua mail + xoa mail da doc
             client.claim_checkin()         # diem danh hang ngay (tu dem so lan)
+            client.claim_legion_gift()     # nhan qua quan doan hang ngay
 
             if config.START_CITY_ID == 0:
                 # Khong teleport ve thanh, dung yen tai cho login. Vao tran thi cu danh.

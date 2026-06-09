@@ -68,6 +68,7 @@ def run_account(username, password, pidx, is_leader):
         _clients.append(c)
         log.info("[%s] (%s) vao world. map=%s", label, role, c.current_map)
         c.claim_checkin()   # diem danh hang ngay (tu dem so lan)
+        c.claim_legion_gift()   # nhan qua quan doan hang ngay
 
         # --- Vao Di Gioi (solo) - ne battle/chua login xong, retry ---
         # Neu DA o trong DG (login lai khi con ket DG) -> CHAY LUON, KHONG thoat/vao lai

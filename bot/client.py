@@ -160,6 +160,40 @@ def _save_checkin(label: str, date: str, day: int):
             pass
 
 
+# ---- Tracker viec lam HANG NGAY 1 lan (vd qua quan doan): {label:task -> date} ----
+_DAILY_FILE = "daily_state.json"
+
+def _daily_done(label: str, task: str) -> bool:
+    import json, os, datetime
+    if not os.path.exists(_DAILY_FILE):
+        return False
+    try:
+        with open(_DAILY_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        return d.get(f"{label}:{task}") == datetime.date.today().isoformat()
+    except Exception:
+        return False
+
+def _mark_daily(label: str, task: str):
+    import json, os, datetime
+    today = datetime.date.today().isoformat()
+    with _gift_lock:
+        d = {}
+        if os.path.exists(_DAILY_FILE):
+            try:
+                with open(_DAILY_FILE, encoding="utf-8") as f:
+                    d = json.load(f)
+            except Exception:
+                d = {}
+        d = {k: v for k, v in d.items() if v == today}   # don key ngay cu
+        d[f"{label}:{task}"] = today
+        try:
+            with open(_DAILY_FILE, "w", encoding="utf-8") as f:
+                json.dump(d, f)
+        except Exception:
+            pass
+
+
 class GameClient:
     def __init__(self, user_id: str, access_token: str):
         self.user_id = user_id
@@ -646,6 +680,17 @@ class GameClient:
                 return True
         log.info("[%s] Diem danh: khong nhan duoc (co the da diem danh hom nay roi)", self._label)
         return False
+
+    def claim_legion_gift(self):
+        """Nhan qua QUAN DOAN hang ngay. C2S 0x27 [69 00] -> server tra reward (0x17).
+        1 lan/ngay (daily_state.json). Khong trong quan doan thi vo hai."""
+        if _daily_done(self._label, "legion"):
+            return
+        self.send(0x7c, b"\x04\x00")   # mo panel quan doan
+        time.sleep(0.5)
+        self.send(0x27, b"\x69\x00")   # nhan qua quan doan
+        _mark_daily(self._label, "legion")
+        log.info("[%s] Nhan qua quan doan hang ngay", self._label)
 
     def _on_gift(self, pkt: bytes):
         """S2C 0x57 sub=2: [02 00][type 1B][status 1B]. type=03 qua online, type=01 DIEM DANH.

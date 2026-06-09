@@ -65,6 +65,7 @@ def run_account(username: str, password: str, idx: int = 0):
 
             client.request_offline_exp()   # nhan exp offline neu co
             client.claim_mail()            # nhan qua mail + xoa mail da doc
+            client.claim_legion_gift()     # nhan qua quan doan hang ngay
 
             if client.in_di_gioi():
                 # Da o Di Gioi roi -> dung yen luon
