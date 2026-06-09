@@ -766,52 +766,68 @@ class GameClient:
         _mark_daily(self._label, "legion")
         log.info("[%s] Nhan qua quan doan hang ngay", self._label)
 
-    def do_daily_dungeon(self, max_sec: int = 360):
-        """SOLO daily dungeon (1 lan/ngay). Huy party -> vao dungeon (0x2f) -> tu danh BOSS
-        (boss_mode -> pet dung boss_skill) -> nhan thuong -> ra. Xac nhan dungeon.pcap."""
-        if _daily_done(self._label, "dungeon"):
-            return
+    def _run_one_dungeon(self, max_sec: int) -> bool:
+        """Chay 1 luot dungeon: query -> vao -> danh boss -> nhan thuong -> ra. True neu vao duoc."""
         orig = self.current_map
-        log.info("[%s] Vao SOLO daily dungeon...", self._label)
-        self.leave_party(); time.sleep(1.5)
-        self.send(0x2f, b"\x01\x00"); time.sleep(0.6)          # query pho ban
+        self.send(0x2f, b"\x01\x00"); time.sleep(0.6)             # query pho ban
         self.send(0x2f, b"\x02\x00\x02\x00\x00"); time.sleep(0.6)  # VAO dungeon
-        # cho vao dungeon (map doi khac orig)
         dmap = None
         for _ in range(12):
             if self.current_map is not None and self.current_map != orig:
                 dmap = self.current_map; break
             time.sleep(1)
         if dmap is None:
-            log.info("[%s] Khong vao duoc dungeon (het luot hom nay?) -> bo qua", self._label)
-            _mark_daily(self._label, "dungeon")   # danh dau de khoi thu lai trong ngay
-            return
+            log.info("[%s] Khong vao duoc dungeon (het luot/het vang?)", self._label)
+            return False
         log.info("[%s] Da vao dungeon map=%s -> danh boss", self._label, dmap)
         self.state.boss_mode = True
         self.dungeon_complete = False
         try:
             t0 = time.time()
-            # danh den khi nhan goi HOAN THANH (0x14 sub 0x64) hoac da ra khoi dungeon
             while self.running and time.time() - t0 < max_sec:
                 time.sleep(2)
                 if self.dungeon_complete:
-                    log.info("[%s] Dungeon HOAN THANH (0x14 sub64) -> nhan thuong + ra", self._label)
+                    log.info("[%s] Dungeon HOAN THANH -> nhan thuong + ra", self._label)
                     self.send(0x52, b"\x01\x00\x01\x1d\x00")   # claim/confirm tong ket
                     time.sleep(0.6)
-                    self.leave_party()                          # huy -> trigger thoat dungeon
+                    self.leave_party()                          # thoat dungeon
                     break
-                if self.current_map != dmap:        # da ra khoi dungeon (vi ly do khac)
+                if self.current_map != dmap:
                     log.info("[%s] Da ra khoi dungeon (map=%s)", self._label, self.current_map)
                     break
-            # cho ra khoi dungeon (map ve goc)
-            for _ in range(10):
+            for _ in range(10):    # cho map ve goc
                 if self.current_map != dmap:
                     break
                 time.sleep(1)
         finally:
             self.state.boss_mode = False
-        _mark_daily(self._label, "dungeon")
-        log.info("[%s] Xong SOLO daily dungeon", self._label)
+        return True
+
+    def do_daily_dungeon(self, max_sec: int = 360):
+        """SOLO daily dungeon, toi da DUNGEON_RUNS_PER_DAY luot/ngay (mac dinh 2).
+        Luot 1 mien phi; luot 2+ MUA bang vang (0x54 type 0x0d). Tu dem + luu (checkin_state
+        key 'dungeon': date+so luot). Huy party -> [mua neu luot>=2] -> vao -> danh -> thuong -> ra."""
+        import datetime
+        runs_target = getattr(config, "DUNGEON_RUNS_PER_DAY", 2)
+        today = datetime.date.today().isoformat()
+        st = _load_checkin(self._label, "dungeon")
+        count = st["day"] if st.get("date") == today else 0
+        if count >= runs_target:
+            return
+        log.info("[%s] SOLO daily dungeon: da %d/%d luot hom nay", self._label, count, runs_target)
+        self.leave_party(); time.sleep(1.5)   # thoat party (solo moi vao duoc dungeon)
+        while count < runs_target and self.running:
+            if count >= 1:   # luot 2+ -> MUA them luot bang vang
+                self.send(0x54, b"\x01\x00\x0d\x00\x02\x00"); time.sleep(0.6)      # query mua
+                self.send(0x54, b"\x02\x00\x02\x0d\x00\x02\x00"); time.sleep(0.8)  # MUA luot (ton vang)
+                log.info("[%s] Mua them luot dungeon (vang)", self._label)
+            if not self._run_one_dungeon(max_sec):
+                break   # khong vao duoc (het luot/het vang) -> dung
+            count += 1
+            _save_checkin(self._label, "dungeon", today, count)
+            log.info("[%s] Xong dungeon luot %d/%d", self._label, count, runs_target)
+            time.sleep(2)
+        log.info("[%s] Hoan tat daily dungeon (%d luot)", self._label, count)
 
     def _on_gift(self, pkt: bytes):
         """S2C 0x57 sub=2: [02 00][type 1B][status 1B]. type=03 qua online, type=01 DIEM DANH.

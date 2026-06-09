@@ -70,6 +70,9 @@ RUN_AROUND_OFFSETS = [(-100, -100), (-200, 0), (-100, 100), (0, 0),
                       (100, -100), (200, 0), (100, 100), (0, 0)]
 RUN_STEP_WAIT = 2.5            # giay moi buoc di chuyen
 
+# Solo daily dungeon: so luot/ngay (luot 1 mien phi, luot 2+ MUA bang vang). =1 chi danh luot free.
+DUNGEON_RUNS_PER_DAY = 2
+
 # Qua online: nhan khi online du so phut. id qua = so phut moc.
 GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 

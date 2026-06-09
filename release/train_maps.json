@@ -1,6 +1,6 @@
 {
   "_note": "Data map party-train. key = map_id (xem log 'MAP HIEN TAI' luc login). name = ten map. safe/mobs = TOA DO (== toa do UI trong game, da xac nhan packet==UI). safe = [x,y] diem an toan (tap ket + lap party). mobs = [[x,y],...] diem co quai (leader ra dung cay).",
   "maps": {
-    "12831": { "name": "Rung Noi Huynh 28-30", "safe": [470, 1210], "mobs": [[590, 870]] }
+    "12831": { "name": "Rung Noi Huynh 28-30", "safe": [470, 1210], "mobs": [[590, 870],[590, 1510],[1070, 1850]] }
   }
 }

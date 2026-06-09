@@ -91,6 +91,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
         train_on_map = tm is not None
 
+        # SOLO daily dungeon: map-train chay mai khong co "luc xong" -> lam NGAY luc login
+        # (truoc khi vao party-train). DG thi lam SAU khi het gio (xem cuoi vong lap).
+        # Daily-count chong lam trung trong ngay nen an toan.
+        if train_on_map:
+            try:
+                c.do_daily_dungeon()
+            except Exception as e:
+                log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
+
         if train_on_map:
             # PHAI dung map login (toa do safe/mobs chi dung tren map do).
             self_map_ok = (login_map == sc)
@@ -157,7 +166,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
 
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
         if is_leader:
-            for _ in range(45):
+            for _ in range(90):   # ~180s: du cho member xong dungeon + ve diem tap ket
                 if len(st["ready_members"]) >= st["n_members"]:
                     break
                 time.sleep(2)
