@@ -392,6 +392,15 @@ class GameClient:
             mid = int.from_bytes(pkt[17:19], "little")
             if mid > 1000:   # loc gia tri rac (map_id that >1000)
                 self.current_map = mid
+        # 0x03 = goi SELF server gui khi load map: [00 00][entity 8B][... 11B][map_id 2B].
+        # KHAC voi 0x0c/0x07 (broadcast nguoi xung quanh): 0x03 ve CHINH MINH -> doc duoc map
+        # NGAY CA KHI DUNG MOT MINH (DG/dungeon vang nguoi). Chi doc khi entity == self.
+        if opcode == 0x03 and len(pkt) >= 30 and pkt[7:9] == b"\x00\x00":
+            ent = pkt[9:17]
+            if self.self_entity is None or ent == self.self_entity:
+                mid = int.from_bytes(pkt[28:30], "little")
+                if mid > 1000:
+                    self.current_map = mid
         # (Server KHONG echo vi tri CUA MINH qua 0x06 -> dung dead-reckoning trong move_to/enter)
         if opcode == protocol.OP_STAT_UPD:        # 0x33
             self.state.update_0x33(pkt)
