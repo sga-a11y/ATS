@@ -9,9 +9,11 @@ Tinh nang:
 
 Chay:  python gui.py
 """
-import os, sys, json, queue, logging, threading, time
+import os, sys, json, re, queue, logging, threading, time, collections
 import tkinter as tk
 from tkinter import ttk, messagebox
+
+_LABEL_RE = re.compile(r"^\d\d:\d\d:\d\d \[([^\]]+)\]")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import run_party_digioi as ctrl          # module dieu khien (da refactor)
@@ -55,9 +57,16 @@ class BotGUI(tk.Tk):
         self.title("TS Online Bot Manager")
         self.geometry("1100x720")
         self.minsize(900, 560)
+        # --- log filter state ---
+        self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
+        self.log_filter = None         # None = tat ca; hoac set(username) duoc hien
+        self._char2user = {}           # ten nhan vat -> username (cap nhat khi acc resolve)
+        self._all_usernames = set(u for pidx in range(len(config.PARTIES))
+                                  for (u, *_ ) in ctrl.party_accounts(pidx))
         self._build_toolbar()
         self._build_tabs()
         self._build_log()
+        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self.after(1000, self._refresh)
         self.after(300, self._drain_log)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -70,6 +79,8 @@ class BotGUI(tk.Tk):
         ttk.Button(bar, text="■ STOP TẤT CẢ", command=self._stop_all).pack(side="left", padx=3)
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=8)
         ttk.Button(bar, text="⚙ Cấu hình", command=self._open_config).pack(side="left", padx=3)
+        ttk.Button(bar, text="🗑 Xóa log", command=self._clear_log).pack(side="left", padx=3)
+        ttk.Button(bar, text="📋 Log: Tất cả", command=self._log_show_all).pack(side="left", padx=3)
         sc = getattr(config, "START_CITY_ID", 0)
         mode = "Dị Giới" if sc == getattr(config, "DIGIOI_MAP_ID", -1) else \
                (f"Map-train {sc}" if config.TRAIN_MAPS.get(sc) else f"Đứng yên ({sc})")
@@ -108,6 +119,7 @@ class BotGUI(tk.Tk):
             tree.column("acc", anchor="w"); tree.column("char", anchor="w")
             tree.tag_configure("on", foreground="#0a0")
             tree.tag_configure("off", foreground="#999")
+            tree.bind("<<TreeviewSelect>>", lambda e, p=pidx: self._on_acc_select(p))
             tree.pack(fill="both", expand=True)
             for (u, p, is_leader, is_picker) in accs:
                 role = "LEADER" if is_leader else ("picker" if is_picker else "member")
@@ -117,13 +129,69 @@ class BotGUI(tk.Tk):
 
     # ---- log panel ----
     def _build_log(self):
-        frame = ttk.LabelFrame(self, text="Log", padding=4)
-        frame.pack(fill="both", expand=False, padx=6, pady=(0, 6))
-        self.log_txt = tk.Text(frame, height=12, wrap="none", bg="#111", fg="#ddd",
+        self._log_frame = ttk.LabelFrame(self, text="Log — Tất cả", padding=4)
+        self._log_frame.pack(fill="both", expand=False, padx=6, pady=(0, 6))
+        self.log_txt = tk.Text(self._log_frame, height=12, wrap="none", bg="#111", fg="#ddd",
                                font=("Consolas", 9))
-        sb = ttk.Scrollbar(frame, command=self.log_txt.yview)
+        sb = ttk.Scrollbar(self._log_frame, command=self.log_txt.yview)
         self.log_txt.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y"); self.log_txt.pack(side="left", fill="both", expand=True)
+
+    # ---- log filter ----
+    def _label_to_user(self, label):
+        """Tu label [xxx] trong log -> username. label co the la username hoac ten nhan vat."""
+        if label is None:
+            return None
+        if label in self._all_usernames:
+            return label
+        return self._char2user.get(label)
+
+    def _line_visible(self, label):
+        if self.log_filter is None:
+            return True
+        u = self._label_to_user(label)
+        return u is not None and u in self.log_filter
+
+    def _set_log_filter(self, users, title):
+        self.log_filter = users
+        self._log_frame.configure(text=f"Log — {title}")
+        self._rerender_log()
+
+    def _rerender_log(self):
+        self.log_txt.delete("1.0", "end")
+        for line, label in self.log_buffer:
+            if self._line_visible(label):
+                self.log_txt.insert("end", line + "\n")
+        self.log_txt.see("end")
+
+    def _log_show_all(self):
+        self._set_log_filter(None, "Tất cả")
+
+    def _clear_log(self):
+        self.log_buffer.clear()
+        self.log_txt.delete("1.0", "end")
+
+    def _on_tab_changed(self, _e=None):
+        try:
+            pidx = self.nb.index(self.nb.select())
+        except Exception:
+            return
+        users = set(u for (u, *_ ) in ctrl.party_accounts(pidx))
+        self._set_log_filter(users, f"Party {pidx + 1}")
+
+    def _on_acc_select(self, pidx):
+        tree = self.party_trees.get(pidx)
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            return
+        u = sel[0]
+        char = ""
+        c = ctrl.account_clients.get(u)
+        if c is not None and c.char_name:
+            char = f" / {c.char_name}"
+        self._set_log_filter({u}, f"{u}{char}")
 
     # ---- actions ----
     def _start_all(self):
@@ -157,6 +225,10 @@ class BotGUI(tk.Tk):
 
     # ---- refresh status ----
     def _refresh(self):
+        # cap nhat map ten nhan vat -> username (de loc log theo acc/party)
+        for u, c in list(ctrl.account_clients.items()):
+            if c is not None and c.char_name:
+                self._char2user[c.char_name] = u
         for pidx, tree in self.party_trees.items():
             for (u, p, is_leader, is_picker) in ctrl.party_accounts(pidx):
                 if not tree.exists(u):
@@ -174,15 +246,18 @@ class BotGUI(tk.Tk):
 
     def _drain_log(self):
         n = 0
-        while n < 200:
+        while n < 300:
             try:
                 line = _log_queue.get_nowait()
             except queue.Empty:
                 break
-            self.log_txt.insert("end", line + "\n")
+            m = _LABEL_RE.match(line)
+            label = m.group(1) if m else None
+            self.log_buffer.append((line, label))
+            if self._line_visible(label):
+                self.log_txt.insert("end", line + "\n")
             n += 1
         if n:
-            # gioi han 2000 dong
             cnt = int(self.log_txt.index("end-1c").split(".")[0])
             if cnt > 2000:
                 self.log_txt.delete("1.0", f"{cnt - 2000}.0")
