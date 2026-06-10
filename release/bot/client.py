@@ -55,6 +55,29 @@ def _register_party_int(party_idx, entity, value):
     with _PARTY_LOCK:
         _PARTY_INT.setdefault(party_idx, {})[bytes(entity)] = value
 
+# entity(bytes) -> ten nhan vat (chia se giua cac thread acc trong process). Moi acc tu dang ky
+# entity+ten cua chinh no -> leader tra cuu ten member khi log (set quan su, moi...).
+_PARTY_NAMES = {}
+
+def _register_party_name(entity, name):
+    if not entity or not name:
+        return
+    with _PARTY_LOCK:
+        _PARTY_NAMES[bytes(entity)] = name
+
+def name_for_entity(entity):
+    """Ten nhan vat theo entity (khop 8B day du HOAC 4B prefix). None neu chua biet."""
+    if not entity:
+        return None
+    eb = bytes(entity)
+    with _PARTY_LOCK:
+        if eb in _PARTY_NAMES:
+            return _PARTY_NAMES[eb]
+        for k, v in _PARTY_NAMES.items():   # khop prefix 4B (entity party luu dang rut gon)
+            if k[:4] == eb[:4]:
+                return v
+    return None
+
 def best_int_member(party_idx, candidates):
     """Tra entity co INT cao nhat trong 'candidates' (list entity). None neu khong biet INT."""
     with _PARTY_LOCK:
@@ -984,6 +1007,7 @@ class GameClient:
                 if self.self_entity and entity == self.self_entity and self.char_name != name:
                     self.char_name = name
                     self._label = name
+                    _register_party_name(self.self_entity, name)   # de leader tra ten member
                     log.info("[%s] Ten nhan vat = '%s'", self._username, name)
                 log.debug("[%s] guild member: %s -> '%s'", self._label, entity.hex()[:12], name)
             off += 9 + name_len + 32
@@ -1082,8 +1106,9 @@ class GameClient:
         chosen = best or ents[0]
         ival = _PARTY_INT.get(self.party_idx, {}).get(chosen)
         self.set_strategist(chosen)
-        log.info("[%s] (LEADER) set quan su = member %s (INT=%s)%s",
-                 self._label, chosen.hex()[:8], ival,
+        nm = name_for_entity(chosen) or chosen.hex()[:8]
+        log.info("[%s] (LEADER) set quan su = member '%s' (INT=%s)%s",
+                 self._label, nm, ival,
                  "" if best else " [chua biet INT -> chon dau tien]")
 
     def increase_stat(self, stat_id: int, amount: int = 1):
