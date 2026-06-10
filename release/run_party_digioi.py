@@ -267,6 +267,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
+            try:
+                c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
+            except Exception as e:
+                log.warning("[%s] loi qua online (bo qua): %s", label, e)
             if train_on_map:
                 pass   # leader da chay long vong (run-around) tu dong tim quai
             else:
