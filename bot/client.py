@@ -967,15 +967,15 @@ class GameClient:
                 self.send(0x54, b"\x02\x00\x02\x0d\x00\x02\x00"); time.sleep(0.8)
                 log.info("[%s] Mua them luot dungeon (vang)", self._label)
             # count==0 -> dung VE FREE, vao thang (khong mua)
-            if not self._run_one_dungeon(max_sec):
-                if count == 0:
-                    # luot free vao hut = local count STALE (da danh ngoai bot) -> cache het luot
-                    _save_checkin(self._label, "dungeon", today, runs_target)
-                    log.info("[%s] Dungeon free vao hut (da danh ngoai?) -> cache het luot", self._label)
-                break
-            count += 1
+            ok = self._run_one_dungeon(max_sec)
+            count += 1   # DU thanh cong hay vao loi (dump) -> van count +1: coi nhu da DUNG 1 luot
+                         # -> KHONG gui lai luot do nua; qua luot sau (luot sau se MUA ve -> vao chac).
             _save_checkin(self._label, "dungeon", today, count)
-            log.info("[%s] Xong dungeon luot %d/%d", self._label, count, runs_target)
+            if ok:
+                log.info("[%s] Xong dungeon luot %d/%d", self._label, count, runs_target)
+            else:
+                log.info("[%s] Dungeon luot %d vao loi/dump (da danh tay?) -> van count +1, qua luot sau",
+                         self._label, count)
             time.sleep(2)
         log.info("[%s] Hoan tat daily dungeon (%d luot)", self._label, count)
 
