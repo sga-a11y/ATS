@@ -334,16 +334,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                              label, h, m, c.digioi_minutes)
                     if remain <= 5:
                         log.warning("[%s] SAP HET GIO DI GIOI (%d phut)!", label, remain)
-                # ra ngoai DG (map khac DG) lien tuc 20s. Phan biet bang TIMER THAT:
-                #   - con gio (digioi_minutes < LIMIT-1) -> bi ra ngoai SOM (doi kenh/loi) -> VAO LAI
+                # KHONG con dung map DG (chet bi day ra town / loi) lien tuc ~10s. Phan biet TIMER:
+                #   - con gio (>=2 phut) -> bi day ra SOM -> VAO LAI DG ngay
                 #   - het gio that -> thoat party + danh solo daily dungeon roi dong acc
                 if c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
                     out_cnt += 1
-                    if out_cnt >= 4:   # ~20s lien tuc ngoai DG
+                    if out_cnt >= 2:   # ~10s lien tuc ngoai DG
                         remain = max(0, DIGIOI_LIMIT - c.digioi_minutes)
                         if remain >= 2:
-                            log.warning("[%s] (%s) ra ngoai DG som (con %d phut) -> VAO LAI DG",
-                                        label, role, remain)
+                            log.warning("[%s] (%s) KHONG o trong DG (map=%s, chet/bi day ra?) "
+                                        "con %d phut -> VAO LAI DG", label, role, c.current_map, remain)
                             try: c.enter_di_gioi_safe()
                             except Exception: pass
                             out_cnt = 0
