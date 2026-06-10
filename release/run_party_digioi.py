@@ -91,6 +91,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             log.warning("[%s] chua vao world (entity=%s map=%s) -> login lai...",
                         label, c.self_entity is not None, c.current_map)
             c.close(); time.sleep(5)
+        if not ok:
+            log.warning("[%s] >>> THOAT: LOGIN/VAO WORLD THAT BAI sau 6 lan "
+                        "(entity=%s map=%s) <<<", label, c.self_entity is not None, c.current_map)
+            try: c.close()
+            except Exception: pass
+            return
         _clients.append(c)
         account_clients[username] = c     # GUI doc trang thai
         label = c.char_name or username   # log theo TEN NHAN VAT (neu da resolve), fallback username
