@@ -877,9 +877,19 @@ class GameClient:
                 entered = True; break
             time.sleep(0.1)
         if not entered:
-            # khong vao duoc -> van o map train, GIU flee BAT de ne quai (khong tat)
             log.info("[%s] Khong vao duoc dungeon (het luot/het vang?)", self._label)
             self.state.boss_mode = False
+            # Neu bi DAY vao sanh dungeon (map doi khac orig) ma khong danh duoc -> THOAT ve map cu
+            # (server het luot van teleport vao sanh 12000... -> phai ra keo lech khoi map train).
+            if self.current_map is not None and orig is not None and self.current_map != orig:
+                log.info("[%s] bi day vao sanh dungeon (map=%s) -> thoat ve map cu %s",
+                         self._label, self.current_map, orig)
+                self.leave_party(); time.sleep(0.6)
+                self.send(0x14, b"\x06\x00"); time.sleep(0.6)
+                for _ in range(20):
+                    if not self.running or self.current_map == orig:
+                        break
+                    time.sleep(1)
             return False
         log.info("[%s] Da vao dungeon (in_battle=%s map=%s) -> danh boss",
                  self._label, self.state.in_battle, self.current_map)
@@ -930,6 +940,12 @@ class GameClient:
                 self.send(0x54, b"\x02\x00\x02\x0d\x00\x02\x00"); time.sleep(0.8)  # MUA luot (ton vang)
                 log.info("[%s] Mua them luot dungeon (vang)", self._label)
             if not self._run_one_dungeon(max_sec):
+                # Vao hut o luot DAU (count=0) = server HET LUOT (du local dem 0) -> CACHE het
+                # luot hom nay -> khong thu lai (tranh bi day vao sanh 12000 lap di lap lai).
+                if count == 0:
+                    _save_checkin(self._label, "dungeon", today, runs_target)
+                    log.info("[%s] Dungeon: server bao het luot hom nay -> nho lai, khong thu nua",
+                             self._label)
                 break   # khong vao duoc (het luot/het vang) -> dung
             count += 1
             _save_checkin(self._label, "dungeon", today, count)
