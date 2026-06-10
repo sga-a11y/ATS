@@ -67,6 +67,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
     _pc0 = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
     server_ip = _pc0.get("server_ip") or config.GAME_HOST
     server_name = _pc0.get("server", "?")
+    server_id = _pc0.get("server_id", 1)
     try:
         # --- Login + cho vao world THUC SU (co self_entity VA co current_map) ---
         c = None
@@ -74,9 +75,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             if _stopped():
                 log.info("[%s] STOP truoc khi login xong", label); return
             cred = login(username, password)
-            c = GameClient(cred["user_id"], cred["access_token"], host=server_ip)
+            c = GameClient(cred["user_id"], cred["access_token"], host=server_ip, server_id=server_id)
             c._label = label; c._username = username
-            log.info("[%s] server=%s (%s)", label, server_name, server_ip)
+            log.info("[%s] server=%s (%s) id=%s", label, server_name, server_ip, server_id)
             c.party_idx = pidx
             c.submit_delay = 0.3
             c.connect()

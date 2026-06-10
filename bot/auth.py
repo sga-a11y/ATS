@@ -12,14 +12,16 @@ import struct
 from .protocol import xor, OP_LOGIN
 
 # 13 byte payload-prefix sau opcode (truoc chuoi credential)
-# 00 00 | 02 01 01 00 00 00 00 00 | 19 14 00
-_PAYLOAD_PREFIX = bytes.fromhex("000002010100000000001914") + b"\x00"
+# 00 00 | 02 01 [SERVER_ID] 00 00 00 00 00 | 19 14 00
+# byte thu 5 (index 4) = SERVER ID: Trieu Van=1 (.98), Tao Thao=2 (.99). Sai -> KHONG vao world.
 
 
-def build_auth_packet(user_id: str, access_token: str) -> bytes:
-    """Tra ve packet auth da XOR, san sang gui."""
+def build_auth_packet(user_id: str, access_token: str, server_id: int = 1) -> bytes:
+    """Tra ve packet auth da XOR, san sang gui. server_id theo server (xem servers.json)."""
+    prefix = bytes([0x00, 0x00, 0x02, 0x01, server_id & 0xFF,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x19, 0x14, 0x00])
     cred = (user_id + "f" + access_token).encode("utf-16-le")
-    payload = _PAYLOAD_PREFIX + cred
+    payload = prefix + cred
     total = 7 + len(payload)
     frame = b"\xc0\x91" + struct.pack("<H", total) + b"\x00\x00" + bytes([OP_LOGIN]) + payload
     return xor(frame)

@@ -151,6 +151,8 @@ def _load_servers():
 SERVERS = _load_servers()
 def _server_ip(name):
     s = SERVERS.get(name); return s.get("ip") if s else None
+def _server_id(name):
+    s = SERVERS.get(name); return int(s.get("id", 1)) if s else 1
 def _load_accounts_json():
     import json, os
     f = os.path.join(os.path.dirname(__file__), os.pardir, "accounts.json")
@@ -178,6 +180,7 @@ if _aj is not None:
                 "city_flag": int(_party.get("city_flag", 0)),
                 "server": _srv,
                 "server_ip": _server_ip(_srv) or GAME_HOST,
+                "server_id": _server_id(_srv),
                 "do_dungeon": bool(_party.get("do_dungeon", True)),
             }
         if PARTY_CONFIG:

@@ -259,10 +259,11 @@ def _mark_daily(label: str, task: str):
 
 
 class GameClient:
-    def __init__(self, user_id: str, access_token: str, host: str = None):
+    def __init__(self, user_id: str, access_token: str, host: str = None, server_id: int = 1):
         self.user_id = user_id
         self.access_token = access_token
         self.host = host or config.GAME_HOST   # IP server (theo party); None -> mac dinh
+        self.server_id = server_id             # ID server trong goi auth (1=Trieu Van, 2=Tao Thao)
         self.sock = None
         self.recv_buf = b""
         self.running = False
@@ -316,8 +317,8 @@ class GameClient:
         self.claimed_gifts = st["claimed"]
         self.sock = socket.create_connection((self.host, config.GAME_PORT), timeout=15)
         log.info("Da ket noi %s:%s", self.host, config.GAME_PORT)
-        self.sock.sendall(build_auth_packet(self.user_id, self.access_token))
-        log.info("Da gui auth (user_id=%s)", self.user_id)
+        self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
+        log.info("Da gui auth (user_id=%s, server_id=%s)", self.user_id, self.server_id)
         self.running = True
         threading.Thread(target=self._recv_loop, daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
