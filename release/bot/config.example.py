@@ -135,6 +135,33 @@ XOR_KEY = 0xAD
 
 
 # ============================================================
+#  OVERRIDE tu accounts.json (GUI gui.py sua file nay). Co file -> thay PARTIES +
+#  START_CITY_ID + CHANNEL. Khong co -> giu nguyen cau hinh tren.
+# ============================================================
+def _load_accounts_json():
+    import json, os
+    f = os.path.join(os.path.dirname(__file__), os.pardir, "accounts.json")
+    try:
+        with open(f, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+_aj = _load_accounts_json()
+if _aj is not None:
+    try:
+        _ps = [[(a.get("u", ""), a.get("p", "")) for a in party.get("accounts", [])]
+               for party in _aj.get("parties", [])]
+        if _ps:
+            PARTIES = _ps
+        if "start_city_id" in _aj:
+            START_CITY_ID = int(_aj["start_city_id"])
+        if "channel" in _aj:
+            CHANNEL = int(_aj["channel"])
+    except Exception:
+        pass
+
+
+# ============================================================
 #  TU SINH tu PARTIES - KHONG can doc/sua
 # ============================================================
 ACCOUNTS = [acc for party in PARTIES for acc in party if acc and acc[0]]

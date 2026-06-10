@@ -33,6 +33,11 @@ _clients = []
 _threads = []   # thread tung acc - de biet khi nao TAT CA da thoat
 DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (de tinh "con lai")
 
+# ==== REGISTRY cho GUI dieu khien tung acc ====
+account_clients = {}   # username -> GameClient (doc trang thai live)
+account_stops = {}     # username -> threading.Event (GUI yeu cau dung acc nay)
+account_threads = {}   # username -> Thread
+
 
 def _pstate(pidx):
     if pidx not in _party_state:
@@ -77,6 +82,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         label, c.self_entity is not None, c.current_map)
             c.close(); time.sleep(5)
         _clients.append(c)
+        account_clients[username] = c     # GUI doc trang thai
         label = c.char_name or username   # log theo TEN NHAN VAT (neu da resolve), fallback username
         login_map = c.current_map         # map LUC LOGIN (doc som, it bi pollution) - dung de check train
         log.info("[%s] (%s) vao world.", label, role)
@@ -269,7 +275,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         last_remove = time.time()
         last_retry = time.time()
         last_dg = 0.0
+        stop_ev = account_stops.get(username)
         while c.running:
+            if stop_ev is not None and stop_ev.is_set():
+                log.info("[%s] (%s) -> STOP tu GUI", label, role)
+                break
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
@@ -346,48 +356,132 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
     finally:
         if is_leader:
             st["leader_gone"].set()   # leader thoat -> member ngung co vao party
+        account_clients.pop(username, None)
 
 
-# Gom acc theo party. Leader = slot 0 (PARTY_LEADER_ACC). Khoi dong tung party.
-for pidx, party in enumerate(config.PARTIES):
+# ============================================================
+#  API DIEU KHIEN (cho GUI gui.py goi). Cung dung cho CLI ben duoi.
+# ============================================================
+def party_accounts(pidx):
+    """List (username, password, is_leader, is_picker) cua party pidx (bo slot trong)."""
+    party = config.PARTIES[pidx]
     leader_acc = config.PARTY_LEADER_ACC.get(pidx)
     valid = [(u, p) for u, p in party if u and u.strip()]
-    st = _pstate(pidx)
-    st["n_members"] = sum(1 for u, p in valid if u != leader_acc)   # so member (khong tinh leader)
-    # Nguoi CHON KENH de gom ca party ve cung kenh: leader neu co, khong thi acc DAU TIEN.
-    # (chi chon kenh, KHONG lam leader: khong moi/khong set quan su.)
     picker_acc = leader_acc if leader_acc else (valid[0][0] if valid else None)
-    for u, p in valid:
-        is_leader = (u == leader_acc)
-        is_picker = (u == picker_acc)
-        t = threading.Thread(target=run_account, args=(u, p, pidx, is_leader, is_picker),
-                             daemon=True)
-        t.start()
-        _threads.append(t)
-        time.sleep(1.5)
+    return [(u, p, u == leader_acc, u == picker_acc) for u, p in valid]
 
-log.info(">>> Party train Di Gioi dang chay (%d acc). %s",
-         len(_threads), "vo han" if MINUTES == 0 else f"{MINUTES} phut")
-import datetime as _dt
-_deadline = None if MINUTES == 0 else time.time() + MINUTES * 60
-try:
-    while True:
-        time.sleep(5)
-        alive = sum(1 for t in _threads if t.is_alive())
-        if alive == 0:
-            log.warning("=" * 60)
-            log.warning(">>> TAT CA %d ACC DA THOAT GAME (%s). Khong con acc nao chay.",
-                        len(_threads), _dt.datetime.now().strftime("%H:%M:%S"))
-            log.warning(">>> Ly do thuong gap: sai map train / het gio DG / rot ket noi.")
-            log.warning("=" * 60)
-            break
-        if _deadline and time.time() >= _deadline:
-            log.info(">>> Het %d phut -> dong tat ca.", MINUTES)
-            break
-except KeyboardInterrupt:
-    log.info(">>> Nguoi dung dung (Ctrl+C).")
-for c in list(_clients):
-    try: c.close()
-    except Exception: pass
-log.info(">>> Ket thuc. (con %d/%d acc song luc dong)",
-         sum(1 for t in _threads if t.is_alive()), len(_threads))
+
+def start_account(username, password, pidx, is_leader, is_picker):
+    """Khoi dong 1 acc (thread). Bo qua neu dang chay."""
+    t = account_threads.get(username)
+    if t is not None and t.is_alive():
+        return False
+    st = _pstate(pidx)
+    st["n_members"] = sum(1 for u, p, lead, _ in party_accounts(pidx) if not lead)
+    account_stops[username] = threading.Event()
+    t = threading.Thread(target=run_account, args=(username, password, pidx, is_leader, is_picker),
+                         daemon=True)
+    account_threads[username] = t
+    _threads.append(t)
+    t.start()
+    return True
+
+
+def start_party(pidx, stagger=1.5):
+    """Khoi dong tat ca acc trong 1 party."""
+    started = 0
+    st = _pstate(pidx)
+    st["leader_gone"].clear()
+    for u, p, is_leader, is_picker in party_accounts(pidx):
+        if start_account(u, p, pidx, is_leader, is_picker):
+            started += 1
+            time.sleep(stagger)
+    return started
+
+
+def start_all():
+    n = 0
+    for pidx in range(len(config.PARTIES)):
+        n += start_party(pidx)
+    return n
+
+
+def stop_account(username):
+    """Dung 1 acc: set event + dong ket noi -> thread tu ket thuc."""
+    ev = account_stops.get(username)
+    if ev is not None:
+        ev.set()
+    c = account_clients.get(username)
+    if c is not None:
+        try: c.close()
+        except Exception: pass
+    return True
+
+
+def stop_party(pidx):
+    for u, p, _, _ in party_accounts(pidx):
+        stop_account(u)
+
+
+def stop_all():
+    for u in list(account_stops.keys()):
+        stop_account(u)
+
+
+def is_account_running(username):
+    t = account_threads.get(username)
+    return t is not None and t.is_alive()
+
+
+def account_status(username):
+    """Dict trang thai live cua acc (cho GUI). running, char, map, channel, in_party, dg_remain..."""
+    c = account_clients.get(username)
+    running = is_account_running(username)
+    if c is None:
+        return {"running": running, "char": "", "map": None, "in_party": False,
+                "dg_remain": None, "combat": False, "channel": None}
+    pidx = getattr(c, "party_idx", None)
+    from bot.client import is_joined
+    st = _party_state.get(pidx, {})
+    dg_remain = None
+    if c.current_map == config.DIGIOI_MAP_ID:
+        dg_remain = max(0, DIGIOI_LIMIT - getattr(c, "digioi_minutes", 0))
+    return {
+        "running": running,
+        "char": c.char_name or "",
+        "map": c.current_map,
+        "channel": st.get("channel"),
+        "in_party": is_joined(pidx, c.self_entity),
+        "dg_remain": dg_remain,
+        "combat": c.in_combat() if running else False,
+    }
+
+
+def _run_cli():
+    """Chay CLI nhu cu: khoi dong tat ca party roi cho den khi het acc / het gio."""
+    import datetime as _dt
+    n = start_all()
+    log.info(">>> Party train dang chay (%d acc). %s",
+             n, "vo han" if MINUTES == 0 else f"{MINUTES} phut")
+    deadline = None if MINUTES == 0 else time.time() + MINUTES * 60
+    try:
+        while True:
+            time.sleep(5)
+            if sum(1 for t in _threads if t.is_alive()) == 0:
+                log.warning("=" * 60)
+                log.warning(">>> TAT CA ACC DA THOAT GAME (%s). Khong con acc nao chay.",
+                            _dt.datetime.now().strftime("%H:%M:%S"))
+                log.warning(">>> Ly do thuong gap: sai map train / het gio DG / rot ket noi.")
+                log.warning("=" * 60)
+                break
+            if deadline and time.time() >= deadline:
+                log.info(">>> Het %d phut -> dong tat ca.", MINUTES)
+                break
+    except KeyboardInterrupt:
+        log.info(">>> Nguoi dung dung (Ctrl+C).")
+    stop_all()
+    log.info(">>> Ket thuc.")
+
+
+if __name__ == "__main__":
+    _run_cli()

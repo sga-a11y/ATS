@@ -31,3 +31,4 @@ test_run.py
 capture_member.py
 checkin_state.json
 daily_state.json
+accounts.json
