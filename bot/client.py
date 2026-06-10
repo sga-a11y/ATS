@@ -298,6 +298,9 @@ class GameClient:
         self.pos = None              # vi tri hien tai (x,y) cua minh - doc tu S2C 0x06 self
         self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
+        self.dungeon_runs_today = None  # so luot dungeon da danh hom nay (S2C 0x55 stat 0x9b)
+        self._dg_query = None        # raw S2C 0x54 (tra loi query luot dungeon)
+        self._dg_query_event = threading.Event()
         self._connect_time = None    # thoi diem connect phien nay
         self._online_base = 0.0      # giay online TICH LUY hom nay (load tu file, truoc phien nay)
         self.claimed_gifts = set()   # cac moc qua online da nhan hom nay (load tu file)
@@ -467,11 +470,17 @@ class GameClient:
                             self._label, pid, pid)
         elif opcode == 0x2f:                      # party PHO BAN (dungeon)
             self._on_dungeon(pkt)
-        elif opcode == 0x54:                      # exp offline
+        elif opcode == 0x54:                      # exp offline / query luot dungeon
+            self._dg_query = pkt[7:]              # luu raw de query_dungeon_attempts doc
+            self._dg_query_event.set()
             self._on_offline_exp(pkt)
-        elif opcode == 0x55 and len(pkt) >= 19 and pkt[13] == 0x1b:  # so phut Di Gioi
-            self.digioi_minutes = int.from_bytes(pkt[15:17], "little")
-            self._last_digioi_ts = time.time()
+        elif opcode == 0x55 and len(pkt) >= 19 and pkt[14] == 0x00:  # stat update [id 2B][val 4B]
+            sid = pkt[13]
+            if sid == 0x1b:                       # so phut Di Gioi
+                self.digioi_minutes = int.from_bytes(pkt[15:17], "little")
+                self._last_digioi_ts = time.time()
+            elif sid == 0x9b:                     # so luot dungeon DA danh hom nay
+                self.dungeon_runs_today = int.from_bytes(pkt[15:19], "little")
         elif opcode == 0x57:                      # qua online
             self._on_gift(pkt)
         elif opcode == 0x28:                      # skill bar char/pet
@@ -739,6 +748,8 @@ class GameClient:
         if sub == 0x01 and len(body) >= 9:
             exp_type = int.from_bytes(body[2:4], "little")
             exp = int.from_bytes(body[5:9], "little")
+            if exp_type == 0x0d:
+                return   # type 0x0d = VE DUNGEON (do do_daily_dungeon xu ly), KHONG phai exp offline
             if exp > 0:
                 log.info("[%s] Co %d exp offline (type=0x%x) -> nhan", self._label, exp, exp_type)
                 self.send(0x54, b"\x02\x00\x02" + struct.pack("<H", exp_type))
@@ -921,10 +932,20 @@ class GameClient:
             self.flee_mode = True    # ra khoi dungeon -> bat lai flee (con phai ve safe/lap party)
         return True
 
+    def query_dungeon(self, wait: float = 2.5):
+        """Query trang thai luot dungeon: C2S 0x54 01000d000200 -> S2C 0x54.
+        Het luot free: raw = 01 00 0d 00 [01] 0a000000 (byte[4]!=0 = phai mua).
+        Con luot free (gia dinh): byte[4]==0. Tra ve raw bytes (hoac None neu khong tra loi)."""
+        self._dg_query = None
+        self._dg_query_event.clear()
+        self.send(0x54, b"\x01\x00\x0d\x00\x02\x00")
+        self._dg_query_event.wait(wait)
+        return self._dg_query
+
     def do_daily_dungeon(self, max_sec: int = 360):
         """SOLO daily dungeon, toi da DUNGEON_RUNS_PER_DAY luot/ngay (mac dinh 2).
-        Luot 1 mien phi; luot 2+ MUA bang vang (0x54 type 0x0d). Tu dem + luu (checkin_state
-        key 'dungeon': date+so luot). Huy party -> [mua neu luot>=2] -> vao -> danh -> thuong -> ra."""
+        QUERY 0x54 TRUOC moi luot -> con free thi vao free; het free -> luot >=2 thi MUA, con
+        luot dau (free da dung ngoai bot) thi BO QUA (KHONG gui goi vao -> tranh bi dump 12000)."""
         import datetime
         runs_target = getattr(config, "DUNGEON_RUNS_PER_DAY", 2)
         today = datetime.date.today().isoformat()
@@ -932,21 +953,42 @@ class GameClient:
         count = st["day"] if st.get("date") == today else 0
         if count >= runs_target:
             return
+        # Server-truth: stat 0x9b = so luot DA danh hom nay (neu server da gui)
+        if self.dungeon_runs_today is not None and self.dungeon_runs_today >= runs_target:
+            log.info("[%s] Dungeon: server bao da danh %d luot -> bo qua", self._label,
+                     self.dungeon_runs_today)
+            _save_checkin(self._label, "dungeon", today, runs_target)
+            return
         log.info("[%s] SOLO daily dungeon: da %d/%d luot hom nay", self._label, count, runs_target)
         self.leave_party(); time.sleep(1.5)   # thoat party (solo moi vao duoc dungeon)
         while count < runs_target and self.running:
-            if count >= 1:   # luot 2+ -> MUA them luot bang vang
-                self.send(0x54, b"\x01\x00\x0d\x00\x02\x00"); time.sleep(0.6)      # query mua
-                self.send(0x54, b"\x02\x00\x02\x0d\x00\x02\x00"); time.sleep(0.8)  # MUA luot (ton vang)
+            q = self.query_dungeon()
+            qhex = q.hex() if q else None
+            free = (q is not None and len(q) >= 5 and q[0:4] == b"\x01\x00\x0d\x00" and q[4] == 0)
+            must_buy = (q is not None and len(q) >= 5 and q[0:4] == b"\x01\x00\x0d\x00" and q[4] != 0)
+            log.info("[%s] Dungeon query 0x54 -> %s (free=%s runs_today=%s count=%d)",
+                     self._label, qhex, free, self.dungeon_runs_today, count)
+            if must_buy and count == 0:
+                # Luot FREE da bi dung NGOAI bot -> coi nhu HET LUOT hom nay, KHONG mua/KHONG vao
+                # (tranh gui goi vao luc het -> bi dump ve diem tap trung 12000).
+                log.info("[%s] Dungeon: het luot free (da danh ngoai) -> bo qua, khong vao",
+                         self._label)
+                _save_checkin(self._label, "dungeon", today, runs_target)
+                break
+            if must_buy:
+                # luot >=2 (bot da danh free) -> day la luot tra phi -> MUA roi vao
+                self.send(0x54, b"\x02\x00\x02\x0d\x00\x02\x00"); time.sleep(0.8)
                 log.info("[%s] Mua them luot dungeon (vang)", self._label)
+            elif not free and q is not None:
+                # query tra ve nhung khong ro dinh dang -> than trong: bo qua (khong dump)
+                log.info("[%s] Dungeon: query la (%s) -> bo qua cho an toan", self._label, qhex)
+                break
+            # free=True hoac da mua -> vao
             if not self._run_one_dungeon(max_sec):
-                # Vao hut o luot DAU (count=0) = server HET LUOT (du local dem 0) -> CACHE het
-                # luot hom nay -> khong thu lai (tranh bi day vao sanh 12000 lap di lap lai).
                 if count == 0:
                     _save_checkin(self._label, "dungeon", today, runs_target)
-                    log.info("[%s] Dungeon: server bao het luot hom nay -> nho lai, khong thu nua",
-                             self._label)
-                break   # khong vao duoc (het luot/het vang) -> dung
+                    log.info("[%s] Dungeon vao hut -> nho la het luot, khong thu nua", self._label)
+                break
             count += 1
             _save_checkin(self._label, "dungeon", today, count)
             log.info("[%s] Xong dungeon luot %d/%d", self._label, count, runs_target)
