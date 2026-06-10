@@ -360,11 +360,19 @@ class PartyConfigFrame(ttk.Frame):
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
         self.map_cb = self.mob_cb = self.city_cb = None
 
-        ttk.Label(self, text="Acc (mỗi dòng: user,pass — DÒNG ĐẦU = chủ PT):").pack(anchor="w")
+        # KHONG co chu PT: slot 0 = ("","") -> member tu dung cho leader ngoai/tay moi.
+        accs = self._preset.get("accounts", [])
+        no_leader = bool(accs) and not (accs[0].get("u", "").strip())
+        shown = accs[1:] if no_leader else accs
+        self.no_leader_var = tk.BooleanVar(value=no_leader)
+        ttk.Checkbutton(self, text="Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)",
+                        variable=self.no_leader_var).pack(anchor="w", pady=(2, 0))
+
+        ttk.Label(self, text="Acc (mỗi dòng: user,pass — DÒNG ĐẦU = chủ PT, trừ khi tick ô trên):"
+                  ).pack(anchor="w")
         self.txt = tk.Text(self, height=7, font=("Consolas", 10))
         self.txt.pack(fill="both", expand=True)
-        self.txt.insert("1.0", "\n".join(f"{a.get('u','')},{a.get('p','')}"
-                                         for a in self._preset.get("accounts", [])))
+        self.txt.insert("1.0", "\n".join(f"{a.get('u','')},{a.get('p','')}" for a in shown))
         self._render_dyn()
 
     def _render_dyn(self):
@@ -432,6 +440,8 @@ class PartyConfigFrame(ttk.Frame):
                 continue
             parts = [x.strip() for x in line.split(",")]
             accs.append({"u": parts[0], "p": parts[1] if len(parts) > 1 else ""})
+        if self.no_leader_var.get() and accs:
+            accs = [{"u": "", "p": ""}] + accs   # slot 0 trong = KHONG co chu PT
         return {"mode": mode, "start_city_id": sc, "mob_index": mob_index,
                 "city_flag": city_flag, "accounts": accs}
 
