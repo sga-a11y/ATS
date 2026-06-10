@@ -425,9 +425,15 @@ class GameClient:
             self.state.active_pet_id = pid
             self.state.pet_skills = getattr(config, "PET_SKILLS", {}).get(pid, set())
             self.state.pet_boss_skill = getattr(config, "PET_BOSS_SKILL", {}).get(pid)
+            known = pid in getattr(config, "PET_NAMES", {}) or pid in getattr(config, "PET_SKILLS", {})
             name = getattr(config, "PET_NAMES", {}).get(pid, "?")
-            log.info("[%s] Pet id=0x%x '%s' -> skills=%s",
-                     self._label, pid, name, [hex(s) for s in sorted(self.state.pet_skills)])
+            if known:
+                log.info("[%s] Pet id=0x%x '%s' -> skills=%s",
+                         self._label, pid, name, [hex(s) for s in sorted(self.state.pet_skills)])
+            else:
+                log.warning("[%s] PET MOI chua co trong pets.json: id=0x%x (hex='0x%x') "
+                            "-> them vao pets.json {skills, name, boss_skill}",
+                            self._label, pid, pid)
         elif opcode == 0x2f:                      # party PHO BAN (dungeon)
             self._on_dungeon(pkt)
         elif opcode == 0x54:                      # exp offline
