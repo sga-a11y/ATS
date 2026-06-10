@@ -34,9 +34,15 @@ class _QueueHandler(logging.Handler):
 
 
 def _setup_log_capture():
-    h = _QueueHandler()
-    h.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S"))
-    logging.getLogger().addHandler(h)
+    root = logging.getLogger()
+    # Bo StreamHandler (in log ra console Windows) - GUI da hien log roi.
+    # Giu FileHandler (party.log) - FileHandler la con cua StreamHandler nen loai tru rieng.
+    for h in list(root.handlers):
+        if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler):
+            root.removeHandler(h)
+    qh = _QueueHandler()
+    qh.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S"))
+    root.addHandler(qh)
 
 
 def _map_name(mid):
@@ -347,5 +353,18 @@ class ConfigDialog(tk.Toplevel):
 
 
 if __name__ == "__main__":
-    _setup_log_capture()
-    BotGUI().mainloop()
+    try:
+        _setup_log_capture()
+        BotGUI().mainloop()
+    except Exception as e:
+        import traceback
+        try:
+            with open("gui_error.log", "w", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
+        except Exception:
+            pass
+        try:
+            from tkinter import messagebox
+            messagebox.showerror("Loi GUI", f"{e}\n\nXem gui_error.log")
+        except Exception:
+            pass
