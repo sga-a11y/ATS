@@ -96,7 +96,7 @@ class BotGUI(tk.Tk):
     # ---- tabs per party ----
     def _build_tabs(self):
         self.nb = ttk.Notebook(self)
-        self.nb.pack(fill="both", expand=True, padx=6, pady=4)
+        self.nb.pack(fill="x", expand=False, padx=6, pady=4)   # bang gon -> log chiem phan lon
         self.party_trees = {}   # pidx -> Treeview
         cols = ("acc", "char", "role", "run", "map", "ch", "party", "dg", "combat")
         heads = {"acc": "Tài khoản", "char": "Nhân vật", "role": "Vai trò", "run": "Trạng thái",
@@ -119,14 +119,14 @@ class BotGUI(tk.Tk):
                        command=lambda p=pidx: self._start_sel(p)).pack(side="left", padx=2)
             ttk.Button(btns, text="■ Stop acc chọn",
                        command=lambda p=pidx: self._stop_sel(p)).pack(side="left", padx=2)
-            tree = ttk.Treeview(frame, columns=cols, show="headings", height=8)
+            tree = ttk.Treeview(frame, columns=cols, show="headings", height=max(len(accs), 3))
             for c in cols:
                 tree.heading(c, text=heads[c]); tree.column(c, width=widths[c], anchor="center")
             tree.column("acc", anchor="w"); tree.column("char", anchor="w")
             tree.tag_configure("on", foreground="#0a0")
             tree.tag_configure("off", foreground="#999")
             tree.bind("<<TreeviewSelect>>", lambda e, p=pidx: self._on_acc_select(p))
-            tree.pack(fill="both", expand=True)
+            tree.pack(fill="x", expand=False)
             for (u, p, is_leader, is_picker) in accs:
                 role = "LEADER" if is_leader else ("picker" if is_picker else "member")
                 tree.insert("", "end", iid=u, values=(u, "", role, "Tắt", "-", "-", "-", "-", "-"),
@@ -136,8 +136,8 @@ class BotGUI(tk.Tk):
     # ---- log panel ----
     def _build_log(self):
         self._log_frame = ttk.LabelFrame(self, text="Log — Tất cả", padding=4)
-        self._log_frame.pack(fill="both", expand=False, padx=6, pady=(0, 6))
-        self.log_txt = tk.Text(self._log_frame, height=12, wrap="none", bg="#111", fg="#ddd",
+        self._log_frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))   # chiem phan lon
+        self.log_txt = tk.Text(self._log_frame, height=20, wrap="none", bg="#111", fg="#ddd",
                                font=("Consolas", 9))
         sb = ttk.Scrollbar(self._log_frame, command=self.log_txt.yview)
         self.log_txt.configure(yscrollcommand=sb.set)
