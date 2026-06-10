@@ -149,6 +149,7 @@ class BotGUI(tk.Tk):
             tree.column("acc", anchor="w"); tree.column("char", anchor="w")
             tree.tag_configure("on", foreground="#0a0")
             tree.tag_configure("off", foreground="#999")
+            tree.tag_configure("qs", foreground="#c25e00")   # quan su - cam noi bat
             tree.bind("<<TreeviewSelect>>", lambda e, p=pidx: self._on_acc_select(p))
             tree.pack(fill="x", expand=False)
             for (u, p, is_leader, is_picker) in accs:
@@ -264,14 +265,23 @@ class BotGUI(tk.Tk):
                 if not tree.exists(u):
                     continue
                 s = ctrl.account_status(u)
-                role = "LEADER" if is_leader else ("picker" if is_picker else "member")
+                if s.get("strategist"):
+                    role = "Quân sư"
+                elif is_leader:
+                    role = "LEADER"
+                elif is_picker:
+                    role = "picker"
+                else:
+                    role = "member"
                 run = "● CHẠY" if s["running"] else "Tắt"
                 dg = f"{s['dg_remain']}p" if s["dg_remain"] is not None else "-"
+                tag = "qs" if (s["running"] and s.get("strategist")) else \
+                      ("on" if s["running"] else "off")
                 tree.item(u, values=(u, s["char"] or "-", role, run, _map_name(s["map"]),
                                      s["channel"] if s["channel"] else "-",
                                      "✔" if s["in_party"] else "-", dg,
                                      "⚔" if s["combat"] else "-"),
-                          tags=("on" if s["running"] else "off",))
+                          tags=(tag,))
         self.after(1500, self._refresh)
 
     def _drain_log(self):

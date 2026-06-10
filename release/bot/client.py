@@ -51,6 +51,19 @@ def is_joined(party_idx, entity):
     with _PARTY_LOCK:
         return bytes(entity) in _PARTY_JOINED.get(party_idx, set())
 
+# party_idx -> entity QUAN SU (leader da set). Chia se de GUI hien vai tro "quan su".
+_PARTY_STRATEGIST = {}
+
+def strategist_of(party_idx):
+    with _PARTY_LOCK:
+        return _PARTY_STRATEGIST.get(party_idx)
+
+def is_strategist(party_idx, entity):
+    if party_idx is None or not entity:
+        return False
+    with _PARTY_LOCK:
+        return _PARTY_STRATEGIST.get(party_idx) == bytes(entity)
+
 # Chi so INT (tri luc) tung char trong party (chia se de leader chon quan su INT cao nhat).
 # party_idx -> {entity: int_value}.  STAT_INT = id 0x1b (xac nhan tu int.pcap).
 STAT_INT = 0x1b
@@ -1126,6 +1139,8 @@ class GameClient:
         best = best_int_member(self.party_idx, ents)
         chosen = best or ents[0]
         ival = _PARTY_INT.get(self.party_idx, {}).get(chosen)
+        with _PARTY_LOCK:
+            _PARTY_STRATEGIST[self.party_idx] = bytes(chosen)   # de GUI hien "quan su"
         self.set_strategist(chosen)
         nm = name_for_entity(chosen) or chosen.hex()[:8]
         log.info("[%s] (LEADER) set quan su = member '%s' (INT=%s)%s",

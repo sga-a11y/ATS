@@ -484,9 +484,9 @@ def account_status(username):
     running = is_account_running(username)
     if c is None:
         return {"running": running, "char": "", "map": None, "in_party": False,
-                "dg_remain": None, "combat": False, "channel": None}
+                "dg_remain": None, "combat": False, "channel": None, "strategist": False}
     pidx = getattr(c, "party_idx", None)
-    from bot.client import is_joined
+    from bot.client import is_joined, is_strategist
     st = _party_state.get(pidx, {})
     dg_remain = None
     if c.current_map == config.DIGIOI_MAP_ID:
@@ -499,6 +499,7 @@ def account_status(username):
         "in_party": is_joined(pidx, c.self_entity),
         "dg_remain": dg_remain,
         "combat": c.in_combat() if running else False,
+        "strategist": is_strategist(pidx, c.self_entity),
     }
 
 
