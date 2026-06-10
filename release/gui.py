@@ -392,8 +392,8 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Checkbutton(self, text="Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)",
                         variable=self.no_leader_var).pack(anchor="w", pady=(2, 0))
 
-        ttk.Label(self, text="Acc (mỗi dòng: user,pass — DÒNG ĐẦU = chủ PT, trừ khi tick ô trên):"
-                  ).pack(anchor="w")
+        ttk.Label(self, text="Acc (mỗi dòng: user,pass — DÒNG ĐẦU = chủ PT trừ khi tick ô trên; "
+                  "thêm # đầu dòng để BỎ QUA acc đó):").pack(anchor="w")
         self.txt = tk.Text(self, height=7, font=("Consolas", 10))
         self.txt.pack(fill="both", expand=True)
         self.txt.insert("1.0", "\n".join(f"{a.get('u','')},{a.get('p','')}" for a in shown))

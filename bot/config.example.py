@@ -151,7 +151,9 @@ _aj = _load_accounts_json()
 if _aj is not None:
     try:
         _parties_raw = _aj.get("parties", [])
-        _ps = [[(a.get("u", ""), a.get("p", "")) for a in party.get("accounts", [])]
+        # acc co username bat dau bang '#' = BO QUA (comment)
+        _ps = [[(a.get("u", ""), a.get("p", "")) for a in party.get("accounts", [])
+                if not a.get("u", "").lstrip().startswith("#")]
                for party in _parties_raw]
         if _ps:
             PARTIES = _ps
