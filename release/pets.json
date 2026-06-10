@@ -1,10 +1,10 @@
 {
-  "_note": "Database pet: pet_id (hex, sap xep TANG DAN). name = ten pet. skills = skill combo train (AoE nhieu quai). boss_skill = skill DANH DON manh khi danh BOSS (dungeon). Danh thuong (10000) luon co. pet_id doc tu log 'Pet id=0x...' luc login.",
+  "_note": "Database pet: pet_id (hex). name = ten pet. skills = skill combo train (AoE nhieu quai). boss_skill = skill DANH DON manh khi danh BOSS (dungeon). Danh thuong (10000) luon co. pet_id doc tu log 'Pet id=0x...' luc login. Xep NHOM theo ho pet (ban goc + rb).",
   "pets": {
-    "0x2f0b": { "name": "Quan Vũ rb0", "skills": [13013], "boss_skill": 13013 },
-    "0x3715": { "name": "Thái Văn Cơ rb0", "skills": [12003] },
     "0xa051": { "name": "Thái Văn Cơ", "skills": [12003, 12009, 12010], "boss_skill": 12009 },
+    "0x3715": { "name": "Thái Văn Cơ rb0", "skills": [12003] },
     "0xa05a": { "name": "Quan Vũ", "skills": [13009, 13011, 13013], "boss_skill": 13013 },
+    "0x2f0b": { "name": "Quan Vũ rb0", "skills": [13013], "boss_skill": 13013 },
     "0xa0db": { "name": "Tưởng Nghĩa Cừ", "skills": [] },
     "0xa149": { "name": "Cát Bình", "skills": [11010] }
   }
