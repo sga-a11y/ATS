@@ -667,15 +667,18 @@ class GameClient:
             char_opts = self.available.get(config.UNIT_CHAR, [])
             pet_opts = self.available.get(config.UNIT_PET, [])
             ft = self._first_turn
-            # FLEE MODE: dang di chuyen -> bo chay thay vi danh (atype lay tu option offered)
+            # FLEE MODE: bo chay thay vi danh. PHAI dung dung my_atype (vi tri cua MINH trong
+            # party) - KHONG lay char_opts[0][0] (la atype cua VI TRI DAU danh sach, co the la
+            # nguoi khac) -> sai atype thi server DA/KICK (Tao Thao kick luon).
             if getattr(self, "flee_mode", False):
+                my_at = self.state.my_atype
                 if char_opts:
-                    at = char_opts[0][0]
-                    self._send_combat(combat.Decision(config.UNIT_CHAR, at, at, config.SKILL_FLEE, b=3))
+                    a = my_at if my_at in {o[0] for o in char_opts} else char_opts[0][0]
+                    self._send_combat(combat.Decision(config.UNIT_CHAR, a, a, config.SKILL_FLEE, b=3))
                 if pet_opts:
-                    at = pet_opts[0][0]
-                    self._send_combat(combat.Decision(config.UNIT_PET, at, at, config.SKILL_FLEE, b=2))
-                log.info("[%s] BO CHAY (flee_mode)", self._label)
+                    a = my_at if my_at in {o[0] for o in pet_opts} else pet_opts[0][0]
+                    self._send_combat(combat.Decision(config.UNIT_PET, a, a, config.SKILL_FLEE, b=2))
+                log.info("[%s] BO CHAY (flee_mode, atype=%s)", self._label, my_at)
                 return
             if char_opts:
                 d = combat.decide_char(self.state, char_opts, ft)
