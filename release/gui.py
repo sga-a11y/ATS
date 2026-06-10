@@ -9,7 +9,7 @@ Tinh nang:
 
 Chay:  python gui.py
 """
-import os, sys, json, re, queue, logging, threading, time, collections
+import os, sys, json, re, queue, logging, threading, time, collections, importlib
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -95,6 +95,13 @@ class BotGUI(tk.Tk):
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="x", expand=False, padx=6, pady=4)   # bang gon -> log chiem phan lon
         self.party_trees = {}   # pidx -> Treeview
+        self._populate_tabs()
+
+    def _populate_tabs(self):
+        # xoa tab cu (dung khi reload config) roi dung lai theo config moi
+        for tab in self.nb.tabs():
+            self.nb.forget(tab)
+        self.party_trees = {}
         cols = ("acc", "char", "role", "run", "map", "ch", "party", "dg", "combat")
         heads = {"acc": "Tài khoản", "char": "Nhân vật", "role": "Vai trò", "run": "Trạng thái",
                  "map": "Map", "ch": "Kênh", "party": "Trong PT", "dg": "DG còn", "combat": "Đánh"}
@@ -273,6 +280,18 @@ class BotGUI(tk.Tk):
     # ---- config editor ----
     def _open_config(self):
         ConfigDialog(self)
+
+    def reload_config(self):
+        """Nap lai accounts.json + dung lai tab (KHONG can dong app)."""
+        running = [u for u in ctrl.account_clients if ctrl.is_account_running(u)]
+        importlib.reload(config)   # doc lai accounts.json -> PARTIES/PARTY_CONFIG moi
+        self._all_usernames = set(u for pidx in range(len(config.PARTIES))
+                                  for (u, *_ ) in ctrl.party_accounts(pidx))
+        self._populate_tabs()
+        if running:
+            messagebox.showinfo("Đã nạp lại",
+                                "Đã áp dụng cấu hình mới.\nLƯU Ý: %d acc đang chạy vẫn dùng "
+                                "cấu hình CŨ tới khi Stop + Start lại." % len(running))
 
     def _on_close(self):
         if messagebox.askokcancel("Thoát", "Dừng tất cả acc và thoát?"):
@@ -462,8 +481,9 @@ class ConfigDialog(tk.Toplevel):
         data = {"channel": ch, "parties": parties}
         with open(ACCOUNTS_JSON, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        messagebox.showinfo("Đã lưu", "Đã lưu accounts.json.\nKhởi động lại app để áp dụng cấu hình mới.")
         self.destroy()
+        if hasattr(self.master, "reload_config"):
+            self.master.reload_config()   # tu nap lai - khong can dong app
 
 
 if __name__ == "__main__":
