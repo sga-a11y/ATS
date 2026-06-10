@@ -178,44 +178,41 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         log.warning("[%s] (member) leader sai map -> ca party huy -> THOAT", label)
                         _quit(); return
             # --- MAP-TRAIN: chay toi diem AN TOAN (dinh battle -> flee) ---
-            with st["lock"]:
-                st["started_train"] += 1   # da qua check map -> tinh vao barrier dungeon
             log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem an toan %s",
                      label, role, sc, tm["safe"])
             c.navigate_to(*tm["safe"])
-            # SOLO daily dungeon: map-train chay mai khong co "luc xong" -> lam o day
-            # (da ve safe, flee sach tran, dang dung yen -> vao dungeon chac chan).
-            # DG thi lam SAU khi het gio (xem cuoi vong lap). Daily-count chong lam trung.
-            try:
-                c.do_daily_dungeon()
-            except Exception as e:
-                log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
-            # An toan: phai ve dung map train moi train tiep (tranh ket trong map boss)
-            for _ in range(15):
-                if c.current_map == sc:
-                    break
-                time.sleep(1)
-            if c.current_map != sc:
-                log.warning("[%s] (%s) sau dungeon KHONG ve map train (dang o %s) -> THOAT acc nay",
-                            label, role, c.current_map)
+            # SOLO daily dungeon o MAP-TRAIN: TAM TAT (het luot -> bi dump ve 12000, pha map-train;
+            # CHUA detect duoc con/het luot). Bat lai: config.MAP_TRAIN_DUNGEON=True sau khi fix detect.
+            if getattr(config, "MAP_TRAIN_DUNGEON", False):
                 with st["lock"]:
-                    st["started_train"] -= 1   # bo khoi barrier -> khong bat ca party doi
-                _quit(); return
-            c.navigate_to(*tm["safe"])   # dungeon xong tra ve map cu -> ve lai safe
-            # BARRIER: cho CA PARTY danh xong dungeon roi moi dong bo kenh + lap party
-            # (dungeon xong ra kenh ngau nhien + thoi gian lech nhau -> phai gom dung luc).
-            with st["lock"]:
-                st["dungeon_done"] += 1
-            log.info("[%s] (%s) xong dungeon -> cho ca party (%d/%d)...",
-                     label, role, st["dungeon_done"], st["started_train"])
-            t0 = time.time()
-            while time.time() - t0 < 300:
-                if _stopped(): _quit(); return
-                with st["lock"]:
-                    if st["started_train"] > 0 and st["dungeon_done"] >= st["started_train"]:
+                    st["started_train"] += 1
+                try:
+                    c.do_daily_dungeon()
+                except Exception as e:
+                    log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
+                for _ in range(15):
+                    if c.current_map == sc:
                         break
-                time.sleep(1)
-            log.info("[%s] (%s) ca party xong dungeon -> dong bo kenh", label, role)
+                    time.sleep(1)
+                if c.current_map != sc:
+                    log.warning("[%s] (%s) sau dungeon KHONG ve map train (dang o %s) -> THOAT acc nay",
+                                label, role, c.current_map)
+                    with st["lock"]:
+                        st["started_train"] -= 1
+                    _quit(); return
+                c.navigate_to(*tm["safe"])
+                with st["lock"]:
+                    st["dungeon_done"] += 1
+                log.info("[%s] (%s) xong dungeon -> cho ca party (%d/%d)...",
+                         label, role, st["dungeon_done"], st["started_train"])
+                t0 = time.time()
+                while time.time() - t0 < 300:
+                    if _stopped(): _quit(); return
+                    with st["lock"]:
+                        if st["started_train"] > 0 and st["dungeon_done"] >= st["started_train"]:
+                            break
+                    time.sleep(1)
+                log.info("[%s] (%s) ca party xong dungeon", label, role)
             do_channel_sync()   # map-train: dong bo kenh sau khi ve safe (tren map thuong)
         elif is_digioi:
             # --- DI GIOI ---
