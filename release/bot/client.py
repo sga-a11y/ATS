@@ -1076,12 +1076,20 @@ class GameClient:
         self.channels = {}
         self.send(0x07, b"\x01\x00")
 
-    def pick_best_channel(self, wait: float = 2.0, exclude=(1,)):
+    def pick_best_channel(self, wait: float = 2.0, exclude=(1,), tries: int = 4):
         """Hoi danh sach kenh -> chuyen sang kenh IT NGUOI nhat (con cho trong).
-        exclude: bo qua kenh nao (vd kenh 1 thuong dong/mac dinh)."""
-        self.request_channel_list()
-        if not self._chan_event.wait(wait):
-            log.warning("[%s] Khong nhan duoc danh sach kenh", self._label)
+        exclude: bo qua kenh nao (vd kenh 1 thuong dong/mac dinh).
+        RETRY: ngay sau teleport ve thanh server hay tra cham -> hoi lai vai lan."""
+        for i in range(tries):
+            if not self.running:
+                return None
+            self.request_channel_list()
+            if self._chan_event.wait(wait):
+                break
+            log.info("[%s] Chua nhan duoc danh sach kenh, hoi lai (%d/%d)...",
+                     self._label, i + 1, tries)
+        else:
+            log.warning("[%s] Khong nhan duoc danh sach kenh sau %d lan", self._label, tries)
             return None
         # uu tien kenh con cho (cur<cap), it nguoi nhat
         cand = [(ch, cur, cap) for ch, (cur, cap) in self.channels.items()
