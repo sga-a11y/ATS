@@ -1,0 +1,7 @@
+{
+  "_note": "Danh sach server game TS Online. key = ten noi bo. label = ten hien thi. ip = IP TCP. Login HTTP giong nhau, chi khac IP server khi connect.",
+  "servers": {
+    "trieu_van": { "label": "Triệu Vân", "ip": "103.82.28.98" },
+    "tao_thao":  { "label": "Tào Tháo",  "ip": "103.82.28.99" }
+  }
+}

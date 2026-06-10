@@ -259,9 +259,10 @@ def _mark_daily(label: str, task: str):
 
 
 class GameClient:
-    def __init__(self, user_id: str, access_token: str):
+    def __init__(self, user_id: str, access_token: str, host: str = None):
         self.user_id = user_id
         self.access_token = access_token
+        self.host = host or config.GAME_HOST   # IP server (theo party); None -> mac dinh
         self.sock = None
         self.recv_buf = b""
         self.running = False
@@ -313,8 +314,8 @@ class GameClient:
         st = _load_gift_state(self._label)
         self._online_base = st["online_sec"]   # online tich luy truoc phien nay (hom nay)
         self.claimed_gifts = st["claimed"]
-        self.sock = socket.create_connection((config.GAME_HOST, config.GAME_PORT), timeout=15)
-        log.info("Da ket noi %s:%s", config.GAME_HOST, config.GAME_PORT)
+        self.sock = socket.create_connection((self.host, config.GAME_PORT), timeout=15)
+        log.info("Da ket noi %s:%s", self.host, config.GAME_PORT)
         self.sock.sendall(build_auth_packet(self.user_id, self.access_token))
         log.info("Da gui auth (user_id=%s)", self.user_id)
         self.running = True

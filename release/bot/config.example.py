@@ -140,6 +140,17 @@ XOR_KEY = 0xAD
 #  PARTY_CONFIG[pidx] = {mode, start_city_id, mob_index, city_flag}.
 # ============================================================
 PARTY_CONFIG = {}
+def _load_servers():
+    import json, os
+    f = os.path.join(os.path.dirname(__file__), os.pardir, "servers.json")
+    try:
+        with open(f, encoding="utf-8") as fh:
+            return json.load(fh).get("servers", {})
+    except Exception:
+        return {}
+SERVERS = _load_servers()
+def _server_ip(name):
+    s = SERVERS.get(name); return s.get("ip") if s else None
 def _load_accounts_json():
     import json, os
     f = os.path.join(os.path.dirname(__file__), os.pardir, "accounts.json")
@@ -159,11 +170,14 @@ if _aj is not None:
         if _ps:
             PARTIES = _ps
         for _i, _party in enumerate(_parties_raw):
+            _srv = _party.get("server", "trieu_van")
             PARTY_CONFIG[_i] = {
                 "mode": _party.get("mode", "stand"),
                 "start_city_id": int(_party.get("start_city_id", 0)),
                 "mob_index": int(_party.get("mob_index", 0)),
                 "city_flag": int(_party.get("city_flag", 0)),
+                "server": _srv,
+                "server_ip": _server_ip(_srv) or GAME_HOST,
             }
         if PARTY_CONFIG:
             START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]

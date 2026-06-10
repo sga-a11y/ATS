@@ -315,7 +315,7 @@ class BotGUI(tk.Tk):
             s = {}
             for u, pidx in config.ACCOUNT_PARTY.items():
                 pc = config.PARTY_CONFIG.get(pidx, {})
-                s[u] = (pc.get("mode"), pc.get("start_city_id"),
+                s[u] = (pc.get("server"), pc.get("mode"), pc.get("start_city_id"),
                         pc.get("mob_index"), pc.get("city_flag"))
             return s
         old = _sigs()
@@ -366,11 +366,20 @@ _LABEL_MODE = {v: k for k, v in MODE_OPTIONS}
 
 class PartyConfigFrame(ttk.Frame):
     """1 tab cau hinh 1 party: mode (dropdown) + map/quai/thanh (dropdown) + acc."""
-    def __init__(self, master, party, train_maps, cities):
+    def __init__(self, master, party, train_maps, cities, servers):
         super().__init__(master, padding=8)
         self.train_maps = train_maps   # list (map_id, name, mobs)
         self.cities = cities           # list (city_id, flag, name)
+        self.servers = servers         # list (key, label)
         self._preset = party or {}
+
+        srow = ttk.Frame(self); srow.pack(fill="x", pady=4)
+        ttk.Label(srow, text="Server:", width=10).pack(side="left")
+        self.server_var = tk.StringVar()
+        cur_srv = self._preset.get("server", servers[0][0] if servers else "trieu_van")
+        self.server_var.set(dict(servers).get(cur_srv, servers[0][1] if servers else cur_srv))
+        ttk.Combobox(srow, textvariable=self.server_var, state="readonly", width=22,
+                     values=[lbl for _, lbl in servers]).pack(side="left")
 
         row = ttk.Frame(self); row.pack(fill="x", pady=4)
         ttk.Label(row, text="Chế độ:", width=10).pack(side="left")
@@ -466,7 +475,10 @@ class PartyConfigFrame(ttk.Frame):
             accs.append({"u": parts[0], "p": parts[1] if len(parts) > 1 else ""})
         if self.no_leader_var.get() and accs:
             accs = [{"u": "", "p": ""}] + accs   # slot 0 trong = KHONG co chu PT
-        return {"mode": mode, "start_city_id": sc, "mob_index": mob_index,
+        # server: label -> key
+        srv = next((k for k, lbl in self.servers if lbl == self.server_var.get()),
+                   self.servers[0][0] if self.servers else "trieu_van")
+        return {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
                 "city_flag": city_flag, "accounts": accs}
 
 
@@ -481,6 +493,8 @@ class ConfigDialog(tk.Toplevel):
         self.train_maps = [(int(k), v.get("name", k), v.get("mobs", [])) for k, v in tm_raw.items()]
         ct_raw = _load_json("cities.json").get("cities", {})
         self.cities = [(v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()]
+        sv_raw = _load_json("servers.json").get("servers", {})
+        self.servers = [(k, v.get("label", k)) for k, v in sv_raw.items()] or [("trieu_van", "Triệu Vân")]
 
         top = ttk.Frame(self, padding=6); top.pack(fill="x")
         ttk.Label(top, text="Kênh chung:").pack(side="left")
@@ -506,7 +520,7 @@ class ConfigDialog(tk.Toplevel):
             return {"channel": 2, "parties": []}
 
     def _add_tab(self, party):
-        f = PartyConfigFrame(self.nb, party, self.train_maps, self.cities)
+        f = PartyConfigFrame(self.nb, party, self.train_maps, self.cities, self.servers)
         self.nb.add(f, text=f"Party {len(self.frames) + 1}")
         self.frames.append(f)
 
