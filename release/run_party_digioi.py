@@ -314,9 +314,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         else:
             if has_leader:
                 st["invited"].wait(120)   # cho bot-leader moi
+            # DA vao party -> NGUNG flee, DANH tran chung (ca map-train LAN Di Gioi).
+            # FLEE trong tran party bi server KICK (vd Tao Thao: member flee -> dis ngay).
+            c.flee_mode = False
             if train_on_map:
-                c.combat_ready()   # combat-active de join tran chung; KHONG chay (dung yen tai safe)
-                c.flee_mode = False   # ngung flee -> join tran chung khi co leader (bot/tay) dan
+                c.combat_ready()   # map thuong: combat-active de quai aggro (DG khong can)
             if has_leader:
                 log.info("[%s] (member) da vao party - dung yen tai safe, tu danh", label)
             else:
