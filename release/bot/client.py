@@ -842,7 +842,9 @@ class GameClient:
         # (3) Xac nhan DA vao dungeon. SOLO dungeon KHONG co nguoi xung quanh -> current_map
         #     (doc tu broadcast nguoi KHAC) KHONG cap nhat sang map dungeon -> KHONG dua vao map.
         #     Dung tin hieu IN_BATTLE (boss giao chien) lam dau hieu da vao: da sach tran truoc
-        #     do nen in_battle bat LAI = chinh la tran BOSS. Map doi cung tinh la vao.
+        #     do nen in_battle bat LAI = chinh la tran BOSS. CHI dung in_battle, KHONG dung
+        #     "map doi" lam dau hieu: vao dungeon la VAO TRAN BOSS ngay; con map doi co the chi
+        #     la di qua TOWN (12001/12002...) khi het luot -> bat nham "da vao" dù boss khong co.
         entered = False
         t0 = time.time()
         while time.time() - t0 < 15:
@@ -850,9 +852,6 @@ class GameClient:
                 self.state.boss_mode = False; return False
             if self.state.in_battle:
                 self.flee_mode = False   # boss giao chien -> DANH ngay (tat flee TRUOC khi timer fire)
-                entered = True; break
-            if self.current_map is not None and self.current_map != orig:
-                self.flee_mode = False
                 entered = True; break
             time.sleep(0.1)
         if not entered:
