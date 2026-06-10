@@ -436,7 +436,14 @@ def start_party(pidx, stagger=1.5):
     """Khoi dong tat ca acc trong 1 party."""
     started = 0
     st = _pstate(pidx)
-    st["leader_gone"].clear()
+    # RESET state dung chung (tranh sot tu lan chay truoc: leader_bad cu -> member quit oan)
+    for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready"):
+        st[k].clear()
+    st["channel"] = None
+    with st["lock"]:
+        st["ready_members"].clear()
+        st["started_train"] = 0
+        st["dungeon_done"] = 0
     for u, p, is_leader, is_picker in party_accounts(pidx):
         if start_account(u, p, pidx, is_leader, is_picker):
             started += 1

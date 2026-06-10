@@ -405,13 +405,15 @@ class GameClient:
         elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
             self.char_int = int.from_bytes(pkt[11:13], "little")
             _register_party_int(self.party_idx, self.self_entity, self.char_int)
-        # Track map_id hien tai: broadcast 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
-        # (map suy tu broadcast nguoi xung quanh - co the lan map la nguoi khac; run-around
-        #  xu ly bang PAUSE chu khong break de chong doc nham)
+        # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
+        # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
+        # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
         if opcode in (0x0c, 0x07) and len(pkt) >= 19 and pkt[7:9] == b"\x00\x00":
-            mid = int.from_bytes(pkt[17:19], "little")
-            if mid > 1000:   # loc gia tri rac (map_id that >1000)
-                self.current_map = mid
+            ent = pkt[9:17]
+            if self.self_entity is None or ent == self.self_entity:
+                mid = int.from_bytes(pkt[17:19], "little")
+                if mid > 1000:   # loc gia tri rac (map_id that >1000)
+                    self.current_map = mid
         # 0x03 = goi SELF server gui khi load map: [00 00][entity 8B][... 11B][map_id 2B].
         # KHAC voi 0x0c/0x07 (broadcast nguoi xung quanh): 0x03 ve CHINH MINH -> doc duoc map
         # NGAY CA KHI DUNG MOT MINH (DG/dungeon vang nguoi). Chi doc khi entity == self.
