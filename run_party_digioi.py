@@ -31,6 +31,7 @@ MINUTES = int(sys.argv[1]) if len(sys.argv) > 1 else 0   # 0 = vo han
 _party_state = {}   # party_idx -> {"channel": ch, "channel_ready": Event, "invited": Event}
 _clients = []
 _threads = []   # thread tung acc - de biet khi nao TAT CA da thoat
+DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (de tinh "con lai")
 
 
 def _pstate(pidx):
@@ -266,6 +267,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         out_cnt = 0
         last_remove = time.time()
         last_retry = time.time()
+        last_dg = 0.0
         while c.running:
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
@@ -303,7 +305,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             if train_on_map:
                 pass   # leader da chay long vong (run-around) tu dong tim quai
             else:
-                # DG: roi DG (map biet & khac DG) lien tuc -> het gio DG -> dong acc
+                # DG: dem nguoc thoi gian con lai (digioi_minutes tu S2C 0x55), 30s/lan
+                if c.current_map == config.DIGIOI_MAP_ID and time.time() - last_dg >= 30:
+                    last_dg = time.time()
+                    remain = max(0, DIGIOI_LIMIT - c.digioi_minutes)
+                    h, m = divmod(remain, 60)
+                    log.info("[%s] Di Gioi con lai: %dh%dm (da o %d phut)",
+                             label, h, m, c.digioi_minutes)
+                    if remain <= 5:
+                        log.warning("[%s] SAP HET GIO DI GIOI (%d phut)!", label, remain)
+                # roi DG (map biet & khac DG) lien tuc -> het gio DG -> dong acc
                 if c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
                     out_cnt += 1
                     if out_cnt >= 4:   # ~20s lien tuc ngoai DG
