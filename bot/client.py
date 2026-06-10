@@ -933,15 +933,22 @@ class GameClient:
             self.flee_mode = True    # ra khoi dungeon -> bat lai flee (con phai ve safe/lap party)
         return True
 
-    def query_dungeon(self, wait: float = 2.5):
-        """Query trang thai luot dungeon: C2S 0x54 01000d000200 -> S2C 0x54.
-        Het luot free: raw = 01 00 0d 00 [01] 0a000000 (byte[4]!=0 = phai mua).
-        Con luot free (gia dinh): byte[4]==0. Tra ve raw bytes (hoac None neu khong tra loi)."""
-        self._dg_query = None
-        self._dg_query_event.clear()
-        self.send(0x54, b"\x01\x00\x0d\x00\x02\x00")
-        self._dg_query_event.wait(wait)
-        return self._dg_query
+    def buy_dungeon_ticket(self, wait: float = 2.5):
+        """MUA ve dungeon bang vang. C2S 0x54 0100... (mo) -> 0x54 0200020d000200 (MUA).
+        S2C 0x54 02000d00[01] -> byte cuoi 01 = MUA THANH CONG. Tra ve True/False."""
+        self.send(0x54, b"\x01\x00\x0d\x00\x02\x00"); time.sleep(0.5)   # mo giao dien mua
+        self._dg_query = None                                          # cho doi tra loi MUA
+        self.send(0x54, b"\x02\x00\x02\x0d\x00\x02\x00")               # MUA (ton vang)
+        for _ in range(int(wait / 0.2)):
+            r = self._dg_query
+            if r is not None and len(r) >= 5 and r[0:2] == b"\x02\x00":
+                ok = (r[4] == 0x01)
+                log.info("[%s] Mua ve dungeon -> %s (%s)", self._label,
+                         "OK" if ok else "THAT BAI", r.hex())
+                return ok
+            time.sleep(0.2)
+        log.info("[%s] Mua ve dungeon: khong nhan phan hoi -> coi nhu THAT BAI", self._label)
+        return False
 
     def do_daily_dungeon(self, max_sec: int = 360):
         """SOLO daily dungeon, toi da DUNGEON_RUNS_PER_DAY luot/ngay (mac dinh 2).
@@ -963,9 +970,12 @@ class GameClient:
         self.leave_party(); time.sleep(1.5)   # thoat party (solo moi vao duoc dungeon)
         while count < runs_target and self.running:
             if count >= 1:   # luot 2+ -> HET free -> MUA ve bang vang
-                self.send(0x54, b"\x01\x00\x0d\x00\x02\x00"); time.sleep(0.5)
-                self.send(0x54, b"\x02\x00\x02\x0d\x00\x02\x00"); time.sleep(0.8)
-                log.info("[%s] Mua them luot dungeon (vang)", self._label)
+                if not self.buy_dungeon_ticket():
+                    # mua THAT BAI (het vang / het luot mua) -> KHONG vao (tranh dump) -> dung
+                    log.info("[%s] Mua ve dungeon that bai -> dung (khong vao de tranh dump)",
+                             self._label)
+                    _save_checkin(self._label, "dungeon", today, runs_target)
+                    break
             # count==0 -> dung VE FREE, vao thang (khong mua)
             ok = self._run_one_dungeon(max_sec)
             count += 1   # DU thanh cong hay vao loi (dump) -> van count +1: coi nhu da DUNG 1 luot
