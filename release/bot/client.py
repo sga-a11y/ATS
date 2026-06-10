@@ -944,50 +944,33 @@ class GameClient:
 
     def do_daily_dungeon(self, max_sec: int = 360):
         """SOLO daily dungeon, toi da DUNGEON_RUNS_PER_DAY luot/ngay (mac dinh 2).
-        QUERY 0x54 TRUOC moi luot -> con free thi vao free; het free -> luot >=2 thi MUA, con
-        luot dau (free da dung ngoai bot) thi BO QUA (KHONG gui goi vao -> tranh bi dump 12000)."""
+        Luot 1 dung VE FREE (vao thang); luot >=2 MUA ve (0x54 0200020d000200) roi vao.
+        Bot tu dem (checkin_state) + sync stat 0x9b. KHONG detect duoc het luot truoc khi vao
+        (0x54 type 0x0d = exp offline; 0x9b chi gui SAU khi danh) -> neu local count BI STALE
+        (vd da danh tay), luot free vao hut 1 lan roi cache 'het luot' khong thu nua."""
         import datetime
         runs_target = getattr(config, "DUNGEON_RUNS_PER_DAY", 2)
         today = datetime.date.today().isoformat()
         st = _load_checkin(self._label, "dungeon")
         count = st["day"] if st.get("date") == today else 0
+        if self.dungeon_runs_today is not None:      # server-truth (chi co SAU khi danh) -> sync
+            count = max(count, self.dungeon_runs_today)
         if count >= runs_target:
-            return
-        # Server-truth: stat 0x9b = so luot DA danh hom nay (neu server da gui)
-        if self.dungeon_runs_today is not None and self.dungeon_runs_today >= runs_target:
-            log.info("[%s] Dungeon: server bao da danh %d luot -> bo qua", self._label,
-                     self.dungeon_runs_today)
-            _save_checkin(self._label, "dungeon", today, runs_target)
+            _save_checkin(self._label, "dungeon", today, count)
             return
         log.info("[%s] SOLO daily dungeon: da %d/%d luot hom nay", self._label, count, runs_target)
         self.leave_party(); time.sleep(1.5)   # thoat party (solo moi vao duoc dungeon)
         while count < runs_target and self.running:
-            q = self.query_dungeon()
-            qhex = q.hex() if q else None
-            free = (q is not None and len(q) >= 5 and q[0:4] == b"\x01\x00\x0d\x00" and q[4] == 0)
-            must_buy = (q is not None and len(q) >= 5 and q[0:4] == b"\x01\x00\x0d\x00" and q[4] != 0)
-            log.info("[%s] Dungeon query 0x54 -> %s (free=%s runs_today=%s count=%d)",
-                     self._label, qhex, free, self.dungeon_runs_today, count)
-            if must_buy and count == 0:
-                # Luot FREE da bi dung NGOAI bot -> coi nhu HET LUOT hom nay, KHONG mua/KHONG vao
-                # (tranh gui goi vao luc het -> bi dump ve diem tap trung 12000).
-                log.info("[%s] Dungeon: het luot free (da danh ngoai) -> bo qua, khong vao",
-                         self._label)
-                _save_checkin(self._label, "dungeon", today, runs_target)
-                break
-            if must_buy:
-                # luot >=2 (bot da danh free) -> day la luot tra phi -> MUA roi vao
+            if count >= 1:   # luot 2+ -> HET free -> MUA ve bang vang
+                self.send(0x54, b"\x01\x00\x0d\x00\x02\x00"); time.sleep(0.5)
                 self.send(0x54, b"\x02\x00\x02\x0d\x00\x02\x00"); time.sleep(0.8)
                 log.info("[%s] Mua them luot dungeon (vang)", self._label)
-            elif not free and q is not None:
-                # query tra ve nhung khong ro dinh dang -> than trong: bo qua (khong dump)
-                log.info("[%s] Dungeon: query la (%s) -> bo qua cho an toan", self._label, qhex)
-                break
-            # free=True hoac da mua -> vao
+            # count==0 -> dung VE FREE, vao thang (khong mua)
             if not self._run_one_dungeon(max_sec):
                 if count == 0:
+                    # luot free vao hut = local count STALE (da danh ngoai bot) -> cache het luot
                     _save_checkin(self._label, "dungeon", today, runs_target)
-                    log.info("[%s] Dungeon vao hut -> nho la het luot, khong thu nua", self._label)
+                    log.info("[%s] Dungeon free vao hut (da danh ngoai?) -> cache het luot", self._label)
                 break
             count += 1
             _save_checkin(self._label, "dungeon", today, count)
