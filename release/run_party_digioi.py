@@ -101,11 +101,20 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         c.claim_14day_gift()    # qua 14 ngay user moi
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
 
-        # MODE theo START_CITY_ID: CO trong train_maps.json -> MAP-TRAIN; con lai (0 / DG / bat ky)
-        # -> DI GIOI. (Muon login dung yen thi dung bot_standalone.py.)
-        sc = getattr(config, "START_CITY_ID", 0)
+        # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
+        pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
+        sc = pcfg.get("start_city_id", getattr(config, "START_CITY_ID", 0))
+        mob_index = pcfg.get("mob_index", 0)
+        city_flag = pcfg.get("city_flag", 0)
         tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
-        train_on_map = tm is not None
+        # mode: digioi | train | city (tap trung ve thanh) | stand (dung yen) | cleanbag
+        mode = pcfg.get("mode")
+        if not mode:
+            mode = ("train" if tm else ("digioi" if sc == config.DIGIOI_MAP_ID
+                    else ("stand" if sc == 0 else "city")))
+        train_on_map = (mode == "train") and (tm is not None)
+        is_digioi = (mode == "digioi")
+        log.info("[%s] (%s) MODE=%s start_city=%s", label, role, mode, sc)
 
         # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
         # DG: phai goi TRUOC khi vao DG (doi kenh trong DG se DA ra khoi DG!).
@@ -208,7 +217,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 time.sleep(1)
             log.info("[%s] (%s) ca party xong dungeon -> dong bo kenh", label, role)
             do_channel_sync()   # map-train: dong bo kenh sau khi ve safe (tren map thuong)
-        else:
+        elif is_digioi:
             # --- DI GIOI ---
             # 1) PHAI VAO DUOC DG TRUOC (xac nhan in_di_gioi) roi MOI chuyen kenh.
             if not c.in_di_gioi() and not c.enter_di_gioi_safe():
@@ -219,6 +228,19 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 return
             # 2) DA o trong DG -> dong bo kenh (gom ca party ve cung instance DG).
             #    Doi kenh trong DG VAN o trong DG (khong bi van ra).
+            do_channel_sync()
+        else:
+            # --- CITY (tap trung ve thanh) / STAND (dung yen) / CLEANBAG ---
+            if mode == "city":
+                log.info("[%s] (%s) TAP TRUNG ve thanh %s (flag %s)", label, role, sc, city_flag)
+                try: c.go_to_town(sc, city_flag)
+                except Exception as e:
+                    log.warning("[%s] loi ve thanh: %s", label, e)
+            elif mode == "cleanbag":
+                log.info("[%s] (%s) DON TUI DO - chua lam, tam dung yen", label, role)
+            else:
+                log.info("[%s] (%s) DUNG YEN tai cho login (map=%s)", label, role, c.current_map)
+            c.flee_mode = False   # bi danh thi tu danh, KHONG chay
             do_channel_sync()
 
         if not is_leader:
@@ -256,13 +278,19 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             def _start_training():
                 c.set_party_strategist()    # set member INT cao nhat lam quan su (hoi SP)
                 if train_on_map:
-                    c.move_to(*tm["mobs"][0])   # ra diem quai, dung cay (toa do == UI)
+                    mobs = tm["mobs"]
+                    spot = mobs[mob_index] if 0 <= mob_index < len(mobs) else mobs[0]
+                    c.move_to(*spot)            # ra diem quai, dung cay (toa do == UI)
                     c.combat_ready(); c.flee_mode = False
-                    log.info("[%s] (LEADER) ra diem quai %s dung cay.", label, tm["mobs"][0])
-                else:
+                    log.info("[%s] (LEADER) ra diem quai %s dung cay.", label, spot)
+                elif is_digioi:
                     c.combat_ready(); c.flee_mode = False
                     c.start_run_around()        # DG: chay long vong tim quai
                     log.info("[%s] (LEADER) bat dau chay long vong.", label)
+                else:
+                    # city/stand: chi set QS, DUNG YEN (cho ban dieu khien tay di nhiem vu)
+                    c.flee_mode = False
+                    log.info("[%s] (LEADER) %s -> party da tu, DUNG YEN cho dieu khien tay", label, mode)
             if joined_member_count(pidx) >= 1:
                 time.sleep(1)
                 _start_training(); training_started = True
@@ -333,6 +361,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             except Exception: pass
             if train_on_map:
                 pass   # leader da chay long vong (run-around) tu dong tim quai
+            elif not is_digioi:
+                pass   # city/stand: DUNG YEN, khong lam gi them
             else:
                 # DG: dem nguoc thoi gian con lai (digioi_minutes tu S2C 0x55), 30s/lan
                 if c.current_map == config.DIGIOI_MAP_ID and time.time() - last_dg >= 30:

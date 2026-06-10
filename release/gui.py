@@ -87,11 +87,8 @@ class BotGUI(tk.Tk):
         ttk.Button(bar, text="⚙ Cấu hình", command=self._open_config).pack(side="left", padx=3)
         ttk.Button(bar, text="🗑 Xóa log", command=self._clear_log).pack(side="left", padx=3)
         ttk.Button(bar, text="📋 Log: Tất cả", command=self._log_show_all).pack(side="left", padx=3)
-        sc = getattr(config, "START_CITY_ID", 0)
-        mode = "Dị Giới" if sc == getattr(config, "DIGIOI_MAP_ID", -1) else \
-               (f"Map-train {sc}" if config.TRAIN_MAPS.get(sc) else f"Đứng yên ({sc})")
-        self._mode_lbl = ttk.Label(bar, text=f"Chế độ: {mode}", font=("", 10, "bold"))
-        self._mode_lbl.pack(side="right", padx=8)
+        ttk.Label(bar, text="Mỗi party 1 chế độ → ⚙ Cấu hình", font=("", 10, "bold")
+                  ).pack(side="right", padx=8)
 
     # ---- tabs per party ----
     def _build_tabs(self):
@@ -108,7 +105,10 @@ class BotGUI(tk.Tk):
             if not accs:
                 continue
             frame = ttk.Frame(self.nb, padding=4)
-            self.nb.add(frame, text=f"Party {pidx + 1} ({len(accs)})")
+            pmode = config.PARTY_CONFIG.get(pidx, {}).get("mode", "?")
+            mlbl = {"digioi": "Dị Giới", "train": "Train map", "city": "Về thành",
+                    "stand": "Đứng yên", "cleanbag": "Dọn túi"}.get(pmode, pmode)
+            self.nb.add(frame, text=f"P{pidx + 1} · {mlbl} ({len(accs)})")
             btns = ttk.Frame(frame); btns.pack(fill="x", pady=(0, 4))
             ttk.Button(btns, text="▶ Start party",
                        command=lambda p=pidx: self._start_party(p)).pack(side="left", padx=2)
@@ -281,27 +281,148 @@ class BotGUI(tk.Tk):
             self.destroy()
 
 
-# ---------------- Config dialog ----------------
+# ---------------- Config dialog (per-party, dropdown) ----------------
+_BASE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_json(name):
+    try:
+        with open(os.path.join(_BASE, name), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+MODE_OPTIONS = [
+    ("digioi", "Train Dị Giới"),
+    ("train", "Train map"),
+    ("city", "Tập trung về thành (đứng yên)"),
+    ("stand", "Login đâu đứng yên đó"),
+    ("cleanbag", "Dọn dẹp túi đồ (chưa làm)"),
+]
+_MODE_LABEL = dict(MODE_OPTIONS)
+_LABEL_MODE = {v: k for k, v in MODE_OPTIONS}
+
+
+class PartyConfigFrame(ttk.Frame):
+    """1 tab cau hinh 1 party: mode (dropdown) + map/quai/thanh (dropdown) + acc."""
+    def __init__(self, master, party, train_maps, cities):
+        super().__init__(master, padding=8)
+        self.train_maps = train_maps   # list (map_id, name, mobs)
+        self.cities = cities           # list (city_id, flag, name)
+        self._preset = party or {}
+
+        row = ttk.Frame(self); row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Chế độ:", width=10).pack(side="left")
+        self.mode_var = tk.StringVar(value=_MODE_LABEL.get(self._preset.get("mode", "digioi"),
+                                                           "Train Dị Giới"))
+        cb = ttk.Combobox(row, textvariable=self.mode_var, state="readonly", width=34,
+                          values=[lbl for _, lbl in MODE_OPTIONS])
+        cb.pack(side="left"); cb.bind("<<ComboboxSelected>>", lambda e: self._render_dyn())
+
+        self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
+        self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
+        self.map_cb = self.mob_cb = self.city_cb = None
+
+        ttk.Label(self, text="Acc (mỗi dòng: user,pass — DÒNG ĐẦU = chủ PT):").pack(anchor="w")
+        self.txt = tk.Text(self, height=7, font=("Consolas", 10))
+        self.txt.pack(fill="both", expand=True)
+        self.txt.insert("1.0", "\n".join(f"{a.get('u','')},{a.get('p','')}"
+                                         for a in self._preset.get("accounts", [])))
+        self._render_dyn()
+
+    def _render_dyn(self):
+        for w in self.dyn.winfo_children():
+            w.destroy()
+        mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
+        if mode == "train":
+            ttk.Label(self.dyn, text="Map:", width=10).pack(side="left")
+            names = [n for (_i, n, _m) in self.train_maps]
+            self.map_cb = ttk.Combobox(self.dyn, textvariable=self.map_var, state="readonly",
+                                       width=22, values=names)
+            self.map_cb.pack(side="left")
+            self.map_cb.bind("<<ComboboxSelected>>", lambda e: self._fill_mobs())
+            ttk.Label(self.dyn, text="Quái:", width=6).pack(side="left", padx=(10, 0))
+            self.mob_cb = ttk.Combobox(self.dyn, textvariable=self.mob_var, state="readonly", width=22)
+            self.mob_cb.pack(side="left")
+            idx = next((i for i, (mid, _n, _m) in enumerate(self.train_maps)
+                        if mid == self._preset.get("start_city_id")), 0)
+            if names:
+                self.map_var.set(names[idx])
+            self._fill_mobs(self._preset.get("mob_index", 0))
+        elif mode == "city":
+            ttk.Label(self.dyn, text="Thành:", width=10).pack(side="left")
+            names = [n for (_i, _f, n) in self.cities]
+            self.city_cb = ttk.Combobox(self.dyn, textvariable=self.city_var, state="readonly",
+                                        width=24, values=names)
+            self.city_cb.pack(side="left")
+            idx = next((i for i, (cid, _f, _n) in enumerate(self.cities)
+                        if cid == self._preset.get("start_city_id")), 0)
+            if names:
+                self.city_var.set(names[idx])
+        elif mode == "digioi":
+            ttk.Label(self.dyn, text="→ START_CITY_ID = 49942 (Dị Giới, cố định)").pack(side="left")
+        elif mode == "stand":
+            ttk.Label(self.dyn, text="→ Login ở đâu đứng yên đó (START_CITY_ID = 0)").pack(side="left")
+        else:
+            ttk.Label(self.dyn, text="→ Dọn dẹp túi đồ (chưa làm — placeholder)").pack(side="left")
+
+    def _fill_mobs(self, preset_index=None):
+        sel = self.map_var.get()
+        mobs = next((m for (_i, n, m) in self.train_maps if n == sel), [])
+        opts = [f"Điểm {i + 1} {tuple(xy)}" for i, xy in enumerate(mobs)]
+        if self.mob_cb:
+            self.mob_cb.configure(values=opts)
+            if opts:
+                i = preset_index if (preset_index is not None and 0 <= preset_index < len(opts)) else 0
+                self.mob_var.set(opts[i])
+
+    def get_data(self):
+        mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
+        sc, mob_index, city_flag = 0, 0, 0
+        if mode == "digioi":
+            sc = 49942
+        elif mode == "train":
+            sc = next((mid for (mid, n, _m) in self.train_maps if n == self.map_var.get()), 0)
+            mob_index = max(0, self.mob_cb.current()) if self.mob_cb else 0
+        elif mode == "city":
+            for (cid, f, n) in self.cities:
+                if n == self.city_var.get():
+                    sc = cid; city_flag = f; break
+        accs = []
+        for line in self.txt.get("1.0", "end").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = [x.strip() for x in line.split(",")]
+            accs.append({"u": parts[0], "p": parts[1] if len(parts) > 1 else ""})
+        return {"mode": mode, "start_city_id": sc, "mob_index": mob_index,
+                "city_flag": city_flag, "accounts": accs}
+
+
 class ConfigDialog(tk.Toplevel):
     def __init__(self, master):
         super().__init__(master)
-        self.title("Cấu hình - accounts.json")
-        self.geometry("640x560")
+        self.title("Cấu hình party")
+        self.geometry("640x600")
         self.transient(master); self.grab_set()
         data = self._load()
-        top = ttk.Frame(self, padding=6); top.pack(fill="x")
-        ttk.Label(top, text="START_CITY_ID (12831=map train, 49942=Dị Giới, 0=đứng yên):").pack(side="left")
-        self.sc_var = tk.StringVar(value=str(data.get("start_city_id", 0)))
-        ttk.Entry(top, textvariable=self.sc_var, width=10).pack(side="left", padx=4)
-        ttk.Label(top, text="Kênh:").pack(side="left", padx=(10, 0))
-        self.ch_var = tk.StringVar(value=str(data.get("channel", 1)))
-        ttk.Entry(top, textvariable=self.ch_var, width=6).pack(side="left", padx=4)
+        tm_raw = _load_json("train_maps.json").get("maps", {})
+        self.train_maps = [(int(k), v.get("name", k), v.get("mobs", [])) for k, v in tm_raw.items()]
+        ct_raw = _load_json("cities.json").get("cities", {})
+        self.cities = [(v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()]
 
-        ttk.Label(self, text="Mỗi dòng 1 acc: user,pass  | dòng trống ngăn cách các party "
-                  "(slot đầu mỗi party = chủ PT)", padding=6).pack(fill="x")
-        self.txt = tk.Text(self, wrap="none", font=("Consolas", 10))
-        self.txt.pack(fill="both", expand=True, padx=6)
-        self.txt.insert("1.0", self._parties_to_text(data.get("parties", [])))
+        top = ttk.Frame(self, padding=6); top.pack(fill="x")
+        ttk.Label(top, text="Kênh chung:").pack(side="left")
+        self.ch_var = tk.StringVar(value=str(data.get("channel", 2)))
+        ttk.Entry(top, textvariable=self.ch_var, width=6).pack(side="left", padx=4)
+        ttk.Button(top, text="➕ Thêm party", command=self._add_party).pack(side="left", padx=8)
+        ttk.Button(top, text="🗑 Xóa party này", command=self._del_party).pack(side="left")
+
+        self.nb = ttk.Notebook(self); self.nb.pack(fill="both", expand=True, padx=6, pady=4)
+        self.frames = []
+        for party in (data.get("parties") or [{}]):
+            self._add_tab(party)
 
         bar = ttk.Frame(self, padding=6); bar.pack(fill="x")
         ttk.Button(bar, text="💾 Lưu", command=self._save).pack(side="right", padx=3)
@@ -312,40 +433,33 @@ class ConfigDialog(tk.Toplevel):
             with open(ACCOUNTS_JSON, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
-            return {"start_city_id": 0, "channel": 1, "parties": []}
+            return {"channel": 2, "parties": []}
 
-    def _parties_to_text(self, parties):
-        blocks = []
-        for party in parties:
-            lines = [f"{a.get('u','')},{a.get('p','')}" for a in party.get("accounts", [])]
-            blocks.append("\n".join(lines))
-        return "\n\n".join(blocks)
+    def _add_tab(self, party):
+        f = PartyConfigFrame(self.nb, party, self.train_maps, self.cities)
+        self.nb.add(f, text=f"Party {len(self.frames) + 1}")
+        self.frames.append(f)
 
-    def _text_to_parties(self):
-        raw = self.txt.get("1.0", "end").strip("\n")
-        parties = []
-        for block in raw.split("\n\n"):
-            accs = []
-            for line in block.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                parts = [x.strip() for x in line.split(",")]
-                u = parts[0]; p = parts[1] if len(parts) > 1 else ""
-                accs.append({"u": u, "p": p})
-            if accs:
-                parties.append({"accounts": accs})
-        return parties
+    def _add_party(self):
+        self._add_tab({})
+        self.nb.select(len(self.frames) - 1)
+
+    def _del_party(self):
+        if len(self.frames) <= 1:
+            return
+        i = self.nb.index(self.nb.select())
+        self.nb.forget(i); self.frames.pop(i)
+        for j, f in enumerate(self.frames):
+            self.nb.tab(f, text=f"Party {j + 1}")
 
     def _save(self):
         try:
-            data = {
-                "start_city_id": int(self.sc_var.get().strip() or 0),
-                "channel": int(self.ch_var.get().strip() or 1),
-                "parties": self._text_to_parties(),
-            }
+            ch = int(self.ch_var.get().strip() or 2)
         except ValueError:
-            messagebox.showerror("Lỗi", "START_CITY_ID / Kênh phải là số."); return
+            messagebox.showerror("Lỗi", "Kênh phải là số."); return
+        parties = [f.get_data() for f in self.frames]
+        parties = [p for p in parties if p["accounts"]]   # bo party rong
+        data = {"channel": ch, "parties": parties}
         with open(ACCOUNTS_JSON, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         messagebox.showinfo("Đã lưu", "Đã lưu accounts.json.\nKhởi động lại app để áp dụng cấu hình mới.")

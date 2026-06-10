@@ -135,9 +135,10 @@ XOR_KEY = 0xAD
 
 
 # ============================================================
-#  OVERRIDE tu accounts.json (GUI gui.py sua file nay). Co file -> thay PARTIES +
-#  START_CITY_ID + CHANNEL. Khong co -> giu nguyen cau hinh tren.
+#  OVERRIDE tu accounts.json (GUI gui.py sua file nay). MOI PARTY CONFIG RIENG.
+#  PARTY_CONFIG[pidx] = {mode, start_city_id, mob_index, city_flag}.
 # ============================================================
+PARTY_CONFIG = {}
 def _load_accounts_json():
     import json, os
     f = os.path.join(os.path.dirname(__file__), os.pardir, "accounts.json")
@@ -149,12 +150,20 @@ def _load_accounts_json():
 _aj = _load_accounts_json()
 if _aj is not None:
     try:
+        _parties_raw = _aj.get("parties", [])
         _ps = [[(a.get("u", ""), a.get("p", "")) for a in party.get("accounts", [])]
-               for party in _aj.get("parties", [])]
+               for party in _parties_raw]
         if _ps:
             PARTIES = _ps
-        if "start_city_id" in _aj:
-            START_CITY_ID = int(_aj["start_city_id"])
+        for _i, _party in enumerate(_parties_raw):
+            PARTY_CONFIG[_i] = {
+                "mode": _party.get("mode", "stand"),
+                "start_city_id": int(_party.get("start_city_id", 0)),
+                "mob_index": int(_party.get("mob_index", 0)),
+                "city_flag": int(_party.get("city_flag", 0)),
+            }
+        if PARTY_CONFIG:
+            START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]
         if "channel" in _aj:
             CHANNEL = int(_aj["channel"])
     except Exception:
