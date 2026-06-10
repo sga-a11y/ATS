@@ -60,10 +60,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
     role = "LEADER" if is_leader else "member"
     has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None
     st = _pstate(pidx)
+    stop_ev = account_stops.get(username)   # GUI yeu cau STOP -> thoat moi giai doan
+    def _stopped():
+        return stop_ev is not None and stop_ev.is_set()
     try:
         # --- Login + cho vao world THUC SU (co self_entity VA co current_map) ---
         c = None
         for attempt in range(6):
+            if _stopped():
+                log.info("[%s] STOP truoc khi login xong", label); return
             cred = login(username, password)
             c = GameClient(cred["user_id"], cred["access_token"])
             c._label = label; c._username = username
@@ -155,6 +160,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 if has_leader:
                     t0 = time.time()
                     while not (st["leader_ok"].is_set() or st["leader_bad"].is_set()):
+                        if _stopped(): _quit(); return
                         if time.time() - t0 > 150:
                             log.warning("[%s] (member) khong thay leader quyet dinh -> THOAT", label)
                             _quit(); return
@@ -195,6 +201,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                      label, role, st["dungeon_done"], st["started_train"])
             t0 = time.time()
             while time.time() - t0 < 300:
+                if _stopped(): _quit(); return
                 with st["lock"]:
                     if st["started_train"] > 0 and st["dungeon_done"] >= st["started_train"]:
                         break
@@ -222,6 +229,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
         if is_leader:
             for _ in range(90):   # ~180s: du cho member xong dungeon + ve diem tap ket
+                if _stopped(): c.close(); return
                 if len(st["ready_members"]) >= st["n_members"]:
                     break
                 time.sleep(2)
@@ -229,6 +237,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                      label, len(st["ready_members"]), st["n_members"])
             from bot.client import joined_member_count
             for r in range(6):
+                if _stopped(): c.close(); return
                 c.invite_members(gap=1.0)
                 st["invited"].set()
                 time.sleep(4)

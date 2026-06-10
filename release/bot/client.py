@@ -1153,6 +1153,8 @@ class GameClient:
         self.flee_mode = True
         clean = 0
         for _ in range(max_iter):
+            if not self.running:    # bi STOP -> dung di chuyen
+                return
             if self.in_combat():
                 time.sleep(1.0)     # turn handler dang lo flee
                 clean = 0
@@ -1266,6 +1268,8 @@ class GameClient:
           - in_combat()       -> dang KET BATTLE (login ngay bai quai) -> cho het tran (battle chan vao DG).
         Gui 0x61 khi san sang, lap lai cho toi khi in_di_gioi()=True."""
         for i in range(tries):
+            if not self.running:        # bi STOP (GUI/close) -> thoat ngay
+                return False
             if self.in_di_gioi():
                 return True
             if self.current_map is None:
