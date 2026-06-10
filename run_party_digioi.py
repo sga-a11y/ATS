@@ -210,12 +210,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
                 return
-            # 2) DA o trong DG -> dong bo kenh (gom ca party ve cung instance DG)
+            # 2) DA o trong DG -> dong bo kenh (gom ca party ve cung instance DG).
+            #    Doi kenh trong DG VAN o trong DG (khong bi van ra).
             do_channel_sync()
-            # 3) Doi kenh co the lam VANG ra khoi DG (ve town) -> VAO LAI DG tren kenh moi
-            if not c.in_di_gioi():
-                log.info("[%s] (%s) doi kenh xong -> vao lai DG", label, role)
-                c.enter_di_gioi_safe()
 
         if not is_leader:
             with st["lock"]:
@@ -323,10 +320,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         if ch:
                             log.info("[%s] (member) chua vao party -> retry chuyen kenh %d", label, ch)
                             try:
-                                c.switch_channel(ch); time.sleep(1)
-                                if not train_on_map and not c.in_di_gioi():
-                                    c.enter_di_gioi_safe()   # doi kenh van ra DG -> vao lai
-                                c.combat_ready()
+                                c.switch_channel(ch); time.sleep(1); c.combat_ready()
                             except Exception: pass
             if train_on_map:
                 pass   # leader da chay long vong (run-around) tu dong tim quai
