@@ -44,6 +44,13 @@ def joined_member_count(party_idx):
     with _PARTY_LOCK:
         return len(_PARTY_JOINED.get(party_idx, set()))
 
+def is_joined(party_idx, entity):
+    """Member nay da accept vao party chua (self_entity co trong _PARTY_JOINED)."""
+    if party_idx is None or not entity:
+        return False
+    with _PARTY_LOCK:
+        return bytes(entity) in _PARTY_JOINED.get(party_idx, set())
+
 # Chi so INT (tri luc) tung char trong party (chia se de leader chon quan su INT cao nhat).
 # party_idx -> {entity: int_value}.  STAT_INT = id 0x1b (xac nhan tu int.pcap).
 STAT_INT = 0x1b

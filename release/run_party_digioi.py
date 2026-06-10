@@ -261,8 +261,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                          "auto-accept - CHO ban moi party tay", label, st.get("channel"))
 
         # --- Giu song ---
+        from bot.client import joined_member_count, is_joined
         out_cnt = 0
         last_remove = time.time()
+        last_retry = time.time()
         while c.running:
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
@@ -271,6 +273,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
             except Exception as e:
                 log.warning("[%s] loi qua online (bo qua): %s", label, e)
+            # --- RETRY KENH + RE-MOI moi 60s (ca DG lan map-train) ---
+            # Kenh it nguoi nhat co the KHONG du cho ca party -> co dua ket lai kenh cu.
+            # Leader cu train; dua chua join thi 1p chuyen lai kenh chung 1 lan; leader 1p moi lai.
+            if has_leader and time.time() - last_retry >= 60:
+                last_retry = time.time()
+                if is_leader:
+                    nj = joined_member_count(pidx)
+                    if nj < st["n_members"]:
+                        log.info("[%s] (LEADER) chua du member (%d/%d) -> MOI LAI",
+                                 label, nj, st["n_members"])
+                        try: c.invite_members(gap=1.0)
+                        except Exception: pass
+                elif not is_joined(pidx, c.self_entity):
+                    ch = st.get("channel")
+                    if ch:
+                        log.info("[%s] (member) chua vao party -> retry chuyen kenh %d", label, ch)
+                        try:
+                            c.switch_channel(ch); time.sleep(1); c.combat_ready()
+                        except Exception: pass
             if train_on_map:
                 pass   # leader da chay long vong (run-around) tu dong tim quai
             else:
