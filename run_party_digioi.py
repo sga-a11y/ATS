@@ -111,6 +111,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         sc = pcfg.get("start_city_id", getattr(config, "START_CITY_ID", 0))
         mob_index = pcfg.get("mob_index", 0)
         city_flag = pcfg.get("city_flag", 0)
+        do_dungeon = pcfg.get("do_dungeon", True)   # checkbox "Danh daily dungeon" moi party
         tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
         # mode: digioi | train | city (tap trung ve thanh) | stand (dung yen) | cleanbag
         mode = pcfg.get("mode")
@@ -152,10 +153,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             # Sai map train -> KHONG train, nhung VAN lam not viec hang ngay (check-in da xong
             # o tren; con solo dungeon) roi moi quit.
             def _daily_then_quit():
-                try:
-                    c.do_daily_dungeon()
-                except Exception as e:
-                    log.warning("[%s] loi daily dungeon (sai map, bo qua): %s", label, e)
+                if do_dungeon:
+                    try:
+                        c.do_daily_dungeon()
+                    except Exception as e:
+                        log.warning("[%s] loi daily dungeon (sai map, bo qua): %s", label, e)
                 _quit()
             if is_leader:
                 if not self_map_ok:
@@ -187,8 +189,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                      label, role, sc, tm["safe"])
             c.navigate_to(*tm["safe"])
             # SOLO daily dungeon o MAP-TRAIN: TAM TAT (het luot -> bi dump ve 12000, pha map-train;
-            # CHUA detect duoc con/het luot). Bat lai: config.MAP_TRAIN_DUNGEON=True sau khi fix detect.
-            if getattr(config, "MAP_TRAIN_DUNGEON", False):
+            # Bat/tat bang checkbox "Danh daily dungeon" cua party (do_dungeon).
+            if do_dungeon:
                 with st["lock"]:
                     st["started_train"] += 1
                 try:
@@ -389,9 +391,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             except Exception: pass
                             out_cnt = 0
                         else:
-                            log.warning("[%s] (%s) HET GIO DG that -> thoat party + solo daily dungeon",
-                                        label, role)
-                            c.do_daily_dungeon()
+                            log.warning("[%s] (%s) HET GIO DG that -> thoat party%s",
+                                        label, role, " + solo daily dungeon" if do_dungeon else "")
+                            if do_dungeon:
+                                c.do_daily_dungeon()
                             break
                 else:
                     out_cnt = 0

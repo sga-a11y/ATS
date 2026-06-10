@@ -178,6 +178,7 @@ if _aj is not None:
                 "city_flag": int(_party.get("city_flag", 0)),
                 "server": _srv,
                 "server_ip": _server_ip(_srv) or GAME_HOST,
+                "do_dungeon": bool(_party.get("do_dungeon", True)),
             }
         if PARTY_CONFIG:
             START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]

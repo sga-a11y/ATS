@@ -316,7 +316,7 @@ class BotGUI(tk.Tk):
             for u, pidx in config.ACCOUNT_PARTY.items():
                 pc = config.PARTY_CONFIG.get(pidx, {})
                 s[u] = (pc.get("server"), pc.get("mode"), pc.get("start_city_id"),
-                        pc.get("mob_index"), pc.get("city_flag"))
+                        pc.get("mob_index"), pc.get("city_flag"), pc.get("do_dungeon"))
             return s
         old = _sigs()
         importlib.reload(config)   # doc lai accounts.json -> PARTIES/PARTY_CONFIG moi
@@ -400,6 +400,9 @@ class PartyConfigFrame(ttk.Frame):
         self.no_leader_var = tk.BooleanVar(value=no_leader)
         ttk.Checkbutton(self, text="Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)",
                         variable=self.no_leader_var).pack(anchor="w", pady=(2, 0))
+        self.dungeon_var = tk.BooleanVar(value=self._preset.get("do_dungeon", True))
+        ttk.Checkbutton(self, text="Đánh daily dungeon (lượt 1 free, lượt 2+ mua vàng)",
+                        variable=self.dungeon_var).pack(anchor="w")
 
         ttk.Label(self, text="Acc (mỗi dòng: user,pass — DÒNG ĐẦU = chủ PT trừ khi tick ô trên; "
                   "thêm # đầu dòng để BỎ QUA acc đó):").pack(anchor="w")
@@ -479,7 +482,7 @@ class PartyConfigFrame(ttk.Frame):
         srv = next((k for k, lbl in self.servers if lbl == self.server_var.get()),
                    self.servers[0][0] if self.servers else "trieu_van")
         return {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
-                "city_flag": city_flag, "accounts": accs}
+                "city_flag": city_flag, "do_dungeon": bool(self.dungeon_var.get()), "accounts": accs}
 
 
 class ConfigDialog(tk.Toplevel):
