@@ -102,6 +102,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
         train_on_map = tm is not None
 
+        # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
+        # DG: phai goi TRUOC khi vao DG (doi kenh trong DG se DA ra khoi DG!).
+        # Map-train: goi sau khi ve safe (doi kenh tren map thuong khong sao).
+        def do_channel_sync():
+            if is_picker:
+                ch = c.pick_best_channel()
+                st["channel"] = ch
+                st["channel_ready"].set()
+                log.info("[%s] (%s) chon kenh %s cho ca party", label, role, ch)
+            else:
+                st["channel_ready"].wait(420)
+                ch = st["channel"]
+                if ch:
+                    c.switch_channel(ch)
+                    log.info("[%s] (member) chuyen sang kenh chung = %s", label, ch)
+                time.sleep(2)
+
         if train_on_map:
             # PHAI dung map login (toa do safe/mobs chi dung tren map do).
             self_map_ok = (login_map == sc)
@@ -183,31 +200,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         break
                 time.sleep(1)
             log.info("[%s] (%s) ca party xong dungeon -> dong bo kenh", label, role)
+            do_channel_sync()   # map-train: dong bo kenh sau khi ve safe (tren map thuong)
         else:
-            # --- DI GIOI (solo) - ne battle/chua login xong, retry ---
-            if c.in_di_gioi():
-                log.info("[%s] (%s) da o trong DG san -> chay luon (khong vao lai)", label, role)
-            elif not c.enter_di_gioi_safe():
+            # --- DI GIOI ---
+            # 1) PHAI VAO DUOC DG TRUOC (xac nhan in_di_gioi) roi MOI chuyen kenh.
+            if not c.in_di_gioi() and not c.enter_di_gioi_safe():
                 log.warning("[%s] (%s) khong vao duoc DG (het gio?) -> TAT acc nay", label, role)
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
                 return
+            # 2) DA o trong DG -> dong bo kenh (gom ca party ve cung instance DG)
+            do_channel_sync()
+            # 3) Doi kenh co the lam VANG ra khoi DG (ve town) -> VAO LAI DG tren kenh moi
+            if not c.in_di_gioi():
+                log.info("[%s] (%s) doi kenh xong -> vao lai DG", label, role)
+                c.enter_di_gioi_safe()
 
-        # ===== DONG BO KENH (1 dua chon kenh it nguoi -> ca lu sang cung) =====
-        if is_picker:
-            ch = c.pick_best_channel()
-            st["channel"] = ch
-            st["channel_ready"].set()
-            log.info("[%s] (%s) chon kenh %s cho ca party", label, role, ch)
-        else:
-            # cho LAU (420s): picker co the dang danh dungeon, xong moi chon kenh -> dung time-out som
-            st["channel_ready"].wait(420)
-            ch = st["channel"]
-            if ch:
-                c.switch_channel(ch)
-                log.info("[%s] (member) chuyen sang kenh chung = %s", label, ch)
-            time.sleep(2)
         if not is_leader:
             with st["lock"]:
                 st["ready_members"].add(username)
@@ -314,7 +323,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         if ch:
                             log.info("[%s] (member) chua vao party -> retry chuyen kenh %d", label, ch)
                             try:
-                                c.switch_channel(ch); time.sleep(1); c.combat_ready()
+                                c.switch_channel(ch); time.sleep(1)
+                                if not train_on_map and not c.in_di_gioi():
+                                    c.enter_di_gioi_safe()   # doi kenh van ra DG -> vao lai
+                                c.combat_ready()
                             except Exception: pass
             if train_on_map:
                 pass   # leader da chay long vong (run-around) tu dong tim quai
