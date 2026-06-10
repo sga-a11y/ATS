@@ -111,6 +111,7 @@ SKILL_SP_COST = {
     13013: 49,   # Loan Kich
     11010: 42,   # Toan Tri Lieu
     11004: 22,   # Thanh Luu
+    12006: 24,   # Nhat Kich (danh don, boss - Thai Van Co rb0)
     12009: 30,   # Hoa Kiem (danh don, boss)
 }
 
