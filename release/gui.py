@@ -309,16 +309,30 @@ class BotGUI(tk.Tk):
         ConfigDialog(self)
 
     def reload_config(self):
-        """Nap lai accounts.json + dung lai tab (KHONG can dong app)."""
-        running = [u for u in ctrl.account_clients if ctrl.is_account_running(u)]
+        """Nap lai accounts.json + dung lai tab. TU STOP acc nao config (mode/map) bi DOI
+        (khong tu Start - de Anh chu dong Start lai khi muon)."""
+        def _sigs():
+            s = {}
+            for u, pidx in config.ACCOUNT_PARTY.items():
+                pc = config.PARTY_CONFIG.get(pidx, {})
+                s[u] = (pc.get("mode"), pc.get("start_city_id"),
+                        pc.get("mob_index"), pc.get("city_flag"))
+            return s
+        old = _sigs()
         importlib.reload(config)   # doc lai accounts.json -> PARTIES/PARTY_CONFIG moi
+        new = _sigs()
+        # acc dang chay ma config doi (hoac bi xoa khoi config) -> STOP
+        changed = [u for u in list(ctrl.account_clients)
+                   if ctrl.is_account_running(u) and old.get(u) != new.get(u)]
+        for u in changed:
+            ctrl.stop_account(u)
         self._all_usernames = set(u for pidx in range(len(config.PARTIES))
                                   for (u, *_ ) in ctrl.party_accounts(pidx))
         self._populate_tabs()
-        if running:
+        if changed:
             messagebox.showinfo("Đã nạp lại",
-                                "Đã áp dụng cấu hình mới.\nLƯU Ý: %d acc đang chạy vẫn dùng "
-                                "cấu hình CŨ tới khi Stop + Start lại." % len(running))
+                                "Đã áp dụng cấu hình mới.\nĐÃ STOP %d acc bị đổi config — "
+                                "bấm Start lại khi muốn chạy theo cấu hình mới." % len(changed))
 
     def _on_close(self):
         if messagebox.askokcancel("Thoát", "Dừng tất cả acc và thoát?"):
