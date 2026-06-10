@@ -30,6 +30,7 @@ MINUTES = int(sys.argv[1]) if len(sys.argv) > 1 else 0   # 0 = vo han
 # Trang thai chia se theo tung party: kenh leader chon + co hieu cac buoc
 _party_state = {}   # party_idx -> {"channel": ch, "channel_ready": Event, "invited": Event}
 _clients = []
+_threads = []   # thread tung acc - de biet khi nao TAT CA da thoat
 
 
 def _pstate(pidx):
@@ -331,20 +332,34 @@ for pidx, party in enumerate(config.PARTIES):
     for u, p in valid:
         is_leader = (u == leader_acc)
         is_picker = (u == picker_acc)
-        threading.Thread(target=run_account, args=(u, p, pidx, is_leader, is_picker),
-                         daemon=True).start()
+        t = threading.Thread(target=run_account, args=(u, p, pidx, is_leader, is_picker),
+                             daemon=True)
+        t.start()
+        _threads.append(t)
         time.sleep(1.5)
 
-log.info(">>> Party train Di Gioi dang chay. %s", "vo han" if MINUTES == 0 else f"{MINUTES} phut")
+log.info(">>> Party train Di Gioi dang chay (%d acc). %s",
+         len(_threads), "vo han" if MINUTES == 0 else f"{MINUTES} phut")
+import datetime as _dt
+_deadline = None if MINUTES == 0 else time.time() + MINUTES * 60
 try:
-    if MINUTES == 0:
-        while True:
-            time.sleep(10)
-    else:
-        time.sleep(MINUTES * 60)
+    while True:
+        time.sleep(5)
+        alive = sum(1 for t in _threads if t.is_alive())
+        if alive == 0:
+            log.warning("=" * 60)
+            log.warning(">>> TAT CA %d ACC DA THOAT GAME (%s). Khong con acc nao chay.",
+                        len(_threads), _dt.datetime.now().strftime("%H:%M:%S"))
+            log.warning(">>> Ly do thuong gap: sai map train / het gio DG / rot ket noi.")
+            log.warning("=" * 60)
+            break
+        if _deadline and time.time() >= _deadline:
+            log.info(">>> Het %d phut -> dong tat ca.", MINUTES)
+            break
 except KeyboardInterrupt:
-    pass
-for c in _clients:
+    log.info(">>> Nguoi dung dung (Ctrl+C).")
+for c in list(_clients):
     try: c.close()
     except Exception: pass
-log.info(">>> Ket thuc.")
+log.info(">>> Ket thuc. (con %d/%d acc song luc dong)",
+         sum(1 for t in _threads if t.is_alive()), len(_threads))
