@@ -63,6 +63,7 @@ class BotGUI(tk.Tk):
         self.title("TS Online Bot Manager")
         self.geometry("1100x720")
         self.minsize(900, 560)
+        self._setup_style()
         # --- log filter state ---
         self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
         self.log_filter = None         # None = tat ca; hoac set(username) duoc hien
@@ -76,6 +77,22 @@ class BotGUI(tk.Tk):
         self.after(1000, self._refresh)
         self.after(300, self._drain_log)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    # ---- style: lam tab party dang chon NOI BAT ----
+    def _setup_style(self):
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")   # theme cho phep to mau tab (vista bo qua)
+        except Exception:
+            pass
+        style.configure("TNotebook", background="#cfd4da", borderwidth=0)
+        style.configure("TNotebook.Tab", padding=[16, 8], font=("", 10),
+                        background="#c2c8d0", foreground="#445")
+        style.map("TNotebook.Tab",
+                  background=[("selected", "#1565c0"), ("active", "#9fb6d4")],
+                  foreground=[("selected", "#ffffff"), ("active", "#102")],
+                  font=[("selected", ("", 10, "bold"))],
+                  expand=[("selected", [1, 3, 1, 0])])   # tab chon phinh to hon
 
     # ---- toolbar ----
     def _build_toolbar(self):
