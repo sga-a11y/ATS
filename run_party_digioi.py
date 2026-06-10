@@ -45,7 +45,8 @@ def _pstate(pidx):
                               "started_train": 0,        # so acc da qua check map -> vao train (de barrier dungeon)
                               "dungeon_done": 0,         # so acc da danh xong dungeon (barrier)
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
-                              "leader_bad": threading.Event()}  # leader SAI map -> huy ca party
+                              "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
+                              "leader_gone": threading.Event()}  # leader da THOAT -> member ngung retry vao party
     return _party_state[pidx]
 
 
@@ -296,12 +297,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         except Exception as e:
                             log.warning("[%s] loi start training: %s", label, e)
                 elif not is_joined(pidx, c.self_entity):
-                    ch = st.get("channel")
-                    if ch:
-                        log.info("[%s] (member) chua vao party -> retry chuyen kenh %d", label, ch)
-                        try:
-                            c.switch_channel(ch); time.sleep(1); c.combat_ready()
-                        except Exception: pass
+                    if st["leader_gone"].is_set():
+                        pass   # chu pt da out -> KHONG retry vao party nua (vo nghia)
+                    else:
+                        ch = st.get("channel")
+                        if ch:
+                            log.info("[%s] (member) chua vao party -> retry chuyen kenh %d", label, ch)
+                            try:
+                                c.switch_channel(ch); time.sleep(1); c.combat_ready()
+                            except Exception: pass
             if train_on_map:
                 pass   # leader da chay long vong (run-around) tu dong tim quai
             else:
@@ -314,14 +318,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                              label, h, m, c.digioi_minutes)
                     if remain <= 5:
                         log.warning("[%s] SAP HET GIO DI GIOI (%d phut)!", label, remain)
-                # roi DG (map biet & khac DG) lien tuc -> het gio DG -> dong acc
+                # ra ngoai DG (map khac DG) lien tuc 20s. Phan biet bang TIMER THAT:
+                #   - con gio (digioi_minutes < LIMIT-1) -> bi ra ngoai SOM (doi kenh/loi) -> VAO LAI
+                #   - het gio that -> thoat party + danh solo daily dungeon roi dong acc
                 if c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
                     out_cnt += 1
                     if out_cnt >= 4:   # ~20s lien tuc ngoai DG
-                        log.warning("[%s] (%s) het gio DG -> thoat party + danh solo daily dungeon",
-                                    label, role)
-                        c.do_daily_dungeon()   # xong DG -> huy party -> solo dungeon
-                        break
+                        remain = max(0, DIGIOI_LIMIT - c.digioi_minutes)
+                        if remain >= 2:
+                            log.warning("[%s] (%s) ra ngoai DG som (con %d phut) -> VAO LAI DG",
+                                        label, role, remain)
+                            try: c.enter_di_gioi_safe()
+                            except Exception: pass
+                            out_cnt = 0
+                        else:
+                            log.warning("[%s] (%s) HET GIO DG that -> thoat party + solo daily dungeon",
+                                        label, role)
+                            c.do_daily_dungeon()
+                            break
                 else:
                     out_cnt = 0
         try: c.close()
@@ -329,6 +343,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         if c in _clients: _clients.remove(c)
     except Exception as e:
         log.error("[%s] LOI: %s", label, e)
+    finally:
+        if is_leader:
+            st["leader_gone"].set()   # leader thoat -> member ngung co vao party
 
 
 # Gom acc theo party. Leader = slot 0 (PARTY_LEADER_ACC). Khoi dong tung party.
