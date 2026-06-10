@@ -4,6 +4,7 @@ import struct
 import threading
 import time
 import logging
+import collections
 
 from . import config, protocol, combat
 
@@ -266,6 +267,7 @@ class GameClient:
         self.server_id = server_id             # ID server trong goi auth (1=Trieu Van, 2=Tao Thao)
         self.sock = None
         self.recv_buf = b""
+        self._recent_sends = collections.deque(maxlen=40)  # (op, hex) - dump khi bi kick de debug
         self.running = False
         self.state = BattleState()
 
@@ -349,6 +351,7 @@ class GameClient:
             return   # da rot ket noi -> bo qua (timer combat co the fire sau khi socket dong)
         if opcode != protocol.OP_HEARTBEAT:
             log.debug("[%s] SEND op=0x%02x: %s", self._label, opcode, payload.hex())
+            self._recent_sends.append((time.strftime("%H:%M:%S"), opcode, payload.hex()))
         try:
             self.sock.sendall(protocol.encode(opcode, payload))
         except OSError:
@@ -387,6 +390,9 @@ class GameClient:
                 break
             if not data:
                 log.warning("[%s] Server dong ket noi", self._label or self._username)
+                # DUMP 12 goi gui gan nhat -> tim goi gay kick (vd tren Tao Thao)
+                for ts, op, hx in list(self._recent_sends)[-12:]:
+                    log.warning("[%s]   gui-cuoi %s 0x%02x %s", self._label, ts, op, hx)
                 self.running = False   # rot ket noi -> dung MOI vong lap
                 break
             self.recv_buf += protocol.xor(data)
