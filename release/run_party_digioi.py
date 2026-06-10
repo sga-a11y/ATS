@@ -227,27 +227,27 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             else:
                 log.warning("[%s] (LEADER) chua du member (%d/%d)",
                             label, joined_member_count(pidx), st["n_members"])
+            # Bat dau train (set QS + ra cho danh). Goi khi DA co >=1 member (du quan su).
+            training_started = False
+            def _start_training():
+                c.set_party_strategist()    # set member INT cao nhat lam quan su (hoi SP)
+                if train_on_map:
+                    c.move_to(*tm["mobs"][0])   # ra diem quai, dung cay (toa do == UI)
+                    c.combat_ready(); c.flee_mode = False
+                    log.info("[%s] (LEADER) ra diem quai %s dung cay.", label, tm["mobs"][0])
+                else:
+                    c.combat_ready(); c.flee_mode = False
+                    c.start_run_around()        # DG: chay long vong tim quai
+                    log.info("[%s] (LEADER) bat dau chay long vong.", label)
             if joined_member_count(pidx) >= 1:
                 time.sleep(1)
-                c.set_party_strategist()    # set member INT cao nhat lam quan su
-            elif train_on_map:
-                # map-train CAN >=1 member (de set quan su hoi SP) -> 0 member thi THOAT
-                log.warning("[%s] (LEADER) 0 member dung map -> khong du quan su -> THOAT", label)
-                try: c.close()
-                except Exception: pass
-                if c in _clients: _clients.remove(c)
-                return
+                _start_training(); training_started = True
             else:
-                log.info("[%s] (LEADER) khong co member join -> CAY 1 MINH (DG)", label)
-            # --- VI TRI CAY ---
-            if train_on_map:
-                c.move_to(*tm["mobs"][0])   # ra diem quai, dung yen cho quai toi (toa do == UI)
-                c.combat_ready()            # combat-active lai (doi kenh da reset) -> quai aggro
-                c.flee_mode = False         # toi noi roi -> NGUNG flee, bat dau DANH
-                log.info("[%s] (LEADER) ra diem quai %s dung cay.", label, tm["mobs"][0])
-            else:
-                c.start_run_around()        # DG: chay long vong tim quai
-                log.info("[%s] (LEADER) bat dau chay long vong.", label)
+                # 0 member -> KHONG co quan su -> DUNG YEN ngam canh, KHONG danh (vo nghia, het SP).
+                # Vong keepalive moi 60s se MOI LAI; co member join thi moi bat dau train.
+                c.flee_mode = True   # ne battle neu lo dinh -> khong danh khi chua co QS
+                log.info("[%s] (LEADER) chua co member (0 quan su) -> DUNG YEN cho member join...",
+                         label)
         else:
             if has_leader:
                 st["invited"].wait(120)   # cho bot-leader moi
@@ -285,6 +285,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                                  label, nj, st["n_members"])
                         try: c.invite_members(gap=1.0)
                         except Exception: pass
+                    # co member join ma chua train (truoc do 0 QS dung yen) -> BAT DAU TRAIN
+                    if nj >= 1 and not training_started:
+                        log.info("[%s] (LEADER) da co %d member -> SET QS + bat dau train", label, nj)
+                        try:
+                            _start_training(); training_started = True
+                        except Exception as e:
+                            log.warning("[%s] loi start training: %s", label, e)
                 elif not is_joined(pidx, c.self_entity):
                     ch = st.get("channel")
                     if ch:
