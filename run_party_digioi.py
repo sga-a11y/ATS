@@ -48,6 +48,31 @@ account_clients = {}   # username -> GameClient (doc trang thai live)
 account_stops = {}     # username -> threading.Event (GUI yeu cau dung acc nay)
 account_threads = {}   # username -> Thread
 account_last = {}      # username -> {"map","char"} luc CUOI truoc khi thoat (de biet thoat o dau)
+account_exit_reason = {}  # username -> ly do thoat (de tong ket 1 dong khi ca party tat het)
+
+
+def _party_exit_summary(pidx, exclude_user):
+    """Goi trong finally moi acc. Neu MOI acc khac cua party da tat -> log 1 DONG TONG KET
+    o cuoi: party thoat het vi ly do gi (gom theo ly do). Chi log 1 lan/lan-chay."""
+    st = _pstate(pidx)
+    accs = [u for u, _p, _l, _pk in party_accounts(pidx)]
+    for u in accs:
+        if u == exclude_user:
+            continue
+        t = account_threads.get(u)
+        if t is not None and t.is_alive():
+            return   # con acc khac dang chay -> chua phai ca party tat
+    with st["lock"]:
+        if st.get("summary_done"):
+            return
+        st["summary_done"] = True
+    # gom username theo ly do
+    groups = {}
+    for u in accs:
+        r = account_exit_reason.get(u, "ket thuc binh thuong (het gio hoac GUI dung)")
+        groups.setdefault(r, []).append(account_last.get(u, {}).get("char") or u)
+    parts = "; ".join(f"{r} [{', '.join(us)}]" for r, us in groups.items())
+    log.warning(">>> PARTY %s DA THOAT HET vi: %s", pidx + 1, parts)
 
 
 def _pstate(pidx):
@@ -62,7 +87,8 @@ def _pstate(pidx):
                               "dungeon_done": 0,         # so acc da danh xong dungeon (barrier)
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
-                              "leader_gone": threading.Event()}  # leader da THOAT -> member ngung retry vao party
+                              "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
+                              "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
 
@@ -74,6 +100,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
     stop_ev = account_stops.get(username)   # GUI yeu cau STOP -> thoat moi giai doan
     def _stopped():
         return stop_ev is not None and stop_ev.is_set()
+    er = {"r": "ket thuc binh thuong (het gio hoac GUI dung)"}  # ly do thoat (de tong ket party)
+    def _reason(msg):
+        er["r"] = msg
     # Server (IP) theo config rieng cua party
     _pc0 = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
     server_ip = _pc0.get("server_ip") or config.GAME_HOST
@@ -104,6 +133,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         label, c.self_entity is not None, c.current_map)
             c.close(); time.sleep(5)
         if not ok:
+            _reason("login/vao world that bai (6 lan)")
             log.warning("[%s] >>> THOAT: LOGIN/VAO WORLD THAT BAI sau 6 lan "
                         "(entity=%s map=%s) <<<", label, c.self_entity is not None, c.current_map)
             try: c.close()
@@ -183,6 +213,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             if is_leader:
                 if not self_map_ok:
                     # LEADER sai map -> HUY ca party (bao member thoat het)
+                    _reason("leader dung SAI MAP (o %s, can train map %s) - can dua nhan vat ve dung map"
+                            % (c.current_map, sc))
                     log.warning("[%s] (LEADER) NHAN VAT DANG DUNG O MAP %s, NHUNG CONFIG TRAIN MAP=%s "
                                 "-> KHONG khop -> lam dungeon roi HUY CA PARTY (member thoat het). "
                                 "CACH SUA: vao game dua nhan vat ve map %s roi THOAT GAME tai do, "
@@ -193,6 +225,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 st["leader_ok"].set()   # leader ok -> member duoc tiep tuc
             else:
                 if not self_map_ok:
+                    _reason("member dung SAI MAP (o %s, can train map %s)" % (c.current_map, sc))
                     log.warning("[%s] (member) NHAN VAT DANG DUNG O MAP %s, NHUNG CONFIG TRAIN MAP=%s "
                                 "-> KHONG khop -> lam dungeon roi THOAT. "
                                 "CACH SUA: dua nhan vat ve map %s roi THOAT GAME tai do.",
@@ -208,6 +241,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             _quit(); return
                         time.sleep(0.5)
                     if st["leader_bad"].is_set():
+                        _reason("leader party dung sai map -> ca party bi huy")
                         log.warning("[%s] (member) LEADER party dung SAI MAP (xem dong LEADER o tren) "
                                     "-> ca party huy -> THOAT. CACH SUA: dua NHAN VAT LEADER ve dung "
                                     "train map roi thoat game tai do.", label)
@@ -462,11 +496,20 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         except Exception: pass
         if c in _clients: _clients.remove(c)
     except Exception as e:
+        _reason("LOI ngoai le: %s" % e)
         log.error("[%s] LOI: %s", label, e)
     finally:
         if is_leader:
             st["leader_gone"].set()   # leader thoat -> member ngung co vao party
+        # ghi lai ly do thoat (neu GUI bam STOP ma chua co ly do cu the -> ghi STOP)
+        if _stopped() and er["r"].startswith("ket thuc binh thuong"):
+            _reason("Anh bam STOP")
+        account_exit_reason[username] = er["r"]
         account_clients.pop(username, None)
+        try:
+            _party_exit_summary(pidx, username)   # neu ca party da tat -> log 1 dong tong ket
+        except Exception:
+            pass
 
 
 # ============================================================
@@ -509,7 +552,9 @@ def start_party(pidx, stagger=1.5):
         st["ready_members"].clear()
         st["started_train"] = 0
         st["dungeon_done"] = 0
+        st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
     for u, p, is_leader, is_picker in party_accounts(pidx):
+        account_exit_reason.pop(u, None)   # xoa ly do cu
         if start_account(u, p, pidx, is_leader, is_picker):
             started += 1
             time.sleep(stagger)
