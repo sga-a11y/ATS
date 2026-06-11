@@ -255,8 +255,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             do_channel_sync()
         else:
             # --- CITY (tap trung ve thanh) / STAND (dung yen) / CLEANBAG ---
+            # SOLO daily dungeon TRUOC (neu bat). Dungeon co the bi DUMP ve 12000 -> lam truoc
+            # roi MOI ve thanh -> dam bao dung dung thanh tap trung du co bi dump.
+            if do_dungeon:
+                try:
+                    c.do_daily_dungeon()
+                except Exception as e:
+                    log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
             if mode == "city":
-                log.info("[%s] (%s) TAP TRUNG ve thanh %s (flag %s)", label, role, sc, city_flag)
+                # Ve thanh SAU dungeon: neu dungeon dump ve 12000 thi teleport ve thanh lan nua.
+                log.info("[%s] (%s) TAP TRUNG ve thanh %s (flag %s)%s", label, role, sc, city_flag,
+                         " (dung o %s -> ve lai)" % c.current_map if c.current_map != sc else "")
                 try: c.go_to_town(sc, city_flag)
                 except Exception as e:
                     log.warning("[%s] loi ve thanh: %s", label, e)
@@ -264,12 +273,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 log.info("[%s] (%s) DON TUI DO - chua lam, tam dung yen", label, role)
             else:
                 log.info("[%s] (%s) DUNG YEN tai cho login (map=%s)", label, role, c.current_map)
-            # SOLO daily dungeon (neu bat) - city/stand: vao tu town, xong tu ve cho cu
-            if do_dungeon:
-                try:
-                    c.do_daily_dungeon()
-                except Exception as e:
-                    log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
             c.flee_mode = False   # bi danh thi tu danh, KHONG chay
             do_channel_sync()
 
