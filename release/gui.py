@@ -547,6 +547,11 @@ class TrainMapEditor(tk.Toplevel):
                       "mobs": [list(p) for p in v.get("mobs", [])]} for k, v in raw.items()]
         self._cur = None
 
+        # Pack BAR (Luu/Huy) o DAY truoc -> giu cho duoi cung (left/right pack sau khong de len)
+        bar = ttk.Frame(self, padding=6); bar.pack(side="bottom", fill="x")
+        ttk.Button(bar, text="💾 Lưu", command=self._save).pack(side="right")
+        ttk.Button(bar, text="Hủy", command=self.destroy).pack(side="right", padx=4)
+
         left = ttk.Frame(self, padding=6); left.pack(side="left", fill="y")
         ttk.Label(left, text="Danh sách map:").pack(anchor="w")
         self.lb = tk.Listbox(left, width=26, height=20, exportselection=False)
@@ -569,10 +574,6 @@ class TrainMapEditor(tk.Toplevel):
         self.safe_txt = tk.Text(right, height=6, font=("Consolas", 10)); self.safe_txt.pack(fill="x")
         ttk.Label(right, text="Mob point (mỗi dòng: x,y — leader ra đứng cây):").pack(anchor="w", pady=(8, 0))
         self.mob_txt = tk.Text(right, height=6, font=("Consolas", 10)); self.mob_txt.pack(fill="x")
-
-        bar = ttk.Frame(self, padding=6); bar.pack(side="bottom", fill="x")
-        ttk.Button(bar, text="💾 Lưu", command=self._save).pack(side="right")
-        ttk.Button(bar, text="Hủy", command=self.destroy).pack(side="right", padx=4)
 
         self._reload_list()
         if self.maps:
