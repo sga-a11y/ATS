@@ -179,7 +179,7 @@ if _aj is not None:
             PARTY_CONFIG[_i] = {
                 "mode": _party.get("mode", "stand"),
                 "start_city_id": int(_party.get("start_city_id", 0)),
-                "mob_index": int(_party.get("mob_index", 0)),
+                "mob_index": int(_party.get("mob_index", -1)),  # mac dinh -1 = Bot tu chon
                 "city_flag": int(_party.get("city_flag", 0)),
                 "server": _srv,
                 "server_ip": _server_ip(_srv) or GAME_HOST,
