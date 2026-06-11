@@ -47,6 +47,7 @@ def _nearest_safe(pos, safes):
 account_clients = {}   # username -> GameClient (doc trang thai live)
 account_stops = {}     # username -> threading.Event (GUI yeu cau dung acc nay)
 account_threads = {}   # username -> Thread
+account_last = {}      # username -> {"map","char"} luc CUOI truoc khi thoat (de biet thoat o dau)
 
 
 def _pstate(pidx):
@@ -545,14 +546,18 @@ def account_status(username):
     c = account_clients.get(username)
     running = is_account_running(username)
     if c is None:
-        return {"running": running, "char": "", "map": None, "in_party": False,
-                "dg_remain": None, "combat": False, "channel": None, "strategist": False}
+        # da tat/thoat -> GIU map + nhan vat LUC CUOI (de biet thoat o dau, dung map khong)
+        last = account_last.get(username, {})
+        return {"running": running, "char": last.get("char", ""), "map": last.get("map"),
+                "in_party": False, "dg_remain": None, "combat": False, "channel": None,
+                "strategist": False}
     pidx = getattr(c, "party_idx", None)
     from bot.client import is_joined, is_strategist
     st = _party_state.get(pidx, {})
     dg_remain = None
     if c.current_map == config.DIGIOI_MAP_ID:
         dg_remain = max(0, DIGIOI_LIMIT - getattr(c, "digioi_minutes", 0))
+    account_last[username] = {"map": c.current_map, "char": c.char_name or ""}  # luu lai map cuoi
     return {
         "running": running,
         "char": c.char_name or "",
