@@ -183,15 +183,20 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             if is_leader:
                 if not self_map_ok:
                     # LEADER sai map -> HUY ca party (bao member thoat het)
-                    log.warning("[%s] (LEADER) KHONG o map train %s (dang o %s) -> lam dungeon roi HUY CA PARTY",
-                                label, sc, c.current_map)
+                    log.warning("[%s] (LEADER) NHAN VAT DANG DUNG O MAP %s, NHUNG CONFIG TRAIN MAP=%s "
+                                "-> KHONG khop -> lam dungeon roi HUY CA PARTY (member thoat het). "
+                                "CACH SUA: vao game dua nhan vat ve map %s roi THOAT GAME tai do, "
+                                "HOAC doi train map cua party sang %s trong GUI.",
+                                label, c.current_map, sc, sc, c.current_map)
                     st["leader_bad"].set()
                     _daily_then_quit(); return
                 st["leader_ok"].set()   # leader ok -> member duoc tiep tuc
             else:
                 if not self_map_ok:
-                    log.warning("[%s] (member) KHONG o map train %s (dang o %s) -> lam dungeon roi THOAT",
-                                label, sc, c.current_map)
+                    log.warning("[%s] (member) NHAN VAT DANG DUNG O MAP %s, NHUNG CONFIG TRAIN MAP=%s "
+                                "-> KHONG khop -> lam dungeon roi THOAT. "
+                                "CACH SUA: dua nhan vat ve map %s roi THOAT GAME tai do.",
+                                label, c.current_map, sc, sc)
                     _daily_then_quit(); return
                 # CO bot-leader -> doi leader quyet dinh (ok/huy). KHONG co leader -> tu di tiep.
                 if has_leader:
@@ -203,7 +208,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             _quit(); return
                         time.sleep(0.5)
                     if st["leader_bad"].is_set():
-                        log.warning("[%s] (member) leader sai map -> ca party huy -> THOAT", label)
+                        log.warning("[%s] (member) LEADER party dung SAI MAP (xem dong LEADER o tren) "
+                                    "-> ca party huy -> THOAT. CACH SUA: dua NHAN VAT LEADER ve dung "
+                                    "train map roi thoat game tai do.", label)
                         _quit(); return
             # --- MAP-TRAIN: chay toi diem TAP KET (diem safe dau tien) (dinh battle -> flee) ---
             rally = tm["safe"][0]
