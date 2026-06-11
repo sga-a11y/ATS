@@ -8,47 +8,55 @@ YEU CAU:
   - KHONG can cai thu vien gi them (chi dung thu vien chuan).
 
 ----------------------------------------------------------
-BUOC 1: TAO FILE CAU HINH
+BUOC 1: TAO FILE CONFIG GOC (1 lan)
 ----------------------------------------------------------
-  - Vao thu muc "bot", COPY file:  config.example.py  ->  config.py
-  - Mo bot/config.py, sua:
-      * PARTIES: dien tai khoan (username, password).
-          - SLOT 0 = CHU PARTY (bot tu moi + dan train).
-          - Slot 1-4 = thanh vien.
-          - Moi party toi da 5 acc. Co the nhieu party.
-      * START_CITY_ID quyet dinh CHE DO:
-          - = 49942 (hoac 0)        -> train DI GIOI (chay long vong)
-          - = map_id co trong train_maps.json -> train MAP THUONG
-            (vd 12831 = Rung Noi Huynh)
-          - = ID 1 thanh (vd 12061) -> ve thanh dung cho (dung voi run_bot)
+  - Vao thu muc "bot", COPY:  config.example.py  ->  config.py
+    (giu nguyen, KHONG can sua gi - chi giu hang so game: API, server...)
 
 ----------------------------------------------------------
-BUOC 2: CHAY BOT
+BUOC 2: MO GIAO DIEN (GUI) - dat cau hinh + chay
 ----------------------------------------------------------
-  CACH 1 - Train party (Di Gioi / map thuong):
-     Double-click:  run_digioi.bat
-       (login het acc -> vao DG / map -> lap party -> quan su -> cay)
+  Double-click:  run_gui.bat     (hoac chay: python gui.py)
 
-  CACH 2 - Treo may / member cho chu party moi:
-     Double-click:  run_bot.bat
-       (login -> dung cho -> tu nhan loi moi party + tu danh)
+  Trong GUI:
+    1. Bam  [Cau hinh]  -> moi PARTY 1 tab, dat:
+         - Server   : Trieu Van / Tao Thao (dropdown)
+         - Che do   : Train Di Gioi | Train map | Tap trung ve thanh | Dung yen
+         - Map/Quai/Thanh (dropdown - tuy che do)
+         - [v] Khong co chu PT  (neu muon member cho leader tay moi)
+         - [v] Danh daily dungeon
+         - Danh sach acc: moi dong "user,pass" (DONG DAU = chu PT).
+             Them '#' dau dong de TAM TAT acc do.
+       -> Bam [Luu]  (tu nap lai, khong can dong app).
 
-  Dong cua so hoac Ctrl+C de dung. Bi rot mang -> tu dong ket noi lai.
+    2. Bam  [START TAT CA]  hoac  [Start party] / [Start acc chon].
+    3. Bang trang thai live: nhan vat / map / kenh / trong party / DG con / danh.
+    4. Khung Log: bam tab party hoac chon acc de LOC log theo party/acc.
+
+  -> Cau hinh luu vao  accounts.json  (GUI tu tao/sua, co chua mat khau).
 
 ----------------------------------------------------------
-THEM DIEM TRAIN MAP THUONG (train_maps.json)
+CHE DO (mode) moi party
 ----------------------------------------------------------
-  - Login 1 acc vao map muon cay -> xem dong log:  >>> MAP HIEN TAI = X <<<
-  - Mo train_maps.json, them:
-      "X": { "name":"Ten map", "safe":[x,y], "mobs":[[x,y]] }
-    * safe = toa do AN TOAN (tap ket lap party)
-    * mobs[0] = toa do CO QUAI (leader ra dung cay) - bot dung diem dau tien
-    * Toa do = DUNG toa do hien trong game (UI).
-  - Doi diem dung cay: sua mobs[0] thanh toa do moi.
+  - Train Di Gioi      : vao Di Gioi chay long vong train (het gio -> dungeon).
+  - Train map          : char PHAI dung san tren map train -> ra diem quai cay.
+  - Tap trung ve thanh : teleport ve thanh roi dung yen (dan di nhiem vu tay).
+  - Dung yen           : login dau dung yen do.
+
+----------------------------------------------------------
+DATA (sua bang file json neu can)
+----------------------------------------------------------
+  - servers.json    : server (ip + id auth). Them server moi o day.
+  - train_maps.json : map train (diem an toan + diem quai).
+  - cities.json     : thanh de teleport.
+  - pets.json       : pet (skill train + boss_skill danh dungeon).
+
+  Chi tiet cau truc config: xem file  CONFIG.md.
 
 ----------------------------------------------------------
 GHI CHU
 ----------------------------------------------------------
-  - File trong "bot/config.py" la cua RIENG ban (tai khoan) - KHONG chia se.
-  - Cac file checkin_state.json / gift_state.json ... tu sinh khi chay.
-  - Bot tu lam hang ngay: diem danh, qua online, qua quan doan, exp offline, mail.
+  - Dong cua so GUI hoac bam Stop de dung. Bi rot mang -> tu ket noi lai.
+  - Tat ca acc thoat -> GUI bao ro ly do (sai map / het gio DG / login loi).
+  - File log: party.log.
+  - CLI cu (khong GUI): chay  python run_party_digioi.py
