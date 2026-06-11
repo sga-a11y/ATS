@@ -95,6 +95,7 @@ def _pstate(pidx):
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
+                              "stop_leader_done": threading.Event(),  # STOP: leader DA ve safe -> member duoc thoat
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
@@ -335,7 +336,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
         if is_leader:
             for _ in range(90):   # ~180s: du cho member xong dungeon + ve diem tap ket
-                if _stopped(): c.close(); return
+                if _stopped(): st["stop_leader_done"].set(); c.close(); return
                 if len(st["ready_members"]) >= st["n_members"]:
                     break
                 time.sleep(2)
@@ -343,7 +344,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                      label, len(st["ready_members"]), st["n_members"])
             from bot.client import joined_member_count
             for r in range(6):
-                if _stopped(): c.close(); return
+                if _stopped(): st["stop_leader_done"].set(); c.close(); return
                 c.invite_members(gap=1.0)
                 st["invited"].set()
                 time.sleep(4)
@@ -417,17 +418,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         while c.running:
             if stop_ev is not None and stop_ev.is_set():
                 log.info("[%s] (%s) -> STOP tu GUI", label, role)
-                # LEADER dang cay ngoai diem quai -> chay ve diem safe GAN NHAT roi moi thoat
-                # (member da dung san o safe, khong can). navigate_to tu bat flee, ne tran doc duong.
-                if is_leader and train_on_map:
-                    dest = _nearest_safe(c.pos, tm["safe"])
-                    if dest:
-                        log.info("[%s] (LEADER) STOP -> chay ve safe gan nhat %s truoc khi thoat",
-                                 label, dest)
-                        try:
-                            c.navigate_to(*dest)
-                        except Exception as e:
-                            log.warning("[%s] loi chay ve safe (bo qua): %s", label, e)
+                if is_leader:
+                    # LEADER dang cay ngoai diem quai -> chay ve diem safe GAN NHAT TRUOC,
+                    # roi BAO HIEU (stop_leader_done) de member moi thoat theo.
+                    if train_on_map:
+                        dest = _nearest_safe(c.pos, tm["safe"])
+                        if dest:
+                            log.info("[%s] (LEADER) STOP -> chay ve safe gan nhat %s truoc khi thoat",
+                                     label, dest)
+                            try:
+                                c.navigate_to(*dest)
+                            except Exception as e:
+                                log.warning("[%s] loi chay ve safe (bo qua): %s", label, e)
+                    st["stop_leader_done"].set()   # leader da ve safe -> ca party duoc thoat
+                    log.info("[%s] (LEADER) da ve safe -> bao member thoat", label)
+                elif has_leader:
+                    # MEMBER: CHO leader chay ve safe xong (stop_leader_done) roi MOI thoat
+                    # -> ca lu thoat cung luc, leader khong bi bo lai ngoai diem quai.
+                    log.info("[%s] (member) STOP -> cho leader ve safe roi thoat...", label)
+                    if not st["stop_leader_done"].wait(60):
+                        log.warning("[%s] (member) cho leader ve safe qua 60s -> thoat luon", label)
                 break
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
@@ -557,7 +567,8 @@ def start_party(pidx, stagger=1.5):
     started = 0
     st = _pstate(pidx)
     # RESET state dung chung (tranh sot tu lan chay truoc: leader_bad cu -> member quit oan)
-    for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready"):
+    for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
+              "stop_leader_done"):
         st[k].clear()
     st["channel"] = None
     with st["lock"]:
