@@ -313,6 +313,7 @@ class GameClient:
         self._mail_ids = []          # mail_id thu thap tu S2C 0x53 (de nhan + xoa)
         self._event14_items = []     # itemid event "qua 14 ngay" tu S2C 0x7c sub=01 (de nhan)
         self._event14_ok = 0         # so phan nhan THANH CONG (S2C 0x7c sub=02 byte ok=01)
+        self._event14_acks = []      # raw ack S2C 0x7c sub=02 (debug)
 
     # ---- ket noi + auth ----
     def connect(self):
@@ -478,8 +479,10 @@ class GameClient:
                 if items:
                     self._event14_items = items
             # sub 02 = ack nhan 1 phan: [02 00][ok 4B][itemid 4B][qty 4B]; ok byte[2]==01 = thanh cong
-            elif pkt[7:9] == b"\x02\x00" and len(pkt) >= 11 and pkt[9] == 0x01:
-                self._event14_ok += 1
+            elif pkt[7:9] == b"\x02\x00" and len(pkt) >= 11:
+                self._event14_acks.append(pkt[7:].hex())   # luu raw de debug
+                if pkt[9] == 0x01:
+                    self._event14_ok += 1
         elif opcode == protocol.OP_ACTIONS:       # 0x35
             self._on_actions(pkt)
         elif opcode == 0x13 and len(pkt) >= 11 and pkt[7:9] in (b"\x04\x00", b"\x01\x00"):
@@ -890,19 +893,23 @@ class GameClient:
         Chay moi login: phan da nhan se khong con trong list nua."""
         self._event14_items = []
         self._event14_ok = 0
+        self._event14_acks = []
         self.send(0x7c, b"\x01\x00")          # mo/query list event
         time.sleep(1.5)                       # cho list ve
         items = list(self._event14_items)
         if not items:
+            log.info("[%s] Event 14 ngay: list rong (da nhan het hoac chua co event)", self._label)
             return
+        log.info("[%s] Event 14 ngay: list %d itemid = %s",
+                 self._label, len(items), [it.hex() for it in items])
         for it in items:
             if not self.running:
                 break
             self.send(0x7c, b"\x03\x00" + it + b"\x01\x00\x00\x00")   # nhan 1 phan
-            time.sleep(0.4)
-        time.sleep(0.5)
-        log.info("[%s] Event 14 ngay: thu %d phan, nhan thanh cong %d",
-                 self._label, len(items), self._event14_ok)
+            time.sleep(0.5)
+        time.sleep(1.0)
+        log.info("[%s] Event 14 ngay: thu %d phan, nhan OK %d | ack server: %s",
+                 self._label, len(items), self._event14_ok, self._event14_acks)
 
     def claim_legion_gift(self):
         """Nhan qua QUAN DOAN hang ngay. C2S 0x27 [69 00] -> server tra reward (0x17).
