@@ -411,10 +411,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         last_retry = time.time()
         last_dg = 0.0
         stop_ev = account_stops.get(username)
-        # Bao stop_account: ACC NAY (leader train) khi STOP -> thread tu chay ve safe roi dong,
-        # KHONG dong socket ngay (de navigate_to chay duoc).
+        # Bao stop_account: ACC NAY khi STOP -> thread TU xu ly (KHONG dong socket ngay).
+        #  - leader train: tu chay ve safe gan nhat roi dong.
+        #  - member train co bot-leader: CHO leader ve safe (stop_leader_done) roi moi dong
+        #    -> ca party thoat cung luc, KHONG bi member thoat truoc.
         if is_leader and train_on_map:
             c._return_safe_on_stop = tm["safe"]
+        elif (not is_leader) and train_on_map and has_leader:
+            c._wait_leader_on_stop = True
         while c.running:
             if stop_ev is not None and stop_ev.is_set():
                 log.info("[%s] (%s) -> STOP tu GUI", label, role)
@@ -598,9 +602,13 @@ def stop_account(username):
         ev.set()
     c = account_clients.get(username)
     if c is not None:
-        # Leader map-train: KHONG dong ngay -> thread tu chay ve safe gan nhat roi tu dong.
+        # KHONG dong socket ngay neu thread tu xu ly viec thoat:
+        #  - leader map-train: tu chay ve safe roi dong.
+        #  - member train: cho leader ve safe (stop_leader_done) roi moi dong.
         if getattr(c, "_return_safe_on_stop", None):
             log.info("[%s] STOP -> cho thread chay ve safe roi dong", username)
+        elif getattr(c, "_wait_leader_on_stop", None):
+            log.info("[%s] STOP -> cho leader ve safe roi member thoat theo", username)
         else:
             try: c.close()
             except Exception: pass
