@@ -159,7 +159,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             c.flee_mode = True
         c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
         c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
-        c.claim_14day_gift()    # qua 14 ngay user moi
+        c.claim_14day_gift()    # qua 14 ngay user moi (0x57)
+        c.claim_event_14day()   # event tang qua 14 ngay (0x7c) - khac cai tren
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
         c.claim_gacha_pet()     # gacha pet hang ngay (9k xu)
         c.claim_gacha_card()    # gacha card hang ngay (9k xu)

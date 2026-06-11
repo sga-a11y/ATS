@@ -311,6 +311,8 @@ class GameClient:
         self._online_base = 0.0      # giay online TICH LUY hom nay (load tu file, truoc phien nay)
         self.claimed_gifts = set()   # cac moc qua online da nhan hom nay (load tu file)
         self._mail_ids = []          # mail_id thu thap tu S2C 0x53 (de nhan + xoa)
+        self._event14_items = []     # itemid event "qua 14 ngay" tu S2C 0x7c sub=01 (de nhan)
+        self._event14_ok = 0         # so phan nhan THANH CONG (S2C 0x7c sub=02 byte ok=01)
 
     # ---- ket noi + auth ----
     def connect(self):
@@ -463,6 +465,21 @@ class GameClient:
                 cat = pkt[13:17]   # category 4B LE (3, 5,... -> THAY DOI tung mail!)
                 if (mid, cat) not in self._mail_ids:
                     self._mail_ids.append((mid, cat))
+        elif opcode == 0x7c:                      # event "qua 14 ngay" (panel claim item)
+            # sub 01 = list phan qua: [01 00][count 4B LE] + count*[itemid 4B LE][qty 4B LE]
+            if pkt[7:9] == b"\x01\x00" and len(pkt) >= 13:
+                cnt = int.from_bytes(pkt[9:13], "little")
+                items = []
+                for i in range(cnt):
+                    off = 13 + i * 8
+                    if off + 8 > len(pkt):
+                        break
+                    items.append(pkt[off:off + 4])   # itemid 4B LE
+                if items:
+                    self._event14_items = items
+            # sub 02 = ack nhan 1 phan: [02 00][ok 4B][itemid 4B][qty 4B]; ok byte[2]==01 = thanh cong
+            elif pkt[7:9] == b"\x02\x00" and len(pkt) >= 11 and pkt[9] == 0x01:
+                self._event14_ok += 1
         elif opcode == protocol.OP_ACTIONS:       # 0x35
             self._on_actions(pkt)
         elif opcode == 0x13 and len(pkt) >= 11 and pkt[7:9] in (b"\x04\x00", b"\x01\x00"):
@@ -864,6 +881,28 @@ class GameClient:
     def claim_14day_gift(self):
         """QUA 14 NGAY user moi (0x57 type=04). Nhan het 14 ngay thi dung."""
         return self._claim_daily_gift("gift14", 0x04, 14, "Qua 14 ngay", finite=True)
+
+    def claim_event_14day(self):
+        """Event TANG QUA 14 NGAY (opcode 0x7c) - KHAC qua 14 ngay new-user (0x57).
+        Mo list (7c 0100) -> server tra cac phan claim duoc (S2C 0x7c sub=01) ->
+        nhan tung phan: 7c 03 00 [itemid 4B LE][qty=01000000]. Server tu choi phan chua
+        toi ngay (vo hai). Xac nhan tu capture ev14.pcap (nhan ngay 1 = item 0x044d).
+        Chay moi login: phan da nhan se khong con trong list nua."""
+        self._event14_items = []
+        self._event14_ok = 0
+        self.send(0x7c, b"\x01\x00")          # mo/query list event
+        time.sleep(1.5)                       # cho list ve
+        items = list(self._event14_items)
+        if not items:
+            return
+        for it in items:
+            if not self.running:
+                break
+            self.send(0x7c, b"\x03\x00" + it + b"\x01\x00\x00\x00")   # nhan 1 phan
+            time.sleep(0.4)
+        time.sleep(0.5)
+        log.info("[%s] Event 14 ngay: thu %d phan, nhan thanh cong %d",
+                 self._label, len(items), self._event14_ok)
 
     def claim_legion_gift(self):
         """Nhan qua QUAN DOAN hang ngay. C2S 0x27 [69 00] -> server tra reward (0x17).
