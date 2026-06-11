@@ -451,6 +451,7 @@ class PartyConfigFrame(ttk.Frame):
             ttk.Label(self.dyn, text="Quái:", width=6).pack(side="left", padx=(10, 0))
             self.mob_cb = ttk.Combobox(self.dyn, textvariable=self.mob_var, state="readonly", width=22)
             self.mob_cb.pack(side="left")
+            ttk.Button(self.dyn, text="✎ Sửa map", command=self._edit_maps).pack(side="left", padx=(8, 0))
             idx = next((i for i, (mid, _n, _m) in enumerate(self.train_maps)
                         if mid == self._preset.get("start_city_id")), 0)
             if names:
@@ -483,6 +484,15 @@ class PartyConfigFrame(ttk.Frame):
                 i = preset_index if (preset_index is not None and 0 <= preset_index < len(opts)) else 0
                 self.mob_var.set(opts[i])
 
+    def _edit_maps(self):
+        TrainMapEditor(self, on_save=self._reload_maps)
+
+    def _reload_maps(self):
+        # nap lai train_maps.json -> cap nhat list (chia se) + ve lai dropdown
+        tm_raw = _load_json("train_maps.json").get("maps", {})
+        self.train_maps[:] = [(int(k), v.get("name", k), v.get("mobs", [])) for k, v in tm_raw.items()]
+        self._render_dyn()
+
     def get_data(self):
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
         sc, mob_index, city_flag = 0, 0, 0
@@ -509,6 +519,140 @@ class PartyConfigFrame(ttk.Frame):
                    self.servers[0][0] if self.servers else "trieu_van")
         return {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
                 "city_flag": city_flag, "do_dungeon": bool(self.dungeon_var.get()), "accounts": accs}
+
+
+def _safe_points(safe):
+    """Chuan hoa safe ve list [x,y]: nhan ca [[x,y],...] (moi) lan [x,y] (cu)."""
+    if not safe:
+        return []
+    if isinstance(safe[0], (list, tuple)):
+        return [list(p) for p in safe]
+    return [list(safe)]
+
+
+class TrainMapEditor(tk.Toplevel):
+    """Sua train_maps.json: them/xoa map, sua safe point + mob point."""
+    TM_PATH = os.path.join(_BASE, "train_maps.json")
+
+    def __init__(self, master, on_save=None):
+        super().__init__(master)
+        self.title("Sửa map train (train_maps.json)")
+        self.geometry("620x540")
+        self.transient(master); self.grab_set()
+        self.on_save = on_save
+        raw = _load_json("train_maps.json").get("maps", {})
+        # list dict: {id, name, safe:[[x,y]], mobs:[[x,y]]}
+        self.maps = [{"id": k, "name": v.get("name", k),
+                      "safe": _safe_points(v.get("safe", [])),
+                      "mobs": [list(p) for p in v.get("mobs", [])]} for k, v in raw.items()]
+        self._cur = None
+
+        left = ttk.Frame(self, padding=6); left.pack(side="left", fill="y")
+        ttk.Label(left, text="Danh sách map:").pack(anchor="w")
+        self.lb = tk.Listbox(left, width=26, height=20, exportselection=False)
+        self.lb.pack(fill="y", expand=True)
+        self.lb.bind("<<ListboxSelect>>", lambda e: self._on_select())
+        b = ttk.Frame(left); b.pack(fill="x", pady=4)
+        ttk.Button(b, text="+ Thêm", command=self._add).pack(side="left")
+        ttk.Button(b, text="🗑 Xóa", command=self._del).pack(side="left", padx=4)
+
+        right = ttk.Frame(self, padding=6); right.pack(side="left", fill="both", expand=True)
+        ttk.Label(right, text="Map ID (log 'MAP HIEN TAI'):").pack(anchor="w")
+        self.id_var = tk.StringVar(); ttk.Entry(right, textvariable=self.id_var, width=16).pack(anchor="w")
+        ttk.Label(right, text="Tên:").pack(anchor="w", pady=(6, 0))
+        self.name_var = tk.StringVar(); ttk.Entry(right, textvariable=self.name_var, width=34).pack(anchor="w")
+        ttk.Label(right, text="Safe point (mỗi dòng: x,y — dòng đầu = điểm tập kết/lập party):"
+                  ).pack(anchor="w", pady=(8, 0))
+        self.safe_txt = tk.Text(right, height=6, font=("Consolas", 10)); self.safe_txt.pack(fill="x")
+        ttk.Label(right, text="Mob point (mỗi dòng: x,y — leader ra đứng cây):").pack(anchor="w", pady=(8, 0))
+        self.mob_txt = tk.Text(right, height=6, font=("Consolas", 10)); self.mob_txt.pack(fill="x")
+
+        bar = ttk.Frame(self, padding=6); bar.pack(side="bottom", fill="x")
+        ttk.Button(bar, text="💾 Lưu", command=self._save).pack(side="right")
+        ttk.Button(bar, text="Hủy", command=self.destroy).pack(side="right", padx=4)
+
+        self._reload_list()
+        if self.maps:
+            self.lb.selection_set(0); self._on_select()
+
+    def _reload_list(self):
+        self.lb.delete(0, "end")
+        for m in self.maps:
+            self.lb.insert("end", f"{m['name']} ({m['id']})")
+
+    def _pts_to_text(self, pts):
+        return "\n".join(f"{p[0]},{p[1]}" for p in pts)
+
+    def _text_to_pts(self, txt):
+        out = []
+        for line in txt.splitlines():
+            line = line.strip().replace(" ", "")
+            if not line:
+                continue
+            try:
+                x, y = line.split(",")[:2]
+                out.append([int(x), int(y)])
+            except Exception:
+                pass
+        return out
+
+    def _commit(self):
+        """Luu field hien tai vao self.maps[self._cur]."""
+        if self._cur is None or self._cur >= len(self.maps):
+            return
+        m = self.maps[self._cur]
+        m["id"] = self.id_var.get().strip() or m["id"]
+        m["name"] = self.name_var.get().strip() or m["id"]
+        m["safe"] = self._text_to_pts(self.safe_txt.get("1.0", "end"))
+        m["mobs"] = self._text_to_pts(self.mob_txt.get("1.0", "end"))
+
+    def _on_select(self):
+        self._commit()
+        sel = self.lb.curselection()
+        if not sel:
+            return
+        self._cur = sel[0]
+        m = self.maps[self._cur]
+        self.id_var.set(m["id"]); self.name_var.set(m["name"])
+        self.safe_txt.delete("1.0", "end"); self.safe_txt.insert("1.0", self._pts_to_text(m["safe"]))
+        self.mob_txt.delete("1.0", "end"); self.mob_txt.insert("1.0", self._pts_to_text(m["mobs"]))
+
+    def _add(self):
+        self._commit()
+        self.maps.append({"id": "0", "name": "Map moi", "safe": [], "mobs": []})
+        self._reload_list()
+        self.lb.selection_clear(0, "end"); self.lb.selection_set("end")
+        self._cur = None; self._on_select()
+
+    def _del(self):
+        sel = self.lb.curselection()
+        if not sel or len(self.maps) == 0:
+            return
+        del self.maps[sel[0]]
+        self._cur = None
+        self._reload_list()
+        if self.maps:
+            self.lb.selection_set(0); self._on_select()
+        else:
+            for w in (self.id_var, self.name_var):
+                w.set("")
+            self.safe_txt.delete("1.0", "end"); self.mob_txt.delete("1.0", "end")
+
+    def _save(self):
+        self._commit()
+        data = {"_note": "Data map party-train. safe=[[x,y],...] (diem dau=tap ket). mobs=[[x,y],...].",
+                "maps": {}}
+        for m in self.maps:
+            mid = m["id"].strip()
+            if not mid or not mid.isdigit():
+                messagebox.showerror("Lỗi", f"Map ID phải là số (map '{m['name']}')."); return
+            data["maps"][mid] = {"name": m["name"], "safe": m["safe"], "mobs": m["mobs"]}
+        with open(self.TM_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        if self.on_save:
+            self.on_save()
+        messagebox.showinfo("Đã lưu", "Đã lưu train_maps.json.")
+        self.destroy()
 
 
 class ConfigDialog(tk.Toplevel):
