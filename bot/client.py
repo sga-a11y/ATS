@@ -455,11 +455,13 @@ class GameClient:
                         self.state.my_atype = slot
                         log.info("[%s] self_slot=%d (tu 0x0b battle, entity)", self._label, slot)
             self.state.update_0x0b(pkt)
-        elif opcode == 0x53:                      # mail: S2C sub=01 = 1 mail (co mail_id)
+        elif opcode == 0x53:                      # mail: S2C sub=01 = 1 mail (push luc login)
+            # payload: [01 00][mailid 4B LE][cat 4B LE][sender/time 8B][00][title UTF16...]
             if pkt[7:9] == b"\x01\x00" and len(pkt) >= 17:
-                mid = pkt[13:17]   # mail_id 4B LE (sau [01 00][01000000])
-                if mid not in self._mail_ids:
-                    self._mail_ids.append(mid)
+                mid = pkt[9:13]    # mail_id 4B LE
+                cat = pkt[13:17]   # category 4B LE (3, 5,... -> THAY DOI tung mail!)
+                if (mid, cat) not in self._mail_ids:
+                    self._mail_ids.append((mid, cat))
         elif opcode == protocol.OP_ACTIONS:       # 0x35
             self._on_actions(pkt)
         elif opcode == 0x13 and len(pkt) >= 11 and pkt[7:9] in (b"\x04\x00", b"\x01\x00"):
@@ -742,22 +744,28 @@ class GameClient:
         self.send(0x54, b"\x01\x00" + struct.pack("<H", exp_type))
 
     def claim_mail(self):
-        """Mail (opcode 0x53): mo mail list -> voi MOI mail: nhan qua + xoa.
-        mail_id la account-specific (doc tu S2C 0x53 sub=01), KHONG hardcode."""
-        # mo/refresh mail list (server push tung mail S2C 0x53 sub=01 -> _mail_ids).
-        # KHONG xoa _mail_ids o dau (server push luc login truoc khi ham nay chay).
-        self.send(0x53, b"\x03\x00\x01\x00\x00\x00\x05\x00\x00\x00")
-        time.sleep(2.0)                          # cho mail list ve
-        ids = list(self._mail_ids)
+        """Mail (opcode 0x53): voi MOI mail trong list -> doc + nhan qua + xoa.
+        (mailid, cat) doc tu S2C 0x53 sub=01 (server push luc login), KHONG hardcode.
+        Da xac nhan tu capture mail2/mail3.pcap:
+          doc:   53 03 00 [mailid 4B LE][cat 4B LE]
+          nhan:  53 01 00 [mailid 4B LE][cat 4B LE]   -> qua ve qua S2C 0x02/0x23
+          xoa:   53 02 00 [mailid 4B LE][cat 4B LE]
+        cat THAY DOI tung mail (3, 5,...) nen phai dung dung cat cua tung mail."""
+        # KHONG xoa _mail_ids o dau (server push luc login TRUOC khi ham nay chay).
+        mails = list(self._mail_ids)
         self._mail_ids = []                      # consume sau khi gom
-        if not ids:
+        if not mails:
             return
-        for mid in ids:
-            self.send(0x53, b"\x01\x00\x01\x00\x00\x00" + mid)   # nhan qua mail nay
-            time.sleep(0.3)
-            self.send(0x53, b"\x02\x00\x01\x00\x00\x00" + mid)   # xoa mail nay
-            time.sleep(0.3)
-        log.info("[%s] Mail: da nhan qua + xoa %d mail", self._label, len(ids))
+        n = 0
+        for mid, cat in mails:
+            self.send(0x53, b"\x03\x00" + mid + cat)   # doc/mo mail (mark as read)
+            time.sleep(0.4)
+            self.send(0x53, b"\x01\x00" + mid + cat)   # nhan qua mail nay
+            time.sleep(0.4)
+            self.send(0x53, b"\x02\x00" + mid + cat)   # xoa mail nay
+            time.sleep(0.4)
+            n += 1
+        log.info("[%s] Mail: da nhan qua + xoa %d mail", self._label, n)
 
     def _on_offline_exp(self, pkt: bytes):
         """S2C 0x54.
