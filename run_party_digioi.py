@@ -264,6 +264,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 log.info("[%s] (%s) DON TUI DO - chua lam, tam dung yen", label, role)
             else:
                 log.info("[%s] (%s) DUNG YEN tai cho login (map=%s)", label, role, c.current_map)
+            # SOLO daily dungeon (neu bat) - city/stand: vao tu town, xong tu ve cho cu
+            if do_dungeon:
+                try:
+                    c.do_daily_dungeon()
+                except Exception as e:
+                    log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
             c.flee_mode = False   # bi danh thi tu danh, KHONG chay
             do_channel_sync()
 

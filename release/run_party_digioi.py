@@ -33,6 +33,16 @@ _clients = []
 _threads = []   # thread tung acc - de biet khi nao TAT CA da thoat
 DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (de tinh "con lai")
 
+
+def _nearest_safe(pos, safes):
+    """Diem safe gan vi tri 'pos' nhat (khoang cach binh phuong). pos=None -> diem dau."""
+    if not safes:
+        return None
+    if not pos:
+        return safes[0]
+    px, py = pos
+    return min(safes, key=lambda s: (s[0] - px) ** 2 + (s[1] - py) ** 2)
+
 # ==== REGISTRY cho GUI dieu khien tung acc ====
 account_clients = {}   # username -> GameClient (doc trang thai live)
 account_stops = {}     # username -> threading.Event (GUI yeu cau dung acc nay)
@@ -112,6 +122,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
         c.claim_14day_gift()    # qua 14 ngay user moi
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
+        c.claim_gacha_pet()     # gacha pet hang ngay (9k xu)
+        c.claim_gacha_card()    # gacha card hang ngay (9k xu)
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
@@ -191,10 +203,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     if st["leader_bad"].is_set():
                         log.warning("[%s] (member) leader sai map -> ca party huy -> THOAT", label)
                         _quit(); return
-            # --- MAP-TRAIN: chay toi diem AN TOAN (dinh battle -> flee) ---
-            log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem an toan %s",
-                     label, role, sc, tm["safe"])
-            c.navigate_to(*tm["safe"])
+            # --- MAP-TRAIN: chay toi diem TAP KET (diem safe dau tien) (dinh battle -> flee) ---
+            rally = tm["safe"][0]
+            log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem tap ket %s",
+                     label, role, sc, rally)
+            c.navigate_to(*rally)
             # SOLO daily dungeon o MAP-TRAIN: TAM TAT (het luot -> bi dump ve 12000, pha map-train;
             # Bat/tat bang checkbox "Danh daily dungeon" cua party (do_dungeon).
             if do_dungeon:
@@ -214,7 +227,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     with st["lock"]:
                         st["started_train"] -= 1
                     _quit(); return
-                c.navigate_to(*tm["safe"])
+                c.navigate_to(*tm["safe"][0])
                 with st["lock"]:
                     st["dungeon_done"] += 1
                 log.info("[%s] (%s) xong dungeon -> cho ca party (%d/%d)...",
@@ -251,6 +264,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 log.info("[%s] (%s) DON TUI DO - chua lam, tam dung yen", label, role)
             else:
                 log.info("[%s] (%s) DUNG YEN tai cho login (map=%s)", label, role, c.current_map)
+            # SOLO daily dungeon (neu bat) - city/stand: vao tu town, xong tu ve cho cu
+            if do_dungeon:
+                try:
+                    c.do_daily_dungeon()
+                except Exception as e:
+                    log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
             c.flee_mode = False   # bi danh thi tu danh, KHONG chay
             do_channel_sync()
 
@@ -332,9 +351,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         last_retry = time.time()
         last_dg = 0.0
         stop_ev = account_stops.get(username)
+        # Bao stop_account: ACC NAY (leader train) khi STOP -> thread tu chay ve safe roi dong,
+        # KHONG dong socket ngay (de navigate_to chay duoc).
+        if is_leader and train_on_map:
+            c._return_safe_on_stop = tm["safe"]
         while c.running:
             if stop_ev is not None and stop_ev.is_set():
                 log.info("[%s] (%s) -> STOP tu GUI", label, role)
+                # LEADER dang cay ngoai diem quai -> chay ve diem safe GAN NHAT roi moi thoat
+                # (member da dung san o safe, khong can). navigate_to tu bat flee, ne tran doc duong.
+                if is_leader and train_on_map:
+                    dest = _nearest_safe(c.pos, tm["safe"])
+                    if dest:
+                        log.info("[%s] (LEADER) STOP -> chay ve safe gan nhat %s truoc khi thoat",
+                                 label, dest)
+                        try:
+                            c.navigate_to(*dest)
+                        except Exception as e:
+                            log.warning("[%s] loi chay ve safe (bo qua): %s", label, e)
                 break
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
@@ -479,8 +513,12 @@ def stop_account(username):
         ev.set()
     c = account_clients.get(username)
     if c is not None:
-        try: c.close()
-        except Exception: pass
+        # Leader map-train: KHONG dong ngay -> thread tu chay ve safe gan nhat roi tu dong.
+        if getattr(c, "_return_safe_on_stop", None):
+            log.info("[%s] STOP -> cho thread chay ve safe roi dong", username)
+        else:
+            try: c.close()
+            except Exception: pass
     return True
 
 
