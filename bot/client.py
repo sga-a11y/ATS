@@ -672,10 +672,10 @@ class GameClient:
         try:
             char_opts = self.available.get(config.UNIT_CHAR, [])
             pet_opts = self.available.get(config.UNIT_PET, [])
-            # Acc KHONG co pet -> KHONG gui lenh pet (gui lenh pet khong ton tai -> server da/dis).
-            # Dung active_pet_id (tu goi 0x13 luc login = pet CUA MINH, KHONG dinh slot/vi tri).
-            # KHONG dung pet.hp_max vi no doc theo self_slot -> co the vo nham pet nguoi khac.
-            if self.state.active_pet_id is None:
+            # CHI dieu khien pet neu 0x35 co option pet o DUNG vi tri cua minh (my_atype).
+            # Pet o CUNG atype voi char (khac hang/unit). Khong co pet@my_atype = acc KHONG co pet
+            # (trong tran nay) -> gui lenh pet se sai -> server da/disconnect.
+            if self.state.my_atype not in {o[0] for o in pet_opts}:
                 pet_opts = []
             ft = self._first_turn
             # FLEE MODE: bo chay thay vi danh. PHAI dung dung my_atype (vi tri cua MINH trong
