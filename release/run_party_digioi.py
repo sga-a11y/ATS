@@ -66,13 +66,20 @@ def _party_exit_summary(pidx, exclude_user):
         if st.get("summary_done"):
             return
         st["summary_done"] = True
-    # gom username theo ly do
+    # gom username theo ly do; moi nick kem MAP luc thoat -> biet vi tri ca party
     groups = {}
     for u in accs:
         r = account_exit_reason.get(u, "ket thuc binh thuong (het gio hoac GUI dung)")
-        groups.setdefault(r, []).append(account_last.get(u, {}).get("char") or u)
+        last = account_last.get(u, {})
+        nm = last.get("char") or u
+        mp = last.get("map")
+        groups.setdefault(r, []).append(f"{nm}@map{mp}" if mp is not None else f"{nm}@?")
     parts = "; ".join(f"{r} [{', '.join(us)}]" for r, us in groups.items())
     log.warning(">>> PARTY %s DA THOAT HET vi: %s", pidx + 1, parts)
+    # them 1 dong liet ke RO map tung nick (de soi nick nao sai map)
+    pos = ", ".join(f"{(account_last.get(u, {}).get('char') or u)}=map{account_last.get(u, {}).get('map')}"
+                    for u in accs)
+    log.warning(">>> PARTY %s vi tri tung nick: %s", pidx + 1, pos)
 
 
 def _pstate(pidx):
@@ -505,6 +512,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         if _stopped() and er["r"].startswith("ket thuc binh thuong"):
             _reason("Anh bam STOP")
         account_exit_reason[username] = er["r"]
+        # LUU map + ten nhan vat LUC THOAT (ke ca login xong quit ngay vi sai map) -> de
+        # biet vi tri hien tai cua tung nick ca party. Chi luu khi da vao world (co c).
+        if c is not None and getattr(c, "current_map", None) is not None:
+            account_last[username] = {"map": c.current_map, "char": c.char_name or username}
         account_clients.pop(username, None)
         try:
             _party_exit_summary(pidx, username)   # neu ca party da tat -> log 1 dong tong ket
