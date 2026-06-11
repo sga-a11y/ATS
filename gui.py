@@ -196,6 +196,8 @@ class BotGUI(tk.Tk):
     def _line_visible(self, label):
         if self.log_filter is None:
             return True
+        if label is None:        # dong he thong (vd ">>> PARTY N DA THOAT HET...") -> LUON hien
+            return True
         u = self._label_to_user(label)
         return u is not None and u in self.log_filter
 
