@@ -555,6 +555,9 @@ class TrainMapEditor(tk.Toplevel):
         b = ttk.Frame(left); b.pack(fill="x", pady=4)
         ttk.Button(b, text="+ Thêm", command=self._add).pack(side="left")
         ttk.Button(b, text="🗑 Xóa", command=self._del).pack(side="left", padx=4)
+        b2 = ttk.Frame(left); b2.pack(fill="x")
+        ttk.Button(b2, text="▲ Lên", command=lambda: self._move(-1)).pack(side="left")
+        ttk.Button(b2, text="▼ Xuống", command=lambda: self._move(1)).pack(side="left", padx=4)
 
         right = ttk.Frame(self, padding=6); right.pack(side="left", fill="both", expand=True)
         ttk.Label(right, text="Map ID (log 'MAP HIEN TAI'):").pack(anchor="w")
@@ -637,6 +640,26 @@ class TrainMapEditor(tk.Toplevel):
             for w in (self.id_var, self.name_var):
                 w.set("")
             self.safe_txt.delete("1.0", "end"); self.mob_txt.delete("1.0", "end")
+
+    def _move(self, delta):
+        self._commit()
+        sel = self.lb.curselection()
+        if not sel:
+            return
+        i = sel[0]; j = i + delta
+        if j < 0 or j >= len(self.maps):
+            return
+        self.maps[i], self.maps[j] = self.maps[j], self.maps[i]   # doi cho
+        self._cur = j                      # cap nhat TRUOC khi doi selection (tranh commit nham)
+        self._reload_list()
+        self.lb.selection_clear(0, "end"); self.lb.selection_set(j); self.lb.see(j)
+        self._on_select_no_commit(j)
+
+    def _on_select_no_commit(self, idx):
+        m = self.maps[idx]
+        self.id_var.set(m["id"]); self.name_var.set(m["name"])
+        self.safe_txt.delete("1.0", "end"); self.safe_txt.insert("1.0", self._pts_to_text(m["safe"]))
+        self.mob_txt.delete("1.0", "end"); self.mob_txt.insert("1.0", self._pts_to_text(m["mobs"]))
 
     def _save(self):
         self._commit()
