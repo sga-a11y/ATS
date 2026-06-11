@@ -313,7 +313,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 c.set_party_strategist()    # set member INT cao nhat lam quan su (hoi SP)
                 if train_on_map:
                     mobs = tm["mobs"]
-                    spot = mobs[mob_index] if 0 <= mob_index < len(mobs) else mobs[0]
+                    if mob_index < 0 and mobs:   # "Bot tu chon" -> boc ngau nhien 1 diem (moi lan start)
+                        import random
+                        spot = random.choice(mobs)
+                        log.info("[%s] (LEADER) BOT TU CHON diem quai (ngau nhien) -> %s", label, spot)
+                    else:
+                        spot = mobs[mob_index] if 0 <= mob_index < len(mobs) else mobs[0]
                     c.move_to(*spot)            # ra diem quai, dung cay (toa do == UI)
                     c.combat_ready(); c.flee_mode = False
                     log.info("[%s] (LEADER) ra diem quai %s dung cay.", label, spot)

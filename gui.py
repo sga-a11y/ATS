@@ -477,12 +477,15 @@ class PartyConfigFrame(ttk.Frame):
     def _fill_mobs(self, preset_index=None):
         sel = self.map_var.get()
         mobs = next((m for (_i, n, m) in self.train_maps if n == sel), [])
-        opts = [f"Điểm {i + 1} {tuple(xy)}" for i, xy in enumerate(mobs)]
+        # Index 0 = "Bot tu chon" (ngau nhien). Index 1.. = diem cu the.
+        opts = ["🎲 Bot tự chọn (ngẫu nhiên)"] + [f"Điểm {i + 1} {tuple(xy)}"
+                                                  for i, xy in enumerate(mobs)]
         if self.mob_cb:
             self.mob_cb.configure(values=opts)
-            if opts:
-                i = preset_index if (preset_index is not None and 0 <= preset_index < len(opts)) else 0
-                self.mob_var.set(opts[i])
+            # preset_index: -1 (hoac None) -> auto (0); >=0 -> diem do (+1)
+            ci = (preset_index + 1) if (preset_index is not None and preset_index >= 0) else 0
+            ci = min(ci, len(opts) - 1)
+            self.mob_var.set(opts[ci])
 
     def _edit_maps(self):
         TrainMapEditor(self, on_save=self._reload_maps)
@@ -500,7 +503,8 @@ class PartyConfigFrame(ttk.Frame):
             sc = 49942
         elif mode == "train":
             sc = next((mid for (mid, n, _m) in self.train_maps if n == self.map_var.get()), 0)
-            mob_index = max(0, self.mob_cb.current()) if self.mob_cb else 0
+            cur = self.mob_cb.current() if self.mob_cb else 0
+            mob_index = (cur - 1) if cur >= 1 else -1   # 0 = "Bot tu chon" -> -1; k -> diem k-1
         elif mode == "city":
             for (cid, f, n) in self.cities:
                 if n == self.city_var.get():
