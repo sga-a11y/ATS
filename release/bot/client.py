@@ -987,6 +987,9 @@ class GameClient:
             count = max(count, self.dungeon_runs_today)
         if count >= runs_target:
             _save_checkin(self._label, "dungeon", today, count)
+            log.info("[%s] Dungeon: da du %d/%d luot hom nay (local) -> bo qua "
+                     "(xoa checkin_state.json key '%s:dungeon' neu muon danh lai)",
+                     self._label, count, runs_target, self._label)
             return
         log.info("[%s] SOLO daily dungeon: da %d/%d luot hom nay", self._label, count, runs_target)
         self.leave_party(); time.sleep(1.5)   # thoat party (solo moi vao duoc dungeon)
