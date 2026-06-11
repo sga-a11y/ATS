@@ -303,6 +303,7 @@ class GameClient:
         self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
         self.dungeon_runs_today = None  # so luot dungeon da danh hom nay (S2C 0x55 stat 0x9b)
+        self.xu = None               # so XU hien co (tu S2C 0x1a id=4) - None = chua nhan
         self._dg_query = None        # raw S2C 0x54 (tra loi query luot dungeon)
         self._dg_query_event = threading.Event()
         self._connect_time = None    # thoi diem connect phien nay
@@ -489,6 +490,11 @@ class GameClient:
                 self._last_digioi_ts = time.time()
             elif sid == 0x9b:                     # so luot dungeon DA danh hom nay
                 self.dungeon_runs_today = int.from_bytes(pkt[15:19], "little")
+        elif opcode == 0x1a and len(pkt) >= 13:   # currency: [id 2B][val 4B]
+            sid = int.from_bytes(pkt[7:9], "little")
+            if sid == 4:                          # id=4 -> so XU hien co
+                self.xu = int.from_bytes(pkt[9:13], "little")
+            # sid==2 = so xu vua bi tru (cost), bo qua
         elif opcode == 0x57:                      # qua online
             self._on_gift(pkt)
         elif opcode == 0x28:                      # skill bar char/pet
@@ -998,6 +1004,51 @@ class GameClient:
                          self._label, count)
             time.sleep(2)
         log.info("[%s] Hoan tat daily dungeon (%d luot)", self._label, count)
+
+    GACHA_COST = 9000   # xu / luot gacha (pet va card deu 9k)
+
+    def _wait_xu(self, timeout: float = 3.0):
+        """Cho S2C 0x1a id=4 (so xu) toi, toi da 'timeout' giay."""
+        t0 = time.time()
+        while self.xu is None and time.time() - t0 < timeout:
+            time.sleep(0.2)
+
+    def claim_gacha_pet(self):
+        """Gacha PET hang ngay (1 lan/ngay). C2S 0x42 (draw) + 3x 0x5b (reveal) - replay client that.
+        Chi gacha khi xu >= 9000; thieu xu -> bo qua, login sau thu lai."""
+        if _daily_done(self._label, "gacha_pet"):
+            return
+        self._wait_xu()
+        if self.xu is None or self.xu < self.GACHA_COST:
+            log.info("[%s] Gacha pet: thieu xu (%s < %d) -> bo qua",
+                     self._label, self.xu, self.GACHA_COST)
+            return
+        self.send(0x42, bytes.fromhex("0100050101015bb22823010000"))
+        time.sleep(0.5)
+        for _ in range(3):
+            self.send(0x5b, bytes.fromhex("0200010100063400"))
+            time.sleep(0.2)
+        self.xu -= self.GACHA_COST   # server khong push lai balance -> tu tru
+        _mark_daily(self._label, "gacha_pet")
+        log.info("[%s] Gacha PET hang ngay (xu con ~%d)", self._label, self.xu)
+
+    def claim_gacha_card(self):
+        """Gacha CARD hang ngay (1 lan/ngay). Tuong tu gacha pet, banner id = 5cb2."""
+        if _daily_done(self._label, "gacha_card"):
+            return
+        self._wait_xu()
+        if self.xu is None or self.xu < self.GACHA_COST:
+            log.info("[%s] Gacha card: thieu xu (%s < %d) -> bo qua",
+                     self._label, self.xu, self.GACHA_COST)
+            return
+        self.send(0x42, bytes.fromhex("0100050101025cb22823010000"))
+        time.sleep(0.5)
+        for _ in range(3):
+            self.send(0x5b, bytes.fromhex("0200010100043200"))
+            time.sleep(0.2)
+        self.xu -= self.GACHA_COST
+        _mark_daily(self._label, "gacha_card")
+        log.info("[%s] Gacha CARD hang ngay (xu con ~%d)", self._label, self.xu)
 
     def _on_gift(self, pkt: bytes):
         """S2C 0x57 sub=2: [02 00][type 1B][status 1B]. type=03 qua online, type=01 DIEM DANH.

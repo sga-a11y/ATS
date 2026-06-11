@@ -55,7 +55,10 @@ def _load_train_maps():
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh)
         for k, v in d.get("maps", {}).items():
-            out[int(k)] = {"safe": tuple(v["safe"]), "mobs": [tuple(m) for m in v.get("mobs", [])]}
+            s = v["safe"]
+            # safe = [[x,y],...] (nhieu diem) HOAC [x,y] (1 diem, format cu) -> chuan hoa LIST diem
+            safes = [tuple(p) for p in s] if (s and isinstance(s[0], (list, tuple))) else [tuple(s)]
+            out[int(k)] = {"safe": safes, "mobs": [tuple(m) for m in v.get("mobs", [])]}
     except Exception:
         pass
     return out

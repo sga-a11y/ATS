@@ -72,6 +72,8 @@ def run_account(username: str, password: str, idx: int = 0):
             client.claim_checkin()         # diem danh hang ngay (tu dem so lan)
             client.claim_14day_gift()      # qua 14 ngay user moi
             client.claim_legion_gift()     # nhan qua quan doan hang ngay
+            client.claim_gacha_pet()       # gacha pet hang ngay (9k xu)
+            client.claim_gacha_card()      # gacha card hang ngay (9k xu)
 
             if config.START_CITY_ID == 0:
                 # Khong teleport ve thanh, dung yen tai cho login. Vao tran thi cu danh.
