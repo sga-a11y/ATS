@@ -672,11 +672,10 @@ class GameClient:
         try:
             char_opts = self.available.get(config.UNIT_CHAR, [])
             pet_opts = self.available.get(config.UNIT_PET, [])
-            # Acc KHONG co pet (active_pet_id None / pet.hp_max=0) -> KHONG gui lenh pet
-            # (gui lenh pet khong ton tai -> server da/disconnect). pet_opts co the van liet ke
-            # vi tri pet trong formation -> phai chan bang co pet THAT.
-            has_pet = (self.state.active_pet_id is not None) or (self.state.pet.hp_max > 0)
-            if not has_pet:
+            # Acc KHONG co pet -> KHONG gui lenh pet (gui lenh pet khong ton tai -> server da/dis).
+            # Dung active_pet_id (tu goi 0x13 luc login = pet CUA MINH, KHONG dinh slot/vi tri).
+            # KHONG dung pet.hp_max vi no doc theo self_slot -> co the vo nham pet nguoi khac.
+            if self.state.active_pet_id is None:
                 pet_opts = []
             ft = self._first_turn
             # FLEE MODE: bo chay thay vi danh. PHAI dung dung my_atype (vi tri cua MINH trong
@@ -733,7 +732,7 @@ class GameClient:
         char b=3, pet b=2 (tu flee.pcap)."""
         at = self.state.my_atype
         self._send_combat(combat.Decision(unit=config.UNIT_CHAR, atype=at, target=at, skill=config.SKILL_FLEE, b=3))
-        if (self.state.active_pet_id is not None) or (self.state.pet.hp_max > 0):  # chi pet khi CO pet
+        if self.state.active_pet_id is not None:   # chi gui pet khi CO pet (theo goi 0x13 login)
             self._send_combat(combat.Decision(unit=config.UNIT_PET, atype=at, target=at, skill=config.SKILL_FLEE, b=2))
         log.info("[%s] BO CHAY khoi tran (skill %d, target=atype=%d)", self._label, config.SKILL_FLEE, at)
 
