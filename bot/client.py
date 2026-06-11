@@ -124,10 +124,11 @@ def check_duplicate_accounts(parties):
             else:
                 seen[u] = (pi, si)
     if dups:
+        # CHI canh bao (khong chan) - van cho chay. Acc trung se bi login 2 lan -> co the bi
+        # da/disconnect, nen tot nhat van nen sua, nhung khong block GUI khoi dong.
         lines = [f"  - '{u}' dien o party{a[0]} slot{a[1]} VA party{b[0]} slot{b[1]}"
                  for u, a, b in dups]
-        raise ValueError("CONFIG LOI - co user dien TRUNG o nhieu noi, sua lai config.PARTIES:\n"
-                         + "\n".join(lines))
+        log.warning("CONFIG: co user dien TRUNG o nhieu noi (van cho chay):\n" + "\n".join(lines))
 
 
 # Khung gio nhan mail (gio bat dau, moi khung 2h): 12-14, 16-18, 22-24.
