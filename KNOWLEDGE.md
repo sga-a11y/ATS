@@ -307,7 +307,7 @@ S2C 0x57 ket qua: [02 00][01][status]
 - Bot tu dem + luu checkin_state.json {label:{date,day}}. 1 lan/ngay.
 - Lan dau/desync: quet day=1..40, server chi chap nhan dung ngay hom nay (status=0), con lai 2/5
   -> scan AN TOAN (chi 1 ngay status=0). Xac nhan checkin.pcap + test sga001/003.
-- Logic o client.claim_checkin(). Goi luc login trong run_party_digioi + bot_standalone.
+- Logic o client.claim_checkin(). Goi luc login trong run_party_digioi.
 
 **0x57 type khac (cung co che [02 00][type][day 4B][01], status 0=OK/2=da nhan/5=chua toi):**
 - type=01: diem danh hang ngay

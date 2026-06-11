@@ -78,7 +78,7 @@
 
 ## Cách config.py nạp accounts.json
 1. Đọc `accounts.json` → build `PARTIES` (bỏ acc `#`) + `PARTY_CONFIG[pidx]` = {mode, start_city_id, mob_index, city_flag, server, server_ip, server_id, do_dungeon}.
-2. `START_CITY_ID` toàn cục = party đầu (fallback cho CLI/bot_standalone).
+2. `START_CITY_ID` toàn cục = party đầu (fallback cho CLI).
 3. Không có `accounts.json` → dùng `PARTIES` hardcode trong config.py.
 
 ## State files (auto tạo, gitignore)
