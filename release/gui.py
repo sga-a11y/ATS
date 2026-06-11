@@ -64,6 +64,8 @@ class BotGUI(tk.Tk):
         self.geometry("1100x720")
         self.minsize(900, 560)
         self._setup_style()
+        self._dot_on = self._make_dot("#16c60c")    # xanh la: co acc dang chay
+        self._dot_off = self._make_dot("#888888")   # xam: khong co acc nao chay
         # --- log filter state ---
         self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
         self.log_filter = None         # None = tat ca; hoac set(username) duoc hien
@@ -77,6 +79,17 @@ class BotGUI(tk.Tk):
         self.after(1000, self._refresh)
         self.after(300, self._drain_log)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    # ---- cham tron trang thai (anh) cho tab party ----
+    def _make_dot(self, color, size=13):
+        img = tk.PhotoImage(width=size, height=size)   # nen trong suot
+        cx = cy = (size - 1) / 2.0
+        r = size / 2.0 - 1.5
+        for y in range(size):
+            for x in range(size):
+                if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
+                    img.put(color, (x, y))
+        return img
 
     # ---- style: lam tab party dang chon NOI BAT ----
     def _setup_style(self):
@@ -119,6 +132,7 @@ class BotGUI(tk.Tk):
         for tab in self.nb.tabs():
             self.nb.forget(tab)
         self.party_trees = {}
+        self.party_frames = {}   # pidx -> frame (de cap nhat cham trang thai)
         cols = ("acc", "char", "role", "run", "map", "ch", "party", "dg", "combat")
         heads = {"acc": "Tài khoản", "char": "Nhân vật", "role": "Vai trò", "run": "Trạng thái",
                  "map": "Map", "ch": "Kênh", "party": "Trong PT", "dg": "DG còn", "combat": "Đánh"}
@@ -132,7 +146,9 @@ class BotGUI(tk.Tk):
             pmode = config.PARTY_CONFIG.get(pidx, {}).get("mode", "?")
             mlbl = {"digioi": "Dị Giới", "train": "Train map", "city": "Về thành",
                     "stand": "Đứng yên", "cleanbag": "Dọn túi"}.get(pmode, pmode)
-            self.nb.add(frame, text=f"P{pidx + 1} · {mlbl} ({len(accs)})")
+            self.nb.add(frame, text=f"P{pidx + 1} · {mlbl} ({len(accs)})",
+                        image=self._dot_off, compound="left")   # cham trang thai (xam/xanh)
+            self.party_frames[pidx] = frame
             btns = ttk.Frame(frame); btns.pack(fill="x", pady=(0, 4))
             ttk.Button(btns, text="▶ Start party",
                        command=lambda p=pidx: self._start_party(p)).pack(side="left", padx=2)
@@ -261,10 +277,13 @@ class BotGUI(tk.Tk):
             if c is not None and c.char_name:
                 self._char2user[c.char_name] = u
         for pidx, tree in self.party_trees.items():
+            any_running = False
             for (u, p, is_leader, is_picker) in ctrl.party_accounts(pidx):
                 if not tree.exists(u):
                     continue
                 s = ctrl.account_status(u)
+                if s["running"]:
+                    any_running = True
                 if s.get("strategist"):
                     role = "Quân sư"
                 elif is_leader:
@@ -282,6 +301,13 @@ class BotGUI(tk.Tk):
                                      "✔" if s["in_party"] else "-", dg,
                                      "⚔" if s["combat"] else "-"),
                           tags=(tag,))
+            # cap nhat cham trang thai tab: xanh neu co >=1 acc chay, xam neu khong
+            frame = self.party_frames.get(pidx)
+            if frame is not None:
+                try:
+                    self.nb.tab(frame, image=self._dot_on if any_running else self._dot_off)
+                except Exception:
+                    pass
         self.after(1500, self._refresh)
 
     def _drain_log(self):
