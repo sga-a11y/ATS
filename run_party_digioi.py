@@ -158,6 +158,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # khong danh lung tung; chi tat flee khi da vao diem train.
         if config.TRAIN_MAPS.get(getattr(config, "START_CITY_ID", 0)) is not None:
             c.flee_mode = True
+        c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
         c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
         c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
         c.claim_14day_gift()    # qua 14 ngay user moi (0x57)
