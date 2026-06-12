@@ -1522,8 +1522,16 @@ class GameClient:
         log.info("[%s] Ve thanh %d (lap lai neu con battle chan teleport)...", self._label, city_id)
         ok = 0
         for _ in range(tries):
+            if not self.running:    # STOP / mat ket noi -> NGUNG ngay (khong spam teleport nua)
+                log.info("[%s] go_to_town: dung (stop/disconnect)", self._label)
+                return False
             self.teleport(city_id, flag)
-            time.sleep(wait)
+            # cho 'wait' giay NHUNG van check stop moi 0.2s -> STOP an lien duoc
+            end = time.time() + wait
+            while time.time() < end:
+                if not self.running:
+                    return False
+                time.sleep(0.2)
             if self.current_map == city_id:
                 ok += 1
                 if ok >= 2:   # 2 lan lien tiep == city_id -> on dinh (tranh nhieu luc chuyen map)
@@ -1538,4 +1546,4 @@ class GameClient:
         """flag bat buoc dung dung cho tung thanh (xem cities.json)."""
         payload = b"\x01\x00" + struct.pack("<H", city_id) + bytes([flag])
         self.send(protocol.OP_TELEPORT, payload)
-        log.info("Teleport -> city %s (flag %s)", city_id, flag)
+        log.info("[%s] Teleport -> city %s (flag %s)", self._label, city_id, flag)
