@@ -920,6 +920,22 @@ class GameClient:
             log.info("[%s] Event 14 ngay: thu %d phan, nhan thanh cong %d",
                      self._label, len(items), self._event14_ok)
 
+    def redeem_giftcode(self, code: str):
+        """NHAP GIFTCODE (C2S 0x57 sub=02). Qua thuong ve qua MAIL -> tu claim_mail() nhan.
+        Format: 57 [02 00][05][len 1B = so byte UTF16][code UTF16LE][01].
+        Xac nhan tu capture gift.pcap (code 'TS1106')."""
+        code = (code or "").strip()
+        if not code:
+            return False
+        cb = code.encode("utf-16-le")
+        if len(cb) > 255:
+            log.warning("[%s] giftcode qua dai", self._label); return False
+        self.send(0x57, b"\x02\x00\x05" + bytes([len(cb)]) + cb + b"\x01")
+        log.info("[%s] Nhap giftcode '%s'", self._label, code)
+        time.sleep(1.2)             # cho server xu ly + day qua vao mail
+        self.claim_mail()           # qua giftcode ve mail -> nhan + xoa luon
+        return True
+
     def claim_legion_gift(self):
         """Nhan qua QUAN DOAN hang ngay. C2S 0x27 [69 00] -> server tra reward (0x17).
         1 lan/ngay (daily_state.json). Khong trong quan doan thi vo hai."""

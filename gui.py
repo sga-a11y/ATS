@@ -11,7 +11,7 @@ Chay:  python gui.py
 """
 import os, sys, json, re, queue, logging, threading, time, collections, importlib
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 
 _LABEL_RE = re.compile(r"^\d\d:\d\d:\d\d \[([^\]]+)\]")
 
@@ -159,6 +159,9 @@ class BotGUI(tk.Tk):
                        command=lambda p=pidx: self._start_sel(p)).pack(side="left", padx=2)
             ttk.Button(btns, text="■ Stop acc chọn",
                        command=lambda p=pidx: self._stop_sel(p)).pack(side="left", padx=2)
+            ttk.Separator(btns, orient="vertical").pack(side="left", fill="y", padx=6)
+            ttk.Button(btns, text="🎟 Nhập giftcode",
+                       command=lambda p=pidx: self._redeem_giftcode(p)).pack(side="left", padx=2)
             tree = ttk.Treeview(frame, columns=cols, show="headings", height=max(len(accs), 3))
             for c in cols:
                 tree.heading(c, text=heads[c]); tree.column(c, width=widths[c], anchor="center")
@@ -254,6 +257,28 @@ class BotGUI(tk.Tk):
 
     def _stop_party(self, pidx):
         threading.Thread(target=ctrl.stop_party, args=(pidx,), daemon=True).start()
+
+    def _redeem_giftcode(self, pidx):
+        # dem so acc dang chay cua party de bao cho nguoi dung
+        running = [u for (u, _p, _l, _pk) in ctrl.party_accounts(pidx)
+                   if ctrl.is_account_running(u)]
+        if not running:
+            messagebox.showwarning("Giftcode",
+                                   f"Party {pidx + 1} chưa có acc nào đang chạy.\n"
+                                   "Hãy Start party trước rồi mới nhập giftcode.")
+            return
+        code = simpledialog.askstring(
+            "Nhập giftcode",
+            f"Nhập giftcode cho Party {pidx + 1} ({len(running)} acc đang chạy):",
+            parent=self)
+        if not code or not code.strip():
+            return
+        code = code.strip()
+        threading.Thread(target=ctrl.redeem_giftcode_party, args=(pidx, code),
+                         daemon=True).start()
+        messagebox.showinfo("Giftcode",
+                            f"Đang nhập '{code}' cho {len(running)} acc của Party {pidx + 1}.\n"
+                            "Quà về qua mail → bot tự nhận. Xem log để biết kết quả.")
 
     def _start_sel(self, pidx):
         tree = self.party_trees[pidx]

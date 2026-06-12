@@ -596,6 +596,37 @@ def start_all():
     return n
 
 
+def redeem_giftcode_party(pidx, code):
+    """Nhap GIFTCODE cho TAT CA acc DANG CHAY cua party pidx (moi acc 1 luong song song).
+    Qua giftcode ve mail -> acc tu claim_mail trong redeem_giftcode."""
+    code = (code or "").strip()
+    targets = [u for u, _p, _l, _pk in party_accounts(pidx)
+               if is_account_running(u) and account_clients.get(u) is not None]
+    if not code:
+        log.warning(">>> PARTY %s: giftcode rong -> bo qua", pidx + 1)
+        return 0
+    if not targets:
+        log.warning(">>> PARTY %s: KHONG co acc nao dang chay -> khong nhap giftcode '%s'",
+                    pidx + 1, code)
+        return 0
+    log.info(">>> PARTY %s: nhap giftcode '%s' cho %d acc dang chay...", pidx + 1, code, len(targets))
+    def _one(u):
+        c = account_clients.get(u)
+        if c is None:
+            return
+        try:
+            c.redeem_giftcode(code)
+        except Exception as e:
+            log.warning("[%s] loi nhap giftcode: %s", u, e)
+    ths = [threading.Thread(target=_one, args=(u,), daemon=True) for u in targets]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join(timeout=15)
+    log.info(">>> PARTY %s: da gui giftcode '%s' cho %d acc", pidx + 1, code, len(targets))
+    return len(targets)
+
+
 def stop_account(username):
     """Dung 1 acc: set event + dong ket noi -> thread tu ket thuc."""
     ev = account_stops.get(username)
