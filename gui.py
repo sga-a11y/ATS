@@ -497,7 +497,10 @@ class PartyConfigFrame(ttk.Frame):
                         if mid == self._preset.get("start_city_id")), 0)
             if names:
                 self.map_var.set(names[idx])
-            self._fill_mobs(self._preset.get("mob_index", -1))   # mac dinh = Bot tu chon (auto)
+            # Chi dung mob_index DA LUU neu preset von la 'train'. Doi tu mode khac sang train
+            # -> mac dinh "Bot tu chon" (-1), KHONG lay mob_index=0 (rac) cua mode khac.
+            pmob = self._preset.get("mob_index", -1) if self._preset.get("mode") == "train" else -1
+            self._fill_mobs(pmob)
         elif mode == "city":
             ttk.Label(self.dyn, text="Thành:", width=10).pack(side="left")
             names = [n for (_i, _f, n) in self.cities]
