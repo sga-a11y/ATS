@@ -188,12 +188,35 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # Map-train: goi sau khi ve safe (doi kenh tren map thuong khong sao).
         def do_channel_sync():
             if is_picker:
-                ch = c.pick_best_channel()
+                # need = so acc cua party -> chi chon kenh con DU CHO cho CA PARTY (tranh ket instance).
+                # pick tra: 0=chi 1 kenh (giu nguyen) | None=co kenh nhung khong du cho (RETRY) | int=da chuyen.
+                # KIEN TRI: 30s dau thu lien tuc (3s/lan), sau do 60s/lan, cho toi khi gom du ve 1 kenh.
+                need = len(party_accounts(pidx))
+                t0 = time.time()
+                ch = 0
+                while c.running and not _stopped():
+                    r = c.pick_best_channel(need=need)
+                    if r is None:   # co kenh nhung khong kenh nao du cho ca party -> CHO kenh trong
+                        if time.time() - t0 <= 30:
+                            time.sleep(3)          # 30s dau: thu lien tuc
+                        else:
+                            log.info("[%s] (%s) chua co kenh du cho ca party (%d acc) -> cho 60s thu lai...",
+                                     label, role, need)
+                            time.sleep(60)         # sau do: 1 phut/lan
+                        continue
+                    ch = r          # 0 (giu nguyen) hoac int (da chuyen) -> chot
+                    break
                 st["channel"] = ch
                 st["channel_ready"].set()
-                log.info("[%s] (%s) chon kenh %s cho ca party", label, role, ch)
+                if ch:
+                    log.info("[%s] (%s) chon kenh %s cho ca party (%d acc)", label, role, ch, need)
+                else:
+                    log.info("[%s] (%s) ca party giu nguyen 1 kenh (khong tach)", label, role)
             else:
-                st["channel_ready"].wait(420)
+                # cho picker CHOT kenh (co the lau neu dang doi kenh trong) -> cho toi khi ready/stop
+                while not st["channel_ready"].wait(5):
+                    if not c.running or _stopped():
+                        return
                 ch = st["channel"]
                 if ch:
                     c.switch_channel(ch)

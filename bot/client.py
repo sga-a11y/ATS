@@ -1278,10 +1278,15 @@ class GameClient:
         self.channels = {}
         self.send(0x07, b"\x01\x00")
 
-    def pick_best_channel(self, wait: float = 2.0, exclude=(1,), tries: int = 4):
-        """Hoi danh sach kenh -> chuyen sang kenh IT NGUOI nhat (con cho trong).
+    def pick_best_channel(self, wait: float = 2.0, exclude=(1,), tries: int = 4, need: int = 1):
+        """Hoi danh sach kenh -> chuyen sang kenh IT NGUOI nhat MA CON DU CHO cho CA PARTY.
+        need = so acc cua party (kenh phai con >= need cho trong, neu khong ca party khong gom
+        ve duoc 1 kenh -> 1 so acc bi ket o instance khac).
         exclude: bo qua kenh nao (vd kenh 1 thuong dong/mac dinh).
-        RETRY: ngay sau teleport ve thanh server hay tra cham -> hoi lai vai lan."""
+        Tra ve:
+          0    = chi 1 kenh (khong co list / chi co kenh mac dinh) -> ca party DA cung kenh, GIU NGUYEN.
+          None = co nhieu kenh NHUNG khong kenh nao du cho ca party -> caller nen RETRY (cho kenh trong).
+          int  = da chuyen sang kenh it nguoi MA con du cho ca party."""
         for i in range(tries):
             if not self.running:
                 return None
@@ -1291,17 +1296,24 @@ class GameClient:
             log.info("[%s] Chua nhan duoc danh sach kenh, hoi lai (%d/%d)...",
                      self._label, i + 1, tries)
         else:
-            log.warning("[%s] Khong nhan duoc danh sach kenh sau %d lan", self._label, tries)
-            return None
-        # uu tien kenh con cho (cur<cap), it nguoi nhat
+            # KHONG lay duoc list -> server chi co 1 kenh -> ca party DA o cung kenh (kenh 1).
+            log.info("[%s] Khong co danh sach kenh -> chi 1 kenh, ca party da cung kenh -> giu nguyen",
+                     self._label)
+            return 0
         cand = [(ch, cur, cap) for ch, (cur, cap) in self.channels.items()
                 if ch not in exclude]
         if not cand:
+            log.info("[%s] Chi co kenh mac dinh -> giu nguyen (ca party cung kenh)", self._label)
+            return 0
+        # CHI chon kenh con DU CHO cho ca party (cap - cur >= need)
+        fit = [c for c in cand if (c[2] - c[1]) >= need]
+        if not fit:
+            log.warning("[%s] KHONG kenh nao du %d cho trong cho ca party -> RETRY (cho kenh trong)",
+                        self._label, need)
             return None
-        open_ch = [c for c in cand if c[1] < c[2]] or cand
-        best = min(open_ch, key=lambda c: c[1])
-        log.info("[%s] Kenh it nguoi nhat: kenh %d (%d/%d) -> chuyen sang",
-                 self._label, best[0], best[1], best[2])
+        best = min(fit, key=lambda c: c[1])   # it nguoi nhat trong cac kenh du cho
+        log.info("[%s] Kenh it nguoi MA DU CHO ca party (%d): kenh %d (%d/%d) -> chuyen sang",
+                 self._label, need, best[0], best[1], best[2])
         self.switch_channel(best[0])
         return best[0]
 
