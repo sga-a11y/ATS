@@ -82,7 +82,7 @@ GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 # Combat tuning
 HEAL_HP_THRESHOLD = 0.60    # ally HP <= 60% max -> Toan Tri Lieu
 HEAL_SP_COST = 42
-PET_FIRE_MIN_SP = 15        # pet SP >= 15 moi xet skill AoE
+PET_FIRE_MIN_SP = 100       # pet SP >= 100 moi xet skill combo (duoi 100 -> danh chay)
 
 # DATA PET: doc tu pets.json (pet_id hex -> LIST skill cua pet). pet_id tu S2C 0x13 luc login.
 def _load_pets():

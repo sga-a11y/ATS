@@ -713,13 +713,23 @@ class GameClient:
             # nguoi khac) -> sai atype thi server DA/KICK (Tao Thao kick luon).
             if getattr(self, "flee_mode", False):
                 my_at = self.state.my_atype
+                # PET flee phai CUNG atype voi CHAR. Dung option pet THO tu 0x35 (raw_pet),
+                # KHONG dung pet_opts (da bi loc theo my_atype o tren) - vi my_atype co the
+                # SAI/CU (vd roster khong co self -> lay tu 0x0b) -> loc nham -> bo sot pet ->
+                # pet khong hanh dong -> turn khong hoan tat -> KET TRAN khong thoat duoc.
+                raw_pet = self.available.get(config.UNIT_PET, [])
+                pet_atypes = {o[0] for o in raw_pet}
+                a = None
                 if char_opts:
                     a = my_at if my_at in {o[0] for o in char_opts} else char_opts[0][0]
                     self._send_combat(combat.Decision(config.UNIT_CHAR, a, a, config.SKILL_FLEE, b=3))
-                if pet_opts:
-                    a = my_at if my_at in {o[0] for o in pet_opts} else pet_opts[0][0]
+                # Gui pet flee CHI khi 0x35 co option pet o DUNG slot char dang flee (a):
+                # co pet trong tran tai slot do. Khong co -> acc khong co pet/khong phai slot minh.
+                if a is not None and a in pet_atypes:
                     self._send_combat(combat.Decision(config.UNIT_PET, a, a, config.SKILL_FLEE, b=2))
-                log.info("[%s] BO CHAY (flee_mode, atype=%s)", self._label, my_at)
+                log.info("[%s] BO CHAY (flee_mode, char_at=%s pet_at=%s my_atype=%s char_opts=%s pet_opts=%s)",
+                         self._label, a, (a if (a is not None and a in pet_atypes) else None),
+                         my_at, sorted({o[0] for o in char_opts}), sorted(pet_atypes))
                 return
             if char_opts:
                 d = combat.decide_char(self.state, char_opts, ft)
