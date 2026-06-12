@@ -124,6 +124,7 @@ class BotGUI(tk.Tk):
     def _build_tabs(self):
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="x", expand=False, padx=6, pady=4)   # bang gon -> log chiem phan lon
+        self.nb.bind("<Double-1>", self._on_tab_dblclick)      # double-click tab -> mo Setting party do
         self.party_trees = {}   # pidx -> Treeview
         self._populate_tabs()
 
@@ -358,6 +359,14 @@ class BotGUI(tk.Tk):
         self.after(300, self._drain_log)
 
     # ---- config editor ----
+    def _on_tab_dblclick(self, event):
+        # double-click LEN TAB nao -> mo Setting cua party do luon
+        try:
+            idx = self.nb.index("@%d,%d" % (event.x, event.y))
+        except Exception:
+            return   # double-click ngoai vung tab header -> bo qua
+        ConfigDialog(self, open_pidx=idx)
+
     def _open_config(self):
         # mo Setting o dung tab party DANG CHON (thay vi mac dinh party 1)
         try:
