@@ -359,7 +359,12 @@ class BotGUI(tk.Tk):
 
     # ---- config editor ----
     def _open_config(self):
-        ConfigDialog(self)
+        # mo Setting o dung tab party DANG CHON (thay vi mac dinh party 1)
+        try:
+            cur = self.nb.index(self.nb.select())
+        except Exception:
+            cur = 0
+        ConfigDialog(self, open_pidx=cur)
 
     def reload_config(self):
         """Nap lai accounts.json + dung lai tab. TU STOP acc nao config (mode/map) bi DOI
@@ -711,7 +716,7 @@ class TrainMapEditor(tk.Toplevel):
 
 
 class ConfigDialog(tk.Toplevel):
-    def __init__(self, master):
+    def __init__(self, master, open_pidx=0):
         super().__init__(master)
         self.title("Cấu hình party")
         self.geometry("640x600")
@@ -735,6 +740,9 @@ class ConfigDialog(tk.Toplevel):
         self.frames = []
         for party in (data.get("parties") or [{}]):
             self._add_tab(party)
+        # mo dung tab party dang chon ben ngoai
+        if self.frames:
+            self.nb.select(min(max(open_pidx, 0), len(self.frames) - 1))
 
         bar = ttk.Frame(self, padding=6); bar.pack(fill="x")
         ttk.Button(bar, text="💾 Lưu", command=self._save).pack(side="right", padx=3)
@@ -769,14 +777,27 @@ class ConfigDialog(tk.Toplevel):
             ch = int(self.ch_var.get().strip() or 2)
         except ValueError:
             messagebox.showerror("Lỗi", "Kênh phải là số."); return
+        # tab party DANG SUA trong dialog -> de quay ve dung tab do o GUI chinh sau khi luu
+        try:
+            cur_pidx = self.nb.index(self.nb.select())
+        except Exception:
+            cur_pidx = 0
         parties = [f.get_data() for f in self.frames]
         parties = [p for p in parties if p["accounts"]]   # bo party rong
         data = {"channel": ch, "parties": parties}
         with open(ACCOUNTS_JSON, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        master = self.master
         self.destroy()
-        if hasattr(self.master, "reload_config"):
-            self.master.reload_config()   # tu nap lai - khong can dong app
+        if hasattr(master, "reload_config"):
+            master.reload_config()   # tu nap lai - khong can dong app
+        # chuyen GUI chinh ve tab party vua sua
+        try:
+            tabs = master.nb.tabs()
+            if tabs:
+                master.nb.select(min(max(cur_pidx, 0), len(tabs) - 1))
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
