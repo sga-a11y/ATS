@@ -1,11 +1,11 @@
 {
-  "_note": "Database pet: pet_id (hex). name = ten pet. skills = skill combo train (AoE nhieu quai). boss_skill = skill DANH DON manh khi danh BOSS (dungeon). Danh thuong (10000) luon co. pet_id doc tu log 'Pet id=0x...' luc login. Xep NHOM theo ho pet (ban goc + rb).",
+  "_note": "Database pet: pet_id (hex). name = ten pet. skills = skill combo train (AoE nhieu quai). boss_skill = skill DANH DON manh khi danh BOSS (dungeon). Danh thuong (10000) luon co. pet_id doc tu log 'Pet id=0x...' luc login. Xep NHOM theo ho pet (ban goc + rb). he/doanh = thuoc tinh LOAI pet (KHONG co trong packet, phai dien tay) - dung cho VAN TIEU match. he: Dia/Thuy/Hoa/Phong. doanh: Nguy/Thuc/Ngo/Du/Hoang. rb cung loai = cung he/doanh.",
   "pets": {
-    "0xa051": { "name": "Thái Văn Cơ", "skills": [12003, 12009, 12010], "boss_skill": 12009 },
-    "0x3715": { "name": "Thái Văn Cơ rb0", "skills": [12003, 12006], "boss_skill": 12006 },
-    "0xa05a": { "name": "Quan Vũ", "skills": [13009, 13011, 13013], "boss_skill": 13013 },
-    "0x2f0b": { "name": "Quan Vũ rb0", "skills": [13013], "boss_skill": 13013 },
-    "0xa0db": { "name": "Tưởng Nghĩa Cừ", "skills": [] },
+    "0xa051": { "name": "Thái Văn Cơ", "he": "Hoa", "doanh": "Du", "skills": [12003, 12009, 12010], "boss_skill": 12009 },
+    "0x3715": { "name": "Thái Văn Cơ rb0", "he": "Hoa", "doanh": "Du", "skills": [12003, 12006], "boss_skill": 12006 },
+    "0xa05a": { "name": "Quan Vũ", "he": "Phong", "doanh": "Thuc", "skills": [13009, 13011, 13013], "boss_skill": 13013 },
+    "0x2f0b": { "name": "Quan Vũ rb0", "he": "Phong", "doanh": "Thuc", "skills": [13013], "boss_skill": 13013 },
+    "0xa0db": { "name": "Tưởng Nghĩa Cừ", "he": "Dia", "doanh": "Du", "skills": [] },
     "0xa149": { "name": "Cát Bình", "skills": [11010] }
   }
 }

@@ -8,7 +8,14 @@
     "bac_hai": { "name": "Bac Hai", "city_id": 11011, "flag": 1, "hex": "2b03" },
     "kien_nghiep": { "name": "Kien Nghiep", "city_id": 18001, "flag": 9, "hex": "4651" },
     "tuong_binh": { "name": "Tuong Binh", "city_id": 19001, "flag": 11, "hex": "4a39" },
-    "hoi_ke": { "name": "Hoi Ke", "city_id": 18021, "flag": 10, "hex": "4665" }
+    "hoi_ke": { "name": "Hoi Ke", "city_id": 18021, "flag": 10, "hex": "4665" },
+    "lac_duong": { "name": "Lac Duong", "city_id": 13001, "flag": 4, "hex": "32c9" },
+    "hua_xuong": { "name": "Hua Xuong", "city_id": 13011, "flag": 5, "hex": "32d3" },
+    "truong_an": { "name": "Truong An", "city_id": 14001, "flag": 6, "hex": "36b1" },
+    "tu_chau": { "name": "Tu Chau", "city_id": 15001, "flag": 7, "hex": "3a99" },
+    "tho_xuan": { "name": "Tho Xuan", "city_id": 15021, "flag": 8, "hex": "3aad" },
+    "thuong_dang": { "name": "Thuong Dang", "city_id": 20001, "flag": 12, "hex": "4e21" },
+    "lau_bo": { "name": "Lau Bo", "city_id": 56001, "flag": 15, "hex": "dac1" }
   },
   "special_maps": {
     "di_gioi": {

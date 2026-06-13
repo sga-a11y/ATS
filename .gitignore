@@ -33,3 +33,6 @@ checkin_state.json
 daily_state.json
 accounts.json
 vantieu_state.json
+gamedata_*.dat
+gd_*.txt
+Ctrl+C
