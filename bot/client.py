@@ -1311,7 +1311,10 @@ class GameClient:
             free_slots = [s for s in range(1, unlocked + 1) if s not in occupied]
             used, i = set(), 0
             while started < daily_cap and free_slots:
-                if smart:                      # chon con khop yeu cau (theo ma 0400 -> he/doanh)
+                # SMART chi DANG TIN khi CHUA co escort nao chay: 0400 = yeu cau slot trong, chuan.
+                # Khi da co escort chay (gui con sau / login luc dang chay): 0400 = yeu cau escort
+                # do (KHONG phai slot trong) -> ko doc duoc yeu cau slot trong -> gui dai con trong.
+                if smart and not self.vantieu_slots:
                     req = config.VANTIEU_REQUESTS.get(self.vantieu_req_code or "")
                     if req is None:            # MA LA -> KHONG gui, giu yeu cau de m collect
                         log.warning("[%s] Van tieu: MA YEU CAU LA '%s' (chua co trong bang) -> "
@@ -1321,6 +1324,12 @@ class GameClient:
                     pet = self._match_vantieu_pet(names, used, req)
                     if pet is None:            # het con trong
                         break
+                elif smart:                    # slot sau (escort khac dang chay) -> gui dai con trong
+                    pet = next((k for k in range(1, len(names) + 1) if k not in used), None)
+                    if pet is None:
+                        break
+                    log.info("[%s] Van tieu: slot sau (escort khac dang chay, chua doc duoc yeu cau) "
+                             "-> gui dai con #%d", self._label, pet)
                 else:                          # gui theo index co dinh (VANTIEU_PETS)
                     if i >= len(pets):
                         break
