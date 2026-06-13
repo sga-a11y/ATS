@@ -166,6 +166,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
         c.claim_gacha_pet()     # gacha pet hang ngay (9k xu)
         c.claim_gacha_card()    # gacha card hang ngay (9k xu)
+        next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
@@ -319,6 +320,20 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             do_channel_sync()   # map-train: dong bo kenh sau khi ve safe (tren map thuong)
         elif is_digioi:
             # --- DI GIOI ---
+            # 0) PRE-CHECK: doc so phut DG hom nay tu BANG STAT login (0x55 id=0x1b).
+            #    Da du gio (>= DIGIOI_LIMIT) -> KHOI vao (truoc day phai vao -> cho 150s moi biet).
+            if not c.in_di_gioi() and c.digioi_minutes >= DIGIOI_LIMIT:
+                log.info("[%s] (%s) DG da HET GIO hom nay (%d/%d phut, doc tu login) -> khong vao",
+                         label, role, c.digioi_minutes, DIGIOI_LIMIT)
+                _reason("het gio Di Gioi hom nay (doc tu login)")
+                if do_dungeon:
+                    try: c.do_daily_dungeon()
+                    except Exception as e:
+                        log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
+                try: c.close()
+                except Exception: pass
+                if c in _clients: _clients.remove(c)
+                return
             # 1) PHAI VAO DUOC DG TRUOC (xac nhan in_di_gioi) roi MOI chuyen kenh.
             if not c.in_di_gioi() and not c.enter_di_gioi_safe():
                 log.warning("[%s] (%s) khong vao duoc DG (het gio?) -> TAT acc nay", label, role)
@@ -474,6 +489,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
             except Exception as e:
                 log.warning("[%s] loi qua online (bo qua): %s", label, e)
+            # Van tieu: chi goi lai DUNG GIO escort xong (next_vantieu), KHONG check mu.
+            if next_vantieu is not None and time.time() >= next_vantieu:
+                try:
+                    next_vantieu = c.do_van_tieu()
+                except Exception as e:
+                    log.warning("[%s] loi van tieu (bo qua): %s", label, e)
+                    next_vantieu = time.time() + 600   # loi -> thu lai sau 10p
             # --- RETRY KENH + RE-MOI moi 60s (ca DG lan map-train) ---
             # Kenh it nguoi nhat co the KHONG du cho ca party -> co dua ket lai kenh cu.
             # Leader cu train; dua chua join thi 1p chuyen lai kenh chung 1 lan; leader 1p moi lai.

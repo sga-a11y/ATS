@@ -464,19 +464,59 @@ class PartyConfigFrame(ttk.Frame):
         accs = self._preset.get("accounts", [])
         no_leader = bool(accs) and not (accs[0].get("u", "").strip())
         shown = accs[1:] if no_leader else accs
+        # Hang: [Khong co chu PT] ... [White list rieng party nay]
+        nlrow = ttk.Frame(self); nlrow.pack(fill="x", pady=(2, 0))
         self.no_leader_var = tk.BooleanVar(value=no_leader)
-        ttk.Checkbutton(self, text="Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)",
-                        variable=self.no_leader_var).pack(anchor="w", pady=(2, 0))
+        ttk.Checkbutton(nlrow, text="Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)",
+                        variable=self.no_leader_var).pack(side="left")
+        wl = self._preset.get("leaders", [])
+        ttk.Label(nlrow, text="  │  White list riêng:").pack(side="left")
+        self.leaders_var = tk.StringVar(value=", ".join(wl) if isinstance(wl, list) else str(wl or ""))
+        ttk.Entry(nlrow, textvariable=self.leaders_var).pack(side="left", fill="x", expand=True, padx=4)
+
         self.dungeon_var = tk.BooleanVar(value=self._preset.get("do_dungeon", True))
         ttk.Checkbutton(self, text="Đánh daily dungeon (lượt 1 free, lượt 2+ mua vàng)",
                         variable=self.dungeon_var).pack(anchor="w")
 
-        ttk.Label(self, text="Acc (mỗi dòng: user,pass — DÒNG ĐẦU = chủ PT trừ khi tick ô trên; "
-                  "thêm # đầu dòng để BỎ QUA acc đó):").pack(anchor="w")
-        self.txt = tk.Text(self, height=7, font=("Consolas", 10))
-        self.txt.pack(fill="both", expand=True)
-        self.txt.insert("1.0", "\n".join(f"{a.get('u','')},{a.get('p','')}" for a in shown))
+        ttk.Label(self, text="Acc (TICK = dùng, BỎ TICK = bỏ qua). Dòng đầu đã tick = chủ PT "
+                  "(trừ khi tick ô trên). TỐI ĐA 5 acc/party:").pack(anchor="w")
+        # vung CUON chua cac dong acc (checkbox + user + pass + nut xoa)
+        _wrap = ttk.Frame(self); _wrap.pack(fill="both", expand=True)
+        self._acc_canvas = tk.Canvas(_wrap, height=160, highlightthickness=0)
+        _sb = ttk.Scrollbar(_wrap, orient="vertical", command=self._acc_canvas.yview)
+        self._acc_inner = ttk.Frame(self._acc_canvas)
+        self._acc_inner.bind("<Configure>",
+                             lambda e: self._acc_canvas.configure(scrollregion=self._acc_canvas.bbox("all")))
+        self._acc_canvas.create_window((0, 0), window=self._acc_inner, anchor="nw")
+        self._acc_canvas.configure(yscrollcommand=_sb.set)
+        self._acc_canvas.pack(side="left", fill="both", expand=True)
+        _sb.pack(side="right", fill="y")
+        self.acc_rows = []
+        for a in shown:
+            u = a.get("u", ""); on = a.get("on", True)
+            if u.lstrip().startswith("#"):   # tuong thich co che '#' cu -> bo tick
+                on = False; u = u.lstrip().lstrip("#").strip()
+            self._add_acc_row(u, a.get("p", ""), on)
+        ttk.Button(self, text="➕ Thêm dòng acc",
+                   command=lambda: self._add_acc_row("", "", True)).pack(anchor="w", pady=(2, 0))
         self._render_dyn()
+
+    def _add_acc_row(self, u="", p="", on=True):
+        fr = ttk.Frame(self._acc_inner); fr.pack(fill="x", pady=1)
+        on_var = tk.BooleanVar(value=bool(on))
+        ttk.Checkbutton(fr, variable=on_var).pack(side="left")
+        e_u = ttk.Entry(fr, width=16, font=("Consolas", 10)); e_u.pack(side="left", padx=(0, 4))
+        e_u.insert(0, u)
+        e_p = ttk.Entry(fr, width=14, font=("Consolas", 10)); e_p.pack(side="left", padx=(0, 4))
+        e_p.insert(0, p)
+        row = {"on": on_var, "u": e_u, "p": e_p, "frame": fr}
+        ttk.Button(fr, text="✕", width=2, command=lambda: self._del_acc_row(row)).pack(side="left")
+        self.acc_rows.append(row)
+
+    def _del_acc_row(self, row):
+        row["frame"].destroy()
+        if row in self.acc_rows:
+            self.acc_rows.remove(row)
 
     def _render_dyn(self):
         for w in self.dyn.winfo_children():
@@ -554,19 +594,20 @@ class PartyConfigFrame(ttk.Frame):
                 if n == self.city_var.get():
                     sc = cid; city_flag = f; break
         accs = []
-        for line in self.txt.get("1.0", "end").splitlines():
-            line = line.strip()
-            if not line:
+        for r in self.acc_rows:
+            u = r["u"].get().strip()
+            if not u:
                 continue
-            parts = [x.strip() for x in line.split(",")]
-            accs.append({"u": parts[0], "p": parts[1] if len(parts) > 1 else ""})
+            accs.append({"u": u, "p": r["p"].get().strip(), "on": bool(r["on"].get())})
         if self.no_leader_var.get() and accs:
-            accs = [{"u": "", "p": ""}] + accs   # slot 0 trong = KHONG co chu PT
+            accs = [{"u": "", "p": "", "on": True}] + accs   # slot 0 trong = KHONG co chu PT
         # server: label -> key
         srv = next((k for k, lbl in self.servers if lbl == self.server_var.get()),
                    self.servers[0][0] if self.servers else "trieu_van")
+        leaders = [x.strip() for x in self.leaders_var.get().split(",") if x.strip()]
         return {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
-                "city_flag": city_flag, "do_dungeon": bool(self.dungeon_var.get()), "accounts": accs}
+                "city_flag": city_flag, "do_dungeon": bool(self.dungeon_var.get()),
+                "leaders": leaders, "accounts": accs}
 
 
 def _safe_points(safe):
@@ -748,6 +789,13 @@ class ConfigDialog(tk.Toplevel):
         ttk.Button(top, text="➕ Thêm party", command=self._add_party).pack(side="left", padx=8)
         ttk.Button(top, text="🗑 Xóa party này", command=self._del_party).pack(side="left")
 
+        # White list CHUNG (ap moi party): nut mo popup edit danh sach leader.
+        _gl = data.get("party_leaders", [])
+        self.gleaders_var = tk.StringVar(value=", ".join(_gl) if isinstance(_gl, list) else str(_gl or ""))
+        self.gl_btn = ttk.Button(top, command=self._edit_global_leaders)
+        self.gl_btn.pack(side="left", padx=8)
+        self._update_gl_btn()
+
         self.nb = ttk.Notebook(self); self.nb.pack(fill="both", expand=True, padx=6, pady=4)
         self.frames = []
         for party in (data.get("parties") or [{}]):
@@ -784,6 +832,37 @@ class ConfigDialog(tk.Toplevel):
         for j, f in enumerate(self.frames):
             self.nb.tab(f, text=f"Party {j + 1}")
 
+    def _update_gl_btn(self):
+        n = len([x for x in self.gleaders_var.get().split(",") if x.strip()])
+        self.gl_btn.configure(text=f"🛡 White list Leader ({n})")
+
+    def _edit_global_leaders(self):
+        """Popup edit white list CHUNG: moi dong 1 ten leader (ap dung MOI party).
+        Bam Luu -> ghi THANG party_leaders vao accounts.json (giu nguyen cac key khac)."""
+        win = tk.Toplevel(self); win.title("White list Leader (chung)")
+        win.transient(self); win.grab_set(); win.geometry("320x360")
+        ttk.Label(win, text="Mỗi dòng 1 tên leader (áp dụng MỌI party):").pack(anchor="w", padx=8, pady=(8, 2))
+        # Pack BAR (nut) xuong DAY TRUOC -> luon hien, roi Text fill phan con lai.
+        bar = ttk.Frame(win); bar.pack(side="bottom", fill="x", padx=8, pady=6)
+        txt = tk.Text(win, font=("Consolas", 10)); txt.pack(side="top", fill="both", expand=True, padx=8)
+        cur = [x.strip() for x in self.gleaders_var.get().split(",") if x.strip()]
+        txt.insert("1.0", "\n".join(cur))
+        def _save_gl():
+            names = [ln.strip() for ln in txt.get("1.0", "end").splitlines() if ln.strip()]
+            self.gleaders_var.set(", ".join(names))
+            # ghi ngay vao accounts.json (chi update party_leaders, giu cac key khac)
+            d = self._load() or {}
+            d["party_leaders"] = names
+            try:
+                with open(ACCOUNTS_JSON, "w", encoding="utf-8") as f:
+                    json.dump(d, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không lưu được: {e}"); return
+            self._update_gl_btn()
+            win.destroy()
+        ttk.Button(bar, text="💾 Lưu", command=_save_gl).pack(side="right")
+        ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="right", padx=4)
+
     def _save(self):
         try:
             ch = int(self.ch_var.get().strip() or 2)
@@ -796,7 +875,15 @@ class ConfigDialog(tk.Toplevel):
             cur_pidx = 0
         parties = [f.get_data() for f in self.frames]
         parties = [p for p in parties if p["accounts"]]   # bo party rong
-        data = {"channel": ch, "parties": parties}
+        # CAP 5: party game toi da 5 (1 leader + 4 member). Dem acc DANG TICK (on) co user.
+        for i, p in enumerate(parties):
+            n_on = sum(1 for a in p["accounts"] if a.get("on", True) and a.get("u", "").strip())
+            if n_on > 5:
+                messagebox.showerror("Lỗi", f"Party {i + 1} đang có nhiều hơn 5 thành viên "
+                                     f"({n_on}). Bỏ tick bớt cho còn tối đa 5.")
+                return
+        gleaders = [x.strip() for x in self.gleaders_var.get().split(",") if x.strip()]
+        data = {"channel": ch, "party_leaders": gleaders, "parties": parties}
         with open(ACCOUNTS_JSON, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         master = self.master

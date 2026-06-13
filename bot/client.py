@@ -260,6 +260,43 @@ def _mark_daily(label: str, task: str):
             pass
 
 
+# ---- State VAN TIEU: chi luu SO LUOT da gui hom nay (claim doc theo gio server tu panel) ----
+_VANTIEU_FILE = "vantieu_state.json"
+
+def _vantieu_count(label: str) -> int:
+    """So luot van tieu DA gui hom nay (local fallback; ngay moi -> 0)."""
+    import json, os, datetime
+    today = datetime.date.today().isoformat()
+    if not os.path.exists(_VANTIEU_FILE):
+        return 0
+    try:
+        with open(_VANTIEU_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        return 0
+    ent = d.get(label)
+    return ent.get("count", 0) if (ent and ent.get("date") == today) else 0
+
+def _vantieu_set_count(label: str, count: int):
+    import json, os, datetime
+    today = datetime.date.today().isoformat()
+    with _gift_lock:
+        d = {}
+        if os.path.exists(_VANTIEU_FILE):
+            try:
+                with open(_VANTIEU_FILE, encoding="utf-8") as f:
+                    d = json.load(f)
+            except Exception:
+                d = {}
+        d = {k: v for k, v in d.items() if v.get("date") == today}   # don ngay cu
+        d[label] = {"date": today, "count": count}
+        try:
+            with open(_VANTIEU_FILE, "w", encoding="utf-8") as f:
+                json.dump(d, f)
+        except Exception:
+            pass
+
+
 class GameClient:
     def __init__(self, user_id: str, access_token: str, host: str = None, server_id: int = 1):
         self.user_id = user_id
@@ -295,6 +332,7 @@ class GameClient:
         self._chan_event = threading.Event()
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
+        self._pending_03 = None      # cache 0x03 self-spawn (resolve ten neu toi TRUOC 0x69)
         self.party_leader = None     # entity chu party (tu 0x0d sub=06)
         self.party_members = []      # list entity cac member theo thu tu (= slot B2)
         self.party_idx = None        # chi so party cua bot (tu config.ACCOUNT_PARTY) - de nhan moi cung party
@@ -305,6 +343,10 @@ class GameClient:
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
         self.dungeon_runs_today = None  # so luot dungeon da danh hom nay (S2C 0x55 stat 0x9b)
         self.xu = None               # so XU hien co (tu S2C 0x1a id=4) - None = chua nhan
+        self.vantieu_started = None  # so luot van tieu DA gui hom nay (S2C 0x55 sid=0x08)
+        self.vantieu_max = 3         # gioi han van tieu/ngay (server bao kem, mac dinh 3)
+        self.vantieu_slots = {}      # slot -> {"end": OLE date ket thuc, "pet": id} (tu panel 0x56 0300)
+        self.vantieu_unlocked = 1    # so slot DA MO (S2C 0x56 0600 [N]); slot con lai khoa = can vang
         self._dg_query = None        # raw S2C 0x54 (tra loi query luot dungeon)
         self._dg_query_event = threading.Event()
         self._connect_time = None    # thoi diem connect phien nay
@@ -440,6 +482,11 @@ class GameClient:
                 mid = int.from_bytes(pkt[28:30], "little")
                 if mid > 1000:
                     self.current_map = mid
+            # TEN NHAN VAT tu 0x03 self-spawn (nguon dang tin: MOI acc co, KHONG can bang hoi).
+            if self.self_entity is None:
+                self._pending_03 = pkt   # chua biet self -> cache, retry khi 0x69 toi
+            elif self.char_name is None and ent == self.self_entity:
+                self._resolve_name_from_03(pkt)
         # (Server KHONG echo vi tri CUA MINH qua 0x06 -> dung dead-reckoning trong move_to/enter)
         if opcode == protocol.OP_STAT_UPD:        # 0x33
             self.state.update_0x33(pkt)
@@ -513,13 +560,28 @@ class GameClient:
             self._dg_query = pkt[7:]              # luu raw de query_dungeon_attempts doc
             self._dg_query_event.set()
             self._on_offline_exp(pkt)
-        elif opcode == 0x55 and len(pkt) >= 19 and pkt[14] == 0x00:  # stat update [id 2B][val 4B]
-            sid = pkt[13]
-            if sid == 0x1b:                       # so phut Di Gioi
-                self.digioi_minutes = int.from_bytes(pkt[15:17], "little")
-                self._last_digioi_ts = time.time()
-            elif sid == 0x9b:                     # so luot dungeon DA danh hom nay
-                self.dungeon_runs_today = int.from_bytes(pkt[15:19], "little")
+        elif opcode == 0x55 and pkt[7:9] == b"\x01\x00" and len(pkt) >= 17:
+            # BANG STAT: [01 00][count 4B] + count*([id 2B][val 4B][max 4B] = 10B).
+            # Login gui FULL (~1500 stat); update le gui count=1. Doc digioi/dungeon/van tieu.
+            body = pkt[7:]
+            cnt = int.from_bytes(body[2:6], "little")
+            off, n = 6, 0
+            while n < cnt and off + 10 <= len(body):
+                sid = int.from_bytes(body[off:off + 2], "little")
+                val = int.from_bytes(body[off + 2:off + 6], "little")
+                mx = int.from_bytes(body[off + 6:off + 10], "little")
+                if sid == 0x1b:                   # so phut Di Gioi
+                    self.digioi_minutes = val & 0xFFFF
+                    self._last_digioi_ts = time.time()
+                elif sid == 0x08:                 # van tieu: so luot DA gui hom nay + gioi han
+                    self.vantieu_started = val
+                    self.vantieu_max = mx or 3
+                # KHONG doc 0x9b lam "luot dungeon": login bulk gui 0x9b=9 (KHONG khop thuc te
+                # 1-2 luot) -> sai -> dungeon dem THUAN LOCAL (checkin_state.json).
+                off += 10
+                n += 1
+        elif opcode == 0x56:                      # van tieu (escort) panel/status
+            self._on_vantieu(pkt)
         elif opcode == 0x1a and len(pkt) >= 13:   # currency: [id 2B][val 4B]
             sid = int.from_bytes(pkt[7:9], "little")
             if sid == 4:                          # id=4 -> so XU hien co
@@ -541,6 +603,9 @@ class GameClient:
                     _register_party_int(self.party_idx, self.self_entity, self.char_int)
                 # ten nhan vat: neu 0x27 (guild list) da toi TRUOC 0x69 -> resolve tu goi da cache
                 self._resolve_self_name(self._last_guild_pkt)
+                # fallback (acc KHONG bang hoi): resolve ten tu 0x03 self-spawn da cache
+                if self.char_name is None and self._pending_03 is not None:
+                    self._resolve_name_from_03(self._pending_03)
                 # xu lai cac goi 0x0b da buffer (co the chua stat cua minh den truoc 0x69)
                 for p in self._pending_0b:
                     self.state.update_0x0b(p)
@@ -576,8 +641,9 @@ class GameClient:
                 _mark_joined(self.party_idx, self.self_entity)   # bao LEADER: minh da join
                 log.info("[%s] Loi moi tu THANH VIEN CUNG PARTY -> ACCEPT (da join)", self._label)
                 return
-            # --- Loc theo whitelist PARTY_LEADERS (nguoi ngoai/leader nguoi that) ---
-            leaders = getattr(config, "PARTY_LEADERS", [])
+            # --- Loc theo whitelist (CHUNG + RIENG party) (nguoi ngoai/leader nguoi that) ---
+            leaders = (config.leaders_for(self.party_idx)
+                       if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
             if leaders:
                 known = self.entity_names.get(entity, set())
                 if known:
@@ -637,9 +703,10 @@ class GameClient:
                 name = body[17:17 + nl].decode("utf-16-le")
             except Exception:
                 pass
-            leaders = getattr(config, "PARTY_LEADERS", [])
+            leaders = (config.leaders_for(self.party_idx)
+                       if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
             if leaders and name and name not in leaders:
-                log.info("[%s] TU CHOI moi pho ban tu '%s' (khong trong PARTY_LEADERS)",
+                log.info("[%s] TU CHOI moi pho ban tu '%s' (khong trong whitelist)",
                          self._label, name)
                 return
             # Dong y vao pho ban
@@ -1149,6 +1216,93 @@ class GameClient:
         _mark_daily(self._label, "gacha_card")
         log.info("[%s] Gacha CARD hang ngay (xu con ~%d)", self._label, self.xu)
 
+    def _on_vantieu(self, pkt: bytes):
+        """S2C 0x56 panel: [03 00][count 1B] + count*[slot 1B][start 8B OLE][end 8B OLE]
+        [x 1B][pet 1B][yy 2B] (21B/entry). Doc slot + GIO KET THUC (OLE date) vao vantieu_slots.
+        A=0 (toan byte 00) = slot rong (vua claim)."""
+        body = pkt[7:]
+        if len(body) < 3:
+            return
+        if body[0:2] == b"\x06\x00":          # so slot DA MO (con lai khoa = can vang unlock)
+            self.vantieu_unlocked = body[2]
+            return
+        if body[0:2] != b"\x03\x00":
+            return
+        count = body[2]
+        off = 3
+        for _ in range(count):
+            if off + 21 > len(body):
+                break
+            slot = body[off]
+            try:
+                start_ole = struct.unpack("<d", body[off + 1:off + 9])[0]
+                end_ole = struct.unpack("<d", body[off + 9:off + 17])[0]
+            except Exception:
+                break
+            pet = body[off + 18]
+            if start_ole <= 0:                 # slot rong (da claim)
+                self.vantieu_slots.pop(slot, None)
+            else:
+                self.vantieu_slots[slot] = {"end": end_ole, "pet": pet}
+            off += 21
+
+    @staticmethod
+    def _ole_to_dt(ole):
+        import datetime
+        return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=ole)
+
+    def do_van_tieu(self):
+        """Van tieu (escort) opcode 0x56. Gui pet (VANTIEU_PETS = index list quan tro) ->
+        ~4h sau nhan qua. Goi luc login + dinh ky.
+          mo panel:  0x56 0100  -> S2C 0x56 0300 (slot + gio ket thuc OLE)
+          gui pet:   0x56 0200 [pet_index]
+          nhan qua:  0x56 0500 [slot]
+        CLAIM theo GIO KET THUC tu server (now >= end), KHONG hardcode thoi luong.
+        So luot/ngay = max(local_count, server vantieu_started) so voi vantieu_max (3).
+        TRA VE: epoch thoi diem CAN GOI LAI (escort xong som nhat) hoac None (het viec hom nay)
+        -> caller hen dung gio, KHONG check mu dinh ky."""
+        import datetime
+        if not getattr(config, "VANTIEU_ENABLE", False):
+            return None
+        pets = list(getattr(config, "VANTIEU_PETS", []) or [])
+        self.vantieu_slots = {}           # reset -> panel gui lai trang thai moi
+        self.send(0x56, b"\x01\x00")      # mo panel
+        time.sleep(1.2)
+        now = datetime.datetime.now()
+        # 1) NHAN qua slot da xong (now >= gio ket thuc)
+        for slot, info in list(self.vantieu_slots.items()):
+            if now >= self._ole_to_dt(info["end"]):
+                self.send(0x56, b"\x05\x00" + bytes([slot & 0xFF]))
+                time.sleep(0.5)
+                self.vantieu_slots.pop(slot, None)
+                log.info("[%s] Van tieu: nhan qua slot %d (da xong)", self._label, slot)
+        # 2) GUI pet moi: CHI vao slot DA MO (1..vantieu_unlocked, KHONG tu unlock = ton vang)
+        #    va trong gioi han luot/ngay (vantieu_max). slot dang chay -> bo qua.
+        if pets:
+            daily_cap = self.vantieu_max or 3
+            unlocked = self.vantieu_unlocked or 1
+            started = max(_vantieu_count(self._label), self.vantieu_started or 0)
+            occupied = set(self.vantieu_slots)
+            free_slots = [s for s in range(1, unlocked + 1) if s not in occupied]
+            i = 0
+            while started < daily_cap and free_slots and i < len(pets):
+                slot = free_slots.pop(0)
+                pet = pets[i]; i += 1
+                self.send(0x56, b"\x02\x00" + bytes([pet & 0xFF]))
+                time.sleep(0.9)
+                started += 1
+                _vantieu_set_count(self._label, started)
+                log.info("[%s] Van tieu: gui pet #%d -> slot %d (da gui %d/%d, %d slot mo)",
+                         self._label, pet, slot, started, daily_cap, unlocked)
+        # HEN GIO: escort dang chay xong som nhat (panel da cap nhat slot moi gui qua _on_vantieu).
+        ends = [self._ole_to_dt(info["end"]).timestamp() for info in self.vantieu_slots.values()]
+        if ends:
+            nxt = min(ends) + 10        # +10s dem cho chac chan da xong
+            log.info("[%s] Van tieu: check lai luc %s",
+                     self._label, datetime.datetime.fromtimestamp(nxt).strftime("%H:%M:%S"))
+            return nxt
+        return None                     # khong con escort dang chay -> het viec hom nay
+
     def _on_gift(self, pkt: bytes):
         """S2C 0x57 sub=2: [02 00][type 1B][status 1B]. type=03 qua online, type=01 DIEM DANH.
         status=0 = thanh cong."""
@@ -1216,6 +1370,40 @@ class GameClient:
             self.char_name = nm
             self._label = nm
             log.info("[%s] Ten nhan vat = '%s'", self._username, nm)
+
+    def _resolve_name_from_03(self, pkt: bytes):
+        """Ten nhan vat tu goi 0x03 self-spawn - gui cho MOI acc luc login (KHONG can bang hoi).
+        Layout: [0000][self_entity 8B][~36B stat][name_len 1B @body[46]][name UTF-16LE].
+        Guard: 2 byte truoc name_len = 0000. Verify 3/3 acc (haabo/gamo/luubay). Fallback: quet."""
+        if self.char_name or not self.self_entity or not pkt or len(pkt) < 55:
+            return
+        body = pkt[7:]
+        if len(body) < 48 or body[2:10] != self.self_entity:
+            return
+        def _try(off):
+            if off < 2 or off + 1 >= len(body):
+                return None
+            nl = body[off]
+            if not (0 < nl <= 40) or nl % 2 or off + 1 + nl > len(body):
+                return None
+            if body[off - 2:off] != b"\x00\x00":
+                return None
+            try:
+                nm = body[off + 1:off + 1 + nl].decode("utf-16-le")
+            except Exception:
+                return None
+            return nm if (nm and nm.isprintable()) else None
+        nm = _try(46)   # offset co dinh
+        if not nm:      # fallback: quet sau entity tim [0000][len][name printable]
+            for off in range(12, min(len(body) - 1, 90)):
+                nm = _try(off)
+                if nm:
+                    break
+        if nm:
+            self.char_name = nm
+            self._label = nm
+            _register_party_name(self.self_entity, nm)
+            log.info("[%s] Ten nhan vat = '%s' (tu 0x03)", self._username, nm)
 
     def _on_player_info(self, pkt: bytes):
         """S2C 0x27 sub=0x02: danh sach thanh vien guild.
@@ -1542,6 +1730,11 @@ class GameClient:
         battle thi teleport bi chan, phai cho khoang trong giua 2 tran). Xac nhan = map da doi
         (city_id != map_id voi 1 so thanh nhu Ng.Thanh, nen check 'da roi map cu')."""
         log.info("[%s] Ve thanh %d (lap lai neu con battle chan teleport)...", self._label, city_id)
+        # Dang o DI GIOI -> teleport (0x44) bi tu choi. PHAI di bo ra cong thoat truoc.
+        if self.in_di_gioi():
+            log.info("[%s] Dang o Di Gioi -> di bo ra cong thoat truoc khi teleport ve thanh...",
+                     self._label)
+            self.exit_di_gioi()
         ok = 0
         for _ in range(tries):
             if not self.running:    # STOP / mat ket noi -> NGUNG ngay (khong spam teleport nua)

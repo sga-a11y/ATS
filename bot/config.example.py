@@ -76,6 +76,12 @@ RUN_STEP_WAIT = 2.5            # giay moi buoc di chuyen
 # Solo daily dungeon: so luot/ngay (luot 1 mien phi, luot 2+ MUA bang vang). =1 chi danh luot free.
 DUNGEON_RUNS_PER_DAY = 2
 
+# Van tieu (escort): moi ngay 3 luot, gui pet di -> 1h sau nhan qua.
+# VANTIEU_PETS = vi tri pet trong list QUAN TRO de gui (index 1-based), 1 pet/luot.
+#   vd [1,2,3] = gui pet thu 1,2,3 cho 3 luot. [] = KHONG tu gui (chi nhan qua).
+VANTIEU_ENABLE = True
+VANTIEU_PETS = [1, 2, 3]
+
 # Qua online: nhan khi online du so phut. id qua = so phut moc.
 GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 
@@ -143,6 +149,7 @@ XOR_KEY = 0xAD
 #  PARTY_CONFIG[pidx] = {mode, start_city_id, mob_index, city_flag}.
 # ============================================================
 PARTY_CONFIG = {}
+PARTY_LEADERS_BY_IDX = {}   # pidx -> [ten leader] white list rieng party (tu accounts.json)
 def _load_servers():
     import json, os
     f = os.path.join(os.path.dirname(__file__), os.pardir, "servers.json")
@@ -168,9 +175,9 @@ _aj = _load_accounts_json()
 if _aj is not None:
     try:
         _parties_raw = _aj.get("parties", [])
-        # acc co username bat dau bang '#' = BO QUA (comment)
+        # BO QUA acc khi: bo tick (on=false) HOAC username bat dau '#' (co che cu).
         _ps = [[(a.get("u", ""), a.get("p", "")) for a in party.get("accounts", [])
-                if not a.get("u", "").lstrip().startswith("#")]
+                if a.get("on", True) and not a.get("u", "").lstrip().startswith("#")]
                for party in _parties_raw]
         if _ps:
             PARTIES = _ps
@@ -186,12 +193,25 @@ if _aj is not None:
                 "server_id": _server_id(_srv),
                 "do_dungeon": bool(_party.get("do_dungeon", True)),
             }
+            PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])
         if PARTY_CONFIG:
             START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]
         if "channel" in _aj:
             CHANNEL = int(_aj["channel"])
+        if "party_leaders" in _aj:        # white list CHUNG (ap moi party)
+            PARTY_LEADERS = list(_aj.get("party_leaders", []) or [])
     except Exception:
         pass
+
+
+# White list RIENG tung party (pidx -> [ten leader]); CHUNG = PARTY_LEADERS.
+# leaders_for(pidx) = CHUNG + RIENG (union). Rong het -> nhan moi nguoi moi.
+def leaders_for(pidx):
+    out = list(PARTY_LEADERS)
+    for nm in PARTY_LEADERS_BY_IDX.get(pidx, []):
+        if nm not in out:
+            out.append(nm)
+    return out
 
 
 # ============================================================

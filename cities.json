@@ -4,7 +4,11 @@
   "cities": {
     "trac_quan": { "name": "Trac Quan", "city_id": 12001, "flag": 0, "hex": "2ee1" },
     "ng_thanh": { "name": "Ng.Thanh", "city_id": 12061, "flag": 2, "hex": "2f1d" },
-    "cu_loc": { "name": "Cu Loc", "city_id": 12011, "flag": 3, "hex": "2eeb" }
+    "cu_loc": { "name": "Cu Loc", "city_id": 12011, "flag": 3, "hex": "2eeb" },
+    "bac_hai": { "name": "Bac Hai", "city_id": 11011, "flag": 1, "hex": "2b03" },
+    "kien_nghiep": { "name": "Kien Nghiep", "city_id": 18001, "flag": 9, "hex": "4651" },
+    "tuong_binh": { "name": "Tuong Binh", "city_id": 19001, "flag": 11, "hex": "4a39" },
+    "hoi_ke": { "name": "Hoi Ke", "city_id": 18021, "flag": 10, "hex": "4665" }
   },
   "special_maps": {
     "di_gioi": {
