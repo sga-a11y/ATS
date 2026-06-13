@@ -82,6 +82,18 @@ DUNGEON_RUNS_PER_DAY = 2
 VANTIEU_ENABLE = True
 VANTIEU_PETS = [1, 2, 3]
 
+# Phase-2 van tieu match: he/doanh pet (tu game data Npc_C.dat) + yeu cau (ma 0400).
+def _load_json_root(fn):
+    import json, os
+    f = os.path.join(os.path.dirname(__file__), os.pardir, fn)
+    try:
+        with open(f, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+PET_HEDOANH = _load_json_root("pet_hedoanh.json")                       # ten pet -> {he, doanh}
+VANTIEU_REQUESTS = _load_json_root("vantieu_requests.json").get("requests", {})  # ma 0400 -> {he, doanh}
+
 # Qua online: nhan khi online du so phut. id qua = so phut moc.
 GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 
