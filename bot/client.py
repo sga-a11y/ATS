@@ -1255,24 +1255,23 @@ class GameClient:
         import datetime
         return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=ole)
 
-    def _match_vantieu_pet(self, names, used):
-        """Chon inn index (1-based, vi tri trong VANTIEU_PETS_NAMES) KHOP yeu cau nhat.
-        Yeu cau = VANTIEU_REQUESTS[ma 0400] -> {he, doanh}. Score: dung ca he+doanh=2, dung 1=1.
-        Ma chua biet -> score 0 (gui con con trong bat ky, van duoc qua). None = het con."""
-        req = config.VANTIEU_REQUESTS.get(self.vantieu_req_code or "")
+    def _match_vantieu_pet(self, names, used, req):
+        """Chon inn index (1-based) KHOP 'req' (he,doanh) nhat trong cac con CON TRONG.
+        Score: dung ca he+doanh=2, dung 1=1, ko khop=0 (van gui de duoc qua co ban).
+        None = het con trong. (req luon DA BIET - ma la xu ly o do_van_tieu.)"""
         best, best_score, best_nm, best_hd = None, -1, None, None
         for idx, nm in enumerate(names, 1):
             if idx in used:
                 continue
             hd = config.PET_HEDOANH.get(nm, {})
-            score = ((hd.get("he") == req["he"]) + (hd.get("doanh") == req["doanh"])) if req else 0
+            score = (hd.get("he") == req["he"]) + (hd.get("doanh") == req["doanh"])
             if score > best_score:
                 best, best_score, best_nm, best_hd = idx, score, nm, hd
         if best is None:
             return None
-        log.info("[%s] Van tieu match: yeu cau=%s -> slot %d '%s' %s (khop %d/2)",
-                 self._label, req or ("ma la " + str(self.vantieu_req_code)),
-                 best, best_nm, best_hd, max(best_score, 0))
+        tag = {2: "khop ca he+doanh", 1: "khop 1", 0: "KHONG khop (gui tam, qua co ban)"}[best_score]
+        log.info("[%s] Van tieu match: yeu cau=%s -> slot %d '%s' %s [%s]",
+                 self._label, req, best, best_nm, best_hd, tag)
         return best
 
     def do_van_tieu(self):
@@ -1313,8 +1312,14 @@ class GameClient:
             used, i = set(), 0
             while started < daily_cap and free_slots:
                 if smart:                      # chon con khop yeu cau (theo ma 0400 -> he/doanh)
-                    pet = self._match_vantieu_pet(names, used)
-                    if pet is None:
+                    req = config.VANTIEU_REQUESTS.get(self.vantieu_req_code or "")
+                    if req is None:            # MA LA -> KHONG gui, giu yeu cau de m collect
+                        log.warning("[%s] Van tieu: MA YEU CAU LA '%s' (chua co trong bang) -> "
+                                    "KHONG gui. Mo panel van tieu acc nay xem he/doanh roi them vao "
+                                    "vantieu_requests.json.", self._label, self.vantieu_req_code)
+                        break
+                    pet = self._match_vantieu_pet(names, used, req)
+                    if pet is None:            # het con trong
                         break
                 else:                          # gui theo index co dinh (VANTIEU_PETS)
                     if i >= len(pets):
