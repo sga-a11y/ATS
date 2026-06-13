@@ -346,6 +346,7 @@ class GameClient:
         self.vantieu_started = None  # so luot van tieu DA gui hom nay (S2C 0x55 sid=0x08)
         self.vantieu_max = 3         # gioi han van tieu/ngay (server bao kem, mac dinh 3)
         self.vantieu_slots = {}      # slot -> {"end": OLE date ket thuc, "pet": id} (tu panel 0x56 0300)
+        self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - tra VANTIEU_REQUESTS
         self.vantieu_unlocked = 1    # so slot DA MO (S2C 0x56 0600 [N]); slot con lai khoa = can vang
         self._dg_query = None        # raw S2C 0x54 (tra loi query luot dungeon)
         self._dg_query_event = threading.Event()
@@ -1226,6 +1227,9 @@ class GameClient:
         if body[0:2] == b"\x06\x00":          # so slot DA MO (con lai khoa = can vang unlock)
             self.vantieu_unlocked = body[2]
             return
+        if body[0:2] == b"\x04\x00" and len(body) >= 5:  # MA YEU CAU (b0 b1 b2) cho slot ke tiep
+            self.vantieu_req_code = body[2:5].hex()
+            return
         if body[0:2] != b"\x03\x00":
             return
         count = body[2]
@@ -1250,6 +1254,26 @@ class GameClient:
     def _ole_to_dt(ole):
         import datetime
         return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=ole)
+
+    def _match_vantieu_pet(self, names, used):
+        """Chon inn index (1-based, vi tri trong VANTIEU_PETS_NAMES) KHOP yeu cau nhat.
+        Yeu cau = VANTIEU_REQUESTS[ma 0400] -> {he, doanh}. Score: dung ca he+doanh=2, dung 1=1.
+        Ma chua biet -> score 0 (gui con con trong bat ky, van duoc qua). None = het con."""
+        req = config.VANTIEU_REQUESTS.get(self.vantieu_req_code or "")
+        best, best_score, best_nm, best_hd = None, -1, None, None
+        for idx, nm in enumerate(names, 1):
+            if idx in used:
+                continue
+            hd = config.PET_HEDOANH.get(nm, {})
+            score = ((hd.get("he") == req["he"]) + (hd.get("doanh") == req["doanh"])) if req else 0
+            if score > best_score:
+                best, best_score, best_nm, best_hd = idx, score, nm, hd
+        if best is None:
+            return None
+        log.info("[%s] Van tieu match: yeu cau=%s -> slot %d '%s' %s (khop %d/2)",
+                 self._label, req or ("ma la " + str(self.vantieu_req_code)),
+                 best, best_nm, best_hd, max(best_score, 0))
+        return best
 
     def do_van_tieu(self):
         """Van tieu (escort) opcode 0x56. Gui pet (VANTIEU_PETS = index list quan tro) ->
@@ -1278,19 +1302,28 @@ class GameClient:
                 log.info("[%s] Van tieu: nhan qua slot %d (da xong)", self._label, slot)
         # 2) GUI pet moi: CHI vao slot DA MO (1..vantieu_unlocked, KHONG tu unlock = ton vang)
         #    va trong gioi han luot/ngay (vantieu_max). slot dang chay -> bo qua.
-        if pets:
+        names = list(getattr(config, "VANTIEU_PETS_NAMES", []) or [])
+        smart = bool(names) and bool(getattr(config, "VANTIEU_REQUESTS", {}))
+        if pets or smart:
             daily_cap = self.vantieu_max or 3
             unlocked = self.vantieu_unlocked or 1
             started = max(_vantieu_count(self._label), self.vantieu_started or 0)
             occupied = set(self.vantieu_slots)
             free_slots = [s for s in range(1, unlocked + 1) if s not in occupied]
-            i = 0
-            while started < daily_cap and free_slots and i < len(pets):
+            used, i = set(), 0
+            while started < daily_cap and free_slots:
+                if smart:                      # chon con khop yeu cau (theo ma 0400 -> he/doanh)
+                    pet = self._match_vantieu_pet(names, used)
+                    if pet is None:
+                        break
+                else:                          # gui theo index co dinh (VANTIEU_PETS)
+                    if i >= len(pets):
+                        break
+                    pet = pets[i]; i += 1
                 slot = free_slots.pop(0)
-                pet = pets[i]; i += 1
                 self.send(0x56, b"\x02\x00" + bytes([pet & 0xFF]))
                 time.sleep(0.9)
-                started += 1
+                used.add(pet); started += 1
                 _vantieu_set_count(self._label, started)
                 log.info("[%s] Van tieu: gui pet #%d -> slot %d (da gui %d/%d, %d slot mo)",
                          self._label, pet, slot, started, daily_cap, unlocked)

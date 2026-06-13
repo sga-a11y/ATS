@@ -81,6 +81,9 @@ DUNGEON_RUNS_PER_DAY = 2
 #   vd [1,2,3] = gui pet thu 1,2,3 cho 3 luot. [] = KHONG tu gui (chi nhan qua).
 VANTIEU_ENABLE = True
 VANTIEU_PETS = [1, 2, 3]
+# Smart match (phase-2): ten pet trong QUAN TRO theo DUNG THU TU slot (slot1, slot2,...).
+# Bot tra he/doanh tung con (PET_HEDOANH) -> chon con KHOP yeu cau nhat -> gui. [] = tat (dung VANTIEU_PETS).
+VANTIEU_PETS_NAMES = []
 
 # Phase-2 van tieu match: he/doanh pet (tu game data Npc_C.dat) + yeu cau (ma 0400).
 def _load_json_root(fn):
