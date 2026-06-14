@@ -944,22 +944,36 @@ class GameClient:
             return True   # da nhan het (vd ngay 14) -> khong lam nua
         # 1) Biet so dem -> thu day+1 (binh thuong 1 goi la xong)
         if 0 < st.get("day", 0) < max_day:
-            if self._gift_claim(gtype, st["day"] + 1) == 0:
+            s1 = self._gift_claim(gtype, st["day"] + 1)
+            if s1 == 0:
                 _save_checkin(self._label, kind, today, st["day"] + 1)
                 log.info("[%s] %s ngay %d OK", self._label, name, st["day"] + 1)
                 return True
+            log.info("[%s] %s ngay %d -> status=%d (0=OK,2=da nhan,5=chua toi,-1=ko phan hoi)",
+                     self._label, name, st["day"] + 1, s1)
         # 2) Lan dau / desync -> quet 1..max_day
         last = st.get("day", 0)
+        seen2 = False             # co thay ngay nao "da nhan" (status=2) khong
+        stats = []                # status tung ngay (de chuan doan khi that bai)
         for d in range(1, max_day + 1):
             s = self._gift_claim(gtype, d)
+            stats.append(s)
             if s == 0:
                 _save_checkin(self._label, kind, today, d)
                 log.info("[%s] %s ngay %d OK (scan)", self._label, name, d)
                 return True
             if s == 2:
-                last = max(last, d)
-        _save_checkin(self._label, kind, today, last)
-        log.info("[%s] %s: da nhan hom nay roi (ngay %d) -> luu", self._label, name, last)
+                last = max(last, d); seen2 = True
+        # CHI danh dau "xong hom nay" khi THUC SU co ngay da nhan (status=2).
+        # Neu KHONG nhan duoc + KHONG ngay nao da nhan (toan 5/-1/khac) -> KHONG luu today
+        # -> lan login sau THU LAI (tranh bug: danh dau xong ma game chua nhan).
+        from collections import Counter
+        if seen2:
+            _save_checkin(self._label, kind, today, last)
+            log.info("[%s] %s: da nhan hom nay roi (ngay %d) -> luu", self._label, name, last)
+        else:
+            log.warning("[%s] %s: KHONG nhan duoc phan nao (status cac ngay: %s) -> KHONG danh dau, "
+                        "se thu lai login sau", self._label, name, dict(Counter(stats)))
         return True
 
     def claim_checkin(self):
