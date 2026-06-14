@@ -1680,28 +1680,28 @@ class GameClient:
         self.send(0x06, b"\x01\x00\x01" + struct.pack("<HH", x, y))
         self.pos = (x, y)
 
-    def navigate_to(self, x: int, y: int, clean_needed: int = 3, step: float = 2.5,
-                    max_iter: int = 30):
-        """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> BO CHAY (flee_mode)
-        roi di tiep. Coi nhu da toi sau 'clean_needed' chu ky di KHONG bi battle.
-        (Server khong echo vi tri minh -> dung heuristic so chu ky sach.)
+    def navigate_to(self, x: int, y: int, moves_needed: int = 4, step: float = 2.5,
+                    max_iter: int = 60):
+        """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> BO CHAY (flee_mode) roi
+        di tiep. Coi nhu da toi sau 'moves_needed' BUOC DI (cong DON, KHONG reset khi battle) ->
+        bi quai danh giua duong van TIEP TUC ra safe, khong ket tai cho login.
+        Dung in_combat nguong NGAN (1.5s) -> battle vua xong la di luon (khong cho het 4s).
         LUU Y: KHONG tu tat flee_mode - caller quan ly (flee suot tu login den khi vao train)."""
         self.flee_mode = True
-        clean = 0
+        moves = 0
         for _ in range(max_iter):
             if not self.running:    # bi STOP -> dung di chuyen
                 return
-            if self.in_combat():
-                time.sleep(1.0)     # turn handler dang lo flee
-                clean = 0
+            if self.in_combat(idle_secs=1.5):   # dang battle/vua co luot -> cho flee xong
+                time.sleep(0.5)
                 continue
             self.move_to(x, y)
+            moves += 1              # CONG DON (khong reset du bi battle xen giua)
             time.sleep(step)
-            clean += 1
-            if clean >= clean_needed:
+            if moves >= moves_needed:
                 break
         self.pos = (x, y)
-        log.info("[%s] da toi diem (%d,%d)", self._label, x, y)
+        log.info("[%s] da toi diem (%d,%d) sau %d buoc", self._label, x, y, moves)
 
     def in_di_gioi(self) -> bool:
         """Dang o map Di Gioi? Doc map_id thuc te (khong dua vao so kenh)."""
