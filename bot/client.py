@@ -347,6 +347,7 @@ class GameClient:
         self.vantieu_max = 3         # gioi han van tieu/ngay (server bao kem, mac dinh 3)
         self.vantieu_slots = {}      # slot -> {"end": OLE date ket thuc, "pet": id} (tu panel 0x56 0300)
         self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - tra VANTIEU_REQUESTS
+        self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
         self.vantieu_unlocked = 1    # so slot DA MO (S2C 0x56 0600 [N]); slot con lai khoa = can vang
         self._dg_query = None        # raw S2C 0x54 (tra loi query luot dungeon)
         self._dg_query_event = threading.Event()
@@ -588,6 +589,8 @@ class GameClient:
                 n += 1
         elif opcode == 0x56:                      # van tieu (escort) panel/status
             self._on_vantieu(pkt)
+        elif opcode == 0x1f and pkt[7:9] == b"\x06\x00":  # list pet KHO (vận tiêu) luc login
+            self._on_vantieu_roster(pkt)
         elif opcode == 0x1a and len(pkt) >= 13:   # currency: [id 2B][val 4B]
             sid = int.from_bytes(pkt[7:9], "little")
             if sid == 4:                          # id=4 -> so XU hien co
@@ -1269,17 +1272,42 @@ class GameClient:
                 self.vantieu_slots[slot] = {"end": end_ole, "pet": pet}
             off += 21
 
+    def _on_vantieu_roster(self, pkt: bytes):
+        """S2C 0x1f sub=0600: list pet KHO dung de van tieu (gui luc login).
+        Entry: [index 1B][11B: ?+pet_id+stats][ten UTF-16LE][null 0000]. index = chi so gui 0x56 0200."""
+        b = pkt[7:]
+        roster, pos = {}, 2
+        while pos + 13 < len(b):
+            index = b[pos]
+            npos = pos + 13
+            end = npos
+            while end + 1 < len(b) and b[end:end + 2] != b"\x00\x00":
+                end += 2
+            try:
+                name = b[npos:end].decode("utf-16-le")
+            except Exception:
+                name = ""
+            if name and 1 <= index <= 30 and all(0x20 <= ord(c) for c in name):
+                roster[index] = name
+                pos = end + 2
+            else:
+                pos += 1
+        if roster:
+            self.vantieu_roster = roster
+            log.info("[%s] Van tieu roster (kho): %s", self._label,
+                     {i: roster[i] for i in sorted(roster)})
+
     @staticmethod
     def _ole_to_dt(ole):
         import datetime
         return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=ole)
 
-    def _match_vantieu_pet(self, names, used, req):
-        """Chon inn index (1-based) KHOP 'req' (he,doanh) nhat trong cac con CON TRONG.
+    def _match_vantieu_pet(self, cands, used, req):
+        """cands = list (inn_index, ten_pet). Chon con KHOP 'req' (he,doanh) nhat trong con CON TRONG.
         Score: dung ca he+doanh=2, dung 1=1, ko khop=0 (van gui de duoc qua co ban).
-        None = het con trong. (req luon DA BIET - ma la xu ly o do_van_tieu.)"""
+        Tra ve inn_index, None = het con trong. (req luon DA BIET - ma la xu ly o do_van_tieu.)"""
         best, best_score, best_nm, best_hd = None, -1, None, None
-        for idx, nm in enumerate(names, 1):
+        for idx, nm in cands:
             if idx in used:
                 continue
             hd = config.PET_HEDOANH.get(nm, {})
@@ -1320,8 +1348,13 @@ class GameClient:
                 log.info("[%s] Van tieu: nhan qua slot %d (da xong)", self._label, slot)
         # 2) GUI pet moi: CHI vao slot DA MO (1..vantieu_unlocked, KHONG tu unlock = ton vang)
         #    va trong gioi han luot/ngay (vantieu_max). slot dang chay -> bo qua.
-        names = list(getattr(config, "VANTIEU_PETS_NAMES", []) or [])
-        smart = bool(names) and bool(getattr(config, "VANTIEU_REQUESTS", {}))
+        # cands = list (inn_index, ten_pet) de match. Uu tien ROSTER tu server (0x1f, AUTO);
+        # khong co thi dung config VANTIEU_PETS_NAMES (theo thu tu slot).
+        if self.vantieu_roster:
+            cands = [(i, self.vantieu_roster[i]) for i in sorted(self.vantieu_roster)]
+        else:
+            cands = [(i + 1, nm) for i, nm in enumerate(getattr(config, "VANTIEU_PETS_NAMES", []) or [])]
+        smart = bool(cands) and bool(getattr(config, "VANTIEU_REQUESTS", {}))
         if pets or smart:
             daily_cap = self.vantieu_max or 3
             unlocked = self.vantieu_unlocked or 1
@@ -1342,7 +1375,7 @@ class GameClient:
                                     "KHONG gui. Mo panel van tieu acc nay xem he/doanh roi them vao "
                                     "vantieu_requests.json.", self._label, self.vantieu_req_code)
                         break
-                    pet = self._match_vantieu_pet(names, used, req)
+                    pet = self._match_vantieu_pet(cands, used, req)
                     if pet is None:            # het con trong
                         break
                 else:                          # gui theo index co dinh (VANTIEU_PETS)
