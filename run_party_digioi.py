@@ -409,9 +409,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         log.info("[%s] (LEADER) BOT TU CHON diem quai (ngau nhien) -> %s", label, spot)
                     else:
                         spot = mobs[mob_index] if 0 <= mob_index < len(mobs) else mobs[0]
-                    c.move_to(*spot)            # ra diem quai, dung cay (toa do == UI)
-                    c.combat_ready(); c.flee_mode = False
-                    log.info("[%s] (LEADER) ra diem quai %s dung cay.", label, spot)
+                    # navigate_to (nhieu buoc, ne battle doc duong) - KHONG dung move_to 1 lenh
+                    # (1 lenh ma dang battle thi bi ignore -> leader ket lai o safe, ko ra diem quai).
+                    c.navigate_to(*spot)        # ra diem quai (flee doc duong)
+                    c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
+                    log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
                 elif is_digioi:
                     c.combat_ready(); c.flee_mode = False
                     c.start_run_around()        # DG: chay long vong tim quai
