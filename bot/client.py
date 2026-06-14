@@ -1354,6 +1354,9 @@ class GameClient:
             cands = [(i, self.vantieu_roster[i]) for i in sorted(self.vantieu_roster)]
         else:
             cands = [(i + 1, nm) for i, nm in enumerate(getattr(config, "VANTIEU_PETS_NAMES", []) or [])]
+        # Smart match: 0400 = ma yeu cau (ON DINH khi panel ALL-FREE 030000, khong co escort chay).
+        # Khi co escort chay (vantieu_slots khong rong), 0400 = token escort do, KHONG phai yeu cau
+        # slot trong -> do_van_tieu chi smart match khi vantieu_slots RONG (xem vong loop ben duoi).
         smart = bool(cands) and bool(getattr(config, "VANTIEU_REQUESTS", {}))
         if pets or smart:
             daily_cap = self.vantieu_max or 3
@@ -1363,21 +1366,22 @@ class GameClient:
             free_slots = [s for s in range(1, unlocked + 1) if s not in occupied]
             used, i = set(), 0
             while started < daily_cap and free_slots:
-                if smart:
-                    # TAM THOI CHI DUNG SLOT 1: smart match chi tin khi CHUA co escort nao chay
-                    # (0400 = yeu cau slot trong). Co escort chay -> 0400 khong phai slot trong ->
-                    # KHONG gui them (cho toi khi doc duoc yeu cau slot trong).
-                    if self.vantieu_slots:
-                        break
+                if smart and not self.vantieu_slots:
+                    # ALL-FREE (chua escort nao chay) -> 0400 = yeu cau slot trong, CHUAN -> smart match.
                     req = config.VANTIEU_REQUESTS.get(self.vantieu_req_code or "")
-                    if req is None:            # MA LA -> KHONG gui, giu yeu cau de m collect
-                        log.warning("[%s] Van tieu: MA YEU CAU LA '%s' (chua co trong bang) -> "
-                                    "KHONG gui. Mo panel van tieu acc nay xem he/doanh roi them vao "
-                                    "vantieu_requests.json.", self._label, self.vantieu_req_code)
-                        break
-                    pet = self._match_vantieu_pet(cands, used, req)
+                    if req is None:            # MA LA (hiem neu bang 20/20 du) -> GUI DAI con trong
+                        log.warning("[%s] Van tieu: ma yeu cau '%s' chua co trong bang -> gui dai con "
+                                    "trong. Mo panel xem he/doanh roi them vao vantieu_requests.json.",
+                                    self._label, self.vantieu_req_code)
+                        pet = next((idx for idx, _ in cands if idx not in used), None)
+                    else:
+                        pet = self._match_vantieu_pet(cands, used, req)
                     if pet is None:            # het con trong
                         break
+                elif smart:
+                    # Co escort chay -> 0400 = token escort do (KHONG phai yeu cau slot trong)
+                    # -> chua doc duoc yeu cau slot 2 -> DUNG (chi smart slot 1). Slot 2 to-do.
+                    break
                 else:                          # gui theo index co dinh (VANTIEU_PETS)
                     if i >= len(pets):
                         break
