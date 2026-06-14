@@ -459,6 +459,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         elif (not is_leader) and train_on_map and has_leader:
             c._wait_leader_on_stop = True
         while c.running:
+            # CHU PARTY da thoat (leader_gone) -> member cung THOAT theo (party tan, member o lai vo nghia)
+            if (not is_leader) and has_leader and st["leader_gone"].is_set():
+                log.info("[%s] (member) CHU PARTY da thoat -> member thoat theo", label)
+                _reason("chu party thoat -> member theo")
+                break
             if stop_ev is not None and stop_ev.is_set():
                 log.info("[%s] (%s) -> STOP tu GUI", label, role)
                 if is_leader:
