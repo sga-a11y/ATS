@@ -448,7 +448,12 @@ class GameClient:
             pkts, consumed = protocol.parse_stream(self.recv_buf)
             self.recv_buf = self.recv_buf[consumed:]
             for opcode, pkt in pkts:
-                self._dispatch(opcode, pkt)
+                try:
+                    self._dispatch(opcode, pkt)
+                except Exception as e:
+                    # 1 goi loi KHONG duoc lam chet recv thread / nuot cac goi sau trong batch
+                    # (vd response 0x57 nhan qua) -> bat rieng tung goi.
+                    log.warning("[%s] Loi xu ly goi 0x%02x (bo qua): %s", self._label, opcode, e)
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
