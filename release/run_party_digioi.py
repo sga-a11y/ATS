@@ -598,17 +598,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
-            # RE-ARM combat: dang o bai train ma >40s KHONG vao tran (co the mat combat-active
-            # sau khi KEO qua cong) -> gui lai combat_ready de quai aggro lai (khoi phai restart).
+            # KET o bai train >40s KHONG vao tran -> co the diem quai xau (khong co quai) HOAC
+            # mat combat-active sau khi keo qua cong. LEADER -> DOI diem quai khac + re-arm;
+            # member -> chi re-arm (member theo tran cua leader). Tu phuc hoi, khoi restart.
             if c.in_combat():
                 last_combat = time.time()
             should_fight = (training_started if is_leader else is_joined(pidx, c.self_entity))
             if (train_on_map and should_fight and not getattr(c, "flee_mode", False)
                     and time.time() - last_combat > 40 and time.time() - last_rearm > 40):
                 last_rearm = time.time()
-                log.info("[%s] (%s) >40s khong vao tran -> RE-ARM combat (quai aggro lai)", label, role)
-                try: c.combat_ready()
-                except Exception: pass
+                if is_leader and tm.get("mobs"):
+                    import random
+                    spot = random.choice(tm["mobs"])
+                    log.info("[%s] (LEADER) >40s khong vao tran -> DOI diem quai -> %s + re-arm", label, spot)
+                    try:
+                        c.move_to(*spot); time.sleep(0.5); c.combat_ready(); c.flee_mode = False
+                    except Exception: pass
+                else:
+                    log.info("[%s] (%s) >40s khong vao tran -> RE-ARM combat", label, role)
+                    try: c.combat_ready()
+                    except Exception: pass
             try:
                 c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
             except Exception as e:
