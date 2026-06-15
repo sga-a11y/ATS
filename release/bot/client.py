@@ -1680,13 +1680,20 @@ class GameClient:
         self.send(0x06, b"\x01\x00\x01" + struct.pack("<HH", x, y))
         self.pos = (x, y)
 
-    def navigate_to(self, x: int, y: int, moves_needed: int = 4, step: float = 2.5,
-                    max_iter: int = 60):
+    def navigate_to(self, x: int, y: int, moves_needed: int = None, step: float = 1.5,
+                    max_iter: int = 80):
         """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> BO CHAY (flee_mode) roi
-        di tiep. Coi nhu da toi sau 'moves_needed' BUOC DI (cong DON, KHONG reset khi battle) ->
-        bi quai danh giua duong van TIEP TUC ra safe, khong ket tai cho login.
-        Dung in_combat nguong NGAN (1.5s) -> battle vua xong la di luon (khong cho het 4s).
-        LUU Y: KHONG tu tat flee_mode - caller quan ly (flee suot tu login den khi vao train)."""
+        di tiep. game DI TUNG BUOC (move_to chi tien 1 doan ngan moi lan) -> diem XA can NHIEU buoc.
+        moves_needed=None -> tu tinh theo KHOANG CACH (tu self.pos): ~100px/buoc, clamp [4, 30].
+        (Truoc day cung 4 buoc -> diem xa khong toi -> ket giua duong, khong co quai.)
+        Dung in_combat nguong NGAN (1.5s). KHONG tu tat flee_mode - caller quan ly."""
+        import math
+        if moves_needed is None:
+            if self.pos:
+                dist = math.hypot(x - self.pos[0], y - self.pos[1])
+                moves_needed = max(4, min(30, int(dist / 100) + 2))
+            else:
+                moves_needed = 30   # khong biet vi tri (vd vua qua cong) -> di hao phong cho chac toi
         self.flee_mode = True
         moves = 0
         for _ in range(max_iter):
@@ -1881,6 +1888,7 @@ class GameClient:
                 return False
             if self.current_map is not None and self.current_map != start_map:
                 log.info("[%s] qua cong idx=%d -> map %s", self._label, idx, self.current_map)
+                self.pos = None   # qua cong -> vi tri cu vo nghia (map moi) -> navigate sau di hao phong
                 return True
             if self.in_combat(idle_secs=1.5):
                 time.sleep(0.5); continue
