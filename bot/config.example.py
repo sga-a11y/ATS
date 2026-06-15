@@ -63,6 +63,21 @@ def _load_train_maps():
         pass
     return out
 TRAIN_MAPS = _load_train_maps()
+def _load_map_gates(path=None):
+    """Doc map_gates.json -> {map_id:int -> [(x,y,to), ...]} (do thi cong di chuyen).
+    Khong co file/loi -> {}. Dung cho pathfind.find_path (auto di toi train map)."""
+    import json, os
+    f = path or os.path.join(os.path.dirname(__file__), os.pardir, "map_gates.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.get("maps", {}).items():
+            out[int(k)] = [(int(g["x"]), int(g["y"]), int(g["to"])) for g in v.get("gates", [])]
+    except Exception:
+        pass
+    return out
+MAP_GATES = _load_map_gates()
 START_CITY_FLAG = 2             # Ng.Thanh=2, Trac Quan=0, Cu Loc=3 (xem cities.json)
 CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)
 RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
