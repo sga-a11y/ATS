@@ -896,17 +896,11 @@ class ConfigDialog(tk.Toplevel):
         self._update_gl_btn()
 
         self.nb = ttk.Notebook(self); self.nb.pack(fill="both", expand=True, padx=6, pady=4)
-        self.frames = []
-        for party in (data.get("parties") or [{}]):
-            self._add_tab(party)
-        # LAZY: chi dung tab dang xem (tab khac dung khi bam vao) -> mo Setting nhanh du nhieu party
-        self.nb.bind("<<NotebookTabChanged>>", self._on_cfg_tab)
-        if self.frames:
-            sel = min(max(open_pidx, 0), len(self.frames) - 1)
-            self.nb.select(sel)
-            self._build_entry(self.frames[sel])
-            # PURE LAZY: tab khac dung khi bam vao (_on_cfg_tab). KHONG preload ngam vi
-            # dung 12 frame ngam (~1.5s) gay giat/cam giac "load lau". Build/click ~120ms = nhanh.
+        self.nb.bind("<<NotebookTabChanged>>", self._on_cfg_group_tab)
+        self.frames = []           # entries (theo thu tu pidx): {holder, preset, cfg, sub, gidx}
+        self.cfg_group_nb = {}     # gidx -> sub-Notebook
+        # GROUP -> party sub-tab (dong nhat voi GUI chinh). LAZY: party dung khi bam vao.
+        self._build_groups(data.get("parties") or [{}], open_pidx)
 
         bar = ttk.Frame(self, padding=6); bar.pack(fill="x")
         ttk.Button(bar, text="💾 Lưu", command=self._save).pack(side="right", padx=3)
@@ -919,11 +913,37 @@ class ConfigDialog(tk.Toplevel):
         except Exception:
             return {"channel": 2, "parties": []}
 
-    def _add_tab(self, party):
-        # LAZY: chi tao holder rong, PartyConfigFrame dung sau (khi tab duoc xem)
-        holder = ttk.Frame(self.nb)
-        self.nb.add(holder, text=f"Party {len(self.frames) + 1}")
-        self.frames.append({"holder": holder, "preset": party or {}, "cfg": None})
+    PARTIES_PER_GROUP = 10
+
+    def _build_groups(self, parties, focus_pidx=0):
+        import math
+        for t in self.nb.tabs():
+            self.nb.forget(t)
+        self.frames = []
+        self.cfg_group_nb = {}
+        n = len(parties)
+        n_groups = max(1, math.ceil(n / self.PARTIES_PER_GROUP))
+        gsize = math.ceil(n / n_groups)
+        for gidx in range(n_groups):
+            members = list(range(gidx * gsize, min((gidx + 1) * gsize, n)))
+            if not members:
+                continue
+            gtab = ttk.Frame(self.nb)
+            self.nb.add(gtab, text=f"Nhóm {gidx + 1} (P{members[0] + 1}-P{members[-1] + 1})")
+            sub = ttk.Notebook(gtab); sub.pack(fill="both", expand=True)
+            sub.bind("<<NotebookTabChanged>>", self._on_cfg_party_tab)
+            self.cfg_group_nb[gidx] = sub
+            for pidx in members:
+                holder = ttk.Frame(sub)
+                sub.add(holder, text=f"P{pidx + 1}")
+                self.frames.append({"holder": holder, "preset": parties[pidx] or {}, "cfg": None,
+                                    "sub": sub, "gidx": gidx})
+        if self.frames:
+            fp = min(max(focus_pidx, 0), len(self.frames) - 1)
+            e = self.frames[fp]
+            self.nb.select(e["gidx"])
+            e["sub"].select(e["holder"])
+            self._build_entry(e)
 
     def _build_entry(self, entry):
         if entry["cfg"] is None:
@@ -933,27 +953,59 @@ class ConfigDialog(tk.Toplevel):
             entry["cfg"] = cfg
         return entry["cfg"]
 
-    def _on_cfg_tab(self, event=None):
+    def _entry_of_sub(self, sub):
+        """entry cua party DANG CHON trong sub-Notebook sub (theo holder dang select)."""
         try:
-            i = self.nb.index(self.nb.select())
+            cur = sub.select()
+        except Exception:
+            return None
+        for e in self.frames:
+            if e["sub"] is sub and str(e["holder"]) == str(cur):
+                return e
+        return None
+
+    def _on_cfg_party_tab(self, event=None):
+        e = self._entry_of_sub(event.widget)
+        if e is not None:
+            self._build_entry(e)
+
+    def _on_cfg_group_tab(self, event=None):
+        try:
+            gidx = self.nb.index(self.nb.select())
         except Exception:
             return
-        if 0 <= i < len(self.frames):
-            self._build_entry(self.frames[i])
+        sub = self.cfg_group_nb.get(gidx)
+        if sub is not None:
+            e = self._entry_of_sub(sub)
+            if e is not None:
+                self._build_entry(e)
+
+    def _snapshot(self):
+        """Lay data hien tai cua tat ca party (built -> get_data; chua mo -> preset)."""
+        return [e["cfg"].get_data() if e["cfg"] is not None else e["preset"] for e in self.frames]
+
+    def _cur_party_index(self):
+        try:
+            gidx = self.nb.index(self.nb.select())
+            sub = self.cfg_group_nb.get(gidx)
+            e = self._entry_of_sub(sub)
+            if e is not None:
+                return self.frames.index(e)
+        except Exception:
+            pass
+        return 0
 
     def _add_party(self):
-        self._add_tab({})
-        i = len(self.frames) - 1
-        self.nb.select(i)
-        self._build_entry(self.frames[i])
+        parties = self._snapshot() + [{}]
+        self._build_groups(parties, len(parties) - 1)
 
     def _del_party(self):
         if len(self.frames) <= 1:
             return
-        i = self.nb.index(self.nb.select())
-        self.nb.forget(i); self.frames.pop(i)
-        for j, e in enumerate(self.frames):
-            self.nb.tab(e["holder"], text=f"Party {j + 1}")
+        cur = self._cur_party_index()
+        parties = self._snapshot()
+        del parties[cur]
+        self._build_groups(parties, min(cur, len(parties) - 1))
 
     def _update_gl_btn(self):
         n = len([x for x in self.gleaders_var.get().split(",") if x.strip()])
@@ -991,15 +1043,10 @@ class ConfigDialog(tk.Toplevel):
             ch = int(self.ch_var.get().strip() or 2)
         except ValueError:
             messagebox.showerror("Lỗi", "Kênh phải là số."); return
-        # tab party DANG SUA trong dialog -> de quay ve dung tab do o GUI chinh sau khi luu
-        try:
-            cur_pidx = self.nb.index(self.nb.select())
-        except Exception:
-            cur_pidx = 0
+        # party DANG SUA -> de quay ve dung tab do o GUI chinh sau khi luu
+        cur_pidx = self._cur_party_index()
         # tab DA mo (cfg dung) -> lay tu UI; tab CHUA mo -> giu nguyen preset (khong sua)
-        parties = [e["cfg"].get_data() if e["cfg"] is not None else e["preset"]
-                   for e in self.frames]
-        parties = [p for p in parties if p.get("accounts")]   # bo party rong
+        parties = [p for p in self._snapshot() if p.get("accounts")]   # bo party rong
         # CAP 5: party game toi da 5 (1 leader + 4 member). Dem acc DANG TICK (on) co user.
         for i, p in enumerate(parties):
             n_on = sum(1 for a in p["accounts"] if a.get("on", True) and a.get("u", "").strip())
@@ -1015,11 +1062,15 @@ class ConfigDialog(tk.Toplevel):
         self.destroy()
         if hasattr(master, "reload_config"):
             master.reload_config()   # tu nap lai - khong can dong app
-        # chuyen GUI chinh ve tab party vua sua
+        # chuyen GUI chinh ve dung party (group + sub-tab) vua sua
         try:
-            tabs = master.nb.tabs()
-            if tabs:
-                master.nb.select(min(max(cur_pidx, 0), len(tabs) - 1))
+            gidx = master.group_of.get(cur_pidx)
+            if gidx is not None:
+                master.nb.select(master.group_frames[gidx])
+                sub = master.group_nb.get(gidx)
+                subf = master.party_subframes.get(cur_pidx)
+                if sub is not None and subf is not None:
+                    sub.select(subf)
         except Exception:
             pass
 
