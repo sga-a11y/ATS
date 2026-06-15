@@ -128,55 +128,96 @@ class BotGUI(tk.Tk):
         self.party_trees = {}   # pidx -> Treeview
         self._populate_tabs()
 
+    _COLS = ("acc", "char", "role", "run", "map", "ch", "party", "dg", "combat")
+    _HEADS = {"acc": "Tài khoản", "char": "Nhân vật", "role": "Vai trò", "run": "Trạng thái",
+              "map": "Map", "ch": "Kênh", "party": "Trong PT", "dg": "DG còn", "combat": "Đánh"}
+    _WIDTHS = {"acc": 90, "char": 110, "role": 70, "run": 90, "map": 130, "ch": 50,
+               "party": 70, "dg": 70, "combat": 55}
+    PARTIES_PER_GROUP = 10   # 1-10 party = 1 tab; 11-20 = 2 tab; ... 91-100 = 10 tab
+
     def _populate_tabs(self):
-        # xoa tab cu (dung khi reload config) roi dung lai theo config moi
+        import math
         for tab in self.nb.tabs():
             self.nb.forget(tab)
-        self.party_trees = {}
-        self.party_frames = {}   # pidx -> frame (de cap nhat cham trang thai)
-        cols = ("acc", "char", "role", "run", "map", "ch", "party", "dg", "combat")
-        heads = {"acc": "Tài khoản", "char": "Nhân vật", "role": "Vai trò", "run": "Trạng thái",
-                 "map": "Map", "ch": "Kênh", "party": "Trong PT", "dg": "DG còn", "combat": "Đánh"}
-        widths = {"acc": 90, "char": 110, "role": 70, "run": 90, "map": 130, "ch": 50,
-                  "party": 70, "dg": 70, "combat": 55}
-        for pidx in range(len(config.PARTIES)):
-            accs = ctrl.party_accounts(pidx)
-            if not accs:
+        self.party_trees = {}     # pidx -> Treeview
+        self.party_dots = {}      # pidx -> Label (cham trang thai tung party)
+        self.group_frames = {}    # gidx -> group tab frame (cham trang thai group)
+        self.group_of = {}        # pidx -> gidx
+        self.group_first = {}     # gidx -> pidx dau (de double-click mo config)
+        eligible = [p for p in range(len(config.PARTIES)) if ctrl.party_accounts(p)]
+        n = len(eligible)
+        if n == 0:
+            return
+        n_groups = max(1, math.ceil(n / self.PARTIES_PER_GROUP))
+        gsize = math.ceil(n / n_groups)   # chia DEU cac party vao group
+        for gidx in range(n_groups):
+            members = eligible[gidx * gsize:(gidx + 1) * gsize]
+            if not members:
                 continue
-            frame = ttk.Frame(self.nb, padding=4)
-            pmode = config.PARTY_CONFIG.get(pidx, {}).get("mode", "?")
-            mlbl = {"digioi": "Dị Giới", "train": "Train map", "city": "Về thành",
-                    "stand": "Đứng yên", "cleanbag": "Dọn túi"}.get(pmode, pmode)
-            self.nb.add(frame, text=f"P{pidx + 1} · {mlbl} ({len(accs)})",
-                        image=self._dot_off, compound="left")   # cham trang thai (xam/xanh)
-            self.party_frames[pidx] = frame
-            btns = ttk.Frame(frame); btns.pack(fill="x", pady=(0, 4))
-            ttk.Button(btns, text="▶ Start party",
-                       command=lambda p=pidx: self._start_party(p)).pack(side="left", padx=2)
-            ttk.Button(btns, text="■ Stop party",
-                       command=lambda p=pidx: self._stop_party(p)).pack(side="left", padx=2)
-            ttk.Separator(btns, orient="vertical").pack(side="left", fill="y", padx=6)
-            ttk.Button(btns, text="▶ Start acc chọn",
-                       command=lambda p=pidx: self._start_sel(p)).pack(side="left", padx=2)
-            ttk.Button(btns, text="■ Stop acc chọn",
-                       command=lambda p=pidx: self._stop_sel(p)).pack(side="left", padx=2)
-            ttk.Separator(btns, orient="vertical").pack(side="left", fill="y", padx=6)
-            ttk.Button(btns, text="🎟 Nhập giftcode",
-                       command=lambda p=pidx: self._redeem_giftcode(p)).pack(side="left", padx=2)
-            tree = ttk.Treeview(frame, columns=cols, show="headings", height=max(len(accs), 3))
-            for c in cols:
-                tree.heading(c, text=heads[c]); tree.column(c, width=widths[c], anchor="center")
-            tree.column("acc", anchor="w"); tree.column("char", anchor="w")
-            tree.tag_configure("on", foreground="#0a0")
-            tree.tag_configure("off", foreground="#999")
-            tree.tag_configure("qs", foreground="#c25e00")   # quan su - cam noi bat
-            tree.bind("<<TreeviewSelect>>", lambda e, p=pidx: self._on_acc_select(p))
-            tree.pack(fill="x", expand=False)
-            for (u, p, is_leader, is_picker) in accs:
-                role = "LEADER" if is_leader else ("picker" if is_picker else "member")
-                tree.insert("", "end", iid=u, values=(u, "", role, "Tắt", "-", "-", "-", "-", "-"),
-                            tags=("off",))
-            self.party_trees[pidx] = tree
+            gtab = ttk.Frame(self.nb)
+            self.nb.add(gtab, text=f"Nhóm {gidx + 1} (P{members[0] + 1}-P{members[-1] + 1})",
+                        image=self._dot_off, compound="left")
+            self.group_frames[gidx] = gtab
+            self.group_first[gidx] = members[0]
+            # vung CUON chua cac party trong group
+            canvas = tk.Canvas(gtab, highlightthickness=0)
+            sb = ttk.Scrollbar(gtab, orient="vertical", command=canvas.yview)
+            inner = ttk.Frame(canvas)
+            inner.bind("<Configure>", lambda e, c=canvas: c.configure(scrollregion=c.bbox("all")))
+            canvas.create_window((0, 0), window=inner, anchor="nw")
+            canvas.configure(yscrollcommand=sb.set)
+            canvas.pack(side="left", fill="both", expand=True)
+            sb.pack(side="right", fill="y")
+            # cuon chuot khi tro vao vung group
+            canvas.bind("<Enter>", lambda e, c=canvas: c.bind_all(
+                "<MouseWheel>", lambda ev, cc=c: cc.yview_scroll(int(-ev.delta / 120), "units")))
+            canvas.bind("<Leave>", lambda e, c=canvas: c.unbind_all("<MouseWheel>"))
+            for pidx in members:
+                self.group_of[pidx] = gidx
+                self._build_party_section(inner, pidx)
+
+    def _build_party_section(self, parent, pidx):
+        accs = ctrl.party_accounts(pidx)
+        pmode = config.PARTY_CONFIG.get(pidx, {}).get("mode", "?")
+        mlbl = {"digioi": "Dị Giới", "train": "Train map", "city": "Về thành",
+                "stand": "Đứng yên", "cleanbag": "Dọn túi"}.get(pmode, pmode)
+        sec = ttk.Frame(parent, padding=(2, 4)); sec.pack(fill="x", expand=False, pady=(0, 6))
+        # header: dot + ten party (click -> loc log party do) + nut
+        hdr = ttk.Frame(sec); hdr.pack(fill="x")
+        dot = tk.Label(hdr, image=self._dot_off); dot.pack(side="left", padx=(0, 3))
+        self.party_dots[pidx] = dot
+        lbl = ttk.Label(hdr, text=f"P{pidx + 1} · {mlbl} ({len(accs)})", font=("", 10, "bold"),
+                        cursor="hand2")
+        lbl.pack(side="left", padx=(0, 8))
+        lbl.bind("<Button-1>", lambda e, p=pidx: self._filter_party(p))
+        ttk.Button(hdr, text="▶ Start", width=7,
+                   command=lambda p=pidx: self._start_party(p)).pack(side="left", padx=1)
+        ttk.Button(hdr, text="■ Stop", width=7,
+                   command=lambda p=pidx: self._stop_party(p)).pack(side="left", padx=1)
+        ttk.Button(hdr, text="▶ Acc chọn", width=9,
+                   command=lambda p=pidx: self._start_sel(p)).pack(side="left", padx=1)
+        ttk.Button(hdr, text="■ Acc chọn", width=9,
+                   command=lambda p=pidx: self._stop_sel(p)).pack(side="left", padx=1)
+        ttk.Button(hdr, text="🎟 Code", width=7,
+                   command=lambda p=pidx: self._redeem_giftcode(p)).pack(side="left", padx=1)
+        tree = ttk.Treeview(sec, columns=self._COLS, show="headings", height=max(len(accs), 2))
+        for col in self._COLS:
+            tree.heading(col, text=self._HEADS[col]); tree.column(col, width=self._WIDTHS[col], anchor="center")
+        tree.column("acc", anchor="w"); tree.column("char", anchor="w")
+        tree.tag_configure("on", foreground="#0a0")
+        tree.tag_configure("off", foreground="#999")
+        tree.tag_configure("qs", foreground="#c25e00")
+        tree.bind("<<TreeviewSelect>>", lambda e, p=pidx: self._on_acc_select(p))
+        tree.pack(fill="x", expand=False)
+        for (u, p, is_leader, is_picker) in accs:
+            role = "LEADER" if is_leader else ("picker" if is_picker else "member")
+            tree.insert("", "end", iid=u, values=(u, "", role, "Tắt", "-", "-", "-", "-", "-"),
+                        tags=("off",))
+        self.party_trees[pidx] = tree
+
+    def _filter_party(self, pidx):
+        users = set(u for (u, *_ ) in ctrl.party_accounts(pidx))
+        self._set_log_filter(users, f"Party {pidx + 1}")
 
     # ---- log panel ----
     def _build_log(self):
@@ -226,11 +267,15 @@ class BotGUI(tk.Tk):
 
     def _on_tab_changed(self, _e=None):
         try:
-            pidx = self.nb.index(self.nb.select())
+            gidx = self.nb.index(self.nb.select())
         except Exception:
             return
-        users = set(u for (u, *_ ) in ctrl.party_accounts(pidx))
-        self._set_log_filter(users, f"Party {pidx + 1}")
+        # loc log theo CA GROUP (tat ca party trong group tab dang chon)
+        users = set()
+        parties = [p for p, g in getattr(self, "group_of", {}).items() if g == gidx]
+        for p in parties:
+            users |= set(u for (u, *_ ) in ctrl.party_accounts(p))
+        self._set_log_filter(users, f"Nhóm {gidx + 1}")
 
     def _on_acc_select(self, pidx):
         tree = self.party_trees.get(pidx)
@@ -304,6 +349,7 @@ class BotGUI(tk.Tk):
         for u, c in list(ctrl.account_clients.items()):
             if c is not None and c.char_name:
                 self._char2user[c.char_name] = u
+        running_groups = set()
         for pidx, tree in self.party_trees.items():
             any_running = False
             for (u, p, is_leader, is_picker) in ctrl.party_accounts(pidx):
@@ -329,13 +375,18 @@ class BotGUI(tk.Tk):
                                      "✔" if s["in_party"] else "-", dg,
                                      "⚔" if s["combat"] else "-"),
                           tags=(tag,))
-            # cap nhat cham trang thai tab: xanh neu co >=1 acc chay, xam neu khong
-            frame = self.party_frames.get(pidx)
-            if frame is not None:
-                try:
-                    self.nb.tab(frame, image=self._dot_on if any_running else self._dot_off)
-                except Exception:
-                    pass
+            # cham trang thai TUNG PARTY (trong group): xanh neu co >=1 acc chay
+            dot = self.party_dots.get(pidx)
+            if dot is not None:
+                dot.configure(image=self._dot_on if any_running else self._dot_off)
+            if any_running:
+                running_groups.add(self.group_of.get(pidx))
+        # cham trang thai TUNG GROUP TAB: xanh neu group co >=1 acc chay
+        for gidx, gframe in self.group_frames.items():
+            try:
+                self.nb.tab(gframe, image=self._dot_on if gidx in running_groups else self._dot_off)
+            except Exception:
+                pass
         self.after(1500, self._refresh)
 
     def _drain_log(self):
@@ -360,20 +411,20 @@ class BotGUI(tk.Tk):
 
     # ---- config editor ----
     def _on_tab_dblclick(self, event):
-        # double-click LEN TAB nao -> mo Setting cua party do luon
+        # double-click LEN GROUP TAB nao -> mo Setting o party DAU cua group do
         try:
-            idx = self.nb.index("@%d,%d" % (event.x, event.y))
+            gidx = self.nb.index("@%d,%d" % (event.x, event.y))
         except Exception:
             return   # double-click ngoai vung tab header -> bo qua
-        ConfigDialog(self, open_pidx=idx)
+        ConfigDialog(self, open_pidx=self.group_first.get(gidx, 0))
 
     def _open_config(self):
-        # mo Setting o dung tab party DANG CHON (thay vi mac dinh party 1)
+        # mo Setting o party DAU cua group dang chon
         try:
-            cur = self.nb.index(self.nb.select())
+            gidx = self.nb.index(self.nb.select())
         except Exception:
-            cur = 0
-        ConfigDialog(self, open_pidx=cur)
+            gidx = 0
+        ConfigDialog(self, open_pidx=self.group_first.get(gidx, 0))
 
     def reload_config(self):
         """Nap lai accounts.json + dung lai tab. TU STOP acc nao config (mode/map) bi DOI
