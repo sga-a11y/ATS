@@ -1710,6 +1710,25 @@ class GameClient:
         self.pos = (x, y)
         log.info("[%s] da toi diem (%d,%d) sau %d buoc", self._label, x, y, moves)
 
+    def follow_path(self, waypoints, step: float = 1.0):
+        """Di bo theo CHUOI WAYPOINT (capture duong di THAT trong map) toi diem quai xa.
+        Moi waypoint move_to + cho step giay; dinh battle -> cho flee xong roi di tiep.
+        Dung khi navigate thang KHONG toi duoc (dia hinh/cap khoang cach). Replay tung buoc nho."""
+        if not waypoints:
+            return
+        self.flee_mode = True
+        log.info("[%s] follow_path: %d waypoint -> (%s)", self._label, len(waypoints), waypoints[-1])
+        for wx, wy in waypoints:
+            if not self.running:
+                return
+            tries = 0
+            while self.in_combat(idle_secs=1.5) and tries < 30:
+                time.sleep(0.5); tries += 1
+            self.move_to(int(wx), int(wy))
+            time.sleep(step)
+        self.pos = tuple(waypoints[-1])
+        log.info("[%s] follow_path xong -> %s", self._label, self.pos)
+
     def in_di_gioi(self) -> bool:
         """Dang o map Di Gioi? Doc map_id thuc te (khong dua vao so kenh)."""
         return self.current_map == config.DIGIOI_MAP_ID

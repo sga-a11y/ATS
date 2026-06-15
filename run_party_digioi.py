@@ -390,14 +390,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 else:
                     spot = mobs[mob_index] if (mobs and 0 <= mob_index < len(mobs)) else (mobs[0] if mobs else None)
                 st["mob_spot"] = spot
-                st["rally_point"] = _nearest_safe(spot, tm["safe"]) if spot else tm["safe"][0]
+                # CO PATH capture (diem quai XA) -> ca party di theo path toi spot; KHONG -> ve safe gan
+                path = getattr(config, "MOB_PATHS", {}).get(sc, {}).get(tuple(spot)) if spot else None
+                st["mob_path"] = path
+                st["rally_point"] = (tuple(spot) if path else
+                                     (_nearest_safe(spot, tm["safe"]) if spot else tm["safe"][0]))
                 st["rally_ready"].set()
-            # member: cho leader chon (rally_point); khong co leader -> safe[0]
+            # member: cho leader chon (rally_point/path); khong co leader -> safe[0]
             if has_leader and not is_leader:
                 st["rally_ready"].wait(60)
-            rally = st.get("rally_point") or tm["safe"][0]
-            log.info("[%s] (%s) MAP-TRAIN map=%s -> ve safe tap ket chung %s", label, role, sc, rally)
-            c.navigate_to(*rally)
+            path = st.get("mob_path")
+            if path:
+                log.info("[%s] (%s) MAP-TRAIN map=%s -> di theo PATH capture toi diem quai (%d buoc)",
+                         label, role, sc, len(path))
+                c.follow_path(path)
+            else:
+                rally = st.get("rally_point") or tm["safe"][0]
+                log.info("[%s] (%s) MAP-TRAIN map=%s -> ve safe tap ket chung %s", label, role, sc, rally)
+                c.navigate_to(*rally)
             # SOLO daily dungeon o MAP-TRAIN: TAM TAT (het luot -> bi dump ve 12000, pha map-train;
             # Bat/tat bang checkbox "Danh daily dungeon" cua party (do_dungeon).
             # via_route -> da danh dungeon o thanh roi, BO QUA (khoi pha map-train + cho barrier).
@@ -527,8 +537,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     if not spot and tm["mobs"]:
                         import random
                         spot = random.choice(tm["mobs"])
-                    if spot:
-                        # leader DA o safe gan spot -> ra thang diem quai (buoc cuoi ngan)
+                    if spot and not st.get("mob_path"):
+                        # khong path -> leader o safe gan -> ra diem quai. CO path -> da o spot roi.
                         c.navigate_to(*spot)
                     c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
                     log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
@@ -805,6 +815,7 @@ def start_party(pidx, stagger=1.5):
         st[k].clear()
     st["mob_spot"] = None
     st["rally_point"] = None
+    st["mob_path"] = None
     st["channel"] = None
     with st["lock"]:
         st["ready_members"].clear()

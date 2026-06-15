@@ -93,6 +93,25 @@ def _load_train_routes(path=None):
         pass
     return out
 TRAIN_ROUTES = _load_train_routes()
+def _load_mob_paths(path=None):
+    """Doc mob_paths.json -> {map_id:int -> {(sx,sy):tuple -> [(x,y),...]}}.
+    Duong di bo TRONG map toi diem quai XA (capture) - bot replay thay navigate thang."""
+    import json, os
+    f = path or os.path.join(os.path.dirname(__file__), os.pardir, "mob_paths.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for mk, spots in d.get("maps", {}).items():
+            mp = {}
+            for sk, wps in spots.items():
+                sx, sy = (int(v) for v in sk.split(","))
+                mp[(sx, sy)] = [(int(p[0]), int(p[1])) for p in wps]
+            out[int(mk)] = mp
+    except Exception:
+        pass
+    return out
+MOB_PATHS = _load_mob_paths()
 START_CITY_FLAG = 2             # Ng.Thanh=2, Trac Quan=0, Cu Loc=3 (xem cities.json)
 CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)
 RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
