@@ -279,11 +279,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                              label, role, fc, sc)
                     c.flee_mode = True
                     if fc and c.go_to_town(fc, ff):
+                        # DANH DUNGEON NGAY TAI THANH (solo, khong can party) -> khoi phai keo
+                        # toi bai roi moi pha party danh dungeon roi gom lai. Dungeon co the dump
+                        # ve 12000 -> teleport ve thanh lai roi moi gom party.
+                        if do_dungeon:
+                            try:
+                                c.do_daily_dungeon()
+                            except Exception as e:
+                                log.warning("[%s] loi dungeon (route, bo qua): %s", label, e)
+                            if c.current_map != fc:
+                                log.info("[%s] (%s) sau dungeon o map %s -> teleport ve thanh %s lai",
+                                         label, role, c.current_map, fc)
+                                c.go_to_town(fc, ff)
                         do_channel_sync()   # dong bo kenh TAI THANH (de moi/keo duoc)
                         from bot.client import joined_member_count
                         if is_leader:
-                            # 1) cho member ve thanh + san sang
-                            for _ in range(90):
+                            # 1) cho member ve thanh + san sang (member danh dungeon truoc -> cho lau hon)
+                            for _ in range(180):   # ~360s du cho member xong dungeon
                                 if _stopped(): break
                                 if len(st["ready_members"]) >= st["n_members"]: break
                                 time.sleep(2)
@@ -314,7 +326,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         else:
                             # member: bao san sang o thanh; auto-accept loi moi; roi CHO bi keo toi train map
                             with st["lock"]: st["ready_members"].add(username)
-                            st["route_party_ready"].wait(180)
+                            st["route_party_ready"].wait(360)   # cho leader gom du party (member khac con dungeon)
                             t0 = time.time()
                             while not st["route_done"].is_set() and time.time() - t0 < 240:
                                 if _stopped(): break
