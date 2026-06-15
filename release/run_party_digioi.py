@@ -247,6 +247,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     log.info("[%s] (member) chuyen sang kenh chung = %s", label, ch)
                 time.sleep(2)
 
+        via_route = False   # True neu toi train map bang KEO PARTY -> da cung kenh + da danh dungeon o thanh
         if train_on_map:
             # PHAI dung map login (toa do safe/mobs chi dung tren map do).
             self_map_ok = (login_map == sc)
@@ -322,6 +323,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             st["route_done"].set()
                             if c.current_map == sc:
                                 self_map_ok = True; login_map = sc
+                                via_route = True
                                 log.info("[%s] (LEADER) da KEO party toi train map %s", label, sc)
                         else:
                             # member: bao san sang o thanh; auto-accept loi moi; roi CHO bi keo toi train map
@@ -335,7 +337,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                                 if c.current_map == sc or _stopped(): break
                                 time.sleep(1)
                             if c.current_map == sc:
-                                self_map_ok = True; login_map = sc
+                                self_map_ok = True; login_map = sc; via_route = True
                                 log.info("[%s] (member) da bi KEO toi train map %s", label, sc)
                     # reset ready_members de flow train ben duoi dung lai tu dau
                     with st["lock"]: st["ready_members"].discard(username)
@@ -382,7 +384,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             c.navigate_to(*rally)
             # SOLO daily dungeon o MAP-TRAIN: TAM TAT (het luot -> bi dump ve 12000, pha map-train;
             # Bat/tat bang checkbox "Danh daily dungeon" cua party (do_dungeon).
-            if do_dungeon:
+            # via_route -> da danh dungeon o thanh roi, BO QUA (khoi pha map-train + cho barrier).
+            if do_dungeon and not via_route:
                 with st["lock"]:
                     st["started_train"] += 1
                 try:
@@ -412,7 +415,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             break
                     time.sleep(1)
                 log.info("[%s] (%s) ca party xong dungeon", label, role)
-            do_channel_sync()   # map-train: dong bo kenh sau khi ve safe (tren map thuong)
+            if not via_route:   # via_route -> ca party da cung kenh (di theo) -> khoi sync lai
+                do_channel_sync()   # map-train: dong bo kenh sau khi ve safe (tren map thuong)
         elif is_digioi:
             # --- DI GIOI ---
             # 0) PRE-CHECK: doc so phut DG hom nay tu BANG STAT login (0x55 id=0x1b).
@@ -469,29 +473,34 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
 
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
         if is_leader:
-            for _ in range(90):   # ~180s: du cho member xong dungeon + ve diem tap ket
-                if _stopped(): st["stop_leader_done"].set(); c.close(); return
-                if len(st["ready_members"]) >= st["n_members"]:
-                    break
-                time.sleep(2)
-            log.info("[%s] (LEADER) %d/%d member san sang -> MOI (theo entity)",
-                     label, len(st["ready_members"]), st["n_members"])
             from bot.client import joined_member_count
-            for r in range(6):
-                if _stopped(): st["stop_leader_done"].set(); c.close(); return
-                c.invite_members(gap=1.0)
-                st["invited"].set()
-                time.sleep(4)
-                njoined = joined_member_count(pidx)
-                log.info("[%s] (LEADER) sau moi lan %d: joined=%d/%d",
-                         label, r + 1, njoined, st["n_members"])
-                if njoined >= st["n_members"]:
-                    log.info("[%s] (LEADER) DU PARTY (%d member join)", label, njoined)
-                    break
-                time.sleep(2)
+            if via_route:
+                # toi train map THEO PARTY (da lap party + cung kenh o thanh) -> KHOI moi lai
+                st["invited"].set()   # bao member khoi cho moi
+                log.info("[%s] (LEADER) toi train map theo party (da partied) -> bo qua moi lai", label)
             else:
-                log.warning("[%s] (LEADER) chua du member (%d/%d)",
-                            label, joined_member_count(pidx), st["n_members"])
+                for _ in range(90):   # ~180s: du cho member xong dungeon + ve diem tap ket
+                    if _stopped(): st["stop_leader_done"].set(); c.close(); return
+                    if len(st["ready_members"]) >= st["n_members"]:
+                        break
+                    time.sleep(2)
+                log.info("[%s] (LEADER) %d/%d member san sang -> MOI (theo entity)",
+                         label, len(st["ready_members"]), st["n_members"])
+                for r in range(6):
+                    if _stopped(): st["stop_leader_done"].set(); c.close(); return
+                    c.invite_members(gap=1.0)
+                    st["invited"].set()
+                    time.sleep(4)
+                    njoined = joined_member_count(pidx)
+                    log.info("[%s] (LEADER) sau moi lan %d: joined=%d/%d",
+                             label, r + 1, njoined, st["n_members"])
+                    if njoined >= st["n_members"]:
+                        log.info("[%s] (LEADER) DU PARTY (%d member join)", label, njoined)
+                        break
+                    time.sleep(2)
+                else:
+                    log.warning("[%s] (LEADER) chua du member (%d/%d)",
+                                label, joined_member_count(pidx), st["n_members"])
             # Bat dau train (set QS + ra cho danh). Goi khi DA co >=1 member (du quan su).
             training_started = False
             def _start_training():
