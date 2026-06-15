@@ -620,22 +620,28 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 last_combat = time.time()
             should_fight = (training_started if is_leader else is_joined(pidx, c.self_entity))
             if (train_on_map and should_fight and not getattr(c, "flee_mode", False)
-                    and time.time() - last_combat > 40 and time.time() - last_rearm > 40):
+                    and time.time() - last_combat > 18 and time.time() - last_rearm > 18):
                 last_rearm = time.time()
-                if is_leader and tm.get("mobs"):
-                    import random
-                    rp = st.get("rally_point") or tm["safe"][0]
-                    # uu tien diem quai CUNG safe voi member (rally_point) -> leader gan member
-                    near_mobs = [m for m in tm["mobs"]
-                                 if tuple(_nearest_safe(m, tm["safe"])) == tuple(rp)]
-                    spot = random.choice(near_mobs or tm["mobs"])
-                    log.info("[%s] (LEADER) >40s khong vao tran -> DOI diem quai -> %s + re-arm", label, spot)
-                    try:
-                        st["mob_spot"] = spot
-                        c.navigate_to(*spot); c.combat_ready(); c.flee_mode = False
-                    except Exception: pass
+                if is_leader:
+                    # Quai khong tu aggro (vd keo qua cong) -> DI LONG VONG quanh diem quai de GIAM
+                    # vao quai -> CHU DONG khoi tran (khoi can quai aggro). Giam buoc nho quanh spot.
+                    spot = st.get("mob_spot")
+                    if not spot and tm.get("mobs"):
+                        import random
+                        spot = random.choice(tm["mobs"])
+                    if spot:
+                        log.info("[%s] (LEADER) %ds khong vao tran -> DI LONG VONG quanh %s de giam quai",
+                                 label, 18, spot)
+                        try:
+                            c.flee_mode = False
+                            for ox, oy in [(0, 0), (70, 0), (0, 70), (-70, 0), (0, -70),
+                                           (70, 70), (-70, -70), (0, 0)]:
+                                if not c.running or c.in_combat(idle_secs=1.0):
+                                    break
+                                c.move_to(spot[0] + ox, spot[1] + oy); time.sleep(1.2)
+                            c.combat_ready()
+                        except Exception: pass
                 else:
-                    log.info("[%s] (%s) >40s khong vao tran -> RE-ARM combat", label, role)
                     try: c.combat_ready()
                     except Exception: pass
             # DISPLACED: dang train ma BI VAN khoi train map (chet -> hoi sinh ve thanh, hoac bi
