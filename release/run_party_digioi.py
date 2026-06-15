@@ -96,6 +96,8 @@ def _pstate(pidx):
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
                               "stop_leader_done": threading.Event(),  # STOP: leader DA ve safe -> member duoc thoat
+                              "route_party_ready": threading.Event(),  # ROUTE: party da lap xong o thanh -> sap keo di
+                              "route_done": threading.Event(),         # ROUTE: leader da keo xong (toi train map)
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
@@ -244,20 +246,64 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     except Exception as e:
                         log.warning("[%s] loi daily dungeon (sai map, bo qua): %s", label, e)
                 _quit()
-            # SAI MAP nhung CO ROUTE dinh san -> TU TIM DUONG toi train map
-            # (teleport ve thanh + di qua cac cong theo train_routes.json). Moi acc tu di.
+            # SAI MAP + CO ROUTE -> VE THANH, LAP PARTY DU, roi LEADER KEO member di toi train map
+            # (member tu bi keo theo trong party - KHONG tu di). Theo train_routes.json.
             if not self_map_ok:
                 route = getattr(config, "TRAIN_ROUTES", {}).get(sc)
                 if route:
-                    log.info("[%s] (%s) login map %s != train map %s -> TU TIM DUONG (follow_route)...",
-                             label, role, c.current_map, sc)
-                    try:
-                        if c.follow_route(route):
-                            login_map = c.current_map
-                            self_map_ok = True
-                            log.info("[%s] (%s) da TU DI toi train map %s", label, role, sc)
-                    except Exception as e:
-                        log.warning("[%s] loi follow_route: %s", label, e)
+                    fc = int(route.get("from_city", 0)); ff = int(route.get("city_flag", 0))
+                    log.info("[%s] (%s) sai map (o %s) -> ve thanh %s, lap party roi KEO toi train map %s",
+                             label, role, c.current_map, fc, sc)
+                    c.flee_mode = True
+                    if fc and c.go_to_town(fc, ff):
+                        do_channel_sync()   # dong bo kenh TAI THANH (de moi/keo duoc)
+                        from bot.client import joined_member_count
+                        if is_leader:
+                            # 1) cho member ve thanh + san sang
+                            for _ in range(90):
+                                if _stopped(): break
+                                if len(st["ready_members"]) >= st["n_members"]: break
+                                time.sleep(2)
+                            # 2) moi + cho join + set quan su (LAP PARTY TAI THANH)
+                            for _ in range(6):
+                                if _stopped(): break
+                                c.invite_members(gap=1.0); time.sleep(4)
+                                if joined_member_count(pidx) >= st["n_members"]: break
+                            try: c.set_party_strategist()
+                            except Exception: pass
+                            log.info("[%s] (LEADER) party lap xong tai thanh (%d member) -> bat dau KEO",
+                                     label, joined_member_count(pidx))
+                            st["route_party_ready"].set()
+                            time.sleep(1.5)
+                            # 3) KEO DI: leader di qua cac cong/buoc; member tu theo
+                            for stp in route.get("steps", []):
+                                if _stopped(): break
+                                if "gate" in stp:
+                                    if not c._enter_gate(int(stp["x"]), int(stp["y"]), int(stp["gate"])):
+                                        break
+                                else:
+                                    if c.in_combat(idle_secs=1.5): time.sleep(0.5)
+                                    c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(1.0)
+                            st["route_done"].set()
+                            if c.current_map == sc:
+                                self_map_ok = True; login_map = sc
+                                log.info("[%s] (LEADER) da KEO party toi train map %s", label, sc)
+                        else:
+                            # member: bao san sang o thanh; auto-accept loi moi; roi CHO bi keo toi train map
+                            with st["lock"]: st["ready_members"].add(username)
+                            st["route_party_ready"].wait(180)
+                            t0 = time.time()
+                            while not st["route_done"].is_set() and time.time() - t0 < 240:
+                                if _stopped(): break
+                                time.sleep(2)
+                            for _ in range(15):   # cho map cap nhat sau khi bi keo
+                                if c.current_map == sc or _stopped(): break
+                                time.sleep(1)
+                            if c.current_map == sc:
+                                self_map_ok = True; login_map = sc
+                                log.info("[%s] (member) da bi KEO toi train map %s", label, sc)
+                    # reset ready_members de flow train ben duoi dung lai tu dau
+                    with st["lock"]: st["ready_members"].discard(username)
             if is_leader:
                 if not self_map_ok:
                     # LEADER sai map + khong route/route loi -> HUY ca party (bao member thoat het)
@@ -639,7 +685,7 @@ def start_party(pidx, stagger=1.5):
     st = _pstate(pidx)
     # RESET state dung chung (tranh sot tu lan chay truoc: leader_bad cu -> member quit oan)
     for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
-              "stop_leader_done"):
+              "stop_leader_done", "route_party_ready", "route_done"):
         st[k].clear()
     st["channel"] = None
     with st["lock"]:
