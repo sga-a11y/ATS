@@ -27,29 +27,34 @@ sẽ **tự đi tới train map** rồi train.
 - Dùng Warp_C (đã decode) seed các cổng thành↔overworld.
 - Bổ sung cổng các map THỰC SỰ dùng bằng capture (giống cách làm Dị Giới).
 
-## Dữ liệu: gộp vào `train_maps.json`
-Mỗi map thêm trường `gates` (ngoài `safe`/`mobs` hiện có). `safe` là phần **mình thêm tay**
-(game không có); `mobs`/`gates` lấy từ data game hoặc capture.
+## Dữ liệu: TÁCH 2 file (tránh làm loạn train map list)
+`train_maps.json` chỉ chứa map TRAIN (có quái) cho gọn — nếu nhét cả map trung gian (chỉ
+có cổng, không quái) vào sẽ làm rối dropdown/Edit Map. Nên đồ thị cổng để file riêng.
 
+**`train_maps.json` (GIỮ NGUYÊN):** chỉ map train — `safe` (thêm tay) + `mobs`.
 ```json
-"12831": {
-  "name": "Rừng Nội Huỳnh 28-30",
-  "safe":  [[470, 1210]],
-  "mobs":  [[590, 870], [1070, 1850]],
-  "gates": [ {"x": 310, "y": 1530, "to": 11804} ]
-}
+"12831": { "name": "Rừng Nội Huỳnh 28-30", "safe": [[470,1210]], "mobs": [[590,870],[1070,1850]] }
 ```
-- `to` = map_id đích của cổng. Đồ thị có hướng (gate là cạnh map_hiện_tại → to).
-- Tương thích ngược: map không có `gates` → coi như rỗng (code cũ không vỡ).
+
+**`map_gates.json` (FILE MỚI):** đồ thị cổng TẤT CẢ map (gồm map trung gian).
+```json
+{ "maps": {
+    "12831": { "name": "...", "gates": [ {"x":310, "y":1530, "to":11804} ] },
+    "11804": { "name": "Overworld...", "gates": [ {"x":..., "y":..., "to":12831}, {"x":..,"y":..,"to":...} ] }
+}}
+```
+- `to` = map_id đích của cổng. Đồ thị CÓ HƯỚNG (gate = cạnh map_hiện_tại → to).
+- Map không có trong `map_gates.json` → không có cổng → BFS không ra đường (fallback cũ).
+- Pathfinding đi bằng `map_gates.json`; tới train map thì lấy `safe`/`mobs` từ `train_maps.json`.
 
 ## Thành phần
 
 ### 1. Loader (bot/config.py)
-Mở rộng `_load_train_maps()` đọc thêm `gates` cho mỗi map. Cấu trúc:
-`TRAIN_MAPS[map_id] = {safe:[(x,y)], mobs:[(x,y)], gates:[(x,y,to)]}`.
+- `_load_train_maps()` GIỮ NGUYÊN (chỉ safe + mobs).
+- Thêm `_load_map_gates()` đọc `map_gates.json` → `MAP_GATES[map_id] = [(x,y,to), ...]`.
 
 ### 2. Đồ thị + BFS (module mới `bot/pathfind.py`)
-- `build_graph(train_maps)` → `{map_id: [(x,y,to), ...]}`.
+- Đồ thị = `MAP_GATES` (đọc từ `map_gates.json`).
 - `find_path(src_map, dst_map)` → list chặng `[(gate_x, gate_y, next_map), ...]` (BFS,
   đường ngắn nhất theo số cổng). Trả `[]` nếu đã ở đích; `None` nếu không có đường.
 
@@ -91,7 +96,7 @@ login → biết `current_map` → (train mode, sai map) → `go_to_map(sc)`
 
 ## Edit Map (TrainMapEditor) — giữ nguyên
 - Vẫn cho sửa/thêm/xóa **safe + mobs** như hiện tại (mob chưa lấy được từ data game).
-- `gates` do code import (Warp_C) / capture đổ vào — KHÔNG gõ tay trong editor.
+- `gates` ở file RIÊNG `map_gates.json` (code import Warp_C / capture đổ vào) — KHÔNG đụng Edit Map.
 - Khi nào decode được Npc_C (lấy mob tự động) thì mới tính rút editor còn safe-only.
 
 ## Ngoài phạm vi (sau này, nếu cần)
