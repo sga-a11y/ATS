@@ -1875,16 +1875,16 @@ class GameClient:
                 return True
             if self.in_combat(idle_secs=1.5):
                 time.sleep(0.5); continue
-            self.move_to(x, y); time.sleep(1.0)
-            self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.4)
-            self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.4)
-            self.send(0x0c, b"\x01\x00"); time.sleep(0.3)
-            self.send(0x14, b"\x06\x00"); time.sleep(1.3)
+            self.move_to(x, y); time.sleep(0.5)
+            self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
+            self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
+            self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
+            self.send(0x14, b"\x06\x00"); time.sleep(1.0)
         log.warning("[%s] _enter_gate idx=%d @(%d,%d): map khong doi (van %s)",
                     self._label, idx, x, y, self.current_map)
         return False
 
-    def follow_route(self, route, step_wait: float = 1.0) -> bool:
+    def follow_route(self, route, step_wait: float = 0.5) -> bool:
         """Replay route tu THANH toi train map. route = {from_city, city_flag, dest_map, steps}.
         steps: {"move":[x,y]} = di 1 buoc | {"gate":idx,"x","y"} = toi cong roi gui 0x14.
         Bot CHI leader can goi (member tu bi keo theo trong party). Tra True neu toi dest_map."""

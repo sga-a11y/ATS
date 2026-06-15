@@ -306,7 +306,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                                         break
                                 else:
                                     if c.in_combat(idle_secs=1.5): time.sleep(0.5)
-                                    c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(1.0)
+                                    c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(0.5)
                             st["route_done"].set()
                             if c.current_map == sc:
                                 self_map_ok = True; login_map = sc
