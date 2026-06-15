@@ -571,6 +571,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         last_dg = 0.0
         last_combat = time.time()   # lan cuoi thay in_combat -> de RE-ARM combat khi ket
         last_rearm = 0.0
+        displaced_cnt = 0           # so lan lien tiep thay KHAC map train (chet/hoi sinh/bi dump)
         stop_ev = account_stops.get(username)
         # Bao stop_account: ACC NAY khi STOP -> thread TU xu ly (KHONG dong socket ngay).
         #  - leader train: tu chay ve safe gan nhat roi dong.
@@ -637,6 +638,30 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     log.info("[%s] (%s) >40s khong vao tran -> RE-ARM combat", label, role)
                     try: c.combat_ready()
                     except Exception: pass
+            # DISPLACED: dang train ma BI VAN khoi train map (chet -> hoi sinh ve thanh, hoac bi
+            # dump) -> TU VE LAI train map qua route (follow_route tu teleport ve from_city roi di).
+            if train_on_map and should_fight and c.current_map is not None and c.current_map != sc:
+                displaced_cnt += 1
+                if displaced_cnt >= 2:   # 2 lan lien tiep (~10s) khac map train -> chac chan displaced
+                    displaced_cnt = 0
+                    route = getattr(config, "TRAIN_ROUTES", {}).get(sc)
+                    log.warning("[%s] (%s) BI VAN khoi train map (dang o %s, vd chet/hoi sinh) -> tu ve lai",
+                                label, role, c.current_map)
+                    if route:
+                        try:
+                            if c.follow_route(route):
+                                log.info("[%s] (%s) da TU VE LAI train map %s", label, role, sc)
+                                if is_leader and st.get("mob_spot"):
+                                    c.navigate_to(*st["mob_spot"])
+                                c.combat_ready(); c.flee_mode = False
+                                last_combat = time.time()
+                        except Exception as e:
+                            log.warning("[%s] loi tu ve lai train map: %s", label, e)
+                    else:
+                        log.warning("[%s] (%s) khong co route -> khong tu ve lai duoc (can park tay)",
+                                    label, role)
+            else:
+                displaced_cnt = 0
             try:
                 c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
             except Exception as e:
