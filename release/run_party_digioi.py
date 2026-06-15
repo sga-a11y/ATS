@@ -119,6 +119,9 @@ def _pstate(pidx):
                               "route_party_ready": threading.Event(),  # ROUTE: party da lap xong o thanh -> sap keo di
                               "route_done": threading.Event(),         # ROUTE: leader da keo xong (toi train map)
                               "map_results": {},     # ROUTE barrier: username -> dang o train map? (de quyet dinh ca party)
+                              "mob_spot": None,      # diem quai leader chon (de _start_training dung lai)
+                              "rally_point": None,   # safe GAN diem quai nhat -> CA PARTY ve day (gan leader)
+                              "rally_ready": threading.Event(),  # leader da chon diem quai + rally_point
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
@@ -377,10 +380,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                                     "-> ca party huy -> THOAT. CACH SUA: dua NHAN VAT LEADER ve dung "
                                     "train map roi thoat game tai do.", label)
                         _quit(); return
-            # --- MAP-TRAIN: chay toi diem TAP KET (diem safe dau tien) (dinh battle -> flee) ---
-            rally = tm["safe"][0]
-            log.info("[%s] (%s) MAP-TRAIN map=%s -> chay toi diem tap ket %s",
-                     label, role, sc, rally)
+            # --- MAP-TRAIN: CA PARTY ve cung 1 SAFE = safe GAN diem quai leader chon (de gan nhau
+            #     -> member vao tran chung voi leader). Leader chon diem quai SOM + bao rally_point. ---
+            mobs = tm["mobs"]
+            if is_leader:
+                if mob_index < 0 and mobs:
+                    import random
+                    spot = random.choice(mobs)
+                else:
+                    spot = mobs[mob_index] if (mobs and 0 <= mob_index < len(mobs)) else (mobs[0] if mobs else None)
+                st["mob_spot"] = spot
+                st["rally_point"] = _nearest_safe(spot, tm["safe"]) if spot else tm["safe"][0]
+                st["rally_ready"].set()
+            # member: cho leader chon (rally_point); khong co leader -> safe[0]
+            if has_leader and not is_leader:
+                st["rally_ready"].wait(60)
+            rally = st.get("rally_point") or tm["safe"][0]
+            log.info("[%s] (%s) MAP-TRAIN map=%s -> ve safe tap ket chung %s", label, role, sc, rally)
             c.navigate_to(*rally)
             # SOLO daily dungeon o MAP-TRAIN: TAM TAT (het luot -> bi dump ve 12000, pha map-train;
             # Bat/tat bang checkbox "Danh daily dungeon" cua party (do_dungeon).
@@ -506,21 +522,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             def _start_training():
                 c.set_party_strategist()    # set member INT cao nhat lam quan su (hoi SP)
                 if train_on_map:
-                    mobs = tm["mobs"]
-                    if mob_index < 0 and mobs:   # "Bot tu chon" -> boc ngau nhien 1 diem (moi lan start)
+                    # diem quai DA chon som (st["mob_spot"]) - ca party da ve safe GAN diem do roi.
+                    spot = st.get("mob_spot")
+                    if not spot and tm["mobs"]:
                         import random
-                        spot = random.choice(mobs)
-                        log.info("[%s] (LEADER) BOT TU CHON diem quai (ngau nhien) -> %s", label, spot)
-                    else:
-                        spot = mobs[mob_index] if 0 <= mob_index < len(mobs) else mobs[0]
-                    # Chay toi SAFE GAN NHAT diem quai TRUOC (tranh chay 1 phat tu safe xa ->
-                    # qua xa server KHONG nhan -> char ket giua duong), roi MOI ra diem quai.
-                    near = _nearest_safe(spot, tm["safe"])
-                    if near and tuple(near) != tuple(spot):
-                        log.info("[%s] (LEADER) ve safe gan diem quai %s truoc", label, near)
-                        c.navigate_to(*near)
-                    # navigate_to (nhieu buoc, ne battle doc duong) - KHONG dung move_to 1 lenh
-                    c.navigate_to(*spot)        # ra diem quai (flee doc duong)
+                        spot = random.choice(tm["mobs"])
+                    if spot:
+                        # leader DA o safe gan spot -> ra thang diem quai (buoc cuoi ngan)
+                        c.navigate_to(*spot)
                     c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
                     log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
                 elif is_digioi:
@@ -614,13 +623,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 last_rearm = time.time()
                 if is_leader and tm.get("mobs"):
                     import random
-                    spot = random.choice(tm["mobs"])
-                    log.info("[%s] (LEADER) >40s khong vao tran -> DOI diem quai -> %s (qua safe gan) + re-arm",
-                             label, spot)
+                    rp = st.get("rally_point") or tm["safe"][0]
+                    # uu tien diem quai CUNG safe voi member (rally_point) -> leader gan member
+                    near_mobs = [m for m in tm["mobs"]
+                                 if tuple(_nearest_safe(m, tm["safe"])) == tuple(rp)]
+                    spot = random.choice(near_mobs or tm["mobs"])
+                    log.info("[%s] (LEADER) >40s khong vao tran -> DOI diem quai -> %s + re-arm", label, spot)
                     try:
-                        near = _nearest_safe(spot, tm["safe"])
-                        if near and tuple(near) != tuple(spot):
-                            c.navigate_to(*near)
+                        st["mob_spot"] = spot
                         c.navigate_to(*spot); c.combat_ready(); c.flee_mode = False
                     except Exception: pass
                 else:
@@ -760,8 +770,10 @@ def start_party(pidx, stagger=1.5):
     st = _pstate(pidx)
     # RESET state dung chung (tranh sot tu lan chay truoc: leader_bad cu -> member quit oan)
     for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
-              "stop_leader_done", "route_party_ready", "route_done"):
+              "stop_leader_done", "route_party_ready", "route_done", "rally_ready"):
         st[k].clear()
+    st["mob_spot"] = None
+    st["rally_point"] = None
     st["channel"] = None
     with st["lock"]:
         st["ready_members"].clear()
