@@ -89,6 +89,11 @@ login → biết `current_map` → (train mode, sai map) → `go_to_map(sc)`
 - Đồ thị thưa: Warp_C chỉ cho 1 hop thành→overworld; tới train map cần capture thêm cổng
   trung gian. Hybrid chấp nhận bổ sung dần theo map đang dùng.
 
+## Edit Map (TrainMapEditor) — giữ nguyên
+- Vẫn cho sửa/thêm/xóa **safe + mobs** như hiện tại (mob chưa lấy được từ data game).
+- `gates` do code import (Warp_C) / capture đổ vào — KHÔNG gõ tay trong editor.
+- Khi nào decode được Npc_C (lấy mob tự động) thì mới tính rút editor còn safe-only.
+
 ## Ngoài phạm vi (sau này, nếu cần)
 - Giải mã Lua (Frida hook) để lấy trọn schema + tự sinh toàn bộ gates/mobs/safe.
 - Decode DoorGroupData/Npc_C để auto-fill đồ thị toàn game.
