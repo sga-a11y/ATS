@@ -1721,9 +1721,13 @@ class GameClient:
         for wx, wy in waypoints:
             if not self.running:
                 return
-            tries = 0
-            while self.in_combat(idle_secs=1.5) and tries < 30:
-                time.sleep(0.5); tries += 1
+            # CHO THOAT TRAN HOAN TOAN (flee xong) TRUOC khi di tiep - KHONG move giua battle
+            # (move giua tran pha luot flee). idle_secs cao de khong nham battle co khoang nghi.
+            t0 = time.time()
+            while self.in_combat(idle_secs=3.0):
+                if not self.running or time.time() - t0 > 60:
+                    break
+                time.sleep(0.5)
             self.move_to(int(wx), int(wy))
             time.sleep(step)
         self.pos = tuple(waypoints[-1])
