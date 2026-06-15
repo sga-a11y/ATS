@@ -122,6 +122,7 @@ def _pstate(pidx):
                               "mob_spot": None,      # diem quai leader chon (de _start_training dung lai)
                               "rally_point": None,   # safe GAN diem quai nhat -> CA PARTY ve day (gan leader)
                               "rally_ready": threading.Event(),  # leader da chon diem quai + rally_point
+                              "path_done": threading.Event(),    # leader da di xong follow_path toi diem quai (member bi keo theo)
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
@@ -401,9 +402,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 st["rally_ready"].wait(60)
             path = st.get("mob_path")
             if path:
-                log.info("[%s] (%s) MAP-TRAIN map=%s -> di theo PATH capture toi diem quai (%d buoc)",
-                         label, role, sc, len(path))
-                c.follow_path(path)
+                # CHI LEADER di follow_path; member BI KEO THEO (game tu keo member khi leader di bo
+                # trong map). Neu CA member tu di path rieng -> 5 thang rai rac, khong cung 1 tran ->
+                # party-battle treo (server cho du slot) -> flee vo tac dung -> leader bi quai bem chet.
+                from bot.client import joined_member_count
+                # DU PARTY (tat ca member da join) -> KHONG flee nua, gap quai DANH luon (flee
+                # party-battle bi treo -> ca party chet). Chua du -> flee cho an toan.
+                party_full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
+                if is_leader:
+                    log.info("[%s] (LEADER) MAP-TRAIN map=%s -> di PATH toi diem quai (%d buoc) [%s], member bi keo theo",
+                             label, sc, len(path), "DANH" if party_full else "FLEE")
+                    st["path_done"].clear()
+                    c.follow_path(path, flee=not party_full)
+                    st["path_done"].set()
+                else:
+                    if party_full:
+                        c.flee_mode = False   # du party -> bi keo vao tran thi DANH cung leader (khong flee -> tranh treo)
+                    log.info("[%s] (member) MAP-TRAIN map=%s -> DUNG YEN cho leader keo toi diem quai [%s]",
+                             label, sc, "DANH" if party_full else "FLEE")
+                    st["path_done"].wait(180)   # cho leader keo xong; con lai bi keo theo
             else:
                 rally = st.get("rally_point") or tm["safe"][0]
                 log.info("[%s] (%s) MAP-TRAIN map=%s -> ve safe tap ket chung %s", label, role, sc, rally)
@@ -811,7 +828,8 @@ def start_party(pidx, stagger=1.5):
     st = _pstate(pidx)
     # RESET state dung chung (tranh sot tu lan chay truoc: leader_bad cu -> member quit oan)
     for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
-              "stop_leader_done", "route_party_ready", "route_done", "rally_ready"):
+              "stop_leader_done", "route_party_ready", "route_done", "rally_ready",
+              "path_done"):
         st[k].clear()
     st["mob_spot"] = None
     st["rally_point"] = None

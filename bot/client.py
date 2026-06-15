@@ -677,6 +677,11 @@ class GameClient:
                 if off + 8 <= len(pkt):
                     members.append(pkt[off:off + 8])
             if members:
+                # CHI nhan roster CUA PARTY MINH (self la leader HOAC trong members).
+                # 0x0d sub06 phat TOAN MAP -> party khac cung map cung gui roster cua ho;
+                # neu khong loc se GHI DE party_members + atype bang roster party LA.
+                if self.self_entity != leader and self.self_entity not in members:
+                    return
                 self.party_leader = leader
                 self.party_members = members
                 # slot cua minh = vi tri trong danh sach member (1-based) -> map B2 trong 0x33
@@ -690,9 +695,11 @@ class GameClient:
                     log.info("[%s] Party roster: %d member, minh slot=atype=%d",
                              self._label, count, self.state.my_atype)
                 else:
-                    log.warning("[%s] self_entity %s KHONG co trong roster %s",
-                                self._label, self.self_entity.hex() if self.self_entity else None,
-                                [m.hex()[:8] for m in members])
+                    # minh LA LEADER -> luon o giua (atype=2)
+                    self.state.my_atype = 2
+                    self.state.self_slot = 2
+                    log.info("[%s] Party roster: %d member, minh LA LEADER (atype=2)",
+                             self._label, count)
 
     def _on_dungeon(self, pkt: bytes):
         """S2C 0x2f - party PHO BAN.
@@ -1710,14 +1717,17 @@ class GameClient:
         self.pos = (x, y)
         log.info("[%s] da toi diem (%d,%d) sau %d buoc", self._label, x, y, moves)
 
-    def follow_path(self, waypoints, step: float = 1.0):
+    def follow_path(self, waypoints, step: float = 1.0, flee: bool = True):
         """Di bo theo CHUOI WAYPOINT (capture duong di THAT trong map) toi diem quai xa.
-        Moi waypoint move_to + cho step giay; dinh battle -> cho flee xong roi di tiep.
+        Moi waypoint move_to + cho HET TRAN roi di tiep.
+        flee=True: ne quai (di nhanh, khong ton SP). flee=False: party DU NGUOI -> DANH quai gap
+        tren duong (flee party-battle hay bi TREO -> ca party chet, nen co party thi danh thang hon).
         Dung khi navigate thang KHONG toi duoc (dia hinh/cap khoang cach). Replay tung buoc nho."""
         if not waypoints:
             return
-        self.flee_mode = True
-        log.info("[%s] follow_path: %d waypoint -> (%s)", self._label, len(waypoints), waypoints[-1])
+        self.flee_mode = bool(flee)
+        log.info("[%s] follow_path: %d waypoint -> (%s) [%s]", self._label, len(waypoints),
+                 waypoints[-1], "FLEE" if flee else "DANH")
         for wx, wy in waypoints:
             if not self.running:
                 return
@@ -1872,7 +1882,9 @@ class GameClient:
                 return False
             # DANG BATTLE -> teleport bi chan, va spam teleport luc battle PHA luot FLEE
             # (char mat luot, khong chay duoc -> bi danh chet). -> BAT flee, CHO thoat tran roi teleport.
-            if self.in_combat(idle_secs=1.5):
+            # idle_secs=4.0 (KHONG phai 1.5): nhip luot flee ~2-3s, neu 1.5 thi giua 2 luot doc
+            # nham "het tran" -> teleport chen giua -> pha flee -> tran khong bao gio ket thuc.
+            if self.in_combat(idle_secs=4.0):
                 self.flee_mode = True
                 time.sleep(1.0)
                 continue
