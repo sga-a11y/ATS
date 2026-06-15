@@ -3,7 +3,35 @@
 Ngày: 2026-06-15
 Trạng thái: Đã duyệt thiết kế, chờ viết plan.
 
-## Mục tiêu
+## ⚑ REVISED (2026-06-15, sau khi chốt với user) — Route replay per train map
+KHÔNG cần graph cổng toàn game + BFS. Mỗi train map chỉ cần **1 route replay định sẵn**
+(capture 1 lần): `teleport thành → [move waypoints] → gate(idx) → [waypoints] → gate(idx) → tới train map`.
+Bot **CHỈ leader replay; member tự bị kéo theo**.
+
+**Kịch bản train mode:**
+1. Check cả party đã ở train map chưa → ở hết → chạy safe + lập party + train (như cũ).
+2. Có acc lạc map → **tất cả teleport về thành** → lập party + set quân sư →
+   **leader follow_route(train_map)** tới train map (member tự theo) → train.
+
+**Dữ liệu `train_routes.json`:**
+```json
+{ "routes": { "12831": {
+    "name":"Rung Noi Huynh", "from_city":12011, "city_flag":3, "dest_map":12831,
+    "steps":[ {"gate":1,"x":1250,"y":930}, {"move":[886,1567]}, ...,
+              {"gate":18,"x":1110,"y":1830} ] } } }
+```
+- step `{"move":[x,y]}` = đi 1 bước; step `{"gate":idx,"x","y"}` = move tới (x,y) rồi gửi 0x14 04/08[idx].
+- Seed từ capture qua `tools/parse_gate_capture.py` (đã rút route 12831).
+- `train_routes.json` thay vai trò `map_gates.json`/BFS cho kịch bản thực dụng này.
+  (pathfind.py/BFS giữ lại cho tương lai đa-route, hiện chưa dùng.)
+
+**follow_route(route)** (client.py): teleport(from_city, city_flag); với mỗi step:
+move → move_to+wait; gate → move_to(x,y) + 0x14 04/08[idx] + 0c0100 + 0x14 0600 + chờ.
+Dừng nếu STOP / current_map==dest_map.
+
+---
+
+## Mục tiêu (gốc)
 Cho bot **tự đi từ map hiện tại tới map train** (rồi ra bãi quái), thay vì yêu cầu nhân vật
 phải được "park" sẵn trên map train lúc login. Cơ chế giống thoát Dị Giới: đi tới **cổng
 dịch chuyển** → sang map khác → lặp tới khi tới đích.
