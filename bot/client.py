@@ -1835,16 +1835,25 @@ class GameClient:
                      self._label)
             self.exit_di_gioi()
         ok = 0
-        for _ in range(tries):
+        deadline = time.time() + tries * wait + 90   # +90s du cho thoat battle (khong tinh vao luot teleport)
+        while time.time() < deadline:
             if not self.running:    # STOP / mat ket noi -> NGUNG ngay (khong spam teleport nua)
                 log.info("[%s] go_to_town: dung (stop/disconnect)", self._label)
                 return False
+            # DANG BATTLE -> teleport bi chan, va spam teleport luc battle PHA luot FLEE
+            # (char mat luot, khong chay duoc -> bi danh chet). -> BAT flee, CHO thoat tran roi teleport.
+            if self.in_combat(idle_secs=1.5):
+                self.flee_mode = True
+                time.sleep(1.0)
+                continue
             self.teleport(city_id, flag)
-            # cho 'wait' giay NHUNG van check stop moi 0.2s -> STOP an lien duoc
+            # cho 'wait' giay NHUNG van check stop/battle moi 0.2s
             end = time.time() + wait
             while time.time() < end:
                 if not self.running:
                     return False
+                if self.in_combat(idle_secs=1.5):
+                    break   # vao tran giua chung -> ngung cho, quay lai xu ly flee
                 time.sleep(0.2)
             if self.current_map == city_id:
                 ok += 1
