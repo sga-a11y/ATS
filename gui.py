@@ -800,9 +800,12 @@ class ConfigDialog(tk.Toplevel):
         self.frames = []
         for party in (data.get("parties") or [{}]):
             self._add_tab(party)
-        # mo dung tab party dang chon ben ngoai
+        # LAZY: chi dung tab dang xem (tab khac dung khi bam vao) -> mo Setting nhanh du nhieu party
+        self.nb.bind("<<NotebookTabChanged>>", self._on_cfg_tab)
         if self.frames:
-            self.nb.select(min(max(open_pidx, 0), len(self.frames) - 1))
+            sel = min(max(open_pidx, 0), len(self.frames) - 1)
+            self.nb.select(sel)
+            self._build_entry(self.frames[sel])
 
         bar = ttk.Frame(self, padding=6); bar.pack(fill="x")
         ttk.Button(bar, text="💾 Lưu", command=self._save).pack(side="right", padx=3)
@@ -816,21 +819,40 @@ class ConfigDialog(tk.Toplevel):
             return {"channel": 2, "parties": []}
 
     def _add_tab(self, party):
-        f = PartyConfigFrame(self.nb, party, self.train_maps, self.cities, self.servers)
-        self.nb.add(f, text=f"Party {len(self.frames) + 1}")
-        self.frames.append(f)
+        # LAZY: chi tao holder rong, PartyConfigFrame dung sau (khi tab duoc xem)
+        holder = ttk.Frame(self.nb)
+        self.nb.add(holder, text=f"Party {len(self.frames) + 1}")
+        self.frames.append({"holder": holder, "preset": party or {}, "cfg": None})
+
+    def _build_entry(self, entry):
+        if entry["cfg"] is None:
+            cfg = PartyConfigFrame(entry["holder"], entry["preset"],
+                                   self.train_maps, self.cities, self.servers)
+            cfg.pack(fill="both", expand=True)
+            entry["cfg"] = cfg
+        return entry["cfg"]
+
+    def _on_cfg_tab(self, event=None):
+        try:
+            i = self.nb.index(self.nb.select())
+        except Exception:
+            return
+        if 0 <= i < len(self.frames):
+            self._build_entry(self.frames[i])
 
     def _add_party(self):
         self._add_tab({})
-        self.nb.select(len(self.frames) - 1)
+        i = len(self.frames) - 1
+        self.nb.select(i)
+        self._build_entry(self.frames[i])
 
     def _del_party(self):
         if len(self.frames) <= 1:
             return
         i = self.nb.index(self.nb.select())
         self.nb.forget(i); self.frames.pop(i)
-        for j, f in enumerate(self.frames):
-            self.nb.tab(f, text=f"Party {j + 1}")
+        for j, e in enumerate(self.frames):
+            self.nb.tab(e["holder"], text=f"Party {j + 1}")
 
     def _update_gl_btn(self):
         n = len([x for x in self.gleaders_var.get().split(",") if x.strip()])
@@ -873,8 +895,10 @@ class ConfigDialog(tk.Toplevel):
             cur_pidx = self.nb.index(self.nb.select())
         except Exception:
             cur_pidx = 0
-        parties = [f.get_data() for f in self.frames]
-        parties = [p for p in parties if p["accounts"]]   # bo party rong
+        # tab DA mo (cfg dung) -> lay tu UI; tab CHUA mo -> giu nguyen preset (khong sua)
+        parties = [e["cfg"].get_data() if e["cfg"] is not None else e["preset"]
+                   for e in self.frames]
+        parties = [p for p in parties if p.get("accounts")]   # bo party rong
         # CAP 5: party game toi da 5 (1 leader + 4 member). Dem acc DANG TICK (on) co user.
         for i, p in enumerate(parties):
             n_on = sum(1 for a in p["accounts"] if a.get("on", True) and a.get("u", "").strip())
