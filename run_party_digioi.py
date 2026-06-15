@@ -332,7 +332,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         else:
                             # member: bao san sang o thanh; auto-accept loi moi; roi CHO bi keo toi train map
                             with st["lock"]: st["ready_members"].add(username)
-                            st["route_party_ready"].wait(360)   # cho leader gom du party (member khac con dungeon)
+                            # cho leader gom du party (member khac con dungeon); THOAT SOM neu STOP
+                            t0 = time.time()
+                            while not st["route_party_ready"].is_set() and time.time() - t0 < 360:
+                                if _stopped() or not c.running:
+                                    break
+                                time.sleep(2)
                             t0 = time.time()
                             while not st["route_done"].is_set() and time.time() - t0 < 240:
                                 if _stopped(): break
@@ -420,7 +425,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         c.flee_mode = False   # du party -> bi keo vao tran thi DANH cung leader (khong flee -> tranh treo)
                     log.info("[%s] (member) MAP-TRAIN map=%s -> DUNG YEN cho leader keo toi diem quai [%s]",
                              label, sc, "DANH" if party_full else "FLEE")
-                    st["path_done"].wait(180)   # cho leader keo xong; con lai bi keo theo
+                    # cho leader keo xong; THOAT SOM neu STOP/mat ket noi (KHONG block 180s -> ke't STOP)
+                    t0 = time.time()
+                    while not st["path_done"].is_set() and time.time() - t0 < 180:
+                        if _stopped() or not c.running:
+                            break
+                        time.sleep(1)
             else:
                 rally = st.get("rally_point") or tm["safe"][0]
                 log.info("[%s] (%s) MAP-TRAIN map=%s -> ve safe tap ket chung %s", label, role, sc, rally)
