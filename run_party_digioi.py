@@ -513,8 +513,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         log.info("[%s] (LEADER) BOT TU CHON diem quai (ngau nhien) -> %s", label, spot)
                     else:
                         spot = mobs[mob_index] if 0 <= mob_index < len(mobs) else mobs[0]
+                    # Chay toi SAFE GAN NHAT diem quai TRUOC (tranh chay 1 phat tu safe xa ->
+                    # qua xa server KHONG nhan -> char ket giua duong), roi MOI ra diem quai.
+                    near = _nearest_safe(spot, tm["safe"])
+                    if near and tuple(near) != tuple(spot):
+                        log.info("[%s] (LEADER) ve safe gan diem quai %s truoc", label, near)
+                        c.navigate_to(*near)
                     # navigate_to (nhieu buoc, ne battle doc duong) - KHONG dung move_to 1 lenh
-                    # (1 lenh ma dang battle thi bi ignore -> leader ket lai o safe, ko ra diem quai).
                     c.navigate_to(*spot)        # ra diem quai (flee doc duong)
                     c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
                     log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
@@ -610,9 +615,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 if is_leader and tm.get("mobs"):
                     import random
                     spot = random.choice(tm["mobs"])
-                    log.info("[%s] (LEADER) >40s khong vao tran -> DOI diem quai -> %s + re-arm", label, spot)
+                    log.info("[%s] (LEADER) >40s khong vao tran -> DOI diem quai -> %s (qua safe gan) + re-arm",
+                             label, spot)
                     try:
-                        c.move_to(*spot); time.sleep(0.5); c.combat_ready(); c.flee_mode = False
+                        near = _nearest_safe(spot, tm["safe"])
+                        if near and tuple(near) != tuple(spot):
+                            c.navigate_to(*near)
+                        c.navigate_to(*spot); c.combat_ready(); c.flee_mode = False
                     except Exception: pass
                 else:
                     log.info("[%s] (%s) >40s khong vao tran -> RE-ARM combat", label, role)
