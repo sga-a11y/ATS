@@ -63,6 +63,36 @@ def _load_train_maps():
         pass
     return out
 TRAIN_MAPS = _load_train_maps()
+def _load_map_gates(path=None):
+    """Doc map_gates.json -> {map_id:int -> [(x,y,to), ...]} (do thi cong di chuyen).
+    Khong co file/loi -> {}. Dung cho pathfind.find_path (auto di toi train map)."""
+    import json, os
+    f = path or os.path.join(os.path.dirname(__file__), os.pardir, "map_gates.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.get("maps", {}).items():
+            out[int(k)] = [(int(g["x"]), int(g["y"]), int(g["to"])) for g in v.get("gates", [])]
+    except Exception:
+        pass
+    return out
+MAP_GATES = _load_map_gates()
+def _load_train_routes(path=None):
+    """Doc train_routes.json -> {dest_map:int -> {from_city, city_flag, dest_map, steps}}.
+    Route replay tu thanh toi train map (leader di, member tu keo theo)."""
+    import json, os
+    f = path or os.path.join(os.path.dirname(__file__), os.pardir, "train_routes.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.get("routes", {}).items():
+            out[int(k)] = v
+    except Exception:
+        pass
+    return out
+TRAIN_ROUTES = _load_train_routes()
 START_CITY_FLAG = 2             # Ng.Thanh=2, Trac Quan=0, Cu Loc=3 (xem cities.json)
 CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)
 RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
@@ -76,19 +106,40 @@ RUN_STEP_WAIT = 2.5            # giay moi buoc di chuyen
 # Solo daily dungeon: so luot/ngay (luot 1 mien phi, luot 2+ MUA bang vang). =1 chi danh luot free.
 DUNGEON_RUNS_PER_DAY = 2
 
+# Van tieu (escort): moi ngay 3 luot, gui pet di -> 1h sau nhan qua.
+# VANTIEU_PETS = vi tri pet trong list QUAN TRO de gui (index 1-based), 1 pet/luot.
+#   vd [1,2,3] = gui pet thu 1,2,3 cho 3 luot. [] = KHONG tu gui (chi nhan qua).
+VANTIEU_ENABLE = True
+VANTIEU_PETS = [1, 2, 3]
+# Smart match (phase-2): ten pet trong QUAN TRO theo DUNG THU TU slot (slot1, slot2,...).
+# Bot tra he/doanh tung con (PET_HEDOANH) -> chon con KHOP yeu cau nhat -> gui. [] = tat (dung VANTIEU_PETS).
+VANTIEU_PETS_NAMES = []
+
+# Phase-2 van tieu match: he/doanh pet (tu game data Npc_C.dat) + yeu cau (ma 0400).
+def _load_json_root(fn):
+    import json, os
+    f = os.path.join(os.path.dirname(__file__), os.pardir, fn)
+    try:
+        with open(f, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+PET_HEDOANH = _load_json_root("pet_hedoanh.json")                       # ten pet -> {he, doanh}
+VANTIEU_REQUESTS = _load_json_root("vantieu_requests.json").get("requests", {})  # ma 0400 -> {he, doanh}
+
 # Qua online: nhan khi online du so phut. id qua = so phut moc.
 GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 
 # Combat tuning
 HEAL_HP_THRESHOLD = 0.60    # ally HP <= 60% max -> Toan Tri Lieu
 HEAL_SP_COST = 42
-PET_FIRE_MIN_SP = 15        # pet SP >= 15 moi xet skill AoE
+PET_FIRE_MIN_SP = 100       # pet SP >= 100 moi xet skill combo (duoi 100 -> danh chay)
 
 # DATA PET: doc tu pets.json (pet_id hex -> LIST skill cua pet). pet_id tu S2C 0x13 luc login.
 def _load_pets():
     import json, os
     f = os.path.join(os.path.dirname(__file__), os.pardir, "pets.json")
-    skills, names, boss = {}, {}, {}
+    skills, names, boss, hedoanh = {}, {}, {}, {}
     try:
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh)
@@ -98,10 +149,12 @@ def _load_pets():
             names[pid] = v.get("name", "")
             if v.get("boss_skill"):
                 boss[pid] = v["boss_skill"]
+            if v.get("he") or v.get("doanh"):   # he/doanh dien tay (cho VAN TIEU match)
+                hedoanh[pid] = (v.get("he", ""), v.get("doanh", ""))
     except Exception:
         pass
-    return skills, names, boss
-PET_SKILLS, PET_NAMES, PET_BOSS_SKILL = _load_pets()   # pet_id -> set(skill_id) / ten pet
+    return skills, names, boss, hedoanh
+PET_SKILLS, PET_NAMES, PET_BOSS_SKILL, PET_HE_DOANH = _load_pets()   # pet_id -> skills/ten/boss/(he,doanh)
 
 # Skill dung de COMBO TRAINING (AoE hang ngang). Uu tien tu trai sang (re SP truoc).
 # Unit nao co 1 trong cac skill nay -> dung de combo. Sau nay event/boss co list khac.
@@ -143,6 +196,7 @@ XOR_KEY = 0xAD
 #  PARTY_CONFIG[pidx] = {mode, start_city_id, mob_index, city_flag}.
 # ============================================================
 PARTY_CONFIG = {}
+PARTY_LEADERS_BY_IDX = {}   # pidx -> [ten leader] white list rieng party (tu accounts.json)
 def _load_servers():
     import json, os
     f = os.path.join(os.path.dirname(__file__), os.pardir, "servers.json")
@@ -168,9 +222,9 @@ _aj = _load_accounts_json()
 if _aj is not None:
     try:
         _parties_raw = _aj.get("parties", [])
-        # acc co username bat dau bang '#' = BO QUA (comment)
+        # BO QUA acc khi: bo tick (on=false) HOAC username bat dau '#' (co che cu).
         _ps = [[(a.get("u", ""), a.get("p", "")) for a in party.get("accounts", [])
-                if not a.get("u", "").lstrip().startswith("#")]
+                if a.get("on", True) and not a.get("u", "").lstrip().startswith("#")]
                for party in _parties_raw]
         if _ps:
             PARTIES = _ps
@@ -186,12 +240,25 @@ if _aj is not None:
                 "server_id": _server_id(_srv),
                 "do_dungeon": bool(_party.get("do_dungeon", True)),
             }
+            PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])
         if PARTY_CONFIG:
             START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]
         if "channel" in _aj:
             CHANNEL = int(_aj["channel"])
+        if "party_leaders" in _aj:        # white list CHUNG (ap moi party)
+            PARTY_LEADERS = list(_aj.get("party_leaders", []) or [])
     except Exception:
         pass
+
+
+# White list RIENG tung party (pidx -> [ten leader]); CHUNG = PARTY_LEADERS.
+# leaders_for(pidx) = CHUNG + RIENG (union). Rong het -> nhan moi nguoi moi.
+def leaders_for(pidx):
+    out = list(PARTY_LEADERS)
+    for nm in PARTY_LEADERS_BY_IDX.get(pidx, []):
+        if nm not in out:
+            out.append(nm)
+    return out
 
 
 # ============================================================

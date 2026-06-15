@@ -1,0 +1,71 @@
+{
+  "_note": "Route replay tu thanh toi train map (capture). Bot CHI leader replay; member tu keo theo.",
+  "routes": {
+    "12831": {
+      "name": "Rung Noi Huynh",
+      "from_city": 12011,
+      "city_flag": 3,
+      "dest_map": 12831,
+      "steps": [
+        {
+          "gate": 1,
+          "x": 1250,
+          "y": 930
+        },
+        {
+          "move": [
+            886,
+            1567
+          ]
+        },
+        {
+          "move": [
+            911,
+            1601
+          ]
+        },
+        {
+          "move": [
+            935,
+            1635
+          ]
+        },
+        {
+          "move": [
+            960,
+            1668
+          ]
+        },
+        {
+          "move": [
+            984,
+            1702
+          ]
+        },
+        {
+          "move": [
+            990,
+            1710
+          ]
+        },
+        {
+          "move": [
+            1078,
+            1815
+          ]
+        },
+        {
+          "move": [
+            1090,
+            1830
+          ]
+        },
+        {
+          "gate": 18,
+          "x": 1110,
+          "y": 1830
+        }
+      ]
+    }
+  }
+}

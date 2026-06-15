@@ -244,10 +244,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     except Exception as e:
                         log.warning("[%s] loi daily dungeon (sai map, bo qua): %s", label, e)
                 _quit()
+            # SAI MAP nhung CO ROUTE dinh san -> TU TIM DUONG toi train map
+            # (teleport ve thanh + di qua cac cong theo train_routes.json). Moi acc tu di.
+            if not self_map_ok:
+                route = getattr(config, "TRAIN_ROUTES", {}).get(sc)
+                if route:
+                    log.info("[%s] (%s) login map %s != train map %s -> TU TIM DUONG (follow_route)...",
+                             label, role, c.current_map, sc)
+                    try:
+                        if c.follow_route(route):
+                            login_map = c.current_map
+                            self_map_ok = True
+                            log.info("[%s] (%s) da TU DI toi train map %s", label, role, sc)
+                    except Exception as e:
+                        log.warning("[%s] loi follow_route: %s", label, e)
             if is_leader:
                 if not self_map_ok:
-                    # LEADER sai map -> HUY ca party (bao member thoat het)
-                    _reason("leader dung SAI MAP (o %s, can train map %s) - can dua nhan vat ve dung map"
+                    # LEADER sai map + khong route/route loi -> HUY ca party (bao member thoat het)
+                    _reason("leader dung SAI MAP (o %s, can train map %s) - khong route hoac route loi"
                             % (c.current_map, sc))
                     log.warning("[%s] (LEADER) NHAN VAT DANG DUNG O MAP %s, NHUNG CONFIG TRAIN MAP=%s "
                                 "-> KHONG khop -> lam dungeon roi HUY CA PARTY (member thoat het). "

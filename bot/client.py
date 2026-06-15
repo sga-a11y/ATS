@@ -1861,3 +1861,54 @@ class GameClient:
         payload = b"\x01\x00" + struct.pack("<H", city_id) + bytes([flag])
         self.send(protocol.OP_TELEPORT, payload)
         log.info("[%s] Teleport -> city %s (flag %s)", self._label, city_id, flag)
+
+    def _enter_gate(self, x: int, y: int, idx: int, timeout: float = 30.0) -> bool:
+        """Toi cong (x,y) + gui chuoi 0x14 04/08[idx] (giong thoat Di Gioi) -> cho MAP DOI.
+        Cong trung gian khong biet map dich nen xac nhan = current_map khac map luc bat dau."""
+        start_map = self.current_map
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            if not self.running:
+                return False
+            if self.current_map is not None and self.current_map != start_map:
+                log.info("[%s] qua cong idx=%d -> map %s", self._label, idx, self.current_map)
+                return True
+            if self.in_combat(idle_secs=1.5):
+                time.sleep(0.5); continue
+            self.move_to(x, y); time.sleep(1.0)
+            self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.4)
+            self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.4)
+            self.send(0x0c, b"\x01\x00"); time.sleep(0.3)
+            self.send(0x14, b"\x06\x00"); time.sleep(1.3)
+        log.warning("[%s] _enter_gate idx=%d @(%d,%d): map khong doi (van %s)",
+                    self._label, idx, x, y, self.current_map)
+        return False
+
+    def follow_route(self, route, step_wait: float = 1.0) -> bool:
+        """Replay route tu THANH toi train map. route = {from_city, city_flag, dest_map, steps}.
+        steps: {"move":[x,y]} = di 1 buoc | {"gate":idx,"x","y"} = toi cong roi gui 0x14.
+        Bot CHI leader can goi (member tu bi keo theo trong party). Tra True neu toi dest_map."""
+        dest = int(route.get("dest_map", 0))
+        city = int(route.get("from_city", 0))
+        flag = int(route.get("city_flag", 0))
+        log.info("[%s] follow_route -> map %s (qua thanh %s flag %s)", self._label, dest, city, flag)
+        self.flee_mode = True
+        if city and not self.go_to_town(city, flag):
+            log.warning("[%s] follow_route: khong teleport ve thanh %s duoc", self._label, city)
+            return False
+        for st in route.get("steps", []):
+            if not self.running:
+                return False
+            if "gate" in st:
+                if not self._enter_gate(int(st["x"]), int(st["y"]), int(st["gate"])):
+                    log.warning("[%s] follow_route: ket o cong idx=%s -> dung", self._label, st.get("gate"))
+                    return False
+            else:
+                x, y = int(st["move"][0]), int(st["move"][1])
+                if self.in_combat(idle_secs=1.5):
+                    time.sleep(0.5)
+                self.move_to(x, y); time.sleep(step_wait)
+        ok = self.current_map == dest
+        log.info("[%s] follow_route xong: map=%s (dich %s) -> %s",
+                 self._label, self.current_map, dest, "OK" if ok else "CHUA TOI")
+        return ok
