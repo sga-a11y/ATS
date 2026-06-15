@@ -314,16 +314,17 @@ git commit -m "feat: pathfind.find_path (BFS do thi cong)"
 **Files:**
 - Modify: `bot/client.py` (thêm method, cạnh `navigate_to`/`go_to_town`)
 
-> Nội dung phụ thuộc Task 0. Mặc định dưới đây = đi tới cổng + chờ map đổi (giống thoát Dị Giới nhưng KHÔNG gói trigger). **Nếu Task 0 cho thấy cần gói trigger, thêm vào chỗ đánh dấu.**
+> Task 0 ĐÃ XONG: cơ chế = `0x14` (giống Dị Giới). Gate schema có `idx`.
+> `walk_through_gate(x, y, idx, expected_map)` — đi tới cổng + gửi chuỗi `0x14 04/08[idx]`.
 
 - [ ] **Step 1: Thêm method vào `bot/client.py`**
 
 ```python
-    def walk_through_gate(self, x: int, y: int, expected_map: int,
-                          step_wait: float = 1.5, timeout: float = 40.0) -> bool:
-        """Di toi cong (x,y) roi cho current_map doi sang expected_map.
-        Bat flee_mode ne quai doc duong (giong navigate_to). Tra True neu da sang dung map."""
-        log.info("[%s] -> cong (%d,%d) sang map %s", self._label, x, y, expected_map)
+    def walk_through_gate(self, x: int, y: int, idx: int, expected_map: int,
+                          step_wait: float = 1.2, timeout: float = 45.0) -> bool:
+        """Di toi cong (x,y) roi gui chuoi 0x14 (giong thoat Di Gioi) de qua cong idx.
+        Cho current_map doi sang expected_map. Bat flee ne quai doc duong."""
+        log.info("[%s] -> cong (%d,%d) idx=%d sang map %s", self._label, x, y, idx, expected_map)
         self.flee_mode = True
         t0 = time.time()
         while time.time() - t0 < timeout:
@@ -334,14 +335,20 @@ git commit -m "feat: pathfind.find_path (BFS do thi cong)"
                 return True
             if self.in_combat(idle_secs=1.5):
                 time.sleep(0.5); continue
-            self.move_to(x, y)
-            # >>> NEU Task 0 cho thay can goi TRIGGER khi toi cong, gui o day <<<
-            #     (vd: self.send(0x14, bytes.fromhex("...")))
-            time.sleep(step_wait)
-        log.warning("[%s] KET o cong (%d,%d): map van la %s (can map %s)",
-                    self._label, x, y, self.current_map, expected_map)
+            self.move_to(x, y); time.sleep(step_wait)
+            # chuoi vao cong (xac nhan tu gate.pcap): 0x14 04/08[idx] + 0c + 0600
+            self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.4)
+            self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.4)
+            self.send(0x0c, b"\x01\x00"); time.sleep(0.3)
+            self.send(0x14, b"\x06\x00"); time.sleep(1.2)
+        log.warning("[%s] KET o cong (%d,%d) idx=%d: map van %s (can %s)",
+                    self._label, x, y, idx, self.current_map, expected_map)
         return False
 ```
+
+> LƯU Ý: loader (Task 2) + `go_to_map` (Task 5) phải mang `idx` theo cạnh:
+> `MAP_GATES[map] = [(x, y, to, idx), ...]` (cập nhật `_load_map_gates` đọc `idx`,
+> `find_path` trả `(x, y, to, idx)`, `go_to_map` gọi `walk_through_gate(x, y, idx, to)`).
 
 - [ ] **Step 2: Kiểm tra import (chạy thử)**
 
