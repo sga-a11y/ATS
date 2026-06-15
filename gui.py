@@ -806,6 +806,7 @@ class ConfigDialog(tk.Toplevel):
             sel = min(max(open_pidx, 0), len(self.frames) - 1)
             self.nb.select(sel)
             self._build_entry(self.frames[sel])
+            self.after(200, self._preload_next)   # dung ngam cac tab con lai (khong can click)
 
         bar = ttk.Frame(self, padding=6); bar.pack(fill="x")
         ttk.Button(bar, text="💾 Lưu", command=self._save).pack(side="right", padx=3)
@@ -831,6 +832,16 @@ class ConfigDialog(tk.Toplevel):
             cfg.pack(fill="both", expand=True)
             entry["cfg"] = cfg
         return entry["cfg"]
+
+    def _preload_next(self):
+        # dung NGAM tung tab chua dung (1 tab/lan, 80ms) -> UI khong khung; click van uu tien build ngay
+        if not self.winfo_exists():
+            return
+        for e in self.frames:
+            if e["cfg"] is None:
+                self._build_entry(e)
+                self.after(80, self._preload_next)
+                return
 
     def _on_cfg_tab(self, event=None):
         try:
