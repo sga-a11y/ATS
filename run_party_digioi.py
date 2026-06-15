@@ -82,6 +82,26 @@ def _party_exit_summary(pidx, exclude_user):
     log.warning(">>> PARTY %s vi tri tung nick: %s", pidx + 1, pos)
 
 
+def _party_map_barrier(st, username, self_ok, expected, stopped, timeout=70):
+    """BARRIER cap party: moi acc bao 'minh co o train map khong', cho ca party quyet dinh.
+    Tra True neu MOI acc bao cao deu o train map; False neu CO >=1 acc sai map
+    (-> ca party ve thanh don nhau). Thoat som khi da co dua sai map hoac du bao cao."""
+    with st["lock"]:
+        st["map_results"][username] = bool(self_ok)
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if stopped():
+            break
+        with st["lock"]:
+            done = len(st["map_results"]) >= expected
+            any_bad = not all(st["map_results"].values())
+        if done or any_bad:
+            break
+        time.sleep(1)
+    with st["lock"]:
+        return all(st["map_results"].values())
+
+
 def _pstate(pidx):
     if pidx not in _party_state:
         _party_state[pidx] = {"channel": None,
@@ -98,6 +118,7 @@ def _pstate(pidx):
                               "stop_leader_done": threading.Event(),  # STOP: leader DA ve safe -> member duoc thoat
                               "route_party_ready": threading.Event(),  # ROUTE: party da lap xong o thanh -> sap keo di
                               "route_done": threading.Event(),         # ROUTE: leader da keo xong (toi train map)
+                              "map_results": {},     # ROUTE barrier: username -> dang o train map? (de quyet dinh ca party)
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
@@ -246,14 +267,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     except Exception as e:
                         log.warning("[%s] loi daily dungeon (sai map, bo qua): %s", label, e)
                 _quit()
-            # SAI MAP + CO ROUTE -> VE THANH, LAP PARTY DU, roi LEADER KEO member di toi train map
-            # (member tu bi keo theo trong party - KHONG tu di). Theo train_routes.json.
-            if not self_map_ok:
-                route = getattr(config, "TRAIN_ROUTES", {}).get(sc)
-                if route:
+            # PARTY-LEVEL: chi can 1 acc sai map -> CA PARTY (ke ca dua DANG O BAI) ve thanh don nhau,
+            # lap party du, roi LEADER KEO ca party toi train map (member tu theo). Theo train_routes.json.
+            route = getattr(config, "TRAIN_ROUTES", {}).get(sc)
+            if route and has_leader:
+                expected = len(party_accounts(pidx))
+                all_on_map = _party_map_barrier(st, username, self_map_ok, expected, _stopped)
+                if not all_on_map:
                     fc = int(route.get("from_city", 0)); ff = int(route.get("city_flag", 0))
-                    log.info("[%s] (%s) sai map (o %s) -> ve thanh %s, lap party roi KEO toi train map %s",
-                             label, role, c.current_map, fc, sc)
+                    log.info("[%s] (%s) PARTY co acc sai map -> CA PARTY ve thanh %s don nhau roi KEO toi %s",
+                             label, role, fc, sc)
                     c.flee_mode = True
                     if fc and c.go_to_town(fc, ff):
                         do_channel_sync()   # dong bo kenh TAI THANH (de moi/keo duoc)
@@ -692,6 +715,7 @@ def start_party(pidx, stagger=1.5):
         st["ready_members"].clear()
         st["started_train"] = 0
         st["dungeon_done"] = 0
+        st["map_results"] = {}       # reset barrier map cho lan chay nay
         st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
     for u, p, is_leader, is_picker in party_accounts(pidx):
         account_exit_reason.pop(u, None)   # xoa ly do cu
