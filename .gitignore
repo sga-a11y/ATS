@@ -37,3 +37,4 @@ gamedata_*.dat
 gd_*.txt
 Ctrl+C
 checkin_state.bak.json
+il2cpp/
