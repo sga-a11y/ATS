@@ -1875,7 +1875,8 @@ class GameClient:
                 return True
             if self.in_combat(idle_secs=1.5):
                 time.sleep(0.5); continue
-            self.move_to(x, y); time.sleep(0.5)
+            if x or y:   # x=y=0 -> cong "vao lien" (spawn ngay tai cong) -> KHONG move, chi trigger
+                self.move_to(x, y); time.sleep(0.5)
             self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
             self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
             self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
