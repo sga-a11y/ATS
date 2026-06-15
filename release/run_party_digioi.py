@@ -555,6 +555,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         last_remove = time.time()
         last_retry = time.time()
         last_dg = 0.0
+        last_combat = time.time()   # lan cuoi thay in_combat -> de RE-ARM combat khi ket
+        last_rearm = 0.0
         stop_ev = account_stops.get(username)
         # Bao stop_account: ACC NAY khi STOP -> thread TU xu ly (KHONG dong socket ngay).
         #  - leader train: tu chay ve safe gan nhat roi dong.
@@ -596,6 +598,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
+            # RE-ARM combat: dang o bai train ma >40s KHONG vao tran (co the mat combat-active
+            # sau khi KEO qua cong) -> gui lai combat_ready de quai aggro lai (khoi phai restart).
+            if c.in_combat():
+                last_combat = time.time()
+            should_fight = (training_started if is_leader else is_joined(pidx, c.self_entity))
+            if (train_on_map and should_fight and not getattr(c, "flee_mode", False)
+                    and time.time() - last_combat > 40 and time.time() - last_rearm > 40):
+                last_rearm = time.time()
+                log.info("[%s] (%s) >40s khong vao tran -> RE-ARM combat (quai aggro lai)", label, role)
+                try: c.combat_ready()
+                except Exception: pass
             try:
                 c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
             except Exception as e:
