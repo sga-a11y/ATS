@@ -1,11 +1,13 @@
 {
-  "_note": "Server game TS Online. key=ten noi bo. label=ten hien thi. ip=IP TCP. id=SERVER ID trong goi auth (byte thu 5: Trieu Van=1, Tao Thao=2, Lu Bo=3, Luu Bi=4, Ton Quyen=5, Truong Phi=6). Login HTTP giong nhau.",
+  "_note": "Server game TS Online. key=ten noi bo. label=ten hien thi. ip=IP TCP. id=SERVER ID trong goi auth (byte thu 5: Trieu Van=1, Tao Thao=2, Lu Bo=3, Luu Bi=4, Ton Quyen=5, Truong Phi=6, Chu Du=7, Quan Vu=8). Login HTTP giong nhau.",
   "servers": {
     "trieu_van": { "label": "Triệu Vân", "ip": "103.82.28.98",  "id": 1 },
     "tao_thao":  { "label": "Tào Tháo",  "ip": "103.82.28.99",  "id": 2 },
     "lu_bo":     { "label": "Lữ Bố",     "ip": "103.82.28.100", "id": 3 },
     "luu_bi":    { "label": "Lưu Bị",    "ip": "103.82.28.126", "id": 4 },
     "ton_quyen": { "label": "Tôn Quyền", "ip": "103.82.28.140", "id": 5 },
-    "truong_phi":{ "label": "Trương Phi","ip": "103.82.28.143", "id": 6 }
+    "truong_phi":{ "label": "Trương Phi","ip": "103.82.28.143", "id": 6 },
+    "chu_du":    { "label": "Chu Du",    "ip": "103.82.28.144", "id": 7 },
+    "quan_vu":   { "label": "Quan Vũ",   "ip": "103.82.28.146", "id": 8 }
   }
 }

@@ -45,6 +45,14 @@ def joined_member_count(party_idx):
     with _PARTY_LOCK:
         return len(_PARTY_JOINED.get(party_idx, set()))
 
+def reset_party_joined(party_idx):
+    """Xoa danh sach member da join (khi leader GIAI TAN party de relogin) -> leader tinh lai tu
+    dau, vong retry 60s se MOI LAI cho du member. Member se _mark_joined lai khi accept loi moi moi."""
+    if party_idx is None:
+        return
+    with _PARTY_LOCK:
+        _PARTY_JOINED.pop(party_idx, None)
+
 def is_joined(party_idx, entity):
     """Member nay da accept vao party chua (self_entity co trong _PARTY_JOINED)."""
     if party_idx is None or not entity:
@@ -407,6 +415,44 @@ class GameClient:
         except OSError:
             self.running = False   # socket dong -> dung gui, dung moi vong lap
 
+    def relogin(self):
+        """Thoat game roi login lai (cung acc). Server tha DUNG CHO LOGOUT (login=logout pos)
+        + gui 0x03 self-spawn -> self.pos RESYNC ve toa do THAT (het drift dead-reckoning).
+        Fallback khi KET o bai (lau khong co battle): ve safe -> relogin lay lai vi tri chuan
+        -> di tiep toi spot. KHONG load lai gift state (giu nguyen claim trong phien)."""
+        log.info("[%s] RELOGIN: dong ket noi + login lai de resync vi tri", self._label)
+        try:
+            if self.sock:
+                self.sock.close()
+        except OSError:
+            pass
+        self.running = False
+        time.sleep(1.0)
+        # reset state battle/turn (tranh ket dong cu sau relogin)
+        self.available = {}
+        self._acted_turn = False
+        self.flee_mode = False
+        self.state.in_battle = False
+        self.last_turn_time = 0.0
+        self.pos = None   # se duoc 0x03 self-spawn resync ngay sau login
+        try:
+            self.sock = socket.create_connection((self.host, config.GAME_PORT), timeout=15)
+            self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
+        except OSError as e:
+            log.warning("[%s] RELOGIN that bai (ket noi): %s", self._label, e)
+            return False
+        self.running = True
+        threading.Thread(target=self._recv_loop, daemon=True).start()
+        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        self._login_setup()
+        # cho 0x03 self-spawn resync pos (toi da 6s)
+        for _ in range(30):
+            time.sleep(0.2)
+            if self.pos is not None:
+                break
+        log.info("[%s] RELOGIN xong, pos=%s map=%s", self._label, self.pos, self.current_map)
+        return True
+
     def close(self):
         self.running = False
         if self.sock:
@@ -489,6 +535,16 @@ class GameClient:
                 mid = int.from_bytes(pkt[28:30], "little")
                 if mid > 1000:
                     self.current_map = mid
+                # RESYNC vi tri THAT do server cap: 0x03 self-spawn co toa do o payload
+                # offset 23/25 = pkt[30:32]/pkt[32:34] (relogin.pcap: f2 03=1010, ca 03=970).
+                # Sua dead-reckoning bi lech sau khi di xa/qua cong. Login=dung cho logout.
+                if len(pkt) >= 34:
+                    sx = int.from_bytes(pkt[30:32], "little")
+                    sy = int.from_bytes(pkt[32:34], "little")
+                    if 0 < sx < 20000 and 0 < sy < 20000:
+                        self.pos = (sx, sy)
+                        log.info("[%s] RESYNC pos tu 0x03 = (%d,%d) map=%s",
+                                 self._label, sx, sy, self.current_map)
             # TEN NHAN VAT tu 0x03 self-spawn (nguon dang tin: MOI acc co, KHONG can bang hoi).
             if self.self_entity is None:
                 self._pending_03 = pkt   # chua biet self -> cache, retry khi 0x69 toi

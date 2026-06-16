@@ -197,7 +197,7 @@ SKILL_FIRE = 12003          # Hoa Tien - AoE 3 ngang
 SKILL_HEAL_ALL = 11010      # Toan Tri Lieu (hoi HP toan party)
 SKILL_HEAL_ONE = 11004      # Thanh Luu (hoi 1 dong doi)
 SKILL_DEFEND = 17001        # Phong thu
-SKILL_FLEE = 17997          # Bo chay (0x4651) - dung nhu skill cho ca char+pet de thoat tran
+SKILL_FLEE = 18001          # Bo chay (0x4651=18001) char+pet thoat tran. FIX: truoc ghi 17997=0x464D SAI -> server khong nhan flee -> ket tran. flee.pcap goi 0x32 skill=51 46 = 0x4651
 
 # SP threshold (de danh SP cho heal): chi dung skill AoE khi SP >= nguong nay
 CHAR_ROCK_MIN_SP = 100      # Nem Da

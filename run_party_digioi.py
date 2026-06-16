@@ -123,6 +123,7 @@ def _pstate(pidx):
                               "rally_point": None,   # safe GAN diem quai nhat -> CA PARTY ve day (gan leader)
                               "rally_ready": threading.Event(),  # leader da chon diem quai + rally_point
                               "path_done": threading.Event(),    # leader da di xong follow_path toi diem quai (member bi keo theo)
+                              "reform_gen": 0,       # +1 moi khi co acc van map (chet) -> CA party reform tai cho
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
@@ -396,45 +397,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 else:
                     spot = mobs[mob_index] if (mobs and 0 <= mob_index < len(mobs)) else (mobs[0] if mobs else None)
                 st["mob_spot"] = spot
-                # CO PATH capture (diem quai XA) -> ca party di theo path toi spot; KHONG -> ve safe gan
+                # CO PATH capture (diem quai XA) -> sau khi lap party leader follow_path keo ca party
+                # ra spot; KHONG path -> navigate thang. DU CO PATH HAY KHONG, rally LUON la SAFE gan
+                # spot (tap trung + lap party o day TRUOC), KHONG phai spot (truoc set =spot -> ca party
+                # navigate thang ra spot luc chua co party -> vo ich, roi lai quay ve safe).
                 path = getattr(config, "MOB_PATHS", {}).get(sc, {}).get(tuple(spot)) if spot else None
                 st["mob_path"] = path
-                st["rally_point"] = (tuple(spot) if path else
-                                     (_nearest_safe(spot, tm["safe"]) if spot else tm["safe"][0]))
+                st["rally_point"] = (_nearest_safe(spot, tm["safe"]) if spot else tm["safe"][0])
                 st["rally_ready"].set()
             # member: cho leader chon (rally_point/path); khong co leader -> safe[0]
             if has_leader and not is_leader:
                 st["rally_ready"].wait(60)
-            path = st.get("mob_path")
-            if path:
-                # CHI LEADER di follow_path; member BI KEO THEO (game tu keo member khi leader di bo
-                # trong map). Neu CA member tu di path rieng -> 5 thang rai rac, khong cung 1 tran ->
-                # party-battle treo (server cho du slot) -> flee vo tac dung -> leader bi quai bem chet.
-                from bot.client import joined_member_count
-                # DU PARTY (tat ca member da join) -> KHONG flee nua, gap quai DANH luon (flee
-                # party-battle bi treo -> ca party chet). Chua du -> flee cho an toan.
-                party_full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
-                if is_leader:
-                    log.info("[%s] (LEADER) MAP-TRAIN map=%s -> di PATH toi diem quai (%d buoc) [%s], member bi keo theo",
-                             label, sc, len(path), "DANH" if party_full else "FLEE")
-                    st["path_done"].clear()
-                    c.follow_path(path, flee=not party_full)
-                    st["path_done"].set()
-                else:
-                    if party_full:
-                        c.flee_mode = False   # du party -> bi keo vao tran thi DANH cung leader (khong flee -> tranh treo)
-                    log.info("[%s] (member) MAP-TRAIN map=%s -> DUNG YEN cho leader keo toi diem quai [%s]",
-                             label, sc, "DANH" if party_full else "FLEE")
-                    # cho leader keo xong; THOAT SOM neu STOP/mat ket noi (KHONG block 180s -> ke't STOP)
-                    t0 = time.time()
-                    while not st["path_done"].is_set() and time.time() - t0 < 180:
-                        if _stopped() or not c.running:
-                            break
-                        time.sleep(1)
-            else:
-                rally = st.get("rally_point") or tm["safe"][0]
-                log.info("[%s] (%s) MAP-TRAIN map=%s -> ve safe tap ket chung %s", label, role, sc, rally)
-                c.navigate_to(*rally)
+            # MAP-TRAIN: CA party (leader+member) ve RALLY = safe GAN spot TRUOC. KHONG follow_path
+            # ngay luc nay - vi party CHUA lap (member chua join) -> keo cung vo ich (member khong bi
+            # keo theo, leader chay ra spot 1 minh roi quay ve). Sau khi LAP PARTY xong, _start_training
+            # moi cho leader follow_path KEO CA PARTY (da join, dang o rally) ra spot.
+            rally = st.get("rally_point") or tm["safe"][0]
+            log.info("[%s] (%s) MAP-TRAIN map=%s -> ve safe tap ket chung %s (lap party TRUOC, keo ra spot SAU)",
+                     label, role, sc, rally)
+            c.navigate_to(*rally)
             # SOLO daily dungeon o MAP-TRAIN: TAM TAT (het luot -> bi dump ve 12000, pha map-train;
             # Bat/tat bang checkbox "Danh daily dungeon" cua party (do_dungeon).
             # via_route -> da danh dungeon o thanh roi, BO QUA (khoi pha map-train + cho barrier).
@@ -450,14 +431,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         break
                     time.sleep(1)
                 if c.current_map != sc:
-                    log.warning("[%s] (%s) sau dungeon KHONG ve map train (dang o %s) -> THOAT acc nay",
+                    # Bi dungeon DUMP ra sanh (12000)/thanh -> KHONG bo roi, KHONG bat no chay le 1
+                    # minh ve. Bump reform_gen -> CA PARTY se reform (ve thanh DON no) o keepalive
+                    # ben duoi. Van +dungeon_done de barrier dungeon khong treo cho member nay.
+                    log.warning("[%s] (%s) sau dungeon BI DUMP ra %s -> yeu cau CA PARTY reform (ve thanh don)",
                                 label, role, c.current_map)
                     with st["lock"]:
-                        st["started_train"] -= 1
-                    _quit(); return
-                c.navigate_to(*tm["safe"][0])
-                with st["lock"]:
-                    st["dungeon_done"] += 1
+                        st["reform_gen"] += 1
+                        st["dungeon_done"] += 1
+                else:
+                    c.navigate_to(*tm["safe"][0])
+                    with st["lock"]:
+                        st["dungeon_done"] += 1
                 log.info("[%s] (%s) xong dungeon -> cho ca party (%d/%d)...",
                          label, role, st["dungeon_done"], st["started_train"])
                 t0 = time.time()
@@ -559,13 +544,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             def _start_training():
                 c.set_party_strategist()    # set member INT cao nhat lam quan su (hoi SP)
                 if train_on_map:
-                    # diem quai DA chon som (st["mob_spot"]) - ca party da ve safe GAN diem do roi.
+                    # diem quai DA chon som (st["mob_spot"]) - ca party da ve safe GAN diem do roi,
+                    # va DA LAP PARTY xong (goi tu day) -> gio moi keo ca party ra spot:
+                    #   - CO mob_path: leader follow_path KEO ca party (da join, dang o rally) ra spot.
+                    #     flee=False de gap quai danh luon (party da du, flee party-battle bi treo).
+                    #   - khong path: navigate thang ra spot.
                     spot = st.get("mob_spot")
                     if not spot and tm["mobs"]:
                         import random
                         spot = random.choice(tm["mobs"])
-                    if spot and not st.get("mob_path"):
-                        # khong path -> leader o safe gan -> ra diem quai. CO path -> da o spot roi.
+                    path = st.get("mob_path")
+                    if path:
+                        log.info("[%s] (LEADER) party da lap -> follow_path KEO ca party ra spot (%d buoc)",
+                                 label, len(path))
+                        c.follow_path(path, flee=False)   # party da du -> danh quai gap tren duong
+                    elif spot:
                         c.navigate_to(*spot)
                     c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
                     log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
@@ -601,14 +594,91 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                          "auto-accept - CHO ban moi party tay", label, st.get("channel"))
 
         # --- Giu song ---
-        from bot.client import joined_member_count, is_joined
+        from bot.client import joined_member_count, is_joined, reset_party_joined
         out_cnt = 0
         last_remove = time.time()
         last_retry = time.time()
         last_dg = 0.0
         last_combat = time.time()   # lan cuoi thay in_combat -> de RE-ARM combat khi ket
         last_rearm = 0.0
+        last_relogin = time.time()  # lan cuoi RELOGIN-recovery (ket o bai 90s khong battle)
+        relogin_cnt = 0
         displaced_cnt = 0           # so lan lien tiep thay KHAC map train (chet/hoi sinh/bi dump)
+        last_reform = time.time()   # lan cuoi REFORM party (grace de khong trigger lien tuc o thanh)
+        reform_gen_handled = 0      # gen reform da xu ly. Init=0 (KHONG = st["reform_gen"]) de neu
+        # co acc bi DUMP luc setup (da bump reform_gen) thi keepalive thay ngay -> reform don no
+
+        def _do_reform():
+            """CA party REFORM tai cho khi co acc van map (chet). Ve thanh gom nhau -> leader GIAI
+            TAN party cu + lap lai + KEO ca party ra train map/spot (member bi keo theo). Member:
+            ve thanh, switch dung kenh, auto-accept loi moi roi bi keo theo. Giu nguyen thread."""
+            route2 = getattr(config, "TRAIN_ROUTES", {}).get(sc)
+            if not route2:
+                log.warning("[%s] (%s) reform: khong co route -> bo qua", label, role)
+                return
+            fc = int(route2.get("from_city", 0)); ff = int(route2.get("city_flag", 0))
+            spot = st.get("mob_spot")
+            c.flee_mode = True
+            if is_leader:
+                st["route_party_ready"].clear(); st["route_done"].clear()  # reset handshake cho lan reform nay
+                c.leave_party()                  # GIAI TAN party cu -> member duoc tha khoi party cu
+                reset_party_joined(pidx)
+            if fc:
+                try: c.go_to_town(fc, ff)        # CA party (leader+member) tu teleport ve thanh gom nhau
+                except Exception as e: log.warning("[%s] reform: loi ve thanh: %s", label, e)
+            ch = st.get("channel")               # ve cung kenh da chon (khong re-pick, tranh tach)
+            if ch:
+                try: c.switch_channel(ch); time.sleep(1)
+                except Exception: pass
+            if is_leader:
+                # LAP LAI party TAI THANH (member da tu do sau giai tan + dang o thanh) -> moi + cho join
+                for _ in range(8):
+                    if not c.running or _stopped(): return
+                    try: c.invite_members(gap=1.0)
+                    except Exception: pass
+                    time.sleep(4)
+                    if joined_member_count(pidx) >= st["n_members"]:
+                        break
+                log.info("[%s] (LEADER) reform: %d/%d member join lai -> KEO qua cong ra spot",
+                         label, joined_member_count(pidx), st["n_members"])
+                try: c.set_party_strategist()
+                except Exception: pass
+                st["route_party_ready"].set()    # bao member: party lap xong, sap keo
+                time.sleep(1.5)
+                # KEO DI THU CONG qua tung cong/buoc (GIONG startup via_route) -> member TRONG PARTY
+                # tu theo leader KE CA QUA CONG. KHONG dung follow_route (no tu teleport -> khong keo).
+                for stp in route2.get("steps", []):
+                    if not c.running or _stopped(): break
+                    if "gate" in stp:
+                        if not c._enter_gate(int(stp["x"]), int(stp["y"]), int(stp["gate"])):
+                            break
+                    else:
+                        if c.in_combat(idle_secs=1.5): time.sleep(0.5)
+                        c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(0.5)
+                # toi train map -> keo tiep ra spot (di bo local, member van theo)
+                if c.current_map == sc:
+                    path = st.get("mob_path")
+                    if path:
+                        c.follow_path(path, flee=False)
+                    elif spot:
+                        c.navigate_to(*spot)
+                c.combat_ready(); c.flee_mode = False
+                st["route_done"].set()
+            else:
+                # member: cho leader bao party lap xong (route_party_ready) -> roi cho keo xong (route_done).
+                # Dang trong party nen tu bi keo qua cong theo leader (giong startup via_route).
+                t0 = time.time()
+                while not st["route_party_ready"].is_set() and time.time() - t0 < 120:
+                    if not c.running or _stopped(): return
+                    time.sleep(2)
+                t0 = time.time()
+                while not st["route_done"].is_set() and time.time() - t0 < 240:
+                    if not c.running or _stopped(): return
+                    time.sleep(2)
+                for _ in range(15):                # cho map cap nhat sau khi bi keo
+                    if c.current_map == sc or _stopped(): break
+                    time.sleep(1)
+                c.combat_ready(); c.flee_mode = False
         stop_ev = account_stops.get(username)
         # Bao stop_account: ACC NAY khi STOP -> thread TU xu ly (KHONG dong socket ngay).
         #  - leader train: tu chay ve safe gan nhat roi dong.
@@ -659,52 +729,81 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             if (train_on_map and should_fight and not getattr(c, "flee_mode", False)
                     and time.time() - last_combat > 18 and time.time() - last_rearm > 18):
                 last_rearm = time.time()
-                if is_leader:
-                    # Quai khong tu aggro (vd keo qua cong) -> DI LONG VONG quanh diem quai de GIAM
-                    # vao quai -> CHU DONG khoi tran (khoi can quai aggro). Giam buoc nho quanh spot.
-                    spot = st.get("mob_spot")
-                    if not spot and tm.get("mobs"):
-                        import random
-                        spot = random.choice(tm["mobs"])
-                    if spot:
-                        log.info("[%s] (LEADER) %ds khong vao tran -> DI LONG VONG quanh %s de giam quai",
-                                 label, 18, spot)
-                        try:
-                            c.flee_mode = False
-                            for ox, oy in [(0, 0), (70, 0), (0, 70), (-70, 0), (0, -70),
-                                           (70, 70), (-70, -70), (0, 0)]:
-                                if not c.running or c.in_combat(idle_secs=1.0):
-                                    break
-                                c.move_to(spot[0] + ox, spot[1] + oy); time.sleep(1.2)
-                            c.combat_ready()
-                        except Exception: pass
-                else:
-                    try: c.combat_ready()
-                    except Exception: pass
-            # DISPLACED: dang train ma BI VAN khoi train map (chet -> hoi sinh ve thanh, hoac bi
-            # dump) -> TU VE LAI train map qua route (follow_route tu teleport ve from_city roi di).
-            if train_on_map and should_fight and c.current_map is not None and c.current_map != sc:
+                # 18s khong vao tran -> chi RE-ARM combat-active (mat sau khi qua cong) - KHONG
+                # di long vong (vo ich, khong giai quyet duoc gi). Ket that su -> relogin o duoi (90s).
+                try: c.combat_ready()
+                except Exception: pass
+            # KET o bai: >90s KHONG battle du da di long vong (re-arm 18s khong cuu) -> RELOGIN.
+            # login=cho logout + goi 0x03 self-spawn -> self.pos RESYNC ve toa do THAT (het drift
+            # dead-reckoning lam move_to nham huong). Chay ve rally (safe da chon) TRUOC roi relogin
+            # -> tu safe (pos chuan) di lai toi spot. KHONG gioi han so lan (theo yeu cau Anh).
+            # CHI leader (leader dieu huong; member theo tran leader + duoc moi lai qua vong 60s).
+            if (train_on_map and is_leader and should_fight and not getattr(c, "flee_mode", False)
+                    and time.time() - last_combat > 90 and time.time() - last_relogin > 90):
+                last_relogin = time.time()
+                relogin_cnt += 1
+                rally = st.get("rally_point") or _nearest_safe(c.pos, tm["safe"]) or tm["safe"][0]
+                spot = st.get("mob_spot")
+                log.warning("[%s] (LEADER) >90s KHONG battle -> ve safe %s + RELOGIN (lan %d) de resync vi tri",
+                            label, rally, relogin_cnt)
+                try:
+                    c.flee_mode = True
+                    if rally:
+                        c.navigate_to(*rally)        # ve safe da chon truoc khi thoat
+                    # GIAI TAN party cu TRUOC khi relogin: leader van dang la leader -> 0x0d sub=04
+                    # tan ca party -> 4 member duoc THA khoi party cu. Khong tan thi member van ket
+                    # trong party cu -> moi lai KHONG vao (dang trong party roi) -> leader danh 1 minh.
+                    c.leave_party(); time.sleep(0.8)
+                    from bot.client import reset_party_joined
+                    reset_party_joined(pidx)         # quen member cu -> leader tinh lai tu dau, retry 60s moi lai
+                    if c.relogin():                  # thoat + login lai -> 0x03 resync pos ve dung safe
+                        # MOI LAI member NGAY TAI SAFE (leader+member gan nhau) roi CHO ho join
+                        # TRUOC khi keo ra spot -> member duoc keo theo. Moi truoc khi di (neu di
+                        # spot truoc roi moi moi thi member ket o safe, khong duoc keo).
+                        c.combat_ready(); c.flee_mode = False
+                        for _ in range(4):           # moi lap lai, cho member (gio da tu do) accept
+                            if not c.running or _stopped(): break
+                            try: c.invite_members(gap=1.0)
+                            except Exception: pass
+                            time.sleep(3)
+                            if joined_member_count(pidx) >= st["n_members"]:
+                                break
+                        log.info("[%s] (LEADER) sau relogin: %d/%d member join lai -> keo ra spot",
+                                 label, joined_member_count(pidx), st["n_members"])
+                        path = st.get("mob_path")
+                        if path:
+                            c.follow_path(path, flee=False)   # keo ca party ra spot (path tranh tuong)
+                        elif spot:
+                            c.navigate_to(*spot)     # tu safe (pos CHUAN) keo party ra spot
+                        c.combat_ready(); c.flee_mode = False
+                        last_combat = time.time()    # cho them 90s nua truoc khi relogin tiep
+                except Exception as e:
+                    log.warning("[%s] loi relogin recovery (bo qua): %s", label, e)
+            # DISPLACED: dang train ma BI VAN khoi train map (99% = quai danh chet -> hoi sinh ve
+            # thanh). KHONG tu ve lai le loi (party da vo) -> YEU CAU CA PARTY REFORM: acc nao tu
+            # thay minh van map thi bump reform_gen -> ca party ve thanh, leader giai tan + lap lai
+            # + keo ra bai. grace 60s sau reform de khong trigger lien tuc khi dang o thanh (!=sc).
+            if (train_on_map and c.current_map is not None and c.current_map != sc
+                    and time.time() - last_reform > 60):
                 displaced_cnt += 1
                 if displaced_cnt >= 2:   # 2 lan lien tiep (~10s) khac map train -> chac chan displaced
                     displaced_cnt = 0
-                    route = getattr(config, "TRAIN_ROUTES", {}).get(sc)
-                    log.warning("[%s] (%s) BI VAN khoi train map (dang o %s, vd chet/hoi sinh) -> tu ve lai",
-                                label, role, c.current_map)
-                    if route:
-                        try:
-                            if c.follow_route(route):
-                                log.info("[%s] (%s) da TU VE LAI train map %s", label, role, sc)
-                                if is_leader and st.get("mob_spot"):
-                                    c.navigate_to(*st["mob_spot"])
-                                c.combat_ready(); c.flee_mode = False
-                                last_combat = time.time()
-                        except Exception as e:
-                            log.warning("[%s] loi tu ve lai train map: %s", label, e)
-                    else:
-                        log.warning("[%s] (%s) khong co route -> khong tu ve lai duoc (can park tay)",
-                                    label, role)
+                    with st["lock"]:
+                        st["reform_gen"] += 1
+                    log.warning("[%s] (%s) BI VAN khoi train map (dang o %s, vd chet) -> yeu cau CA PARTY reform (gen %d)",
+                                label, role, c.current_map, st["reform_gen"])
             else:
                 displaced_cnt = 0
+            # Bat ky acc nao thay reform_gen TANG (co dua van map) -> CA PARTY cung reform tai cho.
+            if train_on_map and st["reform_gen"] > reform_gen_handled:
+                reform_gen_handled = st["reform_gen"]
+                log.warning("[%s] (%s) -> REFORM party (gen %d)", label, role, reform_gen_handled)
+                try: _do_reform()
+                except Exception as e:
+                    log.warning("[%s] loi reform (bo qua): %s", label, e)
+                last_reform = time.time()
+                last_combat = time.time()   # reset watchdog relogin sau reform
+                continue
             try:
                 c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
             except Exception as e:

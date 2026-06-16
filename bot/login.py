@@ -1,8 +1,13 @@
 """HTTP login -> lay user_id + access_token."""
 import urllib.parse
 import urllib.request
+import urllib.error
 import json
+import time
+import logging
 from . import config
+
+log = logging.getLogger("login")
 
 
 import hashlib
@@ -47,8 +52,23 @@ def login(username: str = None, password: str = None, device_id: str = None) -> 
         headers={"Content-Type": "application/x-www-form-urlencoded",
                  "User-Agent": "okhttp/4.12.0"},
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.loads(resp.read().decode())
+    # RETRY khi can cong ephemeral (WinError 10048: 100 acc login don dap -> cong TIME_WAIT chua
+    # kip giai phong) hoac loi mang tam. Cho tang dan (cong tu giai phong sau ~120s TIME_WAIT).
+    data = None
+    last_err = None
+    for attempt in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+            break
+        except (urllib.error.URLError, OSError) as e:
+            last_err = e
+            # WinError 10048 = address in use (can cong); 10055/10060 = het buffer/timeout -> deu retry duoc
+            wait = min(30, 3 * (attempt + 1))
+            log.warning("[%s] login loi (%s) -> thu lai sau %ds (lan %d/6)", username, e, wait, attempt + 1)
+            time.sleep(wait)
+    if data is None:
+        raise RuntimeError(f"Login that bai sau 6 lan thu (can cong/loi mang): {last_err}")
 
     if not data.get("status"):
         raise RuntimeError(f"Login that bai: {data}")

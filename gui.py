@@ -553,7 +553,7 @@ class PartyConfigFrame(ttk.Frame):
                                                            "Train Dị Giới"))
         cb = ttk.Combobox(row, textvariable=self.mode_var, state="readonly", width=34,
                           values=[lbl for _, lbl in MODE_OPTIONS])
-        cb.pack(side="left"); cb.bind("<<ComboboxSelected>>", lambda e: self._render_dyn())
+        cb.pack(side="left"); cb.bind("<<ComboboxSelected>>", lambda e: self._on_mode_change())
 
         self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
@@ -616,6 +616,14 @@ class PartyConfigFrame(ttk.Frame):
         row["frame"].destroy()
         if row in self.acc_rows:
             self.acc_rows.remove(row)
+
+    def _on_mode_change(self):
+        # Khi DOI che do: tu set mac dinh "Khong co chu PT".
+        #  - city (ve thanh) / stand (login dau dung yen): TICK (member tu dung, khong can chu PT).
+        #  - train / digioi: BO TICK (can chu PT de keo party + lap tran).
+        mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
+        self.no_leader_var.set(mode in ("city", "stand"))
+        self._render_dyn()
 
     def _render_dyn(self):
         for w in self.dyn.winfo_children():
