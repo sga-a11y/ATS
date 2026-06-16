@@ -338,6 +338,7 @@ class GameClient:
         self._battle_entered = False # da gui 0x41 "vao tran" chua
         self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
         self._chan_event = threading.Event()
+        self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
         self._pending_03 = None      # cache 0x03 self-spawn (resolve ten neu toi TRUOC 0x69)
@@ -489,6 +490,7 @@ class GameClient:
                 # DUMP 12 goi gui gan nhat -> tim goi gay kick (vd tren Tao Thao)
                 for ts, op, hx in list(self._recent_sends)[-12:]:
                     log.warning("[%s]   gui-cuoi %s 0x%02x %s", self._label, ts, op, hx)
+                self.server_closed = True   # server CHU DONG dong (rot/bao tri/kick) - khong phai STOP
                 self.running = False   # rot ket noi -> dung MOI vong lap
                 break
             self.recv_buf += protocol.xor(data)

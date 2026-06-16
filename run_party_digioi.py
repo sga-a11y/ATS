@@ -891,6 +891,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # ghi lai ly do thoat (neu GUI bam STOP ma chua co ly do cu the -> ghi STOP)
         if _stopped() and er["r"].startswith("ket thuc binh thuong"):
             _reason("Anh bam STOP")
+        # SERVER chu dong dong ket noi (rot/bao tri/kick) - KHONG phai ket thuc binh thuong/STOP
+        elif (not _stopped() and er["r"].startswith("ket thuc binh thuong")
+              and c is not None and getattr(c, "server_closed", False)):
+            _reason("SERVER dong ket noi (rot mang/bao tri/kick) - khong phai tu thoat")
         account_exit_reason[username] = er["r"]
         # LUU map + ten nhan vat LUC THOAT (ke ca login xong quit ngay vi sai map) -> de
         # biet vi tri hien tai cua tung nick ca party. Chi luu khi da vao world (co c).
