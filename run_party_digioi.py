@@ -1163,14 +1163,18 @@ def account_status(username):
         last = account_last.get(username, {})
         return {"running": running, "char": last.get("char", ""), "map": last.get("map"),
                 "in_party": False, "dg_remain": None, "combat": False, "channel": None,
-                "strategist": False}
+                "strategist": False, "char_level": last.get("char_level"),
+                "pet_name": last.get("pet_name"), "pet_level": last.get("pet_level")}
     pidx = getattr(c, "party_idx", None)
     from bot.client import is_joined, is_strategist
     st = _party_state.get(pidx, {})
     dg_remain = None
     if c.current_map == config.DIGIOI_MAP_ID:
         dg_remain = max(0, DIGIOI_LIMIT - getattr(c, "digioi_minutes", 0))
-    account_last[username] = {"map": c.current_map, "char": c.char_name or ""}  # luu lai map cuoi
+    account_last[username] = {"map": c.current_map, "char": c.char_name or "",
+                              "char_level": getattr(c, "char_level", None),
+                              "pet_name": getattr(c, "pet_name", None),
+                              "pet_level": getattr(c, "pet_level", None)}  # luu lai luc cuoi
     return {
         "running": running,
         "char": c.char_name or "",
@@ -1180,6 +1184,9 @@ def account_status(username):
         "dg_remain": dg_remain,
         "combat": c.in_combat() if running else False,
         "strategist": is_strategist(pidx, c.self_entity),
+        "char_level": getattr(c, "char_level", None),
+        "pet_name": getattr(c, "pet_name", None),
+        "pet_level": getattr(c, "pet_level", None),
     }
 
 

@@ -329,6 +329,10 @@ class GameClient:
         self._username = ""          # username login (giu lai de tham chieu)
         self.char_name = None        # ten nhan vat trong game (tu 0x27 theo self_entity)
         self.char_int = None         # chi so INT (tri luc) - tu S2C 0x08 id=0x1b
+        self.char_level = None       # cap nhan vat - tu S2C 0x05 (payload offset 21 = pkt[28])
+        self.pet_level = None        # cap pet dang dung - tu S2C 0x0f sub=08
+        self.pet_name = None         # ten pet dang dung - tu S2C 0x0f sub=08
+        self._cached_pet_list_pkt = None  # cache 0x0f de re-process khi 0x13 den sau
         self._gift_status = {}        # gtype -> status phan hoi (S2C 0x57: 01 diem danh, 04 qua 14 ngay)
         self._last_guild_pkt = None   # cache goi 0x27 (guild) de resolve ten neu toi truoc 0x69
         self.flee_mode = False        # True = dang di chuyen -> vao battle thi BO CHAY (khong danh)
@@ -515,6 +519,13 @@ class GameClient:
         if opcode == 0x05 and len(pkt) > 200 and len(pkt) > 16:
             self.char_int = pkt[16]
             _register_party_int(self.party_idx, self.self_entity, self.char_int)
+            # CAP nhan vat: payload offset 21 = pkt[28] (khop capture: char lv 64). Hien o GUI.
+            if len(pkt) > 28 and 1 <= pkt[28] <= 200:
+                self.char_level = pkt[28]
+        # PET dang dung: S2C 0x0f sub=0008 = danh sach pet mang theo, record DAU = pet active.
+        elif opcode == 0x0f and pkt[7:9] == b"\x08\x00" and len(pkt) >= 49:
+            self._cached_pet_list_pkt = pkt
+            self._on_pet_list(pkt)
         # Cap nhat INT khi cong diem (S2C 0x08: 01 00 1b 01 [val 2B])
         elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
             self.char_int = int.from_bytes(pkt[11:13], "little")
@@ -608,6 +619,8 @@ class GameClient:
             # pet dang dung: [04 00] luc login, [01 00] khi doi pet. id = 2B LE
             pid = int.from_bytes(pkt[9:11], "little")
             self.state.active_pet_id = pid
+            if self._cached_pet_list_pkt is not None:
+                self._on_pet_list(self._cached_pet_list_pkt)
             self.state.pet_skills = getattr(config, "PET_SKILLS", {}).get(pid, set())
             self.state.pet_boss_skill = getattr(config, "PET_BOSS_SKILL", {}).get(pid)
             known = pid in getattr(config, "PET_NAMES", {}) or pid in getattr(config, "PET_SKILLS", {})
@@ -694,6 +707,40 @@ class GameClient:
             # (moi tran chi 1 turn; client that dung 2 cho tran dau, 3 cac tran sau)
         # 0x41 (OP_BATTLE_ENTER) KHONG dung: fire ca luc login -> false positive
         # cac opcode khac: bo qua
+
+    def _on_pet_list(self, pkt: bytes):
+        """S2C 0x0f sub=0008: danh sach pet MANG THEO. Lay con DANG XUAT CHIEN (active_pet_id),
+        KHONG phai con dau list. Record: [01 marker][pet_id 2B LE][...][LEVEL @+6][...][namelen @+30][ten @+31].
+        -> tim vi tri pet_id active (ngay sau marker 0x01) roi doc level/ten tai offset co dinh.
+        (khop capture: Thai Van Co id=0xa051 lv 45.) active_pet_id chua biet -> dung record dau."""
+        b = pkt[7:]
+        if len(b) < 36 or b[2] < 1:
+            return
+        apid = getattr(self.state, "active_pet_id", None)
+        p = None
+        if apid:
+            tgt = apid.to_bytes(2, "little")
+            i = b.find(tgt, 3)
+            while i != -1:
+                if b[i - 1] == 0x01:   # dung la pet_id (ngay sau marker dau record)
+                    p = i
+                    break
+                i = b.find(tgt, i + 1)
+        if p is None:
+            p = 4   # fallback: record dau (pet_id o payload offset 4)
+        if p + 30 >= len(b):
+            return
+        lvl = b[p + 6]
+        if 1 <= lvl <= 200:
+            self.pet_level = lvl
+        nl = b[p + 30]
+        if 0 < nl <= 40 and p + 31 + nl <= len(b):
+            try:
+                nm = b[p + 31:p + 31 + nl].decode("utf-16-le").strip("\x00")
+                if nm:
+                    self.pet_name = nm
+            except Exception:
+                pass
 
     def _on_party(self, pkt: bytes):
         """S2C 0x0d. sub=09 = loi moi -> accept. sub=06 = roster [leader][count][members]."""

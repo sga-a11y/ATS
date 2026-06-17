@@ -156,6 +156,18 @@ class BotGUI(tk.Tk):
             return s[0] + "***"
         return s[0] + "***" + s[-2:]
 
+    def _char_cell(self, s):
+        """Cot Nhan vat: 'tenNV_lvchar_tenPet_lvPet'. Privacy CHI che ten NV (lv + pet luon hien).
+        Khong co pet -> 'tenNV_lvchar'. Chua load lv -> chi 'tenNV'."""
+        parts = [self._mask(s.get("char") or "-")]
+        if s.get("char_level"):
+            parts.append(str(s["char_level"]))
+        if s.get("pet_name"):
+            parts.append(s["pet_name"])
+            if s.get("pet_level"):
+                parts.append(str(s["pet_level"]))
+        return "_".join(parts)
+
     # ---- BAM header Kenh -> doi kenh ca party | BAM header Map -> teleport thanh ----
     def _popup_channels(self, pidx):
         import tkinter.messagebox as mb
@@ -220,7 +232,7 @@ class BotGUI(tk.Tk):
     _COLS = ("acc", "char", "role", "run", "map", "ch", "party", "dg", "combat")
     _HEADS = {"acc": "Tài khoản", "char": "Nhân vật", "role": "Vai trò", "run": "Trạng thái",
               "map": "Map", "ch": "Kênh", "party": "Trong PT", "dg": "DG còn", "combat": "Đánh"}
-    _WIDTHS = {"acc": 90, "char": 110, "role": 70, "run": 90, "map": 130, "ch": 50,
+    _WIDTHS = {"acc": 70, "char": 190, "role": 70, "run": 90, "map": 130, "ch": 50,
                "party": 70, "dg": 70, "combat": 55}
     PARTIES_PER_GROUP = 10   # 1-10 party = 1 tab; 11-20 = 2 tab; ... 91-100 = 10 tab
 
@@ -489,7 +501,7 @@ class BotGUI(tk.Tk):
                 dg = f"{s['dg_remain']}p" if s["dg_remain"] is not None else "-"
                 tag = "qs" if (s["running"] and s.get("strategist")) else \
                       ("on" if s["running"] else "off")
-                tree.item(u, values=(self._mask(u), self._mask(s["char"] or "-"), role, run, _map_name(s["map"]),
+                tree.item(u, values=(self._mask(u), self._char_cell(s), role, run, _map_name(s["map"]),
                                      s["channel"] if s["channel"] else "-",
                                      "✔" if s["in_party"] else "-", dg,
                                      "⚔" if s["combat"] else "-"),

@@ -136,6 +136,15 @@ def _has_group2(enemy_slots):
     return False
 
 
+def _combo_block_ok(combo, enemy_slots):
+    """Du block quai de XAI skill combo nay chua?
+      - Skill DAT SP (Loan Kich 13013) -> chi xai khi block 3 (2 quai -> phi SP).
+      - Skill RE (Hoa Tien 12003, Nem Da 10005) -> block 2 la du.
+    Danh sach skill 'can block 3' lay tu config.COMBO_SKILL_NEED_BLOCK3 (default: Loan Kich)."""
+    need3 = combo in getattr(config, "COMBO_SKILL_NEED_BLOCK3", (13013,))
+    return _has_group3(enemy_slots) if need3 else _has_group2(enemy_slots)
+
+
 def pick_combo_skill(skills):
     """Tu set skill cua unit, chon skill COMBO TRAINING dau tien (uu tien). None neu khong co.
     Dung chung cho char (skill tu 0x28) va pet (skill tu pets.json)."""
@@ -160,10 +169,11 @@ def decide_char(state, options, first_turn=False):
             and config.SKILL_HEAL_ALL in state.skills_char
             and _heal_decide(state.label + ":char", state.char.sp)):
         return Decision(config.UNIT_CHAR, at, at, config.SKILL_HEAL_ALL, b=3)
-    # 2) COMBO: char co skill combo + du SP (>=reserve VA >=cost skill) + >=2 quai lien nhau
+    # 2) COMBO: char co skill combo + du SP (>=reserve VA >=cost skill) + du block quai.
+    #    Skill DAT SP (Loan Kich) chi xai khi block 3; skill re (Hoa Tien/Nem Da) thi block 2 du.
     combo = pick_combo_skill(state.skills_char)
     if (combo and state.char.sp >= max(config.CHAR_FIRE_MIN_SP, _skill_cost(combo))
-            and _has_group2(state.enemy_slots)):
+            and _combo_block_ok(combo, state.enemy_slots)):
         return _attack(config.UNIT_CHAR, at, _train_target(state.enemy_slots, offered), combo, fb)
     # 3) Danh thuong - DUNG CHUNG rule target (de combo + dong target voi pet/member)
     return _attack(config.UNIT_CHAR, at, _train_target(state.enemy_slots, offered), config.SKILL_NORMAL, fb)
@@ -184,10 +194,11 @@ def decide_pet(state, options, first_turn=False):
             and state.pet.sp >= _skill_cost(state.pet_boss_skill) and state.enemy_slots):
         return _attack(config.UNIT_PET, at, _train_target(state.enemy_slots, offered),
                        state.pet_boss_skill, fb)
-    # 3) COMBO: pet co skill combo (tu pets.json) + du SP (>=cost skill) + >=2 quai lien nhau
+    # 3) COMBO: pet co skill combo (tu pets.json) + du SP (>=cost skill) + du block quai.
+    #    Skill DAT SP (Loan Kich) chi xai khi block 3; skill re (Hoa Tien/Nem Da) thi block 2 du.
     combo = pick_combo_skill(state.pet_skills)
     if (combo and state.pet.sp >= max(config.PET_FIRE_MIN_SP, _skill_cost(combo))
-            and _has_group2(state.enemy_slots)):
+            and _combo_block_ok(combo, state.enemy_slots)):
         return _attack(config.UNIT_PET, at, _train_target(state.enemy_slots, offered), combo, fb)
     # Danh thuong - DUNG CHUNG rule target (de combo + dong target voi char/member)
     return _attack(config.UNIT_PET, at, _train_target(state.enemy_slots, offered), config.SKILL_NORMAL, fb)
