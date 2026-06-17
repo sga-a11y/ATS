@@ -64,7 +64,8 @@ class BotGUI(tk.Tk):
         self.geometry("1100x720")
         self.minsize(900, 560)
         self._setup_style()
-        self._dot_on = self._make_dot("#16c60c")    # xanh la: co acc dang chay
+        self._dot_on = self._make_dot("#16c60c")    # xanh la: DU acc dang chay
+        self._dot_warn = self._make_dot("#f0c000")  # vang: chay MOT PHAN (thieu acc - chet/rot)
         self._dot_off = self._make_dot("#888888")   # xam: khong co acc nao chay
         # --- log filter state ---
         self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
@@ -114,11 +115,10 @@ class BotGUI(tk.Tk):
         ttk.Button(bar, text="▶ START TẤT CẢ", command=self._start_all).pack(side="left", padx=3)
         ttk.Button(bar, text="■ STOP TẤT CẢ", command=self._stop_all).pack(side="left", padx=3)
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=8)
-        ttk.Button(bar, text="⚙ Cấu hình", command=self._open_config).pack(side="left", padx=3)
         ttk.Button(bar, text="🗑 Xóa log", command=self._clear_log).pack(side="left", padx=3)
         ttk.Button(bar, text="📋 Log: Tất cả", command=self._log_show_all).pack(side="left", padx=3)
-        ttk.Label(bar, text="Mỗi party 1 chế độ → ⚙ Cấu hình", font=("", 10, "bold")
-                  ).pack(side="right", padx=8)
+        ttk.Button(bar, text="Mỗi party 1 chế độ → ⚙ Cấu hình",
+                   command=self._open_config).pack(side="right", padx=8)
 
     # ---- tabs per party ----
     def _build_tabs(self):
@@ -365,15 +365,19 @@ class BotGUI(tk.Tk):
         for u, c in list(ctrl.account_clients.items()):
             if c is not None and c.char_name:
                 self._char2user[c.char_name] = u
-        running_groups = set()
+        group_run = {}    # gidx -> so acc dang chay
+        group_total = {}  # gidx -> tong so acc
         for pidx, tree in self.party_trees.items():
             any_running = False
+            p_total = 0; p_run = 0   # dem acc cua party de quyet dinh mau cham
             for (u, p, is_leader, is_picker) in ctrl.party_accounts(pidx):
                 if not tree.exists(u):
                     continue
+                p_total += 1
                 s = ctrl.account_status(u)
                 if s["running"]:
                     any_running = True
+                    p_run += 1
                 if s.get("strategist"):
                     role = "Quân sư"
                 elif is_leader:
@@ -391,21 +395,27 @@ class BotGUI(tk.Tk):
                                      "✔" if s["in_party"] else "-", dg,
                                      "⚔" if s["combat"] else "-"),
                           tags=(tag,))
-            # cham trang thai TUNG PARTY (sub-tab trong group): xanh neu co >=1 acc chay
+            # cham trang thai TUNG PARTY (sub-tab trong group):
+            #   xanh = DU acc chay | vang = chay MOT PHAN (thieu) | xam = tat het
             gidx = self.group_of.get(pidx)
             subf = self.party_subframes.get(pidx)
             sub = self.group_nb.get(gidx)
+            p_dot = (self._dot_off if p_run == 0 else
+                     (self._dot_on if p_run >= p_total and p_total > 0 else self._dot_warn))
             if sub is not None and subf is not None:
                 try:
-                    sub.tab(subf, image=self._dot_on if any_running else self._dot_off)
+                    sub.tab(subf, image=p_dot)
                 except Exception:
                     pass
-            if any_running:
-                running_groups.add(gidx)
-        # cham trang thai TUNG GROUP TAB: xanh neu group co >=1 acc chay
+            group_run[gidx] = group_run.get(gidx, 0) + p_run
+            group_total[gidx] = group_total.get(gidx, 0) + p_total
+        # cham trang thai TUNG GROUP TAB: xanh = du | vang = mot phan | xam = tat
         for gidx, gframe in self.group_frames.items():
+            gr = group_run.get(gidx, 0); gt = group_total.get(gidx, 0)
+            g_dot = (self._dot_off if gr == 0 else
+                     (self._dot_on if gr >= gt and gt > 0 else self._dot_warn))
             try:
-                self.nb.tab(gframe, image=self._dot_on if gidx in running_groups else self._dot_off)
+                self.nb.tab(gframe, image=g_dot)
             except Exception:
                 pass
         self.after(1500, self._refresh)

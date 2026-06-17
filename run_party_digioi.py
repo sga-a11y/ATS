@@ -858,6 +858,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                              label, h, m, c.digioi_minutes)
                     if remain <= 5:
                         log.warning("[%s] SAP HET GIO DI GIOI (%d phut)!", label, remain)
+                    # HET GIO DG ma VAN CON TRONG map DG (server khong kick) -> CHU DONG thoat +
+                    # danh solo daily dungeon roi dong acc. Truoc day chi danh dungeon khi BI DAY RA
+                    # khoi DG -> con o trong DG thi ngoi i, khong bao gio danh dungeon.
+                    if remain <= 0:
+                        log.warning("[%s] (%s) HET GIO DG (van trong DG) -> thoat + solo daily dungeon%s",
+                                    label, role, "" if do_dungeon else " (tat dungeon)")
+                        if do_dungeon:
+                            try: c.do_daily_dungeon()
+                            except Exception as e:
+                                log.warning("[%s] loi daily dungeon sau DG: %s", label, e)
+                        break
                 # KHONG con dung map DG (chet bi day ra town / loi) lien tuc ~10s. Phan biet TIMER:
                 #   - con gio (>=2 phut) -> bi day ra SOM -> VAO LAI DG ngay
                 #   - het gio that -> thoat party + danh solo daily dungeon roi dong acc
