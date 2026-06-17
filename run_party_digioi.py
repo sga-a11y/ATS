@@ -124,6 +124,8 @@ def _pstate(pidx):
                               "rally_ready": threading.Event(),  # leader da chon diem quai + rally_point
                               "path_done": threading.Event(),    # leader da di xong follow_path toi diem quai (member bi keo theo)
                               "reform_gen": 0,       # +1 moi khi co acc van map (chet) -> CA party reform tai cho
+                              "cmd_gen": 0,          # +1 moi khi GUI ra lenh thu cong (doi kenh/teleport thanh)
+                              "cmd": None,           # ("channel", ch) | ("city", city_id, flag)
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
@@ -607,6 +609,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         last_reform = time.time()   # lan cuoi REFORM party (grace de khong trigger lien tuc o thanh)
         reform_gen_handled = 0      # gen reform da xu ly. Init=0 (KHONG = st["reform_gen"]) de neu
         # co acc bi DUMP luc setup (da bump reform_gen) thi keepalive thay ngay -> reform don no
+        cmd_gen_handled = st["cmd_gen"]   # lenh thu cong (GUI) da xu ly
 
         def _do_reform():
             """CA party REFORM tai cho khi co acc van map (chet). Ve thanh gom nhau -> leader GIAI
@@ -679,6 +682,59 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     if c.current_map == sc or _stopped(): break
                     time.sleep(1)
                 c.combat_ready(); c.flee_mode = False
+
+        def _do_manual_cmd(cmd):
+            """Thuc thi LENH THU CONG tu GUI (doi kenh / teleport thanh) -> roi TIEP TUC che do da
+            setup. Huy party cu truoc, lam hanh dong, roi resume theo mode."""
+            kind = cmd[0]
+            # KET BATTLE: dang trong tran thi BO CHAY + cho thoat tran TRUOC khi doi kenh/teleport
+            # (switch_channel/leave_party giua battle de bi server bo qua/loi). cap 60s.
+            c.flee_mode = True
+            t0 = time.time()
+            while c.in_combat(idle_secs=3.0):
+                if not c.running or _stopped() or time.time() - t0 > 60:
+                    break
+                time.sleep(0.5)
+            if is_leader:
+                c.leave_party(); reset_party_joined(pidx)   # huy party cu
+            if kind == "channel":
+                ch = cmd[1]
+                try: c.switch_channel(ch); time.sleep(1.5)
+                except Exception as e: log.warning("[%s] manual: loi doi kenh: %s", label, e)
+                log.info("[%s] (%s) manual: da doi kenh -> %d", label, role, ch)
+            elif kind == "city":
+                cid, flag = cmd[1], cmd[2]
+                c.flee_mode = True
+                try: c.go_to_town(cid, flag)
+                except Exception as e: log.warning("[%s] manual: loi teleport thanh: %s", label, e)
+                log.info("[%s] (%s) manual: da teleport ve thanh %s", label, role, cid)
+            # --- TIEP TUC che do da setup ---
+            if mode in ("stand", "city"):
+                # stand: dung yen. city ('ve thanh dung yen'): KHONG teleport ve thanh setting nua,
+                # O LAI thanh/kenh vua chuyen (ngang voi stand). -> chi dung yen.
+                c.flee_mode = False
+            elif is_digioi:
+                # train DG: vao lai DG -> lap party. (kenh da chuyen o tren neu la lenh channel)
+                c.flee_mode = True
+                try:
+                    if not c.in_di_gioi():
+                        c.enter_di_gioi_safe()
+                except Exception as e: log.warning("[%s] manual: loi vao lai DG: %s", label, e)
+                if is_leader:
+                    for _ in range(6):
+                        if not c.running or _stopped(): break
+                        try: c.invite_members(gap=1.0)
+                        except Exception: pass
+                        time.sleep(4)
+                        if joined_member_count(pidx) >= st["n_members"]: break
+                    try: c.set_party_strategist()
+                    except Exception: pass
+                c.combat_ready(); c.flee_mode = False
+            elif train_on_map:
+                # train map: dua CA party ve bai + lap lai (dung lai flow reform). _do_reform ve thanh
+                # gom nhau -> switch dung st['channel'] (da set kenh moi neu lenh channel) -> keo ra spot.
+                _do_reform()
+
         stop_ev = account_stops.get(username)
         # Bao stop_account: ACC NAY khi STOP -> thread TU xu ly (KHONG dong socket ngay).
         #  - leader train: tu chay ve safe gan nhat roi dong.
@@ -803,6 +859,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     log.warning("[%s] loi reform (bo qua): %s", label, e)
                 last_reform = time.time()
                 last_combat = time.time()   # reset watchdog relogin sau reform
+                continue
+            # LENH THU CONG tu GUI (doi kenh / teleport thanh) -> ca party thuc thi roi tiep tuc mode
+            if st["cmd_gen"] > cmd_gen_handled:
+                cmd_gen_handled = st["cmd_gen"]
+                cmd = st.get("cmd")
+                log.info("[%s] (%s) -> LENH THU CONG %s", label, role, cmd)
+                try:
+                    if cmd: _do_manual_cmd(cmd)
+                except Exception as e:
+                    log.warning("[%s] loi thuc thi lenh thu cong (bo qua): %s", label, e)
+                last_reform = time.time()   # grace: khong trigger displaced ngay sau teleport/doi kenh
+                last_combat = time.time()
                 continue
             try:
                 c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
@@ -1009,6 +1077,46 @@ def redeem_giftcode_party(pidx, code):
         t.join(timeout=15)
     log.info(">>> PARTY %s: da gui giftcode '%s' cho %d acc", pidx + 1, code, len(targets))
     return len(targets)
+
+
+def get_channel_list(pidx):
+    """Hoi server danh sach kenh (co so nguoi) cho party pidx -> dict {ch: (cur, cap)}.
+    Dung 1 acc DANG CHAY cua party de hoi. Tra {} neu khong co acc chay / khong lay duoc."""
+    targets = [u for u, _p, _l, _pk in party_accounts(pidx)
+               if is_account_running(u) and account_clients.get(u) is not None]
+    if not targets:
+        return {}
+    c = account_clients.get(targets[0])
+    try:
+        c.request_channel_list()
+        if c._chan_event.wait(3.0):
+            return dict(c.channels)
+    except Exception as e:
+        log.warning(">>> PARTY %s: loi lay list kenh: %s", pidx + 1, e)
+    return {}
+
+
+def party_switch_channel(pidx, channel):
+    """GUI ra lenh: CA party pidx huy party + chuyen sang KENH 'channel' -> roi tiep tuc che do
+    da setup (xu ly trong vong keepalive qua cmd_gen)."""
+    st = _pstate(pidx)
+    with st["lock"]:
+        st["channel"] = int(channel)   # de reform/setup dung dung kenh moi
+        st["cmd"] = ("channel", int(channel))
+        st["cmd_gen"] += 1
+    log.info(">>> PARTY %s: lenh DOI KENH -> %d (huy party + ca lu chuyen + tiep tuc che do)",
+             pidx + 1, channel)
+
+
+def party_teleport_city(pidx, city_id, flag=0):
+    """GUI ra lenh: CA party pidx huy party + teleport ve THANH (city_id, flag) -> roi tiep tuc
+    che do da setup (xu ly trong vong keepalive qua cmd_gen)."""
+    st = _pstate(pidx)
+    with st["lock"]:
+        st["cmd"] = ("city", int(city_id), int(flag))
+        st["cmd_gen"] += 1
+    log.info(">>> PARTY %s: lenh TELEPORT ve thanh %s (flag %s) (huy party + ca lu teleport)",
+             pidx + 1, city_id, flag)
 
 
 def stop_account(username):

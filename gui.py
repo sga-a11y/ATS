@@ -120,6 +120,92 @@ class BotGUI(tk.Tk):
         ttk.Button(bar, text="Mỗi party 1 chế độ → ⚙ Cấu hình",
                    command=self._open_config).pack(side="right", padx=8)
 
+    # ---- che tai khoan/ten (BAM vao header cot "Tai khoan"/"Nhan vat" de doi) ----
+    # Tranh bi soi khi quay/share man hinh. 3 trang thai: 0=hien full | 1=che giua (s***01) |
+    # 2=an het (*****). Icon tren header bao trang thai. Mac dinh che giua.
+    _privacy = 1
+    _PRIV_ICON = ["👁", "👁‍🗨", "🙈"]   # 0 hien | 1 che giua | 2 an het
+
+    def _priv_head(self, col):
+        return f"{self._HEADS[col]} {self._PRIV_ICON[getattr(self, '_privacy', 1)]}"
+
+    def _toggle_privacy(self):
+        self._privacy = (getattr(self, "_privacy", 1) + 1) % 3
+        for tree in self.party_trees.values():
+            try:
+                tree.heading("acc", text=self._priv_head("acc"))
+                tree.heading("char", text=self._priv_head("char"))
+            except Exception:
+                pass
+
+    def _mask(self, s):
+        """Che tai khoan/ten theo trang thai con mat. 0=full | 1=s***01 | 2=*****."""
+        if not s or s == "-":
+            return s
+        st = getattr(self, "_privacy", 0)
+        if st == 0:
+            return s
+        if st == 2:
+            return "*****"
+        # 1 = che giua: ky tu dau + 3 sao + 2 ky tu cuoi (s***01). Ngan qua thi che gon.
+        if len(s) <= 3:
+            return s[0] + "***"
+        return s[0] + "***" + s[-2:]
+
+    # ---- BAM header Kenh -> doi kenh ca party | BAM header Map -> teleport thanh ----
+    def _popup_channels(self, pidx):
+        import tkinter.messagebox as mb
+        # hoi server list kenh (~3s) trong thread -> roi mo popup tren main thread (tranh treo GUI)
+        def _work():
+            chans = ctrl.get_channel_list(pidx)
+            self.after(0, lambda: self._show_channel_popup(pidx, chans))
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _show_channel_popup(self, pidx, chans):
+        import tkinter.messagebox as mb
+        if not chans:
+            mb.showwarning("Đổi kênh",
+                           "Không lấy được danh sách kênh.\n(Party phải đang CHẠY mới hỏi được server.)")
+            return
+        win = tk.Toplevel(self); win.title(f"P{pidx + 1} · Đổi kênh")
+        win.transient(self); win.grab_set()
+        ttk.Label(win, text="Chọn kênh — cả party sẽ HỦY PARTY + chuyển kênh rồi tiếp tục chế độ:",
+                  padding=8).pack(anchor="w")
+        items = sorted(chans.items(), key=lambda kv: kv[1][0])   # it nguoi nhat truoc
+        lb = tk.Listbox(win, width=34, height=min(14, max(3, len(items))), font=("Consolas", 10))
+        lb.pack(fill="both", expand=True, padx=8)
+        for ch, (cur, cap) in items:
+            lb.insert("end", f"Kênh {ch:>3}   —   {cur}/{cap} người")
+        def _go():
+            sel = lb.curselection()
+            if sel:
+                threading.Thread(target=ctrl.party_switch_channel,
+                                 args=(pidx, items[sel[0]][0]), daemon=True).start()
+            win.destroy()
+        ttk.Button(win, text="✔ Chuyển sang kênh này", command=_go).pack(pady=8)
+
+    def _popup_cities(self, pidx):
+        import tkinter.messagebox as mb
+        if not self.cities:
+            mb.showwarning("Teleport thành", "Không có danh sách thành.")
+            return
+        win = tk.Toplevel(self); win.title(f"P{pidx + 1} · Teleport về thành")
+        win.transient(self); win.grab_set()
+        ttk.Label(win, text="Chọn thành — cả party sẽ HỦY PARTY + teleport rồi tiếp tục chế độ:",
+                  padding=8).pack(anchor="w")
+        lb = tk.Listbox(win, width=34, height=min(16, max(3, len(self.cities))), font=("", 10))
+        lb.pack(fill="both", expand=True, padx=8)
+        for (cid, f, n) in self.cities:
+            lb.insert("end", n)
+        def _go():
+            sel = lb.curselection()
+            if sel:
+                cid, f, n = self.cities[sel[0]]
+                threading.Thread(target=ctrl.party_teleport_city,
+                                 args=(pidx, cid, f), daemon=True).start()
+            win.destroy()
+        ttk.Button(win, text="✔ Teleport về thành này", command=_go).pack(pady=8)
+
     # ---- tabs per party ----
     def _build_tabs(self):
         self.nb = ttk.Notebook(self)
@@ -196,7 +282,17 @@ class BotGUI(tk.Tk):
                    command=lambda p=pidx: self._redeem_giftcode(p)).pack(side="left", padx=2)
         tree = ttk.Treeview(frame, columns=self._COLS, show="headings", height=max(len(accs), 3))
         for col in self._COLS:
-            tree.heading(col, text=self._HEADS[col]); tree.column(col, width=self._WIDTHS[col], anchor="center")
+            if col in ("acc", "char"):   # BAM header de che/hien tai khoan + ten (3 trang thai)
+                tree.heading(col, text=self._priv_head(col), command=self._toggle_privacy)
+            elif col == "ch":            # BAM header Kenh -> doi kenh ca party
+                tree.heading(col, text=self._HEADS[col] + " ↧",
+                             command=lambda p=pidx: self._popup_channels(p))
+            elif col == "map":           # BAM header Map -> teleport ca party ve thanh
+                tree.heading(col, text=self._HEADS[col] + " ↧",
+                             command=lambda p=pidx: self._popup_cities(p))
+            else:
+                tree.heading(col, text=self._HEADS[col])
+            tree.column(col, width=self._WIDTHS[col], anchor="center")
         tree.column("acc", anchor="w"); tree.column("char", anchor="w")
         tree.tag_configure("on", foreground="#0a0")
         tree.tag_configure("off", foreground="#999")
@@ -390,7 +486,7 @@ class BotGUI(tk.Tk):
                 dg = f"{s['dg_remain']}p" if s["dg_remain"] is not None else "-"
                 tag = "qs" if (s["running"] and s.get("strategist")) else \
                       ("on" if s["running"] else "off")
-                tree.item(u, values=(u, s["char"] or "-", role, run, _map_name(s["map"]),
+                tree.item(u, values=(self._mask(u), self._mask(s["char"] or "-"), role, run, _map_name(s["map"]),
                                      s["channel"] if s["channel"] else "-",
                                      "✔" if s["in_party"] else "-", dg,
                                      "⚔" if s["combat"] else "-"),
