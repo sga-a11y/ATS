@@ -38,3 +38,16 @@ gd_*.txt
 Ctrl+C
 checkin_state.bak.json
 il2cpp/
+
+# build product artifacts (Nuitka/PyInstaller)
+_stage/
+_obf/
+_obftest/
+_work/
+dist_product/
+_build_log.txt
+nuitka-crash-report.xml
+*.spec
+*.build/
+*.dist/
+*.onefile-build/

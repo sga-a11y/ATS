@@ -1,4 +1,5 @@
 """Cau hinh bot TS Online - BAN MAU.
+from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
 Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitignore.
 """
 
@@ -49,7 +50,7 @@ START_CITY_ID = 12061
 #   con lai -> dung i tai cho
 def _load_train_maps():
     import json, os
-    f = os.path.join(os.path.dirname(__file__), os.pardir, "train_maps.json")
+    f = os.path.join(_base_dir(), "train_maps.json")
     out = {}
     try:
         with open(f, encoding="utf-8") as fh:
@@ -67,7 +68,7 @@ def _load_map_gates(path=None):
     """Doc map_gates.json -> {map_id:int -> [(x,y,to), ...]} (do thi cong di chuyen).
     Khong co file/loi -> {}. Dung cho pathfind.find_path (auto di toi train map)."""
     import json, os
-    f = path or os.path.join(os.path.dirname(__file__), os.pardir, "map_gates.json")
+    f = path or os.path.join(_base_dir(), "map_gates.json")
     out = {}
     try:
         with open(f, encoding="utf-8") as fh:
@@ -82,7 +83,7 @@ def _load_train_routes(path=None):
     """Doc train_routes.json -> {dest_map:int -> {from_city, city_flag, dest_map, steps}}.
     Route replay tu thanh toi train map (leader di, member tu keo theo)."""
     import json, os
-    f = path or os.path.join(os.path.dirname(__file__), os.pardir, "train_routes.json")
+    f = path or os.path.join(_base_dir(), "train_routes.json")
     out = {}
     try:
         with open(f, encoding="utf-8") as fh:
@@ -97,7 +98,7 @@ def _load_mob_paths(path=None):
     """Doc mob_paths.json -> {map_id:int -> {(sx,sy):tuple -> [(x,y),...]}}.
     Duong di bo TRONG map toi diem quai XA (capture) - bot replay thay navigate thang."""
     import json, os
-    f = path or os.path.join(os.path.dirname(__file__), os.pardir, "mob_paths.json")
+    f = path or os.path.join(_base_dir(), "mob_paths.json")
     out = {}
     try:
         with open(f, encoding="utf-8") as fh:
@@ -137,7 +138,7 @@ VANTIEU_PETS_NAMES = []
 # Phase-2 van tieu match: he/doanh pet (tu game data Npc_C.dat) + yeu cau (ma 0400).
 def _load_json_root(fn):
     import json, os
-    f = os.path.join(os.path.dirname(__file__), os.pardir, fn)
+    f = os.path.join(_base_dir(), fn)
     try:
         with open(f, encoding="utf-8") as fh:
             return json.load(fh)
@@ -157,7 +158,7 @@ PET_FIRE_MIN_SP = 100       # pet SP >= 100 moi xet skill combo (duoi 100 -> dan
 # DATA PET: doc tu pets.json (pet_id hex -> LIST skill cua pet). pet_id tu S2C 0x13 luc login.
 def _load_pets():
     import json, os
-    f = os.path.join(os.path.dirname(__file__), os.pardir, "pets.json")
+    f = os.path.join(_base_dir(), "pets.json")
     skills, names, boss, hedoanh = {}, {}, {}, {}
     try:
         with open(f, encoding="utf-8") as fh:
@@ -218,7 +219,7 @@ PARTY_CONFIG = {}
 PARTY_LEADERS_BY_IDX = {}   # pidx -> [ten leader] white list rieng party (tu accounts.json)
 def _load_servers():
     import json, os
-    f = os.path.join(os.path.dirname(__file__), os.pardir, "servers.json")
+    f = os.path.join(_base_dir(), "servers.json")
     try:
         with open(f, encoding="utf-8") as fh:
             return json.load(fh).get("servers", {})
@@ -231,7 +232,7 @@ def _server_id(name):
     s = SERVERS.get(name); return int(s.get("id", 1)) if s else 1
 def _load_accounts_json():
     import json, os
-    f = os.path.join(os.path.dirname(__file__), os.pardir, "accounts.json")
+    f = os.path.join(_base_dir(), "accounts.json")
     try:
         with open(f, encoding="utf-8") as fh:
             return json.load(fh)

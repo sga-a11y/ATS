@@ -18,8 +18,9 @@ _LABEL_RE = re.compile(r"^\d\d:\d\d:\d\d \[([^\]]+)\]")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import run_party_digioi as ctrl          # module dieu khien (da refactor)
 from bot import config
+from bot._appdir import app_dir as _app_dir   # thu muc goc (dev=project, frozen=canh .exe)
 
-ACCOUNTS_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "accounts.json")
+ACCOUNTS_JSON = os.path.join(_app_dir(), "accounts.json")
 
 # ---------------- Log -> queue (de GUI hien) ----------------
 _log_queue = queue.Queue()
@@ -67,6 +68,9 @@ class BotGUI(tk.Tk):
         self._dot_on = self._make_dot("#16c60c")    # xanh la: DU acc dang chay
         self._dot_warn = self._make_dot("#f0c000")  # vang: chay MOT PHAN (thieu acc - chet/rot)
         self._dot_off = self._make_dot("#888888")   # xam: khong co acc nao chay
+        # list thanh (cho popup teleport khi bam header Map). Doc tu cities.json giong ConfigDialog.
+        ct_raw = _load_json("cities.json").get("cities", {})
+        self.cities = [(v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()]
         # --- log filter state ---
         self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
         self.log_filter = None         # None = tat ca; hoac set(username) duoc hien
@@ -164,12 +168,11 @@ class BotGUI(tk.Tk):
     def _show_channel_popup(self, pidx, chans):
         import tkinter.messagebox as mb
         if not chans:
-            mb.showwarning("Đổi kênh",
-                           "Không lấy được danh sách kênh.\n(Party phải đang CHẠY mới hỏi được server.)")
+            mb.showwarning("Đổi kênh", "Không lấy được danh sách kênh.")
             return
         win = tk.Toplevel(self); win.title(f"P{pidx + 1} · Đổi kênh")
         win.transient(self); win.grab_set()
-        ttk.Label(win, text="Chọn kênh — cả party sẽ HỦY PARTY + chuyển kênh rồi tiếp tục chế độ:",
+        ttk.Label(win, text="Chọn kênh — cả party sẽ HỦY PARTY + chuyển kênh rồi tiếp tục chạy như trong setting:",
                   padding=8).pack(anchor="w")
         items = sorted(chans.items(), key=lambda kv: kv[1][0])   # it nguoi nhat truoc
         lb = tk.Listbox(win, width=34, height=min(14, max(3, len(items))), font=("Consolas", 10))
@@ -191,7 +194,7 @@ class BotGUI(tk.Tk):
             return
         win = tk.Toplevel(self); win.title(f"P{pidx + 1} · Teleport về thành")
         win.transient(self); win.grab_set()
-        ttk.Label(win, text="Chọn thành — cả party sẽ HỦY PARTY + teleport rồi tiếp tục chế độ:",
+        ttk.Label(win, text="Chọn thành — cả party sẽ HỦY PARTY + teleport rồi tiếp tục chạy như trong setting:",
                   padding=8).pack(anchor="w")
         lb = tk.Listbox(win, width=34, height=min(16, max(3, len(self.cities))), font=("", 10))
         lb.pack(fill="both", expand=True, padx=8)
@@ -614,7 +617,7 @@ class BotGUI(tk.Tk):
 
 
 # ---------------- Config dialog (per-party, dropdown) ----------------
-_BASE = os.path.dirname(os.path.abspath(__file__))
+_BASE = _app_dir()   # dev=project root | frozen=thu muc canh .exe (JSON config sua duoc)
 
 
 def _load_json(name):
@@ -1191,6 +1194,11 @@ class ConfigDialog(tk.Toplevel):
 
 if __name__ == "__main__":
     try:
+        try:   # anti-debug guard (no-op khi khong co debugger / khi ATS_NO_GUARD=1)
+            from bot import _guard
+            _guard.check_debugger(); _guard.start_watch()
+        except Exception:
+            pass
         _setup_log_capture()
         BotGUI().mainloop()
     except Exception as e:
