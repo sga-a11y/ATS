@@ -696,6 +696,7 @@ _LABEL_MODE = {v: k for k, v in MODE_OPTIONS}
 
 class PartyConfigFrame(ttk.Frame):
     """1 tab cau hinh 1 party: mode (dropdown) + map/quai/thanh (dropdown) + acc."""
+    _PW_MASK = "******"   # placeholder pass da luu (giau pass that khi mo lai Settings)
     def __init__(self, master, party, train_maps, cities, servers):
         super().__init__(master, padding=8)
         self.train_maps = train_maps   # list (map_id, name, mobs)
@@ -771,8 +772,19 @@ class PartyConfigFrame(ttk.Frame):
         e_u = ttk.Entry(fr, width=16, font=("Consolas", 10)); e_u.pack(side="left", padx=(0, 4))
         e_u.insert(0, u)
         e_p = ttk.Entry(fr, width=14, font=("Consolas", 10)); e_p.pack(side="left", padx=(0, 4))
-        e_p.insert(0, p)
-        row = {"on": on_var, "u": e_u, "p": e_p, "frame": fr}
+        row = {"on": on_var, "u": e_u, "p": e_p, "frame": fr, "_realp": p}
+        # Pass DA LUU -> hien placeholder '******' (giau pass that). Bam vao go thi xoa placeholder;
+        # de trong khong go -> khoi phuc '******' (giu pass cu). Pass MOI (chua co) -> o trong, go ro.
+        if p:
+            e_p.insert(0, self._PW_MASK)
+            def _fin(_e, ent=e_p):
+                if ent.get() == self._PW_MASK:
+                    ent.delete(0, "end")
+            def _fout(_e, ent=e_p, rr=row):
+                if not ent.get() and rr.get("_realp"):
+                    ent.insert(0, self._PW_MASK)
+            e_p.bind("<FocusIn>", _fin)
+            e_p.bind("<FocusOut>", _fout)
         ttk.Button(fr, text="✕", width=2, command=lambda: self._del_acc_row(row)).pack(side="left")
         self.acc_rows.append(row)
 
@@ -869,7 +881,10 @@ class PartyConfigFrame(ttk.Frame):
             u = r["u"].get().strip()
             if not u:
                 continue
-            accs.append({"u": u, "p": r["p"].get().strip(), "on": bool(r["on"].get())})
+            pw = r["p"].get().strip()
+            if pw == self._PW_MASK:    # khong doi -> giu pass cu (da luu)
+                pw = r.get("_realp", "")
+            accs.append({"u": u, "p": pw, "on": bool(r["on"].get())})
         if self.no_leader_var.get() and accs:
             accs = [{"u": "", "p": "", "on": True}] + accs   # slot 0 trong = KHONG co chu PT
         # server: label -> key
