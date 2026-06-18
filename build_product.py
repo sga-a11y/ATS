@@ -16,10 +16,15 @@ import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STAGE = os.path.join(ROOT, "_stage")        # source sach (config.example -> config)
-OBF = os.path.join(ROOT, "_obf")            # sau obfuscate
-WORK = os.path.join(ROOT, "_work")          # PyInstaller build temp
+WORK = os.path.join(ROOT, "_work")          # Nuitka build temp
 DIST = os.path.join(ROOT, "dist_product")   # output cuoi cung
 NAME = "TSBot"
+
+# Nuitka cache PHAI o thu muc THUONG (khong sandbox). Mac dinh %LOCALAPPDATA%\Nuitka co the bi
+# ao hoa duoi sandbox app -> gcc doc file MinGW khong nhat quan (loi 'structuredquerycondition.h
+# No such file' du file co that). Dat cache ve goc o cung de tranh.
+os.environ.setdefault("NUITKA_CACHE_DIR",
+                      os.path.join(os.path.splitdrive(ROOT)[0] + os.sep, "_nk"))
 
 
 # --- file CODE (.py) se obfuscate + dong goi vao exe ---
@@ -40,7 +45,7 @@ def run(cmd, **kw):
 
 
 def clean():
-    for d in (STAGE, OBF, WORK, DIST):
+    for d in (STAGE, WORK, DIST):
         shutil.rmtree(d, ignore_errors=True)
     for f in (NAME + ".spec",):
         if os.path.exists(os.path.join(ROOT, f)):

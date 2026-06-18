@@ -625,6 +625,10 @@ class GameClient:
             self.state.pet_boss_skill = getattr(config, "PET_BOSS_SKILL", {}).get(pid)
             known = pid in getattr(config, "PET_NAMES", {}) or pid in getattr(config, "PET_SKILLS", {})
             name = getattr(config, "PET_NAMES", {}).get(pid, "?")
+            # TEN pet DANG DUNG = ten cua active_pet_id tu pets.json (TIN CAY, dung nhu log login).
+            # KHONG dua vao parse ten tu 0x0f (de tim nham con dau list). 0x0f chi dung lay LEVEL.
+            if name and name != "?":
+                self.pet_name = name
             if known:
                 log.info("[%s] Pet id=0x%x '%s' -> skills=%s",
                          self._label, pid, name, [hex(s) for s in sorted(self.state.pet_skills)])
@@ -726,6 +730,7 @@ class GameClient:
                     p = i
                     break
                 i = b.find(tgt, i + 1)
+        found_active = p is not None   # True = tim DUNG record con active (khong phai fallback con dau)
         if p is None:
             p = 4   # fallback: record dau (pet_id o payload offset 4)
         if p + 30 >= len(b):
@@ -733,14 +738,18 @@ class GameClient:
         lvl = b[p + 6]
         if 1 <= lvl <= 200:
             self.pet_level = lvl
-        nl = b[p + 30]
-        if 0 < nl <= 40 and p + 31 + nl <= len(b):
-            try:
-                nm = b[p + 31:p + 31 + nl].decode("utf-16-le").strip("\x00")
-                if nm:
-                    self.pet_name = nm
-            except Exception:
-                pass
+        # TEN: chi set khi (1) tim DUNG record con active (khong fallback con dau) VA (2) chua co ten.
+        # Tranh: fallback con dau (active chua biet) + 0x0f refresh ghi de ten dung. Pet co trong
+        # pets.json thi 0x13 da set ten tin cay; parse nay chi can cho pet LA cua active record.
+        if found_active and self.pet_name is None:
+            nl = b[p + 30]
+            if 0 < nl <= 40 and p + 31 + nl <= len(b):
+                try:
+                    nm = b[p + 31:p + 31 + nl].decode("utf-16-le").strip("\x00")
+                    if nm:
+                        self.pet_name = nm
+                except Exception:
+                    pass
 
     def _on_party(self, pkt: bytes):
         """S2C 0x0d. sub=09 = loi moi -> accept. sub=06 = roster [leader][count][members]."""
