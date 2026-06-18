@@ -1,7 +1,7 @@
 """Cau hinh bot TS Online - BAN MAU.
-from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
 Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitignore.
 """
+from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
 
 # Tai khoan mac dinh (single bot)
 USERNAME = "your_username"
