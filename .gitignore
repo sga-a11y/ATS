@@ -44,7 +44,7 @@ _stage/
 _obf/
 _obftest/
 _work/
-dist_product/
+aTSBot/
 _build_log.txt
 nuitka-crash-report.xml
 *.spec
