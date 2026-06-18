@@ -61,7 +61,11 @@ def _map_name(mid):
 class BotGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("TS Online Bot Manager")
+        try:
+            from bot._version import VERSION as _VER
+        except Exception:
+            _VER = "?"
+        self.title(f"TS Online Bot Manager v{_VER}")
         self.geometry("1100x720")
         self.minsize(900, 560)
         self._setup_style()
