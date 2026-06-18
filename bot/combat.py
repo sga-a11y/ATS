@@ -168,7 +168,10 @@ def decide_char(state, options, first_turn=False):
             and state.char.sp >= config.HEAL_SP_COST
             and config.SKILL_HEAL_ALL in state.skills_char
             and _heal_decide(state.label + ":char", state.char.sp)):
-        return Decision(config.UNIT_CHAR, at, at, config.SKILL_HEAL_ALL, b=3)
+        # TARGET = slot con IT MAU NHAT (skill chua max chi hoi quanh target -> nham con yeu nhat).
+        _low = state.lowest_hp_ally()
+        _ht = _low.slot if (_low is not None and getattr(_low, "slot", None) is not None) else at
+        return Decision(config.UNIT_CHAR, at, _ht, config.SKILL_HEAL_ALL, b=3)
     # 2) COMBO: char co skill combo + du SP (>=reserve VA >=cost skill) + du block quai.
     #    Skill DAT SP (Loan Kich) chi xai khi block 3; skill re (Hoa Tien/Nem Da) thi block 2 du.
     combo = pick_combo_skill(state.skills_char)
@@ -188,7 +191,10 @@ def decide_pet(state, options, first_turn=False):
             and state.pet.sp >= config.HEAL_SP_COST
             and config.SKILL_HEAL_ALL in state.pet_skills
             and _heal_decide(state.label + ":pet", state.pet.sp)):
-        return Decision(config.UNIT_PET, at, at, config.SKILL_HEAL_ALL, b=3)
+        # TARGET = slot con IT MAU NHAT (skill chua max chi hoi quanh target).
+        _low = state.lowest_hp_ally()
+        _ht = _low.slot if (_low is not None and getattr(_low, "slot", None) is not None) else at
+        return Decision(config.UNIT_PET, at, _ht, config.SKILL_HEAL_ALL, b=3)
     # 2) BOSS (dungeon): danh BOSS bang boss_skill (danh don manh) - khi boss_mode + du SP
     if (getattr(state, "boss_mode", False) and state.pet_boss_skill
             and state.pet.sp >= _skill_cost(state.pet_boss_skill) and state.enemy_slots):
