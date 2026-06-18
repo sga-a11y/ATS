@@ -706,6 +706,8 @@ class GameClient:
         elif opcode == protocol.OP_BATTLE_START:   # 0x34 - mốc battle that (KHONG dung 0x41!)
             self.state.in_battle = True
             self.state.reset_enemies()   # tran moi -> xoa HP quai tran cu
+            self.state.allies.clear()    # tran moi -> xoa HP dong doi tran cu (tranh ket hp=0 cua
+            #                              con da chet tran truoc -> 0x33 tran moi nap lai HP tuoi)
             self.last_turn_time = time.time()
             # KHONG reset _first_turn: atype=2 chi cho tran DAU TIEN ca phien, sau do=3
             # (moi tran chi 1 turn; client that dung 2 cho tran dau, 3 cac tran sau)
