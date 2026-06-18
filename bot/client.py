@@ -921,6 +921,10 @@ class GameClient:
             # (trong tran nay) -> gui lenh pet se sai -> server da/disconnect.
             if self.state.my_atype not in {o[0] for o in pet_opts}:
                 pet_opts = []
+            # CON DA CHET (hp_max>0 va hp<=0) -> KHONG gui lenh cho no (gui lenh cho xac chet ->
+            # server coi la lenh sai -> DA/disconnect). hp tu 0x33 moi luot.
+            char_dead = self.state.char.hp_max > 0 and self.state.char.hp <= 0
+            pet_dead = self.state.pet.hp_max > 0 and self.state.pet.hp <= 0
             ft = self._first_turn
             # FLEE MODE: bo chay thay vi danh. PHAI dung dung my_atype (vi tri cua MINH trong
             # party) - KHONG lay char_opts[0][0] (la atype cua VI TRI DAU danh sach, co the la
@@ -936,26 +940,30 @@ class GameClient:
                 a = None
                 if char_opts:
                     a = my_at if my_at in {o[0] for o in char_opts} else char_opts[0][0]
-                    self._send_combat(combat.Decision(config.UNIT_CHAR, a, a, config.SKILL_FLEE, b=3))
-                # Gui pet flee CHI khi 0x35 co option pet o DUNG slot char dang flee (a):
-                # co pet trong tran tai slot do. Khong co -> acc khong co pet/khong phai slot minh.
-                if a is not None and a in pet_atypes:
+                    if not char_dead:   # char con song moi flee (xac chet -> khong gui)
+                        self._send_combat(combat.Decision(config.UNIT_CHAR, a, a, config.SKILL_FLEE, b=3))
+                # Gui pet flee CHI khi 0x35 co option pet o DUNG slot char dang flee (a) VA pet con song.
+                if a is not None and a in pet_atypes and not pet_dead:
                     self._send_combat(combat.Decision(config.UNIT_PET, a, a, config.SKILL_FLEE, b=2))
                 log.info("[%s] BO CHAY (flee_mode, char_at=%s pet_at=%s my_atype=%s char_opts=%s pet_opts=%s)",
                          self._label, a, (a if (a is not None and a in pet_atypes) else None),
                          my_at, sorted({o[0] for o in char_opts}), sorted(pet_atypes))
                 return
-            if char_opts:
+            if char_opts and not char_dead:
                 d = combat.decide_char(self.state, char_opts, ft)
                 self._send_combat(d)
                 log.info("[%s] CHAR %s | %s | skills=%s | quai@%s",
                          self._label, d, self.state.char,
                          [hex(s) for s in sorted(self.state.skills_char)],
                          self.state.enemy_slots)
-            if pet_opts:
+            elif char_opts and char_dead:
+                log.info("[%s] CHAR HP=0 (da chet) -> KHONG gui lenh attack", self._label)
+            if pet_opts and not pet_dead:
                 d = combat.decide_pet(self.state, pet_opts, ft)
                 self._send_combat(d)
                 log.info("[%s] PET  %s | %s", self._label, d, self.state.pet)
+            elif pet_opts and pet_dead:
+                log.info("[%s] PET HP=0 (da chet) -> KHONG gui lenh attack", self._label)
             self._first_turn = False
         finally:
             # reset cho luot sau
