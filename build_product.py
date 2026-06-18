@@ -95,14 +95,28 @@ def package():
 
 
 def copy_data():
-    """Copy JSON config (sua duoc) + accounts.json RONG + README ra canh .exe."""
+    """Copy JSON config (sua duoc) + accounts.json MAU + README ra canh .exe."""
+    import json
     for fn in DATA_JSON:
         src = os.path.join(ROOT, fn)
         if os.path.exists(src):
             shutil.copy(src, DIST)
-    # accounts.json RONG (nguoi nhan tu nhap qua GUI)
+    # accounts.json MAU: 1 party voi acc1/pass1, acc2/pass2, acc3/pass3 (placeholder) -> mo len
+    # KHONG bi trong (do "lom"), nguoi nhan vao "Cau hinh" sua thanh acc that cua ho.
+    sample = {
+        "channel": 2,
+        "parties": [{
+            "server": "trieu_van", "mode": "stand", "start_city_id": 0,
+            "mob_index": -1, "city_flag": 0, "do_dungeon": True, "leaders": [],
+            "accounts": [
+                {"u": "acc1", "p": "pass1", "on": True},
+                {"u": "acc2", "p": "pass2", "on": True},
+                {"u": "acc3", "p": "pass3", "on": True},
+            ],
+        }],
+    }
     with open(os.path.join(DIST, "accounts.json"), "w", encoding="utf-8") as f:
-        f.write('{\n  "parties": [],\n  "party_config": {}\n}\n')
+        json.dump(sample, f, ensure_ascii=False, indent=2)
     with open(os.path.join(DIST, "README.txt"), "w", encoding="utf-8") as f:
         f.write(
             "TS Online Bot\n"
