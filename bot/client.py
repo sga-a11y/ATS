@@ -775,10 +775,11 @@ class GameClient:
             leaders = (config.leaders_for(self.party_idx)
                        if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
             if leaders:
+                _ldlc = {l.strip().lower() for l in leaders}   # whitelist KHONG phan biet hoa/thuong
                 known = self.entity_names.get(entity, set())
                 if known:
-                    # Biet strings cua entity nay: accept neu BAT KY string nao khop
-                    if not any(s in leaders for s in known):
+                    # Biet strings cua entity nay: accept neu BAT KY string nao khop (case-insensitive)
+                    if not any(s.strip().lower() in _ldlc for s in known):
                         log.info("[%s] TU CHOI loi moi tu entity=%s strings=%s (khong trong PARTY_LEADERS=%s)",
                                  self._label, entity.hex()[:12], known, leaders)
                         return
@@ -842,10 +843,12 @@ class GameClient:
                 pass
             leaders = (config.leaders_for(self.party_idx)
                        if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
-            if leaders and name and name not in leaders:
-                log.info("[%s] TU CHOI moi pho ban tu '%s' (khong trong whitelist)",
-                         self._label, name)
-                return
+            if leaders and name:
+                _ldlc = {l.strip().lower() for l in leaders}   # KHONG phan biet hoa/thuong
+                if name.strip().lower() not in _ldlc:
+                    log.info("[%s] TU CHOI moi pho ban tu '%s' (khong trong whitelist)",
+                             self._label, name)
+                    return
             # Dong y vao pho ban
             self.send(0x2f, b"\x03\x00" + invite_id + b"\x00")
             log.info("[%s] Nhan moi PHO BAN tu '%s' -> da DONG Y", self._label, name or "?")
