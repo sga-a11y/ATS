@@ -318,14 +318,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                                      label, joined_member_count(pidx))
                             st["route_party_ready"].set()
                             time.sleep(1.5)
-                            # 3) KEO DI: leader di qua cac cong/buoc; member tu theo
+                            # DU PARTY -> DANH bat chap khi keo (flee party-battle hay treo). Chua du
+                            # -> flee cho an toan. (member cung set tuong tu o nhanh duoi.)
+                            _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
+                            c.flee_mode = not _full
+                            # 3) KEO DI: leader di qua cac cong/buoc; member tu theo.
+                            #    DANG DANH -> DUNG DI CHUYEN, cho HET TRAN roi moi di buoc/qua cong
+                            #    (di giua tran lam ket cong / pha luot danh).
                             for stp in route.get("steps", []):
                                 if _stopped(): break
+                                t1 = time.time()
+                                while c.in_combat(idle_secs=3.0) and c.running and not _stopped() \
+                                        and time.time() - t1 < 60:
+                                    time.sleep(0.5)
                                 if "gate" in stp:
                                     if not c._enter_gate(int(stp["x"]), int(stp["y"]), int(stp["gate"])):
                                         break
                                 else:
-                                    if c.in_combat(idle_secs=1.5): time.sleep(0.5)
                                     c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(0.5)
                             st["route_done"].set()
                             if c.current_map == sc:
@@ -341,6 +350,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                                 if _stopped() or not c.running:
                                     break
                                 time.sleep(2)
+                            # party lap xong (route_party_ready) -> DU party thi DANH bat chap khi bi
+                            # keo (giong leader), chua du thi flee. (flee party-battle hay treo.)
+                            _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
+                            c.flee_mode = not _full
                             t0 = time.time()
                             while not st["route_done"].is_set() and time.time() - t0 < 240:
                                 if _stopped(): break
@@ -648,15 +661,20 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 except Exception: pass
                 st["route_party_ready"].set()    # bao member: party lap xong, sap keo
                 time.sleep(1.5)
+                _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
+                c.flee_mode = not _full   # du party -> DANH bat chap khi keo
                 # KEO DI THU CONG qua tung cong/buoc (GIONG startup via_route) -> member TRONG PARTY
                 # tu theo leader KE CA QUA CONG. KHONG dung follow_route (no tu teleport -> khong keo).
                 for stp in route2.get("steps", []):
                     if not c.running or _stopped(): break
+                    t1 = time.time()   # DANG DANH -> cho HET TRAN roi moi di buoc/qua cong
+                    while c.in_combat(idle_secs=3.0) and c.running and not _stopped() \
+                            and time.time() - t1 < 60:
+                        time.sleep(0.5)
                     if "gate" in stp:
                         if not c._enter_gate(int(stp["x"]), int(stp["y"]), int(stp["gate"])):
                             break
                     else:
-                        if c.in_combat(idle_secs=1.5): time.sleep(0.5)
                         c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(0.5)
                 # toi train map -> keo tiep ra spot (di bo local, member van theo)
                 if c.current_map == sc:
@@ -674,6 +692,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 while not st["route_party_ready"].is_set() and time.time() - t0 < 120:
                     if not c.running or _stopped(): return
                     time.sleep(2)
+                _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
+                c.flee_mode = not _full   # du party -> DANH bat chap khi bi keo
                 t0 = time.time()
                 while not st["route_done"].is_set() and time.time() - t0 < 240:
                     if not c.running or _stopped(): return
