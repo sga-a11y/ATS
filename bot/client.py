@@ -718,34 +718,39 @@ class GameClient:
         -> tim vi tri pet_id active (ngay sau marker 0x01) roi doc level/ten tai offset co dinh.
         (khop capture: Thai Van Co id=0xa051 lv 45.) active_pet_id chua biet -> dung record dau."""
         b = pkt[7:]
-        if len(b) < 36 or b[2] < 1:
+        if len(b) < 35 or b[2] < 1:
             return
+        # Record DAI ~254+namelen byte: [marker=SO SLOT 1B][pet_id 2B LE][exp 4B][LEVEL @+7]...
+        #   [namelen @+31][ten UTF16 @+32][tail 222B]. MARKER la slot (1,2,4,8,..) KHONG phai luon
+        # 0x01 -> KHONG loc theo marker. WALK tung record (stride 254+namelen) -> tim con active_pet_id.
         apid = getattr(self.state, "active_pet_id", None)
-        p = None
-        if apid:
-            tgt = apid.to_bytes(2, "little")
-            i = b.find(tgt, 3)
-            while i != -1:
-                if b[i - 1] == 0x01:   # dung la pet_id (ngay sau marker dau record)
-                    p = i
-                    break
-                i = b.find(tgt, i + 1)
-        found_active = p is not None   # True = tim DUNG record con active (khong phai fallback con dau)
-        if p is None:
-            p = 4   # fallback: record dau (pet_id o payload offset 4)
-        if p + 30 >= len(b):
+        n = b[2]
+        start, chosen, first = 3, None, None
+        for _ in range(n):
+            if start + 33 > len(b):
+                break
+            if first is None:
+                first = start
+            pid = int.from_bytes(b[start + 1:start + 3], "little")
+            if apid and pid == apid:
+                chosen = start
+                break
+            start = start + 254 + b[start + 31]
+        if chosen is None:
+            chosen = first   # active chua biet / khong tim thay -> con dau (fallback)
+        if chosen is None or chosen + 33 > len(b):
             return
-        lvl = b[p + 6]
+        found_active = apid is not None and int.from_bytes(b[chosen + 1:chosen + 3], "little") == apid
+        lvl = b[chosen + 7]   # LEVEL cua con active (truoc day b[p+6], p=pet_id_off -> = chosen+7)
         if 1 <= lvl <= 200:
             self.pet_level = lvl
-        # TEN: chi set khi (1) tim DUNG record con active (khong fallback con dau) VA (2) chua co ten.
-        # Tranh: fallback con dau (active chua biet) + 0x0f refresh ghi de ten dung. Pet co trong
-        # pets.json thi 0x13 da set ten tin cay; parse nay chi can cho pet LA cua active record.
+        # TEN: chi cho pet KHONG co trong pets.json (0x13 da set ten tin cay). Chi khi tim DUNG record
+        # active + chua co ten -> tranh 0x0f ghi de ten dung bang ten con dau.
         if found_active and self.pet_name is None:
-            nl = b[p + 30]
-            if 0 < nl <= 40 and p + 31 + nl <= len(b):
+            nl = b[chosen + 31]
+            if 0 < nl <= 40 and chosen + 32 + nl <= len(b):
                 try:
-                    nm = b[p + 31:p + 31 + nl].decode("utf-16-le").strip("\x00")
+                    nm = b[chosen + 32:chosen + 32 + nl].decode("utf-16-le").strip("\x00")
                     if nm:
                         self.pet_name = nm
                 except Exception:

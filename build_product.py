@@ -18,7 +18,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 STAGE = os.path.join(ROOT, "_stage")        # source sach (config.example -> config)
 WORK = os.path.join(ROOT, "_work")          # Nuitka build temp
 DIST = os.path.join(ROOT, "dist_product")   # output cuoi cung
-NAME = "TSBot"
+NAME = "aTSBot"
 
 # Nuitka cache PHAI o thu muc THUONG (khong sandbox). Mac dinh %LOCALAPPDATA%\Nuitka co the bi
 # ao hoa duoi sandbox app -> gcc doc file MinGW khong nhat quan (loi 'structuredquerycondition.h
