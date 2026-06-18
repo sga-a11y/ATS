@@ -117,16 +117,40 @@ def copy_data():
     }
     with open(os.path.join(DIST, "accounts.json"), "w", encoding="utf-8") as f:
         json.dump(sample, f, ensure_ascii=False, indent=2)
+    # version (doc tu bot/_version.py)
+    ver = "?"
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_v", os.path.join(ROOT, "bot", "_version.py"))
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+        ver = m.VERSION
+    except Exception:
+        pass
+    # README user-facing (BO doan bao ve code - user doc ky cuc). Chi tinh nang + cach dung.
+    note = (
+        f"TS Online Bot  v{ver}\n"
+        "============================\n\n"
+        "CACH DUNG\n"
+        "  1. Chay aTSBot.exe\n"
+        "  2. Bam 'Cau hinh' -> nhap tai khoan + chon che do cho tung party -> Luu\n"
+        "  3. Bam START\n\n"
+        "TINH NANG\n"
+        "  - Quan ly nhieu party / nhieu acc, moi party 1 che do rieng\n"
+        "  - 11 server. Che do: Train map / Train Di Gioi / Ve thanh / Dung yen\n"
+        "  - Tu dong: lap party + moi + dong bo kenh, danh daily dungeon, van tieu,\n"
+        "    nhan qua online, nhan mail/qua su kien/exp offline, nhap giftcode\n"
+        "  - Tu tim duong toi bai train, keo ca party qua cong\n"
+        "  - Tu phuc hoi khi ket bai / co acc chet / het gio Di Gioi\n\n"
+        "MEO GUI\n"
+        "  - Bam header 'Kenh' -> doi kenh ca party | header 'Map' -> teleport thanh\n"
+        "  - Bam header 'Tai khoan'/'Nhan vat' -> che thong tin (tranh lo khi share man hinh)\n"
+        "  - Cham trang thai: xanh = du acc chay | vang = chay mot phan | xam = tat\n\n"
+        "GHI CHU\n"
+        "  - Cac file .json canh exe la cau hinh (server/map/thanh) - co the sua\n"
+        "  - accounts.json luu tai khoan cua ban (GUI tu ghi khi bam Luu)\n")
     with open(os.path.join(DIST, "README.txt"), "w", encoding="utf-8") as f:
-        f.write(
-            "TS Online Bot\n"
-            "=============\n"
-            "1. Chay TSBot.exe\n"
-            "2. Bam 'Cau hinh' -> nhap tai khoan + chon che do cho tung party -> Luu.\n"
-            "3. START.\n\n"
-            "Cac file .json canh exe la cau hinh (server/map/thanh) - co the sua.\n"
-            "accounts.json luu tai khoan cua ban (GUI tu ghi).\n")
-    print("copied data JSON + accounts.json rong + README ra %s" % DIST)
+        f.write(note)
+    print("copied data JSON + accounts.json mau + README (user-facing) ra %s" % DIST)
 
 
 if __name__ == "__main__":
