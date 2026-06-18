@@ -87,8 +87,9 @@ def package():
            "--output-dir=" + WORK,
            "--output-filename=" + NAME + ".exe",
            "--remove-output",                 # don file trung gian sau build
-           os.path.join(STAGE, "gui.py")]
-    run(cmd)
+           "gui.py"]                          # CHAY TU cwd=STAGE -> bot = _stage/bot (config example),
+    #                                           KHONG lay nham bot THAT o ROOT (tranh lo credential).
+    run(cmd, cwd=STAGE)
     src = os.path.join(WORK, NAME + ".exe")
     shutil.copy(src, os.path.join(DIST, NAME + ".exe"))
     print("compiled (Nuitka native) -> %s\\%s.exe" % (DIST, NAME))
