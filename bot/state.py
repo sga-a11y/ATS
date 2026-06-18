@@ -119,29 +119,29 @@ class BattleState:
 
     # ---- parse 0x0b (full stats char/pet) ----
     def update_0x0b(self, pkt: bytes):
-        """Char/pet: [self_entity] [02 00=char / 02 01=pet] [HP_max][SP_max][HP_cur][SP_cur] (4B/field)."""
-        if not self.self_entity:
+        """Full-stat block: [marker b1,slot][maxHP u32][maxSP u32][curHP u32][curSP u32].
+        b1=3 char, b1=2 pet; slot = vi tri tran (self_slot). 0x0b chua block cua CA party (moi
+        member 1 block, dung tu entity rieng phia truoc) -> lay DUNG block cua MINH = [b1][self_slot].
+        Day la nguon DUY NHAT co MAX SP (0x33 chi co maxHP). (xac nhan tu spmax.pcap: char 454/208.)"""
+        slot = self.self_slot
+        if slot is None:
             return
-        idx = pkt.find(self.self_entity)
-        if idx < 0:
-            return
-        off = idx + 8
-        if off + 2 + 16 > len(pkt):
-            return
-        slot = pkt[off:off + 2]
-        if slot == b"\x02\x00":
-            who = self.char
-        elif slot == b"\x02\x01":
-            who = self.pet
-        else:
-            return
-        hp_max = struct.unpack_from("<I", pkt, off + 2)[0]
-        if not (0 < hp_max < 1_000_000):   # loc gia tri rac
-            return
-        who.hp_max = hp_max
-        who.sp_max = struct.unpack_from("<I", pkt, off + 6)[0]
-        who.hp = struct.unpack_from("<I", pkt, off + 10)[0]
-        who.sp = struct.unpack_from("<I", pkt, off + 14)[0]
+        for b1, who in ((3, self.char), (2, self.pet)):
+            marker = bytes([b1, slot])
+            i = pkt.find(marker)
+            while i != -1 and i + 18 <= len(pkt):
+                mh = struct.unpack_from("<I", pkt, i + 2)[0]
+                ms = struct.unpack_from("<I", pkt, i + 6)[0]
+                ch = struct.unpack_from("<I", pkt, i + 10)[0]
+                cs = struct.unpack_from("<I", pkt, i + 14)[0]
+                # validate (tranh khop nham marker o vung khac): gia tri hop ly + cur<=max
+                if 0 < mh < 1_000_000 and 0 < ms < 1_000_000 and ch <= mh and cs <= ms + 1:
+                    who.hp_max = mh
+                    who.sp_max = ms
+                    who.hp = ch
+                    who.sp = cs
+                    break
+                i = pkt.find(marker, i + 1)
 
     def lowest_hp_ally(self):
         """Unit (char/pet bat ky thanh vien) thap mau nhat - CHI con SONG (hp>0). None neu khong co.
