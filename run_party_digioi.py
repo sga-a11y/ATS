@@ -975,10 +975,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
               and c is not None and getattr(c, "server_closed", False)):
             _reason("SERVER dong ket noi (rot mang/bao tri/kick) - khong phai tu thoat")
         account_exit_reason[username] = er["r"]
-        # LUU map + ten nhan vat LUC THOAT (ke ca login xong quit ngay vi sai map) -> de
-        # biet vi tri hien tai cua tung nick ca party. Chi luu khi da vao world (co c).
+        # LUU map + ten nhan vat + LEVEL char/pet + ten pet LUC THOAT -> GUI van hien thong tin
+        # nhu luc truoc khi tat (truoc day chi luu map+char -> tat la mat level/pet).
         if c is not None and getattr(c, "current_map", None) is not None:
-            account_last[username] = {"map": c.current_map, "char": c.char_name or username}
+            account_last[username] = {"map": c.current_map, "char": c.char_name or username,
+                                      "char_level": getattr(c, "char_level", None),
+                                      "pet_name": getattr(c, "pet_name", None),
+                                      "pet_level": getattr(c, "pet_level", None)}
         account_clients.pop(username, None)
         try:
             _party_exit_summary(pidx, username)   # neu ca party da tat -> log 1 dong tong ket

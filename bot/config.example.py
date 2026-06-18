@@ -246,8 +246,9 @@ if _aj is not None:
         _ps = [[(a.get("u", ""), a.get("p", "")) for a in party.get("accounts", [])
                 if a.get("on", True) and not a.get("u", "").lstrip().startswith("#")]
                for party in _parties_raw]
-        if _ps:
-            PARTIES = _ps
+        # accounts.json TON TAI -> LUON dung no (ke ca RONG) => ban product accounts.json rong thi
+        # KHONG hien party mac dinh cua config (tranh lo/nham acc).
+        PARTIES = _ps
         for _i, _party in enumerate(_parties_raw):
             _srv = _party.get("server", "trieu_van")
             PARTY_CONFIG[_i] = {
