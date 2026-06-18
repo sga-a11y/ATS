@@ -343,6 +343,7 @@ class GameClient:
         self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
         self._chan_event = threading.Event()
         self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
+        self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
         self._pending_03 = None      # cache 0x03 self-spawn (resolve ten neu toi TRUOC 0x69)
@@ -852,6 +853,10 @@ class GameClient:
             # Dong y vao pho ban
             self.send(0x2f, b"\x03\x00" + invite_id + b"\x00")
             log.info("[%s] Nhan moi PHO BAN tu '%s' -> da DONG Y", self._label, name or "?")
+            # Da nhan pho ban -> THEO + DANH (khong flee, khong teleport ve thanh nua trong 10p):
+            # go_to_town se BAIL khi thay co (tranh xung dot 'city mode keo ve' vs 'pho ban keo vao').
+            self._phoban_until = time.time() + 600
+            self.flee_mode = False
             # Tu an CHUAN BI sau 2.5s (cho load scene pho ban)
             threading.Timer(2.5, self._dungeon_ready).start()
 
@@ -2003,6 +2008,13 @@ class GameClient:
         while time.time() < deadline:
             if not self.running:    # STOP / mat ket noi -> NGUNG ngay (khong spam teleport nua)
                 log.info("[%s] go_to_town: dung (stop/disconnect)", self._label)
+                return False
+            # DANG VAO PHO BAN (vua nhan loi moi) -> NGUNG teleport ve thanh, de bot THEO + DANH
+            # pho ban (tranh spam teleport + flee do xung dot voi 'city mode keo ve thanh').
+            if time.time() < getattr(self, "_phoban_until", 0):
+                log.info("[%s] go_to_town: dang vao pho ban -> ngung teleport (theo + danh pho ban)",
+                         self._label)
+                self.flee_mode = False
                 return False
             # DANG BATTLE -> teleport bi chan, va spam teleport luc battle PHA luot FLEE
             # (char mat luot, khong chay duoc -> bi danh chet). -> BAT flee, CHO thoat tran roi teleport.
