@@ -81,6 +81,7 @@ class BotGUI(tk.Tk):
         self._char2user = {}           # ten nhan vat -> username (cap nhat khi acc resolve)
         self._all_usernames = set(u for pidx in range(len(config.PARTIES))
                                   for (u, *_ ) in ctrl.party_accounts(pidx))
+        self._build_ordinal()
         self._build_toolbar()
         self._build_tabs()
         self._build_log()
@@ -129,10 +130,11 @@ class BotGUI(tk.Tk):
                    command=self._open_config).pack(side="right", padx=8)
 
     # ---- che tai khoan/ten (BAM vao header cot "Tai khoan"/"Nhan vat" de doi) ----
-    # Tranh bi soi khi quay/share man hinh. 3 trang thai: 0=hien full | 1=che giua (s***01) |
-    # 2=an het (*****). Icon tren header bao trang thai. Mac dinh che giua.
+    # Tranh bi soi khi quay/share man hinh. 3 trang thai (ap dung CA bang LAN log moi):
+    #   0=hien full | 1=che giua (s***01) | 2=an het -> doi ten theo THU TU acc (acc1, acc2,...)
+    # Icon tren header bao trang thai. Mac dinh che giua.
     _privacy = 1
-    _PRIV_ICON = ["👁", "👁‍🗨", "🙈"]   # 0 hien | 1 che giua | 2 an het
+    _PRIV_ICON = ["👁", "👁‍🗨", "🙈"]   # 0 hien | 1 che giua | 2 doi so thu tu
 
     def _priv_head(self, col):
         return f"{self._HEADS[col]} {self._PRIV_ICON[getattr(self, '_privacy', 1)]}"
@@ -146,24 +148,60 @@ class BotGUI(tk.Tk):
             except Exception:
                 pass
 
-    def _mask(self, s):
-        """Che tai khoan/ten theo trang thai con mat. 0=full | 1=s***01 | 2=*****."""
-        if not s or s == "-":
-            return s
-        st = getattr(self, "_privacy", 0)
-        if st == 0:
-            return s
-        if st == 2:
-            return "*****"
-        # 1 = che giua: ky tu dau + 3 sao + 2 ky tu cuoi (s***01). Ngan qua thi che gon.
+    def _build_ordinal(self):
+        """Map username -> ten thu tu acc1, acc2,... (theo thu tu party/acc) cho che do an het."""
+        ordered = [u for pidx in range(len(config.PARTIES))
+                   for (u, *_ ) in ctrl.party_accounts(pidx) if u and u.strip()]
+        self._ordinal = {u: f"acc{i + 1}" for i, u in enumerate(ordered)}
+
+    @staticmethod
+    def _part(s):
+        """Che giua: ky tu dau + 3 sao + 2 ky tu cuoi (s***01). Ngan qua -> che gon."""
         if len(s) <= 3:
             return s[0] + "***"
         return s[0] + "***" + s[-2:]
 
+    def _mask_user(self, u):
+        """Che USERNAME theo trang thai. 0=full | 1=s***01 | 2=ten thu tu (acc1, acc2,...)."""
+        if not u or u == "-":
+            return u
+        st = getattr(self, "_privacy", 0)
+        if st == 0:
+            return u
+        if st == 1:
+            return self._part(u)
+        return self._ordinal.get(u, self._part(u))   # 2 = so thu tu acc
+
+    def _mask_char(self, c):
+        """Che TEN NHAN VAT. 0=full | 1=s***01 | 2=so thu tu cua acc tuong ung (qua _char2user)."""
+        if not c or c == "-":
+            return c
+        st = getattr(self, "_privacy", 0)
+        if st == 0:
+            return c
+        if st == 1:
+            return self._part(c)
+        u = self._char2user.get(c)
+        return self._ordinal.get(u, self._part(c)) if u else self._part(c)
+
+    def _mask_label(self, label):
+        """Che 1 label trong log (username hoac ten nhan vat)."""
+        if label in getattr(self, "_ordinal", {}):
+            return self._mask_user(label)
+        if label in self._char2user:
+            return self._mask_char(label)
+        return self._mask_user(label)
+
+    def _mask_log_line(self, line, label):
+        """Doi [label] dau dong log theo trang thai privacy (chi cho dong MOI luc hien)."""
+        if getattr(self, "_privacy", 0) == 0 or not label:
+            return line
+        return line.replace(f"[{label}]", f"[{self._mask_label(label)}]", 1)
+
     def _char_cell(self, s):
         """Cot Nhan vat: 'tenNV_lvchar_tenPet_lvPet'. Privacy CHI che ten NV (lv + pet luon hien).
         Khong co pet -> 'tenNV_lvchar'. Chua load lv -> chi 'tenNV'."""
-        parts = [self._mask(s.get("char") or "-")]
+        parts = [self._mask_char(s.get("char") or "-")]
         if s.get("char_level"):
             parts.append(str(s["char_level"]))
         if s.get("pet_name"):
@@ -382,7 +420,7 @@ class BotGUI(tk.Tk):
         self.log_txt.delete("1.0", "end")
         for line, label in self.log_buffer:
             if self._line_visible(label):
-                self.log_txt.insert("end", line + "\n")
+                self.log_txt.insert("end", self._mask_log_line(line, label) + "\n")
         self.log_txt.see("end")
 
     def _log_show_all(self):
@@ -505,7 +543,7 @@ class BotGUI(tk.Tk):
                 dg = f"{s['dg_remain']}p" if s["dg_remain"] is not None else "-"
                 tag = "qs" if (s["running"] and s.get("strategist")) else \
                       ("on" if s["running"] else "off")
-                tree.item(u, values=(self._mask(u), self._char_cell(s), role, run, _map_name(s["map"]),
+                tree.item(u, values=(self._mask_user(u), self._char_cell(s), role, run, _map_name(s["map"]),
                                      s["channel"] if s["channel"] else "-",
                                      "✔" if s["in_party"] else "-", dg,
                                      "⚔" if s["combat"] else "-"),
@@ -546,7 +584,7 @@ class BotGUI(tk.Tk):
             label = m.group(1) if m else None
             self.log_buffer.append((line, label))
             if self._line_visible(label):
-                self.log_txt.insert("end", line + "\n")
+                self.log_txt.insert("end", self._mask_log_line(line, label) + "\n")
             n += 1
         if n:
             cnt = int(self.log_txt.index("end-1c").split(".")[0])
@@ -619,6 +657,7 @@ class BotGUI(tk.Tk):
             ctrl.stop_account(u)
         self._all_usernames = set(u for pidx in range(len(config.PARTIES))
                                   for (u, *_ ) in ctrl.party_accounts(pidx))
+        self._build_ordinal()
         self._populate_tabs()
         if changed:
             messagebox.showinfo("Đã nạp lại",
