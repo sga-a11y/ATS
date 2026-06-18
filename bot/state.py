@@ -144,15 +144,17 @@ class BattleState:
         who.sp = struct.unpack_from("<I", pkt, off + 14)[0]
 
     def lowest_hp_ally(self):
-        """Unit (char/pet bat ky thanh vien) thap mau nhat. None neu khong co."""
-        alive = [u for u in self.allies.values() if u.hp_max > 0]
+        """Unit (char/pet bat ky thanh vien) thap mau nhat - CHI con SONG (hp>0). None neu khong co.
+        Con HP=0 da CHET -> bo qua (hoi mau vo dung)."""
+        alive = [u for u in self.allies.values() if u.hp_max > 0 and u.hp > 0]
         if not alive:
             return None
         return min(alive, key=lambda u: u.hp_pct)
 
     def any_ally_low(self, threshold: float):
-        """Co thanh vien nao (char/pet) HP% <= threshold khong (gom ca minh)."""
+        """Co thanh vien nao (char/pet) HP% <= threshold + CON SONG (hp>0) khong (gom ca minh).
+        Con HP=0 da CHET -> KHONG tinh (hoi mau vo dung)."""
         for u in self.allies.values():
-            if u.hp_max > 0 and u.hp_pct <= threshold:
+            if u.hp_max > 0 and u.hp > 0 and u.hp_pct <= threshold:
                 return True
         return False
