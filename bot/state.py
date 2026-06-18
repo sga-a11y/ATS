@@ -42,6 +42,9 @@ class BattleState:
         self.active_pet_id = None # id pet dang dung (tu S2C 0x13)
         self.pet_boss_skill = None # skill danh don cua pet dung khi danh BOSS (pets.json boss_skill)
         self.boss_mode = False    # True = dang trong dungeon danh boss -> pet dung boss_skill (danh don)
+        # SP DAY (sp==sp_max) luc nao trong tran -> spam combo CA TRAN, bat chap so quai (1 quai cung dung).
+        self.char_spam = False
+        self.pet_spam = False
         # dong doi trong party (entity_id -> Unit), khong gom char/pet cua minh
         self.allies = {}
         self.mobs = []  # list HP_max cua quai (theo thu tu xuat hien)

@@ -172,11 +172,15 @@ def decide_char(state, options, first_turn=False):
         _low = state.lowest_hp_ally()
         _ht = _low.slot if (_low is not None and getattr(_low, "slot", None) is not None) else at
         return Decision(config.UNIT_CHAR, at, _ht, config.SKILL_HEAL_ALL, b=3)
-    # 2) COMBO: char co skill combo + du SP (>=reserve VA >=cost skill) + du block quai.
-    #    Skill DAT SP (Loan Kich) chi xai khi block 3; skill re (Hoa Tien/Nem Da) thi block 2 du.
+    # SP DAY (sp==sp_max) -> bat spam CA TRAN: combo bat chap so quai (1 quai cung xai).
+    if state.char.sp_max > 0 and state.char.sp >= state.char.sp_max:
+        state.char_spam = True
+    # 2) COMBO: char co skill combo + du SP (>=reserve VA >=cost skill) + du block quai
+    #    (HOAC dang spam mode -> bat chap block). Skill DAT SP (Loan Kich) block 3; re (Hoa Tien/
+    #    Nem Da) block 2 du.
     combo = pick_combo_skill(state.skills_char)
     if (combo and state.char.sp >= max(config.CHAR_FIRE_MIN_SP, _skill_cost(combo))
-            and _combo_block_ok(combo, state.enemy_slots)):
+            and (state.char_spam or _combo_block_ok(combo, state.enemy_slots))):
         return _attack(config.UNIT_CHAR, at, _train_target(state.enemy_slots, offered), combo, fb)
     # 3) Danh thuong - DUNG CHUNG rule target (de combo + dong target voi pet/member)
     return _attack(config.UNIT_CHAR, at, _train_target(state.enemy_slots, offered), config.SKILL_NORMAL, fb)
@@ -200,11 +204,14 @@ def decide_pet(state, options, first_turn=False):
             and state.pet.sp >= _skill_cost(state.pet_boss_skill) and state.enemy_slots):
         return _attack(config.UNIT_PET, at, _train_target(state.enemy_slots, offered),
                        state.pet_boss_skill, fb)
-    # 3) COMBO: pet co skill combo (tu pets.json) + du SP (>=cost skill) + du block quai.
-    #    Skill DAT SP (Loan Kich) chi xai khi block 3; skill re (Hoa Tien/Nem Da) thi block 2 du.
+    # SP DAY (sp==sp_max) -> bat spam CA TRAN: combo bat chap so quai (1 quai cung xai).
+    if state.pet.sp_max > 0 and state.pet.sp >= state.pet.sp_max:
+        state.pet_spam = True
+    # 3) COMBO: pet co skill combo (tu pets.json) + du SP (>=cost skill) + du block quai
+    #    (HOAC spam mode -> bat chap block).
     combo = pick_combo_skill(state.pet_skills)
     if (combo and state.pet.sp >= max(config.PET_FIRE_MIN_SP, _skill_cost(combo))
-            and _combo_block_ok(combo, state.enemy_slots)):
+            and (state.pet_spam or _combo_block_ok(combo, state.enemy_slots))):
         return _attack(config.UNIT_PET, at, _train_target(state.enemy_slots, offered), combo, fb)
     # Danh thuong - DUNG CHUNG rule target (de combo + dong target voi char/member)
     return _attack(config.UNIT_PET, at, _train_target(state.enemy_slots, offered), config.SKILL_NORMAL, fb)

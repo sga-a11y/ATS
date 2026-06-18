@@ -709,6 +709,8 @@ class GameClient:
             self.state.reset_enemies()   # tran moi -> xoa HP quai tran cu
             self.state.allies.clear()    # tran moi -> xoa HP dong doi tran cu (tranh ket hp=0 cua
             #                              con da chet tran truoc -> 0x33 tran moi nap lai HP tuoi)
+            self.state.char_spam = False  # tran moi -> reset spam (set lai neu vao tran SP day)
+            self.state.pet_spam = False
             self.last_turn_time = time.time()
             # KHONG reset _first_turn: atype=2 chi cho tran DAU TIEN ca phien, sau do=3
             # (moi tran chi 1 turn; client that dung 2 cho tran dau, 3 cac tran sau)
