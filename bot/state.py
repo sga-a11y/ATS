@@ -121,30 +121,36 @@ class BattleState:
                 u.slot = b2
 
     # ---- parse 0x0b (full stats char/pet) ----
+    def _read_0b_block(self, pkt, ent, b1, slot, who):
+        """Block 0x0b: [entity 8B][10 byte][marker b1,slot][maxHP u32][maxSP u32][curHP][curSP].
+        Anchor = ENTITY (duy nhat) -> marker o ent_idx+18. Tranh quet marker [b1][slot] truc tiep
+        (slot=0 -> '03 00' qua pho bien -> khop nham -> maxSP rac nhu 244736)."""
+        if not ent:
+            return
+        i = pkt.find(ent)
+        while i != -1:
+            m = i + 18   # marker o sau entity 8B + 10 byte
+            if m + 18 <= len(pkt) and pkt[m] == b1 and pkt[m + 1] == slot:
+                mh = struct.unpack_from("<I", pkt, m + 2)[0]
+                ms = struct.unpack_from("<I", pkt, m + 6)[0]
+                ch = struct.unpack_from("<I", pkt, m + 10)[0]
+                cs = struct.unpack_from("<I", pkt, m + 14)[0]
+                if 0 < mh < 1_000_000 and 0 < ms < 1_000_000 and ch <= mh and cs <= ms + 1:
+                    who.hp_max, who.sp_max, who.hp, who.sp = mh, ms, ch, cs
+                    return
+            i = pkt.find(ent, i + 1)
+
     def update_0x0b(self, pkt: bytes):
-        """Full-stat block: [marker b1,slot][maxHP u32][maxSP u32][curHP u32][curSP u32].
-        b1=3 char, b1=2 pet; slot = vi tri tran (self_slot). 0x0b chua block cua CA party (moi
-        member 1 block, dung tu entity rieng phia truoc) -> lay DUNG block cua MINH = [b1][self_slot].
-        Day la nguon DUY NHAT co MAX SP (0x33 chi co maxHP). (xac nhan tu spmax.pcap: char 454/208.)"""
+        """MAX SP char+pet (0x33 chi co maxHP). CHAR anchor self_entity; PET anchor pet-entity
+        (= active_pet_id 2B + 6 byte 00, vd 0xa05a -> 5a a0 00..). Marker o entity+18.
+        (xac nhan spmax.pcap: char 454/208, pet 1194/339.)"""
         slot = self.self_slot
         if slot is None:
             return
-        for b1, who in ((3, self.char), (2, self.pet)):
-            marker = bytes([b1, slot])
-            i = pkt.find(marker)
-            while i != -1 and i + 18 <= len(pkt):
-                mh = struct.unpack_from("<I", pkt, i + 2)[0]
-                ms = struct.unpack_from("<I", pkt, i + 6)[0]
-                ch = struct.unpack_from("<I", pkt, i + 10)[0]
-                cs = struct.unpack_from("<I", pkt, i + 14)[0]
-                # validate (tranh khop nham marker o vung khac): gia tri hop ly + cur<=max
-                if 0 < mh < 1_000_000 and 0 < ms < 1_000_000 and ch <= mh and cs <= ms + 1:
-                    who.hp_max = mh
-                    who.sp_max = ms
-                    who.hp = ch
-                    who.sp = cs
-                    break
-                i = pkt.find(marker, i + 1)
+        self._read_0b_block(pkt, self.self_entity, 3, slot, self.char)   # CHAR
+        if self.active_pet_id:                                            # PET
+            pe = self.active_pet_id.to_bytes(2, "little") + b"\x00" * 6
+            self._read_0b_block(pkt, pe, 2, slot, self.pet)
 
     def lowest_hp_ally(self):
         """Unit (char/pet bat ky thanh vien) thap mau nhat - CHI con SONG (hp>0). None neu khong co.
