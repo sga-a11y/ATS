@@ -130,25 +130,26 @@ def copy_data():
     note = (
         f"TS Online Bot  v{ver}\n"
         "============================\n\n"
-        "CACH DUNG\n"
-        "  1. Chay aTSBot.exe\n"
-        "  2. Bam 'Cau hinh' -> nhap tai khoan + chon che do cho tung party -> Luu\n"
-        "  3. Bam START\n\n"
-        "TINH NANG\n"
-        "  - Quan ly nhieu party / nhieu acc, moi party 1 che do rieng\n"
-        "  - 11 server. Che do: Train map / Train Di Gioi / Ve thanh / Dung yen\n"
-        "  - Tu dong: lap party + moi + dong bo kenh, danh daily dungeon, van tieu,\n"
-        "    nhan qua online, nhan mail/qua su kien/exp offline, nhap giftcode\n"
-        "  - Tu tim duong toi bai train, keo ca party qua cong\n"
-        "  - Tu phuc hoi khi ket bai / co acc chet / het gio Di Gioi\n\n"
-        "MEO GUI\n"
-        "  - Bam header 'Kenh' -> doi kenh ca party | header 'Map' -> teleport thanh\n"
-        "  - Bam header 'Tai khoan'/'Nhan vat' -> che thong tin (tranh lo khi share man hinh)\n"
-        "  - Cham trang thai: xanh = du acc chay | vang = chay mot phan | xam = tat\n\n"
-        "GHI CHU\n"
-        "  - Cac file .json canh exe la cau hinh (server/map/thanh) - co the sua\n"
-        "  - accounts.json luu tai khoan cua ban (GUI tu ghi khi bam Luu)\n")
-    with open(os.path.join(DIST, "README.txt"), "w", encoding="utf-8") as f:
+        "CÁCH DÙNG\n"
+        "  1. Chạy aTSBot.exe\n"
+        "  2. Bấm 'Cấu hình' -> nhập tài khoản + chọn chế độ cho từng party -> Lưu\n"
+        "  3. Bấm START\n\n"
+        "TÍNH NĂNG\n"
+        "  - Quản lý nhiều party / nhiều acc, mỗi party 1 chế độ riêng\n"
+        "  - 11 server. Chế độ: Train map / Train Dị Giới / Về thành / Đứng yên\n"
+        "  - Tự động: lập party + mời + đồng bộ kênh, đánh daily dungeon, vận tiêu,\n"
+        "    nhận quà online, nhận mail / quà sự kiện / exp offline, nhập giftcode\n"
+        "  - Tự tìm đường tới bãi train, kéo cả party qua cổng\n"
+        "  - Tự phục hồi khi kẹt bãi / có acc chết / hết giờ Dị Giới\n\n"
+        "MẸO GIAO DIỆN\n"
+        "  - Bấm tiêu đề cột 'Kênh' -> đổi kênh cả party | cột 'Map' -> teleport về thành\n"
+        "  - Bấm cột 'Tài khoản' / 'Nhân vật' -> che thông tin (tránh lộ khi share màn hình)\n"
+        "  - Chấm trạng thái: xanh = đủ acc chạy | vàng = chạy một phần | xám = tắt\n\n"
+        "GHI CHÚ\n"
+        "  - Các file .json cạnh exe là cấu hình (server / map / thành) - có thể sửa\n"
+        "  - accounts.json lưu tài khoản của bạn (GUI tự ghi khi bấm Lưu)\n")
+    # utf-8-sig (co BOM) -> Notepad Windows hien dung dau tieng Viet
+    with open(os.path.join(DIST, "README.txt"), "w", encoding="utf-8-sig") as f:
         f.write(note)
     print("copied data JSON + accounts.json mau + README (user-facing) ra %s" % DIST)
 
