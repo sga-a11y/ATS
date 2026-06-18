@@ -33,7 +33,7 @@ PY_SOURCES = ["gui.py", "run_party_digioi.py", "bot"]
 # --- file JSON DATA: de NGOAI canh .exe (nguoi nhan sua). config.py KHONG o day (la code). ---
 DATA_JSON = ["servers.json", "cities.json", "train_maps.json", "train_routes.json",
              "mob_paths.json", "map_gates.json", "pets.json", "pet_hedoanh.json",
-             "vantieu_requests.json", "skills_db.json"]
+             "vantieu_requests.json", "skills_db.json", "junk_scrolls.json"]
 
 
 def run(cmd, **kw):

@@ -180,6 +180,21 @@ PET_SKILLS, PET_NAMES, PET_BOSS_SKILL, PET_HE_DOANH = _load_pets()   # pet_id ->
 # Unit nao co 1 trong cac skill nay -> dung de combo. Sau nay event/boss co list khac.
 COMBO_TRAIN_SKILLS = [12003, 10005, 13013]   # Hoa Tien(15), Nem Da(22), Loan Kich(49)
 
+# Cuon GOI PET RAC -> bot tu PHAN GIAI sau gacha (nhan lai xu). Doc tu junk_scrolls.json
+# (itemId hex -> ten). Them cuon rac moi BANG CACH SUA junk_scrolls.json, khoi dong code.
+def _load_junk_scrolls():
+    import json, os
+    f = os.path.join(_base_dir(), "junk_scrolls.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("scrolls", {}).items():
+                out[int(k, 16)] = v
+    except Exception:
+        pass
+    return out
+JUNK_PET_SCROLLS = _load_junk_scrolls()
+
 # SP cost tung skill (de check du SP truoc khi dung, tranh bi da khi thieu SP).
 SKILL_SP_COST = {
     12003: 15,   # Hoa Tien

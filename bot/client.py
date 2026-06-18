@@ -357,6 +357,8 @@ class GameClient:
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
         self.dungeon_runs_today = None  # so luot dungeon da danh hom nay (S2C 0x55 stat 0x9b)
         self.xu = None               # so XU hien co (tu S2C 0x1a id=4) - None = chua nhan
+        self._decompose_seq = 0      # tang moi khi nhan S2C 0x59 (xac nhan phan giai 1 cuon xong)
+        self.bag_counts = {}         # itemId (int) -> so luong trong tui (S2C 0x08 01 00 [id][cnt] luc login)
         self.vantieu_started = None  # so luot van tieu DA gui hom nay (S2C 0x55 sid=0x08)
         self.vantieu_max = 3         # gioi han van tieu/ngay (server bao kem, mac dinh 3)
         self.vantieu_slots = {}      # slot -> {"end": OLE date ket thuc, "pet": id} (tu panel 0x56 0300)
@@ -514,6 +516,10 @@ class GameClient:
         # Hoan thanh dungeon: S2C 0x14 sub 0x64 (man tong ket) -> set co de do_daily_dungeon biet xong
         if opcode == 0x14 and len(pkt) >= 8 and pkt[7] == 0x64:
             self.dungeon_complete = True
+        # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
+        # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
+        if opcode == 0x59:
+            self._decompose_seq += 1
         # INT (tri luc): gui luc login trong gói char-info S2C 0x05 (payload ~252B), INT o payload[9]
         # = pkt[16]. (Xac nhan int2.pcap: 2 lan login INT 4->5, byte nay doi 4->5). INT cao = hoi SP
         # tot hon khi lam quan su -> leader chon member INT cao nhat. Cap nhat khi cong diem cung qua day.
@@ -531,6 +537,13 @@ class GameClient:
         elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
             self.char_int = int.from_bytes(pkt[11:13], "little")
             _register_party_int(self.party_idx, self.self_entity, self.char_int)
+        # TUI: S2C 0x08 luc login, moi item 1 dong: 01 00 [itemId 2B LE][count u32 LE] 00 00 00 00
+        # (body 12B -> full pkt 19B). Luu so luong de PHAN GIAI dung so cuon co that (khong ban mu).
+        elif opcode == 0x08 and len(pkt) >= 19 and pkt[7:9] == b"\x01\x00":
+            iid = int.from_bytes(pkt[9:11], "little")
+            cnt = int.from_bytes(pkt[11:15], "little")
+            if cnt < 100000:   # loc rac
+                self.bag_counts[iid] = cnt
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1385,6 +1398,43 @@ class GameClient:
         _mark_daily(self._label, "gacha_card")
         log.info("[%s] Gacha CARD hang ngay (xu con ~%d)", self._label, self.xu)
 
+    def decompose_junk_scrolls(self, wait: float = 1.2, gacha_slack: int = 1):
+        """Phan giai cuon GOI PET RAC (gacha ra nhieu) -> nhan lai xu. C2S 0x59:
+          03 00 01 [itemId 2B LE] 00 00 00   (capture: Truong Man Thanh=0x0145, Tan Bi=0x014b)
+        AN TOAN: chi phan giai id co trong CONFIG.JUNK_PET_SCROLLS. So lan = count tui
+        (self.bag_counts doc tu S2C 0x08 luc login) + gacha_slack (mac dinh 1, de don cuon GACHA
+        vua nha trong phien nay - sau snapshot login). Moi lan cho S2C 0x59 xac nhan (seq tang);
+        het xac nhan -> dung som (chot an toan, khong phan giai qua so co that)."""
+        junk = getattr(config, "JUNK_PET_SCROLLS", {})
+        if not junk:
+            return
+        total = 0
+        for item_id, name in junk.items():
+            iid = int(item_id, 16) if isinstance(item_id, str) else int(item_id)
+            have = self.bag_counts.get(iid, 0)
+            budget = have + max(0, gacha_slack)   # +slack: dò them cuon gacha vua them
+            if budget <= 0:
+                continue
+            done = 0
+            for _ in range(budget):
+                if not self.running:
+                    return
+                seq0 = self._decompose_seq
+                self.send(0x59, b"\x03\x00\x01" + struct.pack("<H", iid) + b"\x00\x00\x00")
+                t0 = time.time()
+                while self._decompose_seq == seq0 and time.time() - t0 < wait and self.running:
+                    time.sleep(0.1)
+                if self._decompose_seq == seq0:
+                    break   # khong xac nhan -> het cuon (snapshot lech) -> dung
+                done += 1
+                self.bag_counts[iid] = max(0, self.bag_counts.get(iid, 0) - 1)
+                time.sleep(0.25)
+            if done:
+                total += done
+                log.info("[%s] Phan giai %d cuon '%s' (0x%04x)", self._label, done, name, iid)
+        if total:
+            log.info("[%s] Phan giai cuon rac: tong %d cuon -> nhan xu", self._label, total)
+
     def _on_vantieu(self, pkt: bytes):
         """S2C 0x56 panel: [03 00][count 1B] + count*[slot 1B][start 8B OLE][end 8B OLE]
         [x 1B][pet 1B][yy 2B] (21B/entry). Doc slot + GIO KET THUC (OLE date) vao vantieu_slots.
@@ -1565,35 +1615,38 @@ class GameClient:
     # ---- parse skill bar (0x28) ----
     def _on_skill_bar(self, pkt: bytes):
         """S2C 0x28: skill bar cua char/pet.
-        Format: [01 00][unit 1B][count 1B][skill_id 2B LE * count]...
-        unit=3: CHAR, unit=2: PET. 0x0000 = slot trong.
-        """
+        Format: [01 00][unit 1B][?? 1B][skill_id 2B LE ...][0000 = terminator/slot trong]...
+        unit=3: CHAR, unit=2: PET. Byte sau unit KHONG phai count tin cay (capture: =5 nhung co
+        6 skill) -> DOC SKILL TOI KHI GAP 0x0000 (terminator), khong dua theo count (bug cu cat
+        mat skill cuoi -> vd thieu Nem Da 0x2715 -> char danh chay).
+        CHI lay block CHAR (unit=3) DAU TIEN (sau padding co the co block rac id la -> bo qua)."""
         if len(pkt) < 12:
             return
         payload = pkt[7:]
         i = 2  # bo prefix 01 00
-        while i + 2 <= len(payload):
-            unit  = payload[i]
-            count = payload[i + 1]
-            i += 2
-            if unit not in (2, 3) or count == 0 or count > 20:
-                break
+        seen_char = False
+        while i + 2 <= len(payload) and not seen_char:
+            unit = payload[i]
+            if unit not in (2, 3):
+                i += 1
+                continue   # padding/byte la -> truot toi block hop le
+            i += 2         # bo unit + byte sau (khong dung)
             skills = set()
-            for _ in range(count):
-                if i + 2 > len(payload):
-                    break
-                sid = int.from_bytes(payload[i:i+2], 'little')
-                if sid != 0:
-                    skills.add(sid)
+            while i + 2 <= len(payload):
+                sid = int.from_bytes(payload[i:i + 2], 'little')
                 i += 2
+                if sid == 0:
+                    break  # terminator -> het skill cua unit nay
+                if len(skills) > 40:
+                    break  # canh rac
+                skills.add(sid)
             if unit == 3:
                 self.state.skills_char = skills
+                seen_char = True
                 log.info("[%s] Char skills: %s", self._label,
                          [hex(s) for s in sorted(skills)])
             elif unit == 2:
                 self.state.skills_pet = skills
-                log.info("[%s] Pet skills: %s", self._label,
-                         [hex(s) for s in sorted(skills)])
 
     # ---- parse player info (0x27) ----
     def _resolve_self_name(self, pkt: bytes):
@@ -2059,9 +2112,32 @@ class GameClient:
         self.send(protocol.OP_TELEPORT, payload)
         log.info("[%s] Teleport -> city %s (flag %s)", self._label, city_id, flag)
 
-    def _enter_gate(self, x: int, y: int, idx: int, timeout: float = 30.0) -> bool:
+    def _wait_combat_clear(self, idle: float = 3.0, cap: float = 90.0) -> bool:
+        """Cho HET TRAN (khong co luot battle trong 'idle' giay) toi 'cap' giay.
+        Tra False neu bi STOP/rot. Dung truoc khi move/transit (battle NUOT lenh 0x06/0x14)."""
+        t0 = time.time()
+        while self.in_combat(idle_secs=idle) and self.running and time.time() - t0 < cap:
+            time.sleep(0.5)
+        return self.running
+
+    def _route_move(self, x: int, y: int, settle: float = 0.6, tries: int = 8):
+        """Di 1 buoc route AN TOAN: cho het tran -> move -> neu vua move lai dinh tran
+        (battle nuot lenh -> nhan vat KHONG toi noi) thi cho het tran roi MOVE LAI.
+        Bao dam nhan vat thuc su toi (x,y) truoc khi sang buoc/cong sau."""
+        for _ in range(tries):
+            if not self.running:
+                return
+            if not self._wait_combat_clear():
+                return
+            self.move_to(x, y); time.sleep(settle)
+            if not self.in_combat(idle_secs=1.5):
+                return   # move xong, khong dinh tran -> coi nhu da toi
+
+    def _enter_gate(self, x: int, y: int, idx: int, timeout: float = 60.0) -> bool:
         """Toi cong (x,y) + gui chuoi 0x14 04/08[idx] (giong thoat Di Gioi) -> cho MAP DOI.
-        Cong trung gian khong biet map dich nen xac nhan = current_map khac map luc bat dau."""
+        Cong trung gian khong biet map dich nen xac nhan = current_map khac map luc bat dau.
+        QUAN TRONG: chi move toi cong + gui transit khi HET TRAN. Neu gui 0x06/0x14 luc dang
+        battle -> server nuot lenh (khong toi cong) hoac DA ket noi -> ket cong / leader rot."""
         start_map = self.current_map
         t0 = time.time()
         while time.time() - t0 < timeout:
@@ -2071,10 +2147,13 @@ class GameClient:
                 log.info("[%s] qua cong idx=%d -> map %s", self._label, idx, self.current_map)
                 self.pos = None   # qua cong -> vi tri cu vo nghia (map moi) -> navigate sau di hao phong
                 return True
-            if self.in_combat(idle_secs=1.5):
-                time.sleep(0.5); continue
+            # CHO HET TRAN truoc khi toi cong + transit (battle nuot lenh -> ket cong / kick leader)
+            if not self._wait_combat_clear():
+                return False
             if x or y:   # x=y=0 -> cong "vao lien" (spawn ngay tai cong) -> KHONG move, chi trigger
-                self.move_to(x, y); time.sleep(0.5)
+                self.move_to(x, y); time.sleep(0.6)
+            if self.in_combat(idle_secs=1.5):
+                continue   # vua move lai dinh tran -> KHONG gui 0x14 (cho luot sau move lai)
             self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
             self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
             self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
@@ -2104,9 +2183,7 @@ class GameClient:
                     return False
             else:
                 x, y = int(st["move"][0]), int(st["move"][1])
-                if self.in_combat(idle_secs=1.5):
-                    time.sleep(0.5)
-                self.move_to(x, y); time.sleep(step_wait)
+                self._route_move(x, y)   # cho het tran roi move (battle nuot lenh -> khong toi)
         ok = self.current_map == dest
         log.info("[%s] follow_route xong: map=%s (dich %s) -> %s",
                  self._label, self.current_map, dest, "OK" if ok else "CHUA TOI")

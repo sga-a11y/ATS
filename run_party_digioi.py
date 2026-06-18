@@ -196,6 +196,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
         c.claim_gacha_pet()     # gacha pet hang ngay (9k xu)
         c.claim_gacha_card()    # gacha card hang ngay (9k xu)
+        c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu
         next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
@@ -327,15 +328,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             #    (di giua tran lam ket cong / pha luot danh).
                             for stp in route.get("steps", []):
                                 if _stopped(): break
-                                t1 = time.time()
-                                while c.in_combat(idle_secs=3.0) and c.running and not _stopped() \
-                                        and time.time() - t1 < 60:
-                                    time.sleep(0.5)
+                                # _enter_gate / _route_move TU cho het tran truoc khi move/transit
+                                # (battle nuot lenh 0x06/0x14 -> nhan vat khong toi cong -> ket / kick).
                                 if "gate" in stp:
                                     if not c._enter_gate(int(stp["x"]), int(stp["y"]), int(stp["gate"])):
                                         break
                                 else:
-                                    c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(0.5)
+                                    c._route_move(int(stp["move"][0]), int(stp["move"][1]))
                             st["route_done"].set()
                             if c.current_map == sc:
                                 self_map_ok = True; login_map = sc

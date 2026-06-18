@@ -1,0 +1,11 @@
+{
+  "_note": "Cuon GOI PET RAC -> bot tu PHAN GIAI sau gacha (nhan lai xu). key = itemId (hex chuoi), value = ten cuon. Lay itemId tu capture phan giai (C2S 0x59: 03 00 01 [itemId 2B LE] 00 00 00). Them dong moi khi gap cuon rac khac.",
+  "scrolls": {
+    "0x0139": "Mi Truc",
+    "0x013c": "Nghiem Bach Ho",
+    "0x0142": "Tuong Can",
+    "0x0145": "Truong Man Thanh",
+    "0x0147": "Dinh Phung",
+    "0x014b": "Tan Bi"
+  }
+}
