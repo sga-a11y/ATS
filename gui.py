@@ -739,7 +739,7 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Entry(nlrow, textvariable=self.leaders_var).pack(side="left", fill="x", expand=True, padx=4)
 
         self.dungeon_var = tk.BooleanVar(value=self._preset.get("do_dungeon", True))
-        ttk.Checkbutton(self, text="Đánh daily dungeon (lượt 1 free, lượt 2+ mua vàng)",
+        ttk.Checkbutton(self, text="Đánh solo dungeon (lượt 1 free, lượt 2+ mua vàng)",
                         variable=self.dungeon_var).pack(anchor="w")
 
         ttk.Label(self, text="Acc (TICK = dùng, BỎ TICK = bỏ qua). Dòng đầu đã tick = chủ PT "
