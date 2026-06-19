@@ -194,6 +194,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         c.claim_14day_gift()    # qua 14 ngay user moi (0x57)
         c.claim_event_14day()   # event tang qua 14 ngay (0x7c) - khac cai tren
         c.claim_legion_gift()   # nhan qua quan doan hang ngay
+        c.claim_friend_gifts()  # tang qua tat ca ban + nhan qua ban tang (hang ngay)
         c.claim_gacha_pet()     # gacha pet hang ngay (9k xu)
         c.claim_gacha_card()    # gacha card hang ngay (9k xu)
         c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu

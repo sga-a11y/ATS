@@ -360,6 +360,9 @@ class GameClient:
         self.xu = None               # so XU hien co (tu S2C 0x1a id=4) - None = chua nhan
         self._decompose_seq = 0      # tang moi khi nhan S2C 0x59 (xac nhan phan giai 1 cuon xong)
         self.bag_counts = {}         # itemId (int) -> so luong trong tui (S2C 0x08 01 00 [id][cnt] luc login)
+        self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
+        self.friend_status = {}      # entity hex -> trailer[18]: bit0x01=DA TANG, bit0x02=CO QUA nhan
+        self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
         self.vantieu_started = None  # so luot van tieu DA gui hom nay (S2C 0x55 sid=0x08)
         self.vantieu_max = 3         # gioi han van tieu/ngay (server bao kem, mac dinh 3)
         self.vantieu_slots = {}      # slot -> {"end": OLE date ket thuc, "pet": id} (tu panel 0x56 0300)
@@ -549,6 +552,11 @@ class GameClient:
             cnt = int.from_bytes(pkt[11:15], "little")
             if cnt < 100000:   # loc rac
                 self.bag_counts[iid] = cnt
+        # BAN BE / qua hang ngay: S2C 0x0e
+        #   sub 05 = list ban luc login: [05 00][count 2B] + N*[entity 8B][namelen 1B][name][trailer 35B]
+        #   sub 0c = status qua:        [0c 00][count 1B] + N*[entity 8B][status 1B] (03=co qua nhan, 07=da nhan)
+        if opcode == 0x0e and len(pkt) >= 9:
+            self._on_friend_gift(pkt)
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1217,6 +1225,60 @@ class GameClient:
         self.send(0x27, b"\x69\x00")   # nhan qua quan doan
         _mark_daily(self._label, "legion")
         log.info("[%s] Nhan qua quan doan hang ngay", self._label)
+
+    def _on_friend_gift(self, pkt: bytes):
+        """Parse S2C 0x0e ban be:
+          sub 05 (list login): [05 00][count 2B] + N*[entity 8B][namelen 1B][name][trailer 35B]
+            trailer[18]: bit0x01 = DA TANG qua cho ban nay, bit0x02 = ban CO QUA cho minh nhan.
+          sub 0d: xac nhan nhan 1 qua.
+        Luu friend_entities (merge) + friend_status[entity]=trailer[18]."""
+        body = pkt[7:]
+        if len(body) < 3:
+            return
+        sub = body[0]
+        if sub == 0x05:           # list ban (login push) - full list roi tung ban 1 goi (update)
+            cnt = int.from_bytes(body[2:4], "little")
+            i = 4
+            new = []
+            for _ in range(cnt):
+                if i + 9 > len(body):
+                    break
+                ent = body[i:i + 8]
+                nl = body[i + 8]
+                tr = body[i + 9 + nl:i + 9 + nl + 35]
+                if len(tr) >= 19:
+                    self.friend_status[ent.hex()] = tr[18]   # cap nhat status moi nhat
+                if ent not in self.friend_entities:
+                    self.friend_entities.append(ent); new.append(ent)
+                i += 9 + nl + 35
+            if new:
+                log.info("[%s] Ban be: %d ban (tu 0x0e 05): %s", self._label,
+                         len(self.friend_entities), [e.hex()[:4] for e in self.friend_entities])
+        elif sub == 0x0d:         # xac nhan NHAN 1 qua tu ban: [0d 00][entity 8B][01 00]
+            self._gift_recv += 1
+
+    def claim_friend_gifts(self):
+        """TANG qua cho ban CHUA tang + NHAN qua ban da tang minh. HOAN TOAN theo STATUS server
+        (friend_status[entity]=trailer[18] tu 0x0e 05 login): bit0x01=DA TANG, bit0x02=CO QUA nhan.
+          TANG:  C2S 0x0e [12 00][count][entity*N]  - chi ban CHUA tang (status & 0x01 == 0)
+          NHAN:  C2S 0x0e [13 00][count][entity*N]  - chi ban CO QUA   (status & 0x02)
+        KHONG can daily_mark: status doc truc tiep -> relogin se thay 'da tang/da nhan' -> tu bo qua
+        (idempotent). Chay moi login -> bat duoc ca qua ban gui TRONG NGAY."""
+        ents = list(self.friend_entities)
+        if not ents:
+            return   # chua nhan duoc list ban -> login sau thu lai
+        to_send = [e for e in ents if not (self.friend_status.get(e.hex(), 0) & 0x01)]  # chua tang
+        to_recv = [e for e in ents if (self.friend_status.get(e.hex(), 0) & 0x02)]       # co qua
+        if to_send:
+            self.send(0x0e, b"\x12\x00" + bytes([len(to_send)]) + b"".join(to_send))
+            time.sleep(0.5)
+        self._gift_recv = 0
+        if to_recv:
+            self.send(0x0e, b"\x13\x00" + bytes([len(to_recv)]) + b"".join(to_recv))
+            time.sleep(1.0)   # cho 0x0e 0d xac nhan
+        if to_send or to_recv:
+            log.info("[%s] Qua ban be: tang %d ban (chua tang), nhan %d/%d qua",
+                     self._label, len(to_send), self._gift_recv, len(to_recv))
 
     def _run_one_dungeon(self, max_sec: int) -> bool:
         """Chay 1 luot dungeon: query -> vao -> danh boss -> nhan thuong -> ra. True neu vao duoc."""
