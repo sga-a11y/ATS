@@ -1410,13 +1410,14 @@ class GameClient:
         _mark_daily(self._label, "gacha_card")
         log.info("[%s] Gacha CARD hang ngay (xu con ~%d)", self._label, self.xu)
 
-    def decompose_junk_scrolls(self, wait: float = 1.2, gacha_slack: int = 1):
+    def decompose_junk_scrolls(self, wait: float = 1.2):
         """Phan giai cuon GOI PET RAC (gacha ra nhieu) -> nhan lai xu. C2S 0x59:
           03 00 01 [itemId 2B LE] 00 00 00   (capture: Truong Man Thanh=0x0145, Tan Bi=0x014b)
-        AN TOAN: chi phan giai id co trong CONFIG.JUNK_PET_SCROLLS. So lan = count tui
-        (self.bag_counts doc tu S2C 0x08 luc login) + gacha_slack (mac dinh 1, de don cuon GACHA
-        vua nha trong phien nay - sau snapshot login). Moi lan cho S2C 0x59 xac nhan (seq tang);
-        het xac nhan -> dung som (chot an toan, khong phan giai qua so co that)."""
+        AN TOAN TUYET DOI: chi phan giai khi TUI THUC SU CO cuon (self.bag_counts doc tu S2C 0x08
+        luc login) va id nam trong CONFIG.JUNK_PET_SCROLLS. So lan = DUNG bag_counts.
+        KHONG ban mu: tui count=0 -> BO QUA (server tra 0x59 CA KHI khong co cuon -> khong the
+        dua vao 0x59 de biet co cuon hay khong, BAT BUOC dua vao bag_counts).
+        Cuon GACHA vua nha trong phien nay se duoc don o LAN LOGIN SAU (snapshot tui moi)."""
         junk = getattr(config, "JUNK_PET_SCROLLS", {})
         if not junk:
             return
@@ -1424,11 +1425,10 @@ class GameClient:
         for item_id, name in junk.items():
             iid = int(item_id, 16) if isinstance(item_id, str) else int(item_id)
             have = self.bag_counts.get(iid, 0)
-            budget = have + max(0, gacha_slack)   # +slack: dò them cuon gacha vua them
-            if budget <= 0:
-                continue
+            if have <= 0:
+                continue   # TUI KHONG CO cuon nay -> KHONG gui lenh (tranh ban mu)
             done = 0
-            for _ in range(budget):
+            for _ in range(have):
                 if not self.running:
                     return
                 seq0 = self._decompose_seq
