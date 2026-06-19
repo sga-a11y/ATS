@@ -344,6 +344,7 @@ class GameClient:
         self._chan_event = threading.Event()
         self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
         self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
+        self._gate_transit = False   # True khi dang gui chuoi 0x14 qua cong -> combat KHONG gui 0x32
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
         self._pending_03 = None      # cache 0x03 self-spawn (resolve ten neu toi TRUOC 0x69)
@@ -529,6 +530,10 @@ class GameClient:
             # CAP nhan vat: payload offset 21 = pkt[28] (khop capture: char lv 64). Hien o GUI.
             if len(pkt) > 28 and 1 <= pkt[28] <= 200:
                 self.char_level = pkt[28]
+            # SKILL DA HOC DAY DU: 0x05 co list [count 2B LE] + count*[skill 2B LE][level 1B].
+            # (0x28 chi la skill BAR, thieu skill khong dat phim tat -> char danh chay). Parse o
+            # day moi du. UNION (khong ghi de) de khong mat skill tu 0x28.
+            self._parse_skill_list_0x05(pkt)
         # PET dang dung: S2C 0x0f sub=0008 = danh sach pet mang theo, record DAU = pet active.
         elif opcode == 0x0f and pkt[7:9] == b"\x08\x00" and len(pkt) >= 49:
             self._cached_pet_list_pkt = pkt
@@ -913,6 +918,13 @@ class GameClient:
 
     def _make_decisions(self):
         if self._acted_turn:
+            return
+        # DANG QUA CONG (gui chuoi 0x14): KHONG gui 0x32 danh -> tranh "vua qua cong vua danh"
+        # (0x32 xen giua 0x14 -> server kick leader). Bo luot nay; transit doi map -> tran cu bo,
+        # neu transit that bai (van map cu) -> luot sau danh binh thuong.
+        if self._gate_transit:
+            self.available = {}
+            threading.Timer(1.0, self._reset_turn).start()
             return
         # Neu stats chua load (hp_max=0) -> doi toi da 1s cho 0x0b kip den
         if self.state.char.hp_max == 0 and self.state.pet.hp_max == 0:
@@ -1612,6 +1624,34 @@ class GameClient:
                 log.info("[%s] Qua online: %s", self._label,
                          "THANH CONG" if status == 0 else f"status={status}")
 
+    # ---- parse skill DA HOC DAY DU (0x05 char-info) ----
+    def _parse_skill_list_0x05(self, pkt: bytes):
+        """Trong goi char-info 0x05 co list skill DA HOC: [count 2B LE] + count*[skill 2B LE]
+        [level 1B]. (0x28 chi la skill BAR -> thieu skill khong dat phim tat.) Tim list bang
+        chu ky: 1 vi tri co count C nho (1..60) + dung C entry [id trong 0x2710..0x3fff][lv 1..99].
+        Lay run dau tien -> UNION vao skills_char (khong mat skill bar)."""
+        payload = pkt[7:]
+        n = len(payload)
+        for off in range(0, n - 3):
+            c = int.from_bytes(payload[off:off + 2], "little")
+            if not (1 <= c <= 60) or off + 2 + c * 3 > n:
+                continue
+            ids = []
+            ok = True
+            for k in range(c):
+                p = off + 2 + k * 3
+                sid = int.from_bytes(payload[p:p + 2], "little")
+                lv = payload[p + 2]
+                if not (0x2710 <= sid <= 0x3fff and 1 <= lv <= 99):
+                    ok = False
+                    break
+                ids.append(sid)
+            if ok and ids:
+                self.state.skills_char |= set(ids)
+                log.info("[%s] Char skills (day du tu 0x05, %d): %s", self._label, len(ids),
+                         [hex(s) for s in sorted(ids)])
+                return
+
     # ---- parse skill bar (0x28) ----
     def _on_skill_bar(self, pkt: bytes):
         """S2C 0x28: skill bar cua char/pet.
@@ -1641,9 +1681,9 @@ class GameClient:
                     break  # canh rac
                 skills.add(sid)
             if unit == 3:
-                self.state.skills_char = skills
+                self.state.skills_char |= skills   # UNION: gop voi list day du tu 0x05
                 seen_char = True
-                log.info("[%s] Char skills: %s", self._label,
+                log.info("[%s] Char skills (bar 0x28): %s", self._label,
                          [hex(s) for s in sorted(skills)])
             elif unit == 2:
                 self.state.skills_pet = skills
@@ -2152,12 +2192,21 @@ class GameClient:
                 return False
             if x or y:   # x=y=0 -> cong "vao lien" (spawn ngay tai cong) -> KHONG move, chi trigger
                 self.move_to(x, y); time.sleep(0.6)
-            if self.in_combat(idle_secs=1.5):
-                continue   # vua move lai dinh tran -> KHONG gui 0x14 (cho luot sau move lai)
-            self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
-            self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
-            self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
-            self.send(0x14, b"\x06\x00"); time.sleep(1.0)
+            # MOVE co the DINH TRAN MOI (buoc vao quai): turn offer 0x35 toi TRE ~1s. Cho them
+            # roi check lai -> neu dinh tran thi KHONG transit (loop lai danh het tran). Tranh
+            # 0x32 (danh) bi gui XEN GIUA chuoi 0x14 -> server kick leader.
+            time.sleep(1.2)
+            if self.in_combat(idle_secs=2.5):
+                continue   # vua move lai dinh tran -> fight het roi moi transit
+            # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
+            self._gate_transit = True
+            try:
+                self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
+                self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
+                self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
+                self.send(0x14, b"\x06\x00"); time.sleep(1.0)
+            finally:
+                self._gate_transit = False
         log.warning("[%s] _enter_gate idx=%d @(%d,%d): map khong doi (van %s)",
                     self._label, idx, x, y, self.current_map)
         return False

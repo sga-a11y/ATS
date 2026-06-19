@@ -116,6 +116,40 @@ class BotGUI(tk.Tk):
                   foreground=[("selected", "#ffffff"), ("active", "#102")],
                   font=[("selected", ("", 10, "bold"))],
                   expand=[("selected", [1, 3, 1, 0])])   # tab chon phinh to hon
+        self._setup_check_indicator(style)
+
+    def _setup_check_indicator(self, style):
+        """Theme clam ve tick checkbox la dau 'X' -> de hieu nham la 'bo'. Doi sang dau 'v' (✓)
+        bang anh indicator tu ve (o vuong + dau check xanh khi tick)."""
+        try:
+            pad = "#dcdad5"; box = "#ffffff"; border = "#6f6f6f"; ck = "#1565c0"
+            W, H = 18, 14
+            def base():
+                img = tk.PhotoImage(width=W, height=H)
+                img.put(pad, to=(0, 0, W, H))
+                img.put(box, to=(0, 0, 14, 14))
+                for x in range(14):
+                    img.put(border, (x, 0)); img.put(border, (x, 13))
+                for y in range(14):
+                    img.put(border, (0, y)); img.put(border, (13, y))
+                return img
+            self._img_unchk = base()
+            self._img_chk = base()
+            pts = [(3, 7), (4, 8), (5, 9), (6, 10), (7, 8), (8, 6), (9, 5), (10, 4), (11, 3)]
+            for (x, y) in pts:
+                self._img_chk.put(ck, (x, y)); self._img_chk.put(ck, (x, y + 1))
+                self._img_chk.put(ck, (x + 1, y))
+            style.element_create("vchk.indicator", "image", self._img_unchk,
+                                 ("selected", self._img_chk), sticky="")
+            style.layout("TCheckbutton", [
+                ("Checkbutton.padding", {"sticky": "nswe", "children": [
+                    ("vchk.indicator", {"side": "left", "sticky": ""}),
+                    ("Checkbutton.focus", {"side": "left", "sticky": "w", "children": [
+                        ("Checkbutton.label", {"sticky": "nswe"})]})
+                ]})
+            ])
+        except Exception:
+            pass   # loi tao anh/style -> giu indicator mac dinh (X), khong crash GUI
 
     # ---- toolbar ----
     def _build_toolbar(self):
@@ -739,7 +773,7 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Entry(nlrow, textvariable=self.leaders_var).pack(side="left", fill="x", expand=True, padx=4)
 
         self.dungeon_var = tk.BooleanVar(value=self._preset.get("do_dungeon", True))
-        ttk.Checkbutton(self, text="Đánh solo dungeon (lượt 1 free, lượt 2+ mua vàng)",
+        ttk.Checkbutton(self, text="Đánh Phó Bản đơn (lượt 1 free, lượt 2+ mua vàng)",
                         variable=self.dungeon_var).pack(anchor="w")
 
         ttk.Label(self, text="Acc (TICK = dùng, BỎ TICK = bỏ qua). Dòng đầu đã tick = chủ PT "
