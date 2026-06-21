@@ -156,6 +156,113 @@ def mail_window_now():
 _GIFT_FILE = "gift_state.json"
 _gift_lock = threading.Lock()
 
+# ITEM HP/SP: bot TU HOC qua self-calibrate (probe -> doc delta HP/SP tu S2C 0x08),
+# luu items_learned.json. KHONG can gamedata/config. Format:
+#   { "<tid>": {"hp": <heal HP do duoc>, "sp": <heal SP>, "name": "", "none": false} }
+#   none=true -> da thu, item KHONG hoi HP/SP (vat pham khac) -> khoi probe lai.
+# tid consumable da xac dinh tu phan tich capture = DIEM XUAT PHAT danh sach probe
+# (heal van DO LIVE, khong gan cung). Bot tu mo rong qua owned_items (S2C 0x16 inventory).
+_KNOWN_CONSUMABLES = [0x0116, 0x0117, 0x011b, 0x011c, 0x0139]
+
+def _learned_file_path():
+    """Duong dan TUYET DOI items_learned.json (canh root project/.exe) -> KHONG le thuoc CWD."""
+    try:
+        from ._appdir import app_dir
+        import os
+        return os.path.join(app_dir(), "items_learned.json")
+    except Exception:
+        return "items_learned.json"
+
+_LEARNED_FILE = _learned_file_path()
+_learned_lock = threading.Lock()
+# CACHE RIENG TUNG ACC: { username: { tid: {hp,sp,hp_zero,sp_zero,none} } }. Item availability +
+# luong heal KHAC NHAU moi acc (stack rieng, heal scale theo level) -> KHONG dung chung duoc.
+_all_learned = None
+
+def _load_all_learned() -> dict:
+    """{ tid_str: {hp,sp,hp_zero,sp_zero,none,unusable} }. CHUNG mọi acc (key = tid template)."""
+    global _all_learned
+    if _all_learned is not None:
+        return _all_learned
+    import json as _json
+    try:
+        with open(_LEARNED_FILE, encoding="utf-8") as fh:
+            d = _json.load(fh)
+        # chi nhan format phang tid->dict (gia tri la dict co 'hp'/'sp'); khac -> bo, lam lai
+        _all_learned = d if isinstance(d, dict) and all(
+            isinstance(v, dict) and ("hp" in v or "sp" in v or "unusable" in v) for v in d.values()) else {}
+    except Exception:
+        _all_learned = {}
+    # MOI PHIEN: bo 'unusable'/'strikes' -> re-verify lai (item bi tu choi = server reject = KHONG mat
+    # item -> probe lai mien phi). Tranh mark oan luc loan (relogin/lag) khoa vinh vien. Giu hp/sp/none.
+    for v in _all_learned.values():
+        v.pop("unusable", None)
+        v.pop("strikes", None)
+    return _all_learned
+
+def _save_all_learned():
+    import json as _json
+    with _learned_lock:
+        try:
+            d = _all_learned or {}
+            # SAP XEP: item HOI (hp/sp>0) len dau (heal lon truoc), roi den item khac (none...).
+            ordered = dict(sorted(d.items(),
+                                  key=lambda kv: -(kv[1].get("hp", 0) + kv[1].get("sp", 0))))
+            with open(_LEARNED_FILE, "w", encoding="utf-8") as fh:
+                _json.dump(ordered, fh, ensure_ascii=False, indent=2)
+        except Exception as e:
+            log.warning("save items_learned.json fail: %s", e)
+
+# ITEM DA XAC NHAN 100% (items_known.json): { tid: {name,hp,sp} }. Bot KHONG bao gio tu sua/probe/khoa
+# nhung tid nay -> tin tuyet doi (vd cac item da capture). Locked > auto-learn.
+_known_items = None
+def _load_known_items() -> dict:
+    """{ tid_int: {name,hp,sp} } tu items_known.json (canh root). Khoa cung, auto-learn ko dung den."""
+    global _known_items
+    if _known_items is not None:
+        return _known_items
+    import json as _json, os as _os
+    _known_items = {}
+    try:
+        from ._appdir import app_dir
+        path = _os.path.join(app_dir(), "items_known.json")
+    except Exception:
+        path = "items_known.json"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for k, v in _json.load(fh).get("items", {}).items():
+                tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+                _known_items[tid] = {"name": v.get("name", ""), "type": v.get("type", ""),
+                                     "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
+    except Exception:
+        pass
+    return _known_items
+
+# TU DIEN GAMEDATA (items_gamedata.json): { item_id_hex: {name,hp,sp} } - tu crack gamedata_Item.dat.
+# Bot tra item_id -> biet loai+heal NGAY, KHONG can probe. items_known.json (m khai) uu tien hon.
+_gamedata_items = None
+def _load_gamedata_items() -> dict:
+    """{ item_id_int: {name,hp,sp} } tu items_gamedata.json (622 thuoc HP/SP, crack tu gamedata)."""
+    global _gamedata_items
+    if _gamedata_items is not None:
+        return _gamedata_items
+    import json as _json, os as _os
+    _gamedata_items = {}
+    try:
+        from ._appdir import app_dir
+        path = _os.path.join(app_dir(), "items_gamedata.json")
+    except Exception:
+        path = "items_gamedata.json"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for k, v in _json.load(fh).items():
+                iid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+                _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
+                                        "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
+    except Exception:
+        pass
+    return _gamedata_items
+
 
 def _gift_key(label: str) -> str:
     import datetime
@@ -326,6 +433,8 @@ class GameClient:
         self.self_entity = None      # entity 8 byte cua nhan vat minh
         self.last_turn_time = 0.0    # thoi diem nhan luot/battle gan nhat
         self._label = ""             # nhan log: username luc dau, doi sang TEN NHAN VAT khi biet
+        self._username = ""          # username login (key tra cuu config rieng tung acc)
+        self._heal_giveup = {}       # target(0 char/1 pet) -> thoi diem het tam nghi hoi mau (con ket/da day)
         self._username = ""          # username login (giu lai de tham chieu)
         self.char_name = None        # ten nhan vat trong game (tu 0x27 theo self_entity)
         self.char_int = None         # chi so INT (tri luc) - tu S2C 0x08 id=0x1b
@@ -359,7 +468,11 @@ class GameClient:
         self.dungeon_runs_today = None  # so luot dungeon da danh hom nay (S2C 0x55 stat 0x9b)
         self.xu = None               # so XU hien co (tu S2C 0x1a id=4) - None = chua nhan
         self._decompose_seq = 0      # tang moi khi nhan S2C 0x59 (xac nhan phan giai 1 cuon xong)
-        self.bag_counts = {}         # itemId (int) -> so luong trong tui (S2C 0x08 01 00 [id][cnt] luc login)
+        self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
+        self.bag_slots = {}          # slot (int) -> [tid, count]  (S2C 0x16 sub0400). Use item = gui slot.
+        self._pending_confirm_slot = None  # slot dang cho S2C 0x17 sub09 xac nhan (probe confirm-gated)
+        self._use_confirmed = False        # True khi nhan confirm cho _pending_confirm_slot
+        self._no_item = set()        # (target,kind) het thuoc -> skip toi TRAN SAU (reset khi 0x34)
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
         self.friend_status = {}      # entity hex -> trailer[18]: bit0x01=DA TANG, bit0x02=CO QUA nhan
         self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
@@ -545,13 +658,59 @@ class GameClient:
         elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
             self.char_int = int.from_bytes(pkt[11:13], "little")
             _register_party_int(self.party_idx, self.self_entity, self.char_int)
-        # TUI: S2C 0x08 luc login, moi item 1 dong: 01 00 [itemId 2B LE][count u32 LE] 00 00 00 00
-        # (body 12B -> full pkt 19B). Luu so luong de PHAN GIAI dung so cuon co that (khong ban mu).
-        elif opcode == 0x08 and len(pkt) >= 19 and pkt[7:9] == b"\x01\x00":
-            iid = int.from_bytes(pkt[9:11], "little")
-            cnt = int.from_bytes(pkt[11:15], "little")
-            if cnt < 100000:   # loc rac
-                self.bag_counts[iid] = cnt
+        # HP/SP LIVE: S2C 0x08 sub=0100 [stat 1B][unit 1B][val 2B LE]. 0x19=HP, 0x1a=SP.
+        # unit: 01=char, 02=pet (?). Ban CA NGOAI combat -> nguon HP/SP de hoi mau (0x33 chi trong tran).
+        elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] in (0x19, 0x1a):
+            stat = pkt[9]
+            unit = pkt[10]
+            val = int.from_bytes(pkt[11:13], "little")
+            if unit == 0x01:
+                tgt = self.state.char
+            elif unit == 0x02:
+                tgt = self.state.pet
+            else:
+                tgt = None
+                log.info("[%s] 0x08 HP/SP unit LA = 0x%02x stat=0x%02x val=%d raw=%s",
+                         self._label, unit, stat, val, pkt.hex())
+            if tgt is not None:
+                if stat == 0x19:
+                    tgt.hp = val
+                else:
+                    tgt.sp = val
+        # DUNG ITEM xac nhan: S2C 0x17 sub=0900 [slot 1B][01]... -> item o slot do dung THANH CONG.
+        # Tru count slot, set co confirm (probe confirm-gated: co confirm = item DUNG DUOC).
+        elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x09\x00":
+            slot = pkt[9]
+            if slot == self._pending_confirm_slot:
+                self._use_confirmed = True
+            rec = self.bag_slots.get(slot)
+            if rec:
+                rec[1] = max(0, rec[1] - 1)
+                tid = rec[0]
+                if tid in self.bag_counts:
+                    self.bag_counts[tid] = max(0, self.bag_counts[tid] - 1)
+        # INVENTORY (TUI THAT): S2C 0x17 sub=0500. header [00][count 2B] + record 36B:
+        #   [idx 1B][item_id 2B LE][count 4B LE][29 pad]. idx = use-id (dung item gui [idx][01]).
+        #   bag_slots[idx]=[item_id, count]; bag_counts[item_id]=tong. Snapshot day -> THAY THE.
+        elif opcode == 0x17 and len(pkt) >= 12 and pkt[7:9] == b"\x05\x00":
+            body = pkt[9:]
+            n = int.from_bytes(body[1:3], "little")
+            off = 3
+            new_slots = {}
+            for _ in range(n):
+                if off + 7 > len(body):
+                    break
+                idx = body[off]
+                item_id = int.from_bytes(body[off + 1:off + 3], "little")
+                cnt = int.from_bytes(body[off + 3:off + 7], "little")
+                off += 36
+                if 0 < idx < 256 and item_id > 0 and 0 < cnt < 10_000_000:
+                    new_slots[idx] = [item_id, cnt]
+            if new_slots:
+                self.bag_slots = new_slots
+                self.bag_counts = {}
+                for it, c in self.bag_slots.values():
+                    self.bag_counts[it] = self.bag_counts.get(it, 0) + c
         # BAN BE / qua hang ngay: S2C 0x0e
         #   sub 05 = list ban luc login: [05 00][count 2B] + N*[entity 8B][namelen 1B][name][trailer 35B]
         #   sub 0c = status qua:        [0c 00][count 1B] + N*[entity 8B][status 1B] (03=co qua nhan, 07=da nhan)
@@ -732,6 +891,7 @@ class GameClient:
             self._on_party(pkt)
         elif opcode == protocol.OP_BATTLE_START:   # 0x34 - mốc battle that (KHONG dung 0x41!)
             self.state.in_battle = True
+            self._no_item.clear()        # tran moi -> co the drop them item -> cho phep check hoi lai
             self.state.reset_enemies()   # tran moi -> xoa HP quai tran cu
             self.state.allies.clear()    # tran moi -> xoa HP dong doi tran cu (tranh ket hp=0 cua
             #                              con da chet tran truoc -> 0x33 tran moi nap lai HP tuoi)
@@ -1472,40 +1632,265 @@ class GameClient:
         _mark_daily(self._label, "gacha_card")
         log.info("[%s] Gacha CARD hang ngay (xu con ~%d)", self._label, self.xu)
 
+    def _learned(self) -> dict:
+        """Cache item da hoc theo TID (template) - CHUNG mọi acc: item giong nhau = tid giong = heal giong.
+        { tid_str: {hp,sp,hp_zero,sp_zero,none,unusable} }."""
+        return _load_all_learned()
+
+    def use_item(self, item_id: int, target: int = 0) -> bool:
+        """Dung item trong tui. target=0: char, 1: pet.
+        C2S 0x17: 0f 00 [tid 2B LE] 00 00 00 00 [target 1B] 00. Server confirm S2C 0x17 sub=09 -> tu tru.
+        Chi chan khi BIET CHAC het (bag_counts==0); tid chua biet -> cho phep (server tu tu choi)."""
+        if self.bag_counts.get(item_id, 1) <= 0:
+            return False
+        payload = b"\x0f\x00" + item_id.to_bytes(2, "little") + b"\x00\x00\x00\x00" + bytes([target]) + b"\x00"
+        self.send(0x17, payload)
+        return True
+
+    def log_bag_delayed(self, delay: float = 8.0):
+        """In tui SAU 'delay' giay (doi cac trang 0x16 ve het -> tui DAY DU). Goi luc login."""
+        def _run():
+            time.sleep(delay)
+            if self.running:
+                self.log_bag()
+        threading.Thread(target=_run, daemon=True).start()
+
+    def log_bag(self):
+        """In tui theo SLOT, moi slot ghi ro la item KHAI (items_known.json) / HOC (probe) / CHUA BIET.
+        De m doi chieu xem bot hieu dung khong, roi dien tiep items_known.json."""
+        if not self.bag_slots:
+            log.info("[%s] bag: chua nhan S2C 0x16 inventory", self._label)
+            return
+        known = _load_known_items()
+        gdata = _load_gamedata_items()
+        learned = self._learned()
+        n_known = n_gdata = n_learn = n_unknown = 0
+        log.info("[%s] === BAG (%d slot) === slot(idx): item_id x count -> item", self._label, len(self.bag_slots))
+        for slot in sorted(self.bag_slots):
+            tid, cnt = self.bag_slots[slot]
+            k = known.get(tid); g = gdata.get(tid); lv = learned.get(str(tid)) or {}
+            if k:
+                n_known += 1
+                eff = [s for s in ["+%dHP" % k["hp"] if k.get("hp") else "",
+                                   "+%dSP" % k["sp"] if k.get("sp") else "", k.get("type", "")] if s]
+                tag = "KHAI: %s %s" % (k.get("name", ""), " ".join(eff) or "(?)")
+            elif g:
+                n_gdata += 1
+                eff = " ".join([s for s in ["+%dHP" % g["hp"] if g.get("hp") else "",
+                                            "+%dSP" % g["sp"] if g.get("sp") else ""] if s])
+                bt = " [CHI TRONG TRAN]" if g.get("battle") else ""
+                tag = "gamedata: %s %s%s" % (g.get("name", ""), eff, bt)
+            elif lv.get("hp", 0) > 0 or lv.get("sp", 0) > 0:
+                n_learn += 1
+                tag = "HOC: +%dHP +%dSP" % (lv.get("hp", 0), lv.get("sp", 0))
+            elif lv.get("none"):
+                n_learn += 1; tag = "HOC: khong hoi (none)"
+            elif lv.get("unusable"):
+                n_learn += 1; tag = "HOC: ko dung duoc"
+            else:
+                n_unknown += 1; tag = "??? CHUA BIET"
+            log.info("[%s]   slot %d: id=0x%04x x %d -> %s", self._label, slot, tid, cnt, tag)
+        log.info("[%s] === Tong: %d KHAI, %d gamedata, %d HOC, %d CHUA BIET ===",
+                 self._label, n_known, n_gdata, n_learn, n_unknown)
+
+    # ---------- HOI MAU: closed-loop tren HP/SP live (S2C 0x08) + self-calibrate ----------
+    def _heal_threshold(self, kind: str) -> float:
+        """Nguong hoi mau cho acc nay. kind: hp_char/sp_char/hp_pet/sp_pet.
+        Uu tien config.ACCOUNT_HEAL[username][kind]; thieu -> HP_THRESHOLD/SP_THRESHOLD chung."""
+        glob = getattr(config, "SP_THRESHOLD", 0.3) if kind.startswith("sp") \
+            else getattr(config, "HP_THRESHOLD", 0.5)
+        over = getattr(config, "ACCOUNT_HEAL", {}).get(self._username, {})
+        return over.get(kind, glob)
+
+    def use_slot(self, slot: int, target: int = 0) -> bool:
+        """Dung item o SLOT. C2S 0x17: 0f 00 [slot 1B][01] 00 00 00 00 [target 1B] 00.
+        Server confirm S2C 0x17 sub=09 (= dung duoc). Tra False neu slot het."""
+        rec = self.bag_slots.get(slot)
+        if rec is not None and rec[1] <= 0:
+            return False
+        payload = b"\x0f\x00" + bytes([slot & 0xFF, 0x01]) + b"\x00\x00\x00\x00" + bytes([target & 0xFF]) + b"\x00"
+        self.send(0x17, payload)
+        return True
+
+    def _learn_item(self, tid: int, dhp: int, dsp: int, room_hp: bool = True, room_sp: bool = True,
+                    cap_hp: bool = False, cap_sp: bool = False):
+        """Ghi nho (theo TID) item hoi bao nhieu HP/SP. room_*: stat do co cho do khong.
+        cap_*: do XONG ma stat KICH TRAN (do hut) -> chi lay floor (max). Khong kich tran -> so CHINH XAC
+        -> GHI DE (sua lai dung). none = ca 2 stat da test deu khong hoi."""
+        if tid in _load_known_items() or tid in _load_gamedata_items():
+            return   # DA BIET (m khai / gamedata) -> KHOA, khong tu sua/probe
+        learned = self._learned()
+        key = str(tid)
+        cur = learned.get(key, {})
+        # DA TUNG ghi nhan hoi (hp/sp>0) ma lan nay 0 -> co the loi/bi keo vao battle -> GIU NGUYEN,
+        # khong downgrade (khong set *_zero/none). Item da biet la item tot, 1 lan 0 khong phu nhan.
+        if dhp <= 0 and dsp <= 0 and (cur.get("hp", 0) > 0 or cur.get("sp", 0) > 0):
+            return
+        hp = cur.get("hp", 0)
+        if dhp > 0:
+            hp = max(hp, dhp) if cap_hp else dhp   # kich tran -> floor; sach -> dung that, ghi de
+        sp = cur.get("sp", 0)
+        if dsp > 0:
+            sp = max(sp, dsp) if cap_sp else dsp
+        hp_zero = cur.get("hp_zero", False) or (room_hp and dhp <= 0)
+        sp_zero = cur.get("sp_zero", False) or (room_sp and dsp <= 0)
+        none = (hp == 0 and sp == 0 and hp_zero and sp_zero)
+        old = (cur.get("hp", 0), cur.get("sp", 0))
+        learned[key] = {"hp": hp, "sp": sp, "hp_zero": hp_zero, "sp_zero": sp_zero,
+                        "none": none, "unusable": cur.get("unusable", False)}
+        if dhp > 0 or dsp > 0:
+            fix = " (SUA tu %d/%d)" % old if old != (hp, sp) and (old[0] or old[1]) else ""
+            log.info("[%s] HOC item tid 0x%04x: %dHP %dSP%s%s", self._label, tid, hp, sp,
+                     " [kich tran-floor]" if (cap_hp and dhp > 0) or (cap_sp and dsp > 0) else "", fix)
+        elif none:
+            log.info("[%s] item tid 0x%04x dung duoc nhung KHONG hoi HP/SP -> none", self._label, tid)
+        _save_all_learned()
+
+    def _mark_unusable(self, tid: int):
+        """Probe KHONG duoc confirm. 1 lan co the do LAG/mat goi -> chua khoa. >=2 lan lien tiep moi
+        ghi unusable (item that su ko dung duoc). Confirm lai bat ky luc nao -> reset strike (xem _learn_item)."""
+        learned = self._learned()
+        key = str(tid)
+        cur = learned.get(key, {})
+        cur["strikes"] = cur.get("strikes", 0) + 1
+        if cur["strikes"] >= 2:
+            cur["unusable"] = True
+            log.info("[%s] item tid 0x%04x ko confirm 2 lan -> unusable", self._label, tid)
+        else:
+            log.info("[%s] item tid 0x%04x ko confirm (strike %d/2, co the lag) -> thu lai sau",
+                     self._label, tid, cur["strikes"])
+        learned[key] = cur
+        _save_all_learned()
+
+    def _item_info(self, tid: int) -> dict:
+        """Thong tin hoi cua tid. Uu tien: items_known.json (m khai) > items_gamedata.json (crack) > learned.
+        2 nguon dau = LOCKED (khong probe/sua)."""
+        k = _load_known_items().get(tid)
+        if k is not None:
+            return {"hp": k.get("hp", 0), "sp": k.get("sp", 0), "type": k.get("type", ""),
+                    "none": False, "unusable": False, "locked": True}
+        g = _load_gamedata_items().get(tid)
+        if g is not None:
+            return {"hp": g.get("hp", 0), "sp": g.get("sp", 0), "battle": g.get("battle", False),
+                    "name": g.get("name", ""), "none": False, "unusable": False, "locked": True}
+        return self._learned().get(str(tid)) or {}
+
+    def _slot_for_known(self, kind: str, skip_slots) -> tuple:
+        """Tim SLOT chua item DA BIET (locked hoac da hoc) hoi 'kind', count>0. Uu tien heal lon."""
+        best = None
+        for slot, (tid, cnt) in self.bag_slots.items():
+            if cnt <= 0 or slot in skip_slots:
+                continue
+            v = self._item_info(tid)
+            if not v or v.get("none") or v.get("unusable") or v.get("battle"):
+                continue   # battle=True: do hoi sinh, CHI dung trong tran -> ko hoi ngoai
+            heal = v.get(kind, 0)
+            if heal > 0 and (best is None or heal > best[2]):
+                best = (slot, tid, heal)
+        return best
+
+    def do_heal(self):
+        """Hoi mau NGOAI tran cho CHAR (target=0) + PET (target=1), dung thuoc DA BIET (gamedata/khai).
+        KHONG probe (gamedata da biet het thuoc). Hoi den NGUONG la dung."""
+        if self.in_combat() or not self.bag_slots:
+            return
+        c = self.state.char
+        if c.hp_max > 0:
+            self._heal_unit(0, c, "char", "hp_char", "hp")
+            self._heal_unit(0, c, "char", "sp_char", "sp")
+        p = self.state.pet
+        if p.hp_max > 0:
+            self._heal_unit(1, p, "pet", "hp_pet", "hp")
+            self._heal_unit(1, p, "pet", "sp_pet", "sp")
+
+    def _heal_unit(self, target: int, unit, label: str, thr_key: str, kind: str):
+        """Hoi 1 con 1 stat bang thuoc DA BIET den nguong. char do qua 0x08 (chinh xac);
+        pet ko do duoc -> uoc tinh theo heal (open-loop). Het thuoc nay -> tu chuyen thuoc khac."""
+        if self.in_combat():
+            return
+        nokey = (target, kind)
+        if nokey in self._no_item:
+            return                 # da bao het thuoc loai nay -> cho TRAN SAU (0x34 reset) moi check
+        thr = self._heal_threshold(thr_key)
+        mx = unit.hp_max if kind == "hp" else unit.sp_max
+        cur = unit.hp if kind == "hp" else unit.sp
+        if thr <= 0 or mx <= 0 or cur >= mx * thr:
+            return
+        target_val = int(mx * thr)
+        remaining = target_val - cur   # uoc tinh con thieu (cho pet open-loop)
+        for _ in range(40):
+            if self.in_combat():
+                break
+            cur = unit.hp if kind == "hp" else unit.sp
+            if target == 0 and cur >= target_val:
+                break              # CHAR: 0x08 bao da dat nguong -> dung
+            if remaining <= 0:
+                break              # uoc tinh da du (chu yeu cho pet)
+            found = self._slot_for_known(kind, set())
+            if found is None:
+                log.info("[%s] %s HET thuoc %s -> bo qua, cho tran sau (co the drop them)",
+                         self._label, label, kind.upper())
+                self._no_item.add(nokey)   # skip toi tran sau
+                break
+            slot, tid, heal = found
+            if not self.use_slot(slot, target):
+                break
+            remaining -= heal
+            log.info("[%s] hoi %s slot=%d 0x%04x +%d%s (con thieu ~%d)",
+                     self._label, label, slot, tid, heal, kind.upper(), max(0, remaining))
+            time.sleep(0.3)
+
     def decompose_junk_scrolls(self, wait: float = 1.2):
         """Phan giai cuon GOI PET RAC (gacha ra nhieu) -> nhan lai xu. C2S 0x59:
-          03 00 01 [itemId 2B LE] 00 00 00   (capture: Truong Man Thanh=0x0145, Tan Bi=0x014b)
-        AN TOAN TUYET DOI: chi phan giai khi TUI THUC SU CO cuon (self.bag_counts doc tu S2C 0x08
-        luc login) va id nam trong CONFIG.JUNK_PET_SCROLLS. So lan = DUNG bag_counts.
-        KHONG ban mu: tui count=0 -> BO QUA (server tra 0x59 CA KHI khong co cuon -> khong the
-        dua vao 0x59 de biet co cuon hay khong, BAT BUOC dua vao bag_counts).
-        Cuon GACHA vua nha trong phien nay se duoc don o LAN LOGIN SAU (snapshot tui moi)."""
-        junk = getattr(config, "JUNK_PET_SCROLLS", {})
-        if not junk:
+          03 00 01 [slot 1B][01] 00 00 00   (giong use-item: tham chieu theo SLOT, KHONG phai tid).
+        AN TOAN: chi phan giai SLOT co tid nam trong CONFIG.JUNK_PET_SCROLLS (= danh sach TID cuon rac,
+        template -> dung mọi acc). Tim slot trong bag_slots theo tid -> gui 0x59 voi slot do.
+        So luong biet tu bag_slots[slot]; khong confirm -> dung ngay (tranh ban mu)."""
+        junk_tids = set()
+        # NGUON CHINH: items_known.json -> tid co type chua 'scroll'/'junk' = cuon rac (phan giai).
+        for tid, info in _load_known_items().items():
+            if str(info.get("type", "")).lower() in ("scroll", "junk", "cuon"):
+                junk_tids.add(tid)
+        # Tuong thich cu: junk_scrolls.json / config.JUNK_PET_SCROLLS (key = tid hex).
+        for k in (getattr(config, "JUNK_PET_SCROLLS", {}) or {}):
+            try:
+                junk_tids.add(int(k, 16) if isinstance(k, str) else int(k))
+            except Exception:
+                pass
+        if not junk_tids:
             return
         total = 0
-        for item_id, name in junk.items():
-            iid = int(item_id, 16) if isinstance(item_id, str) else int(item_id)
-            have = self.bag_counts.get(iid, 0)
-            if have <= 0:
-                continue   # TUI KHONG CO cuon nay -> KHONG gui lenh (tranh ban mu)
-            done = 0
-            for _ in range(have):
-                if not self.running:
-                    return
-                seq0 = self._decompose_seq
-                self.send(0x59, b"\x03\x00\x01" + struct.pack("<H", iid) + b"\x00\x00\x00")
-                t0 = time.time()
-                while self._decompose_seq == seq0 and time.time() - t0 < wait and self.running:
-                    time.sleep(0.1)
-                if self._decompose_seq == seq0:
-                    break   # khong xac nhan -> het cuon (snapshot lech) -> dung
-                done += 1
-                self.bag_counts[iid] = max(0, self.bag_counts.get(iid, 0) - 1)
-                time.sleep(0.25)
-            if done:
-                total += done
-                log.info("[%s] Phan giai %d cuon '%s' (0x%04x)", self._label, done, name, iid)
+        guard = 0
+        while self.running and guard < 1000:
+            guard += 1
+            # tim 1 SLOT con cuon rac (tid nam trong junk_tids)
+            target = None
+            for slot, (tid, cnt) in list(self.bag_slots.items()):
+                if cnt > 0 and tid in junk_tids:
+                    target = (slot, tid)
+                    break
+            if target is None:
+                break   # het cuon rac trong tui
+            slot, tid = target
+            seq0 = self._decompose_seq
+            self.send(0x59, b"\x03\x00\x01" + bytes([slot & 0xFF, 0x01]) + b"\x00\x00\x00")
+            t0 = time.time()
+            while self._decompose_seq == seq0 and time.time() - t0 < wait and self.running:
+                time.sleep(0.1)
+            if self._decompose_seq == seq0:
+                # khong confirm -> coi nhu slot het, xoa khoi tracking (tranh loop) va dung slot nay
+                self.bag_slots.pop(slot, None)
+                continue
+            # confirm -> tru count slot (S2C 0x16 cung se update lai)
+            rec = self.bag_slots.get(slot)
+            if rec:
+                rec[1] = max(0, rec[1] - 1)
+                if rec[1] <= 0:
+                    self.bag_slots.pop(slot, None)
+            total += 1
+            log.info("[%s] phan giai cuon rac slot=%d tid=0x%04x ('%s')",
+                     self._label, slot, tid, junk.get(hex(tid), junk.get(str(tid), "")))
+            time.sleep(0.25)
         if total:
             log.info("[%s] Phan giai cuon rac: tong %d cuon -> nhan xu", self._label, total)
 
@@ -2253,13 +2638,12 @@ class GameClient:
             if not self._wait_combat_clear():
                 return False
             if x or y:   # x=y=0 -> cong "vao lien" (spawn ngay tai cong) -> KHONG move, chi trigger
-                self.move_to(x, y); time.sleep(0.6)
-            # MOVE co the DINH TRAN MOI (buoc vao quai): turn offer 0x35 toi TRE ~1s. Cho them
-            # roi check lai -> neu dinh tran thi KHONG transit (loop lai danh het tran). Tranh
-            # 0x32 (danh) bi gui XEN GIUA chuoi 0x14 -> server kick leader.
-            time.sleep(1.2)
-            if self.in_combat(idle_secs=2.5):
-                continue   # vua move lai dinh tran -> fight het roi moi transit
+                self.move_to(x, y)
+            # Dung tai cong 1s: cho 0x35 (battle offer) kip den neu buoc vao quai.
+            # Neu co tran -> loop lai danh het roi moi transit (tranh server kick leader).
+            time.sleep(1.0)
+            if self.in_combat(idle_secs=1.0):
+                continue   # vua dinh tran -> fight het roi moi transit
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
             self._gate_transit = True
             try:

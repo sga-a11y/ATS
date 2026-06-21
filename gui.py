@@ -46,15 +46,20 @@ def _setup_log_capture():
     root.addHandler(qh)
 
 
+_MAP_NAMES: dict = {}
+
 def _map_name(mid):
     if mid is None:
         return "-"
     if mid == getattr(config, "DIGIOI_MAP_ID", -1):
-        return f"Dị Giới ({mid})"
-    tm = getattr(config, "TRAIN_MAPS", {}).get(mid)
-    if tm:
-        return f"Train ({mid})"
-    return str(mid)
+        return "Dị Giới"
+    if not _MAP_NAMES:
+        for k, v in _load_json("train_maps.json").get("maps", {}).items():
+            try:
+                _MAP_NAMES[int(k)] = v.get("name", k)
+            except ValueError:
+                pass
+    return _MAP_NAMES.get(mid, str(mid))
 
 
 # ---------------- App ----------------
@@ -794,19 +799,21 @@ class PartyConfigFrame(ttk.Frame):
             u = a.get("u", ""); on = a.get("on", True)
             if u.lstrip().startswith("#"):   # tuong thich co che '#' cu -> bo tick
                 on = False; u = u.lstrip().lstrip("#").strip()
-            self._add_acc_row(u, a.get("p", ""), on)
+            self._add_acc_row(u, a.get("p", ""), on, a.get("heal"))
         ttk.Button(self, text="➕ Thêm dòng acc",
                    command=lambda: self._add_acc_row("", "", True)).pack(anchor="w", pady=(2, 0))
         self._render_dyn()
 
-    def _add_acc_row(self, u="", p="", on=True):
+    def _add_acc_row(self, u="", p="", on=True, heal=None):
         fr = ttk.Frame(self._acc_inner); fr.pack(fill="x", pady=1)
         on_var = tk.BooleanVar(value=bool(on))
         ttk.Checkbutton(fr, variable=on_var).pack(side="left")
         e_u = ttk.Entry(fr, width=16, font=("Consolas", 10)); e_u.pack(side="left", padx=(0, 4))
         e_u.insert(0, u)
         e_p = ttk.Entry(fr, width=14, font=("Consolas", 10)); e_p.pack(side="left", padx=(0, 4))
-        row = {"on": on_var, "u": e_u, "p": e_p, "frame": fr, "_realp": p}
+        # heal: {hp_char,sp_char,hp_pet,sp_pet} (0-1). None/thieu key -> dung nguong chung.
+        row = {"on": on_var, "u": e_u, "p": e_p, "frame": fr, "_realp": p,
+               "heal": dict(heal) if isinstance(heal, dict) else {}}
         # Pass DA LUU -> hien placeholder '******' (giau pass that). Bam vao go thi xoa placeholder;
         # de trong khong go -> khoi phuc '******' (giu pass cu). Pass MOI (chua co) -> o trong, go ro.
         if p:
@@ -819,8 +826,55 @@ class PartyConfigFrame(ttk.Frame):
                     ent.insert(0, self._PW_MASK)
             e_p.bind("<FocusIn>", _fin)
             e_p.bind("<FocusOut>", _fout)
+        ttk.Button(fr, text="⚙", width=2, command=lambda: self._open_heal_dialog(row)).pack(side="left")
         ttk.Button(fr, text="✕", width=2, command=lambda: self._del_acc_row(row)).pack(side="left")
         self.acc_rows.append(row)
+
+    def _open_heal_dialog(self, row):
+        """Popup chinh nguong hoi mau rieng acc: 4 % (HP char / SP char / HP pet / SP pet).
+        Acc dang online -> hien so tuyet doi tuong ung (= round(% * max))."""
+        uname = row["u"].get().strip()
+        if not uname:
+            messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
+        glob_hp = getattr(config, "HP_THRESHOLD", 0.5)
+        glob_sp = getattr(config, "SP_THRESHOLD", 0.3)
+        c = ctrl.account_clients.get(uname)
+        st = c.state if (c is not None and getattr(c, "state", None)) else None
+        # max tuong ung (0 = offline/chua biet)
+        maxv = {
+            "hp_char": st.char.hp_max if st else 0, "sp_char": st.char.sp_max if st else 0,
+            "hp_pet": st.pet.hp_max if st else 0,  "sp_pet": st.pet.sp_max if st else 0,
+        }
+        win = tk.Toplevel(self); win.title(f"Hồi máu: {uname}"); win.resizable(False, False)
+        win.transient(self.winfo_toplevel()); win.grab_set()
+        rows = [("hp_char", "HP char", glob_hp), ("sp_char", "SP char", glob_sp),
+                ("hp_pet", "HP pet", glob_hp),  ("sp_pet", "SP pet", glob_sp)]
+        vars_ = {}
+        ttk.Label(win, text="Hồi khi chỉ số TỤT DƯỚI ngưỡng %:").grid(
+            row=0, column=0, columnspan=3, sticky="w", padx=8, pady=(8, 4))
+        for i, (key, lbl, gdef) in enumerate(rows, start=1):
+            ttk.Label(win, text=lbl + ":", width=9).grid(row=i, column=0, sticky="w", padx=(8, 2), pady=2)
+            cur = row["heal"].get(key, gdef)
+            v = tk.IntVar(value=int(round(cur * 100)))
+            vars_[key] = v
+            sp = tk.Spinbox(win, from_=0, to=100, width=5, textvariable=v)
+            sp.grid(row=i, column=1, padx=2, pady=2)
+            abs_lbl = ttk.Label(win, text="", width=14, foreground="#0a0")
+            abs_lbl.grid(row=i, column=2, sticky="w", padx=(4, 8))
+            def _upd(*_a, k=key, vv=v, l=abs_lbl):
+                m = maxv[k]
+                l.configure(text=(f"= {round(vv.get() / 100 * m)}" if m else "(offline)"))
+            v.trace_add("write", _upd); _upd()
+        def _save():
+            row["heal"] = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
+            win.destroy()
+        def _reset():
+            for k, vv in vars_.items():
+                vv.set(int(round((glob_hp if k.startswith("hp") else glob_sp) * 100)))
+        bb = ttk.Frame(win); bb.grid(row=len(rows) + 1, column=0, columnspan=3, pady=8)
+        ttk.Button(bb, text="↺ Mặc định chung", command=_reset).pack(side="left", padx=4)
+        ttk.Button(bb, text="💾 Lưu", command=_save).pack(side="left", padx=4)
+        ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="left", padx=4)
 
     def _del_acc_row(self, row):
         row["frame"].destroy()
@@ -918,7 +972,10 @@ class PartyConfigFrame(ttk.Frame):
             pw = r["p"].get().strip()
             if pw == self._PW_MASK:    # khong doi -> giu pass cu (da luu)
                 pw = r.get("_realp", "")
-            accs.append({"u": u, "p": pw, "on": bool(r["on"].get())})
+            acc = {"u": u, "p": pw, "on": bool(r["on"].get())}
+            if r.get("heal"):
+                acc["heal"] = r["heal"]
+            accs.append(acc)
         if self.no_leader_var.get() and accs:
             accs = [{"u": "", "p": "", "on": True}] + accs   # slot 0 trong = KHONG co chu PT
         # server: label -> key

@@ -219,6 +219,18 @@ SKILL_FLEE = 18001          # Bo chay (0x4651=18001) char+pet thoat tran. FIX: t
 CHAR_ROCK_MIN_SP = 100      # Nem Da
 CHAR_FIRE_MIN_SP = 100      # Hoa Tien
 
+# Nguong HP/SP de tu dong hoi mau sau tran. Bot TU HOC item (probe + do delta HP/SP
+# qua S2C 0x08), luu items_learned.json - khong can config item ID.
+HP_THRESHOLD = 0.5          # Hoi HP khi HP < 50% max (char va pet) - MAC DINH chung
+SP_THRESHOLD = 0.3          # Hoi SP khi SP < 30% max - MAC DINH chung
+
+# Override nguong hoi mau RIENG tung acc (theo username). GUI ghi vao accounts.json (field "heal"
+# moi acc) -> tu nap vao day. 4 nguong: hp_char/sp_char (char), hp_pet/sp_pet (pet). Thieu key nao
+# -> lay HP_THRESHOLD/SP_THRESHOLD chung. Acc khong liet ke -> dung mac dinh het.
+ACCOUNT_HEAL = {
+    # "acc1": {"hp_char": 0.7, "sp_char": 0.5, "hp_pet": 0.6, "sp_pet": 0.4},
+}
+
 # Unit IDs
 UNIT_CHAR = 3
 UNIT_PET = 2
@@ -261,6 +273,14 @@ if _aj is not None:
         _ps = [[(a.get("u", ""), a.get("p", "")) for a in party.get("accounts", [])
                 if a.get("on", True) and not a.get("u", "").lstrip().startswith("#")]
                for party in _parties_raw]
+        # Nguong hoi mau rieng tung acc (GUI ghi field "heal" cho moi acc trong accounts.json).
+        for _party in _parties_raw:
+            for _a in _party.get("accounts", []):
+                _u = _a.get("u", "").lstrip().lstrip("#").strip()
+                _h = _a.get("heal")
+                if _u and isinstance(_h, dict):
+                    ACCOUNT_HEAL[_u] = {_k: float(_v) for _k, _v in _h.items()
+                                        if _k in ("hp_char", "sp_char", "hp_pet", "sp_pet")}
         # accounts.json TON TAI -> LUON dung no (ke ca RONG) => ban product accounts.json rong thi
         # KHONG hien party mac dinh cua config (tranh lo/nham acc).
         PARTIES = _ps

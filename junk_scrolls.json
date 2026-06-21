@@ -1,11 +1,5 @@
 {
-  "_note": "Cuon GOI PET RAC -> bot tu PHAN GIAI sau gacha (nhan lai xu). key = itemId (hex chuoi), value = ten cuon. Lay itemId tu capture phan giai (C2S 0x59: 03 00 01 [itemId 2B LE] 00 00 00). Them dong moi khi gap cuon rac khac.",
+  "_note": "Cuon GOI PET RAC -> bot tu PHAN GIAI sau gacha (nhan lai xu). KEY = TID (template id, hex chuoi), value = ten. PHAI la TID, KHONG phai slot. Lay TID tu log_bag (dong 'slot N: tid=0x.... x count') khi mo tui co cuon do (mo cuon ra xem slot nao, doc tid o slot do). TID chung mọi acc. Gia tri cu (0x0139...) la SLOT account-specific -> SAI -> da xoa, dien lai bang TID.",
   "scrolls": {
-    "0x0139": "Mi Truc",
-    "0x013c": "Nghiem Bach Ho",
-    "0x0142": "Tuong Can",
-    "0x0145": "Truong Man Thanh",
-    "0x0147": "Dinh Phung",
-    "0x014b": "Tan Bi"
   }
 }

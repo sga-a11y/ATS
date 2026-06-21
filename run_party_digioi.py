@@ -9,7 +9,7 @@ Flow moi party (slot 0 = chu party / leader, slot 1-4 = member):
 
 Chay:  python run_party_digioi.py [so_phut]   (mac dinh chay vo han)
 """
-import os, sys, time, logging, threading
+import os, sys, time, logging, threading, random
 try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
@@ -34,6 +34,12 @@ _threads = []   # thread tung acc - de biet khi nao TAT CA da thoat
 DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (de tinh "con lai")
 
 
+def _jitter(pt):
+    """Xê dịch tọa độ ±10 ngẫu nhiên (9 khả năng) để bot không đứng cùng 1 điểm."""
+    dx, dy = random.choice([-10, 0, 10]), random.choice([-10, 0, 10])
+    return (pt[0] + dx, pt[1] + dy)
+
+
 def _nearest_safe(pos, safes):
     """Diem safe gan vi tri 'pos' nhat (khoang cach binh phuong). pos=None -> diem dau."""
     if not safes:
@@ -42,6 +48,13 @@ def _nearest_safe(pos, safes):
         return safes[0]
     px, py = pos
     return min(safes, key=lambda s: (s[0] - px) ** 2 + (s[1] - py) ** 2)
+
+
+def _use_consumables(c):
+    """Hoi HP/SP sau tran (goi NGOAI tran). Bot tu hoc item qua self-calibrate, khong can config.
+    - CHAR: closed-loop tren HP/SP live (S2C 0x08) + probe item chua biet de tu hoc.
+    - PET: best-effort dung item DA HOC (khong do duoc HP pet ngoai combat -> tinh theo 0x33 cuoi)."""
+    c.do_heal()   # hoi char + pet, moi con tu probe/do bang HP cua chinh no
 
 # ==== REGISTRY cho GUI dieu khien tung acc ====
 account_clients = {}   # username -> GameClient (doc trang thai live)
@@ -184,6 +197,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         log.info("[%s] (%s) vao world.", label, role)
         log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
                  label, login_map)
+        c.log_bag_delayed()   # In tui SAU 8s (doi 0x16 ve het) -> dinh danh item -> items_known.json
         # MAP-TRAIN: bat flee NGAY tu login -> moi tran (truoc khi lap party) deu BO CHAY,
         # khong danh lung tung; chi tat flee khi da vao diem train.
         if config.TRAIN_MAPS.get(getattr(config, "START_CITY_ID", 0)) is not None:
@@ -221,6 +235,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # Map-train: goi sau khi ve safe (doi kenh tren map thuong khong sao).
         def do_channel_sync():
             if is_picker:
+                # MOI VONG SYNC: clear channel_ready + channel cu -> member CHO pick MOI (tranh dung
+                # kenh cu vong truoc). channel_ready chi clear o start_party -> vong 2+ member ko cho
+                # -> kenh ko sync lai. Clear o day de moi vong deu re-sync that su.
+                st["channel_ready"].clear()
+                st["channel"] = None
                 # need = so acc cua party -> chi chon kenh con DU CHO cho CA PARTY (tranh ket instance).
                 # pick tra: 0=chi 1 kenh (giu nguyen) | None=co kenh nhung khong du cho (RETRY) | int=da chuyen.
                 # KIEN TRI: 30s dau thu lien tuc (3s/lan), sau do 60s/lan, cho toi khi gom du ve 1 kenh.
@@ -430,7 +449,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             rally = st.get("rally_point") or tm["safe"][0]
             log.info("[%s] (%s) MAP-TRAIN map=%s -> ve safe tap ket chung %s (lap party TRUOC, keo ra spot SAU)",
                      label, role, sc, rally)
-            c.navigate_to(*rally)
+            c.navigate_to(*_jitter(rally))
             # SOLO daily dungeon o MAP-TRAIN: TAM TAT (het luot -> bi dump ve 12000, pha map-train;
             # Bat/tat bang checkbox "Danh daily dungeon" cua party (do_dungeon).
             # via_route -> da danh dungeon o thanh roi, BO QUA (khoi pha map-train + cho barrier).
@@ -455,7 +474,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         st["reform_gen"] += 1
                         st["dungeon_done"] += 1
                 else:
-                    c.navigate_to(*tm["safe"][0])
+                    c.navigate_to(*_jitter(tm["safe"][0]))
                     with st["lock"]:
                         st["dungeon_done"] += 1
                 log.info("[%s] (%s) xong dungeon -> cho ca party (%d/%d)...",
@@ -574,7 +593,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                                  label, len(path))
                         c.follow_path(path, flee=False)   # party da du -> danh quai gap tren duong
                     elif spot:
-                        c.navigate_to(*spot)
+                        c.navigate_to(*_jitter(spot))
                     c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
                     log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
                 elif is_digioi:
@@ -682,7 +701,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     if path:
                         c.follow_path(path, flee=False)
                     elif spot:
-                        c.navigate_to(*spot)
+                        c.navigate_to(*_jitter(spot))
                 c.combat_ready(); c.flee_mode = False
                 st["route_done"].set()
             else:
@@ -796,6 +815,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
+            # Hoi mau MOI MODE (train/digioi/city/stand...) - chi can ngoai combat.
+            # Tu lọc theo nguong HP/SP nen dung yen/ve thanh khong thua mau thi khong dung item.
+            if not c.in_combat():
+                _use_consumables(c)
             # KET o bai train >40s KHONG vao tran -> co the diem quai xau (khong co quai) HOAC
             # mat combat-active sau khi keo qua cong. LEADER -> DOI diem quai khac + re-arm;
             # member -> chi re-arm (member theo tran cua leader). Tu phuc hoi, khoi restart.
@@ -815,7 +838,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             # -> tu safe (pos chuan) di lai toi spot. KHONG gioi han so lan (theo yeu cau Anh).
             # CHI leader (leader dieu huong; member theo tran leader + duoc moi lai qua vong 60s).
             if (train_on_map and is_leader and should_fight and not getattr(c, "flee_mode", False)
-                    and time.time() - last_combat > 90 and time.time() - last_relogin > 90):
+                    and time.time() - last_combat > 60 and time.time() - last_relogin > 60):
                 last_relogin = time.time()
                 relogin_cnt += 1
                 rally = st.get("rally_point") or _nearest_safe(c.pos, tm["safe"]) or tm["safe"][0]
@@ -825,7 +848,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 try:
                     c.flee_mode = True
                     if rally:
-                        c.navigate_to(*rally)        # ve safe da chon truoc khi thoat
+                        c.navigate_to(*_jitter(rally))   # ve safe da chon truoc khi thoat
                     # GIAI TAN party cu TRUOC khi relogin: leader van dang la leader -> 0x0d sub=04
                     # tan ca party -> 4 member duoc THA khoi party cu. Khong tan thi member van ket
                     # trong party cu -> moi lai KHONG vao (dang trong party roi) -> leader danh 1 minh.
