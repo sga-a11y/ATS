@@ -7,6 +7,7 @@
     "0x2f0b": { "name": "Quan Vũ rb0", "he": "Phong", "doanh": "Thuc", "skills": [13013], "boss_skill": 13013 },
     "0xa0db": { "name": "Tưởng Nghĩa Cừ", "he": "Dia", "doanh": "Du", "skills": [] },
     "0xa149": { "name": "Cát Bình", "skills": [11010] },
-    "0xa058": { "name": "Triệu Vân", "he": "Phong", "doanh": "Thuc", "skills": [13013], "boss_skill": 13013 }
+    "0xa058": { "name": "Triệu Vân", "he": "Phong", "doanh": "Thuc", "skills": [13013], "boss_skill": 13013 },
+    "0x2efb": { "name": "Triệu Vân rb0", "he": "Phong", "doanh": "Thuc", "skills": [13013], "boss_skill": 13013 }
   }
 }

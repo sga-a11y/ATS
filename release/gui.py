@@ -45,15 +45,20 @@ def _setup_log_capture():
     root.addHandler(qh)
 
 
+_MAP_NAMES: dict = {}
+
 def _map_name(mid):
     if mid is None:
         return "-"
     if mid == getattr(config, "DIGIOI_MAP_ID", -1):
-        return f"Dị Giới ({mid})"
-    tm = getattr(config, "TRAIN_MAPS", {}).get(mid)
-    if tm:
-        return f"Train ({mid})"
-    return str(mid)
+        return "Dị Giới"
+    if not _MAP_NAMES:
+        for k, v in _load_json("train_maps.json").get("maps", {}).items():
+            try:
+                _MAP_NAMES[int(k)] = v.get("name", k)
+            except ValueError:
+                pass
+    return _MAP_NAMES.get(mid, str(mid))
 
 
 # ---------------- App ----------------
