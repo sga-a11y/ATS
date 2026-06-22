@@ -1697,8 +1697,8 @@ class GameClient:
     def _heal_threshold(self, kind: str) -> float:
         """Nguong hoi mau cho acc nay. kind: hp_char/sp_char/hp_pet/sp_pet.
         Uu tien config.ACCOUNT_HEAL[username][kind]; thieu -> HP_THRESHOLD/SP_THRESHOLD chung."""
-        glob = getattr(config, "SP_THRESHOLD", 0.3) if kind.startswith("sp") \
-            else getattr(config, "HP_THRESHOLD", 0.5)
+        glob = getattr(config, "SP_THRESHOLD", 0.0) if kind.startswith("sp") \
+            else getattr(config, "HP_THRESHOLD", 0.4)
         over = getattr(config, "ACCOUNT_HEAL", {}).get(self._username, {})
         return over.get(kind, glob)
 

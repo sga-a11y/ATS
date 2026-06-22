@@ -121,7 +121,7 @@ DIGIOI_MAP_ID = 49942           # map_id Di Gioi (0xc316) - doc tu broadcast de 
 # Auto run-around: chay vong quanh DIEM DANG DUNG (offset tuong doi). Hinh so 8 (tu game auto-run).
 RUN_AROUND_OFFSETS = [(-100, -100), (-200, 0), (-100, 100), (0, 0),
                       (100, -100), (200, 0), (100, 100), (0, 0)]
-RUN_STEP_WAIT = 2.5            # giay moi buoc di chuyen
+RUN_STEP_WAIT = 0.7            # giay moi buoc chay vong Di Gioi (giam = chay nhanh hon; <0.1 de bi flood/kick)
 
 # Solo daily dungeon: so luot/ngay (luot 1 mien phi, luot 2+ MUA bang vang). =1 chi danh luot free.
 DUNGEON_RUNS_PER_DAY = 2
@@ -153,7 +153,7 @@ GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 # Combat tuning
 HEAL_HP_THRESHOLD = 0.60    # ally HP <= 60% max -> Toan Tri Lieu
 HEAL_SP_COST = 42
-PET_FIRE_MIN_SP = 100       # pet SP >= 100 moi xet skill combo (duoi 100 -> danh chay)
+PET_FIRE_MIN_SP = 65        # combo (Hoa Tien/Nem Da/Loan Kich): SP < 65 -> danh thuong
 
 # DATA PET: doc tu pets.json (pet_id hex -> LIST skill cua pet). pet_id tu S2C 0x13 luc login.
 def _load_pets():
@@ -217,12 +217,12 @@ SKILL_FLEE = 18001          # Bo chay (0x4651=18001) char+pet thoat tran. FIX: t
 
 # SP threshold (de danh SP cho heal): chi dung skill AoE khi SP >= nguong nay
 CHAR_ROCK_MIN_SP = 100      # Nem Da
-CHAR_FIRE_MIN_SP = 100      # Hoa Tien
+CHAR_FIRE_MIN_SP = 65       # combo (Hoa Tien/Nem Da/Loan Kich): SP < 65 -> danh thuong
 
 # Nguong HP/SP de tu dong hoi mau sau tran. Bot TU HOC item (probe + do delta HP/SP
 # qua S2C 0x08), luu items_learned.json - khong can config item ID.
-HP_THRESHOLD = 0.5          # Hoi HP khi HP < 50% max (char va pet) - MAC DINH chung
-SP_THRESHOLD = 0.3          # Hoi SP khi SP < 30% max - MAC DINH chung
+HP_THRESHOLD = 0.4          # Hoi HP khi HP < 40% max (char va pet) - MAC DINH chung
+SP_THRESHOLD = 0.0          # = 0 -> KHONG uong thuoc SP (tat hoi SP) - MAC DINH chung
 
 # Override nguong hoi mau RIENG tung acc (theo username). GUI ghi vao accounts.json (field "heal"
 # moi acc) -> tu nap vao day. 4 nguong: hp_char/sp_char (char), hp_pet/sp_pet (pet). Thieu key nao

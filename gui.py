@@ -836,8 +836,8 @@ class PartyConfigFrame(ttk.Frame):
         uname = row["u"].get().strip()
         if not uname:
             messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
-        glob_hp = getattr(config, "HP_THRESHOLD", 0.5)
-        glob_sp = getattr(config, "SP_THRESHOLD", 0.3)
+        glob_hp = getattr(config, "HP_THRESHOLD", 0.4)
+        glob_sp = getattr(config, "SP_THRESHOLD", 0.0)
         c = ctrl.account_clients.get(uname)
         st = c.state if (c is not None and getattr(c, "state", None)) else None
         # max tuong ung (0 = offline/chua biet)
