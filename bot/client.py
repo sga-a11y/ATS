@@ -1407,6 +1407,8 @@ class GameClient:
             info = items.get(tid)
             if not info or (info.get("hp", 0) <= 0 and info.get("sp", 0) <= 0):
                 continue
+            if info.get("battle"):     # item CHI dung trong tran (hoi sinh: Phuc Hon/Tu Quang Don) -> KHONG hop
+                continue
             if any(x in info.get("name", "") for x in self._COMBINE_EXCLUDE):
                 continue
             pots.append((qty, tid))
@@ -1789,12 +1791,31 @@ class GameClient:
         return True
 
     def log_bag_delayed(self, delay: float = 8.0):
-        """In tui SAU 'delay' giay (doi cac trang 0x16 ve het -> tui DAY DU). Goi luc login."""
+        """In tui SAU 'delay' giay (doi cac trang 0x16 ve het -> tui DAY DU). Goi luc login.
+        Sau khi in tui xong -> mo tui Vat Lieu Su Kien (neu du so luong)."""
         def _run():
             time.sleep(delay)
             if self.running:
                 self.log_bag()
+                self.use_event_bags()
         threading.Thread(target=_run, daemon=True).start()
+
+    # Tui Vat Lieu Su Kien (gamedata 0xb257): >=100 cai -> dung 100 cai 1 lenh luc login.
+    EVENT_BAG_ID = 0xb257
+    EVENT_BAG_MIN = 100
+    EVENT_BAG_USE = 100
+
+    def use_event_bags(self):
+        """Login: neu trong tui co >= EVENT_BAG_MIN tui Vat Lieu Su Kien -> dung EVENT_BAG_USE cai
+        (C2S 0x17 voi qty). Batch 1 lenh."""
+        slot = next((s for s, (tid, cnt) in self.bag_slots.items()
+                     if tid == self.EVENT_BAG_ID and cnt >= self.EVENT_BAG_MIN), None)
+        if slot is None:
+            return
+        cnt = self.bag_slots[slot][1]
+        if self.use_slot(slot, qty=self.EVENT_BAG_USE):
+            log.info("[%s] dung %d Tui Vat Lieu Su Kien (slot %d, co %d)",
+                     self._label, self.EVENT_BAG_USE, slot, cnt)
 
     def log_bag(self):
         """In tui theo SLOT, moi slot ghi ro la item KHAI (items_known.json) / HOC (probe) / CHUA BIET.
@@ -1843,13 +1864,15 @@ class GameClient:
         over = getattr(config, "ACCOUNT_HEAL", {}).get(self._username, {})
         return over.get(kind, glob)
 
-    def use_slot(self, slot: int, target: int = 0) -> bool:
-        """Dung item o SLOT. C2S 0x17: 0f 00 [slot 1B][01] 00 00 00 00 [target 1B] 00.
+    def use_slot(self, slot: int, target: int = 0, qty: int = 1) -> bool:
+        """Dung item o SLOT. C2S 0x17: 0f 00 [slot 1B][qty 1B] 00 00 00 00 [target 1B] 00.
+        qty = so luong dung 1 lenh (1..255; verify capture: dung 22 -> byte=0x16). Heal qty=1.
         Server confirm S2C 0x17 sub=09 (= dung duoc). Tra False neu slot het."""
         rec = self.bag_slots.get(slot)
         if rec is not None and rec[1] <= 0:
             return False
-        payload = b"\x0f\x00" + bytes([slot & 0xFF, 0x01]) + b"\x00\x00\x00\x00" + bytes([target & 0xFF]) + b"\x00"
+        qty = max(1, min(int(qty), 255))
+        payload = b"\x0f\x00" + bytes([slot & 0xFF, qty]) + b"\x00\x00\x00\x00" + bytes([target & 0xFF]) + b"\x00"
         self.send(0x17, payload)
         return True
 
