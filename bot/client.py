@@ -1425,6 +1425,60 @@ class GameClient:
         log.info("[%s] Hop vat pham: %s(0x%x) + %s(0x%x)", self._label,
                  items[tid1].get("name", ""), tid1, items[tid2].get("name", ""), tid2)
 
+    def do_world_boss(self):
+        """BOSS THE GIOI (nhiem vu o 2): event teleport (0x20 02 00 08) -> map boss 0x2d ->
+        engage NPC 0x3232 (0x41) -> VAO 1 tran (combat engine tu danh). CHI CAN VAO TRAN la o2
+        mark (khong can thang). Co GIO EVENT -> ngoai gio teleport/engage fail (khong vao tran)
+        -> bo qua. Xong thi teleport ve Trac Quan (12001) cho khoi ket map boss. Goi khi o2 chua xong."""
+        import datetime
+        vn_hour = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).hour
+        if not (12 <= vn_hour < 23):          # event boss chi mo 12h-23h (gio VN)
+            log.info("[%s] Boss the gioi: ngoai gio event (12h-23h VN, hien %dh) -> bo qua",
+                     self._label, vn_hour)
+            return
+        orig = self.current_map
+        self.flee_mode = True                 # sach tran truoc khi gui goi teleport (tranh kick)
+        for _ in range(20):
+            if not self.running:
+                return
+            if not self.in_combat():
+                break
+            time.sleep(1)
+        if not self.running:
+            return
+        time.sleep(1.0)
+        self.state.boss_mode = True
+        # (1) event teleport -> map boss 0x2d (replay capture: 0x20 0200 08 + 0x14 transit)
+        self.send(0x20, b"\x02\x00\x08");        time.sleep(0.5)
+        self.send(0x14, b"\x01\x00\x2d\x00");    time.sleep(0.8)
+        self.send(0x14, b"\x09\x00\x1e");        time.sleep(0.3)
+        self.send(0x14, b"\x06\x00");            time.sleep(1.2)
+        # (2) engage NPC boss -> vao tran
+        self.send(0x41, bytes.fromhex("01003232010100000101000000")); time.sleep(1.0)
+        # (3) cho VAO tran (event active?) trong 12s
+        entered = False
+        t0 = time.time()
+        while time.time() - t0 < 12:
+            if not self.running:
+                self.state.boss_mode = False
+                return
+            if self.state.in_battle:
+                self.flee_mode = False        # vao tran -> DANH (combat engine lo)
+                entered = True
+                break
+            time.sleep(0.3)
+        if not entered:
+            log.info("[%s] Boss the gioi: khong vao duoc tran (ngoai gio event?) -> bo qua", self._label)
+        else:
+            log.info("[%s] Boss the gioi: DA VAO TRAN (o2 se mark) -> danh cho het tran", self._label)
+            self._wait_combat_clear(idle=3.0, cap=90.0)   # combat engine tu danh het tran
+        self.state.boss_mode = False
+        # (4) teleport ve Trac Quan (thanh chung moi server) -> flow train sau do tu route tiep
+        if self.running and (orig is None or self.current_map != orig):
+            self._wait_combat_clear()
+            self.teleport(12001, 0)
+            time.sleep(1.5)
+
     # Nhiem vu hang ngay BINGO 3x3: 9 o (1..9). Du 1 HANG hoac COT (3 o) -> 1 qua; du 6 qua -> 1 qua
     # TONG KET. Line id: hang R1-3=1-3, cot C1-3=4-6, tong ket=7. Reward id = 0x2f + line-1.
     _Q_LINES = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9),      # 3 hang
@@ -1441,15 +1495,23 @@ class GameClient:
         return self._quest_cells
 
     def claim_daily_quests(self):
-        """Query trang thai 9 o -> o nao CHUA xong (bot lam duoc) thi LAM -> re-query -> claim
-        hang/cot du 3 o (C2S 0x5b 03 00 01 00 [line][id]) + TONG KET neu du 6. 1 lan/ngay."""
-        if _daily_done(self._label, "daily_quest"):
-            return
+        """STATUS-DRIVEN: query trang thai 9 o -> o nao CHUA xong (bot lam duoc) thi LAM
+        (gacha pet=o6, gacha card=o4, hop do=o7 - moi cai TU check du dieu kien) -> re-query ->
+        claim hang/cot du 3 o (C2S 0x5b 03 00 01 00 [line][id]) + TONG KET neu du 6.
+        Chay moi login: o da xong -> bo qua; gacha thieu xu lan truoc -> login sau tu retry."""
         done = self._query_quests()
-        # lam cac nhiem vu MOI con thieu (bot tu lam duoc). o 7 = hop vat pham.
-        # (Phase 2: o 2 = boss the gioi, o 5 = team dungeon.)
+        # lam cac nhiem vu con thieu (gacha tu check xu, hop tu check nguyen lieu)
+        acted = False
+        if 6 not in done:
+            self.claim_gacha_pet();  acted = True   # o 6 = gacha pet
+        if 4 not in done:
+            self.claim_gacha_card(); acted = True   # o 4 = gacha card
         if 7 not in done:
-            self.do_combine_item()
+            self.do_combine_item();  acted = True   # o 7 = hop vat pham
+        if 2 not in done:
+            self.do_world_boss();    acted = True   # o 2 = boss the gioi (event - co the fail)
+        # (Phase 2 con lai: o 5 = team dungeon)
+        if acted:
             done = self._query_quests()   # refresh sau khi lam
         lines = [L for L, cells in self._Q_LINES.items() if all(c in done for c in cells)]
         n = 0
@@ -1459,7 +1521,6 @@ class GameClient:
         if len(lines) >= 6:                   # du 6 -> claim TONG KET (line 7)
             self.send(0x5b, b"\x03\x00\x01\x00\x07" + struct.pack("<H", 0x2f + 6))
             time.sleep(0.3); n += 1
-        _mark_daily(self._label, "daily_quest")
         log.info("[%s] Nhiem vu hang ngay: %d/9 o xong, claim %d qua (line %s)",
                  self._label, len(done), n, lines)
 
@@ -1631,6 +1692,13 @@ class GameClient:
         import datetime
         runs_target = getattr(config, "DUNGEON_RUNS_PER_DAY", 2)
         today = datetime.date.today().isoformat()
+        # TIN HIEU SERVER THAT: o 1 nhiem vu (solo dungeon 2 lan) DA XONG -> chac chan du luot.
+        # _quest_cells da duoc claim_daily_quests query luc login (chay TRUOC dungeon). Dang tin
+        # hon dem local (khong detect duoc luot da danh tay/session truoc).
+        if 1 in self._quest_cells:
+            _save_checkin(self._label, "dungeon", today, runs_target)
+            log.info("[%s] Dungeon: nhiem vu o1 (solo 2 lan) DA XONG theo server -> bo qua", self._label)
+            return
         st = _load_checkin(self._label, "dungeon")
         count = st["day"] if st.get("date") == today else 0
         if self.dungeon_runs_today is not None:      # server-truth (chi co SAU khi danh) -> sync
@@ -1674,9 +1742,8 @@ class GameClient:
 
     def claim_gacha_pet(self):
         """Gacha PET hang ngay (1 lan/ngay). C2S 0x42 (draw) + 3x 0x5b (reveal) - replay client that.
-        Chi gacha khi xu >= 9000; thieu xu -> bo qua, login sau thu lai."""
-        if _daily_done(self._label, "gacha_pet"):
-            return
+        Chi gacha khi xu >= 9000; thieu xu -> bo qua, login sau thu lai.
+        Goi tu claim_daily_quests khi o 6 CHUA xong (status-driven, khong gate _daily_done)."""
         self._wait_xu()
         if self.xu is None or self.xu < self.GACHA_COST:
             log.info("[%s] Gacha pet: thieu xu (%s < %d) -> bo qua",
@@ -1688,13 +1755,11 @@ class GameClient:
             self.send(0x5b, bytes.fromhex("0200010100063400"))
             time.sleep(0.2)
         self.xu -= self.GACHA_COST   # server khong push lai balance -> tu tru
-        _mark_daily(self._label, "gacha_pet")
         log.info("[%s] Gacha PET hang ngay (xu con ~%d)", self._label, self.xu)
 
     def claim_gacha_card(self):
-        """Gacha CARD hang ngay (1 lan/ngay). Tuong tu gacha pet, banner id = 5cb2."""
-        if _daily_done(self._label, "gacha_card"):
-            return
+        """Gacha CARD hang ngay. Tuong tu gacha pet, banner id = 5cb2.
+        Goi tu claim_daily_quests khi o 4 CHUA xong (status-driven, khong gate _daily_done)."""
         self._wait_xu()
         if self.xu is None or self.xu < self.GACHA_COST:
             log.info("[%s] Gacha card: thieu xu (%s < %d) -> bo qua",
@@ -1706,7 +1771,6 @@ class GameClient:
             self.send(0x5b, bytes.fromhex("0200010100043200"))
             time.sleep(0.2)
         self.xu -= self.GACHA_COST
-        _mark_daily(self._label, "gacha_card")
         log.info("[%s] Gacha CARD hang ngay (xu con ~%d)", self._label, self.xu)
 
     def _learned(self) -> dict:
