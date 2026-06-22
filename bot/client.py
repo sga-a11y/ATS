@@ -473,6 +473,7 @@ class GameClient:
         self._pending_confirm_slot = None  # slot dang cho S2C 0x17 sub09 xac nhan (probe confirm-gated)
         self._use_confirmed = False        # True khi nhan confirm cho _pending_confirm_slot
         self._no_item = set()        # (target,kind) het thuoc -> skip toi TRAN SAU (reset khi 0x34)
+        self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
         self.friend_status = {}      # entity hex -> trailer[18]: bit0x01=DA TANG, bit0x02=CO QUA nhan
         self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
@@ -716,6 +717,10 @@ class GameClient:
         #   sub 0c = status qua:        [0c 00][count 1B] + N*[entity 8B][status 1B] (03=co qua nhan, 07=da nhan)
         if opcode == 0x0e and len(pkt) >= 9:
             self._on_friend_gift(pkt)
+        # NHIEM VU HANG NGAY (bingo 3x3): S2C 0x5b 02 00 01 01 00 [cell] = o [cell] DA HOAN THANH.
+        # Mo panel (C2S 0x5b 02 00 09...) -> server tra trang thai tung o. Dem o de tinh hang/cot du.
+        if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x02\x00\x01\x01\x00":
+            self._quest_cells.add(pkt[12])
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1385,6 +1390,78 @@ class GameClient:
         self.send(0x27, b"\x69\x00")   # nhan qua quan doan
         _mark_daily(self._label, "legion")
         log.info("[%s] Nhan qua quan doan hang ngay", self._label)
+
+    # Thuoc cao cap KHONG dung lam nguyen lieu hop (giu lai de danh boss)
+    _COMBINE_EXCLUDE = ("Hương Dũng Ma Dược", "Hương Dũng Đại Dược")
+
+    def do_combine_item(self):
+        """HOP VAT PHAM (nhiem vu bingo o 7): hop 2 thuoc HP/SP -> ra item random. Chon 2 LOAI co
+        SO LUONG IT NHAT (gom ca qty=1) de DON sach stack le, tranh tich rac. 2 loai khac nhau OK;
+        neu chi 1 loai thi hop 2 cai cua no (can qty>=2). Tru Huong Dung Ma/Dai Duoc.
+        C2S 0x17: 0e 00 [tid1 2B] 00 00 00 [tid2 2B] 00*8 01. Goi khi o 7 chua xong."""
+        items = _load_gamedata_items()
+        pots = []   # (qty, tid) thuoc hoi HP hoac SP
+        for tid, qty in self.bag_counts.items():
+            if qty < 1:
+                continue
+            info = items.get(tid)
+            if not info or (info.get("hp", 0) <= 0 and info.get("sp", 0) <= 0):
+                continue
+            if any(x in info.get("name", "") for x in self._COMBINE_EXCLUDE):
+                continue
+            pots.append((qty, tid))
+        pots.sort()   # it nhat truoc
+        if len(pots) >= 2:                  # 2 loai it nhat (don stack le, gom qty=1)
+            tid1, tid2 = pots[0][1], pots[1][1]
+        elif pots and pots[0][0] >= 2:      # chi 1 loai -> hop 2 cai cua no
+            tid1 = tid2 = pots[0][1]
+        else:
+            log.info("[%s] Hop do: khong du thuoc HP/SP de hop", self._label)
+            return
+        pkt = (b"\x0e\x00" + struct.pack("<H", tid1) + b"\x00\x00\x00"
+               + struct.pack("<H", tid2) + b"\x00" * 8 + b"\x01")
+        self.send(0x17, pkt)
+        time.sleep(0.5)
+        log.info("[%s] Hop vat pham: %s(0x%x) + %s(0x%x)", self._label,
+                 items[tid1].get("name", ""), tid1, items[tid2].get("name", ""), tid2)
+
+    # Nhiem vu hang ngay BINGO 3x3: 9 o (1..9). Du 1 HANG hoac COT (3 o) -> 1 qua; du 6 qua -> 1 qua
+    # TONG KET. Line id: hang R1-3=1-3, cot C1-3=4-6, tong ket=7. Reward id = 0x2f + line-1.
+    _Q_LINES = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9),      # 3 hang
+                4: (1, 4, 7), 5: (2, 5, 8), 6: (3, 6, 9)}      # 3 cot
+    _Q_OPEN = bytes.fromhex(
+        "0200090100012f0001000230000100033100010004320001000533000100063400010007350001000836000100")
+
+    def _query_quests(self):
+        """Mo panel nhiem vu (C2S 0x5b 02 00 09...) -> server tra o nao DA HOAN THANH
+        (S2C 0x5b 02 00 01 01 00 [cell] -> handler nhet vao self._quest_cells)."""
+        self._quest_cells = set()
+        self.send(0x5b, self._Q_OPEN)
+        time.sleep(1.2)
+        return self._quest_cells
+
+    def claim_daily_quests(self):
+        """Query trang thai 9 o -> o nao CHUA xong (bot lam duoc) thi LAM -> re-query -> claim
+        hang/cot du 3 o (C2S 0x5b 03 00 01 00 [line][id]) + TONG KET neu du 6. 1 lan/ngay."""
+        if _daily_done(self._label, "daily_quest"):
+            return
+        done = self._query_quests()
+        # lam cac nhiem vu MOI con thieu (bot tu lam duoc). o 7 = hop vat pham.
+        # (Phase 2: o 2 = boss the gioi, o 5 = team dungeon.)
+        if 7 not in done:
+            self.do_combine_item()
+            done = self._query_quests()   # refresh sau khi lam
+        lines = [L for L, cells in self._Q_LINES.items() if all(c in done for c in cells)]
+        n = 0
+        for L in lines:                       # claim tung hang/cot du
+            self.send(0x5b, b"\x03\x00\x01\x00" + bytes([L]) + struct.pack("<H", 0x2f + L - 1))
+            time.sleep(0.3); n += 1
+        if len(lines) >= 6:                   # du 6 -> claim TONG KET (line 7)
+            self.send(0x5b, b"\x03\x00\x01\x00\x07" + struct.pack("<H", 0x2f + 6))
+            time.sleep(0.3); n += 1
+        _mark_daily(self._label, "daily_quest")
+        log.info("[%s] Nhiem vu hang ngay: %d/9 o xong, claim %d qua (line %s)",
+                 self._label, len(done), n, lines)
 
     def _on_friend_gift(self, pkt: bytes):
         """Parse S2C 0x0e ban be:

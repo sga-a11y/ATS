@@ -213,6 +213,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         c.claim_gacha_card()    # gacha card hang ngay (9k xu)
         c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu
         next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
+        c.claim_daily_quests()   # nhiem vu bingo 3x3: query o nao chua xong -> lam -> claim hang/cot du
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
