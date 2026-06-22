@@ -155,29 +155,42 @@ HEAL_HP_THRESHOLD = 0.60    # ally HP <= 60% max -> Toan Tri Lieu
 HEAL_SP_COST = 42
 PET_FIRE_MIN_SP = 65        # combo (Hoa Tien/Nem Da/Loan Kich): SP < 65 -> danh thuong
 
-# DATA PET: doc tu pets.json (pet_id hex -> LIST skill cua pet). pet_id tu S2C 0x13 luc login.
+# DATA PET: doc tu pets.json (AUTO-SINH tools/crack_pets.py). pet_id hex -> name + skills (LIST,
+# giu thu tu: skill[0]=boss fallback) + (he,doanh). boss/combo TU SUY o combat tu SKILL_INFO.
 def _load_pets():
     import json, os
     f = os.path.join(_base_dir(), "pets.json")
-    skills, names, boss, hedoanh = {}, {}, {}, {}
+    skills, names, hedoanh = {}, {}, {}
     try:
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh)
         for k, v in d.get("pets", {}).items():
             pid = int(k, 16)
-            skills[pid] = set(v.get("skills", []))
+            skills[pid] = list(v.get("skills", []))   # LIST (giu thu tu cho boss skill[0])
             names[pid] = v.get("name", "")
-            if v.get("boss_skill"):
-                boss[pid] = v["boss_skill"]
-            if v.get("he") or v.get("doanh"):   # he/doanh dien tay (cho VAN TIEU match)
+            if v.get("he") or v.get("doanh"):   # he/doanh (cho VAN TIEU match)
                 hedoanh[pid] = (v.get("he", ""), v.get("doanh", ""))
     except Exception:
         pass
-    return skills, names, boss, hedoanh
-PET_SKILLS, PET_NAMES, PET_BOSS_SKILL, PET_HE_DOANH = _load_pets()   # pet_id -> skills/ten/boss/(he,doanh)
+    return skills, names, hedoanh
+PET_SKILLS, PET_NAMES, PET_HE_DOANH = _load_pets()   # pet_id -> skills/ten/(he,doanh)
 
-# Skill dung de COMBO TRAINING (AoE hang ngang). Uu tien tu trai sang (re SP truoc).
-# Unit nao co 1 trong cac skill nay -> dung de combo. Sau nay event/boss co list khac.
+# DATA SKILL: doc tu skills_data.json (AUTO crack_skills.py). skill_id -> {cost, dame, splash}.
+# combat tu suy combo (dame AoE re) + boss (dame splash 4>1) -> KHONG can list cung.
+def _load_skill_info():
+    import json, os
+    f = os.path.join(_base_dir(), "skills_data.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("skills", {}).items():
+                out[int(k, 16)] = v
+    except Exception:
+        pass
+    return out
+SKILL_INFO = _load_skill_info()
+
+# Skill COMBO TRAINING (AoE) - CHI dung FALLBACK khi thieu skills_data.json. Binh thuong tu suy.
 COMBO_TRAIN_SKILLS = [12003, 10005, 13013]   # Hoa Tien(15), Nem Da(22), Loan Kich(49)
 
 # Cuon GOI PET RAC -> bot tu PHAN GIAI sau gacha (nhan lai xu). Doc tu junk_scrolls.json

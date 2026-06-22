@@ -34,14 +34,14 @@ class BattleState:
         self.char = Unit("char")
         self.pet = Unit("pet")
         self.self_entity = None   # entity 8 byte cua nhan vat minh (set tu client)
-        self.skills_char = set()  # skill ID char co (tu 0x28 login)
+        self.skills_char = []     # LIST skill char (tu 0x05 day du - giu thu tu: skill[0]=boss fallback)
         self.skills_pet  = set()  # skill ID pet co (tu 0x28 login)
         self.my_atype = 3         # atype = vi tri formation cua minh (leader o giua)
         self.label = ""           # nhan account (de tao key dieu phoi heal)
-        self.pet_skills = set()   # TAT CA skill cua pet dang dung (tra tu pets.json theo pet_id)
+        self.party_idx = None     # index party (dieu phoi hoi sinh chéo account)
+        self.pet_skills = []      # LIST skill cua pet dang dung (pets.json, giu thu tu - skill[0]=boss fallback)
         self.active_pet_id = None # id pet dang dung (tu S2C 0x13)
-        self.pet_boss_skill = None # skill danh don cua pet dung khi danh BOSS (pets.json boss_skill)
-        self.boss_mode = False    # True = dang trong dungeon danh boss -> pet dung boss_skill (danh don)
+        self.boss_mode = False    # True = dang trong dungeon danh boss -> pet dung skill manh (tu suy)
         # SP DAY (sp==sp_max) luc nao trong tran -> spam combo CA TRAN, bat chap so quai (1 quai cung dung).
         self.char_spam = False
         self.pet_spam = False
@@ -53,6 +53,9 @@ class BattleState:
         self.enemy_slots = []          # vd [2] = co 1 quai o slot 2
         self.enemy_hp = {}             # slot -> curHP
         self.self_slot = None          # B2 (vi tri tran) cua minh - tu 0x0b battle (entity-based)
+        # QUEST mode: START tran ma >5 quai -> True ca tran (latch). >5 con -> all-target; <=5 -> nhu boss.
+        self.quest_mode = False
+        self._battle_counted = False   # latch: da dem so quai luc start tran chua
 
     def reset_battle(self):
         self.mobs = []
@@ -62,6 +65,8 @@ class BattleState:
         """Xoa HP/slot quai (goi luc battle moi bat dau, tranh dinh quai tran cu)."""
         self.enemy_hp = {}
         self.enemy_slots = []
+        self.quest_mode = False
+        self._battle_counted = False
 
     # ---- parse 0x33 (stat update theo luot) ----
     def update_0x33(self, pkt: bytes):
@@ -96,6 +101,11 @@ class BattleState:
             # enemy_slots = TAT CA slot con song theo enemy_hp TICH LUY (khong chi goi nay).
             # Tranh mat con khong bi danh trong turn (vd giet 1-2-3 con con o slot 7 van song).
             self.enemy_slots = sorted(s for s, hp in self.enemy_hp.items() if hp > 0)
+            # LATCH quest_mode: dem so quai LUC START tran (lan dau thay quai). >5 -> QUEST ca tran.
+            if not self._battle_counted and self.enemy_slots:
+                self._battle_counted = True
+                if len(self.enemy_slots) > 5:
+                    self.quest_mode = True
         # self_slot xac dinh tu 0x0b battle (entity-based, o client) hoac roster. KHONG dua HP.
         # Doc HP/SP char+pet cua minh theo slot (uu tien roster -> chinh xac, KHONG can 0x0b)
         if self.self_slot is not None:
@@ -159,6 +169,12 @@ class BattleState:
         if not alive:
             return None
         return min(alive, key=lambda u: u.hp_pct)
+
+    def dead_allies(self):
+        """List (b1, b2, hp_max) dong doi DA CHET (hp_max>0, hp<=0). b1=3 char/2 pet, b2=slot.
+        Dung cho HOI SINH (target con chet)."""
+        return [(b1, b2, u.hp_max) for (b1, b2), u in self.allies.items()
+                if u.hp_max > 0 and u.hp <= 0]
 
     def any_ally_low(self, threshold: float):
         """Co thanh vien nao (char/pet) HP% <= threshold + CON SONG (hp>0) khong (gom ca minh).

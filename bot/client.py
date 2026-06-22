@@ -807,8 +807,7 @@ class GameClient:
             self.state.active_pet_id = pid
             if self._cached_pet_list_pkt is not None:
                 self._on_pet_list(self._cached_pet_list_pkt)
-            self.state.pet_skills = getattr(config, "PET_SKILLS", {}).get(pid, set())
-            self.state.pet_boss_skill = getattr(config, "PET_BOSS_SKILL", {}).get(pid)
+            self.state.pet_skills = getattr(config, "PET_SKILLS", {}).get(pid, [])   # LIST (boss skill[0])
             known = pid in getattr(config, "PET_NAMES", {}) or pid in getattr(config, "PET_SKILLS", {})
             name = getattr(config, "PET_NAMES", {}).get(pid, "?")
             # TEN pet DANG DUNG = ten cua active_pet_id tu pets.json (TIN CAY, dung nhu log login).
@@ -1087,6 +1086,7 @@ class GameClient:
     def _make_decisions(self):
         if self._acted_turn:
             return
+        self.state.party_idx = self.party_idx   # sync de dieu phoi hoi sinh chéo account
         # DANG QUA CONG (gui chuoi 0x14): KHONG gui 0x32 danh -> tranh "vua qua cong vua danh"
         # (0x32 xen giua 0x14 -> server kick leader). Bo luot nay; transit doi map -> tran cu bo,
         # neu transit that bai (van map cu) -> luot sau danh binh thuong.
@@ -2094,9 +2094,12 @@ class GameClient:
                     break
                 ids.append(sid)
             if ok and ids:
-                self.state.skills_char |= set(ids)
+                # GIU THU TU (skill[0]=boss fallback): append id chua co. 0x05 la list day du.
+                for s in ids:
+                    if s not in self.state.skills_char:
+                        self.state.skills_char.append(s)
                 log.info("[%s] Char skills (day du tu 0x05, %d): %s", self._label, len(ids),
-                         [hex(s) for s in sorted(ids)])
+                         [hex(s) for s in ids])
                 return
 
     # ---- parse skill bar (0x28) ----
@@ -2128,7 +2131,9 @@ class GameClient:
                     break  # canh rac
                 skills.add(sid)
             if unit == 3:
-                self.state.skills_char |= skills   # UNION: gop voi list day du tu 0x05
+                for s in skills:   # gop bar 0x28 vao list (append id chua co, giu thu tu 0x05)
+                    if s not in self.state.skills_char:
+                        self.state.skills_char.append(s)
                 seen_char = True
                 log.info("[%s] Char skills (bar 0x28): %s", self._label,
                          [hex(s) for s in sorted(skills)])
