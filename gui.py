@@ -897,7 +897,7 @@ class PartyConfigFrame(ttk.Frame):
             ttk.Label(self.dyn, text="Map:", width=10).pack(side="left")
             names = [n for (_i, n, _m) in self.train_maps]
             self.map_cb = ttk.Combobox(self.dyn, textvariable=self.map_var, state="readonly",
-                                       width=22, values=names)
+                                       width=32, values=names)
             self.map_cb.pack(side="left")
             self.map_cb.bind("<<ComboboxSelected>>", lambda e: self._fill_mobs())
             ttk.Label(self.dyn, text="Quái:", width=6).pack(side="left", padx=(10, 0))
