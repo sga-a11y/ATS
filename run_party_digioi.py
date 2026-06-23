@@ -50,6 +50,20 @@ def _nearest_safe(pos, safes):
     return min(safes, key=lambda s: (s[0] - px) ** 2 + (s[1] - py) ** 2)
 
 
+def _go_town_safe(c, label, city_id=12001, flag=0):
+    """SACH TRAN (flee) roi BAY VE THANH (mac dinh Trac Quan 12001) - dung khi digioi HET GIO bi
+    ket o map quai. Phai cho het tran TRUOC khi teleport (teleport luc dang danh -> server KICK)."""
+    c.flee_mode = True
+    try:
+        c._wait_combat_clear(idle=2.0, cap=15.0)   # flee het tran truoc khi teleport
+    except Exception:
+        pass
+    try:
+        c.go_to_town(city_id, flag)
+    except Exception as e:
+        log.warning("[%s] ve thanh (het gio DG): %s", label, e)
+
+
 def _use_consumables(c):
     """Hoi HP/SP sau tran (goi NGOAI tran). Bot tu hoc item qua self-calibrate, khong can config.
     - CHAR: closed-loop tren HP/SP live (S2C 0x08) + probe item chua biet de tu hoc.
@@ -527,6 +541,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 log.info("[%s] (%s) DG da HET GIO hom nay (%d/%d phut, doc tu login) -> khong vao",
                          label, role, c.digioi_minutes, DIGIOI_LIMIT)
                 _reason("het gio Di Gioi hom nay (doc tu login)")
+                # HET GIO DG -> BAY VE THANH (Trac Quan) TRUOC: login co the o map quai (12831...) ->
+                # ket tran lien tuc -> teleport boss/dungeon luc dang danh bi server KICK. Ve thanh
+                # an toan roi moi lam dailies.
+                _go_town_safe(c, label)
                 if do_daily:
                     try: c.do_daily_dungeon()
                     except Exception as e:
@@ -543,6 +561,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             # 1) PHAI VAO DUOC DG TRUOC (xac nhan in_di_gioi) roi MOI chuyen kenh.
             if not c.in_di_gioi() and not c.enter_di_gioi_safe():
                 log.warning("[%s] (%s) khong vao duoc DG (het gio?) -> TAT acc nay", label, role)
+                _go_town_safe(c, label)   # ve thanh truoc (thoat o quai) roi lam dailies
                 if do_daily:
                     try: c.claim_daily_quests(heavy=True)   # khong vao DG -> lam full quest roi dong
                     except Exception as e:
