@@ -1457,6 +1457,7 @@ class GameClient:
         if not self.running:
             return
         time.sleep(1.0)
+        self.heal_full()          # HOI FULL HP/SP truoc khi danh boss the gioi
         self.state.boss_mode = True
         # TAT FLEE NGAY (truoc khi teleport): tran boss co the bat dau ngay luc transit/toi noi ->
         # flee con bat la receiver BO CHAY mat tran. Khu boss chi co boss nen tat flee la an toan.
@@ -1616,6 +1617,7 @@ class GameClient:
         if not self.running:
             return False
         time.sleep(1.0)               # them 1s cho server chot "ra tran"
+        self.heal_full()              # HOI FULL HP/SP truoc khi vao danh boss dungeon
         self.state.boss_mode = True
         self.dungeon_complete = False
         # (2) Chuoi vao dungeon (capture dungeon.pcap), GUI LIEN khong cho map doi:
@@ -2003,15 +2005,31 @@ class GameClient:
             self._heal_unit(1, p, "pet", "hp_pet", "hp")
             self._heal_unit(1, p, "pet", "sp_pet", "sp")
 
-    def _heal_unit(self, target: int, unit, label: str, thr_key: str, kind: str):
+    def heal_full(self):
+        """Hoi FULL HP+SP char + pet (nguong=1.0) - goi TRUOC khi danh boss (solo dungeon + world
+        boss) de chac thang. Chi ngoai tran. Het thuoc thi hoi duoc bao nhieu hay bay nhieu."""
+        if self.in_combat() or not self.bag_slots:
+            return
+        log.info("[%s] Hoi FULL HP/SP truoc khi danh boss...", self._label)
+        c = self.state.char
+        if c.hp_max > 0:
+            self._heal_unit(0, c, "char", "hp_char", "hp", thr_override=1.0)
+            self._heal_unit(0, c, "char", "sp_char", "sp", thr_override=1.0)
+        p = self.state.pet
+        if p.hp_max > 0:
+            self._heal_unit(1, p, "pet", "hp_pet", "hp", thr_override=1.0)
+            self._heal_unit(1, p, "pet", "sp_pet", "sp", thr_override=1.0)
+
+    def _heal_unit(self, target: int, unit, label: str, thr_key: str, kind: str, thr_override=None):
         """Hoi 1 con 1 stat bang thuoc DA BIET den nguong. char do qua 0x08 (chinh xac);
-        pet ko do duoc -> uoc tinh theo heal (open-loop). Het thuoc nay -> tu chuyen thuoc khac."""
+        pet ko do duoc -> uoc tinh theo heal (open-loop). Het thuoc nay -> tu chuyen thuoc khac.
+        thr_override: ep nguong (vd 1.0 = FULL) - dung cho heal_full truoc boss."""
         if self.in_combat():
             return
         nokey = (target, kind)
         if nokey in self._no_item:
             return                 # da bao het thuoc loai nay -> cho TRAN SAU (0x34 reset) moi check
-        thr = self._heal_threshold(thr_key)
+        thr = thr_override if thr_override is not None else self._heal_threshold(thr_key)
         mx = unit.hp_max if kind == "hp" else unit.sp_max
         cur = unit.hp if kind == "hp" else unit.sp
         if thr <= 0 or mx <= 0 or cur >= mx * thr:
