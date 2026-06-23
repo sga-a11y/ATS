@@ -1458,9 +1458,12 @@ class GameClient:
             return
         time.sleep(1.0)
         self.state.boss_mode = True
-        # (1) event teleport -> map boss 0x2d (replay capture: 0x20 0200 08 + 0x14 transit)
-        self.send(0x20, b"\x02\x00\x08");        time.sleep(0.5)
-        self.send(0x14, b"\x01\x00\x2d\x00");    time.sleep(0.8)
+        # (1) MO event boss TRUOC roi moi teleport (replay capture: 0x4d 0x0c -> 0x20 -> 0x14).
+        #     Thieu 0x4d/0x0c -> server tu choi teleport (0x14 01002d00) -> tra loi 0x00 code7 -> kick.
+        self.send(0x4d, b"\x03\x00\x05\x00");    time.sleep(0.4)   # mo/chon event boss
+        self.send(0x0c, b"\x01\x00");            time.sleep(0.4)   # xin info
+        self.send(0x20, b"\x02\x00\x08");        time.sleep(0.5)   # chon diem teleport boss
+        self.send(0x14, b"\x01\x00\x2d\x00");    time.sleep(0.8)   # teleport map boss 0x2d
         self.send(0x14, b"\x09\x00\x1e");        time.sleep(0.3)
         self.send(0x14, b"\x06\x00");            time.sleep(1.2)
         # (2) engage NPC boss -> vao tran
@@ -1521,11 +1524,8 @@ class GameClient:
             self.claim_gacha_card(); acted = True   # o 4 = gacha card (NHE)
         if 7 not in done:
             self.do_combine_item();  acted = True   # o 7 = hop vat pham (NHE)
-        # o2 boss the gioi TAM TAT: goi teleport boss (0x14 01002d00) bi server TU CHOI -> tra goi
-        # loi 0x00 (code 7) -> KICK ca party. Bot thieu buoc nao do truoc teleport so voi lam tay.
-        # Can capture lai full luong vao boss de tim buoc thieu. Tam thoi bo o2 (8 o kia chay ngon).
-        # if heavy and 2 not in done:
-        #     self.do_world_boss();    acted = True
+        if heavy and 2 not in done:
+            self.do_world_boss();    acted = True   # o 2 = boss the gioi (mo event 0x4d/0x0c truoc teleport)
         # (o1 dungeon = do_daily_dungeon rieng; o5 team dungeon = chua co - deu NANG)
         if acted:
             done = self._query_quests()   # refresh sau khi lam
