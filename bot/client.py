@@ -2018,6 +2018,7 @@ class GameClient:
             return
         target_val = int(mx * thr)
         remaining = target_val - cur   # uoc tinh con thieu (cho pet open-loop)
+        healed = False
         for _ in range(40):
             if self.in_combat():
                 break
@@ -2036,9 +2037,17 @@ class GameClient:
             if not self.use_slot(slot, target):
                 break
             remaining -= heal
+            healed = True
             log.info("[%s] hoi %s slot=%d 0x%04x +%d%s (con thieu ~%d)",
                      self._label, label, slot, tid, heal, kind.upper(), max(0, remaining))
             time.sleep(0.3)
+        # PET (target!=0) hoi open-loop: HP that KHONG cap nhat ngoai tran -> set OPTIMISTIC = nguong
+        # de keepalive sau KHONG hoi lai vo han (HP that se cap nhat lai dau tran sau qua 0x33).
+        if target != 0 and healed:
+            if kind == "hp":
+                unit.hp = max(unit.hp, target_val)
+            else:
+                unit.sp = max(unit.sp, target_val)
 
     def decompose_junk_scrolls(self, wait: float = 1.2):
         """Phan giai cuon GOI PET RAC (gacha ra nhieu) -> nhan lai xu. C2S 0x59:
