@@ -1466,7 +1466,8 @@ class GameClient:
         self.send(0x14, b"\x01\x00\x2d\x00");    time.sleep(0.8)   # teleport map boss 0x2d
         self.send(0x14, b"\x09\x00\x1e");        time.sleep(0.3)
         self.send(0x14, b"\x06\x00");            time.sleep(1.2)
-        # (2) engage NPC boss -> vao tran
+        # (2) TAT FLEE TRUOC khi engage -> tran boss bat dau thi DANH (khong bi receiver flee mat tran)
+        self.flee_mode = False
         self.send(0x41, bytes.fromhex("01003232010100000101000000")); time.sleep(1.0)
         # (3) cho VAO tran (event active?) trong 12s
         entered = False
@@ -1476,15 +1477,18 @@ class GameClient:
                 self.state.boss_mode = False
                 return
             if self.state.in_battle:
-                self.flee_mode = False        # vao tran -> DANH (combat engine lo)
                 entered = True
                 break
             time.sleep(0.3)
         if not entered:
             log.info("[%s] Boss the gioi: khong vao duoc tran (ngoai gio event?) -> bo qua", self._label)
         else:
-            log.info("[%s] Boss the gioi: DA VAO TRAN (o2 se mark) -> danh cho het tran", self._label)
-            self._wait_combat_clear(idle=3.0, cap=90.0)   # combat engine tu danh het tran
+            log.info("[%s] Boss the gioi: DA VAO TRAN -> danh CHO HET TRAN", self._label)
+            # cho tran KET THUC THAT (in_battle ve False), cap 120s (boss khoe thi cap se cat)
+            t0 = time.time()
+            while self.running and self.state.in_battle and time.time() - t0 < 120:
+                time.sleep(1)
+            log.info("[%s] Boss the gioi: tran ket thuc (sau %ds)", self._label, int(time.time() - t0))
         self.state.boss_mode = False
         # (4) teleport ve Trac Quan (thanh chung moi server) -> flow train sau do tu route tiep
         if self.running and (orig is None or self.current_map != orig):
