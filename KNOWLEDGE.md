@@ -3,6 +3,19 @@
 
 ---
 
+## 0. DEBUG LỖI USER BÁO (bản gửi đi = EXE)
+
+> **User dùng BẢN BUILD (aTSBot.exe), KHÔNG phải dev source.** EXE biên dịch từ `config.example.py`
+> (build_product.py stage: config.example.py -> config.py). User KHÔNG có source.
+
+- **User báo lỗi config/hành vi → soi `bot/config.example.py` + code ship trong build TRƯỚC**, KHÔNG
+  phải `bot/config.py` (dev, gitignored, có thể STALE/khác hẳn).
+- `config.py` (dev máy này) đã trôi xa `config.example.py` — chỉ tin `config.example.py` cho bản build.
+- **Khi đổi key config từ GUI/run_party** (vd `do_dungeon`->`do_daily`): phải sửa ĐỒNG THỜI cả
+  `run_party_digioi.py` + `gui.py` + `config.py` + **`config.example.py`** (chỗ build PARTY_CONFIG).
+  Quên config.example -> bản build bỏ qua key mới (vd bug "bỏ tick daily vẫn làm").
+- File JSON ship theo build: `build_product.py` -> `DATA_JSON`. Thêm data mới phải thêm vào đây.
+
 ## 1. THÔNG TIN CƠ BẢN
 
 - **Game:** TS Online Mobile — VTC Mobile, engine Unity 2022.3.62f2 + Lua scripts
