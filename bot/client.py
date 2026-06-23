@@ -264,30 +264,6 @@ def _load_gamedata_items() -> dict:
     return _gamedata_items
 
 
-_compound_ids = None
-
-
-def _load_compound_ids() -> dict:
-    """{ tid_int: compound_id_int } tu compound_ids.json - map tid tui -> id-hop dung trong goi HOP."""
-    global _compound_ids
-    if _compound_ids is not None:
-        return _compound_ids
-    import json as _json, os as _os
-    _compound_ids = {}
-    try:
-        from ._appdir import app_dir
-        path = _os.path.join(app_dir(), "compound_ids.json")
-    except Exception:
-        path = "compound_ids.json"
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for k, v in _json.load(fh).get("ids", {}).items():
-                tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
-                cid = int(v, 16) if isinstance(v, str) and v.lower().startswith("0x") else int(v)
-                _compound_ids[tid] = cid
-    except Exception:
-        pass
-    return _compound_ids
 
 
 def _gift_key(label: str) -> str:
@@ -1417,30 +1393,43 @@ class GameClient:
         _mark_daily(self._label, "legion")
         log.info("[%s] Nhan qua quan doan hang ngay", self._label)
 
+    # Thuoc cao cap KHONG dung lam nguyen lieu hop (giu lai de danh boss)
+    _COMBINE_EXCLUDE = ("Hương Dũng Ma Dược", "Hương Dũng Đại Dược")
+
     def do_combine_item(self):
-        """HOP VAT PHAM (nhiem vu bingo o 7): hop 2 do an/thuoc -> ra item random. HE ID RIENG:
-        goi hop dung COMPOUND_ID (0x01xx) chu KHONG phai tid tui (0x65xx) -> map qua compound_ids.json
-        (crack tu capture, Compound.dat ma hoa). Chon 2 LOAI co SL IT NHAT (don stack le, gom qty=1);
-        chi 1 loai -> hop 2 cai cua no (qty>=2). C2S 0x17: 0e 00 [cid1 2B] 00 00 00 [cid2 2B] 00*8 01."""
-        cmap = _load_compound_ids()
+        """HOP VAT PHAM (nhiem vu bingo o 7): hop 2 do an/thuoc -> ra item random.
+        KEY: goi hop dung COMPOUND_ID = 0x0100 + IDX SLOT TUI (idx = vi tri item trong tui chinh,
+        chinh la cai bag_slots dung de heal). Vi the cid DONG theo phien (slot doi -> cid doi) - bot
+        doc idx LIVE tu bag_slots nen luon dung. Chon 2 do an/thuoc SL it nhat (don stack le), tru
+        item battle (hoi sinh) + Huong Dung. C2S 0x17: 0e 00 [cid1 2B] 00 00 00 [cid2 2B] 00*8 01."""
         items = _load_gamedata_items()
-        pots = [(qty, tid) for tid, qty in self.bag_counts.items() if qty >= 1 and tid in cmap]
+        pots = []   # (qty, idx, tid) - do an/thuoc (hp/sp) trong tui
+        for idx, (tid, cnt) in self.bag_slots.items():
+            if cnt < 1 or idx > 0xFF:
+                continue
+            info = items.get(tid)
+            if not info or (info.get("hp", 0) <= 0 and info.get("sp", 0) <= 0):
+                continue
+            if info.get("battle"):     # item hoi sinh (Phuc Hon/Tu Quang) - khong hop
+                continue
+            if any(x in info.get("name", "") for x in self._COMBINE_EXCLUDE):
+                continue
+            pots.append((cnt, idx, tid))
         pots.sort()   # it nhat truoc
         if len(pots) >= 2:                  # 2 loai it nhat (don stack le)
-            tid1, tid2 = pots[0][1], pots[1][1]
+            (_, i1, t1), (_, i2, t2) = pots[0], pots[1]
         elif pots and pots[0][0] >= 2:      # chi 1 loai -> hop 2 cai cua no
-            tid1 = tid2 = pots[0][1]
+            (_, i1, t1) = pots[0]; i2, t2 = i1, t1
         else:
-            log.info("[%s] Hop do: chua co >=2 item hop duoc trong tui (bo sung compound_ids.json)",
-                     self._label)
+            log.info("[%s] Hop do: khong du do an/thuoc trong tui de hop", self._label)
             return
-        cid1, cid2 = cmap[tid1], cmap[tid2]
+        cid1, cid2 = 0x100 + i1, 0x100 + i2
         pkt = (b"\x0e\x00" + struct.pack("<H", cid1) + b"\x00\x00\x00"
                + struct.pack("<H", cid2) + b"\x00" * 8 + b"\x01")
         self.send(0x17, pkt)
         time.sleep(0.5)
-        log.info("[%s] Hop vat pham: %s + %s", self._label,
-                 items.get(tid1, {}).get("name", hex(tid1)), items.get(tid2, {}).get("name", hex(tid2)))
+        log.info("[%s] Hop vat pham: %s(slot%d) + %s(slot%d)", self._label,
+                 items.get(t1, {}).get("name", hex(t1)), i1, items.get(t2, {}).get("name", hex(t2)), i2)
 
     def do_world_boss(self):
         """BOSS THE GIOI (nhiem vu o 2): event teleport (0x20 02 00 08) -> map boss 0x2d ->

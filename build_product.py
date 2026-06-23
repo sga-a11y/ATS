@@ -34,7 +34,7 @@ PY_SOURCES = ["gui.py", "run_party_digioi.py", "bot"]
 DATA_JSON = ["servers.json", "cities.json", "train_maps.json", "train_routes.json",
              "mob_paths.json", "map_gates.json", "pets.json", "pet_hedoanh.json",
              "vantieu_requests.json", "skills_db.json", "junk_scrolls.json", "skills_data.json",
-             "items_gamedata.json", "compound_ids.json"]
+             "items_gamedata.json"]
 
 
 def run(cmd, **kw):
