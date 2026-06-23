@@ -1,0 +1,12 @@
+{
+  "_note": "tid tui -> compound_id (id-hop 0x01xx) dung trong goi HOP (0x17 sub 0e). Compound.dat ma hoa phuc tap khong doc truc tiep duoc -> crack tu capture hop TAY. Bo sung khi co them capture.",
+  "ids": {
+    "0x65b8": "0x016a",
+    "0x65d7": "0x0180",
+    "0x6639": "0x0116",
+    "0x697c": "0x0113",
+    "0x699b": "0x0117",
+    "0x699d": "0x0112",
+    "0x699f": "0x0136"
+  }
+}

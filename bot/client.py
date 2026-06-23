@@ -264,6 +264,32 @@ def _load_gamedata_items() -> dict:
     return _gamedata_items
 
 
+_compound_ids = None
+
+
+def _load_compound_ids() -> dict:
+    """{ tid_int: compound_id_int } tu compound_ids.json - map tid tui -> id-hop dung trong goi HOP."""
+    global _compound_ids
+    if _compound_ids is not None:
+        return _compound_ids
+    import json as _json, os as _os
+    _compound_ids = {}
+    try:
+        from ._appdir import app_dir
+        path = _os.path.join(app_dir(), "compound_ids.json")
+    except Exception:
+        path = "compound_ids.json"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for k, v in _json.load(fh).get("ids", {}).items():
+                tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+                cid = int(v, 16) if isinstance(v, str) and v.lower().startswith("0x") else int(v)
+                _compound_ids[tid] = cid
+    except Exception:
+        pass
+    return _compound_ids
+
+
 def _gift_key(label: str) -> str:
     import datetime
     return f"{label}:{datetime.date.today().isoformat()}"
@@ -1391,41 +1417,30 @@ class GameClient:
         _mark_daily(self._label, "legion")
         log.info("[%s] Nhan qua quan doan hang ngay", self._label)
 
-    # Thuoc cao cap KHONG dung lam nguyen lieu hop (giu lai de danh boss)
-    _COMBINE_EXCLUDE = ("Hương Dũng Ma Dược", "Hương Dũng Đại Dược")
-
     def do_combine_item(self):
-        """HOP VAT PHAM (nhiem vu bingo o 7): hop 2 thuoc HP/SP -> ra item random. Chon 2 LOAI co
-        SO LUONG IT NHAT (gom ca qty=1) de DON sach stack le, tranh tich rac. 2 loai khac nhau OK;
-        neu chi 1 loai thi hop 2 cai cua no (can qty>=2). Tru Huong Dung Ma/Dai Duoc.
-        C2S 0x17: 0e 00 [tid1 2B] 00 00 00 [tid2 2B] 00*8 01. Goi khi o 7 chua xong."""
+        """HOP VAT PHAM (nhiem vu bingo o 7): hop 2 do an/thuoc -> ra item random. HE ID RIENG:
+        goi hop dung COMPOUND_ID (0x01xx) chu KHONG phai tid tui (0x65xx) -> map qua compound_ids.json
+        (crack tu capture, Compound.dat ma hoa). Chon 2 LOAI co SL IT NHAT (don stack le, gom qty=1);
+        chi 1 loai -> hop 2 cai cua no (qty>=2). C2S 0x17: 0e 00 [cid1 2B] 00 00 00 [cid2 2B] 00*8 01."""
+        cmap = _load_compound_ids()
         items = _load_gamedata_items()
-        pots = []   # (qty, tid) thuoc hoi HP hoac SP
-        for tid, qty in self.bag_counts.items():
-            if qty < 1:
-                continue
-            info = items.get(tid)
-            if not info or (info.get("hp", 0) <= 0 and info.get("sp", 0) <= 0):
-                continue
-            if info.get("battle"):     # item CHI dung trong tran (hoi sinh: Phuc Hon/Tu Quang Don) -> KHONG hop
-                continue
-            if any(x in info.get("name", "") for x in self._COMBINE_EXCLUDE):
-                continue
-            pots.append((qty, tid))
+        pots = [(qty, tid) for tid, qty in self.bag_counts.items() if qty >= 1 and tid in cmap]
         pots.sort()   # it nhat truoc
-        if len(pots) >= 2:                  # 2 loai it nhat (don stack le, gom qty=1)
+        if len(pots) >= 2:                  # 2 loai it nhat (don stack le)
             tid1, tid2 = pots[0][1], pots[1][1]
         elif pots and pots[0][0] >= 2:      # chi 1 loai -> hop 2 cai cua no
             tid1 = tid2 = pots[0][1]
         else:
-            log.info("[%s] Hop do: khong du thuoc HP/SP de hop", self._label)
+            log.info("[%s] Hop do: chua co >=2 item hop duoc trong tui (bo sung compound_ids.json)",
+                     self._label)
             return
-        pkt = (b"\x0e\x00" + struct.pack("<H", tid1) + b"\x00\x00\x00"
-               + struct.pack("<H", tid2) + b"\x00" * 8 + b"\x01")
+        cid1, cid2 = cmap[tid1], cmap[tid2]
+        pkt = (b"\x0e\x00" + struct.pack("<H", cid1) + b"\x00\x00\x00"
+               + struct.pack("<H", cid2) + b"\x00" * 8 + b"\x01")
         self.send(0x17, pkt)
         time.sleep(0.5)
-        log.info("[%s] Hop vat pham: %s(0x%x) + %s(0x%x)", self._label,
-                 items[tid1].get("name", ""), tid1, items[tid2].get("name", ""), tid2)
+        log.info("[%s] Hop vat pham: %s + %s", self._label,
+                 items.get(tid1, {}).get("name", hex(tid1)), items.get(tid2, {}).get("name", hex(tid2)))
 
     def do_world_boss(self):
         """BOSS THE GIOI (nhiem vu o 2): event teleport (0x20 02 00 08) -> map boss 0x2d ->
@@ -1526,8 +1541,8 @@ class GameClient:
         if len(lines) >= 6:                   # du 6 -> claim TONG KET (line 7)
             self.send(0x5b, b"\x03\x00\x01\x00\x07" + struct.pack("<H", 0x2f + 6))
             time.sleep(0.3); n += 1
-        log.info("[%s] Nhiem vu hang ngay: %d/9 o xong, claim %d qua (line %s)",
-                 self._label, len(done), n, lines)
+        log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), claim %d qua (line %s)",
+                 self._label, sorted(done), len(done), n, lines)
 
     def _on_friend_gift(self, pkt: bytes):
         """Parse S2C 0x0e ban be:
@@ -1698,8 +1713,11 @@ class GameClient:
         runs_target = getattr(config, "DUNGEON_RUNS_PER_DAY", 2)
         today = datetime.date.today().isoformat()
         # TIN HIEU SERVER THAT: o 1 nhiem vu (solo dungeon 2 lan) DA XONG -> chac chan du luot.
-        # _quest_cells da duoc claim_daily_quests query luc login (chay TRUOC dungeon). Dang tin
-        # hon dem local (khong detect duoc luot da danh tay/session truoc).
+        # Dang tin hon dem local (khong detect duoc luot da danh tay/session truoc). Neu chua co
+        # trang thai quest (vd nhanh digioi goi dungeon TRUOC claim_daily_quests) -> tu query.
+        if not self._quest_cells:
+            try: self._query_quests()
+            except Exception: pass
         if 1 in self._quest_cells:
             _save_checkin(self._label, "dungeon", today, runs_target)
             log.info("[%s] Dungeon: nhiem vu o1 (solo 2 lan) DA XONG theo server -> bo qua", self._label)
@@ -1708,6 +1726,11 @@ class GameClient:
         count = st["day"] if st.get("date") == today else 0
         if self.dungeon_runs_today is not None:      # server-truth (chi co SAU khi danh) -> sync
             count = max(count, self.dungeon_runs_today)
+        # SERVER (o1) noi CHUA xong nhung local bao du -> local STALE -> danh lai (>=1 luot).
+        if self._quest_cells and 1 not in self._quest_cells and count >= runs_target:
+            log.info("[%s] Dungeon: o1 chua xong (server) nhung local bao %d/%d -> local stale, danh lai",
+                     self._label, count, runs_target)
+            count = runs_target - 1
         if count >= runs_target:
             _save_checkin(self._label, "dungeon", today, count)
             log.info("[%s] Dungeon: da du %d/%d luot hom nay (local) -> bo qua "

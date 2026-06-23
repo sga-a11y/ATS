@@ -403,6 +403,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     # reset ready_members de flow train ben duoi dung lai tu dau
                     with st["lock"]: st["ready_members"].discard(username)
             if is_leader:
+                if not self_map_ok and not c.running:
+                    # LEADER MAT KET NOI (vd disconnect giua route) -> KHONG phai "sai map".
+                    _reason("leader MAT KET NOI khi dang route toi train map (map cuoi %s)" % c.current_map)
+                    log.warning("[%s] (LEADER) MAT KET NOI khi dang di chuyen toi train map %s "
+                                "-> ca party thoat.", label, sc)
+                    st["leader_bad"].set()
+                    try: c.close()
+                    except Exception: pass
+                    if c in _clients: _clients.remove(c)
+                    return
                 if not self_map_ok:
                     # LEADER sai map + khong route/route loi -> HUY ca party (bao member thoat het)
                     _reason("leader dung SAI MAP (o %s, can train map %s) - khong route hoac route loi"
@@ -416,6 +426,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     _daily_then_quit(); return
                 st["leader_ok"].set()   # leader ok -> member duoc tiep tuc
             else:
+                if not self_map_ok and not c.running:
+                    _reason("member MAT KET NOI khi dang route (map cuoi %s)" % c.current_map)
+                    log.warning("[%s] (member) MAT KET NOI khi dang di chuyen toi train map -> thoat.", label)
+                    _quit(); return
                 if not self_map_ok:
                     _reason("member dung SAI MAP (o %s, can train map %s)" % (c.current_map, sc))
                     log.warning("[%s] (member) NHAN VAT DANG DUNG O MAP %s, NHUNG CONFIG TRAIN MAP=%s "
@@ -433,10 +447,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             _quit(); return
                         time.sleep(0.5)
                     if st["leader_bad"].is_set():
-                        _reason("leader party dung sai map -> ca party bi huy")
-                        log.warning("[%s] (member) LEADER party dung SAI MAP (xem dong LEADER o tren) "
-                                    "-> ca party huy -> THOAT. CACH SUA: dua NHAN VAT LEADER ve dung "
-                                    "train map roi thoat game tai do.", label)
+                        _reason("leader party loi (sai map hoac mat ket noi) -> ca party bi huy")
+                        log.warning("[%s] (member) LEADER party LOI (sai map / mat ket noi - xem dong "
+                                    "LEADER o tren) -> ca party huy -> THOAT.", label)
                         _quit(); return
             # --- MAP-TRAIN: CA PARTY ve cung 1 SAFE = safe GAN diem quai leader chon (de gan nhau
             #     -> member vao tran chung voi leader). Leader chon diem quai SOM + bao rally_point. ---
