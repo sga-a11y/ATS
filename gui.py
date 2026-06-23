@@ -952,7 +952,9 @@ class PartyConfigFrame(ttk.Frame):
                                         width=24, values=names)
             self.city_cb.pack(side="left")
             idx = next((i for i, (cid, _f, _n) in enumerate(self.cities)
-                        if cid == self._preset.get("start_city_id")), 0)
+                        if cid == self._preset.get("start_city_id")), None)
+            if idx is None:   # chua co preset (vd vua doi tu mode khac sang) -> mac dinh Ng.Thanh (12061)
+                idx = next((i for i, (cid, _f, _n) in enumerate(self.cities) if cid == 12061), 0)
             if names:
                 self.city_var.set(names[idx])
         elif mode == "digioi":
