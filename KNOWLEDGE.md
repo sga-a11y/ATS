@@ -386,6 +386,39 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 
 **Pet skill don (dungeon):** pet dung skill **12009 (0x2ee9)** = danh don (them vao pets.json theo pet_id khi can).
 
+## 7L. TÚI ĐỒ & THAO TÁC VẬT PHẨM — NGUYÊN TẮC SLOT (CỰC QUAN TRỌNG, ĐỪNG NHẦM LẦN NỮA)
+
+> **MỌI thao tác lên item (dùng/hợp/đổi trang bị/support...) đều tham chiếu theo SLOT TÚI ĐỒ
+> (vị trí item trong túi), KHÔNG phải theo item_id (tid gamedata 0x65xx...).**
+
+**`tid` (id gamedata, vd 0x65c2 = Thịt Dê Khô) CHỈ để client tra TÊN/HP/SP từ `items_gamedata.json`
+(hiển thị). KHÔNG BAO GIỜ gửi tid lên server cho thao tác.** Server định danh item trong túi theo
+**vị trí slot** mà nó đã gửi cho client.
+
+### Túi đồ (bot đọc → `self.bag_slots`)
+- S2C `0x17` sub `05 00`: snapshot túi. Record 36B: `[idx 1B][tid 2B LE][count 4B LE][29 pad]`.
+- `bag_slots[idx] = [tid, count]` ; `bag_counts[tid] = tổng`. `idx` = **slot** (1 byte, 0..255).
+
+### Các thao tác đã verify (đều dùng SLOT, đọc LIVE từ bag_slots)
+| Thao tác | Gói C2S | Mã hóa slot |
+|---|---|---|
+| Dùng item (heal HP/SP, túi sự kiện) — `use_slot` | `0x17` `0f 00 [slot 1B][qty 1B] 00*4 [target 1B] 00` | slot thô (1B) |
+| **Hợp vật phẩm** — `do_combine_item` | `0x17` `0e 00 [cid1 2B] 00 00 00 [cid2 2B] 00*8 01` | **cid = 0x0100 + slot** |
+| Túi Vật Liệu Sự Kiện — `use_event_bags` | (dùng `use_slot`) | slot thô |
+
+### HỆ QUẢ (lý do từng tốn cả 1 session để hiểu)
+- **Slot ĐỘNG**: đổi khi túi sắp xếp lại (item bị tiêu/thêm). VD Măng Khô qua 3 phiên = cid
+  0x116 / 0x117 / 0x112 (vì slot 0x16/0x17/0x12 đổi). → **PHẢI đọc slot LIVE từ `bag_slots`,
+  TUYỆT ĐỐI KHÔNG hardcode id/cid tĩnh** (đã từng làm `compound_ids.json` map tid→cid = SAI hoàn toàn).
+- Gói hợp dùng `cid = 0x100 + slot`, KHÔNG phải tid túi. Compound.dat (công thức hợp) mã hóa
+  phức tạp, **KHÔNG cần đụng** — chỉ cần gửi 0x100+slot của 2 item là server tự xử.
+- **Item nào "đánh hết" trong túi** (item_id biến mất khỏi bag_slots) → KHÔNG dùng được nữa.
+
+### LÀM ĐÚNG TỪ ĐẦU khi thêm thao tác item mới (phân giải pet rác, đổi trang bị, support...)
+1. Tìm SLOT của item trong `bag_slots` (lọc theo tid để xác định đúng item).
+2. Gửi lệnh theo SLOT đó (tái dùng `use_slot` hoặc biến thể `0x100+slot` cho hợp).
+3. **Đừng tự chế id** — bám cơ chế slot có sẵn (`use_slot` đã đúng từ vụ HP/SP).
+
 ## 8. GAME MECHANICS
 
 | Mechanic | Mô tả |
