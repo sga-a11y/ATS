@@ -109,7 +109,7 @@ def copy_data():
         "channel": 2,
         "parties": [{
             "server": "trieu_van", "mode": "stand", "start_city_id": 0,
-            "mob_index": -1, "city_flag": 0, "do_dungeon": True, "leaders": [],
+            "mob_index": -1, "city_flag": 0, "do_daily": True, "leaders": [],
             "accounts": [
                 {"u": "acc1", "p": "pass1", "on": True},
                 {"u": "acc2", "p": "pass2", "on": True},

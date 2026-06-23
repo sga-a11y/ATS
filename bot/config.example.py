@@ -275,9 +275,15 @@ def _load_accounts_json():
     f = os.path.join(_base_dir(), "accounts.json")
     try:
         with open(f, encoding="utf-8") as fh:
-            return json.load(fh)
+            d = json.load(fh)
     except Exception:
         return None
+    # accounts.json co the la dang PROFILES {active, profiles:{ten:{channel,parties,...}}} ->
+    # rut bo cau hinh DANG CHON. Dang FLAT cu {channel,parties} -> dung nguyen (backward compat).
+    if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
+        profs = d["profiles"]
+        return profs.get(d.get("active")) or (next(iter(profs.values())) if profs else {})
+    return d
 _aj = _load_accounts_json()
 if _aj is not None:
     try:

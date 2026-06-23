@@ -22,6 +22,38 @@ from bot._appdir import app_dir as _app_dir   # thu muc goc (dev=project, frozen
 
 ACCOUNTS_JSON = os.path.join(_app_dir(), "accounts.json")
 
+
+# Party MAU cho profile moi (placeholder de user thay = acc that)
+_DEFAULT_PARTY = {"server": "trieu_van", "mode": "stand", "start_city_id": 0, "mob_index": -1,
+                  "city_flag": 0, "do_daily": True, "leaders": [],
+                  "accounts": [{"u": "acc1", "p": "pass1", "on": True},
+                               {"u": "acc2", "p": "pass2", "on": True},
+                               {"u": "acc3", "p": "pass3", "on": True}]}
+
+
+def _load_profiles():
+    """Doc accounts.json -> {active, profiles:{ten:{channel,party_leaders,parties}}}.
+    Dang FLAT cu {channel,parties} -> MIGRATE: 'Cau hinh 1' = config HIEN TAI cua user (active),
+    'Cau hinh 2' = template mac dinh (1 party placeholder) de user tu dien thanh bo khac."""
+    try:
+        with open(ACCOUNTS_JSON, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        d = {"channel": 2, "parties": []}
+    if isinstance(d, dict) and isinstance(d.get("profiles"), dict) and d["profiles"]:
+        return d
+    import copy
+    ch = d.get("channel", 2) if isinstance(d, dict) else 2
+    return {"active": "Cấu hình 1",
+            "profiles": {"Cấu hình 1": d,
+                         "Cấu hình 2": {"channel": ch, "parties": [copy.deepcopy(_DEFAULT_PARTY)]}}}
+
+
+def _save_profiles(prof):
+    """Ghi {active, profiles} vao accounts.json (bot tu rut profile active qua config._load_accounts_json)."""
+    with open(ACCOUNTS_JSON, "w", encoding="utf-8") as f:
+        json.dump(prof, f, ensure_ascii=False, indent=2)
+
 # ---------------- Log -> queue (de GUI hien) ----------------
 _log_queue = queue.Queue()
 
@@ -684,7 +716,7 @@ class BotGUI(tk.Tk):
             for u, pidx in config.ACCOUNT_PARTY.items():
                 pc = config.PARTY_CONFIG.get(pidx, {})
                 s[u] = (pc.get("server"), pc.get("mode"), pc.get("start_city_id"),
-                        pc.get("mob_index"), pc.get("city_flag"), pc.get("do_dungeon"))
+                        pc.get("mob_index"), pc.get("city_flag"), pc.get("do_daily", pc.get("do_dungeon")))
             return s
         old = _sigs()
         importlib.reload(config)   # doc lai accounts.json -> PARTIES/PARTY_CONFIG moi
@@ -777,9 +809,10 @@ class PartyConfigFrame(ttk.Frame):
         self.leaders_var = tk.StringVar(value=", ".join(wl) if isinstance(wl, list) else str(wl or ""))
         ttk.Entry(nlrow, textvariable=self.leaders_var).pack(side="left", fill="x", expand=True, padx=4)
 
-        self.dungeon_var = tk.BooleanVar(value=self._preset.get("do_dungeon", True))
-        ttk.Checkbutton(self, text="Đánh Phó Bản đơn (lượt 1 free, lượt 2+ mua vàng)",
-                        variable=self.dungeon_var).pack(anchor="w")
+        self.daily_var = tk.BooleanVar(value=self._preset.get("do_daily", self._preset.get("do_dungeon", True)))
+        ttk.Checkbutton(self, text="Làm nhiệm vụ hàng ngày (bingo 9 ô: phó bản đơn, boss thế giới, "
+                        "gacha, hợp đồ... + nhận thưởng)",
+                        variable=self.daily_var).pack(anchor="w")
 
         ttk.Label(self, text="Acc (TICK = dùng, BỎ TICK = bỏ qua). Dòng đầu đã tick = chủ PT "
                   "(trừ khi tick ô trên). TỐI ĐA 5 acc/party:").pack(anchor="w")
@@ -983,7 +1016,7 @@ class PartyConfigFrame(ttk.Frame):
                    self.servers[0][0] if self.servers else "trieu_van")
         leaders = [x.strip() for x in self.leaders_var.get().split(",") if x.strip()]
         return {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
-                "city_flag": city_flag, "do_dungeon": bool(self.dungeon_var.get()),
+                "city_flag": city_flag, "do_daily": bool(self.daily_var.get()),
                 "leaders": leaders, "accounts": accs}
 
 
@@ -1151,7 +1184,13 @@ class ConfigDialog(tk.Toplevel):
         self.title("Cấu hình party")
         self.geometry("640x600")
         self.transient(master); self.grab_set()
-        data = self._load()
+        # PROFILES: nhieu bo cau hinh, doi 1 phat. active = bo dang dung (= accounts.json).
+        self._prof = _load_profiles()
+        self._active = self._prof.get("active") or next(iter(self._prof["profiles"]))
+        if self._active not in self._prof["profiles"]:
+            self._active = next(iter(self._prof["profiles"]))
+        self._orig_active = self._active
+        data = self._prof["profiles"].get(self._active) or self._load()
         tm_raw = _load_json("train_maps.json").get("maps", {})
         self.train_maps = [(int(k), v.get("name", k), v.get("mobs", [])) for k, v in tm_raw.items()]
         ct_raw = _load_json("cities.json").get("cities", {})
@@ -1173,6 +1212,15 @@ class ConfigDialog(tk.Toplevel):
         self.gl_btn.pack(side="left", padx=8)
         self._update_gl_btn()
 
+        # PROFILE switcher (ben phai white-list): doi 1 phat ca bo party giua cac cau hinh.
+        self.prof_var = tk.StringVar(value=self._active)
+        self.prof_cb = ttk.Combobox(top, textvariable=self.prof_var, width=14, state="readonly",
+                                    values=list(self._prof["profiles"].keys()))
+        self.prof_cb.pack(side="left", padx=(8, 0))
+        self.prof_cb.bind("<<ComboboxSelected>>", self._on_profile_switch)
+        ttk.Button(top, text="➕", width=3, command=self._add_profile).pack(side="left", padx=(2, 0))
+        ttk.Button(top, text="🗑", width=3, command=self._del_profile).pack(side="left")
+
         self.nb = ttk.Notebook(self); self.nb.pack(fill="both", expand=True, padx=6, pady=4)
         self.nb.bind("<<NotebookTabChanged>>", self._on_cfg_group_tab)
         self.frames = []           # entries (theo thu tu pidx): {holder, preset, cfg, sub, gidx}
@@ -1185,11 +1233,15 @@ class ConfigDialog(tk.Toplevel):
         ttk.Button(bar, text="Hủy", command=self.destroy).pack(side="right", padx=3)
 
     def _load(self):
+        """Bo cau hinh DANG CHON (rut tu accounts.json dang profiles, hoac flat cu)."""
         try:
             with open(ACCOUNTS_JSON, encoding="utf-8") as f:
-                return json.load(f)
+                d = json.load(f)
         except Exception:
             return {"channel": 2, "parties": []}
+        if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
+            return d["profiles"].get(d.get("active")) or {"channel": 2, "parties": []}
+        return d
 
     PARTIES_PER_GROUP = 10
 
@@ -1285,6 +1337,60 @@ class ConfigDialog(tk.Toplevel):
         del parties[cur]
         self._build_groups(parties, min(cur, len(parties) - 1))
 
+    # ---------- PROFILES (nhieu bo cau hinh, doi 1 phat) ----------
+    def _collect_data(self):
+        """Gom state UI hien tai -> {channel, party_leaders, parties} (bo party rong)."""
+        try:
+            ch = int(self.ch_var.get().strip() or 2)
+        except ValueError:
+            ch = 2
+        parties = [p for p in self._snapshot() if p.get("accounts")]
+        gleaders = [x.strip() for x in self.gleaders_var.get().split(",") if x.strip()]
+        return {"channel": ch, "party_leaders": gleaders, "parties": parties}
+
+    def _apply_data_to_ui(self, d):
+        """Nap 1 bo cau hinh vao UI (kenh + white-list + rebuild tab party)."""
+        self.ch_var.set(str(d.get("channel", 2)))
+        gl = d.get("party_leaders", [])
+        self.gleaders_var.set(", ".join(gl) if isinstance(gl, list) else str(gl or ""))
+        self._update_gl_btn()
+        self._build_groups(d.get("parties") or [{}], 0)
+
+    def _on_profile_switch(self, event=None):
+        """Doi profile trong dropdown: luu state hien tai vao profile cu (in-memory) -> nap profile moi."""
+        new = self.prof_var.get()
+        if new == self._active:
+            return
+        self._prof["profiles"][self._active] = self._collect_data()   # giu sua chua luu
+        self._active = new
+        self._apply_data_to_ui(self._prof["profiles"].get(new, {"channel": 2, "parties": []}))
+
+    def _add_profile(self):
+        name = simpledialog.askstring("Thêm cấu hình", "Tên cấu hình mới:", parent=self)
+        if not name or not name.strip():
+            return
+        name = name.strip()
+        if name in self._prof["profiles"]:
+            messagebox.showerror("Lỗi", "Tên cấu hình đã tồn tại."); return
+        import copy
+        self._prof["profiles"][self._active] = self._collect_data()       # luu profile dang sua
+        self._prof["profiles"][name] = copy.deepcopy(self._collect_data())  # bo moi = copy hien tai
+        self._active = name
+        self.prof_cb.configure(values=list(self._prof["profiles"].keys()))
+        self.prof_var.set(name)
+        # state giu nguyen (la copy) -> khong rebuild
+
+    def _del_profile(self):
+        if len(self._prof["profiles"]) <= 1:
+            messagebox.showinfo("Không xóa được", "Phải còn ít nhất 1 cấu hình."); return
+        if not messagebox.askyesno("Xóa cấu hình", f"Xóa cấu hình '{self._active}'?"):
+            return
+        del self._prof["profiles"][self._active]
+        self._active = next(iter(self._prof["profiles"]))
+        self.prof_cb.configure(values=list(self._prof["profiles"].keys()))
+        self.prof_var.set(self._active)
+        self._apply_data_to_ui(self._prof["profiles"][self._active])
+
     def _update_gl_btn(self):
         n = len([x for x in self.gleaders_var.get().split(",") if x.strip()])
         self.gl_btn.configure(text=f"🛡 White list Leader ({n})")
@@ -1303,12 +1409,14 @@ class ConfigDialog(tk.Toplevel):
         def _save_gl():
             names = [ln.strip() for ln in txt.get("1.0", "end").splitlines() if ln.strip()]
             self.gleaders_var.set(", ".join(names))
-            # ghi ngay vao accounts.json (chi update party_leaders, giu cac key khac)
-            d = self._load() or {}
-            d["party_leaders"] = names
+            # ghi ngay vao accounts.json: chi update party_leaders cua profile DANG CHON, giu cac key khac
             try:
-                with open(ACCOUNTS_JSON, "w", encoding="utf-8") as f:
-                    json.dump(d, f, ensure_ascii=False, indent=2)
+                d = _load_profiles()
+                prof = d["profiles"].setdefault(self._active, {"channel": 2, "parties": []})
+                prof["party_leaders"] = names
+                d["active"] = self._active
+                _save_profiles(d)
+                self._prof = d
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không lưu được: {e}"); return
             self._update_gl_btn()
@@ -1334,8 +1442,18 @@ class ConfigDialog(tk.Toplevel):
                 return
         gleaders = [x.strip() for x in self.gleaders_var.get().split(",") if x.strip()]
         data = {"channel": ch, "party_leaders": gleaders, "parties": parties}
-        with open(ACCOUNTS_JSON, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        # CANH BAO: doi profile (active != luc mo dialog) khi DANG CHAY -> stop het acc thay doi.
+        switching = (self._active != self._orig_active)
+        running = bool(getattr(ctrl, "account_clients", {}))
+        if switching and running:
+            if not messagebox.askyesno("Đổi cấu hình",
+                    f"Đang chạy. Đổi sang cấu hình '{self._active}' sẽ STOP các acc bị thay đổi "
+                    "rồi áp dụng. Tiếp tục?"):
+                return
+        # luu vao profile dang chon -> ghi ca {active, profiles} vao accounts.json (bot tu rut active)
+        self._prof["profiles"][self._active] = data
+        self._prof["active"] = self._active
+        _save_profiles(self._prof)
         master = self.master
         self.destroy()
         if hasattr(master, "reload_config"):

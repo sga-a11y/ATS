@@ -211,15 +211,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         c.claim_friend_gifts()  # tang qua tat ca ban + nhan qua ban tang (hang ngay)
         c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu
         next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
-        # gacha pet(o6)/card(o4) + hop do(o7) gio nam TRONG claim_daily_quests (status-driven theo o)
-        c.claim_daily_quests()   # nhiem vu bingo 3x3: query o chua xong -> gacha/hop -> claim hang/cot
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
         sc = pcfg.get("start_city_id", getattr(config, "START_CITY_ID", 0))
         mob_index = pcfg.get("mob_index", 0)
         city_flag = pcfg.get("city_flag", 0)
-        do_dungeon = pcfg.get("do_dungeon", True)   # checkbox "Danh daily dungeon" moi party
+        # checkbox "Lam nhiem vu hang ngay" (bingo 9 o + dungeon). Fallback key cu "do_dungeon".
+        do_daily = pcfg.get("do_daily", pcfg.get("do_dungeon", True))
         tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
         # mode: digioi | train | city (tap trung ve thanh) | stand (dung yen) | cleanbag
         mode = pcfg.get("mode")
@@ -229,6 +228,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         train_on_map = (mode == "train") and (tm is not None)
         is_digioi = (mode == "digioi")
         log.info("[%s] (%s) MODE=%s start_city=%s", label, role, mode, sc)
+
+        # NHIEM VU BINGO (mode KHAC digioi): VE CHO AN TOAN TRUOC roi moi lam dailies (tranh dung
+        # giua o quai lam dailies; world boss tu teleport di roi ve Trac Quan; mode positioning ben
+        # duoi se dua ve dung cho). Mode DIGIOI lam rieng (vao DG truoc - xem nhanh ben duoi).
+        if not is_digioi and do_daily:
+            if mode == "city":
+                try: c.go_to_town(sc, city_flag)                       # ve thanh config
+                except Exception: pass
+            elif train_on_map:
+                if login_map == sc and tm and tm.get("safe"):
+                    c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))   # dang o bai -> ra diem safe
+                else:
+                    try: c.teleport(12001, 0)                          # sai map -> ve Trac Quan (route keo ra sau)
+                    except Exception: pass
+            elif mode == "stand" and tm and tm.get("safe") and login_map == sc:
+                c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))       # stand map co safe -> ra safe
+            # stand map la / khong co safe -> lam dailies tai cho (ke me)
+            c.claim_daily_quests()
 
         # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
         # DG: phai goi TRUOC khi vao DG (doi kenh trong DG se DA ra khoi DG!).
@@ -290,7 +307,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             # Sai map train -> KHONG train, nhung VAN lam not viec hang ngay (check-in da xong
             # o tren; con solo dungeon) roi moi quit.
             def _daily_then_quit():
-                if do_dungeon:
+                if do_daily:
                     try:
                         c.do_daily_dungeon()
                     except Exception as e:
@@ -311,7 +328,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                         # DANH DUNGEON NGAY TAI THANH (solo, khong can party) -> khoi phai keo
                         # toi bai roi moi pha party danh dungeon roi gom lai. Dungeon co the dump
                         # ve 12000 -> teleport ve thanh lai roi moi gom party.
-                        if do_dungeon:
+                        if do_daily:
                             try:
                                 c.do_daily_dungeon()
                             except Exception as e:
@@ -451,9 +468,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                      label, role, sc, rally)
             c.navigate_to(*_jitter(rally))
             # SOLO daily dungeon o MAP-TRAIN: TAM TAT (het luot -> bi dump ve 12000, pha map-train;
-            # Bat/tat bang checkbox "Danh daily dungeon" cua party (do_dungeon).
+            # Bat/tat bang checkbox "Danh daily dungeon" cua party (do_daily).
             # via_route -> da danh dungeon o thanh roi, BO QUA (khoi pha map-train + cho barrier).
-            if do_dungeon and not via_route:
+            if do_daily and not via_route:
                 with st["lock"]:
                     st["started_train"] += 1
                 try:
@@ -497,10 +514,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 log.info("[%s] (%s) DG da HET GIO hom nay (%d/%d phut, doc tu login) -> khong vao",
                          label, role, c.digioi_minutes, DIGIOI_LIMIT)
                 _reason("het gio Di Gioi hom nay (doc tu login)")
-                if do_dungeon:
+                if do_daily:
                     try: c.do_daily_dungeon()
                     except Exception as e:
                         log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
+                # khong vao DG -> lam FULL nhiem vu (nhe + boss) tai cho roi dong
+                if do_daily:
+                    try: c.claim_daily_quests(heavy=True)
+                    except Exception as e:
+                        log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
@@ -508,6 +530,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             # 1) PHAI VAO DUOC DG TRUOC (xac nhan in_di_gioi) roi MOI chuyen kenh.
             if not c.in_di_gioi() and not c.enter_di_gioi_safe():
                 log.warning("[%s] (%s) khong vao duoc DG (het gio?) -> TAT acc nay", label, role)
+                if do_daily:
+                    try: c.claim_daily_quests(heavy=True)   # khong vao DG -> lam full quest roi dong
+                    except Exception as e:
+                        log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
@@ -515,11 +541,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             # 2) DA o trong DG -> dong bo kenh (gom ca party ve cung instance DG).
             #    Doi kenh trong DG VAN o trong DG (khong bi van ra).
             do_channel_sync()
+            # 3) DA o trong DG an toan -> lam nhiem vu NHE (gacha/hop + claim hang/cot du). KHONG
+            #    lam o nang (boss teleport se van ra khoi DG) -> de SAU khi het gio DG.
+            if do_daily:
+                c.claim_daily_quests(heavy=False)
         else:
             # --- CITY (tap trung ve thanh) / STAND (dung yen) / CLEANBAG ---
             # SOLO daily dungeon TRUOC (neu bat). Dungeon co the bi DUMP ve 12000 -> lam truoc
             # roi MOI ve thanh -> dam bao dung dung thanh tap trung du co bi dump.
-            if do_dungeon:
+            if do_daily:
                 try:
                     c.do_daily_dungeon()
                 except Exception as e:
@@ -974,8 +1004,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     # khoi DG -> con o trong DG thi ngoi i, khong bao gio danh dungeon.
                     if remain <= 0:
                         log.warning("[%s] (%s) HET GIO DG (van trong DG) -> thoat + solo daily dungeon%s",
-                                    label, role, "" if do_dungeon else " (tat dungeon)")
-                        if do_dungeon:
+                                    label, role, "" if do_daily else " (tat dungeon)")
+                        if do_daily:
                             try: c.do_daily_dungeon()
                             except Exception as e:
                                 log.warning("[%s] loi daily dungeon sau DG: %s", label, e)
@@ -995,9 +1025,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             out_cnt = 0
                         else:
                             log.warning("[%s] (%s) HET GIO DG that -> thoat party%s",
-                                        label, role, " + solo daily dungeon" if do_dungeon else "")
-                            if do_dungeon:
+                                        label, role, " + solo daily dungeon" if do_daily else "")
+                            if do_daily:
                                 c.do_daily_dungeon()
+                                # XONG DG -> nhiem vu NANG (boss o2 + claim not hang/cot + tong ket).
+                                # o1 dungeon vua danh o tren; o5 team dungeon chua co.
+                                try: c.claim_daily_quests(heavy=True)
+                                except Exception as e:
+                                    log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
                             break
                 else:
                     out_cnt = 0

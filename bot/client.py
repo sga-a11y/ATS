@@ -1496,23 +1496,26 @@ class GameClient:
         time.sleep(1.2)
         return self._quest_cells
 
-    def claim_daily_quests(self):
-        """STATUS-DRIVEN: query trang thai 9 o -> o nao CHUA xong (bot lam duoc) thi LAM
-        (gacha pet=o6, gacha card=o4, hop do=o7 - moi cai TU check du dieu kien) -> re-query ->
-        claim hang/cot du 3 o (C2S 0x5b 03 00 01 00 [line][id]) + TONG KET neu du 6.
+    def claim_daily_quests(self, heavy: bool = True):
+        """STATUS-DRIVEN: query 9 o -> o CHUA xong (bot lam duoc) thi LAM -> re-query -> claim
+        hang/cot du 3 o (0x5b 03 00 01 00 [line][id]) + TONG KET neu du 6.
+          heavy=True (mac dinh): lam ca nhiem vu NANG (boss the gioi o2 - teleport di) + nhe.
+          heavy=False: CHI nhiem vu NHE (gacha o4/o6, hop o7 - khong roi cho) + claim. Dung cho
+            mode DI GIOI (goi sau khi VAO DG, tranh boss teleport van ra khoi DG; o1/o2/o5 nang
+            se claim_daily_quests(heavy=True) goi SAU khi xong DG).
         Chay moi login: o da xong -> bo qua; gacha thieu xu lan truoc -> login sau tu retry."""
         done = self._query_quests()
         # lam cac nhiem vu con thieu (gacha tu check xu, hop tu check nguyen lieu)
         acted = False
         if 6 not in done:
-            self.claim_gacha_pet();  acted = True   # o 6 = gacha pet
+            self.claim_gacha_pet();  acted = True   # o 6 = gacha pet (NHE)
         if 4 not in done:
-            self.claim_gacha_card(); acted = True   # o 4 = gacha card
+            self.claim_gacha_card(); acted = True   # o 4 = gacha card (NHE)
         if 7 not in done:
-            self.do_combine_item();  acted = True   # o 7 = hop vat pham
-        if 2 not in done:
-            self.do_world_boss();    acted = True   # o 2 = boss the gioi (event - co the fail)
-        # (Phase 2 con lai: o 5 = team dungeon)
+            self.do_combine_item();  acted = True   # o 7 = hop vat pham (NHE)
+        if heavy and 2 not in done:
+            self.do_world_boss();    acted = True   # o 2 = boss the gioi (NANG - teleport, event)
+        # (o1 dungeon = do_daily_dungeon rieng; o5 team dungeon = chua co - deu NANG)
         if acted:
             done = self._query_quests()   # refresh sau khi lam
         lines = [L for L, cells in self._Q_LINES.items() if all(c in done for c in cells)]
