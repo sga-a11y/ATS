@@ -1807,18 +1807,26 @@ class GameClient:
     EVENT_BAG_ID = 0xb257
     EVENT_BAG_MIN = 100
     EVENT_BAG_USE = 100
+    EVENT_BAG_MAX_TIMES = 5   # toi da 5 lan (500 cai) 1 login
 
     def use_event_bags(self):
-        """Login: neu trong tui co >= EVENT_BAG_MIN tui Vat Lieu Su Kien -> dung EVENT_BAG_USE cai
-        (C2S 0x17 voi qty). Batch 1 lenh."""
+        """Login: dung Tui Vat Lieu Su Kien theo BOI cua 100, toi da 5 lan. So lan = min(co//100, 5)
+        (>=100&<200 -> 1 lan; >=200&<300 -> 2 lan; ...; >=500 -> 5 lan). Moi lan 1 lenh 100 cai."""
         slot = next((s for s, (tid, cnt) in self.bag_slots.items()
                      if tid == self.EVENT_BAG_ID and cnt >= self.EVENT_BAG_MIN), None)
         if slot is None:
             return
         cnt = self.bag_slots[slot][1]
-        if self.use_slot(slot, qty=self.EVENT_BAG_USE):
-            log.info("[%s] dung %d Tui Vat Lieu Su Kien (slot %d, co %d)",
-                     self._label, self.EVENT_BAG_USE, slot, cnt)
+        times = min(cnt // self.EVENT_BAG_USE, self.EVENT_BAG_MAX_TIMES)
+        used = 0
+        for _ in range(times):
+            if not self.use_slot(slot, qty=self.EVENT_BAG_USE):
+                break
+            used += 1
+            time.sleep(0.5)   # cho server xu ly truoc lenh ke
+        if used:
+            log.info("[%s] dung %d Tui Vat Lieu Su Kien (%d lan x%d, co %d)",
+                     self._label, used * self.EVENT_BAG_USE, used, self.EVENT_BAG_USE, cnt)
 
     def log_bag(self):
         """In tui theo SLOT, moi slot ghi ro la item KHAI (items_known.json) / HOC (probe) / CHUA BIET.
