@@ -261,6 +261,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             # stand map la / khong co safe -> lam dailies tai cho (ke me)
             c.claim_daily_quests()
 
+        # BARRIER login-dailies (mode KHAC digioi): CHO CA PARTY xong daily quest (world boss cham
+        # + teleport ve Trac Quan) TRUOC khi sync kenh + lap party. Tranh leader sync kenh/moi khi
+        # member dang lam daily -> member sai kenh / leader train 1 minh. (digioi: heavy hoan toi
+        # cuoi DG nen khong can.)
+        if not is_digioi:
+            with st["lock"]:
+                st["dailies_done"] += 1
+            expected = len(party_accounts(pidx))
+            t0 = time.time()
+            while time.time() - t0 < 300:   # cho toi 5p (world boss event ~2-3p)
+                if _stopped() or not c.running:
+                    break
+                with st["lock"]:
+                    if st["dailies_done"] >= expected:
+                        break
+                time.sleep(1)
+            log.info("[%s] (%s) xong daily login (%d/%d acc) -> sync kenh + lap party",
+                     label, role, st["dailies_done"], expected)
+
         # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
         # DG: phai goi TRUOC khi vao DG (doi kenh trong DG se DA ra khoi DG!).
         # Map-train: goi sau khi ve safe (doi kenh tren map thuong khong sao).
@@ -1144,6 +1163,7 @@ def start_party(pidx, stagger=1.5):
         st["ready_members"].clear()
         st["started_train"] = 0
         st["dungeon_done"] = 0
+        st["dailies_done"] = 0       # barrier: so acc da xong daily quest login (cho leader cho)
         st["map_results"] = {}       # reset barrier map cho lan chay nay
         st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
     for u, p, is_leader, is_picker in party_accounts(pidx):
