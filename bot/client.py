@@ -423,6 +423,7 @@ class GameClient:
         self.sock = None
         self.recv_buf = b""
         self._recent_sends = collections.deque(maxlen=40)  # (op, hex) - dump khi bi kick de debug
+        self._recent_recvs = collections.deque(maxlen=40)  # (ts, op, hex) goi server gui - debug kick
         self.running = False
         self.state = BattleState()
 
@@ -614,9 +615,11 @@ class GameClient:
                 break
             if not data:
                 log.warning("[%s] Server dong ket noi", self._label or self._username)
-                # DUMP 12 goi gui gan nhat -> tim goi gay kick (vd tren Tao Thao)
+                # DUMP 12 goi gui + 12 goi NHAN gan nhat -> tim goi gay kick
                 for ts, op, hx in list(self._recent_sends)[-12:]:
                     log.warning("[%s]   gui-cuoi %s 0x%02x %s", self._label, ts, op, hx)
+                for ts, op, hx in list(self._recent_recvs)[-12:]:
+                    log.warning("[%s]   nhan-cuoi %s 0x%02x %s", self._label, ts, op, hx)
                 self.server_closed = True   # server CHU DONG dong (rot/bao tri/kick) - khong phai STOP
                 self.running = False   # rot ket noi -> dung MOI vong lap
                 break
@@ -624,6 +627,7 @@ class GameClient:
             pkts, consumed = protocol.parse_stream(self.recv_buf)
             self.recv_buf = self.recv_buf[consumed:]
             for opcode, pkt in pkts:
+                self._recent_recvs.append((time.strftime("%H:%M:%S"), opcode, pkt.hex()[:60]))
                 try:
                     self._dispatch(opcode, pkt)
                 except Exception as e:
@@ -1517,8 +1521,11 @@ class GameClient:
             self.claim_gacha_card(); acted = True   # o 4 = gacha card (NHE)
         if 7 not in done:
             self.do_combine_item();  acted = True   # o 7 = hop vat pham (NHE)
-        if heavy and 2 not in done:
-            self.do_world_boss();    acted = True   # o 2 = boss the gioi (NANG - teleport, event)
+        # o2 boss the gioi TAM TAT: goi teleport boss (0x14 01002d00) bi server TU CHOI -> tra goi
+        # loi 0x00 (code 7) -> KICK ca party. Bot thieu buoc nao do truoc teleport so voi lam tay.
+        # Can capture lai full luong vao boss de tim buoc thieu. Tam thoi bo o2 (8 o kia chay ngon).
+        # if heavy and 2 not in done:
+        #     self.do_world_boss();    acted = True
         # (o1 dungeon = do_daily_dungeon rieng; o5 team dungeon = chua co - deu NANG)
         if acted:
             done = self._query_quests()   # refresh sau khi lam
