@@ -1458,6 +1458,9 @@ class GameClient:
             return
         time.sleep(1.0)
         self.state.boss_mode = True
+        # TAT FLEE NGAY (truoc khi teleport): tran boss co the bat dau ngay luc transit/toi noi ->
+        # flee con bat la receiver BO CHAY mat tran. Khu boss chi co boss nen tat flee la an toan.
+        self.flee_mode = False
         # (1) MO event boss TRUOC roi moi teleport (replay capture: 0x4d 0x0c -> 0x20 -> 0x14).
         #     Thieu 0x4d/0x0c -> server tu choi teleport (0x14 01002d00) -> tra loi 0x00 code7 -> kick.
         self.send(0x4d, b"\x03\x00\x05\x00");    time.sleep(0.4)   # mo/chon event boss
@@ -1466,8 +1469,7 @@ class GameClient:
         self.send(0x14, b"\x01\x00\x2d\x00");    time.sleep(0.8)   # teleport map boss 0x2d
         self.send(0x14, b"\x09\x00\x1e");        time.sleep(0.3)
         self.send(0x14, b"\x06\x00");            time.sleep(1.2)
-        # (2) TAT FLEE TRUOC khi engage -> tran boss bat dau thi DANH (khong bi receiver flee mat tran)
-        self.flee_mode = False
+        # (2) engage NPC boss
         self.send(0x41, bytes.fromhex("01003232010100000101000000")); time.sleep(1.0)
         # (3) cho VAO tran (event active?) trong 12s
         entered = False
