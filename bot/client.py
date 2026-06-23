@@ -156,6 +156,46 @@ def mail_window_now():
 _GIFT_FILE = "gift_state.json"
 _gift_lock = threading.Lock()
 
+# Cache O NHIEM VU HANG NGAY da xong (per account, reset moi ngay). Server CHI gui day du o lan
+# login TUOI dau ngay; relogin sau thieu o (vd o9) -> nho lai tu cache de detect/claim dung.
+_QUEST_FILE = "quest_state.json"
+_quest_lock = threading.Lock()
+
+
+def _load_quest_cells(label: str) -> set:
+    """Load o nhiem vu DA XONG hom nay cho account (set cac so o 1..9)."""
+    import json, os, datetime
+    f = os.path.join(os.path.dirname(__file__), os.pardir, _QUEST_FILE)
+    key = f"{label}:{datetime.date.today().isoformat()}"
+    try:
+        with open(f, "r", encoding="utf-8") as fh:
+            return set(json.load(fh).get(key, []))
+    except Exception:
+        return set()
+
+
+def _save_quest_cells(label: str, cells: set):
+    """Luu (gop) o da xong hom nay; don key ngay cu."""
+    import json, os, datetime
+    f = os.path.join(os.path.dirname(__file__), os.pardir, _QUEST_FILE)
+    today = datetime.date.today().isoformat()
+    key = f"{label}:{today}"
+    with _quest_lock:
+        data = {}
+        if os.path.exists(f):
+            try:
+                with open(f, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+            except Exception:
+                data = {}
+        data = {k: v for k, v in data.items() if k.endswith(today)}   # don ngay cu
+        data[key] = sorted(set(data.get(key, [])) | set(cells))
+        try:
+            with open(f, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+        except Exception:
+            pass
+
 # ITEM HP/SP: bot TU HOC qua self-calibrate (probe -> doc delta HP/SP tu S2C 0x08),
 # luu items_learned.json. KHONG can gamedata/config. Format:
 #   { "<tid>": {"hp": <heal HP do duoc>, "sp": <heal SP>, "name": "", "none": false} }
@@ -727,6 +767,17 @@ class GameClient:
         # Mo panel (C2S 0x5b 02 00 09...) -> server tra trang thai tung o. Dem o de tinh hang/cot du.
         if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x02\x00\x01\x01\x00":
             self._quest_cells.add(pkt[12])
+        # STATUS FRAME DAY DU (tra loi query panel 0x5b 02 00 09...): record 7B [id 2B LE][val 4B][flag 1B].
+        # O bingo = id 0x2f..0x37 (o 1..9), flag 01 = DA HOAN THANH. Frame le 020001010002 chi co 1 subset
+        # (o vua xong) -> thieu o nhu o9. Anchor: 2f00 roi 7B sau la 3000 (id chay lien tiep) -> doc 9 record.
+        if opcode == 0x5b and len(pkt) >= 9 + 7 * 9 and pkt[7:9] == b"\x01\x00":
+            for off in range(len(pkt) - 7 * 9):
+                if pkt[off:off + 2] == b"\x2f\x00" and pkt[off + 7:off + 9] == b"\x30\x00":
+                    for k in range(9):
+                        rec = off + k * 7
+                        if int.from_bytes(pkt[rec:rec + 2], "little") == 0x2f + k and pkt[rec + 6] == 0x01:
+                            self._quest_cells.add(k + 1)
+                    break
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1508,10 +1559,11 @@ class GameClient:
 
     def _query_quests(self):
         """Mo panel nhiem vu (C2S 0x5b 02 00 09...) -> server tra o nao DA HOAN THANH
-        (S2C 0x5b 02 00 01 01 00 [cell] -> handler nhet vao self._quest_cells)."""
-        self._quest_cells = set()
+        (S2C 0x5b 02 00 01 01 00 [cell] -> handler nhet vao self._quest_cells).
+        KHONG reset _quest_cells o day -> TICH LUY qua nhieu lan query (frame status TO 208B co the
+        chi ve o lan mo panel DAU; query lan 2 reset se mat -> thieu o nhu o9). Reset o claim_daily_quests."""
         self.send(0x5b, self._Q_OPEN)
-        time.sleep(1.2)
+        time.sleep(2.0)   # cho ca frame status TO (208B, ve cham hon frame nho) kip toi
         return self._quest_cells
 
     def claim_daily_quests(self, heavy: bool = True):
@@ -1522,6 +1574,9 @@ class GameClient:
             mode DI GIOI (goi sau khi VAO DG, tranh boss teleport van ra khoi DG; o1/o2/o5 nang
             se claim_daily_quests(heavy=True) goi SAU khi xong DG).
         Chay moi login: o da xong -> bo qua; gacha thieu xu lan truoc -> login sau tu retry."""
+        # Bat dau tu CACHE hom nay (nho o da thay o login truoc -> sống sót qua relogin khi server
+        # khong gui lai o9). _query_quests sau TICH LUY (khong reset).
+        self._quest_cells = _load_quest_cells(self._label)
         done = self._query_quests()
         # lam cac nhiem vu con thieu (gacha tu check xu, hop tu check nguyen lieu)
         acted = False
@@ -1536,15 +1591,19 @@ class GameClient:
         # (o1 dungeon = do_daily_dungeon rieng; o5 team dungeon = chua co - deu NANG)
         if acted:
             done = self._query_quests()   # refresh sau khi lam
-        lines = [L for L, cells in self._Q_LINES.items() if all(c in done for c in cells)]
+        _save_quest_cells(self._label, done)   # luu (cong don) o da xong hom nay -> relogin sau nho lai
+        # Claim hang/cot co >=2 o XAC NHAN xong (khong bat buoc du 3): o thu 3 co the DA xong nhung
+        # server KHONG bao incremental (frame status TO chi ve lan mo panel DAU/ngay -> relogin sau
+        # thieu o nhu o9). Server tu validate: line chua du -> tu choi (vo hai). Tranh bo sot quà.
+        lines = [L for L, cells in self._Q_LINES.items() if sum(c in done for c in cells) >= 2]
         n = 0
-        for L in lines:                       # claim tung hang/cot du
+        for L in lines:                       # thu claim tung hang/cot (server tu validate)
             self.send(0x5b, b"\x03\x00\x01\x00" + bytes([L]) + struct.pack("<H", 0x2f + L - 1))
             time.sleep(0.3); n += 1
         if len(lines) >= 6:                   # du 6 -> claim TONG KET (line 7)
             self.send(0x5b, b"\x03\x00\x01\x00\x07" + struct.pack("<H", 0x2f + 6))
             time.sleep(0.3); n += 1
-        log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), claim %d qua (line %s)",
+        log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), thu claim %d line (line %s)",
                  self._label, sorted(done), len(done), n, lines)
 
     def _on_friend_gift(self, pkt: bytes):
@@ -2866,16 +2925,18 @@ class GameClient:
                 log.info("[%s] qua cong idx=%d -> map %s", self._label, idx, self.current_map)
                 self.pos = None   # qua cong -> vi tri cu vo nghia (map moi) -> navigate sau di hao phong
                 return True
-            # CHO HET TRAN truoc khi toi cong + transit (battle nuot lenh -> ket cong / kick leader)
-            if not self._wait_combat_clear():
+            # CHO HET TRAN truoc khi toi cong + transit (battle nuot lenh -> ket cong / kick leader).
+            # idle=6.0 (KHONG dung 3s mac dinh): khoang NGHI GIUA 2 LUOT battle co the 3-4s -> idle ngan
+            # bi danh lua "het tran" -> transit giua tran -> SERVER KICK (vd leader vang o bai quai).
+            if not self._wait_combat_clear(idle=6.0):
                 return False
             if x or y:   # x=y=0 -> cong "vao lien" (spawn ngay tai cong) -> KHONG move, chi trigger
                 self.move_to(x, y)
-            # Dung tai cong 1s: cho 0x35 (battle offer) kip den neu buoc vao quai.
-            # Neu co tran -> loop lai danh het roi moi transit (tranh server kick leader).
-            time.sleep(1.0)
-            if self.in_combat(idle_secs=1.0):
-                continue   # vua dinh tran -> fight het roi moi transit
+            # Dung tai cong: cho 0x35 (battle offer) kip den neu buoc vao quai. idle=6.0 de chac chan
+            # het tran (khong nham khoang nghi giua luot). Co tran -> loop lai danh het roi moi transit.
+            time.sleep(1.5)
+            if self.in_combat(idle_secs=6.0):
+                continue   # con trong tran (hoac vua dinh tran) -> fight het roi moi transit
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
             self._gate_transit = True
             try:

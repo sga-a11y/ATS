@@ -31,6 +31,7 @@ test_run.py
 capture_member.py
 checkin_state.json
 daily_state.json
+quest_state.json
 accounts.json
 vantieu_state.json
 gamedata_*.dat
