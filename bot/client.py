@@ -1720,69 +1720,49 @@ class GameClient:
         return False
 
     def do_daily_dungeon(self, max_sec: int = 360):
-        """SOLO daily dungeon, toi da DUNGEON_RUNS_PER_DAY luot/ngay (mac dinh 2).
-        Luot 1 dung VE FREE (vao thang); luot >=2 MUA ve (0x54 0200020d000200) roi vao.
-        Bot tu dem (checkin_state) + sync stat 0x9b. KHONG detect duoc het luot truoc khi vao
-        (0x54 type 0x0d = exp offline; 0x9b chi gui SAU khi danh) -> neu local count BI STALE
-        (vd da danh tay), luot free vao hut 1 lan roi cache 'het luot' khong thu nua."""
-        import datetime
+        """SOLO daily dungeon den khi SERVER bao o1 XONG (2/2). KHONG dem local nua (server truth
+        chuan hon: dung ca khi chay song song nhieu may/ban build+dev cung nick). Moi luot: thu VE
+        FREE truoc; vao loi (free da dung o may/ban khac) -> MUA ve roi vao lai. Sau moi luot
+        re-query o1, done thi dung. Cap = runs_target luot vao thanh cong (tranh mua vo han)."""
         runs_target = getattr(config, "DUNGEON_RUNS_PER_DAY", 2)
-        today = datetime.date.today().isoformat()
-        # TIN HIEU SERVER THAT: o 1 nhiem vu (solo dungeon 2 lan) DA XONG -> chac chan du luot.
-        # Dang tin hon dem local (khong detect duoc luot da danh tay/session truoc). Neu chua co
-        # trang thai quest (vd nhanh digioi goi dungeon TRUOC claim_daily_quests) -> tu query.
+        # TIN HIEU SERVER THAT: o1 (solo 2 lan) DA XONG -> bo qua. Chua co trang thai -> tu query.
         if not self._quest_cells:
             try: self._query_quests()
             except Exception: pass
         if 1 in self._quest_cells:
-            _save_checkin(self._label, "dungeon", today, runs_target)
-            log.info("[%s] Dungeon: nhiem vu o1 (solo 2 lan) DA XONG theo server -> bo qua", self._label)
+            log.info("[%s] Dungeon: o1 (solo 2 lan) DA XONG theo server -> bo qua", self._label)
             return
-        st = _load_checkin(self._label, "dungeon")
-        count = st["day"] if st.get("date") == today else 0
-        if self.dungeon_runs_today is not None:      # server-truth (chi co SAU khi danh) -> sync
-            count = max(count, self.dungeon_runs_today)
-        # SERVER (o1) noi CHUA xong nhung local bao du -> local STALE -> danh lai (>=1 luot).
-        if self._quest_cells and 1 not in self._quest_cells and count >= runs_target:
-            log.info("[%s] Dungeon: o1 chua xong (server) nhung local bao %d/%d -> local stale, danh lai",
-                     self._label, count, runs_target)
-            count = runs_target - 1
-        if count >= runs_target:
-            _save_checkin(self._label, "dungeon", today, count)
-            log.info("[%s] Dungeon: da du %d/%d luot hom nay (local) -> bo qua "
-                     "(xoa checkin_state.json key '%s:dungeon' neu muon danh lai)",
-                     self._label, count, runs_target, self._label)
-            return
-        log.info("[%s] SOLO daily dungeon: da %d/%d luot hom nay", self._label, count, runs_target)
         self.leave_party(); time.sleep(1.5)   # thoat party (solo moi vao duoc dungeon)
-        while count < runs_target and self.running:
-            if count >= 1:   # luot 2+ -> HET free -> MUA ve bang vang
+        done_runs = 0      # so luot VAO THANH CONG phien nay (cap = runs_target -> khoi mua vo han)
+        bought = False     # da chuyen sang MUA ve chua (free da het)
+        while self.running and done_runs < runs_target:
+            if bought:     # khong con free -> phai MUA ve truoc khi vao
                 if not self.buy_dungeon_ticket():
-                    # mua THAT BAI (het vang / het luot mua) -> KHONG vao (tranh dump) -> dung
-                    log.info("[%s] Mua ve dungeon that bai -> dung (khong vao de tranh dump)",
-                             self._label)
-                    _save_checkin(self._label, "dungeon", today, runs_target)
+                    log.info("[%s] Dungeon: mua ve that bai (het vang/luot) -> dung", self._label)
                     break
-            # count==0 -> dung VE FREE, vao thang (khong mua)
             ok = self._run_one_dungeon(max_sec)
-            count += 1   # DU thanh cong hay vao loi (dump) -> van count +1: coi nhu da DUNG 1 luot
-                         # -> KHONG gui lai luot do nua; qua luot sau (luot sau se MUA ve -> vao chac).
-            _save_checkin(self._label, "dungeon", today, count)
-            if ok:
-                log.info("[%s] Xong dungeon luot %d/%d", self._label, count, runs_target)
-            else:
-                log.info("[%s] Dungeon luot %d vao loi/dump (da danh tay?) -> van count +1, qua luot sau",
-                         self._label, count)
+            if not ok:
+                if not bought:
+                    # luot FREE vao loi -> free da dung (may/ban khac) -> chuyen sang MUA ve, thu lai
+                    log.info("[%s] Dungeon: vao FREE that bai (free da dung o noi khac?) -> chuyen MUA ve",
+                             self._label)
+                    bought = True
+                    continue
+                # da mua ve van khong vao -> dung (tranh loop dump)
+                log.info("[%s] Dungeon: da mua ve van khong vao duoc -> dung (tranh dump)", self._label)
+                break
+            done_runs += 1
+            bought = True   # da dung 1 luot (free hoac mua) -> tu luot sau BUOC phai mua ve
+            log.info("[%s] Xong dungeon luot %d (phien nay)", self._label, done_runs)
             time.sleep(2)
-            # Re-query o1: server CHI bao done khi DU 2/2 (luc 1/2 van bao chua xong - panel KHONG lo
-            # tien do). Done -> dung luon, xu ly dung ca khi nick da danh 1 luot o session/may truoc.
+            # Re-query o1: server CHI bao done khi DU 2/2 (luc 1/2 van 020004 - panel KHONG lo tien do).
+            # Done -> dung; xu ly dung ca khi nick da danh 1 luot o may/ban khac (khoi danh thua).
             try: self._query_quests()
             except Exception: pass
             if 1 in self._quest_cells:
-                log.info("[%s] Dungeon: o1 DA XONG (2/2 theo server) sau luot %d -> dung", self._label, count)
-                _save_checkin(self._label, "dungeon", today, runs_target)
+                log.info("[%s] Dungeon: o1 DA XONG (2/2 theo server) -> dung", self._label)
                 break
-        log.info("[%s] Hoan tat daily dungeon (%d luot)", self._label, count)
+        log.info("[%s] Hoan tat daily dungeon (%d luot phien nay)", self._label, done_runs)
 
     GACHA_COST = 9000   # xu / luot gacha (pet va card deu 9k)
 
