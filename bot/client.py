@@ -767,6 +767,9 @@ class GameClient:
         # Mo panel (C2S 0x5b 02 00 09...) -> server tra trang thai tung o. Dem o de tinh hang/cot du.
         if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x02\x00\x01\x01\x00":
             self._quest_cells.add(pkt[12])
+        # DEBUG: thu thap raw 0x5b frame trong luc _query_quests (xem server gui gi cho o9)
+        if opcode == 0x5b and getattr(self, "_quest_dbg", None) is not None:
+            self._quest_dbg.append(pkt[7:].hex()[:60])
         # STATUS FRAME DAY DU (tra loi query panel 0x5b 02 00 09...): record 7B [id 2B LE][val 4B][flag 1B].
         # O bingo = id 0x2f..0x37 (o 1..9), flag 01 = DA HOAN THANH. Frame le 020001010002 chi co 1 subset
         # (o vua xong) -> thieu o nhu o9. Anchor: 2f00 roi 7B sau la 3000 (id chay lien tiep) -> doc 9 record.
@@ -1562,8 +1565,11 @@ class GameClient:
         (S2C 0x5b 02 00 01 01 00 [cell] -> handler nhet vao self._quest_cells).
         KHONG reset _quest_cells o day -> TICH LUY qua nhieu lan query (frame status TO 208B co the
         chi ve o lan mo panel DAU; query lan 2 reset se mat -> thieu o nhu o9). Reset o claim_daily_quests."""
+        self._quest_dbg = []   # DEBUG: thu raw 0x5b frame de xem server gui gi cho o9
         self.send(0x5b, self._Q_OPEN)
         time.sleep(2.0)   # cho ca frame status TO (208B, ve cham hon frame nho) kip toi
+        log.info("[%s] [QUEST DBG] 0x5b frames nhan: %s", self._label, self._quest_dbg)
+        self._quest_dbg = None
         return self._quest_cells
 
     def claim_daily_quests(self, heavy: bool = True):
