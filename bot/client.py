@@ -1557,7 +1557,11 @@ class GameClient:
         chi ve o lan mo panel DAU; query lan 2 reset se mat -> thieu o nhu o9). Reset o claim_daily_quests."""
         self._quest_dbg = []        # DEBUG: thu raw 0x5b frame de so sanh o9 xong vs chua
         self.send(0x5b, self._Q_OPEN)
-        time.sleep(2.0)              # cho server gui status 9 o
+        time.sleep(1.5)             # cho server gui status 9 o (bulk)
+        # O9 (battle-50, quest DEM) trong bulk LUON tra 020003 (ko ro done) -> QUERY RIENG o9
+        # (id 0x37): server tra 020001010009 neu DA xong -> handler bat. Chua xong: 020003/020004.
+        self.send(0x5b, bytes.fromhex("0200010100093700"))
+        time.sleep(0.8)
         log.info("[%s] [QUEST DBG] 0x5b: %s", self._label, self._quest_dbg)
         self._quest_dbg = None
         return self._quest_cells
