@@ -432,6 +432,21 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 2. Gửi lệnh theo SLOT đó (tái dùng `use_slot` hoặc biến thể `0x100+slot` cho hợp).
 3. **Đừng tự chế id** — bám cơ chế slot có sẵn (`use_slot` đã đúng từ vụ HP/SP).
 
+## 7m. NHIỆM VỤ HÀNG NGÀY (BINGO 9 Ô) — opcode 0x5b
+
+- **Mở panel (bulk):** C2S `0x5b 02 00 09 01 00 01 [id 2B][cell] ...` (9 ô, id ô N = `0x2e+N`, vd ô1=0x2f, ô9=0x37).
+- **Server trả status TỪNG Ô theo thứ tự (1→9)**, mỗi ô 1 frame `0x5b`:
+  - `02 00 01 01 00 [ô]` = ô **ĐÃ XONG** (quest sự kiện — kèm số ô) → handler `_quest_cells.add`.
+  - `02 00 04` = **chưa xong**.
+  - `02 00 03` = ô **quest ĐẾM** (vd ô9 battle-50). **CỰC QUAN TRỌNG:** bulk LUÔN trả `02 00 03`
+    cho ô9 dù XONG hay CHƯA → **không phân biệt được**. (Đã verify: chumot xong & ttmmot chưa đều `020003`.)
+- **→ Phải QUERY RIÊNG ô đếm:** C2S `0x5b 02 00 01 01 00 09 37 00` (ô9, id 0x37). Server trả
+  `020001010009` nếu đã đủ 50 → bắt được; chưa đủ trả `020003/020004`. (Xem `_query_quests`.)
+- **KHÔNG cache** trạng thái ô (từng dùng `quest_state.json` → POISON khi parse sai + thừa vì server
+  gửi lại đầy đủ mỗi query). Mỗi login `_quest_cells = set()`, tin trực tiếp server.
+- **Claim hàng/cột:** đủ CẢ 3 ô mới claim `0x5b 03 00 01 00 [line][0x2f+line-1]` (line R1-3=1-3, C1-3=4-6, tổng kết=7).
+- **Bài học:** với bất kỳ quest "đếm số lần" → bulk không lộ done, phải hỏi riêng từng ô đó.
+
 ## 8. GAME MECHANICS
 
 | Mechanic | Mô tả |
