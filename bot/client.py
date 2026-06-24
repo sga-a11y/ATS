@@ -1523,15 +1523,16 @@ class GameClient:
         (S2C 0x5b 02 00 01 01 00 [cell] -> handler nhet vao self._quest_cells).
         KHONG reset _quest_cells o day -> TICH LUY qua nhieu lan query (frame status TO 208B co the
         chi ve o lan mo panel DAU; query lan 2 reset se mat -> thieu o nhu o9). Reset o claim_daily_quests."""
-        # Query he 03 (line DA NHAN) GUI TRUOC -> response 03 00 01 01 00 [line] co ca ~2.3s cac wait
-        # duoi de ve kip (truoc bi tre -> claim lai line da nhan). Handler nhet vao _claimed_lines.
-        self.send(0x5b, self._Q_LINE_OPEN)
         self.send(0x5b, self._Q_OPEN)
-        time.sleep(1.5)             # cho server gui status 9 o (bulk) + line da nhan
+        time.sleep(1.5)             # cho server gui status 9 o (bulk)
         # O9 (battle-50, quest DEM) trong bulk LUON tra 020003 (ko ro done) -> QUERY RIENG o9
         # (id 0x37): server tra 020001010009 neu DA xong -> handler bat. Chua xong: 020003/020004.
         self.send(0x5b, bytes.fromhex("0200010100093700"))
-        time.sleep(0.9)
+        time.sleep(0.8)
+        # Query he 03 (line DA NHAN) - GUI RIENG (gui sat query o -> server NUOT, _claimed_lines rong).
+        # Response 03 00 01 01 00 [line] tre ~1.7s -> cho 2.0s cho ve KIP truoc khi tinh lines.
+        self.send(0x5b, self._Q_LINE_OPEN)
+        time.sleep(2.0)
         return self._quest_cells
 
     def claim_daily_quests(self, heavy: bool = True):
