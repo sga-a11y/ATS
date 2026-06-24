@@ -590,13 +590,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
                 return
-            # 2) DA o trong DG -> dong bo kenh (gom ca party ve cung instance DG).
-            #    Doi kenh trong DG VAN o trong DG (khong bi van ra).
-            do_channel_sync()
-            # 3) DA o trong DG an toan -> lam nhiem vu NHE (gacha/hop + claim hang/cot du). KHONG
-            #    lam o nang (boss teleport se van ra khoi DG) -> de SAU khi het gio DG.
+            # 2) DA o trong DG an toan -> lam nhiem vu NHE (gacha/hop + claim hang/cot du) TRUOC khi
+            #    dong bo kenh. Gacha/hop KHONG di chuyen nen an toan trong DG; lam xong moi sync kenh
+            #    + lap party. KHONG lam o NANG (boss teleport se van ra khoi DG) -> de SAU khi het gio DG.
             if do_daily:
                 c.claim_daily_quests(heavy=False)
+            # 3) Dong bo kenh (gom ca party ve cung instance DG). Doi kenh trong DG VAN o trong DG.
+            do_channel_sync()
         else:
             # --- CITY (tap trung ve thanh) / STAND (dung yen) / CLEANBAG ---
             # SOLO daily dungeon TRUOC (neu bat). Dungeon co the bi DUMP ve 12000 -> lam truoc
