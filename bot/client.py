@@ -156,46 +156,6 @@ def mail_window_now():
 _GIFT_FILE = "gift_state.json"
 _gift_lock = threading.Lock()
 
-# Cache O NHIEM VU HANG NGAY da xong (per account, reset moi ngay). Server CHI gui day du o lan
-# login TUOI dau ngay; relogin sau thieu o (vd o9) -> nho lai tu cache de detect/claim dung.
-_QUEST_FILE = "quest_state.json"
-_quest_lock = threading.Lock()
-
-
-def _load_quest_cells(label: str) -> set:
-    """Load o nhiem vu DA XONG hom nay cho account (set cac so o 1..9)."""
-    import json, os, datetime
-    f = os.path.join(os.path.dirname(__file__), os.pardir, _QUEST_FILE)
-    key = f"{label}:{datetime.date.today().isoformat()}"
-    try:
-        with open(f, "r", encoding="utf-8") as fh:
-            return set(json.load(fh).get(key, []))
-    except Exception:
-        return set()
-
-
-def _save_quest_cells(label: str, cells: set):
-    """Luu (gop) o da xong hom nay; don key ngay cu."""
-    import json, os, datetime
-    f = os.path.join(os.path.dirname(__file__), os.pardir, _QUEST_FILE)
-    today = datetime.date.today().isoformat()
-    key = f"{label}:{today}"
-    with _quest_lock:
-        data = {}
-        if os.path.exists(f):
-            try:
-                with open(f, "r", encoding="utf-8") as fh:
-                    data = json.load(fh)
-            except Exception:
-                data = {}
-        data = {k: v for k, v in data.items() if k.endswith(today)}   # don ngay cu
-        data[key] = sorted(set(data.get(key, [])) | set(cells))
-        try:
-            with open(f, "w", encoding="utf-8") as fh:
-                json.dump(data, fh)
-        except Exception:
-            pass
-
 # ITEM HP/SP: bot TU HOC qua self-calibrate (probe -> doc delta HP/SP tu S2C 0x08),
 # luu items_learned.json. KHONG can gamedata/config. Format:
 #   { "<tid>": {"hp": <heal HP do duoc>, "sp": <heal SP>, "name": "", "none": false} }
@@ -768,9 +728,6 @@ class GameClient:
         #   02 00 03 / 02 00 04 = CHUA xong (03 = dang dem do, 04 = chua bat dau) -> BO QUA
         if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x02\x00\x01\x01\x00":
             self._quest_cells.add(pkt[12])
-        # DEBUG: thu raw 0x5b frame luc query (so sanh nick XONG o9 vs CHUA xong o9)
-        if opcode == 0x5b and getattr(self, "_quest_dbg", None) is not None:
-            self._quest_dbg.append(pkt[7:].hex()[:60])
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1555,15 +1512,12 @@ class GameClient:
         (S2C 0x5b 02 00 01 01 00 [cell] -> handler nhet vao self._quest_cells).
         KHONG reset _quest_cells o day -> TICH LUY qua nhieu lan query (frame status TO 208B co the
         chi ve o lan mo panel DAU; query lan 2 reset se mat -> thieu o nhu o9). Reset o claim_daily_quests."""
-        self._quest_dbg = []        # DEBUG: thu raw 0x5b frame de so sanh o9 xong vs chua
         self.send(0x5b, self._Q_OPEN)
         time.sleep(1.5)             # cho server gui status 9 o (bulk)
         # O9 (battle-50, quest DEM) trong bulk LUON tra 020003 (ko ro done) -> QUERY RIENG o9
         # (id 0x37): server tra 020001010009 neu DA xong -> handler bat. Chua xong: 020003/020004.
         self.send(0x5b, bytes.fromhex("0200010100093700"))
         time.sleep(0.8)
-        log.info("[%s] [QUEST DBG] 0x5b: %s", self._label, self._quest_dbg)
-        self._quest_dbg = None
         return self._quest_cells
 
     def claim_daily_quests(self, heavy: bool = True):
