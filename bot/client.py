@@ -478,7 +478,6 @@ class GameClient:
         self._use_confirmed = False        # True khi nhan confirm cho _pending_confirm_slot
         self._no_item = set()        # (target,kind) het thuoc -> skip toi TRAN SAU (reset khi 0x34)
         self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
-        self._claimed_lines = set()  # hang/cot DA NHAN thuong (S2C 0x5b 03 00 01 01 00 [line]) -> khoi claim lai
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
         self.friend_status = {}      # entity hex -> trailer[18]: bit0x01=DA TANG, bit0x02=CO QUA nhan
         self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
@@ -731,10 +730,6 @@ class GameClient:
         #   02 00 03 / 02 00 04 = CHUA xong (03 = dang dem do, 04 = chua bat dau) -> BO QUA
         if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x02\x00\x01\x01\x00":
             self._quest_cells.add(pkt[12])
-        # HANG/COT DA NHAN thuong: query he 03 (0x5b 03 00 09...) -> server tra 03 00 01 01 00 [line]
-        # cho line DA NHAN (guong cua o: 02 00 01 01 00). Dung de KHOI claim lai line da nhan.
-        if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x03\x00\x01\x01\x00":
-            self._claimed_lines.add(pkt[12])
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1513,10 +1508,6 @@ class GameClient:
                 4: (1, 4, 7), 5: (2, 5, 8), 6: (3, 6, 9)}      # 3 cot
     _Q_OPEN = bytes.fromhex(
         "0200090100012f0001000230000100033100010004320001000533000100063400010007350001000836000100")
-    # Query he 03 (trang thai NHAN thuong hang/cot): 03 00 09 + 7 line [01 00 [line] [id 0x2f+line-1]].
-    # Server tra 03 00 01 01 00 [line] cho line DA NHAN. Line 1-6 = hang/cot, 7 = tong ket.
-    _Q_LINE_OPEN = b"\x03\x00\x09" + b"".join(
-        b"\x01\x00" + bytes([L]) + struct.pack("<H", 0x2f + L - 1) for L in range(1, 8))
 
     def _query_quests(self):
         """Mo panel nhiem vu (C2S 0x5b 02 00 09...) -> server tra o nao DA HOAN THANH
@@ -1528,11 +1519,7 @@ class GameClient:
         # O9 (battle-50, quest DEM) trong bulk LUON tra 020003 (ko ro done) -> QUERY RIENG o9
         # (id 0x37): server tra 020001010009 neu DA xong -> handler bat. Chua xong: 020003/020004.
         self.send(0x5b, bytes.fromhex("0200010100093700"))
-        time.sleep(0.8)
-        # Query he 03 (line DA NHAN) - GUI RIENG (gui sat query o -> server NUOT, _claimed_lines rong).
-        # Response 03 00 01 01 00 [line] tre ~1.7s -> cho 2.0s cho ve KIP truoc khi tinh lines.
-        self.send(0x5b, self._Q_LINE_OPEN)
-        time.sleep(2.0)
+        time.sleep(0.9)
         return self._quest_cells
 
     def claim_daily_quests(self, heavy: bool = True):
@@ -1546,9 +1533,6 @@ class GameClient:
         # CHI tin trang thai server tra LUC NAY (KHONG cache): moi lan query server gui lai DAY DU o da
         # xong (020001010009...). Cache cu thua + tung POISON (parse sai o9 -> luu nham -> relogin van bao xong).
         self._quest_cells = set()
-        # KHONG reset _claimed_lines: server TU DAY 03 00 01 01 00 [line] cho line DA NHAN luc LOGIN
-        # (khong phai do query). Reset o day se XOA mat data login-push (tung lam da-nhan-truoc=rong).
-        # _claimed_lines init [] o __init__ (moi ket noi moi) nen khong so stale.
         done = self._query_quests()
         # lam cac nhiem vu con thieu (gacha tu check xu, hop tu check nguyen lieu)
         acted = False
@@ -1563,20 +1547,17 @@ class GameClient:
         # (o1 dungeon = do_daily_dungeon rieng; o5 team dungeon = chua co - deu NANG)
         if acted:
             done = self._query_quests()   # refresh sau khi lam
-        # Claim hang/cot DU CA 3 o VA CHUA NHAN (he 03 cho biet line da nhan -> khoi claim lai).
-        lines = [L for L, cells in self._Q_LINES.items()
-                 if all(c in done for c in cells) and L not in self._claimed_lines]
+        # Claim hang/cot DU CA 3 o (server tu reject line da nhan -> vo hai, khoi luu trang thai).
+        lines = [L for L, cells in self._Q_LINES.items() if all(c in done for c in cells)]
         n = 0
-        for L in lines:                       # claim tung hang/cot chua nhan
+        for L in lines:                       # claim tung hang/cot du o
             self.send(0x5b, b"\x03\x00\x01\x00" + bytes([L]) + struct.pack("<H", 0x2f + L - 1))
             time.sleep(0.3); n += 1
-        # du 6 hang/cot (da nhan + vua nhan) VA tong ket (line 7) chua nhan -> claim tong ket
-        done6 = sum(1 for L in self._Q_LINES if L in self._claimed_lines or L in lines) >= 6
-        if done6 and 7 not in self._claimed_lines:
+        if len(lines) >= 6:                   # du 6 hang/cot -> claim TONG KET (line 7)
             self.send(0x5b, b"\x03\x00\x01\x00\x07" + struct.pack("<H", 0x2f + 6))
             time.sleep(0.3); n += 1
-        log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), da nhan truoc=%s, claim them %d line (line %s)",
-                 self._label, sorted(done), len(done), sorted(self._claimed_lines), n, lines)
+        log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), claim %d line (line %s)",
+                 self._label, sorted(done), len(done), n, lines)
 
     def _on_friend_gift(self, pkt: bytes):
         """Parse S2C 0x0e ban be:
