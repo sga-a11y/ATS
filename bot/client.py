@@ -1546,7 +1546,9 @@ class GameClient:
         # CHI tin trang thai server tra LUC NAY (KHONG cache): moi lan query server gui lai DAY DU o da
         # xong (020001010009...). Cache cu thua + tung POISON (parse sai o9 -> luu nham -> relogin van bao xong).
         self._quest_cells = set()
-        self._claimed_lines = set()   # query he 03 trong _query_quests se nhet line DA NHAN vao day
+        # KHONG reset _claimed_lines: server TU DAY 03 00 01 01 00 [line] cho line DA NHAN luc LOGIN
+        # (khong phai do query). Reset o day se XOA mat data login-push (tung lam da-nhan-truoc=rong).
+        # _claimed_lines init [] o __init__ (moi ket noi moi) nen khong so stale.
         done = self._query_quests()
         # lam cac nhiem vu con thieu (gacha tu check xu, hop tu check nguyen lieu)
         acted = False
