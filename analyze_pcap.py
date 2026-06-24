@@ -26,7 +26,7 @@ def frames(s):
     while i+7<=len(s):
         if s[i]==0xc0 and s[i+1]==0x91:
             ln=struct.unpack('<H',s[i+2:i+4])[0]
-            if 7<=ln<=2000 and i+ln<=len(s): o.append((s[i+6],s[i+7:i+ln])); i+=ln; continue
+            if 7<=ln<=65535 and i+ln<=len(s): o.append((s[i+6],s[i+7:i+ln])); i+=ln; continue
         i+=1
     return o
 

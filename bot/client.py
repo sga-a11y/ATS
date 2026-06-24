@@ -478,6 +478,7 @@ class GameClient:
         self._use_confirmed = False        # True khi nhan confirm cho _pending_confirm_slot
         self._no_item = set()        # (target,kind) het thuoc -> skip toi TRAN SAU (reset khi 0x34)
         self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
+        self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
         self.friend_status = {}      # entity hex -> trailer[18]: bit0x01=DA TANG, bit0x02=CO QUA nhan
         self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
@@ -730,6 +731,14 @@ class GameClient:
         #   02 00 03 / 02 00 04 = CHUA xong (03 = dang dem do, 04 = chua bat dau) -> BO QUA
         if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x02\x00\x01\x01\x00":
             self._quest_cells.add(pkt[12])
+        # HANG/COT DA NHAN thuong: frame 0x51 (gui luc login) chua bitmask line da nhan, ngay sau
+        # marker "c0 fe 03 00 00 00" la 2 byte mask (uint16 LE) - line L da nhan = bit (L+3).
+        # (Tim duoc nho raw-decode frame LON ma analyze_pcap drop; verify khop tren nhieu nick.)
+        if opcode == 0x51:
+            m = pkt.find(b"\xc0\xfe\x03\x00\x00\x00")
+            if m >= 0 and m + 8 <= len(pkt):
+                mask = int.from_bytes(pkt[m + 6:m + 8], "little")
+                self._claimed_lines = {L for L in range(1, 8) if (mask >> (L + 3)) & 1}
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1547,17 +1556,20 @@ class GameClient:
         # (o1 dungeon = do_daily_dungeon rieng; o5 team dungeon = chua co - deu NANG)
         if acted:
             done = self._query_quests()   # refresh sau khi lam
-        # Claim hang/cot DU CA 3 o (server tu reject line da nhan -> vo hai, khoi luu trang thai).
-        lines = [L for L, cells in self._Q_LINES.items() if all(c in done for c in cells)]
+        # Claim hang/cot DU CA 3 o VA CHUA NHAN (frame 0x51 luc login cho biet line da nhan -> khoi claim lai).
+        lines = [L for L, cells in self._Q_LINES.items()
+                 if all(c in done for c in cells) and L not in self._claimed_lines]
         n = 0
-        for L in lines:                       # claim tung hang/cot du o
+        for L in lines:                       # claim tung hang/cot chua nhan
             self.send(0x5b, b"\x03\x00\x01\x00" + bytes([L]) + struct.pack("<H", 0x2f + L - 1))
             time.sleep(0.3); n += 1
-        if len(lines) >= 6:                   # du 6 hang/cot -> claim TONG KET (line 7)
+        # du 6 hang/cot (da nhan + vua nhan) VA tong ket (line 7) chua nhan -> claim tong ket
+        n_lines6 = sum(1 for L in range(1, 7) if L in self._claimed_lines or L in lines)
+        if n_lines6 >= 6 and 7 not in self._claimed_lines:
             self.send(0x5b, b"\x03\x00\x01\x00\x07" + struct.pack("<H", 0x2f + 6))
             time.sleep(0.3); n += 1
-        log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), claim %d line (line %s)",
-                 self._label, sorted(done), len(done), n, lines)
+        log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), da nhan truoc=%s, claim them %d line (line %s)",
+                 self._label, sorted(done), len(done), sorted(self._claimed_lines), n, lines)
 
     def _on_friend_gift(self, pkt: bytes):
         """Parse S2C 0x0e ban be:
