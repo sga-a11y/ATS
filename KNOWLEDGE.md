@@ -445,7 +445,14 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 - **KHÔNG cache** trạng thái ô (từng dùng `quest_state.json` → POISON khi parse sai + thừa vì server
   gửi lại đầy đủ mỗi query). Mỗi login `_quest_cells = set()`, tin trực tiếp server.
 - **Claim hàng/cột:** đủ CẢ 3 ô mới claim `0x5b 03 00 01 00 [line][0x2f+line-1]` (line R1-3=1-3, C1-3=4-6, tổng kết=7).
-- **Bài học:** với bất kỳ quest "đếm số lần" → bulk không lộ done, phải hỏi riêng từng ô đó.
+- **Trạng thái ĐÃ NHẬN thưởng (claimed) = bitmask trong frame `0x51` lúc login** (KHÔNG ở 0x5b!). Ngay
+  sau marker `c0 fe 03 00 00 00` là **2 byte mask (uint16 LE)** — **line L đã nhận = bit (L+3)**.
+  Vd `32d0` → bits {4,6,7,9} → line {1,3,4,6} đã nhận. Bot đọc → skip line đã nhận (`_claimed_lines`).
+  Verify nhiều nick: nhận hàng 1 → `3040`→`3050`; nhận hàng 3 → `3290`→`32d0`.
+- **Bài học 1:** quest "đếm số lần" → bulk không lộ done, phải hỏi riêng từng ô.
+- **Bài học 2 (QUAN TRỌNG):** `analyze_pcap.py` từng cap `ln<=2000` → **DROP frame lớn** (0x51 ~1004B,
+  0x55 ~15KB) → kết luận sai "server không gửi". ĐÃ sửa `ln<=65535`. Khi không thấy data trong gói,
+  NGHI tool drop frame lớn trước → raw-decode lại với limit cao (đây là tật cũ, đã dính 2 lần: túi đồ + claimed).
 
 ## 8. GAME MECHANICS
 
