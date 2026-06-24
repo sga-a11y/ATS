@@ -1564,9 +1564,9 @@ class GameClient:
             mode DI GIOI (goi sau khi VAO DG, tranh boss teleport van ra khoi DG; o1/o2/o5 nang
             se claim_daily_quests(heavy=True) goi SAU khi xong DG).
         Chay moi login: o da xong -> bo qua; gacha thieu xu lan truoc -> login sau tu retry."""
-        # Bat dau tu CACHE hom nay (nho o da thay o login truoc -> sống sót qua relogin khi server
-        # khong gui lai o9). _query_quests sau TICH LUY (khong reset).
-        self._quest_cells = _load_quest_cells(self._label)
+        # CHI tin trang thai server tra LUC NAY (KHONG cache): moi lan query server gui lai DAY DU o da
+        # xong (020001010009...). Cache cu thua + tung POISON (parse sai o9 -> luu nham -> relogin van bao xong).
+        self._quest_cells = set()
         done = self._query_quests()
         # lam cac nhiem vu con thieu (gacha tu check xu, hop tu check nguyen lieu)
         acted = False
@@ -1581,11 +1581,8 @@ class GameClient:
         # (o1 dungeon = do_daily_dungeon rieng; o5 team dungeon = chua co - deu NANG)
         if acted:
             done = self._query_quests()   # refresh sau khi lam
-        _save_quest_cells(self._label, done)   # luu (cong don) o da xong hom nay -> relogin sau nho lai
-        # Claim hang/cot co >=2 o XAC NHAN xong (khong bat buoc du 3): o thu 3 co the DA xong nhung
-        # server KHONG bao incremental (frame status TO chi ve lan mo panel DAU/ngay -> relogin sau
-        # thieu o nhu o9). Server tu validate: line chua du -> tu choi (vo hai). Tranh bo sot quà.
-        lines = [L for L, cells in self._Q_LINES.items() if sum(c in done for c in cells) >= 2]
+        # Claim hang/cot khi DU CA 3 o (server tra status day du moi query -> tin truc tiep).
+        lines = [L for L, cells in self._Q_LINES.items() if all(c in done for c in cells)]
         n = 0
         for L in lines:                       # thu claim tung hang/cot (server tu validate)
             self.send(0x5b, b"\x03\x00\x01\x00" + bytes([L]) + struct.pack("<H", 0x2f + L - 1))
