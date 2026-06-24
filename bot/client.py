@@ -1774,6 +1774,14 @@ class GameClient:
                 log.info("[%s] Dungeon luot %d vao loi/dump (da danh tay?) -> van count +1, qua luot sau",
                          self._label, count)
             time.sleep(2)
+            # Re-query o1: server CHI bao done khi DU 2/2 (luc 1/2 van bao chua xong - panel KHONG lo
+            # tien do). Done -> dung luon, xu ly dung ca khi nick da danh 1 luot o session/may truoc.
+            try: self._query_quests()
+            except Exception: pass
+            if 1 in self._quest_cells:
+                log.info("[%s] Dungeon: o1 DA XONG (2/2 theo server) sau luot %d -> dung", self._label, count)
+                _save_checkin(self._label, "dungeon", today, runs_target)
+                break
         log.info("[%s] Hoan tat daily dungeon (%d luot)", self._label, count)
 
     GACHA_COST = 9000   # xu / luot gacha (pet va card deu 9k)
