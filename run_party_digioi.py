@@ -139,6 +139,7 @@ def _pstate(pidx):
                               "n_members": 0,            # tong so member can cho
                               "started_train": 0,        # so acc da qua check map -> vao train (de barrier dungeon)
                               "dungeon_done": 0,         # so acc da danh xong dungeon (barrier)
+                              "dailies_done": 0,         # so acc da xong daily login (barrier cho leader)
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party

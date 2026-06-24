@@ -763,24 +763,20 @@ class GameClient:
         #   sub 0c = status qua:        [0c 00][count 1B] + N*[entity 8B][status 1B] (03=co qua nhan, 07=da nhan)
         if opcode == 0x0e and len(pkt) >= 9:
             self._on_friend_gift(pkt)
-        # NHIEM VU HANG NGAY (bingo 3x3): S2C 0x5b 02 00 01 01 00 [cell] = o [cell] DA HOAN THANH.
-        # Mo panel (C2S 0x5b 02 00 09...) -> server tra trang thai tung o. Dem o de tinh hang/cot du.
-        if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x02\x00\x01\x01\x00":
-            self._quest_cells.add(pkt[12])
-        # DEBUG: thu thap raw 0x5b frame trong luc _query_quests (xem server gui gi cho o9)
-        if opcode == 0x5b and getattr(self, "_quest_dbg", None) is not None:
-            self._quest_dbg.append(pkt[7:].hex()[:60])
-        # STATUS FRAME DAY DU (tra loi query panel 0x5b 02 00 09...): record 7B [id 2B LE][val 4B][flag 1B].
-        # O bingo = id 0x2f..0x37 (o 1..9), flag 01 = DA HOAN THANH. Frame le 020001010002 chi co 1 subset
-        # (o vua xong) -> thieu o nhu o9. Anchor: 2f00 roi 7B sau la 3000 (id chay lien tiep) -> doc 9 record.
-        if opcode == 0x5b and len(pkt) >= 9 + 7 * 9 and pkt[7:9] == b"\x01\x00":
-            for off in range(len(pkt) - 7 * 9):
-                if pkt[off:off + 2] == b"\x2f\x00" and pkt[off + 7:off + 9] == b"\x30\x00":
-                    for k in range(9):
-                        rec = off + k * 7
-                        if int.from_bytes(pkt[rec:rec + 2], "little") == 0x2f + k and pkt[rec + 6] == 0x01:
-                            self._quest_cells.add(k + 1)
-                    break
+        # NHIEM VU HANG NGAY (bingo 9 o): mo panel (C2S 0x5b 02 00 09...) -> server tra status TUNG O
+        # THEO THU TU (o 1..9), moi o 1 frame 0x5b:
+        #   02 00 01 01 00 [o] = XONG  (quest su kien - co kem so o)
+        #   02 00 03           = XONG  (quest DEM, vd battle 50 lan - KHONG kem so o -> tinh theo VI TRI)
+        #   02 00 04           = chua xong
+        # -> dem vi tri trong luc query de biet o nao la 02 00 03.
+        if opcode == 0x5b and len(pkt) >= 9 and pkt[7:9] == b"\x02\x00":
+            body = pkt[7:]
+            if getattr(self, "_quest_querying", False):
+                self._quest_pos += 1
+            if body[:5] == b"\x02\x00\x01\x01\x00" and len(body) >= 6:
+                self._quest_cells.add(body[5])              # XONG (co so o)
+            elif body[:3] == b"\x02\x00\x03" and getattr(self, "_quest_querying", False):
+                self._quest_cells.add(self._quest_pos)      # XONG (quest dem) -> theo vi tri
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1565,11 +1561,11 @@ class GameClient:
         (S2C 0x5b 02 00 01 01 00 [cell] -> handler nhet vao self._quest_cells).
         KHONG reset _quest_cells o day -> TICH LUY qua nhieu lan query (frame status TO 208B co the
         chi ve o lan mo panel DAU; query lan 2 reset se mat -> thieu o nhu o9). Reset o claim_daily_quests."""
-        self._quest_dbg = []   # DEBUG: thu raw 0x5b frame de xem server gui gi cho o9
+        self._quest_pos = 0          # dem vi tri o (1..9) -> biet o nao la 02 00 03 (quest dem)
+        self._quest_querying = True
         self.send(0x5b, self._Q_OPEN)
-        time.sleep(2.0)   # cho ca frame status TO (208B, ve cham hon frame nho) kip toi
-        log.info("[%s] [QUEST DBG] 0x5b frames nhan: %s", self._label, self._quest_dbg)
-        self._quest_dbg = None
+        time.sleep(2.0)              # cho server gui status 9 o
+        self._quest_querying = False
         return self._quest_cells
 
     def claim_daily_quests(self, heavy: bool = True):
