@@ -212,7 +212,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         log.info("[%s] (%s) vao world.", label, role)
         log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
                  label, login_map)
-        c.log_bag_delayed()   # In tui SAU 8s (doi 0x16 ve het) -> dinh danh item -> items_known.json
+        c.log_bag_delayed()   # In tui khi snapshot ve + on dinh (adaptive, toi da 8s) -> dinh danh item
         # MAP-TRAIN: bat flee NGAY tu login -> moi tran (truoc khi lap party) deu BO CHAY,
         # khong danh lung tung; chi tat flee khi da vao diem train.
         if config.TRAIN_MAPS.get(getattr(config, "START_CITY_ID", 0)) is not None:

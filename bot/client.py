@@ -473,6 +473,7 @@ class GameClient:
         self._decompose_seq = 0      # tang moi khi nhan S2C 0x59 (xac nhan phan giai 1 cuon xong)
         self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
         self.bag_slots = {}          # slot (int) -> [tid, count]  (S2C 0x16 sub0400). Use item = gui slot.
+        self._bag_time = 0.0         # moc nhan snapshot tui gan nhat (cho log_bag_delayed adaptive)
         self._pending_confirm_slot = None  # slot dang cho S2C 0x17 sub09 xac nhan (probe confirm-gated)
         self._use_confirmed = False        # True khi nhan confirm cho _pending_confirm_slot
         self._no_item = set()        # (target,kind) het thuoc -> skip toi TRAN SAU (reset khi 0x34)
@@ -718,6 +719,7 @@ class GameClient:
                 self.bag_counts = {}
                 for it, c in self.bag_slots.values():
                     self.bag_counts[it] = self.bag_counts.get(it, 0) + c
+                self._bag_time = time.time()   # moc nhan snapshot tui (cho log_bag_delayed adaptive)
         # BAN BE / qua hang ngay: S2C 0x0e
         #   sub 05 = list ban luc login: [05 00][count 2B] + N*[entity 8B][namelen 1B][name][trailer 35B]
         #   sub 0c = status qua:        [0c 00][count 1B] + N*[entity 8B][status 1B] (03=co qua nhan, 07=da nhan)
@@ -1830,11 +1832,15 @@ class GameClient:
         self.send(0x17, payload)
         return True
 
-    def log_bag_delayed(self, delay: float = 8.0):
-        """In tui SAU 'delay' giay (doi cac trang 0x16 ve het -> tui DAY DU). Goi luc login.
-        Sau khi in tui xong -> mo tui Vat Lieu Su Kien (neu du so luong)."""
+    def log_bag_delayed(self, max_wait: float = 8.0):
+        """In tui khi snapshot tui (0x17/05) DA VE + on dinh (ngung nhan them 1.5s) -> tranh cho cung
+        8s. Goi luc login. Sau khi in tui xong -> mo tui Vat Lieu Su Kien (neu du so luong)."""
         def _run():
-            time.sleep(delay)
+            t0 = time.time()
+            while self.running and time.time() - t0 < max_wait:
+                time.sleep(0.3)
+                if self.bag_slots and time.time() - self._bag_time > 1.5:
+                    break   # da co tui + ngung nhan snapshot moi 1.5s -> du
             if self.running:
                 self.log_bag()
                 self.use_event_bags()
