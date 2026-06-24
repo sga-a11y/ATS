@@ -763,20 +763,11 @@ class GameClient:
         #   sub 0c = status qua:        [0c 00][count 1B] + N*[entity 8B][status 1B] (03=co qua nhan, 07=da nhan)
         if opcode == 0x0e and len(pkt) >= 9:
             self._on_friend_gift(pkt)
-        # NHIEM VU HANG NGAY (bingo 9 o): mo panel (C2S 0x5b 02 00 09...) -> server tra status TUNG O
-        # THEO THU TU (o 1..9), moi o 1 frame 0x5b:
-        #   02 00 01 01 00 [o] = XONG  (quest su kien - co kem so o)
-        #   02 00 03           = XONG  (quest DEM, vd battle 50 lan - KHONG kem so o -> tinh theo VI TRI)
-        #   02 00 04           = chua xong
-        # -> dem vi tri trong luc query de biet o nao la 02 00 03.
-        if opcode == 0x5b and len(pkt) >= 9 and pkt[7:9] == b"\x02\x00":
-            body = pkt[7:]
-            if getattr(self, "_quest_querying", False):
-                self._quest_pos += 1
-            if body[:5] == b"\x02\x00\x01\x01\x00" and len(body) >= 6:
-                self._quest_cells.add(body[5])              # XONG (co so o)
-            elif body[:3] == b"\x02\x00\x03" and getattr(self, "_quest_querying", False):
-                self._quest_cells.add(self._quest_pos)      # XONG (quest dem) -> theo vi tri
+        # NHIEM VU HANG NGAY (bingo 9 o): mo panel (C2S 0x5b 02 00 09...) -> server tra status tung o.
+        #   02 00 01 01 00 [o] = o DA XONG (ke ca quest dem battle-50 KHI DA DU 50 -> 020001010009)
+        #   02 00 03 / 02 00 04 = CHUA xong (03 = dang dem do, 04 = chua bat dau) -> BO QUA
+        if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x02\x00\x01\x01\x00":
+            self._quest_cells.add(pkt[12])
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1561,11 +1552,8 @@ class GameClient:
         (S2C 0x5b 02 00 01 01 00 [cell] -> handler nhet vao self._quest_cells).
         KHONG reset _quest_cells o day -> TICH LUY qua nhieu lan query (frame status TO 208B co the
         chi ve o lan mo panel DAU; query lan 2 reset se mat -> thieu o nhu o9). Reset o claim_daily_quests."""
-        self._quest_pos = 0          # dem vi tri o (1..9) -> biet o nao la 02 00 03 (quest dem)
-        self._quest_querying = True
         self.send(0x5b, self._Q_OPEN)
         time.sleep(2.0)              # cho server gui status 9 o
-        self._quest_querying = False
         return self._quest_cells
 
     def claim_daily_quests(self, heavy: bool = True):
