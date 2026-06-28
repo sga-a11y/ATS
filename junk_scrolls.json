@@ -1,5 +1,9 @@
 {
   "_note": "Cuon GOI PET RAC -> bot tu PHAN GIAI sau gacha (nhan lai xu). KEY = TID (template id, hex chuoi), value = ten. PHAI la TID, KHONG phai slot. Lay TID tu log_bag (dong 'slot N: tid=0x.... x count') khi mo tui co cuon do (mo cuon ra xem slot nao, doc tid o slot do). TID chung mọi acc. Gia tri cu (0x0139...) la SLOT account-specific -> SAI -> da xoa, dien lai bang TID.",
   "scrolls": {
+    "0xc930": "Bí Cấp Tr.M.Thành",
+    "0xc972": "Bí Cấp Tưởng Cán",
+    "0xc9a2": "Bí Cấp Hồ Ban",
+    "0xc9f8": "Bí Cấp Lý Thôi"
   }
 }

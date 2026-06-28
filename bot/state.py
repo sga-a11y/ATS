@@ -6,11 +6,14 @@ Phan tich tu cac packet S2C:
   - 0x0c: thong tin quai luc vao tran
 """
 import struct
+import logging
+log = logging.getLogger("bot")
 
 # Stat type trong 0x33 / 0x0b
 T_HP_CUR = 0x19
 T_SP_CUR = 0x1A
 T_HP_MAX = 0xCD
+T_SP_MAX = 0xCE   # maxSP - nam trong S2C 0x08 sub0300 (theo entity), KHONG phai 0x33
 
 
 class Unit:
@@ -45,8 +48,12 @@ class BattleState:
         # SP DAY (sp==sp_max) luc nao trong tran -> spam combo CA TRAN, bat chap so quai (1 quai cung dung).
         self.char_spam = False
         self.pet_spam = False
-        # dong doi trong party (entity_id -> Unit), khong gom char/pet cua minh
+        # dong doi trong party (entity_id -> Unit), khong gom char/pet cua minh.
+        # maxHP+maxSP (char & pet) nap tu 0x0b full-stat (update_0x0b); cur HP/SP cap nhat tung luot 0x33.
         self.allies = {}
+        # maxSP (b1,slot)->val tu 0x0b. BEN: allies bi clear MOI tran (0x34) nhung 0x0b party chi toi
+        # luc spawn -> luu rieng de ko mat maxSP giua cac tran. Nguon duy nhat co pet maxSP.
+        self.ally_spmax = {}
         self.mobs = []  # list HP_max cua quai (theo thu tu xuat hien)
         self.in_battle = False
         # vi tri quai con song (slot B2) - decode tu 0x33; dung lam target combat
@@ -61,12 +68,16 @@ class BattleState:
         self.mobs = []
         self.in_battle = False
 
-    def reset_enemies(self):
-        """Xoa HP/slot quai (goi luc battle moi bat dau, tranh dinh quai tran cu)."""
+    def reset_enemies(self, reset_quest=True):
+        """Xoa HP/slot quai (goi luc battle moi bat dau, tranh dinh quai tran cu).
+        reset_quest=False: GIU quest_mode/_battle_counted. 0x34 ban MOI TURN -> neu reset moi turn thi
+        khi quai con <=5 se MAT latch quest_mode (set luc >5 dau tran) -> roi nham ve TRAIN mode.
+        Chi reset khi la ENCOUNTER MOI (gap thoi gian lon giua 2 turn -> client.py quyet dinh)."""
         self.enemy_hp = {}
         self.enemy_slots = []
-        self.quest_mode = False
-        self._battle_counted = False
+        if reset_quest:
+            self.quest_mode = False
+            self._battle_counted = False
 
     # ---- parse 0x33 (stat update theo luot) ----
     def update_0x33(self, pkt: bytes):
@@ -119,15 +130,18 @@ class BattleState:
                 if T_HP_MAX in cd: self.char.hp_max = cd[T_HP_MAX]
                 if T_HP_CUR in cd: self.char.hp = cd[T_HP_CUR]
                 if T_SP_CUR in cd: self.char.sp = cd[T_SP_CUR]
-        # Cap nhat HP TAT CA dong doi (char B1=3, pet B1=2 cua moi slot) -> de quyet dinh hoi mau
+        # Cap nhat HP + SP TAT CA dong doi (char B1=3, pet B1=2 cua moi slot) -> de quyet dinh hoi mau/SP.
+        # SP: 0x33 co T_SP_CUR cua MOI member (server gui ca party). sp_max = MAX SP da thay (dau tran
+        # full SP -> bat dung max that), vi 0x33 khong mang maxSP (chi 0x0b cua RIENG minh co).
         for (b1, b2), d in groups.items():
-            if b1 in (0x02, 0x03) and (T_HP_CUR in d or T_HP_MAX in d):
+            if b1 in (0x02, 0x03) and (T_HP_CUR in d or T_HP_MAX in d or T_SP_CUR in d):
                 u = self.allies.get((b1, b2))
                 if u is None:
                     u = Unit(f"{'char' if b1==3 else 'pet'}{b2}")
                     self.allies[(b1, b2)] = u
                 if T_HP_MAX in d: u.hp_max = d[T_HP_MAX]
                 if T_HP_CUR in d: u.hp = d[T_HP_CUR]
+                if T_SP_CUR in d: u.sp = d[T_SP_CUR]   # maxSP nap tu 0x0b (update_0x0b)
                 u.slot = b2
 
     # ---- parse 0x0b (full stats char/pet) ----
@@ -154,6 +168,28 @@ class BattleState:
         """MAX SP char+pet (0x33 chi co maxHP). CHAR anchor self_entity; PET anchor pet-entity
         (= active_pet_id 2B + 6 byte 00, vd 0xa05a -> 5a a0 00..). Marker o entity+18.
         (xac nhan spmax.pcap: char 454/208, pet 1194/339.)"""
+        # 0x0b full-stat ca party: quet TOAN BO block char/pet (b1=2 pet, 3 char) cua MOI thanh vien
+        # -> nap maxSP+maxHP dong doi theo (b1,slot). DAY la nguon DUY NHAT co pet maxSP (0x33/0x08
+        # ko co). Validate 4 field (cur<=max...) tranh khop nham. Phu CA nguoi choi tay.
+        # PHAI chay TRUOC guard self_slot (quet party ko can self_slot; goi party lon toi luc spawn
+        # khi self_slot co the chua co -> neu return som se mat maxSP).
+        if len(pkt) > 100:
+            j = 0
+            while j + 18 <= len(pkt):
+                bb, sl = pkt[j], pkt[j + 1]
+                if bb in (2, 3) and sl < 6:
+                    mh, ms, ch, cs = struct.unpack_from("<IIII", pkt, j + 2)
+                    if 50 < mh < 1_000_000 and 0 < ms < 100_000 and ch <= mh and cs <= ms + 1 and mh > ms:
+                        u = self.allies.get((bb, sl))
+                        if u is None:
+                            u = Unit(f"{'char' if bb == 3 else 'pet'}{sl}")
+                            self.allies[(bb, sl)] = u
+                        u.hp, u.hp_max, u.sp, u.sp_max = ch, mh, cs, ms
+                        u.slot = sl
+                        self.ally_spmax[(bb, sl)] = ms   # BEN qua cac tran (allies bi clear)
+                        j += 18
+                        continue
+                j += 1
         slot = self.self_slot
         if slot is None:
             return
@@ -183,3 +219,16 @@ class BattleState:
             if u.hp_max > 0 and u.hp > 0 and u.hp_pct <= threshold:
                 return True
         return False
+
+    def ally_low_sp(self, threshold: float, exclude):
+        """Slot (b2) cua dong doi CON SONG co SP% < threshold, TRU caster (exclude=(b1,slot)).
+        Tra slot de target skill hoi SP team; None neu khong co. Nhieu dua -> tra dua dau gap."""
+        for (b1, b2), u in self.allies.items():
+            if (b1, b2) == exclude:
+                continue
+            if u.hp <= 0:   # CHET roi -> bo qua
+                continue
+            smax = self.ally_spmax.get((b1, b2), u.sp_max)   # maxSP ben (allies bi clear moi tran)
+            if smax > 0 and (u.sp / smax) < threshold:
+                return b2
+        return None

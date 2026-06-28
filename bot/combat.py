@@ -11,8 +11,10 @@ RULE TARGET (dung CHUNG cho danh thuong + combo -> moi unit dong target, combo m
   3. Khong co -> con LE dau tien
 (KHONG dung focus lowest-HP nua vi moi unit ra target khac nhau -> vo combo.)
 """
-import threading, time
+import threading, time, logging
 from . import config
+
+log = logging.getLogger("bot")
 
 # --- Dieu phoi HEAL: ca party chi 1 unit heal/luot, chon con SP CAO NHAT ---
 # bot_standalone chay moi nick trong cung 1 process (thread) -> chia se bien nay.
@@ -79,6 +81,34 @@ def _revive_decide(key, sp):
         winner = max(recent, key=lambda k: (recent[k][0], k))
         if winner == key:
             _revive_done["t"] = time.time()
+            return True
+        return False
+
+
+# --- HOI SP TOAN TEAM (Toan Hoi Ma): dieu phoi giong heal - 1 con cast/luot, con SP cao nhat ---
+_spr_lock = threading.Lock()
+_spr_pool = {}
+_spr_done = {"t": 0.0}
+SPR_BARRIER = 0.4
+SPR_COOLDOWN = 2.5
+
+
+def _sprestore_decide(key, sp):
+    """Giong _heal_decide: trong cac unit CO skill hoi SP + thay dong doi thieu SP, con SP cao nhat
+    gianh quyen cast luot nay (chi 1 con cast la du)."""
+    now = time.time()
+    with _spr_lock:
+        if now - _spr_done["t"] < SPR_COOLDOWN:
+            return False
+        _spr_pool[key] = (sp, now)
+    time.sleep(SPR_BARRIER)
+    with _spr_lock:
+        if time.time() - _spr_done["t"] < SPR_COOLDOWN:
+            return False
+        recent = {k: v for k, v in _spr_pool.items() if now - v[1] <= SPR_BARRIER + 1.0}
+        winner = max(recent, key=lambda k: (recent[k][0], k))
+        if winner == key:
+            _spr_done["t"] = time.time()
             return True
         return False
 
@@ -287,6 +317,36 @@ def pick_alltarget_skill(skills):
     return min(allt, key=_skill_cost) if allt else None
 
 
+def pick_sp_restore_skill(skills):
+    """Skill HOI SP TOAN TEAM (Toan Hoi Ma = cat 6). Lay cat-6 COST CAO NHAT (ban team dat hon ban
+    don, vd 0x2b01/40 > 0x2afe/35). None neu unit khong co."""
+    cand = [s for s in skills if (_sinfo(s) or {}).get("cat") == 6]
+    return max(cand, key=_skill_cost) if cand else None
+
+
+def _try_sp_restore(state, unit, skills, stat):
+    """HOI SP TOAN TEAM - CHI quest_mode, goi SAU heal HP / TRUOC attack:
+      - unit co skill cat-6 (Toan Hoi Ma) + ban than du SP (>=cost)
+      - co dong doi (TRU chinh minh) SP < 50%  (doc tu state.allies, SP ca party co trong 0x33)
+      - la unit SP cao nhat trong nhom co skill (_sprestore_decide dieu phoi, 1 con cast la du)
+    Target = slot dong doi <50%, b=3 (skill team). Tra Decision hoac None."""
+    spr = pick_sp_restore_skill(skills)
+    if spr is None:
+        return None
+    if not getattr(state, "quest_mode", False) or state.self_slot is None:
+        return None
+    if stat.sp < _skill_cost(spr):
+        return None
+    b1 = 3 if unit == config.UNIT_CHAR else 2
+    low_slot = state.ally_low_sp(0.5, (b1, state.self_slot))
+    if low_slot is None:
+        return None
+    key = state.label + (":char" if unit == config.UNIT_CHAR else ":pet") + ":spr"
+    if not _sprestore_decide(key, stat.sp):
+        return None
+    return Decision(unit, state.my_atype, low_slot, spr, b=3)
+
+
 def _lowest_hp_enemy(state, offered):
     """Pos quai con SONG it mau NHAT (cot phai trong offered). None neu khong co.
     Dung khi danh boss/don le (quest <=5) - dam con sap chet truoc."""
@@ -363,6 +423,10 @@ def decide_char(state, options, first_turn=False):
         _low = state.lowest_hp_ally()
         _ht = _low.slot if (_low is not None and getattr(_low, "slot", None) is not None) else at
         return Decision(config.UNIT_CHAR, at, _ht, config.SKILL_HEAL_ALL, b=3)
+    # HOI SP TOAN TEAM (chi quest_mode): sau heal HP, truoc tan cong
+    spr = _try_sp_restore(state, config.UNIT_CHAR, state.skills_char, state.char)
+    if spr is not None:
+        return spr
     return _combat_attack(state, config.UNIT_CHAR, state.skills_char, state.char, options,
                           "char_spam", config.CHAR_FIRE_MIN_SP)
 
@@ -381,5 +445,9 @@ def decide_pet(state, options, first_turn=False):
         _low = state.lowest_hp_ally()
         _ht = _low.slot if (_low is not None and getattr(_low, "slot", None) is not None) else at
         return Decision(config.UNIT_PET, at, _ht, config.SKILL_HEAL_ALL, b=3)
+    # HOI SP TOAN TEAM (chi quest_mode): sau heal HP, truoc tan cong
+    spr = _try_sp_restore(state, config.UNIT_PET, state.pet_skills, state.pet)
+    if spr is not None:
+        return spr
     return _combat_attack(state, config.UNIT_PET, state.pet_skills, state.pet, options,
                           "pet_spam", config.PET_FIRE_MIN_SP)

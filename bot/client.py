@@ -590,13 +590,16 @@ class GameClient:
             self.sock.close()
 
     def in_combat(self, idle_secs: float = 4.0) -> bool:
-        """Dang trong tran neu vua nhan luot/battle trong vong idle_secs giay."""
+        """Dang trong tran. Moc CHUAN = state.in_battle (set MOI luot 0x35 + 0x34 START, HA o 0x14
+        sub0700 END that). KHONG ep False theo idle ngan: giua cac luot quest khoang nghi co the >
+        idle_secs (log thay >13s) -> neu ep False se hoi item / vao gate GIUA TRAN.
+        Safety: im qua lau (END bi miss) moi ha co tranh ket vinh vien."""
         busy = (time.time() - self.last_turn_time) < idle_secs
-        if not busy:
-            self.state.in_battle = False
+        if self.state.in_battle and (time.time() - self.last_turn_time) > 25.0:
+            self.state.in_battle = False   # co le miss goi 0x14 END -> ha co an toan
         # KHONG reset _battle_entered/_first_turn: client THAT gui 0x41 + atype=2
         # chi 1 LAN/phien (join he thong battle), 6 tran sau van atype=3, khong gui lai 0x41
-        return busy
+        return self.state.in_battle or busy
 
     # ---- heartbeat ----
     def _heartbeat_loop(self):
@@ -642,6 +645,12 @@ class GameClient:
         # Hoan thanh dungeon: S2C 0x14 sub 0x64 (man tong ket) -> set co de do_daily_dungeon biet xong
         if opcode == 0x14 and len(pkt) >= 8 and pkt[7] == 0x64:
             self.dungeon_complete = True
+        # KET TRAN that: S2C 0x14 sub 0700 (man tong ket battle) -> ban DUNG 1 lan/tran luc thang.
+        # Day moi la moc ket tran dang tin (0x34 ban that thuong, 1 lan/nhieu tran). Reset quest_mode
+        # + enemies o DAY -> quest_mode latch luc start (>5) GIU NGUYEN ca tran du quai con <=5.
+        if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x07\x00":
+            self.state.reset_enemies(reset_quest=True)
+            self.state.in_battle = False
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
         # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
         if opcode == 0x59:
@@ -911,10 +920,12 @@ class GameClient:
             log.info("[%s] CHANDBG 0x07 %s", self._label, pkt.hex())
         elif opcode == protocol.OP_PLAYER_STATE:  # 0x0d - party
             self._on_party(pkt)
-        elif opcode == protocol.OP_BATTLE_START:   # 0x34 - mốc battle that (KHONG dung 0x41!)
+        elif opcode == protocol.OP_BATTLE_START:   # 0x34 - KHONG dung lam moc ket tran (ban that thuong)
+            # KHONG reset quest_mode o day: quest_mode reset o KET TRAN (0x14 sub0700). 0x34 ban that
+            # thuong (1 lan/nhieu tran) -> reset_quest=False de KHONG mat latch khi quai con <=5.
             self.state.in_battle = True
-            self._no_item.clear()        # tran moi -> co the drop them item -> cho phep check hoi lai
-            self.state.reset_enemies()   # tran moi -> xoa HP quai tran cu
+            self._no_item.clear()        # co the drop them item -> cho phep check hoi lai
+            self.state.reset_enemies(reset_quest=False)   # xoa HP quai cu, GIU quest_mode latch
             self.state.allies.clear()    # tran moi -> xoa HP dong doi tran cu (tranh ket hp=0 cua
             #                              con da chet tran truoc -> 0x33 tran moi nap lai HP tuoi)
             self.state.char_spam = False  # tran moi -> reset spam (set lai neu vao tran SP day)
