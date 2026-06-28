@@ -649,6 +649,9 @@ class GameClient:
         # Day moi la moc ket tran dang tin (0x34 ban that thuong, 1 lan/nhieu tran). Reset quest_mode
         # + enemies o DAY -> quest_mode latch luc start (>5) GIU NGUYEN ca tran du quai con <=5.
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x07\x00":
+            self._battle_end_count = getattr(self, "_battle_end_count", 0) + 1
+            log.info("[%s] DBG END tran #%d (0x14 sub0700) map=%s",
+                     self._label, self._battle_end_count, self.current_map)
             self.state.reset_enemies(reset_quest=True)
             self.state.in_battle = False
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
@@ -923,6 +926,9 @@ class GameClient:
         elif opcode == protocol.OP_BATTLE_START:   # 0x34 - KHONG dung lam moc ket tran (ban that thuong)
             # KHONG reset quest_mode o day: quest_mode reset o KET TRAN (0x14 sub0700). 0x34 ban that
             # thuong (1 lan/nhieu tran) -> reset_quest=False de KHONG mat latch khi quai con <=5.
+            self._battle_start_count = getattr(self, "_battle_start_count", 0) + 1
+            log.info("[%s] DBG START tran #%d (0x34) map=%s",
+                     self._label, self._battle_start_count, self.current_map)
             self.state.in_battle = True
             self._no_item.clear()        # co the drop them item -> cho phep check hoi lai
             self.state.reset_enemies(reset_quest=False)   # xoa HP quai cu, GIU quest_mode latch
