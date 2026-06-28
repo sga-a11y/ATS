@@ -166,6 +166,14 @@ Pattern entries: `03 02 [type] [4-byte LE]`
 
 **Mob:** offset 31 = HP_max (4B LE), offset 35 = SP_max (4B LE)
 
+**QUAN TRONG — gói 0x0b party (>100B, lúc spawn/start battle) = full-stat TẤT CẢ thành viên:**
+- Mỗi block: `[b1][slot][HP_max 4B][SP_max 4B][HP_cur 4B][SP_cur 4B]` (b1=3 char, 2 pet; slot=vị trí battle 0-4).
+- **Đây là NGUỒN DUY NHẤT có `SP_max` của đồng đội (cả pet, kể cả nick người chơi tay).**
+  `0x33` chỉ có HP_max (0xcd), KHÔNG có SP_max. `0x08` chỉ mang stat CHAR (unit 01), không có pet.
+- Quét toàn gói tìm block hợp lệ (validate cur≤max...) → nạp `ally_spmax[(b1,slot)]`.
+  Lưu BỀN: `allies` bị `clear()` mỗi `0x34` nhưng gói 0x0b party chỉ tới lúc spawn → phải giữ riêng.
+- Xem `state.update_0x0b` + `ally_low_sp` (hồi SP toàn team cho cả pet).
+
 ### QUAN TRONG: slot stats trong 0x33 = VI TRI BATTLE (atype), KHONG phai member-index
 - self_slot (key b2 doc HP/SP cua minh) PHAI = my_atype (vi tri tran, FILL=[1,3,0,4]).
 - Dung idx+1 (vi tri trong member list) = SAI -> doc nham SP/HP cua char khac.
