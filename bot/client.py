@@ -653,9 +653,6 @@ class GameClient:
         # Day moi la moc ket tran dang tin (0x34 ban that thuong, 1 lan/nhieu tran). Reset quest_mode
         # + enemies o DAY -> quest_mode latch luc start (>5) GIU NGUYEN ca tran du quai con <=5.
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x07\x00":
-            self._battle_end_count = getattr(self, "_battle_end_count", 0) + 1
-            log.info("[%s] DBG END tran #%d (0x14 sub0700) map=%s",
-                     self._label, self._battle_end_count, self.current_map)
             self.state.reset_enemies(reset_quest=True)
             self.state.in_battle = False
         # KET TRAN khi BO CHAY: flee KHONG sinh 0x14 sub0700 (man THANG) ma chuoi 0x14 0c00 -> 0900 ->
@@ -758,20 +755,15 @@ class GameClient:
         if opcode == 0x51:
             # Record reward bingo: c0 [XX] 03 00 00 00 [mask 2B] 01 00 00 00. Byte thu 2 (XX) DOI theo
             # server (fe/ff...) -> KHONG hardcode; anchor = c0 ?? 03000000 ... 01000000. line L da nhan
-            # = bit (L+3) cua mask. (offset ~196 nhung dung pattern cho chac.)
-            found = False
+            # = bit (L+3) cua mask. CHUA khop het server (vd len 1011) + concurrent login -> CON DANG DO.
+            # Match duoc thi skip line da nhan; khong match -> _claimed_lines rong -> claim het (server
+            # tu reject line da nhan -> VO HAI). (offset ~196 nhung dung pattern cho chac.)
             for i in range(len(pkt) - 12):
                 if pkt[i] == 0xc0 and pkt[i+2:i+6] == b"\x03\x00\x00\x00" and pkt[i+8:i+12] == b"\x01\x00\x00\x00":
                     mask = int.from_bytes(pkt[i+6:i+8], "little")
                     self._claimed_lines = {L for L in range(1, 8) if (mask >> (L + 3)) & 1}
                     self._claimed_loaded = True
-                    found = True
-                    log.info("[%s] [0x51 DBG] len=%d @%d mask=%04x -> line da nhan=%s",
-                             self._label, len(pkt), i, mask, sorted(self._claimed_lines))
                     break
-            if not found:
-                log.info("[%s] [0x51 DBG] len=%d KHONG match pattern: head=%s",
-                         self._label, len(pkt), pkt.hex()[:60])
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -947,9 +939,6 @@ class GameClient:
         elif opcode == protocol.OP_BATTLE_START:   # 0x34 - KHONG dung lam moc ket tran (ban that thuong)
             # KHONG reset quest_mode o day: quest_mode reset o KET TRAN (0x14 sub0700). 0x34 ban that
             # thuong (1 lan/nhieu tran) -> reset_quest=False de KHONG mat latch khi quai con <=5.
-            self._battle_start_count = getattr(self, "_battle_start_count", 0) + 1
-            log.info("[%s] DBG START tran #%d (0x34) map=%s",
-                     self._label, self._battle_start_count, self.current_map)
             self.state.in_battle = True
             self._no_item.clear()        # co the drop them item -> cho phep check hoi lai
             self.state.reset_enemies(reset_quest=False)   # xoa HP quai cu, GIU quest_mode latch
