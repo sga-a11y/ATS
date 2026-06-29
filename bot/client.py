@@ -2649,7 +2649,7 @@ class GameClient:
         self.pos = (x, y)
 
     def navigate_to(self, x: int, y: int, moves_needed: int = None, step: float = 1.5,
-                    max_iter: int = 80, flee: bool = True):
+                    max_iter: int = 80, flee: bool = True, abort=None):
         """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> flee=True thi BO CHAY,
         flee=False thi DANH (party da du -> keo ra spot phai danh bat chap, khong flee).
         game DI TUNG BUOC (move_to chi tien 1 doan ngan moi lan) -> diem XA can NHIEU buoc.
@@ -2667,7 +2667,10 @@ class GameClient:
         for _ in range(max_iter):
             if not self.running:    # bi STOP -> dung di chuyen
                 return
-            if self.in_combat(idle_secs=1.5):   # dang battle/vua co luot -> cho flee xong
+            if abort and abort():   # co reform moi / stop -> DUNG NGAY (de keepalive xu reform/ve thanh)
+                log.info("[%s] navigate_to: abort (reform moi/stop) -> dung", self._label)
+                return
+            if self.in_combat(idle_secs=1.0):   # in_battle chuan -> chi cho 1s sau END roi di (de lau bi quai danh)
                 time.sleep(0.5)
                 continue
             self.move_to(x, y)
@@ -2678,7 +2681,7 @@ class GameClient:
         self.pos = (x, y)
         log.info("[%s] da toi diem (%d,%d) sau %d buoc", self._label, x, y, moves)
 
-    def follow_path(self, waypoints, step: float = 1.0, flee: bool = True):
+    def follow_path(self, waypoints, step: float = 1.0, flee: bool = True, abort=None):
         """Di bo theo CHUOI WAYPOINT (capture duong di THAT trong map) toi diem quai xa.
         Moi waypoint move_to + cho HET TRAN roi di tiep.
         flee=True: ne quai (di nhanh, khong ton SP). flee=False: party DU NGUOI -> DANH quai gap
@@ -2692,11 +2695,14 @@ class GameClient:
         for wx, wy in waypoints:
             if not self.running:
                 return
+            if abort and abort():   # reform moi / stop -> DUNG kéo NGAY (de keepalive xu reform/ve thanh)
+                log.info("[%s] follow_path: abort (reform moi/stop) -> dung", self._label)
+                return
             # CHO THOAT TRAN HOAN TOAN (flee xong) TRUOC khi di tiep - KHONG move giua battle
             # (move giua tran pha luot flee). idle_secs cao de khong nham battle co khoang nghi.
             t0 = time.time()
-            while self.in_combat(idle_secs=3.0):
-                if not self.running or time.time() - t0 > 60:
+            while self.in_combat(idle_secs=1.0):   # in_battle chuan -> 1s sau END la di (de lau bi quai danh)
+                if not self.running or time.time() - t0 > 60 or (abort and abort()):
                     break
                 time.sleep(0.5)
             self.move_to(int(wx), int(wy))
@@ -2883,7 +2889,7 @@ class GameClient:
         self.send(protocol.OP_TELEPORT, payload)
         log.info("[%s] Teleport -> city %s (flag %s)", self._label, city_id, flag)
 
-    def _wait_combat_clear(self, idle: float = 3.0, cap: float = 90.0) -> bool:
+    def _wait_combat_clear(self, idle: float = 1.0, cap: float = 90.0) -> bool:
         """Cho HET TRAN (khong co luot battle trong 'idle' giay) toi 'cap' giay.
         Tra False neu bi STOP/rot. Dung truoc khi move/transit (battle NUOT lenh 0x06/0x14)."""
         t0 = time.time()
@@ -2919,18 +2925,18 @@ class GameClient:
                 self.pos = None   # qua cong -> vi tri cu vo nghia (map moi) -> navigate sau di hao phong
                 return True
             # CHO HET TRAN truoc khi toi cong + transit (battle nuot lenh -> ket cong / kick leader).
-            # idle=6.0 (KHONG dung 3s mac dinh): khoang NGHI GIUA 2 LUOT battle co the 3-4s -> idle ngan
-            # bi danh lua "het tran" -> transit giua tran -> SERVER KICK (vd leader vang o bai quai).
-            if not self._wait_combat_clear(idle=6.0):
+            # idle=5.0 (du in_battle da chuan): gate transit RAT nhay (kick leader) nen giu buffer rong hon
+            # navigate/follow -> chac chan sach tran moi gui chuoi 0x14.
+            if not self._wait_combat_clear(idle=5.0):
                 return False
             if x or y:   # x=y=0 -> cong "vao lien" (spawn ngay tai cong) -> KHONG move, chi trigger
                 self.move_to(x, y)
             # Dung tai cong: cho 0x35/0x34 (battle) kip den neu BUOC MOVE TOI CONG vua AGGRO quai moi.
             # 3.0s (KHONG 1.5s): aggro tu buoc move gui 0x34/0x35 ve cham ~1s -> 1.5s check som -> tuong
             # het tran -> transit -> tran moi ve giua transit -> SERVER KICK leader (race da gap o bai quai).
-            # idle=6.0 de chac chan het tran (khong nham khoang nghi giua luot).
+            # idle=5.0 de chac chan het tran truoc khi transit (gate nhay).
             time.sleep(3.0)
-            if self.in_combat(idle_secs=6.0):
+            if self.in_combat(idle_secs=5.0):
                 continue   # con trong tran (hoac vua aggro) -> fight het roi moi transit
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
             self._gate_transit = True
