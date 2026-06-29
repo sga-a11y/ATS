@@ -15,7 +15,9 @@
     "tu_chau": { "name": "Tu Chau", "city_id": 15001, "flag": 7, "hex": "3a99" },
     "tho_xuan": { "name": "Tho Xuan", "city_id": 15021, "flag": 8, "hex": "3aad" },
     "thuong_dang": { "name": "Thuong Dang", "city_id": 20001, "flag": 12, "hex": "4e21" },
-    "lau_bo": { "name": "Lau Bo", "city_id": 56001, "flag": 15, "hex": "dac1" }
+    "lau_bo": { "name": "Lau Bo", "city_id": 56001, "flag": 15, "hex": "dac1" },
+    "tuong_duong": { "name": "Tuong Duong", "city_id": 21001, "flag": 13, "hex": "5209" },
+    "giang_lang": { "name": "Giang Lang", "city_id": 21011, "flag": 14, "hex": "5213" }
   },
   "special_maps": {
     "di_gioi": {
