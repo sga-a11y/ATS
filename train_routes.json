@@ -1,6 +1,28 @@
 {
   "_note": "Route replay tu thanh toi train map (capture). Bot CHI leader replay; member tu keo theo.",
   "routes": {
+    "21881": {
+      "name": "GL-Rừng Giang Lăng1 75-76",
+      "from_city": 21011,
+      "city_flag": 14,
+      "dest_map": 21881,
+      "steps": [
+        {"move": [258, 595]},
+        {"gate": 1, "x": 30, "y": 710},
+        {"move": [1303, 492]},
+        {"move": [1270, 530]},
+        {"move": [1252, 719]},
+        {"move": [1250, 750]},
+        {"move": [1232, 939]},
+        {"move": [1245, 800]},
+        {"move": [1250, 990]},
+        {"move": [1250, 1130]},
+        {"move": [1210, 1130]},
+        {"move": [1070, 1250]},
+        {"move": [1010, 1390]},
+        {"move": [1010, 1490]}
+      ]
+    },
     "12831": {
       "name": "Rung Noi Huynh",
       "from_city": 12011,
