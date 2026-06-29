@@ -1659,6 +1659,14 @@ class GameClient:
             log.info("[%s] Qua ban be: tang %d ban (chua tang), nhan %d/%d qua",
                      self._label, len(to_send), self._gift_recv, len(to_recv))
 
+    def _dungeon_tier(self) -> int:
+        """TIER pho ban solo theo LEVEL char (server khoa tier thap voi char cao):
+          level <= 80   -> tier 2 (nhu cu)
+          level 81..150 -> tier 3 (capture nick cao: 0x2f 02000300 / 0x14 08000200 / 0x54 ..0d000300)
+          level > 150   -> tam tier 3 (xu ly rieng sau khi co capture)."""
+        lv = getattr(self, "char_level", 0) or 0
+        return 2 if lv <= 80 else 3
+
     def _run_one_dungeon(self, max_sec: int) -> bool:
         """Chay 1 luot dungeon: query -> vao -> danh boss -> nhan thuong -> ra. True neu vao duoc."""
         orig = self.current_map
@@ -1683,9 +1691,10 @@ class GameClient:
         #   -> 0x0c 0100 xin info -> 0x14 0600 confirm.
         # LUU Y: map CHI doi sang dungeon SAU KHI gui 0x14 08000100 (code cu cho map doi
         #   truoc roi moi gui 0x14 -> deadlock -> ket o map boss khong danh).
+        tier = self._dungeon_tier()
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)             # query pho ban
-        self.send(0x2f, b"\x02\x00\x02\x00\x00"); time.sleep(0.6)  # VAO dungeon
-        self.send(0x14, b"\x08\x00\x01\x00"); time.sleep(0.4)      # khoi dong tran boss
+        self.send(0x2f, b"\x02\x00" + bytes([tier]) + b"\x00\x00"); time.sleep(0.6)  # VAO dungeon (theo tier)
+        self.send(0x14, b"\x08\x00" + bytes([tier - 1]) + b"\x00"); time.sleep(0.4)  # khoi dong tran boss (tier-1)
         self.send(0x0c, b"\x01\x00"); time.sleep(0.4)              # xin info tran
         self.send(0x14, b"\x06\x00")                               # confirm
         # (3) Xac nhan DA vao dungeon. SOLO dungeon KHONG co nguoi xung quanh -> current_map
@@ -1751,9 +1760,10 @@ class GameClient:
     def buy_dungeon_ticket(self, wait: float = 2.5):
         """MUA ve dungeon bang vang. C2S 0x54 0100... (mo) -> 0x54 0200020d000200 (MUA).
         S2C 0x54 02000d00[01] -> byte cuoi 01 = MUA THANH CONG. Tra ve True/False."""
-        self.send(0x54, b"\x01\x00\x0d\x00\x02\x00"); time.sleep(0.5)   # mo giao dien mua
+        tier = self._dungeon_tier()
+        self.send(0x54, b"\x01\x00\x0d\x00" + bytes([tier]) + b"\x00"); time.sleep(0.5)   # mo giao dien mua (theo tier)
         self._dg_query = None                                          # cho doi tra loi MUA
-        self.send(0x54, b"\x02\x00\x02\x0d\x00\x02\x00")               # MUA (ton vang)
+        self.send(0x54, b"\x02\x00\x02\x0d\x00" + bytes([tier]) + b"\x00")               # MUA (ton vang, theo tier)
         for _ in range(int(wait / 0.2)):
             r = self._dg_query
             if r is not None and len(r) >= 5 and r[0:2] == b"\x02\x00":
