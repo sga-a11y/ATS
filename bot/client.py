@@ -479,6 +479,7 @@ class GameClient:
         self._no_item = set()        # (target,kind) het thuoc -> skip toi TRAN SAU (reset khi 0x34)
         self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
         self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
+        self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
         self.friend_status = {}      # entity hex -> trailer[18]: bit0x01=DA TANG, bit0x02=CO QUA nhan
         self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
@@ -522,7 +523,10 @@ class GameClient:
         thuong thi BAT BUOC.)"""
         seq = [(0x19, "2900f0"), (0x2b, "0400"), (0x01, "1000"), (0x7c, "0400"),
                (0x41, "0200"), (0x0c, "0100"), (0x57, "0300"), (0x01, "1000"),
-               (0x62, "020001000000"), (0x41, "01003235010100000101000000")]
+               # game client gui 2 goi 0x62: 020002 (trigger server day frame 0x51 daily-reward) + 020001.
+               # Thieu 020002 -> bot KHONG nhan 0x51 -> khong biet line da nhan.
+               (0x62, "020002000000"), (0x62, "020001000000"),
+               (0x41, "01003235010100000101000000")]
         for op, pl in seq:
             try:
                 self.send(op, bytes.fromhex(pl))
@@ -747,10 +751,22 @@ class GameClient:
         # marker "c0 fe 03 00 00 00" la 2 byte mask (uint16 LE) - line L da nhan = bit (L+3).
         # (Tim duoc nho raw-decode frame LON ma analyze_pcap drop; verify khop tren nhieu nick.)
         if opcode == 0x51:
-            m = pkt.find(b"\xc0\xfe\x03\x00\x00\x00")
-            if m >= 0 and m + 8 <= len(pkt):
-                mask = int.from_bytes(pkt[m + 6:m + 8], "little")
-                self._claimed_lines = {L for L in range(1, 8) if (mask >> (L + 3)) & 1}
+            # Record reward bingo: c0 [XX] 03 00 00 00 [mask 2B] 01 00 00 00. Byte thu 2 (XX) DOI theo
+            # server (fe/ff...) -> KHONG hardcode; anchor = c0 ?? 03000000 ... 01000000. line L da nhan
+            # = bit (L+3) cua mask. (offset ~196 nhung dung pattern cho chac.)
+            found = False
+            for i in range(len(pkt) - 12):
+                if pkt[i] == 0xc0 and pkt[i+2:i+6] == b"\x03\x00\x00\x00" and pkt[i+8:i+12] == b"\x01\x00\x00\x00":
+                    mask = int.from_bytes(pkt[i+6:i+8], "little")
+                    self._claimed_lines = {L for L in range(1, 8) if (mask >> (L + 3)) & 1}
+                    self._claimed_loaded = True
+                    found = True
+                    log.info("[%s] [0x51 DBG] len=%d @%d mask=%04x -> line da nhan=%s",
+                             self._label, len(pkt), i, mask, sorted(self._claimed_lines))
+                    break
+            if not found:
+                log.info("[%s] [0x51 DBG] len=%d KHONG match pattern: head=%s",
+                         self._label, len(pkt), pkt.hex()[:60])
         # Track map_id hien tai: 0x0c/0x07 = [00 00][entity 8B][map_id 2B]...
         # CHI doc map khi entity == CHINH MINH (tranh bi NHIEM map cua nguoi xung quanh ben
         # canh map khac -> doc nham 12842 thay vi 12831). self_entity None (luc login) -> tam lay.
@@ -1560,6 +1576,12 @@ class GameClient:
         # xong (020001010009...). Cache cu thua + tung POISON (parse sai o9 -> luu nham -> relogin van bao xong).
         self._quest_cells = set()
         done = self._query_quests()
+        # Cho frame 0x51 (line da nhan, trigger boi 0x62 020002 luc login) toi 2s neu chua nhan
+        # -> tranh claim lai line da nhan khi 0x51 ve cham. (Server khong gui -> claim het, vo hai.)
+        for _ in range(10):
+            if self._claimed_loaded:
+                break
+            time.sleep(0.2)
         # lam cac nhiem vu con thieu (gacha tu check xu, hop tu check nguyen lieu)
         acted = False
         if 6 not in done:
@@ -2906,11 +2928,13 @@ class GameClient:
                 return False
             if x or y:   # x=y=0 -> cong "vao lien" (spawn ngay tai cong) -> KHONG move, chi trigger
                 self.move_to(x, y)
-            # Dung tai cong: cho 0x35 (battle offer) kip den neu buoc vao quai. idle=6.0 de chac chan
-            # het tran (khong nham khoang nghi giua luot). Co tran -> loop lai danh het roi moi transit.
-            time.sleep(1.5)
+            # Dung tai cong: cho 0x35/0x34 (battle) kip den neu BUOC MOVE TOI CONG vua AGGRO quai moi.
+            # 3.0s (KHONG 1.5s): aggro tu buoc move gui 0x34/0x35 ve cham ~1s -> 1.5s check som -> tuong
+            # het tran -> transit -> tran moi ve giua transit -> SERVER KICK leader (race da gap o bai quai).
+            # idle=6.0 de chac chan het tran (khong nham khoang nghi giua luot).
+            time.sleep(3.0)
             if self.in_combat(idle_secs=6.0):
-                continue   # con trong tran (hoac vua dinh tran) -> fight het roi moi transit
+                continue   # con trong tran (hoac vua aggro) -> fight het roi moi transit
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
             self._gate_transit = True
             try:
