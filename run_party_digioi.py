@@ -675,7 +675,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                                  label, len(path))
                         c.follow_path(path, flee=False)   # party da du -> danh quai gap tren duong
                     elif spot:
-                        c.navigate_to(*_jitter(spot))
+                        c.navigate_to(*_jitter(spot), flee=False)   # party da du -> danh bat chap, khong flee
                     c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
                     log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
                 elif is_digioi:
@@ -783,7 +783,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     if path:
                         c.follow_path(path, flee=False)
                     elif spot:
-                        c.navigate_to(*_jitter(spot))
+                        c.navigate_to(*_jitter(spot), flee=False)   # party da du -> danh bat chap
                 c.combat_ready(); c.flee_mode = False
                 st["route_done"].set()
             else:

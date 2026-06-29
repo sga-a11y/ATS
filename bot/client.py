@@ -658,6 +658,11 @@ class GameClient:
                      self._label, self._battle_end_count, self.current_map)
             self.state.reset_enemies(reset_quest=True)
             self.state.in_battle = False
+        # KET TRAN khi BO CHAY: flee KHONG sinh 0x14 sub0700 (man THANG) ma chuoi 0x14 0c00 -> 0900 ->
+        # 0800 (xac nhan capture flee.pcap). -> cung ha in_battle de go_to_town teleport duoc sau flee.
+        # (Neu flee chua thanh cong/dang giua tran, luot 0x35 sau tu set lai in_battle=True.)
+        if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] in (b"\x0c\x00", b"\x09\x00", b"\x08\x00"):
+            self.state.in_battle = False
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
         # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
         if opcode == 0x59:
@@ -1197,6 +1202,7 @@ class GameClient:
                 log.info("[%s] BO CHAY (flee_mode, char_at=%s pet_at=%s my_atype=%s char_opts=%s pet_opts=%s)",
                          self._label, a, (a if (a is not None and a in pet_atypes) else None),
                          my_at, sorted({o[0] for o in char_opts}), sorted(pet_atypes))
+                # (in_battle ha o handler 0x14 0c00/0900/0800 = man BO CHAY tu server - khong doan o day.)
                 return
             if char_opts and not char_dead:
                 d = combat.decide_char(self.state, char_opts, ft)
@@ -2654,12 +2660,12 @@ class GameClient:
         self.pos = (x, y)
 
     def navigate_to(self, x: int, y: int, moves_needed: int = None, step: float = 1.5,
-                    max_iter: int = 80):
-        """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> BO CHAY (flee_mode) roi
-        di tiep. game DI TUNG BUOC (move_to chi tien 1 doan ngan moi lan) -> diem XA can NHIEU buoc.
+                    max_iter: int = 80, flee: bool = True):
+        """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> flee=True thi BO CHAY,
+        flee=False thi DANH (party da du -> keo ra spot phai danh bat chap, khong flee).
+        game DI TUNG BUOC (move_to chi tien 1 doan ngan moi lan) -> diem XA can NHIEU buoc.
         moves_needed=None -> tu tinh theo KHOANG CACH (tu self.pos): ~100px/buoc, clamp [4, 30].
-        (Truoc day cung 4 buoc -> diem xa khong toi -> ket giua duong, khong co quai.)
-        Dung in_combat nguong NGAN (1.5s). KHONG tu tat flee_mode - caller quan ly."""
+        Dung in_combat nguong NGAN (1.5s) - du danh hay flee deu cho HET TRAN roi di buoc tiep."""
         import math
         if moves_needed is None:
             if self.pos:
@@ -2667,7 +2673,7 @@ class GameClient:
                 moves_needed = max(4, min(30, int(dist / 100) + 2))
             else:
                 moves_needed = 30   # khong biet vi tri (vd vua qua cong) -> di hao phong cho chac toi
-        self.flee_mode = True
+        self.flee_mode = flee
         moves = 0
         for _ in range(max_iter):
             if not self.running:    # bi STOP -> dung di chuyen
@@ -2853,11 +2859,13 @@ class GameClient:
                          self._label)
                 self.flee_mode = False
                 return False
-            # DANG BATTLE -> teleport bi chan, va spam teleport luc battle PHA luot FLEE
-            # (char mat luot, khong chay duoc -> bi danh chet). -> BAT flee, CHO thoat tran roi teleport.
-            # idle_secs=4.0 (KHONG phai 1.5): nhip luot flee ~2-3s, neu 1.5 thi giua 2 luot doc
-            # nham "het tran" -> teleport chen giua -> pha flee -> tran khong bao gio ket thuc.
-            if self.in_combat(idle_secs=4.0):
+            # DANG BATTLE -> teleport bi chan, spam teleport luc battle PHA luot FLEE -> BAT flee, cho thoat.
+            # Moc chinh = state.in_battle (chinh xac: 0x34 START -> True, 0x14 sub0700 END -> False).
+            # CU dung in_combat(4.0) time-based: re-aggro <4s thi in_combat LUON True -> ko bao gio toi
+            # teleport -> KET battle vinh vien o map quai (flee xong dung yen, bi danh tiep). Gio tran
+            # KET THUC (in_battle=False) -> teleport NGAY trong khe ho truoc khi re-aggro. in_combat(1.5)
+            # chi la guard nho cho khoảnh khac ngay sau END (in_battle bao ve flee nhieu luot).
+            if self.state.in_battle or self.in_combat(idle_secs=1.5):
                 self.flee_mode = True
                 time.sleep(1.0)
                 continue
