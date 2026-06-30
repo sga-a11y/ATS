@@ -395,10 +395,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             # -> flee cho an toan. (member cung set tuong tu o nhanh duoi.)
                             _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
                             c.flee_mode = not _full
+                            # 2.5) O5 PHO BAN TO DOI: party da lap -> leader TAO + keo member vao danh
+                            #   (member auto-accept 0x2f 0f->03 + ready 0x2f 0b trong _on_dungeon, di theo).
+                            #   Xong -> DISBAND -> bump reform_gen de reform lap lai party cho train.
+                            #   Gated TEAM_DUNGEON_ENABLE (mac dinh OFF) - chuoi leader moi capture, can test truoc.
+                            _did_td = False
+                            if getattr(config, "TEAM_DUNGEON_ENABLE", False) and do_daily:
+                                try:
+                                    if 5 not in c._query_quests():
+                                        log.info("[%s] (LEADER) o5 chua xong -> PHO BAN TO DOI", label)
+                                        c.do_team_dungeon(); _did_td = True
+                                        with st["lock"]:
+                                            st["reform_gen"] += 1   # disband -> reform lap lai cho train
+                                except Exception as e:
+                                    log.warning("[%s] (LEADER) loi pho ban to doi: %s", label, e)
                             # 3) KEO DI: leader di qua cac cong/buoc; member tu theo.
                             #    DANG DANH -> DUNG DI CHUYEN, cho HET TRAN roi moi di buoc/qua cong
                             #    (di giua tran lam ket cong / pha luot danh).
-                            for stp in route.get("steps", []):
+                            for stp in ([] if _did_td else route.get("steps", [])):
                                 if _stopped(): break
                                 # _enter_gate / _route_move TU cho het tran truoc khi move/transit
                                 # (battle nuot lenh 0x06/0x14 -> nhan vat khong toi cong -> ket / kick).

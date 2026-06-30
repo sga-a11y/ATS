@@ -2646,6 +2646,81 @@ class GameClient:
                  self._label, nm, ival,
                  "" if best else " [chua biet INT -> chon dau tien]")
 
+    def _adv_dialog(self, n: int = 3, gap: float = 0.4):
+        """Bam 'next' qua doan thoai NPC: C2S 0x14 0600 (advance scene). n lan, cach 'gap' giay."""
+        for _ in range(n):
+            if not self.running:
+                return
+            self.send(0x14, b"\x06\x00")
+            time.sleep(gap)
+
+    def _dialog_until_battle(self, cap_n: int = 30, gap: float = 0.5) -> bool:
+        """Spam 0x14 0600 (advance dialog NPC) toi khi BATTLE bat (state.in_battle=True).
+        So lan thoai KHAC nhau moi canh (7-20) -> KHONG hardcode, spam toi khi vao tran.
+        Tra True neu da vao tran; False neu het cap_n van chua (ket / loi)."""
+        for _ in range(cap_n):
+            if not self.running:
+                return False
+            if self.state.in_battle:
+                return True
+            self.send(0x14, b"\x06\x00")
+            time.sleep(gap)
+            if self.state.in_battle:
+                return True
+        return self.state.in_battle
+
+    def do_team_dungeon(self, n_battles: int = 4, ready_wait: float = 9.0) -> bool:
+        """PHO BAN TO DOI (o5 daily) - chi LEADER goi. Member da auto-accept (0x2f 0f->03) +
+        auto-ready (0x2f 0b) trong _on_dungeon -> member chi di theo, KHONG can lam gi.
+        Luong (capture team.pcap, xem KNOWLEDGE 7n):
+          tao (0x2f 0100 / 0200010001) -> moi tung member (0x2f 0800 [entity]) -> start (0x2f 0c00)
+          -> 4 tran: chuyen canh + spam dialog toi khi battle + cho het tran; set quan su sau tran 1.
+        TRIGGER battle = spam 0x14 0600 (KHONG phu thuoc di chuyen). Tra True neu chay het 4 tran."""
+        ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
+        if not ents:
+            log.warning("[%s] (LEADER) do_team_dungeon: chua biet entity member -> bo qua", self._label)
+            return False
+        log.info("[%s] (LEADER) === PHO BAN TO DOI: tao + moi %d member ===", self._label, len(ents))
+        # 1. Tao pho ban to doi
+        self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
+        self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)
+        # 2. Moi tung member theo ENTITY (0x2f 0800 [entity 8B]) - KHAC party-invite 0x0d 07
+        for e in ents:
+            self.send(0x2f, b"\x08\x00" + bytes(e)); time.sleep(1.0)
+        # 3. Cho member auto-ready (2.5s sau accept) roi START
+        log.info("[%s] (LEADER) cho member ready %.0fs roi START", self._label, ready_wait)
+        time.sleep(ready_wait)
+        self.send(0x2f, b"\x0c\x00"); time.sleep(2.0)
+        # 4. Vong battle. Chuyen canh tung tran (B1=enter, B2/3=0x14 0800[area], B4=0x20 020008+0x14 01001400)
+        transitions = [
+            [(0x14, b"\x08\x00\x01\x00")],                              # B1: vao pho ban
+            [(0x14, b"\x08\x00\x02\x00")],                              # B2: canh 2
+            [(0x14, b"\x08\x00\x03\x00")],                              # B3: canh 3
+            [(0x20, b"\x02\x00\x08"), (0x14, b"\x01\x00\x14\x00")],     # B4: event teleport
+        ]
+        for i in range(min(n_battles, len(transitions))):
+            if not self.running:
+                return False
+            # dam bao het tran truoc (battle nuot lenh 0x14) + dismiss thoai thang loi
+            if i > 0:
+                self._wait_combat_clear(idle=2.0, cap=120.0)
+                self._adv_dialog(n=4, gap=0.4)
+            for op, body in transitions[i]:
+                self.send(op, body); time.sleep(0.4)
+            if not self._dialog_until_battle():
+                log.warning("[%s] (LEADER) tran %d: spam dialog ma khong vao battle -> dung", self._label, i + 1)
+                return False
+            log.info("[%s] (LEADER) pho ban to doi: VAO TRAN %d/%d", self._label, i + 1, n_battles)
+            if i == 0:
+                self._wait_combat_clear(idle=2.0, cap=120.0)   # cho tran 1 xong
+                self.set_party_strategist()                    # set quan su sau tran 1
+        # cho tran cuoi xong
+        self._wait_combat_clear(idle=2.0, cap=120.0)
+        log.info("[%s] (LEADER) === PHO BAN TO DOI XONG (%d tran) -> roi pho ban ===", self._label, n_battles)
+        self.leave_party()     # 0x0d 04 = roi/giai tan -> thoat pho ban
+        time.sleep(2.0)
+        return True
+
     def increase_stat(self, stat_id: int, amount: int = 1):
         """Tang 1 chi so. C2S 0x08 = 01 00 00 00 [stat_id] [amount] 00 00 00 00
         (xac nhan tu int.pcap: tang INT id=0x1b). Dung cho auto cong diem sau nay."""

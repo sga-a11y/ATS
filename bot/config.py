@@ -129,6 +129,10 @@ DUNGEON_RUNS_PER_DAY = 2
 # Van tieu (escort): moi ngay 3 luot, gui pet di -> 1h sau nhan qua.
 # VANTIEU_PETS = vi tri pet trong list QUAN TRO de gui (index 1-based), 1 pet/luot.
 #   vd [1,2,3] = gui pet thu 1,2,3 cho 3 luot. [] = KHONG tu gui (chi nhan qua).
+# PHO BAN TO DOI (o5 daily): leader tao + keo 4 member vao danh 4 tran. CHUOI LEADER moi capture
+# (KNOWLEDGE 7n) - bat de TEST, mac dinh OFF tranh phá flow train khi chua verify.
+TEAM_DUNGEON_ENABLE = False
+
 VANTIEU_ENABLE = True
 VANTIEU_PETS = [1, 2, 3]
 # Smart match (phase-2): ten pet trong QUAN TRO theo DUNG THU TU slot (slot1, slot2,...).

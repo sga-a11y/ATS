@@ -462,6 +462,44 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   0x55 ~15KB) → kết luận sai "server không gửi". ĐÃ sửa `ln<=65535`. Khi không thấy data trong gói,
   NGHI tool drop frame lớn trước → raw-decode lại với limit cao (đây là tật cũ, đã dính 2 lần: túi đồ + claimed).
 
+## 7n. PHÓ BẢN TỔ ĐỘI (ô5 daily) — opcode 0x2f + battle loop (capture team.pcap)
+
+Luồng 5 người (1 leader + 4 member). Map quan trọng: **ô5 bingo = phó bản tổ đội**.
+
+### Member side (ĐÃ CÓ trong `_on_dungeon`, KHÔNG cần làm lại)
+- S2C `0x2f sub=0f` = lời mời phó bản → auto-accept **C2S `0x2f 03 00 [invite_id 4B] 00`** → sau 2.5s
+  auto-ready **C2S `0x2f 0b 00`**. Whitelist theo `PARTY_LEADERS`.
+- Khi battle bật (0x34/0x35 broadcast CHO CẢ PARTY) → battle AI (0x32) tự đánh. **Giả thuyết: member
+  KHÔNG cần tự spam dialog/chuyển cảnh** — leader trigger battle là cả party bị kéo vào. (CẦN verify bằng
+  1 capture member nếu member kẹt ngoài battle.)
+
+### Leader side (CHƯA CÓ — cần implement `do_team_dungeon`)
+Chuỗi C2S (verify timeline team.pcap):
+1. **Mở panel:** `0x2f 0100` (×2).
+2. **Tạo phó bản:** `0x2f 02 00 01 00 01` (5 byte). Mật mã "22": nghi `0x41 0100 3232 ...` (`3232`="22"
+   ASCII) nhưng bắn lúc t=118 (giữa battle 1) → CHƯA chắc. Mật mã có thể bỏ (bot chỉ mời nick mình).
+3. **Mời member theo ENTITY:** `0x2f 08 00 [entity 8B]` cho TỪNG member (KHÁC party-invite `0x0d 07`!).
+4. **Start:** `0x2f 0c 00` (sau khi 4 member ready).
+
+### Vòng battle (4 trận) — leader chạy. **TRIGGER BATTLE = spam `0x14 0600`**
+- **Mốc bật trận = burst `0x14 0600` (advance NPC dialog).** MỌI trận bật (S2C 0x34) ngay sau tràng
+  `0x14 0600`. Số lần KHÁC nhau mỗi cảnh (**7–20 lần**) → **KHÔNG hardcode**: spam `0x14 0600` mỗi
+  ~0.5s tới khi `state.in_battle=True`, có cap (vd 25 lần / 15s).
+- **Di chuyển `0x06` = nhiều khả năng KHÔNG bắt buộc** cho battle. Trận 1: vào → dialog → battle, KHÔNG
+  có move nào. Move ở trận 2-4 chỉ đi tới NPC/cổng trước transit. Replay cả move cho chắc, nhưng cái
+  thật sự chuyển cảnh là transit + dialog.
+- **Chuyển cảnh giữa trận:** `0x14 08 00 [area] 00` (area 01→02→03). Trận 4 đặc biệt dùng
+  `0x20 02 00 08` + `0x14 01 00 14 00` (giống event boss thế giới).
+- **Set quân sư (1 lần, sau trận 1):** `0x0d 05 00 [entity]` (đã có `set_strategist`).
+- Trình tự thực tế: enter `0x14 08000100`→dialog→**B1**→dialog→set quân sư→move→`0x14 08000200`→dialog→
+  **B2**→`0x7c 0400`→dialog→move→`0x14 08000300`→dialog→**B3**→dialog→move→`0x20 020008`+`0x14 01001400`→
+  dialog→**B4**.
+
+### Nhận thưởng + thoát
+- Sau B4: `0x5b 0200010100053300` (query ô5 status) → `0x0d 04 00 [entity]` (sub04 = rời/giải tán) →
+  `0x7c 0400` → `0x01 1000` (về thành?) → mở panel `0x5b 020009...` → claim line
+  `0x5b 03 00 01 00 [line][reward 2B]` (capture claim line 2/5/7).
+
 ## 8. GAME MECHANICS
 
 | Mechanic | Mô tả |
