@@ -2690,6 +2690,8 @@ class GameClient:
             log.warning("[%s] (LEADER) do_team_dungeon: chua biet entity member -> bo qua", self._label)
             return False
         log.info("[%s] (LEADER) === PHO BAN TO DOI: tao + moi %d member ===", self._label, len(ents))
+        self.flee_mode = False   # PHO BAN: leader PHAI DANH (flee_mode tu flow daily -> leader bo chay,
+                                 #   ket tran sai 0x14 0c00/0900/0800 thay vi WIN 0x14 sub0700 -> hong)
         # 1. Tao pho ban to doi
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
         self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)
@@ -2720,6 +2722,7 @@ class GameClient:
             if not self.running:
                 return False
             seg = segments[i]
+            self.flee_mode = False   # giu DANH suot pho ban (khong bo chay tran nao)
             if i > 0:
                 self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong (nuot lenh 0x06/0x14)
                 self._adv_dialog(n=10, gap=0.4)                # dismiss thoai thang loi (capture ~9 lan)
