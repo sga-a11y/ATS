@@ -1198,10 +1198,12 @@ class GameClient:
             if char_opts and not char_dead:
                 d = combat.decide_char(self.state, char_opts, ft)
                 self._send_combat(d)
-                log.info("[%s] CHAR %s | %s | skills=%s | quai@%s",
+                _off = sorted(t for a, t in char_opts if a == self.state.my_atype)
+                log.info("[%s] CHAR %s | %s | skills=%s | quai@%s | offer(my_at=%s)=%s | enemy_hp=%s",
                          self._label, d, self.state.char,
                          [hex(s) for s in sorted(self.state.skills_char)],
-                         self.state.enemy_slots)
+                         self.state.enemy_slots, self.state.my_atype, _off,
+                         {k: v for k, v in sorted(self.state.enemy_hp.items()) if v > 0})
             elif char_opts and char_dead:
                 log.info("[%s] CHAR HP=0 (da chet) -> KHONG gui lenh attack", self._label)
             if pet_opts and not pet_dead:
