@@ -480,6 +480,7 @@ class GameClient:
         self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
         self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
         self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
+        self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
@@ -1091,6 +1092,7 @@ class GameClient:
                     return
             # Dong y vao pho ban
             self.send(0x2f, b"\x03\x00" + invite_id + b"\x00")
+            self._team_dungeon_until = time.time() + 300   # vao pho ban -> delay 0x32 random 0.5-2s
             log.info("[%s] Nhan moi PHO BAN tu '%s' -> da DONG Y", self._label, name or "?")
             # Da nhan pho ban -> THEO + DANH (khong flee, khong teleport ve thanh nua trong 10p):
             # go_to_town se BAIL khi thay co (tranh xung dot 'city mode keo ve' vs 'pho ban keo vao').
@@ -1132,7 +1134,14 @@ class GameClient:
     def _arm_decision(self):
         if self._decision_timer:
             self._decision_timer.cancel()
-        self._decision_timer = threading.Timer(self.submit_delay, self._make_decisions)
+        # PHO BAN TO DOI: delay gui 0x32 = RANDOM 0.5-2s (giong human, sau battle start) thay vi 0.3s
+        # co dinh. Cua so 300s tu luc vao pho ban (leader tao / member accept) -> tu het, train ve 0.3s.
+        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+            import random
+            delay = random.uniform(0.5, 2.0)
+        else:
+            delay = self.submit_delay
+        self._decision_timer = threading.Timer(delay, self._make_decisions)
         self._decision_timer.start()
 
     def _make_decisions(self):
@@ -2694,6 +2703,7 @@ class GameClient:
         log.info("[%s] (LEADER) === PHO BAN TO DOI: tao + moi %d member ===", self._label, len(ents))
         self.flee_mode = False   # PHO BAN: leader PHAI DANH (flee_mode tu flow daily -> leader bo chay,
                                  #   ket tran sai 0x14 0c00/0900/0800 thay vi WIN 0x14 sub0700 -> hong)
+        self._team_dungeon_until = time.time() + 300   # delay 0x32 random 0.5-2s suot pho ban
         # 1. Tao pho ban to doi
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
         self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)

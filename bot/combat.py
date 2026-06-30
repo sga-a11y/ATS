@@ -170,11 +170,6 @@ def _train_target(enemy_slots, offered):
     es = set(enemy_slots)
     if not es:
         return None
-    # CHE CHAN 2 hang: quai HANG 1 (b1=1, pos>=10) CHE quai hang 0 -> danh hang 0 khi hang 1 con song
-    # = 0 sat thuong (verify pho ban to doi). UU TIEN diet HANG 1 truoc, het hang 1 moi sang hang 0.
-    front = {p for p in es if p >= 10}
-    if front:
-        es = front
     s = sorted(es)
     for a in s:   # nhom 3 cung hang -> con giua (cot phai offered)
         if (a + 1) in es and (a + 2) in es and _same_row(a, a + 2) and (_col(a + 1) + om) in off:
@@ -366,9 +361,6 @@ def _lowest_hp_enemy(state, offered):
     off = set(offered)
     om = _offer_min(offered)
     alive = [(pos, hp) for pos, hp in state.enemy_hp.items() if hp > 0 and (_col(pos) + om) in off]
-    front = [x for x in alive if x[0] >= 10]   # hang 1 che hang 0 -> uu tien hang 1 (xem _train_target)
-    if front:
-        alive = front
     if not alive:
         return None
     return min(alive, key=lambda x: x[1])[0]
