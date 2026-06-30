@@ -140,6 +140,7 @@ def _pstate(pidx):
                               "started_train": 0,        # so acc da qua check map -> vao train (de barrier dungeon)
                               "dungeon_done": 0,         # so acc da danh xong dungeon (barrier)
                               "dailies_done": 0,         # so acc da xong daily login (barrier cho leader)
+                              "o5_done_by": {},          # username -> o5 (pho ban to doi) da xong? Leader chi chay khi CA party chua xong
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
@@ -186,6 +187,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             c._label = label; c._username = username
             log.info("[%s] server=%s (%s) id=%s", label, server_name, server_ip, server_id)
             c.party_idx = pidx
+            # Hook o5 pho ban to doi = BUOC CUOI claim_daily_quests (xem _handle_o5_team)
+            c._o5_team_fn = (lambda o5d, _c=c:
+                             _handle_o5_team(_c, st, username, label, pidx, is_leader, _stopped, o5d))
             c.submit_delay = 0.3
             c.connect()
             # cho self_entity + map (map=None = chua vao world xong)
@@ -395,24 +399,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             # -> flee cho an toan. (member cung set tuong tu o nhanh duoi.)
                             _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
                             c.flee_mode = not _full
-                            # 2.5) O5 PHO BAN TO DOI: party da lap -> leader TAO + keo member vao danh
-                            #   (member auto-accept 0x2f 0f->03 + ready 0x2f 0b trong _on_dungeon, di theo).
-                            #   Xong -> DISBAND -> bump reform_gen de reform lap lai party cho train.
-                            #   Gated TEAM_DUNGEON_ENABLE (mac dinh OFF) - chuoi leader moi capture, can test truoc.
-                            _did_td = False
-                            if getattr(config, "TEAM_DUNGEON_ENABLE", False) and do_daily:
-                                try:
-                                    if 5 not in c._query_quests():
-                                        log.info("[%s] (LEADER) o5 chua xong -> PHO BAN TO DOI", label)
-                                        c.do_team_dungeon(); _did_td = True
-                                        with st["lock"]:
-                                            st["reform_gen"] += 1   # disband -> reform lap lai cho train
-                                except Exception as e:
-                                    log.warning("[%s] (LEADER) loi pho ban to doi: %s", label, e)
                             # 3) KEO DI: leader di qua cac cong/buoc; member tu theo.
                             #    DANG DANH -> DUNG DI CHUYEN, cho HET TRAN roi moi di buoc/qua cong
                             #    (di giua tran lam ket cong / pha luot danh).
-                            for stp in ([] if _did_td else route.get("steps", [])):
+                            for stp in route.get("steps", []):
                                 if _stopped(): break
                                 # _enter_gate / _route_move TU cho het tran truoc khi move/transit
                                 # (battle nuot lenh 0x06/0x14 -> nhan vat khong toi cong -> ket / kick).
@@ -1160,6 +1150,39 @@ def party_accounts(pidx):
     valid = [(u, p) for u, p in party if u and u.strip()]
     picker_acc = leader_acc if leader_acc else (valid[0][0] if valid else None)
     return [(u, p, u == leader_acc, u == picker_acc) for u, p in valid]
+
+
+def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done):
+    """O5 PHO BAN TO DOI = BUOC CUOI claim_daily_quests (sau khi check + thu lam moi o khac).
+    Moi acc report o5 da xong chua. LEADER cho CA party report -> CHI khi MOI nguoi deu CHUA xong o5
+    -> tao + keo party vao danh (member auto-accept 0x2f 0f->03 + ready 0x2f 0b trong _on_dungeon,
+    di theo leader). Member: chi report roi return (khong tu lam gi)."""
+    with st["lock"]:
+        st["o5_done_by"][username] = bool(o5_done)
+    if not is_leader:
+        return
+    members = [t[0] for t in party_accounts(pidx)]
+    if len(members) < 2:
+        return   # khong du party de danh pho ban to doi
+    # cho TAT CA member (gom leader) report o5 (toi 120s)
+    t0 = time.time()
+    while time.time() - t0 < 120:
+        if stopped_fn() or not c.running:
+            return
+        with st["lock"]:
+            reported = all(m in st["o5_done_by"] for m in members)
+        if reported:
+            break
+        time.sleep(2)
+    with st["lock"]:
+        statuses = dict(st["o5_done_by"])
+    if all(not statuses.get(m, True) for m in members):       # MOI nguoi deu chua xong
+        log.info("[%s] (LEADER) CA party (%d nguoi) chua xong o5 -> PHO BAN TO DOI", label, len(members))
+        c.do_team_dungeon()
+    else:
+        done_list = [m for m in members if statuses.get(m, False)]
+        log.info("[%s] (LEADER) o5: KHONG phai ca party chua xong (da xong: %s) -> bo qua pho ban to doi",
+                 label, done_list)
 
 
 def start_account(username, password, pidx, is_leader, is_picker):

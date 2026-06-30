@@ -473,7 +473,14 @@ Luồng 5 người (1 leader + 4 member). Map quan trọng: **ô5 bingo = phó b
   KHÔNG cần tự spam dialog/chuyển cảnh** — leader trigger battle là cả party bị kéo vào. (CẦN verify bằng
   1 capture member nếu member kẹt ngoài battle.)
 
-### Leader side (CHƯA CÓ — cần implement `do_team_dungeon`)
+### Tích hợp (ĐÃ implement)
+- **Ô5 = BƯỚC CUỐI trong `claim_daily_quests`** (sau khi check + thử làm mọi ô khác — ô khác fail như
+  hết xu gacha vẫn OK, không phụ thuộc). Gọi qua hook `client._o5_team_fn` (set bởi run_party_digioi).
+- **Mỗi acc report ô5 đã xong chưa** vào `st["o5_done_by"]`. **LEADER chỉ chạy `do_team_dungeon` khi CẢ
+  party đều CHƯA xong ô5** (`_handle_o5_team` chờ tất cả report, gate all-not-done). Member chỉ report
+  rồi return → tự accept lời mời + đi theo.
+
+### Leader side — `do_team_dungeon` (đã implement)
 Chuỗi C2S (verify timeline team.pcap):
 1. **Mở panel:** `0x2f 0100` (×2).
 2. **Tạo phó bản:** `0x2f 02 00 01 00 01` (5 byte). Mật mã "22": nghi `0x41 0100 3232 ...` (`3232`="22"

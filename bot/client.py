@@ -480,6 +480,8 @@ class GameClient:
         self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
         self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
         self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
+        self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
+                                     #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
         self.friend_status = {}      # entity hex -> trailer[18]: bit0x01=DA TANG, bit0x02=CO QUA nhan
         self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
@@ -1604,6 +1606,13 @@ class GameClient:
             time.sleep(0.3); n += 1
         log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), da nhan truoc=%s, claim them %d line (line %s)",
                  self._label, sorted(done), len(done), sorted(self._claimed_lines), n, lines)
+        # O5 PHO BAN TO DOI = BUOC CUOI cung (sau khi check + thu lam moi o khac - o khac fail van OK).
+        #   Moi acc report o5 da xong chua; LEADER chi chay khi CA party deu chua xong (xem run_party_digioi).
+        if heavy and self._o5_team_fn:
+            try:
+                self._o5_team_fn(5 in done)
+            except Exception as e:
+                log.warning("[%s] loi xu ly o5 pho ban to doi: %s", self._label, e)
 
     def _on_friend_gift(self, pkt: bytes):
         """Parse S2C 0x0e ban be:
