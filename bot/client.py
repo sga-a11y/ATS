@@ -802,7 +802,12 @@ class GameClient:
                 self._resolve_name_from_03(pkt)
         # (Server KHONG echo vi tri CUA MINH qua 0x06 -> dung dead-reckoning trong move_to/enter)
         if opcode == protocol.OP_STAT_UPD:        # 0x33
+            _eh_before = dict(self.state.enemy_hp)
             self.state.update_0x33(pkt)
+            if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+                _eh = {k: v for k, v in sorted(self.state.enemy_hp.items())}
+                log.info("[%s] DBG33[%dB] enemy_hp=%s %s", self._label, len(pkt), _eh,
+                         "(DOI)" if _eh != _eh_before else "(KHONG doi)")
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
             if self.self_entity is None:
                 # chua biet self_entity -> buffer lai de xu khi co (tranh mat goi stat luc login)
