@@ -151,8 +151,9 @@ VANTIEU_REQUESTS = _load_json_root("vantieu_requests.json").get("requests", {}) 
 GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 
 # Combat tuning
-HEAL_HP_THRESHOLD = 0.60    # ally HP <= 60% max -> Toan Tri Lieu
+HEAL_HP_THRESHOLD = 0.70    # ally HP <= 70% max -> Toan Tri Lieu
 HEAL_SP_COST = 42
+SP_RESTORE_THRESHOLD = 0.5  # quest: cast Toan Hoi Ma (hoi SP team) khi co dong doi SP < 50% max
 PET_FIRE_MIN_SP = 65        # combo (Hoa Tien/Nem Da/Loan Kich): SP < 65 -> danh thuong
 
 # DATA PET: doc tu pets.json (AUTO-SINH tools/crack_pets.py). pet_id hex -> name + skills (LIST,

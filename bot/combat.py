@@ -338,7 +338,7 @@ def _try_sp_restore(state, unit, skills, stat):
     if stat.sp < _skill_cost(spr):
         return None
     b1 = 3 if unit == config.UNIT_CHAR else 2
-    low_slot = state.ally_low_sp(0.5, (b1, state.self_slot))
+    low_slot = state.ally_low_sp(getattr(config, "SP_RESTORE_THRESHOLD", 0.5), (b1, state.self_slot))
     if low_slot is None:
         return None
     key = state.label + (":char" if unit == config.UNIT_CHAR else ":pet") + ":spr"
