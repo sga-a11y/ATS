@@ -2705,17 +2705,19 @@ class GameClient:
         # 4. Vong battle. Moi tran: (dismiss thoai thang loi) -> [set quan su sau B1] -> DI TOI CONG
         #    (moves, _route_move dam bao toi noi - THIEU buoc nay server DA leader!) -> transit -> spam
         #    dialog toi khi battle. Moves + transit lay tu capture team.pcap (KNOWLEDGE 7n).
+        # vdlg = SO LAN dialog thang loi sau battle TRUOC (cutscene co dinh - capture: B1->B2=9,
+        #   B2->B3=10, B3->B4=20; thieu -> ket khong qua duoc man thang loi -> transit truot).
         segments = [
             # B1: vao thang pho ban (khong move)
-            {"pre": [], "moves": [], "transit": [(0x14, b"\x08\x00\x01\x00")]},
-            # B2: set quan su -> di toi cong canh 2 -> transit
-            {"pre": [], "moves": [(243, 749), (327, 727), (411, 705), (470, 690)],
+            {"vdlg": 0, "pre": [], "moves": [], "transit": [(0x14, b"\x08\x00\x01\x00")]},
+            # B2: thang loi B1 (9) -> set quan su -> di toi cong canh 2 -> transit
+            {"vdlg": 9, "pre": [], "moves": [(243, 749), (327, 727), (411, 705), (470, 690)],
              "transit": [(0x14, b"\x08\x00\x02\x00")]},
-            # B3: 0x7c 0400 -> di toi cong canh 3 -> transit
-            {"pre": [(0x7c, b"\x04\x00")], "moves": [(660, 584), (730, 550)],
+            # B3: 0x7c 0400 -> thang loi B2 (10) -> di toi cong canh 3 -> transit
+            {"vdlg": 10, "pre": [(0x7c, b"\x04\x00")], "moves": [(660, 584), (730, 550)],
              "transit": [(0x14, b"\x08\x00\x03\x00")]},
-            # B4: di -> event teleport (giong boss the gioi)
-            {"pre": [], "moves": [(730, 550), (690, 450)],
+            # B4: thang loi B3 (20) -> di -> event teleport (giong boss the gioi)
+            {"vdlg": 20, "pre": [], "moves": [(730, 550), (690, 450)],
              "transit": [(0x20, b"\x02\x00\x08"), (0x14, b"\x01\x00\x14\x00")]},
         ]
         for i in range(min(n_battles, len(segments))):
@@ -2725,16 +2727,16 @@ class GameClient:
             self.flee_mode = False   # giu DANH suot pho ban (khong bo chay tran nao)
             if i > 0:
                 self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong (nuot lenh 0x06/0x14)
-                self._adv_dialog(n=10, gap=0.4)                # dismiss thoai thang loi (capture ~9 lan)
-                if i == 1:
-                    self.set_party_strategist()                # set quan su SAU tran 1
-                for op, body in seg["pre"]:
+                for op, body in seg["pre"]:                    # pre (0x7c 0400) TRUOC thoai thang loi
                     self.send(op, body); time.sleep(0.4)
+                self._adv_dialog(n=seg["vdlg"], gap=0.4)       # dismiss thoai thang loi (so dung tung doan)
+                if i == 1:
+                    self.set_party_strategist()                # set quan su SAU tran 1 (sau thoai thang loi)
                 for (x, y) in seg["moves"]:
                     self._route_move(x, y)                     # DI toi cong (dam bao toi noi truoc transit)
             for op, body in seg["transit"]:
                 self.send(op, body); time.sleep(0.4)
-            if not self._dialog_until_battle():
+            if not self._dialog_until_battle(cap_n=40):
                 log.warning("[%s] (LEADER) tran %d: spam dialog ma khong vao battle -> dung", self._label, i + 1)
                 return False
             log.info("[%s] (LEADER) pho ban to doi: VAO TRAN %d/%d", self._label, i + 1, n_battles)

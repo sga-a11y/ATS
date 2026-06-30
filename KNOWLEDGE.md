@@ -509,6 +509,11 @@ Chuỗi C2S (verify timeline team.pcap):
 - Trình tự thực tế: enter `0x14 08000100`→dialog→**B1**→dialog→set quân sư→move→`0x14 08000200`→dialog→
   **B2**→`0x7c 0400`→dialog→move→`0x14 08000300`→dialog→**B3**→dialog→move→`0x20 020008`+`0x14 01001400`→
   dialog→**B4**.
+- **KẾT TRẬN team dungeon KHÔNG có `0x14 sub0700`** (WIN) — kết bằng **`0x14 0900`** (handler flee-end
+  đã hạ `in_battle` đúng). Đừng chờ 0x14 0700 ở đây.
+- **Victory dialog (thoại thắng lợi) = cutscene CỐ ĐỊNH, số lần KHÁC nhau mỗi trận:** B1→B2=**9**,
+  B2→B3=**10**, B3→B4=**20**. Gửi THIẾU → không qua được màn thắng lợi → transit trận sau TRƯỢT (kẹt).
+  Phải gửi ĐÚNG số (`vdlg` trong segments). Approach-dialog (sau transit) thì spam-tới-khi-battle.
 
 ### Nhận thưởng + thoát
 - Sau B4: `0x5b 0200010100053300` (query ô5 status) → `0x0d 04 00 [entity]` (sub04 = rời/giải tán) →
