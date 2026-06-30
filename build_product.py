@@ -54,24 +54,20 @@ def clean():
 
 
 def stage():
-    """Copy source sach vao _stage. config.py = config.example.py (KHONG dung config that)."""
+    """Copy source sach vao _stage. config.py = file TRACKED (placeholder credential; account that o
+    accounts.json - gitignored, KHONG nhung vao build)."""
     os.makedirs(STAGE, exist_ok=True)
     shutil.copy(os.path.join(ROOT, "gui.py"), STAGE)
     shutil.copy(os.path.join(ROOT, "run_party_digioi.py"), STAGE)
-    # bot package: copy het .py TRU config.py that -> dung config.example.py lam config.py
+    # bot package: copy het .py (config.py la file tracked placeholder, copy binh thuong)
     bot_src = os.path.join(ROOT, "bot")
     bot_dst = os.path.join(STAGE, "bot")
     os.makedirs(bot_dst, exist_ok=True)
     for fn in os.listdir(bot_src):
         if not fn.endswith(".py"):
             continue
-        if fn == "config.py":          # KHONG copy config that (credential)
-            continue
         shutil.copy(os.path.join(bot_src, fn), bot_dst)
-    # config.example.py -> config.py (rong, khong credential)
-    shutil.copy(os.path.join(bot_src, "config.example.py"),
-                os.path.join(bot_dst, "config.py"))
-    print("staged source (config = example, KHONG co credential)")
+    print("staged source (config.py placeholder, account that o accounts.json)")
 
 
 def package():
