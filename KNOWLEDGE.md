@@ -156,6 +156,13 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
     — tự điều chỉnh, an toàn cho cả 2 (train min=0 không đổi). Verify: client thật gửi `target=2 b=1`
     để trúng `r1c1` (b2=1) → target = b2+1.
 
+### CHE CHẮN 2 HÀNG QUÁI (verify phó bản tổ đội) — QUAN TRỌNG
+- Quái **hàng 1 (b1=1, pos≥10) CHE quái hàng 0 (b1=0)** trong CÙNG cột: đánh con hàng 0 khi con hàng 1
+  cùng cột còn sống = **0 sát thương** (đánh trượt vào khiên). Phải **diệt HÀNG 1 (front) TRƯỚC**.
+- Bug đã dính: trận 3 phó bản có cụm 3 con hàng 0 (1,2,3) → `_train_target` chọn hàng 0 trước → đập
+  vào con bị che → enemy_hp KHÔNG đổi qua các round → trận không kết thúc. Fix: `_train_target` +
+  `_lowest_hp_enemy` **ưu tiên pos≥10 (hàng 1)**, hết hàng 1 mới sang hàng 0. (Train 1 hàng = no-op.)
+
 ### S2C 0x33 — Stats per turn
 Pattern entries: `03 02 [type] [4-byte LE]`
 | type | Hex | Thông số |
