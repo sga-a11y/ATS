@@ -147,6 +147,14 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
 - Đánh quái hàng trước: b=0, target=cột | hàng sau: b=1, target=cột
 - (Heal/buff đồng đội → b=2 nhắm pet, b=3 nhắm char; target=cột member). 0x35 offer = danh sách CỘT.
 - Vị trí nội bộ bot dùng: `pos = b1*10 + b2` (hàng=pos//10, cột=pos%10).
+- **CỰC QUAN TRỌNG — offer-space 0x35 KHÔNG luôn 0-indexed:** cột nội bộ `b2` (từ 0x33) LUÔN
+  0-indexed (0-4). NHƯNG `target` gửi trong 0x32 phải theo offer-space của 0x35:
+  - **Train thường:** 0x35 offer cột `[0,1,2,3,4]` → `target = b2` (giữ nguyên).
+  - **PHÓ BẢN TỔ ĐỘI (5 người, 2 hàng quái):** 0x35 offer cột `[1,2,3,4,5]` (1-indexed!) →
+    `target = b2 + 1`. Gửi `b2` thẳng = **LỆCH 1 CỘT** → đánh trượt / dồn vào con trâu (HP 2x) →
+    quái không chết (đã dính bug này). Fix: `target = b2 + min(offered)` (`_offer_min` trong combat.py)
+    — tự điều chỉnh, an toàn cho cả 2 (train min=0 không đổi). Verify: client thật gửi `target=2 b=1`
+    để trúng `r1c1` (b2=1) → target = b2+1.
 
 ### S2C 0x33 — Stats per turn
 Pattern entries: `03 02 [type] [4-byte LE]`

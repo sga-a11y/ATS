@@ -151,39 +151,47 @@ def _same_row(a, b):
     return a // 10 == b // 10
 
 
+def _offer_min(offered):
+    """Goc index cua cot trong 0x35 offer: TRAIN bat dau tu 0 (-> +0), PHO BAN TO DOI bat dau tu 1
+    (-> +1). cot noi bo (b2) LUON 0-indexed -> target_gui = b2 + offer_min. Tu dieu chinh, an toan
+    cho ca train (min=0 = khong doi) lan pho ban (min=1 = +1)."""
+    return min(offered) if offered else 0
+
+
 def _train_target(enemy_slots, offered):
     """RULE TARGET KHI TRAIN (dung CHUNG cho danh thuong + combo -> moi unit dong target,
-    combo moi an). 'offered' = danh sach COT hop le (0x35). Tra ve pos (hang*10+cot).
+    combo moi an). 'offered' = danh sach COT hop le (0x35, theo offer-space). Tra ve pos (hang*10+cot).
       1. Block 3 quai lien nhau cung hang (DAU TIEN) -> con GIUA (AoE trung ca 3)
       2. Khong co -> block 2 quai (DAU TIEN) -> con DAU (thap nhat)
       3. Khong co -> con LE dau tien (thap nhat)
-    """
+    So sanh cot: b2 (0-indexed) + offer_min phai nam trong offered (xem _offer_min)."""
     off = set(offered)
+    om = _offer_min(offered)
     es = set(enemy_slots)
     if not es:
         return None
     s = sorted(es)
     for a in s:   # nhom 3 cung hang -> con giua (cot phai offered)
-        if (a + 1) in es and (a + 2) in es and _same_row(a, a + 2) and _col(a + 1) in off:
+        if (a + 1) in es and (a + 2) in es and _same_row(a, a + 2) and (_col(a + 1) + om) in off:
             return a + 1
     for a in s:   # nhom 2 cung hang -> con thap nhat
         if (a + 1) in es and _same_row(a, a + 1):
-            if _col(a) in off:
+            if (_col(a) + om) in off:
                 return a
-            if _col(a + 1) in off:
+            if (_col(a + 1) + om) in off:
                 return a + 1
     for t in s:   # le -> con thap nhat co cot offered
-        if _col(t) in off:
+        if (_col(t) + om) in off:
             return t
     return None
 
 
-def _attack(unit, atype, pos, skill, fb_col):
-    """Tao Decision tan cong: pos -> b=hang(pos//10), target=cot(pos%10).
-    pos None -> fallback cot fb_col (hang truoc, b=0)."""
+def _attack(unit, atype, pos, skill, fb_col, offered=None):
+    """Tao Decision tan cong: pos -> b=hang(pos//10), target=cot(pos%10)+offer_min.
+    pos None -> fallback cot fb_col (da o offer-space, hang truoc, b=0)."""
     if pos is None:
         return Decision(unit, atype, fb_col, skill, b=0)
-    return Decision(unit, atype, _col(pos), skill, b=_row(pos))
+    return Decision(unit, atype, _col(pos) + _offer_min(offered), skill, b=_row(pos))
 
 
 def _has_group3(enemy_slots):
@@ -351,7 +359,8 @@ def _lowest_hp_enemy(state, offered):
     """Pos quai con SONG it mau NHAT (cot phai trong offered). None neu khong co.
     Dung khi danh boss/don le (quest <=5) - dam con sap chet truoc."""
     off = set(offered)
-    alive = [(pos, hp) for pos, hp in state.enemy_hp.items() if hp > 0 and _col(pos) in off]
+    om = _offer_min(offered)
+    alive = [(pos, hp) for pos, hp in state.enemy_hp.items() if hp > 0 and (_col(pos) + om) in off]
     if not alive:
         return None
     return min(alive, key=lambda x: x[1])[0]
@@ -381,23 +390,23 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
         boss = pick_boss_skill(skills)
         pos = low_or_train()
         sk = boss if (boss and sp >= cost(boss)) else config.SKILL_NORMAL
-        return _attack(unit, at, pos, sk, fb)
+        return _attack(unit, at, pos, sk, fb, offered)
 
     # 2) QUEST mode (start >5 quai)
     if getattr(state, "quest_mode", False) and es:
         if len(es) > 5:
             allt = pick_alltarget_skill(skills)
             if allt and sp >= cost(allt):
-                return _attack(unit, at, _train_target(es, offered), allt, fb)
+                return _attack(unit, at, _train_target(es, offered), allt, fb, offered)
             combo = pick_combo_skill(skills)   # ko co all-target -> combo AoE thuong
             if combo and sp >= max(fire_min, cost(combo)) and _combo_block_ok(combo, es):
-                return _attack(unit, at, _train_target(es, offered), combo, fb)
-            return _attack(unit, at, _train_target(es, offered), config.SKILL_NORMAL, fb)
+                return _attack(unit, at, _train_target(es, offered), combo, fb, offered)
+            return _attack(unit, at, _train_target(es, offered), config.SKILL_NORMAL, fb, offered)
         # <=5 quai -> nhu boss + target it mau nhat
         boss = pick_boss_skill(skills)
         pos = low_or_train()
         sk = boss if (boss and sp >= cost(boss)) else config.SKILL_NORMAL
-        return _attack(unit, at, pos, sk, fb)
+        return _attack(unit, at, pos, sk, fb, offered)
 
     # 3) TRAIN mode (combo)
     if stat.sp_max > 0 and sp >= stat.sp_max:
@@ -405,8 +414,8 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
     combo = pick_combo_skill(skills)
     if (combo and sp >= max(fire_min, cost(combo))
             and (getattr(state, spam_attr) or _combo_block_ok(combo, es))):
-        return _attack(unit, at, _train_target(es, offered), combo, fb)
-    return _attack(unit, at, _train_target(es, offered), config.SKILL_NORMAL, fb)
+        return _attack(unit, at, _train_target(es, offered), combo, fb, offered)
+    return _attack(unit, at, _train_target(es, offered), config.SKILL_NORMAL, fb, offered)
 
 
 def decide_char(state, options, first_turn=False):
