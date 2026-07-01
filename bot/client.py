@@ -2897,13 +2897,6 @@ class GameClient:
                 ok_clear = self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong
                 log.info("[%s] (LEADER) tran %d: het cho combat (ok=%s in_battle=%s)",
                          self._label, i + 1, ok_clear, self.state.in_battle)
-                # Neu in_battle vua ha qua SAFETY 25s (KHONG phai qua xac nhan ket tran that gan
-                # day) thi goi ket tran THAT co the con dang bay toi tre - gui lenh moi (pre/dialog)
-                # NGAY luc nay tung va cham voi goi do -> server kick ket noi (da xac nhan qua log
-                # thuc te: rot ngay giua tran 3, dung luc SAFETY vua ha va nhan goi tail=03 lien
-                # ngay sau). Doi them 1 chut de goi tre (neu co) kip toi truoc khi gui tiep.
-                if self._genuine_end_seen < time.time() - 2.0:
-                    time.sleep(2.0)
                 for op, body in seg["pre"]:                    # pre (0x7c 0400) TRUOC thoai thang loi
                     self.send(op, body); time.sleep(0.4)
                 # Nguoi that xac nhan: leader KHONG di chuyen that suot ca pho ban (0x06 dung cu
@@ -2935,7 +2928,8 @@ class GameClient:
                 self.state.quest_mode = False
                 return False
             log.info("[%s] (LEADER) pho ban to doi lv20: VAO TRAN %d/%d", self._label, i + 1, n_battles)
-        # cho tran cuoi xong
+        # cho tran cuoi xong (buffer chong va cham voi tran chua xong THAT da nam trong
+        # _wait_combat_clear())
         self._wait_combat_clear(idle=2.0, cap=120.0)
         # QUAN TRONG: kiem tra lai self.running TRUOC KHI claim thuong/bao thanh cong. send() khi
         # running=False chi AM THAM khong lam gi (khong loi) -> neu KHONG check o day, ham se chay
@@ -3225,6 +3219,16 @@ class GameClient:
         t0 = time.time()
         while self.in_combat(idle_secs=idle) and self.running and time.time() - t0 < cap:
             time.sleep(0.5)
+        # Pho ban to doi (co _team_dungeon_until): neu in_battle vua ha qua SAFETY 25s (trong
+        # in_combat()) - KHONG phai qua xac nhan ket tran that (_genuine_end_seen gan day) - thi
+        # tran co the CHUA THAT SU xong: da xac nhan qua log thuc te server VAN con gui 0x35/0x34
+        # tran that DUNG LUC safety vua fire. Gui lenh moi (move/dialog/transit) NGAY luc do va
+        # cham voi tran dang giai quyet -> server KICK ket noi. Doi them truoc khi tra ve cho
+        # caller gui lenh tiep - ap dung O DAY (dung 1 cho) de moi noi goi ham nay deu duoc bao ve,
+        # khong chi rieng 1-2 diem trong do_team_dungeon_lv20 nhu truoc.
+        if (self.running and time.time() < getattr(self, "_team_dungeon_until", 0.0)
+                and self._genuine_end_seen < time.time() - 2.0):
+            time.sleep(2.0)
         return self.running
 
     def _route_move(self, x: int, y: int, settle: float = 0.6, tries: int = 8):
