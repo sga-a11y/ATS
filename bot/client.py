@@ -642,8 +642,8 @@ class GameClient:
                      "leader ha in_battle theo (khong doi 25s)", self._label)
             self.state.in_battle = False
             self._battle_end_grace_until = time.time() + 3.0
-        elif self.state.in_battle and (time.time() - self.last_turn_time) > 25.0:
-            log.warning("[%s] ha in_battle qua SAFETY 25s (KHONG PHAI goi ket tran that "
+        elif self.state.in_battle and (time.time() - self.last_turn_time) > 35.0:
+            log.warning("[%s] ha in_battle qua SAFETY 35s (KHONG PHAI goi ket tran that "
                         "- co the da miss goi END, hoac tran that su CHUA xong)", self._label)
             self.state.in_battle = False   # co le miss goi 0x14 END -> ha co an toan
         # KHONG reset _battle_entered/_first_turn: client THAT gui 0x41 + atype=2
