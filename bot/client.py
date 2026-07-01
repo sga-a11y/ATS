@@ -1135,6 +1135,8 @@ class GameClient:
         """0x35 (>=20B): liet ke cac combo [unit][atype][target] hop le cho luot nay."""
         if len(pkt) < 20:
             return  # 11-byte = confirmation, bo qua
+        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+            log.info("[%s] DBG35[%dB] raw=%s", self._label, len(pkt), pkt.hex())
         # 0x35 34-byte = toi luot minh -> dang trong tran
         self.state.in_battle = True
         self.last_turn_time = time.time()
