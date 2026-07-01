@@ -132,9 +132,14 @@ class Decision:
 
 
 def _offered_targets(options, atype):
-    """Cac target hop le cho atype dang dung (server liet ke trong 0x35)."""
-    t = [o[1] for o in options if o[0] == atype]
-    return t or [o[1] for o in options]
+    """Cac target hop le cho atype dang dung (server liet ke trong 0x35).
+    KHONG FALLBACK sang target cua atype KHAC: server gui 1 goi 0x35 RIENG cho tung unit (party 5
+    nguoi = toi 10 goi/luot, moi goi CHI 1 atype) -> bot nhan duoc goi 0x35 cua THANH VIEN KHAC (chua
+    phai luot minh) VAN kich _arm_decision (khong loc theo atype o tang goi). Truoc day fallback
+    'options rong cho atype minh -> dung target cua nguoi khac' -> gui atk SAI LUC/SAI DU LIEU (server
+    im lang bo qua -> turn khong tien -> lap lai Y HET vi enemy_hp chua doi). Rong -> [] (KHONG danh,
+    _make_decisions se bo qua cycle nay, cho goi 0x35 That cua minh)."""
+    return [o[1] for o in options if o[0] == atype]
 
 
 # Vi tri quai noi bo: pos = hang*10 + cot. hang(b byte)=pos//10, cot(target)=pos%10.

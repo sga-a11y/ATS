@@ -563,8 +563,33 @@ flow riêng. Xem `_handle_o5_team`.
   nhiên khác nhau dù tail=0000 → ít dính. Trận 3 có quái trâu → dính liên tục → kẹt cứng.
 - **Fix:** bỏ cờ env `RAND_TAIL`, **LUÔN LUÔN random tail** trong `_send_combat` (đúng hành vi client
   thật, không chỉ trong phó bản — áp dụng cho MỌI combat kể cả train, an toàn vì đây là hành vi đúng).
+- **Test lại: VẪN KẸT trận 3 y hệt** (tail random không đủ) → giả thuyết tail SAI, phải tìm tiếp.
 
-**Bước tiếp:** test lại full 4 trận với fix tail random. Nếu ổn → gỡ DBG33/DBG0B, xoá phần bug note này.
+**BUG 3 (2026-07-01, sau khi tail-fix không đủ) — ROOT CAUSE THẬT: gửi atk theo offer 0x35 CỦA THÀNH
+VIÊN KHÁC (chưa phải lượt mình), do fallback sai trong `_offered_targets`:**
+- **User hỏi thẳng:** "giữa 2 lần atk không có gói tin quái nào — dựa vào đâu mà biết đó là turn mới?"
+  → buộc soi lại đúng cơ chế trigger, không đoán nữa.
+- **Xác nhận:** server gửi **1 gói `0x35` RIÊNG cho TỪNG unit** (party 5 người = tới 10 gói/lượt,
+  mỗi gói CHỈ 1 `atype`) — không phải 1 gói gộp cho cả đảng (xem mục 5 BATTLE FLOW).
+- **`_on_actions` (client.py) trigger `_arm_decision()` cho MỌI gói `0x35` ≥20B, KHÔNG kiểm tra gói đó
+  có offer cho `atype` của MÌNH hay không** — tức bot cũng bị kích đánh khi nhận gói `0x35` của
+  **THÀNH VIÊN KHÁC** trong đảng (server broadcast cho cả đảng biết đang tới lượt ai).
+- **`_offered_targets(options, atype)` (combat.py) có FALLBACK NGUY HIỂM:** `return t or [o[1] for o
+  in options]` — khi batch KHÔNG chứa offer đúng `atype` mình (`t` rỗng, vì đó là lượt người khác) →
+  **fallback dùng TOÀN BỘ target của người khác làm của mình** → tính atk dựa trên dữ liệu SAI CHỦ.
+- Vì `enemy_hp` chưa đổi (chưa ai đánh trúng thật) → `_train_target` tính RA CÙNG 1 kết quả mỗi lần
+  bị kích nhầm → nhiều lần gửi atk **giống hệt nhau**, không có gói `0x33`/`0x0b` cập nhật quái xen
+  giữa (vì đó KHÔNG PHẢI turn mới thật) — **khớp chính xác quan sát của user**.
+- **Fix 2 lớp:**
+  1. `_offered_targets`: bỏ fallback, batch rỗng cho atype mình → trả `[]` (không đánh).
+  2. `_make_decisions` (client.py): thêm guard `if self.state.my_atype not in {o[0] for o in
+     char_opts}: char_opts = []` — giống guard đã có sẵn cho PET (dòng gần đó) nhưng CHAR trước đây
+     THIẾU. Không guard này thì dù `_offered_targets` trả `[]`, `_train_target([],...)` trả `None` →
+     `_attack` vẫn fallback đánh **cột 1 cứng** (`fb_col=1`) — đánh mù không dựa offer thật nào.
+- Áp dụng CHUNG (không chỉ phó bản) — lỗi tiềm ẩn mọi trận đảng, party nhỏ (2 người) ít lộ vì offer
+  đến gần nhau hơn trong debounce window.
+
+**Bước tiếp:** test lại full 4 trận với fix guard atype. Nếu ổn → gỡ DBG33/DBG0B, xoá phần bug note này.
 
 ## 8. GAME MECHANICS
 

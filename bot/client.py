@@ -1198,6 +1198,15 @@ class GameClient:
             # (trong tran nay) -> gui lenh pet se sai -> server da/disconnect.
             if self.state.my_atype not in {o[0] for o in pet_opts}:
                 pet_opts = []
+            # CHI danh khi 0x35 THAT SU co offer cho atype cua MINH. Server gui 1 goi 0x35 RIENG cho
+            # TUNG unit (party 5 nguoi = toi 10 goi/luot) -> bot nhan goi cua THANH VIEN KHAC (chua
+            # phai luot minh) van kich _arm_decision -> char_opts co the CHI chua atype nguoi khac.
+            # KHONG loc -> _offered_targets tung FALLBACK dung target nguoi khac lam cua minh -> gui
+            # atk SAI LUC/SAI DU LIEU -> server im lang bo qua -> turn khong tien -> lap y het (dung
+            # nghi van user: "giua 2 lan atk khong co goi tin quai nao" - vi day KHONG PHAI turn moi
+            # that, chi la offer cua thanh vien khac kich nham).
+            if self.state.my_atype not in {o[0] for o in char_opts}:
+                char_opts = []
             # CON DA CHET (hp_max>0 va hp<=0) -> KHONG gui lenh cho no (gui lenh cho xac chet ->
             # server coi la lenh sai -> DA/disconnect). hp tu 0x33 moi luot.
             char_dead = self.state.char.hp_max > 0 and self.state.char.hp <= 0
