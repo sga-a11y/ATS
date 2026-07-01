@@ -2937,6 +2937,15 @@ class GameClient:
             log.info("[%s] (LEADER) pho ban to doi lv20: VAO TRAN %d/%d", self._label, i + 1, n_battles)
         # cho tran cuoi xong
         self._wait_combat_clear(idle=2.0, cap=120.0)
+        # QUAN TRONG: kiem tra lai self.running TRUOC KHI claim thuong/bao thanh cong. send() khi
+        # running=False chi AM THAM khong lam gi (khong loi) -> neu KHONG check o day, ham se chay
+        # het toi cuoi, log "XONG"/"NHAN THUONG" va return True GIA du thuc te da bi server ngat
+        # ket noi (van game) tu truoc do va KHONG goi tin nao thuc su gui duoc.
+        if not self.running:
+            log.warning("[%s] (LEADER) mat ket noi truoc khi kip nhan thuong/roi pho ban -> BAO FAIL "
+                        "(khong phai thanh cong that)", self._label)
+            self.state.quest_mode = False
+            return False
         # Capture nguoi that (dieusau) xac nhan: sau khi thang tran 4, con 1 doan thoai tong ket
         # (0x14 sub0100/1000 lap) roi man hinh thuong (dungeon_complete, giong sub=64 da dung o
         # tinh nang khac) -> client gui 0x5b 0200010100053300 (NHAN THUONG) TRUOC KHI gui 0x0d 04
@@ -2944,6 +2953,10 @@ class GameClient:
         # bi tinh la CHUA hoan thanh du da danh xong ca 4 tran.
         self._adv_dialog_until_idle(min_n=5, gap=0.4, idle=1.5, max_wait=20.0)
         time.sleep(1.0)
+        if not self.running:   # co the mat ket noi trong luc spam dialog tong ket o tren
+            log.warning("[%s] (LEADER) mat ket noi truoc khi kip nhan thuong -> BAO FAIL", self._label)
+            self.state.quest_mode = False
+            return False
         self.send(0x5b, bytes.fromhex("0200010100053300"))   # NHAN THUONG pho ban to doi
         log.info("[%s] (LEADER) da gui goi NHAN THUONG pho ban to doi", self._label)
         time.sleep(2.0)
