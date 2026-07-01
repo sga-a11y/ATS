@@ -549,7 +549,22 @@ flow riêng. Xem `_handle_o5_team`.
 - ⚠️ **DBG33 + DBG0B log còn trong code** (client.py, gated `_team_dungeon_until`) — GỠ sau khi confirm
   fix chạy trọn 4 trận ổn định.
 
-**Bước tiếp:** test lại full 4 trận với fix `o5_state`. Nếu ổn → gỡ DBG33/DBG0B, xoá phần bug note này.
+**BUG 2 (2026-07-01, sau khi fix bug 1) — TAIL 0x32 CỐ ĐỊNH gây kẹt khi đánh lặp cùng target:**
+- Sau fix `o5_state`, member không còn văng nữa (test full 4 trận: trận 1,2 qua được, KẸT trận 3).
+- **User quan sát chính xác:** trong 1 turn CHƯA xong (không có gói `0x33` cập nhật quái xen giữa),
+  server **re-offer lại y hệt turn đó** cho TOÀN BỘ 5 acc, cách nhau chỉ **~3-10s** (không phải 20-25s
+  safety) — tức server chủ động re-prompt vì action TRƯỚC ĐÓ coi như KHÔNG được nhận.
+- **Root cause tìm ra:** `_send_combat` gửi gói `0x32` với **tail (2 byte cuối, nonce) CỐ ĐỊNH `0000`**
+  (comment cũ đã ghi client thật LUÔN đổi giá trị này, có sẵn cờ test `RAND_TAIL` nhưng mặc định TẮT).
+  Khi 2 turn LIÊN TIẾP bot đánh **CÙNG skill + CÙNG target** (rất hay xảy ra khi dồn vào 1 con "trâu"
+  HP cao — trận 3 có 2 con 229/235 HP, nhiều turn liền là mục tiêu thấp máu nhất) → gói `0x32` **giống
+  hệt byte-by-byte** với gói trước → nghi server coi là **gói lặp/replay → âm thầm bỏ qua** → turn
+  không tiến → lặp vô hạn. Trận 1,2 quái yếu, target đổi liên tục mỗi round (quái chết nhanh) → gói tự
+  nhiên khác nhau dù tail=0000 → ít dính. Trận 3 có quái trâu → dính liên tục → kẹt cứng.
+- **Fix:** bỏ cờ env `RAND_TAIL`, **LUÔN LUÔN random tail** trong `_send_combat` (đúng hành vi client
+  thật, không chỉ trong phó bản — áp dụng cho MỌI combat kể cả train, an toàn vì đây là hành vi đúng).
+
+**Bước tiếp:** test lại full 4 trận với fix tail random. Nếu ổn → gỡ DBG33/DBG0B, xoá phần bug note này.
 
 ## 8. GAME MECHANICS
 

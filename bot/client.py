@@ -1255,13 +1255,15 @@ class GameClient:
 
     def _send_combat(self, d: combat.Decision, tail: bytes = None):
         """0x32: 01 00 [unit][atype][b11=00][target][skill LE][tail].
-        tail = 2 byte nonce; client THAT gui gia tri thay doi moi goi. TEST: random."""
-        import os, random
+        tail = 2 byte nonce; client THAT gui gia tri THAY DOI MOI GOI (xac nhan capture). Truoc day
+        bot gui CO DINH 0000 -> khi 2 turn LIEN TIEP CUNG skill+target (vd don 1 con "trau" nhieu
+        HP trong pho ban to doi) -> goi 0x32 GIONG HET byte-by-byte -> server co the coi la goi
+        lap/replay -> AM THAM BO QUA -> turn khong tien -> ket cung lap lai (xac nhan qua log: tran
+        co quai HP cao/nhieu turn lien danh cung 1 con bi ket, tran quai yeu target doi lien tuc thi
+        khong sao). LUON random (KHONG con env RAND_TAIL) de giong client that."""
+        import random
         if tail is None:
-            if os.environ.get("RAND_TAIL"):
-                tail = struct.pack("<H", random.randint(1, 0xFFFF))
-            else:
-                tail = b"\x00\x00"
+            tail = struct.pack("<H", random.randint(1, 0xFFFF))
         payload = (b"\x01\x00"
                    + bytes([d.unit, d.atype, getattr(d, "b", 0), d.target])
                    + struct.pack("<H", d.skill)
