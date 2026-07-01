@@ -2781,8 +2781,12 @@ class GameClient:
                 return False
             seg = segments[i]
             self.flee_mode = False   # giu DANH suot pho ban (khong bo chay tran nao)
+            log.info("[%s] (LEADER) DBG-SEG tran %d: bat dau (map=%s pos=%s in_battle=%s)",
+                     self._label, i + 1, self.current_map, self.pos, self.state.in_battle)
             if i > 0:
-                self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong (nuot lenh 0x06/0x14)
+                ok_clear = self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong
+                log.info("[%s] (LEADER) DBG-SEG tran %d: het cho combat (ok=%s in_battle=%s)",
+                         self._label, i + 1, ok_clear, self.state.in_battle)
                 for op, body in seg["pre"]:                    # pre (0x7c 0400) TRUOC thoai thang loi
                     self.send(op, body); time.sleep(0.4)
                 self._adv_dialog(n=seg["vdlg"], gap=0.4)       # dismiss thoai thang loi (so dung tung doan)
@@ -2790,10 +2794,16 @@ class GameClient:
                     self.set_party_strategist()                # set quan su SAU tran 1 (sau thoai thang loi)
                 for (x, y) in seg["moves"]:
                     self._route_move(x, y)                     # DI toi cong (dam bao toi noi truoc transit)
+                    log.info("[%s] (LEADER) DBG-SEG tran %d: sau move (%s,%s) -> pos=%s in_battle=%s",
+                             self._label, i + 1, x, y, self.pos, self.state.in_battle)
             for op, body in seg["transit"]:
                 self.send(op, body); time.sleep(0.4)
+            log.info("[%s] (LEADER) DBG-SEG tran %d: da gui transit -> spam dialog cho battle...",
+                     self._label, i + 1)
             if not self._dialog_until_battle(cap_n=40):
-                log.warning("[%s] (LEADER) tran %d: spam dialog ma khong vao battle -> dung", self._label, i + 1)
+                log.warning("[%s] (LEADER) tran %d: spam dialog ma khong vao battle -> dung "
+                            "(map=%s pos=%s in_battle=%s)", self._label, i + 1,
+                            self.current_map, self.pos, self.state.in_battle)
                 return False
             log.info("[%s] (LEADER) pho ban to doi: VAO TRAN %d/%d", self._label, i + 1, n_battles)
         # cho tran cuoi xong
