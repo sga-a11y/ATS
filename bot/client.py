@@ -2945,6 +2945,16 @@ class GameClient:
                             self.current_map, self.pos, self.state.in_battle)
                 self.state.quest_mode = False
                 return False
+            # _dialog_until_battle co the tra True vi _genuine_end_seen dung luc ket noi VUA mat
+            # (server dong ket noi ngay sau khi gui goi ket tran that) -> PHAI check self.running
+            # o day, KHONG thi ham log "VAO TRAN" + tiep tuc segment sau NHU KHONG CO CHUYEN GI,
+            # trong khi thuc te da rot ket noi tu truoc do (xac nhan qua log thuc te: dong ket noi
+            # xong van thay tiep "VAO TRAN 3/4" roi "xong daily login" nhu binh thuong).
+            if not self.running:
+                log.warning("[%s] (LEADER) mat ket noi ngay sau ket tran that (tran %d) -> BAO FAIL",
+                            self._label, i + 1)
+                self.state.quest_mode = False
+                return False
             log.info("[%s] (LEADER) pho ban to doi lv20: VAO TRAN %d/%d", self._label, i + 1, n_battles)
         # cho tran cuoi xong (buffer chong va cham voi tran chua xong THAT da nam trong
         # _wait_combat_clear())
