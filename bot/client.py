@@ -708,10 +708,11 @@ class GameClient:
                 sub = pkt[7:9].hex() if len(pkt) >= 9 else None
                 log.info("[%s] DBG-RAW: nhan goi 0x14 sub=%s in_battle=%s raw=%s",
                          self._label, sub, self.state.in_battle, pkt.hex())
-                # sub2c00 la goi RAC (da xac nhan: lap vo han, khong lien quan thoai that) - KHONG
-                # duoc coi la "con dang thoai" (truoc day coi nham -> _adv_dialog_until_idle bi keo
-                # dai vo ich toi 51 lan cho 22s cho no tu ngung, du no chang lien quan gi).
-                if pkt[7:9] != b"\x2c\x00":
+                # CHI cac sub THAT SU lien quan thoai (0100=ack dong thoai, 1000=cutscene loop,
+                # 0d00=mo canh) moi duoc coi la "con dang thoai" -> reset dong ho im lang. Truoc day
+                # dung kieu loai-tru (chi loai 2c00) nen sub0800(tail=26/27, cung la RAC lap lai)
+                # van lam bot cho THEM vo ich (nguoi dung xac nhan: cho rat lau moi di chuyen).
+                if pkt[7:9] in (b"\x01\x00", b"\x10\x00", b"\x0d\x00"):
                     self._last_dialog_evt = time.time()
                 # sub0800 tail=03/04: da xac nhan qua nhieu capture la tin hieu KET TRAN THAT (bat
                 # ke in_battle_TRUOC dang True hay False). Truoc day _dialog_until_battle chi dung
