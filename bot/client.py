@@ -503,6 +503,7 @@ class GameClient:
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
         self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
         self._pkt_capture = []  # [(ts, 'C2S'/'S2C', hex)] - tu ghi lai goi trong pho ban to doi de doi chieu
+        self._genuine_end_seen = 0.0  # thoi diem nhan goi 0x14 sub0800 tail=03/04 (ket tran THAT, moi context)
         self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
@@ -712,6 +713,13 @@ class GameClient:
                 # dai vo ich toi 51 lan cho 22s cho no tu ngung, du no chang lien quan gi).
                 if pkt[7:9] != b"\x2c\x00":
                     self._last_dialog_evt = time.time()
+                # sub0800 tail=03/04: da xac nhan qua nhieu capture la tin hieu KET TRAN THAT (bat
+                # ke in_battle_TRUOC dang True hay False). Truoc day _dialog_until_battle chi dung
+                # khi in_battle=True -> neu tran nay khong co pha 0x35 that (auto-resolve) thi
+                # in_battle khong bao gio len True -> bot spam 0x14 0600 THEM sau khi tran da ket
+                # THAT -> bi server kick vi spam vao luc da ket thuc.
+                if pkt[7:9] == b"\x08\x00" and len(pkt) >= 10 and pkt[9] in (0x03, 0x04):
+                    self._genuine_end_seen = time.time()
         # Hoan thanh dungeon: S2C 0x14 sub 0x64 (man tong ket) -> set co de do_daily_dungeon biet xong
         if opcode == 0x14 and len(pkt) >= 8 and pkt[7] == 0x64:
             self.dungeon_complete = True
@@ -2832,18 +2840,22 @@ class GameClient:
             time.sleep(max(0.15, gap + random.uniform(-0.15, 0.35)))
 
     def _dialog_until_battle(self, cap_n: int = 30, gap: float = 0.5) -> bool:
-        """Spam 0x14 0600 (advance dialog NPC) toi khi BATTLE bat (state.in_battle=True).
+        """Spam 0x14 0600 (advance dialog NPC) toi khi BATTLE bat (state.in_battle=True) HOAC toi
+        khi thay tin hieu KET TRAN THAT (sub0800 tail=03/04) - mot so canh (vd boss tu dong xu
+        ly, khong co pha 0x35 that) ket THAT ma KHONG BAO GIO bat in_battle=True -> truoc day
+        spam THEM 0x14 0600 vao luc da ket that -> bi server kick vi spam thua.
         So lan thoai KHAC nhau moi canh (7-20) -> KHONG hardcode, spam toi khi vao tran.
-        Tra True neu da vao tran; False neu het cap_n van chua (ket / loi)."""
+        Tra True neu da vao tran (hoac da ket that); False neu het cap_n van chua (ket / loi)."""
         import random
+        t0 = time.time()
         for _ in range(cap_n):
             if not self.running:
                 return False
-            if self.state.in_battle:
+            if self.state.in_battle or self._genuine_end_seen > t0:
                 return True
             self.send(0x14, b"\x06\x00")
             time.sleep(max(0.2, gap + random.uniform(-0.15, 0.4)))
-            if self.state.in_battle:
+            if self.state.in_battle or self._genuine_end_seen > t0:
                 return True
         return self.state.in_battle
 
