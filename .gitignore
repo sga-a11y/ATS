@@ -52,3 +52,4 @@ nuitka-crash-report.xml
 *.dist/
 *.onefile-build/
 scroll_bags.json
+team_dungeon_capture_*.txt
