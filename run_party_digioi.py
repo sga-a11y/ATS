@@ -1207,6 +1207,12 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
         finally:
             with st["lock"]:
                 st["o5_state"] = "done"   # bao member (thanh cong hay fail deu THA member ra)
+                # do_team_dungeon_lv20 tu goi leave_party() (giai tan party de vao pho ban) - DAY LA
+                # PARTY CHUNG voi party train, nhung KHONG co gi bao cho vong lap chinh biet can lap
+                # lai -> truoc day member out het, leader chay ra bai TRAIN MOT MINH (khong reform).
+                # Bump reform_gen -> co che reform co san (_do_reform, dung cho cac truong hop
+                # "bi dump khoi dungeon" khac) se tu dong keo ca party tap hop + lap lai.
+                st["reform_gen"] += 1
     else:
         with st["lock"]:
             st["o5_state"] = "done"      # khong danh -> tha member ngay
