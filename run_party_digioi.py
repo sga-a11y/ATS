@@ -1193,11 +1193,17 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
     with st["lock"]:
         statuses = dict(st["o5_done_by"])
     if all(not statuses.get(m, True) for m in members):       # MOI nguoi deu chua xong
-        log.info("[%s] (LEADER) CA party (%d nguoi) chua xong o5 -> PHO BAN TO DOI", label, len(members))
+        log.info("[%s] (LEADER) CA party (%d nguoi) chua xong o5 -> PHO BAN TO DOI LV20", label, len(members))
         with st["lock"]:
             st["o5_state"] = "running"   # member biet ma CHO, khong chay tiep
         try:
-            c.do_team_dungeon()
+            ok = c.do_team_dungeon_lv20()
+            if ok:
+                # claim_daily_quests() claim hang/cot bingo (dung o5) TRUOC KHI goi hook nay (o5 la
+                # buoc cuoi) -> luc claim hang/cot, o5 con dang tinh la CHUA xong -> bo lo claim
+                # hang/cot/tong ket co dinh kem o5. Goi lai claim_daily_quests(heavy=False) SAU KHI
+                # danh xong pho ban de claim bu (heavy=False -> KHONG lam lai o2/goi lai hook o5).
+                c.claim_daily_quests(heavy=False)
         finally:
             with st["lock"]:
                 st["o5_state"] = "done"   # bao member (thanh cong hay fail deu THA member ra)

@@ -2815,18 +2815,30 @@ class GameClient:
                 return True
         return self.state.in_battle
 
-    def do_team_dungeon(self, n_battles: int = 4, ready_wait: float = 9.0) -> bool:
-        """PHO BAN TO DOI (o5 daily) - chi LEADER goi. Member da auto-accept (0x2f 0f->03) +
+    def do_team_dungeon_lv20(self, n_battles: int = 4, ready_wait: float = 9.0) -> bool:
+        """PHO BAN TO DOI LV20 (o5 daily) - chi LEADER goi. Member da auto-accept (0x2f 0f->03) +
         auto-ready (0x2f 0b) trong _on_dungeon -> member chi di theo, KHONG can lam gi.
         Luong (capture team.pcap, xem KNOWLEDGE 7n):
           tao (0x2f 0100 / 0200010001) -> moi tung member (0x2f 0800 [entity]) -> start (0x2f 0c00)
           -> 4 tran: chuyen canh + spam dialog toi khi battle + cho het tran; set quan su sau tran 1.
-        TRIGGER battle = spam 0x14 0600 (KHONG phu thuoc di chuyen). Tra True neu chay het 4 tran."""
+        TRIGGER battle = spam 0x14 0600 (KHONG phu thuoc di chuyen). Tra True neu chay het 4 tran.
+
+        LUU Y cho cac phien ban cao hon sau nay (lv30/40/...): kich ban tung tran (segments, so
+        lan thoai, toa do move, transit) se KHAC hoan toan theo tung level -> viet ham rieng
+        (vd do_team_dungeon_lv30). Phan CO CHE CHUNG van ap dung lai duoc - xem KNOWLEDGE 7n:
+          - Phai goi combat_ready() (gui lai 0x41) ngay sau khi START phong, khong thi nhan vat
+            se KHONG DI CHUYEN THAT du gui dung goi 0x06.
+          - Dialog voi NPC: spam 0x14 0600 toi khi server IM LANG that su (whitelist sub
+            0100/1000/0d00, KHONG dung kieu loai-tru vi con sub rac khac lam sai dong ho im lang).
+          - Moc ket tran THAT: 0x14 sub0800 byte cuoi = 0x03/0x04 (bat ke in_battle dang gi) -
+            KHONG chi dua vao in_battle=True vi co canh tu dong resolve khong bao gio bat co nay.
+          - Nhan thuong TRUOC KHI leave_party() - noi dung goi nhan thuong co the khac theo tung
+            pho ban, nhung thu tu (thoai tong ket -> nhan thuong -> giai tan) nen giu nguyen."""
         ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
         if not ents:
-            log.warning("[%s] (LEADER) do_team_dungeon: chua biet entity member -> bo qua", self._label)
+            log.warning("[%s] (LEADER) do_team_dungeon_lv20: chua biet entity member -> bo qua", self._label)
             return False
-        log.info("[%s] (LEADER) === PHO BAN TO DOI: tao + moi %d member ===", self._label, len(ents))
+        log.info("[%s] (LEADER) === PHO BAN TO DOI LV20: tao + moi %d member ===", self._label, len(ents))
         self.flee_mode = False   # PHO BAN: leader PHAI DANH (flee_mode tu flow daily -> leader bo chay,
                                  #   ket tran sai 0x14 0c00/0900/0800 thay vi WIN 0x14 sub0700 -> hong)
         self._team_dungeon_until = time.time() + 300   # delay 0x32 random 0.5-2s suot pho ban
@@ -2906,7 +2918,7 @@ class GameClient:
                             "(map=%s pos=%s in_battle=%s)", self._label, i + 1,
                             self.current_map, self.pos, self.state.in_battle)
                 return False
-            log.info("[%s] (LEADER) pho ban to doi: VAO TRAN %d/%d", self._label, i + 1, n_battles)
+            log.info("[%s] (LEADER) pho ban to doi lv20: VAO TRAN %d/%d", self._label, i + 1, n_battles)
         # cho tran cuoi xong
         self._wait_combat_clear(idle=2.0, cap=120.0)
         # Capture nguoi that (dieusau) xac nhan: sau khi thang tran 4, con 1 doan thoai tong ket
@@ -2919,7 +2931,7 @@ class GameClient:
         self.send(0x5b, bytes.fromhex("0200010100053300"))   # NHAN THUONG pho ban to doi
         log.info("[%s] (LEADER) da gui goi NHAN THUONG pho ban to doi", self._label)
         time.sleep(2.0)
-        log.info("[%s] (LEADER) === PHO BAN TO DOI XONG (%d tran) -> roi pho ban ===", self._label, n_battles)
+        log.info("[%s] (LEADER) === PHO BAN TO DOI LV20 XONG (%d tran) -> roi pho ban ===", self._label, n_battles)
         self.leave_party()     # 0x0d 04 = roi/giai tan -> thoat pho ban
         time.sleep(2.0)
         return True
