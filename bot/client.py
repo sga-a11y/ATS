@@ -603,7 +603,15 @@ class GameClient:
         idle_secs (log thay >13s) -> neu ep False se hoi item / vao gate GIUA TRAN.
         Safety: im qua lau (END bi miss) moi ha co tranh ket vinh vien."""
         busy = (time.time() - self.last_turn_time) < idle_secs
-        if self.state.in_battle and (time.time() - self.last_turn_time) > 25.0:
+        # LEADER trong pho ban to doi thuong KHONG nhan duoc goi ket tran THAT (0x14 sub0800 tail=04)
+        # rieng cho no (chi member nhan) -> phai tu suy luan: khong con quai song (enemy_slots rong)
+        # + im lang vai giay = tran da ket, KHONG can cho toi 25s SAFETY.
+        if self.state.in_battle and not self.state.enemy_slots and (time.time() - self.last_turn_time) > 3.0:
+            log.info("[%s] DBG-ENDBATTLE: khong con quai song + im 3s -> tu ha in_battle "
+                     "(leader suy luan, khong doi goi END rieng)", self._label)
+            self.state.in_battle = False
+            self._battle_end_grace_until = time.time() + 3.0
+        elif self.state.in_battle and (time.time() - self.last_turn_time) > 25.0:
             log.warning("[%s] DBG-ENDBATTLE: ha in_battle qua SAFETY 25s (KHONG PHAI goi ket tran that "
                         "- co the da miss goi END, hoac tran that su CHUA xong)", self._label)
             self.state.in_battle = False   # co le miss goi 0x14 END -> ha co an toan
