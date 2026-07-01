@@ -2822,6 +2822,13 @@ class GameClient:
           -> 4 tran: chuyen canh + spam dialog toi khi battle + cho het tran; set quan su sau tran 1.
         TRIGGER battle = spam 0x14 0600 (KHONG phu thuoc di chuyen). Tra True neu chay het 4 tran."""
         ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
+        # DEBUG/TEST: hardcode moi them nick NGUOI THAT (dieumuoi) da ket ban voi leader -> entity
+        # da co san trong friend_entities (tu 0x0e sub05 luc login). Chi de TEST xem leader chay
+        # sao khi co 1 acc that trong party, xoa sau khi test xong.
+        test_friend_ents = list(getattr(self, "friend_entities", []))
+        for e in test_friend_ents:
+            if e not in ents and e != self.self_entity:
+                ents.append(e)
         if not ents:
             log.warning("[%s] (LEADER) do_team_dungeon: chua biet entity member -> bo qua", self._label)
             return False
@@ -2832,6 +2839,16 @@ class GameClient:
         # 1. Tao pho ban to doi
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
         self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)
+        # 1b. DEBUG/TEST: moi acc NGUOI THAT vao PARTY THUONG truoc (0x0d sub07) - bot member khac
+        # da duoc invite_members() moi tu truoc do (run_party_digioi), nguoi that thi chua nen phai
+        # moi rieng o day + doi ho accept tay.
+        if test_friend_ents:
+            log.info("[%s] (LEADER) DEBUG: moi %d nick NGUOI THAT (friend) vao party thuong truoc",
+                     self._label, len(test_friend_ents))
+            for e in test_friend_ents:
+                self.invite_entity(e)
+                time.sleep(1.0)
+            time.sleep(5.0)   # cho nguoi that bam DONG Y tay
         # 2. Moi tung member theo ENTITY (0x2f 0800 [entity 8B]) - KHAC party-invite 0x0d 07
         for e in ents:
             self.send(0x2f, b"\x08\x00" + bytes(e)); time.sleep(1.0)
