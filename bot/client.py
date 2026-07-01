@@ -688,9 +688,13 @@ class GameClient:
             # Bug that: server con gui 0x35 DU (broadcast cho member khac chua xong luot) SAU KHI
             # tran cua leader da ket that -> 0x35 handler set lai in_battle=True oan.
             # -> mo grace period ngan de 0x35 KHONG duoc phep set lai in_battle trong luc nay.
-            if was_true and pkt[7:9] == b"\x08\x00" and len(pkt) >= 10 and pkt[9] == 0x04:
+            if was_true and pkt[7:9] == b"\x08\x00":
+                # tail byte (pkt[9]) KHONG phai hang so co dinh (thay ca 03 lan 04 o cac lan
+                # ket tran that khac nhau) -> co ve la bo dem tang dan, KHONG dung lam dieu
+                # kien. Chi can in_battle_TRUOC=True la du tin cay (moi lan False truoc do
+                # deu la noise, khong lien quan tran).
                 self._battle_end_grace_until = time.time() + 3.0
-                log.info("[%s] DBG-ENDBATTLE: XAC NHAN ket tran THAT (sub0800 tail=04) -> "
+                log.info("[%s] DBG-ENDBATTLE: XAC NHAN ket tran THAT (sub0800, in_battle_TRUOC=True) -> "
                          "grace 3s chan 0x35 set lai in_battle", self._label)
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
         # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
