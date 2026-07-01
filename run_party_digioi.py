@@ -1174,8 +1174,15 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
             with st["lock"]:
                 state = st["o5_state"]
             if state == "done":
+                # Leader da xong (thanh cong hay fail deu vay) -> HA NGAY _phoban_until (thay vi
+                # cho het 600s co dinh dat luc accept moi pho ban). Khong ha som -> go_to_town() cua
+                # member van BAIL ("dang vao pho ban -> ngung teleport") ngay sau khi flow rieng
+                # (sync kenh + lap party) goi toi, roi rot vao nhanh "map mismatch -> lam dungeon
+                # roi THOAT" sai cho (member tuong minh dang o pho ban solo o1).
+                c._phoban_until = 0.0
                 return
             time.sleep(2)
+        c._phoban_until = 0.0
         return   # timeout an toan - cho qua lau, coi nhu xong de khong ket vinh vien
     members = [t[0] for t in party_accounts(pidx)]
     if len(members) < 2:
