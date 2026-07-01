@@ -2885,6 +2885,12 @@ class GameClient:
                 ok_clear = self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong
                 log.info("[%s] (LEADER) DBG-SEG tran %d: het cho combat (ok=%s in_battle=%s)",
                          self._label, i + 1, ok_clear, self.state.in_battle)
+                # DEBUG/TEST: nguoi that xac nhan leader KHONG DI CHUYEN THAT (dung yen suot 3 tran)
+                # dau la gui goi 0x06 dung cu phap. Nghi ngo: server con dang xu ly dot ket tran that
+                # (server-side) ngay sau khi in_battle vua ha (co the qua nhanh so voi truoc, luc
+                # con cho 25s) -> 0x06 gui qua som bi server AM THAM bo qua. Them nghi 3s truoc khi
+                # gui move de test gia thuyet nay.
+                time.sleep(3.0)
                 for op, body in seg["pre"]:                    # pre (0x7c 0400) TRUOC thoai thang loi
                     self.send(op, body); time.sleep(0.4)
                 self._adv_dialog(n=seg["vdlg"], gap=0.4)       # dismiss thoai thang loi (so dung tung doan)
