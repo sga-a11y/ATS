@@ -141,6 +141,7 @@ def _pstate(pidx):
                               "dungeon_done": 0,         # so acc da danh xong dungeon (barrier)
                               "dailies_done": 0,         # so acc da xong daily login (barrier cho leader)
                               "o5_done_by": {},          # username -> o5 (pho ban to doi) da xong? Leader chi chay khi CA party chua xong
+                              "o5_state": "idle",        # "idle"|"running"|"done" - member PHAI cho != "idle" (xem _handle_o5_team)
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
@@ -1156,11 +1157,26 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
     """O5 PHO BAN TO DOI = BUOC CUOI claim_daily_quests (sau khi check + thu lam moi o khac).
     Moi acc report o5 da xong chua. LEADER cho CA party report -> CHI khi MOI nguoi deu CHUA xong o5
     -> tao + keo party vao danh (member auto-accept 0x2f 0f->03 + ready 0x2f 0b trong _on_dungeon,
-    di theo leader). Member: chi report roi return (khong tu lam gi)."""
+    di theo leader).
+    MEMBER PHAI CHO leader danh xong (o5_state != "idle" roi thanh "done") MOI duoc return -> tiep tuc
+    flow rieng (go_to_town/teleport/lap party train). KHONG cho -> member tu chay tiep SONG SONG luc
+    dang trong pho ban -> gui 0x06/0x14/0x44 xen vao giua tran -> server khong nhan atk hop le -> turn
+    timeout lap lai ~20-25s -> KET CUNG (da xac nhan qua log thuc te: chuba tu "xong daily login ->
+    sync kenh + lap party -> teleport" NGAY GIUA LUC dang danh tran 1)."""
     with st["lock"]:
         st["o5_done_by"][username] = bool(o5_done)
     if not is_leader:
-        return
+        # CHO leader quyet dinh + danh xong (state "running"->"done"), toi 600s (4 tran co the lau).
+        t0 = time.time()
+        while time.time() - t0 < 600:
+            if stopped_fn() or not c.running:
+                return
+            with st["lock"]:
+                state = st["o5_state"]
+            if state == "done":
+                return
+            time.sleep(2)
+        return   # timeout an toan - cho qua lau, coi nhu xong de khong ket vinh vien
     members = [t[0] for t in party_accounts(pidx)]
     if len(members) < 2:
         return   # khong du party de danh pho ban to doi
@@ -1178,8 +1194,16 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
         statuses = dict(st["o5_done_by"])
     if all(not statuses.get(m, True) for m in members):       # MOI nguoi deu chua xong
         log.info("[%s] (LEADER) CA party (%d nguoi) chua xong o5 -> PHO BAN TO DOI", label, len(members))
-        c.do_team_dungeon()
+        with st["lock"]:
+            st["o5_state"] = "running"   # member biet ma CHO, khong chay tiep
+        try:
+            c.do_team_dungeon()
+        finally:
+            with st["lock"]:
+                st["o5_state"] = "done"   # bao member (thanh cong hay fail deu THA member ra)
     else:
+        with st["lock"]:
+            st["o5_state"] = "done"      # khong danh -> tha member ngay
         done_list = [m for m in members if statuses.get(m, False)]
         log.info("[%s] (LEADER) o5: KHONG phai ca party chua xong (da xong: %s) -> bo qua pho ban to doi",
                  label, done_list)

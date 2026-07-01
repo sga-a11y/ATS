@@ -520,38 +520,36 @@ Chuỗi C2S (verify timeline team.pcap):
   `0x7c 0400` → `0x01 1000` (về thành?) → mở panel `0x5b 020009...` → claim line
   `0x5b 03 00 01 00 [line][reward 2B]` (capture claim line 2/5/7).
 
-### 🐞 BUG ĐANG DANG (2026-06-30, làm tiếp) — KẸT Ở TRẬN 3, KHÔNG QUA TRẬN 4
-**Trạng thái:** leader flow chạy ngon **trận 1 → 2**, KẸT **trận 3** (→ trận 4 không bao giờ tới →
-`tran 4: spam dialog ma khong vao battle` → fail → reform về train).
+### 🐞 ROOT CAUSE ĐÃ TÌM RA (2026-07-01) — MEMBER TỰ CHẠY TIẾP GIỮA LÚC ĐÁNH PHÓ BẢN
+**Triệu chứng:** turn nào cũng lặp lại y hệt mỗi ~20-25s (server timeout), quái không chết, cuối cùng
+leader bị server ngắt kết nối (`Server dong ket noi`).
 
-**Dữ kiện chắc chắn (từ DBG33 log enemy_hp mỗi gói 0x33, gated trong phó bản):**
-- enemy_hp parse ĐÚNG (khớp capture). Khi turn HOÀN TẤT → có gói 0x33 mới → quái tụt máu/về 0.
-- **Trận 2 (XONG):** bot đánh `b=1`, `target=2`, skill 10005/10000 → gói 0x33 về `{...,11:0,12:0,...}`
-  (quái chết). OK.
-- **Trận 3 (KẸT):** bot đánh `b=0`, **`target=3`**, **skill `12003` (AoE)**, nhè đúng **con 229 HP**
-  (con HP gấp đôi, ở `r0c2`/pos2). → **KHÔNG có gói 0x33 nào nữa sau battle-start** = **turn KHÔNG
-  hoàn tất** = 0 con chết → safety 25s hạ cờ → bot nhảy transit trận 4 (chưa mở) → fail.
-- **Client THẬT trận 3 (capture team.pcap):** đánh `b=0` **`target=2`** bằng **đánh thường (10000)**,
-  nhè con cột thấp (115 HP) — **KHÔNG** nhè con 229, **KHÔNG** dùng 12003.
-- Quái trận 3: `enemy_hp={1:115, 2:229, 3:115, 4:115, 10:115, 11:115, 12:115, 13:235}` (2 con trâu
-  229 & 235 ở pos2, pos13).
+**Root cause (user tự phát hiện qua quan sát log, KHÔNG phải packet-level):** hook `_o5_team_fn` gọi
+`_handle_o5_team` ở CUỐI `claim_daily_quests()`. Member (`is_leader=False`) TRƯỚC ĐÂY chỉ report
+`o5_done_by` rồi **return NGAY** — KHÔNG chờ leader đánh phó bản xong. Thread của member (trong
+`run_party_digioi.py`) chạy tiếp SONG SONG các bước flow riêng (channel sync, go_to_town, teleport,
+lập party train...) TRONG LÚC nhân vật member vẫn đang ở trong trận (do đã accept lời mời + server kéo
+vào battle). Member gửi `0x06`/`0x14`/`0x44` xen giữa combat → server không nhận atk hợp lệ từ member
+đó trong turn → turn không hoàn tất → server re-offer cùng turn mỗi ~20-25s (timeout) → lặp vô hạn →
+leader cuối cùng bị kick.
+- Bằng chứng: log `[chuba] (member) xong daily login (5/5 acc) -> sync kenh + lap party -> ... ->
+  go_to_town: dung -> MAT KET NOI` xảy ra **giữa lúc trận 1 đang lặp lại (chưa xong)**.
 
-**User ĐÃ BÁC:** KHÔNG có cơ chế che chắn 2 hàng ("đánh hàng nào cũng được"). Đừng đi lại hướng đó.
-**Nghi vấn còn mở (chưa xác nhận):** (a) con 229/235 HP là loại đặc biệt? (b) skill 12003 (AoE) bị từ
-chối trong phó bản → phải đánh thường? (c) `_train_target` chọn sai mục tiêu (nhè group-3 middle = cột
-cao/con trâu) → phải nhè con cột thấp / máu thấp nhất như client thật. **HỎI USER rule thật trước khi
-sửa** (đã đoán sai 3 lần: timing, che chắn, victory-dialog).
+**Fix:** thêm `st["o5_state"]` (`"idle"→"running"→"done"`, `run_party_digioi.py`). Leader set
+`"running"` NGAY TRƯỚC `do_team_dungeon()`, set `"done"` trong `finally` (dù thành công hay lỗi).
+Member: sau khi report, **CHỜ** (poll, cap 600s) tới khi `state == "done"` mới được return/chạy tiếp
+flow riêng. Xem `_handle_o5_team`.
 
-**Đã làm + đang còn trong code:**
-- ✅ `_offer_min` offset (target = b2 + min(offered)): train offer [0-4]→+0, phó bản offer [1-5]→+1.
-  **CHỈ verify cho b=1** (row1). Có thể b=0 cần khác? (chưa chắc).
-- ✅ flee_mode=False suốt phó bản; random delay 0x32 0.5-2s (`_team_dungeon_until`, cửa sổ 300s).
-- ✅ victory dialog đúng số (vdlg 9/10/20); moves + transit từng trận.
-- ⚠️ **DBG33 log còn trong code** (client.py 0x33 handler, gated team dungeon) — gỡ sau khi xong.
-- ❌ Fix "ưu tiên hàng 1" ĐÃ REVERT (user bác che chắn).
+**Các fix trước đó vẫn giữ (không liên quan bug này nhưng đúng, không revert):**
+- `_offer_min` offset target (train +0, phó bản +1) — targeting đúng, đã verify quái chết ở trận 1,2.
+- `flee_mode=False` suốt phó bản; random delay 0x32 0.5-2s (`_team_dungeon_until`, cửa sổ 300s).
+- Victory dialog đúng số (vdlg 9/10/20); moves + transit từng trận.
+- **ĐÃ SAI (đừng lặp lại hướng này):** "che chắn 2 hàng" (user bác) — nguyên nhân THẬT không liên quan
+  tới hàng/cột quái, mà là race condition ở tầng flow member/leader.
+- ⚠️ **DBG33 + DBG0B log còn trong code** (client.py, gated `_team_dungeon_until`) — GỠ sau khi confirm
+  fix chạy trọn 4 trận ổn định.
 
-**Bước tiếp:** hỏi user rule trận 3 → nhiều khả năng sửa `_train_target`/`decide` để nhè con máu thấp
-/ cột thấp + đánh thường (không AoE 12003) trong phó bản (offer 1-indexed = team dungeon).
+**Bước tiếp:** test lại full 4 trận với fix `o5_state`. Nếu ổn → gỡ DBG33/DBG0B, xoá phần bug note này.
 
 ## 8. GAME MECHANICS
 
