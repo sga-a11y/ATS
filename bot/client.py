@@ -502,7 +502,6 @@ class GameClient:
         self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
         self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
-        self._pkt_capture = []  # [(ts, 'C2S'/'S2C', hex)] - tu ghi lai goi trong pho ban to doi de doi chieu
         self._genuine_end_seen = 0.0  # thoi diem nhan goi 0x14 sub0800 tail=03/04 (ket tran THAT, moi context)
         self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
@@ -572,8 +571,6 @@ class GameClient:
         if opcode != protocol.OP_HEARTBEAT:
             log.debug("[%s] SEND op=0x%02x: %s", self._label, opcode, payload.hex())
             self._recent_sends.append((time.strftime("%H:%M:%S"), opcode, payload.hex()))
-        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
-            self._pkt_capture.append((time.time(), "C2S", protocol.build_packet(opcode, payload).hex()))
         try:
             self.sock.sendall(protocol.encode(opcode, payload))
         except OSError:
@@ -635,18 +632,18 @@ class GameClient:
         # rong -> HP quai CU >0 van con luu vi leader khong nhan 0x33 cuoi de zero no. Dieu kien
         # enemy_slots-rong o duoi hau nhu KHONG BAO GIO dung cho leader trong pho ban to doi.
         if self.state.in_battle and not self.state.enemy_slots and (time.time() - self.last_turn_time) > 3.0:
-            log.info("[%s] DBG-ENDBATTLE: khong con quai song + im 3s -> tu ha in_battle "
+            log.info("[%s] khong con quai song + im 3s -> tu ha in_battle "
                      "(leader suy luan, khong doi goi END rieng)", self._label)
             self.state.in_battle = False
             self._battle_end_grace_until = time.time() + 3.0
         elif self.state.in_battle and time.time() < getattr(self, "_team_dungeon_until", 0.0) \
                 and _recent_battle_end(self.party_idx, within=3.0):
-            log.info("[%s] DBG-ENDBATTLE: MEMBER trong party da xac nhan ket tran THAT -> "
+            log.info("[%s] MEMBER trong party da xac nhan ket tran THAT -> "
                      "leader ha in_battle theo (khong doi 25s)", self._label)
             self.state.in_battle = False
             self._battle_end_grace_until = time.time() + 3.0
         elif self.state.in_battle and (time.time() - self.last_turn_time) > 25.0:
-            log.warning("[%s] DBG-ENDBATTLE: ha in_battle qua SAFETY 25s (KHONG PHAI goi ket tran that "
+            log.warning("[%s] ha in_battle qua SAFETY 25s (KHONG PHAI goi ket tran that "
                         "- co the da miss goi END, hoac tran that su CHUA xong)", self._label)
             self.state.in_battle = False   # co le miss goi 0x14 END -> ha co an toan
         # KHONG reset _battle_entered/_first_turn: client THAT gui 0x41 + atype=2
@@ -694,33 +691,17 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
-        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
-            self._pkt_capture.append((time.time(), "S2C", pkt.hex()))
-        # DBG pho ban to doi: leader (do_team_dungeon) KHONG theo doi goi 0x18 / cac sub-code 0x14
-        # khac ngoai 0700/0800/0900/0c00/0100/0d00... -> log HET moi goi 0x18 va MOI sub cua 0x14
-        # (kha ca goi da biet) de doi chieu voi luc leader thuc (nguoi) di qua tran 4 thanh cong,
-        # tim dung tin hieu leader dang thieu/bo lo.
-        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
-            if opcode == 0x18:
-                log.info("[%s] DBG-RAW: nhan goi 0x18 raw=%s", self._label, pkt.hex())
+        # Pho ban to doi: theo doi thoai NPC de biet canh da HET that su chua (_adv_dialog_until_idle)
+        # va tin hieu ket tran that (mot so canh boss tu dong xu ly, khong bao gio bat in_battle=True).
+        if time.time() < getattr(self, "_team_dungeon_until", 0.0) and opcode == 0x14:
+            # CHI cac sub THAT SU lien quan thoai (0100=ack dong thoai, 1000=cutscene loop,
+            # 0d00=mo canh) moi duoc coi la "con dang thoai" -> reset dong ho im lang. Cac sub
+            # khac (0800 noise, 2c00...) lap lai lien tuc nhung khong lien quan.
+            if pkt[7:9] in (b"\x01\x00", b"\x10\x00", b"\x0d\x00"):
                 self._last_dialog_evt = time.time()
-            elif opcode == 0x14:
-                sub = pkt[7:9].hex() if len(pkt) >= 9 else None
-                log.info("[%s] DBG-RAW: nhan goi 0x14 sub=%s in_battle=%s raw=%s",
-                         self._label, sub, self.state.in_battle, pkt.hex())
-                # CHI cac sub THAT SU lien quan thoai (0100=ack dong thoai, 1000=cutscene loop,
-                # 0d00=mo canh) moi duoc coi la "con dang thoai" -> reset dong ho im lang. Truoc day
-                # dung kieu loai-tru (chi loai 2c00) nen sub0800(tail=26/27, cung la RAC lap lai)
-                # van lam bot cho THEM vo ich (nguoi dung xac nhan: cho rat lau moi di chuyen).
-                if pkt[7:9] in (b"\x01\x00", b"\x10\x00", b"\x0d\x00"):
-                    self._last_dialog_evt = time.time()
-                # sub0800 tail=03/04: da xac nhan qua nhieu capture la tin hieu KET TRAN THAT (bat
-                # ke in_battle_TRUOC dang True hay False). Truoc day _dialog_until_battle chi dung
-                # khi in_battle=True -> neu tran nay khong co pha 0x35 that (auto-resolve) thi
-                # in_battle khong bao gio len True -> bot spam 0x14 0600 THEM sau khi tran da ket
-                # THAT -> bi server kick vi spam vao luc da ket thuc.
-                if pkt[7:9] == b"\x08\x00" and len(pkt) >= 10 and pkt[9] in (0x03, 0x04):
-                    self._genuine_end_seen = time.time()
+            # sub0800 tail=03/04 = tin hieu KET TRAN THAT (bat ke in_battle_TRUOC dang gia tri gi).
+            elif pkt[7:9] == b"\x08\x00" and len(pkt) >= 10 and pkt[9] in (0x03, 0x04):
+                self._genuine_end_seen = time.time()
         # Hoan thanh dungeon: S2C 0x14 sub 0x64 (man tong ket) -> set co de do_daily_dungeon biet xong
         if opcode == 0x14 and len(pkt) >= 8 and pkt[7] == 0x64:
             self.dungeon_complete = True
@@ -728,7 +709,7 @@ class GameClient:
         # Day moi la moc ket tran dang tin (0x34 ban that thuong, 1 lan/nhieu tran). Reset quest_mode
         # + enemies o DAY -> quest_mode latch luc start (>5) GIU NGUYEN ca tran du quai con <=5.
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x07\x00":
-            log.info("[%s] DBG-ENDBATTLE: nhan goi KET TRAN THAT 0x14 sub0700 (WIN) in_battle_truoc=%s "
+            log.info("[%s] nhan goi KET TRAN THAT 0x14 sub0700 (WIN) in_battle_truoc=%s "
                      "raw=%s -> in_battle=False",
                      self._label, self.state.in_battle, pkt.hex())
             self.state.reset_enemies(reset_quest=True)
@@ -740,7 +721,7 @@ class GameClient:
         # khac, KHONG phai ket tran that - user nghi dung luc nay in_battle con False ma van log).
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] in (b"\x0c\x00", b"\x09\x00", b"\x08\x00"):
             was_true = self.state.in_battle
-            log.info("[%s] DBG-ENDBATTLE: nhan goi 0x14 sub%s in_battle_TRUOC=%s raw=%s -> in_battle=False",
+            log.info("[%s] nhan goi 0x14 sub%s in_battle_TRUOC=%s raw=%s -> in_battle=False",
                      self._label, pkt[7:9].hex(), was_true, pkt.hex())
             self.state.in_battle = False
             # KET TRAN THAT (xac nhan tu capture): sub0800 + byte cuoi=04 + dang THUC SU o
@@ -756,7 +737,7 @@ class GameClient:
                 # deu la noise, khong lien quan tran).
                 self._battle_end_grace_until = time.time() + 3.0
                 _mark_battle_end(self.party_idx)
-                log.info("[%s] DBG-ENDBATTLE: XAC NHAN ket tran THAT (sub0800, in_battle_TRUOC=True) -> "
+                log.info("[%s] XAC NHAN ket tran THAT (sub0800, in_battle_TRUOC=True) -> "
                          "grace 3s chan 0x35 set lai in_battle + bao party (leader dua vao de ha nhanh)",
                          self._label)
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
@@ -898,12 +879,7 @@ class GameClient:
                 self._resolve_name_from_03(pkt)
         # (Server KHONG echo vi tri CUA MINH qua 0x06 -> dung dead-reckoning trong move_to/enter)
         if opcode == protocol.OP_STAT_UPD:        # 0x33
-            _eh_before = dict(self.state.enemy_hp)
             self.state.update_0x33(pkt)
-            if time.time() < getattr(self, "_team_dungeon_until", 0.0):
-                _eh = {k: v for k, v in sorted(self.state.enemy_hp.items())}
-                log.info("[%s] DBG33[%dB] enemy_hp=%s %s", self._label, len(pkt), _eh,
-                         "(DOI)" if _eh != _eh_before else "(KHONG doi)")
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
             if self.self_entity is None:
                 # chua biet self_entity -> buffer lai de xu khi co (tranh mat goi stat luc login)
@@ -920,24 +896,6 @@ class GameClient:
                         self.state.self_slot = slot
                         self.state.my_atype = slot
                         log.info("[%s] self_slot=%d (tu 0x0b battle, entity)", self._label, slot)
-            if time.time() < getattr(self, "_team_dungeon_until", 0.0):
-                # DBG: update_0x0b hien CHI doc block dong minh (b1 in 2,3), quet TREN RAW pkt (ca
-                # header, giong update_0x0b that). Quet xem co block b1 in (0,1) (quai) khong -> neu
-                # co ma bi bo qua thi day la nguon HP quai bi mat giua cac luot pho ban.
-                j = 0; _enemy_blocks = []
-                while j + 18 <= len(pkt):
-                    bb, sl = pkt[j], pkt[j + 1]
-                    if bb in (0, 1) and sl < 10:
-                        try:
-                            mh, ms, ch, cs = struct.unpack_from("<IIII", pkt, j + 2)
-                            if 0 < mh < 1_000_000 and ch <= mh:
-                                _enemy_blocks.append((bb, sl, ch, mh))
-                        except Exception:
-                            pass
-                    j += 1
-                if _enemy_blocks:
-                    log.info("[%s] DBG0B[%dB] CO block quai (b1,slot,cur,max)=%s",
-                             self._label, len(pkt), _enemy_blocks)
             self.state.update_0x0b(pkt)
         elif opcode == 0x53:                      # mail: S2C sub=01 = 1 mail (push luc login)
             # payload: [01 00][mailid 4B LE][cat 4B LE][sender/time 8B][00][title UTF16...]
@@ -1231,14 +1189,11 @@ class GameClient:
         """0x35 (>=20B): liet ke cac combo [unit][atype][target] hop le cho luot nay."""
         if len(pkt) < 20:
             return  # 11-byte = confirmation, bo qua
-        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
-            log.info("[%s] DBG35[%dB] raw=%s", self._label, len(pkt), pkt.hex())
         # 0x35 34-byte = toi luot minh -> dang trong tran
         # TRU: dang trong grace period sau khi vua nhan goi KET TRAN THAT (0x14 sub0800 tail=04) ->
         # 0x35 nay la broadcast DU cua member khac chua xong luot, KHONG duoc phep set lai in_battle
         # (bug: truoc day set lai lam leader ket "tran da ket" nhung van cho toi 25s SAFETY moi ha).
         if time.time() < getattr(self, "_battle_end_grace_until", 0.0):
-            log.info("[%s] DBG35: bo qua set in_battle (dang grace period sau ket tran that)", self._label)
             return
         self.state.in_battle = True
         self.last_turn_time = time.time()
@@ -2868,13 +2823,6 @@ class GameClient:
           -> 4 tran: chuyen canh + spam dialog toi khi battle + cho het tran; set quan su sau tran 1.
         TRIGGER battle = spam 0x14 0600 (KHONG phu thuoc di chuyen). Tra True neu chay het 4 tran."""
         ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
-        # DEBUG/TEST: hardcode moi them nick NGUOI THAT (dieumuoi) da ket ban voi leader -> entity
-        # da co san trong friend_entities (tu 0x0e sub05 luc login). Chi de TEST xem leader chay
-        # sao khi co 1 acc that trong party, xoa sau khi test xong.
-        test_friend_ents = list(getattr(self, "friend_entities", []))
-        for e in test_friend_ents:
-            if e not in ents and e != self.self_entity:
-                ents.append(e)
         if not ents:
             log.warning("[%s] (LEADER) do_team_dungeon: chua biet entity member -> bo qua", self._label)
             return False
@@ -2885,16 +2833,6 @@ class GameClient:
         # 1. Tao pho ban to doi
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
         self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)
-        # 1b. DEBUG/TEST: moi acc NGUOI THAT vao PARTY THUONG truoc (0x0d sub07) - bot member khac
-        # da duoc invite_members() moi tu truoc do (run_party_digioi), nguoi that thi chua nen phai
-        # moi rieng o day + doi ho accept tay.
-        if test_friend_ents:
-            log.info("[%s] (LEADER) DEBUG: moi %d nick NGUOI THAT (friend) vao party thuong truoc",
-                     self._label, len(test_friend_ents))
-            for e in test_friend_ents:
-                self.invite_entity(e)
-                time.sleep(1.0)
-            time.sleep(5.0)   # cho nguoi that bam DONG Y tay
         # 2. Moi tung member theo ENTITY (0x2f 0800 [entity 8B]) - KHAC party-invite 0x0d 07
         for e in ents:
             self.send(0x2f, b"\x08\x00" + bytes(e)); time.sleep(1.0)
@@ -2933,11 +2871,11 @@ class GameClient:
                 return False
             seg = segments[i]
             self.flee_mode = False   # giu DANH suot pho ban (khong bo chay tran nao)
-            log.info("[%s] (LEADER) DBG-SEG tran %d: bat dau (map=%s pos=%s in_battle=%s)",
+            log.info("[%s] (LEADER) tran %d: bat dau (map=%s pos=%s in_battle=%s)",
                      self._label, i + 1, self.current_map, self.pos, self.state.in_battle)
             if i > 0:
                 ok_clear = self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong
-                log.info("[%s] (LEADER) DBG-SEG tran %d: het cho combat (ok=%s in_battle=%s)",
+                log.info("[%s] (LEADER) tran %d: het cho combat (ok=%s in_battle=%s)",
                          self._label, i + 1, ok_clear, self.state.in_battle)
                 for op, body in seg["pre"]:                    # pre (0x7c 0400) TRUOC thoai thang loi
                     self.send(op, body); time.sleep(0.4)
@@ -2946,17 +2884,17 @@ class GameClient:
                 # co the it hon so dong thoai that) -> nhan vat con ket trong hop thoai -> move/transit
                 # sau do bi bo qua. Spam TOI KHI server ngung phan hoi (thay vi dem co dinh vdlg).
                 n_sent = self._adv_dialog_until_idle(min_n=seg["vdlg"], gap=0.4, idle=1.5, max_wait=25.0)
-                log.info("[%s] (LEADER) DBG-SEG tran %d: da spam %d lan dialog (vdlg hardcode=%d) "
+                log.info("[%s] (LEADER) tran %d: da spam %d lan dialog (vdlg hardcode=%d) "
                          "toi khi im lang", self._label, i + 1, n_sent, seg["vdlg"])
                 if i == 1:
                     self.set_party_strategist()                # set quan su SAU tran 1 (sau thoai thang loi)
                 for (x, y) in seg["moves"]:
                     self._route_move(x, y)                     # DI toi cong (dam bao toi noi truoc transit)
-                    log.info("[%s] (LEADER) DBG-SEG tran %d: sau move (%s,%s) -> pos=%s in_battle=%s",
+                    log.info("[%s] (LEADER) tran %d: sau move (%s,%s) -> pos=%s in_battle=%s",
                              self._label, i + 1, x, y, self.pos, self.state.in_battle)
             for op, body in seg["transit"]:
                 self.send(op, body); time.sleep(0.4)
-            log.info("[%s] (LEADER) DBG-SEG tran %d: da gui transit -> spam dialog cho battle...",
+            log.info("[%s] (LEADER) tran %d: da gui transit -> spam dialog cho battle...",
                      self._label, i + 1)
             # So sanh capture: nguoi that doi ~1.27s truoc khi bam dialog TIEP THEO ngay sau khi
             # nhan dong thoai dau tien cua canh transit (bot truoc day chi doi ~0.34s -> bi server
@@ -2967,7 +2905,6 @@ class GameClient:
                 log.warning("[%s] (LEADER) tran %d: spam dialog ma khong vao battle -> dung "
                             "(map=%s pos=%s in_battle=%s)", self._label, i + 1,
                             self.current_map, self.pos, self.state.in_battle)
-                self._dump_pkt_capture("fail")
                 return False
             log.info("[%s] (LEADER) pho ban to doi: VAO TRAN %d/%d", self._label, i + 1, n_battles)
         # cho tran cuoi xong
@@ -2983,23 +2920,9 @@ class GameClient:
         log.info("[%s] (LEADER) da gui goi NHAN THUONG pho ban to doi", self._label)
         time.sleep(2.0)
         log.info("[%s] (LEADER) === PHO BAN TO DOI XONG (%d tran) -> roi pho ban ===", self._label, n_battles)
-        self._dump_pkt_capture("ok")
         self.leave_party()     # 0x0d 04 = roi/giai tan -> thoat pho ban
         time.sleep(2.0)
         return True
-
-    def _dump_pkt_capture(self, tag: str):
-        """Ghi lai toan bo goi C2S/S2C da bat trong pho ban to doi ra file txt (readable hex,
-        khong ma hoa) de doi chieu voi capture nguoi that ma khong can mumu/tcpdump."""
-        try:
-            fname = f"team_dungeon_capture_{self._label}_{tag}_{int(time.time())}.txt"
-            with open(fname, "w", encoding="utf-8") as f:
-                t0 = self._pkt_capture[0][0] if self._pkt_capture else 0.0
-                for ts, direction, hexstr in self._pkt_capture:
-                    f.write(f"{ts - t0:8.3f} {direction} {hexstr}\n")
-            log.info("[%s] DBG-CAPTURE: da ghi %d goi ra file %s", self._label, len(self._pkt_capture), fname)
-        except Exception as e:
-            log.warning("[%s] DBG-CAPTURE: loi ghi file: %s", self._label, e)
 
     def increase_stat(self, stat_id: int, amount: int = 1):
         """Tang 1 chi so. C2S 0x08 = 01 00 00 00 [stat_id] [amount] 00 00 00 00
