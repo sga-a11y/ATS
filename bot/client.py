@@ -2897,6 +2897,13 @@ class GameClient:
                 ok_clear = self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong
                 log.info("[%s] (LEADER) tran %d: het cho combat (ok=%s in_battle=%s)",
                          self._label, i + 1, ok_clear, self.state.in_battle)
+                # Neu in_battle vua ha qua SAFETY 25s (KHONG phai qua xac nhan ket tran that gan
+                # day) thi goi ket tran THAT co the con dang bay toi tre - gui lenh moi (pre/dialog)
+                # NGAY luc nay tung va cham voi goi do -> server kick ket noi (da xac nhan qua log
+                # thuc te: rot ngay giua tran 3, dung luc SAFETY vua ha va nhan goi tail=03 lien
+                # ngay sau). Doi them 1 chut de goi tre (neu co) kip toi truoc khi gui tiep.
+                if self._genuine_end_seen < time.time() - 2.0:
+                    time.sleep(2.0)
                 for op, body in seg["pre"]:                    # pre (0x7c 0400) TRUOC thoai thang loi
                     self.send(op, body); time.sleep(0.4)
                 # Nguoi that xac nhan: leader KHONG di chuyen that suot ca pho ban (0x06 dung cu
