@@ -470,9 +470,29 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   0x55 ~15KB) → kết luận sai "server không gửi". ĐÃ sửa `ln<=65535`. Khi không thấy data trong gói,
   NGHI tool drop frame lớn trước → raw-decode lại với limit cao (đây là tật cũ, đã dính 2 lần: túi đồ + claimed).
 
-## 7n. PHÓ BẢN TỔ ĐỘI (ô5 daily) — opcode 0x2f + battle loop (capture team.pcap)
+## 7n. PHÓ BẢN TỔ ĐỘI LV20 (ô5 daily) — opcode 0x2f + battle loop (capture team.pcap)
 
 Luồng 5 người (1 leader + 4 member). Map quan trọng: **ô5 bingo = phó bản tổ đội**.
+
+> **Sẽ có nhiều phó bản tổ đội cấp cao hơn sau này (lv30/40/...)** — kịch bản từng trận (số trận,
+> tọa độ di chuyển, số lần thoại, gói transit) sẽ KHÁC HẲN theo từng level, viết hàm riêng cho mỗi
+> level (`do_team_dungeon_lv30`, `do_team_dungeon_lv40`...). Nhưng **CƠ CHẾ NỀN TẢNG dưới đây áp
+> dụng lại được cho MỌI level**, đã xác nhận qua debug thực tế ở lv20 (xem BUG6-10):
+> 1. **Phải gọi `combat_ready()` (gửi lại `0x41`) ngay sau khi START phòng** (`0x2f 0c00`) — thiếu
+>    bước này thì nhân vật KHÔNG di chuyển thật dù gói `0x06` gửi đúng cú pháp (server âm thầm bỏ
+>    qua lệnh move vì "mất combat-active" sau khi lập party mới, xem BUG7).
+> 2. **Dialog với NPC = spam `0x14 0600` tới khi server IM LẶNG THẬT SỰ**, dùng kiểu WHITELIST (chỉ
+>    tính các sub THẬT SỰ liên quan thoại là "còn đang thoại", vd `0100`/`1000`/`0d00`) chứ KHÔNG
+>    dùng kiểu loại-trừ — có nhiều gói rác lặp lại (vd `0800` noise, `2c00`) trông giống thoại nhưng
+>    không liên quan, dùng loại-trừ sẽ bị chờ vô ích rất lâu (xem BUG10).
+> 3. **Mốc kết trận THẬT = `0x14 sub0800` với byte cuối (`pkt[9]`) = `0x03` hoặc `0x04`**, bất kể
+>    `in_battle` đang `True`/`False` lúc nhận. KHÔNG chỉ dựa vào `in_battle=True` vì có trận tự động
+>    resolve (server tự xử lý, không có pha `0x35` thật) sẽ không bao giờ bật cờ này (xem BUG9).
+> 4. **Nhận thưởng TRƯỚC KHI `leave_party()`** — nội dung gói nhận thưởng có thể khác theo từng phó
+>    bản, nhưng thứ tự (thoại tổng kết → nhận thưởng → giải tán) nên giữ nguyên (xem BUG8).
+> 5. **Sau khi đánh xong thành công, gọi lại `claim_daily_quests(heavy=False)`** để claim bù hàng/
+>    cột/tổng kết bingo có ô phó bản (ô phó bản là bước CUỐI trong `claim_daily_quests` nên lúc claim
+>    hàng/cột, ô đó còn tính là CHƯA xong).
 
 ### Member side (ĐÃ CÓ trong `_on_dungeon`, KHÔNG cần làm lại)
 - S2C `0x2f sub=0f` = lời mời phó bản → auto-accept **C2S `0x2f 03 00 [invite_id 4B] 00`** → sau 2.5s
@@ -484,11 +504,11 @@ Luồng 5 người (1 leader + 4 member). Map quan trọng: **ô5 bingo = phó b
 ### Tích hợp (ĐÃ implement)
 - **Ô5 = BƯỚC CUỐI trong `claim_daily_quests`** (sau khi check + thử làm mọi ô khác — ô khác fail như
   hết xu gacha vẫn OK, không phụ thuộc). Gọi qua hook `client._o5_team_fn` (set bởi run_party_digioi).
-- **Mỗi acc report ô5 đã xong chưa** vào `st["o5_done_by"]`. **LEADER chỉ chạy `do_team_dungeon` khi CẢ
+- **Mỗi acc report ô5 đã xong chưa** vào `st["o5_done_by"]`. **LEADER chỉ chạy `do_team_dungeon_lv20` khi CẢ
   party đều CHƯA xong ô5** (`_handle_o5_team` chờ tất cả report, gate all-not-done). Member chỉ report
   rồi return → tự accept lời mời + đi theo.
 
-### Leader side — `do_team_dungeon` (đã implement)
+### Leader side — `do_team_dungeon_lv20` (đã implement)
 Chuỗi C2S (verify timeline team.pcap):
 1. **Mở panel:** `0x2f 0100` (×2).
 2. **Tạo phó bản:** `0x2f 02 00 01 00 01` (5 byte). Mật mã "22": nghi `0x41 0100 3232 ...` (`3232`="22"
@@ -544,7 +564,7 @@ leader cuối cùng bị kick.
   go_to_town: dung -> MAT KET NOI` xảy ra **giữa lúc trận 1 đang lặp lại (chưa xong)**.
 
 **Fix:** thêm `st["o5_state"]` (`"idle"→"running"→"done"`, `run_party_digioi.py`). Leader set
-`"running"` NGAY TRƯỚC `do_team_dungeon()`, set `"done"` trong `finally` (dù thành công hay lỗi).
+`"running"` NGAY TRƯỚC `do_team_dungeon_lv20()`, set `"done"` trong `finally` (dù thành công hay lỗi).
 Member: sau khi report, **CHỜ** (poll, cap 600s) tới khi `state == "done"` mới được return/chạy tiếp
 flow riêng. Xem `_handle_o5_team`.
 
@@ -644,7 +664,7 @@ hay không trước khi đánh.
 - Đối chiếu byte-by-byte 2 capture LEADER THẬT (cùng 1 account, 1 lần bot chạy thất bại + 1 lần người
   điều khiển tay thành công): nội dung gói gửi giống hệt nhau, NHƯNG:
   1. **Thiếu gói `0x41`** (OP_BATTLE_ENTER, "đăng ký sẵn sàng battle" — đã dùng ở `_login_setup`/
-     `combat_ready()` cho map thường). Người thật gửi gói này **13 lần** trong cả phiên; `do_team_dungeon`
+     `combat_ready()` cho map thường). Người thật gửi gói này **13 lần** trong cả phiên; `do_team_dungeon_lv20`
      trước đây KHÔNG BAO GIỜ gọi `combat_ready()`. Tạo phó bản = tạo party mới, đúng tình huống
      `combat_ready()` cần gọi lại (comment cũ: "Sau khi ĐỔI KÊNH / lập party, char có thể mất
      combat-active"). **Fix: gọi `self.combat_ready()` ngay sau khi START phó bản (`0x2f 0c00`).**
@@ -654,7 +674,7 @@ hay không trước khi đánh.
 - Sau khi thêm `combat_ready()`, trận 4 vào được thật (nhân vật di chuyển thật, đánh được).
 
 **BUG 8 — thiếu bước NHẬN THƯỞNG trước khi giải tán party (2026-07-01):**
-- Sau khi thắng trận 4, `do_team_dungeon` trước đây `_wait_combat_clear` xong là `leave_party()` NGAY —
+- Sau khi thắng trận 4, `do_team_dungeon_lv20` trước đây `_wait_combat_clear` xong là `leave_party()` NGAY —
   bỏ qua đoạn thoại tổng kết + màn nhận thưởng → server tính là CHƯA hoàn thành dù đã đánh xong 4 trận.
 - Capture người thật: sau trận 4, còn đoạn thoại tổng kết (`0x14 sub0100`/`sub1000` lặp), rồi client gửi
   **`0x5b 0200010100053300`** (NHẬN THƯỞNG) TRƯỚC KHI gửi `0x0d 04` (giải tán). **Fix:** spam dialog qua
