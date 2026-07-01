@@ -371,6 +371,43 @@ def _lowest_hp_enemy(state, offered):
     return min(alive, key=lambda x: x[1])[0]
 
 
+def _anti_stall(state, unit, pos, skill, es, offered):
+    """Chong ket cung: neu 3 lan LIEN TIEP cua unit nay ra CUNG (pos, skill) MA enemy_hp[pos]
+    KHONG DOI (danh khong an, hoac goi bi server bo qua vi ly do khac) -> DOI (target khac con
+    song neu co, hoac doi skill neu chi con 1 con) de dam bao goi 0x32 KHAC NOI DUNG so lan truoc.
+    Da xac nhan qua thuc te: co truong hop 1 quai HP thap (vd 36) bi 5 acc nhac lien tuc CUNG
+    skill+target hang chuc lan/2 phut ma HP dung yen tuyet doi -> nghi server tu drop request
+    lap noi dung (du tail 0x32 co random) -> can chu dong doi noi dung de thoat vong lap."""
+    key_attr = "_stall_char" if unit == config.UNIT_CHAR else "_stall_pet"
+    hp_now = state.enemy_hp.get(pos)
+    prev = getattr(state, key_attr, None)   # (pos, skill, hp, streak)
+    if prev is not None and prev[0] == pos and prev[1] == skill and prev[2] == hp_now:
+        streak = prev[3] + 1
+    else:
+        streak = 0
+    if streak >= 2:   # day la lan thu 3 LIEN TIEP y het -> doi
+        alive = [p for p, hp in state.enemy_hp.items() if hp > 0 and p != pos]
+        if alive:
+            new_pos = min(alive)   # con khac (khong quan tam HP - uu tien PHA VO LAP hon la toi uu)
+            log.warning("[%s] ANTI-STALL: %s lap %d lan cung pos=%d skill=%d ma HP khong doi -> "
+                        "doi target sang pos=%d", state.label, "CHAR" if unit == config.UNIT_CHAR else "PET",
+                        streak + 1, pos, skill, new_pos)
+            setattr(state, key_attr, (new_pos, skill, state.enemy_hp.get(new_pos), 0))
+            return new_pos, skill
+        # chi 1 con song -> doi skill (thuong <-> skill khac neu co) thay vi doi target
+        alt_skill = config.SKILL_NORMAL if skill != config.SKILL_NORMAL else skill
+        if alt_skill == skill:
+            cand = [s for s in skills if s != skill]
+            alt_skill = cand[0] if cand else skill
+        log.warning("[%s] ANTI-STALL: %s lap %d lan cung pos=%d skill=%d ma HP khong doi (chi 1 con "
+                    "song) -> doi skill sang %d", state.label, "CHAR" if unit == config.UNIT_CHAR else "PET",
+                    streak + 1, pos, skill, alt_skill)
+        setattr(state, key_attr, (pos, alt_skill, hp_now, 0))
+        return pos, alt_skill
+    setattr(state, key_attr, (pos, skill, hp_now, streak))
+    return pos, skill
+
+
 def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
     """Quyet dinh TAN CONG (sau khi da loai heal) - DUNG CHUNG char + pet. 3 che do:
       BOSS  (boss_mode, dungeon): nuke = pick_boss_skill (don dap>don>skill dau), target it mau nhat.
@@ -410,6 +447,7 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
         boss = pick_boss_skill(skills)
         pos = low_or_train()
         sk = boss if (boss and sp >= cost(boss)) else config.SKILL_NORMAL
+        pos, sk = _anti_stall(state, unit, pos, sk, es, offered)
         return _attack(unit, at, pos, sk, fb, offered)
 
     # 2) QUEST mode (start >5 quai)
@@ -426,6 +464,7 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
         boss = pick_boss_skill(skills)
         pos = low_or_train()
         sk = boss if (boss and sp >= cost(boss)) else config.SKILL_NORMAL
+        pos, sk = _anti_stall(state, unit, pos, sk, es, offered)
         return _attack(unit, at, pos, sk, fb, offered)
 
     # 3) TRAIN mode (combo)
