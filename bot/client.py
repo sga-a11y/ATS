@@ -502,6 +502,7 @@ class GameClient:
         self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
         self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
+        self._pkt_capture = []  # [(ts, 'C2S'/'S2C', hex)] - tu ghi lai goi trong pho ban to doi de doi chieu
         self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
@@ -570,6 +571,8 @@ class GameClient:
         if opcode != protocol.OP_HEARTBEAT:
             log.debug("[%s] SEND op=0x%02x: %s", self._label, opcode, payload.hex())
             self._recent_sends.append((time.strftime("%H:%M:%S"), opcode, payload.hex()))
+        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+            self._pkt_capture.append((time.time(), "C2S", protocol.build_packet(opcode, payload).hex()))
         try:
             self.sock.sendall(protocol.encode(opcode, payload))
         except OSError:
@@ -690,6 +693,8 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+            self._pkt_capture.append((time.time(), "S2C", pkt.hex()))
         # DBG pho ban to doi: leader (do_team_dungeon) KHONG theo doi goi 0x18 / cac sub-code 0x14
         # khac ngoai 0700/0800/0900/0c00/0100/0d00... -> log HET moi goi 0x18 va MOI sub cua 0x14
         # (kha ca goi da biet) de doi chieu voi luc leader thuc (nguoi) di qua tran 4 thanh cong,
@@ -702,7 +707,11 @@ class GameClient:
                 sub = pkt[7:9].hex() if len(pkt) >= 9 else None
                 log.info("[%s] DBG-RAW: nhan goi 0x14 sub=%s in_battle=%s raw=%s",
                          self._label, sub, self.state.in_battle, pkt.hex())
-                self._last_dialog_evt = time.time()
+                # sub2c00 la goi RAC (da xac nhan: lap vo han, khong lien quan thoai that) - KHONG
+                # duoc coi la "con dang thoai" (truoc day coi nham -> _adv_dialog_until_idle bi keo
+                # dai vo ich toi 51 lan cho 22s cho no tu ngung, du no chang lien quan gi).
+                if pkt[7:9] != b"\x2c\x00":
+                    self._last_dialog_evt = time.time()
         # Hoan thanh dungeon: S2C 0x14 sub 0x64 (man tong ket) -> set co de do_daily_dungeon biet xong
         if opcode == 0x14 and len(pkt) >= 8 and pkt[7] == 0x64:
             self.dungeon_complete = True
@@ -2932,14 +2941,29 @@ class GameClient:
                 log.warning("[%s] (LEADER) tran %d: spam dialog ma khong vao battle -> dung "
                             "(map=%s pos=%s in_battle=%s)", self._label, i + 1,
                             self.current_map, self.pos, self.state.in_battle)
+                self._dump_pkt_capture("fail")
                 return False
             log.info("[%s] (LEADER) pho ban to doi: VAO TRAN %d/%d", self._label, i + 1, n_battles)
         # cho tran cuoi xong
         self._wait_combat_clear(idle=2.0, cap=120.0)
         log.info("[%s] (LEADER) === PHO BAN TO DOI XONG (%d tran) -> roi pho ban ===", self._label, n_battles)
+        self._dump_pkt_capture("ok")
         self.leave_party()     # 0x0d 04 = roi/giai tan -> thoat pho ban
         time.sleep(2.0)
         return True
+
+    def _dump_pkt_capture(self, tag: str):
+        """Ghi lai toan bo goi C2S/S2C da bat trong pho ban to doi ra file txt (readable hex,
+        khong ma hoa) de doi chieu voi capture nguoi that ma khong can mumu/tcpdump."""
+        try:
+            fname = f"team_dungeon_capture_{self._label}_{tag}_{int(time.time())}.txt"
+            with open(fname, "w", encoding="utf-8") as f:
+                t0 = self._pkt_capture[0][0] if self._pkt_capture else 0.0
+                for ts, direction, hexstr in self._pkt_capture:
+                    f.write(f"{ts - t0:8.3f} {direction} {hexstr}\n")
+            log.info("[%s] DBG-CAPTURE: da ghi %d goi ra file %s", self._label, len(self._pkt_capture), fname)
+        except Exception as e:
+            log.warning("[%s] DBG-CAPTURE: loi ghi file: %s", self._label, e)
 
     def increase_stat(self, stat_id: int, amount: int = 1):
         """Tang 1 chi so. C2S 0x08 = 01 00 00 00 [stat_id] [amount] 00 00 00 00
