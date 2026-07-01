@@ -689,6 +689,17 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        # DBG pho ban to doi: leader (do_team_dungeon) KHONG theo doi goi 0x18 / cac sub-code 0x14
+        # khac ngoai 0700/0800/0900/0c00/0100/0d00... -> log HET moi goi 0x18 va MOI sub cua 0x14
+        # (kha ca goi da biet) de doi chieu voi luc leader thuc (nguoi) di qua tran 4 thanh cong,
+        # tim dung tin hieu leader dang thieu/bo lo.
+        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+            if opcode == 0x18:
+                log.info("[%s] DBG-RAW: nhan goi 0x18 raw=%s", self._label, pkt.hex())
+            elif opcode == 0x14:
+                sub = pkt[7:9].hex() if len(pkt) >= 9 else None
+                log.info("[%s] DBG-RAW: nhan goi 0x14 sub=%s in_battle=%s raw=%s",
+                         self._label, sub, self.state.in_battle, pkt.hex())
         # Hoan thanh dungeon: S2C 0x14 sub 0x64 (man tong ket) -> set co de do_daily_dungeon biet xong
         if opcode == 0x14 and len(pkt) >= 8 and pkt[7] == 0x64:
             self.dungeon_complete = True
