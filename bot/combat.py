@@ -385,6 +385,15 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
     sp = stat.sp
     es = state.enemy_slots
     cost = _skill_cost
+    # CHI danh khi CO du lieu quai MOI (goi 0x33 that) ke tu lan danh truoc. Goi 0x35 (offer luot)
+    # KHONG mang du lieu quai -> neu 0x35 den ma KHONG co 0x33 moi kem theo (vd tran DA KET THAT
+    # nhung con offer "tan du" den tre, hoac server chi re-broadcast lai cung turn) -> danh LAI tren
+    # trang thai CU (stale) la SAI - co the tran da xong that roi. User quan sat truc tiep: end battle
+    # -> van gui atk. Skip (None) neu enemy_gen KHONG doi so voi lan danh truoc cua UNIT nay.
+    gen_attr = "last_atk_gen_char" if unit == config.UNIT_CHAR else "last_atk_gen_pet"
+    if getattr(state, gen_attr, -1) == state.enemy_gen:
+        return None
+    setattr(state, gen_attr, state.enemy_gen)
     if not es:
         # KHONG CON QUAI SONG (da chet het) -> KHONG danh (nhanh TRAIN ben duoi khong check es rong,
         # se fallback danh MU cot 1 -> goi 0x32 thua sau khi tran DA KET THUC that (server gui them

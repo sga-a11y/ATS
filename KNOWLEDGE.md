@@ -604,7 +604,29 @@ mỗi trận kết thúc thật (đã thắng) thì bot vẫn gửi thêm **1 l�
   đã tự nhiên trả `None` xuyên qua. `_make_decisions` (client.py) thêm guard `if d is None: log...(bỏ
   qua)` cho cả CHAR và PET trước khi gọi `_send_combat` (trước đây gọi vô điều kiện → crash nếu `d=None`).
 
-**Bước tiếp:** test lại xem còn atk thừa sau khi thắng không. Nếu hết → gỡ DBG33/DBG0B/DBG35, xoá note.
+**Test BUG4 (2026-07-01, log DBG-SEG bot-tu-lam-leader):** vẫn kẹt — có trận `enemy_hp` KHÔNG ĐỔI
+1 CHÚT NÀO giữa 2 round giống hệt (không phải `es` rỗng — quái vẫn "sống" theo state, chỉ là KHÔNG
+CÓ gói `0x33` MỚI nào xen giữa 2 lần gửi atk). User chỉ chính xác: **"lần atk cuối không có log quái
+mà vẫn gửi"** — tức code gửi atk dựa trên **dữ liệu quái CŨ (stale)**, không kiểm tra có cập nhật mới
+hay không trước khi đánh.
+
+**BUG 5 — ROOT CAUSE THẬT: gửi atk mà KHÔNG kiểm tra có dữ liệu quái MỚI (`0x33`) hay chưa:**
+- `_make_decisions` chỉ bị kích bởi gói `0x35` (offer lượt) — gói này **KHÔNG mang thông tin quái**.
+  Thông tin quái CHỈ đến từ gói `0x33`/`0x0b` riêng biệt, hoàn toàn độc lập với `0x35`.
+- Nếu `0x35` tới mà KHÔNG có `0x33` mới đi kèm (ví dụ: trận đã kết thúc thật, server chỉ gửi thêm
+  offer "tàn dư"/re-broadcast lại đúng turn cũ) → code **vẫn cứ đánh, dùng `enemy_hp` CŨ** từ lần
+  trước — dữ liệu STALE, có thể tình huống thực tế đã khác hẳn (trận đã xong).
+- Verify từ log: `11:43:39` (round 1, có `DBG33` trước đó) → `11:43:50` (round 2, atk Y HỆT) —
+  **KHÔNG có dòng `DBG33`/`DBG0B` NÀO** xen giữa 2 lần gửi atk.
+- **Fix:** thêm bộ đếm thế hệ `state.enemy_gen` (tăng mỗi khi CÓ gói `0x33` thật cập nhật nhóm quái).
+  `_combat_attack` lưu `state.last_atk_gen_char`/`last_atk_gen_pet` (riêng theo unit) mỗi lần đánh;
+  **nếu `enemy_gen` KHÔNG đổi so với lần đánh trước của unit đó → `return None` (bỏ qua, không đánh
+  lại trên dữ liệu cũ)**. Chỉ đánh khi có dữ liệu quái MỚI thật sự kể từ lần đánh trước.
+- Thêm log `DBG-ENDBATTLE` phân biệt 2 đường hạ `in_battle`: gói kết trận THẬT (`0x14` sub `0700`/
+  `0c00`/`0900`/`0800`) vs **safety 25s** (khi 25s không có 0x35 nào, ép `in_battle=False` — CÓ THỂ
+  trận CHƯA xong thật, chỉ là miss gói end) — để lần test sau phân biệt rõ 2 trường hợp.
+
+**Bước tiếp:** test lại full 4 trận với fix enemy_gen. Nếu ổn → gỡ DBG33/DBG0B/DBG35/DBG-ENDBATTLE.
 
 ## 8. GAME MECHANICS
 

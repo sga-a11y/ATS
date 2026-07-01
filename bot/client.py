@@ -603,6 +603,8 @@ class GameClient:
         Safety: im qua lau (END bi miss) moi ha co tranh ket vinh vien."""
         busy = (time.time() - self.last_turn_time) < idle_secs
         if self.state.in_battle and (time.time() - self.last_turn_time) > 25.0:
+            log.warning("[%s] DBG-ENDBATTLE: ha in_battle qua SAFETY 25s (KHONG PHAI goi ket tran that "
+                        "- co the da miss goi END, hoac tran that su CHUA xong)", self._label)
             self.state.in_battle = False   # co le miss goi 0x14 END -> ha co an toan
         # KHONG reset _battle_entered/_first_turn: client THAT gui 0x41 + atype=2
         # chi 1 LAN/phien (join he thong battle), 6 tran sau van atype=3, khong gui lai 0x41
@@ -656,12 +658,16 @@ class GameClient:
         # Day moi la moc ket tran dang tin (0x34 ban that thuong, 1 lan/nhieu tran). Reset quest_mode
         # + enemies o DAY -> quest_mode latch luc start (>5) GIU NGUYEN ca tran du quai con <=5.
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x07\x00":
+            log.info("[%s] DBG-ENDBATTLE: nhan goi KET TRAN THAT 0x14 sub0700 (WIN) -> in_battle=False",
+                     self._label)
             self.state.reset_enemies(reset_quest=True)
             self.state.in_battle = False
         # KET TRAN khi BO CHAY: flee KHONG sinh 0x14 sub0700 (man THANG) ma chuoi 0x14 0c00 -> 0900 ->
         # 0800 (xac nhan capture flee.pcap). -> cung ha in_battle de go_to_town teleport duoc sau flee.
         # (Neu flee chua thanh cong/dang giua tran, luot 0x35 sau tu set lai in_battle=True.)
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] in (b"\x0c\x00", b"\x09\x00", b"\x08\x00"):
+            log.info("[%s] DBG-ENDBATTLE: nhan goi 0x14 sub%s (flee-end/transit) -> in_battle=False",
+                     self._label, pkt[7:9].hex())
             self.state.in_battle = False
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
         # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).

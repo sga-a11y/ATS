@@ -63,6 +63,13 @@ class BattleState:
         # QUEST mode: START tran ma >5 quai -> True ca tran (latch). >5 con -> all-target; <=5 -> nhu boss.
         self.quest_mode = False
         self._battle_counted = False   # latch: da dem so quai luc start tran chua
+        # DEM THE HE du lieu quai: tang moi lan CO goi 0x33 THAT cap nhat nhom quai (saw_enemy_group).
+        # Goi 0x35 (offer luot) KHONG mang du lieu quai -> neu 0x35 den ma KHONG co 0x33 moi kem theo
+        # (vi du: tran da ket that nhung con offer "tan du" den tre) -> enemy_gen KHONG doi -> combat.py
+        # se BO QUA (khong danh lai bang du lieu quai CU) thay vi danh mu/danh lai tren trang thai stale.
+        self.enemy_gen = 0
+        self.last_atk_gen_char = -1
+        self.last_atk_gen_pet = -1
 
     def reset_battle(self):
         self.mobs = []
@@ -109,6 +116,7 @@ class BattleState:
                 pos = b1 * 10 + b2
                 self.enemy_hp[pos] = d.get(T_HP_CUR, 0)
         if saw_enemy_group:
+            self.enemy_gen += 1   # co du lieu quai MOI that su -> danh gia lai duoc phep danh lai
             # enemy_slots = TAT CA slot con song theo enemy_hp TICH LUY (khong chi goi nay).
             # Tranh mat con khong bi danh trong turn (vd giet 1-2-3 con con o slot 7 van song).
             self.enemy_slots = sorted(s for s, hp in self.enemy_hp.items() if hp > 0)
