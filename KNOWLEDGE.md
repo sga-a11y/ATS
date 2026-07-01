@@ -509,8 +509,16 @@ Chuỗi C2S (verify timeline team.pcap):
 - Trình tự thực tế: enter `0x14 08000100`→dialog→**B1**→dialog→set quân sư→move→`0x14 08000200`→dialog→
   **B2**→`0x7c 0400`→dialog→move→`0x14 08000300`→dialog→**B3**→dialog→move→`0x20 020008`+`0x14 01001400`→
   dialog→**B4**.
-- **KẾT TRẬN team dungeon KHÔNG có `0x14 sub0700`** (WIN) — kết bằng **`0x14 0900`** (handler flee-end
-  đã hạ `in_battle` đúng). Đừng chờ 0x14 0700 ở đây.
+- ⚠️ **ĐÃ SỬA LẠI (2026-07-01):** claim cũ "kết bằng `0x14 0900`" SAI — `0x14 sub0900`/`0800` xuất hiện
+  TRÀN LAN cả lúc KHÔNG hề trong trận (login, chờ ready...) nên KHÔNG dùng được làm mốc kết trận.
+  **Mốc ĐÚNG đã xác nhận qua nhiều capture leader thật:** gói `0x14 sub0800` với **byte cuối (byte thứ
+  10, `pkt[9]`) = `0x03` hoặc `0x04`** là tín hiệu **KẾT TRẬN THẬT**, bất kể `in_battle` đang `True` hay
+  `False` lúc nhận (`client.py` biến `_genuine_end_seen`). Một số trận (đặc biệt trận boss/B4, dùng cơ
+  chế transit `0x20`) **KHÔNG BAO GIỜ bật `in_battle=True` qua `0x35` thật** (server tự resolve) — phải
+  dựa vào tín hiệu tail=03/04 này để biết đã xong, KHÔNG chờ `in_battle=True`.
+- Ngoài ra còn 1 gói `0x14 sub2c00` (payload `[entity 8B][01 hoặc 02]`) lặp lại liên tục xen kẽ với
+  `sub0800` noise — ĐÃ XÁC NHẬN là rác hoàn toàn không liên quan (không có trong bất kỳ capture leader
+  người thật nào, chỉ xuất hiện phía bot, có thể do lệch nhịp phía server) — bỏ qua, KHÔNG dùng làm mốc.
 - **Victory dialog (thoại thắng lợi) = cutscene CỐ ĐỊNH, số lần KHÁC nhau mỗi trận:** B1→B2=**9**,
   B2→B3=**10**, B3→B4=**20**. Gửi THIẾU → không qua được màn thắng lợi → transit trận sau TRƯỢT (kẹt).
   Phải gửi ĐÚNG số (`vdlg` trong segments). Approach-dialog (sau transit) thì spam-tới-khi-battle.
@@ -546,8 +554,6 @@ flow riêng. Xem `_handle_o5_team`.
 - Victory dialog đúng số (vdlg 9/10/20); moves + transit từng trận.
 - **ĐÃ SAI (đừng lặp lại hướng này):** "che chắn 2 hàng" (user bác) — nguyên nhân THẬT không liên quan
   tới hàng/cột quái, mà là race condition ở tầng flow member/leader.
-- ⚠️ **DBG33 + DBG0B log còn trong code** (client.py, gated `_team_dungeon_until`) — GỠ sau khi confirm
-  fix chạy trọn 4 trận ổn định.
 
 **BUG 2 (2026-07-01, sau khi fix bug 1) — TAIL 0x32 CỐ ĐỊNH gây kẹt khi đánh lặp cùng target:**
 - Sau fix `o5_state`, member không còn văng nữa (test full 4 trận: trận 1,2 qua được, KẸT trận 3).
@@ -626,7 +632,54 @@ hay không trước khi đánh.
   `0c00`/`0900`/`0800`) vs **safety 25s** (khi 25s không có 0x35 nào, ép `in_battle=False` — CÓ THỂ
   trận CHƯA xong thật, chỉ là miss gói end) — để lần test sau phân biệt rõ 2 trường hợp.
 
-**Bước tiếp:** test lại full 4 trận với fix enemy_gen. Nếu ổn → gỡ DBG33/DBG0B/DBG35/DBG-ENDBATTLE.
+**BUG 6 — leader chờ SAFETY 25s mỗi trận dù trận đã kết thật (2026-07-01):**
+- Sau BUG5, leader vẫn mất ~25-44s giữa mỗi trận vì (a) `enemy_slots` rỗng KHÔNG đồng nghĩa trận đã
+  kết — HP quái cũ (>0) vẫn còn lưu do leader không nhận `0x33` cuối để zero nó; (b) gói kết trận thật
+  (tail=03/04) hoá ra CHỈ gửi riêng cho MEMBER, **LEADER KHÔNG BAO GIỜ nhận được** gói này cho chính nó.
+- **Fix:** registry dùng chung theo `party_idx` (`_PARTY_BATTLE_END`, cùng cơ chế với `_PARTY_ENTITIES`
+  có sẵn) — khi BẤT KỲ member nào xác nhận kết trận thật, ghi timestamp dùng chung; leader đọc timestamp
+  đó (chỉ trong cửa sổ phó bản to đội) để hạ `in_battle` ngay, không cần đợi 25s.
+
+**BUG 7 — trận 4 (boss) không bao giờ vào được dù gói gửi đúng cú pháp (2026-07-01):**
+- Đối chiếu byte-by-byte 2 capture LEADER THẬT (cùng 1 account, 1 lần bot chạy thất bại + 1 lần người
+  điều khiển tay thành công): nội dung gói gửi giống hệt nhau, NHƯNG:
+  1. **Thiếu gói `0x41`** (OP_BATTLE_ENTER, "đăng ký sẵn sàng battle" — đã dùng ở `_login_setup`/
+     `combat_ready()` cho map thường). Người thật gửi gói này **13 lần** trong cả phiên; `do_team_dungeon`
+     trước đây KHÔNG BAO GIỜ gọi `combat_ready()`. Tạo phó bản = tạo party mới, đúng tình huống
+     `combat_ready()` cần gọi lại (comment cũ: "Sau khi ĐỔI KÊNH / lập party, char có thể mất
+     combat-active"). **Fix: gọi `self.combat_ready()` ngay sau khi START phó bản (`0x2f 0c00`).**
+  2. **Nhịp bấm dialog đầu tiên sau transit trận 4 quá nhanh** (bot ~0.34s vs người thật ~1.27s) — dù
+     KHÔNG phải nguyên nhân chính (đã test tăng delay riêng lẻ vẫn fail), vẫn giữ delay 1.0-1.6s trước
+     lần bấm đầu cho khớp nhịp người thật.
+- Sau khi thêm `combat_ready()`, trận 4 vào được thật (nhân vật di chuyển thật, đánh được).
+
+**BUG 8 — thiếu bước NHẬN THƯỞNG trước khi giải tán party (2026-07-01):**
+- Sau khi thắng trận 4, `do_team_dungeon` trước đây `_wait_combat_clear` xong là `leave_party()` NGAY —
+  bỏ qua đoạn thoại tổng kết + màn nhận thưởng → server tính là CHƯA hoàn thành dù đã đánh xong 4 trận.
+- Capture người thật: sau trận 4, còn đoạn thoại tổng kết (`0x14 sub0100`/`sub1000` lặp), rồi client gửi
+  **`0x5b 0200010100053300`** (NHẬN THƯỞNG) TRƯỚC KHI gửi `0x0d 04` (giải tán). **Fix:** spam dialog qua
+  đoạn tổng kết (`_adv_dialog_until_idle`) → gửi `0x5b` nhận thưởng → chờ → mới `leave_party()`.
+
+**BUG 9 — leader bị server kick kết nối ngay lúc/ngay sau vào trận 4 (2026-07-01):**
+- Log xác nhận: leader nhận đúng tín hiệu kết trận thật (`sub0800 tail=03`) nhưng vì `in_battle` lúc đó
+  đã là `False` sẵn (đã hạ qua cơ chế BUG6), code KHÔNG coi đây là điều kiện dừng — `_dialog_until_battle`
+  (chỉ dừng khi `in_battle=True`) tiếp tục gửi THÊM `0x14 0600` vào đúng lúc trận đã kết thật → server
+  kick vì spam thừa. (Một số trận boss tự động resolve, KHÔNG BAO GIỜ bật `in_battle=True` qua `0x35`
+  thật, nên trước đây sẽ luôn bị lỗi này.)
+- **Fix:** `_dialog_until_battle` dừng ngay khi `state.in_battle=True` **HOẶC** thấy tín hiệu kết trận
+  thật (`_genuine_end_seen`), không chỉ chờ `in_battle=True`.
+
+**BUG 10 — chờ di chuyển rất lâu mỗi trận dù không lỗi (2026-07-01):**
+- `_adv_dialog_until_idle` (spam thoại tới khi server im lặng) dùng kiểu loại-trừ: chỉ loại `sub2c00`
+  khỏi việc reset đồng hồ im lặng, còn `sub0800` noise (tail 26/27, cũng là rác lặp lại không liên quan)
+  vẫn được tính là "còn đang thoại" → liên tục làm mới đồng hồ → chờ vô ích rất lâu (tới 50 lần/22s)
+  trước khi chuyển sang move.
+- **Fix:** đổi sang WHITELIST — chỉ 3 sub THẬT SỰ liên quan thoại (`0100`=ack dòng thoại, `1000`=cutscene
+  loop, `0d00`=mở cảnh) mới reset đồng hồ; mọi sub khác (kể cả rác mới phát sinh sau này) không ảnh hưởng.
+
+**KẾT QUẢ CUỐI (2026-07-01): pho ban to doi chạy ỔN ĐỊNH — đủ 4 trận, di chuyển thật, nhận thưởng, không
+rớt kết nối.** Đã gỡ hết log debug tạm (DBG33/DBG0B/DBG35/DBG-RAW/DBG-CAPTURE); các log
+`(LEADER) tran N: ...` giữ lại vì hữu ích theo dõi vận hành bình thường, không còn là debug tạm.
 
 ## 8. GAME MECHANICS
 
