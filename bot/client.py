@@ -2889,6 +2889,14 @@ class GameClient:
         log.info("[%s] (LEADER) cho member ready %.0fs roi START", self._label, ready_wait)
         time.sleep(ready_wait)
         self.send(0x2f, b"\x0c\x00"); time.sleep(2.0)
+        # DBG: doi chieu capture nguoi that (dieusau) vs bot (cung acc) phat hien: nguoi that gui
+        # 0x41 (OP_BATTLE_ENTER, "dang ky san sang battle" - da dung o _login_setup/combat_ready
+        # cho map thuong) TOI 13 LAN trong ca phien pho ban to doi; bot KHONG BAO GIO gui goi nay
+        # trong do_team_dungeon -> nghi day chinh la goi con thieu khien tran 4 (co che transit
+        # 0x20 rieng) khong duoc cong nhan. combat_ready() da dung o noi khac sau doi kenh/lap
+        # party (chinh xac tinh huong tuong tu: tao party moi cho pho ban).
+        self.combat_ready()
+        time.sleep(0.5)
         # 4. Vong battle. Moi tran: (dismiss thoai thang loi) -> [set quan su sau B1] -> DI TOI CONG
         #    (moves, _route_move dam bao toi noi - THIEU buoc nay server DA leader!) -> transit -> spam
         #    dialog toi khi battle. Moves + transit lay tu capture team.pcap (KNOWLEDGE 7n).
