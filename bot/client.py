@@ -2937,6 +2937,11 @@ class GameClient:
                 self.send(op, body); time.sleep(0.4)
             log.info("[%s] (LEADER) DBG-SEG tran %d: da gui transit -> spam dialog cho battle...",
                      self._label, i + 1)
+            # So sanh capture: nguoi that doi ~1.27s truoc khi bam dialog TIEP THEO ngay sau khi
+            # nhan dong thoai dau tien cua canh transit (bot truoc day chi doi ~0.34s -> bi server
+            # boqua/tra ve sub0800 rac thay vi tiep tuc thoai that). Doi lau hon truoc lan bam dau.
+            import random
+            time.sleep(random.uniform(1.0, 1.6))
             if not self._dialog_until_battle(cap_n=40):
                 log.warning("[%s] (LEADER) tran %d: spam dialog ma khong vao battle -> dung "
                             "(map=%s pos=%s in_battle=%s)", self._label, i + 1,
