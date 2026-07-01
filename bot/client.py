@@ -712,7 +712,10 @@ class GameClient:
             log.info("[%s] nhan goi KET TRAN THAT 0x14 sub0700 (WIN) in_battle_truoc=%s "
                      "raw=%s -> in_battle=False",
                      self._label, self.state.in_battle, pkt.hex())
-            self.state.reset_enemies(reset_quest=True)
+            # Pho ban to doi: quest_mode duoc EP CO DINH suot ca dungeon (do_team_dungeon_lv20),
+            # KHONG duoc reset ve auto-latch giua cac tran con trong dungeon.
+            _in_team_dungeon = time.time() < getattr(self, "_team_dungeon_until", 0.0)
+            self.state.reset_enemies(reset_quest=not _in_team_dungeon)
             self.state.in_battle = False
         # KET TRAN khi BO CHAY: flee KHONG sinh 0x14 sub0700 (man THANG) ma chuoi 0x14 0c00 -> 0900 ->
         # 0800 (xac nhan capture flee.pcap). -> cung ha in_battle de go_to_town teleport duoc sau flee.
@@ -2842,6 +2845,10 @@ class GameClient:
         self.flee_mode = False   # PHO BAN: leader PHAI DANH (flee_mode tu flow daily -> leader bo chay,
                                  #   ket tran sai 0x14 0c00/0900/0800 thay vi WIN 0x14 sub0700 -> hong)
         self._team_dungeon_until = time.time() + 300   # delay 0x32 random 0.5-2s suot pho ban
+        # Ep QUEST mode suot ca pho ban - KHONG dua vao auto-latch dem so quai luc bat dau tran (>5)
+        # nhu binh thuong (state.py update_0x33), vi so quai co the it hon o mot so tran/level ->
+        # muon danh theo quest_mode CO DINH cho toi khi xong het dungeon (hoac fail/thoat giua chung).
+        self.state.quest_mode = True
         # 1. Tao pho ban to doi
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
         self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)
@@ -2880,6 +2887,7 @@ class GameClient:
         ]
         for i in range(min(n_battles, len(segments))):
             if not self.running:
+                self.state.quest_mode = False
                 return False
             seg = segments[i]
             self.flee_mode = False   # giu DANH suot pho ban (khong bo chay tran nao)
@@ -2917,6 +2925,7 @@ class GameClient:
                 log.warning("[%s] (LEADER) tran %d: spam dialog ma khong vao battle -> dung "
                             "(map=%s pos=%s in_battle=%s)", self._label, i + 1,
                             self.current_map, self.pos, self.state.in_battle)
+                self.state.quest_mode = False
                 return False
             log.info("[%s] (LEADER) pho ban to doi lv20: VAO TRAN %d/%d", self._label, i + 1, n_battles)
         # cho tran cuoi xong
@@ -2934,6 +2943,7 @@ class GameClient:
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV20 XONG (%d tran) -> roi pho ban ===", self._label, n_battles)
         self.leave_party()     # 0x0d 04 = roi/giai tan -> thoat pho ban
         time.sleep(2.0)
+        self.state.quest_mode = False   # het dungeon -> ha quest_mode ep buoc, ve mac dinh auto-latch
         return True
 
     def increase_stat(self, stat_id: int, amount: int = 1):
