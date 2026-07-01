@@ -2798,7 +2798,7 @@ class GameClient:
             self.send(0x14, b"\x06\x00")
             time.sleep(max(0.15, gap + random.uniform(-0.15, 0.35)))
 
-    def _dialog_until_battle(self, cap_n: int = 30, gap: float = 0.5) -> bool:
+    def _dialog_until_battle(self, cap_n: int = 30, gap: float = 1.0) -> bool:
         """Spam 0x14 0600 (advance dialog NPC) toi khi BATTLE bat (state.in_battle=True) HOAC toi
         khi thay tin hieu KET TRAN THAT (sub0800 tail=03/04) - mot so canh (vd boss tu dong xu
         ly, khong co pha 0x35 that) ket THAT ma KHONG BAO GIO bat in_battle=True -> truoc day
