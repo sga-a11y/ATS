@@ -824,6 +824,24 @@ class GameClient:
                         self.state.self_slot = slot
                         self.state.my_atype = slot
                         log.info("[%s] self_slot=%d (tu 0x0b battle, entity)", self._label, slot)
+            if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+                # DBG: update_0x0b hien CHI doc block dong minh (b1 in 2,3), quet TREN RAW pkt (ca
+                # header, giong update_0x0b that). Quet xem co block b1 in (0,1) (quai) khong -> neu
+                # co ma bi bo qua thi day la nguon HP quai bi mat giua cac luot pho ban.
+                j = 0; _enemy_blocks = []
+                while j + 18 <= len(pkt):
+                    bb, sl = pkt[j], pkt[j + 1]
+                    if bb in (0, 1) and sl < 10:
+                        try:
+                            mh, ms, ch, cs = struct.unpack_from("<IIII", pkt, j + 2)
+                            if 0 < mh < 1_000_000 and ch <= mh:
+                                _enemy_blocks.append((bb, sl, ch, mh))
+                        except Exception:
+                            pass
+                    j += 1
+                if _enemy_blocks:
+                    log.info("[%s] DBG0B[%dB] CO block quai (b1,slot,cur,max)=%s",
+                             self._label, len(pkt), _enemy_blocks)
             self.state.update_0x0b(pkt)
         elif opcode == 0x53:                      # mail: S2C sub=01 = 1 mail (push luc login)
             # payload: [01 00][mailid 4B LE][cat 4B LE][sender/time 8B][00][title UTF16...]
