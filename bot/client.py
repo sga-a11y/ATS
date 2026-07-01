@@ -481,6 +481,7 @@ class GameClient:
         self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
         self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
+        self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
@@ -669,9 +670,20 @@ class GameClient:
         # DBG: log CA khi in_battle DA la False truoc do (nghi ngo: sub nay co the la scene-transition
         # khac, KHONG phai ket tran that - user nghi dung luc nay in_battle con False ma van log).
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] in (b"\x0c\x00", b"\x09\x00", b"\x08\x00"):
+            was_true = self.state.in_battle
             log.info("[%s] DBG-ENDBATTLE: nhan goi 0x14 sub%s in_battle_TRUOC=%s raw=%s -> in_battle=False",
-                     self._label, pkt[7:9].hex(), self.state.in_battle, pkt.hex())
+                     self._label, pkt[7:9].hex(), was_true, pkt.hex())
             self.state.in_battle = False
+            # KET TRAN THAT (xac nhan tu capture): sub0800 + byte cuoi=04 + dang THUC SU o
+            # in_battle=True truoc do. Cac occurrence sub0800/0900 khac (login, cho, idle...)
+            # deu co in_battle_TRUOC=False san -> chi la scene-transition noise, khong lien quan tran.
+            # Bug that: server con gui 0x35 DU (broadcast cho member khac chua xong luot) SAU KHI
+            # tran cua leader da ket that -> 0x35 handler set lai in_battle=True oan.
+            # -> mo grace period ngan de 0x35 KHONG duoc phep set lai in_battle trong luc nay.
+            if was_true and pkt[7:9] == b"\x08\x00" and len(pkt) >= 10 and pkt[9] == 0x04:
+                self._battle_end_grace_until = time.time() + 3.0
+                log.info("[%s] DBG-ENDBATTLE: XAC NHAN ket tran THAT (sub0800 tail=04) -> "
+                         "grace 3s chan 0x35 set lai in_battle", self._label)
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
         # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
         if opcode == 0x59:
@@ -1147,6 +1159,12 @@ class GameClient:
         if time.time() < getattr(self, "_team_dungeon_until", 0.0):
             log.info("[%s] DBG35[%dB] raw=%s", self._label, len(pkt), pkt.hex())
         # 0x35 34-byte = toi luot minh -> dang trong tran
+        # TRU: dang trong grace period sau khi vua nhan goi KET TRAN THAT (0x14 sub0800 tail=04) ->
+        # 0x35 nay la broadcast DU cua member khac chua xong luot, KHONG duoc phep set lai in_battle
+        # (bug: truoc day set lai lam leader ket "tran da ket" nhung van cho toi 25s SAFETY moi ha).
+        if time.time() < getattr(self, "_battle_end_grace_until", 0.0):
+            log.info("[%s] DBG35: bo qua set in_battle (dang grace period sau ket tran that)", self._label)
+            return
         self.state.in_battle = True
         self.last_turn_time = time.time()
         body = pkt[7:]
