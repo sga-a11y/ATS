@@ -2792,24 +2792,27 @@ class GameClient:
                  "" if best else " [chua biet INT -> chon dau tien]")
 
     def _adv_dialog(self, n: int = 3, gap: float = 0.4):
-        """Bam 'next' qua doan thoai NPC: C2S 0x14 0600 (advance scene). n lan, cach 'gap' giay."""
+        """Bam 'next' qua doan thoai NPC: C2S 0x14 0600 (advance scene). n lan, cach 'gap' giay
+        (+- jitter ngau nhien de giong nguoi that, tranh nhip gui deu tuyet doi/may moc)."""
+        import random
         for _ in range(n):
             if not self.running:
                 return
             self.send(0x14, b"\x06\x00")
-            time.sleep(gap)
+            time.sleep(max(0.15, gap + random.uniform(-0.15, 0.35)))
 
     def _dialog_until_battle(self, cap_n: int = 30, gap: float = 0.5) -> bool:
         """Spam 0x14 0600 (advance dialog NPC) toi khi BATTLE bat (state.in_battle=True).
         So lan thoai KHAC nhau moi canh (7-20) -> KHONG hardcode, spam toi khi vao tran.
         Tra True neu da vao tran; False neu het cap_n van chua (ket / loi)."""
+        import random
         for _ in range(cap_n):
             if not self.running:
                 return False
             if self.state.in_battle:
                 return True
             self.send(0x14, b"\x06\x00")
-            time.sleep(gap)
+            time.sleep(max(0.2, gap + random.uniform(-0.15, 0.4)))
             if self.state.in_battle:
                 return True
         return self.state.in_battle
