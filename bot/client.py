@@ -2959,6 +2959,16 @@ class GameClient:
             log.info("[%s] (LEADER) pho ban to doi: VAO TRAN %d/%d", self._label, i + 1, n_battles)
         # cho tran cuoi xong
         self._wait_combat_clear(idle=2.0, cap=120.0)
+        # Capture nguoi that (dieusau) xac nhan: sau khi thang tran 4, con 1 doan thoai tong ket
+        # (0x14 sub0100/1000 lap) roi man hinh thuong (dungeon_complete, giong sub=64 da dung o
+        # tinh nang khac) -> client gui 0x5b 0200010100053300 (NHAN THUONG) TRUOC KHI gui 0x0d 04
+        # (giai tan party). Truoc day do_team_dungeon roi party NGAY, bo qua buoc nhan thuong ->
+        # bi tinh la CHUA hoan thanh du da danh xong ca 4 tran.
+        self._adv_dialog_until_idle(min_n=5, gap=0.4, idle=1.5, max_wait=20.0)
+        time.sleep(1.0)
+        self.send(0x5b, bytes.fromhex("0200010100053300"))   # NHAN THUONG pho ban to doi
+        log.info("[%s] (LEADER) da gui goi NHAN THUONG pho ban to doi", self._label)
+        time.sleep(2.0)
         log.info("[%s] (LEADER) === PHO BAN TO DOI XONG (%d tran) -> roi pho ban ===", self._label, n_battles)
         self._dump_pkt_capture("ok")
         self.leave_party()     # 0x0d 04 = roi/giai tan -> thoat pho ban
