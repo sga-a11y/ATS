@@ -2894,9 +2894,27 @@ class GameClient:
             log.info("[%s] (LEADER) tran %d: bat dau (map=%s pos=%s in_battle=%s)",
                      self._label, i + 1, self.current_map, self.pos, self.state.in_battle)
             if i > 0:
-                ok_clear = self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong
+                ok_clear = self._wait_combat_clear(idle=2.0, cap=240.0)   # battle truoc xong
                 log.info("[%s] (LEADER) tran %d: het cho combat (ok=%s in_battle=%s)",
                          self._label, i + 1, ok_clear, self.state.in_battle)
+                # QUAN TRONG: neu het cap ma in_battle VAN True (tran truoc CHUA THAT SU xong,
+                # chi la cap qua ngan so voi tran thuc te dai - vd quai tru danh, char thieu SP
+                # phai spam danh thuong) -> KHONG duoc lao vao gui dialog/move/transit (seg moi)
+                # NGAY LUC do, vi tran cu van dang giai quyet server-side -> lenh bi server bo qua
+                # hoac cham voi tran dang xu ly -> KICK ket noi (da xac nhan qua log thuc te: dung
+                # ngay diem nay). Doi THEM toi khi THAT SU het tran (hoac mat ket noi) truoc khi di tiep.
+                _extra_t0 = time.time()
+                while self.state.in_battle and self.running and time.time() - _extra_t0 < 120.0:
+                    time.sleep(1.0)
+                if not self.running:
+                    self.state.quest_mode = False
+                    return False
+                if self.state.in_battle:
+                    log.warning("[%s] (LEADER) tran %d: tran truoc VAN chua ket that sau %.0fs cho them "
+                                "-> dung (tranh gui lenh de kick ket noi)", self._label, i + 1,
+                                240.0 + 120.0)
+                    self.state.quest_mode = False
+                    return False
                 for op, body in seg["pre"]:                    # pre (0x7c 0400) TRUOC thoai thang loi
                     self.send(op, body); time.sleep(0.4)
                 # Nguoi that xac nhan: leader KHONG di chuyen that suot ca pho ban (0x06 dung cu
@@ -2930,7 +2948,12 @@ class GameClient:
             log.info("[%s] (LEADER) pho ban to doi lv20: VAO TRAN %d/%d", self._label, i + 1, n_battles)
         # cho tran cuoi xong (buffer chong va cham voi tran chua xong THAT da nam trong
         # _wait_combat_clear())
-        self._wait_combat_clear(idle=2.0, cap=120.0)
+        self._wait_combat_clear(idle=2.0, cap=240.0)
+        # Tran co the CHUA THAT SU xong sau cap (nhu i>0 o tren) -> cho THEM toi khi that su
+        # het tran truoc khi claim thuong/leave_party (tranh gui lenh de kick ket noi).
+        _extra_t0 = time.time()
+        while self.state.in_battle and self.running and time.time() - _extra_t0 < 120.0:
+            time.sleep(1.0)
         # QUAN TRONG: kiem tra lai self.running TRUOC KHI claim thuong/bao thanh cong. send() khi
         # running=False chi AM THAM khong lam gi (khong loi) -> neu KHONG check o day, ham se chay
         # het toi cuoi, log "XONG"/"NHAN THUONG" va return True GIA du thuc te da bi server ngat
