@@ -1240,19 +1240,27 @@ class GameClient:
                 return
             if char_opts and not char_dead:
                 d = combat.decide_char(self.state, char_opts, ft)
-                self._send_combat(d)
-                _off = sorted(t for a, t in char_opts if a == self.state.my_atype)
-                log.info("[%s] CHAR %s | %s | skills=%s | quai@%s | offer(my_at=%s)=%s | enemy_hp=%s",
-                         self._label, d, self.state.char,
-                         [hex(s) for s in sorted(self.state.skills_char)],
-                         self.state.enemy_slots, self.state.my_atype, _off,
-                         {k: v for k, v in sorted(self.state.enemy_hp.items()) if v > 0})
+                if d is None:
+                    # KHONG CON QUAI SONG (tran da ket, goi 0x35 "tan du" sau khi thang) -> KHONG
+                    # gui gi (truoc day fallback danh MU cot 1 -> goi 0x32 thua sau khi da thang tran).
+                    log.info("[%s] CHAR khong con quai song -> bo qua (tran da ket)", self._label)
+                else:
+                    self._send_combat(d)
+                    _off = sorted(t for a, t in char_opts if a == self.state.my_atype)
+                    log.info("[%s] CHAR %s | %s | skills=%s | quai@%s | offer(my_at=%s)=%s | enemy_hp=%s",
+                             self._label, d, self.state.char,
+                             [hex(s) for s in sorted(self.state.skills_char)],
+                             self.state.enemy_slots, self.state.my_atype, _off,
+                             {k: v for k, v in sorted(self.state.enemy_hp.items()) if v > 0})
             elif char_opts and char_dead:
                 log.info("[%s] CHAR HP=0 (da chet) -> KHONG gui lenh attack", self._label)
             if pet_opts and not pet_dead:
                 d = combat.decide_pet(self.state, pet_opts, ft)
-                self._send_combat(d)
-                log.info("[%s] PET  %s | %s", self._label, d, self.state.pet)
+                if d is None:
+                    log.info("[%s] PET khong con quai song -> bo qua (tran da ket)", self._label)
+                else:
+                    self._send_combat(d)
+                    log.info("[%s] PET  %s | %s", self._label, d, self.state.pet)
             elif pet_opts and pet_dead:
                 log.info("[%s] PET HP=0 (da chet) -> KHONG gui lenh attack", self._label)
             self._first_turn = False

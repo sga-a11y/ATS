@@ -385,6 +385,12 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
     sp = stat.sp
     es = state.enemy_slots
     cost = _skill_cost
+    if not es:
+        # KHONG CON QUAI SONG (da chet het) -> KHONG danh (nhanh TRAIN ben duoi khong check es rong,
+        # se fallback danh MU cot 1 -> goi 0x32 thua sau khi tran DA KET THUC that (server gui them
+        # 1 goi 0x35 "tan du" sau khi thang). User xac nhan qua quan sat truc tiep man hinh: end
+        # battle -> bot van gui atk 1 lan nua. Return None -> _make_decisions bo qua, khong gui gi.
+        return None
 
     def low_or_train():
         p = _lowest_hp_enemy(state, offered)

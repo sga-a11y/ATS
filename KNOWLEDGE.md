@@ -589,7 +589,22 @@ VIÊN KHÁC (chưa phải lượt mình), do fallback sai trong `_offered_target
 - Áp dụng CHUNG (không chỉ phó bản) — lỗi tiềm ẩn mọi trận đảng, party nhỏ (2 người) ít lộ vì offer
   đến gần nhau hơn trong debounce window.
 
-**Bước tiếp:** test lại full 4 trận với fix guard atype. Nếu ổn → gỡ DBG33/DBG0B, xoá phần bug note này.
+**Test guard atype (2026-07-01, log 4 member `quan*` theo leader thật):** CHẠY ĐƯỢC trọn trận 1,2 và
+tiếp tục sang trận 10-quái tiến triển tốt → 3 fix trước (`o5_state`, tail random, atype guard) đã sửa
+đúng gốc "kẹt tổng thể". **CÒN 1 LỖI NHỎ, VÔ HẠI:** user quan sát TRỰC TIẾP trên màn hình xác nhận —
+mỗi trận kết thúc thật (đã thắng) thì bot vẫn gửi thêm **1 lệnh atk thừa** ngay sau đó.
+
+**BUG 4 — đánh MÙ khi quái đã chết hết (root cause của "atk thừa sau khi thắng"):**
+- `_combat_attack` (combat.py): nhánh BOSS/QUEST đều check `and es` (chỉ chạy khi còn quái sống), NHƯNG
+  nhánh **TRAIN mode (cuối hàm) KHÔNG check `es` rỗng** — khi quái chết hết (`es=[]`, có thể do server
+  gửi thêm 1 gói `0x35` "tàn dư" ngay sau khi thắng), code rơi xuống TRAIN mode, gọi
+  `_train_target([], offered)` → trả `None` → `_attack(..., pos=None, ...)` → **fallback đánh MÙ cột 1
+  cứng** (`fb_col`), dù không còn mục tiêu nào. Đây chính là gói atk thừa user thấy.
+- **Fix:** `_combat_attack` return `None` sớm nếu `not es` (không đánh gì cả). `decide_char`/`decide_pet`
+  đã tự nhiên trả `None` xuyên qua. `_make_decisions` (client.py) thêm guard `if d is None: log...(bỏ
+  qua)` cho cả CHAR và PET trước khi gọi `_send_combat` (trước đây gọi vô điều kiện → crash nếu `d=None`).
+
+**Bước tiếp:** test lại xem còn atk thừa sau khi thắng không. Nếu hết → gỡ DBG33/DBG0B/DBG35, xoá note.
 
 ## 8. GAME MECHANICS
 
