@@ -60,6 +60,26 @@ def is_joined(party_idx, entity):
     with _PARTY_LOCK:
         return bytes(entity) in _PARTY_JOINED.get(party_idx, set())
 
+# Pho ban to doi: goi ket tran THAT (0x14 sub0800, in_battle_TRUOC=True) chi gui rieng cho
+# MEMBER, LEADER khong bao gio nhan duoc (xac nhan tu nhieu log capture). LEADER cung KHONG
+# the tu suy luan qua enemy_slots rong (HP quai cu >0 con luu vi khong co 0x33 cuoi cap nhat
+# ve 0 rieng cho leader). -> MEMBER xac nhan xong thi ghi timestamp CHUNG theo party_idx,
+# LEADER doc timestamp nay de biet tran da ket THAT ma khong can doi 25s SAFETY.
+_PARTY_BATTLE_END = {}
+
+def _mark_battle_end(party_idx):
+    if party_idx is None:
+        return
+    with _PARTY_LOCK:
+        _PARTY_BATTLE_END[party_idx] = time.time()
+
+def _recent_battle_end(party_idx, within=3.0):
+    if party_idx is None:
+        return False
+    with _PARTY_LOCK:
+        t = _PARTY_BATTLE_END.get(party_idx)
+    return t is not None and (time.time() - t) < within
+
 # party_idx -> entity QUAN SU (leader da set). Chia se de GUI hien vai tro "quan su".
 _PARTY_STRATEGIST = {}
 
@@ -606,9 +626,18 @@ class GameClient:
         # LEADER trong pho ban to doi thuong KHONG nhan duoc goi ket tran THAT (0x14 sub0800 tail=04)
         # rieng cho no (chi member nhan) -> phai tu suy luan: khong con quai song (enemy_slots rong)
         # + im lang vai giay = tran da ket, KHONG can cho toi 25s SAFETY.
+        # Fix that: "khong con quai song" (combat.py enemy_gen stale) KHONG dong nghia enemy_slots
+        # rong -> HP quai CU >0 van con luu vi leader khong nhan 0x33 cuoi de zero no. Dieu kien
+        # enemy_slots-rong o duoi hau nhu KHONG BAO GIO dung cho leader trong pho ban to doi.
         if self.state.in_battle and not self.state.enemy_slots and (time.time() - self.last_turn_time) > 3.0:
             log.info("[%s] DBG-ENDBATTLE: khong con quai song + im 3s -> tu ha in_battle "
                      "(leader suy luan, khong doi goi END rieng)", self._label)
+            self.state.in_battle = False
+            self._battle_end_grace_until = time.time() + 3.0
+        elif self.state.in_battle and time.time() < getattr(self, "_team_dungeon_until", 0.0) \
+                and _recent_battle_end(self.party_idx, within=3.0):
+            log.info("[%s] DBG-ENDBATTLE: MEMBER trong party da xac nhan ket tran THAT -> "
+                     "leader ha in_battle theo (khong doi 25s)", self._label)
             self.state.in_battle = False
             self._battle_end_grace_until = time.time() + 3.0
         elif self.state.in_battle and (time.time() - self.last_turn_time) > 25.0:
@@ -694,8 +723,10 @@ class GameClient:
                 # kien. Chi can in_battle_TRUOC=True la du tin cay (moi lan False truoc do
                 # deu la noise, khong lien quan tran).
                 self._battle_end_grace_until = time.time() + 3.0
+                _mark_battle_end(self.party_idx)
                 log.info("[%s] DBG-ENDBATTLE: XAC NHAN ket tran THAT (sub0800, in_battle_TRUOC=True) -> "
-                         "grace 3s chan 0x35 set lai in_battle", self._label)
+                         "grace 3s chan 0x35 set lai in_battle + bao party (leader dua vao de ha nhanh)",
+                         self._label)
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
         # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
         if opcode == 0x59:
