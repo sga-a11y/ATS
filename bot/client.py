@@ -501,6 +501,7 @@ class GameClient:
         self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
         self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
+        self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
         self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
@@ -696,10 +697,12 @@ class GameClient:
         if time.time() < getattr(self, "_team_dungeon_until", 0.0):
             if opcode == 0x18:
                 log.info("[%s] DBG-RAW: nhan goi 0x18 raw=%s", self._label, pkt.hex())
+                self._last_dialog_evt = time.time()
             elif opcode == 0x14:
                 sub = pkt[7:9].hex() if len(pkt) >= 9 else None
                 log.info("[%s] DBG-RAW: nhan goi 0x14 sub=%s in_battle=%s raw=%s",
                          self._label, sub, self.state.in_battle, pkt.hex())
+                self._last_dialog_evt = time.time()
         # Hoan thanh dungeon: S2C 0x14 sub 0x64 (man tong ket) -> set co de do_daily_dungeon biet xong
         if opcode == 0x14 and len(pkt) >= 8 and pkt[7] == 0x64:
             self.dungeon_complete = True
@@ -2791,6 +2794,24 @@ class GameClient:
                  self._label, nm, ival,
                  "" if best else " [chua biet INT -> chon dau tien]")
 
+    def _adv_dialog_until_idle(self, min_n: int = 3, gap: float = 0.4, idle: float = 1.5,
+                                max_wait: float = 25.0) -> int:
+        """Bam 'next' thoai (0x14 0600) toi khi server NGUNG phan hoi (im lang qua 'idle' giay)
+        thay vi dem co dinh - tranh truong hop canh thoai that su CHUA HET (con nhieu dong hon so
+        vdlg hardcode) ma da dung lai -> nhan vat con ket trong hop thoai, move sau do bi bo qua.
+        Luon gui toi thieu 'min_n' lan. Tra so lan da gui."""
+        import random
+        t0 = time.time()
+        sent = 0
+        self._last_dialog_evt = time.time()
+        while self.running and (time.time() - t0) < max_wait:
+            self.send(0x14, b"\x06\x00")
+            sent += 1
+            time.sleep(max(0.2, gap + random.uniform(-0.15, 0.35)))
+            if sent >= min_n and (time.time() - self._last_dialog_evt) > idle:
+                break
+        return sent
+
     def _adv_dialog(self, n: int = 3, gap: float = 0.4):
         """Bam 'next' qua doan thoai NPC: C2S 0x14 0600 (advance scene). n lan, cach 'gap' giay
         (+- jitter ngau nhien de giong nguoi that, tranh nhip gui deu tuyet doi/may moc)."""
@@ -2888,15 +2909,15 @@ class GameClient:
                 ok_clear = self._wait_combat_clear(idle=2.0, cap=120.0)   # battle truoc xong
                 log.info("[%s] (LEADER) DBG-SEG tran %d: het cho combat (ok=%s in_battle=%s)",
                          self._label, i + 1, ok_clear, self.state.in_battle)
-                # DEBUG/TEST: nguoi that xac nhan leader KHONG DI CHUYEN THAT (dung yen suot 3 tran)
-                # dau la gui goi 0x06 dung cu phap. Nghi ngo: server con dang xu ly dot ket tran that
-                # (server-side) ngay sau khi in_battle vua ha (co the qua nhanh so voi truoc, luc
-                # con cho 25s) -> 0x06 gui qua som bi server AM THAM bo qua. Them nghi 3s truoc khi
-                # gui move de test gia thuyet nay.
-                time.sleep(3.0)
                 for op, body in seg["pre"]:                    # pre (0x7c 0400) TRUOC thoai thang loi
                     self.send(op, body); time.sleep(0.4)
-                self._adv_dialog(n=seg["vdlg"], gap=0.4)       # dismiss thoai thang loi (so dung tung doan)
+                # Nguoi that xac nhan: leader KHONG di chuyen that suot ca pho ban (0x06 dung cu
+                # phap nhung vo hieu). Nghi van: canh thoai thang loi CHUA HET that su (vdlg hardcode
+                # co the it hon so dong thoai that) -> nhan vat con ket trong hop thoai -> move/transit
+                # sau do bi bo qua. Spam TOI KHI server ngung phan hoi (thay vi dem co dinh vdlg).
+                n_sent = self._adv_dialog_until_idle(min_n=seg["vdlg"], gap=0.4, idle=1.5, max_wait=25.0)
+                log.info("[%s] (LEADER) DBG-SEG tran %d: da spam %d lan dialog (vdlg hardcode=%d) "
+                         "toi khi im lang", self._label, i + 1, n_sent, seg["vdlg"])
                 if i == 1:
                     self.set_party_strategist()                # set quan su SAU tran 1 (sau thoai thang loi)
                 for (x, y) in seg["moves"]:
