@@ -1,5 +1,27 @@
 # TS Online Bot — Release Notes
 
+## v1.1 (2026-07-02)
+
+### Mới: Phó bản tổ đội (nhiệm vụ ô 5)
+- Bot tự phát hiện cả party CÙNG chưa xong nhiệm vụ ô 5 → tự lập đội, mời, vào đánh hộ 4 trận,
+  nhận thưởng, rồi trả party về train như cũ. Có 1 acc đã xong ô 5 rồi → bỏ qua, không phá đội
+  hình đang train.
+- Leader giờ chờ member bấm "chuẩn bị" **thật sự** trước khi bắt đầu trận (không đoán thời gian cố
+  định) — tránh trường hợp vào trận thiếu người vì member chưa kịp phản hồi lời mời.
+
+### Sửa lỗi hay gặp
+- **Train map đánh nhầm mục tiêu**: 3 con quái đứng gần nhau, bot từng nhắm nhầm sang con kế bên
+  thay vì con giữa. Đã sửa cách tính cột mục tiêu.
+- **Rớt kết nối giữa trận** (phó bản tổ đội): tăng thời gian chờ an toàn, tránh gửi lệnh chồng lên
+  lúc trận chưa kết thúc thật sự khiến server ngắt kết nối.
+- **Đánh combat bị đứng hình** (không lên HP dù vẫn tấn công): bot giờ tự đổi mục tiêu/kỹ năng nếu
+  phát hiện lặp lại vô ích nhiều lần liên tiếp.
+- **Party bị lạc khi gom quân lại (reform)**: trước đây có lúc đi xuyên tường ra thẳng chỗ quái
+  thay vì dừng ở điểm an toàn trước — dễ bị người khác nhận ra là bot. Đã gộp lại 1 đường đi thống
+  nhất, luôn dừng ở điểm an toàn trước khi ra bãi.
+- **Đổi kênh sau khi đánh dungeon**: giờ luôn kiểm tra lại sức chứa kênh, tránh kẹt ở kênh đã đầy.
+- Số phiên bản giờ tự ghi theo thời điểm build (vd `1.1.202607021031`) để phân biệt các bản build.
+
 ## v1.0.0 (2026-06-18)
 
 Bản product chính thức đầu tiên (đóng gói `.exe`, không cần cài Python).
