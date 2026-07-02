@@ -594,6 +594,10 @@ class BotGUI(tk.Tk):
         for pidx, tree in self.party_trees.items():
             any_running = False
             p_total = 0; p_run = 0   # dem acc cua party de quyet dinh mau cham
+            # Di Gioi SOLO: khong co khai niem leader/member/quan su that (moi acc chay doc lap) ->
+            # hien "solo" cho de hieu, tranh hieu lam la co lap party/phu thuoc leader.
+            pcfg_gui = config.PARTY_CONFIG.get(pidx, {})
+            is_digioi_solo = (pcfg_gui.get("mode") == "digioi" and pcfg_gui.get("digioi_mode") == "solo")
             for (u, p, is_leader, is_picker) in ctrl.party_accounts(pidx):
                 if not tree.exists(u):
                     continue
@@ -602,7 +606,9 @@ class BotGUI(tk.Tk):
                 if s["running"]:
                     any_running = True
                     p_run += 1
-                if s.get("strategist"):
+                if is_digioi_solo:
+                    role = "solo"
+                elif s.get("strategist"):
                     role = "Quân sư"
                 elif is_leader:
                     role = "LEADER"
