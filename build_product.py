@@ -53,6 +53,16 @@ def clean():
             os.remove(os.path.join(ROOT, f))
 
 
+VERSION_PREFIX = "1.1"   # tang khi doi tinh nang lon; hau to timestamp tu sinh moi lan build
+
+
+def _build_version():
+    """1.1.YYYYMMDDHHMM - tu sinh theo thoi diem build, de user nhin duoc dang xai ban nao
+    (truoc day version co dinh "1.0.0" khong phan biet duoc cac lan build khac nhau)."""
+    import datetime
+    return VERSION_PREFIX + "." + datetime.datetime.now().strftime("%Y%m%d%H%M")
+
+
 def stage():
     """Copy source sach vao _stage. config.py = file TRACKED (placeholder credential; account that o
     accounts.json - gitignored, KHONG nhung vao build)."""
@@ -67,7 +77,11 @@ def stage():
         if not fn.endswith(".py"):
             continue
         shutil.copy(os.path.join(bot_src, fn), bot_dst)
-    print("staged source (config.py placeholder, account that o accounts.json)")
+    ver = _build_version()
+    with open(os.path.join(bot_dst, "_version.py"), "w", encoding="utf-8") as f:
+        f.write('"""Phien ban app - TU SINH luc build (build_product.py), KHONG sua tay."""\n')
+        f.write('VERSION = "%s"\n' % ver)
+    print("staged source (config.py placeholder, account that o accounts.json) - version=%s" % ver)
 
 
 def package():
