@@ -2837,6 +2837,20 @@ class GameClient:
             KHONG chi dua vao in_battle=True vi co canh tu dong resolve khong bao gio bat co nay.
           - Nhan thuong TRUOC KHI leave_party() - noi dung goi nhan thuong co the khac theo tung
             pho ban, nhung thu tu (thoai tong ket -> nhan thuong -> giai tan) nen giu nguyen."""
+        try:
+            return self._do_team_dungeon_lv20_inner(n_battles, ready_wait)
+        finally:
+            # try/finally BAO DAM quest_mode luon ve False khi ham nay ket thuc, BAT KE thoat qua
+            # duong nao (return som, exception, mat ket noi giua chung...) - THAY VI dua vao gan
+            # `quest_mode = False` thu cong o TUNG diem return rieng le (de sot 1 cho -> quest_mode
+            # KET DINH VINH VIEN True sau do, anh huong toi CA cac tran train binh thuong sau nay,
+            # ke ca CAC NGAY SAU neu process chay xuyen ngay khong restart). Nghi van tu nguoi dung:
+            # "check nhiem vu 5 da xong -> KHONG goi ham nay -> quest_mode khong duoc set nen khong
+            # phai do duong nay" - nhung PHONG THU van dat o day cho MOI lan ham THAT SU duoc goi
+            # (vd lan truoc dungeon bi rot giua chung do loi khong luong truoc).
+            self.state.quest_mode = False
+
+    def _do_team_dungeon_lv20_inner(self, n_battles: int = 4, ready_wait: float = 9.0) -> bool:
         ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
         if not ents:
             log.warning("[%s] (LEADER) do_team_dungeon_lv20: chua biet entity member -> bo qua", self._label)
