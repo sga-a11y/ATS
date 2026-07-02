@@ -962,11 +962,13 @@ class PartyConfigFrame(ttk.Frame):
             if names:
                 self.city_var.set(names[idx])
         elif mode == "digioi":
-            ttk.Label(self.dyn, text="→ START_CITY_ID = 49942 (Dị Giới, cố định)").pack(side="left")
-            ttk.Label(self.dyn, text="  │  Kiểu chạy:").pack(side="left", padx=(10, 0))
+            row1 = ttk.Frame(self.dyn); row1.pack(side="top", fill="x")
+            ttk.Label(row1, text="→ START_CITY_ID = 49942 (Dị Giới, cố định)").pack(side="left")
+            row2 = ttk.Frame(self.dyn); row2.pack(side="top", fill="x", pady=(6, 0))
+            ttk.Label(row2, text="Kiểu chạy:", width=10).pack(side="left")
             self.digioi_kind_var = tk.StringVar(value="Solo (mỗi acc chạy riêng)"
                                                  if self.digioi_solo_var.get() else "Party (lập đội chung)")
-            kb = ttk.Combobox(self.dyn, textvariable=self.digioi_kind_var, state="readonly", width=24,
+            kb = ttk.Combobox(row2, textvariable=self.digioi_kind_var, state="readonly", width=24,
                               values=["Party (lập đội chung)", "Solo (mỗi acc chạy riêng)"])
             kb.pack(side="left")
             kb.bind("<<ComboboxSelected>>",
