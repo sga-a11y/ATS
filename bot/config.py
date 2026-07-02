@@ -315,6 +315,7 @@ if _aj is not None:
                 "server_ip": _server_ip(_srv) or GAME_HOST,
                 "server_id": _server_id(_srv),
                 "do_daily": bool(_party.get("do_daily", _party.get("do_dungeon", True))),
+                "digioi_mode": _party.get("digioi_mode", "party"),   # Di Gioi: "party" | "solo"
             }
             PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])
         if PARTY_CONFIG:
