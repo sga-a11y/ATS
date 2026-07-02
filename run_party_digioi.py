@@ -738,12 +738,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     # city/stand: chi set QS, DUNG YEN (cho ban dieu khien tay di nhiem vu)
                     c.flee_mode = False
                     log.info("[%s] (LEADER) %s -> party da tu, DUNG YEN cho dieu khien tay", label, mode)
-            if joined_member_count(pidx) >= 1:
+            # n_members==0 = party CAU HINH CHI 1 ACC (khong co member nao ca, solo THAT SU) ->
+            # cho joined_member_count>=1 la SAI, se KHONG BAO GIO dung vi chang co ai de join ->
+            # leader dung yen VINH VIEN (xac nhan qua quan sat thuc te: 1 acc, Di Gioi khong chay
+            # vong vong). Truoc day CHI check joined_member_count>=1, khong phan biet duoc "chua ai
+            # join" (con cho) vs "party von di chi co 1 minh" (khong bao gio co ai join).
+            if joined_member_count(pidx) >= 1 or st.get("n_members", 0) == 0:
                 time.sleep(1)
                 _start_training(); training_started = True
             else:
-                # 0 member -> KHONG co quan su -> DUNG YEN ngam canh, KHONG danh (vo nghia, het SP).
-                # Vong keepalive moi 60s se MOI LAI; co member join thi moi bat dau train.
+                # 0 member DA JOIN (nhung CO cau hinh member, dang cho) -> KHONG co quan su -> DUNG
+                # YEN ngam canh, KHONG danh (vo nghia, het SP). Vong keepalive moi 60s se MOI LAI;
+                # co member join thi moi bat dau train.
                 c.flee_mode = True   # ne battle neu lo dinh -> khong danh khi chua co QS
                 log.info("[%s] (LEADER) chua co member (0 quan su) -> DUNG YEN cho member join...",
                          label)
