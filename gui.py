@@ -790,6 +790,15 @@ class PartyConfigFrame(ttk.Frame):
         cb = ttk.Combobox(row, textvariable=self.mode_var, state="readonly", width=34,
                           values=[lbl for _, lbl in MODE_OPTIONS])
         cb.pack(side="left"); cb.bind("<<ComboboxSelected>>", lambda e: self._on_mode_change())
+        # "Kieu chay" (Di Gioi: Party/Solo) - dat NGANG HANG voi Che do (ben phai), CHI hien khi
+        # mode=digioi (an/hien qua pack/pack_forget trong _render_dyn, KHONG tao lai trong dyn frame
+        # rieng vi user muon o SAME ROW voi Che do, khong phai xuong dong duoi).
+        self.digioi_kind_lbl = ttk.Label(row, text="  │  Kiểu chạy:")
+        self.digioi_kind_var = tk.StringVar()
+        self.digioi_kind_cb = ttk.Combobox(row, textvariable=self.digioi_kind_var, state="readonly",
+                                           width=24, values=["Party (lập đội chung)", "Solo (mỗi acc chạy riêng)"])
+        self.digioi_kind_cb.bind("<<ComboboxSelected>>",
+                                 lambda e: self.digioi_solo_var.set(self.digioi_kind_var.get().startswith("Solo")))
 
         self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
@@ -930,6 +939,15 @@ class PartyConfigFrame(ttk.Frame):
         for w in self.dyn.winfo_children():
             w.destroy()
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
+        # "Kieu chay" (Party/Solo) chi hien khi mode=digioi, nam CUNG HANG voi "Che do" (ben phai).
+        if mode == "digioi":
+            self.digioi_kind_var.set("Solo (mỗi acc chạy riêng)" if self.digioi_solo_var.get()
+                                     else "Party (lập đội chung)")
+            self.digioi_kind_lbl.pack(side="left")
+            self.digioi_kind_cb.pack(side="left")
+        else:
+            self.digioi_kind_lbl.pack_forget()
+            self.digioi_kind_cb.pack_forget()
         if mode == "train":
             ttk.Label(self.dyn, text="Map:", width=10).pack(side="left")
             names = [n for (_i, n, _m) in self.train_maps]
@@ -962,17 +980,7 @@ class PartyConfigFrame(ttk.Frame):
             if names:
                 self.city_var.set(names[idx])
         elif mode == "digioi":
-            row1 = ttk.Frame(self.dyn); row1.pack(side="top", fill="x")
-            ttk.Label(row1, text="→ START_CITY_ID = 49942 (Dị Giới, cố định)").pack(side="left")
-            row2 = ttk.Frame(self.dyn); row2.pack(side="top", fill="x", pady=(6, 0))
-            ttk.Label(row2, text="Kiểu chạy:", width=10).pack(side="left")
-            self.digioi_kind_var = tk.StringVar(value="Solo (mỗi acc chạy riêng)"
-                                                 if self.digioi_solo_var.get() else "Party (lập đội chung)")
-            kb = ttk.Combobox(row2, textvariable=self.digioi_kind_var, state="readonly", width=24,
-                              values=["Party (lập đội chung)", "Solo (mỗi acc chạy riêng)"])
-            kb.pack(side="left")
-            kb.bind("<<ComboboxSelected>>",
-                    lambda e: self.digioi_solo_var.set(self.digioi_kind_var.get().startswith("Solo")))
+            ttk.Label(self.dyn, text="→ START_CITY_ID = 49942 (Dị Giới, cố định)").pack(side="left")
         elif mode == "stand":
             ttk.Label(self.dyn, text="→ Login ở đâu đứng yên đó (START_CITY_ID = 0)").pack(side="left")
         else:
