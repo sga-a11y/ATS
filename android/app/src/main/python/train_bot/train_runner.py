@@ -52,23 +52,42 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
         on_status.call("error", None, None, None, None, f"Ket noi loi: {e}")
         return
 
+    # GHI CHU thread-safety: GameClient (train_bot/client.py) KHONG co lock bao ve
+    # self.state/self.running - vong lap nay (thread chinh), wander() (thread rieng),
+    # va _recv_loop noi bo cua GameClient CUNG doc/ghi cac thuoc tinh nay dong thoi,
+    # dua vao GIL cho tung thao tac doc/ghi DON LE (khong dam bao read-modify-write
+    # nhat quan). Giong bot PC (client.py goc cung khong co lock, da chay on dinh) -
+    # chap nhan duoc cho 1 account/1 wander-thread, KHONG them logic phuc tap hon o day.
     def wander():
         while c.running and not should_stop.call():
-            if not c.in_combat():
-                x, y = random.choice(WANDER_POINTS)
-                try:
+            try:
+                if not c.in_combat():
+                    x, y = random.choice(WANDER_POINTS)
                     c.send(0x06, b"\x01\x00\x01" + struct.pack("<H", x) + struct.pack("<H", y))
-                except OSError:
-                    break
-            time.sleep(2)
+            except OSError:
+                break
+            except Exception as e:
+                # KHONG de wander thread (daemon, im lang) chet ma khong ai biet -> nhan vat
+                # dung yen vo thoi han. Bao loi qua on_status roi dung han thread nay.
+                on_status.call("error", None, None, None, None, f"Wander loi: {e}")
+                break
+            time.sleep(2)   # 2s giua moi lan di chuyen - tranh spam goi 0x06
 
     threading.Thread(target=wander, daemon=True).start()
     on_status.call("running", None, None, None, None, "Da vao game, dang treo cay")
 
     while c.running and not should_stop.call():
-        time.sleep(3)
-        ch = c.state.char
-        on_status.call("running", ch.hp, ch.sp, ch.hp_max, ch.sp_max, "")
+        time.sleep(3)   # 3s giua moi lan cap nhat trang thai UI - du nhanh, khong spam callback
+        try:
+            ch = c.state.char
+            if ch is not None:
+                on_status.call("running", ch.hp, ch.sp, ch.hp_max, ch.sp_max, "")
+        except Exception as e:
+            # vd chua nhan du 0x0b/0x33 -> state chua day du. KHONG de crash ca vong lap
+            # (muc tieu: moi loi bao qua callback, khong bao gio nem exception ra ngoai
+            # run_train() - BotForegroundService dua vao dieu nay de khong crash Service).
+            on_status.call("error", None, None, None, None, f"Loi doc trang thai: {e}")
+            break
 
     c.close()
     on_status.call("stopped", None, None, None, None, "Da dung")
