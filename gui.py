@@ -830,9 +830,11 @@ class PartyConfigFrame(ttk.Frame):
             variable=self.no_leader_var)
         self.no_leader_cb.pack(side="left")
         wl = self._preset.get("leaders", [])
-        ttk.Label(nlrow, text="  │  White list riêng:").pack(side="left")
+        self.wl_lbl = ttk.Label(nlrow, text="  │  White list riêng:")
+        self.wl_lbl.pack(side="left")
         self.leaders_var = tk.StringVar(value=", ".join(wl) if isinstance(wl, list) else str(wl or ""))
-        ttk.Entry(nlrow, textvariable=self.leaders_var).pack(side="left", fill="x", expand=True, padx=4)
+        self.wl_entry = ttk.Entry(nlrow, textvariable=self.leaders_var)
+        self.wl_entry.pack(side="left", fill="x", expand=True, padx=4)
 
         self.daily_var = tk.BooleanVar(value=self._preset.get("do_daily", self._preset.get("do_dungeon", True)))
         ttk.Checkbutton(self, text="Làm nhiệm vụ hàng ngày (bingo 9 ô: phó bản đơn, boss thế giới, "
@@ -948,13 +950,19 @@ class PartyConfigFrame(ttk.Frame):
         self._render_dyn()
 
     def _update_no_leader_visibility(self):
-        """Di Gioi SOLO: khong lap party that -> checkbox 'Khong co chu PT' vo nghia -> an di cho
-        gon (theo yeu cau). Cac mode khac (train/city/stand/Di Gioi party) van hien binh thuong."""
+        """Di Gioi SOLO: khong lap party that -> checkbox 'Khong co chu PT' VA 'White list rieng'
+        (dung de loc loi moi party) deu vo nghia -> an ca 2 cho gon (theo yeu cau). Cac mode khac
+        (train/city/stand/Di Gioi party) van hien binh thuong."""
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
-        if mode == "digioi" and self.digioi_solo_var.get():
+        hide = (mode == "digioi" and self.digioi_solo_var.get())
+        if hide:
             self.no_leader_cb.pack_forget()
+            self.wl_lbl.pack_forget()
+            self.wl_entry.pack_forget()
         else:
             self.no_leader_cb.pack(side="left")
+            self.wl_lbl.pack(side="left")
+            self.wl_entry.pack(side="left", fill="x", expand=True, padx=4)
 
     def _render_dyn(self):
         for w in self.dyn.winfo_children():
