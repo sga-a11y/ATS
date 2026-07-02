@@ -21,9 +21,15 @@ class MainActivity : AppCompatActivity() {
         btn.text = "Smoke test login (xem Logcat)"
         btn.setOnClickListener {
             thread {
-                val module = Python.getInstance().getModule("smoke_login")
-                val ok = module.callAttr("run_smoke_test").toBoolean()
-                runOnUiThread { status.text = "Smoke test: ${if (ok) "OK - nhan duoc frame" else "THAT BAI"}" }
+                try {
+                    val module = Python.getInstance().getModule("smoke_login")
+                    val ok = module.callAttr("run_smoke_test").toBoolean()
+                    runOnUiThread { status.text = "Smoke test: ${if (ok) "OK - nhan duoc frame" else "THAT BAI"}" }
+                } catch (e: Exception) {
+                    // KHONG de loi (vd GAME_HOST con la "CHANGE_ME" -> gaierror) lam CRASH ca app -
+                    // hien loi ngay tren man hinh de biet ma sua, thay vi app dong dot ngot.
+                    runOnUiThread { status.text = "Smoke test LOI: ${e.message}" }
+                }
             }
         }
         val layout = LinearLayout(this)
