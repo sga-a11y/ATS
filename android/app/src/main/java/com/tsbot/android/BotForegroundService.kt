@@ -66,7 +66,12 @@ class BotForegroundService : Service() {
     }
 
     fun startAccount(account: Account, serverIp: String, serverId: Int) {
-        if (runningThreads.containsKey(account.username)) return
+        // TOCTOU: KHONG dung "if containsKey(...) return" roi put rieng - 2 lan goi
+        // startAccount() gan nhau (vd double-tap nut Start tren UI) co the ca 2 deu
+        // qua check TRUOC khi ben nao kip put, tao 2 Thread cung chay cho 1 username,
+        // de len stopFlags/runningThreads cua nhau. putIfAbsent la atomic: tao Thread
+        // TRUOC nhung CHI .start() neu putIfAbsent tra ve null (chua co ai giu cho slot
+        // nay); neu da co (tra ve non-null) -> bo qua, khong start them.
         stopFlags[account.username] = false
         val thread = Thread {
             try {
@@ -101,7 +106,7 @@ class BotForegroundService : Service() {
                 stopFlags.remove(account.username)
             }
         }
-        runningThreads[account.username] = thread
+        if (runningThreads.putIfAbsent(account.username, thread) != null) return
         thread.start()
     }
 
