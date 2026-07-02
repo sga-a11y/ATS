@@ -52,6 +52,11 @@ import androidx.core.content.ContextCompat
 class MainActivity : ComponentActivity() {
     private var boundService by mutableStateOf<BotForegroundService?>(null)
 
+    // KHONG stopService() o onDestroy: dich vu foreground PHAI song sau khi Activity dong
+    // (nguoi dung tat man hinh nhung bot van chay nen) - chi unbindService de gia phong
+    // ServiceConnection cua rieng Activity nay, KHONG dung lai Service.
+    private var isBound = false
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             boundService = (service as BotForegroundService.LocalBinder).getService()
@@ -67,7 +72,7 @@ class MainActivity : ComponentActivity() {
 
         val serviceIntent = Intent(this, BotForegroundService::class.java)
         ContextCompat.startForegroundService(this, serviceIntent)
-        bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
+        isBound = bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
 
         setContent {
             MaterialTheme {
@@ -82,7 +87,13 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        unbindService(connection)
+        // bindService() co the tra false (vd Service khong the start) - goi unbindService()
+        // tren connection chua tung dang ky se nem IllegalArgumentException, lam crash
+        // ca onDestroy. Chi unbind neu bindService() da thanh cong.
+        if (isBound) {
+            unbindService(connection)
+            isBound = false
+        }
         super.onDestroy()
     }
 }
