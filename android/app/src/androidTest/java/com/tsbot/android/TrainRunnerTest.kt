@@ -2,12 +2,27 @@ package com.tsbot.android
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.chaquo.python.Python
+import com.chaquo.python.PyObject
 import com.chaquo.python.android.AndroidPlatform
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.Assert.assertEquals
+import java.util.concurrent.atomic.AtomicReference
+
+/** Doi tuong Kotlin THAT dung phuong thuc "call" - dung day de kiem tra Chaquopy that su
+ * proxy va Python goi duoc .call(...) tren no, KHONG chi gia lap bang Python (xem
+ * train_runner.py module docstring ve quy uoc nay). */
+class KotlinStatusCallback(private val ref: AtomicReference<String>) {
+    fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, message: String) {
+        ref.set(state)
+    }
+}
+
+class KotlinShouldStopCallback {
+    fun call(): Boolean = true
+}
 
 @RunWith(AndroidJUnit4::class)
 class TrainRunnerTest {
@@ -34,5 +49,19 @@ class TrainRunnerTest {
             "invalid_user_xyz", "wrong_pw", "1.2.3.4", 1
         )
         assertEquals("error", result.toString())
+    }
+
+    /** Xac nhan THAT rang phia Kotlin co the truyen 1 doi tuong that vao Python va Python
+     * goi duoc .call(...) tren no dung nhu quy uoc train_runner.py yeu cau - day la dieu
+     * kien tien quyet de BotForegroundService (task sau) noi Kotlin<->Python that. */
+    @Test
+    fun kotlinCallbackObjectIsCallableFromPython() {
+        val py = Python.getInstance()
+        val mod = py.getModule("train_bot.train_runner")
+        val lastState = AtomicReference<String>()
+        val onStatus = PyObject.fromJava(KotlinStatusCallback(lastState))
+        val shouldStop = PyObject.fromJava(KotlinShouldStopCallback())
+        mod.callAttr("run_train", "invalid_user_xyz", "wrong_pw", "1.2.3.4", 1, shouldStop, onStatus)
+        assertEquals("error", lastState.get())
     }
 }

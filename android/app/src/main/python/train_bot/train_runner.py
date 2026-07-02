@@ -10,6 +10,14 @@ Luu y API thuc te (doi chieu train_bot/client.py, train_bot/login.py):
   - client.connect() khong nhan tham so, tu chay _recv_loop/_heartbeat_loop (thread rieng)
   - client.running (bool), client.in_combat(), client.close()
   - client.state.char / client.state.pet la state.Unit: .hp/.hp_max/.sp/.sp_max
+
+QUY UOC GOI CALLBACK TU KOTLIN (quan trong cho BotForegroundService o task sau):
+  Chaquopy KHONG cho Python goi truc tiep mot doi tuong Kotlin/Java bat ky bang cu
+  phap obj(...) (khong tu dong proxy __call__ cho SAM/lambda). Vi vay should_stop/
+  on_status o day PHAI la doi tuong co PHUONG THUC ten "call" (vd Kotlin
+  `object { fun call(...) }`), va duoc goi qua .call(...) - KHONG goi truc tiep
+  should_stop()/on_status(...). Day la hop dong API on dinh cho phia Kotlin khi
+  wire BotForegroundService.
 """
 import threading
 import random
@@ -28,11 +36,11 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
     """Chay den khi should_stop() tra True hoac loi khong the phuc hoi.
     on_status(state: str, hp, sp, hp_max, sp_max, message: str) goi moi khi trang
     thai doi (state: "connecting"|"running"|"error"|"stopped")."""
-    on_status("connecting", None, None, None, None, "Dang dang nhap...")
+    on_status.call("connecting", None, None, None, None, "Dang dang nhap...")
     try:
         cred = login_mod.login(username, password)
     except Exception as e:
-        on_status("error", None, None, None, None, f"Login loi: {e}")
+        on_status.call("error", None, None, None, None, f"Login loi: {e}")
         return
 
     try:
@@ -41,11 +49,11 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
         c._label = username
         c.connect()
     except Exception as e:
-        on_status("error", None, None, None, None, f"Ket noi loi: {e}")
+        on_status.call("error", None, None, None, None, f"Ket noi loi: {e}")
         return
 
     def wander():
-        while c.running and not should_stop():
+        while c.running and not should_stop.call():
             if not c.in_combat():
                 x, y = random.choice(WANDER_POINTS)
                 try:
@@ -55,28 +63,42 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
             time.sleep(2)
 
     threading.Thread(target=wander, daemon=True).start()
-    on_status("running", None, None, None, None, "Da vao game, dang treo cay")
+    on_status.call("running", None, None, None, None, "Da vao game, dang treo cay")
 
-    while c.running and not should_stop():
+    while c.running and not should_stop.call():
         time.sleep(3)
         ch = c.state.char
-        on_status("running", ch.hp, ch.sp, ch.hp_max, ch.sp_max, "")
+        on_status.call("running", ch.hp, ch.sp, ch.hp_max, ch.sp_max, "")
 
     c.close()
-    on_status("stopped", None, None, None, None, "Da dung")
+    on_status.call("stopped", None, None, None, None, "Da dung")
+
+
+class _CallableStub:
+    """Boc 1 ham Python thanh doi tuong co .call(...) - mo phong dung HOP DONG API
+    ma phia Kotlin se dung that (object { fun call(...) }), de test thuan Python
+    van di qua CHINH XAC duong goi .call() nhu production, khong test rieng 1
+    duong khac (goi truc tiep) roi tuong da dung."""
+    def __init__(self, fn):
+        self._fn = fn
+
+    def call(self, *args):
+        return self._fn(*args)
 
 
 def run_train_sync_for_test(username: str, password: str, server_ip: str, server_id: int) -> str:
     """Wrapper THUAN PYTHON cho instrumented test: goi run_train() voi callback thu thap
-    trang thai vao list noi bo (khong can Kotlin proxy callback vao Python - Chaquopy 16.0.0
-    khong ho tro goi truc tiep obj(...) tren Java lambda tuy y qua call-syntax Python).
+    trang thai vao list noi bo, boc qua _CallableStub de di dung qua .call() convention
+    (xem docstring module ve ly do khong goi obj(...) truc tiep).
     Tra ve state CUOI CUNG da ghi nhan ("error"/"stopped"/"running"/...). should_stop=True
-    ngay lap tuc (lambda: True) -> neu login/connect thanh cong thi vong lap chinh thoat
-    ngay sau 1 vong, khong treo test that."""
+    ngay lap tuc -> neu login/connect thanh cong thi vong lap chinh thoat ngay sau 1 vong,
+    khong treo test that."""
     states = []
 
     def _on_status(state, hp, sp, hp_max, sp_max, message):
         states.append(state)
 
-    run_train(username, password, server_ip, server_id, lambda: True, _on_status)
+    should_stop = _CallableStub(lambda: True)
+    on_status = _CallableStub(_on_status)
+    run_train(username, password, server_ip, server_id, should_stop, on_status)
     return states[-1] if states else ""
