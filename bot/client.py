@@ -1056,39 +1056,45 @@ class GameClient:
         # 0x41 (OP_BATTLE_ENTER) KHONG dung: fire ca luc login -> false positive
         # cac opcode khac: bo qua
 
-    # DI GIOI SOLO: thu tu record trong 0x0f sub=0800 (0,1,2,3 - KHONG phai byte marker, marker
-    # khong dang tin theo docstring duoi) map THANG sang atype pet trong tran (0,1,3,4 - atype 2 la
-    # CHAR). Xac nhan qua capture thuc te: HP toi da tung pet trong tran (0x33) khop dung thu tu
-    # nay khi doi chieu voi level pet trong 0x0f (con index cao trong list -> HP thap hon, dung
-    # thu tu list, KHONG phai theo level/HP).
-    _MULTIPET_ATYPE_ORDER = [0, 1, 3, 4]
+    @staticmethod
+    def _pet_marker_to_atype(marker: int):
+        """DI GIOI SOLO: byte marker (=SLOT TUI, 1..4) -> atype dung trong tran (0,1,3,4 - atype 2
+        la CHAR). XAC NHAN qua 2 lan capture thuc te: (a) 4 pet slot 1,2,3,4 -> atype 0,1,3,4;
+        (b) CHI 3 pet, slot TRONG KHONG LIEN TUC (1,2,4 - thieu slot 3) -> atype VAN la 0,1,4 (bam
+        THEO MARKER THAT, KHONG phai theo THU TU xuat hien trong danh sach - truoc day gia dinh SAI
+        la luon du 4 con lien tiep, dung index list -> sai khi thieu con/khong lien tuc).
+        Cong thuc: marker<=2 -> atype=marker-1; marker>=3 -> atype=marker (giu nguyen, ne atype=2)."""
+        if marker < 1 or marker > 4:
+            return None
+        return marker - 1 if marker <= 2 else marker
 
     def _on_pet_list(self, pkt: bytes):
         """S2C 0x0f sub=0008: danh sach pet MANG THEO. Lay con DANG XUAT CHIEN (active_pet_id),
         KHONG phai con dau list. Record: [01 marker][pet_id 2B LE][...][LEVEL @+6][...][namelen @+30][ten @+31].
         -> tim vi tri pet_id active (ngay sau marker 0x01) roi doc level/ten tai offset co dinh.
         (khop capture: Thai Van Co id=0xa051 lv 45.) active_pet_id chua biet -> dung record dau.
-        DI GIOI SOLO (toi da 4 pet ra tran cung luc): TIEN THE, ghi luon skill tung pet vao
-        state.multi_pet_skills[atype] (xem _MULTIPET_ATYPE_ORDER) - dung cho combat.decide_multipet,
-        khong lien quan gi toi logic "active pet" o duoi (van giu nguyen, khong doi)."""
+        DI GIOI SOLO (toi da 4 pet ra tran cung luc, co the KHONG DU 4 con / khong lien tuc): TIEN
+        THE, ghi luon skill tung pet vao state.multi_pet_skills[atype] theo MARKER THAT cua record
+        (xem _pet_marker_to_atype - KHONG dung thu tu xuat hien trong danh sach, da xac nhan sai
+        khi thieu con giua chung), khong lien quan gi toi logic "active pet" o duoi (giu nguyen)."""
         b = pkt[7:]
         if len(b) < 35 or b[2] < 1:
             return
         # Record DAI ~254+namelen byte: [marker=SO SLOT 1B][pet_id 2B LE][exp 4B][LEVEL @+7]...
-        #   [namelen @+31][ten UTF16 @+32][tail 222B]. MARKER la slot (1,2,4,8,..) KHONG phai luon
-        # 0x01 -> KHONG loc theo marker. WALK tung record (stride 254+namelen) -> tim con active_pet_id.
+        #   [namelen @+31][ten UTF16 @+32][tail 222B]. MARKER la slot TUI (1..4, CO THE THIEU giua
+        # chung neu bo bot con - da xac nhan qua capture: 3 con marker=1,2,4 khong lien tuc).
         apid = getattr(self.state, "active_pet_id", None)
         n = b[2]
         start, chosen, first = 3, None, None
-        rec_idx = 0
         for _ in range(n):
             if start + 33 > len(b):
                 break
             if first is None:
                 first = start
+            marker = b[start]
             pid = int.from_bytes(b[start + 1:start + 3], "little")
-            if rec_idx < len(self._MULTIPET_ATYPE_ORDER):
-                at = self._MULTIPET_ATYPE_ORDER[rec_idx]
+            at = self._pet_marker_to_atype(marker)
+            if at is not None:
                 sk = config.PET_SKILLS.get(pid)
                 if sk:
                     self.state.multi_pet_skills[at] = sk
