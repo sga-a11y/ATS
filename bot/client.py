@@ -2197,6 +2197,25 @@ class GameClient:
                 best = (slot, tid, heal)
         return best
 
+    def has_hp_and_sp_items(self) -> bool:
+        """Co it nhat 1 item hoi HP VA 1 item hoi SP (con so luong, DA BIET qua gamedata/khai) trong
+        tui khong. Dung lam BAO HIEM cho Di Gioi SOLO: thieu 1 trong 2 loai -> KHONG chay long vong
+        (danh quai lien tuc ma khong co gi hoi -> de chet/can SP giua chung, khong ai cuu vi solo)."""
+        has_hp = has_sp = False
+        for slot, (tid, cnt) in self.bag_slots.items():
+            if cnt <= 0:
+                continue
+            v = self._item_info(tid)
+            if not v or v.get("none") or v.get("unusable") or v.get("battle"):
+                continue
+            if v.get("hp", 0) > 0:
+                has_hp = True
+            if v.get("sp", 0) > 0:
+                has_sp = True
+            if has_hp and has_sp:
+                return True
+        return False
+
     def do_heal(self):
         """Hoi mau NGOAI tran cho CHAR (target=0) + PET (target=1), dung thuoc DA BIET (gamedata/khai).
         KHONG probe (gamedata da biet het thuoc). Hoi den NGUONG la dung."""

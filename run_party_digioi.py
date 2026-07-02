@@ -673,10 +673,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # chay long vong luon (xem buoc 1-2 o tren: da vao DG + lam nhiem vu nhe).
         digioi_solo = is_digioi and pcfg.get("digioi_mode") == "solo"
         if digioi_solo:
-            c.flee_mode = False
-            c.combat_ready()
-            c.start_run_around()
-            log.info("[%s] Di Gioi SOLO -> tu chay long vong (khong lap party, khong dong bo kenh)", label)
+            # BAO HIEM: SOLO khong co ai cuu (khac party co quan su hoi SP + dong doi hoi mau ho) ->
+            # thieu 1 trong 2 loai thuoc (HP hoac SP) trong tui thi DUNG YEN, KHONG chay long vong
+            # danh quai lien tuc -> de het mau chet hoac can SP giua chung ma khong tu hoi duoc.
+            if c.has_hp_and_sp_items():
+                c.flee_mode = False
+                c.combat_ready()
+                c.start_run_around()
+                log.info("[%s] Di Gioi SOLO -> tu chay long vong (khong lap party, khong dong bo kenh)", label)
+            else:
+                c.flee_mode = True
+                log.warning("[%s] Di Gioi SOLO -> THIEU thuoc hoi HP hoac SP trong tui -> DUNG YEN "
+                            "(khong chay long vong, tranh chet/can SP khong ai cuu)", label)
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
         elif is_leader:
             from bot.client import joined_member_count
@@ -1031,6 +1039,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 # DG: dem nguoc thoi gian con lai (digioi_minutes tu S2C 0x55), 30s/lan
                 if c.current_map == config.DIGIOI_MAP_ID and time.time() - last_dg >= 30:
                     last_dg = time.time()
+                    if digioi_solo:
+                        # BAO HIEM: het thuoc GIUA CHUNG (da dung dan) -> DUNG YEN lai; co thuoc
+                        # tro lai (nhat item/mua them tay) -> tu chay tiep, KHONG can restart bot.
+                        _ok = c.has_hp_and_sp_items()
+                        if _ok and c.flee_mode:
+                            c.flee_mode = False; c.combat_ready(); c.start_run_around()
+                            log.info("[%s] Di Gioi SOLO: da co du thuoc HP+SP tro lai -> chay tiep", label)
+                        elif not _ok and not c.flee_mode:
+                            c.flee_mode = True
+                            log.warning("[%s] Di Gioi SOLO: HET thuoc HP hoac SP -> DUNG YEN", label)
                     remain = max(0, DIGIOI_LIMIT - c.digioi_minutes)
                     h, m = divmod(remain, 60)
                     log.info("[%s] Di Gioi con lai: %dh%dm (da o %d phut)",
