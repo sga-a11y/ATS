@@ -368,15 +368,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                                  label, role, c.current_map, fc)
                         try: c.go_to_town(fc, ff)
                         except Exception: pass
-            if st.get("channel") is None:
-                # LAN DAU (goi tu login sai map, chua acc nao pick kenh bao gio) -> chay full
-                # picker/wait 1 lan de co kenh chung, roi cac lan reform SAU (case C, kenh da
-                # biet) chi can switch nhanh o duoi, KHONG can pick lai.
-                do_channel_sync()
-            ch = st.get("channel")               # ve cung kenh da chon (khong re-pick, tranh tach)
-            if ch:
-                try: c.switch_channel(ch); time.sleep(1)
-                except Exception: pass
+            # LUON re-sync kenh (khong chi switch ve kenh cu da luu) - vua ve thanh sau khi CO THE
+            # da danh dungeon (solo o1 hoac team o5) -> server co the da day acc sang kenh KHAC (ngau
+            # nhien). Chi switch ve kenh CU (st["channel"]) KHONG du: kenh do co the da DAY (full,
+            # acc khac dang chiem) sau 1 hoi, hoac ban than viec dung 1 kenh CU thieu kiem tra lai
+            # suc chua -> can PICK LAI qua do_channel_sync() (picker tu kiem tra du cho ca party
+            # truoc khi chot, xem pick_best_channel) moi chac chan CA PARTY vao chung duoc 1 kenh.
+            do_channel_sync()
             if is_leader:
                 # LAP LAI party TAI THANH (member da tu do sau giai tan + dang o thanh) -> moi + cho join
                 for _ in range(8):
