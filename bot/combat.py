@@ -176,9 +176,20 @@ def _train_target(enemy_slots, offered):
     if not es:
         return None
     s = sorted(es)
-    for a in s:   # nhom 3 cung hang -> con giua (cot phai offered)
-        if (a + 1) in es and (a + 2) in es and _same_row(a, a + 2) and (_col(a + 1) + om) in off:
-            return a + 1
+    for a in s:   # nhom 3 cung hang
+        if (a + 1) in es and (a + 2) in es and _same_row(a, a + 2):
+            # Uu tien con GIUA (AoE trung ca 3) NEU cot no offered. Cot giua KHONG offered (atype
+            # nay khong voi toi giua) -> FALLBACK NGAY trong CUNG khoi 3 nay (uu tien DAU truoc,
+            # roi CUOI) - TRUOC DAY roi thang xuong vong quet "nhom 2" o duoi, vo tinh khop cap
+            # (a+1,a+2) truoc cap (a,a+1) o LAN QUET SAU -> ra con CUOI (thu 3) thay vi con DAU,
+            # sai voi ky vong "gan nhat voi giua" (da xac nhan qua quan sat thuc te: 3 con gan
+            # nhau nhung bi target con thu 3 thay vi giua).
+            if (_col(a + 1) + om) in off:
+                return a + 1
+            if (_col(a) + om) in off:
+                return a
+            if (_col(a + 2) + om) in off:
+                return a + 2
     for a in s:   # nhom 2 cung hang -> con thap nhat
         if (a + 1) in es and _same_row(a, a + 1):
             if (_col(a) + om) in off:
