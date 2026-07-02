@@ -45,6 +45,27 @@ def joined_member_count(party_idx):
     with _PARTY_LOCK:
         return len(_PARTY_JOINED.get(party_idx, set()))
 
+# PHO BAN TO DOI: member da gui "CHUAN BI" (0x2f 0b00) that su - KHAC voi _PARTY_JOINED (party
+# THUONG). Leader truoc day chi CHO CO DINH ready_wait giay roi START bat ke - neu member dang ban
+# viec khac (dailies chua xong) chua kip nhan+chuan bi trong khung do -> leader START mot minh
+# (dungeon tinh nhu da lam, mat luot cho ca party). Dung registry nay de leader POLL that su thay vi
+# doan thoi gian co dinh.
+_DUNGEON_READY = {}
+
+def _mark_dungeon_ready(party_idx, entity):
+    if party_idx is None or not entity:
+        return
+    with _PARTY_LOCK:
+        _DUNGEON_READY.setdefault(party_idx, set()).add(bytes(entity))
+
+def dungeon_ready_count(party_idx):
+    with _PARTY_LOCK:
+        return len(_DUNGEON_READY.get(party_idx, set()))
+
+def reset_dungeon_ready(party_idx):
+    with _PARTY_LOCK:
+        _DUNGEON_READY.pop(party_idx, None)
+
 def reset_party_joined(party_idx):
     """Xoa danh sach member da join (khi leader GIAI TAN party de relogin) -> leader tinh lai tu
     dau, vong retry 60s se MOI LAI cho du member. Member se _mark_joined lai khi accept loi moi moi."""
@@ -1185,6 +1206,7 @@ class GameClient:
         if not self.running:
             return
         self.send(0x2f, b"\x0b\x00")
+        _mark_dungeon_ready(self.party_idx, self.self_entity)   # bao LEADER: minh da CHUAN BI that
         log.info("[%s] Pho ban: da an CHUAN BI", self._label)
 
     # ---- xu ly available actions (0x35) ----
@@ -2867,11 +2889,27 @@ class GameClient:
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
         self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)
         # 2. Moi tung member theo ENTITY (0x2f 0800 [entity 8B]) - KHAC party-invite 0x0d 07
+        reset_dungeon_ready(self.party_idx)   # xoa tin hieu ready cu (lan pho ban truoc) tranh nham
         for e in ents:
             self.send(0x2f, b"\x08\x00" + bytes(e)); time.sleep(1.0)
-        # 3. Cho member auto-ready (2.5s sau accept) roi START
-        log.info("[%s] (LEADER) cho member ready %.0fs roi START", self._label, ready_wait)
-        time.sleep(ready_wait)
+        # 3. Cho member auto-accept + auto-ready THAT SU (POLL dungeon_ready_count, KHONG doan gio
+        # co dinh). _handle_o5_team CHI goi ham nay khi CA PARTY da bao "chua xong o5" (xem
+        # run_party_digioi.py) -> luc nay moi member dang o trong vong CHO thu dong (khong lam viec
+        # gi khac) nen se accept+ready ngay khi nhan duoc goi moi - nhung VAN can cho THAT SU (khong
+        # doan 9s co dinh) vi do tre mang/xu ly co the > 9s -> truoc day het 9s la START LUON bat ke
+        # member da ready chua, co the START ma party CHUA DU (danh mot minh, mat luot ca party).
+        # CO CAP (toi da ready_wait_max giay) de KHONG "cho ca ngay" neu 1 member that su khong bao
+        # gio ready duoc (vd mat ket noi giua chung) - het cap van START nhu truoc (fallback an toan).
+        ready_wait_max = max(ready_wait, 40.0)
+        t0 = time.time()
+        while dungeon_ready_count(self.party_idx) < len(ents) and time.time() - t0 < ready_wait_max:
+            if not self.running:
+                self.state.quest_mode = False
+                return False
+            time.sleep(0.5)
+        nrdy = dungeon_ready_count(self.party_idx)
+        log.info("[%s] (LEADER) member ready %d/%d sau %.1fs -> START", self._label, nrdy, len(ents),
+                 time.time() - t0)
         self.send(0x2f, b"\x0c\x00"); time.sleep(2.0)
         # DBG: doi chieu capture nguoi that (dieusau) vs bot (cung acc) phat hien: nguoi that gui
         # 0x41 (OP_BATTLE_ENTER, "dang ky san sang battle" - da dung o _login_setup/combat_ready
