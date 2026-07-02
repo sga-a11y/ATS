@@ -637,7 +637,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
             if do_daily:
                 c.claim_daily_quests(heavy=False)
             # 3) Dong bo kenh (gom ca party ve cung instance DG). Doi kenh trong DG VAN o trong DG.
-            do_channel_sync()
+            #    SOLO -> moi acc chay rieng, KHONG can chung kenh voi ai -> bo qua.
+            if pcfg.get("digioi_mode") != "solo":
+                do_channel_sync()
         else:
             # --- CITY (tap trung ve thanh) / STAND (dung yen) / CLEANBAG ---
             # SOLO daily dungeon TRUOC (neu bat). Dungeon co the bi DUMP ve 12000 -> lam truoc
@@ -666,8 +668,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 st["ready_members"].add(username)
         time.sleep(2)
 
+        # Di Gioi SOLO: moi acc chay rieng le hoan toan - khong lap party, khong dong bo kenh (da
+        # bo qua o buoc dong bo kenh o tren), khong cho leader/member gi ca. Ai vao duoc DG thi tu
+        # chay long vong luon (xem buoc 1-2 o tren: da vao DG + lam nhiem vu nhe).
+        digioi_solo = is_digioi and pcfg.get("digioi_mode") == "solo"
+        if digioi_solo:
+            c.flee_mode = False
+            c.combat_ready()
+            c.start_run_around()
+            log.info("[%s] Di Gioi SOLO -> tu chay long vong (khong lap party, khong dong bo kenh)", label)
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
-        if is_leader:
+        elif is_leader:
             from bot.client import joined_member_count
             if via_route:
                 # toi train map THEO PARTY (da lap party + cung kenh o thanh) -> KHOI moi lai

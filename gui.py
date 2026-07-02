@@ -794,6 +794,10 @@ class PartyConfigFrame(ttk.Frame):
         self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
         self.map_cb = self.mob_cb = self.city_cb = None
+        # Di Gioi: party (mac dinh, giu nguyen hanh vi cu - lap party chung, dong bo kenh) vs solo
+        # (moi acc chay rieng le, khong lap party, khong dong bo kenh - dung khi acc khong can/khong
+        # muon gop chung, vd khac nick khong lien quan nhau).
+        self.digioi_solo_var = tk.BooleanVar(value=(self._preset.get("digioi_mode") == "solo"))
 
         # KHONG co chu PT: slot 0 = ("","") -> member tu dung cho leader ngoai/tay moi.
         accs = self._preset.get("accounts", [])
@@ -959,6 +963,14 @@ class PartyConfigFrame(ttk.Frame):
                 self.city_var.set(names[idx])
         elif mode == "digioi":
             ttk.Label(self.dyn, text="→ START_CITY_ID = 49942 (Dị Giới, cố định)").pack(side="left")
+            ttk.Label(self.dyn, text="  │  Kiểu chạy:").pack(side="left", padx=(10, 0))
+            self.digioi_kind_var = tk.StringVar(value="Solo (mỗi acc chạy riêng)"
+                                                 if self.digioi_solo_var.get() else "Party (lập đội chung)")
+            kb = ttk.Combobox(self.dyn, textvariable=self.digioi_kind_var, state="readonly", width=24,
+                              values=["Party (lập đội chung)", "Solo (mỗi acc chạy riêng)"])
+            kb.pack(side="left")
+            kb.bind("<<ComboboxSelected>>",
+                    lambda e: self.digioi_solo_var.set(self.digioi_kind_var.get().startswith("Solo")))
         elif mode == "stand":
             ttk.Label(self.dyn, text="→ Login ở đâu đứng yên đó (START_CITY_ID = 0)").pack(side="left")
         else:
@@ -1017,9 +1029,12 @@ class PartyConfigFrame(ttk.Frame):
         srv = next((k for k, lbl in self.servers if lbl == self.server_var.get()),
                    self.servers[0][0] if self.servers else "trieu_van")
         leaders = [x.strip() for x in self.leaders_var.get().split(",") if x.strip()]
-        return {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
+        data = {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
                 "city_flag": city_flag, "do_daily": bool(self.daily_var.get()),
                 "leaders": leaders, "accounts": accs}
+        if mode == "digioi":
+            data["digioi_mode"] = "solo" if self.digioi_solo_var.get() else "party"
+        return data
 
 
 def _safe_points(safe):
