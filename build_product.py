@@ -164,9 +164,7 @@ def copy_data():
         "  - Chấm trạng thái: xanh = đủ acc chạy | vàng = chạy một phần | xám = tắt\n\n"
         "GHI CHÚ\n"
         "  - Các file .json cạnh exe là cấu hình (server / map / thành) - có thể sửa\n"
-        "  - accounts.json lưu tài khoản của bạn (GUI tự ghi khi bấm Lưu)\n"
-        "  - Số phiên bản (vd 1.1.202607021031) = thời điểm build (năm-tháng-ngày-giờ-phút),\n"
-        "    dùng để biết đang chạy đúng bản mới hay chưa\n")
+        "  - accounts.json lưu tài khoản của bạn (GUI tự ghi khi bấm Lưu)\n")
     # utf-8-sig (co BOM) -> Notepad Windows hien dung dau tieng Viet
     with open(os.path.join(DIST, "README.txt"), "w", encoding="utf-8-sig") as f:
         f.write(note)
