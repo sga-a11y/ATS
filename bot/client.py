@@ -1098,11 +1098,13 @@ class GameClient:
                 sk = config.PET_SKILLS.get(pid)
                 if sk:
                     self.state.multi_pet_skills[at] = sk
-            if apid and pid == apid:
+            # KHONG break som du tim thay active_pet_id: truoc day break ngay -> cac record SAU
+            # (pet khac, can cho multi_pet_skills o tren) bi BO QUA het neu active_pet_id la con
+            # DAU tien (xac nhan qua thuc te: chi pet atype dau co skills, cac con sau skills=[]).
+            # Van phai QUET HET n record de multi_pet_skills du 4 con.
+            if apid and pid == apid and chosen is None:
                 chosen = start
-                break
             start = start + 254 + b[start + 31]
-            rec_idx += 1
         if chosen is None:
             chosen = first   # active chua biet / khong tim thay -> con dau (fallback)
         if chosen is None or chosen + 33 > len(b):
