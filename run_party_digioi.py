@@ -668,6 +668,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 st["ready_members"].add(username)
         time.sleep(2)
 
+        # training_started duoc gan trong nhanh "elif is_leader" (o duoi) - PHAI khoi tao truoc o
+        # DAY vi vong keepalive (should_fight = training_started if is_leader else ...) doc bien
+        # nay bat ke mode nao. Thieu dong nay -> Di Gioi SOLO (re vao nhanh rieng, KHONG chay qua
+        # "elif is_leader") crash NGAY: "cannot access local variable 'training_started'".
+        training_started = False
         # Di Gioi SOLO: moi acc chay rieng le hoan toan - khong lap party, khong dong bo kenh (da
         # bo qua o buoc dong bo kenh o tren), khong cho leader/member gi ca. Ai vao duoc DG thi tu
         # chay long vong luon (xem buoc 1-2 o tren: da vao DG + lam nhiem vu nhe).
