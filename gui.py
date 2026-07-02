@@ -803,8 +803,10 @@ class PartyConfigFrame(ttk.Frame):
         self.digioi_kind_var = tk.StringVar()
         self.digioi_kind_cb = ttk.Combobox(row, textvariable=self.digioi_kind_var, state="readonly",
                                            width=24, values=["Party (lập đội chung)", "Solo (mỗi acc chạy riêng)"])
-        self.digioi_kind_cb.bind("<<ComboboxSelected>>",
-                                 lambda e: self.digioi_solo_var.set(self.digioi_kind_var.get().startswith("Solo")))
+        def _on_digioi_kind_change(_e=None):
+            self.digioi_solo_var.set(self.digioi_kind_var.get().startswith("Solo"))
+            self._update_no_leader_visibility()
+        self.digioi_kind_cb.bind("<<ComboboxSelected>>", _on_digioi_kind_change)
 
         self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
@@ -821,8 +823,12 @@ class PartyConfigFrame(ttk.Frame):
         # Hang: [Khong co chu PT] ... [White list rieng party nay]
         nlrow = ttk.Frame(self); nlrow.pack(fill="x", pady=(2, 0))
         self.no_leader_var = tk.BooleanVar(value=no_leader)
-        ttk.Checkbutton(nlrow, text="Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)",
-                        variable=self.no_leader_var).pack(side="left")
+        # Di Gioi SOLO: khong lap party that -> "chu PT" khong co y nghia gi, an checkbox nay cho
+        # gon (xem _update_no_leader_visibility, goi lai moi khi doi "Kieu chay").
+        self.no_leader_cb = ttk.Checkbutton(
+            nlrow, text="Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)",
+            variable=self.no_leader_var)
+        self.no_leader_cb.pack(side="left")
         wl = self._preset.get("leaders", [])
         ttk.Label(nlrow, text="  │  White list riêng:").pack(side="left")
         self.leaders_var = tk.StringVar(value=", ".join(wl) if isinstance(wl, list) else str(wl or ""))
@@ -941,6 +947,15 @@ class PartyConfigFrame(ttk.Frame):
         self.no_leader_var.set(mode in ("city", "stand"))
         self._render_dyn()
 
+    def _update_no_leader_visibility(self):
+        """Di Gioi SOLO: khong lap party that -> checkbox 'Khong co chu PT' vo nghia -> an di cho
+        gon (theo yeu cau). Cac mode khac (train/city/stand/Di Gioi party) van hien binh thuong."""
+        mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
+        if mode == "digioi" and self.digioi_solo_var.get():
+            self.no_leader_cb.pack_forget()
+        else:
+            self.no_leader_cb.pack(side="left")
+
     def _render_dyn(self):
         for w in self.dyn.winfo_children():
             w.destroy()
@@ -954,6 +969,7 @@ class PartyConfigFrame(ttk.Frame):
         else:
             self.digioi_kind_lbl.pack_forget()
             self.digioi_kind_cb.pack_forget()
+        self._update_no_leader_visibility()
         if mode == "train":
             ttk.Label(self.dyn, text="Map:", width=10).pack(side="left")
             names = [n for (_i, n, _m) in self.train_maps]
