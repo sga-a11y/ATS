@@ -867,8 +867,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         elif (not is_leader) and train_on_map and has_leader:
             c._wait_leader_on_stop = True
         while c.running:
-            # CHU PARTY da thoat (leader_gone) -> member cung THOAT theo (party tan, member o lai vo nghia)
-            if (not is_leader) and has_leader and st["leader_gone"].is_set():
+            # CHU PARTY da thoat (leader_gone) -> member cung THOAT theo (party tan, member o lai vo
+            # nghia). TRU Di Gioi SOLO: KHONG lap party thuc su (moi acc chay doc lap hoan toan) ->
+            # "leader" chi la vai tro danh nhan trong config, KHONG lien quan gi den viec cac acc
+            # khac co chay duoc hay khong -> KHONG duoc thoat theo (da xac nhan bug thuc te: leader
+            # out la ca party solo out theo, vo ly vi solo dung y la doc lap).
+            if (not is_leader) and has_leader and st["leader_gone"].is_set() and not digioi_solo:
                 log.info("[%s] (member) CHU PARTY da thoat -> member thoat theo", label)
                 _reason("chu party thoat -> member theo")
                 break
