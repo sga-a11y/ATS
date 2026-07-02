@@ -60,7 +60,7 @@ class BattleState:
         self.enemy_slots = []          # vd [2] = co 1 quai o slot 2
         self.enemy_hp = {}             # slot -> curHP
         self.self_slot = None          # B2 (vi tri tran) cua minh - tu 0x0b battle (entity-based)
-        # QUEST mode: START tran ma >5 quai -> True ca tran (latch). >5 con -> all-target; <=5 -> nhu boss.
+        # QUEST mode: START tran ma >6 quai -> True ca tran (latch). >6 con -> all-target; <=6 -> nhu boss.
         self.quest_mode = False
         self._battle_counted = False   # latch: da dem so quai luc start tran chua
         # DEM THE HE du lieu quai: tang moi lan CO goi 0x33 THAT cap nhat nhom quai (saw_enemy_group).
@@ -85,7 +85,7 @@ class BattleState:
     def reset_enemies(self, reset_quest=True):
         """Xoa HP/slot quai (goi luc battle moi bat dau, tranh dinh quai tran cu).
         reset_quest=False: GIU quest_mode/_battle_counted. 0x34 ban MOI TURN -> neu reset moi turn thi
-        khi quai con <=5 se MAT latch quest_mode (set luc >5 dau tran) -> roi nham ve TRAIN mode.
+        khi quai con <=6 se MAT latch quest_mode (set luc >6 dau tran) -> roi nham ve TRAIN mode.
         Chi reset khi la ENCOUNTER MOI (gap thoi gian lon giua 2 turn -> client.py quyet dinh)."""
         self.enemy_hp = {}
         self.enemy_slots = []
@@ -127,10 +127,10 @@ class BattleState:
             # enemy_slots = TAT CA slot con song theo enemy_hp TICH LUY (khong chi goi nay).
             # Tranh mat con khong bi danh trong turn (vd giet 1-2-3 con con o slot 7 van song).
             self.enemy_slots = sorted(s for s, hp in self.enemy_hp.items() if hp > 0)
-            # LATCH quest_mode: dem so quai LUC START tran (lan dau thay quai). >5 -> QUEST ca tran.
+            # LATCH quest_mode: dem so quai LUC START tran (lan dau thay quai). >6 -> QUEST ca tran.
             if not self._battle_counted and self.enemy_slots:
                 self._battle_counted = True
-                if len(self.enemy_slots) > 5:
+                if len(self.enemy_slots) > 6:
                     self.quest_mode = True
         # DI GIOI SOLO: 4 pet CUNG LUC, moi con atype RIENG (b1=2, b2=atype - xac nhan qua capture
         # thuc te: b2 trong 0x33 CHINH LA atype dung de gui 0x32, KHONG can quy doi them). Cap nhat

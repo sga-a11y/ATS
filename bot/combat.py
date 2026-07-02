@@ -445,9 +445,9 @@ def _anti_stall(state, unit, pos, skill, es, offered, key_suffix="", skills=None
 def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
     """Quyet dinh TAN CONG (sau khi da loai heal) - DUNG CHUNG char + pet. 3 che do:
       BOSS  (boss_mode, dungeon): nuke = pick_boss_skill (don dap>don>skill dau), target it mau nhat.
-      QUEST (quest_mode, start >5 quai):
-            > 5 quai con  -> all-target (neu co) -> ko thi combo AoE -> danh thuong
-            <=5 quai con  -> nhu boss + target IT MAU NHAT
+      QUEST (quest_mode, start >6 quai):
+            > 6 quai con  -> all-target (neu co) -> ko thi combo AoE -> danh thuong
+            <=6 quai con  -> nhu boss + target IT MAU NHAT
       TRAIN (mac dinh): combo (AoE re, combo duoc) khi du SP+block (hoac spam SP day), ko thi danh thuong.
     SP thieu cho skill manh -> danh thuong, cho quan su hoi SP."""
     at = state.my_atype
@@ -484,9 +484,9 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
         pos, sk = _anti_stall(state, unit, pos, sk, es, offered)
         return _attack(unit, at, pos, sk, fb, offered)
 
-    # 2) QUEST mode (start >5 quai)
+    # 2) QUEST mode (start >6 quai)
     if getattr(state, "quest_mode", False) and es:
-        if len(es) > 5:
+        if len(es) > 6:
             allt = pick_alltarget_skill(skills)
             if allt and sp >= cost(allt):
                 return _attack(unit, at, _train_target(es, offered), allt, fb, offered)
@@ -494,7 +494,7 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
             if combo and sp >= max(fire_min, cost(combo)) and _combo_block_ok(combo, es):
                 return _attack(unit, at, _train_target(es, offered), combo, fb, offered)
             return _attack(unit, at, _train_target(es, offered), config.SKILL_NORMAL, fb, offered)
-        # <=5 quai -> nhu boss + target it mau nhat
+        # <=6 quai -> nhu boss + target it mau nhat
         boss = pick_boss_skill(skills)
         pos = low_or_train()
         sk = boss if (boss and sp >= cost(boss)) else config.SKILL_NORMAL
