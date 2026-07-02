@@ -1,83 +1,276 @@
 package com.tsbot.android
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
-import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.Spinner
-import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
-import com.chaquo.python.PyObject
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
-import kotlin.concurrent.thread
+import android.os.IBinder
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
+    private var boundService by mutableStateOf<BotForegroundService?>(null)
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            boundService = (service as BotForegroundService.LocalBinder).getService()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            boundService = null
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(this))
-        }
-        val py = Python.getInstance()
-        val module = py.getModule("smoke_login")
 
-        val userInput = EditText(this)
-        userInput.hint = "Tài khoản"
+        val serviceIntent = Intent(this, BotForegroundService::class.java)
+        ContextCompat.startForegroundService(this, serviceIntent)
+        bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
 
-        val passInput = EditText(this)
-        passInput.hint = "Mật khẩu"
-        passInput.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-
-        val serverLabels: List<PyObject> = module.callAttr("server_labels").asList()
-        val serverKeys = serverLabels.map { it.asList()[0].toString() }
-        val serverNames = serverLabels.map { it.asList()[1].toString() }
-
-        val serverSpinner = Spinner(this)
-        serverSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, serverNames)
-
-        val status = TextView(this)
-        status.text = "Nhập tài khoản, mật khẩu, chọn server rồi bấm Đăng nhập"
-
-        val loginBtn = Button(this)
-        loginBtn.text = "Đăng nhập"
-        loginBtn.setOnClickListener {
-            val username = userInput.text.toString()
-            val password = passInput.text.toString()
-            val serverKey = serverKeys[serverSpinner.selectedItemPosition]
-            if (username.isBlank() || password.isBlank()) {
-                status.text = "Vui lòng nhập đủ tài khoản và mật khẩu"
-                return@setOnClickListener
+        setContent {
+            MaterialTheme {
+                Surface {
+                    TsBotApp(
+                        boundServiceProvider = { boundService },
+                        accountStore = AccountStore(this),
+                    )
+                }
             }
-            status.text = "Đang đăng nhập..."
-            loginBtn.isEnabled = false
-            thread {
-                try {
-                    val result = module.callAttr("run_smoke_test", username, password, serverKey).asList()
-                    val ok = result[0].toBoolean()
-                    val msg = result[1].toString()
-                    runOnUiThread {
-                        status.text = msg
-                        loginBtn.isEnabled = true
-                    }
-                } catch (e: Exception) {
-                    runOnUiThread {
-                        status.text = "Lỗi: ${e.message}"
-                        loginBtn.isEnabled = true
+        }
+    }
+
+    override fun onDestroy() {
+        unbindService(connection)
+        super.onDestroy()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TsBotApp(
+    boundServiceProvider: () -> BotForegroundService?,
+    accountStore: AccountStore,
+) {
+    var accounts by remember { mutableStateOf(accountStore.load()) }
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    val service = boundServiceProvider()
+    val statusMap by (service?.status?.collectAsState() ?: remember { mutableStateOf(emptyMap()) })
+
+    fun refresh() {
+        accounts = accountStore.load()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(title = { Text("TS Bot") })
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showAddDialog = true }) {
+                Text("+")
+            }
+        },
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).fillMaxSize().padding(12.dp)) {
+            if (accounts.isEmpty()) {
+                Text("Chưa có tài khoản nào")
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = { showAddDialog = true }) {
+                    Text("Thêm tài khoản")
+                }
+            } else {
+                LazyColumn {
+                    items(accounts, key = { it.username }) { account ->
+                        AccountRow(
+                            account = account,
+                            status = statusMap[account.username] ?: AccountStatus(),
+                            onStart = {
+                                val info = Servers.ALL[account.serverKey]
+                                if (info != null) {
+                                    service?.startAccount(account, info.ip, info.serverId)
+                                }
+                            },
+                            onStop = { service?.stopAccount(account.username) },
+                            onDelete = {
+                                accountStore.remove(account.username)
+                                refresh()
+                            },
+                        )
+                        Spacer(Modifier.height(8.dp))
                     }
                 }
             }
         }
-
-        val layout = LinearLayout(this)
-        layout.orientation = LinearLayout.VERTICAL
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        layout.setPadding(pad, pad, pad, pad)
-        layout.addView(userInput)
-        layout.addView(passInput)
-        layout.addView(serverSpinner)
-        layout.addView(loginBtn)
-        layout.addView(status)
-        setContentView(layout)
     }
+
+    if (showAddDialog) {
+        AddAccountDialog(
+            onDismiss = { showAddDialog = false },
+            onSave = { account ->
+                accountStore.add(account)
+                refresh()
+                showAddDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+fun AccountRow(
+    account: Account,
+    status: AccountStatus,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(account.username, style = MaterialTheme.typography.titleMedium)
+                    Text(Servers.ALL[account.serverKey]?.label ?: account.serverKey)
+                }
+                IconButton(onClick = onDelete) {
+                    Text("✕")
+                }
+            }
+
+            val hpSp = if (status.hp != null && status.sp != null) {
+                "HP ${status.hp}/${status.hpMax ?: "?"}  SP ${status.sp}/${status.spMax ?: "?"}"
+            } else null
+
+            Text("Trạng thái: ${status.state}")
+            if (hpSp != null) Text(hpSp)
+            if (status.message.isNotBlank()) Text(status.message)
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onStart) { Text("Start") }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onStop) { Text("Stop") }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddAccountDialog(
+    onDismiss: () -> Unit,
+    onSave: (Account) -> Unit,
+) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    var selectedKey by remember { mutableStateOf(Servers.ALL.keys.first()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Thêm tài khoản") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Tài khoản") },
+                    singleLine = true,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Mật khẩu") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                )
+                Spacer(Modifier.height(8.dp))
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = Servers.ALL[selectedKey]?.label ?: selectedKey,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Server") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false },
+                    ) {
+                        Servers.ALL.forEach { (key, info) ->
+                            DropdownMenuItem(
+                                text = { Text(info.label) },
+                                onClick = {
+                                    selectedKey = key
+                                    expanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (username.isNotBlank() && password.isNotBlank()) {
+                        onSave(Account(username, password, selectedKey))
+                    }
+                },
+            ) {
+                Text("Lưu")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Hủy") }
+        },
+    )
 }
