@@ -1156,6 +1156,13 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
     sync kenh + lap party -> teleport" NGAY GIUA LUC dang danh tran 1)."""
     with st["lock"]:
         st["o5_done_by"][username] = bool(o5_done)
+    has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None
+    if not is_leader and not has_leader:
+        # Party KHONG CO LEADER BOT (vd "Khong co chu PT", cho nguoi that/tay dieu khien) -> KHONG
+        # AI se chay nhanh is_leader ben duoi de set o5_state="done" -> cho vo ich toi HET 600s roi
+        # moi timeout thoat (xac nhan qua thuc te: claim_daily_quests() bi "treo" dung ~10 phut o
+        # buoc nay, moi acc). Khong co leader thi khong co gi de cho -> bo qua NGAY.
+        return
     if not is_leader:
         # CHO leader quyet dinh + danh xong (state "running"->"done"), toi 600s (4 tran co the lau).
         t0 = time.time()
