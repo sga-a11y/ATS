@@ -696,7 +696,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             "(khong chay long vong, tranh chet/can SP khong ai cuu)", label)
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
         elif is_leader:
-            from bot.client import joined_member_count
             if via_route:
                 # toi train map THEO PARTY (da lap party + cung kenh o thanh) -> KHOI moi lai
                 st["invited"].set()   # bao member khoi cho moi
@@ -790,7 +789,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                          "auto-accept - CHO ban moi party tay", label, st.get("channel"))
 
         # --- Giu song ---
-        from bot.client import joined_member_count, is_joined, reset_party_joined
         out_cnt = 0
         last_remove = time.time()
         last_retry = time.time()
@@ -940,7 +938,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                     # tan ca party -> 4 member duoc THA khoi party cu. Khong tan thi member van ket
                     # trong party cu -> moi lai KHONG vao (dang trong party roi) -> leader danh 1 minh.
                     c.leave_party(); time.sleep(0.8)
-                    from bot.client import reset_party_joined
                     reset_party_joined(pidx)         # quen member cu -> leader tinh lai tu dau, retry 60s moi lai
                     if c.relogin():                  # thoat + login lai -> 0x03 resync pos ve dung safe
                         # MOI LAI member NGAY TAI SAFE (leader+member gan nhau) roi CHO ho join
