@@ -156,11 +156,24 @@ def _same_row(a, b):
     return a // 10 == b // 10
 
 
-def _offer_min(offered):
-    """Goc index cua cot trong 0x35 offer: TRAIN bat dau tu 0 (-> +0), PHO BAN TO DOI bat dau tu 1
-    (-> +1). cot noi bo (b2) LUON 0-indexed -> target_gui = b2 + offer_min. Tu dieu chinh, an toan
-    cho ca train (min=0 = khong doi) lan pho ban (min=1 = +1)."""
-    return min(offered) if offered else 0
+def _col_reachable(col_val, off):
+    """Cot 'col_val' (0-indexed noi bo) co NAM TRONG offered (server cho phep) khong - thu CA 2
+    quy uoc (0-indexed thang, hoac +1 kieu pho ban to doi) THAY VI doan 1 offset chung cho ca tran
+    (da xac nhan sai - xem _offer_min)."""
+    return col_val in off or (col_val + 1) in off
+
+
+def _resolve_target(pos, offered):
+    """Target THAT gui cho server ung voi pos: uu tien cot dung y (0-indexed) neu no nam trong
+    offered, khong thi thu +1 (quy uoc pho ban to doi). Tra None neu KHONG cot nao hop le (offered
+    khong chua con nay - hiem, coi nhu khong the danh con do luc nay)."""
+    c = _col(pos)
+    off = set(offered)
+    if c in off:
+        return c
+    if (c + 1) in off:
+        return c + 1
+    return None
 
 
 def _train_target(enemy_slots, offered):
@@ -169,9 +182,9 @@ def _train_target(enemy_slots, offered):
       1. Block 3 quai lien nhau cung hang (DAU TIEN) -> con GIUA (AoE trung ca 3)
       2. Khong co -> block 2 quai (DAU TIEN) -> con DAU (thap nhat)
       3. Khong co -> con LE dau tien (thap nhat)
-    So sanh cot: b2 (0-indexed) + offer_min phai nam trong offered (xem _offer_min)."""
+    So sanh cot: dung _col_reachable (kiem tra TUNG cot that, KHONG doan offset chung - xem
+    _resolve_target/_offer_min)."""
     off = set(offered)
-    om = _offer_min(offered)
     es = set(enemy_slots)
     if not es:
         return None
@@ -184,34 +197,39 @@ def _train_target(enemy_slots, offered):
             # (a+1,a+2) truoc cap (a,a+1) o LAN QUET SAU -> ra con CUOI (thu 3) thay vi con DAU,
             # sai voi ky vong "gan nhat voi giua" (da xac nhan qua quan sat thuc te: 3 con gan
             # nhau nhung bi target con thu 3 thay vi giua).
-            if (_col(a + 1) + om) in off:
+            if _col_reachable(_col(a + 1), off):
                 return a + 1
             log.warning("TRAIN-TARGET: 3 con lien nhau (pos=%d,%d,%d) nhung COT GIUA (%d) KHONG "
-                        "offered (off=%s om=%d) -> fallback DAU/CUOI. Can log nay de xac dinh day "
-                        "la server THAT SU khong cho with toi giua (atype nay) hay bug o cho khac.",
-                        a, a + 1, a + 2, _col(a + 1) + om, sorted(off), om)
-            if (_col(a) + om) in off:
+                        "offered (off=%s) -> fallback DAU/CUOI. Can log nay de xac dinh day la "
+                        "server THAT SU khong cho with toi giua (atype nay) hay bug o cho khac.",
+                        a, a + 1, a + 2, _col(a + 1), sorted(off))
+            if _col_reachable(_col(a), off):
                 return a
-            if (_col(a + 2) + om) in off:
+            if _col_reachable(_col(a + 2), off):
                 return a + 2
     for a in s:   # nhom 2 cung hang -> con thap nhat
         if (a + 1) in es and _same_row(a, a + 1):
-            if (_col(a) + om) in off:
+            if _col_reachable(_col(a), off):
                 return a
-            if (_col(a + 1) + om) in off:
+            if _col_reachable(_col(a + 1), off):
                 return a + 1
     for t in s:   # le -> con thap nhat co cot offered
-        if (_col(t) + om) in off:
+        if _col_reachable(_col(t), off):
             return t
     return None
 
 
 def _attack(unit, atype, pos, skill, fb_col, offered=None):
-    """Tao Decision tan cong: pos -> b=hang(pos//10), target=cot(pos%10)+offer_min.
+    """Tao Decision tan cong: pos -> b=hang(pos//10), target=cot THAT (_resolve_target - kiem tra
+    cot co nam trong offered KHONG, KHONG doan offset chung nhu _offer_min cu - da xac nhan sai:
+    co truong hop offered=[1..5] ma KHONG can +1, lam target lech sang con ke ben con dinh danh).
     pos None -> fallback cot fb_col (da o offer-space, hang truoc, b=0)."""
     if pos is None:
         return Decision(unit, atype, fb_col, skill, b=0)
-    return Decision(unit, atype, _col(pos) + _offer_min(offered), skill, b=_row(pos))
+    t = _resolve_target(pos, offered) if offered else _col(pos)
+    if t is None:   # cot that KHONG nam trong offered (hiem) -> fallback ve cot tho (con hon khong gui)
+        t = _col(pos)
+    return Decision(unit, atype, t, skill, b=_row(pos))
 
 
 def _has_group3(enemy_slots):
@@ -379,8 +397,7 @@ def _lowest_hp_enemy(state, offered):
     """Pos quai con SONG it mau NHAT (cot phai trong offered). None neu khong co.
     Dung khi danh boss/don le (quest <=5) - dam con sap chet truoc."""
     off = set(offered)
-    om = _offer_min(offered)
-    alive = [(pos, hp) for pos, hp in state.enemy_hp.items() if hp > 0 and (_col(pos) + om) in off]
+    alive = [(pos, hp) for pos, hp in state.enemy_hp.items() if hp > 0 and _col_reachable(_col(pos), off)]
     if not alive:
         return None
     return min(alive, key=lambda x: x[1])[0]
