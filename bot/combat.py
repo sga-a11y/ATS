@@ -186,6 +186,10 @@ def _train_target(enemy_slots, offered):
             # nhau nhung bi target con thu 3 thay vi giua).
             if (_col(a + 1) + om) in off:
                 return a + 1
+            log.warning("TRAIN-TARGET: 3 con lien nhau (pos=%d,%d,%d) nhung COT GIUA (%d) KHONG "
+                        "offered (off=%s om=%d) -> fallback DAU/CUOI. Can log nay de xac dinh day "
+                        "la server THAT SU khong cho with toi giua (atype nay) hay bug o cho khac.",
+                        a, a + 1, a + 2, _col(a + 1) + om, sorted(off), om)
             if (_col(a) + om) in off:
                 return a
             if (_col(a + 2) + om) in off:
