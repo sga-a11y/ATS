@@ -70,6 +70,13 @@ class BattleState:
         self.enemy_gen = 0
         self.last_atk_gen_char = -1
         self.last_atk_gen_pet = -1
+        # DI GIOI SOLO: toi da 4 pet ra tran CUNG LUC, moi con 1 atype RIENG (0,1,3,4 - atype 2 la
+        # cua CHAR). KHAC han truong hop binh thuong (1 pet, dung state.pet + skills_pet chung voi
+        # char). solo_multipet=True -> client.py dung nhanh combat rieng (combat.decide_multipet).
+        self.solo_multipet = False
+        self.multi_pet = {}          # atype (0,1,3,4) -> Unit (HP/SP tung pet, tu update_0x33)
+        self.multi_pet_skills = {}   # atype -> [skill id] (tu pets.json, xem client._on_pet_list)
+        self.last_atk_gen_multipet = {}   # atype -> enemy_gen da danh (tranh danh lap khi 0x33 cu)
 
     def reset_battle(self):
         self.mobs = []
@@ -125,6 +132,20 @@ class BattleState:
                 self._battle_counted = True
                 if len(self.enemy_slots) > 5:
                     self.quest_mode = True
+        # DI GIOI SOLO: 4 pet CUNG LUC, moi con atype RIENG (b1=2, b2=atype - xac nhan qua capture
+        # thuc te: b2 trong 0x33 CHINH LA atype dung de gui 0x32, KHONG can quy doi them). Cap nhat
+        # RIENG cho tung atype, KHONG dua vao self_slot (self_slot chi ung voi pet DUY NHAT truong
+        # hop binh thuong, sai hoan toan khi co 4 pet).
+        if self.solo_multipet:
+            for (b1, b2), d in groups.items():
+                if b1 == 0x02:
+                    u = self.multi_pet.get(b2)
+                    if u is None:
+                        u = Unit(f"pet_at{b2}")
+                        self.multi_pet[b2] = u
+                    if T_HP_MAX in d: u.hp_max = d[T_HP_MAX]
+                    if T_HP_CUR in d: u.hp = d[T_HP_CUR]
+                    if T_SP_CUR in d: u.sp = d[T_SP_CUR]
         # self_slot xac dinh tu 0x0b battle (entity-based, o client) hoac roster. KHONG dua HP.
         # Doc HP/SP char+pet cua minh theo slot (uu tien roster -> chinh xac, KHONG can 0x0b)
         if self.self_slot is not None:

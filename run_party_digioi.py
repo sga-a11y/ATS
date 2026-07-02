@@ -673,6 +673,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # chay long vong luon (xem buoc 1-2 o tren: da vao DG + lam nhiem vu nhe).
         digioi_solo = is_digioi and pcfg.get("digioi_mode") == "solo"
         if digioi_solo:
+            # Di Gioi SOLO cho mang toi 4 pet ra tran CUNG LUC (khac han 1 pet binh thuong) - moi
+            # con 1 atype rieng (0,1,3,4), can nhanh combat rieng (combat.decide_multipet, xem
+            # state.solo_multipet trong bot/state.py + bot/client.py _make_decisions).
+            c.state.solo_multipet = True
             # BAO HIEM: SOLO khong co ai cuu (khac party co quan su hoi SP + dong doi hoi mau ho) ->
             # thieu 1 trong 2 loai thuoc (HP hoac SP) trong tui thi DUNG YEN, KHONG chay long vong
             # danh quai lien tuc -> de het mau chet hoac can SP giua chung ma khong tu hoi duoc.

@@ -10,7 +10,7 @@ from . import config, protocol, combat
 
 
 from .auth import build_auth_packet
-from .state import BattleState
+from .state import BattleState, Unit
 
 log = logging.getLogger("bot")
 
@@ -1056,11 +1056,21 @@ class GameClient:
         # 0x41 (OP_BATTLE_ENTER) KHONG dung: fire ca luc login -> false positive
         # cac opcode khac: bo qua
 
+    # DI GIOI SOLO: thu tu record trong 0x0f sub=0800 (0,1,2,3 - KHONG phai byte marker, marker
+    # khong dang tin theo docstring duoi) map THANG sang atype pet trong tran (0,1,3,4 - atype 2 la
+    # CHAR). Xac nhan qua capture thuc te: HP toi da tung pet trong tran (0x33) khop dung thu tu
+    # nay khi doi chieu voi level pet trong 0x0f (con index cao trong list -> HP thap hon, dung
+    # thu tu list, KHONG phai theo level/HP).
+    _MULTIPET_ATYPE_ORDER = [0, 1, 3, 4]
+
     def _on_pet_list(self, pkt: bytes):
         """S2C 0x0f sub=0008: danh sach pet MANG THEO. Lay con DANG XUAT CHIEN (active_pet_id),
         KHONG phai con dau list. Record: [01 marker][pet_id 2B LE][...][LEVEL @+6][...][namelen @+30][ten @+31].
         -> tim vi tri pet_id active (ngay sau marker 0x01) roi doc level/ten tai offset co dinh.
-        (khop capture: Thai Van Co id=0xa051 lv 45.) active_pet_id chua biet -> dung record dau."""
+        (khop capture: Thai Van Co id=0xa051 lv 45.) active_pet_id chua biet -> dung record dau.
+        DI GIOI SOLO (toi da 4 pet ra tran cung luc): TIEN THE, ghi luon skill tung pet vao
+        state.multi_pet_skills[atype] (xem _MULTIPET_ATYPE_ORDER) - dung cho combat.decide_multipet,
+        khong lien quan gi toi logic "active pet" o duoi (van giu nguyen, khong doi)."""
         b = pkt[7:]
         if len(b) < 35 or b[2] < 1:
             return
@@ -1070,16 +1080,23 @@ class GameClient:
         apid = getattr(self.state, "active_pet_id", None)
         n = b[2]
         start, chosen, first = 3, None, None
+        rec_idx = 0
         for _ in range(n):
             if start + 33 > len(b):
                 break
             if first is None:
                 first = start
             pid = int.from_bytes(b[start + 1:start + 3], "little")
+            if rec_idx < len(self._MULTIPET_ATYPE_ORDER):
+                at = self._MULTIPET_ATYPE_ORDER[rec_idx]
+                sk = config.PET_SKILLS.get(pid)
+                if sk:
+                    self.state.multi_pet_skills[at] = sk
             if apid and pid == apid:
                 chosen = start
                 break
             start = start + 254 + b[start + 31]
+            rec_idx += 1
         if chosen is None:
             chosen = first   # active chua biet / khong tim thay -> con dau (fallback)
         if chosen is None or chosen + 33 > len(b):
@@ -1336,7 +1353,27 @@ class GameClient:
                              {k: v for k, v in sorted(self.state.enemy_hp.items()) if v > 0})
             elif char_opts and char_dead:
                 log.info("[%s] CHAR HP=0 (da chet) -> KHONG gui lenh attack", self._label)
-            if pet_opts and not pet_dead:
+            if self.state.solo_multipet:
+                # DI GIOI SOLO: toi da 4 pet CUNG luot, moi con 1 atype rieng (0,1,3,4) - KHONG
+                # loc theo self.state.my_atype (do la atype cua CHAR=2, khong lien quan pet o day).
+                # Duyet TAT CA atype pet co mat trong 0x35 luot nay (raw, chua bi loc o tren).
+                raw_pet = self.available.get(config.UNIT_PET, [])
+                pet_atypes_now = sorted({o[0] for o in raw_pet})
+                for pat in pet_atypes_now:
+                    opts_at = [o for o in raw_pet if o[0] == pat]
+                    unit = self.state.multi_pet.get(pat)
+                    if unit is not None and unit.hp_max > 0 and unit.hp <= 0:
+                        continue   # con nay da chet -> khong gui lenh (giong char_dead/pet_dead)
+                    skills_at = self.state.multi_pet_skills.get(pat, [])
+                    if unit is None:
+                        unit = Unit(f"pet_at{pat}")   # chua co du lieu HP/SP tu 0x33 -> Unit rong
+                        self.state.multi_pet[pat] = unit
+                    d = combat.decide_multipet(self.state, pat, skills_at, unit, opts_at)
+                    if d is not None:
+                        self._send_combat(d)
+                        log.info("[%s] PET(atype=%d) %s | skills=%s | HP=%s", self._label, pat, d,
+                                 [hex(s) for s in skills_at], stat_at)
+            elif pet_opts and not pet_dead:
                 d = combat.decide_pet(self.state, pet_opts, ft)
                 if d is None:
                     log.info("[%s] PET khong con quai song -> bo qua (tran da ket)", self._label)

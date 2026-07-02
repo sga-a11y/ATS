@@ -403,14 +403,16 @@ def _lowest_hp_enemy(state, offered):
     return min(alive, key=lambda x: x[1])[0]
 
 
-def _anti_stall(state, unit, pos, skill, es, offered):
+def _anti_stall(state, unit, pos, skill, es, offered, key_suffix="", skills=None):
     """Chong ket cung: neu 3 lan LIEN TIEP cua unit nay ra CUNG (pos, skill) MA enemy_hp[pos]
     KHONG DOI (danh khong an, hoac goi bi server bo qua vi ly do khac) -> DOI (target khac con
     song neu co, hoac doi skill neu chi con 1 con) de dam bao goi 0x32 KHAC NOI DUNG so lan truoc.
     Da xac nhan qua thuc te: co truong hop 1 quai HP thap (vd 36) bi 5 acc nhac lien tuc CUNG
     skill+target hang chuc lan/2 phut ma HP dung yen tuyet doi -> nghi server tu drop request
-    lap noi dung (du tail 0x32 co random) -> can chu dong doi noi dung de thoat vong lap."""
-    key_attr = "_stall_char" if unit == config.UNIT_CHAR else "_stall_pet"
+    lap noi dung (du tail 0x32 co random) -> can chu dong doi noi dung de thoat vong lap.
+    key_suffix: phan biet TRANG THAI RIENG cho nhieu pet cung luc (Di Gioi solo, moi pet 1 atype) -
+    khong co suffix se GOP CHUNG trang thai "pet" cho ca 4 con, sai hoan toan."""
+    key_attr = ("_stall_char" if unit == config.UNIT_CHAR else "_stall_pet") + key_suffix
     hp_now = state.enemy_hp.get(pos)
     prev = getattr(state, key_attr, None)   # (pos, skill, hp, streak)
     if prev is not None and prev[0] == pos and prev[1] == skill and prev[2] == hp_now:
@@ -429,7 +431,7 @@ def _anti_stall(state, unit, pos, skill, es, offered):
         # chi 1 con song -> doi skill (thuong <-> skill khac neu co) thay vi doi target
         alt_skill = config.SKILL_NORMAL if skill != config.SKILL_NORMAL else skill
         if alt_skill == skill:
-            cand = [s for s in skills if s != skill]
+            cand = [s for s in (skills or []) if s != skill]
             alt_skill = cand[0] if cand else skill
         log.warning("[%s] ANTI-STALL: %s lap %d lan cung pos=%d skill=%d ma HP khong doi (chi 1 con "
                     "song) -> doi skill sang %d", state.label, "CHAR" if unit == config.UNIT_CHAR else "PET",
@@ -507,6 +509,42 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
             and (getattr(state, spam_attr) or _combo_block_ok(combo, es))):
         return _attack(unit, at, _train_target(es, offered), combo, fb, offered)
     return _attack(unit, at, _train_target(es, offered), config.SKILL_NORMAL, fb, offered)
+
+
+def decide_multipet(state, atype, skills, stat, options):
+    """DI GIOI SOLO: quyet dinh cho 1 PET RIENG trong so toi da 4 con cung tran (moi con 1 atype
+    RIENG: 0,1,3,4 - atype 2 la CHAR). Logic dung GIONG TRAIN mode don gian (combo Hoa Tien/Nem
+    Da/Loan Kich neu co du SP+block, khong thi danh thuong) - KHONG lam BOSS/QUEST rieng cho
+    truong hop nay (theo yeu cau: "train mode thoi, khong co combo thi danh thuong").
+    skills/stat = skill list + Unit (HP/SP) CUA RIENG con pet nay (tu state.multi_pet_skills /
+    state.multi_pet[atype]), KHAC voi decide_pet (dung state.skills_pet/state.pet chung 1 con)."""
+    offered = _offered_targets(options, atype)
+    if not offered:
+        return None
+    fb = offered[0]
+    sp = stat.sp
+    es = state.enemy_slots
+    if not es:
+        return None
+    # CHI danh khi CO du lieu quai MOI rieng cho ATYPE nay (tranh danh lap tren 0x33 cu - xem
+    # _combat_attack ban goc; o day dung dict rieng theo atype vi 4 pet KHONG the dung chung 1
+    # bien gen (se dam vao nhau, chi 1 con "thay" du lieu moi moi luot)).
+    gen_map = state.last_atk_gen_multipet
+    if gen_map.get(atype, -1) == state.enemy_gen:
+        return None
+    gen_map[atype] = state.enemy_gen
+    combo = pick_combo_skill(skills)
+    fire_min = getattr(config, "PET_FIRE_MIN_SP", 0)
+    if combo and sp >= max(fire_min, _skill_cost(combo)) and _combo_block_ok(combo, es):
+        sk = combo
+    else:
+        sk = config.SKILL_NORMAL
+    pos = _train_target(es, offered)
+    if pos is None:
+        return None
+    pos, sk = _anti_stall(state, config.UNIT_PET, pos, sk, es, offered,
+                          key_suffix=f"_at{atype}", skills=skills)
+    return _attack(config.UNIT_PET, atype, pos, sk, fb, offered)
 
 
 def decide_char(state, options, first_turn=False):
