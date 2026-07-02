@@ -1377,8 +1377,8 @@ class GameClient:
                     d = combat.decide_multipet(self.state, pat, skills_at, unit, opts_at)
                     if d is not None:
                         self._send_combat(d)
-                        log.info("[%s] PET(atype=%d) %s | skills=%s | HP=%s", self._label, pat, d,
-                                 [hex(s) for s in skills_at], stat_at)
+                        log.info("[%s] PET(atype=%d) %s | skills=%s | %s", self._label, pat, d,
+                                 [hex(s) for s in skills_at], unit)
             elif pet_opts and not pet_dead:
                 d = combat.decide_pet(self.state, pet_opts, ft)
                 if d is None:
