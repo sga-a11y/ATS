@@ -21,9 +21,12 @@ class ProtocolBridgeTest {
 
     @Test
     fun decodeStream_parsesSingleFrame() {
-        val (frames, consumed) = ProtocolBridge.decodeStream(wireBytes)
-        assertArrayEquals(arrayOf(plaintext.toList()), frames.map { it.toList() }.toTypedArray())
-        assertEquals(wireBytes.size, consumed)
+        val result = ProtocolBridge.decodeStream(wireBytes)
+        assertArrayEquals(
+            arrayOf(plaintext.toList()),
+            result.frames.map { it.toList() }.toTypedArray()
+        )
+        assertEquals(wireBytes.size, result.consumed)
     }
 
     @Test

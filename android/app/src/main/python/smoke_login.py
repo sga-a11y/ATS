@@ -105,7 +105,7 @@ def run_smoke_test(username: str, password: str, server_key: str):
         frame = bridge.encode_frame(OP_LOGIN, payload)
         sock.sendall(frame)
         raw = sock.recv(4096)
-        frames = bridge.decode_stream(raw)
+        frames, _consumed = bridge.decode_stream(raw)
         sock.close()
     except Exception as e:
         return False, f"Ket noi TCP that bai: {e}"

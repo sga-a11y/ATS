@@ -14,8 +14,19 @@ def encode_frame(opcode: int, payload: bytes) -> bytes:
 
 
 def decode_stream(wire_buf: bytes):
+    """Tra ve (list[bytes frame hoan chinh], so byte da tieu thu tu dau wire_buf).
+
+    decodeStream() ben Kotlin tra ve data class DecodeStreamResult (getFrames()/getConsumed())
+    thay vi kotlin.Pair - Chaquopy khong proxy on dinh .first()/.second() cua Pair, nhung
+    property cua data class (frames/consumed) thi luon truy cap duoc.
+    """
     result = _bridge().INSTANCE.decodeStream(bytearray(wire_buf))
-    # Dung size()/get(i) thay vi "for f in result": mot so kieu java.util.List
-    # (vd Collections$SingletonList khi Kotlin Array.toList() tra ve 1 phan tu)
-    # khong duoc Chaquopy proxy iterable truc tiep, nhung size()/get() luon dung.
-    return [bytes(result.get(i)) for i in range(result.size())]
+    # Chaquopy khong proxy property Kotlin (result.frames) truc tiep tren doi tuong
+    # tra ve tu ham external/JNI-backed - phai goi getter kieu Java (getFrames()/getConsumed()).
+    frames_list = result.getFrames()
+    consumed = result.getConsumed()
+    # Dung size()/get(i) thay vi "for f in frames_list": mot so kieu java.util.List
+    # (vd Collections$SingletonList khi Kotlin List co 1 phan tu) khong duoc Chaquopy
+    # proxy iterable truc tiep, nhung size()/get() luon dung.
+    frames = [bytes(frames_list.get(i)) for i in range(frames_list.size())]
+    return frames, consumed
