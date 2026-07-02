@@ -27,9 +27,9 @@ std::vector<uint8_t> encodeFrame(uint8_t opcode, const std::vector<uint8_t>& pay
     return xorBytes(plain);
 }
 
-std::vector<std::vector<uint8_t>> decodeStream(const std::vector<uint8_t>& wireBuf) {
+DecodeResult decodeStream(const std::vector<uint8_t>& wireBuf) {
     std::vector<uint8_t> plain = xorBytes(wireBuf);
-    std::vector<std::vector<uint8_t>> frames;
+    DecodeResult result;
     size_t i = 0;
     while (i + 4 <= plain.size()) {
         if (plain[i] != 0xc0 || plain[i + 1] != 0x91) {
@@ -40,10 +40,11 @@ std::vector<std::vector<uint8_t>> decodeStream(const std::vector<uint8_t>& wireB
         if (len < 7 || i + len > plain.size()) {
             break;
         }
-        frames.emplace_back(plain.begin() + i, plain.begin() + i + len);
+        result.frames.emplace_back(plain.begin() + i, plain.begin() + i + len);
         i += len;
     }
-    return frames;
+    result.consumed = i;
+    return result;
 }
 
 }  // namespace tsbot

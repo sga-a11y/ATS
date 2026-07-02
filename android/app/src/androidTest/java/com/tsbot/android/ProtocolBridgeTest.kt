@@ -2,6 +2,7 @@ package com.tsbot.android
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -20,8 +21,9 @@ class ProtocolBridgeTest {
 
     @Test
     fun decodeStream_parsesSingleFrame() {
-        val frames = ProtocolBridge.decodeStream(wireBytes)
+        val (frames, consumed) = ProtocolBridge.decodeStream(wireBytes)
         assertArrayEquals(arrayOf(plaintext.toList()), frames.map { it.toList() }.toTypedArray())
+        assertEquals(wireBytes.size, consumed)
     }
 
     @Test

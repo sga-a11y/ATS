@@ -16,9 +16,10 @@ static std::vector<uint8_t> PLAINTEXT = {
 };
 
 void test_decode_single_frame() {
-    auto frames = tsbot::decodeStream(WIRE_BYTES);
-    assert(frames.size() == 1);
-    assert(frames[0] == PLAINTEXT);
+    auto result = tsbot::decodeStream(WIRE_BYTES);
+    assert(result.frames.size() == 1);
+    assert(result.frames[0] == PLAINTEXT);
+    assert(result.consumed == WIRE_BYTES.size());
     printf("test_decode_single_frame: PASS\n");
 }
 
@@ -31,15 +32,27 @@ void test_encode_roundtrip() {
 
 void test_decode_partial_stream_waits_for_more_bytes() {
     std::vector<uint8_t> partial(WIRE_BYTES.begin(), WIRE_BYTES.begin() + 5);
-    auto frames = tsbot::decodeStream(partial);
-    assert(frames.empty());
+    auto result = tsbot::decodeStream(partial);
+    assert(result.frames.empty());
+    assert(result.consumed == 0);
     printf("test_decode_partial_stream_waits_for_more_bytes: PASS\n");
+}
+
+void test_decode_consumed_with_trailing_partial_frame() {
+    // Mot frame hoan chinh + vai byte du thua (frame thu 2 chua du).
+    std::vector<uint8_t> buf = WIRE_BYTES;
+    buf.insert(buf.end(), WIRE_BYTES.begin(), WIRE_BYTES.begin() + 5);
+    auto result = tsbot::decodeStream(buf);
+    assert(result.frames.size() == 1);
+    assert(result.consumed == WIRE_BYTES.size());
+    printf("test_decode_consumed_with_trailing_partial_frame: PASS\n");
 }
 
 int main() {
     test_decode_single_frame();
     test_encode_roundtrip();
     test_decode_partial_stream_waits_for_more_bytes();
+    test_decode_consumed_with_trailing_partial_frame();
     printf("ALL PASS\n");
     return 0;
 }
