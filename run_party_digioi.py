@@ -797,10 +797,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                             break
                     else:
                         c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(0.5)
-                # toi train map -> keo tiep ra spot (di bo local, member van theo)
+                # toi train map -> RA SAFE GAN QUAI TRUOC (giong luong khoi dong ban dau), roi moi
+                # keo tiep ra spot. Truoc day di THANG ra spot tu cong -> cat ngang qua duong CHUA
+                # duoc dam bao (nguoi dung da tu tinh toa do safe/mob_path de KHONG di xuyen tuong)
+                # -> nguoi khac thay nhan vat xuyen tuong, lo la bot.
                 if c.current_map == sc and not _ab():
+                    rally2 = st.get("rally_point") or (tm["safe"][0] if tm and tm.get("safe") else None)
+                    if rally2:
+                        c.navigate_to(*_jitter(rally2), flee=False, abort=_ab)
                     path = st.get("mob_path")
-                    if path:
+                    if _ab():
+                        pass
+                    elif path:
                         c.follow_path(path, flee=False, abort=_ab)
                     elif spot:
                         c.navigate_to(*_jitter(spot), flee=False, abort=_ab)   # party du -> danh, nhung abort khi reform moi
