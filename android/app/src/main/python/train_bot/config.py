@@ -64,13 +64,38 @@ DUNGEON_RUNS_PER_DAY = 2
 
 def _read_asset(name: str) -> str:
     """Doc file text tu android assets/train_bot_data/ qua Context (Chaquopy: Python.getPlatform()
-    .getApplication() tra ve Android Application context da truyen luc Python.start())."""
+    .getApplication() tra ve Android Application context da truyen luc Python.start()).
+
+    KHONG dung InputStream.readAllBytes() - ham nay chi co tu Java 9 / Android API 33+,
+    minSdk cua app la 26 -> tren thiet bi/emulator cu hon se nem AttributeError, bi
+    "except: pass" (o cho goi ham nay) nuot am tham, khien du lieu (PET_SKILLS/SKILL_INFO/
+    CITIES...) TRONG RONG ma khong ai biet (xac nhan bug that qua log stderr thuc te).
+    Dung BufferedReader/InputStreamReader (co tu API 1) doc tung dong thay the, an toan
+    tren MOI phien ban Android."""
     from com.chaquo.python import Python
+    from java import jclass
     ctx = Python.getPlatform().getApplication()
     stream = ctx.getAssets().open(f"train_bot_data/{name}")
-    data = bytes(stream.readAllBytes())
-    stream.close()
-    return data.decode("utf-8")
+    reader = jclass("java.io.BufferedReader")(
+        jclass("java.io.InputStreamReader")(stream, "UTF-8")
+    )
+    lines = []
+    line = reader.readLine()
+    while line is not None:
+        lines.append(str(line))
+        line = reader.readLine()
+    reader.close()
+    return "\n".join(lines)
+
+
+def _log_asset_error(name: str, e: Exception) -> None:
+    """In loi ra stderr (Logcat) thay vi nuot am tham - bai hoc that: truoc day _read_asset()
+    dung readAllBytes() (chi co tu API 33+, minSdk app la 26) nem AttributeError tren thiet
+    bi cu hon, nhung bi except:pass o cac ham _load_* nuot mat -> CITIES/PET_SKILLS/SKILL_INFO
+    RONG ma khong ai biet cho toi khi test thuc te tren may that. KHONG raise (giu logic goc
+    "an toan neu thieu file"), chi dam bao loi LUON hien ra Logcat de de chan doan lan sau."""
+    import sys
+    print(f"[config] doc {name} LOI: {type(e).__name__}: {e}", file=sys.stderr)
 
 
 def _load_pets():
@@ -85,8 +110,8 @@ def _load_pets():
             names[pid] = v.get("name", "")
             if v.get("he") or v.get("doanh"):
                 hedoanh[pid] = (v.get("he", ""), v.get("doanh", ""))
-    except Exception:
-        pass
+    except Exception as e:
+        _log_asset_error("pets.json", e)
     return skills, names, hedoanh
 
 
@@ -101,8 +126,8 @@ def _load_skill_info():
         d = json.loads(_read_asset("skills_data.json"))
         for k, v in d.get("skills", {}).items():
             out[int(k, 16)] = v
-    except Exception:
-        pass
+    except Exception as e:
+        _log_asset_error("skills_data.json", e)
     return out
 
 
@@ -118,8 +143,8 @@ def _load_cities():
         d = json.loads(_read_asset("cities.json"))
         for key, info in d.get("cities", {}).items():
             out[key] = (info["city_id"], info["flag"])
-    except Exception:
-        pass
+    except Exception as e:
+        _log_asset_error("cities.json", e)
     return out
 
 
