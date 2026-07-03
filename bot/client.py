@@ -764,6 +764,18 @@ class GameClient:
                 log.info("[%s] XAC NHAN ket tran THAT (sub0800, in_battle_TRUOC=True) -> "
                          "grace 3s chan 0x35 set lai in_battle + bao party (leader dua vao de ha nhanh)",
                          self._label)
+                # BUG THAT (xac nhan qua pcap+log thuc te): nhanh nay LA mot mac ket tran THAT
+                # (giong het sub0700 o tren) nhung TRUOC DAY thieu goi reset_enemies(reset_quest=True)
+                # -> quest_mode/_battle_counted CUA TRAN TRUOC (vd tran dau <=6 quai, chua latch)
+                # bi giu nguyen mai mai sang cac tran sau, du tran sau co >6 quai cung KHONG BAO GIO
+                # duoc dem lai -> ket qua: bot chi dung combo/danh thuong (tuong nhu TRAIN mode) o
+                # MOI tran sau tran dau tien trong session, bo qua han skill toan man (Hoa Lieu
+                # Nguyen...) du da hoc va con SP. User phat hien qua so sanh 2 kich ban: "vao tran
+                # >6 con NGAY SAU LOGIN" (dung dung, vi _battle_counted moi = False tu dau) vs "tran
+                # >6 con la tran THU HAI trong session" (sai, vi tran dau da set _battle_counted=True
+                # roi khong bao gio duoc reset). Sua: reset giong het nhanh sub0700.
+                _in_team_dungeon = time.time() < getattr(self, "_team_dungeon_until", 0.0)
+                self.state.reset_enemies(reset_quest=not _in_team_dungeon)
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
         # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
         if opcode == 0x59:
