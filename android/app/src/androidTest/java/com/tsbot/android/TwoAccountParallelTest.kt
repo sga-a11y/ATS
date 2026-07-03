@@ -12,6 +12,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
@@ -74,28 +75,35 @@ class TwoAccountParallelTest {
             override fun onServiceDisconnected(name: ComponentName) {}
         }
         targetCtx.bindService(Intent(targetCtx, BotForegroundService::class.java), conn, Context.BIND_AUTO_CREATE)
-        latch.await(10, TimeUnit.SECONDS)
+        assertTrue("Service khong bind duoc trong 10s", latch.await(10, TimeUnit.SECONDS))
 
         val info1 = Servers.ALL[acc1.serverKey]!!
         val info2 = Servers.ALL[acc2.serverKey]!!
-        svc!!.startAccount(acc1, info1.ip, info1.serverId)
-        svc!!.startAccount(acc2, info2.ip, info2.serverId)
+        try {
+            svc!!.startAccount(acc1, info1.ip, info1.serverId)
+            svc!!.startAccount(acc2, info2.ip, info2.serverId)
 
-        val deadline = System.currentTimeMillis() + 30000
-        var bothRunning = false
-        while (System.currentTimeMillis() < deadline) {
-            val statusMap = runBlocking { svc!!.status.first() }
-            if (statusMap[acc1.username]?.state == RunState.RUNNING &&
-                statusMap[acc2.username]?.state == RunState.RUNNING
-            ) {
-                bothRunning = true
-                break
+            // 30s: du cho 2 login HTTP that + ket noi TCP game song song (thuong ~10-15s/acc
+            // theo quan sat thu cong), nhan doi lam bien do de tranh flaky tren mang cham.
+            val deadline = System.currentTimeMillis() + 30000
+            var bothRunning = false
+            while (System.currentTimeMillis() < deadline) {
+                val statusMap = runBlocking { svc!!.status.first() }
+                if (statusMap[acc1.username]?.state == RunState.RUNNING &&
+                    statusMap[acc2.username]?.state == RunState.RUNNING
+                ) {
+                    bothRunning = true
+                    break
+                }
+                Thread.sleep(1000)
             }
-            Thread.sleep(1000)
+            assertEquals(true, bothRunning)
+        } finally {
+            // LUON dung 2 account + unbind du test pass/fail/timeout - tranh de lai 2 ket noi
+            // bot THAT chay ngam vo thoi han neu assertion o tren fail giua chung.
+            svc?.stopAccount(acc1.username)
+            svc?.stopAccount(acc2.username)
+            targetCtx.unbindService(conn)
         }
-        assertEquals(true, bothRunning)
-        svc!!.stopAccount(acc1.username)
-        svc!!.stopAccount(acc2.username)
-        targetCtx.unbindService(conn)
     }
 }
