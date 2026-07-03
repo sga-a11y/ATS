@@ -120,6 +120,13 @@ fun TsBotApp(
         parties = partyStore.load()
     }
 
+    fun startAccountIn(party: Party, account: Account) {
+        val info = Servers.ALL[party.serverKey]
+        if (info != null) {
+            service?.startAccount(account, info.ip, info.serverId, party.runMode, party.cityKey)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(title = { Text("TS Bot") })
@@ -154,13 +161,10 @@ fun TsBotApp(
                                 partyStore.removeParty(party.name)
                                 refresh()
                             },
-                            onStart = { account ->
-                                val info = Servers.ALL[party.serverKey]
-                                if (info != null) {
-                                    service?.startAccount(account, info.ip, info.serverId, party.runMode, party.cityKey)
-                                }
-                            },
+                            onStart = { account -> startAccountIn(party, account) },
                             onStop = { username -> service?.stopAccount(username) },
+                            onStartParty = { party.accounts.forEach { startAccountIn(party, it) } },
+                            onStopParty = { party.accounts.forEach { service?.stopAccount(it.username) } },
                         )
                         Spacer(Modifier.height(8.dp))
                     }
@@ -239,6 +243,8 @@ fun PartyCard(
     onRemoveParty: () -> Unit,
     onStart: (Account) -> Unit,
     onStop: (String) -> Unit,
+    onStartParty: () -> Unit,
+    onStopParty: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -255,6 +261,12 @@ fun PartyCard(
                     IconButton(onClick = onEditParty) { Text("✎") }
                     IconButton(onClick = onRemoveParty) { Text("✕") }
                 }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onStartParty, enabled = party.accounts.isNotEmpty()) { Text("Start party") }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onStopParty, enabled = party.accounts.isNotEmpty()) { Text("Stop party") }
             }
 
             if (party.accounts.isEmpty()) {
