@@ -129,7 +129,7 @@ fun TsBotApp(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("TS Bot") })
+            TopAppBar(title = { Text("aTSBot") })
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddPartyDialog = true }) {

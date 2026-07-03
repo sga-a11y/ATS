@@ -56,11 +56,11 @@ class BotForegroundService : Service() {
     private fun buildNotification(): Notification {
         val channelId = "tsbot_service"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "TS Bot", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(channelId, "aTSBot", NotificationManager.IMPORTANCE_LOW)
             (getSystemService(NotificationManager::class.java)).createNotificationChannel(channel)
         }
         return Notification.Builder(this, channelId)
-            .setContentTitle("TS Bot dang chay")
+            .setContentTitle("aTSBot dang chay")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .build()
     }
