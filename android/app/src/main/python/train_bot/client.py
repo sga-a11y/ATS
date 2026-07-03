@@ -1232,6 +1232,13 @@ class GameClient:
             # Dong y vao pho ban
             self.send(0x2f, b"\x03\x00" + invite_id + b"\x00")
             self._team_dungeon_until = time.time() + 300   # vao pho ban -> delay 0x32 random 0.5-2s
+            # BUG THAT (xac nhan qua log thuc te): _do_team_dungeon_lv20_inner (chi LEADER goi) co
+            # ep self.state.quest_mode = True luc tao pho ban, nhung nhanh nay (MEMBER tu accept loi
+            # moi pho ban CUA NGUOI THAT, khong co bot-leader dieu phoi) chi set _team_dungeon_until
+            # (khoa auto-latch reset) ma KHONG ep quest_mode=True -> quest_mode bi khoa cung o False
+            # suot ca pho ban (member khong tu bao gio dung duoc skill toan man du >6 quai va con SP).
+            # Ep giong het LEADER de nhat quan cho MOI truong hop nhan pho ban.
+            self.state.quest_mode = True
             log.info("[%s] Nhan moi PHO BAN tu '%s' -> da DONG Y", self._label, name or "?")
             # Da nhan pho ban -> THEO + DANH (khong flee, khong teleport ve thanh nua trong 10p):
             # go_to_town se BAIL khi thay co (tranh xung dot 'city mode keo ve' vs 'pho ban keo vao').
