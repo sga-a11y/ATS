@@ -107,3 +107,20 @@ def _load_skill_info():
 
 
 SKILL_INFO = _load_skill_info()
+
+
+def _load_cities():
+    """Doc cities.json (danh sach thanh de teleport, opcode 0x44) - dung cho mode
+    'Dung yen tai thanh': key -> (city_id, flag). Ca 2 gia tri BAT BUOC dung cung nhau
+    (xem cities.json._packet_format) - flag SAI se bi server tu choi teleport."""
+    out = {}
+    try:
+        d = json.loads(_read_asset("cities.json"))
+        for key, info in d.get("cities", {}).items():
+            out[key] = (info["city_id"], info["flag"])
+    except Exception:
+        pass
+    return out
+
+
+CITIES = _load_cities()

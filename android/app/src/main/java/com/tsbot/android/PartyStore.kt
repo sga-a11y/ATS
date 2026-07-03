@@ -23,9 +23,10 @@ class PartyStore(private val context: Context) {
             Party(
                 name = o.getString("name"),
                 serverKey = o.getString("server_key"),
-                // optString co default: file cu (truoc khi them run_mode) van doc duoc,
-                // tu dong coi la STAND_STILL - khong can migrate du lieu cu thu cong.
+                // optString co default: file cu (truoc khi them run_mode/city_key) van doc
+                // duoc, tu dong coi la mac dinh - khong can migrate du lieu cu thu cong.
                 runMode = o.optString("run_mode", RunModes.STAND_STILL),
+                cityKey = o.optString("city_key", Cities.ALL.keys.first()),
                 accounts = accounts,
             )
         }
@@ -38,6 +39,7 @@ class PartyStore(private val context: Context) {
             o.put("name", p.name)
             o.put("server_key", p.serverKey)
             o.put("run_mode", p.runMode)
+            o.put("city_key", p.cityKey)
             val accArr = JSONArray()
             p.accounts.forEach { a ->
                 val ao = JSONObject()

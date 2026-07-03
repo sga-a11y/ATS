@@ -65,7 +65,7 @@ class BotForegroundService : Service() {
             .build()
     }
 
-    fun startAccount(account: Account, serverIp: String, serverId: Int, runMode: String) {
+    fun startAccount(account: Account, serverIp: String, serverId: Int, runMode: String, cityKey: String) {
         // TOCTOU: KHONG dung "if containsKey(...) return" roi put rieng - 2 lan goi
         // startAccount() gan nhau (vd double-tap nut Start tren UI) co the ca 2 deu
         // qua check TRUOC khi ben nao kip put, tao 2 Thread cung chay cho 1 username,
@@ -95,7 +95,7 @@ class BotForegroundService : Service() {
                 })
                 module.callAttr(
                     "run_train", account.username, account.password, serverIp, serverId,
-                    runMode, shouldStop, onStatus,
+                    runMode, cityKey, shouldStop, onStatus,
                 )
             } catch (e: Exception) {
                 _status.update {

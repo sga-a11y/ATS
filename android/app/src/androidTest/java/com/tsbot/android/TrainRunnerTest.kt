@@ -63,7 +63,7 @@ class TrainRunnerTest {
         val shouldStop = PyObject.fromJava(KotlinShouldStopCallback())
         mod.callAttr(
             "run_train", "invalid_user_xyz", "wrong_pw", "1.2.3.4", 1,
-            RunModes.STAND_STILL, shouldStop, onStatus,
+            RunModes.STAND_STILL, Cities.ALL.keys.first(), shouldStop, onStatus,
         )
         assertEquals("error", lastState.get())
     }

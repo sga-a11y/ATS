@@ -21,26 +21,31 @@ QUY UOC GOI CALLBACK TU KOTLIN (quan trong cho BotForegroundService o task sau):
 """
 import time
 
+from . import config
 from . import login as login_mod
 from .client import GameClient
 
-# Chi 1 che do duy nhat hien tai: DUNG YEN (khong tu di chuyen). Ban dau tung dung
-# 1 danh sach toa do CO DINH de "wander" ngau nhien, nhung toa do do KHONG biet ban
-# do nao co tuong/chuong ngai gi - dung tren MOI map se khien nhan vat di xuyen
-# tuong/ket ket (user phat hien qua test thuc te tren app that). Cac che do "tu dong
-# di lang thang theo map" that su can du lieu toa do di chuyen duoc theo TUNG map
-# (nhu bot/config.py's train_maps.json/train_routes.json ben PC) - CHUA port sang
-# Android, de danh cho ban sau. Gio chi ho tro dung yen cho AN TOAN.
+# Chi 1 che do duy nhat hien tai: DUNG YEN TAI THANH (khong tu di chuyen sau khi ve
+# thanh). Ban dau tung dung 1 danh sach toa do CO DINH de "wander" ngau nhien, nhung
+# toa do do KHONG biet ban do nao co tuong/chuong ngai gi - dung tren MOI map se
+# khien nhan vat di xuyen tuong/ket ket (user phat hien qua test thuc te tren app
+# that). Cac che do "tu dong di lang thang theo map" that su can du lieu toa do di
+# chuyen duoc theo TUNG map (nhu bot/config.py's train_maps.json/train_routes.json
+# ben PC) - CHUA port sang Android, de danh cho ban sau. Gio chi ho tro ve 1 thanh
+# CO THAT (nguoi dung chon, xem config.CITIES) roi dung yen tai do cho AN TOAN.
 RUN_MODE_STAND_STILL = "stand_still"
 
 
 def run_train(username: str, password: str, server_ip: str, server_id: int,
-              run_mode: str, should_stop, on_status):
+              run_mode: str, city_key: str, should_stop, on_status):
     """Chay den khi should_stop() tra True hoac loi khong the phuc hoi.
     on_status(state: str, hp, sp, hp_max, sp_max, message: str) goi moi khi trang
     thai doi (state: "connecting"|"running"|"error"|"stopped").
-    run_mode: hien chi ho tro RUN_MODE_STAND_STILL - cac gia tri khac se BI BO QUA
-    (khong wander) de tranh crash/hanh vi sai, coi nhu dung yen."""
+    run_mode: hien chi ho tro RUN_MODE_STAND_STILL - cac gia tri khac cung bi coi
+    nhu dung yen (khong wander) de tranh hanh vi sai.
+    city_key: key trong config.CITIES (vd "trac_quan") - thanh se ve va dung yen.
+    Neu khong hop le hoac go_to_town that bai, van tiep tuc treo cay tai vi tri
+    hien tai (KHONG return loi) - chi bao qua on_status de nguoi dung biet."""
     on_status.call("connecting", None, None, None, None, "Dang dang nhap...")
     try:
         cred = login_mod.login(username, password)
@@ -57,12 +62,27 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
         on_status.call("error", None, None, None, None, f"Ket noi loi: {e}")
         return
 
-    # CHUA co du lieu toa do di chuyen an toan theo TUNG map (can train_maps.json/
-    # train_routes.json nhu ben bot PC - CHUA port sang Android) -> hien KHONG tu
-    # wander tren bat ky run_mode nao (ke ca gia tri khac RUN_MODE_STAND_STILL cung
-    # bi coi nhu dung yen, KHONG spawn thread di chuyen) - tranh di xuyen tuong/ket
-    # ket tren map (xem RUN_MODE_STAND_STILL o dau file de biet ly do).
-    on_status.call("running", None, None, None, None, "Da vao game, dang treo cay (dung yen)")
+    # go_to_town (train_bot/client.py, copy nguyen tu bot PC) tu xu ly: cho het tran
+    # truoc khi teleport, thoat Di Gioi neu dang o do, lap lai toi khi xac nhan da
+    # doi map. Day la ham THAT da chay on dinh tren PC, KHONG tu viet lai logic teleport.
+    # Neu ve thanh that bai (vd dang ket tran qua lau) -> KHONG dung han, van treo cay
+    # tai vi tri hien tai, chi ghi canh bao vao message cua trang thai "running" ben
+    # duoi (tranh phat 1 trang thai "error" thoang qua roi bi de ngay, mat thong tin).
+    warning = ""
+    city_info = config.CITIES.get(city_key)
+    if city_info is not None:
+        city_id, flag = city_info
+        on_status.call("connecting", None, None, None, None, "Dang ve thanh...")
+        try:
+            ok = c.go_to_town(city_id, flag)
+            if not ok and c.running:
+                warning = "(Chua ve duoc thanh - co the dang ket tran, van treo cay tai vi tri hien tai)"
+        except Exception as e:
+            warning = f"(Loi ve thanh: {e} - van treo cay tai vi tri hien tai)"
+    else:
+        warning = f"(Khong tim thay thanh '{city_key}' - dung yen tai vi tri hien tai)"
+
+    on_status.call("running", None, None, None, None, f"Da vao game, dang treo cay (dung yen) {warning}".strip())
 
     while c.running and not should_stop.call():
         time.sleep(3)   # 3s giua moi lan cap nhat trang thai UI - du nhanh, khong spam callback
@@ -107,5 +127,6 @@ def run_train_sync_for_test(username: str, password: str, server_ip: str, server
 
     should_stop = _CallableStub(lambda: True)
     on_status = _CallableStub(_on_status)
-    run_train(username, password, server_ip, server_id, RUN_MODE_STAND_STILL, should_stop, on_status)
+    run_train(username, password, server_ip, server_id, RUN_MODE_STAND_STILL, "trac_quan",
+              should_stop, on_status)
     return states[-1] if states else ""

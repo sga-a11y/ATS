@@ -157,7 +157,7 @@ fun TsBotApp(
                             onStart = { account ->
                                 val info = Servers.ALL[party.serverKey]
                                 if (info != null) {
-                                    service?.startAccount(account, info.ip, info.serverId, party.runMode)
+                                    service?.startAccount(account, info.ip, info.serverId, party.runMode, party.cityKey)
                                 }
                             },
                             onStop = { username -> service?.stopAccount(username) },
@@ -200,6 +200,7 @@ fun TsBotApp(
             initialName = partyBeingEdited.name,
             initialServerKey = partyBeingEdited.serverKey,
             initialRunMode = partyBeingEdited.runMode,
+            initialCityKey = partyBeingEdited.cityKey,
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
@@ -323,12 +324,15 @@ fun AddPartyDialog(
     initialName: String = "",
     initialServerKey: String = Servers.ALL.keys.first(),
     initialRunMode: String = RunModes.STAND_STILL,
+    initialCityKey: String = Cities.ALL.keys.first(),
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
     var selectedKey by remember { mutableStateOf(initialServerKey) }
     var modeExpanded by remember { mutableStateOf(false) }
     var selectedMode by remember { mutableStateOf(initialRunMode) }
+    var cityExpanded by remember { mutableStateOf(false) }
+    var selectedCity by remember { mutableStateOf(initialCityKey) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -399,13 +403,41 @@ fun AddPartyDialog(
                         }
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                ExposedDropdownMenuBox(
+                    expanded = cityExpanded,
+                    onExpandedChange = { cityExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = Cities.ALL[selectedCity]?.label ?: selectedCity,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Thành") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cityExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    )
+                    DropdownMenu(
+                        expanded = cityExpanded,
+                        onDismissRequest = { cityExpanded = false },
+                    ) {
+                        Cities.ALL.forEach { (key, info) ->
+                            DropdownMenuItem(
+                                text = { Text(info.label) },
+                                onClick = {
+                                    selectedCity = key
+                                    cityExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(Party(name, selectedKey, selectedMode))
+                        onSave(Party(name, selectedKey, selectedMode, selectedCity))
                     }
                 },
             ) {
