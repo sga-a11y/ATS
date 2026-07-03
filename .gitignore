@@ -53,3 +53,13 @@ nuitka-crash-report.xml
 *.onefile-build/
 scroll_bags.json
 team_dungeon_capture_*.txt
+
+# ==== Android (android/) ====
+android/local.properties
+android/.gradle/
+android/**/build/
+android/.idea/
+android/*.iml
+android/**/*.iml
+android/**/.cxx/
+android/app/src/androidTest/assets/test_accounts.json

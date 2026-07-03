@@ -1,0 +1,1025 @@
+{
+"_note": "AUTO-SINH tu tools/crack_skills.py (Skill_C.dat, mo neo ten). skill_id hex -> cost (SP), cat (idx11: LOAI - 1=dame combo duoc, 2=dame khong combo, 4..15=support), splash (idx12: 1=don,2=trai doc,3=trai ngang,4=don dap,8=toan bo quai). combat: DAME=cat in{1,2}; COMBO=cat==1; ALL-TARGET=splash==8.",
+"skills": {
+"0x2710": {
+"cost": 0,
+"cat": 1,
+"splash": 1
+},
+"0x2711": {
+"cost": 9,
+"cat": 2,
+"splash": 1
+},
+"0x2712": {
+"cost": 13,
+"cat": 2,
+"splash": 1
+},
+"0x2713": {
+"cost": 14,
+"cat": 2,
+"splash": 1
+},
+"0x2714": {
+"cost": 18,
+"cat": 3,
+"splash": 1
+},
+"0x2715": {
+"cost": 22,
+"cat": 1,
+"splash": 3
+},
+"0x2716": {
+"cost": 28,
+"cat": 1,
+"splash": 1
+},
+"0x2717": {
+"cost": 34,
+"cat": 1,
+"splash": 2
+},
+"0x2718": {
+"cost": 38,
+"cat": 2,
+"splash": 5
+},
+"0x2719": {
+"cost": 10,
+"cat": 16,
+"splash": 1
+},
+"0x271a": {
+"cost": 33,
+"cat": 4,
+"splash": 1
+},
+"0x271b": {
+"cost": 40,
+"cat": 2,
+"splash": 1
+},
+"0x271c": {
+"cost": 50,
+"cat": 2,
+"splash": 8
+},
+"0x271d": {
+"cost": 45,
+"cat": 2,
+"splash": 8
+},
+"0x271e": {
+"cost": 10,
+"cat": 16,
+"splash": 1
+},
+"0x271f": {
+"cost": 40,
+"cat": 4,
+"splash": 1
+},
+"0x2720": {
+"cost": 120,
+"cat": 15,
+"splash": 3
+},
+"0x2721": {
+"cost": 120,
+"cat": 2,
+"splash": 6
+},
+"0x2722": {
+"cost": 120,
+"cat": 2,
+"splash": 6
+},
+"0x2723": {
+"cost": 120,
+"cat": 2,
+"splash": 8
+},
+"0x2724": {
+"cost": 0,
+"cat": 19,
+"splash": 1
+},
+"0x2725": {
+"cost": 36,
+"cat": 1,
+"splash": 1
+},
+"0x2726": {
+"cost": 44,
+"cat": 2,
+"splash": 1
+},
+"0x2727": {
+"cost": 54,
+"cat": 2,
+"splash": 6
+},
+"0x2728": {
+"cost": 48,
+"cat": 2,
+"splash": 7
+},
+"0x2729": {
+"cost": 46,
+"cat": 15,
+"splash": 3
+},
+"0x272a": {
+"cost": 50,
+"cat": 4,
+"splash": 1
+},
+"0x272b": {
+"cost": 56,
+"cat": 2,
+"splash": 1
+},
+"0x272c": {
+"cost": 52,
+"cat": 1,
+"splash": 1
+},
+"0x272d": {
+"cost": 56,
+"cat": 1,
+"splash": 3
+},
+"0x272e": {
+"cost": 44,
+"cat": 2,
+"splash": 6
+},
+"0x272f": {
+"cost": 56,
+"cat": 4,
+"splash": 1
+},
+"0x2730": {
+"cost": 72,
+"cat": 2,
+"splash": 8
+},
+"0x2731": {
+"cost": 44,
+"cat": 3,
+"splash": 1
+},
+"0x2732": {
+"cost": 84,
+"cat": 2,
+"splash": 8
+},
+"0x2733": {
+"cost": 67,
+"cat": 20,
+"splash": 1
+},
+"0x2734": {
+"cost": 65,
+"cat": 20,
+"splash": 1
+},
+"0x2735": {
+"cost": 42,
+"cat": 1,
+"splash": 3
+},
+"0x2736": {
+"cost": 80,
+"cat": 4,
+"splash": 2
+},
+"0x2737": {
+"cost": 40,
+"cat": 4,
+"splash": 1
+},
+"0x2738": {
+"cost": 50,
+"cat": 4,
+"splash": 1
+},
+"0x2739": {
+"cost": 33,
+"cat": 4,
+"splash": 1
+},
+"0x273a": {
+"cost": 72,
+"cat": 21,
+"splash": 2
+},
+"0x273b": {
+"cost": 35,
+"cat": 2,
+"splash": 1
+},
+"0x273c": {
+"cost": 0,
+"cat": 0,
+"splash": 1
+},
+"0x273d": {
+"cost": 262,
+"cat": 2,
+"splash": 6
+},
+"0x2af9": {
+"cost": 8,
+"cat": 2,
+"splash": 1
+},
+"0x2afa": {
+"cost": 11,
+"cat": 4,
+"splash": 1
+},
+"0x2afb": {
+"cost": 12,
+"cat": 1,
+"splash": 1
+},
+"0x2afc": {
+"cost": 22,
+"cat": 14,
+"splash": 1
+},
+"0x2afd": {
+"cost": 18,
+"cat": 1,
+"splash": 1
+},
+"0x2afe": {
+"cost": 35,
+"cat": 6,
+"splash": 1
+},
+"0x2aff": {
+"cost": 35,
+"cat": 7,
+"splash": 1
+},
+"0x2b00": {
+"cost": 26,
+"cat": 2,
+"splash": 7
+},
+"0x2b01": {
+"cost": 40,
+"cat": 6,
+"splash": 1
+},
+"0x2b02": {
+"cost": 42,
+"cat": 7,
+"splash": 1
+},
+"0x2b03": {
+"cost": 32,
+"cat": 2,
+"splash": 5
+},
+"0x2b04": {
+"cost": 15,
+"cat": 5,
+"splash": 1
+},
+"0x2b05": {
+"cost": 40,
+"cat": 8,
+"splash": 1
+},
+"0x2b06": {
+"cost": 40,
+"cat": 3,
+"splash": 1
+},
+"0x2b07": {
+"cost": 10,
+"cat": 5,
+"splash": 1
+},
+"0x2b08": {
+"cost": 120,
+"cat": 18,
+"splash": 3
+},
+"0x2b09": {
+"cost": 120,
+"cat": 2,
+"splash": 6
+},
+"0x2b0a": {
+"cost": 120,
+"cat": 2,
+"splash": 6
+},
+"0x2b0b": {
+"cost": 120,
+"cat": 2,
+"splash": 8
+},
+"0x2b0c": {
+"cost": 0,
+"cat": 19,
+"splash": 1
+},
+"0x2b0d": {
+"cost": 24,
+"cat": 1,
+"splash": 1
+},
+"0x2b0e": {
+"cost": 30,
+"cat": 1,
+"splash": 1
+},
+"0x2b0f": {
+"cost": 50,
+"cat": 2,
+"splash": 8
+},
+"0x2b10": {
+"cost": 45,
+"cat": 19,
+"splash": 1
+},
+"0x2b11": {
+"cost": 48,
+"cat": 5,
+"splash": 3
+},
+"0x2b12": {
+"cost": 72,
+"cat": 14,
+"splash": 1
+},
+"0x2b13": {
+"cost": 52,
+"cat": 1,
+"splash": 1
+},
+"0x2b14": {
+"cost": 52,
+"cat": 1,
+"splash": 1
+},
+"0x2b15": {
+"cost": 60,
+"cat": 6,
+"splash": 1
+},
+"0x2b16": {
+"cost": 72,
+"cat": 14,
+"splash": 1
+},
+"0x2b17": {
+"cost": 60,
+"cat": 5,
+"splash": 6
+},
+"0x2b18": {
+"cost": 52,
+"cat": 19,
+"splash": 1
+},
+"0x2b19": {
+"cost": 60,
+"cat": 1,
+"splash": 1
+},
+"0x2b1a": {
+"cost": 84,
+"cat": 2,
+"splash": 8
+},
+"0x2b1b": {
+"cost": 67,
+"cat": 20,
+"splash": 1
+},
+"0x2b1c": {
+"cost": 65,
+"cat": 20,
+"splash": 1
+},
+"0x2b1d": {
+"cost": 53,
+"cat": 1,
+"splash": 3
+},
+"0x2b1e": {
+"cost": 63,
+"cat": 2,
+"splash": 1
+},
+"0x2b1f": {
+"cost": 40,
+"cat": 3,
+"splash": 1
+},
+"0x2b20": {
+"cost": 48,
+"cat": 5,
+"splash": 3
+},
+"0x2b21": {
+"cost": 60,
+"cat": 1,
+"splash": 1
+},
+"0x2b22": {
+"cost": 84,
+"cat": 7,
+"splash": 3
+},
+"0x2b23": {
+"cost": 0,
+"cat": 0,
+"splash": 1
+},
+"0x2b24": {
+"cost": 72,
+"cat": 1,
+"splash": 4
+},
+"0x2b25": {
+"cost": 28,
+"cat": 1,
+"splash": 1
+},
+"0x2b26": {
+"cost": 28,
+"cat": 1,
+"splash": 1
+},
+"0x2b27": {
+"cost": 60,
+"cat": 2,
+"splash": 8
+},
+"0x2b28": {
+"cost": 18,
+"cat": 1,
+"splash": 3
+},
+"0x2b29": {
+"cost": 250,
+"cat": 8,
+"splash": 6
+},
+"0x2ee1": {
+"cost": 9,
+"cat": 2,
+"splash": 1
+},
+"0x2ee2": {
+"cost": 12,
+"cat": 2,
+"splash": 1
+},
+"0x2ee3": {
+"cost": 15,
+"cat": 1,
+"splash": 3
+},
+"0x2ee4": {
+"cost": 22,
+"cat": 2,
+"splash": 1
+},
+"0x2ee5": {
+"cost": 22,
+"cat": 2,
+"splash": 1
+},
+"0x2ee6": {
+"cost": 24,
+"cat": 1,
+"splash": 1
+},
+"0x2ee7": {
+"cost": 30,
+"cat": 2,
+"splash": 1
+},
+"0x2ee8": {
+"cost": 30,
+"cat": 2,
+"splash": 1
+},
+"0x2ee9": {
+"cost": 30,
+"cat": 1,
+"splash": 1
+},
+"0x2eea": {
+"cost": 37,
+"cat": 2,
+"splash": 1
+},
+"0x2eeb": {
+"cost": 37,
+"cat": 2,
+"splash": 1
+},
+"0x2eec": {
+"cost": 46,
+"cat": 2,
+"splash": 6
+},
+"0x2eed": {
+"cost": 50,
+"cat": 2,
+"splash": 1
+},
+"0x2eee": {
+"cost": 60,
+"cat": 2,
+"splash": 8
+},
+"0x2eef": {
+"cost": 50,
+"cat": 1,
+"splash": 1
+},
+"0x2ef0": {
+"cost": 120,
+"cat": 2,
+"splash": 3
+},
+"0x2ef1": {
+"cost": 120,
+"cat": 2,
+"splash": 6
+},
+"0x2ef2": {
+"cost": 120,
+"cat": 2,
+"splash": 6
+},
+"0x2ef3": {
+"cost": 120,
+"cat": 2,
+"splash": 8
+},
+"0x2ef4": {
+"cost": 0,
+"cat": 19,
+"splash": 1
+},
+"0x2ef5": {
+"cost": 36,
+"cat": 1,
+"splash": 1
+},
+"0x2ef6": {
+"cost": 66,
+"cat": 1,
+"splash": 1
+},
+"0x2ef7": {
+"cost": 48,
+"cat": 2,
+"splash": 5
+},
+"0x2ef8": {
+"cost": 30,
+"cat": 4,
+"splash": 1
+},
+"0x2ef9": {
+"cost": 60,
+"cat": 19,
+"splash": 8
+},
+"0x2efa": {
+"cost": 54,
+"cat": 2,
+"splash": 7
+},
+"0x2efb": {
+"cost": 52,
+"cat": 1,
+"splash": 1
+},
+"0x2efc": {
+"cost": 56,
+"cat": 2,
+"splash": 1
+},
+"0x2efd": {
+"cost": 56,
+"cat": 2,
+"splash": 5
+},
+"0x2efe": {
+"cost": 64,
+"cat": 2,
+"splash": 6
+},
+"0x2eff": {
+"cost": 52,
+"cat": 1,
+"splash": 2
+},
+"0x2f00": {
+"cost": 72,
+"cat": 2,
+"splash": 8
+},
+"0x2f01": {
+"cost": 84,
+"cat": 1,
+"splash": 1
+},
+"0x2f02": {
+"cost": 84,
+"cat": 2,
+"splash": 8
+},
+"0x2f03": {
+"cost": 67,
+"cat": 20,
+"splash": 1
+},
+"0x2f04": {
+"cost": 65,
+"cat": 20,
+"splash": 1
+},
+"0x2f05": {
+"cost": 84,
+"cat": 1,
+"splash": 1
+},
+"0x2f06": {
+"cost": 84,
+"cat": 1,
+"splash": 1
+},
+"0x2f08": {
+"cost": 15,
+"cat": 1,
+"splash": 3
+},
+"0x2f09": {
+"cost": 54,
+"cat": 1,
+"splash": 3
+},
+"0x2f0a": {
+"cost": 54,
+"cat": 7,
+"splash": 3
+},
+"0x2f0b": {
+"cost": 56,
+"cat": 2,
+"splash": 5
+},
+"0x2f0c": {
+"cost": 60,
+"cat": 2,
+"splash": 5
+},
+"0x2f0d": {
+"cost": 60,
+"cat": 19,
+"splash": 8
+},
+"0x2f0e": {
+"cost": 54,
+"cat": 2,
+"splash": 7
+},
+"0x2f0f": {
+"cost": 66,
+"cat": 1,
+"splash": 1
+},
+"0x2f10": {
+"cost": 48,
+"cat": 2,
+"splash": 5
+},
+"0x2f11": {
+"cost": 23,
+"cat": 1,
+"splash": 3
+},
+"0x2f12": {
+"cost": 105,
+"cat": 1,
+"splash": 4
+},
+"0x2f13": {
+"cost": 0,
+"cat": 0,
+"splash": 1
+},
+"0x2f14": {
+"cost": 101,
+"cat": 15,
+"splash": 7
+},
+"0x2f15": {
+"cost": 118,
+"cat": 19,
+"splash": 1
+},
+"0x2f16": {
+"cost": 15,
+"cat": 1,
+"splash": 3
+},
+"0x2f17": {
+"cost": 128,
+"cat": 1,
+"splash": 4
+},
+"0x2f18": {
+"cost": 64,
+"cat": 2,
+"splash": 7
+},
+"0x2f19": {
+"cost": 0,
+"cat": 0,
+"splash": 1
+},
+"0x2f1a": {
+"cost": 210,
+"cat": 2,
+"splash": 4
+},
+"0x32c9": {
+"cost": 9,
+"cat": 2,
+"splash": 1
+},
+"0x32ca": {
+"cost": 15,
+"cat": 3,
+"splash": 1
+},
+"0x32cb": {
+"cost": 13,
+"cat": 4,
+"splash": 1
+},
+"0x32cc": {
+"cost": 23,
+"cat": 2,
+"splash": 1
+},
+"0x32cd": {
+"cost": 22,
+"cat": 4,
+"splash": 1
+},
+"0x32ce": {
+"cost": 30,
+"cat": 2,
+"splash": 1
+},
+"0x32cf": {
+"cost": 31,
+"cat": 1,
+"splash": 1
+},
+"0x32d0": {
+"cost": 38,
+"cat": 9,
+"splash": 1
+},
+"0x32d1": {
+"cost": 40,
+"cat": 1,
+"splash": 1
+},
+"0x32d2": {
+"cost": 40,
+"cat": 1,
+"splash": 1
+},
+"0x32d3": {
+"cost": 33,
+"cat": 15,
+"splash": 1
+},
+"0x32d4": {
+"cost": 33,
+"cat": 4,
+"splash": 1
+},
+"0x32d5": {
+"cost": 49,
+"cat": 1,
+"splash": 4
+},
+"0x32d6": {
+"cost": 45,
+"cat": 4,
+"splash": 1
+},
+"0x32d7": {
+"cost": 120,
+"cat": 3,
+"splash": 3
+},
+"0x32d8": {
+"cost": 120,
+"cat": 2,
+"splash": 6
+},
+"0x32d9": {
+"cost": 120,
+"cat": 2,
+"splash": 6
+},
+"0x32da": {
+"cost": 120,
+"cat": 2,
+"splash": 8
+},
+"0x32db": {
+"cost": 0,
+"cat": 19,
+"splash": 1
+},
+"0x32dc": {
+"cost": 60,
+"cat": 19,
+"splash": 7
+},
+"0x32dd": {
+"cost": 48,
+"cat": 4,
+"splash": 1
+},
+"0x32de": {
+"cost": 36,
+"cat": 2,
+"splash": 1
+},
+"0x32df": {
+"cost": 54,
+"cat": 2,
+"splash": 6
+},
+"0x32e0": {
+"cost": 44,
+"cat": 1,
+"splash": 1
+},
+"0x32e1": {
+"cost": 52,
+"cat": 4,
+"splash": 1
+},
+"0x32e2": {
+"cost": 44,
+"cat": 1,
+"splash": 1
+},
+"0x32e3": {
+"cost": 42,
+"cat": 2,
+"splash": 1
+},
+"0x32e4": {
+"cost": 48,
+"cat": 2,
+"splash": 5
+},
+"0x32e5": {
+"cost": 56,
+"cat": 1,
+"splash": 1
+},
+"0x32e6": {
+"cost": 50,
+"cat": 15,
+"splash": 3
+},
+"0x32e7": {
+"cost": 84,
+"cat": 2,
+"splash": 8
+},
+"0x32e8": {
+"cost": 68,
+"cat": 9,
+"splash": 1
+},
+"0x32e9": {
+"cost": 72,
+"cat": 1,
+"splash": 4
+},
+"0x32ea": {
+"cost": 67,
+"cat": 20,
+"splash": 1
+},
+"0x32eb": {
+"cost": 65,
+"cat": 20,
+"splash": 1
+},
+"0x32ec": {
+"cost": 72,
+"cat": 1,
+"splash": 4
+},
+"0x32ed": {
+"cost": 72,
+"cat": 1,
+"splash": 4
+},
+"0x32ee": {
+"cost": 17,
+"cat": 1,
+"splash": 3
+},
+"0x32ef": {
+"cost": 47,
+"cat": 2,
+"splash": 1
+},
+"0x32f0": {
+"cost": 33,
+"cat": 15,
+"splash": 2
+},
+"0x32f1": {
+"cost": 31,
+"cat": 1,
+"splash": 2
+},
+"0x32f2": {
+"cost": 22,
+"cat": 4,
+"splash": 1
+},
+"0x32f3": {
+"cost": 72,
+"cat": 1,
+"splash": 4
+},
+"0x32f4": {
+"cost": 28,
+"cat": 1,
+"splash": 1
+},
+"0x32f5": {
+"cost": 42,
+"cat": 1,
+"splash": 1
+},
+"0x32f6": {
+"cost": 128,
+"cat": 3,
+"splash": 6
+},
+"0x32f7": {
+"cost": 47,
+"cat": 1,
+"splash": 3
+},
+"0x32f8": {
+"cost": 30,
+"cat": 2,
+"splash": 1
+},
+"0x32f9": {
+"cost": 22,
+"cat": 4,
+"splash": 1
+},
+"0x32fa": {
+"cost": 88,
+"cat": 3,
+"splash": 5
+},
+"0x32fb": {
+"cost": 285,
+"cat": 4,
+"splash": 2
+},
+"0x32fc": {
+"cost": 15,
+"cat": 3,
+"splash": 1
+}
+}
+}
