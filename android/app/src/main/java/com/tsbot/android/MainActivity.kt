@@ -250,7 +250,9 @@ fun AddAccountDialog(
                         readOnly = true,
                         label = { Text("Server") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.fillMaxWidth(),
+                        // menuAnchor() BAT BUOC de ExposedDropdownMenuBox nhan dien tap vao
+                        // TextField la yeu cau mo dropdown - thieu no thi bam vao khong phan ung.
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
                     )
                     DropdownMenu(
                         expanded = expanded,
