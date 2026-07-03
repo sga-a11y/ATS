@@ -34,7 +34,7 @@ class BotForegroundServiceTest {
         latch.await(10, TimeUnit.SECONDS)
 
         val svc = boundService!!
-        svc.startAccount(Account("invalid_xyz", "wrong"), "103.82.28.98", 1)
+        svc.startAccount(Account("invalid_xyz", "wrong"), "103.82.28.98", 1, RunModes.STAND_STILL)
 
         var finalState: RunState? = null
         val deadline = System.currentTimeMillis() + 20000

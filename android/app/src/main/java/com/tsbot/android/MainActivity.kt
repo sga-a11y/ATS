@@ -157,7 +157,7 @@ fun TsBotApp(
                             onStart = { account ->
                                 val info = Servers.ALL[party.serverKey]
                                 if (info != null) {
-                                    service?.startAccount(account, info.ip, info.serverId)
+                                    service?.startAccount(account, info.ip, info.serverId, party.runMode)
                                 }
                             },
                             onStop = { username -> service?.stopAccount(username) },
@@ -199,6 +199,7 @@ fun TsBotApp(
             title = "Sửa party",
             initialName = partyBeingEdited.name,
             initialServerKey = partyBeingEdited.serverKey,
+            initialRunMode = partyBeingEdited.runMode,
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
@@ -321,10 +322,13 @@ fun AddPartyDialog(
     title: String = "Tạo party",
     initialName: String = "",
     initialServerKey: String = Servers.ALL.keys.first(),
+    initialRunMode: String = RunModes.STAND_STILL,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
     var selectedKey by remember { mutableStateOf(initialServerKey) }
+    var modeExpanded by remember { mutableStateOf(false) }
+    var selectedMode by remember { mutableStateOf(initialRunMode) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -367,13 +371,41 @@ fun AddPartyDialog(
                         }
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                ExposedDropdownMenuBox(
+                    expanded = modeExpanded,
+                    onExpandedChange = { modeExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = RunModes.ALL[selectedMode] ?: selectedMode,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Chế độ chạy") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    )
+                    DropdownMenu(
+                        expanded = modeExpanded,
+                        onDismissRequest = { modeExpanded = false },
+                    ) {
+                        RunModes.ALL.forEach { (key, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    selectedMode = key
+                                    modeExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(Party(name, selectedKey))
+                        onSave(Party(name, selectedKey, selectedMode))
                     }
                 },
             ) {

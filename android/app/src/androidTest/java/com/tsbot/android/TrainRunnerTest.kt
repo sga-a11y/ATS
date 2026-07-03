@@ -61,7 +61,10 @@ class TrainRunnerTest {
         val lastState = AtomicReference<String>()
         val onStatus = PyObject.fromJava(KotlinStatusCallback(lastState))
         val shouldStop = PyObject.fromJava(KotlinShouldStopCallback())
-        mod.callAttr("run_train", "invalid_user_xyz", "wrong_pw", "1.2.3.4", 1, shouldStop, onStatus)
+        mod.callAttr(
+            "run_train", "invalid_user_xyz", "wrong_pw", "1.2.3.4", 1,
+            RunModes.STAND_STILL, shouldStop, onStatus,
+        )
         assertEquals("error", lastState.get())
     }
 }

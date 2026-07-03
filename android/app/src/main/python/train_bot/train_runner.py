@@ -19,23 +19,28 @@ QUY UOC GOI CALLBACK TU KOTLIN (quan trong cho BotForegroundService o task sau):
   should_stop()/on_status(...). Day la hop dong API on dinh cho phia Kotlin khi
   wire BotForegroundService.
 """
-import threading
-import random
-import struct
 import time
 
 from . import login as login_mod
 from .client import GameClient
 
-WANDER_POINTS = [(300, 250), (500, 400), (700, 500), (450, 300),
-                  (250, 200), (600, 450), (400, 550), (650, 300)]
+# Chi 1 che do duy nhat hien tai: DUNG YEN (khong tu di chuyen). Ban dau tung dung
+# 1 danh sach toa do CO DINH de "wander" ngau nhien, nhung toa do do KHONG biet ban
+# do nao co tuong/chuong ngai gi - dung tren MOI map se khien nhan vat di xuyen
+# tuong/ket ket (user phat hien qua test thuc te tren app that). Cac che do "tu dong
+# di lang thang theo map" that su can du lieu toa do di chuyen duoc theo TUNG map
+# (nhu bot/config.py's train_maps.json/train_routes.json ben PC) - CHUA port sang
+# Android, de danh cho ban sau. Gio chi ho tro dung yen cho AN TOAN.
+RUN_MODE_STAND_STILL = "stand_still"
 
 
 def run_train(username: str, password: str, server_ip: str, server_id: int,
-              should_stop, on_status):
+              run_mode: str, should_stop, on_status):
     """Chay den khi should_stop() tra True hoac loi khong the phuc hoi.
     on_status(state: str, hp, sp, hp_max, sp_max, message: str) goi moi khi trang
-    thai doi (state: "connecting"|"running"|"error"|"stopped")."""
+    thai doi (state: "connecting"|"running"|"error"|"stopped").
+    run_mode: hien chi ho tro RUN_MODE_STAND_STILL - cac gia tri khac se BI BO QUA
+    (khong wander) de tranh crash/hanh vi sai, coi nhu dung yen."""
     on_status.call("connecting", None, None, None, None, "Dang dang nhap...")
     try:
         cred = login_mod.login(username, password)
@@ -52,29 +57,12 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
         on_status.call("error", None, None, None, None, f"Ket noi loi: {e}")
         return
 
-    # GHI CHU thread-safety: GameClient (train_bot/client.py) KHONG co lock bao ve
-    # self.state/self.running - vong lap nay (thread chinh), wander() (thread rieng),
-    # va _recv_loop noi bo cua GameClient CUNG doc/ghi cac thuoc tinh nay dong thoi,
-    # dua vao GIL cho tung thao tac doc/ghi DON LE (khong dam bao read-modify-write
-    # nhat quan). Giong bot PC (client.py goc cung khong co lock, da chay on dinh) -
-    # chap nhan duoc cho 1 account/1 wander-thread, KHONG them logic phuc tap hon o day.
-    def wander():
-        while c.running and not should_stop.call():
-            try:
-                if not c.in_combat():
-                    x, y = random.choice(WANDER_POINTS)
-                    c.send(0x06, b"\x01\x00\x01" + struct.pack("<H", x) + struct.pack("<H", y))
-            except OSError:
-                break
-            except Exception as e:
-                # KHONG de wander thread (daemon, im lang) chet ma khong ai biet -> nhan vat
-                # dung yen vo thoi han. Bao loi qua on_status roi dung han thread nay.
-                on_status.call("error", None, None, None, None, f"Wander loi: {e}")
-                break
-            time.sleep(2)   # 2s giua moi lan di chuyen - tranh spam goi 0x06
-
-    threading.Thread(target=wander, daemon=True).start()
-    on_status.call("running", None, None, None, None, "Da vao game, dang treo cay")
+    # CHUA co du lieu toa do di chuyen an toan theo TUNG map (can train_maps.json/
+    # train_routes.json nhu ben bot PC - CHUA port sang Android) -> hien KHONG tu
+    # wander tren bat ky run_mode nao (ke ca gia tri khac RUN_MODE_STAND_STILL cung
+    # bi coi nhu dung yen, KHONG spawn thread di chuyen) - tranh di xuyen tuong/ket
+    # ket tren map (xem RUN_MODE_STAND_STILL o dau file de biet ly do).
+    on_status.call("running", None, None, None, None, "Da vao game, dang treo cay (dung yen)")
 
     while c.running and not should_stop.call():
         time.sleep(3)   # 3s giua moi lan cap nhat trang thai UI - du nhanh, khong spam callback
@@ -119,5 +107,5 @@ def run_train_sync_for_test(username: str, password: str, server_ip: str, server
 
     should_stop = _CallableStub(lambda: True)
     on_status = _CallableStub(_on_status)
-    run_train(username, password, server_ip, server_id, should_stop, on_status)
+    run_train(username, password, server_ip, server_id, RUN_MODE_STAND_STILL, should_stop, on_status)
     return states[-1] if states else ""

@@ -13,7 +13,7 @@ class PartyStoreTest {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val store = PartyStore(ctx)
         store.save(emptyList())
-        store.addParty(Party("Nhom 1", "hoang_trung", listOf(Account("hoangt306", "pw123"))))
+        store.addParty(Party("Nhom 1", "hoang_trung", accounts = listOf(Account("hoangt306", "pw123"))))
         val loaded = store.load()
         assertEquals(1, loaded.size)
         assertEquals("Nhom 1", loaded[0].name)
@@ -52,6 +52,19 @@ class PartyStoreTest {
         loaded = store.load()
         assertEquals(1, loaded[0].accounts.size)
         assertEquals("acc2", loaded[0].accounts[0].username)
+        store.save(emptyList())
+    }
+
+    @Test
+    fun runModeDefaultsToStandStillAndRoundTrips() {
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = PartyStore(ctx)
+        store.save(emptyList())
+        store.addParty(Party("p1", "trieu_van"))
+        assertEquals(RunModes.STAND_STILL, store.load()[0].runMode)
+
+        store.updateParty("p1", Party("p1", "trieu_van", runMode = RunModes.STAND_STILL))
+        assertEquals(RunModes.STAND_STILL, store.load()[0].runMode)
         store.save(emptyList())
     }
 }
