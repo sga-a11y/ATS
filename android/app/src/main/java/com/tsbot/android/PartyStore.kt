@@ -52,6 +52,13 @@ class PartyStore(private val context: Context) {
         save(load().filterNot { it.name == name })
     }
 
+    /** Sua ten/server cua 1 Party (giu nguyen danh sach account ben trong). oldName khac
+     * newParty.name khi nguoi dung doi ten Party. */
+    fun updateParty(oldName: String, newParty: Party) {
+        val updated = load().map { p -> if (p.name == oldName) newParty else p }
+        save(updated)
+    }
+
     fun addAccountToParty(partyName: String, account: Account) {
         val updated = load().map { p ->
             if (p.name == partyName) {
@@ -65,6 +72,17 @@ class PartyStore(private val context: Context) {
         val updated = load().map { p ->
             if (p.name == partyName) {
                 p.copy(accounts = p.accounts.filterNot { it.username == username })
+            } else p
+        }
+        save(updated)
+    }
+
+    /** Sua username/password cua 1 account trong Party. oldUsername khac newAccount.username
+     * khi nguoi dung doi ten dang nhap. */
+    fun updateAccountInParty(partyName: String, oldUsername: String, newAccount: Account) {
+        val updated = load().map { p ->
+            if (p.name == partyName) {
+                p.copy(accounts = p.accounts.map { if (it.username == oldUsername) newAccount else it })
             } else p
         }
         save(updated)

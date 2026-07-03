@@ -108,6 +108,10 @@ fun TsBotApp(
     var showAddPartyDialog by remember { mutableStateOf(false) }
     // Party dang mo dialog "them acc" (null = khong dialog nao dang mo)
     var addAccountForParty by remember { mutableStateOf<String?>(null) }
+    // Party dang duoc sua (ten/server) - null = khong sua party nao
+    var editingParty by remember { mutableStateOf<Party?>(null) }
+    // (ten party, account) dang duoc sua (user/pass) - null = khong sua acc nao
+    var editingAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
 
     val service = boundServiceProvider()
     val statusMap by (service?.status?.collectAsState() ?: remember { mutableStateOf(emptyMap()) })
@@ -140,6 +144,8 @@ fun TsBotApp(
                             party = party,
                             statusMap = statusMap,
                             onAddAccount = { addAccountForParty = party.name },
+                            onEditParty = { editingParty = party },
+                            onEditAccount = { account -> editingAccount = party.name to account },
                             onRemoveAccount = { username ->
                                 partyStore.removeAccountFromParty(party.name, username)
                                 refresh()
@@ -177,11 +183,44 @@ fun TsBotApp(
     val partyNameForAdd = addAccountForParty
     if (partyNameForAdd != null) {
         AddAccountDialog(
+            title = "Thêm tài khoản",
             onDismiss = { addAccountForParty = null },
             onSave = { account ->
                 partyStore.addAccountToParty(partyNameForAdd, account)
                 refresh()
                 addAccountForParty = null
+            },
+        )
+    }
+
+    val partyBeingEdited = editingParty
+    if (partyBeingEdited != null) {
+        AddPartyDialog(
+            title = "Sửa party",
+            initialName = partyBeingEdited.name,
+            initialServerKey = partyBeingEdited.serverKey,
+            onDismiss = { editingParty = null },
+            onSave = { edited ->
+                // Giu nguyen danh sach account, chi doi ten/server.
+                partyStore.updateParty(partyBeingEdited.name, edited.copy(accounts = partyBeingEdited.accounts))
+                refresh()
+                editingParty = null
+            },
+        )
+    }
+
+    val accountBeingEdited = editingAccount
+    if (accountBeingEdited != null) {
+        val (partyName, account) = accountBeingEdited
+        AddAccountDialog(
+            title = "Sửa tài khoản",
+            initialUsername = account.username,
+            initialPassword = account.password,
+            onDismiss = { editingAccount = null },
+            onSave = { edited ->
+                partyStore.updateAccountInParty(partyName, account.username, edited)
+                refresh()
+                editingAccount = null
             },
         )
     }
@@ -192,6 +231,8 @@ fun PartyCard(
     party: Party,
     statusMap: Map<String, AccountStatus>,
     onAddAccount: () -> Unit,
+    onEditParty: () -> Unit,
+    onEditAccount: (Account) -> Unit,
     onRemoveAccount: (String) -> Unit,
     onRemoveParty: () -> Unit,
     onStart: (Account) -> Unit,
@@ -209,6 +250,7 @@ fun PartyCard(
                 }
                 Row {
                     IconButton(onClick = onAddAccount) { Text("+") }
+                    IconButton(onClick = onEditParty) { Text("✎") }
                     IconButton(onClick = onRemoveParty) { Text("✕") }
                 }
             }
@@ -223,6 +265,7 @@ fun PartyCard(
                         status = statusMap[account.username] ?: AccountStatus(),
                         onStart = { onStart(account) },
                         onStop = { onStop(account.username) },
+                        onEdit = { onEditAccount(account) },
                         onDelete = { onRemoveAccount(account.username) },
                     )
                 }
@@ -237,6 +280,7 @@ fun AccountRow(
     status: AccountStatus,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -246,8 +290,9 @@ fun AccountRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(account.username, style = MaterialTheme.typography.bodyLarge)
-                IconButton(onClick = onDelete) {
-                    Text("✕")
+                Row {
+                    IconButton(onClick = onEdit) { Text("✎") }
+                    IconButton(onClick = onDelete) { Text("✕") }
                 }
             }
 
@@ -273,14 +318,17 @@ fun AccountRow(
 fun AddPartyDialog(
     onDismiss: () -> Unit,
     onSave: (Party) -> Unit,
+    title: String = "Tạo party",
+    initialName: String = "",
+    initialServerKey: String = Servers.ALL.keys.first(),
 ) {
-    var name by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
-    var selectedKey by remember { mutableStateOf(Servers.ALL.keys.first()) }
+    var selectedKey by remember { mutableStateOf(initialServerKey) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Tạo party") },
+        title = { Text(title) },
         text = {
             Column {
                 OutlinedTextField(
@@ -342,13 +390,16 @@ fun AddPartyDialog(
 fun AddAccountDialog(
     onDismiss: () -> Unit,
     onSave: (Account) -> Unit,
+    title: String = "Thêm tài khoản",
+    initialUsername: String = "",
+    initialPassword: String = "",
 ) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(initialUsername) }
+    var password by remember { mutableStateOf(initialPassword) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Thêm tài khoản") },
+        title = { Text(title) },
         text = {
             Column {
                 OutlinedTextField(
