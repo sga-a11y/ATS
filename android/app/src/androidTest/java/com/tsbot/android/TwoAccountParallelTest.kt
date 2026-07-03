@@ -56,13 +56,13 @@ class TwoAccountParallelTest {
         val acc1 = Account(
             testAssets!!.getJSONObject("acc1").getString("username"),
             testAssets.getJSONObject("acc1").getString("password"),
-            testAssets.getJSONObject("acc1").getString("server_key")
         )
+        val acc1ServerKey = testAssets.getJSONObject("acc1").getString("server_key")
         val acc2 = Account(
             testAssets.getJSONObject("acc2").getString("username"),
             testAssets.getJSONObject("acc2").getString("password"),
-            testAssets.getJSONObject("acc2").getString("server_key")
         )
+        val acc2ServerKey = testAssets.getJSONObject("acc2").getString("server_key")
 
         val targetCtx = InstrumentationRegistry.getInstrumentation().targetContext
         val latch = CountDownLatch(1)
@@ -77,8 +77,8 @@ class TwoAccountParallelTest {
         targetCtx.bindService(Intent(targetCtx, BotForegroundService::class.java), conn, Context.BIND_AUTO_CREATE)
         assertTrue("Service khong bind duoc trong 10s", latch.await(10, TimeUnit.SECONDS))
 
-        val info1 = Servers.ALL[acc1.serverKey]!!
-        val info2 = Servers.ALL[acc2.serverKey]!!
+        val info1 = Servers.ALL[acc1ServerKey]!!
+        val info2 = Servers.ALL[acc2ServerKey]!!
         try {
             svc!!.startAccount(acc1, info1.ip, info1.serverId)
             svc!!.startAccount(acc2, info2.ip, info2.serverId)

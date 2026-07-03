@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
                 Surface {
                     TsBotApp(
                         boundServiceProvider = { boundService },
-                        accountStore = AccountStore(this),
+                        partyStore = PartyStore(this),
                     )
                 }
             }
@@ -102,16 +102,18 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TsBotApp(
     boundServiceProvider: () -> BotForegroundService?,
-    accountStore: AccountStore,
+    partyStore: PartyStore,
 ) {
-    var accounts by remember { mutableStateOf(accountStore.load()) }
-    var showAddDialog by remember { mutableStateOf(false) }
+    var parties by remember { mutableStateOf(partyStore.load()) }
+    var showAddPartyDialog by remember { mutableStateOf(false) }
+    // Party dang mo dialog "them acc" (null = khong dialog nao dang mo)
+    var addAccountForParty by remember { mutableStateOf<String?>(null) }
 
     val service = boundServiceProvider()
     val statusMap by (service?.status?.collectAsState() ?: remember { mutableStateOf(emptyMap()) })
 
     fun refresh() {
-        accounts = accountStore.load()
+        parties = partyStore.load()
     }
 
     Scaffold(
@@ -119,35 +121,40 @@ fun TsBotApp(
             TopAppBar(title = { Text("TS Bot") })
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
+            FloatingActionButton(onClick = { showAddPartyDialog = true }) {
                 Text("+")
             }
         },
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize().padding(12.dp)) {
-            if (accounts.isEmpty()) {
-                Text("Chưa có tài khoản nào")
+            if (parties.isEmpty()) {
+                Text("Chưa có party nào")
                 Spacer(Modifier.height(12.dp))
-                Button(onClick = { showAddDialog = true }) {
-                    Text("Thêm tài khoản")
+                Button(onClick = { showAddPartyDialog = true }) {
+                    Text("Tạo party")
                 }
             } else {
                 LazyColumn {
-                    items(accounts, key = { it.username }) { account ->
-                        AccountRow(
-                            account = account,
-                            status = statusMap[account.username] ?: AccountStatus(),
-                            onStart = {
-                                val info = Servers.ALL[account.serverKey]
+                    items(parties, key = { it.name }) { party ->
+                        PartyCard(
+                            party = party,
+                            statusMap = statusMap,
+                            onAddAccount = { addAccountForParty = party.name },
+                            onRemoveAccount = { username ->
+                                partyStore.removeAccountFromParty(party.name, username)
+                                refresh()
+                            },
+                            onRemoveParty = {
+                                partyStore.removeParty(party.name)
+                                refresh()
+                            },
+                            onStart = { account ->
+                                val info = Servers.ALL[party.serverKey]
                                 if (info != null) {
                                     service?.startAccount(account, info.ip, info.serverId)
                                 }
                             },
-                            onStop = { service?.stopAccount(account.username) },
-                            onDelete = {
-                                accountStore.remove(account.username)
-                                refresh()
-                            },
+                            onStop = { username -> service?.stopAccount(username) },
                         )
                         Spacer(Modifier.height(8.dp))
                     }
@@ -156,15 +163,71 @@ fun TsBotApp(
         }
     }
 
-    if (showAddDialog) {
-        AddAccountDialog(
-            onDismiss = { showAddDialog = false },
-            onSave = { account ->
-                accountStore.add(account)
+    if (showAddPartyDialog) {
+        AddPartyDialog(
+            onDismiss = { showAddPartyDialog = false },
+            onSave = { party ->
+                partyStore.addParty(party)
                 refresh()
-                showAddDialog = false
+                showAddPartyDialog = false
             },
         )
+    }
+
+    val partyNameForAdd = addAccountForParty
+    if (partyNameForAdd != null) {
+        AddAccountDialog(
+            onDismiss = { addAccountForParty = null },
+            onSave = { account ->
+                partyStore.addAccountToParty(partyNameForAdd, account)
+                refresh()
+                addAccountForParty = null
+            },
+        )
+    }
+}
+
+@Composable
+fun PartyCard(
+    party: Party,
+    statusMap: Map<String, AccountStatus>,
+    onAddAccount: () -> Unit,
+    onRemoveAccount: (String) -> Unit,
+    onRemoveParty: () -> Unit,
+    onStart: (Account) -> Unit,
+    onStop: (String) -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(party.name, style = MaterialTheme.typography.titleMedium)
+                    Text(Servers.ALL[party.serverKey]?.label ?: party.serverKey)
+                }
+                Row {
+                    IconButton(onClick = onAddAccount) { Text("+") }
+                    IconButton(onClick = onRemoveParty) { Text("✕") }
+                }
+            }
+
+            if (party.accounts.isEmpty()) {
+                Text("Chưa có tài khoản - bấm + để thêm")
+            } else {
+                party.accounts.forEach { account ->
+                    Spacer(Modifier.height(6.dp))
+                    AccountRow(
+                        account = account,
+                        status = statusMap[account.username] ?: AccountStatus(),
+                        onStart = { onStart(account) },
+                        onStop = { onStop(account.username) },
+                        onDelete = { onRemoveAccount(account.username) },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -182,10 +245,7 @@ fun AccountRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Column {
-                    Text(account.username, style = MaterialTheme.typography.titleMedium)
-                    Text(Servers.ALL[account.serverKey]?.label ?: account.serverKey)
-                }
+                Text(account.username, style = MaterialTheme.typography.bodyLarge)
                 IconButton(onClick = onDelete) {
                     Text("✕")
                 }
@@ -210,34 +270,24 @@ fun AccountRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddAccountDialog(
+fun AddPartyDialog(
     onDismiss: () -> Unit,
-    onSave: (Account) -> Unit,
+    onSave: (Party) -> Unit,
 ) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
     var selectedKey by remember { mutableStateOf(Servers.ALL.keys.first()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Thêm tài khoản") },
+        title = { Text("Tạo party") },
         text = {
             Column {
                 OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Tài khoản") },
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Tên party") },
                     singleLine = true,
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Mật khẩu") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 )
                 Spacer(Modifier.height(8.dp))
                 ExposedDropdownMenuBox(
@@ -274,8 +324,55 @@ fun AddAccountDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    if (name.isNotBlank()) {
+                        onSave(Party(name, selectedKey))
+                    }
+                },
+            ) {
+                Text("Lưu")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Hủy") }
+        },
+    )
+}
+
+@Composable
+fun AddAccountDialog(
+    onDismiss: () -> Unit,
+    onSave: (Account) -> Unit,
+) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Thêm tài khoản") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Tài khoản") },
+                    singleLine = true,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Mật khẩu") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
                     if (username.isNotBlank() && password.isNotBlank()) {
-                        onSave(Account(username, password, selectedKey))
+                        onSave(Account(username, password))
                     }
                 },
             ) {
