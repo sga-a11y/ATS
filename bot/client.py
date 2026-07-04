@@ -494,6 +494,7 @@ class GameClient:
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
         self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
+        self.current_channel = None  # kenh dang o (set khi switch_channel; None = chua biet/mac dinh)
         self._chan_event = threading.Event()
         self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
         self._deliberate_close = False  # True khi CHINH TA dong socket (close/relogin) -> OSError ko phai rot
@@ -2420,8 +2421,10 @@ class GameClient:
                 if rec[1] <= 0:
                     self.bag_slots.pop(slot, None)
             total += 1
+            _jname = ((_load_gamedata_items().get(tid) or {}).get("name")
+                      or (getattr(config, "JUNK_PET_SCROLLS", {}) or {}).get(hex(tid), ""))
             log.info("[%s] phan giai cuon rac slot=%d tid=0x%04x ('%s')",
-                     self._label, slot, tid, junk.get(hex(tid), junk.get(str(tid), "")))
+                     self._label, slot, tid, _jname)
             time.sleep(0.25)
         if total:
             log.info("[%s] Phan giai cuon rac: tong %d cuon -> nhan xu", self._label, total)
@@ -2777,6 +2780,7 @@ class GameClient:
     def switch_channel(self, channel: int):
         """Chuyen sang sub-channel (vd Di Gioi dong nguoi). C2S 0x07 = 02 00 [ch LE]."""
         self.send(0x07, b"\x02\x00" + struct.pack("<H", channel))
+        self.current_channel = channel   # nho kenh dang o (de UI hien thi)
         log.info("[%s] Chuyen kenh -> %d", self._label, channel)
 
     def _on_channel_list(self, pkt: bytes):

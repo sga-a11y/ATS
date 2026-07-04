@@ -33,6 +33,7 @@ SERVERS = {
     "dai_kieu":      ("Đại Kiều",      "103.190.202.45", 11),
     "manh_hoach":    ("Mạnh Hoạch",    "103.190.202.46", 12),
     "hoang_trung":   ("Hoàng Trung",   "103.190.202.47", 13),
+    "ma_sieu":       ("Mã Siêu",       "103.190.202.48", 14),
 }
 
 

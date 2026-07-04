@@ -38,12 +38,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -165,6 +170,17 @@ fun TsBotApp(
                             onStop = { username -> service?.stopAccount(username) },
                             onStartParty = { party.accounts.forEach { startAccountIn(party, it) } },
                             onStopParty = { party.accounts.forEach { service?.stopAccount(it.username) } },
+                            onSendChannel = { ch -> service?.sendChannel(party.accounts.map { it.username }, ch) },
+                            onSendChannelAuto = { service?.sendChannelAuto(party.accounts.map { it.username }) },
+                            onSendCity = { id, flag -> service?.sendCity(party.accounts.map { it.username }, id, flag) },
+                            onGetChannels = {
+                                party.accounts.firstOrNull { service?.isRunning(it.username) == true }
+                                    ?.let { service?.getChannels(it.username) } ?: emptyList()
+                            },
+                            onCurrentChannel = {
+                                party.accounts.firstOrNull { service?.isRunning(it.username) == true }
+                                    ?.let { service?.currentChannel(it.username) }
+                            },
                         )
                         Spacer(Modifier.height(8.dp))
                     }
@@ -232,6 +248,7 @@ fun TsBotApp(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PartyCard(
     party: Party,
@@ -245,6 +262,11 @@ fun PartyCard(
     onStop: (String) -> Unit,
     onStartParty: () -> Unit,
     onStopParty: () -> Unit,
+    onSendChannel: (Int) -> Unit,
+    onSendChannelAuto: () -> Unit,
+    onSendCity: (Int, Int) -> Unit,
+    onGetChannels: () -> List<Triple<Int, Int, Int>>,
+    onCurrentChannel: () -> Int?,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -257,7 +279,7 @@ fun PartyCard(
                     Text(Servers.ALL[party.serverKey]?.label ?: party.serverKey)
                 }
                 Row {
-                    IconButton(onClick = onAddAccount) { Text("+") }
+                    IconButton(onClick = onAddAccount, enabled = party.accounts.size < 5) { Text("+") }
                     IconButton(onClick = onEditParty) { Text("✎") }
                     IconButton(onClick = onRemoveParty) { Text("✕") }
                 }
@@ -267,6 +289,38 @@ fun PartyCard(
                 TextButton(onClick = onStartParty, enabled = party.accounts.isNotEmpty()) { Text("Start party") }
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = onStopParty, enabled = party.accounts.isNotEmpty()) { Text("Stop party") }
+            }
+
+            // ==== DIEU KHIEN LIVE (giong PC): kenh hien tai + doi kenh (list+so nguoi) + doi thanh ====
+            var curChannel by remember { mutableStateOf<Int?>(null) }
+            var showChannelDialog by remember { mutableStateOf(false) }
+            var showCityDialog by remember { mutableStateOf(false) }
+            // poll kenh hien tai moi 5s (chi khi party co acc)
+            LaunchedEffect(party.accounts.firstOrNull()?.username) {
+                while (party.accounts.isNotEmpty()) {
+                    curChannel = withContext(Dispatchers.IO) { onCurrentChannel() }
+                    delay(5000)
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Kênh hiện tại: ${curChannel?.toString() ?: "?"}")
+                Spacer(Modifier.width(12.dp))
+                TextButton(onClick = { showChannelDialog = true }) { Text("Đổi kênh") }
+                TextButton(onClick = { showCityDialog = true }) { Text("Đổi thành") }
+            }
+            if (showChannelDialog) {
+                ChannelDialog(
+                    onDismiss = { showChannelDialog = false },
+                    onGetChannels = onGetChannels,
+                    onPick = { ch -> onSendChannel(ch); curChannel = ch; showChannelDialog = false },
+                    onAuto = { onSendChannelAuto(); showChannelDialog = false },
+                )
+            }
+            if (showCityDialog) {
+                CityDialog(
+                    onDismiss = { showCityDialog = false },
+                    onPick = { info -> onSendCity(info.cityId, info.flag); showCityDialog = false },
+                )
             }
 
             if (party.accounts.isEmpty()) {
@@ -415,31 +469,35 @@ fun AddPartyDialog(
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                ExposedDropdownMenuBox(
-                    expanded = cityExpanded,
-                    onExpandedChange = { cityExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = Cities.ALL[selectedCity]?.label ?: selectedCity,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Thành") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cityExpanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor(),
-                    )
-                    DropdownMenu(
+                // Chon thanh CHI can khi mode = ve thanh dung yen. Mode "login o dau dung yen do"
+                // (STAY_LOGIN) khong teleport nen an ô chon thanh cho khoi roi.
+                if (selectedMode != RunModes.STAY_LOGIN) {
+                    Spacer(Modifier.height(8.dp))
+                    ExposedDropdownMenuBox(
                         expanded = cityExpanded,
-                        onDismissRequest = { cityExpanded = false },
+                        onExpandedChange = { cityExpanded = it },
                     ) {
-                        Cities.ALL.forEach { (key, info) ->
-                            DropdownMenuItem(
-                                text = { Text(info.label) },
-                                onClick = {
-                                    selectedCity = key
-                                    cityExpanded = false
-                                },
-                            )
+                        OutlinedTextField(
+                            value = Cities.ALL[selectedCity]?.label ?: selectedCity,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Thành") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cityExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        )
+                        DropdownMenu(
+                            expanded = cityExpanded,
+                            onDismissRequest = { cityExpanded = false },
+                        ) {
+                            Cities.ALL.forEach { (key, info) ->
+                                DropdownMenuItem(
+                                    text = { Text(info.label) },
+                                    onClick = {
+                                        selectedCity = key
+                                        cityExpanded = false
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -509,5 +567,65 @@ fun AddAccountDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Hủy") }
         },
+    )
+}
+
+@Composable
+fun ChannelDialog(
+    onDismiss: () -> Unit,
+    onGetChannels: () -> List<Triple<Int, Int, Int>>,
+    onPick: (Int) -> Unit,
+    onAuto: () -> Unit,
+) {
+    var loading by remember { mutableStateOf(true) }
+    var channels by remember { mutableStateOf<List<Triple<Int, Int, Int>>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        channels = withContext(Dispatchers.IO) { onGetChannels() }
+        loading = false
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Đổi kênh") },
+        text = {
+            Column {
+                TextButton(onClick = onAuto) { Text("⭐ Tự chọn kênh vắng nhất") }
+                Spacer(Modifier.height(4.dp))
+                when {
+                    loading -> Text("Đang lấy danh sách kênh...")
+                    channels.isEmpty() -> Text("Không lấy được danh sách kênh (account chưa chạy?)")
+                    else -> LazyColumn(modifier = Modifier.height(320.dp)) {
+                        items(channels) { (ch, cur, cap) ->
+                            TextButton(
+                                onClick = { onPick(ch) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Kênh $ch   —   $cur/$cap người") }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
+    )
+}
+
+@Composable
+fun CityDialog(
+    onDismiss: () -> Unit,
+    onPick: (Cities.Info) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Đổi thành (teleport)") },
+        text = {
+            LazyColumn(modifier = Modifier.height(380.dp)) {
+                items(Cities.ALL.values.toList()) { info ->
+                    TextButton(
+                        onClick = { onPick(info) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(info.label) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
     )
 }

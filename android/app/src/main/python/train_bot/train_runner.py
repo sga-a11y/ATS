@@ -25,27 +25,82 @@ from . import config
 from . import login as login_mod
 from .client import GameClient
 
-# Chi 1 che do duy nhat hien tai: DUNG YEN TAI THANH (khong tu di chuyen sau khi ve
-# thanh). Ban dau tung dung 1 danh sach toa do CO DINH de "wander" ngau nhien, nhung
-# toa do do KHONG biet ban do nao co tuong/chuong ngai gi - dung tren MOI map se
-# khien nhan vat di xuyen tuong/ket ket (user phat hien qua test thuc te tren app
-# that). Cac che do "tu dong di lang thang theo map" that su can du lieu toa do di
-# chuyen duoc theo TUNG map (nhu bot/config.py's train_maps.json/train_routes.json
-# ben PC) - CHUA port sang Android, de danh cho ban sau. Gio chi ho tro ve 1 thanh
-# CO THAT (nguoi dung chon, xem config.CITIES) roi dung yen tai do cho AN TOAN.
+# HAI che do hien tai:
+#  - STAND_STILL ("ve thanh dung yen"): ve 1 thanh CO THAT (nguoi dung chon, xem
+#    config.CITIES) roi dung yen tai do cho AN TOAN.
+#  - STAY_LOGIN ("login o dau dung yen do"): KHONG teleport ve thanh - dung nguyen
+#    tai vi tri luc login (mirror START_CITY_ID = 0 ben PC). Van tu danh khi vao tran,
+#    van doi kenh duoc. Dung khi nick da o san 1 cho an toan, khong muon bi keo ve thanh.
+# Ban dau tung dung 1 danh sach toa do CO DINH de "wander" ngau nhien, nhung toa do do
+# KHONG biet ban do nao co tuong/chuong ngai gi - dung tren MOI map se khien nhan vat di
+# xuyen tuong/ket ket. Cac che do "tu dong di lang thang theo map" that su can du lieu
+# toa do di chuyen duoc theo TUNG map (train_maps.json/train_routes.json ben PC) - CHUA
+# port sang Android, de danh cho ban sau.
 RUN_MODE_STAND_STILL = "stand_still"
+RUN_MODE_STAY_LOGIN = "stay_login"
+
+# CLIENT dang chay theo username -> de UI (Kotlin) query kenh / doc kenh hien tai truc tiep.
+_clients = {}
+
+
+def get_channels(username):
+    """Kotlin goi (background thread): query danh sach kenh tu client dang chay (~3s).
+    Tra dict {"channels": [[ch, cur, cap], ...] sap xep theo ch, "current": int|None}
+    hoac None neu account chua chay/khong lay duoc. request_channel_list gui 0x07 + cho
+    S2C 0x07 (client._chan_event)."""
+    c = _clients.get(username)
+    if c is None or not getattr(c, "running", False):
+        return None
+    try:
+        c.request_channel_list()
+        c._chan_event.wait(3.0)
+        chans = sorted([int(ch), int(cur), int(cap)]
+                       for ch, (cur, cap) in c.channels.items())
+        return {"channels": chans, "current": c.current_channel}
+    except Exception:
+        return None
+
+
+def current_channel(username):
+    """Kotlin goi: kenh dang o cua account (None neu chua switch/chua chay)."""
+    c = _clients.get(username)
+    return c.current_channel if c is not None else None
+
+
+def _apply_cmd(c, cmd, on_status):
+    """Thuc thi 1 lenh LIVE tu UI (mirror _do_manual_cmd ben PC). cmd = list/tuple
+    ["channel", ch] | ["channel_auto"] | ["city", city_id, flag]. Loi thi bao qua status,
+    KHONG nem ra ngoai (giu vong lap song)."""
+    try:
+        kind = str(cmd[0])
+        if kind == "channel":
+            ch = int(cmd[1])
+            c.switch_channel(ch)
+            on_status.call("running", None, None, None, None, f"Da doi kenh -> {ch}")
+        elif kind == "channel_auto":
+            ch = c.pick_best_channel()
+            on_status.call("running", None, None, None, None, f"Tu chon kenh -> {ch}")
+        elif kind == "city":
+            cid, flag = int(cmd[1]), int(cmd[2])
+            ok = c.go_to_town(cid, flag)
+            on_status.call("running", None, None, None, None,
+                           f"Teleport thanh {cid}" + ("" if ok else " (chua ve duoc - co the dang ket tran)"))
+    except Exception as e:
+        on_status.call("running", None, None, None, None, f"Loi thuc thi lenh: {e}")
 
 
 def run_train(username: str, password: str, server_ip: str, server_id: int,
-              run_mode: str, city_key: str, should_stop, on_status):
+              run_mode: str, city_key: str, should_stop, on_status, get_cmd=None):
     """Chay den khi should_stop() tra True hoac loi khong the phuc hoi.
     on_status(state: str, hp, sp, hp_max, sp_max, message: str) goi moi khi trang
     thai doi (state: "connecting"|"running"|"error"|"stopped").
-    run_mode: hien chi ho tro RUN_MODE_STAND_STILL - cac gia tri khac cung bi coi
-    nhu dung yen (khong wander) de tranh hanh vi sai.
-    city_key: key trong config.CITIES (vd "trac_quan") - thanh se ve va dung yen.
-    Neu khong hop le hoac go_to_town that bai, van tiep tuc treo cay tai vi tri
-    hien tai (KHONG return loi) - chi bao qua on_status de nguoi dung biet."""
+    run_mode:
+      - RUN_MODE_STAND_STILL: ve thanh (city_key) roi dung yen.
+      - RUN_MODE_STAY_LOGIN: KHONG ve thanh - dung nguyen tai cho login (mirror
+        START_CITY_ID=0 ben PC). Van tu danh + doi kenh duoc.
+    city_key: key trong config.CITIES (vd "trac_quan") - chi dung o mode STAND_STILL.
+    Neu go_to_town that bai, van tiep tuc treo cay tai vi tri hien tai (KHONG return
+    loi) - chi bao qua on_status de nguoi dung biet."""
     on_status.call("connecting", None, None, None, None, "Dang dang nhap...")
     try:
         cred = login_mod.login(username, password)
@@ -58,6 +113,7 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
                         server_id=server_id)
         c._label = username
         c.connect()
+        _clients[username] = c   # de UI query kenh / doc kenh hien tai
     except Exception as e:
         on_status.call("error", None, None, None, None, f"Ket noi loi: {e}")
         return
@@ -69,23 +125,35 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
     # tai vi tri hien tai, chi ghi canh bao vao message cua trang thai "running" ben
     # duoi (tranh phat 1 trang thai "error" thoang qua roi bi de ngay, mat thong tin).
     warning = ""
-    city_info = config.CITIES.get(city_key)
-    if city_info is not None:
-        city_id, flag = city_info
-        on_status.call("connecting", None, None, None, None, "Dang ve thanh...")
-        try:
-            ok = c.go_to_town(city_id, flag)
-            if not ok and c.running:
-                warning = "(Chua ve duoc thanh - co the dang ket tran, van treo cay tai vi tri hien tai)"
-        except Exception as e:
-            warning = f"(Loi ve thanh: {e} - van treo cay tai vi tri hien tai)"
+    if run_mode == RUN_MODE_STAY_LOGIN:
+        # "login o dau dung yen do" -> KHONG teleport ve thanh (mirror START_CITY_ID=0 PC).
+        warning = "(che do LOGIN O DAU DUNG YEN DO - khong ve thanh)"
     else:
-        warning = f"(Khong tim thay thanh '{city_key}' - dung yen tai vi tri hien tai)"
+        city_info = config.CITIES.get(city_key)
+        if city_info is not None:
+            city_id, flag = city_info
+            on_status.call("connecting", None, None, None, None, "Dang ve thanh...")
+            try:
+                ok = c.go_to_town(city_id, flag)
+                if not ok and c.running:
+                    warning = "(Chua ve duoc thanh - co the dang ket tran, van treo cay tai vi tri hien tai)"
+            except Exception as e:
+                warning = f"(Loi ve thanh: {e} - van treo cay tai vi tri hien tai)"
+        else:
+            warning = f"(Khong tim thay thanh '{city_key}' - dung yen tai vi tri hien tai)"
 
     on_status.call("running", None, None, None, None, f"Da vao game, dang treo cay (dung yen) {warning}".strip())
 
     while c.running and not should_stop.call():
         time.sleep(3)   # 3s giua moi lan cap nhat trang thai UI - du nhanh, khong spam callback
+        # LENH LIVE tu UI (doi kenh / teleport thanh) - poll moi vong, giong cmd_gen ben PC
+        if get_cmd is not None:
+            try:
+                cmd = get_cmd.call()
+            except Exception:
+                cmd = None
+            if cmd is not None:
+                _apply_cmd(c, cmd, on_status)
         try:
             ch = c.state.char
             if ch is not None:
@@ -97,6 +165,7 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
             on_status.call("error", None, None, None, None, f"Loi doc trang thai: {e}")
             break
 
+    _clients.pop(username, None)
     c.close()
     on_status.call("stopped", None, None, None, None, "Da dung")
 

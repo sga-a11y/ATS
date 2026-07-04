@@ -69,13 +69,18 @@ class PartyStore(private val context: Context) {
         save(updated)
     }
 
-    fun addAccountToParty(partyName: String, account: Account) {
+    /** Them/sua acc. Tra false neu party da du 5 acc va day la acc MOI (gioi han 5 acc/party). */
+    fun addAccountToParty(partyName: String, account: Account): Boolean {
+        val party = load().find { it.name == partyName } ?: return false
+        val exists = party.accounts.any { it.username == account.username }
+        if (!exists && party.accounts.size >= 5) return false   // GIOI HAN 5 acc / party
         val updated = load().map { p ->
             if (p.name == partyName) {
                 p.copy(accounts = p.accounts.filterNot { it.username == account.username } + account)
             } else p
         }
         save(updated)
+        return true
     }
 
     fun removeAccountFromParty(partyName: String, username: String) {

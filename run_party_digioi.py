@@ -280,8 +280,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))       # stand map co safe -> ra safe
             # stand map la / khong co safe -> lam dailies tai cho (ke me)
             c.claim_daily_quests()
-        elif is_reconnect and train_on_map and login_map == sc and tm and tm.get("safe"):
-            c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))   # reconnect + dang o bai -> ra safe cho keo
+        elif is_reconnect and train_on_map and tm and tm.get("safe"):
+            if login_map == sc:
+                c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))   # reconnect + dang o bai -> ra safe cho keo
+            else:
+                # RECONNECT nhung login lai o MAP KHAC train map: truoc khi rot member da teleport di
+                # lam daily dungeon (vd thanh 20001) -> login = vi tri logout = van o do. KHONG duoc
+                # coi la "sai map -> THOAT" (bug lam mat member ca party): train map = start city (sc)
+                # nen teleport VE lai sc roi ra safe de reform/keo. Neu leader cung dang rot
+                # (has_leader tam False) thi day la duong DUY NHAT tranh member THOAT oan.
+                log.info("[%s] (%s) RECONNECT o map %s != train map %s -> teleport ve train map roi ra safe",
+                         label, role, login_map, sc)
+                try: c.go_to_town(sc, city_flag)
+                except Exception as e:
+                    log.warning("[%s] reconnect: teleport ve train map %s loi: %s", label, sc, e)
+                for _ in range(15):                     # cho map cap nhat sau teleport
+                    if c.current_map == sc or not c.running: break
+                    time.sleep(1)
+                if c.current_map == sc:
+                    login_map = sc                       # -> self_map_ok=True ben duoi, khong THOAT
+                    c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))
 
         # BARRIER login-dailies (mode KHAC digioi): CHO CA PARTY xong daily quest (world boss cham
         # + teleport ve Trac Quan) TRUOC khi sync kenh + lap party. Tranh leader sync kenh/moi khi
@@ -493,10 +511,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if is_leader:
                 if not self_map_ok and not c.running:
                     # LEADER MAT KET NOI (vd disconnect giua route) -> KHONG phai "sai map".
+                    # Neu SERVER ROT (server_closed) -> supervisor SE reconnect leader -> KHONG set
+                    # leader_bad (set = giet het member ngay); member CHO trong vong 150s ben duoi,
+                    # leader reconnect + route lai + set leader_ok -> member tiep tuc. Chi set
+                    # leader_bad khi KHONG reconnectable (bo cuoc that su).
+                    _srv_drop = getattr(c, "server_closed", False)
                     _reason("leader MAT KET NOI khi dang route toi train map (map cuoi %s)" % c.current_map)
-                    log.warning("[%s] (LEADER) MAT KET NOI khi dang di chuyen toi train map %s "
-                                "-> ca party thoat.", label, sc)
-                    st["leader_bad"].set()
+                    log.warning("[%s] (LEADER) MAT KET NOI khi route toi train map %s -> %s",
+                                label, sc, "supervisor reconnect, member CHO" if _srv_drop else "ca party thoat")
+                    if not _srv_drop:
+                        st["leader_bad"].set()
                     try: c.close()
                     except Exception: pass
                     if c in _clients: _clients.remove(c)

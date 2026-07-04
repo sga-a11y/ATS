@@ -35,6 +35,10 @@ class BotForegroundService : Service() {
     // trong vong lap train_runner).
     private val runningThreads = ConcurrentHashMap<String, Thread>()
     private val stopFlags = ConcurrentHashMap<String, Boolean>()
+    // LENH LIVE cho tung account (doi kenh / teleport thanh) - UI ghi qua sendCommand(),
+    // account-thread doc + xoa qua getCmd.call() (mirror cmd_gen ben PC). ConcurrentHashMap vi
+    // ghi tu UI thread + doc/remove tu N account-thread.
+    private val pendingCmd = ConcurrentHashMap<String, Array<Any>>()
 
     private val _status = MutableStateFlow<Map<String, AccountStatus>>(emptyMap())
     val status: StateFlow<Map<String, AccountStatus>> = _status
@@ -93,9 +97,13 @@ class BotForegroundService : Service() {
                         }
                     }
                 })
+                val getCmd = PyObject.fromJava(object {
+                    // tra lenh dang cho (roi XOA - moi lenh chi thuc thi 1 lan) hoac null
+                    fun call(): Array<Any>? = pendingCmd.remove(account.username)
+                })
                 module.callAttr(
                     "run_train", account.username, account.password, serverIp, serverId,
-                    runMode, cityKey, shouldStop, onStatus,
+                    runMode, cityKey, shouldStop, onStatus, getCmd,
                 )
             } catch (e: Exception) {
                 _status.update {
@@ -104,6 +112,7 @@ class BotForegroundService : Service() {
             } finally {
                 runningThreads.remove(account.username)
                 stopFlags.remove(account.username)
+                pendingCmd.remove(account.username)
             }
         }
         if (runningThreads.putIfAbsent(account.username, thread) != null) return
@@ -117,6 +126,44 @@ class BotForegroundService : Service() {
     fun stopAll() {
         runningThreads.keys.toList().forEach { stopFlags[it] = true }
     }
+
+    /** Gui lenh LIVE (doi kenh / teleport thanh) cho cac account CHI DINH (dang chay) - giong
+     * lenh thu cong per-party ben PC. cmd: ["channel", ch] | ["channel_auto"] | ["city", id, flag]. */
+    fun sendCommand(usernames: List<String>, cmd: Array<Any>) {
+        usernames.forEach { if (runningThreads.containsKey(it)) pendingCmd[it] = cmd }
+    }
+
+    fun sendChannel(usernames: List<String>, ch: Int) = sendCommand(usernames, arrayOf<Any>("channel", ch))
+    fun sendChannelAuto(usernames: List<String>) = sendCommand(usernames, arrayOf<Any>("channel_auto"))
+    fun sendCity(usernames: List<String>, cityId: Int, flag: Int) = sendCommand(usernames, arrayOf<Any>("city", cityId, flag))
+
+    /** Query danh sach kenh (BLOCKING ~3s - goi tu background thread/coroutine, KHONG main thread).
+     * Tra list [channel, so_nguoi, suc_chua] sap xep theo channel; rong neu khong lay duoc. */
+    fun getChannels(username: String): List<Triple<Int, Int, Int>> {
+        return try {
+            val res = Python.getInstance().getModule("train_bot.train_runner")
+                .callAttr("get_channels", username) ?: return emptyList()
+            val chans = res.callAttr("get", "channels") ?: return emptyList()
+            chans.asList().map {
+                val r = it.asList()
+                Triple(r[0].toInt(), r[1].toInt(), r[2].toInt())
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Kenh dang o cua 1 account (null neu chua switch / chua chay). */
+    fun currentChannel(username: String): Int? {
+        return try {
+            Python.getInstance().getModule("train_bot.train_runner")
+                .callAttr("current_channel", username)?.toInt()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun isRunning(username: String): Boolean = runningThreads.containsKey(username)
 
     override fun onDestroy() {
         stopAll()
