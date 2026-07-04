@@ -165,7 +165,11 @@ def _pstate(pidx):
     return _party_state[pidx]
 
 
-def run_account(username, password, pidx, is_leader, is_picker=False):
+def run_account(username, password, pidx, is_leader, is_picker=False, is_reconnect=False):
+    # is_reconnect=True (supervisor goi lai sau khi rot): RECONNECT NHE - bo qua daily/gacha/mail/
+    # vantieu (da lam phien truoc) -> vao world la di THANG toi sync kenh + gom party + keo ra bai,
+    # KHONG teleport ve Trac Quan lam daily (truoc day: reconnect chay full startup -> lech nhip leader
+    # -> ve thanh khong duoc keo -> "SAI MAP -> THOAT" chet luon).
     label = username
     role = "LEADER" if is_leader else "member"
     has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None
@@ -230,15 +234,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # khong danh lung tung; chi tat flee khi da vao diem train.
         if config.TRAIN_MAPS.get(getattr(config, "START_CITY_ID", 0)) is not None:
             c.flee_mode = True
-        c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
-        c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
-        c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
-        c.claim_14day_gift()    # qua 14 ngay user moi (0x57)
-        c.claim_event_14day()   # event tang qua 14 ngay (0x7c) - khac cai tren
-        c.claim_legion_gift()   # nhan qua quan doan hang ngay
-        c.claim_friend_gifts()  # tang qua tat ca ban + nhan qua ban tang (hang ngay)
-        c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu
-        next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
+        next_vantieu = None
+        if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
+            c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
+            c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
+            c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
+            c.claim_14day_gift()    # qua 14 ngay user moi (0x57)
+            c.claim_event_14day()   # event tang qua 14 ngay (0x7c) - khac cai tren
+            c.claim_legion_gift()   # nhan qua quan doan hang ngay
+            c.claim_friend_gifts()  # tang qua tat ca ban + nhan qua ban tang (hang ngay)
+            c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu
+            next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
@@ -260,7 +266,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
         # NHIEM VU BINGO (mode KHAC digioi): VE CHO AN TOAN TRUOC roi moi lam dailies (tranh dung
         # giua o quai lam dailies; world boss tu teleport di roi ve Trac Quan; mode positioning ben
         # duoi se dua ve dung cho). Mode DIGIOI lam rieng (vao DG truoc - xem nhanh ben duoi).
-        if not is_digioi and do_daily:
+        if not is_digioi and do_daily and not is_reconnect:
             if mode == "city":
                 try: c.go_to_town(sc, city_flag)                       # ve thanh config
                 except Exception: pass
@@ -274,12 +280,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False):
                 c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))       # stand map co safe -> ra safe
             # stand map la / khong co safe -> lam dailies tai cho (ke me)
             c.claim_daily_quests()
+        elif is_reconnect and train_on_map and login_map == sc and tm and tm.get("safe"):
+            c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))   # reconnect + dang o bai -> ra safe cho keo
 
         # BARRIER login-dailies (mode KHAC digioi): CHO CA PARTY xong daily quest (world boss cham
         # + teleport ve Trac Quan) TRUOC khi sync kenh + lap party. Tranh leader sync kenh/moi khi
         # member dang lam daily -> member sai kenh / leader train 1 minh. (digioi: heavy hoan toi
         # cuoi DG nen khong can.)
-        if not is_digioi:
+        if not is_digioi and not is_reconnect:   # reconnect: cac member khac da xong daily -> ko cho barrier
             with st["lock"]:
                 st["dailies_done"] += 1
             expected = len(party_accounts(pidx))
@@ -1346,9 +1354,11 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
     stop_ev = account_stops.get(username)
     _st = lambda: stop_ev is not None and stop_ev.is_set()
     attempt = 0
+    first = True
     while True:
         account_reconnect[username] = False
-        run_account(username, password, pidx, is_leader, is_picker)
+        run_account(username, password, pidx, is_leader, is_picker, is_reconnect=not first)
+        first = False
         if _st() or not account_reconnect.get(username):
             break   # GUI Stop / thoat binh thuong / khong reconnectable -> dung han
         with st["lock"]:
