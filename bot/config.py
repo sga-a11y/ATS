@@ -154,6 +154,7 @@ GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 HEAL_HP_THRESHOLD = 0.70    # ally HP <= 70% max -> Toan Tri Lieu
 HEAL_SP_COST = 42
 SP_RESTORE_THRESHOLD = 0.5  # quest: cast Toan Hoi Ma (hoi SP team) khi co dong doi SP < 50% max
+SUPPORT_RESERVE_SP = 100    # quest: unit CO skill hoi (hoi sinh/11010/11009) chi danh skill atk khi SP>100 (duoi -> danh thuong de danh SP)
 PET_FIRE_MIN_SP = 65        # combo (Hoa Tien/Nem Da/Loan Kich): SP < 65 -> danh thuong
 
 # DATA PET: doc tu pets.json (AUTO-SINH tools/crack_pets.py). pet_id hex -> name + skills (LIST,
