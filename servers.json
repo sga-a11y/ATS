@@ -13,6 +13,7 @@
     "gia_cat_luong":{ "label": "Gia Cát Lượng","ip": "103.190.202.44", "id": 10 },
     "dai_kieu":  { "label": "Đại Kiều",   "ip": "103.190.202.45", "id": 11 },
     "manh_hoach":{ "label": "Mạnh Hoạch", "ip": "103.190.202.46", "id": 12 },
-    "hoang_trung":{ "label": "Hoàng Trung", "ip": "103.190.202.47", "id": 13 }
+    "hoang_trung":{ "label": "Hoàng Trung", "ip": "103.190.202.47", "id": 13 },
+    "ma_sieu":   { "label": "Mã Siêu",     "ip": "103.190.202.48", "id": 14 }
   }
 }
