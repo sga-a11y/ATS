@@ -496,6 +496,7 @@ class GameClient:
         self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
         self._chan_event = threading.Event()
         self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
+        self._deliberate_close = False  # True khi CHINH TA dong socket (close/relogin) -> OSError ko phai rot
         self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
         self._gate_transit = False   # True khi dang gui chuoi 0x14 qua cong -> combat KHONG gui 0x32
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
@@ -603,6 +604,7 @@ class GameClient:
         Fallback khi KET o bai (lau khong co battle): ve safe -> relogin lay lai vi tri chuan
         -> di tiep toi spot. KHONG load lai gift state (giu nguyen claim trong phien)."""
         log.info("[%s] RELOGIN: dong ket noi + login lai de resync vi tri", self._label)
+        self._deliberate_close = True   # ta tu dong -> OSError recv (socket cu) KHONG phai server rot
         try:
             if self.sock:
                 self.sock.close()
@@ -623,6 +625,8 @@ class GameClient:
         except OSError as e:
             log.warning("[%s] RELOGIN that bai (ket noi): %s", self._label, e)
             return False
+        self.server_closed = False      # ket noi MOI thanh cong -> xoa co (socket cu ko lien quan)
+        self._deliberate_close = False  # tu day recv moi lai bao rot that su
         self.running = True
         threading.Thread(target=self._recv_loop, daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
@@ -636,6 +640,7 @@ class GameClient:
         return True
 
     def close(self):
+        self._deliberate_close = True   # ta tu dong -> OSError trong recv KHONG phai server rot
         self.running = False
         if self.sock:
             self.sock.close()
@@ -685,7 +690,13 @@ class GameClient:
         while self.running:
             try:
                 data = self.sock.recv(8192)
-            except OSError:
+            except OSError as e:
+                # OSError = socket loi. Neu KHONG phai ta tu dong (close/relogin) -> SERVER ROT that
+                # (connection reset...) -> danh dau server_closed de supervisor RECONNECT (giong nhanh
+                # empty-data). Truoc day nhanh nay KHONG set -> nick rot kieu reset "chet am tham".
+                if not self._deliberate_close:
+                    log.warning("[%s] Server dong ket noi (OSError: %s)", self._label or self._username, e)
+                    self.server_closed = True
                 self.running = False   # rot ket noi -> dung MOI vong lap (tranh loop mai tren socket chet)
                 break
             if not data:
@@ -1736,6 +1747,9 @@ class GameClient:
                 time.sleep(1)
             log.info("[%s] Boss the gioi: tran ket thuc (sau %ds)", self._label, int(time.time() - t0))
         self.state.boss_mode = False
+        self._wait_combat_clear()
+        self.do_heal()   # xong battle -> hoi HP/SP (char+pet) tro lai
+
         # (4) teleport ve Trac Quan (thanh chung moi server) -> flow train sau do tu route tiep
         if self.running and (orig is None or self.current_map != orig):
             self._wait_combat_clear()
@@ -2021,6 +2035,8 @@ class GameClient:
             bought = True   # da dung 1 luot (free hoac mua) -> tu luot sau BUOC phai mua ve
             log.info("[%s] Xong dungeon luot %d (phien nay)", self._label, done_runs)
             time.sleep(2)
+            self._wait_combat_clear()
+            self.do_heal()   # xong battle dungeon -> hoi HP/SP (char+pet) tro lai
             # Re-query o1: server CHI bao done khi DU 2/2 (luc 1/2 van 020004 - panel KHONG lo tien do).
             # Done -> dung; xu ly dung ca khi nick da danh 1 luot o may/ban khac (khoi danh thua).
             try: self._query_quests()
@@ -3032,6 +3048,7 @@ class GameClient:
                 ok_clear = self._wait_combat_clear(idle=2.0, cap=240.0)   # battle truoc xong
                 log.info("[%s] (LEADER) tran %d: het cho combat (ok=%s in_battle=%s)",
                          self._label, i + 1, ok_clear, self.state.in_battle)
+                self.do_heal()   # xong battle truoc -> hoi HP/SP (no-op neu con in_battle)
                 # QUAN TRONG: neu het cap ma in_battle VAN True (tran truoc CHUA THAT SU xong,
                 # chi la cap qua ngan so voi tran thuc te dai - vd quai tru danh, char thieu SP
                 # phai spam danh thuong) -> KHONG duoc lao vao gui dialog/move/transit (seg moi)
