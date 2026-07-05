@@ -27,9 +27,12 @@ Output: thư mục `aTSBot/` (chứa `aTSBot.exe` + các file JSON cấu hình �
 cho người dùng, không phải chỉ file `.exe`.
 
 ### Chú ý
-- **KHÔNG sửa `config.py`** rồi tưởng bản build sẽ có config đó — `build_product.py` luôn dùng
-  `config.example.py` làm gốc (để không lỡ nhúng mật khẩu thật của mình vào bản gửi đi). Đổi cấu
-  hình mặc định phải sửa `config.example.py`.
+- **`config.py` là file placeholder (đã tracked, chỉ chứa `acc1/password1`...)** — `build_product.py`
+  đóng gói chính `config.py` này. Mật khẩu/tài khoản THẬT nằm ở `accounts.json` (gitignored, **KHÔNG**
+  đóng gói vào bản build). Nên tuyệt đối không đưa acc thật vào `config.py`.
+- **Bản gửi đi KHÔNG kèm `accounts.json`** (từ 07/2026): người nhận **copy đè bản update** lên bản cũ
+  mà **không mất** cấu hình acc đã lưu. Lần đầu chạy `aTSBot.exe`, GUI tự tạo `accounts.json` mặc
+  định (Cấu hình 1 trống) — người nhận vào "Cấu hình" nhập acc rồi Lưu.
 - Nếu build báo lỗi liên quan tới đường dẫn cache Nuitka (`structuredquerycondition.h No such
   file` hoặc lỗi tương tự dù file có thật) — nguyên nhân là cache Nuitka nằm trong thư mục bị
   sandbox hoá (`%LOCALAPPDATA%\Nuitka` có thể bị OneDrive/App sandbox can thiệp). `build_product.py`

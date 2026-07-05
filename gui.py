@@ -35,6 +35,7 @@ def _load_profiles():
     """Doc accounts.json -> {active, profiles:{ten:{channel,party_leaders,parties}}}.
     Dang FLAT cu {channel,parties} -> MIGRATE: 'Cau hinh 1' = config HIEN TAI cua user (active),
     'Cau hinh 2' = template mac dinh (1 party placeholder) de user tu dien thanh bo khac."""
+    _missing = not os.path.exists(ACCOUNTS_JSON)   # ban gui di KHONG kem accounts.json -> lan dau thieu
     try:
         with open(ACCOUNTS_JSON, encoding="utf-8") as f:
             d = json.load(f)
@@ -44,9 +45,13 @@ def _load_profiles():
         return d
     import copy
     ch = d.get("channel", 2) if isinstance(d, dict) else 2
-    return {"active": "Cấu hình 1",
+    prof = {"active": "Cấu hình 1",
             "profiles": {"Cấu hình 1": d,
                          "Cấu hình 2": {"channel": ch, "parties": [copy.deepcopy(_DEFAULT_PARTY)]}}}
+    if _missing:   # chua co accounts.json -> TAO NGAY voi format mac dinh (khoi copy de mat cau hinh)
+        try: _save_profiles(prof)
+        except Exception: pass
+    return prof
 
 
 def _save_profiles(prof):
