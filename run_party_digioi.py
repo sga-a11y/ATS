@@ -111,18 +111,18 @@ def _party_exit_summary(pidx, exclude_user):
     log.warning(">>> PARTY %s vi tri tung nick: %s", pidx + 1, pos)
 
 
-def _party_map_barrier(st, username, self_ok, expected, stopped, timeout=70):
+def _party_map_barrier(st, username, self_ok, expected, stopped):
     """BARRIER cap party: moi acc bao 'minh co o train map khong', cho ca party quyet dinh.
     Tra True neu MOI acc bao cao deu o train map; False neu CO >=1 acc sai map
-    (-> ca party ve thanh don nhau). Thoat som khi da co dua sai map hoac du bao cao."""
+    (-> ca party ve thanh don nhau). CHO VO HAN cho du bao cao (member reconnecting -> cong
+    vao coi nhu se catch up); thoat som khi da co dua sai map, hoac Stop."""
     with st["lock"]:
         st["map_results"][username] = bool(self_ok)
-    t0 = time.time()
-    while time.time() - t0 < timeout:
+    while True:
         if stopped():
             break
         with st["lock"]:
-            done = len(st["map_results"]) >= expected
+            done = len(st["map_results"]) + len(st["reconnecting"]) >= expected
             any_bad = not all(st["map_results"].values())
         if done or any_bad:
             break
@@ -317,13 +317,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             with st["lock"]:
                 st["dailies_done"] += 1
             expected = len(party_accounts(pidx))
-            t0 = time.time()
-            while time.time() - t0 < 300:   # cho toi 5p (world boss event ~2-3p)
+            _t0 = time.time()
+            while True:   # CHO VO HAN: du party moi sync kenh + lap party. Member dang reconnect ->
+                # cong vao (se catch up qua reform); van hoan toan -> ca party dung cho o day.
                 if _stopped() or not c.running:
                     break
                 with st["lock"]:
-                    if st["dailies_done"] >= expected:
+                    if st["dailies_done"] + len(st["reconnecting"]) >= expected:
                         break
+                if time.time() - _t0 > 30:
+                    log.info("[%s] (%s) CHO ca party xong daily (%d/%d, reconnecting=%d)...",
+                             label, role, st["dailies_done"], expected, len(st["reconnecting"]))
+                    _t0 = time.time()
                 time.sleep(1)
             log.info("[%s] (%s) xong daily login (%d/%d acc) -> sync kenh + lap party",
                      label, role, st["dailies_done"], expected)
@@ -416,14 +421,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # truoc khi chot, xem pick_best_channel) moi chac chan CA PARTY vao chung duoc 1 kenh.
             do_channel_sync()
             if is_leader:
-                # LAP LAI party TAI THANH (member da tu do sau giai tan + dang o thanh) -> moi + cho join
-                for _ in range(8):
+                # LAP LAI party TAI THANH: CHO VO HAN toi khi DU member join (khong gioi han 8 lan).
+                # Member dang reconnect -> bump reform_gen -> _ab() -> thoat de keepalive reform lai khi
+                # no vao. Van hoan toan -> ca party dung o thanh cho (an toan).
+                while joined_member_count(pidx) < st["n_members"]:
                     if _ab(): return   # stop / reform moi hon -> thoat de keepalive xu lai
                     try: c.invite_members(gap=1.0)
                     except Exception: pass
                     time.sleep(4)
-                    if joined_member_count(pidx) >= st["n_members"]:
-                        break
                 log.info("[%s] (LEADER) reform: %d/%d member join lai -> KEO qua cong ra train map",
                          label, joined_member_count(pidx), st["n_members"])
                 try: c.set_party_strategist()
@@ -463,15 +468,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             else:
                 # member: cho leader bao party lap xong (route_party_ready) -> roi cho keo xong (route_done).
                 # Dang trong party nen tu bi keo qua cong theo leader (giong startup via_route).
-                t0 = time.time()
-                while not st["route_party_ready"].is_set() and time.time() - t0 < 120:
-                    if not c.running or _stopped(): return
+                while not st["route_party_ready"].is_set():   # CHO VO HAN leader lap xong party
+                    if _ab(): return   # tu rot / stop / reform moi hon -> keepalive xu lai
                     time.sleep(2)
                 _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
                 c.flee_mode = not _full   # du party -> DANH bat chap khi bi keo
-                t0 = time.time()
-                while not st["route_done"].is_set() and time.time() - t0 < 240:
-                    if not c.running or _stopped(): return
+                while not st["route_done"].is_set():           # CHO VO HAN leader keo xong qua route
+                    if _ab(): return
                     time.sleep(2)
                 for _ in range(15):                # cho map cap nhat sau khi bi keo
                     if c.current_map == sc or _stopped(): break
@@ -588,12 +591,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         _quit(); return   # ra vong lap do stop / mat ket noi
                 # CO bot-leader -> doi leader quyet dinh (ok/huy). KHONG co leader -> tu di tiep.
                 if has_leader:
-                    t0 = time.time()
+                    # CHO VO HAN leader quyet dinh (ok/bad). Leader dang reconnect -> chua set ->
+                    # member DUNG CHO an toan tai safe (KHONG THOAT nhu truoc - timeout 150s). Thoat
+                    # khi Stop / tu rot (-> reconnect). Van hoan toan thi member dung cho o day.
+                    _t0 = time.time()
                     while not (st["leader_ok"].is_set() or st["leader_bad"].is_set()):
-                        if _stopped(): _quit(); return
-                        if time.time() - t0 > 150:
-                            log.warning("[%s] (member) khong thay leader quyet dinh -> THOAT", label)
-                            _quit(); return
+                        if _stopped() or not c.running: _quit(); return
+                        if time.time() - _t0 > 30:
+                            log.info("[%s] (member) CHO leader quyet dinh (leader co the dang reconnect)...", label)
+                            _t0 = time.time()
                         time.sleep(0.5)
                     if st["leader_bad"].is_set():
                         _reason("leader party loi (sai map hoac mat ket noi) -> ca party bi huy")
@@ -659,12 +665,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         st["dungeon_done"] += 1
                 log.info("[%s] (%s) xong dungeon -> cho ca party (%d/%d)...",
                          label, role, st["dungeon_done"], st["started_train"])
-                t0 = time.time()
-                while time.time() - t0 < 300:
-                    if _stopped(): _quit(); return
+                _t0 = time.time()
+                while True:   # CHO VO HAN cho ca party xong dungeon (reconnecting cong vao, khoi deadlock)
+                    if _stopped() or not c.running: _quit(); return
                     with st["lock"]:
-                        if st["started_train"] > 0 and st["dungeon_done"] >= st["started_train"]:
+                        if (st["started_train"] > 0 and
+                                st["dungeon_done"] + len(st["reconnecting"]) >= st["started_train"]):
                             break
+                    if time.time() - _t0 > 30:
+                        log.info("[%s] (%s) CHO ca party xong dungeon (%d/%d, reconnecting=%d)...",
+                                 label, role, st["dungeon_done"], st["started_train"], len(st["reconnecting"]))
+                        _t0 = time.time()
                     time.sleep(1)
                 log.info("[%s] (%s) ca party xong dungeon", label, role)
             if not via_route:   # via_route -> ca party da cung kenh (di theo) -> khoi sync lai
@@ -863,7 +874,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                          label)
         else:
             if has_leader:
-                st["invited"].wait(120)   # cho bot-leader moi
+                # CHO VO HAN leader moi vao party (khong timeout 120s -> tranh member tuong da join
+                # roi danh le). Leader dang reconnect -> chua moi -> member dung cho o safe.
+                while not st["invited"].is_set():
+                    if _stopped() or not c.running: break
+                    st["invited"].wait(2)
             # DA vao party -> NGUNG flee, DANH tran chung (ca map-train LAN Di Gioi).
             # FLEE trong tran party bi server KICK (vd Tao Thao: member flee -> dis ngay).
             c.flee_mode = False
@@ -1029,12 +1044,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         else:                                    # route-less + CA PARTY o map -> regroup TAI CHO
                             do_channel_sync()                    # (nick lech map da tu stop_party o startup cua no)
                             if is_leader:
-                                for _ in range(8):
+                                c.flee_mode = True               # ne quai trong luc CHO du party
+                                while joined_member_count(pidx) < st["n_members"]:   # CHO VO HAN: du party moi danh
                                     if not c.running or _stopped(): break
                                     try: c.invite_members(gap=1.0)
                                     except Exception: pass
                                     time.sleep(4)
-                                    if joined_member_count(pidx) >= st["n_members"]: break
                                 try: c.set_party_strategist()
                                 except Exception: pass
                             c.combat_ready(); c.flee_mode = False
@@ -1044,12 +1059,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             if not c.in_di_gioi(): c.enter_di_gioi_safe()
                         except Exception: pass
                         if is_leader:
-                            for _ in range(6):
+                            while joined_member_count(pidx) < st["n_members"]:   # CHO VO HAN: du party moi danh
                                 if not c.running or _stopped(): break
                                 try: c.invite_members(gap=1.0)
                                 except Exception: pass
                                 time.sleep(4)
-                                if joined_member_count(pidx) >= st["n_members"]: break
                             try: c.set_party_strategist()
                             except Exception: pass
                         c.combat_ready(); c.flee_mode = False
@@ -1327,11 +1341,15 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
         # buoc nay, moi acc). Khong co leader thi khong co gi de cho -> bo qua NGAY.
         return
     if not is_leader:
-        # CHO leader quyet dinh + danh xong (state "running"->"done"), toi 600s (4 tran co the lau).
-        t0 = time.time()
-        while time.time() - t0 < 600:
+        # CHO VO HAN leader quyet dinh + danh xong team dungeon (thoat: dong doi reconnect / o5 done /
+        # Stop / tu rot). Truoc day cap 600s roi "coi nhu xong" -> co the bo giua chung.
+        _t0log = time.time()
+        while True:
             if stopped_fn() or not c.running:
                 return
+            if time.time() - _t0log > 60:
+                log.info("[%s] (member) CHO leader danh xong team dungeon...", label)
+                _t0log = time.time()
             # CASE 3: dong doi ROT trong luc dang danh team dungeon -> RELOGIN de bi day ra ngoai
             # instance (trong dungeon teleport/ve thanh bi chan -> chi relogin moi thoat -> chay tiep).
             if st["reconnecting"]:
@@ -1354,20 +1372,23 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 try: c.do_heal()
                 except Exception: pass
             time.sleep(2)
-        c._phoban_until = 0.0
-        return   # timeout an toan - cho qua lau, coi nhu xong de khong ket vinh vien
     members = [t[0] for t in party_accounts(pidx)]
     if len(members) < 2:
         return   # khong du party de danh pho ban to doi
-    # cho TAT CA member (gom leader) report o5 (toi 120s)
-    t0 = time.time()
-    while time.time() - t0 < 120:
+    # CHO VO HAN tat ca member (gom leader) report o5. Member dang reconnect -> coi nhu se report
+    # (khoi deadlock); van hoan toan -> leader dung cho, khong quyet dinh voi report thieu.
+    _t0log = time.time()
+    while True:
         if stopped_fn() or not c.running:
             return
         with st["lock"]:
-            reported = all(m in st["o5_done_by"] for m in members)
+            reported = all(m in st["o5_done_by"] or m in st["reconnecting"] for m in members)
         if reported:
             break
+        if time.time() - _t0log > 30:
+            log.info("[%s] (LEADER) CHO ca party report o5 (%d/%d)...",
+                     label, len(st["o5_done_by"]), len(members))
+            _t0log = time.time()
         time.sleep(2)
     with st["lock"]:
         statuses = dict(st["o5_done_by"])

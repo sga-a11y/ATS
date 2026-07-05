@@ -598,6 +598,11 @@ class GameClient:
             self.sock.sendall(protocol.encode(opcode, payload))
         except OSError:
             self.running = False   # socket dong -> dung gui, dung moi vong lap
+            if not self._deliberate_close:
+                # ROT phat hien qua SEND: recv loop se thay running=False -> THOAT NGAY, KHONG kip
+                # vao nhanh set server_closed. Thieu dong nay -> supervisor coi la "thoat binh thuong"
+                # -> member CHET IM (tat), khong reconnect (bug thha/sga012/chu703 chet sau khi join).
+                self.server_closed = True
 
     def relogin(self):
         """Thoat game roi login lai (cung acc). Server tha DUNG CHO LOGOUT (login=logout pos)
