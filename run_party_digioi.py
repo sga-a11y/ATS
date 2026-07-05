@@ -244,6 +244,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.claim_legion_gift()   # nhan qua quan doan hang ngay
             c.claim_friend_gifts()  # tang qua tat ca ban + nhan qua ban tang (hang ngay)
             c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu
+            c.donate_legion()           # donate nguyen lieu rac (donate_items.json) cho quan doan -> don tui
+            c.use_login_items()         # tu dung item trong list (use_items.json) -> vd tui vat lieu su kien
             next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
@@ -284,22 +286,28 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if login_map == sc:
                 c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))   # reconnect + dang o bai -> ra safe cho keo
             else:
-                # RECONNECT nhung login lai o MAP KHAC train map: truoc khi rot member da teleport di
-                # lam daily dungeon (vd thanh 20001) -> login = vi tri logout = van o do. KHONG duoc
-                # coi la "sai map -> THOAT" (bug lam mat member ca party): train map = start city (sc)
-                # nen teleport VE lai sc roi ra safe de reform/keo. Neu leader cung dang rot
-                # (has_leader tam False) thi day la duong DUY NHAT tranh member THOAT oan.
-                log.info("[%s] (%s) RECONNECT o map %s != train map %s -> teleport ve train map roi ra safe",
-                         label, role, login_map, sc)
-                try: c.go_to_town(sc, city_flag)
-                except Exception as e:
-                    log.warning("[%s] reconnect: teleport ve train map %s loi: %s", label, sc, e)
-                for _ in range(15):                     # cho map cap nhat sau teleport
-                    if c.current_map == sc or not c.running: break
-                    time.sleep(1)
-                if c.current_map == sc:
-                    login_map = sc                       # -> self_map_ok=True ben duoi, khong THOAT
-                    c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))
+                # RECONNECT login lai o MAP KHAC train map (truoc khi rot member da teleport di lam
+                # daily dungeon -> login = vi tri logout, van o thanh do). KHONG duoc THOAT oan.
+                _rt = getattr(config, "TRAIN_ROUTES", {}).get(sc)
+                if _rt:
+                    # sc la TRAIN MAP di bang ROUTE (qua cong) - KHONG phai thanh, teleport thang toi
+                    # sc se FAIL (bug cu: go_to_town(20821) spam 60s roi hut). De khoi reform ben
+                    # duoi (barrier + _do_reform) keo qua route; member cho leader keo (khong THOAT).
+                    log.info("[%s] (%s) RECONNECT o map %s, train map %s di bang ROUTE -> de reform keo",
+                             label, role, login_map, sc)
+                else:
+                    # sc la thanh teleport TRUC TIEP -> ve thang sc roi ra safe.
+                    log.info("[%s] (%s) RECONNECT o map %s != train map %s -> teleport ve train map roi ra safe",
+                             label, role, login_map, sc)
+                    try: c.go_to_town(sc, city_flag)
+                    except Exception as e:
+                        log.warning("[%s] reconnect: teleport ve train map %s loi: %s", label, sc, e)
+                    for _ in range(15):                     # cho map cap nhat sau teleport
+                        if c.current_map == sc or not c.running: break
+                        time.sleep(1)
+                    if c.current_map == sc:
+                        login_map = sc                       # -> self_map_ok=True ben duoi, khong THOAT
+                        c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))
 
         # BARRIER login-dailies (mode KHAC digioi): CHO CA PARTY xong daily quest (world boss cham
         # + teleport ve Trac Quan) TRUOC khi sync kenh + lap party. Tranh leader sync kenh/moi khi
@@ -555,12 +563,29 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         log.warning("[%s] (member) route-less + SAI MAP (o %s, can %s) -> TAT CA PARTY",
                                     label, c.current_map, sc)
                         stop_party(pidx); _quit(); return
-                    _reason("member dung SAI MAP (o %s, can train map %s)" % (c.current_map, sc))
-                    log.warning("[%s] (member) NHAN VAT DANG DUNG O MAP %s, NHUNG CONFIG TRAIN MAP=%s "
-                                "-> KHONG khop -> lam dungeon roi THOAT. "
-                                "CACH SUA: dua nhan vat ve map %s roi THOAT GAME tai do.",
-                                label, c.current_map, sc, sc)
-                    _daily_then_quit(); return
+                    # route-based member sai map (vd reconnect landed sai thanh, hoac reform lan dau
+                    # chua hoi tu vi leader dang chap chon). KHONG THOAT oan -> CHO leader keo qua
+                    # route (dung tinh than "cho vo han, du party moi train"). Lap _do_reform toi khi:
+                    #  - len train map (sc) -> tiep tuc binh thuong
+                    #  - leader gone/bad (leader chet han) -> THOAT theo party
+                    #  - user stop / mat ket noi -> thoat
+                    _reason("member sai map (o %s, can %s) - route -> CHO leader keo (retry reform)"
+                            % (c.current_map, sc))
+                    log.warning("[%s] (member) SAI MAP (o %s, can %s) - KHONG THOAT, cho leader keo "
+                                "qua route (retry reform)...", label, c.current_map, sc)
+                    while c.running and not _stopped():
+                        if st["leader_gone"].is_set() or st["leader_bad"].is_set():
+                            _reason("leader gone/bad khi member cho reform -> THOAT theo party")
+                            log.warning("[%s] (member) leader gone/bad khi cho reform -> THOAT", label)
+                            _quit(); return
+                        _do_reform(to_spot=False)
+                        if c.current_map == sc:
+                            self_map_ok = True; login_map = sc; via_route = True
+                            log.info("[%s] (member) da toi train map %s qua reform (cho leader keo)", label, sc)
+                            break
+                        time.sleep(5)
+                    if not self_map_ok:
+                        _quit(); return   # ra vong lap do stop / mat ket noi
                 # CO bot-leader -> doi leader quyet dinh (ok/huy). KHONG co leader -> tu di tiep.
                 if has_leader:
                     t0 = time.time()

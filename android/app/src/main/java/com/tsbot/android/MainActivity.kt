@@ -8,7 +8,9 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,27 +18,45 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,12 +66,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
@@ -80,8 +103,8 @@ class MainActivity : ComponentActivity() {
         isBound = bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
 
         setContent {
-            MaterialTheme {
-                Surface {
+            TsBotTheme {
+                Surface(color = MaterialTheme.colorScheme.background) {
                     TsBotApp(
                         boundServiceProvider = { boundService },
                         partyStore = PartyStore(this),
@@ -117,6 +140,8 @@ fun TsBotApp(
     var editingParty by remember { mutableStateOf<Party?>(null) }
     // (ten party, account) dang duoc sua (user/pass) - null = khong sua acc nao
     var editingAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    // Tab party dang chon (moi party = 1 tab, giong ban PC)
+    var selectedTab by remember { mutableStateOf(0) }
 
     val service = boundServiceProvider()
     val statusMap by (service?.status?.collectAsState() ?: remember { mutableStateOf(emptyMap()) })
@@ -132,58 +157,108 @@ fun TsBotApp(
         }
     }
 
+    val runningCount = statusMap.values.count { it.state == RunState.RUNNING }
+    val totalAccounts = parties.sumOf { it.accounts.size }
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("aTSBot") })
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("aTSBot", fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(10.dp))
+                        if (totalAccounts > 0) {
+                            StatusDot(if (runningCount > 0) StatusRunning else StatusStopped)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "$runningCount/$totalAccounts đang chạy",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddPartyDialog = true }) {
-                Text("+")
+                Icon(Icons.Default.Add, contentDescription = "Thêm party")
             }
         },
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize().padding(12.dp)) {
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             if (parties.isEmpty()) {
-                Text("Chưa có party nào")
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = { showAddPartyDialog = true }) {
-                    Text("Tạo party")
+                Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                    Text("Chưa có party nào", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { showAddPartyDialog = true }) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp)); Text("Tạo party")
+                    }
                 }
             } else {
-                LazyColumn {
-                    items(parties, key = { it.name }) { party ->
-                        PartyCard(
-                            party = party,
-                            statusMap = statusMap,
-                            onAddAccount = { addAccountForParty = party.name },
-                            onEditParty = { editingParty = party },
-                            onEditAccount = { account -> editingAccount = party.name to account },
-                            onRemoveAccount = { username ->
-                                partyStore.removeAccountFromParty(party.name, username)
-                                refresh()
-                            },
-                            onRemoveParty = {
-                                partyStore.removeParty(party.name)
-                                refresh()
-                            },
-                            onStart = { account -> startAccountIn(party, account) },
-                            onStop = { username -> service?.stopAccount(username) },
-                            onStartParty = { party.accounts.forEach { startAccountIn(party, it) } },
-                            onStopParty = { party.accounts.forEach { service?.stopAccount(it.username) } },
-                            onSendChannel = { ch -> service?.sendChannel(party.accounts.map { it.username }, ch) },
-                            onSendChannelAuto = { service?.sendChannelAuto(party.accounts.map { it.username }) },
-                            onSendCity = { id, flag -> service?.sendCity(party.accounts.map { it.username }, id, flag) },
-                            onGetChannels = {
-                                party.accounts.firstOrNull { service?.isRunning(it.username) == true }
-                                    ?.let { service?.getChannels(it.username) } ?: emptyList()
-                            },
-                            onCurrentChannel = {
-                                party.accounts.firstOrNull { service?.isRunning(it.username) == true }
-                                    ?.let { service?.currentChannel(it.username) }
+                // Moi party = 1 TAB (giong ban PC). Tab hien ten party + cham trang thai.
+                val curTab = selectedTab.coerceIn(0, parties.size - 1)
+                ScrollableTabRow(
+                    selectedTabIndex = curTab,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    edgePadding = 8.dp,
+                ) {
+                    parties.forEachIndexed { i, p ->
+                        val runningInP = p.accounts.count { statusMap[it.username]?.state == RunState.RUNNING }
+                        Tab(
+                            selected = i == curTab,
+                            onClick = { selectedTab = i },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    StatusDot(if (runningInP > 0) StatusRunning else StatusStopped, 8)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(p.name)
+                                }
                             },
                         )
-                        Spacer(Modifier.height(8.dp))
                     }
+                }
+
+                val party = parties[curTab]
+                Column(
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+                ) {
+                    PartyCard(
+                        party = party,
+                        statusMap = statusMap,
+                        onAddAccount = { addAccountForParty = party.name },
+                        onEditParty = { editingParty = party },
+                        onEditAccount = { account -> editingAccount = party.name to account },
+                        onRemoveAccount = { username ->
+                            partyStore.removeAccountFromParty(party.name, username)
+                            refresh()
+                        },
+                        onRemoveParty = {
+                            partyStore.removeParty(party.name)
+                            selectedTab = 0
+                            refresh()
+                        },
+                        onStart = { account -> startAccountIn(party, account) },
+                        onStop = { username -> service?.stopAccount(username) },
+                        onStartParty = { party.accounts.forEach { startAccountIn(party, it) } },
+                        onStopParty = { party.accounts.forEach { service?.stopAccount(it.username) } },
+                        onSendChannel = { ch -> service?.sendChannel(party.accounts.map { it.username }, ch) },
+                        onSendChannelAuto = { service?.sendChannelAuto(party.accounts.map { it.username }) },
+                        onSendCity = { id, flag -> service?.sendCity(party.accounts.map { it.username }, id, flag) },
+                        onGetChannels = {
+                            party.accounts.firstOrNull { service?.isRunning(it.username) == true }
+                                ?.let { service?.getChannels(it.username) } ?: emptyList()
+                        },
+                        onCurrentChannel = {
+                            party.accounts.firstOrNull { service?.isRunning(it.username) == true }
+                                ?.let { service?.currentChannel(it.username) }
+                        },
+                    )
                 }
             }
         }
@@ -268,27 +343,77 @@ fun PartyCard(
     onGetChannels: () -> List<Triple<Int, Int, Int>>,
     onCurrentChannel: () -> Int?,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp)) {
+    val runningInParty = party.accounts.count { statusMap[it.username]?.state == RunState.RUNNING }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
-                    Text(party.name, style = MaterialTheme.typography.titleMedium)
-                    Text(Servers.ALL[party.serverKey]?.label ?: party.serverKey)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(party.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Pill(Servers.ALL[party.serverKey]?.label ?: party.serverKey)
+                        Spacer(Modifier.width(6.dp))
+                        Pill(RunModes.ALL[party.runMode] ?: party.runMode)
+                    }
                 }
-                Row {
-                    IconButton(onClick = onAddAccount, enabled = party.accounts.size < 5) { Text("+") }
-                    IconButton(onClick = onEditParty) { Text("✎") }
-                    IconButton(onClick = onRemoveParty) { Text("✕") }
+                // Icon quan ly party (them acc / sua / xoa) o goc phai header - KHONG chung hang
+                // voi nut Chay/Dung (truoc day chung hang -> nut bi bop hep, chu xuong dong 1 ky tu).
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onAddAccount, enabled = party.accounts.size < 5) {
+                        Icon(Icons.Default.Add, contentDescription = "Thêm tài khoản")
+                    }
+                    IconButton(onClick = onEditParty) {
+                        Icon(Icons.Default.Edit, contentDescription = "Sửa party", modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = onRemoveParty) {
+                        Icon(Icons.Default.Delete, contentDescription = "Xóa party",
+                            tint = StatusError, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onStartParty, enabled = party.accounts.isNotEmpty()) { Text("Start party") }
+            if (party.accounts.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusDot(if (runningInParty > 0) StatusRunning else StatusStopped)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "$runningInParty/${party.accounts.size} đang chạy",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            // Hang nut CHAY / DUNG ca party: 2 nut chia deu, KHONG chung hang voi icon -> du rong.
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalButton(
+                    onClick = onStartParty,
+                    enabled = party.accounts.isNotEmpty(),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Chạy party", maxLines = 1)
+                }
                 Spacer(Modifier.width(8.dp))
-                TextButton(onClick = onStopParty, enabled = party.accounts.isNotEmpty()) { Text("Stop party") }
+                OutlinedButton(
+                    onClick = onStopParty,
+                    enabled = party.accounts.isNotEmpty(),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    StopIcon(); Spacer(Modifier.width(4.dp)); Text("Dừng party", maxLines = 1)
+                }
             }
 
             // ==== DIEU KHIEN LIVE (giong PC): kenh hien tai + doi kenh (list+so nguoi) + doi thanh ====
@@ -302,11 +427,19 @@ fun PartyCard(
                     delay(5000)
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Kênh hiện tại: ${curChannel?.toString() ?: "?"}")
-                Spacer(Modifier.width(12.dp))
-                TextButton(onClick = { showChannelDialog = true }) { Text("Đổi kênh") }
-                TextButton(onClick = { showCityDialog = true }) { Text("Đổi thành") }
+            if (party.accounts.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Kênh: ${curChannel?.toString() ?: "—"}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    OutlinedButton(onClick = { showChannelDialog = true }) { Text("Đổi kênh") }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton(onClick = { showCityDialog = true }) { Text("Đổi thành") }
+                }
             }
             if (showChannelDialog) {
                 ChannelDialog(
@@ -351,33 +484,107 @@ fun AccountRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val running = status.state == RunState.RUNNING
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp),
+    ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(account.username, style = MaterialTheme.typography.bodyLarge)
-                Row {
-                    IconButton(onClick = onEdit) { Text("✎") }
-                    IconButton(onClick = onDelete) { Text("✕") }
+                StatusDot(statusColor(status.state))
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(account.username, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        statusLabel(status.state),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = statusColor(status.state),
+                    )
+                }
+                // Start / Stop gon: dang chay -> hien nut Dung (do), nguoc lai -> nut Chay (xanh)
+                if (running) {
+                    OutlinedButton(onClick = onStop) { StopIcon(); Spacer(Modifier.width(4.dp)); Text("Dừng") }
+                } else {
+                    FilledTonalButton(onClick = onStart) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp)); Text("Chạy")
+                    }
+                }
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = "Sửa", modifier = Modifier.size(18.dp))
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = StatusError, modifier = Modifier.size(18.dp))
                 }
             }
 
-            val hpSp = if (status.hp != null && status.sp != null) {
-                "HP ${status.hp}/${status.hpMax ?: "?"}  SP ${status.sp}/${status.spMax ?: "?"}"
-            } else null
-
-            Text("Trạng thái: ${status.state}")
-            if (hpSp != null) Text(hpSp)
-            if (status.message.isNotBlank()) Text(status.message)
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onStart) { Text("Start") }
-                Spacer(Modifier.width(8.dp))
-                TextButton(onClick = onStop) { Text("Stop") }
+            // Thanh HP/SP truc quan (chi hien khi da co so lieu)
+            if (status.hp != null && status.hpMax != null && status.hpMax > 0) {
+                Spacer(Modifier.height(8.dp))
+                StatBar("HP", status.hp, status.hpMax, HpColor)
+            }
+            if (status.sp != null && status.spMax != null && status.spMax > 0) {
+                Spacer(Modifier.height(4.dp))
+                StatBar("SP", status.sp, status.spMax, SpColor)
+            }
+            if (status.message.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    status.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
+    }
+}
+
+/** Cham tron mau trang thai. */
+@Composable
+fun StatusDot(color: Color, size: Int = 10) {
+    Box(modifier = Modifier.size(size.dp).clip(CircleShape).background(color))
+}
+
+/** Nhan nho (server / mode) kieu "pill". */
+@Composable
+fun Pill(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
+}
+
+/** Icon "dung" (Icons core khong co Stop -> ve o vuong bo tron). */
+@Composable
+fun StopIcon() {
+    Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(2.dp)).background(StatusError))
+}
+
+/** Thanh HP/SP: nhan + so + progress bar mau. */
+@Composable
+fun StatBar(label: String, cur: Int, max: Int, color: Color) {
+    val frac = (cur.toFloat() / max.toFloat()).coerceIn(0f, 1f)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(24.dp))
+        LinearProgressIndicator(
+            progress = { frac },
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.weight(1f).height(8.dp).clip(RoundedCornerShape(4.dp)),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text("$cur/$max", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(72.dp))
     }
 }
 

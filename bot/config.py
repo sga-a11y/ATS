@@ -210,6 +210,43 @@ def _load_junk_scrolls():
     return out
 JUNK_PET_SCROLLS = _load_junk_scrolls()
 
+# NGUYEN LIEU RAC -> bot tu DONATE cho quan doan luc login (don tui). Doc tu donate_items.json
+# (itemId hex -> ten). Them item BANG CACH SUA donate_items.json roi khoi dong lai.
+def _load_donate_items():
+    import json, os
+    f = os.path.join(_base_dir(), "donate_items.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("items", {}).items():
+                out[int(k, 16)] = v
+    except Exception:
+        pass
+    return out
+DONATE_ITEMS = _load_donate_items()
+
+# Item TU DONG SU DUNG luc login. Doc tu use_items.json. 2 format value:
+#   "0x..": "Ten"                          -> dung HET ca stack, TUNG CAI 1 (item chi cho dung 1/lenh)
+#   "0x..": {"name":"Ten","qty":25}        -> dung TOI DA 25 cai/login (co > 25 -> dung 25, de lai du;
+#                                             co < 25 -> dung het). Batch nhieu cai 1 lenh.
+# Tra dict: tid -> {"name": str, "qty": int|None}. qty None = khong gioi han (dung het, 1/lenh).
+def _load_use_items():
+    import json, os
+    f = os.path.join(_base_dir(), "use_items.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("items", {}).items():
+                tid = int(k, 16)
+                if isinstance(v, dict):
+                    out[tid] = {"name": v.get("name", ""), "qty": v.get("qty")}
+                else:
+                    out[tid] = {"name": v, "qty": None}
+    except Exception:
+        pass
+    return out
+USE_LOGIN_ITEMS = _load_use_items()
+
 # SP cost tung skill (de check du SP truoc khi dung, tranh bi da khi thieu SP).
 SKILL_SP_COST = {
     12003: 15,   # Hoa Tien

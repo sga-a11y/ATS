@@ -557,9 +557,9 @@ class GameClient:
         self._online_base = st["online_sec"]   # online tich luy truoc phien nay (hom nay)
         self.claimed_gifts = st["claimed"]
         self.sock = socket.create_connection((self.host, config.GAME_PORT), timeout=15)
-        log.info("Da ket noi %s:%s", self.host, config.GAME_PORT)
+        log.info("[%s] Da ket noi %s:%s", self._label, self.host, config.GAME_PORT)
         self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
-        log.info("Da gui auth (user_id=%s, server_id=%s)", self.user_id, self.server_id)
+        log.info("[%s] Da gui auth (user_id=%s, server_id=%s)", self._label, self.user_id, self.server_id)
         self.running = True
         threading.Thread(target=self._recv_loop, daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
@@ -2105,7 +2105,7 @@ class GameClient:
 
     def log_bag_delayed(self, max_wait: float = 8.0):
         """In tui khi snapshot tui (0x17/05) DA VE + on dinh (ngung nhan them 1.5s) -> tranh cho cung
-        8s. Goi luc login. Sau khi in tui xong -> mo tui Vat Lieu Su Kien (neu du so luong)."""
+        8s. Goi luc login -> in tui de dinh danh item (use_login_items xu ly viec tu dung item)."""
         def _run():
             t0 = time.time()
             while self.running and time.time() - t0 < max_wait:
@@ -2114,33 +2114,49 @@ class GameClient:
                     break   # da co tui + ngung nhan snapshot moi 1.5s -> du
             if self.running:
                 self.log_bag()
-                self.use_event_bags()
         threading.Thread(target=_run, daemon=True).start()
 
-    # Tui Vat Lieu Su Kien (gamedata 0xb257): >=100 cai -> dung 100 cai 1 lenh luc login.
-    EVENT_BAG_ID = 0xb257
-    EVENT_BAG_MIN = 100
-    EVENT_BAG_USE = 100
-    EVENT_BAG_MAX_TIMES = 5   # toi da 5 lan (500 cai) 1 login
-
-    def use_event_bags(self):
-        """Login: dung Tui Vat Lieu Su Kien theo BOI cua 100, toi da 5 lan. So lan = min(co//100, 5)
-        (>=100&<200 -> 1 lan; >=200&<300 -> 2 lan; ...; >=500 -> 5 lan). Moi lan 1 lenh 100 cai."""
-        slot = next((s for s, (tid, cnt) in self.bag_slots.items()
-                     if tid == self.EVENT_BAG_ID and cnt >= self.EVENT_BAG_MIN), None)
-        if slot is None:
+    def use_login_items(self):
+        """Login: tu dung item co tid nam trong config.USE_LOGIN_ITEMS (template -> dung mọi acc),
+        tuong tu decompose_junk_scrolls/donate_legion. 2 kieu (theo config, xem use_items.json):
+          - qty None (chi ten): dung HET ca stack, TUNG CAI 1 (item chi cho 1/lenh, vd Tang O).
+          - qty N: dung TOI DA N cai/login (co>N -> dung N de lai du; co<N -> dung het). Batch 255/lenh.
+        use_slot: C2S 0x17 0f00 [slot][qty] 00000000 [target] 00 (qty verify tu capture)."""
+        cfg = getattr(config, "USE_LOGIN_ITEMS", {}) or {}
+        if not cfg:
             return
-        cnt = self.bag_slots[slot][1]
-        times = min(cnt // self.EVENT_BAG_USE, self.EVENT_BAG_MAX_TIMES)
-        used = 0
-        for _ in range(times):
-            if not self.use_slot(slot, qty=self.EVENT_BAG_USE):
-                break
-            used += 1
-            time.sleep(0.5)   # cho server xu ly truoc lenh ke
-        if used:
-            log.info("[%s] dung %d Tui Vat Lieu Su Kien (%d lan x%d, co %d)",
-                     self._label, used * self.EVENT_BAG_USE, used, self.EVENT_BAG_USE, cnt)
+        # snapshot slot can dung (dung 1 slot lam RONG chinh no, khong doi index slot khac)
+        targets = [(slot, tid, cnt) for slot, (tid, cnt) in list(self.bag_slots.items())
+                   if cnt > 0 and tid in cfg]
+        if not targets:
+            return
+        items = _load_gamedata_items()
+        total = 0
+        for slot, tid, cnt in targets:
+            qcfg = cfg[tid].get("qty")
+            if qcfg is None:
+                want, chunk = cnt, 1              # khong gioi han: dung het, tung cai 1
+            else:
+                want, chunk = min(cnt, int(qcfg)), 255   # gioi han qcfg/login, batch duoc
+            done = 0
+            while done < want and self.running:
+                q = min(want - done, chunk)
+                if not self.use_slot(slot, qty=q):
+                    break
+                done += q
+                total += q
+                time.sleep(0.4)   # cho server xu ly truoc lenh ke
+            # cap nhat tracking: tru so da dung; het -> xoa slot (S2C 0x17 se update lai)
+            rec = self.bag_slots.get(slot)
+            if rec:
+                rec[1] = max(0, rec[1] - done)
+                if rec[1] <= 0:
+                    self.bag_slots.pop(slot, None)
+            _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
+            log.info("[%s] tu dung item login slot=%d tid=0x%04x dung %d/%d ('%s')",
+                     self._label, slot, tid, done, cnt, _nm)
+        if total:
+            log.info("[%s] Tu dung item login: tong %d cai (%d slot)", self._label, total, len(targets))
 
     def log_bag(self):
         """In tui theo SLOT, moi slot ghi ro la item KHAI (items_known.json) / HOC (probe) / CHUA BIET.
@@ -2428,6 +2444,46 @@ class GameClient:
             time.sleep(0.25)
         if total:
             log.info("[%s] Phan giai cuon rac: tong %d cuon -> nhan xu", self._label, total)
+
+    def donate_legion(self, wait: float = 0.5):
+        """DONATE nguyen lieu RAC cho quan doan (don tui - van tieu ra nhieu rac). C2S 0x27:
+          0f 00 00 00 00 00 [slot 1B]   (giong use-item: tham chieu SLOT, KHONG phai tid).
+        Game CHI cho chon slot, KHONG chon so luong -> moi lenh donate CA STACK o slot do.
+        AN TOAN: chi donate SLOT co tid nam trong config.DONATE_ITEMS (danh sach TID rac, template
+        -> dung mọi acc). Xac nhan qua 2 capture: 5 go ngo dong (slot 0x80) va 20 vai tho (slot
+        0x74) -> deu la '0x27 0f000000000000[slot]', so luong khong nam trong goi."""
+        donate_tids = set()
+        for k in (getattr(config, "DONATE_ITEMS", {}) or {}):
+            try:
+                donate_tids.add(int(k, 16) if isinstance(k, str) else int(k))
+            except Exception:
+                pass
+        if not donate_tids:
+            return
+        # SNAPSHOT truoc: cac slot co item can donate. Donate lam RONG chinh slot do, KHONG doi
+        # index cac slot khac -> duyet list snapshot la an toan (khong can quet lai giua chung).
+        targets = [(slot, tid, cnt) for slot, (tid, cnt) in list(self.bag_slots.items())
+                   if cnt > 0 and tid in donate_tids]
+        if not targets:
+            return
+        self.send(0x7c, b"\x04\x00")   # mo panel quan doan (giong claim_legion_gift)
+        time.sleep(0.4)
+        items = _load_gamedata_items()
+        total = 0
+        for slot, tid, cnt in targets:
+            if not self.running:
+                break
+            self.send(0x27, b"\x0f\x00\x00\x00\x00\x00" + bytes([slot & 0xFF]))
+            self.bag_slots.pop(slot, None)   # donate ca stack -> slot rong (S2C 0x17 se update lai)
+            total += cnt
+            _nm = ((items.get(tid) or {}).get("name")
+                   or (getattr(config, "DONATE_ITEMS", {}) or {}).get(hex(tid), ""))
+            log.info("[%s] donate quan doan slot=%d tid=0x%04x x%d ('%s')",
+                     self._label, slot, tid, cnt, _nm)
+            time.sleep(wait)
+        if total:
+            log.info("[%s] Donate quan doan: tong %d nguyen lieu rac (%d slot) -> don tui",
+                     self._label, total, len(targets))
 
     def _on_vantieu(self, pkt: bytes):
         """S2C 0x56 panel: [03 00][count 1B] + count*[slot 1B][start 8B OLE][end 8B OLE]

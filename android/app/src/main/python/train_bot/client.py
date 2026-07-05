@@ -556,9 +556,9 @@ class GameClient:
         self._online_base = st["online_sec"]   # online tich luy truoc phien nay (hom nay)
         self.claimed_gifts = st["claimed"]
         self.sock = socket.create_connection((self.host, config.GAME_PORT), timeout=15)
-        log.info("Da ket noi %s:%s", self.host, config.GAME_PORT)
+        log.info("[%s] Da ket noi %s:%s", self._label, self.host, config.GAME_PORT)
         self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
-        log.info("Da gui auth (user_id=%s, server_id=%s)", self.user_id, self.server_id)
+        log.info("[%s] Da gui auth (user_id=%s, server_id=%s)", self._label, self.user_id, self.server_id)
         self.running = True
         threading.Thread(target=self._recv_loop, daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
