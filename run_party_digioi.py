@@ -235,7 +235,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         if config.TRAIN_MAPS.get(getattr(config, "START_CITY_ID", 0)) is not None:
             c.flee_mode = True
         next_vantieu = None
-        next_legion_boss = None
         if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
             c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
             c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
@@ -248,6 +247,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.donate_legion()           # donate nguyen lieu rac (donate_items.json) cho quan doan -> don tui
             c.use_login_items()         # tu dung item trong list (use_items.json) -> vd tui vat lieu su kien
             next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
+            # BOSS QUAN DOAN ngay sau van tieu: danh solo neu con luot (server count 0x55/0x2a) + het
+            # cooldown. KHONG lien quan daily quest (tick hay ko van danh). Luc login char SOLO (chua
+            # lap party) -> danh duoc. Trong phien: keepalive trigger REFORM khi con luot (xem duoi).
+            try: c.do_legion_boss()
+            except Exception as e: log.warning("[%s] loi do_legion_boss: %s", label, e)
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
@@ -256,11 +260,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         city_flag = pcfg.get("city_flag", 0)
         # checkbox "Lam nhiem vu hang ngay" (bingo 9 o + dungeon). Fallback key cu "do_dungeon".
         do_daily = pcfg.get("do_daily", pcfg.get("do_dungeon", True))
-        # BOSS QUAN DOAN: danh solo truc tiep neu con luot (3/ngay) + qua 4h. Tra gio check lai ->
-        # keepalive canh (nhu van tieu). Goi CA khi reconnect (persist count/cooldown -> khong danh du).
-        if do_daily:
-            try: next_legion_boss = c.do_legion_boss()
-            except Exception as e: log.warning("[%s] loi do_legion_boss: %s", label, e)
         tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
         # mode: digioi | train | city (tap trung ve thanh) | stand (dung yen) | cleanbag
         mode = pcfg.get("mode")
@@ -423,16 +422,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if fc:
                 try: c.go_to_town(fc, ff)        # CA party (leader+member) tu teleport ve thanh gom nhau
                 except Exception as e: log.warning("[%s] reform: loi ve thanh: %s", label, e)
+                # BOSS QUAN DOAN: dang o thanh + party DA GIAI TAN (leave_party o tren) -> SOLO -> danh
+                # neu con luot. Reform duoc trigger tu keepalive khi co dua het cooldown muon danh boss.
+                try: c.do_legion_boss()
+                except Exception as e: log.warning("[%s] loi do_legion_boss (reform): %s", label, e)
                 if do_daily:
                     try:
                         c.do_daily_dungeon()      # danh dungeon NGAY TAI THANH (solo, khong can party)
                     except Exception as e:
                         log.warning("[%s] loi dungeon (reform, bo qua): %s", label, e)
-                    if c.current_map != fc:
-                        log.info("[%s] (%s) sau dungeon o map %s -> teleport ve thanh %s lai",
-                                 label, role, c.current_map, fc)
-                        try: c.go_to_town(fc, ff)
-                        except Exception: pass
+                # sau BOSS QD / dungeon co the o map khac (instance boss/dungeon) -> ve thanh lai (cho route)
+                if c.current_map != fc:
+                    log.info("[%s] (%s) sau boss/dungeon o map %s -> teleport ve thanh %s lai",
+                             label, role, c.current_map, fc)
+                    try: c.go_to_town(fc, ff)
+                    except Exception: pass
             # LUON re-sync kenh (khong chi switch ve kenh cu da luu) - vua ve thanh sau khi CO THE
             # da danh dungeon (solo o1 hoac team o5) -> server co the da day acc sang kenh KHAC (ngau
             # nhien). Chi switch ve kenh CU (st["channel"]) KHONG du: kenh do co the da DAY (full,
@@ -506,10 +510,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # PHAI dung map login (toa do safe/mobs chi dung tren map do).
             self_map_ok = (login_map == sc)
             def _quit():
-                # member thoat -> giam n_members de leader khong cho phantom member (treo 180s)
-                if not is_leader:
-                    with st["lock"]:
-                        st["n_members"] = max(0, st["n_members"] - 1)
+                # NGUYEN TAC TOI THUONG: DU FULL PARTY MOI TRAIN -> n_members KHONG BAO GIO tru. Member
+                # thoat (rot server / van / het gio) thi leader DUNG CHO no ve, KHONG keo le. Truoc day
+                # tru n_members khi thoat -> rot server tru -> n_members ve 0 -> leader keo 1 minh (bug).
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
@@ -721,8 +724,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     try: c.claim_daily_quests(heavy=True)
                     except Exception as e:
                         log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
-                if not is_leader:   # het gio DG -> tru n_members de leader KHONG cho bong ma (phai du party moi lam)
-                    with st["lock"]: st["n_members"] = max(0, st["n_members"] - 1)
+                # NGUYEN TAC TOI THUONG: DU FULL PARTY MOI LAM -> KHONG tru n_members (het gio DG cung
+                # ko tru; leader dung cho, ca party dung yen neu thieu - theo yeu cau).
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
@@ -735,8 +738,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     try: c.claim_daily_quests(heavy=True)   # khong vao DG -> lam full quest roi dong
                     except Exception as e:
                         log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
-                if not is_leader:   # khong vao duoc DG -> tru n_members de leader KHONG cho bong ma
-                    with st["lock"]: st["n_members"] = max(0, st["n_members"] - 1)
+                # NGUYEN TAC TOI THUONG: DU FULL PARTY MOI LAM -> KHONG tru n_members.
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
@@ -948,6 +950,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         relogin_cnt = 0
         displaced_cnt = 0           # so lan lien tiep thay KHAC map train (chet/hoi sinh/bi dump)
         last_reform = time.time()   # lan cuoi REFORM party (grace de khong trigger lien tuc o thanh)
+        boss_reform_pending = False # da trigger reform de danh boss QD (chua) - tranh spam reform_gen
         reform_gen_handled = 0      # gen reform da xu ly. Init=0 (KHONG = st["reform_gen"]) de neu
         # co acc bi DUMP luc setup (da bump reform_gen) thi keepalive thay ngay -> reform don no
         cmd_gen_handled = st["cmd_gen"]   # lenh thu cong (GUI) da xu ly
@@ -1232,15 +1235,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] loi van tieu (bo qua): %s", label, e)
                     next_vantieu = time.time() + 600   # loi -> thu lai sau 10p
-            # BOSS QUAN DOAN: toi gio (qua 4h) + con luot -> danh tiep. Chi khi NGOAI combat (khong
-            # xen giua tran train). do_legion_boss tu check count/cooldown -> tra gio check ke tiep.
-            if (next_legion_boss is not None and time.time() >= next_legion_boss
-                    and not c.in_combat()):
-                try:
-                    next_legion_boss = c.do_legion_boss()
-                except Exception as e:
-                    log.warning("[%s] loi boss QD (bo qua): %s", label, e)
-                    next_legion_boss = time.time() + 600
+            # BOSS QUAN DOAN: con luot + het cooldown -> danh. Dang trong battle-party (train) KHONG
+            # danh duoc -> TRIGGER REFORM (bump reform_gen) cho ca party ve thanh; luc reform (solo o
+            # thanh) moi nick tu danh (xem _do_reform). Solo mode (event/city/stand) -> danh thang.
+            if not c.legion_boss_available():
+                boss_reform_pending = False   # da danh xong / het luot / dang cooldown -> reset
+            elif not c.in_combat():
+                if train_on_map:
+                    if not boss_reform_pending:   # chi trigger 1 lan / dot con luot (tranh spam reform)
+                        with st["lock"]: st["reform_gen"] += 1
+                        boss_reform_pending = True
+                        log.info("[%s] (%s) boss QD den luot -> TRIGGER REFORM party ve thanh de danh",
+                                 label, role)
+                elif mode in ("city", "stand"):   # city/stand: nick dung yen SOLO -> danh thang (event
+                    try: c.do_legion_boss()       # KHONG danh mid-session vi se roi khoi map event;
+                    except Exception as e:        # digioi mid-session bo qua - login da danh)
+                        log.warning("[%s] loi boss QD: %s", label, e)
             # --- RETRY KENH + RE-MOI moi 60s (ca DG lan map-train) ---
             # Kenh it nguoi nhat co the KHONG du cho ca party -> co dua ket lai kenh cu.
             # Leader cu train; dua chua join thi 1p chuyen lai kenh chung 1 lan; leader 1p moi lai.

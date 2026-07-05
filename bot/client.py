@@ -959,13 +959,39 @@ class GameClient:
                         self.state.my_atype = slot
                         log.info("[%s] self_slot=%d (tu 0x0b battle, entity)", self._label, slot)
             self.state.update_0x0b(pkt)
-        elif opcode == 0x53:                      # mail: S2C sub=01 = 1 mail (push luc login)
-            # payload: [01 00][mailid 4B LE][cat 4B LE][sender/time 8B][00][title UTF16...]
-            if pkt[7:9] == b"\x01\x00" and len(pkt) >= 17:
-                mid = pkt[9:13]    # mail_id 4B LE
-                cat = pkt[13:17]   # category 4B LE (3, 5,... -> THAY DOI tung mail!)
-                if (mid, cat) not in self._mail_ids:
-                    self._mail_ids.append((mid, cat))
+        elif opcode == 0x53:                      # mail: S2C sub=01 = LIST mail (push luc login)
+            # [01 00][count 4B] + count*record. Record: [mailid 4B][time 8B OLE][flag 1B][titlelen 2B]
+            # [title][cat 1B][01][itemid 4B][padding]. Truoc day doc pkt[9:13] tuong 1 mailid (thuc ra
+            # la COUNT) -> nhieu mail chi xu 1 (bug: nhan 1 mail). Gio parse CA list: cat = byte ngay
+            # sau title; tim record ke bang OLE-time hop le (~46000). Da verify voi capture 9 mail.
+            if pkt[7:9] == b"\x01\x00" and len(pkt) >= 13:
+                body = pkt[9:]
+                cnt = int.from_bytes(body[0:4], "little")
+                off = 4
+                for _ in range(min(cnt, 100)):
+                    if off + 15 > len(body):
+                        break
+                    mid = body[off:off + 4]
+                    tlen = int.from_bytes(body[off + 13:off + 15], "little")
+                    catpos = off + 15 + tlen
+                    if catpos >= len(body):
+                        break
+                    cat = bytes([body[catpos], 0, 0, 0])   # cat 1B -> 4B (khop format claim 0x53)
+                    if (mid, cat) not in self._mail_ids:
+                        self._mail_ids.append((mid, cat))
+                    # record ke: sau [cat 1][01 1][itemid 4] la padding -> quet toi OLE-time hop le
+                    p, nxt = catpos + 6, None
+                    while p + 12 <= len(body):
+                        try:
+                            o2 = struct.unpack("<d", body[p + 4:p + 12])[0]
+                        except Exception:
+                            o2 = 0
+                        if 45000 < o2 < 48000:
+                            nxt = p; break
+                        p += 1
+                    if nxt is None:
+                        break
+                    off = nxt
         elif opcode == 0x7c:                      # event "qua 14 ngay" (panel claim item)
             # sub 01 = list phan qua: [01 00][count 4B LE] + count*[itemid 4B LE][qty 4B LE]
             if pkt[7:9] == b"\x01\x00" and len(pkt) >= 13:
@@ -1496,19 +1522,29 @@ class GameClient:
           xoa:   53 02 00 [mailid 4B LE][cat 4B LE]
         cat THAY DOI tung mail (3, 5,...) nen phai dung dung cat cua tung mail."""
         # KHONG xoa _mail_ids o dau (server push luc login TRUOC khi ham nay chay).
+        # CHO server PUSH HET mail: cac goi 0x53 sub01 (moi mail 1 goi) den RAI RAC luc login -> neu
+        # gom NGAY thi chi bat duoc mail dau (bug: nhieu mail chi nhan 1). Doi toi khi _mail_ids NGUNG
+        # tang (on dinh 1.5s) hoac cap 6s.
+        _t0 = time.time(); _last_n = -1; _stable = time.time()
+        while self.running and time.time() - _t0 < 6:
+            _n = len(self._mail_ids)
+            if _n != _last_n:
+                _last_n = _n; _stable = time.time()
+            elif time.time() - _stable > 1.5:
+                break                            # on dinh 1.5s (co mail hay khong deu thoat)
+            time.sleep(0.3)
         mails = list(self._mail_ids)
         self._mail_ids = []                      # consume sau khi gom
         if not mails:
             return
-        n = 0
-        for mid, cat in mails:
-            self.send(0x53, b"\x03\x00" + mid + cat)   # doc/mo mail (mark as read)
-            time.sleep(0.4)
-            self.send(0x53, b"\x01\x00" + mid + cat)   # nhan qua mail nay
-            time.sleep(0.4)
-            self.send(0x53, b"\x02\x00" + mid + cat)   # xoa mail nay
-            time.sleep(0.4)
-            n += 1
+        # BATCH (verify capture nhan/xoa 17 mail): server nhan format [count 4B][mailid 4B x count],
+        # KHONG can cat, KHONG per-mail. 53 01 00 = nhan qua TAT CA; 53 02 00 = xoa TAT CA. (Code cu
+        # gui 53 03/01/02 [mailid][cat] tung cai -> SAI format -> mail khong bi xoa, login lai van con.)
+        ids = [mid for mid, _cat in mails]      # mailid 4B LE
+        n = len(ids)
+        payload = struct.pack("<I", n) + b"".join(ids)
+        self.send(0x53, b"\x01\x00" + payload); time.sleep(0.6)   # nhan qua TAT CA mail
+        self.send(0x53, b"\x02\x00" + payload); time.sleep(0.6)   # xoa TAT CA mail
         log.info("[%s] Mail: da nhan qua + xoa %d mail", self._label, n)
 
     def _on_offline_exp(self, pkt: bytes):
@@ -1783,6 +1819,12 @@ class GameClient:
             time.sleep(1.5)
 
     LEGION_BOSS_COOLDOWN = 4 * 3600   # 4h giua cac lan (fallback neu server ko day 0x27 76 moi)
+
+    def legion_boss_available(self) -> bool:
+        """Con danh boss QD duoc khong: con luot (count < max) VA het cooldown (server bao). Dung de
+        keepalive quyet dinh co trigger REFORM (ve thanh danh) hay khong."""
+        return (self.legion_boss_count < self.legion_boss_max
+                and (not self.legion_boss_next or time.time() >= self.legion_boss_next))
 
     def do_legion_boss(self):
         """BOSS QUAN DOAN: danh SOLO truc tiep (nhu solo dungeon, KHONG teleport nhu world boss).
