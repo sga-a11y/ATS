@@ -690,6 +690,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     try: c.claim_daily_quests(heavy=True)
                     except Exception as e:
                         log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
+                if not is_leader:   # het gio DG -> tru n_members de leader KHONG cho bong ma (phai du party moi lam)
+                    with st["lock"]: st["n_members"] = max(0, st["n_members"] - 1)
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
@@ -702,6 +704,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     try: c.claim_daily_quests(heavy=True)   # khong vao DG -> lam full quest roi dong
                     except Exception as e:
                         log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
+                if not is_leader:   # khong vao duoc DG -> tru n_members de leader KHONG cho bong ma
+                    with st["lock"]: st["n_members"] = max(0, st["n_members"] - 1)
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
@@ -776,28 +780,36 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 st["invited"].set()   # bao member khoi cho moi
                 log.info("[%s] (LEADER) toi train map theo party (da partied) -> bo qua moi lai", label)
             else:
-                for _ in range(90):   # ~180s: du cho member xong dungeon + ve diem tap ket
+                # PHAI DU PARTY MOI LAM (yeu cau user): leader CHO TAT CA member san sang (da vao DG /
+                # ve diem tap ket) roi moi + train. Member khong tham gia duoc (het gio DG / thoat / sai
+                # map) da TU TRU n_members -> muc tieu "du" luon dat duoc, KHONG cho bong ma. KHONG bo
+                # cuoc sau 180s nhu truoc (do la nguyen nhan train thieu party khi co dua login cham).
+                _t0 = time.time()
+                while len(st["ready_members"]) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
-                    if len(st["ready_members"]) >= st["n_members"]:
-                        break
+                    if not c.running: c.close(); return
+                    if time.time() - _t0 > 30:
+                        log.info("[%s] (LEADER) CHO du member san sang (%d/%d)...",
+                                 label, len(st["ready_members"]), st["n_members"])
+                        _t0 = time.time()
                     time.sleep(2)
-                log.info("[%s] (LEADER) %d/%d member san sang -> MOI (theo entity)",
+                log.info("[%s] (LEADER) DU %d/%d member san sang -> MOI (theo entity)",
                          label, len(st["ready_members"]), st["n_members"])
-                for r in range(6):
+                # MOI toi khi DU PARTY join (khong gioi han 6 lan): member da san sang, invite se toi.
+                _t0 = time.time()
+                while joined_member_count(pidx) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
+                    if not c.running: c.close(); return
                     c.invite_members(gap=1.0)
                     st["invited"].set()
                     time.sleep(4)
-                    njoined = joined_member_count(pidx)
-                    log.info("[%s] (LEADER) sau moi lan %d: joined=%d/%d",
-                             label, r + 1, njoined, st["n_members"])
-                    if njoined >= st["n_members"]:
-                        log.info("[%s] (LEADER) DU PARTY (%d member join)", label, njoined)
-                        break
-                    time.sleep(2)
-                else:
-                    log.warning("[%s] (LEADER) chua du member (%d/%d)",
-                                label, joined_member_count(pidx), st["n_members"])
+                    if time.time() - _t0 > 30:
+                        log.info("[%s] (LEADER) dang moi... joined=%d/%d",
+                                 label, joined_member_count(pidx), st["n_members"])
+                        _t0 = time.time()
+                st["invited"].set()
+                log.info("[%s] (LEADER) DU PARTY (%d/%d member join)",
+                         label, joined_member_count(pidx), st["n_members"])
             # Bat dau train (set QS + ra cho danh). Goi khi DA co >=1 member (du quan su).
             training_started = False
             def _start_training():
