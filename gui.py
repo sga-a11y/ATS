@@ -35,7 +35,18 @@ def _load_profiles():
     """Doc accounts.json -> {active, profiles:{ten:{channel,party_leaders,parties}}}.
     Dang FLAT cu {channel,parties} -> MIGRATE: 'Cau hinh 1' = config HIEN TAI cua user (active),
     'Cau hinh 2' = template mac dinh (1 party placeholder) de user tu dien thanh bo khac."""
+    import copy
     _missing = not os.path.exists(ACCOUNTS_JSON)   # ban gui di KHONG kem accounts.json -> lan dau thieu
+    if _missing:
+        # Chua co accounts.json (may moi / copy de update) -> TAO NGAY file mac dinh, CA 2 cau hinh
+        # deu co party mau (acc1/pass1, acc2/pass2, acc3/pass3) de user mo Setting la thay ngay, khoi
+        # bi trong o Cau hinh 1 (dang active).
+        prof = {"active": "Cấu hình 1",
+                "profiles": {"Cấu hình 1": {"channel": 2, "parties": [copy.deepcopy(_DEFAULT_PARTY)]},
+                             "Cấu hình 2": {"channel": 2, "parties": [copy.deepcopy(_DEFAULT_PARTY)]}}}
+        try: _save_profiles(prof)
+        except Exception: pass
+        return prof
     try:
         with open(ACCOUNTS_JSON, encoding="utf-8") as f:
             d = json.load(f)
@@ -43,15 +54,12 @@ def _load_profiles():
         d = {"channel": 2, "parties": []}
     if isinstance(d, dict) and isinstance(d.get("profiles"), dict) and d["profiles"]:
         return d
-    import copy
+    # FLAT cu {channel,parties} -> MIGRATE: Cau hinh 1 = config THAT cua user (giu nguyen), Cau hinh 2
+    # = template mau.
     ch = d.get("channel", 2) if isinstance(d, dict) else 2
-    prof = {"active": "Cấu hình 1",
+    return {"active": "Cấu hình 1",
             "profiles": {"Cấu hình 1": d,
                          "Cấu hình 2": {"channel": ch, "parties": [copy.deepcopy(_DEFAULT_PARTY)]}}}
-    if _missing:   # chua co accounts.json -> TAO NGAY voi format mac dinh (khoi copy de mat cau hinh)
-        try: _save_profiles(prof)
-        except Exception: pass
-    return prof
 
 
 def _save_profiles(prof):
