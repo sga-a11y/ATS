@@ -235,6 +235,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         if config.TRAIN_MAPS.get(getattr(config, "START_CITY_ID", 0)) is not None:
             c.flee_mode = True
         next_vantieu = None
+        next_legion_boss = None
         if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
             c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
             c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
@@ -255,6 +256,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         city_flag = pcfg.get("city_flag", 0)
         # checkbox "Lam nhiem vu hang ngay" (bingo 9 o + dungeon). Fallback key cu "do_dungeon".
         do_daily = pcfg.get("do_daily", pcfg.get("do_dungeon", True))
+        # BOSS QUAN DOAN: danh solo truc tiep neu con luot (3/ngay) + qua 4h. Tra gio check lai ->
+        # keepalive canh (nhu van tieu). Goi CA khi reconnect (persist count/cooldown -> khong danh du).
+        if do_daily:
+            try: next_legion_boss = c.do_legion_boss()
+            except Exception as e: log.warning("[%s] loi do_legion_boss: %s", label, e)
         tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
         # mode: digioi | train | city (tap trung ve thanh) | stand (dung yen) | cleanbag
         mode = pcfg.get("mode")
@@ -264,6 +270,20 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         train_on_map = (mode == "train") and (tm is not None)
         is_digioi = (mode == "digioi")
         log.info("[%s] (%s) MODE=%s start_city=%s", label, role, mode, sc)
+
+        # RA KHOI MAP EVENT truoc: neu login o map event (12921/12922...) MA mode KHAC event -> event
+        # map KHONG teleport thang duoc -> phai di bo ra cong ve map thuong roi moi lam mode. Tim event
+        # co staging_map/dest_map == login_map -> dung 'exit' cua no.
+        if mode != "event" and login_map is not None:
+            _evx = next((_e for _e in (getattr(config, "EVENTS", {}) or {}).values()
+                         if login_map in (_e.get("staging_map"), _e.get("dest_map")) and _e.get("exit")), None)
+            if _evx is not None:
+                try:
+                    c.exit_event(_evx)
+                    login_map = c.current_map   # cap nhat map sau khi ra -> teleport/route ben duoi dung
+                    log.info("[%s] (%s) da ra khoi map event -> gio o map %s", label, role, login_map)
+                except Exception as e:
+                    log.warning("[%s] loi exit_event: %s", label, e)
 
         # NHIEM VU BINGO (mode KHAC digioi): VE CHO AN TOAN TRUOC roi moi lam dailies (tranh dung
         # giua o quai lam dailies; world boss tu teleport di roi ve Trac Quan; mode positioning ben
@@ -313,7 +333,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # + teleport ve Trac Quan) TRUOC khi sync kenh + lap party. Tranh leader sync kenh/moi khi
         # member dang lam daily -> member sai kenh / leader train 1 minh. (digioi: heavy hoan toi
         # cuoi DG nen khong can.)
-        if not is_digioi and not is_reconnect:   # reconnect: cac member khac da xong daily -> ko cho barrier
+        if not is_digioi and not is_reconnect and mode != "event":   # event: doc lap, khong cho barrier party
             with st["lock"]:
                 st["dailies_done"] += 1
             expected = len(party_accounts(pidx))
@@ -730,6 +750,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             #    SOLO -> moi acc chay rieng, KHONG can chung kenh voi ai -> bo qua.
             if pcfg.get("digioi_mode") != "solo":
                 do_channel_sync()
+        elif mode == "event":
+            # --- EVENT: tele toi map event (Nhi Kieu...) roi DUNG YEN HOAN TOAN, cho moi tay.
+            #     Moi nick TU teleport rieng - KHONG lap party, KHONG sync kenh. ---
+            _evs = getattr(config, "EVENTS", {}) or {}
+            ev = _evs.get(pcfg.get("event_key") or "")
+            if ev is None and _evs:
+                # event_key thieu/None/sai (vd config luu truoc khi co picker) -> fallback event DAU
+                # TIEN (tien khi chi co 1 event). User chon dung event trong GUI + luu lai la het.
+                _k = next(iter(_evs)); ev = _evs[_k]
+                log.info("[%s] (%s) mode event: event_key='%s' khong hop le -> dung event dau '%s' (%s)",
+                         label, role, pcfg.get("event_key"), _k, ev.get("label"))
+            if ev is None:
+                log.warning("[%s] (%s) mode event nhung KHONG co event nao trong events.json -> dung yen tai cho",
+                            label, role)
+            else:
+                try:
+                    c.go_to_event(ev)   # tu day het cinematic (9x 0x14 0600) roi thoat cutscene
+                except Exception as e:
+                    log.warning("[%s] loi go_to_event: %s", label, e)
+            c.flee_mode = False   # dung yen; bi danh thi tu danh, KHONG chu dong (cho moi tay)
         else:
             # --- CITY (tap trung ve thanh) / STAND (dung yen) / CLEANBAG ---
             # SOLO daily dungeon TRUOC (neu bat). Dungeon co the bi DUMP ve 12000 -> lam truoc
@@ -767,7 +807,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # bo qua o buoc dong bo kenh o tren), khong cho leader/member gi ca. Ai vao duoc DG thi tu
         # chay long vong luon (xem buoc 1-2 o tren: da vao DG + lam nhiem vu nhe).
         digioi_solo = is_digioi and pcfg.get("digioi_mode") == "solo"
-        if digioi_solo:
+        event_mode = (mode == "event")
+        if event_mode:
+            # EVENT: da tele toi map event o tren -> DUNG YEN HOAN TOAN, cho moi tay. Moi nick doc lap,
+            # KHONG lap party/sync kenh (bo qua het nhanh leader/member ben duoi). Auto-accept moi tay
+            # xu ly o client (0x2f). training_started=False -> keepalive KHONG danh chu dong.
+            c.flee_mode = False
+            log.info("[%s] (%s) EVENT -> dung yen tai map event, cho moi tay (auto-accept)", label, role)
+        elif digioi_solo:
             # Di Gioi SOLO cho mang toi 4 pet ra tran CUNG LUC (khac han 1 pet binh thuong) - moi
             # con 1 atype rieng (0,1,3,4), can nhanh combat rieng (combat.decide_multipet, xem
             # state.solo_multipet trong bot/state.py + bot/client.py _make_decisions).
@@ -973,7 +1020,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # "leader" chi la vai tro danh nhan trong config, KHONG lien quan gi den viec cac acc
             # khac co chay duoc hay khong -> KHONG duoc thoat theo (da xac nhan bug thuc te: leader
             # out la ca party solo out theo, vo ly vi solo dung y la doc lap).
-            if (not is_leader) and has_leader and st["leader_gone"].is_set() and not digioi_solo:
+            if (not is_leader) and has_leader and st["leader_gone"].is_set() and not digioi_solo and not event_mode:
                 log.info("[%s] (member) CHU PARTY da thoat -> member thoat theo", label)
                 _reason("chu party thoat -> member theo")
                 break
@@ -1006,7 +1053,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # ==== RECONNECT reaction: co dong doi ROT (dang login lai) -> TAM DUNG + cho tat ca ve
             # -> restart mode. CHI khi party co bot-leader (khong thi nick rot da chet). Di Gioi SOLO
             # bo qua (moi acc doc lap). Team dungeon xu o phase daily rieng (relogin ca party). ====
-            if has_leader and not digioi_solo and st["disc_gen"] > disc_gen_handled:
+            if has_leader and not digioi_solo and not event_mode and st["disc_gen"] > disc_gen_handled:
                 disc_gen_handled = st["disc_gen"]
                 if st["reconnecting"]:
                     log.warning("[%s] (%s) dong doi ROT %s -> TAM DUNG cho reconnect",
@@ -1069,6 +1116,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         c.combat_ready(); c.flee_mode = False
                     last_reform = time.time(); last_combat = time.time()
                     continue
+            # EVENT: luon TAT flee khi rảnh -> nguoi choi keo bot vao battle (moi tay) thi bot DANH,
+            # khong bo chay (flee_mode co the con True tu go_to_event/di chuyen truoc do).
+            if event_mode and not c.in_combat() and getattr(c, "flee_mode", False):
+                c.flee_mode = False
             # Hoi mau MOI MODE (train/digioi/city/stand...) - chi can ngoai combat.
             # Tu lọc theo nguong HP/SP nen dung yen/ve thanh khong thua mau thi khong dung item.
             if not c.in_combat():
@@ -1181,6 +1232,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] loi van tieu (bo qua): %s", label, e)
                     next_vantieu = time.time() + 600   # loi -> thu lai sau 10p
+            # BOSS QUAN DOAN: toi gio (qua 4h) + con luot -> danh tiep. Chi khi NGOAI combat (khong
+            # xen giua tran train). do_legion_boss tu check count/cooldown -> tra gio check ke tiep.
+            if (next_legion_boss is not None and time.time() >= next_legion_boss
+                    and not c.in_combat()):
+                try:
+                    next_legion_boss = c.do_legion_boss()
+                except Exception as e:
+                    log.warning("[%s] loi boss QD (bo qua): %s", label, e)
+                    next_legion_boss = time.time() + 600
             # --- RETRY KENH + RE-MOI moi 60s (ca DG lan map-train) ---
             # Kenh it nguoi nhat co the KHONG du cho ca party -> co dua ket lai kenh cu.
             # Leader cu train; dua chua join thi 1p chuyen lai kenh chung 1 lan; leader 1p moi lai.

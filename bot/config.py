@@ -94,6 +94,20 @@ def _load_train_routes(path=None):
         pass
     return out
 TRAIN_ROUTES = _load_train_routes()
+def _load_events(path=None):
+    """Doc events.json -> {event_key -> {label, select, staging_map, dest_map, steps}}.
+    Mode 'event': tele toi map event roi dung yen (moi nick tu teleport rieng)."""
+    import json, os
+    f = path or os.path.join(_base_dir(), "events.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("events", {}).items():
+                out[k] = v
+    except Exception:
+        pass
+    return out
+EVENTS = _load_events()
 def _load_mob_paths(path=None):
     """Doc mob_paths.json -> {map_id:int -> {(sx,sy):tuple -> [(x,y),...]}}.
     Duong di bo TRONG map toi diem quai XA (capture) - bot replay thay navigate thang."""

@@ -390,7 +390,7 @@ class BotGUI(tk.Tk):
         accs = ctrl.party_accounts(pidx)
         pmode = config.PARTY_CONFIG.get(pidx, {}).get("mode", "?")
         mlbl = {"digioi": "Dị Giới", "train": "Train map", "city": "Về thành",
-                "stand": "Đứng yên", "cleanbag": "Dọn túi"}.get(pmode, pmode)
+                "stand": "Đứng yên", "event": "Event", "cleanbag": "Dọn túi"}.get(pmode, pmode)
         frame = ttk.Frame(sub_nb, padding=4)
         sub_nb.add(frame, text=f"P{pidx + 1} · {mlbl} ({len(accs)})",
                    image=self._dot_off, compound="left")
@@ -765,6 +765,7 @@ MODE_OPTIONS = [
     ("train", "Train map"),
     ("city", "Tập trung về thành (đứng yên)"),
     ("stand", "Login đâu đứng yên đó"),
+    ("event", "Event (tele tới map event, đứng yên chờ mời tay)"),
     ("cleanbag", "Dọn dẹp túi đồ (chưa làm)"),
 ]
 _MODE_LABEL = dict(MODE_OPTIONS)
@@ -811,6 +812,9 @@ class PartyConfigFrame(ttk.Frame):
         self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
         self.map_cb = self.mob_cb = self.city_cb = None
+        # EVENT: list (key, label) tu events.json -> picker khi mode=event
+        self.events = [(k, v.get("label", k)) for k, v in (getattr(config, "EVENTS", {}) or {}).items()]
+        self.event_var = tk.StringVar(); self.event_cb = None
         # Di Gioi: party (mac dinh, giu nguyen hanh vi cu - lap party chung, dong bo kenh) vs solo
         # (moi acc chay rieng le, khong lap party, khong dong bo kenh - dung khi acc khong can/khong
         # muon gop chung, vd khac nick khong lien quan nhau).
@@ -943,10 +947,10 @@ class PartyConfigFrame(ttk.Frame):
 
     def _on_mode_change(self):
         # Khi DOI che do: tu set mac dinh "Khong co chu PT".
-        #  - city (ve thanh) / stand (login dau dung yen): TICK (member tu dung, khong can chu PT).
+        #  - city / stand / event: TICK (moi nick tu dung/tele rieng, khong can chu PT).
         #  - train / digioi: BO TICK (can chu PT de keo party + lap tran).
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
-        self.no_leader_var.set(mode in ("city", "stand"))
+        self.no_leader_var.set(mode in ("city", "stand", "event"))
         self._render_dyn()
 
     def _update_no_leader_visibility(self):
@@ -1009,6 +1013,18 @@ class PartyConfigFrame(ttk.Frame):
                 idx = next((i for i, (cid, _f, _n) in enumerate(self.cities) if cid == 12061), 0)
             if names:
                 self.city_var.set(names[idx])
+        elif mode == "event":
+            ttk.Label(self.dyn, text="Event:", width=10).pack(side="left")
+            labels = [lbl for _k, lbl in self.events]
+            self.event_cb = ttk.Combobox(self.dyn, textvariable=self.event_var, state="readonly",
+                                          width=32, values=labels)
+            self.event_cb.pack(side="left")
+            # chon lai event da luu (theo event_key), mac dinh cai dau tien
+            cur = self._preset.get("event_key")
+            idx = next((i for i, (k, _l) in enumerate(self.events) if k == cur), 0)
+            if labels:
+                self.event_var.set(labels[idx])
+            ttk.Label(self.dyn, text="  (tele tới map event, đứng yên chờ mời tay)").pack(side="left")
         elif mode == "digioi":
             ttk.Label(self.dyn, text="→ START_CITY_ID = 49942 (Dị Giới, cố định)").pack(side="left")
         elif mode == "stand":
@@ -1041,6 +1057,7 @@ class PartyConfigFrame(ttk.Frame):
     def get_data(self):
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
         sc, mob_index, city_flag = 0, 0, 0
+        event_key = ""
         if mode == "digioi":
             sc = 49942
         elif mode == "train":
@@ -1051,6 +1068,8 @@ class PartyConfigFrame(ttk.Frame):
             for (cid, f, n) in self.cities:
                 if n == self.city_var.get():
                     sc = cid; city_flag = f; break
+        elif mode == "event":
+            event_key = next((k for k, lbl in self.events if lbl == self.event_var.get()), "")
         accs = []
         for r in self.acc_rows:
             u = r["u"].get().strip()
@@ -1074,6 +1093,8 @@ class PartyConfigFrame(ttk.Frame):
                 "leaders": leaders, "accounts": accs}
         if mode == "digioi":
             data["digioi_mode"] = "solo" if self.digioi_solo_var.get() else "party"
+        if mode == "event":
+            data["event_key"] = event_key
         return data
 
 

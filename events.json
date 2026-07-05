@@ -1,0 +1,31 @@
+{
+  "_note": "Event teleport (mode 'event'): tele toi map event roi DUNG YEN cho moi tay. Moi nick tu teleport rieng (khong party/sync kenh). KEY = event key. select = payload 0x4d (hex, '0300'+id 2B LE). staging_map = map cho sau khi chon event. steps = di chuyen toi cong roi qua (giong train_routes): {'move':[x,y]} | {'gate':idx,'x','y'}. dest_map = map event dich. Them event moi = them 1 entry (capture: 0x4d chon event -> 0x0c info -> 0x06 move -> 0x14 08 gate -> 0x14 06 transit/cinematic).",
+  "events": {
+    "nhi_kieu": {
+      "label": "Nhị Kiều",
+      "select": "03000100",
+      "staging_map": 12921,
+      "dest_map": 12922,
+      "steps": [
+        {"move": [415, 607]},
+        {"move": [410, 590]},
+        {"move": [361, 395]},
+        {"move": [350, 350]},
+        {"gate": 2, "x": 350, "y": 330}
+      ],
+      "exit": {
+        "_note": "Ra khoi map event ve map thuong (out_map) roi moi teleport di mode khac duoc. Event map (12921/12922) KHONG teleport thang. Cong exit dung 0x14 04 (gate thuong).",
+        "out_map": 12003,
+        "steps": [
+          {"move": [410, 490]},
+          {"move": [410, 630]},
+          {"move": [450, 790]},
+          {"move": [470, 930]},
+          {"move": [510, 1030]},
+          {"move": [590, 1130]},
+          {"gate": 1, "x": 650, "y": 1250}
+        ]
+      }
+    }
+  }
+}
