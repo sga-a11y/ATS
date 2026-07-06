@@ -250,6 +250,7 @@ fun TsBotApp(
                         onSendChannel = { ch -> service?.sendChannel(party.accounts.map { it.username }, ch) },
                         onSendChannelAuto = { service?.sendChannelAuto(party.accounts.map { it.username }) },
                         onSendCity = { id, flag -> service?.sendCity(party.accounts.map { it.username }, id, flag) },
+                        onSendGiftcode = { code -> service?.sendGiftcode(party.accounts.map { it.username }, code) },
                         onGetChannels = {
                             party.accounts.firstOrNull { service?.isRunning(it.username) == true }
                                 ?.let { service?.getChannels(it.username) } ?: emptyList()
@@ -340,6 +341,7 @@ fun PartyCard(
     onSendChannel: (Int) -> Unit,
     onSendChannelAuto: () -> Unit,
     onSendCity: (Int, Int) -> Unit,
+    onSendGiftcode: (String) -> Unit,
     onGetChannels: () -> List<Triple<Int, Int, Int>>,
     onCurrentChannel: () -> Int?,
 ) {
@@ -420,6 +422,7 @@ fun PartyCard(
             var curChannel by remember { mutableStateOf<Int?>(null) }
             var showChannelDialog by remember { mutableStateOf(false) }
             var showCityDialog by remember { mutableStateOf(false) }
+            var showGiftcodeDialog by remember { mutableStateOf(false) }
             // poll kenh hien tai moi 5s (chi khi party co acc)
             LaunchedEffect(party.accounts.firstOrNull()?.username) {
                 while (party.accounts.isNotEmpty()) {
@@ -439,6 +442,8 @@ fun PartyCard(
                     OutlinedButton(onClick = { showChannelDialog = true }) { Text("Đổi kênh") }
                     Spacer(Modifier.width(6.dp))
                     OutlinedButton(onClick = { showCityDialog = true }) { Text("Đổi thành") }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton(onClick = { showGiftcodeDialog = true }) { Text("Giftcode") }
                 }
             }
             if (showChannelDialog) {
@@ -453,6 +458,12 @@ fun PartyCard(
                 CityDialog(
                     onDismiss = { showCityDialog = false },
                     onPick = { info -> onSendCity(info.cityId, info.flag); showCityDialog = false },
+                )
+            }
+            if (showGiftcodeDialog) {
+                GiftcodeDialog(
+                    onDismiss = { showGiftcodeDialog = false },
+                    onSave = { code -> onSendGiftcode(code); showGiftcodeDialog = false },
                 )
             }
 
@@ -834,5 +845,33 @@ fun CityDialog(
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
+    )
+}
+
+@Composable
+fun GiftcodeDialog(
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var code by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nhập giftcode") },
+        text = {
+            OutlinedTextField(
+                value = code,
+                onValueChange = { code = it },
+                label = { Text("Giftcode") },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            Button(onClick = { if (code.isNotBlank()) onSave(code.trim()) }) {
+                Text("Lưu")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Hủy") }
+        },
     )
 }
