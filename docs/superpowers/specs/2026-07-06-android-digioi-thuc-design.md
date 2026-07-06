@@ -98,5 +98,6 @@ công với tài khoản thật (không có cách nào test tự động điều
   Android đã có `run_train` cho các mode đứng yên/login-tại-chỗ riêng.
 - Không làm daily quest/dungeon/boss quân đoàn trong luồng Dị Giới - đã có sub-project #4 lo phần
   auto-claim liên quan, không lặp lại ở đây.
-- Không làm "chế độ Dị Giới SOLO" (mỗi account chạy độc lập không lập party) trong lần này trừ khi
-  anh yêu cầu thêm khi review plan - có thể bổ sung sau vì logic tương tự, chỉ là nhánh rẽ nhỏ.
+- (Đã bổ sung khi review: chế độ "Dị Giới SOLO" - mỗi account chạy độc lập, không lập party, không
+  đồng bộ kênh - NẰM TRONG phạm vi sub-project này, port nguyên từ `run_party_digioi.py:819-846,
+  1302-1311`, xem plan.)
