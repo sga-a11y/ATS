@@ -30,6 +30,12 @@ def _pstate(party_name: str) -> dict:
         return _party_state[party_name]
 
 
+def set_n_members(party_name: str, n: int) -> None:
+    """Set n_members TRUOC khi bat ky thread account nao bat dau vong keepalive - goi tu Kotlin
+    (BotForegroundService.startPartyDigioi) 1 LAN cho ca Party truoc khi start tung account-thread."""
+    _pstate(party_name)["n_members"] = n
+
+
 def set_leader_name(party_name: str, char_name: str) -> None:
     """Leader tu dang ky ten nhan vat cua minh cho party_name nay - de member's client (qua
     config.leaders_for) biet loi moi tu ai la DUOC TIN CAY."""

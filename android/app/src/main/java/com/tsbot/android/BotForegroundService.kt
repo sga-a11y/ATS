@@ -22,6 +22,11 @@ import kotlinx.coroutines.flow.update
  * publish qua StateFlow de UI observe.
  */
 class BotForegroundService : Service() {
+    companion object {
+        const val RUN_MODE_DIGIOI_PARTY = "digioi_party"
+        const val RUN_MODE_DIGIOI_SOLO = "digioi_solo"
+    }
+
     private val binder = LocalBinder()
 
     // THREAD-SAFETY: startAccount()/stopAccount() duoc goi tu main/UI thread, trong khi
@@ -117,6 +122,86 @@ class BotForegroundService : Service() {
         }
         if (runningThreads.putIfAbsent(account.username, thread) != null) return
         thread.start()
+    }
+
+    /** Khoi dong CA Party o che do Di Gioi THAT (party trong game). Account dau tien = leader
+     * (khop PARTY_CONFIG's is_leader tren PC - leader duoc khai bao san theo account, khong doi
+     * giua cac lan chay). Goi 1 LAN cho ca Party (khac startAccount tung acc rieng le) vi
+     * n_members phai duoc set TRUOC khi bat ky thread nao bat dau vong keepalive. */
+    fun startPartyDigioi(party: Party, serverIp: String, serverId: Int) {
+        if (party.accounts.isEmpty()) return
+        val partyModule = Python.getInstance().getModule("train_bot.party_state")
+        partyModule.callAttr("set_n_members", party.name, party.accounts.size - 1)
+        val leader = party.accounts.first()
+        party.accounts.forEach { account ->
+            val isLeader = account.username == leader.username
+            stopFlags[account.username] = false
+            val thread = Thread {
+                try {
+                    val module = Python.getInstance().getModule("train_bot.train_runner")
+                    val shouldStop = PyObject.fromJava(object {
+                        fun call(): Boolean = stopFlags[account.username] == true
+                    })
+                    val onStatus = PyObject.fromJava(object {
+                        fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
+                            _status.update {
+                                it + (account.username to AccountStatus(
+                                    state = RunState.valueOf(state.uppercase()),
+                                    hp = hp?.toInt(), sp = sp?.toInt(),
+                                    hpMax = hpMax?.toInt(), spMax = spMax?.toInt(), message = msg,
+                                ))
+                            }
+                        }
+                    })
+                    module.callAttr(
+                        "run_party_digioi", account.username, account.password, serverIp, serverId,
+                        party.name, isLeader, isLeader, shouldStop, onStatus,
+                    )
+                } catch (e: Exception) {
+                    _status.update {
+                        it + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khong ro"))
+                    }
+                } finally {
+                    runningThreads.remove(account.username)
+                    stopFlags.remove(account.username)
+                }
+            }
+            if (runningThreads.putIfAbsent(account.username, thread) == null) thread.start()
+        }
+    }
+
+    /** Di Gioi SOLO: moi account doc lap hoan toan, khong lap party/dong bo kenh. */
+    fun startAccountDigioiSolo(account: Account, serverIp: String, serverId: Int) {
+        stopFlags[account.username] = false
+        val thread = Thread {
+            try {
+                val module = Python.getInstance().getModule("train_bot.train_runner")
+                val shouldStop = PyObject.fromJava(object {
+                    fun call(): Boolean = stopFlags[account.username] == true
+                })
+                val onStatus = PyObject.fromJava(object {
+                    fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
+                        _status.update {
+                            it + (account.username to AccountStatus(
+                                state = RunState.valueOf(state.uppercase()),
+                                hp = hp?.toInt(), sp = sp?.toInt(),
+                                hpMax = hpMax?.toInt(), spMax = spMax?.toInt(), message = msg,
+                            ))
+                        }
+                    }
+                })
+                module.callAttr("run_digioi_solo", account.username, account.password, serverIp, serverId,
+                    shouldStop, onStatus)
+            } catch (e: Exception) {
+                _status.update {
+                    it + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khong ro"))
+                }
+            } finally {
+                runningThreads.remove(account.username)
+                stopFlags.remove(account.username)
+            }
+        }
+        if (runningThreads.putIfAbsent(account.username, thread) == null) thread.start()
     }
 
     fun stopAccount(username: String) {
