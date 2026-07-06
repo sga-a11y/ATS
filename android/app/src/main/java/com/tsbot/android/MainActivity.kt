@@ -857,6 +857,38 @@ fun AddPartyDialog(
                         }
                     }
                 }
+                // Mode EVENT: chon event de tele toi (dung chung field cityKey lam event key -
+                // run_train nhan runMode==event thi coi cityKey la event_key). Mac dinh event dau tien.
+                if (selectedMode == RunModes.EVENT) {
+                    Spacer(Modifier.height(8.dp))
+                    ExposedDropdownMenuBox(
+                        expanded = cityExpanded,
+                        onExpandedChange = { cityExpanded = it },
+                    ) {
+                        OutlinedTextField(
+                            value = Events.ALL[selectedCity]?.label ?: (Events.ALL.values.firstOrNull()?.label ?: ""),
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Event") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cityExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        )
+                        DropdownMenu(
+                            expanded = cityExpanded,
+                            onDismissRequest = { cityExpanded = false },
+                        ) {
+                            Events.ALL.forEach { (key, info) ->
+                                DropdownMenuItem(
+                                    text = { Text(info.label) },
+                                    onClick = {
+                                        selectedCity = key
+                                        cityExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
                 // De trong cuoi Column: cac dropdown gan cuoi (vd "Quai" khi mode Train) can CHO
                 // BEN DUOI de DropdownMenu popup bung ra - dialog nay co RAT NHIEU field nen field
                 // cuoi cung nam sat day vung hien thi, khong co cho -> popup bi coi la khong co

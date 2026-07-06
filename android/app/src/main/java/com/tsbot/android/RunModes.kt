@@ -12,11 +12,13 @@ object RunModes {
     const val STAY_LOGIN = "stay_login"
     const val DIGIOI = "digioi"
     const val TRAIN = "train"
+    const val EVENT = "event"
 
     val ALL: Map<String, String> = mapOf(
         STAND_STILL to "Đứng yên tại thành",
         STAY_LOGIN to "Login ở đâu đứng yên đó",
         DIGIOI to "Dị Giới",
         TRAIN to "Train (map bản đồ)",
+        EVENT to "Event (tele đứng đợi mời PT)",
     )
 }

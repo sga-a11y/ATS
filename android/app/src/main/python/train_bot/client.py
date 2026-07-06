@@ -497,6 +497,7 @@ class GameClient:
         self.current_channel = None  # kenh dang o (set khi switch_channel; None = chua biet/mac dinh)
         self._chan_event = threading.Event()
         self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
+        self._deliberate_close = False   # True khi BOT chu dong dong (close/relogin) -> send() OSError khong set server_closed
         self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
         self._gate_transit = False   # True khi dang gui chuoi 0x14 qua cong -> combat KHONG gui 0x32
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
@@ -533,6 +534,9 @@ class GameClient:
         self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
         self.vantieu_started = None  # so luot van tieu DA gui hom nay (S2C 0x55 sid=0x08)
         self.vantieu_max = 3         # gioi han van tieu/ngay (server bao kem, mac dinh 3)
+        self.legion_boss_count = 0   # so lan DA danh boss QD hom nay (S2C 0x55 id 0x2a cur)
+        self.legion_boss_max = 3     # gioi han/ngay (0x55 id 0x2a max = 3)
+        self.legion_boss_next = 0.0  # gio danh tiep duoc (cooldown, S2C 0x27 76 OLE)
         self.vantieu_slots = {}      # slot -> {"end": OLE date ket thuc, "pet": id} (tu panel 0x56 0300)
         self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - tra VANTIEU_REQUESTS
         self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
@@ -597,6 +601,11 @@ class GameClient:
             self.sock.sendall(protocol.encode(opcode, payload))
         except OSError:
             self.running = False   # socket dong -> dung gui, dung moi vong lap
+            if not self._deliberate_close:
+                # ROT phat hien qua SEND: recv loop se thay running=False -> THOAT NGAY, khong kip vao
+                # nhanh set server_closed. Thieu dong nay -> supervisor coi la "thoat binh thuong",
+                # member CHET IM (khong reconnect). (mirror PC bot/client.py)
+                self.server_closed = True
 
     def relogin(self):
         """Thoat game roi login lai (cung acc). Server tha DUNG CHO LOGOUT (login=logout pos)
@@ -604,6 +613,7 @@ class GameClient:
         Fallback khi KET o bai (lau khong co battle): ve safe -> relogin lay lai vi tri chuan
         -> di tiep toi spot. KHONG load lai gift state (giu nguyen claim trong phien)."""
         log.info("[%s] RELOGIN: dong ket noi + login lai de resync vi tri", self._label)
+        self._deliberate_close = True   # dong CHU DONG -> send() OSError khong set server_closed
         try:
             if self.sock:
                 self.sock.close()
@@ -624,6 +634,7 @@ class GameClient:
         except OSError as e:
             log.warning("[%s] RELOGIN that bai (ket noi): %s", self._label, e)
             return False
+        self._deliberate_close = False   # ket noi moi -> lai cho phep phat hien rot that
         self.running = True
         threading.Thread(target=self._recv_loop, daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
@@ -637,6 +648,7 @@ class GameClient:
         return True
 
     def close(self):
+        self._deliberate_close = True   # STOP chu dong -> send() OSError khong set server_closed
         self.running = False
         if self.sock:
             self.sock.close()
@@ -935,13 +947,39 @@ class GameClient:
                         self.state.my_atype = slot
                         log.info("[%s] self_slot=%d (tu 0x0b battle, entity)", self._label, slot)
             self.state.update_0x0b(pkt)
-        elif opcode == 0x53:                      # mail: S2C sub=01 = 1 mail (push luc login)
-            # payload: [01 00][mailid 4B LE][cat 4B LE][sender/time 8B][00][title UTF16...]
-            if pkt[7:9] == b"\x01\x00" and len(pkt) >= 17:
-                mid = pkt[9:13]    # mail_id 4B LE
-                cat = pkt[13:17]   # category 4B LE (3, 5,... -> THAY DOI tung mail!)
-                if (mid, cat) not in self._mail_ids:
-                    self._mail_ids.append((mid, cat))
+        elif opcode == 0x53:                      # mail: S2C sub=01 = LIST mail (push luc login)
+            # [01 00][count 4B] + count*record. Record: [mailid 4B][time 8B OLE][flag 1B][titlelen 2B]
+            # [title][cat 1B][01][itemid 4B][padding]. Truoc day doc pkt[9:13] tuong 1 mailid (thuc ra
+            # la COUNT) -> nhieu mail chi xu 1 (bug: nhan 1 mail). Gio parse CA list: cat = byte ngay
+            # sau title; tim record ke bang OLE-time hop le (~46000). Da verify voi capture 9 mail.
+            if pkt[7:9] == b"\x01\x00" and len(pkt) >= 13:
+                body = pkt[9:]
+                cnt = int.from_bytes(body[0:4], "little")
+                off = 4
+                for _ in range(min(cnt, 100)):
+                    if off + 15 > len(body):
+                        break
+                    mid = body[off:off + 4]
+                    tlen = int.from_bytes(body[off + 13:off + 15], "little")
+                    catpos = off + 15 + tlen
+                    if catpos >= len(body):
+                        break
+                    cat = bytes([body[catpos], 0, 0, 0])   # cat 1B -> 4B (khop format claim 0x53)
+                    if (mid, cat) not in self._mail_ids:
+                        self._mail_ids.append((mid, cat))
+                    # record ke: sau [cat 1][01 1][itemid 4] la padding -> quet toi OLE-time hop le
+                    p, nxt = catpos + 6, None
+                    while p + 12 <= len(body):
+                        try:
+                            o2 = struct.unpack("<d", body[p + 4:p + 12])[0]
+                        except Exception:
+                            o2 = 0
+                        if 45000 < o2 < 48000:
+                            nxt = p; break
+                        p += 1
+                    if nxt is None:
+                        break
+                    off = nxt
         elif opcode == 0x7c:                      # event "qua 14 ngay" (panel claim item)
             # sub 01 = list phan qua: [01 00][count 4B LE] + count*[itemid 4B LE][qty 4B LE]
             if pkt[7:9] == b"\x01\x00" and len(pkt) >= 13:
@@ -1009,6 +1047,9 @@ class GameClient:
                 elif sid == 0x08:                 # van tieu: so luot DA gui hom nay + gioi han
                     self.vantieu_started = val
                     self.vantieu_max = mx or 3
+                elif sid == 0x2a:                 # BOSS QUAN DOAN: so lan DA danh hom nay + gioi han (X/3)
+                    self.legion_boss_count = val   # 0x55 id 0x2a cur=0/1/2, max=3 (X/3)
+                    self.legion_boss_max = mx or 3
                 # KHONG doc 0x9b lam "luot dungeon": login bulk gui 0x9b=9 (KHONG khop thuc te
                 # 1-2 luot) -> sai -> dungeon dem THUAN LOCAL (checkin_state.json).
                 off += 10
@@ -1461,19 +1502,29 @@ class GameClient:
           xoa:   53 02 00 [mailid 4B LE][cat 4B LE]
         cat THAY DOI tung mail (3, 5,...) nen phai dung dung cat cua tung mail."""
         # KHONG xoa _mail_ids o dau (server push luc login TRUOC khi ham nay chay).
+        # CHO server PUSH HET mail: cac goi 0x53 sub01 (moi mail 1 goi) den RAI RAC luc login -> neu
+        # gom NGAY thi chi bat duoc mail dau (bug: nhieu mail chi nhan 1). Doi toi khi _mail_ids NGUNG
+        # tang (on dinh 1.5s) hoac cap 6s.
+        _t0 = time.time(); _last_n = -1; _stable = time.time()
+        while self.running and time.time() - _t0 < 6:
+            _n = len(self._mail_ids)
+            if _n != _last_n:
+                _last_n = _n; _stable = time.time()
+            elif time.time() - _stable > 1.5:
+                break                            # on dinh 1.5s (co mail hay khong deu thoat)
+            time.sleep(0.3)
         mails = list(self._mail_ids)
         self._mail_ids = []                      # consume sau khi gom
         if not mails:
             return
-        n = 0
-        for mid, cat in mails:
-            self.send(0x53, b"\x03\x00" + mid + cat)   # doc/mo mail (mark as read)
-            time.sleep(0.4)
-            self.send(0x53, b"\x01\x00" + mid + cat)   # nhan qua mail nay
-            time.sleep(0.4)
-            self.send(0x53, b"\x02\x00" + mid + cat)   # xoa mail nay
-            time.sleep(0.4)
-            n += 1
+        # BATCH (verify capture nhan/xoa 17 mail): server nhan format [count 4B][mailid 4B x count],
+        # KHONG can cat, KHONG per-mail. 53 01 00 = nhan qua TAT CA; 53 02 00 = xoa TAT CA. (Code cu
+        # gui 53 03/01/02 [mailid][cat] tung cai -> SAI format -> mail khong bi xoa, login lai van con.)
+        ids = [mid for mid, _cat in mails]      # mailid 4B LE
+        n = len(ids)
+        payload = struct.pack("<I", n) + b"".join(ids)
+        self.send(0x53, b"\x01\x00" + payload); time.sleep(0.6)   # nhan qua TAT CA mail
+        self.send(0x53, b"\x02\x00" + payload); time.sleep(0.6)   # xoa TAT CA mail
         log.info("[%s] Mail: da nhan qua + xoa %d mail", self._label, n)
 
     def _on_offline_exp(self, pkt: bytes):
@@ -1745,6 +1796,95 @@ class GameClient:
             time.sleep(1.5)
 
     # Nhiem vu hang ngay BINGO 3x3: 9 o (1..9). Du 1 HANG hoac COT (3 o) -> 1 qua; du 6 qua -> 1 qua
+    def go_to_event(self, ev) -> bool:
+        """Tele toi MAP EVENT roi dung yen (mode 'event', moi nick tu di rieng - khong party).
+        ev = dict tu config.EVENTS. Replay capture: 0x4d [select] chon event -> tele staging_map;
+        0x0c 0100 xin info; di chuyen (0x06) toi cong; 0x14 08[idx] qua cong (cinematic bang 0x14 06
+        trong _event_gate) -> map event. Tra True neu toi dich. Mirror bot/client.py::go_to_event."""
+        select = ev.get("select", "")
+        staging = int(ev.get("staging_map", 0))
+        dest = int(ev.get("dest_map", 0))
+        label = ev.get("label", "?")
+        log.info("[%s] go_to_event '%s' -> staging %s, dest %s", self._label, label, staging, dest)
+        self.flee_mode = True
+        # (0) VAO EVENT PHAI KHONG CO PARTY -> roi party truoc (neu con dinh party thi tele loi/ket 'dang ban')
+        try:
+            self.leave_party(); time.sleep(0.5)
+        except Exception:
+            pass
+        # (1) chon event -> server tele toi staging map
+        try:
+            self.send(0x4d, bytes.fromhex(select)); time.sleep(0.5)
+            self.send(0x0c, b"\x01\x00"); time.sleep(0.5)
+        except Exception as e:
+            log.warning("[%s] go_to_event: loi chon event: %s", self._label, e)
+            return False
+        t0 = time.time()   # cho toi staging map (toi 20s)
+        while staging and self.current_map != staging and time.time() - t0 < 20:
+            if not self.running:
+                return False
+            time.sleep(1)
+        # (2) di chuyen toi cong + qua cong -> map event
+        for st in ev.get("steps", []):
+            if not self.running:
+                return False
+            if "gate" in st:
+                if not self._event_gate(int(st["x"]), int(st["y"]), int(st["gate"]), dest):
+                    log.warning("[%s] go_to_event: ket o cong idx=%s", self._label, st.get("gate"))
+                    return False
+            else:
+                self._route_move(int(st["move"][0]), int(st["move"][1]))
+        ok = (self.current_map == dest) if dest else True
+        log.info("[%s] go_to_event '%s' xong: map=%s (dich %s) -> %s",
+                 self._label, label, self.current_map, dest, "OK" if ok else "CHUA TOI")
+        return ok
+
+    def exit_event(self, ev) -> bool:
+        """RA KHOI map event ve map thuong (ev['exit']['out_map']) - event map KHONG teleport thang
+        duoc, phai di bo ra cong. Goi TRUOC khi teleport di mode khac neu login o map event. Cong
+        exit dung 0x14 04 binh thuong -> _enter_gate. Mirror bot/client.py::exit_event."""
+        ex = ev.get("exit") if ev else None
+        if not ex:
+            return False
+        out_map = int(ex.get("out_map", 0))
+        log.info("[%s] exit_event: ra khoi map event %s -> %s", self._label, self.current_map, out_map)
+        self.flee_mode = True
+        for st in ex.get("steps", []):
+            if not self.running:
+                return False
+            if "gate" in st:
+                if not self._enter_gate(int(st["x"]), int(st["y"]), int(st["gate"])):
+                    log.warning("[%s] exit_event: ket o cong idx=%s", self._label, st.get("gate"))
+                    return False
+            else:
+                self._route_move(int(st["move"][0]), int(st["move"][1]))
+        return (self.current_map == out_map) if out_map else True
+
+    def _event_gate(self, x: int, y: int, idx: int, dest: int, max_transit: int = 22) -> bool:
+        """Qua cong VAO EVENT - KHAC _enter_gate: event co CINEMATIC nen sau 0x14 08[idx] phai gui
+        NHIEU 0x14 0600 chay het cutscene. KHONG dung som khi map vua doi (con giua cutscene = 'dang
+        ban'). KHONG gui 0x14 04 -> server kick. Mirror bot/client.py::_event_gate."""
+        if not self._wait_combat_clear(idle=3.0):
+            return False
+        if x or y:
+            self.move_to(x, y); time.sleep(1.2)
+        self.send(0x14, b"\x08\x00" + bytes([idx & 0xFF]) + b"\x00"); time.sleep(0.6)
+        arrived_at = None
+        for i in range(max_transit):
+            if not self.running:
+                return False
+            if self.current_map == dest:
+                if arrived_at is None:
+                    arrived_at = i
+                    self.send(0x0c, b"\x01\x00"); time.sleep(0.4)   # xin roster sau khi doi map
+                if i - arrived_at >= 3:   # da toi + FLUSH them 3 transit -> cutscene het han
+                    self.pos = None
+                    log.info("[%s] qua cong event idx=%d -> map %s (cutscene xong)",
+                             self._label, idx, self.current_map)
+                    return True
+            self.send(0x14, b"\x06\x00"); time.sleep(0.6)   # DAY cinematic
+        return self.current_map == dest
+
     # TONG KET. Line id: hang R1-3=1-3, cot C1-3=4-6, tong ket=7. Reward id = 0x2f + line-1.
     _Q_LINES = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9),      # 3 hang
                 4: (1, 4, 7), 5: (2, 5, 8), 6: (3, 6, 9)}      # 3 cot
@@ -2412,6 +2552,143 @@ class GameClient:
         if total:
             log.info("[%s] Phan giai cuon rac: tong %d cuon -> nhan xu", self._label, total)
 
+    LEGION_BOSS_COOLDOWN = 4 * 3600   # 4h giua cac lan (fallback neu server ko day 0x27 76 moi)
+
+    def legion_boss_available(self) -> bool:
+        """Con danh boss QD duoc khong: con luot (count < max) VA het cooldown (server bao). Dung de
+        keepalive quyet dinh co trigger REFORM (ve thanh danh) hay khong."""
+        return (self.legion_boss_count < self.legion_boss_max
+                and (not self.legion_boss_next or time.time() >= self.legion_boss_next))
+
+    def do_legion_boss(self):
+        """BOSS QUAN DOAN: danh SOLO truc tiep (KHONG teleport). 3 lan/ngay, cach 4h - SERVER track:
+          - COUNT: 0x55 id 0x2a cur=so lan da danh, max=3 -> self.legion_boss_count/_max.
+          - COOLDOWN: 0x27 76 [OLE] = gio danh tiep -> self.legion_boss_next.
+        Replay capture: 0x27 7700 (start) -> ack -> 0x14 08000100 (vao) -> battle -> do_heal.
+        Tra ve GIO CHECK LAI (epoch) neu con luot; None neu het luot hom nay. Mirror bot/client.py."""
+        if self.legion_boss_count >= self.legion_boss_max:
+            log.info("[%s] Boss QD: da danh %d/%d hom nay -> nghi",
+                     self._label, self.legion_boss_count, self.legion_boss_max)
+            return None                       # het luot hom nay (server bao)
+        now = time.time()
+        if self.legion_boss_next and now < self.legion_boss_next:
+            return self.legion_boss_next      # con cooldown (server bao) -> check lai dung luc do
+        # --- thu danh 1 luot ---
+        self._wait_combat_clear()
+        self.heal_full()
+        self.state.boss_mode = True
+        self.flee_mode = False
+        self.send(0x27, b"\x77\x00"); time.sleep(0.6)          # start boss QD (0x27 7700)
+        self.send(0x14, b"\x08\x00\x01\x00"); time.sleep(1.0)  # vao instance boss (gate idx 1)
+        entered = False
+        t0 = time.time()
+        while time.time() - t0 < 10:          # cho VAO tran (10s)
+            if not self.running:
+                self.state.boss_mode = False
+                return self.legion_boss_next or now
+            if self.state.in_battle:
+                entered = True; break
+            time.sleep(0.3)
+        if not entered:
+            # server TU CHOI vao tran = HET LUOT hom nay (hoac con cooldown do danh tay). Neu server
+            # day cooldown moi -> theo do; khong thi coi nhu HET -> check lai sau 4h (sang ngay moi).
+            self.state.boss_mode = False
+            if self.legion_boss_next and self.legion_boss_next > now:
+                log.info("[%s] Boss QD: chua toi gio (cooldown) -> cho", self._label)
+                return self.legion_boss_next
+            log.info("[%s] Boss QD: khong vao duoc (het luot hom nay) -> dung, check lai sau", self._label)
+            return now + self.LEGION_BOSS_COOLDOWN
+        log.info("[%s] Boss QD: DA VAO TRAN -> danh cho het tran", self._label)
+        t0 = time.time()
+        while self.running and self.state.in_battle and time.time() - t0 < 120:
+            time.sleep(1)
+        self.state.boss_mode = False
+        self._wait_combat_clear()
+        self.do_heal()                        # xong battle -> hoi HP/SP
+        self.legion_boss_count += 1
+        if not self.legion_boss_next or self.legion_boss_next < now:
+            self.legion_boss_next = time.time() + self.LEGION_BOSS_COOLDOWN
+        log.info("[%s] Boss QD: xong luot %d/%d -> luot sau luc %s",
+                 self._label, self.legion_boss_count, self.legion_boss_max,
+                 time.strftime("%H:%M", time.localtime(self.legion_boss_next)))
+        return None if self.legion_boss_count >= self.legion_boss_max else self.legion_boss_next
+
+    def donate_legion(self, wait: float = 0.5):
+        """DONATE nguyen lieu RAC cho quan doan (don tui). C2S 0x27:
+          0f 00 00 00 00 00 [slot 1B]   (giong use-item: tham chieu SLOT, KHONG phai tid).
+        Game CHI cho chon slot, KHONG chon so luong -> moi lenh donate CA STACK o slot do.
+        AN TOAN: chi donate SLOT co tid nam trong config.DONATE_ITEMS (danh sach TID rac).
+        Mirror bot/client.py::donate_legion."""
+        donate_tids = set()
+        for k in (getattr(config, "DONATE_ITEMS", {}) or {}):
+            try:
+                donate_tids.add(int(k, 16) if isinstance(k, str) else int(k))
+            except Exception:
+                pass
+        if not donate_tids:
+            return
+        # SNAPSHOT truoc: donate lam RONG chinh slot do, KHONG doi index slot khac.
+        targets = [(slot, tid, cnt) for slot, (tid, cnt) in list(self.bag_slots.items())
+                   if cnt > 0 and tid in donate_tids]
+        if not targets:
+            return
+        self.send(0x7c, b"\x04\x00")   # mo panel quan doan (giong claim_legion_gift)
+        time.sleep(0.4)
+        items = _load_gamedata_items()
+        total = 0
+        for slot, tid, cnt in targets:
+            if not self.running:
+                break
+            self.send(0x27, b"\x0f\x00\x00\x00\x00\x00" + bytes([slot & 0xFF]))
+            self.bag_slots.pop(slot, None)   # donate ca stack -> slot rong (S2C 0x17 se update lai)
+            total += cnt
+            _nm = ((items.get(tid) or {}).get("name")
+                   or (getattr(config, "DONATE_ITEMS", {}) or {}).get(hex(tid), ""))
+            log.info("[%s] donate quan doan slot=%d tid=0x%04x x%d ('%s')",
+                     self._label, slot, tid, cnt, _nm)
+            time.sleep(wait)
+        if total:
+            log.info("[%s] Donate quan doan: tong %d vat pham (%d slot)", self._label, total, len(targets))
+
+    def use_login_items(self):
+        """Login: tu dung item co tid nam trong config.USE_LOGIN_ITEMS. 2 kieu:
+          - qty None (chi ten): dung HET ca stack, TUNG CAI 1 (item chi cho 1/lenh, vd Tang O).
+          - qty N: dung TOI DA N cai/login (co>N -> dung N; co<N -> dung het). Batch 255/lenh.
+        Mirror bot/client.py::use_login_items."""
+        cfg = getattr(config, "USE_LOGIN_ITEMS", {}) or {}
+        if not cfg:
+            return
+        targets = [(slot, tid, cnt) for slot, (tid, cnt) in list(self.bag_slots.items())
+                   if cnt > 0 and tid in cfg]
+        if not targets:
+            return
+        items = _load_gamedata_items()
+        total = 0
+        for slot, tid, cnt in targets:
+            qcfg = cfg[tid].get("qty")
+            if qcfg is None:
+                want, chunk = cnt, 1              # khong gioi han: dung het, tung cai 1
+            else:
+                want, chunk = min(cnt, int(qcfg)), 255   # gioi han qcfg/login, batch duoc
+            done = 0
+            while done < want and self.running:
+                q = min(want - done, chunk)
+                if not self.use_slot(slot, qty=q):
+                    break
+                done += q
+                total += q
+                time.sleep(0.4)   # cho server xu ly truoc lenh ke
+            rec = self.bag_slots.get(slot)
+            if rec:
+                rec[1] = max(0, rec[1] - done)
+                if rec[1] <= 0:
+                    self.bag_slots.pop(slot, None)
+            _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
+            log.info("[%s] tu dung item login slot=%d tid=0x%04x dung %d/%d ('%s')",
+                     self._label, slot, tid, done, cnt, _nm)
+        if total:
+            log.info("[%s] Tu dung item login: tong %d cai (%d slot)", self._label, total, len(targets))
+
     def _on_vantieu(self, pkt: bytes):
         """S2C 0x56 panel: [03 00][count 1B] + count*[slot 1B][start 8B OLE][end 8B OLE]
         [x 1B][pet 1B][yy 2B] (21B/entry). Doc slot + GIO KET THUC (OLE date) vao vantieu_slots.
@@ -2719,6 +2996,14 @@ class GameClient:
                 [entry: entity(8B) + name_len(1B) + name(UTF-16LE name_len B) + 32B extra] x count
         Chi xu ly sub=0x02; bo qua cac sub khac (0x09 la guild-join notify, khong co ten nhan vat).
         """
+        # BOSS QD cooldown: 0x27 76 [OLE 8B] = gio danh tiep duoc (CHI day khi DA danh). (0x27 70
+        # [entity][01] la FLAG hang so, KHONG phai count; count X/3 doc tu 0x55 id 0x2a.)
+        if pkt[7:9] == b"\x76\x00" and len(pkt) >= 17:
+            try:
+                self.legion_boss_next = self._ole_to_dt(struct.unpack("<d", pkt[9:17])[0]).timestamp()
+            except Exception:
+                pass
+            return
         if len(pkt) < 14:
             return
         payload = pkt[7:]

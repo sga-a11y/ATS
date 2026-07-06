@@ -149,6 +149,59 @@ def _load_cities():
 
 CITIES = _load_cities()
 
+
+def _load_donate_items():
+    """Doc donate_items.json -> {tid:int -> ten}. Item RAC bot tu donate cho quan doan luc login
+    (don tui). KEY = TID hex chuoi. Mirror bot/config.py::_load_donate_items."""
+    out = {}
+    try:
+        d = json.loads(_read_asset("donate_items.json"))
+        for k, v in d.get("items", {}).items():
+            out[int(k, 16)] = v
+    except Exception as e:
+        _log_asset_error("donate_items.json", e)
+    return out
+
+
+DONATE_ITEMS = _load_donate_items()
+
+
+def _load_use_items():
+    """Doc use_items.json -> {tid:int -> {name, qty:int|None}}. Item tu dung luc login.
+    Format value: "Ten" (qty None = dung het, 1/lenh) | {name, qty} (dung toi da qty/login).
+    Mirror bot/config.py::_load_use_items."""
+    out = {}
+    try:
+        d = json.loads(_read_asset("use_items.json"))
+        for k, v in d.get("items", {}).items():
+            tid = int(k, 16)
+            if isinstance(v, dict):
+                out[tid] = {"name": v.get("name", ""), "qty": v.get("qty")}
+            else:
+                out[tid] = {"name": v, "qty": None}
+    except Exception as e:
+        _log_asset_error("use_items.json", e)
+    return out
+
+
+USE_LOGIN_ITEMS = _load_use_items()
+
+
+def _load_events():
+    """Doc events.json -> {event_key -> {label, select, staging_map, dest_map, steps, exit}}.
+    Mode 'event': tele toi map event roi dung yen. Mirror bot/config.py::_load_events."""
+    out = {}
+    try:
+        d = json.loads(_read_asset("events.json"))
+        for k, v in d.get("events", {}).items():
+            out[k] = v
+    except Exception as e:
+        _log_asset_error("events.json", e)
+    return out
+
+
+EVENTS = _load_events()
+
 DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (khop run_party_digioi.py DIGIOI_LIMIT)
 
 

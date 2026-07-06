@@ -171,6 +171,7 @@ def _handle_o5_team(c, party_name, label, is_leader, should_stop, o5_done):
 # port sang Android, de danh cho ban sau.
 RUN_MODE_STAND_STILL = "stand_still"
 RUN_MODE_STAY_LOGIN = "stay_login"
+RUN_MODE_EVENT = "event"   # tele toi map event (config.EVENTS) roi dung yen cho moi PT tay
 
 # CLIENT dang chay theo username -> de UI (Kotlin) query kenh / doc kenh hien tai truc tiep.
 _clients = {}
@@ -227,16 +228,30 @@ def _apply_cmd(c, cmd, on_status):
         on_status.call("running", None, None, None, None, f"Loi thuc thi lenh: {e}")
 
 
-def _auto_claim_loop(c, should_stop):
+def _auto_claim_loop(c, should_stop, allow_boss=True):
     """Thread phu: tu nhan mail/qua online/qua quan doan/van tieu - GIONG HET PC, KHONG co
     toggle bat-tat (VANTIEU_ENABLE=True co dinh trong config.py, khop bot/config.py). Chay
-    doc lap voi vong lap combat chinh, moi loi chi log (khong lam crash run_train)."""
-    # Quan doan: chi can goi 1 lan/ngay, ham tu co guard qua daily_state.json - goi som sau login.
-    try:
-        if not c.in_combat():
-            c.claim_legion_gift()
-    except Exception as e:
-        log.warning("[%s] auto_claim: loi nhan qua quan doan: %s", c._label, e)
+    doc lap voi vong lap combat chinh, moi loi chi log (khong lam crash run_train).
+    allow_boss=False (mode EVENT): KHONG danh boss QD vi danh se teleport RA khoi map event."""
+    # Chores 1-lan/ngay (moi ham tu co guard daily_state.json) - goi som sau login, GIONG PC
+    # (run_party_digioi.py:250-259). Moi cai try rieng de 1 loi khong lam skip nhung cai sau.
+    if not c.in_combat():
+        for _fn, _desc in (
+            (c.request_offline_exp, "nhan exp offline"),
+            (c.claim_mail,          "nhan mail"),
+            (c.claim_checkin,       "diem danh"),
+            (c.claim_14day_gift,    "qua 14 ngay"),
+            (c.claim_event_14day,   "event qua 14 ngay"),
+            (c.claim_legion_gift,   "qua quan doan"),
+            (c.claim_friend_gifts,  "qua ban be"),
+            (c.decompose_junk_scrolls, "phan giai cuon pet rac"),
+            (c.donate_legion,       "donate rac cho quan doan"),
+            (c.use_login_items,     "tu dung item login"),
+        ):
+            try:
+                _fn()
+            except Exception as e:
+                log.warning("[%s] auto_claim: loi %s: %s", c._label, _desc, e)
     next_vantieu_check = 0.0
     while c.running and not should_stop.call():
         time.sleep(30)   # 30s/vong - du nhanh voi mail/qua online, khong spam server
@@ -257,6 +272,15 @@ def _auto_claim_loop(c, should_stop):
             except Exception as e:
                 log.warning("[%s] auto_claim: loi van tieu: %s", c._label, e)
                 next_vantieu_check = time.time() + 300   # loi -> thu lai sau 5p thay vi spam ngay
+        # BOSS QUAN DOAN: danh SOLO (0x27 7700 + vao instance). CHI khi KHONG o trong party
+        # (party_members rong) - dang train/digioi party ma danh se pha party. Mode stand/city
+        # (solo, dung yen) danh duoc; con luot se tu danh ngay, het cooldown 4h se danh tiep. PC
+        # danh mid-train qua reform-trigger (chua port sang APK - can wiring keepalive tung mode).
+        if allow_boss and not c.party_members and c.legion_boss_available():
+            try:
+                c.do_legion_boss()
+            except Exception as e:
+                log.warning("[%s] auto_claim: loi do_legion_boss: %s", c._label, e)
 
 
 DIGIOI_KEEPALIVE_POLL = 3   # giay/vong keepalive (khop nhip 3s cua run_train, PC dung ~2-3s)
@@ -857,7 +881,27 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
     # tai vi tri hien tai, chi ghi canh bao vao message cua trang thai "running" ben
     # duoi (tranh phat 1 trang thai "error" thoang qua roi bi de ngay, mat thong tin).
     warning = ""
-    if run_mode == RUN_MODE_STAY_LOGIN:
+    if run_mode == RUN_MODE_EVENT:
+        # MODE EVENT: cityKey duoc dung lam EVENT KEY (khong them field rieng - overload cityKey).
+        ev = config.EVENTS.get(city_key)
+        if ev is None and config.EVENTS:
+            ev = next(iter(config.EVENTS.values()))   # fallback event dau tien neu key khong khop
+        if ev is None:
+            on_status.call("error", None, None, None, None, "Khong co event nao trong events.json")
+            _clients.pop(username, None); c.close()
+            on_status.call("stopped", None, None, None, None, "Da dung")
+            return
+        on_status.call("connecting", None, None, None, None, f"Dang tele toi event {ev.get('label','?')}...")
+        try:
+            okev = c.go_to_event(ev)
+            c.flee_mode = False   # toi noi roi -> KHONG chay khi bi keo vao battle (danh cung PT tay)
+            if not okev and c.running:
+                warning = "(Chua toi duoc map event - van dung tai vi tri hien tai)"
+            else:
+                warning = f"(Event {ev.get('label','?')} - dang dung doi moi vao PT)"
+        except Exception as e:
+            warning = f"(Loi tele event: {e})"
+    elif run_mode == RUN_MODE_STAY_LOGIN:
         # "login o dau dung yen do" -> KHONG teleport ve thanh (mirror START_CITY_ID=0 PC).
         warning = "(che do LOGIN O DAU DUNG YEN DO - khong ve thanh)"
     else:
@@ -876,10 +920,14 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
 
     on_status.call("running", None, None, None, None, f"Da vao game, dang treo cay (dung yen) {warning}".strip())
 
-    threading.Thread(target=_auto_claim_loop, args=(c, should_stop), daemon=True).start()
+    _is_event = (run_mode == RUN_MODE_EVENT)
+    threading.Thread(target=_auto_claim_loop, args=(c, should_stop),
+                     kwargs={"allow_boss": not _is_event}, daemon=True).start()
 
     while c.running and not should_stop.call():
         time.sleep(3)   # 3s giua moi lan cap nhat trang thai UI - du nhanh, khong spam callback
+        if _is_event and not c.in_combat() and c.flee_mode:
+            c.flee_mode = False   # event: dam bao KHONG chay khi bi keo vao battle (danh cung PT tay)
         # LENH LIVE tu UI (doi kenh / teleport thanh) - poll moi vong, giong cmd_gen ben PC
         if get_cmd is not None:
             try:

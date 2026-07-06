@@ -571,22 +571,37 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if c in _clients: _clients.remove(c)
                     return
                 if not self_map_ok:
-                    st["leader_bad"].set()   # member thoat het (leader sai map, khong keo ve duoc)
-                    if not route:   # route-less: TAT CA PARTY (theo yeu cau) + chan supervisor retry
+                    if not route:   # route-less: KHONG keo ve map train duoc -> TAT CA PARTY
+                        st["leader_bad"].set()   # member thoat het
                         _reason("route-less train + leader sai map (o %s, can %s) -> tat ca party"
                                 % (c.current_map, sc))
                         log.warning("[%s] (LEADER) route-less + SAI MAP (o %s, can %s) -> TAT CA PARTY",
                                     label, c.current_map, sc)
                         stop_party(pidx); _quit(); return
-                    # LEADER sai map + route loi -> HUY ca party (bao member thoat het)
-                    _reason("leader dung SAI MAP (o %s, can train map %s) - route loi"
+                    # LEADER sai map + CO route -> KHONG HUY PARTY. LAP reform toi khi len train map
+                    # (dung tinh than "cho vo han, du party moi train" - giong nhanh member ben duoi).
+                    # Truoc day: _daily_then_quit() -> huy ca party -> 5 nick relogin -> route lai ket
+                    # dung cong do (vd cong ket aggro) -> huy... = chinh la canh "party 3 cu vang khi
+                    # login". Gio giu party, reform lai; moi lan reform tu lam daily/boss o thanh (xem
+                    # _do_reform) nen khong mat viec hang ngay. KHONG set leader_bad (leader dang co,
+                    # chua hong) -> member CHO tiep thay vi thoat.
+                    _reason("leader sai map (o %s, can %s) - route -> LAP REFORM (khong huy party)"
                             % (c.current_map, sc))
-                    log.warning("[%s] (LEADER) NHAN VAT DANG DUNG O MAP %s, NHUNG CONFIG TRAIN MAP=%s "
-                                "-> KHONG khop -> lam dungeon roi HUY CA PARTY (member thoat het). "
-                                "CACH SUA: vao game dua nhan vat ve map %s roi THOAT GAME tai do, "
-                                "HOAC doi train map cua party sang %s trong GUI.",
-                                label, c.current_map, sc, sc, c.current_map)
-                    _daily_then_quit(); return
+                    log.warning("[%s] (LEADER) SAI MAP (o %s, can train map %s) - KHONG HUY PARTY, "
+                                "lap reform toi khi len train map...", label, c.current_map, sc)
+                    while c.running and not _stopped():
+                        _do_reform(to_spot=False)
+                        with st["lock"]: st["ready_members"].discard(username)
+                        if c.current_map == sc:
+                            self_map_ok = True; login_map = sc; via_route = True
+                            log.info("[%s] (LEADER) da len train map %s qua reform (lap)", label, sc)
+                            break
+                        time.sleep(5)   # chua len duoc -> nghi ngan roi reform lai (khong spam)
+                    if not self_map_ok:
+                        # thoat vong = stop / mat ket noi (KHONG phai "sai map bo cuoc")
+                        if not c.running and not getattr(c, "server_closed", False):
+                            st["leader_bad"].set()   # rot han (khong reconnectable) -> member thoat
+                        _quit(); return
                 st["leader_ok"].set()   # leader ok -> member duoc tiep tuc
             else:
                 if not self_map_ok and not c.running:
