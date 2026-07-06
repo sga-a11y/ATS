@@ -721,18 +721,21 @@ fun AddPartyDialog(
                         Checkbox(checked = digioiSolo, onCheckedChange = { digioiSolo = it })
                         Text("Chạy SOLO (mỗi account độc lập, không lập party thật)")
                     }
-                    // "Khong co chu PT" CHI co y nghia khi lap party THAT (khong phai SOLO) - mirror
-                    // PC an no_leader_cb khi mode la solo/city/stand/event (_update_no_leader_visibility).
-                    if (!digioiSolo) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = noLeader, onCheckedChange = { noLeader = it })
-                            Text("Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)")
-                        }
-                    }
+                }
+                // "Khong co chu PT" va "Lam nhiem vu hang ngay": MOI mode deu co (mirror PC -
+                // gui.py hien 2 checkbox nay cho tat ca train/city/stand/digioi, KHONG rieng
+                // Di Gioi), CHI an "Khong co chu PT" khi dang o Di Gioi + SOLO (khong lap party
+                // that -> "chu PT" vo nghia, mirror _update_no_leader_visibility ben PC).
+                Spacer(Modifier.height(8.dp))
+                if (!(selectedMode == RunModes.DIGIOI && digioiSolo)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = doDaily, onCheckedChange = { doDaily = it })
-                        Text("Làm nhiệm vụ hàng ngày (chưa có tác dụng - sẽ nối logic sau)")
+                        Checkbox(checked = noLeader, onCheckedChange = { noLeader = it })
+                        Text("Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)")
                     }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = doDaily, onCheckedChange = { doDaily = it })
+                    Text("Làm nhiệm vụ hàng ngày (chưa có tác dụng - sẽ nối logic sau)")
                 }
                 // Chon thanh CHI can khi mode = ve thanh dung yen. Mode "login o dau dung yen do"
                 // (STAY_LOGIN) va "Di Gioi" (DIGIOI) khong teleport ve thanh nen an o chon thanh.
