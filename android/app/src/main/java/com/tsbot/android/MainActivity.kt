@@ -632,9 +632,14 @@ fun StatBar(label: String, cur: Int, max: Int, color: Color) {
 fun trainMapOptions(): List<Pair<String, String>> {
     val config = com.chaquo.python.Python.getInstance().getModule("train_bot.config")
     val maps = config.get("TRAIN_MAPS")!!
-    return maps.asMap().entries.map { (k, v) ->
-        k.toString() to (v.callAttr("get", "name")?.toString() ?: k.toString())
-    }.sortedBy { it.second }
+    // GIU NGUYEN thu tu trong train_maps.json (= thu tu ban PC, gui.py cung liet ke y het thu tu
+    // nay) - KHONG sap xep lai theo alphabet, khac voi ban PC se gay kho tim map quen thuoc.
+    val keys = maps.callAttr("keys").asList()
+    return keys.map { k ->
+        val key = k.toString()
+        val name = maps.callAttr("get", key)?.callAttr("get", "name")?.toString() ?: key
+        key to name
+    }
 }
 
 /** Doc danh sach diem quai cua 1 map train tu Python de hien dropdown "Quái". Luon co "Bot tu chon"
