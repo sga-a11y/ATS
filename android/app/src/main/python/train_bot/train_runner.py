@@ -325,6 +325,101 @@ def run_party_digioi(username, password, server_ip, server_id, party_name, is_le
     on_status.call("stopped", None, None, None, None, "Da dung")
 
 
+def _run_digioi_solo_once(username, password, server_ip, server_id, should_stop, on_status,
+                          is_reconnect):
+    """Di Gioi SOLO: KHONG lap party, KHONG dong bo kenh - moi acc doc lap hoan toan (mirror
+    run_party_digioi.py:819-846,1302-1311). Tra reconnectable: bool."""
+    c, ok = _digioi_login_once(username, password, server_ip, server_id, None, is_reconnect)
+    if not ok:
+        on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
+        return False
+    try:
+        if not c.in_di_gioi() and c.digioi_minutes >= config.DIGIOI_LIMIT:
+            on_status.call("stopped", None, None, None, None,
+                           f"Da het gio Di Gioi hom nay ({c.digioi_minutes}/{config.DIGIOI_LIMIT} phut)")
+            return False
+        if not c.in_di_gioi() and not c.enter_di_gioi_safe():
+            on_status.call("error", None, None, None, None, "Khong vao duoc Di Gioi (het gio?)")
+            return False
+        c.state.solo_multipet = True
+        if c.has_hp_and_sp_items():
+            c.flee_mode = False
+            c.combat_ready()
+            c.start_run_around()
+            on_status.call("running", None, None, None, None, "Di Gioi SOLO - dang chay long vong")
+        else:
+            c.flee_mode = True
+            on_status.call("running", None, None, None, None,
+                           "Di Gioi SOLO - THIEU thuoc HP/SP, dung yen (khong chay long vong)")
+        out_cnt = 0
+        last_dg = 0.0
+        while c.running and not should_stop.call():
+            time.sleep(DIGIOI_KEEPALIVE_POLL)
+            if c.current_map == config.DIGIOI_MAP_ID and time.time() - last_dg >= 30:
+                last_dg = time.time()
+                ok_items = c.has_hp_and_sp_items()
+                if ok_items and c.flee_mode:
+                    c.flee_mode = False
+                    c.combat_ready()
+                    c.start_run_around()
+                    on_status.call("running", None, None, None, None,
+                                   "Di Gioi SOLO: da co du thuoc -> chay tiep")
+                elif not ok_items and not c.flee_mode:
+                    c.flee_mode = True
+                    on_status.call("running", None, None, None, None,
+                                   "Di Gioi SOLO: HET thuoc HP/SP -> dung yen")
+                remain = max(0, config.DIGIOI_LIMIT - c.digioi_minutes)
+                if remain <= 0:
+                    on_status.call("stopped", None, None, None, None, "Het gio Di Gioi that -> thoat")
+                    return False
+                out_cnt = 0
+            elif c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
+                out_cnt += 1
+                if out_cnt >= 2:
+                    remain = max(0, config.DIGIOI_LIMIT - c.digioi_minutes)
+                    if remain >= 2:
+                        try:
+                            c.enter_di_gioi_safe()
+                        except Exception:
+                            pass
+                        out_cnt = 0
+                    else:
+                        on_status.call("stopped", None, None, None, None, "Het gio Di Gioi that -> thoat")
+                        return False
+            else:
+                out_cnt = 0
+        return False
+    finally:
+        reconnectable = (not should_stop.call()) and getattr(c, "server_closed", False)
+        try:
+            c.close()
+        except Exception:
+            pass
+
+
+def run_digioi_solo(username, password, server_ip, server_id, should_stop, on_status):
+    """Vong ngoai reconnect vo han cho Di Gioi SOLO - cung backoff nhu run_party_digioi."""
+    attempt = 0
+    is_reconnect = False
+    while True:
+        reconnectable = _run_digioi_solo_once(username, password, server_ip, server_id,
+                                              should_stop, on_status, is_reconnect)
+        if should_stop.call() or not reconnectable:
+            break
+        attempt += 1
+        wait = 5 if attempt <= 3 else (30 if attempt <= 13 else 60)
+        on_status.call("connecting", None, None, None, None,
+                       f"Server rot -> login lai sau {wait}s (lan {attempt})")
+        for _ in range(wait):
+            if should_stop.call():
+                break
+            time.sleep(1)
+        if should_stop.call():
+            break
+        is_reconnect = True
+    on_status.call("stopped", None, None, None, None, "Da dung")
+
+
 def run_train(username: str, password: str, server_ip: str, server_id: int,
               run_mode: str, city_key: str, should_stop, on_status, get_cmd=None):
     """Chay den khi should_stop() tra True hoac loi khong the phuc hoi.

@@ -119,4 +119,24 @@ class TrainRunnerTest {
             "test-party-digioi", true, true, shouldStop, onStatus)
         assertTrue("Phai bao trang thai loi hoac dung, khong duoc crash", states.contains("error") || states.contains("stopped"))
     }
+
+    /**
+     * Xac nhan run_digioi_solo() khong crash khi login that bai (khong can tai khoan that,
+     * khong can server thuc) - tuong tu digioiInvalidLoginReportsErrorNotCrash nhung cho
+     * nhanh solo (khong lap party, khong dong bo kenh).
+     */
+    @Test
+    fun digioiSoloInvalidLoginReportsErrorNotCrash() {
+        val py = Python.getInstance()
+        val mod = py.getModule("train_bot.train_runner")
+        val states = mutableListOf<String>()
+        val shouldStop = PyObject.fromJava(KotlinShouldStopCallback())
+        val onStatus = PyObject.fromJava(object {
+            fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
+                states.add(state)
+            }
+        })
+        mod.callAttr("run_digioi_solo", "invalid_user_xyz2", "wrong_pw", "127.0.0.1", 1, shouldStop, onStatus)
+        assertTrue(states.contains("error") || states.contains("stopped"))
+    }
 }
