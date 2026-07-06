@@ -151,9 +151,25 @@ fun TsBotApp(
     }
 
     fun startAccountIn(party: Party, account: Account) {
-        val info = Servers.ALL[party.serverKey]
-        if (info != null) {
-            service?.startAccount(account, info.ip, info.serverId, party.runMode, party.cityKey)
+        val info = Servers.ALL[party.serverKey] ?: return
+        when (party.runMode) {
+            BotForegroundService.RUN_MODE_DIGIOI_SOLO ->
+                service?.startAccountDigioiSolo(account, info.ip, info.serverId)
+            BotForegroundService.RUN_MODE_DIGIOI_PARTY ->
+                // Party THAT can toan bo Party cung luc (n_members phai duoc set truoc khi bat ky
+                // thread nao chay) - bam Start 1 account rieng le trong mode nay se khoi dong CA Party.
+                service?.startPartyDigioi(party, info.ip, info.serverId)
+            else ->
+                service?.startAccount(account, info.ip, info.serverId, party.runMode, party.cityKey)
+        }
+    }
+
+    fun startPartyIn(party: Party) {
+        if (party.runMode == BotForegroundService.RUN_MODE_DIGIOI_PARTY) {
+            val info = Servers.ALL[party.serverKey] ?: return
+            service?.startPartyDigioi(party, info.ip, info.serverId)
+        } else {
+            party.accounts.forEach { startAccountIn(party, it) }
         }
     }
 
@@ -245,7 +261,7 @@ fun TsBotApp(
                         },
                         onStart = { account -> startAccountIn(party, account) },
                         onStop = { username -> service?.stopAccount(username) },
-                        onStartParty = { party.accounts.forEach { startAccountIn(party, it) } },
+                        onStartParty = { startPartyIn(party) },
                         onStopParty = { party.accounts.forEach { service?.stopAccount(it.username) } },
                         onSendChannel = { ch -> service?.sendChannel(party.accounts.map { it.username }, ch) },
                         onSendChannelAuto = { service?.sendChannelAuto(party.accounts.map { it.username }) },

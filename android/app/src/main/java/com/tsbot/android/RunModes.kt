@@ -11,5 +11,7 @@ object RunModes {
     val ALL: Map<String, String> = mapOf(
         STAND_STILL to "Đứng yên tại thành",
         STAY_LOGIN to "Login ở đâu đứng yên đó",
+        BotForegroundService.RUN_MODE_DIGIOI_PARTY to "Dị Giới (party thật)",
+        BotForegroundService.RUN_MODE_DIGIOI_SOLO to "Dị Giới (solo, không lập party)",
     )
 }
