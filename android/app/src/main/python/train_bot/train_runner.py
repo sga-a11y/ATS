@@ -171,11 +171,15 @@ def _digioi_login_once(username, password, server_ip, server_id, party_name, is_
 
 
 def _run_party_digioi_once(username, password, server_ip, server_id, party_name, is_leader,
-                            is_picker, should_stop, on_status, is_reconnect):
+                            is_picker, has_leader, should_stop, on_status, is_reconnect):
     """1 lan chay (khong bao reconnect) - mirror run_account() nhanh is_digioi cua PC, CAT bo cac
     phan khong lien quan DG (train map/city/event/cleanbag, daily quest/dungeon/boss nang - da co
     sub-project #4 lo phan auto-claim). Tra 'reconnectable': bool (server dong dong ket noi khong
-    phai do Stop -> nen thu login lai)."""
+    phai do Stop -> nen thu login lai).
+    has_leader: mirror PC's has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None - True binh
+    thuong (co 1 account duoc chi dinh leader), False khi party bat "Khong co chu PT" (moi account
+    la member thuan tuy, cho leader NGOAI/tay moi - KHONG tu invite_members, KHONG cho st["invited"],
+    va KHONG tu dong reconnect khi rot (giong PC: "KHONG co bot-leader -> nick rot CHET luon")."""
     st = party_state_mod._pstate(party_name)
     c, ok = _digioi_login_once(username, password, server_ip, server_id, party_name, is_reconnect)
     if not ok:
@@ -219,17 +223,22 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
             if st["channel"]:
                 c.switch_channel(st["channel"])
                 on_status.call("running", None, None, None, None, f"Da doi kenh chung -> {st['channel']}")
-        # 4) Leader: moi + cho member + chay long vong. Member: cho duoc moi.
+        # 4) Leader: moi + cho member + chay long vong. Member: cho duoc moi (hoac dung yen cho
+        # leader NGOAI/tay moi neu khong co bot-leader - mirror run_party_digioi.py:935-951).
         c.flee_mode = False
         if is_leader:
             for _ in range(6):
                 if not c.running or should_stop.call():
                     break
                 c.invite_members(gap=1.0)
+                # BAO MEMBER khoi cho moi (mirror run_party_digioi.py:875) - THIEU dong nay se khien
+                # member cho vo han o "st['invited'].wait(2)" du leader da moi xong.
+                st["invited"].set()
                 time.sleep(4)
                 if c.self_entity is not None:
                     if joined_member_count(party_name) >= st["n_members"]:
                         break
+            st["invited"].set()
             try:
                 c.set_party_strategist()
             except Exception:
@@ -237,13 +246,18 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
             c.combat_ready()
             c.start_run_around()
             on_status.call("running", None, None, None, None, "(LEADER) Bat dau chay long vong")
-        else:
+        elif has_leader:
             on_status.call("running", None, None, None, None,
                            "(member) Cho vao party, dung yen tai safe")
-            t0 = time.time()
             while not st["invited"].wait(2):
                 if not c.running or should_stop.call() or st["leader_gone"].is_set():
                     return False
+        else:
+            # KHONG co bot-leader: KHONG cho st["invited"] (se khong bao gio duoc set) - dung yen
+            # tai safe, auto-accept loi moi tu leader NGOAI/tay (client.py da auto-accept san qua
+            # _on_party, xem _is_party_member/config.leaders_for).
+            on_status.call("running", None, None, None, None,
+                           "(member) KHONG co chu PT - dung yen tai safe, cho moi party tay")
         # 5) Vong giu song (mirror run_party_digioi.py:1296-1354, CHI phan DG + het gio per-account)
         out_cnt = 0
         last_dg = 0.0
@@ -282,7 +296,9 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
                 out_cnt = 0
         return False   # should_stop -> khong can reconnect
     finally:
-        reconnectable = (not should_stop.call()) and getattr(c, "server_closed", False)
+        # mirror run_party_digioi.py:1364-1367 - KHONG co bot-leader -> KHONG tu dong reconnect
+        # (nick rot CHET luon, giu hanh vi cu, vi khong ai dieu phoi lai party khi vao lai).
+        reconnectable = has_leader and (not should_stop.call()) and getattr(c, "server_closed", False)
         try:
             c.close()
         except Exception:
@@ -298,17 +314,20 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
 
 
 def run_party_digioi(username, password, server_ip, server_id, party_name, is_leader, is_picker,
-                     should_stop, on_status):
+                     has_leader, should_stop, on_status):
     """Vong lap NGOAI CUNG: bao _run_party_digioi_once bang reconnect vo han (mirror
     _run_account_supervised, run_party_digioi.py:1512-1541). server dong ket noi (server_closed)
-    va KHONG phai do Stop -> backoff 5s x3 -> 30s x10 -> 60s, thu lai VO HAN toi khi duoc hoac Stop."""
+    va KHONG phai do Stop -> backoff 5s x3 -> 30s x10 -> 60s, thu lai VO HAN toi khi duoc hoac Stop.
+    has_leader=False (party bat "Khong co chu PT") -> KHONG tu dong reconnect (mirror PC: nick rot
+    CHET luon), vi khong ai dieu phoi lai party."""
     st = party_state_mod._pstate(party_name)
     st["n_members"] = max(st["n_members"], 0)
     attempt = 0
     is_reconnect = False
     while True:
         reconnectable = _run_party_digioi_once(username, password, server_ip, server_id, party_name,
-                                               is_leader, is_picker, should_stop, on_status, is_reconnect)
+                                               is_leader, is_picker, has_leader, should_stop,
+                                               on_status, is_reconnect)
         if should_stop.call() or not reconnectable:
             break
         attempt += 1

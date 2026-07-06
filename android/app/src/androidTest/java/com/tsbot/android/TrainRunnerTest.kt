@@ -116,7 +116,7 @@ class TrainRunnerTest {
             }
         })
         mod.callAttr("run_party_digioi", "invalid_user_xyz", "wrong_pw", "127.0.0.1", 1,
-            "test-party-digioi", true, true, shouldStop, onStatus)
+            "test-party-digioi", true, true, true, shouldStop, onStatus)
         assertTrue("Phai bao trang thai loi hoac dung, khong duoc crash", states.contains("error") || states.contains("stopped"))
     }
 

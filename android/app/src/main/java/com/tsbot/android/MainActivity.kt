@@ -315,6 +315,8 @@ fun TsBotApp(
             initialRunMode = partyBeingEdited.runMode,
             initialCityKey = partyBeingEdited.cityKey,
             initialDigioiSolo = partyBeingEdited.digioiSolo,
+            initialNoLeader = partyBeingEdited.noLeader,
+            initialDoDaily = partyBeingEdited.doDaily,
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
@@ -628,6 +630,8 @@ fun AddPartyDialog(
     initialRunMode: String = RunModes.STAND_STILL,
     initialCityKey: String = Cities.ALL.keys.first(),
     initialDigioiSolo: Boolean = false,
+    initialNoLeader: Boolean = false,
+    initialDoDaily: Boolean = true,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
@@ -637,6 +641,8 @@ fun AddPartyDialog(
     var cityExpanded by remember { mutableStateOf(false) }
     var selectedCity by remember { mutableStateOf(initialCityKey) }
     var digioiSolo by remember { mutableStateOf(initialDigioiSolo) }
+    var noLeader by remember { mutableStateOf(initialNoLeader) }
+    var doDaily by remember { mutableStateOf(initialDoDaily) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -715,6 +721,18 @@ fun AddPartyDialog(
                         Checkbox(checked = digioiSolo, onCheckedChange = { digioiSolo = it })
                         Text("Chạy SOLO (mỗi account độc lập, không lập party thật)")
                     }
+                    // "Khong co chu PT" CHI co y nghia khi lap party THAT (khong phai SOLO) - mirror
+                    // PC an no_leader_cb khi mode la solo/city/stand/event (_update_no_leader_visibility).
+                    if (!digioiSolo) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = noLeader, onCheckedChange = { noLeader = it })
+                            Text("Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)")
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = doDaily, onCheckedChange = { doDaily = it })
+                        Text("Làm nhiệm vụ hàng ngày (chưa có tác dụng - sẽ nối logic sau)")
+                    }
                 }
                 // Chon thanh CHI can khi mode = ve thanh dung yen. Mode "login o dau dung yen do"
                 // (STAY_LOGIN) va "Di Gioi" (DIGIOI) khong teleport ve thanh nen an o chon thanh.
@@ -754,7 +772,7 @@ fun AddPartyDialog(
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo))
+                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily))
                     }
                 },
             ) {

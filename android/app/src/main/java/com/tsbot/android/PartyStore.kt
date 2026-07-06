@@ -28,6 +28,8 @@ class PartyStore(private val context: Context) {
                 runMode = o.optString("run_mode", RunModes.STAND_STILL),
                 cityKey = o.optString("city_key", Cities.ALL.keys.first()),
                 digioiSolo = o.optBoolean("digioi_solo", false),
+                noLeader = o.optBoolean("no_leader", false),
+                doDaily = o.optBoolean("do_daily", true),
                 accounts = accounts,
             )
         }
@@ -42,6 +44,8 @@ class PartyStore(private val context: Context) {
             o.put("run_mode", p.runMode)
             o.put("city_key", p.cityKey)
             o.put("digioi_solo", p.digioiSolo)
+            o.put("no_leader", p.noLeader)
+            o.put("do_daily", p.doDaily)
             val accArr = JSONArray()
             p.accounts.forEach { a ->
                 val ao = JSONObject()

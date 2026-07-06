@@ -120,17 +120,23 @@ class BotForegroundService : Service() {
         thread.start()
     }
 
-    /** Khoi dong CA Party o che do Di Gioi THAT (party trong game). Account dau tien = leader
-     * (khop PARTY_CONFIG's is_leader tren PC - leader duoc khai bao san theo account, khong doi
-     * giua cac lan chay). Goi 1 LAN cho ca Party (khac startAccount tung acc rieng le) vi
-     * n_members phai duoc set TRUOC khi bat ky thread nao bat dau vong keepalive. */
+    /** Khoi dong CA Party o che do Di Gioi THAT (party trong game). Neu !party.noLeader: account
+     * dau tien = leader (khop PC's is_leader duoc khai bao san theo account). Neu party.noLeader
+     * (mirror PC's "Khong co chu PT"): KHONG account nao la leader - moi account la member, dung
+     * yen cho leader NGOAI/tay moi that su; account dau tien van lam "picker" (chon kenh chung)
+     * giong PC (picker_acc = leader_acc if leader_acc else valid[0][0]). Goi 1 LAN cho ca Party
+     * (khac startAccount tung acc rieng le) vi n_members phai duoc set TRUOC khi bat ky thread
+     * nao bat dau vong keepalive. */
     fun startPartyDigioi(party: Party, serverIp: String, serverId: Int) {
         if (party.accounts.isEmpty()) return
         val partyModule = Python.getInstance().getModule("train_bot.party_state")
-        partyModule.callAttr("set_n_members", party.name, party.accounts.size - 1)
-        val leader = party.accounts.first()
+        val hasLeader = !party.noLeader
+        val nMembers = if (hasLeader) party.accounts.size - 1 else party.accounts.size
+        partyModule.callAttr("set_n_members", party.name, nMembers)
+        val picker = party.accounts.first()
         party.accounts.forEach { account ->
-            val isLeader = account.username == leader.username
+            val isLeader = hasLeader && account.username == picker.username
+            val isPicker = account.username == picker.username
             stopFlags[account.username] = false
             val thread = Thread {
                 try {
@@ -151,7 +157,7 @@ class BotForegroundService : Service() {
                     })
                     module.callAttr(
                         "run_party_digioi", account.username, account.password, serverIp, serverId,
-                        party.name, isLeader, isLeader, shouldStop, onStatus,
+                        party.name, isLeader, isPicker, hasLeader, shouldStop, onStatus,
                     )
                 } catch (e: Exception) {
                     _status.update {
