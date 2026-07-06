@@ -170,3 +170,29 @@ def _load_vantieu_requests():
 
 
 VANTIEU_REQUESTS = _load_vantieu_requests()
+
+
+def _load_train_maps():
+    """Doc train_maps.json: {map_id(str): {"name", "safe": [[x,y],...], "mobs": [[x,y],...]}}."""
+    try:
+        d = json.loads(_read_asset("train_maps.json"))
+        return d.get("maps", d)
+    except Exception as e:
+        _log_asset_error("train_maps.json", e)
+        return {}
+
+
+TRAIN_MAPS = _load_train_maps()
+
+
+def _load_train_routes():
+    """Doc train_routes.json: {map_id(str): {"name","from_city","city_flag","dest_map","steps"}}."""
+    try:
+        d = json.loads(_read_asset("train_routes.json"))
+        return d.get("routes", d)
+    except Exception as e:
+        _log_asset_error("train_routes.json", e)
+        return {}
+
+
+TRAIN_ROUTES = _load_train_routes()

@@ -38,4 +38,14 @@ class TrainBotImportTest {
         val requests = config.get("VANTIEU_REQUESTS")!!
         assertTrue("VANTIEU_REQUESTS phai load duoc du lieu that (khong rong)", requests.callAttr("__len__").toInt() > 0)
     }
+
+    @Test
+    fun trainMapsAndRoutesLoadNonEmpty() {
+        val py = Python.getInstance()
+        val config = py.getModule("train_bot.config")
+        val maps = config.get("TRAIN_MAPS")!!
+        assertTrue("TRAIN_MAPS phai load duoc du lieu that", maps.callAttr("__len__").toInt() > 0)
+        val routes = config.get("TRAIN_ROUTES")!!
+        assertTrue("TRAIN_ROUTES phai load duoc du lieu that", routes.callAttr("__len__").toInt() > 0)
+    }
 }
