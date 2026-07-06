@@ -189,36 +189,47 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     try:
         # --- Login + cho vao world THUC SU (co self_entity VA co current_map) ---
         c = None
+        ok = False
         for attempt in range(6):
             if _stopped():
                 log.info("[%s] STOP truoc khi login xong", label); return
-            cred = login(username, password)
-            c = GameClient(cred["user_id"], cred["access_token"], host=server_ip, server_id=server_id)
-            c._label = label; c._username = username
-            log.info("[%s] server=%s (%s) id=%s", label, server_name, server_ip, server_id)
-            c.party_idx = pidx
-            # Hook o5 pho ban to doi = BUOC CUOI claim_daily_quests (xem _handle_o5_team)
-            c._o5_team_fn = (lambda o5d, _c=c:
-                             _handle_o5_team(_c, st, username, label, pidx, is_leader, _stopped, o5d))
-            c.submit_delay = 0.3
-            c.connect()
-            # cho self_entity + map (map=None = chua vao world xong)
-            ok = False
-            for _ in range(15):
-                if c.self_entity is not None and c.current_map is not None:
-                    ok = True; break
-                time.sleep(1)
-            if ok:
-                break
-            log.warning("[%s] chua vao world (entity=%s map=%s) -> login lai...",
-                        label, c.self_entity is not None, c.current_map)
-            c.close(); time.sleep(5)
+            try:
+                cred = login(username, password)
+                c = GameClient(cred["user_id"], cred["access_token"], host=server_ip, server_id=server_id)
+                c._label = label; c._username = username
+                log.info("[%s] server=%s (%s) id=%s", label, server_name, server_ip, server_id)
+                c.party_idx = pidx
+                # Hook o5 pho ban to doi = BUOC CUOI claim_daily_quests (xem _handle_o5_team)
+                c._o5_team_fn = (lambda o5d, _c=c:
+                                 _handle_o5_team(_c, st, username, label, pidx, is_leader, _stopped, o5d))
+                c.submit_delay = 0.3
+                c.connect()
+                # cho self_entity + map (map=None = chua vao world xong)
+                for _ in range(15):
+                    if c.self_entity is not None and c.current_map is not None:
+                        ok = True; break
+                    time.sleep(1)
+                if ok:
+                    break
+                log.warning("[%s] chua vao world (entity=%s map=%s) -> login lai...",
+                            label, c.self_entity is not None, c.current_map)
+                c.close(); time.sleep(5)
+            except Exception as e:
+                # login() (auth HTTP) / connect() LOI (server lom, mang chap) -> KHONG de nick CHET:
+                # coi nhu 1 lan thu that bai, backoff 5s roi thu lai; het 6 lan -> _login_failed ben
+                # duoi (supervisor reconnect vo han). Truoc day login() raise -> thoat ca vong -> thread
+                # chet han (bug: nick "tat" khi server lom lam login HTTP fail).
+                log.warning("[%s] login/connect loi (lan %d): %s -> thu lai", label, attempt + 1, e)
+                try:
+                    if c is not None: c.close()
+                except Exception: pass
+                time.sleep(5)
         if not ok:
             _login_failed = True   # -> supervisor thu login lai (backoff), KHONG de nick chet luon
             _reason("login/vao world that bai (6 lan) -> supervisor thu lai")
-            log.warning("[%s] >>> LOGIN/VAO WORLD THAT BAI sau 6 lan (entity=%s map=%s) -> supervisor "
-                        "se thu lai", label, c.self_entity is not None, c.current_map)
-            try: c.close()
+            log.warning("[%s] >>> LOGIN/VAO WORLD THAT BAI sau 6 lan -> supervisor se thu lai", label)
+            try:
+                if c is not None: c.close()
             except Exception: pass
             return
         _clients.append(c)
