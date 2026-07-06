@@ -26,6 +26,8 @@ def _pstate(party_name: str) -> dict:
                 "reform_gen": 0,
                 "reconnecting": set(),
                 "disc_gen": 0,
+                "o5_done_by": {},    # username -> da xong o5 (pho ban to doi) hom nay chua? (bool)
+                "o5_state": "idle",  # "idle"|"running"|"done" - member PHAI cho != "idle"
             }
         return _party_state[party_name]
 

@@ -39,4 +39,15 @@ class PartyStateTest {
         val leaders = config.callAttr("leaders_for", "party-c")
         assertTrue(leaders.asList().map { it.toString() }.contains("chibao"))
     }
+
+    @Test
+    fun pstateHasO5Fields() {
+        val py = Python.getInstance()
+        val ps = py.getModule("train_bot.party_state")
+        val st = ps.callAttr("_pstate", "party-o5-test")
+        val o5State = st.callAttr("get", "o5_state").toString()
+        assertEquals("idle", o5State)
+        val o5DoneBy = st.callAttr("get", "o5_done_by")
+        assertTrue("o5_done_by phai la dict rong luc khoi tao", o5DoneBy.callAttr("__len__").toInt() == 0)
+    }
 }
