@@ -9,6 +9,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import java.util.concurrent.atomic.AtomicReference
 
 /** Doi tuong Kotlin THAT dung phuong thuc "call" - dung day de kiem tra Chaquopy that su
@@ -66,5 +67,22 @@ class TrainRunnerTest {
             RunModes.STAND_STILL, Cities.ALL.keys.first(), shouldStop, onStatus,
         )
         assertEquals("error", lastState.get())
+    }
+
+    /**
+     * claim_mail/claim_online_gifts/do_van_tieu (train_bot/client.py) luu trang thai vao
+     * gift_state.json/daily_state.json/vantieu_state.json bang DUONG DAN TUONG DOI (khong
+     * prefix thu muc) - xac nhan CWD cua tien trinh Python (Chaquopy) tren Android thuc su
+     * ghi duoc, de cac ham nay luu "da nhan" ben ngoai session hien tai.
+     */
+    @Test
+    fun cwdIsWritableOnAndroid() {
+        val py = Python.getInstance()
+        val os = py.getModule("os")
+        val cwd = os.callAttr("getcwd").toString()
+        val testFile = java.io.File(cwd, "cwd_write_test.tmp")
+        testFile.writeText("test")
+        assertTrue("CWD ($cwd) phai ghi duoc de claim_mail/claim_online_gifts/do_van_tieu luu trang thai dung", testFile.exists())
+        testFile.delete()
     }
 }

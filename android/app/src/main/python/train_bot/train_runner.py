@@ -19,11 +19,15 @@ QUY UOC GOI CALLBACK TU KOTLIN (quan trong cho BotForegroundService o task sau):
   should_stop()/on_status(...). Day la hop dong API on dinh cho phia Kotlin khi
   wire BotForegroundService.
 """
+import logging
+import threading
 import time
 
 from . import config
 from . import login as login_mod
 from .client import GameClient
+
+log = logging.getLogger("bot")
 
 # HAI che do hien tai:
 #  - STAND_STILL ("ve thanh dung yen"): ve 1 thanh CO THAT (nguoi dung chon, xem
@@ -89,6 +93,38 @@ def _apply_cmd(c, cmd, on_status):
         on_status.call("running", None, None, None, None, f"Loi thuc thi lenh: {e}")
 
 
+def _auto_claim_loop(c, should_stop):
+    """Thread phu: tu nhan mail/qua online/qua quan doan/van tieu - GIONG HET PC, KHONG co
+    toggle bat-tat (VANTIEU_ENABLE=True co dinh trong config.py, khop bot/config.py). Chay
+    doc lap voi vong lap combat chinh, moi loi chi log (khong lam crash run_train)."""
+    # Quan doan: chi can goi 1 lan/ngay, ham tu co guard qua daily_state.json - goi som sau login.
+    try:
+        if not c.in_combat():
+            c.claim_legion_gift()
+    except Exception as e:
+        log.warning("[%s] auto_claim: loi nhan qua quan doan: %s", c._label, e)
+    next_vantieu_check = 0.0
+    while c.running and not should_stop.call():
+        time.sleep(30)   # 30s/vong - du nhanh voi mail/qua online, khong spam server
+        if c.in_combat():
+            continue   # giua tran de bi server bo qua/loi (giong luu y o _do_manual_cmd ben PC)
+        try:
+            c.claim_mail()
+        except Exception as e:
+            log.warning("[%s] auto_claim: loi nhan mail: %s", c._label, e)
+        try:
+            c.claim_online_gifts()
+        except Exception as e:
+            log.warning("[%s] auto_claim: loi nhan qua online: %s", c._label, e)
+        if time.time() >= next_vantieu_check:
+            try:
+                nxt = c.do_van_tieu()
+                next_vantieu_check = nxt if nxt is not None else time.time() + 1800
+            except Exception as e:
+                log.warning("[%s] auto_claim: loi van tieu: %s", c._label, e)
+                next_vantieu_check = time.time() + 300   # loi -> thu lai sau 5p thay vi spam ngay
+
+
 def run_train(username: str, password: str, server_ip: str, server_id: int,
               run_mode: str, city_key: str, should_stop, on_status, get_cmd=None):
     """Chay den khi should_stop() tra True hoac loi khong the phuc hoi.
@@ -143,6 +179,8 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
             warning = f"(Khong tim thay thanh '{city_key}' - dung yen tai vi tri hien tai)"
 
     on_status.call("running", None, None, None, None, f"Da vao game, dang treo cay (dung yen) {warning}".strip())
+
+    threading.Thread(target=_auto_claim_loop, args=(c, should_stop), daemon=True).start()
 
     while c.running and not should_stop.call():
         time.sleep(3)   # 3s giua moi lan cap nhat trang thai UI - du nhanh, khong spam callback
