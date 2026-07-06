@@ -30,6 +30,21 @@ from .client import GameClient, joined_member_count
 
 log = logging.getLogger("bot")
 
+
+def _do_daily_if_enabled(c, do_daily, label, on_status):
+    """Goi claim_daily_quests(heavy=True) + do_daily_dungeon() 1 LAN neu do_daily=True. Loi chi
+    log, khong lam crash vong lap chinh (giong quy uoc _auto_claim_loop)."""
+    if not do_daily:
+        return
+    try:
+        c.claim_daily_quests(heavy=True)
+    except Exception as e:
+        log.warning("[%s] loi claim_daily_quests: %s", label, e)
+    try:
+        c.do_daily_dungeon()
+    except Exception as e:
+        log.warning("[%s] loi do_daily_dungeon: %s", label, e)
+
 # HAI che do hien tai:
 #  - STAND_STILL ("ve thanh dung yen"): ve 1 thanh CO THAT (nguoi dung chon, xem
 #    config.CITIES) roi dung yen tai do cho AN TOAN.
@@ -171,7 +186,7 @@ def _digioi_login_once(username, password, server_ip, server_id, party_name, is_
 
 
 def _run_party_digioi_once(username, password, server_ip, server_id, party_name, is_leader,
-                            is_picker, has_leader, should_stop, on_status, is_reconnect):
+                            is_picker, has_leader, do_daily, should_stop, on_status, is_reconnect):
     """1 lan chay (khong bao reconnect) - mirror run_account() nhanh is_digioi cua PC, CAT bo cac
     phan khong lien quan DG (train map/city/event/cleanbag, daily quest/dungeon/boss nang - da co
     sub-project #4 lo phan auto-claim). Tra 'reconnectable': bool (server dong dong ket noi khong
@@ -198,6 +213,7 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
             on_status.call("error", None, None, None, None, "Khong vao duoc Di Gioi (het gio?)")
             return False
         on_status.call("running", None, None, None, None, "Da vao Di Gioi")
+        _do_daily_if_enabled(c, do_daily, username, on_status)
         # 3) Dong bo kenh (mirror run_party_digioi.py:369-409, ham noi bo do_channel_sync)
         if is_picker:
             st["channel_ready"].clear()
@@ -314,7 +330,7 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
 
 
 def run_party_digioi(username, password, server_ip, server_id, party_name, is_leader, is_picker,
-                     has_leader, should_stop, on_status):
+                     has_leader, do_daily, should_stop, on_status):
     """Vong lap NGOAI CUNG: bao _run_party_digioi_once bang reconnect vo han (mirror
     _run_account_supervised, run_party_digioi.py:1512-1541). server dong ket noi (server_closed)
     va KHONG phai do Stop -> backoff 5s x3 -> 30s x10 -> 60s, thu lai VO HAN toi khi duoc hoac Stop.
@@ -326,8 +342,8 @@ def run_party_digioi(username, password, server_ip, server_id, party_name, is_le
     is_reconnect = False
     while True:
         reconnectable = _run_party_digioi_once(username, password, server_ip, server_id, party_name,
-                                               is_leader, is_picker, has_leader, should_stop,
-                                               on_status, is_reconnect)
+                                               is_leader, is_picker, has_leader, do_daily,
+                                               should_stop, on_status, is_reconnect)
         if should_stop.call() or not reconnectable:
             break
         attempt += 1
@@ -344,8 +360,8 @@ def run_party_digioi(username, password, server_ip, server_id, party_name, is_le
     on_status.call("stopped", None, None, None, None, "Da dung")
 
 
-def _run_digioi_solo_once(username, password, server_ip, server_id, should_stop, on_status,
-                          is_reconnect):
+def _run_digioi_solo_once(username, password, server_ip, server_id, do_daily, should_stop,
+                          on_status, is_reconnect):
     """Di Gioi SOLO: KHONG lap party, KHONG dong bo kenh - moi acc doc lap hoan toan (mirror
     run_party_digioi.py:819-846,1302-1311). Tra reconnectable: bool."""
     c, ok = _digioi_login_once(username, password, server_ip, server_id, None, is_reconnect)
@@ -360,6 +376,7 @@ def _run_digioi_solo_once(username, password, server_ip, server_id, should_stop,
         if not c.in_di_gioi() and not c.enter_di_gioi_safe():
             on_status.call("error", None, None, None, None, "Khong vao duoc Di Gioi (het gio?)")
             return False
+        _do_daily_if_enabled(c, do_daily, username, on_status)
         c.state.solo_multipet = True
         if c.has_hp_and_sp_items():
             c.flee_mode = False
@@ -416,13 +433,13 @@ def _run_digioi_solo_once(username, password, server_ip, server_id, should_stop,
             pass
 
 
-def run_digioi_solo(username, password, server_ip, server_id, should_stop, on_status):
+def run_digioi_solo(username, password, server_ip, server_id, do_daily, should_stop, on_status):
     """Vong ngoai reconnect vo han cho Di Gioi SOLO - cung backoff nhu run_party_digioi."""
     attempt = 0
     is_reconnect = False
     while True:
         reconnectable = _run_digioi_solo_once(username, password, server_ip, server_id,
-                                              should_stop, on_status, is_reconnect)
+                                              do_daily, should_stop, on_status, is_reconnect)
         if should_stop.call() or not reconnectable:
             break
         attempt += 1
@@ -440,7 +457,8 @@ def run_digioi_solo(username, password, server_ip, server_id, should_stop, on_st
 
 
 def run_train(username: str, password: str, server_ip: str, server_id: int,
-              run_mode: str, city_key: str, should_stop, on_status, get_cmd=None):
+              run_mode: str, city_key: str, should_stop, on_status, get_cmd=None,
+              do_daily: bool = True):
     """Chay den khi should_stop() tra True hoac loi khong the phuc hoi.
     on_status(state: str, hp, sp, hp_max, sp_max, message: str) goi moi khi trang
     thai doi (state: "connecting"|"running"|"error"|"stopped").
@@ -467,6 +485,8 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
     except Exception as e:
         on_status.call("error", None, None, None, None, f"Ket noi loi: {e}")
         return
+
+    _do_daily_if_enabled(c, do_daily, username, on_status)
 
     # go_to_town (train_bot/client.py, copy nguyen tu bot PC) tu xu ly: cho het tran
     # truoc khi teleport, thoat Di Gioi neu dang o do, lap lai toi khi xac nhan da
