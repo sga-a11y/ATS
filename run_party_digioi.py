@@ -431,23 +431,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 c.leave_party()                  # GIAI TAN party cu (neu co) -> member duoc tha
                 reset_party_joined(pidx)
             if fc:
+                # CHI ve thanh gom nhau. KHONG lam boss/dungeon o day nua (truoc day lam MOI VONG
+                # reform cho ca member -> churn teleport + keo dai reform -> member de MAT KET NOI
+                # giua chung (server chap chon) -> ca party ket reconnect-reform loop, "member khong
+                # ve theo leader" (xem log party 3). Boss/dungeon da chay 1 lan o login chores roi.
+                # Khop ban APK _reform_to_spot (da cat phan nay). LUU Y: mat tinh nang danh boss QD
+                # mid-session-train qua reform (train mode) - danh doi lay reform gon + on dinh.
                 try: c.go_to_town(fc, ff)        # CA party (leader+member) tu teleport ve thanh gom nhau
                 except Exception as e: log.warning("[%s] reform: loi ve thanh: %s", label, e)
-                # BOSS QUAN DOAN: dang o thanh + party DA GIAI TAN (leave_party o tren) -> SOLO -> danh
-                # neu con luot. Reform duoc trigger tu keepalive khi co dua het cooldown muon danh boss.
-                try: c.do_legion_boss()
-                except Exception as e: log.warning("[%s] loi do_legion_boss (reform): %s", label, e)
-                if do_daily:
-                    try:
-                        c.do_daily_dungeon()      # danh dungeon NGAY TAI THANH (solo, khong can party)
-                    except Exception as e:
-                        log.warning("[%s] loi dungeon (reform, bo qua): %s", label, e)
-                # sau BOSS QD / dungeon co the o map khac (instance boss/dungeon) -> ve thanh lai (cho route)
-                if c.current_map != fc:
-                    log.info("[%s] (%s) sau boss/dungeon o map %s -> teleport ve thanh %s lai",
-                             label, role, c.current_map, fc)
-                    try: c.go_to_town(fc, ff)
-                    except Exception: pass
             # LUON re-sync kenh (khong chi switch ve kenh cu da luu) - vua ve thanh sau khi CO THE
             # da danh dungeon (solo o1 hoac team o5) -> server co the da day acc sang kenh KHAC (ngau
             # nhien). Chi switch ve kenh CU (st["channel"]) KHONG du: kenh do co the da DAY (full,

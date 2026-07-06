@@ -652,6 +652,21 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
                                         do_daily, should_stop, on_status, username)
             if not ok_reform:
                 return False
+            # Sai map + CO route: _reform_to_spot co the tra True nhung CHUA len train map (vd cong
+            # ket/idx sai). KHONG bo cuoc, KHONG huy party -> LAP reform toi khi len sc (mirror fix
+            # PC run_party_digioi.py: leader sai map + route -> lap reform, tinh than "du party moi
+            # train"). _reform_to_spot chi tra False khi stop/mat ket noi that su -> luc do moi thoat.
+            while c.running and not should_stop.call() and route and c.current_map != sc:
+                if (not is_leader) and has_leader and st["leader_gone"].is_set():
+                    on_status.call("stopped", None, None, None, None, "Chu party thoat -> member thoat theo")
+                    return False
+                on_status.call("running", None, None, None, None,
+                               "Chua len map train (cong ket?) -> reform lai (khong huy party)")
+                if not _reform_to_spot(c, st, party_name, route, spot, is_leader, has_leader,
+                                       do_daily, should_stop, on_status, username):
+                    return False
+                if c.current_map != sc:
+                    time.sleep(5)   # chua len -> nghi ngan roi reform lai (khong spam)
         else:
             # Dung map, co safe -> chi can lap party (khong can route) roi di ra spot.
             c.flee_mode = False
