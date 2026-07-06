@@ -73,8 +73,8 @@ def current_channel(username):
 
 def _apply_cmd(c, cmd, on_status):
     """Thuc thi 1 lenh LIVE tu UI (mirror _do_manual_cmd ben PC). cmd = list/tuple
-    ["channel", ch] | ["channel_auto"] | ["city", city_id, flag]. Loi thi bao qua status,
-    KHONG nem ra ngoai (giu vong lap song)."""
+    ["channel", ch] | ["channel_auto"] | ["city", city_id, flag] | ["giftcode", code].
+    Loi thi bao qua status, KHONG nem ra ngoai (giu vong lap song)."""
     try:
         kind = str(cmd[0])
         if kind == "channel":
@@ -89,6 +89,11 @@ def _apply_cmd(c, cmd, on_status):
             ok = c.go_to_town(cid, flag)
             on_status.call("running", None, None, None, None,
                            f"Teleport thanh {cid}" + ("" if ok else " (chua ve duoc - co the dang ket tran)"))
+        elif kind == "giftcode":
+            code = str(cmd[1])
+            ok = c.redeem_giftcode(code)
+            on_status.call("running", None, None, None, None,
+                           f"Da nhap giftcode '{code}'" if ok else f"Giftcode '{code}' khong hop le")
     except Exception as e:
         on_status.call("running", None, None, None, None, f"Loi thuc thi lenh: {e}")
 
@@ -237,3 +242,30 @@ def run_train_sync_for_test(username: str, password: str, server_ip: str, server
     run_train(username, password, server_ip, server_id, RUN_MODE_STAND_STILL, "trac_quan",
               should_stop, on_status)
     return states[-1] if states else ""
+
+
+class _FakeClientForTest:
+    """CHI DUNG TRONG TEST: gia lap GameClient toi thieu de kiem tra _apply_cmd dinh tuyen
+    dung lenh 'giftcode' toi redeem_giftcode(), khong can ket noi mang that."""
+    _label = "test"
+
+    def __init__(self):
+        self.last_giftcode = None
+
+    def redeem_giftcode(self, code):
+        self.last_giftcode = code
+        return True
+
+
+def apply_giftcode_cmd_for_test(code: str) -> str:
+    """Wrapper THUAN PYTHON cho instrumented test: goi _apply_cmd voi lenh giftcode qua
+    _FakeClientForTest, tra ve message cuoi cung ghi nhan qua on_status."""
+    messages = []
+
+    def _on_status(state, hp, sp, hp_max, sp_max, message):
+        messages.append(message)
+
+    fake = _FakeClientForTest()
+    on_status = _CallableStub(_on_status)
+    _apply_cmd(fake, ["giftcode", code], on_status)
+    return messages[-1] if messages else ""

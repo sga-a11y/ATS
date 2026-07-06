@@ -85,4 +85,17 @@ class TrainRunnerTest {
         assertTrue("CWD ($cwd) phai ghi duoc de claim_mail/claim_online_gifts/do_van_tieu luu trang thai dung", testFile.exists())
         testFile.delete()
     }
+
+    /**
+     * Xac nhan _apply_cmd dinh tuyen dung lenh "giftcode" toi GameClient.redeem_giftcode()
+     * (khong can ket noi mang that) - qua ham test-only apply_giftcode_cmd_for_test() dung
+     * _FakeClientForTest trong train_runner.py.
+     */
+    @Test
+    fun applyGiftcodeCommandCallsRedeemGiftcode() {
+        val py = Python.getInstance()
+        val mod = py.getModule("train_bot.train_runner")
+        val result = mod.callAttr("apply_giftcode_cmd_for_test", "TESTCODE123").toString()
+        assertTrue("Message phai chua ma giftcode da nhap", result.contains("TESTCODE123"))
+    }
 }
