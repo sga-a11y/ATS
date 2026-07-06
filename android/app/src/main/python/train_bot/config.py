@@ -149,6 +149,13 @@ def _load_cities():
 
 CITIES = _load_cities()
 
+DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (khop run_party_digioi.py DIGIOI_LIMIT)
+
+
+def leaders_for(party_name):
+    from . import party_state
+    return party_state.leaders_for(party_name)
+
 
 def _load_vantieu_requests():
     """Doc vantieu_requests.json (bang tra ma yeu cau -> pet phu hop, dung cho che do smart-match
