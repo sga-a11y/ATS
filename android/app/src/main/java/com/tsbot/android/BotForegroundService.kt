@@ -136,6 +136,7 @@ class BotForegroundService : Service() {
     fun sendChannel(usernames: List<String>, ch: Int) = sendCommand(usernames, arrayOf<Any>("channel", ch))
     fun sendChannelAuto(usernames: List<String>) = sendCommand(usernames, arrayOf<Any>("channel_auto"))
     fun sendCity(usernames: List<String>, cityId: Int, flag: Int) = sendCommand(usernames, arrayOf<Any>("city", cityId, flag))
+    fun sendGiftcode(usernames: List<String>, code: String) = sendCommand(usernames, arrayOf<Any>("giftcode", code))
 
     /** Query danh sach kenh (BLOCKING ~3s - goi tu background thread/coroutine, KHONG main thread).
      * Tra list [channel, so_nguoi, suc_chua] sap xep theo channel; rong neu khong lay duoc. */
