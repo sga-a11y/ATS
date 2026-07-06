@@ -70,7 +70,7 @@ class BotForegroundService : Service() {
             .build()
     }
 
-    fun startAccount(account: Account, serverIp: String, serverId: Int, runMode: String, cityKey: String) {
+    fun startAccount(account: Account, serverIp: String, serverId: Int, runMode: String, cityKey: String, doDaily: Boolean) {
         // TOCTOU: KHONG dung "if containsKey(...) return" roi put rieng - 2 lan goi
         // startAccount() gan nhau (vd double-tap nut Start tren UI) co the ca 2 deu
         // qua check TRUOC khi ben nao kip put, tao 2 Thread cung chay cho 1 username,
@@ -104,7 +104,7 @@ class BotForegroundService : Service() {
                 })
                 module.callAttr(
                     "run_train", account.username, account.password, serverIp, serverId,
-                    runMode, cityKey, shouldStop, onStatus, getCmd,
+                    runMode, cityKey, shouldStop, onStatus, getCmd, doDaily,
                 )
             } catch (e: Exception) {
                 _status.update {
@@ -157,7 +157,55 @@ class BotForegroundService : Service() {
                     })
                     module.callAttr(
                         "run_party_digioi", account.username, account.password, serverIp, serverId,
-                        party.name, isLeader, isPicker, hasLeader, shouldStop, onStatus,
+                        party.name, isLeader, isPicker, hasLeader, party.doDaily, shouldStop, onStatus,
+                    )
+                } catch (e: Exception) {
+                    _status.update {
+                        it + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khong ro"))
+                    }
+                } finally {
+                    runningThreads.remove(account.username)
+                    stopFlags.remove(account.username)
+                }
+            }
+            if (runningThreads.putIfAbsent(account.username, thread) == null) thread.start()
+        }
+    }
+
+    /** Khoi dong CA Party o che do Train (di chuyen thong minh theo ban do). Giong startPartyDigioi
+     * ve cau truc (n_members set truoc, account dau tien = picker, has_leader theo party.noLeader). */
+    fun startPartyTrain(party: Party, serverIp: String, serverId: Int, mapKey: String, mobIndex: Int) {
+        if (party.accounts.isEmpty()) return
+        val partyModule = Python.getInstance().getModule("train_bot.party_state")
+        val hasLeader = !party.noLeader
+        val nMembers = if (hasLeader) party.accounts.size - 1 else party.accounts.size
+        partyModule.callAttr("set_n_members", party.name, nMembers)
+        val picker = party.accounts.first()
+        party.accounts.forEach { account ->
+            val isLeader = hasLeader && account.username == picker.username
+            val isPicker = account.username == picker.username
+            stopFlags[account.username] = false
+            val thread = Thread {
+                try {
+                    val module = Python.getInstance().getModule("train_bot.train_runner")
+                    val shouldStop = PyObject.fromJava(object {
+                        fun call(): Boolean = stopFlags[account.username] == true
+                    })
+                    val onStatus = PyObject.fromJava(object {
+                        fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
+                            _status.update {
+                                it + (account.username to AccountStatus(
+                                    state = RunState.valueOf(state.uppercase()),
+                                    hp = hp?.toInt(), sp = sp?.toInt(),
+                                    hpMax = hpMax?.toInt(), spMax = spMax?.toInt(), message = msg,
+                                ))
+                            }
+                        }
+                    })
+                    module.callAttr(
+                        "run_party_train", account.username, account.password, serverIp, serverId,
+                        party.name, mapKey, mobIndex, isLeader, isPicker, hasLeader, party.doDaily,
+                        shouldStop, onStatus,
                     )
                 } catch (e: Exception) {
                     _status.update {
