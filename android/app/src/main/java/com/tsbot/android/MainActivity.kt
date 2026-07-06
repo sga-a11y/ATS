@@ -36,6 +36,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -152,10 +153,10 @@ fun TsBotApp(
 
     fun startAccountIn(party: Party, account: Account) {
         val info = Servers.ALL[party.serverKey] ?: return
-        when (party.runMode) {
-            BotForegroundService.RUN_MODE_DIGIOI_SOLO ->
+        when {
+            party.runMode == RunModes.DIGIOI && party.digioiSolo ->
                 service?.startAccountDigioiSolo(account, info.ip, info.serverId)
-            BotForegroundService.RUN_MODE_DIGIOI_PARTY ->
+            party.runMode == RunModes.DIGIOI ->
                 // Party THAT can toan bo Party cung luc (n_members phai duoc set truoc khi bat ky
                 // thread nao chay) - bam Start 1 account rieng le trong mode nay se khoi dong CA Party.
                 service?.startPartyDigioi(party, info.ip, info.serverId)
@@ -165,7 +166,7 @@ fun TsBotApp(
     }
 
     fun startPartyIn(party: Party) {
-        if (party.runMode == BotForegroundService.RUN_MODE_DIGIOI_PARTY) {
+        if (party.runMode == RunModes.DIGIOI && !party.digioiSolo) {
             val info = Servers.ALL[party.serverKey] ?: return
             service?.startPartyDigioi(party, info.ip, info.serverId)
         } else {
@@ -313,6 +314,7 @@ fun TsBotApp(
             initialServerKey = partyBeingEdited.serverKey,
             initialRunMode = partyBeingEdited.runMode,
             initialCityKey = partyBeingEdited.cityKey,
+            initialDigioiSolo = partyBeingEdited.digioiSolo,
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
@@ -625,6 +627,7 @@ fun AddPartyDialog(
     initialServerKey: String = Servers.ALL.keys.first(),
     initialRunMode: String = RunModes.STAND_STILL,
     initialCityKey: String = Cities.ALL.keys.first(),
+    initialDigioiSolo: Boolean = false,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
@@ -633,6 +636,7 @@ fun AddPartyDialog(
     var selectedMode by remember { mutableStateOf(initialRunMode) }
     var cityExpanded by remember { mutableStateOf(false) }
     var selectedCity by remember { mutableStateOf(initialCityKey) }
+    var digioiSolo by remember { mutableStateOf(initialDigioiSolo) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -703,9 +707,18 @@ fun AddPartyDialog(
                         }
                     }
                 }
+                // Che do "SOLO (khong lap party)" CHI ap dung khi mode = Di Gioi - mirror
+                // pcfg["digioi_mode"]=="solo" ben PC (1 sub-option BEN TRONG mode digioi).
+                if (selectedMode == RunModes.DIGIOI) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = digioiSolo, onCheckedChange = { digioiSolo = it })
+                        Text("Chạy SOLO (mỗi account độc lập, không lập party thật)")
+                    }
+                }
                 // Chon thanh CHI can khi mode = ve thanh dung yen. Mode "login o dau dung yen do"
-                // (STAY_LOGIN) khong teleport nen an ô chon thanh cho khoi roi.
-                if (selectedMode != RunModes.STAY_LOGIN) {
+                // (STAY_LOGIN) va "Di Gioi" (DIGIOI) khong teleport ve thanh nen an o chon thanh.
+                if (selectedMode == RunModes.STAND_STILL) {
                     Spacer(Modifier.height(8.dp))
                     ExposedDropdownMenuBox(
                         expanded = cityExpanded,
@@ -741,7 +754,7 @@ fun AddPartyDialog(
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(Party(name, selectedKey, selectedMode, selectedCity))
+                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo))
                     }
                 },
             ) {

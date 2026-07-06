@@ -27,6 +27,7 @@ class PartyStore(private val context: Context) {
                 // duoc, tu dong coi la mac dinh - khong can migrate du lieu cu thu cong.
                 runMode = o.optString("run_mode", RunModes.STAND_STILL),
                 cityKey = o.optString("city_key", Cities.ALL.keys.first()),
+                digioiSolo = o.optBoolean("digioi_solo", false),
                 accounts = accounts,
             )
         }
@@ -40,6 +41,7 @@ class PartyStore(private val context: Context) {
             o.put("server_key", p.serverKey)
             o.put("run_mode", p.runMode)
             o.put("city_key", p.cityKey)
+            o.put("digioi_solo", p.digioiSolo)
             val accArr = JSONArray()
             p.accounts.forEach { a ->
                 val ao = JSONObject()

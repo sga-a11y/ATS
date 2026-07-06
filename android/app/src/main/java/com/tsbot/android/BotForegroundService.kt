@@ -22,10 +22,6 @@ import kotlinx.coroutines.flow.update
  * publish qua StateFlow de UI observe.
  */
 class BotForegroundService : Service() {
-    companion object {
-        const val RUN_MODE_DIGIOI_PARTY = "digioi_party"
-        const val RUN_MODE_DIGIOI_SOLO = "digioi_solo"
-    }
 
     private val binder = LocalBinder()
 
