@@ -100,6 +100,19 @@ class TrainRunnerTest {
     }
 
     /**
+     * Xac nhan _handle_o5_team khong bi treo cho vo han khi goi voi is_leader=False - phai
+     * return ngay (khong co leader dang ky cho party test nay -> guard "khong co leader" kich
+     * hoat truoc, hoac neu co leader thi o5_state da la "done" tu truoc).
+     */
+    @Test
+    fun handleO5TeamMemberReturnsWhenAlreadyDone() {
+        val py = Python.getInstance()
+        val mod = py.getModule("train_bot.train_runner")
+        val result = mod.callAttr("handle_o5_team_member_returns_when_done_for_test", "party-o5-member-test")
+        assertTrue(result.toBoolean())
+    }
+
+    /**
      * Xac nhan run_party_digioi() khong crash khi login that bai (khong can tai khoan that,
      * khong can server thuc) - chi kiem tra chuoi goi ham bao trang thai loi/dung dung quy
      * uoc .call(), giong invalidLoginReportsErrorNotCrash cho run_train.

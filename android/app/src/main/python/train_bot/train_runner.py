@@ -48,11 +48,17 @@ def _nearest_safe(pos, safes):
     return min(safes, key=lambda s: (s[0] - px) ** 2 + (s[1] - py) ** 2)
 
 
-def _do_daily_if_enabled(c, do_daily, label, on_status):
+def _do_daily_if_enabled(c, do_daily, label, on_status, party_name=None, is_leader=False,
+                         should_stop=None):
     """Goi claim_daily_quests(heavy=True) + do_daily_dungeon() 1 LAN neu do_daily=True. Loi chi
-    log, khong lam crash vong lap chinh (giong quy uoc _auto_claim_loop)."""
+    log, khong lam crash vong lap chinh (giong quy uoc _auto_claim_loop). Neu party_name duoc
+    truyen (tuc dang chay trong 1 party THAT - Di Gioi/Train) -> set hook _o5_team_fn TRUOC khi
+    goi claim_daily_quests, de _on_dungeon (client.py) goi lai _handle_o5_team lam BUOC CUOI cua
+    claim_daily_quests (mirror PC's c._o5_team_fn set luc setup account)."""
     if not do_daily:
         return
+    if party_name is not None and should_stop is not None:
+        c._o5_team_fn = (lambda o5d: _handle_o5_team(c, party_name, label, is_leader, should_stop, o5d))
     try:
         c.claim_daily_quests(heavy=True)
     except Exception as e:
@@ -61,6 +67,96 @@ def _do_daily_if_enabled(c, do_daily, label, on_status):
         c.do_daily_dungeon()
     except Exception as e:
         log.warning("[%s] loi do_daily_dungeon: %s", label, e)
+
+
+def _handle_o5_team(c, party_name, label, is_leader, should_stop, o5_done):
+    """O5 PHO BAN TO DOI = BUOC CUOI claim_daily_quests (sau khi check + thu lam moi o khac). Mirror
+    run_party_digioi.py:1405-1510 nguyen van, CHI doi khoa pidx -> party_name (+ dem so luong report
+    thay vi so khop danh sach username - xem GHI CHU trong plan). Moi acc report o5 da xong chua.
+    LEADER cho CA party report -> CHI khi MOI nguoi deu CHUA xong o5 -> tao + keo party vao danh
+    (member auto-accept 0x2f 0f->03 + ready 0x2f 0b trong _on_dungeon, di theo leader).
+    MEMBER PHAI CHO leader danh xong (o5_state != "idle" roi thanh "done") MOI duoc return - tiep
+    tuc flow rieng. KHONG cho -> member tu chay tiep SONG SONG luc dang trong pho ban -> gui goi xen
+    vao giua tran -> server khong nhan atk hop le -> ket cung (xac nhan qua log PC thuc te)."""
+    st = party_state_mod._pstate(party_name)
+    with st["lock"]:
+        st["o5_done_by"][label] = bool(o5_done)
+    has_leader = party_state_mod.leaders_for(party_name) != [] or is_leader
+    if not is_leader and not has_leader:
+        # Party KHONG CO LEADER BOT (vd "Khong co chu PT") -> KHONG AI se chay nhanh leader ben duoi
+        # de set o5_state="done" -> cho vo ich toi khi timeout. Khong co leader thi khong co gi de
+        # cho -> bo qua NGAY (mirror PC).
+        return
+    if not is_leader:
+        _t0log = time.time()
+        while True:
+            if should_stop.call() or not c.running:
+                return
+            if time.time() - _t0log > 60:
+                log.info("[%s] (member) CHO leader danh xong team dungeon...", label)
+                _t0log = time.time()
+            if st["reconnecting"]:
+                log.warning("[%s] (member) dong doi ROT trong team dungeon -> RELOGIN thoat instance", label)
+                try:
+                    c.relogin()
+                except Exception:
+                    pass
+                c._phoban_until = 0.0
+                return
+            with st["lock"]:
+                state = st["o5_state"]
+            if state == "done":
+                c._phoban_until = 0.0
+                return
+            if not c.in_combat():
+                try:
+                    c.do_heal()
+                except Exception:
+                    pass
+            time.sleep(2)
+    # LEADER: cho CA party (gom minh) report o5. n_members KHONG tinh minh (leader) - + 1 cho tong so.
+    total_members = st["n_members"] + 1
+    if total_members < 2:
+        return   # khong du party de danh pho ban to doi
+    _t0log = time.time()
+    while True:
+        if should_stop.call() or not c.running:
+            return
+        with st["lock"]:
+            reported = len(st["o5_done_by"]) + len(st["reconnecting"]) >= total_members
+        if reported:
+            break
+        if time.time() - _t0log > 30:
+            log.info("[%s] (LEADER) CHO ca party report o5 (%d/%d)...",
+                     label, len(st["o5_done_by"]), total_members)
+            _t0log = time.time()
+        time.sleep(2)
+    with st["lock"]:
+        statuses = dict(st["o5_done_by"])
+    if all(not v for v in statuses.values()):
+        log.info("[%s] (LEADER) CA party (%d nguoi) chua xong o5 -> PHO BAN TO DOI LV20",
+                 label, total_members)
+        with st["lock"]:
+            st["o5_state"] = "running"
+        _dg0 = st["disc_gen"]
+        try:
+            ok = c.do_team_dungeon_lv20()
+            if ok:
+                c.claim_daily_quests(heavy=False)
+            if st["disc_gen"] > _dg0 or st["reconnecting"]:
+                log.warning("[%s] (LEADER) dong doi ROT trong team dungeon -> RELOGIN thoat instance", label)
+                try:
+                    c.relogin()
+                except Exception:
+                    pass
+        finally:
+            with st["lock"]:
+                st["o5_state"] = "done"
+                st["reform_gen"] += 1
+    else:
+        with st["lock"]:
+            st["o5_state"] = "done"
+        log.info("[%s] (LEADER) o5: KHONG phai ca party chua xong -> bo qua pho ban to doi", label)
 
 # HAI che do hien tai:
 #  - STAND_STILL ("ve thanh dung yen"): ve 1 thanh CO THAT (nguoi dung chon, xem
@@ -230,7 +326,7 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
             on_status.call("error", None, None, None, None, "Khong vao duoc Di Gioi (het gio?)")
             return False
         on_status.call("running", None, None, None, None, "Da vao Di Gioi")
-        _do_daily_if_enabled(c, do_daily, username, on_status)
+        _do_daily_if_enabled(c, do_daily, username, on_status, party_name, is_leader, should_stop)
         # 3) Dong bo kenh (mirror run_party_digioi.py:369-409, ham noi bo do_channel_sync)
         if is_picker:
             st["channel_ready"].clear()
@@ -492,7 +588,7 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
         return False
     if is_leader:
         party_state_mod.set_leader_name(party_name, c.char_name or username)
-    _do_daily_if_enabled(c, do_daily, username, on_status)
+    _do_daily_if_enabled(c, do_daily, username, on_status, party_name, is_leader, should_stop)
     try:
         sc = int(map_key)
         safe_list = tm.get("safe") or []
@@ -846,10 +942,22 @@ class _FakeClientForTest:
 
     def __init__(self):
         self.last_giftcode = None
+        self.running = True
 
     def redeem_giftcode(self, code):
         self.last_giftcode = code
         return True
+
+
+def handle_o5_team_member_returns_when_done_for_test(party_name: str) -> bool:
+    """CHI DUNG TRONG TEST: goi _handle_o5_team voi is_leader=False, xac nhan return ngay khi
+    o5_state da la 'done' tu truoc (khong bi treo cho vo han)."""
+    party_state_mod._pstate(party_name)["o5_state"] = "done"
+    fake = _FakeClientForTest()
+    fake.running = True
+    should_stop = _CallableStub(lambda: False)
+    _handle_o5_team(fake, party_name, "test-member", False, should_stop, False)
+    return True   # khong treo -> ham tra ve duoc toi day
 
 
 def apply_giftcode_cmd_for_test(code: str) -> str:
