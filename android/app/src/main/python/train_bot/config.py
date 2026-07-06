@@ -49,10 +49,9 @@ DIGIOI_MAP_ID = 49942           # map_id Di Gioi (0xc316)
 ACCOUNT_HEAL = {}
 JUNK_PET_SCROLLS = {}
 PET_HEDOANH = {}
-VANTIEU_ENABLE = False
-VANTIEU_PETS = []
-VANTIEU_PETS_NAMES = []
-VANTIEU_REQUESTS = {}
+VANTIEU_ENABLE = True
+VANTIEU_PETS = []          # KHONG dung (chi dung che do smart-match qua VANTIEU_REQUESTS)
+VANTIEU_PETS_NAMES = []    # KHONG dung (chi dung che do smart-match qua VANTIEU_REQUESTS)
 RUN_AROUND_OFFSETS = [(-100, -100), (-200, 0), (-100, 100), (0, 0),
                       (100, -100), (200, 0), (100, 100), (0, 0)]
 RUN_STEP_WAIT = 0.7
@@ -149,3 +148,18 @@ def _load_cities():
 
 
 CITIES = _load_cities()
+
+
+def _load_vantieu_requests():
+    """Doc vantieu_requests.json (bang tra ma yeu cau -> pet phu hop, dung cho che do smart-match
+    cua do_van_tieu()). Giu NGUYEN cau truc dict tu file (client.py tu xu ly key/value truc tiep,
+    khong can convert kieu nhu pets.json)."""
+    try:
+        d = json.loads(_read_asset("vantieu_requests.json"))
+        return d.get("requests", d)   # ho tro ca 2 dang: co wrapper "requests" hoac phang truc tiep
+    except Exception as e:
+        _log_asset_error("vantieu_requests.json", e)
+        return {}
+
+
+VANTIEU_REQUESTS = _load_vantieu_requests()
