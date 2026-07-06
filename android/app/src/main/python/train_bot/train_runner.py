@@ -20,15 +20,32 @@ QUY UOC GOI CALLBACK TU KOTLIN (quan trong cho BotForegroundService o task sau):
   wire BotForegroundService.
 """
 import logging
+import random
 import threading
 import time
 
 from . import config
 from . import login as login_mod
 from . import party_state as party_state_mod
-from .client import GameClient, joined_member_count
+from .client import GameClient, joined_member_count, reset_party_joined
 
 log = logging.getLogger("bot")
+
+
+def _jitter(pt):
+    """Xe dich toa do +-10 ngau nhien (9 kha nang) de bot khong dung cung 1 diem."""
+    dx, dy = random.choice([-10, 0, 10]), random.choice([-10, 0, 10])
+    return (pt[0] + dx, pt[1] + dy)
+
+
+def _nearest_safe(pos, safes):
+    """Diem safe gan vi tri 'pos' nhat (khoang cach binh phuong). pos=None -> diem dau."""
+    if not safes:
+        return None
+    if not pos:
+        return safes[0]
+    px, py = pos
+    return min(safes, key=lambda s: (s[0] - px) ** 2 + (s[1] - py) ** 2)
 
 
 def _do_daily_if_enabled(c, do_daily, label, on_status):
@@ -439,6 +456,255 @@ def run_digioi_solo(username, password, server_ip, server_id, do_daily, should_s
     is_reconnect = False
     while True:
         reconnectable = _run_digioi_solo_once(username, password, server_ip, server_id,
+                                              do_daily, should_stop, on_status, is_reconnect)
+        if should_stop.call() or not reconnectable:
+            break
+        attempt += 1
+        wait = 5 if attempt <= 3 else (30 if attempt <= 13 else 60)
+        on_status.call("connecting", None, None, None, None,
+                       f"Server rot -> login lai sau {wait}s (lan {attempt})")
+        for _ in range(wait):
+            if should_stop.call():
+                break
+            time.sleep(1)
+        if should_stop.call():
+            break
+        is_reconnect = True
+    on_status.call("stopped", None, None, None, None, "Da dung")
+
+
+def _run_party_train_once(username, password, server_ip, server_id, party_name, map_key,
+                          mob_index, is_leader, is_picker, has_leader, do_daily, should_stop,
+                          on_status, is_reconnect):
+    """1 lan chay (khong bao reconnect) - mirror run_account() nhanh train_on_map cua PC. Don gian
+    hoa 1 diem CO CHU DICH so voi PC: KHONG co co che 'tam dung cho dung dong doi dang reconnect'
+    (disc_gen/reconnecting) - moi account tu backoff-reconnect doc lap (giong Di Gioi), khi vao lai
+    tu re-sync kenh/re-join party tu dau. Tra reconnectable: bool."""
+    st = party_state_mod._pstate(party_name)
+    tm = config.TRAIN_MAPS.get(map_key)
+    route = config.TRAIN_ROUTES.get(map_key)
+    if tm is None:
+        on_status.call("error", None, None, None, None, f"Khong tim thay map train '{map_key}'")
+        return False
+    c, ok = _digioi_login_once(username, password, server_ip, server_id, party_name, is_reconnect)
+    if not ok:
+        on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
+        return False
+    if is_leader:
+        party_state_mod.set_leader_name(party_name, c.char_name or username)
+    _do_daily_if_enabled(c, do_daily, username, on_status)
+    try:
+        sc = int(map_key)
+        safe_list = tm.get("safe") or []
+        mobs = tm.get("mobs") or []
+        spot = mobs[mob_index] if (mob_index is not None and 0 <= mob_index < len(mobs)) else None
+        # 1) Setup: dung map + co safe -> ra safe ngay. Sai map -> can route (xu ly o Step 4 _do_reform).
+        if c.current_map == sc and safe_list:
+            c.navigate_to(*_nearest_safe(c.pos, safe_list))
+        need_route = c.current_map != sc
+        # 2) Dong bo kenh (tai dung y het co che tu sub-project #1)
+        if is_picker:
+            st["channel_ready"].clear()
+            st["channel"] = None
+            need = st["n_members"] + (1 if has_leader else 0)
+            ch = 0
+            t0 = time.time()
+            while c.running and not should_stop.call():
+                r = c.pick_best_channel(need=need)
+                if r is None:
+                    time.sleep(3 if time.time() - t0 <= 30 else 60)
+                    continue
+                ch = r
+                break
+            st["channel"] = ch
+            st["channel_ready"].set()
+        else:
+            while not st["channel_ready"].wait(5):
+                if not c.running or should_stop.call():
+                    return False
+            if st["channel"]:
+                c.switch_channel(st["channel"])
+        # 3) Neu sai map (can route) hoac vua sync kenh xong -> dung ham reform chung de dua ca
+        # party toi diem quai (mirror PC goi _do_reform(to_spot=False) khi login sai map, roi flow
+        # thuong se lap party/di spot; o day gop lam 1 buoc luon cho gon).
+        if need_route or not safe_list:
+            ok_reform = _reform_to_spot(c, st, party_name, route, spot, is_leader, has_leader,
+                                        do_daily, should_stop, on_status, username)
+            if not ok_reform:
+                return False
+        else:
+            # Dung map, co safe -> chi can lap party (khong can route) roi di ra spot.
+            c.flee_mode = False
+            if is_leader:
+                for _ in range(6):
+                    if not c.running or should_stop.call():
+                        break
+                    c.invite_members(gap=1.0)
+                    st["invited"].set()
+                    time.sleep(4)
+                    if joined_member_count(party_name) >= st["n_members"]:
+                        break
+                st["invited"].set()
+                try:
+                    c.set_party_strategist()
+                except Exception:
+                    pass
+                _abs = lambda: should_stop.call() or not c.running
+                if spot:
+                    c.navigate_to(*_jitter(spot), flee=False, abort=_abs)
+                c.combat_ready()
+                c.flee_mode = False
+                on_status.call("running", None, None, None, None, "(LEADER) Da ra diem quai, dung cay danh")
+            elif has_leader:
+                on_status.call("running", None, None, None, None, "(member) Cho vao party")
+                while not st["invited"].wait(2):
+                    if not c.running or should_stop.call() or st["leader_gone"].is_set():
+                        return False
+                c.combat_ready()
+                c.flee_mode = False
+            else:
+                on_status.call("running", None, None, None, None,
+                               "(member) KHONG co chu PT - dung yen tai safe, cho moi party tay")
+        # 4) Vong giu song: phat hien bi vang khoi map train -> reform.
+        out_cnt = 0
+        while c.running and not should_stop.call():
+            time.sleep(DIGIOI_KEEPALIVE_POLL)
+            if (not is_leader) and has_leader and st["leader_gone"].is_set():
+                on_status.call("stopped", None, None, None, None, "Chu party da thoat -> member thoat theo")
+                return False
+            if c.current_map == sc:
+                out_cnt = 0
+            elif not c.in_combat():
+                out_cnt += 1
+                if out_cnt >= 2:
+                    on_status.call("running", None, None, None, None,
+                                   "Bi vang khoi map train -> dang reform (dua ca party ve gom lai)")
+                    ok_reform = _reform_to_spot(c, st, party_name, route, spot, is_leader, has_leader,
+                                                do_daily, should_stop, on_status, username)
+                    if not ok_reform:
+                        return False
+                    out_cnt = 0
+        return False
+    finally:
+        reconnectable = has_leader and (not should_stop.call()) and getattr(c, "server_closed", False)
+        try:
+            c.close()
+        except Exception:
+            pass
+        if is_leader and not reconnectable:
+            st["leader_gone"].set()
+        if reconnectable:
+            with st["lock"]:
+                st["reconnecting"].add(username)
+                st["disc_gen"] += 1
+        else:
+            st["reconnecting"].discard(username)
+
+
+def _reform_to_spot(c, st, party_name, route, spot, is_leader, has_leader, do_daily, should_stop,
+                    on_status, label):
+    """Dua CA party ve thanh gom nhau -> giai tan + lap lai -> keo qua route (neu co) -> ra safe ->
+    ra diem quai. Mirror _do_reform cua PC (run_party_digioi.py:411-518), CAT phan boss quan doan/
+    dungeon-tai-thanh (da co _do_daily_if_enabled goi rieng, khong lap lai o day de tranh goi trung
+    do_daily nhieu lan moi vong reform). Tra False neu bi should_stop/mat ket noi giua chung."""
+    if route is None:
+        on_status.call("error", None, None, None, None, "Khong co route cho map nay - khong the reform")
+        return False
+    fc = int(route.get("from_city", 0))
+    ff = int(route.get("city_flag", 0))
+    c.flee_mode = True
+    if is_leader:
+        c.leave_party()
+        reset_party_joined(party_name)
+    if fc:
+        try:
+            c.go_to_town(fc, ff)
+        except Exception as e:
+            log.warning("[%s] reform: loi ve thanh: %s", label, e)
+    # Re-sync kenh (khong chi switch ve kenh cu - server co the da day kenh cu day/khac)
+    if is_leader:
+        st["channel_ready"].clear()
+        st["channel"] = None
+        need = st["n_members"] + (1 if has_leader else 0)
+        ch = 0
+        t0 = time.time()
+        while c.running and not should_stop.call():
+            r = c.pick_best_channel(need=need)
+            if r is None:
+                time.sleep(3 if time.time() - t0 <= 30 else 60)
+                continue
+            ch = r
+            break
+        st["channel"] = ch
+        st["channel_ready"].set()
+    else:
+        while not st["channel_ready"].wait(5):
+            if not c.running or should_stop.call():
+                return False
+        if st["channel"]:
+            c.switch_channel(st["channel"])
+    if is_leader:
+        while joined_member_count(party_name) < st["n_members"]:
+            if should_stop.call() or not c.running:
+                return False
+            try:
+                c.invite_members(gap=1.0)
+            except Exception:
+                pass
+            st["invited"].set()
+            time.sleep(4)
+        st["invited"].set()
+        try:
+            c.set_party_strategist()
+        except Exception:
+            pass
+        _abs = lambda: should_stop.call() or not c.running
+        for stp in route.get("steps", []):
+            if _abs():
+                return False
+            t1 = time.time()
+            while c.in_combat(idle_secs=3.0) and not _abs() and time.time() - t1 < 60:
+                time.sleep(0.5)
+            if "gate" in stp:
+                if not c._enter_gate(int(stp["x"]), int(stp["y"]), int(stp["gate"])):
+                    break
+            else:
+                c.move_to(int(stp["move"][0]), int(stp["move"][1]))
+                time.sleep(0.5)
+        dest_map = int(route.get("dest_map", 0))
+        if c.current_map == dest_map and not _abs():
+            tm2 = config.TRAIN_MAPS.get(str(dest_map)) or {}
+            safe_list = tm2.get("safe") or []
+            if safe_list:
+                c.navigate_to(*_jitter(_nearest_safe(c.pos, safe_list)), flee=False, abort=_abs)
+            if spot:
+                c.navigate_to(*_jitter(spot), flee=False, abort=_abs)
+        c.combat_ready()
+        c.flee_mode = False
+    else:
+        while not st["invited"].wait(2):
+            if not c.running or should_stop.call() or st["leader_gone"].is_set():
+                return False
+        for _ in range(15):
+            if not c.running or should_stop.call():
+                break
+            time.sleep(1)
+        c.combat_ready()
+        c.flee_mode = False
+    return True
+
+
+def run_party_train(username, password, server_ip, server_id, party_name, map_key, mob_index,
+                    is_leader, is_picker, has_leader, do_daily, should_stop, on_status):
+    """Vong lap NGOAI CUNG: bao _run_party_train_once bang reconnect vo han (cung backoff
+    5s x3 -> 30s x10 -> 60s nhu run_party_digioi/run_digioi_solo)."""
+    st = party_state_mod._pstate(party_name)
+    st["n_members"] = max(st["n_members"], 0)
+    attempt = 0
+    is_reconnect = False
+    while True:
+        reconnectable = _run_party_train_once(username, password, server_ip, server_id, party_name,
+                                              map_key, mob_index, is_leader, is_picker, has_leader,
                                               do_daily, should_stop, on_status, is_reconnect)
         if should_stop.call() or not reconnectable:
             break

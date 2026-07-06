@@ -139,4 +139,25 @@ class TrainRunnerTest {
         mod.callAttr("run_digioi_solo", "invalid_user_xyz2", "wrong_pw", "127.0.0.1", 1, true, shouldStop, onStatus)
         assertTrue(states.contains("error") || states.contains("stopped"))
     }
+
+    /**
+     * Xac nhan run_party_train() (mode Train - di chuyen theo ban do + reform) khong crash khi
+     * login that bai (khong can tai khoan that, khong can server thuc). map_key "12831" la map
+     * that co trong train_maps.json (da xac nhan qua python3 truoc khi viet test nay).
+     */
+    @Test
+    fun trainInvalidLoginReportsErrorNotCrash() {
+        val py = Python.getInstance()
+        val mod = py.getModule("train_bot.train_runner")
+        val states = mutableListOf<String>()
+        val shouldStop = PyObject.fromJava(KotlinShouldStopCallback())
+        val onStatus = PyObject.fromJava(object {
+            fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
+                states.add(state)
+            }
+        })
+        mod.callAttr("run_party_train", "invalid_user_xyz3", "wrong_pw", "127.0.0.1", 1,
+            "test-party-train", "12831", -1, true, true, true, true, shouldStop, onStatus)
+        assertTrue(states.contains("error") || states.contains("stopped"))
+    }
 }
