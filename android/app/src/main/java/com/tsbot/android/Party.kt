@@ -19,5 +19,10 @@ data class Party(
     // thuong). Mirror PC's do_daily (gui.py). CHUA duoc noi vao logic chay nao (UI-only, se lam
     // sau) - gia tri mac dinh True khop PC's default.
     val doDaily: Boolean = true,
+    // Chi dung khi runMode == RunModes.TRAIN: key trong config.TRAIN_MAPS (vd "12831").
+    val trainMapKey: String = "",
+    // Chi dung khi runMode == RunModes.TRAIN: index trong tm["mobs"] cua map do, -1 = "Bot tu chon"
+    // (leader chon ngau nhien moi lan vao/reform). Mirror PC's mob_index (-1 mac dinh).
+    val trainMobIndex: Int = -1,
     val accounts: List<Account> = emptyList(),
 )

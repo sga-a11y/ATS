@@ -30,6 +30,8 @@ class PartyStore(private val context: Context) {
                 digioiSolo = o.optBoolean("digioi_solo", false),
                 noLeader = o.optBoolean("no_leader", false),
                 doDaily = o.optBoolean("do_daily", true),
+                trainMapKey = o.optString("train_map_key", ""),
+                trainMobIndex = o.optInt("train_mob_index", -1),
                 accounts = accounts,
             )
         }
@@ -46,6 +48,8 @@ class PartyStore(private val context: Context) {
             o.put("digioi_solo", p.digioiSolo)
             o.put("no_leader", p.noLeader)
             o.put("do_daily", p.doDaily)
+            o.put("train_map_key", p.trainMapKey)
+            o.put("train_mob_index", p.trainMobIndex)
             val accArr = JSONArray()
             p.accounts.forEach { a ->
                 val ao = JSONObject()

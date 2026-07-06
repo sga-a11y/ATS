@@ -160,8 +160,12 @@ fun TsBotApp(
                 // Party THAT can toan bo Party cung luc (n_members phai duoc set truoc khi bat ky
                 // thread nao chay) - bam Start 1 account rieng le trong mode nay se khoi dong CA Party.
                 service?.startPartyDigioi(party, info.ip, info.serverId)
+            party.runMode == RunModes.TRAIN ->
+                // Train luon can party (ke ca party 1 nguoi) vi route/reform gan lien voi co che
+                // party - bam Start 1 account rieng le se khoi dong CA Party (giong Di Gioi party).
+                service?.startPartyTrain(party, info.ip, info.serverId, party.trainMapKey, party.trainMobIndex)
             else ->
-                service?.startAccount(account, info.ip, info.serverId, party.runMode, party.cityKey)
+                service?.startAccount(account, info.ip, info.serverId, party.runMode, party.cityKey, party.doDaily)
         }
     }
 
@@ -169,6 +173,9 @@ fun TsBotApp(
         if (party.runMode == RunModes.DIGIOI && !party.digioiSolo) {
             val info = Servers.ALL[party.serverKey] ?: return
             service?.startPartyDigioi(party, info.ip, info.serverId)
+        } else if (party.runMode == RunModes.TRAIN) {
+            val info = Servers.ALL[party.serverKey] ?: return
+            service?.startPartyTrain(party, info.ip, info.serverId, party.trainMapKey, party.trainMobIndex)
         } else {
             party.accounts.forEach { startAccountIn(party, it) }
         }
@@ -317,6 +324,8 @@ fun TsBotApp(
             initialDigioiSolo = partyBeingEdited.digioiSolo,
             initialNoLeader = partyBeingEdited.noLeader,
             initialDoDaily = partyBeingEdited.doDaily,
+            initialTrainMapKey = partyBeingEdited.trainMapKey,
+            initialTrainMobIndex = partyBeingEdited.trainMobIndex,
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
@@ -619,6 +628,30 @@ fun StatBar(label: String, cur: Int, max: Int, color: Color) {
     }
 }
 
+/** Doc TRAIN_MAPS tu Python de hien dropdown "Map train" - tra (key, ten map) da sap xep theo ten. */
+fun trainMapOptions(): List<Pair<String, String>> {
+    val config = com.chaquo.python.Python.getInstance().getModule("train_bot.config")
+    val maps = config.get("TRAIN_MAPS")!!
+    return maps.asMap().entries.map { (k, v) ->
+        k.toString() to (v.callAttr("get", "name")?.toString() ?: k.toString())
+    }.sortedBy { it.second }
+}
+
+/** Doc danh sach diem quai cua 1 map train tu Python de hien dropdown "Quái". Luon co "Bot tu chon"
+ * (-1) o dau danh sach. */
+fun trainMobOptions(mapKey: String): List<Pair<Int, String>> {
+    val config = com.chaquo.python.Python.getInstance().getModule("train_bot.config")
+    val maps = config.get("TRAIN_MAPS")!!
+    val info = maps.callAttr("get", mapKey) ?: return listOf(-1 to "Bot tự chọn")
+    val mobs = info.callAttr("get", "mobs") ?: return listOf(-1 to "Bot tự chọn")
+    val list = mutableListOf(-1 to "Bot tự chọn")
+    mobs.asList().forEachIndexed { i, pt ->
+        val coords = pt.asList()
+        list.add(i to "Điểm ${i + 1} (${coords[0]}, ${coords[1]})")
+    }
+    return list
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPartyDialog(
@@ -632,6 +665,8 @@ fun AddPartyDialog(
     initialDigioiSolo: Boolean = false,
     initialNoLeader: Boolean = false,
     initialDoDaily: Boolean = true,
+    initialTrainMapKey: String = "",
+    initialTrainMobIndex: Int = -1,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
@@ -643,6 +678,10 @@ fun AddPartyDialog(
     var digioiSolo by remember { mutableStateOf(initialDigioiSolo) }
     var noLeader by remember { mutableStateOf(initialNoLeader) }
     var doDaily by remember { mutableStateOf(initialDoDaily) }
+    var trainMapKey by remember { mutableStateOf(initialTrainMapKey.ifEmpty { trainMapOptions().firstOrNull()?.first ?: "" }) }
+    var trainMobExpanded by remember { mutableStateOf(false) }
+    var trainMobIndex by remember { mutableStateOf(initialTrainMobIndex) }
+    var trainMapExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -737,6 +776,46 @@ fun AddPartyDialog(
                     Checkbox(checked = doDaily, onCheckedChange = { doDaily = it })
                     Text("Làm nhiệm vụ hàng ngày (chưa có tác dụng - sẽ nối logic sau)")
                 }
+                if (selectedMode == RunModes.TRAIN) {
+                    Spacer(Modifier.height(8.dp))
+                    val mapOptions = trainMapOptions()
+                    ExposedDropdownMenuBox(expanded = trainMapExpanded, onExpandedChange = { trainMapExpanded = it }) {
+                        OutlinedTextField(
+                            value = mapOptions.find { it.first == trainMapKey }?.second ?: trainMapKey,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Map train") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trainMapExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        )
+                        DropdownMenu(expanded = trainMapExpanded, onDismissRequest = { trainMapExpanded = false }) {
+                            mapOptions.forEach { (key, mapName) ->
+                                DropdownMenuItem(text = { Text(mapName) }, onClick = {
+                                    trainMapKey = key; trainMobIndex = -1; trainMapExpanded = false
+                                })
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    val mobOptions = trainMobOptions(trainMapKey)
+                    ExposedDropdownMenuBox(expanded = trainMobExpanded, onExpandedChange = { trainMobExpanded = it }) {
+                        OutlinedTextField(
+                            value = mobOptions.find { it.first == trainMobIndex }?.second ?: "Bot tự chọn",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Quái") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trainMobExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        )
+                        DropdownMenu(expanded = trainMobExpanded, onDismissRequest = { trainMobExpanded = false }) {
+                            mobOptions.forEach { (idx, label) ->
+                                DropdownMenuItem(text = { Text(label) }, onClick = {
+                                    trainMobIndex = idx; trainMobExpanded = false
+                                })
+                            }
+                        }
+                    }
+                }
                 // Chon thanh CHI can khi mode = ve thanh dung yen. Mode "login o dau dung yen do"
                 // (STAY_LOGIN) va "Di Gioi" (DIGIOI) khong teleport ve thanh nen an o chon thanh.
                 if (selectedMode == RunModes.STAND_STILL) {
@@ -775,7 +854,7 @@ fun AddPartyDialog(
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily))
+                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily, trainMapKey, trainMobIndex))
                     }
                 },
             ) {
