@@ -98,4 +98,25 @@ class TrainRunnerTest {
         val result = mod.callAttr("apply_giftcode_cmd_for_test", "TESTCODE123").toString()
         assertTrue("Message phai chua ma giftcode da nhap", result.contains("TESTCODE123"))
     }
+
+    /**
+     * Xac nhan run_party_digioi() khong crash khi login that bai (khong can tai khoan that,
+     * khong can server thuc) - chi kiem tra chuoi goi ham bao trang thai loi/dung dung quy
+     * uoc .call(), giong invalidLoginReportsErrorNotCrash cho run_train.
+     */
+    @Test
+    fun digioiInvalidLoginReportsErrorNotCrash() {
+        val py = Python.getInstance()
+        val mod = py.getModule("train_bot.train_runner")
+        val states = mutableListOf<String>()
+        val shouldStop = PyObject.fromJava(KotlinShouldStopCallback())
+        val onStatus = PyObject.fromJava(object {
+            fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
+                states.add(state)
+            }
+        })
+        mod.callAttr("run_party_digioi", "invalid_user_xyz", "wrong_pw", "127.0.0.1", 1,
+            "test-party-digioi", true, true, shouldStop, onStatus)
+        assertTrue("Phai bao trang thai loi hoac dung, khong duoc crash", states.contains("error") || states.contains("stopped"))
+    }
 }

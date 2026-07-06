@@ -25,7 +25,8 @@ import time
 
 from . import config
 from . import login as login_mod
-from .client import GameClient
+from . import party_state as party_state_mod
+from .client import GameClient, joined_member_count
 
 log = logging.getLogger("bot")
 
@@ -128,6 +129,200 @@ def _auto_claim_loop(c, should_stop):
             except Exception as e:
                 log.warning("[%s] auto_claim: loi van tieu: %s", c._label, e)
                 next_vantieu_check = time.time() + 300   # loi -> thu lai sau 5p thay vi spam ngay
+
+
+DIGIOI_KEEPALIVE_POLL = 3   # giay/vong keepalive (khop nhip 3s cua run_train, PC dung ~2-3s)
+
+
+def _digioi_login_once(username, password, server_ip, server_id, party_name, is_reconnect):
+    """1 lan login + vao world (KHONG bao reconnect - _run_digioi_supervised o duoi lo backoff).
+    Tra (client, ok: bool). Mirror run_party_digioi.py:189-234 (vong 6 lan thu login/connect)."""
+    c = None
+    ok = False
+    for attempt in range(6):
+        try:
+            cred = login_mod.login(username, password)
+            c = GameClient(cred["user_id"], cred["access_token"], host=server_ip, server_id=server_id)
+            c._label = username
+            c.party_idx = party_name   # KHOA CHIA SE STATE - day la diem MAU CHOT: dung party_name (str)
+                                        # thay vi pidx (int) nhu PC, moi may moc trong client.py
+                                        # (_PARTY_ENTITIES/_PARTY_JOINED/invite_members/...) tu dong hoat
+                                        # dong dung vi Python dict chap nhan bat ky khoa hashable nao.
+            c.connect()
+            for _ in range(15):
+                if c.self_entity is not None and c.current_map is not None:
+                    ok = True
+                    break
+                time.sleep(1)
+            if ok:
+                return c, True
+            log.warning("[%s] chua vao world -> login lai...", username)
+            c.close()
+            time.sleep(5)
+        except Exception as e:
+            log.warning("[%s] login/connect loi (lan %d): %s", username, attempt + 1, e)
+            try:
+                if c is not None:
+                    c.close()
+            except Exception:
+                pass
+            time.sleep(5)
+    return c, False
+
+
+def _run_party_digioi_once(username, password, server_ip, server_id, party_name, is_leader,
+                            is_picker, should_stop, on_status, is_reconnect):
+    """1 lan chay (khong bao reconnect) - mirror run_account() nhanh is_digioi cua PC, CAT bo cac
+    phan khong lien quan DG (train map/city/event/cleanbag, daily quest/dungeon/boss nang - da co
+    sub-project #4 lo phan auto-claim). Tra 'reconnectable': bool (server dong dong ket noi khong
+    phai do Stop -> nen thu login lai)."""
+    st = party_state_mod._pstate(party_name)
+    c, ok = _digioi_login_once(username, password, server_ip, server_id, party_name, is_reconnect)
+    if not ok:
+        on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
+        return False   # login that bai lien tuc -> supervisor van thu lai (giong PC)
+    if is_leader:
+        party_state_mod.set_leader_name(party_name, c.char_name or username)
+    try:
+        # 1) Pre-check het gio (mirror run_party_digioi.py:721-724)
+        if not c.in_di_gioi() and c.digioi_minutes >= config.DIGIOI_LIMIT:
+            on_status.call("stopped", None, None, None, None,
+                           f"Da het gio Di Gioi hom nay ({c.digioi_minutes}/{config.DIGIOI_LIMIT} phut)")
+            return False
+        # 2) Vao DG that su TRUOC khi lam gi khac (mirror run_party_digioi.py:745-756)
+        if not c.in_di_gioi() and not c.enter_di_gioi_safe():
+            on_status.call("error", None, None, None, None, "Khong vao duoc Di Gioi (het gio?)")
+            return False
+        on_status.call("running", None, None, None, None, "Da vao Di Gioi")
+        # 3) Dong bo kenh (mirror run_party_digioi.py:369-409, ham noi bo do_channel_sync)
+        if is_picker:
+            st["channel_ready"].clear()
+            st["channel"] = None
+            need = st["n_members"] + 1
+            ch = 0
+            t0 = time.time()
+            while c.running and not should_stop.call():
+                r = c.pick_best_channel(need=need)
+                if r is None:
+                    time.sleep(3 if time.time() - t0 <= 30 else 60)
+                    continue
+                ch = r
+                break
+            st["channel"] = ch
+            st["channel_ready"].set()
+            on_status.call("running", None, None, None, None,
+                           f"Chon kenh {ch} cho ca party" if ch else "Ca party giu nguyen 1 kenh")
+        else:
+            while not st["channel_ready"].wait(5):
+                if not c.running or should_stop.call():
+                    return False
+            if st["channel"]:
+                c.switch_channel(st["channel"])
+                on_status.call("running", None, None, None, None, f"Da doi kenh chung -> {st['channel']}")
+        # 4) Leader: moi + cho member + chay long vong. Member: cho duoc moi.
+        c.flee_mode = False
+        if is_leader:
+            for _ in range(6):
+                if not c.running or should_stop.call():
+                    break
+                c.invite_members(gap=1.0)
+                time.sleep(4)
+                if c.self_entity is not None:
+                    if joined_member_count(party_name) >= st["n_members"]:
+                        break
+            try:
+                c.set_party_strategist()
+            except Exception:
+                pass
+            c.combat_ready()
+            c.start_run_around()
+            on_status.call("running", None, None, None, None, "(LEADER) Bat dau chay long vong")
+        else:
+            on_status.call("running", None, None, None, None,
+                           "(member) Cho vao party, dung yen tai safe")
+            t0 = time.time()
+            while not st["invited"].wait(2):
+                if not c.running or should_stop.call() or st["leader_gone"].is_set():
+                    return False
+        # 5) Vong giu song (mirror run_party_digioi.py:1296-1354, CHI phan DG + het gio per-account)
+        out_cnt = 0
+        last_dg = 0.0
+        while c.running and not should_stop.call():
+            time.sleep(DIGIOI_KEEPALIVE_POLL)
+            if is_leader and st["leader_gone"].is_set():
+                pass   # leader tu no khong tu thoat theo minh
+            if (not is_leader) and st["leader_gone"].is_set():
+                on_status.call("stopped", None, None, None, None, "Chu party da thoat -> member thoat theo")
+                return False
+            if c.current_map == config.DIGIOI_MAP_ID and time.time() - last_dg >= 30:
+                last_dg = time.time()
+                remain = max(0, config.DIGIOI_LIMIT - c.digioi_minutes)
+                on_status.call("running", None, None, None, None,
+                               f"Di Gioi con lai {remain} phut (da o {c.digioi_minutes} phut)")
+                if remain <= 0:
+                    on_status.call("stopped", None, None, None, None, "Het gio Di Gioi that -> thoat")
+                    return False
+                out_cnt = 0
+            elif c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
+                out_cnt += 1
+                if out_cnt >= 2:
+                    remain = max(0, config.DIGIOI_LIMIT - c.digioi_minutes)
+                    if remain >= 2:
+                        on_status.call("running", None, None, None, None,
+                                       f"Bi day ra khoi Di Gioi (con {remain} phut) -> vao lai")
+                        try:
+                            c.enter_di_gioi_safe()
+                        except Exception:
+                            pass
+                        out_cnt = 0
+                    else:
+                        on_status.call("stopped", None, None, None, None, "Het gio Di Gioi that -> thoat")
+                        return False
+            else:
+                out_cnt = 0
+        return False   # should_stop -> khong can reconnect
+    finally:
+        reconnectable = (not should_stop.call()) and getattr(c, "server_closed", False)
+        try:
+            c.close()
+        except Exception:
+            pass
+        if is_leader and not reconnectable:
+            st["leader_gone"].set()
+        if reconnectable:
+            with st["lock"]:
+                st["reconnecting"].add(username)
+                st["disc_gen"] += 1
+        else:
+            st["reconnecting"].discard(username)
+
+
+def run_party_digioi(username, password, server_ip, server_id, party_name, is_leader, is_picker,
+                     should_stop, on_status):
+    """Vong lap NGOAI CUNG: bao _run_party_digioi_once bang reconnect vo han (mirror
+    _run_account_supervised, run_party_digioi.py:1512-1541). server dong ket noi (server_closed)
+    va KHONG phai do Stop -> backoff 5s x3 -> 30s x10 -> 60s, thu lai VO HAN toi khi duoc hoac Stop."""
+    st = party_state_mod._pstate(party_name)
+    st["n_members"] = max(st["n_members"], 0)
+    attempt = 0
+    is_reconnect = False
+    while True:
+        reconnectable = _run_party_digioi_once(username, password, server_ip, server_id, party_name,
+                                               is_leader, is_picker, should_stop, on_status, is_reconnect)
+        if should_stop.call() or not reconnectable:
+            break
+        attempt += 1
+        wait = 5 if attempt <= 3 else (30 if attempt <= 13 else 60)
+        on_status.call("connecting", None, None, None, None,
+                       f"Server rot -> login lai sau {wait}s (lan {attempt})")
+        for _ in range(wait):
+            if should_stop.call():
+                break
+            time.sleep(1)
+        if should_stop.call():
+            break
+        is_reconnect = True
+    on_status.call("stopped", None, None, None, None, "Da dung")
 
 
 def run_train(username: str, password: str, server_ip: str, server_id: int,
