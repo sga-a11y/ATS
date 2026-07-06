@@ -691,7 +691,12 @@ fun AddPartyDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column {
+            // Cuon duoc theo chieu doc - dialog nay co RAT NHIEU field (ten/server/mode/checkbox
+            // Di Gioi+Train/dropdown Map+Quai/thanh...), khong scroll se tran ra ngoai vung hien
+            // thi tren man hinh nho, khien cac field cuoi (vd dropdown "Quai") bi che/lech vi tri
+            // popup - da xac nhan qua test thuc te tren emulator (chon Quai "khong thay hien thi
+            // gi ca" vi popup tinh vi tri theo anchor da bi day ra ngoai).
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -852,6 +857,12 @@ fun AddPartyDialog(
                         }
                     }
                 }
+                // De trong cuoi Column: cac dropdown gan cuoi (vd "Quai" khi mode Train) can CHO
+                // BEN DUOI de DropdownMenu popup bung ra - dialog nay co RAT NHIEU field nen field
+                // cuoi cung nam sat day vung hien thi, khong co cho -> popup bi coi la khong co
+                // dien tich hien thi (xac nhan qua test thuc te: bam vao khong thay gi ca). Them
+                // khoang trong lon o day de AlertDialog danh du cho ben duoi field cuoi cung.
+                Spacer(Modifier.height(300.dp))
             }
         },
         confirmButton = {
