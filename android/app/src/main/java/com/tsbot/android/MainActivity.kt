@@ -628,17 +628,16 @@ fun StatBar(label: String, cur: Int, max: Int, color: Color) {
     }
 }
 
-/** Doc TRAIN_MAPS tu Python de hien dropdown "Map train" - tra (key, ten map) da sap xep theo ten. */
+/** Doc TRAIN_MAPS tu Python de hien dropdown "Map train" - tra (key, ten map) GIU NGUYEN thu tu
+ * trong train_maps.json (= thu tu ban PC) - KHONG sap xep lai theo alphabet. asMap() (khac
+ * callAttr("keys").asList() - Chaquopy KHONG convert duoc dict_keys view sang PyList, nem
+ * UnsupportedOperationException "dict_keys object has no attribute __getitem__", da xac nhan qua
+ * crash log that) giu dung thu tu Python dict (json.loads tu Python 3.7+ giu insertion order). */
 fun trainMapOptions(): List<Pair<String, String>> {
     val config = com.chaquo.python.Python.getInstance().getModule("train_bot.config")
     val maps = config.get("TRAIN_MAPS")!!
-    // GIU NGUYEN thu tu trong train_maps.json (= thu tu ban PC, gui.py cung liet ke y het thu tu
-    // nay) - KHONG sap xep lai theo alphabet, khac voi ban PC se gay kho tim map quen thuoc.
-    val keys = maps.callAttr("keys").asList()
-    return keys.map { k ->
-        val key = k.toString()
-        val name = maps.callAttr("get", key)?.callAttr("get", "name")?.toString() ?: key
-        key to name
+    return maps.asMap().entries.map { (k, v) ->
+        k.toString() to (v.callAttr("get", "name")?.toString() ?: k.toString())
     }
 }
 
