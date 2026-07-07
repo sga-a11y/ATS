@@ -297,6 +297,17 @@ def _is_revive(skill):
     return _cat(skill) == 8
 
 
+def _has_support_skill(skills):
+    """Unit co it nhat 1 skill HOI: hoi sinh (cat8) / Toan Tri Lieu (11010) / Toan Hoi Ma (cat6).
+    -> quest mode: de danh SP cho vai tro hoi, chi danh skill atk khi SP > SUPPORT_RESERVE_SP.
+    Mirror bot/combat.py::_has_support_skill (PC)."""
+    if any(_is_revive(s) for s in skills):
+        return True
+    if getattr(config, "SKILL_HEAL_ALL", None) in skills:
+        return True
+    return pick_sp_restore_skill(skills) is not None
+
+
 def _try_revive(state, unit, skills, stat, options):
     """HOI SINH (check TRUOC heal): caster CON SONG + co skill hoi sinh + du SP + co dong doi CHET
     + thang dieu phoi (con SP cao nhat trong party hoi sinh). Target con chet uu tien:
@@ -486,6 +497,10 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
 
     # 2) QUEST mode (start >6 quai)
     if getattr(state, "quest_mode", False) and es:
+        # Unit CO skill hoi (hoi sinh/11010/11009) -> DE DANH SP: SP <= reserve thi danh thuong,
+        # giu SP phong turn sau can hoi sinh/hoi mau/hoi SP. Chi SP > reserve moi xai skill atk.
+        if _has_support_skill(skills) and sp <= getattr(config, "SUPPORT_RESERVE_SP", 100):
+            return _attack(unit, at, low_or_train(), config.SKILL_NORMAL, fb, offered)
         if len(es) > 6:
             allt = pick_alltarget_skill(skills)
             if allt and sp >= cost(allt):

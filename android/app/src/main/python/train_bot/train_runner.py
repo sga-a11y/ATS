@@ -359,6 +359,11 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
         return False   # login that bai lien tuc -> supervisor van thu lai (giong PC)
     if is_leader:
         party_state_mod.set_leader_name(party_name, c.char_name or username)
+    # Auto-claim (mail/qua online/qua quan doan/van tieu) - truoc day CHI start trong run_train(),
+    # quen noi cho Di Gioi/Train party -> acc mode nay khong bao gio nhan qua online/mail (mirror PC:
+    # run_party_digioi.py goi claim_online_gifts() O MOI mode, khong rieng gi run_train). allow_boss=True
+    # an toan: _auto_claim_loop tu kiem tra "not c.party_members" truoc khi danh boss QD solo.
+    threading.Thread(target=_auto_claim_loop, args=(c, should_stop), daemon=True).start()
     try:
         # 1) Pre-check het gio (mirror run_party_digioi.py:721-724)
         if not c.in_di_gioi() and c.digioi_minutes >= config.DIGIOI_LIMIT:
@@ -536,6 +541,8 @@ def _run_digioi_solo_once(username, password, server_ip, server_id, do_daily, sh
     if not ok:
         on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
         return False
+    # Auto-claim (mail/qua online/qua quan doan/van tieu) - xem ghi chu o _run_party_digioi_once.
+    threading.Thread(target=_auto_claim_loop, args=(c, should_stop), daemon=True).start()
     try:
         if not c.in_di_gioi() and c.digioi_minutes >= config.DIGIOI_LIMIT:
             on_status.call("stopped", None, None, None, None,
@@ -654,6 +661,8 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
         return False
     if is_leader:
         party_state_mod.set_leader_name(party_name, c.char_name or username)
+    # Auto-claim (mail/qua online/qua quan doan/van tieu) - xem ghi chu o _run_party_digioi_once.
+    threading.Thread(target=_auto_claim_loop, args=(c, should_stop), daemon=True).start()
     _do_daily_if_enabled(c, do_daily, username, on_status, party_name, is_leader, should_stop)
     try:
         sc = int(map_key)
