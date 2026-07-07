@@ -23,10 +23,3 @@ không cần bật máy tính.
 - Mode Dị Giới, tự lập phó bản tổ đội (hiện chỉ tự NHẬN lời mời có sẵn, không tự tạo).
 - Boss mode thủ công (để làm chung lúc port tính năng đánh boss/dungeon thật).
 
-### Đã sửa (trong quá trình test)
-- Bug nghiêm trọng: đọc file dữ liệu (skill, pet, danh sách thành) lỗi trên Android cũ hơn bản 13,
-  khiến danh sách skill/thành bị rỗng âm thầm mà không báo lỗi.
-- Bug quest_mode (chế độ đánh khi gặp nhiều quái) không được reset đúng lúc giữa các trận, khiến bot
-  bị kẹt ở chế độ Train (đòn thường/combo) dù gặp trận đông quái, không dùng skill diện rộng dù đã học.
-- Bug quest_mode không được bật khi acc tự nhận lời mời phó bản (trường hợp không có acc-leader điều
-  phối) - đã đồng bộ lại giống hành vi của acc-leader.

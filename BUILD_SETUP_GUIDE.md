@@ -17,6 +17,14 @@ phải tự cài lại, không đi theo git).
 - **KHÔNG cần tự cài gcc/MinGW** — lần đầu chạy, Nuitka tự tải về bộ compiler MinGW64 riêng của nó
   (`--assume-yes-for-downloads` trong lệnh build đã tự động đồng ý tải). Lần build đầu tiên sẽ
   chậm hơn (phải tải ~vài trăm MB), các lần sau nhanh vì đã có cache.
+- **Nên cài thêm `zstandard` để file .exe nhỏ hơn nhiều:**
+  ```bash
+  pip install zstandard
+  ```
+  Nuitka (`--onefile`) tự động NÉN payload nếu tìm thấy gói `zstandard` trong Python đang chạy nó -
+  nếu KHÔNG có, Nuitka vẫn build thành công nhưng bỏ qua nén, cho ra file `.exe` to hơn NHIỀU (đã
+  xác nhận thực tế: cùng 1 bản code, có `zstandard` ra ~9.6MB, không có ra ~32.6MB - file to hơn
+  KHÔNG phải lỗi, chỉ là thiếu bước nén, chạy y hệt về chức năng).
 
 ### Quy trình build
 ```bash
