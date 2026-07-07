@@ -783,7 +783,7 @@ fun AddPartyDialog(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = doDaily, onCheckedChange = { doDaily = it })
-                    Text("Làm nhiệm vụ hàng ngày (chưa có tác dụng - sẽ nối logic sau)")
+                    Text("Làm nhiệm vụ hàng ngày")
                 }
                 if (selectedMode == RunModes.TRAIN) {
                     Spacer(Modifier.height(8.dp))
