@@ -544,15 +544,17 @@ class GameClient:
         self.legion_boss_count = 0   # so lan DA danh boss QD hom nay (S2C 0x55 id 0x2a cur)
         self.legion_boss_max = 3     # gioi han/ngay (0x55 id 0x2a max = 3)
         self.legion_boss_next = 0.0  # gio danh tiep duoc (cooldown, S2C 0x27 76 OLE)
-        # CO QUAN DOAN hay khong: None = CHUA BIET (chua nhan goi 0x27 sub02 nao), True/False sau khi
-        # biet. BUG THAT (xac nhan qua party.log + capture thuc te): 0x55 id=0x2a (legion_boss_count/
-        # max) tra val=0/max=3 CA 2 TRUONG HOP "khong co quan doan" LAN "co quan doan nhung chua danh"
-        # -> KHONG PHAN BIET DUOC qua kenh do. guild_len (0x27 sub02, xem _on_player_info) MOI la tin
-        # hieu dang tin: guild_len=0 -> khong co quan doan. Dung de do_legion_boss() BO QUA hoan toan
-        # (khong gui 0x27 7700/0x14 08000100 vao instance khong hop le) khi da xac nhan KHONG co quan
-        # doan - tranh lam roi trang thai map/transition truoc khi vao Di Gioi (goc re bug "vao Di Gioi
-        # that bai sau ~38s tuy fresh login").
-        self.has_legion = None
+        # CO QUAN DOAN hay khong. MAC DINH False (KHONG phai None) - BUG THAT xac nhan qua capture
+        # THAT SU: acc KHONG co quan doan thi server KHONG BAO GIO gui goi 0x27 sub=02 (guild info)
+        # ca - KHAC voi gia dinh ban dau la "gui goi voi guild_len=0". Neu de mac dinh None se KET
+        # LUAN SAI (mai mai None, khong bao gio thanh False) khien do_legion_boss() van chay logic cu.
+        # Chi set True khi THUC SU nhan duoc goi 0x27 sub02 voi guild_len>0 (xem _on_player_info).
+        # 0x55 id=0x2a (legion_boss_count/max) KHONG dung duoc: tra val=0/max=3 CA 2 TRUONG HOP
+        # "khong co quan doan" LAN "co quan doan nhung chua danh", khong phan biet duoc.
+        # Dung de do_legion_boss() BO QUA hoan toan (khong gui 0x27 7700/0x14 08000100 vao instance
+        # khong hop le) khi has_legion=False - tranh lam roi trang thai map/transition truoc khi vao
+        # Di Gioi (goc re bug "vao Di Gioi that bai du fresh login").
+        self.has_legion = False
         self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - tra VANTIEU_REQUESTS
         self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
         self.vantieu_unlocked = 1    # so slot DA MO (S2C 0x56 0600 [N]); slot con lai khoa = can vang
