@@ -468,10 +468,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 for stp in route2.get("steps", []):
                     if _ab(): break   # reform moi / stop -> dung keo, quay lai keepalive xu
                     t1 = time.time()   # DANG DANH -> cho HET TRAN roi moi di buoc/qua cong
-                    # Tran that binh thuong chi ~1-2s/luot -> cho toi 10s la du (khong phai 60s: map
-                    # dong quai lien tuc (vd 20000) khien busy gan nhu lien tuc, 60s/buoc x 16 buoc
-                    # ~16 phut moi qua duoc route, nhin ngoai giong "dung ngam canh" khong train.
-                    while c.in_combat(idle_secs=3.0) and not _ab() and time.time() - t1 < 10:
+                    while c.in_combat(idle_secs=3.0) and not _ab() and time.time() - t1 < 60:
                         time.sleep(0.5)
                     if "gate" in stp:
                         if not c._enter_gate(int(stp["x"]), int(stp["y"]), int(stp["gate"])):
