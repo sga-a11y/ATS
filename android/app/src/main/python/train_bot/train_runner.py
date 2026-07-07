@@ -228,6 +228,22 @@ def _apply_cmd(c, cmd, on_status):
         on_status.call("running", None, None, None, None, f"Loi thuc thi lenh: {e}")
 
 
+def _send_heartbeat(c, on_status, extra=""):
+    """Bao trang thai dinh ky (map/HP/SP/dang lam gi) trong luc vong keepalive im lang -
+    user phan anh khong biet bot dang o dau/lam gi khi chi thay thong bao luc co su kien
+    (vd chi bao moi 30s luc con Di Gioi, im lang hoan toan khi dang training binh thuong)."""
+    hp = sp = hp_max = sp_max = None
+    try:
+        ch = c.state.char
+        if ch is not None:
+            hp, sp, hp_max, sp_max = ch.hp, ch.sp, ch.hp_max, ch.sp_max
+    except Exception:
+        pass
+    action = "dang chien dau" if c.in_combat() else "dang ranh/di chuyen"
+    msg = f"Map {c.current_map} - {action}" + (f" - {extra}" if extra else "")
+    on_status.call("running", hp, sp, hp_max, sp_max, msg)
+
+
 def _auto_claim_loop(c, should_stop, allow_boss=True):
     """Thread phu: tu nhan mail/qua online/qua quan doan/van tieu - GIONG HET PC, KHONG co
     toggle bat-tat (VANTIEU_ENABLE=True co dinh trong config.py, khop bot/config.py). Chay
@@ -418,8 +434,13 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
         # 5) Vong giu song (mirror run_party_digioi.py:1296-1354, CHI phan DG + het gio per-account)
         out_cnt = 0
         last_dg = 0.0
+        hb_cnt = 0
         while c.running and not should_stop.call():
             time.sleep(DIGIOI_KEEPALIVE_POLL)
+            hb_cnt += 1
+            if hb_cnt >= 5:   # ~15s/lan - xem _send_heartbeat
+                hb_cnt = 0
+                _send_heartbeat(c, on_status)
             if is_leader and st["leader_gone"].is_set():
                 pass   # leader tu no khong tu thoat theo minh
             if (not is_leader) and st["leader_gone"].is_set():
@@ -531,8 +552,13 @@ def _run_digioi_solo_once(username, password, server_ip, server_id, do_daily, sh
                            "Di Gioi SOLO - THIEU thuoc HP/SP, dung yen (khong chay long vong)")
         out_cnt = 0
         last_dg = 0.0
+        hb_cnt = 0
         while c.running and not should_stop.call():
             time.sleep(DIGIOI_KEEPALIVE_POLL)
+            hb_cnt += 1
+            if hb_cnt >= 5:   # ~15s/lan - xem _send_heartbeat
+                hb_cnt = 0
+                _send_heartbeat(c, on_status)
             if c.current_map == config.DIGIOI_MAP_ID and time.time() - last_dg >= 30:
                 last_dg = time.time()
                 ok_items = c.has_hp_and_sp_items()
@@ -719,8 +745,13 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
                                "(member) KHONG co chu PT - dung yen tai safe, cho moi party tay")
         # 4) Vong giu song: phat hien bi vang khoi map train -> reform.
         out_cnt = 0
+        hb_cnt = 0
         while c.running and not should_stop.call():
             time.sleep(DIGIOI_KEEPALIVE_POLL)
+            hb_cnt += 1
+            if hb_cnt >= 5:   # ~15s/lan - xem _send_heartbeat
+                hb_cnt = 0
+                _send_heartbeat(c, on_status)
             if (not is_leader) and has_leader and st["leader_gone"].is_set():
                 on_status.call("stopped", None, None, None, None, "Chu party da thoat -> member thoat theo")
                 return False
@@ -983,7 +1014,9 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
         try:
             ch = c.state.char
             if ch is not None:
-                on_status.call("running", ch.hp, ch.sp, ch.hp_max, ch.sp_max, "")
+                action = "dang chien dau" if c.in_combat() else "dang treo cay"
+                on_status.call("running", ch.hp, ch.sp, ch.hp_max, ch.sp_max,
+                               f"Map {c.current_map} - {action}")
         except Exception as e:
             # vd chua nhan du 0x0b/0x33 -> state chua day du. KHONG de crash ca vong lap
             # (muc tieu: moi loi bao qua callback, khong bao gio nem exception ra ngoai
