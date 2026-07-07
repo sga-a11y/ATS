@@ -3641,6 +3641,7 @@ class GameClient:
         battle -> server nuot lenh (khong toi cong) hoac DA ket noi -> ket cong / leader rot."""
         start_map = self.current_map
         t0 = time.time()
+        _attempt = 0
         while time.time() - t0 < timeout:
             if not self.running:
                 return False
@@ -3648,6 +3649,9 @@ class GameClient:
                 log.info("[%s] qua cong idx=%d -> map %s", self._label, idx, self.current_map)
                 self.pos = None   # qua cong -> vi tri cu vo nghia (map moi) -> navigate sau di hao phong
                 return True
+            _attempt += 1
+            log.info("[%s] _enter_gate idx=%d @(%d,%d): lan thu %d (t=%.0fs, map van %s)",
+                     self._label, idx, x, y, _attempt, time.time() - t0, self.current_map)
             # CHO HET TRAN truoc khi toi cong + transit (battle nuot lenh -> ket cong / kick leader).
             # idle=5.0 (du in_battle da chuan): gate transit RAT nhay (kick leader) nen giu buffer rong hon
             # navigate/follow -> chac chan sach tran moi gui chuoi 0x14.
