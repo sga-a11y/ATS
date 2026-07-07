@@ -28,6 +28,11 @@ def _pstate(party_name: str) -> dict:
                 "disc_gen": 0,
                 "o5_done_by": {},    # username -> da xong o5 (pho ban to doi) hom nay chua? (bool)
                 "o5_state": "idle",  # "idle"|"running"|"done" - member PHAI cho != "idle"
+                "mob_spot": None,    # diem quai leader chon (share cho member) - mirror PC _pstate
+                "rally_point": None, # safe GAN mob_spot nhat -> CA PARTY ve day (gan leader -> member
+                                     # bi keo vao tran party). Truoc day member ve nearest-safe-cua-minh
+                                     # -> xa mob spot leader -> khong danh (bug leader solo).
+                "rally_ready": threading.Event(),  # leader da chon spot + tinh rally_point xong
             }
         return _party_state[party_name]
 

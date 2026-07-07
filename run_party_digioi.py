@@ -711,7 +711,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         st["reform_gen"] += 1
                         st["dungeon_done"] += 1
                 else:
-                    c.navigate_to(*_jitter(tm["safe"][0]))
+                    # VE RALLY (safe GAN mob spot leader chon), KHONG phai safe[0] co dinh: truoc day
+                    # ve tm["safe"][0] -> member ket o safe[0] xa mob spot -> KHONG bi keo vao tran
+                    # party cua leader -> leader danh 1 minh, member dung yen (bug thuc te: map co
+                    # nhieu safe/mob, safe[0] khong gan mob leader dang danh).
+                    c.navigate_to(*_jitter(rally))
                     with st["lock"]:
                         st["dungeon_done"] += 1
                 log.info("[%s] (%s) xong dungeon -> cho ca party (%d/%d)...",

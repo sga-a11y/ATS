@@ -668,10 +668,28 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
         sc = int(map_key)
         safe_list = tm.get("safe") or []
         mobs = tm.get("mobs") or []
-        spot = mobs[mob_index] if (mob_index is not None and 0 <= mob_index < len(mobs)) else None
-        # 1) Setup: dung map + co safe -> ra safe ngay. Sai map -> can route (xu ly o Step 4 _do_reform).
-        if c.current_map == sc and safe_list:
-            c.navigate_to(*_nearest_safe(c.pos, safe_list))
+        # LEADER chon mob spot (mob_index; <0 = random) + tinh RALLY = safe GAN spot nhat, share cho
+        # member (mirror PC run_party_digioi.py). Member ve RALLY (gan leader) chu KHONG ve safe gan
+        # vi tri RIENG cua no -> nếu khong se dung xa mob spot leader -> khong bi keo vao tran (bug
+        # "member vao party nhung khong danh, leader solo").
+        if is_leader:
+            if mob_index is not None and 0 <= mob_index < len(mobs):
+                spot = mobs[mob_index]
+            elif mobs:
+                spot = random.choice(mobs)
+            else:
+                spot = None
+            st["mob_spot"] = spot
+            st["rally_point"] = (_nearest_safe(spot, safe_list) if spot else (safe_list[0] if safe_list else None))
+            st["rally_ready"].set()
+        else:
+            if has_leader:
+                st["rally_ready"].wait(60)   # cho leader chon spot + tinh rally
+            spot = st.get("mob_spot")
+        rally = st.get("rally_point") or (_nearest_safe(c.pos, safe_list) if safe_list else None)
+        # 1) Setup: dung map + co safe -> ra RALLY (safe gan mob spot leader). Sai map -> route (Step 4).
+        if c.current_map == sc and rally:
+            c.navigate_to(*rally)
         need_route = c.current_map != sc
         # 2) Dong bo kenh (tai dung y het co che tu sub-project #1)
         if is_picker:
