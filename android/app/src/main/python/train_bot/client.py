@@ -537,6 +537,15 @@ class GameClient:
         self.legion_boss_count = 0   # so lan DA danh boss QD hom nay (S2C 0x55 id 0x2a cur)
         self.legion_boss_max = 3     # gioi han/ngay (0x55 id 0x2a max = 3)
         self.legion_boss_next = 0.0  # gio danh tiep duoc (cooldown, S2C 0x27 76 OLE)
+        # CO QUAN DOAN hay khong: None = CHUA BIET (chua nhan goi 0x27 sub02 nao), True/False sau khi
+        # biet. BUG THAT (xac nhan qua party.log + capture thuc te): 0x55 id=0x2a (legion_boss_count/
+        # max) tra val=0/max=3 CA 2 TRUONG HOP "khong co quan doan" LAN "co quan doan nhung chua danh"
+        # -> KHONG PHAN BIET DUOC qua kenh do. guild_len (0x27 sub02, xem _on_player_info) MOI la tin
+        # hieu dang tin: guild_len=0 -> khong co quan doan. Dung de do_legion_boss() BO QUA hoan toan
+        # (khong gui 0x27 7700/0x14 08000100 vao instance khong hop le) khi da xac nhan KHONG co quan
+        # doan - tranh lam roi trang thai map/transition truoc khi vao Di Gioi (goc re bug "vao Di Gioi
+        # that bai sau ~38s tuy fresh login").
+        self.has_legion = None
         self.vantieu_slots = {}      # slot -> {"end": OLE date ket thuc, "pet": id} (tu panel 0x56 0300)
         self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - tra VANTIEU_REQUESTS
         self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
@@ -2566,6 +2575,11 @@ class GameClient:
           - COOLDOWN: 0x27 76 [OLE] = gio danh tiep -> self.legion_boss_next.
         Replay capture: 0x27 7700 (start) -> ack -> 0x14 08000100 (vao) -> battle -> do_heal.
         Tra ve GIO CHECK LAI (epoch) neu con luot; None neu het luot hom nay. Mirror bot/client.py."""
+        if self.has_legion is False:
+            # KHONG co quan doan (xac nhan qua guild_len=0, xem __init__/_on_player_info) -> BO QUA
+            # HOAN TOAN, KHONG gui 0x27 7700/0x14 08000100 vao instance khong hop le voi acc nay.
+            log.info("[%s] Boss QD: khong co quan doan -> bo qua hoan toan", self._label)
+            return None
         if self.legion_boss_count >= self.legion_boss_max:
             log.info("[%s] Boss QD: da danh %d/%d hom nay -> nghi",
                      self._label, self.legion_boss_count, self.legion_boss_max)
@@ -3015,6 +3029,7 @@ class GameClient:
         self._last_guild_pkt = pkt   # cache de 0x69 retry neu 0x27 toi TRUOC 0x69
         self._resolve_self_name(pkt)
         guild_len = payload[2]
+        self.has_legion = guild_len > 0   # guild_len=0 -> KHONG co quan doan (xem ghi chu o __init__)
         # entries bat dau sau: 2B(sub) + 1B(guild_len) + guild_len + 1B(unknown) + 1B(count) = guild_len+5
         entries_off = 3 + guild_len + 2
         if entries_off > len(payload):
