@@ -307,6 +307,10 @@ def _digioi_login_once(username, password, server_ip, server_id, party_name, is_
                     break
                 time.sleep(1)
             if ok:
+                # Dang ky _clients NGAY TAI DAY (1 CHO DUY NHAT, dung chung cho ca 3 ham goi ham nay
+                # - Di Gioi party/solo/Train) de nut "Doi kenh" tra cuu duoc - tranh lap lai o tung
+                # ham rieng le (da tung quen 1 cho gay bug "account chua chay" du dang chay that).
+                _clients[username] = c
                 return c, True
             log.warning("[%s] chua vao world -> login lai...", username)
             c.close()
@@ -337,9 +341,6 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
     if not ok:
         on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
         return False   # login that bai lien tuc -> supervisor van thu lai (giong PC)
-    _clients[username] = c   # de UI (nut "Doi kenh") tra cuu account dang chay - BUG THAT truoc day
-                             # THIEU dong nay khien "Doi kenh" bao "account chua chay" du dang chay
-                             # binh thuong trong Di Gioi/Train (chi run_train dang ky vao _clients).
     if is_leader:
         party_state_mod.set_leader_name(party_name, c.char_name or username)
     try:
@@ -509,7 +510,6 @@ def _run_digioi_solo_once(username, password, server_ip, server_id, do_daily, sh
     if not ok:
         on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
         return False
-    _clients[username] = c   # de UI (nut "Doi kenh") tra cuu account dang chay
     try:
         if not c.in_di_gioi() and c.digioi_minutes >= config.DIGIOI_LIMIT:
             on_status.call("stopped", None, None, None, None,
@@ -616,7 +616,6 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
     if not ok:
         on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
         return False
-    _clients[username] = c   # de UI (nut "Doi kenh") tra cuu account dang chay
     if is_leader:
         party_state_mod.set_leader_name(party_name, c.char_name or username)
     _do_daily_if_enabled(c, do_daily, username, on_status, party_name, is_leader, should_stop)
