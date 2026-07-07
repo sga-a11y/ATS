@@ -687,9 +687,20 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
                 _abs = lambda: should_stop.call() or not c.running
                 if spot:
                     c.navigate_to(*_jitter(spot), flee=False, abort=_abs)
-                c.combat_ready()
-                c.flee_mode = False
-                on_status.call("running", None, None, None, None, "(LEADER) Da ra diem quai, dung cay danh")
+                # Xac nhan THAT SU dang o dung map train (sc) TRUOC KHI coi la "toi noi" - BUG THAT
+                # (xac nhan qua log PC thuc te): navigate_to KHONG tu kiem tra map dich, 1 tran chien
+                # xen giua (vd boss the gioi) co the day leader sang map khac ma van "thanh cong"
+                # (khong bi abort). Kiem tra NGAY, KHONG cho watchdog keepalive (co grace period).
+                if c.current_map != sc:
+                    on_status.call("running", None, None, None, None,
+                                   f"(LEADER) toi diem quai nhung SAI MAP ({c.current_map} != {sc}) -> reform ngay")
+                    with st["lock"]:
+                        st["reform_gen"] += 1
+                    c.flee_mode = True
+                else:
+                    c.combat_ready()
+                    c.flee_mode = False
+                    on_status.call("running", None, None, None, None, "(LEADER) Da ra diem quai, dung cay danh")
             elif has_leader:
                 on_status.call("running", None, None, None, None, "(member) Cho vao party")
                 while not st["invited"].wait(2):
@@ -814,6 +825,17 @@ def _reform_to_spot(c, st, party_name, route, spot, is_leader, has_leader, do_da
                 c.navigate_to(*_jitter(_nearest_safe(c.pos, safe_list)), flee=False, abort=_abs)
             if spot:
                 c.navigate_to(*_jitter(spot), flee=False, abort=_abs)
+        # Xac nhan THAT SU dang o dung map dich (dest_map) TRUOC KHI coi reform la thanh cong - cung
+        # 1 loai bug voi nhanh "dung map, co safe" o tren: tran chien xen giua co the day leader sang
+        # map khac ma cac buoc tren van "thanh cong" (khong bi abort). Kiem tra NGAY, khong cho
+        # watchdog keepalive (co grace period, phat hien cham).
+        if c.current_map != dest_map:
+            on_status.call("running", None, None, None, None,
+                           f"(LEADER) reform xong nhung SAI MAP ({c.current_map} != {dest_map}) -> reform lai ngay")
+            with st["lock"]:
+                st["reform_gen"] += 1
+            c.flee_mode = True
+            return False
         c.combat_ready()
         c.flee_mode = False
     else:

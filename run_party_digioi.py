@@ -489,6 +489,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             c.follow_path(path, flee=False, abort=_ab)
                         elif spot:
                             c.navigate_to(*_jitter(spot), flee=False, abort=_ab)
+                # Xac nhan THAT SU dang o dung map train (sc) truoc khi coi reform la thanh cong -
+                # cung 1 loai bug voi _start_training (xem ghi chu o do): tran chien xen giua co the
+                # day leader sang map khac ma cac buoc tren van "thanh cong" (khong bi abort).
+                if c.current_map != sc:
+                    log.warning("[%s] (LEADER) reform xong NHUNG dang o SAI MAP (%s != %s) -> "
+                                "yeu cau REFORM lai ngay, khong cho watchdog", label, c.current_map, sc)
+                    with st["lock"]:
+                        st["reform_gen"] += 1
+                    c.flee_mode = True
+                    st["route_done"].set()   # tha member (keepalive se reform lai tu dau)
+                    return
                 c.combat_ready(); c.flee_mode = False
                 st["route_done"].set()
             else:
@@ -919,6 +930,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if _abs():   # bi abort (co dua van map) -> KHONG tat flee, de keepalive reform
                         log.info("[%s] (LEADER) dang keo ra spot thi co dua van map -> abort, de keepalive REFORM", label)
                         c.flee_mode = True; return
+                    # XAC NHAN THAT SU dang o dung map train (sc) TRUOC KHI coi la "toi noi". BUG THAT
+                    # (xac nhan qua log thuc te): follow_path/navigate_to KHONG tu kiem tra map dich -
+                    # neu 1 tran chien xen giua (vd boss the gioi) day leader ve map khac (vd thanh)
+                    # NGAY SAU KHI ham tren "thanh cong" (khong bi abort), code truoc day van coi la
+                    # da toi diem quai roi dung yen danh, du thuc te dang o SAI MAP - watchdog displaced
+                    # (ben duoi, trong vong giu song) co grace 60s sau reform nen KHONG bat kip ngay,
+                    # phai cho ~90s (watchdog relogin khac) moi phat hien. Kiem tra ngay tai day, KHONG
+                    # cho watchdog, de phan ung tuc thi.
+                    if c.current_map != sc:
+                        log.warning("[%s] (LEADER) toi diem quai NHUNG dang o SAI MAP (%s != %s, co the bi "
+                                    "tran chien xen giua day di) -> yeu cau REFORM ngay, khong cho watchdog",
+                                    label, c.current_map, sc)
+                        with st["lock"]:
+                            st["reform_gen"] += 1
+                        c.flee_mode = True
+                        return
                     c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
                     log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
                 elif is_digioi:
