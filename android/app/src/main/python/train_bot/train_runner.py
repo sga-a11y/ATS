@@ -337,6 +337,9 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
     if not ok:
         on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
         return False   # login that bai lien tuc -> supervisor van thu lai (giong PC)
+    _clients[username] = c   # de UI (nut "Doi kenh") tra cuu account dang chay - BUG THAT truoc day
+                             # THIEU dong nay khien "Doi kenh" bao "account chua chay" du dang chay
+                             # binh thuong trong Di Gioi/Train (chi run_train dang ky vao _clients).
     if is_leader:
         party_state_mod.set_leader_name(party_name, c.char_name or username)
     try:
@@ -449,6 +452,7 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
                 out_cnt = 0
         return False   # should_stop -> khong can reconnect
     finally:
+        _clients.pop(username, None)
         # mirror run_party_digioi.py:1364-1367 - KHONG co bot-leader -> KHONG tu dong reconnect
         # (nick rot CHET luon, giu hanh vi cu, vi khong ai dieu phoi lai party khi vao lai).
         reconnectable = has_leader and (not should_stop.call()) and getattr(c, "server_closed", False)
@@ -505,6 +509,7 @@ def _run_digioi_solo_once(username, password, server_ip, server_id, do_daily, sh
     if not ok:
         on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
         return False
+    _clients[username] = c   # de UI (nut "Doi kenh") tra cuu account dang chay
     try:
         if not c.in_di_gioi() and c.digioi_minutes >= config.DIGIOI_LIMIT:
             on_status.call("stopped", None, None, None, None,
@@ -563,6 +568,7 @@ def _run_digioi_solo_once(username, password, server_ip, server_id, do_daily, sh
                 out_cnt = 0
         return False
     finally:
+        _clients.pop(username, None)
         reconnectable = (not should_stop.call()) and getattr(c, "server_closed", False)
         try:
             c.close()
@@ -610,6 +616,7 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
     if not ok:
         on_status.call("error", None, None, None, None, "Login/vao world that bai (6 lan)")
         return False
+    _clients[username] = c   # de UI (nut "Doi kenh") tra cuu account dang chay
     if is_leader:
         party_state_mod.set_leader_name(party_name, c.char_name or username)
     _do_daily_if_enabled(c, do_daily, username, on_status, party_name, is_leader, should_stop)
@@ -732,6 +739,7 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
                     out_cnt = 0
         return False
     finally:
+        _clients.pop(username, None)
         reconnectable = has_leader and (not should_stop.call()) and getattr(c, "server_closed", False)
         try:
             c.close()
