@@ -520,7 +520,12 @@ def run_party_digioi(username, password, server_ip, server_id, party_name, is_le
         if should_stop.call():
             break
         is_reconnect = True
-    on_status.call("stopped", None, None, None, None, "Da dung")
+    # CHI ghi de "Da dung" khi USER THAT SU bam nut Dung. Neu vong lap thoat vi ly do
+    # khac (vd het gio Di Gioi, chu party thoat...) thi _run_party_digioi_once DA
+    # on_status.call() bao ly do cu the roi - ghi de vo dieu kien se XOA mat ly do that,
+    # hien "Da dung" chung chung khien user tuong bot loi (user phan anh dung).
+    if should_stop.call():
+        on_status.call("stopped", None, None, None, None, "Da dung")
 
 
 def _run_digioi_solo_once(username, password, server_ip, server_id, do_daily, should_stop,
@@ -622,7 +627,12 @@ def run_digioi_solo(username, password, server_ip, server_id, do_daily, should_s
         if should_stop.call():
             break
         is_reconnect = True
-    on_status.call("stopped", None, None, None, None, "Da dung")
+    # CHI ghi de "Da dung" khi USER THAT SU bam nut Dung. Neu vong lap thoat vi ly do
+    # khac (vd het gio Di Gioi, chu party thoat...) thi _run_digioi_solo_once DA
+    # on_status.call() bao ly do cu the roi - ghi de vo dieu kien se XOA mat ly do that,
+    # hien "Da dung" chung chung khien user tuong bot loi (user phan anh dung).
+    if should_stop.call():
+        on_status.call("stopped", None, None, None, None, "Da dung")
 
 
 def _run_party_train_once(username, password, server_ip, server_id, party_name, map_key,
@@ -914,7 +924,12 @@ def run_party_train(username, password, server_ip, server_id, party_name, map_ke
         if should_stop.call():
             break
         is_reconnect = True
-    on_status.call("stopped", None, None, None, None, "Da dung")
+    # CHI ghi de "Da dung" khi USER THAT SU bam nut Dung. Neu vong lap thoat vi ly do
+    # khac (vd het gio Di Gioi, chu party thoat...) thi _run_party_train_once DA
+    # on_status.call() bao ly do cu the roi - ghi de vo dieu kien se XOA mat ly do that,
+    # hien "Da dung" chung chung khien user tuong bot loi (user phan anh dung).
+    if should_stop.call():
+        on_status.call("stopped", None, None, None, None, "Da dung")
 
 
 def run_train(username: str, password: str, server_ip: str, server_id: int,
