@@ -89,9 +89,50 @@
       "label": "40 NPC",
       "select": "03000400",
       "staging_map": 0,
-      "dest_map": 0,
+      "dest_map": 10991,
       "steps": [],
-      "_note": "Event tele THANG (0x4d 03000400) vao map roi dung yen - khong cong/di bo. staging/dest=0 -> go_to_event gui select xong tra True. Thoat: go_to_town binh thuong (map cho phep teleport)."
+      "_note": "Event tele THANG (0x4d 03000400) vao map roi dung yen - khong cong/di bo. staging/dest=0 -> go_to_event gui select xong tra True. Thoat: go_to_town binh thuong (map cho phep teleport).",
+      "exit": {
+        "_note": "Ra khoi map 40NPC (10991) ve map thuong (12003) - map 40NPC chan teleport. Cong exit idx 1.",
+        "out_map": 12003,
+        "steps": [
+          {
+            "move": [
+              301,
+              648
+            ]
+          },
+          {
+            "move": [
+              238,
+              714
+            ]
+          },
+          {
+            "move": [
+              176,
+              779
+            ]
+          },
+          {
+            "move": [
+              113,
+              845
+            ]
+          },
+          {
+            "move": [
+              90,
+              870
+            ]
+          },
+          {
+            "gate": 1,
+            "x": 90,
+            "y": 870
+          }
+        ]
+      }
     }
   }
 }

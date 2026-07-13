@@ -283,10 +283,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         is_digioi = (mode == "digioi")
         log.info("[%s] (%s) MODE=%s start_city=%s", label, role, mode, sc)
 
-        # RA KHOI MAP EVENT truoc: neu login o map event (12921/12922...) MA mode KHAC event -> event
-        # map KHONG teleport thang duoc -> phai di bo ra cong ve map thuong roi moi lam mode. Tim event
-        # co staging_map/dest_map == login_map -> dung 'exit' cua no.
-        if mode != "event" and login_map is not None:
+        # RA KHOI MAP EVENT truoc: neu login o map event (Nhi Kieu 12922 / 40 NPC 10991...) MA mode
+        # KHAC event -> event map KHONG teleport thang duoc -> phai di bo ra cong ve map thuong roi moi
+        # lam mode. Tim event co staging_map/dest_map == login_map -> dung 'exit' cua no.
+        # TRU mode 'stand' (Login dau dung yen do) -> DUNG YEN TUYET DOI, KHONG tu chay ra.
+        if mode not in ("event", "stand") and login_map is not None:
             _evx = next((_e for _e in (getattr(config, "EVENTS", {}) or {}).values()
                          if login_map in (_e.get("staging_map"), _e.get("dest_map")) and _e.get("exit")), None)
             if _evx is not None:

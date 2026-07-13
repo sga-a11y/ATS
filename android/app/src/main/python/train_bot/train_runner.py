@@ -48,6 +48,23 @@ def _nearest_safe(pos, safes):
     return min(safes, key=lambda s: (s[0] - px) ** 2 + (s[1] - py) ** 2)
 
 
+def _exit_event_at_login(c):
+    """Login o map event (Nhi Kieu 12922 / 40 NPC 10991...) -> event map KHONG teleport thang duoc
+    -> di bo ra cong ve map thuong TRUOC khi lam mode. Mirror run_party_digioi.py. Goi cho moi mode
+    TRU stay_login (dung yen tuyet doi) va event (dang di TOI event)."""
+    lm = c.current_map
+    if lm is None:
+        return
+    for ev in (config.EVENTS or {}).values():
+        if lm in (ev.get("staging_map"), ev.get("dest_map")) and ev.get("exit"):
+            try:
+                c.exit_event(ev)
+                log.info("[%s] da ra khoi map event -> gio o map %s", c._label, c.current_map)
+            except Exception as e:
+                log.warning("[%s] loi exit_event: %s", c._label, e)
+            return
+
+
 def _do_daily_if_enabled(c, do_daily, label, on_status, party_name=None, is_leader=False,
                          should_stop=None):
     """Goi claim_daily_quests(heavy=True) + do_daily_dungeon() 1 LAN neu do_daily=True. Loi chi
@@ -375,6 +392,7 @@ def _run_party_digioi_once(username, password, server_ip, server_id, party_name,
         return False   # login that bai lien tuc -> supervisor van thu lai (giong PC)
     if is_leader:
         party_state_mod.set_leader_name(party_name, c.char_name or username)
+    _exit_event_at_login(c)   # login o map event -> ra ngoai TRUOC khi vao Di Gioi (khop PC)
     # Auto-claim (mail/qua online/qua quan doan/van tieu) - truoc day CHI start trong run_train(),
     # quen noi cho Di Gioi/Train party -> acc mode nay khong bao gio nhan qua online/mail (mirror PC:
     # run_party_digioi.py goi claim_online_gifts() O MOI mode, khong rieng gi run_train). allow_boss=True
@@ -677,6 +695,7 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
         return False
     if is_leader:
         party_state_mod.set_leader_name(party_name, c.char_name or username)
+    _exit_event_at_login(c)   # login o map event (40 NPC...) -> ra ngoai TRUOC khi train (khop PC)
     # Auto-claim (mail/qua online/qua quan doan/van tieu) - xem ghi chu o _run_party_digioi_once.
     threading.Thread(target=_auto_claim_loop, args=(c, should_stop), daemon=True).start()
     # RECONNECT thi BO QUA daily (da lam phien truoc) - khop PC. NGOAI TRU team dungeon VO
@@ -1020,6 +1039,11 @@ def run_train(username: str, password: str, server_ip: str, server_id: int,
     except Exception as e:
         on_status.call("error", None, None, None, None, f"Ket noi loi: {e}")
         return
+
+    # STAND_STILL (ve thanh dung yen): login o map event -> ra ngoai TRUOC. STAY_LOGIN (dung yen tuyet
+    # doi) + EVENT (dang di toi event) -> KHONG ra (khop PC: 'stand' khong exit).
+    if run_mode == RUN_MODE_STAND_STILL:
+        _exit_event_at_login(c)
 
     _do_daily_if_enabled(c, do_daily, username, on_status)
 
