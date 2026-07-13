@@ -166,6 +166,7 @@ def _handle_o5_team(c, party_name, label, is_leader, should_stop, o5_done):
                 # relogin thoat instance (trong dungeon KHONG teleport ra duoc -> tranh spam go_to_town).
                 if (not c.running) or st["disc_gen"] > _dg0 or st["reconnecting"]:
                     st["o5_broke"] = True
+                    st["o5_need_redo"] = True   # team dungeon CHUA xong -> reconnect xong lam LAI
                 st["o5_state"] = "done"
                 st["reform_gen"] += 1
     else:
@@ -678,7 +679,16 @@ def _run_party_train_once(username, password, server_ip, server_id, party_name, 
         party_state_mod.set_leader_name(party_name, c.char_name or username)
     # Auto-claim (mail/qua online/qua quan doan/van tieu) - xem ghi chu o _run_party_digioi_once.
     threading.Thread(target=_auto_claim_loop, args=(c, should_stop), daemon=True).start()
-    _do_daily_if_enabled(c, do_daily, username, on_status, party_name, is_leader, should_stop)
+    # RECONNECT thi BO QUA daily (da lam phien truoc) - khop PC. NGOAI TRU team dungeon VO
+    # (o5_need_redo): ca party relogin cung nhau -> lam LAI daily (team dungeon).
+    _st = party_state_mod._pstate(party_name)
+    _o5_redo = bool(_st.get("o5_need_redo"))
+    if _o5_redo and is_reconnect:
+        with _st["lock"]:
+            _st["o5_need_redo"] = False   # lam lai 1 lan; vo tiep thi _handle_o5_team set lai
+        log.info("[%s] reconnect do team dungeon VO -> lam LAI daily (team dungeon)", username)
+    if (not is_reconnect) or _o5_redo:
+        _do_daily_if_enabled(c, do_daily, username, on_status, party_name, is_leader, should_stop)
     try:
         sc = int(map_key)
         safe_list = tm.get("safe") or []
@@ -894,7 +904,8 @@ def _reform_to_spot(c, st, party_name, route, spot, is_leader, has_leader, do_da
             c.set_party_strategist()
         except Exception:
             pass
-        _abs = lambda: should_stop.call() or not c.running
+        _gs = st["reform_gen"]   # dang keo ma co dua VAN MAP (bump reform_gen) -> abort -> reform (khop PC)
+        _abs = lambda: should_stop.call() or not c.running or st["reform_gen"] > _gs
         for stp in route.get("steps", []):
             if _abs():
                 return False
@@ -920,6 +931,12 @@ def _reform_to_spot(c, st, party_name, route, spot, is_leader, has_leader, do_da
         # map khac ma cac buoc tren van "thanh cong" (khong bi abort). Kiem tra NGAY, khong cho
         # watchdog keepalive (co grace period, phat hien cham).
         if c.current_map != dest_map:
+            # KHONG re-bump reform_gen neu drag bi abort do CO reform MOI dang cho (reform_gen da > _gs
+            # vi acc khac bump) HOAC stop/disconnect (_abs) -> tranh "vua lap party xong da reform" lap
+            # vo tan (khop fix PC _do_reform). Reform dang cho se tu xu.
+            if _abs():
+                c.flee_mode = True
+                return True   # KHONG disband; keepalive/retry se reform lai theo reform_gen dang cho
             on_status.call("running", None, None, None, None,
                            f"(LEADER) reform xong nhung SAI MAP ({c.current_map} != {dest_map}) -> reform lai ngay")
             with st["lock"]:

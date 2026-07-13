@@ -145,6 +145,7 @@ def _pstate(pidx):
                               "o5_done_by": {},          # username -> o5 (pho ban to doi) da xong? Leader chi chay khi CA party chua xong
                               "o5_state": "idle",        # "idle"|"running"|"done" - member PHAI cho != "idle" (xem _handle_o5_team)
                               "o5_broke": False,         # team dungeon VO do co dis giua chung -> CA party relogin thoat instance
+                              "o5_need_redo": False,     # team dungeon VO -> reconnect xong lam LAI daily (team dungeon)
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
@@ -299,7 +300,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # NHIEM VU BINGO (mode KHAC digioi): VE CHO AN TOAN TRUOC roi moi lam dailies (tranh dung
         # giua o quai lam dailies; world boss tu teleport di roi ve Trac Quan; mode positioning ben
         # duoi se dua ve dung cho). Mode DIGIOI lam rieng (vao DG truoc - xem nhanh ben duoi).
-        if not is_digioi and do_daily and not is_reconnect:
+        # RECONNECT thi thuong BO QUA daily (da lam phien truoc). NGOAI TRU: team dungeon VO giua chung
+        # (o5_need_redo) -> ca party relogin cung nhau -> lam LAI daily (team dungeon can ca party, gio
+        # deu dang reconnect nen barrier du nguoi). claim_daily_quests server-guarded -> chi lam phan
+        # CHUA xong (team dungeon), cac o da xong tu skip.
+        _o5_redo = bool(st.get("o5_need_redo"))
+        if _o5_redo and is_reconnect:
+            with st["lock"]:
+                st["o5_need_redo"] = False   # lam lai 1 lan; neu vo tiep, _handle_o5_team se set lai
+            log.info("[%s] (%s) reconnect do team dungeon VO -> lam LAI daily (team dungeon)", label, role)
+        if not is_digioi and do_daily and (not is_reconnect or _o5_redo):
             if mode == "city":
                 try: c.go_to_town(sc, city_flag)                       # ve thanh config
                 except Exception: pass
@@ -494,6 +504,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # cung 1 loai bug voi _start_training (xem ghi chu o do): tran chien xen giua co the
                 # day leader sang map khac ma cac buoc tren van "thanh cong" (khong bi abort).
                 if c.current_map != sc:
+                    # KHONG re-bump reform_gen neu drag bi abort do CO reform MOI dang cho (reform_gen
+                    # da > _g0 vi acc khac bump) HOAC stop/disconnect (_ab). Truoc day bump lai ->
+                    # keepalive reform lai -> drag lai abort NGAY (reform_gen van > _g0) -> "vua lap
+                    # party xong da reform" lap vo tan. Reform dang cho se tu xu; chi bump khi THAT SU
+                    # ket giua duong (khong phai do reform moi/stop/rot).
+                    if _ab():
+                        log.info("[%s] (LEADER) drag abort do co reform moi/stop -> return, KHONG re-bump", label)
+                        c.flee_mode = True
+                        st["route_done"].set()
+                        return
                     log.warning("[%s] (LEADER) reform xong NHUNG dang o SAI MAP (%s != %s) -> "
                                 "yeu cau REFORM lai ngay, khong cho watchdog", label, c.current_map, sc)
                     with st["lock"]:
@@ -1546,6 +1566,7 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 # teleport ra duoc -> truoc day member spam go_to_town vo tan, xem log party xGAx).
                 if (not c.running) or st["disc_gen"] > _dg0 or st["reconnecting"]:
                     st["o5_broke"] = True
+                    st["o5_need_redo"] = True   # team dungeon CHUA xong -> reconnect xong lam LAI
                 st["o5_state"] = "done"   # bao member (thanh cong hay fail deu THA member ra)
                 # do_team_dungeon_lv20 tu goi leave_party() (giai tan party de vao pho ban) - DAY LA
                 # PARTY CHUNG voi party train, nhung KHONG co gi bao cho vong lap chinh biet can lap

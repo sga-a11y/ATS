@@ -63,3 +63,4 @@ android/*.iml
 android/**/*.iml
 android/**/.cxx/
 android/app/src/androidTest/assets/test_accounts.json
+aTSBot.zip
