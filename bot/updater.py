@@ -11,11 +11,15 @@ import os
 import sys
 import json
 import subprocess
+import shutil
+import zipfile
 import urllib.request
 
 # URL co dinh tro ban moi nhat (repo release PUBLIC rieng -> khong lo source, khong can token).
 UPDATE_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/version.json"
-_FALLBACK_EXE_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.exe"
+# Cap nhat = TAI CA FOLDER (exe + JSON config: server/map/route...) chu KHONG chi exe -> them
+# server/map moi (nam trong JSON) moi den duoc user cu. Release chua aTSBot.zip = noi dung folder.
+_FALLBACK_ZIP_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip"
 
 
 def running_exe() -> str:
@@ -37,22 +41,26 @@ def check_update(current_version: str):
             d = json.loads(r.read().decode("utf-8"))
         ver = str(d.get("version", "")).strip()
         if ver and ver > str(current_version):
-            return ver, (d.get("url") or _FALLBACK_EXE_URL), str(d.get("notes", ""))
+            return ver, (d.get("url") or _FALLBACK_ZIP_URL), str(d.get("notes", ""))
     except Exception:
         pass
     return None
 
 
 def download_and_swap(url: str, on_progress=None):
-    """Tai exe moi ve canh exe hien tai -> viet _update.bat -> chay bat (detached) -> thoat app NGAY.
-    on_progress(done, total) de cap nhat thanh tien trinh (total=0 neu server ko bao Content-Length)."""
+    """Tai aTSBot.zip (CA FOLDER: exe + JSON config) ve -> giai nen ra _update_stage -> viet
+    _update.bat: cho app thoat -> xcopy stage GHI DE folder (exe + json moi) -> chay lai -> don.
+    accounts.json KHONG co trong zip (build khong ship) -> KHONG bi ghi de -> giu cau hinh user.
+    on_progress(done, total) cap nhat thanh tien trinh (total=0 neu server ko bao Content-Length)."""
     exe = running_exe()
     d = os.path.dirname(exe)
     exe_name = os.path.basename(exe)
-    new = os.path.join(d, "aTSBot_new.exe")
+    zip_path = os.path.join(d, "aTSBot_update.zip")
+    stage = os.path.join(d, "_update_stage")
 
+    # 1) tai zip
     req = urllib.request.Request(url, headers={"User-Agent": "atsbot-updater"})
-    with urllib.request.urlopen(req, timeout=30) as r, open(new, "wb") as f:
+    with urllib.request.urlopen(req, timeout=60) as r, open(zip_path, "wb") as f:
         total = int(r.headers.get("Content-Length", 0) or 0)
         done = 0
         while True:
@@ -64,6 +72,13 @@ def download_and_swap(url: str, on_progress=None):
             if on_progress:
                 on_progress(done, total)
 
+    # 2) giai nen ra staging (xoa staging cu neu con)
+    shutil.rmtree(stage, ignore_errors=True)
+    os.makedirs(stage, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as z:
+        z.extractall(stage)
+
+    # 3) bat: cho app thoat -> xcopy stage GHI DE folder (exe + json), don rac -> chay lai
     bat = os.path.join(d, "_update.bat")
     with open(bat, "w", encoding="ascii") as f:
         f.write(
@@ -71,9 +86,11 @@ def download_and_swap(url: str, on_progress=None):
             "chcp 65001 >nul\r\n"
             ":wait\r\n"
             'tasklist /fi "imagename eq %s" 2>nul | find /i "%s" >nul && (timeout /t 1 /nobreak >nul & goto wait)\r\n'
-            'move /y "aTSBot_new.exe" "%s" >nul\r\n'
+            'xcopy /e /y /q /i "_update_stage\\*" "." >nul\r\n'
+            'rmdir /s /q "_update_stage"\r\n'
+            'del /q "aTSBot_update.zip"\r\n'
             'start "" "%s"\r\n'
-            'del "%%~f0"\r\n' % (exe_name, exe_name, exe_name, exe_name)
+            'del "%%~f0"\r\n' % (exe_name, exe_name, exe_name)
         )
     # DETACHED_PROCESS (0x8) | CREATE_NO_WINDOW (0x08000000): bat chay ngam, song sau khi app thoat
     subprocess.Popen(["cmd", "/c", bat], cwd=d,

@@ -22,5 +22,6 @@ object Servers {
         "manh_hoach" to Info("Mạnh Hoạch", "103.190.202.46", 12),
         "hoang_trung" to Info("Hoàng Trung", "103.190.202.47", 13),
         "ma_sieu" to Info("Mã Siêu", "103.190.202.48", 14),
+        "quach_gia" to Info("Quách Gia", "103.190.202.49", 15),
     )
 }

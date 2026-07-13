@@ -164,12 +164,29 @@ def copy_data():
     # Sua "notes" thanh mo ta thay doi truoc khi up (user se thay trong popup cap nhat).
     vj = {
         "version": ver,
-        "url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.exe",
+        # CA FOLDER (exe + JSON config) -> them server/map/route moi (nam trong JSON) den duoc user cu.
+        "url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip",
         "notes": "Bản cập nhật mới.",
     }
     with open(os.path.join(DIST, "version.json"), "w", encoding="utf-8") as f:
         json.dump(vj, f, ensure_ascii=False, indent=2)
     print("copied data JSON + accounts.json mau + README + version.json ra %s" % DIST)
+
+
+def make_zip():
+    """Dong goi noi dung folder DIST (exe + json + README + version.json) -> ROOT/aTSBot.zip
+    (FLAT: file o goc zip -> giai nen la GHI DE thang vao folder app). accounts.json KHONG co
+    trong DIST -> khong vao zip -> update KHONG ghi de cau hinh acc cua user."""
+    import zipfile
+    zpath = os.path.join(ROOT, NAME + ".zip")
+    if os.path.exists(zpath):
+        os.remove(zpath)
+    with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+        for root, _dirs, files in os.walk(DIST):
+            for fn in files:
+                full = os.path.join(root, fn)
+                z.write(full, os.path.relpath(full, DIST))   # arcname = tuong doi voi DIST (flat)
+    print("dong goi -> %s (%.1f MB)" % (zpath, os.path.getsize(zpath) / 1e6))
 
 
 def _release_token():
@@ -219,7 +236,10 @@ def upload_release():
         print("!! Tao release loi (tag trung? khong quyen?): %s" % e)
         return
     rid = rel["id"]
-    for path in (os.path.join(DIST, NAME + ".exe"), os.path.join(DIST, "version.json")):
+    for path in (os.path.join(ROOT, NAME + ".zip"), os.path.join(DIST, NAME + ".exe"),
+                 os.path.join(DIST, "version.json")):
+        if not os.path.exists(path):
+            continue
         name = os.path.basename(path)
         up = ("https://uploads.github.com/repos/%s/releases/%d/assets?name=%s"
               % (RELEASE_REPO, rid, name))
@@ -237,6 +257,7 @@ if __name__ == "__main__":
     stage()
     package()
     copy_data()
+    make_zip()
     if "--no-upload" in sys.argv:
         print("\n(--no-upload) BO QUA upload release.")
     else:
