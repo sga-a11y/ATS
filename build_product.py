@@ -118,11 +118,13 @@ def copy_data():
         src = os.path.join(ROOT, fn)
         if os.path.exists(src):
             shutil.copy(src, DIST)
-    # version (doc tu bot/_version.py)
+    # version: doc tu _stage/bot/_version.py (BAN TIMESTAMP that da nhung vao exe), KHONG doc
+    # ROOT/bot/_version.py (="1.1.dev" fallback dev) -> neu doc ROOT thi version.json/tag release
+    # LECH voi version trong exe -> auto-update loan.
     ver = "?"
     try:
         import importlib.util
-        spec = importlib.util.spec_from_file_location("_v", os.path.join(ROOT, "bot", "_version.py"))
+        spec = importlib.util.spec_from_file_location("_v", os.path.join(STAGE, "bot", "_version.py"))
         m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
         ver = m.VERSION
     except Exception:
