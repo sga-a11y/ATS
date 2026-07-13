@@ -20,6 +20,8 @@ import run_party_digioi as ctrl          # module dieu khien (da refactor)
 from bot import config
 from bot._appdir import app_dir as _app_dir   # thu muc goc (dev=project, frozen=canh .exe)
 
+log = logging.getLogger("bot")   # -> hien o panel log GUI (qua _QueueHandler tren root)
+
 ACCOUNTS_JSON = os.path.join(_app_dir(), "accounts.json")
 
 
@@ -163,14 +165,21 @@ class BotGUI(tk.Tk):
         """Chay ban build -> check version.json tren host; co ban moi -> hoi + tai + restart."""
         try:
             from bot import updater
-        except Exception:
+        except Exception as e:
+            log.warning("update: khong load duoc updater: %s", e)
             return
         if not updater.is_frozen():
             return   # dev chay 'python gui.py' -> khong tu update
         def worker():
-            info = updater.check_update(self._version)
+            try:
+                info = updater.check_update(self._version)
+            except Exception as e:
+                log.warning("update: loi check: %s", e); return
             if info:
+                log.info("update: CO BAN MOI v%s (dang hien %s) -> hoi user", info[0], self._version)
                 self.after(0, lambda: self._prompt_update(*info))
+            else:
+                log.info("update: dang la ban moi nhat (v%s)", self._version)
         threading.Thread(target=worker, daemon=True).start()
 
     def _prompt_update(self, ver, url, notes):

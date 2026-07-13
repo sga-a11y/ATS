@@ -28,7 +28,14 @@ def running_exe() -> str:
 
 
 def is_frozen() -> bool:
-    """True neu dang chay BAN BUILD (exe), False khi dev chay 'python gui.py' (python.exe)."""
+    """True neu dang chay BAN BUILD (exe), False khi dev chay 'python gui.py' (python.exe).
+    Nuitka dat bien global '__compiled__' trong MOI module da bien dich -> tin hieu CHAC CHAN nhat
+    (truoc chi dua vao sys.executable name - voi Nuitka onefile co the tro vao temp/khac -> sai ->
+    is_frozen=False -> BO QUA check update, dung canh 'chay exe ma khong hoi update')."""
+    if "__compiled__" in globals():
+        return True
+    if getattr(sys, "frozen", False):   # PyInstaller/cx_Freeze fallback
+        return True
     return "python" not in os.path.basename(sys.executable).lower()
 
 
