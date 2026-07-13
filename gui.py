@@ -115,6 +115,7 @@ class BotGUI(tk.Tk):
             from bot._version import VERSION as _VER
         except Exception:
             _VER = "?"
+        self._version = _VER
         self.title(f"TS Online Bot Manager v{_VER}")
         self.geometry("1100x720")
         self.minsize(900, 560)
@@ -138,7 +139,47 @@ class BotGUI(tk.Tk):
         self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self.after(1000, self._refresh)
         self.after(300, self._drain_log)
+        self.after(1500, self._check_update)   # tu kiem tra ban moi (chi khi chay ban build)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    # ---- tu dong cap nhat ----
+    def _check_update(self):
+        """Chay ban build -> check version.json tren host; co ban moi -> hoi + tai + restart."""
+        try:
+            from bot import updater
+        except Exception:
+            return
+        if not updater.is_frozen():
+            return   # dev chay 'python gui.py' -> khong tu update
+        def worker():
+            info = updater.check_update(self._version)
+            if info:
+                self.after(0, lambda: self._prompt_update(*info))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _prompt_update(self, ver, url, notes):
+        from tkinter import messagebox
+        from bot import updater
+        msg = f"Có bản mới: v{ver}\n\n{notes}\n\nCập nhật ngay? App sẽ tải bản mới rồi tự khởi động lại."
+        if not messagebox.askyesno("Có bản cập nhật", msg, parent=self):
+            return
+        # cua so tien trinh nho
+        top = tk.Toplevel(self); top.title("Đang cập nhật")
+        top.geometry("360x90"); top.transient(self); top.resizable(False, False)
+        lbl = tk.Label(top, text="Đang tải bản mới..."); lbl.pack(pady=14)
+        bar = ttk.Progressbar(top, length=320, mode="determinate"); bar.pack()
+        def on_prog(done, total):
+            if total:
+                self.after(0, lambda: (bar.config(value=done * 100 / total),
+                                       lbl.config(text=f"Đang tải: {done//1024//1024}/{total//1024//1024} MB")))
+        def dl():
+            try:
+                updater.download_and_swap(url, on_prog)   # ham nay tu thoat app khi xong
+            except Exception as e:
+                self.after(0, lambda: (top.destroy(),
+                                       messagebox.showerror("Lỗi cập nhật",
+                                            f"Không tải được bản mới:\n{e}\n\nTải thủ công giúp.", parent=self)))
+        threading.Thread(target=dl, daemon=True).start()
 
     # ---- cham tron trang thai (anh) cho tab party ----
     def _make_dot(self, color, size=13):

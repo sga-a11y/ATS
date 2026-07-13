@@ -1417,7 +1417,12 @@ class GameClient:
             # FLEE MODE: bo chay thay vi danh. PHAI dung dung my_atype (vi tri cua MINH trong
             # party) - KHONG lay char_opts[0][0] (la atype cua VI TRI DAU danh sach, co the la
             # nguoi khac) -> sai atype thi server DA/KICK (Tao Thao kick luon).
-            if getattr(self, "flee_mode", False):
+            if getattr(self, "flee_mode", False) and not self.party_members:
+                # flee_mode CHI ap dung khi DANH LE (chua co party): party_members rong. DANG TRONG
+                # PARTY (roster co member) -> KHONG flee du flee_mode=True: flee tran party bi server
+                # KICK khoi party -> nick van khoi party -> leader thay thieu -> reform -> vo party
+                # (bug: dang keo ra spot, member bi keo vao tran leader ma flee_mode con True tu luc
+                # rally -> BO CHAY -> vang khoi party). Da co party -> DANH BAT CHAP (theo yeu cau).
                 my_at = self.state.my_atype
                 # PET flee phai CUNG atype voi CHAR. Dung option pet THO tu 0x35 (raw_pet),
                 # KHONG dung pet_opts (da bi loc theo my_atype o tren) - vi my_atype co the
@@ -3066,6 +3071,7 @@ class GameClient:
         if not self.self_entity:
             return
         self.send(protocol.OP_PLAYER_STATE, b"\x04\x00" + self.self_entity)
+        self.party_members = []   # da roi party -> xoa roster (de flee_mode lai flee duoc khi teleport/reform)
         log.info("[%s] Roi/giai tan party cu (truoc khi vao DG)", self._label)
 
     def set_strategist(self, entity: bytes = None):

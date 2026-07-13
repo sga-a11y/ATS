@@ -10,9 +10,13 @@ Chay:  python build_product.py
 Output: dist_product/  (gui ca thu muc nay cho nguoi khac)
 """
 import os
+import json
 import shutil
 import subprocess
 import sys
+import urllib.request
+
+RELEASE_REPO = "sgagamee-oss/atsbot-release"   # repo PUBLIC phat hanh (upload exe + version.json)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STAGE = os.path.join(ROOT, "_stage")        # source sach (config.example -> config)
@@ -153,7 +157,76 @@ def copy_data():
     # utf-8-sig (co BOM) -> Notepad Windows hien dung dau tieng Viet
     with open(os.path.join(DIST, "README.txt"), "w", encoding="utf-8-sig") as f:
         f.write(note)
-    print("copied data JSON + accounts.json mau + README (user-facing) ra %s" % DIST)
+    # version.json cho AUTO-UPDATE: upload FILE NAY + aTSBot.exe len GitHub release 'atsbot-release'.
+    # App (bot/updater.py) tai file nay tu URL 'latest' co dinh -> so version -> hoi cap nhat.
+    # Sua "notes" thanh mo ta thay doi truoc khi up (user se thay trong popup cap nhat).
+    vj = {
+        "version": ver,
+        "url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.exe",
+        "notes": "Bản cập nhật mới.",
+    }
+    with open(os.path.join(DIST, "version.json"), "w", encoding="utf-8") as f:
+        json.dump(vj, f, ensure_ascii=False, indent=2)
+    print("copied data JSON + accounts.json mau + README + version.json ra %s" % DIST)
+
+
+def _release_token():
+    """Lay token GitHub: uu tien env GH_TOKEN/GITHUB_TOKEN, roi den git credential store (chinh
+    token dang push - account sga-a11y, da duoc them collaborator write vao RELEASE_REPO)."""
+    tok = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if tok:
+        return tok.strip()
+    try:
+        r = subprocess.run(["git", "credential", "fill"],
+                           input="protocol=https\nhost=github.com\n\n",
+                           capture_output=True, text=True, timeout=15)
+        for line in r.stdout.splitlines():
+            if line.startswith("password="):
+                return line[len("password="):].strip()
+    except Exception:
+        pass
+    return None
+
+
+def _gh_post(url, token, data=None, ctype="application/json"):
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
+               "User-Agent": "atsbot-build"}
+    if data is not None:
+        headers["Content-Type"] = ctype
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=300) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def upload_release():
+    """Tao GitHub release (tag = version) + upload aTSBot.exe + version.json. Token lay tu
+    git credential (tai dung token dang push). Loi -> in huong dan up thu cong, KHONG fail build."""
+    token = _release_token()
+    if not token:
+        print("!! Khong lay duoc token (GH_TOKEN / git credential) -> BO QUA upload. Up thu cong:")
+        print("   gh release create v<version> %s\\aTSBot.exe %s\\version.json -R %s"
+              % (DIST, DIST, RELEASE_REPO))
+        return
+    vj = json.load(open(os.path.join(DIST, "version.json"), encoding="utf-8"))
+    tag = "v" + vj["version"]
+    try:
+        rel = _gh_post("https://api.github.com/repos/%s/releases" % RELEASE_REPO, token,
+                       json.dumps({"tag_name": tag, "name": tag,
+                                   "body": vj.get("notes", "")}).encode("utf-8"))
+    except Exception as e:
+        print("!! Tao release loi (tag trung? khong quyen?): %s" % e)
+        return
+    rid = rel["id"]
+    for path in (os.path.join(DIST, NAME + ".exe"), os.path.join(DIST, "version.json")):
+        name = os.path.basename(path)
+        up = ("https://uploads.github.com/repos/%s/releases/%d/assets?name=%s"
+              % (RELEASE_REPO, rid, name))
+        try:
+            _gh_post(up, token, open(path, "rb").read(), ctype="application/octet-stream")
+            print("   uploaded %s" % name)
+        except Exception as e:
+            print("!! Upload %s loi: %s" % (name, e))
+    print("=== Release %s da len https://github.com/%s/releases/latest ===" % (tag, RELEASE_REPO))
 
 
 if __name__ == "__main__":
@@ -162,4 +235,9 @@ if __name__ == "__main__":
     stage()
     package()
     copy_data()
+    if "--no-upload" in sys.argv:
+        print("\n(--no-upload) BO QUA upload release.")
+    else:
+        print("\n=== Upload release len %s ===" % RELEASE_REPO)
+        upload_release()
     print("\n=== XONG. Gui ca thu muc: %s ===" % DIST)
