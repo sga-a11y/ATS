@@ -1,18 +1,16 @@
-"""HTTP login -> lay user_id + access_token. Copy tu bot/login.py, BO phu thuoc config.USERNAME/
-PASSWORD (Android luon truyen username/password tuong minh tu Kotlin, khong doc config)."""
+"""HTTP login -> lay user_id + access_token."""
 import urllib.parse
 import urllib.request
 import urllib.error
 import json
 import time
 import logging
-import hashlib
+from . import config
 
 log = logging.getLogger("login")
 
-API_KEY = "17ade453e0892461edb01969b6e17e3a"
-LOGIN_URL = f"https://graph.mobiplay.vn/accountapiv4/server/login?api_key={API_KEY}"
 
+import hashlib
 
 def _device_id_for(username: str) -> str:
     """Tao device_id DUY NHAT cho moi account (32 hex) - tranh server coi 2 acc chung device."""
@@ -25,11 +23,13 @@ def _tracking_id_for(username: str) -> str:
     return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
 
 
-def login(username: str, password: str, device_id: str = None) -> dict:
+def login(username: str = None, password: str = None, device_id: str = None) -> dict:
     """Goi API login, tra ve {user_id, access_token, username}.
 
     Raise RuntimeError neu that bai.
     """
+    username = username or config.USERNAME
+    password = password or config.PASSWORD
     device_id = device_id or _device_id_for(username)
 
     params = {
@@ -47,7 +47,7 @@ def login(username: str, password: str, device_id: str = None) -> dict:
     }
     body = urllib.parse.urlencode(params).encode()
     req = urllib.request.Request(
-        LOGIN_URL,
+        config.LOGIN_URL,
         data=body,
         headers={"Content-Type": "application/x-www-form-urlencoded",
                  "User-Agent": "okhttp/4.12.0"},
@@ -79,3 +79,7 @@ def login(username: str, password: str, device_id: str = None) -> dict:
         "access_token": d["access_token"],
         "username": d["username"],
     }
+
+
+if __name__ == "__main__":
+    print(login())

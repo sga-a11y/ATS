@@ -17,32 +17,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * Chay nhieu account train song song, moi account 1 thread rieng goi vao
- * train_bot.train_runner.run_train qua Chaquopy. Trang thai tung account duoc
- * publish qua StateFlow de UI observe.
+ * Chay bot qua coordinator CHUNG voi ban PC: train_bot.run_party_digioi (dong bo tu bot PC bang
+ * tools/sync_apk_python.py). Kotlin chi: populate config (setup_party_runtime) -> start_party(pidx)
+ * -> POLL account_status() de cap nhat UI -> stop qua stop_party/stop_account. KHONG con logic
+ * dieu phoi rieng ben Kotlin/train_runner (fix 1 lan an ca 2 ban).
  */
 class BotForegroundService : Service() {
 
     private val binder = LocalBinder()
 
-    // THREAD-SAFETY: startAccount()/stopAccount() duoc goi tu main/UI thread, trong khi
-    // shouldStop.call() (doc stopFlags) chay tren tung account-thread rieng, va finally
-    // block (xoa runningThreads) cung chay tren account-thread do. Vay la ghi tu UI thread
-    // + doc/ghi tu N account-thread cung luc -> mutableMapOf thuong KHONG an toan (co the
-    // ConcurrentModificationException hoac lost update khi nhieu account start/stop gan
-    // nhau). Dung ConcurrentHashMap thay vi Collections.synchronizedMap vi day chi la cac
-    // thao tac put/remove/get don le (khong can lock ca map cho compound action), va
-    // ConcurrentHashMap cho doc khong block (phu hop voi shouldStop.call() bi poll lien tuc
-    // trong vong lap train_runner).
-    private val runningThreads = ConcurrentHashMap<String, Thread>()
-    private val stopFlags = ConcurrentHashMap<String, Boolean>()
-    // LENH LIVE cho tung account (doi kenh / teleport thanh) - UI ghi qua sendCommand(),
-    // account-thread doc + xoa qua getCmd.call() (mirror cmd_gen ben PC). ConcurrentHashMap vi
-    // ghi tu UI thread + doc/remove tu N account-thread.
-    private val pendingCmd = ConcurrentHashMap<String, Array<Any>>()
+    // username -> pidx (party dang chay); dung de poll status + map lenh thu cong.
+    private val userPidx = ConcurrentHashMap<String, Int>()
+    private val runningPidx = ConcurrentHashMap.newKeySet<Int>()
 
     private val _status = MutableStateFlow<Map<String, AccountStatus>>(emptyMap())
     val status: StateFlow<Map<String, AccountStatus>> = _status
+
+    @Volatile private var polling = false
+    private var pollerThread: Thread? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): BotForegroundService = this@BotForegroundService
@@ -70,238 +62,164 @@ class BotForegroundService : Service() {
             .build()
     }
 
-    fun startAccount(account: Account, serverIp: String, serverId: Int, runMode: String, cityKey: String, doDaily: Boolean) {
-        // TOCTOU: KHONG dung "if containsKey(...) return" roi put rieng - 2 lan goi
-        // startAccount() gan nhau (vd double-tap nut Start tren UI) co the ca 2 deu
-        // qua check TRUOC khi ben nao kip put, tao 2 Thread cung chay cho 1 username,
-        // de len stopFlags/runningThreads cua nhau. putIfAbsent la atomic: tao Thread
-        // TRUOC nhung CHI .start() neu putIfAbsent tra ve null (chua co ai giu cho slot
-        // nay); neu da co (tra ve non-null) -> bo qua, khong start them.
-        stopFlags[account.username] = false
-        val thread = Thread {
-            try {
-                val module = Python.getInstance().getModule("train_bot.train_runner")
-                val shouldStop = PyObject.fromJava(object {
-                    fun call(): Boolean = stopFlags[account.username] == true
-                })
-                val onStatus = PyObject.fromJava(object {
-                    fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
-                        _status.update {
-                            it + (account.username to AccountStatus(
-                                state = RunState.valueOf(state.uppercase()),
-                                hp = hp?.toInt(),
-                                sp = sp?.toInt(),
-                                hpMax = hpMax?.toInt(),
-                                spMax = spMax?.toInt(),
-                                message = msg,
-                            ))
-                        }
-                    }
-                })
-                val getCmd = PyObject.fromJava(object {
-                    // tra lenh dang cho (roi XOA - moi lenh chi thuc thi 1 lan) hoac null
-                    fun call(): Array<Any>? = pendingCmd.remove(account.username)
-                })
-                module.callAttr(
-                    "run_train", account.username, account.password, serverIp, serverId,
-                    runMode, cityKey, shouldStop, onStatus, getCmd, doDaily,
-                )
-            } catch (e: Exception) {
-                _status.update {
-                    it + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khong ro"))
-                }
-            } finally {
-                runningThreads.remove(account.username)
-                stopFlags.remove(account.username)
-                pendingCmd.remove(account.username)
-            }
+    private fun rpd(): PyObject = Python.getInstance().getModule("train_bot.run_party_digioi")
+
+    // --- map RunMode (UI) -> config mode/param cua ban PC ---
+    private data class ModeCfg(
+        val mode: String, val startCity: Int, val cityFlag: Int, val mobIndex: Int,
+        val eventKey: String, val digioiMode: String, val hasLeader: Boolean,
+    )
+
+    private fun mapMode(party: Party): ModeCfg = when (party.runMode) {
+        RunModes.STAND_STILL -> {   // ve thanh dung yen = PC "city"
+            val c = Cities.ALL[party.cityKey]
+            ModeCfg("city", c?.cityId ?: 0, c?.flag ?: 0, -1, "", "party", false)
         }
-        if (runningThreads.putIfAbsent(account.username, thread) != null) return
-        thread.start()
+        RunModes.STAY_LOGIN -> ModeCfg("stand", 0, 0, -1, "", "party", false)   // login dung yen do
+        RunModes.TRAIN -> ModeCfg(
+            "train", party.trainMapKey.toIntOrNull() ?: 0, 0, party.trainMobIndex,
+            "", "party", !party.noLeader,
+        )
+        RunModes.DIGIOI -> ModeCfg(
+            "digioi", 0, 0, -1, "",
+            if (party.digioiSolo) "solo" else "party",
+            if (party.digioiSolo) false else !party.noLeader,
+        )
+        RunModes.EVENT -> ModeCfg("event", 0, 0, -1, party.cityKey, "party", false)
+        else -> ModeCfg("stand", 0, 0, -1, "", "party", false)
     }
 
-    /** Khoi dong CA Party o che do Di Gioi THAT (party trong game). Neu !party.noLeader: account
-     * dau tien = leader (khop PC's is_leader duoc khai bao san theo account). Neu party.noLeader
-     * (mirror PC's "Khong co chu PT"): KHONG account nao la leader - moi account la member, dung
-     * yen cho leader NGOAI/tay moi that su; account dau tien van lam "picker" (chon kenh chung)
-     * giong PC (picker_acc = leader_acc if leader_acc else valid[0][0]). Goi 1 LAN cho ca Party
-     * (khac startAccount tung acc rieng le) vi n_members phai duoc set TRUOC khi bat ky thread
-     * nao bat dau vong keepalive. */
-    fun startPartyDigioi(party: Party, serverIp: String, serverId: Int) {
+    /** Khoi dong 1 PARTY (pidx = vi tri party trong danh sach app - on dinh trong phien). */
+    fun startParty(pidx: Int, party: Party, serverIp: String, serverId: Int) {
         if (party.accounts.isEmpty()) return
-        val partyModule = Python.getInstance().getModule("train_bot.party_state")
-        val hasLeader = !party.noLeader
-        val nMembers = if (hasLeader) party.accounts.size - 1 else party.accounts.size
-        partyModule.callAttr("set_n_members", party.name, nMembers)
-        val picker = party.accounts.first()
-        party.accounts.forEach { account ->
-            val isLeader = hasLeader && account.username == picker.username
-            val isPicker = account.username == picker.username
-            stopFlags[account.username] = false
-            val thread = Thread {
-                try {
-                    val module = Python.getInstance().getModule("train_bot.train_runner")
-                    val shouldStop = PyObject.fromJava(object {
-                        fun call(): Boolean = stopFlags[account.username] == true
-                    })
-                    val onStatus = PyObject.fromJava(object {
-                        fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
-                            _status.update {
-                                it + (account.username to AccountStatus(
-                                    state = RunState.valueOf(state.uppercase()),
-                                    hp = hp?.toInt(), sp = sp?.toInt(),
-                                    hpMax = hpMax?.toInt(), spMax = spMax?.toInt(), message = msg,
-                                ))
-                            }
-                        }
-                    })
-                    module.callAttr(
-                        "run_party_digioi", account.username, account.password, serverIp, serverId,
-                        party.name, isLeader, isPicker, hasLeader, party.doDaily, shouldStop, onStatus,
-                    )
-                } catch (e: Exception) {
-                    _status.update {
-                        it + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khong ro"))
-                    }
-                } finally {
-                    runningThreads.remove(account.username)
-                    stopFlags.remove(account.username)
+        val m = mapMode(party)
+        val accounts: List<List<String>> = party.accounts.map { listOf(it.username, it.password) }
+        try {
+            val py = rpd()
+            py.callAttr(
+                "setup_party_runtime", pidx, m.mode, serverIp, serverId, accounts,
+                m.cityFlag, m.startCity, m.mobIndex, party.doDaily, m.digioiMode, m.eventKey,
+                emptyList<String>(), m.hasLeader,
+            )
+            py.callAttr("start_party", pidx)
+            runningPidx.add(pidx)
+            party.accounts.forEach { userPidx[it.username] = pidx }
+            ensurePoller()
+        } catch (e: Exception) {
+            party.accounts.forEach {
+                _status.update { s ->
+                    s + (it.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khoi dong"))
                 }
             }
-            if (runningThreads.putIfAbsent(account.username, thread) == null) thread.start()
         }
     }
 
-    /** Khoi dong CA Party o che do Train (di chuyen thong minh theo ban do). Giong startPartyDigioi
-     * ve cau truc (n_members set truoc, account dau tien = picker, has_leader theo party.noLeader). */
-    fun startPartyTrain(party: Party, serverIp: String, serverId: Int, mapKey: String, mobIndex: Int) {
-        if (party.accounts.isEmpty()) return
-        val partyModule = Python.getInstance().getModule("train_bot.party_state")
-        val hasLeader = !party.noLeader
-        val nMembers = if (hasLeader) party.accounts.size - 1 else party.accounts.size
-        partyModule.callAttr("set_n_members", party.name, nMembers)
-        val picker = party.accounts.first()
-        party.accounts.forEach { account ->
-            val isLeader = hasLeader && account.username == picker.username
-            val isPicker = account.username == picker.username
-            stopFlags[account.username] = false
-            val thread = Thread {
+    private fun ensurePoller() {
+        if (polling) return
+        polling = true
+        pollerThread = Thread {
+            while (polling) {
                 try {
-                    val module = Python.getInstance().getModule("train_bot.train_runner")
-                    val shouldStop = PyObject.fromJava(object {
-                        fun call(): Boolean = stopFlags[account.username] == true
-                    })
-                    val onStatus = PyObject.fromJava(object {
-                        fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
-                            _status.update {
-                                it + (account.username to AccountStatus(
-                                    state = RunState.valueOf(state.uppercase()),
-                                    hp = hp?.toInt(), sp = sp?.toInt(),
-                                    hpMax = hpMax?.toInt(), spMax = spMax?.toInt(), message = msg,
-                                ))
-                            }
-                        }
-                    })
-                    module.callAttr(
-                        "run_party_train", account.username, account.password, serverIp, serverId,
-                        party.name, mapKey, mobIndex, isLeader, isPicker, hasLeader, party.doDaily,
-                        shouldStop, onStatus,
-                    )
-                } catch (e: Exception) {
-                    _status.update {
-                        it + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khong ro"))
+                    val py = rpd()
+                    userPidx.keys.toList().forEach { u ->
+                        val d = py.callAttr("account_status", u) ?: return@forEach
+                        _status.update { it + (u to statusFromPy(d)) }
                     }
-                } finally {
-                    runningThreads.remove(account.username)
-                    stopFlags.remove(account.username)
+                } catch (_: Exception) {
                 }
+                try { Thread.sleep(1500) } catch (_: InterruptedException) { }
             }
-            if (runningThreads.putIfAbsent(account.username, thread) == null) thread.start()
-        }
+        }.also { it.isDaemon = true; it.start() }
     }
 
-    /** Di Gioi SOLO: moi account doc lap hoan toan, khong lap party/dong bo kenh. */
-    fun startAccountDigioiSolo(account: Account, serverIp: String, serverId: Int) {
-        stopFlags[account.username] = false
-        val thread = Thread {
-            try {
-                val module = Python.getInstance().getModule("train_bot.train_runner")
-                val shouldStop = PyObject.fromJava(object {
-                    fun call(): Boolean = stopFlags[account.username] == true
-                })
-                val onStatus = PyObject.fromJava(object {
-                    fun call(state: String, hp: PyObject?, sp: PyObject?, hpMax: PyObject?, spMax: PyObject?, msg: String) {
-                        _status.update {
-                            it + (account.username to AccountStatus(
-                                state = RunState.valueOf(state.uppercase()),
-                                hp = hp?.toInt(), sp = sp?.toInt(),
-                                hpMax = hpMax?.toInt(), spMax = spMax?.toInt(), message = msg,
-                            ))
-                        }
-                    }
-                })
-                module.callAttr("run_digioi_solo", account.username, account.password, serverIp, serverId,
-                    shouldStop, onStatus)
-            } catch (e: Exception) {
-                _status.update {
-                    it + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khong ro"))
-                }
-            } finally {
-                runningThreads.remove(account.username)
-                stopFlags.remove(account.username)
-            }
-        }
-        if (runningThreads.putIfAbsent(account.username, thread) == null) thread.start()
+    private fun statusFromPy(d: PyObject): AccountStatus {
+        // callAttr("get", k) tra ve PyObject (co the boc Python None) -> toInt()/toBoolean() tren None
+        // nem exception -> boc try, None -> null.
+        fun gInt(k: String): Int? = try { d.callAttr("get", k)?.toInt() } catch (_: Exception) { null }
+        fun gBool(k: String): Boolean = try { d.callAttr("get", k)?.toBoolean() ?: false } catch (_: Exception) { false }
+        val running = gBool("running")
+        return AccountStatus(
+            state = if (running) RunState.RUNNING else RunState.STOPPED,
+            hp = gInt("hp"),
+            sp = gInt("sp"),
+            hpMax = gInt("hp_max"),
+            spMax = gInt("sp_max"),
+            message = "",
+        )
+    }
+
+    fun stopParty(pidx: Int) {
+        try { rpd().callAttr("stop_party", pidx) } catch (_: Exception) { }
+        runningPidx.remove(pidx)
+        userPidx.filterValues { it == pidx }.keys.forEach { userPidx.remove(it) }
     }
 
     fun stopAccount(username: String) {
-        stopFlags[username] = true
+        try { rpd().callAttr("stop_account", username) } catch (_: Exception) { }
     }
 
     fun stopAll() {
-        runningThreads.keys.toList().forEach { stopFlags[it] = true }
+        try { rpd().callAttr("stop_all") } catch (_: Exception) { }
+        runningPidx.clear()
+        userPidx.clear()
     }
 
-    /** Gui lenh LIVE (doi kenh / teleport thanh) cho cac account CHI DINH (dang chay) - giong
-     * lenh thu cong per-party ben PC. cmd: ["channel", ch] | ["channel_auto"] | ["city", id, flag]. */
-    fun sendCommand(usernames: List<String>, cmd: Array<Any>) {
-        usernames.forEach { if (runningThreads.containsKey(it)) pendingCmd[it] = cmd }
+    // --- lenh LIVE (doi kenh / teleport thanh / giftcode) - map username -> pidx ---
+    private fun pidxSet(usernames: List<String>): List<Int> =
+        usernames.mapNotNull { userPidx[it] }.distinct()
+
+    fun sendChannel(usernames: List<String>, ch: Int) {
+        pidxSet(usernames).forEach { try { rpd().callAttr("party_switch_channel", it, ch) } catch (_: Exception) {} }
     }
 
-    fun sendChannel(usernames: List<String>, ch: Int) = sendCommand(usernames, arrayOf<Any>("channel", ch))
-    fun sendChannelAuto(usernames: List<String>) = sendCommand(usernames, arrayOf<Any>("channel_auto"))
-    fun sendCity(usernames: List<String>, cityId: Int, flag: Int) = sendCommand(usernames, arrayOf<Any>("city", cityId, flag))
-    fun sendGiftcode(usernames: List<String>, code: String) = sendCommand(usernames, arrayOf<Any>("giftcode", code))
+    fun sendChannelAuto(usernames: List<String>) {
+        // -1 = tu chon kenh (run_party_digioi.party_switch_channel: ch<=0 -> pick_best)
+        pidxSet(usernames).forEach { try { rpd().callAttr("party_switch_channel", it, 0) } catch (_: Exception) {} }
+    }
 
-    /** Query danh sach kenh (BLOCKING ~3s - goi tu background thread/coroutine, KHONG main thread).
-     * Tra list [channel, so_nguoi, suc_chua] sap xep theo channel; rong neu khong lay duoc. */
+    fun sendCity(usernames: List<String>, cityId: Int, flag: Int) {
+        pidxSet(usernames).forEach { try { rpd().callAttr("party_teleport_city", it, cityId, flag) } catch (_: Exception) {} }
+    }
+
+    fun sendGiftcode(usernames: List<String>, code: String) {
+        pidxSet(usernames).forEach { try { rpd().callAttr("redeem_giftcode_party", it, code) } catch (_: Exception) {} }
+    }
+
+    /** Query danh sach kenh (BLOCKING - goi tu background). Tra [channel, so_nguoi, suc_chua]. */
     fun getChannels(username: String): List<Triple<Int, Int, Int>> {
+        val pidx = userPidx[username] ?: return emptyList()
         return try {
-            val res = Python.getInstance().getModule("train_bot.train_runner")
-                .callAttr("get_channels", username) ?: return emptyList()
-            val chans = res.callAttr("get", "channels") ?: return emptyList()
-            chans.asList().map {
-                val r = it.asList()
-                Triple(r[0].toInt(), r[1].toInt(), r[2].toInt())
-            }
+            // get_channel_list tra DICT {ch: (cur, cap)}
+            val res = rpd().callAttr("get_channel_list", pidx) ?: return emptyList()
+            res.asMap().map { (k, v) ->
+                val pair = v.asList()
+                Triple(k.toInt(), pair[0].toInt(), pair[1].toInt())
+            }.sortedBy { it.first }
         } catch (e: Exception) {
             emptyList()
         }
     }
 
-    /** Kenh dang o cua 1 account (null neu chua switch / chua chay). */
+    /** Kenh dang o cua account (tu account_status.channel). */
     fun currentChannel(username: String): Int? {
         return try {
-            Python.getInstance().getModule("train_bot.train_runner")
-                .callAttr("current_channel", username)?.toInt()
+            val d = rpd().callAttr("account_status", username) ?: return null
+            d.callAttr("get", "channel")?.toInt()
         } catch (e: Exception) {
             null
         }
     }
 
-    fun isRunning(username: String): Boolean = runningThreads.containsKey(username)
+    fun isRunning(username: String): Boolean {
+        return try {
+            rpd().callAttr("is_account_running", username)?.toBoolean() ?: false
+        } catch (e: Exception) {
+            userPidx.containsKey(username)
+        }
+    }
 
     override fun onDestroy() {
+        polling = false
         stopAll()
         super.onDestroy()
     }

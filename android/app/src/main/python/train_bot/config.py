@@ -59,6 +59,7 @@ HP_THRESHOLD = 0.4
 SP_THRESHOLD = 0.0
 GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 DUNGEON_RUNS_PER_DAY = 2
+MOB_PATHS = {}   # duong di bo trong map (mob_paths.json PC) - APK chua co -> rong (navigate thang)
 
 
 def _read_asset(name: str) -> str:
@@ -205,9 +206,14 @@ EVENTS = _load_events()
 DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (khop run_party_digioi.py DIGIOI_LIMIT)
 
 
-def leaders_for(party_name):
-    from . import party_state
-    return party_state.leaders_for(party_name)
+def leaders_for(pidx):
+    """White list leader cua party pidx = CHUNG (PARTY_LEADERS) + RIENG (PARTY_LEADERS_BY_IDX).
+    Rong het -> nhan moi nguoi moi. GIONG PC (client.py goi config.leaders_for(self.party_idx))."""
+    out = list(PARTY_LEADERS)
+    for nm in PARTY_LEADERS_BY_IDX.get(pidx, []):
+        if nm not in out:
+            out.append(nm)
+    return out
 
 
 def _load_vantieu_requests():
@@ -249,3 +255,111 @@ def _load_train_routes():
 
 
 TRAIN_ROUTES = _load_train_routes()
+
+
+# ============================================================
+#  PARTY / ACCOUNT / SERVER - DOC accounts.json (app_dir) + servers.json (asset), GIONG PC.
+#  Kotlin ghi accounts.json (format PC) roi goi config.reload_parties() + run_party_digioi.start_all().
+# ============================================================
+from ._appdir import app_dir as _app_dir
+
+PARTY_LEADERS = []          # white list leader CHUNG (moi party)
+CHANNEL = 1
+START_CITY_ID = 0
+PARTIES = []                # [ [(user,pass),...], ... ] theo pidx
+PARTY_CONFIG = {}           # pidx -> {mode, server, server_ip, server_id, city_flag, start_city_id,
+                            #          mob_index, do_daily, digioi_mode, event_key}
+PARTY_LEADERS_BY_IDX = {}   # pidx -> [ten leader] rieng party
+ACCOUNTS = []
+ACCOUNT_PARTY = {}
+PARTY_LEADER_ACC = {}       # pidx -> username leader (acc dau)
+
+
+def _load_servers():
+    try:
+        return json.loads(_read_asset("servers.json")).get("servers", {})
+    except Exception:
+        return {}
+
+
+SERVERS = _load_servers()
+
+
+def _server_ip(name):
+    s = SERVERS.get(name)
+    return s.get("ip") if s else None
+
+
+def _server_id(name):
+    s = SERVERS.get(name)
+    return int(s.get("id", 1)) if s else 1
+
+
+def _load_accounts_json():
+    import os
+    try:
+        f = os.path.join(_app_dir(), "accounts.json")   # _app_dir() co the nem neu Context chua san sang
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except Exception:
+        return None
+    # PROFILES {active, profiles:{ten:{parties,...}}} -> rut cau hinh DANG CHON (giong PC).
+    if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
+        profs = d["profiles"]
+        return profs.get(d.get("active")) or (next(iter(profs.values())) if profs else {})
+    return d
+
+
+def reload_parties():
+    """Doc lai accounts.json -> PARTIES/PARTY_CONFIG/PARTY_LEADER_ACC/... (mirror PC config).
+    Goi tu Kotlin SAU khi ghi accounts.json, TRUOC khi run_party_digioi.start_all()."""
+    global PARTIES, PARTY_CONFIG, PARTY_LEADERS_BY_IDX, PARTY_LEADER_ACC
+    global ACCOUNTS, ACCOUNT_PARTY, START_CITY_ID, PARTY_LEADERS, CHANNEL
+    _aj = _load_accounts_json()
+    PARTY_CONFIG = {}
+    PARTY_LEADERS_BY_IDX = {}
+    if _aj is None:
+        PARTIES = []
+    else:
+        _praw = _aj.get("parties", [])
+        PARTIES = [[(a.get("u", ""), a.get("p", "")) for a in p.get("accounts", [])
+                    if a.get("on", True) and not a.get("u", "").lstrip().startswith("#")]
+                   for p in _praw]
+        for _p in _praw:
+            for _a in _p.get("accounts", []):
+                _u = _a.get("u", "").lstrip().lstrip("#").strip()
+                _h = _a.get("heal")
+                if _u and isinstance(_h, dict):
+                    ACCOUNT_HEAL[_u] = {k: float(v) for k, v in _h.items()
+                                        if k in ("hp_char", "sp_char", "hp_pet", "sp_pet")}
+        for _i, _p in enumerate(_praw):
+            _srv = _p.get("server", "trieu_van")
+            PARTY_CONFIG[_i] = {
+                "mode": _p.get("mode", "stand"),
+                "start_city_id": int(_p.get("start_city_id", 0)),
+                "mob_index": int(_p.get("mob_index", -1)),
+                "city_flag": int(_p.get("city_flag", 0)),
+                "server": _srv,
+                "server_ip": _server_ip(_srv) or GAME_HOST,
+                "server_id": _server_id(_srv),
+                "do_daily": bool(_p.get("do_daily", _p.get("do_dungeon", True))),
+                "digioi_mode": _p.get("digioi_mode", "party"),
+                "event_key": _p.get("event_key", ""),
+            }
+            PARTY_LEADERS_BY_IDX[_i] = list(_p.get("leaders", []) or [])
+        if PARTY_CONFIG:
+            START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]
+        if "channel" in _aj:
+            CHANNEL = int(_aj["channel"])
+        if "party_leaders" in _aj:
+            PARTY_LEADERS = list(_aj.get("party_leaders", []) or [])
+    ACCOUNTS = [acc for party in PARTIES for acc in party if acc and acc[0]]
+    ACCOUNT_PARTY = {acc[0]: i for i, party in enumerate(PARTIES) for acc in party if acc and acc[0]}
+    PARTY_LEADER_ACC = {i: party[0][0] for i, party in enumerate(PARTIES)
+                        if party and party[0] and party[0][0]}
+
+
+try:
+    reload_parties()   # lan dau: PARTIES rong (Kotlin populate qua setup_party_runtime khi Start)
+except Exception:
+    pass

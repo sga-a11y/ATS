@@ -151,35 +151,16 @@ fun TsBotApp(
         parties = partyStore.load()
     }
 
-    fun startAccountIn(party: Party, account: Account) {
+    // Coordinator CHUNG (run_party_digioi): moi mode deu khoi dong theo PARTY (pidx = vi tri party
+    // trong danh sach). Bam Start 1 account = khoi dong CA party (giong PC). Service tu map RunMode
+    // -> config mode/param va goi setup_party_runtime + start_party.
+    fun startPartyIn(party: Party) {
         val info = Servers.ALL[party.serverKey] ?: return
-        when {
-            party.runMode == RunModes.DIGIOI && party.digioiSolo ->
-                service?.startAccountDigioiSolo(account, info.ip, info.serverId)
-            party.runMode == RunModes.DIGIOI ->
-                // Party THAT can toan bo Party cung luc (n_members phai duoc set truoc khi bat ky
-                // thread nao chay) - bam Start 1 account rieng le trong mode nay se khoi dong CA Party.
-                service?.startPartyDigioi(party, info.ip, info.serverId)
-            party.runMode == RunModes.TRAIN ->
-                // Train luon can party (ke ca party 1 nguoi) vi route/reform gan lien voi co che
-                // party - bam Start 1 account rieng le se khoi dong CA Party (giong Di Gioi party).
-                service?.startPartyTrain(party, info.ip, info.serverId, party.trainMapKey, party.trainMobIndex)
-            else ->
-                service?.startAccount(account, info.ip, info.serverId, party.runMode, party.cityKey, party.doDaily)
-        }
+        val pidx = parties.indexOf(party)
+        if (pidx >= 0) service?.startParty(pidx, party, info.ip, info.serverId)
     }
 
-    fun startPartyIn(party: Party) {
-        if (party.runMode == RunModes.DIGIOI && !party.digioiSolo) {
-            val info = Servers.ALL[party.serverKey] ?: return
-            service?.startPartyDigioi(party, info.ip, info.serverId)
-        } else if (party.runMode == RunModes.TRAIN) {
-            val info = Servers.ALL[party.serverKey] ?: return
-            service?.startPartyTrain(party, info.ip, info.serverId, party.trainMapKey, party.trainMobIndex)
-        } else {
-            party.accounts.forEach { startAccountIn(party, it) }
-        }
-    }
+    fun startAccountIn(party: Party, account: Account) = startPartyIn(party)
 
     val runningCount = statusMap.values.count { it.state == RunState.RUNNING }
     val totalAccounts = parties.sumOf { it.accounts.size }

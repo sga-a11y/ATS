@@ -299,8 +299,7 @@ def _is_revive(skill):
 
 def _has_support_skill(skills):
     """Unit co it nhat 1 skill HOI: hoi sinh (cat8) / Toan Tri Lieu (11010) / Toan Hoi Ma (cat6).
-    -> quest mode: de danh SP cho vai tro hoi, chi danh skill atk khi SP > SUPPORT_RESERVE_SP.
-    Mirror bot/combat.py::_has_support_skill (PC)."""
+    -> quest mode: de danh SP cho vai tro hoi, chi danh skill atk khi SP > SUPPORT_RESERVE_SP."""
     if any(_is_revive(s) for s in skills):
         return True
     if getattr(config, "SKILL_HEAL_ALL", None) in skills:
@@ -412,7 +411,6 @@ def _lowest_hp_enemy(state, offered):
     if not alive:
         return None
     return min(alive, key=lambda x: x[1])[0]
-
 
 
 

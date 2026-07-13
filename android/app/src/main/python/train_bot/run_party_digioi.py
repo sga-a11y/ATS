@@ -14,9 +14,9 @@ try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass
-from bot import config
-from bot.login import login
-from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
+from . import config
+from .login import login
+from .client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
@@ -1818,7 +1818,7 @@ def account_status(username):
                 "strategist": False, "char_level": last.get("char_level"),
                 "pet_name": last.get("pet_name"), "pet_level": last.get("pet_level")}
     pidx = getattr(c, "party_idx", None)
-    from bot.client import is_joined, is_strategist
+    from .client import is_joined, is_strategist
     st = _party_state.get(pidx, {})
     dg_remain = None
     if c.current_map == config.DIGIOI_MAP_ID:
