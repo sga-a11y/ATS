@@ -105,7 +105,17 @@ def _handle_o5_team(c, party_name, label, is_leader, should_stop, o5_done):
                 return
             with st["lock"]:
                 state = st["o5_state"]
+                _broke = st["o5_broke"]
             if state == "done":
+                if _broke:
+                    # team dungeon VO do co dis -> member CON KET trong instance (go_to_town khong
+                    # thoat duoc) -> RELOGIN moi ra (nguyen tac "du party thi cung nhau"). Truoc day
+                    # chi return -> spam go_to_town vo tan.
+                    log.warning("[%s] (member) team dungeon VO (co dis) -> RELOGIN thoat instance", label)
+                    try:
+                        c.relogin()
+                    except Exception:
+                        pass
                 c._phoban_until = 0.0
                 return
             if not c.in_combat():
@@ -138,6 +148,7 @@ def _handle_o5_team(c, party_name, label, is_leader, should_stop, o5_done):
                  label, total_members)
         with st["lock"]:
             st["o5_state"] = "running"
+            st["o5_broke"] = False   # reset moi lan danh (set True o finally neu co dis)
         _dg0 = st["disc_gen"]
         try:
             ok = c.do_team_dungeon_lv20()
@@ -151,6 +162,10 @@ def _handle_o5_team(c, party_name, label, is_leader, should_stop, o5_done):
                     pass
         finally:
             with st["lock"]:
+                # VO do co dis (chinh leader rot = not c.running, HOAC member rot) -> member CA party
+                # relogin thoat instance (trong dungeon KHONG teleport ra duoc -> tranh spam go_to_town).
+                if (not c.running) or st["disc_gen"] > _dg0 or st["reconnecting"]:
+                    st["o5_broke"] = True
                 st["o5_state"] = "done"
                 st["reform_gen"] += 1
     else:

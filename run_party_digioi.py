@@ -144,6 +144,7 @@ def _pstate(pidx):
                               "dailies_done": 0,         # so acc da xong daily login (barrier cho leader)
                               "o5_done_by": {},          # username -> o5 (pho ban to doi) da xong? Leader chi chay khi CA party chua xong
                               "o5_state": "idle",        # "idle"|"running"|"done" - member PHAI cho != "idle" (xem _handle_o5_team)
+                              "o5_broke": False,         # team dungeon VO do co dis giua chung -> CA party relogin thoat instance
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
@@ -1478,7 +1479,15 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 return
             with st["lock"]:
                 state = st["o5_state"]
+                _broke = st["o5_broke"]
             if state == "done":
+                if _broke:
+                    # team dungeon VO do co dis -> member CON KET trong instance (map dungeon),
+                    # go_to_town KHONG thoat duoc -> RELOGIN moi ra (dung nguyen tac "du party thi
+                    # cung nhau"). Truoc day chi return -> spam go_to_town vo tan.
+                    log.warning("[%s] (member) team dungeon VO (co dis) -> RELOGIN thoat instance", label)
+                    try: c.relogin()
+                    except Exception: pass
                 # Leader da xong (thanh cong hay fail deu vay) -> HA NGAY _phoban_until (thay vi
                 # cho het 600s co dinh dat luc accept moi pho ban). Khong ha som -> go_to_town() cua
                 # member van BAIL ("dang vao pho ban -> ngung teleport") ngay sau khi flow rieng
@@ -1514,6 +1523,7 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
         log.info("[%s] (LEADER) CA party (%d nguoi) chua xong o5 -> PHO BAN TO DOI LV20", label, len(members))
         with st["lock"]:
             st["o5_state"] = "running"   # member biet ma CHO, khong chay tiep
+            st["o5_broke"] = False       # reset moi lan danh (co set True o finally neu co dis)
         _dg0 = st["disc_gen"]            # CASE 3: theo doi co dong doi ROT trong luc danh khong
         try:
             ok = c.do_team_dungeon_lv20()
@@ -1531,6 +1541,11 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 except Exception: pass
         finally:
             with st["lock"]:
+                # VO do co dis (chinh leader rot = not c.running, HOAC co member rot = disc_gen/
+                # reconnecting): bao member -> CA party relogin thoat instance (trong dungeon KHONG
+                # teleport ra duoc -> truoc day member spam go_to_town vo tan, xem log party xGAx).
+                if (not c.running) or st["disc_gen"] > _dg0 or st["reconnecting"]:
+                    st["o5_broke"] = True
                 st["o5_state"] = "done"   # bao member (thanh cong hay fail deu THA member ra)
                 # do_team_dungeon_lv20 tu goi leave_party() (giai tan party de vao pho ban) - DAY LA
                 # PARTY CHUNG voi party train, nhung KHONG co gi bao cho vong lap chinh biet can lap
