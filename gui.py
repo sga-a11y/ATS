@@ -99,11 +99,27 @@ def _map_name(mid):
     if mid == getattr(config, "DIGIOI_MAP_ID", -1):
         return "Dị Giới"
     if not _MAP_NAMES:
+        # map train (train_maps.json)
         for k, v in _load_json("train_maps.json").get("maps", {}).items():
             try:
                 _MAP_NAMES[int(k)] = v.get("name", k)
             except ValueError:
                 pass
+        # thanh (cities.json): city_id -> ten thanh (map_id thanh thuong = city_id)
+        for k, v in _load_json("cities.json").get("cities", {}).items():
+            try:
+                _MAP_NAMES.setdefault(int(v.get("city_id")), v.get("name", k))
+            except (ValueError, TypeError):
+                pass
+        # map event (events.json): dest_map -> label (bo qua dest=0)
+        for k, v in _load_json("events.json").get("events", {}).items():
+            try:
+                dm = int(v.get("dest_map", 0))
+                if dm:
+                    _MAP_NAMES.setdefault(dm, v.get("label", k))
+            except (ValueError, TypeError):
+                pass
+        _MAP_NAMES.setdefault(10991, "40 NPC")   # map event 40 NPC (dest chua bat duoc qua capture)
     return _MAP_NAMES.get(mid, str(mid))
 
 

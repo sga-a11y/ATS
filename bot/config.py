@@ -368,6 +368,7 @@ if _aj is not None:
                 "server_id": _server_id(_srv),
                 "do_daily": bool(_party.get("do_daily", _party.get("do_dungeon", True))),
                 "digioi_mode": _party.get("digioi_mode", "party"),   # Di Gioi: "party" | "solo"
+                "event_key": _party.get("event_key", ""),   # mode 'event': key trong events.json (npc_40, nhi_kieu...)
             }
             PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])
         if PARTY_CONFIG:

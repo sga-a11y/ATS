@@ -7,25 +7,91 @@
       "staging_map": 12921,
       "dest_map": 12922,
       "steps": [
-        {"move": [415, 607]},
-        {"move": [410, 590]},
-        {"move": [361, 395]},
-        {"move": [350, 350]},
-        {"gate": 2, "x": 350, "y": 330}
+        {
+          "move": [
+            415,
+            607
+          ]
+        },
+        {
+          "move": [
+            410,
+            590
+          ]
+        },
+        {
+          "move": [
+            361,
+            395
+          ]
+        },
+        {
+          "move": [
+            350,
+            350
+          ]
+        },
+        {
+          "gate": 2,
+          "x": 350,
+          "y": 330
+        }
       ],
       "exit": {
         "_note": "Ra khoi map event ve map thuong (out_map) roi moi teleport di mode khac duoc. Event map (12921/12922) KHONG teleport thang. Cong exit dung 0x14 04 (gate thuong).",
         "out_map": 12003,
         "steps": [
-          {"move": [410, 490]},
-          {"move": [410, 630]},
-          {"move": [450, 790]},
-          {"move": [470, 930]},
-          {"move": [510, 1030]},
-          {"move": [590, 1130]},
-          {"gate": 1, "x": 650, "y": 1250}
+          {
+            "move": [
+              410,
+              490
+            ]
+          },
+          {
+            "move": [
+              410,
+              630
+            ]
+          },
+          {
+            "move": [
+              450,
+              790
+            ]
+          },
+          {
+            "move": [
+              470,
+              930
+            ]
+          },
+          {
+            "move": [
+              510,
+              1030
+            ]
+          },
+          {
+            "move": [
+              590,
+              1130
+            ]
+          },
+          {
+            "gate": 1,
+            "x": 650,
+            "y": 1250
+          }
         ]
       }
+    },
+    "npc_40": {
+      "label": "40 NPC",
+      "select": "03000400",
+      "staging_map": 0,
+      "dest_map": 0,
+      "steps": [],
+      "_note": "Event tele THANG (0x4d 03000400) vao map roi dung yen - khong cong/di bo. staging/dest=0 -> go_to_event gui select xong tra True. Thoat: go_to_town binh thuong (map cho phep teleport)."
     }
   }
 }

@@ -806,8 +806,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if pcfg.get("digioi_mode") != "solo":
                 do_channel_sync()
         elif mode == "event":
-            # --- EVENT: tele toi map event (Nhi Kieu...) roi DUNG YEN HOAN TOAN, cho moi tay.
-            #     Moi nick TU teleport rieng - KHONG lap party, KHONG sync kenh. ---
+            # --- EVENT: SYNC KENH (ca party cung 1 kenh -> moi party TAY duoc) roi tele toi map event
+            #     (Nhi Kieu / 40 NPC...) va DUNG YEN, cho moi tay. KHONG tu lap party. ---
+            do_channel_sync()   # ca party ve cung kenh TRUOC khi vao event (khong thi moi party tay khong duoc)
             _evs = getattr(config, "EVENTS", {}) or {}
             ev = _evs.get(pcfg.get("event_key") or "")
             if ev is None and _evs:

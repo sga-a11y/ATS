@@ -9,5 +9,6 @@ object Events {
 
     val ALL: Map<String, Info> = linkedMapOf(
         "nhi_kieu" to Info("Nhị Kiều"),
+        "npc_40" to Info("40 NPC"),
     )
 }
