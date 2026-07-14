@@ -9,6 +9,7 @@ import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +70,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -264,6 +268,7 @@ fun TsBotApp(
                             party.accounts.firstOrNull { service?.isRunning(it.username) == true }
                                 ?.let { service?.currentChannel(it.username) }
                         },
+                        onGetLog = { username -> service?.getAccountLog(username) ?: "" },
                     )
                 }
             }
@@ -354,6 +359,7 @@ fun PartyCard(
     onSendGiftcode: (String) -> Unit,
     onGetChannels: () -> List<Triple<Int, Int, Int>>,
     onCurrentChannel: () -> Int?,
+    onGetLog: (String) -> String = { "" },
 ) {
     val runningInParty = party.accounts.count { statusMap[it.username]?.state == RunState.RUNNING }
 
@@ -480,6 +486,7 @@ fun PartyCard(
             if (party.accounts.isEmpty()) {
                 Text("Chưa có tài khoản - bấm + để thêm")
             } else {
+                var expandedLogUser by remember { mutableStateOf<String?>(null) }
                 party.accounts.forEach { account ->
                     Spacer(Modifier.height(6.dp))
                     AccountRow(
@@ -489,6 +496,11 @@ fun PartyCard(
                         onStop = { onStop(account.username) },
                         onEdit = { onEditAccount(account) },
                         onDelete = { onRemoveAccount(account.username) },
+                        expanded = expandedLogUser == account.username,
+                        onToggleLog = {
+                            expandedLogUser = if (expandedLogUser == account.username) null else account.username
+                        },
+                        onGetLog = { onGetLog(account.username) },
                     )
                 }
             }
@@ -504,6 +516,9 @@ fun AccountRow(
     onStop: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    expanded: Boolean = false,
+    onToggleLog: () -> Unit = {},
+    onGetLog: () -> String = { "" },
 ) {
     val running = status.state == RunState.RUNNING
     Card(
@@ -513,7 +528,7 @@ fun AccountRow(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleLog),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StatusDot(statusColor(status.state))
@@ -559,6 +574,42 @@ fun AccountRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            // Log rieng cua acc nay - bam vao dong tren (Row) de xo/thu gon. Chi doc log() khi
+            // dang mo (remember(expanded) -> khong doc lien tuc moi lan recompose khi dong).
+            if (expanded) {
+                val clipboard = LocalClipboardManager.current
+                val logText = remember(expanded) { onGetLog() }
+                Spacer(Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
+                        .padding(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Log của ${account.username}", style = MaterialTheme.typography.labelLarge)
+                        TextButton(onClick = { clipboard.setText(AnnotatedString(logText)) }) {
+                            Text("📋 Copy")
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp)
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        Text(
+                            logText,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        )
+                    }
+                }
             }
         }
     }

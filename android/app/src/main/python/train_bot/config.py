@@ -47,6 +47,16 @@ GAME_HOST = "103.82.28.98"
 GAME_PORT = 6614
 DIGIOI_MAP_ID = 49942           # map_id Di Gioi (0xc316)
 
+# API login - API_KEY la HANG SO co dinh cua game, KHONG can sua. Mirror bot/config.py - da
+# rot mat luc merge lon gop APK voi coordinator PC (BUG THAT: "module 'train_bot.config' has
+# no attribute 'LOGIN_URL'" - user tu phat hien qua tinh nang xem log rieng tung acc).
+API_KEY = "17ade453e0892461edb01969b6e17e3a"
+LOGIN_URL = f"https://graph.mobiplay.vn/accountapiv4/server/login?api_key={API_KEY}"
+# Fallback khi login.login() goi thieu username/password (khong xay ra trong luong binh thuong
+# cua Android - Kotlin luon truyen du - nhung giu de khop PC, tranh crash neu goi test/thieu tham so).
+USERNAME = "your_username"
+PASSWORD = "your_password"
+
 # ---- client.py dung qua getattr(..., default) -> co the rong an toan, nhung khai bao du ----
 ACCOUNT_HEAL = {}
 JUNK_PET_SCROLLS = {}
