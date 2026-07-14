@@ -26,6 +26,8 @@ SKILL_FLEE = 18001
 UNIT_CHAR = 3
 UNIT_PET = 2
 
+XOR_KEY = 0xAD
+
 SKILL_SP_COST = {
     12003: 15,   # Hoa Tien
     10005: 22,   # Nem Da
