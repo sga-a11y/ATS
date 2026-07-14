@@ -238,17 +238,11 @@ class BotForegroundService : Service() {
         }
     }
 
-    /** Doc party.log (ghi chung ca party, xem run_party_digioi.py) -> loc CHI dong cua 1 acc
-     * (moi dong log deu co dang "HH:MM:SS [username] noi dung" - xem quy uoc _label khap client.py).
-     * Gioi han so dong tra ve de tranh UI/clipboard qua nang neu log rat dai. */
+    /** Log rieng cua 1 acc (party.log loc theo username - xem get_account_log ben Python: loc
+     * CA username LAN ten nhan vat hien tai, vi nhan log tu doi ten sau khi resolve xong). */
     fun getAccountLog(username: String, maxLines: Int = 500): String {
         return try {
-            val f = java.io.File(filesDir, "party.log")
-            if (!f.exists()) return "(chua co log - acc chua chay lan nao tren may nay)"
-            val tag = "[$username]"
-            val lines = f.readLines().filter { it.contains(tag) }
-            if (lines.isEmpty()) return "(chua co dong log nao cho '$username')"
-            lines.takeLast(maxLines).joinToString("\n")
+            rpd().callAttr("get_account_log", username, maxLines)?.toString() ?: ""
         } catch (e: Exception) {
             "Loi doc log: ${e.message}"
         }

@@ -1878,6 +1878,28 @@ def account_status(username):
     }
 
 
+def get_account_log(username, max_lines=500):
+    """ANDROID: doc party.log -> loc rieng cac dong cua 1 acc, cho UI hien "log cua acc nay".
+    QUAN TRONG: nhan log trong client.py (self._label) DOI TU username SANG TEN NHAN VAT ngay
+    khi server tra ve (vd 'taot11' -> 'ttmot') - loc CHI theo username se BO SOT toan bo log
+    sau thoi diem do (bug that: user thay log "dung lai" ngay sau dong "Ten nhan vat = ...").
+    Loc theo CA username LAN char_name hien tai (qua account_status) de khong bo sot."""
+    try:
+        char_name = (account_status(username) or {}).get("char") or ""
+        tags = [f"[{username}]"]
+        if char_name and char_name != username:
+            tags.append(f"[{char_name}]")
+        if not os.path.exists(_log_path):
+            return "(chua co log - acc chua chay lan nao tren may nay)"
+        with open(_log_path, encoding="utf-8", errors="replace") as f:
+            lines = [ln.rstrip("\n") for ln in f if any(t in ln for t in tags)]
+        if not lines:
+            return f"(chua co dong log nao cho '{username}')"
+        return "\n".join(lines[-max_lines:])
+    except Exception as e:
+        return f"Loi doc log: {e}"
+
+
 def _run_cli():
     """Chay CLI nhu cu: khoi dong tat ca party roi cho den khi het acc / het gio."""
     import datetime as _dt
