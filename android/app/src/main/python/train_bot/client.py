@@ -1871,6 +1871,12 @@ class GameClient:
         if self.legion_boss_next and now < self.legion_boss_next:
             return self.legion_boss_next      # con cooldown (server bao) -> check lai dung luc do
         # --- thu danh 1 luot ---
+        # BUG THAT (xac nhan qua log+kiem tra thuc te trong game): neu acc dang o SAN TRONG Di Gioi
+        # luc goi ham nay, nhan vat THAT SU KHONG HE ROI Di Gioi (server/game giu nguyen) - nhung
+        # goi 0x14 08000100 (vao instance boss, CUNG dang goi voi qua cong ban do) co the khien
+        # current_map cuc bo bi doc NHAM (nhiem map cua entity khac quanh do) trong thoi gian ngan
+        # ngay sau khi gui. Nho lai da o DG hay khong TRUOC khi gui, de xac nhan lai sau.
+        was_in_dg = self.in_di_gioi()
         self._wait_combat_clear()
         self.heal_full()
         self.state.boss_mode = True
@@ -1891,6 +1897,18 @@ class GameClient:
             # thay 0x27 76). Neu server co day cooldown moi -> theo do; khong thi coi nhu HET -> dung
             # den ngay mai (check lai sau ~4h de bat dau ngay moi).
             self.state.boss_mode = False
+            # Neu THAT SU van dang o DG (chi la current_map cuc bo bi nhiem tam thoi) -> cho toi 5s
+            # de packet map THAT (0x0c/0x03 cua chinh minh) den, tranh coi nham la "da roi DG" ->
+            # enter_di_gioi_safe() sau do spam vo ich (bug that da gap: acc dung san trong DG van
+            # bao "vao lai that bai 12 lan").
+            if was_in_dg and not self.in_di_gioi():
+                _t1 = time.time()
+                while time.time() - _t1 < 5 and self.running:
+                    if self.in_di_gioi():
+                        log.info("[%s] Boss QD: current_map tam thoi sai, da tu sua lai dung DG",
+                                  self._label)
+                        break
+                    time.sleep(0.3)
             if self.legion_boss_next and self.legion_boss_next > now:
                 log.info("[%s] Boss QD: chua toi gio (cooldown) -> cho", self._label)
                 return self.legion_boss_next
