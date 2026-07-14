@@ -1880,12 +1880,7 @@ class GameClient:
             self.teleport(12001, 0)
             time.sleep(1.5)
 
-    # Fallback khi server KHONG day 0x27 76 (goi cooldown that) sau 1 lan thu that bai - GIA
-    # DINH (chua xac nhan chac chan), theo nghi ngo cua user la co the can 24h chu khong phai
-    # 4h nhu code cu. Neu server THAT SU chi can 4h thi gia tri nay lam bot cho lau hon can
-    # thiet (khong hai, chi mat co hoi danh som hon) - uu tien AN TOAN (tranh spam goi loi khi
-    # chua du dieu kien) hon la chinh xac tuyet doi thoi gian.
-    LEGION_BOSS_COOLDOWN = 24 * 3600
+    LEGION_BOSS_COOLDOWN = 4 * 3600   # 4h giua cac lan (fallback neu server ko day 0x27 76 moi)
 
     def legion_boss_available(self) -> bool:
         """Con danh boss QD duoc khong: con luot (count < max) VA het cooldown (server bao). Dung de
