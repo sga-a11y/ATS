@@ -581,6 +581,9 @@ fun AccountRow(
             if (expanded) {
                 val clipboard = LocalClipboardManager.current
                 val logText = remember(expanded) { onGetLog() }
+                val logScroll = rememberScrollState()
+                // Tu cuon xuong dong MOI NHAT ngay khi mo - KHONG bat nguoi dung tu keo xuong.
+                LaunchedEffect(logText) { logScroll.scrollTo(logScroll.maxValue) }
                 Spacer(Modifier.height(8.dp))
                 Column(
                     modifier = Modifier
@@ -602,7 +605,7 @@ fun AccountRow(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(240.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .verticalScroll(logScroll),
                     ) {
                         Text(
                             logText,
