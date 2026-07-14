@@ -20,16 +20,8 @@ from .client import (GameClient, check_duplicate_accounts, joined_member_count, 
                         is_strategist, reset_party_joined)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
-try:
-    # Android: "party.log" (duong dan tuong doi, mirror PC) ghi vao "/" - READ-ONLY tren Android
-    # (BUG THAT: OSError Errno 30). Phai ghi vao thu muc rieng cua app (Context.getFilesDir(),
-    # xem _appdir.py) moi ghi duoc + ton tai qua cac lan chay.
-    from ._appdir import app_dir as _app_dir
-    _log_path = os.path.join(_app_dir(), "party.log")
-except Exception:
-    _log_path = "party.log"   # fallback (vd chay unit test tren PC/CI, khong co Chaquopy Context)
 logging.basicConfig(level=_lvl, format="%(asctime)s %(message)s", datefmt="%H:%M:%S",
-                    handlers=[logging.FileHandler(_log_path, "w", "utf-8"), logging.StreamHandler()])
+                    handlers=[logging.FileHandler("party.log", "w", "utf-8"), logging.StreamHandler()])
 log = logging.getLogger("partydg")
 
 check_duplicate_accounts(config.PARTIES)   # bao loi neu 1 user dien trung nhieu noi
@@ -247,7 +239,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         st["reconnecting"].discard(username)  # (reconnect) da vao world lai -> khong con "dang rot"
         label = c.char_name or username   # log theo TEN NHAN VAT (neu da resolve), fallback username
         if is_leader and c.char_name:
-            # Tu dong them ten nhan vat leader vao whitelist "leaders" cua party - mirror PC.
+            # Tu dong them ten nhan vat leader vao whitelist "leaders" cua party - user da cau hinh
+            # account nay la leader trong Party roi thi khong can go tay lai ten o whitelist rieng.
             config.record_leader_name(pidx, c.char_name)
         login_map = c.current_map         # map LUC LOGIN (doc som, it bi pollution) - dung de check train
         log.info("[%s] (%s) vao world.", label, role)
@@ -278,7 +271,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # Phuc Than NGAY SAU use_login_items() - luc nay con dung an toan o thanh/diem login
             # (chua di ra bai quai) -> tranh bug dung/deo Phuc Than GIUA luc dang combat ngoai bai
             # (da tung xay ra vi next_phuc_than=0.0 chi trigger o tick dau cua vong lap chinh, co
-            # the roi vao luc dang di ra spot/dang danh). Mirror PC run_party_digioi.py.
+            # the roi vao luc dang di ra spot/dang danh).
             if pcfg.get("use_phuc_than"):
                 try: c.use_phuc_than_items()
                 except Exception as e: log.warning("[%s] loi dung phuc than luc login: %s", label, e)
@@ -476,7 +469,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # LAP toi khi VE DUOC thanh: go_to_town co the FAIL het ca luot (tra False, vd server
                 # cham/ket map la) - truoc day BO QUA ket qua -> acc ket map khac van di tiep xuong
                 # sync kenh, leader moi vo tan ma member join khong duoc (server chan invite cross-map,
-                # bug thuc te log 18:22). Chua ve duoc thi KHONG duoc di tiep. Mirror PC.
+                # bug thuc te log 18:22). Chua ve duoc thi KHONG duoc di tiep.
                 while not _ab():
                     _town_ok = False
                     try:
@@ -1337,8 +1330,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             except Exception as e:
                 log.warning("[%s] loi qua online (bo qua): %s", label, e)
             # Phuc Than: dinh ky 30p/lan (KHONG phai 1 lan luc login) - CHI khi party bat cong tac
-            # "Su dung Phuc Than". Mirror PC run_party_digioi.py. BAT BUOC khong dang combat (dung/deo
-            # giua luc danh trong bai quai la vo ly + bug thuc te).
+            # "Su dung Phuc Than". Danh gia moi tick (nhu claim_online_gifts) thay vi tach thread rieng.
+            # BAT BUOC khong dang combat (dung/deo giua luc danh trong bai quai la vo ly + bug thuc te).
             if pcfg.get("use_phuc_than") and time.time() >= next_phuc_than and not c.in_combat():
                 try:
                     c.use_phuc_than_items()
@@ -1467,9 +1460,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         _reason("LOI ngoai le: %s" % e)
         log.error("[%s] LOI: %s", label, e)
     finally:
-        # RECONNECT: server ROT (server_closed) + co bot-leader + khong phai GUI-STOP -> supervisor se
-        # login lai. Khi do KHONG set leader_gone (member phai CHO, dung thoat theo) + KHONG tong ket.
-        reconnectable = (has_leader and not _stopped()
+        # RECONNECT: server ROT (server_closed) + khong phai GUI-STOP -> supervisor se login lai.
+        # Khi do KHONG set leader_gone (member phai CHO, dung thoat theo) + KHONG tong ket.
+        # KHONG doi hoi has_leader: party "khong co chu PT" (vd dung yen trong DG cho moi tay) truoc
+        # day rot mang la CHET LUON du con gio -> user bao "dang o DG con time ma tu out". Gio moi
+        # mode deu tu login lai; dung han chi khi GUI Stop / thoat binh thuong (het gio DG...).
+        reconnectable = (not _stopped()
                          and (_login_failed
                               or (c is not None and getattr(c, "server_closed", False))))
         account_reconnect[username] = reconnectable
@@ -1633,9 +1629,10 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
 
 
 def _run_account_supervised(username, password, pidx, is_leader, is_picker=False):
-    """Bọc run_account: SERVER ROT (server_closed) + party CO bot-leader -> login lai (backoff
-    5s x3 -> 30s x10 -> 60s), VO HAN toi khi duoc (chi dung khi GUI Stop). KHONG co bot-leader ->
-    nick rot CHET luon (giu hanh vi cu). run_account bao lai qua account_reconnect[username]."""
+    """Bọc run_account: SERVER ROT (server_closed) -> login lai (backoff 5s x3 -> 30s x10 -> 60s),
+    VO HAN toi khi duoc (chi dung khi GUI Stop). Ap dung MOI party, ke ca "khong co chu PT" (truoc
+    day khong leader la rot CHET luon -> dung yen trong DG con gio ma tu out).
+    run_account bao lai qua account_reconnect[username]."""
     st = _pstate(pidx)
     stop_ev = account_stops.get(username)
     _st = lambda: stop_ev is not None and stop_ev.is_set()
@@ -1682,26 +1679,19 @@ def start_account(username, password, pidx, is_leader, is_picker):
 
 def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         city_flag=0, start_city_id=0, mob_index=-1, do_daily=True,
-                        digioi_mode="party", event_key="", leaders=None, has_leader=True,
-                        use_phuc_than=False, fight_legion_boss=True):
+                        digioi_mode="party", event_key="", leaders=None, has_leader=True):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
-    nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01u2\\x01p2..." (KHONG phai
-    list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
-    (ke ca da lam PHANG) thanh Python list khi truyen qua callAttr, "TypeError: 'ArrayList'
-    object is not iterable" ngay tai list(accounts). String thi luon convert dung -> Kotlin join
-    bang U+0001 (xem BotForegroundService.kt::startParty), o day tu split() lai. Goi XONG roi
-    goi start_party(pidx). Cau truc PARTY_CONFIG/PARTIES/PARTY_LEADER_ACC GIONG HET
-    config._load_accounts_json ban PC -> tu do run_party_digioi (coordinator CHUNG) chay y het PC."""
+    nhu PC). accounts = list cac (username, password). Goi XONG roi goi start_party(pidx).
+    Cau truc PARTY_CONFIG/PARTIES/PARTY_LEADER_ACC GIONG HET config._load_accounts_json ban PC ->
+    tu do run_party_digioi (coordinator CHUNG) chay y het PC."""
     pidx = int(pidx)
     config.PARTY_CONFIG[pidx] = {
         "mode": mode, "start_city_id": int(start_city_id), "mob_index": int(mob_index),
         "city_flag": int(city_flag), "server": "", "server_ip": server_ip,
         "server_id": int(server_id), "do_daily": bool(do_daily),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
-        "use_phuc_than": bool(use_phuc_than), "fight_legion_boss": bool(fight_legion_boss),
     }
-    _flat = str(accounts).split("\x01") if accounts else []
-    accs = [(_flat[i], _flat[i + 1]) for i in range(0, len(_flat) - 1, 2) if _flat[i]]
+    accs = [(str(a[0]), str(a[1])) for a in accounts if a and a[0]]
     while len(config.PARTIES) <= pidx:
         config.PARTIES.append([])
     config.PARTIES[pidx] = accs
@@ -1900,28 +1890,6 @@ def account_status(username):
         "hp": getattr(_ch, "hp", None), "sp": getattr(_ch, "sp", None),
         "hp_max": getattr(_ch, "hp_max", None), "sp_max": getattr(_ch, "sp_max", None),
     }
-
-
-def get_account_log(username, max_lines=500):
-    """ANDROID: doc party.log -> loc rieng cac dong cua 1 acc, cho UI hien "log cua acc nay".
-    QUAN TRONG: nhan log trong client.py (self._label) DOI TU username SANG TEN NHAN VAT ngay
-    khi server tra ve (vd 'taot11' -> 'ttmot') - loc CHI theo username se BO SOT toan bo log
-    sau thoi diem do (bug that: user thay log "dung lai" ngay sau dong "Ten nhan vat = ...").
-    Loc theo CA username LAN char_name hien tai (qua account_status) de khong bo sot."""
-    try:
-        char_name = (account_status(username) or {}).get("char") or ""
-        tags = [f"[{username}]"]
-        if char_name and char_name != username:
-            tags.append(f"[{char_name}]")
-        if not os.path.exists(_log_path):
-            return "(chua co log - acc chua chay lan nao tren may nay)"
-        with open(_log_path, encoding="utf-8", errors="replace") as f:
-            lines = [ln.rstrip("\n") for ln in f if any(t in ln for t in tags)]
-        if not lines:
-            return f"(chua co dong log nao cho '{username}')"
-        return "\n".join(lines[-max_lines:])
-    except Exception as e:
-        return f"Loi doc log: {e}"
 
 
 def _run_cli():

@@ -1460,9 +1460,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         _reason("LOI ngoai le: %s" % e)
         log.error("[%s] LOI: %s", label, e)
     finally:
-        # RECONNECT: server ROT (server_closed) + co bot-leader + khong phai GUI-STOP -> supervisor se
-        # login lai. Khi do KHONG set leader_gone (member phai CHO, dung thoat theo) + KHONG tong ket.
-        reconnectable = (has_leader and not _stopped()
+        # RECONNECT: server ROT (server_closed) + khong phai GUI-STOP -> supervisor se login lai.
+        # Khi do KHONG set leader_gone (member phai CHO, dung thoat theo) + KHONG tong ket.
+        # KHONG doi hoi has_leader: party "khong co chu PT" (vd dung yen trong DG cho moi tay) truoc
+        # day rot mang la CHET LUON du con gio -> user bao "dang o DG con time ma tu out". Gio moi
+        # mode deu tu login lai; dung han chi khi GUI Stop / thoat binh thuong (het gio DG...).
+        reconnectable = (not _stopped()
                          and (_login_failed
                               or (c is not None and getattr(c, "server_closed", False))))
         account_reconnect[username] = reconnectable
@@ -1626,9 +1629,10 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
 
 
 def _run_account_supervised(username, password, pidx, is_leader, is_picker=False):
-    """Bọc run_account: SERVER ROT (server_closed) + party CO bot-leader -> login lai (backoff
-    5s x3 -> 30s x10 -> 60s), VO HAN toi khi duoc (chi dung khi GUI Stop). KHONG co bot-leader ->
-    nick rot CHET luon (giu hanh vi cu). run_account bao lai qua account_reconnect[username]."""
+    """Bọc run_account: SERVER ROT (server_closed) -> login lai (backoff 5s x3 -> 30s x10 -> 60s),
+    VO HAN toi khi duoc (chi dung khi GUI Stop). Ap dung MOI party, ke ca "khong co chu PT" (truoc
+    day khong leader la rot CHET luon -> dung yen trong DG con gio ma tu out).
+    run_account bao lai qua account_reconnect[username]."""
     st = _pstate(pidx)
     stop_ev = account_stops.get(username)
     _st = lambda: stop_ev is not None and stop_ev.is_set()

@@ -194,22 +194,7 @@ def mail_window_now():
     return None
 
 
-def _state_file_path(name):
-    """Duong dan TUYET DOI cho 1 file state RUNTIME (ghi duoc) - dung app_dir() (Context.
-    getFilesDir()) thay vi ten file TUONG DOI (le thuoc CWD). BUG THAT (xac nhan qua log
-    user): CWD tren Android la '/' (READ-ONLY) -> moi lan ghi cac file state bang ten
-    tuong doi deu am tham that bai (except: pass nuot loi), khien checkin/daily/vantieu/
-    qua tang... KHONG BAO GIO duoc luu that su qua cac lan chay (party.log cung tung
-    dinh bug nay, da fix rieng o run_party_digioi.py; day la sua tan goc cho MOI file
-    state con lai dung chung 1 helper)."""
-    try:
-        from ._appdir import app_dir
-        import os
-        return os.path.join(app_dir(), name)
-    except Exception:
-        return name
-
-_GIFT_FILE = _state_file_path("gift_state.json")
+_GIFT_FILE = "gift_state.json"
 _gift_lock = threading.Lock()
 
 # ITEM HP/SP: bot TU HOC qua self-calibrate (probe -> doc delta HP/SP tu S2C 0x08),
@@ -222,7 +207,12 @@ _KNOWN_CONSUMABLES = [0x0116, 0x0117, 0x011b, 0x011c, 0x0139]
 
 def _learned_file_path():
     """Duong dan TUYET DOI items_learned.json (canh root project/.exe) -> KHONG le thuoc CWD."""
-    return _state_file_path("items_learned.json")
+    try:
+        from ._appdir import app_dir
+        import os
+        return os.path.join(app_dir(), "items_learned.json")
+    except Exception:
+        return "items_learned.json"
 
 _LEARNED_FILE = _learned_file_path()
 _learned_lock = threading.Lock()
@@ -268,19 +258,23 @@ def _save_all_learned():
 # nhung tid nay -> tin tuyet doi (vd cac item da capture). Locked > auto-learn.
 _known_items = None
 def _load_known_items() -> dict:
-    """{ tid_int: {name,hp,sp} } tu items_known.json (canh root). Khoa cung, auto-learn ko dung den.
-    File nay la du lieu TINH (asset), doc qua config._read_asset() - xem ghi chu o
-    _load_gamedata_items() (cung bug app_dir() da fix o do)."""
+    """{ tid_int: {name,hp,sp} } tu items_known.json (canh root). Khoa cung, auto-learn ko dung den."""
     global _known_items
     if _known_items is not None:
         return _known_items
-    import json as _json
+    import json as _json, os as _os
     _known_items = {}
     try:
-        for k, v in _json.loads(config._read_asset("items_known.json")).get("items", {}).items():
-            tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
-            _known_items[tid] = {"name": v.get("name", ""), "type": v.get("type", ""),
-                                 "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
+        from ._appdir import app_dir
+        path = _os.path.join(app_dir(), "items_known.json")
+    except Exception:
+        path = "items_known.json"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for k, v in _json.load(fh).get("items", {}).items():
+                tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+                _known_items[tid] = {"name": v.get("name", ""), "type": v.get("type", ""),
+                                     "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     except Exception:
         pass
     return _known_items
@@ -289,22 +283,23 @@ def _load_known_items() -> dict:
 # Bot tra item_id -> biet loai+heal NGAY, KHONG can probe. items_known.json (m khai) uu tien hon.
 _gamedata_items = None
 def _load_gamedata_items() -> dict:
-    """{ item_id_int: {name,hp,sp} } tu items_gamedata.json (622 thuoc HP/SP, crack tu gamedata).
-    BUG THAT (xac nhan qua log user: log_bag toan "??? CHUA BIET" tren APK): file nay la du lieu
-    TINH dong goi san (asset), truoc day lai doc qua app_dir() (Context.getFilesDir() - thu muc
-    RUNTIME ghi duoc, KHONG phai noi chua asset) -> file khong ton tai o do -> luon rong tren
-    Android. Sua dung config._read_asset() (doc tu android assets/train_bot_data/), giong cach
-    cac file tinh khac (pets.json, cities.json...) da dung dung."""
+    """{ item_id_int: {name,hp,sp} } tu items_gamedata.json (622 thuoc HP/SP, crack tu gamedata)."""
     global _gamedata_items
     if _gamedata_items is not None:
         return _gamedata_items
-    import json as _json
+    import json as _json, os as _os
     _gamedata_items = {}
     try:
-        for k, v in _json.loads(config._read_asset("items_gamedata.json")).items():
-            iid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
-            _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
-                                    "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
+        from ._appdir import app_dir
+        path = _os.path.join(app_dir(), "items_gamedata.json")
+    except Exception:
+        path = "items_gamedata.json"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for k, v in _json.load(fh).items():
+                iid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+                _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
+                                        "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     except Exception:
         pass
     return _gamedata_items
@@ -358,7 +353,7 @@ def _save_gift_state(label: str, online_sec: float, claimed: set):
 
 
 # ---- State DIEM DANH (so lan da diem danh) ----
-_CHECKIN_FILE = _state_file_path("checkin_state.json")
+_CHECKIN_FILE = "checkin_state.json"
 
 def _load_checkin(label: str, kind: str = "checkin") -> dict:
     """{'date': 'YYYY-MM-DD', 'day': N} - lan nhan gan nhat (kind: checkin / gift14 / ...)."""
@@ -390,7 +385,7 @@ def _save_checkin(label: str, kind: str, date: str, day: int):
 
 
 # ---- Tracker viec lam HANG NGAY 1 lan (vd qua quan doan): {label:task -> date} ----
-_DAILY_FILE = _state_file_path("daily_state.json")
+_DAILY_FILE = "daily_state.json"
 
 def _daily_done(label: str, task: str) -> bool:
     import json, os, datetime
@@ -434,7 +429,7 @@ def _mark_daily(label: str, task: str):
 # lap lai dung "vao instance boss khi chua du dieu kien" nhieu lan, moi lan co the lam ket/dơ
 # trang thai enter_di_gioi_safe() ngay sau do (xem do_legion_boss). Fix nay (luu ben) dung bat
 # ke gia tri LEGION_BOSS_COOLDOWN chinh xac bao nhieu.
-_LEGION_BOSS_FILE = _state_file_path("legion_boss_state.json")
+_LEGION_BOSS_FILE = "legion_boss_state.json"
 _legion_boss_lock = threading.Lock()
 
 def _load_legion_boss_next(label: str) -> float:
@@ -466,7 +461,7 @@ def _save_legion_boss_next(label: str, next_ts: float):
 
 
 # ---- State VAN TIEU: chi luu SO LUOT da gui hom nay (claim doc theo gio server tu panel) ----
-_VANTIEU_FILE = _state_file_path("vantieu_state.json")
+_VANTIEU_FILE = "vantieu_state.json"
 
 def _vantieu_count(label: str) -> int:
     """So luot van tieu DA gui hom nay (local fallback; ngay moi -> 0)."""
@@ -2409,7 +2404,8 @@ class GameClient:
     def use_phuc_than_items(self):
         """Dung dinh ky (KHONG phai 1 lan luc login) cac item danh dau "phuc_than": true trong
         use_items.json - CHI khi party bat cong tac "Su dung Phuc Than" (xem run_party_digioi.py,
-        goi ham nay moi X phut thay vi 1 lan). Mirror PC bot/client.py."""
+        goi ham nay moi X phut thay vi 1 lan). Tach rieng khoi use_login_items() vi nhom item nay
+        can dinh ky check lai (vd nhat/mua them giua chung), khong phai loai dung 1 lan roi thoi."""
         cfg = {tid: v for tid, v in (getattr(config, "USE_LOGIN_ITEMS", {}) or {}).items()
                if v.get("phuc_than")}
         self._use_items_from_cfg(cfg, "phuc than dinh ky")
