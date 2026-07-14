@@ -24,5 +24,12 @@ data class Party(
     // Chi dung khi runMode == RunModes.TRAIN: index trong tm["mobs"] cua map do, -1 = "Bot tu chon"
     // (leader chon ngau nhien moi lan vao/reform). Mirror PC's mob_index (-1 mac dinh).
     val trainMobIndex: Int = -1,
+    // Su dung Phuc Than (item nhom "phuc_than" trong use_items.json, dung/trang bi dinh ky 30p/lan
+    // - xem use_phuc_than_items() client.py). Mirror PC's use_phuc_than_var (gui.py). Mac dinh
+    // KHONG tick (giong PC).
+    val usePhucThan: Boolean = false,
+    // Danh boss QD (do_legion_boss). Mirror PC's fight_boss_var (gui.py). Mac dinh CO tick (giu
+    // hanh vi cu - truoc gio luon danh).
+    val fightLegionBoss: Boolean = true,
     val accounts: List<Account> = emptyList(),
 )

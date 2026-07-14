@@ -371,6 +371,8 @@ if _aj is not None:
                 "do_daily": bool(_party.get("do_daily", _party.get("do_dungeon", True))),
                 "digioi_mode": _party.get("digioi_mode", "party"),   # Di Gioi: "party" | "solo"
                 "event_key": _party.get("event_key", ""),   # mode 'event': key trong events.json (npc_40, nhi_kieu...)
+                "use_phuc_than": bool(_party.get("use_phuc_than", False)),
+                "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),
             }
             PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])
         if PARTY_CONFIG:

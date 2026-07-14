@@ -312,6 +312,8 @@ fun TsBotApp(
             initialDoDaily = partyBeingEdited.doDaily,
             initialTrainMapKey = partyBeingEdited.trainMapKey,
             initialTrainMobIndex = partyBeingEdited.trainMobIndex,
+            initialUsePhucThan = partyBeingEdited.usePhucThan,
+            initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
@@ -706,6 +708,8 @@ fun AddPartyDialog(
     initialDoDaily: Boolean = true,
     initialTrainMapKey: String = "",
     initialTrainMobIndex: Int = -1,
+    initialUsePhucThan: Boolean = false,
+    initialFightLegionBoss: Boolean = true,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
@@ -721,6 +725,9 @@ fun AddPartyDialog(
     var trainMobExpanded by remember { mutableStateOf(false) }
     var trainMobIndex by remember { mutableStateOf(initialTrainMobIndex) }
     var trainMapExpanded by remember { mutableStateOf(false) }
+    var usePhucThan by remember { mutableStateOf(initialUsePhucThan) }
+    var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
+    var showAdvanced by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -816,9 +823,27 @@ fun AddPartyDialog(
                         Text("Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)")
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = doDaily, onCheckedChange = { doDaily = it })
-                    Text("Làm nhiệm vụ hàng ngày")
+                // Cac setting IT KHI DOI gom vao "Cai dat nang cao" (mirror gui.py ben PC) - tranh
+                // dialog nay (da rat nhieu field) bi day dai them moi lan them setting moi.
+                TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                    Text(if (showAdvanced) "▲ Ẩn cài đặt nâng cao" else "⚙ Cài đặt nâng cao")
+                }
+                if (showAdvanced) {
+                    Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = doDaily, onCheckedChange = { doDaily = it })
+                            Text("Làm nhiệm vụ hàng ngày")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = usePhucThan, onCheckedChange = { usePhucThan = it })
+                            Text("Sử dụng Phúc Thần")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = fightLegionBoss, onCheckedChange = { fightLegionBoss = it })
+                            Text("Đánh boss QD")
+                        }
+                    }
                 }
                 if (selectedMode == RunModes.TRAIN) {
                     Spacer(Modifier.height(8.dp))
@@ -936,7 +961,7 @@ fun AddPartyDialog(
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily, trainMapKey, trainMobIndex))
+                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily, trainMapKey, trainMobIndex, usePhucThan, fightLegionBoss))
                     }
                 },
             ) {

@@ -2337,22 +2337,32 @@ class GameClient:
             return
         items = _load_gamedata_items()
         total = 0
+        # Item "equip" (vd Ngoc Sieu Phuc Than / Ngoc Dai Phuc Than): CHI DEO 1 CAI DUY NHAT MOI
+        # LAN GOI (ca ham, khong phai/tid), theo THU TU UU TIEN = thu tu khai bao trong cfg (dict
+        # giu nguyen thu tu tu use_items.json) - vd Ngoc Sieu Phuc Than uu tien truoc, het moi toi
+        # Ngoc Dai Phuc Than. Tim tid dau tien (theo thu tu cfg) dang co trong tui -> deo -> DUNG,
+        # khong deo them item equip nao khac trong lan goi nay.
+        for tid in cfg:
+            if not cfg[tid].get("equip"):
+                continue
+            _slot = next((s for s, (t, c) in self.bag_slots.items() if t == tid and c > 0), None)
+            if _slot is None:
+                continue
+            done = 1 if self.equip_item(_slot) else 0
+            total += done
+            rec = self.bag_slots.get(_slot)
+            if rec:
+                rec[1] = max(0, rec[1] - done)
+                if rec[1] <= 0:
+                    self.bag_slots.pop(_slot, None)
+            _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
+            log.info("[%s] tu trang bi item (%s) slot=%d tid=0x%04x ('%s') %s",
+                     self._label, context_label, _slot, tid, _nm,
+                     "OK" if done else "THAT BAI (slot het?)")
+            break
         for slot, tid, cnt in targets:
             if cfg[tid].get("equip"):
-                # Trang bi (khac tieu hao): 1 lenh la xong, KHONG co khai niem qty/lap. Server
-                # KHONG bao lai da deo hay chua (xem equip_item) -> cu goi 1 lan, tu coi thanh cong.
-                done = 1 if self.equip_item(slot) else 0
-                total += done
-                rec = self.bag_slots.get(slot)
-                if rec:
-                    rec[1] = max(0, rec[1] - done)
-                    if rec[1] <= 0:
-                        self.bag_slots.pop(slot, None)
-                _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
-                log.info("[%s] tu trang bi item (%s) slot=%d tid=0x%04x ('%s') %s",
-                         self._label, context_label, slot, tid, _nm,
-                         "OK" if done else "THAT BAI (slot het?)")
-                continue
+                continue   # da xu ly rieng o tren (chi 1 item/lan, theo uu tien)
             qcfg = cfg[tid].get("qty")
             if qcfg is None:
                 want, chunk = cnt, 1              # khong gioi han: dung het, tung cai 1
@@ -2399,6 +2409,36 @@ class GameClient:
         cfg = {tid: v for tid, v in (getattr(config, "USE_LOGIN_ITEMS", {}) or {}).items()
                if v.get("phuc_than")}
         self._use_items_from_cfg(cfg, "phuc than dinh ky")
+        self.discard_junk_items()
+
+    # tid item RAC KHONG dung duoc, chi ton slot -> vut bo cho gon tui. 0x59f0 = Ngoc Hu (Ngoc Sieu
+    # Phuc Than HET DO BEN sau khi dung se tu doi thanh item nay - KHONG check do ben, den gio la
+    # thay Ngoc moi, con Ngoc Hu cu thi vut luon).
+    DISCARD_JUNK_TIDS = {0x59f0}
+
+    def discard_item(self, slot: int, qty: int = 1) -> bool:
+        """Vut bo item trong tui. C2S 0x17 sub=0300 [slot 1B][qty 4B LE]. Xac nhan discard.pcap:
+        server ack 0x17 sub=0900 (echo slot+qty) + 0x17 sub=1a00 [tid 2B LE][01] (bao tid da vut)."""
+        if not self.running:
+            return False
+        self.send(0x17, b"\x03\x00" + bytes([slot & 0xFF]) + int(qty).to_bytes(4, "little"))
+        return True
+
+    def discard_junk_items(self):
+        """Quet tui, vut bo HET cac tid trong DISCARD_JUNK_TIDS (vd Ngoc Hu). Khong confirm rieng
+        (server KHONG gui lai 0x16 refresh bag) -> tu tru bag_slots ngay sau khi gui lenh."""
+        total = 0
+        for slot, (tid, cnt) in list(self.bag_slots.items()):
+            if cnt > 0 and tid in self.DISCARD_JUNK_TIDS:
+                self.discard_item(slot, cnt)
+                _nm = (_load_gamedata_items().get(tid) or {}).get("name", "")
+                log.info("[%s] vut bo item rac slot=%d tid=0x%04x ('%s') x%d",
+                         self._label, slot, tid, _nm, cnt)
+                self.bag_slots.pop(slot, None)
+                total += 1
+                time.sleep(0.3)
+        if total:
+            log.info("[%s] Vut bo item rac: tong %d slot", self._label, total)
 
     def log_bag(self):
         """In tui theo SLOT, moi slot ghi ro la item KHAI (items_known.json) / HOC (probe) / CHUA BIET.

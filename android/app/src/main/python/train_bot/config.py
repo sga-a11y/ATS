@@ -393,6 +393,8 @@ def reload_parties():
                 "do_daily": bool(_p.get("do_daily", _p.get("do_dungeon", True))),
                 "digioi_mode": _p.get("digioi_mode", "party"),
                 "event_key": _p.get("event_key", ""),
+                "use_phuc_than": bool(_p.get("use_phuc_than", False)),
+                "fight_legion_boss": bool(_p.get("fight_legion_boss", True)),
             }
             PARTY_LEADERS_BY_IDX[_i] = list(_p.get("leaders", []) or [])
         if PARTY_CONFIG:

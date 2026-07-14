@@ -275,6 +275,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu
             c.donate_legion()           # donate nguyen lieu rac (donate_items.json) cho quan doan -> don tui
             c.use_login_items()         # tu dung item trong list (use_items.json) -> vd tui vat lieu su kien
+            # Phuc Than NGAY SAU use_login_items() - luc nay con dung an toan o thanh/diem login
+            # (chua di ra bai quai) -> tranh bug dung/deo Phuc Than GIUA luc dang combat ngoai bai
+            # (da tung xay ra vi next_phuc_than=0.0 chi trigger o tick dau cua vong lap chinh, co
+            # the roi vao luc dang di ra spot/dang danh). Mirror PC run_party_digioi.py.
+            if pcfg.get("use_phuc_than"):
+                try: c.use_phuc_than_items()
+                except Exception as e: log.warning("[%s] loi dung phuc than luc login: %s", label, e)
+                next_phuc_than = time.time() + 1800
             next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
             # BOSS QUAN DOAN ngay sau van tieu: danh solo neu con luot (server count 0x55/0x2a) + het
             # cooldown. KHONG lien quan daily quest (tick hay ko van danh). Luc login char SOLO (chua
@@ -1316,8 +1324,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             except Exception as e:
                 log.warning("[%s] loi qua online (bo qua): %s", label, e)
             # Phuc Than: dinh ky 30p/lan (KHONG phai 1 lan luc login) - CHI khi party bat cong tac
-            # "Su dung Phuc Than". Mirror PC run_party_digioi.py.
-            if pcfg.get("use_phuc_than") and time.time() >= next_phuc_than:
+            # "Su dung Phuc Than". Mirror PC run_party_digioi.py. BAT BUOC khong dang combat (dung/deo
+            # giua luc danh trong bai quai la vo ly + bug thuc te).
+            if pcfg.get("use_phuc_than") and time.time() >= next_phuc_than and not c.in_combat():
                 try:
                     c.use_phuc_than_items()
                 except Exception as e:
@@ -1660,7 +1669,8 @@ def start_account(username, password, pidx, is_leader, is_picker):
 
 def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         city_flag=0, start_city_id=0, mob_index=-1, do_daily=True,
-                        digioi_mode="party", event_key="", leaders=None, has_leader=True):
+                        digioi_mode="party", event_key="", leaders=None, has_leader=True,
+                        use_phuc_than=False, fight_legion_boss=True):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01u2\\x01p2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -1675,6 +1685,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "city_flag": int(city_flag), "server": "", "server_ip": server_ip,
         "server_id": int(server_id), "do_daily": bool(do_daily),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
+        "use_phuc_than": bool(use_phuc_than), "fight_legion_boss": bool(fight_legion_boss),
     }
     _flat = str(accounts).split("\x01") if accounts else []
     accs = [(_flat[i], _flat[i + 1]) for i in range(0, len(_flat) - 1, 2) if _flat[i]]

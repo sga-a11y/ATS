@@ -268,6 +268,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu
             c.donate_legion()           # donate nguyen lieu rac (donate_items.json) cho quan doan -> don tui
             c.use_login_items()         # tu dung item trong list (use_items.json) -> vd tui vat lieu su kien
+            # Phuc Than NGAY SAU use_login_items() - luc nay con dung an toan o thanh/diem login
+            # (chua di ra bai quai) -> tranh bug dung/deo Phuc Than GIUA luc dang combat ngoai bai
+            # (da tung xay ra vi next_phuc_than=0.0 chi trigger o tick dau cua vong lap chinh, co
+            # the roi vao luc dang di ra spot/dang danh).
+            if pcfg.get("use_phuc_than"):
+                try: c.use_phuc_than_items()
+                except Exception as e: log.warning("[%s] loi dung phuc than luc login: %s", label, e)
+                next_phuc_than = time.time() + 1800
             next_vantieu = c.do_van_tieu()   # van tieu: nhan qua xong + gui pet; tra ve gio check tiep
             # BOSS QUAN DOAN ngay sau van tieu: danh solo neu con luot (server count 0x55/0x2a) + het
             # cooldown. KHONG lien quan daily quest (tick hay ko van danh). Luc login char SOLO (chua
@@ -1310,7 +1318,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 log.warning("[%s] loi qua online (bo qua): %s", label, e)
             # Phuc Than: dinh ky 30p/lan (KHONG phai 1 lan luc login) - CHI khi party bat cong tac
             # "Su dung Phuc Than". Danh gia moi tick (nhu claim_online_gifts) thay vi tach thread rieng.
-            if pcfg.get("use_phuc_than") and time.time() >= next_phuc_than:
+            # BAT BUOC khong dang combat (dung/deo giua luc danh trong bai quai la vo ly + bug thuc te).
+            if pcfg.get("use_phuc_than") and time.time() >= next_phuc_than and not c.in_combat():
                 try:
                     c.use_phuc_than_items()
                 except Exception as e:

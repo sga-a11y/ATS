@@ -6,8 +6,8 @@ echo   Dung skill trong game -> Ctrl+C de dung + lay file
 echo ====================================
 echo.
 
-set ADB=C:\LDPlayer\LDPlayer9\adb.exe
-set DEV=127.0.0.1:7555
+set ADB=adb
+set DEV=127.0.0.1:16768
 set OUT=/sdcard/ts_capture.pcap
 
 echo [0] Ket noi + root...
@@ -25,8 +25,8 @@ echo.
 
 echo.
 echo [3] Keo file ve may tinh...
-%ADB% -s %DEV% pull %OUT% E:\code\ATS\codeATS\ts_capture.pcap
+%ADB% -s %DEV% pull %OUT% E:\Claude\ATS\ts_capture.pcap
 echo.
-echo === Xong! File: E:\code\ATS\codeATS\ts_capture.pcap ===
+echo === Xong! File: E:\Claude\ATS\ts_capture.pcap ===
 echo     Chay: python analyze_pcap.py ts_capture.pcap
 pause
