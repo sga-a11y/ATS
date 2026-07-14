@@ -1914,12 +1914,6 @@ class GameClient:
         if self.legion_boss_next and now < self.legion_boss_next:
             return self.legion_boss_next      # con cooldown (server bao hoac da luu) -> check lai dung luc do
         # --- thu danh 1 luot ---
-        # BUG THAT (xac nhan qua log+kiem tra thuc te trong game): neu acc dang o SAN TRONG Di Gioi
-        # luc goi ham nay, nhan vat THAT SU KHONG HE ROI Di Gioi (server/game giu nguyen) - nhung
-        # goi 0x14 08000100 (vao instance boss, CUNG dang goi voi qua cong ban do) co the khien
-        # current_map cuc bo bi doc NHAM (nhiem map cua entity khac quanh do) trong thoi gian ngan
-        # ngay sau khi gui. Nho lai da o DG hay khong TRUOC khi gui, de xac nhan lai sau.
-        was_in_dg = self.in_di_gioi()
         self._wait_combat_clear()
         self.heal_full()
         self.state.boss_mode = True
@@ -1936,29 +1930,19 @@ class GameClient:
                 entered = True; break
             time.sleep(0.3)
         if not entered:
-            # server TU CHOI vao tran = HET LUOT hom nay (hoac con cooldown do danh tay ma bot chua
-            # thay 0x27 76). Neu server co day cooldown moi -> theo do; khong thi coi nhu HET -> dung
-            # den ngay mai (check lai sau ~4h de bat dau ngay moi).
+            # server TU CHOI vao tran (thuong gap nhat: chua du 24h ke tu luc vao quan doan moi
+            # duoc danh boss lan dau - KHONG lien quan gi toi dang o Di Gioi hay khong, xay ra
+            # BAT KY vi tri nao). BUG THAT xac nhan qua thuc te NHIEU LAN: sau 1 lan thu that bai
+            # kieu nay, current_map cuc bo bi SAI VINH VIEN trong suot phien (KHONG tu sua duoc
+            # du cho bao lau) -> cac lenh dua vao current_map sau do (vd enter_di_gioi_safe) deu
+            # that bai lien tuc. Fix DUY NHAT hieu qua: RELOGIN (dong ket noi + dang nhap lai) ngay
+            # de lay lai current_map dung tu goi 0x03 self-spawn MOI, KHONG co gang tu sua cuc bo.
             self.state.boss_mode = False
-            # Neu THAT SU van dang o DG (chi la current_map cuc bo bi nhiem tam thoi) -> cho toi 5s
-            # de packet map THAT (0x0c/0x03 cua chinh minh) den, tranh coi nham la "da roi DG" ->
-            # enter_di_gioi_safe() sau do spam vo ich (bug that da gap: acc dung san trong DG van
-            # bao "vao lai that bai 12 lan").
-            if was_in_dg and not self.in_di_gioi():
-                _t1 = time.time()
-                while time.time() - _t1 < 5 and self.running:
-                    if self.in_di_gioi():
-                        log.info("[%s] Boss QD: current_map tam thoi sai, da tu sua lai dung DG",
-                                  self._label)
-                        break
-                    time.sleep(0.3)
-            if self.legion_boss_next and self.legion_boss_next > now:
-                log.info("[%s] Boss QD: chua toi gio (cooldown) -> cho", self._label)
-                _save_legion_boss_next(self._label, self.legion_boss_next)
-                return self.legion_boss_next
-            log.info("[%s] Boss QD: khong vao duoc (het luot hom nay) -> dung, check lai sau", self._label)
+            log.warning("[%s] Boss QD: khong vao duoc tran (co the chua du dieu kien) -> RELOGIN "
+                        "ngay de tranh current_map bi sai vinh vien trong phien", self._label)
             self.legion_boss_next = now + self.LEGION_BOSS_COOLDOWN
             _save_legion_boss_next(self._label, self.legion_boss_next)   # luu ben - song qua reconnect/relogin
+            self.relogin()
             return self.legion_boss_next
         log.info("[%s] Boss QD: DA VAO TRAN -> danh cho het tran", self._label)
         t0 = time.time()
