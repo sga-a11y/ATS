@@ -466,8 +466,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # ve theo leader" (xem log party 3). Boss/dungeon da chay 1 lan o login chores roi.
                 # Khop ban APK _reform_to_spot (da cat phan nay). LUU Y: mat tinh nang danh boss QD
                 # mid-session-train qua reform (train mode) - danh doi lay reform gon + on dinh.
-                try: c.go_to_town(fc, ff)        # CA party (leader+member) tu teleport ve thanh gom nhau
-                except Exception as e: log.warning("[%s] reform: loi ve thanh: %s", label, e)
+                # LAP toi khi VE DUOC thanh: go_to_town co the FAIL het ca luot (tra False, vd server
+                # cham/ket map la) - truoc day BO QUA ket qua -> acc ket map khac van di tiep xuong
+                # sync kenh, leader moi vo tan ma member join khong duoc (server chan invite cross-map,
+                # bug thuc te log 18:22). Chua ve duoc thi KHONG duoc di tiep.
+                while not _ab():
+                    _town_ok = False
+                    try:
+                        _town_ok = c.go_to_town(fc, ff)   # CA party tu teleport ve thanh gom nhau
+                    except Exception as e:
+                        log.warning("[%s] reform: loi ve thanh: %s", label, e)
+                    if _town_ok or c.current_map == fc:
+                        break
+                    log.warning("[%s] (%s) reform: CHUA ve duoc thanh %s (map=%s) -> nghi 10s thu lai",
+                                label, role, fc, c.current_map)
+                    time.sleep(10)
             # LUON re-sync kenh (khong chi switch ve kenh cu da luu) - vua ve thanh sau khi CO THE
             # da danh dungeon (solo o1 hoac team o5) -> server co the da day acc sang kenh KHAC (ngau
             # nhien). Chi switch ve kenh CU (st["channel"]) KHONG du: kenh do co the da DAY (full,
