@@ -4,10 +4,12 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -36,6 +38,12 @@ class BotForegroundService : Service() {
     @Volatile private var polling = false
     private var pollerThread: Thread? = null
 
+    // Khong co WakeLock -> man hinh tat la CPU vao deep sleep, cac thread bot (ket noi TCP,
+    // vong lap combat) bi treo/cham han du foreground service van "song" (foreground service
+    // CHI chong bi HE THONG KILL, KHONG tu giu CPU thuc). PARTIAL_WAKE_LOCK giu CPU chay ngam
+    // (man hinh van tat binh thuong, tiet kiem pin man hinh) suot thoi gian service song.
+    private var wakeLock: PowerManager.WakeLock? = null
+
     inner class LocalBinder : Binder() {
         fun getService(): BotForegroundService = this@BotForegroundService
     }
@@ -48,6 +56,11 @@ class BotForegroundService : Service() {
             Python.start(AndroidPlatform(this))
         }
         startForeground(1, buildNotification())
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "aTSBot:botService").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
     }
 
     private fun buildNotification(): Notification {
@@ -221,6 +234,8 @@ class BotForegroundService : Service() {
     override fun onDestroy() {
         polling = false
         stopAll()
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
         super.onDestroy()
     }
 }
