@@ -2265,13 +2265,10 @@ class GameClient:
                 self.log_bag()
         threading.Thread(target=_run, daemon=True).start()
 
-    def use_login_items(self):
-        """Login: tu dung item co tid nam trong config.USE_LOGIN_ITEMS (template -> dung mọi acc),
-        tuong tu decompose_junk_scrolls/donate_legion. 2 kieu (theo config, xem use_items.json):
-          - qty None (chi ten): dung HET ca stack, TUNG CAI 1 (item chi cho 1/lenh, vd Tang O).
-          - qty N: dung TOI DA N cai/login (co>N -> dung N de lai du; co<N -> dung het). Batch 255/lenh.
-        use_slot: C2S 0x17 0f00 [slot][qty] 00000000 [target] 00 (qty verify tu capture)."""
-        cfg = getattr(config, "USE_LOGIN_ITEMS", {}) or {}
+    def _use_items_from_cfg(self, cfg, context_label):
+        """Loi chung: dung het cac item trong 'cfg' (subset cua config.USE_LOGIN_ITEMS) dang co
+        trong tui. Dung boi use_login_items() (mot lan/login) VA use_phuc_than_items() (dinh ky,
+        xem ghi chu o do). context_label chi de log ('login'/'phuc than dinh ky')."""
         if not cfg:
             return
         # snapshot slot can dung (dung 1 slot lam RONG chinh no, khong doi index slot khac)
@@ -2286,7 +2283,7 @@ class GameClient:
             if qcfg is None:
                 want, chunk = cnt, 1              # khong gioi han: dung het, tung cai 1
             else:
-                want, chunk = min(cnt, int(qcfg)), 255   # gioi han qcfg/login, batch duoc
+                want, chunk = min(cnt, int(qcfg)), 255   # gioi han qcfg/lan, batch duoc
             done = 0
             while done < want and self.running:
                 q = min(want - done, chunk)
@@ -2302,10 +2299,31 @@ class GameClient:
                 if rec[1] <= 0:
                     self.bag_slots.pop(slot, None)
             _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
-            log.info("[%s] tu dung item login slot=%d tid=0x%04x dung %d/%d ('%s')",
-                     self._label, slot, tid, done, cnt, _nm)
+            log.info("[%s] tu dung item (%s) slot=%d tid=0x%04x dung %d/%d ('%s')",
+                     self._label, context_label, slot, tid, done, cnt, _nm)
         if total:
-            log.info("[%s] Tu dung item login: tong %d cai (%d slot)", self._label, total, len(targets))
+            log.info("[%s] Tu dung item (%s): tong %d cai (%d slot)",
+                     self._label, context_label, total, len(targets))
+
+    def use_login_items(self):
+        """Login: tu dung item co tid nam trong config.USE_LOGIN_ITEMS (template -> dung mọi acc),
+        tuong tu decompose_junk_scrolls/donate_legion. 2 kieu (theo config, xem use_items.json):
+          - qty None (chi ten): dung HET ca stack, TUNG CAI 1 (item chi cho 1/lenh, vd Tang O).
+          - qty N: dung TOI DA N cai/login (co>N -> dung N de lai du; co<N -> dung het). Batch 255/lenh.
+        use_slot: C2S 0x17 0f00 [slot][qty] 00000000 [target] 00 (qty verify tu capture).
+        Item danh dau "phuc_than" trong use_items.json KHONG nam o day (xem use_phuc_than_items -
+        nhom nay dung theo dinh ky rieng, KHONG phai 1 lan luc login/kem theo cong tac bat/tat)."""
+        cfg = {tid: v for tid, v in (getattr(config, "USE_LOGIN_ITEMS", {}) or {}).items()
+               if not v.get("phuc_than")}
+        self._use_items_from_cfg(cfg, "login")
+
+    def use_phuc_than_items(self):
+        """Dung dinh ky (KHONG phai 1 lan luc login) cac item danh dau "phuc_than": true trong
+        use_items.json - CHI khi party bat cong tac "Su dung Phuc Than" (xem run_party_digioi.py,
+        goi ham nay moi X phut thay vi 1 lan). Mirror PC bot/client.py."""
+        cfg = {tid: v for tid, v in (getattr(config, "USE_LOGIN_ITEMS", {}) or {}).items()
+               if v.get("phuc_than")}
+        self._use_items_from_cfg(cfg, "phuc than dinh ky")
 
     def log_bag(self):
         """In tui theo SLOT, moi slot ghi ro la item KHAI (items_known.json) / HOC (probe) / CHUA BIET.

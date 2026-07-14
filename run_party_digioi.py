@@ -252,6 +252,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         if config.TRAIN_MAPS.get(getattr(config, "START_CITY_ID", 0)) is not None:
             c.flee_mode = True
         next_vantieu = None
+        next_phuc_than = 0.0   # 0.0 -> kiem tra NGAY lan dau (khong cho 30p roi moi dung lan dau)
         if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
             c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
             c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
@@ -1303,6 +1304,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
             except Exception as e:
                 log.warning("[%s] loi qua online (bo qua): %s", label, e)
+            # Phuc Than: dinh ky 30p/lan (KHONG phai 1 lan luc login) - CHI khi party bat cong tac
+            # "Su dung Phuc Than". Danh gia moi tick (nhu claim_online_gifts) thay vi tach thread rieng.
+            if pcfg.get("use_phuc_than") and time.time() >= next_phuc_than:
+                try:
+                    c.use_phuc_than_items()
+                except Exception as e:
+                    log.warning("[%s] loi dung item phuc than (bo qua): %s", label, e)
+                next_phuc_than = time.time() + 1800   # 30 phut
             # Van tieu: chi goi lai DUNG GIO escort xong (next_vantieu), KHONG check mu.
             if next_vantieu is not None and time.time() >= next_vantieu:
                 try:

@@ -253,9 +253,10 @@ def _load_use_items():
             for k, v in json.load(fh).get("items", {}).items():
                 tid = int(k, 16)
                 if isinstance(v, dict):
-                    out[tid] = {"name": v.get("name", ""), "qty": v.get("qty")}
+                    out[tid] = {"name": v.get("name", ""), "qty": v.get("qty"),
+                                "phuc_than": bool(v.get("phuc_than", False))}
                 else:
-                    out[tid] = {"name": v, "qty": None}
+                    out[tid] = {"name": v, "qty": None, "phuc_than": False}
     except Exception:
         pass
     return out
