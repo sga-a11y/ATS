@@ -20,8 +20,16 @@ from .client import (GameClient, check_duplicate_accounts, joined_member_count, 
                         is_strategist, reset_party_joined)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
+try:
+    # Android: "party.log" (duong dan tuong doi, mirror PC) ghi vao "/" - READ-ONLY tren Android
+    # (BUG THAT: OSError Errno 30). Phai ghi vao thu muc rieng cua app (Context.getFilesDir(),
+    # xem _appdir.py) moi ghi duoc + ton tai qua cac lan chay.
+    from ._appdir import app_dir as _app_dir
+    _log_path = os.path.join(_app_dir(), "party.log")
+except Exception:
+    _log_path = "party.log"   # fallback (vd chay unit test tren PC/CI, khong co Chaquopy Context)
 logging.basicConfig(level=_lvl, format="%(asctime)s %(message)s", datefmt="%H:%M:%S",
-                    handlers=[logging.FileHandler("party.log", "w", "utf-8"), logging.StreamHandler()])
+                    handlers=[logging.FileHandler(_log_path, "w", "utf-8"), logging.StreamHandler()])
 log = logging.getLogger("partydg")
 
 check_duplicate_accounts(config.PARTIES)   # bao loi neu 1 user dien trung nhieu noi
