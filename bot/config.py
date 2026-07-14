@@ -391,6 +391,42 @@ def leaders_for(pidx):
     return out
 
 
+def record_leader_name(pidx, char_name):
+    """Tu dong THEM ten nhan vat leader vao whitelist "leaders" cua party (KHONG xoa/replace
+    ten da co san - chi APPEND neu chua co). User phan anh: da cau hinh account nao la leader
+    trong Party roi thi khong nen phai go tay TEN NHAN VAT lai vao o whitelist rieng (2 cho
+    cau hinh trung nhau). Goi ngay sau khi leader login xong + biet char_name. Cap nhat CA
+    RAM (PARTY_LEADERS_BY_IDX, hieu luc ngay ca phien nay) LAN file accounts.json (hieu luc
+    lan chay sau, khong mat khi restart)."""
+    if not char_name:
+        return
+    name = char_name.strip()
+    if not name:
+        return
+    cur = PARTY_LEADERS_BY_IDX.setdefault(pidx, [])
+    if any(x.strip().lower() == name.lower() for x in cur):
+        return   # da co san (khong phan biet hoa/thuong) -> khong them trung
+    cur.append(name)
+    try:
+        import json, os
+        f = os.path.join(_base_dir(), "accounts.json")
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
+            prof = d["profiles"].get(d.get("active"))
+        else:
+            prof = d
+        parties = prof.get("parties", []) if isinstance(prof, dict) else []
+        if 0 <= pidx < len(parties):
+            leaders = parties[pidx].setdefault("leaders", [])
+            if not any(x.strip().lower() == name.lower() for x in leaders):
+                leaders.append(name)
+                with open(f, "w", encoding="utf-8") as fh:
+                    json.dump(d, fh, ensure_ascii=False, indent=2)
+    except Exception:
+        pass   # khong lam crash bot vi loi ghi file - RAM van da cap nhat, hieu luc phien nay
+
+
 # ============================================================
 #  TU SINH tu PARTIES - KHONG can doc/sua
 # ============================================================

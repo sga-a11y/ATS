@@ -216,6 +216,40 @@ def leaders_for(pidx):
     return out
 
 
+def record_leader_name(pidx, char_name):
+    """Tu dong THEM ten nhan vat leader vao whitelist "leaders" cua party (KHONG xoa/replace ten
+    da co san - chi APPEND neu chua co). Mirror bot/config.py::record_leader_name (PC) - user da
+    cau hinh account nao la leader trong Party roi thi khong can go tay lai ten o whitelist rieng.
+    Goi ngay sau khi leader login xong + biet char_name."""
+    if not char_name:
+        return
+    name = char_name.strip()
+    if not name:
+        return
+    cur = PARTY_LEADERS_BY_IDX.setdefault(pidx, [])
+    if any(x.strip().lower() == name.lower() for x in cur):
+        return
+    cur.append(name)
+    try:
+        import os
+        f = os.path.join(_app_dir(), "accounts.json")
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
+            prof = d["profiles"].get(d.get("active"))
+        else:
+            prof = d
+        parties = prof.get("parties", []) if isinstance(prof, dict) else []
+        if 0 <= pidx < len(parties):
+            leaders = parties[pidx].setdefault("leaders", [])
+            if not any(x.strip().lower() == name.lower() for x in leaders):
+                leaders.append(name)
+                with open(f, "w", encoding="utf-8") as fh:
+                    json.dump(d, fh, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
 def _load_vantieu_requests():
     """Doc vantieu_requests.json (bang tra ma yeu cau -> pet phu hop, dung cho che do smart-match
     cua do_van_tieu()). Giu NGUYEN cau truc dict tu file (client.py tu xu ly key/value truc tiep,

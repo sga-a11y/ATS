@@ -238,6 +238,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         account_clients[username] = c     # GUI doc trang thai
         st["reconnecting"].discard(username)  # (reconnect) da vao world lai -> khong con "dang rot"
         label = c.char_name or username   # log theo TEN NHAN VAT (neu da resolve), fallback username
+        if is_leader and c.char_name:
+            # Tu dong them ten nhan vat leader vao whitelist "leaders" cua party - mirror PC.
+            config.record_leader_name(pidx, c.char_name)
         login_map = c.current_map         # map LUC LOGIN (doc som, it bi pollution) - dung de check train
         log.info("[%s] (%s) vao world.", label, role)
         log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
