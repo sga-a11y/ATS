@@ -23,7 +23,15 @@ _FALLBACK_ZIP_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/lat
 
 
 def running_exe() -> str:
-    """Duong dan exe dang chay (Nuitka onefile: sys.executable = aTSBot.exe)."""
+    """Duong dan exe dang chay. BUG THAT da gap (xac nhan qua test thuc te): voi build Nuitka
+    onefile hien tai, 'sys.executable' co the tra ve duong dan python.exe HE THONG (KHONG phai
+    chinh file aTSBot.exe) - khien _update.bat viet 'start "" "python.exe"' (khong tham so) sau
+    khi cap nhat xong, mo ra 1 REPL Python rong thay vi mo lai app. 'sys.argv[0]' dang tin cay
+    hon cho truong hop nay (tro dung file exe nguoi dung da chay) - uu tien no neu KHONG chua
+    'python' trong ten; fallback sys.executable neu argv[0] bat thuong."""
+    cand = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+    if cand and "python" not in os.path.basename(cand).lower() and os.path.isfile(cand):
+        return cand
     return os.path.abspath(sys.executable)
 
 
@@ -62,6 +70,12 @@ def download_and_swap(url: str, on_progress=None):
     exe = running_exe()
     d = os.path.dirname(exe)
     exe_name = os.path.basename(exe)
+    # An toan: neu van nham ra python.exe/python3.exe (bug that da gap - xem ghi chu running_exe())
+    # -> HUY update thay vi viet _update.bat khoi dong lai sai (mo REPL rong thay vi app that).
+    if exe_name.lower().startswith("python"):
+        raise RuntimeError(
+            f"Khong xac dinh duoc file exe that su (nham ra '{exe_name}') - huy cap nhat de "
+            "tranh khoi dong lai sai. Vui long tai ban moi thu cong.")
     zip_path = os.path.join(d, "aTSBot_update.zip")
     stage = os.path.join(d, "_update_stage")
 
