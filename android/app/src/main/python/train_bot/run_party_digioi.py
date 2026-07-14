@@ -1662,9 +1662,10 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         city_flag=0, start_city_id=0, mob_index=-1, do_daily=True,
                         digioi_mode="party", event_key="", leaders=None, has_leader=True):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
-    nhu PC). accounts = list cac (username, password). Goi XONG roi goi start_party(pidx).
-    Cau truc PARTY_CONFIG/PARTIES/PARTY_LEADER_ACC GIONG HET config._load_accounts_json ban PC ->
-    tu do run_party_digioi (coordinator CHUNG) chay y het PC."""
+    nhu PC). accounts = list PHANG dang [u1,p1,u2,p2,...] (KHONG phai list-cua-list - Chaquopy
+    khong convert dung nested list qua callAttr, xem BotForegroundService.kt::startParty). Goi
+    XONG roi goi start_party(pidx). Cau truc PARTY_CONFIG/PARTIES/PARTY_LEADER_ACC GIONG HET
+    config._load_accounts_json ban PC -> tu do run_party_digioi (coordinator CHUNG) chay y het PC."""
     pidx = int(pidx)
     config.PARTY_CONFIG[pidx] = {
         "mode": mode, "start_city_id": int(start_city_id), "mob_index": int(mob_index),
@@ -1672,7 +1673,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "server_id": int(server_id), "do_daily": bool(do_daily),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
     }
-    accs = [(str(a[0]), str(a[1])) for a in accounts if a and a[0]]
+    _flat = list(accounts)
+    accs = [(str(_flat[i]), str(_flat[i + 1])) for i in range(0, len(_flat) - 1, 2) if _flat[i]]
     while len(config.PARTIES) <= pidx:
         config.PARTIES.append([])
     config.PARTIES[pidx] = accs

@@ -106,11 +106,14 @@ class BotForegroundService : Service() {
     fun startParty(pidx: Int, party: Party, serverIp: String, serverId: Int) {
         if (party.accounts.isEmpty()) return
         val m = mapMode(party)
-        val accounts: List<List<String>> = party.accounts.map { listOf(it.username, it.password) }
+        // FLAT list (KHONG phai List<List<String>>) - Chaquopy khong convert dung nested list
+        // qua callAttr (bug that: "TypeError: 'ArrayList' object is not iterable" ben Python).
+        // setup_party_runtime tu ghep lai tung cap (username, password) tu list phang nay.
+        val accountsFlat: List<String> = party.accounts.flatMap { listOf(it.username, it.password) }
         try {
             val py = rpd()
             py.callAttr(
-                "setup_party_runtime", pidx, m.mode, serverIp, serverId, accounts,
+                "setup_party_runtime", pidx, m.mode, serverIp, serverId, accountsFlat,
                 m.cityFlag, m.startCity, m.mobIndex, party.doDaily, m.digioiMode, m.eventKey,
                 emptyList<String>(), m.hasLeader,
             )
