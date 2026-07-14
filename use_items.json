@@ -7,6 +7,7 @@
     "0xff88": "Phiếu Rút Thẻ",
     "0xff87": "Phiếu Rút Võ Tướng",
     "0xb749": {"name": "Phó Bản Cấp 20 II", "qty": 100},
-    "0xb74a": {"name": "Phó Bản Cấp 50 II", "qty": 100}
+    "0xb74a": {"name": "Phó Bản Cấp 50 II", "qty": 100},
+    "0xb3d6": {"name": "Đại Phúc Thần", "qty": 25, "phuc_than": true}
   }
 }
