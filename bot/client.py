@@ -1876,6 +1876,9 @@ class GameClient:
             time.sleep(1.5)
 
     LEGION_BOSS_COOLDOWN = 4 * 3600   # 4h giua cac lan (fallback neu server ko day 0x27 76 moi)
+    # Rieng khi VAO INSTANCE THAT BAI (khong vao duoc tran, xem do_legion_boss): cho lau hon 4h
+    # thuong - luu ben qua cac lan mo app sau, tranh thu lai qua som roi lai loi/relogin lien tuc.
+    LEGION_BOSS_FAIL_COOLDOWN = 12 * 3600
 
     def legion_boss_available(self) -> bool:
         """Con danh boss QD duoc khong: con luot (count < max) VA het cooldown (server bao). Dung de
@@ -1940,7 +1943,7 @@ class GameClient:
             self.state.boss_mode = False
             log.warning("[%s] Boss QD: khong vao duoc tran (co the chua du dieu kien) -> RELOGIN "
                         "ngay de tranh current_map bi sai vinh vien trong phien", self._label)
-            self.legion_boss_next = now + self.LEGION_BOSS_COOLDOWN
+            self.legion_boss_next = now + self.LEGION_BOSS_FAIL_COOLDOWN
             _save_legion_boss_next(self._label, self.legion_boss_next)   # luu ben - song qua reconnect/relogin
             self.relogin()
             return self.legion_boss_next
