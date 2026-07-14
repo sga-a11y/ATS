@@ -106,22 +106,26 @@ class BotForegroundService : Service() {
     fun startParty(pidx: Int, party: Party, serverIp: String, serverId: Int) {
         if (party.accounts.isEmpty()) return
         val m = mapMode(party)
-        // FLAT list (KHONG phai List<List<String>>) - Chaquopy khong convert dung nested list
-        // qua callAttr (bug that: "TypeError: 'ArrayList' object is not iterable" ben Python).
-        // setup_party_runtime tu ghep lai tung cap (username, password) tu list phang nay.
-        val accountsFlat: List<String> = party.accounts.flatMap { listOf(it.username, it.password) }
+        // 1 CHUOI STRING duy nhat (KHONG phai List<String>/List<List<String>>) - da xac nhan qua
+        // logcat that: ke ca List<String> PHANG, Chaquopy van khong convert dung thanh Python
+        // list khi truyen qua callAttr ("TypeError: 'ArrayList' object is not iterable" ngay tai
+        // list(accounts) phia Python). String thi luon convert dung -> join bang ky tu phan tach
+        // hiem gap (U+0001), Python tu split() lai.
+        val SEP = ""
+        val accountsFlat = party.accounts.joinToString(SEP) { "${it.username}$SEP${it.password}" }
         try {
             val py = rpd()
             py.callAttr(
                 "setup_party_runtime", pidx, m.mode, serverIp, serverId, accountsFlat,
                 m.cityFlag, m.startCity, m.mobIndex, party.doDaily, m.digioiMode, m.eventKey,
-                emptyList<String>(), m.hasLeader,
+                "", m.hasLeader,
             )
             py.callAttr("start_party", pidx)
             runningPidx.add(pidx)
             party.accounts.forEach { userPidx[it.username] = pidx }
             ensurePoller()
         } catch (e: Exception) {
+            android.util.Log.e("aTSBot", "startParty loi (pidx=$pidx): ${e.message}", e)
             party.accounts.forEach {
                 _status.update { s ->
                     s + (it.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khoi dong"))
