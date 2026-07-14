@@ -279,17 +279,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # BOSS QUAN DOAN ngay sau van tieu: danh solo neu con luot (server count 0x55/0x2a) + het
             # cooldown. KHONG lien quan daily quest (tick hay ko van danh). Luc login char SOLO (chua
             # lap party) -> danh duoc. Trong phien: keepalive trigger REFORM khi con luot (xem duoi).
-            # BUG THAT: neu acc login SAN TRONG Di Gioi (map=DIGIOI_MAP_ID ngay tu dau, vd server
-            # giu nguyen phien cu) - goi boss QD (vao instance/map KHAC) lam RIENG khoi DG, khien
-            # current_map bi lech (thay vi quay lai DIGIOI_MAP_ID, ket thuc o map thanh sai) -> cac
-            # buoc enter_di_gioi_safe() sau do THAT BAI lien tuc du acc dang dung san trong DG.
-            # Bo qua HOAN TOAN boss QD trong truong hop nay - de sau, khi da chac chan roi DG an toan.
-            if c.in_di_gioi():
-                log.info("[%s] Dang o san trong Di Gioi luc login -> BO QUA boss QD (tranh lam lech map)",
-                          label)
-            else:
-                try: c.do_legion_boss()
-                except Exception as e: log.warning("[%s] loi do_legion_boss: %s", label, e)
+            try: c.do_legion_boss()
+            except Exception as e: log.warning("[%s] loi do_legion_boss: %s", label, e)
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
         # (pcfg da doc o tren, giu nguyen bien - khong doc lai)
