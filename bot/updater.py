@@ -85,19 +85,27 @@ def download_and_swap(url: str, on_progress=None):
     with zipfile.ZipFile(zip_path) as z:
         z.extractall(stage)
 
-    # 3) bat: cho app thoat -> xcopy stage GHI DE folder (exe + json), don rac -> chay lai
+    # 3) bat: TASKKILL exe (bootstrap onefile khong tu chet bang os._exit -> giu khoa file) -> xcopy
+    # stage GHI DE folder, RETRY toi khi het khoa -> chay lai. KHONG cho theo PID/ten process nua
+    # (Nuitka onefile co process cha giu khoa, PID payload chet nhung khoa van con -> treo).
+    # taskkill BO QUA neu exe_name la python* (dev) -> khong lo dinh python khac.
+    _kill = "" if "python" in exe_name.lower() else \
+        'taskkill /f /im "%s" >nul 2>&1\r\n' % exe_name
     bat = os.path.join(d, "_update.bat")
     with open(bat, "w", encoding="ascii") as f:
         f.write(
             "@echo off\r\n"
             "chcp 65001 >nul\r\n"
-            ":wait\r\n"
-            'tasklist /fi "imagename eq %s" 2>nul | find /i "%s" >nul && (timeout /t 1 /nobreak >nul & goto wait)\r\n'
+            "timeout /t 2 /nobreak >nul\r\n"   # cho app kip dong cua so
+            + _kill +                          # kill exe -> nha khoa file (neu la ban build)
+            ":copy\r\n"
+            "timeout /t 1 /nobreak >nul\r\n"
             'xcopy /e /y /q /i "_update_stage\\*" "." >nul\r\n'
+            'if errorlevel 1 goto copy\r\n'    # exe con khoa (chua kill xong) -> thu lai toi khi duoc
             'rmdir /s /q "_update_stage"\r\n'
             'del /q "aTSBot_update.zip"\r\n'
             'start "" "%s"\r\n'
-            'del "%%~f0"\r\n' % (exe_name, exe_name, exe_name)
+            'del "%%~f0"\r\n' % exe_name
         )
     # DETACHED_PROCESS (0x8) | CREATE_NO_WINDOW (0x08000000): bat chay ngam, song sau khi app thoat
     subprocess.Popen(["cmd", "/c", bat], cwd=d,

@@ -91,46 +91,18 @@
       "staging_map": 0,
       "dest_map": 10991,
       "steps": [],
-      "_note": "Event tele THANG (0x4d 03000400) vao map roi dung yen - khong cong/di bo. staging/dest=0 -> go_to_event gui select xong tra True. Thoat: go_to_town binh thuong (map cho phep teleport).",
+      "_note": "Event tele THANG (0x4d 03000400) vao map roi dung yen - khong cong/di bo. staging/dest=0 -> go_to_event gui select xong tra True. Map 40NPC (10991) CHAN teleport -> thoat phai DI BO ra cong (xem 'exit', route that tu ts_exit.pcap).",
       "exit": {
-        "_note": "Ra khoi map 40NPC (10991) ve map thuong (12003) - map 40NPC chan teleport. Cong exit idx 1.",
+        "_note": "Ra khoi map 40NPC (10991) ve map thuong (12003) - CHAN teleport. Route THAT tu ts_exit.pcap: spawn (90,870) -> di bo 6 waypoint -> cong (650,1250) idx 1 -> map 12003.",
         "out_map": 12003,
         "steps": [
-          {
-            "move": [
-              301,
-              648
-            ]
-          },
-          {
-            "move": [
-              238,
-              714
-            ]
-          },
-          {
-            "move": [
-              176,
-              779
-            ]
-          },
-          {
-            "move": [
-              113,
-              845
-            ]
-          },
-          {
-            "move": [
-              90,
-              870
-            ]
-          },
-          {
-            "gate": 1,
-            "x": 90,
-            "y": 870
-          }
+          { "move": [ 410, 490 ], "flag": 4 },
+          { "move": [ 410, 630 ], "flag": 4 },
+          { "move": [ 450, 790 ], "flag": 4 },
+          { "move": [ 470, 930 ], "flag": 4 },
+          { "move": [ 510, 1030 ], "flag": 4 },
+          { "move": [ 590, 1130 ], "flag": 5 },
+          { "gate": 1, "x": 650, "y": 1250 }
         ]
       }
     }

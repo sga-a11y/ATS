@@ -3685,6 +3685,42 @@ class GameClient:
                     self._label, idx, x, y, self.current_map)
         return False
 
+    def _exit_event_gate(self, x: int, y: int, idx: int, out_map: int = 0, timeout: float = 40.0) -> bool:
+        """RA cong THOAT event map (vd 40 NPC 10991 -> 12003). KHAC _enter_gate thuong: sau khi gui
+        0x14 04 (xin menu cong) phai gui LAI 0x06 DUNG YEN tren o cong voi FLAG 5 (=da toi noi) roi
+        MOI gui 0x14 08 (chon) -> server chap nhan warp. Thieu buoc dung-flag5 do -> server tra
+        0x14 0d (tu choi) roi KICK ket noi. Replay dung ts_exit.pcap (capture tay ra khoi 40 NPC)."""
+        start_map = self.current_map
+        t0 = time.time()
+        _attempt = 0
+        while time.time() - t0 < timeout:
+            if not self.running:
+                return False
+            cm = self.current_map
+            if cm is not None and cm != start_map:
+                log.info("[%s] exit_event: qua cong idx=%d -> map %s", self._label, idx, cm)
+                self.pos = None
+                return (cm == out_map) if out_map else True
+            _attempt += 1
+            log.info("[%s] _exit_event_gate idx=%d @(%d,%d): lan thu %d (t=%.0fs, map van %s)",
+                     self._label, idx, x, y, _attempt, time.time() - t0, cm)
+            if not self._wait_combat_clear(idle=3.0):
+                return False
+            self._gate_transit = True   # chan luong combat gui 0x32 xen giua chuoi 0x14
+            try:
+                self.move_to(x, y); time.sleep(1.2)                        # di toi cong (flag 1)
+                self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.6)   # xin menu cong
+                self.send(0x06, b"\x01\x00\x05" + struct.pack("<HH", x, y)); time.sleep(0.6)  # DUNG YEN tren cong (flag 5)
+                self.pos = (x, y)
+                self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)   # chon
+                self.send(0x0c, b"\x01\x00"); time.sleep(0.3)              # 0x0c 0100 = XAC NHAN transit (THIEU cai nay -> server tra 0x14 0d roi kick)
+                self.send(0x14, b"\x06\x00"); time.sleep(1.2)             # 0x14 0600 = hoan tat transit -> warp
+            finally:
+                self._gate_transit = False
+        log.warning("[%s] _exit_event_gate idx=%d @(%d,%d): map khong doi (van %s)",
+                    self._label, idx, x, y, self.current_map)
+        return False
+
     def follow_route(self, route, step_wait: float = 0.5) -> bool:
         """Replay route tu THANH toi train map. route = {from_city, city_flag, dest_map, steps}.
         steps: {"move":[x,y]} = di 1 buoc | {"gate":idx,"x","y"} = toi cong roi gui 0x14.
@@ -3769,9 +3805,17 @@ class GameClient:
             if not self.running:
                 return False
             if "gate" in st:
-                if not self._enter_gate(int(st["x"]), int(st["y"]), int(st["gate"])):
+                if not self._exit_event_gate(int(st["x"]), int(st["y"]), int(st["gate"]), out_map):
                     log.warning("[%s] exit_event: ket o cong idx=%s", self._label, st.get("gate"))
                     return False
+            elif "flag" in st:
+                # REPLAY DUNG capture: gui thang 0x06 voi FLAG that (4/5), khong navigate/pathfind
+                # (navigate gui flag 1 + tu chon buoc -> lech duong capture). Van cho het tran truoc.
+                if not self._wait_combat_clear():
+                    return False
+                mx, my = int(st["move"][0]), int(st["move"][1])
+                self.send(0x06, b"\x01\x00" + bytes([int(st["flag"]) & 0xFF]) + struct.pack("<HH", mx, my))
+                self.pos = (mx, my); time.sleep(0.7)
             else:
                 self._route_move(int(st["move"][0]), int(st["move"][1]))
         return (self.current_map == out_map) if out_map else True
