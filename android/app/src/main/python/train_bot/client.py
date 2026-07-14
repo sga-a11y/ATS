@@ -194,7 +194,22 @@ def mail_window_now():
     return None
 
 
-_GIFT_FILE = "gift_state.json"
+def _state_file_path(name):
+    """Duong dan TUYET DOI cho 1 file state RUNTIME (ghi duoc) - dung app_dir() (Context.
+    getFilesDir()) thay vi ten file TUONG DOI (le thuoc CWD). BUG THAT (xac nhan qua log
+    user): CWD tren Android la '/' (READ-ONLY) -> moi lan ghi cac file state bang ten
+    tuong doi deu am tham that bai (except: pass nuot loi), khien checkin/daily/vantieu/
+    qua tang... KHONG BAO GIO duoc luu that su qua cac lan chay (party.log cung tung
+    dinh bug nay, da fix rieng o run_party_digioi.py; day la sua tan goc cho MOI file
+    state con lai dung chung 1 helper)."""
+    try:
+        from ._appdir import app_dir
+        import os
+        return os.path.join(app_dir(), name)
+    except Exception:
+        return name
+
+_GIFT_FILE = _state_file_path("gift_state.json")
 _gift_lock = threading.Lock()
 
 # ITEM HP/SP: bot TU HOC qua self-calibrate (probe -> doc delta HP/SP tu S2C 0x08),
@@ -207,12 +222,7 @@ _KNOWN_CONSUMABLES = [0x0116, 0x0117, 0x011b, 0x011c, 0x0139]
 
 def _learned_file_path():
     """Duong dan TUYET DOI items_learned.json (canh root project/.exe) -> KHONG le thuoc CWD."""
-    try:
-        from ._appdir import app_dir
-        import os
-        return os.path.join(app_dir(), "items_learned.json")
-    except Exception:
-        return "items_learned.json"
+    return _state_file_path("items_learned.json")
 
 _LEARNED_FILE = _learned_file_path()
 _learned_lock = threading.Lock()
@@ -348,7 +358,7 @@ def _save_gift_state(label: str, online_sec: float, claimed: set):
 
 
 # ---- State DIEM DANH (so lan da diem danh) ----
-_CHECKIN_FILE = "checkin_state.json"
+_CHECKIN_FILE = _state_file_path("checkin_state.json")
 
 def _load_checkin(label: str, kind: str = "checkin") -> dict:
     """{'date': 'YYYY-MM-DD', 'day': N} - lan nhan gan nhat (kind: checkin / gift14 / ...)."""
@@ -380,7 +390,7 @@ def _save_checkin(label: str, kind: str, date: str, day: int):
 
 
 # ---- Tracker viec lam HANG NGAY 1 lan (vd qua quan doan): {label:task -> date} ----
-_DAILY_FILE = "daily_state.json"
+_DAILY_FILE = _state_file_path("daily_state.json")
 
 def _daily_done(label: str, task: str) -> bool:
     import json, os, datetime
@@ -417,8 +427,46 @@ def _mark_daily(label: str, task: str):
 
 
 
+# ---- State BOSS QUAN DOAN: luu BEN thoi diem duoc thu lai (legion_boss_next) qua cac lan
+# reconnect/relogin. BUG THAT (xac nhan chac chan): legion_boss_next TRUOC DAY chi la thuoc
+# tinh instance (RAM) - moi lan reconnect/relogin tao GameClient MOI se mat sach, khien bot
+# THU LAI tu dau ngay ca khi vua that bai truoc do (bat ke cooldown that su la bao lau) ->
+# lap lai dung "vao instance boss khi chua du dieu kien" nhieu lan, moi lan co the lam ket/dơ
+# trang thai enter_di_gioi_safe() ngay sau do (xem do_legion_boss). Fix nay (luu ben) dung bat
+# ke gia tri LEGION_BOSS_COOLDOWN chinh xac bao nhieu.
+_LEGION_BOSS_FILE = _state_file_path("legion_boss_state.json")
+_legion_boss_lock = threading.Lock()
+
+def _load_legion_boss_next(label: str) -> float:
+    import json, os
+    if not os.path.exists(_LEGION_BOSS_FILE):
+        return 0.0
+    try:
+        with open(_LEGION_BOSS_FILE, encoding="utf-8") as f:
+            return float(json.load(f).get(label, 0.0))
+    except Exception:
+        return 0.0
+
+def _save_legion_boss_next(label: str, next_ts: float):
+    import json, os
+    with _legion_boss_lock:
+        d = {}
+        if os.path.exists(_LEGION_BOSS_FILE):
+            try:
+                with open(_LEGION_BOSS_FILE, encoding="utf-8") as f:
+                    d = json.load(f)
+            except Exception:
+                d = {}
+        d[label] = next_ts
+        try:
+            with open(_LEGION_BOSS_FILE, "w", encoding="utf-8") as f:
+                json.dump(d, f)
+        except Exception:
+            pass
+
+
 # ---- State VAN TIEU: chi luu SO LUOT da gui hom nay (claim doc theo gio server tu panel) ----
-_VANTIEU_FILE = "vantieu_state.json"
+_VANTIEU_FILE = _state_file_path("vantieu_state.json")
 
 def _vantieu_count(label: str) -> int:
     """So luot van tieu DA gui hom nay (local fallback; ngay moi -> 0)."""
@@ -1832,7 +1880,12 @@ class GameClient:
             self.teleport(12001, 0)
             time.sleep(1.5)
 
-    LEGION_BOSS_COOLDOWN = 4 * 3600   # 4h giua cac lan (fallback neu server ko day 0x27 76 moi)
+    # Fallback khi server KHONG day 0x27 76 (goi cooldown that) sau 1 lan thu that bai - GIA
+    # DINH (chua xac nhan chac chan), theo nghi ngo cua user la co the can 24h chu khong phai
+    # 4h nhu code cu. Neu server THAT SU chi can 4h thi gia tri nay lam bot cho lau hon can
+    # thiet (khong hai, chi mat co hoi danh som hon) - uu tien AN TOAN (tranh spam goi loi khi
+    # chua du dieu kien) hon la chinh xac tuyet doi thoi gian.
+    LEGION_BOSS_COOLDOWN = 24 * 3600
 
     def legion_boss_available(self) -> bool:
         """Con danh boss QD duoc khong: con luot (count < max) VA het cooldown (server bao). Dung de
@@ -1863,8 +1916,13 @@ class GameClient:
                      self._label, self.legion_boss_count, self.legion_boss_max)
             return None                       # het luot hom nay (server bao)
         now = time.time()
+        # Doc them gia tri da LUU BEN tu lan chay truoc (reconnect/relogin mat het RAM) - lay
+        # gia tri XA HON (server bao hoac da luu) de khong thu lai qua som sau khi vua that bai.
+        _persisted_next = _load_legion_boss_next(self._label)
+        if _persisted_next > self.legion_boss_next:
+            self.legion_boss_next = _persisted_next
         if self.legion_boss_next and now < self.legion_boss_next:
-            return self.legion_boss_next      # con cooldown (server bao) -> check lai dung luc do
+            return self.legion_boss_next      # con cooldown (server bao hoac da luu) -> check lai dung luc do
         # --- thu danh 1 luot ---
         # BUG THAT (xac nhan qua log+kiem tra thuc te trong game): neu acc dang o SAN TRONG Di Gioi
         # luc goi ham nay, nhan vat THAT SU KHONG HE ROI Di Gioi (server/game giu nguyen) - nhung
@@ -1906,9 +1964,12 @@ class GameClient:
                     time.sleep(0.3)
             if self.legion_boss_next and self.legion_boss_next > now:
                 log.info("[%s] Boss QD: chua toi gio (cooldown) -> cho", self._label)
+                _save_legion_boss_next(self._label, self.legion_boss_next)
                 return self.legion_boss_next
             log.info("[%s] Boss QD: khong vao duoc (het luot hom nay) -> dung, check lai sau", self._label)
-            return now + self.LEGION_BOSS_COOLDOWN   # check lai sau 4h (sang ngay moi se danh duoc)
+            self.legion_boss_next = now + self.LEGION_BOSS_COOLDOWN
+            _save_legion_boss_next(self._label, self.legion_boss_next)   # luu ben - song qua reconnect/relogin
+            return self.legion_boss_next
         log.info("[%s] Boss QD: DA VAO TRAN -> danh cho het tran", self._label)
         t0 = time.time()
         while self.running and self.state.in_battle and time.time() - t0 < 120:
@@ -1917,10 +1978,11 @@ class GameClient:
         self._wait_combat_clear()
         self.do_heal()                        # xong battle -> hoi HP/SP
         # tang count trong phien (server day 0x55 id 0x2a moi luc login/update se ghi de = chuan);
-        # server day 0x27 76 (cooldown moi) luc ket tran -> legion_boss_next tu cap nhat, fallback +4h.
+        # server day 0x27 76 (cooldown moi) luc ket tran -> legion_boss_next tu cap nhat, fallback.
         self.legion_boss_count += 1
         if not self.legion_boss_next or self.legion_boss_next < now:
             self.legion_boss_next = time.time() + self.LEGION_BOSS_COOLDOWN
+        _save_legion_boss_next(self._label, self.legion_boss_next)   # luu ben - song qua reconnect/relogin
         log.info("[%s] Boss QD: xong luot %d/%d -> luot sau luc %s",
                  self._label, self.legion_boss_count, self.legion_boss_max,
                  time.strftime("%H:%M", time.localtime(self.legion_boss_next)))
