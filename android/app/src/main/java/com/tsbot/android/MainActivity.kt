@@ -314,6 +314,7 @@ fun TsBotApp(
             initialTrainMobIndex = partyBeingEdited.trainMobIndex,
             initialUsePhucThan = partyBeingEdited.usePhucThan,
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
+            initialDoVanTieu = partyBeingEdited.doVanTieu,
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
@@ -710,6 +711,7 @@ fun AddPartyDialog(
     initialTrainMobIndex: Int = -1,
     initialUsePhucThan: Boolean = false,
     initialFightLegionBoss: Boolean = true,
+    initialDoVanTieu: Boolean = true,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
@@ -727,6 +729,7 @@ fun AddPartyDialog(
     var trainMapExpanded by remember { mutableStateOf(false) }
     var usePhucThan by remember { mutableStateOf(initialUsePhucThan) }
     var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
+    var doVanTieu by remember { mutableStateOf(initialDoVanTieu) }
     var showAdvanced by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -842,6 +845,10 @@ fun AddPartyDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = fightLegionBoss, onCheckedChange = { fightLegionBoss = it })
                             Text("Đánh boss QD")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = doVanTieu, onCheckedChange = { doVanTieu = it })
+                            Text("Vận tiêu (nhận quà + gửi pet)")
                         }
                     }
                 }
@@ -961,7 +968,7 @@ fun AddPartyDialog(
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily, trainMapKey, trainMobIndex, usePhucThan, fightLegionBoss))
+                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily, trainMapKey, trainMobIndex, usePhucThan, fightLegionBoss, doVanTieu))
                     }
                 },
             ) {

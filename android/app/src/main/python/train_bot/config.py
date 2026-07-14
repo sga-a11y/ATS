@@ -395,6 +395,7 @@ def reload_parties():
                 "event_key": _p.get("event_key", ""),
                 "use_phuc_than": bool(_p.get("use_phuc_than", False)),
                 "fight_legion_boss": bool(_p.get("fight_legion_boss", True)),
+                "do_van_tieu": bool(_p.get("do_van_tieu", True)),
             }
             PARTY_LEADERS_BY_IDX[_i] = list(_p.get("leaders", []) or [])
         if PARTY_CONFIG:

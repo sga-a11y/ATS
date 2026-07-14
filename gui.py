@@ -931,6 +931,9 @@ class PartyConfigFrame(ttk.Frame):
         # Danh boss QD: mac dinh CO tick (giu hanh vi cu - truoc gio luon danh). User tat khi
         # khong muon acc nay danh boss quan doan.
         self.fight_boss_var = tk.BooleanVar(value=bool(self._preset.get("fight_legion_boss", True)))
+        # Van tieu: mac dinh CO tick (giu hanh vi cu - truoc gio luon lam). Tat -> khong nhan qua
+        # escort + khong gui pet van tieu + khong hen gio check lai.
+        self.van_tieu_var = tk.BooleanVar(value=bool(self._preset.get("do_van_tieu", True)))
 
         ttk.Label(self, text="Acc (TICK = dùng, BỎ TICK = bỏ qua). Dòng đầu đã tick = chủ PT "
                   "(trừ khi tick ô trên). TỐI ĐA 5 acc/party:").pack(anchor="w")
@@ -1045,6 +1048,8 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.use_phuc_than_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Đánh boss QD",
                         variable=self.fight_boss_var).pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(frm, text="Vận tiêu (nhận quà + gửi pet)",
+                        variable=self.van_tieu_var).pack(anchor="w", pady=(4, 0))
         ttk.Button(frm, text="Đóng", command=win.destroy).pack(anchor="e", pady=(12, 0))
 
     def _on_mode_change(self):
@@ -1194,6 +1199,7 @@ class PartyConfigFrame(ttk.Frame):
                 "city_flag": city_flag, "do_daily": bool(self.daily_var.get()),
                 "use_phuc_than": bool(self.use_phuc_than_var.get()),
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
+                "do_van_tieu": bool(self.van_tieu_var.get()),
                 "leaders": leaders, "accounts": accs}
         if mode == "digioi":
             data["digioi_mode"] = "solo" if self.digioi_solo_var.get() else "party"

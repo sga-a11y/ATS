@@ -373,6 +373,7 @@ if _aj is not None:
                 "event_key": _party.get("event_key", ""),   # mode 'event': key trong events.json (npc_40, nhi_kieu...)
                 "use_phuc_than": bool(_party.get("use_phuc_than", False)),
                 "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),
+                "do_van_tieu": bool(_party.get("do_van_tieu", True)),
             }
             PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])
         if PARTY_CONFIG:

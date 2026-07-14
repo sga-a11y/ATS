@@ -31,5 +31,8 @@ data class Party(
     // Danh boss QD (do_legion_boss). Mirror PC's fight_boss_var (gui.py). Mac dinh CO tick (giu
     // hanh vi cu - truoc gio luon danh).
     val fightLegionBoss: Boolean = true,
+    // Van tieu (do_van_tieu: nhan qua escort + gui pet). Mirror PC's van_tieu_var (gui.py).
+    // Mac dinh CO tick (giu hanh vi cu - truoc gio luon lam).
+    val doVanTieu: Boolean = true,
     val accounts: List<Account> = emptyList(),
 )
