@@ -868,6 +868,8 @@ class PartyConfigFrame(ttk.Frame):
         self.server_var.set(dict(servers).get(cur_srv, servers[0][1] if servers else cur_srv))
         ttk.Combobox(srow, textvariable=self.server_var, state="readonly", width=22,
                      values=[lbl for _, lbl in servers]).pack(side="left")
+        ttk.Button(srow, text="⚙ Cài đặt nâng cao",
+                   command=self._open_advanced_settings).pack(side="right")
 
         row = ttk.Frame(self); row.pack(fill="x", pady=4)
         ttk.Label(row, text="Chế độ:", width=10).pack(side="left")
@@ -919,10 +921,10 @@ class PartyConfigFrame(ttk.Frame):
         self.wl_entry = ttk.Entry(nlrow, textvariable=self.leaders_var)
         self.wl_entry.pack(side="left", fill="x", expand=True, padx=4)
 
+        # Cac setting IT KHI DOI (vd daily quest) gom vao dialog "Cai dat nang cao" (nut o hang
+        # Server) thay vi 1 checkbox rieng ngay day - tranh bang cau hinh party bi day dai/roi
+        # khi sau nay them setting moi. Bien van giu o day de _save()/_gather doc binh thuong.
         self.daily_var = tk.BooleanVar(value=self._preset.get("do_daily", self._preset.get("do_dungeon", True)))
-        ttk.Checkbutton(self, text="Làm nhiệm vụ hàng ngày (bingo 9 ô: phó bản đơn, boss thế giới, "
-                        "gacha, hợp đồ... + nhận thưởng)",
-                        variable=self.daily_var).pack(anchor="w")
 
         ttk.Label(self, text="Acc (TICK = dùng, BỎ TICK = bỏ qua). Dòng đầu đã tick = chủ PT "
                   "(trừ khi tick ô trên). TỐI ĐA 5 acc/party:").pack(anchor="w")
@@ -1023,6 +1025,17 @@ class PartyConfigFrame(ttk.Frame):
         row["frame"].destroy()
         if row in self.acc_rows:
             self.acc_rows.remove(row)
+
+    def _open_advanced_settings(self):
+        """Dialog gom cac setting IT KHI DOI cua party (hien tai: daily quest) - tach khoi bang
+        chinh de tranh bi day dai/roi khi sau nay them setting moi (xem ghi chu o self.daily_var)."""
+        win = tk.Toplevel(self); win.title("Cài đặt nâng cao"); win.transient(self); win.grab_set()
+        win.resizable(False, False)
+        frm = ttk.Frame(win, padding=12); frm.pack(fill="both", expand=True)
+        ttk.Checkbutton(frm, text="Làm nhiệm vụ hàng ngày (bingo 9 ô: phó bản đơn, boss thế giới, "
+                        "gacha, hợp đồ... + nhận thưởng)",
+                        variable=self.daily_var).pack(anchor="w")
+        ttk.Button(frm, text="Đóng", command=win.destroy).pack(anchor="e", pady=(12, 0))
 
     def _on_mode_change(self):
         # Khi DOI che do: tu set mac dinh "Khong co chu PT".
