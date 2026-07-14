@@ -258,23 +258,19 @@ def _save_all_learned():
 # nhung tid nay -> tin tuyet doi (vd cac item da capture). Locked > auto-learn.
 _known_items = None
 def _load_known_items() -> dict:
-    """{ tid_int: {name,hp,sp} } tu items_known.json (canh root). Khoa cung, auto-learn ko dung den."""
+    """{ tid_int: {name,hp,sp} } tu items_known.json (canh root). Khoa cung, auto-learn ko dung den.
+    File nay la du lieu TINH (asset), doc qua config._read_asset() - xem ghi chu o
+    _load_gamedata_items() (cung bug app_dir() da fix o do)."""
     global _known_items
     if _known_items is not None:
         return _known_items
-    import json as _json, os as _os
+    import json as _json
     _known_items = {}
     try:
-        from ._appdir import app_dir
-        path = _os.path.join(app_dir(), "items_known.json")
-    except Exception:
-        path = "items_known.json"
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for k, v in _json.load(fh).get("items", {}).items():
-                tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
-                _known_items[tid] = {"name": v.get("name", ""), "type": v.get("type", ""),
-                                     "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
+        for k, v in _json.loads(config._read_asset("items_known.json")).get("items", {}).items():
+            tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+            _known_items[tid] = {"name": v.get("name", ""), "type": v.get("type", ""),
+                                 "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     except Exception:
         pass
     return _known_items
@@ -283,23 +279,22 @@ def _load_known_items() -> dict:
 # Bot tra item_id -> biet loai+heal NGAY, KHONG can probe. items_known.json (m khai) uu tien hon.
 _gamedata_items = None
 def _load_gamedata_items() -> dict:
-    """{ item_id_int: {name,hp,sp} } tu items_gamedata.json (622 thuoc HP/SP, crack tu gamedata)."""
+    """{ item_id_int: {name,hp,sp} } tu items_gamedata.json (622 thuoc HP/SP, crack tu gamedata).
+    BUG THAT (xac nhan qua log user: log_bag toan "??? CHUA BIET" tren APK): file nay la du lieu
+    TINH dong goi san (asset), truoc day lai doc qua app_dir() (Context.getFilesDir() - thu muc
+    RUNTIME ghi duoc, KHONG phai noi chua asset) -> file khong ton tai o do -> luon rong tren
+    Android. Sua dung config._read_asset() (doc tu android assets/train_bot_data/), giong cach
+    cac file tinh khac (pets.json, cities.json...) da dung dung."""
     global _gamedata_items
     if _gamedata_items is not None:
         return _gamedata_items
-    import json as _json, os as _os
+    import json as _json
     _gamedata_items = {}
     try:
-        from ._appdir import app_dir
-        path = _os.path.join(app_dir(), "items_gamedata.json")
-    except Exception:
-        path = "items_gamedata.json"
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for k, v in _json.load(fh).items():
-                iid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
-                _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
-                                        "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
+        for k, v in _json.loads(config._read_asset("items_gamedata.json")).items():
+            iid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+            _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
+                                    "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     except Exception:
         pass
     return _gamedata_items
