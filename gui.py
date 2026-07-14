@@ -1193,7 +1193,7 @@ class TrainMapEditor(tk.Toplevel):
     def __init__(self, master, on_save=None):
         super().__init__(master)
         self.title("Sửa map train (train_maps.json)")
-        self.geometry("620x540")
+        self.geometry("760x540")
         self.transient(master); self.grab_set()
         self.on_save = on_save
         raw = _load_json("train_maps.json").get("maps", {})
@@ -1210,7 +1210,7 @@ class TrainMapEditor(tk.Toplevel):
 
         left = ttk.Frame(self, padding=6); left.pack(side="left", fill="y")
         ttk.Label(left, text="Danh sách map:").pack(anchor="w")
-        self.lb = tk.Listbox(left, width=26, height=20, exportselection=False)
+        self.lb = tk.Listbox(left, width=42, height=20, exportselection=False)
         self.lb.pack(fill="y", expand=True)
         self.lb.bind("<<ListboxSelect>>", lambda e: self._on_select())
         b = ttk.Frame(left); b.pack(fill="x", pady=4)
