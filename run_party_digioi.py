@@ -253,6 +253,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.flee_mode = True
         next_vantieu = None
         next_phuc_than = 0.0   # 0.0 -> kiem tra NGAY lan dau (khong cho 30p roi moi dung lan dau)
+        # pcfg doc SOM (truoc day chi doc o duoi, SAU khoi chores nay) - can ngay o day de biet
+        # "Danh boss QD" co bat hay khong TRUOC khi goi do_legion_boss() lan dau luc login.
+        pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
+        c.fight_legion_boss = pcfg.get("fight_legion_boss", True)
         if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
             c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
             c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
@@ -272,7 +276,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             except Exception as e: log.warning("[%s] loi do_legion_boss: %s", label, e)
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
-        pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
+        # (pcfg da doc o tren, giu nguyen bien - khong doc lai)
         sc = pcfg.get("start_city_id", getattr(config, "START_CITY_ID", 0))
         mob_index = pcfg.get("mob_index", 0)
         city_flag = pcfg.get("city_flag", 0)
@@ -1322,7 +1326,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # BOSS QUAN DOAN: con luot + het cooldown -> danh. Dang trong battle-party (train) KHONG
             # danh duoc -> TRIGGER REFORM (bump reform_gen) cho ca party ve thanh; luc reform (solo o
             # thanh) moi nick tu danh (xem _do_reform). Solo mode (event/city/stand) -> danh thang.
-            if not c.legion_boss_available():
+            if not pcfg.get("fight_legion_boss", True):
+                pass   # setting tat -> bo qua hoan toan, KHONG trigger reform vo ich de danh boss
+            elif not c.legion_boss_available():
                 boss_reform_pending = False   # da danh xong / het luot / dang cooldown -> reset
             elif not c.in_combat():
                 if train_on_map:

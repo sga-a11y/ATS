@@ -555,6 +555,9 @@ class GameClient:
         # khong hop le) khi has_legion=False - tranh lam roi trang thai map/transition truoc khi vao
         # Di Gioi (goc re bug "vao Di Gioi that bai du fresh login").
         self.has_legion = False
+        # Setting party "Danh boss QD" (Cai dat nang cao, mac dinh BAT) - run_party_digioi.py set
+        # lai theo pcfg ngay sau login. Mac dinh True o day de test/goi truc tiep khong bi chan.
+        self.fight_legion_boss = True
         self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - tra VANTIEU_REQUESTS
         self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
         self.vantieu_unlocked = 1    # so slot DA MO (S2C 0x56 0600 [N]); slot con lai khoa = can vang
@@ -1849,6 +1852,10 @@ class GameClient:
           - COOLDOWN: 0x27 76 [OLE] = gio danh tiep -> self.legion_boss_next. Con cooldown -> cho.
         Replay capture: 0x27 7700 (start) -> ack -> 0x14 08000100 (vao) -> battle -> do_heal.
         Tra ve GIO CHECK LAI (epoch) neu con luot; None neu het luot hom nay (count>=max)."""
+        if not getattr(self, "fight_legion_boss", True):
+            # Setting party "Danh boss QD" (Cai dat nang cao) tat -> bo qua hoan toan, KHONG gui
+            # goi gi ca (giong nhanh has_legion=False ngay duoi).
+            return None
         if self.has_legion is False:
             # KHONG co quan doan (xac nhan qua guild_len=0, xem __init__/_on_player_info) -> BO QUA
             # HOAN TOAN, KHONG gui 0x27 7700/0x14 08000100 vao instance khong hop le voi acc nay.
