@@ -254,9 +254,10 @@ def _load_use_items():
                 tid = int(k, 16)
                 if isinstance(v, dict):
                     out[tid] = {"name": v.get("name", ""), "qty": v.get("qty"),
-                                "phuc_than": bool(v.get("phuc_than", False))}
+                                "phuc_than": bool(v.get("phuc_than", False)),
+                                "equip": bool(v.get("equip", False))}
                 else:
-                    out[tid] = {"name": v, "qty": None, "phuc_than": False}
+                    out[tid] = {"name": v, "qty": None, "phuc_than": False, "equip": False}
     except Exception:
         pass
     return out

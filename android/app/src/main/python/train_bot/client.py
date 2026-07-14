@@ -2286,6 +2286,21 @@ class GameClient:
         items = _load_gamedata_items()
         total = 0
         for slot, tid, cnt in targets:
+            if cfg[tid].get("equip"):
+                # Trang bi (khac tieu hao): 1 lenh la xong, KHONG co khai niem qty/lap. Server
+                # KHONG bao lai da deo hay chua (xem equip_item) -> cu goi 1 lan, tu coi thanh cong.
+                done = 1 if self.equip_item(slot) else 0
+                total += done
+                rec = self.bag_slots.get(slot)
+                if rec:
+                    rec[1] = max(0, rec[1] - done)
+                    if rec[1] <= 0:
+                        self.bag_slots.pop(slot, None)
+                _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
+                log.info("[%s] tu trang bi item (%s) slot=%d tid=0x%04x ('%s') %s",
+                         self._label, context_label, slot, tid, _nm,
+                         "OK" if done else "THAT BAI (slot het?)")
+                continue
             qcfg = cfg[tid].get("qty")
             if qcfg is None:
                 want, chunk = cnt, 1              # khong gioi han: dung het, tung cai 1
@@ -2389,6 +2404,18 @@ class GameClient:
         qty = max(1, min(int(qty), 255))
         payload = b"\x0f\x00" + bytes([slot & 0xFF, qty]) + b"\x00\x00\x00\x00" + bytes([target & 0xFF]) + b"\x00"
         self.send(0x17, payload)
+        return True
+
+    def equip_item(self, slot: int) -> bool:
+        """Trang bi item o SLOT (KHAC use_slot: item deo len nguoi, khong phai tieu hao). C2S 0x17:
+        0b 00 [slot 1B] (chi 3 byte, khong qty/target - xac nhan tu capture that). Server ack S2C
+        0x17 sub=11 echo lai dung slot. KHONG co goi nao bao lai "da deo vao dau"/cap nhat tui do
+        (0x16 KHONG gui lai) -> caller (vd use_phuc_than_items) tu coi nhu thanh cong + tu don
+        bag_slots (giong use_slot lam sau khi dung), KHONG dua vao ket qua tra ve de biet chac."""
+        rec = self.bag_slots.get(slot)
+        if rec is not None and rec[1] <= 0:
+            return False
+        self.send(0x17, b"\x0b\x00" + bytes([slot & 0xFF]))
         return True
 
     def _learn_item(self, tid: int, dhp: int, dsp: int, room_hp: bool = True, room_sp: bool = True,
