@@ -81,6 +81,16 @@ def is_joined(party_idx, entity):
     with _PARTY_LOCK:
         return bytes(entity) in _PARTY_JOINED.get(party_idx, set())
 
+def unmark_joined(party_idx, entity):
+    """Go 1 member khoi danh sach da-join khi acc do THOAT/MAT KET NOI. Thieu buoc nay:
+    _PARTY_JOINED giu entity cu qua lan reconnect -> leader moi vua moi da thay "du 4/4 join"
+    (dem stale) -> bo qua cho accept that -> leader danh 1 minh ca phien (bug thuc te DG 09:18).
+    Mirror PC bot/client.py."""
+    if party_idx is None or not entity:
+        return
+    with _PARTY_LOCK:
+        _PARTY_JOINED.get(party_idx, set()).discard(bytes(entity))
+
 # Pho ban to doi: goi ket tran THAT (0x14 sub0800, in_battle_TRUOC=True) chi gui rieng cho
 # MEMBER, LEADER khong bao gio nhan duoc (xac nhan tu nhieu log capture). LEADER cung KHONG
 # the tu suy luan qua enemy_slots rong (HP quai cu >0 con luu vi khong co 0x33 cuoi cap nhat

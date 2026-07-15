@@ -118,6 +118,24 @@ def _sprestore_decide(key, sp):
 # Sai atype = bi server da (slot strict).
 
 
+# Ten skill LOGIC (id 1xxxx dung trong Decision) - CHI de log cho de doc (thay vi soi id chay).
+# Nguon: KNOWLEDGE.md bang skill + config.SKILL_SP_COST comments.
+SKILL_NAMES = {
+    10000: "Đánh thường",
+    10005: "Ném Đá",
+    11004: "Thanh Lưu",
+    11009: "Hồi Sinh",
+    11010: "Toàn Trị Liệu",
+    12003: "Hỏa Tiễn",
+    12006: "Nhất Kích",
+    12009: "Hỏa Kiếm",
+    13013: "Loạn Kích",
+    17001: "Phòng thủ",
+    17997: "Bỏ chạy",
+    18001: "Bỏ chạy",
+}
+
+
 class Decision:
     # b = loai dich cua skill: 0=danh quai, 2=1 dong doi, 3=toan party (tu defend_test.pcap)
     def __init__(self, unit, atype, target, skill, b=0):
@@ -128,7 +146,9 @@ class Decision:
         self.b = b
 
     def __repr__(self):
-        return f"Decision(unit={self.unit} atype={self.atype} b={self.b} target={self.target} skill={self.skill})"
+        _sn = SKILL_NAMES.get(self.skill)
+        _sk = f"{self.skill}({_sn})" if _sn else str(self.skill)
+        return f"Decision(unit={self.unit} atype={self.atype} b={self.b} target={self.target} skill={_sk})"
 
 
 def _offered_targets(options, atype):

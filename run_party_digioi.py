@@ -17,7 +17,7 @@ except Exception:
 from bot import config
 from bot.login import login
 from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
-                        is_strategist, reset_party_joined)
+                        is_strategist, reset_party_joined, unmark_joined)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
 try:
@@ -1470,6 +1470,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         _reason("LOI ngoai le: %s" % e)
         log.error("[%s] LOI: %s", label, e)
     finally:
+        # Go entity minh khoi _PARTY_JOINED: acc thoat/rot la RA KHOI party that (server tan lien
+        # ket). Khong go -> lan reconnect sau leader dem "da join" STALE -> vua moi da tuong du
+        # 4/4 (khong ai accept that) -> leader danh 1 minh ca phien (bug thuc te DG 09:18).
+        if c is not None:
+            try: unmark_joined(c.party_idx, c.self_entity)
+            except Exception: pass
         # RECONNECT: server ROT (server_closed) + khong phai GUI-STOP -> supervisor se login lai.
         # Khi do KHONG set leader_gone (member phai CHO, dung thoat theo) + KHONG tong ket.
         # KHONG doi hoi has_leader: party "khong co chu PT" (vd dung yen trong DG cho moi tay) truoc
