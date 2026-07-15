@@ -826,6 +826,7 @@ class GameClient:
             _in_team_dungeon = time.time() < getattr(self, "_team_dungeon_until", 0.0)
             self.state.reset_enemies(reset_quest=not _in_team_dungeon)
             self.state.in_battle = False
+            self._heal_after_battle()   # hoi HP/SP NGAY khi ket tran (khong doi tick keepalive)
         # KET TRAN khi BO CHAY: flee KHONG sinh 0x14 sub0700 (man THANG) ma chuoi 0x14 0c00 -> 0900 ->
         # 0800 (xac nhan capture flee.pcap). -> cung ha in_battle de go_to_town teleport duoc sau flee.
         # (Neu flee chua thanh cong/dang giua tran, luot 0x35 sau tu set lai in_battle=True.)
@@ -864,6 +865,7 @@ class GameClient:
                 # roi khong bao gio duoc reset). Sua: reset giong het nhanh sub0700.
                 _in_team_dungeon = time.time() < getattr(self, "_team_dungeon_until", 0.0)
                 self.state.reset_enemies(reset_quest=not _in_team_dungeon)
+                self._heal_after_battle()   # hoi HP/SP NGAY khi ket tran (khong doi tick keepalive)
         # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
         # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
         if opcode == 0x59:
@@ -2617,19 +2619,43 @@ class GameClient:
                 return True
         return False
 
-    def do_heal(self):
+    def do_heal(self, force: bool = False):
         """Hoi mau NGOAI tran cho CHAR (target=0) + PET (target=1), dung thuoc DA BIET (gamedata/khai).
-        KHONG probe (gamedata da biet het thuoc). Hoi den NGUONG la dung."""
-        if self.in_combat() or not self.bag_slots:
+        KHONG probe (gamedata da biet het thuoc). Hoi den NGUONG la dung.
+        force=True: chi can in_battle=False la hoi (BO busy-window 4s cua in_combat) - dung cho
+        hoi NGAY khi nhan goi ket tran that (_heal_after_battle): train re-aggro nhanh thi cua so
+        "het busy" gan nhu khong bao gio trung tick keepalive -> hoi tre/lo (user bao thuc te).
+        Mirror PC bot/client.py."""
+        _busy = self.state.in_battle if force else self.in_combat()
+        if _busy or not self.bag_slots:
             return
         c = self.state.char
         if c.hp_max > 0:
-            self._heal_unit(0, c, "char", "hp_char", "hp")
-            self._heal_unit(0, c, "char", "sp_char", "sp")
+            self._heal_unit(0, c, "char", "hp_char", "hp", force=force)
+            self._heal_unit(0, c, "char", "sp_char", "sp", force=force)
         p = self.state.pet
         if p.hp_max > 0:
-            self._heal_unit(1, p, "pet", "hp_pet", "hp")
-            self._heal_unit(1, p, "pet", "sp_pet", "sp")
+            self._heal_unit(1, p, "pet", "hp_pet", "hp", force=force)
+            self._heal_unit(1, p, "pet", "sp_pet", "sp", force=force)
+
+    def _heal_after_battle(self):
+        """Goi tu recv-loop NGAY khi nhan goi KET TRAN THAT (0x14 sub0700 / sub0800 tail xac nhan).
+        Spawn thread rieng (KHONG block recv) doi grace ngan roi do_heal(force=True) - tranh truong
+        hop keepalive (tick 5s + busy-window 4s) khong bao gio bat kip khe ho giua 2 tran. Mirror PC."""
+        if self.state.quest_mode or getattr(self.state, "boss_mode", False):
+            return   # dungeon/boss flow tu quan ly heal (do_heal/heal_full rieng giua cac tran)
+        if getattr(self, "_heal_after_battle_active", False):
+            return
+        self._heal_after_battle_active = True
+
+        def _run():
+            try:
+                time.sleep(0.5)   # doi man tong ket/0x33 cuoi cap nhat HP xong
+                if self.running and not self.state.in_battle:
+                    self.do_heal(force=True)
+            finally:
+                self._heal_after_battle_active = False
+        threading.Thread(target=_run, daemon=True).start()
 
     def heal_full(self):
         """Hoi FULL HP+SP char + pet (nguong=1.0) - goi TRUOC khi danh boss (solo dungeon + world
@@ -2646,11 +2672,15 @@ class GameClient:
             self._heal_unit(1, p, "pet", "hp_pet", "hp", thr_override=1.0)
             self._heal_unit(1, p, "pet", "sp_pet", "sp", thr_override=1.0)
 
-    def _heal_unit(self, target: int, unit, label: str, thr_key: str, kind: str, thr_override=None):
+    def _heal_unit(self, target: int, unit, label: str, thr_key: str, kind: str, thr_override=None,
+                   force: bool = False):
         """Hoi 1 con 1 stat bang thuoc DA BIET den nguong. char do qua 0x08 (chinh xac);
         pet ko do duoc -> uoc tinh theo heal (open-loop). Het thuoc nay -> tu chuyen thuoc khac.
-        thr_override: ep nguong (vd 1.0 = FULL) - dung cho heal_full truoc boss."""
-        if self.in_combat():
+        thr_override: ep nguong (vd 1.0 = FULL) - dung cho heal_full truoc boss.
+        force=True: chi dung khi in_battle THAT (bo busy-window) - xem do_heal."""
+        def _busy():
+            return self.state.in_battle if force else self.in_combat()
+        if _busy():
             return
         nokey = (target, kind)
         if nokey in self._no_item:
@@ -2664,7 +2694,7 @@ class GameClient:
         remaining = target_val - cur   # uoc tinh con thieu (cho pet open-loop)
         healed = False
         for _ in range(40):
-            if self.in_combat():
+            if _busy():
                 break
             cur = unit.hp if kind == "hp" else unit.sp
             if target == 0 and cur >= target_val:
