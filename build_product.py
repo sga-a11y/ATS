@@ -104,7 +104,14 @@ def package():
            "--remove-output",                 # don file trung gian sau build
            "gui.py"]                          # CHAY TU cwd=STAGE -> bot = _stage/bot (config example),
     #                                           KHONG lay nham bot THAT o ROOT (tranh lo credential).
-    run(cmd, cwd=STAGE)
+    # Buoc nen onefile (zstd) chay NHIEU worker theo so CPU, moi worker ngon RAM lon -> may dang
+    # chay nhieu MuMu/bot de OOM ("zstd compress error: not enough memory", xac nhan thuc te
+    # 15/07). Fail lan dau -> tu build lai KHONG NEN (--onefile-no-compression): exe to hon
+    # (~35MB thay vi ~10MB) nhung luon thanh cong; zip ben ngoai van nen bot lai duoc mot phan.
+    r = subprocess.run(cmd, cwd=STAGE)
+    if r.returncode != 0:
+        print("!! Nuitka fail (kha nang OOM buoc nen) -> thu lai voi --onefile-no-compression")
+        run(cmd[:-1] + ["--onefile-no-compression", "gui.py"], cwd=STAGE)
     src = os.path.join(WORK, NAME + ".exe")
     shutil.copy(src, os.path.join(DIST, NAME + ".exe"))
     print("compiled (Nuitka native) -> %s\\%s.exe" % (DIST, NAME))
