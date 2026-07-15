@@ -67,3 +67,5 @@ android/**/*.iml
 android/**/.cxx/
 android/app/src/androidTest/assets/test_accounts.json
 aTSBot.zip
+legion_boss_state.json
+shop_state.json

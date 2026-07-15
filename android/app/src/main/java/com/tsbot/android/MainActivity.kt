@@ -315,6 +315,9 @@ fun TsBotApp(
             initialUsePhucThan = partyBeingEdited.usePhucThan,
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
             initialDoVanTieu = partyBeingEdited.doVanTieu,
+            initialBuyHoPhu = partyBeingEdited.buyHoPhu,
+            initialBuyBaoHop = partyBeingEdited.buyBaoHop,
+            initialBaoHopXuThreshold = partyBeingEdited.baoHopXuThreshold,
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
@@ -712,6 +715,9 @@ fun AddPartyDialog(
     initialUsePhucThan: Boolean = false,
     initialFightLegionBoss: Boolean = true,
     initialDoVanTieu: Boolean = true,
+    initialBuyHoPhu: Boolean = false,
+    initialBuyBaoHop: Boolean = false,
+    initialBaoHopXuThreshold: Int = 1000000,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
@@ -730,6 +736,9 @@ fun AddPartyDialog(
     var usePhucThan by remember { mutableStateOf(initialUsePhucThan) }
     var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
     var doVanTieu by remember { mutableStateOf(initialDoVanTieu) }
+    var buyHoPhu by remember { mutableStateOf(initialBuyHoPhu) }
+    var buyBaoHop by remember { mutableStateOf(initialBuyBaoHop) }
+    var baoHopXuText by remember { mutableStateOf(initialBaoHopXuThreshold.toString()) }
     var showAdvanced by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -850,6 +859,21 @@ fun AddPartyDialog(
                             Checkbox(checked = doVanTieu, onCheckedChange = { doVanTieu = it })
                             Text("Vận tiêu (nhận quà + gửi pet)")
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = buyHoPhu, onCheckedChange = { buyHoPhu = it })
+                            Text("Mua Dị Giới Hộ Phù (3 cái/ngày)")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = buyBaoHop, onCheckedChange = { buyBaoHop = it })
+                            Text("Mua Triệu Gọi Bảo Hộp khi xu >")
+                            OutlinedTextField(
+                                value = baoHopXuText,
+                                onValueChange = { baoHopXuText = it.filter { c -> c.isDigit() } },
+                                singleLine = true,
+                                modifier = Modifier.width(120.dp).padding(start = 6.dp),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                            )
+                        }
                     }
                 }
                 if (selectedMode == RunModes.TRAIN) {
@@ -968,7 +992,7 @@ fun AddPartyDialog(
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily, trainMapKey, trainMobIndex, usePhucThan, fightLegionBoss, doVanTieu))
+                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily, trainMapKey, trainMobIndex, usePhucThan, fightLegionBoss, doVanTieu, buyHoPhu, buyBaoHop, baoHopXuText.toIntOrNull() ?: 1000000))
                     }
                 },
             ) {

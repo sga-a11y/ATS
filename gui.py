@@ -174,7 +174,11 @@ class BotGUI(tk.Tk):
             try:
                 info = updater.check_update(self._version)
             except Exception as e:
-                log.warning("update: loi check: %s", e); return
+                # KHONG goi duoc server cap nhat (mang / GitHub CDN githubusercontent bi chan o VN /
+                # SSL / timeout). Log RO de khong tuong nham "da moi nhat" (bug cu nuot exception).
+                log.warning("update: ⚠ KHONG KET NOI DUOC SERVER CAP NHAT (mang/GitHub bi chan?): %s "
+                            "-> thu doi DNS 1.1.1.1/VPN hoac tai tay aTSBot.zip tu release", e)
+                return
             if info:
                 log.info("update: CO BAN MOI v%s (dang hien %s) -> hoi user", info[0], self._version)
                 self.after(0, lambda: self._prompt_update(*info))
@@ -934,6 +938,11 @@ class PartyConfigFrame(ttk.Frame):
         # Van tieu: mac dinh CO tick (giu hanh vi cu - truoc gio luon lam). Tat -> khong nhan qua
         # escort + khong gui pet van tieu + khong hen gio check lai.
         self.van_tieu_var = tk.BooleanVar(value=bool(self._preset.get("do_van_tieu", True)))
+        # Mua shop (mac dinh TAT): Di Gioi Ho Phu (mua 3/ngay), Trieu Goi Bao Hop (mua 1/ngay khi
+        # xu > nguong). 1 lan/ngay/acc (luu ben shop_state.json).
+        self.buy_ho_phu_var = tk.BooleanVar(value=bool(self._preset.get("buy_ho_phu", False)))
+        self.buy_bao_hop_var = tk.BooleanVar(value=bool(self._preset.get("buy_bao_hop", False)))
+        self.bao_hop_xu_var = tk.StringVar(value=str(self._preset.get("bao_hop_xu_threshold", 1000000)))
 
         ttk.Label(self, text="Acc (TICK = dùng, BỎ TICK = bỏ qua). Dòng đầu đã tick = chủ PT "
                   "(trừ khi tick ô trên). TỐI ĐA 5 acc/party:").pack(anchor="w")
@@ -1061,6 +1070,12 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.fight_boss_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Vận tiêu (nhận quà + gửi pet)",
                         variable=self.van_tieu_var).pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(frm, text="Mua Dị Giới Hộ Phù (3 cái/ngày)",
+                        variable=self.buy_ho_phu_var).pack(anchor="w", pady=(4, 0))
+        _bh = ttk.Frame(frm); _bh.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_bh, text="Mua Triệu Gọi Bảo Hộp khi xu nhiều hơn",
+                        variable=self.buy_bao_hop_var).pack(side="left")
+        ttk.Entry(_bh, textvariable=self.bao_hop_xu_var, width=10).pack(side="left", padx=(4, 0))
         ttk.Button(frm, text="Đóng", command=win.destroy).pack(anchor="e", pady=(12, 0))
 
     def _on_mode_change(self):
@@ -1213,12 +1228,23 @@ class PartyConfigFrame(ttk.Frame):
                 "use_phuc_than": bool(self.use_phuc_than_var.get()),
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
                 "do_van_tieu": bool(self.van_tieu_var.get()),
+                "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
+                "buy_bao_hop": bool(self.buy_bao_hop_var.get()),
+                "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 1000000),
                 "leaders": leaders, "accounts": accs}
         if mode == "digioi":
             data["digioi_mode"] = "solo" if self.digioi_solo_var.get() else "party"
         if mode == "event":
             data["event_key"] = event_key
         return data
+
+
+def _parse_int(s, default):
+    """Doc so nguyen tu text field; rong/loi -> default (tranh crash khi user go chu)."""
+    try:
+        return int(str(s).strip().replace(",", "").replace(".", "") or default)
+    except Exception:
+        return default
 
 
 def _safe_points(safe):

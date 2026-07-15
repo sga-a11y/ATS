@@ -402,6 +402,9 @@ def reload_parties():
                 "use_phuc_than": bool(_p.get("use_phuc_than", False)),
                 "fight_legion_boss": bool(_p.get("fight_legion_boss", True)),
                 "do_van_tieu": bool(_p.get("do_van_tieu", True)),
+                "buy_ho_phu": bool(_p.get("buy_ho_phu", False)),
+                "buy_bao_hop": bool(_p.get("buy_bao_hop", False)),
+                "bao_hop_xu_threshold": int(_p.get("bao_hop_xu_threshold", 1000000)),
             }
             PARTY_LEADERS_BY_IDX[_i] = list(_p.get("leaders", []) or [])
         if PARTY_CONFIG:

@@ -287,6 +287,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # Van tieu: nhan qua xong + gui pet; tra ve gio check tiep. Cong tac "Van tieu" trong
             # Cai dat nang cao (mac dinh CO tick - giu hanh vi cu); tat -> khong lam + khong hen gio.
             next_vantieu = c.do_van_tieu() if pcfg.get("do_van_tieu", True) else None
+            # MUA SHOP (Cai dat nang cao, mac dinh TAT): 1 lan/ngay/acc (luu ben shop_state.json).
+            #  - Di Gioi Ho Phu: tick -> mua 3 cai (currency Di Gioi).
+            #  - Trieu Goi Bao Hop: tick + xu HIEN CO > nguong -> mua 1 (gia 60k xu).
+            if pcfg.get("buy_ho_phu"):
+                try: c.buy_di_gioi_ho_phu()
+                except Exception as e: log.warning("[%s] loi mua Ho Phu: %s", label, e)
+            if pcfg.get("buy_bao_hop"):
+                try: c.buy_trieu_goi_bao_hop(int(pcfg.get("bao_hop_xu_threshold", 1000000)))
+                except Exception as e: log.warning("[%s] loi mua Bao Hop: %s", label, e)
             # BOSS QUAN DOAN ngay sau van tieu: danh solo neu con luot (server count 0x55/0x2a) + het
             # cooldown. KHONG lien quan daily quest (tick hay ko van danh). Luc login char SOLO (chua
             # lap party) -> danh duoc. Trong phien: keepalive trigger REFORM khi con luot (xem duoi).
@@ -483,6 +492,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 while not _ab():
                     _town_ok = False
                     try:
+                        # Tele TRUNG GIAN Trac Quan/Ng.Thanh (50-50) truoc roi moi ve thanh route -
+                        # tele thang tu map la ve thanh route hay loi (user bao). Lam MOI luot thu.
+                        c.pre_route_town_hop()
                         _town_ok = c.go_to_town(fc, ff)   # CA party tu teleport ve thanh gom nhau
                     except Exception as e:
                         log.warning("[%s] reform: loi ve thanh: %s", label, e)
@@ -1722,7 +1734,8 @@ def start_account(username, password, pidx, is_leader, is_picker):
 def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         city_flag=0, start_city_id=0, mob_index=-1, do_daily=True,
                         digioi_mode="party", event_key="", leaders=None, has_leader=True,
-                        use_phuc_than=False, fight_legion_boss=True, do_van_tieu=True):
+                        use_phuc_than=False, fight_legion_boss=True, do_van_tieu=True,
+                        buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=1000000):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01u2\\x01p2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -1739,6 +1752,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "digioi_mode": digioi_mode, "event_key": event_key or "",
         "use_phuc_than": bool(use_phuc_than), "fight_legion_boss": bool(fight_legion_boss),
         "do_van_tieu": bool(do_van_tieu),
+        "buy_ho_phu": bool(buy_ho_phu), "buy_bao_hop": bool(buy_bao_hop),
+        "bao_hop_xu_threshold": int(bao_hop_xu_threshold),
     }
     _flat = str(accounts).split("\x01") if accounts else []
     accs = [(_flat[i], _flat[i + 1]) for i in range(0, len(_flat) - 1, 2) if _flat[i]]

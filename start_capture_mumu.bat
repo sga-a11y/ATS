@@ -7,7 +7,9 @@ echo ====================================
 echo.
 
 set ADB=adb
-set DEV=127.0.0.1:16768
+where adb >nul 2>&1 || set "ADB=%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe"
+REM MuMu ADB port = 7555 (16768 la port cu/bi doi -> khong connect duoc)
+set DEV=127.0.0.1:7555
 set OUT=/sdcard/ts_capture.pcap
 
 echo [0] Ket noi + root...
@@ -25,8 +27,8 @@ echo.
 
 echo.
 echo [3] Keo file ve may tinh...
-%ADB% -s %DEV% pull %OUT% E:\Claude\ATS\ts_capture.pcap
+%ADB% -s %DEV% pull %OUT% "%~dp0ts_capture.pcap"
 echo.
-echo === Xong! File: E:\Claude\ATS\ts_capture.pcap ===
+echo === Xong! File: %~dp0ts_capture.pcap ===
 echo     Chay: python analyze_pcap.py ts_capture.pcap
 pause

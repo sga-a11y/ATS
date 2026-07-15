@@ -47,18 +47,34 @@ def is_frozen() -> bool:
     return "python" not in os.path.basename(sys.executable).lower()
 
 
-def check_update(current_version: str):
-    """Tra (version, url, notes) neu host co ban MOI HON current_version; None neu khong/loi.
-    So sanh chuoi: format '1.1.YYYYMMDDHHMM' rong co dinh -> so chuoi = so thu tu thoi gian."""
+def _fetch_version_json(timeout: float):
+    """Tai version.json. Thu SSL verify binh thuong TRUOC; loi cert (exe thieu cert store Windows
+    -> browser OK ma urllib fail) thi thu lai voi SSL KHONG verify. Nem exception neu ca 2 fail
+    (goi ben ngoai bat de log ro - KHONG nuot am tham nhu truoc)."""
+    import ssl
+    req = urllib.request.Request(UPDATE_URL, headers={"User-Agent": "atsbot-updater"})
     try:
-        req = urllib.request.Request(UPDATE_URL, headers={"User-Agent": "atsbot-updater"})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            d = json.loads(r.read().decode("utf-8"))
-        ver = str(d.get("version", "")).strip()
-        if ver and ver > str(current_version):
-            return ver, (d.get("url") or _FALLBACK_ZIP_URL), str(d.get("notes", ""))
-    except Exception:
-        pass
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except ssl.SSLError:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+            return json.loads(r.read().decode("utf-8"))
+
+
+def check_update(current_version: str):
+    """Tra (version, url, notes) neu host co ban MOI HON current_version.
+    None = DA moi nhat (goi duoc server, ver <= current).
+    RAISE = KHONG kiem tra duoc (mang/CDN githubusercontent bi chan/SSL/timeout) -> caller log RO
+    'khong ket noi duoc server cap nhat' thay vi bao nham 'da moi nhat' (bug cu: nuot exception ->
+    None -> user tuong bot on trong khi that ra mang chan github CDN).
+    So sanh chuoi: format '1.1.YYYYMMDDHHMM' rong co dinh -> so chuoi = so thu tu thoi gian."""
+    d = _fetch_version_json(timeout=20)   # 8->20s: CDN githubusercontent cham o VN
+    ver = str(d.get("version", "")).strip()
+    if ver and ver > str(current_version):
+        return ver, (d.get("url") or _FALLBACK_ZIP_URL), str(d.get("notes", ""))
     return None
 
 

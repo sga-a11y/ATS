@@ -506,6 +506,53 @@ def _vantieu_set_count(label: str, count: int):
             pass
 
 
+# ---- State MUA SHOP: chi mua 1 lan/ngay/acc (luu ben qua Stop-Start/relogin trong ngay) ----
+try:
+    from ._appdir import app_dir as _shop_app_dir
+    import os as _os_shop
+    _SHOP_FILE = _os_shop.path.join(_shop_app_dir(), "shop_state.json")
+except Exception:
+    _SHOP_FILE = "shop_state.json"
+
+def _shop_done_today(label: str, key: str) -> bool:
+    """Da mua 'key' (vd 'ho_phu'/'bao_hop') cua acc 'label' hom nay chua?"""
+    import json, os, datetime
+    today = datetime.date.today().isoformat()
+    if not os.path.exists(_SHOP_FILE):
+        return False
+    try:
+        with open(_SHOP_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        return False
+    ent = d.get(label)
+    return bool(ent and ent.get("date") == today and key in ent.get("bought", []))
+
+def _shop_mark_done(label: str, key: str):
+    import json, os, datetime
+    today = datetime.date.today().isoformat()
+    with _gift_lock:
+        d = {}
+        if os.path.exists(_SHOP_FILE):
+            try:
+                with open(_SHOP_FILE, encoding="utf-8") as f:
+                    d = json.load(f)
+            except Exception:
+                d = {}
+        d = {k: v for k, v in d.items() if v.get("date") == today}   # don ngay cu
+        ent = d.get(label)
+        if not ent or ent.get("date") != today:
+            ent = {"date": today, "bought": []}
+        if key not in ent["bought"]:
+            ent["bought"].append(key)
+        d[label] = ent
+        try:
+            with open(_SHOP_FILE, "w", encoding="utf-8") as f:
+                json.dump(d, f)
+        except Exception:
+            pass
+
+
 class GameClient:
     def __init__(self, user_id: str, access_token: str, host: str = None, server_id: int = 1):
         self.user_id = user_id
@@ -2335,6 +2382,35 @@ class GameClient:
         self.xu -= self.GACHA_COST
         log.info("[%s] Gacha CARD hang ngay (xu con ~%d)", self._label, self.xu)
 
+    # Gói mua shop = opcode 0x42 (cùng họ gacha), bắn thẳng 1 gói, không cần mở shop/reveal.
+    #   0100 [tab] [sub] [slot] [item_id 2B] [gia 2B] [qty] 0000   (capture ts_shop.pcap)
+    def buy_di_gioi_ho_phu(self):
+        """Mua 3 Dị Giới Hộ Phù (0xff8c) - 1 lan/ngay. Replay NGUYEN goi capture (gia bao san trong
+        goi -> khong lo don/tong). Mua bang currency Di Gioi (KHONG phai xu) -> khong dung xu."""
+        if _shop_done_today(self._label, "ho_phu"):
+            return
+        self.send(0x42, bytes.fromhex("0100010103018cff2400030000"))   # 3 Ho Phu
+        _shop_mark_done(self._label, "ho_phu")
+        log.info("[%s] Mua shop: 3 Dị Giới Hộ Phù", self._label)
+
+    def buy_trieu_goi_bao_hop(self, xu_threshold: int):
+        """Mua 1 Triệu Gọi Bảo Hộp (0xb554, gia 60000 xu) - 1 lan/ngay, CHI khi xu HIEN CO >
+        xu_threshold. Doc xu giong gacha (_wait_xu + self.xu)."""
+        if _shop_done_today(self._label, "bao_hop"):
+            return
+        self._wait_xu()
+        if self.xu is None:
+            log.info("[%s] Mua Bảo Hộp: chưa đọc được xu -> bỏ qua", self._label)
+            return
+        if self.xu <= xu_threshold:
+            log.info("[%s] Mua Bảo Hộp: xu (%d) chưa vượt %d -> bỏ qua", self._label, self.xu, xu_threshold)
+            return
+        self.send(0x42, bytes.fromhex("01000101030754b560ea010000"))   # 1 Bao Hop (54b5, gia ea60)
+        self.xu -= 60000
+        _shop_mark_done(self._label, "bao_hop")
+        log.info("[%s] Mua shop: 1 Triệu Gọi Bảo Hộp (xu %d > %d, còn ~%d)",
+                 self._label, self.xu + 60000, xu_threshold, self.xu)
+
     def _learned(self) -> dict:
         """Cache item da hoc theo TID (template) - CHUNG mọi acc: item giong nhau = tid giong = heal giong.
         { tid_str: {hp,sp,hp_zero,sp_zero,none,unusable} }."""
@@ -2726,7 +2802,7 @@ class GameClient:
 
         def _run():
             try:
-                time.sleep(1.0)   # doi man tong ket/0x33 cuoi cap nhat HP xong
+                time.sleep(0.5)   # doi man tong ket/0x33 cuoi cap nhat HP xong (1.0 -> 0.5 theo yeu cau: hoi som hon)
                 if self.running and not self.state.in_battle:
                     self.do_heal(force=True)
             finally:
@@ -3992,6 +4068,18 @@ class GameClient:
                     self._label, idx, x, y, self.current_map)
         return False
 
+    def pre_route_town_hop(self):
+        """Truoc khi teleport ve THANH DAU ROUTE: tele ve Trac Quan (12001) hoac Ng.Thanh (12061)
+        TRUOC (chon ngau nhien 50-50) roi moi tele thanh route. User bao: bay ve thanh route truc
+        tiep tu map la hay bi loi ngay doan tele; qua 1 thanh trung gian truoc thi on dinh."""
+        import random
+        city, flag = random.choice([(12001, 0), (12061, 2)])   # Trac Quan / Ng.Thanh
+        log.info("[%s] pre-route: tele trung gian ve thanh %s truoc (50-50)", self._label, city)
+        try:
+            self.go_to_town(city, flag)
+        except Exception as e:
+            log.warning("[%s] pre-route: loi tele trung gian (bo qua, di tiep): %s", self._label, e)
+
     def follow_route(self, route, step_wait: float = 0.5) -> bool:
         """Replay route tu THANH toi train map. route = {from_city, city_flag, dest_map, steps}.
         steps: {"move":[x,y]} = di 1 buoc | {"gate":idx,"x","y"} = toi cong roi gui 0x14.
@@ -4001,6 +4089,8 @@ class GameClient:
         flag = int(route.get("city_flag", 0))
         log.info("[%s] follow_route -> map %s (qua thanh %s flag %s)", self._label, dest, city, flag)
         self.flee_mode = True
+        if city:
+            self.pre_route_town_hop()   # tele trung gian Trac Quan/Ng.Thanh truoc (tranh loi tele truc tiep)
         if city and not self.go_to_town(city, flag):
             log.warning("[%s] follow_route: khong teleport ve thanh %s duoc", self._label, city)
             return False

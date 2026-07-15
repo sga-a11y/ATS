@@ -34,5 +34,9 @@ data class Party(
     // Van tieu (do_van_tieu: nhan qua escort + gui pet). Mirror PC's van_tieu_var (gui.py).
     // Mac dinh CO tick (giu hanh vi cu - truoc gio luon lam).
     val doVanTieu: Boolean = true,
+    // Mua shop (mac dinh TAT). Ho Phu: mua 3/ngay. Bao Hop: mua 1/ngay khi xu > baoHopXuThreshold.
+    val buyHoPhu: Boolean = false,
+    val buyBaoHop: Boolean = false,
+    val baoHopXuThreshold: Int = 1000000,
     val accounts: List<Account> = emptyList(),
 )
