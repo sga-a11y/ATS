@@ -536,6 +536,7 @@ class GameClient:
         self.char_int = None         # chi so INT (tri luc) - tu S2C 0x08 id=0x1b
         self.char_level = None       # cap nhan vat - tu S2C 0x05 (payload offset 21 = pkt[28])
         self.pet_level = None        # cap pet dang dung - tu S2C 0x0f sub=08
+        self.active_pet_slot = None  # SLOT TUI (1..4) cua pet dang xuat chien - tu 0x0f (marker)
         self.pet_name = None         # ten pet dang dung - tu S2C 0x0f sub=08
         self._cached_pet_list_pkt = None  # cache 0x0f de re-process khi 0x13 den sau
         self._gift_status = {}        # gtype -> status phan hoi (S2C 0x57: 01 diem danh, 04 qua 14 ngay)
@@ -1247,9 +1248,16 @@ class GameClient:
             # Van phai QUET HET n record de multi_pet_skills du 4 con.
             if apid and pid == apid and chosen is None:
                 chosen = start
+                # SLOT TUI cua pet dang xuat chien = marker record (1..4, user tu xep, co the
+                # khong lien tuc). use_slot(target=...) hoi pet PHAI dung slot nay - truoc day
+                # hardcode target=1 -> pet nam slot khac la item bay vao slot sai, server bo qua
+                # (bug thuc te: "hoi pet" ca 40 vien ma vao tran pet van 1HP). Mirror PC.
+                self.active_pet_slot = marker
             start = start + 254 + b[start + 31]
         if chosen is None:
             chosen = first   # active chua biet / khong tim thay -> con dau (fallback)
+            if first is not None:
+                self.active_pet_slot = b[first]
         if chosen is None or chosen + 33 > len(b):
             return
         found_active = apid is not None and int.from_bytes(b[chosen + 1:chosen + 3], "little") == apid
@@ -2639,8 +2647,15 @@ class GameClient:
             self._heal_unit(0, c, "char", "sp_char", "sp", force=force)
         p = self.state.pet
         if p.hp_max > 0:
-            self._heal_unit(1, p, "pet", "hp_pet", "hp", force=force)
-            self._heal_unit(1, p, "pet", "sp_pet", "sp", force=force)
+            # target hoi pet = SLOT TUI PET dang xuat chien (1..4, tu 0x0f marker) - KHONG phai
+            # hang so 1 (user tu xep vi tri pet; hardcode 1 -> item vao slot sai, server bo qua).
+            _pt = self.active_pet_slot or 1
+            # Pet chet trong tran -> KET TRAN da duoc HOI SINH lai 1HP (server tu lam) -> state
+            # pet.hp=0 tu 0x33 cuoi la STALE, van hoi binh thuong (coi nhu 1HP).
+            if p.hp <= 0:
+                p.hp = 1
+            self._heal_unit(_pt, p, "pet", "hp_pet", "hp", force=force)
+            self._heal_unit(_pt, p, "pet", "sp_pet", "sp", force=force)
 
     def _heal_after_battle(self):
         """Goi tu recv-loop NGAY khi nhan goi KET TRAN THAT (0x14 sub0700 / sub0800 tail xac nhan).
@@ -2673,8 +2688,11 @@ class GameClient:
             self._heal_unit(0, c, "char", "sp_char", "sp", thr_override=1.0)
         p = self.state.pet
         if p.hp_max > 0:
-            self._heal_unit(1, p, "pet", "hp_pet", "hp", thr_override=1.0)
-            self._heal_unit(1, p, "pet", "sp_pet", "sp", thr_override=1.0)
+            _pt = self.active_pet_slot or 1   # slot tui pet dang xuat chien (xem do_heal)
+            if p.hp <= 0:
+                p.hp = 1   # pet chet da duoc server hoi sinh 1HP luc ket tran (0x33 cuoi stale)
+            self._heal_unit(_pt, p, "pet", "hp_pet", "hp", thr_override=1.0)
+            self._heal_unit(_pt, p, "pet", "sp_pet", "sp", thr_override=1.0)
 
     def _heal_unit(self, target: int, unit, label: str, thr_key: str, kind: str, thr_override=None,
                    force: bool = False):
