@@ -5,15 +5,14 @@
 
 ## 0. DEBUG LỖI USER BÁO (bản gửi đi = EXE)
 
-> **User dùng BẢN BUILD (aTSBot.exe), KHÔNG phải dev source.** EXE biên dịch từ `config.example.py`
-> (build_product.py stage: config.example.py -> config.py). User KHÔNG có source.
+> **User dùng BẢN BUILD (aTSBot.exe), KHÔNG phải dev source.** EXE build bằng `build_product.py`,
+> stage source từ repo hiện tại; `bot/config.py` là file placeholder tracked được đóng gói vào exe.
 
-- **User báo lỗi config/hành vi → soi `bot/config.example.py` + code ship trong build TRƯỚC**, KHÔNG
-  phải `bot/config.py` (dev, gitignored, có thể STALE/khác hẳn).
-- `config.py` (dev máy này) đã trôi xa `config.example.py` — chỉ tin `config.example.py` cho bản build.
-- **Khi đổi key config từ GUI/run_party** (vd `do_dungeon`->`do_daily`): phải sửa ĐỒNG THỜI cả
-  `run_party_digioi.py` + `gui.py` + `config.py` + **`config.example.py`** (chỗ build PARTY_CONFIG).
-  Quên config.example -> bản build bỏ qua key mới (vd bug "bỏ tick daily vẫn làm").
+- **User báo lỗi config/hành vi → soi code ship trong build + `bot/config.py` placeholder TRƯỚC.**
+- Tài khoản/mật khẩu THẬT nằm ở `accounts.json` (gitignored, KHÔNG đóng gói vào build). `config.py`
+  chỉ là placeholder/hằng số game; tuyệt đối không đưa acc thật vào `config.py`.
+- **Khi đổi key config từ GUI/run_party** (vd `do_dungeon`->`do_daily`): phải sửa ĐỒNG THỜI các chỗ đọc/ghi
+  key đó như `run_party_digioi.py` + `gui.py` + `bot/config.py` placeholder (và Android `config.py` nếu GUI APK dùng key này).
 - File JSON ship theo build: `build_product.py` -> `DATA_JSON`. Thêm data mới phải thêm vào đây.
 
 ## 1. THÔNG TIN CƠ BẢN
@@ -436,8 +435,9 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 ### Các thao tác đã verify (đều dùng SLOT, đọc LIVE từ bag_slots)
 | Thao tác | Gói C2S | Mã hóa slot |
 |---|---|---|
-| Dùng item (heal HP/SP, túi sự kiện) — `use_slot` | `0x17` `0f 00 [slot 1B][qty 1B] 00*4 [target 1B] 00` | slot thô (1B) |
-|   ↳ target: 0=char; PET = **VỊ TRÍ PET trong đội mang theo (1-based, user tự xếp = marker gói 0x0f)** — XÁC NHẬN capture `captures/pet_heal_20260715.pcap` (Quan Vũ vị trí 3 → target=03; Thái Văn Cơ vị trí 1 → target=01; char → 00). Hardcode 1 từng gây bug hồi pet vô dụng khi pet không ở vị trí 1. Pet chết trong trận được server TỰ HỒI SINH 1HP lúc kết trận → state pet.hp=0 từ 0x33 cuối là stale, vẫn hồi item bình thường ngay sau trận. | — |
+| Dùng item (heal HP/SP, túi sự kiện) — `use_slot` | `0x17` `0f 00 [slot 1B][qty 1B] 00*3 [target 1B] 00` | slot thô (1B) |
+|   ↳ target: 0=char; PET = **VỊ TRÍ PET trong đội mang theo (1-based, user tự xếp = marker gói 0x0f)** — XÁC NHẬN capture `captures/pet_heal_20260715.pcap` (Quan Vũ vị trí 3 → target=03; Thái Văn Cơ vị trí 1 → target=01; char → 00). Hardcode 1 từng gây bug hồi pet vô dụng khi pet không ở vị trí 1. Pet chết trong trận được server TỰ HỒI SINH 1HP lúc kết trận → state pet.hp=0 từ 0x33 cuối là stale, vẫn hồi item bình thường ngay sau trận. **Đừng gửi `00*4`: dư 1 byte sẽ làm lệch target; char target=0 vẫn có vẻ chạy nhưng pet không hồi đúng.** | — |
+|   ↳ Dị Giới SOLO có tối đa 4 pet cùng ra trận: stat trong battle dùng atype `0,1,3,4` nhưng `use_slot` vẫn target bằng marker pet `1,2,3,4` (`0→1`, `1→2`, `3→3`, `4→4`). Hồi ngoài trận phải quét `state.multi_pet` và hồi từng con có stat, không chỉ `active_pet_slot`. | — |
 |   ↳ **Kho capture bằng chứng: `captures/`** (được git giữ lại, ngoại lệ gitignore) — capture mới nào có giá trị lâu dài thì COPY vào đây với tên mô tả + ngày, KHÔNG bắt user capture lại. | — |
 | **Hợp vật phẩm** — `do_combine_item` | `0x17` `0e 00 [cid1 2B] 00 00 00 [cid2 2B] 00*8 01` | **cid = 0x0100 + slot** |
 | Túi Vật Liệu Sự Kiện — `use_event_bags` | (dùng `use_slot`) | slot thô |

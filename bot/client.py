@@ -1211,6 +1211,15 @@ class GameClient:
             return None
         return marker - 1 if marker <= 2 else marker
 
+    @staticmethod
+    def _pet_atype_to_marker(atype: int):
+        """Nguoc voi _pet_marker_to_atype: atype pet trong tran -> target use_slot (marker pet)."""
+        if atype in (0, 1):
+            return atype + 1
+        if atype in (3, 4):
+            return atype
+        return None
+
     def _on_pet_list(self, pkt: bytes):
         """S2C 0x0f sub=0008: danh sach pet MANG THEO. Lay con DANG XUAT CHIEN (active_pet_id),
         KHONG phai con dau list. Record: [01 marker][pet_id 2B LE][...][LEVEL @+6][...][namelen @+30][ten @+31].
@@ -2332,14 +2341,12 @@ class GameClient:
         return _load_all_learned()
 
     def use_item(self, item_id: int, target: int = 0) -> bool:
-        """Dung item trong tui. target=0: char, 1: pet.
-        C2S 0x17: 0f 00 [tid 2B LE] 00 00 00 00 [target 1B] 00. Server confirm S2C 0x17 sub=09 -> tu tru.
-        Chi chan khi BIET CHAC het (bag_counts==0); tid chua biet -> cho phep (server tu tu choi)."""
-        if self.bag_counts.get(item_id, 1) <= 0:
-            return False
-        payload = b"\x0f\x00" + item_id.to_bytes(2, "little") + b"\x00\x00\x00\x00" + bytes([target]) + b"\x00"
-        self.send(0x17, payload)
-        return True
+        """Dung item theo TID bang cach tim SLOT live roi goi use_slot().
+        Moi thao tac item phai gui slot tui, khong gui tid gamedata len server."""
+        for slot, (tid, cnt) in sorted(self.bag_slots.items()):
+            if tid == item_id and cnt > 0:
+                return self.use_slot(slot, target)
+        return False
 
     def log_bag_delayed(self, max_wait: float = 8.0):
         """In tui khi snapshot tui (0x17/05) DA VE + on dinh (ngung nhan them 1.5s) -> tranh cho cung
@@ -2424,7 +2431,7 @@ class GameClient:
         tuong tu decompose_junk_scrolls/donate_legion. 2 kieu (theo config, xem use_items.json):
           - qty None (chi ten): dung HET ca stack, TUNG CAI 1 (item chi cho 1/lenh, vd Tang O).
           - qty N: dung TOI DA N cai/login (co>N -> dung N de lai du; co<N -> dung het). Batch 255/lenh.
-        use_slot: C2S 0x17 0f00 [slot][qty] 00000000 [target] 00 (qty verify tu capture).
+        use_slot: C2S 0x17 0f00 [slot][qty] 000000 [target] 00 (qty verify tu capture).
         Item danh dau "phuc_than" trong use_items.json KHONG nam o day (xem use_phuc_than_items -
         nhom nay dung theo dinh ky rieng, KHONG phai 1 lan luc login/kem theo cong tac bat/tat)."""
         cfg = {tid: v for tid, v in (getattr(config, "USE_LOGIN_ITEMS", {}) or {}).items()
@@ -2518,14 +2525,17 @@ class GameClient:
         return over.get(kind, glob)
 
     def use_slot(self, slot: int, target: int = 0, qty: int = 1) -> bool:
-        """Dung item o SLOT. C2S 0x17: 0f 00 [slot 1B][qty 1B] 00 00 00 00 [target 1B] 00.
+        """Dung item o SLOT. C2S 0x17: 0f 00 [slot 1B][qty 1B] 00 00 00 [target 1B] 00.
         qty = so luong dung 1 lenh (1..255; verify capture: dung 22 -> byte=0x16). Heal qty=1.
         Server confirm S2C 0x17 sub=09 (= dung duoc). Tra False neu slot het."""
         rec = self.bag_slots.get(slot)
         if rec is not None and rec[1] <= 0:
             return False
         qty = max(1, min(int(qty), 255))
-        payload = b"\x0f\x00" + bytes([slot & 0xFF, qty]) + b"\x00\x00\x00\x00" + bytes([target & 0xFF]) + b"\x00"
+        payload = b"\x0f\x00" + bytes([slot & 0xFF, qty]) + b"\x00\x00\x00" + bytes([target & 0xFF]) + b"\x00"
+        if target != 0:   # DEBUG hoi pet: in nguyen byte gui di de so voi capture (target pet)
+            log.info("[%s] DBG use_slot PET payload=%s (slot=%d qty=%d target=%d)",
+                     self._label, payload.hex(), slot, qty, target)
         self.send(0x17, payload)
         return True
 
@@ -2638,7 +2648,7 @@ class GameClient:
         return False
 
     def do_heal(self, force: bool = False):
-        """Hoi mau NGOAI tran cho CHAR (target=0) + PET (target=1), dung thuoc DA BIET (gamedata/khai).
+        """Hoi mau NGOAI tran cho CHAR + pet, dung thuoc DA BIET (gamedata/khai).
         KHONG probe (gamedata da biet het thuoc). Hoi den NGUONG la dung.
         force=True: chi can in_battle=False la hoi (BO busy-window 4s cua in_combat) - dung cho
         hoi NGAY khi nhan goi ket tran that (_heal_after_battle): train re-aggro nhanh thi cua so
@@ -2650,6 +2660,8 @@ class GameClient:
         if c.hp_max > 0:
             self._heal_unit(0, c, "char", "hp_char", "hp", force=force)
             self._heal_unit(0, c, "char", "sp_char", "sp", force=force)
+        if self.state.solo_multipet and self._heal_solo_multipets(force=force):
+            return
         p = self.state.pet
         if p.hp_max > 0:
             # target hoi pet = SLOT TUI PET dang xuat chien (1..4, tu 0x0f marker) - KHONG phai
@@ -2661,6 +2673,46 @@ class GameClient:
                 p.hp = 1
             self._heal_unit(_pt, p, "pet", "hp_pet", "hp", force=force)
             self._heal_unit(_pt, p, "pet", "sp_pet", "sp", force=force)
+
+    def _sync_solo_multipet_from_allies(self):
+        """Dong bo stat pet Di Gioi solo tu allies/ally_spmax neu 0x0b da nap vao do."""
+        if not self.state.solo_multipet:
+            return
+        for (b1, atype), src in list(self.state.allies.items()):
+            if b1 != 2 or self._pet_atype_to_marker(atype) is None:
+                continue
+            u = self.state.multi_pet.get(atype)
+            if u is None:
+                u = Unit(f"pet_at{atype}")
+                self.state.multi_pet[atype] = u
+            if src.hp_max > 0:
+                u.hp_max = src.hp_max
+            if src.hp > 0 or u.hp == 0:
+                u.hp = src.hp
+            if src.sp >= 0:
+                u.sp = src.sp
+            smax = self.state.ally_spmax.get((2, atype), src.sp_max)
+            if smax > 0:
+                u.sp_max = smax
+
+    def _heal_solo_multipets(self, thr_override=None, force: bool = False) -> bool:
+        """Di Gioi solo: hoi HP/SP tung pet dang co stat, target item = marker pet (1..4)."""
+        self._sync_solo_multipet_from_allies()
+        seen = False
+        for atype, unit in sorted(self.state.multi_pet.items()):
+            marker = self._pet_atype_to_marker(atype)
+            if marker is None or (unit.hp_max <= 0 and unit.sp_max <= 0):
+                continue
+            seen = True
+            # Pet chet trong tran duoc server hoi sinh 1HP khi ket tran; 0x33 cuoi co the stale.
+            if unit.hp_max > 0 and unit.hp <= 0:
+                unit.hp = 1
+            label = f"pet{marker}"
+            self._heal_unit(marker, unit, label, "hp_pet", "hp",
+                            thr_override=thr_override, force=force)
+            self._heal_unit(marker, unit, label, "sp_pet", "sp",
+                            thr_override=thr_override, force=force)
+        return seen
 
     def _heal_after_battle(self):
         """Goi tu recv-loop NGAY khi nhan goi KET TRAN THAT (0x14 sub0700 / sub0800 tail xac nhan).
@@ -2691,6 +2743,8 @@ class GameClient:
         if c.hp_max > 0:
             self._heal_unit(0, c, "char", "hp_char", "hp", thr_override=1.0)
             self._heal_unit(0, c, "char", "sp_char", "sp", thr_override=1.0)
+        if self.state.solo_multipet and self._heal_solo_multipets(thr_override=1.0):
+            return
         p = self.state.pet
         if p.hp_max > 0:
             _pt = self.active_pet_slot or 1   # slot tui pet dang xuat chien (xem do_heal)

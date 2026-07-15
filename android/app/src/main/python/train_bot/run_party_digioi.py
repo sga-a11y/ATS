@@ -496,7 +496,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # + moi -> chubon accept dung luc dang teleport -> server KHONG ghi nhan (roster chi
                 # 3 member) nhung _mark_joined van dem -> leader tuong du 4/4, keo ca party di train
                 # BO chubon lai. Phai du mat CA PARTY o thanh roi moi di tiep (reconnecting cong vao
-                # de khoi deadlock - acc rot se duoc reform lai khi quay ve). Mirror PC.
+                # de khoi deadlock - acc rot se duoc reform lai khi quay ve).
                 with st["lock"]:
                     _arr = st.setdefault("reform_arrived", {})
                     for _gk in [k for k in _arr if k < _g0]:
@@ -1498,7 +1498,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     finally:
         # Go entity minh khoi _PARTY_JOINED: acc thoat/rot la RA KHOI party that (server tan lien
         # ket). Khong go -> lan reconnect sau leader dem "da join" STALE -> vua moi da tuong du
-        # 4/4 (khong ai accept that) -> leader danh 1 minh ca phien (bug thuc te DG 09:18). Mirror PC.
+        # 4/4 (khong ai accept that) -> leader danh 1 minh ca phien (bug thuc te DG 09:18).
         if c is not None:
             try: unmark_joined(c.party_idx, c.self_entity)
             except Exception: pass

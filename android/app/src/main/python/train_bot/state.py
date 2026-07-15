@@ -216,6 +216,14 @@ class BattleState:
                         u.hp, u.hp_max, u.sp, u.sp_max = ch, mh, cs, ms
                         u.slot = sl
                         self.ally_spmax[(bb, sl)] = ms   # BEN qua cac tran (allies bi clear)
+                        # Di Gioi SOLO co toi da 4 pet cung luc. 0x33 khong co SP_max, nen nap
+                        # SP_max/HP tu 0x0b vao multi_pet de hoi item ngoai tran cho tung con.
+                        if self.solo_multipet and bb == 2 and sl in (0, 1, 3, 4):
+                            mp = self.multi_pet.get(sl)
+                            if mp is None:
+                                mp = Unit(f"pet_at{sl}")
+                                self.multi_pet[sl] = mp
+                            mp.hp, mp.hp_max, mp.sp, mp.sp_max = ch, mh, cs, ms
                         j += 18
                         continue
                 j += 1
