@@ -622,6 +622,10 @@ class GameClient:
     # ---- ket noi + auth ----
     def connect(self):
         self.state.label = self._label
+        # Setting rieng acc "Char đứng Phòng thủ..." (accounts.json heal.char_defend -> config.
+        # ACCOUNT_CHAR_DEFEND). Set o day vi _username duoc caller gan TRUOC khi connect().
+        self.state.char_defend = bool(getattr(config, "ACCOUNT_CHAR_DEFEND", {})
+                                      .get(getattr(self, "_username", None), False))
         self._connect_time = time.time()
         st = _load_gift_state(self._label)
         self._online_base = st["online_sec"]   # online tich luy truoc phien nay (hom nay)

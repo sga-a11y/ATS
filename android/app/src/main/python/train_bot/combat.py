@@ -541,6 +541,11 @@ def decide_multipet(state, atype, skills, stat, options):
 
 def decide_char(state, options, first_turn=False):
     at = state.my_atype
+    # Setting rieng acc "Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)": char CHI
+    # Phong thu (17001, self-target) moi luot o MOI mode - khong danh/heal/hoi sinh gi ca.
+    # Flag set o client.connect() tu config.ACCOUNT_CHAR_DEFEND. Mirror PC bot/combat.py.
+    if getattr(state, "char_defend", False):
+        return Decision(config.UNIT_CHAR, at, at, config.SKILL_DEFEND, b=3)
     # HOI SINH (truoc heal): co dong doi chet + char co skill hoi sinh + thang dieu phoi
     rv = _try_revive(state, config.UNIT_CHAR, state.skills_char, state.char, options)
     if rv is not None:

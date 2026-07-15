@@ -59,6 +59,9 @@ PASSWORD = "your_password"
 
 # ---- client.py dung qua getattr(..., default) -> co the rong an toan, nhung khai bao du ----
 ACCOUNT_HEAL = {}
+# Config RIENG tung acc (accounts.json field "settings" moi acc - TACH khoi "heal"). char_defend:
+# "Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)". Mirror PC bot/config.py.
+ACCOUNT_CHAR_DEFEND = {}   # username -> bool
 JUNK_PET_SCROLLS = {}
 PET_HEDOANH = {}
 VANTIEU_ENABLE = True
@@ -380,6 +383,9 @@ def reload_parties():
                 if _u and isinstance(_h, dict):
                     ACCOUNT_HEAL[_u] = {k: float(v) for k, v in _h.items()
                                         if k in ("hp_char", "sp_char", "hp_pet", "sp_pet")}
+                _s = _a.get("settings")
+                if _u and isinstance(_s, dict) and _s.get("char_defend"):
+                    ACCOUNT_CHAR_DEFEND[_u] = True
         for _i, _p in enumerate(_praw):
             _srv = _p.get("server", "trieu_van")
             PARTY_CONFIG[_i] = {

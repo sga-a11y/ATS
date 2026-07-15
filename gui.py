@@ -953,12 +953,12 @@ class PartyConfigFrame(ttk.Frame):
             u = a.get("u", ""); on = a.get("on", True)
             if u.lstrip().startswith("#"):   # tuong thich co che '#' cu -> bo tick
                 on = False; u = u.lstrip().lstrip("#").strip()
-            self._add_acc_row(u, a.get("p", ""), on, a.get("heal"))
+            self._add_acc_row(u, a.get("p", ""), on, a.get("heal"), a.get("settings"))
         ttk.Button(self, text="➕ Thêm dòng acc",
                    command=lambda: self._add_acc_row("", "", True)).pack(anchor="w", pady=(2, 0))
         self._render_dyn()
 
-    def _add_acc_row(self, u="", p="", on=True, heal=None):
+    def _add_acc_row(self, u="", p="", on=True, heal=None, settings=None):
         fr = ttk.Frame(self._acc_inner); fr.pack(fill="x", pady=1)
         on_var = tk.BooleanVar(value=bool(on))
         ttk.Checkbutton(fr, variable=on_var).pack(side="left")
@@ -966,8 +966,10 @@ class PartyConfigFrame(ttk.Frame):
         e_u.insert(0, u)
         e_p = ttk.Entry(fr, width=14, font=("Consolas", 10)); e_p.pack(side="left", padx=(0, 4))
         # heal: {hp_char,sp_char,hp_pet,sp_pet} (0-1). None/thieu key -> dung nguong chung.
+        # settings: config RIENG khac cua acc (char_defend...; se gom them setting moi sau nay).
         row = {"on": on_var, "u": e_u, "p": e_p, "frame": fr, "_realp": p,
-               "heal": dict(heal) if isinstance(heal, dict) else {}}
+               "heal": dict(heal) if isinstance(heal, dict) else {},
+               "settings": dict(settings) if isinstance(settings, dict) else {}}
         # Pass DA LUU -> hien placeholder '******' (giau pass that). Bam vao go thi xoa placeholder;
         # de trong khong go -> khoi phuc '******' (giu pass cu). Pass MOI (chua co) -> o trong, go ro.
         if p:
@@ -1019,13 +1021,22 @@ class PartyConfigFrame(ttk.Frame):
                 m = maxv[k]
                 l.configure(text=(f"= {round(vv.get() / 100 * m)}" if m else "(offline)"))
             v.trace_add("write", _upd); _upd()
+        # Char CHI Phong thu moi luot battle (moi mode) - de train pet ma khong hao do ben
+        # Ngoc phuc than dang deo tren char. Luu vao field "settings" RIENG cua acc (KHONG chung
+        # "heal" - heal chi giu 4 nguong hoi mau; settings la cho gom cac config rieng acc sau nay).
+        defend_var = tk.BooleanVar(value=bool(row["settings"].get("char_defend", False)))
+        ttk.Checkbutton(win, text="Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)",
+                        variable=defend_var).grid(row=len(rows) + 1, column=0, columnspan=3,
+                                                  sticky="w", padx=8, pady=(6, 0))
         def _save():
             row["heal"] = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
+            row["settings"]["char_defend"] = bool(defend_var.get())
             win.destroy()
         def _reset():
             for k, vv in vars_.items():
                 vv.set(int(round((glob_hp if k.startswith("hp") else glob_sp) * 100)))
-        bb = ttk.Frame(win); bb.grid(row=len(rows) + 1, column=0, columnspan=3, pady=8)
+            defend_var.set(False)
+        bb = ttk.Frame(win); bb.grid(row=len(rows) + 2, column=0, columnspan=3, pady=8)
         ttk.Button(bb, text="↺ Mặc định chung", command=_reset).pack(side="left", padx=4)
         ttk.Button(bb, text="💾 Lưu", command=_save).pack(side="left", padx=4)
         ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="left", padx=4)
@@ -1188,6 +1199,8 @@ class PartyConfigFrame(ttk.Frame):
             acc = {"u": u, "p": pw, "on": bool(r["on"].get())}
             if r.get("heal"):
                 acc["heal"] = r["heal"]
+            if r.get("settings"):
+                acc["settings"] = r["settings"]
             accs.append(acc)
         if self.no_leader_var.get() and accs:
             accs = [{"u": "", "p": "", "on": True}] + accs   # slot 0 trong = KHONG co chu PT

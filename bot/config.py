@@ -299,6 +299,12 @@ ACCOUNT_HEAL = {
     # "acc1": {"hp_char": 0.7, "sp_char": 0.5, "hp_pet": 0.6, "sp_pet": 0.4},
 }
 
+# Config RIENG tung acc (accounts.json field "settings" moi acc - TACH khoi "heal" vi heal chi
+# giu 4 nguong hoi mau; settings la cho gom cac config rieng acc, se them key moi sau nay).
+# char_defend: "Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)" - True -> char CHI
+# Phong thu (17001) moi luot battle o MOI mode; False/thieu -> danh binh thuong.
+ACCOUNT_CHAR_DEFEND = {}   # username -> bool
+
 # Unit IDs
 UNIT_CHAR = 3
 UNIT_PET = 2
@@ -355,6 +361,9 @@ if _aj is not None:
                 if _u and isinstance(_h, dict):
                     ACCOUNT_HEAL[_u] = {_k: float(_v) for _k, _v in _h.items()
                                         if _k in ("hp_char", "sp_char", "hp_pet", "sp_pet")}
+                _s = _a.get("settings")
+                if _u and isinstance(_s, dict) and _s.get("char_defend"):
+                    ACCOUNT_CHAR_DEFEND[_u] = True
         # accounts.json TON TAI -> LUON dung no (ke ca RONG) => ban product accounts.json rong thi
         # KHONG hien party mac dinh cua config (tranh lo/nham acc).
         PARTIES = _ps
