@@ -2652,7 +2652,7 @@ class GameClient:
 
         def _run():
             try:
-                time.sleep(0.5)   # doi man tong ket/0x33 cuoi cap nhat HP xong
+                time.sleep(1.0)   # doi man tong ket/0x33 cuoi cap nhat HP xong
                 if self.running and not self.state.in_battle:
                     self.do_heal(force=True)
             finally:
@@ -2693,7 +2693,7 @@ class GameClient:
         if thr <= 0 or mx <= 0 or cur >= mx * thr:
             return
         target_val = int(mx * thr)
-        remaining = target_val - cur   # uoc tinh con thieu (cho pet open-loop)
+        remaining = target_val - cur   # uoc tinh con thieu (CHI dung cho pet open-loop)
         healed = False
         for _ in range(40):
             if _busy():
@@ -2701,8 +2701,13 @@ class GameClient:
             cur = unit.hp if kind == "hp" else unit.sp
             if target == 0 and cur >= target_val:
                 break              # CHAR: 0x08 bao da dat nguong -> dung
-            if remaining <= 0:
-                break              # uoc tinh da du (chu yeu cho pet)
+            # CHAR: KHONG break theo remaining uoc tinh - chi tin 0x08 (chi so THAT). Server co the
+            # NUOT lenh dung item ~1-2s ngay sau man ket tran (bug thuc te: "log bao dung HP nhung
+            # khong len, sang tran sau van 1HP" - truoc day tru remaining roi dung du HP chua tang).
+            # Cu dung tiep toi khi 0x08 dat nguong: lo gui thua luc gan full cung KHONG sao, server
+            # tu bo qua lenh dung item khi chi so da day (user xac nhan).
+            if target != 0 and remaining <= 0:
+                break              # PET: het cach do -> dung theo uoc tinh
             found = self._slot_for_known(kind, set())
             if found is None:
                 log.info("[%s] %s HET thuoc %s -> bo qua, cho tran sau (co the drop them)",

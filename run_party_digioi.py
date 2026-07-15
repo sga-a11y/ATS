@@ -491,6 +491,32 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (%s) reform: CHUA ve duoc thanh %s (map=%s) -> nghi 10s thu lai",
                                 label, role, fc, c.current_map)
                     time.sleep(10)
+                # BARRIER: CHO CA PARTY VE DEN thanh gom nhau TRUOC khi sync kenh + moi party.
+                # Bug thuc te (log 10:08): chubon con dang di bo ra khoi DG thi leader da sync kenh
+                # + moi -> chubon accept dung luc dang teleport -> server KHONG ghi nhan (roster chi
+                # 3 member) nhung _mark_joined van dem -> leader tuong du 4/4, keo ca party di train
+                # BO chubon lai. Phai du mat CA PARTY o thanh roi moi di tiep (reconnecting cong vao
+                # de khoi deadlock - acc rot se duoc reform lai khi quay ve).
+                with st["lock"]:
+                    _arr = st.setdefault("reform_arrived", {})
+                    for _gk in [k for k in _arr if k < _g0]:
+                        _arr.pop(_gk, None)   # don gen cu
+                    _arr.setdefault(_g0, set()).add(username)
+                _expected = len(party_accounts(pidx))
+                _t0 = time.time()
+                while not _ab():
+                    with st["lock"]:
+                        _n_arr = len(st.get("reform_arrived", {}).get(_g0, set()))
+                        _n_rec = len(st["reconnecting"])
+                    if _n_arr + _n_rec >= _expected:
+                        break
+                    if time.time() - _t0 > 30:
+                        log.info("[%s] (%s) reform: CHO ca party ve thanh %s (%d/%d, reconnecting=%d)...",
+                                 label, role, fc, _n_arr, _expected, _n_rec)
+                        _t0 = time.time()
+                    time.sleep(1)
+                if _ab():
+                    return
             # LUON re-sync kenh (khong chi switch ve kenh cu da luu) - vua ve thanh sau khi CO THE
             # da danh dungeon (solo o1 hoac team o5) -> server co the da day acc sang kenh KHAC (ngau
             # nhien). Chi switch ve kenh CU (st["channel"]) KHONG du: kenh do co the da DAY (full,
