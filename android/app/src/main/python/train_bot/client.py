@@ -1230,6 +1230,7 @@ class GameClient:
         apid = getattr(self.state, "active_pet_id", None)
         n = b[2]
         start, chosen, first = 3, None, None
+        _dbg = []   # DEBUG: (marker, pid) tung record doi chieu vi tri THAT trong game
         for _ in range(n):
             if start + 33 > len(b):
                 break
@@ -1237,6 +1238,7 @@ class GameClient:
                 first = start
             marker = b[start]
             pid = int.from_bytes(b[start + 1:start + 3], "little")
+            _dbg.append((marker, pid))
             at = self._pet_marker_to_atype(marker)
             if at is not None:
                 sk = config.PET_SKILLS.get(pid)
@@ -1258,6 +1260,9 @@ class GameClient:
             chosen = first   # active chua biet / khong tim thay -> con dau (fallback)
             if first is not None:
                 self.active_pet_slot = b[first]
+        log.info("[%s] PET-LIST parse: apid=%s records=%s -> active_pet_slot=%s",
+                 self._label, hex(apid) if apid else None,
+                 [(m, hex(p)) for m, p in _dbg], self.active_pet_slot)
         if chosen is None or chosen + 33 > len(b):
             return
         found_active = apid is not None and int.from_bytes(b[chosen + 1:chosen + 3], "little") == apid
