@@ -2739,8 +2739,8 @@ class GameClient:
                 break
             remaining -= heal
             healed = True
-            log.info("[%s] hoi %s slot=%d 0x%04x +%d%s (con thieu ~%d)",
-                     self._label, label, slot, tid, heal, kind.upper(), max(0, remaining))
+            log.info("[%s] hoi %s slot=%d 0x%04x +%d%s target=%d (con thieu ~%d)",
+                     self._label, label, slot, tid, heal, kind.upper(), target, max(0, remaining))
             time.sleep(0.3)
         # PET (target!=0) hoi open-loop: HP that KHONG cap nhat ngoai tran -> set OPTIMISTIC = nguong
         # de keepalive sau KHONG hoi lai vo han (HP that se cap nhat lai dau tran sau qua 0x33).
