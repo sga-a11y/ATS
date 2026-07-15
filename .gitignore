@@ -4,6 +4,9 @@ certs/
 
 # ==== File nang / nhi phan (capture, apk, dump) ====
 *.pcap
+# NGOAI LE: captures/ = kho luu capture BANG CHUNG (pet_heal, digioi...) - GIU LAI trong git
+# de sau khong phai capture lai (yeu cau user 15/07)
+!captures/*.pcap
 *.apk
 *.zpk
 *.bin

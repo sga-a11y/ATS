@@ -437,7 +437,8 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 | Thao tác | Gói C2S | Mã hóa slot |
 |---|---|---|
 | Dùng item (heal HP/SP, túi sự kiện) — `use_slot` | `0x17` `0f 00 [slot 1B][qty 1B] 00*4 [target 1B] 00` | slot thô (1B) |
-|   ↳ target: 0=char; PET = **VỊ TRÍ PET trong đội mang theo (1-based, user tự xếp = marker gói 0x0f)** — XÁC NHẬN capture pet_heal.pcap 15/07 (Quan Vũ vị trí 3 → target=03; Thái Văn Cơ vị trí 1 → target=01; char → 00). Hardcode 1 từng gây bug hồi pet vô dụng khi pet không ở vị trí 1. Pet chết trong trận được server TỰ HỒI SINH 1HP lúc kết trận → state pet.hp=0 từ 0x33 cuối là stale, vẫn hồi item bình thường ngay sau trận. | — |
+|   ↳ target: 0=char; PET = **VỊ TRÍ PET trong đội mang theo (1-based, user tự xếp = marker gói 0x0f)** — XÁC NHẬN capture `captures/pet_heal_20260715.pcap` (Quan Vũ vị trí 3 → target=03; Thái Văn Cơ vị trí 1 → target=01; char → 00). Hardcode 1 từng gây bug hồi pet vô dụng khi pet không ở vị trí 1. Pet chết trong trận được server TỰ HỒI SINH 1HP lúc kết trận → state pet.hp=0 từ 0x33 cuối là stale, vẫn hồi item bình thường ngay sau trận. | — |
+|   ↳ **Kho capture bằng chứng: `captures/`** (được git giữ lại, ngoại lệ gitignore) — capture mới nào có giá trị lâu dài thì COPY vào đây với tên mô tả + ngày, KHÔNG bắt user capture lại. | — |
 | **Hợp vật phẩm** — `do_combine_item` | `0x17` `0e 00 [cid1 2B] 00 00 00 [cid2 2B] 00*8 01` | **cid = 0x0100 + slot** |
 | Túi Vật Liệu Sự Kiện — `use_event_bags` | (dùng `use_slot`) | slot thô |
 
