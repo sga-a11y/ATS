@@ -17,6 +17,9 @@ log = logging.getLogger("bot")
 _GROUND_STORE = None
 _GROUND_STORE_PATH = None
 _GROUND_STORE_FAILED = False
+_SMART_ROUTER = None
+_SMART_ROUTER_KEY = None
+_SMART_ROUTER_FAILED = False
 
 
 def _ground_store():
@@ -38,6 +41,76 @@ def _ground_store():
         _GROUND_STORE_FAILED = True
         log.info("Smart path: khong nap duoc Ground.mmg (%s), dung navigate cu", exc)
     return _GROUND_STORE
+
+
+def _smart_world_router():
+    global _SMART_ROUTER, _SMART_ROUTER_KEY, _SMART_ROUTER_FAILED
+    if not getattr(config, "SMART_WORLD_ROUTING", True):
+        return None
+    nav_path = getattr(config, "WORLD_NAV_PATH", "")
+    cache_path = getattr(config, "SMART_ROUTE_CACHE_PATH", "")
+    ground = _ground_store()
+    key = (nav_path, cache_path, id(ground))
+    if not nav_path or not cache_path or ground is None:
+        return None
+    if _SMART_ROUTER is not None and _SMART_ROUTER_KEY == key:
+        return _SMART_ROUTER
+    if _SMART_ROUTER_FAILED and _SMART_ROUTER_KEY == key:
+        return None
+    try:
+        from .smart_route import SmartRouteCache, SmartWorldRouter
+        from .world_nav import WorldNavStore
+
+        nav = WorldNavStore(nav_path)
+        _SMART_ROUTER = SmartWorldRouter(
+            nav, ground, SmartRouteCache(cache_path)
+        )
+        _SMART_ROUTER_KEY = key
+        _SMART_ROUTER_FAILED = False
+        log.info("Smart world route: da nap %d canh tu %s",
+                 len(nav.data["edges"]), nav_path)
+    except (OSError, ValueError, KeyError, struct.error) as exc:
+        _SMART_ROUTER = None
+        _SMART_ROUTER_KEY = key
+        _SMART_ROUTER_FAILED = True
+        log.warning("Smart world route: khong nap duoc (%s)", exc)
+    return _SMART_ROUTER
+
+
+def execute_smart_route(client, route, abort=None):
+    """Execute a built route and stop immediately on any state mismatch."""
+    client._smart_route_failure = None
+    for leg in route["legs"]:
+        if not client.running or (abort and abort()):
+            client._smart_route_failure = "aborted"
+            return False
+        if client.current_map != leg["scene"]:
+            client._smart_route_failure = "unexpected_scene"
+            return False
+        client.navigate_to(*leg["gate_center"], abort=abort)
+        if not client.running or (abort and abort()):
+            client._smart_route_failure = "aborted"
+            return False
+        if not client._enter_gate(*leg["gate_center"], leg["gate"]):
+            client._smart_route_failure = "gate_failed"
+            return False
+        if client.current_map != leg["target_scene"]:
+            client._smart_route_failure = "unexpected_scene"
+            return False
+        if client.pos is None and leg.get("target_arrival"):
+            client.pos = tuple(leg["target_arrival"])
+
+    if not client.running or (abort and abort()):
+        client._smart_route_failure = "aborted"
+        return False
+    client.navigate_to(*route["safe"], abort=abort)
+    if not client.running or (abort and abort()):
+        client._smart_route_failure = "aborted"
+        return False
+    if client.current_map != route["dest_map"]:
+        client._smart_route_failure = "unexpected_scene"
+        return False
+    return True
 
 # Registry entity cac bot cung party (chia se trong process). party_idx -> set(entity bytes).
 # Bot dang ky self_entity luc login -> khi nhan loi moi, accept neu nguoi moi cung party.
@@ -4186,6 +4259,60 @@ class GameClient:
         log.info("[%s] follow_route xong: map=%s (dich %s) -> %s",
                  self._label, self.current_map, dest, "OK" if ok else "CHUA TOI")
         return ok
+
+    def follow_smart_route(self, dest_map: int, safe, abort=None) -> bool:
+        """Teleport to the best city, then traverse only verified scene gates."""
+        dest_map = int(dest_map)
+        safe = (int(safe[0]), int(safe[1]))
+        if not self.running or (abort and abort()):
+            return False
+        if self.current_map == dest_map:
+            self.navigate_to(*safe, abort=abort)
+            return self.running and self.current_map == dest_map
+
+        router = _smart_world_router()
+        if router is None:
+            return False
+        route = router.build_route(dest_map, safe)
+        if route is None:
+            log.warning("[%s] smart route: khong tim thay duong toi map %s",
+                        self._label, dest_map)
+            return False
+
+        for attempt in range(2):
+            gates = ",".join(str(leg["gate"]) for leg in route["legs"])
+            log.info("[%s] smart route %s: city=%s flag=%s gates=%s",
+                     self._label, dest_map, route["city"], route["flag"], gates)
+            self.flee_mode = True
+            if self.current_map != route["city"]:
+                self.pre_route_town_hop()
+                if not self.go_to_town(route["city"], route["flag"]):
+                    return False
+
+            deadline = time.time() + 20.0
+            while (self.running and time.time() < deadline
+                   and (self.current_map != route["city"] or self.pos is None)):
+                if abort and abort():
+                    return False
+                time.sleep(0.2)
+            if self.current_map != route["city"] or self.pos is None:
+                log.warning("[%s] smart route: city spawn chua san sang map=%s pos=%s",
+                            self._label, self.current_map, self.pos)
+                return False
+
+            if execute_smart_route(self, route, abort=abort):
+                log.info("[%s] smart route reached safe (%d,%d)",
+                         self._label, safe[0], safe[1])
+                return True
+            if self._smart_route_failure != "unexpected_scene" or attempt:
+                return False
+            log.warning("[%s] smart route: scene ngoai du kien %s, rebuild mot lan",
+                        self._label, self.current_map)
+            router.cache.invalidate(dest_map, safe)
+            route = router.build_route(dest_map, safe)
+            if route is None:
+                return False
+        return False
 
     def go_to_event(self, ev) -> bool:
         """Tele toi MAP EVENT roi dung yen (mode 'event', moi nick tu di rieng - khong party).

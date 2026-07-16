@@ -99,7 +99,7 @@ class SmartWorldRouter:
         start = tuple(candidate["arrival"])
         total_distance = 0.0
         route_legs = []
-        for edge in candidate["legs"]:
+        for index, edge in enumerate(candidate["legs"]):
             gate = self.nav.get_gate(edge["scene"], edge["door"])
             if gate is None:
                 return None
@@ -108,7 +108,8 @@ class SmartWorldRouter:
             if path is None:
                 return None
             total_distance += _path_distance(path)
-            route_legs.append({
+            next_start = self._arrival_after(edge)
+            route_leg = {
                 "scene": edge["scene"],
                 "target_scene": edge["target_scene"],
                 "from_code": edge["from"],
@@ -116,9 +117,12 @@ class SmartWorldRouter:
                 "gate": edge["door"],
                 "gate_center": list(gate_center),
                 "paths": {_start_key(start): [list(point) for point in path]},
-            })
-            start = self._arrival_after(edge)
-            if start is None and edge is not candidate["legs"][-1]:
+            }
+            if next_start is not None:
+                route_leg["target_arrival"] = list(next_start)
+            route_legs.append(route_leg)
+            start = next_start
+            if start is None and index < len(candidate["legs"]) - 1:
                 return None
 
         final_paths = {}
