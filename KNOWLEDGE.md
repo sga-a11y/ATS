@@ -305,22 +305,25 @@ Lưu ý: phải thoát/giải tán party mới teleport được.
 - De AUTO vao Di Gioi: phai decrypt HTTPS 103.82.31.230 (dung mitmproxy + APK patched tsvtc-patched.apk de trust cert) -> lay URL+params -> replicate bang Python (bot da co lib HTTP cho login). TODO.
 - map_id Di Gioi: CHUA XAC DINH chac (gia tri 0xc316 o offset 28 cua 0x03 co the la toa do).
 
-## 7d-RE. MAP COLLISION / VUNG KHONG DI DUOC (tam dung 2026-07-16)
+## 7d-RE. MAP COLLISION / SMART PATHFIND (xac nhan 2026-07-17)
 
 Muc tieu: tim data game biet o nao tren map di duoc / bi chan (tuong, song, object...) de pathfind dung hon.
 
-**Ket luan tam thoi: raw grid trong Ground.mmg KHONG phai collision/passability truc tiep.**
-- Da ve debug map `12831` tu `Ground.mmg`: grid 0/1/2 + safe/mob point. User check anh va xac nhan vung cam di khong khop.
-- Cac safe/mob/gate point da biet nam lan ca tren grid value 0 va 1; vi vay KHONG duoc coi 0/1 la walkable/blocked.
-- Object sprite bbox tu `Wem.mmg` cung KHONG duoc coi la collision full bbox; object co lien quan nhung game con build block layer rieng.
+**Ket luan da xac nhan: grid trong `Ground.mmg` CHINH LA block/collision.** Ket luan cu bi sai vi
+tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-major**
+(`blocks[x][y]`, byte index `(x-1)*blockHeight+(y-1)`). Lua game quy dinh:
+- obstacle khi `(value & 1) == 1` HOAC `(value & 4) == 4`;
+- sea khi `(value & 2) == 2`;
+- ngoai bien / khong co map = obstacle.
 
 **Data da tim thay trong MuMu 12 (APK alone khong du data, vi game tai them GB data):**
 - Real data path tren emulator: `/sdcard/Android/data/com.vtcmobile.gz06/files`
 - Cac pack quan trong da keo local tam vao `.codex_mumu_probe/` (gitignored, KHONG commit file nang):
   `Ground.mmg`, `Wem.mmg`, `Eve.emg`, `Talk_C.dat`, `ResourceList.dat`, `BasePackageList.dat`,
   `global-metadata.dat`, `libil2cpp.so`, `libtolua.so`.
-- `Ground.mmg` la pack co ~4469 entry `.map`. Index o gan EOF; moi entry doc duoc dang 29 byte:
-  name + offset + size. Tat ca map trong `train_maps.json` (24/24) va `map_gates.json` (41/41) co entry.
+- `Ground.mmg` co 4469 entry `.map`. Index o gan EOF; entry chuan:
+  `[u8 nameLen][name][11 byte metadata][u32 offset LE][u32 size LE]`.
+  Vi du `12831.map` -> offset `0x32bc42` (3333397), size `0x2b72` (11122).
 - Format `.map` da doc duoc phan lon:
   `u32 width_px`, `u32 height_px`, `u8 chunk_count`, moi chunk 6 byte, tiep theo `u16 grid_w`,
   `u16 grid_h`, roi `grid_w*grid_h` byte grid. Sau do co event_count/object_count/tail metadata.
@@ -328,17 +331,29 @@ Muc tieu: tim data game biet o nao tren map di duoc / bi chan (tuong, song, obje
 - `Wem.mmg` la pack object `.wem`; object_id trong tail `.map` map duoc 100% sang WEM.
   WEM entry hay 21 byte, co object_id va kich thuoc sprite (vd `10621002.wem` width~416 height~224 flags~511).
 
-**Huong dung tiep theo nam o Lua runtime, khong phai Ground grid:**
-- Trong RAM game dang chay co cac symbol/string:
-  `Logic.Map.MapManager`, `Controller.BlockController`, `MAX_BLOCK`, `BLOCK_UNIT`, `BLOCK_CONVERT`,
-  `gridRoot`, `blockRoot`, `BaseBlock`, `CreateBlock`, `GetBlock`, `SetBlock`, `IsObstacle`,
-  `CheckMove`, `GetEmptyBlock`, `GetNearEmpty`, `GetNearObstacle`.
-- Cac file script co that trong data:
-  `/sdcard/.../Lua/Logic/Map/MapManager.lua`, `/Lua/Logic/Map/Scene.lua`,
-  `/Lua/Controller/BlockController.lua`, `/Lua/Controller/MoveController.lua`, `/Lua/Controller/GridController.lua`.
-  Nhung file tren disk dang bi ma hoa/nen; doc raw se la byte rac. Runtime RAM co metadata/bytecode da giai ma.
-- `global-metadata.dat` IL2CPP khong chua `Logic.Map.MapManager` (no nam o Lua layer). Co cac class lien quan Lua loader:
-  `LuaClient`, `LuaResLoader`, `ToLua`, `LuaLoader`, `LoadFile`, `AddLuaLoader`, `BufferToString`.
+**Da giai ma Lua, khong can hook runtime:**
+- `LuaFileUtils.ReadFile` goi `CryptUtils.DeCrypt`; `ProjectSetting.cctor` cung cap AES/Rijndael
+  CBC PKCS7 key `1234567870541704`, IV `7054170412345678`.
+- Da decrypt va doi chieu `MapManager.lua`, `MapData.lua`, `FindWay.lua`, `BlockController.lua`,
+  `MoveController.lua`, `GridController.lua`, `Scene.lua`.
+- `BLOCK_UNIT=20`, `BLOCK_CONVERT=0.05`; world -> block:
+  `ceil((x-centerLeft)*0.05), ceil((y-centerTop)*0.05)`; block -> world:
+  `(blockX*20-10+centerLeft, blockY*20-10+centerTop)`.
+- Map nho hon viewport 800x600 co `centerLeft/centerTop` can giua theo cong thuc trong
+  `MapManager.OnEnterScene`; tool/runtime da port dung.
+
+**Thuat toan game trong `FindWay.lua`:**
+- dich bi block -> thu 8 o lan can theo thu tu tren/duoi/trai/phai/4 goc;
+- neu duong thang clear thi di thang;
+- neu khong: A* chi 4 huong, edge cost 1, heuristic Euclidean;
+- sau A*, `GetBestPath` bo cac waypoint thua bang `MapManager.IsLineWay` (check ca ceil va floor
+  sat hai mep line, khong cho cat goc vat can).
+- `bot/pathfind.py` da port `find_local_path`, `is_line_clear`, `GroundMapStore`; `navigate_to`
+  tu dong dung smart waypoint neu `config.SMART_PATHFIND=True` va co `config.GROUND_MAP_PATH`,
+  khong co file thi fallback navigate cu.
+- `tools/ground_map.py` da doc name->offset/size, render dung X-major va expose quy doi toa do.
+- Verify that map `12831`: `1664x2560`, grid `84x129`; safe `(470,1210)` -> mob
+  `(1070,1850)` cho route block `(24,61) -> (25,65) -> (54,93)` thay vi xuyen vach.
 
 **Tinh trang Frida/MuMu luc dung:**
 - Device MuMu 12 cong ty: `127.0.0.1:7555`; package `com.vtcmobile.gz06`.
@@ -346,11 +361,8 @@ Muc tieu: tim data game biet o nao tren map di duoc / bi chan (tuong, song, obje
 - Attach vao PID game OK, nhung `Process.arch` Frida bao `x64` do MuMu/native bridge; module list khong thay export ARM
   `libtolua.so`, nen hook truc tiep `tolua_loadbuffer/luaL_loadbuffer/lua_loadx` chua duoc.
 
-**Next step de ve nha lam tiep:**
-- Cach 1: tim/hook Lua loader tu IL2CPP/ToLua side (`LuaClient.LoadLuaFiles`, `LuaResLoader.ReadResourceFile`,
-  `ToLua.LoadFile`) de dump buffer script da giai ma khi game require file.
-- Cach 2: neu hook Lua kho, bat/soi 0x06 movement + click vao diem di duoc/khong di duoc de suy ra block layer thuc te.
-- Khi co script/logic `BlockController:IsObstacle`, moi quy doi `.map`/object sang collision chuan de dung cho pathfind.
+**Next:** test live 1 party tren cac map co vach phuc tap; neu on dinh thi export collision cua rieng cac
+map trong `train_maps.json` thanh asset nho de ban release/Android khong can kem `Ground.mmg` 27 MB.
 
 ## 7e. CHUYEN SUB-CHANNEL (opcode 0x07)
 

@@ -13,7 +13,9 @@ certs/
 frida-server
 frida-server.xz
 libtolua.so
-gamedata/
+# Ground.mmg la collision/pathfinding data can ship cung bot (~27 MB).
+gamedata/*
+!gamedata/Ground.mmg
 lua/
 lua_dump/
 

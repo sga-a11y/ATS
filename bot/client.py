@@ -6,13 +6,38 @@ import time
 import logging
 import collections
 
-from . import config, protocol, combat
+from . import config, protocol, combat, pathfind
 
 
 from .auth import build_auth_packet
 from .state import BattleState, Unit
 
 log = logging.getLogger("bot")
+
+_GROUND_STORE = None
+_GROUND_STORE_PATH = None
+_GROUND_STORE_FAILED = False
+
+
+def _ground_store():
+    global _GROUND_STORE, _GROUND_STORE_PATH, _GROUND_STORE_FAILED
+    path = getattr(config, "GROUND_MAP_PATH", "")
+    if not getattr(config, "SMART_PATHFIND", True) or not path:
+        return None
+    if _GROUND_STORE is not None and _GROUND_STORE_PATH == path:
+        return _GROUND_STORE
+    if _GROUND_STORE_FAILED and _GROUND_STORE_PATH == path:
+        return None
+    try:
+        _GROUND_STORE = pathfind.GroundMapStore(path)
+        _GROUND_STORE_PATH = path
+        _GROUND_STORE_FAILED = False
+        log.info("Smart path: da nap %d map tu %s", len(_GROUND_STORE.index), path)
+    except (OSError, ValueError, struct.error) as exc:
+        _GROUND_STORE_PATH = path
+        _GROUND_STORE_FAILED = True
+        log.info("Smart path: khong nap duoc Ground.mmg (%s), dung navigate cu", exc)
+    return _GROUND_STORE
 
 # Registry entity cac bot cung party (chia se trong process). party_idx -> set(entity bytes).
 # Bot dang ky self_entity luc login -> khi nhan loi moi, accept neu nguoi moi cung party.
@@ -3760,30 +3785,46 @@ class GameClient:
         moves_needed=None -> tu tinh theo KHOANG CACH (tu self.pos): ~100px/buoc, clamp [4, 30].
         Dung in_combat nguong NGAN (1.5s) - du danh hay flee deu cho HET TRAN roi di buoc tiep."""
         import math
-        if moves_needed is None:
-            if self.pos:
-                dist = math.hypot(x - self.pos[0], y - self.pos[1])
-                moves_needed = max(4, min(30, int(dist / 100) + 2))
-            else:
-                moves_needed = 30   # khong biet vi tri (vd vua qua cong) -> di hao phong cho chac toi
+        targets = [(x, y)]
+        store = _ground_store() if self.pos and self.current_map is not None else None
+        if store is not None:
+            smart = store.find_world_path(self.current_map, self.pos, (x, y))
+            if smart:
+                targets = smart[1:] or [smart[-1]]
+                log.info("[%s] smart path map %s: %s -> (%d,%d), %d waypoint",
+                         self._label, self.current_map, self.pos, x, y, len(targets))
         self.flee_mode = flee
-        moves = 0
-        for _ in range(max_iter):
-            if not self.running:    # bi STOP -> dung di chuyen
-                return
-            if abort and abort():   # co reform moi / stop -> DUNG NGAY (de keepalive xu reform/ve thanh)
-                log.info("[%s] navigate_to: abort (reform moi/stop) -> dung", self._label)
-                return
-            if self.in_combat(idle_secs=1.0):   # in_battle chuan -> chi cho 1s sau END roi di (de lau bi quai danh)
-                time.sleep(0.5)
-                continue
-            self.move_to(x, y)
-            moves += 1              # CONG DON (khong reset du bi battle xen giua)
-            time.sleep(step)
-            if moves >= moves_needed:
+        moves = attempts = 0
+        previous = self.pos
+        for waypoint_index, (wx, wy) in enumerate(targets):
+            if moves_needed is not None and len(targets) == 1:
+                waypoint_moves = moves_needed
+            elif previous:
+                distance = math.hypot(wx - previous[0], wy - previous[1])
+                waypoint_moves = max(4, min(30, int(distance / 100) + 2))
+            else:
+                waypoint_moves = 30
+            sent = 0
+            while attempts < max_iter and sent < waypoint_moves:
+                attempts += 1
+                if not self.running:
+                    return
+                if abort and abort():
+                    log.info("[%s] navigate_to: abort (reform moi/stop) -> dung", self._label)
+                    return
+                if self.in_combat(idle_secs=1.0):
+                    time.sleep(0.5)
+                    continue
+                self.move_to(int(wx), int(wy))
+                sent += 1
+                moves += 1
+                time.sleep(step)
+            previous = (wx, wy)
+            if attempts >= max_iter and waypoint_index < len(targets) - 1:
+                log.warning("[%s] smart path dung som do cham max_iter=%d", self._label, max_iter)
                 break
         self.pos = (x, y)
-        log.info("[%s] da toi diem (%d,%d) sau %d buoc", self._label, x, y, moves)
+        log.info("[%s] da toi diem (%d,%d) sau %d lenh move", self._label, x, y, moves)
 
     def follow_path(self, waypoints, step: float = 1.0, flee: bool = True, abort=None):
         """Di bo theo CHUOI WAYPOINT (capture duong di THAT trong map) toi diem quai xa.

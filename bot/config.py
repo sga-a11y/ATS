@@ -2,6 +2,7 @@
 Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitignore.
 """
 from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
+import os
 
 # Tai khoan mac dinh (single bot)
 USERNAME = "your_username"
@@ -79,6 +80,10 @@ def _load_map_gates(path=None):
         pass
     return out
 MAP_GATES = _load_map_gates()
+
+# Smart path trong map. Neu Ground.mmg khong ton tai, navigate_to tu fallback cach cu.
+SMART_PATHFIND = True
+GROUND_MAP_PATH = os.path.join(_base_dir(), "gamedata", "Ground.mmg")
 def _load_train_routes(path=None):
     """Doc train_routes.json -> {dest_map:int -> {from_city, city_flag, dest_map, steps}}.
     Route replay tu thanh toi train map (leader di, member tu keo theo)."""

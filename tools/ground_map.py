@@ -1,4 +1,4 @@
-"""Decode Ground.mmg (pack .map cua game com.vtcmobile.gz06) -> lưới grid + object + render debug.
+"""Decode Ground.mmg cua game com.vtcmobile.gz06 va render collision.
 
 MUC DICH: tool PORTABLE cho RE map-collision. Data (Ground.mmg ~27MB) KHONG commit (gitignore,
 moi may tu keo tu mumu: adb pull /sdcard/Android/data/<pkg>/files/CompreseData/Ground.mmg).
@@ -7,18 +7,15 @@ Tool nay commit de 2 may chay chung. Xem KNOWLEDGE.md muc "7d-RE. MAP COLLISION"
 FORMAT (da verify tren 12831.map = 1664x2560 px, grid 84x129, 8 chunk):
   .map data:  u32 width_px, u32 height_px, u8 chunk_count, chunk_count*6 byte,
               u16 grid_w, u16 grid_h, grid_w*grid_h byte grid, ... (event/object/tail).
-  Index (cuoi file): cac entry [u8 namelen][name "<id>.map"][19 byte data]  (namelen=9 -> 29 byte).
-
-CANH BAO (da xac nhan): grid value (0/1/2...) trong .map KHONG phai passability truc tiep -
-  safe/mob/gate diem nam ca tren o 0 lan 1. Collision THAT o tang Lua (BlockController:IsObstacle).
-  Tool nay de KHAO SAT/doi chieu, chua phai nguon walkability cuoi cung.
-
-TODO: giai ma offset-encoding cua index (offset .map data KHONG nam plain-u32 trong 19 byte entry;
-  co bang offset rieng). Hien enumerate ten qua index; lay grid qua scan/known-offset.
+  Index: [u8 namelen][name][11 byte metadata][u32 offset][u32 size].
+  Block data la X-major: grid[(x-1)*grid_h + (y-1)], toa do block bat dau tu 1.
+  Lua game coi bit 1 hoac bit 4 la vat can; bit 2 la nuoc.
 
 Dung:  python tools/ground_map.py gamedata/Ground.mmg --list
        python tools/ground_map.py gamedata/Ground.mmg --map 12831 --render out.png
 """
+import math
+import re
 import struct
 import sys
 
@@ -38,34 +35,54 @@ def parse_map(data: bytes, offset: int) -> dict:
 
 
 def find_map_offset(data: bytes, map_id: int) -> int:
-    """Tim offset .map data cua map_id. Tam thoi: quet data-region cho .map header hop le va
-    doi chieu (chua co index offset). Tra -1 neu khong thay.
-
-    Cach dung duoc ngay: neu biet dims (width_px,height_px) tu KNOWLEDGE thi search header;
-    khong thi quet tuan tu tu 0 parse .map lien tiep (yeu cau parse het tail - chua xong)."""
-    # Placeholder: quet nguyen file tim vi tri ma parse_map ra grid hop ly + name entry ton tai.
-    # (Se thay bang index-offset khi giai ma xong.)
-    name = f"{map_id}.map".encode()
-    if data.find(b"\x09" + name) < 0 and data.find(bytes([len(name)]) + name) < 0:
-        return -1
-    # chua co lien ket name->offset; tra -1, de caller dung offset thu cong.
-    return -1
+    entry = list_maps(data).get(f"{map_id}.map")
+    return -1 if entry is None else entry[0]
 
 
 def list_maps(data: bytes):
-    """Enumerate ten map tu index (cac entry [len][name.map][19B]) o cuoi file."""
-    names = []
-    i = 0
-    n = len(data)
-    while i < n - 1:
-        L = data[i]
-        if 5 <= L <= 14 and data[i + 1:i + 1 + L].endswith(b".map") \
-                and data[i + 1:i + 1 - 4 + L].isdigit():
-            names.append(data[i + 1:i + 1 + L].decode())
-            i += 1 + L + 19   # entry = len + name + 19 byte data
-        else:
-            i += 1
-    return names
+    """Tra ``{name: (offset, size)}`` tu bang index chen o cuoi Ground.mmg."""
+    result = {}
+    pattern = re.compile(rb"([0-9]+\.map)(.{11})(.{4})(.{4})", re.DOTALL)
+    for match in pattern.finditer(data):
+        name = match.group(1)
+        start = match.start(1)
+        if start == 0 or data[start - 1] != len(name):
+            continue
+        offset, size = struct.unpack("<II", match.group(3) + match.group(4))
+        result[name.decode("ascii")] = (offset, size)
+    return result
+
+
+def block_value(m: dict, x: int, y: int):
+    """Doc block 1-based dung orientation X-major cua MapData.lua."""
+    w, h = m["grid_w"], m["grid_h"]
+    if x < 1 or x > w or y < 1 or y > h:
+        return None
+    return m["grid"][(x - 1) * h + (y - 1)]
+
+
+def is_obstacle(value) -> bool:
+    return value is None or value & 1 == 1 or value & 4 == 4
+
+
+def is_sea(value) -> bool:
+    return value is not None and value & 2 == 2
+
+
+def center_offset(width_px: int, height_px: int):
+    left = math.floor((800 - width_px) * 0.5 * 0.05) * 20 if width_px < 800 else 0
+    top = math.floor((600 - height_px) * 0.5 * 0.05) * 20 if height_px < 600 else 0
+    return left, top
+
+
+def world_to_block(position, center_left=0, center_top=0):
+    return (math.ceil((position[0] - center_left) * 0.05),
+            math.ceil((position[1] - center_top) * 0.05))
+
+
+def block_to_world(block, center_left=0, center_top=0):
+    return (block[0] * 20 - 10 + center_left,
+            block[1] * 20 - 10 + center_top)
 
 
 def render(m: dict, path: str):
@@ -77,7 +94,8 @@ def render(m: dict, path: str):
     g = m["grid"]
     for y in range(h):
         for x in range(w):
-            px[x, y] = pal.get(g[y * w + x], (220, 40, 40))
+            value = g[x * h + y]
+            px[x, y] = pal.get(value, (220, 40, 40))
     img.save(path)
 
 
@@ -86,15 +104,14 @@ def main(argv):
         print(__doc__); return
     data = open(argv[1], "rb").read()
     if "--list" in argv:
-        names = list_maps(data)
-        print(f"{len(names)} map trong index. Dau: {names[:10]}")
+        entries = list_maps(data)
+        print(f"{len(entries)} map trong index. Dau: {list(entries.items())[:10]}")
         return
     if "--map" in argv:
         mid = int(argv[argv.index("--map") + 1])
         off = find_map_offset(data, mid)
         if off < 0:
-            print(f"Chua co lien ket name->offset trong tool (TODO index). "
-                  f"Tam thoi truyen --offset <byte> thu cong.")
+            print(f"Khong tim thay map {mid} trong index.")
             if "--offset" in argv:
                 off = int(argv[argv.index("--offset") + 1])
             else:
