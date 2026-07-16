@@ -9,7 +9,7 @@ Tinh nang:
 
 Chay:  python gui.py
 """
-import os, sys, json, re, queue, logging, threading, time, collections, importlib
+import os, sys, json, re, queue, logging, threading, time, collections, importlib, webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
@@ -23,6 +23,12 @@ from bot._appdir import app_dir as _app_dir   # thu muc goc (dev=project, frozen
 log = logging.getLogger("bot")   # -> hien o panel log GUI (qua _QueueHandler tren root)
 
 ACCOUNTS_JSON = os.path.join(_app_dir(), "accounts.json")
+DONATE_CHAT_URL = "https://zalo.me/g/qiy6aflscqbh6v4tivej"
+
+
+def _load_donate_qr_image():
+    from bot.donate_qr_data import DONATE_QR_PNG_B64
+    return tk.PhotoImage(data=DONATE_QR_PNG_B64)
 
 
 # Party MAU cho profile moi (placeholder de user thay = acc that)
@@ -161,30 +167,69 @@ class BotGUI(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # ---- tu dong cap nhat ----
-    def _check_update(self):
+    def _check_update(self, manual=False):
         """Chay ban build -> check version.json tren host; co ban moi -> hoi + tai + restart."""
         try:
             from bot import updater
         except Exception as e:
             log.warning("update: khong load duoc updater: %s", e)
+            if manual:
+                messagebox.showerror("Update", f"Khong load duoc updater:\n{e}", parent=self)
             return
         if not updater.is_frozen():
+            if manual:
+                messagebox.showinfo("Update", "Ban dang chay source/dev nen khong tu update.", parent=self)
             return   # dev chay 'python gui.py' -> khong tu update
+        if manual:
+            log.info("update: dang kiem tra thu cong...")
         def worker():
             try:
                 info = updater.check_update(self._version)
             except Exception as e:
                 # KHONG goi duoc server cap nhat (mang / GitHub CDN githubusercontent bi chan o VN /
                 # SSL / timeout). Log RO de khong tuong nham "da moi nhat" (bug cu nuot exception).
-                log.warning("update: ⚠ KHONG KET NOI DUOC SERVER CAP NHAT (mang/GitHub bi chan?): %s "
-                            "-> thu doi DNS 1.1.1.1/VPN hoac tai tay aTSBot.zip tu release", e)
+                msg = ("Khong ket noi duoc server cap nhat. May nay co the bi chan GitHub/CDN, "
+                       "loi DNS/proxy/cert, hoac antivirus/firewall chan download.\n\n"
+                       f"Chi tiet: {e}")
+                log.warning("update: KHONG KET NOI DUOC SERVER CAP NHAT: %s", e)
+                if manual:
+                    self.after(0, lambda m=msg: self._show_update_error("Update", m))
                 return
             if info:
                 log.info("update: CO BAN MOI v%s (dang hien %s) -> hoi user", info[0], self._version)
                 self.after(0, lambda: self._prompt_update(*info))
             else:
                 log.info("update: dang la ban moi nhat (v%s)", self._version)
+                if manual:
+                    self.after(0, lambda: messagebox.showinfo(
+                        "Update", f"Dang la ban moi nhat: v{self._version}", parent=self))
         threading.Thread(target=worker, daemon=True).start()
+
+    def _show_update_error(self, title, msg):
+        try:
+            from bot import updater
+            manual_url = getattr(updater, "MANUAL_DOWNLOAD_URL", "")
+        except Exception:
+            manual_url = ""
+        if not manual_url:
+            messagebox.showerror(title, msg, parent=self)
+            return
+        top = tk.Toplevel(self)
+        top.title(title)
+        top.transient(self)
+        top.resizable(False, False)
+        box = ttk.Frame(top, padding=14)
+        box.pack(fill="both", expand=True)
+        tk.Label(box, text=msg, justify="left", wraplength=520).pack(anchor="w", pady=(0, 12))
+        bar = ttk.Frame(box)
+        bar.pack(fill="x")
+        ttk.Button(bar, text="Mở Google Drive", command=lambda: webbrowser.open(manual_url, new=2)).pack(side="left")
+        ttk.Button(bar, text="Đóng", command=top.destroy).pack(side="right")
+        top.update_idletasks()
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - top.winfo_width()) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - top.winfo_height()) // 2)
+        top.geometry(f"+{x}+{y}")
+        top.grab_set()
 
     def _prompt_update(self, ver, url, notes):
         from tkinter import messagebox
@@ -206,9 +251,48 @@ class BotGUI(tk.Tk):
                 updater.download_and_swap(url, on_prog)   # ham nay tu thoat app khi xong
             except Exception as e:
                 self.after(0, lambda: (top.destroy(),
-                                       messagebox.showerror("Lỗi cập nhật",
-                                            f"Không tải được bản mới:\n{e}\n\nTải thủ công giúp.", parent=self)))
+                                       self._show_update_error("Lỗi cập nhật",
+                                            f"Không tải được bản mới:\n{e}\n\nTải thủ công giúp.")))
         threading.Thread(target=dl, daemon=True).start()
+
+    def _open_donate(self):
+        top = tk.Toplevel(self)
+        top.title("Donate")
+        top.transient(self)
+        top.resizable(False, False)
+        box = ttk.Frame(top, padding=16)
+        box.pack(fill="both", expand=True)
+
+        ttk.Label(box, text="Nếu bạn happy với bot, bạn có thể donate ít xiền cafe ủng hộ bot",
+                  wraplength=420, justify="center").pack(pady=(0, 10))
+
+        try:
+            img = _load_donate_qr_image()
+            scale = max(1, (max(img.width(), img.height()) + 339) // 340)
+            if scale > 1:
+                img = img.subsample(scale, scale)
+            top._donate_qr_img = img
+            ttk.Label(box, image=img).pack(pady=(0, 12))
+        except Exception as e:
+            ttk.Label(box, text=f"Không mở được ảnh QR: {e}",
+                      foreground="#b00020", wraplength=420).pack(pady=(0, 12))
+
+        ttk.Label(box, text="Nếu bạn không happy với bot, bạn hãy join nhóm chat để chửi bot:",
+                  wraplength=420, justify="center").pack()
+        link = tk.Label(box, text=DONATE_CHAT_URL, fg="#0563c1", cursor="hand2")
+        link.pack(pady=(4, 12))
+        link.bind("<Button-1>", lambda _e: webbrowser.open(DONATE_CHAT_URL, new=2))
+        try:
+            link.configure(font=(link.cget("font"), 9, "underline"))
+        except Exception:
+            pass
+
+        ttk.Button(box, text="Đóng", command=top.destroy).pack()
+        top.update_idletasks()
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - top.winfo_width()) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - top.winfo_height()) // 2)
+        top.geometry(f"+{x}+{y}")
+        top.grab_set()
 
     # ---- cham tron trang thai (anh) cho tab party ----
     def _make_dot(self, color, size=13):
@@ -280,8 +364,10 @@ class BotGUI(tk.Tk):
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=8)
         ttk.Button(bar, text="🗑 Xóa log", command=self._clear_log).pack(side="left", padx=3)
         ttk.Button(bar, text="📋 Log: Tất cả", command=self._log_show_all).pack(side="left", padx=3)
+        ttk.Button(bar, text="Check Update", command=lambda: self._check_update(manual=True)).pack(side="left", padx=3)
         ttk.Button(bar, text="Mỗi party 1 chế độ → ⚙ Cấu hình",
                    command=self._open_config).pack(side="right", padx=8)
+        ttk.Button(bar, text="Donate", command=self._open_donate).pack(side="right", padx=3)
 
     # ---- che tai khoan/ten (BAM vao header cot "Tai khoan"/"Nhan vat" de doi) ----
     # Tranh bi soi khi quay/share man hinh. 3 trang thai (ap dung CA bang LAN log moi):
@@ -805,7 +891,8 @@ class BotGUI(tk.Tk):
             for u, pidx in config.ACCOUNT_PARTY.items():
                 pc = config.PARTY_CONFIG.get(pidx, {})
                 s[u] = (pc.get("server"), pc.get("mode"), pc.get("start_city_id"),
-                        pc.get("mob_index"), pc.get("city_flag"), pc.get("do_daily", pc.get("do_dungeon")))
+                        pc.get("mob_index"), pc.get("city_flag"), pc.get("do_daily", pc.get("do_dungeon")),
+                        pc.get("use_phuc_than"), pc.get("use_digioi_ho_phu"))
             return s
         old = _sigs()
         importlib.reload(config)   # doc lai accounts.json -> PARTIES/PARTY_CONFIG moi
@@ -933,6 +1020,9 @@ class PartyConfigFrame(ttk.Frame):
         # Su dung Phuc Than: mac dinh KHONG tick (user tu bat khi can) - logic dung item nay
         # se lam sau, hien tai chi luu setting.
         self.use_phuc_than_var = tk.BooleanVar(value=bool(self._preset.get("use_phuc_than", False)))
+        # Di Gioi Ho Phu: mac dinh KHONG tick. Khi bat, chi mode Di Gioi moi dung va chi
+        # khi timer con <15 phut (run_party_digioi.py check luc login + moi 10p).
+        self.use_digioi_ho_phu_var = tk.BooleanVar(value=bool(self._preset.get("use_digioi_ho_phu", False)))
         # Danh boss QD: mac dinh CO tick (giu hanh vi cu - truoc gio luon danh). User tat khi
         # khong muon acc nay danh boss quan doan.
         self.fight_boss_var = tk.BooleanVar(value=bool(self._preset.get("fight_legion_boss", True)))
@@ -1067,6 +1157,8 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.daily_var).pack(anchor="w")
         ttk.Checkbutton(frm, text="Sử dụng Phúc Thần",
                         variable=self.use_phuc_than_var).pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(frm, text="Dùng Dị giới hộ phù",
+                        variable=self.use_digioi_ho_phu_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Đánh boss QD",
                         variable=self.fight_boss_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Vận tiêu (nhận quà + gửi pet)",
@@ -1079,7 +1171,7 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Entry(_bh, textvariable=self.bao_hop_xu_var, width=10).pack(side="left", padx=(4, 0))
         bar = ttk.Frame(frm); bar.pack(fill="x", pady=(12, 0))
         if self.on_apply_advanced_to_all:
-            ttk.Button(bar, text="Áp dụng cho tất cả",
+            ttk.Button(bar, text="Áp dụng cho các party khác",
                        command=lambda: self.on_apply_advanced_to_all(self._advanced_settings_data())
                        ).pack(side="left")
         ttk.Button(bar, text="Đóng", command=win.destroy).pack(side="right")
@@ -1088,6 +1180,7 @@ class PartyConfigFrame(ttk.Frame):
         return {
             "do_daily": bool(self.daily_var.get()),
             "use_phuc_than": bool(self.use_phuc_than_var.get()),
+            "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
             "fight_legion_boss": bool(self.fight_boss_var.get()),
             "do_van_tieu": bool(self.van_tieu_var.get()),
             "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
@@ -1098,6 +1191,7 @@ class PartyConfigFrame(ttk.Frame):
     def apply_advanced_settings(self, data):
         self.daily_var.set(bool(data.get("do_daily", True)))
         self.use_phuc_than_var.set(bool(data.get("use_phuc_than", False)))
+        self.use_digioi_ho_phu_var.set(bool(data.get("use_digioi_ho_phu", False)))
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
         self.van_tieu_var.set(bool(data.get("do_van_tieu", True)))
         self.buy_ho_phu_var.set(bool(data.get("buy_ho_phu", False)))
@@ -1252,6 +1346,7 @@ class PartyConfigFrame(ttk.Frame):
         data = {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
                 "city_flag": city_flag, "do_daily": bool(self.daily_var.get()),
                 "use_phuc_than": bool(self.use_phuc_than_var.get()),
+                "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
                 "do_van_tieu": bool(self.van_tieu_var.get()),
                 "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
@@ -1317,8 +1412,12 @@ class TrainMapEditor(tk.Toplevel):
         ttk.Button(b2, text="▼ Xuống", command=lambda: self._move(1)).pack(side="left", padx=4)
 
         right = ttk.Frame(self, padding=6); right.pack(side="left", fill="both", expand=True)
-        ttk.Label(right, text="Map ID (log 'MAP HIEN TAI'):").pack(anchor="w")
-        self.id_var = tk.StringVar(); ttk.Entry(right, textvariable=self.id_var, width=16).pack(anchor="w")
+        mapid_row = ttk.Frame(right); mapid_row.pack(anchor="w", fill="x")
+        ttk.Label(mapid_row, text="Map ID (log 'MAP HIEN TAI'):").pack(side="left")
+        self.id_var = tk.StringVar()
+        ttk.Entry(mapid_row, textvariable=self.id_var, width=16).pack(side="left", padx=(8, 8))
+        ttk.Button(mapid_row, text="Thống kê block",
+                   command=self._show_block_stats).pack(side="left")
         ttk.Label(right, text="Tên:").pack(anchor="w", pady=(6, 0))
         self.name_var = tk.StringVar(); ttk.Entry(right, textvariable=self.name_var, width=34).pack(anchor="w")
         ttk.Label(right, text="Safe point (mỗi dòng: x,y — dòng đầu = điểm tập kết/lập party):"
@@ -1351,6 +1450,54 @@ class TrainMapEditor(tk.Toplevel):
             except Exception:
                 pass
         return out
+
+    def _show_block_stats(self):
+        self._commit()
+        if self._cur is None or self._cur >= len(self.maps):
+            messagebox.showinfo("Thống kê block", "Chưa chọn map.")
+            return
+        m = self.maps[self._cur]
+        mid = str(m.get("id", "")).strip()
+        if not mid.isdigit():
+            messagebox.showerror("Thống kê block", "Map ID phải là số.")
+            return
+        try:
+            from bot import train_block_stats
+        except Exception as e:
+            messagebox.showerror("Thống kê block", f"Không mở được thống kê:\n{e}")
+            return
+
+        top = tk.Toplevel(self)
+        top.title(f"Thống kê block - {m.get('name', mid)}")
+        top.transient(self)
+        top.geometry("760x420")
+        box = ttk.Frame(top, padding=8)
+        box.pack(fill="both", expand=True)
+
+        cols = ("idx", "spot", "total", "patterns")
+        tree = ttk.Treeview(box, columns=cols, show="headings", height=14)
+        tree.heading("idx", text="#")
+        tree.heading("spot", text="Điểm train")
+        tree.heading("total", text="Số trận")
+        tree.heading("patterns", text="Block xuất hiện")
+        tree.column("idx", width=48, anchor="center")
+        tree.column("spot", width=120, anchor="center")
+        tree.column("total", width=80, anchor="center")
+        tree.column("patterns", width=480, anchor="w")
+        tree.pack(fill="both", expand=True)
+
+        mobs = m.get("mobs") or []
+        if not mobs:
+            tree.insert("", "end", values=("-", "-", 0, "Map này chưa có mob point."))
+        for i, spot in enumerate(mobs, 1):
+            summary = train_block_stats.get_spot_summary(int(mid), spot)
+            patterns = train_block_stats.format_patterns(summary.get("patterns", {}))
+            tree.insert("", "end", values=(i, train_block_stats.spot_key(spot),
+                                           int(summary.get("total", 0)), patterns or "-"))
+
+        ttk.Label(box, text="Bot chỉ cộng thống kê từ danh sách quái ở đầu trận train map."
+                  ).pack(anchor="w", pady=(8, 0))
+        ttk.Button(box, text="Đóng", command=top.destroy).pack(anchor="e", pady=(8, 0))
 
     def _commit(self):
         """Luu field hien tai vao self.maps[self._cur]."""

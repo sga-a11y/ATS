@@ -1,8 +1,16 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.chaquo.python")
 }
+
+// Version TU SINH luc build, KHOP scheme ban PC (build_product.py: "1.1." + yyyyMMddHHmm).
+// versionCode = so phut ke tu 1970 (tang dan moi build, ~29 trieu nam 2026 -> vua khit Int).
+val buildVersionName = "1.1." + SimpleDateFormat("yyyyMMddHHmm").format(Date())
+val buildVersionCode = (System.currentTimeMillis() / 60000L).toInt()
 
 android {
     namespace = "com.tsbot.android"
@@ -13,8 +21,8 @@ android {
         applicationId = "com.tsbot.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1-phase1"
+        versionCode = buildVersionCode
+        versionName = buildVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -41,6 +49,15 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    // Dat ten file APK = aTSBot-<version>.apk (khop ten "aTSBot" ban PC, kem version timestamp)
+    // thay vi app-debug.apk mac dinh.
+    applicationVariants.all {
+        outputs.all {
+            (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
+                "aTSBot-$buildVersionName-${buildType.name}.apk"
+        }
     }
 
     buildFeatures {

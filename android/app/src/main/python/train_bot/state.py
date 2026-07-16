@@ -117,6 +117,7 @@ class BattleState:
         # QUAI = b1 in (0,1): hang truoc b1=0, hang sau b1=1; cot = b2.
         # Vi tri noi bo = b1*10 + b2 -> hang=pos//10, cot=pos%10 (gui combat: b=hang, target=cot)
         saw_enemy_group = False
+        start_enemy_slots = None
         for (b1, b2), d in groups.items():
             if b1 in (0x00, 0x01):
                 saw_enemy_group = True
@@ -130,6 +131,7 @@ class BattleState:
             # LATCH quest_mode: dem so quai LUC START tran (lan dau thay quai). >6 -> QUEST ca tran.
             if not self._battle_counted and self.enemy_slots:
                 self._battle_counted = True
+                start_enemy_slots = tuple(self.enemy_slots)
                 if len(self.enemy_slots) > 6:
                     self.quest_mode = True
         # DI GIOI SOLO: 4 pet CUNG LUC, moi con atype RIENG (b1=2, b2=atype - xac nhan qua capture
@@ -172,6 +174,7 @@ class BattleState:
                 if T_HP_CUR in d: u.hp = d[T_HP_CUR]
                 if T_SP_CUR in d: u.sp = d[T_SP_CUR]   # maxSP nap tu 0x0b (update_0x0b)
                 u.slot = b2
+        return start_enemy_slots
 
     # ---- parse 0x0b (full stats char/pet) ----
     def _read_0b_block(self, pkt, ent, b1, slot, who):

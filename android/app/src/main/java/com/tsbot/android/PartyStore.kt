@@ -33,6 +33,7 @@ class PartyStore(private val context: Context) {
                 trainMapKey = o.optString("train_map_key", ""),
                 trainMobIndex = o.optInt("train_mob_index", -1),
                 usePhucThan = o.optBoolean("use_phuc_than", false),
+                useDigioiHoPhu = o.optBoolean("use_digioi_ho_phu", false),
                 fightLegionBoss = o.optBoolean("fight_legion_boss", true),
                 doVanTieu = o.optBoolean("do_van_tieu", true),
                 buyHoPhu = o.optBoolean("buy_ho_phu", false),
@@ -57,6 +58,7 @@ class PartyStore(private val context: Context) {
             o.put("train_map_key", p.trainMapKey)
             o.put("train_mob_index", p.trainMobIndex)
             o.put("use_phuc_than", p.usePhucThan)
+            o.put("use_digioi_ho_phu", p.useDigioiHoPhu)
             o.put("fight_legion_boss", p.fightLegionBoss)
             o.put("do_van_tieu", p.doVanTieu)
             o.put("buy_ho_phu", p.buyHoPhu)

@@ -30,6 +30,10 @@
 - **XOR key:** 0xAD (toàn bộ TCP payload)
 - **Header format:** `c0 91 [len_lo len_hi] 00 00 [opcode] [payload]`
 - Length = 2 bytes Little-Endian, là tổng kích thước packet (kể cả header)
+- **Capture lưu ý:** đừng hardcode tcpdump `port 6614` cho MuMu/mobile. Đã gặp MuMu 12 app
+  `com.gsn.getmoney.gl` mở game flow ở port khác (vd `120.138.72.34:10109`) khiến pcap lọc 6614
+  chỉ còn header 24B, không có packet. Capture nên bắt `tcp`, rồi `analyze_pcap.py` tự XOR/dò frame
+  `c0 91` trong mọi TCP payload.
 
 ### Login HTTP (Account API)
 ```
@@ -285,6 +289,19 @@ Lưu ý: phải thoát/giải tán party mới teleport được.
 - FLOW DUNG (moi acc): thoat party -> vao Di Gioi (solo) -> chuyen cung 1 channel (0x07) -> lap lai party (invite + set quan su) -> cay.
 - => Moi bot VAN CAN tu vao Di Gioi (khong follow duoc vi phai thoat party).
 - **VAO DI GIOI = goi API HTTPS toi 103.82.31.230:443** (KHONG phai TCP game server!). Vao bang 1 NUT menu (tu bat ky dau). Da correlate: click nut -> HTTPS 103.82.31.230 (+41s) -> game server doi scene (+47s). 
+- **Dị Giới hộ phù / socket 10109 (capture MuMu 12 2026-07-16):** cặp raw
+  `90 00 03 01 03 fa` -> `80 00 04 01 03 fa 00` trên luồng
+  `10.0.2.15:49096 <-> 120.138.72.34:10109` lặp đều mỗi 10s (+7.47s, +17.47s, ...),
+  nên đây gần như chắc là heartbeat/keepalive của gateway mobile, **KHÔNG phải gói dùng hộ phù**.
+  Capture TCP-only từ login -> vào game -> dùng hộ phù vẫn chỉ thấy heartbeat và không có frame TS
+  `c0 91`/XOR. Hộ phù có thể đi qua UDP/non-TCP hoặc kênh khác; script công ty đã đổi sang
+  `tcpdump -i any -w ... not port 5555` để bắt lại toàn bộ traffic trừ ADB.
+- **Dị Giới hộ phù item 0xff8c (capture MuMu 12 2026-07-16, full traffic):** dùng qua cơ chế
+  item túi bình thường, KHÔNG có opcode riêng. Inventory snapshot: slot `0x15` = item `0xff8c`
+  (Dị Giới Hộ Phù). Gói dùng: C2S `0x17 0f0015010000000000`
+  (`0f00 [slot=0x15][qty=1] 000000 [target=00] 00`). Server ACK:
+  S2C `0x17 09001501000000`, rồi bắn `0x55 id=0x1b value=60` để cập nhật timer. Bot chỉ cần
+  `use_item(0xff8c)` / `use_slot(slot, target=0)`, KHÔNG tự cộng giờ thủ công.
 - De AUTO vao Di Gioi: phai decrypt HTTPS 103.82.31.230 (dung mitmproxy + APK patched tsvtc-patched.apk de trust cert) -> lay URL+params -> replicate bang Python (bot da co lib HTTP cho login). TODO.
 - map_id Di Gioi: CHUA XAC DINH chac (gia tri 0xc316 o offset 28 cua 0x03 co the la toa do).
 
@@ -301,11 +318,14 @@ C2S 0x07 = c0 91 0b 00 00 00 07 02 00 [channel_id 2B LE]
 
 ## 7f. TIMER DI GIOI (packet 0x55)
 
-S2C 0x55 (len 23): `c0 91 17 00 00 00 55 01 00 01 00 00 00 [id 1B] 00 [value 2B LE] 00 00 ff ff ff 7f`
-- byte[13] = id counter, byte[15:17] = value (uint16 LE)
-- **id=0xac => THOI GIAN DI GIOI CON LAI (PHUT).** Vd 111 = 1h51m. (KHONG phai giay - da xac nhan thuc te)
-- Di Gioi gioi han 2h/ngay. Bot doc 0xac de biet con bao nhieu giay -> tu dung/roi khi sap het.
-- id khac: 0x1b (tang dan, elapsed?), 0x01 (=1). Chua can.
+S2C 0x55 (len 23): `c0 91 17 00 00 00 55 01 00 01 00 00 00 [id 2B LE][value 4B LE][max 4B LE]`
+- byte[13:15] = id counter (LE), byte[15:19] = value (uint32 LE)
+- **id=0x1b => so phut Di Gioi da tinh vao quota hom nay.** Bot tinh `con_lai = 120 - value`.
+  Capture cu sau khi vao Di Gioi: `0x1b=9`; capture dung Ho Phu `0xff8c`: server gui lai
+  `0x1b=60`. Neu dang con <15p va dung Ho Phu, server tu cap nhat lai counter nay (du kien
+  value giam 60), bot KHONG tu cong/tru gio thu cong.
+- `0xac/0xab/0xa9` la cac counter 0x55 khac thay trong pcap (vd `0xac=449`, `0xab=52`,
+  `0xa9=27169`), KHONG dung de tinh timer Di Gioi.
 
 ## 7g. QUA ONLINE (opcode 0x57)
 
@@ -318,7 +338,7 @@ S2C 0x57 ket qua:  c0 91 ... 57 [02 00][03][status 1B]   (status=0: thanh cong)
 
 - **6 moc qua:** 10, 20, 30, 60, 90, 180 phut (id = so phut, vd moc 20p -> id=0x14)
 - Qua online tinh theo TONG THOI GIAN ONLINE (ke ca o thanh, da xac nhan nhan duoc khi dung o thanh).
-- **0x1b (S2C 0x55) = thoi gian DI GIOI**, KHONG phai online time -> KHONG dung cho qua online.
+- **0x1b (S2C 0x55) = counter timer DI GIOI**, KHONG phai online time -> KHONG dung cho qua online.
 - LUU Y: C2S 0x57 [03 00] (query list) tra ve 3 entry tinh 50/70/100 - FEATURE KHAC, KHONG lien quan qua online.
 - ANTI-CHEAT: client that disable nut claim khi chua du gio -> KHONG bao gio gui claim som.
   Bot phai lam giong: chi claim khi DA DU GIO. Dung uptime cua bot (time tu connect) lam

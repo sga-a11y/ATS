@@ -261,6 +261,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.flee_mode = True
         next_vantieu = None
         next_phuc_than = 0.0   # 0.0 -> kiem tra NGAY lan dau (khong cho 30p roi moi dung lan dau)
+        next_ho_phu = 0.0      # Di Gioi Ho Phu: check login + moi 10p, chi khi mode Di Gioi
         # pcfg doc SOM (truoc day chi doc o duoi, SAU khoi chores nay) - can ngay o day de biet
         # "Danh boss QD" co bat hay khong TRUOC khi goi do_legion_boss() lan dau luc login.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
@@ -318,6 +319,45 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         train_on_map = (mode == "train") and (tm is not None)
         is_digioi = (mode == "digioi")
         log.info("[%s] (%s) MODE=%s start_city=%s", label, role, mode, sc)
+
+        def _dg_remain_minutes():
+            return max(0, DIGIOI_LIMIT - getattr(c, "digioi_minutes", 0))
+
+        def _maybe_use_di_gioi_ho_phu(reason: str) -> bool:
+            if not (is_digioi and pcfg.get("use_digioi_ho_phu")):
+                return False
+            remain = _dg_remain_minutes()
+            if remain >= 15:
+                return False
+            if c.in_combat():
+                return False
+            before = getattr(c, "digioi_minutes", 0)
+            ok = c.use_di_gioi_ho_phu()
+            if not ok:
+                return False
+            log.info("[%s] Di Gioi Ho Phu (%s): con %d phut (<15), da gui lenh dung; "
+                     "doi server cap nhat timer", label, reason, remain)
+            deadline = time.time() + 8.0
+            while time.time() < deadline and getattr(c, "digioi_minutes", 0) == before:
+                time.sleep(0.5)
+            after = getattr(c, "digioi_minutes", 0)
+            after_remain = _dg_remain_minutes()
+            if after != before:
+                log.info("[%s] Timer Di Gioi sau Ho Phu: used %d -> %d, con %d phut",
+                         label, before, after, after_remain)
+            else:
+                log.info("[%s] Da dung Ho Phu, chua thay 0x55/0x1b doi (used=%d, con %d phut)",
+                         label, before, after_remain)
+            return True
+
+        def _set_train_block_stats_spot(spot, enabled=False):
+            if not train_on_map:
+                c.set_train_block_stats_context(enabled=False)
+                return
+            if spot:
+                c.set_train_block_stats_context(sc, spot, enabled=(enabled and is_leader))
+            else:
+                c.set_train_block_stats_context(enabled=False)
 
         # RA KHOI MAP EVENT truoc: neu login o map event (Nhi Kieu 12922 / 40 NPC 10991...) MA mode
         # KHAC event -> event map KHONG teleport thang duoc -> phai di bo ra cong ve map thuong roi moi
@@ -767,6 +807,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 else:
                     spot = mobs[mob_index] if (mobs and 0 <= mob_index < len(mobs)) else (mobs[0] if mobs else None)
                 st["mob_spot"] = spot
+                _set_train_block_stats_spot(spot, enabled=False)
                 # CO PATH capture (diem quai XA) -> sau khi lap party leader follow_path keo ca party
                 # ra spot; KHONG path -> navigate thang. DU CO PATH HAY KHONG, rally LUON la SAFE gan
                 # spot (tap trung + lap party o day TRUOC), KHONG phai spot (truoc set =spot -> ca party
@@ -778,6 +819,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # member: cho leader chon (rally_point/path); khong co leader -> safe[0]
             if has_leader and not is_leader:
                 st["rally_ready"].wait(60)
+                _set_train_block_stats_spot(st.get("mob_spot"), enabled=False)
             # MAP-TRAIN: CA party (leader+member) ve RALLY = safe GAN spot TRUOC. KHONG follow_path
             # ngay luc nay - vi party CHUA lap (member chua join) -> keo cung vo ich (member khong bi
             # keo theo, leader chay ra spot 1 minh roi quay ve). Sau khi LAP PARTY xong, _start_training
@@ -837,8 +879,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 do_channel_sync()   # map-train: dong bo kenh sau khi ve safe (tren map thuong)
         elif is_digioi:
             # --- DI GIOI ---
+            _used_ho_phu_at_login = False
+            if pcfg.get("use_digioi_ho_phu"):
+                _ho_phu_busy = c.in_combat()
+                try:
+                    _used_ho_phu_at_login = _maybe_use_di_gioi_ho_phu("login")
+                except Exception as e:
+                    log.warning("[%s] loi dung Di Gioi Ho Phu luc login (bo qua): %s", label, e)
+                if not _ho_phu_busy:
+                    next_ho_phu = time.time() + 600   # check lai moi 10 phut
             # 0) PRE-CHECK: doc so phut DG hom nay tu BANG STAT login (0x55 id=0x1b).
             #    Da du gio (>= DIGIOI_LIMIT) -> KHOI vao (truoc day phai vao -> cho 150s moi biet).
+            if (_used_ho_phu_at_login and not c.in_di_gioi()
+                    and c.digioi_minutes >= DIGIOI_LIMIT):
+                log.info("[%s] Da gui Di Gioi Ho Phu luc login nhung timer van %d/%d -> doi them",
+                         label, c.digioi_minutes, DIGIOI_LIMIT)
+                deadline = time.time() + 8.0
+                while time.time() < deadline and c.digioi_minutes >= DIGIOI_LIMIT:
+                    time.sleep(0.5)
             if not c.in_di_gioi() and c.digioi_minutes >= DIGIOI_LIMIT:
                 log.info("[%s] (%s) DG da HET GIO hom nay (%d/%d phut, doc tu login) -> khong vao",
                          label, role, c.digioi_minutes, DIGIOI_LIMIT)
@@ -1023,6 +1081,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if not spot and tm["mobs"]:
                         import random
                         spot = random.choice(tm["mobs"])
+                    _set_train_block_stats_spot(spot, enabled=False)
                     path = st.get("mob_path")
                     _gs = st["reform_gen"]   # dang keo ra spot ma co dua VAN MAP (bump reform_gen) -> abort -> reform
                     _abs = lambda: _stopped() or (not c.running) or st["reform_gen"] > _gs
@@ -1051,6 +1110,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             st["reform_gen"] += 1
                         c.flee_mode = True
                         return
+                    _set_train_block_stats_spot(spot, enabled=True)
                     c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
                     log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
                 elif is_digioi:
@@ -1386,6 +1446,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] loi dung item phuc than (bo qua): %s", label, e)
                 next_phuc_than = time.time() + 1800   # 30 phut
+            # Di Gioi Ho Phu: chi mode Di Gioi, tick rieng, check moi 10p va chi dung khi con <15p.
+            # Server se tu gui 0x55/id=0x1b sau khi dung; khong cong timer thu cong.
+            if is_digioi and pcfg.get("use_digioi_ho_phu") and time.time() >= next_ho_phu:
+                if not c.in_combat():
+                    try:
+                        _maybe_use_di_gioi_ho_phu("10p")
+                    except Exception as e:
+                        log.warning("[%s] loi dung Di Gioi Ho Phu (bo qua): %s", label, e)
+                    next_ho_phu = time.time() + 600
             # Van tieu: chi goi lai DUNG GIO escort xong (next_vantieu), KHONG check mu.
             if next_vantieu is not None and time.time() >= next_vantieu:
                 try:
@@ -1734,7 +1803,8 @@ def start_account(username, password, pidx, is_leader, is_picker):
 def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         city_flag=0, start_city_id=0, mob_index=-1, do_daily=True,
                         digioi_mode="party", event_key="", leaders=None, has_leader=True,
-                        use_phuc_than=False, fight_legion_boss=True, do_van_tieu=True,
+                        use_phuc_than=False, use_digioi_ho_phu=False,
+                        fight_legion_boss=True, do_van_tieu=True,
                         buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=1000000):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01u2\\x01p2..." (KHONG phai
@@ -1750,7 +1820,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "city_flag": int(city_flag), "server": "", "server_ip": server_ip,
         "server_id": int(server_id), "do_daily": bool(do_daily),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
-        "use_phuc_than": bool(use_phuc_than), "fight_legion_boss": bool(fight_legion_boss),
+        "use_phuc_than": bool(use_phuc_than), "use_digioi_ho_phu": bool(use_digioi_ho_phu),
+        "fight_legion_boss": bool(fight_legion_boss),
         "do_van_tieu": bool(do_van_tieu),
         "buy_ho_phu": bool(buy_ho_phu), "buy_bao_hop": bool(buy_bao_hop),
         "bao_hop_xu_threshold": int(bao_hop_xu_threshold),

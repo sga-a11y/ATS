@@ -28,6 +28,9 @@ data class Party(
     // - xem use_phuc_than_items() client.py). Mirror PC's use_phuc_than_var (gui.py). Mac dinh
     // KHONG tick (giong PC).
     val usePhucThan: Boolean = false,
+    // Dung Di Gioi Ho Phu (0xff8c) khi mode Di Gioi con <15 phut. Check luc login + moi 10p.
+    // Mac dinh KHONG tick, mirror PC's use_digioi_ho_phu_var (gui.py).
+    val useDigioiHoPhu: Boolean = false,
     // Danh boss QD (do_legion_boss). Mirror PC's fight_boss_var (gui.py). Mac dinh CO tick (giu
     // hanh vi cu - truoc gio luon danh).
     val fightLegionBoss: Boolean = true,
@@ -44,6 +47,7 @@ data class Party(
 fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     doDaily = source.doDaily,
     usePhucThan = source.usePhucThan,
+    useDigioiHoPhu = source.useDigioiHoPhu,
     fightLegionBoss = source.fightLegionBoss,
     doVanTieu = source.doVanTieu,
     buyHoPhu = source.buyHoPhu,

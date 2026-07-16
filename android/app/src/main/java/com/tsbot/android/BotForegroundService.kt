@@ -118,7 +118,8 @@ class BotForegroundService : Service() {
             py.callAttr(
                 "setup_party_runtime", pidx, m.mode, serverIp, serverId, accountsFlat,
                 m.cityFlag, m.startCity, m.mobIndex, party.doDaily, m.digioiMode, m.eventKey,
-                "", m.hasLeader, party.usePhucThan, party.fightLegionBoss, party.doVanTieu,
+                "", m.hasLeader, party.usePhucThan, party.useDigioiHoPhu,
+                party.fightLegionBoss, party.doVanTieu,
                 party.buyHoPhu, party.buyBaoHop, party.baoHopXuThreshold,
             )
             py.callAttr("start_party", pidx)

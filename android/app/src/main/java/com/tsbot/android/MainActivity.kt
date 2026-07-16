@@ -313,6 +313,7 @@ fun TsBotApp(
             initialTrainMapKey = partyBeingEdited.trainMapKey,
             initialTrainMobIndex = partyBeingEdited.trainMobIndex,
             initialUsePhucThan = partyBeingEdited.usePhucThan,
+            initialUseDigioiHoPhu = partyBeingEdited.useDigioiHoPhu,
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
             initialDoVanTieu = partyBeingEdited.doVanTieu,
             initialBuyHoPhu = partyBeingEdited.buyHoPhu,
@@ -718,6 +719,7 @@ fun AddPartyDialog(
     initialTrainMapKey: String = "",
     initialTrainMobIndex: Int = -1,
     initialUsePhucThan: Boolean = false,
+    initialUseDigioiHoPhu: Boolean = false,
     initialFightLegionBoss: Boolean = true,
     initialDoVanTieu: Boolean = true,
     initialBuyHoPhu: Boolean = false,
@@ -740,6 +742,7 @@ fun AddPartyDialog(
     var trainMobIndex by remember { mutableStateOf(initialTrainMobIndex) }
     var trainMapExpanded by remember { mutableStateOf(false) }
     var usePhucThan by remember { mutableStateOf(initialUsePhucThan) }
+    var useDigioiHoPhu by remember { mutableStateOf(initialUseDigioiHoPhu) }
     var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
     var doVanTieu by remember { mutableStateOf(initialDoVanTieu) }
     var buyHoPhu by remember { mutableStateOf(initialBuyHoPhu) }
@@ -759,6 +762,7 @@ fun AddPartyDialog(
         trainMapKey = trainMapKey,
         trainMobIndex = trainMobIndex,
         usePhucThan = usePhucThan,
+        useDigioiHoPhu = useDigioiHoPhu,
         fightLegionBoss = fightLegionBoss,
         doVanTieu = doVanTieu,
         buyHoPhu = buyHoPhu,
@@ -875,6 +879,10 @@ fun AddPartyDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = usePhucThan, onCheckedChange = { usePhucThan = it })
                             Text("Sử dụng Phúc Thần")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = useDigioiHoPhu, onCheckedChange = { useDigioiHoPhu = it })
+                            Text("Dùng Dị giới hộ phù")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = fightLegionBoss, onCheckedChange = { fightLegionBoss = it })
@@ -1041,7 +1049,24 @@ fun AddPartyDialog(
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(Party(name, selectedKey, selectedMode, selectedCity, digioiSolo, noLeader, doDaily, trainMapKey, trainMobIndex, usePhucThan, fightLegionBoss, doVanTieu, buyHoPhu, buyBaoHop, baoHopXuText.toIntOrNull() ?: 1000000))
+                        onSave(Party(
+                            name = name,
+                            serverKey = selectedKey,
+                            runMode = selectedMode,
+                            cityKey = selectedCity,
+                            digioiSolo = digioiSolo,
+                            noLeader = noLeader,
+                            doDaily = doDaily,
+                            trainMapKey = trainMapKey,
+                            trainMobIndex = trainMobIndex,
+                            usePhucThan = usePhucThan,
+                            useDigioiHoPhu = useDigioiHoPhu,
+                            fightLegionBoss = fightLegionBoss,
+                            doVanTieu = doVanTieu,
+                            buyHoPhu = buyHoPhu,
+                            buyBaoHop = buyBaoHop,
+                            baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,
+                        ))
                     }
                 },
             ) {

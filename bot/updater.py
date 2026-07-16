@@ -13,10 +13,24 @@ import json
 import subprocess
 import shutil
 import zipfile
+import ssl
+import re
+import urllib.parse
 import urllib.request
 
 # URL co dinh tro ban moi nhat (repo release PUBLIC rieng -> khong lo source, khong can token).
 UPDATE_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/version.json"
+# Mirror Google Drive: dien link public cua file version.json vao day khi co. Chap nhan ca dang
+# share "https://drive.google.com/file/d/<id>/view?usp=sharing" hoac direct uc?id=<id>.
+GOOGLE_DRIVE_VERSION_URL = "https://drive.google.com/file/d/1e3MlVufze1iag8X51IoyCYTf5RfzxCR5/view?usp=drive_link"
+# Link public cua file aTSBot.zip tren Google Drive. Neu GitHub check duoc version nhung tai zip
+# GitHub fail, updater se thu tiep URL nay.
+GOOGLE_DRIVE_ZIP_URL = ""
+MANUAL_DOWNLOAD_URL = "https://drive.google.com/drive/folders/1Cm2Suv7aFaq3-v9uq5G7iQ1aNHRoiirv"
+UPDATE_SOURCES = [("GitHub", UPDATE_URL)]
+if GOOGLE_DRIVE_VERSION_URL.strip():
+    UPDATE_SOURCES.append(("Google Drive", GOOGLE_DRIVE_VERSION_URL.strip()))
+EXTRA_ZIP_URLS = [u.strip() for u in (GOOGLE_DRIVE_ZIP_URL,) if u.strip()]
 # Cap nhat = TAI CA FOLDER (exe + JSON config: server/map/route...) chu KHONG chi exe -> them
 # server/map moi (nam trong JSON) moi den duoc user cu. Release chua aTSBot.zip = noi dung folder.
 _FALLBACK_ZIP_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip"
@@ -47,21 +61,99 @@ def is_frozen() -> bool:
     return "python" not in os.path.basename(sys.executable).lower()
 
 
-def _fetch_version_json(timeout: float):
-    """Tai version.json. Thu SSL verify binh thuong TRUOC; loi cert (exe thieu cert store Windows
-    -> browser OK ma urllib fail) thi thu lai voi SSL KHONG verify. Nem exception neu ca 2 fail
-    (goi ben ngoai bat de log ro - KHONG nuot am tham nhu truoc)."""
-    import ssl
-    req = urllib.request.Request(UPDATE_URL, headers={"User-Agent": "atsbot-updater"})
+def _looks_like_ssl_error(exc) -> bool:
+    seen = set()
+    cur = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, ssl.SSLError):
+            return True
+        reason = getattr(cur, "reason", None)
+        if isinstance(reason, ssl.SSLError):
+            return True
+        text = repr(cur).lower()
+        if "ssl" in text or "certificate" in text or "cert" in text:
+            return True
+        cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
+    return False
+
+
+def _urlopen_with_ssl_fallback(req, timeout: float):
+    """Open URL normally first. Some user machines have broken/old Windows cert stores or
+    TLS-inspecting antivirus: urllib then fails while Chrome still opens GitHub. Retry without
+    certificate verification only for SSL/cert-looking errors; other network errors stay visible."""
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8"))
-    except ssl.SSLError:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except Exception as e:
+        if not _looks_like_ssl_error(e):
+            raise
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
-            return json.loads(r.read().decode("utf-8"))
+        return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+
+
+def _google_drive_download_url(url: str) -> str:
+    if "drive.google.com" not in str(url).lower():
+        return url
+    parsed = urllib.parse.urlparse(url)
+    q = urllib.parse.parse_qs(parsed.query)
+    file_id = (q.get("id") or [""])[0]
+    if not file_id:
+        m = re.search(r"/file/d/([^/]+)", parsed.path)
+        if m:
+            file_id = m.group(1)
+    if not file_id:
+        return url
+    return "https://drive.google.com/uc?export=download&id=" + urllib.parse.quote(file_id)
+
+
+def _normalize_download_url(url: str) -> str:
+    return _google_drive_download_url(str(url or "").strip())
+
+
+def _fetch_version_json(url: str, timeout: float):
+    """Tai version.json. Thu SSL verify binh thuong TRUOC; loi cert (exe thieu cert store Windows
+    -> browser OK ma urllib fail) thi thu lai voi SSL KHONG verify. Nem exception neu ca 2 fail
+    (goi ben ngoai bat de log ro - KHONG nuot am tham nhu truoc)."""
+    req = urllib.request.Request(_normalize_download_url(url), headers={"User-Agent": "atsbot-updater"})
+    with _urlopen_with_ssl_fallback(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _is_newer_version(remote_version: str, current_version: str) -> bool:
+    remote = str(remote_version or "").strip()
+    current = str(current_version or "").strip()
+    if not remote:
+        return False
+    # Ban build that phai co timestamp. Neu bi mat _version.py trong exe thi coi nhu ban cu de
+    # van hoi update, thay vi im lang vi so sanh chuoi "1.1...." > "?" bi sai.
+    if not current or current == "?" or current.endswith(".dev"):
+        return True
+    return remote > current
+
+
+def _download_urls_from_version(data: dict):
+    urls = []
+    raw_urls = data.get("urls") or data.get("mirrors")
+    if isinstance(raw_urls, list):
+        urls.extend(str(u).strip() for u in raw_urls if str(u).strip())
+    for key in ("url", "zip_url"):
+        u = str(data.get(key, "")).strip()
+        if u:
+            urls.append(u)
+    urls.extend(EXTRA_ZIP_URLS)
+    if not urls:
+        urls.append(_FALLBACK_ZIP_URL)
+
+    out = []
+    seen = set()
+    for u in urls:
+        u = _normalize_download_url(u)
+        if u and u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
 
 
 def check_update(current_version: str):
@@ -71,11 +163,32 @@ def check_update(current_version: str):
     'khong ket noi duoc server cap nhat' thay vi bao nham 'da moi nhat' (bug cu: nuot exception ->
     None -> user tuong bot on trong khi that ra mang chan github CDN).
     So sanh chuoi: format '1.1.YYYYMMDDHHMM' rong co dinh -> so chuoi = so thu tu thoi gian."""
-    d = _fetch_version_json(timeout=20)   # 8->20s: CDN githubusercontent cham o VN
-    ver = str(d.get("version", "")).strip()
-    if ver and ver > str(current_version):
-        return ver, (d.get("url") or _FALLBACK_ZIP_URL), str(d.get("notes", ""))
-    return None
+    errors = []
+    saw_source = False
+    best = None
+    for name, url in UPDATE_SOURCES:
+        try:
+            d = _fetch_version_json(url, timeout=20)   # 8->20s: CDN githubusercontent cham o VN
+            saw_source = True
+        except Exception as e:
+            errors.append("%s: %s" % (name, e))
+            continue
+        ver = str(d.get("version", "")).strip()
+        if _is_newer_version(ver, current_version):
+            cand = (ver, _download_urls_from_version(d), str(d.get("notes", "")))
+            if best is None or ver > best[0]:
+                best = cand
+    if best:
+        return best
+    if saw_source:
+        return None
+    raise RuntimeError("; ".join(errors) if errors else "khong co nguon update nao")
+
+
+def _as_url_list(urls):
+    if isinstance(urls, (list, tuple)):
+        return [_normalize_download_url(u) for u in urls if str(u or "").strip()]
+    return [_normalize_download_url(urls)]
 
 
 def download_and_swap(url: str, on_progress=None):
@@ -95,19 +208,31 @@ def download_and_swap(url: str, on_progress=None):
     zip_path = os.path.join(d, "aTSBot_update.zip")
     stage = os.path.join(d, "_update_stage")
 
-    # 1) tai zip
-    req = urllib.request.Request(url, headers={"User-Agent": "atsbot-updater"})
-    with urllib.request.urlopen(req, timeout=60) as r, open(zip_path, "wb") as f:
-        total = int(r.headers.get("Content-Length", 0) or 0)
-        done = 0
-        while True:
-            chunk = r.read(65536)
-            if not chunk:
-                break
-            f.write(chunk)
-            done += len(chunk)
-            if on_progress:
-                on_progress(done, total)
+    # 1) tai zip: version.json co the tra 1 URL hoac list mirror URLs. Thu lan luot toi khi duoc.
+    errors = []
+    for one_url in _as_url_list(url):
+        try:
+            req = urllib.request.Request(one_url, headers={"User-Agent": "atsbot-updater"})
+            with _urlopen_with_ssl_fallback(req, timeout=60) as r, open(zip_path, "wb") as f:
+                total = int(r.headers.get("Content-Length", 0) or 0)
+                done = 0
+                while True:
+                    chunk = r.read(65536)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    done += len(chunk)
+                    if on_progress:
+                        on_progress(done, total)
+            break
+        except Exception as e:
+            errors.append("%s: %s" % (one_url, e))
+            try:
+                os.remove(zip_path)
+            except Exception:
+                pass
+    else:
+        raise RuntimeError("Khong tai duoc ban update tu mirror nao:\n" + "\n".join(errors))
 
     # 2) giai nen ra staging (xoa staging cu neu con)
     shutil.rmtree(stage, ignore_errors=True)

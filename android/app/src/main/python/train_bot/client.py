@@ -608,6 +608,9 @@ class GameClient:
         self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x27
         self._running_route = False   # dang chay auto run-around
         self.pos = None              # vi tri hien tai (x,y) cua minh - doc tu S2C 0x06 self
+        self.train_block_stats_enabled = False
+        self.train_block_map_id = None
+        self.train_block_spot = None
         self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
         self.dungeon_runs_today = None  # so luot dungeon da danh hom nay (S2C 0x55 stat 0x9b)
@@ -803,6 +806,22 @@ class GameClient:
         # KHONG reset _battle_entered/_first_turn: client THAT gui 0x41 + atype=2
         # chi 1 LAN/phien (join he thong battle), 6 tran sau van atype=3, khong gui lai 0x41
         return self.state.in_battle or busy
+
+    def set_train_block_stats_context(self, map_id=None, spot=None, enabled=False):
+        self.train_block_stats_enabled = bool(enabled and map_id is not None and spot is not None)
+        self.train_block_map_id = int(map_id) if map_id is not None else None
+        self.train_block_spot = tuple(int(x) for x in spot) if spot is not None else None
+
+    def _record_train_block_stats(self, enemy_slots):
+        if not (self.train_block_stats_enabled and self.train_block_map_id and self.train_block_spot):
+            return
+        if self.current_map != self.train_block_map_id:
+            return
+        try:
+            from . import train_block_stats
+            train_block_stats.record_battle(self.train_block_map_id, self.train_block_spot, enemy_slots)
+        except Exception as e:
+            log.debug("[%s] loi ghi thong ke block quai: %s", self._label, e)
 
     # ---- heartbeat ----
     def _heartbeat_loop(self):
@@ -1056,7 +1075,9 @@ class GameClient:
                 self._resolve_name_from_03(pkt)
         # (Server KHONG echo vi tri CUA MINH qua 0x06 -> dung dead-reckoning trong move_to/enter)
         if opcode == protocol.OP_STAT_UPD:        # 0x33
-            self.state.update_0x33(pkt)
+            start_enemy_slots = self.state.update_0x33(pkt)
+            if start_enemy_slots:
+                self._record_train_block_stats(start_enemy_slots)
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
             if self.self_entity is None:
                 # chua biet self_entity -> buffer lai de xu khi co (tranh mat goi stat luc login)
@@ -2398,6 +2419,18 @@ class GameClient:
         _shop_mark_done(self._label, "ho_phu")
         log.info("[%s] Mua shop: 3 Dị Giới Hộ Phù", self._label)
 
+    def use_di_gioi_ho_phu(self) -> bool:
+        """Dung 1 Di Gioi Ho Phu (0xff8c) theo slot tui live.
+        Capture MuMu 12: C2S 0x17 0f00 [slot][01] 000000 [target=00] 00;
+        server ACK 0x17/0900 roi tu cap nhat timer Di Gioi bang 0x55/id=0x1b."""
+        ok = self.use_item(0xff8c, target=0)
+        if ok:
+            log.info("[%s] Dung Di Gioi Ho Phu (0xff8c) -> cho server cap nhat timer 0x55/0x1b",
+                     self._label)
+        else:
+            log.info("[%s] Khong co Di Gioi Ho Phu (0xff8c) trong tui -> bo qua", self._label)
+        return ok
+
     def buy_trieu_goi_bao_hop(self, xu_threshold: int):
         """Mua 1 Triệu Gọi Bảo Hộp (0xb554, gia 60000 xu) - 1 lan/ngay, CHI khi xu HIEN CO >
         xu_threshold. Doc xu giong gacha (_wait_xu + self.xu)."""
@@ -2614,9 +2647,6 @@ class GameClient:
             return False
         qty = max(1, min(int(qty), 255))
         payload = b"\x0f\x00" + bytes([slot & 0xFF, qty]) + b"\x00\x00\x00" + bytes([target & 0xFF]) + b"\x00"
-        if target != 0:   # DEBUG hoi pet: in nguyen byte gui di de so voi capture (target pet)
-            log.info("[%s] DBG use_slot PET payload=%s (slot=%d qty=%d target=%d)",
-                     self._label, payload.hex(), slot, qty, target)
         self.send(0x17, payload)
         return True
 
