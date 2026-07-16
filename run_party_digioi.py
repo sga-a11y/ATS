@@ -2075,8 +2075,8 @@ def apply_account_battle(username, battle_config=None):
         try:
             import json
             battle_config = json.loads(battle_config) if battle_config else {}
-    except Exception:
-        battle_config = {}
+        except Exception:
+            battle_config = {}
     cfg = battle_config if isinstance(battle_config, dict) else {}
     if not isinstance(getattr(config, "ACCOUNT_BATTLE", None), dict):
         config.ACCOUNT_BATTLE = {}
