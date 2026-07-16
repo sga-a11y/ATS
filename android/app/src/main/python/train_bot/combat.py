@@ -327,13 +327,9 @@ def _has_support_skill(skills):
     return pick_sp_restore_skill(skills) is not None
 
 
-def _try_revive(state, unit, skills, stat, options):
-    """HOI SINH (check TRUOC heal): caster CON SONG + co skill hoi sinh + du SP + co dong doi CHET
-    + thang dieu phoi (con SP cao nhat trong party hoi sinh). Target con chet uu tien:
-      1) con chet CO skill hoi sinh (cuu nguoi biet cuu truoc) 2) maxHP goc cao nhat.
-    Con chet thi KHONG cast (caster phai song). Tra Decision hoac None."""
-    rev = next((s for s in skills if _is_revive(s)), None)
-    if rev is None:
+def _revive_decision_for_skill(state, unit, stat, rev):
+    """Dung skill hoi sinh cu the, target con chet tu dong theo rule uu tien chung."""
+    if rev is None or not _is_revive(rev):
         return None
     if stat.hp_max > 0 and stat.hp <= 0:      # caster da chet -> ko cast
         return None
@@ -353,6 +349,15 @@ def _try_revive(state, unit, skills, stat, options):
     b1, b2, _hp = dead[0]
     at = state.my_atype
     return Decision(unit, at, b2, rev, b=b1)   # target=slot con chet, b=loai con chet (3char/2pet)
+
+
+def _try_revive(state, unit, skills, stat, options):
+    """HOI SINH (check TRUOC heal): caster CON SONG + co skill hoi sinh + du SP + co dong doi CHET
+    + thang dieu phoi (con SP cao nhat trong party hoi sinh). Target con chet uu tien:
+      1) con chet CO skill hoi sinh (cuu nguoi biet cuu truoc) 2) maxHP goc cao nhat.
+    Con chet thi KHONG cast (caster phai song). Tra Decision hoac None."""
+    rev = next((s for s in skills if _is_revive(s)), None)
+    return _revive_decision_for_skill(state, unit, stat, rev)
 
 
 def _combo_block_ok(combo, enemy_slots):
@@ -431,6 +436,240 @@ def _lowest_hp_enemy(state, offered):
     if not alive:
         return None
     return min(alive, key=lambda x: x[1])[0]
+
+
+_CUSTOM_AUTO = object()
+
+
+def _battle_rules(state, unit_key):
+    cfg = getattr(state, "battle_config", {}) or {}
+    raw = cfg.get(unit_key)
+    if isinstance(raw, list):
+        return [r for r in raw if isinstance(r, dict) and r.get("enabled", True) is not False]
+    if isinstance(raw, dict):   # tuong thich ban format tam thoi cu
+        mode = raw.get("mode", "auto")
+        skill = {"normal": "normal", "defend": "defend", "skill": raw.get("train_skill")}.get(mode, "auto")
+        return [{"enabled": True, "condition": "always", "skill": skill or "auto", "target": raw.get("target", "auto")}]
+    return []
+
+
+def _compare_num(actual, op, expect):
+    if op == "gt":
+        return actual > expect
+    if op == "lt":
+        return actual < expect
+    if op == "eq":
+        return actual == expect
+    if op == "lte":
+        return actual <= expect
+    return actual >= expect
+
+
+def _caster_key(state, unit):
+    if getattr(state, "self_slot", None) is None:
+        return None
+    return (3 if unit == config.UNIT_CHAR else 2), state.self_slot
+
+
+def _any_ally_hp_below(state, pct, exclude=None):
+    for key, u in getattr(state, "allies", {}).items():
+        if exclude is not None and key == exclude:
+            continue
+        if u.hp_max > 0 and u.hp > 0 and (u.hp * 100 / u.hp_max) < pct:
+            return True
+    return False
+
+
+def _any_ally_sp_below(state, pct, exclude=None):
+    for key, u in getattr(state, "allies", {}).items():
+        if exclude is not None and key == exclude:
+            continue
+        if u.hp <= 0:
+            continue
+        spmax = state.ally_spmax.get(key, getattr(u, "sp_max", 0))
+        if spmax > 0 and (u.sp * 100 / spmax) < pct:
+            return True
+    return False
+
+
+def _max_enemy_block(enemy_slots):
+    rows = {}
+    for pos in enemy_slots or []:
+        rows.setdefault(_row(pos), []).append(_col(pos))
+    best = 0
+    for cols in rows.values():
+        cur = 0
+        prev = None
+        for col in sorted(set(cols)):
+            cur = cur + 1 if prev is not None and col == prev + 1 else 1
+            best = max(best, cur)
+            prev = col
+    return best
+
+
+def _rule_condition_ok(rule, state, stat, unit=None):
+    cond = (rule or {}).get("condition", "always") if isinstance(rule, dict) else (rule or "always")
+    cond = str(cond or "always")
+    op = (rule or {}).get("op", "gte") if isinstance(rule, dict) else "gte"
+    val = (rule or {}).get("value", None) if isinstance(rule, dict) else None
+    n = len(getattr(state, "enemy_slots", []) or [])
+    if cond == "always":
+        return True
+    # Tuong thich config cu: mob_gte_4 / hp_lte_50 / sp_gte_65...
+    if cond.startswith("mob_gte_"):
+        return n >= int(cond.rsplit("_", 1)[1])
+    if cond.startswith("mob_lte_"):
+        return n <= int(cond.rsplit("_", 1)[1])
+    if cond.startswith("sp_gte_"):
+        return stat.sp >= int(cond.rsplit("_", 1)[1])
+    if cond.startswith("sp_lte_"):
+        return stat.sp <= int(cond.rsplit("_", 1)[1])
+    if cond == "sp_full":
+        return stat.sp_max > 0 and stat.sp >= stat.sp_max
+    if cond.startswith("hp_lte_"):
+        return stat.hp_max > 0 and (stat.hp * 100 / stat.hp_max) <= int(cond.rsplit("_", 1)[1])
+    if cond == "boss":
+        return bool(getattr(state, "boss_mode", False))
+    if cond == "quest":
+        return bool(getattr(state, "quest_mode", False))
+    if cond == "ally_dead":
+        return bool(state.dead_allies())
+    try:
+        expect = int(val)
+    except Exception:
+        return False
+    if cond == "mob":
+        return _compare_num(n, op, expect)
+    if cond == "block":
+        return _compare_num(_max_enemy_block(getattr(state, "enemy_slots", []) or []), op, expect)
+    if cond == "sp":
+        return _compare_num(stat.sp, op, expect)
+    if cond == "hp_pct":
+        if stat.hp_max <= 0:
+            return False
+        return _compare_num((stat.hp * 100 / stat.hp_max), op, expect)
+    if cond == "ally_hp_pct":
+        return _any_ally_hp_below(state, expect, _caster_key(state, unit))
+    if cond == "ally_sp_pct":
+        return _any_ally_sp_below(state, expect, _caster_key(state, unit))
+    return False
+
+
+def _enemy_target_pos(state, offered, target_key):
+    target_key = target_key or "auto"
+    es = getattr(state, "enemy_slots", []) or []
+    if not es:
+        return None
+    if target_key in ("auto", "block"):
+        return _train_target(es, offered)
+    alive = [(pos, hp) for pos, hp in state.enemy_hp.items()
+             if hp > 0 and _col_reachable(_col(pos), set(offered))]
+    if not alive:
+        return None
+    if target_key == "enemy_low_hp":
+        return min(alive, key=lambda x: x[1])[0]
+    if target_key == "enemy_high_hp":
+        return max(alive, key=lambda x: x[1])[0]
+    if target_key == "enemy_last":
+        return max(alive, key=lambda x: x[0])[0]
+    return min(alive, key=lambda x: x[0])[0]
+
+
+def _ally_target(state, target_key, unit, atype):
+    if target_key == "self":
+        return (3 if unit == config.UNIT_CHAR else 2), atype
+    cands = []
+    for (b1, b2), u in getattr(state, "allies", {}).items():
+        if u.hp_max <= 0 or u.hp <= 0:
+            continue
+        spmax = state.ally_spmax.get((b1, b2), getattr(u, "sp_max", 0))
+        sppct = (u.sp / spmax) if spmax else 1.0
+        cands.append((b1, b2, u.hp / u.hp_max, sppct))
+    if not cands:
+        return (3 if unit == config.UNIT_CHAR else 2), atype
+    if target_key == "ally_high_hp":
+        b1, b2, *_ = max(cands, key=lambda x: x[2])
+    elif target_key == "ally_low_sp":
+        b1, b2, *_ = min(cands, key=lambda x: x[3])
+    elif target_key == "ally_high_sp":
+        b1, b2, *_ = max(cands, key=lambda x: x[3])
+    else:  # ally_low_hp
+        b1, b2, *_ = min(cands, key=lambda x: x[2])
+    return b1, b2
+
+
+def _parse_rule_skill(value):
+    if value in ("auto", "normal", "defend", "flee"):
+        return value
+    try:
+        return int(value)
+    except Exception:
+        return "auto"
+
+
+def _can_attack_new_enemy_gen(state, unit, atype=None):
+    if unit == config.UNIT_PET and atype is not None and getattr(state, "solo_multipet", False):
+        gen_map = state.last_atk_gen_multipet
+        if gen_map.get(atype, -1) == state.enemy_gen:
+            return False
+        gen_map[atype] = state.enemy_gen
+        return True
+    gen_attr = "last_atk_gen_char" if unit == config.UNIT_CHAR else "last_atk_gen_pet"
+    if getattr(state, gen_attr, -1) == state.enemy_gen:
+        return False
+    setattr(state, gen_attr, state.enemy_gen)
+    return True
+
+
+def _custom_decision(state, unit, unit_key, skills, stat, options, atype=None):
+    rules = _battle_rules(state, unit_key)
+    if not rules:
+        return None
+    at = state.my_atype if atype is None else atype
+    offered = _offered_targets(options, at)
+    fb = offered[0] if offered else 1
+    learned = set(skills or [])
+    for rule in rules:
+        if not _rule_condition_ok(rule, state, stat, unit):
+            continue
+        skill = _parse_rule_skill(rule.get("skill", "auto"))
+        target_key = rule.get("target", "auto")
+        if skill == "auto":
+            return _CUSTOM_AUTO
+        if skill == "defend":
+            return Decision(unit, at, at, config.SKILL_DEFEND, b=(3 if unit == config.UNIT_CHAR else 2))
+        if skill == "flee":
+            return Decision(unit, at, at, config.SKILL_FLEE, b=(3 if unit == config.UNIT_CHAR else 2))
+        skill_id = config.SKILL_NORMAL if skill == "normal" else skill
+        if isinstance(skill_id, int) and skill_id != config.SKILL_NORMAL:
+            if skill_id not in learned:
+                continue
+            if stat.sp < _skill_cost(skill_id):
+                continue
+            if _is_revive(skill_id):
+                rv = _revive_decision_for_skill(state, unit, stat, skill_id)
+                if rv is not None:
+                    return rv
+                continue
+        if target_key in ("ally_low_hp", "ally_high_hp", "ally_low_sp", "ally_high_sp", "self"):
+            if isinstance(skill_id, int) and skill_id != config.SKILL_NORMAL:
+                key = state.label + (":char" if unit == config.UNIT_CHAR else ":pet")
+                if skill_id in (getattr(config, "SKILL_HEAL_ALL", None),
+                                getattr(config, "SKILL_HEAL_ONE", None)):
+                    if not _heal_decide(key, stat.sp):
+                        continue
+                elif _cat(skill_id) == 6:
+                    if not _sprestore_decide(key + ":spr", stat.sp):
+                        continue
+            b1, b2 = _ally_target(state, target_key, unit, at)
+            return Decision(unit, at, b2, skill_id, b=b1)
+        if not _can_attack_new_enemy_gen(state, unit, atype=atype):
+            return None
+        pos = _enemy_target_pos(state, offered, target_key)
+        if pos is None:
+            return None
+        return _attack(unit, at, pos, skill_id, fb, offered)
+    return None
 
 
 
@@ -520,6 +759,11 @@ def decide_multipet(state, atype, skills, stat, options):
     es = state.enemy_slots
     if not es:
         return None
+    custom = _custom_decision(state, config.UNIT_PET, "pet", skills, stat, options, atype=atype)
+    if custom is _CUSTOM_AUTO:
+        pass
+    elif custom is not None:
+        return custom
     # CHI danh khi CO du lieu quai MOI rieng cho ATYPE nay (tranh danh lap tren 0x33 cu - xem
     # _combat_attack ban goc; o day dung dict rieng theo atype vi 4 pet KHONG the dung chung 1
     # bien gen (se dam vao nhau, chi 1 con "thay" du lieu moi moi luot)).
@@ -541,11 +785,11 @@ def decide_multipet(state, atype, skills, stat, options):
 
 def decide_char(state, options, first_turn=False):
     at = state.my_atype
-    # Setting rieng acc "Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)": char CHI
-    # Phong thu (17001, self-target) moi luot o MOI mode - khong danh/heal/hoi sinh gi ca.
-    # Flag set o client.connect() tu config.ACCOUNT_CHAR_DEFEND (accounts.json "heal.char_defend").
-    if getattr(state, "char_defend", False):
-        return Decision(config.UNIT_CHAR, at, at, config.SKILL_DEFEND, b=3)
+    custom = _custom_decision(state, config.UNIT_CHAR, "char", state.skills_char, state.char, options)
+    if custom is _CUSTOM_AUTO:
+        pass
+    elif custom is not None:
+        return custom
     # HOI SINH (truoc heal): co dong doi chet + char co skill hoi sinh + thang dieu phoi
     rv = _try_revive(state, config.UNIT_CHAR, state.skills_char, state.char, options)
     if rv is not None:
@@ -568,6 +812,11 @@ def decide_char(state, options, first_turn=False):
 
 def decide_pet(state, options, first_turn=False):
     at = state.my_atype
+    custom = _custom_decision(state, config.UNIT_PET, "pet", state.pet_skills, state.pet, options)
+    if custom is _CUSTOM_AUTO:
+        pass
+    elif custom is not None:
+        return custom
     # HOI SINH (truoc heal): co dong doi chet + pet co skill hoi sinh + thang dieu phoi
     rv = _try_revive(state, config.UNIT_PET, state.pet_skills, state.pet, options)
     if rv is not None:

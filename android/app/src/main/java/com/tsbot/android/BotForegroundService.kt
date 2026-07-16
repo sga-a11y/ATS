@@ -112,7 +112,9 @@ class BotForegroundService : Service() {
         // list(accounts) phia Python). String thi luon convert dung -> join bang ky tu phan tach
         // hiem gap (U+0001), Python tu split() lai.
         val SEP = ""
-        val accountsFlat = party.accounts.joinToString(SEP) { "${it.username}$SEP${it.password}" }
+        val accountsFlat = party.accounts.joinToString(SEP) {
+            "${it.username}$SEP${it.password}$SEP${it.battleJson}"
+        }
         try {
             val py = rpd()
             py.callAttr(
@@ -229,6 +231,46 @@ class BotForegroundService : Service() {
             d.callAttr("get", "channel")?.toInt()
         } catch (e: Exception) {
             null
+        }
+    }
+
+    fun accountSkills(username: String): Pair<List<SkillChoice>, List<SkillChoice>> {
+        fun parseSkill(item: PyObject): SkillChoice? {
+            return try {
+                val parts = item.asList()
+                val id = parts.getOrNull(0)?.toInt() ?: return null
+                val name = parts.getOrNull(1)?.toString()
+                    ?.takeIf { it.isNotBlank() && it != "None" }
+                    ?: "Skill $id"
+                val cost = parts.getOrNull(2)?.toString()?.toIntOrNull()
+                val cat = parts.getOrNull(3)?.toString()?.toIntOrNull()
+                SkillChoice(id, name, cost, cat)
+            } catch (_: Exception) {
+                try {
+                    val id = item.toInt()
+                    SkillChoice(id, "Skill $id")
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+
+        return try {
+            val d = rpd().callAttr("account_skills", username)
+                ?: return emptyList<SkillChoice>() to emptyList<SkillChoice>()
+            val charSkills = d.callAttr("get", "char")?.asList()?.mapNotNull { parseSkill(it) } ?: emptyList()
+            val petSkills = d.callAttr("get", "pet")?.asList()?.mapNotNull { parseSkill(it) } ?: emptyList()
+            charSkills to petSkills
+        } catch (e: Exception) {
+            emptyList<SkillChoice>() to emptyList<SkillChoice>()
+        }
+    }
+
+    fun applyAccountBattle(username: String, battleJson: String): Boolean {
+        return try {
+            rpd().callAttr("apply_account_battle", username, battleJson)?.toBoolean() ?: false
+        } catch (e: Exception) {
+            false
         }
     }
 

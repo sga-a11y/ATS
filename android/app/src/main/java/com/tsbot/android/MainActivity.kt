@@ -81,6 +81,8 @@ import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     private var boundService by mutableStateOf<BotForegroundService?>(null)
@@ -341,9 +343,13 @@ fun TsBotApp(
             title = "Sửa tài khoản",
             initialUsername = account.username,
             initialPassword = account.password,
+            initialBattleJson = account.battleJson,
+            charSkills = service?.accountSkills(account.username)?.first ?: emptyList(),
+            petSkills = service?.accountSkills(account.username)?.second ?: emptyList(),
             onDismiss = { editingAccount = null },
             onSave = { edited ->
                 partyStore.updateAccountInParty(partyName, account.username, edited)
+                service?.applyAccountBattle(edited.username, edited.battleJson)
                 refresh()
                 editingAccount = null
             },
@@ -1079,6 +1085,362 @@ fun AddPartyDialog(
     )
 }
 
+private data class BattleRuleUi(
+    val enabled: Boolean = true,
+    val condition: String = "always",
+    val op: String = "gte",
+    val value: String = "",
+    val skill: String = "auto",
+    val target: String = "auto",
+)
+
+private val BattleConditionOptions = listOf(
+    "always" to "Luôn luôn",
+    "mob" to "Số quái",
+    "block" to "Block quái",
+    "sp" to "SP",
+    "hp_pct" to "HP (%)",
+    "ally_hp_pct" to "Có đồng đội HP < %",
+    "ally_sp_pct" to "Có đồng đội SP < %",
+    "sp_full" to "SP đầy",
+    "boss" to "Đang boss / phó bản",
+    "quest" to "Quest đông quái",
+    "ally_dead" to "Đồng đội chết",
+)
+
+private val BattleCompareOptions = listOf(
+    "gte" to ">=",
+    "lte" to "<=",
+    "gt" to ">",
+    "lt" to "<",
+    "eq" to "=",
+)
+
+private val BattleNumericConditions = setOf("mob", "block", "sp", "hp_pct", "ally_hp_pct", "ally_sp_pct")
+private val BattleFixedLessConditions = setOf("ally_hp_pct", "ally_sp_pct")
+
+private val BattleActionOptions = listOf(
+    "auto" to "Auto",
+    "normal" to "Đánh thường",
+    "defend" to "Phòng thủ",
+    "flee" to "Bỏ chạy",
+)
+
+private val BattleTargetOptions = listOf(
+    "auto" to "Auto",
+    "block" to "Theo block",
+    "enemy_low_hp" to "Quái ít HP nhất",
+    "enemy_high_hp" to "Quái nhiều HP nhất",
+    "enemy_first" to "Quái đầu",
+    "enemy_last" to "Quái cuối",
+    "ally_low_hp" to "Đồng đội ít HP nhất",
+    "ally_high_hp" to "Đồng đội nhiều HP nhất",
+    "ally_low_sp" to "Đồng đội ít SP nhất",
+    "self" to "Bản thân",
+)
+
+private fun defaultConditionValue(condition: String): String = when (condition) {
+    "mob" -> "1"
+    "block" -> "2"
+    "ally_hp_pct" -> "70"
+    "ally_sp_pct" -> "50"
+    "sp", "hp_pct" -> "50"
+    else -> ""
+}
+
+private fun normalizeBattleCondition(raw: String, op: String, value: String): Triple<String, String, String> {
+    val parts = raw.split("_")
+    if (parts.size == 3 && parts[1] in setOf("gte", "lte") && parts[2].toIntOrNull() != null) {
+        val condition = if (parts[0] == "hp") "hp_pct" else parts[0]
+        if (condition in BattleNumericConditions) return Triple(condition, parts[1], parts[2])
+    }
+    return Triple(raw, op, value)
+}
+
+private fun isReviveSkill(skill: SkillChoice): Boolean =
+    skill.cat == 8 || skill.name.contains("Hồi Sinh", ignoreCase = true)
+
+private fun isReviveSkillId(skill: String, skills: List<SkillChoice>): Boolean {
+    val id = skill.toIntOrNull() ?: return false
+    return skills.any { it.id == id && isReviveSkill(it) }
+}
+
+private fun conditionOptions(skills: List<SkillChoice>, selected: String): List<Pair<String, String>> {
+    val hasRevive = skills.any { isReviveSkill(it) }
+    return BattleConditionOptions.filter { (key, _) -> key != "ally_dead" || hasRevive || selected == "ally_dead" }
+}
+
+private fun parseBattleRules(json: String, unit: String): List<BattleRuleUi> {
+    if (json.isBlank()) return listOf(BattleRuleUi())
+    return try {
+        val obj = JSONObject(json)
+        val arr = obj.optJSONArray(unit)
+        if (arr == null || arr.length() == 0) return listOf(BattleRuleUi())
+        (0 until arr.length()).mapNotNull { i ->
+            val r = arr.optJSONObject(i) ?: return@mapNotNull null
+            val rawSkill = r.opt("skill")
+            val (condition, op, value) = normalizeBattleCondition(
+                r.optString("condition", "always"),
+                r.optString("op", "gte"),
+                r.optString("value", ""),
+            )
+            val target = r.optString("target", "auto").let { if (it == "ally_high_sp") "auto" else it }
+            BattleRuleUi(
+                enabled = r.optBoolean("enabled", true),
+                condition = condition,
+                op = op,
+                value = value,
+                skill = when (rawSkill) {
+                    is Number -> rawSkill.toInt().toString()
+                    is String -> rawSkill
+                    else -> "auto"
+                },
+                target = target,
+            )
+        }.ifEmpty { listOf(BattleRuleUi()) }
+    } catch (_: Exception) {
+        listOf(BattleRuleUi())
+    }
+}
+
+private fun battleJson(charRules: List<BattleRuleUi>, petRules: List<BattleRuleUi>): String {
+    val def = BattleRuleUi()
+    val charClean = charRules.ifEmpty { listOf(def) }
+    val petClean = petRules.ifEmpty { listOf(def) }
+    if (charClean == listOf(def) && petClean == listOf(def)) return ""
+    fun ruleObj(r: BattleRuleUi) = JSONObject().apply {
+        val cleanValue = if (r.condition in BattleNumericConditions) {
+            r.value.ifBlank { defaultConditionValue(r.condition) }
+        } else {
+            ""
+        }
+        val cleanOp = if (r.condition in BattleFixedLessConditions) "lt" else r.op
+        put("enabled", r.enabled)
+        put("condition", r.condition)
+        put("op", cleanOp)
+        put("value", cleanValue)
+        val asInt = r.skill.toIntOrNull()
+        if (asInt != null) put("skill", asInt) else put("skill", r.skill)
+        put("target", if (r.condition == "ally_dead") "auto" else r.target)
+    }
+    return JSONObject()
+        .put("char", JSONArray().also { arr -> charClean.forEach { arr.put(ruleObj(it)) } })
+        .put("pet", JSONArray().also { arr -> petClean.forEach { arr.put(ruleObj(it)) } })
+        .toString()
+}
+
+private fun skillOptions(
+    skills: List<SkillChoice>,
+    selected: String,
+    reviveOnly: Boolean = false,
+): List<Pair<String, String>> {
+    fun label(s: SkillChoice): String {
+        val name = s.name.ifBlank { "Skill ${s.id}" }
+        return if (s.cost != null) "$name (${s.id}, SP ${s.cost})" else "$name (${s.id})"
+    }
+
+    val out = if (reviveOnly) mutableListOf() else BattleActionOptions.toMutableList()
+    val shownSkills = if (reviveOnly) skills.filter { isReviveSkill(it) } else skills
+    out += shownSkills.distinctBy { it.id }.sortedBy { it.id }.map { it.id.toString() to label(it) }
+    val saved = selected.toIntOrNull()
+    if (saved != null && shownSkills.none { it.id == saved }) out += selected to "Skill $selected (đã lưu)"
+    return out
+}
+
+private fun skillAvailableOrOffline(skills: List<SkillChoice>, skillId: Int): Boolean =
+    skills.isEmpty() || skills.any { it.id == skillId }
+
+private fun pickTemplateSkill(skills: List<SkillChoice>, candidates: List<Int>): String? =
+    candidates.firstOrNull { skillAvailableOrOffline(skills, it) }?.toString()
+
+private fun pickTemplateAttack(skills: List<SkillChoice>, preferHighCost: Boolean): String? {
+    val attacks = skills.filter { it.cat == 1 || it.cat == 2 }
+    if (attacks.isEmpty()) return null
+    val picked = if (preferHighCost) {
+        attacks.maxByOrNull { it.cost ?: 0 }
+    } else {
+        attacks.minByOrNull { it.cost ?: 9999 }
+    }
+    return picked?.id?.toString()
+}
+
+private fun defaultBattleRules(skills: List<SkillChoice>): List<BattleRuleUi> {
+    val out = mutableListOf<BattleRuleUi>()
+    val revive = skills.firstOrNull { isReviveSkill(it) }?.id?.toString()
+        ?: if (skills.isEmpty()) "11013" else null
+    if (revive != null) {
+        out += BattleRuleUi(condition = "ally_dead", skill = revive, target = "auto")
+    }
+    val heal = pickTemplateSkill(skills, listOf(11010, 11004))
+    if (heal != null) {
+        out += BattleRuleUi(condition = "ally_hp_pct", op = "lt", value = "70", skill = heal, target = "ally_low_hp")
+    }
+    val spRestore = skills.filter { it.cat == 6 }.maxByOrNull { it.cost ?: 0 }?.id?.toString()
+    if (spRestore != null) {
+        out += BattleRuleUi(condition = "ally_sp_pct", op = "lt", value = "50", skill = spRestore, target = "ally_low_sp")
+    }
+    val boss = pickTemplateSkill(skills, listOf(12009, 12006, 13013, 12003, 10005))
+        ?: pickTemplateAttack(skills, preferHighCost = true)
+    if (boss != null) {
+        out += BattleRuleUi(condition = "boss", skill = boss, target = "enemy_low_hp")
+    }
+    val allTarget = pickTemplateSkill(skills, listOf(12014, 10012))
+    if (allTarget != null) {
+        out += BattleRuleUi(condition = "quest", skill = allTarget, target = "block")
+    }
+    val combo = pickTemplateSkill(skills, listOf(12003, 10005, 13013))
+        ?: pickTemplateAttack(skills, preferHighCost = false)
+    if (combo != null) {
+        val needBlock = if (combo == "13013") "3" else "2"
+        out += BattleRuleUi(condition = "sp_full", skill = combo, target = "block")
+        out += BattleRuleUi(condition = "block", op = "gte", value = needBlock, skill = combo, target = "block")
+    }
+    out += BattleRuleUi(condition = "always", skill = "normal", target = "auto")
+    return out
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RuleDropdown(
+    label: String,
+    value: String,
+    options: List<Pair<String, String>>,
+    onValue: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val shown = options.firstOrNull { it.first == value }?.second ?: value
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = shown,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(),
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { (key, text) ->
+                DropdownMenuItem(text = { Text(text) }, onClick = {
+                    onValue(key)
+                    expanded = false
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun BattleRuleUnitEditor(
+    title: String,
+    rules: List<BattleRuleUi>,
+    skills: List<SkillChoice>,
+    onRules: (List<BattleRuleUi>) -> Unit,
+) {
+    Text(title, style = MaterialTheme.typography.labelLarge)
+    rules.forEachIndexed { index, rule ->
+        val reviveSkills = skills.filter { isReviveSkill(it) }
+        fun updateRule(next: BattleRuleUi) {
+            onRules(rules.toMutableList().also { list -> list[index] = next })
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = rule.enabled,
+                    onCheckedChange = {
+                        onRules(rules.toMutableList().also { list -> list[index] = list[index].copy(enabled = it) })
+                    },
+                )
+                Text("Rule ${index + 1}", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+                TextButton(
+                    enabled = index > 0,
+                    onClick = {
+                        onRules(rules.toMutableList().also { list ->
+                            val moved = list.removeAt(index)
+                            list.add(index - 1, moved)
+                        })
+                    },
+                ) {
+                    Text("↑")
+                }
+                TextButton(
+                    enabled = index < rules.lastIndex,
+                    onClick = {
+                        onRules(rules.toMutableList().also { list ->
+                            val moved = list.removeAt(index)
+                            list.add(index + 1, moved)
+                        })
+                    },
+                ) {
+                    Text("↓")
+                }
+                if (rules.size > 1) {
+                    TextButton(onClick = { onRules(rules.filterIndexed { i, _ -> i != index }) }) {
+                        Text("Xóa")
+                    }
+                }
+            }
+            RuleDropdown("Điều kiện", rule.condition, conditionOptions(skills, rule.condition)) { condition ->
+                var next = rule.copy(condition = condition)
+                next = if (condition in BattleNumericConditions) {
+                    next.copy(
+                        op = if (condition in BattleFixedLessConditions) "lt" else next.op,
+                        value = next.value.ifBlank { defaultConditionValue(condition) },
+                    )
+                } else {
+                    next.copy(value = "")
+                }
+                if (condition == "ally_dead") {
+                    val reviveId = reviveSkills.firstOrNull()?.id?.toString()
+                    next = next.copy(
+                        skill = if (reviveId != null && !isReviveSkillId(next.skill, skills)) reviveId else next.skill,
+                        target = "auto",
+                    )
+                }
+                updateRule(next)
+            }
+            if (rule.condition in BattleNumericConditions) {
+                if (rule.condition in BattleFixedLessConditions) {
+                    OutlinedTextField(
+                        value = "<",
+                        onValueChange = {},
+                        enabled = false,
+                        label = { Text("Dấu") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    RuleDropdown("Dấu", rule.op, BattleCompareOptions) {
+                        updateRule(rule.copy(op = it))
+                    }
+                }
+                OutlinedTextField(
+                    value = rule.value,
+                    onValueChange = { text -> updateRule(rule.copy(value = text.filter { it.isDigit() })) },
+                    label = { Text("Số") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            RuleDropdown("Skill", rule.skill, skillOptions(skills, rule.skill, reviveOnly = rule.condition == "ally_dead")) {
+                updateRule(rule.copy(skill = it))
+            }
+            if (rule.condition != "ally_dead") {
+                RuleDropdown("Target", rule.target, BattleTargetOptions) {
+                    updateRule(rule.copy(target = it))
+                }
+            }
+        }
+    }
+    TextButton(onClick = { onRules(rules + BattleRuleUi()) }) { Text("+ Thêm rule") }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddAccountDialog(
     onDismiss: () -> Unit,
@@ -1086,15 +1448,48 @@ fun AddAccountDialog(
     title: String = "Thêm tài khoản",
     initialUsername: String = "",
     initialPassword: String = "",
+    initialBattleJson: String = "",
+    charSkills: List<SkillChoice> = emptyList(),
+    petSkills: List<SkillChoice> = emptyList(),
 ) {
     var username by remember { mutableStateOf(initialUsername) }
     var password by remember { mutableStateOf(initialPassword) }
+    var charRules by remember(initialBattleJson) { mutableStateOf(parseBattleRules(initialBattleJson, "char")) }
+    var petRules by remember(initialBattleJson) { mutableStateOf(parseBattleRules(initialBattleJson, "pet")) }
+    var confirmDefault by remember { mutableStateOf(false) }
+
+    fun saveDefaultRules() {
+        val nextChar = defaultBattleRules(charSkills)
+        val nextPet = defaultBattleRules(petSkills)
+        charRules = nextChar
+        petRules = nextPet
+        if (username.isNotBlank() && password.isNotBlank()) {
+            onSave(Account(username, password, battleJson(nextChar, nextPet)))
+        }
+    }
+
+    if (confirmDefault) {
+        AlertDialog(
+            onDismissRequest = { confirmDefault = false },
+            title = { Text("Nạp mẫu") },
+            text = { Text("Nạp kịch bản skill mặc định và lưu áp dụng ngay?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDefault = false
+                    saveDefaultRules()
+                }) { Text("Đồng ý") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDefault = false }) { Text("Hủy") }
+            },
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
@@ -1110,13 +1505,29 @@ fun AddAccountDialog(
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 )
+                Spacer(Modifier.height(12.dp))
+                Text("Chiến đấu", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (charSkills.isNotEmpty() || petSkills.isNotEmpty()) {
+                        "Skill live lấy từ acc đang online"
+                    } else {
+                        "Muốn chọn skill đã học thì chạy acc trước"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                BattleRuleUnitEditor("Char", charRules, charSkills) { charRules = it }
+                Spacer(Modifier.height(8.dp))
+                BattleRuleUnitEditor("Pet", petRules, petSkills) { petRules = it }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     if (username.isNotBlank() && password.isNotBlank()) {
-                        onSave(Account(username, password))
+                        val bj = battleJson(charRules, petRules)
+                        onSave(Account(username, password, bj))
                     }
                 },
             ) {
@@ -1124,7 +1535,10 @@ fun AddAccountDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Hủy") }
+            Row {
+                TextButton(onClick = { confirmDefault = true }) { Text("Mặc định") }
+                TextButton(onClick = onDismiss) { Text("Hủy") }
+            }
         },
     )
 }

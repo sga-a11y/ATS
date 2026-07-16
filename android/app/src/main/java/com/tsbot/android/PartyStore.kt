@@ -18,7 +18,7 @@ class PartyStore(private val context: Context) {
             val accArr = o.getJSONArray("accounts")
             val accounts = (0 until accArr.length()).map { j ->
                 val a = accArr.getJSONObject(j)
-                Account(a.getString("username"), a.getString("password"))
+                Account(a.getString("username"), a.getString("password"), a.optString("battle", ""))
             }
             Party(
                 name = o.getString("name"),
@@ -69,6 +69,7 @@ class PartyStore(private val context: Context) {
                 val ao = JSONObject()
                 ao.put("username", a.username)
                 ao.put("password", a.password)
+                if (a.battleJson.isNotBlank()) ao.put("battle", a.battleJson)
                 accArr.put(ao)
             }
             o.put("accounts", accArr)

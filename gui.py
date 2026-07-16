@@ -25,6 +25,45 @@ log = logging.getLogger("bot")   # -> hien o panel log GUI (qua _QueueHandler tr
 ACCOUNTS_JSON = os.path.join(_app_dir(), "accounts.json")
 DONATE_CHAT_URL = "https://zalo.me/g/qiy6aflscqbh6v4tivej"
 
+BATTLE_CONDITION_TYPE_LABELS = {
+    "always": "Luôn luôn",
+    "mob": "Số quái",
+    "block": "Block quái",
+    "sp": "SP",
+    "hp_pct": "HP (%)",
+    "ally_hp_pct": "Có đồng đội HP < %",
+    "ally_sp_pct": "Có đồng đội SP < %",
+    "sp_full": "SP đầy",
+    "boss": "Đang boss / phó bản",
+    "quest": "Quest đông quái",
+    "ally_dead": "Đồng đội chết",
+}
+LABEL_BATTLE_CONDITION_TYPES = {v: k for k, v in BATTLE_CONDITION_TYPE_LABELS.items()}
+BATTLE_COMPARE_LABELS = {"gte": ">=", "lte": "<=", "gt": ">", "lt": "<", "eq": "="}
+LABEL_BATTLE_COMPARE = {v: k for k, v in BATTLE_COMPARE_LABELS.items()}
+BATTLE_NUMERIC_CONDITIONS = {"mob", "block", "sp", "hp_pct", "ally_hp_pct", "ally_sp_pct"}
+BATTLE_FIXED_LT_CONDITIONS = {"ally_hp_pct", "ally_sp_pct"}
+BATTLE_ACTION_LABELS = {
+    "auto": "Auto",
+    "normal": "Đánh thường",
+    "defend": "Phòng thủ",
+    "flee": "Bỏ chạy",
+}
+LABEL_BATTLE_ACTIONS = {v: k for k, v in BATTLE_ACTION_LABELS.items()}
+BATTLE_TARGET_LABELS = {
+    "auto": "Auto",
+    "block": "Theo block",
+    "enemy_low_hp": "Quái ít HP nhất",
+    "enemy_high_hp": "Quái nhiều HP nhất",
+    "enemy_first": "Quái đầu",
+    "enemy_last": "Quái cuối",
+    "ally_low_hp": "Đồng đội ít HP nhất",
+    "ally_high_hp": "Đồng đội nhiều HP nhất",
+    "ally_low_sp": "Đồng đội ít SP nhất",
+    "self": "Bản thân",
+}
+LABEL_BATTLE_TARGETS = {v: k for k, v in BATTLE_TARGET_LABELS.items()}
+
 
 def _load_donate_qr_image():
     from bot.donate_qr_data import DONATE_QR_PNG_B64
@@ -1066,7 +1105,7 @@ class PartyConfigFrame(ttk.Frame):
         e_u.insert(0, u)
         e_p = ttk.Entry(fr, width=14, font=("Consolas", 10)); e_p.pack(side="left", padx=(0, 4))
         # heal: {hp_char,sp_char,hp_pet,sp_pet} (0-1). None/thieu key -> dung nguong chung.
-        # settings: config RIENG khac cua acc (char_defend...; se gom them setting moi sau nay).
+        # settings: config rieng khac cua acc (battle rules, legacy flags...).
         row = {"on": on_var, "u": e_u, "p": e_p, "frame": fr, "_realp": p,
                "heal": dict(heal) if isinstance(heal, dict) else {},
                "settings": dict(settings) if isinstance(settings, dict) else {}}
@@ -1083,6 +1122,7 @@ class PartyConfigFrame(ttk.Frame):
             e_p.bind("<FocusIn>", _fin)
             e_p.bind("<FocusOut>", _fout)
         ttk.Button(fr, text="⚙", width=2, command=lambda: self._open_heal_dialog(row)).pack(side="left")
+        ttk.Button(fr, text="Skill", width=5, command=lambda: self._open_skill_dialog(row)).pack(side="left")
         ttk.Button(fr, text="✕", width=2, command=lambda: self._del_acc_row(row)).pack(side="left")
         self.acc_rows.append(row)
 
@@ -1121,24 +1161,445 @@ class PartyConfigFrame(ttk.Frame):
                 m = maxv[k]
                 l.configure(text=(f"= {round(vv.get() / 100 * m)}" if m else "(offline)"))
             v.trace_add("write", _upd); _upd()
-        # Char CHI Phong thu moi luot battle (moi mode) - de train pet ma khong hao do ben
-        # Ngoc phuc than dang deo tren char. Luu vao field "settings" RIENG cua acc (KHONG chung
-        # "heal" - heal chi giu 4 nguong hoi mau; settings la cho gom cac config rieng acc sau nay).
-        defend_var = tk.BooleanVar(value=bool(row["settings"].get("char_defend", False)))
-        ttk.Checkbutton(win, text="Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)",
-                        variable=defend_var).grid(row=len(rows) + 1, column=0, columnspan=3,
-                                                  sticky="w", padx=8, pady=(6, 0))
         def _save():
             row["heal"] = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
-            row["settings"]["char_defend"] = bool(defend_var.get())
+            row["settings"].pop("char_defend", None)
             win.destroy()
         def _reset():
             for k, vv in vars_.items():
                 vv.set(int(round((glob_hp if k.startswith("hp") else glob_sp) * 100)))
-            defend_var.set(False)
-        bb = ttk.Frame(win); bb.grid(row=len(rows) + 2, column=0, columnspan=3, pady=8)
+        bb = ttk.Frame(win); bb.grid(row=len(rows) + 1, column=0, columnspan=3, pady=8)
         ttk.Button(bb, text="↺ Mặc định chung", command=_reset).pack(side="left", padx=4)
         ttk.Button(bb, text="💾 Lưu", command=_save).pack(side="left", padx=4)
+        ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="left", padx=4)
+
+    def _open_skill_dialog(self, row):
+        """Popup rule battle rieng tung acc: Dieu kien -> Skill/action -> Target."""
+        uname = row["u"].get().strip()
+        if not uname:
+            messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
+        settings = row.setdefault("settings", {})
+        battle = settings.get("battle") if isinstance(settings.get("battle"), dict) else {}
+
+        c = ctrl.account_clients.get(uname)
+        st = c.state if (c is not None and getattr(c, "state", None)) else None
+        live_skills = {
+            "char": sorted(getattr(st, "skills_char", []) or []) if st else [],
+            "pet": sorted(getattr(st, "pet_skills", []) or []) if st else [],
+        }
+        online = st is not None
+
+        def _skill_label(skill_id):
+            info = getattr(config, "SKILL_INFO", {}).get(skill_id, {}) or {}
+            name = info.get("name")
+            cost = info.get("cost")
+            base = f"{name} ({skill_id}" if name else f"Skill {skill_id}"
+            if cost is not None:
+                return f"{base}, SP {cost})" if name else f"{base} (SP {cost})"
+            return f"{base})" if name else base
+
+        def _skill_values(unit, saved=None):
+            vals = list(BATTLE_ACTION_LABELS.values())
+            learned = live_skills[unit]
+            if learned:
+                vals.extend(_skill_label(s) for s in learned)
+            elif saved:
+                for s in saved:
+                    if isinstance(s, int) and s > 0:
+                        vals.append(_skill_label(s) + " (đã lưu)")
+            return vals
+
+        def _skill_to_label(v, unit):
+            if isinstance(v, str) and v in BATTLE_ACTION_LABELS:
+                return BATTLE_ACTION_LABELS[v]
+            try:
+                sid = int(v)
+            except Exception:
+                return BATTLE_ACTION_LABELS["auto"]
+            return _skill_label(sid) if sid in live_skills[unit] else _skill_label(sid) + " (đã lưu)"
+
+        def _label_to_skill(label):
+            if label in LABEL_BATTLE_ACTIONS:
+                return LABEL_BATTLE_ACTIONS[label]
+            m = re.search(r"\b(\d{4,5})\b", label or "")
+            return int(m.group(1)) if m else "auto"
+
+        def _is_revive_skill(skill_id):
+            try:
+                info = getattr(config, "SKILL_INFO", {}).get(int(skill_id), {}) or {}
+            except Exception:
+                return False
+            return info.get("cat") == 8 or "Hồi Sinh" in str(info.get("name") or "")
+
+        def _revive_skills(unit, saved=None):
+            ids = [s for s in live_skills[unit] if _is_revive_skill(s)]
+            for s in saved or []:
+                try:
+                    sid = int(s)
+                except Exception:
+                    continue
+                if sid not in ids and _is_revive_skill(sid):
+                    ids.append(sid)
+            return sorted(ids)
+
+        def _condition_parts(rule):
+            cond = rule.get("condition", "always") if isinstance(rule, dict) else "always"
+            op = rule.get("op", "gte") if isinstance(rule, dict) else "gte"
+            val = rule.get("value", "") if isinstance(rule, dict) else ""
+            old = re.match(r"^(mob|sp|hp)_(gte|lte)_(\d+)$", str(cond))
+            if old:
+                kind, op, val = old.groups()
+                cond = "hp_pct" if kind == "hp" else kind
+            return cond, op, "" if val is None else str(val)
+
+        def _condition_label(rule):
+            cond, _op, _val = _condition_parts(rule)
+            return BATTLE_CONDITION_TYPE_LABELS.get(cond, "Luôn luôn")
+
+        def _condition_values(unit, saved_cond=None):
+            vals = [v for k, v in BATTLE_CONDITION_TYPE_LABELS.items() if k != "ally_dead"]
+            if _revive_skills(unit) or saved_cond == "ally_dead":
+                vals.append(BATTLE_CONDITION_TYPE_LABELS["ally_dead"])
+            return vals
+
+        def _default_condition_value(cond):
+            if cond == "mob":
+                return "1"
+            if cond == "block":
+                return "2"
+            if cond == "ally_hp_pct":
+                return "70"
+            if cond == "ally_sp_pct":
+                return "50"
+            if cond == "hp_pct":
+                return "50"
+            if cond == "sp":
+                return "50"
+            return ""
+
+        def _normalize_rules(unit):
+            raw = battle.get(unit)
+            if isinstance(raw, list):
+                out = []
+                for r in raw:
+                    if isinstance(r, dict):
+                        cond, op, val = _condition_parts(r)
+                        out.append({
+                            "enabled": r.get("enabled", True) is not False,
+                            "condition": cond,
+                            "op": op,
+                            "value": val,
+                            "skill": r.get("skill", "auto"),
+                            "target": r.get("target", "auto"),
+                        })
+                return out
+            # Tuong thich ban dang lam do dang truoc khi doi sang rule list.
+            if isinstance(raw, dict):
+                mode = raw.get("mode", "auto")
+                skill = "auto"
+                if mode == "normal":
+                    skill = "normal"
+                elif mode == "defend":
+                    skill = "defend"
+                elif mode == "skill":
+                    skill = int(raw.get("train_skill") or raw.get("boss_skill") or 0) or "auto"
+                return [{"enabled": True, "condition": "always", "op": "gte", "value": "",
+                         "skill": skill, "target": raw.get("target", "auto")}]
+            if unit == "char" and settings.get("char_defend"):
+                return [{"enabled": True, "condition": "always", "op": "gte", "value": "",
+                         "skill": "defend", "target": "self"}]
+            return [{"enabled": True, "condition": "always", "op": "gte", "value": "",
+                     "skill": "auto", "target": "auto"}]
+
+        def _skill_info(skill_id):
+            try:
+                return getattr(config, "SKILL_INFO", {}).get(int(skill_id), {}) or {}
+            except Exception:
+                return {}
+
+        def _skill_cat(skill_id):
+            return _skill_info(skill_id).get("cat", 1)
+
+        def _skill_splash(skill_id):
+            return _skill_info(skill_id).get("splash", 1)
+
+        def _skill_cost(skill_id):
+            return _skill_info(skill_id).get("cost", 0)
+
+        def _is_attack_skill(skill_id):
+            return _skill_cat(skill_id) in (1, 2)
+
+        def _has_or_offline(unit, skill_id):
+            learned = live_skills[unit]
+            return (not learned) or int(skill_id) in learned
+
+        def _pick_first(unit, candidates):
+            for sid in candidates:
+                if sid and _has_or_offline(unit, sid):
+                    return sid
+            return None
+
+        def _pick_combo(unit):
+            learned = live_skills[unit]
+            cands = [s for s in learned if _is_attack_skill(s) and _skill_cat(s) == 1
+                     and _skill_splash(s) in (2, 3, 4)]
+            if cands:
+                return min(cands, key=_skill_cost)
+            return _pick_first(unit, [getattr(config, "SKILL_FIRE", 12003),
+                                      getattr(config, "SKILL_ROCK", 10005), 13013])
+
+        def _pick_boss(unit):
+            learned = live_skills[unit]
+            cands = [s for s in learned if _is_attack_skill(s) and _skill_splash(s) in (4, 1)]
+            if cands:
+                rank = {4: 2, 1: 1}
+                return max(cands, key=lambda s: (rank.get(_skill_splash(s), 0), _skill_cost(s)))
+            return _pick_first(unit, [12009, 12006, 13013, getattr(config, "SKILL_FIRE", 12003),
+                                      getattr(config, "SKILL_ROCK", 10005)])
+
+        def _pick_alltarget(unit):
+            learned = live_skills[unit]
+            cands = [s for s in learned if _is_attack_skill(s) and _skill_splash(s) == 8]
+            if cands:
+                return min(cands, key=_skill_cost)
+            return _pick_first(unit, [12014, 10012])
+
+        def _pick_sp_restore(unit):
+            learned = live_skills[unit]
+            cands = [s for s in learned if _skill_cat(s) == 6]
+            if cands:
+                return max(cands, key=_skill_cost)
+            return None
+
+        def _default_rule_template(unit):
+            rules = []
+            revs = _revive_skills(unit)
+            if not revs and not live_skills[unit] and _is_revive_skill(11013):
+                revs = [11013]
+            if revs:
+                rules.append({"enabled": True, "condition": "ally_dead", "op": "gte", "value": "",
+                              "skill": revs[0], "target": "auto"})
+            heal = _pick_first(unit, [getattr(config, "SKILL_HEAL_ALL", 11010),
+                                      getattr(config, "SKILL_HEAL_ONE", 11004)])
+            if heal:
+                rules.append({"enabled": True, "condition": "ally_hp_pct", "op": "lt", "value": "70",
+                              "skill": heal, "target": "ally_low_hp"})
+            spr = _pick_sp_restore(unit)
+            if spr:
+                rules.append({"enabled": True, "condition": "ally_sp_pct", "op": "lt", "value": "50",
+                              "skill": spr, "target": "ally_low_sp"})
+            boss = _pick_boss(unit)
+            if boss:
+                rules.append({"enabled": True, "condition": "boss", "op": "gte", "value": "",
+                              "skill": boss, "target": "enemy_low_hp"})
+            alltarget = _pick_alltarget(unit)
+            if alltarget:
+                rules.append({"enabled": True, "condition": "quest", "op": "gte", "value": "",
+                              "skill": alltarget, "target": "block"})
+            combo = _pick_combo(unit)
+            if combo:
+                need_block = "3" if _skill_splash(combo) == 4 else "2"
+                rules.append({"enabled": True, "condition": "sp_full", "op": "gte", "value": "",
+                              "skill": combo, "target": "block"})
+                rules.append({"enabled": True, "condition": "block", "op": "gte", "value": need_block,
+                              "skill": combo, "target": "block"})
+            rules.append({"enabled": True, "condition": "always", "op": "gte", "value": "",
+                          "skill": "normal", "target": "auto"})
+            return rules
+
+        win = tk.Toplevel(self); win.title(f"Skill: {uname}"); win.resizable(False, False)
+        win.transient(self.winfo_toplevel()); win.grab_set()
+        frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text=("Acc đang online: có thể chọn skill đã học."
+                             if online else
+                             "Acc đang offline: muốn chọn skill đã học thì Start acc trước."),
+                  foreground=("#0a0" if online else "#a60")).pack(anchor="w", pady=(0, 8))
+
+        rule_rows = {"char": [], "pet": []}
+
+        def _build_unit(parent, unit, title):
+            box = ttk.LabelFrame(parent, text=title, padding=8)
+            box.pack(fill="x", pady=(0, 8))
+            hdr = ttk.Frame(box); hdr.pack(fill="x")
+            ttk.Label(hdr, text="Bật", width=4).pack(side="left", padx=(0, 4))
+            ttk.Label(hdr, text="Điều kiện", width=20).pack(side="left", padx=(0, 4))
+            ttk.Label(hdr, text="Dấu", width=4, anchor="center").pack(side="left", padx=(0, 4))
+            ttk.Label(hdr, text="Số", width=6, anchor="center").pack(side="left", padx=(0, 4))
+            ttk.Label(hdr, text="Skill", width=24, anchor="center").pack(side="left", padx=(0, 4))
+            ttk.Label(hdr, text="Target", width=22, anchor="center").pack(side="left", padx=(0, 4))
+            list_fr = ttk.Frame(box); list_fr.pack(fill="x")
+
+            def _refresh_order(unit_name):
+                for rec in rule_rows[unit_name]:
+                    rec["frame"].pack_forget()
+                    rec["frame"].pack(fill="x", pady=1)
+
+            def _move_rule(unit_name, rec, delta):
+                rows = rule_rows[unit_name]
+                try:
+                    i = rows.index(rec)
+                except ValueError:
+                    return
+                j = max(0, min(len(rows) - 1, i + delta))
+                if i == j:
+                    return
+                rows[i], rows[j] = rows[j], rows[i]
+                _refresh_order(unit_name)
+
+            def _add_rule(rule=None):
+                rule = rule or {"enabled": True, "condition": "always", "op": "gte", "value": "",
+                                "skill": "auto", "target": "auto"}
+                cond_key, op_key, value = _condition_parts(rule)
+                fr = ttk.Frame(list_fr); fr.pack(fill="x", pady=1)
+                enabled_var = tk.BooleanVar(value=rule.get("enabled", True) is not False)
+                cond_var = tk.StringVar(value=_condition_label(rule))
+                op_var = tk.StringVar(value=BATTLE_COMPARE_LABELS.get(op_key, ">="))
+                value_var = tk.StringVar(value=value)
+                saved_skill = rule.get("skill")
+                skill_var = tk.StringVar(value=_skill_to_label(saved_skill, unit))
+                target_var = tk.StringVar(value=BATTLE_TARGET_LABELS.get(rule.get("target"), "Auto"))
+                ttk.Checkbutton(fr, variable=enabled_var).pack(side="left", padx=(0, 4))
+                cond_cb = ttk.Combobox(fr, textvariable=cond_var, state="readonly", width=20,
+                                       values=_condition_values(unit, cond_key))
+                cond_cb.pack(side="left", padx=(0, 4))
+                num_fr = ttk.Frame(fr)
+                num_fr.pack(side="left", padx=(0, 4))
+                op_cb = ttk.Combobox(num_fr, textvariable=op_var, state="readonly", width=4,
+                                     values=list(BATTLE_COMPARE_LABELS.values()))
+                op_cb.pack(side="left", padx=(0, 4))
+                value_entry = ttk.Entry(num_fr, textvariable=value_var, width=6)
+                value_entry.pack(side="left")
+                num_fr.update_idletasks()
+                num_fr.configure(width=num_fr.winfo_reqwidth(), height=num_fr.winfo_reqheight())
+                num_fr.pack_propagate(False)
+                skill_cb = ttk.Combobox(fr, textvariable=skill_var, state="readonly", width=24,
+                                        values=_skill_values(unit, [saved_skill]))
+                skill_cb.pack(side="left", padx=(0, 4))
+                target_cb = ttk.Combobox(fr, textvariable=target_var, state="readonly", width=22,
+                                         values=list(BATTLE_TARGET_LABELS.values()))
+                target_cb.pack(side="left", padx=(0, 4))
+                rec = {"frame": fr, "enabled": enabled_var, "condition": cond_var,
+                       "op": op_var, "value": value_var, "skill": skill_var, "target": target_var}
+
+                def _sync_condition(*_a):
+                    ckey = LABEL_BATTLE_CONDITION_TYPES.get(cond_var.get(), "always")
+                    is_num = ckey in BATTLE_NUMERIC_CONDITIONS
+                    if ckey in BATTLE_FIXED_LT_CONDITIONS:
+                        op_var.set("<")
+                    if is_num:
+                        if not op_cb.winfo_ismapped():
+                            op_cb.pack(side="left", padx=(0, 4))
+                        if not value_entry.winfo_ismapped():
+                            value_entry.pack(side="left")
+                        op_cb.configure(state=("readonly" if ckey not in BATTLE_FIXED_LT_CONDITIONS else "disabled"))
+                        value_entry.configure(state="normal")
+                    else:
+                        op_cb.pack_forget()
+                        value_entry.pack_forget()
+                    if is_num and not value_var.get().strip():
+                        value_var.set(_default_condition_value(ckey))
+                    if not is_num and value_var.get().strip():
+                        value_var.set("")
+                    if ckey == "ally_dead":
+                        revs = _revive_skills(unit, [_label_to_skill(skill_var.get())])
+                        skill_cb.configure(values=[_skill_label(s) for s in revs],
+                                           state=("readonly" if revs else "disabled"))
+                        if revs and _label_to_skill(skill_var.get()) not in revs:
+                            skill_var.set(_skill_label(revs[0]))
+                        target_var.set("Auto")
+                        target_cb.configure(state="disabled")
+                    else:
+                        skill_cb.configure(values=_skill_values(unit, [_label_to_skill(skill_var.get())]),
+                                           state="readonly")
+                        target_cb.configure(state="readonly")
+
+                cond_var.trace_add("write", _sync_condition)
+                _sync_condition()
+                ttk.Button(fr, text="↑", width=2,
+                           command=lambda r=rec: _move_rule(unit, r, -1)).pack(side="left", padx=(0, 2))
+                ttk.Button(fr, text="↓", width=2,
+                           command=lambda r=rec: _move_rule(unit, r, 1)).pack(side="left", padx=(0, 2))
+                ttk.Button(fr, text="X", width=2,
+                           command=lambda r=rec: _remove_rule(unit, r)).pack(side="left")
+                rule_rows[unit].append(rec)
+
+            def _remove_rule(unit_name, rec):
+                rec["frame"].destroy()
+                if rec in rule_rows[unit_name]:
+                    rule_rows[unit_name].remove(rec)
+
+            for rule in _normalize_rules(unit):
+                _add_rule(rule)
+            ttk.Button(box, text="+ Thêm rule",
+                       command=lambda: _add_rule()).pack(anchor="w", pady=(4, 0))
+
+        _build_unit(frm, "char", "Char")
+        _build_unit(frm, "pet", "Pet")
+
+        def _read_rules(unit):
+            out = []
+            for r in rule_rows[unit]:
+                cond = LABEL_BATTLE_CONDITION_TYPES.get(r["condition"].get(), "always")
+                skill = _label_to_skill(r["skill"].get())
+                target = LABEL_BATTLE_TARGETS.get(r["target"].get(), "auto")
+                value = r["value"].get().strip()
+                if cond in BATTLE_NUMERIC_CONDITIONS and not value.isdigit():
+                    value = _default_condition_value(cond)
+                if cond == "ally_dead":
+                    revs = _revive_skills(unit, [skill])
+                    if not _is_revive_skill(skill) and revs:
+                        skill = revs[0]
+                    target = "auto"
+                out.append({
+                    "enabled": bool(r["enabled"].get()),
+                    "condition": cond,
+                    "op": "lt" if cond in BATTLE_FIXED_LT_CONDITIONS else LABEL_BATTLE_COMPARE.get(r["op"].get(), "gte"),
+                    "value": value,
+                    "skill": skill,
+                    "target": target,
+                })
+            return out
+
+        def _is_default(data):
+            default = [{"enabled": True, "condition": "always", "op": "gte", "value": "",
+                        "skill": "auto", "target": "auto"}]
+            return data.get("char") == default and data.get("pet") == default
+
+        def _save():
+            data = {"char": _read_rules("char"), "pet": _read_rules("pet")}
+            if _is_default(data):
+                settings.pop("battle", None)
+                live_cfg = {}
+            else:
+                settings["battle"] = data
+                live_cfg = data
+            settings.pop("char_defend", None)
+            row["settings"] = settings
+            try:
+                ctrl.apply_account_battle(uname, live_cfg)
+            except Exception as e:
+                log.warning("[%s] apply live cau hinh skill loi: %s", uname, e)
+            win.destroy()
+
+        def _reset():
+            if not messagebox.askyesno(
+                    "Xác nhận nạp mẫu",
+                    f"Nạp kịch bản skill mặc định cho acc '{uname}' và lưu áp dụng ngay?",
+                    parent=win):
+                return
+            data = {"char": _default_rule_template("char"), "pet": _default_rule_template("pet")}
+            settings["battle"] = data
+            settings.pop("char_defend", None)
+            row["settings"] = settings
+            try:
+                ctrl.apply_account_battle(uname, data)
+            except Exception as e:
+                log.warning("[%s] apply live kich ban skill mac dinh loi: %s", uname, e)
+            win.destroy()
+
+        bb = ttk.Frame(frm); bb.pack(fill="x", pady=(2, 0))
+        ttk.Button(bb, text="Mặc định", command=_reset).pack(side="left", padx=4)
+        ttk.Button(bb, text="Lưu", command=_save).pack(side="left", padx=4)
         ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="left", padx=4)
 
     def _del_acc_row(self, row):

@@ -10,12 +10,12 @@ combat: DAME = cat in {1,2}; COMBO duoc = cat==1; ALL-TARGET = splash==8.
 
 Chay: python tools/crack_skills.py   (-> ghi skills_data.json)
 """
-import json, os
+import json, os, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL = os.path.join(ROOT, "gamedata", "Data", "Skill_C.dat")
 OUT = os.path.join(ROOT, "skills_data.json")
-SK_LO, SK_HI = 0x2710, 0x33ff
+SK_LO, SK_HI = 0x2710, 0x5000
 
 
 def parse_skills(path):
@@ -36,7 +36,7 @@ def parse_skills(path):
                 cost = int.from_bytes(d[ip + 2:ip + 4], "little")
                 if SK_LO <= sid <= SK_HI and cost <= 300:
                     if sid not in out:
-                        out[sid] = {"cost": cost, "cat": d[ip + 11], "splash": d[ip + 12]}
+                        out[sid] = {"name": name, "cost": cost, "cat": d[ip + 11], "splash": d[ip + 12]}
                     i = ip + 2
                     continue
         i += 1
@@ -49,16 +49,18 @@ def parse_skills(path):
 
 # Skill mo neo bo sot (ten combining) - gia tri doc TAI VI TRI RECORD DUNG (da verify):
 MANUAL = {
-    0x2f05: {"cost": 84, "cat": 1, "splash": 1},   # Liet Tram (combo)
-    0x2f0a: {"cost": 54, "cat": 7, "splash": 3},   # heal
+    0x2f05: {"name": "Liệt Trảm", "cost": 84, "cat": 1, "splash": 1},   # combo
+    0x2f0a: {"name": "Trị Liệu", "cost": 54, "cat": 7, "splash": 3},    # heal
 }
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sk = parse_skills(SKILL)
     data = {
         "_note": "AUTO-SINH tu tools/crack_skills.py (Skill_C.dat, mo neo ten). skill_id hex -> "
-                 "cost (SP), cat (idx11: LOAI - 1=dame combo duoc, 2=dame khong combo, 4..15=support), "
+                 "name, cost (SP), cat (idx11: LOAI - 1=dame combo duoc, 2=dame khong combo, 4..15=support), "
                  "splash (idx12: 1=don,2=trai doc,3=trai ngang,4=don dap,8=toan bo quai). "
                  "combat: DAME=cat in{1,2}; COMBO=cat==1; ALL-TARGET=splash==8.",
         "skills": {"0x%04x" % k: sk[k] for k in sorted(sk)},
@@ -73,7 +75,8 @@ def main():
     for sid, (c, ca, sp) in known.items():
         g = sk.get(sid)
         ok = g and g["cost"] == c and g["cat"] == ca and g["splash"] == sp
-        print("  %d: %s %s" % (sid, g, "OK" if ok else "SAI(mong cost=%d cat=%d sp=%d)" % (c, ca, sp)))
+        g_txt = json.dumps(g, ensure_ascii=False) if g else None
+        print("  %d: %s %s" % (sid, g_txt, "OK" if ok else "SAI(mong cost=%d cat=%d sp=%d)" % (c, ca, sp)))
 
 
 if __name__ == "__main__":

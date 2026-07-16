@@ -1807,7 +1807,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         fight_legion_boss=True, do_van_tieu=True,
                         buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=1000000):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
-    nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01u2\\x01p2..." (KHONG phai
+    nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
     (ke ca da lam PHANG) thanh Python list khi truyen qua callAttr, "TypeError: 'ArrayList'
     object is not iterable" ngay tai list(accounts). String thi luon convert dung -> Kotlin join
@@ -1827,7 +1827,24 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "bao_hop_xu_threshold": int(bao_hop_xu_threshold),
     }
     _flat = str(accounts).split("\x01") if accounts else []
-    accs = [(_flat[i], _flat[i + 1]) for i in range(0, len(_flat) - 1, 2) if _flat[i]]
+    accs = []
+    if len(_flat) >= 3 and len(_flat) % 3 == 0:
+        import json
+        for i in range(0, len(_flat) - 2, 3):
+            u, p, battle_json = _flat[i], _flat[i + 1], _flat[i + 2]
+            if not u:
+                continue
+            accs.append((u, p))
+            try:
+                bcfg = json.loads(battle_json) if battle_json else {}
+                if isinstance(bcfg, dict):
+                    apply_account_battle(u, bcfg)
+                else:
+                    apply_account_battle(u, {})
+            except Exception:
+                apply_account_battle(u, {})
+    else:
+        accs = [(_flat[i], _flat[i + 1]) for i in range(0, len(_flat) - 1, 2) if _flat[i]]
     while len(config.PARTIES) <= pidx:
         config.PARTIES.append([])
     config.PARTIES[pidx] = accs
@@ -2026,6 +2043,55 @@ def account_status(username):
         "hp": getattr(_ch, "hp", None), "sp": getattr(_ch, "sp", None),
         "hp_max": getattr(_ch, "hp_max", None), "sp_max": getattr(_ch, "sp_max", None),
     }
+
+
+def account_skills(username):
+    """GUI/API: tra skill live cua acc dang online de render dropdown cau hinh battle."""
+    def _skill_choice(sid):
+        sid = int(sid)
+        info = getattr(config, "SKILL_INFO", {}).get(sid, {}) or {}
+        return [sid, info.get("name") or ("Skill %d" % sid), info.get("cost"), info.get("cat")]
+
+    c = account_clients.get(username)
+    st = c.state if (c is not None and getattr(c, "state", None)) else None
+    if st is None:
+        return {"char": [], "pet": []}
+    return {
+        "char": [_skill_choice(s) for s in sorted(list(getattr(st, "skills_char", []) or []))],
+        "pet": [_skill_choice(s) for s in sorted(list(getattr(st, "pet_skills", []) or []))],
+    }
+
+
+def apply_account_battle(username, battle_config=None):
+    """GUI/API: apply battle rule rieng acc NGAY cho acc dang chay, khong can relog.
+
+    battle_config={} / None = ve mac dinh. Ham nay chi cap nhat runtime; GUI/Android van tu luu
+    accounts.json/parties.json rieng nhu cu.
+    """
+    username = str(username or "").strip()
+    if not username:
+        return False
+    if isinstance(battle_config, str):
+        try:
+            import json
+            battle_config = json.loads(battle_config) if battle_config else {}
+    except Exception:
+        battle_config = {}
+    cfg = battle_config if isinstance(battle_config, dict) else {}
+    if not isinstance(getattr(config, "ACCOUNT_BATTLE", None), dict):
+        config.ACCOUNT_BATTLE = {}
+    if cfg:
+        config.ACCOUNT_BATTLE[username] = cfg
+    else:
+        config.ACCOUNT_BATTLE.pop(username, None)
+    config.ACCOUNT_CHAR_DEFEND.pop(username, None)
+    c = account_clients.get(username)
+    if c is not None and getattr(c, "state", None) is not None:
+        c.state.battle_config = dict(cfg)
+        c.state.char_defend = False
+        log.info("[%s] da apply cau hinh skill/chien dau moi (live)", username)
+        return True
+    return False
 
 
 def get_account_log(username, max_lines=500):

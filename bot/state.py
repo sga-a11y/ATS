@@ -42,6 +42,7 @@ class BattleState:
         self.my_atype = 3         # atype = vi tri formation cua minh (leader o giua)
         self.label = ""           # nhan account (de tao key dieu phoi heal)
         self.party_idx = None     # index party (dieu phoi hoi sinh chéo account)
+        self.battle_config = {}   # custom battle settings rieng acc (accounts.json settings.battle)
         self.pet_skills = []      # LIST skill cua pet dang dung (pets.json, giu thu tu - skill[0]=boss fallback)
         self.active_pet_id = None # id pet dang dung (tu S2C 0x13)
         self.boss_mode = False    # True = dang trong dungeon danh boss -> pet dung skill manh (tu suy)
