@@ -84,6 +84,10 @@ MAP_GATES = _load_map_gates()
 # Smart path trong map. Neu Ground.mmg khong ton tai, navigate_to tu fallback cach cu.
 SMART_PATHFIND = True
 GROUND_MAP_PATH = os.path.join(_base_dir(), "gamedata", "Ground.mmg")
+SMART_WORLD_ROUTING = True
+WORLD_NAV_PATH = os.path.join(_base_dir(), "world_nav.json")
+SMART_ROUTE_CACHE_PATH = os.path.join(_base_dir(), "smart_routes.json")
+SMART_ROUTE_FALLBACK = True
 def _load_train_routes(path=None):
     """Doc train_routes.json -> {dest_map:int -> {from_city, city_flag, dest_map, steps}}.
     Route replay tu thanh toi train map (leader di, member tu keo theo)."""
