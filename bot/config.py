@@ -304,6 +304,7 @@ ACCOUNT_HEAL = {
 # char_defend: "Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)" - True -> char CHI
 # Phong thu (17001) moi luot battle o MOI mode; False/thieu -> danh binh thuong.
 ACCOUNT_CHAR_DEFEND = {}   # username -> bool
+ACCOUNT_BATTLE = {}        # username -> {"char": {...}, "pet": {...}} custom battle settings
 
 # Unit IDs
 UNIT_CHAR = 3
@@ -362,8 +363,12 @@ if _aj is not None:
                     ACCOUNT_HEAL[_u] = {_k: float(_v) for _k, _v in _h.items()
                                         if _k in ("hp_char", "sp_char", "hp_pet", "sp_pet")}
                 _s = _a.get("settings")
-                if _u and isinstance(_s, dict) and _s.get("char_defend"):
-                    ACCOUNT_CHAR_DEFEND[_u] = True
+                if _u and isinstance(_s, dict):
+                    if _s.get("char_defend"):
+                        ACCOUNT_CHAR_DEFEND[_u] = True
+                    _b = _s.get("battle")
+                    if isinstance(_b, dict):
+                        ACCOUNT_BATTLE[_u] = _b
         # accounts.json TON TAI -> LUON dung no (ke ca RONG) => ban product accounts.json rong thi
         # KHONG hien party mac dinh cua config (tranh lo/nham acc).
         PARTIES = _ps
@@ -381,6 +386,7 @@ if _aj is not None:
                 "digioi_mode": _party.get("digioi_mode", "party"),   # Di Gioi: "party" | "solo"
                 "event_key": _party.get("event_key", ""),   # mode 'event': key trong events.json (npc_40, nhi_kieu...)
                 "use_phuc_than": bool(_party.get("use_phuc_than", False)),
+                "use_digioi_ho_phu": bool(_party.get("use_digioi_ho_phu", False)),
                 "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),
                 "do_van_tieu": bool(_party.get("do_van_tieu", True)),
                 "buy_ho_phu": bool(_party.get("buy_ho_phu", False)),

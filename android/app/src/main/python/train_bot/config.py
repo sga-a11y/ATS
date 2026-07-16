@@ -62,6 +62,7 @@ ACCOUNT_HEAL = {}
 # Config RIENG tung acc (accounts.json field "settings" moi acc - TACH khoi "heal"). char_defend:
 # "Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)". Mirror PC bot/config.py.
 ACCOUNT_CHAR_DEFEND = {}   # username -> bool
+ACCOUNT_BATTLE = {}        # username -> {"char": {...}, "pet": {...}} custom battle settings
 JUNK_PET_SCROLLS = {}
 PET_HEDOANH = {}
 VANTIEU_ENABLE = True
@@ -369,6 +370,9 @@ def reload_parties():
     _aj = _load_accounts_json()
     PARTY_CONFIG = {}
     PARTY_LEADERS_BY_IDX = {}
+    ACCOUNT_HEAL.clear()
+    ACCOUNT_CHAR_DEFEND.clear()
+    ACCOUNT_BATTLE.clear()
     if _aj is None:
         PARTIES = []
     else:
@@ -384,8 +388,12 @@ def reload_parties():
                     ACCOUNT_HEAL[_u] = {k: float(v) for k, v in _h.items()
                                         if k in ("hp_char", "sp_char", "hp_pet", "sp_pet")}
                 _s = _a.get("settings")
-                if _u and isinstance(_s, dict) and _s.get("char_defend"):
-                    ACCOUNT_CHAR_DEFEND[_u] = True
+                if _u and isinstance(_s, dict):
+                    if _s.get("char_defend"):
+                        ACCOUNT_CHAR_DEFEND[_u] = True
+                    _b = _s.get("battle")
+                    if isinstance(_b, dict):
+                        ACCOUNT_BATTLE[_u] = _b
         for _i, _p in enumerate(_praw):
             _srv = _p.get("server", "trieu_van")
             PARTY_CONFIG[_i] = {
@@ -400,6 +408,7 @@ def reload_parties():
                 "digioi_mode": _p.get("digioi_mode", "party"),
                 "event_key": _p.get("event_key", ""),
                 "use_phuc_than": bool(_p.get("use_phuc_than", False)),
+                "use_digioi_ho_phu": bool(_p.get("use_digioi_ho_phu", False)),
                 "fight_legion_boss": bool(_p.get("fight_legion_boss", True)),
                 "do_van_tieu": bool(_p.get("do_van_tieu", True)),
                 "buy_ho_phu": bool(_p.get("buy_ho_phu", False)),
