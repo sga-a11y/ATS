@@ -59,6 +59,16 @@ def _nearest_safe(pos, safes):
     return min(safes, key=lambda s: (s[0] - px) ** 2 + (s[1] - py) ** 2)
 
 
+def _travel_to_train_map(client, map_id, safe, legacy_route, abort=None):
+    """Prefer generated navigation; retain handwritten routes as validation fallback."""
+    if client.follow_smart_route(map_id, safe, abort=abort):
+        return True
+    if getattr(config, "SMART_ROUTE_FALLBACK", True) and legacy_route:
+        return client.follow_route(legacy_route)
+    log.error("[%s] khong co smart route toi map %s", client._label, map_id)
+    return False
+
+
 def _go_town_safe(c, label, city_id=12001, flag=0):
     """SACH TRAN (flee) roi BAY VE THANH (mac dinh Trac Quan 12001) - dung khi digioi HET GIO bi
     ket o map quai. Phai cho het tran TRUOC khi teleport (teleport luc dang danh -> server KICK)."""
@@ -407,7 +417,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # RECONNECT login lai o MAP KHAC train map (truoc khi rot member da teleport di lam
                 # daily dungeon -> login = vi tri logout, van o thanh do). KHONG duoc THOAT oan.
                 _rt = getattr(config, "TRAIN_ROUTES", {}).get(sc)
-                if _rt:
+                _route_safe = _nearest_safe(c.pos, tm["safe"])
+                try:
+                    _smart_rt = c.build_smart_route(sc, _route_safe)
+                except Exception as e:
+                    log.warning("[%s] reconnect: loi build smart route: %s", label, e)
+                    _smart_rt = None
+                if _smart_rt or _rt:
                     # sc la TRAIN MAP di bang ROUTE (qua cong) - KHONG phai thanh, teleport thang toi
                     # sc se FAIL (bug cu: go_to_town(20821) spam 60s roi hut). De khoi reform ben
                     # duoi (barrier + _do_reform) keo qua route; member cho leader keo (khong THOAT).
@@ -506,10 +522,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
               - DANG CHAY co acc lech map (chet/dump/mat ket noi) - goi tu keepalive, to_spot=True
                 (di thang ra spot luon vi khong con buoc nao khac lo tiep)."""
             route2 = getattr(config, "TRAIN_ROUTES", {}).get(sc)
-            if not route2:
-                log.warning("[%s] (%s) reform: khong co route -> bo qua", label, role)
+            route_safe = st.get("rally_point") or (
+                tm["safe"][0] if tm and tm.get("safe") else None
+            )
+            try:
+                smart_route2 = c.build_smart_route(sc, route_safe) if route_safe else None
+            except Exception as e:
+                log.warning("[%s] reform: loi build smart route: %s", label, e)
+                smart_route2 = None
+            if not smart_route2 and not route2:
+                log.warning("[%s] (%s) reform: khong co smart/legacy route -> bo qua", label, role)
                 return
-            fc = int(route2.get("from_city", 0)); ff = int(route2.get("city_flag", 0))
+            if smart_route2:
+                fc = int(smart_route2["city"]); ff = int(smart_route2["flag"])
+            else:
+                fc = int(route2.get("from_city", 0)); ff = int(route2.get("city_flag", 0))
             spot = st.get("mob_spot")
             _g0 = st["reform_gen"]   # gen reform DANG xu; co gen MOI hon (acc khac van) -> abort keo, quay lai xu
             _ab = lambda: _stopped() or (not c.running) or st["reform_gen"] > _g0
@@ -593,18 +620,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 time.sleep(1.5)
                 _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
                 c.flee_mode = not _full   # du party -> DANH bat chap khi keo
-                # KEO DI THU CONG qua tung cong/buoc -> member TRONG PARTY tu theo leader KE CA QUA
-                # CONG. KHONG dung follow_route (no tu teleport -> khong keo).
-                for stp in route2.get("steps", []):
-                    if _ab(): break   # reform moi / stop -> dung keo, quay lai keepalive xu
-                    t1 = time.time()   # DANG DANH -> cho HET TRAN roi moi di buoc/qua cong
-                    while c.in_combat(idle_secs=3.0) and not _ab() and time.time() - t1 < 60:
-                        time.sleep(0.5)
-                    if "gate" in stp:
-                        if not c._enter_gate(int(stp["x"]), int(stp["y"]), int(stp["gate"])):
-                            break
-                    else:
-                        c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(0.5)
+                if smart_route2:
+                    c.follow_smart_route(
+                        sc, route_safe, abort=_ab, flee=not _full
+                    )
+                else:
+                    # Legacy fallback: member trong party tu theo leader qua tung cong.
+                    for stp in route2.get("steps", []):
+                        if _ab(): break
+                        t1 = time.time()
+                        while c.in_combat(idle_secs=3.0) and not _ab() and time.time() - t1 < 60:
+                            time.sleep(0.5)
+                        if "gate" in stp:
+                            if not c._enter_gate(int(stp["x"]), int(stp["y"]), int(stp["gate"])):
+                                break
+                        else:
+                            c.move_to(int(stp["move"][0]), int(stp["move"][1])); time.sleep(0.5)
                 # toi train map -> RA SAFE GAN QUAI TRUOC (KHONG di thang tu cong ra spot - duong do
                 # CHUA duoc dam bao khong xuyen tuong, chi co safe/mob_path la nguoi dung da tu do
                 # tinh toan de an toan). to_spot=False (goi tu login sai map) -> DUNG o day, de flow
@@ -684,7 +715,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # la 1 khoi code RIENG, DUOC ~150 dong trung logic voi _do_reform -> khi sua 1 cho (rally
             # truoc khi ra spot) de sot cho kia, gay bug "di thang xuyen tuong tu cong ra spot".
             route = getattr(config, "TRAIN_ROUTES", {}).get(sc)
-            if route and has_leader:
+            _startup_safe = st.get("rally_point") or (
+                tm["safe"][0] if tm and tm.get("safe") else None
+            )
+            try:
+                smart_route = c.build_smart_route(sc, _startup_safe) if _startup_safe else None
+            except Exception as e:
+                log.warning("[%s] startup: loi build smart route: %s", label, e)
+                smart_route = None
+            route_available = bool(smart_route or route)
+            if route_available and has_leader:
                 expected = len(party_accounts(pidx))
                 all_on_map = _party_map_barrier(st, username, self_map_ok, expected, _stopped)
                 if not all_on_map:
@@ -713,7 +753,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if c in _clients: _clients.remove(c)
                     return
                 if not self_map_ok:
-                    if not route:   # route-less: KHONG keo ve map train duoc -> TAT CA PARTY
+                    if not route_available:   # khong co auto/legacy route -> TAT CA PARTY
                         st["leader_bad"].set()   # member thoat het
                         _reason("route-less train + leader sai map (o %s, can %s) -> tat ca party"
                                 % (c.current_map, sc))
@@ -751,7 +791,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (member) MAT KET NOI khi dang di chuyen toi train map -> thoat.", label)
                     _quit(); return
                 if not self_map_ok:
-                    if not route:   # route-less: khong keo ve map train duoc -> TAT CA PARTY (theo yeu cau)
+                    if not route_available:   # khong co auto/legacy route -> TAT CA PARTY
                         _reason("route-less train + member sai map (o %s, can %s) -> tat ca party"
                                 % (c.current_map, sc))
                         log.warning("[%s] (member) route-less + SAI MAP (o %s, can %s) -> TAT CA PARTY",
@@ -1292,7 +1332,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.info("[%s] (%s) tat ca da reconnect -> restart mode", label, role)
                     if train_on_map:
                         _route_r = getattr(config, "TRAIN_ROUTES", {}).get(sc)
-                        if _route_r:                             # CO route: reform day du (ve thanh/sync kenh/keo)
+                        _reconnect_safe = st.get("rally_point") or (
+                            tm["safe"][0] if tm and tm.get("safe") else None
+                        )
+                        try:
+                            _smart_r = c.build_smart_route(sc, _reconnect_safe) if _reconnect_safe else None
+                        except Exception as e:
+                            log.warning("[%s] reconnect: loi build smart route: %s", label, e)
+                            _smart_r = None
+                        if _smart_r or _route_r:                 # auto primary, legacy fallback
                             try: _do_reform()
                             except Exception as e: log.warning("[%s] reconnect reform loi: %s", label, e)
                         elif c.current_map != sc:                # route-less + MINH lech map -> TAT CA PARTY

@@ -77,7 +77,7 @@ def _smart_world_router():
     return _SMART_ROUTER
 
 
-def execute_smart_route(client, route, abort=None):
+def execute_smart_route(client, route, abort=None, flee=True):
     """Execute a built route and stop immediately on any state mismatch."""
     client._smart_route_failure = None
     for leg in route["legs"]:
@@ -87,7 +87,7 @@ def execute_smart_route(client, route, abort=None):
         if client.current_map != leg["scene"]:
             client._smart_route_failure = "unexpected_scene"
             return False
-        client.navigate_to(*leg["gate_center"], abort=abort)
+        client.navigate_to(*leg["gate_center"], abort=abort, flee=flee)
         if not client.running or (abort and abort()):
             client._smart_route_failure = "aborted"
             return False
@@ -103,7 +103,7 @@ def execute_smart_route(client, route, abort=None):
     if not client.running or (abort and abort()):
         client._smart_route_failure = "aborted"
         return False
-    client.navigate_to(*route["safe"], abort=abort)
+    client.navigate_to(*route["safe"], abort=abort, flee=flee)
     if not client.running or (abort and abort()):
         client._smart_route_failure = "aborted"
         return False
@@ -4260,14 +4260,20 @@ class GameClient:
                  self._label, self.current_map, dest, "OK" if ok else "CHUA TOI")
         return ok
 
-    def follow_smart_route(self, dest_map: int, safe, abort=None) -> bool:
+    def build_smart_route(self, dest_map: int, safe):
+        router = _smart_world_router()
+        if router is None:
+            return None
+        return router.build_route(int(dest_map), tuple(safe))
+
+    def follow_smart_route(self, dest_map: int, safe, abort=None, flee=True) -> bool:
         """Teleport to the best city, then traverse only verified scene gates."""
         dest_map = int(dest_map)
         safe = (int(safe[0]), int(safe[1]))
         if not self.running or (abort and abort()):
             return False
         if self.current_map == dest_map:
-            self.navigate_to(*safe, abort=abort)
+            self.navigate_to(*safe, abort=abort, flee=flee)
             return self.running and self.current_map == dest_map
 
         router = _smart_world_router()
@@ -4283,7 +4289,7 @@ class GameClient:
             gates = ",".join(str(leg["gate"]) for leg in route["legs"])
             log.info("[%s] smart route %s: city=%s flag=%s gates=%s",
                      self._label, dest_map, route["city"], route["flag"], gates)
-            self.flee_mode = True
+            self.flee_mode = bool(flee)
             if self.current_map != route["city"]:
                 self.pre_route_town_hop()
                 if not self.go_to_town(route["city"], route["flag"]):
@@ -4300,7 +4306,7 @@ class GameClient:
                             self._label, self.current_map, self.pos)
                 return False
 
-            if execute_smart_route(self, route, abort=abort):
+            if execute_smart_route(self, route, abort=abort, flee=flee):
                 log.info("[%s] smart route reached safe (%d,%d)",
                          self._label, safe[0], safe[1])
                 return True
