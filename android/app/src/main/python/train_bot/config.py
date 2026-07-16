@@ -11,9 +11,11 @@ duoc client.py doc qua getattr(config, "X", default) -> AN TOAN neu thieu, nhung
 o day (rong/mac dinh) de cac nhanh van tieu/run-around khong crash neu duoc bat sau nay.
 """
 import json
+import os
 
-# Android chua materialize world_nav.json/Ground.mmg; giu legacy route trong iteration nay.
-SMART_WORLD_ROUTING = False
+# PC va APK bat smart routing cung luc; service materialize assets vao app files truoc khi import.
+SMART_WORLD_ROUTING = True
+SMART_PATHFIND = True
 SMART_ROUTE_FALLBACK = True
 
 HEAL_HP_THRESHOLD = 0.70
@@ -318,6 +320,10 @@ TRAIN_ROUTES = _load_train_routes()
 #  Kotlin ghi accounts.json (format PC) roi goi config.reload_parties() + run_party_digioi.start_all().
 # ============================================================
 from ._appdir import app_dir as _app_dir
+
+WORLD_NAV_PATH = os.path.join(_app_dir(), "world_nav.json")
+GROUND_MAP_PATH = os.path.join(_app_dir(), "gamedata", "Ground.mmg")
+SMART_ROUTE_CACHE_PATH = os.path.join(_app_dir(), "smart_routes.json")
 
 PARTY_LEADERS = []          # white list leader CHUNG (moi party)
 CHANNEL = 1

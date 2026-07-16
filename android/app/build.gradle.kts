@@ -11,6 +11,22 @@ plugins {
 // versionCode = so phut ke tu 1970 (tang dan moi build, ~29 trieu nam 2026 -> vua khit Int).
 val buildVersionName = "1.1." + SimpleDateFormat("yyyyMMddHHmm").format(Date())
 val buildVersionCode = (System.currentTimeMillis() / 60000L).toInt()
+val repositoryRoot = rootProject.projectDir.parentFile
+val generatedSmartNavAssets = layout.buildDirectory.dir("generated/smart-nav-assets")
+val prepareSmartNavAssets by tasks.registering(Copy::class) {
+    val worldNav = File(repositoryRoot, "world_nav.json")
+    val ground = File(repositoryRoot, "gamedata/Ground.mmg")
+    inputs.files(worldNav, ground)
+    doFirst {
+        val missing = listOf(worldNav, ground).filterNot { it.isFile }
+        check(missing.isEmpty()) {
+            "Missing smart navigation assets: ${missing.joinToString { it.path }}"
+        }
+    }
+    from(worldNav) { into("train_bot_data") }
+    from(ground) { into("train_bot_data/gamedata") }
+    into(generatedSmartNavAssets)
+}
 
 android {
     namespace = "com.tsbot.android"
@@ -73,6 +89,12 @@ android {
             version = "3.22.1"
         }
     }
+
+    sourceSets.getByName("main").assets.srcDir(generatedSmartNavAssets)
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(prepareSmartNavAssets)
 }
 
 chaquopy {

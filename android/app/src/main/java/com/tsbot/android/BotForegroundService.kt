@@ -13,6 +13,7 @@ import android.os.PowerManager
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,7 @@ class BotForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        materializeSmartNavAssets()
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
         }
@@ -60,6 +62,35 @@ class BotForegroundService : Service() {
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "aTSBot:botService").apply {
             setReferenceCounted(false)
             acquire()
+        }
+    }
+
+    private fun materializeSmartNavAssets() {
+        val nav = File(filesDir, "world_nav.json")
+        val ground = File(filesDir, "gamedata/Ground.mmg")
+        val prefs = getSharedPreferences("smart_nav_assets", Context.MODE_PRIVATE)
+        val currentVersion = BuildConfig.VERSION_CODE
+        if (prefs.getInt("version", -1) == currentVersion && nav.isFile && ground.isFile) {
+            return
+        }
+        copyBundledAsset("world_nav.json", nav)
+        copyBundledAsset("gamedata/Ground.mmg", ground)
+        prefs.edit().putInt("version", currentVersion).apply()
+    }
+
+    private fun copyBundledAsset(name: String, target: File) {
+        target.parentFile?.mkdirs()
+        val temporary = File(target.parentFile, ".${target.name}.tmp")
+        assets.open("train_bot_data/$name").use { input ->
+            temporary.outputStream().use { output -> input.copyTo(output) }
+        }
+        if (target.exists() && !target.delete()) {
+            temporary.delete()
+            error("Khong thay duoc asset cu: ${target.path}")
+        }
+        if (!temporary.renameTo(target)) {
+            temporary.copyTo(target, overwrite = true)
+            temporary.delete()
         }
     }
 

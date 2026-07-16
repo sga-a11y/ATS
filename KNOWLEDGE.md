@@ -376,8 +376,9 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
   invalidate/rebuild dung 1 lan; tuyet doi khong `go_to_town(train_map_id)`.
 - Hạp Cốc Tử Ngọ 1 (`14821`) da verify offline: Trường An `14001`, flag `6`, gate
   `14001/1 -> 22000/17 -> 14821`; gate `22000/17` co center `(560,2510)`.
-- Desktop build copy `world_nav.json` va `gamedata/Ground.mmg`. Android dong bo module Python nhung
-  `SMART_WORLD_ROUTING=False` cho toi khi binary assets duoc materialize/test rieng.
+- Rule project: tinh nang runtime phai lam dong thoi cho PC va APK. Desktop build copy
+  `world_nav.json` + `gamedata/Ground.mmg`; Gradle cung dong goi hai file canonical nay vao APK,
+  service materialize theo `versionCode` ra app `filesDir`, va Android bat `SMART_WORLD_ROUTING=True`.
 
 **Next:** live acceptance 1 party tren map `14821`, sau do test reconnect o scene trung gian va reform
 khi mot member bi van map. Neu log/map verify dung, co the xoa fallback `train_routes.json`.
