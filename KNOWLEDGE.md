@@ -409,6 +409,10 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 - Huy party: C2S 0x0d `04 00 [self_entity]`
 - Query pho ban: C2S 0x2f `01 00` -> S2C 0x2f tra info
 - **VAO: C2S 0x2f `02 00 02 00 00`** -> map doi sang dungeon (~61969) -> tu danh (combat 0x32/0x35 nhu thuong)
+- Tier theo level (byte tier trong `0x2f 0200[T]0000`; start boss `0x14 0800[T-1]00`; mua ve `0x54 ...0d00[T]00`):
+  - `<=80`: tier `02` (capture cu).
+  - `81..150`: tier `03` (capture nick cao: `0x2f 0200030000` / `0x14 08000200` / `0x54 ...0d000300`).
+  - `>=151`: tier `04` (**suy luan theo pattern, chua capture verify**; user chap nhan fix theo suy doan 2026-07-16).
 - Xong: S2C 0x14 sub 64 (man complete) -> claim thuong (C2S 0x52 ...) -> S2C 0x55 (vat pham)
 - Ra: C2S 0x0d `04 00 [self]` (don)
 - TODO: implement auto (vao -> danh -> nhan thuong -> ra -> danh dau 1 lan/ngay).

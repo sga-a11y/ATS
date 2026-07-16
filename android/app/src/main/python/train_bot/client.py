@@ -2182,9 +2182,13 @@ class GameClient:
         """TIER pho ban solo theo LEVEL char (server khoa tier thap voi char cao):
           level <= 80   -> tier 2 (nhu cu)
           level 81..150 -> tier 3 (capture nick cao: 0x2f 02000300 / 0x14 08000200 / 0x54 ..0d000300)
-          level > 150   -> tam tier 3 (xu ly rieng sau khi co capture)."""
+          level >=151   -> tier 4 (suy luan theo pattern tier, cho acc 151+)."""
         lv = getattr(self, "char_level", 0) or 0
-        return 2 if lv <= 80 else 3
+        if lv <= 80:
+            return 2
+        if lv <= 150:
+            return 3
+        return 4
 
     def _run_one_dungeon(self, max_sec: int) -> bool:
         """Chay 1 luot dungeon: query -> vao -> danh boss -> nhan thuong -> ra. True neu vao duoc."""
@@ -2211,6 +2215,7 @@ class GameClient:
         # LUU Y: map CHI doi sang dungeon SAU KHI gui 0x14 08000100 (code cu cho map doi
         #   truoc roi moi gui 0x14 -> deadlock -> ket o map boss khong danh).
         tier = self._dungeon_tier()
+        log.info("[%s] Dungeon tier: level=%s -> tier=%s", self._label, self.char_level, tier)
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)             # query pho ban
         self.send(0x2f, b"\x02\x00" + bytes([tier]) + b"\x00\x00"); time.sleep(0.6)  # VAO dungeon (theo tier)
         self.send(0x14, b"\x08\x00" + bytes([tier - 1]) + b"\x00"); time.sleep(0.4)  # khoi dong tran boss (tier-1)

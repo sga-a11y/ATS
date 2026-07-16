@@ -47,6 +47,12 @@ _stage/
 _obf/
 _obftest/
 _work/
+.build_python_packages/
+.pip_cache/
+_nk/
+.codex_build_python_packages/
+.codex_pip_cache/
+.codex_nuitka_cache/
 aTSBot/
 _build_log.txt
 nuitka-crash-report.xml

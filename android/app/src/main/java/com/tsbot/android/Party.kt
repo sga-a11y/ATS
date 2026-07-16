@@ -40,3 +40,13 @@ data class Party(
     val baoHopXuThreshold: Int = 1000000,
     val accounts: List<Account> = emptyList(),
 )
+
+fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
+    doDaily = source.doDaily,
+    usePhucThan = source.usePhucThan,
+    fightLegionBoss = source.fightLegionBoss,
+    doVanTieu = source.doVanTieu,
+    buyHoPhu = source.buyHoPhu,
+    buyBaoHop = source.buyBaoHop,
+    baoHopXuThreshold = source.baoHopXuThreshold,
+)

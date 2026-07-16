@@ -91,6 +91,20 @@ class PartyStore(private val context: Context) {
         save(updated)
     }
 
+    fun applyAdvancedSettingsToOtherParties(sourceName: String, source: Party): Int {
+        var count = 0
+        val updated = load().map { p ->
+            if (p.name == sourceName) {
+                p
+            } else {
+                count += 1
+                p.copyAdvancedSettingsFrom(source)
+            }
+        }
+        save(updated)
+        return count
+    }
+
     /** Them/sua acc. Tra false neu party da du 5 acc va day la acc MOI (gioi han 5 acc/party). */
     fun addAccountToParty(partyName: String, account: Account): Boolean {
         val party = load().find { it.name == partyName } ?: return false

@@ -858,11 +858,12 @@ _LABEL_MODE = {v: k for k, v in MODE_OPTIONS}
 class PartyConfigFrame(ttk.Frame):
     """1 tab cau hinh 1 party: mode (dropdown) + map/quai/thanh (dropdown) + acc."""
     _PW_MASK = "******"   # placeholder pass da luu (giau pass that khi mo lai Settings)
-    def __init__(self, master, party, train_maps, cities, servers):
+    def __init__(self, master, party, train_maps, cities, servers, on_apply_advanced_to_all=None):
         super().__init__(master, padding=8)
         self.train_maps = train_maps   # list (map_id, name, mobs)
         self.cities = cities           # list (city_id, flag, name)
         self.servers = servers         # list (key, label)
+        self.on_apply_advanced_to_all = on_apply_advanced_to_all
         self._preset = party or {}
 
         srow = ttk.Frame(self); srow.pack(fill="x", pady=4)
@@ -1076,7 +1077,32 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Checkbutton(_bh, text="Mua Triệu Gọi Bảo Hộp khi xu nhiều hơn",
                         variable=self.buy_bao_hop_var).pack(side="left")
         ttk.Entry(_bh, textvariable=self.bao_hop_xu_var, width=10).pack(side="left", padx=(4, 0))
-        ttk.Button(frm, text="Đóng", command=win.destroy).pack(anchor="e", pady=(12, 0))
+        bar = ttk.Frame(frm); bar.pack(fill="x", pady=(12, 0))
+        if self.on_apply_advanced_to_all:
+            ttk.Button(bar, text="Áp dụng cho tất cả",
+                       command=lambda: self.on_apply_advanced_to_all(self._advanced_settings_data())
+                       ).pack(side="left")
+        ttk.Button(bar, text="Đóng", command=win.destroy).pack(side="right")
+
+    def _advanced_settings_data(self):
+        return {
+            "do_daily": bool(self.daily_var.get()),
+            "use_phuc_than": bool(self.use_phuc_than_var.get()),
+            "fight_legion_boss": bool(self.fight_boss_var.get()),
+            "do_van_tieu": bool(self.van_tieu_var.get()),
+            "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
+            "buy_bao_hop": bool(self.buy_bao_hop_var.get()),
+            "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 1000000),
+        }
+
+    def apply_advanced_settings(self, data):
+        self.daily_var.set(bool(data.get("do_daily", True)))
+        self.use_phuc_than_var.set(bool(data.get("use_phuc_than", False)))
+        self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
+        self.van_tieu_var.set(bool(data.get("do_van_tieu", True)))
+        self.buy_ho_phu_var.set(bool(data.get("buy_ho_phu", False)))
+        self.buy_bao_hop_var.set(bool(data.get("buy_bao_hop", False)))
+        self.bao_hop_xu_var.set(str(_parse_int(data.get("bao_hop_xu_threshold", 1000000), 1000000)))
 
     def _on_mode_change(self):
         # Khi DOI che do: tu set mac dinh "Khong co chu PT".
@@ -1504,11 +1530,32 @@ class ConfigDialog(tk.Toplevel):
 
     def _build_entry(self, entry):
         if entry["cfg"] is None:
+            on_apply = lambda data, e=entry: self._apply_advanced_to_all(e, data)
             cfg = PartyConfigFrame(entry["holder"], entry["preset"],
-                                   self.train_maps, self.cities, self.servers)
+                                   self.train_maps, self.cities, self.servers,
+                                   on_apply_advanced_to_all=on_apply)
             cfg.pack(fill="both", expand=True)
             entry["cfg"] = cfg
         return entry["cfg"]
+
+    def _apply_advanced_to_all(self, source_entry, data):
+        count = 0
+        for entry in self.frames:
+            if entry is source_entry:
+                continue
+            if entry["cfg"] is not None:
+                entry["cfg"].apply_advanced_settings(data)
+            else:
+                preset = dict(entry["preset"] or {})
+                preset.update(data)
+                entry["preset"] = preset
+            count += 1
+        if count:
+            messagebox.showinfo("Đã áp dụng",
+                                f"Đã áp dụng cài đặt nâng cao cho {count} party khác.\n"
+                                "Bấm Lưu để ghi vào cấu hình.")
+        else:
+            messagebox.showinfo("Không có party khác", "Hiện chỉ có 1 party.")
 
     def _entry_of_sub(self, sub):
         """entry cua party DANG CHON trong sub-Notebook sub (theo holder dang select)."""

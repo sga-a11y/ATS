@@ -325,6 +325,11 @@ fun TsBotApp(
                 refresh()
                 editingParty = null
             },
+            onApplyAdvancedToAll = { source ->
+                val count = partyStore.applyAdvancedSettingsToOtherParties(partyBeingEdited.name, source)
+                refresh()
+                count
+            },
         )
     }
 
@@ -718,6 +723,7 @@ fun AddPartyDialog(
     initialBuyHoPhu: Boolean = false,
     initialBuyBaoHop: Boolean = false,
     initialBaoHopXuThreshold: Int = 1000000,
+    onApplyAdvancedToAll: ((Party) -> Int)? = null,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
@@ -740,6 +746,25 @@ fun AddPartyDialog(
     var buyBaoHop by remember { mutableStateOf(initialBuyBaoHop) }
     var baoHopXuText by remember { mutableStateOf(initialBaoHopXuThreshold.toString()) }
     var showAdvanced by remember { mutableStateOf(false) }
+    var advancedApplyMessage by remember { mutableStateOf("") }
+
+    fun currentParty(): Party = Party(
+        name = name.ifBlank { initialName.ifBlank { "Party" } },
+        serverKey = selectedKey,
+        runMode = selectedMode,
+        cityKey = selectedCity,
+        digioiSolo = digioiSolo,
+        noLeader = noLeader,
+        doDaily = doDaily,
+        trainMapKey = trainMapKey,
+        trainMobIndex = trainMobIndex,
+        usePhucThan = usePhucThan,
+        fightLegionBoss = fightLegionBoss,
+        doVanTieu = doVanTieu,
+        buyHoPhu = buyHoPhu,
+        buyBaoHop = buyBaoHop,
+        baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -873,6 +898,30 @@ fun AddPartyDialog(
                                 modifier = Modifier.width(120.dp).padding(start = 6.dp),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
+                        }
+                        if (onApplyAdvancedToAll != null) {
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    val count = onApplyAdvancedToAll(currentParty())
+                                    advancedApplyMessage = if (count > 0) {
+                                        "Đã áp dụng cho $count party khác"
+                                    } else {
+                                        "Không có party khác"
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Áp dụng cho tất cả")
+                            }
+                            if (advancedApplyMessage.isNotBlank()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    advancedApplyMessage,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
