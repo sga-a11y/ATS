@@ -39,7 +39,20 @@ DATA_JSON = ["servers.json", "cities.json", "train_maps.json", "train_routes.jso
              "mob_paths.json", "map_gates.json", "pets.json", "pet_hedoanh.json",
              "vantieu_requests.json", "skills_db.json", "junk_scrolls.json", "skills_data.json",
              "items_gamedata.json", "donate_items.json", "use_items.json", "events.json",
-             "train_block_stats.json"]
+             "train_block_stats.json", "world_nav.json"]
+
+DATA_FILES = {
+    "gamedata/Ground.mmg": "gamedata/Ground.mmg",
+}
+
+
+def validate_navigation_assets(root=ROOT):
+    required = ["world_nav.json", *DATA_FILES]
+    missing = [name for name in required if not os.path.isfile(os.path.join(root, name))]
+    if missing:
+        raise FileNotFoundError(
+            "Missing required navigation assets: " + ", ".join(missing)
+        )
 
 
 def run(cmd, **kw):
@@ -122,10 +135,15 @@ def copy_data():
     """Copy JSON config (sua duoc) + README ra canh .exe. KHONG copy accounts.json: ban gui di
     KHONG co accounts.json de nguoi nhan COPY DE ban moi (update) len ban cu ma KHONG mat cau hinh
     acc da luu. Lan dau chay, gui.py tu tao accounts.json mac dinh neu chua co (_load_profiles)."""
+    validate_navigation_assets()
     for fn in DATA_JSON:
         src = os.path.join(ROOT, fn)
         if os.path.exists(src):
             shutil.copy(src, DIST)
+    for source, destination in DATA_FILES.items():
+        target = os.path.join(DIST, destination)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.copy(os.path.join(ROOT, source), target)
     # version: doc tu _stage/bot/_version.py (BAN TIMESTAMP that da nhung vao exe), KHONG doc
     # ROOT/bot/_version.py (="1.1.dev" fallback dev) -> neu doc ROOT thi version.json/tag release
     # LECH voi version trong exe -> auto-update loan.
@@ -261,6 +279,7 @@ def upload_release():
 
 if __name__ == "__main__":
     print("=== BUILD PRODUCT (PyArmor + PyInstaller onefile) ===")
+    validate_navigation_assets()
     clean()
     stage()
     package()

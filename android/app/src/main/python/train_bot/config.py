@@ -12,6 +12,10 @@ o day (rong/mac dinh) de cac nhanh van tieu/run-around khong crash neu duoc bat 
 """
 import json
 
+# Android chua materialize world_nav.json/Ground.mmg; giu legacy route trong iteration nay.
+SMART_WORLD_ROUTING = False
+SMART_ROUTE_FALLBACK = True
+
 HEAL_HP_THRESHOLD = 0.70
 HEAL_SP_COST = 42
 PET_FIRE_MIN_SP = 65

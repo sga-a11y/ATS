@@ -18,7 +18,7 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           "train_block_stats.py"]
 
 # File PC-only can cho coordinator/client neu co import (pathfind dung boi navigate). Copy neu ton tai.
-OPTIONAL = ["pathfind.py"]
+OPTIONAL = ["pathfind.py", "world_nav.py", "smart_route.py"]
 
 
 def _rewrite_coordinator(src: str) -> str:

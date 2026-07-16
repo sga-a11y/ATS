@@ -361,8 +361,26 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
 - Attach vao PID game OK, nhung `Process.arch` Frida bao `x64` do MuMu/native bridge; module list khong thay export ARM
   `libtolua.so`, nen hook truc tiep `tolua_loadbuffer/luaL_loadbuffer/lua_loadx` chua duoc.
 
-**Next:** test live 1 party tren cac map co vach phuc tap; neu on dinh thi export collision cua rieng cac
-map trong `train_maps.json` thanh asset nho de ban release/Android khong can kem `Ground.mmg` 27 MB.
+### Smart world routing cho train map (implemented 2026-07-17)
+
+- Smart routing la duong CHINH cho moi train map. `train_routes.json` chi con la fallback tam thoi
+  trong giai doan live acceptance va co the xoa sau khi da test on dinh.
+- `world_nav.json` la asset generated, versioned: chua 16 thanh co flag teleport da xac minh,
+  scene/area graph va tam gate lay tu `Warp_C.dat`, `DoorGroupData.dat`, `Eve.emg`.
+- `gamedata/Ground.mmg` (27 MB) la collision data runtime. File nay quan trong va duoc track/ship
+  trong desktop release; khong rut gon thanh subset nua.
+- `smart_routes.json` la cache runtime disposable, duoc fingerprint theo navigation data va ghi
+  atomic. Cache giu structural route + local waypoint theo block xuat phat, phai gitignore.
+- Flow train: tim thanh teleport gan nhat -> teleport bang city+flag da biet -> BFS chuoi gate ->
+  A* collision-safe toi tung gate -> xac nhan map sau moi gate -> toi safe. Scene bat ngo thi
+  invalidate/rebuild dung 1 lan; tuyet doi khong `go_to_town(train_map_id)`.
+- Hạp Cốc Tử Ngọ 1 (`14821`) da verify offline: Trường An `14001`, flag `6`, gate
+  `14001/1 -> 22000/17 -> 14821`; gate `22000/17` co center `(560,2510)`.
+- Desktop build copy `world_nav.json` va `gamedata/Ground.mmg`. Android dong bo module Python nhung
+  `SMART_WORLD_ROUTING=False` cho toi khi binary assets duoc materialize/test rieng.
+
+**Next:** live acceptance 1 party tren map `14821`, sau do test reconnect o scene trung gian va reform
+khi mot member bi van map. Neu log/map verify dung, co the xoa fallback `train_routes.json`.
 
 ## 7e. CHUYEN SUB-CHANNEL (opcode 0x07)
 
