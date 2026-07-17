@@ -170,6 +170,8 @@ def _pstate(pidx):
                               "stop_leader_done": threading.Event(),  # STOP: leader DA ve safe -> member duoc thoat
                               "route_party_ready": threading.Event(),  # ROUTE: party da lap xong o thanh -> sap keo di
                               "route_done": threading.Event(),         # ROUTE: leader da keo xong (toi train map)
+                              "route_plan_ready": threading.Event(),   # ROUTE: leader da build smart/legacy plan cho ca party
+                              "route_plan": None,                      # {"gen", "city", "flag", "route"|None, "missing"?}
                               "map_results": {},     # ROUTE barrier: username -> dang o train map? (de quyet dinh ca party)
                               "member_maps": {},     # username -> current_map (member report lien tuc; leader check ai bi bo lai khi keo)
                               "mob_spot": None,      # diem quai leader chon (de _start_training dung lai)
@@ -418,12 +420,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # daily dungeon -> login = vi tri logout, van o thanh do). KHONG duoc THOAT oan.
                 _rt = getattr(config, "TRAIN_ROUTES", {}).get(sc)
                 _route_safe = _nearest_safe(c.pos, tm["safe"])
-                try:
-                    _smart_rt = c.build_smart_route(sc, _route_safe)
-                except Exception as e:
-                    log.warning("[%s] reconnect: loi build smart route: %s", label, e)
-                    _smart_rt = None
-                if _smart_rt or _rt:
+                _smart_rt = None
+                if is_leader:
+                    try:
+                        _smart_rt = c.build_smart_route(sc, _route_safe)
+                    except Exception as e:
+                        log.warning("[%s] reconnect: loi build smart route: %s", label, e)
+                _smart_possible = bool(_route_safe and getattr(config, "SMART_WORLD_ROUTING", True))
+                if _smart_rt or _rt or (has_leader and _smart_possible):
                     # sc la TRAIN MAP di bang ROUTE (qua cong) - KHONG phai thanh, teleport thang toi
                     # sc se FAIL (bug cu: go_to_town(20821) spam 60s roi hut). De khoi reform ben
                     # duoi (barrier + _do_reform) keo qua route; member cho leader keo (khong THOAT).
@@ -525,24 +529,59 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             route_safe = st.get("rally_point") or (
                 tm["safe"][0] if tm and tm.get("safe") else None
             )
-            try:
-                smart_route2 = c.build_smart_route(sc, route_safe) if route_safe else None
-            except Exception as e:
-                log.warning("[%s] reform: loi build smart route: %s", label, e)
-                smart_route2 = None
-            if not smart_route2 and not route2:
-                log.warning("[%s] (%s) reform: khong co smart/legacy route -> bo qua", label, role)
-                return
-            if smart_route2:
-                fc = int(smart_route2["city"]); ff = int(smart_route2["flag"])
-            else:
-                fc = int(route2.get("from_city", 0)); ff = int(route2.get("city_flag", 0))
             spot = st.get("mob_spot")
             _g0 = st["reform_gen"]   # gen reform DANG xu; co gen MOI hon (acc khac van) -> abort keo, quay lai xu
             _ab = lambda: _stopped() or (not c.running) or st["reform_gen"] > _g0
+            plan_ready = st.setdefault("route_plan_ready", threading.Event())
+            plan = None
+            smart_route2 = None
+            if is_leader:
+                st["route_party_ready"].clear(); st["route_done"].clear()
+                plan_ready.clear()
+                with st["lock"]:
+                    st["route_plan"] = None
+                try:
+                    smart_route2 = c.build_smart_route(sc, route_safe) if route_safe else None
+                except Exception as e:
+                    log.warning("[%s] reform: loi build smart route: %s", label, e)
+                    smart_route2 = None
+                if smart_route2:
+                    plan = {"gen": _g0, "city": int(smart_route2["city"]),
+                            "flag": int(smart_route2["flag"]), "route": smart_route2}
+                elif route2:
+                    plan = {"gen": _g0, "city": int(route2.get("from_city", 0)),
+                            "flag": int(route2.get("city_flag", 0)), "route": None}
+                else:
+                    log.warning("[%s] (%s) reform: khong co smart/legacy route -> bo qua", label, role)
+                    plan = {"gen": _g0, "missing": True}
+                with st["lock"]:
+                    st["route_plan"] = plan
+                plan_ready.set()
+                if plan.get("missing"):
+                    return
+            else:
+                _last_plan_log = 0
+                while not _ab():
+                    with st["lock"]:
+                        _p = st.get("route_plan")
+                        if _p and _p.get("gen") == _g0:
+                            plan = dict(_p)
+                            break
+                    if time.time() - _last_plan_log > 15:
+                        log.info("[%s] (%s) reform: cho leader lap duong toi map %s...", label, role, sc)
+                        _last_plan_log = time.time()
+                    plan_ready.wait(1.0)
+                    time.sleep(0.2)
+                if not plan:
+                    return
+                if plan.get("missing"):
+                    log.warning("[%s] (%s) reform: leader khong co smart/legacy route -> bo qua",
+                                label, role)
+                    return
+            fc = int(plan.get("city", 0)); ff = int(plan.get("flag", 0))
+            smart_route2 = plan.get("route") if is_leader else None
             c.flee_mode = True
             if is_leader:
-                st["route_party_ready"].clear(); st["route_done"].clear()  # reset handshake cho lan nay
                 c.leave_party()                  # GIAI TAN party cu (neu co) -> member duoc tha
                 reset_party_joined(pidx)
             if fc:
@@ -718,12 +757,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             _startup_safe = st.get("rally_point") or (
                 tm["safe"][0] if tm and tm.get("safe") else None
             )
-            try:
-                smart_route = c.build_smart_route(sc, _startup_safe) if _startup_safe else None
-            except Exception as e:
-                log.warning("[%s] startup: loi build smart route: %s", label, e)
-                smart_route = None
-            route_available = bool(smart_route or route)
+            smart_route = None
+            if is_leader:
+                try:
+                    smart_route = c.build_smart_route(sc, _startup_safe) if _startup_safe else None
+                except Exception as e:
+                    log.warning("[%s] startup: loi build smart route: %s", label, e)
+            smart_possible = bool(_startup_safe and getattr(config, "SMART_WORLD_ROUTING", True))
+            route_available = bool(smart_route or route or (has_leader and smart_possible))
             if route_available and has_leader:
                 expected = len(party_accounts(pidx))
                 all_on_map = _party_map_barrier(st, username, self_map_ok, expected, _stopped)
@@ -1335,12 +1376,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         _reconnect_safe = st.get("rally_point") or (
                             tm["safe"][0] if tm and tm.get("safe") else None
                         )
-                        try:
-                            _smart_r = c.build_smart_route(sc, _reconnect_safe) if _reconnect_safe else None
-                        except Exception as e:
-                            log.warning("[%s] reconnect: loi build smart route: %s", label, e)
-                            _smart_r = None
-                        if _smart_r or _route_r:                 # auto primary, legacy fallback
+                        _smart_r = None
+                        if is_leader:
+                            try:
+                                _smart_r = c.build_smart_route(sc, _reconnect_safe) if _reconnect_safe else None
+                            except Exception as e:
+                                log.warning("[%s] reconnect: loi build smart route: %s", label, e)
+                        _smart_possible = bool(_reconnect_safe and getattr(config, "SMART_WORLD_ROUTING", True))
+                        if _smart_r or _route_r or (has_leader and _smart_possible):  # auto primary, legacy fallback
                             try: _do_reform()
                             except Exception as e: log.warning("[%s] reconnect reform loi: %s", label, e)
                         elif c.current_map != sc:                # route-less + MINH lech map -> TAT CA PARTY

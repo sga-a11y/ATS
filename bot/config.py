@@ -88,6 +88,8 @@ SMART_WORLD_ROUTING = True
 WORLD_NAV_PATH = os.path.join(_base_dir(), "world_nav.json")
 SMART_ROUTE_CACHE_PATH = os.path.join(_base_dir(), "smart_routes.json")
 SMART_ROUTE_FALLBACK = True
+SMART_PATH_STEP_WAIT = 0.55     # giay giua 2 lenh move khi co Ground.mmg path (giam = chay muot hon)
+SMART_PATH_SEGMENT = 100        # px toi da moi lenh move smart path; chia nho de khong spam 1 diem cua
 def _load_train_routes(path=None):
     """Doc train_routes.json -> {dest_map:int -> {from_city, city_flag, dest_map, steps}}.
     Route replay tu thanh toi train map (leader di, member tu keo theo)."""

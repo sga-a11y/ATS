@@ -3858,20 +3858,39 @@ class GameClient:
         moves_needed=None -> tu tinh theo KHOANG CACH (tu self.pos): ~100px/buoc, clamp [4, 30].
         Dung in_combat nguong NGAN (1.5s) - du danh hay flee deu cho HET TRAN roi di buoc tiep."""
         import math
+        def _split_segment(a, b, max_len):
+            ax, ay = a; bx, by = b
+            dist = math.hypot(bx - ax, by - ay)
+            n = max(1, int(math.ceil(dist / max_len)))
+            return [
+                (round(ax + (bx - ax) * i / n), round(ay + (by - ay) * i / n))
+                for i in range(1, n + 1)
+            ]
+
         targets = [(x, y)]
+        using_smart_path = False
         store = _ground_store() if self.pos and self.current_map is not None else None
         if store is not None:
             smart = store.find_world_path(self.current_map, self.pos, (x, y))
             if smart:
-                targets = smart[1:] or [smart[-1]]
-                log.info("[%s] smart path map %s: %s -> (%d,%d), %d waypoint",
-                         self._label, self.current_map, self.pos, x, y, len(targets))
+                using_smart_path = True
+                segment = max(20.0, float(getattr(config, "SMART_PATH_SEGMENT", 100)))
+                targets = []
+                prev = self.pos
+                for point in smart[1:] or [smart[-1]]:
+                    targets.extend(_split_segment(prev, point, segment))
+                    prev = point
+                step = min(step, float(getattr(config, "SMART_PATH_STEP_WAIT", step)))
+                log.info("[%s] smart path map %s: %s -> (%d,%d), %d waypoint, %d move-point",
+                         self._label, self.current_map, self.pos, x, y, len(smart) - 1, len(targets))
         self.flee_mode = flee
         moves = attempts = 0
         previous = self.pos
         for waypoint_index, (wx, wy) in enumerate(targets):
             if moves_needed is not None and len(targets) == 1:
                 waypoint_moves = moves_needed
+            elif using_smart_path:
+                waypoint_moves = 1
             elif previous:
                 distance = math.hypot(wx - previous[0], wy - previous[1])
                 waypoint_moves = max(4, min(30, int(distance / 100) + 2))
