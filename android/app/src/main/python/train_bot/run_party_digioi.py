@@ -1939,6 +1939,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
     while len(config.PARTIES) <= pidx:
         config.PARTIES.append([])
     config.PARTIES[pidx] = accs
+    if isinstance(leaders, str):
+        import re
+        leaders = [x.strip() for x in re.split(r"[\n,\r]+", leaders) if x.strip()]
     config.PARTY_LEADERS_BY_IDX[pidx] = list(leaders or [])
     if has_leader and accs:
         config.PARTY_LEADER_ACC[pidx] = accs[0][0]

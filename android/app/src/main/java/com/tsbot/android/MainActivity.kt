@@ -311,6 +311,7 @@ fun TsBotApp(
             initialCityKey = partyBeingEdited.cityKey,
             initialDigioiSolo = partyBeingEdited.digioiSolo,
             initialNoLeader = partyBeingEdited.noLeader,
+            initialLeaderWhitelist = partyBeingEdited.leaderWhitelist,
             initialDoDaily = partyBeingEdited.doDaily,
             initialTrainMapKey = partyBeingEdited.trainMapKey,
             initialTrainMobIndex = partyBeingEdited.trainMobIndex,
@@ -709,6 +710,12 @@ fun trainMobOptions(mapKey: String): List<Pair<Int, String>> {
     return list
 }
 
+private fun parseLeaderWhitelist(text: String): List<String> =
+    text.split('\n', '\r', ',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinctBy { it.lowercase() }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPartyDialog(
@@ -721,6 +728,7 @@ fun AddPartyDialog(
     initialCityKey: String = Cities.ALL.keys.first(),
     initialDigioiSolo: Boolean = false,
     initialNoLeader: Boolean = false,
+    initialLeaderWhitelist: List<String> = emptyList(),
     initialDoDaily: Boolean = true,
     initialTrainMapKey: String = "",
     initialTrainMobIndex: Int = -1,
@@ -742,6 +750,7 @@ fun AddPartyDialog(
     var selectedCity by remember { mutableStateOf(initialCityKey) }
     var digioiSolo by remember { mutableStateOf(initialDigioiSolo) }
     var noLeader by remember { mutableStateOf(initialNoLeader) }
+    var leaderWhitelistText by remember { mutableStateOf(initialLeaderWhitelist.joinToString("\n")) }
     var doDaily by remember { mutableStateOf(initialDoDaily) }
     var trainMapKey by remember { mutableStateOf(initialTrainMapKey.ifEmpty { trainMapOptions().firstOrNull()?.first ?: "" }) }
     var trainMobExpanded by remember { mutableStateOf(false) }
@@ -764,6 +773,7 @@ fun AddPartyDialog(
         cityKey = selectedCity,
         digioiSolo = digioiSolo,
         noLeader = noLeader,
+        leaderWhitelist = parseLeaderWhitelist(leaderWhitelistText),
         doDaily = doDaily,
         trainMapKey = trainMapKey,
         trainMobIndex = trainMobIndex,
@@ -865,6 +875,15 @@ fun AddPartyDialog(
                 // that -> "chu PT" vo nghia, mirror _update_no_leader_visibility ben PC).
                 Spacer(Modifier.height(8.dp))
                 if (!(selectedMode == RunModes.DIGIOI && digioiSolo)) {
+                    OutlinedTextField(
+                        value = leaderWhitelistText,
+                        onValueChange = { leaderWhitelistText = it },
+                        label = { Text("White list leader") },
+                        supportingText = { Text("Moi dong hoac dau phay = 1 ten nhan vat leader. Rong = nhan moi moi nguoi.") },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = noLeader, onCheckedChange = { noLeader = it })
                         Text("Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)")
@@ -1062,6 +1081,7 @@ fun AddPartyDialog(
                             cityKey = selectedCity,
                             digioiSolo = digioiSolo,
                             noLeader = noLeader,
+                            leaderWhitelist = parseLeaderWhitelist(leaderWhitelistText),
                             doDaily = doDaily,
                             trainMapKey = trainMapKey,
                             trainMobIndex = trainMobIndex,

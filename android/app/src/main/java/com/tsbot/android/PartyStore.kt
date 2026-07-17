@@ -10,6 +10,13 @@ import java.io.File
 class PartyStore(private val context: Context) {
     private val file = File(context.filesDir, "parties.json")
 
+    private fun stringList(o: JSONObject, key: String): List<String> {
+        val arr = o.optJSONArray(key) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            arr.optString(i, "").trim().takeIf { it.isNotEmpty() }
+        }
+    }
+
     fun load(): List<Party> {
         if (!file.exists()) return emptyList()
         val arr = JSONArray(file.readText())
@@ -29,6 +36,7 @@ class PartyStore(private val context: Context) {
                 cityKey = o.optString("city_key", Cities.ALL.keys.first()),
                 digioiSolo = o.optBoolean("digioi_solo", false),
                 noLeader = o.optBoolean("no_leader", false),
+                leaderWhitelist = stringList(o, "leaders"),
                 doDaily = o.optBoolean("do_daily", true),
                 trainMapKey = o.optString("train_map_key", ""),
                 trainMobIndex = o.optInt("train_mob_index", -1),
@@ -54,6 +62,7 @@ class PartyStore(private val context: Context) {
             o.put("city_key", p.cityKey)
             o.put("digioi_solo", p.digioiSolo)
             o.put("no_leader", p.noLeader)
+            o.put("leaders", JSONArray().apply { p.leaderWhitelist.forEach { put(it) } })
             o.put("do_daily", p.doDaily)
             o.put("train_map_key", p.trainMapKey)
             o.put("train_mob_index", p.trainMobIndex)

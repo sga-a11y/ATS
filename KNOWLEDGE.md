@@ -331,6 +331,20 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
 - `Wem.mmg` la pack object `.wem`; object_id trong tail `.map` map duoc 100% sang WEM.
   WEM entry hay 21 byte, co object_id va kich thuoc sprite (vd `10621002.wem` width~416 height~224 flags~511).
 
+**Monster/encounter data da soi (2026-07-17):**
+- `Ground.mmg` CHI la collision/passability, khong co danh sach diem spawn quai.
+- `gamedata/Data/SceneFight_C.dat` co `381` record, format fixed `25` byte/record
+  (`len=9529 = 4 + 381*25`). Record co dau hieu chua `map_id`, `x`, `y`, level min/max.
+  Vi du: map `12831` -> `(1310,2410)` lv `28-30`; `14821` -> `(3090,290)` lv `74-105`;
+  `20821` -> `(310,270)` lv `62-68`; `56801` -> `(310,1090)` lv `114-120`.
+- Cac toa do nay KHONG trung voi `train_maps.json` mob points (thuong moi map chi 1 record),
+  nen tam ket luan day la encounter/fight config/anchor cua scene, KHONG phai full list cac diem
+  quai dung/di qua co the train.
+- `gamedata/Data/SceneSet_C.dat` co `3677` record fixed `17` byte; moi train map match 1 record
+  theo `map_id`, nhung record giong scene metadata/flag, chua thay toa do spawn.
+- Huong dung hop ly: dung `SceneFight_C.dat` de biet map nao co random encounter + level range,
+  lay toa do lam candidate/seed, roi ket hop `Ground.mmg` + thong ke battle runtime de hoc diem train tot.
+
 **Da giai ma Lua, khong can hook runtime:**
 - `LuaFileUtils.ReadFile` goi `CryptUtils.DeCrypt`; `ProjectSetting.cctor` cung cap AES/Rijndael
   CBC PKCS7 key `1234567870541704`, IV `7054170412345678`.

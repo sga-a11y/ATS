@@ -15,6 +15,7 @@ data class Party(
     // NGOAI/tay moi party that su, KHONG tu invite, KHONG tu dong reconnect khi rot). Mirror PC's
     // no_leader_var (gui.py) / has_leader = PARTY_LEADER_ACC.get(pidx) is not None.
     val noLeader: Boolean = false,
+    val leaderWhitelist: List<String> = emptyList(),
     // Lam nhiem vu hang ngay (bingo 9 o: phó bản đơn, boss thế giới, gacha, hợp đồ... + nhan
     // thuong). Mirror PC's do_daily (gui.py). CHUA duoc noi vao logic chay nao (UI-only, se lam
     // sau) - gia tri mac dinh True khop PC's default.

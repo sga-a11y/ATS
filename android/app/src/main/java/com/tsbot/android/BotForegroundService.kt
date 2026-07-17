@@ -148,10 +148,11 @@ class BotForegroundService : Service() {
         }
         try {
             val py = rpd()
+            val leaders = party.leaderWhitelist.joinToString("\n")
             py.callAttr(
                 "setup_party_runtime", pidx, m.mode, serverIp, serverId, accountsFlat,
                 m.cityFlag, m.startCity, m.mobIndex, party.doDaily, m.digioiMode, m.eventKey,
-                "", m.hasLeader, party.usePhucThan, party.useDigioiHoPhu,
+                leaders, m.hasLeader, party.usePhucThan, party.useDigioiHoPhu,
                 party.fightLegionBoss, party.doVanTieu,
                 party.buyHoPhu, party.buyBaoHop, party.baoHopXuThreshold,
             )

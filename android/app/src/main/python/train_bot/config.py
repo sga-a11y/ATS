@@ -274,6 +274,20 @@ def record_leader_name(pidx, char_name):
                     json.dump(d, fh, ensure_ascii=False, indent=2)
     except Exception:
         pass
+    try:
+        import os
+        f = os.path.join(_app_dir(), "parties.json")
+        with open(f, encoding="utf-8") as fh:
+            parties = json.load(fh)
+        if isinstance(parties, list) and 0 <= pidx < len(parties):
+            leaders = parties[pidx].setdefault("leaders", [])
+            if isinstance(leaders, list) and not any(
+                    x.strip().lower() == name.lower() for x in leaders):
+                leaders.append(name)
+                with open(f, "w", encoding="utf-8") as fh:
+                    json.dump(parties, fh, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 def _load_vantieu_requests():
