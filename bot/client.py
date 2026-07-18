@@ -14,6 +14,12 @@ from .state import BattleState, Unit
 
 log = logging.getLogger("bot")
 
+PHUC_THAN_PROTECTION_PRIORITY = (
+    (0x5AAB, "equip"),
+    (0x5A2D, "equip"),
+    (0xB5F4, "use"),
+)
+
 _GROUND_STORE = None
 _GROUND_STORE_PATH = None
 _GROUND_STORE_FAILED = False
@@ -2588,18 +2594,18 @@ class GameClient:
             return
         items = _load_gamedata_items()
         total = 0
-        # Item "equip" (vd Ngoc Sieu Phuc Than / Ngoc Dai Phuc Than): CHI DEO 1 CAI DUY NHAT MOI
-        # LAN GOI (ca ham, khong phai/tid), theo THU TU UU TIEN = thu tu khai bao trong cfg (dict
-        # giu nguyen thu tu tu use_items.json) - vd Ngoc Sieu Phuc Than uu tien truoc, het moi toi
-        # Ngoc Dai Phuc Than. Tim tid dau tien (theo thu tu cfg) dang co trong tui -> deo -> DUNG,
-        # khong deo them item equip nao khac trong lan goi nay.
-        for tid in cfg:
-            if not cfg[tid].get("equip"):
+        # Moi lan chi chon 1 bao ho: Ngoc Sieu -> Ngoc Dai -> neu khong co ca hai moi dung 1 Tui Dai.
+        priority_tids = {tid for tid, _action in PHUC_THAN_PROTECTION_PRIORITY}
+        for tid, action in PHUC_THAN_PROTECTION_PRIORITY:
+            if tid not in cfg:
                 continue
             _slot = next((s for s, (t, c) in self.bag_slots.items() if t == tid and c > 0), None)
             if _slot is None:
                 continue
-            done = 1 if self.equip_item(_slot) else 0
+            if action == "equip":
+                done = 1 if self.equip_item(_slot) else 0
+            else:
+                done = 1 if self.use_slot(_slot, qty=1) else 0
             total += done
             rec = self.bag_slots.get(_slot)
             if rec:
@@ -2607,13 +2613,14 @@ class GameClient:
                 if rec[1] <= 0:
                     self.bag_slots.pop(_slot, None)
             _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
-            log.info("[%s] tu trang bi item (%s) slot=%d tid=0x%04x ('%s') %s",
-                     self._label, context_label, _slot, tid, _nm,
+            log.info("[%s] tu %s item (%s) slot=%d tid=0x%04x ('%s') %s",
+                     self._label, "trang bi" if action == "equip" else "dung",
+                     context_label, _slot, tid, _nm,
                      "OK" if done else "THAT BAI (slot het?)")
             break
         for slot, tid, cnt in targets:
-            if cfg[tid].get("equip"):
-                continue   # da xu ly rieng o tren (chi 1 item/lan, theo uu tien)
+            if tid in priority_tids:
+                continue   # nhom bao ho da chon toi da 1 item o tren
             qcfg = cfg[tid].get("qty")
             if qcfg is None:
                 want, chunk = cnt, 1              # khong gioi han: dung het, tung cai 1

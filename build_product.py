@@ -23,6 +23,8 @@ STAGE = os.path.join(ROOT, "_stage")        # source sach (config.example -> con
 WORK = os.path.join(ROOT, "_work")          # Nuitka build temp
 DIST = os.path.join(ROOT, "aTSBot")         # output cuoi cung (thu muc gui di)
 NAME = "aTSBot"
+DRIVE_ARCHIVE_NAME = NAME + "-drive.zip"
+DRIVE_ARCHIVE_PASSWORD = "aTSBot"
 
 # Nuitka cache PHAI o thu muc THUONG (khong sandbox). Mac dinh %LOCALAPPDATA%\Nuitka co the bi
 # ao hoa duoi sandbox app -> gcc doc file MinGW khong nhat quan (loi 'structuredquerycondition.h
@@ -199,20 +201,53 @@ def copy_data():
     print("copied data JSON + accounts.json mau + README + version.json ra %s" % DIST)
 
 
-def make_zip():
-    """Dong goi noi dung folder DIST (exe + json + README + version.json) -> ROOT/aTSBot.zip
-    (FLAT: file o goc zip -> giai nen la GHI DE thang vao folder app). accounts.json KHONG co
-    trong DIST -> khong vao zip -> update KHONG ghi de cau hinh acc cua user."""
+def _release_files():
+    return sorted(
+        os.path.relpath(os.path.join(root, fn), DIST)
+        for root, _dirs, files in os.walk(DIST)
+        for fn in files
+    )
+
+
+def _make_plain_zip(zpath):
     import zipfile
-    zpath = os.path.join(ROOT, NAME + ".zip")
+
     if os.path.exists(zpath):
         os.remove(zpath)
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
-        for root, _dirs, files in os.walk(DIST):
-            for fn in files:
-                full = os.path.join(root, fn)
-                z.write(full, os.path.relpath(full, DIST))   # arcname = tuong doi voi DIST (flat)
+        for relative_path in _release_files():
+            z.write(os.path.join(DIST, relative_path), relative_path)
+
+
+def find_7zip():
+    candidates = [
+        shutil.which("7z"),
+        os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "7-Zip", "7z.exe"),
+        os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+                     "7-Zip", "7z.exe"),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    raise FileNotFoundError("Can 7-Zip de tao aTSBot-drive.zip co mat khau")
+
+
+def _make_drive_zip(zpath):
+    if os.path.exists(zpath):
+        os.remove(zpath)
+    run([find_7zip(), "a", "-tzip", zpath, *_release_files(), "-mx=9",
+         "-p" + DRIVE_ARCHIVE_PASSWORD, "-mem=ZipCrypto"], cwd=DIST)
+
+
+def make_zip():
+    """Tao ZIP auto-update thuong va ZIP co mat khau cho Google Drive tu cung DIST."""
+    zpath = os.path.join(ROOT, NAME + ".zip")
+    drive_zpath = os.path.join(ROOT, DRIVE_ARCHIVE_NAME)
+    _make_plain_zip(zpath)
+    _make_drive_zip(drive_zpath)
     print("dong goi -> %s (%.1f MB)" % (zpath, os.path.getsize(zpath) / 1e6))
+    print("dong goi Drive (password: %s) -> %s (%.1f MB)" % (
+        DRIVE_ARCHIVE_PASSWORD, drive_zpath, os.path.getsize(drive_zpath) / 1e6))
 
 
 def _release_token():
