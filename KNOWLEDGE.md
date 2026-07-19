@@ -375,6 +375,13 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
   Member dau tien danh gia `route-less` va goi `stop_party`; cac nick con lai bao "MAT KET NOI"
   chi la hau qua socket bi dong. Fix: empty safe giu nguyen `[]`, member cho plan cua leader khi
   smart routing bat, leader hoc safe sau warp roi moi set rally.
+- Runtime map `20801` ngay 2026-07-19 cho thay full scanner cu di du `124/124` station trong
+  khoang 22 phut, combat random xay ra lien tuc nhung observer nhan 0 entity hop le va cache
+  `status="empty"`. Vi tri phat sinh random encounter KHONG phai bang chung vi tri quai hien tren map.
+- Flow probe 2026-07-20 thay full coverage mac dinh: leader arm raw capture TRUOC route/warp,
+  den safe thi dung yen, refresh kenh va ghi packet target-map trong 60 giay vao
+  `mob_packets_<map>_<timestamp>.jsonl`. Cache `empty` khong con la ket qua terminal; mob point
+  config (neu co) duoc dung thang. Safe fingerprint hop le chi hoc mot lan, relog khong ghi de.
 
 **Da giai ma Lua, khong can hook runtime:**
 - `LuaFileUtils.ReadFile` goi `CryptUtils.DeCrypt`; `ProjectSetting.cctor` cung cap AES/Rijndael
