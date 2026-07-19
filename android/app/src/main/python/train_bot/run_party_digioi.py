@@ -86,6 +86,9 @@ def _capture_arrival_safe(client, map_id, came_from_other_map):
     fingerprint = ground.map_fingerprint(map_id)
     if not fingerprint:
         return None
+    cached = mob_spots.load_safe(map_id, fingerprint)
+    if cached is not None:
+        return cached
     arrival = tuple(map(int, client.pos))
     safe = ground.nearest_walkable_world(map_id, arrival, arrival)
     if safe is None:

@@ -53,8 +53,9 @@ class TestTrainSafePolicy(unittest.TestCase):
 
         self.assertEqual(safe, (300, 400))
 
+    @mock.patch.object(coordinator.mob_spots, "load_safe", return_value=None)
     @mock.patch.object(coordinator.mob_spots, "save_safe")
-    def test_capture_projects_and_saves_actual_arrival(self, save):
+    def test_capture_projects_and_saves_actual_arrival(self, save, _load):
         safe = coordinator._capture_arrival_safe(
             self.client, 20801, came_from_other_map=True
         )
@@ -65,6 +66,19 @@ class TestTrainSafePolicy(unittest.TestCase):
             [(20801, (4110, 2510), (4110, 2510))],
         )
         save.assert_called_once_with(20801, "ground1", (4120, 2520))
+
+    @mock.patch.object(coordinator.mob_spots, "load_safe", return_value=(4110, 2510))
+    @mock.patch.object(coordinator.mob_spots, "save_safe")
+    def test_routed_relogin_does_not_overwrite_existing_safe(self, save, _load):
+        self.client.pos = (4050, 2430)
+
+        safe = coordinator._capture_arrival_safe(
+            self.client, 20801, came_from_other_map=True
+        )
+
+        self.assertEqual(safe, (4110, 2510))
+        self.assertEqual(self.client.ground.projected, [])
+        save.assert_not_called()
 
     @mock.patch.object(coordinator.mob_spots, "save_safe")
     def test_login_on_target_map_does_not_overwrite_safe(self, save):
