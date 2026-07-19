@@ -16,7 +16,9 @@ except Exception:
     pass
 from bot import config
 from bot import mob_spots
-from bot.mob_scanner import scan_full_map
+from bot.mob_scanner import MobScanSession, compute_regions, scan_full_map
+from bot.scene_fight import get_scene_fight_seed
+from bot.train_maps_store import save_learned_regions
 from bot.login import login
 from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined)
@@ -129,27 +131,98 @@ def _needs_train_mob_probe(client, map_id, train_map):
     )
 
 
-def _stationary_train_mob_probe(client, map_id, stop=None, seconds=None,
+def _stationary_train_mob_probe(client, map_id, train_map=None, stop=None, seconds=None,
                                 clock=time.monotonic, sleep=time.sleep):
     stop = stop or (lambda: False)
     seconds = float(seconds if seconds is not None else getattr(
         config, "MOB_PACKET_PROBE_SECONDS", 60
     ))
+    ground = client.get_ground_store()
+    fingerprint = ground.map_fingerprint(map_id) if ground is not None else None
+    seed = get_scene_fight_seed(map_id)
+    party_entities = (client.known_party_entities()
+                      if hasattr(client, "known_party_entities") else set())
+    session = MobScanSession(
+        map_id, getattr(client, "self_entity", None), party_entities,
+        quiet_seconds=0.0,
+        min_samples=int(getattr(config, "MOB_SCAN_MIN_SAMPLES", 3)),
+        max_patrol_diameter=float(getattr(
+            config, "MOB_SCAN_MAX_PATROL_DIAMETER", 800
+        )),
+        merge_distance=float(getattr(config, "MOB_SCAN_MERGE_DISTANCE", 200)),
+    )
+    started = clock()
+    completed = False
+    session.begin_station(started)
+    client.begin_mob_observation(session)
+    path, count = None, 0
     try:
         channel = int(getattr(client, "current_channel", 0)
                       or getattr(config, "CHANNEL", 1) or 1)
         client.switch_channel(channel)
-        log.info("[%s] map %s dung tai safe capture packet %.0fs (khong quet map)",
-                 getattr(client, "_label", ""), map_id, seconds)
-        started = clock()
-        while (getattr(client, "running", False) and not stop()
-               and clock() - started < seconds):
-            sleep(min(1.0, seconds))
+        if seed is not None:
+            log.info("[%s] AUTO LEARN map %s: di toi seed SceneFight %s",
+                     getattr(client, "_label", ""), map_id, seed)
+            client.navigate_to(*seed, flee=True, abort=stop)
+        else:
+            log.warning("[%s] AUTO LEARN map %s: khong co SceneFight seed, dung tai safe",
+                        getattr(client, "_label", ""), map_id)
+        next_progress = 10.0
+        now = started
+        while getattr(client, "running", False) and not stop():
+            now = clock()
+            elapsed = now - started
+            if elapsed >= seconds:
+                completed = True
+                break
+            if elapsed >= next_progress:
+                log.info("[%s] AUTO LEARN map %s: %.0f/%.0fs, %d entity ung vien",
+                         getattr(client, "_label", ""), map_id, elapsed, seconds,
+                         session.candidate_count())
+                next_progress += 10.0
+            sleep(min(1.0, max(0.0, seconds - elapsed)))
     finally:
         path, count = client.finish_mob_packet_capture()
-        log.info("[%s] map %s capture xong %d goi -> %s",
-                 getattr(client, "_label", ""), map_id, count, path or "khong co packet")
-    return []
+        client.end_mob_observation(session)
+    start = seed or getattr(client, "pos", None) or (0, 0)
+    configured_safes = [tuple(map(int, point)) for point in
+                        ((train_map or {}).get("safe", []) or [])
+                        if len(point) == 2]
+    fallback_safe = _nearest_safe(start, configured_safes)
+    if fallback_safe is None and fingerprint:
+        fallback_safe = mob_spots.load_safe(map_id, fingerprint)
+    learned = compute_regions(
+        session, ground, start, fallback_safe=fallback_safe,
+        now=now, stable_only=False
+    )
+    centers = [region.center.point for region in learned]
+    safes = [region.safe for region in learned]
+    complete_regions = bool(completed and centers and all(safe is not None for safe in safes))
+    if complete_regions and train_map is not None:
+        safes = [tuple(map(int, safe)) for safe in safes]
+        centers = [tuple(map(int, center)) for center in centers]
+        if save_learned_regions(config.TRAIN_MAPS_PATH, map_id, safes, centers):
+            train_map["safe"] = safes
+            train_map["mobs"] = centers
+            for center, safe in zip(centers, safes):
+                log.info("[%s] AUTO LEARN map %s: bai %s -> safe %s",
+                         getattr(client, "_label", ""), map_id, center, safe)
+        else:
+            log.warning("[%s] AUTO LEARN map %s: khong ghi train_maps (map da co bai hoac file loi)",
+                        getattr(client, "_label", ""), map_id)
+    if centers and fingerprint:
+        mob_spots.save_complete(
+            map_id, fingerprint, centers,
+            {"source": "scene_fight_probe", "packets": count},
+            {"seconds": seconds, "seed": list(seed) if seed else None},
+        )
+        log.info("[%s] AUTO LEARN map %s: da luu %d tam bai %s",
+                 getattr(client, "_label", ""), map_id, len(centers), centers)
+    else:
+        log.warning("[%s] AUTO LEARN map %s: chua thay trace quai hop le "
+                    "(%d packet, file %s)", getattr(client, "_label", ""),
+                    map_id, count, path or "khong co")
+    return centers
 
 
 def _resolve_train_mob_centers(client, map_id, train_map, stop=None):
@@ -172,7 +245,9 @@ def _resolve_train_mob_centers(client, map_id, train_map, stop=None):
         return fallback
     if stop():
         return []
-    return _stationary_train_mob_probe(client, map_id, stop=stop)
+    return _stationary_train_mob_probe(
+        client, map_id, train_map=train_map, stop=stop
+    )
 
 
 def _wait_for_rally(event, stopped, running):
@@ -1028,6 +1103,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 label, sc)
                     stop_party(pidx); _quit(); return
                 mobs = _resolve_train_mob_centers(c, sc, tm, stop=_stopped)
+                learned_safes = [tuple(map(int, point)) for point in
+                                 (tm.get("safe", []) or []) if len(point) == 2]
+                if learned_safes:
+                    train_safes[:] = learned_safes
                 if mob_index < 0 and mobs:
                     import random
                     spot = random.choice(mobs)

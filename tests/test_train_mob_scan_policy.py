@@ -2,7 +2,7 @@ import sys
 import unittest
 from unittest import mock
 
-from bot.mob_scanner import CenterCandidate, ScanResult
+from bot.mob_scanner import CenterCandidate, LearnedRegion, ScanResult
 
 _argv = sys.argv
 try:
@@ -16,20 +16,44 @@ class Ground:
     def map_fingerprint(self, _map_id):
         return "abc12345"
 
+    def nearest_walkable_world(self, _map_id, point, _start):
+        return point
+
 
 class Client:
     def __init__(self):
         self.ground = Ground()
         self.current_channel = 2
+        self.current_map = 20801
+        self.pos = (4110, 2510)
+        self.self_entity = b"leader00"
         self.switched = []
         self.running = True
         self.finished_capture = []
+        self.events = []
 
     def get_ground_store(self):
         return self.ground
 
     def switch_channel(self, channel):
+        self.events.append("switch")
         self.switched.append(channel)
+
+    def known_party_entities(self):
+        return {b"leader00", b"member00"}
+
+    def begin_mob_observation(self, observer):
+        self.events.append("begin")
+        self.observer = observer
+
+    def end_mob_observation(self, observer):
+        self.events.append("end")
+        self.observer = None
+
+    def navigate_to(self, x, y, **_kwargs):
+        self.events.append(("navigate", x, y))
+        self.pos = (x, y)
+        return True
 
     def finish_mob_packet_capture(self):
         self.finished_capture.append(True)
@@ -88,22 +112,45 @@ class TestTrainMobScanPolicy(unittest.TestCase):
         )
 
         self.assertEqual(centers, [])
-        probe.assert_called_once_with(self.client, 20801, stop=mock.ANY)
+        probe.assert_called_once_with(
+            self.client, 20801, train_map=train_map, stop=mock.ANY
+        )
         scan.assert_not_called()
 
-    def test_stationary_probe_switches_channel_waits_and_finishes_capture(self):
+    @mock.patch.object(coordinator, "save_learned_regions", return_value=True)
+    @mock.patch.object(coordinator.mob_spots, "save_complete")
+    @mock.patch.object(coordinator, "compute_regions")
+    @mock.patch.object(coordinator, "get_scene_fight_seed", return_value=(3990, 2490))
+    def test_stationary_probe_promotes_aligned_regions_to_train_map(
+            self, _seed, compute, save_cache, save_train_maps):
+        compute.return_value = [
+            LearnedRegion(CenterCandidate((3910, 2470), 2, 0.8), (3710, 2470)),
+            LearnedRegion(CenterCandidate((2910, 1470), 1, 0.7), (2710, 1470)),
+        ]
+        train_map = {"safe": [(4050, 2430)], "mobs": []}
         clock = mock.Mock(side_effect=[0.0, 0.0, 30.0, 60.0])
         sleeps = []
 
         centers = coordinator._stationary_train_mob_probe(
-            self.client, 20801, stop=lambda: False, seconds=60,
+            self.client, 20801, train_map=train_map, stop=lambda: False, seconds=60,
             clock=clock, sleep=sleeps.append,
         )
 
-        self.assertEqual(centers, [])
+        self.assertEqual(centers, [(3910, 2470), (2910, 1470)])
+        self.assertEqual(train_map["safe"], [(3710, 2470), (2710, 1470)])
+        self.assertEqual(train_map["mobs"], centers)
+        save_train_maps.assert_called_once_with(
+            coordinator.config.TRAIN_MAPS_PATH,
+            20801,
+            train_map["safe"],
+            centers,
+        )
+        self.assertEqual(self.client.events[:3], ["begin", "switch", ("navigate", 3990, 2490)])
+        self.assertEqual(self.client.events[-1], "end")
         self.assertEqual(self.client.switched, [2])
         self.assertTrue(sleeps)
         self.assertEqual(self.client.finished_capture, [True])
+        save_cache.assert_called_once()
 
     def test_member_wait_is_unbounded_but_stop_aware(self):
         event = SequenceEvent([False, False, True])

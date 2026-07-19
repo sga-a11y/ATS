@@ -29,6 +29,7 @@ def _rewrite_coordinator(src: str) -> str:
     src = src.replace("from bot import mob_spots", "from . import mob_spots")
     src = src.replace("from bot.mob_scanner import", "from .mob_scanner import")
     src = src.replace("from bot.scene_fight import", "from .scene_fight import")
+    src = src.replace("from bot.train_maps_store import", "from .train_maps_store import")
     src = src.replace("from bot.login import login", "from .login import login")
     src = src.replace("from bot.client import", "from .client import")
     src = src.replace("from bot._appdir import", "from ._appdir import")   # log path Android (PC khong co bot/_appdir -> fallback except)
