@@ -704,6 +704,8 @@ class GameClient:
         self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
         self._gate_transit = False   # True khi dang gui chuoi 0x14 qua cong -> combat KHONG gui 0x32
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
+        self._mob_observer = None
+        self._mob_observer_lock = threading.Lock()
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
         self._pending_03 = None      # cache 0x03 self-spawn (resolve ten neu toi TRUOC 0x69)
         self.party_leader = None     # entity chu party (tu 0x0d sub=06)
@@ -918,6 +920,44 @@ class GameClient:
         self.train_block_map_id = int(map_id) if map_id is not None else None
         self.train_block_spot = tuple(int(x) for x in spot) if spot is not None else None
 
+    def get_ground_store(self):
+        return _ground_store()
+
+    def begin_mob_observation(self, observer) -> None:
+        with self._mob_observer_lock:
+            self._mob_observer = observer
+
+    def end_mob_observation(self, observer) -> None:
+        with self._mob_observer_lock:
+            if self._mob_observer is observer:
+                self._mob_observer = None
+
+    def _observe_mob_packet(self, opcode: int, pkt: bytes) -> None:
+        with self._mob_observer_lock:
+            observer = self._mob_observer
+        if observer is None:
+            return
+        now = time.monotonic()
+        try:
+            if opcode == 0x07 and len(pkt) >= 23 and pkt[7:9] == b"\x00\x00":
+                observer.observe_spawn(
+                    pkt[9:17], int.from_bytes(pkt[17:19], "little"),
+                    int.from_bytes(pkt[19:21], "little"),
+                    int.from_bytes(pkt[21:23], "little"), now,
+                )
+            elif opcode == 0x06 and len(pkt) >= 22 and pkt[7:9] == b"\x01\x00" \
+                    and self.current_map is not None:
+                observer.observe_move(
+                    pkt[9:17], int(self.current_map),
+                    int.from_bytes(pkt[18:20], "little"),
+                    int.from_bytes(pkt[20:22], "little"), now,
+                )
+            elif opcode == 0x0c and len(pkt) >= 47 and pkt[7:9] == b"\x00\x00":
+                observer.mark_player(pkt[9:17])
+        except Exception as exc:
+            log.debug("[%s] bo qua loi mob observer op=0x%02x: %s",
+                      self._label, opcode, exc)
+
     def _record_train_block_stats(self, enemy_slots):
         if not (self.train_block_stats_enabled and self.train_block_map_id and self.train_block_spot):
             return
@@ -976,6 +1016,7 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        self._observe_mob_packet(opcode, pkt)
         # Pho ban to doi: theo doi thoai NPC de biet canh da HET that su chua (_adv_dialog_until_idle)
         # va tin hieu ket tran that (mot so canh boss tu dong xu ly, khong bao gio bat in_battle=True).
         if time.time() < getattr(self, "_team_dungeon_until", 0.0) and opcode == 0x14:
