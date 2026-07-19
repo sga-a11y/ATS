@@ -90,6 +90,15 @@ SMART_ROUTE_CACHE_PATH = os.path.join(_base_dir(), "smart_routes.json")
 SMART_ROUTE_FALLBACK = True
 SMART_PATH_STEP_WAIT = 0.55     # giay giua 2 lenh move khi co Ground.mmg path (giam = chay muot hon)
 SMART_PATH_SEGMENT = 100        # px toi da moi lenh move smart path; chia nho de khong spam 1 diem cua
+MOB_SCAN_ENABLED = True
+MOB_SCAN_STATION_STRIDE = (320, 240)
+MOB_SCAN_QUIET_SECONDS = 8.0
+MOB_SCAN_STATION_TIMEOUT = 90.0
+MOB_SCAN_MIN_SAMPLES = 3
+MOB_SCAN_MAX_PATROL_DIAMETER = 800
+MOB_SCAN_MERGE_DISTANCE = 200
+MOB_SCAN_SECOND_PASS = True
+MOB_SPOTS_CACHE_PATH = os.path.join(_base_dir(), "mob_spots.json")
 def _load_train_routes(path=None):
     """Doc train_routes.json -> {dest_map:int -> {from_city, city_flag, dest_map, steps}}.
     Route replay tu thanh toi train map (leader di, member tu keo theo)."""

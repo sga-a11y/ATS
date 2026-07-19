@@ -340,6 +340,15 @@ from ._appdir import app_dir as _app_dir
 WORLD_NAV_PATH = os.path.join(_app_dir(), "world_nav.json")
 GROUND_MAP_PATH = os.path.join(_app_dir(), "gamedata", "Ground.mmg")
 SMART_ROUTE_CACHE_PATH = os.path.join(_app_dir(), "smart_routes.json")
+MOB_SCAN_ENABLED = True
+MOB_SCAN_STATION_STRIDE = (320, 240)
+MOB_SCAN_QUIET_SECONDS = 8.0
+MOB_SCAN_STATION_TIMEOUT = 90.0
+MOB_SCAN_MIN_SAMPLES = 3
+MOB_SCAN_MAX_PATROL_DIAMETER = 800
+MOB_SCAN_MERGE_DISTANCE = 200
+MOB_SCAN_SECOND_PASS = True
+MOB_SPOTS_CACHE_PATH = os.path.join(_app_dir(), "mob_spots.json")
 
 PARTY_LEADERS = []          # white list leader CHUNG (moi party)
 CHANNEL = 1

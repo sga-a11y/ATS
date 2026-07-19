@@ -15,6 +15,8 @@ try:
 except Exception:
     pass
 from bot import config
+from bot import mob_spots
+from bot.mob_scanner import scan_full_map
 from bot.login import login
 from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined)
@@ -67,6 +69,54 @@ def _travel_to_train_map(client, map_id, safe, legacy_route, abort=None):
         return client.follow_route(legacy_route)
     log.error("[%s] khong co smart route toi map %s", client._label, map_id)
     return False
+
+
+def _resolve_train_mob_centers(client, map_id, train_map, stop=None):
+    """Prefer learned centers; scan once when absent; retain configured fallback."""
+    fallback = [tuple(map(int, point)) for point in (train_map.get("mobs", []) or [])]
+    if not getattr(config, "MOB_SCAN_ENABLED", True):
+        return fallback
+    stop = stop or (lambda: False)
+    ground = client.get_ground_store()
+    fingerprint = ground.map_fingerprint(map_id) if ground is not None else None
+    if fingerprint:
+        cached = mob_spots.load_complete_centers(map_id, fingerprint)
+        if cached is not None:
+            log.info("[%s] map %s dung %d tam bai quai tu cache",
+                     getattr(client, "_label", ""), map_id, len(cached))
+            return cached
+    if stop():
+        return fallback
+    try:
+        channel = int(getattr(client, "current_channel", 0)
+                      or getattr(config, "CHANNEL", 1) or 1)
+        client.switch_channel(channel)
+        if getattr(client, "running", False):
+            time.sleep(1.5)
+    except Exception as exc:
+        log.warning("[%s] reset combat truoc mob scan loi: %s",
+                    getattr(client, "_label", ""), exc)
+    result = scan_full_map(client, map_id, seed_points=fallback, stop=stop)
+    if result.status in ("cached", "complete"):
+        centers = [candidate.point for candidate in result.centers]
+        log.info("[%s] map %s scan xong: %d tam bai quai",
+                 getattr(client, "_label", ""), map_id, len(centers))
+        return centers
+    if result.status == "empty":
+        log.warning("[%s] map %s quet het nhung khong thay bai quai",
+                    getattr(client, "_label", ""), map_id)
+        return []
+    log.warning("[%s] map %s mob scan %s -> fallback %d diem config",
+                getattr(client, "_label", ""), map_id, result.status, len(fallback))
+    return fallback
+
+
+def _wait_for_rally(event, stopped, running):
+    """Wait without a scan-duration timeout, but remain stop/disconnect aware."""
+    while not event.wait(2.0):
+        if stopped() or not running():
+            return False
+    return True
 
 
 def _go_town_safe(c, label, city_id=12001, flag=0):
@@ -880,8 +930,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         _quit(); return
             # --- MAP-TRAIN: CA PARTY ve cung 1 SAFE = safe GAN diem quai leader chon (de gan nhau
             #     -> member vao tran chung voi leader). Leader chon diem quai SOM + bao rally_point. ---
-            mobs = tm["mobs"]
+            configured_mobs = [tuple(point) for point in tm.get("mobs", [])]
+            mobs = configured_mobs
             if is_leader:
+                mobs = _resolve_train_mob_centers(c, sc, tm, stop=_stopped)
                 if mob_index < 0 and mobs:
                     import random
                     spot = random.choice(mobs)
@@ -893,13 +945,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # ra spot; KHONG path -> navigate thang. DU CO PATH HAY KHONG, rally LUON la SAFE gan
                 # spot (tap trung + lap party o day TRUOC), KHONG phai spot (truoc set =spot -> ca party
                 # navigate thang ra spot luc chua co party -> vo ich, roi lai quay ve safe).
-                path = getattr(config, "MOB_PATHS", {}).get(sc, {}).get(tuple(spot)) if spot else None
+                path = (getattr(config, "MOB_PATHS", {}).get(sc, {}).get(tuple(spot))
+                        if spot and tuple(spot) in configured_mobs else None)
                 st["mob_path"] = path
                 st["rally_point"] = (_nearest_safe(spot, tm["safe"]) if spot else tm["safe"][0])
                 st["rally_ready"].set()
             # member: cho leader chon (rally_point/path); khong co leader -> safe[0]
             if has_leader and not is_leader:
-                st["rally_ready"].wait(60)
+                if not _wait_for_rally(st["rally_ready"], _stopped,
+                                       lambda: c.running):
+                    _quit(); return
                 _set_train_block_stats_spot(st.get("mob_spot"), enabled=False)
             # MAP-TRAIN: CA party (leader+member) ve RALLY = safe GAN spot TRUOC. KHONG follow_path
             # ngay luc nay - vi party CHUA lap (member chua join) -> keo cung vo ich (member khong bi
@@ -1159,9 +1214,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     #     flee=False de gap quai danh luon (party da du, flee party-battle bi treo).
                     #   - khong path: navigate thang ra spot.
                     spot = st.get("mob_spot")
-                    if not spot and tm["mobs"]:
-                        import random
-                        spot = random.choice(tm["mobs"])
+                    if not spot:
+                        c.flee_mode = True
+                        log.warning("[%s] (LEADER) map %s khong co tam bai quai -> dung yen, "
+                                    "KHONG bat combat o diem bat ky", label, sc)
+                        return
                     _set_train_block_stats_spot(spot, enabled=False)
                     path = st.get("mob_path")
                     _gs = st["reform_gen"]   # dang keo ra spot ma co dua VAN MAP (bump reform_gen) -> abort -> reform
@@ -1222,7 +1279,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # FLEE trong tran party bi server KICK (vd Tao Thao: member flee -> dis ngay).
             c.flee_mode = False
             if train_on_map:
-                c.combat_ready()   # map thuong: combat-active de quai aggro (DG khong can)
+                if st.get("mob_spot"):
+                    c.combat_ready()   # map thuong: combat-active de quai aggro (DG khong can)
+                else:
+                    c.flee_mode = True
+                    log.warning("[%s] (member) map %s khong co tam bai quai -> khong bat combat",
+                                label, sc)
             if has_leader:
                 log.info("[%s] (member) da vao party - dung yen tai safe, tu danh", label)
             else:
