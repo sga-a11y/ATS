@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 import threading
+import time
 
 
 Point = tuple[int, int]
@@ -56,6 +57,14 @@ class CenterCandidate:
     point: Point
     monster_count: int
     confidence: float
+
+
+@dataclass(frozen=True)
+class ScanResult:
+    status: str
+    centers: tuple[CenterCandidate, ...]
+    visited: int
+    total: int
 
 
 class MobScanSession:
@@ -208,3 +217,140 @@ def compute_centers(session: MobScanSession, ground, start: Point,
         centers.append(CenterCandidate(tuple(map(int, point)), len(group), confidence))
     return sorted(centers, key=lambda c: (-c.monster_count, -c.confidence,
                                           c.point[1], c.point[0]))
+
+
+def _merge_center_points(points, distance: float) -> list[Point]:
+    merged: list[Point] = []
+    for raw in points:
+        point = tuple(map(int, getattr(raw, "point", raw)))
+        match = next((i for i, old in enumerate(merged)
+                      if math.dist(old, point) <= distance), None)
+        if match is None:
+            merged.append(point)
+        else:
+            old = merged[match]
+            merged[match] = (round((old[0] + point[0]) / 2),
+                             round((old[1] + point[1]) / 2))
+    return merged
+
+
+def scan_full_map(client, map_id: int, seed_points=(), stop=None,
+                  clock=time.monotonic, sleep=time.sleep) -> ScanResult:
+    """Walk all reachable observation stations and cache only learned centers."""
+    from . import config, mob_spots
+
+    stop = stop or (lambda: False)
+    ground = client.get_ground_store() if hasattr(client, "get_ground_store") else None
+    if ground is None or client.pos is None:
+        return ScanResult("unavailable", (), 0, 0)
+    fingerprint = ground.map_fingerprint(map_id)
+    if not fingerprint:
+        return ScanResult("unavailable", (), 0, 0)
+
+    cached = mob_spots.load_complete_centers(map_id, fingerprint)
+    if cached is not None:
+        centers = tuple(CenterCandidate(point, 0, 1.0) for point in cached)
+        status = "cached"
+        return ScanResult(status, centers, 0, 0)
+
+    stride = tuple(getattr(config, "MOB_SCAN_STATION_STRIDE", (320, 240)))
+    quiet = float(getattr(config, "MOB_SCAN_QUIET_SECONDS", 8.0))
+    timeout = float(getattr(config, "MOB_SCAN_STATION_TIMEOUT", 90.0))
+    min_samples = int(getattr(config, "MOB_SCAN_MIN_SAMPLES", 3))
+    max_diameter = float(getattr(config, "MOB_SCAN_MAX_PATROL_DIAMETER", 800))
+    merge_distance = float(getattr(config, "MOB_SCAN_MERGE_DISTANCE", 200))
+    second_pass = bool(getattr(config, "MOB_SCAN_SECOND_PASS", True))
+    settings = {
+        "stride": list(map(int, stride)),
+        "quiet_seconds": quiet,
+        "station_timeout": timeout,
+        "min_samples": min_samples,
+        "max_patrol_diameter": max_diameter,
+        "merge_distance": merge_distance,
+        "second_pass": second_pass,
+    }
+    stations = ground.coverage_stations(map_id, client.pos, stride)
+    if not stations:
+        return ScanResult("unavailable", (), 0, 0)
+
+    progress = mob_spots.load_progress(map_id, fingerprint)
+    coverage = progress.get("coverage", {})
+    completed = {int(i) for i in coverage.get("completed", [])
+                 if 0 <= int(i) < len(stations)}
+    provisional = [tuple(map(int, p)) for p in progress.get("centers", [])]
+    session = MobScanSession(
+        map_id, getattr(client, "self_entity", None),
+        quiet_seconds=quiet, min_samples=min_samples,
+        max_patrol_diameter=max_diameter, merge_distance=merge_distance,
+    )
+    low_confidence = []
+    aborted = False
+
+    def should_stop():
+        return stop() or not getattr(client, "running", False) \
+            or getattr(client, "current_map", map_id) != map_id
+
+    client.begin_mob_observation(session)
+    try:
+        passes = [list(i for i in range(len(stations)) if i not in completed)]
+        if second_pass:
+            passes.append(None)
+        for pass_index, indices in enumerate(passes):
+            if indices is None:
+                indices = list(low_confidence)
+                low_confidence = []
+            for index in indices:
+                if should_stop():
+                    aborted = True
+                    break
+                session.begin_station(clock())
+                client.navigate_to(*stations[index], flee=True, abort=should_stop)
+                if should_stop():
+                    aborted = True
+                    break
+                deadline = clock() + timeout
+                stable = session.station_stable(clock())
+                while not stable and clock() < deadline and not should_stop():
+                    sleep(min(0.1, max(0.0, deadline - clock())))
+                    stable = session.station_stable(clock())
+                if should_stop():
+                    aborted = True
+                    break
+                if stable:
+                    completed.add(index)
+                else:
+                    low_confidence.append(index)
+                learned = compute_centers(session, ground, client.pos, now=clock())
+                provisional = _merge_center_points(
+                    provisional + [c.point for c in learned], merge_distance
+                )
+                current_coverage = {
+                    "visited": len(completed),
+                    "total": len(stations),
+                    "pass": pass_index + 1,
+                    "low_confidence": len(low_confidence),
+                }
+                mob_spots.save_progress(map_id, fingerprint, completed,
+                                        provisional, current_coverage, settings)
+            if aborted:
+                break
+        remaining = set(range(len(stations))) - completed
+        if low_confidence:
+            remaining.update(low_confidence)
+        status = "incomplete" if aborted or remaining else ("complete" if provisional else "empty")
+        final_coverage = {
+            "visited": len(completed),
+            "total": len(stations),
+            "completed": sorted(completed),
+            "low_confidence": len(remaining),
+        }
+        if status in ("complete", "empty"):
+            mob_spots.save_complete(map_id, fingerprint, provisional,
+                                    final_coverage, settings)
+        else:
+            mob_spots.save_progress(map_id, fingerprint, completed, provisional,
+                                    final_coverage, settings)
+        centers = tuple(CenterCandidate(point, 0, 1.0) for point in provisional)
+        return ScanResult(status, centers, len(completed), len(stations))
+    finally:
+        client.end_mob_observation(session)
