@@ -309,7 +309,20 @@ def _load_train_maps():
     """Doc train_maps.json: {map_id(str): {"name", "safe": [[x,y],...], "mobs": [[x,y],...]}}."""
     try:
         d = json.loads(_read_asset("train_maps.json"))
-        return d.get("maps", d)
+        out = {}
+        for key, value in d.get("maps", d).items():
+            safe = value.get("safe", [])
+            if not safe:
+                safes = []
+            elif isinstance(safe[0], (list, tuple)):
+                safes = [tuple(point) for point in safe]
+            else:
+                safes = [tuple(safe)]
+            out[int(key)] = {
+                "safe": safes,
+                "mobs": [tuple(point) for point in value.get("mobs", [])],
+            }
+        return out
     except Exception as e:
         _log_asset_error("train_maps.json", e)
         return {}
