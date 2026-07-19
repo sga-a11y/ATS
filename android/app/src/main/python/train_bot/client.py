@@ -933,6 +933,10 @@ class GameClient:
     def get_ground_store(self):
         return _ground_store()
 
+    def known_party_entities(self):
+        with _PARTY_LOCK:
+            return set(_PARTY_ENTITIES.get(self.party_idx, set()))
+
     def begin_mob_observation(self, observer) -> None:
         with self._mob_observer_lock:
             self._mob_observer = observer
@@ -1016,8 +1020,26 @@ class GameClient:
                     int.from_bytes(pkt[18:20], "little"),
                     int.from_bytes(pkt[20:22], "little"), now,
                 )
-            elif opcode == 0x0c and len(pkt) >= 47 and pkt[7:9] == b"\x00\x00":
+            elif opcode == 0x16 and len(pkt) >= 15 and pkt[7:9] == b"\x02\x00" \
+                    and self.current_map is not None:
+                slot = pkt[9:11]
+                observer.observe_move(
+                    b"\x16\x02" + slot + b"\x00" * 4,
+                    int(self.current_map),
+                    int.from_bytes(pkt[11:13], "little"),
+                    int.from_bytes(pkt[13:15], "little"), now,
+                )
+            elif opcode == 0x0f and len(pkt) >= 17 and pkt[7:9] == b"\x07\x00":
                 observer.mark_player(pkt[9:17])
+            elif opcode == 0x27 and len(pkt) >= 22 and pkt[7:9] == b"\x09\x00":
+                offset = 9
+                while offset + 13 <= len(pkt):
+                    name_bytes = pkt[offset + 12]
+                    end = offset + 13 + name_bytes
+                    if end > len(pkt):
+                        break
+                    observer.mark_player(pkt[offset:offset + 8])
+                    offset = end
         except Exception as exc:
             log.debug("[%s] bo qua loi mob observer op=0x%02x: %s",
                       self._label, opcode, exc)

@@ -68,13 +68,15 @@ class BotForegroundService : Service() {
     private fun materializeSmartNavAssets() {
         val nav = File(filesDir, "world_nav.json")
         val ground = File(filesDir, "gamedata/Ground.mmg")
+        val sceneFight = File(filesDir, "gamedata/SceneFight_C.dat")
         val prefs = getSharedPreferences("smart_nav_assets", Context.MODE_PRIVATE)
         val currentVersion = BuildConfig.VERSION_CODE
-        if (prefs.getInt("version", -1) == currentVersion && nav.isFile && ground.isFile) {
+        if (prefs.getInt("version", -1) == currentVersion && nav.isFile && ground.isFile && sceneFight.isFile) {
             return
         }
         copyBundledAsset("world_nav.json", nav)
         copyBundledAsset("gamedata/Ground.mmg", ground)
+        copyBundledAsset("gamedata/SceneFight_C.dat", sceneFight)
         prefs.edit().putInt("version", currentVersion).apply()
     }
 

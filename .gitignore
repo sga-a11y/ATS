@@ -16,6 +16,7 @@ libtolua.so
 # Ground.mmg la collision/pathfinding data can ship cung bot (~27 MB).
 gamedata/*
 !gamedata/Ground.mmg
+!gamedata/SceneFight_C.dat
 lua/
 lua_dump/
 

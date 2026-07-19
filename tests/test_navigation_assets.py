@@ -17,6 +17,10 @@ class TestNavigationAssets(unittest.TestCase):
             DATA_FILES["gamedata/Ground.mmg"],
             "gamedata/Ground.mmg",
         )
+        self.assertEqual(
+            DATA_FILES["gamedata/SceneFight_C.dat"],
+            "gamedata/SceneFight_C.dat",
+        )
 
     def test_missing_assets_report_explicit_names(self):
         with tempfile.TemporaryDirectory() as root:
@@ -42,12 +46,15 @@ class TestNavigationAssets(unittest.TestCase):
         self.assertIn("prepareSmartNavAssets", gradle)
         self.assertIn("world_nav.json", gradle)
         self.assertIn("gamedata/Ground.mmg", gradle)
+        self.assertIn("gamedata/SceneFight_C.dat", gradle)
         self.assertIn("train_maps.json", gradle)
         self.assertIn("from(trainMaps)", gradle)
         self.assertIn("SMART_WORLD_ROUTING = True", android_config)
         self.assertIn("WORLD_NAV_PATH", android_config)
         self.assertIn("GROUND_MAP_PATH", android_config)
+        self.assertIn("SCENE_FIGHT_PATH", android_config)
         self.assertIn("materializeSmartNavAssets()", service)
+        self.assertIn("SceneFight_C.dat", service)
         self.assertFalse(os.path.exists(
             "android/app/src/main/assets/train_bot_data/train_maps.json"
         ))

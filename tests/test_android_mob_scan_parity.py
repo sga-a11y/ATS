@@ -37,7 +37,7 @@ class TestAndroidMobScanParity(unittest.TestCase):
         self.assertEqual(android, desktop)
 
     def test_android_contains_shared_scanner_cache_and_packet_hook(self):
-        for name in ("mob_scanner.py", "mob_spots.py", "smart_route.py", "client.py"):
+        for name in ("mob_scanner.py", "mob_spots.py", "scene_fight.py", "smart_route.py", "client.py"):
             self.assertTrue(os.path.isfile(
                 os.path.join("android/app/src/main/python/train_bot", name)
             ))
@@ -47,7 +47,8 @@ class TestAndroidMobScanParity(unittest.TestCase):
         self.assertIn("_resolve_train_safe", coordinator)
         self.assertIn("_capture_arrival_safe", coordinator)
         self.assertIn("_stationary_train_mob_probe", coordinator)
-        self.assertIn("from .mob_scanner import scan_full_map", coordinator)
+        self.assertIn("from .mob_scanner import MobScanSession", coordinator)
+        self.assertIn("from .scene_fight import get_scene_fight_seed", coordinator)
         self.assertIn("from . import mob_spots", coordinator)
         with open("android/app/src/main/python/train_bot/mob_spots.py", encoding="utf-8") as fh:
             cache = fh.read()
@@ -60,6 +61,9 @@ class TestAndroidMobScanParity(unittest.TestCase):
         with open("android/app/src/main/python/train_bot/smart_route.py", encoding="utf-8") as fh:
             routing = fh.read()
         self.assertIn("safe is None", routing)
+        with open("android/app/src/main/python/train_bot/config.py", encoding="utf-8") as fh:
+            android_config = fh.read()
+        self.assertIn("SCENE_FIGHT_PATH", android_config)
 
 
 if __name__ == "__main__":

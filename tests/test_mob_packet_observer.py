@@ -59,7 +59,18 @@ class TestMobPacketObserver(unittest.TestCase):
             [("move", entity, 11013, 530, 830)],
         )
 
-    def test_rich_0c_marks_player_entity(self):
+    def test_16_forwards_slot_based_monster_movement(self):
+        body = b"\x02\x00" + struct.pack("<HHH", 15, 3990, 2490)
+        self.client.begin_mob_observation(self.observer)
+
+        self.client._dispatch(0x16, frame(0x16, body))
+
+        self.assertEqual(
+            self.observer.calls,
+            [("move", b"\x16\x02\x0f\x00\x00\x00\x00\x00", 11013, 3990, 2490)],
+        )
+
+    def test_rich_0c_alone_does_not_mark_entity_as_player(self):
         entity = b"player00"
         prefix = b"\x00\x00" + entity + struct.pack("<HHH", 11013, 410, 1050)
         body = prefix + bytes(40 - len(prefix))
@@ -67,7 +78,34 @@ class TestMobPacketObserver(unittest.TestCase):
 
         self.client._dispatch(0x0C, frame(0x0C, body))
 
+        self.assertEqual(self.observer.calls, [])
+
+    def test_0f_companion_list_marks_owner_as_player(self):
+        entity = b"player00"
+        self.client.begin_mob_observation(self.observer)
+
+        self.client._dispatch(0x0F, frame(0x0F, b"\x07\x00" + entity + bytes(20)))
+
         self.assertEqual(self.observer.calls, [("player", entity)])
+
+    def test_27_guild_list_marks_every_entity_as_player(self):
+        first = b"player00"
+        second = b"player01"
+
+        def guild_record(entity):
+            name = "PhaoThu".encode("utf-16le")
+            return entity + bytes(4) + bytes([len(name)]) + name
+
+        self.client.begin_mob_observation(self.observer)
+        self.client._dispatch(
+            0x27,
+            frame(0x27, b"\x09\x00" + guild_record(first) + guild_record(second)),
+        )
+
+        self.assertEqual(
+            self.observer.calls,
+            [("player", first), ("player", second)],
+        )
 
     def test_real_session_excludes_self_and_party_entities(self):
         party = b"party000"

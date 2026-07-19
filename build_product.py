@@ -45,6 +45,7 @@ DATA_JSON = ["servers.json", "cities.json", "train_maps.json", "train_routes.jso
 
 DATA_FILES = {
     "gamedata/Ground.mmg": "gamedata/Ground.mmg",
+    "gamedata/SceneFight_C.dat": "gamedata/SceneFight_C.dat",
 }
 
 

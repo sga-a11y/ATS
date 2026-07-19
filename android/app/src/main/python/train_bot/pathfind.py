@@ -251,6 +251,51 @@ class GroundMapStore:
                                      p[1], p[0]))
         return self.block_to_world(map_id, nearest)
 
+    def nearest_walkable_outside(self, map_id, start, hazards,
+                                 clearance=200.0, max_path=600.0):
+        m = self.get(map_id)
+        if m is None:
+            return None
+        origin = _empty_target(
+            m["grid"], m["grid_w"], m["grid_h"],
+            self.world_to_block(map_id, start),
+        )
+        if origin is None:
+            return None
+        hazards = [tuple(map(int, point)) for point in hazards]
+        limit = max(0, math.ceil(float(max_path) / 20.0))
+        queue = deque([(origin, 0)])
+        seen = {origin}
+        current_depth = -1
+        valid = []
+        while queue:
+            block, depth = queue.popleft()
+            if depth != current_depth and valid:
+                return min(valid, key=lambda item: (
+                    item[0], item[1][1], item[1][0]
+                ))[1]
+            if depth > limit:
+                break
+            current_depth = depth
+            point = self.block_to_world(map_id, block)
+            nearest = min(
+                (math.dist(point, hazard) for hazard in hazards),
+                default=float("inf"),
+            )
+            if nearest >= float(clearance):
+                valid.append((math.dist(point, start), point))
+            x, y = block
+            for nxt in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
+                if nxt in seen or _blocked(
+                    m["grid"], m["grid_w"], m["grid_h"], *nxt
+                ):
+                    continue
+                seen.add(nxt)
+                queue.append((nxt, depth + 1))
+        return min(valid, key=lambda item: (
+            item[0], item[1][1], item[1][0]
+        ))[1] if valid else None
+
     def map_fingerprint(self, map_id):
         entry = self.index.get(int(map_id))
         if entry is None:
