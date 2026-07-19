@@ -121,14 +121,7 @@ def _train_route_available(smart_route, legacy_route, has_leader):
 
 
 def _needs_train_mob_probe(client, map_id, train_map):
-    if train_map.get("mobs"):
-        return False
-    ground = client.get_ground_store()
-    fingerprint = ground.map_fingerprint(map_id) if ground is not None else None
-    return not (
-        fingerprint
-        and mob_spots.load_complete_centers(map_id, fingerprint)
-    )
+    return not bool(train_map.get("mobs"))
 
 
 def _stationary_train_mob_probe(client, map_id, train_map=None, stop=None, seconds=None,
@@ -210,15 +203,7 @@ def _stationary_train_mob_probe(client, map_id, train_map=None, stop=None, secon
         else:
             log.warning("[%s] AUTO LEARN map %s: khong ghi train_maps (map da co bai hoac file loi)",
                         getattr(client, "_label", ""), map_id)
-    if centers and fingerprint:
-        mob_spots.save_complete(
-            map_id, fingerprint, centers,
-            {"source": "scene_fight_probe", "packets": count},
-            {"seconds": seconds, "seed": list(seed) if seed else None},
-        )
-        log.info("[%s] AUTO LEARN map %s: da luu %d tam bai %s",
-                 getattr(client, "_label", ""), map_id, len(centers), centers)
-    else:
+    if not centers:
         log.warning("[%s] AUTO LEARN map %s: chua thay trace quai hop le "
                     "(%d packet, file %s)", getattr(client, "_label", ""),
                     map_id, count, path or "khong co")
@@ -231,14 +216,6 @@ def _resolve_train_mob_centers(client, map_id, train_map, stop=None):
     if not getattr(config, "MOB_SCAN_ENABLED", True):
         return fallback
     stop = stop or (lambda: False)
-    ground = client.get_ground_store()
-    fingerprint = ground.map_fingerprint(map_id) if ground is not None else None
-    if fingerprint:
-        cached = mob_spots.load_complete_centers(map_id, fingerprint)
-        if cached is not None:
-            log.info("[%s] map %s dung %d tam bai quai tu cache",
-                     getattr(client, "_label", ""), map_id, len(cached))
-            return cached
     if fallback:
         log.info("[%s] map %s dung %d diem quai config (khong quet map)",
                  getattr(client, "_label", ""), map_id, len(fallback))

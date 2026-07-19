@@ -76,15 +76,27 @@ class TestTrainMobScanPolicy(unittest.TestCase):
         self.tm = {"safe": [(410, 1050)], "mobs": [(590, 1010)]}
 
     @mock.patch.object(coordinator.mob_spots, "load_complete_centers")
+    def test_empty_train_map_requires_probe_even_when_old_cache_exists(self, load):
+        load.return_value = [(530, 930)]
+
+        needed = coordinator._needs_train_mob_probe(
+            self.client, 20801, {"safe": [], "mobs": []}
+        )
+
+        self.assertTrue(needed)
+        load.assert_not_called()
+
+    @mock.patch.object(coordinator.mob_spots, "load_complete_centers")
     @mock.patch.object(coordinator, "scan_full_map")
-    def test_valid_cache_returns_centers_without_scan_or_channel_reset(self, scan, load):
+    def test_configured_points_ignore_old_center_cache(self, scan, load):
         load.return_value = [(530, 930), (1150, 530)]
 
         centers = coordinator._resolve_train_mob_centers(
             self.client, 11013, self.tm, stop=lambda: False
         )
 
-        self.assertEqual(centers, [(530, 930), (1150, 530)])
+        self.assertEqual(centers, [(590, 1010)])
+        load.assert_not_called()
         scan.assert_not_called()
         self.assertEqual(self.client.switched, [])
 
@@ -99,11 +111,12 @@ class TestTrainMobScanPolicy(unittest.TestCase):
         scan.assert_not_called()
         self.assertEqual(self.client.switched, [])
 
-    @mock.patch.object(coordinator.mob_spots, "load_complete_centers", return_value=None)
+    @mock.patch.object(coordinator.mob_spots, "load_complete_centers")
     @mock.patch.object(coordinator, "_stationary_train_mob_probe")
     @mock.patch.object(coordinator, "scan_full_map")
-    def test_missing_centers_runs_stationary_probe_without_scan(
-            self, scan, probe, _load):
+    def test_empty_train_map_retrains_even_when_old_center_cache_exists(
+            self, scan, probe, load):
+        load.return_value = [(530, 930), (1150, 530)]
         probe.return_value = []
         train_map = {"safe": [], "mobs": []}
 
@@ -115,6 +128,7 @@ class TestTrainMobScanPolicy(unittest.TestCase):
         probe.assert_called_once_with(
             self.client, 20801, train_map=train_map, stop=mock.ANY
         )
+        load.assert_not_called()
         scan.assert_not_called()
 
     @mock.patch.object(coordinator, "save_learned_regions", return_value=True)
@@ -150,7 +164,7 @@ class TestTrainMobScanPolicy(unittest.TestCase):
         self.assertEqual(self.client.switched, [2])
         self.assertTrue(sleeps)
         self.assertEqual(self.client.finished_capture, [True])
-        save_cache.assert_called_once()
+        save_cache.assert_not_called()
 
     def test_member_wait_is_unbounded_but_stop_aware(self):
         event = SequenceEvent([False, False, True])

@@ -393,6 +393,10 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
   `mobs` khong bi auto-learn ghi de. Coordinator cap nhat cung dict dang chay nen party dung safe moi
   ngay trong phien hien tai. Android merge baseline asset vao file writable trong app data va giu lai
   entry local da hoc qua relog/cap nhat app.
+- Tu 2026-07-20, `train_maps.json` la nguon duy nhat cho tam bai: co `mobs` thi dung config, `mobs=[]`
+  thi probe lai va ghi truc tiep; cache center cu trong `mob_spots.json` bi bo qua va probe khong ghi
+  center vao cache nua. Vi vay muon hoc lai mot map chi can xoa `safe` va `mobs` cua entry do;
+  `mob_spots.json` chi con duoc dung cho safe sau warp.
 - Replay `mob_packets_20801_20260720_012329.jsonl` (723 packet, 693 mau `0x16/0200`) tao du 9
   cap cho Rung Cuu Nguyen 1; moi safe cach mau quai gan nhat `200.6-215.1px`.
 
