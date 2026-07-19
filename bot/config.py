@@ -4,6 +4,8 @@ Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitigno
 from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
 import os
 
+TRAIN_MAPS_PATH = os.path.join(_base_dir(), "train_maps.json")
+
 # Tai khoan mac dinh (single bot)
 USERNAME = "your_username"
 PASSWORD = "your_password"
@@ -51,7 +53,7 @@ START_CITY_ID = 12061
 #   con lai -> dung i tai cho
 def _load_train_maps():
     import json, os
-    f = os.path.join(_base_dir(), "train_maps.json")
+    f = TRAIN_MAPS_PATH
     out = {}
     try:
         with open(f, encoding="utf-8") as fh:
@@ -89,6 +91,7 @@ MAP_GATES = _load_map_gates()
 # Smart path trong map. Neu Ground.mmg khong ton tai, navigate_to tu fallback cach cu.
 SMART_PATHFIND = True
 GROUND_MAP_PATH = os.path.join(_base_dir(), "gamedata", "Ground.mmg")
+SCENE_FIGHT_PATH = os.path.join(_base_dir(), "gamedata", "SceneFight_C.dat")
 SMART_WORLD_ROUTING = True
 WORLD_NAV_PATH = os.path.join(_base_dir(), "world_nav.json")
 SMART_ROUTE_CACHE_PATH = os.path.join(_base_dir(), "smart_routes.json")

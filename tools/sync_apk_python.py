@@ -15,7 +15,8 @@ APK = os.path.join(ROOT, "android", "app", "src", "main", "python", "train_bot")
 
 # File CHUNG: copy y nguyen (import 'from . import ...' da tuong thich package train_bot).
 SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login.py",
-          "train_block_stats.py", "mob_scanner.py", "mob_spots.py"]
+          "train_block_stats.py", "mob_scanner.py", "mob_spots.py", "scene_fight.py",
+          "train_maps_store.py"]
 
 # File PC-only can cho coordinator/client neu co import (pathfind dung boi navigate). Copy neu ton tai.
 OPTIONAL = ["pathfind.py", "world_nav.py", "smart_route.py"]
@@ -27,6 +28,7 @@ def _rewrite_coordinator(src: str) -> str:
     src = src.replace("from bot import config", "from . import config")
     src = src.replace("from bot import mob_spots", "from . import mob_spots")
     src = src.replace("from bot.mob_scanner import", "from .mob_scanner import")
+    src = src.replace("from bot.scene_fight import", "from .scene_fight import")
     src = src.replace("from bot.login import login", "from .login import login")
     src = src.replace("from bot.client import", "from .client import")
     src = src.replace("from bot._appdir import", "from ._appdir import")   # log path Android (PC khong co bot/_appdir -> fallback except)

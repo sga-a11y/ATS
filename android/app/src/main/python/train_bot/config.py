@@ -12,6 +12,10 @@ o day (rong/mac dinh) de cac nhanh van tieu/run-around khong crash neu duoc bat 
 """
 import json
 import os
+from ._appdir import app_dir as _app_dir
+from .train_maps_store import materialize_train_maps
+
+TRAIN_MAPS_PATH = os.path.join(_app_dir(), "train_maps.json")
 
 # PC va APK bat smart routing cung luc; service materialize assets vao app files truoc khi import.
 SMART_WORLD_ROUTING = True
@@ -308,7 +312,8 @@ VANTIEU_REQUESTS = _load_vantieu_requests()
 def _load_train_maps():
     """Doc train_maps.json: {map_id(str): {"name", "safe": [[x,y],...], "mobs": [[x,y],...]}}."""
     try:
-        d = json.loads(_read_asset("train_maps.json"))
+        baseline = json.loads(_read_asset("train_maps.json"))
+        d = materialize_train_maps(TRAIN_MAPS_PATH, baseline)
         out = {}
         for key, value in d.get("maps", d).items():
             safe = value.get("safe", [])
@@ -348,10 +353,9 @@ TRAIN_ROUTES = _load_train_routes()
 #  PARTY / ACCOUNT / SERVER - DOC accounts.json (app_dir) + servers.json (asset), GIONG PC.
 #  Kotlin ghi accounts.json (format PC) roi goi config.reload_parties() + run_party_digioi.start_all().
 # ============================================================
-from ._appdir import app_dir as _app_dir
-
 WORLD_NAV_PATH = os.path.join(_app_dir(), "world_nav.json")
 GROUND_MAP_PATH = os.path.join(_app_dir(), "gamedata", "Ground.mmg")
+SCENE_FIGHT_PATH = os.path.join(_app_dir(), "gamedata", "SceneFight_C.dat")
 SMART_ROUTE_CACHE_PATH = os.path.join(_app_dir(), "smart_routes.json")
 MOB_SCAN_ENABLED = True
 MOB_SCAN_STATION_STRIDE = (320, 240)
