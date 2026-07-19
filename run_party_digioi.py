@@ -115,8 +115,42 @@ def _train_route_available(smart_route, legacy_route, has_leader):
     )
 
 
+def _needs_train_mob_probe(client, map_id, train_map):
+    if train_map.get("mobs"):
+        return False
+    ground = client.get_ground_store()
+    fingerprint = ground.map_fingerprint(map_id) if ground is not None else None
+    return not (
+        fingerprint
+        and mob_spots.load_complete_centers(map_id, fingerprint)
+    )
+
+
+def _stationary_train_mob_probe(client, map_id, stop=None, seconds=None,
+                                clock=time.monotonic, sleep=time.sleep):
+    stop = stop or (lambda: False)
+    seconds = float(seconds if seconds is not None else getattr(
+        config, "MOB_PACKET_PROBE_SECONDS", 60
+    ))
+    try:
+        channel = int(getattr(client, "current_channel", 0)
+                      or getattr(config, "CHANNEL", 1) or 1)
+        client.switch_channel(channel)
+        log.info("[%s] map %s dung tai safe capture packet %.0fs (khong quet map)",
+                 getattr(client, "_label", ""), map_id, seconds)
+        started = clock()
+        while (getattr(client, "running", False) and not stop()
+               and clock() - started < seconds):
+            sleep(min(1.0, seconds))
+    finally:
+        path, count = client.finish_mob_packet_capture()
+        log.info("[%s] map %s capture xong %d goi -> %s",
+                 getattr(client, "_label", ""), map_id, count, path or "khong co packet")
+    return []
+
+
 def _resolve_train_mob_centers(client, map_id, train_map, stop=None):
-    """Prefer learned centers; scan once when absent; retain configured fallback."""
+    """Use learned/configured centers; otherwise capture packets while stationary."""
     fallback = [tuple(map(int, point)) for point in (train_map.get("mobs", []) or [])]
     if not getattr(config, "MOB_SCAN_ENABLED", True):
         return fallback
@@ -129,30 +163,13 @@ def _resolve_train_mob_centers(client, map_id, train_map, stop=None):
             log.info("[%s] map %s dung %d tam bai quai tu cache",
                      getattr(client, "_label", ""), map_id, len(cached))
             return cached
-    if stop():
+    if fallback:
+        log.info("[%s] map %s dung %d diem quai config (khong quet map)",
+                 getattr(client, "_label", ""), map_id, len(fallback))
         return fallback
-    try:
-        channel = int(getattr(client, "current_channel", 0)
-                      or getattr(config, "CHANNEL", 1) or 1)
-        client.switch_channel(channel)
-        if getattr(client, "running", False):
-            time.sleep(1.5)
-    except Exception as exc:
-        log.warning("[%s] reset combat truoc mob scan loi: %s",
-                    getattr(client, "_label", ""), exc)
-    result = scan_full_map(client, map_id, seed_points=fallback, stop=stop)
-    if result.status in ("cached", "complete"):
-        centers = [candidate.point for candidate in result.centers]
-        log.info("[%s] map %s scan xong: %d tam bai quai",
-                 getattr(client, "_label", ""), map_id, len(centers))
-        return centers
-    if result.status == "empty":
-        log.warning("[%s] map %s quet het nhung khong thay bai quai",
-                    getattr(client, "_label", ""), map_id)
+    if stop():
         return []
-    log.warning("[%s] map %s mob scan %s -> fallback %d diem config",
-                getattr(client, "_label", ""), map_id, result.status, len(fallback))
-    return fallback
+    return _stationary_train_mob_probe(client, map_id, stop=stop)
 
 
 def _wait_for_rally(event, stopped, running):
@@ -429,6 +446,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             resolved_safe = _resolve_train_safe(c, sc, tm.get("safe", []))
             if resolved_safe is not None:
                 train_safes.append(resolved_safe)
+        if train_on_map and is_leader and _needs_train_mob_probe(c, sc, tm):
+            try:
+                c.arm_mob_packet_capture(
+                    sc,
+                    max_packets=getattr(config, "MOB_PACKET_CAPTURE_MAX_PACKETS", 50000),
+                )
+            except Exception as exc:
+                log.warning("[%s] khong arm duoc packet capture map %s: %s", label, sc, exc)
         log.info("[%s] (%s) MODE=%s start_city=%s", label, role, mode, sc)
 
         def _dg_remain_minutes():

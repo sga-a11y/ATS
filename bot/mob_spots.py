@@ -67,7 +67,7 @@ def load_progress(map_id: int, fingerprint: str) -> dict:
 
 def load_complete_centers(map_id: int, fingerprint: str):
     entry = load_progress(map_id, fingerprint)
-    if entry.get("status") not in ("complete", "empty"):
+    if entry.get("status") != "complete" or not entry.get("centers"):
         return None
     return [tuple(map(int, point)) for point in entry.get("centers", [])]
 

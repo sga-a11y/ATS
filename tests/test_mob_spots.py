@@ -56,6 +56,15 @@ class TestMobSpotsCache(unittest.TestCase):
         self.assertEqual(progress["coverage"]["completed"], [0, 2])
         self.assertEqual(progress["centers"], [[530, 930]])
 
+    def test_empty_scan_is_retryable_not_a_complete_result(self):
+        mob_spots.save_complete(20801, "ground1", [], {"visited": 124}, {})
+
+        self.assertIsNone(mob_spots.load_complete_centers(20801, "ground1"))
+        self.assertEqual(
+            mob_spots.load_progress(20801, "ground1")["status"],
+            "empty",
+        )
+
     def test_write_uses_atomic_replace_without_leaving_tmp(self):
         mob_spots.save_complete(11013, "abc12345", [(530, 930)], {}, {})
 

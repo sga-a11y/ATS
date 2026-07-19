@@ -104,6 +104,9 @@ MOB_SCAN_MAX_PATROL_DIAMETER = 800
 MOB_SCAN_MERGE_DISTANCE = 200
 MOB_SCAN_SECOND_PASS = True
 MOB_SPOTS_CACHE_PATH = os.path.join(_base_dir(), "mob_spots.json")
+MOB_PACKET_PROBE_SECONDS = 60
+MOB_PACKET_CAPTURE_MAX_PACKETS = 50000
+MOB_PACKET_CAPTURE_DIR = _base_dir()
 def _load_train_routes(path=None):
     """Doc train_routes.json -> {dest_map:int -> {from_city, city_flag, dest_map, steps}}.
     Route replay tu thanh toi train map (leader di, member tu keo theo)."""

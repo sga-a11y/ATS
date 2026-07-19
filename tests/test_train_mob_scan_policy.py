@@ -22,12 +22,18 @@ class Client:
         self.ground = Ground()
         self.current_channel = 2
         self.switched = []
+        self.running = True
+        self.finished_capture = []
 
     def get_ground_store(self):
         return self.ground
 
     def switch_channel(self, channel):
         self.switched.append(channel)
+
+    def finish_mob_packet_capture(self):
+        self.finished_capture.append(True)
+        return "probe.jsonl", 12
 
 
 class SequenceEvent:
@@ -60,41 +66,44 @@ class TestTrainMobScanPolicy(unittest.TestCase):
 
     @mock.patch.object(coordinator.mob_spots, "load_complete_centers", return_value=None)
     @mock.patch.object(coordinator, "scan_full_map")
-    def test_missing_cache_runs_scan_and_returns_new_centers(self, scan, _load):
-        scan.return_value = ScanResult(
-            "complete", (CenterCandidate((530, 930), 3, 1.0),), 10, 10
-        )
-
+    def test_configured_points_return_without_coverage_scan(self, scan, _load):
         centers = coordinator._resolve_train_mob_centers(
             self.client, 11013, self.tm, stop=lambda: False
         )
 
-        self.assertEqual(centers, [(530, 930)])
-        self.assertEqual(self.client.switched, [2])
+        self.assertEqual(centers, [(590, 1010)])
+        scan.assert_not_called()
+        self.assertEqual(self.client.switched, [])
 
     @mock.patch.object(coordinator.mob_spots, "load_complete_centers", return_value=None)
+    @mock.patch.object(coordinator, "_stationary_train_mob_probe")
     @mock.patch.object(coordinator, "scan_full_map")
-    def test_unavailable_or_incomplete_scan_falls_back_to_configured_points(self, scan, _load):
-        for status in ("unavailable", "incomplete"):
-            with self.subTest(status=status):
-                scan.return_value = ScanResult(status, (), 0, 10)
-                self.assertEqual(
-                    coordinator._resolve_train_mob_centers(
-                        self.client, 11013, self.tm, stop=lambda: False
-                    ),
-                    [(590, 1010)],
-                )
-
-    @mock.patch.object(coordinator.mob_spots, "load_complete_centers", return_value=None)
-    @mock.patch.object(coordinator, "scan_full_map")
-    def test_complete_empty_scan_does_not_invent_or_fallback_a_point(self, scan, _load):
-        scan.return_value = ScanResult("empty", (), 10, 10)
+    def test_missing_centers_runs_stationary_probe_without_scan(
+            self, scan, probe, _load):
+        probe.return_value = []
+        train_map = {"safe": [], "mobs": []}
 
         centers = coordinator._resolve_train_mob_centers(
-            self.client, 11013, self.tm, stop=lambda: False
+            self.client, 20801, train_map, stop=lambda: False
         )
 
         self.assertEqual(centers, [])
+        probe.assert_called_once_with(self.client, 20801, stop=mock.ANY)
+        scan.assert_not_called()
+
+    def test_stationary_probe_switches_channel_waits_and_finishes_capture(self):
+        clock = mock.Mock(side_effect=[0.0, 0.0, 30.0, 60.0])
+        sleeps = []
+
+        centers = coordinator._stationary_train_mob_probe(
+            self.client, 20801, stop=lambda: False, seconds=60,
+            clock=clock, sleep=sleeps.append,
+        )
+
+        self.assertEqual(centers, [])
+        self.assertEqual(self.client.switched, [2])
+        self.assertTrue(sleeps)
+        self.assertEqual(self.client.finished_capture, [True])
 
     def test_member_wait_is_unbounded_but_stop_aware(self):
         event = SequenceEvent([False, False, True])
