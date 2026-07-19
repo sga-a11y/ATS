@@ -4,6 +4,7 @@ import heapq
 import math
 import re
 import struct
+import zlib
 
 
 def find_path(graph, src_map, dst_map):
@@ -169,21 +170,106 @@ class GroundMapStore:
         return {"width_px": width, "height_px": height, "grid_w": grid_w,
                 "grid_h": grid_h, "grid": data[p:p + grid_size]}
 
-    def find_world_path(self, map_id, start, target):
-        m = self.get(map_id)
-        if m is None:
-            return None
+    @staticmethod
+    def _world_origin(m):
         left = math.floor((800 - m["width_px"]) * 0.5 * 0.05) * 20 \
             if m["width_px"] < 800 else 0
         top = math.floor((600 - m["height_px"]) * 0.5 * 0.05) * 20 \
             if m["height_px"] < 600 else 0
-        to_block = lambda p: (math.ceil((p[0] - left) * 0.05),
-                              math.ceil((p[1] - top) * 0.05))
+        return left, top
+
+    def world_to_block(self, map_id, point):
+        m = self.get(map_id)
+        if m is None:
+            return None
+        left, top = self._world_origin(m)
+        return (math.ceil((point[0] - left) * 0.05),
+                math.ceil((point[1] - top) * 0.05))
+
+    def block_to_world(self, map_id, block):
+        m = self.get(map_id)
+        if m is None:
+            return None
+        left, top = self._world_origin(m)
+        return block[0] * 20 - 10 + left, block[1] * 20 - 10 + top
+
+    def reachable_blocks(self, map_id, start):
+        m = self.get(map_id)
+        if m is None:
+            return set()
+        block = self.world_to_block(map_id, start)
+        block = _empty_target(m["grid"], m["grid_w"], m["grid_h"], block)
+        if block is None:
+            return set()
+        found = {block}
+        queue = deque([block])
+        while queue:
+            x, y = queue.popleft()
+            for nxt in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
+                if nxt in found or _blocked(m["grid"], m["grid_w"], m["grid_h"], *nxt):
+                    continue
+                found.add(nxt)
+                queue.append(nxt)
+        return found
+
+    def coverage_stations(self, map_id, start, stride_world=(320, 240)):
+        component = self.reachable_blocks(map_id, start)
+        if not component:
+            return []
+        stride_x = max(1, math.ceil(float(stride_world[0]) / 20.0))
+        stride_y = max(1, math.ceil(float(stride_world[1]) / 20.0))
+        buckets = {}
+        for block in component:
+            key = ((block[0] - 1) // stride_x, (block[1] - 1) // stride_y)
+            buckets.setdefault(key, []).append(block)
+
+        selected = {}
+        for (bucket_x, bucket_y), blocks in buckets.items():
+            center_x = bucket_x * stride_x + (stride_x + 1) / 2.0
+            center_y = bucket_y * stride_y + (stride_y + 1) / 2.0
+            selected[(bucket_x, bucket_y)] = min(
+                blocks,
+                key=lambda p: ((p[0] - center_x) ** 2 + (p[1] - center_y) ** 2,
+                               p[1], p[0]),
+            )
+
+        ordered = []
+        row_keys = sorted({key[1] for key in selected})
+        for row_index, bucket_y in enumerate(row_keys):
+            keys = sorted((key for key in selected if key[1] == bucket_y),
+                          key=lambda key: key[0], reverse=bool(row_index % 2))
+            ordered.extend(self.block_to_world(map_id, selected[key]) for key in keys)
+        return ordered
+
+    def nearest_walkable_world(self, map_id, point, reachable_from):
+        component = self.reachable_blocks(map_id, reachable_from)
+        if not component:
+            return None
+        target = self.world_to_block(map_id, point)
+        nearest = min(component,
+                      key=lambda p: ((p[0] - target[0]) ** 2 + (p[1] - target[1]) ** 2,
+                                     p[1], p[0]))
+        return self.block_to_world(map_id, nearest)
+
+    def map_fingerprint(self, map_id):
+        entry = self.index.get(int(map_id))
+        if entry is None:
+            return None
+        offset, size = entry
+        if offset < 0 or size < 1 or offset + size > len(self.data):
+            return None
+        return f"{zlib.crc32(self.data[offset:offset + size]) & 0xffffffff:08x}"
+
+    def find_world_path(self, map_id, start, target):
+        m = self.get(map_id)
+        if m is None:
+            return None
+        to_block = lambda p: self.world_to_block(map_id, p)
         blocks = find_local_path(m["grid"], m["grid_w"], m["grid_h"],
                                  to_block(start), to_block(target))
         if blocks is None:
             return None
-        result = [(bx * 20 - 10 + left, by * 20 - 10 + top) for bx, by in blocks]
+        result = [self.block_to_world(map_id, block) for block in blocks]
         target_block = to_block(target)
         if blocks and blocks[-1] == target_block and not _blocked(
                 m["grid"], m["grid_w"], m["grid_h"], *target_block):
