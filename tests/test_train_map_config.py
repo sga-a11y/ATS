@@ -15,8 +15,8 @@ class TestTrainMapConfig(unittest.TestCase):
 
         entry = maps[20801]
         self.assertEqual(len(entry["safe"]), len(entry["mobs"]))
-        self.assertEqual(len(entry["mobs"]), 9)
-        self.assertIn((2510, 1670), entry["mobs"])
+        self.assertEqual(len(entry["mobs"]), 10)
+        self.assertIn((1150, 1710), entry["mobs"])
         self.assertTrue(all(
             math.dist(safe, mob) <= 600
             for safe, mob in zip(entry["safe"], entry["mobs"])
