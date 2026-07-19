@@ -48,6 +48,17 @@ class TestSmartWorldRouter(unittest.TestCase):
         )
         self.assertFalse(os.path.exists(self.cache.path + ".tmp"))
 
+    def test_route_without_safe_stops_at_final_warp_arrival(self):
+        route = self.router.build_route(20801, None)
+
+        self.assertEqual(route["city"], 20001)
+        self.assertEqual(
+            [leg["target_scene"] for leg in route["legs"]],
+            [20000, 20801],
+        )
+        self.assertIsNone(route["safe"])
+        self.assertEqual(route["final_paths"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

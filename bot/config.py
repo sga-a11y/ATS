@@ -59,7 +59,12 @@ def _load_train_maps():
         for k, v in d.get("maps", {}).items():
             s = v["safe"]
             # safe = [[x,y],...] (nhieu diem) HOAC [x,y] (1 diem, format cu) -> chuan hoa LIST diem
-            safes = [tuple(p) for p in s] if (s and isinstance(s[0], (list, tuple))) else [tuple(s)]
+            if not s:
+                safes = []
+            elif isinstance(s[0], (list, tuple)):
+                safes = [tuple(p) for p in s]
+            else:
+                safes = [tuple(s)]
             out[int(k)] = {"safe": safes, "mobs": [tuple(m) for m in v.get("mobs", [])]}
     except Exception:
         pass
