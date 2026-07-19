@@ -109,10 +109,11 @@ def execute_smart_route(client, route, abort=None, flee=True):
     if not client.running or (abort and abort()):
         client._smart_route_failure = "aborted"
         return False
-    client.navigate_to(*route["safe"], abort=abort, flee=flee)
-    if not client.running or (abort and abort()):
-        client._smart_route_failure = "aborted"
-        return False
+    if route["safe"] is not None:
+        client.navigate_to(*route["safe"], abort=abort, flee=flee)
+        if not client.running or (abort and abort()):
+            client._smart_route_failure = "aborted"
+            return False
     if client.current_map != route["dest_map"]:
         client._smart_route_failure = "unexpected_scene"
         return False
@@ -4331,16 +4332,18 @@ class GameClient:
         router = _smart_world_router()
         if router is None:
             return None
-        return router.build_route(int(dest_map), tuple(safe))
+        target = None if safe is None else tuple(safe)
+        return router.build_route(int(dest_map), target)
 
     def follow_smart_route(self, dest_map: int, safe, abort=None, flee=True) -> bool:
         """Teleport to the best city, then traverse only verified scene gates."""
         dest_map = int(dest_map)
-        safe = (int(safe[0]), int(safe[1]))
+        safe = None if safe is None else (int(safe[0]), int(safe[1]))
         if not self.running or (abort and abort()):
             return False
         if self.current_map == dest_map:
-            self.navigate_to(*safe, abort=abort, flee=flee)
+            if safe is not None:
+                self.navigate_to(*safe, abort=abort, flee=flee)
             return self.running and self.current_map == dest_map
 
         router = _smart_world_router()
@@ -4374,8 +4377,12 @@ class GameClient:
                 return False
 
             if execute_smart_route(self, route, abort=abort, flee=flee):
-                log.info("[%s] smart route reached safe (%d,%d)",
-                         self._label, safe[0], safe[1])
+                if safe is None:
+                    log.info("[%s] smart route reached map %s arrival",
+                             self._label, dest_map)
+                else:
+                    log.info("[%s] smart route reached safe (%d,%d)",
+                             self._label, safe[0], safe[1])
                 return True
             if self._smart_route_failure != "unexpected_scene" or attempt:
                 return False

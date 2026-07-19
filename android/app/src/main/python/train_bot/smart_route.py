@@ -7,6 +7,8 @@ import tempfile
 
 
 def _route_key(dest_map, safe):
+    if safe is None:
+        return f"{int(dest_map)}:arrival"
     return f"{int(dest_map)}:{int(safe[0])},{int(safe[1])}"
 
 
@@ -71,7 +73,7 @@ class SmartWorldRouter:
 
     def build_route(self, dest_map, safe):
         dest_map = int(dest_map)
-        safe = (int(safe[0]), int(safe[1]))
+        safe = None if safe is None else (int(safe[0]), int(safe[1]))
         cached = self.cache.get(dest_map, safe, self.nav.fingerprint)
         if cached is not None:
             return cached
@@ -126,7 +128,7 @@ class SmartWorldRouter:
                 return None
 
         final_paths = {}
-        if start is not None:
+        if start is not None and safe is not None:
             path = self.ground.find_world_path(dest_map, start, safe)
             if path is None:
                 return None
@@ -134,7 +136,7 @@ class SmartWorldRouter:
             final_paths[_start_key(start)] = [list(point) for point in path]
         return {
             "dest_map": dest_map,
-            "safe": list(safe),
+            "safe": list(safe) if safe is not None else None,
             "city": candidate["city"],
             "flag": candidate["flag"],
             "arrival": list(candidate["arrival"]),

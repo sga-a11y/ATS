@@ -35,15 +35,24 @@ class TestAndroidMobScanParity(unittest.TestCase):
         self.assertEqual(android, desktop)
 
     def test_android_contains_shared_scanner_cache_and_packet_hook(self):
-        for name in ("mob_scanner.py", "mob_spots.py", "client.py"):
+        for name in ("mob_scanner.py", "mob_spots.py", "smart_route.py", "client.py"):
             self.assertTrue(os.path.isfile(
                 os.path.join("android/app/src/main/python/train_bot", name)
             ))
         with open("android/app/src/main/python/train_bot/run_party_digioi.py", encoding="utf-8") as fh:
             coordinator = fh.read()
         self.assertIn("_resolve_train_mob_centers", coordinator)
+        self.assertIn("_resolve_train_safe", coordinator)
+        self.assertIn("_capture_arrival_safe", coordinator)
         self.assertIn("from .mob_scanner import scan_full_map", coordinator)
         self.assertIn("from . import mob_spots", coordinator)
+        with open("android/app/src/main/python/train_bot/mob_spots.py", encoding="utf-8") as fh:
+            cache = fh.read()
+        self.assertIn("def load_safe", cache)
+        self.assertIn("def save_safe", cache)
+        with open("android/app/src/main/python/train_bot/smart_route.py", encoding="utf-8") as fh:
+            routing = fh.read()
+        self.assertIn("safe is None", routing)
 
 
 if __name__ == "__main__":

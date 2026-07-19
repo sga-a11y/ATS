@@ -364,6 +364,14 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
   Cache runtime `mob_spots.json` CHI luu cac tam `[x,y]` + metadata scan/fingerprint; KHONG luu
   entity, waypoint, polygon, bounding box hay trace. Android dung cung code/schema qua
   `tools/sync_apk_python.py`.
+- Safe map train khong can config san: smart route cho phep `safe=None`, di toi warp cuoi roi lay
+  `client.pos` do self-spawn server tra ve, project sang o walkable gan nhat va cache 1 diem `safe`
+  theo fingerprint trong `mob_spots.json`. Login san trong map KHONG duoc ghi de safe bang toa do bai.
+- Bug da xac nhan map `20801` (2026-07-19): JSON `"safe": []` bi loader cu chuan hoa thanh `[()]`;
+  coordinator vi the khong build smart route du `world_nav` co duong `20001 -> 20000 -> 20801`.
+  Member dau tien danh gia `route-less` va goi `stop_party`; cac nick con lai bao "MAT KET NOI"
+  chi la hau qua socket bi dong. Fix: empty safe giu nguyen `[]`, member cho plan cua leader khi
+  smart routing bat, leader hoc safe sau warp roi moi set rally.
 
 **Da giai ma Lua, khong can hook runtime:**
 - `LuaFileUtils.ReadFile` goi `CryptUtils.DeCrypt`; `ProjectSetting.cctor` cung cap AES/Rijndael
