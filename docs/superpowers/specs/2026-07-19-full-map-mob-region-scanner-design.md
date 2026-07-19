@@ -1,0 +1,183 @@
+# Full-map mob region scanner design
+
+## Goal
+
+Discover every observable monster roaming region on a normal training map without
+requiring `train_maps.json` points. The scanner favors completeness and accuracy
+over speed: it walks the whole reachable map, observes monsters until their patrol
+paths stabilize, groups overlapping patrols into training regions, chooses a safe
+reachable stand point, and caches the result for future logins.
+
+The implementation lives in the shared Python bot core so the Windows and Android
+builds use the same scanner and cache format.
+
+## Confirmed protocol evidence
+
+The design is based on existing capture
+`captures/bachai_route_20260716.pcap`:
+
+- S2C `0x07` body starts with `[00 00][entity 8B][map_id u16][x u16][y u16]`
+  and supplies an entity's initial position on a map.
+- S2C `0x06` subtype `01 00` contains
+  `[entity 8B][direction u8][x u16][y u16]` and supplies movement updates.
+- S2C `0x0c` rich records identify player entities. Moving entities without a
+  player record and with a repeating bounded route are monster candidates.
+- On map `11013`, five non-player moving entities repeat fixed waypoint sets.
+  Three occupy the overlapping region roughly `x=310..730, y=790..1110`, which
+  contains configured train points `(590,1010)` and `(450,810)`. This confirms
+  that a configured train point is a sample inside a roaming region, not the
+  complete spawn definition.
+
+`Ground.mmg` remains collision/passability data only. It is used to generate the
+coverage route and validate chosen points, not as a source of monster spawns.
+
+## User flow
+
+1. Training mode reaches the selected map using the existing world router.
+2. If a valid high-confidence cached scan exists, the bot skips scanning.
+3. Otherwise the bot enters full-map scan mode.
+4. Scan mode suppresses `combat_ready()` while scanning. If necessary it switches
+   channel once so the server resets combat-active state and roaming monsters do
+   not interrupt the scan.
+5. The bot walks the coverage route, waits at observation stations until nearby
+   monster routes stabilize, then continues.
+6. After all reachable coverage cells are visited, observations are grouped into
+   regions, ranked, validated against the collision map, and saved.
+7. The bot moves to the best region's recommended stand point, restores
+   combat-ready state, and starts normal training.
+
+Relogin and app restart reuse the cache. A rescan is required only when the cache
+is missing, incomplete, explicitly invalidated, or has a different map-data
+fingerprint.
+
+## Coverage route
+
+The scanner derives a connected walkable-cell graph from `Ground.mmg` and limits
+the scan to the connected component reachable from the map arrival position.
+Tiny isolated components that cannot be reached in normal play are ignored.
+
+Observation stations are selected with overlapping visibility coverage rather
+than visiting every 20-pixel block. Candidate stations are walkable cells on a
+coarse grid. The station spacing is conservative relative to the game viewport so
+that neighboring observation areas overlap. Stations are ordered in a serpentine
+coverage sweep, with existing smart A* navigation connecting each pair.
+
+If a station cannot be reached, the scanner records it as unreachable and
+continues. A scan is incomplete when a meaningful portion of the reachable map
+was skipped; incomplete scans are cached for diagnostics but are not used as a
+final high-confidence training result.
+
+## Observation and completion rules
+
+At each station the scanner records initial positions from `0x07` and movement
+positions from `0x06`, scoped by map id and scan session. Entity ids must never be
+joined across maps.
+
+The selected full-accuracy mode waits for route stabilization:
+
+- A monster candidate needs at least three valid position samples and at least
+  two distinct coordinates.
+- A route is stable when it has completed a repeat (a previously observed
+  waypoint/edge is revisited after covering its current unique waypoint set) and
+  no new waypoint has appeared during the quiet window.
+- The station completes when every currently observed monster candidate is stable
+  and no new candidate or waypoint appears during the quiet window.
+- A hard per-station timeout prevents infinite waits caused by players, unusual
+  NPCs, packet loss, or a monster that leaves visibility. Timed-out observations
+  are retained with lower confidence.
+- A second pass revisits stations that timed out or produced low-confidence edge
+  regions. The whole scan finishes only after the second pass or when all stations
+  are high confidence.
+
+Timeout and quiet-window constants will be configurable in the shared config with
+safe defaults. Full mode may take many minutes on a large map; correctness takes
+priority over a fixed duration.
+
+## Entity classification
+
+The scanner maintains per-session entity state:
+
+- Entities identified by rich `0x0c` player records are excluded.
+- The bot's own entity and known party entities are excluded.
+- Static entities are excluded because they do not provide a roaming route.
+- A remaining entity becomes a monster candidate only after repeated bounded
+  `0x06` movement or an initial `0x07` position followed by movement.
+- Implausible coordinates, cross-map updates, one-off movement, and routes larger
+  than a conservative maximum diameter are rejected or marked low confidence.
+
+This intentionally avoids depending on a monster template id that has not yet
+been confirmed in the protocol. Classification evidence and rejection reasons are
+kept in diagnostic output so later packet discoveries can improve it safely.
+
+## Region construction
+
+Each candidate first produces an individual patrol trace. Traces are merged into
+one training region when their buffered paths overlap or are separated by only a
+small walkable gap. The merge operates in collision-grid space so walls prevent
+two visually close patrols from becoming one region.
+
+Each saved region contains:
+
+- observed waypoint set and visit counts;
+- walkable buffered polygon/cell mask representing the observed roaming area;
+- member entity count observed during the scan;
+- bounding box and reachable recommended stand point;
+- completion/confidence metrics and source scan timestamps.
+
+The recommended stand point is a walkable medoid-like cell that maximizes coverage
+of member patrols, stays reachable from the map arrival component, and avoids
+walls. Existing configured train points are optional validation seeds: they can
+raise confidence when they fall inside a discovered region, but they neither
+create nor resize a region.
+
+## Region ranking
+
+Regions are ranked primarily by observed monster density and completeness, then by
+the quality of the stand point and travel cost. Existing battle block statistics
+may break ties, but lack of battle history must not prevent selection on a new
+map.
+
+The first implementation chooses the highest-ranked region automatically. The
+cache retains every region so later UI work can allow manual region selection
+without rescanning.
+
+## Cache
+
+Use a new versioned runtime file `mob_regions.json`, stored through the existing
+app-data abstraction and seeded as an Android asset where applicable. Top-level
+metadata includes schema version and map-data fingerprint. Each map entry includes
+scan status, timestamps, coverage statistics, settings used, and all regions.
+
+Writes are atomic (`.tmp` then replace). New observations merge conservatively
+with compatible cached data. A partial or interrupted scan remains resumable but
+is never labeled complete. A Ground/map fingerprint change invalidates geometric
+results for that map.
+
+## Failure handling
+
+- Missing `Ground.mmg`: report that full scan cannot cover the map; do not pretend
+  a complete result. Existing configured points remain a fallback if available.
+- Navigation failure: skip the station, mark coverage incomplete, and continue.
+- Battle starts during scan: finish/exit the battle through existing behavior,
+  keep collected data, and resume the current station.
+- Relogin/disconnect: persist progress and resume from the first unfinished
+  station after returning to the same map.
+- No monsters observed after complete coverage: cache a valid empty result with
+  evidence, but do not start a training loop at an arbitrary point.
+- Ambiguous moving entities: retain diagnostic traces separately and exclude them
+  from high-confidence regions.
+
+## Verification
+
+Tests will cover packet parsing, player exclusion, route stabilization, timeout,
+second-pass behavior, wall-aware region grouping, cache resume/invalidation, and
+best-point selection.
+
+An offline capture regression for map `11013` must recover the two observed patrol
+groups from the available capture segment. The lower-left region must contain the
+configured points `(590,1010)` and `(450,810)`. A live scan is considered valid
+only when its rendered overlay shows coverage stations, traces, region boundaries,
+and recommended points aligned with the decoded Ground map.
+
+Both Windows and Android builds must run the same unit tests for shared logic and
+ship the same cache schema/config defaults.
