@@ -73,6 +73,10 @@ def _resolve_train_safe(client, map_id, configured_safes):
     return _nearest_safe(getattr(client, "pos", None), valid)
 
 
+def _needs_train_safe_bootstrap(login_map, map_id, train_safes):
+    return login_map == map_id and not train_safes
+
+
 def _capture_arrival_safe(client, map_id, came_from_other_map):
     if not came_from_other_map or client.current_map != map_id or not client.pos:
         return None
@@ -420,7 +424,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     else ("stand" if sc == 0 else "city")))
         train_on_map = (mode == "train") and (tm is not None)
         is_digioi = (mode == "digioi")
-        started_on_train_map = login_map == sc
         train_safes = []
         if tm is not None:
             resolved_safe = _resolve_train_safe(c, sc, tm.get("safe", []))
@@ -830,7 +833,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         via_route = False   # True neu toi train map bang KEO PARTY -> da cung kenh + da danh dungeon o thanh
         if train_on_map:
             # PHAI dung map login (toa do safe/mobs chi dung tren map do).
-            self_map_ok = (login_map == sc)
+            self_map_ok = (
+                login_map == sc
+                and not _needs_train_safe_bootstrap(login_map, sc, train_safes)
+            )
             def _quit():
                 # NGUYEN TAC TOI THUONG: DU FULL PARTY MOI TRAIN -> n_members KHONG BAO GIO tru. Member
                 # thoat (rot server / van / het gio) thi leader DUNG CHO no ve, KHONG keo le. Truoc day
@@ -983,7 +989,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             mobs = configured_mobs
             if is_leader:
                 learned_safe = _capture_arrival_safe(
-                    c, sc, came_from_other_map=not started_on_train_map
+                    c, sc, came_from_other_map=via_route
                 )
                 if learned_safe is not None:
                     train_safes[:] = [learned_safe]

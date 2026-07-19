@@ -75,6 +75,21 @@ class TestTrainSafePolicy(unittest.TestCase):
         self.assertIsNone(safe)
         save.assert_not_called()
 
+    def test_login_on_target_map_without_safe_requires_bootstrap(self):
+        self.assertTrue(
+            coordinator._needs_train_safe_bootstrap(20801, 20801, [])
+        )
+
+    def test_known_safe_or_other_login_map_skips_bootstrap(self):
+        self.assertFalse(
+            coordinator._needs_train_safe_bootstrap(
+                20801, 20801, [(4120, 2520)]
+            )
+        )
+        self.assertFalse(
+            coordinator._needs_train_safe_bootstrap(12001, 20801, [])
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

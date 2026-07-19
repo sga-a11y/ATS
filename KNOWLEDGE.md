@@ -367,6 +367,9 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
 - Safe map train khong can config san: smart route cho phep `safe=None`, di toi warp cuoi roi lay
   `client.pos` do self-spawn server tra ve, project sang o walkable gan nhat va cache 1 diem `safe`
   theo fingerprint trong `mob_spots.json`. Login san trong map KHONG duoc ghi de safe bang toa do bai.
+- Neu login san dung map train nhung ca cache lan config deu chua co safe, coordinator coi acc la
+  chua toi dich: ca party ve thanh, lap lai party va di tron smart route qua warp cuoi. Chi khi
+  `via_route=True` moi hoc `client.pos` sau warp lam safe; vi tri login ban dau tuyet doi khong duoc dung.
 - Bug da xac nhan map `20801` (2026-07-19): JSON `"safe": []` bi loader cu chuan hoa thanh `[()]`;
   coordinator vi the khong build smart route du `world_nav` co duong `20001 -> 20000 -> 20801`.
   Member dau tien danh gia `route-less` va goi `stop_party`; cac nick con lai bao "MAT KET NOI"
