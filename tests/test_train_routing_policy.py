@@ -4,6 +4,7 @@ import sys
 _argv = sys.argv
 try:
     sys.argv = ["run_party_digioi.py"]
+    import run_party_digioi as coordinator
     from run_party_digioi import _travel_to_train_map
 finally:
     sys.argv = _argv
@@ -54,6 +55,19 @@ class TestTrainRoutingPolicy(unittest.TestCase):
             _travel_to_train_map(client, 14821, (1230, 470), None)
         )
         self.assertNotIn("go_to_town:14821", client.calls)
+
+    def test_missing_safe_still_attempts_smart_route(self):
+        client = RecordingClient(smart_result=True)
+
+        self.assertTrue(_travel_to_train_map(client, 20801, None, None))
+        self.assertEqual(client.calls, ["smart"])
+
+    def test_member_waits_for_leader_route_when_safe_is_unknown(self):
+        self.assertTrue(
+            coordinator._train_route_available(
+                smart_route=None, legacy_route=None, has_leader=True
+            )
+        )
 
 
 if __name__ == "__main__":

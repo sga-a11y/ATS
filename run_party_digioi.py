@@ -61,6 +61,38 @@ def _nearest_safe(pos, safes):
     return min(safes, key=lambda s: (s[0] - px) ** 2 + (s[1] - py) ** 2)
 
 
+def _resolve_train_safe(client, map_id, configured_safes):
+    ground = client.get_ground_store()
+    fingerprint = ground.map_fingerprint(map_id) if ground is not None else None
+    if fingerprint:
+        cached = mob_spots.load_safe(map_id, fingerprint)
+        if cached is not None:
+            return cached
+    valid = [tuple(map(int, point)) for point in configured_safes or ()
+             if len(point) == 2]
+    return _nearest_safe(getattr(client, "pos", None), valid)
+
+
+def _capture_arrival_safe(client, map_id, came_from_other_map):
+    if not came_from_other_map or client.current_map != map_id or not client.pos:
+        return None
+    ground = client.get_ground_store()
+    if ground is None:
+        return None
+    fingerprint = ground.map_fingerprint(map_id)
+    if not fingerprint:
+        return None
+    arrival = tuple(map(int, client.pos))
+    safe = ground.nearest_walkable_world(map_id, arrival, arrival)
+    if safe is None:
+        return None
+    safe = tuple(map(int, safe))
+    mob_spots.save_safe(map_id, fingerprint, safe)
+    log.info("[%s] map %s hoc safe sau warp = %s",
+             getattr(client, "_label", ""), map_id, safe)
+    return safe
+
+
 def _travel_to_train_map(client, map_id, safe, legacy_route, abort=None):
     """Prefer generated navigation; retain handwritten routes as validation fallback."""
     if client.follow_smart_route(map_id, safe, abort=abort):
@@ -69,6 +101,14 @@ def _travel_to_train_map(client, map_id, safe, legacy_route, abort=None):
         return client.follow_route(legacy_route)
     log.error("[%s] khong co smart route toi map %s", client._label, map_id)
     return False
+
+
+def _train_route_available(smart_route, legacy_route, has_leader):
+    return bool(
+        smart_route
+        or legacy_route
+        or (has_leader and getattr(config, "SMART_WORLD_ROUTING", True))
+    )
 
 
 def _resolve_train_mob_centers(client, map_id, train_map, stop=None):
@@ -380,6 +420,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     else ("stand" if sc == 0 else "city")))
         train_on_map = (mode == "train") and (tm is not None)
         is_digioi = (mode == "digioi")
+        started_on_train_map = login_map == sc
+        train_safes = []
+        if tm is not None:
+            resolved_safe = _resolve_train_safe(c, sc, tm.get("safe", []))
+            if resolved_safe is not None:
+                train_safes.append(resolved_safe)
         log.info("[%s] (%s) MODE=%s start_city=%s", label, role, mode, sc)
 
         def _dg_remain_minutes():
@@ -453,31 +499,31 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 try: c.go_to_town(sc, city_flag)                       # ve thanh config
                 except Exception: pass
             elif train_on_map:
-                if login_map == sc and tm and tm.get("safe"):
-                    c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))   # dang o bai -> ra diem safe
+                if login_map == sc and train_safes:
+                    c.navigate_to(*_nearest_safe(c.pos, train_safes))   # dang o bai -> ra diem safe
                 else:
                     try: c.teleport(12001, 0)                          # sai map -> ve Trac Quan (route keo ra sau)
                     except Exception: pass
-            elif mode == "stand" and tm and tm.get("safe") and login_map == sc:
-                c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))       # stand map co safe -> ra safe
+            elif mode == "stand" and train_safes and login_map == sc:
+                c.navigate_to(*_nearest_safe(c.pos, train_safes))       # stand map co safe -> ra safe
             # stand map la / khong co safe -> lam dailies tai cho (ke me)
             c.claim_daily_quests()
-        elif is_reconnect and train_on_map and tm and tm.get("safe"):
+        elif is_reconnect and train_on_map and train_safes:
             if login_map == sc:
-                c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))   # reconnect + dang o bai -> ra safe cho keo
+                c.navigate_to(*_nearest_safe(c.pos, train_safes))   # reconnect + dang o bai -> ra safe cho keo
             else:
                 # RECONNECT login lai o MAP KHAC train map (truoc khi rot member da teleport di lam
                 # daily dungeon -> login = vi tri logout, van o thanh do). KHONG duoc THOAT oan.
                 _rt = getattr(config, "TRAIN_ROUTES", {}).get(sc)
-                _route_safe = _nearest_safe(c.pos, tm["safe"])
+                _route_safe = _nearest_safe(c.pos, train_safes)
                 _smart_rt = None
                 if is_leader:
                     try:
-                        _smart_rt = c.build_smart_route(sc, _route_safe)
+                        if getattr(config, "SMART_WORLD_ROUTING", True):
+                            _smart_rt = c.build_smart_route(sc, _route_safe)
                     except Exception as e:
                         log.warning("[%s] reconnect: loi build smart route: %s", label, e)
-                _smart_possible = bool(_route_safe and getattr(config, "SMART_WORLD_ROUTING", True))
-                if _smart_rt or _rt or (has_leader and _smart_possible):
+                if _train_route_available(_smart_rt, _rt, has_leader):
                     # sc la TRAIN MAP di bang ROUTE (qua cong) - KHONG phai thanh, teleport thang toi
                     # sc se FAIL (bug cu: go_to_town(20821) spam 60s roi hut). De khoi reform ben
                     # duoi (barrier + _do_reform) keo qua route; member cho leader keo (khong THOAT).
@@ -495,7 +541,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         time.sleep(1)
                     if c.current_map == sc:
                         login_map = sc                       # -> self_map_ok=True ben duoi, khong THOAT
-                        c.navigate_to(*_nearest_safe(c.pos, tm["safe"]))
+                        c.navigate_to(*_nearest_safe(c.pos, train_safes))
 
         # BARRIER login-dailies (mode KHAC digioi): CHO CA PARTY xong daily quest (world boss cham
         # + teleport ve Trac Quan) TRUOC khi sync kenh + lap party. Tranh leader sync kenh/moi khi
@@ -577,7 +623,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 (di thang ra spot luon vi khong con buoc nao khac lo tiep)."""
             route2 = getattr(config, "TRAIN_ROUTES", {}).get(sc)
             route_safe = st.get("rally_point") or (
-                tm["safe"][0] if tm and tm.get("safe") else None
+                train_safes[0] if train_safes else None
             )
             spot = st.get("mob_spot")
             _g0 = st["reform_gen"]   # gen reform DANG xu; co gen MOI hon (acc khac van) -> abort keo, quay lai xu
@@ -591,7 +637,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 with st["lock"]:
                     st["route_plan"] = None
                 try:
-                    smart_route2 = c.build_smart_route(sc, route_safe) if route_safe else None
+                    if getattr(config, "SMART_WORLD_ROUTING", True):
+                        smart_route2 = c.build_smart_route(sc, route_safe)
                 except Exception as e:
                     log.warning("[%s] reform: loi build smart route: %s", label, e)
                     smart_route2 = None
@@ -730,7 +777,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # tinh toan de an toan). to_spot=False (goi tu login sai map) -> DUNG o day, de flow
                 # chung ben duoi (lap party binh thuong + _start_training) tu di tiep ra spot.
                 if c.current_map == sc and not _ab():
-                    rally2 = st.get("rally_point") or (tm["safe"][0] if tm and tm.get("safe") else None)
+                    rally2 = st.get("rally_point") or (
+                        train_safes[0] if train_safes else None
+                    )
                     if rally2:
                         c.navigate_to(*_jitter(rally2), flee=False, abort=_ab)
                     if to_spot and not _ab():
@@ -805,16 +854,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # truoc khi ra spot) de sot cho kia, gay bug "di thang xuyen tuong tu cong ra spot".
             route = getattr(config, "TRAIN_ROUTES", {}).get(sc)
             _startup_safe = st.get("rally_point") or (
-                tm["safe"][0] if tm and tm.get("safe") else None
+                train_safes[0] if train_safes else None
             )
             smart_route = None
             if is_leader:
                 try:
-                    smart_route = c.build_smart_route(sc, _startup_safe) if _startup_safe else None
+                    if getattr(config, "SMART_WORLD_ROUTING", True):
+                        smart_route = c.build_smart_route(sc, _startup_safe)
                 except Exception as e:
                     log.warning("[%s] startup: loi build smart route: %s", label, e)
-            smart_possible = bool(_startup_safe and getattr(config, "SMART_WORLD_ROUTING", True))
-            route_available = bool(smart_route or route or (has_leader and smart_possible))
+            route_available = _train_route_available(smart_route, route, has_leader)
             if route_available and has_leader:
                 expected = len(party_accounts(pidx))
                 all_on_map = _party_map_barrier(st, username, self_map_ok, expected, _stopped)
@@ -933,6 +982,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             configured_mobs = [tuple(point) for point in tm.get("mobs", [])]
             mobs = configured_mobs
             if is_leader:
+                learned_safe = _capture_arrival_safe(
+                    c, sc, came_from_other_map=not started_on_train_map
+                )
+                if learned_safe is not None:
+                    train_safes[:] = [learned_safe]
+                if not train_safes:
+                    st["leader_bad"].set()
+                    _reason("khong lay duoc safe sau warp vao map %s" % sc)
+                    log.warning("[%s] (LEADER) khong lay duoc safe sau warp vao map %s -> TAT PARTY",
+                                label, sc)
+                    stop_party(pidx); _quit(); return
                 mobs = _resolve_train_mob_centers(c, sc, tm, stop=_stopped)
                 if mob_index < 0 and mobs:
                     import random
@@ -948,7 +1008,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 path = (getattr(config, "MOB_PATHS", {}).get(sc, {}).get(tuple(spot))
                         if spot and tuple(spot) in configured_mobs else None)
                 st["mob_path"] = path
-                st["rally_point"] = (_nearest_safe(spot, tm["safe"]) if spot else tm["safe"][0])
+                st["rally_point"] = (
+                    _nearest_safe(spot, train_safes) if spot else train_safes[0]
+                )
                 st["rally_ready"].set()
             # member: cho leader chon (rally_point/path); khong co leader -> safe[0]
             if has_leader and not is_leader:
@@ -960,7 +1022,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # ngay luc nay - vi party CHUA lap (member chua join) -> keo cung vo ich (member khong bi
             # keo theo, leader chay ra spot 1 minh roi quay ve). Sau khi LAP PARTY xong, _start_training
             # moi cho leader follow_path KEO CA PARTY (da join, dang o rally) ra spot.
-            rally = st.get("rally_point") or tm["safe"][0]
+            rally = st.get("rally_point") or (
+                train_safes[0] if train_safes else None
+            )
+            if rally is None:
+                _reason("khong co safe de tap ket tren map %s" % sc)
+                _quit(); return
             log.info("[%s] (%s) MAP-TRAIN map=%s -> ve safe tap ket chung %s (lap party TRUOC, keo ra spot SAU)",
                      label, role, sc, rally)
             c.navigate_to(*_jitter(rally))
@@ -1366,7 +1433,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         #  - member train co bot-leader: CHO leader ve safe (stop_leader_done) roi moi dong
         #    -> ca party thoat cung luc, KHONG bi member thoat truoc.
         if is_leader and train_on_map:
-            c._return_safe_on_stop = tm["safe"]
+            c._return_safe_on_stop = train_safes
         elif (not is_leader) and train_on_map and has_leader:
             c._wait_leader_on_stop = True
         while c.running:
@@ -1385,7 +1452,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # LEADER dang cay ngoai diem quai -> chay ve diem safe GAN NHAT TRUOC,
                     # roi BAO HIEU (stop_leader_done) de member moi thoat theo.
                     if train_on_map:
-                        dest = _nearest_safe(c.pos, tm["safe"])
+                        dest = _nearest_safe(c.pos, train_safes)
                         if dest:
                             log.info("[%s] (LEADER) STOP -> chay ve safe gan nhat %s truoc khi thoat",
                                      label, dest)
@@ -1414,8 +1481,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (%s) dong doi ROT %s -> TAM DUNG cho reconnect",
                                 label, role, list(st["reconnecting"]))
                     c.flee_mode = True
-                    if train_on_map and tm and tm.get("safe"):   # train: ve rally dung cho
-                        rally = st.get("rally_point") or _nearest_safe(c.pos, tm["safe"]) or tm["safe"][0]
+                    if train_on_map and train_safes:   # train: ve rally dung cho
+                        rally = st.get("rally_point") or _nearest_safe(c.pos, train_safes)
                         if rally:
                             try: c.navigate_to(*_jitter(rally))
                             except Exception: pass
@@ -1436,16 +1503,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if train_on_map:
                         _route_r = getattr(config, "TRAIN_ROUTES", {}).get(sc)
                         _reconnect_safe = st.get("rally_point") or (
-                            tm["safe"][0] if tm and tm.get("safe") else None
+                            train_safes[0] if train_safes else None
                         )
                         _smart_r = None
                         if is_leader:
                             try:
-                                _smart_r = c.build_smart_route(sc, _reconnect_safe) if _reconnect_safe else None
+                                if getattr(config, "SMART_WORLD_ROUTING", True):
+                                    _smart_r = c.build_smart_route(sc, _reconnect_safe)
                             except Exception as e:
                                 log.warning("[%s] reconnect: loi build smart route: %s", label, e)
-                        _smart_possible = bool(_reconnect_safe and getattr(config, "SMART_WORLD_ROUTING", True))
-                        if _smart_r or _route_r or (has_leader and _smart_possible):  # auto primary, legacy fallback
+                        if _train_route_available(_smart_r, _route_r, has_leader):
                             try: _do_reform()
                             except Exception as e: log.warning("[%s] reconnect reform loi: %s", label, e)
                         elif c.current_map != sc:                # route-less + MINH lech map -> TAT CA PARTY
@@ -1511,7 +1578,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     and time.time() - last_combat > 60 and time.time() - last_relogin > 60):
                 last_relogin = time.time()
                 relogin_cnt += 1
-                rally = st.get("rally_point") or _nearest_safe(c.pos, tm["safe"]) or tm["safe"][0]
+                rally = st.get("rally_point") or _nearest_safe(c.pos, train_safes)
                 spot = st.get("mob_spot")
                 log.warning("[%s] (LEADER) >90s KHONG battle -> ve safe %s + RELOGIN (lan %d) de resync vi tri",
                             label, rally, relogin_cnt)
