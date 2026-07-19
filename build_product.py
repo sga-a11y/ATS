@@ -118,7 +118,6 @@ def package():
            "--follow-imports",
            "--output-dir=" + WORK,
            "--output-filename=" + NAME + ".exe",
-           "--remove-output",                 # don file trung gian sau build
            "gui.py"]                          # CHAY TU cwd=STAGE -> bot = _stage/bot (config example),
     #                                           KHONG lay nham bot THAT o ROOT (tranh lo credential).
     # Buoc nen onefile (zstd) chay NHIEU worker theo so CPU, moi worker ngon RAM lon -> may dang

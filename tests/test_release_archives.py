@@ -1,4 +1,5 @@
 import os
+import inspect
 import tempfile
 import unittest
 import zipfile
@@ -8,6 +9,11 @@ import build_product
 
 
 class TestReleaseArchives(unittest.TestCase):
+    def test_nuitka_does_not_delete_locked_build_tree(self):
+        source = inspect.getsource(build_product.package)
+
+        self.assertNotIn("--remove-output", source)
+
     def test_drive_archive_is_ignored_by_git(self):
         with open(".gitignore", encoding="utf-8") as fh:
             ignored_paths = {line.strip() for line in fh if line.strip()}
