@@ -37,10 +37,15 @@ map, but its `safe` list may be empty.
 4. Project that arrival position to a walkable coordinate and atomically cache it.
 5. Use the learned point immediately as scan origin and party rally point.
 6. Scan monster patrols as before and store only center points plus the single safe point.
-7. On relogin already inside the train map, never overwrite safe with the relogin/combat position.
+7. On login already inside the train map with a cached/configured safe, never overwrite safe with
+   the login/combat position.
+8. On login already inside the train map with no safe at all, mark the map barrier incomplete so
+   the whole party returns to the route city, reforms, re-enters through the final warp, and learns
+   the actual arrival safe before scanning.
 
-If the actual arrival position is unavailable, retain the configured safe. If neither exists,
-stop the train attempt safely instead of inventing a coordinate.
+If the actual arrival position is unavailable after a real re-entry, retain the configured safe.
+If neither exists after that bootstrap route, stop the train attempt safely instead of inventing
+a coordinate.
 
 ## Cache and invalidation
 
@@ -60,6 +65,7 @@ same cache shape and fallback rules.
 - A map entry round-trips a single safe point and invalidates it on fingerprint change.
 - A transition into the target map captures and walkability-projects the arrival coordinate.
 - Starting already inside the target map does not overwrite a cached safe.
+- Starting already inside the target map without any safe forces a city-to-map bootstrap route.
 - A smart route with no destination safe ends at the final gate arrival without a final path.
 - Train mode with an empty configured `safe` uses the learned arrival safe for scan and rally.
 - Existing configured-safe routing, scanner policy, PC/Android parity, full suite, and both builds

@@ -204,3 +204,50 @@ Commit: `git add android/app/src/main/python KNOWLEDGE.md tests/test_android_mob
 - Root-cause coverage: the map 20801 `[()]` normalization bug and member-triggered party shutdown each have a regression test.
 - Placeholder scan: no deferred implementation or unnamed test remains.
 - Type consistency: all tasks use optional safe tuples, `load_safe`, `save_safe`, `_resolve_train_safe`, and `_capture_arrival_safe` consistently.
+
+---
+
+### Task 5: Bootstrap safe when the session starts inside the train map
+
+**Files:**
+- Modify: `run_party_digioi.py`
+- Modify: `tests/test_train_safe_policy.py`
+- Synchronize: `android/app/src/main/python/train_bot/run_party_digioi.py`
+
+**Interfaces:**
+- Produces: `_needs_train_safe_bootstrap(login_map, map_id, train_safes) -> bool`.
+- Consumes: existing party map barrier, `_do_reform`, optional-safe smart route, and arrival capture.
+
+- [ ] **Step 1: Write failing policy tests**
+
+Assert bootstrap is required only when login map equals the train map and both cached/configured
+safe lists are empty. Assert it is false for a known safe or for a session starting on another map.
+
+- [ ] **Step 2: Verify RED**
+
+Run: `python -m unittest tests.test_train_safe_policy -v`
+
+Expected: FAIL because `_needs_train_safe_bootstrap` does not exist.
+
+- [ ] **Step 3: Implement minimal coordinator change**
+
+Set initial `self_map_ok` false when `_needs_train_safe_bootstrap(...)` is true. This makes the
+existing party barrier invoke `_do_reform`, returning everyone to the route city and re-entering
+the map. Pass `came_from_other_map=via_route` to `_capture_arrival_safe`; `via_route` becomes true
+only after the current session actually completes a route/reform into the destination map.
+
+- [ ] **Step 4: Verify and synchronize**
+
+Run: `python -m unittest tests.test_train_safe_policy tests.test_train_routing_policy -v`
+
+Run: `python tools/sync_apk_python.py`
+
+Run: `python -m unittest tests.test_android_mob_scan_parity -v`
+
+- [ ] **Step 5: Full verification and builds**
+
+Run: `python -m unittest discover -s tests -v`
+
+Run: `python build_product.py --no-upload`
+
+Run from `android`: `.\gradlew.bat clean assembleDebug`
