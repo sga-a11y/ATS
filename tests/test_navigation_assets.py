@@ -42,6 +42,8 @@ class TestNavigationAssets(unittest.TestCase):
         self.assertIn("prepareSmartNavAssets", gradle)
         self.assertIn("world_nav.json", gradle)
         self.assertIn("gamedata/Ground.mmg", gradle)
+        self.assertIn("train_maps.json", gradle)
+        self.assertIn("from(trainMaps)", gradle)
         self.assertIn("SMART_WORLD_ROUTING = True", android_config)
         self.assertIn("WORLD_NAV_PATH", android_config)
         self.assertIn("GROUND_MAP_PATH", android_config)

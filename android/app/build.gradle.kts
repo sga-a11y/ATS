@@ -16,15 +16,17 @@ val generatedSmartNavAssets = layout.buildDirectory.dir("generated/smart-nav-ass
 val prepareSmartNavAssets by tasks.registering(Copy::class) {
     val worldNav = File(repositoryRoot, "world_nav.json")
     val ground = File(repositoryRoot, "gamedata/Ground.mmg")
-    inputs.files(worldNav, ground)
+    val trainMaps = File(repositoryRoot, "train_maps.json")
+    inputs.files(worldNav, ground, trainMaps)
     doFirst {
-        val missing = listOf(worldNav, ground).filterNot { it.isFile }
+        val missing = listOf(worldNav, ground, trainMaps).filterNot { it.isFile }
         check(missing.isEmpty()) {
             "Missing smart navigation assets: ${missing.joinToString { it.path }}"
         }
     }
     from(worldNav) { into("train_bot_data") }
     from(ground) { into("train_bot_data/gamedata") }
+    from(trainMaps) { into("train_bot_data") }
     into(generatedSmartNavAssets)
 }
 
