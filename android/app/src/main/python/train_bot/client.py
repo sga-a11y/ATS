@@ -5,6 +5,8 @@ import threading
 import time
 import logging
 import collections
+import json
+import os
 
 from . import config, protocol, combat, pathfind
 
@@ -707,6 +709,12 @@ class GameClient:
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._mob_observer = None
         self._mob_observer_lock = threading.Lock()
+        self._mob_capture_lock = threading.RLock()
+        self._mob_capture_target_map = None
+        self._mob_capture_path = None
+        self._mob_capture_file = None
+        self._mob_capture_count = 0
+        self._mob_capture_max_packets = 0
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
         self._pending_03 = None      # cache 0x03 self-spawn (resolve ten neu toi TRUOC 0x69)
         self.party_leader = None     # entity chu party (tu 0x0d sub=06)
@@ -882,6 +890,7 @@ class GameClient:
     def close(self):
         self._deliberate_close = True   # ta tu dong -> OSError trong recv KHONG phai server rot
         self.running = False
+        self.finish_mob_packet_capture()
         if self.sock:
             self.sock.close()
 
@@ -932,6 +941,60 @@ class GameClient:
         with self._mob_observer_lock:
             if self._mob_observer is observer:
                 self._mob_observer = None
+
+    def arm_mob_packet_capture(self, map_id, path=None, max_packets=50000):
+        self.finish_mob_packet_capture()
+        if path is None:
+            folder = getattr(config, "MOB_PACKET_CAPTURE_DIR", os.getcwd())
+            os.makedirs(folder, exist_ok=True)
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            path = os.path.join(folder, f"mob_packets_{int(map_id)}_{stamp}.jsonl")
+        with self._mob_capture_lock:
+            self._mob_capture_target_map = int(map_id)
+            self._mob_capture_path = os.path.abspath(path)
+            self._mob_capture_count = 0
+            self._mob_capture_max_packets = max(1, int(max_packets))
+        log.info("[%s] arm packet capture map %s -> %s", self._label, map_id, path)
+        return os.path.abspath(path)
+
+    def _capture_mob_packet(self, opcode, pkt):
+        with self._mob_capture_lock:
+            if (self._mob_capture_target_map is None
+                    or self.current_map != self._mob_capture_target_map
+                    or self._mob_capture_count >= self._mob_capture_max_packets):
+                return
+            if self._mob_capture_file is None:
+                folder = os.path.dirname(self._mob_capture_path)
+                if folder:
+                    os.makedirs(folder, exist_ok=True)
+                self._mob_capture_file = open(
+                    self._mob_capture_path, "w", encoding="utf-8"
+                )
+            record = {
+                "time": time.monotonic(),
+                "map_id": int(self.current_map),
+                "opcode": int(opcode),
+                "length": len(pkt),
+                "packet": bytes(pkt).hex(),
+            }
+            self._mob_capture_file.write(json.dumps(record, separators=(",", ":")) + "\n")
+            self._mob_capture_file.flush()
+            self._mob_capture_count += 1
+
+    def finish_mob_packet_capture(self):
+        with self._mob_capture_lock:
+            path = self._mob_capture_path
+            count = self._mob_capture_count
+            if self._mob_capture_file is not None:
+                self._mob_capture_file.close()
+            self._mob_capture_target_map = None
+            self._mob_capture_path = None
+            self._mob_capture_file = None
+            self._mob_capture_count = 0
+            self._mob_capture_max_packets = 0
+        if path:
+            log.info("[%s] packet capture xong: %d goi -> %s", self._label, count, path)
+        return path, count
 
     def _observe_mob_packet(self, opcode: int, pkt: bytes) -> None:
         with self._mob_observer_lock:
@@ -1014,6 +1077,8 @@ class GameClient:
                     # 1 goi loi KHONG duoc lam chet recv thread / nuot cac goi sau trong batch
                     # (vd response 0x57 nhan qua) -> bat rieng tung goi.
                     log.warning("[%s] Loi xu ly goi 0x%02x (bo qua): %s", self._label, opcode, e)
+                finally:
+                    self._capture_mob_packet(opcode, pkt)
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())

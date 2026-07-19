@@ -1,4 +1,7 @@
+import json
+import os
 import struct
+import tempfile
 import unittest
 from unittest import mock
 
@@ -101,6 +104,49 @@ class TestMobPacketObserver(unittest.TestCase):
         sentinel = object()
         with mock.patch("bot.client._ground_store", return_value=sentinel):
             self.assertIs(self.client.get_ground_store(), sentinel)
+
+    def test_raw_capture_ignores_packets_until_target_map_after_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "probe.jsonl")
+            self.client.current_map = 20000
+            self.client.arm_mob_packet_capture(20801, path=path)
+
+            before = frame(0x14, b"\x01\x00")
+            self.client._dispatch(0x14, before)
+            self.client._capture_mob_packet(0x14, before)
+
+            body = (b"\x00\x00" + self.client.self_entity + bytes(11)
+                    + struct.pack("<HHH", 20801, 4110, 2510))
+            arrival = frame(0x03, body)
+            self.client._dispatch(0x03, arrival)
+            self.client._capture_mob_packet(0x03, arrival)
+
+            after = frame(0x06, b"\x01\x00" + b"monster1" + b"\x03"
+                          + struct.pack("<HH", 4050, 2430))
+            self.client._dispatch(0x06, after)
+            self.client._capture_mob_packet(0x06, after)
+            saved_path, count = self.client.finish_mob_packet_capture()
+
+            self.assertEqual(saved_path, path)
+            self.assertEqual(count, 2)
+            with open(path, encoding="utf-8") as fh:
+                records = [json.loads(line) for line in fh]
+            self.assertEqual([record["opcode"] for record in records], [3, 6])
+            self.assertTrue(all(record["map_id"] == 20801 for record in records))
+            self.assertEqual(records[0]["packet"], arrival.hex())
+
+    def test_raw_capture_stops_at_packet_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "probe.jsonl")
+            self.client.current_map = 20801
+            self.client.arm_mob_packet_capture(20801, path=path, max_packets=1)
+            pkt = frame(0x14, b"\x01\x00")
+
+            self.client._capture_mob_packet(0x14, pkt)
+            self.client._capture_mob_packet(0x14, pkt)
+            _saved_path, count = self.client.finish_mob_packet_capture()
+
+            self.assertEqual(count, 1)
 
 
 if __name__ == "__main__":
