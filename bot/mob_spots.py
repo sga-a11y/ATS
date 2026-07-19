@@ -72,10 +72,44 @@ def load_complete_centers(map_id: int, fingerprint: str):
     return [tuple(map(int, point)) for point in entry.get("centers", [])]
 
 
+def load_safe(map_id: int, fingerprint: str):
+    safe = load_progress(map_id, fingerprint).get("safe")
+    if not isinstance(safe, list) or len(safe) != 2:
+        return None
+    try:
+        return int(safe[0]), int(safe[1])
+    except (TypeError, ValueError):
+        return None
+
+
+def save_safe(map_id: int, fingerprint: str, safe) -> None:
+    point = [int(safe[0]), int(safe[1])]
+    with _LOCK:
+        data = _load_unlocked()
+        maps = data.setdefault("maps", {})
+        key = str(int(map_id))
+        entry = maps.get(key, {})
+        if entry.get("fingerprint") != str(fingerprint):
+            entry = {
+                "fingerprint": str(fingerprint),
+                "status": "incomplete",
+                "coverage": {},
+                "settings": {},
+                "centers": [],
+            }
+        entry["safe"] = point
+        entry["updated_at"] = int(time.time())
+        maps[key] = entry
+        _write_unlocked(data)
+
+
 def _save(map_id, fingerprint, status, centers, coverage, settings) -> None:
     with _LOCK:
         data = _load_unlocked()
-        data.setdefault("maps", {})[str(int(map_id))] = {
+        maps = data.setdefault("maps", {})
+        key = str(int(map_id))
+        previous = maps.get(key, {})
+        entry = {
             "fingerprint": str(fingerprint),
             "status": str(status),
             "updated_at": int(time.time()),
@@ -83,6 +117,9 @@ def _save(map_id, fingerprint, status, centers, coverage, settings) -> None:
             "settings": dict(settings or {}),
             "centers": _points(centers),
         }
+        if previous.get("fingerprint") == str(fingerprint) and "safe" in previous:
+            entry["safe"] = previous["safe"]
+        maps[key] = entry
         _write_unlocked(data)
 
 

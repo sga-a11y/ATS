@@ -62,6 +62,22 @@ class TestMobSpotsCache(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.path))
         self.assertFalse(os.path.exists(self.path + ".tmp"))
 
+    def test_safe_round_trip_survives_incomplete_scan(self):
+        mob_spots.save_safe(20801, "ground1", (4110, 2510))
+        mob_spots.save_progress(
+            20801, "ground1", [0], [], {"total": 2}, {}
+        )
+
+        self.assertEqual(
+            mob_spots.load_safe(20801, "ground1"),
+            (4110, 2510),
+        )
+
+    def test_changed_fingerprint_invalidates_safe(self):
+        mob_spots.save_safe(20801, "ground1", (4110, 2510))
+
+        self.assertIsNone(mob_spots.load_safe(20801, "ground2"))
+
 
 if __name__ == "__main__":
     unittest.main()
