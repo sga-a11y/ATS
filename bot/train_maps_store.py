@@ -35,6 +35,11 @@ def merge_baseline(baseline: dict, local: dict | None) -> dict:
             continue
         if not isinstance(local_entry, dict) or not local_entry.get("mobs"):
             continue
+        local_mobs = local_entry.get("mobs") or []
+        local_safes = local_entry.get("safe") or []
+        if (local_mobs == baseline_entry.get("mobs")
+                and len(local_safes) != len(local_mobs)):
+            continue
         merged = deepcopy(baseline_entry)
         merged.update(deepcopy(local_entry))
         if "name" in baseline_entry:

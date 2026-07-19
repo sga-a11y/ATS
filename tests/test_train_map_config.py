@@ -1,5 +1,6 @@
 import json
 import ast
+import math
 import os
 import tempfile
 import unittest
@@ -12,9 +13,14 @@ class TestTrainMapConfig(unittest.TestCase):
     def test_rung_cuu_nguyen_has_promoted_safe_and_mob_centers(self):
         maps = config._load_train_maps()
 
-        self.assertEqual(maps[20801]["safe"], [(4050, 2430)])
-        self.assertEqual(len(maps[20801]["mobs"]), 9)
-        self.assertIn((2510, 1670), maps[20801]["mobs"])
+        entry = maps[20801]
+        self.assertEqual(len(entry["safe"]), len(entry["mobs"]))
+        self.assertEqual(len(entry["mobs"]), 9)
+        self.assertIn((2510, 1670), entry["mobs"])
+        self.assertTrue(all(
+            math.dist(safe, mob) <= 600
+            for safe, mob in zip(entry["safe"], entry["mobs"])
+        ))
 
     def test_empty_safe_list_stays_empty(self):
         with tempfile.TemporaryDirectory() as directory:

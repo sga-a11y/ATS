@@ -85,6 +85,30 @@ class TestTrainMapStore(unittest.TestCase):
         self.assertIn("2", merged["maps"])
         self.assertIn("3", merged["maps"])
 
+    def test_merge_repairs_old_safe_list_when_mobs_match_baseline(self):
+        baseline = {
+            "maps": {
+                "20801": {
+                    "name": "RCN1",
+                    "safe": [[100, 100], [300, 300]],
+                    "mobs": [[200, 200], [400, 400]],
+                }
+            }
+        }
+        local = {
+            "maps": {
+                "20801": {
+                    "name": "old",
+                    "safe": [[1, 1]],
+                    "mobs": [[200, 200], [400, 400]],
+                }
+            }
+        }
+
+        merged = merge_baseline(baseline, local)
+
+        self.assertEqual(merged["maps"]["20801"], baseline["maps"]["20801"])
+
 
 if __name__ == "__main__":
     unittest.main()

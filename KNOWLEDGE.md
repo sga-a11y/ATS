@@ -346,6 +346,10 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
   lay toa do lam candidate/seed, roi ket hop `Ground.mmg` + thong ke battle runtime de hoc diem train tot.
 
 **Vung quai hoc tu packet runtime (xac nhan 2026-07-19):**
+- Map `20801` xac nhan quai di chuyen dung S2C `0x16` subtype `02 00`, layout full packet
+  `[slot u16 LE][x u16 LE][y u16 LE]` tai offset `9:11`, `11:13`, `13:15`. Capture
+  `mob_packets_20801_20260720_011536.jsonl` co 693 mau cua 16 slot; parser `0x06` don le se
+  nhan 0 entity. Slot duoc doi thanh synthetic entity 8 byte trong moi phien probe.
 - S2C `0x07` sub `00 00` co layout
   `[entity 8B][map_id u16 LE][x u16 LE][y u16 LE]` (offset full packet:
   entity `9:17`, map `17:19`, x `19:21`, y `21:23`) -> vi tri entity luc vao tam nhin/map.
@@ -382,6 +386,15 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
   den safe thi dung yen, refresh kenh va ghi packet target-map trong 60 giay vao
   `mob_packets_<map>_<timestamp>.jsonl`. Cache `empty` khong con la ket qua terminal; mob point
   config (neu co) duoc dung thang. Safe fingerprint hop le chi hoc mot lan, relog khong ghi de.
+- Moi nhom patrol hoc duoc co mot rally safe rieng: BFS tren collision `Ground.mmg`, cach moi diem
+  quai da quan sat it nhat `200px`, gioi han `600px` duong walkable; neu khong tim duoc thi fallback
+  safe sau warp. Trong `train_maps.json`, `safe[i]` luon di cung `mobs[i]`.
+- Chi probe hoan tat va co du cap `safe/mob` moi duoc atomic-write vao `train_maps.json`; entry da co
+  `mobs` khong bi auto-learn ghi de. Coordinator cap nhat cung dict dang chay nen party dung safe moi
+  ngay trong phien hien tai. Android merge baseline asset vao file writable trong app data va giu lai
+  entry local da hoc qua relog/cap nhat app.
+- Replay `mob_packets_20801_20260720_012329.jsonl` (723 packet, 693 mau `0x16/0200`) tao du 9
+  cap cho Rung Cuu Nguyen 1; moi safe cach mau quai gan nhat `200.6-215.1px`.
 
 **Da giai ma Lua, khong can hook runtime:**
 - `LuaFileUtils.ReadFile` goi `CryptUtils.DeCrypt`; `ProjectSetting.cctor` cung cap AES/Rijndael
