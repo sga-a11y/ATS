@@ -48,6 +48,9 @@ class TestNavigationAssets(unittest.TestCase):
         self.assertIn("WORLD_NAV_PATH", android_config)
         self.assertIn("GROUND_MAP_PATH", android_config)
         self.assertIn("materializeSmartNavAssets()", service)
+        self.assertFalse(os.path.exists(
+            "android/app/src/main/assets/train_bot_data/train_maps.json"
+        ))
 
 
 if __name__ == "__main__":
