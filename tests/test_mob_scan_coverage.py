@@ -1,3 +1,4 @@
+import math
 import unittest
 
 from bot.pathfind import GroundMapStore
@@ -63,6 +64,31 @@ class TestMobScanCoverage(unittest.TestCase):
         self.assertIsNotNone(point)
         self.assertLess(point[0], 130)
         self.assertIsNotNone(self.store.find_world_path(99, (30, 30), point))
+
+    def test_nearest_walkable_outside_patrol_clearance(self):
+        hazards = [(90, 90), (110, 90)]
+
+        safe = self.store.nearest_walkable_outside(
+            99, (90, 90), hazards, clearance=40, max_path=120
+        )
+
+        self.assertIsNotNone(safe)
+        self.assertGreaterEqual(min(math.dist(safe, point) for point in hazards), 40)
+
+    def test_nearest_walkable_outside_does_not_cross_wall(self):
+        safe = self.store.nearest_walkable_outside(
+            99, (110, 90), [(110, 90)], clearance=60, max_path=160
+        )
+
+        self.assertIsNotNone(safe)
+        self.assertLess(safe[0], 130)
+
+    def test_nearest_walkable_outside_respects_path_limit(self):
+        safe = self.store.nearest_walkable_outside(
+            99, (90, 90), [(90, 90)], clearance=200, max_path=40
+        )
+
+        self.assertIsNone(safe)
 
     def test_map_fingerprint_changes_with_map_blob(self):
         before = self.store.map_fingerprint(99)
