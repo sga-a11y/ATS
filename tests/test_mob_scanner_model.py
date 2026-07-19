@@ -1,6 +1,6 @@
 import unittest
 
-from bot.mob_scanner import MobScanSession, compute_centers
+from bot.mob_scanner import MobScanSession, compute_centers, compute_regions
 
 
 def feed_cycle(session, entity, points, start=0.0):
@@ -24,6 +24,16 @@ class BlockingGround(ProjectingGround):
         if start[0] < 500 < target[0] or target[0] < 500 < start[0]:
             return None
         return [start, target]
+
+
+class SafeGround(ProjectingGround):
+    def __init__(self):
+        self.calls = []
+
+    def nearest_walkable_outside(self, map_id, center, hazards,
+                                 clearance, max_path):
+        self.calls.append((map_id, center, tuple(hazards), clearance, max_path))
+        return center[0] + 200, center[1]
 
 
 class TestMobScanSession(unittest.TestCase):
@@ -82,6 +92,18 @@ class TestMobScanSession(unittest.TestCase):
         self.assertFalse(self.session.station_stable(7.9))
         self.assertTrue(self.session.station_stable(8.1))
 
+    def test_probe_can_reduce_bounded_trace_without_full_loop(self):
+        entity = b"monster1"
+        self.session.observe_move(entity, 11013, 3900, 2400, 0.0)
+        self.session.observe_move(entity, 11013, 3990, 2490, 1.0)
+        self.session.observe_move(entity, 11013, 4040, 2450, 2.0)
+
+        centers = compute_centers(
+            self.session, None, (3990, 2490), now=2.0, stable_only=False
+        )
+
+        self.assertEqual([center.point for center in centers], [(3990, 2490)])
+
 
 class TestCenterComputation(unittest.TestCase):
     def _session(self):
@@ -117,6 +139,33 @@ class TestCenterComputation(unittest.TestCase):
 
         self.assertIn(center.point, {(320, 860), (440, 940), (540, 840)})
         self.assertEqual(center.monster_count, 1)
+
+    def test_regions_pair_each_center_with_safe_outside_all_traces(self):
+        session = self._session()
+        feed_cycle(session, b"monster1", [(310, 850), (430, 930), (530, 830)])
+        feed_cycle(session, b"monster2", [(1050, 430), (1150, 530), (1250, 430)])
+        ground = SafeGround()
+
+        regions = compute_regions(session, ground, (410, 1050), now=30.0)
+
+        self.assertEqual(len(regions), 2)
+        self.assertTrue(all(
+            region.safe[0] == region.center.point[0] + 200
+            for region in regions
+        ))
+        self.assertTrue(all(len(call[2]) == 6 for call in ground.calls))
+
+    def test_region_uses_fallback_safe_when_search_fails(self):
+        session = self._session()
+        feed_cycle(session, b"monster1", [(310, 850), (430, 930), (530, 830)])
+        ground = SafeGround()
+        ground.nearest_walkable_outside = lambda *_args, **_kwargs: None
+
+        regions = compute_regions(
+            session, ground, (410, 1050), fallback_safe=(100, 200), now=30.0
+        )
+
+        self.assertEqual(regions[0].safe, (100, 200))
 
 
 if __name__ == "__main__":

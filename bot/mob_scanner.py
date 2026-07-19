@@ -60,6 +60,12 @@ class CenterCandidate:
 
 
 @dataclass(frozen=True)
+class LearnedRegion:
+    center: CenterCandidate
+    safe: Point | None
+
+
+@dataclass(frozen=True)
 class ScanResult:
     status: str
     centers: tuple[CenterCandidate, ...]
@@ -146,6 +152,14 @@ class MobScanSession:
                 self.max_patrol_diameter,
             )]
 
+    def bounded_traces(self) -> list[PatrolTrace]:
+        with self._lock:
+            return [trace for trace in self._traces.values() if (
+                trace.sample_count >= self.min_samples
+                and len(trace.unique_points) >= 2
+                and trace.diameter <= self.max_patrol_diameter
+            )]
+
 
 def _closest_pair(a: PatrolTrace, b: PatrolTrace):
     return min(((math.dist(pa, pb), pa, pb)
@@ -167,6 +181,31 @@ def _can_merge(a: PatrolTrace, b: PatrolTrace, distance: float, ground,
     return walked <= distance * 1.5
 
 
+def _trace_groups(traces, distance: float, ground, map_id: int):
+    parent = list(range(len(traces)))
+
+    def find(index):
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(first, second):
+        first_root, second_root = find(first), find(second)
+        if first_root != second_root:
+            parent[second_root] = first_root
+
+    for index, first in enumerate(traces):
+        for other in range(index + 1, len(traces)):
+            if _can_merge(first, traces[other], distance, ground, map_id):
+                union(index, other)
+
+    groups = {}
+    for index, trace in enumerate(traces):
+        groups.setdefault(find(index), []).append(trace)
+    return list(groups.values())
+
+
 def _medoid(points: list[Point]) -> Point:
     unique = list(dict.fromkeys(points))
     return min(unique, key=lambda point: (
@@ -174,49 +213,71 @@ def _medoid(points: list[Point]) -> Point:
     ))
 
 
+def _center_candidate(group, ground, map_id: int,
+                      start: Point) -> CenterCandidate | None:
+    point = _medoid([point for trace in group for point in trace.unique_points])
+    if ground is not None:
+        point = ground.nearest_walkable_world(map_id, point, start)
+        if point is None:
+            return None
+    confidence = min(
+        1.0, 0.6 + 0.1 * sum(trace.repeated_edge_count for trace in group)
+    )
+    return CenterCandidate(tuple(map(int, point)), len(group), confidence)
+
+
 def compute_centers(session: MobScanSession, ground, start: Point,
-                    now: float | None = None) -> list[CenterCandidate]:
+                    now: float | None = None,
+                    stable_only: bool = True) -> list[CenterCandidate]:
     if now is None:
         import time
         now = time.monotonic()
-    traces = session.stable_traces(float(now))
+    traces = (session.stable_traces(float(now)) if stable_only
+              else session.bounded_traces())
     if not traces:
         return []
-
-    parent = list(range(len(traces)))
-
-    def find(i):
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
-
-    def union(a, b):
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[rb] = ra
-
-    for i, first in enumerate(traces):
-        for j in range(i + 1, len(traces)):
-            if _can_merge(first, traces[j], session.merge_distance,
-                          ground, session.map_id):
-                union(i, j)
-
-    groups = {}
-    for i, trace in enumerate(traces):
-        groups.setdefault(find(i), []).append(trace)
-
-    centers = []
-    for group in groups.values():
-        point = _medoid([point for trace in group for point in trace.unique_points])
-        if ground is not None:
-            point = ground.nearest_walkable_world(session.map_id, point, start)
-            if point is None:
-                continue
-        confidence = min(1.0, 0.6 + 0.1 * sum(t.repeated_edge_count for t in group))
-        centers.append(CenterCandidate(tuple(map(int, point)), len(group), confidence))
+    groups = _trace_groups(
+        traces, session.merge_distance, ground, session.map_id
+    )
+    centers = [
+        center for center in (
+            _center_candidate(group, ground, session.map_id, start)
+            for group in groups
+        ) if center is not None
+    ]
     return sorted(centers, key=lambda c: (-c.monster_count, -c.confidence,
                                           c.point[1], c.point[0]))
+
+
+def compute_regions(session: MobScanSession, ground, start: Point,
+                    fallback_safe: Point | None = None,
+                    now: float | None = None,
+                    stable_only: bool = True) -> list[LearnedRegion]:
+    now = time.monotonic() if now is None else float(now)
+    traces = (session.stable_traces(now) if stable_only
+              else session.bounded_traces())
+    if not traces:
+        return []
+    groups = _trace_groups(
+        traces, session.merge_distance, ground, session.map_id
+    )
+    hazards = [point for trace in traces for point in trace.unique_points]
+    regions = []
+    for group in groups:
+        center = _center_candidate(group, ground, session.map_id, start)
+        if center is None:
+            continue
+        safe = None
+        if ground is not None and hasattr(ground, "nearest_walkable_outside"):
+            safe = ground.nearest_walkable_outside(
+                session.map_id, center.point, hazards,
+                clearance=200, max_path=600,
+            )
+        regions.append(LearnedRegion(center, safe or fallback_safe))
+    return sorted(regions, key=lambda region: (
+        -region.center.monster_count, -region.center.confidence,
+        region.center.point[1], region.center.point[0],
+    ))
 
 
 def _merge_center_points(points, distance: float) -> list[Point]:
