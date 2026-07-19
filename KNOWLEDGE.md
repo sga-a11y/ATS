@@ -345,6 +345,26 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
 - Huong dung hop ly: dung `SceneFight_C.dat` de biet map nao co random encounter + level range,
   lay toa do lam candidate/seed, roi ket hop `Ground.mmg` + thong ke battle runtime de hoc diem train tot.
 
+**Vung quai hoc tu packet runtime (xac nhan 2026-07-19):**
+- S2C `0x07` sub `00 00` co layout
+  `[entity 8B][map_id u16 LE][x u16 LE][y u16 LE]` (offset full packet:
+  entity `9:17`, map `17:19`, x `19:21`, y `21:23`) -> vi tri entity luc vao tam nhin/map.
+- S2C `0x06` sub `01 00` co layout
+  `[entity 8B][direction u8][x u16 LE][y u16 LE]` (offset full packet:
+  entity `9:17`, direction `17`, x `18:20`, y `20:22`) -> entity di chuyen.
+- S2C `0x0c` rich record sub `00 00` (body thuong >=40B) la profile PLAYER; entity trong
+  record nay phai loai khoi mob scanner. Self entity + entity party cung phai loai.
+- Capture `captures/bachai_route_20260716.pcap`, map `11013`: 5 entity khong phai player lap
+  cac waypoint co dinh. Gom duoc 2 bai: nhom 3 con quanh tam `(530,930)`, nhom 2 con quanh
+  tam `(1150,530)`. Vung nhom dau bao phu cac diem train config `(590,1010)` va `(450,810)`.
+- Ket luan: diem trong `train_maps.json` la diem dung trong/gan vung quai di chuyen, KHONG phai
+  danh sach spawn chinh xac. Co the quet map bang `Ground.mmg` + nghe `0x07/0x06`, doi waypoint
+  lap on dinh, gom patrol gan nhau va lay medoid/diem walkable lam tam bai.
+- Code: `bot/mob_scanner.py` (observer + full scan), `bot/mob_spots.py` (cache atomic).
+  Cache runtime `mob_spots.json` CHI luu cac tam `[x,y]` + metadata scan/fingerprint; KHONG luu
+  entity, waypoint, polygon, bounding box hay trace. Android dung cung code/schema qua
+  `tools/sync_apk_python.py`.
+
 **Da giai ma Lua, khong can hook runtime:**
 - `LuaFileUtils.ReadFile` goi `CryptUtils.DeCrypt`; `ProjectSetting.cctor` cung cap AES/Rijndael
   CBC PKCS7 key `1234567870541704`, IV `7054170412345678`.
