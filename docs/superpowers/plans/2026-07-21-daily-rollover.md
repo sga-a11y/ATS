@@ -40,7 +40,7 @@
 - Consumes: local date string and epoch timestamp.
 - Produces: `_load_gift_state(label, today=None) -> dict`, `_save_gift_state(label, online_sec, claimed, today=None)`, and `GameClient.reset_daily_counters_if_needed(today=None, now=None) -> bool`.
 
-- [ ] **Step 1: Write failing gift-state migration tests**
+- [x] **Step 1: Write failing gift-state migration tests**
 
 ```python
 import json
@@ -103,13 +103,13 @@ class TestGiftStateV2(unittest.TestCase):
         }})
 ```
 
-- [ ] **Step 2: Run migration tests and verify red**
+- [x] **Step 2: Run migration tests and verify red**
 
 Run: `python -m unittest tests.test_daily_rollover.TestGiftStateV2 -v`
 
 Expected: three tests error/fail because helpers do not accept `today` and do not validate/write version 2.
 
-- [ ] **Step 3: Implement versioned state helpers**
+- [x] **Step 3: Implement versioned state helpers**
 
 Replace the gift key/load/save helpers with:
 
@@ -168,13 +168,13 @@ def _save_gift_state(label: str, online_sec: float, claimed: set, today=None):
             pass
 ```
 
-- [ ] **Step 4: Run migration tests and verify green**
+- [x] **Step 4: Run migration tests and verify green**
 
 Run: `python -m unittest tests.test_daily_rollover.TestGiftStateV2 -v`
 
 Expected: `Ran 3 tests ... OK`.
 
-- [ ] **Step 5: Write failing rollover boundary and online milestone tests**
+- [x] **Step 5: Write failing rollover boundary and online milestone tests**
 
 Append to `tests/test_daily_rollover.py`:
 
@@ -259,13 +259,13 @@ class TestDailyRollover(unittest.TestCase):
         self.assertIn(10, self.client.claimed_gifts)
 ```
 
-- [ ] **Step 6: Run rollover boundary tests and verify red**
+- [x] **Step 6: Run rollover boundary tests and verify red**
 
 Run: `python -m unittest tests.test_daily_rollover.TestDailyRollover -v`
 
 Expected: all three tests error because `reset_daily_counters_if_needed` does not exist.
 
-- [ ] **Step 7: Add marker initialization and minimal reset method**
+- [x] **Step 7: Add marker initialization and minimal reset method**
 
 In `GameClient.__init__`, next to online gift fields, add:
 
@@ -308,13 +308,13 @@ Add immediately before `claim_online_gifts()`:
         return True
 ```
 
-- [ ] **Step 8: Run rollover boundary tests and verify green**
+- [x] **Step 8: Run rollover boundary tests and verify green**
 
 Run: `python -m unittest tests.test_daily_rollover.TestDailyRollover -v`
 
 Expected: `Ran 3 tests ... OK`.
 
-- [ ] **Step 9: Commit client rollover unit**
+- [x] **Step 9: Commit client rollover unit**
 
 ```bash
 git add bot/client.py tests/test_daily_rollover.py
