@@ -71,6 +71,34 @@ class SmartWorldRouter:
         self.ground = ground
         self.cache = cache
 
+    def nearest_city(self, dest_map, exclude_city=None):
+        dest_map = int(dest_map)
+        exclude_city = None if exclude_city in (None, 0) else int(exclude_city)
+        candidates = [
+            item for item in self.nav.rank_cities(dest_map)
+            if exclude_city is None or int(item["city"]) != exclude_city
+        ]
+        gate_counts = sorted({item["gate_count"] for item in candidates})
+        for gate_count in gate_counts:
+            viable = []
+            for candidate in candidates:
+                if candidate["gate_count"] != gate_count:
+                    continue
+                route = self._candidate_route(candidate, dest_map, None)
+                if route is not None:
+                    viable.append((candidate, route))
+            if viable:
+                candidate, route = min(
+                    viable,
+                    key=lambda item: (item[1]["total_distance"], item[0]["city"]),
+                )
+                return {
+                    "city": int(candidate["city"]),
+                    "flag": int(candidate["flag"]),
+                    "route": route,
+                }
+        return None
+
     def build_route(self, dest_map, safe):
         dest_map = int(dest_map)
         safe = None if safe is None else (int(safe[0]), int(safe[1]))
@@ -96,6 +124,46 @@ class SmartWorldRouter:
                 self.cache.put(dest_map, safe, self.nav.fingerprint, route)
                 return route
         return None
+
+    def build_scene_route(self, source_map, dest_map, safe=None, start=None):
+        source_map = int(source_map)
+        dest_map = int(dest_map)
+        safe = None if safe is None else (int(safe[0]), int(safe[1]))
+        start = None if start is None else (int(start[0]), int(start[1]))
+        if source_map == dest_map:
+            final_paths = {}
+            total_distance = 0.0
+            if safe is not None and start is not None:
+                path = self.ground.find_world_path(dest_map, start, safe)
+                if path is None:
+                    return None
+                total_distance = _path_distance(path)
+                final_paths[_start_key(start)] = [list(point) for point in path]
+            return {
+                "dest_map": dest_map,
+                "safe": list(safe) if safe is not None else None,
+                "city": source_map,
+                "flag": 0,
+                "arrival": list(start) if start is not None else [0, 0],
+                "source_map": source_map,
+                "legs": [],
+                "final_paths": final_paths,
+                "total_distance": round(total_distance, 3),
+            }
+
+        viable = []
+        for legs in self.nav.find_scene_routes(source_map, dest_map):
+            route = self._scene_candidate_route(
+                source_map, dest_map, legs, safe, start
+            )
+            if route is not None:
+                viable.append(route)
+        if not viable:
+            return None
+        return min(
+            viable,
+            key=lambda item: (len(item["legs"]), item["total_distance"]),
+        )
 
     def _candidate_route(self, candidate, dest_map, safe):
         start = tuple(candidate["arrival"])
@@ -140,6 +208,60 @@ class SmartWorldRouter:
             "city": candidate["city"],
             "flag": candidate["flag"],
             "arrival": list(candidate["arrival"]),
+            "legs": route_legs,
+            "final_paths": final_paths,
+            "total_distance": round(total_distance, 3),
+        }
+
+    def _scene_candidate_route(self, source_map, dest_map, legs, safe, start):
+        current = start
+        total_distance = 0.0
+        route_legs = []
+        for index, edge in enumerate(legs):
+            gate = self.nav.get_gate(edge["scene"], edge["door"])
+            if gate is None:
+                return None
+            gate_center = tuple(gate["center"])
+            if current is not None:
+                path = self.ground.find_world_path(edge["scene"], current, gate_center)
+                if path is None:
+                    return None
+                total_distance += _path_distance(path)
+            next_start = self._arrival_after(edge)
+            route_leg = {
+                "scene": edge["scene"],
+                "target_scene": edge["target_scene"],
+                "from_code": edge["from"],
+                "to_code": edge["to"],
+                "gate": edge["door"],
+                "gate_center": list(gate_center),
+                "paths": {},
+            }
+            if current is not None:
+                route_leg["paths"][_start_key(current)] = [
+                    list(point) for point in path
+                ]
+            if next_start is not None:
+                route_leg["target_arrival"] = list(next_start)
+            route_legs.append(route_leg)
+            current = next_start
+            if current is None and index < len(legs) - 1:
+                return None
+
+        final_paths = {}
+        if current is not None and safe is not None:
+            path = self.ground.find_world_path(dest_map, current, safe)
+            if path is None:
+                return None
+            total_distance += _path_distance(path)
+            final_paths[_start_key(current)] = [list(point) for point in path]
+        return {
+            "dest_map": dest_map,
+            "safe": list(safe) if safe is not None else None,
+            "city": source_map,
+            "flag": 0,
+            "arrival": list(start) if start is not None else [0, 0],
+            "source_map": source_map,
             "legs": route_legs,
             "final_paths": final_paths,
             "total_distance": round(total_distance, 3),

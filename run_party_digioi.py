@@ -264,6 +264,11 @@ account_exit_reason = {}  # username -> ly do thoat (de tong ket 1 dong khi ca p
 account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT (supervisor login lai)
 
 
+def _running_party_usernames(pidx):
+    return [u for u, _p, _l, _pk in party_accounts(pidx)
+            if is_account_running(u) and account_clients.get(u) is not None]
+
+
 def _party_exit_summary(pidx, exclude_user):
     """Goi trong finally moi acc. Neu MOI acc khac cua party da tat -> log 1 DONG TONG KET
     o cuoi: party thoat het vi ly do gi (gom theo ly do). Chi log 1 lan/lan-chay."""
@@ -346,7 +351,15 @@ def _pstate(pidx):
                               "path_done": threading.Event(),    # leader da di xong follow_path toi diem quai (member bi keo theo)
                               "reform_gen": 0,       # +1 moi khi co acc van map (chet) -> CA party reform tai cho
                               "cmd_gen": 0,          # +1 moi khi GUI ra lenh thu cong (doi kenh/teleport thanh)
-                              "cmd": None,           # ("channel", ch) | ("city", city_id, flag)
+                              "cmd": None,           # ("channel", ch) | ("city", city_id, flag) | ("route", a, b)
+                              "manual_route_gen": 0,
+                              "manual_route_plan": None,
+                              "manual_route_plan_ready": threading.Event(),
+                              "manual_route_source_results": {},
+                              "manual_route_city_arrived": {},
+                              "manual_route_source_done": threading.Event(),
+                              "manual_route_party_ready": threading.Event(),
+                              "manual_route_done": threading.Event(),
                               "reconnecting": set(),  # username dang ROT + login lai (cho reconnect resync)
                               "disc_gen": 0,          # +1 moi khi co acc rot (bao cac nick khac phan ung)
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
@@ -1469,6 +1482,257 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             """Thuc thi LENH THU CONG tu GUI (doi kenh / teleport thanh) -> roi TIEP TUC che do da
             setup. Huy party cu truoc, lam hanh dong, roi resume theo mode."""
             kind = cmd[0]
+
+            def _manual_route_reset(gen):
+                with st["lock"]:
+                    if st.get("manual_route_gen") == gen:
+                        return
+                    st["manual_route_gen"] = gen
+                    st["manual_route_plan"] = None
+                    st["manual_route_source_results"] = {}
+                    st["manual_route_city_arrived"] = {}
+                    st["manual_route_plan_ready"].clear()
+                    st["manual_route_source_done"].clear()
+                    st["manual_route_party_ready"].clear()
+                    st["manual_route_done"].clear()
+
+            def _wait_event(event, desc, timeout=None):
+                t0 = time.time()
+                while not event.wait(1.0):
+                    if not c.running or _stopped():
+                        return False
+                    if timeout is not None and time.time() - t0 > timeout:
+                        log.warning("[%s] manual route: cho %s qua %.0fs -> bo qua",
+                                    label, desc, timeout)
+                        return False
+                return True
+
+            def _wait_manual_city_arrived(expected, timeout=150):
+                t0 = time.time()
+                while True:
+                    if not c.running or _stopped():
+                        return False
+                    with st["lock"]:
+                        n = len(st.get("manual_route_city_arrived", {}))
+                    if n >= expected:
+                        return True
+                    if time.time() - t0 > timeout:
+                        log.warning("[%s] manual route: cho ca party ve thanh tap ket (%d/%d) qua %.0fs",
+                                    label, n, expected, timeout)
+                        return False
+                    time.sleep(1)
+
+            def _manual_route_all_at_source(source, expected, timeout=45):
+                with st["lock"]:
+                    st.setdefault("manual_route_source_results", {})[username] = (
+                        c.current_map == source
+                    )
+                t0 = time.time()
+                while True:
+                    if not c.running or _stopped():
+                        return False
+                    with st["lock"]:
+                        results = dict(st.get("manual_route_source_results", {}))
+                    any_bad = any(v is False for v in results.values())
+                    enough = len(results) >= expected
+                    if any_bad or enough:
+                        return enough and not any_bad and all(results.values())
+                    if time.time() - t0 > timeout:
+                        return False
+                    time.sleep(0.5)
+
+            def _do_manual_route():
+                gen = cmd_gen_handled
+                source_req = int(cmd[1] or 0)
+                dest = int(cmd[2])
+                _manual_route_reset(gen)
+                if is_leader:
+                    source = source_req
+                    if not source:
+                        picked = c.nearest_smart_city(dest, exclude_map=dest)
+                        if not picked:
+                            log.warning("[%s] manual route: khong tim duoc thanh gan map dich %s",
+                                        label, dest)
+                            st["manual_route_plan_ready"].set()
+                            st["manual_route_done"].set()
+                            return
+                        source = int(picked["city"])
+                    gather = c.nearest_smart_city(source)
+                    if not gather:
+                        log.warning("[%s] manual route: khong tim duoc thanh gan map bat dau %s",
+                                    label, source)
+                        st["manual_route_plan_ready"].set()
+                        st["manual_route_done"].set()
+                        return
+                    users = _running_party_usernames(pidx)
+                    expected = max(1, len(users))
+                    plan = {
+                        "source": int(source),
+                        "dest": int(dest),
+                        "city": int(gather["city"]),
+                        "flag": int(gather["flag"]),
+                        "expected": int(expected),
+                        "users": list(users),
+                    }
+                    with st["lock"]:
+                        st["manual_route_plan"] = plan
+                    st["manual_route_plan_ready"].set()
+                    log.info("[%s] manual route plan: source=%s dest=%s gather_city=%s flag=%s expected=%s",
+                             label, source, dest, gather["city"], gather["flag"], expected)
+                if not _wait_event(st["manual_route_plan_ready"], "leader lap route plan", timeout=60):
+                    return
+                with st["lock"]:
+                    plan = dict(st.get("manual_route_plan") or {})
+                if not plan:
+                    return
+
+                source = int(plan["source"])
+                dest = int(plan["dest"])
+                gather_city = int(plan["city"])
+                gather_flag = int(plan["flag"])
+                expected = max(1, int(plan.get("expected", 1)))
+                users = list(plan.get("users") or _running_party_usernames(pidx))
+                all_at_source = _manual_route_all_at_source(source, expected)
+                if not all_at_source:
+                    c.flee_mode = True
+                    try:
+                        c.pre_route_town_hop()
+                        c.go_to_town(gather_city, gather_flag)
+                    except Exception as e:
+                        log.warning("[%s] manual route: loi ve thanh tap ket %s: %s",
+                                    label, gather_city, e)
+                    with st["lock"]:
+                        st.setdefault("manual_route_city_arrived", {})[username] = True
+                    _wait_manual_city_arrived(expected)
+                else:
+                    log.info("[%s] manual route: ca party da o map AAA=%s -> lap party tai cho",
+                             label, source)
+
+                do_channel_sync()
+                if expected > 1:
+                    if is_leader:
+                        reset_party_joined(pidx)
+                        last_inv_log = 0.0
+                        while joined_member_count(pidx) < expected - 1:
+                            if not c.running or _stopped():
+                                return
+                            try:
+                                c.invite_members(gap=1.0)
+                            except Exception:
+                                pass
+                            if time.time() - last_inv_log > 30:
+                                log.info("[%s] manual route: CHO DU PARTY roi moi keo, joined=%d/%d",
+                                         label, joined_member_count(pidx), expected - 1)
+                                last_inv_log = time.time()
+                            time.sleep(4)
+                        try:
+                            c.set_party_strategist()
+                        except Exception:
+                            pass
+                        st["manual_route_party_ready"].set()
+                        log.info("[%s] manual route: party joined=%d/%d",
+                                 label, joined_member_count(pidx), expected - 1)
+                    else:
+                        _wait_event(st["manual_route_party_ready"], "leader lap party", timeout=None)
+
+                if is_leader:
+                    route_restart = {"needed": False, "reason": ""}
+
+                    def _route_retry(reason):
+                        route_restart["needed"] = True
+                        route_restart["reason"] = reason
+                        with st["lock"]:
+                            st["cmd"] = ("route", source_req, dest)
+                            st["cmd_gen"] += 1
+                        log.warning("[%s] manual route: %s -> keo lai tu dau (gen %d)",
+                                    label, reason, st["cmd_gen"])
+
+                    def _party_maps_bad():
+                        if expected <= 1:
+                            return None
+                        leader_map = c.current_map
+                        if leader_map is None:
+                            return None
+                        bad = []
+                        for u in users:
+                            cc = account_clients.get(u)
+                            if cc is None or not getattr(cc, "running", False):
+                                bad.append(f"{u}:off")
+                                continue
+                            cm = getattr(cc, "current_map", None)
+                            if cm is not None and cm != leader_map:
+                                bad.append(f"{u}:{cm}")
+                        return ", ".join(bad) if bad else None
+
+                    bad_since = {"t": 0.0, "msg": ""}
+
+                    def abort():
+                        if _stopped() or not c.running:
+                            return True
+                        bad = _party_maps_bad()
+                        if not bad:
+                            bad_since["t"] = 0.0
+                            bad_since["msg"] = ""
+                            return False
+                        now = time.time()
+                        if bad_since["msg"] != bad:
+                            bad_since["t"] = now
+                            bad_since["msg"] = bad
+                            return False
+                        if bad_since["t"] and now - bad_since["t"] >= 15.0:
+                            _route_retry(
+                                f"co acc lech map khi dang keo (leader map={c.current_map}, {bad})"
+                            )
+                            return True
+                        return False
+
+                    def _wait_party_map(target_map, timeout=20.0):
+                        if expected <= 1:
+                            return True
+                        t_wait = time.time()
+                        while time.time() - t_wait < timeout:
+                            bad = _party_maps_bad()
+                            if not bad and c.current_map == target_map:
+                                return True
+                            time.sleep(1)
+                        _route_retry(
+                            f"party chua cung map {target_map} sau khi keo (leader map={c.current_map}, {bad or 'unknown'})"
+                        )
+                        return False
+
+                    route_flee = expected <= 1
+                    if not route_flee:
+                        c.flee_mode = False
+                        try:
+                            c.combat_ready()
+                        except Exception:
+                            pass
+                    if c.current_map != source:
+                        log.info("[%s] manual route: keo party toi AAA=%s truoc", label, source)
+                        ok_source = c.follow_smart_route(source, None, abort=abort, flee=route_flee)
+                    else:
+                        ok_source = True
+                    if not route_restart["needed"] and ok_source and c.current_map == source:
+                        _wait_party_map(source)
+                    st["manual_route_source_done"].set()
+                    if (not route_restart["needed"]) and c.current_map == source:
+                        log.info("[%s] manual route: keo party AAA=%s -> BBB=%s",
+                                 label, source, dest)
+                        ok_dest = c.follow_smart_scene_route(source, dest, None, abort=abort, flee=route_flee)
+                        if not route_restart["needed"] and ok_dest and c.current_map == dest:
+                            _wait_party_map(dest)
+                        elif not route_restart["needed"]:
+                            _route_retry(f"leader chua toi BBB={dest} (dang map {c.current_map})")
+                    elif not route_restart["needed"]:
+                        log.warning("[%s] manual route: chua toi AAA=%s (dang map %s) -> khong keo BBB",
+                                    label, source, c.current_map)
+                        _route_retry(f"leader chua toi AAA={source} (dang map {c.current_map})")
+                    st["manual_route_done"].set()
+                else:
+                    _wait_event(st["manual_route_source_done"], "leader keo toi AAA", timeout=None)
+                    _wait_event(st["manual_route_done"], "leader keo toi BBB", timeout=None)
+                c.flee_mode = False
+
             # KET BATTLE: dang trong tran thi BO CHAY + cho thoat tran TRUOC khi doi kenh/teleport
             # (switch_channel/leave_party giua battle de bi server bo qua/loi). cap 60s.
             c.flee_mode = True
@@ -1490,6 +1754,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 try: c.go_to_town(cid, flag)
                 except Exception as e: log.warning("[%s] manual: loi teleport thanh: %s", label, e)
                 log.info("[%s] (%s) manual: da teleport ve thanh %s", label, role, cid)
+            elif kind == "route":
+                if mode not in ("stand", "city"):
+                    log.warning("[%s] manual route: bo qua vi mode=%s khong phai city/stand",
+                                label, mode)
+                else:
+                    _do_manual_route()
             # --- TIEP TUC che do da setup ---
             if mode in ("stand", "city"):
                 # stand: dung yen. city ('ve thanh dung yen'): KHONG teleport ve thanh setting nua,
@@ -1527,6 +1797,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         elif (not is_leader) and train_on_map and has_leader:
             c._wait_leader_on_stop = True
         while c.running:
+            with st["lock"]:
+                st["member_maps"][username] = c.current_map
             # CHU PARTY da thoat (leader_gone) -> member cung THOAT theo (party tan, member o lai vo
             # nghia). TRU Di Gioi SOLO: KHONG lap party thuc su (moi acc chay doc lap hoan toan) ->
             # "leader" chi la vai tro danh nhan trong config, KHONG lien quan gi den viec cac acc
@@ -2280,6 +2552,32 @@ def party_teleport_city(pidx, city_id, flag=0):
         st["cmd_gen"] += 1
     log.info(">>> PARTY %s: lenh TELEPORT ve thanh %s (flag %s) (huy party + ca lu teleport)",
              pidx + 1, city_id, flag)
+
+
+def party_route_maps(pidx, source_map=0, dest_map=0):
+    """GUI ra lenh: lap/keo party di tu map source_map toi dest_map bang smart world route.
+    source_map=0 -> leader tu chon thanh gan dest_map nhat lam diem bat dau."""
+    mode = (config.PARTY_CONFIG.get(int(pidx), {}) or {}).get("mode")
+    if mode not in ("city", "stand"):
+        log.warning(">>> PARTY %s: bo qua lenh DI MAP vi mode=%s khong phai city/stand",
+                    int(pidx) + 1, mode)
+        return
+    source_map = int(source_map or 0)
+    dest_map = int(dest_map or 0)
+    if dest_map <= 0:
+        log.warning(">>> PARTY %s: route map bi bo qua vi BBB khong hop le: %s",
+                    pidx + 1, dest_map)
+        return
+    if not _running_party_usernames(pidx):
+        log.warning(">>> PARTY %s: KHONG co acc nao dang chay -> khong route map %s -> %s",
+                    pidx + 1, source_map or "AUTO", dest_map)
+        return
+    st = _pstate(pidx)
+    with st["lock"]:
+        st["cmd"] = ("route", source_map, dest_map)
+        st["cmd_gen"] += 1
+    log.info(">>> PARTY %s: lenh DI MAP %s -> %s (AAA=0 la tu chon thanh gan BBB)",
+             pidx + 1, source_map or "AUTO", dest_map)
 
 
 def stop_account(username):

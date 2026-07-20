@@ -25,6 +25,7 @@ DIST = os.path.join(ROOT, "aTSBot")         # output cuoi cung (thu muc gui di)
 NAME = "aTSBot"
 DRIVE_ARCHIVE_NAME = NAME + "-drive.zip"
 DRIVE_ARCHIVE_PASSWORD = "aTSBot"
+APK_RELEASE_NAME = NAME + ".apk"
 
 # Nuitka cache PHAI o thu muc THUONG (khong sandbox). Mac dinh %LOCALAPPDATA%\Nuitka co the bi
 # ao hoa duoi sandbox app -> gcc doc file MinGW khong nhat quan (loi 'structuredquerycondition.h
@@ -69,7 +70,7 @@ def run(cmd, **kw):
 def clean():
     for d in (STAGE, WORK, DIST):
         shutil.rmtree(d, ignore_errors=True)
-    for f in (NAME + ".spec",):
+    for f in (NAME + ".spec", APK_RELEASE_NAME):
         if os.path.exists(os.path.join(ROOT, f)):
             os.remove(os.path.join(ROOT, f))
 
@@ -84,7 +85,7 @@ def _build_version():
     return VERSION_PREFIX + "." + datetime.datetime.now().strftime("%Y%m%d%H%M")
 
 
-def stage():
+def stage(ver=None):
     """Copy source sach vao _stage. config.py = file TRACKED (placeholder credential; account that o
     accounts.json - gitignored, KHONG nhung vao build)."""
     os.makedirs(STAGE, exist_ok=True)
@@ -98,11 +99,12 @@ def stage():
         if not fn.endswith(".py"):
             continue
         shutil.copy(os.path.join(bot_src, fn), bot_dst)
-    ver = _build_version()
+    ver = ver or _build_version()
     with open(os.path.join(bot_dst, "_version.py"), "w", encoding="utf-8") as f:
         f.write('"""Phien ban app - TU SINH luc build (build_product.py), KHONG sua tay."""\n')
         f.write('VERSION = "%s"\n' % ver)
     print("staged source (config.py placeholder, account that o accounts.json) - version=%s" % ver)
+    return ver
 
 
 def package():
@@ -194,6 +196,8 @@ def copy_data():
         "version": ver,
         # CA FOLDER (exe + JSON config) -> them server/map/route moi (nam trong JSON) den duoc user cu.
         "url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip",
+        # APK dung chung version voi EXE, nhung tai asset rieng roi mo Android installer.
+        "apk_url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.apk",
         "notes": "Bản cập nhật mới.",
     }
     with open(os.path.join(DIST, "version.json"), "w", encoding="utf-8") as f:
@@ -250,6 +254,34 @@ def make_zip():
         DRIVE_ARCHIVE_PASSWORD, drive_zpath, os.path.getsize(drive_zpath) / 1e6))
 
 
+def build_android_apk(ver):
+    """Build APK cung version voi EXE va copy ra ROOT/aTSBot.apk de upload release latest."""
+    android_dir = os.path.join(ROOT, "android")
+    gradlew = os.path.join(android_dir, "gradlew.bat" if os.name == "nt" else "gradlew")
+    if not os.path.isfile(gradlew):
+        raise FileNotFoundError("Khong tim thay Gradle wrapper: %s" % gradlew)
+    run([sys.executable, os.path.join(ROOT, "tools", "sync_apk_python.py")], cwd=ROOT)
+    env = os.environ.copy()
+    jdk = r"C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot"
+    if os.name == "nt" and os.path.isdir(jdk):
+        env.setdefault("JAVA_HOME", jdk)
+    run([gradlew, "assembleDebug", "-PatsVersion=" + ver], cwd=android_dir, env=env)
+    apk_dir = os.path.join(android_dir, "app", "build", "outputs", "apk", "debug")
+    expected = os.path.join(apk_dir, "%s-%s-debug.apk" % (NAME, ver))
+    if os.path.isfile(expected):
+        src = expected
+    else:
+        candidates = [os.path.join(apk_dir, fn) for fn in os.listdir(apk_dir)
+                      if fn.endswith(".apk")]
+        if not candidates:
+            raise FileNotFoundError("Build APK xong nhung khong thay file trong %s" % apk_dir)
+        src = max(candidates, key=os.path.getmtime)
+    dst = os.path.join(ROOT, APK_RELEASE_NAME)
+    shutil.copy(src, dst)
+    print("built APK -> %s (release asset %s, %.1f MB)" % (
+        src, dst, os.path.getsize(dst) / 1e6))
+
+
 def _release_token():
     """Lay token GitHub: uu tien env GH_TOKEN/GITHUB_TOKEN, roi den git credential store (chinh
     token dang push - account sga-a11y, da duoc them collaborator write vao RELEASE_REPO)."""
@@ -284,8 +316,8 @@ def upload_release():
     token = _release_token()
     if not token:
         print("!! Khong lay duoc token (GH_TOKEN / git credential) -> BO QUA upload. Up thu cong:")
-        print("   gh release create v<version> %s\\aTSBot.exe %s\\version.json -R %s"
-              % (DIST, DIST, RELEASE_REPO))
+        print("   gh release create v<version> %s\\aTSBot.zip %s\\aTSBot.exe %s\\version.json %s\\aTSBot.apk -R %s"
+              % (ROOT, DIST, DIST, ROOT, RELEASE_REPO))
         return
     vj = json.load(open(os.path.join(DIST, "version.json"), encoding="utf-8"))
     tag = "v" + vj["version"]
@@ -298,7 +330,7 @@ def upload_release():
         return
     rid = rel["id"]
     for path in (os.path.join(ROOT, NAME + ".zip"), os.path.join(DIST, NAME + ".exe"),
-                 os.path.join(DIST, "version.json")):
+                 os.path.join(DIST, "version.json"), os.path.join(ROOT, APK_RELEASE_NAME)):
         if not os.path.exists(path):
             continue
         name = os.path.basename(path)
@@ -315,11 +347,17 @@ def upload_release():
 if __name__ == "__main__":
     print("=== BUILD PRODUCT (PyArmor + PyInstaller onefile) ===")
     validate_navigation_assets()
+    ver = _build_version()
     clean()
-    stage()
+    stage(ver)
     package()
     copy_data()
     make_zip()
+    if "--no-apk" in sys.argv:
+        print("\n(--no-apk) BO QUA build APK.")
+    else:
+        print("\n=== Build APK cung version %s ===" % ver)
+        build_android_apk(ver)
     if "--no-upload" in sys.argv:
         print("\n(--no-upload) BO QUA upload release.")
     else:

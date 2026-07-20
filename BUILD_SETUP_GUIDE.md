@@ -100,7 +100,14 @@ cd android
 export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot"
 ./gradlew assembleDebug
 ```
-Output: `android/app/build/outputs/apk/debug/app-debug.apk`
+Output: `android/app/build/outputs/apk/debug/aTSBot-<version>-debug.apk`
+
+Nếu build APK cùng release EXE thì dùng `python build_product.py`: script sẽ tự truyền cùng một
+`1.1.YYYYMMDDHHMM` cho cả EXE và APK. Nếu muốn build APK thủ công nhưng ép chung version:
+
+```bash
+./gradlew assembleDebug -PatsVersion=1.1.YYYYMMDDHHMM
+```
 
 ### Cài lên máy ảo/điện thoại để test
 ```bash

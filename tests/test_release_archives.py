@@ -19,6 +19,22 @@ class TestReleaseArchives(unittest.TestCase):
             ignored_paths = {line.strip() for line in fh if line.strip()}
         self.assertIn("aTSBot-drive.zip", ignored_paths)
 
+    def test_release_metadata_and_upload_include_android_apk(self):
+        source = inspect.getsource(build_product)
+
+        self.assertIn("APK_RELEASE_NAME", source)
+        self.assertIn('"apk_url"', source)
+        self.assertIn("build_android_apk(ver)", source)
+        self.assertIn("os.path.join(ROOT, APK_RELEASE_NAME)", source)
+
+    def test_android_gradle_accepts_shared_release_version(self):
+        with open("android/app/build.gradle.kts", encoding="utf-8") as fh:
+            gradle = fh.read()
+
+        self.assertIn('providers.gradleProperty("atsVersion")', gradle)
+        self.assertIn("ATS_BUILD_VERSION", gradle)
+        self.assertIn("versionCodeFromVersion(buildVersionName)", gradle)
+
     def test_make_zip_creates_plain_and_password_protected_archives(self):
         with tempfile.TemporaryDirectory() as root:
             dist = os.path.join(root, "aTSBot")

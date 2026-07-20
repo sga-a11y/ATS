@@ -41,8 +41,8 @@ class FakeClient:
         self.calls.append(("navigate", x, y))
         self.pos = (x, y)
 
-    def _enter_gate(self, x, y, gate):
-        self.calls.append(("gate", gate, x, y))
+    def _enter_gate(self, x, y, gate, expected_map=None):
+        self.calls.append(("gate", gate, x, y, expected_map))
         if gate == self.fail_gate:
             return False
         if self.wrong_scene and gate == 1:
@@ -75,6 +75,10 @@ class TestSmartRouteExecution(unittest.TestCase):
         self.assertEqual(
             [call[1] for call in client.calls if call[0] == "gate"],
             [1, 17],
+        )
+        self.assertEqual(
+            [call[4] for call in client.calls if call[0] == "gate"],
+            [22000, 14821],
         )
         self.assertEqual(client.current_map, 14821)
         self.assertEqual(client.calls[-1], ("navigate", 1230, 470))

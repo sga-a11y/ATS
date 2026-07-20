@@ -1,5 +1,6 @@
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 plugins {
     id("com.android.application")
@@ -7,10 +8,33 @@ plugins {
     id("com.chaquo.python")
 }
 
-// Version TU SINH luc build, KHOP scheme ban PC (build_product.py: "1.1." + yyyyMMddHHmm).
-// versionCode = so phut ke tu 1970 (tang dan moi build, ~29 trieu nam 2026 -> vua khit Int).
-val buildVersionName = "1.1." + SimpleDateFormat("yyyyMMddHHmm").format(Date())
-val buildVersionCode = (System.currentTimeMillis() / 60000L).toInt()
+// Version mac dinh tu sinh, nhung build_product.py se truyen -PatsVersion=<version>
+// de EXE va APK dung CHUNG 1 version trong version.json.
+val versionPrefix = "1.1"
+fun nowVersion(): String = "$versionPrefix." + SimpleDateFormat("yyyyMMddHHmm", Locale.US).format(Date())
+fun versionCodeFromVersion(version: String): Int? {
+    val stamp = version.substringAfterLast(".")
+    if (!Regex("""\d{12}""").matches(stamp)) return null
+    return try {
+        SimpleDateFormat("yyyyMMddHHmm", Locale.US).apply { isLenient = false }
+            .parse(stamp)
+            ?.let { (it.time / 60000L).toInt() }
+    } catch (_: Exception) {
+        null
+    }
+}
+val requestedBuildVersion = (
+    providers.gradleProperty("atsVersion").orNull
+        ?: System.getenv("ATS_BUILD_VERSION")
+        ?: ""
+).trim()
+val buildVersionName = requestedBuildVersion.ifEmpty { nowVersion() }
+val buildVersionCode = (
+    providers.gradleProperty("atsVersionCode").orNull?.toIntOrNull()
+        ?: System.getenv("ATS_BUILD_VERSION_CODE")?.toIntOrNull()
+        ?: versionCodeFromVersion(buildVersionName)
+        ?: (System.currentTimeMillis() / 60000L).toInt()
+)
 val repositoryRoot = rootProject.projectDir.parentFile
 val generatedSmartNavAssets = layout.buildDirectory.dir("generated/smart-nav-assets")
 val prepareSmartNavAssets by tasks.registering(Copy::class) {

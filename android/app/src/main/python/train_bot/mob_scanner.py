@@ -7,7 +7,7 @@ import threading
 import time
 
 
-Point = tuple[int, int]
+Point = tuple
 
 
 @dataclass

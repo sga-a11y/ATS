@@ -14,6 +14,8 @@
 - **Khi đổi key config từ GUI/run_party** (vd `do_dungeon`->`do_daily`): phải sửa ĐỒNG THỜI các chỗ đọc/ghi
   key đó như `run_party_digioi.py` + `gui.py` + `bot/config.py` placeholder (và Android `config.py` nếu GUI APK dùng key này).
 - File JSON ship theo build: `build_product.py` -> `DATA_JSON`. Thêm data mới phải thêm vào đây.
+- Release PC/APK dùng chung version `1.1.YYYYMMDDHHMM`: `build_product.py` sinh 1 version rồi truyền
+  `-PatsVersion=<version>` cho Gradle APK. `version.json` có `url` cho PC zip và `apk_url` cho APK updater.
 
 ## 1. THÔNG TIN CƠ BẢN
 
@@ -443,6 +445,15 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
 - Flow train: tim thanh teleport gan nhat -> teleport bang city+flag da biet -> BFS chuoi gate ->
   A* collision-safe toi tung gate -> xac nhan map sau moi gate -> toi safe. Scene bat ngo thi
   invalidate/rebuild dung 1 lan; tuyet doi khong `go_to_town(train_map_id)`.
+- Manual map route (PC/APK, city popup option "Di tu map AAA den map BBB"): GUI goi
+  `party_route_maps(pidx, AAA, BBB)`. AAA=0/blank thi leader chon thanh gan BBB nhat bang
+  `nearest_smart_city(BBB, exclude_map=BBB)`; neu BBB la thanh van phai loai chinh BBB. Neu co acc
+  khong o AAA thi ca party tap ket o thanh gan AAA, lap party, leader keo toi AAA bang smart route,
+  roi tu AAA keo tiep toi BBB bang `build_scene_route`/`follow_smart_scene_route` (co the qua nhieu map).
+  Route party (expected>1) BAT BUOC cho du member join moi keo, giong train map; khi keo thi
+  `flee=False`, leader/member danh bat chap tren duong/gate NPC. Chi route 1 acc le moi `flee=True`.
+  Dang keo ma acc lech map qua grace thi requeue lenh route, ca party gom/keo lai tu dau. Mot so gate
+  co dialog NPC -> spam `0x14 0600`, neu vao battle thi cho danh xong roi retry gate.
 - Hạp Cốc Tử Ngọ 1 (`14821`) da verify offline: Trường An `14001`, flag `6`, gate
   `14001/1 -> 22000/17 -> 14821`; gate `22000/17` co center `(560,2510)`.
 - Rule project: tinh nang runtime phai lam dong thoi cho PC va APK. Desktop build copy

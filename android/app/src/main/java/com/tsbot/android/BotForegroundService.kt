@@ -69,14 +69,16 @@ class BotForegroundService : Service() {
         val nav = File(filesDir, "world_nav.json")
         val ground = File(filesDir, "gamedata/Ground.mmg")
         val sceneFight = File(filesDir, "gamedata/SceneFight_C.dat")
+        val itemData = File(filesDir, "items_gamedata.json")
         val prefs = getSharedPreferences("smart_nav_assets", Context.MODE_PRIVATE)
         val currentVersion = BuildConfig.VERSION_CODE
-        if (prefs.getInt("version", -1) == currentVersion && nav.isFile && ground.isFile && sceneFight.isFile) {
+        if (prefs.getInt("version", -1) == currentVersion && nav.isFile && ground.isFile && sceneFight.isFile && itemData.isFile) {
             return
         }
         copyBundledAsset("world_nav.json", nav)
         copyBundledAsset("gamedata/Ground.mmg", ground)
         copyBundledAsset("gamedata/SceneFight_C.dat", sceneFight)
+        copyBundledAsset("items_gamedata.json", itemData)
         prefs.edit().putInt("version", currentVersion).apply()
     }
 
@@ -237,6 +239,10 @@ class BotForegroundService : Service() {
 
     fun sendCity(usernames: List<String>, cityId: Int, flag: Int) {
         pidxSet(usernames).forEach { try { rpd().callAttr("party_teleport_city", it, cityId, flag) } catch (_: Exception) {} }
+    }
+
+    fun sendRouteMaps(usernames: List<String>, sourceMap: Int, destMap: Int) {
+        pidxSet(usernames).forEach { try { rpd().callAttr("party_route_maps", it, sourceMap, destMap) } catch (_: Exception) {} }
     }
 
     fun sendGiftcode(usernames: List<String>, code: String) {

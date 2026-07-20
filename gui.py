@@ -529,18 +529,67 @@ class BotGUI(tk.Tk):
         win.transient(self); win.grab_set()
         ttk.Label(win, text="Chọn thành — cả party sẽ HỦY PARTY + teleport rồi tiếp tục chạy như trong setting:",
                   padding=8).pack(anchor="w")
-        lb = tk.Listbox(win, width=34, height=min(16, max(3, len(self.cities))), font=("", 10))
+        mode = config.PARTY_CONFIG.get(pidx, {}).get("mode")
+        allow_route = mode in ("city", "stand")
+        extra_rows = 1 if allow_route else 0
+        lb = tk.Listbox(win, width=38, height=min(17, max(4, len(self.cities) + extra_rows)), font=("", 10))
         lb.pack(fill="both", expand=True, padx=8)
+        if allow_route:
+            lb.insert("end", "Đi từ map AAA đến map BBB")
         for (cid, f, n) in self.cities:
             lb.insert("end", n)
         def _go():
             sel = lb.curselection()
             if sel:
-                cid, f, n = self.cities[sel[0]]
+                offset = 1 if allow_route else 0
+                if allow_route and sel[0] == 0:
+                    win.destroy()
+                    self._popup_route_maps(pidx)
+                    return
+                cid, f, n = self.cities[sel[0] - offset]
                 threading.Thread(target=ctrl.party_teleport_city,
                                  args=(pidx, cid, f), daemon=True).start()
             win.destroy()
-        ttk.Button(win, text="✔ Teleport về thành này", command=_go).pack(pady=8)
+        lb.bind("<Double-1>", lambda _e: _go())
+        ttk.Button(win, text="Chọn", command=_go).pack(pady=8)
+
+    def _popup_route_maps(self, pidx):
+        import tkinter.messagebox as mb
+        win = tk.Toplevel(self); win.title(f"P{pidx + 1} · Đi map")
+        win.transient(self); win.grab_set()
+        box = ttk.Frame(win, padding=12)
+        box.pack(fill="both", expand=True)
+        ttk.Label(
+            box,
+            text="AAA để trống = tự chọn thành gần BBB nhất.",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        ttk.Label(box, text="Map AAA:").grid(row=1, column=0, sticky="e", padx=(0, 6), pady=4)
+        src_var = tk.StringVar()
+        dst_var = tk.StringVar()
+        ttk.Entry(box, textvariable=src_var, width=18).grid(row=1, column=1, sticky="w", pady=4)
+        ttk.Label(box, text="Map BBB:").grid(row=2, column=0, sticky="e", padx=(0, 6), pady=4)
+        dst_entry = ttk.Entry(box, textvariable=dst_var, width=18)
+        dst_entry.grid(row=2, column=1, sticky="w", pady=4)
+
+        def _start():
+            try:
+                src = int(src_var.get().strip()) if src_var.get().strip() else 0
+                dst = int(dst_var.get().strip())
+            except ValueError:
+                mb.showerror("Đi map", "Map AAA/BBB phải là số. AAA có thể để trống.", parent=win)
+                return
+            if dst <= 0:
+                mb.showerror("Đi map", "Map BBB không hợp lệ.", parent=win)
+                return
+            threading.Thread(target=ctrl.party_route_maps,
+                             args=(pidx, src, dst), daemon=True).start()
+            win.destroy()
+
+        row = ttk.Frame(box)
+        row.grid(row=3, column=0, columnspan=2, pady=(10, 0))
+        ttk.Button(row, text="Bắt đầu kéo map", command=_start).pack(side="left", padx=4)
+        ttk.Button(row, text="Hủy", command=win.destroy).pack(side="left", padx=4)
+        dst_entry.focus_set()
 
     # ---- tabs per party ----
     def _build_tabs(self):

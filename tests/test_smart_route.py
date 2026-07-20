@@ -59,6 +59,21 @@ class TestSmartWorldRouter(unittest.TestCase):
         self.assertIsNone(route["safe"])
         self.assertEqual(route["final_paths"], {})
 
+    def test_nearest_city_can_exclude_destination_city(self):
+        picked = self.router.nearest_city(12001, exclude_city=12001)
+
+        self.assertIsNotNone(picked)
+        self.assertNotEqual(picked["city"], 12001)
+        self.assertEqual(picked["route"]["dest_map"], 12001)
+
+    def test_builds_scene_to_scene_route_from_current_map(self):
+        route = self.router.build_scene_route(14001, 14821, start=(750, 590))
+
+        self.assertEqual(route["source_map"], 14001)
+        self.assertEqual(route["dest_map"], 14821)
+        self.assertEqual([leg["gate"] for leg in route["legs"]], [1, 17])
+        self.assertEqual(route["city"], 14001)
+
 
 if __name__ == "__main__":
     unittest.main()

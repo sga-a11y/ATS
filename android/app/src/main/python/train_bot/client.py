@@ -99,7 +99,8 @@ def execute_smart_route(client, route, abort=None, flee=True):
         if not client.running or (abort and abort()):
             client._smart_route_failure = "aborted"
             return False
-        if not client._enter_gate(*leg["gate_center"], leg["gate"]):
+        if not client._enter_gate(*leg["gate_center"], leg["gate"],
+                                  expected_map=leg["target_scene"]):
             client._smart_route_failure = "gate_failed"
             return False
         if client.current_map != leg["target_scene"]:
@@ -372,27 +373,43 @@ def _save_all_learned():
 
 # ITEM DA XAC NHAN 100% (items_known.json): { tid: {name,hp,sp} }. Bot KHONG bao gio tu sua/probe/khoa
 # nhung tid nay -> tin tuyet doi (vd cac item da capture). Locked > auto-learn.
+def _load_json_data_file(filename):
+    import json as _json, os as _os
+    paths = []
+    try:
+        from ._appdir import app_dir
+        paths.append(_os.path.join(app_dir(), filename))
+    except Exception:
+        pass
+    paths.append(filename)
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                return _json.load(fh)
+        except Exception:
+            pass
+    # Android keeps bundled data in assets/train_bot_data instead of app_dir().
+    try:
+        reader = getattr(config, "_read_asset", None)
+        if reader is not None:
+            return _json.loads(reader(filename))
+    except Exception:
+        pass
+    return None
+
 _known_items = None
 def _load_known_items() -> dict:
     """{ tid_int: {name,hp,sp} } tu items_known.json (canh root). Khoa cung, auto-learn ko dung den."""
     global _known_items
     if _known_items is not None:
         return _known_items
-    import json as _json, os as _os
     _known_items = {}
-    try:
-        from ._appdir import app_dir
-        path = _os.path.join(app_dir(), "items_known.json")
-    except Exception:
-        path = "items_known.json"
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for k, v in _json.load(fh).get("items", {}).items():
-                tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
-                _known_items[tid] = {"name": v.get("name", ""), "type": v.get("type", ""),
-                                     "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
-    except Exception:
-        pass
+    data = _load_json_data_file("items_known.json")
+    if isinstance(data, dict):
+        for k, v in data.get("items", {}).items():
+            tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+            _known_items[tid] = {"name": v.get("name", ""), "type": v.get("type", ""),
+                                 "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     return _known_items
 
 # TU DIEN GAMEDATA (items_gamedata.json): { item_id_hex: {name,hp,sp} } - tu crack gamedata_Item.dat.
@@ -403,21 +420,13 @@ def _load_gamedata_items() -> dict:
     global _gamedata_items
     if _gamedata_items is not None:
         return _gamedata_items
-    import json as _json, os as _os
     _gamedata_items = {}
-    try:
-        from ._appdir import app_dir
-        path = _os.path.join(app_dir(), "items_gamedata.json")
-    except Exception:
-        path = "items_gamedata.json"
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for k, v in _json.load(fh).items():
-                iid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
-                _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
-                                        "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
-    except Exception:
-        pass
+    data = _load_json_data_file("items_gamedata.json")
+    if isinstance(data, dict):
+        for k, v in data.items():
+            iid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+            _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
+                                    "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     return _gamedata_items
 
 
@@ -4293,20 +4302,33 @@ class GameClient:
             if not self.in_combat(idle_secs=1.5):
                 return   # move xong, khong dinh tran -> coi nhu da toi
 
-    def _enter_gate(self, x: int, y: int, idx: int, timeout: float = 60.0) -> bool:
+    def _enter_gate(self, x: int, y: int, idx: int, timeout: float = 90.0,
+                    expected_map: int = None) -> bool:
         """Toi cong (x,y) + gui chuoi 0x14 04/08[idx] (giong thoat Di Gioi) -> cho MAP DOI.
         Cong trung gian khong biet map dich nen xac nhan = current_map khac map luc bat dau.
         QUAN TRONG: chi move toi cong + gui transit khi HET TRAN. Neu gui 0x06/0x14 luc dang
         battle -> server nuot lenh (khong toi cong) hoac DA ket noi -> ket cong / leader rot."""
         start_map = self.current_map
+        expected_map = None if expected_map in (None, 0) else int(expected_map)
+
+        def _gate_reached():
+            cm = self.current_map
+            if cm is None or cm == start_map:
+                return False
+            self.pos = None   # qua cong -> vi tri cu vo nghia (map moi) -> navigate sau di hao phong
+            if expected_map is not None and cm != expected_map:
+                log.warning("[%s] qua cong idx=%d NHUNG sai map: %s != %s",
+                            self._label, idx, cm, expected_map)
+            else:
+                log.info("[%s] qua cong idx=%d -> map %s", self._label, idx, cm)
+            return True
+
         t0 = time.time()
         _attempt = 0
         while time.time() - t0 < timeout:
             if not self.running:
                 return False
-            if self.current_map is not None and self.current_map != start_map:
-                log.info("[%s] qua cong idx=%d -> map %s", self._label, idx, self.current_map)
-                self.pos = None   # qua cong -> vi tri cu vo nghia (map moi) -> navigate sau di hao phong
+            if _gate_reached():
                 return True
             _attempt += 1
             log.info("[%s] _enter_gate idx=%d @(%d,%d): lan thu %d (t=%.0fs, map van %s)",
@@ -4334,6 +4356,22 @@ class GameClient:
                 self.send(0x14, b"\x06\x00"); time.sleep(1.0)
             finally:
                 self._gate_transit = False
+            # Mot so gate co NPC/dialog: bam thoai -> vao battle, thang xong moi qua cong.
+            # Khong giu _gate_transit trong luc nay de combat loop duoc danh binh thuong.
+            dialog_t0 = time.time()
+            while self.running and time.time() - dialog_t0 < 10.0:
+                if _gate_reached():
+                    return True
+                if self.state.in_battle or self.in_combat(idle_secs=1.0):
+                    log.info("[%s] gate idx=%d bat battle NPC/dialog -> cho danh xong roi kiem tra map",
+                             self._label, idx)
+                    if not self._wait_combat_clear(idle=3.0, cap=150.0):
+                        return False
+                    if _gate_reached():
+                        return True
+                    break
+                self.send(0x14, b"\x06\x00")
+                time.sleep(0.6)
         log.warning("[%s] _enter_gate idx=%d @(%d,%d): map khong doi (van %s)",
                     self._label, idx, x, y, self.current_map)
         return False
@@ -4421,6 +4459,54 @@ class GameClient:
             return None
         target = None if safe is None else tuple(safe)
         return router.build_route(int(dest_map), target)
+
+    def nearest_smart_city(self, dest_map: int, exclude_map=None):
+        router = _smart_world_router()
+        if router is None:
+            return None
+        return router.nearest_city(int(dest_map), exclude_city=exclude_map)
+
+    def build_smart_scene_route(self, source_map: int, dest_map: int, safe=None):
+        router = _smart_world_router()
+        if router is None:
+            return None
+        target = None if safe is None else tuple(safe)
+        return router.build_scene_route(
+            int(source_map), int(dest_map), target, start=self.pos
+        )
+
+    def follow_smart_scene_route(self, source_map: int, dest_map: int, safe=None,
+                                 abort=None, flee=True) -> bool:
+        source_map = int(source_map)
+        dest_map = int(dest_map)
+        if not self.running or (abort and abort()):
+            return False
+        if self.current_map != source_map:
+            log.warning("[%s] scene route: dang o map %s, can bat dau tu %s",
+                        self._label, self.current_map, source_map)
+            return False
+        deadline = time.time() + 20.0
+        while self.running and time.time() < deadline and self.pos is None:
+            if abort and abort():
+                return False
+            time.sleep(0.2)
+        if self.pos is None:
+            log.warning("[%s] scene route: chua co toa do xuat phat map=%s",
+                        self._label, self.current_map)
+            return False
+        route = self.build_smart_scene_route(source_map, dest_map, safe)
+        if route is None:
+            log.warning("[%s] scene route: khong tim thay duong %s -> %s",
+                        self._label, source_map, dest_map)
+            return False
+        gates = ",".join(str(leg["gate"]) for leg in route["legs"])
+        log.info("[%s] scene route %s -> %s: gates=%s",
+                 self._label, source_map, dest_map, gates or "(none)")
+        self.flee_mode = bool(flee)
+        ok = execute_smart_route(self, route, abort=abort, flee=flee)
+        if ok:
+            log.info("[%s] scene route reached map %s", self._label, dest_map)
+        return ok
 
     def follow_smart_route(self, dest_map: int, safe, abort=None, flee=True) -> bool:
         """Teleport to the best city, then traverse only verified scene gates."""
