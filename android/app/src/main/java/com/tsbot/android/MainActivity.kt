@@ -65,24 +65,28 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     private var boundService by mutableStateOf<BotForegroundService?>(null)
@@ -152,9 +156,67 @@ fun TsBotApp(
 
     val service = boundServiceProvider()
     val statusMap by (service?.status?.collectAsState() ?: remember { mutableStateOf(emptyMap()) })
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var updateInfo by remember { mutableStateOf<ApkUpdateInfo?>(null) }
+    var updateBusyText by remember { mutableStateOf<String?>(null) }
+    var updateMessage by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingInstallApk by remember { mutableStateOf<File?>(null) }
 
     fun refresh() {
         parties = partyStore.load()
+    }
+
+    fun checkApkUpdate(manual: Boolean) {
+        if (updateBusyText != null) return
+        scope.launch {
+            if (manual) updateBusyText = "Đang kiểm tra bản mới..."
+            try {
+                val info = withContext(Dispatchers.IO) {
+                    ApkUpdater.checkUpdate(BuildConfig.VERSION_NAME)
+                }
+                if (info != null) {
+                    updateInfo = info
+                } else if (manual) {
+                    updateMessage = "Update" to "Đang là bản mới nhất (${BuildConfig.VERSION_NAME})."
+                }
+            } catch (e: Exception) {
+                if (manual) {
+                    updateMessage = "Lỗi cập nhật" to
+                        "Không kiểm tra được bản mới:\n${e.message ?: e.javaClass.simpleName}\n\nTải thủ công:\n${ApkUpdater.MANUAL_DOWNLOAD_URL}"
+                }
+            } finally {
+                if (manual) updateBusyText = null
+            }
+        }
+    }
+
+    fun downloadAndInstall(info: ApkUpdateInfo) {
+        if (updateBusyText != null) return
+        updateInfo = null
+        scope.launch {
+            updateBusyText = "Đang tải APK v${info.version}..."
+            try {
+                val apk = withContext(Dispatchers.IO) {
+                    ApkUpdater.downloadApk(context.applicationContext, info)
+                }
+                updateBusyText = null
+                if (ApkUpdater.canInstallApk(context)) {
+                    ApkUpdater.installApk(context, apk)
+                } else {
+                    pendingInstallApk = apk
+                }
+            } catch (e: Exception) {
+                updateBusyText = null
+                updateMessage = "Lỗi cập nhật" to
+                    "Không tải/cài được APK:\n${e.message ?: e.javaClass.simpleName}\n\nTải thủ công:\n${ApkUpdater.MANUAL_DOWNLOAD_URL}"
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        delay(1500)
+        checkApkUpdate(manual = false)
     }
 
     // Coordinator CHUNG (run_party_digioi): moi mode deu khoi dong theo PARTY (pidx = vi tri party
@@ -193,6 +255,12 @@ fun TsBotApp(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
+                actions = {
+                    TextButton(
+                        onClick = { checkApkUpdate(manual = true) },
+                        enabled = updateBusyText == null,
+                    ) { Text("Check Update") }
+                },
             )
         },
         floatingActionButton = {
@@ -261,6 +329,7 @@ fun TsBotApp(
                         onSendChannel = { ch -> service?.sendChannel(party.accounts.map { it.username }, ch) },
                         onSendChannelAuto = { service?.sendChannelAuto(party.accounts.map { it.username }) },
                         onSendCity = { id, flag -> service?.sendCity(party.accounts.map { it.username }, id, flag) },
+                        onSendRouteMaps = { source, dest -> service?.sendRouteMaps(party.accounts.map { it.username }, source, dest) },
                         onSendGiftcode = { code -> service?.sendGiftcode(party.accounts.map { it.username }, code) },
                         onGetChannels = {
                             party.accounts.firstOrNull { service?.isRunning(it.username) == true }
@@ -275,6 +344,82 @@ fun TsBotApp(
                 }
             }
         }
+    }
+
+    val busy = updateBusyText
+    if (busy != null) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Update") },
+            text = { Text(busy) },
+            confirmButton = {},
+        )
+    }
+
+    val availableUpdate = updateInfo
+    if (availableUpdate != null) {
+        AlertDialog(
+            onDismissRequest = { updateInfo = null },
+            title = { Text("Có bản mới ${availableUpdate.version}") },
+            text = {
+                Column {
+                    Text("Bản hiện tại: ${BuildConfig.VERSION_NAME}")
+                    if (availableUpdate.notes.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(availableUpdate.notes)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { downloadAndInstall(availableUpdate) }) {
+                    Text("Tải và cài")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { updateInfo = null }) { Text("Để sau") }
+            },
+        )
+    }
+
+    val apkToInstall = pendingInstallApk
+    if (apkToInstall != null) {
+        AlertDialog(
+            onDismissRequest = { pendingInstallApk = null },
+            title = { Text("Cài APK mới") },
+            text = {
+                Text(
+                    "Android cần quyền cài ứng dụng không rõ nguồn cho aTSBot. " +
+                        "Nếu chưa bật quyền, bấm Tiếp tục để mở cài đặt, bật xong quay lại bấm Tiếp tục lần nữa."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (ApkUpdater.canInstallApk(context)) {
+                            pendingInstallApk = null
+                            ApkUpdater.installApk(context, apkToInstall)
+                        } else {
+                            ApkUpdater.openInstallPermissionSettings(context)
+                        }
+                    },
+                ) { Text("Tiếp tục") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingInstallApk = null }) { Text("Để sau") }
+            },
+        )
+    }
+
+    val message = updateMessage
+    if (message != null) {
+        AlertDialog(
+            onDismissRequest = { updateMessage = null },
+            title = { Text(message.first) },
+            text = { Text(message.second) },
+            confirmButton = {
+                TextButton(onClick = { updateMessage = null }) { Text("Đóng") }
+            },
+        )
     }
 
     if (showAddPartyDialog) {
@@ -375,6 +520,7 @@ fun PartyCard(
     onSendChannel: (Int) -> Unit,
     onSendChannelAuto: () -> Unit,
     onSendCity: (Int, Int) -> Unit,
+    onSendRouteMaps: (Int, Int) -> Unit,
     onSendGiftcode: (String) -> Unit,
     onGetChannels: () -> List<Triple<Int, Int, Int>>,
     onCurrentChannel: () -> Int?,
@@ -492,7 +638,9 @@ fun PartyCard(
             if (showCityDialog) {
                 CityDialog(
                     onDismiss = { showCityDialog = false },
+                    allowRouteMaps = party.runMode == RunModes.STAND_STILL || party.runMode == RunModes.STAY_LOGIN,
                     onPick = { info -> onSendCity(info.cityId, info.flag); showCityDialog = false },
+                    onRouteMaps = { source, dest -> onSendRouteMaps(source, dest); showCityDialog = false },
                 )
             }
             if (showGiftcodeDialog) {
@@ -691,7 +839,8 @@ fun trainMapOptions(): List<Pair<String, String>> {
     val config = com.chaquo.python.Python.getInstance().getModule("train_bot.config")
     val maps = config.get("TRAIN_MAPS")!!
     return maps.asMap().entries.map { (k, v) ->
-        k.toString() to (v.callAttr("get", "name")?.toString() ?: k.toString())
+        val name = v.callAttr("get", "name")?.toString()
+        k.toString() to (if (name.isNullOrBlank()) k.toString() else name)
     }
 }
 
@@ -1604,18 +1753,62 @@ fun ChannelDialog(
 @Composable
 fun CityDialog(
     onDismiss: () -> Unit,
+    allowRouteMaps: Boolean,
     onPick: (Cities.Info) -> Unit,
+    onRouteMaps: (Int, Int) -> Unit,
 ) {
+    var showRoute by remember { mutableStateOf(false) }
+    var sourceMap by remember { mutableStateOf("") }
+    var destMap by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Đổi thành (teleport)") },
         text = {
-            LazyColumn(modifier = Modifier.height(380.dp)) {
-                items(Cities.ALL.values.toList()) { info ->
-                    TextButton(
-                        onClick = { onPick(info) },
+            Column {
+                if (allowRouteMaps) {
+                    OutlinedButton(
+                        onClick = { showRoute = !showRoute },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(info.label) }
+                    ) { Text("Đi từ map AAA đến map BBB") }
+                }
+                if (allowRouteMaps && showRoute) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = sourceMap,
+                        onValueChange = { sourceMap = it },
+                        label = { Text("Map AAA (để trống = tự chọn)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = destMap,
+                        onValueChange = { destMap = it },
+                        label = { Text("Map BBB") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Button(
+                        onClick = {
+                            val source = sourceMap.trim().toIntOrNull() ?: 0
+                            val dest = destMap.trim().toIntOrNull()
+                            if (dest != null && dest > 0) onRouteMaps(source, dest)
+                        },
+                        enabled = (destMap.trim().toIntOrNull() ?: 0) > 0,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Bắt đầu kéo map") }
+                    Spacer(Modifier.height(10.dp))
+                }
+                LazyColumn(modifier = Modifier.height(320.dp)) {
+                    items(Cities.ALL.values.toList()) { info ->
+                        TextButton(
+                            onClick = { onPick(info) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(info.label) }
+                    }
                 }
             }
         },

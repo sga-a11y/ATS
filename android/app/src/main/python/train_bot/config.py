@@ -324,6 +324,9 @@ def _load_train_maps():
             else:
                 safes = [tuple(safe)]
             out[int(key)] = {
+                # "name" PHAI giu lai: Kotlin trainMapOptions() doc TRAIN_MAPS[key]["name"] cho
+                # dropdown "Map train" - bo di la dropdown chi hien ID map (bug thuc te 20/07).
+                "name": value.get("name", ""),
                 "safe": safes,
                 "mobs": [tuple(point) for point in value.get("mobs", [])],
             }
