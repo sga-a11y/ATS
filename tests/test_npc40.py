@@ -137,18 +137,33 @@ class TestNpc40Loop(unittest.TestCase):
 
 
 class TestNpc40ClientIntegration(unittest.TestCase):
-    def _client(self, hp):
+    def _client(self, hp, started=True):
         game = client_module.GameClient.__new__(client_module.GameClient)
         game._label = "test"
         game.running = True
+        game._npc40_started = started
         game._battle_start_seq = 0
         game._npc40_prompt_seq = 0
         game._npc40_last_defeated = False
+        game._battle_end_grace_until = 0.0
         game.state = SimpleNamespace(
             in_battle=True,
             allies={(3, 2): SimpleNamespace(hp_max=900, hp=hp)},
         )
         return game
+
+    def test_inactive_observer_preserves_train_battle_latch(self):
+        game = self._client(hp=1, started=False)
+        game.state._battle_counted = True
+        game._battle_end_grace_until = 123.0
+
+        game._observe_npc40_packet(0x41, b"\x00" * 7 + b"\x0a\x00\x01")
+
+        self.assertTrue(game.state.in_battle)
+        self.assertTrue(game.state._battle_counted)
+        self.assertEqual(game._npc40_prompt_seq, 0)
+        self.assertFalse(game._npc40_last_defeated)
+        self.assertEqual(game._battle_end_grace_until, 123.0)
 
     def test_packet_observer_tracks_battle_and_defeat_prompt(self):
         game = self._client(hp=0)
@@ -163,7 +178,7 @@ class TestNpc40ClientIntegration(unittest.TestCase):
         self.assertFalse(game.state.in_battle)
 
     def test_start_worker_runs_once_and_stop_sets_event(self):
-        game = self._client(hp=1)
+        game = self._client(hp=1, started=False)
         game._npc40_thread = None
         game._npc40_stop = threading.Event()
         calls = []

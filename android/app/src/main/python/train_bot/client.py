@@ -923,6 +923,8 @@ class GameClient:
             self.sock.close()
 
     def _observe_npc40_packet(self, opcode, pkt):
+        if not getattr(self, "_npc40_started", False):
+            return
         if opcode == protocol.OP_BATTLE_START:
             self._battle_start_seq += 1
         if not npc40.is_repeat_prompt(opcode, pkt):

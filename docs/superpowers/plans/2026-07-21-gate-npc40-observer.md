@@ -28,7 +28,7 @@
 - Consumes: `GameClient._npc40_started: bool`
 - Produces: `_observe_npc40_packet(opcode, pkt)` as a no-op while inactive
 
-- [ ] **Step 1: Write the failing inactive-observer test**
+- [x] **Step 1: Write the failing inactive-observer test**
 
 Add this test to `TestNpc40ClientIntegration`:
 
@@ -49,13 +49,13 @@ def test_inactive_observer_preserves_train_battle_latch(self):
 
 Update `_client(self, hp, started=True)` to initialize `_npc40_started = started` and `_battle_end_grace_until = 0.0`, keeping existing active tests active.
 
-- [ ] **Step 2: Run the new test and verify RED**
+- [x] **Step 2: Run the new test and verify RED**
 
 Run: `python -m unittest tests.test_npc40.TestNpc40ClientIntegration.test_inactive_observer_preserves_train_battle_latch -v`
 
 Expected: FAIL because inactive observation currently clears `state.in_battle` and increments the prompt sequence.
 
-- [ ] **Step 3: Add the minimal activity guard**
+- [x] **Step 3: Add the minimal activity guard**
 
 At the start of `_observe_npc40_packet` add:
 
@@ -64,13 +64,13 @@ if not getattr(self, "_npc40_started", False):
     return
 ```
 
-- [ ] **Step 4: Verify focused PC tests**
+- [x] **Step 4: Verify focused PC tests**
 
 Run: `python -m unittest tests.test_npc40 tests.test_npc40_party_policy tests.test_train_block_stats -v`
 
 Expected: all selected tests pass.
 
-- [ ] **Step 5: Sync and verify APK parity**
+- [x] **Step 5: Sync and verify APK parity**
 
 Run:
 
@@ -82,7 +82,7 @@ python -m py_compile bot/client.py android/app/src/main/python/train_bot/client.
 
 Expected: sync reports `client.py`, parity assertion and compilation exit 0.
 
-- [ ] **Step 6: Run regression and commit**
+- [x] **Step 6: Run regression and commit**
 
 Run: `python -m unittest tests.test_npc40 tests.test_npc40_party_policy tests.test_train_block_stats tests.test_smart_route -v`
 
