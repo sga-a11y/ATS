@@ -131,5 +131,16 @@ class TestDailyRollover(unittest.TestCase):
         self.assertIn(10, self.client.claimed_gifts)
 
 
+class TestDailyRolloverWiring(unittest.TestCase):
+    def test_keepalive_resets_before_claiming_online_gift(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "run_party_digioi.py"), encoding="utf-8") as fh:
+            source = fh.read()
+        reset_at = source.index("c.reset_daily_counters_if_needed()")
+        claim_at = source.index("c.claim_online_gifts()", reset_at)
+        self.assertLess(reset_at, claim_at)
+        self.assertLess(claim_at - reset_at, 300)
+
+
 if __name__ == "__main__":
     unittest.main()

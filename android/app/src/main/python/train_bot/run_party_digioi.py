@@ -2064,9 +2064,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 last_combat = time.time()
                 continue
             try:
+                c.reset_daily_counters_if_needed()
                 c.claim_online_gifts()   # nhan qua online khi du gio (10/20/30/60/90/180 phut)
             except Exception as e:
-                log.warning("[%s] loi qua online (bo qua): %s", label, e)
+                log.warning("[%s] loi reset/qua online (bo qua): %s", label, e)
             # Phuc Than: dinh ky 30p/lan (KHONG phai 1 lan luc login) - CHI khi party bat cong tac
             # "Su dung Phuc Than". Danh gia moi tick (nhu claim_online_gifts) thay vi tach thread rieng.
             # BAT BUOC khong dang combat (dung/deo giua luc danh trong bai quai la vo ly + bug thuc te).

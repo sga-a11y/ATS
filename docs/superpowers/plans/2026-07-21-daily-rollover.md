@@ -333,7 +333,7 @@ git commit -m "fix: reset safe daily counters after midnight"
 - Consumes: `GameClient.reset_daily_counters_if_needed(today=None, now=None) -> bool`.
 - Produces: every keepalive tick checks rollover immediately before online gift claim on PC and APK.
 
-- [ ] **Step 1: Write failing keepalive-order test**
+- [x] **Step 1: Write failing keepalive-order test**
 
 Append to `tests/test_daily_rollover.py`:
 
@@ -349,13 +349,13 @@ class TestDailyRolloverWiring(unittest.TestCase):
         self.assertLess(claim_at - reset_at, 300)
 ```
 
-- [ ] **Step 2: Run wiring test and verify red**
+- [x] **Step 2: Run wiring test and verify red**
 
 Run: `python -m unittest tests.test_daily_rollover.TestDailyRolloverWiring -v`
 
 Expected: error `substring not found` for `c.reset_daily_counters_if_needed()`.
 
-- [ ] **Step 3: Call rollover before online gift claim**
+- [x] **Step 3: Call rollover before online gift claim**
 
 Replace the keepalive block with:
 
@@ -367,19 +367,19 @@ Replace the keepalive block with:
                 log.warning("[%s] loi reset/qua online (bo qua): %s", label, e)
 ```
 
-- [ ] **Step 4: Run wiring and client tests**
+- [x] **Step 4: Run wiring and client tests**
 
 Run: `python -m unittest tests.test_daily_rollover -v`
 
 Expected: `Ran 7 tests ... OK`.
 
-- [ ] **Step 5: Sync PC source to APK**
+- [x] **Step 5: Sync PC source to APK**
 
 Run: `python tools/sync_apk_python.py`
 
 Expected: output includes `synced (shared): client.py` and `synced (coordinator): run_party_digioi.py`.
 
-- [ ] **Step 6: Verify parity and compile**
+- [x] **Step 6: Verify parity and compile**
 
 Run:
 
@@ -390,19 +390,19 @@ python -m py_compile bot/client.py run_party_digioi.py android/app/src/main/pyth
 
 Expected: both commands exit 0 without output.
 
-- [ ] **Step 7: Run focused regression**
+- [x] **Step 7: Run focused regression**
 
 Run: `python -m unittest tests.test_daily_rollover tests.test_event_exit tests.test_npc40 tests.test_npc40_party_policy -v`
 
 Expected: all selected tests report `OK`.
 
-- [ ] **Step 8: Run full suite and classify the known baseline**
+- [x] **Step 8: Run full suite and classify the known baseline**
 
 Run: `python -m unittest discover -s tests -v`
 
 Expected: rollover tests pass. The known unrelated `test_train_map_config` Android-loader mismatch may remain; report exact counts rather than claiming the whole suite is green.
 
-- [ ] **Step 9: Inspect and commit only source/test changes**
+- [x] **Step 9: Inspect and commit only source/test changes**
 
 ```bash
 git diff --check

@@ -432,12 +432,18 @@ def _load_gamedata_items() -> dict:
 
 
 
-def _gift_key(label: str) -> str:
+def _gift_day(today=None) -> str:
     import datetime
-    return f"{label}:{datetime.date.today().isoformat()}"
+    if today is None:
+        return datetime.date.today().isoformat()
+    return today.isoformat() if hasattr(today, "isoformat") else str(today)
 
 
-def _load_gift_state(label: str) -> dict:
+def _gift_key(label: str, today=None) -> str:
+    return f"{label}:{_gift_day(today)}"
+
+
+def _load_gift_state(label: str, today=None) -> dict:
     """Load state qua online HOM NAY: {'online_sec': float, 'claimed': set}."""
     import json, os
     default = {"online_sec": 0.0, "claimed": set()}
@@ -446,8 +452,8 @@ def _load_gift_state(label: str) -> dict:
     try:
         with open(_GIFT_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        rec = data.get(_gift_key(label))
-        if not rec:
+        rec = data.get(_gift_key(label, today))
+        if not rec or rec.get("version") != 2:
             return default
         return {"online_sec": float(rec.get("online_sec", 0)),
                 "claimed": set(rec.get("claimed", []))}
@@ -455,10 +461,10 @@ def _load_gift_state(label: str) -> dict:
         return default
 
 
-def _save_gift_state(label: str, online_sec: float, claimed: set):
+def _save_gift_state(label: str, online_sec: float, claimed: set, today=None):
     """Luu online_sec + claimed cho hom nay; don key ngay cu."""
-    import json, os, datetime
-    today = datetime.date.today().isoformat()
+    import json, os
+    day = _gift_day(today)
     with _gift_lock:
         data = {}
         if os.path.exists(_GIFT_FILE):
@@ -467,9 +473,12 @@ def _save_gift_state(label: str, online_sec: float, claimed: set):
                     data = json.load(f)
             except Exception:
                 data = {}
-        data = {k: v for k, v in data.items() if k.endswith(today)}
-        data[_gift_key(label)] = {"online_sec": round(online_sec, 1),
-                                  "claimed": sorted(claimed)}
+        data = {k: v for k, v in data.items() if k.endswith(day)}
+        data[_gift_key(label, day)] = {
+            "version": 2,
+            "online_sec": round(online_sec, 1),
+            "claimed": sorted(claimed),
+        }
         try:
             with open(_GIFT_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f)
@@ -792,6 +801,7 @@ class GameClient:
         self.vantieu_unlocked = 1    # so slot DA MO (S2C 0x56 0600 [N]); slot con lai khoa = can vang
         self._dg_query = None        # raw S2C 0x54 (tra loi query luot dungeon)
         self._dg_query_event = threading.Event()
+        self._daily_date = None      # ngay local cua bo dem hien tai
         self._connect_time = None    # thoi diem connect phien nay
         self._online_base = 0.0      # giay online TICH LUY hom nay (load tu file, truoc phien nay)
         self.claimed_gifts = set()   # cac moc qua online da nhan hom nay (load tu file)
@@ -810,8 +820,9 @@ class GameClient:
                                       .get(getattr(self, "_username", None), False))
         self.state.battle_config = dict(getattr(config, "ACCOUNT_BATTLE", {})
                                         .get(getattr(self, "_username", None), {}) or {})
+        self._daily_date = _gift_day()
         self._connect_time = time.time()
-        st = _load_gift_state(self._label)
+        st = _load_gift_state(self._label, today=self._daily_date)
         self._online_base = st["online_sec"]   # online tich luy truoc phien nay (hom nay)
         self.claimed_gifts = st["claimed"]
         self.sock = socket.create_connection((self.host, config.GAME_PORT), timeout=15)
@@ -2020,6 +2031,29 @@ class GameClient:
             status = body[4]
             if status:
                 log.info("[%s] Nhan exp offline THANH CONG", self._label)
+
+    def reset_daily_counters_if_needed(self, today=None, now=None) -> bool:
+        day = _gift_day(today)
+        if self._daily_date == day:
+            return False
+        previous = self._daily_date
+        self._daily_date = day
+        self._online_base = 0.0
+        self._connect_time = time.time() if now is None else float(now)
+        self.claimed_gifts = set()
+        self._quest_cells = set()
+        self._claimed_lines = set()
+        self._claimed_loaded = False
+        self.vantieu_started = None
+        self.vantieu_slots = {}
+        self.vantieu_req_code = None
+        self.dungeon_runs_today = None
+        self._gift_status = {}
+        self._gift_recv = 0
+        _save_gift_state(self._label, 0.0, set(), today=day)
+        log.info("[%s] DA SANG NGAY MOI %s -> %s: reset daily counters",
+                 self._label, previous, day)
+        return True
 
     def claim_online_gifts(self):
         """Nhan qua online GIONG client that: chi claim moc da DU GIO online.
