@@ -276,7 +276,10 @@ class SmartWorldRouter:
         for reverse in reverse_edges:
             gate = self.nav.get_gate(reverse["scene"], reverse["door"])
             if gate is not None:
-                return tuple(gate["center"])
+                center = tuple(gate["center"])
+                return self.ground.nearest_walkable_world(
+                    reverse["scene"], center, center
+                )
         return None
 
     def get_leg_path(self, route, scene_id, start):

@@ -74,6 +74,21 @@ class TestSmartWorldRouter(unittest.TestCase):
         self.assertEqual([leg["gate"] for leg in route["legs"]], [1, 17])
         self.assertEqual(route["city"], 14001)
 
+    def test_builds_thai_lang_2_through_world_map_twice(self):
+        route = self.router.build_route(14852, (470, 1950))
+
+        self.assertIsNotNone(route)
+        self.assertEqual(route["city"], 14001)
+        self.assertEqual(
+            [leg["scene"] for leg in route["legs"]],
+            [14001, 22000, 14523, 14534, 14522,
+             14533, 14521, 22000, 14851],
+        )
+        second_world_leg = route["legs"][7]
+        self.assertEqual(second_world_leg["gate"], 9)
+        self.assertEqual(route["legs"][6]["target_arrival"], [570, 970])
+        self.assertTrue(second_world_leg["paths"])
+
     def test_builds_40npc_exit_from_current_position(self):
         route = self.router.build_scene_route(10991, 12003, start=(910, 290))
 
