@@ -74,6 +74,16 @@ class TestSmartWorldRouter(unittest.TestCase):
         self.assertEqual([leg["gate"] for leg in route["legs"]], [1, 17])
         self.assertEqual(route["city"], 14001)
 
+    def test_builds_40npc_exit_from_current_position(self):
+        route = self.router.build_scene_route(10991, 12003, start=(910, 290))
+
+        self.assertIsNotNone(route)
+        self.assertEqual(route["source_map"], 10991)
+        self.assertEqual(route["dest_map"], 12003)
+        self.assertEqual([leg["gate"] for leg in route["legs"]], [1])
+        path = self.router.get_leg_path(route, 10991, (910, 290))
+        self.assertEqual(path[-1], (90, 870))
+
 
 if __name__ == "__main__":
     unittest.main()

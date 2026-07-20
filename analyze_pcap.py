@@ -9,7 +9,8 @@ XOR_KEY = 0xAD
 
 
 def _read_pcap(fn):
-    d = open(fn, "rb").read()
+    with open(fn, "rb") as fh:
+        d = fh.read()
     if len(d) < 24:
         return []
     linktype = struct.unpack("<I", d[20:24])[0]

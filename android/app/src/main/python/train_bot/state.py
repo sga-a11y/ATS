@@ -55,6 +55,7 @@ class BattleState:
         # maxSP (b1,slot)->val tu 0x0b. BEN: allies bi clear MOI tran (0x34) nhung 0x0b party chi toi
         # luc spawn -> luu rieng de ko mat maxSP giua cac tran. Nguon duy nhat co pet maxSP.
         self.ally_spmax = {}
+        self.ally_hpmax = {}          # ben qua allies.clear() moi 0x34; 40NPC dung de doc HP cuoi tu 0x32
         self.mobs = []  # list HP_max cua quai (theo thu tu xuat hien)
         self.in_battle = False
         # vi tri quai con song (slot B2) - decode tu 0x33; dung lam target combat
@@ -171,11 +172,41 @@ class BattleState:
                 if u is None:
                     u = Unit(f"{'char' if b1==3 else 'pet'}{b2}")
                     self.allies[(b1, b2)] = u
-                if T_HP_MAX in d: u.hp_max = d[T_HP_MAX]
+                if T_HP_MAX in d:
+                    u.hp_max = d[T_HP_MAX]
+                    self.ally_hpmax[(b1, b2)] = u.hp_max
+                elif not u.hp_max:
+                    u.hp_max = self.ally_hpmax.get((b1, b2), 0)
                 if T_HP_CUR in d: u.hp = d[T_HP_CUR]
                 if T_SP_CUR in d: u.sp = d[T_SP_CUR]   # maxSP nap tu 0x0b (update_0x0b)
                 u.slot = b2
         return start_enemy_slots
+
+    def update_0x32(self, pkt: bytes):
+        """Apply current-HP blocks embedded in battle action packets.
+
+        Stable block observed in 40NPC capture:
+        ``[b1][slot] 01 00 01 19 [curHP u32] 01``.
+        The normal 0x33 snapshot may only arrive at battle start, so these action
+        blocks are needed to know whether the party was wiped at the end.
+        """
+        body = pkt[7:] if len(pkt) > 7 and pkt[6] == 0x32 else pkt
+        marker = b"\x01\x00\x01\x19"
+        for i in range(max(0, len(body) - 10)):
+            b1, slot = body[i], body[i + 1]
+            if b1 not in (0x02, 0x03) or body[i + 2:i + 6] != marker:
+                continue
+            if i + 11 > len(body) or body[i + 10] != 0x01:
+                continue
+            unit = self.allies.get((b1, slot))
+            if unit is None:
+                hp_max = self.ally_hpmax.get((b1, slot), 0)
+                if not hp_max:
+                    continue
+                unit = Unit(f"{'char' if b1 == 3 else 'pet'}{slot}")
+                unit.hp_max = hp_max
+                self.allies[(b1, slot)] = unit
+            unit.hp = int.from_bytes(body[i + 6:i + 10], "little")
 
     # ---- parse 0x0b (full stats char/pet) ----
     def _read_0b_block(self, pkt, ent, b1, slot, who):
@@ -219,6 +250,7 @@ class BattleState:
                             self.allies[(bb, sl)] = u
                         u.hp, u.hp_max, u.sp, u.sp_max = ch, mh, cs, ms
                         u.slot = sl
+                        self.ally_hpmax[(bb, sl)] = mh
                         self.ally_spmax[(bb, sl)] = ms   # BEN qua cac tran (allies bi clear)
                         # Di Gioi SOLO co toi da 4 pet cung luc. 0x33 khong co SP_max, nen nap
                         # SP_max/HP tu 0x0b vao multi_pet de hoi item ngoai tran cho tung con.

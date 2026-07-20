@@ -890,6 +890,28 @@ hay không trước khi đánh.
 rớt kết nối.** Đã gỡ hết log debug tạm (DBG33/DBG0B/DBG35/DBG-RAW/DBG-CAPTURE); các log
 `(LEADER) tran N: ...` giữ lại vì hữu ích theo dõi vận hành bình thường, không còn là debug tạm.
 
+### 7o. Event 40 NPC — party + battle lặp (capture 2026-07-20)
+
+Nguồn: `captures/40npc_loop_20260720.pcap` (chọn Có) và
+`captures/40npc_choose_no_20260720.pcap` (chọn Không).
+
+- Map đích `10991`; party đi đến NPC tại `(910,290)`.
+- Mở NPC: C2S `0x20 020008` rồi `0x14 01000500`.
+- Chọn **Có/đánh tiếp**: C2S `0x14 09001e`; chọn **Không/dừng**: `0x14 09001f`.
+- C2S `0x14 0600` là tiến dialog. Sau chọn Không cần hai lần tiến dialog; server trả
+  `S2C 0x14 080029`, cuối cùng `S2C 0x41 0a0000`.
+- `S2C 0x41 0a0001` + dialog `0x14 0100...` là NPC hỏi lại sau khi trận kết thúc.
+  Dialog này có cả sau thắng lẫn thua, nên không được dùng riêng nó để kết luận kết quả.
+- `S2C 0x34` là generation bắt đầu battle. Phải chụp generation prompt trước khi mở trận vì
+  prompt có thể về rất nhanh; chụp sau `0x34` có race làm bỏ lỡ và timeout.
+- HP cuối trận thay đổi trong S2C `0x32`, block ổn định:
+  `[b1][slot] 01 00 01 19 [curHP u32] 01`. Chỉ đọc snapshot `0x33` đầu trận thì không thể nhận
+  biết party wipe. Khi prompt tới, nếu đã biết unit party và không còn char/pet nào HP > 0 thì
+  chọn Không và dừng.
+- Chỉ mode event có bot leader mới tự lập đủ party và chạy loop. Không có bot leader giữ nguyên
+  đứng yên chờ điều khiển tay. Nếu một nick rớt giữa loop, relogin toàn party rồi vào/lập đội lại;
+  forced relogin của các survivor không được tăng `disc_gen` thêm để tránh reconnect dây chuyền.
+
 ## 8. GAME MECHANICS
 
 | Mechanic | Mô tả |

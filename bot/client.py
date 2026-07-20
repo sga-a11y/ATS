@@ -8,7 +8,7 @@ import collections
 import json
 import os
 
-from . import config, protocol, combat, pathfind
+from . import config, protocol, combat, pathfind, npc40
 
 
 from .auth import build_auth_packet
@@ -731,7 +731,8 @@ class GameClient:
         self.party_idx = None        # chi so party cua bot (tu config.ACCOUNT_PARTY) - de nhan moi cung party
         self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x27
         self._running_route = False   # dang chay auto run-around
-        self.pos = None              # vi tri hien tai (x,y) cua minh - doc tu S2C 0x06 self
+        self.pos = None              # vi tri hien tai (x,y) cua minh - doc tu S2C 0x03 self
+        self._position_generation = 0  # tang khi server xac nhan self pos qua S2C 0x03
         self.train_block_stats_enabled = False
         self.train_block_map_id = None
         self.train_block_spot = None
@@ -753,6 +754,12 @@ class GameClient:
         self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
         self._genuine_end_seen = 0.0  # thoi diem nhan goi 0x14 sub0800 tail=03/04 (ket tran THAT, moi context)
         self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
+        self._battle_start_seq = 0     # tang moi S2C 0x34; 40NPC doi generation moi thay vi canh timing bool
+        self._npc40_prompt_seq = 0     # tang khi S2C 0x41 0a0001: NPC hoi co danh tiep khong
+        self._npc40_last_defeated = False
+        self._npc40_started = False
+        self._npc40_stop = threading.Event()
+        self._npc40_thread = None
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
@@ -899,9 +906,42 @@ class GameClient:
     def close(self):
         self._deliberate_close = True   # ta tu dong -> OSError trong recv KHONG phai server rot
         self.running = False
+        self.stop_npc40_loop()
         self.finish_mob_packet_capture()
         if self.sock:
             self.sock.close()
+
+    def _observe_npc40_packet(self, opcode, pkt):
+        if opcode == protocol.OP_BATTLE_START:
+            self._battle_start_seq += 1
+        if not npc40.is_repeat_prompt(opcode, pkt):
+            return
+        defeated, alive, total = npc40.party_defeated(self.state.allies)
+        self._npc40_last_defeated = defeated
+        self._npc40_prompt_seq += 1
+        self.state.in_battle = False
+        self._battle_end_grace_until = time.time() + 3.0
+        log.info("[%s] 40NPC: het tran, party alive=%d/%d defeated=%s prompt_seq=%d",
+                 self._label, alive, total, defeated, self._npc40_prompt_seq)
+
+    def start_npc40_loop(self, point, on_loss):
+        if getattr(self, "_npc40_started", False):
+            return False
+        self._npc40_started = True
+        self._npc40_stop.clear()
+        self._npc40_thread = threading.Thread(
+            target=npc40.run_loop,
+            args=(self, tuple(point), self._npc40_stop, on_loss),
+            daemon=True,
+            name="npc40-%s" % (self._label or self._username),
+        )
+        self._npc40_thread.start()
+        return True
+
+    def stop_npc40_loop(self):
+        stop = getattr(self, "_npc40_stop", None)
+        if stop is not None:
+            stop.set()
 
     def in_combat(self, idle_secs: float = 4.0) -> bool:
         """Dang trong tran. Moc CHUAN = state.in_battle (set MOI luot 0x35 + 0x34 START, HA o 0x14
@@ -1113,6 +1153,7 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        self._observe_npc40_packet(opcode, pkt)
         self._observe_mob_packet(opcode, pkt)
         # Pho ban to doi: theo doi thoai NPC de biet canh da HET that su chua (_adv_dialog_until_idle)
         # va tin hieu ket tran that (mot so canh boss tu dong xu ly, khong bao gio bat in_battle=True).
@@ -1310,6 +1351,7 @@ class GameClient:
                     sy = int.from_bytes(pkt[32:34], "little")
                     if 0 < sx < 20000 and 0 < sy < 20000:
                         self.pos = (sx, sy)
+                        self._position_generation += 1
                         log.info("[%s] RESYNC pos tu 0x03 = (%d,%d) map=%s",
                                  self._label, sx, sy, self.current_map)
             # TEN NHAN VAT tu 0x03 self-spawn (nguon dang tin: MOI acc co, KHONG can bang hoi).
@@ -1322,6 +1364,8 @@ class GameClient:
             start_enemy_slots = self.state.update_0x33(pkt)
             if start_enemy_slots:
                 self._record_train_block_stats(start_enemy_slots)
+        elif opcode == 0x32:                       # battle action: HP cuoi tran nam trong cac block 0x19
+            self.state.update_0x32(pkt)
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
             if self.self_entity is None:
                 # chua biet self_entity -> buffer lai de xu khi co (tranh mat goi stat luc login)
@@ -4466,6 +4510,33 @@ class GameClient:
             return None
         return router.nearest_city(int(dest_map), exclude_city=exclude_map)
 
+    def refresh_server_position(self, source_map: int, request_timeout: float = 2.0) -> bool:
+        source_map = int(source_map)
+        generation = self._position_generation
+        self.send(0x0C, b"\x01\x00")
+        deadline = time.time() + max(0.0, float(request_timeout))
+        while self.running and time.time() < deadline:
+            if self._position_generation != generation:
+                ok = self.current_map == source_map and self.pos is not None
+                if not ok:
+                    log.warning("[%s] resync pos doi sang map %s, can map %s",
+                                self._label, self.current_map, source_map)
+                return ok
+            time.sleep(0.05)
+
+        log.info("[%s] request scene khong co self-spawn moi -> relogin", self._label)
+        if not self.relogin():
+            log.warning("[%s] resync pos that bai: relogin loi", self._label)
+            return False
+        ok = (self._position_generation != generation
+              and self.current_map == source_map
+              and self.pos is not None)
+        if not ok:
+            log.warning("[%s] resync pos sau relogin khong hop le: gen=%s->%s map=%s pos=%s",
+                        self._label, generation, self._position_generation,
+                        self.current_map, self.pos)
+        return ok
+
     def build_smart_scene_route(self, source_map: int, dest_map: int, safe=None):
         router = _smart_world_router()
         if router is None:
@@ -4611,33 +4682,25 @@ class GameClient:
         return ok
 
     def exit_event(self, ev) -> bool:
-        """RA KHOI map event (12921/12922) ve map thuong (ev['exit']['out_map']) - vi event map KHONG
-        teleport thang duoc, phai di bo ra cong. Goi TRUOC khi teleport di mode khac (train/digioi/
-        city) neu login o map event. Cong exit dung 0x14 04 binh thuong -> _enter_gate."""
+        """Ra khoi event bang toa do server moi va smart scene route tu du lieu map."""
         ex = ev.get("exit") if ev else None
         if not ex:
             return False
         out_map = int(ex.get("out_map", 0))
-        log.info("[%s] exit_event: ra khoi map event %s -> %s", self._label, self.current_map, out_map)
+        source_map = self.current_map
+        if not out_map or source_map is None:
+            log.warning("[%s] exit_event: thieu source/out map", self._label)
+            return False
+        source_map = int(source_map)
+        log.info("[%s] exit_event smart route: %s -> %s", self._label, source_map, out_map)
         self.flee_mode = True
-        for st in ex.get("steps", []):
-            if not self.running:
-                return False
-            if "gate" in st:
-                if not self._exit_event_gate(int(st["x"]), int(st["y"]), int(st["gate"]), out_map):
-                    log.warning("[%s] exit_event: ket o cong idx=%s", self._label, st.get("gate"))
-                    return False
-            elif "flag" in st:
-                # REPLAY DUNG capture: gui thang 0x06 voi FLAG that (4/5), khong navigate/pathfind
-                # (navigate gui flag 1 + tu chon buoc -> lech duong capture). Van cho het tran truoc.
-                if not self._wait_combat_clear():
-                    return False
-                mx, my = int(st["move"][0]), int(st["move"][1])
-                self.send(0x06, b"\x01\x00" + bytes([int(st["flag"]) & 0xFF]) + struct.pack("<HH", mx, my))
-                self.pos = (mx, my); time.sleep(0.7)
-            else:
-                self._route_move(int(st["move"][0]), int(st["move"][1]))
-        return (self.current_map == out_map) if out_map else True
+        if not self.refresh_server_position(source_map):
+            return False
+        if not self.follow_smart_scene_route(source_map, out_map, safe=None, flee=True):
+            log.warning("[%s] exit_event: khong di duoc %s -> %s tu pos=%s",
+                        self._label, source_map, out_map, self.pos)
+            return False
+        return self.current_map == out_map
 
     def _event_gate(self, x: int, y: int, idx: int, dest: int, max_transit: int = 22) -> bool:
         """Qua cong VAO EVENT - KHAC _enter_gate thuong: event co CINEMATIC (battle-flow) nen sau khi

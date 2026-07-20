@@ -262,6 +262,7 @@ account_threads = {}   # username -> Thread
 account_last = {}      # username -> {"map","char"} luc CUOI truoc khi thoat (de biet thoat o dau)
 account_exit_reason = {}  # username -> ly do thoat (de tong ket 1 dong khi ca party tat het)
 account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT (supervisor login lai)
+account_forced_reconnect = set()  # survivor 40NPC bi dong de relogin cung party; KHONG tang disc_gen
 
 
 def _running_party_usernames(pidx):
@@ -320,6 +321,15 @@ def _party_map_barrier(st, username, self_ok, expected, stopped):
         return all(st["map_results"].values())
 
 
+def _is_npc_repeat_party_event(mode, has_leader, ev):
+    battle = (ev or {}).get("party_battle") or {}
+    return mode == "event" and bool(has_leader) and battle.get("kind") == "npc_repeat"
+
+
+def _should_restart_event_party(event_party_mode, battle_active, disc_gen, handled_gen):
+    return bool(event_party_mode and battle_active and disc_gen > handled_gen)
+
+
 def _pstate(pidx):
     if pidx not in _party_state:
         _party_state[pidx] = {"channel": None,
@@ -362,6 +372,8 @@ def _pstate(pidx):
                               "manual_route_done": threading.Event(),
                               "reconnecting": set(),  # username dang ROT + login lai (cho reconnect resync)
                               "disc_gen": 0,          # +1 moi khi co acc rot (bao cac nick khac phan ung)
+                              "event_battle_active": False,
+                              "event_battle_done": threading.Event(),
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
@@ -509,6 +521,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     else ("stand" if sc == 0 else "city")))
         train_on_map = (mode == "train") and (tm is not None)
         is_digioi = (mode == "digioi")
+        ev = None
         train_safes = []
         if tm is not None:
             resolved_safe = _resolve_train_safe(c, sc, tm.get("safe", []))
@@ -1249,8 +1262,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if pcfg.get("digioi_mode") != "solo":
                 do_channel_sync()
         elif mode == "event":
-            # --- EVENT: SYNC KENH (ca party cung 1 kenh -> moi party TAY duoc) roi tele toi map event
-            #     (Nhi Kieu / 40 NPC...) va DUNG YEN, cho moi tay. KHONG tu lap party. ---
+            # --- EVENT: moi nick vao map rieng khi chua co party. Event 40NPC co bot leader se
+            # lap party SAU KHI tat ca da vao map; event khac/no-leader van dung yen cho moi tay. ---
             do_channel_sync()   # ca party ve cung kenh TRUOC khi vao event (khong thi moi party tay khong duoc)
             _evs = getattr(config, "EVENTS", {}) or {}
             ev = _evs.get(pcfg.get("event_key") or "")
@@ -1307,7 +1320,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # chay long vong luon (xem buoc 1-2 o tren: da vao DG + lam nhiem vu nhe).
         digioi_solo = is_digioi and pcfg.get("digioi_mode") == "solo"
         event_mode = (mode == "event")
-        if event_mode:
+        event_party_mode = _is_npc_repeat_party_event(mode, has_leader, ev)
+        event_stand_mode = event_mode and not event_party_mode
+        if event_stand_mode:
             # EVENT: da tele toi map event o tren -> DUNG YEN HOAN TOAN, cho moi tay. Moi nick doc lap,
             # KHONG lap party/sync kenh (bo qua het nhanh leader/member ben duoi). Auto-accept moi tay
             # xu ly o client (0x2f). training_started=False -> keepalive KHONG danh chu dong.
@@ -1371,7 +1386,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             training_started = False
             def _start_training():
                 c.set_party_strategist()    # set member INT cao nhat lam quan su (hoi SP)
-                if train_on_map:
+                if event_party_mode:
+                    if st["event_battle_done"].is_set():
+                        c.flee_mode = False
+                        log.info("[%s] (LEADER) 40NPC da THUA -> dung yen, khong mo lai battle", label)
+                        return
+                    point = tuple(ev["party_battle"]["point"])
+                    def _on_npc40_loss():
+                        with st["lock"]:
+                            st["event_battle_active"] = False
+                            st["event_battle_done"].set()
+                        log.warning("[%s] (LEADER) 40NPC: PARTY THUA -> chon KHONG va DUNG", label)
+                    with st["lock"]:
+                        st["event_battle_active"] = True
+                    c.flee_mode = False
+                    if c.start_npc40_loop(point, _on_npc40_loss):
+                        log.info("[%s] (LEADER) 40NPC: du party -> den %s va bat dau lap battle", label, point)
+                elif train_on_map:
                     # CO acc bi DUMP khoi dungeon (reform_gen tang so voi truoc dungeon) -> KHONG keo ra
                     # spot (phi cong: keo xong keepalive lai reform ve thanh). De keepalive REFORM luon.
                     if st["reform_gen"] > _rg_base:
@@ -1429,7 +1460,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # city/stand: chi set QS, DUNG YEN (cho ban dieu khien tay di nhiem vu)
                     c.flee_mode = False
                     log.info("[%s] (LEADER) %s -> party da tu, DUNG YEN cho dieu khien tay", label, mode)
-            if joined_member_count(pidx) >= 1:
+            _joined = joined_member_count(pidx)
+            _can_start = (_joined >= st["n_members"] if event_party_mode else _joined >= 1)
+            if _can_start:
                 time.sleep(1)
                 _start_training(); training_started = True
             else:
@@ -1448,7 +1481,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # DA vao party -> NGUNG flee, DANH tran chung (ca map-train LAN Di Gioi).
             # FLEE trong tran party bi server KICK (vd Tao Thao: member flee -> dis ngay).
             c.flee_mode = False
-            if train_on_map:
+            if event_party_mode:
+                c.combat_ready()
+                log.info("[%s] (member) 40NPC: da vao du party -> dung theo leader va tu danh", label)
+            elif train_on_map:
                 if st.get("mob_spot"):
                     c.combat_ready()   # map thuong: combat-active de quai aggro (DG khong can)
                 else:
@@ -1804,7 +1840,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # "leader" chi la vai tro danh nhan trong config, KHONG lien quan gi den viec cac acc
             # khac co chay duoc hay khong -> KHONG duoc thoat theo (da xac nhan bug thuc te: leader
             # out la ca party solo out theo, vo ly vi solo dung y la doc lap).
-            if (not is_leader) and has_leader and st["leader_gone"].is_set() and not digioi_solo and not event_mode:
+            if (not is_leader) and has_leader and st["leader_gone"].is_set() and not digioi_solo and not event_stand_mode:
                 log.info("[%s] (member) CHU PARTY da thoat -> member thoat theo", label)
                 _reason("chu party thoat -> member theo")
                 break
@@ -1837,8 +1873,20 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # ==== RECONNECT reaction: co dong doi ROT (dang login lai) -> TAM DUNG + cho tat ca ve
             # -> restart mode. CHI khi party co bot-leader (khong thi nick rot da chet). Di Gioi SOLO
             # bo qua (moi acc doc lap). Team dungeon xu o phase daily rieng (relogin ca party). ====
-            if has_leader and not digioi_solo and not event_mode and st["disc_gen"] > disc_gen_handled:
+            if (has_leader and not digioi_solo and
+                    (not event_mode or event_party_mode) and st["disc_gen"] > disc_gen_handled):
                 disc_gen_handled = st["disc_gen"]
+                if event_party_mode:
+                    if _should_restart_event_party(
+                            event_party_mode, st["event_battle_active"],
+                            st["disc_gen"], disc_gen_handled - 1):
+                        account_forced_reconnect.add(username)
+                        _reason("40NPC dang battle co dong doi rot -> relogin ca party")
+                        log.warning("[%s] (%s) 40NPC dang battle co dong doi ROT -> RELOGIN cung ca party",
+                                    label, role)
+                        c.close()
+                        break
+                    continue
                 if st["reconnecting"]:
                     log.warning("[%s] (%s) dong doi ROT %s -> TAM DUNG cho reconnect",
                                 label, role, list(st["reconnecting"]))
@@ -2170,8 +2218,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # KHONG doi hoi has_leader: party "khong co chu PT" (vd dung yen trong DG cho moi tay) truoc
         # day rot mang la CHET LUON du con gio -> user bao "dang o DG con time ma tu out". Gio moi
         # mode deu tu login lai; dung han chi khi GUI Stop / thoat binh thuong (het gio DG...).
+        _forced_reconnect = username in account_forced_reconnect
         reconnectable = (not _stopped()
-                         and (_login_failed
+                         and (_forced_reconnect or _login_failed
                               or (c is not None and getattr(c, "server_closed", False))))
         account_reconnect[username] = reconnectable
         if is_leader and not reconnectable:
@@ -2349,12 +2398,27 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
         first = False
         if _st() or not account_reconnect.get(username):
             break   # GUI Stop / thoat binh thuong / khong reconnectable -> dung han
+        forced = username in account_forced_reconnect
+        account_forced_reconnect.discard(username)
+        pcfg = (getattr(config, "PARTY_CONFIG", {}).get(pidx, {}) or {})
+        ev = (getattr(config, "EVENTS", {}) or {}).get(pcfg.get("event_key") or "")
+        event_reset = (not forced and _is_npc_repeat_party_event(
+            pcfg.get("mode"), config.PARTY_LEADER_ACC.get(pidx) is not None, ev
+        ) and st.get("event_battle_active", False))
         with st["lock"]:
             st["reconnecting"].add(username)
-            st["disc_gen"] += 1
+            if not forced:
+                st["disc_gen"] += 1
+            if event_reset:
+                st["ready_members"].clear()
+                st["invited"].clear()
+                st["event_battle_done"].clear()
+        if event_reset:
+            reset_party_joined(pidx)
         attempt += 1
-        wait = 5 if attempt <= 3 else (30 if attempt <= 13 else 60)
-        log.warning("[%s] RECONNECT: server rot -> login lai sau %ds (lan %d)", username, wait, attempt)
+        wait = 1 if forced else (5 if attempt <= 3 else (30 if attempt <= 13 else 60))
+        log.warning("[%s] RECONNECT: %s -> login lai sau %ds (lan %d)", username,
+                    "40NPC relogin ca party" if forced else "server rot", wait, attempt)
         for _ in range(wait):
             if _st():
                 break

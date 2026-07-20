@@ -16,7 +16,9 @@ APK = os.path.join(ROOT, "android", "app", "src", "main", "python", "train_bot")
 # File CHUNG: copy y nguyen (import 'from . import ...' da tuong thich package train_bot).
 SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login.py",
           "train_block_stats.py", "mob_scanner.py", "mob_spots.py", "scene_fight.py",
-          "train_maps_store.py"]
+          "train_maps_store.py", "npc40.py"]
+
+SHARED_ASSETS = ["events.json"]
 
 # File PC-only can cho coordinator/client neu co import (pathfind dung boi navigate). Copy neu ton tai.
 OPTIONAL = ["pathfind.py", "world_nav.py", "smart_route.py"]
@@ -50,6 +52,10 @@ def main():
     with open(os.path.join(APK, "run_party_digioi.py"), "w", encoding="utf-8") as fh:
         fh.write(_rewrite_coordinator(src))
     print("synced (coordinator): run_party_digioi.py (import bot -> relative)")
+    asset_dir = os.path.join(ROOT, "android", "app", "src", "main", "assets", "train_bot_data")
+    for f in SHARED_ASSETS:
+        shutil.copy(os.path.join(ROOT, f), os.path.join(asset_dir, f))
+        print("synced (asset):", f)
 
 
 if __name__ == "__main__":
