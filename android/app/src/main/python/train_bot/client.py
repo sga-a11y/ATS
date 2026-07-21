@@ -4446,6 +4446,15 @@ class GameClient:
             time.sleep(3.0)
             if self.in_combat(idle_secs=5.0):
                 continue   # con trong tran (hoac vua aggro) -> fight het roi moi transit
+            # Cong GIUA BIEN (o nuoc, dang tren thuyen): CHI gui 0x14 08, KHONG 0x14 04 -> tranh
+            # server da (capture thuyen_thanhchau: cong bien deu chi 0x14 08). Cong dat: 04 + 08.
+            gate_is_sea = False
+            try:
+                _gs = _ground_store()
+                if _gs is not None and self.current_map:
+                    gate_is_sea = _gs.is_sea_world(self.current_map, (x, y))
+            except Exception:
+                pass
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
             self._gate_transit = True
             try:
@@ -4454,7 +4463,8 @@ class GameClient:
                     # CHI gui 0x14 06 (gui lai 04/08 se bi kick). Xem capture thuyen_thanhchau.
                     self.send(0x14, b"\x06\x00"); time.sleep(1.0)
                 else:
-                    self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
+                    if not gate_is_sea:
+                        self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
                     self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
                     self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
                     self.send(0x14, b"\x06\x00"); time.sleep(1.0)

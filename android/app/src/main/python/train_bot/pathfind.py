@@ -203,6 +203,19 @@ class GroundMapStore:
         return (math.ceil((point[0] - left) * 0.05),
                 math.ceil((point[1] - top) * 0.05))
 
+    def is_sea_world(self, map_id, point):
+        """Cell (x,y) o world co phai NUOC (bit2=sea)? Dung de _enter_gate biet cong GIUA BIEN
+        (diem chuyen map tren o nuoc, dang tren thuyen) -> chi gui 0x14 08, KHONG 0x14 04 (server
+        da). Xem capture thuyen_thanhchau: cac cong bien deu chi 0x14 08."""
+        m = self.get(map_id)
+        if m is None:
+            return False
+        blk = self.world_to_block(map_id, point)
+        if blk is None:
+            return False
+        v = _value(m["grid"], m["grid_w"], m["grid_h"], blk[0], blk[1])
+        return v is not None and v & 2 == 2
+
     def block_to_world(self, map_id, block):
         m = self.get(map_id)
         if m is None:
