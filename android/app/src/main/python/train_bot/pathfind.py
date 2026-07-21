@@ -67,7 +67,7 @@ def is_line_clear(grid, width, height, start, target):
     return True
 
 
-def _empty_target(grid, width, height, target):
+def _empty_target(grid, width, height, target, max_radius=30):
     x, y = target
     if not _blocked(grid, width, height, x, y):
         return target
@@ -76,6 +76,23 @@ def _empty_target(grid, width, height, target):
                    (-1, -1), (-1, 1), (1, -1), (1, 1)):
         if not _blocked(grid, width, height, x + dx, y + dy):
             return x + dx, y + dy
+    # Cong o BIEN map (vd ben thuyen 15000 door2 @[2440,20]) co center nam tren tuong/mep,
+    # 8 o ke deu chan -> vong ra xa hon (spiral) tim o dung-duoc gan nhat. Khong co -> None.
+    for r in range(2, int(max_radius) + 1):
+        best = None
+        best_d = None
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                if max(abs(dx), abs(dy)) != r:   # chi quet VIEN cua vong r
+                    continue
+                nx, ny = x + dx, y + dy
+                if _blocked(grid, width, height, nx, ny):
+                    continue
+                d = dx * dx + dy * dy
+                if best_d is None or d < best_d or (d == best_d and (ny, nx) < (best[1], best[0])):
+                    best, best_d = (nx, ny), d
+        if best is not None:
+            return best
     return None
 
 
