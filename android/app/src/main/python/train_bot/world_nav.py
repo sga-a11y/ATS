@@ -9,6 +9,7 @@ class WorldNavStore:
         with open(path, encoding="utf-8") as fh:
             self.data = json.load(fh)
         self.fingerprint = self.data["fingerprint"]
+        self.gates = self.data["gates"]
         self.graph = defaultdict(list)
         self.reverse_graph = defaultdict(list)
         self.states = set()
@@ -21,12 +22,19 @@ class WorldNavStore:
             edges.sort(key=self._edge_key)
         for edges in self.reverse_graph.values():
             edges.sort(key=lambda edge: (edge["from"], *self._edge_key(edge)))
-        self.gates = self.data["gates"]
         self._target_cache = {}
 
-    @staticmethod
-    def _edge_key(edge):
-        return edge["priority"], edge["door"], edge["to"]
+    def _gate_unusable(self, edge):
+        """Cong co image [0,0,0] = KHONG co hinh cua (warp event/script, vd 12011 door12
+        event20) -> di bo toi + gui 0x14 08 KHONG chuyen map. Xep sau cong-cua-that de
+        router uu tien cong di bo qua duoc khi co lua chon (bug party ket o 12011->12000)."""
+        gate = self.gates.get(str(edge["scene"]), {}).get(str(edge["door"]))
+        if gate is None:
+            return 1
+        return 1 if list(gate.get("image", [0, 0, 0])) == [0, 0, 0] else 0
+
+    def _edge_key(self, edge):
+        return self._gate_unusable(edge), edge["priority"], edge["door"], edge["to"]
 
     def _links_to(self, target_scene):
         target_scene = int(target_scene)
