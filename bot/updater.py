@@ -191,6 +191,35 @@ def _as_url_list(urls):
     return [_normalize_download_url(urls)]
 
 
+def _merge_user_config(live_dir: str, stage_dir: str):
+    """GIU config user khi update (option A - user-wins union). Cac file map user tu them/sua
+    (train_maps.json, train_routes.json) neu bi ghi de se MAT config -> gop: map/route nao user
+    DA CO thi giu ban user; chi THEM key MOI tu ban update. Ghi ket qua vao file STAGING (xcopy
+    se copy ban da gop -> khong mat config, van nhan map/route moi cua dev).
+    Loi merge (thieu file / json hong) -> bo qua, giu nguyen ban staging (khong lam hong update)."""
+    for fname, subkey in (("train_maps.json", "maps"), ("train_routes.json", "routes")):
+        live_p = os.path.join(live_dir, fname)
+        stage_p = os.path.join(stage_dir, fname)
+        if not (os.path.exists(live_p) and os.path.exists(stage_p)):
+            continue
+        try:
+            with open(live_p, encoding="utf-8") as f:
+                live = json.load(f)
+            with open(stage_p, encoding="utf-8") as f:
+                stage = json.load(f)
+            live_sub = live.get(subkey)
+            stage_sub = stage.get(subkey)
+            if not isinstance(live_sub, dict) or not isinstance(stage_sub, dict):
+                continue
+            merged = dict(stage_sub)   # ban update lam nen (co key MOI cua dev)
+            merged.update(live_sub)    # USER WINS: key trung -> lay ban user; key user-only giu lai
+            stage[subkey] = merged
+            with open(stage_p, "w", encoding="utf-8") as f:
+                json.dump(stage, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+
 def download_and_swap(url: str, on_progress=None):
     """Tai aTSBot.zip (CA FOLDER: exe + JSON config) ve -> giai nen ra _update_stage -> viet
     _update.bat: cho app thoat -> xcopy stage GHI DE folder (exe + json moi) -> chay lai -> don.
@@ -239,6 +268,10 @@ def download_and_swap(url: str, on_progress=None):
     os.makedirs(stage, exist_ok=True)
     with zipfile.ZipFile(zip_path) as z:
         z.extractall(stage)
+
+    # 2b) GIU config user (train_maps/train_routes user tu them/sua) - gop vao ban staging TRUOC khi
+    # xcopy ghi de. Khong co buoc nay -> user config map bi ban tai ve de mat (option A user-wins).
+    _merge_user_config(d, stage)
 
     # 3) bat: TASKKILL exe (bootstrap onefile khong tu chet bang os._exit -> giu khoa file) -> xcopy
     # stage GHI DE folder, RETRY toi khi het khoa -> chay lai. KHONG cho theo PID/ten process nua
