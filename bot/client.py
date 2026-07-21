@@ -4446,8 +4446,9 @@ class GameClient:
             time.sleep(3.0)
             if self.in_combat(idle_secs=5.0):
                 continue   # con trong tran (hoac vua aggro) -> fight het roi moi transit
-            # Cong GIUA BIEN (o nuoc, dang tren thuyen): CHI gui 0x14 08, KHONG 0x14 04 -> tranh
-            # server da (capture thuyen_thanhchau: cong bien deu chi 0x14 08). Cong dat: 04 + 08.
+            # CONG GIUA BIEN (o nuoc, dang tren thuyen): CHAM vao o cong thi map TU DOI. TUYET DOI
+            # KHONG gui 0x14 (gui la server DA - kick 2c). Chi sail xuyen qua vung trigger cong roi
+            # cho current_map doi. Vung trigger la 1 DAI rong -> sail qua vai diem cho chac cham.
             gate_is_sea = False
             try:
                 _gs = _ground_store()
@@ -4455,6 +4456,19 @@ class GameClient:
                     gate_is_sea = _gs.is_sea_world(self.current_map, (x, y))
             except Exception:
                 pass
+            if gate_is_sea and not gate_battled:
+                for _dx, _dy in ((0, 0), (0, 80), (0, -80), (80, 0), (-80, 0),
+                                 (0, 160), (0, -160), (160, 0), (-160, 0)):
+                    if not self.running or _gate_reached():
+                        break
+                    self.move_to(x + _dx, y + _dy)
+                    for _ in range(4):   # cho ~2s xem map co tu doi khi cham cong khong
+                        time.sleep(0.5)
+                        if _gate_reached():
+                            break
+                    if _gate_reached():
+                        break
+                continue   # chua qua -> vong lai (di lai toi cong, thu tiep)
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
             self._gate_transit = True
             try:
@@ -4463,8 +4477,7 @@ class GameClient:
                     # CHI gui 0x14 06 (gui lai 04/08 se bi kick). Xem capture thuyen_thanhchau.
                     self.send(0x14, b"\x06\x00"); time.sleep(1.0)
                 else:
-                    if not gate_is_sea:
-                        self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
+                    self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
                     self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
                     self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
                     self.send(0x14, b"\x06\x00"); time.sleep(1.0)
