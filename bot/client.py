@@ -4423,6 +4423,7 @@ class GameClient:
 
         t0 = time.time()
         _attempt = 0
+        gate_battled = False   # da tung no tran phuc kich tai cong -> KHONG gui lai 04/08 (kick)
         while time.time() - t0 < timeout:
             if not self.running:
                 return False
@@ -4448,10 +4449,15 @@ class GameClient:
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
             self._gate_transit = True
             try:
-                self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
-                self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
-                self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
-                self.send(0x14, b"\x06\x00"); time.sleep(1.0)
+                if gate_battled:
+                    # Da no tran phuc kich o lan truoc -> server dang cho hoan tat qua cong,
+                    # CHI gui 0x14 06 (gui lai 04/08 se bi kick). Xem capture thuyen_thanhchau.
+                    self.send(0x14, b"\x06\x00"); time.sleep(1.0)
+                else:
+                    self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
+                    self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
+                    self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
+                    self.send(0x14, b"\x06\x00"); time.sleep(1.0)
             finally:
                 self._gate_transit = False
             # Mot so gate co NPC/dialog: bam thoai -> vao battle, thang xong moi qua cong.
@@ -4463,10 +4469,24 @@ class GameClient:
                 if self.state.in_battle or self.in_combat(idle_secs=1.0):
                     log.info("[%s] gate idx=%d bat battle NPC/dialog -> cho danh xong roi kiem tra map",
                              self._label, idx)
+                    gate_battled = True   # vong ngoai KHONG gui lai 04/08 nua (kick leader)
                     if not self._wait_combat_clear(idle=3.0, cap=150.0):
                         return False
                     if _gate_reached():
                         return True
+                    # SAU TRAN PHUC KICH TAI CONG: server TU hoan tat qua cong khi nhan 0x14 06
+                    # (capture thuyen_thanhchau: thang -> C2S 0x14 06 -> s2c 0x14 0700 + 0x03 map
+                    # moi). TUYET DOI KHONG de vong ngoai gui lai 0x14 04/08 transit -> server DA
+                    # ket noi (kick leader). Kien nhan gui 0x14 06 + cho 0x03 map moi.
+                    post_t0 = time.time()
+                    while self.running and time.time() - post_t0 < 25.0:
+                        if _gate_reached():
+                            return True
+                        if self.state.in_battle or self.in_combat(idle_secs=1.0):
+                            if not self._wait_combat_clear(idle=3.0, cap=150.0):
+                                return False
+                        self.send(0x14, b"\x06\x00")
+                        time.sleep(0.8)
                     break
                 self.send(0x14, b"\x06\x00")
                 time.sleep(0.6)
