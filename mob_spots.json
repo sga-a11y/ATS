@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "maps": {
+    "12831": {
+      "fingerprint": "bfb2f7bb",
+      "status": "incomplete",
+      "coverage": {},
+      "settings": {},
+      "centers": [],
+      "safe": [
+        450,
+        1210
+      ],
+      "updated_at": 1784624479
+    }
+  }
+}
