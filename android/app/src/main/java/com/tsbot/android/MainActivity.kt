@@ -467,6 +467,10 @@ fun TsBotApp(
             initialBuyHoPhu = partyBeingEdited.buyHoPhu,
             initialBuyBaoHop = partyBeingEdited.buyBaoHop,
             initialBaoHopXuThreshold = partyBeingEdited.baoHopXuThreshold,
+            initialDiGioiLevel = partyBeingEdited.diGioiLevel,
+            onApplyDiGioiLevel = { idx ->
+                service?.setDiGioiLevel(partyBeingEdited.accounts.map { it.username }, idx)
+            },
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
@@ -835,6 +839,9 @@ fun StatBar(label: String, cur: Int, max: Int, color: Color) {
  * callAttr("keys").asList() - Chaquopy KHONG convert duoc dict_keys view sang PyList, nem
  * UnsupportedOperationException "dict_keys object has no attribute __getitem__", da xac nhan qua
  * crash log that) giu dung thu tu Python dict (json.loads tu Python 3.7+ giu insertion order). */
+// Cap quai Di Gioi: idx 1..15 (goi 0x61 02 00 idx) -> cap hien thi. Xem KNOWLEDGE.md.
+val DG_LEVELS = listOf(10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180)
+
 fun trainMapOptions(): List<Pair<String, String>> {
     val config = com.chaquo.python.Python.getInstance().getModule("train_bot.config")
     val maps = config.get("TRAIN_MAPS")!!
@@ -888,7 +895,9 @@ fun AddPartyDialog(
     initialBuyHoPhu: Boolean = false,
     initialBuyBaoHop: Boolean = false,
     initialBaoHopXuThreshold: Int = 1000000,
+    initialDiGioiLevel: Int = 2,
     onApplyAdvancedToAll: ((Party) -> Int)? = null,
+    onApplyDiGioiLevel: ((Int) -> Unit)? = null,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var expanded by remember { mutableStateOf(false) }
@@ -912,6 +921,10 @@ fun AddPartyDialog(
     var buyHoPhu by remember { mutableStateOf(initialBuyHoPhu) }
     var buyBaoHop by remember { mutableStateOf(initialBuyBaoHop) }
     var baoHopXuText by remember { mutableStateOf(initialBaoHopXuThreshold.toString()) }
+    // Cap quai Di Gioi: idx 1..15 (1-based). UI hien theo cap 10..180.
+    var diGioiLevel by remember { mutableStateOf(initialDiGioiLevel.coerceIn(1, DG_LEVELS.size)) }
+    var diGioiExpanded by remember { mutableStateOf(false) }
+    var diGioiExpandedMode by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
     var advancedApplyMessage by remember { mutableStateOf("") }
 
@@ -933,6 +946,7 @@ fun AddPartyDialog(
         buyHoPhu = buyHoPhu,
         buyBaoHop = buyBaoHop,
         baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,
+        diGioiLevel = diGioiLevel,
     )
 
     AlertDialog(
@@ -1017,6 +1031,26 @@ fun AddPartyDialog(
                         Checkbox(checked = digioiSolo, onCheckedChange = { digioiSolo = it })
                         Text("Chạy SOLO (mỗi account độc lập, không lập party thật)")
                     }
+                    // Cap quai Di Gioi: chon ngay trong phan config mode (mirror PC's _render_dyn).
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Cấp quái:")
+                        Box(modifier = Modifier.padding(start = 6.dp)) {
+                            OutlinedButton(onClick = { diGioiExpandedMode = true }) {
+                                Text(DG_LEVELS[diGioiLevel - 1].toString())
+                            }
+                            DropdownMenu(expanded = diGioiExpandedMode, onDismissRequest = { diGioiExpandedMode = false }) {
+                                DG_LEVELS.forEachIndexed { i, lv ->
+                                    DropdownMenuItem(text = { Text(lv.toString()) },
+                                        onClick = { diGioiLevel = i + 1; diGioiExpandedMode = false })
+                                }
+                            }
+                        }
+                        if (onApplyDiGioiLevel != null) {
+                            TextButton(onClick = { onApplyDiGioiLevel(diGioiLevel) },
+                                modifier = Modifier.padding(start = 8.dp)) { Text("Áp dụng ngay") }
+                        }
+                    }
                 }
                 // "Khong co chu PT" va "Lam nhiem vu hang ngay": MOI mode deu co (mirror PC -
                 // gui.py hien 2 checkbox nay cho tat ca train/city/stand/digioi, KHONG rieng
@@ -1080,6 +1114,25 @@ fun AddPartyDialog(
                                 modifier = Modifier.width(120.dp).padding(start = 6.dp),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
+                        }
+                        // Cap quai Di Gioi: dropdown chon cap (10..180). Nut "Ap dung ngay" gui live cho acc dang chay.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Cấp quái Dị Giới:")
+                            Box(modifier = Modifier.padding(start = 6.dp)) {
+                                OutlinedButton(onClick = { diGioiExpanded = true }) {
+                                    Text(DG_LEVELS[diGioiLevel - 1].toString())
+                                }
+                                DropdownMenu(expanded = diGioiExpanded, onDismissRequest = { diGioiExpanded = false }) {
+                                    DG_LEVELS.forEachIndexed { i, lv ->
+                                        DropdownMenuItem(text = { Text(lv.toString()) },
+                                            onClick = { diGioiLevel = i + 1; diGioiExpanded = false })
+                                    }
+                                }
+                            }
+                            if (onApplyDiGioiLevel != null) {
+                                TextButton(onClick = { onApplyDiGioiLevel(diGioiLevel) },
+                                    modifier = Modifier.padding(start = 8.dp)) { Text("Áp dụng ngay") }
+                            }
                         }
                         if (onApplyAdvancedToAll != null) {
                             Spacer(Modifier.height(8.dp))
@@ -1241,6 +1294,7 @@ fun AddPartyDialog(
                             buyHoPhu = buyHoPhu,
                             buyBaoHop = buyBaoHop,
                             baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,
+                            diGioiLevel = diGioiLevel,
                         ))
                     }
                 },

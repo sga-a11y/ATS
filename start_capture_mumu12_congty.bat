@@ -3,7 +3,7 @@ setlocal EnableExtensions
 title Capture TS Online - MuMu 12 Cong ty
 echo ====================================
 echo   Capture packet all traffic tren MuMu 12 - may cong ty
-echo   Device co dinh: 127.0.0.1:7555
+echo   Device co dinh: 127.0.0.1:16768
 echo   Vao pho ban / thao tac trong game -> Ctrl+C de dung + lay file
 echo ====================================
 echo.
@@ -36,7 +36,7 @@ if not defined ADB (
   exit /b 1
 )
 
-set DEV=127.0.0.1:7555
+set DEV=127.0.0.1:16768
 set OUT=/sdcard/ts_capture_mumu12_congty.pcap
 set LOCAL_OUT=%~dp0ts_capture_mumu12_congty.pcap
 

@@ -159,6 +159,7 @@ class BotForegroundService : Service() {
                 leaders, m.hasLeader, party.usePhucThan, party.useDigioiHoPhu,
                 party.fightLegionBoss, party.doVanTieu,
                 party.buyHoPhu, party.buyBaoHop, party.baoHopXuThreshold,
+                party.diGioiLevel,
             )
             py.callAttr("start_party", pidx)
             runningPidx.add(pidx)
@@ -239,6 +240,11 @@ class BotForegroundService : Service() {
 
     fun sendCity(usernames: List<String>, cityId: Int, flag: Int) {
         pidxSet(usernames).forEach { try { rpd().callAttr("party_teleport_city", it, cityId, flag) } catch (_: Exception) {} }
+    }
+
+    // Doi cap quai Di Gioi LIVE cho party (idx 1..15) - goi party_set_di_gioi_level (gui 0x61 02 00 idx).
+    fun setDiGioiLevel(usernames: List<String>, idx: Int) {
+        pidxSet(usernames).forEach { try { rpd().callAttr("party_set_di_gioi_level", it, idx) } catch (_: Exception) {} }
     }
 
     fun sendRouteMaps(usernames: List<String>, sourceMap: Int, destMap: Int) {

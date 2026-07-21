@@ -47,6 +47,7 @@ class PartyStore(private val context: Context) {
                 buyHoPhu = o.optBoolean("buy_ho_phu", false),
                 buyBaoHop = o.optBoolean("buy_bao_hop", false),
                 baoHopXuThreshold = o.optInt("bao_hop_xu_threshold", 1000000),
+                diGioiLevel = o.optInt("di_gioi_level", 2),
                 accounts = accounts,
             )
         }
@@ -73,6 +74,7 @@ class PartyStore(private val context: Context) {
             o.put("buy_ho_phu", p.buyHoPhu)
             o.put("buy_bao_hop", p.buyBaoHop)
             o.put("bao_hop_xu_threshold", p.baoHopXuThreshold)
+            o.put("di_gioi_level", p.diGioiLevel)
             val accArr = JSONArray()
             p.accounts.forEach { a ->
                 val ao = JSONObject()

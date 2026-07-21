@@ -4256,16 +4256,34 @@ class GameClient:
         self._running_route = False
         log.info("[%s] Dung run-around", self._label)
 
+    # Cap quai Di Gioi: idx 1..15 -> [10,25,40,55,70,85,100,110,120,130,140,150,160,170,180].
+    # Gói C2S 0x61 02 00 [idx] (capture digioi_level_select_20260721.pcap). Bot cu vao co dinh idx=2
+    # (cap 25). self.di_gioi_level do run_party set tu config (mac dinh 2).
+    DI_GIOI_LEVELS = [10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180]
+
+    def set_di_gioi_level(self, idx: int) -> bool:
+        """Doi CAP QUAI Di Gioi LIVE (dang o trong DG van doi duoc, khong can vao lai) - C2S
+        0x61 02 00 [idx], idx=1..15. Xac nhan capture 21/07: sau khi vao DG, gui lien tiep
+        0x61 02 00 XX doi cap ngay tai cho."""
+        idx = max(1, min(int(idx), len(self.DI_GIOI_LEVELS)))
+        self.di_gioi_level = idx
+        self.send(0x61, bytes([0x02, 0x00, idx & 0xFF]))
+        log.info("[%s] Di Gioi: doi cap quai -> idx=%d (cap %d)",
+                 self._label, idx, self.DI_GIOI_LEVELS[idx - 1])
+        return True
+
     def enter_di_gioi(self):
-        """Vao map Di Gioi (map train chinh). Chi 2 goi co dinh: 0x61 010001 -> 0x61 020002.
-        LUU Y: KHONG vao duoc khi dang trong party."""
+        """Vao map Di Gioi (map train chinh): 0x61 010001 -> 0x61 02 00 [level_idx].
+        level_idx = self.di_gioi_level (mac dinh 2 = cap 25). LUU Y: KHONG vao duoc khi dang trong party."""
         self.send(0x61, bytes.fromhex("010001"))   # mo/load zone Di Gioi
         log.info("[%s] Vao Di Gioi: gui 0x61 010001", self._label)
         time.sleep(1.5)                              # cho server load zone
-        self.send(0x61, bytes.fromhex("020002"))   # xac nhan vao
+        idx = max(1, min(int(getattr(self, "di_gioi_level", 2)), len(self.DI_GIOI_LEVELS)))
+        self.send(0x61, bytes([0x02, 0x00, idx & 0xFF]))   # xac nhan vao + chon cap quai
         # spawn Di Gioi co dinh -> set pos (server khong echo, dung dead-reckoning tu day)
         self.pos = getattr(config, "RUN_FALLBACK_ANCHOR", (870, 740))
-        log.info("[%s] Vao Di Gioi: gui 0x61 020002 (xong), spawn pos=%s", self._label, self.pos)
+        log.info("[%s] Vao Di Gioi: gui 0x61 02 00 %02x (cap %d), spawn pos=%s",
+                 self._label, idx, self.DI_GIOI_LEVELS[idx - 1], self.pos)
 
     def enter_di_gioi_safe(self, tries: int = 12, wait: float = 3.0) -> bool:
         """Vao DI GIOI co retry, ne 2 case fail:

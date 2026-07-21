@@ -42,6 +42,8 @@ data class Party(
     val buyHoPhu: Boolean = false,
     val buyBaoHop: Boolean = false,
     val baoHopXuThreshold: Int = 1000000,
+    // Cap quai Di Gioi: idx 1..15 (goi 0x61 02 00 idx) -> cap 10..180. Mac dinh 2 = cap 25.
+    val diGioiLevel: Int = 2,
     val accounts: List<Account> = emptyList(),
 )
 
@@ -54,4 +56,5 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     buyHoPhu = source.buyHoPhu,
     buyBaoHop = source.buyBaoHop,
     baoHopXuThreshold = source.baoHopXuThreshold,
+    diGioiLevel = source.diGioiLevel,
 )

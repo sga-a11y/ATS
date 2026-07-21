@@ -286,6 +286,12 @@ Lưu ý: phải thoát/giải tán party mới teleport được.
 - Toi cong -> map tu doi. Co C2S 0x14 (`14 04 00 01 00`, `14 08 00 01 00`) khi toi cong.
 - C2S 0x61 (`61 01 00 01` / `61 02 00 02`) + C2S 0x0c (`0c 01 00`) = handshake scene khi map load xong (sent SAU khi doi map, tren MOI map).
 
+**CHON CAP QUAI DI GIOI** (capture `captures/digioi_level_select_20260721.pcap`, 21/07): gói
+`C2S 0x61 02 00 [idx]` — `idx` = **THU TU cap 1..15** (KHONG phai giá tri cap). Vào DG = `0x61 010001`
+rồi `0x61 02 00 [idx]` (bot cũ gửi cố định `020002` = idx 2 = cấp 25). Mapping idx→cấp:
+`1=10, 2=25, 3=40, 4=55, 5=70, 6=85, 7=100, 8=110, 9=120, 10=130, 11=140, 12=150, 13=160, 14=170, 15=180`.
+Đổi byte cuối `enter_di_gioi()` (bot/client.py) = index muốn chọn.
+
 **VAO DI GIOI:** KHONG phai 0x44. Vao qua NPC/dialog -> KHONG ra 1 packet co dinh (chi thay 0x61/0x27/0x0c scene handshake). KHO auto bang packet.
 - !!! KHONG vao Di Gioi duoc khi DANG TRONG PARTY. Phai THOAT PARTY truoc.
 - FLOW DUNG (moi acc): thoat party -> vao Di Gioi (solo) -> chuyen cung 1 channel (0x07) -> lap lai party (invite + set quan su) -> cay.

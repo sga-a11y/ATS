@@ -469,6 +469,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # "Danh boss QD" co bat hay khong TRUOC khi goi do_legion_boss() lan dau luc login.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
         c.fight_legion_boss = pcfg.get("fight_legion_boss", True)
+        c.di_gioi_level = int(pcfg.get("di_gioi_level", 2))   # idx 1..15 cap quai DG (mac dinh 2=cap25)
         if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
             c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
             c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
@@ -2452,7 +2453,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         digioi_mode="party", event_key="", leaders=None, has_leader=True,
                         use_phuc_than=False, use_digioi_ho_phu=False,
                         fight_legion_boss=True, do_van_tieu=True,
-                        buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=1000000):
+                        buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=1000000,
+                        di_gioi_level=2):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -2472,6 +2474,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "do_van_tieu": bool(do_van_tieu),
         "buy_ho_phu": bool(buy_ho_phu), "buy_bao_hop": bool(buy_bao_hop),
         "bao_hop_xu_threshold": int(bao_hop_xu_threshold),
+        "di_gioi_level": int(di_gioi_level),
     }
     _flat = str(accounts).split("\x01") if accounts else []
     accs = []
@@ -2594,6 +2597,27 @@ def get_channel_list(pidx):
     except Exception as e:
         log.warning(">>> PARTY %s: loi lay list kenh: %s", pidx + 1, e)
     return {}
+
+
+def party_set_di_gioi_level(pidx, idx):
+    """GUI ra lenh: CA party pidx doi CAP QUAI Di Gioi -> idx (1..15). Gui THANG toi cac acc dang
+    chay (fire-and-forget, khong huy party/khong vao lai DG - gói 0x61 02 00 idx doi live). Cung
+    luu vao PARTY_CONFIG de acc vao DG sau nay dung dung cap."""
+    idx = max(1, min(int(idx), 15))
+    try:
+        config.PARTY_CONFIG.setdefault(int(pidx), {})["di_gioi_level"] = idx
+    except Exception:
+        pass
+    n = 0
+    for u, _p, _l, _pk in party_accounts(pidx):
+        c = account_clients.get(u)
+        if c is not None and getattr(c, "running", False):
+            try:
+                c.set_di_gioi_level(idx); n += 1
+            except Exception as e:
+                log.warning(">>> PARTY %s: loi doi cap DG cho %s: %s", pidx + 1, u, e)
+    log.info(">>> PARTY %s: lenh DOI CAP QUAI DI GIOI -> idx %d (da gui %d acc dang chay)",
+             pidx + 1, idx, n)
 
 
 def party_switch_channel(pidx, channel):
