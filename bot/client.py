@@ -88,7 +88,17 @@ def _smart_world_router():
 def execute_smart_route(client, route, abort=None, flee=True):
     """Execute a built route and stop immediately on any state mismatch."""
     client._smart_route_failure = None
-    for leg in route["legs"]:
+    # Route co cong GIUA BIEN (o nuoc)? -> phai LEN THUYEN tai cong DAU (ben) truoc, khong thi
+    # cac cong bien sau bi kick (di bo nhay cong bien). Xem capture thuyen_thanhchau.
+    needs_boat = False
+    try:
+        _gs = _ground_store()
+        if _gs is not None:
+            needs_boat = any(_gs.is_sea_world(lg["scene"], tuple(lg["gate_center"]))
+                             for lg in route["legs"])
+    except Exception:
+        needs_boat = False
+    for _i, leg in enumerate(route["legs"]):
         if not client.running or (abort and abort()):
             client._smart_route_failure = "aborted"
             return False
@@ -100,7 +110,8 @@ def execute_smart_route(client, route, abort=None, flee=True):
             client._smart_route_failure = "aborted"
             return False
         if not client._enter_gate(*leg["gate_center"], leg["gate"],
-                                  expected_map=leg["target_scene"]):
+                                  expected_map=leg["target_scene"],
+                                  board_boat=(needs_boat and _i == 0)):
             client._smart_route_failure = "gate_failed"
             return False
         if client.current_map != leg["target_scene"]:
@@ -4401,11 +4412,14 @@ class GameClient:
                 return   # move xong, khong dinh tran -> coi nhu da toi
 
     def _enter_gate(self, x: int, y: int, idx: int, timeout: float = 90.0,
-                    expected_map: int = None) -> bool:
+                    expected_map: int = None, board_boat: bool = False) -> bool:
         """Toi cong (x,y) + gui chuoi 0x14 04/08[idx] (giong thoat Di Gioi) -> cho MAP DOI.
         Cong trung gian khong biet map dich nen xac nhan = current_map khac map luc bat dau.
         QUAN TRONG: chi move toi cong + gui transit khi HET TRAN. Neu gui 0x06/0x14 luc dang
-        battle -> server nuot lenh (khong toi cong) hoac DA ket noi -> ket cong / leader rot."""
+        battle -> server nuot lenh (khong toi cong) hoac DA ket noi -> ket cong / leader rot.
+        board_boat=True: day la BEN THUYEN -> them 0x7c 04 00 (LEN THUYEN) sau 0x14 08 de server
+        ghi nhan 'tren thuyen' (capture thuyen_thanhchau). Khong len thuyen thi cac cong bien sau
+        se bi kick (di bo nhay cong bien)."""
         start_map = self.current_map
         expected_map = None if expected_map in (None, 0) else int(expected_map)
 
@@ -4446,15 +4460,31 @@ class GameClient:
             time.sleep(3.0)
             if self.in_combat(idle_secs=5.0):
                 continue   # con trong tran (hoac vua aggro) -> fight het roi moi transit
+            # Cong tren o NUOC (giua bien, dang tren thuyen): capture chi gui 0x14 08 (KHONG 0x14 04).
+            gate_is_sea = False
+            try:
+                _gs = _ground_store()
+                if _gs is not None and self.current_map:
+                    gate_is_sea = _gs.is_sea_world(self.current_map, (x, y))
+            except Exception:
+                pass
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
             self._gate_transit = True
             try:
-                if gate_battled:
+                if board_boat:
+                    # BEN THUYEN (capture): 0x14 08 idx -> 0x7c 04 00 (LEN THUYEN) -> 0c 01 -> 14 06.
+                    log.info("[%s] BEN THUYEN idx=%d @(%d,%d): len thuyen (0x7c)", self._label, idx, x, y)
+                    self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.4)
+                    self.send(0x7c, b"\x04\x00"); time.sleep(0.6)
+                    self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
+                    self.send(0x14, b"\x06\x00"); time.sleep(1.0)
+                elif gate_battled:
                     # Da no tran phuc kich o lan truoc -> server dang cho hoan tat qua cong,
                     # CHI gui 0x14 06 (gui lai 04/08 se bi kick). Xem capture thuyen_thanhchau.
                     self.send(0x14, b"\x06\x00"); time.sleep(1.0)
                 else:
-                    self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
+                    if not gate_is_sea:   # cong bien: chi 0x14 08 (khop capture, tranh kick)
+                        self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
                     self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
                     self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
                     self.send(0x14, b"\x06\x00"); time.sleep(1.0)
