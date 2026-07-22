@@ -4446,42 +4446,6 @@ class GameClient:
             time.sleep(3.0)
             if self.in_combat(idle_secs=5.0):
                 continue   # con trong tran (hoac vua aggro) -> fight het roi moi transit
-            # CONG GIUA BIEN (o nuoc, dang tren thuyen): CHAM vao o cong thi map TU DOI. TUYET DOI
-            # KHONG gui 0x14 (gui la server DA - kick 2c). Chi sail xuyen qua vung trigger cong roi
-            # cho current_map doi. Vung trigger la 1 DAI rong -> sail qua vai diem cho chac cham.
-            gate_is_sea = False
-            try:
-                _gs = _ground_store()
-                if _gs is not None and self.current_map:
-                    gate_is_sea = _gs.is_sea_world(self.current_map, (x, y))
-            except Exception:
-                pass
-            if gate_is_sea and not gate_battled:
-                # Sail XUYEN QUA dai trigger cong (khong chi dung o tam) de chac cham. Dai cong
-                # rong ngang -> quet x tu -300..300, moi cot sail doc tu duoi len tren (y-150 -> y+150)
-                # cat qua duong trigger. KHONG gui 0x14. Log ky de lan sau chan doan.
-                log.info("[%s] CONG BIEN idx=%d @(%d,%d): sail xuyen cho map tu doi (KHONG gui 0x14), pos=%s map=%s",
-                         self._label, idx, x, y, self.pos, self.current_map)
-                swept = False
-                for _xo in (0, -160, 160, -300, 300):
-                    for _yo in (-150, 150):
-                        if not self.running or _gate_reached():
-                            swept = True
-                            break
-                        tx, ty = x + _xo, y + _yo
-                        self.move_to(tx, ty)
-                        for _ in range(3):
-                            time.sleep(0.5)
-                            if _gate_reached():
-                                break
-                        log.info("[%s]   sail -> (%d,%d) pos=%s map=%s",
-                                 self._label, tx, ty, self.pos, self.current_map)
-                        if _gate_reached():
-                            swept = True
-                            break
-                    if swept:
-                        break
-                continue   # chua qua -> vong lai (di lai toi cong, thu tiep)
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
             self._gate_transit = True
             try:
