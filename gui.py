@@ -666,8 +666,8 @@ class BotGUI(tk.Tk):
         ttk.Button(btns, text="■ Stop party",
                    command=lambda p=pidx: self._stop_party(p)).pack(side="left", padx=2)
         ttk.Separator(btns, orient="vertical").pack(side="left", fill="y", padx=6)
-        ttk.Button(btns, text="▶ Start acc chọn",
-                   command=lambda p=pidx: self._start_sel(p)).pack(side="left", padx=2)
+        # (Bo nut "Start acc chon" - user moi hay bam nham thay vi Start party. Thay bang
+        #  DOUBLE-CLICK 1 dong acc de start rieng acc do - xem tree.bind <Double-1> ben duoi.)
         ttk.Button(btns, text="■ Stop acc chọn",
                    command=lambda p=pidx: self._stop_sel(p)).pack(side="left", padx=2)
         ttk.Separator(btns, orient="vertical").pack(side="left", fill="y", padx=6)
@@ -691,6 +691,7 @@ class BotGUI(tk.Tk):
         tree.tag_configure("off", foreground="#999")
         tree.tag_configure("qs", foreground="#c25e00")
         tree.bind("<<TreeviewSelect>>", lambda e, p=pidx: self._on_acc_select(p))
+        tree.bind("<Double-1>", lambda e, p=pidx: self._on_acc_dblclick(p, e))
         tree.pack(fill="x", expand=False)
         for (u, p, is_leader, is_picker) in accs:
             role = "LEADER" if is_leader else ("picker" if is_picker else "member")
@@ -830,6 +831,19 @@ class BotGUI(tk.Tk):
         messagebox.showinfo("Giftcode",
                             f"Đang nhập '{code}' cho {len(running)} acc của Party {pidx + 1}.\n"
                             "Quà về qua mail → bot tự nhận. Xem log để biết kết quả.")
+
+    def _on_acc_dblclick(self, pidx, event):
+        # Double-click 1 dong acc -> start RIENG acc do (thay cho nut "Start acc chon" cu, tranh
+        # user moi bam nham thay vi Start party).
+        tree = self.party_trees[pidx]
+        u = tree.identify_row(event.y)
+        if not u:
+            return
+        accs = {a: (p, lead, pick) for (a, p, lead, pick) in ctrl.party_accounts(pidx)}
+        if u in accs:
+            p, lead, pick = accs[u]
+            threading.Thread(target=ctrl.start_account, args=(u, p, pidx, lead, pick),
+                             daemon=True).start()
 
     def _start_sel(self, pidx):
         tree = self.party_trees[pidx]
