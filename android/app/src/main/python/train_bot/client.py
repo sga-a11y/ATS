@@ -111,7 +111,8 @@ def execute_smart_route(client, route, abort=None, flee=True):
             return False
         if not client._enter_gate(*leg["gate_center"], leg["gate"],
                                   expected_map=leg["target_scene"],
-                                  board_boat=(needs_boat and _i == 0)):
+                                  board_boat=(needs_boat and _i == 0),
+                                  on_boat=(needs_boat and _i > 0)):
             client._smart_route_failure = "gate_failed"
             return False
         if client.current_map != leg["target_scene"]:
@@ -4412,7 +4413,8 @@ class GameClient:
                 return   # move xong, khong dinh tran -> coi nhu da toi
 
     def _enter_gate(self, x: int, y: int, idx: int, timeout: float = 90.0,
-                    expected_map: int = None, board_boat: bool = False) -> bool:
+                    expected_map: int = None, board_boat: bool = False,
+                    on_boat: bool = False) -> bool:
         """Toi cong (x,y) + gui chuoi 0x14 04/08[idx] (giong thoat Di Gioi) -> cho MAP DOI.
         Cong trung gian khong biet map dich nen xac nhan = current_map khac map luc bat dau.
         QUAN TRONG: chi move toi cong + gui transit khi HET TRAN. Neu gui 0x06/0x14 luc dang
@@ -4483,7 +4485,9 @@ class GameClient:
                     # CHI gui 0x14 06 (gui lai 04/08 se bi kick). Xem capture thuyen_thanhchau.
                     self.send(0x14, b"\x06\x00"); time.sleep(1.0)
                 else:
-                    if not gate_is_sea:   # cong bien: chi 0x14 08 (khop capture, tranh kick)
+                    # Cong bien HOAC dang tren thuyen (on_boat): CHI 0x14 08 (khop capture). 0x14 04
+                    # lam ROT KHOI THUYEN -> cac cong bien sau kick. Cong dat khi di bo: 04 + 08.
+                    if not gate_is_sea and not on_boat:
                         self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
                     self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
                     self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
