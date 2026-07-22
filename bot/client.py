@@ -4457,16 +4457,29 @@ class GameClient:
             except Exception:
                 pass
             if gate_is_sea and not gate_battled:
-                for _dx, _dy in ((0, 0), (0, 80), (0, -80), (80, 0), (-80, 0),
-                                 (0, 160), (0, -160), (160, 0), (-160, 0)):
-                    if not self.running or _gate_reached():
-                        break
-                    self.move_to(x + _dx, y + _dy)
-                    for _ in range(4):   # cho ~2s xem map co tu doi khi cham cong khong
-                        time.sleep(0.5)
-                        if _gate_reached():
+                # Sail XUYEN QUA dai trigger cong (khong chi dung o tam) de chac cham. Dai cong
+                # rong ngang -> quet x tu -300..300, moi cot sail doc tu duoi len tren (y-150 -> y+150)
+                # cat qua duong trigger. KHONG gui 0x14. Log ky de lan sau chan doan.
+                log.info("[%s] CONG BIEN idx=%d @(%d,%d): sail xuyen cho map tu doi (KHONG gui 0x14), pos=%s map=%s",
+                         self._label, idx, x, y, self.pos, self.current_map)
+                swept = False
+                for _xo in (0, -160, 160, -300, 300):
+                    for _yo in (-150, 150):
+                        if not self.running or _gate_reached():
+                            swept = True
                             break
-                    if _gate_reached():
+                        tx, ty = x + _xo, y + _yo
+                        self.move_to(tx, ty)
+                        for _ in range(3):
+                            time.sleep(0.5)
+                            if _gate_reached():
+                                break
+                        log.info("[%s]   sail -> (%d,%d) pos=%s map=%s",
+                                 self._label, tx, ty, self.pos, self.current_map)
+                        if _gate_reached():
+                            swept = True
+                            break
+                    if swept:
                         break
                 continue   # chua qua -> vong lai (di lai toi cong, thu tiep)
             # transit: bat flag de combat (luong recv) KHONG gui 0x32 xen vao giua chuoi 0x14
