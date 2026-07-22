@@ -90,14 +90,19 @@ def execute_smart_route(client, route, abort=None, flee=True):
     client._smart_route_failure = None
     # Route co cong GIUA BIEN (o nuoc)? -> phai LEN THUYEN tai cong DAU (ben) truoc, khong thi
     # cac cong bien sau bi kick (di bo nhay cong bien). Xem capture thuyen_thanhchau.
+    # Cong nao o NUOC (is_sea) -> can thuyen. Char LEN THUYEN o cong DAU (ben), SAIL tren nuoc
+    # cho toi CONG BIEN CUOI, sau do XUONG THUYEN di bo (vung dich la dat lien).
     needs_boat = False
+    last_sea = -1
     try:
         _gs = _ground_store()
         if _gs is not None:
-            needs_boat = any(_gs.is_sea_world(lg["scene"], tuple(lg["gate_center"]))
-                             for lg in route["legs"])
+            for _j, lg in enumerate(route["legs"]):
+                if _gs.is_sea_world(lg["scene"], tuple(lg["gate_center"])):
+                    needs_boat = True
+                    last_sea = _j
     except Exception:
-        needs_boat = False
+        needs_boat = False; last_sea = -1
     for _i, leg in enumerate(route["legs"]):
         if not client.running or (abort and abort()):
             client._smart_route_failure = "aborted"
@@ -105,17 +110,17 @@ def execute_smart_route(client, route, abort=None, flee=True):
         if client.current_map != leg["scene"]:
             client._smart_route_failure = "unexpected_scene"
             return False
-        # Leg dau (i==0): di bo toi BEN (chua len thuyen) -> boat=False. Cac leg sau: da tren
-        # thuyen -> pathfind CHI TREN NUOC (boat=True), vi thuyen ko len bo duoc.
-        client.navigate_to(*leg["gate_center"], abort=abort, flee=flee,
-                           boat=(needs_boat and _i > 0))
+        # Tren thuyen khi: da qua ben (i>0) VA chua qua cong bien cuoi (i<=last_sea). Luc do
+        # pathfind CHI TREN NUOC (thuyen ko len bo). Sau cong bien cuoi -> di bo (dat lien dich).
+        sailing = needs_boat and 0 < _i <= last_sea
+        client.navigate_to(*leg["gate_center"], abort=abort, flee=flee, boat=sailing)
         if not client.running or (abort and abort()):
             client._smart_route_failure = "aborted"
             return False
         if not client._enter_gate(*leg["gate_center"], leg["gate"],
                                   expected_map=leg["target_scene"],
                                   board_boat=(needs_boat and _i == 0),
-                                  on_boat=(needs_boat and _i > 0)):
+                                  on_boat=sailing):
             client._smart_route_failure = "gate_failed"
             return False
         if client.current_map != leg["target_scene"]:
