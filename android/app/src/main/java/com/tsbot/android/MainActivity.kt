@@ -923,7 +923,6 @@ fun AddPartyDialog(
     var baoHopXuText by remember { mutableStateOf(initialBaoHopXuThreshold.toString()) }
     // Cap quai Di Gioi: idx 1..15 (1-based). UI hien theo cap 10..180.
     var diGioiLevel by remember { mutableStateOf(initialDiGioiLevel.coerceIn(1, DG_LEVELS.size)) }
-    var diGioiExpanded by remember { mutableStateOf(false) }
     var diGioiExpandedMode by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
     var advancedApplyMessage by remember { mutableStateOf("") }
@@ -1115,25 +1114,7 @@ fun AddPartyDialog(
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
                         }
-                        // Cap quai Di Gioi: dropdown chon cap (10..180). Nut "Ap dung ngay" gui live cho acc dang chay.
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Cấp quái Dị Giới:")
-                            Box(modifier = Modifier.padding(start = 6.dp)) {
-                                OutlinedButton(onClick = { diGioiExpanded = true }) {
-                                    Text(DG_LEVELS[diGioiLevel - 1].toString())
-                                }
-                                DropdownMenu(expanded = diGioiExpanded, onDismissRequest = { diGioiExpanded = false }) {
-                                    DG_LEVELS.forEachIndexed { i, lv ->
-                                        DropdownMenuItem(text = { Text(lv.toString()) },
-                                            onClick = { diGioiLevel = i + 1; diGioiExpanded = false })
-                                    }
-                                }
-                            }
-                            if (onApplyDiGioiLevel != null) {
-                                TextButton(onClick = { onApplyDiGioiLevel(diGioiLevel) },
-                                    modifier = Modifier.padding(start = 8.dp)) { Text("Áp dụng ngay") }
-                            }
-                        }
+                        // (Cap quai Di Gioi da chuyen ra section mode Di Gioi ngoai - khong lap lai o day)
                         if (onApplyAdvancedToAll != null) {
                             Spacer(Modifier.height(8.dp))
                             OutlinedButton(

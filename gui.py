@@ -1692,15 +1692,7 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Checkbutton(_bh, text="Mua Triệu Gọi Bảo Hộp khi xu nhiều hơn",
                         variable=self.buy_bao_hop_var).pack(side="left")
         ttk.Entry(_bh, textvariable=self.bao_hop_xu_var, width=10).pack(side="left", padx=(4, 0))
-        # Cap quai Di Gioi (chi co tac dung mode Di Gioi). Doi luc dang chay -> co nut ap dung ngay.
-        _dg = ttk.Frame(frm); _dg.pack(anchor="w", fill="x", pady=(4, 0))
-        ttk.Label(_dg, text="Cấp quái Dị Giới:").pack(side="left")
-        ttk.Combobox(_dg, textvariable=self.di_gioi_level_var, width=6, state="readonly",
-                     values=[str(v) for v in _DG_LEVELS]).pack(side="left", padx=(4, 0))
-        if getattr(self, "on_apply_di_gioi_level", None):
-            ttk.Button(_dg, text="Áp dụng ngay (đang chạy)",
-                       command=lambda: self.on_apply_di_gioi_level(
-                           _dg_level_to_idx(self.di_gioi_level_var.get()))).pack(side="left", padx=(8, 0))
+        # (Cap quai Di Gioi da chuyen ra setting mode Di Gioi ngoai - khong lap lai o day)
         bar = ttk.Frame(frm); bar.pack(fill="x", pady=(12, 0))
         if self.on_apply_advanced_to_all:
             ttk.Button(bar, text="Áp dụng cho các party khác",
