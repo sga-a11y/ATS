@@ -37,12 +37,17 @@ def _value(grid, width, height, x, y):
     return grid[(x - 1) * height + (y - 1)]
 
 
-def _blocked(grid, width, height, x, y):
+def _blocked(grid, width, height, x, y, boat=False):
     value = _value(grid, width, height, x, y)
-    return value is None or value & 1 == 1 or value & 4 == 4
+    if value is None:
+        return True
+    if boat:
+        # THUYEN: chi di duoc tren NUOC (bit2). Dat (val 0) va tuong = chan.
+        return value & 2 != 2
+    return value & 1 == 1 or value & 4 == 4
 
 
-def is_line_clear(grid, width, height, start, target):
+def is_line_clear(grid, width, height, start, target, boat=False):
     """Port MapManager.IsLineWay: kiem tra ca ceil/floor sat hai mep duong."""
     sx, sy = start
     tx, ty = target
@@ -50,31 +55,31 @@ def is_line_clear(grid, width, height, start, target):
     vy = -1 if sy >= ty else 1
     dx, dy = abs(sx - tx), abs(sy - ty)
     if dx == 0 and dy == 0:
-        return not _blocked(grid, width, height, sx, sy)
+        return not _blocked(grid, width, height, sx, sy, boat)
     slope = dy / (dx + 0.01) if dx >= dy else dx / (dy + 0.01)
     if dx >= dy:
         for i in range(1, dx + 1):
             x = sx + i * vx
             for y in (sy + math.ceil(i * slope * vy), sy + math.floor(i * slope * vy)):
-                if _blocked(grid, width, height, x, y):
+                if _blocked(grid, width, height, x, y, boat):
                     return False
     else:
         for i in range(1, dy + 1):
             y = sy + i * vy
             for x in (sx + math.ceil(i * slope * vx), sx + math.floor(i * slope * vx)):
-                if _blocked(grid, width, height, x, y):
+                if _blocked(grid, width, height, x, y, boat):
                     return False
     return True
 
 
-def _empty_target(grid, width, height, target, max_radius=30):
+def _empty_target(grid, width, height, target, max_radius=30, boat=False):
     x, y = target
-    if not _blocked(grid, width, height, x, y):
+    if not _blocked(grid, width, height, x, y, boat):
         return target
     # Thu tu giong MapManager.GetNearEmpty: tren, duoi, trai, phai, bon goc.
     for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0),
                    (-1, -1), (-1, 1), (1, -1), (1, 1)):
-        if not _blocked(grid, width, height, x + dx, y + dy):
+        if not _blocked(grid, width, height, x + dx, y + dy, boat):
             return x + dx, y + dy
     # Cong o BIEN map (vd ben thuyen 15000 door2 @[2440,20]) co center nam tren tuong/mep,
     # 8 o ke deu chan -> vong ra xa hon (spiral) tim o dung-duoc gan nhat. Khong co -> None.
@@ -86,7 +91,7 @@ def _empty_target(grid, width, height, target, max_radius=30):
                 if max(abs(dx), abs(dy)) != r:   # chi quet VIEN cua vong r
                     continue
                 nx, ny = x + dx, y + dy
-                if _blocked(grid, width, height, nx, ny):
+                if _blocked(grid, width, height, nx, ny, boat):
                     continue
                 d = dx * dx + dy * dy
                 if best_d is None or d < best_d or (d == best_d and (ny, nx) < (best[1], best[0])):
@@ -96,7 +101,7 @@ def _empty_target(grid, width, height, target, max_radius=30):
     return None
 
 
-def _smooth(grid, width, height, path):
+def _smooth(grid, width, height, path, boat=False):
     if len(path) < 3:
         return path
     result = [path[0]]
@@ -104,23 +109,23 @@ def _smooth(grid, width, height, path):
     while current < len(path) - 1:
         farthest = current + 1
         for candidate in range(current + 2, len(path)):
-            if is_line_clear(grid, width, height, path[current], path[candidate]):
+            if is_line_clear(grid, width, height, path[current], path[candidate], boat):
                 farthest = candidate
         result.append(path[farthest])
         current = farthest
     return result
 
 
-def find_local_path(grid, width, height, start, target, smooth=True):
-    """A* noi-map tren block 1-based, 4 huong, collision bit 1/4 nhu Lua game."""
-    if _blocked(grid, width, height, *start):
+def find_local_path(grid, width, height, start, target, smooth=True, boat=False):
+    """A* noi-map tren block 1-based, 4 huong. boat=True: chi di tren NUOC (thuyen)."""
+    if _blocked(grid, width, height, *start, boat):
         return None
-    target = _empty_target(grid, width, height, target)
+    target = _empty_target(grid, width, height, target, boat=boat)
     if target is None:
         return None
     if start == target:
         return [start]
-    if is_line_clear(grid, width, height, start, target):
+    if is_line_clear(grid, width, height, start, target, boat):
         return [start, target]
 
     frontier = [(math.dist(start, target), 0, start)]
@@ -133,7 +138,7 @@ def find_local_path(grid, width, height, start, target, smooth=True):
             break
         x, y = current
         for nxt in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
-            if _blocked(grid, width, height, *nxt):
+            if _blocked(grid, width, height, *nxt, boat):
                 continue
             new_cost = cost_so_far[current] + 1
             if nxt not in cost_so_far or new_cost < cost_so_far[nxt]:
@@ -150,7 +155,7 @@ def find_local_path(grid, width, height, start, target, smooth=True):
         path.append(current)
         current = came_from[current]
     path.reverse()
-    return _smooth(grid, width, height, path) if smooth else path
+    return _smooth(grid, width, height, path, boat) if smooth else path
 
 
 class GroundMapStore:
@@ -335,18 +340,25 @@ class GroundMapStore:
             return None
         return f"{zlib.crc32(self.data[offset:offset + size]) & 0xffffffff:08x}"
 
-    def find_world_path(self, map_id, start, target):
+    def find_world_path(self, map_id, start, target, boat=False):
         m = self.get(map_id)
         if m is None:
             return None
         to_block = lambda p: self.world_to_block(map_id, p)
+        start_block = to_block(start)
+        if boat and _blocked(m["grid"], m["grid_w"], m["grid_h"], *start_block, True):
+            # thuyen nhung start bi coi la 'tren bo' (vd arrival world_nav lech vao bo) ->
+            # snap ve o NUOC gan nhat de bat dau sail.
+            snapped = _empty_target(m["grid"], m["grid_w"], m["grid_h"], start_block, boat=True)
+            if snapped is not None:
+                start_block = snapped
         blocks = find_local_path(m["grid"], m["grid_w"], m["grid_h"],
-                                 to_block(start), to_block(target))
+                                 start_block, to_block(target), boat=boat)
         if blocks is None:
             return None
         result = [self.block_to_world(map_id, block) for block in blocks]
         target_block = to_block(target)
         if blocks and blocks[-1] == target_block and not _blocked(
-                m["grid"], m["grid_w"], m["grid_h"], *target_block):
+                m["grid"], m["grid_w"], m["grid_h"], *target_block, boat):
             result[-1] = tuple(target)
         return result

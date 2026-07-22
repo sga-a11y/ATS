@@ -105,7 +105,10 @@ def execute_smart_route(client, route, abort=None, flee=True):
         if client.current_map != leg["scene"]:
             client._smart_route_failure = "unexpected_scene"
             return False
-        client.navigate_to(*leg["gate_center"], abort=abort, flee=flee)
+        # Leg dau (i==0): di bo toi BEN (chua len thuyen) -> boat=False. Cac leg sau: da tren
+        # thuyen -> pathfind CHI TREN NUOC (boat=True), vi thuyen ko len bo duoc.
+        client.navigate_to(*leg["gate_center"], abort=abort, flee=flee,
+                           boat=(needs_boat and _i > 0))
         if not client.running or (abort and abort()):
             client._smart_route_failure = "aborted"
             return False
@@ -4088,7 +4091,7 @@ class GameClient:
         self.pos = (x, y)
 
     def navigate_to(self, x: int, y: int, moves_needed: int = None, step: float = 1.5,
-                    max_iter: int = 80, flee: bool = True, abort=None):
+                    max_iter: int = 80, flee: bool = True, abort=None, boat: bool = False):
         """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> flee=True thi BO CHAY,
         flee=False thi DANH (party da du -> keo ra spot phai danh bat chap, khong flee).
         game DI TUNG BUOC (move_to chi tien 1 doan ngan moi lan) -> diem XA can NHIEU buoc.
@@ -4108,7 +4111,7 @@ class GameClient:
         using_smart_path = False
         store = _ground_store() if self.pos and self.current_map is not None else None
         if store is not None:
-            smart = store.find_world_path(self.current_map, self.pos, (x, y))
+            smart = store.find_world_path(self.current_map, self.pos, (x, y), boat=boat)
             if smart:
                 using_smart_path = True
                 segment = max(20.0, float(getattr(config, "SMART_PATH_SEGMENT", 100)))
