@@ -346,10 +346,12 @@ class GroundMapStore:
             return None
         to_block = lambda p: self.world_to_block(map_id, p)
         start_block = to_block(start)
-        if boat and _blocked(m["grid"], m["grid_w"], m["grid_h"], *start_block, True):
-            # thuyen nhung start bi coi la 'tren bo' (vd arrival world_nav lech vao bo) ->
-            # snap ve o NUOC gan nhat de bat dau sail.
-            snapped = _empty_target(m["grid"], m["grid_w"], m["grid_h"], start_block, boat=True)
+        if _blocked(m["grid"], m["grid_w"], m["grid_h"], *start_block, boat):
+            # Start bi grid danh dau 'blocked' -> player DANG dung o do that (grid collision KHONG
+            # khop passability that: vd o BIEN map, hoac boat start lech vao bo) -> snap ve o di-duoc
+            # gan nhat de co diem bat dau. Thieu buoc nay -> find_local_path None -> route fail
+            # (bug that: map 12061 pos (470,1210) block (24,61) bi coi blocked -> ket route, reform vo han).
+            snapped = _empty_target(m["grid"], m["grid_w"], m["grid_h"], start_block, boat=boat)
             if snapped is not None:
                 start_block = snapped
         blocks = find_local_path(m["grid"], m["grid_w"], m["grid_h"],

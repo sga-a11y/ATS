@@ -217,13 +217,25 @@ class SmartWorldRouter:
         current = start
         total_distance = 0.0
         route_legs = []
+        # BOAT: leg co cong o NUOC (is_sea) -> leg bien. Build phai validate leg bien voi boat=True
+        # (di bo khong bang qua nuoc -> find_world_path None -> route bi loai oan). Dong bo Y HET
+        # execute_smart_route: sail cac leg [first_sea..last_sea].
+        first_sea = -1
+        last_sea = -1
+        for j, e in enumerate(legs):
+            gate = self.nav.get_gate(e["scene"], e["door"])
+            if gate is not None and self.ground.is_sea_world(e["scene"], tuple(gate["center"])):
+                if first_sea < 0:
+                    first_sea = j
+                last_sea = j
         for index, edge in enumerate(legs):
             gate = self.nav.get_gate(edge["scene"], edge["door"])
             if gate is None:
                 return None
             gate_center = tuple(gate["center"])
+            sailing = first_sea >= 0 and first_sea <= index <= last_sea
             if current is not None:
-                path = self.ground.find_world_path(edge["scene"], current, gate_center)
+                path = self.ground.find_world_path(edge["scene"], current, gate_center, boat=sailing)
                 if path is None:
                     return None
                 total_distance += _path_distance(path)

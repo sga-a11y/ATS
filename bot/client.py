@@ -93,6 +93,7 @@ def execute_smart_route(client, route, abort=None, flee=True):
     # Cong nao o NUOC (is_sea) -> can thuyen. Char LEN THUYEN o cong DAU (ben), SAIL tren nuoc
     # cho toi CONG BIEN CUOI, sau do XUONG THUYEN di bo (vung dich la dat lien).
     needs_boat = False
+    first_sea = -1
     last_sea = -1
     try:
         _gs = _ground_store()
@@ -100,9 +101,17 @@ def execute_smart_route(client, route, abort=None, flee=True):
             for _j, lg in enumerate(route["legs"]):
                 if _gs.is_sea_world(lg["scene"], tuple(lg["gate_center"])):
                     needs_boat = True
+                    if first_sea < 0:
+                        first_sea = _j
                     last_sea = _j
     except Exception:
-        needs_boat = False; last_sea = -1
+        needs_boat = False; first_sea = -1; last_sea = -1
+    # LEN THUYEN o cong VAO scene bien DAU TIEN (ben = leg first_sea-1). SAIL cac leg bien
+    # (first_sea..last_sea). Cong thuc nay TONG QUAT hoa ban cu (board i==0, sail 0<i<=last_sea):
+    # khi bien nam ngay dau route (first_sea=1) -> board_leg=0, sail 1..last_sea = Y HET cu.
+    # Fix ca truong hop bien nam GIUA route (vd 12061->18001: bien 11000/15000 la leg 2,3 -> board
+    # leg 1 = ben, sail 2,3; truoc board nham leg 0 + sail leg 1 dat lien -> ket).
+    board_leg = max(0, first_sea - 1) if needs_boat else -1
     for _i, leg in enumerate(route["legs"]):
         if not client.running or (abort and abort()):
             client._smart_route_failure = "aborted"
@@ -110,16 +119,15 @@ def execute_smart_route(client, route, abort=None, flee=True):
         if client.current_map != leg["scene"]:
             client._smart_route_failure = "unexpected_scene"
             return False
-        # Tren thuyen khi: da qua ben (i>0) VA chua qua cong bien cuoi (i<=last_sea). Luc do
-        # pathfind CHI TREN NUOC (thuyen ko len bo). Sau cong bien cuoi -> di bo (dat lien dich).
-        sailing = needs_boat and 0 < _i <= last_sea
+        # Tren thuyen (sail tren nuoc) o cac leg BIEN [first_sea..last_sea]; ngoai do di bo dat lien.
+        sailing = needs_boat and first_sea <= _i <= last_sea
         client.navigate_to(*leg["gate_center"], abort=abort, flee=flee, boat=sailing)
         if not client.running or (abort and abort()):
             client._smart_route_failure = "aborted"
             return False
         if not client._enter_gate(*leg["gate_center"], leg["gate"],
                                   expected_map=leg["target_scene"],
-                                  board_boat=(needs_boat and _i == 0),
+                                  board_boat=(needs_boat and _i == board_leg),
                                   on_boat=sailing):
             client._smart_route_failure = "gate_failed"
             return False
@@ -128,6 +136,17 @@ def execute_smart_route(client, route, abort=None, flee=True):
             return False
         if client.pos is None and leg.get("target_arrival"):
             client.pos = tuple(leg["target_arrival"])
+        # SAU KHI QUA CONG (nhat la cong co quai phuc kich -> battle): char o trang thai 'chua san
+        # sang' tren map moi -> move bi server nuot (dung im du bot tuong da di). Gui lai 0x41 de
+        # di chuyen duoc o leg tiep theo (bai hoc team dungeon lv20).
+        # NHUNG KHONG rearm khi vua LEN THUYEN (board_leg) hoac dang SAIL (sailing) -> 0x41 lam ROT
+        # THUYEN -> khong sail duoc tren map bien (bug that: len thuyen o cong 30 -> rearm -> ket 11000).
+        boat_leg = needs_boat and (_i == board_leg or first_sea <= _i <= last_sea)
+        if not boat_leg:
+            try:
+                client.rearm_ready()
+            except Exception:
+                pass
 
     if not client.running or (abort and abort()):
         client._smart_route_failure = "aborted"
@@ -876,6 +895,18 @@ class GameClient:
         """Sau khi DOI KENH / lap party, char co the mat combat-active -> gui LAI toan bo
         chuoi setup (gom 0x41 'san sang battle') de quai aggro lai."""
         self._login_setup()
+
+    def rearm_ready(self):
+        """Gui LAI rieng 0x41 'san sang' - de DI CHUYEN duoc sau khi qua cong / danh tran phuc kich
+        tai cong (server nuot move neu char chua 'ready' -> dung im du bot tuong da di - GIONG team
+        dungeon lv20 phai combat_ready sau START phong). CHI 0x41 (khong full _login_setup) de tranh
+        0x7c 0400 (co the anh huong thuyen) + 0x62 (side-effect daily). Comment _login_setup: 'quan
+        trong nhat la 0x41'."""
+        for pl in ("0200", "01003235010100000101000000"):
+            try:
+                self.send(0x41, bytes.fromhex(pl)); time.sleep(0.2)
+            except OSError:
+                return
 
     def send(self, opcode: int, payload: bytes):
         if not self.running or self.sock is None:
@@ -4470,6 +4501,18 @@ class GameClient:
             time.sleep(3.0)
             if self.in_combat(idle_secs=5.0):
                 continue   # con trong tran (hoac vua aggro) -> fight het roi moi transit
+            # BEN THUYEN: quai PHUC KICH tai ben aggro CHAM (~2-5s sau khi dung tai cong). Neu len
+            # thuyen (0x7c) TRUOC khi ambush no -> fight trong luc 'dang board' -> HONG trang thai
+            # thuyen -> toi map bien khong sail duoc (dung im). -> Provoke + cho THEM, neu ambush no
+            # thi quay lai fight het, LAN SAU moi board SACH. Dung rearm_ready (chi 0x41) de aggro -
+            # KHONG combat_ready (co 0x7c -> board som ngoai y muon).
+            if board_boat:
+                try: self.rearm_ready()
+                except Exception: pass
+                time.sleep(4.0)
+                if self.in_combat(idle_secs=5.0):
+                    log.info("[%s] BEN THUYEN idx=%d: ambish no -> danh sach TRUOC khi len thuyen", self._label, idx)
+                    continue
             # Cong tren o NUOC (giua bien, dang tren thuyen): capture chi gui 0x14 08 (KHONG 0x14 04).
             gate_is_sea = False
             try:

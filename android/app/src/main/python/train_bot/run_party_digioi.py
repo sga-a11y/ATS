@@ -14,13 +14,13 @@ try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass
-from bot import config
-from bot import mob_spots
-from bot.mob_scanner import MobScanSession, compute_regions, scan_full_map
-from bot.scene_fight import get_scene_fight_seed
-from bot.train_maps_store import save_learned_regions
-from bot.login import login
-from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
+from . import config
+from . import mob_spots
+from .mob_scanner import MobScanSession, compute_regions, scan_full_map
+from .scene_fight import get_scene_fight_seed
+from .train_maps_store import save_learned_regions
+from .login import login
+from .client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
@@ -28,7 +28,7 @@ try:
     # Android: "party.log" (duong dan tuong doi) ghi vao "/" - READ-ONLY tren Android (BUG THAT:
     # OSError Errno 30). Phai ghi vao thu muc rieng cua app (Context.getFilesDir(), xem _appdir.py
     # ben APK). Tren PC import nay FAIL (bot/ khong co _appdir) -> fallback "party.log" nhu cu.
-    from bot._appdir import app_dir as _app_dir
+    from ._appdir import app_dir as _app_dir
     _log_path = os.path.join(_app_dir(), "party.log")
 except Exception:
     _log_path = "party.log"
@@ -2805,7 +2805,7 @@ def account_status(username):
                 "strategist": False, "char_level": last.get("char_level"),
                 "pet_name": last.get("pet_name"), "pet_level": last.get("pet_level")}
     pidx = getattr(c, "party_idx", None)
-    from bot.client import is_joined, is_strategist
+    from .client import is_joined, is_strategist
     st = _party_state.get(pidx, {})
     dg_remain = None
     if c.current_map == config.DIGIOI_MAP_ID:

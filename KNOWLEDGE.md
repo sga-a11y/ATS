@@ -969,3 +969,41 @@ def choose_action(sp_cur, sp_max, hp_cur, hp_max, mobs, party):
 - [ ] Khám phá skill 12006
 - [ ] Test với 100 accounts
 - [ ] Implement daily tasks (sau combat)
+
+## 7e-RE. ROUTE QUA BIỂN (thuyền) — ĐANG DỞ (tạm dừng 2026-07-24)
+
+Route smart (world_nav) đi qua map biển, vd **12061 (Ng.Thành) → 18001 (Kiến Nghiệp)**:
+legs `12061→12000→11000→15000→18801→18803→18000→18001`. Map **11000, 15000 = biển** (gate is_sea).
+
+### Đã fix (session này — client.py / smart_route.py / pathfind.py):
+1. **start-snap** (`pathfind.py find_world_path`): party đứng ở ô grid coi là blocked (vd 12061 (470,1210)
+   block (24,61) hàng biên) → `_empty_target` snap về ô đi được gần nhất cho MỌI mode (trước chỉ boat).
+   → qua được 12061 (trước reform vô hạn).
+2. **Boat build/execute model** (`smart_route._scene_candidate_route` + `client.execute_smart_route`):
+   sea leg = leg có gate is_sea. `first_sea`/`last_sea`. **Board thuyền ở leg `first_sea-1` (bến)**,
+   sail legs `first_sea..last_sea`. Tương thích ngược: bien ngay đầu route (first_sea=1) = y hệt logic cũ
+   (board i==0). Builder validate leg biển với `boat=True` (không thì build fail chặng biển → route None).
+3. **rearm 0x41** (`client.rearm_ready`): sau cổng ĐẤT phục kích, char 'chưa ready' → move bị nuốt →
+   gửi lại 0x41 để đi được (bài học team dungeon lv20). **SKIP ở leg thuyền** (board/sail) — 0x41 có thể
+   ảnh hưởng thuyền.
+4. **Đánh ambush TRƯỚC board** (`_enter_gate` board_boat): quái phục kích ở bến aggro CHẬM (~2-5s) →
+   provoke bằng `rearm_ready` + chờ 4s, có ambush thì đánh sạch rồi board sau. (Dùng rearm_ready chỉ 0x41,
+   KHÔNG combat_ready vì nó có 0x7c = board sớm.)
+
+### VẪN LỖI (chưa xong): qua map biển 11000 → ĐỨNG YÊN, không sail.
+Log: board 0x7c ở bến (gate 30) → battle phục kích → thắng → tới 11000 → tính path sail 18 waypoint →
+gửi 0x06 move nhưng char KHÔNG nhúc nhích (server từ chối move nước → nghi KHÔNG còn trên thuyền).
+
+### Capture `captures/thuyen_thanhchau_20260721.pcap` (maps 12000→11000, có 0x7c):
+- **Board seq đúng** (bot khớp): `0x14 08 00 [idx] 00` → `0x7c 04 00` → `0x0c 01 00` → `0x14 06 00` → map đổi → sail.
+- **Sail = gói 0x06 bình thường** (như đi bộ), flag 2/3/4/5. Cổng biển giữa = `0x14 08 [idx]` (KHÔNG 0x14 04) + `0x14 06`.
+- **0x52 `520100016700` = CLAIM THƯỞNG cuối trận** (client.py:2666), KHÔNG phải gói resume. Red herring.
+- Trong capture lúc board KHÔNG có battle ngay → sail liền. (Người thật đánh quái ở bến TRƯỚC rồi board sạch.)
+
+### Nghi vấn / next step (mai lên cty):
+- Trận phục kích ở bến làm **mất trạng thái thuyền** → tới 11000 không sail được. Fix #4 (đánh trước board)
+  ĐÃ THỬ nhưng user báo VẪN lỗi → có thể: (a) ambush vẫn nổ sau board (aggro chậm hơn 4s), hoặc (b) sau
+  transit vào map biển char không tự lên thuyền lại, cần re-board (0x7c) trên map biển, hoặc (c) cơ chế
+  khác. **CẦN capture ca board CÓ ambush** (đi bộ tới bến → bị quái đánh → thắng → board → sail) để xem
+  client thật làm gì. So sánh gói giữa "sau thắng ambush ở bến" và "sail được".
+- File data (Ground.mmg, world_nav.json) ở `gamedata/` (gitignore) + `.codex_mumu_probe/` (máy cty).
