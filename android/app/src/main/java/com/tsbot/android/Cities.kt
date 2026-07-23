@@ -23,5 +23,11 @@ object Cities {
         "lau_bo" to Info("Lâu Bò", 56001, 15),
         "tuong_duong" to Info("Tương Dương", 21001, 13),
         "giang_lang" to Info("Giang Lăng", 21011, 14),
+        // 3 thanh MOI mo (22/07). Xac nhan tu capture goi 0x44 (thanh_moi_/tamadai_20260722.pcap).
+        // LUU Y: Ta Ma Dai teleport city_id = 57001, KHONG phai 61041 (61041 la ma ban do hien
+        // trong game, goi 0x44 dung 57001).
+        "ta_ma_dai" to Info("Tả Mã Đài", 57001, 16),
+        "truong_sa" to Info("Trường Sa", 23001, 17),
+        "linh_lang" to Info("Linh Lăng", 23011, 18),
     )
 }

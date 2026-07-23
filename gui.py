@@ -654,7 +654,8 @@ class BotGUI(tk.Tk):
     def _build_party_tab(self, sub_nb, pidx):
         accs = ctrl.party_accounts(pidx)
         pmode = config.PARTY_CONFIG.get(pidx, {}).get("mode", "?")
-        mlbl = {"digioi": "Dị Giới", "train": "Train map", "city": "Về thành",
+        mlbl = {"digioi": "Dị Giới", "train": "Train map", "digioi_train": "DG + Train",
+                "city": "Về thành",
                 "stand": "Đứng yên", "event": "Event", "cleanbag": "Dọn túi"}.get(pmode, pmode)
         frame = ttk.Frame(sub_nb, padding=4)
         sub_nb.add(frame, text=f"P{pidx + 1} · {mlbl} ({len(accs)})",
@@ -1043,6 +1044,7 @@ def _load_json(name):
 MODE_OPTIONS = [
     ("digioi", "Train Dị Giới"),
     ("train", "Train map"),
+    ("digioi_train", "Dị Giới + Train map (hết giờ DG → cả party đi train)"),
     ("city", "Tập trung về thành (đứng yên)"),
     ("stand", "Login đâu đứng yên đó"),
     ("event", "Event (tele tới map event, đứng yên chờ mời tay)"),
@@ -1056,13 +1058,14 @@ class PartyConfigFrame(ttk.Frame):
     """1 tab cau hinh 1 party: mode (dropdown) + map/quai/thanh (dropdown) + acc."""
     _PW_MASK = "******"   # placeholder pass da luu (giau pass that khi mo lai Settings)
     def __init__(self, master, party, train_maps, cities, servers, on_apply_advanced_to_all=None,
-                 on_apply_di_gioi_level=None):
+                 on_apply_di_gioi_level=None, on_apply_heal_all=None):
         super().__init__(master, padding=8)
         self.train_maps = train_maps   # list (map_id, name, mobs)
         self.cities = cities           # list (city_id, flag, name)
         self.servers = servers         # list (key, label)
         self.on_apply_advanced_to_all = on_apply_advanced_to_all
         self.on_apply_di_gioi_level = on_apply_di_gioi_level
+        self.on_apply_heal_all = on_apply_heal_all   # ap nguong hoi mau cho MOI acc MOI party
         self._preset = party or {}
 
         srow = ttk.Frame(self); srow.pack(fill="x", pady=4)
@@ -1093,6 +1096,20 @@ class PartyConfigFrame(ttk.Frame):
             self.digioi_solo_var.set(self.digioi_kind_var.get().startswith("Solo"))
             self._update_no_leader_visibility()
         self.digioi_kind_cb.bind("<<ComboboxSelected>>", _on_digioi_kind_change)
+        # "Cap quai DG" cung NGANG HANG voi Che do (gon hon la de xuong hang dyn cung Map/Quai).
+        # Hien khi mode = digioi / digioi_train (pack/pack_forget trong _render_dyn).
+        # Cap quai Di Gioi: luu idx 1..15; UI hien theo cap (10..180). Mac dinh idx 2 = cap 25.
+        _dg_idx = int(self._preset.get("di_gioi_level", 2))
+        self.di_gioi_level_var = tk.StringVar(
+            value=str(_DG_LEVELS[_dg_idx - 1] if 1 <= _dg_idx <= 15 else 25))
+        self.dg_lvl_lbl = ttk.Label(row, text="  │  Cấp quái DG:")
+        self.dg_lvl_cb = ttk.Combobox(row, textvariable=self.di_gioi_level_var, width=6,
+                                      state="readonly", values=[str(v) for v in _DG_LEVELS])
+        self.dg_apply_btn = ttk.Button(
+            row, text="Áp dụng ngay",
+            command=lambda: (self.on_apply_di_gioi_level(
+                _dg_level_to_idx(self.di_gioi_level_var.get()))
+                if getattr(self, "on_apply_di_gioi_level", None) else None))
 
         self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
@@ -1146,9 +1163,6 @@ class PartyConfigFrame(ttk.Frame):
         self.buy_ho_phu_var = tk.BooleanVar(value=bool(self._preset.get("buy_ho_phu", False)))
         self.buy_bao_hop_var = tk.BooleanVar(value=bool(self._preset.get("buy_bao_hop", False)))
         self.bao_hop_xu_var = tk.StringVar(value=str(self._preset.get("bao_hop_xu_threshold", 1000000)))
-        # Cap quai Di Gioi: luu idx 1..15; UI hien theo cap (10..180). Mac dinh idx 2 = cap 25.
-        _dg_idx = int(self._preset.get("di_gioi_level", 2))
-        self.di_gioi_level_var = tk.StringVar(value=str(_DG_LEVELS[_dg_idx - 1] if 1 <= _dg_idx <= 15 else 25))
 
         ttk.Label(self, text="Acc (TICK = dùng, BỎ TICK = bỏ qua). Dòng đầu đã tick = chủ PT "
                   "(trừ khi tick ô trên). TỐI ĐA 5 acc/party:").pack(anchor="w")
@@ -1244,10 +1258,35 @@ class PartyConfigFrame(ttk.Frame):
         def _reset():
             for k, vv in vars_.items():
                 vv.set(int(round((glob_hp if k.startswith("hp") else glob_sp) * 100)))
-        bb = ttk.Frame(win); bb.grid(row=len(rows) + 1, column=0, columnspan=3, pady=8)
+        def _apply_all():
+            # Ap NGUONG DANG CHINH cho MOI acc o MOI PARTY (setup tung acc rat met).
+            vals = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
+            if self.on_apply_heal_all:
+                n = self.on_apply_heal_all(vals)
+                messagebox.showinfo("Áp dụng cho tất cả",
+                                    f"Đã áp ngưỡng hồi máu cho {n} acc (tất cả party).\n"
+                                    "Bấm Lưu để ghi vào cấu hình.", parent=win)
+            else:   # fallback: chi party nay (khi mo doc lap, khong co callback)
+                n = self.apply_heal_all(vals)
+                messagebox.showinfo("Áp dụng cho tất cả",
+                                    f"Đã áp ngưỡng hồi máu cho {n} acc.", parent=win)
+            win.destroy()
+        bb = ttk.Frame(win); bb.grid(row=len(rows) + 1, column=0, columnspan=3, pady=(8, 2))
         ttk.Button(bb, text="↺ Mặc định chung", command=_reset).pack(side="left", padx=4)
         ttk.Button(bb, text="💾 Lưu", command=_save).pack(side="left", padx=4)
         ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="left", padx=4)
+        ttk.Button(win, text="📋 Áp dụng cho TẤT CẢ acc", command=_apply_all).grid(
+            row=len(rows) + 2, column=0, columnspan=3, sticky="ew", padx=8, pady=(0, 8))
+
+    def apply_heal_all(self, vals):
+        """Ap nguong hoi mau `vals` cho moi acc (co username) trong party NAY. Tra so acc da ap."""
+        n = 0
+        for r in self.acc_rows:
+            if not r["u"].get().strip():
+                continue
+            r["heal"] = dict(vals)
+            n += 1
+        return n
 
     def _open_skill_dialog(self, row):
         """Popup rule battle rieng tung acc: Dieu kien -> Skill/action -> Target."""
@@ -1724,7 +1763,8 @@ class PartyConfigFrame(ttk.Frame):
             "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
             "buy_bao_hop": bool(self.buy_bao_hop_var.get()),
             "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 1000000),
-            "di_gioi_level": _dg_level_to_idx(self.di_gioi_level_var.get()),
+            # KHONG co di_gioi_level o day: cap quai DG la setting RIENG tung party (o section
+            # mode Di Gioi), khong duoc "ap dung cho party khac" de len cap cua party do.
         }
 
     def apply_advanced_settings(self, data):
@@ -1736,8 +1776,7 @@ class PartyConfigFrame(ttk.Frame):
         self.buy_ho_phu_var.set(bool(data.get("buy_ho_phu", False)))
         self.buy_bao_hop_var.set(bool(data.get("buy_bao_hop", False)))
         self.bao_hop_xu_var.set(str(_parse_int(data.get("bao_hop_xu_threshold", 1000000), 1000000)))
-        _idx = int(data.get("di_gioi_level", 2))
-        self.di_gioi_level_var.set(str(_DG_LEVELS[_idx - 1] if 1 <= _idx <= 15 else 25))
+        # KHONG dung di_gioi_level (setting rieng tung party, xem _advanced_settings_data)
 
     def _on_mode_change(self):
         # Khi DOI che do: tu set mac dinh "Khong co chu PT".
@@ -1775,8 +1814,20 @@ class PartyConfigFrame(ttk.Frame):
         else:
             self.digioi_kind_lbl.pack_forget()
             self.digioi_kind_cb.pack_forget()
+        # "Cap quai DG" ngang hang Che do - CHI o mode DG+Train (hang dyn con phai chua Map/Quai).
+        # Mode "digioi" thuan van de cap quai o hang dyn nhu cu.
+        if mode == "digioi_train":
+            self.dg_lvl_lbl.pack(side="left")
+            self.dg_lvl_cb.pack(side="left")
+            if getattr(self, "on_apply_di_gioi_level", None):
+                self.dg_apply_btn.pack(side="left", padx=(6, 0))
+        else:
+            self.dg_lvl_lbl.pack_forget()
+            self.dg_lvl_cb.pack_forget()
+            self.dg_apply_btn.pack_forget()
         self._update_no_leader_visibility()
-        if mode == "train":
+        if mode in ("train", "digioi_train"):
+            # (Cap quai DG da nam NGANG HANG voi Che do o tren - khong lap lai o day.)
             ttk.Label(self.dyn, text="Map:", width=10).pack(side="left")
             names = [n for (_i, n, _m) in self.train_maps]
             self.map_cb = ttk.Combobox(self.dyn, textvariable=self.map_var, state="readonly",
@@ -1791,9 +1842,10 @@ class PartyConfigFrame(ttk.Frame):
                         if mid == self._preset.get("start_city_id")), 0)
             if names:
                 self.map_var.set(names[idx])
-            # Chi dung mob_index DA LUU neu preset von la 'train'. Doi tu mode khac sang train
-            # -> mac dinh "Bot tu chon" (-1), KHONG lay mob_index=0 (rac) cua mode khac.
-            pmob = self._preset.get("mob_index", -1) if self._preset.get("mode") == "train" else -1
+            # Chi dung mob_index DA LUU neu preset von la 'train'/'digioi_train'. Doi tu mode khac
+            # sang -> mac dinh "Bot tu chon" (-1), KHONG lay mob_index=0 (rac) cua mode khac.
+            pmob = (self._preset.get("mob_index", -1)
+                    if self._preset.get("mode") in ("train", "digioi_train") else -1)
             self._fill_mobs(pmob)
         elif mode == "city":
             ttk.Label(self.dyn, text="Thành:", width=10).pack(side="left")
@@ -1862,7 +1914,9 @@ class PartyConfigFrame(ttk.Frame):
         event_key = ""
         if mode == "digioi":
             sc = 49942
-        elif mode == "train":
+        elif mode in ("train", "digioi_train"):
+            # digioi_train: start_city_id = MAP TRAIN (pha 2). Pha 1 (DG) dung DIGIOI_MAP_ID co dinh
+            # trong runner, khong luu o day.
             sc = next((mid for (mid, n, _m) in self.train_maps if n == self.map_var.get()), 0)
             cur = self.mob_cb.current() if self.mob_cb else 0
             mob_index = (cur - 1) if cur >= 1 else -1   # 0 = "Bot tu chon" -> -1; k -> diem k-1
@@ -2234,10 +2288,30 @@ class ConfigDialog(tk.Toplevel):
             cfg = PartyConfigFrame(entry["holder"], entry["preset"],
                                    self.train_maps, self.cities, self.servers,
                                    on_apply_advanced_to_all=on_apply,
-                                   on_apply_di_gioi_level=on_apply_dg)
+                                   on_apply_di_gioi_level=on_apply_dg,
+                                   on_apply_heal_all=self._apply_heal_to_all)
             cfg.pack(fill="both", expand=True)
             entry["cfg"] = cfg
         return entry["cfg"]
+
+    def _apply_heal_to_all(self, vals):
+        """Ap nguong hoi mau cho MOI acc o MOI party. Party da mo (cfg) -> set thang vao acc_rows;
+        party CHUA mo -> ghi vao preset['accounts'] de khi mo/luu van co. Tra tong so acc."""
+        total = 0
+        for entry in self.frames:
+            if entry["cfg"] is not None:
+                total += entry["cfg"].apply_heal_all(vals)
+            else:
+                preset = dict(entry["preset"] or {})
+                accs = [dict(a) for a in (preset.get("accounts") or [])]
+                for a in accs:
+                    if not str(a.get("u", "")).strip():
+                        continue           # slot 0 rong (khong co chu PT) -> bo qua
+                    a["heal"] = dict(vals)
+                    total += 1
+                preset["accounts"] = accs
+                entry["preset"] = preset
+        return total
 
     def _apply_advanced_to_all(self, source_entry, data):
         count = 0

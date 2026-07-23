@@ -14,13 +14,13 @@ try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass
-from . import config
-from . import mob_spots
-from .mob_scanner import MobScanSession, compute_regions, scan_full_map
-from .scene_fight import get_scene_fight_seed
-from .train_maps_store import save_learned_regions
-from .login import login
-from .client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
+from bot import config
+from bot import mob_spots
+from bot.mob_scanner import MobScanSession, compute_regions, scan_full_map
+from bot.scene_fight import get_scene_fight_seed
+from bot.train_maps_store import save_learned_regions
+from bot.login import login
+from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
@@ -28,7 +28,7 @@ try:
     # Android: "party.log" (duong dan tuong doi) ghi vao "/" - READ-ONLY tren Android (BUG THAT:
     # OSError Errno 30). Phai ghi vao thu muc rieng cua app (Context.getFilesDir(), xem _appdir.py
     # ben APK). Tren PC import nay FAIL (bot/ khong co _appdir) -> fallback "party.log" nhu cu.
-    from ._appdir import app_dir as _app_dir
+    from bot._appdir import app_dir as _app_dir
     _log_path = os.path.join(_app_dir(), "party.log")
 except Exception:
     _log_path = "party.log"
@@ -374,8 +374,45 @@ def _pstate(pidx):
                               "disc_gen": 0,          # +1 moi khi co acc rot (bao cac nick khac phan ung)
                               "event_battle_active": False,
                               "event_battle_done": threading.Event(),
+                              # MODE "digioi_train" (DG roi Train): pha hien tai cua CA PARTY +
+                              # danh sach acc DA XONG DG (het gio). Du CA party xong -> chuyen pha
+                              # "train" -> moi acc relogin vao mode train.
+                              "dt_phase": "digioi",
+                              "dt_done": set(),
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
+
+
+def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn, timeout=3600.0):
+    """MODE digioi_train: acc nay DA XONG DG -> danh dau + DUNG YEN cho CA PARTY xong DG.
+    Du het -> doi pha party sang "train" (moi acc relogin se chay mode train). Tra True neu
+    da san sang di train, False neu bi Stop/timeout."""
+    st = _pstate(pidx)
+    with st["lock"]:
+        st["dt_done"].add(username)
+    t0 = time.time()
+    last_log = 0.0
+    while time.time() - t0 < timeout:
+        if stopped_fn():
+            return False
+        users = set(_running_party_usernames(pidx))
+        with st["lock"]:
+            done = set(st["dt_done"])
+            if st.get("dt_phase") == "train":
+                return True            # acc khac da chuyen pha roi -> di train luon
+            # CHI tinh acc DANG CHAY (acc da tat/rot han khong lam ca party ket)
+            if users and users <= done:
+                st["dt_phase"] = "train"
+                log.info("[%s] DG+Train: CA PARTY (%d acc) da xong Di Gioi -> CHUYEN PHA TRAIN",
+                         label, len(users))
+                return True
+        if time.time() - last_log > 60:
+            last_log = time.time()
+            log.info("[%s] DG+Train: xong DG, DUNG YEN cho party (%d/%d acc xong)",
+                     label, len(done & users), len(users))
+        time.sleep(5)
+    log.warning("[%s] DG+Train: cho party xong DG qua %.0fs -> bo qua", label, timeout)
+    return False
 
 
 def run_account(username, password, pidx, is_leader, is_picker=False, is_reconnect=False):
@@ -391,6 +428,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     def _stopped():
         return stop_ev is not None and stop_ev.is_set()
     er = {"r": "ket thuc binh thuong (het gio hoac GUI dung)"}  # ly do thoat (de tong ket party)
+    # MODE digioi_train: xong DG + ca party xong -> CAN relogin de chay pha TRAIN (khong phai "rot").
+    # Dung dict de set duoc tu cac nhanh ben trong (khong vuong scope).
+    _dt = {"relogin_train": False}
     def _reason(msg):
         er["r"] = msg
     # Server (IP) theo config rieng cua party
@@ -514,14 +554,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         city_flag = pcfg.get("city_flag", 0)
         # checkbox "Lam nhiem vu hang ngay" (bingo 9 o + dungeon). Fallback key cu "do_dungeon".
         do_daily = pcfg.get("do_daily", pcfg.get("do_dungeon", True))
-        tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
         # mode: digioi | train | city (tap trung ve thanh) | stand (dung yen) | cleanbag
-        mode = pcfg.get("mode")
-        if not mode:
-            mode = ("train" if tm else ("digioi" if sc == config.DIGIOI_MAP_ID
-                    else ("stand" if sc == 0 else "city")))
+        #       | digioi_train (DG TRUOC, ca party xong DG -> TRAIN map)
+        raw_mode = pcfg.get("mode")
+        dt_mode = (raw_mode == "digioi_train")
+        if dt_mode:
+            # Pha DG: chay y het mode "digioi" tren map DG. Pha train: mode "train" tren map da
+            # chon (start_city_id). Pha luu o party state -> ca party cung pha.
+            if _pstate(pidx).get("dt_phase", "digioi") == "digioi":
+                mode, sc = "digioi", config.DIGIOI_MAP_ID
+            else:
+                mode = "train"
+        tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
+        if not dt_mode:
+            mode = raw_mode
+            if not mode:
+                mode = ("train" if tm else ("digioi" if sc == config.DIGIOI_MAP_ID
+                        else ("stand" if sc == 0 else "city")))
         train_on_map = (mode == "train") and (tm is not None)
         is_digioi = (mode == "digioi")
+        dt_dg_finished = False   # mode digioi_train: vua HET GIO DG -> cho party roi sang train
         ev = None
         train_safes = []
         if tm is not None:
@@ -1234,6 +1286,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     try: c.claim_daily_quests(heavy=True)
                     except Exception as e:
                         log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
+                # MODE DG+Train: KHONG dong acc - dung yen cho CA PARTY xong DG roi chuyen pha train.
+                if dt_mode and _dt_wait_all_digioi_done(pidx, username, label, _stopped):
+                    _dt["relogin_train"] = True   # supervisor chay lai -> pha TRAIN
                 # NGUYEN TAC TOI THUONG: DU FULL PARTY MOI LAM -> KHONG tru n_members (het gio DG cung
                 # ko tru; leader dung cho, ca party dung yen neu thieu - theo yeu cau).
                 try: c.close()
@@ -1248,6 +1303,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     try: c.claim_daily_quests(heavy=True)   # khong vao DG -> lam full quest roi dong
                     except Exception as e:
                         log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
+                # MODE DG+Train: KHONG dong acc - dung yen cho CA PARTY xong DG roi chuyen pha train.
+                if dt_mode and _dt_wait_all_digioi_done(pidx, username, label, _stopped):
+                    _dt["relogin_train"] = True   # supervisor chay lai -> pha TRAIN
                 # NGUYEN TAC TOI THUONG: DU FULL PARTY MOI LAM -> KHONG tru n_members.
                 try: c.close()
                 except Exception: pass
@@ -2175,6 +2233,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             try: c.do_daily_dungeon()
                             except Exception as e:
                                 log.warning("[%s] loi daily dungeon sau DG: %s", label, e)
+                        dt_dg_finished = dt_mode
                         break
                 # KHONG con dung map DG (chet bi day ra town / loi) lien tuc ~10s. Phan biet TIMER:
                 #   - con gio (>=2 phut) -> bi day ra SOM -> VAO LAI DG ngay
@@ -2199,9 +2258,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 try: c.claim_daily_quests(heavy=True)
                                 except Exception as e:
                                     log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
+                            dt_dg_finished = dt_mode
                             break
                 else:
                     out_cnt = 0
+        # MODE DG+Train: xong DG -> ve thanh DUNG YEN cho CA PARTY xong roi relogin sang pha train.
+        if dt_dg_finished:
+            _go_town_safe(c, label)
+            if _dt_wait_all_digioi_done(pidx, username, label, _stopped):
+                _dt["relogin_train"] = True   # supervisor chay lai -> pha TRAIN
         try: c.close()
         except Exception: pass
         if c in _clients: _clients.remove(c)
@@ -2222,7 +2287,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # mode deu tu login lai; dung han chi khi GUI Stop / thoat binh thuong (het gio DG...).
         _forced_reconnect = username in account_forced_reconnect
         reconnectable = (not _stopped()
-                         and (_forced_reconnect or _login_failed
+                         and (_forced_reconnect or _login_failed or _dt["relogin_train"]
                               or (c is not None and getattr(c, "server_closed", False))))
         account_reconnect[username] = reconnectable
         if is_leader and not reconnectable:
@@ -2439,6 +2504,12 @@ def start_account(username, password, pidx, is_leader, is_picker):
         return False
     st = _pstate(pidx)
     st["n_members"] = sum(1 for u, p, lead, _ in party_accounts(pidx) if not lead)
+    # MODE digioi_train: party khoi dong LAI tu dau (chua acc nao chay) -> reset pha ve "digioi",
+    # khong thi lan chay sau se bo qua DG (pha con ket o "train" tu phien truoc).
+    if not _running_party_usernames(pidx):
+        with st["lock"]:
+            st["dt_phase"] = "digioi"
+            st["dt_done"].clear()
     account_stops[username] = threading.Event()
     t = threading.Thread(target=_run_account_supervised, args=(username, password, pidx, is_leader, is_picker),
                          daemon=True)
@@ -2716,7 +2787,7 @@ def account_status(username):
                 "strategist": False, "char_level": last.get("char_level"),
                 "pet_name": last.get("pet_name"), "pet_level": last.get("pet_level")}
     pidx = getattr(c, "party_idx", None)
-    from .client import is_joined, is_strategist
+    from bot.client import is_joined, is_strategist
     st = _party_state.get(pidx, {})
     dg_remain = None
     if c.current_map == config.DIGIOI_MAP_ID:

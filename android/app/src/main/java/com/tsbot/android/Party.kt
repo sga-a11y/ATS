@@ -56,5 +56,6 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     buyHoPhu = source.buyHoPhu,
     buyBaoHop = source.buyBaoHop,
     baoHopXuThreshold = source.baoHopXuThreshold,
-    diGioiLevel = source.diGioiLevel,
+    // KHONG copy diGioiLevel: cap quai DG la setting RIENG tung party (o section mode Di Gioi),
+    // khong duoc "ap dung cho party khac" de len cap cua party do.
 )

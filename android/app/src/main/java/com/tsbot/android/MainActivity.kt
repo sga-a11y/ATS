@@ -1024,11 +1024,13 @@ fun AddPartyDialog(
                 }
                 // Che do "SOLO (khong lap party)" CHI ap dung khi mode = Di Gioi - mirror
                 // pcfg["digioi_mode"]=="solo" ben PC (1 sub-option BEN TRONG mode digioi).
-                if (selectedMode == RunModes.DIGIOI) {
+                if (selectedMode == RunModes.DIGIOI || selectedMode == RunModes.DIGIOI_TRAIN) {
                     Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = digioiSolo, onCheckedChange = { digioiSolo = it })
-                        Text("Chạy SOLO (mỗi account độc lập, không lập party thật)")
+                    if (selectedMode == RunModes.DIGIOI) {   // DG+Train luon chay PARTY (cho ca party xong DG)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = digioiSolo, onCheckedChange = { digioiSolo = it })
+                            Text("Chạy SOLO (mỗi account độc lập, không lập party thật)")
+                        }
                     }
                     // Cap quai Di Gioi: chon ngay trong phan config mode (mirror PC's _render_dyn).
                     Spacer(Modifier.height(8.dp))
@@ -1141,7 +1143,8 @@ fun AddPartyDialog(
                         }
                     }
                 }
-                if (selectedMode == RunModes.TRAIN) {
+                // DG+Train cung can chon MAP TRAIN (pha 2 sau khi ca party xong Di Gioi).
+                if (selectedMode == RunModes.TRAIN || selectedMode == RunModes.DIGIOI_TRAIN) {
                     Spacer(Modifier.height(8.dp))
                     val mapOptions = trainMapOptions()
                     ExposedDropdownMenuBox(expanded = trainMapExpanded, onExpandedChange = { trainMapExpanded = it }) {

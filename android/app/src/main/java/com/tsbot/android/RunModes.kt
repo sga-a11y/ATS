@@ -12,6 +12,8 @@ object RunModes {
     const val STAY_LOGIN = "stay_login"
     const val DIGIOI = "digioi"
     const val TRAIN = "train"
+    // DG TRUOC, het gio DG thi DUNG YEN cho CA PARTY xong -> chuyen sang TRAIN map da chon.
+    const val DIGIOI_TRAIN = "digioi_train"
     const val EVENT = "event"
 
     val ALL: Map<String, String> = mapOf(
@@ -19,6 +21,7 @@ object RunModes {
         STAY_LOGIN to "Login ở đâu đứng yên đó",
         DIGIOI to "Dị Giới",
         TRAIN to "Train (map bản đồ)",
+        DIGIOI_TRAIN to "Dị Giới + Train map",
         EVENT to "Event (tele đứng đợi mời PT)",
     )
 }
