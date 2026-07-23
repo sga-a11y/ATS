@@ -213,9 +213,19 @@ def _medoid(points: list[Point]) -> Point:
     ))
 
 
+def _bbox_center(group) -> Point:
+    """TAM cua o vuong tuan tra. Moi con quai chay quanh 1 O VUONG (~200-470 don vi, nhin anh
+    ve tu capture ro rang) -> tam bbox la diem GIUA bai, chuan hon medoid (medoid keo lech ve
+    cho quai dung lau)."""
+    points = [point for trace in group for point in trace.unique_points]
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return ((min(xs) + max(xs)) // 2, (min(ys) + max(ys)) // 2)
+
+
 def _center_candidate(group, ground, map_id: int,
                       start: Point) -> CenterCandidate | None:
-    point = _medoid([point for trace in group for point in trace.unique_points])
+    point = _bbox_center(group)
     if ground is not None:
         point = ground.nearest_walkable_world(map_id, point, start)
         if point is None:
@@ -236,9 +246,10 @@ def compute_centers(session: MobScanSession, ground, start: Point,
               else session.bounded_traces())
     if not traces:
         return []
-    groups = _trace_groups(
-        traces, session.merge_distance, ground, session.map_id
-    )
+    # 1 CON QUAI = 1 BAI: moi con chay quanh 1 o vuong RIENG (xac nhan bang anh ve tu capture
+    # map 20801: 16 o vuong tach bach). Gom nhom theo khoang cach lam 2 bai KE NHAU dinh lam
+    # mot -> mat rat nhieu bai (200 -> chi con 7/16). Bo gom, moi trace 1 bai.
+    groups = [[trace] for trace in traces]
     centers = [
         center for center in (
             _center_candidate(group, ground, session.map_id, start)
@@ -258,9 +269,7 @@ def compute_regions(session: MobScanSession, ground, start: Point,
               else session.bounded_traces())
     if not traces:
         return []
-    groups = _trace_groups(
-        traces, session.merge_distance, ground, session.map_id
-    )
+    groups = [[trace] for trace in traces]   # 1 con quai = 1 bai (xem compute_centers)
     hazards = [point for trace in traces for point in trace.unique_points]
     regions = []
     for group in groups:

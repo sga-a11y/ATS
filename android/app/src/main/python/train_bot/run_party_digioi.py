@@ -149,29 +149,37 @@ def _stationary_train_mob_probe(client, map_id, train_map=None, stop=None, secon
     session.begin_station(started)
     client.begin_mob_observation(session)
     path, count = None, 0
+    _lb = getattr(client, "_label", "")
+    stations = []          # khai bao TRUOC try: doan ve anh o duoi con dung
     try:
         channel = int(getattr(client, "current_channel", 0)
                       or getattr(config, "CHANNEL", 1) or 1)
         client.switch_channel(channel)
+        # DUNG 1 CHO LA DU. Do lai tren capture map 20801: 30s dau tai MOT diem da thay DU
+        # 16/16 bai quai (va 16/16 co safe). Di them 5 diem nua ton 5 phut ma con TE HON
+        # (quan sat nhieu -> vung 'hazard' phinh -> kho tim safe, chi con 14/16).
+        # Truoc day tuong thieu bai la do quet khong het map -> SAI: nguyen nhan that la
+        # thuat toan GOM bai theo khoang cach (da sua: 1 con quai = 1 bai).
         if seed is not None:
-            log.info("[%s] AUTO LEARN map %s: di toi seed SceneFight %s",
-                     getattr(client, "_label", ""), map_id, seed)
+            stations.append((int(seed[0]), int(seed[1])))
+            log.info("[%s] AUTO LEARN map %s: di toi seed SceneFight %s, quan sat %.0fs",
+                     _lb, map_id, seed, seconds)
             client.navigate_to(*seed, flee=True, abort=stop)
         else:
-            log.warning("[%s] AUTO LEARN map %s: khong co SceneFight seed, dung tai safe",
-                        getattr(client, "_label", ""), map_id)
+            cur = getattr(client, "pos", None)
+            if cur:
+                stations.append((int(cur[0]), int(cur[1])))
+            log.warning("[%s] AUTO LEARN map %s: khong co SceneFight seed, quan sat tai cho %.0fs",
+                        _lb, map_id, seconds)
         next_progress = 10.0
-        now = started
         while getattr(client, "running", False) and not stop():
-            now = clock()
-            elapsed = now - started
+            elapsed = clock() - started
             if elapsed >= seconds:
                 completed = True
                 break
             if elapsed >= next_progress:
                 log.info("[%s] AUTO LEARN map %s: %.0f/%.0fs, %d entity ung vien",
-                         getattr(client, "_label", ""), map_id, elapsed, seconds,
-                         session.candidate_count())
+                         _lb, map_id, elapsed, seconds, session.candidate_count())
                 next_progress += 10.0
             sleep(min(1.0, max(0.0, seconds - elapsed)))
     finally:
@@ -186,10 +194,20 @@ def _stationary_train_mob_probe(client, map_id, train_map=None, stop=None, secon
         fallback_safe = mob_spots.load_safe(map_id, fingerprint)
     learned = compute_regions(
         session, ground, start, fallback_safe=fallback_safe,
-        now=now, stable_only=False
+        now=clock(), stable_only=False   # thoi diem SAU khi quet xong tat ca diem
     )
     centers = [region.center.point for region in learned]
     safes = [region.safe for region in learned]
+    # ANH KET QUA SCAN (chi PC) - de mat nguoi kiem tra nhanh: dia hinh + duong chay tung con
+    # quai + bbox + tam bai + safe + cac tram da dung quan sat.
+    try:
+        from bot import scan_image
+        _img = scan_image.render_scan(ground, map_id, session.bounded_traces(),
+                                      centers, safes, stations=stations)
+        if _img:
+            log.info("[%s] AUTO LEARN map %s: anh ket qua -> %s", _lb, map_id, _img)
+    except Exception as e:
+        log.warning("[%s] AUTO LEARN map %s: khong ve duoc anh (bo qua): %s", _lb, map_id, e)
     complete_regions = bool(completed and centers and all(safe is not None for safe in safes))
     if complete_regions and train_map is not None:
         safes = [tuple(map(int, safe)) for safe in safes]

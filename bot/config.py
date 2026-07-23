@@ -104,7 +104,11 @@ MOB_SCAN_QUIET_SECONDS = 8.0
 MOB_SCAN_STATION_TIMEOUT = 90.0
 MOB_SCAN_MIN_SAMPLES = 3
 MOB_SCAN_MAX_PATROL_DIAMETER = 800
-MOB_SCAN_MERGE_DISTANCE = 200
+# KHONG con dung de gom bai quai nua (compute_centers/compute_regions gio la 1 CON = 1 BAI,
+# lay TAM BBOX o vuong tuan tra). Chi con dung o _merge_center_points (scan_full_map) de bo
+# tam trung nhau. Giu 60 - do tren capture map 20801: gom theo khoang cach lam mat rat nhieu
+# bai (200 -> 7/16 bai; bo gom han -> dung 16/16).
+MOB_SCAN_MERGE_DISTANCE = 60
 MOB_SCAN_SECOND_PASS = True
 MOB_SPOTS_CACHE_PATH = os.path.join(_base_dir(), "mob_spots.json")
 MOB_PACKET_PROBE_SECONDS = 60

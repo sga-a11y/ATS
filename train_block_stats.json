@@ -797,6 +797,34 @@
           ],
           "last_pattern": "3x1",
           "updated_at": 1784733689
+        },
+        "1910,1230": {
+          "total": 51,
+          "patterns": {
+            "3x1": 51
+          },
+          "last_slots": [
+            "1:1",
+            "1:2",
+            "1:3"
+          ],
+          "last_pattern": "3x1",
+          "updated_at": 1784813071
+        },
+        "590,2130": {
+          "total": 14,
+          "patterns": {
+            "4x1": 7,
+            "3x1": 7
+          },
+          "last_slots": [
+            "0:0",
+            "0:1",
+            "0:2",
+            "0:3"
+          ],
+          "last_pattern": "4x1",
+          "updated_at": 1784814657
         }
       }
     },
@@ -946,6 +974,22 @@
           ],
           "last_pattern": "4x1",
           "updated_at": 1784774691
+        }
+      }
+    },
+    "23811": {
+      "spots": {
+        "1170,1330": {
+          "total": 5,
+          "patterns": {
+            "2x1": 5
+          },
+          "last_slots": [
+            "1:1",
+            "1:2"
+          ],
+          "last_pattern": "2x1",
+          "updated_at": 1784816291
         }
       }
     }

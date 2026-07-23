@@ -84,3 +84,5 @@ aTSBot.zip
 aTSBot-drive.zip
 legion_boss_state.json
 shop_state.json
+scan_maps/
+mob_packets_*.jsonl
