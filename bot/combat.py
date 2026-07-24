@@ -11,7 +11,7 @@ RULE TARGET (dung CHUNG cho danh thuong + combo -> moi unit dong target, combo m
   3. Khong co -> con LE dau tien
 (KHONG dung focus lowest-HP nua vi moi unit ra target khac nhau -> vo combo.)
 """
-import threading, time, logging
+import threading, time, logging, unicodedata
 from . import config
 
 log = logging.getLogger("bot")
@@ -507,6 +507,16 @@ def _max_enemy_block(enemy_slots):
     return best
 
 
+def _is_mineral_battle(state):
+    if getattr(state, "mineral_battle", False):
+        return True
+    for name in getattr(state, "enemy_names", ()) or ():
+        s = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii").lower()
+        if "khoang" in s:
+            return True
+    return False
+
+
 def _rule_condition_ok(rule, state, stat, unit=None):
     cond = (rule or {}).get("condition", "always") if isinstance(rule, dict) else (rule or "always")
     cond = str(cond or "always")
@@ -515,6 +525,8 @@ def _rule_condition_ok(rule, state, stat, unit=None):
     n = len(getattr(state, "enemy_slots", []) or [])
     if cond == "always":
         return True
+    if cond == "mineral":
+        return _is_mineral_battle(state)
     # Tuong thich config cu: mob_gte_4 / hp_lte_50 / sp_gte_65...
     if cond.startswith("mob_gte_"):
         return n >= int(cond.rsplit("_", 1)[1])
@@ -702,6 +714,9 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
         # 1 goi 0x35 "tan du" sau khi thang). User xac nhan qua quan sat truc tiep man hinh: end
         # battle -> bot van gui atk 1 lan nua. Return None -> _make_decisions bo qua, khong gui gi.
         return None
+    if _is_mineral_battle(state):
+        return Decision(unit, at, at, config.SKILL_FLEE,
+                        b=(3 if unit == config.UNIT_CHAR else 2))
 
     def low_or_train():
         p = _lowest_hp_enemy(state, offered)
@@ -764,6 +779,8 @@ def decide_multipet(state, atype, skills, stat, options):
         pass
     elif custom is not None:
         return custom
+    if _is_mineral_battle(state):
+        return Decision(config.UNIT_PET, atype, atype, config.SKILL_FLEE, b=2)
     # CHI danh khi CO du lieu quai MOI rieng cho ATYPE nay (tranh danh lap tren 0x33 cu - xem
     # _combat_attack ban goc; o day dung dict rieng theo atype vi 4 pet KHONG the dung chung 1
     # bien gen (se dam vao nhau, chi 1 con "thay" du lieu moi moi luot)).
@@ -806,6 +823,8 @@ def decide_char(state, options, first_turn=False):
     spr = _try_sp_restore(state, config.UNIT_CHAR, state.skills_char, state.char)
     if spr is not None:
         return spr
+    if _is_mineral_battle(state):
+        return Decision(config.UNIT_CHAR, at, at, config.SKILL_FLEE, b=3)
     return _combat_attack(state, config.UNIT_CHAR, state.skills_char, state.char, options,
                           "char_spam", config.CHAR_FIRE_MIN_SP)
 
@@ -833,5 +852,7 @@ def decide_pet(state, options, first_turn=False):
     spr = _try_sp_restore(state, config.UNIT_PET, state.pet_skills, state.pet)
     if spr is not None:
         return spr
+    if _is_mineral_battle(state):
+        return Decision(config.UNIT_PET, at, at, config.SKILL_FLEE, b=2)
     return _combat_attack(state, config.UNIT_PET, state.pet_skills, state.pet, options,
                           "pet_spam", config.PET_FIRE_MIN_SP)

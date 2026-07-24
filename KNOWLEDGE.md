@@ -192,6 +192,27 @@ Pattern entries: `03 02 [type] [4-byte LE]`
   Lưu BỀN: `allies` bị `clear()` mỗi `0x34` nhưng gói 0x0b party chỉ tới lúc spawn → phải giữ riêng.
 - Xem `state.update_0x0b` + `ally_low_sp` (hồi SP toàn team cho cả pet).
 
+### ✅ TÊN QUÁI trong battle = entity[2:4] (template_id) → npc_names.json
+Trận THƯỜNG (không phải event 40NPC) **không** có gói liệt kê entity/model địch riêng — địch chỉ
+được nhắc bằng **slot** trong `0x35`/`0x33`/`0x32`. NHƯNG **entity của quái mã hoá template_id**:
+```
+entity 8B = [2B ngẫu nhiên][template_id 2B LE][1B type][3B base phiên]
+```
+- `entity[2:4]` = **template_id** → tra `npc_names.json` (sinh từ `tools/crack_npc_names.py`,
+  đọc `gamedata/Data/Npc_C.dat`, format record `[len][name UTF16][1B sep][id 2B]`).
+- 3 byte cuối (`entity[5:8]`) = **base phiên** (chung mọi entity 1 phiên = `self_entity[5:8]`) →
+  dùng để quét entity trong gói `0x0b`. Xác nhận `ts_capture`: `...9d8c8d0300` → `0x9d0e`=Tiểu Thái
+  Giám, `0x9d11`=Đoạn Khuê, `0x9d14`=Hồ Chẩn, `0x9d15`=Lý Mông, `0x9d16`=Phan Phượng.
+- Luật tách địch (KHÔNG cần map/0x07): window 8B có `[5:8]`==base phiên **và** `[2:4]` resolve trong
+  `npc_names` → là quái. Người chơi/pet `[2:4]` random → không resolve → tự loại.
+- **DẠNG 2 (quái KHOÁNG — xác nhận capture mumu12):** một số quái (khoáng) KHÔNG có entity 8B trong
+  0x0b mà là block `05 00 [n] [type] [tid 2B]` với **type byte3: `07`=địch, `04`=đồng đội**, tid ở
+  **offset 4** (vd `0x61c7`=Khoáng Sắt). `note_enemy_entities` bắt CẢ 2 dạng.
+- Dùng cho điều kiện skill `mineral` (tên chứa "Khoáng") + sau này "NPC nguy hiểm" (tên ∈ list).
+  Xem `state.note_enemy_entities` + `state.enemy_names` + `combat._rule_condition_ok` cond=`mineral`.
+- **Model-id ở gói spawn `0x07`** (`body[10:12]`, quái đi rong trên map) là 1 field KHÁC entity[2:4]
+  — client hiện đọc field này nhưng gán nhầm là map_id (scanner học từ `0x06` nên vô hại).
+
 ### QUAN TRONG: slot stats trong 0x33 = VI TRI BATTLE (atype), KHONG phai member-index
 - self_slot (key b2 doc HP/SP cua minh) PHAI = my_atype (vi tri tran, FILL=[1,3,0,4]).
 - Dung idx+1 (vi tri trong member list) = SAI -> doc nham SP/HP cua char khac.
@@ -1000,7 +1021,31 @@ gửi 0x06 move nhưng char KHÔNG nhúc nhích (server từ chối move nước
 - **0x52 `520100016700` = CLAIM THƯỞNG cuối trận** (client.py:2666), KHÔNG phải gói resume. Red herring.
 - Trong capture lúc board KHÔNG có battle ngay → sail liền. (Người thật đánh quái ở bến TRƯỚC rồi board sạch.)
 
-### Nghi vấn / next step (mai lên cty):
+### ✅ ĐÃ TÌM RA (24/07) — thiếu chuỗi RESUME sau đổi scene
+Soi lại `thuyen_thanhchau.pcap` đoạn **kết trận gate30 → sail được ở 11000**:
+```
+t=41.97  s2c 0x14 0700         KẾT TRẬN
+t=41.97  s2c 0x03 map=11000    đã sang map biển
+t=43.26  C2S 0x0c 01 00        ★ (1)
+t=43.31  s2c dump full state (0x0f, 0x08 x N, 0x16, 0x0b, 0x27, 0x05)
+t=44.24  C2S 0x14 06 00        ★ (2)
+t=44.28  s2c 0x14 08 2a        ★ server MỞ KHOÁ
+t=44.51  C2S move              → sail được
+```
+**Quy luật (đúng trên CẢ 2 capture, MỌI lần `s2c 0x14 08 2a`):**
+`C2S 0x0c 01 00` → `C2S 0x14 06 00` → `s2c 0x14 08 2a` → move (sau 0.1–0.5s).
+Áp dụng cho mọi lần đổi scene: board thuyền, qua cổng, xong trận ở cổng.
+
+**Lỗi của bot:** gửi `0x0c 01`+`0x14 06` trong cụm transit **TRƯỚC khi map đổi**; sang map mới
+thì KHÔNG gửi lại → server nuốt move → đứng im. Không liên quan mất trạng thái thuyền.
+
+**Fix:** `client.scene_resume()` gửi `0x0c 01 00` + `0x14 06 00`, gọi trong `_gate_reached()`
+ngay khi phát hiện map đổi.
+
+**Lưu ý:** client thật **KHÔNG hề gửi 0x41** ở các chỗ này (capture 1 chỉ có opcode C2S
+0x06/0x14/0x32/0x0a/0x0c/0x7c/0x52). `rearm_ready` (0x41) là hướng sai cho ca này.
+
+### Nghi vấn cũ (đã bị bác bởi phát hiện trên):
 - Trận phục kích ở bến làm **mất trạng thái thuyền** → tới 11000 không sail được. Fix #4 (đánh trước board)
   ĐÃ THỬ nhưng user báo VẪN lỗi → có thể: (a) ambush vẫn nổ sau board (aggro chậm hơn 4s), hoặc (b) sau
   transit vào map biển char không tự lên thuyền lại, cần re-board (0x7c) trên map biển, hoặc (c) cơ chế

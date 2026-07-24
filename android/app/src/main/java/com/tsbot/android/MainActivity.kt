@@ -1312,6 +1312,7 @@ private val BattleConditionOptions = listOf(
     "sp_full" to "SP đầy",
     "boss" to "Đang boss / phó bản",
     "quest" to "Quest đông quái",
+    "mineral" to "Quái khoáng",
     "ally_dead" to "Đồng đội chết",
 )
 
@@ -1486,6 +1487,7 @@ private fun defaultBattleRules(skills: List<SkillChoice>): List<BattleRuleUi> {
     if (spRestore != null) {
         out += BattleRuleUi(condition = "ally_sp_pct", op = "lt", value = "50", skill = spRestore, target = "ally_low_sp")
     }
+    out += BattleRuleUi(condition = "mineral", skill = "flee", target = "self")
     val boss = pickTemplateSkill(skills, listOf(12009, 12006, 13013, 12003, 10005))
         ?: pickTemplateAttack(skills, preferHighCost = true)
     if (boss != null) {
@@ -1798,6 +1800,9 @@ fun CityDialog(
     var showRoute by remember { mutableStateOf(false) }
     var sourceMap by remember { mutableStateOf("") }
     var destMap by remember { mutableStateOf("") }
+    // Khi bam "Chon Thanh" trong che do di bo -> tap 1 thanh se dien cityId (= map id) vao o BBB
+    // thay vi teleport. Giup user chon thanh dich ma khong phai nho so map.
+    var pickForDest by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Đổi thành (teleport)") },
@@ -1807,7 +1812,7 @@ fun CityDialog(
                     OutlinedButton(
                         onClick = { showRoute = !showRoute },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Đi từ map AAA đến map BBB") }
+                    ) { Text("Đi bộ từ map AAA đến map BBB") }
                 }
                 if (allowRouteMaps && showRoute) {
                     Spacer(Modifier.height(8.dp))
@@ -1838,12 +1843,34 @@ fun CityDialog(
                         enabled = (destMap.trim().toIntOrNull() ?: 0) > 0,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Bắt đầu kéo map") }
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = { pickForDest = !pickForDest },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (pickForDest) "Đang chọn Thành cho ô BBB… (bấm để hủy)" else "Chọn Thành") }
                     Spacer(Modifier.height(10.dp))
                 }
                 LazyColumn(modifier = Modifier.height(320.dp)) {
+                    // Map di-bo dac biet (khong teleport duoc) o DAU danh sach - chi hien khi dang
+                    // chon Thanh cho o BBB.
+                    if (pickForDest) {
+                        item {
+                            TextButton(
+                                onClick = { destMap = "55002"; pickForDest = false },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Nhà Nam Tinh Quân") }
+                        }
+                    }
                     items(Cities.ALL.values.toList()) { info ->
                         TextButton(
-                            onClick = { onPick(info) },
+                            onClick = {
+                                if (pickForDest) {
+                                    destMap = info.cityId.toString()
+                                    pickForDest = false
+                                } else {
+                                    onPick(info)
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text(info.label) }
                     }

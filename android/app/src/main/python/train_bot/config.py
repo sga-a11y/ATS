@@ -1,45 +1,322 @@
-"""Ban rut gon cua bot/config.py cho Android Train-only: giu hang so + PET_SKILLS/
-SKILL_INFO, BO ACCOUNTS/PARTY_CONFIG (Android quan ly account rieng qua Kotlin).
-
-Ghi chu (Task 3 - buoc doc bot/client.py de doi chieu): client.py dung THANG (khong qua
-getattr) cac hang so sau -> BAT BUOC phai co trong ban rut gon nay, neu khong AttributeError
-ngay khi GameClient duoc tao/connect:
-  GAME_HOST, GAME_PORT (GameClient.__init__/connect/relogin), PET_SKILLS (_on_pet_list),
-  UNIT_CHAR/UNIT_PET/SKILL_FLEE/SKILL_NORMAL (combat flow), DIGIOI_MAP_ID (in_di_gioi/exit).
-Cac hang so khac (ACCOUNT_HEAL, JUNK_PET_SCROLLS, PET_HEDOANH, VANTIEU_*, RUN_AROUND_OFFSETS...)
-duoc client.py doc qua getattr(config, "X", default) -> AN TOAN neu thieu, nhung van khai bao
-o day (rong/mac dinh) de cac nhanh van tieu/run-around khong crash neu duoc bat sau nay.
+"""Cau hinh bot TS Online - BAN MAU.
+Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitignore.
 """
-import json
+from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
 import os
-from ._appdir import app_dir as _app_dir
-from .train_maps_store import materialize_train_maps
 
-TRAIN_MAPS_PATH = os.path.join(_app_dir(), "train_maps.json")
+TRAIN_MAPS_PATH = os.path.join(_base_dir(), "train_maps.json")
 
-# PC va APK bat smart routing cung luc; service materialize assets vao app files truoc khi import.
-SMART_WORLD_ROUTING = True
+# Tai khoan mac dinh (single bot)
+USERNAME = "your_username"
+PASSWORD = "your_password"
+
+# ==== DANH SACH PARTY ====
+# Moi party = 1 list toi da 5 acc (username, password) - pass co the khac nhau.
+# SLOT 0 = CHU PARTY (bot tu moi + dan train). ("","") = khong co bot-leader (chi member).
+PARTIES = [
+    [   # Party 1
+        ("acc1", "password1"),
+        ("acc2", "password2"),
+        ("acc3", "password3"),
+        ("acc4", "password4"),
+        ("acc5", "password5"),
+    ],
+    # [   # Party 2
+    #     ("acc6", "password6"), ...
+    # ],
+]
+
+# Whitelist TEN NHAN VAT chu party duoc phep moi - cho acc TU DIEU KHIEN tay + pho ban.
+# [] = nhan tu bat ky ai. (Bot cung party tu nhan nhau qua entity, KHONG can ghi o day.)
+PARTY_LEADERS = []  # vi du: ["chihao", "haabo", "nasau"]
+
+# API login - API_KEY la HANG SO co dinh cua game, KHONG can sua.
+# (device_id & tracking_id duoc login.py tu sinh tu username -> khong can dien)
+API_KEY = "17ade453e0892461edb01969b6e17e3a"
+LOGIN_URL = f"https://graph.mobiplay.vn/accountapiv4/server/login?api_key={API_KEY}"
+
+# Game server TCP - co dinh, KHONG can sua
+GAME_HOST = "103.82.28.98"
+GAME_PORT = 6614
+
+# ==== TOOL TREO MAY (bot_standalone.py) - chi can quan tam phan nay ====
+LEADER_NAME = "ten_chu_party"   # ten chu party (tham khao/log)
+
+# START_CITY_ID: thanh ve sau khi login. 12061=Ng.Thanh | 12001=Trac Quan | 12011=Cu Loc
+#   = 0  -> KHONG teleport: dung yen tai cho login (van chuyen CHANNEL, van tu danh khi vao tran).
+#   = MAP ID trung voi map LUC LOGIN -> vao che do PARTY-TRAIN tren map do (chay toi TRAIN_SAFE,
+#     dong bo kenh, moi party, leader ra TRAIN_MOB_SPOTS dung cay). Xem log "MAP HIEN TAI" luc login.
+START_CITY_ID = 12061
+# Data map party-train doc tu train_maps.json (map_id -> {safe, mobs}).
+#   START_CITY_ID CO trong data  -> MAP-TRAIN (chay toi safe, lap party, ra mobs cay)
+#   START_CITY_ID == DIGIOI_MAP_ID -> train Di Gioi (run-around)
+#   con lai -> dung i tai cho
+def _load_train_maps():
+    import json, os
+    f = TRAIN_MAPS_PATH
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.get("maps", {}).items():
+            s = v["safe"]
+            # safe = [[x,y],...] (nhieu diem) HOAC [x,y] (1 diem, format cu) -> chuan hoa LIST diem
+            if not s:
+                safes = []
+            elif isinstance(s[0], (list, tuple)):
+                safes = [tuple(p) for p in s]
+            else:
+                safes = [tuple(s)]
+            out[int(k)] = {"safe": safes, "mobs": [tuple(m) for m in v.get("mobs", [])]}
+    except Exception:
+        pass
+    return out
+TRAIN_MAPS = _load_train_maps()
+def _load_map_gates(path=None):
+    """Doc map_gates.json -> {map_id:int -> [(x,y,to), ...]} (do thi cong di chuyen).
+    Khong co file/loi -> {}. Dung cho pathfind.find_path (auto di toi train map)."""
+    import json, os
+    f = path or os.path.join(_base_dir(), "map_gates.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.get("maps", {}).items():
+            out[int(k)] = [(int(g["x"]), int(g["y"]), int(g["to"])) for g in v.get("gates", [])]
+    except Exception:
+        pass
+    return out
+MAP_GATES = _load_map_gates()
+
+# Smart path trong map. Neu Ground.mmg khong ton tai, navigate_to tu fallback cach cu.
 SMART_PATHFIND = True
+GROUND_MAP_PATH = os.path.join(_base_dir(), "gamedata", "Ground.mmg")
+SCENE_FIGHT_PATH = os.path.join(_base_dir(), "gamedata", "SceneFight_C.dat")
+SMART_WORLD_ROUTING = True
+WORLD_NAV_PATH = os.path.join(_base_dir(), "world_nav.json")
+SMART_ROUTE_CACHE_PATH = os.path.join(_base_dir(), "smart_routes.json")
 SMART_ROUTE_FALLBACK = True
-SMART_PATH_STEP_WAIT = 0.55
-SMART_PATH_SEGMENT = 100
+SMART_PATH_STEP_WAIT = 0.55     # giay giua 2 lenh move khi co Ground.mmg path (giam = chay muot hon)
+SMART_PATH_SEGMENT = 100        # px toi da moi lenh move smart path; chia nho de khong spam 1 diem cua
+MOB_SCAN_ENABLED = True
+MOB_SCAN_STATION_STRIDE = (320, 240)
+MOB_SCAN_QUIET_SECONDS = 8.0
+MOB_SCAN_STATION_TIMEOUT = 90.0
+MOB_SCAN_MIN_SAMPLES = 3
+MOB_SCAN_MAX_PATROL_DIAMETER = 800
+# KHONG con dung de gom bai quai nua (compute_centers/compute_regions gio la 1 CON = 1 BAI,
+# lay TAM BBOX o vuong tuan tra). Chi con dung o _merge_center_points (scan_full_map) de bo
+# tam trung nhau. Giu 60 - do tren capture map 20801: gom theo khoang cach lam mat rat nhieu
+# bai (200 -> 7/16 bai; bo gom han -> dung 16/16).
+MOB_SCAN_MERGE_DISTANCE = 60
+MOB_SCAN_SECOND_PASS = True
+MOB_SPOTS_CACHE_PATH = os.path.join(_base_dir(), "mob_spots.json")
+MOB_PACKET_PROBE_SECONDS = 60
+MOB_PACKET_CAPTURE_MAX_PACKETS = 50000
+MOB_PACKET_CAPTURE_DIR = _base_dir()
+def _load_train_routes(path=None):
+    """Doc train_routes.json -> {dest_map:int -> {from_city, city_flag, dest_map, steps}}.
+    Route replay tu thanh toi train map (leader di, member tu keo theo)."""
+    import json, os
+    f = path or os.path.join(_base_dir(), "train_routes.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.get("routes", {}).items():
+            out[int(k)] = v
+    except Exception:
+        pass
+    return out
+TRAIN_ROUTES = _load_train_routes()
+def _load_events(path=None):
+    """Doc events.json -> {event_key -> {label, select, staging_map, dest_map, steps}}.
+    Mode 'event': tele toi map event roi dung yen (moi nick tu teleport rieng)."""
+    import json, os
+    f = path or os.path.join(_base_dir(), "events.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("events", {}).items():
+                out[k] = v
+    except Exception:
+        pass
+    return out
+EVENTS = _load_events()
+def _load_mob_paths(path=None):
+    """Doc mob_paths.json -> {map_id:int -> {(sx,sy):tuple -> [(x,y),...]}}.
+    Duong di bo TRONG map toi diem quai XA (capture) - bot replay thay navigate thang."""
+    import json, os
+    f = path or os.path.join(_base_dir(), "mob_paths.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for mk, spots in d.get("maps", {}).items():
+            mp = {}
+            for sk, wps in spots.items():
+                sx, sy = (int(v) for v in sk.split(","))
+                mp[(sx, sy)] = [(int(p[0]), int(p[1])) for p in wps]
+            out[int(mk)] = mp
+    except Exception:
+        pass
+    return out
+MOB_PATHS = _load_mob_paths()
+START_CITY_FLAG = 2             # Ng.Thanh=2, Trac Quan=0, Cu Loc=3 (xem cities.json)
+CHANNEL = 1                     # kenh can o cung voi chu party (0 = bo qua)
+RECONNECT_DELAY = 10            # giay cho truoc khi ket noi lai khi bi rot
+ENTER_DIGIOI = False            # True = sau khi connect tu vao Di Gioi train (solo, KHONG party)
+DIGIOI_MAP_ID = 49942           # map_id Di Gioi (0xc316) - doc tu broadcast de biet dang o Di Gioi
+# Auto run-around: chay vong quanh DIEM DANG DUNG (offset tuong doi). Hinh so 8 (tu game auto-run).
+RUN_AROUND_OFFSETS = [(-100, -100), (-200, 0), (-100, 100), (0, 0),
+                      (100, -100), (200, 0), (100, 100), (0, 0)]
+RUN_STEP_WAIT = 0.7            # giay moi buoc chay vong Di Gioi (giam = chay nhanh hon; <0.1 de bi flood/kick)
 
-HEAL_HP_THRESHOLD = 0.70
+# Solo daily dungeon: so luot/ngay (luot 1 mien phi, luot 2+ MUA bang vang). =1 chi danh luot free.
+DUNGEON_RUNS_PER_DAY = 2
+
+# Van tieu (escort): moi ngay 3 luot, gui pet di -> 1h sau nhan qua.
+# VANTIEU_PETS = vi tri pet trong list QUAN TRO de gui (index 1-based), 1 pet/luot.
+#   vd [1,2,3] = gui pet thu 1,2,3 cho 3 luot. [] = KHONG tu gui (chi nhan qua).
+VANTIEU_ENABLE = True
+VANTIEU_PETS = [1, 2, 3]
+# Smart match (phase-2): ten pet trong QUAN TRO theo DUNG THU TU slot (slot1, slot2,...).
+# Bot tra he/doanh tung con (PET_HEDOANH) -> chon con KHOP yeu cau nhat -> gui. [] = tat (dung VANTIEU_PETS).
+VANTIEU_PETS_NAMES = []
+
+# Phase-2 van tieu match: he/doanh pet (tu game data Npc_C.dat) + yeu cau (ma 0400).
+def _load_json_root(fn):
+    import json, os
+    f = os.path.join(_base_dir(), fn)
+    try:
+        with open(f, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+PET_HEDOANH = _load_json_root("pet_hedoanh.json")                       # ten pet -> {he, doanh}
+VANTIEU_REQUESTS = _load_json_root("vantieu_requests.json").get("requests", {})  # ma 0400 -> {he, doanh}
+
+# Qua online: nhan khi online du so phut. id qua = so phut moc.
+GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
+
+# Combat tuning
+HEAL_HP_THRESHOLD = 0.70    # ally HP <= 70% max -> Toan Tri Lieu
 HEAL_SP_COST = 42
-PET_FIRE_MIN_SP = 65
-CHAR_FIRE_MIN_SP = 65
-SKILL_NORMAL = 10000
-SKILL_ROCK = 10005
-SKILL_FIRE = 12003
-SKILL_HEAL_ALL = 11010
-SKILL_HEAL_ONE = 11004
-SKILL_DEFEND = 17001
-SKILL_FLEE = 18001
-UNIT_CHAR = 3
-UNIT_PET = 2
+SP_RESTORE_THRESHOLD = 0.5  # quest: cast Toan Hoi Ma (hoi SP team) khi co dong doi SP < 50% max
+SUPPORT_RESERVE_SP = 100    # quest: unit CO skill hoi (hoi sinh/11010/11009) chi danh skill atk khi SP>100 (duoi -> danh thuong de danh SP)
+PET_FIRE_MIN_SP = 65        # combo (Hoa Tien/Nem Da/Loan Kich): SP < 65 -> danh thuong
 
-XOR_KEY = 0xAD
+# DATA PET: doc tu pets.json (AUTO-SINH tools/crack_pets.py). pet_id hex -> name + skills (LIST,
+# giu thu tu: skill[0]=boss fallback) + (he,doanh). boss/combo TU SUY o combat tu SKILL_INFO.
+def _load_pets():
+    import json, os
+    f = os.path.join(_base_dir(), "pets.json")
+    skills, names, hedoanh = {}, {}, {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.get("pets", {}).items():
+            pid = int(k, 16)
+            skills[pid] = list(v.get("skills", []))   # LIST (giu thu tu cho boss skill[0])
+            names[pid] = v.get("name", "")
+            if v.get("he") or v.get("doanh"):   # he/doanh (cho VAN TIEU match)
+                hedoanh[pid] = (v.get("he", ""), v.get("doanh", ""))
+    except Exception:
+        pass
+    return skills, names, hedoanh
+PET_SKILLS, PET_NAMES, PET_HE_DOANH = _load_pets()   # pet_id -> skills/ten/(he,doanh)
 
+# DATA TEN QUAI/NPC: doc tu npc_names.json (AUTO tools/crack_npc_names.py). template_id -> ten.
+# Dung tra TEN QUAI trong battle (entity[2:4] = template_id) cho dieu kien skill 'quai khoang'
+# (ten chua 'Khoang') va sau nay 'NPC nguy hiem' (ten thuoc list cau hinh).
+def _load_npc_names():
+    import json, os
+    f = os.path.join(_base_dir(), "npc_names.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.items():
+            tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+            out[tid] = v
+    except Exception:
+        pass
+    return out
+NPC_NAMES = _load_npc_names()   # template_id (int) -> ten quai/npc
+
+# DATA SKILL: doc tu skills_data.json (AUTO crack_skills.py). skill_id -> {cost, dame, splash}.
+# combat tu suy combo (dame AoE re) + boss (dame splash 4>1) -> KHONG can list cung.
+def _load_skill_info():
+    import json, os
+    f = os.path.join(_base_dir(), "skills_data.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("skills", {}).items():
+                out[int(k, 16)] = v
+    except Exception:
+        pass
+    return out
+SKILL_INFO = _load_skill_info()
+
+# Skill COMBO TRAINING (AoE) - CHI dung FALLBACK khi thieu skills_data.json. Binh thuong tu suy.
+COMBO_TRAIN_SKILLS = [12003, 10005, 13013]   # Hoa Tien(15), Nem Da(22), Loan Kich(49)
+
+# Cuon GOI PET RAC -> bot tu PHAN GIAI sau gacha (nhan lai xu). Doc tu junk_scrolls.json
+# (itemId hex -> ten). Them cuon rac moi BANG CACH SUA junk_scrolls.json, khoi dong code.
+def _load_junk_scrolls():
+    import json, os
+    f = os.path.join(_base_dir(), "junk_scrolls.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("scrolls", {}).items():
+                out[int(k, 16)] = v
+    except Exception:
+        pass
+    return out
+JUNK_PET_SCROLLS = _load_junk_scrolls()
+
+# NGUYEN LIEU RAC -> bot tu DONATE cho quan doan luc login (don tui). Doc tu donate_items.json
+# (itemId hex -> ten). Them item BANG CACH SUA donate_items.json roi khoi dong lai.
+def _load_donate_items():
+    import json, os
+    f = os.path.join(_base_dir(), "donate_items.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("items", {}).items():
+                out[int(k, 16)] = v
+    except Exception:
+        pass
+    return out
+DONATE_ITEMS = _load_donate_items()
+
+# Item TU DONG SU DUNG luc login. Doc tu use_items.json. 2 format value:
+#   "0x..": "Ten"                          -> dung HET ca stack, TUNG CAI 1 (item chi cho dung 1/lenh)
+#   "0x..": {"name":"Ten","qty":25}        -> dung TOI DA 25 cai/login (co > 25 -> dung 25, de lai du;
+#                                             co < 25 -> dung het). Batch nhieu cai 1 lenh.
+# Tra dict: tid -> {"name": str, "qty": int|None}. qty None = khong gioi han (dung het, 1/lenh).
+def _load_use_items():
+    import json, os
+    f = os.path.join(_base_dir(), "use_items.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("items", {}).items():
+                tid = int(k, 16)
+                if isinstance(v, dict):
+                    out[tid] = {"name": v.get("name", ""), "qty": v.get("qty"),
+                                "phuc_than": bool(v.get("phuc_than", False)),
+                                "equip": bool(v.get("equip", False))}
+                else:
+                    out[tid] = {"name": v, "qty": None, "phuc_than": False, "equip": False}
+    except Exception:
+        pass
+    return out
+USE_LOGIN_ITEMS = _load_use_items()
+
+# SP cost tung skill (de check du SP truoc khi dung, tranh bi da khi thieu SP).
 SKILL_SP_COST = {
     12003: 15,   # Hoa Tien
     10005: 22,   # Nem Da
@@ -50,195 +327,140 @@ SKILL_SP_COST = {
     12009: 30,   # Hoa Kiem (danh don, boss)
 }
 
-# combat.py fallback constants (dung qua getattr, nhung khai bao san cho du/khop ban goc)
-SP_RESTORE_THRESHOLD = 0.5
-COMBO_TRAIN_SKILLS = [12003, 10005, 13013]   # Hoa Tien(15), Nem Da(22), Loan Kich(49)
+# Skill IDs
+SKILL_NORMAL = 10000        # Danh thuong
+SKILL_ROCK = 10005          # Nem Da - AoE 3 ngang
+SKILL_FIRE = 12003          # Hoa Tien - AoE 3 ngang
+SKILL_HEAL_ALL = 11010      # Toan Tri Lieu (hoi HP toan party)
+SKILL_HEAL_ONE = 11004      # Thanh Luu (hoi 1 dong doi)
+SKILL_DEFEND = 17001        # Phong thu
+SKILL_FLEE = 18001          # Bo chay (0x4651=18001) char+pet thoat tran. FIX: truoc ghi 17997=0x464D SAI -> server khong nhan flee -> ket tran. flee.pcap goi 0x32 skill=51 46 = 0x4651
 
-# ---- client.py dung THANG (KHONG qua getattr) -> BAT BUOC co ----
-GAME_HOST = "103.82.28.98"
-GAME_PORT = 6614
-DIGIOI_MAP_ID = 49942           # map_id Di Gioi (0xc316)
+# SP threshold (de danh SP cho heal): chi dung skill AoE khi SP >= nguong nay
+CHAR_ROCK_MIN_SP = 100      # Nem Da
+CHAR_FIRE_MIN_SP = 65       # combo (Hoa Tien/Nem Da/Loan Kich): SP < 65 -> danh thuong
 
-# API login - API_KEY la HANG SO co dinh cua game, KHONG can sua. Mirror bot/config.py - da
-# rot mat luc merge lon gop APK voi coordinator PC (BUG THAT: "module 'train_bot.config' has
-# no attribute 'LOGIN_URL'" - user tu phat hien qua tinh nang xem log rieng tung acc).
-API_KEY = "17ade453e0892461edb01969b6e17e3a"
-LOGIN_URL = f"https://graph.mobiplay.vn/accountapiv4/server/login?api_key={API_KEY}"
-# Fallback khi login.login() goi thieu username/password (khong xay ra trong luong binh thuong
-# cua Android - Kotlin luon truyen du - nhung giu de khop PC, tranh crash neu goi test/thieu tham so).
-USERNAME = "your_username"
-PASSWORD = "your_password"
+# Nguong HP/SP de tu dong hoi mau sau tran. Bot TU HOC item (probe + do delta HP/SP
+# qua S2C 0x08), luu items_learned.json - khong can config item ID.
+HP_THRESHOLD = 0.4          # Hoi HP khi HP < 40% max (char va pet) - MAC DINH chung
+SP_THRESHOLD = 0.0          # = 0 -> KHONG uong thuoc SP (tat hoi SP) - MAC DINH chung
 
-# ---- client.py dung qua getattr(..., default) -> co the rong an toan, nhung khai bao du ----
-ACCOUNT_HEAL = {}
-# Config RIENG tung acc (accounts.json field "settings" moi acc - TACH khoi "heal"). char_defend:
-# "Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)". Mirror PC bot/config.py.
+# Override nguong hoi mau RIENG tung acc (theo username). GUI ghi vao accounts.json (field "heal"
+# moi acc) -> tu nap vao day. 4 nguong: hp_char/sp_char (char), hp_pet/sp_pet (pet). Thieu key nao
+# -> lay HP_THRESHOLD/SP_THRESHOLD chung. Acc khong liet ke -> dung mac dinh het.
+ACCOUNT_HEAL = {
+    # "acc1": {"hp_char": 0.7, "sp_char": 0.5, "hp_pet": 0.6, "sp_pet": 0.4},
+}
+
+# Config RIENG tung acc (accounts.json field "settings" moi acc - TACH khoi "heal" vi heal chi
+# giu 4 nguong hoi mau; settings la cho gom cac config rieng acc, se them key moi sau nay).
+# char_defend: "Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)" - True -> char CHI
+# Phong thu (17001) moi luot battle o MOI mode; False/thieu -> danh binh thuong.
 ACCOUNT_CHAR_DEFEND = {}   # username -> bool
 ACCOUNT_BATTLE = {}        # username -> {"char": {...}, "pet": {...}} custom battle settings
-JUNK_PET_SCROLLS = {}
-PET_HEDOANH = {}
-VANTIEU_ENABLE = True
-VANTIEU_PETS = []          # KHONG dung (chi dung che do smart-match qua VANTIEU_REQUESTS)
-VANTIEU_PETS_NAMES = []    # KHONG dung (chi dung che do smart-match qua VANTIEU_REQUESTS)
-RUN_AROUND_OFFSETS = [(-100, -100), (-200, 0), (-100, 100), (0, 0),
-                      (100, -100), (200, 0), (100, 100), (0, 0)]
-RUN_STEP_WAIT = 0.7
-HP_THRESHOLD = 0.4
-SP_THRESHOLD = 0.0
-GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
-DUNGEON_RUNS_PER_DAY = 2
-MOB_PATHS = {}   # duong di bo trong map (mob_paths.json PC) - APK chua co -> rong (navigate thang)
+
+# Unit IDs
+UNIT_CHAR = 3
+UNIT_PET = 2
+
+XOR_KEY = 0xAD
 
 
-def _read_asset(name: str) -> str:
-    """Doc file text tu android assets/train_bot_data/ qua Context (Chaquopy: Python.getPlatform()
-    .getApplication() tra ve Android Application context da truyen luc Python.start()).
-
-    KHONG dung InputStream.readAllBytes() - ham nay chi co tu Java 9 / Android API 33+,
-    minSdk cua app la 26 -> tren thiet bi/emulator cu hon se nem AttributeError, bi
-    "except: pass" (o cho goi ham nay) nuot am tham, khien du lieu (PET_SKILLS/SKILL_INFO/
-    CITIES...) TRONG RONG ma khong ai biet (xac nhan bug that qua log stderr thuc te).
-    Dung BufferedReader/InputStreamReader (co tu API 1) doc tung dong thay the, an toan
-    tren MOI phien ban Android."""
-    from com.chaquo.python import Python
-    from java import jclass
-    ctx = Python.getPlatform().getApplication()
-    stream = ctx.getAssets().open(f"train_bot_data/{name}")
-    reader = jclass("java.io.BufferedReader")(
-        jclass("java.io.InputStreamReader")(stream, "UTF-8")
-    )
-    lines = []
-    line = reader.readLine()
-    while line is not None:
-        lines.append(str(line))
-        line = reader.readLine()
-    reader.close()
-    return "\n".join(lines)
-
-
-def _log_asset_error(name: str, e: Exception) -> None:
-    """In loi ra stderr (Logcat) thay vi nuot am tham - bai hoc that: truoc day _read_asset()
-    dung readAllBytes() (chi co tu API 33+, minSdk app la 26) nem AttributeError tren thiet
-    bi cu hon, nhung bi except:pass o cac ham _load_* nuot mat -> CITIES/PET_SKILLS/SKILL_INFO
-    RONG ma khong ai biet cho toi khi test thuc te tren may that. KHONG raise (giu logic goc
-    "an toan neu thieu file"), chi dam bao loi LUON hien ra Logcat de de chan doan lan sau."""
-    import sys
-    print(f"[config] doc {name} LOI: {type(e).__name__}: {e}", file=sys.stderr)
-
-
-def _load_pets():
-    """Khop CHINH XAC bot/config.py::_load_pets (dong 161-177): key top-level "pets", pet_id
-    la CHUOI HEX (vd "0x0508") -> int(k,16). skills = LIST (giu thu tu, skill[0]=boss fallback)."""
-    skills, names, hedoanh = {}, {}, {}
+# ============================================================
+#  OVERRIDE tu accounts.json (GUI gui.py sua file nay). MOI PARTY CONFIG RIENG.
+#  PARTY_CONFIG[pidx] = {mode, start_city_id, mob_index, city_flag}.
+# ============================================================
+PARTY_CONFIG = {}
+PARTY_LEADERS_BY_IDX = {}   # pidx -> [ten leader] white list rieng party (tu accounts.json)
+def _load_servers():
+    import json, os
+    f = os.path.join(_base_dir(), "servers.json")
     try:
-        d = json.loads(_read_asset("pets.json"))
-        for k, v in d.get("pets", {}).items():
-            pid = int(k, 16)
-            skills[pid] = list(v.get("skills", []))
-            names[pid] = v.get("name", "")
-            if v.get("he") or v.get("doanh"):
-                hedoanh[pid] = (v.get("he", ""), v.get("doanh", ""))
-    except Exception as e:
-        _log_asset_error("pets.json", e)
-    return skills, names, hedoanh
-
-
-PET_SKILLS, PET_NAMES, PET_HE_DOANH = _load_pets()
-
-
-def _load_skill_info():
-    """Khop CHINH XAC bot/config.py::_load_skill_info (dong 181-192): key top-level "skills",
-    skill_id la CHUOI HEX (vd "0x2710") -> int(k,16). GIA TRI: {cost, cat, splash}."""
-    out = {}
+        with open(f, encoding="utf-8") as fh:
+            return json.load(fh).get("servers", {})
+    except Exception:
+        return {}
+SERVERS = _load_servers()
+def _server_ip(name):
+    s = SERVERS.get(name); return s.get("ip") if s else None
+def _server_id(name):
+    s = SERVERS.get(name); return int(s.get("id", 1)) if s else 1
+def _load_accounts_json():
+    import json, os
+    f = os.path.join(_base_dir(), "accounts.json")
     try:
-        d = json.loads(_read_asset("skills_data.json"))
-        for k, v in d.get("skills", {}).items():
-            out[int(k, 16)] = v
-    except Exception as e:
-        _log_asset_error("skills_data.json", e)
-    return out
-
-
-SKILL_INFO = _load_skill_info()
-
-
-def _load_cities():
-    """Doc cities.json (danh sach thanh de teleport, opcode 0x44) - dung cho mode
-    'Dung yen tai thanh': key -> (city_id, flag). Ca 2 gia tri BAT BUOC dung cung nhau
-    (xem cities.json._packet_format) - flag SAI se bi server tu choi teleport."""
-    out = {}
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except Exception:
+        return None
+    # accounts.json co the la dang PROFILES {active, profiles:{ten:{channel,parties,...}}} ->
+    # rut bo cau hinh DANG CHON. Dang FLAT cu {channel,parties} -> dung nguyen (backward compat).
+    if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
+        profs = d["profiles"]
+        return profs.get(d.get("active")) or (next(iter(profs.values())) if profs else {})
+    return d
+_aj = _load_accounts_json()
+if _aj is not None:
     try:
-        d = json.loads(_read_asset("cities.json"))
-        for key, info in d.get("cities", {}).items():
-            out[key] = (info["city_id"], info["flag"])
-    except Exception as e:
-        _log_asset_error("cities.json", e)
-    return out
+        _parties_raw = _aj.get("parties", [])
+        # BO QUA acc khi: bo tick (on=false) HOAC username bat dau '#' (co che cu).
+        _ps = [[(a.get("u", ""), a.get("p", "")) for a in party.get("accounts", [])
+                if a.get("on", True) and not a.get("u", "").lstrip().startswith("#")]
+               for party in _parties_raw]
+        # Nguong hoi mau rieng tung acc (GUI ghi field "heal" cho moi acc trong accounts.json).
+        for _party in _parties_raw:
+            for _a in _party.get("accounts", []):
+                _u = _a.get("u", "").lstrip().lstrip("#").strip()
+                _h = _a.get("heal")
+                if _u and isinstance(_h, dict):
+                    ACCOUNT_HEAL[_u] = {_k: float(_v) for _k, _v in _h.items()
+                                        if _k in ("hp_char", "sp_char", "hp_pet", "sp_pet")}
+                _s = _a.get("settings")
+                if _u and isinstance(_s, dict):
+                    if _s.get("char_defend"):
+                        ACCOUNT_CHAR_DEFEND[_u] = True
+                    _b = _s.get("battle")
+                    if isinstance(_b, dict):
+                        ACCOUNT_BATTLE[_u] = _b
+        # accounts.json TON TAI -> LUON dung no (ke ca RONG) => ban product accounts.json rong thi
+        # KHONG hien party mac dinh cua config (tranh lo/nham acc).
+        PARTIES = _ps
+        for _i, _party in enumerate(_parties_raw):
+            _srv = _party.get("server", "trieu_van")
+            PARTY_CONFIG[_i] = {
+                "mode": _party.get("mode", "stand"),
+                "start_city_id": int(_party.get("start_city_id", 0)),
+                "mob_index": int(_party.get("mob_index", -1)),  # mac dinh -1 = Bot tu chon
+                "city_flag": int(_party.get("city_flag", 0)),
+                "server": _srv,
+                "server_ip": _server_ip(_srv) or GAME_HOST,
+                "server_id": _server_id(_srv),
+                "do_daily": bool(_party.get("do_daily", _party.get("do_dungeon", True))),
+                "digioi_mode": _party.get("digioi_mode", "party"),   # Di Gioi: "party" | "solo"
+                "event_key": _party.get("event_key", ""),   # mode 'event': key trong events.json (npc_40, nhi_kieu...)
+                "use_phuc_than": bool(_party.get("use_phuc_than", False)),
+                "use_digioi_ho_phu": bool(_party.get("use_digioi_ho_phu", False)),
+                "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),
+                "do_van_tieu": bool(_party.get("do_van_tieu", True)),
+                "buy_ho_phu": bool(_party.get("buy_ho_phu", False)),
+                "buy_bao_hop": bool(_party.get("buy_bao_hop", False)),
+                "bao_hop_xu_threshold": int(_party.get("bao_hop_xu_threshold", 1000000)),
+                "di_gioi_level": int(_party.get("di_gioi_level", 2)),   # idx 1..15 cap quai DG (2=cap25)
+            }
+            PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])
+        if PARTY_CONFIG:
+            START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]
+        if "channel" in _aj:
+            CHANNEL = int(_aj["channel"])
+        if "party_leaders" in _aj:        # white list CHUNG (ap moi party)
+            PARTY_LEADERS = list(_aj.get("party_leaders", []) or [])
+    except Exception:
+        pass
 
 
-CITIES = _load_cities()
-
-
-def _load_donate_items():
-    """Doc donate_items.json -> {tid:int -> ten}. Item RAC bot tu donate cho quan doan luc login
-    (don tui). KEY = TID hex chuoi. Mirror bot/config.py::_load_donate_items."""
-    out = {}
-    try:
-        d = json.loads(_read_asset("donate_items.json"))
-        for k, v in d.get("items", {}).items():
-            out[int(k, 16)] = v
-    except Exception as e:
-        _log_asset_error("donate_items.json", e)
-    return out
-
-
-DONATE_ITEMS = _load_donate_items()
-
-
-def _load_use_items():
-    """Doc use_items.json -> {tid:int -> {name, qty:int|None}}. Item tu dung luc login.
-    Format value: "Ten" (qty None = dung het, 1/lenh) | {name, qty} (dung toi da qty/login).
-    Mirror bot/config.py::_load_use_items."""
-    out = {}
-    try:
-        d = json.loads(_read_asset("use_items.json"))
-        for k, v in d.get("items", {}).items():
-            tid = int(k, 16)
-            if isinstance(v, dict):
-                out[tid] = {"name": v.get("name", ""), "qty": v.get("qty"),
-                            "phuc_than": bool(v.get("phuc_than", False)),
-                            "equip": bool(v.get("equip", False))}
-            else:
-                out[tid] = {"name": v, "qty": None, "phuc_than": False, "equip": False}
-    except Exception as e:
-        _log_asset_error("use_items.json", e)
-    return out
-
-
-USE_LOGIN_ITEMS = _load_use_items()
-
-
-def _load_events():
-    """Doc events.json -> {event_key -> {label, select, staging_map, dest_map, steps, exit}}.
-    Mode 'event': tele toi map event roi dung yen. Mirror bot/config.py::_load_events."""
-    out = {}
-    try:
-        d = json.loads(_read_asset("events.json"))
-        for k, v in d.get("events", {}).items():
-            out[k] = v
-    except Exception as e:
-        _log_asset_error("events.json", e)
-    return out
-
-
-EVENTS = _load_events()
-
-DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (khop run_party_digioi.py DIGIOI_LIMIT)
-
-
+# White list RIENG tung party (pidx -> [ten leader]); CHUNG = PARTY_LEADERS.
+# leaders_for(pidx) = CHUNG + RIENG (union). Rong het -> nhan moi nguoi moi.
 def leaders_for(pidx):
-    """White list leader cua party pidx = CHUNG (PARTY_LEADERS) + RIENG (PARTY_LEADERS_BY_IDX).
-    Rong het -> nhan moi nguoi moi. GIONG PC (client.py goi config.leaders_for(self.party_idx))."""
     out = list(PARTY_LEADERS)
     for nm in PARTY_LEADERS_BY_IDX.get(pidx, []):
         if nm not in out:
@@ -247,10 +469,12 @@ def leaders_for(pidx):
 
 
 def record_leader_name(pidx, char_name):
-    """Tu dong THEM ten nhan vat leader vao whitelist "leaders" cua party (KHONG xoa/replace ten
-    da co san - chi APPEND neu chua co). Mirror bot/config.py::record_leader_name (PC) - user da
-    cau hinh account nao la leader trong Party roi thi khong can go tay lai ten o whitelist rieng.
-    Goi ngay sau khi leader login xong + biet char_name."""
+    """Tu dong THEM ten nhan vat leader vao whitelist "leaders" cua party (KHONG xoa/replace
+    ten da co san - chi APPEND neu chua co). User phan anh: da cau hinh account nao la leader
+    trong Party roi thi khong nen phai go tay TEN NHAN VAT lai vao o whitelist rieng (2 cho
+    cau hinh trung nhau). Goi ngay sau khi leader login xong + biet char_name. Cap nhat CA
+    RAM (PARTY_LEADERS_BY_IDX, hieu luc ngay ca phien nay) LAN file accounts.json (hieu luc
+    lan chay sau, khong mat khi restart)."""
     if not char_name:
         return
     name = char_name.strip()
@@ -258,11 +482,11 @@ def record_leader_name(pidx, char_name):
         return
     cur = PARTY_LEADERS_BY_IDX.setdefault(pidx, [])
     if any(x.strip().lower() == name.lower() for x in cur):
-        return
+        return   # da co san (khong phan biet hoa/thuong) -> khong them trung
     cur.append(name)
     try:
-        import os
-        f = os.path.join(_app_dir(), "accounts.json")
+        import json, os
+        f = os.path.join(_base_dir(), "accounts.json")
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh)
         if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
@@ -277,216 +501,14 @@ def record_leader_name(pidx, char_name):
                 with open(f, "w", encoding="utf-8") as fh:
                     json.dump(d, fh, ensure_ascii=False, indent=2)
     except Exception:
-        pass
-    try:
-        import os
-        f = os.path.join(_app_dir(), "parties.json")
-        with open(f, encoding="utf-8") as fh:
-            parties = json.load(fh)
-        if isinstance(parties, list) and 0 <= pidx < len(parties):
-            leaders = parties[pidx].setdefault("leaders", [])
-            if isinstance(leaders, list) and not any(
-                    x.strip().lower() == name.lower() for x in leaders):
-                leaders.append(name)
-                with open(f, "w", encoding="utf-8") as fh:
-                    json.dump(parties, fh, ensure_ascii=False)
-    except Exception:
-        pass
-
-
-def _load_vantieu_requests():
-    """Doc vantieu_requests.json (bang tra ma yeu cau -> pet phu hop, dung cho che do smart-match
-    cua do_van_tieu()). Giu NGUYEN cau truc dict tu file (client.py tu xu ly key/value truc tiep,
-    khong can convert kieu nhu pets.json)."""
-    try:
-        d = json.loads(_read_asset("vantieu_requests.json"))
-        return d.get("requests", d)   # ho tro ca 2 dang: co wrapper "requests" hoac phang truc tiep
-    except Exception as e:
-        _log_asset_error("vantieu_requests.json", e)
-        return {}
-
-
-VANTIEU_REQUESTS = _load_vantieu_requests()
-
-
-def _load_train_maps():
-    """Doc train_maps.json: {map_id(str): {"name", "safe": [[x,y],...], "mobs": [[x,y],...]}}."""
-    try:
-        baseline = json.loads(_read_asset("train_maps.json"))
-        d = materialize_train_maps(TRAIN_MAPS_PATH, baseline)
-        out = {}
-        for key, value in d.get("maps", d).items():
-            safe = value.get("safe", [])
-            if not safe:
-                safes = []
-            elif isinstance(safe[0], (list, tuple)):
-                safes = [tuple(point) for point in safe]
-            else:
-                safes = [tuple(safe)]
-            out[int(key)] = {
-                # "name" PHAI giu lai: Kotlin trainMapOptions() doc TRAIN_MAPS[key]["name"] cho
-                # dropdown "Map train" - bo di la dropdown chi hien ID map (bug thuc te 20/07).
-                "name": value.get("name", ""),
-                "safe": safes,
-                "mobs": [tuple(point) for point in value.get("mobs", [])],
-            }
-        return out
-    except Exception as e:
-        _log_asset_error("train_maps.json", e)
-        return {}
-
-
-TRAIN_MAPS = _load_train_maps()
-
-
-def _load_train_routes():
-    """Doc train_routes.json: {map_id(str): {"name","from_city","city_flag","dest_map","steps"}}."""
-    try:
-        d = json.loads(_read_asset("train_routes.json"))
-        return d.get("routes", d)
-    except Exception as e:
-        _log_asset_error("train_routes.json", e)
-        return {}
-
-
-TRAIN_ROUTES = _load_train_routes()
+        pass   # khong lam crash bot vi loi ghi file - RAM van da cap nhat, hieu luc phien nay
 
 
 # ============================================================
-#  PARTY / ACCOUNT / SERVER - DOC accounts.json (app_dir) + servers.json (asset), GIONG PC.
-#  Kotlin ghi accounts.json (format PC) roi goi config.reload_parties() + run_party_digioi.start_all().
+#  TU SINH tu PARTIES - KHONG can doc/sua
 # ============================================================
-WORLD_NAV_PATH = os.path.join(_app_dir(), "world_nav.json")
-GROUND_MAP_PATH = os.path.join(_app_dir(), "gamedata", "Ground.mmg")
-SCENE_FIGHT_PATH = os.path.join(_app_dir(), "gamedata", "SceneFight_C.dat")
-SMART_ROUTE_CACHE_PATH = os.path.join(_app_dir(), "smart_routes.json")
-MOB_SCAN_ENABLED = True
-MOB_SCAN_STATION_STRIDE = (320, 240)
-MOB_SCAN_QUIET_SECONDS = 8.0
-MOB_SCAN_STATION_TIMEOUT = 90.0
-MOB_SCAN_MIN_SAMPLES = 3
-MOB_SCAN_MAX_PATROL_DIAMETER = 800
-MOB_SCAN_MERGE_DISTANCE = 60   # xem bot/config.py: gio 1 con quai = 1 bai (khong gom)
-MOB_SCAN_SECOND_PASS = True
-MOB_SPOTS_CACHE_PATH = os.path.join(_app_dir(), "mob_spots.json")
-MOB_PACKET_PROBE_SECONDS = 60
-MOB_PACKET_CAPTURE_MAX_PACKETS = 50000
-MOB_PACKET_CAPTURE_DIR = _app_dir()
-
-PARTY_LEADERS = []          # white list leader CHUNG (moi party)
-CHANNEL = 1
-START_CITY_ID = 0
-PARTIES = []                # [ [(user,pass),...], ... ] theo pidx
-PARTY_CONFIG = {}           # pidx -> {mode, server, server_ip, server_id, city_flag, start_city_id,
-                            #          mob_index, do_daily, digioi_mode, event_key}
-PARTY_LEADERS_BY_IDX = {}   # pidx -> [ten leader] rieng party
-ACCOUNTS = []
-ACCOUNT_PARTY = {}
-PARTY_LEADER_ACC = {}       # pidx -> username leader (acc dau)
-
-
-def _load_servers():
-    try:
-        return json.loads(_read_asset("servers.json")).get("servers", {})
-    except Exception:
-        return {}
-
-
-SERVERS = _load_servers()
-
-
-def _server_ip(name):
-    s = SERVERS.get(name)
-    return s.get("ip") if s else None
-
-
-def _server_id(name):
-    s = SERVERS.get(name)
-    return int(s.get("id", 1)) if s else 1
-
-
-def _load_accounts_json():
-    import os
-    try:
-        f = os.path.join(_app_dir(), "accounts.json")   # _app_dir() co the nem neu Context chua san sang
-        with open(f, encoding="utf-8") as fh:
-            d = json.load(fh)
-    except Exception:
-        return None
-    # PROFILES {active, profiles:{ten:{parties,...}}} -> rut cau hinh DANG CHON (giong PC).
-    if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
-        profs = d["profiles"]
-        return profs.get(d.get("active")) or (next(iter(profs.values())) if profs else {})
-    return d
-
-
-def reload_parties():
-    """Doc lai accounts.json -> PARTIES/PARTY_CONFIG/PARTY_LEADER_ACC/... (mirror PC config).
-    Goi tu Kotlin SAU khi ghi accounts.json, TRUOC khi run_party_digioi.start_all()."""
-    global PARTIES, PARTY_CONFIG, PARTY_LEADERS_BY_IDX, PARTY_LEADER_ACC
-    global ACCOUNTS, ACCOUNT_PARTY, START_CITY_ID, PARTY_LEADERS, CHANNEL
-    _aj = _load_accounts_json()
-    PARTY_CONFIG = {}
-    PARTY_LEADERS_BY_IDX = {}
-    ACCOUNT_HEAL.clear()
-    ACCOUNT_CHAR_DEFEND.clear()
-    ACCOUNT_BATTLE.clear()
-    if _aj is None:
-        PARTIES = []
-    else:
-        _praw = _aj.get("parties", [])
-        PARTIES = [[(a.get("u", ""), a.get("p", "")) for a in p.get("accounts", [])
-                    if a.get("on", True) and not a.get("u", "").lstrip().startswith("#")]
-                   for p in _praw]
-        for _p in _praw:
-            for _a in _p.get("accounts", []):
-                _u = _a.get("u", "").lstrip().lstrip("#").strip()
-                _h = _a.get("heal")
-                if _u and isinstance(_h, dict):
-                    ACCOUNT_HEAL[_u] = {k: float(v) for k, v in _h.items()
-                                        if k in ("hp_char", "sp_char", "hp_pet", "sp_pet")}
-                _s = _a.get("settings")
-                if _u and isinstance(_s, dict):
-                    if _s.get("char_defend"):
-                        ACCOUNT_CHAR_DEFEND[_u] = True
-                    _b = _s.get("battle")
-                    if isinstance(_b, dict):
-                        ACCOUNT_BATTLE[_u] = _b
-        for _i, _p in enumerate(_praw):
-            _srv = _p.get("server", "trieu_van")
-            PARTY_CONFIG[_i] = {
-                "mode": _p.get("mode", "stand"),
-                "start_city_id": int(_p.get("start_city_id", 0)),
-                "mob_index": int(_p.get("mob_index", -1)),
-                "city_flag": int(_p.get("city_flag", 0)),
-                "server": _srv,
-                "server_ip": _server_ip(_srv) or GAME_HOST,
-                "server_id": _server_id(_srv),
-                "do_daily": bool(_p.get("do_daily", _p.get("do_dungeon", True))),
-                "digioi_mode": _p.get("digioi_mode", "party"),
-                "event_key": _p.get("event_key", ""),
-                "use_phuc_than": bool(_p.get("use_phuc_than", False)),
-                "use_digioi_ho_phu": bool(_p.get("use_digioi_ho_phu", False)),
-                "fight_legion_boss": bool(_p.get("fight_legion_boss", True)),
-                "do_van_tieu": bool(_p.get("do_van_tieu", True)),
-                "buy_ho_phu": bool(_p.get("buy_ho_phu", False)),
-                "buy_bao_hop": bool(_p.get("buy_bao_hop", False)),
-                "bao_hop_xu_threshold": int(_p.get("bao_hop_xu_threshold", 1000000)),
-            }
-            PARTY_LEADERS_BY_IDX[_i] = list(_p.get("leaders", []) or [])
-        if PARTY_CONFIG:
-            START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]
-        if "channel" in _aj:
-            CHANNEL = int(_aj["channel"])
-        if "party_leaders" in _aj:
-            PARTY_LEADERS = list(_aj.get("party_leaders", []) or [])
-    ACCOUNTS = [acc for party in PARTIES for acc in party if acc and acc[0]]
-    ACCOUNT_PARTY = {acc[0]: i for i, party in enumerate(PARTIES) for acc in party if acc and acc[0]}
-    PARTY_LEADER_ACC = {i: party[0][0] for i, party in enumerate(PARTIES)
-                        if party and party[0] and party[0][0]}
-
-
-try:
-    reload_parties()   # lan dau: PARTIES rong (Kotlin populate qua setup_party_runtime khi Start)
-except Exception:
-    pass
+ACCOUNTS = [acc for party in PARTIES for acc in party if acc and acc[0]]
+ACCOUNT_PARTY = {acc[0]: i for i, party in enumerate(PARTIES) for acc in party if acc and acc[0]}
+PARTY_LEADER_ACC = {i: party[0][0] for i, party in enumerate(PARTIES)
+                    if party and party[0] and party[0][0]}
+LEADER_ACCOUNTS = set(PARTY_LEADER_ACC.values())

@@ -85,16 +85,9 @@ def _smart_world_router():
     return _SMART_ROUTER
 
 
-def execute_smart_route(client, route, abort=None, flee=True):
-    """Execute a built route and stop immediately on any state mismatch."""
-    client._smart_route_failure = None
-    # Route co cong GIUA BIEN (o nuoc)? -> phai LEN THUYEN tai cong DAU (ben) truoc, khong thi
-    # cac cong bien sau bi kick (di bo nhay cong bien). Xem capture thuyen_thanhchau.
-    # Cong nao o NUOC (is_sea) -> can thuyen. Char LEN THUYEN o cong DAU (ben), SAIL tren nuoc
-    # cho toi CONG BIEN CUOI, sau do XUONG THUYEN di bo (vung dich la dat lien).
-    needs_boat = False
-    first_sea = -1
-    last_sea = -1
+def _route_boat_state(route):
+    """(needs_boat, first_sea, last_sea) cho 1 route: leg nao o NUOC (is_sea) -> can thuyen."""
+    needs_boat = False; first_sea = -1; last_sea = -1
     try:
         _gs = _ground_store()
         if _gs is not None:
@@ -105,58 +98,104 @@ def execute_smart_route(client, route, abort=None, flee=True):
                         first_sea = _j
                     last_sea = _j
     except Exception:
-        needs_boat = False; first_sea = -1; last_sea = -1
-    # LEN THUYEN o cong VAO scene bien DAU TIEN (ben = leg first_sea-1). SAIL cac leg bien
-    # (first_sea..last_sea). Cong thuc nay TONG QUAT hoa ban cu (board i==0, sail 0<i<=last_sea):
-    # khi bien nam ngay dau route (first_sea=1) -> board_leg=0, sail 1..last_sea = Y HET cu.
-    # Fix ca truong hop bien nam GIUA route (vd 12061->18001: bien 11000/15000 la leg 2,3 -> board
-    # leg 1 = ben, sail 2,3; truoc board nham leg 0 + sail leg 1 dat lien -> ket).
-    board_leg = max(0, first_sea - 1) if needs_boat else -1
-    for _i, leg in enumerate(route["legs"]):
-        if not client.running or (abort and abort()):
-            client._smart_route_failure = "aborted"
-            return False
-        if client.current_map != leg["scene"]:
-            client._smart_route_failure = "unexpected_scene"
-            return False
-        # Tren thuyen (sail tren nuoc) o cac leg BIEN [first_sea..last_sea]; ngoai do di bo dat lien.
-        sailing = needs_boat and first_sea <= _i <= last_sea
-        client.navigate_to(*leg["gate_center"], abort=abort, flee=flee, boat=sailing)
-        if not client.running or (abort and abort()):
-            client._smart_route_failure = "aborted"
-            return False
-        if not client._enter_gate(*leg["gate_center"], leg["gate"],
-                                  expected_map=leg["target_scene"],
-                                  board_boat=(needs_boat and _i == board_leg),
-                                  on_boat=sailing):
-            client._smart_route_failure = "gate_failed"
-            return False
-        if client.current_map != leg["target_scene"]:
-            client._smart_route_failure = "unexpected_scene"
-            return False
-        if client.pos is None and leg.get("target_arrival"):
-            client.pos = tuple(leg["target_arrival"])
-        # SAU KHI QUA CONG (nhat la cong co quai phuc kich -> battle): char o trang thai 'chua san
-        # sang' tren map moi -> move bi server nuot (dung im du bot tuong da di). Gui lai 0x41 de
-        # di chuyen duoc o leg tiep theo (bai hoc team dungeon lv20).
-        # NHUNG KHONG rearm khi vua LEN THUYEN (board_leg) hoac dang SAIL (sailing) -> 0x41 lam ROT
-        # THUYEN -> khong sail duoc tren map bien (bug that: len thuyen o cong 30 -> rearm -> ket 11000).
-        boat_leg = needs_boat and (_i == board_leg or first_sea <= _i <= last_sea)
-        if not boat_leg:
-            try:
-                client.rearm_ready()
-            except Exception:
-                pass
+        return False, -1, -1
+    return needs_boat, first_sea, last_sea
+
+
+# So lan toi da PLAN LAI khi cong ra map ngoai du kien (vd cong 11 map 11000 random -> 55000 HOAC
+# 58000). Moi lan random ~50% ra dung -> 16 lan gan nhu chac chan qua.
+_MAX_ROUTE_REPLANS = 16
+
+def execute_smart_route(client, route, abort=None, flee=True):
+    """Execute a built route. Cong RA MAP NGOAI DU KIEN (cong random nhieu dich / bi phuc kich day
+    lech map) -> KHONG bo cuoc: doc map thuc te roi PLAN LAI duong con lai toi dich va di tiep."""
+    client._smart_route_failure = None
+    dest_map = int(route["dest_map"])
+    safe = route.get("safe")
+    replans = 0
+    while True:
+        # Route co cong GIUA BIEN (o nuoc)? -> phai LEN THUYEN tai cong DAU (ben) truoc, khong thi
+        # cac cong bien sau bi kick (di bo nhay cong bien). Xem capture thuyen_thanhchau.
+        needs_boat, first_sea, last_sea = _route_boat_state(route)
+        # LEN THUYEN o cong VAO scene bien DAU TIEN (ben = leg first_sea-1). SAIL cac leg bien
+        # (first_sea..last_sea). Cong thuc nay tong quat: bien dau route (first_sea=1) -> board_leg=0;
+        # bien giua route (vd 12061->18001, bien la leg 2,3) -> board leg 1 = ben, sail 2,3.
+        board_leg = max(0, first_sea - 1) if needs_boat else -1
+        replanned = False
+        for _i, leg in enumerate(route["legs"]):
+            if not client.running or (abort and abort()):
+                client._smart_route_failure = "aborted"
+                return False
+            if client.current_map != leg["scene"]:
+                client._smart_route_failure = "unexpected_scene"
+                return False
+            # Tren thuyen (sail tren nuoc) o cac leg BIEN [first_sea..last_sea]; ngoai do di bo dat lien.
+            sailing = needs_boat and first_sea <= _i <= last_sea
+            client.navigate_to(*leg["gate_center"], abort=abort, flee=flee, boat=sailing)
+            if not client.running or (abort and abort()):
+                client._smart_route_failure = "aborted"
+                return False
+            if not client._enter_gate(*leg["gate_center"], leg["gate"],
+                                      expected_map=leg["target_scene"],
+                                      board_boat=(needs_boat and _i == board_leg),
+                                      on_boat=sailing):
+                client._smart_route_failure = "gate_failed"
+                return False
+            if client.current_map != leg["target_scene"]:
+                # CONG RA MAP NGOAI DU KIEN. Vd cong 11 @map 11000 co 2 dich: 55000 HOAC 58000
+                # (deu hop le, server random). Cung xay ra khi phuc kich/day lech map.
+                if client.current_map == dest_map:
+                    break   # da toi dich som -> ra xu ly safe o duoi
+                if replans >= _MAX_ROUTE_REPLANS:
+                    client._smart_route_failure = "unexpected_scene"
+                    return False
+                # cho co toa do moi (0x03) truoc khi plan lai tu map thuc te
+                _t0 = time.time()
+                while client.pos is None and client.running and time.time() - _t0 < 8.0:
+                    if abort and abort():
+                        client._smart_route_failure = "aborted"
+                        return False
+                    time.sleep(0.2)
+                new_route = None
+                try:
+                    new_route = client.build_smart_scene_route(
+                        client.current_map, dest_map, safe if safe else None)
+                except Exception:
+                    new_route = None
+                if not new_route or not new_route.get("legs"):
+                    client._smart_route_failure = "unexpected_scene"
+                    return False
+                log.info("[%s] cong idx=%d ra map %s (khac du kien %s) -> plan lai duong con lai "
+                         "toi %s (lan %d)", client._label, leg["gate"], client.current_map,
+                         leg["target_scene"], dest_map, replans + 1)
+                route = new_route
+                replans += 1
+                replanned = True
+                break
+            if client.pos is None and leg.get("target_arrival"):
+                client.pos = tuple(leg["target_arrival"])
+            # SAU KHI QUA CONG (nhat la cong co quai phuc kich -> battle): char o trang thai 'chua san
+            # sang' tren map moi -> move bi server nuot. Gui lai 0x41 de di chuyen duoc o leg sau.
+            # KHONG rearm khi vua LEN THUYEN (board_leg) hoac dang SAIL -> 0x41 lam ROT THUYEN.
+            boat_leg = needs_boat and (_i == board_leg or first_sea <= _i <= last_sea)
+            if not boat_leg:
+                try:
+                    client.rearm_ready()
+                except Exception:
+                    pass
+        if replanned:
+            continue   # plan lai -> chay lai vong voi route moi tu map hien tai
+        break
 
     if not client.running or (abort and abort()):
         client._smart_route_failure = "aborted"
         return False
-    if route["safe"] is not None:
-        client.navigate_to(*route["safe"], abort=abort, flee=flee)
+    if safe is not None:
+        client.navigate_to(*safe, abort=abort, flee=flee)
         if not client.running or (abort and abort()):
             client._smart_route_failure = "aborted"
             return False
-    if client.current_map != route["dest_map"]:
+    if client.current_map != dest_map:
         client._smart_route_failure = "unexpected_scene"
         return False
     return True
@@ -244,18 +283,31 @@ def unmark_joined(party_idx, entity):
 # LEADER doc timestamp nay de biet tran da ket THAT ma khong can doi 25s SAFETY.
 _PARTY_BATTLE_END = {}
 
-def _mark_battle_end(party_idx):
+def _mark_battle_end(party_idx, who=None, map_id=None):
     if party_idx is None:
         return
     with _PARTY_LOCK:
-        _PARTY_BATTLE_END[party_idx] = time.time()
+        _PARTY_BATTLE_END.setdefault(party_idx, {})[who] = (time.time(), map_id)
 
-def _recent_battle_end(party_idx, within=3.0):
+def _recent_battle_end(party_idx, within=3.0, map_id=None, need=1):
+    """CO IT NHAT `need` member CON CUNG MAP voi leader vua xac nhan ket tran that.
+    Diem mau chot = LOC THEO MAP: 1 member CHET giua tran se bay ve thanh (map khac) va van ban
+    goi sub0800 - neu tin goi do, leader ha in_battle OAN trong khi tran VAN dang chay -> vong
+    post-battle gui 0x14 06 dung luc server giai tran -> BI DONG KET NOI (dinh that 10:43:32-35).
+    Loc map => member chet khong tinh; party 2 nguoi (need=1) van chay dung."""
     if party_idx is None:
         return False
+    now = time.time()
     with _PARTY_LOCK:
-        t = _PARTY_BATTLE_END.get(party_idx)
-    return t is not None and (time.time() - t) < within
+        rec = dict(_PARTY_BATTLE_END.get(party_idx, {}))
+    n = 0
+    for _who, (t, m) in rec.items():
+        if now - t >= within:
+            continue
+        if map_id is not None and m is not None and m != map_id:
+            continue   # member o map khac (vd da chet -> ve thanh) -> khong tinh
+        n += 1
+    return n >= need
 
 # party_idx -> entity QUAN SU (leader da set). Chia se de GUI hien vai tro "quan su".
 _PARTY_STRATEGIST = {}
@@ -896,6 +948,20 @@ class GameClient:
         chuoi setup (gom 0x41 'san sang battle') de quai aggro lai."""
         self._login_setup()
 
+    def scene_resume(self, settle: float = 0.6):
+        """SAU KHI DOI SCENE (qua cong / len thuyen / thang tran phuc kich o cong) client THAT
+        gui `0x0c 01 00` roi `0x14 06 00`; server tra `0x14 08 2a` -> MOI di chuyen duoc.
+        Thieu buoc nay server NUOT lenh move -> char DUNG IM (bug 'qua map bien khong sail').
+
+        Xac nhan tren CA 2 capture thuyen (thuyen_thanhchau + thuyen_thanhchau2): MOI lan
+        s2c `0x14 08 2a` deu co dung chuoi `0x0c 01` -> `0x14 06` ngay truoc, va move dau tien
+        chi den SAU do 0.1-0.5s. Client that KHONG he gui 0x41 (rearm) o cac cho nay."""
+        try:
+            self.send(0x0c, b"\x01\x00"); time.sleep(settle)
+            self.send(0x14, b"\x06\x00"); time.sleep(settle)
+        except OSError:
+            pass
+
     def rearm_ready(self):
         """Gui LAI rieng 0x41 'san sang' - de DI CHUYEN duoc sau khi qua cong / danh tran phuc kich
         tai cong (server nuot move neu char chua 'ready' -> dung im du bot tuong da di - GIONG team
@@ -1024,10 +1090,17 @@ class GameClient:
                      "(leader suy luan, khong doi goi END rieng)", self._label)
             self.state.in_battle = False
             self._battle_end_grace_until = time.time() + 3.0
-        elif self.state.in_battle and time.time() < getattr(self, "_team_dungeon_until", 0.0) \
-                and _recent_battle_end(self.party_idx, within=3.0):
+        elif self.state.in_battle and _recent_battle_end(self.party_idx, within=3.0,
+                                                         map_id=self.current_map):
+            # Truoc day chi ap dung cho pho ban to doi (_team_dungeon_until) -> tran PHUC KICH O
+            # CONG khi keo party: leader KHONG nhan goi END rieng, member co -> leader ket 35s
+            # SAFETY (log 10:27:20 quai chet -> 10:27:54 moi qua cong).
+            # LOC THEO MAP: 1 member CHET giua tran cung ban sub0800 roi bay ve thanh (map khac) -
+            # tin goi do thi ha in_battle OAN luc tran VAN chay -> gui 0x14 06 dung luc server giai
+            # tran -> DONG KET NOI (dinh that 10:43:32, taomam chet ve 12003). Chi tin member CON
+            # CUNG MAP. Suy luan NOI BO, khong gui goi nao.
             log.info("[%s] MEMBER trong party da xac nhan ket tran THAT -> "
-                     "leader ha in_battle theo (khong doi 25s)", self._label)
+                     "leader ha in_battle theo (khong doi SAFETY)", self._label)
             self.state.in_battle = False
             self._battle_end_grace_until = time.time() + 3.0
         elif self.state.in_battle and (time.time() - self.last_turn_time) > 35.0:
@@ -1268,7 +1341,7 @@ class GameClient:
                 # kien. Chi can in_battle_TRUOC=True la du tin cay (moi lan False truoc do
                 # deu la noise, khong lien quan tran).
                 self._battle_end_grace_until = time.time() + 3.0
-                _mark_battle_end(self.party_idx)
+                _mark_battle_end(self.party_idx, who=self._label, map_id=self.current_map)
                 log.info("[%s] XAC NHAN ket tran THAT (sub0800, in_battle_TRUOC=True) -> "
                          "grace 3s chan 0x35 set lai in_battle + bao party (leader dua vao de ha nhanh)",
                          self._label)
@@ -1447,6 +1520,12 @@ class GameClient:
                         self.state.my_atype = slot
                         log.info("[%s] self_slot=%d (tu 0x0b battle, entity)", self._label, slot)
             self.state.update_0x0b(pkt)
+            # Bat TEN QUAI trong tran (entity[2:4]=template_id -> npc_names). Cho dieu kien skill
+            # 'quai khoang' + sau nay 'NPC nguy hiem'. Chi lam khi co self_entity (base phien).
+            try:
+                self.state.note_enemy_entities(pkt, config.NPC_NAMES)
+            except Exception:
+                pass
         elif opcode == 0x53:                      # mail: S2C sub=01 = LIST mail (push luc login)
             # [01 00][count 4B] + count*record. Record: [mailid 4B][time 8B OLE][flag 1B][titlelen 2B]
             # [title][cat 1B][01][itemid 4B][padding]. Truoc day doc pkt[9:13] tuong 1 mailid (thuc ra
@@ -1593,6 +1672,10 @@ class GameClient:
                 # xu lai cac goi 0x0b da buffer (co the chua stat cua minh den truoc 0x69)
                 for p in self._pending_0b:
                     self.state.update_0x0b(p)
+                    try:
+                        self.state.note_enemy_entities(p, config.NPC_NAMES)
+                    except Exception:
+                        pass
                 self._pending_0b = []
         elif opcode == 0x07 and pkt[7:9] == b"\x01\x00" and len(pkt) >= 16:
             # danh sach kenh (channel list): payload bat dau '01 00 [count]'
@@ -1877,9 +1960,23 @@ class GameClient:
         # (0x32 xen giua 0x14 -> server kick leader). Bo luot nay; transit doi map -> tran cu bo,
         # neu transit that bai (van map cu) -> luot sau danh binh thuong.
         if self._gate_transit:
+            # Dang gui chuoi 0x14 -> KHONG duoc chen 0x32 (server kick leader). NHUNG cung KHONG
+            # duoc BO LUOT: tran phuc kich o cong no NGAY GIUA chuoi transit -> bo luot thi CA
+            # PARTY phai cho turn timeout ~30s moi danh (log 10:06:27 leader mat luot -> 10:06:59
+            # ca doi moi danh -> tran keo 40s thay vi 10s). GIU `available`, THU LAI khi transit
+            # xong (chuoi 0x14 chi ~2s). Neu transit THANH CONG -> doi map -> tran bien mat, lan
+            # thu lai chi thay 'khong con quai song' roi thoi (vo hai).
+            self._gate_retry = getattr(self, "_gate_retry", 0) + 1
+            if self._gate_retry <= 40:          # ~12s (0.3s/lan)
+                self._decision_timer = threading.Timer(0.3, self._make_decisions)
+                self._decision_timer.start()
+                return
+            log.warning("[%s] cho gate transit qua lau -> bo luot nay", self._label)
+            self._gate_retry = 0
             self.available = {}
             threading.Timer(1.0, self._reset_turn).start()
             return
+        self._gate_retry = 0
         # Neu stats chua load (hp_max=0) -> doi toi da 1s cho 0x0b kip den
         if self.state.char.hp_max == 0 and self.state.pet.hp_max == 0:
             for _ in range(10):
@@ -4474,7 +4571,49 @@ class GameClient:
                             self._label, idx, cm, expected_map)
             else:
                 log.info("[%s] qua cong idx=%d -> map %s", self._label, idx, cm)
+            # DA SANG MAP MOI -> gui chuoi RESUME (0x0c 01 + 0x14 06) nhu client that, khong thi
+            # server nuot lenh move -> dung im (bug 'qua map bien khong sail'). Xem scene_resume().
+            self.scene_resume()
             return True
+
+        def _gate_wait_clear(idle: float = 3.0, cap: float = 150.0) -> bool:
+            """Cho het TRAN PHUC KICH TAI CONG. TUYET DOI KHONG gui gi trong luc cho: da test
+            (10:36:45) gui 0x14 06 luc server dang giai tran (0x32 ket qua con dang ve) -> SERVER
+            DONG KET NOI. Chi cho; map doi thi thoat som."""
+            t_w = time.time()
+            while self.running and time.time() - t_w < cap:
+                if not self.in_combat(idle_secs=idle):
+                    # Leader co the ha in_battle bang tin member cung map da ket tran. Rieng gate
+                    # flow, neu gui 0x14 06 ngay lap tuc luc server leader con dang xa ket qua
+                    # battle thi server kick (log 14:21:43 gate idx=30). Cho het grace truoc khi
+                    # cho post-battle loop bam tiep dialog/qua cong.
+                    grace_left = getattr(self, "_battle_end_grace_until", 0.0) - time.time()
+                    if grace_left > 0:
+                        time.sleep(min(grace_left, 3.0))
+                        continue
+                    return self.running
+                if self.current_map not in (None, start_map):
+                    return self.running   # map da doi -> tran o cong xong roi
+                time.sleep(0.5)
+            return self.running
+
+        def _gate_wait_grace() -> bool:
+            grace_left = getattr(self, "_battle_end_grace_until", 0.0) - time.time()
+            if grace_left <= 0:
+                return False
+            time.sleep(min(grace_left, 3.0))
+            return True
+
+        def _gate_select_result(wait: float = 1.2):
+            """Sau 0x14 08, doi ngan de bat case cong tu no battle/map doi truoc khi bam 0600."""
+            t_s = time.time()
+            while self.running and time.time() - t_s < wait:
+                if _gate_reached():
+                    return "map"
+                if self.state.in_battle or self.in_combat(idle_secs=0.2):
+                    return "battle"
+                time.sleep(0.1)
+            return None
 
         t0 = time.time()
         _attempt = 0
@@ -4529,8 +4668,20 @@ class GameClient:
                     log.info("[%s] BEN THUYEN idx=%d @(%d,%d): len thuyen (0x7c)", self._label, idx, x, y)
                     self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.4)
                     self.send(0x7c, b"\x04\x00"); time.sleep(0.6)
-                    self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
-                    self.send(0x14, b"\x06\x00"); time.sleep(1.0)
+                    _sel = _gate_select_result(1.2)
+                    if _sel == "map":
+                        return True
+                    if _sel == "battle":
+                        gate_battled = True
+                    else:
+                        self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
+                        _sel = _gate_select_result(0.8)
+                        if _sel == "map":
+                            return True
+                        if _sel == "battle":
+                            gate_battled = True
+                        else:
+                            self.send(0x14, b"\x06\x00"); time.sleep(1.0)
                 elif gate_battled:
                     # Da no tran phuc kich o lan truoc -> server dang cho hoan tat qua cong,
                     # CHI gui 0x14 06 (gui lai 04/08 se bi kick). Xem capture thuyen_thanhchau.
@@ -4541,8 +4692,20 @@ class GameClient:
                     if not gate_is_sea and not on_boat:
                         self.send(0x14, b"\x04\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
                     self.send(0x14, b"\x08\x00" + bytes([idx]) + b"\x00"); time.sleep(0.3)
-                    self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
-                    self.send(0x14, b"\x06\x00"); time.sleep(1.0)
+                    _sel = _gate_select_result(1.2)
+                    if _sel == "map":
+                        return True
+                    if _sel == "battle":
+                        gate_battled = True
+                    else:
+                        self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
+                        _sel = _gate_select_result(0.8)
+                        if _sel == "map":
+                            return True
+                        if _sel == "battle":
+                            gate_battled = True
+                        else:
+                            self.send(0x14, b"\x06\x00"); time.sleep(1.0)
             finally:
                 self._gate_transit = False
             # Mot so gate co NPC/dialog: bam thoai -> vao battle, thang xong moi qua cong.
@@ -4555,7 +4718,7 @@ class GameClient:
                     log.info("[%s] gate idx=%d bat battle NPC/dialog -> cho danh xong roi kiem tra map",
                              self._label, idx)
                     gate_battled = True   # vong ngoai KHONG gui lai 04/08 nua (kick leader)
-                    if not self._wait_combat_clear(idle=3.0, cap=150.0):
+                    if not _gate_wait_clear():
                         return False
                     if _gate_reached():
                         return True
@@ -4568,11 +4731,15 @@ class GameClient:
                         if _gate_reached():
                             return True
                         if self.state.in_battle or self.in_combat(idle_secs=1.0):
-                            if not self._wait_combat_clear(idle=3.0, cap=150.0):
+                            if not _gate_wait_clear():
                                 return False
+                        if _gate_wait_grace():
+                            continue
                         self.send(0x14, b"\x06\x00")
                         time.sleep(0.8)
                     break
+                if _gate_wait_grace():
+                    continue
                 self.send(0x14, b"\x06\x00")
                 time.sleep(0.6)
         log.warning("[%s] _enter_gate idx=%d @(%d,%d): map khong doi (van %s)",

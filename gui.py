@@ -44,6 +44,7 @@ BATTLE_CONDITION_TYPE_LABELS = {
     "sp_full": "SP đầy",
     "boss": "Đang boss / phó bản",
     "quest": "Quest đông quái",
+    "mineral": "Quái khoáng",
     "ally_dead": "Đồng đội chết",
 }
 LABEL_BATTLE_CONDITION_TYPES = {v: k for k, v in BATTLE_CONDITION_TYPE_LABELS.items()}
@@ -175,6 +176,7 @@ def _map_name(mid):
             except (ValueError, TypeError):
                 pass
         _MAP_NAMES.setdefault(10991, "40 NPC")   # map event 40 NPC (dest chua bat duoc qua capture)
+        _MAP_NAMES.setdefault(55002, "Nhà Nam Tinh Quân")   # map di-bo dac biet (khong teleport)
     return _MAP_NAMES.get(mid, str(mid))
 
 
@@ -543,7 +545,7 @@ class BotGUI(tk.Tk):
         lb = tk.Listbox(win, width=38, height=min(17, max(4, len(self.cities) + extra_rows)), font=("", 10))
         lb.pack(fill="both", expand=True, padx=8)
         if allow_route:
-            lb.insert("end", "Đi từ map AAA đến map BBB")
+            lb.insert("end", "Đi bộ từ map AAA đến map BBB")
         for (cid, f, n) in self.cities:
             lb.insert("end", n)
         def _go():
@@ -572,12 +574,44 @@ class BotGUI(tk.Tk):
             text="AAA để trống = tự chọn thành gần BBB nhất.",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
         ttk.Label(box, text="Map AAA:").grid(row=1, column=0, sticky="e", padx=(0, 6), pady=4)
-        src_var = tk.StringVar()
+        # Mac dinh AAA = MAP DANG DUNG cua party (lay tu acc dang chay dau tien co current_map).
+        # User muon di tu cho khac thi tu sua lai / xoa trong de bot tu chon thanh gan BBB.
+        _cur = ""
+        try:
+            for (_u, _p, _lead, _pick) in ctrl.party_accounts(pidx):
+                _c = ctrl.account_clients.get(_u)
+                _m = getattr(_c, "current_map", None) if _c is not None else None
+                if _m:
+                    _cur = str(int(_m)); break
+        except Exception:
+            _cur = ""
+        src_var = tk.StringVar(value=_cur)
         dst_var = tk.StringVar()
         ttk.Entry(box, textvariable=src_var, width=18).grid(row=1, column=1, sticky="w", pady=4)
         ttk.Label(box, text="Map BBB:").grid(row=2, column=0, sticky="e", padx=(0, 6), pady=4)
         dst_entry = ttk.Entry(box, textvariable=dst_var, width=18)
         dst_entry.grid(row=2, column=1, sticky="w", pady=4)
+
+        def _pick_city():
+            # Popup list thanh da mo -> chon 1 thanh thi dien city_id (= map id) vao o BBB.
+            # Them cac map di-bo dac biet (khong teleport duoc) o DAU danh sach.
+            extra = [("Nhà Nam Tinh Quân", 55002)]
+            choices = extra + [(_n, _cid) for (_cid, _f, _n) in self.cities]
+            pick = tk.Toplevel(win); pick.title("Chọn Thành đích")
+            pick.transient(win); pick.grab_set()
+            lb2 = tk.Listbox(pick, width=28, height=min(20, max(4, len(choices))), font=("", 10))
+            lb2.pack(fill="both", expand=True, padx=8, pady=8)
+            for (_n, _cid) in choices:
+                lb2.insert("end", _n)
+            def _choose():
+                s = lb2.curselection()
+                if s:
+                    dst_var.set(str(choices[s[0]][1]))
+                pick.destroy()
+            lb2.bind("<Double-1>", lambda _e: _choose())
+            ttk.Button(pick, text="Chọn", command=_choose).pack(pady=(0, 8))
+        ttk.Button(box, text="Chọn Thành", command=_pick_city).grid(
+            row=2, column=2, sticky="w", padx=(6, 0), pady=4)
 
         def _start():
             try:
@@ -1503,6 +1537,8 @@ class PartyConfigFrame(ttk.Frame):
             if spr:
                 rules.append({"enabled": True, "condition": "ally_sp_pct", "op": "lt", "value": "50",
                               "skill": spr, "target": "ally_low_sp"})
+            rules.append({"enabled": True, "condition": "mineral", "op": "gte", "value": "",
+                          "skill": "flee", "target": "self"})
             boss = _pick_boss(unit)
             if boss:
                 rules.append({"enabled": True, "condition": "boss", "op": "gte", "value": "",

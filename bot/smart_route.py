@@ -5,6 +5,14 @@ import math
 import os
 import tempfile
 
+_ROUTE_CACHE_VERSION = "oneway-bh-11000-v1"
+
+# Bac Hai -> 11000 la cong mot chieu: co duong di ra Bac Hai nhung khong co
+# reverse edge de suy ra diem roi. State 11000001 dung cung diem roi nay.
+_ONE_WAY_TARGET_ARRIVALS = {
+    (11011, 11000, 1): (390, 1190),
+}
+
 
 def _route_key(dest_map, safe):
     if safe is None:
@@ -71,6 +79,9 @@ class SmartWorldRouter:
         self.ground = ground
         self.cache = cache
 
+    def _cache_fingerprint(self):
+        return f"{self.nav.fingerprint}:{_ROUTE_CACHE_VERSION}"
+
     def nearest_city(self, dest_map, exclude_city=None):
         dest_map = int(dest_map)
         exclude_city = None if exclude_city in (None, 0) else int(exclude_city)
@@ -102,7 +113,7 @@ class SmartWorldRouter:
     def build_route(self, dest_map, safe):
         dest_map = int(dest_map)
         safe = None if safe is None else (int(safe[0]), int(safe[1]))
-        cached = self.cache.get(dest_map, safe, self.nav.fingerprint)
+        cached = self.cache.get(dest_map, safe, self._cache_fingerprint())
         if cached is not None:
             return cached
 
@@ -121,7 +132,7 @@ class SmartWorldRouter:
                     viable,
                     key=lambda item: (item["total_distance"], item["city"]),
                 )
-                self.cache.put(dest_map, safe, self.nav.fingerprint, route)
+                self.cache.put(dest_map, safe, self._cache_fingerprint(), route)
                 return route
         return None
 
@@ -280,6 +291,14 @@ class SmartWorldRouter:
         }
 
     def _arrival_after(self, edge):
+        override = _ONE_WAY_TARGET_ARRIVALS.get(
+            (int(edge["scene"]), int(edge["target_scene"]), int(edge["door"]))
+        )
+        if override is not None:
+            return self.ground.nearest_walkable_world(
+                edge["target_scene"], override, override
+            )
+
         reverse_edges = [
             candidate
             for candidate in self.nav.graph.get(edge["to"], ())
@@ -324,7 +343,7 @@ class SmartWorldRouter:
         self.cache.put(
             route["dest_map"],
             route["safe"],
-            self.nav.fingerprint,
+            self._cache_fingerprint(),
             route,
         )
         return True

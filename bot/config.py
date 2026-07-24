@@ -226,6 +226,24 @@ def _load_pets():
     return skills, names, hedoanh
 PET_SKILLS, PET_NAMES, PET_HE_DOANH = _load_pets()   # pet_id -> skills/ten/(he,doanh)
 
+# DATA TEN QUAI/NPC: doc tu npc_names.json (AUTO tools/crack_npc_names.py). template_id -> ten.
+# Dung tra TEN QUAI trong battle (entity[2:4] = template_id) cho dieu kien skill 'quai khoang'
+# (ten chua 'Khoang') va sau nay 'NPC nguy hiem' (ten thuoc list cau hinh).
+def _load_npc_names():
+    import json, os
+    f = os.path.join(_base_dir(), "npc_names.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k, v in d.items():
+            tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+            out[tid] = v
+    except Exception:
+        pass
+    return out
+NPC_NAMES = _load_npc_names()   # template_id (int) -> ten quai/npc
+
 # DATA SKILL: doc tu skills_data.json (AUTO crack_skills.py). skill_id -> {cost, dame, splash}.
 # combat tu suy combo (dame AoE re) + boss (dame splash 4>1) -> KHONG can list cung.
 def _load_skill_info():

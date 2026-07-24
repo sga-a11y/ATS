@@ -60,6 +60,7 @@ _nk/
 .codex_nuitka_cache/
 .codex_frida/
 .codex_mumu_probe/
+.claude/
 .worktrees/
 aTSBot/
 _build_log.txt

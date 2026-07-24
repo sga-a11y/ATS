@@ -522,7 +522,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.flee_mode = True
         next_vantieu = None
         next_phuc_than = 0.0   # 0.0 -> kiem tra NGAY lan dau (khong cho 30p roi moi dung lan dau)
-        next_ho_phu = 0.0      # Di Gioi Ho Phu: check login + moi 10p, chi khi mode Di Gioi
+        next_ho_phu = 0.0      # Di Gioi Ho Phu: check login + moi 5p, chi khi mode Di Gioi
         # pcfg doc SOM (truoc day chi doc o duoi, SAU khoi chores nay) - can ngay o day de biet
         # "Danh boss QD" co bat hay khong TRUOC khi goi do_legion_boss() lan dau luc login.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
@@ -1277,7 +1277,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] loi dung Di Gioi Ho Phu luc login (bo qua): %s", label, e)
                 if not _ho_phu_busy:
-                    next_ho_phu = time.time() + 600   # check lai moi 10 phut
+                    next_ho_phu = time.time() + 300   # check lai moi 5 phut
             # 0) PRE-CHECK: doc so phut DG hom nay tu BANG STAT login (0x55 id=0x1b).
             #    Da du gio (>= DIGIOI_LIMIT) -> KHOI vao (truoc day phai vao -> cho 150s moi biet).
             if (_used_ho_phu_at_login and not c.in_di_gioi()
@@ -1659,7 +1659,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 source_req = int(cmd[1] or 0)
                 dest = int(cmd[2])
                 _manual_route_reset(gen)
-                if is_leader:
+                # LENH "di map AAA->BBB" LUON can 1 nguoi KEO. Party setting "khong co chu PT"
+                # (has_leader=False) thi khong ai la leader -> khong ai lap plan -> ca lu dung im.
+                # -> cho PICKER dong vai leader RIENG cho lenh nay (lap party, keo di), den noi
+                # thi GIAI TAN party + dung yen o map dich (dung nhu setting khong-chu-PT).
+                route_leader = is_leader or (not has_leader and is_picker)
+                if route_leader:
                     source = source_req
                     if not source:
                         picked = c.nearest_smart_city(dest, exclude_map=dest)
@@ -1723,7 +1728,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
 
                 do_channel_sync()
                 if expected > 1:
-                    if is_leader:
+                    if route_leader:
                         reset_party_joined(pidx)
                         last_inv_log = 0.0
                         while joined_member_count(pidx) < expected - 1:
@@ -1748,7 +1753,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     else:
                         _wait_event(st["manual_route_party_ready"], "leader lap party", timeout=None)
 
-                if is_leader:
+                if route_leader:
                     route_restart = {"needed": False, "reason": ""}
 
                     def _route_retry(reason):
@@ -1845,6 +1850,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     _wait_event(st["manual_route_source_done"], "leader keo toi AAA", timeout=None)
                     _wait_event(st["manual_route_done"], "leader keo toi BBB", timeout=None)
                 c.flee_mode = False
+                # Party "khong co chu PT" chi lap party TAM de keo -> den noi thi GIAI TAN,
+                # moi acc dung yen tai map dich (dung nhu setting).
+                if not has_leader:
+                    try:
+                        c.leave_party()
+                        if route_leader:
+                            reset_party_joined(pidx)
+                        log.info("[%s] manual route: den BBB -> giai tan party tam (khong chu PT), dung yen", label)
+                    except Exception as e:
+                        log.warning("[%s] manual route: loi giai tan party tam: %s", label, e)
 
             # KET BATTLE: dang trong tran thi BO CHAY + cho thoat tran TRUOC khi doi kenh/teleport
             # (switch_channel/leave_party giua battle de bi server bo qua/loi). cap 60s.
@@ -2154,15 +2169,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] loi dung item phuc than (bo qua): %s", label, e)
                 next_phuc_than = time.time() + 1800   # 30 phut
-            # Di Gioi Ho Phu: chi mode Di Gioi, tick rieng, check moi 10p va chi dung khi con <15p.
+            # Di Gioi Ho Phu: chi mode Di Gioi, tick rieng, check moi 5p va chi dung khi con <15p.
             # Server se tu gui 0x55/id=0x1b sau khi dung; khong cong timer thu cong.
             if is_digioi and pcfg.get("use_digioi_ho_phu") and time.time() >= next_ho_phu:
                 if not c.in_combat():
                     try:
-                        _maybe_use_di_gioi_ho_phu("10p")
+                        _maybe_use_di_gioi_ho_phu("5p")
                     except Exception as e:
                         log.warning("[%s] loi dung Di Gioi Ho Phu (bo qua): %s", label, e)
-                    next_ho_phu = time.time() + 600
+                    next_ho_phu = time.time() + 300
             # Van tieu: chi goi lai DUNG GIO escort xong (next_vantieu), KHONG check mu.
             if next_vantieu is not None and time.time() >= next_vantieu:
                 try:

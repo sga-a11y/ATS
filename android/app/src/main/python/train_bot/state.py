@@ -6,6 +6,7 @@ Phan tich tu cac packet S2C:
   - 0x0c: thong tin quai luc vao tran
 """
 import struct
+import unicodedata
 import logging
 log = logging.getLogger("bot")
 
@@ -61,6 +62,8 @@ class BattleState:
         # vi tri quai con song (slot B2) - decode tu 0x33; dung lam target combat
         self.enemy_slots = []          # vd [2] = co 1 quai o slot 2
         self.enemy_hp = {}             # slot -> curHP
+        self.enemy_names = set()       # TEN quai trong tran (tu 0x0b: entity[2:4]=template_id -> npc_names)
+        self.mineral_battle = False    # True neu tran co quai khoang (bat theo ten hoac template id)
         self.self_slot = None          # B2 (vi tri tran) cua minh - tu 0x0b battle (entity-based)
         # QUEST mode: START tran ma >6 quai -> True ca tran (latch). >6 con -> all-target; <=6 -> nhu boss.
         self.quest_mode = False
@@ -92,8 +95,20 @@ class BattleState:
         self.enemy_hp = {}
         self.enemy_slots = []
         if reset_quest:
+            self.enemy_names = set()
+            self.mineral_battle = False
             self.quest_mode = False
             self._battle_counted = False
+
+    @staticmethod
+    def _is_mineral_enemy(tid=None, name=None):
+        if name:
+            norm = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii").lower()
+            if "khoang" in norm:
+                return True
+        if tid is not None and 0x61A9 <= int(tid) <= 0x62A4:
+            return True
+        return False
 
     # ---- parse 0x33 (stat update theo luot) ----
     def update_0x33(self, pkt: bytes):
@@ -270,6 +285,45 @@ class BattleState:
         if self.active_pet_id:                                            # PET
             pe = self.active_pet_id.to_bytes(2, "little") + b"\x00" * 6
             self._read_0b_block(pkt, pe, 2, slot, self.pet)
+
+    def note_enemy_entities(self, pkt: bytes, npc_names: dict):
+        """Bat TEN QUAI trong tran tu goi 0x0b (full-stat entity). Entity quai = 8 byte co dang
+        [2B ngau nhien][template_id 2B LE][3 byte base phien]. entity[2:4]=template_id -> tra
+        npc_names ra ten (vd 'Khoang Bac', 'Vuong Binh'). Luat tach dich: window 8 byte co 3 byte
+        cuoi TRUNG base phien cua minh (self_entity[-3:]) VA entity[2:4] resolve trong npc_names
+        -> la 1 con quai. Nguoi choi/pet [2:4] random khong resolve -> tu loai.
+        (Xac nhan ts_capture: entity ...9d8c8d0300 -> tid 0x9d0e='Tieu Thai Giam', 0x9d11='Doan
+        Khue', 0x9d14='Ho Chan', 0x9d15='Ly Mong', 0x9d16='Phan Phuong'.)"""
+        if not npc_names:
+            npc_names = {}
+        body = bytes(pkt[7:]) if len(pkt) > 7 else bytes(pkt)
+        # DANG 2 (xac nhan capture khoang mumu12): block enemy `05 00 [n] 07 [tid 2B]` - tid TRAN
+        # (offset 4), byte3=07=DICH (04=dong doi). Quai KHOANG dung dang nay: 0x61c7='Khoang Sat'...
+        if len(body) >= 6 and body[0:2] == b"\x05\x00" and body[3] == 0x07:
+            tid = body[4] | (body[5] << 8)
+            name = npc_names.get(tid)
+            if name:
+                self.enemy_names.add(name)
+            if self._is_mineral_enemy(tid, name):
+                self.mineral_battle = True
+        # DANG 1 (xac nhan ts_capture): entity 8B `[2B ngau nhien][tid 2B][1 byte type][3B base]`.
+        # base phien = self_entity[5:8]; quet cac window co base o cuoi + tid resolve.
+        if self.self_entity and len(self.self_entity) >= 8:
+            base = bytes(self.self_entity[5:8])
+            i = 0
+            n = len(body)
+            while i < n:
+                j = body.find(base, i)
+                if j < 0:
+                    break
+                if j >= 5:
+                    tid = body[j - 3] | (body[j - 2] << 8)
+                    name = npc_names.get(tid)
+                    if name:
+                        self.enemy_names.add(name)
+                    if self._is_mineral_enemy(tid, name):
+                        self.mineral_battle = True
+                i = j + 1
 
     def lowest_hp_ally(self):
         """Unit (char/pet bat ky thanh vien) thap mau nhat - CHI con SONG (hp>0). None neu khong co.
