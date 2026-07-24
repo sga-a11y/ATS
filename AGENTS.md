@@ -24,3 +24,11 @@ idle ngắn → nghỉ giữa lượt quest có thể >13s → hồi item/vào g
 ## Lưu ý build (xem thêm KNOWLEDGE.md mục 0)
 User chạy BẢN BUILD (exe) từ `config.example.py`, KHÔNG phải `config.py` (dev, gitignored). Đổi key
 config phải sửa đồng thời `config.example.py`. `config.py` chứa mật khẩu thật → KHÔNG BAO GIỜ commit.
+
+### Rule release sau build
+- Khi user yêu cầu `build`, `build toàn bộ`, `build apk exe`, hoặc build bản gửi user: mặc định chạy
+  `python build_product.py` để build PC + APK + upload GitHub Release luôn.
+- Chỉ dùng `--no-upload` nếu user nói rõ là build local/test hoặc không upload release.
+- Nếu đã lỡ build bằng `--no-upload`, chạy tiếp:
+  `python -c "import build_product; build_product.upload_release()"`
+  để upload đúng artifact/version vừa build.

@@ -16,6 +16,10 @@
 - File JSON ship theo build: `build_product.py` -> `DATA_JSON`. Thêm data mới phải thêm vào đây.
 - Release PC/APK dùng chung version `1.1.YYYYMMDDHHMM`: `build_product.py` sinh 1 version rồi truyền
   `-PatsVersion=<version>` cho Gradle APK. `version.json` có `url` cho PC zip và `apk_url` cho APK updater.
+- **Rule build/release:** Khi user bảo build bản gửi user (`build`, `build toàn bộ`, `build apk exe`) thì
+  chạy `python build_product.py` để build PC + APK + upload GitHub Release luôn. Chỉ dùng `--no-upload`
+  khi user nói rõ là build local/test/không upload. Nếu lỡ build `--no-upload`, chạy
+  `python -c "import build_product; build_product.upload_release()"` để upload artifact vừa build.
 
 ## 1. THÔNG TIN CƠ BẢN
 
