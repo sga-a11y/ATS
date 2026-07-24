@@ -28,6 +28,10 @@ _GROUND_STORE_FAILED = False
 _SMART_ROUTER = None
 _SMART_ROUTER_KEY = None
 _SMART_ROUTER_FAILED = False
+_FORCE_WALK_SEA_GATES = {
+    # Gate center nam tren o sea nhung day la cong script/di bo, khong len thuyen.
+    (23521, 23000, 2),
+}
 
 
 def _ground_store():
@@ -92,6 +96,13 @@ def _route_boat_state(route):
         _gs = _ground_store()
         if _gs is not None:
             for _j, lg in enumerate(route["legs"]):
+                key = (
+                    int(lg["scene"]),
+                    int(lg["target_scene"]),
+                    int(lg["gate"]),
+                )
+                if key in _FORCE_WALK_SEA_GATES:
+                    continue
                 if _gs.is_sea_world(lg["scene"], tuple(lg["gate_center"])):
                     needs_boat = True
                     if first_sea < 0:
@@ -1310,6 +1321,7 @@ class GameClient:
         # Day moi la moc ket tran dang tin (0x34 ban that thuong, 1 lan/nhieu tran). Reset quest_mode
         # + enemies o DAY -> quest_mode latch luc start (>5) GIU NGUYEN ca tran du quai con <=5.
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x07\x00":
+            self._genuine_end_seen = time.time()
             log.info("[%s] nhan goi KET TRAN THAT 0x14 sub0700 (WIN) in_battle_truoc=%s "
                      "raw=%s -> in_battle=False",
                      self._label, self.state.in_battle, pkt.hex())
@@ -1326,6 +1338,12 @@ class GameClient:
         # khac, KHONG phai ket tran that - user nghi dung luc nay in_battle con False ma van log).
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] in (b"\x0c\x00", b"\x09\x00", b"\x08\x00"):
             was_true = self.state.in_battle
+            now = time.time()
+            scene_end_like = (
+                pkt[7:9] == b"\x08\x00" and len(pkt) >= 10 and pkt[9] in (0x03, 0x04)
+            )
+            if scene_end_like:
+                self._genuine_end_seen = now
             log.info("[%s] nhan goi 0x14 sub%s in_battle_TRUOC=%s raw=%s -> in_battle=False",
                      self._label, pkt[7:9].hex(), was_true, pkt.hex())
             self.state.in_battle = False
@@ -1340,7 +1358,8 @@ class GameClient:
                 # ket tran that khac nhau) -> co ve la bo dem tang dan, KHONG dung lam dieu
                 # kien. Chi can in_battle_TRUOC=True la du tin cay (moi lan False truoc do
                 # deu la noise, khong lien quan tran).
-                self._battle_end_grace_until = time.time() + 3.0
+                self._genuine_end_seen = now
+                self._battle_end_grace_until = now + 3.0
                 _mark_battle_end(self.party_idx, who=self._label, map_id=self.current_map)
                 log.info("[%s] XAC NHAN ket tran THAT (sub0800, in_battle_TRUOC=True) -> "
                          "grace 3s chan 0x35 set lai in_battle + bao party (leader dua vao de ha nhanh)",
@@ -1778,7 +1797,22 @@ class GameClient:
                  [(m, hex(p)) for m, p in _dbg], self.active_pet_slot)
         if chosen is None or chosen + 33 > len(b):
             return
-        found_active = apid is not None and int.from_bytes(b[chosen + 1:chosen + 3], "little") == apid
+        chosen_pid = int.from_bytes(b[chosen + 1:chosen + 3], "little")
+        if apid is None and chosen_pid:
+            # 0x13 (active pet) co luc khong den truoc man config skill. 0x0f record dau
+            # dang duoc dung lam fallback active pet san roi, nen ap luon skill/name de UI co du lieu.
+            self.state.active_pet_id = chosen_pid
+            apid = chosen_pid
+        found_active = apid is not None and chosen_pid == apid
+        if found_active and not getattr(self.state, "pet_skills", None):
+            self.state.pet_skills = list(getattr(config, "PET_SKILLS", {}).get(chosen_pid, []))
+            name = getattr(config, "PET_NAMES", {}).get(chosen_pid, "")
+            if name and name != "?":
+                self.pet_name = name
+            if self.state.pet_skills:
+                log.info("[%s] Pet id=0x%x '%s' -> skills=%s (tu PET-LIST)",
+                         self._label, chosen_pid, name or "?",
+                         [hex(s) for s in sorted(self.state.pet_skills)])
         lvl = b[chosen + 7]   # LEVEL cua con active (truoc day b[p+6], p=pet_id_off -> = chosen+7)
         if 1 <= lvl <= 200:
             self.pet_level = lvl
@@ -3704,28 +3738,33 @@ class GameClient:
         unit=3: CHAR, unit=2: PET. Byte sau unit KHONG phai count tin cay (capture: =5 nhung co
         6 skill) -> DOC SKILL TOI KHI GAP 0x0000 (terminator), khong dua theo count (bug cu cat
         mat skill cuoi -> vd thieu Nem Da 0x2715 -> char danh chay).
-        CHI lay block CHAR (unit=3) DAU TIEN (sau padding co the co block rac id la -> bo qua)."""
+        Quet ca CHAR va PET; validate range de bo qua block rac trong padding."""
         if len(pkt) < 12:
             return
         payload = pkt[7:]
         i = 2  # bo prefix 01 00
         seen_char = False
-        while i + 2 <= len(payload) and not seen_char:
+        while i + 2 <= len(payload):
             unit = payload[i]
             if unit not in (2, 3):
                 i += 1
                 continue   # padding/byte la -> truot toi block hop le
             i += 2         # bo unit + byte sau (khong dung)
-            skills = set()
+            skills = []
+            ok = True
             while i + 2 <= len(payload):
                 sid = int.from_bytes(payload[i:i + 2], 'little')
                 i += 2
                 if sid == 0:
                     break  # terminator -> het skill cua unit nay
-                if len(skills) > 40:
+                if not (0x2710 <= sid <= 0x3fff) or len(skills) > 40:
+                    ok = False
                     break  # canh rac
-                skills.add(sid)
-            if unit == 3:
+                if sid not in skills:
+                    skills.append(sid)
+            if not ok or not skills:
+                continue
+            if unit == 3 and not seen_char:
                 for s in skills:   # gop bar 0x28 vao list (append id chua co, giu thu tu 0x05)
                     if s not in self.state.skills_char:
                         self.state.skills_char.append(s)
@@ -3733,7 +3772,11 @@ class GameClient:
                 log.info("[%s] Char skills (bar 0x28): %s", self._label,
                          [hex(s) for s in sorted(skills)])
             elif unit == 2:
-                self.state.skills_pet = skills
+                self.state.skills_pet = set(skills)
+                if not getattr(self.state, "pet_skills", None):
+                    self.state.pet_skills = list(skills)
+                log.info("[%s] Pet skills (bar 0x28): %s", self._label,
+                         [hex(s) for s in sorted(skills)])
 
     # ---- parse player info (0x27) ----
     def _resolve_self_name(self, pkt: bytes):
@@ -4587,9 +4630,7 @@ class GameClient:
                     # flow, neu gui 0x14 06 ngay lap tuc luc server leader con dang xa ket qua
                     # battle thi server kick (log 14:21:43 gate idx=30). Cho het grace truoc khi
                     # cho post-battle loop bam tiep dialog/qua cong.
-                    grace_left = getattr(self, "_battle_end_grace_until", 0.0) - time.time()
-                    if grace_left > 0:
-                        time.sleep(min(grace_left, 3.0))
+                    if _gate_wait_grace():
                         continue
                     return self.running
                 if self.current_map not in (None, start_map):
@@ -4598,7 +4639,12 @@ class GameClient:
             return self.running
 
         def _gate_wait_grace() -> bool:
-            grace_left = getattr(self, "_battle_end_grace_until", 0.0) - time.time()
+            now = time.time()
+            grace_until = max(
+                getattr(self, "_battle_end_grace_until", 0.0),
+                getattr(self, "_genuine_end_seen", 0.0) + 4.0,
+            )
+            grace_left = grace_until - now
             if grace_left <= 0:
                 return False
             time.sleep(min(grace_left, 3.0))

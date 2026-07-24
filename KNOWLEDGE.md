@@ -579,7 +579,9 @@ S2C 0x1a sau do:    +exp vao nhan vat (vd 0x12c = 300 exp)
 - **S2C 0x13** `01 00 [pet_id]` = xac nhan doi pet.
 - **S2C 0x13** `04 00 [pet_id]` = pet dang dung, gui luc LOGIN.
 - pet_id (vd 0xa051, 0xa0db) = id pet -> bot doc luc login de biet pet nao.
-- Pet skill KHONG gui qua mang (client-side, theo loai pet). Server CHI gui pet_id (0x13).
+- Skill pet đầy đủ vẫn lấy theo loại pet từ `pets.json` (client-side): `0x13` chỉ cho biết
+  `pet_id` đang dùng. Tuy nhiên `0x28` có thể mang **skill bar** của pet (`unit=2`), dùng làm
+  dự phòng cho UI chọn skill khi `0x13`/active-pet chưa kịp set trong runtime.
 - Khi pet ko co skill ma gui -> server cho DUNG YEN (phi luot). Server VAN echo skill yeu cau
   trong 0x32 va SP khong tru on dinh (co quan su hoi) -> KHONG detect tu choi dang tin.
 - => Dung config.PET_AOE_SKILL { pet_id: skill_aoe } (None=danh thuong). Bot doc pet_id luc
@@ -1056,3 +1058,35 @@ ngay khi phát hiện map đổi.
   khác. **CẦN capture ca board CÓ ambush** (đi bộ tới bến → bị quái đánh → thắng → board → sail) để xem
   client thật làm gì. So sánh gói giữa "sau thắng ambush ở bến" và "sail được".
 - File data (Ground.mmg, world_nav.json) ở `gamedata/` (gitignore) + `.codex_mumu_probe/` (máy cty).
+
+### 2026-07-24 - Manual route Tu Chau/Tho Xuan -> Hua Xuong
+- Route scene dung co the di qua cum Tieu Quan:
+  `15001 -> 15000 -> 15401 -> 15402 -> 13000 -> ... -> 13011`.
+- Edge `15402 -> 13000 door=1` la cong mot chieu/khong co reverse edge ve dung map
+  nen `smart_route._arrival_after()` khong tu suy ra diem roi duoc. Override diem roi:
+  `(15402, 13000, 1): (2200, 600)`; Ground snap thanh `(2190,590)`.
+- Neu thieu override nay, `build_scene_route(15001, 13011)` tra None va log:
+  `scene route: khong tim thay duong 15001 -> 13011`.
+
+### 2026-07-24 - Manual route Hua Xuong <-> Lac Duong
+- Log user: party tap ket o Hua Xuong `13011`, lenh `DI MAP 13011 -> 13001`
+  lap party du roi nhung fail: `scene route: khong tim thay duong 13011 -> 13001`.
+- Duong dung phai di vong qua cum `135xx/134xx` vi vung roi o `13000` khong walk duoc sang
+  cong ngan `13000 door5 -> 13003`.
+- Them override arrival cho cac cong mot chieu thieu reverse edge:
+  `(13422,13423,1):(1110,430)`, `(13432,13433,1):(3170,430)`,
+  `(13438,13423,2):(1110,430)`, `(13428,13000,2):(2070,890)`.
+- Da verify `build_scene_route(13011,13001)` va `build_scene_route(13001,13011)` deu ra route.
+- Gate co NPC/battle trong cum nay (vd `13432 door=1`) rat nhay: leader co the bi ha
+  `in_battle=False` theo member truoc khi goi ket tran cua chinh leader ve. Neu sau do vua nhan
+  `0x14 0800 03/04` da gui ngay `0x14 0600` thi server dong ket noi. Gate flow phai coi
+  `0x14 0800 03/04` la moc end-like va cho settle them truoc khi bam tiep dialog.
+
+### 2026-07-24 - Manual route Linh Lang -> Truong Sa
+- Log user: party o Linh Lang `23011`, lenh `DI MAP 23011 -> 23001`, lap party OK nhung
+  `scene route: khong tim thay duong 23011 -> 23001`.
+- Candidate route co 10 cong:
+  `23011 -> 23000 -> 23530 -> 23526 -> 23523 -> 23522 -> 23521 -> 23000 -> 23811 -> 23000 -> 23001`.
+- Fail do gate `23521 door=2 -> 23000` co center `(430,2500)` nam tren o sea trong `Ground.mmg`,
+  router tu coi la leg thuyen va validate `boat=True`; trong khi path di bo `(430,50) -> (430,2500)`
+  hop le. Them force-walk sea gate `(23521,23000,2)` trong build va execute.

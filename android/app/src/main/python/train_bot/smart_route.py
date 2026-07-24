@@ -5,12 +5,26 @@ import math
 import os
 import tempfile
 
-_ROUTE_CACHE_VERSION = "oneway-bh-11000-v1"
+_ROUTE_CACHE_VERSION = "oneway-huaxuong-luoyang-v2"
 
-# Bac Hai -> 11000 la cong mot chieu: co duong di ra Bac Hai nhung khong co
-# reverse edge de suy ra diem roi. State 11000001 dung cung diem roi nay.
+# Mot so cong mot chieu khong co reverse edge de suy ra diem roi.
 _ONE_WAY_TARGET_ARRIVALS = {
+    # Bac Hai -> 11000. State 11000001 dung cung diem roi nay.
     (11011, 11000, 1): (390, 1190),
+    # Thong dao Tieu Quan -> 13000, dung khi di Tu Chau/Hoi Ke qua Hua Xuong.
+    (15402, 13000, 1): (2200, 600),
+    # Route Hua Xuong -> Lac Duong di qua cum dao 135xx/134xx co 2 cong mot chieu
+    # khong co reverse edge trong world_nav, nen can diem roi de build duong leg tiep.
+    (13422, 13423, 1): (1110, 430),
+    (13432, 13433, 1): (3170, 430),
+    (13438, 13423, 2): (1110, 430),
+    (13428, 13000, 2): (2070, 890),
+}
+
+# Gate center nam tren o sea trong Ground.mmg nhung thuc te la cong script/di bo.
+_FORCE_WALK_SEA_GATES = {
+    # Linh Lang -> Truong Sa: map 23521 xuong 23000, path di bo hop le; ep boat=True se fail build.
+    (23521, 23000, 2),
 }
 
 
@@ -81,6 +95,14 @@ class SmartWorldRouter:
 
     def _cache_fingerprint(self):
         return f"{self.nav.fingerprint}:{_ROUTE_CACHE_VERSION}"
+
+    @staticmethod
+    def _force_walk_sea(edge):
+        return (
+            int(edge["scene"]),
+            int(edge["target_scene"]),
+            int(edge["door"]),
+        ) in _FORCE_WALK_SEA_GATES
 
     def nearest_city(self, dest_map, exclude_city=None):
         dest_map = int(dest_map)
@@ -235,7 +257,8 @@ class SmartWorldRouter:
         last_sea = -1
         for j, e in enumerate(legs):
             gate = self.nav.get_gate(e["scene"], e["door"])
-            if gate is not None and self.ground.is_sea_world(e["scene"], tuple(gate["center"])):
+            if (gate is not None and not self._force_walk_sea(e)
+                    and self.ground.is_sea_world(e["scene"], tuple(gate["center"]))):
                 if first_sea < 0:
                     first_sea = j
                 last_sea = j

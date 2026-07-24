@@ -1332,9 +1332,20 @@ class PartyConfigFrame(ttk.Frame):
 
         c = ctrl.account_clients.get(uname)
         st = c.state if (c is not None and getattr(c, "state", None)) else None
+
+        def _live_skill_ids(unit):
+            if st is None:
+                return []
+            if unit == "char":
+                return sorted(getattr(st, "skills_char", []) or [])
+            skills = list(getattr(st, "pet_skills", []) or [])
+            if not skills:
+                skills = list(getattr(st, "skills_pet", []) or [])
+            return sorted({int(s) for s in skills if isinstance(s, int) or str(s).isdigit()})
+
         live_skills = {
-            "char": sorted(getattr(st, "skills_char", []) or []) if st else [],
-            "pet": sorted(getattr(st, "pet_skills", []) or []) if st else [],
+            "char": _live_skill_ids("char"),
+            "pet": _live_skill_ids("pet"),
         }
         online = st is not None
 

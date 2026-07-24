@@ -288,6 +288,19 @@ def _running_party_usernames(pidx):
             if is_account_running(u) and account_clients.get(u) is not None]
 
 
+def _active_party_usernames(pidx):
+    """Acc dang duoc START, ke ca dang reconnect/chua vao world xong."""
+    active = []
+    for u, _p, _l, _pk in party_accounts(pidx):
+        if not is_account_running(u):
+            continue
+        ev = account_stops.get(u)
+        if ev is not None and ev.is_set():
+            continue
+        active.append(u)
+    return active
+
+
 def _party_exit_summary(pidx, exclude_user):
     """Goi trong finally moi acc. Neu MOI acc khac cua party da tat -> log 1 DONG TONG KET
     o cuoi: party thoat het vi ly do gi (gom theo ly do). Chi log 1 lan/lan-chay."""
@@ -1643,7 +1656,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         return False
                     time.sleep(1)
 
-            def _manual_route_all_at_source(source, expected, timeout=120):
+            def _manual_route_all_at_source(source, expected, timeout=30):
                 with st["lock"]:
                     st.setdefault("manual_route_source_results", {})[username] = (
                         c.current_map == source
@@ -1693,7 +1706,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         st["manual_route_plan_ready"].set()
                         st["manual_route_done"].set()
                         return
-                    users = _running_party_usernames(pidx)
+                    users = _active_party_usernames(pidx)
                     expected = max(1, len(users))
                     plan = {
                         "source": int(source),
@@ -1740,9 +1753,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                              label, source)
 
                 do_channel_sync()
+                if route_leader:
+                    log.info("[%s] manual route: xong sync kenh -> lap party tam de keo map",
+                             label)
                 if expected > 1:
                     if route_leader:
                         reset_party_joined(pidx)
+                        log.info("[%s] manual route: bat dau moi party tam, can %d member join",
+                                 label, expected - 1)
                         last_inv_log = 0.0
                         while joined_member_count(pidx) < expected - 1:
                             if not c.running or _stopped():
@@ -1751,7 +1769,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 c.invite_members(gap=1.0)
                             except Exception:
                                 pass
-                            if time.time() - last_inv_log > 30:
+                            if time.time() - last_inv_log > 10:
                                 log.info("[%s] manual route: CHO DU PARTY roi moi keo, joined=%d/%d",
                                          label, joined_member_count(pidx), expected - 1)
                                 last_inv_log = time.time()
@@ -1766,6 +1784,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     else:
                         _wait_event(st["manual_route_party_ready"], "leader lap party", timeout=None)
 
+                route_completed = False
                 if route_leader:
                     route_restart = {"needed": False, "reason": ""}
 
@@ -1852,6 +1871,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         ok_dest = c.follow_smart_scene_route(source, dest, None, abort=abort, flee=route_flee)
                         if not route_restart["needed"] and ok_dest and c.current_map == dest:
                             _wait_party_map(dest)
+                            route_completed = not route_restart["needed"] and c.current_map == dest
                         elif not route_restart["needed"]:
                             _route_retry(f"leader chua toi BBB={dest} (dang map {c.current_map})")
                     elif not route_restart["needed"]:
@@ -1862,6 +1882,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 else:
                     _wait_event(st["manual_route_source_done"], "leader keo toi AAA", timeout=None)
                     _wait_event(st["manual_route_done"], "leader keo toi BBB", timeout=None)
+                    route_completed = c.current_map == dest
                 c.flee_mode = False
                 # Party "khong co chu PT" chi lap party TAM de keo -> den noi thi GIAI TAN,
                 # moi acc dung yen tai map dich (dung nhu setting).
@@ -1870,7 +1891,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         c.leave_party()
                         if route_leader:
                             reset_party_joined(pidx)
-                        log.info("[%s] manual route: den BBB -> giai tan party tam (khong chu PT), dung yen", label)
+                        if route_completed:
+                            log.info("[%s] manual route: den BBB -> giai tan party tam (khong chu PT), dung yen", label)
+                        else:
+                            log.info("[%s] manual route: chua den BBB -> giai tan party tam de retry/dung yen", label)
                     except Exception as e:
                         log.warning("[%s] manual route: loi giai tan party tam: %s", label, e)
 
@@ -1882,7 +1906,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 if not c.running or _stopped() or time.time() - t0 > 60:
                     break
                 time.sleep(0.5)
-            if is_leader:
+            if is_leader or (kind == "route" and not has_leader):
                 c.leave_party(); reset_party_joined(pidx)   # huy party cu
             if kind == "channel":
                 ch = cmd[1]
@@ -2774,7 +2798,7 @@ def party_route_maps(pidx, source_map=0, dest_map=0):
         log.warning(">>> PARTY %s: route map bi bo qua vi BBB khong hop le: %s",
                     pidx + 1, dest_map)
         return
-    if not _running_party_usernames(pidx):
+    if not _active_party_usernames(pidx):
         log.warning(">>> PARTY %s: KHONG co acc nao dang chay -> khong route map %s -> %s",
                     pidx + 1, source_map or "AUTO", dest_map)
         return
@@ -2884,9 +2908,12 @@ def account_skills(username):
     st = c.state if (c is not None and getattr(c, "state", None)) else None
     if st is None:
         return {"char": [], "pet": []}
+    pet_skills = list(getattr(st, "pet_skills", []) or [])
+    if not pet_skills:
+        pet_skills = list(getattr(st, "skills_pet", []) or [])
     return {
         "char": [_skill_choice(s) for s in sorted(list(getattr(st, "skills_char", []) or []))],
-        "pet": [_skill_choice(s) for s in sorted(list(getattr(st, "pet_skills", []) or []))],
+        "pet": [_skill_choice(s) for s in sorted(set(pet_skills))],
     }
 
 
