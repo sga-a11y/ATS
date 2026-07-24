@@ -1588,7 +1588,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         boss_reform_pending = False # da trigger reform de danh boss QD (chua) - tranh spam reform_gen
         reform_gen_handled = 0      # gen reform da xu ly. Init=0 (KHONG = st["reform_gen"]) de neu
         # co acc bi DUMP luc setup (da bump reform_gen) thi keepalive thay ngay -> reform don no
-        cmd_gen_handled = st["cmd_gen"]   # lenh thu cong (GUI) da xu ly
+        with st["lock"]:
+            cmd_gen_handled = st["cmd_gen"]   # lenh thu cong (GUI) da xu ly
+            _pending_cmd = st.get("cmd")
+            # Neu acc reconnect/login dung luc GUI vua phat lenh DI MAP, thread moi khong duoc coi
+            # cmd_gen hien tai la "da xu ly". Khong thi acc do khong report AAA, ca party cho thieu
+            # nguoi roi tuong sai map -> teleport/relogin lung tung.
+            if (_pending_cmd and _pending_cmd[0] == "route"
+                    and not st["manual_route_done"].is_set()):
+                cmd_gen_handled = max(0, cmd_gen_handled - 1)
         disc_gen_handled = st["disc_gen"] # RECONNECT: gen disconnect da xu ly (init = hien tai)
 
         def _do_manual_cmd(cmd):
@@ -1635,7 +1643,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         return False
                     time.sleep(1)
 
-            def _manual_route_all_at_source(source, expected, timeout=45):
+            def _manual_route_all_at_source(source, expected, timeout=120):
                 with st["lock"]:
                     st.setdefault("manual_route_source_results", {})[username] = (
                         c.current_map == source
@@ -1643,7 +1651,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 t0 = time.time()
                 while True:
                     if not c.running or _stopped():
-                        return False
+                        return None
                     with st["lock"]:
                         results = dict(st.get("manual_route_source_results", {}))
                     any_bad = any(v is False for v in results.values())
@@ -1651,7 +1659,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if any_bad or enough:
                         return enough and not any_bad and all(results.values())
                     if time.time() - t0 > timeout:
-                        return False
+                        log.warning("[%s] manual route: chua du acc report AAA=%s (%d/%d), "
+                                    "cho tiep de tranh teleport tap ket oan",
+                                    label, source, len(results), expected)
+                        t0 = time.time()
                     time.sleep(0.5)
 
             def _do_manual_route():
@@ -1711,6 +1722,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 expected = max(1, int(plan.get("expected", 1)))
                 users = list(plan.get("users") or _running_party_usernames(pidx))
                 all_at_source = _manual_route_all_at_source(source, expected)
+                if all_at_source is None:
+                    return
                 if not all_at_source:
                     c.flee_mode = True
                     try:
@@ -2767,8 +2780,19 @@ def party_route_maps(pidx, source_map=0, dest_map=0):
         return
     st = _pstate(pidx)
     with st["lock"]:
+        new_gen = st["cmd_gen"] + 1
         st["cmd"] = ("route", source_map, dest_map)
-        st["cmd_gen"] += 1
+        st["cmd_gen"] = new_gen
+        # Reset NGAY khi GUI phat lenh, khong doi thread dau tien bat duoc lenh moi reset.
+        # Acc dang reconnect/login sau lenh se thay route active va van xu ly cmd_gen nay.
+        st["manual_route_gen"] = new_gen
+        st["manual_route_plan"] = None
+        st["manual_route_source_results"] = {}
+        st["manual_route_city_arrived"] = {}
+        st["manual_route_plan_ready"].clear()
+        st["manual_route_source_done"].clear()
+        st["manual_route_party_ready"].clear()
+        st["manual_route_done"].clear()
     log.info(">>> PARTY %s: lenh DI MAP %s -> %s (AAA=0 la tu chon thanh gan BBB)",
              pidx + 1, source_map or "AUTO", dest_map)
 
