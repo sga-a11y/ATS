@@ -414,6 +414,32 @@ def _pstate(pidx):
     return _party_state[pidx]
 
 
+def _clear_stale_manual_route(st):
+    """Huy route cua phien party cu, giu cmd_gen tang dan de worker cu khong nhan nham lenh moi."""
+    with st["lock"]:
+        next_gen = int(st.get("cmd_gen", 0)) + 1
+        st["cmd"] = None
+        st["cmd_gen"] = next_gen
+        st["manual_route_gen"] = next_gen
+        st["manual_route_plan"] = None
+        st["manual_route_source_results"] = {}
+        st["manual_route_city_arrived"] = {}
+        st["manual_route_plan_ready"].clear()
+        st["manual_route_source_done"].clear()
+        st["manual_route_party_ready"].clear()
+        st["manual_route_done"].clear()
+
+
+def _route_mismatch_timed_out(state, leader_map, mismatch, now, timeout=15.0):
+    if not mismatch:
+        state.clear()
+        return False
+    if state.get("leader_map") != leader_map or state.get("msg") != mismatch:
+        state.update(leader_map=leader_map, msg=mismatch, since=now)
+        return False
+    return now - state["since"] >= timeout
+
+
 def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn, timeout=3600.0):
     """MODE digioi_train: acc nay DA XONG DG -> danh dau + DUNG YEN cho CA PARTY xong DG.
     Du het -> doi pha party sang "train" (moi acc relogin se chay mode train). Tra True neu
@@ -1814,22 +1840,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 bad.append(f"{u}:{cm}")
                         return ", ".join(bad) if bad else None
 
-                    bad_since = {"t": 0.0, "msg": ""}
+                    bad_since = {}
 
                     def abort():
                         if _stopped() or not c.running:
                             return True
                         bad = _party_maps_bad()
-                        if not bad:
-                            bad_since["t"] = 0.0
-                            bad_since["msg"] = ""
-                            return False
                         now = time.time()
-                        if bad_since["msg"] != bad:
-                            bad_since["t"] = now
-                            bad_since["msg"] = bad
-                            return False
-                        if bad_since["t"] and now - bad_since["t"] >= 15.0:
+                        if _route_mismatch_timed_out(
+                            bad_since, c.current_map, bad, now
+                        ):
                             _route_retry(
                                 f"co acc lech map khi dang keo (leader map={c.current_map}, {bad})"
                             )
@@ -2573,6 +2593,10 @@ def start_account(username, password, pidx, is_leader, is_picker):
     if t is not None and t.is_alive():
         return False
     st = _pstate(pidx)
+    # Start dau tien cua phien party moi: bo route con sot theo pidx tu lan chay/profile cu.
+    # Supervisor reconnect khong di qua start_account nen route dang do van duoc tiep tuc.
+    if not _active_party_usernames(pidx):
+        _clear_stale_manual_route(st)
     st["n_members"] = sum(1 for u, p, lead, _ in party_accounts(pidx) if not lead)
     # MODE digioi_train: party khoi dong LAI tu dau (chua acc nao chay) -> reset pha ve "digioi",
     # khong thi lan chay sau se bo qua DG (pha con ket o "train" tu phien truoc).

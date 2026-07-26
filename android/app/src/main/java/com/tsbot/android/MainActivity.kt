@@ -854,9 +854,10 @@ fun trainMapOptions(): List<Pair<String, String>> {
 /** Doc danh sach diem quai cua 1 map train tu Python de hien dropdown "Quái". Luon co "Bot tu chon"
  * (-1) o dau danh sach. */
 fun trainMobOptions(mapKey: String): List<Pair<Int, String>> {
+    val mapId = mapKey.toIntOrNull() ?: return listOf(-1 to "Bot tự chọn")
     val config = com.chaquo.python.Python.getInstance().getModule("train_bot.config")
     val maps = config.get("TRAIN_MAPS")!!
-    val info = maps.callAttr("get", mapKey) ?: return listOf(-1 to "Bot tự chọn")
+    val info = maps.callAttr("get", mapId) ?: return listOf(-1 to "Bot tự chọn")
     val mobs = info.callAttr("get", "mobs") ?: return listOf(-1 to "Bot tự chọn")
     val list = mutableListOf(-1 to "Bot tự chọn")
     mobs.asList().forEachIndexed { i, pt ->

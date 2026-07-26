@@ -89,6 +89,21 @@ class TestSmartWorldRouter(unittest.TestCase):
         self.assertEqual(route["legs"][6]["target_arrival"], [570, 970])
         self.assertTrue(second_world_leg["paths"])
 
+    def test_builds_hoi_ke_to_giang_lang_through_boat_route(self):
+        route = self.router.build_scene_route(
+            18021, 21011, start=(270, 590)
+        )
+
+        self.assertIsNotNone(route)
+        self.assertEqual(route["source_map"], 18021)
+        self.assertEqual(route["dest_map"], 21011)
+        self.assertEqual(
+            [leg["target_scene"] for leg in route["legs"][:4]],
+            [18000, 15000, 18000, 21000],
+        )
+        self.assertEqual(route["legs"][0]["target_arrival"], [3190, 1270])
+        self.assertTrue(route["legs"][1]["paths"])
+
     def test_builds_40npc_exit_from_current_position(self):
         route = self.router.build_scene_route(10991, 12003, start=(910, 290))
 

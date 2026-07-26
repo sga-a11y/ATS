@@ -104,10 +104,7 @@ class BattleState:
     def _is_mineral_enemy(tid=None, name=None):
         if name:
             norm = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii").lower()
-            if "khoang" in norm:
-                return True
-        if tid is not None and 0x61A9 <= int(tid) <= 0x62A4:
-            return True
+            return norm.startswith("khoang ")
         return False
 
     # ---- parse 0x33 (stat update theo luot) ----

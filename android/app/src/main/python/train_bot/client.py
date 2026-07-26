@@ -16,6 +16,13 @@ from .state import BattleState, Unit
 
 log = logging.getLogger("bot")
 
+
+def _open_game_socket(host, port):
+    sock = socket.create_connection((host, port), timeout=15)
+    sock.settimeout(None)
+    return sock
+
+
 PHUC_THAN_PROTECTION_PRIORITY = (
     (0x5AAB, "equip"),
     (0x5A2D, "equip"),
@@ -927,12 +934,12 @@ class GameClient:
         st = _load_gift_state(self._label, today=self._daily_date)
         self._online_base = st["online_sec"]   # online tich luy truoc phien nay (hom nay)
         self.claimed_gifts = st["claimed"]
-        self.sock = socket.create_connection((self.host, config.GAME_PORT), timeout=15)
+        self.sock = _open_game_socket(self.host, config.GAME_PORT)
         log.info("[%s] Da ket noi %s:%s", self._label, self.host, config.GAME_PORT)
         self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
         log.info("[%s] Da gui auth (user_id=%s, server_id=%s)", self._label, self.user_id, self.server_id)
         self.running = True
-        threading.Thread(target=self._recv_loop, daemon=True).start()
+        threading.Thread(target=self._recv_loop, args=(self.sock,), daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         self._login_setup()   # chuoi setup sau auth -> char thanh combat-active (quai moi aggro)
 
@@ -1023,7 +1030,7 @@ class GameClient:
         self.last_turn_time = 0.0
         self.pos = None   # se duoc 0x03 self-spawn resync ngay sau login
         try:
-            self.sock = socket.create_connection((self.host, config.GAME_PORT), timeout=15)
+            self.sock = _open_game_socket(self.host, config.GAME_PORT)
             self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
         except OSError as e:
             log.warning("[%s] RELOGIN that bai (ket noi): %s", self._label, e)
@@ -1031,7 +1038,7 @@ class GameClient:
         self.server_closed = False      # ket noi MOI thanh cong -> xoa co (socket cu ko lien quan)
         self._deliberate_close = False  # tu day recv moi lai bao rot that su
         self.running = True
-        threading.Thread(target=self._recv_loop, daemon=True).start()
+        threading.Thread(target=self._recv_loop, args=(self.sock,), daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         self._login_setup()
         # cho 0x03 self-spawn resync pos (toi da 6s)
@@ -1262,11 +1269,13 @@ class GameClient:
                 break
 
     # ---- recv ----
-    def _recv_loop(self):
-        while self.running:
+    def _recv_loop(self, sock):
+        while self.running and sock is self.sock:
             try:
-                data = self.sock.recv(8192)
+                data = sock.recv(8192)
             except OSError as e:
+                if sock is not self.sock:
+                    break
                 # OSError = socket loi. Neu KHONG phai ta tu dong (close/relogin) -> SERVER ROT that
                 # (connection reset...) -> danh dau server_closed de supervisor RECONNECT (giong nhanh
                 # empty-data). Truoc day nhanh nay KHONG set -> nick rot kieu reset "chet am tham".
@@ -1276,6 +1285,8 @@ class GameClient:
                 self.running = False   # rot ket noi -> dung MOI vong lap (tranh loop mai tren socket chet)
                 break
             if not data:
+                if sock is not self.sock or self._deliberate_close:
+                    break
                 log.warning("[%s] Server dong ket noi", self._label or self._username)
                 # DUMP 12 goi gui + 12 goi NHAN gan nhat -> tim goi gay kick
                 for ts, op, hx in list(self._recent_sends)[-12:]:
@@ -4896,18 +4907,13 @@ class GameClient:
                 return ok
             time.sleep(0.05)
 
-        log.info("[%s] request scene khong co self-spawn moi -> relogin", self._label)
-        if not self.relogin():
-            log.warning("[%s] resync pos that bai: relogin loi", self._label)
-            return False
-        ok = (self._position_generation != generation
-              and self.current_map == source_map
-              and self.pos is not None)
-        if not ok:
-            log.warning("[%s] resync pos sau relogin khong hop le: gen=%s->%s map=%s pos=%s",
-                        self._label, generation, self._position_generation,
-                        self.current_map, self.pos)
-        return ok
+        if self.current_map == source_map and self.pos is not None:
+            log.info("[%s] request scene khong co self-spawn moi -> dung pos hien tai %s",
+                     self._label, self.pos)
+            return True
+        log.warning("[%s] request scene khong co self-spawn va khong co pos hop le",
+                    self._label)
+        return False
 
     def build_smart_scene_route(self, source_map: int, dest_map: int, safe=None):
         router = _smart_world_router()
@@ -4919,7 +4925,8 @@ class GameClient:
         )
 
     def follow_smart_scene_route(self, source_map: int, dest_map: int, safe=None,
-                                 abort=None, flee=True) -> bool:
+                                 abort=None, flee=True,
+                                 refresh_position=True) -> bool:
         source_map = int(source_map)
         dest_map = int(dest_map)
         if not self.running or (abort and abort()):
@@ -4928,15 +4935,21 @@ class GameClient:
             log.warning("[%s] scene route: dang o map %s, can bat dau tu %s",
                         self._label, self.current_map, source_map)
             return False
-        deadline = time.time() + 20.0
-        while self.running and time.time() < deadline and self.pos is None:
-            if abort and abort():
+        if refresh_position:
+            if not self.refresh_server_position(source_map):
+                log.warning("[%s] scene route: khong lay duoc toa do moi map=%s",
+                            self._label, source_map)
                 return False
-            time.sleep(0.2)
-        if self.pos is None:
-            log.warning("[%s] scene route: chua co toa do xuat phat map=%s",
-                        self._label, self.current_map)
-            return False
+        else:
+            deadline = time.time() + 20.0
+            while self.running and time.time() < deadline and self.pos is None:
+                if abort and abort():
+                    return False
+                time.sleep(0.2)
+            if self.pos is None:
+                log.warning("[%s] scene route: chua co toa do xuat phat map=%s",
+                            self._label, self.current_map)
+                return False
         route = self.build_smart_scene_route(source_map, dest_map, safe)
         if route is None:
             log.warning("[%s] scene route: khong tim thay duong %s -> %s",
@@ -5068,7 +5081,9 @@ class GameClient:
         self.flee_mode = True
         if not self.refresh_server_position(source_map):
             return False
-        if not self.follow_smart_scene_route(source_map, out_map, safe=None, flee=True):
+        if not self.follow_smart_scene_route(
+            source_map, out_map, safe=None, flee=True, refresh_position=False
+        ):
             log.warning("[%s] exit_event: khong di duoc %s -> %s tu pos=%s",
                         self._label, source_map, out_map, self.pos)
             return False

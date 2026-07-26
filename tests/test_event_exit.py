@@ -50,32 +50,23 @@ class TestServerPositionRefresh(unittest.TestCase):
         relogin.assert_not_called()
         self.assertEqual(self.client.pos, (880, 320))
 
-    def test_scene_timeout_relogins_and_requires_new_spawn(self):
-        def relogin():
-            self.client._dispatch(
-                0x03,
-                self_spawn(self.client.self_entity, 10991, 870, 330),
-            )
-            return True
-
+    def test_scene_timeout_keeps_known_position_without_relogin(self):
         with mock.patch.object(self.client, "send"), \
-             mock.patch.object(
-                 self.client,
-                 "relogin",
-                 side_effect=relogin,
-             ) as relogin_mock:
+             mock.patch.object(self.client, "relogin") as relogin_mock:
             self.assertTrue(
                 self.client.refresh_server_position(10991, request_timeout=0.0)
             )
-        relogin_mock.assert_called_once_with()
-        self.assertEqual(self.client.pos, (870, 330))
+        relogin_mock.assert_not_called()
+        self.assertEqual(self.client.pos, (910, 290))
 
-    def test_relogin_without_fresh_spawn_fails(self):
+    def test_scene_timeout_without_known_position_fails_without_relogin(self):
+        self.client.pos = None
         with mock.patch.object(self.client, "send"), \
-             mock.patch.object(self.client, "relogin", return_value=True):
+             mock.patch.object(self.client, "relogin") as relogin_mock:
             self.assertFalse(
                 self.client.refresh_server_position(10991, request_timeout=0.0)
             )
+        relogin_mock.assert_not_called()
 
     def test_fresh_spawn_on_different_map_fails(self):
         def answer_scene(_opcode, _payload):
@@ -109,10 +100,17 @@ class TestSmartEventExit(unittest.TestCase):
         }
 
     def test_exit_resyncs_then_uses_smart_scene_route_and_ignores_steps(self):
-        def finish_route(source_map, dest_map, safe=None, abort=None, flee=True):
+        def finish_route(
+            source_map,
+            dest_map,
+            safe=None,
+            abort=None,
+            flee=True,
+            refresh_position=True,
+        ):
             self.assertEqual(
-                (source_map, dest_map, safe, flee),
-                (10991, 12003, None, True),
+                (source_map, dest_map, safe, flee, refresh_position),
+                (10991, 12003, None, True, False),
             )
             self.client.current_map = 12003
             return True
@@ -170,8 +168,49 @@ class TestSmartEventExit(unittest.TestCase):
             return_value=False,
         ) as route:
             self.assertFalse(self.client.exit_event(self.event))
-        route.assert_called_once_with(10991, 12003, safe=None, flee=True)
+        route.assert_called_once_with(
+            10991, 12003, safe=None, flee=True, refresh_position=False
+        )
         self.assertEqual(self.client.current_map, 10991)
+
+
+class TestSmartSceneRoute(unittest.TestCase):
+    def setUp(self):
+        self.client = GameClient("user", "token")
+        self.client.running = True
+        self.client.current_map = 18021
+        self.client.pos = (2730, 1030)
+
+    def test_refreshes_server_position_before_building_route(self):
+        route = {
+            "dest_map": 21011,
+            "safe": None,
+            "legs": [],
+        }
+
+        def refresh(_source_map):
+            self.client.pos = (270, 590)
+            return True
+
+        with mock.patch.object(
+            self.client,
+            "refresh_server_position",
+            side_effect=refresh,
+        ) as refresh_mock, mock.patch.object(
+            self.client,
+            "build_smart_scene_route",
+            return_value=route,
+        ) as build, mock.patch(
+            "bot.client.execute_smart_route",
+            return_value=True,
+        ):
+            self.assertTrue(
+                self.client.follow_smart_scene_route(18021, 21011)
+            )
+
+        refresh_mock.assert_called_once_with(18021)
+        build.assert_called_once_with(18021, 21011, None)
+        self.assertEqual(self.client.pos, (270, 590))
 
 
 if __name__ == "__main__":

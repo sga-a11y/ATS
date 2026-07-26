@@ -228,7 +228,7 @@ PET_SKILLS, PET_NAMES, PET_HE_DOANH = _load_pets()   # pet_id -> skills/ten/(he,
 
 # DATA TEN QUAI/NPC: doc tu npc_names.json (AUTO tools/crack_npc_names.py). template_id -> ten.
 # Dung tra TEN QUAI trong battle (entity[2:4] = template_id) cho dieu kien skill 'quai khoang'
-# (ten chua 'Khoang') va sau nay 'NPC nguy hiem' (ten thuoc list cau hinh).
+# (ten bat dau bang 'Khoang ') va sau nay 'NPC nguy hiem' (ten thuoc list cau hinh).
 def _load_npc_names():
     import json, os
     f = os.path.join(_base_dir(), "npc_names.json")

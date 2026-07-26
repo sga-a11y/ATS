@@ -1,10 +1,38 @@
 """Cau hinh bot TS Online - BAN MAU.
 Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitignore.
 """
-from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
+import json
 import os
+from ._appdir import app_dir as _base_dir
+from .train_maps_store import materialize_train_maps
 
 TRAIN_MAPS_PATH = os.path.join(_base_dir(), "train_maps.json")
+
+
+def _read_asset(name):
+    from com.chaquo.python import Python
+    from java import jclass
+
+    context = Python.getPlatform().getApplication()
+    stream = context.getAssets().open(f"train_bot_data/{name}")
+    reader = jclass("java.io.BufferedReader")(
+        jclass("java.io.InputStreamReader")(stream, "UTF-8")
+    )
+    lines = []
+    line = reader.readLine()
+    while line is not None:
+        lines.append(str(line))
+        line = reader.readLine()
+    reader.close()
+    return "\n".join(lines)
+
+
+def _log_asset_error(name, error):
+    import sys
+    print(
+        f"[config] doc {name} LOI: {type(error).__name__}: {error}",
+        file=sys.stderr,
+    )
 
 # Tai khoan mac dinh (single bot)
 USERNAME = "your_username"
@@ -52,25 +80,31 @@ START_CITY_ID = 12061
 #   START_CITY_ID == DIGIOI_MAP_ID -> train Di Gioi (run-around)
 #   con lai -> dung i tai cho
 def _load_train_maps():
-    import json, os
-    f = TRAIN_MAPS_PATH
-    out = {}
     try:
-        with open(f, encoding="utf-8") as fh:
-            d = json.load(fh)
-        for k, v in d.get("maps", {}).items():
-            s = v["safe"]
-            # safe = [[x,y],...] (nhieu diem) HOAC [x,y] (1 diem, format cu) -> chuan hoa LIST diem
-            if not s:
+        baseline = json.loads(_read_asset("train_maps.json"))
+        data = materialize_train_maps(TRAIN_MAPS_PATH, baseline)
+        out = {}
+        for key, value in data.get("maps", data).items():
+            safe = value.get("safe", [])
+            if not safe:
                 safes = []
-            elif isinstance(s[0], (list, tuple)):
-                safes = [tuple(p) for p in s]
+            elif isinstance(safe[0], (list, tuple)):
+                safes = [tuple(point) for point in safe]
             else:
-                safes = [tuple(s)]
-            out[int(k)] = {"safe": safes, "mobs": [tuple(m) for m in v.get("mobs", [])]}
-    except Exception:
-        pass
-    return out
+                safes = [tuple(safe)]
+            entry = {
+                "safe": safes,
+                "mobs": [
+                    tuple(point) for point in value.get("mobs", [])
+                ],
+            }
+            if value.get("name"):
+                entry["name"] = value["name"]
+            out[int(key)] = entry
+        return out
+    except Exception as error:
+        _log_asset_error("train_maps.json", error)
+        return {}
 TRAIN_MAPS = _load_train_maps()
 def _load_map_gates(path=None):
     """Doc map_gates.json -> {map_id:int -> [(x,y,to), ...]} (do thi cong di chuyen).
@@ -117,31 +151,33 @@ MOB_PACKET_CAPTURE_DIR = _base_dir()
 def _load_train_routes(path=None):
     """Doc train_routes.json -> {dest_map:int -> {from_city, city_flag, dest_map, steps}}.
     Route replay tu thanh toi train map (leader di, member tu keo theo)."""
-    import json, os
-    f = path or os.path.join(_base_dir(), "train_routes.json")
-    out = {}
     try:
-        with open(f, encoding="utf-8") as fh:
-            d = json.load(fh)
-        for k, v in d.get("routes", {}).items():
-            out[int(k)] = v
-    except Exception:
-        pass
-    return out
+        if path:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        else:
+            data = json.loads(_read_asset("train_routes.json"))
+        return {
+            int(key): value
+            for key, value in data.get("routes", data).items()
+        }
+    except Exception as error:
+        _log_asset_error("train_routes.json", error)
+        return {}
 TRAIN_ROUTES = _load_train_routes()
 def _load_events(path=None):
     """Doc events.json -> {event_key -> {label, select, staging_map, dest_map, steps}}.
     Mode 'event': tele toi map event roi dung yen (moi nick tu teleport rieng)."""
-    import json, os
-    f = path or os.path.join(_base_dir(), "events.json")
-    out = {}
     try:
-        with open(f, encoding="utf-8") as fh:
-            for k, v in json.load(fh).get("events", {}).items():
-                out[k] = v
-    except Exception:
-        pass
-    return out
+        if path:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        else:
+            data = json.loads(_read_asset("events.json"))
+        return dict(data.get("events", data))
+    except Exception as error:
+        _log_asset_error("events.json", error)
+        return {}
 EVENTS = _load_events()
 def _load_mob_paths(path=None):
     """Doc mob_paths.json -> {map_id:int -> {(sx,sy):tuple -> [(x,y),...]}}.
@@ -186,12 +222,10 @@ VANTIEU_PETS_NAMES = []
 
 # Phase-2 van tieu match: he/doanh pet (tu game data Npc_C.dat) + yeu cau (ma 0400).
 def _load_json_root(fn):
-    import json, os
-    f = os.path.join(_base_dir(), fn)
     try:
-        with open(f, encoding="utf-8") as fh:
-            return json.load(fh)
-    except Exception:
+        return json.loads(_read_asset(fn))
+    except Exception as error:
+        _log_asset_error(fn, error)
         return {}
 PET_HEDOANH = _load_json_root("pet_hedoanh.json")                       # ten pet -> {he, doanh}
 VANTIEU_REQUESTS = _load_json_root("vantieu_requests.json").get("requests", {})  # ma 0400 -> {he, doanh}
@@ -209,53 +243,45 @@ PET_FIRE_MIN_SP = 65        # combo (Hoa Tien/Nem Da/Loan Kich): SP < 65 -> danh
 # DATA PET: doc tu pets.json (AUTO-SINH tools/crack_pets.py). pet_id hex -> name + skills (LIST,
 # giu thu tu: skill[0]=boss fallback) + (he,doanh). boss/combo TU SUY o combat tu SKILL_INFO.
 def _load_pets():
-    import json, os
-    f = os.path.join(_base_dir(), "pets.json")
     skills, names, hedoanh = {}, {}, {}
     try:
-        with open(f, encoding="utf-8") as fh:
-            d = json.load(fh)
+        d = json.loads(_read_asset("pets.json"))
         for k, v in d.get("pets", {}).items():
             pid = int(k, 16)
             skills[pid] = list(v.get("skills", []))   # LIST (giu thu tu cho boss skill[0])
             names[pid] = v.get("name", "")
             if v.get("he") or v.get("doanh"):   # he/doanh (cho VAN TIEU match)
                 hedoanh[pid] = (v.get("he", ""), v.get("doanh", ""))
-    except Exception:
-        pass
+    except Exception as error:
+        _log_asset_error("pets.json", error)
     return skills, names, hedoanh
 PET_SKILLS, PET_NAMES, PET_HE_DOANH = _load_pets()   # pet_id -> skills/ten/(he,doanh)
 
 # DATA TEN QUAI/NPC: doc tu npc_names.json (AUTO tools/crack_npc_names.py). template_id -> ten.
 # Dung tra TEN QUAI trong battle (entity[2:4] = template_id) cho dieu kien skill 'quai khoang'
-# (ten chua 'Khoang') va sau nay 'NPC nguy hiem' (ten thuoc list cau hinh).
+# (ten bat dau bang 'Khoang ') va sau nay 'NPC nguy hiem' (ten thuoc list cau hinh).
 def _load_npc_names():
-    import json, os
-    f = os.path.join(_base_dir(), "npc_names.json")
     out = {}
     try:
-        with open(f, encoding="utf-8") as fh:
-            d = json.load(fh)
+        d = json.loads(_read_asset("npc_names.json"))
         for k, v in d.items():
             tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
             out[tid] = v
-    except Exception:
-        pass
+    except Exception as error:
+        _log_asset_error("npc_names.json", error)
     return out
 NPC_NAMES = _load_npc_names()   # template_id (int) -> ten quai/npc
 
 # DATA SKILL: doc tu skills_data.json (AUTO crack_skills.py). skill_id -> {cost, dame, splash}.
 # combat tu suy combo (dame AoE re) + boss (dame splash 4>1) -> KHONG can list cung.
 def _load_skill_info():
-    import json, os
-    f = os.path.join(_base_dir(), "skills_data.json")
     out = {}
     try:
-        with open(f, encoding="utf-8") as fh:
-            for k, v in json.load(fh).get("skills", {}).items():
-                out[int(k, 16)] = v
-    except Exception:
-        pass
+        data = json.loads(_read_asset("skills_data.json"))
+        for key, value in data.get("skills", {}).items():
+            out[int(key, 16)] = value
+    except Exception as error:
+        _log_asset_error("skills_data.json", error)
     return out
 SKILL_INFO = _load_skill_info()
 
@@ -280,15 +306,13 @@ JUNK_PET_SCROLLS = _load_junk_scrolls()
 # NGUYEN LIEU RAC -> bot tu DONATE cho quan doan luc login (don tui). Doc tu donate_items.json
 # (itemId hex -> ten). Them item BANG CACH SUA donate_items.json roi khoi dong lai.
 def _load_donate_items():
-    import json, os
-    f = os.path.join(_base_dir(), "donate_items.json")
     out = {}
     try:
-        with open(f, encoding="utf-8") as fh:
-            for k, v in json.load(fh).get("items", {}).items():
-                out[int(k, 16)] = v
-    except Exception:
-        pass
+        data = json.loads(_read_asset("donate_items.json"))
+        for key, value in data.get("items", {}).items():
+            out[int(key, 16)] = value
+    except Exception as error:
+        _log_asset_error("donate_items.json", error)
     return out
 DONATE_ITEMS = _load_donate_items()
 
@@ -298,21 +322,27 @@ DONATE_ITEMS = _load_donate_items()
 #                                             co < 25 -> dung het). Batch nhieu cai 1 lenh.
 # Tra dict: tid -> {"name": str, "qty": int|None}. qty None = khong gioi han (dung het, 1/lenh).
 def _load_use_items():
-    import json, os
-    f = os.path.join(_base_dir(), "use_items.json")
     out = {}
     try:
-        with open(f, encoding="utf-8") as fh:
-            for k, v in json.load(fh).get("items", {}).items():
-                tid = int(k, 16)
-                if isinstance(v, dict):
-                    out[tid] = {"name": v.get("name", ""), "qty": v.get("qty"),
-                                "phuc_than": bool(v.get("phuc_than", False)),
-                                "equip": bool(v.get("equip", False))}
-                else:
-                    out[tid] = {"name": v, "qty": None, "phuc_than": False, "equip": False}
-    except Exception:
-        pass
+        data = json.loads(_read_asset("use_items.json"))
+        for key, value in data.get("items", {}).items():
+            tid = int(key, 16)
+            if isinstance(value, dict):
+                out[tid] = {
+                    "name": value.get("name", ""),
+                    "qty": value.get("qty"),
+                    "phuc_than": bool(value.get("phuc_than", False)),
+                    "equip": bool(value.get("equip", False)),
+                }
+            else:
+                out[tid] = {
+                    "name": value,
+                    "qty": None,
+                    "phuc_than": False,
+                    "equip": False,
+                }
+    except Exception as error:
+        _log_asset_error("use_items.json", error)
     return out
 USE_LOGIN_ITEMS = _load_use_items()
 
@@ -373,12 +403,10 @@ XOR_KEY = 0xAD
 PARTY_CONFIG = {}
 PARTY_LEADERS_BY_IDX = {}   # pidx -> [ten leader] white list rieng party (tu accounts.json)
 def _load_servers():
-    import json, os
-    f = os.path.join(_base_dir(), "servers.json")
     try:
-        with open(f, encoding="utf-8") as fh:
-            return json.load(fh).get("servers", {})
-    except Exception:
+        return json.loads(_read_asset("servers.json")).get("servers", {})
+    except Exception as error:
+        _log_asset_error("servers.json", error)
         return {}
 SERVERS = _load_servers()
 def _server_ip(name):

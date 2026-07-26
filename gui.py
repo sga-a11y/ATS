@@ -80,7 +80,9 @@ def _load_donate_qr_image():
 
 
 # Party MAU cho profile moi (placeholder de user thay = acc that)
-_DEFAULT_PARTY = {"server": "trieu_van", "mode": "stand", "start_city_id": 0, "mob_index": -1,
+# Mac dinh mode TRAIN map Rung Noi Huynh (12831) - nhieu user tao acc xong KHONG chon che do,
+# de "stand" (dung yen) thi bot khong lam gi -> tuong bot loi. Train Noi Huynh chay duoc ngay.
+_DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831, "mob_index": -1,
                   "city_flag": 0, "do_daily": True, "leaders": [],
                   "accounts": [{"u": "acc1", "p": "pass1", "on": True},
                                {"u": "acc2", "p": "pass2", "on": True},

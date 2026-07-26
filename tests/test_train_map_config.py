@@ -10,6 +10,20 @@ from bot import config
 
 
 class TestTrainMapConfig(unittest.TestCase):
+    def test_android_train_mob_loader_uses_numeric_map_id(self):
+        path = (
+            "android/app/src/main/java/com/tsbot/android/MainActivity.kt"
+        )
+        with open(path, encoding="utf-8") as fh:
+            source = fh.read()
+
+        start = source.index("fun trainMobOptions")
+        end = source.index("\n}", start)
+        body = source[start:end]
+
+        self.assertIn("mapKey.toIntOrNull()", body)
+        self.assertIn('maps.callAttr("get", mapId)', body)
+
     def test_rung_cuu_nguyen_has_promoted_safe_and_mob_centers(self):
         maps = config._load_train_maps()
 
@@ -58,6 +72,30 @@ class TestTrainMapConfig(unittest.TestCase):
 
         self.assertEqual(maps, {999: {"safe": [], "mobs": []}})
         self.assertEqual(calls[0][0], "app/train_maps.json")
+
+    def test_android_static_data_loaders_read_bundled_assets(self):
+        path = "android/app/src/main/python/train_bot/config.py"
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+        functions = {
+            node.name: node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+        }
+
+        for name in (
+            "_load_train_routes",
+            "_load_events",
+            "_load_json_root",
+            "_load_pets",
+            "_load_npc_names",
+            "_load_skill_info",
+            "_load_donate_items",
+            "_load_use_items",
+            "_load_servers",
+        ):
+            with self.subTest(loader=name):
+                self.assertIn("_read_asset", ast.unparse(functions[name]))
 
     def test_pc_config_exposes_writable_train_maps_path(self):
         self.assertTrue(config.TRAIN_MAPS_PATH.endswith("train_maps.json"))

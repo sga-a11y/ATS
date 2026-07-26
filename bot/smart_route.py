@@ -274,6 +274,19 @@ class SmartWorldRouter:
                     return None
                 total_distance += _path_distance(path)
             next_start = self._arrival_after(edge)
+            if next_start is not None and index + 1 < len(legs):
+                next_edge = legs[index + 1]
+                if first_sea <= index + 1 <= last_sea:
+                    next_gate = self.nav.get_gate(
+                        next_edge["scene"], next_edge["door"]
+                    )
+                    if next_gate is not None:
+                        next_start = self.ground.nearest_walkable_world(
+                            edge["target_scene"],
+                            next_start,
+                            tuple(next_gate["center"]),
+                            boat=True,
+                        )
             route_leg = {
                 "scene": edge["scene"],
                 "target_scene": edge["target_scene"],

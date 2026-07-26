@@ -512,7 +512,7 @@ def _is_mineral_battle(state):
         return True
     for name in getattr(state, "enemy_names", ()) or ():
         s = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii").lower()
-        if "khoang" in s:
+        if s.startswith("khoang "):
             return True
     return False
 

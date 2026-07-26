@@ -16,7 +16,7 @@ from ._appdir import app_dir
 
 _LOCK = threading.Lock()
 _FILE = "train_block_stats.json"
-MAX_SPOT_BATTLES = 1_000_000   # toi da so tran ghi/diem (du de danh gia, file khoi phinh)
+MAX_SPOT_BATTLES = 100_000   # toi da so tran ghi/diem (du thay ti le, file khoi phinh)
 
 
 def _path() -> str:

@@ -132,10 +132,15 @@ def find_local_path(grid, width, height, start, target, smooth=True, boat=False)
     came_from = {start: None}
     cost_so_far = {start: 0}
     serial = 0
+    best = start                       # o REACHABLE gan target nhat (best-effort neu target ket)
+    best_d = math.dist(start, target)
     while frontier:
         _, _, current = heapq.heappop(frontier)
         if current == target:
             break
+        cd = math.dist(current, target)
+        if cd < best_d:
+            best_d, best = cd, current
         x, y = current
         for nxt in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
             if _blocked(grid, width, height, *nxt, boat):
@@ -147,7 +152,13 @@ def find_local_path(grid, width, height, start, target, smooth=True, boat=False)
                 serial += 1
                 heapq.heappush(frontier, (new_cost + math.dist(nxt, target), serial, nxt))
     if target not in came_from:
-        return None
+        # target KET (bi chan / pocket roi / gate center lech vao o chan - grid collision KHONG khop
+        # 100% passability that, xem KNOWLEDGE 7d-RE). Di toi o REACHABLE GAN target nhat neu DU GAN
+        # (<=4 block ~80px): cong trigger theo khoang cach nen toi sat la duoc. Xa hon -> that su ket.
+        if best_d <= 4 and best != start:
+            target = best
+        else:
+            return None
 
     path = []
     current = target
@@ -228,12 +239,14 @@ class GroundMapStore:
         left, top = self._world_origin(m)
         return block[0] * 20 - 10 + left, block[1] * 20 - 10 + top
 
-    def reachable_blocks(self, map_id, start):
+    def reachable_blocks(self, map_id, start, boat=False):
         m = self.get(map_id)
         if m is None:
             return set()
         block = self.world_to_block(map_id, start)
-        block = _empty_target(m["grid"], m["grid_w"], m["grid_h"], block)
+        block = _empty_target(
+            m["grid"], m["grid_w"], m["grid_h"], block, boat=boat
+        )
         if block is None:
             return set()
         found = {block}
@@ -241,7 +254,9 @@ class GroundMapStore:
         while queue:
             x, y = queue.popleft()
             for nxt in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
-                if nxt in found or _blocked(m["grid"], m["grid_w"], m["grid_h"], *nxt):
+                if nxt in found or _blocked(
+                    m["grid"], m["grid_w"], m["grid_h"], *nxt, boat
+                ):
                     continue
                 found.add(nxt)
                 queue.append(nxt)
@@ -276,8 +291,8 @@ class GroundMapStore:
             ordered.extend(self.block_to_world(map_id, selected[key]) for key in keys)
         return ordered
 
-    def nearest_walkable_world(self, map_id, point, reachable_from):
-        component = self.reachable_blocks(map_id, reachable_from)
+    def nearest_walkable_world(self, map_id, point, reachable_from, boat=False):
+        component = self.reachable_blocks(map_id, reachable_from, boat=boat)
         if not component:
             return None
         target = self.world_to_block(map_id, point)
