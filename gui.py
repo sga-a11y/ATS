@@ -2045,6 +2045,11 @@ class TrainMapEditor(tk.Toplevel):
         self.maps = [{"id": k, "name": v.get("name", k),
                       "safe": _safe_points(v.get("safe", [])),
                       "mobs": [list(p) for p in v.get("mobs", [])]} for k, v in raw.items()]
+        # Map nao luc MO editor da RONG (chua co bai). Khi luu: neu 1 map van rong (user khong tu
+        # nhap) NHUNG file tren dia da co bai (bot AUTO-LEARN trong luc editor dang mo) -> GIU data
+        # dia, khong de snapshot cu de len (bug: auto-learn 21833 xong, bam Luu -> mat data).
+        self._orig_empty = {k for k, v in raw.items()
+                            if not v.get("mobs") and not v.get("safe")}
         self._cur = None
 
         # Pack BAR (Luu/Huy) o DAY truoc -> giu cho duoi cung (left/right pack sau khong de len)
@@ -2054,7 +2059,10 @@ class TrainMapEditor(tk.Toplevel):
 
         left = ttk.Frame(self, padding=6); left.pack(side="left", fill="y")
         ttk.Label(left, text="Danh sách map:").pack(anchor="w")
-        self.lb = tk.Listbox(left, width=42, height=20, exportselection=False)
+        # selectmode extended: Ctrl+click chon nhieu roi rac, Shift+click chon 1 dai -> Len/Xuong
+        # move CA KHOI 1 lan (khoi move tung map 1).
+        self.lb = tk.Listbox(left, width=42, height=20, exportselection=False,
+                             selectmode="extended")
         self.lb.pack(fill="y", expand=True)
         self.lb.bind("<<ListboxSelect>>", lambda e: self._on_select())
         b = ttk.Frame(left); b.pack(fill="x", pady=4)
@@ -2165,7 +2173,10 @@ class TrainMapEditor(tk.Toplevel):
     def _on_select(self):
         self._commit()
         sel = self.lb.curselection()
-        if not sel:
+        # Chon NHIEU map (de move khoi) -> KHONG nap field (khong biet nap map nao) + _cur=None de
+        # _commit sau do khong ghi de map nao. Chi nap+cho sua khi chon DUNG 1 map.
+        if len(sel) != 1:
+            self._cur = None
             return
         self._cur = sel[0]
         m = self.maps[self._cur]
@@ -2196,17 +2207,37 @@ class TrainMapEditor(tk.Toplevel):
 
     def _move(self, delta):
         self._commit()
-        sel = self.lb.curselection()
+        sel = sorted(self.lb.curselection())
         if not sel:
             return
-        i = sel[0]; j = i + delta
-        if j < 0 or j >= len(self.maps):
-            return
-        self.maps[i], self.maps[j] = self.maps[j], self.maps[i]   # doi cho
-        self._cur = j                      # cap nhat TRUOC khi doi selection (tranh commit nham)
+        n = len(self.maps)
+        # Move CA KHOI (nhieu map cung luc, ke ca chon roi rac). Thuat toan swap chuan: len -> duyet
+        # tu tren xuong, xuong -> duyet tu duoi len; chi swap khi o ke KHONG nam trong selection
+        # (o ke la 1 map dang chon thi no da/se tu di theo -> giu khoi lien mach + dung thu tu).
+        selected = set(sel)
+        if delta < 0:
+            if sel[0] <= 0:
+                return                     # da cham dinh -> khong len duoc
+            order = range(n)
+        else:
+            if sel[-1] >= n - 1:
+                return                     # da cham day -> khong xuong duoc
+            order = range(n - 1, -1, -1)
+        for i in order:
+            j = i + delta
+            if i in selected and 0 <= j < n and j not in selected:
+                self.maps[i], self.maps[j] = self.maps[j], self.maps[i]
+                selected.discard(i); selected.add(j)
+        self._cur = None
         self._reload_list()
-        self.lb.selection_clear(0, "end"); self.lb.selection_set(j); self.lb.see(j)
-        self._on_select_no_commit(j)
+        self.lb.selection_clear(0, "end")
+        for k in sorted(selected):
+            self.lb.selection_set(k)
+        self.lb.see(min(selected) if delta < 0 else max(selected))
+        if len(selected) == 1:
+            j = next(iter(selected))
+            self._cur = j
+            self._on_select_no_commit(j)
 
     def _on_select_no_commit(self, idx):
         m = self.maps[idx]
@@ -2216,13 +2247,23 @@ class TrainMapEditor(tk.Toplevel):
 
     def _save(self):
         self._commit()
+        # DOC LAI file tren dia (co the da co bai AUTO-LEARN moi trong luc editor mo) de MERGE,
+        # tranh snapshot cu de len mat data auto-learn.
+        disk = _load_json("train_maps.json").get("maps", {})
         data = {"_note": "Data map party-train. safe=[[x,y],...] (diem dau=tap ket). mobs=[[x,y],...].",
                 "maps": {}}
         for m in self.maps:
             mid = m["id"].strip()
             if not mid or not mid.isdigit():
                 messagebox.showerror("Lỗi", f"Map ID phải là số (map '{m['name']}')."); return
-            data["maps"][mid] = {"name": m["name"], "safe": m["safe"], "mobs": m["mobs"]}
+            safe, mobs = m["safe"], m["mobs"]
+            # Map van rong + luc mo cung rong (user khong dong) + dia da co bai -> GIU data dia.
+            if (not safe and not mobs and mid in self._orig_empty
+                    and disk.get(mid, {}).get("mobs")):
+                d = disk[mid]
+                safe = _safe_points(d.get("safe", []))
+                mobs = [list(p) for p in d.get("mobs", [])]
+            data["maps"][mid] = {"name": m["name"], "safe": safe, "mobs": mobs}
         with open(self.TM_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         if self.on_save:
