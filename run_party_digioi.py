@@ -2605,10 +2605,20 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
 
 
 def start_account(username, password, pidx, is_leader, is_picker):
-    """Khoi dong 1 acc (thread). Bo qua neu dang chay."""
+    """Khoi dong 1 acc (thread). Neu thread cu con song (vd Stop xong Start LAI ngay de doi map/mode)
+    -> BAO DUNG + CHO no chet han roi moi start thread MOI voi config MOI. Truoc day return False
+    (bo qua) -> acc giu thread cu chay tiep config CU (bug: doi train map A->B nhung 1 so acc van
+    tele ve thanh A' cu vi thread cu doc start_city_id=A tu luc dau, khong doc lai)."""
     t = account_threads.get(username)
     if t is not None and t.is_alive():
-        return False
+        ev = account_stops.get(username)
+        if ev is not None:
+            ev.set()                     # bao thread cu dung
+        t.join(timeout=12)               # cho chet han (go_to_town... co check stop -> thoat vai giay)
+        if t.is_alive():
+            log.warning("[%s] start_account: thread cu chua dung sau 12s -> bo qua start "
+                        "(tranh 2 thread 1 acc)", username)
+            return False
     st = _pstate(pidx)
     # Start dau tien cua phien party moi: bo route con sot theo pidx tu lan chay/profile cu.
     # Supervisor reconnect khong di qua start_account nen route dang do van duoc tiep tuc.

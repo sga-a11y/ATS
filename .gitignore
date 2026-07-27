@@ -88,3 +88,4 @@ shop_state.json
 scan_maps/
 mob_packets_*.jsonl
 aTSBot-drive/
+*.pid

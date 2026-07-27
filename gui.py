@@ -197,12 +197,17 @@ class ComboSearch:
         self.key_fn = key_fn; self.label_fn = label_fn; self.on_pick = on_pick
         self.group_fn = group_fn
         self.top = None; self.lb = None
-        self._rows = []                # [(is_map, label)] song song listbox
+        self._rows = []                # [(is_map, label, group)] song song listbox
+        self._collapsed = set()        # ten nhom dang THU GON (click header de mo/thu)
+        self._q = ""                   # query loc HIEN TAI (go -> text; click browse -> "" = hien het)
         combo.configure(values=[label_fn(r) for r in items])
         combo.bind("<KeyRelease>", self._on_key)
         combo.bind("<FocusOut>", lambda e: combo.after(160, self._maybe_hide))
         combo.bind("<Down>", self._nav); combo.bind("<Up>", self._nav)
         combo.bind("<Return>", self._enter); combo.bind("<Escape>", lambda e: self.hide())
+        # Click vao combobox (ke ca tam giac ▼) -> hien popup NHOM cua ta (khong phai dropdown native
+        # phang). 'break' chan native dropdown mo dong thoi. Click lai -> dong.
+        combo.bind("<Button-1>", self._on_click)
 
     def _matched(self, q):
         return list(self.items) if not q else [r for r in self.items if q in self.key_fn(r).lower()]
@@ -220,29 +225,32 @@ class ComboSearch:
     def _build_rows(self, q):
         matched = self._matched(q)
         if not self.group_fn:
-            return [(True, self.label_fn(r)) for r in matched]
+            return [(True, self.label_fn(r), None) for r in matched]
         shown_groups = [g for g in self._group_order()
                         if any(self.group_fn(r) == g for r in matched)]
         # chua gom nhom (chi 'Chua phan nhom') -> list phang, khong header thua
         if len(shown_groups) <= 1 and shown_groups and shown_groups[0] == _DEFAULT_GROUP:
-            return [(True, self.label_fn(r)) for r in matched]
+            return [(True, self.label_fn(r), None) for r in matched]
         rows = []
         for g in shown_groups:
-            rows.append((False, "📁 " + g))
-            for r in matched:
-                if self.group_fn(r) == g:
-                    rows.append((True, "    " + self.label_fn(r)))
+            # dang GO TIM (q) -> mo het de thay ket qua; chi DUYET (q rong) moi ton trong thu gon.
+            collapsed = (not q) and (g in self._collapsed)
+            rows.append((False, ("▶ " if collapsed else "▼ ") + g, g))
+            if not collapsed:
+                for r in matched:
+                    if self.group_fn(r) == g:
+                        rows.append((True, "    " + self.label_fn(r), None))
         return rows
 
     def _on_key(self, e):
         if e.keysym in ("Up", "Down", "Return", "Escape", "Left", "Right", "Tab"):
             return
-        self.combo["values"] = [self.label_fn(r)
-                                for r in self._matched(self.combo.get().strip().lower())]
+        self._q = self.combo.get().strip().lower()   # GO -> loc theo text
+        self.combo["values"] = [self.label_fn(r) for r in self._matched(self._q)]
         self.show()
 
     def show(self):
-        rows = self._build_rows(self.combo.get().strip().lower())
+        rows = self._build_rows(self._q)
         if not rows:
             self.hide(); return
         self._rows = rows
@@ -256,7 +264,7 @@ class ComboSearch:
             self.lb.pack()
             self.lb.bind("<ButtonRelease-1>", self._click)
         self.lb.delete(0, "end")
-        for i, (is_map, label) in enumerate(rows):
+        for i, (is_map, label, _g) in enumerate(rows):
             self.lb.insert("end", label)
             if not is_map:
                 self.lb.itemconfig(i, foreground="#0a6")   # header nhom mau khac
@@ -275,7 +283,7 @@ class ComboSearch:
         return self.top is not None and self.top.winfo_exists() and self.top.winfo_ismapped()
 
     def _map_rows(self):
-        return [i for i, (is_map, _l) in enumerate(self._rows) if is_map]
+        return [i for i, row in enumerate(self._rows) if row[0]]
 
     def _maybe_hide(self):
         try:
@@ -315,14 +323,33 @@ class ComboSearch:
                 self._choose_row(i)
             return "break"
 
+    def _on_click(self, e):
+        self.combo.focus_set()
+        if self._shown():
+            self.hide()
+        else:
+            self._q = ""                     # click browse -> hien HET nhom (khong loc theo map dang chon)
+            self.combo.after(1, self.show)   # sau 1ms de combobox xu ly click xong
+        return "break"                       # chan dropdown native (phang) mo cung luc
+
     def _click(self, e):
         cur = self.lb.curselection()
         if cur:
             self._choose_row(cur[0])
 
     def _choose_row(self, i):
-        if 0 <= i < len(self._rows) and self._rows[i][0]:      # chi chon dong MAP
-            self._choose(self._rows[i][1].strip())
+        if not (0 <= i < len(self._rows)):
+            return
+        is_map, label, group = self._rows[i]
+        if is_map:                                             # dong MAP -> chon
+            self._choose(label.strip())
+        elif group is not None:                                # HEADER nhom -> thu gon / mo lai
+            if group in self._collapsed:
+                self._collapsed.discard(group)
+            else:
+                self._collapsed.add(group)
+            self.show()   # dung lai popup theo trang thai moi. KHONG focus_set(combo) -> tranh
+            # _maybe_hide (FocusOut) an popup + snap ve map dau (bug "click nhom chon map dau").
 
     def _choose(self, label):
         self.combo.set(label); self.hide(); self.on_pick()
@@ -2102,7 +2129,10 @@ class PartyConfigFrame(ttk.Frame):
             self.mob_var.set(opts[ci])
 
     def _edit_maps(self):
-        TrainMapEditor(self, on_save=self._reload_maps)
+        # Mo editor chon SAN map dang train (theo dropdown Map) cho tien sua ngay.
+        cur_id = next((mid for (mid, n, _m, _g) in self.train_maps
+                       if n == self.map_var.get()), None)
+        TrainMapEditor(self, on_save=self._reload_maps, select_map=cur_id)
 
     def _reload_maps(self):
         # nap lai train_maps.json -> cap nhat list (chia se) + ve lai dropdown
@@ -2187,7 +2217,7 @@ class TrainMapEditor(tk.Toplevel):
     """Sua train_maps.json: them/xoa map, sua safe point + mob point."""
     TM_PATH = os.path.join(_BASE, "train_maps.json")
 
-    def __init__(self, master, on_save=None):
+    def __init__(self, master, on_save=None, select_map=None):
         super().__init__(master)
         self.title("Sửa map train (train_maps.json)")
         self.geometry("760x540")
@@ -2263,11 +2293,23 @@ class TrainMapEditor(tk.Toplevel):
         self.mob_txt = tk.Text(right, height=6, font=("Consolas", 10)); self.mob_txt.pack(fill="x")
 
         self._reload_list()
-        first = self.tree.get_children("")
-        if first:
-            kids = self.tree.get_children(first[0])
-            if kids:
-                self.tree.selection_set(kids[0]); self._on_select()
+        sel_iid = None
+        if select_map is not None:   # chon SAN map dang train (mo dung nhom cua no)
+            idx = next((i for i, m in enumerate(self.maps)
+                        if str(m["id"]) == str(select_map)), None)
+            if idx is not None:
+                self._open_group = "g:" + (self.maps[idx].get("group") or _DEFAULT_GROUP)
+                self._reload_list()   # rebuild de nhom cua map do MO ra
+                if self.tree.exists(str(idx)):
+                    sel_iid = str(idx)
+        if sel_iid is None:           # fallback: map dau nhom dau
+            first = self.tree.get_children("")
+            if first:
+                kids = self.tree.get_children(first[0])
+                if kids:
+                    sel_iid = kids[0]
+        if sel_iid is not None:
+            self.tree.selection_set(sel_iid); self.tree.see(sel_iid); self._on_select()
 
     def _group_names(self):
         """Ten cac nhom theo thu tu XUAT HIEN dau tien; nhom mac dinh (chua phan nhom) XUONG CUOI."""
