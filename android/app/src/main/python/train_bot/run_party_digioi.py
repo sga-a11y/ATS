@@ -80,7 +80,7 @@ def _needs_train_safe_bootstrap(login_map, map_id, train_safes):
 
 
 def _capture_arrival_safe(client, map_id, came_from_other_map):
-    if not came_from_other_map or client.current_map != map_id or not client.pos:
+    if not came_from_other_map or client.current_map != map_id:
         return None
     ground = client.get_ground_store()
     if ground is None:
@@ -91,14 +91,31 @@ def _capture_arrival_safe(client, map_id, came_from_other_map):
     cached = mob_spots.load_safe(map_id, fingerprint)
     if cached is not None:
         return cached
-    arrival = tuple(map(int, client.pos))
-    safe = ground.nearest_walkable_world(map_id, arrival, arrival)
+    # SAU WARP `pos` bi xoa (=None) va chi co lai khi server gui 0x03 resync. Map dich KHONG co
+    # safe cau hinh -> khong navigate (khong cho pos). Cho pos ngan (5s); neu co -> safe = o di
+    # duoc gan pos. Neu pos VAN None (vd 14861: leg khong co target_arrival + 0x03 den tre) ->
+    # KHONG bo cuoc: dung SEED SceneFight lam safe (diem walkable chuan cua map, cung la noi mob
+    # probe di toi). Truoc day thieu fallback nay -> 'khong lay duoc safe' -> TAT PARTY oan
+    # (train rung Tan Quan 1 den noi out het).
+    _t0 = time.time()
+    while not client.pos and getattr(client, "running", True) and time.time() - _t0 < 5.0:
+        time.sleep(0.2)
+    safe = None
+    if client.pos:
+        arrival = tuple(map(int, client.pos))
+        safe = ground.nearest_walkable_world(map_id, arrival, arrival)
+    if safe is None:
+        seed = get_scene_fight_seed(map_id)
+        if seed is not None:
+            safe = ground.nearest_walkable_world(map_id, tuple(map(int, seed)),
+                                                 tuple(map(int, seed))) or tuple(map(int, seed))
     if safe is None:
         return None
     safe = tuple(map(int, safe))
     mob_spots.save_safe(map_id, fingerprint, safe)
-    log.info("[%s] map %s hoc safe sau warp = %s",
-             getattr(client, "_label", ""), map_id, safe)
+    log.info("[%s] map %s hoc safe sau warp = %s%s",
+             getattr(client, "_label", ""), map_id, safe,
+             "" if client.pos else " (tu SEED SceneFight - pos chua ve)")
     return safe
 
 

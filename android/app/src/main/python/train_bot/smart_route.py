@@ -5,7 +5,9 @@ import math
 import os
 import tempfile
 
-_ROUTE_CACHE_VERSION = "oneway-huaxuong-luoyang-v2"
+from .scene_fight import get_scene_fight_seed
+
+_ROUTE_CACHE_VERSION = "oneway-huaxuong-luoyang-v5-nextgate-both"
 
 # Mot so cong mot chieu khong co reverse edge de suy ra diem roi.
 _ONE_WAY_TARGET_ARRIVALS = {
@@ -212,6 +214,19 @@ class SmartWorldRouter:
                 return None
             total_distance += _path_distance(path)
             next_start = self._arrival_after(edge)
+            # LINH DONG (giong _scene_candidate_route): map VONG 1 CHIEU khong co cong quay ve ->
+            # _arrival_after None -> loai route oan. Lay tam CONG KE TIEP (o di duoc gan do) trong
+            # map dich lam diem roi. Runtime navigate_to van pathfind tu pos THAT nen khong sai.
+            if index + 1 < len(candidate["legs"]):
+                next_edge = candidate["legs"][index + 1]
+                next_gate = self.nav.get_gate(next_edge["scene"], next_edge["door"])
+                if next_gate is not None:
+                    anchor = tuple(next_gate["center"])
+                    ref = next_start if next_start is not None else anchor
+                    walk = self.ground.nearest_walkable_world(
+                        edge["target_scene"], ref, anchor
+                    )
+                    next_start = walk if walk is not None else (next_start or anchor)
             route_leg = {
                 "scene": edge["scene"],
                 "target_scene": edge["target_scene"],
@@ -274,19 +289,26 @@ class SmartWorldRouter:
                     return None
                 total_distance += _path_distance(path)
             next_start = self._arrival_after(edge)
-            if next_start is not None and index + 1 < len(legs):
+            if index + 1 < len(legs):
                 next_edge = legs[index + 1]
-                if first_sea <= index + 1 <= last_sea:
-                    next_gate = self.nav.get_gate(
-                        next_edge["scene"], next_edge["door"]
+                next_gate = self.nav.get_gate(next_edge["scene"], next_edge["door"])
+                # LINH DONG: khong bat buoc co CONG QUAY VE de biet diem roi. Map dang VONG 1 CHIEU
+                # (rung Tan Quan: di 22000->14411->14412->14861, ve 14861->14413->14414->22000) nen
+                # nhieu map KHONG co cong nguoc truc tiep -> _arrival_after tra None -> LOAI route oan.
+                # Diem roi luc BUILD chi de validate + uoc luong; sau khi vao map bot di toi CONG KE
+                # TIEP luon -> lay thang tam cong ke tiep (o di duoc gan do) lam diem roi. RUNTIME
+                # navigate_to van pathfind tu pos THAT nen khong sai.
+                if next_gate is not None:
+                    boat_next = first_sea <= index + 1 <= last_sea
+                    anchor = tuple(next_gate["center"])
+                    ref = next_start if next_start is not None else anchor
+                    walk = self.ground.nearest_walkable_world(
+                        edge["target_scene"], ref, anchor, boat=boat_next
                     )
-                    if next_gate is not None:
-                        next_start = self.ground.nearest_walkable_world(
-                            edge["target_scene"],
-                            next_start,
-                            tuple(next_gate["center"]),
-                            boat=True,
-                        )
+                    if walk is not None:
+                        next_start = walk
+                    elif next_start is None:
+                        next_start = anchor
             route_leg = {
                 "scene": edge["scene"],
                 "target_scene": edge["target_scene"],
@@ -347,6 +369,16 @@ class SmartWorldRouter:
                 return self.ground.nearest_walkable_world(
                     reverse["scene"], center, center
                 )
+        # KHONG co cong nguoc de suy diem roi (vd 14412->14861: 14861 khong co gate ve 14412).
+        # Khi target_scene la map TRUNG GIAN (con leg sau) -> arrival=None se LOAI ca route oan.
+        # Fallback: SEED SceneFight cua target_scene (diem walkable chuan). Arrival luc BUILD chi de
+        # validate reachability + uoc luong khoang cach; RUNTIME navigate_to pathfind tu pos THAT nen
+        # khong sai. Nho fallback nay moi route qua Rung Tan Quan (14861->14862...).
+        seed = get_scene_fight_seed(int(edge["target_scene"]))
+        if seed is not None:
+            return self.ground.nearest_walkable_world(
+                edge["target_scene"], tuple(map(int, seed)), tuple(map(int, seed))
+            ) or tuple(map(int, seed))
         return None
 
     def get_leg_path(self, route, scene_id, start):
