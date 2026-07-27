@@ -182,6 +182,152 @@ def _map_name(mid):
     return _MAP_NAMES.get(mid, str(mid))
 
 
+_DEFAULT_GROUP = "Chưa phân nhóm"   # nhom mac dinh cho map chua gan group
+
+
+class ComboSearch:
+    """Autocomplete cho ttk.Combobox editable: GO TEXT -> popup listbox loc theo (ten/id/nhom) bung
+    NGAY duoi combobox, KHONG cuop focus (van go tiep). Xuong/Len di chuyen (bo qua dong header
+    nhom), Enter/click chon, Esc dong. Roi o ma text khong khop -> snap ve map dau.
+      key_fn   : record -> chuoi de MATCH (vd 'ten id nhom')
+      label_fn : record -> chuoi HIEN THI = gia tri set vao combobox
+      group_fn : record -> ten nhom (None = khong gom nhom, list phang)."""
+    def __init__(self, combo, items, key_fn, label_fn, on_pick, group_fn=None):
+        self.combo = combo; self.items = items
+        self.key_fn = key_fn; self.label_fn = label_fn; self.on_pick = on_pick
+        self.group_fn = group_fn
+        self.top = None; self.lb = None
+        self._rows = []                # [(is_map, label)] song song listbox
+        combo.configure(values=[label_fn(r) for r in items])
+        combo.bind("<KeyRelease>", self._on_key)
+        combo.bind("<FocusOut>", lambda e: combo.after(160, self._maybe_hide))
+        combo.bind("<Down>", self._nav); combo.bind("<Up>", self._nav)
+        combo.bind("<Return>", self._enter); combo.bind("<Escape>", lambda e: self.hide())
+
+    def _matched(self, q):
+        return list(self.items) if not q else [r for r in self.items if q in self.key_fn(r).lower()]
+
+    def _group_order(self):
+        order = []
+        for r in self.items:
+            g = self.group_fn(r)
+            if g != _DEFAULT_GROUP and g not in order:
+                order.append(g)
+        if any(self.group_fn(r) == _DEFAULT_GROUP for r in self.items):
+            order.append(_DEFAULT_GROUP)
+        return order
+
+    def _build_rows(self, q):
+        matched = self._matched(q)
+        if not self.group_fn:
+            return [(True, self.label_fn(r)) for r in matched]
+        shown_groups = [g for g in self._group_order()
+                        if any(self.group_fn(r) == g for r in matched)]
+        # chua gom nhom (chi 'Chua phan nhom') -> list phang, khong header thua
+        if len(shown_groups) <= 1 and shown_groups and shown_groups[0] == _DEFAULT_GROUP:
+            return [(True, self.label_fn(r)) for r in matched]
+        rows = []
+        for g in shown_groups:
+            rows.append((False, "📁 " + g))
+            for r in matched:
+                if self.group_fn(r) == g:
+                    rows.append((True, "    " + self.label_fn(r)))
+        return rows
+
+    def _on_key(self, e):
+        if e.keysym in ("Up", "Down", "Return", "Escape", "Left", "Right", "Tab"):
+            return
+        self.combo["values"] = [self.label_fn(r)
+                                for r in self._matched(self.combo.get().strip().lower())]
+        self.show()
+
+    def show(self):
+        rows = self._build_rows(self.combo.get().strip().lower())
+        if not rows:
+            self.hide(); return
+        self._rows = rows
+        if self.top is None or not self.top.winfo_exists():
+            self.top = tk.Toplevel(self.combo); self.top.wm_overrideredirect(True)
+            try:
+                self.top.attributes("-topmost", True)
+            except Exception:
+                pass
+            self.lb = tk.Listbox(self.top, exportselection=False, activestyle="dotbox")
+            self.lb.pack()
+            self.lb.bind("<ButtonRelease-1>", self._click)
+        self.lb.delete(0, "end")
+        for i, (is_map, label) in enumerate(rows):
+            self.lb.insert("end", label)
+            if not is_map:
+                self.lb.itemconfig(i, foreground="#0a6")   # header nhom mau khac
+        self.lb.configure(height=min(14, len(rows)),
+                          width=max(20, int(self.combo.cget("width"))))
+        x = self.combo.winfo_rootx()
+        y = self.combo.winfo_rooty() + self.combo.winfo_height()
+        self.top.wm_geometry("+%d+%d" % (x, y))
+        self.top.deiconify(); self.top.lift()
+
+    def hide(self):
+        if self.top is not None and self.top.winfo_exists():
+            self.top.withdraw()
+
+    def _shown(self):
+        return self.top is not None and self.top.winfo_exists() and self.top.winfo_ismapped()
+
+    def _map_rows(self):
+        return [i for i, (is_map, _l) in enumerate(self._rows) if is_map]
+
+    def _maybe_hide(self):
+        try:
+            if self.combo.focus_get() is self.lb:
+                return
+        except Exception:
+            pass
+        self.hide()
+        cur = self.combo.get()
+        labels = [self.label_fn(r) for r in self.items]
+        if cur not in labels:                       # go do dang -> snap ve map khop dau
+            hit = self._matched(cur.strip().lower())
+            if hit:
+                self.combo.set(self.label_fn(hit[0])); self.on_pick()
+
+    def _nav(self, e):
+        if not self._shown():
+            self.show()
+        maps = self._map_rows()
+        if not maps:
+            return "break"
+        cur = self.lb.curselection()
+        ci = cur[0] if cur else -1
+        # tim dong MAP ke tiep/truoc (bo qua header)
+        if e.keysym == "Down":
+            nxt = next((i for i in maps if i > ci), maps[0])
+        else:
+            nxt = next((i for i in reversed(maps) if i < ci), maps[-1])
+        self.lb.selection_clear(0, "end"); self.lb.selection_set(nxt); self.lb.see(nxt)
+        return "break"
+
+    def _enter(self, e):
+        if self._shown():
+            cur = self.lb.curselection()
+            i = cur[0] if cur else (self._map_rows()[0] if self._map_rows() else None)
+            if i is not None:
+                self._choose_row(i)
+            return "break"
+
+    def _click(self, e):
+        cur = self.lb.curselection()
+        if cur:
+            self._choose_row(cur[0])
+
+    def _choose_row(self, i):
+        if 0 <= i < len(self._rows) and self._rows[i][0]:      # chi chon dong MAP
+            self._choose(self._rows[i][1].strip())
+
+    def _choose(self, label):
+        self.combo.set(label); self.hide(); self.on_pick()
+
+
 # ---------------- App ----------------
 class BotGUI(tk.Tk):
     def __init__(self):
@@ -1878,16 +2024,23 @@ class PartyConfigFrame(ttk.Frame):
         if mode in ("train", "digioi_train"):
             # (Cap quai DG da nam NGANG HANG voi Che do o tren - khong lap lai o day.)
             ttk.Label(self.dyn, text="Map:", width=10).pack(side="left")
-            names = [n for (_i, n, _m) in self.train_maps]
-            self.map_cb = ttk.Combobox(self.dyn, textvariable=self.map_var, state="readonly",
+            names = [n for (_i, n, _m, _g) in self.train_maps]
+            # Combobox GO DUOC de tim nhanh (list map dai): go ID hoac TEN -> loc values + mo dropdown.
+            self.map_cb = ttk.Combobox(self.dyn, textvariable=self.map_var, state="normal",
                                        width=32, values=names)
             self.map_cb.pack(side="left")
             self.map_cb.bind("<<ComboboxSelected>>", lambda e: self._fill_mobs())
+            # Autocomplete: go ten HOAC id -> popup loc bung ngay duoi, van go tiep duoc; ↓ so dropdown.
+            ComboSearch(self.map_cb, self.train_maps,
+                        key_fn=lambda r: f"{r[1]} {r[0]} {r[3]}",   # match ten + id + nhom
+                        label_fn=lambda r: r[1],                    # hien thi = ten map
+                        group_fn=lambda r: r[3],                    # gom theo nhom trong popup
+                        on_pick=self._fill_mobs)
             ttk.Label(self.dyn, text="Quái:", width=6).pack(side="left", padx=(10, 0))
             self.mob_cb = ttk.Combobox(self.dyn, textvariable=self.mob_var, state="readonly", width=22)
             self.mob_cb.pack(side="left")
             ttk.Button(self.dyn, text="✎ Sửa map", command=self._edit_maps).pack(side="left", padx=(8, 0))
-            idx = next((i for i, (mid, _n, _m) in enumerate(self.train_maps)
+            idx = next((i for i, (mid, _n, _m, _g) in enumerate(self.train_maps)
                         if mid == self._preset.get("start_city_id")), 0)
             if names:
                 self.map_var.set(names[idx])
@@ -1937,7 +2090,7 @@ class PartyConfigFrame(ttk.Frame):
 
     def _fill_mobs(self, preset_index=None):
         sel = self.map_var.get()
-        mobs = next((m for (_i, n, m) in self.train_maps if n == sel), [])
+        mobs = next((m for (_i, n, m, _g) in self.train_maps if n == sel), [])
         # Index 0 = "Bot tu chon" (ngau nhien). Index 1.. = diem cu the.
         opts = ["🎲 Bot tự chọn (ngẫu nhiên)"] + [f"Điểm {i + 1} {tuple(xy)}"
                                                   for i, xy in enumerate(mobs)]
@@ -1954,7 +2107,7 @@ class PartyConfigFrame(ttk.Frame):
     def _reload_maps(self):
         # nap lai train_maps.json -> cap nhat list (chia se) + ve lai dropdown
         tm_raw = _load_json("train_maps.json").get("maps", {})
-        self.train_maps[:] = [(int(k), v.get("name", k), v.get("mobs", [])) for k, v in tm_raw.items()]
+        self.train_maps[:] = [(int(k), v.get("name", k), v.get("mobs", []), (v.get("group") or _DEFAULT_GROUP)) for k, v in tm_raw.items()]
         self._render_dyn()
 
     def get_data(self):
@@ -1966,7 +2119,7 @@ class PartyConfigFrame(ttk.Frame):
         elif mode in ("train", "digioi_train"):
             # digioi_train: start_city_id = MAP TRAIN (pha 2). Pha 1 (DG) dung DIGIOI_MAP_ID co dinh
             # trong runner, khong luu o day.
-            sc = next((mid for (mid, n, _m) in self.train_maps if n == self.map_var.get()), 0)
+            sc = next((mid for (mid, n, _m, _g) in self.train_maps if n == self.map_var.get()), 0)
             cur = self.mob_cb.current() if self.mob_cb else 0
             mob_index = (cur - 1) if cur >= 1 else -1   # 0 = "Bot tu chon" -> -1; k -> diem k-1
         elif mode == "city":
@@ -2041,8 +2194,9 @@ class TrainMapEditor(tk.Toplevel):
         self.transient(master); self.grab_set()
         self.on_save = on_save
         raw = _load_json("train_maps.json").get("maps", {})
-        # list dict: {id, name, safe:[[x,y]], mobs:[[x,y]]}
+        # list dict: {id, name, group, safe:[[x,y]], mobs:[[x,y]]}. 'group' = nhom (cay 1 tang).
         self.maps = [{"id": k, "name": v.get("name", k),
+                      "group": (v.get("group") or _DEFAULT_GROUP),
                       "safe": _safe_points(v.get("safe", [])),
                       "mobs": [list(p) for p in v.get("mobs", [])]} for k, v in raw.items()]
         # Map nao luc MO editor da RONG (chua co bai). Khi luu: neu 1 map van rong (user khong tu
@@ -2058,19 +2212,34 @@ class TrainMapEditor(tk.Toplevel):
         ttk.Button(bar, text="Hủy", command=self.destroy).pack(side="right", padx=4)
 
         left = ttk.Frame(self, padding=6); left.pack(side="left", fill="y")
-        ttk.Label(left, text="Danh sách map:").pack(anchor="w")
-        # selectmode extended: Ctrl+click chon nhieu roi rac, Shift+click chon 1 dai -> Len/Xuong
-        # move CA KHOI 1 lan (khoi move tung map 1).
-        self.lb = tk.Listbox(left, width=42, height=20, exportselection=False,
-                             selectmode="extended")
-        self.lb.pack(fill="y", expand=True)
-        self.lb.bind("<<ListboxSelect>>", lambda e: self._on_select())
-        b = ttk.Frame(left); b.pack(fill="x", pady=4)
-        ttk.Button(b, text="+ Thêm", command=self._add).pack(side="left")
-        ttk.Button(b, text="🗑 Xóa", command=self._del).pack(side="left", padx=4)
-        b2 = ttk.Frame(left); b2.pack(fill="x")
+        ttk.Label(left, text="Danh sách map (theo nhóm):").pack(anchor="w")
+        # O TIM KIEM (theo ID hoac TEN) - loc nhanh khi list dai.
+        frow = ttk.Frame(left); frow.pack(fill="x", pady=(0, 2))
+        ttk.Label(frow, text="🔍").pack(side="left")
+        self.filter_var = tk.StringVar()
+        fent = ttk.Entry(frow, textvariable=self.filter_var)
+        fent.pack(side="left", fill="x", expand=True)
+        self.filter_var.trace_add("write", lambda *_: self._reload_list())
+        ttk.Button(frow, text="✕", width=2,
+                   command=lambda: self.filter_var.set("")).pack(side="left")
+        # CAY 1 TANG: nhom (parent, gap/mo) -> map (child). Child iid = str(index trong self.maps),
+        # group iid = 'g::'+ten nhom. Chuot phai vao map -> "Chuyen sang nhom".
+        self._open_group = None      # accordion: CHI 1 nhom mo cung luc
+        self._sel_guard = False      # tranh de quy khi enforce selection
+        # NUT pack side=bottom TRUOC -> luon giu cho o duoi (khong bi tree expand day khuat).
+        b2 = ttk.Frame(left); b2.pack(side="bottom", fill="x", pady=(2, 0))
         ttk.Button(b2, text="▲ Lên", command=lambda: self._move(-1)).pack(side="left")
         ttk.Button(b2, text="▼ Xuống", command=lambda: self._move(1)).pack(side="left", padx=4)
+        b = ttk.Frame(left); b.pack(side="bottom", fill="x", pady=4)
+        ttk.Button(b, text="+ Thêm", command=self._add).pack(side="left")
+        ttk.Button(b, text="🗑 Xóa", command=self._del).pack(side="left", padx=4)
+        ttk.Button(b, text="⇄ Nhóm…", command=self._popup_group_menu).pack(side="left", padx=4)
+        # CAY 1 TANG: nhom (parent, gap/mo) -> map (child). Child iid = str(index trong self.maps).
+        self.tree = ttk.Treeview(left, show="tree", selectmode="extended", height=18)
+        self.tree.pack(side="top", fill="both", expand=True)
+        self.tree.bind("<<TreeviewSelect>>", lambda e: self._on_select())
+        self.tree.bind("<<TreeviewOpen>>", self._on_open)
+        self.tree.bind("<Button-3>", self._popup_group_menu)
 
         right = ttk.Frame(self, padding=6); right.pack(side="left", fill="both", expand=True)
         mapid_row = ttk.Frame(right); mapid_row.pack(anchor="w", fill="x")
@@ -2081,6 +2250,12 @@ class TrainMapEditor(tk.Toplevel):
                    command=self._show_block_stats).pack(side="left")
         ttk.Label(right, text="Tên:").pack(anchor="w", pady=(6, 0))
         self.name_var = tk.StringVar(); ttk.Entry(right, textvariable=self.name_var, width=34).pack(anchor="w")
+        grow = ttk.Frame(right); grow.pack(anchor="w", fill="x", pady=(6, 0))
+        ttk.Label(grow, text="Nhóm:").pack(side="left")
+        self.group_lbl = ttk.Label(grow, text="—", foreground="#0a6")
+        self.group_lbl.pack(side="left", padx=(6, 8))
+        ttk.Label(grow, text="(chuột phải map ở danh sách để chuyển nhóm)",
+                  foreground="#888").pack(side="left")
         ttk.Label(right, text="Safe point (mỗi dòng: x,y — dòng đầu = điểm tập kết/lập party):"
                   ).pack(anchor="w", pady=(8, 0))
         self.safe_txt = tk.Text(right, height=6, font=("Consolas", 10)); self.safe_txt.pack(fill="x")
@@ -2088,13 +2263,72 @@ class TrainMapEditor(tk.Toplevel):
         self.mob_txt = tk.Text(right, height=6, font=("Consolas", 10)); self.mob_txt.pack(fill="x")
 
         self._reload_list()
-        if self.maps:
-            self.lb.selection_set(0); self._on_select()
+        first = self.tree.get_children("")
+        if first:
+            kids = self.tree.get_children(first[0])
+            if kids:
+                self.tree.selection_set(kids[0]); self._on_select()
+
+    def _group_names(self):
+        """Ten cac nhom theo thu tu XUAT HIEN dau tien; nhom mac dinh (chua phan nhom) XUONG CUOI."""
+        out = []
+        for m in self.maps:
+            g = m.get("group") or _DEFAULT_GROUP
+            if g != _DEFAULT_GROUP and g not in out:
+                out.append(g)
+        if any((m.get("group") or _DEFAULT_GROUP) == _DEFAULT_GROUP for m in self.maps):
+            out.append(_DEFAULT_GROUP)          # map khong nhom luon o duoi cung
+        return out
 
     def _reload_list(self):
-        self.lb.delete(0, "end")
-        for m in self.maps:
-            self.lb.insert("end", f"{m['name']} ({m['id']})")
+        q = self.filter_var.get().strip().lower() if hasattr(self, "filter_var") else ""
+        self.tree.delete(*self.tree.get_children(""))
+        # gom index theo nhom (giu thu tu xuat hien)
+        groups = self._group_names()
+        gidx = {g: [] for g in groups}
+        for i, m in enumerate(self.maps):
+            gidx[m.get("group") or _DEFAULT_GROUP].append(i)
+        # accordion: neu chua co nhom mo -> mo nhom dau
+        if self._open_group not in ("g:" + g for g in groups):
+            self._open_group = ("g:" + groups[0]) if groups else None
+        for g in groups:
+            all_i = gidx[g]
+            show_i = [i for i in all_i
+                      if not q or q in self.maps[i]["name"].lower() or q in str(self.maps[i]["id"]).lower()]
+            if q and not show_i:
+                continue                       # loc: an nhom khong co map khop
+            gid = "g:" + g
+            # dang loc -> mo het cho de thay; binh thuong -> CHI nhom _open_group mo (accordion)
+            opened = True if q else (gid == self._open_group)
+            self.tree.insert("", "end", iid=gid, open=opened,
+                             text=f"📁 {g}  ({len(all_i)})")
+            for i in show_i:
+                m = self.maps[i]
+                self.tree.insert(gid, "end", iid=str(i), text=f"{m['name']} ({m['id']})")
+
+    def _selected_map_indices(self):
+        return sorted(int(iid) for iid in self.tree.selection() if not iid.startswith("g:"))
+
+    def _reselect(self, moved_objs, delta=0):
+        """Chon lai cac map (theo object id) sau khi rebuild. Mo NHOM cha (accordion: chi nhom do)."""
+        rows = [i for i, m in enumerate(self.maps) if id(m) in moved_objs]
+        if rows:
+            # cac map moved cung 1 nhom (rang buoc chon) -> accordion mo dung nhom do
+            self._open_group = "g:" + (self.maps[rows[0]].get("group") or _DEFAULT_GROUP)
+            self._reload_list()
+        self.tree.selection_remove(*self.tree.selection())
+        for i in rows:
+            iid = str(i)
+            if self.tree.exists(iid):
+                self.tree.selection_add(iid)
+        if rows:
+            last = str(rows[-1] if delta >= 0 else rows[0])
+            if self.tree.exists(last):
+                self.tree.see(last)
+        if len(rows) == 1:
+            self._cur = rows[0]; self._on_select_no_commit(rows[0])
+        else:
+            self._cur = None
 
     def _pts_to_text(self, pts):
         return "\n".join(f"{p[0]},{p[1]}" for p in pts)
@@ -2161,7 +2395,7 @@ class TrainMapEditor(tk.Toplevel):
         ttk.Button(box, text="Đóng", command=top.destroy).pack(anchor="e", pady=(8, 0))
 
     def _commit(self):
-        """Luu field hien tai vao self.maps[self._cur]."""
+        """Luu field hien tai vao self.maps[self._cur] (group doi qua menu, khong dung o day)."""
         if self._cur is None or self._cur >= len(self.maps):
             return
         m = self.maps[self._cur]
@@ -2170,80 +2404,207 @@ class TrainMapEditor(tk.Toplevel):
         m["safe"] = self._text_to_pts(self.safe_txt.get("1.0", "end"))
         m["mobs"] = self._text_to_pts(self.mob_txt.get("1.0", "end"))
 
+    def _load_fields(self, idx):
+        m = self.maps[idx]
+        self.id_var.set(m["id"]); self.name_var.set(m["name"])
+        self.group_lbl.configure(text=m.get("group") or _DEFAULT_GROUP)
+        self.safe_txt.delete("1.0", "end"); self.safe_txt.insert("1.0", self._pts_to_text(m["safe"]))
+        self.mob_txt.delete("1.0", "end"); self.mob_txt.insert("1.0", self._pts_to_text(m["mobs"]))
+
+    def _on_select_no_commit(self, idx):
+        self._load_fields(idx)
+
+    def _on_open(self, e):
+        # ACCORDION: mo 1 nhom -> tu thu gon cac nhom khac.
+        opened = self.tree.focus()
+        if not opened or not opened.startswith("g:"):
+            return
+        self._open_group = opened
+        for gid in self.tree.get_children(""):
+            if gid != opened:
+                self.tree.item(gid, open=False)
+
+    def _enforce_selection(self):
+        """Rang buoc chon: KHONG lan nhom+map, KHONG lan map o 2 nhom khac nhau. Anchor = item vua
+        thao tac (tree.focus). Cat bo phan khong hop le."""
+        sel = list(self.tree.selection())
+        if len(sel) <= 1:
+            return
+        focus = self.tree.focus() or sel[-1]
+        if focus.startswith("g:"):
+            keep = [focus]                 # chon nhom -> chi rieng nhom do
+        else:
+            g = self.maps[int(focus)].get("group") or _DEFAULT_GROUP
+            keep = [iid for iid in sel if not iid.startswith("g:")
+                    and (self.maps[int(iid)].get("group") or _DEFAULT_GROUP) == g]
+        if set(keep) != set(sel):
+            self._sel_guard = True
+            self.tree.selection_set(keep)
+            self._sel_guard = False
+
     def _on_select(self):
+        if self._sel_guard:
+            return
+        self._enforce_selection()
         self._commit()
-        sel = self.lb.curselection()
-        # Chon NHIEU map (de move khoi) -> KHONG nap field (khong biet nap map nao) + _cur=None de
-        # _commit sau do khong ghi de map nao. Chi nap+cho sua khi chon DUNG 1 map.
+        sel = self._selected_map_indices()
         if len(sel) != 1:
             self._cur = None
             return
         self._cur = sel[0]
-        m = self.maps[self._cur]
-        self.id_var.set(m["id"]); self.name_var.set(m["name"])
-        self.safe_txt.delete("1.0", "end"); self.safe_txt.insert("1.0", self._pts_to_text(m["safe"]))
-        self.mob_txt.delete("1.0", "end"); self.mob_txt.insert("1.0", self._pts_to_text(m["mobs"]))
+        self._load_fields(self._cur)
 
     def _add(self):
         self._commit()
-        self.maps.append({"id": "0", "name": "Map moi", "safe": [], "mobs": []})
+        self.filter_var.set("")               # xoa loc de map moi chac chan hien
+        # them vao NHOM dang chon (neu dang chon 1 map/nhom), khong thi 'chua phan nhom'
+        g = _DEFAULT_GROUP
+        selg = [iid for iid in self.tree.selection() if iid.startswith("g:")]
+        selm = self._selected_map_indices()
+        if selg:
+            g = selg[0][2:]
+        elif selm:
+            g = self.maps[selm[0]].get("group") or _DEFAULT_GROUP
+        newmap = {"id": "0", "name": "Map moi", "group": g, "safe": [], "mobs": []}
+        self.maps.append(newmap)
         self._reload_list()
-        self.lb.selection_clear(0, "end"); self.lb.selection_set("end")
-        self._cur = None; self._on_select()
+        self._reselect({id(newmap)})
 
     def _del(self):
-        sel = self.lb.curselection()
-        if not sel or len(self.maps) == 0:
+        sel = self._selected_map_indices()
+        if not sel:
             return
-        del self.maps[sel[0]]
+        for i in sorted(sel, reverse=True):
+            del self.maps[i]
         self._cur = None
         self._reload_list()
-        if self.maps:
-            self.lb.selection_set(0); self._on_select()
-        else:
-            for w in (self.id_var, self.name_var):
-                w.set("")
-            self.safe_txt.delete("1.0", "end"); self.mob_txt.delete("1.0", "end")
+        for w in (self.id_var, self.name_var):
+            w.set("")
+        self.group_lbl.configure(text="—")
+        self.safe_txt.delete("1.0", "end"); self.mob_txt.delete("1.0", "end")
+
+    def _move_group(self, gid, delta):
+        """Move CA NHOM len/xuong giua cac nhom CO TEN. 'Chua phan nhom' luon o duoi cung -> nhom
+        co ten khong the xuong duoi no."""
+        g = gid[2:]
+        named = [x for x in self._group_names() if x != _DEFAULT_GROUP]
+        if g not in named:
+            return
+        i = named.index(g); j = i + delta
+        if j < 0 or j >= len(named):
+            return
+        named[i], named[j] = named[j], named[i]
+        has_default = any((m.get("group") or _DEFAULT_GROUP) == _DEFAULT_GROUP for m in self.maps)
+        order = named + ([_DEFAULT_GROUP] if has_default else [])
+        buckets = {x: [] for x in order}
+        for m in self.maps:
+            buckets[m.get("group") or _DEFAULT_GROUP].append(m)
+        self.maps = [m for x in order for m in buckets[x]]
+        self._open_group = gid
+        self._reload_list()
+        self.tree.selection_set(gid); self.tree.see(gid)
 
     def _move(self, delta):
         self._commit()
-        sel = sorted(self.lb.curselection())
+        # NHOM dang chon (header) -> move ca nhom
+        selg = [iid for iid in self.tree.selection() if iid.startswith("g:")]
+        if selg:
+            self._move_group(selg[0], delta)
+            return
+        sel = self._selected_map_indices()
         if not sel:
             return
-        n = len(self.maps)
-        # Move CA KHOI (nhieu map cung luc, ke ca chon roi rac). Thuat toan swap chuan: len -> duyet
-        # tu tren xuong, xuong -> duyet tu duoi len; chi swap khi o ke KHONG nam trong selection
-        # (o ke la 1 map dang chon thi no da/se tu di theo -> giu khoi lien mach + dung thu tu).
-        selected = set(sel)
-        if delta < 0:
-            if sel[0] <= 0:
-                return                     # da cham dinh -> khong len duoc
-            order = range(n)
-        else:
-            if sel[-1] >= n - 1:
-                return                     # da cham day -> khong xuong duoc
-            order = range(n - 1, -1, -1)
-        for i in order:
-            j = i + delta
-            if i in selected and 0 <= j < n and j not in selected:
-                self.maps[i], self.maps[j] = self.maps[j], self.maps[i]
-                selected.discard(i); selected.add(j)
+        moved = {id(self.maps[i]) for i in sel}
+        # Reorder TRONG TUNG NHOM: swap voi map cung nhom lien ke theo thu tu flat. Map khac nhom
+        # giu nguyen. (Dang loc thi map bi an van tinh la "cung nhom" -> van doi cho hop ly.)
+        from collections import defaultdict
+        bygroup = defaultdict(list)
+        for i in sel:
+            bygroup[self.maps[i].get("group") or _DEFAULT_GROUP].append(i)
+        for g, sidx in bygroup.items():
+            order_full = [i for i, m in enumerate(self.maps)
+                          if (m.get("group") or _DEFAULT_GROUP) == g]
+            pos = {idx: p for p, idx in enumerate(order_full)}
+            n = len(order_full)
+            selpos = set(pos[i] for i in sidx)
+            if delta < 0 and min(selpos) <= 0:
+                continue
+            if delta > 0 and max(selpos) >= n - 1:
+                continue
+            rng = range(n) if delta < 0 else range(n - 1, -1, -1)
+            for p in rng:
+                q = p + delta
+                if p in selpos and 0 <= q < n and q not in selpos:
+                    a, b = order_full[p], order_full[q]
+                    self.maps[a], self.maps[b] = self.maps[b], self.maps[a]
+                    selpos.discard(p); selpos.add(q)
         self._cur = None
         self._reload_list()
-        self.lb.selection_clear(0, "end")
-        for k in sorted(selected):
-            self.lb.selection_set(k)
-        self.lb.see(min(selected) if delta < 0 else max(selected))
-        if len(selected) == 1:
-            j = next(iter(selected))
-            self._cur = j
-            self._on_select_no_commit(j)
+        self._reselect(moved, delta)
 
-    def _on_select_no_commit(self, idx):
-        m = self.maps[idx]
-        self.id_var.set(m["id"]); self.name_var.set(m["name"])
-        self.safe_txt.delete("1.0", "end"); self.safe_txt.insert("1.0", self._pts_to_text(m["safe"]))
-        self.mob_txt.delete("1.0", "end"); self.mob_txt.insert("1.0", self._pts_to_text(m["mobs"]))
+    # ---- NHOM: chuot phai ----
+    def _popup_group_menu(self, event=None):
+        # neu bam phai vao 1 dong chua chon -> chon dong do truoc
+        if event is not None:
+            iid = self.tree.identify_row(event.y)
+            if iid and iid not in self.tree.selection():
+                self.tree.selection_set(iid)
+        sel_groups = [iid for iid in self.tree.selection() if iid.startswith("g:")]
+        sel_maps = self._selected_map_indices()
+        menu = tk.Menu(self, tearoff=0)
+        if sel_groups and not sel_maps:
+            g = sel_groups[0][2:]
+            menu.add_command(label=f"✎ Đổi tên nhóm '{g}'…", command=lambda: self._rename_group(g))
+            if g != _DEFAULT_GROUP:
+                menu.add_command(label="🗑 Xoá nhóm (map → chưa phân nhóm)",
+                                 command=lambda: self._delete_group(g))
+        elif sel_maps:
+            menu.add_command(label=f"Chuyển {len(sel_maps)} map sang nhóm:", state="disabled")
+            menu.add_separator()
+            cur_groups = [x for x in self._group_names()]
+            for g in cur_groups:
+                menu.add_command(label=f"   📁 {g}",
+                                 command=lambda gg=g: self._assign_group(sel_maps, gg))
+            menu.add_separator()
+            menu.add_command(label="➕ Nhóm mới…", command=lambda: self._assign_group_new(sel_maps))
+        else:
+            return
+        x = event.x_root if event is not None else self.tree.winfo_rootx() + 30
+        y = event.y_root if event is not None else self.tree.winfo_rooty() + 30
+        menu.tk_popup(x, y)
+
+    def _assign_group(self, indices, group):
+        moved = {id(self.maps[i]) for i in indices}
+        for i in indices:
+            self.maps[i]["group"] = group
+        self._cur = None
+        self._reload_list()
+        self._reselect(moved)
+
+    def _assign_group_new(self, indices):
+        import tkinter.simpledialog as sd
+        name = sd.askstring("Nhóm mới", "Tên nhóm mới:", parent=self)
+        name = (name or "").strip()
+        if name:
+            self._assign_group(indices, name)
+
+    def _rename_group(self, group):
+        import tkinter.simpledialog as sd
+        new = sd.askstring("Đổi tên nhóm", "Tên mới:", initialvalue=group, parent=self)
+        new = (new or "").strip()
+        if not new or new == group:
+            return
+        for m in self.maps:
+            if (m.get("group") or _DEFAULT_GROUP) == group:
+                m["group"] = new
+        self._reload_list()
+
+    def _delete_group(self, group):
+        # KHONG xoa map - chi go nhom (map -> chua phan nhom, xuong duoi cung)
+        for m in self.maps:
+            if (m.get("group") or _DEFAULT_GROUP) == group:
+                m["group"] = _DEFAULT_GROUP
+        self._reload_list()
 
     def _save(self):
         self._commit()
@@ -2263,7 +2624,11 @@ class TrainMapEditor(tk.Toplevel):
                 d = disk[mid]
                 safe = _safe_points(d.get("safe", []))
                 mobs = [list(p) for p in d.get("mobs", [])]
-            data["maps"][mid] = {"name": m["name"], "safe": safe, "mobs": mobs}
+            entry = {"name": m["name"], "safe": safe, "mobs": mobs}
+            g = m.get("group") or _DEFAULT_GROUP
+            if g != _DEFAULT_GROUP:            # chua-phan-nhom thi khong ghi field cho gon
+                entry["group"] = g
+            data["maps"][mid] = entry
         with open(self.TM_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         if self.on_save:
@@ -2286,7 +2651,7 @@ class ConfigDialog(tk.Toplevel):
         self._orig_active = self._active
         data = self._prof["profiles"].get(self._active) or self._load()
         tm_raw = _load_json("train_maps.json").get("maps", {})
-        self.train_maps = [(int(k), v.get("name", k), v.get("mobs", [])) for k, v in tm_raw.items()]
+        self.train_maps = [(int(k), v.get("name", k), v.get("mobs", []), (v.get("group") or _DEFAULT_GROUP)) for k, v in tm_raw.items()]
         ct_raw = _load_json("cities.json").get("cities", {})
         self.cities = [(v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()]
         sv_raw = _load_json("servers.json").get("servers", {})

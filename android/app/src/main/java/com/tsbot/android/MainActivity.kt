@@ -842,13 +842,23 @@ fun StatBar(label: String, cur: Int, max: Int, color: Color) {
 // Cap quai Di Gioi: idx 1..15 (goi 0x61 02 00 idx) -> cap hien thi. Xem KNOWLEDGE.md.
 val DG_LEVELS = listOf(10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180)
 
-fun trainMapOptions(): List<Pair<String, String>> {
+// (key, ten hien thi, nhom). Nhom = field 'group' trong train_maps.json (mac dinh 'Chua phan nhom').
+fun trainMapOptions(): List<Triple<String, String, String>> {
     val config = com.chaquo.python.Python.getInstance().getModule("train_bot.config")
     val maps = config.get("TRAIN_MAPS")!!
     return maps.asMap().entries.map { (k, v) ->
         val name = v.callAttr("get", "name")?.toString()
-        k.toString() to (if (name.isNullOrBlank()) k.toString() else name)
+        val group = v.callAttr("get", "group")?.toString()?.ifBlank { "Chưa phân nhóm" } ?: "Chưa phân nhóm"
+        Triple(k.toString(), if (name.isNullOrBlank()) k.toString() else name, group)
     }
+}
+
+/** Thu tu nhom hien thi: nhom co ten (theo xuat hien) TRUOC, 'Chua phan nhom' xuong CUOI. */
+fun trainMapGroupOrder(opts: List<Triple<String, String, String>>): List<String> {
+    val order = LinkedHashSet<String>()
+    opts.forEach { if (it.third != "Chưa phân nhóm") order.add(it.third) }
+    if (opts.any { it.third == "Chưa phân nhóm" }) order.add("Chưa phân nhóm")
+    return order.toList()
 }
 
 /** Doc danh sach diem quai cua 1 map train tu Python de hien dropdown "Quái". Luon co "Bot tu chon"
@@ -1158,10 +1168,25 @@ fun AddPartyDialog(
                             modifier = Modifier.fillMaxWidth().menuAnchor(),
                         )
                         DropdownMenu(expanded = trainMapExpanded, onDismissRequest = { trainMapExpanded = false }) {
-                            mapOptions.forEach { (key, mapName) ->
-                                DropdownMenuItem(text = { Text(mapName) }, onClick = {
-                                    trainMapKey = key; trainMobIndex = -1; trainMapExpanded = false
-                                })
+                            val groups = trainMapGroupOrder(mapOptions)
+                            // Chua gom nhom (chi co 'Chua phan nhom') -> hien PHANG nhu cu, khong header thua.
+                            val flat = groups.size <= 1 && groups.firstOrNull() == "Chưa phân nhóm"
+                            if (flat) {
+                                mapOptions.forEach { (key, mapName, _) ->
+                                    DropdownMenuItem(text = { Text(mapName) }, onClick = {
+                                        trainMapKey = key; trainMobIndex = -1; trainMapExpanded = false
+                                    })
+                                }
+                            } else {
+                                groups.forEach { g ->
+                                    DropdownMenuItem(enabled = false, onClick = {},
+                                        text = { Text("📁 $g") })
+                                    mapOptions.filter { it.third == g }.forEach { (key, mapName, _) ->
+                                        DropdownMenuItem(text = { Text("    $mapName") }, onClick = {
+                                            trainMapKey = key; trainMobIndex = -1; trainMapExpanded = false
+                                        })
+                                    }
+                                }
                             }
                         }
                     }

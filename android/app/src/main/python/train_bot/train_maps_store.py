@@ -34,6 +34,10 @@ def merge_baseline(baseline: dict, local: dict | None) -> dict:
             result["maps"][key] = deepcopy(local_entry)
             continue
         if not isinstance(local_entry, dict) or not local_entry.get("mobs"):
+            # Khong co scan -> giu baseline. NHUNG neu user DA PHAN NHOM (local co 'group') thi GIU
+            # nhom cua user (map da phan nhom o may user -> khong bi ban tai ve ghi de).
+            if isinstance(local_entry, dict) and local_entry.get("group"):
+                result["maps"][key]["group"] = local_entry["group"]
             continue
         local_mobs = local_entry.get("mobs") or []
         local_safes = local_entry.get("safe") or []

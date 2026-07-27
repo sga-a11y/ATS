@@ -100,6 +100,7 @@ def _load_train_maps():
             }
             if value.get("name"):
                 entry["name"] = value["name"]
+            entry["group"] = value.get("group") or "Chưa phân nhóm"
             out[int(key)] = entry
         return out
     except Exception as error:

@@ -67,7 +67,9 @@ def _load_train_maps():
                 safes = [tuple(p) for p in s]
             else:
                 safes = [tuple(s)]
-            out[int(k)] = {"safe": safes, "mobs": [tuple(m) for m in v.get("mobs", [])]}
+            out[int(k)] = {"safe": safes, "mobs": [tuple(m) for m in v.get("mobs", [])],
+                           "name": v.get("name", k),
+                           "group": (v.get("group") or "Chưa phân nhóm")}
     except Exception:
         pass
     return out

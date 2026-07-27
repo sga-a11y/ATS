@@ -213,6 +213,13 @@ def _merge_user_config(live_dir: str, stage_dir: str):
                 continue
             merged = dict(stage_sub)   # ban update lam nen (co key MOI cua dev)
             merged.update(live_sub)    # USER WINS: key trung -> lay ban user; key user-only giu lai
+            # NHOM (chi train_maps): map user DA phan nhom -> giu nhom user; map user CHUA phan nhom
+            # (khong co 'group') ma ban tai ve DA co nhom -> lay nhom ban tai ve.
+            if subkey == "maps":
+                for k, u in live_sub.items():
+                    s = stage_sub.get(k)
+                    if isinstance(u, dict) and isinstance(s, dict) and not u.get("group") and s.get("group"):
+                        e = dict(u); e["group"] = s["group"]; merged[k] = e
             stage[subkey] = merged
             with open(stage_p, "w", encoding="utf-8") as f:
                 json.dump(stage, f, ensure_ascii=False, indent=2)
