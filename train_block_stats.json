@@ -2283,6 +2283,91 @@
           "updated_at": 1785144628
         }
       }
+    },
+    "21871": {
+      "spots": {
+        "1230,550": {
+          "total": 1,
+          "patterns": {
+            "3x1": 1
+          },
+          "last_slots": [
+            "0:1",
+            "0:2",
+            "0:3"
+          ],
+          "last_pattern": "3x1",
+          "updated_at": 1785173722
+        }
+      }
+    },
+    "21874": {
+      "spots": {
+        "1330,650": {
+          "total": 1,
+          "patterns": {
+            "3x1": 1
+          },
+          "last_slots": [
+            "0:1",
+            "0:2",
+            "0:3"
+          ],
+          "last_pattern": "3x1",
+          "updated_at": 1785174453
+        }
+      }
+    },
+    "21876": {
+      "spots": {
+        "1110,730": {
+          "total": 1,
+          "patterns": {
+            "3x1": 1
+          },
+          "last_slots": [
+            "0:1",
+            "0:2",
+            "0:3"
+          ],
+          "last_pattern": "3x1",
+          "updated_at": 1785174733
+        }
+      }
+    },
+    "21817": {
+      "spots": {
+        "650,590": {
+          "total": 7,
+          "patterns": {
+            "2x1": 7
+          },
+          "last_slots": [
+            "0:1",
+            "0:2"
+          ],
+          "last_pattern": "2x1",
+          "updated_at": 1785175588
+        }
+      }
+    },
+    "21826": {
+      "spots": {
+        "470,950": {
+          "total": 1,
+          "patterns": {
+            "4x1": 1
+          },
+          "last_slots": [
+            "0:0",
+            "0:1",
+            "0:2",
+            "0:3"
+          ],
+          "last_pattern": "4x1",
+          "updated_at": 1785179764
+        }
+      }
     }
   }
 }
