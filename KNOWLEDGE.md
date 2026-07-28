@@ -360,6 +360,27 @@ Vi du:
 - ban 7339 cai slot `0x1f`: `1b 0200011fab1c0000` -> `0x1a 0100cc320b00` = 733900 xu
 - ban 111 cai slot `0x46`: `1b 020001466f000000` -> `0x1a 01005c2b0000` = 11100 xu
 
+## 7d-SHOP2. MUA HP/SP O TRAC QUAN (Loi Dai Huong Dung) (xac nhan 2026-07-28)
+
+Capture MuMu `ts_capture_hpsp.pcap`. Login xong -> neu tong HP/SP du tru tu item trong tui < nguong
+-> di Trac Quan (12001) mua **Vien Hanh Khi +62HP** (tid `0x6a01`) / **Thien Kim Du +62SP**
+(tid `0x6a02`). Gia **20 xu/cai**. Gop HP+SP 1 chuyen (cung 1 NPC). 1 lan/ngay/acc.
+
+Flow toi NPC (spawn Trac Quan -> qua 2 cua -> di bo):
+- `0x44 0100e12e00` (tele 12001 flag 0)
+- move `(141,1637)->(90,1670)`, cua 1: `0x14 08000100` + scene_resume (`0x0c 0100`,`0x14 0600`)
+- move cot doc len `(1310,590)->...->(1310,110)`, cua 2: `0x14 08000500` + scene_resume
+- move duong cheo `(150,1810)->...->(1010,510)` toi NPC
+- mo shop: `0x20 020008`, `0x14 01000c00`, `0x14 09001e`, `0x14 0600`
+
+Lenh mua (theo **shop-slot**, KHONG phai tid): `01` = HP, `02` = SP.
+```
+C2S 0x1b: 01 00 [shopSlot 1B] [qty 2B LE] 00 00
+S2C 0x17: 08 00 [bagSlot] [tid 2B LE] [count 1B] ...   (xac nhan tid vao tui: 6a01=HP, 6a02=SP)
+```
+Vi du: mua 11 HP = `1b 0100010b000000`; mua 22 SP = `1b 01000216000000`.
+Code: `client.buy_hp_sp()` + route `TRAC_HPSP_ROUTE`; goi luc login trong run_party_digioi.py.
+
 ## 7d-RE. MAP COLLISION / SMART PATHFIND (xac nhan 2026-07-17)
 
 Muc tieu: tim data game biet o nao tren map di duoc / bi chan (tuong, song, object...) de pathfind dung hon.

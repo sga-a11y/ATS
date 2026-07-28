@@ -48,6 +48,12 @@ class PartyStore(private val context: Context) {
                 buyHoPhu = o.optBoolean("buy_ho_phu", false),
                 buyBaoHop = o.optBoolean("buy_bao_hop", false),
                 baoHopXuThreshold = o.optInt("bao_hop_xu_threshold", 1000000),
+                buyHp = o.optBoolean("buy_hp", false),
+                hpQty = o.optInt("hp_qty", 9999),
+                hpThresh = o.optInt("hp_thresh", 500000),
+                buySp = o.optBoolean("buy_sp", false),
+                spQty = o.optInt("sp_qty", 9999),
+                spThresh = o.optInt("sp_thresh", 500000),
                 diGioiLevel = o.optInt("di_gioi_level", 2),
                 accounts = accounts,
             )
@@ -76,6 +82,12 @@ class PartyStore(private val context: Context) {
             o.put("buy_ho_phu", p.buyHoPhu)
             o.put("buy_bao_hop", p.buyBaoHop)
             o.put("bao_hop_xu_threshold", p.baoHopXuThreshold)
+            o.put("buy_hp", p.buyHp)
+            o.put("hp_qty", p.hpQty)
+            o.put("hp_thresh", p.hpThresh)
+            o.put("buy_sp", p.buySp)
+            o.put("sp_qty", p.spQty)
+            o.put("sp_thresh", p.spThresh)
             o.put("di_gioi_level", p.diGioiLevel)
             val accArr = JSONArray()
             p.accounts.forEach { a ->

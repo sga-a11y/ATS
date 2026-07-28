@@ -615,6 +615,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if pcfg.get("buy_bao_hop"):
                 try: c.buy_trieu_goi_bao_hop(int(pcfg.get("bao_hop_xu_threshold", 1000000)))
                 except Exception as e: log.warning("[%s] loi mua Bao Hop: %s", label, e)
+            # MUA HP/SP (Cai dat nang cao, mac dinh TAT): neu du tru HP/SP < nguong -> di Trac Quan
+            # mua Vien Hanh Khi (+62HP) / Thien Kim Du (+62SP). Gop HP+SP 1 chuyen. 1 lan/ngay/acc.
+            if pcfg.get("buy_hp") or pcfg.get("buy_sp"):
+                try:
+                    c.buy_hp_sp(
+                        pcfg.get("buy_hp", False), int(pcfg.get("hp_qty", 9999)),
+                        int(pcfg.get("hp_thresh", 500000)),
+                        pcfg.get("buy_sp", False), int(pcfg.get("sp_qty", 9999)),
+                        int(pcfg.get("sp_thresh", 500000)),
+                    )
+                except Exception as e: log.warning("[%s] loi mua HP/SP: %s", label, e)
             # BOSS QUAN DOAN ngay sau van tieu: danh solo neu con luot (server count 0x55/0x2a) + het
             # cooldown. KHONG lien quan daily quest (tick hay ko van danh). Luc login char SOLO (chua
             # lap party) -> danh duoc. Trong phien: keepalive trigger REFORM khi con luot (xem duoi).
@@ -2700,7 +2711,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         use_phuc_than=False, use_digioi_ho_phu=False,
                         fight_legion_boss=True, do_van_tieu=True,
                         buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=1000000,
-                        di_gioi_level=2, auto_sell_noi_dat=True):
+                        di_gioi_level=2, auto_sell_noi_dat=True,
+                        buy_hp=False, hp_qty=9999, hp_thresh=500000,
+                        buy_sp=False, sp_qty=9999, sp_thresh=500000):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -2722,6 +2735,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "buy_ho_phu": bool(buy_ho_phu), "buy_bao_hop": bool(buy_bao_hop),
         "bao_hop_xu_threshold": int(bao_hop_xu_threshold),
         "di_gioi_level": int(di_gioi_level),
+        "buy_hp": bool(buy_hp), "hp_qty": int(hp_qty), "hp_thresh": int(hp_thresh),
+        "buy_sp": bool(buy_sp), "sp_qty": int(sp_qty), "sp_thresh": int(sp_thresh),
     }
     _flat = str(accounts).split("\x01") if accounts else []
     accs = []

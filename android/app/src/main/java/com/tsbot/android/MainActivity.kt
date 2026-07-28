@@ -468,6 +468,12 @@ fun TsBotApp(
             initialBuyHoPhu = partyBeingEdited.buyHoPhu,
             initialBuyBaoHop = partyBeingEdited.buyBaoHop,
             initialBaoHopXuThreshold = partyBeingEdited.baoHopXuThreshold,
+            initialBuyHp = partyBeingEdited.buyHp,
+            initialHpQty = partyBeingEdited.hpQty,
+            initialHpThresh = partyBeingEdited.hpThresh,
+            initialBuySp = partyBeingEdited.buySp,
+            initialSpQty = partyBeingEdited.spQty,
+            initialSpThresh = partyBeingEdited.spThresh,
             initialDiGioiLevel = partyBeingEdited.diGioiLevel,
             onApplyDiGioiLevel = { idx ->
                 service?.setDiGioiLevel(partyBeingEdited.accounts.map { it.username }, idx)
@@ -908,6 +914,12 @@ fun AddPartyDialog(
     initialBuyHoPhu: Boolean = false,
     initialBuyBaoHop: Boolean = false,
     initialBaoHopXuThreshold: Int = 1000000,
+    initialBuyHp: Boolean = false,
+    initialHpQty: Int = 9999,
+    initialHpThresh: Int = 500000,
+    initialBuySp: Boolean = false,
+    initialSpQty: Int = 9999,
+    initialSpThresh: Int = 500000,
     initialDiGioiLevel: Int = 2,
     onApplyAdvancedToAll: ((Party) -> Int)? = null,
     onApplyDiGioiLevel: ((Int) -> Unit)? = null,
@@ -935,6 +947,12 @@ fun AddPartyDialog(
     var buyHoPhu by remember { mutableStateOf(initialBuyHoPhu) }
     var buyBaoHop by remember { mutableStateOf(initialBuyBaoHop) }
     var baoHopXuText by remember { mutableStateOf(initialBaoHopXuThreshold.toString()) }
+    var buyHp by remember { mutableStateOf(initialBuyHp) }
+    var hpQtyText by remember { mutableStateOf(initialHpQty.toString()) }
+    var hpThreshText by remember { mutableStateOf(initialHpThresh.toString()) }
+    var buySp by remember { mutableStateOf(initialBuySp) }
+    var spQtyText by remember { mutableStateOf(initialSpQty.toString()) }
+    var spThreshText by remember { mutableStateOf(initialSpThresh.toString()) }
     // Cap quai Di Gioi: idx 1..15 (1-based). UI hien theo cap 10..180.
     var diGioiLevel by remember { mutableStateOf(initialDiGioiLevel.coerceIn(1, DG_LEVELS.size)) }
     var diGioiExpandedMode by remember { mutableStateOf(false) }
@@ -960,6 +978,12 @@ fun AddPartyDialog(
         buyHoPhu = buyHoPhu,
         buyBaoHop = buyBaoHop,
         baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,
+        buyHp = buyHp,
+        hpQty = hpQtyText.toIntOrNull() ?: 9999,
+        hpThresh = hpThreshText.toIntOrNull() ?: 500000,
+        buySp = buySp,
+        spQty = spQtyText.toIntOrNull() ?: 9999,
+        spThresh = spThreshText.toIntOrNull() ?: 500000,
         diGioiLevel = diGioiLevel,
     )
 
@@ -1132,6 +1156,44 @@ fun AddPartyDialog(
                                 onValueChange = { baoHopXuText = it.filter { c -> c.isDigit() } },
                                 singleLine = true,
                                 modifier = Modifier.width(120.dp).padding(start = 6.dp),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = buyHp, onCheckedChange = { buyHp = it })
+                            Text("Tự mua HP x")
+                            OutlinedTextField(
+                                value = hpQtyText,
+                                onValueChange = { hpQtyText = it.filter { c -> c.isDigit() } },
+                                singleLine = true,
+                                modifier = Modifier.width(84.dp).padding(start = 6.dp),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                            )
+                            Text("  khi tổng HP có thể hồi từ item trong túi <", modifier = Modifier.padding(start = 6.dp))
+                            OutlinedTextField(
+                                value = hpThreshText,
+                                onValueChange = { hpThreshText = it.filter { c -> c.isDigit() } },
+                                singleLine = true,
+                                modifier = Modifier.width(104.dp).padding(start = 6.dp),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = buySp, onCheckedChange = { buySp = it })
+                            Text("Tự mua SP x")
+                            OutlinedTextField(
+                                value = spQtyText,
+                                onValueChange = { spQtyText = it.filter { c -> c.isDigit() } },
+                                singleLine = true,
+                                modifier = Modifier.width(84.dp).padding(start = 6.dp),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                            )
+                            Text("  khi tổng SP có thể hồi từ item trong túi <", modifier = Modifier.padding(start = 6.dp))
+                            OutlinedTextField(
+                                value = spThreshText,
+                                onValueChange = { spThreshText = it.filter { c -> c.isDigit() } },
+                                singleLine = true,
+                                modifier = Modifier.width(104.dp).padding(start = 6.dp),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
                         }
@@ -1313,6 +1375,12 @@ fun AddPartyDialog(
                             buyHoPhu = buyHoPhu,
                             buyBaoHop = buyBaoHop,
                             baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,
+                            buyHp = buyHp,
+                            hpQty = hpQtyText.toIntOrNull() ?: 9999,
+                            hpThresh = hpThreshText.toIntOrNull() ?: 500000,
+                            buySp = buySp,
+                            spQty = spQtyText.toIntOrNull() ?: 9999,
+                            spThresh = spThreshText.toIntOrNull() ?: 500000,
                             diGioiLevel = diGioiLevel,
                         ))
                     }

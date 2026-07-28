@@ -448,6 +448,12 @@ if _aj is not None:
                 "buy_ho_phu": bool(_party.get("buy_ho_phu", False)),
                 "buy_bao_hop": bool(_party.get("buy_bao_hop", False)),
                 "bao_hop_xu_threshold": int(_party.get("bao_hop_xu_threshold", 1000000)),
+                "buy_hp": bool(_party.get("buy_hp", False)),
+                "hp_qty": int(_party.get("hp_qty", 9999)),
+                "hp_thresh": int(_party.get("hp_thresh", 500000)),
+                "buy_sp": bool(_party.get("buy_sp", False)),
+                "sp_qty": int(_party.get("sp_qty", 9999)),
+                "sp_thresh": int(_party.get("sp_thresh", 500000)),
                 "di_gioi_level": int(_party.get("di_gioi_level", 2)),   # idx 1..15 cap quai DG (2=cap25)
             }
             PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])

@@ -4955,6 +4955,143 @@ class GameClient:
                  self._label, sold, total_have, max_qty)
         return sold > 0
 
+    # ---------- MUA HP/SP tu dong (Vien Hanh Khi +62HP / Thien Kim Du +62SP) ----------
+    # NPC "Loi Dai Huong Dung" o Trac Quan (12001). Route + goi mua boc tu capture
+    # ts_capture_hpsp.pcap (MuMu): tele 0x44 -> qua 2 cua -> di bo toi NPC -> 0x20/0x14 mo shop ->
+    # 0x1b mua theo shop-slot (01=HP tid 0x6a01, 02=SP tid 0x6a02). Gia 20 xu/cai.
+    TRAC_QUAN_CITY = 12001
+    HPSP_ITEM_PRICE = 20       # xu / 1 cai (ca HP lan SP)
+    HP_SHOP_SLOT = 1           # Vien Hanh Khi +62HP
+    SP_SHOP_SLOT = 2           # Thien Kim Du +62SP
+    # Route Trac Quan spawn -> NPC (chi move + gate; scene_resume tu goi sau moi gate).
+    TRAC_HPSP_ROUTE = [
+        ("move", 3, 141, 1637), ("move", 3, 90, 1670), ("move", 3, 90, 1670),
+        ("gate", "08000100"),
+        ("move", 6, 1310, 590), ("move", 6, 1310, 590),
+        ("move", 0, 1310, 409), ("move", 0, 1310, 346), ("move", 0, 1310, 282),
+        ("move", 0, 1310, 219), ("move", 0, 1310, 155), ("move", 0, 1310, 110),
+        ("move", 0, 1310, 110),
+        ("gate", "08000500"),
+        ("move", 0, 150, 1810), ("move", 7, 323, 1625), ("move", 7, 382, 1561),
+        ("move", 7, 441, 1498), ("move", 7, 501, 1435), ("move", 7, 560, 1371),
+        ("move", 7, 619, 1308), ("move", 7, 678, 1245), ("move", 7, 737, 1182),
+        ("move", 7, 797, 1118), ("move", 7, 870, 1040), ("move", 7, 929, 977),
+        ("move", 7, 988, 914), ("move", 7, 1047, 851), ("move", 7, 1106, 787),
+        ("move", 7, 1166, 724), ("move", 7, 1225, 661),
+        ("move", 0, 1070, 590), ("move", 0, 1070, 590),
+        ("move", 1, 1010, 510), ("move", 1, 1010, 510),
+    ]
+
+    def _item_heal(self, tid: int):
+        """(hp, sp) 1 item tid co the hoi. Uu tien KHAI (items_known) > gamedata > HOC (learned)."""
+        k = _load_known_items().get(tid)
+        if k:
+            return int(k.get("hp", 0) or 0), int(k.get("sp", 0) or 0)
+        g = _load_gamedata_items().get(tid)
+        if g:
+            return int(g.get("hp", 0) or 0), int(g.get("sp", 0) or 0)
+        lv = self._learned().get(str(tid)) or {}
+        return int(lv.get("hp", 0) or 0), int(lv.get("sp", 0) or 0)
+
+    def hp_sp_reserve(self):
+        """Tong HP & SP du tru = tong (so luong * luong hoi) cua MOI item hoi mau trong tui."""
+        thp = tsp = 0
+        for _slot, val in list(getattr(self, "bag_slots", {}).items()):
+            try:
+                tid, cnt = int(val[0]), int(val[1])
+            except Exception:
+                continue
+            if cnt <= 0:
+                continue
+            hp, sp = self._item_heal(tid)
+            thp += hp * cnt
+            tsp += sp * cnt
+        return thp, tsp
+
+    def _buy_shop_slot(self, slot: int, want: int, price: int, name: str, chunk: int = 9999) -> int:
+        """Mua item o shop-slot (0x1b: 01 00 [slot] [qty LE16] 00 00). Mua toi da theo 'want' NHUNG
+        khong vuot kha nang chi tra (self.xu // price). Toi da 9999/lenh -> muon nhieu hon thi tu
+        chia nhieu lenh (batch 'chunk'). Tu tru self.xu."""
+        want = max(0, int(want))
+        if want <= 0:
+            return 0
+        afford = (self.xu // price) if (self.xu is not None and price > 0) else want
+        qty = min(want, afford)
+        if qty <= 0:
+            log.info("[%s] Mua %s: khong du xu (xu=%s, gia=%d) -> mua 0", self._label, name, self.xu, price)
+            return 0
+        bought = 0
+        while bought < qty and self.running:
+            q = min(qty - bought, chunk)
+            payload = b"\x01\x00" + bytes([slot & 0xFF]) + struct.pack("<H", q) + b"\x00\x00"
+            self.send(0x1B, payload)
+            bought += q
+            if self.xu is not None:
+                self.xu = max(0, self.xu - q * price)
+            time.sleep(0.4)
+        log.info("[%s] Mua %s: %d/%d cai (con xu ~%s)", self._label, name, bought, want, self.xu)
+        return bought
+
+    def _run_trac_hpsp_route(self):
+        """Replay route Trac Quan spawn -> NPC Loi Dai Huong Dung (theo capture)."""
+        for step in self.TRAC_HPSP_ROUTE:
+            if not self.running:
+                return
+            if step[0] == "move":
+                _, flag, x, y = step
+                if not self._wait_combat_clear(idle=1.0, cap=45.0):
+                    return
+                self.send(0x06, b"\x01\x00" + bytes([flag & 0xFF]) + struct.pack("<HH", int(x), int(y)))
+                self.pos = (int(x), int(y))
+                time.sleep(0.55)
+            elif step[0] == "gate":
+                if not self._wait_combat_clear(idle=1.0, cap=45.0):
+                    return
+                self.send(0x14, bytes.fromhex(step[1]))
+                time.sleep(0.5)
+                self.scene_resume()   # 0x0c 0100 + 0x14 0600: bat buoc sau doi scene moi di duoc
+
+    def buy_hp_sp(self, buy_hp: bool, hp_qty: int, hp_thresh: int,
+                  buy_sp: bool, sp_qty: int, sp_thresh: int):
+        """Login (sau khi load tui): neu du tru HP/SP thap hon nguong -> di Trac Quan mua bo sung.
+        Gop CA HP+SP trong 1 CHUYEN (cung 1 NPC), khong bay ve roi di lai. 1 lan/ngay/acc."""
+        if not (buy_hp or buy_sp):
+            return
+        if _shop_done_today(self._label, "buy_hp_sp"):
+            return
+        thp, tsp = self.hp_sp_reserve()
+        need_hp = bool(buy_hp) and thp < int(hp_thresh)
+        need_sp = bool(buy_sp) and tsp < int(sp_thresh)
+        if not (need_hp or need_sp):
+            log.info("[%s] Mua HP/SP: du tru du (HP=%d/nguong=%s, SP=%d/nguong=%s) -> bo qua",
+                     self._label, thp, hp_thresh if buy_hp else "-", tsp, sp_thresh if buy_sp else "-")
+            return
+        self._wait_xu()
+        if self.xu is None:
+            log.info("[%s] Mua HP/SP: chua doc duoc xu -> bo qua", self._label)
+            return
+        log.info("[%s] Mua HP/SP: HP du tru=%d (%s), SP du tru=%d (%s), xu=%d -> di Trac Quan",
+                 self._label, thp, "MUA" if need_hp else "du", tsp, "MUA" if need_sp else "du", self.xu)
+        if not self._wait_combat_clear(idle=1.0, cap=60.0):
+            return
+        if not self.go_to_town(self.TRAC_QUAN_CITY, 0):
+            log.warning("[%s] Mua HP/SP: khong ve duoc Trac Quan -> bo qua", self._label)
+            return
+        self._run_trac_hpsp_route()
+        if not self._wait_combat_clear(idle=1.0, cap=60.0):
+            return
+        # Mo dialog NPC -> vao shop (chuoi boc tu capture).
+        self.send(0x20, b"\x02\x00\x08"); time.sleep(0.6)
+        self.send(0x14, b"\x01\x00\x0c\x00"); time.sleep(0.5)
+        self.send(0x14, b"\x09\x00\x1e"); time.sleep(0.5)
+        self.send(0x14, b"\x06\x00"); time.sleep(0.5)
+        if need_hp:
+            self._buy_shop_slot(self.HP_SHOP_SLOT, hp_qty, self.HPSP_ITEM_PRICE, "Vien Hanh Khi +62HP")
+        if need_sp:
+            self._buy_shop_slot(self.SP_SHOP_SLOT, sp_qty, self.HPSP_ITEM_PRICE, "Thien Kim Du +62SP")
+        self.send(0x14, b"\x06\x00")   # dong dialog
+        _shop_mark_done(self._label, "buy_hp_sp")
+
     def pre_route_town_hop(self):
         """Truoc khi teleport ve THANH DAU ROUTE: tele ve Trac Quan (12001) hoac Ng.Thanh (12061)
         TRUOC (chon ngau nhien 50-50) roi moi tele thanh route. User bao: bay ve thanh route truc

@@ -44,6 +44,15 @@ data class Party(
     val buyHoPhu: Boolean = false,
     val buyBaoHop: Boolean = false,
     val baoHopXuThreshold: Int = 1000000,
+    // Tu mua HP/SP (mac dinh TAT): login xong tinh tong HP/SP du tru tu item trong tui; neu <
+    // nguong -> di Trac Quan mua Vien Hanh Khi (+62HP) / Thien Kim Du (+62SP), so luong theo *Qty
+    // (mua toi da theo xu, 20 xu/cai). 1 lan/ngay/acc. Mirror PC's buy_hp/buy_sp (gui.py).
+    val buyHp: Boolean = false,
+    val hpQty: Int = 9999,
+    val hpThresh: Int = 500000,
+    val buySp: Boolean = false,
+    val spQty: Int = 9999,
+    val spThresh: Int = 500000,
     // Cap quai Di Gioi: idx 1..15 (goi 0x61 02 00 idx) -> cap 10..180. Mac dinh 2 = cap 25.
     val diGioiLevel: Int = 2,
     val accounts: List<Account> = emptyList(),
@@ -59,6 +68,12 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     buyHoPhu = source.buyHoPhu,
     buyBaoHop = source.buyBaoHop,
     baoHopXuThreshold = source.baoHopXuThreshold,
+    buyHp = source.buyHp,
+    hpQty = source.hpQty,
+    hpThresh = source.hpThresh,
+    buySp = source.buySp,
+    spQty = source.spQty,
+    spThresh = source.spThresh,
     // KHONG copy diGioiLevel: cap quai DG la setting RIENG tung party (o section mode Di Gioi),
     // khong duoc "ap dung cho party khac" de len cap cua party do.
 )

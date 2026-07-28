@@ -15,6 +15,8 @@
     "0xb3d5": {"name": "Phúc Thần", "qty": 50, "phuc_than": true},
     "0xb5f4": {"name": "Túi Đại Phúc Thần", "qty": 1, "phuc_than": true},
     "0x5aab": {"name": "Ngọc Siêu Phúc Thần", "phuc_than": true, "equip": true},
-    "0x5a2d": {"name": "Ngọc Đại Phúc Thần", "phuc_than": true, "equip": true}
+    "0x5a2d": {"name": "Ngọc Đại Phúc Thần", "phuc_than": true, "equip": true},
+    "0xb4a0": "Ngọc Kiện Thể",
+    "0xb49e": "Ngọc Năng Lượng"
   }
 }

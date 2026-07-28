@@ -18,7 +18,7 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           "train_block_stats.py", "mob_scanner.py", "mob_spots.py", "scene_fight.py",
           "train_maps_store.py", "npc40.py"]
 
-SHARED_ASSETS = ["events.json", "npc_names.json"]
+SHARED_ASSETS = ["events.json", "npc_names.json", "use_items.json"]
 
 # File PC-only can cho coordinator/client neu co import (pathfind dung boi navigate). Copy neu ton tai.
 OPTIONAL = ["pathfind.py", "world_nav.py", "smart_route.py"]

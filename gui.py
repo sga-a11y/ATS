@@ -1375,6 +1375,15 @@ class PartyConfigFrame(ttk.Frame):
         self.buy_ho_phu_var = tk.BooleanVar(value=bool(self._preset.get("buy_ho_phu", False)))
         self.buy_bao_hop_var = tk.BooleanVar(value=bool(self._preset.get("buy_bao_hop", False)))
         self.bao_hop_xu_var = tk.StringVar(value=str(self._preset.get("bao_hop_xu_threshold", 1000000)))
+        # Tu mua HP/SP (mac dinh TAT): login xong tinh tong HP/SP du tru tu item trong tui;
+        # neu < nguong -> di Trac Quan mua Vien Hanh Khi (+62HP) / Thien Kim Du (+62SP), so luong
+        # theo o text (mua toi da theo xu, 20 xu/cai). 1 lan/ngay/acc.
+        self.buy_hp_var = tk.BooleanVar(value=bool(self._preset.get("buy_hp", False)))
+        self.hp_qty_var = tk.StringVar(value=str(self._preset.get("hp_qty", 9999)))
+        self.hp_thresh_var = tk.StringVar(value=str(self._preset.get("hp_thresh", 500000)))
+        self.buy_sp_var = tk.BooleanVar(value=bool(self._preset.get("buy_sp", False)))
+        self.sp_qty_var = tk.StringVar(value=str(self._preset.get("sp_qty", 9999)))
+        self.sp_thresh_var = tk.StringVar(value=str(self._preset.get("sp_thresh", 500000)))
 
         ttk.Label(self, text="Acc (TICK = dùng, BỎ TICK = bỏ qua). Dòng đầu đã tick = chủ PT "
                   "(trừ khi tick ô trên). TỐI ĐA 5 acc/party:").pack(anchor="w")
@@ -1972,6 +1981,19 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Checkbutton(_bh, text="Mua Triệu Gọi Bảo Hộp khi xu nhiều hơn",
                         variable=self.buy_bao_hop_var).pack(side="left")
         ttk.Entry(_bh, textvariable=self.bao_hop_xu_var, width=10).pack(side="left", padx=(4, 0))
+        # Tu mua HP/SP o Trac Quan (Loi Dai Huong Dung) khi du tru trong tui thap hon nguong.
+        _hp = ttk.Frame(frm); _hp.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_hp, text="Tự mua HP (Viên Hành Khí +62), số lượng",
+                        variable=self.buy_hp_var).pack(side="left")
+        ttk.Entry(_hp, textvariable=self.hp_qty_var, width=7).pack(side="left", padx=(4, 0))
+        ttk.Label(_hp, text="khi tổng HP có thể hồi từ item trong túi <").pack(side="left", padx=(6, 0))
+        ttk.Entry(_hp, textvariable=self.hp_thresh_var, width=9).pack(side="left", padx=(4, 0))
+        _sp = ttk.Frame(frm); _sp.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_sp, text="Tự mua SP (Thiên Kim Du +62), số lượng",
+                        variable=self.buy_sp_var).pack(side="left")
+        ttk.Entry(_sp, textvariable=self.sp_qty_var, width=7).pack(side="left", padx=(4, 0))
+        ttk.Label(_sp, text="khi tổng SP có thể hồi từ item trong túi <").pack(side="left", padx=(6, 0))
+        ttk.Entry(_sp, textvariable=self.sp_thresh_var, width=9).pack(side="left", padx=(4, 0))
         # (Cap quai Di Gioi da chuyen ra setting mode Di Gioi ngoai - khong lap lai o day)
         bar = ttk.Frame(frm); bar.pack(fill="x", pady=(12, 0))
         if self.on_apply_advanced_to_all:
@@ -1991,6 +2013,12 @@ class PartyConfigFrame(ttk.Frame):
             "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
             "buy_bao_hop": bool(self.buy_bao_hop_var.get()),
             "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 1000000),
+            "buy_hp": bool(self.buy_hp_var.get()),
+            "hp_qty": _parse_int(self.hp_qty_var.get(), 9999),
+            "hp_thresh": _parse_int(self.hp_thresh_var.get(), 500000),
+            "buy_sp": bool(self.buy_sp_var.get()),
+            "sp_qty": _parse_int(self.sp_qty_var.get(), 9999),
+            "sp_thresh": _parse_int(self.sp_thresh_var.get(), 500000),
             # KHONG co di_gioi_level o day: cap quai DG la setting RIENG tung party (o section
             # mode Di Gioi), khong duoc "ap dung cho party khac" de len cap cua party do.
         }
@@ -2005,6 +2033,12 @@ class PartyConfigFrame(ttk.Frame):
         self.buy_ho_phu_var.set(bool(data.get("buy_ho_phu", False)))
         self.buy_bao_hop_var.set(bool(data.get("buy_bao_hop", False)))
         self.bao_hop_xu_var.set(str(_parse_int(data.get("bao_hop_xu_threshold", 1000000), 1000000)))
+        self.buy_hp_var.set(bool(data.get("buy_hp", False)))
+        self.hp_qty_var.set(str(_parse_int(data.get("hp_qty", 9999), 9999)))
+        self.hp_thresh_var.set(str(_parse_int(data.get("hp_thresh", 500000), 500000)))
+        self.buy_sp_var.set(bool(data.get("buy_sp", False)))
+        self.sp_qty_var.set(str(_parse_int(data.get("sp_qty", 9999), 9999)))
+        self.sp_thresh_var.set(str(_parse_int(data.get("sp_thresh", 500000), 500000)))
         # KHONG dung di_gioi_level (setting rieng tung party, xem _advanced_settings_data)
 
     def _on_mode_change(self):
@@ -2195,6 +2229,12 @@ class PartyConfigFrame(ttk.Frame):
                 "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
                 "buy_bao_hop": bool(self.buy_bao_hop_var.get()),
                 "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 1000000),
+                "buy_hp": bool(self.buy_hp_var.get()),
+                "hp_qty": _parse_int(self.hp_qty_var.get(), 9999),
+                "hp_thresh": _parse_int(self.hp_thresh_var.get(), 500000),
+                "buy_sp": bool(self.buy_sp_var.get()),
+                "sp_qty": _parse_int(self.sp_qty_var.get(), 9999),
+                "sp_thresh": _parse_int(self.sp_thresh_var.get(), 500000),
                 "di_gioi_level": _dg_level_to_idx(self.di_gioi_level_var.get()),
                 "leaders": leaders, "accounts": accs}
         if mode == "digioi":
