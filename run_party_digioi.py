@@ -457,16 +457,18 @@ def _route_mismatch_timed_out(state, leader_map, mismatch, now, timeout=15.0):
     return now - state["since"] >= timeout
 
 
-def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn, timeout=3600.0):
+def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
     """MODE digioi_train: acc nay DA XONG DG -> danh dau + DUNG YEN cho CA PARTY xong DG.
     Du het -> doi pha party sang "train" (moi acc relogin se chay mode train). Tra True neu
-    da san sang di train, False neu bi Stop/timeout."""
+    da san sang di train, False neu bi Stop.
+    CHO KHONG GIOI HAN (theo yeu cau user): chi thoat khi CA PARTY xong DG hoac bam Stop -> acc xong
+    SOM khong bi tat game oan trong luc acc khac con dang DG (DG toi 2h). Acc da tat/rot han khong
+    tinh vao (users = acc DANG CHAY) nen 1 acc chet cung khong ket ca party mai mai."""
     st = _pstate(pidx)
     with st["lock"]:
         st["dt_done"].add(username)
-    t0 = time.time()
     last_log = 0.0
-    while time.time() - t0 < timeout:
+    while True:
         if stopped_fn():
             return False
         users = set(_running_party_usernames(pidx))
@@ -482,11 +484,9 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn, timeout=3600.0):
                 return True
         if time.time() - last_log > 60:
             last_log = time.time()
-            log.info("[%s] DG+Train: xong DG, DUNG YEN cho party (%d/%d acc xong)",
+            log.info("[%s] DG+Train: xong DG, DUNG YEN cho party (%d/%d acc xong) - cho khong gioi han",
                      label, len(done & users), len(users))
         time.sleep(5)
-    log.warning("[%s] DG+Train: cho party xong DG qua %.0fs -> bo qua", label, timeout)
-    return False
 
 
 def run_account(username, password, pidx, is_leader, is_picker=False, is_reconnect=False):
