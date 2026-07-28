@@ -1241,6 +1241,20 @@
           ],
           "last_pattern": "4x1",
           "updated_at": 1785002015
+        },
+        "1030,570": {
+          "total": 3,
+          "patterns": {
+            "4x1": 2,
+            "3x1": 1
+          },
+          "last_slots": [
+            "0:1",
+            "0:2",
+            "0:3"
+          ],
+          "last_pattern": "3x1",
+          "updated_at": 1785263472
         }
       }
     },

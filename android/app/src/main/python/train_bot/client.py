@@ -5054,10 +5054,9 @@ class GameClient:
     def buy_hp_sp(self, buy_hp: bool, hp_qty: int, hp_thresh: int,
                   buy_sp: bool, sp_qty: int, sp_thresh: int):
         """Login (sau khi load tui): neu du tru HP/SP thap hon nguong -> di Trac Quan mua bo sung.
-        Gop CA HP+SP trong 1 CHUYEN (cung 1 NPC), khong bay ve roi di lai. 1 lan/ngay/acc."""
+        Gop CA HP+SP trong 1 CHUYEN (cung 1 NPC), khong bay ve roi di lai. MOI lan login deu check
+        (KHONG chot 1 lan/ngay) - user muon cu thieu la mua bu."""
         if not (buy_hp or buy_sp):
-            return
-        if _shop_done_today(self._label, "buy_hp_sp"):
             return
         thp, tsp = self.hp_sp_reserve()
         need_hp = bool(buy_hp) and thp < int(hp_thresh)
@@ -5090,7 +5089,6 @@ class GameClient:
         if need_sp:
             self._buy_shop_slot(self.SP_SHOP_SLOT, sp_qty, self.HPSP_ITEM_PRICE, "Thien Kim Du +62SP")
         self.send(0x14, b"\x06\x00")   # dong dialog
-        _shop_mark_done(self._label, "buy_hp_sp")
 
     def pre_route_town_hop(self):
         """Truoc khi teleport ve THANH DAU ROUTE: tele ve Trac Quan (12001) hoac Ng.Thanh (12061)
