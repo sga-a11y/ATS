@@ -1682,15 +1682,47 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     st["manual_route_party_ready"].clear()
                     st["manual_route_done"].clear()
 
-            def _wait_event(event, desc, timeout=None):
+            def _wait_event(event, desc, timeout=None, gate_follow=False):
                 t0 = time.time()
-                while not event.wait(1.0):
+                saw_route_battle = False
+                continue_until = 0.0
+                last_continue = 0.0
+                logged_continue = False
+                while not event.wait(0.5 if gate_follow else 1.0):
                     if not c.running or _stopped():
                         return False
                     if timeout is not None and time.time() - t0 > timeout:
                         log.warning("[%s] manual route: cho %s qua %.0fs -> bo qua",
                                     label, desc, timeout)
                         return False
+                    if gate_follow:
+                        now = time.time()
+                        if c.state.in_battle or c.in_combat(idle_secs=1.0):
+                            saw_route_battle = True
+                            continue_until = 0.0
+                            continue
+                        if saw_route_battle:
+                            grace_until = max(
+                                getattr(c, "_battle_end_grace_until", 0.0),
+                                getattr(c, "_genuine_end_seen", 0.0) + 4.0,
+                            )
+                            if now < grace_until:
+                                continue
+                            if continue_until <= 0:
+                                continue_until = now + 12.0
+                            if now > continue_until:
+                                saw_route_battle = False
+                                continue
+                            if now - last_continue >= 1.0:
+                                if not logged_continue:
+                                    log.info("[%s] manual route: member vua xong battle cong -> bam tiep thoai de theo leader",
+                                             label)
+                                    logged_continue = True
+                                try:
+                                    c.send(0x14, b"\x06\x00")
+                                except Exception:
+                                    return False
+                                last_continue = now
                 return True
 
             def _wait_manual_city_arrived(expected, timeout=150):
@@ -1874,7 +1906,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         bad = _party_maps_bad()
                         now = time.time()
                         if _route_mismatch_timed_out(
-                            bad_since, c.current_map, bad, now
+                            bad_since, c.current_map, bad, now, timeout=30.0
                         ):
                             _route_retry(
                                 f"co acc lech map khi dang keo (leader map={c.current_map}, {bad})"
@@ -1926,8 +1958,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         _route_retry(f"leader chua toi AAA={source} (dang map {c.current_map})")
                     st["manual_route_done"].set()
                 else:
-                    _wait_event(st["manual_route_source_done"], "leader keo toi AAA", timeout=None)
-                    _wait_event(st["manual_route_done"], "leader keo toi BBB", timeout=None)
+                    _wait_event(st["manual_route_source_done"], "leader keo toi AAA", timeout=None, gate_follow=True)
+                    _wait_event(st["manual_route_done"], "leader keo toi BBB", timeout=None, gate_follow=True)
                     route_completed = c.current_map == dest
                 c.flee_mode = False
                 # Party "khong co chu PT" chi lap party TAM de keo -> den noi thi GIAI TAN,
