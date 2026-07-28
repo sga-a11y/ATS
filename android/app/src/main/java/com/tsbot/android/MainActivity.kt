@@ -464,6 +464,7 @@ fun TsBotApp(
             initialUseDigioiHoPhu = partyBeingEdited.useDigioiHoPhu,
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
             initialDoVanTieu = partyBeingEdited.doVanTieu,
+            initialAutoSellNoiDat = partyBeingEdited.autoSellNoiDat,
             initialBuyHoPhu = partyBeingEdited.buyHoPhu,
             initialBuyBaoHop = partyBeingEdited.buyBaoHop,
             initialBaoHopXuThreshold = partyBeingEdited.baoHopXuThreshold,
@@ -903,6 +904,7 @@ fun AddPartyDialog(
     initialUseDigioiHoPhu: Boolean = false,
     initialFightLegionBoss: Boolean = true,
     initialDoVanTieu: Boolean = true,
+    initialAutoSellNoiDat: Boolean = true,
     initialBuyHoPhu: Boolean = false,
     initialBuyBaoHop: Boolean = false,
     initialBaoHopXuThreshold: Int = 1000000,
@@ -929,6 +931,7 @@ fun AddPartyDialog(
     var useDigioiHoPhu by remember { mutableStateOf(initialUseDigioiHoPhu) }
     var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
     var doVanTieu by remember { mutableStateOf(initialDoVanTieu) }
+    var autoSellNoiDat by remember { mutableStateOf(initialAutoSellNoiDat) }
     var buyHoPhu by remember { mutableStateOf(initialBuyHoPhu) }
     var buyBaoHop by remember { mutableStateOf(initialBuyBaoHop) }
     var baoHopXuText by remember { mutableStateOf(initialBaoHopXuThreshold.toString()) }
@@ -953,6 +956,7 @@ fun AddPartyDialog(
         useDigioiHoPhu = useDigioiHoPhu,
         fightLegionBoss = fightLegionBoss,
         doVanTieu = doVanTieu,
+        autoSellNoiDat = autoSellNoiDat,
         buyHoPhu = buyHoPhu,
         buyBaoHop = buyBaoHop,
         baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,
@@ -1111,6 +1115,10 @@ fun AddPartyDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = doVanTieu, onCheckedChange = { doVanTieu = it })
                             Text("Vận tiêu (nhận quà + gửi pet)")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = autoSellNoiDat, onCheckedChange = { autoSellNoiDat = it })
+                            Text("Tự bán Nồi đất")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = buyHoPhu, onCheckedChange = { buyHoPhu = it })
@@ -1301,6 +1309,7 @@ fun AddPartyDialog(
                             useDigioiHoPhu = useDigioiHoPhu,
                             fightLegionBoss = fightLegionBoss,
                             doVanTieu = doVanTieu,
+                            autoSellNoiDat = autoSellNoiDat,
                             buyHoPhu = buyHoPhu,
                             buyBaoHop = buyBaoHop,
                             baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,

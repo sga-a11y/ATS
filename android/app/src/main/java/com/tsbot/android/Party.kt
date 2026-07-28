@@ -38,6 +38,8 @@ data class Party(
     // Van tieu (do_van_tieu: nhan qua escort + gui pet). Mirror PC's van_tieu_var (gui.py).
     // Mac dinh CO tick (giu hanh vi cu - truoc gio luon lam).
     val doVanTieu: Boolean = true,
+    // Tu ban Noi Dat o NPC Nha buon Ng.Thanh khi pre-route random ve Ng.Thanh. Mac dinh CO tick.
+    val autoSellNoiDat: Boolean = true,
     // Mua shop (mac dinh TAT). Ho Phu: mua 3/ngay. Bao Hop: mua 1/ngay khi xu > baoHopXuThreshold.
     val buyHoPhu: Boolean = false,
     val buyBaoHop: Boolean = false,
@@ -53,6 +55,7 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     useDigioiHoPhu = source.useDigioiHoPhu,
     fightLegionBoss = source.fightLegionBoss,
     doVanTieu = source.doVanTieu,
+    autoSellNoiDat = source.autoSellNoiDat,
     buyHoPhu = source.buyHoPhu,
     buyBaoHop = source.buyBaoHop,
     baoHopXuThreshold = source.baoHopXuThreshold,

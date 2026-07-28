@@ -648,6 +648,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         train_on_map = (mode == "train") and (tm is not None)
         is_digioi = (mode == "digioi")
         dt_dg_finished = False   # mode digioi_train: vua HET GIO DG -> cho party roi sang train
+        c.auto_sell_noi_dat = bool(pcfg.get("auto_sell_noi_dat", True) and mode in ("train", "city"))
         ev = None
         train_safes = []
         if tm is not None:
@@ -732,7 +733,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             log.info("[%s] (%s) reconnect do team dungeon VO -> lam LAI daily (team dungeon)", label, role)
         if not is_digioi and do_daily and (not is_reconnect or _o5_redo):
             if mode == "city":
-                try: c.go_to_town(sc, city_flag)                       # ve thanh config
+                try:
+                    if c.go_to_town(sc, city_flag) and c.current_map == getattr(c, "NOI_DAT_SELL_CITY", 12061):
+                        c.sell_noi_dat()
                 except Exception: pass
             elif train_on_map:
                 if login_map == sc and train_safes:
@@ -802,6 +805,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 time.sleep(1)
             log.info("[%s] (%s) xong daily login (%d/%d acc) -> sync kenh + lap party",
                      label, role, st["dailies_done"], expected)
+            with st["lock"]:
+                _o5_done = st.get("o5_state") == "done"
+            if _o5_done and _clear_o5_client_flags(c):
+                log.info("[%s] (%s) o5 da xong -> mo khoa teleport/reform sau pho ban", label, role)
 
         # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
         # DG: phai goi TRUOC khi vao DG (doi kenh trong DG se DA ra khoi DG!).
@@ -1428,7 +1435,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # Ve thanh SAU dungeon: neu dungeon dump ve 12000 thi teleport ve thanh lan nua.
                 log.info("[%s] (%s) TAP TRUNG ve thanh %s (flag %s)%s", label, role, sc, city_flag,
                          " (dung o %s -> ve lai)" % c.current_map if c.current_map != sc else "")
-                try: c.go_to_town(sc, city_flag)
+                try:
+                    if c.go_to_town(sc, city_flag) and c.current_map == getattr(c, "NOI_DAT_SELL_CITY", 12061):
+                        c.sell_noi_dat()
                 except Exception as e:
                     log.warning("[%s] loi ve thanh: %s", label, e)
             elif mode == "cleanbag":
@@ -2434,6 +2443,18 @@ def party_accounts(pidx):
     return [(u, p, u == leader_acc, u == picker_acc) for u, p in valid]
 
 
+def _clear_o5_client_flags(c):
+    active = (
+        time.time() < getattr(c, "_phoban_until", 0.0)
+        or time.time() < getattr(c, "_team_dungeon_until", 0.0)
+        or getattr(c.state, "quest_mode", False)
+    )
+    c._phoban_until = 0.0
+    c._team_dungeon_until = 0.0
+    c.state.quest_mode = False
+    return active
+
+
 def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done):
     """O5 PHO BAN TO DOI = BUOC CUOI claim_daily_quests (sau khi check + thu lam moi o khac).
     Moi acc report o5 da xong chua. LEADER cho CA party report -> CHI khi MOI nguoi deu CHUA xong o5
@@ -2469,7 +2490,7 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 log.warning("[%s] (member) dong doi ROT trong team dungeon -> RELOGIN thoat instance", label)
                 try: c.relogin()
                 except Exception: pass
-                c._phoban_until = 0.0
+                _clear_o5_client_flags(c)
                 return
             with st["lock"]:
                 state = st["o5_state"]
@@ -2487,7 +2508,7 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 # member van BAIL ("dang vao pho ban -> ngung teleport") ngay sau khi flow rieng
                 # (sync kenh + lap party) goi toi, roi rot vao nhanh "map mismatch -> lam dungeon
                 # roi THOAT" sai cho (member tuong minh dang o pho ban solo o1).
-                c._phoban_until = 0.0
+                _clear_o5_client_flags(c)
                 return
             if not c.in_combat():   # xong 1 tran team dungeon (member auto-danh) -> hoi HP/SP
                 try: c.do_heal()
@@ -2534,6 +2555,7 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 try: c.relogin()
                 except Exception: pass
         finally:
+            _clear_o5_client_flags(c)
             with st["lock"]:
                 # VO do co dis (chinh leader rot = not c.running, HOAC co member rot = disc_gen/
                 # reconnecting): bao member -> CA party relogin thoat instance (trong dungeon KHONG
@@ -2646,7 +2668,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         use_phuc_than=False, use_digioi_ho_phu=False,
                         fight_legion_boss=True, do_van_tieu=True,
                         buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=1000000,
-                        di_gioi_level=2):
+                        di_gioi_level=2, auto_sell_noi_dat=True):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -2664,6 +2686,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "use_phuc_than": bool(use_phuc_than), "use_digioi_ho_phu": bool(use_digioi_ho_phu),
         "fight_legion_boss": bool(fight_legion_boss),
         "do_van_tieu": bool(do_van_tieu),
+        "auto_sell_noi_dat": bool(auto_sell_noi_dat),
         "buy_ho_phu": bool(buy_ho_phu), "buy_bao_hop": bool(buy_bao_hop),
         "bao_hop_xu_threshold": int(bao_hop_xu_threshold),
         "di_gioi_level": int(di_gioi_level),

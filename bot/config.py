@@ -444,6 +444,7 @@ if _aj is not None:
                 "use_digioi_ho_phu": bool(_party.get("use_digioi_ho_phu", False)),
                 "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),
                 "do_van_tieu": bool(_party.get("do_van_tieu", True)),
+                "auto_sell_noi_dat": bool(_party.get("auto_sell_noi_dat", True)),
                 "buy_ho_phu": bool(_party.get("buy_ho_phu", False)),
                 "buy_bao_hop": bool(_party.get("buy_bao_hop", False)),
                 "bao_hop_xu_threshold": int(_party.get("bao_hop_xu_threshold", 1000000)),

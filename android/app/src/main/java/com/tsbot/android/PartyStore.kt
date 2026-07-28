@@ -44,6 +44,7 @@ class PartyStore(private val context: Context) {
                 useDigioiHoPhu = o.optBoolean("use_digioi_ho_phu", false),
                 fightLegionBoss = o.optBoolean("fight_legion_boss", true),
                 doVanTieu = o.optBoolean("do_van_tieu", true),
+                autoSellNoiDat = o.optBoolean("auto_sell_noi_dat", true),
                 buyHoPhu = o.optBoolean("buy_ho_phu", false),
                 buyBaoHop = o.optBoolean("buy_bao_hop", false),
                 baoHopXuThreshold = o.optInt("bao_hop_xu_threshold", 1000000),
@@ -71,6 +72,7 @@ class PartyStore(private val context: Context) {
             o.put("use_digioi_ho_phu", p.useDigioiHoPhu)
             o.put("fight_legion_boss", p.fightLegionBoss)
             o.put("do_van_tieu", p.doVanTieu)
+            o.put("auto_sell_noi_dat", p.autoSellNoiDat)
             o.put("buy_ho_phu", p.buyHoPhu)
             o.put("buy_bao_hop", p.buyBaoHop)
             o.put("bao_hop_xu_threshold", p.baoHopXuThreshold)

@@ -905,6 +905,9 @@ class GameClient:
         # Setting party "Danh boss QD" (Cai dat nang cao, mac dinh BAT) - run_party_digioi.py set
         # lai theo pcfg ngay sau login. Mac dinh True o day de test/goi truc tiep khong bi chan.
         self.fight_legion_boss = True
+        # Setting party "Tu ban Noi Dat" (mac dinh BAT). run_party_digioi.py chi bat setting nay
+        # cho mode train/city, va pre-route chi thuc hien khi random tele ve Ng.Thanh.
+        self.auto_sell_noi_dat = True
         self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - tra VANTIEU_REQUESTS
         self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
         self.vantieu_unlocked = 1    # so slot DA MO (S2C 0x56 0600 [N]); slot con lai khoa = can vang
@@ -1669,8 +1672,15 @@ class GameClient:
             self._on_vantieu_roster(pkt)
         elif opcode == 0x1a and len(pkt) >= 13:   # currency: [id 2B][val 4B]
             sid = int.from_bytes(pkt[7:9], "little")
+            val = int.from_bytes(pkt[9:13], "little")
             if sid == 4:                          # id=4 -> so XU hien co
-                self.xu = int.from_bytes(pkt[9:13], "little")
+                self.xu = val
+            elif sid == 1:                        # id=1 -> so XU vua nhan (vd ban Noi Dat)
+                if self.xu is not None:
+                    self.xu += val
+                    log.info("[%s] Nhan xu +%d -> xu hien co ~%d", self._label, val, self.xu)
+                else:
+                    log.info("[%s] Nhan xu +%d (chua co balance hien tai de cong)", self._label, val)
             # sid==2 = so xu vua bi tru (cost), bo qua
         elif opcode == 0x57:                      # qua online
             self._on_gift(pkt)
@@ -3501,8 +3511,9 @@ class GameClient:
         AN TOAN: chi donate SLOT co tid nam trong config.DONATE_ITEMS (danh sach TID rac, template
         -> dung mọi acc). Xac nhan qua 2 capture: 5 go ngo dong (slot 0x80) va 20 vai tho (slot
         0x74) -> deu la '0x27 0f000000000000[slot]', so luong khong nam trong goi."""
+        donate_names = getattr(config, "DONATE_ITEMS", {}) or {}
         donate_tids = set()
-        for k in (getattr(config, "DONATE_ITEMS", {}) or {}):
+        for k in donate_names:
             try:
                 donate_tids.add(int(k, 16) if isinstance(k, str) else int(k))
             except Exception:
@@ -3516,7 +3527,16 @@ class GameClient:
         if not targets:
             return
         self.send(0x7c, b"\x04\x00")   # mo panel quan doan (giong claim_legion_gift)
-        time.sleep(0.4)
+        opened_at = time.time()
+        while self.running and self.has_legion is False and time.time() - opened_at < 1.5:
+            time.sleep(0.1)
+        if self.has_legion is False:
+            log.info("[%s] Donate quan doan: khong co quan doan -> bo qua %d slot nguyen lieu rac",
+                     self._label, len(targets))
+            return
+        remain = 0.4 - (time.time() - opened_at)
+        if remain > 0:
+            time.sleep(remain)
         items = _load_gamedata_items()
         total = 0
         for slot, tid, cnt in targets:
@@ -3526,7 +3546,8 @@ class GameClient:
             self.bag_slots.pop(slot, None)   # donate ca stack -> slot rong (S2C 0x17 se update lai)
             total += cnt
             _nm = ((items.get(tid) or {}).get("name")
-                   or (getattr(config, "DONATE_ITEMS", {}) or {}).get(hex(tid), ""))
+                   or donate_names.get(tid)
+                   or donate_names.get(hex(tid), ""))
             log.info("[%s] donate quan doan slot=%d tid=0x%04x x%d ('%s')",
                      self._label, slot, tid, cnt, _nm)
             time.sleep(wait)
@@ -4090,6 +4111,8 @@ class GameClient:
             # phai do duong nay" - nhung PHONG THU van dat o day cho MOI lan ham THAT SU duoc goi
             # (vd lan truoc dungeon bi rot giua chung do loi khong luong truoc).
             self.state.quest_mode = False
+            self._team_dungeon_until = 0.0
+            self._phoban_until = 0.0
 
     def _do_team_dungeon_lv20_inner(self, n_battles: int = 4, ready_wait: float = 9.0) -> bool:
         ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
@@ -4839,6 +4862,99 @@ class GameClient:
                     self._label, idx, x, y, self.current_map)
         return False
 
+    NOI_DAT_TID = 0x7D2B
+    NOI_DAT_SELL_CITY = 12061
+    NOI_DAT_SELL_THRESHOLD = 100
+    NOI_DAT_NPC_ROUTE_PRE = ((322, 802), (393, 759), (410, 750), (410, 750))
+    NOI_DAT_NPC_ROUTE_POST = ((606, 698), (685, 676), (764, 654), (844, 631), (850, 630), (850, 630))
+
+    def _move_noi_dat_npc_step(self, x: int, y: int, wait: float = 0.55):
+        """Replay move den NPC Nha buon o Ng.Thanh theo capture MuMu/PC (flag 0x07)."""
+        if not self.running:
+            return
+        if not self._wait_combat_clear(idle=1.0, cap=45.0):
+            return
+        self.send(0x06, b"\x01\x00\x07" + struct.pack("<HH", int(x), int(y)))
+        self.pos = (int(x), int(y))
+        time.sleep(wait)
+
+    def _noi_dat_slots(self):
+        found = []
+        for slot, val in list(getattr(self, "bag_slots", {}).items()):
+            try:
+                tid, cnt = val[0], val[1]
+            except Exception:
+                continue
+            if int(tid) == self.NOI_DAT_TID and int(cnt) > 0:
+                found.append((int(slot), int(cnt)))
+        return sorted(found)
+
+    def sell_noi_dat(self, max_qty: int = 9999) -> bool:
+        """Ban Noi Dat (0x7d2b) o NPC Nha buon Ng.Thanh.
+
+        Packet sell da xac nhan tu capture:
+        C2S 0x1b = 02 00 01 [slot] [qty LE16] 00 00. Server ack S2C 0x17 0900...
+        """
+        if not getattr(self, "auto_sell_noi_dat", True):
+            return False
+        if self.current_map != self.NOI_DAT_SELL_CITY:
+            return False
+        slots = self._noi_dat_slots()
+        total_have = sum(cnt for _, cnt in slots)
+        if total_have <= 0:
+            log.info("[%s] Ban Noi Dat: khong co Noi Dat (0x7d2b) trong tui", self._label)
+            return False
+        if total_have <= self.NOI_DAT_SELL_THRESHOLD:
+            log.info("[%s] Ban Noi Dat: co %d cai (<= %d) -> bo qua",
+                     self._label, total_have, self.NOI_DAT_SELL_THRESHOLD)
+            return False
+        if not self._wait_combat_clear(idle=1.0, cap=60.0):
+            return False
+
+        log.info("[%s] Ban Noi Dat: co %d cai -> di NPC Nha buon Ng.Thanh", self._label, total_have)
+        for x, y in self.NOI_DAT_NPC_ROUTE_PRE:
+            self._move_noi_dat_npc_step(x, y)
+        self.send(0x14, b"\x08\x00\x0a\x00")
+        time.sleep(0.5)
+        for x, y in self.NOI_DAT_NPC_ROUTE_POST:
+            self._move_noi_dat_npc_step(x, y)
+        if not self._wait_combat_clear(idle=1.0, cap=60.0):
+            return False
+
+        # Mo dialog Nha buon -> chon ban Noi Dat.
+        self.send(0x20, b"\x02\x00\x08"); time.sleep(0.5)
+        self.send(0x14, b"\x01\x00\x02\x00"); time.sleep(0.5)
+        self.send(0x14, b"\x09\x00\x1f"); time.sleep(0.5)
+        self.send(0x14, b"\x06\x00"); time.sleep(0.5)
+
+        sold = 0
+        remaining = max(0, int(max_qty))
+        for slot, cnt in self._noi_dat_slots():
+            if remaining <= 0:
+                break
+            qty = min(cnt, remaining)
+            if qty <= 0 or slot < 0 or slot > 255:
+                continue
+            payload = b"\x02\x00\x01" + bytes([slot & 0xFF]) + struct.pack("<H", qty) + b"\x00\x00"
+            self.send(0x1B, payload)
+            sold += qty
+            remaining -= qty
+            try:
+                left = cnt - qty
+                if left > 0:
+                    self.bag_slots[slot] = (self.NOI_DAT_TID, left)
+                else:
+                    self.bag_slots.pop(slot, None)
+                self.bag_counts[self.NOI_DAT_TID] = max(0, int(self.bag_counts.get(self.NOI_DAT_TID, 0)) - qty)
+            except Exception:
+                pass
+            log.info("[%s] Ban Noi Dat: slot=%d x%d", self._label, slot, qty)
+            time.sleep(0.4)
+        self.send(0x14, b"\x06\x00")
+        log.info("[%s] Ban Noi Dat: da ban %d/%d cai (toi da %d)",
+                 self._label, sold, total_have, max_qty)
+        return sold > 0
+
     def pre_route_town_hop(self):
         """Truoc khi teleport ve THANH DAU ROUTE: tele ve Trac Quan (12001) hoac Ng.Thanh (12061)
         TRUOC (chon ngau nhien 50-50) roi moi tele thanh route. User bao: bay ve thanh route truc
@@ -4847,7 +4963,9 @@ class GameClient:
         city, flag = random.choice([(12001, 0), (12061, 2)])   # Trac Quan / Ng.Thanh
         log.info("[%s] pre-route: tele trung gian ve thanh %s truoc (50-50)", self._label, city)
         try:
-            self.go_to_town(city, flag)
+            ok = self.go_to_town(city, flag)
+            if ok and city == self.NOI_DAT_SELL_CITY and getattr(self, "auto_sell_noi_dat", True):
+                self.sell_noi_dat()
         except Exception as e:
             log.warning("[%s] pre-route: loi tele trung gian (bo qua, di tiep): %s", self._label, e)
 

@@ -159,7 +159,7 @@ class BotForegroundService : Service() {
                 leaders, m.hasLeader, party.usePhucThan, party.useDigioiHoPhu,
                 party.fightLegionBoss, party.doVanTieu,
                 party.buyHoPhu, party.buyBaoHop, party.baoHopXuThreshold,
-                party.diGioiLevel,
+                party.diGioiLevel, party.autoSellNoiDat,
             )
             py.callAttr("start_party", pidx)
             runningPidx.add(pidx)

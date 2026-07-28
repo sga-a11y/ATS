@@ -339,6 +339,27 @@ rồi `0x61 02 00 [idx]` (bot cũ gửi cố định `020002` = idx 2 = cấp 25
 - De AUTO vao Di Gioi: phai decrypt HTTPS 103.82.31.230 (dung mitmproxy + APK patched tsvtc-patched.apk de trust cert) -> lay URL+params -> replicate bang Python (bot da co lib HTTP cho login). TODO.
 - map_id Di Gioi: CHUA XAC DINH chac (gia tri 0xc316 o offset 28 cua 0x03 co the la toa do).
 
+## 7d-SHOP. BAN NOI DAT O NG.THANH (xac nhan 2026-07-28)
+
+Capture PC/MuMu ban `Noi Dat` item `0x7d2b` tai NPC Nha buon Ng.Thanh (12061). Luu y lenh ban
+dung **slot tui do**, KHONG dung item id truc tiep.
+
+Flow toi NPC Nha buon sau khi teleport Ng.Thanh flag 2:
+- `0x44 01001d2f02`, `0x0c 0100`
+- move gan NPC: `(322,802) -> (393,759) -> (410,750)`, `0x14 08000a00`,
+  `(606,698) -> (685,676) -> (764,654) -> (844,631) -> (850,630)`
+- mo menu: `0x20 020008`, `0x14 01000200`, `0x14 09001f`, `0x14 0600`
+
+Lenh ban:
+```
+C2S 0x1b: 02 00 01 [slot 1B] [qty 2B LE] 00 00
+S2C 0x17: 09 00 [slot 1B] [qty 2B LE] 00 00
+S2C 0x1a: 01 00 [xu nhan duoc 4B LE]  (Noi Dat = 100 xu/cai)
+```
+Vi du:
+- ban 7339 cai slot `0x1f`: `1b 0200011fab1c0000` -> `0x1a 0100cc320b00` = 733900 xu
+- ban 111 cai slot `0x46`: `1b 020001466f000000` -> `0x1a 01005c2b0000` = 11100 xu
+
 ## 7d-RE. MAP COLLISION / SMART PATHFIND (xac nhan 2026-07-17)
 
 Muc tieu: tim data game biet o nao tren map di duoc / bi chan (tuong, song, object...) de pathfind dung hon.

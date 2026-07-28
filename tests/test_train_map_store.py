@@ -109,6 +109,66 @@ class TestTrainMapStore(unittest.TestCase):
 
         self.assertEqual(merged["maps"]["20801"], baseline["maps"]["20801"])
 
+    def test_merge_treats_default_group_as_unset(self):
+        baseline = {
+            "maps": {
+                "20801": {
+                    "name": "RCN1",
+                    "safe": [[100, 100]],
+                    "mobs": [[200, 200]],
+                    "group": "Kinh Bắc",
+                }
+            }
+        }
+        local = {
+            "maps": {
+                "20801": {
+                    "name": "old",
+                    "safe": [[10, 10]],
+                    "mobs": [[20, 20]],
+                    "group": "Chưa phân nhóm",
+                }
+            }
+        }
+
+        merged = merge_baseline(baseline, local)
+
+        self.assertEqual(merged["maps"]["20801"]["mobs"], [[20, 20]])
+        self.assertEqual(merged["maps"]["20801"]["group"], "Kinh Bắc")
+
+    def test_merge_can_prefer_baseline_for_apk_assets(self):
+        baseline = {
+            "maps": {
+                "20801": {
+                    "name": "RCN1",
+                    "safe": [[100, 100]],
+                    "mobs": [[200, 200]],
+                    "group": "Kinh Bắc",
+                }
+            }
+        }
+        local = {
+            "maps": {
+                "20801": {
+                    "name": "old",
+                    "safe": [[10, 10]],
+                    "mobs": [[20, 20]],
+                    "group": "User Group",
+                },
+                "999": {
+                    "name": "local only",
+                    "safe": [[1, 1]],
+                    "mobs": [[2, 2]],
+                    "group": "Local",
+                },
+            }
+        }
+
+        merged = merge_baseline(baseline, local, prefer_baseline_existing=True)
+
+        self.assertEqual(merged["maps"]["20801"], baseline["maps"]["20801"])
+        self.assertEqual(merged["maps"]["999"], local["maps"]["999"])
+
 
 if __name__ == "__main__":
     unittest.main()

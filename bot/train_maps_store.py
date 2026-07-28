@@ -8,6 +8,14 @@ import threading
 
 
 _LOCK = threading.RLock()
+_DEFAULT_GROUP = "Chưa phân nhóm"
+
+
+def _has_custom_group(entry) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    group = str(entry.get("group") or "").strip()
+    return bool(group and group != _DEFAULT_GROUP)
 
 
 def _points(values):
@@ -24,7 +32,12 @@ def _atomic_write(path: str, data: dict) -> None:
     os.replace(temporary, path)
 
 
-def merge_baseline(baseline: dict, local: dict | None) -> dict:
+def merge_baseline(
+    baseline: dict,
+    local: dict | None,
+    *,
+    prefer_baseline_existing: bool = False,
+) -> dict:
     result = deepcopy(baseline if isinstance(baseline, dict) else {"maps": {}})
     result.setdefault("maps", {})
     local_maps = (local or {}).get("maps", {}) if isinstance(local, dict) else {}
@@ -33,10 +46,12 @@ def merge_baseline(baseline: dict, local: dict | None) -> dict:
         if baseline_entry is None:
             result["maps"][key] = deepcopy(local_entry)
             continue
+        if prefer_baseline_existing:
+            continue
         if not isinstance(local_entry, dict) or not local_entry.get("mobs"):
             # Khong co scan -> giu baseline. NHUNG neu user DA PHAN NHOM (local co 'group') thi GIU
             # nhom cua user (map da phan nhom o may user -> khong bi ban tai ve ghi de).
-            if isinstance(local_entry, dict) and local_entry.get("group"):
+            if _has_custom_group(local_entry):
                 result["maps"][key]["group"] = local_entry["group"]
             continue
         local_mobs = local_entry.get("mobs") or []
@@ -48,11 +63,18 @@ def merge_baseline(baseline: dict, local: dict | None) -> dict:
         merged.update(deepcopy(local_entry))
         if "name" in baseline_entry:
             merged["name"] = baseline_entry["name"]
+        if not _has_custom_group(local_entry) and baseline_entry.get("group"):
+            merged["group"] = baseline_entry["group"]
         result["maps"][key] = merged
     return result
 
 
-def materialize_train_maps(path: str, baseline: dict) -> dict:
+def materialize_train_maps(
+    path: str,
+    baseline: dict,
+    *,
+    prefer_baseline_existing: bool = False,
+) -> dict:
     with _LOCK:
         local = None
         try:
@@ -60,7 +82,11 @@ def materialize_train_maps(path: str, baseline: dict) -> dict:
                 local = json.load(fh)
         except Exception:
             pass
-        merged = merge_baseline(baseline, local)
+        merged = merge_baseline(
+            baseline,
+            local,
+            prefer_baseline_existing=prefer_baseline_existing,
+        )
         if local != merged:
             _atomic_write(path, merged)
         return merged

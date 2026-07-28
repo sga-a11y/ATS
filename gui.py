@@ -83,7 +83,7 @@ def _load_donate_qr_image():
 # Mac dinh mode TRAIN map Rung Noi Huynh (12831) - nhieu user tao acc xong KHONG chon che do,
 # de "stand" (dung yen) thi bot khong lam gi -> tuong bot loi. Train Noi Huynh chay duoc ngay.
 _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831, "mob_index": -1,
-                  "city_flag": 0, "do_daily": True, "leaders": [],
+                  "city_flag": 0, "do_daily": True, "auto_sell_noi_dat": True, "leaders": [],
                   "accounts": [{"u": "acc1", "p": "pass1", "on": True},
                                {"u": "acc2", "p": "pass2", "on": True},
                                {"u": "acc3", "p": "pass3", "on": True}]}
@@ -1367,6 +1367,9 @@ class PartyConfigFrame(ttk.Frame):
         # Van tieu: mac dinh CO tick (giu hanh vi cu - truoc gio luon lam). Tat -> khong nhan qua
         # escort + khong gui pet van tieu + khong hen gio check lai.
         self.van_tieu_var = tk.BooleanVar(value=bool(self._preset.get("do_van_tieu", True)))
+        # Tu ban Noi Dat: mac dinh CO tick. Chi co tac dung khi bot tele trung gian ve Ng.Thanh
+        # trong mode train/city; tat -> bo qua hoan toan.
+        self.auto_sell_noi_dat_var = tk.BooleanVar(value=bool(self._preset.get("auto_sell_noi_dat", True)))
         # Mua shop (mac dinh TAT): Di Gioi Ho Phu (mua 3/ngay), Trieu Goi Bao Hop (mua 1/ngay khi
         # xu > nguong). 1 lan/ngay/acc (luu ben shop_state.json).
         self.buy_ho_phu_var = tk.BooleanVar(value=bool(self._preset.get("buy_ho_phu", False)))
@@ -1961,6 +1964,8 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.fight_boss_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Vận tiêu (nhận quà + gửi pet)",
                         variable=self.van_tieu_var).pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(frm, text="Tự bán Nồi đất",
+                        variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Mua Dị Giới Hộ Phù (3 cái/ngày)",
                         variable=self.buy_ho_phu_var).pack(anchor="w", pady=(4, 0))
         _bh = ttk.Frame(frm); _bh.pack(anchor="w", fill="x", pady=(4, 0))
@@ -1982,6 +1987,7 @@ class PartyConfigFrame(ttk.Frame):
             "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
             "fight_legion_boss": bool(self.fight_boss_var.get()),
             "do_van_tieu": bool(self.van_tieu_var.get()),
+            "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
             "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
             "buy_bao_hop": bool(self.buy_bao_hop_var.get()),
             "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 1000000),
@@ -1995,6 +2001,7 @@ class PartyConfigFrame(ttk.Frame):
         self.use_digioi_ho_phu_var.set(bool(data.get("use_digioi_ho_phu", False)))
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
         self.van_tieu_var.set(bool(data.get("do_van_tieu", True)))
+        self.auto_sell_noi_dat_var.set(bool(data.get("auto_sell_noi_dat", True)))
         self.buy_ho_phu_var.set(bool(data.get("buy_ho_phu", False)))
         self.buy_bao_hop_var.set(bool(data.get("buy_bao_hop", False)))
         self.bao_hop_xu_var.set(str(_parse_int(data.get("bao_hop_xu_threshold", 1000000), 1000000)))
@@ -2184,6 +2191,7 @@ class PartyConfigFrame(ttk.Frame):
                 "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
                 "do_van_tieu": bool(self.van_tieu_var.get()),
+                "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
                 "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
                 "buy_bao_hop": bool(self.buy_bao_hop_var.get()),
                 "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 1000000),

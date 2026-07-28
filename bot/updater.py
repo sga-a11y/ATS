@@ -34,6 +34,11 @@ EXTRA_ZIP_URLS = [u.strip() for u in (GOOGLE_DRIVE_ZIP_URL,) if u.strip()]
 # Cap nhat = TAI CA FOLDER (exe + JSON config: server/map/route...) chu KHONG chi exe -> them
 # server/map moi (nam trong JSON) moi den duoc user cu. Release chua aTSBot.zip = noi dung folder.
 _FALLBACK_ZIP_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip"
+_DEFAULT_MAP_GROUP = "Chưa phân nhóm"
+
+
+def _is_default_map_group(value) -> bool:
+    return str(value or "").strip() in ("", _DEFAULT_MAP_GROUP)
 
 
 def running_exe() -> str:
@@ -218,8 +223,9 @@ def _merge_user_config(live_dir: str, stage_dir: str):
             if subkey == "maps":
                 for k, u in live_sub.items():
                     s = stage_sub.get(k)
-                    if isinstance(u, dict) and isinstance(s, dict) and not u.get("group") and s.get("group"):
-                        e = dict(u); e["group"] = s["group"]; merged[k] = e
+                    if (isinstance(u, dict) and isinstance(s, dict)
+                            and _is_default_map_group(u.get("group")) and s.get("group")):
+                        e = dict(merged.get(k, u)); e["group"] = s["group"]; merged[k] = e
             stage[subkey] = merged
             with open(stage_p, "w", encoding="utf-8") as f:
                 json.dump(stage, f, ensure_ascii=False, indent=2)
