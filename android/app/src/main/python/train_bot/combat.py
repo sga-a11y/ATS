@@ -331,6 +331,11 @@ def _revive_decision_for_skill(state, unit, stat, rev):
     """Dung skill hoi sinh cu the, target con chet tu dong theo rule uu tien chung."""
     if rev is None or not _is_revive(rev):
         return None
+    # HET QUAI SONG = tran DA KET (server gui them 0x35 "tan du" sau khi thang) -> KHONG hoi sinh:
+    # dong doi chet se TU song lai sau tran, cast luc nay chi phi luot + spam. Giong guard 'if not es'
+    # ben _combat_attack (fix user quan sat: cuoi tran cu cast Hoi Sinh mai).
+    if not getattr(state, "enemy_slots", None):
+        return None
     if stat.hp_max > 0 and stat.hp <= 0:      # caster da chet -> ko cast
         return None
     if stat.sp < _skill_cost(rev):
