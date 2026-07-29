@@ -15,7 +15,10 @@ HEDOANH = os.path.join(ROOT, "pet_hedoanh.json")
 OUT = os.path.join(ROOT, "pets.json")
 
 SKILL_OFF = (50, 52, 54)   # offset 3 skill so voi pet_id (giong nhau MOI section/form)
-SK_LO, SK_HI = 0x2710, 0x33ff
+# Dai skill pet. SK_HI PHAI theo game: game them skill MOI (0x34xx-0x5fxx) + pet moi (reborn) dung
+# chung -> neu chan o 0x33ff thi cac pet do KHONG match anchor -> BI SOT khoi pets.json -> user
+# "khong set duoc skill pet" (bug thuc te: Lu Bo nhieu ban reborn skill 0x55xx/0x59xx bi thieu).
+SK_LO, SK_HI = 0x2710, 0x7fff
 
 
 def parse_pets(path):
