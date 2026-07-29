@@ -1662,6 +1662,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         displaced_cnt = 0           # so lan lien tiep thay KHAC map train (chet/hoi sinh/bi dump)
         last_reform = time.time()   # lan cuoi REFORM party (grace de khong trigger lien tuc o thanh)
         boss_reform_pending = False # da trigger reform de danh boss QD (chua) - tranh spam reform_gen
+        # MUA HP/SP giua phien TRAIN: login da check 1 lan; sau do 2h check lai. buy_hp_sp tu doc
+        # kho, du nguong -> khong di (khong roi map). Khi thieu -> acc DI TRAC QUAN mua -> off-map ->
+        # reform san co keo CA PARTY ve thanh cho -> xong re-form train tiep (theo yeu cau user).
+        next_buy_hpsp = time.time() + 7200
         reform_gen_handled = 0      # gen reform da xu ly. Init=0 (KHONG = st["reform_gen"]) de neu
         # co acc bi DUMP luc setup (da bump reform_gen) thi keepalive thay ngay -> reform don no
         with st["lock"]:
@@ -2295,6 +2299,29 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] loi dung item phuc than (bo qua): %s", label, e)
                 next_phuc_than = time.time() + 1800   # 30 phut
+            # MUA HP/SP giua phien (chi MODE TRAIN, moi 2h): kho thap -> di Trac Quan mua. buy_hp_sp
+            # tu check nguong (du -> khong di). Acc di mua -> off-map -> reform keo party ve thanh cho.
+            if (train_on_map and (pcfg.get("buy_hp") or pcfg.get("buy_sp"))
+                    and time.time() >= next_buy_hpsp and not c.in_combat()):
+                next_buy_hpsp = time.time() + 7200   # 2h (set TRUOC de loi cung khong spam)
+                try:
+                    _still_low = c.buy_hp_sp(
+                        pcfg.get("buy_hp", False), int(pcfg.get("hp_qty", 9999)),
+                        int(pcfg.get("hp_thresh", 500000)),
+                        pcfg.get("buy_sp", False), int(pcfg.get("sp_qty", 9999)),
+                        int(pcfg.get("sp_thresh", 500000)),
+                    )
+                    # Mua xong VAN THIEU (het xu): co PARTY (nhieu acc) -> train tiep, 2h sau check
+                    # lai; SOLO 1 minh -> OUT game (khong tru xu vo ich, dung dam den party khac).
+                    if _still_low:
+                        if len(party_accounts(pidx)) > 1:
+                            log.info("[%s] Mua HP/SP van thieu (het xu) - CO party -> train tiep, "
+                                     "2h sau check lai", label)
+                        else:
+                            log.warning("[%s] Mua HP/SP van thieu (het xu) - SOLO 1 minh -> OUT game", label)
+                            _quit(); return
+                except Exception as e:
+                    log.warning("[%s] loi mua HP/SP giua phien (bo qua): %s", label, e)
             # Di Gioi Ho Phu: chi mode Di Gioi, tick rieng, check moi 5p va chi dung khi con <15p.
             # Server se tu gui 0x55/id=0x1b sau khi dung; khong cong timer thu cong.
             if is_digioi and pcfg.get("use_digioi_ho_phu") and time.time() >= next_ho_phu:

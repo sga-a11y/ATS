@@ -5055,30 +5055,32 @@ class GameClient:
                   buy_sp: bool, sp_qty: int, sp_thresh: int):
         """Login (sau khi load tui): neu du tru HP/SP thap hon nguong -> di Trac Quan mua bo sung.
         Gop CA HP+SP trong 1 CHUYEN (cung 1 NPC), khong bay ve roi di lai. MOI lan login deu check
-        (KHONG chot 1 lan/ngay) - user muon cu thieu la mua bu."""
+        (KHONG chot 1 lan/ngay) - user muon cu thieu la mua bu.
+        TRA VE: True neu DA MUA nhung du tru VAN THAP hon nguong (het xu) -> caller quyet dinh (party
+        thi train tiep, solo thi out). False neu du/khong can/loi trung gian (khong ep quit)."""
         if not (buy_hp or buy_sp):
-            return
+            return False
         thp, tsp = self.hp_sp_reserve()
         need_hp = bool(buy_hp) and thp < int(hp_thresh)
         need_sp = bool(buy_sp) and tsp < int(sp_thresh)
         if not (need_hp or need_sp):
             log.info("[%s] Mua HP/SP: du tru du (HP=%d/nguong=%s, SP=%d/nguong=%s) -> bo qua",
                      self._label, thp, hp_thresh if buy_hp else "-", tsp, sp_thresh if buy_sp else "-")
-            return
+            return False
         self._wait_xu()
         if self.xu is None:
             log.info("[%s] Mua HP/SP: chua doc duoc xu -> bo qua", self._label)
-            return
+            return False
         log.info("[%s] Mua HP/SP: HP du tru=%d (%s), SP du tru=%d (%s), xu=%d -> di Trac Quan",
                  self._label, thp, "MUA" if need_hp else "du", tsp, "MUA" if need_sp else "du", self.xu)
         if not self._wait_combat_clear(idle=1.0, cap=60.0):
-            return
+            return False
         if not self.go_to_town(self.TRAC_QUAN_CITY, 0):
             log.warning("[%s] Mua HP/SP: khong ve duoc Trac Quan -> bo qua", self._label)
-            return
+            return False
         self._run_trac_hpsp_route()
         if not self._wait_combat_clear(idle=1.0, cap=60.0):
-            return
+            return False
         # Mo dialog NPC -> vao shop (chuoi boc tu capture).
         self.send(0x20, b"\x02\x00\x08"); time.sleep(0.6)
         self.send(0x14, b"\x01\x00\x0c\x00"); time.sleep(0.5)
@@ -5089,6 +5091,13 @@ class GameClient:
         if need_sp:
             self._buy_shop_slot(self.SP_SHOP_SLOT, sp_qty, self.HPSP_ITEM_PRICE, "Thien Kim Du +62SP")
         self.send(0x14, b"\x06\x00")   # dong dialog
+        # Mua xong: doc lai du tru. Van thap hon nguong (het xu) -> tra True.
+        thp2, tsp2 = self.hp_sp_reserve()
+        still_low = (need_hp and thp2 < int(hp_thresh)) or (need_sp and tsp2 < int(sp_thresh))
+        if still_low:
+            log.info("[%s] Mua HP/SP: mua xong VAN THIEU (HP=%d/%s, SP=%d/%s) - co the het xu",
+                     self._label, thp2, hp_thresh if buy_hp else "-", tsp2, sp_thresh if buy_sp else "-")
+        return still_low
 
     def pre_route_town_hop(self):
         """Truoc khi teleport ve THANH DAU ROUTE: tele ve Trac Quan (12001) hoac Ng.Thanh (12061)
