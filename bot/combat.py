@@ -419,17 +419,27 @@ def pick_sp_restore_skill(skills):
 
 
 def _try_sp_restore(state, unit, skills, stat):
-    """HOI SP TOAN TEAM - CHI quest_mode, goi SAU heal HP / TRUOC attack:
+    """HOI SP TOAN TEAM - quest_mode (luon) HOAC train_mode (chi khi quai con block le), goi SAU
+    heal HP / TRUOC attack:
       - unit co skill cat-6 (Toan Hoi Ma) + ban than du SP (>=cost)
       - co dong doi (TRU chinh minh) SP < 50%  (doc tu state.allies, SP ca party co trong 0x33)
-      - la unit SP cao nhat trong nhom co skill (_sprestore_decide dieu phoi, 1 con cast la du)
+      - la unit SP cao nhat trong nhom co skill CHUA co lenh (_sprestore_decide dieu phoi, 1 con cast la du)
     Target = slot dong doi <50%, b=3 (skill team). Tra Decision hoac None."""
     spr = pick_sp_restore_skill(skills)
     if spr is None:
         return None
-    if not getattr(state, "quest_mode", False) or state.self_slot is None:
+    if state.self_slot is None:
         return None
     if stat.sp < _skill_cost(spr):
+        return None
+    # CHE DO cho phep hoi SP team:
+    #  - QUEST mode: luon (dong quai, atk/combo ton SP -> can duy tri SP team).
+    #  - TRAIN mode: CHI khi quai con toan BLOCK LE (khong con cum >=2 con lien nhau de bung combo
+    #    AoE) -> it quai, uu tien hoi SP thay vi phi combo (giong y quest, them dieu kien so quai).
+    #  - BOSS mode: KHONG hoi SP (don SP nuke boss).
+    if getattr(state, "boss_mode", False):
+        return None
+    if not getattr(state, "quest_mode", False) and _has_group2(state.enemy_slots):
         return None
     b1 = 3 if unit == config.UNIT_CHAR else 2
     low_slot = state.ally_low_sp(getattr(config, "SP_RESTORE_THRESHOLD", 0.5), (b1, state.self_slot))
