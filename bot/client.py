@@ -1111,8 +1111,10 @@ class GameClient:
                      "(leader suy luan, khong doi goi END rieng)", self._label)
             self.state.in_battle = False
             self._battle_end_grace_until = time.time() + 3.0
-        elif self.state.in_battle and _recent_battle_end(self.party_idx, within=3.0,
-                                                         map_id=self.current_map):
+        elif (self.state.in_battle and not getattr(self.state, "boss_mode", False)
+              and _recent_battle_end(self.party_idx, within=3.0, map_id=self.current_map)):
+            # BOSS (boss the gioi / dungeon): moi acc danh trận RIENG cua no -> member khac ket tran
+            # KHONG lien quan -> KHONG suy luan theo member (boss_mode). Boss loop tu quan ly ket tran.
             # Truoc day chi ap dung cho pho ban to doi (_team_dungeon_until) -> tran PHUC KICH O
             # CONG khi keo party: leader KHONG nhan goi END rieng, member co -> leader ket 35s
             # SAFETY (log 10:27:20 quai chet -> 10:27:54 moi qua cong).
@@ -3254,7 +3256,8 @@ class GameClient:
         return self._learned().get(str(tid)) or {}
 
     def _slot_for_known(self, kind: str, skip_slots) -> tuple:
-        """Tim SLOT chua item DA BIET (locked hoac da hoc) hoi 'kind', count>0. Uu tien heal lon."""
+        """Tim SLOT chua item DA BIET (locked hoac da hoc) hoi 'kind', count>0. Uu tien heal NHO
+        NHAT (dung thuoc re/it truoc, DE DANH thuoc xin hoi nhieu cho khi can gap - user yeu cau)."""
         best = None
         for slot, (tid, cnt) in self.bag_slots.items():
             if cnt <= 0 or slot in skip_slots:
@@ -3263,7 +3266,7 @@ class GameClient:
             if not v or v.get("none") or v.get("unusable") or v.get("battle"):
                 continue   # battle=True: do hoi sinh, CHI dung trong tran -> ko hoi ngoai
             heal = v.get(kind, 0)
-            if heal > 0 and (best is None or heal > best[2]):
+            if heal > 0 and (best is None or heal < best[2]):
                 best = (slot, tid, heal)
         return best
 
@@ -3411,21 +3414,17 @@ class GameClient:
         if thr <= 0 or mx <= 0 or cur >= mx * thr:
             return
         target_val = int(mx * thr)
-        remaining = target_val - cur   # uoc tinh con thieu (CHI dung cho pet open-loop)
         healed = False
-        for _ in range(40):
+        # BATCH: biet moi thuoc hoi bao nhieu + con thieu bao nhieu -> tinh qty = ceil(thieu/heal)
+        # gui 1 lenh (0x17 ho tro qty). Moi VONG = 1 batch (1 slot). Uu tien thuoc NHO nhat (de
+        # danh thuoc xin). CHAR: sau batch doi 0x08 cap nhat chi so THAT roi kiem lai (bu neu server
+        # nuot lenh); PET: khong do duoc -> cong optimistic theo qty*heal.
+        for _ in range(12):
             if _busy():
                 break
             cur = unit.hp if kind == "hp" else unit.sp
-            if target == 0 and cur >= target_val:
-                break              # CHAR: 0x08 bao da dat nguong -> dung
-            # CHAR: KHONG break theo remaining uoc tinh - chi tin 0x08 (chi so THAT). Server co the
-            # NUOT lenh dung item ~1-2s ngay sau man ket tran (bug thuc te: "log bao dung HP nhung
-            # khong len, sang tran sau van 1HP" - truoc day tru remaining roi dung du HP chua tang).
-            # Cu dung tiep toi khi 0x08 dat nguong: lo gui thua luc gan full cung KHONG sao, server
-            # tu bo qua lenh dung item khi chi so da day (user xac nhan).
-            if target != 0 and remaining <= 0:
-                break              # PET: het cach do -> dung theo uoc tinh
+            if cur >= target_val:
+                break
             found = self._slot_for_known(kind, set())
             if found is None:
                 log.info("[%s] %s HET thuoc %s -> bo qua, cho tran sau (co the drop them)",
@@ -3433,20 +3432,33 @@ class GameClient:
                 self._no_item.add(nokey)   # skip toi tran sau
                 break
             slot, tid, heal = found
-            if not self.use_slot(slot, target):
+            rec = self.bag_slots.get(slot)
+            stock = rec[1] if rec else 1
+            need = target_val - cur
+            qty = max(1, (need + heal - 1) // heal)   # ceil(need/heal): lo lom hon 1 thuoc nho - ko dang
+            qty = min(qty, stock, 255)                # ko vuot ton kho slot / gioi han goi
+            if not self.use_slot(slot, target, qty):
                 break
-            remaining -= heal
+            # tru bag OPTIMISTIC (tranh chon lai slot nay khi server chua kip gui 0x16 cap nhat tui)
+            if rec:
+                rec[1] = max(0, rec[1] - qty)
+                if rec[1] <= 0:
+                    self.bag_slots.pop(slot, None)
             healed = True
-            log.info("[%s] hoi %s slot=%d 0x%04x +%d%s target=%d (con thieu ~%d)",
-                     self._label, label, slot, tid, heal, kind.upper(), target, max(0, remaining))
-            time.sleep(0.3)
-        # PET (target!=0) hoi open-loop: HP that KHONG cap nhat ngoai tran -> set OPTIMISTIC = nguong
-        # de keepalive sau KHONG hoi lai vo han (HP that se cap nhat lai dau tran sau qua 0x33).
-        if target != 0 and healed:
-            if kind == "hp":
-                unit.hp = max(unit.hp, target_val)
+            _iname = (_load_gamedata_items().get(tid) or {}).get("name", "").strip()
+            log.info("[%s] hoi %s slot=%d 0x%04x '%s' x%d (+%d/cai)%s target=%d",
+                     self._label, label, slot, tid, _iname, qty, heal, kind.upper(), target)
+            if target == 0:
+                time.sleep(0.5)   # CHAR: cho 0x08 cap nhat chi so THAT -> vong sau kiem lai, bu neu nuot
             else:
-                unit.sp = max(unit.sp, target_val)
+                # PET open-loop: HP/SP that KHONG cap nhat ngoai tran -> cong optimistic de vong sau
+                # biet da du (va keepalive sau KHONG hoi lai vo han; dau tran sau 0x33 cap nhat lai).
+                gain = qty * heal
+                if kind == "hp":
+                    unit.hp = min(mx, unit.hp + gain)
+                else:
+                    unit.sp = min(mx, unit.sp + gain)
+                time.sleep(0.2)
 
     def decompose_junk_scrolls(self, wait: float = 1.2):
         """Phan giai cuon GOI PET RAC (gacha ra nhieu) -> nhan lai xu. C2S 0x59:
