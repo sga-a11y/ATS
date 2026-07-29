@@ -987,6 +987,45 @@ Nguồn: `captures/40npc_loop_20260720.pcap` (chọn Có) và
 - Chỉ mode event có bot leader mới tự lập đủ party và chạy loop. Không có bot leader giữ nguyên
   đứng yên chờ điều khiển tay. Nếu một nick rớt giữa loop, relogin toàn party rồi vào/lập đội lại;
   forced relogin của các survivor không được tăng `disc_gen` thêm để tránh reconnect dây chuyền.
+- **SYNC KÊNH SAU KHI VÀO MAP EVENT (bug 2026-07-29):** kênh/instance của map event (10991) ĐỘC LẬP
+  với kênh thành. Sync kênh lúc còn ở thành (trước `go_to_event`) KHÔNG đảm bảo cùng instance trên
+  map event → mỗi acc vào 1 instance khác (spawn khác vị trí: leader nhóm ở (1165,830), nick vào
+  từ map khác ở (502,495)) → mời entity (0x0d 07) không tới → `joined=0/4` mãi, leader spam mời mà
+  không ai join. FIX: `event_party_mode` gọi `do_channel_sync()` LẦN NỮA ngay sau khi cả party đã
+  vào map event, trước khi leader mời (run_party_digioi.py).
+- **BUG navigate_to trả None (fix 2026-07-29):** `run_loop` (npc40.py) mở dialog CHỈ khi
+  `navigate_to()` trả truthy. Nhưng `navigate_to` xưa nay **không có `return True`** ở cuối → tới nơi
+  vẫn trả None → `if not navigate_to(): return False` → leader tới NPC (910,290) rồi BAIL im, không
+  mở dialog, không đánh (không cả log timeout). FIX: `navigate_to` return True khi tới nơi, False khi
+  abort/stop. (Chỉ npc40.py dùng return value nên đổi an toàn.)
+- Mode EVENT (40NPC) mặc định KHÔNG làm daily quest + KHÔNG đánh boss quân đoàn (acc event vào
+  event ngay, tránh lang thang bị dump khỏi map event).
+- **BUG leader rớt sau vài trận = advance THỪA lọt vào trận (fix 2026-07-29):** trận-sau chỉ cần
+  **1** lần `0x14 0600` là vào trận. `_advance_to_battle` cũ gửi 0600 rồi NGỦ `poll_interval` (0.4s)
+  mới check → lỡ gửi thêm 1 advance LỌT VÀO trận vừa spawn (0x0b đã về) → server trả `0x14 08 03`
+  rồi `0x00` KICK leader → cả party relogin (kẹt "không kênh đủ 5 chỗ"). FIX: sau mỗi advance
+  **poll sát 0.1s**, dừng NGAY khi `_battle_start_seq` tăng (0x34), không gửi advance thừa.
+- **ROOT CAUSE leader văng lúc start battle (fix 2026-07-29, xác nhận qua gui-cuoi/nhan-cuoi):**
+  `run_loop` gọi `combat_ready()` (= full `_login_setup`: `0x57`, `0x01 1000`, `0x62` nhận-thưởng-ngày,
+  `0x7c`, `0x41`) NGAY trước khi mở NPC event. Gửi lại chuỗi LOGIN này đúng lúc trận spawn (`0x0b`
+  vừa về) → server loạn state → trả `0x14 08 01` rồi `0x00` (body có `05`) KICK leader → relogin
+  storm. Bản NGƯỜI THẬT KHÔNG hề gửi chuỗi login trước NPC, chỉ `0x20 020008` → `0x14 01000500`
+  thẳng. FIX: dùng `rearm_ready()` (chỉ `0x41`) thay `combat_ready()` trong run_loop.
+- **Event 40NPC = TÍCH LŨY 40 trận (state bền per-account) → mở NPC lúc GIỮA-event khác fresh
+  (fix 2026-07-29):** capture cho thấy `0x14 01000500`:
+    - FRESH → page1 (`...[counter]4e`, chưa choice) → cần ADVANCE 1 lần ra page2-choice (`...0200`) rồi chọn.
+    - GIỮA-EVENT → prompt "đánh tiếp?" (`...0300`) = ĐÃ là choice → chọn LUÔN.
+  Bot cũ LUÔN advance 1 lần trước khi chọn → lúc giữa-event advance thừa lệch state → `0x14 08 01`
+  → `0x00` (reason 05) KICK. FIX: track page dialog gần nhất (`_npc40_last_dialog`); page kết thúc
+  `0200`/`0300` = choice-ready → chọn luôn, không thì advance. Account bị kẹt giữa-event từ 3 trận
+  phiên đầu → mọi lần mở lại đều rớt cho tới khi có fix này.
+- **Giờ event + đổi thưởng (2026-07-29):** Event 40NPC mở **Thứ 2/4/6, 20:00-22:00**
+  (`npc40.in_event_window`). NPC đổi "quà chiến đấu 40NPC" ở **map 12003, toạ độ (570,770)**:
+  `0x20 020008` → `0x14 01000e00` (option 0x0e) → `0x14 0600`×4 → nhận item vào túi. Thoát event
+  10991→12003 qua `exit_event` (smart scene route); ngoài event thì tele Trạc Quận (12001) →
+  smart-route 12003. Code: `client.claim_40npc_reward()`. Hành vi: trong giờ (có leader=đánh,
+  không leader=đứng yên); ngoài giờ = huy party + mỗi acc tự đổi thưởng + thoát game; sau mỗi trận
+  check qua 22h → đổi thưởng; thua 2 trận liên tiếp → đứng yên chờ 22h → đổi thưởng.
 
 ## 8. GAME MECHANICS
 

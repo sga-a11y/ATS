@@ -408,6 +408,8 @@ def _pstate(pidx):
                               "rally_ready": threading.Event(),  # leader da chon diem quai + rally_point
                               "path_done": threading.Event(),    # leader da di xong follow_path toi diem quai (member bi keo theo)
                               "reform_gen": 0,       # +1 moi khi co acc van map (chet) -> CA party reform tai cho
+                              "resync_gen": 0,       # +1 khi leader moi 1p khong du party -> CA party giai tan + sync kenh lai + moi lai (event 40NPC)
+                              "go_claim": threading.Event(),  # 40NPC: het gio/thua 2 tran -> CA party di doi thuong + thoat
                               "cmd_gen": 0,          # +1 moi khi GUI ra lenh thu cong (doi kenh/teleport thanh)
                               "cmd": None,           # ("channel", ch) | ("city", city_id, flag) | ("route", a, b)
                               "manual_route_gen": 0,
@@ -629,8 +631,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # BOSS QUAN DOAN ngay sau van tieu: danh solo neu con luot (server count 0x55/0x2a) + het
             # cooldown. KHONG lien quan daily quest (tick hay ko van danh). Luc login char SOLO (chua
             # lap party) -> danh duoc. Trong phien: keepalive trigger REFORM khi con luot (xem duoi).
-            try: c.do_legion_boss()
-            except Exception as e: log.warning("[%s] loi do_legion_boss: %s", label, e)
+            # Mode EVENT (40NPC): mac dinh KHONG danh boss quan doan (acc event chuyen tam cho event,
+            # khong di lang thang danh boss lam tre vao event).
+            if pcfg.get("mode") == "event":
+                log.info("[%s] (%s) mode event -> bo qua boss quan doan (mac dinh)", label, role)
+            else:
+                try: c.do_legion_boss()
+                except Exception as e: log.warning("[%s] loi do_legion_boss: %s", label, e)
 
         # MODE theo CONFIG RIENG cua party (PARTY_CONFIG[pidx]). Fallback: suy tu START_CITY_ID.
         # (pcfg da doc o tren, giu nguyen bien - khong doc lai)
@@ -639,6 +646,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         city_flag = pcfg.get("city_flag", 0)
         # checkbox "Lam nhiem vu hang ngay" (bingo 9 o + dungeon). Fallback key cu "do_dungeon".
         do_daily = pcfg.get("do_daily", pcfg.get("do_dungeon", True))
+        # Mode EVENT (40NPC): mac dinh KHONG lam daily quest (acc event chuyen tam vao event ngay,
+        # khong di lang thang lam bingo/pho ban -> vao event nhanh, khong bi dump khoi map event).
+        if pcfg.get("mode") == "event":
+            do_daily = False
         # mode: digioi | train | city (tap trung ve thanh) | stand (dung yen) | cleanbag
         #       | digioi_train (DG TRUOC, ca party xong DG -> TRAIN map)
         raw_mode = pcfg.get("mode")
@@ -1434,7 +1445,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         elif mode == "event":
             # --- EVENT: moi nick vao map rieng khi chua co party. Event 40NPC co bot leader se
             # lap party SAU KHI tat ca da vao map; event khac/no-leader van dung yen cho moi tay. ---
-            do_channel_sync()   # ca party ve cung kenh TRUOC khi vao event (khong thi moi party tay khong duoc)
             _evs = getattr(config, "EVENTS", {}) or {}
             ev = _evs.get(pcfg.get("event_key") or "")
             if ev is None and _evs:
@@ -1443,6 +1453,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _k = next(iter(_evs)); ev = _evs[_k]
                 log.info("[%s] (%s) mode event: event_key='%s' khong hop le -> dung event dau '%s' (%s)",
                          label, role, pcfg.get("event_key"), _k, ev.get("label"))
+            # Sync kenh TRUOC go_to_event: CHI cho event STAND (moi tay). Event PARTY (40NPC) sync
+            # LAI SAU khi vao map event (xem duoi) -> KHONG sync o day nua de tranh doi kenh 2 LAN
+            # moi vong -> giam churn (leader nhay kenh lien tuc + relogin ca party -> server kick).
+            if not _is_npc_repeat_party_event(mode, has_leader, ev):
+                do_channel_sync()
             if ev is None:
                 log.warning("[%s] (%s) mode event nhung KHONG co event nao trong events.json -> dung yen tai cho",
                             label, role)
@@ -1492,8 +1507,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # chay long vong luon (xem buoc 1-2 o tren: da vao DG + lam nhiem vu nhe).
         digioi_solo = is_digioi and pcfg.get("digioi_mode") == "solo"
         event_mode = (mode == "event")
+        # EVENT 40NPC NGOAI GIO (event mo Thu 2/4/6 20-22h): KHONG quan tam co leader hay khong ->
+        # HUY party, moi acc TU di doi 'qua chien dau 40NPC' (NPC map 12003) roi THOAT game.
+        if (event_mode and bool(ev) and (ev.get("party_battle") or {}).get("kind") == "npc_repeat"
+                and not c.in_40npc_window()):
+            log.info("[%s] (%s) 40NPC NGOAI GIO event -> huy party + di doi thuong + thoat game", label, role)
+            try: c.leave_party()
+            except Exception: pass
+            try: c.claim_40npc_reward(ev)
+            except Exception as e: log.warning("[%s] loi doi thuong 40NPC (ngoai gio): %s", label, e)
+            _reason("40NPC ngoai gio -> doi thuong xong -> thoat game")
+            c.close(); return
         event_party_mode = _is_npc_repeat_party_event(mode, has_leader, ev)
         event_stand_mode = event_mode and not event_party_mode
+        # EVENT PARTY (40NPC): kenh/instance cua MAP EVENT (vd 10991) DOC LAP voi kenh thanh -> sync
+        # kenh o tren (luc con o thanh, truoc go_to_event) KHONG dam bao cung instance tren map event.
+        # PHAI sync LAI SAU khi ca party da vao map event, TRUOC khi leader moi. Thieu buoc nay: moi
+        # acc vao 1 instance khac nhau (vi tri spawn khac) -> moi entity khong toi -> joined=0/4 mai,
+        # leader spam moi ma khong ai join -> khong danh duoc (bug user 40NPC 2026-07-29).
+        if event_party_mode:
+            do_channel_sync()
         if event_stand_mode:
             # EVENT: da tele toi map event o tren -> DUNG YEN HOAN TOAN, cho moi tay. Moi nick doc lap,
             # KHONG lap party/sync kenh (bo qua het nhanh leader/member ben duoi). Auto-accept moi tay
@@ -1541,9 +1574,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                          label, len(st["ready_members"]), st["n_members"])
                 # MOI toi khi DU PARTY join (khong gioi han 6 lan): member da san sang, invite se toi.
                 _t0 = time.time()
+                _resync_t0 = time.time()
                 while joined_member_count(pidx) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
                     if not c.running: c.close(); return
+                    # MOI 60s van chua du party -> member co the da troi sang kenh khac (invite khong
+                    # toi) -> GIAI TAN party + SYNC KENH lai (keo ca party ve cung kenh) + MOI lai.
+                    # Member trong keepalive theo doi resync_gen -> cung roi party + sync kenh theo.
+                    if event_party_mode and time.time() - _resync_t0 > 60:
+                        log.warning("[%s] (LEADER) moi 60s chua du party (%d/%d) -> GIAI TAN + sync "
+                                    "kenh + moi lai", label, joined_member_count(pidx), st["n_members"])
+                        c.leave_party(); reset_party_joined(pidx)
+                        st["invited"].clear()
+                        do_channel_sync()               # picker: chon kenh lai + set channel_ready
+                        with st["lock"]: st["resync_gen"] += 1   # bao member cung roi party + sync kenh
+                        st["invited"].set()
+                        _resync_t0 = time.time(); _t0 = time.time()
+                        continue
                     c.invite_members(gap=1.0)
                     st["invited"].set()
                     time.sleep(4)
@@ -1697,6 +1744,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     and not st["manual_route_done"].is_set()):
                 cmd_gen_handled = max(0, cmd_gen_handled - 1)
         disc_gen_handled = st["disc_gen"] # RECONNECT: gen disconnect da xu ly (init = hien tai)
+        resync_gen_handled = st["resync_gen"]  # RESYNC party (event 40NPC): gen da xu ly
 
         def _do_manual_cmd(cmd):
             """Thuc thi LENH THU CONG tu GUI (doi kenh / teleport thanh) -> roi TIEP TUC che do da
@@ -2111,6 +2159,31 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
+            # ==== 40NPC: run_loop (leader) bao HET GIO / THUA 2 TRAN (c._npc40_done) -> leader phat
+            # tin hieu go_claim -> CA party (leader + member) di doi thuong + THOAT game. ====
+            if event_party_mode:
+                if is_leader and getattr(c, "_npc40_done", False):
+                    st["go_claim"].set()
+                if st["go_claim"].is_set():
+                    log.info("[%s] (%s) 40NPC xong -> di doi thuong + thoat game", label, role)
+                    try: c.leave_party()
+                    except Exception: pass
+                    try: c.claim_40npc_reward(ev)
+                    except Exception as e: log.warning("[%s] loi doi thuong 40NPC: %s", label, e)
+                    _reason("40NPC het gio/thua 2 -> doi thuong xong -> thoat game")
+                    c.close(); break
+            # ==== RESYNC party (event 40NPC): leader moi 60s khong du -> giai tan + sync kenh lai.
+            # Member roi party cu + sync kenh (chuyen sang kenh moi cua leader) -> auto-accept se
+            # re-join khi leader moi lai. (Leader tu xu ly trong vong moi, khong vao day.) ====
+            if ((not is_leader) and has_leader and event_party_mode
+                    and st["resync_gen"] > resync_gen_handled):
+                resync_gen_handled = st["resync_gen"]
+                log.info("[%s] (member) leader RE-SYNC party -> roi party + sync kenh lai", label)
+                try: c.leave_party()
+                except Exception: pass
+                do_channel_sync()   # cho channel_ready (leader da set) + chuyen kenh moi
+                c.flee_mode = False
+                continue
             # ==== RECONNECT reaction: co dong doi ROT (dang login lai) -> TAM DUNG + cho tat ca ve
             # -> restart mode. CHI khi party co bot-leader (khong thi nick rot da chet). Di Gioi SOLO
             # bo qua (moi acc doc lap). Team dungeon xu o phase daily rieng (relogin ca party). ====

@@ -1258,7 +1258,7 @@ MODE_OPTIONS = [
     ("digioi_train", "Dị Giới + Train map (hết giờ DG → cả party đi train)"),
     ("city", "Tập trung về thành (đứng yên)"),
     ("stand", "Login đâu đứng yên đó"),
-    ("event", "Event (tele tới map event, đứng yên chờ mời tay)"),
+    ("event", "Event"),
     ("cleanbag", "Dọn dẹp túi đồ (chưa làm)"),
 ]
 _MODE_LABEL = dict(MODE_OPTIONS)
@@ -2048,7 +2048,7 @@ class PartyConfigFrame(ttk.Frame):
         #  - city / stand / event: TICK (moi nick tu dung/tele rieng, khong can chu PT).
         #  - train / digioi: BO TICK (can chu PT de keo party + lap tran).
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
-        self.no_leader_var.set(mode in ("city", "stand", "event"))
+        self.no_leader_var.set(mode in ("city", "stand"))
         self._render_dyn()
 
     def _update_no_leader_visibility(self):
@@ -2142,7 +2142,6 @@ class PartyConfigFrame(ttk.Frame):
             idx = next((i for i, (k, _l) in enumerate(self.events) if k == cur), 0)
             if labels:
                 self.event_var.set(labels[idx])
-            ttk.Label(self.dyn, text="  (tele tới map event, đứng yên chờ mời tay)").pack(side="left")
         elif mode == "digioi":
             ttk.Label(self.dyn, text="Cấp quái:", width=10).pack(side="left")
             ttk.Combobox(self.dyn, textvariable=self.di_gioi_level_var, width=6, state="readonly",

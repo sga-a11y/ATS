@@ -1,10 +1,34 @@
 """Protocol and bounded battle loop for the 40 NPC event."""
 
+import datetime
 import logging
 import time
 
 
 log = logging.getLogger("bot")
+
+
+def in_event_window(now=None):
+    """Event 40NPC mo: Thu 2 / Thu 4 / Thu 6 (weekday 0,2,4), 20:00 <= gio < 22:00."""
+    now = now or datetime.datetime.now()
+    return now.weekday() in (0, 2, 4) and 20 <= now.hour < 22
+
+
+def _wait_until_after_window(client, stop_event, sleep_fn):
+    """Cho toi khi HET gio event (qua 22h) hoac bi STOP/rot. Dung khi thua 2 tran lien tiep ->
+    dung yen trong map event, cho qua 22h roi moi di doi thuong."""
+    while _active(client, stop_event) and in_event_window():
+        sleep_fn(15)
+
+
+def _end_npc_dialog(client, sleep_fn):
+    """Thoat dialog NPC 40 sach se (chon KHONG + 2 advance) truoc khi roi di doi thuong."""
+    client.send(OP_DIALOG, CHOOSE_NO)
+    sleep_fn(0.5)
+    client.send(OP_DIALOG, ADVANCE)
+    sleep_fn(0.5)
+    client.send(OP_DIALOG, ADVANCE)
+    sleep_fn(0.5)
 
 OP_DIALOG = 0x14
 OP_EVENT = 0x20
@@ -46,7 +70,18 @@ def _advance_to_battle(client, previous, stop_event, sleep_fn, poll_interval, ma
         if client._battle_start_seq > previous:
             return True
         client.send(OP_DIALOG, ADVANCE)
-        sleep_fn(max(0.05, poll_interval))
+        # Poll SAT (0.1s) sau moi advance -> DUNG NGAY khi tran bat dau (0x34 -> _battle_start_seq++).
+        # KHONG ngu ca poll_interval roi moi check: tran sau chi can 1 advance, ngu lau se gui THEM 1
+        # advance LOT VAO tran vua spawn -> server tra 0x14 08 03 roi 0x00 KICK (bug leader rot sau
+        # vai tran, 40NPC 2026-07-29). Poll toi da ~poll_interval, buoc 0.1s.
+        waited = 0.0
+        while waited < max(0.1, poll_interval):
+            if not _active(client, stop_event):
+                return False
+            if client._battle_start_seq > previous:
+                return True
+            sleep_fn(0.1)
+            waited += 0.1
     return client._battle_start_seq > previous
 
 
@@ -57,22 +92,46 @@ def run_loop(client, point, stop_event, on_loss, sleep_fn=time.sleep,
         return False
     if not _active(client, stop_event):
         return False
-    client.combat_ready()
+    # CHO SCENE SETTLE sau khi toi NPC truoc khi mo dialog: leader vua di toi (910,290) -> mo NPC
+    # NGAY (1s sau) trong khi scene chua on (goi 0x14 08 2a scene-ack VE SAU khi da mo) -> server
+    # nhan tuong tac luc scene chua settle -> 0x14 08 01 -> 0x00 KICK (xac nhan gui-cuoi/nhan-cuoi
+    # 2026-07-29: mo 0x20 020008 luc 21:28:27, scene-ack 08 2a MOI ve 21:28:28, kick 21:28:29).
+    # Ban nguoi that dung SAN o NPC (scene da on) nen mo la an.
+    client._wait_combat_clear(idle=1.0, cap=20.0)
+    sleep_fn(3.0)
+    if not _active(client, stop_event):
+        return False
+    # CHI rearm (0x41 san sang) - KHONG combat_ready() (= full _login_setup gom 0x57/0x01/0x62
+    # nhan-thuong-ngay/0x7c len thuyen). Gui lai chuoi login NGAY truoc khi mo NPC event -> server
+    # loan state luc tran spawn -> 0x14 08 01 -> 0x00 KICK leader (xac nhan tu gui-cuoi/nhan-cuoi
+    # luc rot 2026-07-29; ban nguoi that KHONG he gui chuoi login truoc NPC).
+    client.rearm_ready()
 
     battle_seq = client._battle_start_seq
     prompt_seq = client._npc40_prompt_seq
+    # ADVANCE THICH UNG theo page dialog server tra (event 40NPC TICH LUY 40 tran -> account co the
+    # dang GIUA event, KHONG phai luon fresh):
+    #  - FRESH: OPEN_NPC -> page1 (chua choice, hex ket thuc bang counter ...4e) -> CAN advance 1 lan
+    #    de ra page2-choice (...0200) roi moi chon.
+    #  - GIUA-EVENT: OPEN_NPC -> prompt "danh tiep?" (...0300) = DA la choice -> chon LUON, advance
+    #    THUA se lech state -> server 0x14 08 01 -> 0x00 KICK (xac nhan capture: bot gui advance thua
+    #    luc page 0300 -> rot 2026-07-29). Phan biet: page choice-ready ket thuc bang '0200'/'0300'.
+    client._npc40_last_dialog = ""
     client.send(OP_EVENT, OPEN_EVENT)
-    sleep_fn(0.5)
+    sleep_fn(0.6)
     client.send(OP_DIALOG, OPEN_NPC)
-    sleep_fn(0.6)
-    client.send(OP_DIALOG, ADVANCE)
-    sleep_fn(0.6)
+    sleep_fn(0.8)
+    _dlg = getattr(client, "_npc40_last_dialog", "") or ""
+    if not (_dlg.endswith("0200") or _dlg.endswith("0300")):
+        client.send(OP_DIALOG, ADVANCE)   # page1 chua choice -> advance ra page2-choice
+        sleep_fn(0.8)
     client.send(OP_DIALOG, CHOOSE_YES)
     if not _advance_to_battle(
             client, battle_seq, stop_event, sleep_fn, poll_interval, max_advances):
         log.warning("[%s] 40NPC: mo tran dau timeout", getattr(client, "_label", "?"))
         return False
 
+    consec_loss = 0
     while _active(client, stop_event):
         if not _wait_counter(
                 client, "_npc40_prompt_seq", prompt_seq, stop_event,
@@ -80,14 +139,26 @@ def run_loop(client, point, stop_event, on_loss, sleep_fn=time.sleep,
             log.warning("[%s] 40NPC: cho dialog sau tran timeout", getattr(client, "_label", "?"))
             return False
 
+        lbl = getattr(client, "_label", "?")
+        consec_loss = (consec_loss + 1) if client._npc40_last_defeated else 0
+        past_window = not in_event_window()   # sau MOI tran: check qua 22h chua
+
+        # THUA 2 TRAN LIEN TIEP (con trong gio) -> dung yen trong map event, cho qua 22h.
+        if consec_loss >= 2 and not past_window:
+            log.warning("[%s] 40NPC: THUA 2 tran lien tiep -> dung yen trong map, cho qua 22h", lbl)
+            on_loss()   # bao party ngung mo battle
+            _wait_until_after_window(client, stop_event, sleep_fn)
+            past_window = True
+
+        # QUA 22H (het gio event) -> ket dialog + BAO di doi thuong (client._npc40_done).
+        if past_window:
+            log.info("[%s] 40NPC: het gio event (qua 22h) -> ket + di doi thuong", lbl)
+            _end_npc_dialog(client, sleep_fn)
+            client._npc40_done = True
+            return True
+
         if client._npc40_last_defeated:
-            client.send(OP_DIALOG, CHOOSE_NO)
-            sleep_fn(0.5)
-            client.send(OP_DIALOG, ADVANCE)
-            sleep_fn(0.5)
-            client.send(OP_DIALOG, ADVANCE)
-            on_loss()
-            return False
+            log.warning("[%s] 40NPC: thua 1 tran (lien tiep=%d) -> danh tiep", lbl, consec_loss)
 
         prompt_seq = client._npc40_prompt_seq
         battle_seq = client._battle_start_seq

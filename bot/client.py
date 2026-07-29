@@ -878,6 +878,8 @@ class GameClient:
         self._battle_start_seq = 0     # tang moi S2C 0x34; 40NPC doi generation moi thay vi canh timing bool
         self._npc40_prompt_seq = 0     # tang khi S2C 0x41 0a0001: NPC hoi co danh tiep khong
         self._npc40_last_defeated = False
+        self._npc40_last_dialog = ""   # hex page dialog NPC 40 (0x14 0100...) gan nhat -> biet fresh/giua-event
+        self._npc40_done = False       # run_loop bao: het gio event / thua 2 tran -> di doi thuong + thoat
         self._npc40_started = False
         self._npc40_stop = threading.Event()
         self._npc40_thread = None
@@ -1068,6 +1070,11 @@ class GameClient:
             return
         if opcode == protocol.OP_BATTLE_START:
             self._battle_start_seq += 1
+        # Luu page dialog NPC (0x14 sub=0100...) gan nhat -> run_loop biet dang o page nao:
+        #  - fresh page1: ...[counter]4e (chua choice) -> can advance
+        #  - page2 choice fresh (...0200) / prompt giua-event (...0300) -> chon LUON, KHONG advance
+        if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x01\x00":
+            self._npc40_last_dialog = pkt[7:].hex()
         if not npc40.is_repeat_prompt(opcode, pkt):
             return
         defeated, alive, total = npc40.party_defeated(self.state.allies)
@@ -1077,6 +1084,50 @@ class GameClient:
         self._battle_end_grace_until = time.time() + 3.0
         log.info("[%s] 40NPC: het tran, party alive=%d/%d defeated=%s prompt_seq=%d",
                  self._label, alive, total, defeated, self._npc40_prompt_seq)
+
+    # ---------- DOI THUONG 40NPC (thoat event -> map 12003 -> NPC doi qua chien dau) ----------
+    NPC40_EVENT_MAP = 10991      # map event 40NPC
+    NPC40_REWARD_MAP = 12003     # map co NPC doi thuong
+    NPC40_REWARD_NPC = (570, 770)  # toa do NPC doi thuong tren 12003 (tu capture)
+    NPC40_MID_CITY = 12001       # Trac Quan: tele ve day roi smart-route toi 12003 (khi ko o event)
+
+    def in_40npc_window(self, now=None):
+        return npc40.in_event_window(now)
+
+    def claim_40npc_reward(self, ev=None) -> bool:
+        """Di doi 'qua chien dau 40NPC' o NPC map 12003:
+          - dang o map event (10991) -> exit_event ra 12003
+          - khong o event -> tele Trac Quan (12001) -> smart-route toi 12003
+          - tren 12003 -> di NPC (570,770) -> 0x20 020008 -> 0x14 01000e00 -> 0x14 0600 x4 (boc capture)."""
+        cur = self.current_map
+        if cur == self.NPC40_EVENT_MAP:
+            _ev = ev or {"exit": {"out_map": self.NPC40_REWARD_MAP}}
+            if not self.exit_event(_ev):
+                log.warning("[%s] doi thuong 40NPC: thoat event that bai", self._label)
+                return False
+        elif cur != self.NPC40_REWARD_MAP:
+            if not self.go_to_town(self.NPC40_MID_CITY, 0):
+                log.warning("[%s] doi thuong 40NPC: khong ve duoc Trac Quan", self._label)
+                return False
+            self.flee_mode = True
+            if not self.follow_smart_scene_route(self.current_map, self.NPC40_REWARD_MAP, flee=True):
+                log.warning("[%s] doi thuong 40NPC: khong route duoc %s -> 12003",
+                            self._label, self.current_map)
+                return False
+        if self.current_map != self.NPC40_REWARD_MAP:
+            log.warning("[%s] doi thuong 40NPC: khong toi duoc 12003 (dang %s)", self._label, self.current_map)
+            return False
+        # di toi NPC doi thuong roi mo dialog + doi
+        self.flee_mode = True
+        self.navigate_to(*self.NPC40_REWARD_NPC, flee=True)
+        if not self._wait_combat_clear(idle=1.0, cap=30.0):
+            return False
+        self.send(0x20, b"\x02\x00\x08"); time.sleep(0.6)
+        self.send(0x14, b"\x01\x00\x0e\x00"); time.sleep(0.6)   # chon muc doi thuong (option 0x0e)
+        for _ in range(4):
+            self.send(0x14, b"\x06\x00"); time.sleep(0.5)
+        log.info("[%s] doi thuong 40NPC: da doi qua chien dau o NPC map 12003", self._label)
+        return True
 
     def start_npc40_loop(self, point, on_loss):
         if getattr(self, "_npc40_started", False):
@@ -4378,10 +4429,10 @@ class GameClient:
             while attempts < max_iter and sent < waypoint_moves:
                 attempts += 1
                 if not self.running:
-                    return
+                    return False
                 if abort and abort():
                     log.info("[%s] navigate_to: abort (reform moi/stop) -> dung", self._label)
-                    return
+                    return False
                 if self.in_combat(idle_secs=1.0):
                     time.sleep(0.5)
                     continue
@@ -4395,6 +4446,7 @@ class GameClient:
                 break
         self.pos = (x, y)
         log.info("[%s] da toi diem (%d,%d) sau %d lenh move", self._label, x, y, moves)
+        return True   # toi noi -> True (run_loop 40NPC dua vao gia tri nay de mo dialog; thieu -> None -> bail)
 
     def follow_path(self, waypoints, step: float = 1.0, flee: bool = True, abort=None):
         """Di bo theo CHUOI WAYPOINT (capture duong di THAT trong map) toi diem quai xa.
