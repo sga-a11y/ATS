@@ -124,7 +124,7 @@ SKILL_NAMES = {
     10000: "Đánh thường",
     10005: "Ném Đá",
     11004: "Thanh Lưu",
-    11009: "Hồi Sinh",
+    11009: "Toàn Hồi Ma Thuật",   # hoi SP TOAN TEAM (0x2b01, cat6) - KHONG phai Hoi Sinh!
     11010: "Toàn Trị Liệu",
     12003: "Hỏa Tiễn",
     12006: "Nhất Kích",
