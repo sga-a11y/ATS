@@ -849,6 +849,9 @@ class GameClient:
         self.party_idx = None        # chi so party cua bot (tu config.ACCOUNT_PARTY) - de nhan moi cung party
         self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x27
         self._running_route = False   # dang chay auto run-around
+        self._di_gioi_anchor = None   # TAM run-around DG = diem tele VAO Di Gioi (co dinh). Sau
+        #   disconnect -> relogin, self.pos co the bi 0x03 keo ve rìa map -> run-around anchor theo
+        #   pos se chay xuyen tuong. DG dung anchor CO DINH nay thay vi self.pos.
         self.pos = None              # vi tri hien tai (x,y) cua minh - doc tu S2C 0x03 self
         self._position_generation = 0  # tang khi server xac nhan self pos qua S2C 0x03
         self.train_block_stats_enabled = False
@@ -4471,7 +4474,14 @@ class GameClient:
             return
         # Anchor = vi tri hien tai (dead-reckoning: set khi vao Di Gioi / lenh move cuoi).
         # Server KHONG echo vi tri minh -> dua vao pos tu nho. Chua biet -> fallback spawn Di Gioi.
-        anchor = self.pos or getattr(config, "RUN_FALLBACK_ANCHOR", (870, 740))
+        # DG (stay_in_di_gioi): DUNG TAM CO DINH = diem tele vao (_di_gioi_anchor). Ly do: disconnect
+        # -> relogin, 0x03 self-spawn co the keo self.pos ve RIA MAP -> neu anchor theo pos thi
+        # run-around chay xuyen tuong o rìa. Tam tele-vao luon o giua bai -> an toan.
+        if stay_in_di_gioi:
+            anchor = (self._di_gioi_anchor or self.pos
+                      or getattr(config, "RUN_FALLBACK_ANCHOR", (870, 740)))
+        else:
+            anchor = self.pos or getattr(config, "RUN_FALLBACK_ANCHOR", (870, 740))
         ax, ay = anchor
         log.info("[%s] Run-around quanh (%d,%d)", self._label, ax, ay)
         i = 0
@@ -4532,6 +4542,7 @@ class GameClient:
         self.send(0x61, bytes([0x02, 0x00, idx & 0xFF]))   # xac nhan vao + chon cap quai
         # spawn Di Gioi co dinh -> set pos (server khong echo, dung dead-reckoning tu day)
         self.pos = getattr(config, "RUN_FALLBACK_ANCHOR", (870, 740))
+        self._di_gioi_anchor = self.pos   # CHOT tam run-around = diem tele vao (co dinh, ne rìa map sau relogin)
         log.info("[%s] Vao Di Gioi: gui 0x61 02 00 %02x (cap %d), spawn pos=%s",
                  self._label, idx, self.DI_GIOI_LEVELS[idx - 1], self.pos)
 
