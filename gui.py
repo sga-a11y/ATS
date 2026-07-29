@@ -325,6 +325,8 @@ class ComboSearch:
 
     def _on_click(self, e):
         self.combo.focus_set()
+        # Boi den HET text dang co -> go ky tu dau la TU THAY (khoi phai Ctrl+A xoa map cu).
+        self.combo.after(1, lambda: self.combo.selection_range(0, "end"))
         if self._shown():
             self.hide()
         else:
