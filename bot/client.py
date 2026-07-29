@@ -2012,6 +2012,12 @@ class GameClient:
     def _make_decisions(self):
         if self._acted_turn:
             return
+        # VUA nhan goi KET TRAN THAT (grace) -> tran DA xong: KHONG ra BAT KY quyet dinh nao (ke ca
+        # Hoi Sinh). Timer quyet dinh co the da ARM tu goi 0x35 luot cuoi TRUOC khi sub0800 toi, roi
+        # fire SAU khi ket tran -> decide tren state tan du (quai da clear) -> cast Hoi Sinh oan
+        # (bug that user gap: chinh acc da "XAC NHAN ket tran THAT" xong VAN ra lenh Hoi Sinh 1s sau).
+        if time.time() < getattr(self, "_battle_end_grace_until", 0.0):
+            return
         self.state.party_idx = self.party_idx   # sync de dieu phoi hoi sinh chéo account
         # DANG QUA CONG (gui chuoi 0x14): KHONG gui 0x32 danh -> tranh "vua qua cong vua danh"
         # (0x32 xen giua 0x14 -> server kick leader). Bo luot nay; transit doi map -> tran cu bo,
