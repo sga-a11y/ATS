@@ -3256,9 +3256,12 @@ class GameClient:
         return self._learned().get(str(tid)) or {}
 
     def _slot_for_known(self, kind: str, skip_slots) -> tuple:
-        """Tim SLOT chua item DA BIET (locked hoac da hoc) hoi 'kind', count>0. Uu tien heal NHO
-        NHAT (dung thuoc re/it truoc, DE DANH thuoc xin hoi nhieu cho khi can gap - user yeu cau)."""
-        best = None
+        """Tim SLOT chua item DA BIET (locked hoac da hoc) hoi 'kind', count>0.
+        Do QUY HIEM = TONG HP+SP hoi duoc: TONG nho nhat dung TRUOC (danh binh xin cho luc can gap).
+        Vd hoi HP: A=30HP(tong30) B=20HP+14SP(tong34) C=25HP(tong25) D=12HP+10SP(tong22)
+        -> thu tu dung: D(22) C(25) A(30) B(34)."""
+        best = None      # (slot, tid, heal)
+        best_key = None  # (tong_hp_sp, heal) - nho hon = uu tien dung truoc
         for slot, (tid, cnt) in self.bag_slots.items():
             if cnt <= 0 or slot in skip_slots:
                 continue
@@ -3266,8 +3269,12 @@ class GameClient:
             if not v or v.get("none") or v.get("unusable") or v.get("battle"):
                 continue   # battle=True: do hoi sinh, CHI dung trong tran -> ko hoi ngoai
             heal = v.get(kind, 0)
-            if heal > 0 and (best is None or heal < best[2]):
-                best = (slot, tid, heal)
+            if heal <= 0:
+                continue
+            total = v.get("hp", 0) + v.get("sp", 0)   # do quy = tong ca 2 tac dung
+            key = (total, heal)
+            if best_key is None or key < best_key:
+                best_key, best = key, (slot, tid, heal)
         return best
 
     def has_hp_and_sp_items(self) -> bool:
