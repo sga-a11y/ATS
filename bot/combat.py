@@ -332,9 +332,16 @@ def _revive_decision_for_skill(state, unit, stat, rev):
     if rev is None or not _is_revive(rev):
         return None
     # HET QUAI SONG = tran DA KET (server gui them 0x35 "tan du" sau khi thang) -> KHONG hoi sinh:
-    # dong doi chet se TU song lai sau tran, cast luc nay chi phi luot + spam. Giong guard 'if not es'
-    # ben _combat_attack (fix user quan sat: cuoi tran cu cast Hoi Sinh mai).
+    # dong doi chet se TU song lai sau tran, cast luc nay chi phi luot + spam.
     if not getattr(state, "enemy_slots", None):
+        return None
+    # GATE THEO enemy_gen (giong _combat_attack): enemy_gen CHI tang khi co 0x33 QUAI THAT, KHONG
+    # tang o goi "tan du 0x35" sau khi thang. Guard 'not enemy_slots' o tren CO THE bi RACE (thread
+    # _make_decisions doc enemy_slots luc CON quai -> qua guard -> thread packet reset_enemies clear
+    # ngay sau -> revive lot; log in enemy_slots=[] gay hieu nham). Gate gen thi luot tan du (gen
+    # chua tang so voi lan hanh dong truoc) LUON bi chan -> het cast Hoi Sinh cuoi tran (fix that).
+    gen_attr = "last_atk_gen_char" if unit == config.UNIT_CHAR else "last_atk_gen_pet"
+    if getattr(state, gen_attr, -1) == state.enemy_gen:
         return None
     if stat.hp_max > 0 and stat.hp <= 0:      # caster da chet -> ko cast
         return None
@@ -353,6 +360,7 @@ def _revive_decision_for_skill(state, unit, stat, rev):
     dead.sort(key=lambda x: (not _slot_has_revive(pidx, x[0], x[1]), -x[2]))
     b1, b2, _hp = dead[0]
     at = state.my_atype
+    setattr(state, gen_attr, state.enemy_gen)   # danh dau da hanh dong tren gen nay (giong attack) -> tan du/lap khong revive lai
     return Decision(unit, at, b2, rev, b=b1)   # target=slot con chet, b=loai con chet (3char/2pet)
 
 
