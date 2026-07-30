@@ -988,8 +988,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     label, role, fc, fc)
                         c._reform_town_fail = 0   # reset truoc khi thu di bo (tranh spam moi vong)
                         try:
+                            # flee=False: cong tren route co NPC gac -> phai DANH THANG moi qua cong
+                            # (bo chay thi cong khong mo -> ket). Moi acc tu danh tran cong rieng.
                             if c.go_to_town(12061, 2) and c.follow_smart_scene_route(
-                                    c.current_map, fc, None, abort=_walk_ab):
+                                    c.current_map, fc, None, abort=_walk_ab, flee=False):
                                 log.info("[%s] (%s) da DI BO toi thanh %s tu Nghiep Thanh", label, role, fc)
                                 break
                             log.warning("[%s] (%s) di bo Nghiep Thanh -> %s that bai, thu lai vong tele",
