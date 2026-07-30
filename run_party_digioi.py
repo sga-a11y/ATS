@@ -962,42 +962,34 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # -> neu dem local se reset ve 0 moi lan -> KHONG BAO GIO dat 3 (bug that: treo ca dem
                 # van ket tele-fail, khong bao gio di bo). Dung bien ben de dem TICH LUY qua cac lan goi.
                 # Chi reset khi VE DUOC thanh fc (thanh cong).
-                _walk_ab = lambda: _stopped() or (not c.running)   # chang di bo KHONG abort theo reform_gen
                 while not _ab():
                     _town_ok = False
                     try:
-                        # Tele TRUNG GIAN Trac Quan/Ng.Thanh (50-50) truoc roi moi ve thanh route -
-                        # tele thang tu map la ve thanh route hay loi (user bao). Lam MOI luot thu.
+                        # Tele TRUNG GIAN Trac Quan/Ng.Thanh (50-50) truoc roi moi ve thanh route.
                         c.pre_route_town_hop()
-                        # budget NGAN (tries=6, battle_grace=0 -> ~12s/lan) de FAIL NHANH: thanh chua
-                        # mo thi tele khong bao gio duoc -> 3 lan ~1 phut la chuyen sang di bo (user:
-                        # 'chi co tele 1p thoi', KHONG ket 150s/lan nhu mac dinh).
+                        # budget NGAN (tries=6, battle_grace=0 -> ~12s/lan) de FAIL NHANH: fc chua mo
+                        # thi tele khong bao gio duoc -> 3 lan ~1 phut la chuyen sang gom o Nghiep Thanh.
                         _town_ok = c.go_to_town(fc, ff, tries=6, wait=2.0, battle_grace=0.0)
                     except Exception as e:
                         log.warning("[%s] reform: loi ve thanh: %s", label, e)
                     if _town_ok or c.current_map == fc:
-                        c._reform_town_fail = 0   # ve duoc thanh -> reset dem ben
+                        c._reform_town_fail = 0            # ve duoc thanh fc -> keo binh thuong (fc->bai)
+                        c._reform_via_nghiep = False
                         break
                     c._reform_town_fail = getattr(c, "_reform_town_fail", 0) + 1
-                    # TELE ve thanh fc FAIL 3 lan (TICH LUY) -> thanh do co the CHUA MO (khong tele truc
-                    # tiep duoc). Fallback: tele ve NGHIEP THANH (12061 - hub luon mo) roi DI BO scene-
-                    # route toi thanh fc (tai dung follow_smart_scene_route, di map->map qua cong, KHONG
-                    # tele). Moi acc tu di (GATHER doc lap); toi fc -> break -> barrier gom party.
+                    # fc CHUA MO (tele fail 3 lan) -> GOM party o NGHIEP THANH (12061, luon mo) thay vi fc;
+                    # leader se KEO ca party DI BO (scene-route) tu Nghiep Thanh toi THANH fc (gan bai),
+                    # member follow qua cong nhu keo binh thuong. Toi fc roi -> flow keo fc->bai chay tiep.
                     if getattr(c, "_reform_town_fail", 0) >= 3:
-                        log.warning("[%s] (%s) tele ve thanh %s FAIL 3 lan -> ve Nghiep Thanh roi DI BO toi %s",
-                                    label, role, fc, fc)
-                        c._reform_town_fail = 0   # reset truoc khi thu di bo (tranh spam moi vong)
+                        c._reform_town_fail = 0
                         try:
-                            # flee=False: cong tren route co NPC gac -> phai DANH THANG moi qua cong
-                            # (bo chay thi cong khong mo -> ket). Moi acc tu danh tran cong rieng.
-                            if c.go_to_town(12061, 2) and c.follow_smart_scene_route(
-                                    c.current_map, fc, None, abort=_walk_ab, flee=False):
-                                log.info("[%s] (%s) da DI BO toi thanh %s tu Nghiep Thanh", label, role, fc)
+                            if c.go_to_town(12061, 2):
+                                c._reform_via_nghiep = True   # -> leader keo scene-route Nghiep -> fc
+                                log.warning("[%s] (%s) tele thanh %s FAIL 3 lan (chua mo) -> gom o NGHIEP "
+                                            "THANH, leader se keo di bo toi %s", label, role, fc, fc)
                                 break
-                            log.warning("[%s] (%s) di bo Nghiep Thanh -> %s that bai, thu lai vong tele",
-                                        label, role, fc)
                         except Exception as e:
-                            log.warning("[%s] (%s) di bo Nghiep Thanh -> %s loi: %s", label, role, fc, e)
+                            log.warning("[%s] reform: loi ve Nghiep Thanh: %s", label, e)
                     log.warning("[%s] (%s) reform: CHUA ve duoc thanh %s (map=%s) -> nghi 10s thu lai",
                                 label, role, fc, c.current_map)
                     time.sleep(10)
@@ -1051,6 +1043,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 time.sleep(1.5)
                 _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
                 c.flee_mode = not _full   # du party -> DANH bat chap khi keo
+                if getattr(c, "_reform_via_nghiep", False):
+                    # fc chua mo -> gom o Nghiep Thanh -> KEO ca party DI BO tu Nghiep Thanh toi THANH
+                    # fc (gan bai). Member trong party TU FOLLOW qua cong (game keo theo leader). flee=
+                    # not _full: du party -> DANH cong NPC. Toi fc roi -> keo fc->bai binh thuong ben duoi.
+                    log.info("[%s] (LEADER) fc chua mo -> KEO party DI BO tu Nghiep Thanh -> thanh %s", label, fc)
+                    try: c.follow_smart_scene_route(c.current_map, fc, None, abort=_ab, flee=not _full)
+                    except Exception as e: log.warning("[%s] (LEADER) loi keo di bo Nghiep->fc: %s", label, e)
+                    c._reform_via_nghiep = False
                 if smart_route2:
                     c.follow_smart_route(
                         sc, route_safe, abort=_ab, flee=not _full
