@@ -2085,8 +2085,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e: log.warning("[%s] manual: loi teleport thanh: %s", label, e)
                 log.info("[%s] (%s) manual: da teleport ve thanh %s", label, role, cid)
             elif kind == "route":
-                if mode not in ("stand", "city", "train", "digioi_train"):
-                    log.warning("[%s] manual route: bo qua vi mode=%s khong ho tro", label, mode)
+                if mode not in ("stand", "city"):
+                    log.warning("[%s] manual route: bo qua vi mode=%s khong phai city/stand",
+                                label, mode)
                 else:
                     _do_manual_route()
             # --- TIEP TUC che do da setup ---
