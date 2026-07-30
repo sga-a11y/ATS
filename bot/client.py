@@ -153,10 +153,18 @@ def execute_smart_route(client, route, abort=None, flee=True):
             if not client.running or (abort and abort()):
                 client._smart_route_failure = "aborted"
                 return False
-            if not client._enter_gate(*leg["gate_center"], leg["gate"],
-                                      expected_map=leg["target_scene"],
-                                      board_boat=(needs_boat and _i == board_leg),
-                                      on_boat=sailing):
+            # _in_scene_gate: trong luc qua cong, moi acc danh tran phuc kich RIENG -> in_combat()
+            # KHONG duoc ha in_battle theo member-confirm (member khac xong tran cong khac -> ha oan
+            # -> gui 0x14 06 transit luc server con xu battle -> KICK). Chi tin tran cua CHINH minh.
+            client._in_scene_gate = True
+            try:
+                _gate_ok = client._enter_gate(*leg["gate_center"], leg["gate"],
+                                              expected_map=leg["target_scene"],
+                                              board_boat=(needs_boat and _i == board_leg),
+                                              on_boat=sailing)
+            finally:
+                client._in_scene_gate = False
+            if not _gate_ok:
                 client._smart_route_failure = "gate_failed"
                 return False
             if client.current_map != leg["target_scene"]:
@@ -833,6 +841,8 @@ class GameClient:
         self._deliberate_close = False  # True khi CHINH TA dong socket (close/relogin) -> OSError ko phai rot
         self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
         self._gate_transit = False   # True khi dang gui chuoi 0x14 qua cong -> combat KHONG gui 0x32
+        self._in_scene_gate = False  # True khi dang qua cong scene-walk -> in_combat() KHONG ha in_battle
+        #   theo member-confirm (moi acc danh tran RIENG tai cong -> tin member se transit oan -> KICK)
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._mob_observer = None
         self._mob_observer_lock = threading.Lock()
@@ -1166,6 +1176,7 @@ class GameClient:
             self.state.in_battle = False
             self._battle_end_grace_until = time.time() + 3.0
         elif (self.state.in_battle and not getattr(self.state, "boss_mode", False)
+              and not getattr(self, "_in_scene_gate", False)
               and _recent_battle_end(self.party_idx, within=3.0, map_id=self.current_map)):
             # BOSS (boss the gioi / dungeon): moi acc danh trận RIENG cua no -> member khac ket tran
             # KHONG lien quan -> KHONG suy luan theo member (boss_mode). Boss loop tu quan ly ket tran.
@@ -4624,10 +4635,13 @@ class GameClient:
                     self._label, tries, self.current_map, self.in_combat())
         return False
 
-    def go_to_town(self, city_id: int, flag: int = 0, tries: int = 30, wait: float = 2.0):
+    def go_to_town(self, city_id: int, flag: int = 0, tries: int = 30, wait: float = 2.0,
+                   battle_grace: float = 90.0):
         """Teleport ve thanh, LAP LAI cho toi khi RA KHOI map hien tai (neu dang o bai quai/
-        battle thi teleport bi chan, phai cho khoang trong giua 2 tran). Xac nhan = map da doi
-        (city_id != map_id voi 1 so thanh nhu Ng.Thanh, nen check 'da roi map cu')."""
+        battle thi teleport bi chan, phai cho khoang trong giua 2 tran). Xac nhan = map da doi.
+        battle_grace: giay CONG THEM vao deadline de cho thoat battle (mac dinh 90). Goi tu reform
+        (thanh CHUA MO -> tele khong bao gio duoc) nen truyen battle_grace nho + tries nho de FAIL
+        NHANH (~1 phut) roi chuyen sang di bo, thay vi ket 150s/lan (user: 'chi co tele 1p thoi')."""
         log.info("[%s] Ve thanh %d (lap lai neu con battle chan teleport)...", self._label, city_id)
         # Dang o DI GIOI -> teleport (0x44) bi tu choi. PHAI di bo ra cong thoat truoc.
         if self.in_di_gioi():
@@ -4635,7 +4649,7 @@ class GameClient:
                      self._label)
             self.exit_di_gioi()
         ok = 0
-        deadline = time.time() + tries * wait + 90   # +90s du cho thoat battle (khong tinh vao luot teleport)
+        deadline = time.time() + tries * wait + battle_grace   # +battle_grace du cho thoat battle
         while time.time() < deadline:
             if not self.running:    # STOP / mat ket noi -> NGUNG ngay (khong spam teleport nua)
                 log.info("[%s] go_to_town: dung (stop/disconnect)", self._label)

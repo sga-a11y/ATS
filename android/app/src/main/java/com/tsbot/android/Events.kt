@@ -8,7 +8,7 @@ object Events {
     data class Info(val label: String)
 
     val ALL: Map<String, Info> = linkedMapOf(
-        "nhi_kieu" to Info("Nhị Kiều"),
+        // "nhi_kieu" to Info("Nhị Kiều"),   // AN TAM (chua lam xong) - bo comment de hien lai
         "npc_40" to Info("40 NPC"),
     )
 }

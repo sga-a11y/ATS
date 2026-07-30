@@ -1325,8 +1325,10 @@ class PartyConfigFrame(ttk.Frame):
         self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
         self.map_cb = self.mob_cb = self.city_cb = None
-        # EVENT: list (key, label) tu events.json -> picker khi mode=event
-        self.events = [(k, v.get("label", k)) for k, v in (getattr(config, "EVENTS", {}) or {}).items()]
+        # EVENT: list (key, label) tu events.json -> picker khi mode=event. Bo qua event co
+        # "hidden": true (an tam - chua lam xong; giu data, bo co de hien lai).
+        self.events = [(k, v.get("label", k)) for k, v in (getattr(config, "EVENTS", {}) or {}).items()
+                       if not v.get("hidden")]
         self.event_var = tk.StringVar(); self.event_cb = None
         # Di Gioi: party (mac dinh, giu nguyen hanh vi cu - lap party chung, dong bo kenh) vs solo
         # (moi acc chay rieng le, khong lap party, khong dong bo kenh - dung khi acc khong can/khong

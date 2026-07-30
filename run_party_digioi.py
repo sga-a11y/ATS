@@ -957,36 +957,45 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # cham/ket map la) - truoc day BO QUA ket qua -> acc ket map khac van di tiep xuong
                 # sync kenh, leader moi vo tan ma member join khong duoc (server chan invite cross-map,
                 # bug thuc te log 18:22). Chua ve duoc thi KHONG duoc di tiep.
-                _town_fail = 0
+                # _town_fail BEN tren client (KHONG reset moi vong _do_reform): reform_gen la bien
+                # CHUNG party -> acc khac bump -> _ab() True -> _do_reform BI ABORT + goi lai lien tuc
+                # -> neu dem local se reset ve 0 moi lan -> KHONG BAO GIO dat 3 (bug that: treo ca dem
+                # van ket tele-fail, khong bao gio di bo). Dung bien ben de dem TICH LUY qua cac lan goi.
+                # Chi reset khi VE DUOC thanh fc (thanh cong).
+                _walk_ab = lambda: _stopped() or (not c.running)   # chang di bo KHONG abort theo reform_gen
                 while not _ab():
                     _town_ok = False
                     try:
                         # Tele TRUNG GIAN Trac Quan/Ng.Thanh (50-50) truoc roi moi ve thanh route -
                         # tele thang tu map la ve thanh route hay loi (user bao). Lam MOI luot thu.
                         c.pre_route_town_hop()
-                        _town_ok = c.go_to_town(fc, ff)   # CA party tu teleport ve thanh gom nhau
+                        # budget NGAN (tries=6, battle_grace=0 -> ~12s/lan) de FAIL NHANH: thanh chua
+                        # mo thi tele khong bao gio duoc -> 3 lan ~1 phut la chuyen sang di bo (user:
+                        # 'chi co tele 1p thoi', KHONG ket 150s/lan nhu mac dinh).
+                        _town_ok = c.go_to_town(fc, ff, tries=6, wait=2.0, battle_grace=0.0)
                     except Exception as e:
                         log.warning("[%s] reform: loi ve thanh: %s", label, e)
                     if _town_ok or c.current_map == fc:
+                        c._reform_town_fail = 0   # ve duoc thanh -> reset dem ben
                         break
-                    _town_fail += 1
-                    # TELE ve thanh fc FAIL 3 lan lien -> thanh do co the CHUA MO (khong tele truc tiep
-                    # duoc). Fallback: tele ve NGHIEP THANH (12061 - hub luon mo) roi DI BO scene-route
-                    # toi thanh fc (tai dung follow_smart_scene_route, di map->map qua cong, KHONG tele).
-                    # Moi acc tu di (buoc GATHER doc lap); toi fc -> break -> barrier gom party nhu thuong.
-                    if _town_fail >= 3:
+                    c._reform_town_fail = getattr(c, "_reform_town_fail", 0) + 1
+                    # TELE ve thanh fc FAIL 3 lan (TICH LUY) -> thanh do co the CHUA MO (khong tele truc
+                    # tiep duoc). Fallback: tele ve NGHIEP THANH (12061 - hub luon mo) roi DI BO scene-
+                    # route toi thanh fc (tai dung follow_smart_scene_route, di map->map qua cong, KHONG
+                    # tele). Moi acc tu di (GATHER doc lap); toi fc -> break -> barrier gom party.
+                    if getattr(c, "_reform_town_fail", 0) >= 3:
                         log.warning("[%s] (%s) tele ve thanh %s FAIL 3 lan -> ve Nghiep Thanh roi DI BO toi %s",
                                     label, role, fc, fc)
+                        c._reform_town_fail = 0   # reset truoc khi thu di bo (tranh spam moi vong)
                         try:
                             if c.go_to_town(12061, 2) and c.follow_smart_scene_route(
-                                    c.current_map, fc, None, abort=_ab):
+                                    c.current_map, fc, None, abort=_walk_ab):
                                 log.info("[%s] (%s) da DI BO toi thanh %s tu Nghiep Thanh", label, role, fc)
                                 break
                             log.warning("[%s] (%s) di bo Nghiep Thanh -> %s that bai, thu lai vong tele",
                                         label, role, fc)
                         except Exception as e:
                             log.warning("[%s] (%s) di bo Nghiep Thanh -> %s loi: %s", label, role, fc, e)
-                        _town_fail = 0   # reset dem, quay lai thu tele (hoac di bo) tiep
                     log.warning("[%s] (%s) reform: CHUA ve duoc thanh %s (map=%s) -> nghi 10s thu lai",
                                 label, role, fc, c.current_map)
                     time.sleep(10)
