@@ -3,6 +3,7 @@
   "events": {
     "nhi_kieu": {
       "label": "Nhị Kiều",
+      "hidden": true,
       "select": "03000100",
       "staging_map": 12921,
       "dest_map": 12922,
