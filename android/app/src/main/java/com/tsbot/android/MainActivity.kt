@@ -1092,24 +1092,24 @@ fun AddPartyDialog(
                         }
                     }
                 }
-                // "Khong co chu PT" va "Lam nhiem vu hang ngay": MOI mode deu co (mirror PC -
-                // gui.py hien 2 checkbox nay cho tat ca train/city/stand/digioi, KHONG rieng
-                // Di Gioi), CHI an "Khong co chu PT" khi dang o Di Gioi + SOLO (khong lap party
-                // that -> "chu PT" vo nghia, mirror _update_no_leader_visibility ben PC).
+                // Bot dung yen cho leader ngoai/tay moi: an khi Di Gioi + SOLO (khong lap party).
+                // Chi khi bat moi hien o nhap whitelist leader.
                 Spacer(Modifier.height(8.dp))
                 if (!(selectedMode == RunModes.DIGIOI && digioiSolo)) {
-                    OutlinedTextField(
-                        value = leaderWhitelistText,
-                        onValueChange = { leaderWhitelistText = it },
-                        label = { Text("White list leader") },
-                        supportingText = { Text("Moi dong hoac dau phay = 1 ten nhan vat leader. Rong = nhan moi moi nguoi.") },
-                        minLines = 2,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = noLeader, onCheckedChange = { noLeader = it })
-                        Text("Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)")
+                        Text("Bot đứng yên, chờ nhận lời mời từ")
+                    }
+                    if (noLeader) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = leaderWhitelistText,
+                            onValueChange = { leaderWhitelistText = it },
+                            label = { Text("Tên leader") },
+                            supportingText = { Text("Mỗi dòng hoặc dấu phẩy = 1 tên nhân vật leader. Để trống = nhận lời mời từ mọi người.") },
+                            minLines = 2,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
                 // Cac setting IT KHI DOI gom vao "Cai dat nang cao" (mirror gui.py ben PC) - tranh

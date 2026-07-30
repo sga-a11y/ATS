@@ -1335,21 +1335,21 @@ class PartyConfigFrame(ttk.Frame):
         # muon gop chung, vd khac nick khong lien quan nhau).
         self.digioi_solo_var = tk.BooleanVar(value=(self._preset.get("digioi_mode") == "solo"))
 
-        # KHONG co chu PT: slot 0 = ("","") -> member tu dung cho leader ngoai/tay moi.
+        # Bot dung yen cho leader ngoai/tay moi: slot 0 = ("","") -> khong co bot-leader.
         accs = self._preset.get("accounts", [])
         no_leader = bool(accs) and not (accs[0].get("u", "").strip())
         shown = accs[1:] if no_leader else accs
-        # Hang: [Khong co chu PT] ... [White list rieng party nay]
+        # Hang: [Bot dung yen, cho nhan loi moi tu] [whitelist leader rieng party nay]
         nlrow = ttk.Frame(self); nlrow.pack(fill="x", pady=(2, 0))
         self.no_leader_var = tk.BooleanVar(value=no_leader)
         # Di Gioi SOLO: khong lap party that -> "chu PT" khong co y nghia gi, an checkbox nay cho
         # gon (xem _update_no_leader_visibility, goi lai moi khi doi "Kieu chay").
         self.no_leader_cb = ttk.Checkbutton(
-            nlrow, text="Không có chủ PT (member tự đứng, chờ leader ngoài/tay mời)",
-            variable=self.no_leader_var)
+            nlrow, text="Bot đứng yên, chờ nhận lời mời từ",
+            variable=self.no_leader_var, command=self._update_no_leader_visibility)
         self.no_leader_cb.pack(side="left")
         wl = self._preset.get("leaders", [])
-        self.wl_lbl = ttk.Label(nlrow, text="  │  White list riêng:")
+        self.wl_lbl = ttk.Label(nlrow, text="")
         self.wl_lbl.pack(side="left")
         self.leaders_var = tk.StringVar(value=", ".join(wl) if isinstance(wl, list) else str(wl or ""))
         self.wl_entry = ttk.Entry(nlrow, textvariable=self.leaders_var)
@@ -2054,9 +2054,8 @@ class PartyConfigFrame(ttk.Frame):
         self._render_dyn()
 
     def _update_no_leader_visibility(self):
-        """Di Gioi SOLO: khong lap party that -> checkbox 'Khong co chu PT' VA 'White list rieng'
-        (dung de loc loi moi party) deu vo nghia -> an ca 2 cho gon (theo yeu cau). Cac mode khac
-        (train/city/stand/Di Gioi party) van hien binh thuong."""
+        """Chi hien whitelist rieng khi party KHONG co bot-leader.
+        Di Gioi SOLO: khong lap party that -> an ca checkbox lan whitelist cho gon."""
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
         hide = (mode == "digioi" and self.digioi_solo_var.get())
         if hide:
@@ -2065,8 +2064,12 @@ class PartyConfigFrame(ttk.Frame):
             self.wl_entry.pack_forget()
         else:
             self.no_leader_cb.pack(side="left")
-            self.wl_lbl.pack(side="left")
-            self.wl_entry.pack(side="left", fill="x", expand=True, padx=4)
+            if self.no_leader_var.get():
+                self.wl_lbl.pack(side="left")
+                self.wl_entry.pack(side="left", fill="x", expand=True, padx=4)
+            else:
+                self.wl_lbl.pack_forget()
+                self.wl_entry.pack_forget()
 
     def _render_dyn(self):
         for w in self.dyn.winfo_children():
@@ -2751,10 +2754,10 @@ class ConfigDialog(tk.Toplevel):
         self.servers = [(k, v.get("label", k)) for k, v in sv_raw.items()] or [("trieu_van", "Triệu Vân")]
 
         top = ttk.Frame(self, padding=6); top.pack(fill="x")
-        ttk.Label(top, text="Kênh chung:").pack(side="left")
+        # Kenh chung cu khong con can user cau hinh: bot tu sync/chon kenh theo party.
+        # Van giu bien an de accounts.json cu/tac vu migrate doc ghi khong doi format.
         self.ch_var = tk.StringVar(value=str(data.get("channel", 2)))
-        ttk.Entry(top, textvariable=self.ch_var, width=6).pack(side="left", padx=4)
-        ttk.Button(top, text="➕ Thêm party", command=self._add_party).pack(side="left", padx=8)
+        ttk.Button(top, text="➕ Thêm party", command=self._add_party).pack(side="left")
         ttk.Button(top, text="🗑 Xóa party này", command=self._del_party).pack(side="left")
 
         # White list CHUNG (ap moi party): nut mo popup edit danh sach leader.
