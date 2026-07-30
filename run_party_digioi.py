@@ -503,6 +503,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     stop_ev = account_stops.get(username)   # GUI yeu cau STOP -> thoat moi giai doan
     def _stopped():
         return stop_ev is not None and stop_ev.is_set()
+    def _leader_thread_active():
+        leader_acc = config.PARTY_LEADER_ACC.get(pidx)
+        if not leader_acc:
+            return False
+        t = account_threads.get(leader_acc)
+        ev = account_stops.get(leader_acc)
+        return t is not None and t.is_alive() and not (ev is not None and ev.is_set())
     er = {"r": "ket thuc binh thuong (het gio hoac GUI dung)"}  # ly do thoat (de tong ket party)
     # MODE digioi_train: xong DG + ca party xong -> CAN relogin de chay pha TRAIN (khong phai "rot").
     # Dung dict de set duoc tu cac nhanh ben trong (khong vuong scope).
@@ -2182,9 +2189,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # khac co chay duoc hay khong -> KHONG duoc thoat theo (da xac nhan bug thuc te: leader
             # out la ca party solo out theo, vo ly vi solo dung y la doc lap).
             if (not is_leader) and has_leader and st["leader_gone"].is_set() and not digioi_solo and not event_stand_mode:
-                log.info("[%s] (member) CHU PARTY da thoat -> member thoat theo", label)
-                _reason("chu party thoat -> member theo")
-                break
+                if _leader_thread_active():
+                    log.warning("[%s] (member) leader_gone stale (leader thread van chay) -> clear, KHONG thoat",
+                                label)
+                    st["leader_gone"].clear()
+                else:
+                    log.info("[%s] (member) CHU PARTY da thoat -> member thoat theo", label)
+                    _reason("chu party thoat -> member theo")
+                    break
             if stop_ev is not None and stop_ev.is_set():
                 log.info("[%s] (%s) -> STOP tu GUI", label, role)
                 if is_leader:
@@ -2620,7 +2632,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                          and (_forced_reconnect or _login_failed or _dt["relogin_train"]
                               or (c is not None and getattr(c, "server_closed", False))))
         account_reconnect[username] = reconnectable
-        if is_leader and not reconnectable:
+        if is_leader and not reconnectable and account_threads.get(username) is threading.current_thread():
             st["leader_gone"].set()   # leader thoat that su -> member ngung co vao party
         # ghi lai ly do thoat (neu GUI bam STOP ma chua co ly do cu the -> ghi STOP)
         if _stopped() and er["r"].startswith("ket thuc binh thuong"):
@@ -2836,7 +2848,7 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
         if _st():
             break
     st["reconnecting"].discard(username)
-    if is_leader:
+    if is_leader and account_threads.get(username) is threading.current_thread():
         st["leader_gone"].set()   # thoat that su (het reconnect) -> member thoat theo
 
 
@@ -2856,6 +2868,13 @@ def start_account(username, password, pidx, is_leader, is_picker):
                         "(tranh 2 thread 1 acc)", username)
             return False
     st = _pstate(pidx)
+    if is_leader:
+        # Start party da clear leader_gone o dau, nhung neu leader thread CU chet muon sau do
+        # (do start_account vua set stop_ev + join) thi finally cua thread cu co the set lai
+        # leader_gone, lam member phien MOI vua vao party da thoat theo "chu party thoat".
+        # Clear lai ngay truoc khi tao leader thread moi de cat stale signal do.
+        st["leader_gone"].clear()
+        st["leader_bad"].clear()
     # Start dau tien cua phien party moi: bo route con sot theo pidx tu lan chay/profile cu.
     # Supervisor reconnect khong di qua start_account nen route dang do van duoc tiep tuc.
     if not _active_party_usernames(pidx):
