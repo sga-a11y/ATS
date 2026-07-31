@@ -3070,6 +3070,14 @@ def party_idx_of(username):
 def start_party(pidx, stagger=1.5):
     """Khoi dong tat ca acc trong 1 party."""
     started = 0
+    accounts = party_accounts(pidx)
+    # Party da tat han -> tao session state MOI. Reset tung field nhu truoc de sot route_plan/
+    # reform_gen cua map cu, member co the doc plan cu truoc khi leader ghi plan map moi.
+    if not any(is_account_running(u) for u, *_ in accounts):
+        _party_state.pop(pidx, None)
+        reset_party_joined(pidx)
+        for u, *_ in accounts:
+            account_forced_reconnect.discard(u)
     st = _pstate(pidx)
     # RESET state dung chung (tranh sot tu lan chay truoc: leader_bad cu -> member quit oan)
     for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
@@ -3087,7 +3095,7 @@ def start_party(pidx, stagger=1.5):
         st["dailies_done"] = 0       # barrier: so acc da xong daily quest login (cho leader cho)
         st["map_results"] = {}       # reset barrier map cho lan chay nay
         st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
-    for u, p, is_leader, is_picker in party_accounts(pidx):
+    for u, p, is_leader, is_picker in accounts:
         account_exit_reason.pop(u, None)   # xoa ly do cu
         if start_account(u, p, pidx, is_leader, is_picker):
             started += 1
