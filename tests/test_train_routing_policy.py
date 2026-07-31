@@ -31,6 +31,14 @@ class RecordingClient:
 
 
 class TestTrainRoutingPolicy(unittest.TestCase):
+    def test_incomplete_train_party_reforms_after_short_invite_window(self):
+        self.assertFalse(coordinator._should_reform_incomplete_party(True, 2, 4, 19.9))
+        self.assertTrue(coordinator._should_reform_incomplete_party(True, 2, 4, 20.0))
+
+    def test_complete_or_non_train_party_does_not_trigger_early_reform(self):
+        self.assertFalse(coordinator._should_reform_incomplete_party(True, 4, 4, 30.0))
+        self.assertFalse(coordinator._should_reform_incomplete_party(False, 0, 4, 30.0))
+
     def test_train_disconnect_regroups_after_fast_reconnect(self):
         self.assertTrue(
             coordinator._should_restart_mode_after_disconnect(

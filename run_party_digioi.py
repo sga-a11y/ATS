@@ -383,6 +383,16 @@ def _should_restart_mode_after_disconnect(train_on_map, reconnecting):
     return bool(train_on_map or reconnecting)
 
 
+def _should_reform_incomplete_party(train_on_map, joined, needed, elapsed, threshold=20.0):
+    return bool(train_on_map and needed > 0 and joined < needed and elapsed >= threshold)
+
+
+def _should_resync_incomplete_digioi_party(
+        is_digioi, digioi_solo, joined, needed, elapsed, threshold=20.0):
+    return bool(is_digioi and not digioi_solo and needed > 0
+                and joined < needed and elapsed >= threshold)
+
+
 def _party_is_in_train_phase(pcfg, st):
     raw_mode = pcfg.get("mode")
     if raw_mode == "train":
@@ -894,7 +904,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 log.info("[%s] (%s) o5 da xong -> mo khoa teleport/reform sau pho ban", label, role)
 
         # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
-        # DG: phai goi TRUOC khi vao DG (doi kenh trong DG se DA ra khoi DG!).
         # Map-train: goi sau khi ve safe (doi kenh tren map thuong khong sao).
         def do_channel_sync():
             if is_picker:
@@ -1625,6 +1634,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # nay bat ke mode nao. Thieu dong nay -> Di Gioi SOLO (re vao nhanh rieng, KHONG chay qua
         # "elif is_leader") crash NGAY: "cannot access local variable 'training_started'".
         training_started = False
+        startup_reform_gen_handled = 0
         # Di Gioi SOLO: moi acc chay rieng le hoan toan - khong lap party, khong dong bo kenh (da
         # bo qua o buoc dong bo kenh o tren), khong cho leader/member gi ca. Ai vao duoc DG thi tu
         # chay long vong luon (xem buoc 1-2 o tren: da vao DG + lam nhiem vu nhe).
@@ -1701,6 +1711,42 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 while joined_member_count(pidx) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
                     if not c.running: c.close(); return
+                    _joined_now = joined_member_count(pidx)
+                    _invite_elapsed = time.time() - _resync_t0
+                    if _should_resync_incomplete_digioi_party(
+                            is_digioi, digioi_solo, _joined_now,
+                            st["n_members"], _invite_elapsed):
+                        log.warning("[%s] (LEADER) Di Gioi moi %.0fs chua du party (%d/%d) -> "
+                                    "giai tan + sync lai kenh + moi lai", label,
+                                    _invite_elapsed, _joined_now, st["n_members"])
+                        c.flee_mode = True
+                        c.leave_party(); reset_party_joined(pidx)
+                        st["invited"].clear()
+                        do_channel_sync()
+                        with st["lock"]:
+                            st["resync_gen"] += 1
+                        st["invited"].set()
+                        _resync_t0 = time.time(); _t0 = time.time()
+                        continue
+                    if _should_reform_incomplete_party(
+                            train_on_map, _joined_now, st["n_members"], _invite_elapsed):
+                        log.warning("[%s] (LEADER) moi %.0fs chua du party (%d/%d) -> REFORM "
+                                    "dong bo lai map + kenh", label, _invite_elapsed,
+                                    _joined_now, st["n_members"])
+                        st["invited"].set()   # tha member khoi startup de cung nhan reform_gen
+                        with st["lock"]:
+                            st["reform_gen"] += 1
+                            _startup_gen = st["reform_gen"]
+                        c.flee_mode = True
+                        try:
+                            _do_reform()
+                        except Exception as e:
+                            log.warning("[%s] startup reform party loi: %s", label, e)
+                        startup_reform_gen_handled = max(
+                            startup_reform_gen_handled, _startup_gen
+                        )
+                        _resync_t0 = time.time(); _t0 = time.time()
+                        continue
                     # MOI 60s van chua du party -> member co the da troi sang kenh khac (invite khong
                     # toi) -> GIAI TAN party + SYNC KENH lai (keo ca party ve cung kenh) + MOI lai.
                     # Member trong keepalive theo doi resync_gen -> cung roi party + sync kenh theo.
@@ -1855,7 +1901,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # kho, du nguong -> khong di (khong roi map). Khi thieu -> acc DI TRAC QUAN mua -> off-map ->
         # reform san co keo CA PARTY ve thanh cho -> xong re-form train tiep (theo yeu cau user).
         next_buy_hpsp = time.time() + 7200
-        reform_gen_handled = 0      # gen reform da xu ly. Init=0 (KHONG = st["reform_gen"]) de neu
+        reform_gen_handled = startup_reform_gen_handled
+        # Init thuong=0 de neu
         # co acc bi DUMP luc setup (da bump reform_gen) thi keepalive thay ngay -> reform don no
         with st["lock"]:
             cmd_gen_handled = st["cmd_gen"]   # lenh thu cong (GUI) da xu ly
@@ -2300,10 +2347,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     except Exception as e: log.warning("[%s] loi doi thuong 40NPC: %s", label, e)
                     _reason("40NPC het gio/thua 2 -> doi thuong xong -> thoat game")
                     c.close(); break
-            # ==== RESYNC party (event 40NPC): leader moi 60s khong du -> giai tan + sync kenh lai.
+            # ==== RESYNC party (40NPC / Di Gioi): leader moi khong du -> giai tan + sync kenh lai.
             # Member roi party cu + sync kenh (chuyen sang kenh moi cua leader) -> auto-accept se
             # re-join khi leader moi lai. (Leader tu xu ly trong vong moi, khong vao day.) ====
-            if ((not is_leader) and has_leader and event_party_mode
+            if ((not is_leader) and has_leader
+                    and (event_party_mode or (is_digioi and not digioi_solo))
                     and st["resync_gen"] > resync_gen_handled):
                 resync_gen_handled = st["resync_gen"]
                 log.info("[%s] (member) leader RE-SYNC party -> roi party + sync kenh lai", label)
