@@ -674,7 +674,10 @@ class BotGUI(tk.Tk):
             parts.append(s["pet_name"])
             if s.get("pet_level"):
                 parts.append(str(s["pet_level"]))
-        return "_".join(parts)
+        text = "_".join(parts)
+        if s.get("party_avg_level"):
+            text += f" ({s['party_avg_level']})"
+        return text
 
     # ---- BAM header Kenh -> doi kenh ca party | BAM header Map -> teleport thanh ----
     def _popup_channels(self, pidx):

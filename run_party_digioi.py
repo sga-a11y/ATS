@@ -378,6 +378,56 @@ def _should_restart_event_party(event_party_mode, battle_active, disc_gen, handl
     return bool(event_party_mode and battle_active and disc_gen > handled_gen)
 
 
+def _should_restart_mode_after_disconnect(train_on_map, reconnecting):
+    """Train must regroup even when the disconnected account relogs between keepalive ticks."""
+    return bool(train_on_map or reconnecting)
+
+
+def _party_is_in_train_phase(pcfg, st):
+    raw_mode = pcfg.get("mode")
+    if raw_mode == "train":
+        return True
+    if raw_mode == "digioi_train":
+        return st.get("dt_phase") == "train"
+    if raw_mode:
+        return False
+    return pcfg.get("start_city_id") in getattr(config, "TRAIN_MAPS", {})
+
+
+def _average_party_levels(rows):
+    levels = []
+    for row in rows:
+        char_level = row.get("char_level")
+        if not isinstance(char_level, int) or char_level <= 0:
+            return None
+        levels.append(char_level)
+        if row.get("pet_name"):
+            pet_level = row.get("pet_level")
+            if not isinstance(pet_level, int) or pet_level <= 0:
+                return None
+            levels.append(pet_level)
+    if not levels:
+        return None
+    return (sum(levels) + len(levels) // 2) // len(levels)
+
+
+def _party_average_level(pidx):
+    if pidx is None:
+        return None
+    rows = []
+    for username, *_ in party_accounts(pidx):
+        c = account_clients.get(username)
+        if c is not None:
+            rows.append({
+                "char_level": getattr(c, "char_level", None),
+                "pet_name": getattr(c, "pet_name", None),
+                "pet_level": getattr(c, "pet_level", None),
+            })
+        else:
+            rows.append(account_last.get(username, {}))
+    return _average_party_levels(rows)
+
+
 def _pstate(pidx):
     if pidx not in _party_state:
         _party_state[pidx] = {"channel": None,
@@ -2279,7 +2329,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         c.close()
                         break
                     continue
-                if st["reconnecting"]:
+                # Train phai regroup theo disc_gen ke ca khi nick rot da relogin xong. Truoc day
+                # ca nhanh nay phu thuoc st["reconnecting"] con phan tu; reconnect nhanh xoa marker
+                # truoc nhip keepalive -> survivors nuot disc_gen, khong reform, moi nick mot noi.
+                if _should_restart_mode_after_disconnect(train_on_map, st["reconnecting"]):
                     log.warning("[%s] (%s) dong doi ROT %s -> TAM DUNG cho reconnect",
                                 label, role, list(st["reconnecting"]))
                     c.flee_mode = True
@@ -2303,6 +2356,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         continue
                     log.info("[%s] (%s) tat ca da reconnect -> restart mode", label, role)
                     if train_on_map:
+                        # Supervisor da phat cung reform_gen ngay luc disconnect. Danh dau gen nay
+                        # dang duoc xu tai nhanh reconnect de keepalive khong reform trung them 1 lan.
+                        reform_gen_handled = max(reform_gen_handled, st["reform_gen"])
                         _route_r = getattr(config, "TRAIN_ROUTES", {}).get(sc)
                         _reconnect_safe = st.get("rally_point") or (
                             train_safes[0] if train_safes else None
@@ -2841,10 +2897,16 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
         event_reset = (not forced and _is_npc_repeat_party_event(
             pcfg.get("mode"), config.PARTY_LEADER_ACC.get(pidx) is not None, ev
         ) and st.get("event_battle_active", False))
+        train_reform = (not forced and config.PARTY_LEADER_ACC.get(pidx) is not None
+                        and _party_is_in_train_phase(pcfg, st))
         with st["lock"]:
             st["reconnecting"].add(username)
             if not forced:
                 st["disc_gen"] += 1
+            if train_reform:
+                # Mot gen chung bat buoc ca survivors LAN acc vua login lai cung ve thanh,
+                # sync kenh va lap party. Khong phu thuoc marker reconnect con ton tai bao lau.
+                st["reform_gen"] += 1
             if event_reset:
                 st["ready_members"].clear()
                 st["invited"].clear()
@@ -3208,14 +3270,17 @@ def account_status(username):
     """Dict trang thai live cua acc (cho GUI). running, char, map, channel, in_party, dg_remain..."""
     c = account_clients.get(username)
     running = is_account_running(username)
+    pidx = getattr(c, "party_idx", None) if c is not None else party_idx_of(username)
+    party_avg_level = (_party_average_level(pidx)
+                       if config.PARTY_LEADER_ACC.get(pidx) == username else None)
     if c is None:
         # da tat/thoat -> GIU map + nhan vat LUC CUOI (de biet thoat o dau, dung map khong)
         last = account_last.get(username, {})
         return {"running": running, "char": last.get("char", ""), "map": last.get("map"),
                 "in_party": False, "dg_remain": None, "combat": False, "channel": None,
                 "strategist": False, "char_level": last.get("char_level"),
-                "pet_name": last.get("pet_name"), "pet_level": last.get("pet_level")}
-    pidx = getattr(c, "party_idx", None)
+                "pet_name": last.get("pet_name") or "", "pet_level": last.get("pet_level"),
+                "party_avg_level": party_avg_level}
     from bot.client import is_joined, is_strategist
     st = _party_state.get(pidx, {})
     dg_remain = None
@@ -3236,8 +3301,9 @@ def account_status(username):
         "combat": c.in_combat() if running else False,
         "strategist": is_strategist(pidx, c.self_entity),
         "char_level": getattr(c, "char_level", None),
-        "pet_name": getattr(c, "pet_name", None),
+        "pet_name": getattr(c, "pet_name", None) or "",
         "pet_level": getattr(c, "pet_level", None),
+        "party_avg_level": party_avg_level,
         # --- them cho UI APK (poll qua account_status thay callback on_status) ---
         "state": "running" if running else "stopped",
         "hp": getattr(_ch, "hp", None), "sp": getattr(_ch, "sp", None),

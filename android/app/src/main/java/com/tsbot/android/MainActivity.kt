@@ -715,6 +715,22 @@ fun AccountRow(
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(account.username, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    val characterParts = buildList {
+                        if (status.charName.isNotBlank()) add(status.charName)
+                        status.charLevel?.let { add(it.toString()) }
+                        if (status.petName.isNotBlank()) {
+                            add(status.petName)
+                            status.petLevel?.let { add(it.toString()) }
+                        }
+                    }
+                    if (characterParts.isNotEmpty()) {
+                        val average = status.partyAvgLevel?.let { " ($it)" } ?: ""
+                        Text(
+                            characterParts.joinToString("_") + average,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Text(
                         statusLabel(status.state),
                         style = MaterialTheme.typography.labelMedium,

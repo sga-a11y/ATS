@@ -8,5 +8,10 @@ data class AccountStatus(
     val sp: Int? = null,
     val hpMax: Int? = null,
     val spMax: Int? = null,
+    val charName: String = "",
+    val charLevel: Int? = null,
+    val petName: String = "",
+    val petLevel: Int? = null,
+    val partyAvgLevel: Int? = null,
     val message: String = "",
 )

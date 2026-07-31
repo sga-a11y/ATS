@@ -200,6 +200,7 @@ class BotForegroundService : Service() {
         // nem exception -> boc try, None -> null.
         fun gInt(k: String): Int? = try { d.callAttr("get", k)?.toInt() } catch (_: Exception) { null }
         fun gBool(k: String): Boolean = try { d.callAttr("get", k)?.toBoolean() ?: false } catch (_: Exception) { false }
+        fun gString(k: String): String = try { d.callAttr("get", k)?.toString() ?: "" } catch (_: Exception) { "" }
         val running = gBool("running")
         return AccountStatus(
             state = if (running) RunState.RUNNING else RunState.STOPPED,
@@ -207,6 +208,11 @@ class BotForegroundService : Service() {
             sp = gInt("sp"),
             hpMax = gInt("hp_max"),
             spMax = gInt("sp_max"),
+            charName = gString("char"),
+            charLevel = gInt("char_level"),
+            petName = gString("pet_name"),
+            petLevel = gInt("pet_level"),
+            partyAvgLevel = gInt("party_avg_level"),
             message = "",
         )
     }
