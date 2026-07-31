@@ -4642,6 +4642,12 @@ class GameClient:
         battle_grace: giay CONG THEM vao deadline de cho thoat battle (mac dinh 90). Goi tu reform
         (thanh CHUA MO -> tele khong bao gio duoc) nen truyen battle_grace nho + tries nho de FAIL
         NHANH (~1 phut) roi chuyen sang di bo, thay vi ket 150s/lan (user: 'chi co tele 1p thoi')."""
+        city_id = int(city_id)
+        flag = int(flag)
+        if not getattr(config, "is_teleport_city", lambda _city: True)(city_id):
+            log.warning("[%s] go_to_town: %s KHONG phai thanh teleport (co the la map train) -> bo qua",
+                        self._label, city_id)
+            return False
         log.info("[%s] Ve thanh %d (lap lai neu con battle chan teleport)...", self._label, city_id)
         # Dang o DI GIOI -> teleport (0x44) bi tu choi. PHAI di bo ra cong thoat truoc.
         if self.in_di_gioi():
@@ -4692,9 +4698,16 @@ class GameClient:
 
     def teleport(self, city_id: int, flag: int = 0):
         """flag bat buoc dung dung cho tung thanh (xem cities.json)."""
+        city_id = int(city_id)
+        flag = int(flag)
+        if not getattr(config, "is_teleport_city", lambda _city: True)(city_id):
+            log.warning("[%s] teleport: %s KHONG phai thanh teleport -> khong gui lenh",
+                        self._label, city_id)
+            return False
         payload = b"\x01\x00" + struct.pack("<H", city_id) + bytes([flag])
         self.send(protocol.OP_TELEPORT, payload)
         log.info("[%s] Teleport -> city %s (flag %s)", self._label, city_id, flag)
+        return True
 
     def _wait_combat_clear(self, idle: float = 1.0, cap: float = 90.0) -> bool:
         """Cho HET TRAN (khong co luot battle trong 'idle' giay) toi 'cap' giay.

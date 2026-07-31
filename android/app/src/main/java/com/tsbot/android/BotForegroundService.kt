@@ -148,7 +148,7 @@ class BotForegroundService : Service() {
         // hiem gap (U+0001), Python tu split() lai.
         val SEP = ""
         val accountsFlat = party.accounts.joinToString(SEP) {
-            "${it.username}$SEP${it.password}$SEP${it.battleJson}"
+            "${it.username}$SEP${it.password}$SEP${it.battleJson}$SEP${it.heal.toRuntimeJson()}"
         }
         try {
             val py = rpd()
@@ -317,6 +317,14 @@ class BotForegroundService : Service() {
     fun applyAccountBattle(username: String, battleJson: String): Boolean {
         return try {
             rpd().callAttr("apply_account_battle", username, battleJson)?.toBoolean() ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun applyAccountHeal(username: String, healJson: String): Boolean {
+        return try {
+            rpd().callAttr("apply_account_heal", username, healJson)?.toBoolean() ?: false
         } catch (e: Exception) {
             false
         }

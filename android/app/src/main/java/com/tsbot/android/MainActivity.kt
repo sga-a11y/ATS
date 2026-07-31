@@ -501,12 +501,14 @@ fun TsBotApp(
             initialUsername = account.username,
             initialPassword = account.password,
             initialBattleJson = account.battleJson,
+            initialHeal = account.heal,
             charSkills = service?.accountSkills(account.username)?.first ?: emptyList(),
             petSkills = service?.accountSkills(account.username)?.second ?: emptyList(),
             onDismiss = { editingAccount = null },
             onSave = { edited ->
                 partyStore.updateAccountInParty(partyName, account.username, edited)
                 service?.applyAccountBattle(edited.username, edited.battleJson)
+                service?.applyAccountHeal(edited.username, edited.heal.toRuntimeJson())
                 refresh()
                 editingAccount = null
             },
@@ -1761,14 +1763,27 @@ fun AddAccountDialog(
     initialUsername: String = "",
     initialPassword: String = "",
     initialBattleJson: String = "",
+    initialHeal: HealSettings = HealSettings(),
     charSkills: List<SkillChoice> = emptyList(),
     petSkills: List<SkillChoice> = emptyList(),
 ) {
     var username by remember { mutableStateOf(initialUsername) }
     var password by remember { mutableStateOf(initialPassword) }
+    var hpCharText by remember(initialHeal) { mutableStateOf(initialHeal.hpChar.toString()) }
+    var spCharText by remember(initialHeal) { mutableStateOf(initialHeal.spChar.toString()) }
+    var hpPetText by remember(initialHeal) { mutableStateOf(initialHeal.hpPet.toString()) }
+    var spPetText by remember(initialHeal) { mutableStateOf(initialHeal.spPet.toString()) }
     var charRules by remember(initialBattleJson) { mutableStateOf(parseBattleRules(initialBattleJson, "char")) }
     var petRules by remember(initialBattleJson) { mutableStateOf(parseBattleRules(initialBattleJson, "pet")) }
     var confirmDefault by remember { mutableStateOf(false) }
+
+    fun pct(text: String, fallback: Int): Int = (text.toIntOrNull() ?: fallback).coerceIn(0, 100)
+    fun currentHeal(): HealSettings = HealSettings(
+        hpChar = pct(hpCharText, 40),
+        spChar = pct(spCharText, 0),
+        hpPet = pct(hpPetText, 40),
+        spPet = pct(spPetText, 0),
+    )
 
     fun saveDefaultRules() {
         val nextChar = defaultBattleRules(charSkills)
@@ -1776,7 +1791,7 @@ fun AddAccountDialog(
         charRules = nextChar
         petRules = nextPet
         if (username.isNotBlank() && password.isNotBlank()) {
-            onSave(Account(username, password, battleJson(nextChar, nextPet)))
+            onSave(Account(username, password, battleJson(nextChar, nextPet), currentHeal()))
         }
     }
 
@@ -1829,6 +1844,57 @@ fun AddAccountDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
+                Text("Hồi HP/SP", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Dùng item khi chỉ số tụt dưới ngưỡng (%)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = hpCharText,
+                        onValueChange = { hpCharText = it.filter { ch -> ch.isDigit() }.take(3) },
+                        label = { Text("HP char") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = spCharText,
+                        onValueChange = { spCharText = it.filter { ch -> ch.isDigit() }.take(3) },
+                        label = { Text("SP char") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = hpPetText,
+                        onValueChange = { hpPetText = it.filter { ch -> ch.isDigit() }.take(3) },
+                        label = { Text("HP pet") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = spPetText,
+                        onValueChange = { spPetText = it.filter { ch -> ch.isDigit() }.take(3) },
+                        label = { Text("SP pet") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                TextButton(onClick = {
+                    hpCharText = "40"
+                    spCharText = "0"
+                    hpPetText = "40"
+                    spPetText = "0"
+                }) { Text("Mặc định hồi máu") }
+                Spacer(Modifier.height(12.dp))
                 BattleRuleUnitEditor("Char", charRules, charSkills) { charRules = it }
                 Spacer(Modifier.height(8.dp))
                 BattleRuleUnitEditor("Pet", petRules, petSkills) { petRules = it }
@@ -1839,7 +1905,7 @@ fun AddAccountDialog(
                 onClick = {
                     if (username.isNotBlank() && password.isNotBlank()) {
                         val bj = battleJson(charRules, petRules)
-                        onSave(Account(username, password, bj))
+                        onSave(Account(username, password, bj, currentHeal()))
                     }
                 },
             ) {

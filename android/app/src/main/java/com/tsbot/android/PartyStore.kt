@@ -25,7 +25,12 @@ class PartyStore(private val context: Context) {
             val accArr = o.getJSONArray("accounts")
             val accounts = (0 until accArr.length()).map { j ->
                 val a = accArr.getJSONObject(j)
-                Account(a.getString("username"), a.getString("password"), a.optString("battle", ""))
+                Account(
+                    a.getString("username"),
+                    a.getString("password"),
+                    a.optString("battle", ""),
+                    healSettingsFromJson(a.optJSONObject("heal")),
+                )
             }
             Party(
                 name = o.getString("name"),
@@ -95,6 +100,7 @@ class PartyStore(private val context: Context) {
                 ao.put("username", a.username)
                 ao.put("password", a.password)
                 if (a.battleJson.isNotBlank()) ao.put("battle", a.battleJson)
+                if (!a.heal.isDefault()) ao.put("heal", a.heal.toJsonObject())
                 accArr.put(ao)
             }
             o.put("accounts", accArr)

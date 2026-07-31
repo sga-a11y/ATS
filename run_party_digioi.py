@@ -798,18 +798,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.info("[%s] (%s) RECONNECT o map %s, train map %s di bang ROUTE -> de reform keo",
                              label, role, login_map, sc)
                 else:
-                    # sc la thanh teleport TRUC TIEP -> ve thang sc roi ra safe.
-                    log.info("[%s] (%s) RECONNECT o map %s != train map %s -> teleport ve train map roi ra safe",
-                             label, role, login_map, sc)
-                    try: c.go_to_town(sc, city_flag)
-                    except Exception as e:
-                        log.warning("[%s] reconnect: teleport ve train map %s loi: %s", label, sc, e)
-                    for _ in range(15):                     # cho map cap nhat sau teleport
-                        if c.current_map == sc or not c.running: break
-                        time.sleep(1)
-                    if c.current_map == sc:
-                        login_map = sc                       # -> self_map_ok=True ben duoi, khong THOAT
-                        c.navigate_to(*_nearest_safe(c.pos, train_safes))
+                    if getattr(config, "is_teleport_city", lambda _city: True)(sc):
+                        # sc la thanh teleport TRUC TIEP -> ve thang sc roi ra safe.
+                        log.info("[%s] (%s) RECONNECT o map %s != train map %s -> teleport ve train map roi ra safe",
+                                 label, role, login_map, sc)
+                        try: c.go_to_town(sc, city_flag)
+                        except Exception as e:
+                            log.warning("[%s] reconnect: teleport ve train map %s loi: %s", label, sc, e)
+                        for _ in range(15):                     # cho map cap nhat sau teleport
+                            if c.current_map == sc or not c.running: break
+                            time.sleep(1)
+                        if c.current_map == sc:
+                            login_map = sc                       # -> self_map_ok=True ben duoi, khong THOAT
+                            c.navigate_to(*_nearest_safe(c.pos, train_safes))
+                    else:
+                        log.warning("[%s] (%s) RECONNECT map train %s khong phai thanh teleport -> khong teleport thang",
+                                    label, role, sc)
 
         # BARRIER login-dailies (mode KHAC digioi): CHO CA PARTY xong daily quest (world boss cham
         # + teleport ve Trac Quan) TRUOC khi sync kenh + lap party. Tranh leader sync kenh/moi khi
@@ -949,6 +953,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     return
             fc = int(plan.get("city", 0)); ff = int(plan.get("flag", 0))
             smart_route2 = plan.get("route") if is_leader else None
+            fc_is_city = (not fc) or getattr(config, "is_teleport_city", lambda _city: True)(fc)
             c.flee_mode = True
             if is_leader:
                 c.leave_party()                  # GIAI TAN party cu (neu co) -> member duoc tha
@@ -971,16 +976,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     with st["lock"]:
                         return st.get("reform_gather_nghiep_gen") == _g0
 
-                def _activate_nghiep_fallback():
+                def _activate_nghiep_fallback(reason=None):
                     first = False
                     with st["lock"]:
                         if st.get("reform_gather_nghiep_gen") != _g0:
                             st["reform_gather_nghiep_gen"] = _g0
                             first = True
                     if first:
-                        log.warning("[%s] (%s) tele thanh %s FAIL nhieu lan -> CA PARTY gom o "
-                                    "NGHIEP THANH roi leader keo di bo toi %s",
-                                    label, role, fc, fc)
+                        if reason:
+                            log.warning("[%s] (%s) %s -> CA PARTY gom o NGHIEP THANH roi leader keo di bo toi %s",
+                                        label, role, reason, fc)
+                        else:
+                            log.warning("[%s] (%s) tele thanh %s FAIL nhieu lan -> CA PARTY gom o "
+                                        "NGHIEP THANH roi leader keo di bo toi %s",
+                                        label, role, fc, fc)
+
+                if fc and not fc_is_city:
+                    _activate_nghiep_fallback(
+                        "route-plan city %s KHONG phai thanh teleport" % fc
+                    )
 
                 # _town_fail BEN tren client (KHONG reset moi vong _do_reform): reform_gen la bien
                 # CHUNG party -> acc khac bump -> _ab() True -> _do_reform BI ABORT + goi lai lien tuc.
@@ -2905,7 +2919,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         buy_hp=False, hp_qty=9999, hp_thresh=500000,
                         buy_sp=False, sp_qty=9999, sp_thresh=500000):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
-    nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01u2..." (KHONG phai
+    nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
     (ke ca da lam PHANG) thanh Python list khi truyen qua callAttr, "TypeError: 'ArrayList'
     object is not iterable" ngay tai list(accounts). String thi luon convert dung -> Kotlin join
@@ -2930,7 +2944,24 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
     }
     _flat = str(accounts).split("\x01") if accounts else []
     accs = []
-    if len(_flat) >= 3 and len(_flat) % 3 == 0:
+    if len(_flat) >= 4 and len(_flat) % 4 == 0:
+        import json
+        for i in range(0, len(_flat) - 3, 4):
+            u, p, battle_json, heal_json = _flat[i], _flat[i + 1], _flat[i + 2], _flat[i + 3]
+            if not u:
+                continue
+            accs.append((u, p))
+            try:
+                bcfg = json.loads(battle_json) if battle_json else {}
+                apply_account_battle(u, bcfg if isinstance(bcfg, dict) else {})
+            except Exception:
+                apply_account_battle(u, {})
+            try:
+                hcfg = json.loads(heal_json) if heal_json else {}
+                apply_account_heal(u, hcfg if isinstance(hcfg, dict) else {})
+            except Exception:
+                apply_account_heal(u, {})
+    elif len(_flat) >= 3 and len(_flat) % 3 == 0:
         import json
         for i in range(0, len(_flat) - 2, 3):
             u, p, battle_json = _flat[i], _flat[i + 1], _flat[i + 2]
@@ -2945,8 +2976,14 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                     apply_account_battle(u, {})
             except Exception:
                 apply_account_battle(u, {})
+            apply_account_heal(u, {})
     else:
-        accs = [(_flat[i], _flat[i + 1]) for i in range(0, len(_flat) - 1, 2) if _flat[i]]
+        accs = []
+        for i in range(0, len(_flat) - 1, 2):
+            if _flat[i]:
+                accs.append((_flat[i], _flat[i + 1]))
+                apply_account_battle(_flat[i], {})
+                apply_account_heal(_flat[i], {})
     while len(config.PARTIES) <= pidx:
         config.PARTIES.append([])
     config.PARTIES[pidx] = accs
@@ -3258,6 +3295,37 @@ def apply_account_battle(username, battle_config=None):
         log.info("[%s] da apply cau hinh skill/chien dau moi (live)", username)
         return True
     return False
+
+
+def apply_account_heal(username, heal_config=None):
+    """GUI/API: apply nguong hoi HP/SP rieng acc NGAY cho acc dang chay."""
+    username = str(username or "").strip()
+    if not username:
+        return False
+    if isinstance(heal_config, str):
+        try:
+            import json
+            heal_config = json.loads(heal_config) if heal_config else {}
+        except Exception:
+            heal_config = {}
+    cfg = {}
+    if isinstance(heal_config, dict):
+        for key in ("hp_char", "sp_char", "hp_pet", "sp_pet"):
+            if key not in heal_config:
+                continue
+            try:
+                cfg[key] = max(0.0, min(1.0, float(heal_config[key])))
+            except Exception:
+                pass
+    if not isinstance(getattr(config, "ACCOUNT_HEAL", None), dict):
+        config.ACCOUNT_HEAL = {}
+    if cfg:
+        config.ACCOUNT_HEAL[username] = cfg
+    else:
+        config.ACCOUNT_HEAL.pop(username, None)
+    if username in account_clients:
+        log.info("[%s] da apply nguong hoi HP/SP moi (live): %s", username, cfg or "mac dinh")
+    return True
 
 
 def get_account_log(username, max_lines=500):

@@ -94,6 +94,7 @@ class SmartWorldRouter:
         self.nav = nav
         self.ground = ground
         self.cache = cache
+        self.city_ids = {int(city["city"]) for city in self.nav.data.get("cities", [])}
 
     def _cache_fingerprint(self):
         return f"{self.nav.fingerprint}:{_ROUTE_CACHE_VERSION}"
@@ -139,7 +140,13 @@ class SmartWorldRouter:
         safe = None if safe is None else (int(safe[0]), int(safe[1]))
         cached = self.cache.get(dest_map, safe, self._cache_fingerprint())
         if cached is not None:
-            return cached
+            try:
+                cached_city = int(cached.get("city", 0))
+            except Exception:
+                cached_city = 0
+            if cached_city in self.city_ids:
+                return cached
+            self.cache.invalidate(dest_map, safe)
 
         candidates = self.nav.rank_cities(dest_map)
         gate_counts = sorted({item["gate_count"] for item in candidates})

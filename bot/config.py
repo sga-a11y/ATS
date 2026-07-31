@@ -74,6 +74,31 @@ def _load_train_maps():
         pass
     return out
 TRAIN_MAPS = _load_train_maps()
+def _load_teleport_cities(path=None):
+    """Doc cities.json -> {city_id:int -> {flag, name}}. Chi cac id nay duoc dung voi opcode teleport."""
+    import json, os
+    f = path or os.path.join(_base_dir(), "cities.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            data = json.load(fh)
+        for key, value in data.get("cities", data).items():
+            city_id = int(value.get("city_id", 0))
+            if city_id:
+                out[city_id] = {
+                    "flag": int(value.get("flag", 0)),
+                    "name": value.get("name", key),
+                }
+    except Exception:
+        pass
+    return out
+TELEPORT_CITIES = _load_teleport_cities()
+TELEPORT_CITY_IDS = set(TELEPORT_CITIES)
+def is_teleport_city(city_id):
+    try:
+        return int(city_id) in TELEPORT_CITY_IDS
+    except Exception:
+        return False
 def _load_map_gates(path=None):
     """Doc map_gates.json -> {map_id:int -> [(x,y,to), ...]} (do thi cong di chuyen).
     Khong co file/loi -> {}. Dung cho pathfind.find_path (auto di toi train map)."""
