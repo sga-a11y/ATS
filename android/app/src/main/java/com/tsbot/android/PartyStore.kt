@@ -111,9 +111,11 @@ class PartyStore(private val context: Context) {
         file.writeText(arr.toString())
     }
 
-    fun addParty(party: Party) {
-        val current = load().filterNot { it.name == party.name }
-        save(current + party)
+    fun addParty(party: Party): Boolean {
+        val current = load()
+        if (current.any { it.name.equals(party.name.trim(), ignoreCase = true) }) return false
+        save(current + party.copy(name = party.name.trim()))
+        return true
     }
 
     fun removeParty(name: String) {
@@ -122,9 +124,18 @@ class PartyStore(private val context: Context) {
 
     /** Sua ten/server cua 1 Party (giu nguyen danh sach account ben trong). oldName khac
      * newParty.name khi nguoi dung doi ten Party. */
-    fun updateParty(oldName: String, newParty: Party) {
-        val updated = load().map { p -> if (p.name == oldName) newParty else p }
+    fun updateParty(oldName: String, newParty: Party): Boolean {
+        val current = load()
+        val trimmedName = newParty.name.trim()
+        if (current.any {
+                it.name != oldName && it.name.equals(trimmedName, ignoreCase = true)
+            }
+        ) return false
+        val updated = current.map { p ->
+            if (p.name == oldName) newParty.copy(name = trimmedName) else p
+        }
         save(updated)
+        return true
     }
 
     fun applyAdvancedSettingsToOtherParties(sourceName: String, source: Party): Int {

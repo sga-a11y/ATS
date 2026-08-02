@@ -5,6 +5,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 
 // Bang mau app (dark theme - hop app bot game, do choi mat khi nhin lau). Dung mot bang
 // mau CO DINH (khong dynamic color theo he thong) de UI nhat quan tren moi may/Android.
@@ -42,6 +43,20 @@ private val TsColorScheme = darkColorScheme(
     outline = SlateSurfaceHi,
 )
 
+private val TsTypography = Typography().run {
+    copy(
+        titleLarge = titleLarge.copy(fontSize = 24.sp, lineHeight = 30.sp),
+        titleMedium = titleMedium.copy(fontSize = 19.sp, lineHeight = 26.sp),
+        titleSmall = titleSmall.copy(fontSize = 17.sp, lineHeight = 24.sp),
+        bodyLarge = bodyLarge.copy(fontSize = 18.sp, lineHeight = 25.sp),
+        bodyMedium = bodyMedium.copy(fontSize = 16.sp, lineHeight = 23.sp),
+        bodySmall = bodySmall.copy(fontSize = 14.sp, lineHeight = 20.sp),
+        labelLarge = labelLarge.copy(fontSize = 16.sp, lineHeight = 22.sp),
+        labelMedium = labelMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
+        labelSmall = labelSmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
+    )
+}
+
 /** Mau ung voi trang thai account (cham + nhan). */
 fun statusColor(state: RunState): Color = when (state) {
     RunState.RUNNING -> StatusRunning
@@ -64,7 +79,7 @@ fun statusLabel(state: RunState): String = when (state) {
 fun TsBotTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = TsColorScheme,
-        typography = Typography(),
+        typography = TsTypography,
         content = content,
     )
 }

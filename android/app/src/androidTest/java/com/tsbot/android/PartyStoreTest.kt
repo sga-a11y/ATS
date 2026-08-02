@@ -5,6 +5,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 
 @RunWith(AndroidJUnit4::class)
 class PartyStoreTest {
@@ -20,6 +22,22 @@ class PartyStoreTest {
         assertEquals("hoang_trung", loaded[0].serverKey)
         assertEquals(1, loaded[0].accounts.size)
         assertEquals("hoangt306", loaded[0].accounts[0].username)
+        store.save(emptyList())
+    }
+
+    @Test
+    fun duplicatePartyNameDoesNotReplaceExistingParty() {
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = PartyStore(ctx)
+        store.save(emptyList())
+        assertTrue(store.addParty(Party("Nhom 1", "hoang_trung", accounts = listOf(Account("acc1", "pw")))))
+
+        assertFalse(store.addParty(Party("  nhom 1  ", "trieu_van", accounts = listOf(Account("acc2", "pw")))))
+
+        val loaded = store.load()
+        assertEquals(1, loaded.size)
+        assertEquals("hoang_trung", loaded[0].serverKey)
+        assertEquals("acc1", loaded[0].accounts.single().username)
         store.save(emptyList())
     }
 

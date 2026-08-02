@@ -16,6 +16,12 @@ class TestAndroidAccountLocationStatus(unittest.TestCase):
         self.assertIn('channel = gInt("channel")', SERVICE)
         self.assertIn('"Map: $mapLabel  •  Kênh: $channelLabel"', UI)
 
+    def test_map_names_are_loaded_directly_from_bundled_data(self):
+        self.assertIn("fun loadStatusMapNames(context: Context)", UI)
+        self.assertIn('readMapAsset("train_maps.json")', UI)
+        self.assertIn('readMapAsset("events.json")', UI)
+        self.assertIn("remember(context) { loadStatusMapNames(context) }", UI)
+
 
 if __name__ == "__main__":
     unittest.main()

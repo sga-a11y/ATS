@@ -441,9 +441,12 @@ fun TsBotApp(
         AddPartyDialog(
             onDismiss = { showAddPartyDialog = false },
             onSave = { party ->
-                partyStore.addParty(party)
-                refresh()
-                showAddPartyDialog = false
+                val saved = partyStore.addParty(party)
+                if (saved) {
+                    refresh()
+                    showAddPartyDialog = false
+                }
+                saved
             },
         )
     }
@@ -496,9 +499,15 @@ fun TsBotApp(
             onDismiss = { editingParty = null },
             onSave = { edited ->
                 // Giu nguyen danh sach account, chi doi ten/server.
-                partyStore.updateParty(partyBeingEdited.name, edited.copy(accounts = partyBeingEdited.accounts))
-                refresh()
-                editingParty = null
+                val saved = partyStore.updateParty(
+                    partyBeingEdited.name,
+                    edited.copy(accounts = partyBeingEdited.accounts),
+                )
+                if (saved) {
+                    refresh()
+                    editingParty = null
+                }
+                saved
             },
             onApplyAdvancedToAll = { source ->
                 val count = partyStore.applyAdvancedSettingsToOtherParties(partyBeingEdited.name, source)
@@ -580,6 +589,55 @@ fun TsBotApp(
     }
 }
 
+fun loadStatusMapNames(context: Context): Map<Int, String> = buildMap {
+    Cities.ALL.values.forEach { put(it.cityId, it.label) }
+
+    fun readMapAsset(name: String): JSONObject = context.assets
+        .open("train_bot_data/$name")
+        .bufferedReader(Charsets.UTF_8)
+        .use { JSONObject(it.readText()) }
+
+    fun JSONObject.forEachObject(block: (String, JSONObject) -> Unit) {
+        val iterator = keys()
+        while (iterator.hasNext()) {
+            val key = iterator.next()
+            optJSONObject(key)?.let { block(key, it) }
+        }
+    }
+
+    runCatching {
+        val root = readMapAsset("train_maps.json")
+        (root.optJSONObject("maps") ?: root).forEachObject { key, info ->
+            key.toIntOrNull()?.let { put(it, info.optString("name", key)) }
+        }
+    }
+    runCatching {
+        val root = readMapAsset("cities.json")
+        (root.optJSONObject("cities") ?: root).forEachObject { key, info ->
+            val mapId = info.optInt("city_id", 0)
+            if (mapId > 0) put(mapId, info.optString("name", key))
+        }
+    }
+    runCatching {
+        val root = readMapAsset("events.json")
+        (root.optJSONObject("events") ?: root).forEachObject { key, info ->
+            val mapId = info.optInt("dest_map", 0)
+            if (mapId > 0) put(mapId, info.optString("label", key))
+        }
+    }
+    runCatching {
+        val root = readMapAsset("train_routes.json")
+        (root.optJSONObject("routes") ?: root).forEachObject { key, info ->
+            val mapId = info.optInt("dest_map", key.toIntOrNull() ?: 0)
+            if (mapId > 0 && mapId !in this) put(mapId, info.optString("name", key))
+        }
+    }
+
+    put(49942, "Dị Giới")
+    put(10991, "40 NPC")
+    put(55002, "Nhà Nam Tinh Quân")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PartyCard(
@@ -608,17 +666,8 @@ fun PartyCard(
 ) {
     val runningInParty = party.accounts.count { statusMap[it.username]?.state == RunState.RUNNING }
     val enabledInParty = party.accounts.count { it.enabled }
-    val statusMapNames = remember {
-        buildMap {
-            Cities.ALL.values.forEach { put(it.cityId, it.label) }
-            runCatching { trainMapOptions() }.getOrDefault(emptyList()).forEach { (id, name, _) ->
-                id.toIntOrNull()?.let { put(it, name) }
-            }
-            put(49942, "Dị Giới")
-            put(10991, "40 NPC")
-            put(55002, "Nhà Nam Tinh Quân")
-        }
-    }
+    val context = LocalContext.current
+    val statusMapNames = remember(context) { loadStatusMapNames(context) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -705,18 +754,28 @@ fun PartyCard(
             }
             if (party.accounts.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Kênh: ${curChannel?.toString() ?: "—"}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    OutlinedButton(onClick = { showChannelDialog = true }) { Text("Đổi kênh") }
-                    Spacer(Modifier.width(6.dp))
-                    OutlinedButton(onClick = { showCityDialog = true }) { Text("Đổi thành") }
-                    Spacer(Modifier.width(6.dp))
-                    OutlinedButton(onClick = { showGiftcodeDialog = true }) { Text("Giftcode") }
+                Text(
+                    "Kênh hiện tại: ${curChannel?.toString() ?: "—"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = { showChannelDialog = true },
+                        modifier = Modifier.weight(1f).height(60.dp),
+                    ) { Text("Đổi kênh", maxLines = 2) }
+                    OutlinedButton(
+                        onClick = { showCityDialog = true },
+                        modifier = Modifier.weight(1f).height(60.dp),
+                    ) { Text("Đổi thành", maxLines = 2) }
+                    OutlinedButton(
+                        onClick = { showGiftcodeDialog = true },
+                        modifier = Modifier.weight(1f).height(60.dp),
+                    ) { Text("Giftcode", maxLines = 2) }
                 }
             }
             if (showChannelDialog) {
@@ -1026,7 +1085,7 @@ private fun parseLeaderWhitelist(text: String): List<String> =
 @Composable
 fun AddPartyDialog(
     onDismiss: () -> Unit,
-    onSave: (Party) -> Unit,
+    onSave: (Party) -> Boolean,
     title: String = "Tạo party",
     initialName: String = "",
     initialServerKey: String = Servers.ALL.keys.first(),
@@ -1057,6 +1116,7 @@ fun AddPartyDialog(
     onApplyDiGioiLevel: ((Int) -> Unit)? = null,
 ) {
     var name by remember { mutableStateOf(initialName) }
+    var nameError by remember { mutableStateOf<String?>(null) }
     var expanded by remember { mutableStateOf(false) }
     var selectedKey by remember { mutableStateOf(initialServerKey) }
     var modeExpanded by remember { mutableStateOf(false) }
@@ -1140,9 +1200,16 @@ fun AddPartyDialog(
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = {
+                        name = it
+                        nameError = null
+                    },
                     label = { Text("Tên party") },
                     singleLine = true,
+                    isError = nameError != null,
+                    supportingText = {
+                        nameError?.let { Text(it) }
+                    },
                 )
                 Spacer(Modifier.height(8.dp))
                 ExposedDropdownMenuBox(
@@ -1501,9 +1568,11 @@ fun AddPartyDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (name.isNotBlank()) {
-                        onSave(Party(
-                            name = name,
+                    if (name.isBlank()) {
+                        nameError = "Vui lòng nhập tên party"
+                    } else {
+                        val saved = onSave(Party(
+                            name = name.trim(),
                             serverKey = selectedKey,
                             runMode = selectedMode,
                             cityKey = selectedCity,
@@ -1529,6 +1598,7 @@ fun AddPartyDialog(
                             spThresh = spThreshText.toIntOrNull() ?: 500000,
                             diGioiLevel = diGioiLevel,
                         ))
+                        if (!saved) nameError = "Tên party đã tồn tại"
                     }
                 },
             ) {
