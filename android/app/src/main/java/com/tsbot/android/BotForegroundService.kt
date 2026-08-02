@@ -145,7 +145,7 @@ class BotForegroundService : Service() {
     /** Khoi dong 1 PARTY (pidx = vi tri party trong danh sach app - on dinh trong phien). */
     fun startParty(pidx: Int, party: Party, serverIp: String, serverId: Int) {
         val activeAccounts = party.accounts.filter { it.enabled }
-        if (activeAccounts.isEmpty() || !startingPidx.add(pidx)) return
+        if (activeAccounts.isEmpty() || pidx in runningPidx || !startingPidx.add(pidx)) return
         activeAccounts.forEach { account ->
             _status.update { it + (account.username to AccountStatus(RunState.CONNECTING)) }
         }

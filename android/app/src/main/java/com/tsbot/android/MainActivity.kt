@@ -138,6 +138,19 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+fun partyStatusColor(party: Party, statusMap: Map<String, AccountStatus>): Color {
+    val enabledAccounts = party.accounts.filter { it.enabled }
+    if (enabledAccounts.isEmpty()) return StatusStopped
+    val states = enabledAccounts.map { statusMap[it.username]?.state ?: RunState.IDLE }
+    val running = states.count { it == RunState.RUNNING }
+    val connecting = states.any { it == RunState.CONNECTING }
+    return when {
+        running == enabledAccounts.size -> StatusRunning
+        running > 0 || connecting -> StatusConnecting
+        else -> StatusStopped
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TsBotApp(
@@ -235,8 +248,26 @@ fun TsBotApp(
         if (account.enabled) startPartyIn(party)
     }
 
+    fun startAllParties() {
+        parties.filter { party -> party.accounts.any { it.enabled } }.forEach(::startPartyIn)
+    }
+
+    fun stopAllParties() {
+        scope.launch(Dispatchers.IO) { service?.stopAll() }
+    }
+
     val runningCount = statusMap.values.count { it.state == RunState.RUNNING }
     val totalAccounts = parties.sumOf { party -> party.accounts.count { it.enabled } }
+    val anyConnecting = parties.any { party ->
+        party.accounts.any { account ->
+            account.enabled && statusMap[account.username]?.state == RunState.CONNECTING
+        }
+    }
+    val allPartiesColor = when {
+        totalAccounts > 0 && runningCount == totalAccounts -> StatusRunning
+        runningCount > 0 || anyConnecting -> StatusConnecting
+        else -> StatusStopped
+    }
 
     Scaffold(
         topBar = {
@@ -246,7 +277,7 @@ fun TsBotApp(
                         Text("aTSBot", fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(10.dp))
                         if (totalAccounts > 0) {
-                            StatusDot(if (runningCount > 0) StatusRunning else StatusStopped)
+                            StatusDot(allPartiesColor)
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 "$runningCount/$totalAccounts đang chạy",
@@ -285,6 +316,31 @@ fun TsBotApp(
                     }
                 }
             } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilledTonalButton(
+                        onClick = ::startAllParties,
+                        enabled = totalAccounts > 0,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Chạy tất cả", maxLines = 1)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = ::stopAllParties,
+                        enabled = runningCount > 0,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        StopIcon()
+                        Spacer(Modifier.width(4.dp))
+                        Text("Dừng tất cả", maxLines = 1)
+                    }
+                }
+
                 // Moi party = 1 TAB (giong ban PC). Tab hien ten party + cham trang thai.
                 val curTab = selectedTab.coerceIn(0, parties.size - 1)
                 ScrollableTabRow(
@@ -293,13 +349,12 @@ fun TsBotApp(
                     edgePadding = 8.dp,
                 ) {
                     parties.forEachIndexed { i, p ->
-                        val runningInP = p.accounts.count { statusMap[it.username]?.state == RunState.RUNNING }
                         Tab(
                             selected = i == curTab,
                             onClick = { selectedTab = i },
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    StatusDot(if (runningInP > 0) StatusRunning else StatusStopped, 8)
+                                    StatusDot(partyStatusColor(p, statusMap), 8)
                                     Spacer(Modifier.width(6.dp))
                                     Text(p.name)
                                 }
@@ -708,7 +763,7 @@ fun PartyCard(
             if (party.accounts.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatusDot(if (runningInParty > 0) StatusRunning else StatusStopped)
+                    StatusDot(partyStatusColor(party, statusMap))
                     Spacer(Modifier.width(6.dp))
                     Text(
                         "$runningInParty/$enabledInParty đang chạy",
