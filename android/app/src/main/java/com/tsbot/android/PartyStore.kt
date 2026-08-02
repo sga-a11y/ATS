@@ -30,6 +30,7 @@ class PartyStore(private val context: Context) {
                     a.getString("password"),
                     a.optString("battle", ""),
                     healSettingsFromJson(a.optJSONObject("heal")),
+                    a.optBoolean("enabled", true),
                 )
             }
             Party(
@@ -99,6 +100,7 @@ class PartyStore(private val context: Context) {
                 val ao = JSONObject()
                 ao.put("username", a.username)
                 ao.put("password", a.password)
+                ao.put("enabled", a.enabled)
                 if (a.battleJson.isNotBlank()) ao.put("battle", a.battleJson)
                 if (!a.heal.isDefault()) ao.put("heal", a.heal.toJsonObject())
                 accArr.put(ao)
@@ -134,6 +136,18 @@ class PartyStore(private val context: Context) {
                 count += 1
                 p.copyAdvancedSettingsFrom(source)
             }
+        }
+        save(updated)
+        return count
+    }
+
+    fun applyHealToAllAccounts(heal: HealSettings): Int {
+        var count = 0
+        val updated = load().map { party ->
+            party.copy(accounts = party.accounts.map {
+                count += 1
+                it.copy(heal = heal)
+            })
         }
         save(updated)
         return count

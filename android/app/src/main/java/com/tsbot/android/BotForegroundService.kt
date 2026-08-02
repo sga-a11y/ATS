@@ -32,6 +32,7 @@ class BotForegroundService : Service() {
     // username -> pidx (party dang chay); dung de poll status + map lenh thu cong.
     private val userPidx = ConcurrentHashMap<String, Int>()
     private val runningPidx = ConcurrentHashMap.newKeySet<Int>()
+    private val startingPidx = ConcurrentHashMap.newKeySet<Int>()
 
     private val _status = MutableStateFlow<Map<String, AccountStatus>>(emptyMap())
     val status: StateFlow<Map<String, AccountStatus>> = _status
@@ -124,6 +125,10 @@ class BotForegroundService : Service() {
             ModeCfg("city", c?.cityId ?: 0, c?.flag ?: 0, -1, "", "party", false)
         }
         RunModes.STAY_LOGIN -> ModeCfg("stand", 0, 0, -1, "", "party", false)   // login dung yen do
+        RunModes.DIGIOI_TRAIN -> ModeCfg(
+            "digioi_train", party.trainMapKey.toIntOrNull() ?: 0, 0, party.trainMobIndex,
+            "", "party", !party.noLeader,
+        )
         RunModes.TRAIN -> ModeCfg(
             "train", party.trainMapKey.toIntOrNull() ?: 0, 0, party.trainMobIndex,
             "", "party", !party.noLeader,
@@ -139,41 +144,53 @@ class BotForegroundService : Service() {
 
     /** Khoi dong 1 PARTY (pidx = vi tri party trong danh sach app - on dinh trong phien). */
     fun startParty(pidx: Int, party: Party, serverIp: String, serverId: Int) {
-        if (party.accounts.isEmpty()) return
-        val m = mapMode(party)
-        // 1 CHUOI STRING duy nhat (KHONG phai List<String>/List<List<String>>) - da xac nhan qua
-        // logcat that: ke ca List<String> PHANG, Chaquopy van khong convert dung thanh Python
-        // list khi truyen qua callAttr ("TypeError: 'ArrayList' object is not iterable" ngay tai
-        // list(accounts) phia Python). String thi luon convert dung -> join bang ky tu phan tach
-        // hiem gap (U+0001), Python tu split() lai.
-        val SEP = ""
-        val accountsFlat = party.accounts.joinToString(SEP) {
-            "${it.username}$SEP${it.password}$SEP${it.battleJson}$SEP${it.heal.toRuntimeJson()}"
+        val activeAccounts = party.accounts.filter { it.enabled }
+        if (activeAccounts.isEmpty() || !startingPidx.add(pidx)) return
+        activeAccounts.forEach { account ->
+            _status.update { it + (account.username to AccountStatus(RunState.CONNECTING)) }
         }
-        try {
-            val py = rpd()
-            val leaders = party.leaderWhitelist.joinToString("\n")
-            py.callAttr(
-                "setup_party_runtime", pidx, m.mode, serverIp, serverId, accountsFlat,
-                m.cityFlag, m.startCity, m.mobIndex, party.doDaily, m.digioiMode, m.eventKey,
-                leaders, m.hasLeader, party.usePhucThan, party.useDigioiHoPhu,
-                party.fightLegionBoss, party.doVanTieu,
-                party.buyHoPhu, party.buyBaoHop, party.baoHopXuThreshold,
-                party.diGioiLevel, party.autoSellNoiDat,
-                party.buyHp, party.hpQty, party.hpThresh,
-                party.buySp, party.spQty, party.spThresh,
-            )
-            py.callAttr("start_party", pidx)
-            runningPidx.add(pidx)
-            party.accounts.forEach { userPidx[it.username] = pidx }
-            ensurePoller()
-        } catch (e: Exception) {
-            android.util.Log.e("aTSBot", "startParty loi (pidx=$pidx): ${e.message}", e)
-            party.accounts.forEach {
-                _status.update { s ->
-                    s + (it.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khoi dong"))
-                }
+        Thread({
+            val m = mapMode(party)
+            // 1 CHUOI STRING duy nhat (KHONG phai List<String>/List<List<String>>) - da xac nhan qua
+            // logcat that: ke ca List<String> PHANG, Chaquopy van khong convert dung thanh Python
+            // list khi truyen qua callAttr ("TypeError: 'ArrayList' object is not iterable" ngay tai
+            // list(accounts) phia Python). String thi luon convert dung -> join bang ky tu phan tach
+            // hiem gap (U+0001), Python tu split() lai.
+            val SEP = ""
+            val accountsFlat = activeAccounts.joinToString(SEP) {
+                "${it.username}$SEP${it.password}$SEP${it.battleJson}$SEP${it.heal.toRuntimeJson()}"
             }
+            try {
+                val py = rpd()
+                val leaders = party.leaderWhitelist.joinToString("\n")
+                py.callAttr(
+                    "setup_party_runtime", pidx, m.mode, serverIp, serverId, accountsFlat,
+                    m.cityFlag, m.startCity, m.mobIndex, party.doDaily, m.digioiMode, m.eventKey,
+                    leaders, m.hasLeader, party.usePhucThan, party.useDigioiHoPhu,
+                    party.fightLegionBoss, party.doVanTieu,
+                    party.buyHoPhu, party.buyBaoHop, party.baoHopXuThreshold,
+                    party.diGioiLevel, party.autoSellNoiDat,
+                    party.buyHp, party.hpQty, party.hpThresh,
+                    party.buySp, party.spQty, party.spThresh,
+                )
+                py.callAttr("start_party", pidx)
+                runningPidx.add(pidx)
+                activeAccounts.forEach { userPidx[it.username] = pidx }
+                ensurePoller()
+            } catch (e: Exception) {
+                android.util.Log.e("aTSBot", "startParty loi (pidx=$pidx): ${e.message}", e)
+                activeAccounts.forEach { account ->
+                    _status.update { s ->
+                        s + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khoi dong"))
+                    }
+                }
+            } finally {
+                startingPidx.remove(pidx)
+            }
+        }).also {
+            it.name = "aTSBot-start-party-$pidx"
+            it.isDaemon = true
+            it.start()
         }
     }
 
@@ -213,6 +230,8 @@ class BotForegroundService : Service() {
             petName = gString("pet_name"),
             petLevel = gInt("pet_level"),
             partyAvgLevel = gInt("party_avg_level"),
+            mapId = gInt("map"),
+            channel = gInt("channel"),
             message = "",
         )
     }

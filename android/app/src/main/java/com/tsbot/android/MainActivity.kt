@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -151,6 +152,8 @@ fun TsBotApp(
     var editingParty by remember { mutableStateOf<Party?>(null) }
     // (ten party, account) dang duoc sua (user/pass) - null = khong sua acc nao
     var editingAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    var editingHealAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    var editingSkillAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     // Tab party dang chon (moi party = 1 tab, giong ban PC)
     var selectedTab by remember { mutableStateOf(0) }
 
@@ -228,10 +231,12 @@ fun TsBotApp(
         if (pidx >= 0) service?.startParty(pidx, party, info.ip, info.serverId)
     }
 
-    fun startAccountIn(party: Party, account: Account) = startPartyIn(party)
+    fun startAccountIn(party: Party, account: Account) {
+        if (account.enabled) startPartyIn(party)
+    }
 
     val runningCount = statusMap.values.count { it.state == RunState.RUNNING }
-    val totalAccounts = parties.sumOf { it.accounts.size }
+    val totalAccounts = parties.sumOf { party -> party.accounts.count { it.enabled } }
 
     Scaffold(
         topBar = {
@@ -313,6 +318,16 @@ fun TsBotApp(
                         onAddAccount = { addAccountForParty = party.name },
                         onEditParty = { editingParty = party },
                         onEditAccount = { account -> editingAccount = party.name to account },
+                        onEditHeal = { account -> editingHealAccount = party.name to account },
+                        onEditSkill = { account -> editingSkillAccount = party.name to account },
+                        onEnabledChange = { account, enabled ->
+                            partyStore.updateAccountInParty(
+                                party.name,
+                                account.username,
+                                account.copy(enabled = enabled),
+                            )
+                            refresh()
+                        },
                         onRemoveAccount = { username ->
                             partyStore.removeAccountFromParty(party.name, username)
                             refresh()
@@ -502,8 +517,7 @@ fun TsBotApp(
             initialPassword = account.password,
             initialBattleJson = account.battleJson,
             initialHeal = account.heal,
-            charSkills = service?.accountSkills(account.username)?.first ?: emptyList(),
-            petSkills = service?.accountSkills(account.username)?.second ?: emptyList(),
+            initialEnabled = account.enabled,
             onDismiss = { editingAccount = null },
             onSave = { edited ->
                 partyStore.updateAccountInParty(partyName, account.username, edited)
@@ -511,6 +525,56 @@ fun TsBotApp(
                 service?.applyAccountHeal(edited.username, edited.heal.toRuntimeJson())
                 refresh()
                 editingAccount = null
+            },
+        )
+    }
+
+    val healAccount = editingHealAccount
+    if (healAccount != null) {
+        val (partyName, account) = healAccount
+        HealSettingsDialog(
+            initialHeal = account.heal,
+            onDismiss = { editingHealAccount = null },
+            onApplyToAll = { heal ->
+                val count = partyStore.applyHealToAllAccounts(heal)
+                parties.flatMap { it.accounts }.forEach {
+                    service?.applyAccountHeal(it.username, heal.toRuntimeJson())
+                }
+                refresh()
+                count
+            },
+            onSave = { editedHeal ->
+                partyStore.updateAccountInParty(
+                    partyName,
+                    account.username,
+                    account.copy(heal = editedHeal),
+                )
+                service?.applyAccountHeal(account.username, editedHeal.toRuntimeJson())
+                refresh()
+                editingHealAccount = null
+            },
+        )
+    }
+
+    val skillAccount = editingSkillAccount
+    if (skillAccount != null) {
+        val (partyName, account) = skillAccount
+        val skills = service?.accountSkills(account.username)
+            ?: (emptyList<SkillChoice>() to emptyList())
+        SkillSettingsDialog(
+            initialBattleJson = account.battleJson,
+            charSkills = skills.first,
+            petSkills = skills.second,
+            onDismiss = { editingSkillAccount = null },
+            onSave = { editedBattleJson ->
+                partyStore.updateAccountInParty(
+                    partyName,
+                    account.username,
+                    account.copy(battleJson = editedBattleJson),
+                )
+                service?.applyAccountBattle(account.username, editedBattleJson)
+                refresh()
+                editingSkillAccount = null
             },
         )
     }
@@ -524,6 +588,9 @@ fun PartyCard(
     onAddAccount: () -> Unit,
     onEditParty: () -> Unit,
     onEditAccount: (Account) -> Unit,
+    onEditHeal: (Account) -> Unit,
+    onEditSkill: (Account) -> Unit,
+    onEnabledChange: (Account, Boolean) -> Unit,
     onRemoveAccount: (String) -> Unit,
     onRemoveParty: () -> Unit,
     onStart: (Account) -> Unit,
@@ -540,6 +607,18 @@ fun PartyCard(
     onGetLog: (String) -> String = { "" },
 ) {
     val runningInParty = party.accounts.count { statusMap[it.username]?.state == RunState.RUNNING }
+    val enabledInParty = party.accounts.count { it.enabled }
+    val statusMapNames = remember {
+        buildMap {
+            Cities.ALL.values.forEach { put(it.cityId, it.label) }
+            runCatching { trainMapOptions() }.getOrDefault(emptyList()).forEach { (id, name, _) ->
+                id.toIntOrNull()?.let { put(it, name) }
+            }
+            put(49942, "Dị Giới")
+            put(10991, "40 NPC")
+            put(55002, "Nhà Nam Tinh Quân")
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -583,7 +662,7 @@ fun PartyCard(
                     StatusDot(if (runningInParty > 0) StatusRunning else StatusStopped)
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "$runningInParty/${party.accounts.size} đang chạy",
+                        "$runningInParty/$enabledInParty đang chạy",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -595,7 +674,7 @@ fun PartyCard(
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 FilledTonalButton(
                     onClick = onStartParty,
-                    enabled = party.accounts.isNotEmpty(),
+                    enabled = party.accounts.any { it.enabled },
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -672,9 +751,13 @@ fun PartyCard(
                     AccountRow(
                         account = account,
                         status = statusMap[account.username] ?: AccountStatus(),
+                        mapLabel = statusMap[account.username]?.mapId?.let { statusMapNames[it] ?: it.toString() } ?: "—",
                         onStart = { onStart(account) },
                         onStop = { onStop(account.username) },
                         onEdit = { onEditAccount(account) },
+                        onEditHeal = { onEditHeal(account) },
+                        onEditSkill = { onEditSkill(account) },
+                        onEnabledChange = { enabled -> onEnabledChange(account, enabled) },
                         onDelete = { onRemoveAccount(account.username) },
                         expanded = expandedLogUser == account.username,
                         onToggleLog = {
@@ -692,9 +775,13 @@ fun PartyCard(
 fun AccountRow(
     account: Account,
     status: AccountStatus,
+    mapLabel: String = "—",
     onStart: () -> Unit,
     onStop: () -> Unit,
     onEdit: () -> Unit,
+    onEditHeal: () -> Unit,
+    onEditSkill: () -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
     onDelete: () -> Unit,
     expanded: Boolean = false,
     onToggleLog: () -> Unit = {},
@@ -711,6 +798,12 @@ fun AccountRow(
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleLog),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Checkbox(
+                    checked = account.enabled,
+                    onCheckedChange = onEnabledChange,
+                    modifier = Modifier.size(36.dp),
+                )
+                Spacer(Modifier.width(4.dp))
                 StatusDot(statusColor(status.state))
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -731,23 +824,44 @@ fun AccountRow(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    if (status.mapId != null || status.channel != null) {
+                        val channelLabel = status.channel?.toString() ?: "—"
+                        Text(
+                            "Map: $mapLabel  •  Kênh: $channelLabel",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Text(
                         statusLabel(status.state),
                         style = MaterialTheme.typography.labelMedium,
                         color = statusColor(status.state),
                     )
                 }
-                // Start / Stop gon: dang chay -> hien nut Dung (do), nguoc lai -> nut Chay (xanh)
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Tach hang nut xuong duoi de ten acc/char khong bi bop khi co them HP/SP + Skill.
                 if (running) {
                     OutlinedButton(onClick = onStop) { StopIcon(); Spacer(Modifier.width(4.dp)); Text("Dừng") }
                 } else {
-                    FilledTonalButton(onClick = onStart) {
+                    FilledTonalButton(onClick = onStart, enabled = account.enabled) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp)); Text("Chạy")
                     }
                 }
                 IconButton(onClick = onEdit) {
-                    Icon(Icons.Default.Edit, contentDescription = "Sửa", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Edit, contentDescription = "Sửa tài khoản", modifier = Modifier.size(18.dp))
+                }
+                IconButton(onClick = onEditHeal) {
+                    Icon(Icons.Default.Settings, contentDescription = "Hồi HP SP", modifier = Modifier.size(18.dp))
+                }
+                TextButton(onClick = onEditSkill) {
+                    Text("Skill", maxLines = 1)
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = StatusError, modifier = Modifier.size(18.dp))
@@ -957,6 +1071,7 @@ fun AddPartyDialog(
     var trainMobExpanded by remember { mutableStateOf(false) }
     var trainMobIndex by remember { mutableStateOf(initialTrainMobIndex) }
     var trainMapExpanded by remember { mutableStateOf(false) }
+    var collapsedTrainMapGroups by remember { mutableStateOf(emptySet<String>()) }
     var usePhucThan by remember { mutableStateOf(initialUsePhucThan) }
     var useDigioiHoPhu by remember { mutableStateOf(initialUseDigioiHoPhu) }
     var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
@@ -976,6 +1091,14 @@ fun AddPartyDialog(
     var diGioiExpandedMode by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
     var advancedApplyMessage by remember { mutableStateOf("") }
+
+    fun toggleTrainMapGroup(group: String) {
+        collapsedTrainMapGroups = if (group in collapsedTrainMapGroups) {
+            collapsedTrainMapGroups - group
+        } else {
+            collapsedTrainMapGroups + group
+        }
+    }
 
     fun currentParty(): Party = Party(
         name = name.ifBlank { initialName.ifBlank { "Party" } },
@@ -1267,12 +1390,17 @@ fun AddPartyDialog(
                                 }
                             } else {
                                 groups.forEach { g ->
-                                    DropdownMenuItem(enabled = false, onClick = {},
-                                        text = { Text("📁 $g") })
-                                    mapOptions.filter { it.third == g }.forEach { (key, mapName, _) ->
-                                        DropdownMenuItem(text = { Text("    $mapName") }, onClick = {
-                                            trainMapKey = key; trainMobIndex = -1; trainMapExpanded = false
-                                        })
+                                    val collapsed = g in collapsedTrainMapGroups
+                                    DropdownMenuItem(
+                                        onClick = { toggleTrainMapGroup(g) },
+                                        text = { Text(if (collapsed) "▶ 📁 $g" else "▼ 📂 $g") },
+                                    )
+                                    if (g !in collapsedTrainMapGroups) {
+                                        mapOptions.filter { it.third == g }.forEach { (key, mapName, _) ->
+                                            DropdownMenuItem(text = { Text("    $mapName") }, onClick = {
+                                                trainMapKey = key; trainMobIndex = -1; trainMapExpanded = false
+                                            })
+                                        }
                                     }
                                 }
                             }
@@ -1666,7 +1794,38 @@ private fun BattleRuleUnitEditor(
     skills: List<SkillChoice>,
     onRules: (List<BattleRuleUi>) -> Unit,
 ) {
-    Text(title, style = MaterialTheme.typography.labelLarge)
+    val isCharacter = title.equals("Char", ignoreCase = true)
+    val sectionLabel = if (isCharacter) "NHÂN VẬT (CHAR)" else "PET ĐANG DÙNG"
+    val sectionColor = if (isCharacter) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.tertiaryContainer
+    }
+    val sectionTextColor = if (isCharacter) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onTertiaryContainer
+    }
+    Surface(
+        color = sectionColor.copy(alpha = 0.14f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+    Surface(
+        color = sectionColor,
+        contentColor = sectionTextColor,
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            sectionLabel,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+    }
+    Spacer(Modifier.height(4.dp))
     rules.forEachIndexed { index, rule ->
         val reviveSkills = skills.filter { isReviveSkill(it) }
         fun updateRule(next: BattleRuleUi) {
@@ -1768,6 +1927,8 @@ private fun BattleRuleUnitEditor(
         }
     }
     TextButton(onClick = { onRules(rules + BattleRuleUi()) }) { Text("+ Thêm rule") }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1780,53 +1941,10 @@ fun AddAccountDialog(
     initialPassword: String = "",
     initialBattleJson: String = "",
     initialHeal: HealSettings = HealSettings(),
-    charSkills: List<SkillChoice> = emptyList(),
-    petSkills: List<SkillChoice> = emptyList(),
+    initialEnabled: Boolean = true,
 ) {
     var username by remember { mutableStateOf(initialUsername) }
     var password by remember { mutableStateOf(initialPassword) }
-    var hpCharText by remember(initialHeal) { mutableStateOf(initialHeal.hpChar.toString()) }
-    var spCharText by remember(initialHeal) { mutableStateOf(initialHeal.spChar.toString()) }
-    var hpPetText by remember(initialHeal) { mutableStateOf(initialHeal.hpPet.toString()) }
-    var spPetText by remember(initialHeal) { mutableStateOf(initialHeal.spPet.toString()) }
-    var charRules by remember(initialBattleJson) { mutableStateOf(parseBattleRules(initialBattleJson, "char")) }
-    var petRules by remember(initialBattleJson) { mutableStateOf(parseBattleRules(initialBattleJson, "pet")) }
-    var confirmDefault by remember { mutableStateOf(false) }
-
-    fun pct(text: String, fallback: Int): Int = (text.toIntOrNull() ?: fallback).coerceIn(0, 100)
-    fun currentHeal(): HealSettings = HealSettings(
-        hpChar = pct(hpCharText, 40),
-        spChar = pct(spCharText, 0),
-        hpPet = pct(hpPetText, 40),
-        spPet = pct(spPetText, 0),
-    )
-
-    fun saveDefaultRules() {
-        val nextChar = defaultBattleRules(charSkills)
-        val nextPet = defaultBattleRules(petSkills)
-        charRules = nextChar
-        petRules = nextPet
-        if (username.isNotBlank() && password.isNotBlank()) {
-            onSave(Account(username, password, battleJson(nextChar, nextPet), currentHeal()))
-        }
-    }
-
-    if (confirmDefault) {
-        AlertDialog(
-            onDismissRequest = { confirmDefault = false },
-            title = { Text("Nạp mẫu") },
-            text = { Text("Nạp kịch bản skill mặc định và lưu áp dụng ngay?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDefault = false
-                    saveDefaultRules()
-                }) { Text("Đồng ý") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDefault = false }) { Text("Hủy") }
-            },
-        )
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1848,8 +1966,158 @@ fun AddAccountDialog(
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 )
-                Spacer(Modifier.height(12.dp))
-                Text("Chiến đấu", style = MaterialTheme.typography.titleSmall)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (username.isNotBlank() && password.isNotBlank()) {
+                        onSave(Account(username, password, initialBattleJson, initialHeal, initialEnabled))
+                    }
+                },
+            ) {
+                Text("Lưu")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Hủy") }
+        },
+    )
+}
+
+@Composable
+fun HealSettingsDialog(
+    initialHeal: HealSettings,
+    onDismiss: () -> Unit,
+    onSave: (HealSettings) -> Unit,
+    onApplyToAll: ((HealSettings) -> Int)? = null,
+) {
+    var hpCharText by remember(initialHeal) { mutableStateOf(initialHeal.hpChar.toString()) }
+    var spCharText by remember(initialHeal) { mutableStateOf(initialHeal.spChar.toString()) }
+    var hpPetText by remember(initialHeal) { mutableStateOf(initialHeal.hpPet.toString()) }
+    var spPetText by remember(initialHeal) { mutableStateOf(initialHeal.spPet.toString()) }
+    var applyMessage by remember { mutableStateOf("") }
+
+    fun pct(text: String, fallback: Int): Int = (text.toIntOrNull() ?: fallback).coerceIn(0, 100)
+    fun currentHeal() = HealSettings(
+        hpChar = pct(hpCharText, 40),
+        spChar = pct(spCharText, 0),
+        hpPet = pct(hpPetText, 40),
+        spPet = pct(spPetText, 0),
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Hồi HP/SP") },
+        text = {
+            Column {
+                Text(
+                    "Dùng item khi chỉ số tụt dưới ngưỡng (%)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HealPercentField("HP char", hpCharText, { hpCharText = it }, Modifier.weight(1f))
+                    HealPercentField("SP char", spCharText, { spCharText = it }, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HealPercentField("HP pet", hpPetText, { hpPetText = it }, Modifier.weight(1f))
+                    HealPercentField("SP pet", spPetText, { spPetText = it }, Modifier.weight(1f))
+                }
+                TextButton(onClick = {
+                    hpCharText = "40"
+                    spCharText = "0"
+                    hpPetText = "40"
+                    spPetText = "0"
+                }) { Text("Mặc định") }
+                if (onApplyToAll != null) {
+                    OutlinedButton(
+                        onClick = {
+                            val count = onApplyToAll(currentHeal())
+                            applyMessage = "Đã áp dụng cho $count acc"
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Áp dụng cho tất cả acc") }
+                    if (applyMessage.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            applyMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(currentHeal()) }) { Text("Lưu") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Hủy") }
+        },
+    )
+}
+
+@Composable
+private fun HealPercentField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { onValueChange(it.filter(Char::isDigit).take(3)) },
+        label = { Text(label) },
+        suffix = { Text("%") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = modifier,
+    )
+}
+
+@Composable
+fun SkillSettingsDialog(
+    initialBattleJson: String,
+    charSkills: List<SkillChoice>,
+    petSkills: List<SkillChoice>,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var charRules by remember(initialBattleJson) {
+        mutableStateOf(parseBattleRules(initialBattleJson, "char"))
+    }
+    var petRules by remember(initialBattleJson) {
+        mutableStateOf(parseBattleRules(initialBattleJson, "pet"))
+    }
+    var confirmDefault by remember { mutableStateOf(false) }
+
+    if (confirmDefault) {
+        AlertDialog(
+            onDismissRequest = { confirmDefault = false },
+            title = { Text("Nạp mẫu") },
+            text = { Text("Nạp kịch bản skill mặc định và lưu áp dụng ngay?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDefault = false
+                    val nextChar = defaultBattleRules(charSkills)
+                    val nextPet = defaultBattleRules(petSkills)
+                    onSave(battleJson(nextChar, nextPet))
+                }) { Text("Đồng ý") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDefault = false }) { Text("Hủy") }
+            },
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Kịch bản Skill") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
                     if (charSkills.isNotEmpty() || petSkills.isNotEmpty()) {
                         "Skill live lấy từ acc đang online"
@@ -1860,73 +2128,13 @@ fun AddAccountDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                Text("Hồi HP/SP", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "Dùng item khi chỉ số tụt dưới ngưỡng (%)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = hpCharText,
-                        onValueChange = { hpCharText = it.filter { ch -> ch.isDigit() }.take(3) },
-                        label = { Text("HP char") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedTextField(
-                        value = spCharText,
-                        onValueChange = { spCharText = it.filter { ch -> ch.isDigit() }.take(3) },
-                        label = { Text("SP char") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = hpPetText,
-                        onValueChange = { hpPetText = it.filter { ch -> ch.isDigit() }.take(3) },
-                        label = { Text("HP pet") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedTextField(
-                        value = spPetText,
-                        onValueChange = { spPetText = it.filter { ch -> ch.isDigit() }.take(3) },
-                        label = { Text("SP pet") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                TextButton(onClick = {
-                    hpCharText = "40"
-                    spCharText = "0"
-                    hpPetText = "40"
-                    spPetText = "0"
-                }) { Text("Mặc định hồi máu") }
-                Spacer(Modifier.height(12.dp))
                 BattleRuleUnitEditor("Char", charRules, charSkills) { charRules = it }
                 Spacer(Modifier.height(8.dp))
                 BattleRuleUnitEditor("Pet", petRules, petSkills) { petRules = it }
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    if (username.isNotBlank() && password.isNotBlank()) {
-                        val bj = battleJson(charRules, petRules)
-                        onSave(Account(username, password, bj, currentHeal()))
-                    }
-                },
-            ) {
-                Text("Lưu")
-            }
+            Button(onClick = { onSave(battleJson(charRules, petRules)) }) { Text("Lưu") }
         },
         dismissButton = {
             Row {

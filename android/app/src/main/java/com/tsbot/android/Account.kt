@@ -47,4 +47,5 @@ data class Account(
     val password: String,
     val battleJson: String = "",
     val heal: HealSettings = HealSettings(),
+    val enabled: Boolean = true,
 )

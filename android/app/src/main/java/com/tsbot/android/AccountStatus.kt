@@ -13,5 +13,7 @@ data class AccountStatus(
     val petName: String = "",
     val petLevel: Int? = null,
     val partyAvgLevel: Int? = null,
+    val mapId: Int? = null,
+    val channel: Int? = null,
     val message: String = "",
 )
