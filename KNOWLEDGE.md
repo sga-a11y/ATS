@@ -1179,4 +1179,4 @@ ngay khi phát hiện map đổi.
 - Fail do gate `23521 door=2 -> 23000` co center `(430,2500)` nam tren o sea trong `Ground.mmg`,
   router tu coi la leg thuyen va validate `boat=True`; trong khi path di bo `(430,50) -> (430,2500)`
   hop le. Them force-walk sea gate `(23521,23000,2)` trong build va execute.
-- 40NPC: khong duoc coi rieng S2C `0x41 0a0001` la het tran. Log live 21:45 cho thay no co the di lien voi `0x14 08002a` khi battle chua san sang; bam dialog luc nay bi kick. Prompt "danh tiep?" chi hop le khi goi KE TIEP la `0x14 0100...0300` (dung thu tu trong ca hai capture nguoi that).
+- 40NPC: khong duoc coi rieng S2C `0x41 0a0001` la het tran. No chi ARM cua so cho prompt; chi xac nhan khi co `0x14 0100...0300` trong 5 giay. Hai capture nguoi that co hai goi lien ke, nhung log live co the chen `0x14 08002a` o giua; phai bo qua goi trung gian va tiep tuc cho page choice. Bam choice ngay tai `08002a` bi server kick.

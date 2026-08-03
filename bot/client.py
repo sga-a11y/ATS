@@ -888,6 +888,7 @@ class GameClient:
         self._battle_start_seq = 0     # tang moi S2C 0x34; 40NPC doi generation moi thay vi canh timing bool
         self._npc40_prompt_seq = 0     # tang khi co du cap 0x41 0a0001 + dialog 0x14 0100...0300
         self._npc40_prompt_pending = False
+        self._npc40_prompt_pending_at = 0.0
         self._npc40_last_defeated = False
         self._npc40_last_alive = 0
         self._npc40_last_total = 0
@@ -1081,25 +1082,37 @@ class GameClient:
     def _observe_npc40_packet(self, opcode, pkt):
         if not getattr(self, "_npc40_started", False):
             return
+        now = time.time()
+        if (getattr(self, "_npc40_prompt_pending", False)
+                and now - getattr(self, "_npc40_prompt_pending_at", 0.0) > 5.0):
+            self._npc40_prompt_pending = False
+            self._npc40_prompt_pending_at = 0.0
         if opcode == protocol.OP_BATTLE_START:
             self._battle_start_seq += 1
             self._npc40_prompt_pending = False
+            self._npc40_prompt_pending_at = 0.0
         # Luu page dialog NPC (0x14 sub=0100...) gan nhat -> run_loop biet dang o page nao:
         #  - fresh page1: ...[counter]4e (chua choice) -> can advance
         #  - page2 choice fresh (...0200) / prompt giua-event (...0300) -> chon LUON, KHONG advance
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x01\x00":
             self._npc40_last_dialog = pkt[7:].hex()
 
-        # 0x41 0a0001 cung xuat hien khi tran van dang chuyen trang thai. Capture nguoi that
-        # cho thay prompt "danh tiep?" chi hop le neu GOI KE TIEP la dialog choice ...0300.
+        # 0x41 0a0001 chi ARM viec cho prompt. Live co the chen 0x14 08002a truoc page choice;
+        # giu pending qua cac goi trung gian va chi xac nhan khi thay dialog ...0300 trong 5 giay.
         if npc40.is_repeat_prompt(opcode, pkt):
             self._npc40_prompt_pending = True
+            self._npc40_prompt_pending_at = now
+            return
+        if opcode == 0x41 and len(pkt) >= 10 and pkt[7:10] == b"\x0a\x00\x00":
+            self._npc40_prompt_pending = False
+            self._npc40_prompt_pending_at = 0.0
             return
         if not getattr(self, "_npc40_prompt_pending", False):
             return
-        self._npc40_prompt_pending = False
         if not npc40.is_repeat_dialog(opcode, pkt):
             return
+        self._npc40_prompt_pending = False
+        self._npc40_prompt_pending_at = 0.0
 
         defeated, alive, total = npc40.party_defeated(self.state.allies)
         self._npc40_last_defeated = defeated
@@ -1160,6 +1173,7 @@ class GameClient:
             return False
         self._npc40_started = True
         self._npc40_prompt_pending = False
+        self._npc40_prompt_pending_at = 0.0
         self._npc40_stop.clear()
         self._npc40_thread = threading.Thread(
             target=npc40.run_loop,
@@ -1175,6 +1189,7 @@ class GameClient:
         if stop is not None:
             stop.set()
         self._npc40_prompt_pending = False
+        self._npc40_prompt_pending_at = 0.0
 
     def in_combat(self, idle_secs: float = 4.0) -> bool:
         """Dang trong tran. Moc CHUAN = state.in_battle (set MOI luot 0x35 + 0x34 START, HA o 0x14

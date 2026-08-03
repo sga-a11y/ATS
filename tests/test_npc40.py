@@ -248,7 +248,7 @@ class TestNpc40ClientIntegration(unittest.TestCase):
         self.assertEqual((game._npc40_last_alive, game._npc40_last_total), (0, 1))
         self.assertFalse(game.state.in_battle)
 
-    def test_packet_observer_does_not_finish_on_signal_followed_by_status_page(self):
+    def test_packet_observer_waits_through_status_page_for_choice_dialog(self):
         game = self._client(hp=1)
 
         game._observe_npc40_packet(0x41, b"\x00" * 7 + b"\x0a\x00\x01")
@@ -256,6 +256,14 @@ class TestNpc40ClientIntegration(unittest.TestCase):
 
         self.assertEqual(game._npc40_prompt_seq, 0)
         self.assertTrue(game.state.in_battle)
+        self.assertTrue(game._npc40_prompt_pending)
+
+        game._observe_npc40_packet(
+            0x14, b"\x00" * 7 + b"\x01\x00\x00\x00\x00\x01\x06\x03\x05" + b"\x00" * 7 + b"\x03\x00")
+
+        self.assertEqual(game._npc40_prompt_seq, 1)
+        self.assertFalse(game.state.in_battle)
+        self.assertFalse(game._npc40_prompt_pending)
 
     def test_start_worker_runs_once_and_stop_sets_event(self):
         game = self._client(hp=1, started=False)

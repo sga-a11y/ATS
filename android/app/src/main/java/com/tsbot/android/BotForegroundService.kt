@@ -288,10 +288,13 @@ class BotForegroundService : Service() {
 
     fun stopAll() {
         startGeneration += 1
-        try { rpd().callAttr("stop_all") } catch (_: Exception) { }
-        runningPidx.clear()
+        // Dung lai CHINH flow stopParty da hoat dong on dinh. Snapshot truoc vi stopParty se
+        // xoa runningPidx/userPidx trong luc lap.
+        val partiesToStop = (
+            runningPidx.toSet() + startingPidx.toSet() + userPidx.values.toSet()
+        ).sorted()
+        partiesToStop.forEach { stopParty(it) }
         startingPidx.clear()
-        userPidx.clear()
         _status.update { current ->
             current.mapValues { AccountStatus(RunState.IDLE) }
         }

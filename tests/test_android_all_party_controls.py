@@ -21,6 +21,12 @@ class TestAndroidAllPartyControls(unittest.TestCase):
     def test_stop_all_runs_off_the_compose_thread(self):
         self.assertIn("scope.launch(Dispatchers.IO) { service?.stopAll() }", UI)
 
+    def test_stop_all_reuses_the_working_stop_party_path(self):
+        body = SERVICE.split("fun stopAll()", 1)[1].split("// --- lenh LIVE", 1)[0]
+        self.assertIn("val partiesToStop", body)
+        self.assertIn("partiesToStop.forEach { stopParty(it) }", body)
+        self.assertNotIn('callAttr("stop_all")', body)
+
     def test_buttons_wait_for_service_and_stop_is_available_while_connecting(self):
         self.assertIn("enabled = service != null && totalAccounts > 0", UI)
         self.assertIn("enabled = service != null", UI)
