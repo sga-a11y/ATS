@@ -582,6 +582,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     server_name = _pc0.get("server", "?")
     server_id = _pc0.get("server_id", 1)
     _login_failed = False   # True neu login/vao world that bai 6 lan -> supervisor van thu lai (backoff)
+    _unexpected_error = False  # True neu dinh Exception bat ngo -> cho relogin (dung de acc chet han vi loi thoang qua)
     try:
         # --- Login + cho vao world THUC SU (co self_entity VA co current_map) ---
         c = None
@@ -2731,8 +2732,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         except Exception: pass
         if c in _clients: _clients.remove(c)
     except Exception as e:
+        import traceback
+        _unexpected_error = True   # loi bat ngo -> KHONG de acc chet han, cho supervisor relogin lai
         _reason("LOI ngoai le: %s" % e)
-        log.error("[%s] LOI: %s", label, e)
+        log.error("[%s] LOI: %s\n%s", label, e, traceback.format_exc())
     finally:
         # Go entity minh khoi _PARTY_JOINED: acc thoat/rot la RA KHOI party that (server tan lien
         # ket). Khong go -> lan reconnect sau leader dem "da join" STALE -> vua moi da tuong du
@@ -2748,6 +2751,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         _forced_reconnect = username in account_forced_reconnect
         reconnectable = (not _stopped()
                          and (_forced_reconnect or _login_failed or _dt["relogin_train"]
+                              or _unexpected_error
                               or (c is not None and getattr(c, "server_closed", False))))
         account_reconnect[username] = reconnectable
         if is_leader and not reconnectable and account_threads.get(username) is threading.current_thread():

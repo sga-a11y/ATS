@@ -201,10 +201,17 @@ class BotForegroundService : Service() {
             while (polling) {
                 try {
                     val py = rpd()
+                    val runningNow = HashSet<Int>()
                     userPidx.keys.toList().forEach { u ->
                         val d = py.callAttr("account_status", u) ?: return@forEach
-                        _status.update { it + (u to statusFromPy(d)) }
+                        val st = statusFromPy(d)
+                        _status.update { it + (u to st) }
+                        if (st.state == RunState.RUNNING) userPidx[u]?.let { runningNow.add(it) }
                     }
+                    // Tu lanh: acc tu thoat / bi Dung (stopAccount) khong xoa runningPidx ->
+                    // guard "pidx in runningPidx" chan restart vinh vien (Chay tat ca ko tac dung).
+                    // Doi chieu voi trang thai that: pidx nao khong con acc chay & khong dang start -> bo.
+                    runningPidx.retainAll { it in runningNow || it in startingPidx }
                 } catch (_: Exception) {
                 }
                 try { Thread.sleep(1500) } catch (_: InterruptedException) { }
