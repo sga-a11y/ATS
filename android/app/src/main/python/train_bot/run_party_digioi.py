@@ -298,6 +298,7 @@ account_last = {}      # username -> {"map","char"} luc CUOI truoc khi thoat (de
 account_exit_reason = {}  # username -> ly do thoat (de tong ket 1 dong khi ca party tat het)
 account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT (supervisor login lai)
 account_forced_reconnect = set()  # survivor 40NPC bi dong de relogin cung party; KHONG tang disc_gen
+_start_cancel_generation = 0  # STOP ALL tang so nay de huy chuoi START dang do
 
 
 def _running_party_usernames(pidx):
@@ -3137,6 +3138,7 @@ def party_idx_of(username):
 
 def start_party(pidx, stagger=1.5):
     """Khoi dong tat ca acc trong 1 party."""
+    generation = _start_cancel_generation
     started = 0
     accounts = party_accounts(pidx)
     # Party da tat han -> tao session state MOI. Reset tung field nhu truoc de sot route_plan/
@@ -3164,6 +3166,9 @@ def start_party(pidx, stagger=1.5):
         st["map_results"] = {}       # reset barrier map cho lan chay nay
         st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
     for u, p, is_leader, is_picker in accounts:
+        if generation != _start_cancel_generation:
+            log.info(">>> PARTY %s: huy khoi dong cac acc con lai do STOP TAT CA", pidx + 1)
+            break
         account_exit_reason.pop(u, None)   # xoa ly do cu
         if start_account(u, p, pidx, is_leader, is_picker):
             started += 1
@@ -3352,6 +3357,8 @@ def stop_party(pidx):
 
 
 def stop_all():
+    global _start_cancel_generation
+    _start_cancel_generation += 1
     us = list(account_stops.keys())
     log.info("STOP TAT CA nhan tu GUI: %d acc -> %s", len(us), us)
     for u in us:

@@ -249,7 +249,7 @@ fun TsBotApp(
     }
 
     fun startAllParties() {
-        parties.filter { party -> party.accounts.any { it.enabled } }.forEach(::startPartyIn)
+        service?.startAll(parties)
     }
 
     fun stopAllParties() {
@@ -322,7 +322,7 @@ fun TsBotApp(
                 ) {
                     FilledTonalButton(
                         onClick = ::startAllParties,
-                        enabled = totalAccounts > 0,
+                        enabled = service != null && totalAccounts > 0,
                         modifier = Modifier.weight(1f),
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -332,7 +332,7 @@ fun TsBotApp(
                     Spacer(Modifier.width(8.dp))
                     OutlinedButton(
                         onClick = ::stopAllParties,
-                        enabled = runningCount > 0,
+                        enabled = service != null,
                         modifier = Modifier.weight(1f),
                     ) {
                         StopIcon()

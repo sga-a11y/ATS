@@ -37,6 +37,7 @@ class BotForegroundService : Service() {
     private val _status = MutableStateFlow<Map<String, AccountStatus>>(emptyMap())
     val status: StateFlow<Map<String, AccountStatus>> = _status
 
+    @Volatile private var startGeneration = 0
     @Volatile private var polling = false
     private var pollerThread: Thread? = null
 
@@ -142,14 +143,21 @@ class BotForegroundService : Service() {
         else -> ModeCfg("stand", 0, 0, -1, "", "party", false)
     }
 
-    /** Khoi dong 1 PARTY (pidx = vi tri party trong danh sach app - on dinh trong phien). */
-    fun startParty(pidx: Int, party: Party, serverIp: String, serverId: Int) {
+    @Synchronized
+    private fun startPartyNow(
+        pidx: Int,
+        party: Party,
+        serverIp: String,
+        serverId: Int,
+        generation: Int,
+    ) {
         val activeAccounts = party.accounts.filter { it.enabled }
         if (activeAccounts.isEmpty() || pidx in runningPidx || !startingPidx.add(pidx)) return
         activeAccounts.forEach { account ->
             _status.update { it + (account.username to AccountStatus(RunState.CONNECTING)) }
         }
-        Thread({
+        try {
+            if (generation != startGeneration) return
             val m = mapMode(party)
             // 1 CHUOI STRING duy nhat (KHONG phai List<String>/List<List<String>>) - da xac nhan qua
             // logcat that: ke ca List<String> PHANG, Chaquopy van khong convert dung thanh Python
@@ -160,35 +168,60 @@ class BotForegroundService : Service() {
             val accountsFlat = activeAccounts.joinToString(SEP) {
                 "${it.username}$SEP${it.password}$SEP${it.battleJson}$SEP${it.heal.toRuntimeJson()}"
             }
-            try {
-                val py = rpd()
-                val leaders = party.leaderWhitelist.joinToString("\n")
-                py.callAttr(
-                    "setup_party_runtime", pidx, m.mode, serverIp, serverId, accountsFlat,
-                    m.cityFlag, m.startCity, m.mobIndex, party.doDaily, m.digioiMode, m.eventKey,
-                    leaders, m.hasLeader, party.usePhucThan, party.useDigioiHoPhu,
-                    party.fightLegionBoss, party.doVanTieu,
-                    party.buyHoPhu, party.buyBaoHop, party.baoHopXuThreshold,
-                    party.diGioiLevel, party.autoSellNoiDat,
-                    party.buyHp, party.hpQty, party.hpThresh,
-                    party.buySp, party.spQty, party.spThresh,
-                )
-                py.callAttr("start_party", pidx)
+            val py = rpd()
+            val leaders = party.leaderWhitelist.joinToString("\n")
+            py.callAttr(
+                "setup_party_runtime", pidx, m.mode, serverIp, serverId, accountsFlat,
+                m.cityFlag, m.startCity, m.mobIndex, party.doDaily, m.digioiMode, m.eventKey,
+                leaders, m.hasLeader, party.usePhucThan, party.useDigioiHoPhu,
+                party.fightLegionBoss, party.doVanTieu,
+                party.buyHoPhu, party.buyBaoHop, party.baoHopXuThreshold,
+                party.diGioiLevel, party.autoSellNoiDat,
+                party.buyHp, party.hpQty, party.hpThresh,
+                party.buySp, party.spQty, party.spThresh,
+            )
+            if (generation != startGeneration) return
+            py.callAttr("start_party", pidx)
+            if (generation == startGeneration) {
                 runningPidx.add(pidx)
                 activeAccounts.forEach { userPidx[it.username] = pidx }
                 ensurePoller()
-            } catch (e: Exception) {
-                android.util.Log.e("aTSBot", "startParty loi (pidx=$pidx): ${e.message}", e)
-                activeAccounts.forEach { account ->
-                    _status.update { s ->
-                        s + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khoi dong"))
-                    }
-                }
-            } finally {
-                startingPidx.remove(pidx)
             }
+        } catch (e: Exception) {
+            android.util.Log.e("aTSBot", "startParty loi (pidx=$pidx): ${e.message}", e)
+            activeAccounts.forEach { account ->
+                _status.update { s ->
+                    s + (account.username to AccountStatus(RunState.ERROR, message = e.message ?: "loi khoi dong"))
+                }
+            }
+        } finally {
+            startingPidx.remove(pidx)
+        }
+    }
+
+    /** Khoi dong 1 PARTY (pidx = vi tri party trong danh sach app - on dinh trong phien). */
+    fun startParty(pidx: Int, party: Party, serverIp: String, serverId: Int) {
+        val generation = startGeneration
+        Thread({
+            startPartyNow(pidx, party, serverIp, serverId, generation)
         }).also {
             it.name = "aTSBot-start-party-$pidx"
+            it.isDaemon = true
+            it.start()
+        }
+    }
+
+    /** Khoi dong lan luot de setup runtime cua cac party khong ghi de nhau. */
+    fun startAll(parties: List<Party>) {
+        val generation = startGeneration
+        Thread({
+            parties.forEachIndexed { pidx, party ->
+                if (generation != startGeneration) return@Thread
+                val server = Servers.ALL[party.serverKey] ?: return@forEachIndexed
+                startPartyNow(pidx, party, server.ip, server.serverId, generation)
+            }
+        }).also {
+            it.name = "aTSBot-start-all"
             it.isDaemon = true
             it.start()
         }
@@ -254,9 +287,14 @@ class BotForegroundService : Service() {
     }
 
     fun stopAll() {
+        startGeneration += 1
         try { rpd().callAttr("stop_all") } catch (_: Exception) { }
         runningPidx.clear()
+        startingPidx.clear()
         userPidx.clear()
+        _status.update { current ->
+            current.mapValues { AccountStatus(RunState.IDLE) }
+        }
     }
 
     // --- lenh LIVE (doi kenh / teleport thanh / giftcode) - map username -> pidx ---

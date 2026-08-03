@@ -76,7 +76,10 @@ class _ScriptedClient:
         self.moves.append((x, y, flee))
         return True
 
-    def combat_ready(self):
+    def _wait_combat_clear(self, idle=1.0, cap=20.0):
+        return True
+
+    def rearm_ready(self):
         self.ready += 1
 
     def send(self, opcode, payload):
@@ -87,6 +90,26 @@ class _ScriptedClient:
 
 
 class TestNpc40Loop(unittest.TestCase):
+    def test_repeat_prompt_sends_only_one_advance_while_battle_is_loading(self):
+        client = _ScriptedClient()
+        client.send = lambda opcode, payload: client.sent.append((opcode, payload))
+        sleeps = 0
+
+        def delayed_battle_start(_seconds):
+            nonlocal sleeps
+            sleeps += 1
+            if sleeps == 5:
+                client._battle_start_seq += 1
+
+        self.assertTrue(npc40._confirm_repeat_battle(
+            client, 0, threading.Event(), delayed_battle_start,
+            poll_interval=0.1, checks=20,
+        ))
+        self.assertEqual(client.sent, [
+            (0x14, b"\x09\x00\x1e"),
+            (0x14, b"\x06\x00"),
+        ])
+
     def test_loop_repeats_after_win_then_selects_no_after_defeat(self):
         client = _ScriptedClient()
         losses = []
@@ -96,22 +119,27 @@ class TestNpc40Loop(unittest.TestCase):
                 client._npc40_prompt_seq += 1
                 client._npc40_last_defeated = client._npc40_prompt_seq >= 2
 
-        result = run_loop(
-            client,
-            (910, 290),
-            threading.Event(),
-            lambda: losses.append(True),
-            sleep_fn=scripted_sleep,
-            poll_interval=0,
-            max_advances=4,
-        )
+        with mock.patch.object(
+                npc40, "in_event_window", side_effect=[True, True, True, False]):
+            result = run_loop(
+                client,
+                (910, 290),
+                threading.Event(),
+                lambda: losses.append(True),
+                sleep_fn=scripted_sleep,
+                poll_interval=0,
+                max_advances=4,
+            )
 
         choices = [payload for opcode, payload in client.sent
                    if opcode == 0x14 and payload[:2] == b"\x09\x00"]
-        self.assertFalse(result)
+        self.assertTrue(result)
         self.assertEqual(client.moves, [(910, 290, False)])
         self.assertEqual(client.ready, 1)
-        self.assertEqual(choices, [b"\x09\x00\x1e", b"\x09\x00\x1e", b"\x09\x00\x1f"])
+        self.assertEqual(choices, [
+            b"\x09\x00\x1e", b"\x09\x00\x1e",
+            b"\x09\x00\x1e", b"\x09\x00\x1f",
+        ])
         self.assertEqual(client.sent[-3:], [
             (0x14, b"\x09\x00\x1f"),
             (0x14, b"\x06\x00"),

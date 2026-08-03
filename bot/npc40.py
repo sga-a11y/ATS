@@ -85,6 +85,16 @@ def _advance_to_battle(client, previous, stop_event, sleep_fn, poll_interval, ma
     return client._battle_start_seq > previous
 
 
+def _confirm_repeat_battle(client, previous, stop_event, sleep_fn, poll_interval, checks):
+    """Prompt sau tran chi can YES + 1 advance; cho server nap battle, tuyet doi khong spam advance."""
+    client.send(OP_DIALOG, CHOOSE_YES)
+    client.send(OP_DIALOG, ADVANCE)
+    return _wait_counter(
+        client, "_battle_start_seq", previous, stop_event,
+        sleep_fn, poll_interval, checks,
+    )
+
+
 def run_loop(client, point, stop_event, on_loss, sleep_fn=time.sleep,
              poll_interval=0.4, max_advances=30):
     """Run the leader-only 40 NPC loop. Returns only when stopped, lost, or timed out."""
@@ -162,8 +172,7 @@ def run_loop(client, point, stop_event, on_loss, sleep_fn=time.sleep,
 
         prompt_seq = client._npc40_prompt_seq
         battle_seq = client._battle_start_seq
-        client.send(OP_DIALOG, CHOOSE_YES)
-        if not _advance_to_battle(
+        if not _confirm_repeat_battle(
                 client, battle_seq, stop_event, sleep_fn, poll_interval, max_advances):
             log.warning("[%s] 40NPC: vao tran tiep theo timeout", getattr(client, "_label", "?"))
             return False
