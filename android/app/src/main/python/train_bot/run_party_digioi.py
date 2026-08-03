@@ -1098,6 +1098,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         continue
                     c._reform_town_fail = 0
                     c._reform_via_nghiep = (_target_city == 12061)
+                    # BOSS QUAN DOAN mid-session: reform nay CO THE do boss QD toi luot (train mode
+                    # khong danh trong party -> keepalive bump reform_gen ve thanh). Dang SOLO o thanh
+                    # (party da giai tan o dau reform) -> DANH LUON, TRUOC khi mark "da toi" -> barrier
+                    # ben duoi cho CA PARTY danh xong moi sync kenh + moi lai (khong bi keo vao party
+                    # giua chung boss). Gate legion_boss_available() -> reform THUONG (displaced/startup/
+                    # dungeon) KHONG chay -> tranh churn town-chore. Danh xong -> available False -> het
+                    # trigger -> PHA loop "toi bai -> ve thanh" vo han (bug that: log 10:08). Truoc day
+                    # dong bo PC theo APK da CAT phan nay -> mat boss QD mid-train + sinh loop.
+                    if not _ab() and getattr(c, "fight_legion_boss", True):
+                        try:
+                            if c.legion_boss_available():
+                                log.info("[%s] (%s) reform: boss QD toi luot -> danh solo o thanh",
+                                         label, role)
+                                c.do_legion_boss()
+                        except Exception as e:
+                            log.warning("[%s] reform: loi danh boss QD (bo qua): %s", label, e)
                     # BARRIER: CHO CA PARTY VE DEN CUNG diem gom TRUOC khi sync kenh + moi party.
                     # Bug thuc te (log 10:08): chubon con dang di bo ra khoi DG thi leader da sync kenh
                     # + moi -> chubon accept dung luc dang teleport -> server KHONG ghi nhan (roster chi
