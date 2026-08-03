@@ -3317,10 +3317,24 @@ def stop_account(username):
         # KHONG dong socket ngay neu thread tu xu ly viec thoat:
         #  - leader map-train: tu chay ve safe roi dong.
         #  - member train: cho leader ve safe (stop_leader_done) roi moi dong.
-        if getattr(c, "_return_safe_on_stop", None):
-            log.info("[%s] STOP -> cho thread chay ve safe roi dong", username)
-        elif getattr(c, "_wait_leader_on_stop", None):
-            log.info("[%s] STOP -> cho leader ve safe roi member thoat theo", username)
+        if getattr(c, "_return_safe_on_stop", None) or getattr(c, "_wait_leader_on_stop", None):
+            if getattr(c, "_return_safe_on_stop", None):
+                log.info("[%s] STOP -> cho thread chay ve safe roi dong", username)
+            else:
+                log.info("[%s] STOP -> cho leader ve safe roi member thoat theo", username)
+            # WATCHDOG: thread co the KET o blocking call (navigate ve safe khong toi, dang reform/
+            # danh boss, hoac member cho leader qua lau) -> STOP "khong an". Sau 25s chua thoat thi
+            # FORCE dong socket -> unblock recv -> thread chac chan chet (STOP luon co tac dung).
+            def _force_close_watchdog(_u=username, _c=c):
+                t = account_threads.get(_u)
+                for _ in range(25):
+                    if t is None or not t.is_alive():
+                        return
+                    time.sleep(1)
+                log.warning("[%s] STOP: thread chua thoat sau 25s -> FORCE dong socket", _u)
+                try: _c.close()
+                except Exception: pass
+            threading.Thread(target=_force_close_watchdog, daemon=True).start()
         else:
             try: c.close()
             except Exception: pass

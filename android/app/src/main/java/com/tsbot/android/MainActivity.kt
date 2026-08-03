@@ -503,6 +503,9 @@ fun TsBotApp(
                 }
                 saved
             },
+            // Party moi: mac dinh mode Train map + bai "Rung Noi Huynh" (TRAIN_MAPS key 12831).
+            initialRunMode = RunModes.TRAIN,
+            initialTrainMapKey = "12831",
         )
     }
 
