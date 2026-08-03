@@ -3312,6 +3312,11 @@ def stop_account(username):
     ev = account_stops.get(username)
     if ev is not None:
         ev.set()
+    # CHAN CUNG relogin sau STOP: supervisor break neu _st() HOAC account_reconnect False. Set
+    # False ngay (khong doi finally cua run_account) -> du acc dang giua chu ky login/daily, khi
+    # run_account tra ve la supervisor thoat, KHONG relogin. Log ro de thay Python co nhan lenh.
+    account_reconnect[username] = False
+    log.info("[%s] STOP nhan tu GUI (set stop_ev + chan relogin)", username)
     c = account_clients.get(username)
     if c is not None:
         # KHONG dong socket ngay neu thread tu xu ly viec thoat:
@@ -3347,7 +3352,9 @@ def stop_party(pidx):
 
 
 def stop_all():
-    for u in list(account_stops.keys()):
+    us = list(account_stops.keys())
+    log.info("STOP TAT CA nhan tu GUI: %d acc -> %s", len(us), us)
+    for u in us:
         stop_account(u)
 
 
