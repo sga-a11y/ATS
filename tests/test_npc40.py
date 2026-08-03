@@ -8,7 +8,7 @@ from unittest import mock
 from analyze_pcap import load_frames
 from bot import client as client_module
 from bot import npc40
-from bot.npc40 import is_repeat_prompt, party_defeated, run_loop
+from bot.npc40 import is_repeat_dialog, is_repeat_prompt, party_defeated, run_loop
 from bot.state import BattleState
 
 
@@ -33,6 +33,12 @@ class TestNpc40Protocol(unittest.TestCase):
         self.assertTrue(is_repeat_prompt(0x41, b"\x00" * 7 + b"\x0a\x00\x01"))
         self.assertFalse(is_repeat_prompt(0x41, b"\x00" * 7 + b"\x0a\x00\x00"))
         self.assertFalse(is_repeat_prompt(0x14, b"\x00" * 7 + b"\x0a\x00\x01"))
+
+    def test_repeat_dialog_requires_choice_ready_page(self):
+        self.assertTrue(is_repeat_dialog(
+            0x14, b"\x00" * 7 + b"\x01\x00\x00\x00\x00\x01\x06\x03\x05" + b"\x00" * 7 + b"\x03\x00"))
+        self.assertFalse(is_repeat_dialog(0x14, b"\x00" * 7 + b"\x08\x00\x2a"))
+        self.assertFalse(is_repeat_dialog(0x14, b"\x00" * 7 + b"\x01\x00\x03\x00\x02\x00"))
 
     def test_party_defeated_requires_known_units_and_no_survivor(self):
         unknown = {}
@@ -71,6 +77,8 @@ class _ScriptedClient:
         self._battle_start_seq = 0
         self._npc40_prompt_seq = 0
         self._npc40_last_defeated = False
+        self._npc40_last_alive = 10
+        self._npc40_last_total = 10
 
     def navigate_to(self, x, y, flee=True):
         self.moves.append((x, y, flee))
@@ -113,6 +121,7 @@ class TestNpc40Loop(unittest.TestCase):
     def test_loop_repeats_after_win_then_selects_no_after_defeat(self):
         client = _ScriptedClient()
         losses = []
+        heals = []
 
         def scripted_sleep(_seconds):
             if client._battle_start_seq > client._npc40_prompt_seq:
@@ -126,6 +135,7 @@ class TestNpc40Loop(unittest.TestCase):
                 (910, 290),
                 threading.Event(),
                 lambda: losses.append(True),
+                before_repeat=lambda: heals.append(True),
                 sleep_fn=scripted_sleep,
                 poll_interval=0,
                 max_advances=4,
@@ -146,6 +156,30 @@ class TestNpc40Loop(unittest.TestCase):
             (0x14, b"\x06\x00"),
         ])
         self.assertEqual(losses, [True])
+        self.assertEqual(heals, [])
+
+    def test_casualty_closes_dialog_before_heal_then_reopens_npc(self):
+        client = _ScriptedClient()
+        heal_at = []
+
+        def scripted_sleep(_seconds):
+            if client._battle_start_seq > client._npc40_prompt_seq:
+                client._npc40_prompt_seq += 1
+                client._npc40_last_alive = 5 if client._npc40_prompt_seq == 1 else 10
+
+        with mock.patch.object(npc40, "in_event_window", side_effect=[True, False]):
+            self.assertTrue(run_loop(
+                client, (910, 290), threading.Event(), lambda: None,
+                before_repeat=lambda: heal_at.append(len(client.sent)),
+                sleep_fn=scripted_sleep, poll_interval=0, max_advances=4,
+            ))
+
+        self.assertEqual(len(heal_at), 1)
+        before_heal = [payload for _opcode, payload in client.sent[:heal_at[0]]]
+        self.assertEqual(before_heal[-3:], [npc40.CHOOSE_NO, npc40.ADVANCE, npc40.ADVANCE])
+        after_heal = client.sent[heal_at[0]:]
+        self.assertIn((npc40.OP_EVENT, npc40.OPEN_EVENT), after_heal)
+        self.assertIn((npc40.OP_DIALOG, npc40.OPEN_NPC), after_heal)
 
     def test_npc40_config_contains_captured_party_point(self):
         events = json.loads((ROOT / "events.json").read_text(encoding="utf-8"))["events"]
@@ -172,6 +206,8 @@ class TestNpc40ClientIntegration(unittest.TestCase):
         game._npc40_started = started
         game._battle_start_seq = 0
         game._npc40_prompt_seq = 0
+        game._npc40_prompt_pending = False
+        game._npc40_prompt_pending_at = 0.0
         game._npc40_last_defeated = False
         game._battle_end_grace_until = 0.0
         game.state = SimpleNamespace(
@@ -200,10 +236,26 @@ class TestNpc40ClientIntegration(unittest.TestCase):
         game._observe_npc40_packet(0x41, b"\x00" * 7 + b"\x0a\x00\x00")
         game._observe_npc40_packet(0x41, b"\x00" * 7 + b"\x0a\x00\x01")
 
+        self.assertEqual(game._npc40_prompt_seq, 0)
+        self.assertTrue(game.state.in_battle)
+
+        game._observe_npc40_packet(
+            0x14, b"\x00" * 7 + b"\x01\x00\x00\x00\x00\x01\x06\x03\x05" + b"\x00" * 7 + b"\x03\x00")
+
         self.assertEqual(game._battle_start_seq, 1)
         self.assertEqual(game._npc40_prompt_seq, 1)
         self.assertTrue(game._npc40_last_defeated)
+        self.assertEqual((game._npc40_last_alive, game._npc40_last_total), (0, 1))
         self.assertFalse(game.state.in_battle)
+
+    def test_packet_observer_does_not_finish_on_signal_followed_by_status_page(self):
+        game = self._client(hp=1)
+
+        game._observe_npc40_packet(0x41, b"\x00" * 7 + b"\x0a\x00\x01")
+        game._observe_npc40_packet(0x14, b"\x00" * 7 + b"\x08\x00\x2a")
+
+        self.assertEqual(game._npc40_prompt_seq, 0)
+        self.assertTrue(game.state.in_battle)
 
     def test_start_worker_runs_once_and_stop_sets_event(self):
         game = self._client(hp=1, started=False)
@@ -211,18 +263,49 @@ class TestNpc40ClientIntegration(unittest.TestCase):
         game._npc40_stop = threading.Event()
         calls = []
 
-        def fake_loop(client, point, stop_event, on_loss):
-            calls.append((client, point, stop_event, on_loss))
+        before_repeat = lambda: None
+
+        def fake_loop(client, point, stop_event, on_loss, before_repeat=None):
+            calls.append((client, point, stop_event, on_loss, before_repeat))
             return False
 
         with mock.patch.object(npc40, "run_loop", side_effect=fake_loop):
-            self.assertTrue(game.start_npc40_loop((910, 290), lambda: None))
+            self.assertTrue(game.start_npc40_loop((910, 290), lambda: None, before_repeat))
             game._npc40_thread.join(2)
             self.assertFalse(game.start_npc40_loop((910, 290), lambda: None))
             game.stop_npc40_loop()
 
         self.assertEqual(len(calls), 1)
+        self.assertIs(calls[0][4], before_repeat)
         self.assertTrue(game._npc40_stop.is_set())
+
+    def test_npc40_quest_battle_does_not_use_items_inside_repeat_dialog(self):
+        game = self._client(hp=1)
+        game.state.quest_mode = True
+        game.state.boss_mode = False
+        game.state.in_battle = False
+        game._heal_after_battle_active = False
+        game.do_heal = mock.Mock()
+
+        with mock.patch.object(client_module.time, "sleep", return_value=None):
+            game._heal_after_battle()
+        self.assertFalse(hasattr(game, "_heal_after_battle_thread"))
+        game.do_heal.assert_not_called()
+
+    def test_npc40_between_battles_revives_dead_char_even_with_zero_threshold(self):
+        game = self._client(hp=1)
+        game.state.in_battle = False
+        game.state.char = SimpleNamespace(hp=0, hp_max=600)
+        game.do_heal = mock.Mock()
+        game._heal_unit = mock.Mock()
+
+        game.heal_npc40_between_battles()
+
+        game.do_heal.assert_called_once_with(force=True)
+        game._heal_unit.assert_called_once_with(
+            0, game.state.char, "char", "hp_char", "hp",
+            thr_override=0.01, force=True,
+        )
 
 
 if __name__ == "__main__":

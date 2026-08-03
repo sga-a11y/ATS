@@ -1803,10 +1803,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             st["event_battle_active"] = False
                             st["event_battle_done"].set()
                         log.warning("[%s] (LEADER) 40NPC: PARTY THUA -> chon KHONG va DUNG", label)
+                    def _before_npc40_repeat():
+                        # npc40.run_loop da chon NO + dong dialog truoc khi vao day. Luc nay moi duoc
+                        # dung item; dung item khi prompt dang mo lam server tra 080001 va kick.
+                        clients = [account_clients.get(u) for u in _active_party_usernames(pidx)]
+                        clients = [x for x in clients if x is not None and x.running]
+                        def _heal_one(cli):
+                            if cli.running and not cli.state.in_battle:
+                                cli.heal_npc40_between_battles()
+                        workers = [threading.Thread(target=_heal_one, args=(cli,), daemon=True)
+                                   for cli in clients]
+                        for worker in workers: worker.start()
+                        for worker in workers: worker.join(timeout=8)
+                        time.sleep(0.5)  # cho server xu ly item cuoi truoc khi xac nhan dialog
+                        log.info("[%s] (LEADER) 40NPC: ca party da hoi phuc -> mo tran tiep", label)
                     with st["lock"]:
                         st["event_battle_active"] = True
                     c.flee_mode = False
-                    if c.start_npc40_loop(point, _on_npc40_loss):
+                    if c.start_npc40_loop(point, _on_npc40_loss, _before_npc40_repeat):
                         log.info("[%s] (LEADER) 40NPC: du party -> den %s va bat dau lap battle", label, point)
                 elif train_on_map:
                     # CO acc bi DUMP khoi dungeon (reform_gen tang so voi truoc dungeon) -> KHONG keo ra

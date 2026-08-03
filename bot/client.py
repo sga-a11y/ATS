@@ -886,8 +886,11 @@ class GameClient:
         self._genuine_end_seen = 0.0  # thoi diem nhan goi 0x14 sub0800 tail=03/04 (ket tran THAT, moi context)
         self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
         self._battle_start_seq = 0     # tang moi S2C 0x34; 40NPC doi generation moi thay vi canh timing bool
-        self._npc40_prompt_seq = 0     # tang khi S2C 0x41 0a0001: NPC hoi co danh tiep khong
+        self._npc40_prompt_seq = 0     # tang khi co du cap 0x41 0a0001 + dialog 0x14 0100...0300
+        self._npc40_prompt_pending = False
         self._npc40_last_defeated = False
+        self._npc40_last_alive = 0
+        self._npc40_last_total = 0
         self._npc40_last_dialog = ""   # hex page dialog NPC 40 (0x14 0100...) gan nhat -> biet fresh/giua-event
         self._npc40_done = False       # run_loop bao: het gio event / thua 2 tran -> di doi thuong + thoat
         self._npc40_started = False
@@ -1080,15 +1083,28 @@ class GameClient:
             return
         if opcode == protocol.OP_BATTLE_START:
             self._battle_start_seq += 1
+            self._npc40_prompt_pending = False
         # Luu page dialog NPC (0x14 sub=0100...) gan nhat -> run_loop biet dang o page nao:
         #  - fresh page1: ...[counter]4e (chua choice) -> can advance
         #  - page2 choice fresh (...0200) / prompt giua-event (...0300) -> chon LUON, KHONG advance
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x01\x00":
             self._npc40_last_dialog = pkt[7:].hex()
-        if not npc40.is_repeat_prompt(opcode, pkt):
+
+        # 0x41 0a0001 cung xuat hien khi tran van dang chuyen trang thai. Capture nguoi that
+        # cho thay prompt "danh tiep?" chi hop le neu GOI KE TIEP la dialog choice ...0300.
+        if npc40.is_repeat_prompt(opcode, pkt):
+            self._npc40_prompt_pending = True
             return
+        if not getattr(self, "_npc40_prompt_pending", False):
+            return
+        self._npc40_prompt_pending = False
+        if not npc40.is_repeat_dialog(opcode, pkt):
+            return
+
         defeated, alive, total = npc40.party_defeated(self.state.allies)
         self._npc40_last_defeated = defeated
+        self._npc40_last_alive = alive
+        self._npc40_last_total = total
         self._npc40_prompt_seq += 1
         self.state.in_battle = False
         self._battle_end_grace_until = time.time() + 3.0
@@ -1139,14 +1155,15 @@ class GameClient:
         log.info("[%s] doi thuong 40NPC: da doi qua chien dau o NPC map 12003", self._label)
         return True
 
-    def start_npc40_loop(self, point, on_loss):
+    def start_npc40_loop(self, point, on_loss, before_repeat=None):
         if getattr(self, "_npc40_started", False):
             return False
         self._npc40_started = True
+        self._npc40_prompt_pending = False
         self._npc40_stop.clear()
         self._npc40_thread = threading.Thread(
             target=npc40.run_loop,
-            args=(self, tuple(point), self._npc40_stop, on_loss),
+            args=(self, tuple(point), self._npc40_stop, on_loss, before_repeat),
             daemon=True,
             name="npc40-%s" % (self._label or self._username),
         )
@@ -1157,6 +1174,7 @@ class GameClient:
         stop = getattr(self, "_npc40_stop", None)
         if stop is not None:
             stop.set()
+        self._npc40_prompt_pending = False
 
     def in_combat(self, idle_secs: float = 4.0) -> bool:
         """Dang trong tran. Moc CHUAN = state.in_battle (set MOI luot 0x35 + 0x34 START, HA o 0x14
@@ -3451,7 +3469,17 @@ class GameClient:
                     self.do_heal(force=True)
             finally:
                 self._heal_after_battle_active = False
-        threading.Thread(target=_run, daemon=True).start()
+        self._heal_after_battle_thread = threading.Thread(target=_run, daemon=True)
+        self._heal_after_battle_thread.start()
+
+    def heal_npc40_between_battles(self):
+        """Hoi theo setting va dam bao char HP=0 duoc kich lai truoc khi leader mo tran ke."""
+        if self.state.in_battle:
+            return
+        self.do_heal(force=True)
+        c = self.state.char
+        if c.hp_max > 0 and c.hp <= 0:
+            self._heal_unit(0, c, "char", "hp_char", "hp", thr_override=0.01, force=True)
 
     def heal_full(self):
         """Hoi FULL HP+SP char + pet (nguong=1.0) - goi TRUOC khi danh boss (solo dungeon + world

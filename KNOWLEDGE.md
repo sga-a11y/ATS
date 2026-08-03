@@ -1005,6 +1005,13 @@ Nguồn: `captures/40npc_loop_20260720.pcap` (chọn Có) và
   mới check → lỡ gửi thêm 1 advance LỌT VÀO trận vừa spawn (0x0b đã về) → server trả `0x14 08 03`
   rồi `0x00` KICK leader → cả party relogin (kẹt "không kênh đủ 5 chỗ"). FIX: sau mỗi advance
   **poll sát 0.1s**, dừng NGAY khi `_battle_start_seq` tăng (0x34), không gửi advance thừa.
+- **Chuyển trận + hồi phục (xác nhận live 2026-08-03):** prompt đánh tiếp chỉ gửi đúng
+  `0x14 09001e` + **một** `0x14 0600`, rồi chờ `0x34`; không lặp advance. Tuyệt đối **không dùng
+  item khi prompt đang mở**: dù party còn 10/10, chen `0x17` hồi HP/SP trước YES làm server trả
+  `0x14 080001` + `0x00 reason=05` và kick leader. Nếu còn thiếu unit sống (vd `alive=5/10`), flow
+  an toàn là chọn KHÔNG + 2 advance để đóng dialog, hồi party ngoài dialog, sau đó mở lại event/NPC
+  (`0x20 020008`, `0x14 01000500`) và vào tiếp bằng logic page fresh/giữa-event. Nếu đủ `alive=total`
+  thì bỏ qua hồi và YES+1 advance ngay.
 - **ROOT CAUSE leader văng lúc start battle (fix 2026-07-29, xác nhận qua gui-cuoi/nhan-cuoi):**
   `run_loop` gọi `combat_ready()` (= full `_login_setup`: `0x57`, `0x01 1000`, `0x62` nhận-thưởng-ngày,
   `0x7c`, `0x41`) NGAY trước khi mở NPC event. Gửi lại chuỗi LOGIN này đúng lúc trận spawn (`0x0b`
@@ -1172,3 +1179,4 @@ ngay khi phát hiện map đổi.
 - Fail do gate `23521 door=2 -> 23000` co center `(430,2500)` nam tren o sea trong `Ground.mmg`,
   router tu coi la leg thuyen va validate `boat=True`; trong khi path di bo `(430,50) -> (430,2500)`
   hop le. Them force-walk sea gate `(23521,23000,2)` trong build va execute.
+- 40NPC: khong duoc coi rieng S2C `0x41 0a0001` la het tran. Log live 21:45 cho thay no co the di lien voi `0x14 08002a` khi battle chua san sang; bam dialog luc nay bi kick. Prompt "danh tiep?" chi hop le khi goi KE TIEP la `0x14 0100...0300` (dung thu tu trong ca hai capture nguoi that).

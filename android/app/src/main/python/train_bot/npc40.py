@@ -43,6 +43,15 @@ def is_repeat_prompt(opcode, packet):
     return opcode == 0x41 and len(packet) >= 10 and packet[7:10] == b"\x0a\x00\x01"
 
 
+def is_repeat_dialog(opcode, packet):
+    return (
+        opcode == OP_DIALOG
+        and len(packet) >= 11
+        and packet[7:9] == b"\x01\x00"
+        and packet.endswith(b"\x03\x00")
+    )
+
+
 def party_defeated(units):
     known = [u for u in units.values() if getattr(u, "hp_max", 0) > 0]
     alive = sum(1 for u in known if getattr(u, "hp", 0) > 0)
@@ -95,7 +104,24 @@ def _confirm_repeat_battle(client, previous, stop_event, sleep_fn, poll_interval
     )
 
 
-def run_loop(client, point, stop_event, on_loss, sleep_fn=time.sleep,
+def _open_event_battle(client, previous, stop_event, sleep_fn, poll_interval, max_advances):
+    """Mo NPC va vao battle tu trang thai ngoai dialog (fresh hoac dang giua event)."""
+    client._npc40_last_dialog = ""
+    client.send(OP_EVENT, OPEN_EVENT)
+    sleep_fn(0.6)
+    client.send(OP_DIALOG, OPEN_NPC)
+    sleep_fn(0.8)
+    dialog = getattr(client, "_npc40_last_dialog", "") or ""
+    if not (dialog.endswith("0200") or dialog.endswith("0300")):
+        client.send(OP_DIALOG, ADVANCE)
+        sleep_fn(0.8)
+    client.send(OP_DIALOG, CHOOSE_YES)
+    return _advance_to_battle(
+        client, previous, stop_event, sleep_fn, poll_interval, max_advances,
+    )
+
+
+def run_loop(client, point, stop_event, on_loss, before_repeat=None, sleep_fn=time.sleep,
              poll_interval=0.4, max_advances=30):
     """Run the leader-only 40 NPC loop. Returns only when stopped, lost, or timed out."""
     if not client.navigate_to(int(point[0]), int(point[1]), flee=False):
@@ -126,17 +152,7 @@ def run_loop(client, point, stop_event, on_loss, sleep_fn=time.sleep,
     #  - GIUA-EVENT: OPEN_NPC -> prompt "danh tiep?" (...0300) = DA la choice -> chon LUON, advance
     #    THUA se lech state -> server 0x14 08 01 -> 0x00 KICK (xac nhan capture: bot gui advance thua
     #    luc page 0300 -> rot 2026-07-29). Phan biet: page choice-ready ket thuc bang '0200'/'0300'.
-    client._npc40_last_dialog = ""
-    client.send(OP_EVENT, OPEN_EVENT)
-    sleep_fn(0.6)
-    client.send(OP_DIALOG, OPEN_NPC)
-    sleep_fn(0.8)
-    _dlg = getattr(client, "_npc40_last_dialog", "") or ""
-    if not (_dlg.endswith("0200") or _dlg.endswith("0300")):
-        client.send(OP_DIALOG, ADVANCE)   # page1 chua choice -> advance ra page2-choice
-        sleep_fn(0.8)
-    client.send(OP_DIALOG, CHOOSE_YES)
-    if not _advance_to_battle(
+    if not _open_event_battle(
             client, battle_seq, stop_event, sleep_fn, poll_interval, max_advances):
         log.warning("[%s] 40NPC: mo tran dau timeout", getattr(client, "_label", "?"))
         return False
@@ -172,8 +188,26 @@ def run_loop(client, point, stop_event, on_loss, sleep_fn=time.sleep,
 
         prompt_seq = client._npc40_prompt_seq
         battle_seq = client._battle_start_seq
-        if not _confirm_repeat_battle(
-                client, battle_seq, stop_event, sleep_fn, poll_interval, max_advances):
+        alive = getattr(client, "_npc40_last_alive", 0)
+        total = getattr(client, "_npc40_last_total", 0)
+        casualties = total > 0 and alive < total
+        if casualties:
+            log.info("[%s] 40NPC: con %d/%d -> dong dialog, hoi party roi mo lai NPC",
+                     lbl, alive, total)
+            _end_npc_dialog(client, sleep_fn)
+            if before_repeat is not None:
+                try:
+                    before_repeat()
+                except Exception as exc:
+                    log.warning("[%s] 40NPC: loi cho party hoi phuc: %s", lbl, exc)
+            ok = _open_event_battle(
+                client, battle_seq, stop_event, sleep_fn, poll_interval, max_advances,
+            )
+        else:
+            ok = _confirm_repeat_battle(
+                client, battle_seq, stop_event, sleep_fn, poll_interval, max_advances,
+            )
+        if not ok:
             log.warning("[%s] 40NPC: vao tran tiep theo timeout", getattr(client, "_label", "?"))
             return False
     return False
