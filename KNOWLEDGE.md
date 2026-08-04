@@ -188,6 +188,17 @@ Pattern entries: `03 02 [type] [4-byte LE]`
 
 **Mob:** offset 31 = HP_max (4B LE), offset 35 = SP_max (4B LE)
 
+### S2C 0x0f sub0800 — Pet list luc login
+- Record pet co marker/slot, `pet_id`, exp, level, ten va mot cum stat header runtime. Quet capture
+  login thay cac so dang HP/SP/thuoc-tinh, nhung **chua gan nhan chac va chua thay current HP/SP pet
+  dang tin cay** trong pet-list.
+- Vi vay dung pet-list de biet pet nao/slot nao/skill nao; dung `0x0b`/`0x33` luc vao tran de nap HP/SP live.
+
+### S2C 0x08 sub0200 — current HP/SP sau khi dung item len pet
+- Xac nhan `captures/pet_heal_20260715.pcap`: sau C2S `0x17` dung item vao pet target N,
+  server tra `0x08 020004[N]00[19/1a]01[cur u32]000000` (0x19=HP cur, 0x1a=SP cur).
+- Goi nay co current HP/SP cua pet theo target, nhung chi thay sau thao tac dung item, khong phai login full stat.
+
 **QUAN TRONG — gói 0x0b party (>100B, lúc spawn/start battle) = full-stat TẤT CẢ thành viên:**
 - Mỗi block: `[b1][slot][HP_max 4B][SP_max 4B][HP_cur 4B][SP_cur 4B]` (b1=3 char, 2 pet; slot=vị trí battle 0-4).
 - **Đây là NGUỒN DUY NHẤT có `SP_max` của đồng đội (cả pet, kể cả nick người chơi tay).**

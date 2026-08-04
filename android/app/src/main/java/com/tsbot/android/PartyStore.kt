@@ -44,6 +44,7 @@ class PartyStore(private val context: Context) {
                 noLeader = o.optBoolean("no_leader", false),
                 leaderWhitelist = stringList(o, "leaders"),
                 doDaily = o.optBoolean("do_daily", true),
+                claimOfflineExp = o.optBoolean("claim_offline_exp", true),
                 trainMapKey = o.optString("train_map_key", ""),
                 trainMobIndex = o.optInt("train_mob_index", -1),
                 usePhucThan = o.optBoolean("use_phuc_than", false),
@@ -78,6 +79,7 @@ class PartyStore(private val context: Context) {
             o.put("no_leader", p.noLeader)
             o.put("leaders", JSONArray().apply { p.leaderWhitelist.forEach { put(it) } })
             o.put("do_daily", p.doDaily)
+            o.put("claim_offline_exp", p.claimOfflineExp)
             o.put("train_map_key", p.trainMapKey)
             o.put("train_mob_index", p.trainMobIndex)
             o.put("use_phuc_than", p.usePhucThan)

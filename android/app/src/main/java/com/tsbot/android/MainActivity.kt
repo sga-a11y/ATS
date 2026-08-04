@@ -550,6 +550,7 @@ fun TsBotApp(
             initialNoLeader = partyBeingEdited.noLeader,
             initialLeaderWhitelist = partyBeingEdited.leaderWhitelist,
             initialDoDaily = partyBeingEdited.doDaily,
+            initialClaimOfflineExp = partyBeingEdited.claimOfflineExp,
             initialTrainMapKey = partyBeingEdited.trainMapKey,
             initialTrainMobIndex = partyBeingEdited.trainMobIndex,
             initialUsePhucThan = partyBeingEdited.usePhucThan,
@@ -1188,6 +1189,7 @@ fun AddPartyDialog(
     initialNoLeader: Boolean = false,
     initialLeaderWhitelist: List<String> = emptyList(),
     initialDoDaily: Boolean = true,
+    initialClaimOfflineExp: Boolean = true,
     initialTrainMapKey: String = "",
     initialTrainMobIndex: Int = -1,
     initialUsePhucThan: Boolean = false,
@@ -1220,6 +1222,7 @@ fun AddPartyDialog(
     var noLeader by remember { mutableStateOf(initialNoLeader) }
     var leaderWhitelistText by remember { mutableStateOf(initialLeaderWhitelist.joinToString("\n")) }
     var doDaily by remember { mutableStateOf(initialDoDaily) }
+    var claimOfflineExp by remember { mutableStateOf(initialClaimOfflineExp) }
     val initialTrainMapOptions = remember { trainMapOptions() }
     var trainMapKey by remember { mutableStateOf(initialTrainMapKey.ifEmpty { initialTrainMapOptions.firstOrNull()?.first ?: "" }) }
     var trainMapText by remember {
@@ -1267,6 +1270,7 @@ fun AddPartyDialog(
         noLeader = noLeader,
         leaderWhitelist = parseLeaderWhitelist(leaderWhitelistText),
         doDaily = doDaily,
+        claimOfflineExp = claimOfflineExp,
         trainMapKey = trainMapKey,
         trainMobIndex = trainMobIndex,
         usePhucThan = usePhucThan,
@@ -1429,6 +1433,10 @@ fun AddPartyDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = doDaily, onCheckedChange = { doDaily = it })
                             Text("Làm nhiệm vụ hàng ngày")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = claimOfflineExp, onCheckedChange = { claimOfflineExp = it })
+                            Text("Nhận exp offline")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = usePhucThan, onCheckedChange = { usePhucThan = it })
@@ -1742,6 +1750,7 @@ fun AddPartyDialog(
                             noLeader = noLeader,
                             leaderWhitelist = parseLeaderWhitelist(leaderWhitelistText),
                             doDaily = doDaily,
+                            claimOfflineExp = claimOfflineExp,
                             trainMapKey = trainMapKey,
                             trainMobIndex = trainMobIndex,
                             usePhucThan = usePhucThan,

@@ -758,7 +758,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         c.fight_legion_boss = pcfg.get("fight_legion_boss", True)
         c.di_gioi_level = int(pcfg.get("di_gioi_level", 2))   # idx 1..15 cap quai DG (mac dinh 2=cap25)
         if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
-            c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
+            if pcfg.get("claim_offline_exp", True):
+                c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
             c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
             c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
             c.claim_14day_gift()    # qua 14 ngay user moi (0x57)
@@ -3221,7 +3222,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=1000000,
                         di_gioi_level=2, auto_sell_noi_dat=True,
                         buy_hp=False, hp_qty=9999, hp_thresh=500000,
-                        buy_sp=False, sp_qty=9999, sp_thresh=500000):
+                        buy_sp=False, sp_qty=9999, sp_thresh=500000,
+                        claim_offline_exp=True):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -3235,6 +3237,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "mode": mode, "start_city_id": int(start_city_id), "mob_index": int(mob_index),
         "city_flag": int(city_flag), "server": "", "server_ip": server_ip,
         "server_id": int(server_id), "do_daily": bool(do_daily),
+        "claim_offline_exp": bool(claim_offline_exp),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
         "use_phuc_than": bool(use_phuc_than), "use_digioi_ho_phu": bool(use_digioi_ho_phu),
         "fight_legion_boss": bool(fight_legion_boss),

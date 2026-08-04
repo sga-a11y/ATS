@@ -463,6 +463,7 @@ if _aj is not None:
                 "server_ip": _server_ip(_srv) or GAME_HOST,
                 "server_id": _server_id(_srv),
                 "do_daily": bool(_party.get("do_daily", _party.get("do_dungeon", True))),
+                "claim_offline_exp": bool(_party.get("claim_offline_exp", True)),
                 "digioi_mode": _party.get("digioi_mode", "party"),   # Di Gioi: "party" | "solo"
                 "event_key": _party.get("event_key", ""),   # mode 'event': key trong events.json (npc_40, nhi_kieu...)
                 "use_phuc_than": bool(_party.get("use_phuc_than", False)),

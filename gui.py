@@ -97,7 +97,8 @@ def _load_donate_qr_image():
 # Mac dinh mode TRAIN map Rung Noi Huynh (12831) - nhieu user tao acc xong KHONG chon che do,
 # de "stand" (dung yen) thi bot khong lam gi -> tuong bot loi. Train Noi Huynh chay duoc ngay.
 _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831, "mob_index": -1,
-                  "city_flag": 0, "do_daily": True, "auto_sell_noi_dat": True, "leaders": [],
+                  "city_flag": 0, "do_daily": True, "claim_offline_exp": True,
+                  "auto_sell_noi_dat": True, "leaders": [],
                   "accounts": [{"u": "acc1", "p": "pass1", "on": True},
                                {"u": "acc2", "p": "pass2", "on": True},
                                {"u": "acc3", "p": "pass3", "on": True}]}
@@ -1402,6 +1403,7 @@ class PartyConfigFrame(ttk.Frame):
         # Server) thay vi 1 checkbox rieng ngay day - tranh bang cau hinh party bi day dai/roi
         # khi sau nay them setting moi. Bien van giu o day de _save()/_gather doc binh thuong.
         self.daily_var = tk.BooleanVar(value=self._preset.get("do_daily", self._preset.get("do_dungeon", True)))
+        self.claim_offline_exp_var = tk.BooleanVar(value=bool(self._preset.get("claim_offline_exp", True)))
         # Su dung Phuc Than: mac dinh KHONG tick (user tu bat khi can) - logic dung item nay
         # se lam sau, hien tai chi luu setting.
         self.use_phuc_than_var = tk.BooleanVar(value=bool(self._preset.get("use_phuc_than", False)))
@@ -2012,6 +2014,8 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Checkbutton(frm, text="Làm nhiệm vụ hàng ngày (bingo 9 ô: phó bản đơn, boss thế giới, "
                         "gacha, hợp đồ... + nhận thưởng)",
                         variable=self.daily_var).pack(anchor="w")
+        ttk.Checkbutton(frm, text="Nhận exp offline",
+                        variable=self.claim_offline_exp_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Sử dụng Phúc Thần",
                         variable=self.use_phuc_than_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Dùng Dị giới hộ phù",
@@ -2052,6 +2056,7 @@ class PartyConfigFrame(ttk.Frame):
     def _advanced_settings_data(self):
         return {
             "do_daily": bool(self.daily_var.get()),
+            "claim_offline_exp": bool(self.claim_offline_exp_var.get()),
             "use_phuc_than": bool(self.use_phuc_than_var.get()),
             "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
             "fight_legion_boss": bool(self.fight_boss_var.get()),
@@ -2072,6 +2077,7 @@ class PartyConfigFrame(ttk.Frame):
 
     def apply_advanced_settings(self, data):
         self.daily_var.set(bool(data.get("do_daily", True)))
+        self.claim_offline_exp_var.set(bool(data.get("claim_offline_exp", True)))
         self.use_phuc_than_var.set(bool(data.get("use_phuc_than", False)))
         self.use_digioi_ho_phu_var.set(bool(data.get("use_digioi_ho_phu", False)))
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
@@ -2270,6 +2276,7 @@ class PartyConfigFrame(ttk.Frame):
         leaders = [x.strip() for x in self.leaders_var.get().split(",") if x.strip()]
         data = {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
                 "city_flag": city_flag, "do_daily": bool(self.daily_var.get()),
+                "claim_offline_exp": bool(self.claim_offline_exp_var.get()),
                 "use_phuc_than": bool(self.use_phuc_than_var.get()),
                 "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
                 "fight_legion_boss": bool(self.fight_boss_var.get()),

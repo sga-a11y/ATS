@@ -195,6 +195,7 @@ class BotForegroundService : Service() {
                 party.diGioiLevel, party.autoSellNoiDat,
                 party.buyHp, party.hpQty, party.hpThresh,
                 party.buySp, party.spQty, party.spThresh,
+                party.claimOfflineExp,
             )
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)

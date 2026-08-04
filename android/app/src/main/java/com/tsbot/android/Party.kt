@@ -20,6 +20,8 @@ data class Party(
     // thuong). Mirror PC's do_daily (gui.py). CHUA duoc noi vao logic chay nao (UI-only, se lam
     // sau) - gia tri mac dinh True khop PC's default.
     val doDaily: Boolean = true,
+    // Nhan exp offline luc login. Mac dinh CO tick de giu hanh vi cu.
+    val claimOfflineExp: Boolean = true,
     // Chi dung khi runMode == RunModes.TRAIN: key trong config.TRAIN_MAPS (vd "12831").
     val trainMapKey: String = "",
     // Chi dung khi runMode == RunModes.TRAIN: index trong tm["mobs"] cua map do, -1 = "Bot tu chon"
@@ -60,6 +62,7 @@ data class Party(
 
 fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     doDaily = source.doDaily,
+    claimOfflineExp = source.claimOfflineExp,
     usePhucThan = source.usePhucThan,
     useDigioiHoPhu = source.useDigioiHoPhu,
     fightLegionBoss = source.fightLegionBoss,
