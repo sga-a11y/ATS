@@ -194,8 +194,12 @@ def check_update(current_version: str):
             errors.append("%s: %s" % (name, e))
             continue
         legacy = "bundle_version" not in d and "pc_app_version" not in d
-        app_required = bool(d.get("pc_app_required", legacy))
         ver = str(d.get("pc_app_version") or d.get("version") or "").strip()
+        required_ver = str(d.get("pc_app_required_version") or "").strip()
+        if required_ver:
+            app_required = _is_newer_version(required_ver, current_version)
+        else:
+            app_required = bool(d.get("pc_app_required", legacy))
         if app_required and _is_newer_version(ver, current_version):
             cand = (ver, _download_urls_from_version(d), str(d.get("notes", "")))
             if best is None or ver > best[0]:

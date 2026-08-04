@@ -49,8 +49,13 @@ object ApkUpdater {
                 val json = fetchJson(source)
                 sawSource = true
                 val legacy = !json.has("bundle_version") && !json.has("apk_version")
-                val apkRequired = json.optBoolean("apk_required", legacy)
                 val version = json.optString("apk_version", json.optString("version")).trim()
+                val requiredVersion = json.optString("apk_required_version").trim()
+                val apkRequired = if (requiredVersion.isNotBlank()) {
+                    isNewerVersion(requiredVersion, currentVersion)
+                } else {
+                    json.optBoolean("apk_required", legacy)
+                }
                 if (apkRequired && isNewerVersion(version, currentVersion)) {
                     val info = ApkUpdateInfo(
                         version = version,

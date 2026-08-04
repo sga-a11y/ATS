@@ -144,26 +144,54 @@ def _read_app_required_state():
         return {}
 
 
-def _write_app_required_state(hashes):
+def _write_app_required_state(state):
     with open(os.path.join(ROOT, APP_REQUIRED_STATE_NAME), "w", encoding="utf-8") as f:
-        json.dump(hashes, f, ensure_ascii=False, indent=2)
+        json.dump(state, f, ensure_ascii=False, indent=2)
 
 
-def app_required_flags_from_args():
-    """Tra ve (pc_app_required, apk_required) cho version.json."""
-    if "--bundle-only" in sys.argv or "--no-app-required" in sys.argv:
-        return False, False
-    if "--app-required" in sys.argv:
-        return True, True
+def _last_release_version():
+    try:
+        with open(os.path.join(DIST, "version.json"), encoding="utf-8") as f:
+            return str(json.load(f).get("version") or "").strip()
+    except Exception:
+        return ""
 
+
+def app_required_metadata(ver):
+    """Tra metadata bat cai lai app.
+
+    *_required_version la moc app-shell toi thieu. Neu latest la 8, nhung app-shell gan nhat
+    phai cai la 5, user dang o 2/3/4 van bi bat cai lai du release 8 chi doi bundle.
+    """
     hashes = _app_shell_hashes()
     prev = _read_app_required_state()
-    if not prev:
-        return True, True
-    return (
-        hashes.get("pc_shell") != prev.get("pc_shell"),
-        hashes.get("apk_shell") != prev.get("apk_shell"),
-    )
+    last_ver = str(prev.get("last_version") or _last_release_version() or "0").strip()
+    pc_required_ver = str(prev.get("pc_app_required_version") or ("0" if prev else last_ver)).strip()
+    apk_required_ver = str(prev.get("apk_required_version") or ("0" if prev else last_ver)).strip()
+
+    force_bundle = "--bundle-only" in sys.argv or "--no-app-required" in sys.argv
+    force_app = "--app-required" in sys.argv
+    pc_changed = (not prev) or hashes.get("pc_shell") != prev.get("pc_shell")
+    apk_changed = (not prev) or hashes.get("apk_shell") != prev.get("apk_shell")
+
+    if force_app or (pc_changed and not force_bundle):
+        pc_required_ver = ver
+    if force_app or (apk_changed and not force_bundle):
+        apk_required_ver = ver
+
+    def _legacy_required(required_ver):
+        return bool(required_ver and required_ver != "0")
+
+    return {
+        **hashes,
+        "last_version": ver,
+        "pc_app_required_version": pc_required_ver,
+        "apk_required_version": apk_required_ver,
+        # Boolean cu khong biet "required_version", nen giu True sau khi co moc bat buoc.
+        # Updater moi uu tien *_required_version nen se khong bi hoi cai lai thua.
+        "pc_app_required": _legacy_required(pc_required_ver),
+        "apk_required": _legacy_required(apk_required_ver),
+    }
 
 
 def stage(ver=None):
@@ -273,7 +301,7 @@ def copy_data():
     # version.json cho AUTO-UPDATE: upload FILE NAY + aTSBot.exe len GitHub release 'atsbot-release'.
     # App (bot/updater.py) tai file nay tu URL 'latest' co dinh -> so version -> hoi cap nhat.
     # Sua "notes" thanh mo ta thay doi truoc khi up (user se thay trong popup cap nhat).
-    pc_required, apk_required = app_required_flags_from_args()
+    app_meta = app_required_metadata(ver)
     vj = {
         "version": ver,
         # CA FOLDER (exe + JSON config) -> them server/map/route moi (nam trong JSON) den duoc user cu.
@@ -282,11 +310,13 @@ def copy_data():
         "bundle_url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot-bundle.zip",
         "pc_app_version": ver,
         "pc_app_url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip",
-        "pc_app_required": pc_required,
+        "pc_app_required_version": app_meta["pc_app_required_version"],
+        "pc_app_required": app_meta["pc_app_required"],
         # APK dung chung version voi EXE, nhung tai asset rieng roi mo Android installer.
         "apk_version": ver,
         "apk_url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.apk",
-        "apk_required": apk_required,
+        "apk_required_version": app_meta["apk_required_version"],
+        "apk_required": app_meta["apk_required"],
         "notes": "Bản cập nhật mới.",
     }
     with open(os.path.join(DIST, "version.json"), "w", encoding="utf-8") as f:
@@ -501,5 +531,15 @@ if __name__ == "__main__":
     else:
         print("\n=== Upload release len %s ===" % RELEASE_REPO)
         upload_release()
-    _write_app_required_state(_app_shell_hashes())
+    try:
+        _vj = json.load(open(os.path.join(DIST, "version.json"), encoding="utf-8"))
+        _state = {
+            **_app_shell_hashes(),
+            "last_version": _vj.get("version", ver),
+            "pc_app_required_version": _vj.get("pc_app_required_version", ""),
+            "apk_required_version": _vj.get("apk_required_version", ""),
+        }
+        _write_app_required_state(_state)
+    except Exception as e:
+        print("!! Khong luu duoc app-required state: %s" % e)
     print("\n=== XONG. Gui ca thu muc: %s ===" % DIST)

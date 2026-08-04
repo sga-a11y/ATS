@@ -27,6 +27,8 @@ class TestReleaseArchives(unittest.TestCase):
         self.assertIn("BUNDLE_RELEASE_NAME", source)
         self.assertIn('"apk_url"', source)
         self.assertIn('"bundle_url"', source)
+        self.assertIn('"pc_app_required_version"', source)
+        self.assertIn('"apk_required_version"', source)
         self.assertIn("make_bundle(ver)", source)
         self.assertIn("build_android_apk(ver)", source)
         self.assertIn("os.path.join(ROOT, APK_RELEASE_NAME)", source)
