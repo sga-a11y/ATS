@@ -324,6 +324,16 @@ def _active_party_usernames(pidx):
     return active
 
 
+def _dt_party_usernames(pidx):
+    users = []
+    for u, _p, _l, _pk in party_accounts(pidx):
+        ev = account_stops.get(u)
+        if ev is not None and ev.is_set():
+            continue
+        users.append(u)
+    return users
+
+
 def _reset_login_ip_guard():
     with _login_guard_lock:
         _login_error1_hits.clear()
@@ -586,6 +596,10 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
                 st["mob_path"] = None
                 st["route_plan"] = None
                 st["map_results"] = {}
+                st["o5_done_by"].clear()
+                st["o5_state"] = "idle"
+                st["o5_broke"] = False
+                st["o5_need_redo"] = False
                 st["ready_members"].clear()
                 st["started_train"] = 0
                 st["dungeon_done"] = 0
@@ -599,14 +613,15 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
     while True:
         if stopped_fn():
             return False
-        users = set(_running_party_usernames(pidx))
+        users = set(_dt_party_usernames(pidx))
         switch_to_train = False
         n_users = 0
         with st["lock"]:
             done = set(st["dt_done"])
             if st.get("dt_phase") == "train":
                 switch_to_train = True  # acc khac da chuyen pha roi -> di train luon
-            # CHI tinh acc DANG CHAY (acc da tat/rot han khong lam ca party ket)
+            # DG+Train giu nguyen nguyen tac DU PARTY: chi khi tat ca acc trong party da bao
+            # xong DG moi chuyen pha train. Acc dang bi STOP thi bo qua de Stop khong treo.
             elif users and users <= done:
                 st["dt_phase"] = "train"
                 switch_to_train = True
@@ -872,6 +887,53 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 log.info("[%s] Da dung Ho Phu, chua thay 0x55/0x1b doi (used=%d, con %d phut)",
                          label, before, after_remain)
             return True
+
+        def _finish_digioi_train_after_dg():
+            _go_town_safe(c, label)
+            if not _dt_wait_all_digioi_done(pidx, username, label, _stopped):
+                return False
+            # Daily/team dungeon can require the whole party. Run it only after every account
+            # has finished DG, otherwise an early member can wait for leader while leader is
+            # still trying to form the DG party.
+            if do_daily:
+                try:
+                    c.do_daily_dungeon()
+                except Exception as e:
+                    log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
+                try:
+                    c.claim_daily_quests(heavy=True)
+                except Exception as e:
+                    log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
+            _dt["relogin_train"] = True   # supervisor chay lai -> pha TRAIN
+            return True
+
+        def _finish_digioi_train_if_time_over(reason: str) -> bool:
+            if not (dt_mode and is_digioi):
+                return False
+            remain = max(0, DIGIOI_LIMIT - getattr(c, "digioi_minutes", 0))
+            out_of_dg = (c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID
+                         and not c.in_combat())
+            if remain <= 0 or (out_of_dg and remain < 2):
+                log.warning("[%s] (%s) DG da het trong luc %s (map=%s, con %d phut) -> "
+                            "chuyen sang cho ca party xong DG",
+                            label, role, reason, c.current_map, remain)
+                _reason("het gio Di Gioi trong luc %s" % reason)
+                _finish_digioi_train_after_dg()
+                try:
+                    c.close()
+                except Exception:
+                    pass
+                if c in _clients:
+                    _clients.remove(c)
+                return True
+            if out_of_dg:
+                log.warning("[%s] (%s) dang cho party DG nhung bi ra ngoai DG (map=%s, con %d phut) "
+                            "-> vao lai DG", label, role, c.current_map, remain)
+                try:
+                    c.enter_di_gioi_safe()
+                except Exception as e:
+                    log.warning("[%s] loi vao lai DG luc cho party: %s", label, e)
+            return False
 
         def _set_train_block_stats_spot(spot, enabled=False):
             if not train_on_map:
@@ -1632,6 +1694,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 log.info("[%s] (%s) DG da HET GIO hom nay (%d/%d phut, doc tu login) -> khong vao",
                          label, role, c.digioi_minutes, DIGIOI_LIMIT)
                 _reason("het gio Di Gioi hom nay (doc tu login)")
+                if dt_mode:
+                    _finish_digioi_train_after_dg()
+                    try: c.close()
+                    except Exception: pass
+                    if c in _clients: _clients.remove(c)
+                    return
                 # HET GIO DG -> BAY VE THANH (Trac Quan) TRUOC: login co the o map quai (12831...) ->
                 # ket tran lien tuc -> teleport boss/dungeon luc dang danh bi server KICK. Ve thanh
                 # an toan roi moi lam dailies.
@@ -1645,9 +1713,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     try: c.claim_daily_quests(heavy=True)
                     except Exception as e:
                         log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
-                # MODE DG+Train: KHONG dong acc - dung yen cho CA PARTY xong DG roi chuyen pha train.
-                if dt_mode and _dt_wait_all_digioi_done(pidx, username, label, _stopped):
-                    _dt["relogin_train"] = True   # supervisor chay lai -> pha TRAIN
                 # NGUYEN TAC TOI THUONG: DU FULL PARTY MOI LAM -> KHONG tru n_members (het gio DG cung
                 # ko tru; leader dung cho, ca party dung yen neu thieu - theo yeu cau).
                 try: c.close()
@@ -1657,14 +1722,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # 1) PHAI VAO DUOC DG TRUOC (xac nhan in_di_gioi) roi MOI chuyen kenh.
             if not c.in_di_gioi() and not c.enter_di_gioi_safe():
                 log.warning("[%s] (%s) khong vao duoc DG (het gio?) -> TAT acc nay", label, role)
+                if dt_mode:
+                    _finish_digioi_train_after_dg()
+                    try: c.close()
+                    except Exception: pass
+                    if c in _clients: _clients.remove(c)
+                    return
                 _go_town_safe(c, label)   # ve thanh truoc (thoat o quai) roi lam dailies
                 if do_daily:
                     try: c.claim_daily_quests(heavy=True)   # khong vao DG -> lam full quest roi dong
                     except Exception as e:
                         log.warning("[%s] loi claim daily quest (bo qua): %s", label, e)
-                # MODE DG+Train: KHONG dong acc - dung yen cho CA PARTY xong DG roi chuyen pha train.
-                if dt_mode and _dt_wait_all_digioi_done(pidx, username, label, _stopped):
-                    _dt["relogin_train"] = True   # supervisor chay lai -> pha TRAIN
                 # NGUYEN TAC TOI THUONG: DU FULL PARTY MOI LAM -> KHONG tru n_members.
                 try: c.close()
                 except Exception: pass
@@ -1796,13 +1864,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 log.info("[%s] (LEADER) toi train map theo party (da partied) -> bo qua moi lai", label)
             else:
                 # PHAI DU PARTY MOI LAM (yeu cau user): leader CHO TAT CA member san sang (da vao DG /
-                # ve diem tap ket) roi moi + train. Member khong tham gia duoc (het gio DG / thoat / sai
-                # map) da TU TRU n_members -> muc tieu "du" luon dat duoc, KHONG cho bong ma. KHONG bo
-                # cuoc sau 180s nhu truoc (do la nguyen nhan train thieu party khi co dua login cham).
+                # ve diem tap ket) roi moi + train. KHONG tru n_members. Rieng DG+Train: neu leader
+                # het gio DG ngay trong luc cho/moi party thi thoat vong cho, danh dau xong DG va cho
+                # ca party cung xong DG roi moi sang phase train.
                 _t0 = time.time()
                 while len(st["ready_members"]) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
                     if not c.running: c.close(); return
+                    if _finish_digioi_train_if_time_over("cho member san sang"):
+                        return
                     if time.time() - _t0 > 30:
                         log.info("[%s] (LEADER) CHO du member san sang (%d/%d)...",
                                  label, len(st["ready_members"]), st["n_members"])
@@ -1816,6 +1886,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 while joined_member_count(pidx) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
                     if not c.running: c.close(); return
+                    if _finish_digioi_train_if_time_over("moi member vao party DG"):
+                        return
                     _joined_now = joined_member_count(pidx)
                     _invite_elapsed = time.time() - _resync_t0
                     if _should_resync_incomplete_digioi_party(
@@ -2807,8 +2879,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # khoi DG -> con o trong DG thi ngoi i, khong bao gio danh dungeon.
                     if remain <= 0:
                         log.warning("[%s] (%s) HET GIO DG (van trong DG) -> thoat + solo daily dungeon%s",
-                                    label, role, "" if do_daily else " (tat dungeon)")
-                        if do_daily:
+                                    label, role, "" if (do_daily and not dt_mode) else " (doi DG+Train/tat dungeon)")
+                        if do_daily and not dt_mode:
                             try: c.do_daily_dungeon()
                             except Exception as e:
                                 log.warning("[%s] loi daily dungeon sau DG: %s", label, e)
@@ -2829,8 +2901,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             out_cnt = 0
                         else:
                             log.warning("[%s] (%s) HET GIO DG that -> thoat party%s",
-                                        label, role, " + solo daily dungeon" if do_daily else "")
-                            if do_daily:
+                                        label, role, " + solo daily dungeon" if (do_daily and not dt_mode) else "")
+                            if do_daily and not dt_mode:
                                 c.do_daily_dungeon()
                                 # XONG DG -> nhiem vu NANG (boss o2 + claim not hang/cot + tong ket).
                                 # o1 dungeon vua danh o tren; o5 team dungeon chua co.
@@ -2843,9 +2915,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     out_cnt = 0
         # MODE DG+Train: xong DG -> ve thanh DUNG YEN cho CA PARTY xong roi relogin sang pha train.
         if dt_dg_finished:
-            _go_town_safe(c, label)
-            if _dt_wait_all_digioi_done(pidx, username, label, _stopped):
-                _dt["relogin_train"] = True   # supervisor chay lai -> pha TRAIN
+            _finish_digioi_train_after_dg()
         try: c.close()
         except Exception: pass
         if c in _clients: _clients.remove(c)
