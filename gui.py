@@ -15,7 +15,21 @@ from tkinter import ttk, messagebox, simpledialog
 
 _LABEL_RE = re.compile(r"^\d\d:\d\d:\d\d \[([^\]]+)\]")
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+def _bootstrap_bundle_path():
+    cand = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+    if cand and "python" not in os.path.basename(cand).lower() and os.path.isfile(cand):
+        base = os.path.dirname(cand)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    bundle_pc = os.path.join(base, "bot_bundle", "current", "pc")
+    if (os.path.isfile(os.path.join(bundle_pc, "run_party_digioi.py"))
+            and os.path.isfile(os.path.join(bundle_pc, "bot", "config.py"))):
+        sys.path.insert(0, bundle_pc)
+
+
+_bootstrap_bundle_path()
+_gui_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(1 if sys.path and os.path.basename(sys.path[0]) == "pc" else 0, _gui_dir)
 import run_party_digioi as ctrl          # module dieu khien (da refactor)
 from bot import config
 from bot._appdir import app_dir as _app_dir   # thu muc goc (dev=project, frozen=canh .exe)
@@ -410,6 +424,13 @@ class BotGUI(tk.Tk):
             log.info("update: dang kiem tra thu cong...")
         def worker():
             try:
+                bundle_info = updater.check_bundle_update(self._version)
+                if bundle_info:
+                    bver, burl, _bnotes = bundle_info
+                    log.info("update: CO CORE BUNDLE MOI v%s -> tu tai va ap dung", bver)
+                    updater.download_and_apply_bundle(burl, bver)
+                    self.after(0, lambda v=bver: self._restart_after_bundle_update(v))
+                    return
                 info = updater.check_update(self._version)
             except Exception as e:
                 # KHONG goi duoc server cap nhat (mang / GitHub CDN githubusercontent bi chan o VN /
@@ -430,6 +451,25 @@ class BotGUI(tk.Tk):
                     self.after(0, lambda: messagebox.showinfo(
                         "Update", f"Dang la ban moi nhat: v{self._version}", parent=self))
         threading.Thread(target=worker, daemon=True).start()
+
+    def _restart_after_bundle_update(self, ver):
+        if bool(getattr(ctrl, "account_clients", {})):
+            messagebox.showinfo(
+                "Update",
+                f"Da cap nhat core v{ver}. Dung bot va mo lai app de ap dung.",
+                parent=self,
+            )
+            return
+        log.info("update: da cap nhat core v%s -> khoi dong lai app de ap dung", ver)
+        try:
+            from bot import updater
+            updater.restart_app()
+        except Exception as e:
+            messagebox.showinfo(
+                "Update",
+                f"Da cap nhat core v{ver}. Hay dong/mo lai app de ap dung.\n\nChi tiet: {e}",
+                parent=self,
+            )
 
     def _show_update_error(self, title, msg):
         try:

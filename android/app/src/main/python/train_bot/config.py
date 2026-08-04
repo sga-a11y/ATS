@@ -9,7 +9,20 @@ from .train_maps_store import materialize_train_maps
 TRAIN_MAPS_PATH = os.path.join(_base_dir(), "train_maps.json")
 
 
+def _bundle_data_path(name):
+    return os.path.join(_base_dir(), "bot_bundle", "current", "data", *name.replace("\\", "/").split("/"))
+
+
+def _data_file(name):
+    p = _bundle_data_path(name)
+    return p if os.path.isfile(p) else os.path.join(_base_dir(), name)
+
+
 def _read_asset(name):
+    p = _bundle_data_path(name)
+    if os.path.isfile(p):
+        with open(p, encoding="utf-8") as fh:
+            return fh.read()
     from com.chaquo.python import Python
     from java import jclass
 
@@ -155,10 +168,10 @@ MAP_GATES = _load_map_gates()
 
 # Smart path trong map. Neu Ground.mmg khong ton tai, navigate_to tu fallback cach cu.
 SMART_PATHFIND = True
-GROUND_MAP_PATH = os.path.join(_base_dir(), "gamedata", "Ground.mmg")
-SCENE_FIGHT_PATH = os.path.join(_base_dir(), "gamedata", "SceneFight_C.dat")
 SMART_WORLD_ROUTING = True
-WORLD_NAV_PATH = os.path.join(_base_dir(), "world_nav.json")
+GROUND_MAP_PATH = _data_file("gamedata/Ground.mmg")
+SCENE_FIGHT_PATH = _data_file("gamedata/SceneFight_C.dat")
+WORLD_NAV_PATH = _data_file("world_nav.json")
 SMART_ROUTE_CACHE_PATH = os.path.join(_base_dir(), "smart_routes.json")
 SMART_ROUTE_FALLBACK = True
 SMART_PATH_STEP_WAIT = 0.55     # giay giua 2 lenh move khi co Ground.mmg path (giam = chay muot hon)

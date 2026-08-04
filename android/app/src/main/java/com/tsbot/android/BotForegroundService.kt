@@ -59,11 +59,27 @@ class BotForegroundService : Service() {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
         }
+        installPythonBundlePath()
         startForeground(1, buildNotification())
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "aTSBot:botService").apply {
             setReferenceCounted(false)
             acquire()
+        }
+    }
+
+    private fun installPythonBundlePath() {
+        val bundlePath = ApkUpdater.pythonBundlePath(this)
+        if (!File(bundlePath, "train_bot/run_party_digioi.py").isFile) return
+        try {
+            val sys = Python.getInstance().getModule("sys")
+            val path = sys["path"] ?: return
+            val p = bundlePath.absolutePath
+            if (!path.asList().any { it.toString() == p }) {
+                path.callAttr("insert", 0, p)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "install bundle path failed: ${e.message}", e)
         }
     }
 

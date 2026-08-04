@@ -71,10 +71,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -84,7 +86,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -107,12 +112,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
+    private fun startAndBindBotService() {
+        if (isBound) return
         val serviceIntent = Intent(this, BotForegroundService::class.java)
         ContextCompat.startForegroundService(this, serviceIntent)
         isBound = bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
         setContent {
             TsBotTheme {
@@ -123,6 +131,14 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { ApkUpdater.updateBundleIfNeeded(applicationContext) }
+                    .onFailure { android.util.Log.w("aTSBot", "bundle update failed: ${it.message}", it) }
+            }
+            startAndBindBotService()
         }
     }
 
@@ -650,10 +666,18 @@ fun TsBotApp(
 fun loadStatusMapNames(context: Context): Map<Int, String> = buildMap {
     Cities.ALL.values.forEach { put(it.cityId, it.label) }
 
-    fun readMapAsset(name: String): JSONObject = context.assets
-        .open("train_bot_data/$name")
-        .bufferedReader(Charsets.UTF_8)
-        .use { JSONObject(it.readText()) }
+    fun readMapAsset(name: String): JSONObject {
+        val bundled = ApkUpdater.bundleDataFile(context, name)
+        val text = if (bundled.isFile) {
+            bundled.readText(Charsets.UTF_8)
+        } else {
+            context.assets
+                .open("train_bot_data/$name")
+                .bufferedReader(Charsets.UTF_8)
+                .use { it.readText() }
+        }
+        return JSONObject(text)
+    }
 
     fun JSONObject.forEachObject(block: (String, JSONObject) -> Unit) {
         val iterator = keys()
@@ -1117,6 +1141,17 @@ fun trainMapGroupOrder(opts: List<Triple<String, String, String>>): List<String>
     return order.toList()
 }
 
+fun filterTrainMapOptions(
+    opts: List<Triple<String, String, String>>,
+    query: String,
+): List<Triple<String, String, String>> {
+    val q = query.trim().lowercase()
+    if (q.isBlank()) return opts
+    return opts.filter { (key, mapName, group) ->
+        key.lowercase().contains(q) || mapName.lowercase().contains(q) || group.lowercase().contains(q)
+    }
+}
+
 /** Doc danh sach diem quai cua 1 map train tu Python de hien dropdown "Quái". Luon co "Bot tu chon"
  * (-1) o dau danh sach. */
 fun trainMobOptions(mapKey: String): List<Pair<Int, String>> {
@@ -1185,7 +1220,12 @@ fun AddPartyDialog(
     var noLeader by remember { mutableStateOf(initialNoLeader) }
     var leaderWhitelistText by remember { mutableStateOf(initialLeaderWhitelist.joinToString("\n")) }
     var doDaily by remember { mutableStateOf(initialDoDaily) }
-    var trainMapKey by remember { mutableStateOf(initialTrainMapKey.ifEmpty { trainMapOptions().firstOrNull()?.first ?: "" }) }
+    val initialTrainMapOptions = remember { trainMapOptions() }
+    var trainMapKey by remember { mutableStateOf(initialTrainMapKey.ifEmpty { initialTrainMapOptions.firstOrNull()?.first ?: "" }) }
+    var trainMapText by remember {
+        val initialMapName = initialTrainMapOptions.find { it.first == trainMapKey }?.second ?: trainMapKey
+        mutableStateOf(TextFieldValue(initialMapName))
+    }
     var trainMobExpanded by remember { mutableStateOf(false) }
     var trainMobIndex by remember { mutableStateOf(initialTrainMobIndex) }
     var trainMapExpanded by remember { mutableStateOf(false) }
@@ -1494,36 +1534,100 @@ fun AddPartyDialog(
                 if (selectedMode == RunModes.TRAIN || selectedMode == RunModes.DIGIOI_TRAIN) {
                     Spacer(Modifier.height(8.dp))
                     val mapOptions = trainMapOptions()
-                    ExposedDropdownMenuBox(expanded = trainMapExpanded, onExpandedChange = { trainMapExpanded = it }) {
+                    fun selectedTrainMapName(): String =
+                        mapOptions.find { it.first == trainMapKey }?.second ?: trainMapKey
+
+                    fun selectedTrainMapTextValue(): TextFieldValue {
+                        val mapName = selectedTrainMapName()
+                        return TextFieldValue(
+                            text = mapName,
+                            selection = TextRange(0, mapName.length),
+                        )
+                    }
+
+                    fun pickTrainMap(key: String, mapName: String) {
+                        trainMapKey = key
+                        trainMapText = TextFieldValue(
+                            text = mapName,
+                            selection = TextRange(0, mapName.length),
+                        )
+                        trainMobIndex = -1
+                        trainMapExpanded = false
+                    }
+
+                    fun closeTrainMapDropdown(snapToFirst: Boolean = false) {
+                        if (snapToFirst && trainMapText.text.isNotBlank()) {
+                            filterTrainMapOptions(mapOptions, trainMapText.text).firstOrNull()?.let { (key, mapName, _) ->
+                                pickTrainMap(key, mapName)
+                                return
+                            }
+                        }
+                        trainMapText = selectedTrainMapTextValue()
+                        trainMapExpanded = false
+                    }
+
+                    LaunchedEffect(trainMapExpanded, trainMapKey) {
+                        if (trainMapExpanded && trainMapText.text == selectedTrainMapName()) {
+                            trainMapText = selectedTrainMapTextValue()
+                        }
+                    }
+
+                    Box {
                         OutlinedTextField(
-                            value = mapOptions.find { it.first == trainMapKey }?.second ?: trainMapKey,
-                            onValueChange = {},
-                            readOnly = true,
+                            value = trainMapText,
+                            onValueChange = {
+                                trainMapText = it
+                                trainMapExpanded = true
+                            },
+                            singleLine = true,
                             label = { Text("Map train") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trainMapExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused && !trainMapExpanded) {
+                                        trainMapText = selectedTrainMapTextValue()
+                                        trainMapExpanded = true
+                                    }
+                                },
                         )
-                        DropdownMenu(expanded = trainMapExpanded, onDismissRequest = { trainMapExpanded = false }) {
-                            val groups = trainMapGroupOrder(mapOptions)
+                        DropdownMenu(
+                            expanded = trainMapExpanded,
+                            onDismissRequest = { closeTrainMapDropdown(snapToFirst = true) },
+                            properties = PopupProperties(focusable = false),
+                        ) {
+                            val selectedAll = trainMapText.selection.start == 0 &&
+                                trainMapText.selection.end == trainMapText.text.length &&
+                                trainMapText.text == selectedTrainMapName()
+                            val trainMapQuery = if (selectedAll) "" else trainMapText.text
+                            val shownMapOptions = filterTrainMapOptions(mapOptions, trainMapQuery)
+                            val searchingMap = trainMapQuery.trim().isNotEmpty()
+                            val groups = trainMapGroupOrder(shownMapOptions)
                             // Chua gom nhom (chi co 'Chua phan nhom') -> hien PHANG nhu cu, khong header thua.
                             val flat = groups.size <= 1 && groups.firstOrNull() == "Chưa phân nhóm"
-                            if (flat) {
-                                mapOptions.forEach { (key, mapName, _) ->
+                            if (shownMapOptions.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Không tìm thấy map") },
+                                    onClick = {},
+                                    enabled = false,
+                                )
+                            } else if (flat) {
+                                shownMapOptions.forEach { (key, mapName, _) ->
                                     DropdownMenuItem(text = { Text(mapName) }, onClick = {
-                                        trainMapKey = key; trainMobIndex = -1; trainMapExpanded = false
+                                        pickTrainMap(key, mapName)
                                     })
                                 }
                             } else {
                                 groups.forEach { g ->
-                                    val collapsed = g in collapsedTrainMapGroups
+                                    val collapsed = !searchingMap && g in collapsedTrainMapGroups
                                     DropdownMenuItem(
                                         onClick = { toggleTrainMapGroup(g) },
                                         text = { Text(if (collapsed) "▶ 📁 $g" else "▼ 📂 $g") },
                                     )
-                                    if (g !in collapsedTrainMapGroups) {
-                                        mapOptions.filter { it.third == g }.forEach { (key, mapName, _) ->
+                                    if (!collapsed) {
+                                        shownMapOptions.filter { it.third == g }.forEach { (key, mapName, _) ->
                                             DropdownMenuItem(text = { Text("    $mapName") }, onClick = {
-                                                trainMapKey = key; trainMobIndex = -1; trainMapExpanded = false
+                                                pickTrainMap(key, mapName)
                                             })
                                         }
                                     }

@@ -18,14 +18,19 @@ class TestReleaseArchives(unittest.TestCase):
         with open(".gitignore", encoding="utf-8") as fh:
             ignored_paths = {line.strip() for line in fh if line.strip()}
         self.assertIn("aTSBot-drive.zip", ignored_paths)
+        self.assertIn("aTSBot-bundle.zip", ignored_paths)
 
     def test_release_metadata_and_upload_include_android_apk(self):
         source = inspect.getsource(build_product)
 
         self.assertIn("APK_RELEASE_NAME", source)
+        self.assertIn("BUNDLE_RELEASE_NAME", source)
         self.assertIn('"apk_url"', source)
+        self.assertIn('"bundle_url"', source)
+        self.assertIn("make_bundle(ver)", source)
         self.assertIn("build_android_apk(ver)", source)
         self.assertIn("os.path.join(ROOT, APK_RELEASE_NAME)", source)
+        self.assertIn("os.path.join(ROOT, BUNDLE_RELEASE_NAME)", source)
 
     def test_android_gradle_accepts_shared_release_version(self):
         with open("android/app/build.gradle.kts", encoding="utf-8") as fh:

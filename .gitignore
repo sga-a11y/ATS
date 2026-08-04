@@ -82,7 +82,9 @@ android/**/*.iml
 android/**/.cxx/
 android/app/src/androidTest/assets/test_accounts.json
 aTSBot.zip
+aTSBot-bundle.zip
 aTSBot-drive.zip
+.build_app_required_state.json
 legion_boss_state.json
 shop_state.json
 scan_maps/

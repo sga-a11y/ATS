@@ -14,5 +14,10 @@ def app_dir() -> str:
     # sys.argv[0] = duong dan .exe goc (code chay tu temp nhung argv[0] van la .exe).
     if "__compiled__" in globals():
         return os.path.dirname(os.path.abspath(sys.argv[0]))
+    # Bot bundle ngoai duoc import boi exe Nuitka: module nay khong co __compiled__,
+    # nhung sys.argv[0] van la aTSBot.exe. Van phai doc/ghi JSON canh exe, khong phai trong bundle.
+    cand = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+    if cand and os.path.isfile(cand) and "python" not in os.path.basename(cand).lower():
+        return os.path.dirname(cand)
     # DEV
     return os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))

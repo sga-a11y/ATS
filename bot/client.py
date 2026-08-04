@@ -494,6 +494,12 @@ def _load_json_data_file(filename):
     import json as _json, os as _os
     paths = []
     try:
+        bundle_path = getattr(config, "_bundle_data_path", None)
+        if bundle_path is not None:
+            paths.append(bundle_path(filename))
+    except Exception:
+        pass
+    try:
         from ._appdir import app_dir
         paths.append(_os.path.join(app_dir(), filename))
     except Exception:

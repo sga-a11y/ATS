@@ -299,6 +299,11 @@ account_exit_reason = {}  # username -> ly do thoat (de tong ket 1 dong khi ca p
 account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT (supervisor login lai)
 account_forced_reconnect = set()  # survivor 40NPC bi dong de relogin cung party; KHONG tang disc_gen
 _start_cancel_generation = 0  # STOP ALL tang so nay de huy chuoi START dang do
+_login_guard_lock = threading.Lock()
+_login_error1_hits = []  # [(time, username)] - error_code=1 tren nhieu acc -> nghi IP bi chan
+_login_ip_blocked = threading.Event()
+_LOGIN_ERR1_WINDOW_SEC = 60
+_LOGIN_ERR1_MIN_ACCOUNTS = 3
 
 
 def _running_party_usernames(pidx):
@@ -317,6 +322,37 @@ def _active_party_usernames(pidx):
             continue
         active.append(u)
     return active
+
+
+def _reset_login_ip_guard():
+    with _login_guard_lock:
+        _login_error1_hits.clear()
+        _login_ip_blocked.clear()
+
+
+def _login_error_code(exc):
+    code = getattr(exc, "error_code", None)
+    if code is not None:
+        return code
+    data = getattr(exc, "data", None)
+    if isinstance(data, dict):
+        return data.get("error_code")
+    return None
+
+
+def _note_login_error1(username):
+    now = time.time()
+    with _login_guard_lock:
+        cutoff = now - _LOGIN_ERR1_WINDOW_SEC
+        _login_error1_hits[:] = [(ts, u) for ts, u in _login_error1_hits if ts >= cutoff]
+        _login_error1_hits.append((now, username))
+        users = {u for _ts, u in _login_error1_hits}
+        if len(users) >= _LOGIN_ERR1_MIN_ACCOUNTS and not _login_ip_blocked.is_set():
+            _login_ip_blocked.set()
+            log.error("LOGIN: %d acc khac nhau bi error_code=1 trong %ds -> nghi IP bi chan/rate-limit. "
+                      "Dung retry phien nay; doi IP/bat 1.1.1.1 roi Start lai.",
+                      len(users), _LOGIN_ERR1_WINDOW_SEC)
+        return _login_ip_blocked.is_set()
 
 
 def _party_exit_summary(pidx, exclude_user):
@@ -490,6 +526,7 @@ def _pstate(pidx):
                               # "train" -> moi acc relogin vao mode train.
                               "dt_phase": "digioi",
                               "dt_done": set(),
+                              "dt_train_prepared": False,
                               "summary_done": False}  # da log dong tong ket "party thoat het" chua
     return _party_state[pidx]
 
@@ -530,21 +567,55 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
     st = _pstate(pidx)
     with st["lock"]:
         st["dt_done"].add(username)
+
+    def _prepare_train_phase_once():
+        prepared = False
+        with st["lock"]:
+            if not st.get("dt_train_prepared"):
+                st["dt_train_prepared"] = True
+                # Phase DG da dung cac flag sync/moi party nay. Sang phase train phai reset
+                # nhu mot luot train moi, neu khong leader/member co the dung im o thanh vi doc
+                # lai state cu cua phase DG.
+                for key in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
+                            "stop_leader_done", "route_party_ready", "route_done", "rally_ready",
+                            "path_done", "route_plan_ready"):
+                    st[key].clear()
+                st["channel"] = None
+                st["mob_spot"] = None
+                st["rally_point"] = None
+                st["mob_path"] = None
+                st["route_plan"] = None
+                st["map_results"] = {}
+                st["ready_members"].clear()
+                st["started_train"] = 0
+                st["dungeon_done"] = 0
+                st["dailies_done"] = 0
+                prepared = True
+        if prepared:
+            reset_party_joined(pidx)
+        return prepared
+
     last_log = 0.0
     while True:
         if stopped_fn():
             return False
         users = set(_running_party_usernames(pidx))
+        switch_to_train = False
+        n_users = 0
         with st["lock"]:
             done = set(st["dt_done"])
             if st.get("dt_phase") == "train":
-                return True            # acc khac da chuyen pha roi -> di train luon
+                switch_to_train = True  # acc khac da chuyen pha roi -> di train luon
             # CHI tinh acc DANG CHAY (acc da tat/rot han khong lam ca party ket)
-            if users and users <= done:
+            elif users and users <= done:
                 st["dt_phase"] = "train"
-                log.info("[%s] DG+Train: CA PARTY (%d acc) da xong Di Gioi -> CHUYEN PHA TRAIN",
-                         label, len(users))
-                return True
+                switch_to_train = True
+                n_users = len(users)
+        if switch_to_train:
+            if _prepare_train_phase_once():
+                log.info("[%s] DG+Train: CA PARTY (%d acc) da xong Di Gioi -> reset state DG, "
+                         "CHUYEN PHA TRAIN", label, n_users or len(users))
+            return True
         if time.time() - last_log > 60:
             last_log = time.time()
             log.info("[%s] DG+Train: xong DG, DUNG YEN cho party (%d/%d acc xong) - cho khong gioi han",
@@ -584,6 +655,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     server_id = _pc0.get("server_id", 1)
     _login_failed = False   # True neu login/vao world that bai 6 lan -> supervisor van thu lai (backoff)
     _unexpected_error = False  # True neu dinh Exception bat ngo -> cho relogin (dung de acc chet han vi loi thoang qua)
+    _login_ip_block_stop = False
     try:
         # --- Login + cho vao world THUC SU (co self_entity VA co current_map) ---
         c = None
@@ -591,6 +663,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         for attempt in range(6):
             if _stopped():
                 log.info("[%s] STOP truoc khi login xong", label); return
+            if _login_ip_blocked.is_set():
+                _login_ip_block_stop = True
+                _reason("nghi IP bi chan/rate-limit -> dung retry login phien nay")
+                log.warning("[%s] LOGIN tam dung: nghi IP bi chan/rate-limit. "
+                            "Doi IP/bat 1.1.1.1 roi Start lai.", label)
+                return
             try:
                 cred = login(username, password)
                 c = GameClient(cred["user_id"], cred["access_token"], host=server_ip, server_id=server_id)
@@ -617,6 +695,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # coi nhu 1 lan thu that bai, backoff 5s roi thu lai; het 6 lan -> _login_failed ben
                 # duoi (supervisor reconnect vo han). Truoc day login() raise -> thoat ca vong -> thread
                 # chet han (bug: nick "tat" khi server lom lam login HTTP fail).
+                if _login_error_code(e) == 1 and _note_login_error1(username):
+                    _login_ip_block_stop = True
+                    _reason("nghi IP bi chan/rate-limit -> dung retry login phien nay")
+                    log.warning("[%s] login error_code=1 va da cham nguong nghi IP bi chan -> "
+                                "dung retry phien nay", label)
+                    try:
+                        if c is not None: c.close()
+                    except Exception: pass
+                    return
                 log.warning("[%s] login/connect loi (lan %d): %s -> thu lai", label, attempt + 1, e)
                 try:
                     if c is not None: c.close()
@@ -2781,6 +2868,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # mode deu tu login lai; dung han chi khi GUI Stop / thoat binh thuong (het gio DG...).
         _forced_reconnect = username in account_forced_reconnect
         reconnectable = (not _stopped()
+                         and not _login_ip_block_stop
                          and (_forced_reconnect or _login_failed or _dt["relogin_train"]
                               or _unexpected_error
                               or (c is not None and getattr(c, "server_closed", False))))
@@ -3045,6 +3133,7 @@ def start_account(username, password, pidx, is_leader, is_picker):
         with st["lock"]:
             st["dt_phase"] = "digioi"
             st["dt_done"].clear()
+            st["dt_train_prepared"] = False
     account_stops[username] = threading.Event()
     t = threading.Thread(target=_run_account_supervised, args=(username, password, pidx, is_leader, is_picker),
                          daemon=True)
@@ -3155,6 +3244,8 @@ def start_party(pidx, stagger=1.5):
     generation = _start_cancel_generation
     started = 0
     accounts = party_accounts(pidx)
+    if not any(is_account_running(u) for party in config.PARTIES for u, *_ in party if u):
+        _reset_login_ip_guard()
     # Party da tat han -> tao session state MOI. Reset tung field nhu truoc de sot route_plan/
     # reform_gen cua map cu, member co the doc plan cu truoc khi leader ghi plan map moi.
     if not any(is_account_running(u) for u, *_ in accounts):

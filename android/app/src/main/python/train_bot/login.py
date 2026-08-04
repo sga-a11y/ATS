@@ -12,6 +12,13 @@ log = logging.getLogger("login")
 
 import hashlib
 
+
+class LoginError(RuntimeError):
+    def __init__(self, data):
+        self.data = data or {}
+        self.error_code = self.data.get("error_code")
+        super().__init__(f"Login that bai: {self.data}")
+
 def _device_id_for(username: str) -> str:
     """Tao device_id DUY NHAT cho moi account (32 hex) - tranh server coi 2 acc chung device."""
     return hashlib.md5(("dev_" + username).encode()).hexdigest()
@@ -71,7 +78,7 @@ def login(username: str = None, password: str = None, device_id: str = None) -> 
         raise RuntimeError(f"Login that bai sau 6 lan thu (can cong/loi mang): {last_err}")
 
     if not data.get("status"):
-        raise RuntimeError(f"Login that bai: {data}")
+        raise LoginError(data)
 
     d = data["data"]
     return {

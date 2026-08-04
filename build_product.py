@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+import hashlib
 
 RELEASE_REPO = "sgagamee-oss/atsbot-release"   # repo PUBLIC phat hanh (upload exe + version.json)
 
@@ -26,6 +27,8 @@ NAME = "aTSBot"
 DRIVE_ARCHIVE_NAME = NAME + "-drive.zip"
 DRIVE_ARCHIVE_PASSWORD = "aTSBot"
 APK_RELEASE_NAME = NAME + ".apk"
+BUNDLE_RELEASE_NAME = NAME + "-bundle.zip"
+APP_REQUIRED_STATE_NAME = ".build_app_required_state.json"
 
 # Nuitka cache PHAI o thu muc THUONG (khong sandbox). Mac dinh %LOCALAPPDATA%\Nuitka co the bi
 # ao hoa duoi sandbox app -> gcc doc file MinGW khong nhat quan (loi 'structuredquerycondition.h
@@ -49,6 +52,8 @@ DATA_FILES = {
     "gamedata/SceneFight_C.dat": "gamedata/SceneFight_C.dat",
 }
 
+BUNDLE_EXTRA_DATA_JSON = ["npc_names.json", "pet_hedoanh.json"]
+
 
 def validate_navigation_assets(root=ROOT):
     required = ["world_nav.json", *DATA_FILES]
@@ -67,6 +72,10 @@ def run(cmd, **kw):
         sys.exit(1)
 
 
+def sync_android_python():
+    run([sys.executable, os.path.join(ROOT, "tools", "sync_apk_python.py")], cwd=ROOT)
+
+
 def clean():
     for d in (STAGE, WORK, DIST):
         shutil.rmtree(d, ignore_errors=True)
@@ -83,6 +92,78 @@ def _build_version():
     (truoc day version co dinh "1.0.0" khong phan biet duoc cac lan build khac nhau)."""
     import datetime
     return VERSION_PREFIX + "." + datetime.datetime.now().strftime("%Y%m%d%H%M")
+
+
+def _hash_files(paths):
+    h = hashlib.sha256()
+    for rel in sorted(paths):
+        path = os.path.join(ROOT, rel)
+        if not os.path.isfile(path):
+            continue
+        h.update(rel.replace("\\", "/").encode("utf-8") + b"\0")
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+    return h.hexdigest()
+
+
+def _glob_files(rel_dir, suffixes):
+    base = os.path.join(ROOT, rel_dir)
+    out = []
+    if not os.path.isdir(base):
+        return out
+    for root, _dirs, files in os.walk(base):
+        for fn in files:
+            if suffixes and not fn.endswith(suffixes):
+                continue
+            out.append(os.path.relpath(os.path.join(root, fn), ROOT))
+    return out
+
+
+def _app_shell_hashes():
+    pc_shell = ["gui.py"]
+    android_shell = [
+        "android/app/build.gradle.kts",
+        "android/build.gradle.kts",
+        "android/settings.gradle.kts",
+        "android/app/src/main/AndroidManifest.xml",
+    ]
+    android_shell += _glob_files("android/app/src/main/java", (".kt", ".java"))
+    android_shell += _glob_files("android/app/src/main/res", None)
+    return {
+        "pc_shell": _hash_files(pc_shell),
+        "apk_shell": _hash_files(android_shell),
+    }
+
+
+def _read_app_required_state():
+    try:
+        with open(os.path.join(ROOT, APP_REQUIRED_STATE_NAME), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _write_app_required_state(hashes):
+    with open(os.path.join(ROOT, APP_REQUIRED_STATE_NAME), "w", encoding="utf-8") as f:
+        json.dump(hashes, f, ensure_ascii=False, indent=2)
+
+
+def app_required_flags_from_args():
+    """Tra ve (pc_app_required, apk_required) cho version.json."""
+    if "--bundle-only" in sys.argv or "--no-app-required" in sys.argv:
+        return False, False
+    if "--app-required" in sys.argv:
+        return True, True
+
+    hashes = _app_shell_hashes()
+    prev = _read_app_required_state()
+    if not prev:
+        return True, True
+    return (
+        hashes.get("pc_shell") != prev.get("pc_shell"),
+        hashes.get("apk_shell") != prev.get("apk_shell"),
+    )
 
 
 def stage(ver=None):
@@ -192,12 +273,20 @@ def copy_data():
     # version.json cho AUTO-UPDATE: upload FILE NAY + aTSBot.exe len GitHub release 'atsbot-release'.
     # App (bot/updater.py) tai file nay tu URL 'latest' co dinh -> so version -> hoi cap nhat.
     # Sua "notes" thanh mo ta thay doi truoc khi up (user se thay trong popup cap nhat).
+    pc_required, apk_required = app_required_flags_from_args()
     vj = {
         "version": ver,
         # CA FOLDER (exe + JSON config) -> them server/map/route moi (nam trong JSON) den duoc user cu.
         "url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip",
+        "bundle_version": ver,
+        "bundle_url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot-bundle.zip",
+        "pc_app_version": ver,
+        "pc_app_url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip",
+        "pc_app_required": pc_required,
         # APK dung chung version voi EXE, nhung tai asset rieng roi mo Android installer.
+        "apk_version": ver,
         "apk_url": "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.apk",
+        "apk_required": apk_required,
         "notes": "Bản cập nhật mới.",
     }
     with open(os.path.join(DIST, "version.json"), "w", encoding="utf-8") as f:
@@ -243,6 +332,53 @@ def _make_drive_zip(zpath):
          "-p" + DRIVE_ARCHIVE_PASSWORD, "-mem=ZipCrypto"], cwd=DIST)
 
 
+def make_bundle(ver):
+    """Tao bundle Python/data dung chung cho PC + APK.
+
+    PC se chen bot_bundle/current/pc vao sys.path.
+    APK se chen bot_bundle/current/android vao sys.path va doc data tu bot_bundle/current/data.
+    """
+    import zipfile
+
+    sync_android_python()
+    zpath = os.path.join(ROOT, BUNDLE_RELEASE_NAME)
+    if os.path.exists(zpath):
+        os.remove(zpath)
+    with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("bundle.json", json.dumps({"version": ver}, ensure_ascii=False, indent=2))
+        z.write(os.path.join(STAGE, "run_party_digioi.py"), "pc/run_party_digioi.py")
+        stage_bot = os.path.join(STAGE, "bot")
+        for fn in sorted(os.listdir(stage_bot)):
+            if fn.endswith(".py"):
+                z.write(os.path.join(stage_bot, fn), "pc/bot/" + fn)
+
+        apk_py = os.path.join(ROOT, "android", "app", "src", "main", "python")
+        apk_train_bot = os.path.join(apk_py, "train_bot")
+        for root, _dirs, files in os.walk(apk_train_bot):
+            if "__pycache__" in root:
+                continue
+            for fn in sorted(files):
+                if not fn.endswith(".py"):
+                    continue
+                src = os.path.join(root, fn)
+                rel = os.path.relpath(src, apk_py).replace(os.sep, "/")
+                z.write(src, "android/" + rel)
+
+        data_names = []
+        for fn in DATA_JSON + BUNDLE_EXTRA_DATA_JSON:
+            if fn not in data_names:
+                data_names.append(fn)
+        for fn in data_names:
+            src = os.path.join(ROOT, fn)
+            if os.path.isfile(src):
+                z.write(src, "data/" + fn)
+        for source, destination in DATA_FILES.items():
+            src = os.path.join(ROOT, source)
+            if os.path.isfile(src):
+                z.write(src, "data/" + destination.replace(os.sep, "/"))
+    print("bundle core -> %s (%.1f MB)" % (zpath, os.path.getsize(zpath) / 1e6))
+
+
 def make_zip():
     """Tao ZIP auto-update thuong va ZIP co mat khau cho Google Drive tu cung DIST."""
     zpath = os.path.join(ROOT, NAME + ".zip")
@@ -260,7 +396,7 @@ def build_android_apk(ver):
     gradlew = os.path.join(android_dir, "gradlew.bat" if os.name == "nt" else "gradlew")
     if not os.path.isfile(gradlew):
         raise FileNotFoundError("Khong tim thay Gradle wrapper: %s" % gradlew)
-    run([sys.executable, os.path.join(ROOT, "tools", "sync_apk_python.py")], cwd=ROOT)
+    sync_android_python()
     env = os.environ.copy()
     jdk = r"C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot"
     if os.name == "nt" and os.path.isdir(jdk):
@@ -316,8 +452,8 @@ def upload_release():
     token = _release_token()
     if not token:
         print("!! Khong lay duoc token (GH_TOKEN / git credential) -> BO QUA upload. Up thu cong:")
-        print("   gh release create v<version> %s\\aTSBot.zip %s\\aTSBot.exe %s\\version.json %s\\aTSBot.apk -R %s"
-              % (ROOT, DIST, DIST, ROOT, RELEASE_REPO))
+        print("   gh release create v<version> %s\\aTSBot.zip %s\\aTSBot-bundle.zip %s\\aTSBot.exe %s\\version.json %s\\aTSBot.apk -R %s"
+              % (ROOT, ROOT, DIST, DIST, ROOT, RELEASE_REPO))
         return
     vj = json.load(open(os.path.join(DIST, "version.json"), encoding="utf-8"))
     tag = "v" + vj["version"]
@@ -329,7 +465,8 @@ def upload_release():
         print("!! Tao release loi (tag trung? khong quyen?): %s" % e)
         return
     rid = rel["id"]
-    for path in (os.path.join(ROOT, NAME + ".zip"), os.path.join(DIST, NAME + ".exe"),
+    for path in (os.path.join(ROOT, NAME + ".zip"), os.path.join(ROOT, BUNDLE_RELEASE_NAME),
+                 os.path.join(DIST, NAME + ".exe"),
                  os.path.join(DIST, "version.json"), os.path.join(ROOT, APK_RELEASE_NAME)):
         if not os.path.exists(path):
             continue
@@ -353,6 +490,7 @@ if __name__ == "__main__":
     package()
     copy_data()
     make_zip()
+    make_bundle(ver)
     if "--no-apk" in sys.argv:
         print("\n(--no-apk) BO QUA build APK.")
     else:
@@ -363,4 +501,5 @@ if __name__ == "__main__":
     else:
         print("\n=== Upload release len %s ===" % RELEASE_REPO)
         upload_release()
+    _write_app_required_state(_app_shell_hashes())
     print("\n=== XONG. Gui ca thu muc: %s ===" % DIST)

@@ -34,6 +34,7 @@ EXTRA_ZIP_URLS = [u.strip() for u in (GOOGLE_DRIVE_ZIP_URL,) if u.strip()]
 # Cap nhat = TAI CA FOLDER (exe + JSON config: server/map/route...) chu KHONG chi exe -> them
 # server/map moi (nam trong JSON) moi den duoc user cu. Release chua aTSBot.zip = noi dung folder.
 _FALLBACK_ZIP_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip"
+_FALLBACK_BUNDLE_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot-bundle.zip"
 _DEFAULT_MAP_GROUP = "Chưa phân nhóm"
 
 
@@ -138,19 +139,7 @@ def _is_newer_version(remote_version: str, current_version: str) -> bool:
     return remote > current
 
 
-def _download_urls_from_version(data: dict):
-    urls = []
-    raw_urls = data.get("urls") or data.get("mirrors")
-    if isinstance(raw_urls, list):
-        urls.extend(str(u).strip() for u in raw_urls if str(u).strip())
-    for key in ("url", "zip_url"):
-        u = str(data.get(key, "")).strip()
-        if u:
-            urls.append(u)
-    urls.extend(EXTRA_ZIP_URLS)
-    if not urls:
-        urls.append(_FALLBACK_ZIP_URL)
-
+def _unique_urls(urls, fallback=None):
     out = []
     seen = set()
     for u in urls:
@@ -158,7 +147,33 @@ def _download_urls_from_version(data: dict):
         if u and u not in seen:
             seen.add(u)
             out.append(u)
+    if not out and fallback:
+        out.append(_normalize_download_url(fallback))
     return out
+
+
+def _collect_urls(data: dict, keys):
+    urls = []
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, list):
+            urls.extend(str(u).strip() for u in value if str(u).strip())
+        else:
+            u = str(value or "").strip()
+            if u:
+                urls.append(u)
+    return urls
+
+
+def _download_urls_from_version(data: dict):
+    urls = _collect_urls(data, ("pc_app_urls", "pc_app_mirrors", "pc_app_url", "urls", "mirrors", "url", "zip_url"))
+    urls.extend(EXTRA_ZIP_URLS)
+    return _unique_urls(urls, _FALLBACK_ZIP_URL)
+
+
+def _bundle_urls_from_version(data: dict):
+    urls = _collect_urls(data, ("bundle_urls", "bundle_mirrors", "bundle_url"))
+    return _unique_urls(urls, _FALLBACK_BUNDLE_URL)
 
 
 def check_update(current_version: str):
@@ -178,8 +193,10 @@ def check_update(current_version: str):
         except Exception as e:
             errors.append("%s: %s" % (name, e))
             continue
-        ver = str(d.get("version", "")).strip()
-        if _is_newer_version(ver, current_version):
+        legacy = "bundle_version" not in d and "pc_app_version" not in d
+        app_required = bool(d.get("pc_app_required", legacy))
+        ver = str(d.get("pc_app_version") or d.get("version") or "").strip()
+        if app_required and _is_newer_version(ver, current_version):
             cand = (ver, _download_urls_from_version(d), str(d.get("notes", "")))
             if best is None or ver > best[0]:
                 best = cand
@@ -188,6 +205,132 @@ def check_update(current_version: str):
     if saw_source:
         return None
     raise RuntimeError("; ".join(errors) if errors else "khong co nguon update nao")
+
+
+def _app_root_dir() -> str:
+    return os.path.dirname(running_exe())
+
+
+def _bundle_root() -> str:
+    return os.path.join(_app_root_dir(), "bot_bundle")
+
+
+def installed_bundle_version(fallback_version: str = "") -> str:
+    try:
+        with open(os.path.join(_bundle_root(), "version.txt"), encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return str(fallback_version or "").strip()
+
+
+def check_bundle_update(current_app_version: str):
+    """Tra (bundle_version, urls, notes) neu co core/data bundle moi.
+    Bundle update la silent-update: app tai file zip va chay core moi, KHONG can user cai lai exe."""
+    current_bundle = installed_bundle_version(current_app_version)
+    errors = []
+    saw_source = False
+    best = None
+    for name, url in UPDATE_SOURCES:
+        try:
+            d = _fetch_version_json(url, timeout=20)
+            saw_source = True
+        except Exception as e:
+            errors.append("%s: %s" % (name, e))
+            continue
+        ver = str(d.get("bundle_version") or "").strip()
+        if ver and _is_newer_version(ver, current_bundle):
+            cand = (ver, _bundle_urls_from_version(d), str(d.get("notes", "")))
+            if best is None or ver > best[0]:
+                best = cand
+    if best:
+        return best
+    if saw_source:
+        return None
+    raise RuntimeError("; ".join(errors) if errors else "khong co nguon update nao")
+
+
+def _safe_extract_zip(zip_path: str, dest_dir: str):
+    base = os.path.realpath(dest_dir)
+    with zipfile.ZipFile(zip_path) as z:
+        for info in z.infolist():
+            target = os.path.realpath(os.path.join(dest_dir, info.filename))
+            if target != base and not target.startswith(base + os.sep):
+                raise RuntimeError("Zip bundle co duong dan khong hop le: %s" % info.filename)
+        z.extractall(dest_dir)
+
+
+def _copy_tree_contents(src_dir: str, dst_dir: str):
+    for root, dirs, files in os.walk(src_dir):
+        rel = os.path.relpath(root, src_dir)
+        target_root = dst_dir if rel == "." else os.path.join(dst_dir, rel)
+        os.makedirs(target_root, exist_ok=True)
+        for dname in dirs:
+            os.makedirs(os.path.join(target_root, dname), exist_ok=True)
+        for fname in files:
+            shutil.copy2(os.path.join(root, fname), os.path.join(target_root, fname))
+
+
+def download_and_apply_bundle(urls, version: str, on_progress=None):
+    """Tai aTSBot-bundle.zip -> bot_bundle/current + copy data ra canh exe.
+    Code moi co hieu luc sau khi app restart (gui.py chen bot_bundle/current/pc vao sys.path luc boot)."""
+    root = _app_root_dir()
+    bundle_root = _bundle_root()
+    zip_path = os.path.join(root, "aTSBot_bundle_update.zip")
+    stage = os.path.join(bundle_root, "stage")
+    current = os.path.join(bundle_root, "current")
+    errors = []
+    for one_url in _as_url_list(urls):
+        try:
+            req = urllib.request.Request(one_url, headers={"User-Agent": "atsbot-updater"})
+            with _urlopen_with_ssl_fallback(req, timeout=60) as r, open(zip_path, "wb") as f:
+                total = int(r.headers.get("Content-Length", 0) or 0)
+                done = 0
+                while True:
+                    chunk = r.read(65536)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    done += len(chunk)
+                    if on_progress:
+                        on_progress(done, total)
+            break
+        except Exception as e:
+            errors.append("%s: %s" % (one_url, e))
+            try:
+                os.remove(zip_path)
+            except Exception:
+                pass
+    else:
+        raise RuntimeError("Khong tai duoc core bundle tu mirror nao:\n" + "\n".join(errors))
+
+    shutil.rmtree(stage, ignore_errors=True)
+    os.makedirs(stage, exist_ok=True)
+    _safe_extract_zip(zip_path, stage)
+    if not os.path.isfile(os.path.join(stage, "pc", "run_party_digioi.py")):
+        raise RuntimeError("Bundle thieu pc/run_party_digioi.py")
+    if not os.path.isfile(os.path.join(stage, "pc", "bot", "config.py")):
+        raise RuntimeError("Bundle thieu pc/bot/config.py")
+
+    data_dir = os.path.join(stage, "data")
+    if os.path.isdir(data_dir):
+        _merge_user_config(root, data_dir)
+        _copy_tree_contents(data_dir, root)
+
+    shutil.rmtree(current, ignore_errors=True)
+    os.makedirs(bundle_root, exist_ok=True)
+    os.replace(stage, current)
+    with open(os.path.join(bundle_root, "version.txt"), "w", encoding="utf-8") as f:
+        f.write(str(version))
+    try:
+        os.remove(zip_path)
+    except Exception:
+        pass
+
+
+def restart_app():
+    exe = running_exe()
+    subprocess.Popen([exe], cwd=os.path.dirname(exe), close_fds=True)
+    os._exit(0)
 
 
 def _as_url_list(urls):

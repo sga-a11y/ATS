@@ -8,6 +8,8 @@
     "0xff87": "Phiếu Rút Võ Tướng",
     "0xb749": {"name": "Phó Bản Cấp 20 II", "qty": 100},
     "0xb74a": {"name": "Phó Bản Cấp 50 II", "qty": 100},
+	"0xb74b": {"name": "Phó Bản Cấp 80 II", "qty": 100},
+	"0xb74c": {"name": "Phó Bản Cấp 110 II", "qty": 100},
     "0xb5b3": "Giải Khuyến khích Boss",
     "0xb5b4": "Giải Tích Điểm Boss",
     "0xb590": {"name": "Thùng Dị Giới", "qty": 25},
@@ -17,6 +19,9 @@
     "0x5aab": {"name": "Ngọc Siêu Phúc Thần", "phuc_than": true, "equip": true},
     "0x5a2d": {"name": "Ngọc Đại Phúc Thần", "phuc_than": true, "equip": true},
     "0xb4a0": "Ngọc Kiện Thể",
-    "0xb49e": "Ngọc Năng Lượng"
+    "0xb49e": "Ngọc Năng Lượng",
+	"0xb5b0": {"name": "Túi Bạn Hữu", "qty": 100},
+	"0xb3cd": {"name": "Hạo Giác", "qty": 100},
+	"0xb4cd": {"name": "Túi Dũng Thông Dụng", "qty": 100}
   }
 }
