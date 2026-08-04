@@ -13,6 +13,7 @@
     "0xb5b3": "Giải Khuyến khích Boss",
     "0xb5b4": "Giải Tích Điểm Boss",
     "0xb590": {"name": "Thùng Dị Giới", "qty": 25},
+    "0xb591": {"name": "Rương Hộ Phù Dị Giới", "qty": 25},
     "0xb3d6": {"name": "Đại Phúc Thần", "qty": 25, "phuc_than": true},
     "0xb3d5": {"name": "Phúc Thần", "qty": 50, "phuc_than": true},
     "0xb5f4": {"name": "Túi Đại Phúc Thần", "qty": 1, "phuc_than": true},

@@ -8,7 +8,7 @@ import collections
 import json
 import os
 
-from . import config, protocol, combat, pathfind, npc40
+from . import config, protocol, combat, pathfind, npc40, pet_login_stats
 
 
 from .auth import build_auth_packet
@@ -28,6 +28,8 @@ PHUC_THAN_PROTECTION_PRIORITY = (
     (0x5A2D, "equip"),
     (0xB5F4, "use"),
 )
+PHUC_THAN_GEM_TIDS = {0x5AAB, 0x5A2D}
+BROKEN_PHUC_THAN_TID = 0x59F0
 
 _GROUND_STORE = None
 _GROUND_STORE_PATH = None
@@ -351,6 +353,7 @@ def is_strategist(party_idx, entity):
 # Chi so INT (tri luc) tung char trong party (chia se de leader chon quan su INT cao nhat).
 # party_idx -> {entity: int_value}.  STAT_INT = id 0x1b (xac nhan tu int.pcap).
 STAT_INT = 0x1b
+STAT_AGI = 0x1e
 _PARTY_INT = {}
 
 def _register_party_int(party_idx, entity, value):
@@ -551,6 +554,13 @@ def _load_gamedata_items() -> dict:
             _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
                                     "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     return _gamedata_items
+
+_pet_stat_data = None
+def _load_pet_stat_data() -> dict:
+    global _pet_stat_data
+    if _pet_stat_data is None:
+        _pet_stat_data = _load_json_data_file("pet_stats.json") or {}
+    return _pet_stat_data
 
 
 
@@ -828,6 +838,18 @@ class GameClient:
         self._username = ""          # username login (giu lai de tham chieu)
         self.char_name = None        # ten nhan vat trong game (tu 0x27 theo self_entity)
         self.char_int = None         # chi so INT (tri luc) - tu S2C 0x08 id=0x1b
+        self.char_agi = None         # AGI thuc te cua char sau khi cong do/collection/horse
+        self.pet_agi = None          # AGI thuc te cua pet dang xuat chien
+        self._char_int_base = None
+        self._char_equip_int = 0
+        self._char_turn3_int = 0
+        self._char_agi_base = None
+        self._char_equip_agi = 0
+        self._char_turn3_agi = 0
+        self._mount_base_int = 0
+        self._mount_equip_int = 0
+        self._mount_equip_agi = 0
+        self._mount_collection_count = 0
         self.char_level = None       # cap nhan vat - tu S2C 0x05 (payload offset 21 = pkt[28])
         self.pet_level = None        # cap pet dang dung - tu S2C 0x0f sub=08
         self.active_pet_slot = None  # SLOT TUI (1..4) cua pet dang xuat chien - tu 0x0f (marker)
@@ -880,6 +902,11 @@ class GameClient:
         self._decompose_seq = 0      # tang moi khi nhan S2C 0x59 (xac nhan phan giai 1 cuon xong)
         self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
         self.bag_slots = {}          # slot (int) -> [tid, count]  (S2C 0x16 sub0400). Use item = gui slot.
+        self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
+        self._active_pet_login = None
+        self._collect_style_flags = {}
+        self._collect_card_equipped = []
+        self._collect_card_levels = {}
         self._bag_time = 0.0         # moc nhan snapshot tui gan nhat (cho log_bag_delayed adaptive)
         self._pending_confirm_slot = None  # slot dang cho S2C 0x17 sub09 xac nhan (probe confirm-gated)
         self._use_confirmed = False        # True khi nhan confirm cho _pending_confirm_slot
@@ -1501,12 +1528,9 @@ class GameClient:
         # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
         if opcode == 0x59:
             self._decompose_seq += 1
-        # INT (tri luc): gui luc login trong gói char-info S2C 0x05 (payload ~252B), INT o payload[9]
-        # = pkt[16]. (Xac nhan int2.pcap: 2 lan login INT 4->5, byte nay doi 4->5). INT cao = hoi SP
-        # tot hon khi lam quan su -> leader chon member INT cao nhat. Cap nhat khi cong diem cung qua day.
+        # INT luc login: doc base/equip/turn3 tu 0x05 roi cong collection + horse giong client game.
         if opcode == 0x05 and len(pkt) > 200 and len(pkt) > 16:
-            self.char_int = pkt[16]
-            _register_party_int(self.party_idx, self.self_entity, self.char_int)
+            self._parse_char_login_int(pkt)
             # CAP nhan vat: payload offset 21 = pkt[28] (khop capture: char lv 64). Hien o GUI.
             if len(pkt) > 28 and 1 <= pkt[28] <= 200:
                 self.char_level = pkt[28]
@@ -1518,10 +1542,58 @@ class GameClient:
         elif opcode == 0x0f and pkt[7:9] == b"\x08\x00" and len(pkt) >= 49:
             self._cached_pet_list_pkt = pkt
             self._on_pet_list(pkt)
+        # Collection style/card dung chung cho char + pet. Moi update deu tinh lai max cua pet active.
+        elif opcode == 0x5f and len(pkt) >= 10 and pkt[7:9] == b"\x04\x00":
+            count = pkt[9]
+            self._collect_style_flags = {i + 1: pkt[10 + i] for i in range(count)
+                                         if 10 + i < len(pkt)}
+            self._refresh_active_pet_login_stats()
+            self._refresh_char_int()
+            self._refresh_char_agi()
+        elif opcode == 0x5f and len(pkt) >= 11 and pkt[7:9] == b"\x09\x00":
+            count = pkt[10]
+            self._collect_card_equipped = list(pkt[11:11 + count])
+            self._refresh_active_pet_login_stats()
+            self._refresh_char_int()
+            self._refresh_char_agi()
+        elif opcode == 0x5f and len(pkt) >= 10 and pkt[7:9] == b"\x0a\x00":
+            count = pkt[9]
+            self._collect_card_levels = {
+                pkt[10 + i * 2]: pkt[11 + i * 2]
+                for i in range(count) if 11 + i * 2 < len(pkt)
+            }
+            self._refresh_active_pet_login_stats()
+            self._refresh_char_int()
+            self._refresh_char_agi()
+        # Horse login: diem thu 2 la INT base. Trang bi horse aggregate den rieng o sub0800.
+        elif opcode == 0x4f and len(pkt) >= 14 and pkt[7:9] == b"\x01\x00":
+            self._mount_base_int = pet_login_stats.mount_base_int(
+                int.from_bytes(pkt[12:14], "little"), _load_pet_stat_data())
+            self._refresh_char_int()
+            self._refresh_char_agi()
+        elif opcode == 0x4f and len(pkt) >= 10 and pkt[7:9] == b"\x08\x00":
+            count = pkt[9]
+            for i in range(count):
+                off = 10 + i * 10
+                if off + 10 > len(pkt):
+                    break
+                kind, sign = pkt[off], pkt[off + 1]
+                value = int.from_bytes(pkt[off + 2:off + 6], "little", signed=True)
+                if sign == 2:
+                    value = -value
+                if kind == 0xd4:  # EAttribute.EquipInt (212)
+                    self._mount_equip_int = value
+                elif kind == 0xd6:  # EAttribute.EquipAgi (214)
+                    self._mount_equip_agi = value
+            self._refresh_char_int()
+            self._refresh_char_agi()
         # Cap nhat INT khi cong diem (S2C 0x08: 01 00 1b 01 [val 2B])
         elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
-            self.char_int = int.from_bytes(pkt[11:13], "little")
-            _register_party_int(self.party_idx, self.self_entity, self.char_int)
+            self._char_int_base = int.from_bytes(pkt[11:13], "little")
+            self._refresh_char_int()
+        elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_AGI and pkt[10] == 0x01:
+            self._char_agi_base = int.from_bytes(pkt[11:13], "little")
+            self._refresh_char_agi()
         # HP/SP LIVE: S2C 0x08 sub=0100 [stat 1B][unit 1B][val 2B LE]. 0x19=HP, 0x1a=SP.
         # unit: 01=char, 02=pet (?). Ban CA NGOAI combat -> nguon HP/SP de hoi mau (0x33 chi trong tran).
         elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] in (0x19, 0x1a):
@@ -1553,6 +1625,9 @@ class GameClient:
                 tid = rec[0]
                 if tid in self.bag_counts:
                     self.bag_counts[tid] = max(0, self.bag_counts[tid] - 1)
+        # TRANG BI DANG MAC luc login: [count u8] + count * ThingData 35B.
+        elif opcode == 0x17 and len(pkt) >= 10 and pkt[7:9] == b"\x0b\x00":
+            self._parse_equipment_snapshot(pkt)
         # INVENTORY (TUI THAT): S2C 0x17 sub=0500. header [00][count 2B] + record 36B:
         #   [idx 1B][item_id 2B LE][count 4B LE][29 pad]. idx = use-id (dung item gui [idx][01]).
         #   bag_slots[idx]=[item_id, count]; bag_counts[item_id]=tong. Snapshot day -> THAY THE.
@@ -1590,6 +1665,12 @@ class GameClient:
         # marker "c0 fe 03 00 00 00" la 2 byte mask (uint16 LE) - line L da nhan = bit (L+3).
         # (Tim duoc nho raw-decode frame LON ma analyze_pcap drop; verify khop tren nhieu nick.)
         if opcode == 0x51:
+            if len(pkt) >= 11 and pkt[7:9] == b"\x02\x00":
+                size = int.from_bytes(pkt[9:11], "little")
+                self._mount_collection_count = pet_login_stats.mount_collection_count(
+                    pkt[11:11 + size], _load_pet_stat_data())
+                self._refresh_char_int()
+                self._refresh_char_agi()
             # Record reward bingo: c0 [XX] 03 00 00 00 [mask 2B] 01 00 00 00. Byte thu 2 (XX) DOI theo
             # server (fe/ff...) -> KHONG hardcode; anchor = c0 ?? 03000000 ... 01000000. line L da nhan
             # = bit (L+3) cua mask. CHUA khop het server (vd len 1011) + concurrent login -> CON DANG DO.
@@ -1726,6 +1807,14 @@ class GameClient:
         elif opcode == 0x13 and len(pkt) >= 11 and pkt[7:9] in (b"\x04\x00", b"\x01\x00"):
             # pet dang dung: [04 00] luc login, [01 00] khi doi pet. id = 2B LE
             pid = int.from_bytes(pkt[9:11], "little")
+            if pid == 0:
+                self.state.active_pet_id = None
+                self.active_pet_slot = None
+                self._active_pet_login = None
+                self.pet_name = None
+                self.pet_level = None
+                self.pet_agi = None
+                return
             self.state.active_pet_id = pid
             if self._cached_pet_list_pkt is not None:
                 self._on_pet_list(self._cached_pet_list_pkt)
@@ -1943,6 +2032,10 @@ class GameClient:
         lvl = b[chosen + 7]   # LEVEL cua con active (truoc day b[p+6], p=pet_id_off -> = chosen+7)
         if 1 <= lvl <= 200:
             self.pet_level = lvl
+        parsed = pet_login_stats.parse_record(b, chosen)
+        if parsed is not None:
+            self._active_pet_login = parsed
+            self._refresh_active_pet_login_stats()
         # TEN: chi cho pet KHONG co trong pets.json (0x13 da set ten tin cay). Chi khi tim DUNG record
         # active + chua co ten -> tranh 0x0f ghi de ten dung bang ten con dau.
         if found_active and self.pet_name is None:
@@ -1954,6 +2047,110 @@ class GameClient:
                         self.pet_name = nm
                 except Exception:
                     pass
+
+    def _refresh_active_pet_login_stats(self):
+        record = getattr(self, "_active_pet_login", None)
+        if not record:
+            return
+        data = _load_pet_stat_data()
+        if not data:
+            return
+        style = pet_login_stats.style_bonus(data, getattr(self, "_collect_style_flags", {}))
+        cards = pet_login_stats.card_bonus(
+            data,
+            getattr(self, "_collect_card_equipped", []),
+            getattr(self, "_collect_card_levels", {}),
+        )
+        hp_max, sp_max = pet_login_stats.calculate(record, data, style=style, cards=cards)
+        self.pet_agi = pet_login_stats.calculate_agi(
+            record,
+            data,
+            style_agi=pet_login_stats.style_attribute(
+                data, getattr(self, "_collect_style_flags", {}), 30),
+            card_agi=pet_login_stats.card_attribute(
+                data,
+                getattr(self, "_collect_card_equipped", []),
+                getattr(self, "_collect_card_levels", {}),
+                30,
+            ),
+        )
+        p = self.state.pet
+        p.hp = record["hp"]
+        p.sp = record["sp"]
+        p.hp_max = hp_max
+        p.sp_max = sp_max
+        log.info("[%s] PET login active slot=%d id=0x%x HP=%d/%d SP=%d/%d AGI=%d",
+                 self._label, record["marker"], record["id"], p.hp, p.hp_max, p.sp, p.sp_max,
+                 self.pet_agi)
+
+    def _parse_char_login_int(self, pkt: bytes):
+        body = pkt[7:]
+        if len(body) < 100 or body[:2] != b"\x03\x00":
+            return
+        self._char_int_base = int.from_bytes(body[9:11], "little")
+        self._char_equip_int = int.from_bytes(body[53:57], "little", signed=True)
+        self._char_agi_base = int.from_bytes(body[15:17], "little")
+        self._char_equip_agi = int.from_bytes(body[57:61], "little", signed=True)
+        skill_count = int.from_bytes(body[96:98], "little")
+        turn3_off = 98 + skill_count * 3
+        if turn3_off + 11 <= len(body):
+            self._char_turn3_int = int.from_bytes(body[turn3_off + 9:turn3_off + 11], "little")
+        if turn3_off + 17 <= len(body):
+            self._char_turn3_agi = int.from_bytes(body[turn3_off + 15:turn3_off + 17], "little")
+        self._refresh_char_int()
+        self._refresh_char_agi()
+
+    def _refresh_char_int(self):
+        base = getattr(self, "_char_int_base", None)
+        if base is None:
+            return
+        data = _load_pet_stat_data()
+        style_int = pet_login_stats.style_attribute(
+            data, getattr(self, "_collect_style_flags", {}), 27)
+        card_int = pet_login_stats.card_attribute(
+            data,
+            getattr(self, "_collect_card_equipped", []),
+            getattr(self, "_collect_card_levels", {}),
+            27,
+        )
+        horse_raw = getattr(self, "_mount_base_int", 0) + getattr(self, "_mount_equip_int", 0)
+        horse_int = int(horse_raw * (1 + 0.01 * getattr(self, "_mount_collection_count", 0)))
+        value = (base + getattr(self, "_char_equip_int", 0)
+                 + getattr(self, "_char_turn3_int", 0)
+                 + style_int + card_int
+                 + horse_int)
+        changed = value != self.char_int
+        self.char_int = value
+        _register_party_int(self.party_idx, self.self_entity, value)
+        if changed:
+            log.info("[%s] INT thuc te=%d (base=%d equip=%d turn3=%d style=%d card=%d horse=%d)",
+                     self._label, value, base, self._char_equip_int, self._char_turn3_int,
+                     style_int, card_int, horse_int)
+
+    def _refresh_char_agi(self):
+        base = getattr(self, "_char_agi_base", None)
+        if base is None:
+            return
+        data = _load_pet_stat_data()
+        style_agi = pet_login_stats.style_attribute(
+            data, getattr(self, "_collect_style_flags", {}), 30)
+        card_agi = pet_login_stats.card_attribute(
+            data,
+            getattr(self, "_collect_card_equipped", []),
+            getattr(self, "_collect_card_levels", {}),
+            30,
+        )
+        horse_raw = getattr(self, "_mount_equip_agi", 0)
+        horse_agi = int(horse_raw * (1 + 0.01 * getattr(self, "_mount_collection_count", 0)))
+        value = (base + getattr(self, "_char_equip_agi", 0)
+                 + getattr(self, "_char_turn3_agi", 0)
+                 + style_agi + card_agi + horse_agi)
+        changed = value != self.char_agi
+        self.char_agi = value
+        if changed:
+            log.info("[%s] AGI char thuc te=%d (base=%d equip=%d turn3=%d style=%d card=%d horse=%d)",
+                     self._label, value, base, self._char_equip_agi, self._char_turn3_agi,
+                     style_agi, card_agi, horse_agi)
 
     def _on_party(self, pkt: bytes):
         """S2C 0x0d. sub=09 = loi moi -> accept. sub=06 = roster [leader][count][members]."""
@@ -3127,30 +3324,41 @@ class GameClient:
             return
         items = _load_gamedata_items()
         total = 0
-        # Moi lan chi chon 1 bao ho: Ngoc Sieu -> Ngoc Dai -> neu khong co ca hai moi dung 1 Tui Dai.
+        # Moi lan chi chon 1 bao ho. Tinh ca ngoc dang deo tu snapshot login de khong thay ngang cap,
+        # ha Ngoc Sieu xuong Ngoc Dai, hoac mo tui oan.
         priority_tids = {tid for tid, _action in PHUC_THAN_PROTECTION_PRIORITY}
-        for tid, action in PHUC_THAN_PROTECTION_PRIORITY:
-            if tid not in cfg:
-                continue
-            _slot = next((s for s, (t, c) in self.bag_slots.items() if t == tid and c > 0), None)
-            if _slot is None:
-                continue
-            if action == "equip":
-                done = 1 if self.equip_item(_slot) else 0
-            else:
-                done = 1 if self.use_slot(_slot, qty=1) else 0
-            total += done
-            rec = self.bag_slots.get(_slot)
-            if rec:
-                rec[1] = max(0, rec[1] - done)
-                if rec[1] <= 0:
-                    self.bag_slots.pop(_slot, None)
-            _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
-            log.info("[%s] tu %s item (%s) slot=%d tid=0x%04x ('%s') %s",
-                     self._label, "trang bi" if action == "equip" else "dung",
-                     context_label, _slot, tid, _nm,
-                     "OK" if done else "THAT BAI (slot het?)")
-            break
+        equipped_tid = self._equipped_phuc_than_tid()
+        if equipped_tid != 0x5AAB:
+            for tid, action in PHUC_THAN_PROTECTION_PRIORITY:
+                if tid not in cfg:
+                    continue
+                if tid == 0x5A2D and equipped_tid == 0x5A2D:
+                    break
+                if action == "use" and equipped_tid in PHUC_THAN_GEM_TIDS:
+                    break
+                _slot = next((s for s, (t, c) in self.bag_slots.items() if t == tid and c > 0), None)
+                if _slot is None:
+                    continue
+                if action == "equip":
+                    done = 1 if self.equip_item(_slot) else 0
+                else:
+                    done = 1 if self.use_slot(_slot, qty=1) else 0
+                total += done
+                rec = self.bag_slots.get(_slot)
+                if rec:
+                    rec[1] = max(0, rec[1] - done)
+                    if rec[1] <= 0:
+                        self.bag_slots.pop(_slot, None)
+                if done and action == "equip":
+                    old = [x for x in getattr(self, "equipped_items", [])
+                           if x.get("id") not in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID}]
+                    self.equipped_items = old + [{"id": tid, "damage": 0, "damaged_item_id": 0}]
+                _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
+                log.info("[%s] tu %s item (%s) slot=%d tid=0x%04x ('%s') %s",
+                         self._label, "trang bi" if action == "equip" else "dung",
+                         context_label, _slot, tid, _nm,
+                         "OK" if done else "THAT BAI (slot het?)")
+                break
         for slot, tid, cnt in targets:
             if tid in priority_tids:
                 continue   # nhom bao ho da chon toi da 1 item o tren
@@ -3179,6 +3387,30 @@ class GameClient:
         if total:
             log.info("[%s] Tu dung item (%s): tong %d cai (%d slot)",
                      self._label, context_label, total, len(targets))
+
+    def _parse_equipment_snapshot(self, pkt: bytes):
+        """Luu phan ThingData can cho quyet dinh Phuc Than ngay sau login."""
+        count = pkt[9]
+        off = 10
+        equipped = []
+        for _ in range(count):
+            if off + 35 > len(pkt):
+                break
+            raw = pkt[off:off + 35]
+            equipped.append({
+                "id": int.from_bytes(raw[0:2], "little"),
+                "damage": raw[6],
+                "damaged_item_id": int.from_bytes(raw[27:29], "little"),
+            })
+            off += 35
+        self.equipped_items = equipped
+
+    def _equipped_phuc_than_tid(self) -> int:
+        for item in getattr(self, "equipped_items", []):
+            tid = item.get("id", 0)
+            if tid in PHUC_THAN_GEM_TIDS and item.get("damage", 0) < 250:
+                return tid
+        return 0
 
     def use_login_items(self):
         """Login: tu dung item co tid nam trong config.USE_LOGIN_ITEMS (template -> dung mọi acc),

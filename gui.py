@@ -874,6 +874,7 @@ class BotGUI(tk.Tk):
         for tab in self.nb.tabs():
             self.nb.forget(tab)
         self.party_trees = {}       # pidx -> Treeview
+        self.party_agi_buttons = {} # pidx -> nut Check AGI/canh bao do lech
         self.party_subframes = {}   # pidx -> sub-tab frame (cham trang thai party qua sub_nb.tab)
         self.group_nb = {}          # gidx -> sub-Notebook (chua cac party tab)
         self.group_frames = {}      # gidx -> group tab frame (cham trang thai group)
@@ -929,6 +930,10 @@ class BotGUI(tk.Tk):
         ttk.Separator(btns, orient="vertical").pack(side="left", fill="y", padx=6)
         ttk.Button(btns, text="🎟 Nhập giftcode",
                    command=lambda p=pidx: self._redeem_giftcode(p)).pack(side="left", padx=2)
+        agi_btn = tk.Button(btns, text="⚡ Check AGI", relief="raised", padx=8,
+                            command=lambda p=pidx: self._show_party_agi(p))
+        agi_btn.pack(side="left", padx=2)
+        self.party_agi_buttons[pidx] = agi_btn
         tree = ttk.Treeview(frame, columns=self._COLS, show="headings", height=max(len(accs), 3))
         for col in self._COLS:
             if col in ("acc", "char"):   # BAM header de che/hien tai khoan + ten (3 trang thai)
@@ -1088,6 +1093,39 @@ class BotGUI(tk.Tk):
                             f"Đang nhập '{code}' cho {len(running)} acc của Party {pidx + 1}.\n"
                             "Quà về qua mail → bot tự nhận. Xem log để biết kết quả.")
 
+    def _show_party_agi(self, pidx):
+        report = ctrl.party_agi_report(pidx)
+        win = tk.Toplevel(self)
+        win.title(f"Check AGI - Party {pidx + 1}")
+        win.transient(self)
+        win.geometry("620x320")
+        spread = report["spread"]
+        if spread is None:
+            summary = "Chưa có dữ liệu AGI. Hãy chạy party và chờ các acc login xong."
+            color = "#666666"
+        else:
+            summary = (f"Thấp nhất: {report['min']}    Cao nhất: {report['max']}    "
+                       f"Chênh lệch: {spread}")
+            if report["warning"]:
+                summary += "  ⚠ Lệch AGI quá 10, khó combo"
+            color = "#b45309" if report["warning"] else "#166534"
+        tk.Label(win, text=summary, fg=color, font=("", 10, "bold"),
+                 anchor="w").pack(fill="x", padx=10, pady=(10, 6))
+        tree = ttk.Treeview(win, columns=("acc", "char", "char_agi", "pet", "pet_agi"),
+                            show="headings", height=8)
+        for key, title, width in (("acc", "Tài khoản", 110), ("char", "Nhân vật", 150),
+                                  ("char_agi", "AGI char", 75), ("pet", "Pet đang dùng", 150),
+                                  ("pet_agi", "AGI pet", 75)):
+            tree.heading(key, text=title)
+            tree.column(key, width=width, anchor="center" if "agi" in key else "w")
+        for row in report["rows"]:
+            tree.insert("", "end", values=(self._mask_user(row["username"]), row["char"],
+                        row["char_agi"] if row["char_agi"] is not None else "—",
+                        row["pet"] or "—",
+                        row["pet_agi"] if row["pet_agi"] is not None else "—"))
+        tree.pack(fill="both", expand=True, padx=10, pady=(0, 8))
+        ttk.Button(win, text="Đóng", command=win.destroy).pack(pady=(0, 10))
+
     def _on_acc_dblclick(self, pidx, event):
         # Double-click 1 dong acc -> start RIENG acc do (thay cho nut "Start acc chon" cu, tranh
         # user moi bam nham thay vi Start party).
@@ -1174,6 +1212,15 @@ class BotGUI(tk.Tk):
                     pass
             group_run[gidx] = group_run.get(gidx, 0) + p_run
             group_total[gidx] = group_total.get(gidx, 0) + p_total
+            agi_report = ctrl.party_agi_report(pidx)
+            agi_btn = self.party_agi_buttons.get(pidx)
+            if agi_btn is not None:
+                if agi_report["warning"]:
+                    agi_btn.configure(text=f"⚠ Check AGI ({agi_report['spread']})",
+                                      bg="#f59e0b", fg="#3b2500", activebackground="#d97706")
+                else:
+                    agi_btn.configure(text="⚡ Check AGI", bg="#e9ecef", fg="#111111",
+                                      activebackground="#d9dde1")
         # cham trang thai TUNG GROUP TAB: xanh = du | vang = mot phan | xam = tat
         for gidx, gframe in self.group_frames.items():
             gr = group_run.get(gidx, 0); gt = group_total.get(gidx, 0)

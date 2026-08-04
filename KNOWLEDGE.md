@@ -176,11 +176,24 @@ Pattern entries: `03 02 [type] [4-byte LE]`
 |------|-----|---------|
 | 25 | 0x19 | HP current |
 | 26 | 0x1a | SP current |
-| 27 | 0x1b | **INT (tri luc)** — tang dame skill + hoi SP tot khi lam quan su (KHONG tang SP max). Khi CONG DIEM: S2C 0x08 `01 00 1b 01 [val 2B]`. LUC LOGIN: nam trong gói char-info **S2C 0x05** (payload ~252B) tai **payload offset 9** (=pkt[16]). Xac nhan int2.pcap (login 4->5). |
+| 27 | 0x1b | **INT (tri luc)** — tang dame skill + hoi SP tot khi lam quan su (KHONG tang SP max). Khi CONG DIEM: S2C 0x08 `01 00 1b 01 [val u16]`. LUC LOGIN: INT base nam trong char-info **S2C 0x05** body offset 9 va la **u16**, khong phai mot byte `pkt[16]`. |
 | 205 | 0xcd | HP max |
 
 ### Tang chi so (cong diem stat)
 - **C2S 0x08:** `01 00 00 00 [stat_id 1B] [amount 1B] 00 00 00 00` — vd tang INT 1 diem = `01 00 00 00 1b 01 00 00 00 00`. Xac nhan int.pcap. Dung cho auto cong diem.
+- **INT thuc te de chon quan su:** client tinh `base INT + EquipInt char + Turn3Int + CollectStyle INT
+  + CollectCard INT + floor((horse base INT + horse EquipInt) * horse collectionBonus)` (buff tam thoi
+  chi co neu dang active). Bot da sua nguon `_PARTY_INT`: `0x05` doc base u16, EquipInt i32 va Turn3Int;
+  `0x5f` cap nhat style/card; `0x4f sub0100` cho diem horse base va `sub0800` cho aggregate horse
+  EquipInt. Replay `pet_login_stats_20260804.pcap` ra dung UI: `229+70+2+10=311`; logic cu doc
+  `pkt[16]` bi cat 311 thanh 55 nen co the chon sai quan su.
+- **AGI thuc te de kiem tra combo theo party:** char tinh `base AGI + EquipAgi char + Turn3Agi
+  + CollectStyle AGI + CollectCard AGI + floor(horse EquipAgi * horse collectionBonus)`. Base AGI nam
+  tai body `0x05 sub0300 +15` (u16), EquipAgi tai `+57` (i32), Turn3Agi tai
+  `turn3_off+15` (u16); cong diem AGI duoc update qua `0x08 stat=0x1e`. Pet active lay base AGI
+  trong record `0x0f sub0800 +20`, cong EquipAgi (attribute 214, gom ca linh thach AGI/set),
+  CollectStyle AGI va CollectCard AGI; horse khong ap dung cho pet. Nut Check AGI gom ca char va pet
+  dang xuat chien cua rieng tung party, canh bao khi `max-min > 10`; pet khong xuat chien khong tinh.
 
 ### S2C 0x0b — Full stats
 **Char/Pet:** `03 0X [HP_max 4B] [SP_max 4B] [HP_cur 4B] [SP_cur 4B]`
@@ -189,10 +202,81 @@ Pattern entries: `03 02 [type] [4-byte LE]`
 **Mob:** offset 31 = HP_max (4B LE), offset 35 = SP_max (4B LE)
 
 ### S2C 0x0f sub0800 — Pet list luc login
-- Record pet co marker/slot, `pet_id`, exp, level, ten va mot cum stat header runtime. Quet capture
-  login thay cac so dang HP/SP/thuoc-tinh, nhung **chua gan nhan chac va chua thay current HP/SP pet
-  dang tin cay** trong pet-list.
-- Vi vay dung pet-list de biet pet nao/slot nao/skill nao; dung `0x0b`/`0x33` luc vao tran de nap HP/SP live.
+- Record pet: `+0 marker/slot u8`, `+1 pet_id u16`, `+3 EXP tong tich luy u32`, `+7 level u8`,
+  **`+8 HP_cur u32`**, **`+12 SP_cur u16`**, sau do la cum chi so; `+31 name_len`, `+32 name UTF-16`.
+  Xac nhan bang `captures/pet_login_stats_20260804.pcap` va so tren UI:
+  - Quan Vu lv117: packet HP=1054, SP=82 (UI 1054/1398, 82/355).
+  - Tuong Nghia Cu lv105: packet HP=1136 tai thoi diem capture, SP=370 (UI doc sau do 1138/1149, 370/370).
+  - Thai Van Co lv107: packet HP=886, SP=354 (UI 886/888, 354/354).
+- `HP_max`/`SP_max` KHONG nam duoi dang so nguyen literal trong pet-list hay packet login khac cua
+  capture nay (da quet ca LE/BE 2/3/4 byte). Tuy nhien client van hien thi max ngay sau login, nen
+  record login **co du du lieu de client tinh max**: sau current HP/SP la 6 truong chi so u16 tai
+  `+14,+16,+18,+20,+22,+24`; client ket hop chung voi du lieu loai pet trong `Npc_C.dat`/gamedata.
+  Chua dao duoc cong thuc chinh xac, khong duoc ket luan "login khong co max" chi vi khong thay literal.
+- EXP UI dang-cap / moc-cap-ke-tiep cung khong xuat hien nguyen dang; field `+3` la tong EXP tich luy
+  (vd Quan Vu `31,164,942`, khong phai `820,738/1,019,670`). Bot hien tai lay max truc tiep, chac chan
+  tu `0x0b` luc vao tran; muon co max ngay login thi can dao va ap dung cung cong thuc cua client.
+
+#### Cong thuc client tinh max HP/SP pet ngay login (crack Lua 2026-08-05)
+- Nguon game da decrypt: `Lua/Logic/Calculator.lua` (`Calc.GetMaxHp/GetMaxSp`),
+  `Lua/Logic/Role.lua` (`Role.FollowNpcAppear`) va `Data/Formula.dat`.
+- Sau `SP_cur`, 6 field u16 cua record pet lan luot la `INT, ATK, DEF, AGI, HPX, SPX`.
+- He so Formula.dat: `w35=1`, `w36=2`, `w37=0.35`, `baseHp=80`; `w38=1`, `w39=2`,
+  `w40=0.25`, `baseSp=60`. Voi pet thuong/chua chuyen sinh (nhanh FollowNpc turn=0):
+  - `maxHP = round(level + 2*HPX_total*level^0.35) + 80 + 2*HPX_total + equipMaxHP + hpPill*50`
+  - `maxSP = round(level + 2*SPX_total*level^0.25) + 60 + equipMaxSP + spPill*10`
+  - `HPX_total/SPX_total` gom base record + trang bi + DrugBuff + CollectStyle + CollectCard.
+- Sau name: 3 byte cap skill, 6 record trang bi `ThingData` moi record 35B, roi
+  `sublimeCount u8, specialSkill bool, soulId i32, hpPillCount u8, spPillCount u8, upgradeLv u8`.
+- `CollectStyleValue_C.dat`: tai 22 diem thoi trang, tong cac moc 5/10/15/20 la
+  `INT+2, ATK+2, DEF+2, AGI+1, HPX+1, SPX+1`; bonus nay ap dung ca pet.
+- Bot da port cong thuc nay vao `bot/pet_login_stats.py` (APK co ban dong bo) va dung bang compact
+  `pet_stats.json`: luc `0x0f sub0800` den, chi record cua `active_pet_id` duoc nap vao `state.pet`.
+  `0x5f sub0400/0900/0a00` cap nhat bonus collection style/card va tinh lai max. Vi vay
+  `heal_full()` truoc boss ngay sau fresh login da co du `HP_cur/HP_max/SP_cur/SP_max` cua pet dang
+  xuat chien; horse khong bao gio duoc cong vao nhanh pet.
+- Doi chieu capture/UI khop tuyet doi khi cong bonus thoi trang:
+  - Tuong Nghia Cu lv105, HPX=78, SPX=31 -> total 79/32 -> `maxHP=1149`, `maxSP=370`.
+  - Thai Van Co lv107, HPX=57, SPX=28 -> total 58/29 -> `maxHP=898`, `maxSP=354`.
+    Packet current HP=886, nen UI dung phai la `886/898`, khong phai `886/888`.
+- Quan Vu lv117 trong capture: base `INT/ATK/DEF/AGI/HPX/SPX = 44/175/85/70/94/26`.
+  Sau bonus thoi trang 22 diem va trang bi, chi so cuoi la `46/208/90/75/95/27`.
+  Trang bi deu khong cuong hoa/khong linh thach: Giap Bach Bi `DEF+3`, Diet The Chien Dao
+  `ATK+31, AGI+4`, Ngoc Kich Pha `EquipMaxHP+5`; khong co set bonus vi chi co mot mon suitId 68.
+  Capture `0x5f sub0900` cho thay cac slot the suu tap deu id=0, nen CollectCard bonus = 0.
+  Cong thuc cho `maxHP=1398`, `maxSP=355`, khop UI `1054/1398`, `82/355`.
+- **Horse/Mount login:** S2C `0x4f sub0100` duoc `Mounts.SetData` parse thanh
+  `[level u8][6 attributePoint u16][equipCount u8][ThingData 35B * count][currentNpcId u16]`.
+  Capture tren: horse level 3, point `[22,34,16,15,22,0]`; bang `MountsGrow_C.dat` cho base
+  `ATK+1, INT+2, DEF+1, ExtraHP+10, ExtraSP+5`. Ba do horse: Ma Tien Tri Luc 3 `INT+8`,
+  Ma De The Chat 3 `MaxHP+40`, Ma Dang Phong Ngu 3 `DEF+8`. Tong horse hien tai:
+  `INT+10, ATK+1, DEF+9, MaxHP+50, MaxSP+5` (sau do client nhan `collectionBonus` va floor).
+  Doi chieu UI char lv148: base + do char + fashion + horse =
+  `INT/ATK/DEF/AGI/HPX/SPX = 311/3/13/76/1/1`, HP `458/542`, SP `240/270`.
+- **Phan biet nguon chi so trang bi luc login:**
+  - Char: S2C `0x05 sub0300` (`Role.ReceivePlayerData`) gui **thang tong da tinh** theo thu tu
+    `EquipAtk, EquipDef, EquipInt, EquipAgi, EquipMaxHp, EquipMaxSp, EquipHpx, EquipSpx` (moi field i32).
+    Capture tren la `0,2,70,34,0,0,0,0`; khong can cong tung mon do char neu chi can tong.
+  - Login van gui rieng danh sach do char tai S2C `0x17 sub0b00`:
+    `[count u8][ThingData 35B * count]`. Capture co 6 mon ID
+    `[20001,19802,15099,21001,22718,23024]`; record co du element/elementValue, linh thach,
+    cuong hoa, damage va damagedItemId. Vi vay co the biet chinh xac char dang mac mon nao va tu tinh lai tong.
+    Rieng slot 6/fitType 6 trong capture: item hien tai `23024` = `Ngoc Hu`, damage=250,
+    `damagedItemId=23211` = `Ngoc Sieu Phuc Than` (x2.5 EXP); tuc login cho biet ca ngoc goc truoc khi hong.
+  - Pet va horse: packet gui tung trang bi bang record `ThingData` 35B. Muon ra bonus phai lay item ID,
+    tra hai attribute goc trong `Item_C.dat`, cong linh thach/element/set theo `Item.GetEQIncrease`.
+    Vi vay bonus Quan Vu va horse o tren la ket qua client tu tinh, khong phai aggregate server gui san.
+- **Update do ben/trang thai trang bi sau login (xac nhan tu client goc):**
+  - S2C `0x17 sub1b00`: `[equipPosition u8][damage u8]` — server gui moi khi do ben cua do char thay doi;
+    client cap nhat `Item.GetBagItem(EThings.Equip, equipPosition).damage`. Cac moc UI la 100/200/250,
+    trong do 250 la hong.
+  - S2C `0x17 sub1c00`: `[followIndex u8][equipPosition u8][damage u8]` — ban tuong tu cho trang bi pet/follower.
+  - S2C `0x17 sub2300`: `[equipPosition u8][ThingData 35B][followIndex u8]` — server gui ban ghi trang bi
+    day du khi mon do bi hong/thay thanh vat pham hong. Voi ngoc char, slot 6 se thanh ID `23024` (`Ngoc Hu`),
+    `damage=250`, va `damagedItemId` van giu ID ngoc goc (vi du `23211` = Ngoc Sieu Phuc Than).
+  - Vi vay logic Phuc Than chu ky 30 phut khong can doan hay relogin: giu cache 6 slot tu `sub0b00`, cap nhat
+    `damage` bang `sub1b00`, va thay ca record bang `sub2300`. Bot hien tai chua parse cac goi nay thi se khong
+    biet ngoc da hong hay con nguyen sau login.
 
 ### S2C 0x08 sub0200 — current HP/SP sau khi dung item len pet
 - Xac nhan `captures/pet_heal_20260715.pcap`: sau C2S `0x17` dung item vao pet target N,

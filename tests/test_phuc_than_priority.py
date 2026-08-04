@@ -11,6 +11,7 @@ GREAT_GEM = 0x5A2D
 GREAT_BAG = 0xB5F4
 GREAT_BLESSING = 0xB3D6
 BLESSING = 0xB3D5
+BROKEN_GEM = 0x59F0
 EXPECTED_PRIORITY = (
     (SUPER_GEM, "equip"),
     (GREAT_GEM, "equip"),
@@ -19,9 +20,10 @@ EXPECTED_PRIORITY = (
 
 
 class TestPhucThanPriority(unittest.TestCase):
-    def _run_items(self, bag_slots):
+    def _run_items(self, bag_slots, equipped=None):
         game = client_module.GameClient.__new__(client_module.GameClient)
         game.bag_slots = {slot: [tid, count] for slot, (tid, count) in bag_slots.items()}
+        game.equipped_items = list(equipped or [])
         game.running = True
         game._label = "test"
         equip_calls = []
@@ -48,6 +50,14 @@ class TestPhucThanPriority(unittest.TestCase):
             game._use_items_from_cfg(phuc_than_cfg, "test")
         return equip_calls, use_calls
 
+    @staticmethod
+    def _thing(tid, damage=0, damaged_item_id=0):
+        raw = bytearray(35)
+        raw[0:2] = tid.to_bytes(2, "little")
+        raw[6] = damage
+        raw[27:29] = damaged_item_id.to_bytes(2, "little")
+        return bytes(raw)
+
     def test_super_gem_wins_over_great_gem_and_bag(self):
         equip, used = self._run_items(
             {1: (GREAT_BAG, 2), 2: (GREAT_GEM, 1), 3: (SUPER_GEM, 1)}
@@ -69,6 +79,50 @@ class TestPhucThanPriority(unittest.TestCase):
         equip, used = self._run_items({})
         self.assertEqual(equip, [])
         self.assertEqual(used, [])
+
+    def test_equipped_super_is_not_replaced_by_lower_priority_items(self):
+        equip, used = self._run_items(
+            {1: (GREAT_GEM, 1), 2: (GREAT_BAG, 2)},
+            [{"id": SUPER_GEM, "damage": 0, "damaged_item_id": 0}],
+        )
+        self.assertEqual(equip, [])
+        self.assertEqual(used, [])
+
+    def test_equipped_great_is_kept_when_no_super_is_available(self):
+        equip, used = self._run_items(
+            {1: (GREAT_GEM, 1), 2: (GREAT_BAG, 2)},
+            [{"id": GREAT_GEM, "damage": 0, "damaged_item_id": 0}],
+        )
+        self.assertEqual(equip, [])
+        self.assertEqual(used, [])
+
+    def test_equipped_great_is_upgraded_to_super(self):
+        equip, used = self._run_items(
+            {3: (SUPER_GEM, 1), 4: (GREAT_BAG, 2)},
+            [{"id": GREAT_GEM, "damage": 0, "damaged_item_id": 0}],
+        )
+        self.assertEqual(equip, [3])
+        self.assertEqual(used, [])
+
+    def test_broken_equipped_gem_does_not_count_as_protection(self):
+        equip, used = self._run_items(
+            {5: (GREAT_GEM, 1), 6: (GREAT_BAG, 2)},
+            [{"id": BROKEN_GEM, "damage": 250, "damaged_item_id": SUPER_GEM}],
+        )
+        self.assertEqual(equip, [5])
+        self.assertEqual(used, [])
+
+    def test_login_equipment_snapshot_parses_full_thing_data(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        packet = b"\x00" * 7 + b"\x0b\x00" + bytes([2]) + self._thing(0x4E21) + self._thing(
+            SUPER_GEM, damage=12
+        )
+        game._parse_equipment_snapshot(packet)
+        self.assertEqual(len(game.equipped_items), 2)
+        self.assertEqual(
+            game.equipped_items[1],
+            {"id": SUPER_GEM, "damage": 12, "damaged_item_id": 0},
+        )
 
     def test_normal_blessings_still_run_but_bag_is_skipped_when_gem_exists(self):
         equip, used = self._run_items(
@@ -100,6 +154,28 @@ class TestPhucThanPriority(unittest.TestCase):
         self.assertEqual(
             read_priority("android/app/src/main/python/train_bot/client.py"),
             EXPECTED_PRIORITY,
+        )
+
+    def test_desktop_and_android_keep_phuc_than_methods_in_sync(self):
+        def methods(path):
+            with open(path, encoding="utf-8") as fh:
+                tree = ast.parse(fh.read())
+            wanted = {
+                "_parse_equipment_snapshot",
+                "_equipped_phuc_than_tid",
+                "_use_items_from_cfg",
+            }
+            return {
+                node.name: ast.dump(node, include_attributes=False)
+                for cls in tree.body
+                if isinstance(cls, ast.ClassDef) and cls.name == "GameClient"
+                for node in cls.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in wanted
+            }
+
+        self.assertEqual(
+            methods("bot/client.py"),
+            methods("android/app/src/main/python/train_bot/client.py"),
         )
 
 

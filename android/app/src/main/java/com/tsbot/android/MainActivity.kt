@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -751,6 +752,16 @@ fun PartyCard(
     val enabledInParty = party.accounts.count { it.enabled }
     val context = LocalContext.current
     val statusMapNames = remember(context) { loadStatusMapNames(context) }
+    val agiValues = party.accounts.flatMap { account ->
+        val status = statusMap[account.username]
+        buildList {
+            status?.charAgi?.let(::add)
+            if (!status?.petName.isNullOrBlank()) status?.petAgi?.let(::add)
+        }
+    }
+    val agiSpread = if (agiValues.isEmpty()) null else
+        agiValues.maxOrNull()!! - agiValues.minOrNull()!!
+    val agiWarning = agiSpread != null && agiSpread > 10
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -828,6 +839,7 @@ fun PartyCard(
             var showChannelDialog by remember { mutableStateOf(false) }
             var showCityDialog by remember { mutableStateOf(false) }
             var showGiftcodeDialog by remember { mutableStateOf(false) }
+            var showAgiDialog by remember { mutableStateOf(false) }
             // poll kenh hien tai moi 5s (chi khi party co acc)
             LaunchedEffect(party.accounts.firstOrNull()?.username) {
                 while (party.accounts.isNotEmpty()) {
@@ -860,6 +872,18 @@ fun PartyCard(
                         modifier = Modifier.weight(1f).height(60.dp),
                     ) { Text("Giftcode", maxLines = 2) }
                 }
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = { showAgiDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (agiWarning) Color(0xFFFFB74D) else Color.Transparent,
+                        contentColor = if (agiWarning) Color(0xFF3E2723) else MaterialTheme.colorScheme.primary,
+                    ),
+                ) {
+                    Text(if (agiWarning) "⚠ Check AGI (lệch $agiSpread)" else "⚡ Check AGI",
+                        fontWeight = if (agiWarning) FontWeight.Bold else FontWeight.Medium)
+                }
             }
             if (showChannelDialog) {
                 ChannelDialog(
@@ -881,6 +905,13 @@ fun PartyCard(
                 GiftcodeDialog(
                     onDismiss = { showGiftcodeDialog = false },
                     onSave = { code -> onSendGiftcode(code); showGiftcodeDialog = false },
+                )
+            }
+            if (showAgiDialog) {
+                PartyAgiDialog(
+                    party = party,
+                    statusMap = statusMap,
+                    onDismiss = { showAgiDialog = false },
                 )
             }
 
@@ -2540,5 +2571,51 @@ fun GiftcodeDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Hủy") }
         },
+    )
+}
+
+@Composable
+fun PartyAgiDialog(
+    party: Party,
+    statusMap: Map<String, AccountStatus>,
+    onDismiss: () -> Unit,
+) {
+    val values = party.accounts.flatMap { account ->
+        val status = statusMap[account.username]
+        buildList {
+            status?.charAgi?.let(::add)
+            if (!status?.petName.isNullOrBlank()) status?.petAgi?.let(::add)
+        }
+    }
+    val low = values.minOrNull()
+    val high = values.maxOrNull()
+    val spread = if (low != null && high != null) high - low else null
+    val warning = spread != null && spread > 10
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Check AGI - ${party.name}") },
+        text = {
+            Column(modifier = Modifier.height(360.dp).verticalScroll(rememberScrollState())) {
+                Text(
+                    when {
+                        spread == null -> "Chưa có dữ liệu AGI. Hãy chạy party và chờ login xong."
+                        warning -> "Thấp nhất $low · Cao nhất $high · Lệch $spread\n⚠ Lệch AGI quá 10, khó combo"
+                        else -> "Thấp nhất $low · Cao nhất $high · Lệch $spread"
+                    },
+                    color = if (warning) Color(0xFFF59E0B) else MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(12.dp))
+                party.accounts.forEach { account ->
+                    val status = statusMap[account.username]
+                    Text(account.username, fontWeight = FontWeight.Bold)
+                    Text("Nhân vật: ${status?.charName?.ifBlank { account.username } ?: account.username}  ·  AGI ${status?.charAgi ?: "—"}")
+                    Text(if (status?.petName.isNullOrBlank()) "Pet đang dùng: —" else
+                        "Pet đang dùng: ${status?.petName}  ·  AGI ${status?.petAgi ?: "—"}")
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
     )
 }

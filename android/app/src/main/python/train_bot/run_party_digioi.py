@@ -3561,7 +3561,9 @@ def account_status(username):
         return {"running": running, "char": last.get("char", ""), "map": last.get("map"),
                 "in_party": False, "dg_remain": None, "combat": False, "channel": None,
                 "strategist": False, "char_level": last.get("char_level"),
+                "char_agi": last.get("char_agi"),
                 "pet_name": last.get("pet_name") or "", "pet_level": last.get("pet_level"),
+                "pet_agi": last.get("pet_agi"),
                 "party_avg_level": party_avg_level}
     from .client import is_joined, is_strategist
     st = _party_state.get(pidx, {})
@@ -3570,8 +3572,10 @@ def account_status(username):
         dg_remain = max(0, DIGIOI_LIMIT - getattr(c, "digioi_minutes", 0))
     account_last[username] = {"map": c.current_map, "char": c.char_name or "",
                               "char_level": getattr(c, "char_level", None),
+                              "char_agi": getattr(c, "char_agi", None),
                               "pet_name": getattr(c, "pet_name", None),
-                              "pet_level": getattr(c, "pet_level", None)}  # luu lai luc cuoi
+                              "pet_level": getattr(c, "pet_level", None),
+                              "pet_agi": getattr(c, "pet_agi", None)}  # luu lai luc cuoi
     _ch = getattr(getattr(c, "state", None), "char", None)   # hp/sp cho UI APK (PC GUI bo qua)
     return {
         "running": running,
@@ -3583,14 +3587,42 @@ def account_status(username):
         "combat": c.in_combat() if running else False,
         "strategist": is_strategist(pidx, c.self_entity),
         "char_level": getattr(c, "char_level", None),
+        "char_agi": getattr(c, "char_agi", None),
         "pet_name": getattr(c, "pet_name", None) or "",
         "pet_level": getattr(c, "pet_level", None),
+        "pet_agi": getattr(c, "pet_agi", None),
         "party_avg_level": party_avg_level,
         # --- them cho UI APK (poll qua account_status thay callback on_status) ---
         "state": "running" if running else "stopped",
         "hp": getattr(_ch, "hp", None), "sp": getattr(_ch, "sp", None),
         "hp_max": getattr(_ch, "hp_max", None), "sp_max": getattr(_ch, "sp_max", None),
     }
+
+
+def party_agi_report(pidx):
+    """Chi tiet AGI char + pet active cua mot party; canh bao khi do lech > 10."""
+    rows = []
+    values = []
+    for username, _password, _leader, _picker in party_accounts(pidx):
+        status = account_status(username)
+        char_agi = status.get("char_agi")
+        pet_agi = status.get("pet_agi") if status.get("pet_name") else None
+        if isinstance(char_agi, int):
+            values.append(char_agi)
+        if isinstance(pet_agi, int):
+            values.append(pet_agi)
+        rows.append({
+            "username": username,
+            "char": status.get("char") or username,
+            "char_agi": char_agi,
+            "pet": status.get("pet_name") or "",
+            "pet_agi": pet_agi,
+        })
+    low = min(values) if values else None
+    high = max(values) if values else None
+    spread = high - low if low is not None else None
+    return {"rows": rows, "min": low, "max": high, "spread": spread,
+            "warning": spread is not None and spread > 10}
 
 
 def account_skills(username):
