@@ -3856,25 +3856,26 @@ class GameClient:
         if c.hp_max > 0 and c.hp <= 0:
             self._heal_unit(0, c, "char", "hp_char", "hp", thr_override=0.01, force=True)
 
-    def heal_full(self):
+    def heal_full(self, force: bool = False):
         """Hoi FULL HP+SP char + pet (nguong=1.0) - goi TRUOC khi danh boss (solo dungeon + world
-        boss) de chac thang. Chi ngoai tran. Het thuoc thi hoi duoc bao nhieu hay bay nhieu."""
-        if self.in_combat() or not self.bag_slots:
+        boss) hoac GIUA cac tran PB110. Het thuoc thi hoi duoc bao nhieu hay bay nhieu."""
+        _busy = self.state.in_battle if force else self.in_combat()
+        if _busy or not self.bag_slots:
             return
-        log.info("[%s] Hoi FULL HP/SP truoc khi danh boss...", self._label)
+        log.info("[%s] Hoi FULL HP/SP...", self._label)
         c = self.state.char
         if c.hp_max > 0:
-            self._heal_unit(0, c, "char", "hp_char", "hp", thr_override=1.0)
-            self._heal_unit(0, c, "char", "sp_char", "sp", thr_override=1.0)
-        if self.state.solo_multipet and self._heal_solo_multipets(thr_override=1.0):
+            self._heal_unit(0, c, "char", "hp_char", "hp", thr_override=1.0, force=force)
+            self._heal_unit(0, c, "char", "sp_char", "sp", thr_override=1.0, force=force)
+        if self.state.solo_multipet and self._heal_solo_multipets(thr_override=1.0, force=force):
             return
         p = self.state.pet
         if p.hp_max > 0:
             _pt = self.active_pet_slot or 1   # slot tui pet dang xuat chien (xem do_heal)
             if p.hp <= 0:
                 p.hp = 1   # pet chet da duoc server hoi sinh 1HP luc ket tran (0x33 cuoi stale)
-            self._heal_unit(_pt, p, "pet", "hp_pet", "hp", thr_override=1.0)
-            self._heal_unit(_pt, p, "pet", "sp_pet", "sp", thr_override=1.0)
+            self._heal_unit(_pt, p, "pet", "hp_pet", "hp", thr_override=1.0, force=force)
+            self._heal_unit(_pt, p, "pet", "sp_pet", "sp", thr_override=1.0, force=force)
 
     def _heal_unit(self, target: int, unit, label: str, thr_key: str, kind: str, thr_override=None,
                    force: bool = False):
@@ -4974,8 +4975,9 @@ class GameClient:
             elif kind == "moves":
                 for x, y in action[1]:
                     self._route_move(x, y)
-            elif kind == "heal":
-                self.do_heal()
+            elif kind == "heal_full":
+                time.sleep(0.5)
+                self.heal_full(force=True)
             elif kind == "battle":
                 end_seq = self._team_dungeon_end_seq
                 if not self._advance_to_team_dungeon_battle(action[1]):
@@ -5015,6 +5017,9 @@ class GameClient:
         if not self._wait_team_dungeon_complete():
             log.warning("[%s] (LEADER) PB110: tran 5 xong nhung khong thay mission 0x30ae", self._label)
             return False
+        time.sleep(0.5)
+        self.state.in_battle = False
+        self.heal_full(force=True)
         self._adv_dialog(7, gap=0.4)
         self._route_move(2124, 283)
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV110 XONG -> roi pho ban ===", self._label)

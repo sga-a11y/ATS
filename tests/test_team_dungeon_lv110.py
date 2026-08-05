@@ -189,7 +189,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game._team_dungeon_end_seq = 20
         game.send = mock.Mock()
         game._route_move = mock.Mock()
-        game.do_heal = mock.Mock()
+        game.heal_full = mock.Mock()
         game._wait_team_dungeon_end = mock.Mock(return_value=True)
 
         def advance(n=1, gap=0.4):
@@ -209,7 +209,29 @@ class TestTeamDungeon110Execution(unittest.TestCase):
                 mock.call(50, 2470),
             ],
         )
+        game.heal_full.assert_called_once_with(force=True)
         game._wait_team_dungeon_end.assert_called_once_with(20)
+
+    def test_force_full_heal_bypasses_post_battle_busy_window(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game._label = "pb110-test"
+        game.state = BattleState()
+        game.state.char.hp, game.state.char.hp_max = 100, 500
+        game.state.char.sp, game.state.char.sp_max = 20, 200
+        game.state.pet.hp, game.state.pet.hp_max = 200, 800
+        game.state.pet.sp, game.state.pet.sp_max = 30, 300
+        game.state.solo_multipet = False
+        game.bag_slots = {1: [0x1234, 99]}
+        game.active_pet_slot = 3
+        game.in_combat = mock.Mock(return_value=True)
+        game._heal_unit = mock.Mock()
+
+        game.heal_full(force=True)
+
+        self.assertEqual(game._heal_unit.call_count, 4)
+        for call in game._heal_unit.call_args_list:
+            self.assertEqual(call.kwargs["thr_override"], 1.0)
+            self.assertTrue(call.kwargs["force"])
 
     @staticmethod
     def configured_inner_client(completes=True):
@@ -224,6 +246,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game._wait_team_dungeon_complete = mock.Mock(return_value=completes)
         game._adv_dialog = mock.Mock()
         game._route_move = mock.Mock()
+        game.heal_full = mock.Mock()
         game.leave_party = mock.Mock()
         return game
 
@@ -238,6 +261,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             [1, 2, 3, 4, 5],
         )
         game._wait_team_dungeon_complete.assert_called_once_with()
+        game.heal_full.assert_called_once_with(force=True)
         game._adv_dialog.assert_called_with(7, gap=0.4)
         game._route_move.assert_called_with(2124, 283)
         game.leave_party.assert_called_once_with()

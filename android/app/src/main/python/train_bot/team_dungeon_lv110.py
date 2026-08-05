@@ -18,7 +18,7 @@ STAGES = (
         ("battle", 23),
     ),
     (
-        ("heal",),
+        ("heal_full",),
         ("advance", 10),
         ("moves", ((490, 2410), (222, 2446), (126, 2459), (50, 2470), (50, 2470))),
         ("send", 0x14, bytes.fromhex("08000600")),
@@ -27,7 +27,7 @@ STAGES = (
         ("battle", 7),
     ),
     (
-        ("heal",),
+        ("heal_full",),
         ("advance", 9),
         (
             "moves",
@@ -51,7 +51,7 @@ STAGES = (
         ("battle", 15),
     ),
     (
-        ("heal",),
+        ("heal_full",),
         ("advance", 12),
         (
             "moves",
@@ -72,14 +72,14 @@ STAGES = (
         ("battle", 15),
     ),
     (
-        ("heal",),
+        ("heal_full",),
         ("advance", 15),
         ("moves", ((430, 370), (228, 459), (141, 498), (70, 530), (70, 530))),
         ("send", 0x14, bytes.fromhex("08000300")),
         ("advance", 1),
         ("moves", ((2268, 219), (2181, 258), (2110, 290), (2110, 290))),
         ("send", 0x41, bytes.fromhex("01006464010100000101000000")),
-        ("heal",),
+        ("heal_full",),
         ("moves", ((2110, 290),)),
         ("send", 0x14, bytes.fromhex("08000c00")),
         ("advance", 1),
