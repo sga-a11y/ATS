@@ -68,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -168,6 +169,56 @@ fun partyStatusColor(party: Party, statusMap: Map<String, AccountStatus>): Color
     }
 }
 
+private const val PRIVACY_FULL = 0
+private const val PRIVACY_MASK = 1
+private const val PRIVACY_ORDINAL = 2
+
+fun accountOrdinalMap(parties: List<Party>): Map<String, String> {
+    var index = 1
+    val out = linkedMapOf<String, String>()
+    parties.forEach { party ->
+        party.accounts.forEach { account ->
+            if (account.username.isNotBlank() && !out.containsKey(account.username)) {
+                out[account.username] = "acc${index++}"
+            }
+        }
+    }
+    return out
+}
+
+fun maskPart(value: String): String {
+    if (value.isBlank() || value == "—") return value
+    if (value.length <= 3) return value.take(1) + "***"
+    return value.take(1) + "***" + value.takeLast(2)
+}
+
+fun maskUsername(username: String, mode: Int, ordinals: Map<String, String>): String = when (mode) {
+    PRIVACY_FULL -> username
+    PRIVACY_ORDINAL -> ordinals[username] ?: maskPart(username)
+    else -> maskPart(username)
+}
+
+fun maskCharacterName(name: String, username: String, mode: Int, ordinals: Map<String, String>): String = when (mode) {
+    PRIVACY_FULL -> name
+    PRIVACY_ORDINAL -> ordinals[username] ?: maskPart(name)
+    else -> maskPart(name)
+}
+
+fun maskAccountLog(
+    logText: String,
+    username: String,
+    charName: String,
+    mode: Int,
+    ordinals: Map<String, String>,
+): String {
+    if (mode == PRIVACY_FULL) return logText
+    var out = logText.replace("[$username]", "[${maskUsername(username, mode, ordinals)}]")
+    if (charName.isNotBlank()) {
+        out = out.replace("[$charName]", "[${maskCharacterName(charName, username, mode, ordinals)}]")
+    }
+    return out
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TsBotApp(
@@ -186,11 +237,13 @@ fun TsBotApp(
     var editingSkillAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     // Tab party dang chon (moi party = 1 tab, giong ban PC)
     var selectedTab by remember { mutableStateOf(0) }
+    var privacyMode by rememberSaveable { mutableStateOf(PRIVACY_MASK) }
 
     val service = boundServiceProvider()
     val statusMap by (service?.status?.collectAsState() ?: remember { mutableStateOf(emptyMap()) })
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val privacyOrdinals = remember(parties) { accountOrdinalMap(parties) }
     var updateInfo by remember { mutableStateOf<ApkUpdateInfo?>(null) }
     var updateBusyText by remember { mutableStateOf<String?>(null) }
     var updateMessage by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -387,6 +440,9 @@ fun TsBotApp(
                     PartyCard(
                         party = party,
                         statusMap = statusMap,
+                        privacyMode = privacyMode,
+                        privacyOrdinals = privacyOrdinals,
+                        onTogglePrivacy = { privacyMode = (privacyMode + 1) % 3 },
                         onAddAccount = { addAccountForParty = party.name },
                         onEditParty = { editingParty = party },
                         onEditAccount = { account -> editingAccount = party.name to account },
@@ -727,6 +783,9 @@ fun loadStatusMapNames(context: Context): Map<Int, String> = buildMap {
 fun PartyCard(
     party: Party,
     statusMap: Map<String, AccountStatus>,
+    privacyMode: Int,
+    privacyOrdinals: Map<String, String>,
+    onTogglePrivacy: () -> Unit,
     onAddAccount: () -> Unit,
     onEditParty: () -> Unit,
     onEditAccount: (Account) -> Unit,
@@ -775,7 +834,14 @@ fun PartyCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(party.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable(onClick = onTogglePrivacy),
+                    ) {
+                        Text("👁", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.width(6.dp))
+                        Text(party.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
                     Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Pill(Servers.ALL[party.serverKey]?.label ?: party.serverKey)
@@ -911,6 +977,8 @@ fun PartyCard(
                 PartyAgiDialog(
                     party = party,
                     statusMap = statusMap,
+                    privacyMode = privacyMode,
+                    privacyOrdinals = privacyOrdinals,
                     onDismiss = { showAgiDialog = false },
                 )
             }
@@ -925,6 +993,8 @@ fun PartyCard(
                         account = account,
                         status = statusMap[account.username] ?: AccountStatus(),
                         mapLabel = statusMap[account.username]?.mapId?.let { statusMapNames[it] ?: it.toString() } ?: "—",
+                        privacyMode = privacyMode,
+                        privacyOrdinals = privacyOrdinals,
                         onStart = { onStart(account) },
                         onStop = { onStop(account.username) },
                         onEdit = { onEditAccount(account) },
@@ -949,6 +1019,8 @@ fun AccountRow(
     account: Account,
     status: AccountStatus,
     mapLabel: String = "—",
+    privacyMode: Int,
+    privacyOrdinals: Map<String, String>,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onEdit: () -> Unit,
@@ -961,6 +1033,7 @@ fun AccountRow(
     onGetLog: () -> String = { "" },
 ) {
     val running = status.state == RunState.RUNNING
+    val displayUsername = maskUsername(account.username, privacyMode, privacyOrdinals)
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -980,9 +1053,11 @@ fun AccountRow(
                 StatusDot(statusColor(status.state))
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(account.username, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    Text(displayUsername, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                     val characterParts = buildList {
-                        if (status.charName.isNotBlank()) add(status.charName)
+                        if (status.charName.isNotBlank()) {
+                            add(maskCharacterName(status.charName, account.username, privacyMode, privacyOrdinals))
+                        }
                         status.charLevel?.let { add(it.toString()) }
                         if (status.petName.isNotBlank()) {
                             add(status.petName)
@@ -1063,7 +1138,10 @@ fun AccountRow(
             // dang mo (remember(expanded) -> khong doc lien tuc moi lan recompose khi dong).
             if (expanded) {
                 val clipboard = LocalClipboardManager.current
-                val logText = remember(expanded) { onGetLog() }
+                val rawLogText = remember(expanded) { onGetLog() }
+                val logText = remember(rawLogText, status.charName, privacyMode, privacyOrdinals) {
+                    maskAccountLog(rawLogText, account.username, status.charName, privacyMode, privacyOrdinals)
+                }
                 val logScroll = rememberScrollState()
                 // Tu cuon xuong dong MOI NHAT ngay khi mo - KHONG bat nguoi dung tu keo xuong.
                 LaunchedEffect(logText) { logScroll.scrollTo(logScroll.maxValue) }
@@ -1079,7 +1157,7 @@ fun AccountRow(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("Log của ${account.username}", style = MaterialTheme.typography.labelLarge)
+                        Text("Log của $displayUsername", style = MaterialTheme.typography.labelLarge)
                         TextButton(onClick = { clipboard.setText(AnnotatedString(logText)) }) {
                             Text("📋 Copy")
                         }
@@ -2578,6 +2656,8 @@ fun GiftcodeDialog(
 fun PartyAgiDialog(
     party: Party,
     statusMap: Map<String, AccountStatus>,
+    privacyMode: Int,
+    privacyOrdinals: Map<String, String>,
     onDismiss: () -> Unit,
 ) {
     val values = party.accounts.flatMap { account ->
@@ -2608,8 +2688,14 @@ fun PartyAgiDialog(
                 Spacer(Modifier.height(12.dp))
                 party.accounts.forEach { account ->
                     val status = statusMap[account.username]
-                    Text(account.username, fontWeight = FontWeight.Bold)
-                    Text("Nhân vật: ${status?.charName?.ifBlank { account.username } ?: account.username}  ·  AGI ${status?.charAgi ?: "—"}")
+                    val charName = status?.charName?.takeIf { it.isNotBlank() }
+                    val displayName = if (charName != null) {
+                        maskCharacterName(charName, account.username, privacyMode, privacyOrdinals)
+                    } else {
+                        maskUsername(account.username, privacyMode, privacyOrdinals)
+                    }
+                    Text(displayName, fontWeight = FontWeight.Bold)
+                    Text("AGI char: ${status?.charAgi ?: "—"}")
                     Text(if (status?.petName.isNullOrBlank()) "Pet đang dùng: —" else
                         "Pet đang dùng: ${status?.petName}  ·  AGI ${status?.petAgi ?: "—"}")
                     Spacer(Modifier.height(10.dp))
