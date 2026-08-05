@@ -513,6 +513,10 @@ def _pstate(pidx):
                               "o5_state": "idle",        # "idle"|"running"|"done" - member PHAI cho != "idle" (xem _handle_o5_team)
                               "o5_broke": False,         # team dungeon VO do co dis giua chung -> CA party relogin thoat instance
                               "o5_need_redo": False,     # team dungeon VO -> reconnect xong lam LAI daily (team dungeon)
+                              "team_dungeon_done_by": {},     # level -> {username -> remaining}; auto team dungeon theo 0x18 mission step
+                              "team_dungeon_state": {},       # level -> "idle"|"running"|"done"
+                              "team_dungeon_broke": {},       # level -> co dis/fail can relogin thoat instance
+                              "team_dungeon_need_redo": False,
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
@@ -613,6 +617,10 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
                 st["o5_state"] = "idle"
                 st["o5_broke"] = False
                 st["o5_need_redo"] = False
+                st["team_dungeon_done_by"] = {}
+                st["team_dungeon_state"] = {}
+                st["team_dungeon_broke"] = {}
+                st["team_dungeon_need_redo"] = False
                 st["ready_members"].clear()
                 st["started_train"] = 0
                 st["dungeon_done"] = 0
@@ -817,10 +825,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         city_flag = pcfg.get("city_flag", 0)
         # checkbox "Lam nhiem vu hang ngay" (bingo 9 o + dungeon). Fallback key cu "do_dungeon".
         do_daily = pcfg.get("do_daily", pcfg.get("do_dungeon", True))
+        auto_team_dungeon = pcfg.get("auto_team_dungeon", True)
         # Mode EVENT (40NPC): mac dinh KHONG lam daily quest (acc event chuyen tam vao event ngay,
         # khong di lang thang lam bingo/pho ban -> vao event nhanh, khong bi dump khoi map event).
         if pcfg.get("mode") == "event":
             do_daily = False
+            auto_team_dungeon = False
         # mode: digioi | train | city (tap trung ve thanh) | stand (dung yen) | cleanbag
         #       | digioi_train (DG TRUOC, ca party xong DG -> TRAIN map)
         raw_mode = pcfg.get("mode")
@@ -895,6 +905,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # Daily/team dungeon can require the whole party. Run it only after every account
             # has finished DG, otherwise an early member can wait for leader while leader is
             # still trying to form the DG party.
+            if auto_team_dungeon:
+                if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
+                                                         is_leader, _stopped, pcfg):
+                    return False
             if do_daily:
                 try:
                     c.do_daily_dungeon()
@@ -971,7 +985,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             with st["lock"]:
                 st["o5_need_redo"] = False   # lam lai 1 lan; neu vo tiep, _handle_o5_team se set lai
             log.info("[%s] (%s) reconnect do team dungeon VO -> lam LAI daily (team dungeon)", label, role)
-        if not is_digioi and do_daily and (not is_reconnect or _o5_redo):
+        _td_redo = bool(st.get("team_dungeon_need_redo"))
+        if _td_redo and is_reconnect:
+            with st["lock"]:
+                st["team_dungeon_need_redo"] = False
+            log.info("[%s] (%s) reconnect do auto phó bản đội VỠ -> check/chạy lại auto phó bản",
+                     label, role)
+        _do_startup_team = bool(auto_team_dungeon and not is_digioi and (not is_reconnect or _td_redo))
+        _do_startup_daily = bool(not is_digioi and do_daily and (not is_reconnect or _o5_redo))
+        if _do_startup_team or _do_startup_daily:
             if mode == "city":
                 try:
                     if c.go_to_town(sc, city_flag) and c.current_map == getattr(c, "NOI_DAT_SELL_CITY", 12061):
@@ -985,8 +1007,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     except Exception: pass
             elif mode == "stand" and train_safes and login_map == sc:
                 c.navigate_to(*_nearest_safe(c.pos, train_safes))       # stand map co safe -> ra safe
-            # stand map la / khong co safe -> lam dailies tai cho (ke me)
-            c.claim_daily_quests()
+            # stand map la / khong co safe -> lam tai cho (ke me)
+            if _do_startup_team:
+                if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
+                                                         is_leader, _stopped, pcfg):
+                    try: c.close()
+                    except Exception: pass
+                    return
+            if _do_startup_daily:
+                c.claim_daily_quests()
         elif is_reconnect and train_on_map and train_safes:
             if login_map == sc:
                 c.navigate_to(*_nearest_safe(c.pos, train_safes))   # reconnect + dang o bai -> ra safe cho keo
@@ -1704,6 +1733,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # ket tran lien tuc -> teleport boss/dungeon luc dang danh bi server KICK. Ve thanh
                 # an toan roi moi lam dailies.
                 _go_town_safe(c, label)
+                if auto_team_dungeon:
+                    if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
+                                                             is_leader, _stopped, pcfg):
+                        try: c.close()
+                        except Exception: pass
+                        if c in _clients: _clients.remove(c)
+                        return
                 if do_daily:
                     try: c.do_daily_dungeon()
                     except Exception as e:
@@ -1729,6 +1765,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if c in _clients: _clients.remove(c)
                     return
                 _go_town_safe(c, label)   # ve thanh truoc (thoat o quai) roi lam dailies
+                if auto_team_dungeon:
+                    if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
+                                                             is_leader, _stopped, pcfg):
+                        try: c.close()
+                        except Exception: pass
+                        if c in _clients: _clients.remove(c)
+                        return
                 if do_daily:
                     try: c.claim_daily_quests(heavy=True)   # khong vao DG -> lam full quest roi dong
                     except Exception as e:
@@ -2880,6 +2923,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if remain <= 0:
                         log.warning("[%s] (%s) HET GIO DG (van trong DG) -> thoat + solo daily dungeon%s",
                                     label, role, "" if (do_daily and not dt_mode) else " (doi DG+Train/tat dungeon)")
+                        if not dt_mode:
+                            _go_town_safe(c, label)
+                            if auto_team_dungeon:
+                                _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
+                                                                  is_leader, _stopped, pcfg)
                         if do_daily and not dt_mode:
                             try: c.do_daily_dungeon()
                             except Exception as e:
@@ -2902,6 +2950,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         else:
                             log.warning("[%s] (%s) HET GIO DG that -> thoat party%s",
                                         label, role, " + solo daily dungeon" if (do_daily and not dt_mode) else "")
+                            if not dt_mode:
+                                _go_town_safe(c, label)
+                                if auto_team_dungeon:
+                                    _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
+                                                                      is_leader, _stopped, pcfg)
                             if do_daily and not dt_mode:
                                 c.do_daily_dungeon()
                                 # XONG DG -> nhiem vu NANG (boss o2 + claim not hang/cot + tong ket).
@@ -2989,6 +3042,162 @@ def _clear_o5_client_flags(c):
     c._team_dungeon_until = 0.0
     c.state.quest_mode = False
     return active
+
+
+def _team_dungeon_flags(pcfg):
+    norm = getattr(config, "normalize_team_dungeons", lambda v: v)(pcfg.get("team_dungeons"))
+    if not isinstance(norm, dict):
+        norm = getattr(config, "DEFAULT_TEAM_DUNGEONS", {20: True, 50: True, 80: True})
+    return {int(k): bool(v) for k, v in norm.items()}
+
+
+def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_fn, level):
+    level = int(level)
+    if not c.wait_team_dungeon_status(timeout=6.0):
+        remaining = None
+        log.warning("[%s] (%s) phó bản đội lv%d: chưa có status 0x18 -> bỏ qua level này",
+                    label, "LEADER" if is_leader else "member", level)
+    else:
+        remaining = c.team_dungeon_remaining(level)
+    with st["lock"]:
+        reports = st.setdefault("team_dungeon_done_by", {}).setdefault(level, {})
+        reports[username] = remaining
+    has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None
+    if not has_leader:
+        return True
+    if not is_leader:
+        last_log = 0.0
+        while True:
+            if stopped_fn() or not c.running:
+                return False
+            if time.time() - last_log > 60:
+                log.info("[%s] (member) chờ leader xử lý phó bản đội lv%d...", label, level)
+                last_log = time.time()
+            if st["reconnecting"]:
+                log.warning("[%s] (member) đồng đội rớt trong phó bản đội lv%d -> relogin thoát instance",
+                            label, level)
+                try:
+                    c.relogin()
+                except Exception:
+                    pass
+                _clear_o5_client_flags(c)
+                return False
+            with st["lock"]:
+                state = st.setdefault("team_dungeon_state", {}).get(level, "idle")
+                broke = bool(st.setdefault("team_dungeon_broke", {}).get(level, False))
+            if state == "done":
+                if broke:
+                    log.warning("[%s] (member) phó bản đội lv%d vỡ -> relogin thoát instance",
+                                label, level)
+                    try:
+                        c.relogin()
+                    except Exception:
+                        pass
+                _clear_o5_client_flags(c)
+                return True
+            if not c.in_combat():
+                try:
+                    c.do_heal()
+                except Exception:
+                    pass
+            time.sleep(2)
+
+    members = [t[0] for t in party_accounts(pidx)]
+    if len(members) < 2:
+        return True
+    last_log = 0.0
+    while True:
+        if stopped_fn() or not c.running:
+            return False
+        with st["lock"]:
+            reports = dict(st.setdefault("team_dungeon_done_by", {}).setdefault(level, {}))
+            reported = all(m in reports or m in st["reconnecting"] for m in members)
+        if reported:
+            break
+        if time.time() - last_log > 30:
+            log.info("[%s] (LEADER) chờ cả party report lượt phó bản đội lv%d (%d/%d)...",
+                     label, level, len(reports), len(members))
+            last_log = time.time()
+        time.sleep(2)
+
+    with st["lock"]:
+        reports = dict(st.setdefault("team_dungeon_done_by", {}).setdefault(level, {}))
+    if level not in (20, 50, 80):
+        log.warning("[%s] (LEADER) phó bản đội lv%d: đã biết trạng thái lượt nhưng chưa có script "
+                    "đường đi/trận an toàn -> bỏ qua", label, level)
+        with st["lock"]:
+            st.setdefault("team_dungeon_state", {})[level] = "done"
+        return True
+    need = []
+    missing = []
+    done = []
+    for m in members:
+        rem = reports.get(m)
+        if rem is None:
+            missing.append(m)
+        elif int(rem) > 0:
+            need.append(m)
+        else:
+            done.append(m)
+    if missing:
+        log.warning("[%s] (LEADER) phó bản đội lv%d: thiếu status của %s -> bỏ qua",
+                    label, level, missing)
+        with st["lock"]:
+            st.setdefault("team_dungeon_state", {})[level] = "done"
+        return True
+    if len(need) == len(members):
+        log.info("[%s] (LEADER) CA party (%d người) còn lượt phó bản đội lv%d -> chạy",
+                 label, len(members), level)
+        with st["lock"]:
+            st.setdefault("team_dungeon_state", {})[level] = "running"
+            st.setdefault("team_dungeon_broke", {})[level] = False
+        dg0 = st["disc_gen"]
+        ok = False
+        try:
+            ok = bool(c.do_team_dungeon(level))
+            if not ok:
+                log.warning("[%s] (LEADER) phó bản đội lv%d trả FAIL", label, level)
+            if st["disc_gen"] > dg0 or st["reconnecting"]:
+                log.warning("[%s] (LEADER) đồng đội rớt trong phó bản đội lv%d -> relogin thoát instance",
+                            label, level)
+                try:
+                    c.relogin()
+                except Exception:
+                    pass
+        finally:
+            active = _clear_o5_client_flags(c)
+            with st["lock"]:
+                if ((not ok and active) or (not c.running)
+                        or st["disc_gen"] > dg0 or st["reconnecting"]):
+                    st.setdefault("team_dungeon_broke", {})[level] = True
+                    st["team_dungeon_need_redo"] = True
+                st.setdefault("team_dungeon_state", {})[level] = "done"
+                st["reform_gen"] += 1
+            if (not ok and active) and c.running:
+                try:
+                    c.relogin()
+                except Exception:
+                    pass
+        return c.running
+    with st["lock"]:
+        st.setdefault("team_dungeon_state", {})[level] = "done"
+    log.info("[%s] (LEADER) phó bản đội lv%d: không phải cả party đều còn lượt (đã hết: %s) -> bỏ qua",
+             label, level, done)
+    return True
+
+
+def _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, stopped_fn, pcfg):
+    if not pcfg.get("auto_team_dungeon", True):
+        return True
+    flags = _team_dungeon_flags(pcfg)
+    levels = getattr(config, "TEAM_DUNGEON_LEVELS", (20, 50, 80))
+    for level in levels:
+        if not flags.get(int(level), False):
+            continue
+        if not _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader,
+                                         stopped_fn, int(level)):
+            return False
+    return True
 
 
 def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done):
@@ -3221,7 +3430,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         di_gioi_level=2, auto_sell_noi_dat=True,
                         buy_hp=False, hp_qty=9999, hp_thresh=500000,
                         buy_sp=False, sp_qty=9999, sp_thresh=500000,
-                        claim_offline_exp=True):
+                        claim_offline_exp=True,
+                        auto_team_dungeon=True, team_dungeons=None):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -3231,11 +3441,19 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
     goi start_party(pidx). Cau truc PARTY_CONFIG/PARTIES/PARTY_LEADER_ACC GIONG HET
     config._load_accounts_json ban PC -> tu do run_party_digioi (coordinator CHUNG) chay y het PC."""
     pidx = int(pidx)
+    if isinstance(team_dungeons, str):
+        try:
+            import json
+            team_dungeons = json.loads(team_dungeons) if team_dungeons else None
+        except Exception:
+            team_dungeons = None
     config.PARTY_CONFIG[pidx] = {
         "mode": mode, "start_city_id": int(start_city_id), "mob_index": int(mob_index),
         "city_flag": int(city_flag), "server": "", "server_ip": server_ip,
         "server_id": int(server_id), "do_daily": bool(do_daily),
         "claim_offline_exp": bool(claim_offline_exp),
+        "auto_team_dungeon": bool(auto_team_dungeon),
+        "team_dungeons": config.normalize_team_dungeons(team_dungeons),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
         "use_phuc_than": bool(use_phuc_than), "use_digioi_ho_phu": bool(use_digioi_ho_phu),
         "fight_legion_boss": bool(fight_legion_boss),
@@ -3339,6 +3557,10 @@ def start_party(pidx, stagger=1.5):
         st["started_train"] = 0
         st["dungeon_done"] = 0
         st["dailies_done"] = 0       # barrier: so acc da xong daily quest login (cho leader cho)
+        st["team_dungeon_done_by"] = {}
+        st["team_dungeon_state"] = {}
+        st["team_dungeon_broke"] = {}
+        st["team_dungeon_need_redo"] = False
         st["map_results"] = {}       # reset barrier map cho lan chay nay
         st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
     for u, p, is_leader, is_picker in accounts:

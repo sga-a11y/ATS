@@ -4,6 +4,25 @@ Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitigno
 from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
 import os
 
+TEAM_DUNGEON_LEVELS = (20, 50, 80)
+DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True}
+
+
+def normalize_team_dungeons(value):
+    out = dict(DEFAULT_TEAM_DUNGEONS)
+    if isinstance(value, dict):
+        for lv in TEAM_DUNGEON_LEVELS:
+            if str(lv) in value:
+                out[lv] = bool(value.get(str(lv)))
+            elif lv in value:
+                out[lv] = bool(value.get(lv))
+    elif isinstance(value, (list, tuple, set)):
+        enabled = {int(x) for x in value if str(x).isdigit()}
+        for lv in TEAM_DUNGEON_LEVELS:
+            out[lv] = lv in enabled
+    return out
+
+
 TRAIN_MAPS_PATH = os.path.join(_base_dir(), "train_maps.json")
 
 # Tai khoan mac dinh (single bot)
@@ -464,6 +483,8 @@ if _aj is not None:
                 "server_id": _server_id(_srv),
                 "do_daily": bool(_party.get("do_daily", _party.get("do_dungeon", True))),
                 "claim_offline_exp": bool(_party.get("claim_offline_exp", True)),
+                "auto_team_dungeon": bool(_party.get("auto_team_dungeon", True)),
+                "team_dungeons": normalize_team_dungeons(_party.get("team_dungeons")),
                 "digioi_mode": _party.get("digioi_mode", "party"),   # Di Gioi: "party" | "solo"
                 "event_key": _party.get("event_key", ""),   # mode 'event': key trong events.json (npc_40, nhi_kieu...)
                 "use_phuc_than": bool(_party.get("use_phuc_than", False)),

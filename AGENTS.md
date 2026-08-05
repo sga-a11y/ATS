@@ -8,6 +8,14 @@ cấu trúc gói. Sau khi xác nhận điều mới → cập nhật lại `KNOW
 > Bài học: từng tốn rất nhiều vòng mò nguồn pet maxSP (qua 0x08/0x33/share) trong khi `KNOWLEDGE.md`
 > đã note `0x0b = Full stats có SP_max` ngay từ đầu.
 
+### Rule làm tính năng mới / reverse-engineer
+- Ưu tiên **soi client game + data game đã decrypt** trước để biết UI/logic đọc biến nào, data id nào,
+  hàm nào quyết định trạng thái. Sau đó mới quay lại pcap để xác nhận packet thật.
+- Workflow chuẩn: đọc `KNOWLEDGE.md` → grep/crack Lua/data (`gamedata/Lua`, `gamedata/Data`,
+  `.codex_mumu_probe/lua_decrypted` nếu có) → xác định model/flag/counter client dùng → đối chiếu pcap
+  bằng packet reassemble → implement bot → cập nhật `KNOWLEDGE.md`.
+- Chỉ phân tích packet thuần từ đầu khi không có client/data liên quan hoặc Lua/data chưa giải mã được.
+
 ### Nguồn stat trong battle (hay nhầm — nhớ kỹ)
 - **`0x0b` party-broadcast (>100B, lúc spawn)** = full-stat MỌI member: block
   `[b1][slot][HPmax 4B][SPmax 4B][HPcur 4B][SPcur 4B]` (b1=3 char / 2 pet). **NGUỒN DUY NHẤT có pet

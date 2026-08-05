@@ -17,6 +17,15 @@ class PartyStore(private val context: Context) {
         }
     }
 
+    private fun teamDungeons(o: JSONObject): Map<Int, Boolean> {
+        val defaults = linkedMapOf(20 to true, 50 to true, 80 to true)
+        val obj = o.optJSONObject("team_dungeons") ?: return defaults
+        defaults.keys.toList().forEach { level ->
+            if (obj.has(level.toString())) defaults[level] = obj.optBoolean(level.toString(), defaults[level] == true)
+        }
+        return defaults
+    }
+
     fun load(): List<Party> {
         if (!file.exists()) return emptyList()
         val arr = JSONArray(file.readText())
@@ -45,6 +54,8 @@ class PartyStore(private val context: Context) {
                 leaderWhitelist = stringList(o, "leaders"),
                 doDaily = o.optBoolean("do_daily", true),
                 claimOfflineExp = o.optBoolean("claim_offline_exp", true),
+                autoTeamDungeon = o.optBoolean("auto_team_dungeon", true),
+                teamDungeons = teamDungeons(o),
                 trainMapKey = o.optString("train_map_key", ""),
                 trainMobIndex = o.optInt("train_mob_index", -1),
                 usePhucThan = o.optBoolean("use_phuc_than", false),
@@ -80,6 +91,10 @@ class PartyStore(private val context: Context) {
             o.put("leaders", JSONArray().apply { p.leaderWhitelist.forEach { put(it) } })
             o.put("do_daily", p.doDaily)
             o.put("claim_offline_exp", p.claimOfflineExp)
+            o.put("auto_team_dungeon", p.autoTeamDungeon)
+            o.put("team_dungeons", JSONObject().apply {
+                listOf(20, 50, 80).forEach { put(it.toString(), p.teamDungeons[it] ?: false) }
+            })
             o.put("train_map_key", p.trainMapKey)
             o.put("train_mob_index", p.trainMobIndex)
             o.put("use_phuc_than", p.usePhucThan)

@@ -172,6 +172,18 @@ fun partyStatusColor(party: Party, statusMap: Map<String, AccountStatus>): Color
 private const val PRIVACY_FULL = 0
 private const val PRIVACY_MASK = 1
 private const val PRIVACY_ORDINAL = 2
+private val TeamDungeonLevels = listOf(20, 50, 80)
+
+private fun defaultTeamDungeons(src: Map<Int, Boolean> = emptyMap()): Map<Int, Boolean> =
+    linkedMapOf(
+        20 to (src[20] ?: true),
+        50 to (src[50] ?: true),
+        80 to (src[80] ?: true),
+    )
+
+fun teamDungeonsJson(value: Map<Int, Boolean>): String = JSONObject().apply {
+    TeamDungeonLevels.forEach { put(it.toString(), value[it] ?: false) }
+}.toString()
 
 fun accountOrdinalMap(parties: List<Party>): Map<String, String> {
     var index = 1
@@ -608,6 +620,8 @@ fun TsBotApp(
             initialLeaderWhitelist = partyBeingEdited.leaderWhitelist,
             initialDoDaily = partyBeingEdited.doDaily,
             initialClaimOfflineExp = partyBeingEdited.claimOfflineExp,
+            initialAutoTeamDungeon = partyBeingEdited.autoTeamDungeon,
+            initialTeamDungeons = partyBeingEdited.teamDungeons,
             initialTrainMapKey = partyBeingEdited.trainMapKey,
             initialTrainMobIndex = partyBeingEdited.trainMobIndex,
             initialUsePhucThan = partyBeingEdited.usePhucThan,
@@ -1299,6 +1313,8 @@ fun AddPartyDialog(
     initialLeaderWhitelist: List<String> = emptyList(),
     initialDoDaily: Boolean = true,
     initialClaimOfflineExp: Boolean = true,
+    initialAutoTeamDungeon: Boolean = true,
+    initialTeamDungeons: Map<Int, Boolean> = defaultTeamDungeons(),
     initialTrainMapKey: String = "",
     initialTrainMobIndex: Int = -1,
     initialUsePhucThan: Boolean = false,
@@ -1332,6 +1348,9 @@ fun AddPartyDialog(
     var leaderWhitelistText by remember { mutableStateOf(initialLeaderWhitelist.joinToString("\n")) }
     var doDaily by remember { mutableStateOf(initialDoDaily) }
     var claimOfflineExp by remember { mutableStateOf(initialClaimOfflineExp) }
+    var autoTeamDungeon by remember { mutableStateOf(initialAutoTeamDungeon) }
+    var teamDungeons by remember { mutableStateOf(defaultTeamDungeons(initialTeamDungeons)) }
+    var showTeamDungeonList by remember { mutableStateOf(false) }
     val initialTrainMapOptions = remember { trainMapOptions() }
     var trainMapKey by remember { mutableStateOf(initialTrainMapKey.ifEmpty { initialTrainMapOptions.firstOrNull()?.first ?: "" }) }
     var trainMapText by remember {
@@ -1380,6 +1399,8 @@ fun AddPartyDialog(
         leaderWhitelist = parseLeaderWhitelist(leaderWhitelistText),
         doDaily = doDaily,
         claimOfflineExp = claimOfflineExp,
+        autoTeamDungeon = autoTeamDungeon,
+        teamDungeons = teamDungeons,
         trainMapKey = trainMapKey,
         trainMobIndex = trainMobIndex,
         usePhucThan = usePhucThan,
@@ -1546,6 +1567,14 @@ fun AddPartyDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = claimOfflineExp, onCheckedChange = { claimOfflineExp = it })
                             Text("Nhận exp offline")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = autoTeamDungeon, onCheckedChange = { autoTeamDungeon = it })
+                            Text("Tự đi phó bản")
+                            OutlinedButton(
+                                onClick = { showTeamDungeonList = true },
+                                modifier = Modifier.padding(start = 8.dp),
+                            ) { Text("List phó bản") }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = usePhucThan, onCheckedChange = { usePhucThan = it })
@@ -1860,6 +1889,8 @@ fun AddPartyDialog(
                             leaderWhitelist = parseLeaderWhitelist(leaderWhitelistText),
                             doDaily = doDaily,
                             claimOfflineExp = claimOfflineExp,
+                            autoTeamDungeon = autoTeamDungeon,
+                            teamDungeons = teamDungeons,
                             trainMapKey = trainMapKey,
                             trainMobIndex = trainMobIndex,
                             usePhucThan = usePhucThan,
@@ -1889,6 +1920,32 @@ fun AddPartyDialog(
             TextButton(onClick = onDismiss) { Text("Hủy") }
         },
     )
+    if (showTeamDungeonList) {
+        AlertDialog(
+            onDismissRequest = { showTeamDungeonList = false },
+            title = { Text("List phó bản") },
+            text = {
+                Column {
+                    Text("Chọn phó bản đội bot sẽ tự đi:")
+                    Spacer(Modifier.height(8.dp))
+                    TeamDungeonLevels.forEach { level ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = teamDungeons[level] ?: false,
+                                onCheckedChange = { checked ->
+                                    teamDungeons = defaultTeamDungeons(teamDungeons + (level to checked))
+                                },
+                            )
+                            Text("Phó bản $level")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTeamDungeonList = false }) { Text("Đóng") }
+            },
+        )
+    }
 }
 
 private data class BattleRuleUi(

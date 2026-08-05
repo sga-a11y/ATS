@@ -38,6 +38,28 @@ log = logging.getLogger("bot")   # -> hien o panel log GUI (qua _QueueHandler tr
 
 ACCOUNTS_JSON = os.path.join(_app_dir(), "accounts.json")
 DONATE_CHAT_URL = "https://zalo.me/g/qiy6aflscqbh6v4tivej"
+TEAM_DUNGEON_LEVELS = (20, 50, 80)
+DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True}
+
+
+def _normalize_team_dungeons(value):
+    out = dict(DEFAULT_TEAM_DUNGEONS)
+    if isinstance(value, dict):
+        for lv in TEAM_DUNGEON_LEVELS:
+            if str(lv) in value:
+                out[lv] = bool(value.get(str(lv)))
+            elif lv in value:
+                out[lv] = bool(value.get(lv))
+    elif isinstance(value, (list, tuple, set)):
+        enabled = {int(x) for x in value if str(x).isdigit()}
+        for lv in TEAM_DUNGEON_LEVELS:
+            out[lv] = lv in enabled
+    return out
+
+
+def _team_dungeons_json(value):
+    norm = _normalize_team_dungeons(value)
+    return {str(lv): bool(norm.get(lv, False)) for lv in TEAM_DUNGEON_LEVELS}
 # Cap quai Di Gioi: idx 1..15 (gói 0x61 02 00 idx) -> cap hien thi. Xem KNOWLEDGE.md.
 _DG_LEVELS = [10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180]
 
@@ -98,6 +120,7 @@ def _load_donate_qr_image():
 # de "stand" (dung yen) thi bot khong lam gi -> tuong bot loi. Train Noi Huynh chay duoc ngay.
 _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831, "mob_index": -1,
                   "city_flag": 0, "do_daily": True, "claim_offline_exp": True,
+                  "auto_team_dungeon": True, "team_dungeons": _team_dungeons_json(DEFAULT_TEAM_DUNGEONS),
                   "auto_sell_noi_dat": True, "leaders": [],
                   "accounts": [{"u": "acc1", "p": "pass1", "on": True},
                                {"u": "acc2", "p": "pass2", "on": True},
@@ -1459,6 +1482,8 @@ class PartyConfigFrame(ttk.Frame):
         # khi sau nay them setting moi. Bien van giu o day de _save()/_gather doc binh thuong.
         self.daily_var = tk.BooleanVar(value=self._preset.get("do_daily", self._preset.get("do_dungeon", True)))
         self.claim_offline_exp_var = tk.BooleanVar(value=bool(self._preset.get("claim_offline_exp", True)))
+        self.auto_team_dungeon_var = tk.BooleanVar(value=bool(self._preset.get("auto_team_dungeon", True)))
+        self.team_dungeons = _normalize_team_dungeons(self._preset.get("team_dungeons"))
         # Su dung Phuc Than: mac dinh KHONG tick (user tu bat khi can) - logic dung item nay
         # se lam sau, hien tai chi luu setting.
         self.use_phuc_than_var = tk.BooleanVar(value=bool(self._preset.get("use_phuc_than", False)))
@@ -2060,6 +2085,30 @@ class PartyConfigFrame(ttk.Frame):
         if row in self.acc_rows:
             self.acc_rows.remove(row)
 
+    def _open_team_dungeon_list(self):
+        win = tk.Toplevel(self)
+        win.title("List phó bản")
+        win.transient(self)
+        win.grab_set()
+        win.resizable(False, False)
+        frm = ttk.Frame(win, padding=12)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text="Chọn phó bản tổ đội bot sẽ tự đi:").pack(anchor="w")
+        vars_by_level = {}
+        for lv in TEAM_DUNGEON_LEVELS:
+            v = tk.BooleanVar(value=bool(self.team_dungeons.get(lv, False)))
+            vars_by_level[lv] = v
+            ttk.Checkbutton(frm, text=f"Phó bản {lv}", variable=v).pack(anchor="w", pady=(6, 0))
+
+        def _save():
+            self.team_dungeons = {lv: bool(vars_by_level[lv].get()) for lv in TEAM_DUNGEON_LEVELS}
+            win.destroy()
+
+        bar = ttk.Frame(frm)
+        bar.pack(fill="x", pady=(12, 0))
+        ttk.Button(bar, text="Lưu", command=_save).pack(side="left")
+        ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="left", padx=(8, 0))
+
     def _open_advanced_settings(self):
         """Dialog gom cac setting IT KHI DOI cua party (hien tai: daily quest) - tach khoi bang
         chinh de tranh bi day dai/roi khi sau nay them setting moi (xem ghi chu o self.daily_var)."""
@@ -2071,6 +2120,11 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.daily_var).pack(anchor="w")
         ttk.Checkbutton(frm, text="Nhận exp offline",
                         variable=self.claim_offline_exp_var).pack(anchor="w", pady=(4, 0))
+        _td = ttk.Frame(frm); _td.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_td, text="Tự đi phó bản",
+                        variable=self.auto_team_dungeon_var).pack(side="left")
+        ttk.Button(_td, text="List phó bản",
+                   command=self._open_team_dungeon_list).pack(side="left", padx=(8, 0))
         ttk.Checkbutton(frm, text="Sử dụng Phúc Thần",
                         variable=self.use_phuc_than_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Dùng Dị giới hộ phù",
@@ -2112,6 +2166,8 @@ class PartyConfigFrame(ttk.Frame):
         return {
             "do_daily": bool(self.daily_var.get()),
             "claim_offline_exp": bool(self.claim_offline_exp_var.get()),
+            "auto_team_dungeon": bool(self.auto_team_dungeon_var.get()),
+            "team_dungeons": _team_dungeons_json(self.team_dungeons),
             "use_phuc_than": bool(self.use_phuc_than_var.get()),
             "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
             "fight_legion_boss": bool(self.fight_boss_var.get()),
@@ -2133,6 +2189,8 @@ class PartyConfigFrame(ttk.Frame):
     def apply_advanced_settings(self, data):
         self.daily_var.set(bool(data.get("do_daily", True)))
         self.claim_offline_exp_var.set(bool(data.get("claim_offline_exp", True)))
+        self.auto_team_dungeon_var.set(bool(data.get("auto_team_dungeon", True)))
+        self.team_dungeons = _normalize_team_dungeons(data.get("team_dungeons"))
         self.use_phuc_than_var.set(bool(data.get("use_phuc_than", False)))
         self.use_digioi_ho_phu_var.set(bool(data.get("use_digioi_ho_phu", False)))
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
@@ -2332,6 +2390,8 @@ class PartyConfigFrame(ttk.Frame):
         data = {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
                 "city_flag": city_flag, "do_daily": bool(self.daily_var.get()),
                 "claim_offline_exp": bool(self.claim_offline_exp_var.get()),
+                "auto_team_dungeon": bool(self.auto_team_dungeon_var.get()),
+                "team_dungeons": _team_dungeons_json(self.team_dungeons),
                 "use_phuc_than": bool(self.use_phuc_than_var.get()),
                 "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
                 "fight_legion_boss": bool(self.fight_boss_var.get()),

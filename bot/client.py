@@ -30,6 +30,13 @@ PHUC_THAN_PROTECTION_PRIORITY = (
 )
 PHUC_THAN_GEM_TIDS = {0x5AAB, 0x5A2D}
 BROKEN_PHUC_THAN_TID = 0x59F0
+TEAM_DUNGEONS = {
+    20: {"id": 0x0001, "daily_flag": 0x302E, "daily_count": 1},
+    50: {"id": 0x000E, "daily_flag": 0x30A6, "daily_count": 1},
+    80: {"id": 0x000F, "daily_flag": 0x30AA, "daily_count": 1},
+    110: {"id": 0x0010, "daily_flag": 0x30AE, "daily_count": 1},
+}
+TEAM_DUNGEON_DURATION = 20 * 60
 
 _GROUND_STORE = None
 _GROUND_STORE_PATH = None
@@ -914,6 +921,8 @@ class GameClient:
         self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
         self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
         self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
+        self.team_dungeon_steps = {}  # mission_id -> step, tu S2C 0x18; dung de tinh luot pho ban doi
+        self.team_dungeon_status_loaded = False
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
         self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
         self._genuine_end_seen = 0.0  # thoi diem nhan goi 0x14 sub0800 tail=03/04 (ket tran THAT, moi context)
@@ -1628,6 +1637,8 @@ class GameClient:
         # TRANG BI DANG MAC luc login: [count u8] + count * ThingData 35B.
         elif opcode == 0x17 and len(pkt) >= 10 and pkt[7:9] == b"\x0b\x00":
             self._parse_equipment_snapshot(pkt)
+        elif opcode == 0x18:
+            self._on_mission_steps(pkt)
         # INVENTORY (TUI THAT): S2C 0x17 sub=0500. header [00][count 2B] + record 36B:
         #   [idx 1B][item_id 2B LE][count 4B LE][29 pad]. idx = use-id (dung item gui [idx][01]).
         #   bag_slots[idx]=[item_id, count]; bag_counts[item_id]=tong. Snapshot day -> THAY THE.
@@ -2087,6 +2098,19 @@ class GameClient:
         body = pkt[7:]
         if len(body) < 100 or body[:2] != b"\x03\x00":
             return
+        # 0x05 sub0300 co san current/max HP/SP cua char luc login. Nap ngay de heal_full()
+        # truoc boss co du stat, khong phai doi den 0x33/0x0b trong tran dau tien.
+        hp = int.from_bytes(body[3:7], "little")
+        sp = int.from_bytes(body[7:9], "little")
+        hp_max = int.from_bytes(body[39:43], "little")
+        sp_max = int.from_bytes(body[43:47], "little")
+        if 0 <= hp <= hp_max < 1_000_000 and 0 <= sp <= sp_max < 100_000 and hp_max > 0 and sp_max > 0:
+            c = self.state.char
+            old = (c.hp, c.hp_max, c.sp, c.sp_max)
+            c.hp, c.hp_max, c.sp, c.sp_max = hp, hp_max, sp, sp_max
+            if old != (c.hp, c.hp_max, c.sp, c.sp_max):
+                log.info("[%s] CHAR login HP=%d/%d SP=%d/%d",
+                         self._label, c.hp, c.hp_max, c.sp, c.sp_max)
         self._char_int_base = int.from_bytes(body[9:11], "little")
         self._char_equip_int = int.from_bytes(body[53:57], "little", signed=True)
         self._char_agi_base = int.from_bytes(body[15:17], "little")
@@ -2245,7 +2269,7 @@ class GameClient:
                     return
             # Dong y vao pho ban
             self.send(0x2f, b"\x03\x00" + invite_id + b"\x00")
-            self._team_dungeon_until = time.time() + 300   # vao pho ban -> delay 0x32 random 0.5-2s
+            self._team_dungeon_until = time.time() + TEAM_DUNGEON_DURATION
             # BUG THAT (xac nhan qua log thuc te): _do_team_dungeon_lv20_inner (chi LEADER goi) co
             # ep self.state.quest_mode = True luc tao pho ban, nhung nhanh nay (MEMBER tu accept loi
             # moi pho ban CUA NGUOI THAT, khong co bot-leader dieu phoi) chi set _team_dungeon_until
@@ -2301,7 +2325,7 @@ class GameClient:
         if self._decision_timer:
             self._decision_timer.cancel()
         # PHO BAN TO DOI: delay gui 0x32 = RANDOM 0.5-2s (giong human, sau battle start) thay vi 0.3s
-        # co dinh. Cua so 300s tu luc vao pho ban (leader tao / member accept) -> tu het, train ve 0.3s.
+        # co dinh. Cua so 20 phut tu luc vao pho ban (leader tao / member accept) -> tu het, train ve 0.3s.
         if time.time() < getattr(self, "_team_dungeon_until", 0.0):
             import random
             delay = random.uniform(0.5, 2.0)
@@ -2914,6 +2938,62 @@ class GameClient:
                 4: (1, 4, 7), 5: (2, 5, 8), 6: (3, 6, 9)}      # 3 cot
     _Q_OPEN = bytes.fromhex(
         "0200090100012f0001000230000100033100010004320001000533000100063400010007350001000836000100")
+
+    def _on_mission_steps(self, pkt: bytes):
+        """S2C 0x18 mission-step. UI phó bản đội lấy còn lượt từ dayilyFlag trong bảng này."""
+        if len(pkt) < 9:
+            return
+        body = pkt[7:]
+        sub = int.from_bytes(body[:2], "little")
+        try:
+            if sub == 0x06 and len(body) >= 6:
+                count = int.from_bytes(body[2:6], "little")
+                off = 6
+                steps = {}
+                for _ in range(count):
+                    if off + 4 > len(body):
+                        break
+                    _idx = body[off]
+                    mid = int.from_bytes(body[off + 1:off + 3], "little")
+                    step = body[off + 3]
+                    steps[mid] = step
+                    off += 4
+                self.team_dungeon_steps = steps
+                self.team_dungeon_status_loaded = True
+            elif sub in (0x01, 0x02) and len(body) >= 5:
+                mid = int.from_bytes(body[2:4], "little")
+                step = body[4]
+                old = int(self.team_dungeon_steps.get(mid, 0))
+                if sub == 0x01:
+                    self.team_dungeon_steps[mid] = min(255, old + step)
+                else:
+                    new = max(0, old - step)
+                    if new:
+                        self.team_dungeon_steps[mid] = new
+                    else:
+                        self.team_dungeon_steps.pop(mid, None)
+                self.team_dungeon_status_loaded = True
+            elif sub == 0x04 and len(body) >= 4:
+                mid = int.from_bytes(body[2:4], "little")
+                self.team_dungeon_steps.pop(mid, None)
+                self.team_dungeon_status_loaded = True
+        except Exception as e:
+            log.debug("[%s] bo qua loi parse 0x18 mission-step: %s", self._label, e)
+
+    def wait_team_dungeon_status(self, timeout: float = 6.0) -> bool:
+        deadline = time.time() + max(0.0, timeout)
+        while self.running and not self.team_dungeon_status_loaded and time.time() < deadline:
+            time.sleep(0.2)
+        return bool(self.team_dungeon_status_loaded)
+
+    def team_dungeon_remaining(self, level: int):
+        info = TEAM_DUNGEONS.get(int(level))
+        if not info:
+            return None
+        if not self.team_dungeon_status_loaded:
+            return None
+        used = int(self.team_dungeon_steps.get(info["daily_flag"], 0))
+        return max(0, int(info["daily_count"]) - used)
 
     def _query_quests(self):
         """Mo panel nhiem vu (C2S 0x5b 02 00 09...) -> server tra o nao DA HOAN THANH
@@ -4451,6 +4531,364 @@ class GameClient:
                 return True
         return self.state.in_battle
 
+    def do_team_dungeon(self, level: int) -> bool:
+        level = int(level)
+        if level == 20:
+            return self.do_team_dungeon_lv20()
+        if level == 50:
+            return self.do_team_dungeon_lv50()
+        if level == 80:
+            return self.do_team_dungeon_lv80()
+        log.warning("[%s] (LEADER) pho ban to doi lv%d: chua co kich ban route/battle an toan -> bo qua",
+                    self._label, level)
+        return False
+
+    def _create_team_dungeon_room(self, dungeon_id: int, level_label: int, ready_wait: float = 9.0) -> bool:
+        ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
+        if not ents:
+            log.warning("[%s] (LEADER) team dungeon lv%d: chua biet entity member -> bo qua",
+                        self._label, level_label)
+            return False
+        log.info("[%s] (LEADER) === PHO BAN TO DOI LV%d: tao + moi %d member ===",
+                 self._label, level_label, len(ents))
+        self.flee_mode = False
+        self._team_dungeon_until = time.time() + TEAM_DUNGEON_DURATION
+        self.state.quest_mode = True
+        self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
+        self.send(0x2f, b"\x02\x00" + struct.pack("<H", int(dungeon_id)) + b"\x01"); time.sleep(1.0)
+        reset_dungeon_ready(self.party_idx)
+        for e in ents:
+            self.send(0x2f, b"\x08\x00" + bytes(e)); time.sleep(1.0)
+        ready_wait_max = max(ready_wait, 40.0)
+        t0 = time.time()
+        while dungeon_ready_count(self.party_idx) < len(ents) and time.time() - t0 < ready_wait_max:
+            if not self.running:
+                return False
+            time.sleep(0.5)
+        nrdy = dungeon_ready_count(self.party_idx)
+        log.info("[%s] (LEADER) lv%d member ready %d/%d sau %.1fs -> START",
+                 self._label, level_label, nrdy, len(ents), time.time() - t0)
+        self.send(0x2f, b"\x0c\x00"); time.sleep(2.0)
+        self.combat_ready()
+        time.sleep(0.5)
+        return True
+
+    def do_team_dungeon_lv50(self, ready_wait: float = 9.0) -> bool:
+        """PHO BAN TO DOI LV50 - script lay tu capture ts_capture_mumu12_teamdungeon_lv50.pcap."""
+        try:
+            return self._do_team_dungeon_lv50_inner(ready_wait)
+        finally:
+            self.state.quest_mode = False
+            self._team_dungeon_until = 0.0
+            self._phoban_until = 0.0
+
+    def _do_team_dungeon_lv50_inner(self, ready_wait: float = 9.0) -> bool:
+        if not self._create_team_dungeon_room(0x000E, 50, ready_wait):
+            return False
+        self.set_party_strategist()
+
+        def _moves(points, battle_no):
+            for x, y in points:
+                self._route_move(x, y)
+                log.info("[%s] (LEADER) lv50 tran %d: sau move (%s,%s) -> pos=%s",
+                         self._label, battle_no, x, y, self.pos)
+
+        def _send(op, body, delay=0.4):
+            self.send(op, body)
+            time.sleep(delay)
+
+        def _advance_once():
+            self._adv_dialog(1, gap=0.45)
+
+        # Capture lv50 co 5 tran THAT. Cac goi 0x14 0800... la chuyen canh trong kich ban,
+        # khong duoc tach thanh tran rieng (tach sai -> gui buoc moi khi tran cu chua bat dau/xong).
+        battle_scripts = [
+            [
+                ("moves", [(527, 2910), (530, 2910)]),
+                ("send", 0x20, b"\x02\x00\x08"),
+                ("send", 0x14, b"\x01\x00\x01\x00"),
+            ],
+            [
+                ("vdlg", 8),
+                ("moves", [(422, 2926), (490, 2930), (590, 2850)]),
+                ("send", 0x14, b"\x08\x00\x02\x00"),
+                ("advance",),
+                ("moves", [(1264, 2045), (1178, 2037), (1091, 2029), (1005, 2021),
+                           (926, 2013), (839, 2005), (753, 1997), (673, 1989),
+                           (587, 1981), (501, 1973), (470, 1970)]),
+                ("send", 0x20, b"\x02\x00\x08"),
+                ("send", 0x14, b"\x01\x00\x05\x00"),
+            ],
+            [
+                ("vdlg", 11),
+                ("moves", [(574, 1979), (510, 1970), (350, 1930), (110, 1910)]),
+                ("send", 0x14, b"\x08\x00\x04\x00"),
+                ("advance",),
+                ("moves", [(630, 484), (630, 404), (630, 317), (630, 270)]),
+                ("send", 0x20, b"\x02\x00\x08"),
+                ("send", 0x14, b"\x01\x00\x14\x00"),
+            ],
+            [
+                ("vdlg", 10),
+                ("moves", [(630, 423), (804, 520), (880, 562), (956, 605),
+                           (1032, 647), (1108, 689), (1110, 690)]),
+                ("send", 0x14, b"\x08\x00\x08\x00"),
+            ],
+            [
+                ("vdlg", 9),
+                ("moves", [(1096, 682), (1249, 812), (1270, 830)]),
+                ("send", 0x14, b"\x08\x00\x06\x00"),
+                ("advance",),
+                ("moves", [(2498, 373), (2567, 321), (2610, 290)]),
+                ("send", 0x20, b"\x02\x00\x08"),
+                ("send", 0x14, b"\x01\x00\x1f\x00"),
+            ],
+        ]
+        n_battles = len(battle_scripts)
+        for i, actions in enumerate(battle_scripts):
+            if not self.running:
+                return False
+            self.flee_mode = False
+            log.info("[%s] (LEADER) pho ban to doi lv50 tran %d: bat dau (map=%s pos=%s in_battle=%s)",
+                     self._label, i + 1, self.current_map, self.pos, self.state.in_battle)
+            if i > 0:
+                ok_clear = self._wait_combat_clear(idle=2.0, cap=240.0)
+                log.info("[%s] (LEADER) lv50 tran %d: het cho combat (ok=%s in_battle=%s)",
+                         self._label, i + 1, ok_clear, self.state.in_battle)
+                self.do_heal()
+                extra_t0 = time.time()
+                while self.state.in_battle and self.running and time.time() - extra_t0 < 120.0:
+                    time.sleep(1.0)
+                if not self.running or self.state.in_battle:
+                    log.warning("[%s] (LEADER) lv50 tran %d: tran truoc chua ket that -> dung",
+                                self._label, i + 1)
+                    return False
+            for action in actions:
+                kind = action[0]
+                if kind == "vdlg":
+                    n_sent = self._adv_dialog_until_idle(min_n=action[1], gap=0.4, idle=1.5, max_wait=25.0)
+                    log.info("[%s] (LEADER) lv50 tran %d: da spam %d lan dialog toi khi im lang",
+                             self._label, i + 1, n_sent)
+                elif kind == "moves":
+                    _moves(action[1], i + 1)
+                elif kind == "send":
+                    _send(action[1], action[2])
+                elif kind == "advance":
+                    _advance_once()
+            import random
+            time.sleep(random.uniform(1.0, 1.6))
+            if not self._dialog_until_battle(cap_n=45):
+                log.warning("[%s] (LEADER) lv50 tran %d: spam dialog ma khong vao/ket battle -> dung",
+                            self._label, i + 1)
+                return False
+            if not self.running:
+                log.warning("[%s] (LEADER) lv50 mat ket noi sau tran %d -> fail", self._label, i + 1)
+                return False
+            log.info("[%s] (LEADER) pho ban to doi lv50: VAO TRAN %d/%d",
+                     self._label, i + 1, n_battles)
+        self._wait_combat_clear(idle=2.0, cap=240.0)
+        extra_t0 = time.time()
+        while self.state.in_battle and self.running and time.time() - extra_t0 < 120.0:
+            time.sleep(1.0)
+        if not self.running:
+            log.warning("[%s] (LEADER) lv50 mat ket noi truoc khi roi pho ban -> fail", self._label)
+            return False
+        self._adv_dialog_until_idle(min_n=6, gap=0.4, idle=1.5, max_wait=20.0)
+        self._adv_dialog(1, gap=0.4)
+        self._route_move(2508, 365)
+        log.info("[%s] (LEADER) === PHO BAN TO DOI LV50 XONG -> roi pho ban ===", self._label)
+        self.leave_party()
+        time.sleep(2.0)
+        return True
+
+    def do_team_dungeon_lv80(self, ready_wait: float = 9.0) -> bool:
+        """PHO BAN TO DOI LV80 - script lay tu capture ts_capture_mumu12_teamdungeon_lv80.pcap."""
+        try:
+            return self._do_team_dungeon_lv80_inner(ready_wait)
+        finally:
+            self.state.quest_mode = False
+            self._team_dungeon_until = 0.0
+            self._phoban_until = 0.0
+
+    def _do_team_dungeon_lv80_inner(self, ready_wait: float = 9.0) -> bool:
+        if not self._create_team_dungeon_room(0x000F, 80, ready_wait):
+            return False
+        self._team_dungeon_until = time.time() + TEAM_DUNGEON_DURATION
+        self.scene_resume(settle=0.5)
+        self.set_party_strategist()
+
+        def _moves(points, battle_no):
+            for x, y in points:
+                self._route_move(x, y)
+                log.info("[%s] (LEADER) lv80 tran %d: sau move (%s,%s) -> pos=%s",
+                         self._label, battle_no, x, y, self.pos)
+
+        def _send(op, body, delay=0.4):
+            self.send(op, body)
+            time.sleep(delay)
+
+        def _dialog_idle(min_n, battle_no, max_wait=25.0):
+            n_sent = self._adv_dialog_until_idle(min_n=min_n, gap=0.4, idle=1.5, max_wait=max_wait)
+            log.info("[%s] (LEADER) lv80 tran %d: da spam %d lan dialog toi khi im lang",
+                     self._label, battle_no, n_sent)
+
+        def _battle_start(cap_n=50, gap=1.0):
+            # Lv80 co nhieu 0x14 sub0700 trong doan chuyen canh TRUOC battle that.
+            # Vi vay khong dung _dialog_until_battle() (ham do chap nhan _genuine_end_seen).
+            import random
+            for _ in range(cap_n):
+                if not self.running:
+                    return False
+                if self.state.in_battle:
+                    return True
+                self.send(0x14, b"\x06\x00")
+                time.sleep(max(0.2, gap + random.uniform(-0.15, 0.4)))
+                if self.state.in_battle:
+                    return True
+            return bool(self.state.in_battle)
+
+        def _advance_once():
+            self._adv_dialog(1, gap=0.45)
+
+        # Capture lv80 co nhieu canh "noi chuyen/chuyen canh roi di tiep", khong vao tran ngay.
+        # Chi cac action "battle" moi cho in_battle=True; cac doan khac chi advance dialog/route.
+        battle_scripts = [
+            [
+                ("moves", [(530, 4310)]),
+                ("send", 0x14, b"\x08\x00\x03\x00"),
+                ("advance",),
+                ("moves", [(1210, 3590)]),
+                ("send", 0x14, b"\x08\x00\x05\x00"),
+                ("advance",),
+                ("moves", [(830, 2430)]),
+                ("send", 0x20, b"\x02\x00\x08"),
+                ("send", 0x14, b"\x01\x00\x05\x00"),
+                ("dialog", 8),
+                ("moves", [(350, 2690)]),
+                ("send", 0x14, b"\x08\x00\x06\x00"),
+                ("advance",),
+                ("moves", [(70, 3630)]),
+                ("send", 0x14, b"\x08\x00\x04\x00"),
+                ("advance",),
+                ("moves", [(370, 4410)]),
+                ("send", 0x14, b"\x08\x00\x01\x00"),
+                ("battle",),
+            ],
+            [
+                ("dialog", 9),
+                ("moves", [(530, 4310)]),
+                ("send", 0x14, b"\x08\x00\x03\x00"),
+                ("advance",),
+                ("moves", [(1210, 3590)]),
+                ("send", 0x14, b"\x08\x00\x05\x00"),
+                ("advance",),
+                ("moves", [(830, 2430)]),
+                ("send", 0x20, b"\x02\x00\x08"),
+                ("send", 0x14, b"\x01\x00\x05\x00"),
+                ("dialog", 6),
+                ("moves", [(510, 2450)]),
+                ("send", 0x20, b"\x02\x00\x08"),
+                ("send", 0x14, b"\x01\x00\x06\x00"),
+                ("battle",),
+            ],
+            [
+                ("dialog", 2),
+                ("moves", [(350, 2690)]),
+                ("send", 0x14, b"\x08\x00\x06\x00"),
+                ("advance",),
+                ("moves", [(730, 3370)]),
+                ("send", 0x14, b"\x08\x00\x09\x00"),
+                ("advance",),
+                ("moves", [(730, 790)]),
+                ("send", 0x14, b"\x08\x00\x08\x00"),
+                ("battle",),
+            ],
+            [
+                ("dialog", 6),
+                ("moves", [(70, 1210)]),
+                ("send", 0x14, b"\x08\x00\x07\x00"),
+                ("advance",),
+                ("moves", [(1210, 3590)]),
+                ("send", 0x14, b"\x08\x00\x05\x00"),
+                ("advance",),
+                ("moves", [(830, 2430)]),
+                ("send", 0x20, b"\x02\x00\x08"),
+                ("send", 0x14, b"\x01\x00\x05\x00"),
+                ("dialog", 10),
+                ("moves", [(610, 2410)]),
+                ("send", 0x20, b"\x02\x00\x08"),
+                ("send", 0x14, b"\x01\x00\x0b\x00"),
+                ("battle",),
+            ],
+            [
+                ("dialog", 3),
+                ("moves", [(350, 2690)]),
+                ("send", 0x14, b"\x08\x00\x06\x00"),
+                ("advance",),
+                ("moves", [(730, 3370)]),
+                ("send", 0x14, b"\x08\x00\x09\x00"),
+                ("advance",),
+                ("moves", [(730, 790)]),
+                ("send", 0x14, b"\x08\x00\x08\x00"),
+                ("battle",),
+            ],
+        ]
+        n_battles = len(battle_scripts)
+        for i, actions in enumerate(battle_scripts):
+            if not self.running:
+                return False
+            self.flee_mode = False
+            log.info("[%s] (LEADER) pho ban to doi lv80 tran %d: bat dau (map=%s pos=%s in_battle=%s)",
+                     self._label, i + 1, self.current_map, self.pos, self.state.in_battle)
+            if i > 0:
+                ok_clear = self._wait_combat_clear(idle=2.0, cap=300.0)
+                log.info("[%s] (LEADER) lv80 tran %d: het cho combat (ok=%s in_battle=%s)",
+                         self._label, i + 1, ok_clear, self.state.in_battle)
+                self.do_heal()
+                extra_t0 = time.time()
+                while self.state.in_battle and self.running and time.time() - extra_t0 < 150.0:
+                    time.sleep(1.0)
+                if not self.running or self.state.in_battle:
+                    log.warning("[%s] (LEADER) lv80 tran %d: tran truoc chua ket that -> dung",
+                                self._label, i + 1)
+                    return False
+            for action in actions:
+                kind = action[0]
+                if kind == "dialog":
+                    _dialog_idle(action[1], i + 1)
+                elif kind == "moves":
+                    _moves(action[1], i + 1)
+                elif kind == "send":
+                    _send(action[1], action[2])
+                elif kind == "advance":
+                    _advance_once()
+                elif kind == "battle":
+                    import random
+                    time.sleep(random.uniform(1.0, 1.6))
+                    if not _battle_start(cap_n=55):
+                        log.warning("[%s] (LEADER) lv80 tran %d: spam dialog ma khong vao battle -> dung",
+                                    self._label, i + 1)
+                        return False
+                    if not self.running:
+                        log.warning("[%s] (LEADER) lv80 mat ket noi sau tran %d -> fail",
+                                    self._label, i + 1)
+                        return False
+                    log.info("[%s] (LEADER) pho ban to doi lv80: VAO TRAN %d/%d",
+                             self._label, i + 1, n_battles)
+        self._wait_combat_clear(idle=2.0, cap=300.0)
+        extra_t0 = time.time()
+        while self.state.in_battle and self.running and time.time() - extra_t0 < 150.0:
+            time.sleep(1.0)
+        if not self.running:
+            log.warning("[%s] (LEADER) lv80 mat ket noi truoc khi roi pho ban -> fail", self._label)
+            return False
+        self._adv_dialog_until_idle(min_n=3, gap=0.4, idle=1.5, max_wait=20.0)
+        self._route_move(730, 790)
+        log.info("[%s] (LEADER) === PHO BAN TO DOI LV80 XONG -> roi pho ban ===", self._label)
+        self.leave_party()
+        time.sleep(2.0)
+        return True
+
     def do_team_dungeon_lv20(self, n_battles: int = 4, ready_wait: float = 9.0) -> bool:
         """PHO BAN TO DOI LV20 (o5 daily) - chi LEADER goi. Member da auto-accept (0x2f 0f->03) +
         auto-ready (0x2f 0b) trong _on_dungeon -> member chi di theo, KHONG can lam gi.
@@ -4493,7 +4931,7 @@ class GameClient:
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV20: tao + moi %d member ===", self._label, len(ents))
         self.flee_mode = False   # PHO BAN: leader PHAI DANH (flee_mode tu flow daily -> leader bo chay,
                                  #   ket tran sai 0x14 0c00/0900/0800 thay vi WIN 0x14 sub0700 -> hong)
-        self._team_dungeon_until = time.time() + 300   # delay 0x32 random 0.5-2s suot pho ban
+        self._team_dungeon_until = time.time() + TEAM_DUNGEON_DURATION
         # Ep QUEST mode suot ca pho ban - KHONG dua vao auto-latch dem so quai luc bat dau tran (>5)
         # nhu binh thuong (state.py update_0x33), vi so quai co the it hon o mot so tran/level ->
         # muon danh theo quest_mode CO DINH cho toi khi xong het dungeon (hoac fail/thoat giua chung).

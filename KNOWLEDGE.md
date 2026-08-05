@@ -32,6 +32,14 @@
 
 ## 2. PROTOCOL
 
+### Workflow reverse-engineer tính năng mới
+- Ưu tiên soi **client Lua/data game** để biết UI/logic đọc biến nào, sau đó dùng pcap để xác nhận packet.
+  Cách này nhanh hơn packet-only vì tránh đoán nhầm các gói phụ.
+- Trình tự nên dùng: `KNOWLEDGE.md` -> Lua/data decrypted -> mapping id/flag/counter -> pcap reassembled
+  để verify -> implement bot -> cập nhật lại note.
+- Case mẫu: phó bản đội red-dot/còn lượt. Packet-only dễ bị kéo về `0x55/0x2f`, nhưng crack
+  `UIDungeon.lua`/`Dungeon.lua` cho thấy UI đọc mission step `0x18` qua `dayilyFlag`.
+
 ### Encoding
 - **XOR key:** 0xAD (toàn bộ TCP payload)
 - **Header format:** `c0 91 [len_lo len_hi] 00 00 [opcode] [payload]`
@@ -254,6 +262,10 @@ Pattern entries: `03 02 [type] [4-byte LE]`
   Doi chieu UI char lv148: base + do char + fashion + horse =
   `INT/ATK/DEF/AGI/HPX/SPX = 311/3/13/76/1/1`, HP `458/542`, SP `240/270`.
 - **Phan biet nguon chi so trang bi luc login:**
+  - Char: S2C `0x05 sub0300` co **current/max HP/SP truc tiep** ngay luc login:
+    body `+3` = `HP_cur u32`, `+7` = `SP_cur u16`, `+39` = `HP_max u32`, `+43` = `SP_max u32`.
+    Capture `pet_login_stats_20260804.pcap` khop UI char `458/542`, `240/270`. Bot phai nap vao
+    `state.char` tai parser `0x05` de `heal_full()` truoc boss chay duoc ngay sau fresh login.
   - Char: S2C `0x05 sub0300` (`Role.ReceivePlayerData`) gui **thang tong da tinh** theo thu tu
     `EquipAtk, EquipDef, EquipInt, EquipAgi, EquipMaxHp, EquipMaxSp, EquipHpx, EquipSpx` (moi field i32).
     Capture tren la `0,2,70,34,0,0,0,0`; khong can cong tung mon do char neu chi can tong.
@@ -834,9 +846,10 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 
 Luồng 5 người (1 leader + 4 member). Map quan trọng: **ô5 bingo = phó bản tổ đội**.
 
-> **Sẽ có nhiều phó bản tổ đội cấp cao hơn sau này (lv30/40/...)** — kịch bản từng trận (số trận,
-> tọa độ di chuyển, số lần thoại, gói transit) sẽ KHÁC HẲN theo từng level, viết hàm riêng cho mỗi
-> level (`do_team_dungeon_lv30`, `do_team_dungeon_lv40`...). Nhưng **CƠ CHẾ NỀN TẢNG dưới đây áp
+> **Game hiện thấy có phó bản tổ đội lv20/50/80/110**; cấp cao hơn 110 chưa rõ server có gửi hay
+> chỉ bị client ẩn. Kịch bản từng trận (số trận, tọa độ di chuyển, số lần thoại, gói transit) sẽ
+> KHÁC HẲN theo từng level, viết hàm riêng cho mỗi level (`do_team_dungeon_lv50`,
+> `do_team_dungeon_lv80`, `do_team_dungeon_lv110`...). Nhưng **CƠ CHẾ NỀN TẢNG dưới đây áp
 > dụng lại được cho MỌI level**, đã xác nhận qua debug thực tế ở lv20 (xem BUG6-10):
 > 1. **Phải gọi `combat_ready()` (gửi lại `0x41`) ngay sau khi START phòng** (`0x2f 0c00`) — thiếu
 >    bước này thì nhân vật KHÔNG di chuyển thật dù gói `0x06` gửi đúng cú pháp (server âm thầm bỏ
@@ -853,6 +866,146 @@ Luồng 5 người (1 leader + 4 member). Map quan trọng: **ô5 bingo = phó b
 > 5. **Sau khi đánh xong thành công, gọi lại `claim_daily_quests(heavy=False)`** để claim bù hàng/
 >    cột/tổng kết bingo có ô phó bản (ô phó bản là bước CUỐI trong `claim_daily_quests` nên lúc claim
 >    hàng/cột, ô đó còn tính là CHƯA xong).
+
+### Trạng thái red-dot/có thể vào nếu KHÔNG dựa daily — ĐÃ chốt bằng crack Lua + pcap
+Capture `ts_capture_mumu12_teamdungeon_login.pcap` (2026-08-05, 2 nick login + mở panel; một nick đã
+xong phó bản tổ đội lv20, một nick chưa; lv50/80/110 đều chưa làm) cho thấy:
+- Client game có hiển thị **red dot** trên các phó bản còn có thể vào/còn lượt. Đi xong thì red dot mất,
+  mua thêm vé thì có thể hiện lại. Vì vậy trạng thái cần tìm đúng hơn là **availability / remaining attempt**,
+  không chỉ là "đã đi hay chưa".
+- **Kết luận chốt (crack client Lua 2026-08-05):** UI phó bản đội tính lượt còn lại từ
+  `Dungeon.InitAvailableDungeonDatas()`:
+  `usedCount = MarkManager.missions[dungeonData.dayilyFlag].step` (nếu mission không tồn tại thì `0`);
+  còn lượt/red-dot khi `dungeonData.dayilyCount - usedCount > 0` và level thỏa `minLv/maxLv`.
+- `Dungeon_C.dat` parse theo `DungeonData.New` cho mapping phó bản đội:
+  - lv20: dungeon id `0x0001`, `dayilyFlag=0x302e`, `dayilyCount=1`, scene `62002`.
+  - lv50: dungeon id `0x000e`, `dayilyFlag=0x30a6`, `dayilyCount=1`, scene `62011`.
+  - lv80: dungeon id `0x000f`, `dayilyFlag=0x30aa`, `dayilyCount=1`, scene `62012`.
+  - lv110: dungeon id `0x0010`, `dayilyFlag=0x30ae`, `dayilyCount=1`, scene `62013`.
+- Packet trạng thái cần đọc là **mission step opcode `0x18`**, không phải `0x2f`/`0x55`:
+  - S2C `0x18 sub0600`: init mission step
+    `[count u32] + record*`, record = `[idx u8][missionId u16 LE][step u8]`.
+  - S2C `0x18 sub0100`: tăng step `[missionId u16][step u8]` (đánh xong dungeon sẽ tăng lên `1`).
+  - S2C `0x18 sub0200`: giảm step `[missionId u16][step u8]` (mua thêm lượt lv20 đã thấy giảm `0x302e`).
+  - S2C `0x18 sub0400`: xóa mission `[missionId u16]`.
+  Công thức bot cần dùng: `remaining = max(0, dayilyCount - mission_step)`, mission không có trong
+  `0x18/06` nghĩa là `step=0`.
+- Verify pcap:
+  - `teamdungeon_login`: acc đã xong lv20 có `0x18/06 -> 0x302e step=1`.
+  - `teamdungeon_lv50`: trước lv50 có `0x302e step=1`; đánh xong lv50 server bắn
+    `0x18/01 -> 0x30a6 step=1`; relog có `0x302e=1, 0x30a6=1`.
+  - `teamdungeon_lv50_no20_dieusau`: đánh thẳng lv50, relog chỉ có `0x30a6 step=1`, không có `0x302e`.
+  - `teamdungeon_reddot`: trước mua thêm có `0x302e=1, 0x30a6=1`; mua thêm lượt lv20 bắn
+    `0x18/02 -> 0x302e step=1`, relog sau đó **không còn `0x302e`**, nên lv20 lại có red-dot.
+- Khi phân tích capture phải **reassemble TCP trước khi decode frame**. Full `0x55` dài ~15006B và full
+  `0x51` dài ~1004B có thể bị chia segment; script chỉ decode từng TCP payload riêng lẻ sẽ làm rơi frame lớn
+  và dẫn tới kết luận sai.
+- Login **không tự push gói `0x2f` trạng thái cá nhân**. Chỉ khi client gửi C2S `0x2f 0100` thì server
+  trả S2C `0x2f sub0100`.
+- S2C `0x2f sub0100` parse giống **danh sách phòng public**, không phải trạng thái chính nick:
+  `[0100][count 2B] + record*`, record tạm hiểu là `[room_id 4B][name_len 1B][leader_name utf16][entity 8B][tail 4B]`.
+  Tail cuối đang thấy `...03`, `...02`, `...01` nhiều khả năng là loại/tier phòng đang hiện.
+  **Chưa được dùng tail này để suy level**: cùng tên/phòng `CầmNghiêm` từng thấy tail cuối `02` ở capture
+  trước nhưng `01` ở capture sau; có thể là phòng public thay đổi/trạng thái phòng, không phải trạng
+  thái cá nhân.
+- `sid=0x11`/`0x12` **KHÔNG phải trạng thái lv20**: `dieumot` trước khi đi và sau khi đi lv20 đều
+  vẫn `1/1`.
+- Capture tiếp `ts_capture_mumu12_teamdungeon_dieumot_after.pcap` (dieumot đi xong lv20 rồi login lại)
+  cho pattern ban đầu:
+  - `quansau` đã xong lv20: `0x0443=1`, `0x00da=1`
+  - `dieumot` trước khi đi: `0x0443=0`, `0x00da=0`
+  - `dieumot` sau khi đi + relog: `0x0443=1`, `0x00da=1`
+  Nhưng capture lv50 đi thẳng (bên dưới) chứng minh cặp này **KHÔNG phân biệt lv20**; nó chỉ cho biết
+  đã xong ít nhất một team dungeon trong ngày.
+- So ma trận 4 trạng thái (`chưa làm gì`, `chỉ lv20`, `chỉ lv50`, `lv20+lv50`) trên toàn bộ 1500 stat
+  trong S2C `0x55`: **không có sid nào khớp pattern "lv20 riêng" hoặc "lv50 riêng"**. Chỉ có
+  `0x00da`/`0x0443` khớp pattern "đã làm team dungeon bất kỳ".
+- Các stat đổi cùng lúc nhưng ít phù hợp làm trạng thái: `0x00a2` tăng `33->34` (có thể tổng lần/điểm),
+  `0x00a3` và `0x0418` tăng +4 theo 4 trận, `0x032b` vẫn `0/40`.
+
+Các hướng dưới đây là dead-end/auxiliary trước khi crack Lua, giữ lại để tránh mò nhầm:
+- Full `0x55`: không có sid per-level sạch.
+- Full `0x51`: cùng acc dieumot từ `lv20` sang `lv20+lv50` không đổi, nên không đủ làm trạng thái lv50.
+- `0x7c`: chủ yếu là dữ liệu tĩnh/list; các block đổi ở dieusau chỉ đổi thứ tự record, không đổi value.
+- `0x2f sub0100`: là room list public.
+
+Không cần capture thêm để chốt trạng thái còn lượt; capture thêm chỉ cần khi muốn xác nhận route/battle/reward
+của lv80/lv110.
+
+Capture sạch `ts_capture_mumu12_teamdungeon_ui_only.pcap` (2026-08-05, acc đang online, chỉ mở UI phó
+bản đội; người chơi quan sát red dot ở lv20 do vừa mua thêm, lv80, lv110) cho thấy:
+- Khi mở UI, client chỉ gửi **C2S `0x2f 0100` x2**, server trả **S2C `0x2f sub0100` x2**. Không có
+  `0x55`/`0x51`/`0x7c` mới trong capture này, nên red dot không đến từ một packet state riêng ngay lúc mở UI.
+- `S2C 0x2f sub0100` trong capture sạch có 4 record:
+  - `(room_id=1143, leader='K_ụ_Trẻ', dungeon_id=0x10, tail_count/status=1)`
+  - `(room_id=1103, leader='DieneSP02', dungeon_id=0x01, tail_count/status=1)`
+  - `(room_id=3076, leader='CầmNghiêm', dungeon_id=0x0f, tail_count/status=1)`
+  - `(room_id=1142, leader='XàYếnOanh', dungeon_id=0x0e, tail_count/status=1)`
+  Format record: `[room_id u32][name_len u8][leader_name utf16le][leader_entity 8B][dungeon_id u16][count/status u16]`.
+  Đây vẫn là **danh sách phòng public**, không đủ một mình để kết luận acc còn lượt hay không.
+- Mapping id đã chắc một phần: `0x01 = lv20`, `0x0e = lv50` (đã xác nhận bằng gói tạo phòng lv50
+  `0x2f 02000e0001`). Khả năng cao `0x0f/0x10` là lv80/lv110 nhưng cần capture tạo phòng 80/110 để chốt.
+- Capture trước đó `ts_capture_mumu12_teamdungeon_reddot.pcap` có thao tác mua thêm lượt lv20:
+  C2S `0x54 01000d000100` -> C2S `0x54 0200020d000100`, server trả thành công và bắn
+  `S2C 0x55 sid=0x0002 value=2 max=2`. Full `0x55` sau relog cũng đổi `sid=0x0002` từ `1/2` lên `2/2`.
+  `sid=0x0002` chỉ là counter phụ liên quan mua thêm lượt lv20; UI red-dot/còn lượt thực tế lấy từ
+  `0x18` mission step như trên.
+
+### PHÓ BẢN TỔ ĐỘI LV50 — capture đã xác nhận một phần
+Capture `ts_capture_mumu12_teamdungeon_lv50.pcap` (2026-08-05, dieumot đã xong lv20 rồi đi lv50 +
+login lại) cho thấy:
+- Gói tạo phòng lv50: **C2S `0x2f 02000e0001`**. Như vậy byte/id dungeon **không phải tier tuần tự
+  `02`**, mà là `0x0e` cho lv50. Lv20 đã thấy `0x2f 0200010001`.
+- Luồng nền vẫn giống lv20: mở panel `0x2f 0100` (capture này thấy 3 lần), invite member bằng
+  `0x2f 0800 [entity]`, start `0x2f 0c00`, rồi leader di chuyển/transit/dialog và cả party đánh.
+- Sau khi xong lv50 + relog, trong case `dieumot` đã xong lv20 trước đó:
+  - Trước lv50: `0x55 sid=0x0443` = `1`, `0x00da` = `1`.
+  - Sau lv50: `0x55 sid=0x0443` = `2`, `0x00da` = `1`.
+- Capture `ts_capture_mumu12_teamdungeon_lv50_no20_dieusau.pcap` (dieusau chưa đánh team dungeon nào,
+  đánh thẳng lv50 rồi login lại):
+  - Trước lv50: `0x0443=0`, `0x00da=0`.
+  - Sau lv50: `0x0443=1`, `0x00da=1`.
+  => `0x0443` giống **số team dungeon đã hoàn thành hôm nay** hơn là id level đã xong; `0x00da`
+  giống flag "đã xong ít nhất 1 team dungeon/ngày". **Không dùng được `0x0443=1` để kết luận là đã
+  xong lv20**, vì lv50 đi thẳng cũng ra `1`.
+- Trạng thái từng dungeon đã chốt ở mục trên: đọc `0x18` mission step theo `dayilyFlag`
+  (`0x302e/0x30a6/0x30aa/0x30ae`).
+- Đã so thêm các gói login trước khi mở panel:
+  - `0x7c` có dữ liệu tĩnh/config, thấy cả id `0x0e` liên quan lv50, nhưng không đổi theo trạng thái
+    trước/sau nên **không phải status đã đi**.
+  - `0x51` full ~1004B là bitfield lớn. Nó có đổi trong một vài case nhưng **không có pattern sạch**
+    cho từng dungeon: case dieumot trước/sau lv20 trong cùng capture không đổi, và so ma trận không có
+    bit nào khớp riêng `lv20` hoặc `lv50`.
+- Các counter đổi khi đánh lv50:
+  - Sau mỗi trận: `0x00a3` và `0x0418` tăng +1; cả lv50 tăng +5 => capture này có **5 trận**.
+  - Khi tổng kết: `0x00a2` tăng `34->35`, `0x0443` tăng `1->2`, `0x032b` vẫn `0/40`.
+- Script bot hiện tại cho lv50 đã chốt theo capture: **5 trận thật**. Các gói `0x14 08000200`,
+  `08000400`, `08000800`, `08000600` chỉ là chuyển cảnh/cổng trong kịch bản, KHÔNG được tách thành
+  trận riêng. Luồng an toàn phải giống lv20: tạo phòng `0x2f 02000e0001`, chờ member ready, START
+  `0x2f 0c00`, gọi lại `combat_ready()`, sau mỗi trận đợi mốc hết combat thật rồi heal, spam dialog
+  tới khi server im, đi/transit đúng capture rồi mới spam dialog vào trận tiếp. Nếu chưa có capture
+  route/battle của lv80/lv110 thì chỉ đọc được `remaining` qua `0x18`, **không tự suy script để chạy**.
+- Gói tổng kết đáng chú ý: S2C `0x2f 0c00000e00034ab70a000000000000000000000000000000`
+  rồi S2C `0x14 sub6400 ...`; cần đối chiếu thêm trước khi dùng làm claim/reward tự động.
+
+### PHÓ BẢN TỔ ĐỘI LV80 — capture đã xác nhận
+Capture `ts_capture_mumu12_teamdungeon_lv80.pcap` (2026-08-05) cho thấy:
+- Gói tạo phòng lv80: **C2S `0x2f 02000f0001`**, xác nhận `dungeon id = 0x000f`.
+- Đi xong lv80 server bắn mission step **S2C `0x18 sub0100 -> missionId=0x30aa step=1`**,
+  đúng với `dayilyFlag=0x30aa`.
+- Lv80 có **5 encounter/trận thật**, nhưng encounter đầu có nhiều wave tự nối tiếp trong cùng một
+  đoạn chờ; bot chỉ cần chờ `in_battle` hết thật trước khi sang bước kế.
+- Khác lv20/lv50: lv80 có nhiều đoạn **chỉ nói chuyện/chuyển cảnh rồi chạy tiếp**, không vào battle.
+  Đặc biệt capture có vài **S2C `0x14 sub0700` trong đoạn chuyển cảnh trước battle thật**. Vì vậy
+  không được dùng `_dialog_until_battle()` y nguyên như lv50 cho lv80, vì helper đó coi
+  `_genuine_end_seen/sub0700` là đủ để return. Script lv80 phải dùng wait stricter: chỉ coi là
+  vào trận khi `state.in_battle=True`.
+- Các transition chính đã dùng trong script:
+  `08000300`, `08000500`, `01000500`, `08000600`, `08000400`, `08000100`,
+  `01000600`, `08000900`, `08000800`, `08000700`, `01000b00`.
+
+Muốn chốt lv110: cần capture tương tự. Không nên suy script từ lv80/lv50 vì mỗi level khác hẳn
+số đoạn thoại, đường chạy, transition và số trận thật.
 
 ### Member side (ĐÃ CÓ trong `_on_dungeon`, KHÔNG cần làm lại)
 - S2C `0x2f sub=0f` = lời mời phó bản → auto-accept **C2S `0x2f 03 00 [invite_id 4B] 00`** → sau 2.5s
@@ -930,7 +1083,7 @@ flow riêng. Xem `_handle_o5_team`.
 
 **Các fix trước đó vẫn giữ (không liên quan bug này nhưng đúng, không revert):**
 - `_offer_min` offset target (train +0, phó bản +1) — targeting đúng, đã verify quái chết ở trận 1,2.
-- `flee_mode=False` suốt phó bản; random delay 0x32 0.5-2s (`_team_dungeon_until`, cửa sổ 300s).
+- `flee_mode=False` suốt phó bản; random delay 0x32 0.5-2s (`_team_dungeon_until`, cửa sổ đúng 20 phút).
 - Victory dialog đúng số (vdlg 9/10/20); moves + transit từng trận.
 - **ĐÃ SAI (đừng lặp lại hướng này):** "che chắn 2 hàng" (user bác) — nguyên nhân THẬT không liên quan
   tới hàng/cột quái, mà là race condition ở tầng flow member/leader.
