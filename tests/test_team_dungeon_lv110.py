@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from analyze_pcap import load_frames
 from bot import client as client_module, config
@@ -133,6 +134,121 @@ class TestTeamDungeon110PacketState(unittest.TestCase):
 
         game._observe_team_dungeon_packet(0x14, b"\x00" * 7 + b"\x07\x00")
         self.assertEqual(game._team_dungeon_end_seq, 1)
+
+    def test_pb110_observer_tracks_battle_start(self):
+        game = self.make_client()
+        game._battle_start_seq = 7
+
+        game._observe_team_dungeon_packet(0x34, b"\x00" * 9)
+
+        self.assertEqual(game._battle_start_seq, 8)
+
+
+class TestTeamDungeon110Execution(unittest.TestCase):
+    def test_dispatch_calls_pb110(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.do_team_dungeon_lv110 = mock.Mock(return_value=True)
+
+        self.assertTrue(game.do_team_dungeon(110))
+
+        game.do_team_dungeon_lv110.assert_called_once_with()
+
+    def test_end_wait_ignores_empty_enemies_and_false_combat(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.running = True
+        game._team_dungeon_end_seq = 4
+        game.state = BattleState()
+        game.state.in_battle = False
+
+        def stop_client(_seconds):
+            game.running = False
+
+        with mock.patch.object(client_module.time, "sleep", side_effect=stop_client):
+            self.assertFalse(game._wait_team_dungeon_end(4, timeout=1.0))
+
+    def test_wrapper_always_clears_pb110_mode(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.state = BattleState()
+        game._team_dungeon_until = 10.0
+        game._phoban_until = 10.0
+
+        with mock.patch.object(game, "_do_team_dungeon_lv110_inner", return_value=False):
+            self.assertFalse(game.do_team_dungeon_lv110())
+
+        self.assertIsNone(game._active_team_dungeon_level)
+        self.assertFalse(game.state.quest_mode)
+        self.assertEqual(game._team_dungeon_until, 0.0)
+        self.assertEqual(game._phoban_until, 0.0)
+
+    def test_stage_runs_captured_actions_then_waits_for_explicit_end(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.running = True
+        game._label = "pb110-test"
+        game._battle_start_seq = 10
+        game._team_dungeon_end_seq = 20
+        game.send = mock.Mock()
+        game._route_move = mock.Mock()
+        game.do_heal = mock.Mock()
+        game._wait_team_dungeon_end = mock.Mock(return_value=True)
+
+        def advance(n=1, gap=0.4):
+            game._battle_start_seq += 1
+
+        game._adv_dialog = mock.Mock(side_effect=advance)
+        with mock.patch.object(client_module.time, "sleep", return_value=None):
+            self.assertTrue(game._run_team_dungeon_lv110_stage(pb110.STAGES[1], 2))
+
+        self.assertEqual(
+            game._route_move.call_args_list,
+            [
+                mock.call(490, 2410),
+                mock.call(222, 2446),
+                mock.call(126, 2459),
+                mock.call(50, 2470),
+                mock.call(50, 2470),
+            ],
+        )
+        game._wait_team_dungeon_end.assert_called_once_with(20)
+
+    @staticmethod
+    def configured_inner_client(completes=True):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.running = True
+        game._label = "pb110-test"
+        game.state = BattleState()
+        game._create_team_dungeon_room = mock.Mock(return_value=True)
+        game.scene_resume = mock.Mock()
+        game.set_party_strategist = mock.Mock()
+        game._run_team_dungeon_lv110_stage = mock.Mock(return_value=True)
+        game._wait_team_dungeon_complete = mock.Mock(return_value=completes)
+        game._adv_dialog = mock.Mock()
+        game._route_move = mock.Mock()
+        game.leave_party = mock.Mock()
+        return game
+
+    def test_inner_runs_five_stages_and_leaves_after_verified_completion(self):
+        game = self.configured_inner_client(completes=True)
+
+        with mock.patch.object(client_module.time, "sleep", return_value=None):
+            self.assertTrue(game._do_team_dungeon_lv110_inner())
+
+        self.assertEqual(
+            [call.args[1] for call in game._run_team_dungeon_lv110_stage.call_args_list],
+            [1, 2, 3, 4, 5],
+        )
+        game._wait_team_dungeon_complete.assert_called_once_with()
+        game._adv_dialog.assert_called_with(7, gap=0.4)
+        game._route_move.assert_called_with(2124, 283)
+        game.leave_party.assert_called_once_with()
+
+    def test_inner_does_not_leave_when_final_completion_times_out(self):
+        game = self.configured_inner_client(completes=False)
+
+        with mock.patch.object(client_module.time, "sleep", return_value=None):
+            self.assertFalse(game._do_team_dungeon_lv110_inner())
+
+        game.leave_party.assert_not_called()
+        game._route_move.assert_not_called()
 
 
 if __name__ == "__main__":
