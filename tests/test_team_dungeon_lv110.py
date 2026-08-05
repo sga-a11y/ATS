@@ -278,6 +278,19 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertEqual(wait_call.args, (20,))
         self.assertGreater(wait_call.kwargs["since"], 0.0)
 
+    def test_final_stage_waits_for_genuine_end_before_post_battle_flow(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.running = True
+        game._label = "pb110-test"
+        game._battle_start_seq = 10
+        game._team_dungeon_end_seq = 20
+        game._advance_to_team_dungeon_battle = mock.Mock(return_value=True)
+        game._wait_team_dungeon_end = mock.Mock(return_value=True)
+
+        self.assertTrue(game._run_team_dungeon_lv110_stage((("battle", 1),), 5))
+
+        game._wait_team_dungeon_end.assert_called_once()
+
     def test_force_full_heal_bypasses_post_battle_busy_window(self):
         game = client_module.GameClient.__new__(client_module.GameClient)
         game._label = "pb110-test"
@@ -326,10 +339,31 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             [call.args[1] for call in game._run_team_dungeon_lv110_stage.call_args_list],
             [1, 2, 3, 4, 5],
         )
-        game._wait_team_dungeon_complete.assert_called_once_with()
+        game._wait_team_dungeon_complete.assert_called_once_with(timeout=0.8)
         game.heal_full.assert_called_once_with(force=True)
-        game._adv_dialog.assert_called_with(7, gap=0.4)
+        game._adv_dialog.assert_called_with(1, gap=0.4)
         game._route_move.assert_called_with(2124, 283)
+        game.leave_party.assert_called_once_with()
+
+    def test_inner_advances_summary_dialog_until_mission_completes(self):
+        game = self.configured_inner_client(completes=False)
+        game.team_dungeon_remaining = mock.Mock(return_value=1)
+        game._wait_team_dungeon_complete.side_effect = (
+            lambda timeout=360.0: game.dungeon_complete
+        )
+        advances = []
+
+        def advance(n=1, gap=0.4):
+            for _ in range(n):
+                advances.append(1)
+                if len(advances) == 4:
+                    game.dungeon_complete = True
+
+        game._adv_dialog.side_effect = advance
+        with mock.patch.object(client_module.time, "sleep", return_value=None):
+            self.assertTrue(game._do_team_dungeon_lv110_inner())
+
+        self.assertEqual(len(advances), 5)
         game.leave_party.assert_called_once_with()
 
     def test_inner_does_not_leave_when_final_completion_times_out(self):
@@ -365,6 +399,7 @@ class TestTeamDungeon110AndroidParity(unittest.TestCase):
             "_observe_team_dungeon_packet",
             "_wait_team_dungeon_end",
             "_wait_team_dungeon_complete",
+            "_advance_to_team_dungeon_complete",
             "_run_team_dungeon_lv110_stage",
             "do_team_dungeon_lv110",
             "_do_team_dungeon_lv110_inner",

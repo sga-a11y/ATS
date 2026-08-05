@@ -4968,6 +4968,15 @@ class GameClient:
             time.sleep(0.2)
         return False
 
+    def _advance_to_team_dungeon_complete(self, cap_n: int = 12) -> bool:
+        for _ in range(cap_n):
+            if not self.running:
+                return False
+            self._adv_dialog(1, gap=0.4)
+            if self._wait_team_dungeon_complete(timeout=0.8):
+                return True
+        return False
+
     def _advance_to_team_dungeon_battle(self, cap_n: int) -> bool:
         start_seq = self._battle_start_seq
         for _ in range(cap_n):
@@ -5003,7 +5012,7 @@ class GameClient:
                     log.warning("[%s] (LEADER) PB110 tran %d: khong thay battle start", self._label, stage_no)
                     return False
                 log.info("[%s] (LEADER) PB110: VAO TRAN %d/5", self._label, stage_no)
-                if stage_no < 5 and not self._wait_team_dungeon_end(end_seq, since=wait_since):
+                if not self._wait_team_dungeon_end(end_seq, since=wait_since):
                     log.warning("[%s] (LEADER) PB110 tran %d: khong thay moc ket tran", self._label, stage_no)
                     return False
             else:
@@ -5033,13 +5042,14 @@ class GameClient:
             log.info("[%s] (LEADER) PB110 tran %d: bat dau", self._label, stage_no)
             if not self._run_team_dungeon_lv110_stage(actions, stage_no):
                 return False
-        if not self._wait_team_dungeon_complete():
-            log.warning("[%s] (LEADER) PB110: tran 5 xong nhung khong thay mission 0x30ae", self._label)
+        if not self._advance_to_team_dungeon_complete():
+            log.warning("[%s] (LEADER) PB110: da bam thoai tong ket nhung khong thay mission 0x30ae",
+                        self._label)
             return False
         time.sleep(0.5)
         self.state.in_battle = False
         self.heal_full(force=True)
-        self._adv_dialog(7, gap=0.4)
+        self._adv_dialog(1, gap=0.4)
         self._route_move(2124, 283)
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV110 XONG -> roi pho ban ===", self._label)
         self.leave_party()
