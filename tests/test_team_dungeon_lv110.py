@@ -2,8 +2,9 @@ import unittest
 from pathlib import Path
 
 from analyze_pcap import load_frames
-from bot import config
+from bot import client as client_module, config
 from bot import team_dungeon_lv110 as pb110
+from bot.state import BattleState
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,6 +97,42 @@ class TestTeamDungeon110Capture(unittest.TestCase):
                 for frame in frames
             )
         )
+
+
+class TestTeamDungeon110PacketState(unittest.TestCase):
+    @staticmethod
+    def make_client():
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game._label = "pb110-test"
+        game.running = True
+        game._active_team_dungeon_level = 110
+        game._team_dungeon_end_seq = 0
+        game._team_dungeon_reinforcement_seq = 0
+        game._battle_end_grace_until = 0.0
+        game.state = BattleState()
+        return game
+
+    def test_reinforcement_restores_battle_without_ending_stage(self):
+        game = self.make_client()
+        game.state.in_battle = False
+        packet = b"\x00" * 7 + bytes.fromhex(
+            "060001399d0000000000003d9d000000000000"
+        )
+
+        game._observe_team_dungeon_packet(0x35, packet)
+
+        self.assertTrue(game.state.in_battle)
+        self.assertEqual(game._team_dungeon_reinforcement_seq, 1)
+        self.assertEqual(game._team_dungeon_end_seq, 0)
+
+    def test_only_0700_increments_normal_end_sequence(self):
+        game = self.make_client()
+
+        game._observe_team_dungeon_packet(0x14, b"\x00" * 7 + b"\x08\x00\x04")
+        self.assertEqual(game._team_dungeon_end_seq, 0)
+
+        game._observe_team_dungeon_packet(0x14, b"\x00" * 7 + b"\x07\x00")
+        self.assertEqual(game._team_dungeon_end_seq, 1)
 
 
 if __name__ == "__main__":

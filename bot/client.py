@@ -8,7 +8,7 @@ import collections
 import json
 import os
 
-from . import config, protocol, combat, pathfind, npc40, pet_login_stats
+from . import config, protocol, combat, pathfind, npc40, pet_login_stats, team_dungeon_lv110
 
 
 from .auth import build_auth_packet
@@ -924,6 +924,9 @@ class GameClient:
         self.team_dungeon_steps = {}  # mission_id -> step, tu S2C 0x18; dung de tinh luot pho ban doi
         self.team_dungeon_status_loaded = False
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
+        self._active_team_dungeon_level = None
+        self._team_dungeon_end_seq = 0
+        self._team_dungeon_reinforcement_seq = 0
         self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
         self._genuine_end_seen = 0.0  # thoi diem nhan goi 0x14 sub0800 tail=03/04 (ket tran THAT, moi context)
         self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
@@ -1457,6 +1460,7 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        self._observe_team_dungeon_packet(opcode, pkt)
         self._observe_npc40_packet(opcode, pkt)
         self._observe_mob_packet(opcode, pkt)
         # Pho ban to doi: theo doi thoai NPC de biet canh da HET that su chua (_adv_dialog_until_idle)
@@ -2295,6 +2299,30 @@ class GameClient:
         log.info("[%s] Pho ban: da an CHUAN BI", self._label)
 
     # ---- xu ly available actions / status-list (0x35) ----
+    def _observe_team_dungeon_packet(self, opcode: int, pkt: bytes):
+        if getattr(self, "_active_team_dungeon_level", None) != 110:
+            return
+        if opcode == 0x14 and pkt[7:9] == b"\x07\x00":
+            self._team_dungeon_end_seq += 1
+            return
+        if opcode != 0x35:
+            return
+        replacement = team_dungeon_lv110.decode_reinforcement(pkt)
+        if replacement is None:
+            return
+        old_entity, new_entity = replacement
+        self._team_dungeon_reinforcement_seq += 1
+        self.state.in_battle = True
+        old_id = int.from_bytes(old_entity[:2], "little")
+        new_id = int.from_bytes(new_entity[:2], "little")
+        log.info(
+            "[%s] PB110 thay quan giua tran: %s -> %s (dot %d)",
+            self._label,
+            config.NPC_NAMES.get(old_id, hex(old_id)),
+            config.NPC_NAMES.get(new_id, hex(new_id)),
+            self._team_dungeon_reinforcement_seq,
+        )
+
     def _on_actions(self, pkt: bytes):
         """0x35 sub0100 co 2 dang:
         - available-actions: [unit][atype][target][00][00]
