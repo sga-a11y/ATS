@@ -1,3 +1,4 @@
+import ast
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -249,6 +250,42 @@ class TestTeamDungeon110Execution(unittest.TestCase):
 
         game.leave_party.assert_not_called()
         game._route_move.assert_not_called()
+
+
+def client_methods(path, wanted):
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return {
+        node.name: ast.dump(node, include_attributes=False)
+        for cls in tree.body
+        if isinstance(cls, ast.ClassDef) and cls.name == "GameClient"
+        for node in cls.body
+        if isinstance(node, ast.FunctionDef) and node.name in wanted
+    }
+
+
+class TestTeamDungeon110AndroidParity(unittest.TestCase):
+    def test_pb110_module_is_shared_verbatim(self):
+        self.assertEqual(
+            (ROOT / "bot/team_dungeon_lv110.py").read_bytes(),
+            (ROOT / "android/app/src/main/python/train_bot/team_dungeon_lv110.py").read_bytes(),
+        )
+
+    def test_pb110_client_methods_match(self):
+        wanted = {
+            "_observe_team_dungeon_packet",
+            "_wait_team_dungeon_end",
+            "_wait_team_dungeon_complete",
+            "_run_team_dungeon_lv110_stage",
+            "do_team_dungeon_lv110",
+            "_do_team_dungeon_lv110_inner",
+        }
+
+        self.assertEqual(
+            client_methods(ROOT / "bot/client.py", wanted),
+            client_methods(
+                ROOT / "android/app/src/main/python/train_bot/client.py", wanted
+            ),
+        )
 
 
 if __name__ == "__main__":

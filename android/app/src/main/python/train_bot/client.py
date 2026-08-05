@@ -8,7 +8,7 @@ import collections
 import json
 import os
 
-from . import config, protocol, combat, pathfind, npc40, pet_login_stats
+from . import config, protocol, combat, pathfind, npc40, pet_login_stats, team_dungeon_lv110
 
 
 from .auth import build_auth_packet
@@ -924,6 +924,9 @@ class GameClient:
         self.team_dungeon_steps = {}  # mission_id -> step, tu S2C 0x18; dung de tinh luot pho ban doi
         self.team_dungeon_status_loaded = False
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
+        self._active_team_dungeon_level = None
+        self._team_dungeon_end_seq = 0
+        self._team_dungeon_reinforcement_seq = 0
         self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
         self._genuine_end_seen = 0.0  # thoi diem nhan goi 0x14 sub0800 tail=03/04 (ket tran THAT, moi context)
         self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
@@ -1457,6 +1460,7 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        self._observe_team_dungeon_packet(opcode, pkt)
         self._observe_npc40_packet(opcode, pkt)
         self._observe_mob_packet(opcode, pkt)
         # Pho ban to doi: theo doi thoai NPC de biet canh da HET that su chua (_adv_dialog_until_idle)
@@ -2295,6 +2299,33 @@ class GameClient:
         log.info("[%s] Pho ban: da an CHUAN BI", self._label)
 
     # ---- xu ly available actions / status-list (0x35) ----
+    def _observe_team_dungeon_packet(self, opcode: int, pkt: bytes):
+        if getattr(self, "_active_team_dungeon_level", None) != 110:
+            return
+        if opcode == protocol.OP_BATTLE_START:
+            self._battle_start_seq += 1
+            return
+        if opcode == 0x14 and pkt[7:9] == b"\x07\x00":
+            self._team_dungeon_end_seq += 1
+            return
+        if opcode != 0x35:
+            return
+        replacement = team_dungeon_lv110.decode_reinforcement(pkt)
+        if replacement is None:
+            return
+        old_entity, new_entity = replacement
+        self._team_dungeon_reinforcement_seq += 1
+        self.state.in_battle = True
+        old_id = int.from_bytes(old_entity[:2], "little")
+        new_id = int.from_bytes(new_entity[:2], "little")
+        log.info(
+            "[%s] PB110 thay quan giua tran: %s -> %s (dot %d)",
+            self._label,
+            config.NPC_NAMES.get(old_id, hex(old_id)),
+            config.NPC_NAMES.get(new_id, hex(new_id)),
+            self._team_dungeon_reinforcement_seq,
+        )
+
     def _on_actions(self, pkt: bytes):
         """0x35 sub0100 co 2 dang:
         - available-actions: [unit][atype][target][00][00]
@@ -4550,6 +4581,8 @@ class GameClient:
             return self.do_team_dungeon_lv50()
         if level == 80:
             return self.do_team_dungeon_lv80()
+        if level == 110:
+            return self.do_team_dungeon_lv110()
         log.warning("[%s] (LEADER) pho ban to doi lv%d: chua co kich ban route/battle an toan -> bo qua",
                     self._label, level)
         return False
@@ -4896,6 +4929,95 @@ class GameClient:
         self._adv_dialog_until_idle(min_n=3, gap=0.4, idle=1.5, max_wait=20.0)
         self._route_move(730, 790)
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV80 XONG -> roi pho ban ===", self._label)
+        self.leave_party()
+        time.sleep(2.0)
+        return True
+
+    def _wait_team_dungeon_end(self, start_seq: int, timeout: float = 360.0) -> bool:
+        deadline = time.time() + timeout
+        while self.running and time.time() < deadline:
+            if self._team_dungeon_end_seq > start_seq:
+                return True
+            time.sleep(0.2)
+        return False
+
+    def _wait_team_dungeon_complete(self, timeout: float = 360.0) -> bool:
+        deadline = time.time() + timeout
+        while self.running and time.time() < deadline:
+            if self.dungeon_complete or self.team_dungeon_remaining(110) == 0:
+                return True
+            time.sleep(0.2)
+        return False
+
+    def _advance_to_team_dungeon_battle(self, cap_n: int) -> bool:
+        start_seq = self._battle_start_seq
+        for _ in range(cap_n):
+            if not self.running:
+                return False
+            if self._battle_start_seq > start_seq:
+                return True
+            self._adv_dialog(1, gap=0.8)
+            if self._battle_start_seq > start_seq:
+                return True
+        return False
+
+    def _run_team_dungeon_lv110_stage(self, actions: tuple, stage_no: int) -> bool:
+        for action in actions:
+            if not self.running:
+                return False
+            kind = action[0]
+            if kind == "send":
+                self.send(action[1], action[2])
+                time.sleep(0.4)
+            elif kind == "advance":
+                self._adv_dialog(action[1], gap=0.4)
+            elif kind == "moves":
+                for x, y in action[1]:
+                    self._route_move(x, y)
+            elif kind == "heal":
+                self.do_heal()
+            elif kind == "battle":
+                end_seq = self._team_dungeon_end_seq
+                if not self._advance_to_team_dungeon_battle(action[1]):
+                    log.warning("[%s] (LEADER) PB110 tran %d: khong thay battle start", self._label, stage_no)
+                    return False
+                log.info("[%s] (LEADER) PB110: VAO TRAN %d/5", self._label, stage_no)
+                if stage_no < 5 and not self._wait_team_dungeon_end(end_seq):
+                    log.warning("[%s] (LEADER) PB110 tran %d: khong thay 0x14/0700", self._label, stage_no)
+                    return False
+            else:
+                log.warning("[%s] (LEADER) PB110 tran %d: action la %s", self._label, stage_no, kind)
+                return False
+        return True
+
+    def do_team_dungeon_lv110(self, ready_wait: float = 9.0) -> bool:
+        self._active_team_dungeon_level = 110
+        self._team_dungeon_end_seq = 0
+        self._team_dungeon_reinforcement_seq = 0
+        try:
+            return self._do_team_dungeon_lv110_inner(ready_wait)
+        finally:
+            self._active_team_dungeon_level = None
+            self.state.quest_mode = False
+            self._team_dungeon_until = 0.0
+            self._phoban_until = 0.0
+
+    def _do_team_dungeon_lv110_inner(self, ready_wait: float = 9.0) -> bool:
+        self.dungeon_complete = False
+        if not self._create_team_dungeon_room(team_dungeon_lv110.DUNGEON_ID, 110, ready_wait):
+            return False
+        self.scene_resume(settle=0.5)
+        self.set_party_strategist()
+        for stage_no, actions in enumerate(team_dungeon_lv110.STAGES, 1):
+            log.info("[%s] (LEADER) PB110 tran %d: bat dau", self._label, stage_no)
+            if not self._run_team_dungeon_lv110_stage(actions, stage_no):
+                return False
+        if not self._wait_team_dungeon_complete():
+            log.warning("[%s] (LEADER) PB110: tran 5 xong nhung khong thay mission 0x30ae", self._label)
+            return False
+        self._adv_dialog(7, gap=0.4)
+        self._route_move(2124, 283)
+        log.info("[%s] (LEADER) === PHO BAN TO DOI LV110 XONG -> roi pho ban ===", self._label)
         self.leave_party()
         time.sleep(2.0)
         return True
