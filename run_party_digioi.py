@@ -3122,7 +3122,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
 
     with st["lock"]:
         reports = dict(st.setdefault("team_dungeon_done_by", {}).setdefault(level, {}))
-    if level not in (20, 50, 80):
+    if level not in (20, 50, 80, 110):
         log.warning("[%s] (LEADER) phó bản đội lv%d: đã biết trạng thái lượt nhưng chưa có script "
                     "đường đi/trận an toàn -> bỏ qua", label, level)
         with st["lock"]:

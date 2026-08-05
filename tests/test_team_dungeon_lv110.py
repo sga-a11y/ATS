@@ -1,6 +1,9 @@
 import ast
+import sys
+import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from analyze_pcap import load_frames
@@ -146,6 +149,40 @@ class TestTeamDungeon110PacketState(unittest.TestCase):
 
 
 class TestTeamDungeon110Execution(unittest.TestCase):
+    def test_coordinator_runs_pb110_when_whole_party_has_turns(self):
+        with mock.patch.object(sys, "argv", [sys.argv[0]]):
+            import run_party_digioi as coordinator
+
+        game = SimpleNamespace(
+            running=True,
+            state=SimpleNamespace(quest_mode=False),
+            wait_team_dungeon_status=mock.Mock(return_value=True),
+            team_dungeon_remaining=mock.Mock(return_value=1),
+            do_team_dungeon=mock.Mock(return_value=True),
+            _phoban_until=0.0,
+            _team_dungeon_until=0.0,
+        )
+        state = {
+            "lock": threading.Lock(),
+            "team_dungeon_done_by": {110: {"member": 1}},
+            "team_dungeon_state": {},
+            "team_dungeon_broke": {},
+            "reconnecting": set(),
+            "disc_gen": 0,
+            "reform_gen": 0,
+        }
+
+        with (
+            mock.patch.object(coordinator, "party_accounts", return_value=[("leader",), ("member",)]),
+            mock.patch.object(coordinator.config, "PARTY_LEADER_ACC", {0: "leader"}),
+        ):
+            result = coordinator._handle_auto_team_dungeon(
+                game, state, "leader", "leader", 0, True, lambda: False, 110
+            )
+
+        self.assertTrue(result)
+        game.do_team_dungeon.assert_called_once_with(110)
+
     def test_dispatch_calls_pb110(self):
         game = client_module.GameClient.__new__(client_module.GameClient)
         game.do_team_dungeon_lv110 = mock.Mock(return_value=True)
