@@ -16,7 +16,7 @@ APK = os.path.join(ROOT, "android", "app", "src", "main", "python", "train_bot")
 # File CHUNG: copy y nguyen (import 'from . import ...' da tuong thich package train_bot).
 SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login.py",
           "train_block_stats.py", "mob_scanner.py", "mob_spots.py", "scene_fight.py",
-          "train_maps_store.py", "npc40.py"]
+          "train_maps_store.py", "npc40.py", "pet_login_stats.py"]
 
 SHARED_ASSETS = ["events.json", "npc_names.json", "use_items.json"]
 

@@ -1098,7 +1098,8 @@ class BotGUI(tk.Tk):
         win = tk.Toplevel(self)
         win.title(f"Check AGI - Party {pidx + 1}")
         win.transient(self)
-        win.geometry("620x320")
+        rows = report["rows"]
+        win.geometry("520x320")
         spread = report["spread"]
         if spread is None:
             summary = "Chưa có dữ liệu AGI. Hãy chạy party và chờ các acc login xong."
@@ -1111,15 +1112,22 @@ class BotGUI(tk.Tk):
             color = "#b45309" if report["warning"] else "#166534"
         tk.Label(win, text=summary, fg=color, font=("", 10, "bold"),
                  anchor="w").pack(fill="x", padx=10, pady=(10, 6))
-        tree = ttk.Treeview(win, columns=("acc", "char", "char_agi", "pet", "pet_agi"),
+        columns = (("char", "Nhân vật", 150), ("char_agi", "AGI char", 75),
+                   ("pet", "Pet đang dùng", 150), ("pet_agi", "AGI pet", 75))
+        tree = ttk.Treeview(win, columns=tuple(key for key, _title, _width in columns),
                             show="headings", height=8)
-        for key, title, width in (("acc", "Tài khoản", 110), ("char", "Nhân vật", 150),
-                                  ("char_agi", "AGI char", 75), ("pet", "Pet đang dùng", 150),
-                                  ("pet_agi", "AGI pet", 75)):
+        for key, title, width in columns:
             tree.heading(key, text=title)
-            tree.column(key, width=width, anchor="center" if "agi" in key else "w")
-        for row in report["rows"]:
-            tree.insert("", "end", values=(self._mask_user(row["username"]), row["char"],
+            tree.column(key, width=width, anchor="center")
+        for row in rows:
+            char = row.get("char") or row.get("username") or "-"
+            if char and char != "-" and char != row.get("username"):
+                self._char2user[char] = row.get("username")
+            if char == row.get("username"):
+                char = self._mask_user(char)
+            else:
+                char = self._mask_char(char)
+            tree.insert("", "end", values=(char,
                         row["char_agi"] if row["char_agi"] is not None else "—",
                         row["pet"] or "—",
                         row["pet_agi"] if row["pet_agi"] is not None else "—"))

@@ -300,10 +300,11 @@ account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT
 account_forced_reconnect = set()  # survivor 40NPC bi dong de relogin cung party; KHONG tang disc_gen
 _start_cancel_generation = 0  # STOP ALL tang so nay de huy chuoi START dang do
 _login_guard_lock = threading.Lock()
-_login_error1_hits = []  # [(time, username)] - error_code=1 tren nhieu acc -> nghi IP bi chan
-_login_ip_blocked = threading.Event()
+_login_error1_hits = []  # [(time, username)] - canh bao loi login hang loat, KHONG ket luan IP
+_login_error1_warn_until = 0.0
 _LOGIN_ERR1_WINDOW_SEC = 60
 _LOGIN_ERR1_MIN_ACCOUNTS = 3
+_LOGIN_ERR1_WARN_GAP_SEC = 300
 
 
 def _running_party_usernames(pidx):
@@ -334,10 +335,11 @@ def _dt_party_usernames(pidx):
     return users
 
 
-def _reset_login_ip_guard():
+def _reset_login_error_guard():
+    global _login_error1_warn_until
     with _login_guard_lock:
         _login_error1_hits.clear()
-        _login_ip_blocked.clear()
+        _login_error1_warn_until = 0.0
 
 
 def _login_error_code(exc):
@@ -350,19 +352,30 @@ def _login_error_code(exc):
     return None
 
 
-def _note_login_error1(username):
+def _login_error_message(exc):
+    data = getattr(exc, "data", None)
+    if isinstance(data, dict):
+        msg = data.get("message")
+        if msg is not None:
+            return str(msg)
+    return str(exc)
+
+
+def _note_login_error1(username, exc=None):
+    global _login_error1_warn_until
     now = time.time()
     with _login_guard_lock:
         cutoff = now - _LOGIN_ERR1_WINDOW_SEC
         _login_error1_hits[:] = [(ts, u) for ts, u in _login_error1_hits if ts >= cutoff]
         _login_error1_hits.append((now, username))
         users = {u for _ts, u in _login_error1_hits}
-        if len(users) >= _LOGIN_ERR1_MIN_ACCOUNTS and not _login_ip_blocked.is_set():
-            _login_ip_blocked.set()
-            log.error("LOGIN: %d acc khac nhau bi error_code=1 trong %ds -> nghi IP bi chan/rate-limit. "
-                      "Dung retry phien nay; doi IP/bat 1.1.1.1 roi Start lai.",
-                      len(users), _LOGIN_ERR1_WINDOW_SEC)
-        return _login_ip_blocked.is_set()
+        if len(users) >= _LOGIN_ERR1_MIN_ACCOUNTS and now >= _login_error1_warn_until:
+            _login_error1_warn_until = now + _LOGIN_ERR1_WARN_GAP_SEC
+            msg = _login_error_message(exc) if exc is not None else ""
+            log.warning("LOGIN: %d acc khac nhau bi error_code=1 trong %ds%s -> "
+                        "co the la login/auth API loi tam thoi; van retry theo supervisor.",
+                        len(users), _LOGIN_ERR1_WINDOW_SEC,
+                        (" (message=%r)" % msg) if msg else "")
 
 
 def _party_exit_summary(pidx, exclude_user):
@@ -670,7 +683,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     server_id = _pc0.get("server_id", 1)
     _login_failed = False   # True neu login/vao world that bai 6 lan -> supervisor van thu lai (backoff)
     _unexpected_error = False  # True neu dinh Exception bat ngo -> cho relogin (dung de acc chet han vi loi thoang qua)
-    _login_ip_block_stop = False
     try:
         # --- Login + cho vao world THUC SU (co self_entity VA co current_map) ---
         c = None
@@ -678,12 +690,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         for attempt in range(6):
             if _stopped():
                 log.info("[%s] STOP truoc khi login xong", label); return
-            if _login_ip_blocked.is_set():
-                _login_ip_block_stop = True
-                _reason("nghi IP bi chan/rate-limit -> dung retry login phien nay")
-                log.warning("[%s] LOGIN tam dung: nghi IP bi chan/rate-limit. "
-                            "Doi IP/bat 1.1.1.1 roi Start lai.", label)
-                return
             try:
                 cred = login(username, password)
                 c = GameClient(cred["user_id"], cred["access_token"], host=server_ip, server_id=server_id)
@@ -710,15 +716,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # coi nhu 1 lan thu that bai, backoff 5s roi thu lai; het 6 lan -> _login_failed ben
                 # duoi (supervisor reconnect vo han). Truoc day login() raise -> thoat ca vong -> thread
                 # chet han (bug: nick "tat" khi server lom lam login HTTP fail).
-                if _login_error_code(e) == 1 and _note_login_error1(username):
-                    _login_ip_block_stop = True
-                    _reason("nghi IP bi chan/rate-limit -> dung retry login phien nay")
-                    log.warning("[%s] login error_code=1 va da cham nguong nghi IP bi chan -> "
-                                "dung retry phien nay", label)
-                    try:
-                        if c is not None: c.close()
-                    except Exception: pass
-                    return
+                if _login_error_code(e) == 1:
+                    _note_login_error1(username, e)
                 log.warning("[%s] login/connect loi (lan %d): %s -> thu lai", label, attempt + 1, e)
                 try:
                     if c is not None: c.close()
@@ -2939,7 +2938,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # mode deu tu login lai; dung han chi khi GUI Stop / thoat binh thuong (het gio DG...).
         _forced_reconnect = username in account_forced_reconnect
         reconnectable = (not _stopped()
-                         and not _login_ip_block_stop
                          and (_forced_reconnect or _login_failed or _dt["relogin_train"]
                               or _unexpected_error
                               or (c is not None and getattr(c, "server_closed", False))))
@@ -3318,7 +3316,7 @@ def start_party(pidx, stagger=1.5):
     started = 0
     accounts = party_accounts(pidx)
     if not any(is_account_running(u) for party in config.PARTIES for u, *_ in party if u):
-        _reset_login_ip_guard()
+        _reset_login_error_guard()
     # Party da tat han -> tao session state MOI. Reset tung field nhu truoc de sot route_plan/
     # reform_gen cua map cu, member co the doc plan cu truoc khi leader ghi plan map moi.
     if not any(is_account_running(u) for u, *_ in accounts):

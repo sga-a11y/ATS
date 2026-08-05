@@ -1,4 +1,6 @@
 """Decode the active pet login record and reproduce the game's max HP/SP formula."""
+from __future__ import annotations
+
 import math
 
 
