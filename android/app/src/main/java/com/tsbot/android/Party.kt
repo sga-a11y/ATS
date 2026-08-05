@@ -22,9 +22,9 @@ data class Party(
     val doDaily: Boolean = true,
     // Nhan exp offline luc login. Mac dinh CO tick de giu hanh vi cu.
     val claimOfflineExp: Boolean = true,
-    // Tu di pho ban doi. Mac dinh: 20/50/80 bat.
+    // Tu di pho ban doi. Mac dinh: 20/50/80 bat, 110 tat.
     val autoTeamDungeon: Boolean = true,
-    val teamDungeons: Map<Int, Boolean> = mapOf(20 to true, 50 to true, 80 to true),
+    val teamDungeons: Map<Int, Boolean> = mapOf(20 to true, 50 to true, 80 to true, 110 to false),
     // Chi dung khi runMode == RunModes.TRAIN: key trong config.TRAIN_MAPS (vd "12831").
     val trainMapKey: String = "",
     // Chi dung khi runMode == RunModes.TRAIN: index trong tm["mobs"] cua map do, -1 = "Bot tu chon"

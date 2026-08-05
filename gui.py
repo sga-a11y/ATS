@@ -38,8 +38,8 @@ log = logging.getLogger("bot")   # -> hien o panel log GUI (qua _QueueHandler tr
 
 ACCOUNTS_JSON = os.path.join(_app_dir(), "accounts.json")
 DONATE_CHAT_URL = "https://zalo.me/g/qiy6aflscqbh6v4tivej"
-TEAM_DUNGEON_LEVELS = (20, 50, 80)
-DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True}
+TEAM_DUNGEON_LEVELS = (20, 50, 80, 110)
+DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True, 110: False}
 
 
 def _normalize_team_dungeons(value):

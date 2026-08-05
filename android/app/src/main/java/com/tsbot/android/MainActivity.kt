@@ -172,13 +172,14 @@ fun partyStatusColor(party: Party, statusMap: Map<String, AccountStatus>): Color
 private const val PRIVACY_FULL = 0
 private const val PRIVACY_MASK = 1
 private const val PRIVACY_ORDINAL = 2
-private val TeamDungeonLevels = listOf(20, 50, 80)
+private val TeamDungeonLevels = listOf(20, 50, 80, 110)
 
 private fun defaultTeamDungeons(src: Map<Int, Boolean> = emptyMap()): Map<Int, Boolean> =
     linkedMapOf(
         20 to (src[20] ?: true),
         50 to (src[50] ?: true),
         80 to (src[80] ?: true),
+        110 to (src[110] ?: false),
     )
 
 fun teamDungeonsJson(value: Map<Int, Boolean>): String = JSONObject().apply {

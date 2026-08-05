@@ -4,8 +4,8 @@ Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitigno
 from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
 import os
 
-TEAM_DUNGEON_LEVELS = (20, 50, 80)
-DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True}
+TEAM_DUNGEON_LEVELS = (20, 50, 80, 110)
+DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True, 110: False}
 
 
 def normalize_team_dungeons(value):

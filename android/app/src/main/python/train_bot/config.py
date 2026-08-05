@@ -6,8 +6,8 @@ import os
 from ._appdir import app_dir as _base_dir
 from .train_maps_store import materialize_train_maps
 
-TEAM_DUNGEON_LEVELS = (20, 50, 80)
-DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True}
+TEAM_DUNGEON_LEVELS = (20, 50, 80, 110)
+DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True, 110: False}
 
 
 def normalize_team_dungeons(value):
