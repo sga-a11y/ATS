@@ -324,7 +324,7 @@ def _mark_battle_end(party_idx, who=None, map_id=None):
     with _PARTY_LOCK:
         _PARTY_BATTLE_END.setdefault(party_idx, {})[who] = (time.time(), map_id)
 
-def _recent_battle_end(party_idx, within=3.0, map_id=None, need=1):
+def _recent_battle_end(party_idx, within=3.0, map_id=None, need=1, since=None):
     """CO IT NHAT `need` member CON CUNG MAP voi leader vua xac nhan ket tran that.
     Diem mau chot = LOC THEO MAP: 1 member CHET giua tran se bay ve thanh (map khac) va van ban
     goi sub0800 - neu tin goi do, leader ha in_battle OAN trong khi tran VAN dang chay -> vong
@@ -338,6 +338,8 @@ def _recent_battle_end(party_idx, within=3.0, map_id=None, need=1):
     n = 0
     for _who, (t, m) in rec.items():
         if now - t >= within:
+            continue
+        if since is not None and t <= since:
             continue
         if map_id is not None and m is not None and m != map_id:
             continue   # member o map khac (vd da chet -> ve thanh) -> khong tinh
@@ -4934,11 +4936,27 @@ class GameClient:
         time.sleep(2.0)
         return True
 
-    def _wait_team_dungeon_end(self, start_seq: int, timeout: float = 360.0) -> bool:
+    def _wait_team_dungeon_end(self, start_seq: int, timeout: float = 360.0,
+                               since: float = None) -> bool:
         deadline = time.time() + timeout
+        end_floor = since
+        candidate_at = None
+        candidate_reinforcement = getattr(self, "_team_dungeon_reinforcement_seq", 0)
         while self.running and time.time() < deadline:
             if self._team_dungeon_end_seq > start_seq:
                 return True
+            now = time.time()
+            reinforcement = getattr(self, "_team_dungeon_reinforcement_seq", 0)
+            if candidate_at is not None and reinforcement != candidate_reinforcement:
+                candidate_at = None
+                end_floor = now
+            if candidate_at is not None and now - candidate_at >= 3.0:
+                return True
+            if candidate_at is None and _recent_battle_end(
+                    getattr(self, "party_idx", None), within=3.0,
+                    map_id=getattr(self, "current_map", None), since=end_floor):
+                candidate_at = now
+                candidate_reinforcement = reinforcement
             time.sleep(0.2)
         return False
 
@@ -4980,12 +4998,13 @@ class GameClient:
                 self.heal_full(force=True)
             elif kind == "battle":
                 end_seq = self._team_dungeon_end_seq
+                wait_since = time.time()
                 if not self._advance_to_team_dungeon_battle(action[1]):
                     log.warning("[%s] (LEADER) PB110 tran %d: khong thay battle start", self._label, stage_no)
                     return False
                 log.info("[%s] (LEADER) PB110: VAO TRAN %d/5", self._label, stage_no)
-                if stage_no < 5 and not self._wait_team_dungeon_end(end_seq):
-                    log.warning("[%s] (LEADER) PB110 tran %d: khong thay 0x14/0700", self._label, stage_no)
+                if stage_no < 5 and not self._wait_team_dungeon_end(end_seq, since=wait_since):
+                    log.warning("[%s] (LEADER) PB110 tran %d: khong thay moc ket tran", self._label, stage_no)
                     return False
             else:
                 log.warning("[%s] (LEADER) PB110 tran %d: action la %s", self._label, stage_no, kind)

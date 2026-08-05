@@ -204,6 +204,32 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         with mock.patch.object(client_module.time, "sleep", side_effect=stop_client):
             self.assertFalse(game._wait_team_dungeon_end(4, timeout=1.0))
 
+    def test_end_wait_accepts_recent_party_member_genuine_end(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.running = True
+        game.party_idx = 99110
+        game.current_map = 49942
+        game._team_dungeon_end_seq = 0
+        game._team_dungeon_reinforcement_seq = 0
+        game.state = BattleState()
+        game.state.in_battle = True
+        base = client_module.time.time()
+        now = [base]
+
+        def clock():
+            now[0] += 0.25
+            return now[0]
+
+        try:
+            client_module._mark_battle_end(game.party_idx, "member", game.current_map)
+            with (
+                mock.patch.object(client_module.time, "time", side_effect=clock),
+                mock.patch.object(client_module.time, "sleep", return_value=None),
+            ):
+                self.assertTrue(game._wait_team_dungeon_end(0, timeout=5.0))
+        finally:
+            client_module._PARTY_BATTLE_END.pop(game.party_idx, None)
+
     def test_wrapper_always_clears_pb110_mode(self):
         game = client_module.GameClient.__new__(client_module.GameClient)
         game.state = BattleState()
@@ -247,7 +273,10 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             ],
         )
         game.heal_full.assert_called_once_with(force=True)
-        game._wait_team_dungeon_end.assert_called_once_with(20)
+        game._wait_team_dungeon_end.assert_called_once()
+        wait_call = game._wait_team_dungeon_end.call_args
+        self.assertEqual(wait_call.args, (20,))
+        self.assertGreater(wait_call.kwargs["since"], 0.0)
 
     def test_force_full_heal_bypasses_post_battle_busy_window(self):
         game = client_module.GameClient.__new__(client_module.GameClient)
