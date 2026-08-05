@@ -47,11 +47,14 @@ def _heal_decide(key, sp):
         return False
 
 
-# --- HOI SINH: dieu phoi giong heal (1 con hoi sinh/luot, con SP cao nhat) + registry skill ---
+# --- HOI SINH: dieu phoi theo target chet.
+# Cu: 1 con hoi sinh/luot -> neu 2 dong doi chet va 2 caster con song thi caster thu 2 bi mat luot.
+# Moi: moi target chet chi 1 caster, nhung nhieu target chet thi nhieu caster co the cast cung luot.
 _revive_lock = threading.Lock()
-_revive_pool = {}            # key -> (sp, ts)
-_revive_done = {"t": 0.0}
+_revive_pool = {}            # key -> (sp, ts, party_idx, dead_targets)
+_revive_claims = {}          # party_idx -> {(b1,b2): (owner_key, ts)}
 _revive_reg = {}             # (party_idx, b1, slot) -> True: o vi tri do co skill hoi sinh
+_support_reg = {}            # (party_idx, b1, slot) -> revive/protect/hp_heal/sp_restore roles
 REVIVE_BARRIER = 0.4
 REVIVE_COOLDOWN = 2.5
 
@@ -63,26 +66,121 @@ def register_revive(party_idx, b1, slot):
 
 
 def _slot_has_revive(party_idx, b1, slot):
-    return _revive_reg.get((party_idx, b1, slot), False)
+    if _revive_reg.get((party_idx, b1, slot), False):
+        return True
+    return bool((_support_reg.get((party_idx, b1, slot)) or {}).get("revive"))
 
 
-def _revive_decide(key, sp):
-    """Giong _heal_decide: con SP cao nhat trong cac ung vien hoi sinh -> gianh quyen luot nay."""
+def _slot_has_protect_skill(party_idx, b1, slot):
+    return bool((_support_reg.get((party_idx, b1, slot)) or {}).get("protect"))
+
+
+def _slot_has_hp_heal(party_idx, b1, slot):
+    return bool((_support_reg.get((party_idx, b1, slot)) or {}).get("hp_heal"))
+
+
+def _slot_has_sp_restore(party_idx, b1, slot):
+    return bool((_support_reg.get((party_idx, b1, slot)) or {}).get("sp_restore"))
+
+
+def _dead_target_sort_key(state, party_idx, target):
+    b1, b2, hp_max = target
+    if hasattr(state, "has_protection"):
+        has_protect_status = state.has_protection(b1, b2)
+    else:
+        has_protect_status = bool(getattr(state, "protect_status", {}).get((b1, b2)))
+    return (
+        not _slot_has_revive(party_idx, b1, b2),
+        not has_protect_status,
+        not _slot_has_protect_skill(party_idx, b1, b2),
+        not _slot_has_hp_heal(party_idx, b1, b2),
+        not _slot_has_sp_restore(party_idx, b1, b2),
+        -hp_max,
+        b1,
+        b2,
+    )
+
+
+def _revive_cleanup(now):
+    for k, (_sp, ts, _pidx, _dead) in list(_revive_pool.items()):
+        if now - ts > REVIVE_BARRIER + 2.0:
+            _revive_pool.pop(k, None)
+    for pidx, claims in list(_revive_claims.items()):
+        for target, (_owner, ts) in list(claims.items()):
+            if now - ts > REVIVE_COOLDOWN:
+                claims.pop(target, None)
+        if not claims:
+            _revive_claims.pop(pidx, None)
+
+
+def _revive_decide(key, sp, party_idx, dead_targets):
+    """Tra target (b1,b2,hp_max) ma caster nay duoc hoi sinh, hoac None.
+    Dieu phoi bang barrier ngan de nhieu acc cung turn co the chia target chet cho nhau."""
+    group = party_idx if party_idx is not None else key.rsplit(":", 1)[0]
     now = time.time()
     with _revive_lock:
-        if now - _revive_done["t"] < REVIVE_COOLDOWN:
-            return False
-        _revive_pool[key] = (sp, now)
+        _revive_cleanup(now)
+        _revive_pool[key] = (sp, now, group, tuple(dead_targets))
     time.sleep(REVIVE_BARRIER)
     with _revive_lock:
-        if time.time() - _revive_done["t"] < REVIVE_COOLDOWN:
+        now = time.time()
+        _revive_cleanup(now)
+        claims = _revive_claims.setdefault(group, {})
+
+        # Neu thread khac da chia target cho minh trong luc minh dang doi barrier, nhan lai target do.
+        for target in dead_targets:
+            target_key = (target[0], target[1])
+            owner = claims.get(target_key)
+            if owner and owner[0] == key:
+                return target
+
+        recent = {
+            k: v for k, v in _revive_pool.items()
+            if v[2] == group and now - v[1] <= REVIVE_BARRIER + 1.0
+        }
+        claimed_owners = {owner for owner, _ts in claims.values()}
+        available = [t for t in dead_targets if (t[0], t[1]) not in claims]
+        available_by_key = {(t[0], t[1]): t for t in available}
+        assigned = {}
+        for cand in sorted(recent, key=lambda k: (recent[k][0], k), reverse=True):
+            if cand in claimed_owners:
+                continue
+            cand_dead = recent[cand][3]
+            target = next(
+                (available_by_key.get((t[0], t[1])) for t in cand_dead
+                 if (t[0], t[1]) in available_by_key),
+                None,
+            )
+            if target is None:
+                continue
+            target_key = (target[0], target[1])
+            claims[target_key] = (cand, now)
+            assigned[cand] = target
+            available_by_key.pop(target_key, None)
+            if not available_by_key:
+                break
+        return assigned.get(key)
+
+
+# --- BUFF BAO VE / PHA BAO VE: claim ngan de nhieu acc khong cung chon 1 target trong 1 turn. ---
+_protect_lock = threading.Lock()
+_protect_claims = {}
+_break_lock = threading.Lock()
+_break_claims = {}
+PROTECT_CLAIM_COOLDOWN = 2.5
+
+
+def _short_claim(claims_by_group, lock, group, target, owner, ttl=PROTECT_CLAIM_COOLDOWN):
+    now = time.time()
+    with lock:
+        claims = claims_by_group.setdefault(group, {})
+        for t, (_o, ts) in list(claims.items()):
+            if now - ts > ttl:
+                claims.pop(t, None)
+        if target in claims:
             return False
-        recent = {k: v for k, v in _revive_pool.items() if now - v[1] <= REVIVE_BARRIER + 1.0}
-        winner = max(recent, key=lambda k: (recent[k][0], k))
-        if winner == key:
-            _revive_done["t"] = time.time()
-            return True
-        return False
+        claims[target] = (owner, now)
+        return True
 
 
 # --- HOI SP TOAN TEAM (Toan Hoi Ma): dieu phoi giong heal - 1 con cast/luot, con SP cao nhat ---
@@ -134,6 +232,31 @@ SKILL_NAMES = {
     17997: "Bỏ chạy",
     18001: "Bỏ chạy",
 }
+
+SKILL_NAMES.update({
+    10009: "Giai Ket Gioi",
+    10010: "Ket Gioi",
+    10014: "Giai Kinh",
+    10015: "Kinh",
+    10026: "Linh Kinh",
+    10038: "Song Kinh",
+    10039: "Due Kinh",
+    10040: "Thuan Kinh",
+    10041: "S.Ket Gioi",
+    11012: "Giai Tru",
+    13005: "An Minh",
+    13042: "S.An Than",
+})
+
+
+# Nhom skill bao ve. Dung de tranh buff trung va de pha buff dich dung loai.
+PROTECT_KET_GIOI = (10010, 10041)                         # Ket Gioi, S.Ket Gioi
+PROTECT_STEALTH = (13005, 13042)                          # An Minh, S.An Than
+PROTECT_KINH = (10015, 10026, 10038, 10039, 10040)         # Kinh + cac bien the
+PROTECT_SKILLS = frozenset(PROTECT_KET_GIOI + PROTECT_STEALTH + PROTECT_KINH)
+BREAK_GENERIC = 11012     # Giai Tru
+BREAK_KET_GIOI = 10009    # Giai Ket Gioi
+BREAK_KINH = 10014        # Giai Kinh
 
 
 class Decision:
@@ -317,10 +440,26 @@ def _is_revive(skill):
     return _cat(skill) == 8
 
 
+def _protect_class(skill):
+    if skill in PROTECT_KET_GIOI:
+        return "ket_gioi"
+    if skill in PROTECT_STEALTH:
+        return "stealth"
+    if skill in PROTECT_KINH:
+        return "kinh"
+    return None
+
+
+def _is_protect_skill(skill):
+    return _protect_class(skill) is not None
+
+
 def _has_support_skill(skills):
     """Unit co it nhat 1 skill HOI: hoi sinh (cat8) / Toan Tri Lieu (11010) / Toan Hoi Ma (cat6).
     -> quest mode: de danh SP cho vai tro hoi, chi danh skill atk khi SP > SUPPORT_RESERVE_SP."""
     if any(_is_revive(s) for s in skills):
+        return True
+    if any(_is_protect_skill(s) for s in skills):
         return True
     if getattr(config, "SKILL_HEAL_ALL", None) in skills:
         return True
@@ -354,11 +493,17 @@ def _revive_decision_for_skill(state, unit, stat, rev):
     pidx = getattr(state, "party_idx", None)
     if state.self_slot is not None:
         register_revive(pidx, 3 if unit == config.UNIT_CHAR else 2, state.self_slot)
-    if not _revive_decide(state.label + (":char" if unit == config.UNIT_CHAR else ":pet"), stat.sp):
+    # target: co Hoi Sinh TRUOC; sau do moi den dang co bao ve / role support / maxHP.
+    dead.sort(key=lambda x: _dead_target_sort_key(state, pidx, x))
+    target = _revive_decide(
+        state.label + (":char" if unit == config.UNIT_CHAR else ":pet"),
+        stat.sp,
+        pidx,
+        dead,
+    )
+    if target is None:
         return None
-    # target: con chet co revive skill TRUOC -> roi maxHP cao nhat
-    dead.sort(key=lambda x: (not _slot_has_revive(pidx, x[0], x[1]), -x[2]))
-    b1, b2, _hp = dead[0]
+    b1, b2, _hp = target
     at = state.my_atype
     setattr(state, gen_attr, state.enemy_gen)   # danh dau da hanh dong tren gen nay (giong attack) -> tan du/lap khong revive lai
     return Decision(unit, at, b2, rev, b=b1)   # target=slot con chet, b=loai con chet (3char/2pet)
@@ -366,8 +511,8 @@ def _revive_decision_for_skill(state, unit, stat, rev):
 
 def _try_revive(state, unit, skills, stat, options):
     """HOI SINH (check TRUOC heal): caster CON SONG + co skill hoi sinh + du SP + co dong doi CHET
-    + thang dieu phoi (con SP cao nhat trong party hoi sinh). Target con chet uu tien:
-      1) con chet CO skill hoi sinh (cuu nguoi biet cuu truoc) 2) maxHP goc cao nhat.
+    + dieu phoi moi target chet 1 caster. Target con chet uu tien:
+      1) con chet CO skill hoi sinh 2) dang co bao ve 3) support 4) maxHP goc cao nhat.
     Con chet thi KHONG cast (caster phai song). Tra Decision hoac None."""
     rev = next((s for s in skills if _is_revive(s)), None)
     return _revive_decision_for_skill(state, unit, stat, rev)
@@ -416,6 +561,178 @@ def pick_sp_restore_skill(skills):
     don, vd 0x2b01/40 > 0x2afe/35). None neu unit khong co."""
     cand = [s for s in skills if (_sinfo(s) or {}).get("cat") == 6]
     return max(cand, key=_skill_cost) if cand else None
+
+
+def pick_protect_skill(skills, sp):
+    """Chon buff bao ve theo uu tien: Ket Gioi -> An Than -> Kinh."""
+    learned = list(skills or [])
+    for group in (PROTECT_KET_GIOI, PROTECT_STEALTH, PROTECT_KINH):
+        for s in learned:
+            if s in group and sp >= _skill_cost(s):
+                return s
+    return None
+
+
+def register_support_skills(party_idx, b1, slot, skills):
+    if slot is None:
+        return
+    learned = set(skills or [])
+    info = {
+        "revive": any(_is_revive(s) for s in learned),
+        "protect": any(_is_protect_skill(s) for s in learned),
+        "hp_heal": getattr(config, "SKILL_HEAL_ALL", None) in learned,
+        "sp_restore": pick_sp_restore_skill(learned) is not None,
+    }
+    if any(info.values()):
+        _support_reg[(party_idx, b1, slot)] = info
+    else:
+        _support_reg.pop((party_idx, b1, slot), None)
+    if info["revive"]:
+        register_revive(party_idx, b1, slot)
+
+
+def _register_current_unit(state, unit, skills):
+    slot = getattr(state, "self_slot", None)
+    if slot is None:
+        return
+    b1 = 3 if unit == config.UNIT_CHAR else 2
+    register_support_skills(getattr(state, "party_idx", None), b1, slot, skills)
+
+
+def _protect_mode_enabled(state):
+    return bool(getattr(state, "quest_mode", False) or getattr(state, "boss_mode", False))
+
+
+def _alive_allies_with_self(state, unit, stat):
+    cands = {}
+    for key, u in getattr(state, "allies", {}).items():
+        b1, b2 = key
+        if b1 not in (2, 3) or u.hp_max <= 0 or u.hp <= 0:
+            continue
+        cands[key] = u
+    slot = getattr(state, "self_slot", None)
+    if slot is not None and getattr(stat, "hp_max", 0) > 0 and getattr(stat, "hp", 0) > 0:
+        cands[(3 if unit == config.UNIT_CHAR else 2, slot)] = stat
+    return [(b1, b2, u) for (b1, b2), u in cands.items()]
+
+
+def _hp_abs(u):
+    return getattr(u, "hp", 0)
+
+
+def _protect_target_order(state, unit, stat):
+    pidx = getattr(state, "party_idx", None)
+    self_slot = getattr(state, "self_slot", None)
+    self_key = (3 if unit == config.UNIT_CHAR else 2, self_slot) if self_slot is not None else None
+    all_alive = _alive_allies_with_self(state, unit, stat)
+    available = []
+    for b1, b2, u in all_alive:
+        if hasattr(state, "has_protection") and state.has_protection(b1, b2):
+            continue
+        available.append((b1, b2, u))
+    ordered = []
+    rest = list(available)
+
+    def _take(pred, include_self=False):
+        nonlocal rest
+        group = sorted(
+            (x for x in rest if pred(x[0], x[1]) and (include_self or (x[0], x[1]) != self_key)),
+            key=lambda x: (_hp_abs(x[2]), x[0], x[1]),
+        )
+        if not group:
+            return
+        ordered.extend(group)
+        used = {(b1, b2) for b1, b2, _u in ordered}
+        rest = [x for x in rest if (x[0], x[1]) not in used]
+
+    self_has_revive_and_protect = (
+        self_key is not None
+        and _slot_has_revive(pidx, self_key[0], self_key[1])
+        and _slot_has_protect_skill(pidx, self_key[0], self_key[1])
+    )
+    if self_has_revive_and_protect:
+        _take(lambda b1, b2: (b1, b2) == self_key, include_self=True)
+    _take(lambda b1, b2: _slot_has_revive(pidx, b1, b2))
+    if self_key is not None and not self_has_revive_and_protect:
+        _take(lambda b1, b2: (b1, b2) == self_key, include_self=True)
+    _take(lambda b1, b2: _slot_has_protect_skill(pidx, b1, b2))
+    _take(lambda b1, b2: _slot_has_hp_heal(pidx, b1, b2))
+    _take(lambda b1, b2: _slot_has_sp_restore(pidx, b1, b2))
+    ordered.extend(sorted(rest, key=lambda x: (_hp_abs(x[2]), x[0], x[1])))
+    return [(b1, b2) for b1, b2, _u in ordered]
+
+
+def _try_protect(state, unit, skills, stat):
+    """Quest/boss: sau Hoi Sinh, buff bao ve truoc khi heal HP/SP."""
+    if not _protect_mode_enabled(state) or not getattr(state, "enemy_slots", None):
+        return None
+    if getattr(stat, "hp_max", 0) > 0 and getattr(stat, "hp", 0) <= 0:
+        return None
+    skill = pick_protect_skill(skills, getattr(stat, "sp", 0))
+    if skill is None:
+        return None
+    group = getattr(state, "party_idx", None)
+    if group is None:
+        group = state.label
+    owner = state.label + (":char:protect" if unit == config.UNIT_CHAR else ":pet:protect")
+    for b1, b2 in _protect_target_order(state, unit, stat):
+        if _short_claim(_protect_claims, _protect_lock, group, (b1, b2), owner):
+            return Decision(unit, state.my_atype, b2, skill, b=b1)
+    return None
+
+
+def _status_classes(skills):
+    out = set()
+    for s in skills or ():
+        cls = _protect_class(s)
+        if cls:
+            out.add(cls)
+    return out
+
+
+def _try_break_enemy_protect(state, unit, skills, stat, options):
+    """Quest/boss: sau heal HP/SP, pha bao ve cua DICH (row 0/1), khong cham team minh."""
+    if not _protect_mode_enabled(state) or not getattr(state, "enemy_slots", None):
+        return None
+    if getattr(stat, "hp_max", 0) > 0 and getattr(stat, "hp", 0) <= 0:
+        return None
+    learned = set(skills or [])
+    offered = _offered_targets(options, state.my_atype)
+    if not offered:
+        return None
+    targets = []
+    for (b1, b2), ss in getattr(state, "protect_status", {}).items():
+        if b1 not in (0, 1):
+            continue
+        classes = _status_classes(ss)
+        if not classes:
+            continue
+        # Uu tien target dang An Than -> Ket Gioi -> Kinh.
+        rank = 0 if "stealth" in classes else 1 if "ket_gioi" in classes else 2
+        targets.append((rank, b1, b2, classes))
+    if not targets:
+        return None
+    group = getattr(state, "party_idx", None)
+    if group is None:
+        group = state.label
+    owner = state.label + (":char:break" if unit == config.UNIT_CHAR else ":pet:break")
+    for _rank, b1, b2, classes in sorted(targets):
+        pos = b1 * 10 + b2
+        target_col = _resolve_target(pos, offered)
+        if target_col is None:
+            continue
+        skill = None
+        if BREAK_GENERIC in learned and stat.sp >= _skill_cost(BREAK_GENERIC):
+            skill = BREAK_GENERIC
+        elif "ket_gioi" in classes and BREAK_KET_GIOI in learned and stat.sp >= _skill_cost(BREAK_KET_GIOI):
+            skill = BREAK_KET_GIOI
+        elif "kinh" in classes and BREAK_KINH in learned and stat.sp >= _skill_cost(BREAK_KINH):
+            skill = BREAK_KINH
+        if skill is None:
+            continue
+        if _short_claim(_break_claims, _break_lock, group, (b1, b2), owner):
+            return Decision(unit, state.my_atype, target_col, skill, b=b1)
+    return None
 
 
 def _try_sp_restore(state, unit, skills, stat):
@@ -614,6 +931,7 @@ def _ally_target(state, target_key, unit, atype):
     if target_key == "self":
         return (3 if unit == config.UNIT_CHAR else 2), atype
     cands = []
+    pidx = getattr(state, "party_idx", None)
     for (b1, b2), u in getattr(state, "allies", {}).items():
         if u.hp_max <= 0 or u.hp <= 0:
             continue
@@ -628,6 +946,12 @@ def _ally_target(state, target_key, unit, atype):
         b1, b2, *_ = min(cands, key=lambda x: x[3])
     elif target_key == "ally_high_sp":
         b1, b2, *_ = max(cands, key=lambda x: x[3])
+    elif target_key == "ally_revive_skill":
+        hits = [x for x in cands if _slot_has_revive(pidx, x[0], x[1])]
+        b1, b2, *_ = min(hits or cands, key=lambda x: x[2])
+    elif target_key == "ally_protect_skill":
+        hits = [x for x in cands if _slot_has_protect_skill(pidx, x[0], x[1])]
+        b1, b2, *_ = min(hits or cands, key=lambda x: x[2])
     else:  # ally_low_hp
         b1, b2, *_ = min(cands, key=lambda x: x[2])
     return b1, b2
@@ -686,7 +1010,8 @@ def _custom_decision(state, unit, unit_key, skills, stat, options, atype=None):
                 if rv is not None:
                     return rv
                 continue
-        if target_key in ("ally_low_hp", "ally_high_hp", "ally_low_sp", "ally_high_sp", "self"):
+        if target_key in ("ally_low_hp", "ally_high_hp", "ally_low_sp", "ally_high_sp",
+                          "ally_revive_skill", "ally_protect_skill", "self"):
             if isinstance(skill_id, int) and skill_id != config.SKILL_NORMAL:
                 key = state.label + (":char" if unit == config.UNIT_CHAR else ":pet")
                 if skill_id in (getattr(config, "SKILL_HEAL_ALL", None),
@@ -825,6 +1150,7 @@ def decide_multipet(state, atype, skills, stat, options):
 
 def decide_char(state, options, first_turn=False):
     at = state.my_atype
+    _register_current_unit(state, config.UNIT_CHAR, state.skills_char)
     custom = _custom_decision(state, config.UNIT_CHAR, "char", state.skills_char, state.char, options)
     if custom is _CUSTOM_AUTO:
         pass
@@ -834,6 +1160,10 @@ def decide_char(state, options, first_turn=False):
     rv = _try_revive(state, config.UNIT_CHAR, state.skills_char, state.char, options)
     if rv is not None:
         return rv
+    # BUFF BAO VE (quest/boss): Ket Gioi -> An Than -> Kinh, truoc heal HP/SP.
+    prot = _try_protect(state, config.UNIT_CHAR, state.skills_char, state.char)
+    if prot is not None:
+        return prot
     # HOI MAU: thanh vien HP yeu + du SP + co skill heal + la con SP cao nhat duoc heal
     if (state.any_ally_low(config.HEAL_HP_THRESHOLD)
             and state.char.sp >= config.HEAL_SP_COST
@@ -846,6 +1176,9 @@ def decide_char(state, options, first_turn=False):
     spr = _try_sp_restore(state, config.UNIT_CHAR, state.skills_char, state.char)
     if spr is not None:
         return spr
+    br = _try_break_enemy_protect(state, config.UNIT_CHAR, state.skills_char, state.char, options)
+    if br is not None:
+        return br
     if _is_mineral_battle(state):
         return Decision(config.UNIT_CHAR, at, at, config.SKILL_FLEE, b=3)
     return _combat_attack(state, config.UNIT_CHAR, state.skills_char, state.char, options,
@@ -854,6 +1187,7 @@ def decide_char(state, options, first_turn=False):
 
 def decide_pet(state, options, first_turn=False):
     at = state.my_atype
+    _register_current_unit(state, config.UNIT_PET, state.pet_skills)
     custom = _custom_decision(state, config.UNIT_PET, "pet", state.pet_skills, state.pet, options)
     if custom is _CUSTOM_AUTO:
         pass
@@ -863,6 +1197,10 @@ def decide_pet(state, options, first_turn=False):
     rv = _try_revive(state, config.UNIT_PET, state.pet_skills, state.pet, options)
     if rv is not None:
         return rv
+    # BUFF BAO VE (quest/boss): Ket Gioi -> An Than -> Kinh, truoc heal HP/SP.
+    prot = _try_protect(state, config.UNIT_PET, state.pet_skills, state.pet)
+    if prot is not None:
+        return prot
     # HOI MAU: pet co skill heal + dong doi yeu + du SP + la con SP cao nhat
     if (state.any_ally_low(config.HEAL_HP_THRESHOLD)
             and state.pet.sp >= config.HEAL_SP_COST
@@ -875,6 +1213,9 @@ def decide_pet(state, options, first_turn=False):
     spr = _try_sp_restore(state, config.UNIT_PET, state.pet_skills, state.pet)
     if spr is not None:
         return spr
+    br = _try_break_enemy_protect(state, config.UNIT_PET, state.pet_skills, state.pet, options)
+    if br is not None:
+        return br
     if _is_mineral_battle(state):
         return Decision(config.UNIT_PET, at, at, config.SKILL_FLEE, b=2)
     return _combat_attack(state, config.UNIT_PET, state.pet_skills, state.pet, options,

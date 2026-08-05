@@ -16,6 +16,14 @@ T_SP_CUR = 0x1A
 T_HP_MAX = 0xCD
 T_SP_MAX = 0xCE   # maxSP - nam trong S2C 0x08 sub0300 (theo entity), KHONG phai 0x33
 
+# Skill bao ve dang doc duoc tu 0x35 status-list / 0x32 echo.
+# Chia nhom de AI tranh buff trung va biet dung skill pha phu hop.
+PROTECT_KET_GIOI = frozenset((10010, 10041))
+PROTECT_STEALTH = frozenset((13005, 13042))
+PROTECT_KINH = frozenset((10015, 10026, 10038, 10039, 10040))
+PROTECT_SKILLS = PROTECT_KET_GIOI | PROTECT_STEALTH | PROTECT_KINH
+CLEAR_PROTECT_SKILLS = frozenset((10009, 10014, 11012))
+
 
 class Unit:
     def __init__(self, name=""):
@@ -82,18 +90,25 @@ class BattleState:
         self.multi_pet = {}          # atype (0,1,3,4) -> Unit (HP/SP tung pet, tu update_0x33)
         self.multi_pet_skills = {}   # atype -> [skill id] (tu pets.json, xem client._on_pet_list)
         self.last_atk_gen_multipet = {}   # atype -> enemy_gen da danh (tranh danh lap khi 0x33 cu)
+        # (row,col)->set(skill_id): trang thai bao ve hien co, tu 0x35 status-list.
+        # row 0/1=dich, 2=pet minh, 3=char minh.
+        self.protect_status = {}
 
     def reset_battle(self):
         self.mobs = []
         self.in_battle = False
+        self.protect_status = {}
 
-    def reset_enemies(self, reset_quest=True):
+    def reset_enemies(self, reset_quest=True, reset_protect=True):
         """Xoa HP/slot quai (goi luc battle moi bat dau, tranh dinh quai tran cu).
         reset_quest=False: GIU quest_mode/_battle_counted. 0x34 ban MOI TURN -> neu reset moi turn thi
         khi quai con <=6 se MAT latch quest_mode (set luc >6 dau tran) -> roi nham ve TRAIN mode.
+        reset_protect=False: GIU status bao ve qua 0x34; buff/status that se sync bang 0x35 status-list.
         Chi reset khi la ENCOUNTER MOI (gap thoi gian lon giua 2 turn -> client.py quyet dinh)."""
         self.enemy_hp = {}
         self.enemy_slots = []
+        if reset_protect:
+            self.protect_status = {}
         if reset_quest:
             self.enemy_names = set()
             self.mineral_battle = False
@@ -203,6 +218,7 @@ class BattleState:
         blocks are needed to know whether the party was wiped at the end.
         """
         body = pkt[7:] if len(pkt) > 7 and pkt[6] == 0x32 else pkt
+        self._update_protect_from_0x32(body)
         marker = b"\x01\x00\x01\x19"
         for i in range(max(0, len(body) - 10)):
             b1, slot = body[i], body[i + 1]
@@ -219,6 +235,96 @@ class BattleState:
                 unit.hp_max = hp_max
                 self.allies[(b1, slot)] = unit
             unit.hp = int.from_bytes(body[i + 6:i + 10], "little")
+
+    def _set_protect(self, b1, b2, skill_id):
+        if b1 not in (0, 1, 2, 3) or b2 > 5 or skill_id not in PROTECT_SKILLS:
+            return
+        self.protect_status.setdefault((b1, b2), set()).add(skill_id)
+
+    def _clear_protect(self, b1, b2):
+        if b1 not in (0, 1, 2, 3) or b2 > 5:
+            return
+        self.protect_status.pop((b1, b2), None)
+
+    def has_protection(self, b1, b2):
+        return bool(self.protect_status.get((b1, b2)))
+
+    def protection_skills(self, b1, b2):
+        return set(self.protect_status.get((b1, b2), ()))
+
+    def update_0x35_status(self, pkt: bytes):
+        """Parse S2C 0x35 sub0100 dang status-list: [row][col][kind][skill_id u16].
+
+        Cung opcode/sub voi available-actions, nen client.py phai goi ham nay truoc khi coi la offer.
+        Neu packet nay co skill_id != 0 thi xem nhu snapshot trang thai hien tai va KHONG arm action.
+        """
+        body = pkt[7:] if len(pkt) > 7 and pkt[6] == 0x35 else pkt
+        if len(body) < 2 or body[:2] != b"\x01\x00":
+            return False
+        if len(body) == 2:
+            self.protect_status = {}
+            return True
+        if len(body) < 7:
+            return False
+        entries = []
+        i = 2
+        has_status = False
+        while i + 5 <= len(body):
+            b1, b2, kind = body[i], body[i + 1], body[i + 2]
+            skill_id = body[i + 3] | (body[i + 4] << 8)
+            if skill_id:
+                has_status = True
+                if b1 in (0, 1, 2, 3) and b2 <= 5:
+                    entries.append((b1, b2, kind, skill_id))
+            i += 5
+        if not has_status:
+            return False
+        current = {}
+        for b1, b2, _kind, skill_id in entries:
+            if skill_id in PROTECT_SKILLS:
+                current.setdefault((b1, b2), set()).add(skill_id)
+        self.protect_status = current
+        return True
+
+    def _update_protect_from_0x32(self, body: bytes):
+        """Mark/clear protect cache from S2C 0x32 RevAttackSkill echo."""
+        if len(body) < 10:
+            return
+        p = 2 if body[:2] == b"\x01\x00" else 0
+        while p + 8 <= len(body):
+            chunk_len = body[p] | (body[p + 1] << 8)
+            if chunk_len < 8:
+                break
+            if p + chunk_len <= len(body):
+                cend = p + chunk_len
+                # Ket Gioi capture co 1 byte tail sau chunk; cho phep doc tail de lay tron attr.
+                if len(body) - cend <= 2:
+                    cend = len(body)
+            elif p + 2 + chunk_len <= len(body):
+                cend = p + 2 + chunk_len
+            else:
+                cend = len(body)
+            cstart = p + 2
+            skill_id = body[cstart + 2] | (body[cstart + 3] << 8)
+            target_count = body[cstart + 5]
+            q = cstart + 6
+            for _ in range(target_count):
+                if q + 5 > cend:
+                    break
+                tb1, tb2, result = body[q], body[q + 1], body[q + 2]
+                attr_count = body[q + 4]
+                q += 5
+                if result == 0:
+                    q = min(cend, q + attr_count * 5)
+                    continue
+                if skill_id in PROTECT_SKILLS:
+                    # Kinh/Ket Gioi da thay result success; An Than chua co capture, nen result
+                    # thanh cong la du de mark tam cho toi khi 0x35 status-list sync lai.
+                    self._set_protect(tb1, tb2, skill_id)
+                elif skill_id in CLEAR_PROTECT_SKILLS:
+                    self._clear_protect(tb1, tb2)
+                q = min(cend, q + attr_count * 5)
+            p = cend
 
     # ---- parse 0x0b (full stats char/pet) ----
     def _read_0b_block(self, pkt, ent, b1, slot, who):

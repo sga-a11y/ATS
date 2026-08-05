@@ -178,6 +178,51 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
     `_resolve_target` (combat.py) — kiểm tra TỪNG cột có thật sự nằm trong offered không (thử cả
     2 quy ước 0-indexed và +1), KHÔNG đoán 1 offset chung cho cả trận.
 
+### Ket Gioi (skill 10010 / 0x271a) - PB110 capture 2026-08-05
+- Skill table: `0x271a` = Ket Gioi (cost 33, cat=4 support), `0x2719` = Giai Ket Gioi (cost 10).
+- Dung skill nhu support/heal binh thuong: C2S `0x32`
+  `01 00 [unit=03 char] [atype caster] [target_row] [target_col] 1a 27 [tail2]`.
+  `target_row=3` buff char dong doi, `target_row=2` buff pet dong doi; `target_col` la cot/slot theo
+  convention hien hanh cua combat target.
+- Server echo S2C `0x32 sub0100` theo schema client `RevAttackSkill`: moi chunk co
+  `[len u16][atk_row][atk_col][skill u16][field][target_count]`, moi target co
+  `[target_row][target_col][result][action][attr_count]`, moi attr co `[kind][value u32][sign]`.
+- Khi Ket Gioi thanh cong, target co attr `kind=0xde, value=0, sign=0`, vi du:
+  `01001100 0302 1a27 01 01 0302 01 01 01 de00000000`.
+  Goi fail/khong apply khong co attr `0xde` (vd target row=3 col=4 result=0 action=2 attr `0x00`).
+- KHONG thay S2C `0x35 sub0f` (Battle Buff status) hay `sub14` (Extra Buff) mang `turn_count=5`
+  trong capture PB110 nay. NHUNG server co sync trang thai dang co buff qua S2C `0x35 sub0100`
+  dang status-list (xem muc `0x35 sub0100` ben duoi): chunk `[row][col][status_kind][skill_id u16]`.
+  Vi du `0100 0302021a27 0304021a27` = char slot 2 va 4 dang co Ket Gioi.
+- `status_kind=0x02` la nhom bao ve/khien trong capture nay. Ket Gioi va Kinh deu nam cung nhom:
+  `0x271a` Ket Gioi, `0x271f` Kinh. De biet target co dang co gi thi doc status-list nay theo
+  `(row,col)->skill_id`; de tranh buff nham chi can coi cac skill cung nhom shield/protect la dang ban.
+- Khi vua cast xong, truoc khi server sync status-list luot moi, co the mark tam tu S2C `0x32` skill apply
+  thanh cong. Sau khi gap status-list thi tin status-list hon local cache. Luu y echo Ket Gioi thuc te co
+  chunk len `0x0011` tinh gan nhu gom ca 2 byte len va co tail ngan; parser khong duoc may moc dung
+  `p + 2 + len` de bo qua ca packet, neu khong turn sau bot lai tu buff KG chinh minh.
+- KHONG clear `protect_status` theo `0x34`: goi nay co the ban giua moi turn, sau status-list/echo va
+  truoc luc decision timer chay. Neu clear o day thi bot quen buff vua co va cast trung Ket Gioi/An Than/Kinh.
+  Chi clear khi ket tran that (`0x14 sub0700/sub0800`) hoac reset battle; `0x35` status-list van la nguon chuan.
+- Status-list dau turn la snapshot chuan. Neu snapshot rong (`body == 01 00`) thi phai clear
+  `protect_status`; neu khong, khi Ket Gioi het han bot van tuong target con buff va bo qua khong buff lai.
+- Luu y `0xde` khong nen dung rieng le de ket luan Ket Gioi: `0x271f` (Kinh) cung co attr `0xde`.
+  Phai ket hop voi `skill_id` trong S2C `0x32` hoac doc truc tiep skill trong status-list `0x35 sub0100`.
+- PB110 capture: Tran Cung `tid=0x9d3f` o pos `(0,4)` cast Kinh `0x271f` len `(0,2)` va `(0,4)`;
+  enemy pos `(1,2)` cast Ket Gioi `0x271a` len `(0,1)`. Bot cast Giai Ket Gioi `0x2719` len `(0,1)`,
+  server tra attr clear `0x00,0xdd,0xde,0xdf,0xe1` voi `sign=1`.
+- AI quest/boss sau capture nay:
+  1) Hoi Sinh: target uu tien con chet co skill Hoi Sinh truoc; neu khong thi uu tien con chet dang co
+     protect status (Ket Gioi/An Than/Kinh), roi role support, cuoi cung maxHP.
+  2) Buff bao ve, chi neu target chua co protect trong `protect_status`: uu tien skill Ket Gioi -> An Than -> Kinh;
+     target uu tien self neu self co ca Hoi Sinh + protect-skill -> dong doi co Hoi Sinh -> self ->
+     dong doi co protect-skill -> dong doi co Toan Tri Lieu -> dong doi co Toan Hoi Ma -> slot it HP
+     hien tai (current HP, khong dung % HP).
+  3) Heal HP -> Hoi SP.
+  4) Pha protect DICH (chi row 0/1): target uu tien An Than -> Ket Gioi -> Kinh; skill uu tien
+     Giai Tru `0x2b04` -> Giai Ket Gioi `0x2719` -> Giai Kinh `0x271e`.
+  Luu y: 0x35 status-list KHONG duoc nap vao available-actions; neu skill_id u16 != 0 thi do la status.
+
 ### S2C 0x33 — Stats per turn
 Pattern entries: `03 02 [type] [4-byte LE]`
 | type | Hex | Thông số |
@@ -266,6 +311,8 @@ Pattern entries: `03 02 [type] [4-byte LE]`
     body `+3` = `HP_cur u32`, `+7` = `SP_cur u16`, `+39` = `HP_max u32`, `+43` = `SP_max u32`.
     Capture `pet_login_stats_20260804.pcap` khop UI char `458/542`, `240/270`. Bot phai nap vao
     `state.char` tai parser `0x05` de `heal_full()` truoc boss chay duoc ngay sau fresh login.
+    Khong duoc chan parser nay bang dieu kien packet dai >200B; vai acc co packet `0x05` ngan hon nhung
+    van du offset HP/SP, neu bo qua thi boss chi hoi pet ma khong hoi char.
   - Char: S2C `0x05 sub0300` (`Role.ReceivePlayerData`) gui **thang tong da tinh** theo thu tu
     `EquipAtk, EquipDef, EquipInt, EquipAgi, EquipMaxHp, EquipMaxSp, EquipHpx, EquipSpx` (moi field i32).
     Capture tren la `0,2,70,34,0,0,0,0`; khong can cong tung mon do char neu chi can tong.
@@ -330,9 +377,14 @@ entity 8B = [2B ngẫu nhiên][template_id 2B LE][1B type][3B base phiên]
 - Dung idx+1 (vi tri trong member list) = SAI -> doc nham SP/HP cua char khac.
   Trieu chung: SP doc duoc giam 15/luot (cost Hoa Tien cua char KHAC) du minh danh thuong.
 
-### S2C 0x35 — Available actions (34 bytes)
-Format: `01 00 [entries: unit action_type target 00 00]`
-- Bot đọc entry của unit=3 (char) và unit=2 (pet) → lấy action_type
+### S2C 0x35 sub0100 — Available actions HOAC status-list
+`0x35 sub0100` co 2 dang rat de nham:
+- **Available actions/offer:** `01 00 [entries: unit action_type target 00 00]`.
+  2 byte cuoi cua moi entry = `00 00`. Bot doc entry unit=3 (char), unit=2 (pet) de lay action_type/target.
+- **Current status-list / RevRestoreStatus:** `01 00 [entries: row col status_kind skill_id_le]`.
+  2 byte cuoi la skill id khac `0000` (vd `1a 27` Ket Gioi, `1f 27` Kinh). Day la server sync
+  target nao dang co status/buff, KHONG phai offer danh. Combat handler phai tach 2 dang nay, neu khong se
+  lay nham status chunk thanh available action.
 
 ---
 

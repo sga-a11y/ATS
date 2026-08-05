@@ -105,6 +105,8 @@ BATTLE_TARGET_LABELS = {
     "ally_low_hp": "Đồng đội ít HP nhất",
     "ally_high_hp": "Đồng đội nhiều HP nhất",
     "ally_low_sp": "Đồng đội ít SP nhất",
+    "ally_revive_skill": "Đồng đội có skill Hồi sinh",
+    "ally_protect_skill": "Đồng đội có skill bảo vệ",
     "self": "Bản thân",
 }
 LABEL_BATTLE_TARGETS = {v: k for k, v in BATTLE_TARGET_LABELS.items()}

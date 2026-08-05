@@ -1538,7 +1538,7 @@ class GameClient:
         if opcode == 0x59:
             self._decompose_seq += 1
         # INT luc login: doc base/equip/turn3 tu 0x05 roi cong collection + horse giong client game.
-        if opcode == 0x05 and len(pkt) > 200 and len(pkt) > 16:
+        if opcode == 0x05 and len(pkt) > 16:
             self._parse_char_login_int(pkt)
             # CAP nhan vat: payload offset 21 = pkt[28] (khop capture: char lv 64). Hien o GUI.
             if len(pkt) > 28 and 1 <= pkt[28] <= 200:
@@ -1937,7 +1937,7 @@ class GameClient:
             # thuong (1 lan/nhieu tran) -> reset_quest=False de KHONG mat latch khi quai con <=5.
             self.state.in_battle = True
             self._no_item.clear()        # co the drop them item -> cho phep check hoi lai
-            self.state.reset_enemies(reset_quest=False)   # xoa HP quai cu, GIU quest_mode latch
+            self.state.reset_enemies(reset_quest=False, reset_protect=False)   # xoa HP quai cu, GIU quest_mode/protect latch
             self.state.allies.clear()    # tran moi -> xoa HP dong doi tran cu (tranh ket hp=0 cua
             #                              con da chet tran truoc -> 0x33 tran moi nap lai HP tuoi)
             self.state.char_spam = False  # tran moi -> reset spam (set lai neu vao tran SP day)
@@ -2096,7 +2096,7 @@ class GameClient:
 
     def _parse_char_login_int(self, pkt: bytes):
         body = pkt[7:]
-        if len(body) < 100 or body[:2] != b"\x03\x00":
+        if len(body) < 47 or body[:2] != b"\x03\x00":
             return
         # 0x05 sub0300 co san current/max HP/SP cua char luc login. Nap ngay de heal_full()
         # truoc boss co du stat, khong phai doi den 0x33/0x0b trong tran dau tien.
@@ -2111,6 +2111,8 @@ class GameClient:
             if old != (c.hp, c.hp_max, c.sp, c.sp_max):
                 log.info("[%s] CHAR login HP=%d/%d SP=%d/%d",
                          self._label, c.hp, c.hp_max, c.sp, c.sp_max)
+        if len(body) < 98:
+            return
         self._char_int_base = int.from_bytes(body[9:11], "little")
         self._char_equip_int = int.from_bytes(body[53:57], "little", signed=True)
         self._char_agi_base = int.from_bytes(body[15:17], "little")
@@ -2292,29 +2294,38 @@ class GameClient:
         _mark_dungeon_ready(self.party_idx, self.self_entity)   # bao LEADER: minh da CHUAN BI that
         log.info("[%s] Pho ban: da an CHUAN BI", self._label)
 
-    # ---- xu ly available actions (0x35) ----
+    # ---- xu ly available actions / status-list (0x35) ----
     def _on_actions(self, pkt: bytes):
-        """0x35 (>=20B): liet ke cac combo [unit][atype][target] hop le cho luot nay."""
-        if len(pkt) < 20:
-            return  # 11-byte = confirmation, bo qua
-        # 0x35 34-byte = toi luot minh -> dang trong tran
+        """0x35 sub0100 co 2 dang:
+        - available-actions: [unit][atype][target][00][00]
+        - status-list:       [row][col][kind][skill_id u16]
+        Chi dang available-actions moi duoc arm AI.
+        """
         # TRU: dang trong grace period sau khi vua nhan goi KET TRAN THAT (0x14 sub0800 tail=04) ->
         # 0x35 nay la broadcast DU cua member khac chua xong luot, KHONG duoc phep set lai in_battle
         # (bug: truoc day set lai lam leader ket "tran da ket" nhung van cho toi 25s SAFETY moi ha).
         if time.time() < getattr(self, "_battle_end_grace_until", 0.0):
             return
+        body = pkt[7:]
+        offers = []
+        if len(body) >= 2 and body[:2] == b"\x01\x00":
+            i = 2
+            while i + 5 <= len(body):
+                unit, atype, target = body[i], body[i + 1], body[i + 2]
+                skill_id = body[i + 3] | (body[i + 4] << 8)
+                if skill_id == 0 and unit in (config.UNIT_CHAR, config.UNIT_PET):
+                    offers.append((unit, atype, target))
+                i += 5
+        self.state.update_0x35_status(pkt)
+        if not offers:
+            return  # 11-byte confirmation hoac status-list thuan -> khong phai luot ra lenh
+        # 0x35 available-actions = toi luot minh -> dang trong tran
         self.state.in_battle = True
         self.last_turn_time = time.time()
-        body = pkt[7:]
-        # bo 2 byte dau (01 00), moi entry 5 byte: unit atype target 00 00
-        i = 2
-        while i + 3 <= len(body):
-            unit, atype, target = body[i], body[i + 1], body[i + 2]
-            if unit in (config.UNIT_CHAR, config.UNIT_PET):
-                self.available.setdefault(unit, [])
-                if (atype, target) not in self.available[unit]:
-                    self.available[unit].append((atype, target))
-            i += 5
+        for unit, atype, target in offers:
+            self.available.setdefault(unit, [])
+            if (atype, target) not in self.available[unit]:
+                self.available[unit].append((atype, target))
         # KHONG lay atype tu 0x35 (no liet ke ca 5 vi tri party -> khong on dinh).
         # self_slot xac dinh qua roster (FILL) hoac khop char maxHP trong update_0x33.
         # debounce: quyet dinh 0.4s sau goi 0x35 cuoi cung

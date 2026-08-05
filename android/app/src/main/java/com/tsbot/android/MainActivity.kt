@@ -2000,6 +2000,8 @@ private val BattleTargetOptions = listOf(
     "ally_low_hp" to "Đồng đội ít HP nhất",
     "ally_high_hp" to "Đồng đội nhiều HP nhất",
     "ally_low_sp" to "Đồng đội ít SP nhất",
+    "ally_revive_skill" to "Đồng đội có skill Hồi sinh",
+    "ally_protect_skill" to "Đồng đội có skill bảo vệ",
     "self" to "Bản thân",
 )
 
