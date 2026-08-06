@@ -31,7 +31,7 @@ object ApkUpdater {
         "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/version.json"
     private const val GOOGLE_DRIVE_VERSION_URL =
         "https://drive.google.com/file/d/1e3MlVufze1iag8X51IoyCYTf5RfzxCR5/view?usp=drive_link"
-    private const val FALLBACK_APK_URL =
+    const val GITHUB_APK_DOWNLOAD_URL =
         "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.apk"
     const val MANUAL_DOWNLOAD_URL =
         "https://drive.google.com/drive/folders/1Cm2Suv7aFaq3-v9uq5G7iQ1aNHRoiirv"
@@ -293,7 +293,7 @@ object ApkUpdater {
         collectUrls(json, "apk_mirrors", out)
         collectUrls(json, "apk_url", out)
         collectUrls(json, "android_url", out)
-        if (out.isEmpty()) out += FALLBACK_APK_URL
+        if (out.isEmpty()) out += GITHUB_APK_DOWNLOAD_URL
         return out.map { normalizeDownloadUrl(it) }.distinct()
     }
 

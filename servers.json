@@ -1,6 +1,6 @@
 {
- "_note": "Server game TS Online. key=ten noi bo. label=ten hien thi. ip=IP TCP. id=SERVER ID trong goi auth (byte thu 5: Trieu Van=1, Tao Thao=2, Lu Bo=3, Luu Bi=4, Ton Quyen=5, Truong Phi=6, Chu Du=7, Quan Vu=8, Dieu Thuyen=9, Gia Cat Luong=10, Dai Kieu=11, Manh Hoach=12, Hoang Trung=13 - cac server tu id9 IP khac subnet 103.190.202.x). Login HTTP giong nhau.",
- "_note_gap16": "id 16 = Bang Thong da DONG (loi ky thuat) nen nhay 15 (Quach Gia) -> 17 (Dien Vi, 103.190.202.60). Khong phai thieu sot.",
+ "_note": "Server game TS Online. key=ten noi bo. label=ten hien thi. ip=IP TCP. id=SERVER ID trong goi auth (byte thu 5: Trieu Van=1, Tao Thao=2, Lu Bo=3, Luu Bi=4, Ton Quyen=5, Truong Phi=6, Chu Du=7, Quan Vu=8, Dieu Thuyen=9, Gia Cat Luong=10, Dai Kieu=11, Manh Hoach=12, Hoang Trung=13, Ma Sieu=14, Quach Gia=15, Dien Vi=17, Truong Lieu=18 - cac server tu id9 IP khac subnet 103.190.202.x). Login HTTP giong nhau.",
+ "_note_gap16": "id 16 = Bang Thong da DONG (loi ky thuat) nen nhay 15 (Quach Gia) -> 17 (Dien Vi) -> 18 (Truong Lieu). Khong phai thieu sot.",
  "servers": {
   "trieu_van": {
    "label": "Triệu Vân",
@@ -81,6 +81,11 @@
    "label": "Điển Vi",
    "ip": "103.190.202.60",
    "id": 17
+  },
+  "truong_lieu": {
+   "label": "Trương Liêu",
+   "ip": "103.190.202.61",
+   "id": 18
   }
  }
 }

@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
@@ -174,6 +175,14 @@ private const val PRIVACY_MASK = 1
 private const val PRIVACY_ORDINAL = 2
 private val TeamDungeonLevels = listOf(20, 50, 80, 110)
 
+private data class UpdateDialogLink(val label: String, val url: String)
+
+private data class UpdateDialogMessage(
+    val title: String,
+    val body: String,
+    val links: List<UpdateDialogLink> = emptyList(),
+)
+
 private fun defaultTeamDungeons(src: Map<Int, Boolean> = emptyMap()): Map<Int, Boolean> =
     linkedMapOf(
         20 to (src[20] ?: true),
@@ -259,8 +268,24 @@ fun TsBotApp(
     val privacyOrdinals = remember(parties) { accountOrdinalMap(parties) }
     var updateInfo by remember { mutableStateOf<ApkUpdateInfo?>(null) }
     var updateBusyText by remember { mutableStateOf<String?>(null) }
-    var updateMessage by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var updateMessage by remember { mutableStateOf<UpdateDialogMessage?>(null) }
     var pendingInstallApk by remember { mutableStateOf<File?>(null) }
+
+    fun manualUpdateMessage(title: String, body: String): UpdateDialogMessage =
+        UpdateDialogMessage(
+            title = title,
+            body = body,
+            links = listOf(
+                UpdateDialogLink("GitHub APK", ApkUpdater.GITHUB_APK_DOWNLOAD_URL),
+                UpdateDialogLink("Google Drive", ApkUpdater.MANUAL_DOWNLOAD_URL),
+            ),
+        )
+
+    fun openExternalUrl(url: String) {
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+    }
 
     fun refresh() {
         parties = partyStore.load()
@@ -277,12 +302,17 @@ fun TsBotApp(
                 if (info != null) {
                     updateInfo = info
                 } else if (manual) {
-                    updateMessage = "Update" to "Đang là bản mới nhất (${BuildConfig.VERSION_NAME})."
+                    updateMessage = UpdateDialogMessage(
+                        "Update",
+                        "Đang là bản mới nhất (${BuildConfig.VERSION_NAME}).",
+                    )
                 }
             } catch (e: Exception) {
                 if (manual) {
-                    updateMessage = "Lỗi cập nhật" to
-                        "Không kiểm tra được bản mới:\n${e.message ?: e.javaClass.simpleName}\n\nTải thủ công:\n${ApkUpdater.MANUAL_DOWNLOAD_URL}"
+                    updateMessage = manualUpdateMessage(
+                        "Lỗi cập nhật",
+                        "Không kiểm tra được bản mới:\n${e.message ?: e.javaClass.simpleName}",
+                    )
                 }
             } finally {
                 if (manual) updateBusyText = null
@@ -307,8 +337,10 @@ fun TsBotApp(
                 }
             } catch (e: Exception) {
                 updateBusyText = null
-                updateMessage = "Lỗi cập nhật" to
-                    "Không tải/cài được APK:\n${e.message ?: e.javaClass.simpleName}\n\nTải thủ công:\n${ApkUpdater.MANUAL_DOWNLOAD_URL}"
+                updateMessage = manualUpdateMessage(
+                    "Lỗi cập nhật",
+                    "Không tải/cài được APK:\n${e.message ?: e.javaClass.simpleName}",
+                )
             }
         }
     }
@@ -570,8 +602,27 @@ fun TsBotApp(
     if (message != null) {
         AlertDialog(
             onDismissRequest = { updateMessage = null },
-            title = { Text(message.first) },
-            text = { Text(message.second) },
+            title = { Text(message.title) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(message.body)
+                    if (message.links.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Tải thủ công:", fontWeight = FontWeight.SemiBold)
+                        message.links.forEach { link ->
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(link.label, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    link.url,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.clickable { openExternalUrl(link.url) },
+                                )
+                            }
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = { updateMessage = null }) { Text("Đóng") }
             },

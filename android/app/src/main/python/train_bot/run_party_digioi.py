@@ -1497,6 +1497,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # leader_bad (set = giet het member ngay); member CHO trong vong 150s ben duoi,
                     # leader reconnect + route lai + set leader_ok -> member tiep tuc. Chi set
                     # leader_bad khi KHONG reconnectable (bo cuoc that su).
+                    if not _stopped() and not getattr(c, "server_closed", False):
+                        c.server_closed = True
                     _srv_drop = getattr(c, "server_closed", False)
                     _reason("leader MAT KET NOI khi dang route toi train map (map cuoi %s)" % c.current_map)
                     log.warning("[%s] (LEADER) MAT KET NOI khi route toi train map %s -> %s",
@@ -1536,8 +1538,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         time.sleep(5)   # chua len duoc -> nghi ngan roi reform lai (khong spam)
                     if not self_map_ok:
                         # thoat vong = stop / mat ket noi (KHONG phai "sai map bo cuoc")
-                        if not c.running and not getattr(c, "server_closed", False):
-                            st["leader_bad"].set()   # rot han (khong reconnectable) -> member thoat
+                        if not _stopped() and not c.running and not getattr(c, "server_closed", False):
+                            c.server_closed = True
+                            log.warning("[%s] (LEADER) MAT KET NOI trong luc reform toi train map "
+                                        "-> supervisor reconnect, member CHO", label)
                         _quit(); return
                 st["leader_ok"].set()   # leader ok -> member duoc tiep tuc
             else:

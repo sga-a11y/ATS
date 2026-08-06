@@ -167,6 +167,8 @@ _protect_lock = threading.Lock()
 _protect_claims = {}
 _break_lock = threading.Lock()
 _break_claims = {}
+_cc_lock = threading.Lock()
+_cc_claims = {}
 PROTECT_CLAIM_COOLDOWN = 2.5
 
 
@@ -243,9 +245,34 @@ SKILL_NAMES.update({
     10039: "Due Kinh",
     10040: "Thuan Kinh",
     10041: "S.Ket Gioi",
+    10004: "Cay Tinh",
+    10033: "Boc Cam",
+    11014: "Bang Phong",
+    11027: "Thien Bang Vu",
+    11028: "Suong Quyen",
+    11039: "Bang Sieu",
+    11002: "Bang Tuong",
     11012: "Giai Tru",
+    13002: "Tuyen Phong",
     13005: "An Minh",
+    13007: "Huyen Kich",
+    13015: "Thanh Long",
     13042: "S.An Than",
+    13046: "Vo Tan Lam Phong",
+    13050: "Bua Tiec",
+    13052: "The Loc Xoay",
+    14008: "Hon Me",
+    14021: "Hon Loan",
+    14065: "C.Hon Loan",
+    20014: "Tu Nhan Hon Loan",
+    20025: "Thu Tinh",
+    20026: "Bang Phong",
+    20027: "Hoan Phong",
+    20048: "Toan Phong Sieu",
+    20049: "Thu Tinh Sieu",
+    20051: "Cuu Vi Ho Mi Hoac",
+    20055: "S.Hon Loan",
+    20058: "Ban Thu Doa Dia",
 })
 
 
@@ -253,10 +280,32 @@ SKILL_NAMES.update({
 PROTECT_KET_GIOI = (10010, 10041)                         # Ket Gioi, S.Ket Gioi
 PROTECT_STEALTH = (13005, 13042)                          # An Minh, S.An Than
 PROTECT_KINH = (10015, 10026, 10038, 10039, 10040)         # Kinh + cac bien the
-PROTECT_SKILLS = frozenset(PROTECT_KET_GIOI + PROTECT_STEALTH + PROTECT_KINH)
+PROTECT_PASSIVE = (11002,)                                 # Bang Tuong: chi de nhan status, khong auto-cast
+PROTECT_SKILLS = frozenset(PROTECT_KET_GIOI + PROTECT_STEALTH + PROTECT_KINH + PROTECT_PASSIVE)
 BREAK_GENERIC = 11012     # Giai Tru
 BREAK_KET_GIOI = 10009    # Giai Ket Gioi
 BREAK_KINH = 10014        # Giai Kinh
+
+# Khong che chi dung trong quest_mode. Boss mode khang CC -> khong dung.
+CC_HIGH_SKILLS = (11014, 11039, 20026, 11027, 11028, 14008, 13007)
+CC_LOW_LOCK_SKILLS = (10004, 10033, 20025, 20049, 13002, 13052, 13015,
+                      20027, 20048, 13050, 13046)
+CC_CHAOS_SKILLS = (14021, 14065, 20014, 20051, 20055, 20058)
+CC_LOCK_SKILLS = frozenset(CC_HIGH_SKILLS + CC_LOW_LOCK_SKILLS)
+CC_SKILLS = frozenset(CC_HIGH_SKILLS + CC_LOW_LOCK_SKILLS + CC_CHAOS_SKILLS)
+
+# NPC nguy hiem: neu nhieu con cung xuat hien thi CC theo thu tu nay truoc.
+DANGEROUS_CC_NPC_NAMES = (
+    "chu cong",
+    "hang nga",
+    "gia cat luong",
+    "tu ma y",
+    "luc ton",
+    "bang thong",
+    "lu bo",
+    "tran cung",
+)
+_DANGEROUS_CC_NPC_RANK = {name: i for i, name in enumerate(DANGEROUS_CC_NPC_NAMES)}
 
 
 class Decision:
@@ -454,6 +503,53 @@ def _is_protect_skill(skill):
     return _protect_class(skill) is not None
 
 
+def _norm_name(name):
+    s = str(name or "").replace("Đ", "D").replace("đ", "d")
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii").lower().strip()
+
+
+def _cc_class(skill):
+    if skill in CC_CHAOS_SKILLS:
+        return "chaos"
+    if skill in CC_LOCK_SKILLS:
+        return "lock"
+    return None
+
+
+def _is_cc_skill(skill):
+    return _cc_class(skill) is not None
+
+
+def _enemy_cc_classes(state, pos):
+    b1, b2 = _row(pos), _col(pos)
+    if hasattr(state, "crowd_skills"):
+        skills = state.crowd_skills(b1, b2)
+    else:
+        skills = set(getattr(state, "crowd_status", {}).get((b1, b2), ()))
+    return {c for c in (_cc_class(s) for s in skills) if c}
+
+
+def _dangerous_enemy_rank(state, pos):
+    best = len(DANGEROUS_CC_NPC_NAMES)
+    for name in (getattr(state, "enemy_pos_names", {}) or {}).get(pos, ()) or ():
+        norm = _norm_name(name)
+        for target, rank in _DANGEROUS_CC_NPC_RANK.items():
+            if target in norm:
+                best = min(best, rank)
+    return best
+
+
+def pick_cc_skill(skills, sp, phase):
+    """Chon skill khong che cho quest_mode.
+    phase='high': bang/hon me/stun; phase='low': cay/gio/hon loan."""
+    learned = list(skills or [])
+    order = CC_HIGH_SKILLS if phase == "high" else (CC_LOW_LOCK_SKILLS + CC_CHAOS_SKILLS)
+    for group_skill in order:
+        if group_skill in learned and sp >= _skill_cost(group_skill):
+            return group_skill
+    return None
+
+
 def _has_support_skill(skills):
     """Unit co it nhat 1 skill HOI: hoi sinh (cat8) / Toan Tri Lieu (11010) / Toan Hoi Ma (cat6).
     -> quest mode: de danh SP cho vai tro hoi, chi danh skill atk khi SP > SUPPORT_RESERVE_SP."""
@@ -543,10 +639,10 @@ def pick_boss_skill(skills):
     -> cost cao nhat. KHONG can combo. Khong co don dap/don -> skill DAU (skill[0], luon dame).
     skills phai co THU TU (list) de fallback skill[0] dung."""
     RANK = {4: 2, 1: 1}
-    cand = [s for s in skills if _is_attack(s) and _splash(s) in (4, 1)]
+    cand = [s for s in skills if s not in CC_SKILLS and _is_attack(s) and _splash(s) in (4, 1)]
     if cand:
         return max(cand, key=lambda s: (RANK[_splash(s)], _skill_cost(s)))
-    lst = list(skills)
+    lst = [s for s in skills if s not in CC_SKILLS and _is_attack(s)]
     return lst[0] if lst else None
 
 
@@ -731,6 +827,61 @@ def _try_break_enemy_protect(state, unit, skills, stat, options):
         if skill is None:
             continue
         if _short_claim(_break_claims, _break_lock, group, (b1, b2), owner):
+            return Decision(unit, state.my_atype, target_col, skill, b=b1)
+    return None
+
+
+def _cc_mode_enabled(state):
+    return bool(getattr(state, "quest_mode", False) and not getattr(state, "boss_mode", False))
+
+
+def _cc_target_order(state, offered, cc_kind):
+    off = set(offered or [])
+    alive = [
+        pos for pos in (getattr(state, "enemy_slots", []) or [])
+        if getattr(state, "enemy_hp", {}).get(pos, 1) > 0 and _resolve_target(pos, off) is not None
+    ]
+    if not alive:
+        return []
+    clean = [pos for pos in alive if not _enemy_cc_classes(state, pos)]
+    if clean:
+        candidates = clean
+    elif cc_kind == "chaos":
+        candidates = [pos for pos in alive if "chaos" not in _enemy_cc_classes(state, pos)]
+    else:
+        candidates = [pos for pos in alive if "lock" not in _enemy_cc_classes(state, pos)]
+    return sorted(candidates, key=lambda pos: (_dangerous_enemy_rank(state, pos), pos))
+
+
+def _try_cc(state, unit, skills, stat, options, phase):
+    """Quest only: CC target, uu tien NPC nguy hiem neu biet ten theo vi tri."""
+    if not _cc_mode_enabled(state) or not getattr(state, "enemy_slots", None):
+        return None
+    if getattr(stat, "hp_max", 0) > 0 and getattr(stat, "hp", 0) <= 0:
+        return None
+    offered = _offered_targets(options, state.my_atype)
+    if not offered:
+        return None
+    skill = pick_cc_skill(skills, getattr(stat, "sp", 0), phase)
+    if skill is None:
+        return None
+    cc_kind = _cc_class(skill)
+    if cc_kind is None:
+        return None
+    gen_attr = "last_atk_gen_char" if unit == config.UNIT_CHAR else "last_atk_gen_pet"
+    if getattr(state, gen_attr, -1) == state.enemy_gen:
+        return None
+    group = getattr(state, "party_idx", None)
+    if group is None:
+        group = state.label
+    owner = state.label + (":char:cc:" if unit == config.UNIT_CHAR else ":pet:cc:") + phase
+    for pos in _cc_target_order(state, offered, cc_kind):
+        target_col = _resolve_target(pos, offered)
+        if target_col is None:
+            continue
+        b1, b2 = _row(pos), _col(pos)
+        if _short_claim(_cc_claims, _cc_lock, group, (b1, b2), owner):
+            setattr(state, gen_attr, state.enemy_gen)
             return Decision(unit, state.my_atype, target_col, skill, b=b1)
     return None
 
@@ -1160,10 +1311,18 @@ def decide_char(state, options, first_turn=False):
     rv = _try_revive(state, config.UNIT_CHAR, state.skills_char, state.char, options)
     if rv is not None:
         return rv
+    # CC ti le cao (quest only): sau Hoi Sinh, truoc buff bao ve.
+    cc = _try_cc(state, config.UNIT_CHAR, state.skills_char, state.char, options, "high")
+    if cc is not None:
+        return cc
     # BUFF BAO VE (quest/boss): Ket Gioi -> An Than -> Kinh, truoc heal HP/SP.
     prot = _try_protect(state, config.UNIT_CHAR, state.skills_char, state.char)
     if prot is not None:
         return prot
+    # CC ti le thap / Hon Loan (quest only): sau buff bao ve.
+    cc = _try_cc(state, config.UNIT_CHAR, state.skills_char, state.char, options, "low")
+    if cc is not None:
+        return cc
     # HOI MAU: thanh vien HP yeu + du SP + co skill heal + la con SP cao nhat duoc heal
     if (state.any_ally_low(config.HEAL_HP_THRESHOLD)
             and state.char.sp >= config.HEAL_SP_COST
@@ -1197,10 +1356,18 @@ def decide_pet(state, options, first_turn=False):
     rv = _try_revive(state, config.UNIT_PET, state.pet_skills, state.pet, options)
     if rv is not None:
         return rv
+    # CC ti le cao (quest only): sau Hoi Sinh, truoc buff bao ve.
+    cc = _try_cc(state, config.UNIT_PET, state.pet_skills, state.pet, options, "high")
+    if cc is not None:
+        return cc
     # BUFF BAO VE (quest/boss): Ket Gioi -> An Than -> Kinh, truoc heal HP/SP.
     prot = _try_protect(state, config.UNIT_PET, state.pet_skills, state.pet)
     if prot is not None:
         return prot
+    # CC ti le thap / Hon Loan (quest only): sau buff bao ve.
+    cc = _try_cc(state, config.UNIT_PET, state.pet_skills, state.pet, options, "low")
+    if cc is not None:
+        return cc
     # HOI MAU: pet co skill heal + dong doi yeu + du SP + la con SP cao nhat
     if (state.any_ally_low(config.HEAL_HP_THRESHOLD)
             and state.pet.sp >= config.HEAL_SP_COST

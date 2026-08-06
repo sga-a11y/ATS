@@ -26,6 +26,8 @@
 - **Game:** TS Online Mobile — VTC Mobile, engine Unity 2022.3.62f2 + Lua scripts
 - **Package:** com.vtcmobile.gz06
 - **Game server:** 103.82.28.98:6614 (TCP)
+- **Server mới Trương Liêu (capture MuMu12 2026-08-06):** TCP `103.190.202.61:6614`, auth
+  `server_id=18` (byte thứ 5 trong C2S `0x01`).
 - **Account API:** https://graph.mobiplay.vn
 
 ---
@@ -197,6 +199,13 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
 - `status_kind=0x02` la nhom bao ve/khien trong capture nay. Ket Gioi va Kinh deu nam cung nhom:
   `0x271a` Ket Gioi, `0x271f` Kinh. De biet target co dang co gi thi doc status-list nay theo
   `(row,col)->skill_id`; de tranh buff nham chi can coi cac skill cung nhom shield/protect la dang ban.
+  Skill protect dang theo doi:
+  - Ket Gioi: `0x271a` Ket Gioi, `0x2739` S.Ket Gioi.
+  - An: `0x32cd` An Minh, `0x32f2` S.An Than.
+  - Kinh: `0x271f` Kinh, `0x272a` Linh Kinh, `0x2736` Song Kinh, `0x2737` Due Kinh,
+    `0x2738` Thuan Kinh.
+  - Passive/protect-status: `0x2afa` Bang Tuong. Neu dong doi dang co status nay thi coi la da co
+    bao ve de KHONG buff Ket Gioi/An/Kinh de len; AI mac dinh chua tu cast Bang Tuong.
 - Khi vua cast xong, truoc khi server sync status-list luot moi, co the mark tam tu S2C `0x32` skill apply
   thanh cong. Sau khi gap status-list thi tin status-list hon local cache. Luu y echo Ket Gioi thuc te co
   chunk len `0x0011` tinh gan nhu gom ca 2 byte len va co tail ngan; parser khong duoc may moc dung
@@ -222,6 +231,41 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
   4) Pha protect DICH (chi row 0/1): target uu tien An Than -> Ket Gioi -> Kinh; skill uu tien
      Giai Tru `0x2b04` -> Giai Ket Gioi `0x2719` -> Giai Kinh `0x271e`.
   Luu y: 0x35 status-list KHONG duoc nap vao available-actions; neu skill_id u16 != 0 thi do la status.
+
+### CC / khong che trong battle
+- Chi dung trong `quest_mode`. KHONG dung trong `boss_mode` vi boss thuong khang khong che, dung CC
+  se phi turn.
+- Chia theo do uu tien AI:
+  - **CC ti le cao / hard CC uu tien som:** nhom bang (`0x2b06` Bang Phong, `0x2b1f` Bang Sieu,
+    `0x4e3a` Bang Phong multi), hon me (`0x36b8` Hon Me - tam xep cao, doi capture neu can),
+    stun/choang (`0x32cf` Huyen Kich va cac skill effect `0x05`).
+  - **CC ti le thap / soft-or-less-reliable:** troi cay (`0x2714` Cay Tinh, `0x2731` Boc Cam,
+    `0x4e39` Thu Tinh, `0x4e51` Thu Tinh Sieu), gio khoa (`0x32ca` Tuyen Phong,
+    `0x32fc` The Loc Xoay, `0x32d7` Thanh Long, `0x4e3b` Hoan Phong, `0x4e50` Toan Phong Sieu,
+    `0x32fa` Bua Tiec, `0x32f6` Vo Tan Lam Phong), hon loan (`0x36c5` Hon Loan,
+    `0x36f1` C.Hon Loan, `0x4e2e` Tu Nhan Hon Loan, `0x4e57` S.Hon Loan,
+    `0x4e53` Cuu Vi Ho Mi Hoac, `0x4e5a` Ban Thu Doa Dia).
+- Phase AI trong quest:
+  1) Hoi sinh.
+  2) CC ti le cao, truoc buff bao ve.
+  3) Buff bao ve (Ket Gioi -> An Than -> Kinh).
+  4) CC ti le thap.
+  5) Hoi HP -> hoi SP -> pha bao ve dich -> danh.
+- Auto boss/danh don (`pick_boss_skill`) loai skill CC khoi fallback; neu khong co skill dame phu hop thi
+  danh thuong. User custom skill thi van theo config user.
+- NPC nguy hiem can an CC truoc, uu tien theo thu tu:
+  `Chu Cong` -> `Hang Nga` -> `Gia Cat Luong` -> `Tu Ma Y` -> `Luc Ton` -> `Bang Thong`
+  -> `Lu Bo` -> `Tran Cung`.
+  Runtime normalize ten khong dau va map ten theo vi tri neu 0x0b enemy co row/col.
+- 0x0b enemy dang PB110: body `05 00 [n] 07 [tid 2B] ... [row][col] [hp/sp...]`, row/col o
+  `body[22:24]`. Vi du Tran Cung `0x9d3f` row=0 col=4.
+- Target CC thong minh:
+  - Neu con dich nao chua co BAT KY CC nao: hard CC va soft CC deu uu tien target chua bi CC,
+    khong trung target trong cung turn neu nhieu acc cung cast.
+  - Khi tat ca dich deu da co CC: chia theo 2 lop status de tranh de nhau:
+    * CC khoa (bang/hon me/stun/cay/gio...) chon con chua co CC khoa khac.
+    * Hon Loan chon con chua co Hon Loan.
+  - Hon Loan co the cast de len CC khoa nen phai theo rule tren de tranh de len khi van con target sach.
 
 ### S2C 0x33 — Stats per turn
 Pattern entries: `03 02 [type] [4-byte LE]`

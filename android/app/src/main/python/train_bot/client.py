@@ -1103,6 +1103,9 @@ class GameClient:
             self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
         except OSError as e:
             log.warning("[%s] RELOGIN that bai (ket noi): %s", self._label, e)
+            # Re-login noi bo that bai vi mang/server -> de supervisor login lai tu dau.
+            self.server_closed = True
+            self._deliberate_close = False
             return False
         self.server_closed = False      # ket noi MOI thanh cong -> xoa co (socket cu ko lien quan)
         self._deliberate_close = False  # tu day recv moi lai bao rot that su
@@ -1119,6 +1122,10 @@ class GameClient:
         return True
 
     def close(self):
+        if (not self.running) and (not self._deliberate_close) and (not self.server_closed):
+            # Client da chet truoc khi code goi close(); day la mat ket noi/runtime drop,
+            # khong phai user Stop. Giu dau hieu nay de supervisor reconnect thay vi tat acc am tham.
+            self.server_closed = True
         self._deliberate_close = True   # ta tu dong -> OSError trong recv KHONG phai server rot
         self.running = False
         self.stop_npc40_loop()

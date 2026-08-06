@@ -21,8 +21,14 @@ T_SP_MAX = 0xCE   # maxSP - nam trong S2C 0x08 sub0300 (theo entity), KHONG phai
 PROTECT_KET_GIOI = frozenset((10010, 10041))
 PROTECT_STEALTH = frozenset((13005, 13042))
 PROTECT_KINH = frozenset((10015, 10026, 10038, 10039, 10040))
-PROTECT_SKILLS = PROTECT_KET_GIOI | PROTECT_STEALTH | PROTECT_KINH
+PROTECT_PASSIVE = frozenset((11002,))  # Bang Tuong: co status thi coi la da co bao ve, khong auto-cast
+PROTECT_SKILLS = PROTECT_KET_GIOI | PROTECT_STEALTH | PROTECT_KINH | PROTECT_PASSIVE
 CLEAR_PROTECT_SKILLS = frozenset((10009, 10014, 11012))
+CC_HIGH_SKILLS = frozenset((11014, 11039, 20026, 11027, 11028, 14008, 13007))
+CC_LOW_LOCK_SKILLS = frozenset((10004, 10033, 20025, 20049, 13002, 13052, 13015,
+                                20027, 20048, 13050, 13046))
+CC_CHAOS_SKILLS = frozenset((14021, 14065, 20014, 20051, 20055, 20058))
+CC_SKILLS = CC_HIGH_SKILLS | CC_LOW_LOCK_SKILLS | CC_CHAOS_SKILLS
 
 
 class Unit:
@@ -71,6 +77,8 @@ class BattleState:
         self.enemy_slots = []          # vd [2] = co 1 quai o slot 2
         self.enemy_hp = {}             # slot -> curHP
         self.enemy_names = set()       # TEN quai trong tran (tu 0x0b: entity[2:4]=template_id -> npc_names)
+        self.enemy_pos_names = {}       # pos(row*10+col) -> set ten quai, neu 0x0b co row/col
+        self.enemy_pos_tids = {}        # pos(row*10+col) -> set template_id
         self.mineral_battle = False    # True neu tran co quai khoang (bat theo ten hoac template id)
         self.self_slot = None          # B2 (vi tri tran) cua minh - tu 0x0b battle (entity-based)
         # QUEST mode: START tran ma >6 quai -> True ca tran (latch). >6 con -> all-target; <=6 -> nhu boss.
@@ -93,11 +101,13 @@ class BattleState:
         # (row,col)->set(skill_id): trang thai bao ve hien co, tu 0x35 status-list.
         # row 0/1=dich, 2=pet minh, 3=char minh.
         self.protect_status = {}
+        self.crowd_status = {}          # (row,col)->set(skill_id) CC/khong che tu 0x35 status-list
 
     def reset_battle(self):
         self.mobs = []
         self.in_battle = False
         self.protect_status = {}
+        self.crowd_status = {}
 
     def reset_enemies(self, reset_quest=True, reset_protect=True):
         """Xoa HP/slot quai (goi luc battle moi bat dau, tranh dinh quai tran cu).
@@ -109,8 +119,11 @@ class BattleState:
         self.enemy_slots = []
         if reset_protect:
             self.protect_status = {}
+            self.crowd_status = {}
         if reset_quest:
             self.enemy_names = set()
+            self.enemy_pos_names = {}
+            self.enemy_pos_tids = {}
             self.mineral_battle = False
             self.quest_mode = False
             self._battle_counted = False
@@ -121,6 +134,21 @@ class BattleState:
             norm = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii").lower()
             return norm.startswith("khoang ")
         return False
+
+    def _remember_enemy_entity(self, row, col, tid, name):
+        """Ghi nho ten/id quai theo vi tri battle neu packet co du row/col."""
+        if row not in (0, 1) or col > 5:
+            return
+        pos = row * 10 + col
+        if name:
+            self.enemy_pos_names[pos] = {name}
+            self.enemy_names.add(name)
+        else:
+            self.enemy_pos_names.pop(pos, None)
+        if tid is not None:
+            self.enemy_pos_tids[pos] = {tid}
+        else:
+            self.enemy_pos_tids.pop(pos, None)
 
     # ---- parse 0x33 (stat update theo luot) ----
     def update_0x33(self, pkt: bytes):
@@ -241,6 +269,11 @@ class BattleState:
             return
         self.protect_status.setdefault((b1, b2), set()).add(skill_id)
 
+    def _set_crowd(self, b1, b2, skill_id):
+        if b1 not in (0, 1) or b2 > 5 or skill_id not in CC_SKILLS:
+            return
+        self.crowd_status.setdefault((b1, b2), set()).add(skill_id)
+
     def _clear_protect(self, b1, b2):
         if b1 not in (0, 1, 2, 3) or b2 > 5:
             return
@@ -251,6 +284,9 @@ class BattleState:
 
     def protection_skills(self, b1, b2):
         return set(self.protect_status.get((b1, b2), ()))
+
+    def crowd_skills(self, b1, b2):
+        return set(self.crowd_status.get((b1, b2), ()))
 
     def update_0x35_status(self, pkt: bytes):
         """Parse S2C 0x35 sub0100 dang status-list: [row][col][kind][skill_id u16].
@@ -263,6 +299,7 @@ class BattleState:
             return False
         if len(body) == 2:
             self.protect_status = {}
+            self.crowd_status = {}
             return True
         if len(body) < 7:
             return False
@@ -279,11 +316,15 @@ class BattleState:
             i += 5
         if not has_status:
             return False
-        current = {}
+        current_protect = {}
+        current_crowd = {}
         for b1, b2, _kind, skill_id in entries:
             if skill_id in PROTECT_SKILLS:
-                current.setdefault((b1, b2), set()).add(skill_id)
-        self.protect_status = current
+                current_protect.setdefault((b1, b2), set()).add(skill_id)
+            if skill_id in CC_SKILLS:
+                current_crowd.setdefault((b1, b2), set()).add(skill_id)
+        self.protect_status = current_protect
+        self.crowd_status = current_crowd
         return True
 
     def _update_protect_from_0x32(self, body: bytes):
@@ -321,6 +362,9 @@ class BattleState:
                     # Kinh/Ket Gioi da thay result success; An Than chua co capture, nen result
                     # thanh cong la du de mark tam cho toi khi 0x35 status-list sync lai.
                     self._set_protect(tb1, tb2, skill_id)
+                elif skill_id in CC_SKILLS:
+                    # Mark tam CC cast thanh cong trong khi doi status-list dau turn sau sync lai.
+                    self._set_crowd(tb1, tb2, skill_id)
                 elif skill_id in CLEAR_PROTECT_SKILLS:
                     self._clear_protect(tb1, tb2)
                 q = min(cend, q + attr_count * 5)
@@ -400,13 +444,16 @@ class BattleState:
         if not npc_names:
             npc_names = {}
         body = bytes(pkt[7:]) if len(pkt) > 7 else bytes(pkt)
-        # DANG 2 (xac nhan capture khoang mumu12): block enemy `05 00 [n] 07 [tid 2B]` - tid TRAN
-        # (offset 4), byte3=07=DICH (04=dong doi). Quai KHOANG dung dang nay: 0x61c7='Khoang Sat'...
+        # DANG 2 (xac nhan capture khoang/PB110 mumu12): block enemy
+        # `05 00 [n] 07 [tid 2B] ... [row][col] [hp/sp...]`; byte3=07=DICH (04=dong doi).
+        # PB110: Tran Cung 0x9d3f co row=0 col=4 tai body[22:24].
         if len(body) >= 6 and body[0:2] == b"\x05\x00" and body[3] == 0x07:
             tid = body[4] | (body[5] << 8)
             name = npc_names.get(tid)
             if name:
                 self.enemy_names.add(name)
+            if len(body) >= 24:
+                self._remember_enemy_entity(body[22], body[23], tid, name)
             if self._is_mineral_enemy(tid, name):
                 self.mineral_battle = True
         # DANG 1 (xac nhan ts_capture): entity 8B `[2B ngau nhien][tid 2B][1 byte type][3B base]`.
