@@ -790,11 +790,28 @@ S2C 0x57 ket qua:  c0 91 ... 57 [02 00][03][status 1B]   (status=0: thanh cong)
 - **6 moc qua:** 10, 20, 30, 60, 90, 180 phut (id = so phut, vd moc 20p -> id=0x14)
 - Qua online tinh theo TONG THOI GIAN ONLINE (ke ca o thanh, da xac nhan nhan duoc khi dung o thanh).
 - **0x1b (S2C 0x55) = counter timer DI GIOI**, KHONG phai online time -> KHONG dung cho qua online.
+- Client that hien "Hom nay tong cong da online X phut" bang:
+  `floor((CGTimer.serverTime - CGTimer.onlineTime).TotalSeconds + RoleCount.Get(ERoleCount.OnlineTime)) / 60`.
+  - `ERoleCount.OnlineTime = 10`.
+  - Login/auth packet set `CGTimer.serverTime` va tam set `CGTimer.onlineTime = serverTime`.
+  - S2C `0x03 sub0200` ("update daily online time") doc `double OLE time` -> `CGTimer.SetOnlineTime(...)`;
+    day la moc bat dau tinh online hom nay/cross-day.
+  - S2C `0x55 sub0100` RoleCount id `10` la online seconds da tich luy cua server. UI cong them
+    phan chenh `serverTime - onlineTime` de chay realtime moi giay.
+- Trang thai **da nhan/chua nhan tung moc qua online**: client khong doc tu RoleCount/0x57, ma doc
+  `BitFlag.Get(loginAward[EAward.Online].Date[index].flag)`. Data `LoginAwardData.flag` la flag id cua
+  tung moc qua; server sync bang opcode decimal `81` = bot `0x51`:
+  - S2C `0x51 sub0100`: `count u32` + records `[flag_id u16][value bool]` -> `BitFlag.Set(...)`.
+  - S2C `0x51 sub0200`: full bitflag table -> `BitFlag.Init(...)`.
+  - UI sort: chua flag + du phut = Available; co flag + du phut = Complete; con lai = Processing.
+  - S2C `0x57 sub0200 type=03 status` chi la ket qua claim; trang thai hien thi lan dau den tu BitFlag.
+  - `LoginAwardData_C.dat` group `3`: flag that cua 6 moc la `10->2`, `20->3`, `30->4`,
+    `60->5`, `90->6`, `180->7` (da xuat ra `login_awards.json` de PC/APK dung chung).
+  - Bot khong dung `gift_state.json`/uptime local de quyet dinh claim nua: phai co ca RoleCount id `10`
+    va BitFlag `0x51`; thieu 1 trong 2 thi chi cho, KHONG claim mu.
 - LUU Y: C2S 0x57 [03 00] (query list) tra ve 3 entry tinh 50/70/100 - FEATURE KHAC, KHONG lien quan qua online.
 - ANTI-CHEAT: client that disable nut claim khi chua du gio -> KHONG bao gio gui claim som.
-  Bot phai lam giong: chi claim khi DA DU GIO. Dung uptime cua bot (time tu connect) lam
-  moc online (uptime <= online time that -> uptime>=moc thi chac chan da san sang).
-  Luu trang thai da nhan ra gift_claims.json theo ngay (tranh re-claim khi reconnect).
+  Bot phai lam giong: chi claim khi DA DU GIO theo server RoleCount id `10` va flag chua nhan.
 - Logic o client.claim_online_gifts().
 
 ## 7g2. DIEM DANH HANG NGAY (opcode 0x57, type=01)
@@ -1370,6 +1387,16 @@ hay không trước khi đánh.
 **KẾT QUẢ CUỐI (2026-07-01): pho ban to doi chạy ỔN ĐỊNH — đủ 4 trận, di chuyển thật, nhận thưởng, không
 rớt kết nối.** Đã gỡ hết log debug tạm (DBG33/DBG0B/DBG35/DBG-RAW/DBG-CAPTURE); các log
 `(LEADER) tran N: ...` giữ lại vì hữu ích theo dõi vận hành bình thường, không còn là debug tạm.
+
+**BUG 11 — auto PB doi bi vo/retry sai sau khi vang (2026-08-06):**
+- Log PB80: leader bi server dong ket noi giua script, reconnect xong van dung `team_dungeon_done_by`
+  cu nen tuong ca party da report luot, tao lai phong va `member ready 0/4 -> START` mot minh.
+- Luat sua: phong PB doi chi START khi tat ca member da auto-ready that (`dungeon_ready_count == so member`).
+  Het cap ma chua du ready thi tra FAIL, danh dau PB vo va relogin ca party.
+- Khi PB doi vo/fail, khong dua vao `_team_dungeon_until/quest_mode` vi wrapper co the da clear co truoc
+  khi coordinator kiem tra. `do_team_dungeon(level) == False` cung phai coi la broken.
+- Retry sau PB vo phai co barrier: tat ca acc trong party reconnect lai roi moi xoa `team_dungeon_done_by`,
+  `team_dungeon_state`, `team_dungeon_broke` va check status 0x18 lai tu dau. Khong duoc dung report cu.
 
 ### 7o. Event 40 NPC — party + battle lặp (capture 2026-07-20)
 

@@ -183,6 +183,76 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertTrue(result)
         game.do_team_dungeon.assert_called_once_with(110)
 
+    def test_coordinator_treats_failed_room_as_broken_even_after_client_flags_clear(self):
+        with mock.patch.object(sys, "argv", [sys.argv[0]]):
+            import run_party_digioi as coordinator
+
+        coordinator.account_forced_reconnect.discard("leader")
+        coordinator.account_forced_reconnect_reason.pop("leader", None)
+        game = SimpleNamespace(
+            running=True,
+            state=SimpleNamespace(quest_mode=False),
+            wait_team_dungeon_status=mock.Mock(return_value=True),
+            team_dungeon_remaining=mock.Mock(return_value=1),
+            do_team_dungeon=mock.Mock(return_value=False),
+            close=mock.Mock(side_effect=lambda: setattr(game, "running", False)),
+            _phoban_until=0.0,
+            _team_dungeon_until=0.0,
+        )
+        state = {
+            "lock": threading.Lock(),
+            "team_dungeon_done_by": {80: {"member": 1}},
+            "team_dungeon_state": {},
+            "team_dungeon_broke": {},
+            "team_dungeon_need_redo": False,
+            "team_dungeon_recover_seen": set(),
+            "team_dungeon_recover_ready": threading.Event(),
+            "reconnecting": set(),
+            "disc_gen": 0,
+            "reform_gen": 0,
+        }
+
+        with (
+            mock.patch.object(coordinator, "party_accounts", return_value=[("leader",), ("member",)]),
+            mock.patch.object(coordinator.config, "PARTY_LEADER_ACC", {0: "leader"}),
+        ):
+            result = coordinator._handle_auto_team_dungeon(
+                game, state, "leader", "leader", 0, True, lambda: False, 80
+            )
+
+        self.assertFalse(result)
+        self.assertTrue(state["team_dungeon_broke"][80])
+        self.assertTrue(state["team_dungeon_need_redo"])
+        self.assertIn("leader", coordinator.account_forced_reconnect)
+        game.close.assert_called_once()
+        coordinator.account_forced_reconnect.discard("leader")
+        coordinator.account_forced_reconnect_reason.pop("leader", None)
+
+    def test_coordinator_waits_for_whole_party_before_redoing_broken_dungeon(self):
+        with mock.patch.object(sys, "argv", [sys.argv[0]]):
+            import run_party_digioi as coordinator
+
+        state = {
+            "lock": threading.Lock(),
+            "team_dungeon_done_by": {80: {"leader": 1, "member": 1}},
+            "team_dungeon_state": {80: "done"},
+            "team_dungeon_broke": {80: True},
+            "team_dungeon_need_redo": True,
+            "team_dungeon_recover_seen": {"leader"},
+            "team_dungeon_recover_ready": threading.Event(),
+        }
+
+        with mock.patch.object(coordinator, "party_accounts", return_value=[("leader",), ("member",)]):
+            self.assertTrue(coordinator._prepare_team_dungeon_redo_after_reconnect(
+                state, "member", "member", 0, lambda: False
+            ))
+
+        self.assertEqual(state["team_dungeon_done_by"], {})
+        self.assertEqual(state["team_dungeon_state"], {})
+        self.assertEqual(state["team_dungeon_broke"], {})
+        self.assertFalse(state["team_dungeon_need_redo"])
+        self.assertTrue(state["team_dungeon_recover_ready"].is_set())
+
     def test_dispatch_calls_pb110(self):
         game = client_module.GameClient.__new__(client_module.GameClient)
         game.do_team_dungeon_lv110 = mock.Mock(return_value=True)
@@ -190,6 +260,35 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertTrue(game.do_team_dungeon(110))
 
         game.do_team_dungeon_lv110.assert_called_once_with()
+
+    def test_room_creation_does_not_start_when_members_are_not_ready(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.running = True
+        game._label = "pb-ready-test"
+        game.party_idx = 99111
+        game.self_entity = b"leader01"
+        game.state = BattleState()
+        game.send = mock.Mock()
+        game.combat_ready = mock.Mock()
+        client_module._PARTY_ENTITIES[game.party_idx] = {game.self_entity, b"member01"}
+        clock = {"now": 0.0}
+
+        def fake_time():
+            clock["now"] += 41.0
+            return clock["now"]
+
+        try:
+            with (
+                mock.patch.object(client_module, "dungeon_ready_count", return_value=0),
+                mock.patch.object(client_module.time, "sleep", return_value=None),
+                mock.patch.object(client_module.time, "time", side_effect=fake_time),
+            ):
+                self.assertFalse(game._create_team_dungeon_room(0x000F, 80, ready_wait=0.0))
+        finally:
+            client_module._PARTY_ENTITIES.pop(game.party_idx, None)
+
+        self.assertNotIn(mock.call(0x2f, b"\x0c\x00"), game.send.call_args_list)
+        game.combat_ready.assert_not_called()
 
     def test_end_wait_ignores_empty_enemies_and_false_combat(self):
         game = client_module.GameClient.__new__(client_module.GameClient)

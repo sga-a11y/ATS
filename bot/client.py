@@ -37,6 +37,16 @@ TEAM_DUNGEONS = {
     110: {"id": 0x0010, "daily_flag": 0x30AE, "daily_count": 1},
 }
 TEAM_DUNGEON_DURATION = 20 * 60
+ONLINE_GIFT_KIND = 0x03
+ONLINE_GIFT_ROLECOUNT = 10
+ONLINE_GIFT_DEFAULT_FLAGS = {
+    10: 2,
+    20: 3,
+    30: 4,
+    60: 5,
+    90: 6,
+    180: 7,
+}
 
 _GROUND_STORE = None
 _GROUND_STORE_PATH = None
@@ -442,6 +452,7 @@ def mail_window_now():
 
 _GIFT_FILE = "gift_state.json"
 _gift_lock = threading.Lock()
+_online_gift_flags = None
 
 # ITEM HP/SP: bot TU HOC qua self-calibrate (probe -> doc delta HP/SP tu S2C 0x08),
 # luu items_learned.json. KHONG can gamedata/config. Format:
@@ -531,6 +542,74 @@ def _load_json_data_file(filename):
     except Exception:
         pass
     return None
+
+def _load_data_bytes(*filenames):
+    paths = []
+    for filename in filenames:
+        try:
+            bundle_path = getattr(config, "_bundle_data_path", None)
+            if bundle_path is not None:
+                paths.append(bundle_path(filename))
+        except Exception:
+            pass
+        try:
+            from ._appdir import app_dir
+            paths.append(os.path.join(app_dir(), filename))
+        except Exception:
+            pass
+        paths.append(filename)
+    for path in paths:
+        try:
+            with open(path, "rb") as fh:
+                return fh.read()
+        except Exception:
+            pass
+    return None
+
+def _load_online_gift_flags() -> dict:
+    """Map moc phut qua online -> BitFlag id, lay tu data game neu co."""
+    global _online_gift_flags
+    if _online_gift_flags is not None:
+        return _online_gift_flags
+
+    flags = {}
+    data = _load_json_data_file("login_awards.json")
+    if isinstance(data, dict):
+        raw = data.get("online_gifts", data)
+        if isinstance(raw, dict):
+            for k, v in raw.items():
+                try:
+                    flags[int(k)] = int(v)
+                except (TypeError, ValueError):
+                    pass
+
+    if not flags:
+        raw = _load_data_bytes(
+            os.path.join("gamedata", "Data", "LoginAwardData_C.dat"),
+            os.path.join("Data", "LoginAwardData_C.dat"),
+            "LoginAwardData_C.dat",
+        )
+        try:
+            if raw and len(raw) >= 4:
+                count = struct.unpack_from("<i", raw, 0)[0]
+                off = 4
+                for _ in range(count):
+                    if off + 46 > len(raw):
+                        break
+                    group = raw[off]
+                    day = struct.unpack_from("<I", raw, off + 2)[0]
+                    flag = struct.unpack_from("<H", raw, off + 44)[0]
+                    if group == ONLINE_GIFT_KIND and flag:
+                        flags[int(day)] = int(flag)
+                    off += 46
+        except (struct.error, ValueError):
+            flags = {}
+
+    if not flags:
+        flags = dict(ONLINE_GIFT_DEFAULT_FLAGS)
+
+    _online_gift_flags = dict(sorted(flags.items()))
+    return _online_gift_flags
 
 _known_items = None
 def _load_known_items() -> dict:
@@ -823,6 +902,8 @@ class GameClient:
         self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
         self.role_counts = {}        # S2C 0x55 RoleCount: sid -> (value, max)
+        self._server_online_seconds = None  # RoleCount id=10: so giay online hom nay server da tinh
+        self._server_online_ts = 0.0
         self.shop_ho_phu_count = None # 0x0456 = so lan da mua Di Gioi Ho Phu hom nay
         self.shop_ho_phu_max = 3
         self.shop_thien_chau_count = None # 0x002b = so lan da mua Hop Thien Chau hom nay
@@ -846,6 +927,12 @@ class GameClient:
         self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
         self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
         self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
+        self._bitflag_bytes = bytearray()  # S2C 0x51 sub0200: bang BitFlag giong client
+        self._bitflags_loaded = False
+        self._online_gift_pending = None   # moc phut vua gui claim, do 0x57 response khong tra id
+        self._online_gift_pending_ts = 0.0
+        self._online_gift_next_log = None
+        self._online_gift_last_log = 0.0
         self.team_dungeon_steps = {}  # mission_id -> step, tu S2C 0x18; dung de tinh luot pho ban doi
         self.team_dungeon_status_loaded = False
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
@@ -924,9 +1011,17 @@ class GameClient:
                                         .get(getattr(self, "_username", None), {}) or {})
         self._daily_date = _gift_day()
         self._connect_time = time.time()
-        st = _load_gift_state(self._label, today=self._daily_date)
-        self._online_base = st["online_sec"]   # online tich luy truoc phien nay (hom nay)
-        self.claimed_gifts = st["claimed"]
+        # Qua online dung state server (0x55 RoleCount id=10 + 0x51 BitFlag), khong dem local nua.
+        self._online_base = 0.0
+        self.claimed_gifts = set()
+        self._server_online_seconds = None
+        self._server_online_ts = 0.0
+        self._bitflag_bytes = bytearray()
+        self._bitflags_loaded = False
+        self._online_gift_pending = None
+        self._online_gift_pending_ts = 0.0
+        self._online_gift_next_log = None
+        self._online_gift_last_log = 0.0
         self.sock = _open_game_socket(self.host, config.GAME_PORT)
         log.info("[%s] Da ket noi %s:%s", self._label, self.host, config.GAME_PORT)
         self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
@@ -1405,6 +1500,9 @@ class GameClient:
             if sid == 0x1b:                   # so phut Di Gioi
                 self.digioi_minutes = val & 0xFFFF
                 self._last_digioi_ts = time.time()
+            elif sid == ONLINE_GIFT_ROLECOUNT: # qua online: so giay online hom nay server da tinh
+                self._server_online_seconds = int(val)
+                self._server_online_ts = time.time()
             elif sid == 0x08:                 # van tieu: so luot DA gui hom nay + gioi han
                 self.vantieu_started = val
                 self.vantieu_max = mx or 3
@@ -1424,6 +1522,63 @@ class GameClient:
             # 1-2 luot) -> sai -> dungeon dem THUAN LOCAL (checkin_state.json).
             off += 10
             n += 1
+
+    def _bitflag_get(self, flag_id: int):
+        """Tra ve True/False neu da co full BitFlag, None neu server chua sync."""
+        try:
+            flag_id = int(flag_id)
+        except (TypeError, ValueError):
+            return None
+        if flag_id <= 0 or not self._bitflags_loaded:
+            return None
+        idx = (flag_id - 1) // 8
+        if idx >= len(self._bitflag_bytes):
+            return False
+        return bool(self._bitflag_bytes[idx] & (1 << ((flag_id - 1) % 8)))
+
+    def _bitflag_set(self, flag_id: int, value: bool):
+        try:
+            flag_id = int(flag_id)
+        except (TypeError, ValueError):
+            return
+        if flag_id <= 0:
+            return
+        idx = (flag_id - 1) // 8
+        while len(self._bitflag_bytes) <= idx:
+            self._bitflag_bytes.append(0)
+        mask = 1 << ((flag_id - 1) % 8)
+        if value:
+            self._bitflag_bytes[idx] |= mask
+        else:
+            self._bitflag_bytes[idx] &= (~mask) & 0xFF
+
+    def _refresh_online_claimed_from_bitflags(self):
+        flags = _load_online_gift_flags()
+        claimed = {m for m, flag in flags.items() if self._bitflag_get(flag) is True}
+        self.claimed_gifts = claimed
+        return claimed
+
+    def _apply_bitflags(self, pkt: bytes):
+        """Doc S2C 0x51 BitFlag: sub0100 update le, sub0200 full table."""
+        if len(pkt) < 9:
+            return
+        sub = int.from_bytes(pkt[7:9], "little")
+        if sub == 0x02 and len(pkt) >= 11:
+            size = int.from_bytes(pkt[9:11], "little")
+            if size >= 0 and 11 + size <= len(pkt):
+                self._bitflag_bytes = bytearray(pkt[11:11 + size])
+                self._bitflags_loaded = True
+                self._refresh_online_claimed_from_bitflags()
+        elif sub == 0x01 and len(pkt) >= 13:
+            count = int.from_bytes(pkt[9:13], "little")
+            off = 13
+            for _ in range(count):
+                if off + 3 > len(pkt):
+                    break
+                self._bitflag_set(int.from_bytes(pkt[off:off + 2], "little"), bool(pkt[off + 2]))
+                off += 3
+            if self._bitflags_loaded:
+                self._refresh_online_claimed_from_bitflags()
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
@@ -1647,6 +1802,7 @@ class GameClient:
         # marker "c0 fe 03 00 00 00" la 2 byte mask (uint16 LE) - line L da nhan = bit (L+3).
         # (Tim duoc nho raw-decode frame LON ma analyze_pcap drop; verify khop tren nhieu nick.)
         if opcode == 0x51:
+            self._apply_bitflags(pkt)
             if len(pkt) >= 11 and pkt[7:9] == b"\x02\x00":
                 size = int.from_bytes(pkt[9:11], "little")
                 self._mount_collection_count = pet_login_stats.mount_collection_count(
@@ -2569,6 +2725,14 @@ class GameClient:
         self._online_base = 0.0
         self._connect_time = time.time() if now is None else float(now)
         self.claimed_gifts = set()
+        self._server_online_seconds = None
+        self._server_online_ts = 0.0
+        self._bitflag_bytes = bytearray()
+        self._bitflags_loaded = False
+        self._online_gift_pending = None
+        self._online_gift_pending_ts = 0.0
+        self._online_gift_next_log = None
+        self._online_gift_last_log = 0.0
         self._quest_cells = set()
         self._claimed_lines = set()
         self._claimed_loaded = False
@@ -2584,30 +2748,66 @@ class GameClient:
                  self._label, previous, day)
         return True
 
+    def _current_online_seconds(self):
+        if self._server_online_seconds is None:
+            return None
+        base = max(0.0, float(self._server_online_seconds))
+        if self._server_online_ts <= 0:
+            return base
+        return base + max(0.0, time.time() - self._server_online_ts)
+
+    def _log_online_gift_wait(self, message, *args, interval=300.0):
+        now = time.time()
+        if now - self._online_gift_last_log >= interval:
+            log.info(message, *args)
+            self._online_gift_last_log = now
+
     def claim_online_gifts(self):
-        """Nhan qua online GIONG client that: chi claim moc da DU GIO online.
-        Thoi gian online TICH LUY hom nay = online_base (luu tu cac phien truoc) +
-        uptime phien hien tai. Tich luy nay <= online time that nen khi >= moc thi qua
-        CHAC CHAN da san sang (khong claim som -> khong bi nghi bot). Luu lai moi lan goi
-        de reconnect khong mat tien do.
-        Tra ve True neu da nhan het tat ca moc.
-        """
-        milestones = getattr(config, "GIFT_MILESTONES", [])
-        if not milestones or self._connect_time is None:
+        """Nhan qua online theo state server: RoleCount 10 + BitFlag, khong dem/claim mu."""
+        configured = getattr(config, "GIFT_MILESTONES", [])
+        flags = _load_online_gift_flags()
+        milestones = [int(m) for m in configured if int(m) in flags]
+        if not milestones:
             return False
-        online_sec = self._online_base + (time.time() - self._connect_time)
+        if self._online_gift_pending is not None:
+            if time.time() - self._online_gift_pending_ts < 8.0:
+                return False
+            log.warning("[%s] Qua online moc %d phut: khong thay server tra loi -> cho vong sau",
+                        self._label, self._online_gift_pending)
+            self._online_gift_pending = None
+            self._online_gift_pending_ts = 0.0
+        if not self._bitflags_loaded:
+            self._log_online_gift_wait("[%s] Qua online: chua co BitFlag 0x51 tu server -> chua claim",
+                                       self._label, interval=300.0)
+            return False
+        online_sec = self._current_online_seconds()
+        if online_sec is None:
+            self._log_online_gift_wait("[%s] Qua online: chua co RoleCount 10 tu server -> chua claim",
+                                       self._label, interval=300.0)
+            return False
+
+        claimed = self._refresh_online_claimed_from_bitflags()
         online_min = online_sec / 60.0
         for m in milestones:
-            if m in self.claimed_gifts:
+            if m in claimed:
                 continue
-            if online_min >= m:
+            if online_sec >= m * 60:
+                self._online_gift_pending = m
+                self._online_gift_pending_ts = time.time()
                 self.send(0x57, b"\x02\x00\x03" + struct.pack("<I", m) + b"\x01")
-                self.claimed_gifts.add(m)
-                log.info("[%s] Nhan qua online moc %d phut (online=%.1f phut)",
+                log.info("[%s] Nhan qua online moc %d phut (server online=%.1f phut)",
                          self._label, m, online_min)
-        # luu online tich luy + claimed (de reconnect tiep tuc dung)
-        _save_gift_state(self._label, online_sec, self.claimed_gifts)
-        return all(m in self.claimed_gifts for m in milestones)
+                return False
+
+            next_state = (m, int(online_sec // 60))
+            if self._online_gift_next_log != next_state and time.time() - self._online_gift_last_log >= 60.0:
+                wait_min = max(0.0, m - online_min)
+                log.info("[%s] Qua online: moc tiep theo %d phut, hien %.1f phut, con %.1f phut",
+                         self._label, m, online_min, wait_min)
+                self._online_gift_next_log = next_state
+                self._online_gift_last_log = time.time()
+            return False
+        return True
 
     def _gift_claim(self, gtype: int, day: int, wait: float = 1.5) -> int:
         """Gui 1 goi nhan qua ngay 'day': C2S 0x57 02 00 [gtype] [day 4B LE] 01.
@@ -4291,7 +4491,28 @@ class GameClient:
             if gtype in (0x01, 0x04):              # diem danh / qua 14 ngay (log DEBUG -> ko spam scan)
                 self._gift_status[gtype] = status
                 log.debug("[%s] Gift type=%d: status=%d", self._label, gtype, status)
-            else:                                  # qua online (type=03)
+            elif gtype == ONLINE_GIFT_KIND:        # qua online (type=03)
+                pending = self._online_gift_pending
+                self._online_gift_pending = None
+                self._online_gift_pending_ts = 0.0
+                if pending is not None and status in (0, 2):
+                    flag = _load_online_gift_flags().get(int(pending))
+                    if flag:
+                        self._bitflag_set(flag, True)
+                        if self._bitflags_loaded:
+                            self._refresh_online_claimed_from_bitflags()
+                    self.claimed_gifts.add(int(pending))
+                if pending is not None:
+                    if status == 0:
+                        msg = f"moc {pending} phut THANH CONG"
+                    elif status == 2:
+                        msg = f"moc {pending} phut server bao DA NHAN"
+                    else:
+                        msg = f"moc {pending} phut status={status}"
+                    log.info("[%s] Qua online: %s", self._label, msg)
+                else:
+                    log.info("[%s] Qua online: status=%d (khong co moc pending)", self._label, status)
+            else:
                 log.info("[%s] Qua online: %s", self._label,
                          "THANH CONG" if status == 0 else f"status={status}")
 
@@ -4680,6 +4901,10 @@ class GameClient:
                 return False
             time.sleep(0.5)
         nrdy = dungeon_ready_count(self.party_idx)
+        if nrdy < len(ents):
+            log.warning("[%s] (LEADER) lv%d member ready %d/%d sau %.1fs -> HUY phong, relogin ca party",
+                        self._label, level_label, nrdy, len(ents), time.time() - t0)
+            return False
         log.info("[%s] (LEADER) lv%d member ready %d/%d sau %.1fs -> START",
                  self._label, level_label, nrdy, len(ents), time.time() - t0)
         self.send(0x2f, b"\x0c\x00"); time.sleep(2.0)
@@ -5184,7 +5409,8 @@ class GameClient:
         # doan 9s co dinh) vi do tre mang/xu ly co the > 9s -> truoc day het 9s la START LUON bat ke
         # member da ready chua, co the START ma party CHUA DU (danh mot minh, mat luot ca party).
         # CO CAP (toi da ready_wait_max giay) de KHONG "cho ca ngay" neu 1 member that su khong bao
-        # gio ready duoc (vd mat ket noi giua chung) - het cap van START nhu truoc (fallback an toan).
+        # gio ready duoc (vd mat ket noi giua chung) - het cap thi FAIL + relogin ca party, TUYET DOI
+        # khong START mot minh.
         ready_wait_max = max(ready_wait, 40.0)
         t0 = time.time()
         while dungeon_ready_count(self.party_idx) < len(ents) and time.time() - t0 < ready_wait_max:
@@ -5193,6 +5419,11 @@ class GameClient:
                 return False
             time.sleep(0.5)
         nrdy = dungeon_ready_count(self.party_idx)
+        if nrdy < len(ents):
+            log.warning("[%s] (LEADER) member ready %d/%d sau %.1fs -> HUY phong, relogin ca party",
+                        self._label, nrdy, len(ents), time.time() - t0)
+            self.state.quest_mode = False
+            return False
         log.info("[%s] (LEADER) member ready %d/%d sau %.1fs -> START", self._label, nrdy, len(ents),
                  time.time() - t0)
         self.send(0x2f, b"\x0c\x00"); time.sleep(2.0)

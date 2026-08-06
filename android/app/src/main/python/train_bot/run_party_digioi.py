@@ -298,6 +298,7 @@ account_last = {}      # username -> {"map","char"} luc CUOI truoc khi thoat (de
 account_exit_reason = {}  # username -> ly do thoat (de tong ket 1 dong khi ca party tat het)
 account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT (supervisor login lai)
 account_forced_reconnect = set()  # survivor 40NPC bi dong de relogin cung party; KHONG tang disc_gen
+account_forced_reconnect_reason = {}
 _start_cancel_generation = 0  # STOP ALL tang so nay de huy chuoi START dang do
 _login_guard_lock = threading.Lock()
 _login_error1_hits = []  # [(time, username)] - canh bao loi login hang loat, KHONG ket luan IP
@@ -517,6 +518,8 @@ def _pstate(pidx):
                               "team_dungeon_state": {},       # level -> "idle"|"running"|"done"
                               "team_dungeon_broke": {},       # level -> co dis/fail can relogin thoat instance
                               "team_dungeon_need_redo": False,
+                              "team_dungeon_recover_seen": set(),
+                              "team_dungeon_recover_ready": threading.Event(),
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
@@ -621,6 +624,8 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
                 st["team_dungeon_state"] = {}
                 st["team_dungeon_broke"] = {}
                 st["team_dungeon_need_redo"] = False
+                st["team_dungeon_recover_seen"].clear()
+                st["team_dungeon_recover_ready"].clear()
                 st["ready_members"].clear()
                 st["started_train"] = 0
                 st["dungeon_done"] = 0
@@ -994,8 +999,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             log.info("[%s] (%s) reconnect do team dungeon VO -> lam LAI daily (team dungeon)", label, role)
         _td_redo = bool(st.get("team_dungeon_need_redo"))
         if _td_redo and is_reconnect:
-            with st["lock"]:
-                st["team_dungeon_need_redo"] = False
+            if not _prepare_team_dungeon_redo_after_reconnect(st, username, label, pidx, _stopped):
+                try:
+                    c.close()
+                except Exception:
+                    pass
+                return
             log.info("[%s] (%s) reconnect do auto phó bản đội VỠ -> check/chạy lại auto phó bản",
                      label, role)
         _do_startup_team = bool(auto_team_dungeon and not is_digioi and (not is_reconnect or _td_redo))
@@ -3062,6 +3071,59 @@ def _team_dungeon_flags(pcfg):
     return {int(k): bool(v) for k, v in norm.items()}
 
 
+def _force_supervisor_reconnect(username, c, reason):
+    account_forced_reconnect.add(username)
+    account_forced_reconnect_reason[username] = reason
+    try:
+        c.close()
+    except Exception:
+        pass
+    return False
+
+
+def _mark_team_dungeon_broken(st, level):
+    st.setdefault("team_dungeon_broke", {})[level] = True
+    st["team_dungeon_need_redo"] = True
+    st.setdefault("team_dungeon_state", {})[level] = "done"
+    st.setdefault("team_dungeon_recover_seen", set()).clear()
+    ev = st.setdefault("team_dungeon_recover_ready", threading.Event())
+    ev.clear()
+
+
+def _prepare_team_dungeon_redo_after_reconnect(st, username, label, pidx, stopped_fn):
+    members = [t[0] for t in party_accounts(pidx)]
+    if not members:
+        return True
+    ev = st.setdefault("team_dungeon_recover_ready", threading.Event())
+    ready_now = False
+    with st["lock"]:
+        seen = st.setdefault("team_dungeon_recover_seen", set())
+        seen.add(username)
+        if len(seen) >= len(members):
+            st["team_dungeon_done_by"] = {}
+            st["team_dungeon_state"] = {}
+            st["team_dungeon_broke"] = {}
+            st["team_dungeon_need_redo"] = False
+            seen.clear()
+            ev.set()
+            ready_now = True
+    if ready_now:
+        log.info("[%s] auto phó bản đội: cả party đã relogin sau PB vỡ -> chạy lại từ đầu", label)
+        return True
+    last_log = 0.0
+    while not ev.is_set():
+        if stopped_fn():
+            return False
+        if time.time() - last_log > 30:
+            with st["lock"]:
+                n_seen = len(st.setdefault("team_dungeon_recover_seen", set()))
+            log.info("[%s] auto phó bản đội: chờ cả party relogin sau PB vỡ (%d/%d)...",
+                     label, n_seen, len(members))
+            last_log = time.time()
+        time.sleep(1)
+    return True
+
+
 def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_fn, level):
     level = int(level)
     if not c.wait_team_dungeon_status(timeout=6.0):
@@ -3087,12 +3149,13 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
             if st["reconnecting"]:
                 log.warning("[%s] (member) đồng đội rớt trong phó bản đội lv%d -> relogin thoát instance",
                             label, level)
-                try:
-                    c.relogin()
-                except Exception:
-                    pass
+                with st["lock"]:
+                    _mark_team_dungeon_broken(st, level)
+                    st["reform_gen"] += 1
                 _clear_o5_client_flags(c)
-                return False
+                return _force_supervisor_reconnect(
+                    username, c, "phó bản đội vỡ do đồng đội rớt"
+                )
             with st["lock"]:
                 state = st.setdefault("team_dungeon_state", {}).get(level, "idle")
                 broke = bool(st.setdefault("team_dungeon_broke", {}).get(level, False))
@@ -3100,10 +3163,10 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                 if broke:
                     log.warning("[%s] (member) phó bản đội lv%d vỡ -> relogin thoát instance",
                                 label, level)
-                    try:
-                        c.relogin()
-                    except Exception:
-                        pass
+                    _clear_o5_client_flags(c)
+                    return _force_supervisor_reconnect(
+                        username, c, "phó bản đội vỡ"
+                    )
                 _clear_o5_client_flags(c)
                 return True
             if not c.in_combat():
@@ -3164,6 +3227,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
             st.setdefault("team_dungeon_broke", {})[level] = False
         dg0 = st["disc_gen"]
         ok = False
+        broken = False
         try:
             ok = bool(c.do_team_dungeon(level))
             if not ok:
@@ -3171,24 +3235,19 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
             if st["disc_gen"] > dg0 or st["reconnecting"]:
                 log.warning("[%s] (LEADER) đồng đội rớt trong phó bản đội lv%d -> relogin thoát instance",
                             label, level)
-                try:
-                    c.relogin()
-                except Exception:
-                    pass
         finally:
             active = _clear_o5_client_flags(c)
             with st["lock"]:
-                if ((not ok and active) or (not c.running)
-                        or st["disc_gen"] > dg0 or st["reconnecting"]):
-                    st.setdefault("team_dungeon_broke", {})[level] = True
-                    st["team_dungeon_need_redo"] = True
+                broken = ((not ok) or (not c.running)
+                          or st["disc_gen"] > dg0 or bool(st["reconnecting"]))
+                if broken:
+                    _mark_team_dungeon_broken(st, level)
                 st.setdefault("team_dungeon_state", {})[level] = "done"
                 st["reform_gen"] += 1
-            if (not ok and active) and c.running:
-                try:
-                    c.relogin()
-                except Exception:
-                    pass
+        if broken:
+            return _force_supervisor_reconnect(
+                username, c, "phó bản đội vỡ" if active else "phó bản đội fail"
+            )
         return c.running
     with st["lock"]:
         st.setdefault("team_dungeon_state", {})[level] = "done"
@@ -3352,6 +3411,7 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
             break   # GUI Stop / thoat binh thuong / khong reconnectable -> dung han
         forced = username in account_forced_reconnect
         account_forced_reconnect.discard(username)
+        forced_reason = account_forced_reconnect_reason.pop(username, None)
         pcfg = (getattr(config, "PARTY_CONFIG", {}).get(pidx, {}) or {})
         ev = (getattr(config, "EVENTS", {}) or {}).get(pcfg.get("event_key") or "")
         event_reset = (not forced and _is_npc_repeat_party_event(
@@ -3376,7 +3436,8 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
         attempt += 1
         wait = 1 if forced else (5 if attempt <= 3 else (30 if attempt <= 13 else 60))
         log.warning("[%s] RECONNECT: %s -> login lai sau %ds (lan %d)", username,
-                    "40NPC relogin ca party" if forced else "server rot", wait, attempt)
+                    forced_reason or ("bat buoc relogin ca party" if forced else "server rot"),
+                    wait, attempt)
         for _ in range(wait):
             if _st():
                 break
@@ -3561,6 +3622,7 @@ def start_party(pidx, stagger=1.5):
         reset_party_joined(pidx)
         for u, *_ in accounts:
             account_forced_reconnect.discard(u)
+            account_forced_reconnect_reason.pop(u, None)
     st = _pstate(pidx)
     # RESET state dung chung (tranh sot tu lan chay truoc: leader_bad cu -> member quit oan)
     for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
@@ -3580,6 +3642,8 @@ def start_party(pidx, stagger=1.5):
         st["team_dungeon_state"] = {}
         st["team_dungeon_broke"] = {}
         st["team_dungeon_need_redo"] = False
+        st["team_dungeon_recover_seen"].clear()
+        st["team_dungeon_recover_ready"].clear()
         st["map_results"] = {}       # reset barrier map cho lan chay nay
         st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
     for u, p, is_leader, is_picker in accounts:

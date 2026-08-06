@@ -313,7 +313,7 @@ PET_HEDOANH = _load_json_root("pet_hedoanh.json")                       # ten pe
 VANTIEU_REQUESTS = _load_json_root("vantieu_requests.json").get("requests", {})  # ma 0400 -> {he, doanh}
 VANTIEU_DISPATCH_EFFECTS = _load_json_root("vantieu_dispatch_bonus.json").get("effects", {})  # effect id -> {he|doanh}
 
-# Qua online: nhan khi online du so phut. id qua = so phut moc.
+# Qua online: id qua = so phut moc; thoi gian/da nhan doc tu server RoleCount+BitFlag.
 GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
 
 # Combat tuning

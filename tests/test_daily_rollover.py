@@ -117,20 +117,77 @@ class TestDailyRollover(unittest.TestCase):
         self.assertEqual(self.client.current_map, 20801)
         self.assertEqual(self.client.party_members, [b"member00"])
 
-    def test_online_gift_starts_again_from_zero_after_rollover(self):
+    def test_online_gift_waits_for_server_state_after_rollover(self):
         with mock.patch.object(client_module, "_save_gift_state"), \
              mock.patch.object(self.client, "send") as send, \
              mock.patch.object(client_module.config, "GIFT_MILESTONES", [10]):
             self.client.reset_daily_counters_if_needed(
                 today="2026-07-22", now=1000.0
             )
-            with mock.patch.object(client_module.time, "time", return_value=1599.0):
+            self.client._connect_time = 1000.0
+            self.client._online_base = 99999.0
+            with mock.patch.object(client_module.time, "time", return_value=2000.0):
                 self.assertFalse(self.client.claim_online_gifts())
-            send.assert_not_called()
-            with mock.patch.object(client_module.time, "time", return_value=1600.0):
-                self.assertTrue(self.client.claim_online_gifts())
-        send.assert_called_once()
+        send.assert_not_called()
+        self.assertNotIn(10, self.client.claimed_gifts)
+
+
+class TestOnlineGiftServerState(unittest.TestCase):
+    def setUp(self):
+        self.client = GameClient("user", "token")
+        self.client._label = "hero"
+
+    def test_parses_online_gift_flags_from_data(self):
+        self.assertEqual(
+            {k: client_module._load_online_gift_flags()[k] for k in (10, 20, 30, 60, 90, 180)},
+            {10: 2, 20: 3, 30: 4, 60: 5, 90: 6, 180: 7},
+        )
+
+    def test_does_not_claim_without_server_bitflags_or_online_time(self):
+        with mock.patch.object(self.client, "send") as send, \
+             mock.patch.object(client_module.config, "GIFT_MILESTONES", [10]), \
+             mock.patch.object(client_module.time, "time", return_value=100.0):
+            self.client._server_online_seconds = 600
+            self.client._server_online_ts = 100.0
+            self.assertFalse(self.client.claim_online_gifts())
+            self.client._bitflags_loaded = True
+            self.client._bitflag_bytes = bytearray([0])
+            self.client._server_online_seconds = None
+            self.assertFalse(self.client.claim_online_gifts())
+        send.assert_not_called()
+
+    def test_claims_first_available_unclaimed_milestone_only(self):
+        with mock.patch.object(self.client, "send") as send, \
+             mock.patch.object(client_module.config, "GIFT_MILESTONES", [10, 20]), \
+             mock.patch.object(client_module.time, "time", return_value=100.0):
+            self.client._bitflags_loaded = True
+            self.client._bitflag_bytes = bytearray([0])
+            self.client._server_online_seconds = 1200
+            self.client._server_online_ts = 100.0
+            self.assertFalse(self.client.claim_online_gifts())
+        send.assert_called_once_with(0x57, b"\x02\x00\x03\x0a\x00\x00\x00\x01")
+        self.assertEqual(self.client._online_gift_pending, 10)
+
+    def test_success_response_marks_pending_flag_claimed(self):
+        self.client._bitflags_loaded = True
+        self.client._bitflag_bytes = bytearray([0])
+        self.client._online_gift_pending = 10
+        self.client._online_gift_pending_ts = 100.0
+        self.client._on_gift(b"\x00" * 7 + b"\x02\x00\x03\x00")
+        self.assertTrue(self.client._bitflag_get(2))
         self.assertIn(10, self.client.claimed_gifts)
+
+    def test_already_claimed_flag_skips_to_next_milestone(self):
+        with mock.patch.object(self.client, "send") as send, \
+             mock.patch.object(client_module.config, "GIFT_MILESTONES", [10, 20]), \
+             mock.patch.object(client_module.time, "time", return_value=100.0):
+            self.client._bitflags_loaded = True
+            self.client._bitflag_bytes = bytearray([0])
+            self.client._bitflag_set(2, True)
+            self.client._server_online_seconds = 1200
+            self.client._server_online_ts = 100.0
+            self.assertFalse(self.client.claim_online_gifts())
+        send.assert_called_once_with(0x57, b"\x02\x00\x03\x14\x00\x00\x00\x01")
 
 
 class TestDailyRolloverWiring(unittest.TestCase):
