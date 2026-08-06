@@ -42,6 +42,13 @@ class PartyStore(private val context: Context) {
                     a.optBoolean("enabled", true),
                 )
             }
+            val shopItems = o.optJSONObject("shop_items")
+            val legacyBuyHoPhu = o.optBoolean("buy_ho_phu", false)
+            val legacyBuyThienChau = o.optBoolean("buy_thien_chau", false)
+            val legacyBuyBaoHop = o.optBoolean("buy_bao_hop", false)
+            val buyHoPhu = shopItems?.optBoolean("ho_phu", legacyBuyHoPhu) ?: legacyBuyHoPhu
+            val buyThienChau = shopItems?.optBoolean("thien_chau", legacyBuyThienChau) ?: legacyBuyThienChau
+            val buyBaoHop = shopItems?.optBoolean("bao_hop", legacyBuyBaoHop) ?: legacyBuyBaoHop
             Party(
                 name = o.getString("name"),
                 serverKey = o.getString("server_key"),
@@ -63,9 +70,11 @@ class PartyStore(private val context: Context) {
                 fightLegionBoss = o.optBoolean("fight_legion_boss", true),
                 doVanTieu = o.optBoolean("do_van_tieu", true),
                 autoSellNoiDat = o.optBoolean("auto_sell_noi_dat", true),
-                buyHoPhu = o.optBoolean("buy_ho_phu", false),
-                buyBaoHop = o.optBoolean("buy_bao_hop", false),
-                baoHopXuThreshold = o.optInt("bao_hop_xu_threshold", 1000000),
+                autoBuyShop = o.optBoolean("auto_buy_shop", buyHoPhu || buyThienChau || buyBaoHop),
+                buyHoPhu = buyHoPhu,
+                buyThienChau = buyThienChau,
+                buyBaoHop = buyBaoHop,
+                baoHopXuThreshold = o.optInt("bao_hop_xu_threshold", 10000000),
                 buyHp = o.optBoolean("buy_hp", false),
                 hpQty = o.optInt("hp_qty", 9999),
                 hpThresh = o.optInt("hp_thresh", 500000),
@@ -102,7 +111,14 @@ class PartyStore(private val context: Context) {
             o.put("fight_legion_boss", p.fightLegionBoss)
             o.put("do_van_tieu", p.doVanTieu)
             o.put("auto_sell_noi_dat", p.autoSellNoiDat)
+            o.put("auto_buy_shop", p.autoBuyShop)
+            o.put("shop_items", JSONObject().apply {
+                put("ho_phu", p.buyHoPhu)
+                put("thien_chau", p.buyThienChau)
+                put("bao_hop", p.buyBaoHop)
+            })
             o.put("buy_ho_phu", p.buyHoPhu)
+            o.put("buy_thien_chau", p.buyThienChau)
             o.put("buy_bao_hop", p.buyBaoHop)
             o.put("bao_hop_xu_threshold", p.baoHopXuThreshold)
             o.put("buy_hp", p.buyHp)

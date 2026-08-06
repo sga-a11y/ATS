@@ -1,7 +1,7 @@
 """Parse Npc_C.dat (game data) -> pet_hedoanh.json (ten pet -> {he, doanh}).
 
 Npc_C.dat: [count 4B] + records. Moi record co [namelen 2B][name UTF-16LE][...fields].
-  - doanh = byte ngay sau ten (pos 0):  1=Hoang 2=Nguy 3=Thuc 4=Ngo 5=Du
+  - doanh = byte ngay sau ten (pos 0):  1=Huynh 2=Nguy 3=Thuc 4=Ngo 5=Du
   - he    = byte pos 50 sau ten:        1=Dia 2=Thuy 3=Hoa 4=Phong
 (Giai ma tu 6 pet biet: Quan Vu, Thai Van Co, Tuong, Cuu Soi, Tao Thao, Luc Ton, Truong Giac.)
 
@@ -11,7 +11,7 @@ Mac dinh doc gamedata_Npc.dat o thu muc goc.
 import sys, os, json
 
 HE = {1: "Dia", 2: "Thuy", 3: "Hoa", 4: "Phong"}
-DOANH = {1: "Hoang", 2: "Nguy", 3: "Thuc", 4: "Ngo", 5: "Du"}
+DOANH = {1: "Huynh", 2: "Nguy", 3: "Thuc", 4: "Ngo", 5: "Du"}
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     known = {"Quan Vũ": ("Phong", "Thuc"), "Thái Văn Cơ": ("Hoa", "Du"),
              "Tưởng Nghĩa Cừ": ("Dia", "Du"), "Cửu Sởi": ("Thuy", "Du"),
              "Tào Tháo": ("Hoa", "Nguy"), "Lục Tốn": ("Thuy", "Ngo"),
-             "Trương Giác": ("Dia", "Hoang")}
+             "Trương Giác": ("Dia", "Huynh")}
     ok = 0
     for nm, (he, dn) in known.items():
         got = table.get(nm)

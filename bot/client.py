@@ -736,90 +736,6 @@ def _save_legion_boss_next(label: str, next_ts: float):
             pass
 
 
-# ---- State VAN TIEU: chi luu SO LUOT da gui hom nay (claim doc theo gio server tu panel) ----
-_VANTIEU_FILE = "vantieu_state.json"
-
-def _vantieu_count(label: str) -> int:
-    """So luot van tieu DA gui hom nay (local fallback; ngay moi -> 0)."""
-    import json, os, datetime
-    today = datetime.date.today().isoformat()
-    if not os.path.exists(_VANTIEU_FILE):
-        return 0
-    try:
-        with open(_VANTIEU_FILE, encoding="utf-8") as f:
-            d = json.load(f)
-    except Exception:
-        return 0
-    ent = d.get(label)
-    return ent.get("count", 0) if (ent and ent.get("date") == today) else 0
-
-def _vantieu_set_count(label: str, count: int):
-    import json, os, datetime
-    today = datetime.date.today().isoformat()
-    with _gift_lock:
-        d = {}
-        if os.path.exists(_VANTIEU_FILE):
-            try:
-                with open(_VANTIEU_FILE, encoding="utf-8") as f:
-                    d = json.load(f)
-            except Exception:
-                d = {}
-        d = {k: v for k, v in d.items() if v.get("date") == today}   # don ngay cu
-        d[label] = {"date": today, "count": count}
-        try:
-            with open(_VANTIEU_FILE, "w", encoding="utf-8") as f:
-                json.dump(d, f)
-        except Exception:
-            pass
-
-
-# ---- State MUA SHOP: chi mua 1 lan/ngay/acc (luu ben qua Stop-Start/relogin trong ngay) ----
-try:
-    from ._appdir import app_dir as _shop_app_dir
-    import os as _os_shop
-    _SHOP_FILE = _os_shop.path.join(_shop_app_dir(), "shop_state.json")
-except Exception:
-    _SHOP_FILE = "shop_state.json"
-
-def _shop_done_today(label: str, key: str) -> bool:
-    """Da mua 'key' (vd 'ho_phu'/'bao_hop') cua acc 'label' hom nay chua?"""
-    import json, os, datetime
-    today = datetime.date.today().isoformat()
-    if not os.path.exists(_SHOP_FILE):
-        return False
-    try:
-        with open(_SHOP_FILE, encoding="utf-8") as f:
-            d = json.load(f)
-    except Exception:
-        return False
-    ent = d.get(label)
-    return bool(ent and ent.get("date") == today and key in ent.get("bought", []))
-
-def _shop_mark_done(label: str, key: str):
-    import json, os, datetime
-    today = datetime.date.today().isoformat()
-    with _gift_lock:
-        d = {}
-        if os.path.exists(_SHOP_FILE):
-            try:
-                with open(_SHOP_FILE, encoding="utf-8") as f:
-                    d = json.load(f)
-            except Exception:
-                d = {}
-        d = {k: v for k, v in d.items() if v.get("date") == today}   # don ngay cu
-        ent = d.get(label)
-        if not ent or ent.get("date") != today:
-            ent = {"date": today, "bought": []}
-        if key not in ent["bought"]:
-            ent["bought"].append(key)
-        d[label] = ent
-        try:
-            with open(_SHOP_FILE, "w", encoding="utf-8") as f:
-                json.dump(d, f)
-        except Exception:
-            pass
-
-
 class GameClient:
     def __init__(self, user_id: str, access_token: str, host: str = None, server_id: int = 1):
         self.user_id = user_id
@@ -906,6 +822,13 @@ class GameClient:
         self.train_block_spot = None
         self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
         self._last_digioi_ts = 0.0   # thoi diem nhan timer 0x1b gan nhat (0 = chua bao gio)
+        self.role_counts = {}        # S2C 0x55 RoleCount: sid -> (value, max)
+        self.shop_ho_phu_count = None # 0x0456 = so lan da mua Di Gioi Ho Phu hom nay
+        self.shop_ho_phu_max = 3
+        self.shop_thien_chau_count = None # 0x002b = so lan da mua Hop Thien Chau hom nay
+        self.shop_thien_chau_max = 1
+        self.shop_bao_hop_count = None # 0x0016 = so lan da mua Trieu Goi Bao Hop hom nay
+        self.shop_bao_hop_max = 1
         self.dungeon_runs_today = None  # so luot dungeon da danh hom nay (S2C 0x55 stat 0x9b)
         self.xu = None               # so XU hien co (tu S2C 0x1a id=4) - None = chua nhan
         self._decompose_seq = 0      # tang moi khi nhan S2C 0x59 (xac nhan phan giai 1 cuon xong)
@@ -974,7 +897,8 @@ class GameClient:
         # Setting party "Tu ban Noi Dat" (mac dinh BAT). run_party_digioi.py chi bat setting nay
         # cho mode train/city, va pre-route chi thuc hien khi random tele ve Ng.Thanh.
         self.auto_sell_noi_dat = True
-        self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - tra VANTIEU_REQUESTS
+        self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - fallback VANTIEU_REQUESTS
+        self.vantieu_req = None      # {he, doanh} decode tu DispatchBonus_C.dat (0400 effect1/effect2)
         self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
         self.vantieu_unlocked = 1    # so slot DA MO (S2C 0x56 0600 [N]); slot con lai khoa = can vang
         self._dg_query = None        # raw S2C 0x54 (tra loi query luot dungeon)
@@ -1467,6 +1391,40 @@ class GameClient:
                 finally:
                     self._capture_mob_packet(opcode, pkt)
 
+    def _apply_role_counts(self, body: bytes):
+        """Doc S2C 0x55 RoleCount body: 0100 + count + records."""
+        if len(body) < 16 or body[:2] != b"\x01\x00":
+            return
+        cnt = int.from_bytes(body[2:6], "little")
+        off, n = 6, 0
+        while n < cnt and off + 10 <= len(body):
+            sid = int.from_bytes(body[off:off + 2], "little")
+            val = int.from_bytes(body[off + 2:off + 6], "little")
+            mx = int.from_bytes(body[off + 6:off + 10], "little")
+            self.role_counts[sid] = (val, mx)
+            if sid == 0x1b:                   # so phut Di Gioi
+                self.digioi_minutes = val & 0xFFFF
+                self._last_digioi_ts = time.time()
+            elif sid == 0x08:                 # van tieu: so luot DA gui hom nay + gioi han
+                self.vantieu_started = val
+                self.vantieu_max = mx or 3
+            elif sid == 0x2a:                 # BOSS QUAN DOAN: so lan DA danh hom nay + gioi han (X/3)
+                self.legion_boss_count = val   # xac nhan: 0x55 id 0x2a cur=0/1/2, max=3 (X/3)
+                self.legion_boss_max = mx or 3
+            elif sid == 0x0456:               # Shop: Di Gioi Ho Phu 0xff8c (Moi ngay X/3)
+                self.shop_ho_phu_count = val
+                self.shop_ho_phu_max = mx or 3
+            elif sid == 0x002b:               # Shop: Hop Thien Chau 0xb68a (Moi ngay X/1)
+                self.shop_thien_chau_count = val
+                self.shop_thien_chau_max = mx or 1
+            elif sid == 0x0016:               # Shop: Trieu Goi Bao Hop 0xb554 (Moi ngay X/1)
+                self.shop_bao_hop_count = val
+                self.shop_bao_hop_max = mx or 1
+            # KHONG doc 0x9b lam "luot dungeon": login bulk gui 0x9b=9 (KHONG khop thuc te
+            # 1-2 luot) -> sai -> dungeon dem THUAN LOCAL (checkin_state.json).
+            off += 10
+            n += 1
+
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
         self._observe_team_dungeon_packet(opcode, pkt)
@@ -1865,26 +1823,7 @@ class GameClient:
         elif opcode == 0x55 and pkt[7:9] == b"\x01\x00" and len(pkt) >= 17:
             # BANG STAT: [01 00][count 4B] + count*([id 2B][val 4B][max 4B] = 10B).
             # Login gui FULL (~1500 stat); update le gui count=1. Doc digioi/dungeon/van tieu.
-            body = pkt[7:]
-            cnt = int.from_bytes(body[2:6], "little")
-            off, n = 6, 0
-            while n < cnt and off + 10 <= len(body):
-                sid = int.from_bytes(body[off:off + 2], "little")
-                val = int.from_bytes(body[off + 2:off + 6], "little")
-                mx = int.from_bytes(body[off + 6:off + 10], "little")
-                if sid == 0x1b:                   # so phut Di Gioi
-                    self.digioi_minutes = val & 0xFFFF
-                    self._last_digioi_ts = time.time()
-                elif sid == 0x08:                 # van tieu: so luot DA gui hom nay + gioi han
-                    self.vantieu_started = val
-                    self.vantieu_max = mx or 3
-                elif sid == 0x2a:                 # BOSS QUAN DOAN: so lan DA danh hom nay + gioi han (X/3)
-                    self.legion_boss_count = val   # xac nhan: 0x55 id 0x2a cur=0/1/2, max=3 (X/3)
-                    self.legion_boss_max = mx or 3
-                # KHONG doc 0x9b lam "luot dungeon": login bulk gui 0x9b=9 (KHONG khop thuc te
-                # 1-2 luot) -> sai -> dungeon dem THUAN LOCAL (checkin_state.json).
-                off += 10
-                n += 1
+            self._apply_role_counts(pkt[7:])
         elif opcode == 0x56:                      # van tieu (escort) panel/status
             self._on_vantieu(pkt)
         elif opcode == 0x1f and pkt[7:9] == b"\x06\x00":  # list pet KHO (vận tiêu) luc login
@@ -2636,6 +2575,7 @@ class GameClient:
         self.vantieu_started = None
         self.vantieu_slots = {}
         self.vantieu_req_code = None
+        self.vantieu_req = None
         self.dungeon_runs_today = None
         self._gift_status = {}
         self._gift_recv = 0
@@ -3376,15 +3316,50 @@ class GameClient:
         log.info("[%s] Gacha CARD hang ngay (xu con ~%d)", self._label, self.xu)
 
     # Gói mua shop = opcode 0x42 (cùng họ gacha), bắn thẳng 1 gói, không cần mở shop/reveal.
-    #   0100 [tab] [sub] [slot] [item_id 2B] [gia 2B] [qty] 0000   (capture ts_shop.pcap)
+    #   0100 [shop] [tab] [page] [slot] [item_id 2B] [gia 2B] [qty 1B] 0000   (capture ts_shop.pcap)
+    def _shop42_payload(self, shop: int, tab: int, page: int, slot: int,
+                        item_id: int, price: int, qty: int) -> bytes:
+        return (
+            b"\x01\x00" + bytes([shop & 0xFF, tab & 0xFF, page & 0xFF, slot & 0xFF]) +
+            int(item_id).to_bytes(2, "little") +
+            int(price).to_bytes(2, "little") +
+            bytes([int(qty) & 0xFF]) +
+            b"\x00\x00"
+        )
+
     def buy_di_gioi_ho_phu(self):
-        """Mua 3 Dị Giới Hộ Phù (0xff8c) - 1 lan/ngay. Replay NGUYEN goi capture (gia bao san trong
-        goi -> khong lo don/tong). Mua bang currency Di Gioi (KHONG phai xu) -> khong dung xu."""
-        if _shop_done_today(self._label, "ho_phu"):
+        """Mua Di Gioi Ho Phu (0xff8c) theo counter server 0x55 sid=0x0456 (X/3)."""
+        cur = self.shop_ho_phu_count
+        mx = self.shop_ho_phu_max or 3
+        if cur is not None and cur >= mx:
+            log.info("[%s] Mua shop: Di Gioi Ho Phu da %d/%d theo server -> bo qua",
+                     self._label, cur, mx)
             return
-        self.send(0x42, bytes.fromhex("0100010103018cff2400030000"))   # 3 Ho Phu
-        _shop_mark_done(self._label, "ho_phu")
-        log.info("[%s] Mua shop: 3 Dị Giới Hộ Phù", self._label)
+        qty = mx if cur is None else max(0, mx - cur)
+        if qty <= 0:
+            return
+        self.send(0x42, self._shop42_payload(1, 1, 3, 1, 0xff8c, 36, qty))
+        if cur is not None:
+            self.shop_ho_phu_count = min(mx, cur + qty)  # server 0x55 se ghi de lai neu khac
+        log.info("[%s] Mua shop: %d Di Gioi Ho Phu (server truoc do: %s/%d)",
+                 self._label, qty, "?" if cur is None else cur, mx)
+
+    def buy_hop_thien_chau(self):
+        """Mua Hộp Thiên Châu (0xb68a) theo counter server 0x55 sid=0x002b (X/1)."""
+        cur = self.shop_thien_chau_count
+        mx = self.shop_thien_chau_max or 1
+        if cur is not None and cur >= mx:
+            log.info("[%s] Mua shop: Hop Thien Chau da %d/%d theo server -> bo qua",
+                     self._label, cur, mx)
+            return
+        qty = 1 if cur is None else max(0, min(1, mx - cur))
+        if qty <= 0:
+            return
+        self.send(0x42, self._shop42_payload(1, 1, 3, 6, 0xb68a, 39, qty))
+        if cur is not None:
+            self.shop_thien_chau_count = min(mx, cur + qty)
+        log.info("[%s] Mua shop: %d Hop Thien Chau (server truoc do: %s/%d)",
+                 self._label, qty, "?" if cur is None else cur, mx)
 
     def use_di_gioi_ho_phu(self) -> bool:
         """Dung 1 Di Gioi Ho Phu (0xff8c) theo slot tui live.
@@ -3399,9 +3374,11 @@ class GameClient:
         return ok
 
     def buy_trieu_goi_bao_hop(self, xu_threshold: int):
-        """Mua 1 Triệu Gọi Bảo Hộp (0xb554, gia 60000 xu) - 1 lan/ngay, CHI khi xu HIEN CO >
-        xu_threshold. Doc xu giong gacha (_wait_xu + self.xu)."""
-        if _shop_done_today(self._label, "bao_hop"):
+        """Mua Trieu Goi Bao Hop (0xb554) theo counter server 0x55 sid=0x0016 (X/1)."""
+        cur = self.shop_bao_hop_count
+        mx = self.shop_bao_hop_max or 1
+        if cur is not None and cur >= mx:
+            log.info("[%s] Mua Bao Hop: da %d/%d theo server -> bo qua", self._label, cur, mx)
             return
         self._wait_xu()
         if self.xu is None:
@@ -3410,11 +3387,21 @@ class GameClient:
         if self.xu <= xu_threshold:
             log.info("[%s] Mua Bảo Hộp: xu (%d) chưa vượt %d -> bỏ qua", self._label, self.xu, xu_threshold)
             return
-        self.send(0x42, bytes.fromhex("01000101030754b560ea010000"))   # 1 Bao Hop (54b5, gia ea60)
-        self.xu -= 60000
-        _shop_mark_done(self._label, "bao_hop")
-        log.info("[%s] Mua shop: 1 Triệu Gọi Bảo Hộp (xu %d > %d, còn ~%d)",
-                 self._label, self.xu + 60000, xu_threshold, self.xu)
+        qty = mx if cur is None else max(0, mx - cur)
+        if qty <= 0:
+            return
+        cost = 60000 * qty
+        if self.xu < cost:
+            log.info("[%s] Mua Bao Hop: xu (%d) khong du %d cai (can %d) -> bo qua",
+                     self._label, self.xu, qty, cost)
+            return
+        before = self.xu
+        self.send(0x42, self._shop42_payload(1, 1, 3, 7, 0xb554, 60000, qty))
+        self.xu -= cost
+        if cur is not None:
+            self.shop_bao_hop_count = min(mx, cur + qty)  # server 0x55 se ghi de lai neu khac
+        log.info("[%s] Mua shop: %d Trieu Goi Bao Hop (server truoc do: %s/%d, xu %d > %d, con ~%d)",
+                 self._label, qty, "?" if cur is None else cur, mx, before, xu_threshold, self.xu)
 
     def _learned(self) -> dict:
         """Cache item da hoc theo TID (template) - CHUNG mọi acc: item giong nhau = tid giong = heal giong.
@@ -4058,18 +4045,42 @@ class GameClient:
             log.info("[%s] Donate quan doan: tong %d nguyen lieu rac (%d slot) -> don tui",
                      self._label, total, len(targets))
 
+    @staticmethod
+    def _decode_vantieu_req(kind: int, effect1: int, effect2: int):
+        """Decode S2C 0x56/0400 or 0x56/0300 effect ids -> {he, doanh}.
+
+        Client game tra `DispatchBonus_C.dat`: effect id -> conditionKind/value.
+        Giu `vantieu_requests.json` lam fallback cho data cu/chua ship asset moi.
+        """
+        req = {}
+        effects = getattr(config, "VANTIEU_DISPATCH_EFFECTS", {}) or {}
+        for effect_id in (effect1, effect2):
+            info = effects.get(str(effect_id)) or effects.get(effect_id) or {}
+            if info.get("he"):
+                req["he"] = info.get("he")
+            if info.get("doanh"):
+                req["doanh"] = info.get("doanh")
+        if req:
+            return req
+        code = bytes([kind & 0xFF, effect1 & 0xFF, effect2 & 0xFF]).hex()
+        return (getattr(config, "VANTIEU_REQUESTS", {}) or {}).get(code)
+
     def _on_vantieu(self, pkt: bytes):
-        """S2C 0x56 panel: [03 00][count 1B] + count*[slot 1B][start 8B OLE][end 8B OLE]
-        [x 1B][pet 1B][yy 2B] (21B/entry). Doc slot + GIO KET THUC (OLE date) vao vantieu_slots.
-        A=0 (toan byte 00) = slot rong (vua claim)."""
+        """S2C 0x56 panel Dispatch:
+          0300: [count] + count*[slot][start OLE][end OLE][kind][innIndex][effect1][effect2]
+          0400: [kind][effect1][effect2] = yeu cau slot trong hien tai.
+        """
         body = pkt[7:]
         if len(body) < 3:
             return
         if body[0:2] == b"\x06\x00":          # so slot DA MO (con lai khoa = can vang unlock)
             self.vantieu_unlocked = body[2]
             return
-        if body[0:2] == b"\x04\x00" and len(body) >= 5:  # MA YEU CAU (b0 b1 b2) cho slot ke tiep
+        if body[0:2] == b"\x04\x00" and len(body) >= 5:  # [kind][effect1][effect2] cho slot trong hien tai
             self.vantieu_req_code = body[2:5].hex()
+            self.vantieu_req = self._decode_vantieu_req(body[2], body[3], body[4])
+            log.info("[%s] Van tieu req hien tai: code=%s -> %s",
+                     self._label, self.vantieu_req_code, self.vantieu_req)
             return
         if body[0:2] != b"\x03\x00":
             return
@@ -4084,11 +4095,22 @@ class GameClient:
                 end_ole = struct.unpack("<d", body[off + 9:off + 17])[0]
             except Exception:
                 break
-            pet = body[off + 18]
+            kind = body[off + 17]
+            pet = body[off + 18]       # innIndex server dang cho chay trong slot nay
+            effect1 = body[off + 19]
+            effect2 = body[off + 20]
+            req = self._decode_vantieu_req(kind, effect1, effect2)
             if start_ole <= 0:                 # slot rong (da claim)
                 self.vantieu_slots.pop(slot, None)
             else:
-                self.vantieu_slots[slot] = {"end": end_ole, "pet": pet}
+                self.vantieu_slots[slot] = {
+                    "end": end_ole,
+                    "pet": pet,
+                    "kind": kind,
+                    "effect1": effect1,
+                    "effect2": effect2,
+                    "req": req,
+                }
             off += 21
 
     def _on_vantieu_roster(self, pkt: bytes):
@@ -4125,12 +4147,17 @@ class GameClient:
         """cands = list (inn_index, ten_pet). Chon con KHOP 'req' (he,doanh) nhat trong con CON TRONG.
         Score: dung ca he+doanh=2, dung 1=1, ko khop=0 (van gui de duoc qua co ban).
         Tra ve inn_index, None = het con trong. (req luon DA BIET - ma la xu ly o do_van_tieu.)"""
+        def _norm(v):
+            return "Huynh" if v == "Hoang" else v
+
         best, best_score, best_nm, best_hd = None, -1, None, None
+        req_he = _norm(req.get("he"))
+        req_doanh = _norm(req.get("doanh"))
         for idx, nm in cands:
             if idx in used:
                 continue
             hd = config.PET_HEDOANH.get(nm, {})
-            score = (hd.get("he") == req["he"]) + (hd.get("doanh") == req["doanh"])
+            score = (_norm(hd.get("he")) == req_he) + (_norm(hd.get("doanh")) == req_doanh)
             if score > best_score:
                 best, best_score, best_nm, best_hd = idx, score, nm, hd
         if best is None:
@@ -4147,24 +4174,33 @@ class GameClient:
           gui pet:   0x56 0200 [pet_index]
           nhan qua:  0x56 0500 [slot]
         CLAIM theo GIO KET THUC tu server (now >= end), KHONG hardcode thoi luong.
-        So luot/ngay = max(local_count, server vantieu_started) so voi vantieu_max (3).
+        So luot/ngay = server RoleCount id=8.
         TRA VE: epoch thoi diem CAN GOI LAI (escort xong som nhat) hoac None (het viec hom nay)
         -> caller hen dung gio, KHONG check mu dinh ky."""
         import datetime
         if not getattr(config, "VANTIEU_ENABLE", False):
             return None
+        def _refresh_panel(delay=1.2):
+            self.vantieu_slots = {}
+            self.vantieu_req_code = None
+            self.vantieu_req = None
+            self.send(0x56, b"\x01\x00")      # mo panel
+            time.sleep(delay)
+
         pets = list(getattr(config, "VANTIEU_PETS", []) or [])
-        self.vantieu_slots = {}           # reset -> panel gui lai trang thai moi
-        self.send(0x56, b"\x01\x00")      # mo panel
-        time.sleep(1.2)
+        _refresh_panel()
         now = datetime.datetime.now()
         # 1) NHAN qua slot da xong (now >= gio ket thuc)
+        claimed = False
         for slot, info in list(self.vantieu_slots.items()):
             if now >= self._ole_to_dt(info["end"]):
                 self.send(0x56, b"\x05\x00" + bytes([slot & 0xFF]))
                 time.sleep(0.5)
                 self.vantieu_slots.pop(slot, None)
+                claimed = True
                 log.info("[%s] Van tieu: nhan qua slot %d (da xong)", self._label, slot)
+        if claimed:
+            _refresh_panel(0.9)
         # 2) GUI pet moi: CHI vao slot DA MO (1..vantieu_unlocked, KHONG tu unlock = ton vang)
         #    va trong gioi han luot/ngay (vantieu_max). slot dang chay -> bo qua.
         # cands = list (inn_index, ten_pet) de match. Uu tien ROSTER tu server (0x1f, AUTO);
@@ -4173,45 +4209,69 @@ class GameClient:
             cands = [(i, self.vantieu_roster[i]) for i in sorted(self.vantieu_roster)]
         else:
             cands = [(i + 1, nm) for i, nm in enumerate(getattr(config, "VANTIEU_PETS_NAMES", []) or [])]
-        # Smart match: 0400 = ma yeu cau (ON DINH khi panel ALL-FREE 030000, khong co escort chay).
-        # Khi co escort chay (vantieu_slots khong rong), 0400 = token escort do, KHONG phai yeu cau
-        # slot trong -> do_van_tieu chi smart match khi vantieu_slots RONG (xem vong loop ben duoi).
-        smart = bool(cands) and bool(getattr(config, "VANTIEU_REQUESTS", {}))
+        # Smart match: 0400 = [kind][effect1][effect2] cua job slot trong hien tai. Gui xong 1 pet
+        # thi refresh panel de server tra yeu cau moi cho slot tiep theo (slot 1/2 phan biet qua 0300).
+        smart = bool(cands) and (
+            bool(getattr(config, "VANTIEU_DISPATCH_EFFECTS", {})) or
+            bool(getattr(config, "VANTIEU_REQUESTS", {}))
+        )
         if pets or smart:
             daily_cap = self.vantieu_max or 3
             unlocked = self.vantieu_unlocked or 1
-            started = max(_vantieu_count(self._label), self.vantieu_started or 0)
-            occupied = set(self.vantieu_slots)
-            free_slots = [s for s in range(1, unlocked + 1) if s not in occupied]
+            # Client game hien "So luot mien phi hom nay: X/Y" bang
+            # RoleCount.Get(ERoleCount.Dispatch=8) / RoleCount.Max(...). Khong doan local.
+            if self.vantieu_started is None:
+                log.info("[%s] Van tieu: chua co RoleCount 8 tu server -> chua gui pet moi",
+                         self._label)
+                started = daily_cap
+            else:
+                started = self.vantieu_started
+            sent_before = started
             used, i = set(), 0
-            while started < daily_cap and free_slots:
-                if smart and not self.vantieu_slots:
-                    # ALL-FREE (chua escort nao chay) -> 0400 = yeu cau slot trong, CHUAN -> smart match.
-                    req = config.VANTIEU_REQUESTS.get(self.vantieu_req_code or "")
+            while started < daily_cap:
+                unlocked = self.vantieu_unlocked or 1
+                occupied = set(self.vantieu_slots)
+                free_slots = [s for s in range(1, unlocked + 1) if s not in occupied]
+                if not free_slots:
+                    break
+                if smart:
+                    req = self.vantieu_req or config.VANTIEU_REQUESTS.get(self.vantieu_req_code or "")
                     if req is None:            # MA LA (hiem neu bang 20/20 du) -> GUI DAI con trong
                         log.warning("[%s] Van tieu: ma yeu cau '%s' chua co trong bang -> gui dai con "
-                                    "trong. Mo panel xem he/doanh roi them vao vantieu_requests.json.",
+                                    "trong. Can soi 0x56/0400 neu lap lai.",
                                     self._label, self.vantieu_req_code)
                         pet = next((idx for idx, _ in cands if idx not in used), None)
                     else:
                         pet = self._match_vantieu_pet(cands, used, req)
                     if pet is None:            # het con trong
                         break
-                elif smart:
-                    # Co escort chay -> 0400 = token escort do (KHONG phai yeu cau slot trong)
-                    # -> chua doc duoc yeu cau slot 2 -> DUNG (chi smart slot 1). Slot 2 to-do.
-                    break
                 else:                          # gui theo index co dinh (VANTIEU_PETS)
                     if i >= len(pets):
                         break
                     pet = pets[i]; i += 1
-                slot = free_slots.pop(0)
+                slot = free_slots[0]
                 self.send(0x56, b"\x02\x00" + bytes([pet & 0xFF]))
                 time.sleep(0.9)
                 used.add(pet); started += 1
-                _vantieu_set_count(self._label, started)
-                log.info("[%s] Van tieu: gui pet #%d -> slot %d (da gui %d/%d, %d slot mo)",
+                if self.vantieu_started is not None:
+                    self.vantieu_started = max(self.vantieu_started, started)
+                log.info("[%s] Van tieu: gui pet #%d -> slot %d (du kien, da gui %d/%d, %d slot mo)",
                          self._label, pet, slot, started, daily_cap, unlocked)
+                _refresh_panel(0.9)
+            if started == sent_before:
+                occupied = set(self.vantieu_slots)
+                free_slots = [s for s in range(1, (self.vantieu_unlocked or 1) + 1) if s not in occupied]
+                if started >= daily_cap:
+                    log.info("[%s] Van tieu: da gui du %d/%d luot hom nay -> bo qua",
+                             self._label, started, daily_cap)
+                elif not free_slots:
+                    log.info("[%s] Van tieu: %d/%d slot dang chay -> cho xong roi gui tiep",
+                             self._label, len(occupied), self.vantieu_unlocked or 1)
+                else:
+                    log.info("[%s] Van tieu: khong co pet phu hop/con trong de gui -> bo qua",
+                             self._label)
+        else:
+            log.info("[%s] Van tieu: chua co danh sach pet van tieu -> bo qua", self._label)
         # HEN GIO: escort dang chay xong som nhat (panel da cap nhat slot moi gui qua _on_vantieu).
         ends = [self._ole_to_dt(info["end"]).timestamp() for info in self.vantieu_slots.values()]
         if ends:

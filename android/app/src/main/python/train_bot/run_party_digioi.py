@@ -787,15 +787,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # Van tieu: nhan qua xong + gui pet; tra ve gio check tiep. Cong tac "Van tieu" trong
             # Cai dat nang cao (mac dinh CO tick - giu hanh vi cu); tat -> khong lam + khong hen gio.
             next_vantieu = c.do_van_tieu() if pcfg.get("do_van_tieu", True) else None
-            # MUA SHOP (Cai dat nang cao, mac dinh TAT): 1 lan/ngay/acc (luu ben shop_state.json).
-            #  - Di Gioi Ho Phu: tick -> mua 3 cai (currency Di Gioi).
-            #  - Trieu Goi Bao Hop: tick + xu HIEN CO > nguong -> mua 1 (gia 60k xu).
-            if pcfg.get("buy_ho_phu"):
-                try: c.buy_di_gioi_ho_phu()
-                except Exception as e: log.warning("[%s] loi mua Ho Phu: %s", label, e)
-            if pcfg.get("buy_bao_hop"):
-                try: c.buy_trieu_goi_bao_hop(int(pcfg.get("bao_hop_xu_threshold", 1000000)))
-                except Exception as e: log.warning("[%s] loi mua Bao Hop: %s", label, e)
+            # MUA SHOP (Cai dat nang cao, mac dinh TAT): master auto_buy_shop + list shop.
+            # Dua theo RoleCount server 0x55 neu biet counter; item chua ro counter thi server tu reject.
+            if pcfg.get("auto_buy_shop"):
+                _shop_items = pcfg.get("shop_items") or {}
+                if pcfg.get("buy_ho_phu") or _shop_items.get("ho_phu"):
+                    try:
+                        log.info("[%s] Mua shop: setting Ho Phu bat -> check mua 3 cai/ngay", label)
+                        c.buy_di_gioi_ho_phu()
+                    except Exception as e: log.warning("[%s] loi mua Ho Phu: %s", label, e)
+                if pcfg.get("buy_thien_chau") or _shop_items.get("thien_chau"):
+                    try:
+                        c.buy_hop_thien_chau()
+                    except Exception as e: log.warning("[%s] loi mua Hop Thien Chau: %s", label, e)
+                if pcfg.get("buy_bao_hop") or _shop_items.get("bao_hop"):
+                    try: c.buy_trieu_goi_bao_hop(int(pcfg.get("bao_hop_xu_threshold", 10000000)))
+                    except Exception as e: log.warning("[%s] loi mua Bao Hop: %s", label, e)
             # MUA HP/SP (Cai dat nang cao, mac dinh TAT): neu du tru HP/SP < nguong -> di Trac Quan
             # mua Vien Hanh Khi (+62HP) / Thien Kim Du (+62SP). Gop HP+SP 1 chuyen. 1 lan/ngay/acc.
             if pcfg.get("buy_hp") or pcfg.get("buy_sp"):
@@ -3430,12 +3437,13 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         digioi_mode="party", event_key="", leaders=None, has_leader=True,
                         use_phuc_than=False, use_digioi_ho_phu=False,
                         fight_legion_boss=True, do_van_tieu=True,
-                        buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=1000000,
+                        buy_ho_phu=False, buy_bao_hop=False, bao_hop_xu_threshold=10000000,
                         di_gioi_level=2, auto_sell_noi_dat=True,
                         buy_hp=False, hp_qty=9999, hp_thresh=500000,
                         buy_sp=False, sp_qty=9999, sp_thresh=500000,
                         claim_offline_exp=True,
-                        auto_team_dungeon=True, team_dungeons=None):
+                        auto_team_dungeon=True, team_dungeons=None,
+                        auto_buy_shop=None, buy_thien_chau=False):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -3463,7 +3471,14 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "fight_legion_boss": bool(fight_legion_boss),
         "do_van_tieu": bool(do_van_tieu),
         "auto_sell_noi_dat": bool(auto_sell_noi_dat),
-        "buy_ho_phu": bool(buy_ho_phu), "buy_bao_hop": bool(buy_bao_hop),
+        "auto_buy_shop": bool(auto_buy_shop) if auto_buy_shop is not None else bool(buy_ho_phu or buy_thien_chau or buy_bao_hop),
+        "shop_items": config.normalize_shop_items(None, {
+            "ho_phu": bool(buy_ho_phu),
+            "thien_chau": bool(buy_thien_chau),
+            "bao_hop": bool(buy_bao_hop),
+        }),
+        "buy_ho_phu": bool(buy_ho_phu), "buy_thien_chau": bool(buy_thien_chau),
+        "buy_bao_hop": bool(buy_bao_hop),
         "bao_hop_xu_threshold": int(bao_hop_xu_threshold),
         "di_gioi_level": int(di_gioi_level),
         "buy_hp": bool(buy_hp), "hp_qty": int(hp_qty), "hp_thresh": int(hp_thresh),

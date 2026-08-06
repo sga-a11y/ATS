@@ -69,6 +69,7 @@ class TestDailyRollover(unittest.TestCase):
         self.client.vantieu_started = 3
         self.client.vantieu_slots = {1: {"end": 1.0, "pet": 2}}
         self.client.vantieu_req_code = "aabbcc"
+        self.client.vantieu_req = {"he": "Dia", "doanh": "Huynh"}
         self.client.dungeon_runs_today = 2
         self.client._gift_status = {1: 0}
         self.client._gift_recv = 4
@@ -106,6 +107,7 @@ class TestDailyRollover(unittest.TestCase):
         self.assertIsNone(self.client.vantieu_started)
         self.assertEqual(self.client.vantieu_slots, {})
         self.assertIsNone(self.client.vantieu_req_code)
+        self.assertIsNone(self.client.vantieu_req)
         self.assertIsNone(self.client.dungeon_runs_today)
         self.assertEqual(self.client._gift_status, {})
         self.assertEqual(self.client._gift_recv, 0)

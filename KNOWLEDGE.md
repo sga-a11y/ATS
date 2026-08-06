@@ -539,6 +539,22 @@ rồi `0x61 02 00 [idx]` (bot cũ gửi cố định `020002` = idx 2 = cấp 25
   (`0f00 [slot=0x15][qty=1] 000000 [target=00] 00`). Server ACK:
   S2C `0x17 09001501000000`, rồi bắn `0x55 id=0x1b value=60` để cập nhật timer. Bot chỉ cần
   `use_item(0xff8c)` / `use_slot(slot, target=0)`, KHÔNG tự cộng giờ thủ công.
+- **Shop Thuong Pham -> Uu Dai daily counters (RoleCount/S2C 0x55):**
+  client doc `protocolTable[85][1]`: `[sub=0100][count u32] <<sid u16 + value i32 + max i32>>`
+  roi luu vao `RoleCount.Set(index, value, max)`. `value/max` chinh la dong "Moi Ngay: X/Y".
+  - Di Gioi Ho Phu `0xff8c`: `sid=0x0456`, max `3`. Sau khi mua 3 cai capture co
+    `S2C 0x55 01000100000056040300000003000000` -> `3/3`.
+  - Trieu Goi Bao Hop `0xb554`: `sid=0x0016`, max `1`. Sau khi mua capture co
+    `S2C 0x55 01000100000016000100000001000000` -> `1/1`.
+  - Hop Thien Chau `0xb68a`: `sid=0x002b`, max `1` (capture MuMu 12 2026-08-06).
+    C2S mua thanh cong: `0x42 0100010103068ab62700010000` -> shop `1`, tab `1`, page `3`,
+    slot `6`, item `0xb68a`, gia `39`, qty `1`. Server update:
+    `S2C 0x55 0100010000002b000100000001000000` -> `1/1`, roi ACK
+    `S2C 0x42 03008ab601`. Luu y data item co ca `0x8021` cung ten Hop Thien Chau, nhung
+    shop packet that dung `0xb68a`.
+  Lenh mua van la C2S `0x42` format
+  `0100 [shop] [tab] [page] [slot] [item_id 2B] [gia 2B] [qty 1B] 0000`.
+  S2C `0x42 0300[item_id]01` chi la ACK mua thanh cong, KHONG phai daily counter.
 - De AUTO vao Di Gioi: phai decrypt HTTPS 103.82.31.230 (dung mitmproxy + APK patched tsvtc-patched.apk de trust cert) -> lay URL+params -> replicate bang Python (bot da co lib HTTP cho login). TODO.
 - map_id Di Gioi: CHUA XAC DINH chac (gia tri 0xc316 o offset 28 cua 0x03 co the la toa do).
 
@@ -915,6 +931,51 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 1. Tìm SLOT của item trong `bag_slots` (lọc theo tid để xác định đúng item).
 2. Gửi lệnh theo SLOT đó (tái dùng `use_slot` hoặc biến thể `0x100+slot` cho hợp).
 3. **Đừng tự chế id** — bám cơ chế slot có sẵn (`use_slot` đã đúng từ vụ HP/SP).
+
+## 7L2. VẬN TIÊU — yêu cầu hệ/doanh pet (client gọi là Dispatch, opcode 86 decimal = 0x56)
+
+- Đã giải mã Lua bằng AES/Rijndael CBC PKCS7 key `1234567870541704`, IV `7054170412345678`.
+  Màn trong ảnh V.Tiêu là `UI_UIDispatch.lua` + `Logic_Dispatch.lua`, **không phải** `UIDeliver.lua`
+  (UIDeliver là gửi đồ/快遞).
+- Số "lượt miễn phí hôm nay X/Y" trong UI không nằm trong gói `0x56`. Client lấy từ
+  `RoleCount.Get(ERoleCount.Dispatch)` / `RoleCount.Max(ERoleCount.Dispatch)`, trong
+  `Logic_RoleCount.lua` thì `ERoleCount.Dispatch = 8`. Server cập nhật bằng gói RoleCount
+  decimal `85` = opcode bot `0x55`, body `0100 + count + [sid u16][value i32][max i32]`.
+  Vì vậy vận tiêu phải tin `0x55 sid=0x0008` (`value/max`, thường `0..3/3`). Bot không đếm local
+  `vantieu_state.json` nữa; nếu chưa thấy RoleCount 8 thì chỉ claim slot đã xong, chưa gửi pet mới.
+- Bot mở panel bằng C2S `0x56 0100` (`Network.Send(86, 1)`); server trả:
+  - S2C `0x56 0100`: `Dispatch.ReciveOpenUI()` -> `UI.Open(UIDispatch)`.
+  - S2C `0x56 0200 [result]`: kết quả cho võ tướng đi vận tiêu.
+  - S2C `0x56 0300`: trạng thái slot đang vận tiêu: `count` + mỗi entry
+    `[slot_index][start OADate double][end OADate double][kind][innIndex][effect1][effect2]`.
+  - S2C `0x56 0400 [kind][effect1][effect2]`: yêu cầu hiện tại cho slot trống kế tiếp.
+    Client lưu `normalDispatchKind/effect` rồi tra `dispatchBonusData`.
+  - S2C `0x56 0500 [result]`: nhận thưởng vận tiêu.
+  - S2C `0x56 0600 [N]`: số slot vận tiêu đã mở.
+- UI hiển thị yêu cầu bằng `UIDispatch.SetEffectUI/SetNpcEffectUI`:
+  - `conditionKind == 1` (`EDispatchBonuseKind.Moral`) -> `string.GetMoral(conditionValue, true)`.
+  - `conditionKind == 2` (`EDispatchBonuseKind.Element`) -> `string.GetElement(conditionValue)`.
+- Bảng yêu cầu nằm ở `Data/DispatchBonus_C.dat`, parser `DispatchBonusData.New`:
+  `[id][conditionKind][conditionValue][effectIndex][effectKind][effectValue u16][effectContent u32]`.
+  Header hiện tại `99` record, mỗi record 11 byte. Ví dụ record `id=1` = `Moral Huynh`,
+  `id=6` = `Element Dia`; nếu server gửi `0x56/0400 kind=2 effect1=1 effect2=6` thì UI hiện
+  `Huỳnh` + `Địa`.
+- Phân biệt slot 1/slot 2:
+  - `0x56/0400` **không có slot index**; đây là yêu cầu job trống hiện tại mà server đang chọn.
+  - `0x56/0300` mới có `slot_index` cho từng job đang chạy, kèm `kind/effect1/effect2/innIndex`.
+  - C2S `0x56 0200 [pet_index]` cũng **không gửi slot**; server tự nhét pet vào slot trống đầu tiên.
+  - Muốn gửi slot 2 đúng yêu cầu: gửi pet cho slot trống hiện tại xong phải mở panel lại
+    (`0x56 0100`) để server trả `0300/0400` mới, rồi dùng `0400` mới cho slot trống tiếp theo.
+  - Bot ship `vantieu_dispatch_bonus.json` sinh từ `DispatchBonus_C.dat` để decode trực tiếp
+    effect id -> `{he, doanh}`; `vantieu_requests.json` chỉ còn là fallback cho dữ liệu cũ.
+- Danh sách pet kho vận tiêu lấy từ S2C `0x1f sub0600`, index này là index gửi lại bằng
+  C2S `0x56 0200 [pet_index]`.
+- Client game hiển thị doanh đầu tiên là **Huỳnh** (không phải Hoàng). Quy ước data bot hiện dùng
+  không dấu: `Huynh/Nguy/Thuc/Ngo/Du`. `Hoang` chỉ là tên cũ trong data bot; code match phải coi
+  `Hoang` là alias của `Huynh` để không vỡ file cũ.
+- `tools/parse_npc_hedoanh.py`: byte doanh ngay sau tên pet trong `Npc_C.dat`:
+  `1=Huynh, 2=Nguy, 3=Thuc, 4=Ngo, 5=Du`; byte hệ tại `+50`:
+  `1=Dia, 2=Thuy, 3=Hoa, 4=Phong`.
 
 ## 7m. NHIỆM VỤ HÀNG NGÀY (BINGO 9 Ô) — opcode 0x5b
 

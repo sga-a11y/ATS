@@ -6,6 +6,8 @@ import os
 
 TEAM_DUNGEON_LEVELS = (20, 50, 80, 110)
 DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True, 110: False}
+SHOP_ITEM_KEYS = ("ho_phu", "thien_chau", "bao_hop")
+DEFAULT_SHOP_ITEMS = {"ho_phu": False, "thien_chau": False, "bao_hop": False}
 
 
 def normalize_team_dungeons(value):
@@ -20,6 +22,23 @@ def normalize_team_dungeons(value):
         enabled = {int(x) for x in value if str(x).isdigit()}
         for lv in TEAM_DUNGEON_LEVELS:
             out[lv] = lv in enabled
+    return out
+
+
+def normalize_shop_items(value, legacy=None):
+    out = dict(DEFAULT_SHOP_ITEMS)
+    if isinstance(legacy, dict):
+        for key in SHOP_ITEM_KEYS:
+            if key in legacy:
+                out[key] = bool(legacy.get(key))
+    if isinstance(value, dict):
+        for key in SHOP_ITEM_KEYS:
+            if key in value:
+                out[key] = bool(value.get(key))
+    elif isinstance(value, (list, tuple, set)):
+        enabled = {str(x) for x in value}
+        for key in SHOP_ITEM_KEYS:
+            out[key] = key in enabled
     return out
 
 
@@ -241,6 +260,7 @@ def _load_json_root(fn):
         return {}
 PET_HEDOANH = _load_json_root("pet_hedoanh.json")                       # ten pet -> {he, doanh}
 VANTIEU_REQUESTS = _load_json_root("vantieu_requests.json").get("requests", {})  # ma 0400 -> {he, doanh}
+VANTIEU_DISPATCH_EFFECTS = _load_json_root("vantieu_dispatch_bonus.json").get("effects", {})  # effect id -> {he|doanh}
 
 # Qua online: nhan khi online du so phut. id qua = so phut moc.
 GIFT_MILESTONES = [10, 20, 30, 60, 90, 180]
@@ -473,6 +493,12 @@ if _aj is not None:
         PARTIES = _ps
         for _i, _party in enumerate(_parties_raw):
             _srv = _party.get("server", "trieu_van")
+            _shop_items = normalize_shop_items(_party.get("shop_items"), {
+                "ho_phu": _party.get("buy_ho_phu", False),
+                "thien_chau": _party.get("buy_thien_chau", False),
+                "bao_hop": _party.get("buy_bao_hop", False),
+            })
+            _auto_buy_shop = bool(_party.get("auto_buy_shop", any(_shop_items.values())))
             PARTY_CONFIG[_i] = {
                 "mode": _party.get("mode", "stand"),
                 "start_city_id": int(_party.get("start_city_id", 0)),
@@ -492,9 +518,12 @@ if _aj is not None:
                 "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),
                 "do_van_tieu": bool(_party.get("do_van_tieu", True)),
                 "auto_sell_noi_dat": bool(_party.get("auto_sell_noi_dat", True)),
-                "buy_ho_phu": bool(_party.get("buy_ho_phu", False)),
-                "buy_bao_hop": bool(_party.get("buy_bao_hop", False)),
-                "bao_hop_xu_threshold": int(_party.get("bao_hop_xu_threshold", 1000000)),
+                "auto_buy_shop": _auto_buy_shop,
+                "shop_items": _shop_items,
+                "buy_ho_phu": bool(_shop_items.get("ho_phu", False)),
+                "buy_thien_chau": bool(_shop_items.get("thien_chau", False)),
+                "buy_bao_hop": bool(_shop_items.get("bao_hop", False)),
+                "bao_hop_xu_threshold": int(_party.get("bao_hop_xu_threshold", 10000000)),
                 "buy_hp": bool(_party.get("buy_hp", False)),
                 "hp_qty": int(_party.get("hp_qty", 9999)),
                 "hp_thresh": int(_party.get("hp_thresh", 500000)),

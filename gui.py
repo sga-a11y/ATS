@@ -40,6 +40,8 @@ ACCOUNTS_JSON = os.path.join(_app_dir(), "accounts.json")
 DONATE_CHAT_URL = "https://zalo.me/g/qiy6aflscqbh6v4tivej"
 TEAM_DUNGEON_LEVELS = (20, 50, 80, 110)
 DEFAULT_TEAM_DUNGEONS = {20: True, 50: True, 80: True, 110: False}
+SHOP_ITEM_KEYS = ("ho_phu", "thien_chau", "bao_hop")
+DEFAULT_SHOP_ITEMS = {"ho_phu": False, "thien_chau": False, "bao_hop": False}
 
 
 def _normalize_team_dungeons(value):
@@ -60,6 +62,30 @@ def _normalize_team_dungeons(value):
 def _team_dungeons_json(value):
     norm = _normalize_team_dungeons(value)
     return {str(lv): bool(norm.get(lv, False)) for lv in TEAM_DUNGEON_LEVELS}
+
+
+def _normalize_shop_items(value, legacy=None):
+    out = dict(DEFAULT_SHOP_ITEMS)
+    if isinstance(legacy, dict):
+        for key in SHOP_ITEM_KEYS:
+            if key in legacy:
+                out[key] = bool(legacy.get(key))
+    if isinstance(value, dict):
+        for key in SHOP_ITEM_KEYS:
+            if key in value:
+                out[key] = bool(value.get(key))
+    elif isinstance(value, (list, tuple, set)):
+        enabled = {str(x) for x in value}
+        for key in SHOP_ITEM_KEYS:
+            out[key] = key in enabled
+    return out
+
+
+def _shop_items_json(value):
+    norm = _normalize_shop_items(value)
+    return {key: bool(norm.get(key, False)) for key in SHOP_ITEM_KEYS}
+
+
 # Cap quai Di Gioi: idx 1..15 (gói 0x61 02 00 idx) -> cap hien thi. Xem KNOWLEDGE.md.
 _DG_LEVELS = [10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180]
 
@@ -123,7 +149,8 @@ def _load_donate_qr_image():
 _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831, "mob_index": -1,
                   "city_flag": 0, "do_daily": True, "claim_offline_exp": True,
                   "auto_team_dungeon": True, "team_dungeons": _team_dungeons_json(DEFAULT_TEAM_DUNGEONS),
-                  "auto_sell_noi_dat": True, "leaders": [],
+                  "auto_sell_noi_dat": True, "auto_buy_shop": False,
+                  "shop_items": _shop_items_json(DEFAULT_SHOP_ITEMS), "leaders": [],
                   "accounts": [{"u": "acc1", "p": "pass1", "on": True},
                                {"u": "acc2", "p": "pass2", "on": True},
                                {"u": "acc3", "p": "pass3", "on": True}]}
@@ -1338,7 +1365,14 @@ class BotGUI(tk.Tk):
                 pc = config.PARTY_CONFIG.get(pidx, {})
                 s[u] = (pc.get("server"), pc.get("mode"), pc.get("start_city_id"),
                         pc.get("mob_index"), pc.get("city_flag"), pc.get("do_daily", pc.get("do_dungeon")),
-                        pc.get("use_phuc_than"), pc.get("use_digioi_ho_phu"))
+                        pc.get("claim_offline_exp"), pc.get("auto_team_dungeon"), pc.get("team_dungeons"),
+                        pc.get("use_phuc_than"), pc.get("use_digioi_ho_phu"),
+                        pc.get("fight_legion_boss"), pc.get("do_van_tieu"), pc.get("auto_sell_noi_dat"),
+                        pc.get("auto_buy_shop"), pc.get("shop_items"),
+                        pc.get("buy_ho_phu"), pc.get("buy_thien_chau"),
+                        pc.get("buy_bao_hop"), pc.get("bao_hop_xu_threshold"),
+                        pc.get("buy_hp"), pc.get("hp_qty"), pc.get("hp_thresh"),
+                        pc.get("buy_sp"), pc.get("sp_qty"), pc.get("sp_thresh"))
             return s
         old = _sigs()
         importlib.reload(config)   # doc lai accounts.json -> PARTIES/PARTY_CONFIG moi
@@ -1501,11 +1535,20 @@ class PartyConfigFrame(ttk.Frame):
         # Tu ban Noi Dat: mac dinh CO tick. Chi co tac dung khi bot tele trung gian ve Ng.Thanh
         # trong mode train/city; tat -> bo qua hoan toan.
         self.auto_sell_noi_dat_var = tk.BooleanVar(value=bool(self._preset.get("auto_sell_noi_dat", True)))
-        # Mua shop (mac dinh TAT): Di Gioi Ho Phu (mua 3/ngay), Trieu Goi Bao Hop (mua 1/ngay khi
-        # xu > nguong). 1 lan/ngay/acc (luu ben shop_state.json).
-        self.buy_ho_phu_var = tk.BooleanVar(value=bool(self._preset.get("buy_ho_phu", False)))
-        self.buy_bao_hop_var = tk.BooleanVar(value=bool(self._preset.get("buy_bao_hop", False)))
-        self.bao_hop_xu_var = tk.StringVar(value=str(self._preset.get("bao_hop_xu_threshold", 1000000)))
+        # Mua shop (mac dinh TAT): master "Tu mua shop" + list vat pham. Key cu van doc de
+        # account.json doi cu update len khong bi mat setting.
+        self.shop_items = _normalize_shop_items(self._preset.get("shop_items"), {
+            "ho_phu": self._preset.get("buy_ho_phu", False),
+            "thien_chau": self._preset.get("buy_thien_chau", False),
+            "bao_hop": self._preset.get("buy_bao_hop", False),
+        })
+        self.auto_buy_shop_var = tk.BooleanVar(
+            value=bool(self._preset.get("auto_buy_shop", any(self.shop_items.values())))
+        )
+        self.buy_ho_phu_var = tk.BooleanVar(value=bool(self.shop_items.get("ho_phu", False)))
+        self.buy_thien_chau_var = tk.BooleanVar(value=bool(self.shop_items.get("thien_chau", False)))
+        self.buy_bao_hop_var = tk.BooleanVar(value=bool(self.shop_items.get("bao_hop", False)))
+        self.bao_hop_xu_var = tk.StringVar(value=str(self._preset.get("bao_hop_xu_threshold", 10000000)))
         # Tu mua HP/SP (mac dinh TAT): login xong tinh tong HP/SP du tru tu item trong tui;
         # neu < nguong -> di Trac Quan mua Vien Hanh Khi (+62HP) / Thien Kim Du (+62SP), so luong
         # theo o text (mua toi da theo xu, 20 xu/cai). 1 lan/ngay/acc.
@@ -2111,6 +2154,36 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Button(bar, text="Lưu", command=_save).pack(side="left")
         ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="left", padx=(8, 0))
 
+    def _open_shop_list(self):
+        win = tk.Toplevel(self); win.title("List shop"); win.transient(self); win.grab_set()
+        win.resizable(False, False)
+        frm = ttk.Frame(win, padding=12); frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text="Chọn vật phẩm shop bot sẽ tự mua:").pack(anchor="w", pady=(0, 6))
+        vars_by_key = {
+            "ho_phu": tk.BooleanVar(value=bool(self.buy_ho_phu_var.get())),
+            "thien_chau": tk.BooleanVar(value=bool(self.buy_thien_chau_var.get())),
+            "bao_hop": tk.BooleanVar(value=bool(self.buy_bao_hop_var.get())),
+        }
+        bao_hop_xu_var = tk.StringVar(value=str(_parse_int(self.bao_hop_xu_var.get(), 10000000)))
+        ttk.Checkbutton(frm, text="Dị Giới hộ phù", variable=vars_by_key["ho_phu"]).pack(anchor="w")
+        ttk.Checkbutton(frm, text="Hộp Thiên Châu", variable=vars_by_key["thien_chau"]).pack(anchor="w", pady=(4, 0))
+        _bh = ttk.Frame(frm); _bh.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_bh, text="Triệu gọi bảo hộp khi xu >",
+                        variable=vars_by_key["bao_hop"]).pack(side="left")
+        ttk.Entry(_bh, textvariable=bao_hop_xu_var, width=10).pack(side="left", padx=(4, 0))
+
+        def _save():
+            self.buy_ho_phu_var.set(bool(vars_by_key["ho_phu"].get()))
+            self.buy_thien_chau_var.set(bool(vars_by_key["thien_chau"].get()))
+            self.buy_bao_hop_var.set(bool(vars_by_key["bao_hop"].get()))
+            self.bao_hop_xu_var.set(str(_parse_int(bao_hop_xu_var.get(), 10000000)))
+            win.destroy()
+
+        bar = ttk.Frame(frm)
+        bar.pack(fill="x", pady=(12, 0))
+        ttk.Button(bar, text="Lưu", command=_save).pack(side="left")
+        ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="left", padx=(8, 0))
+
     def _open_advanced_settings(self):
         """Dialog gom cac setting IT KHI DOI cua party (hien tai: daily quest) - tach khoi bang
         chinh de tranh bi day dai/roi khi sau nay them setting moi (xem ghi chu o self.daily_var)."""
@@ -2137,12 +2210,11 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.van_tieu_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Tự bán Nồi đất",
                         variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(4, 0))
-        ttk.Checkbutton(frm, text="Mua Dị Giới Hộ Phù (3 cái/ngày)",
-                        variable=self.buy_ho_phu_var).pack(anchor="w", pady=(4, 0))
-        _bh = ttk.Frame(frm); _bh.pack(anchor="w", fill="x", pady=(4, 0))
-        ttk.Checkbutton(_bh, text="Mua Triệu Gọi Bảo Hộp khi xu nhiều hơn",
-                        variable=self.buy_bao_hop_var).pack(side="left")
-        ttk.Entry(_bh, textvariable=self.bao_hop_xu_var, width=10).pack(side="left", padx=(4, 0))
+        _shop = ttk.Frame(frm); _shop.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_shop, text="Tự mua shop",
+                        variable=self.auto_buy_shop_var).pack(side="left")
+        ttk.Button(_shop, text="List shop",
+                   command=self._open_shop_list).pack(side="left", padx=(8, 0))
         # Tu mua HP/SP o Trac Quan (Loi Dai Huong Dung) khi du tru trong tui thap hon nguong.
         _hp = ttk.Frame(frm); _hp.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_hp, text="Tự mua HP (Viên Hành Khí +62), số lượng",
@@ -2175,9 +2247,16 @@ class PartyConfigFrame(ttk.Frame):
             "fight_legion_boss": bool(self.fight_boss_var.get()),
             "do_van_tieu": bool(self.van_tieu_var.get()),
             "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+            "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
+            "shop_items": _shop_items_json({
+                "ho_phu": self.buy_ho_phu_var.get(),
+                "thien_chau": self.buy_thien_chau_var.get(),
+                "bao_hop": self.buy_bao_hop_var.get(),
+            }),
             "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
+            "buy_thien_chau": bool(self.buy_thien_chau_var.get()),
             "buy_bao_hop": bool(self.buy_bao_hop_var.get()),
-            "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 1000000),
+            "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 10000000),
             "buy_hp": bool(self.buy_hp_var.get()),
             "hp_qty": _parse_int(self.hp_qty_var.get(), 9999),
             "hp_thresh": _parse_int(self.hp_thresh_var.get(), 500000),
@@ -2198,9 +2277,16 @@ class PartyConfigFrame(ttk.Frame):
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
         self.van_tieu_var.set(bool(data.get("do_van_tieu", True)))
         self.auto_sell_noi_dat_var.set(bool(data.get("auto_sell_noi_dat", True)))
-        self.buy_ho_phu_var.set(bool(data.get("buy_ho_phu", False)))
-        self.buy_bao_hop_var.set(bool(data.get("buy_bao_hop", False)))
-        self.bao_hop_xu_var.set(str(_parse_int(data.get("bao_hop_xu_threshold", 1000000), 1000000)))
+        shop_items = _normalize_shop_items(data.get("shop_items"), {
+            "ho_phu": data.get("buy_ho_phu", False),
+            "thien_chau": data.get("buy_thien_chau", False),
+            "bao_hop": data.get("buy_bao_hop", False),
+        })
+        self.auto_buy_shop_var.set(bool(data.get("auto_buy_shop", any(shop_items.values()))))
+        self.buy_ho_phu_var.set(bool(shop_items.get("ho_phu", False)))
+        self.buy_thien_chau_var.set(bool(shop_items.get("thien_chau", False)))
+        self.buy_bao_hop_var.set(bool(shop_items.get("bao_hop", False)))
+        self.bao_hop_xu_var.set(str(_parse_int(data.get("bao_hop_xu_threshold", 10000000), 10000000)))
         self.buy_hp_var.set(bool(data.get("buy_hp", False)))
         self.hp_qty_var.set(str(_parse_int(data.get("hp_qty", 9999), 9999)))
         self.hp_thresh_var.set(str(_parse_int(data.get("hp_thresh", 500000), 500000)))
@@ -2399,9 +2485,16 @@ class PartyConfigFrame(ttk.Frame):
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
                 "do_van_tieu": bool(self.van_tieu_var.get()),
                 "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+                "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
+                "shop_items": _shop_items_json({
+                    "ho_phu": self.buy_ho_phu_var.get(),
+                    "thien_chau": self.buy_thien_chau_var.get(),
+                    "bao_hop": self.buy_bao_hop_var.get(),
+                }),
                 "buy_ho_phu": bool(self.buy_ho_phu_var.get()),
+                "buy_thien_chau": bool(self.buy_thien_chau_var.get()),
                 "buy_bao_hop": bool(self.buy_bao_hop_var.get()),
-                "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 1000000),
+                "bao_hop_xu_threshold": _parse_int(self.bao_hop_xu_var.get(), 10000000),
                 "buy_hp": bool(self.buy_hp_var.get()),
                 "hp_qty": _parse_int(self.hp_qty_var.get(), 9999),
                 "hp_thresh": _parse_int(self.hp_thresh_var.get(), 500000),

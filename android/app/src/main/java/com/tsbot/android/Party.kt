@@ -45,10 +45,13 @@ data class Party(
     val doVanTieu: Boolean = true,
     // Tu ban Noi Dat o NPC Nha buon Ng.Thanh khi pre-route random ve Ng.Thanh. Mac dinh CO tick.
     val autoSellNoiDat: Boolean = true,
-    // Mua shop (mac dinh TAT). Ho Phu: mua 3/ngay. Bao Hop: mua 1/ngay khi xu > baoHopXuThreshold.
+    // Mua shop (mac dinh TAT). Master autoBuyShop + list item ben duoi.
+    // Ho Phu: mua 3/ngay. Thien Chau: mua 1/ngay. Bao Hop: mua 1/ngay khi xu > baoHopXuThreshold.
+    val autoBuyShop: Boolean = false,
     val buyHoPhu: Boolean = false,
+    val buyThienChau: Boolean = false,
     val buyBaoHop: Boolean = false,
-    val baoHopXuThreshold: Int = 1000000,
+    val baoHopXuThreshold: Int = 10000000,
     // Tu mua HP/SP (mac dinh TAT): login xong tinh tong HP/SP du tru tu item trong tui; neu <
     // nguong -> di Trac Quan mua Vien Hanh Khi (+62HP) / Thien Kim Du (+62SP), so luong theo *Qty
     // (mua toi da theo xu, 20 xu/cai). 1 lan/ngay/acc. Mirror PC's buy_hp/buy_sp (gui.py).
@@ -73,7 +76,9 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     fightLegionBoss = source.fightLegionBoss,
     doVanTieu = source.doVanTieu,
     autoSellNoiDat = source.autoSellNoiDat,
+    autoBuyShop = source.autoBuyShop,
     buyHoPhu = source.buyHoPhu,
+    buyThienChau = source.buyThienChau,
     buyBaoHop = source.buyBaoHop,
     baoHopXuThreshold = source.baoHopXuThreshold,
     buyHp = source.buyHp,

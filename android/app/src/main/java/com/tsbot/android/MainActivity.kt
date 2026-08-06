@@ -681,7 +681,9 @@ fun TsBotApp(
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
             initialDoVanTieu = partyBeingEdited.doVanTieu,
             initialAutoSellNoiDat = partyBeingEdited.autoSellNoiDat,
+            initialAutoBuyShop = partyBeingEdited.autoBuyShop,
             initialBuyHoPhu = partyBeingEdited.buyHoPhu,
+            initialBuyThienChau = partyBeingEdited.buyThienChau,
             initialBuyBaoHop = partyBeingEdited.buyBaoHop,
             initialBaoHopXuThreshold = partyBeingEdited.baoHopXuThreshold,
             initialBuyHp = partyBeingEdited.buyHp,
@@ -1374,9 +1376,11 @@ fun AddPartyDialog(
     initialFightLegionBoss: Boolean = true,
     initialDoVanTieu: Boolean = true,
     initialAutoSellNoiDat: Boolean = true,
+    initialAutoBuyShop: Boolean = false,
     initialBuyHoPhu: Boolean = false,
+    initialBuyThienChau: Boolean = false,
     initialBuyBaoHop: Boolean = false,
-    initialBaoHopXuThreshold: Int = 1000000,
+    initialBaoHopXuThreshold: Int = 10000000,
     initialBuyHp: Boolean = false,
     initialHpQty: Int = 9999,
     initialHpThresh: Int = 500000,
@@ -1418,7 +1422,9 @@ fun AddPartyDialog(
     var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
     var doVanTieu by remember { mutableStateOf(initialDoVanTieu) }
     var autoSellNoiDat by remember { mutableStateOf(initialAutoSellNoiDat) }
+    var autoBuyShop by remember { mutableStateOf(initialAutoBuyShop) }
     var buyHoPhu by remember { mutableStateOf(initialBuyHoPhu) }
+    var buyThienChau by remember { mutableStateOf(initialBuyThienChau) }
     var buyBaoHop by remember { mutableStateOf(initialBuyBaoHop) }
     var baoHopXuText by remember { mutableStateOf(initialBaoHopXuThreshold.toString()) }
     var buyHp by remember { mutableStateOf(initialBuyHp) }
@@ -1431,6 +1437,7 @@ fun AddPartyDialog(
     var diGioiLevel by remember { mutableStateOf(initialDiGioiLevel.coerceIn(1, DG_LEVELS.size)) }
     var diGioiExpandedMode by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
+    var showShopList by remember { mutableStateOf(false) }
     var advancedApplyMessage by remember { mutableStateOf("") }
 
     fun toggleTrainMapGroup(group: String) {
@@ -1460,9 +1467,11 @@ fun AddPartyDialog(
         fightLegionBoss = fightLegionBoss,
         doVanTieu = doVanTieu,
         autoSellNoiDat = autoSellNoiDat,
+        autoBuyShop = autoBuyShop,
         buyHoPhu = buyHoPhu,
+        buyThienChau = buyThienChau,
         buyBaoHop = buyBaoHop,
-        baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,
+        baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 10000000,
         buyHp = buyHp,
         hpQty = hpQtyText.toIntOrNull() ?: 9999,
         hpThresh = hpThreshText.toIntOrNull() ?: 500000,
@@ -1649,19 +1658,12 @@ fun AddPartyDialog(
                             Text("Tự bán Nồi đất")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = buyHoPhu, onCheckedChange = { buyHoPhu = it })
-                            Text("Mua Dị Giới Hộ Phù (3 cái/ngày)")
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = buyBaoHop, onCheckedChange = { buyBaoHop = it })
-                            Text("Mua Triệu Gọi Bảo Hộp khi xu >")
-                            OutlinedTextField(
-                                value = baoHopXuText,
-                                onValueChange = { baoHopXuText = it.filter { c -> c.isDigit() } },
-                                singleLine = true,
-                                modifier = Modifier.width(120.dp).padding(start = 6.dp),
-                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
-                            )
+                            Checkbox(checked = autoBuyShop, onCheckedChange = { autoBuyShop = it })
+                            Text("Tự mua shop")
+                            OutlinedButton(
+                                onClick = { showShopList = true },
+                                modifier = Modifier.padding(start = 8.dp),
+                            ) { Text("List shop") }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = buyHp, onCheckedChange = { buyHp = it })
@@ -1950,9 +1952,11 @@ fun AddPartyDialog(
                             fightLegionBoss = fightLegionBoss,
                             doVanTieu = doVanTieu,
                             autoSellNoiDat = autoSellNoiDat,
+                            autoBuyShop = autoBuyShop,
                             buyHoPhu = buyHoPhu,
+                            buyThienChau = buyThienChau,
                             buyBaoHop = buyBaoHop,
-                            baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 1000000,
+                            baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 10000000,
                             buyHp = buyHp,
                             hpQty = hpQtyText.toIntOrNull() ?: 9999,
                             hpThresh = hpThreshText.toIntOrNull() ?: 500000,
@@ -1972,6 +1976,40 @@ fun AddPartyDialog(
             TextButton(onClick = onDismiss) { Text("Hủy") }
         },
     )
+    if (showShopList) {
+        AlertDialog(
+            onDismissRequest = { showShopList = false },
+            title = { Text("List shop") },
+            text = {
+                Column {
+                    Text("Chọn vật phẩm shop bot sẽ tự mua:")
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = buyHoPhu, onCheckedChange = { buyHoPhu = it })
+                        Text("Dị Giới hộ phù")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = buyThienChau, onCheckedChange = { buyThienChau = it })
+                        Text("Hộp Thiên Châu")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = buyBaoHop, onCheckedChange = { buyBaoHop = it })
+                        Text("Triệu gọi bảo hộp khi xu >")
+                        OutlinedTextField(
+                            value = baoHopXuText,
+                            onValueChange = { baoHopXuText = it.filter { c -> c.isDigit() } },
+                            singleLine = true,
+                            modifier = Modifier.width(140.dp).padding(start = 6.dp),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showShopList = false }) { Text("Đóng") }
+            },
+        )
+    }
     if (showTeamDungeonList) {
         AlertDialog(
             onDismissRequest = { showTeamDungeonList = false },
