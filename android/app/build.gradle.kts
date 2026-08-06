@@ -1,6 +1,7 @@
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -36,6 +37,24 @@ val buildVersionCode = (
         ?: (System.currentTimeMillis() / 60000L).toInt()
 )
 val repositoryRoot = rootProject.projectDir.parentFile
+val releaseSigningPropsFile = File(repositoryRoot, "certs/atsbot-release.properties")
+val releaseSigningProps = Properties().also { props ->
+    if (releaseSigningPropsFile.isFile) {
+        releaseSigningPropsFile.inputStream().use(props::load)
+    }
+}
+fun releaseSigningProp(name: String): String? =
+    releaseSigningProps.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }
+
+val releaseStorePath = releaseSigningProp("storeFile")
+val releaseStoreFile = releaseStorePath?.let { path ->
+    File(path).let { if (it.isAbsolute) it else File(repositoryRoot, path) }
+}
+val hasReleaseSigning = releaseStoreFile?.isFile == true &&
+    releaseSigningProp("storePassword") != null &&
+    releaseSigningProp("keyAlias") != null &&
+    releaseSigningProp("keyPassword") != null
+
 val generatedSmartNavAssets = layout.buildDirectory.dir("generated/smart-nav-assets")
 val prepareSmartNavAssets by tasks.registering(Copy::class) {
     val worldNav = File(repositoryRoot, "world_nav.json")
@@ -80,9 +99,21 @@ android {
         }
     }
 
+    signingConfigs {
+        create("atsRelease") {
+            if (hasReleaseSigning) {
+                storeFile = releaseStoreFile
+                storePassword = releaseSigningProp("storePassword")
+                keyAlias = releaseSigningProp("keyAlias")
+                keyPassword = releaseSigningProp("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("atsRelease")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

@@ -426,14 +426,21 @@ def build_android_apk(ver):
     gradlew = os.path.join(android_dir, "gradlew.bat" if os.name == "nt" else "gradlew")
     if not os.path.isfile(gradlew):
         raise FileNotFoundError("Khong tim thay Gradle wrapper: %s" % gradlew)
+    signing_props = os.path.join(ROOT, "certs", "atsbot-release.properties")
+    signing_key = os.path.join(ROOT, "certs", "atsbot-release.jks")
+    if not os.path.isfile(signing_props) or not os.path.isfile(signing_key):
+        raise FileNotFoundError(
+            "Thieu APK signing key co dinh. Can copy ca thu muc certs/ "
+            "(atsbot-release.jks + atsbot-release.properties) tu may build chinh."
+        )
     sync_android_python()
     env = os.environ.copy()
     jdk = r"C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot"
     if os.name == "nt" and os.path.isdir(jdk):
         env.setdefault("JAVA_HOME", jdk)
-    run([gradlew, "assembleDebug", "-PatsVersion=" + ver], cwd=android_dir, env=env)
-    apk_dir = os.path.join(android_dir, "app", "build", "outputs", "apk", "debug")
-    expected = os.path.join(apk_dir, "%s-%s-debug.apk" % (NAME, ver))
+    run([gradlew, "assembleRelease", "-PatsVersion=" + ver], cwd=android_dir, env=env)
+    apk_dir = os.path.join(android_dir, "app", "build", "outputs", "apk", "release")
+    expected = os.path.join(apk_dir, "%s-%s-release.apk" % (NAME, ver))
     if os.path.isfile(expected):
         src = expected
     else:
