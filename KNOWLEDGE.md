@@ -119,6 +119,9 @@ Note 2026-08-07:
   `Dungeon.SendInvite(roleId)` -> C2S `0x2f 0800 [roleId/entity 8B]`. Nhan invite S2C `0x2f 0f00`
   chua `roomId`; dong y la join room C2S `0x2f 0300 [roomId 4B][password_len]`, roi ready `0x2f 0b00`.
   PB invite KHONG bat buoc check gan nhu party thuong vi server/client cho moi theo roleId da biet.
+- Friend-list login push (bot opcode `0x0e/0500`, client Lua protocol `014-005`) co
+  `[roleId 8B][name_len][name][level/element/turn/career/face...][online][friendly][friendFlag][times]`.
+  Can cache `name -> roleId` tu nguon nay de PB whitelist moi duoc acc o xa (vd acc ngoai party dang online).
 
 ---
 

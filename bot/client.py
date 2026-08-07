@@ -984,6 +984,7 @@ class GameClient:
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
         self.friend_status = {}      # entity hex -> trailer[18]: bit0x01=DA TANG, bit0x02=CO QUA nhan
+        self.friend_online = {}      # entity hex -> bool online (S2C 0x0e 05 / 0x0e 10)
         self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
         self.vantieu_started = None  # so luot van tieu DA gui hom nay (S2C 0x55 sid=0x08)
         self.vantieu_max = 3         # gioi han van tieu/ngay (server bao kem, mac dinh 3)
@@ -3425,9 +3426,16 @@ class GameClient:
                     break
                 ent = body[i:i + 8]
                 nl = body[i + 8]
+                try:
+                    name = body[i + 9:i + 9 + nl].decode("utf-16-le") if nl else ""
+                except Exception:
+                    name = ""
                 tr = body[i + 9 + nl:i + 9 + nl + 35]
                 if len(tr) >= 19:
                     self.friend_status[ent.hex()] = tr[18]   # cap nhat status moi nhat
+                    self.friend_online[ent.hex()] = bool(tr[15])
+                if name:
+                    self._remember_entity_name(ent, name, "0x0e/0500-friend")
                 if ent not in self.friend_entities:
                     self.friend_entities.append(ent); new.append(ent)
                 i += 9 + nl + 35
@@ -3436,6 +3444,9 @@ class GameClient:
                          len(self.friend_entities), [e.hex()[:4] for e in self.friend_entities])
         elif sub == 0x0d:         # xac nhan NHAN 1 qua tu ban: [0d 00][entity 8B][01 00]
             self._gift_recv += 1
+        elif sub == 0x10 and len(body) >= 11:  # update online: [10 00][entity 8B][online 1B]
+            ent = body[2:10]
+            self.friend_online[ent.hex()] = bool(body[10])
 
     def claim_friend_gifts(self):
         """TANG qua cho ban CHUA tang + NHAN qua ban da tang minh. HOAN TOAN theo STATUS server
@@ -5269,15 +5280,25 @@ class GameClient:
         leaders = (config.leaders_for(self.party_idx)
                    if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
         wanted = [str(x).strip() for x in (leaders or []) if str(x).strip()]
-        if not wanted:
-            return
         now = time.time()
         last = float(getattr(self, "_last_whitelist_no_entity_log", 0.0) or 0.0)
         if now - last < 30:
             return
         self._last_whitelist_no_entity_log = now
-        log.info("[%s] (LEADER) whitelist %s nhung chua thay entity gan minh -> chua moi duoc (%s)",
-                 self._label, wanted, context)
+        if not wanted:
+            log.info("[%s] (LEADER) whitelist rong -> khong moi them acc ngoai (%s)",
+                     self._label, context)
+            return
+        known = []
+        for entity, names in list(self.entity_names.items()):
+            hit = [n for n in names if str(n).strip().lower() in {w.lower() for w in wanted}]
+            if hit:
+                meta = self.entity_meta.get(bytes(entity), {})
+                known.append("%s:%s/%s" % (
+                    ",".join(hit), entity.hex()[:8], meta.get("source", "?")
+                ))
+        log.info("[%s] (LEADER) whitelist %s nhung chua co entity moi duoc (%s); known=%s",
+                 self._label, wanted, context, known or "-")
 
     def invite_whitelist_leaders(self, gap: float = 1.0) -> int:
         """Moi them acc ngoai whitelist vao party sau khi BOT members da du.
