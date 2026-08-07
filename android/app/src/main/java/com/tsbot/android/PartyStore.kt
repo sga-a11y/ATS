@@ -61,6 +61,7 @@ class PartyStore(private val context: Context) {
                 leaderWhitelist = stringList(o, "leaders"),
                 doDaily = o.optBoolean("do_daily", true),
                 claimOfflineExp = o.optBoolean("claim_offline_exp", true),
+                autoWorldBoss = o.optBoolean("auto_world_boss", true),
                 autoTeamDungeon = o.optBoolean("auto_team_dungeon", true),
                 teamDungeons = teamDungeons(o),
                 trainMapKey = o.optString("train_map_key", ""),
@@ -100,6 +101,7 @@ class PartyStore(private val context: Context) {
             o.put("leaders", JSONArray().apply { p.leaderWhitelist.forEach { put(it) } })
             o.put("do_daily", p.doDaily)
             o.put("claim_offline_exp", p.claimOfflineExp)
+            o.put("auto_world_boss", p.autoWorldBoss)
             o.put("auto_team_dungeon", p.autoTeamDungeon)
             o.put("team_dungeons", JSONObject().apply {
                 listOf(20, 50, 80, 110).forEach { put(it.toString(), p.teamDungeons[it] ?: false) }

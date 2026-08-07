@@ -30,6 +30,12 @@ PHUC_THAN_PROTECTION_PRIORITY = (
 )
 PHUC_THAN_GEM_TIDS = {0x5AAB, 0x5A2D}
 BROKEN_PHUC_THAN_TID = 0x59F0
+CHANNEL_SWITCH_ERRORS = {
+    1: "dang o san kenh nay",
+    2: "khong co kenh nay",
+    3: "dang trong party nen server tu choi doi kenh",
+    4: "kenh da day",
+}
 TEAM_DUNGEONS = {
     20: {"id": 0x0001, "daily_flag": 0x302E, "daily_count": 1},
     50: {"id": 0x000E, "daily_flag": 0x30A6, "daily_count": 1},
@@ -39,6 +45,9 @@ TEAM_DUNGEONS = {
 TEAM_DUNGEON_DURATION = 20 * 60
 ONLINE_GIFT_KIND = 0x03
 ONLINE_GIFT_ROLECOUNT = 10
+WORLD_BOSS_MISSION_ID = 12207
+WORLD_BOSS_MAX_ATTEMPTS = 5
+WORLD_BOSS_CHALLENGE_TIDS = (0xB625,)
 ONLINE_GIFT_DEFAULT_FLAGS = {
     10: 2,
     20: 3,
@@ -867,8 +876,12 @@ class GameClient:
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
         self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
-        self.current_channel = None  # kenh dang o (set khi switch_channel; None = chua biet/mac dinh)
+        self.current_channel = None  # kenh dang o (doc tu S2C scene/ack; None = chua biet/mac dinh)
         self._chan_event = threading.Event()
+        self._chan_switch_event = threading.Event()
+        self._chan_switch_target = None
+        self._chan_switch_result = None
+        self._channel_scene_generation = 0
         self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
         self._deliberate_close = False  # True khi CHINH TA dong socket (close/relogin) -> OSError ko phai rot
         self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
@@ -925,6 +938,10 @@ class GameClient:
         self._use_confirmed = False        # True khi nhan confirm cho _pending_confirm_slot
         self._no_item = set()        # (target,kind) het thuoc -> skip toi TRAN SAU (reset khi 0x34)
         self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
+        self.world_boss_count = None # MarkManager mission 12207 step = so luot boss the gioi da danh
+        self.world_boss_max = WORLD_BOSS_MAX_ATTEMPTS
+        self._world_boss_progress_loaded = False
+        self._world_boss_progress_ts = 0.0
         self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
         self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
         self._bitflag_bytes = bytearray()  # S2C 0x51 sub0200: bang BitFlag giong client
@@ -1523,6 +1540,28 @@ class GameClient:
             off += 10
             n += 1
 
+    def _set_world_boss_progress(self, cur: int, mx: int = WORLD_BOSS_MAX_ATTEMPTS, source: str = ""):
+        mx = int(mx or WORLD_BOSS_MAX_ATTEMPTS)
+        cur = max(0, int(cur))
+        self.world_boss_count = cur
+        self.world_boss_max = mx
+        self._world_boss_progress_loaded = True
+        self._world_boss_progress_ts = time.time()
+        if source:
+            log.debug("[%s] Boss the gioi progress %d/%d (%s)", self._label, cur, mx, source)
+
+    def _sync_world_boss_from_mission_steps(self, source: str = ""):
+        # Client game hien thi World Boss 0/5 tu MarkManager.GetMission(12207).step.
+        cur = int(self.team_dungeon_steps.get(WORLD_BOSS_MISSION_ID, 0) or 0)
+        cur = max(0, min(WORLD_BOSS_MAX_ATTEMPTS, cur))
+        self._set_world_boss_progress(cur, WORLD_BOSS_MAX_ATTEMPTS, source or "mission-step")
+
+    def _on_daily_quest_packet(self, pkt: bytes):
+        """S2C 0x5b Jiugongge/daily bingo. Chi dung cell da xong cho logic daily cu."""
+        body = pkt[7:]
+        if len(body) >= 6 and body[:5] == b"\x02\x00\x01\x01\x00":
+            self._quest_cells.add(body[5])
+
     def _bitflag_get(self, flag_id: int):
         """Tra ve True/False neu da co full BitFlag, None neu server chua sync."""
         try:
@@ -1793,11 +1832,9 @@ class GameClient:
         #   sub 0c = status qua:        [0c 00][count 1B] + N*[entity 8B][status 1B] (03=co qua nhan, 07=da nhan)
         if opcode == 0x0e and len(pkt) >= 9:
             self._on_friend_gift(pkt)
-        # NHIEM VU HANG NGAY (bingo 9 o): mo panel (C2S 0x5b 02 00 09...) -> server tra status tung o.
-        #   02 00 01 01 00 [o] = o DA XONG (ke ca quest dem battle-50 KHI DA DU 50 -> 020001010009)
-        #   02 00 03 / 02 00 04 = CHUA xong (03 = dang dem do, 04 = chua bat dau) -> BO QUA
-        if opcode == 0x5b and len(pkt) >= 13 and pkt[7:12] == b"\x02\x00\x01\x01\x00":
-            self._quest_cells.add(pkt[12])
+        # NHIEM VU HANG NGAY (bingo 9 o): chi can cell done cho logic daily cu.
+        if opcode == 0x5b:
+            self._on_daily_quest_packet(pkt)
         # HANG/COT DA NHAN thuong: frame 0x51 (gui luc login) chua bitmask line da nhan, ngay sau
         # marker "c0 fe 03 00 00 00" la 2 byte mask (uint16 LE) - line L da nhan = bit (L+3).
         # (Tim duoc nho raw-decode frame LON ma analyze_pcap drop; verify khop tren nhieu nick.)
@@ -1829,6 +1866,9 @@ class GameClient:
                 mid = int.from_bytes(pkt[17:19], "little")
                 if mid > 1000:   # loc gia tri rac (map_id that >1000)
                     self.current_map = mid
+                # 0x0c ChangeScene co them sceneTag(2) + instanceId/channel(2) sau toa do.
+                if opcode == 0x0c and len(pkt) >= 25:
+                    self._note_current_channel(int.from_bytes(pkt[23:25], "little"), "0x0c")
         # 0x03 = goi SELF server gui khi load map: [00 00][entity 8B][... 11B][map_id 2B].
         # KHAC voi 0x0c/0x07 (broadcast nguoi xung quanh): 0x03 ve CHINH MINH -> doc duoc map
         # NGAY CA KHI DUNG MOT MINH (DG/dungeon vang nguoi). Chi doc khi entity == self.
@@ -1838,6 +1878,9 @@ class GameClient:
                 mid = int.from_bytes(pkt[28:30], "little")
                 if mid > 1000:
                     self.current_map = mid
+                ch = self._parse_channel_from_03(pkt)
+                if ch is not None:
+                    self._note_current_channel(ch, "0x03")
                 # RESYNC vi tri THAT do server cap: 0x03 self-spawn co toa do o payload
                 # offset 23/25 = pkt[30:32]/pkt[32:34] (relogin.pcap: f2 03=1010, ca 03=970).
                 # Sua dead-reckoning bi lech sau khi di xa/qua cong. Login=dung cho logout.
@@ -2035,6 +2078,9 @@ class GameClient:
             # danh sach kenh (channel list): payload bat dau '01 00 [count]'
             # (phan biet voi 0x07 broadcast di chuyen bat dau '00 00 [entity]')
             self._on_channel_list(pkt)
+        elif opcode == 0x07 and pkt[7:9] == b"\x02\x00" and len(pkt) >= 10:
+            # ket qua doi kenh: payload = [02 00][result 1B], result=0 OK; 1..4 la loi.
+            self._on_channel_switch_result(pkt)
         # DEBUG kenh: log 0x07 (tru broadcast di chuyen 00 00) de tim "kenh hien tai"
         if __import__("os").environ.get("CHANDBG") and opcode == 0x07 and pkt[7:9] != b"\x00\x00":
             log.info("[%s] CHANDBG 0x07 %s", self._label, pkt.hex())
@@ -2734,6 +2780,10 @@ class GameClient:
         self._online_gift_next_log = None
         self._online_gift_last_log = 0.0
         self._quest_cells = set()
+        self.world_boss_count = None
+        self.world_boss_max = WORLD_BOSS_MAX_ATTEMPTS
+        self._world_boss_progress_loaded = False
+        self._world_boss_progress_ts = 0.0
         self._claimed_lines = set()
         self._claimed_loaded = False
         self.vantieu_started = None
@@ -2966,29 +3016,106 @@ class GameClient:
         log.info("[%s] Hop vat pham: %s(slot%d) + %s(slot%d)", self._label,
                  items.get(t1, {}).get("name", hex(t1)), i1, items.get(t2, {}).get("name", hex(t2)), i2)
 
-    def do_world_boss(self):
-        """BOSS THE GIOI (nhiem vu o 2): event teleport (0x20 02 00 08) -> map boss 0x2d ->
-        engage NPC 0x3232 (0x41) -> VAO 1 tran (combat engine tu danh). CHI CAN VAO TRAN la o2
-        mark (khong can thang). Co GIO EVENT -> ngoai gio teleport/engage fail (khong vao tran)
-        -> bo qua. Xong thi teleport ve Trac Quan (12001) cho khoi ket map boss. Goi khi o2 chua xong."""
+    def _world_boss_event_open(self) -> bool:
         import datetime
         vn_hour = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).hour
         if not (12 <= vn_hour < 23):          # event boss chi mo 12h-23h (gio VN)
             log.info("[%s] Boss the gioi: ngoai gio event (12h-23h VN, hien %dh) -> bo qua",
                      self._label, vn_hour)
-            return
+            return False
+        return True
+
+    def query_world_boss_attempts(self, timeout: float = 6.0):
+        """Tra (cur,max) luot boss the gioi tu MarkManager mission 12207 neu server da sync."""
+        if self._world_boss_progress_loaded:
+            return self.world_boss_count, self.world_boss_max
+        started = time.time()
+        deadline = time.time() + max(0.0, timeout)
+        while self.running and time.time() < deadline:
+            if self._world_boss_progress_loaded and self._world_boss_progress_ts >= started - 0.1:
+                return self.world_boss_count, self.world_boss_max
+            if self.team_dungeon_status_loaded:
+                self._sync_world_boss_from_mission_steps("mission-step cached")
+                return self.world_boss_count, self.world_boss_max
+            time.sleep(0.2)
+        if self._world_boss_progress_loaded:
+            return self.world_boss_count, self.world_boss_max
+        if self.team_dungeon_status_loaded:
+            self._sync_world_boss_from_mission_steps("mission-step cached")
+            return self.world_boss_count, self.world_boss_max
+        return None
+
+    def _use_world_boss_challenge_item(self) -> bool:
+        for slot, (tid, cnt) in sorted(self.bag_slots.items()):
+            if tid in WORLD_BOSS_CHALLENGE_TIDS and cnt > 0:
+                ok = self.use_slot(slot, target=0)
+                if ok:
+                    if self.world_boss_max:
+                        self._set_world_boss_progress(max(0, self.world_boss_max - 1),
+                                                      self.world_boss_max, "Khiêu Chiến Boss")
+                    log.info("[%s] Boss the gioi: dung Khiêu Chiến Boss slot=%d 0x%04x -> luot ve %d/%d",
+                             self._label, slot, tid, self.world_boss_count, self.world_boss_max)
+                    time.sleep(1.0)
+                return ok
+        return False
+
+    def do_world_boss_all(self, max_loops: int = 20) -> bool:
+        """Danh boss the gioi den 5/5; neu 5/5 co Khiêu Chiến Boss thi dung ve 4/5 roi danh tiep."""
+        if not self._world_boss_event_open():
+            return False
+        progress = self.query_world_boss_attempts()
+        if progress is None:
+            log.info("[%s] Boss the gioi: chua doc duoc so luot server -> bo qua danh het luot",
+                     self._label)
+            return False
+        did_any = False
+        loops = 0
+        while self.running and loops < max_loops:
+            loops += 1
+            cur = self.world_boss_count
+            mx = self.world_boss_max or WORLD_BOSS_MAX_ATTEMPTS
+            if cur is None:
+                log.info("[%s] Boss the gioi: mat progress giua chung -> dung", self._label)
+                break
+            if cur < mx:
+                log.info("[%s] Boss the gioi: dang %d/%d -> danh them 1 luot",
+                         self._label, cur, mx)
+                ok = self.do_world_boss(heal_after=True)
+                if not ok:
+                    break
+                did_any = True
+                if self.world_boss_count is None or self.world_boss_count <= cur:
+                    self._set_world_boss_progress(min(mx, cur + 1), mx, "local after battle")
+                continue
+            if self._use_world_boss_challenge_item():
+                continue
+            log.info("[%s] Boss the gioi: da du %d/%d va khong co Khiêu Chiến Boss -> hoan thanh",
+                     self._label, cur, mx)
+            break
+        if loops >= max_loops:
+            log.warning("[%s] Boss the gioi: dung sau %d vong de tranh lap vo han",
+                        self._label, max_loops)
+        return did_any
+
+    def do_world_boss(self, heal_after: bool = False):
+        """BOSS THE GIOI (nhiem vu o 2): event teleport (0x20 02 00 08) -> map boss 0x2d ->
+        engage NPC 0x3232 (0x41) -> VAO 1 tran (combat engine tu danh). CHI CAN VAO TRAN la o2
+        mark (khong can thang). Co GIO EVENT -> ngoai gio teleport/engage fail (khong vao tran)
+        -> bo qua. Xong thi teleport ve Trac Quan (12001) cho khoi ket map boss. Goi khi o2 chua xong."""
+        if not self._world_boss_event_open():
+            return False
         orig = self.current_map
         self.flee_mode = True                 # sach tran truoc khi gui goi teleport (tranh kick)
         for _ in range(20):
             if not self.running:
-                return
+                return False
             if not self.in_combat():
                 break
             time.sleep(1)
         if not self.running:
-            return
+            return False
         time.sleep(1.0)
-        self.heal_full()          # HOI FULL HP/SP truoc khi danh boss the gioi
+        self.heal_full(force=heal_after)  # auto full-run ep hoi ky; daily o2 giu hanh vi cu
         self.state.boss_mode = True
         # TAT FLEE NGAY (truoc khi teleport): tran boss co the bat dau ngay luc transit/toi noi ->
         # flee con bat la receiver BO CHAY mat tran. Khu boss chi co boss nen tat flee la an toan.
@@ -3009,7 +3136,7 @@ class GameClient:
         while time.time() - t0 < 12:
             if not self.running:
                 self.state.boss_mode = False
-                return
+                return False
             if self.state.in_battle:
                 entered = True
                 break
@@ -3026,12 +3153,15 @@ class GameClient:
         self.state.boss_mode = False
         self._wait_combat_clear()
         self.do_heal()   # xong battle -> hoi HP/SP (char+pet) tro lai
+        if heal_after:
+            self.heal_full(force=True)
 
         # (4) teleport ve Trac Quan (thanh chung moi server) -> flow train sau do tu route tiep
         if self.running and (orig is None or self.current_map != orig):
             self._wait_combat_clear()
             self.teleport(12001, 0)
             time.sleep(1.5)
+        return bool(entered)
 
     LEGION_BOSS_COOLDOWN = 4 * 3600   # 4h giua cac lan (fallback neu server ko day 0x27 76 moi)
     # Rieng khi VAO INSTANCE THAT BAI (khong vao duoc tran, xem do_legion_boss): cho lau hon 4h
@@ -3147,16 +3277,22 @@ class GameClient:
                     _idx = body[off]
                     mid = int.from_bytes(body[off + 1:off + 3], "little")
                     step = body[off + 3]
+                    if mid == WORLD_BOSS_MISSION_ID:
+                        step = min(WORLD_BOSS_MAX_ATTEMPTS, step)
                     steps[mid] = step
                     off += 4
                 self.team_dungeon_steps = steps
                 self.team_dungeon_status_loaded = True
+                self._sync_world_boss_from_mission_steps("S24-6")
             elif sub in (0x01, 0x02) and len(body) >= 5:
                 mid = int.from_bytes(body[2:4], "little")
                 step = body[4]
                 old = int(self.team_dungeon_steps.get(mid, 0))
                 if sub == 0x01:
-                    self.team_dungeon_steps[mid] = min(255, old + step)
+                    new = min(255, old + step)
+                    if mid == WORLD_BOSS_MISSION_ID:
+                        new = min(WORLD_BOSS_MAX_ATTEMPTS, new)
+                    self.team_dungeon_steps[mid] = new
                 else:
                     new = max(0, old - step)
                     if new:
@@ -3164,10 +3300,14 @@ class GameClient:
                     else:
                         self.team_dungeon_steps.pop(mid, None)
                 self.team_dungeon_status_loaded = True
+                if mid == WORLD_BOSS_MISSION_ID:
+                    self._sync_world_boss_from_mission_steps(f"S24-{sub}")
             elif sub == 0x04 and len(body) >= 4:
                 mid = int.from_bytes(body[2:4], "little")
                 self.team_dungeon_steps.pop(mid, None)
                 self.team_dungeon_status_loaded = True
+                if mid == WORLD_BOSS_MISSION_ID:
+                    self._sync_world_boss_from_mission_steps("S24-4")
         except Exception as e:
             log.debug("[%s] bo qua loi parse 0x18 mission-step: %s", self._label, e)
 
@@ -4615,6 +4755,35 @@ class GameClient:
             self._label = nm
             log.info("[%s] Ten nhan vat = '%s'", self._username, nm)
 
+    def _note_current_channel(self, channel, source="server"):
+        try:
+            channel = int(channel)
+        except Exception:
+            return
+        if channel < 0:
+            return
+        old = self.current_channel
+        self.current_channel = channel
+        self._channel_scene_generation += 1
+        if old != channel:
+            log.info("[%s] Kenh hien tai = %s (tu %s)", self._label, channel, source)
+
+    def _parse_channel_from_03(self, pkt: bytes):
+        """Parse instanceId/channel tu S2C 0x03 PlayerAppear theo layout client Lua.
+        Name dai/ngan khac nhau, nen instanceId nam ngay sau [name_len][name UTF-16LE]."""
+        if not pkt or len(pkt) < 56:
+            return None
+        body = pkt[7:]
+        if len(body) < 50 or body[0:2] != b"\x00\x00":
+            return None
+        if self.self_entity is not None and body[2:10] != self.self_entity:
+            return None
+        name_len = body[46]
+        end = 47 + name_len
+        if not (0 <= name_len <= 80 and name_len % 2 == 0 and end + 2 <= len(body)):
+            return None
+        return int.from_bytes(body[end:end + 2], "little")
+
     def _resolve_name_from_03(self, pkt: bytes):
         """Ten nhan vat tu goi 0x03 self-spawn - gui cho MOI acc luc login (KHONG can bang hoi).
         Layout: [0000][self_entity 8B][~36B stat][name_len 1B @body[46]][name UTF-16LE].
@@ -4697,11 +4866,56 @@ class GameClient:
             log.info("[%s] 0x27 parsed %d guild members (entity_names cap nhat)", self._label, parsed)
 
     # ---- lenh tien ich ----
-    def switch_channel(self, channel: int):
-        """Chuyen sang sub-channel (vd Di Gioi dong nguoi). C2S 0x07 = 02 00 [ch LE]."""
-        self.send(0x07, b"\x02\x00" + struct.pack("<H", channel))
-        self.current_channel = channel   # nho kenh dang o (de UI hien thi)
-        log.info("[%s] Chuyen kenh -> %d", self._label, channel)
+    def switch_channel(self, channel: int, wait: float = 6.0, retries: int = 2) -> bool:
+        """Chuyen sang sub-channel va cho server tra ket qua.
+        Client game xu ly S2C 0x07/0200: result=0 OK; 1=cung kenh; 2=khong co kenh;
+        3=dang trong party; 4=kenh day. Bot KHONG tu set current_channel truoc khi server xac nhan."""
+        try:
+            channel = int(channel)
+        except Exception:
+            return False
+        if channel <= 0:
+            return True
+        if self.current_channel == channel:
+            log.info("[%s] Da o san kenh %d -> bo qua doi kenh", self._label, channel)
+            return True
+        for attempt in range(1, max(1, int(retries)) + 1):
+            self._chan_switch_event.clear()
+            self._chan_switch_target = channel
+            self._chan_switch_result = None
+            log.info("[%s] Chuyen kenh -> %d (cho server xac nhan, lan %d/%d)",
+                     self._label, channel, attempt, max(1, int(retries)))
+            self.send(0x07, b"\x02\x00" + struct.pack("<H", channel))
+            if not self._chan_switch_event.wait(max(0.1, float(wait))):
+                log.warning("[%s] Doi kenh %d TIMEOUT sau %.1fs", self._label, channel, wait)
+                continue
+            result = self._chan_switch_result
+            if result in (0, 1):
+                return True
+            if result == 3:
+                # Dang trong party thi thu lai cung kenh khong giup; caller can leave_party/re-sync.
+                return False
+            time.sleep(0.5)
+        return False
+
+    def _on_channel_switch_result(self, pkt: bytes):
+        """S2C 0x07 switch result: [02 00][result].
+        result=0 OK; 1 same channel; 2 no area; 3 team cannot switch; 4 full."""
+        result = pkt[9]
+        target = self._chan_switch_target
+        self._chan_switch_result = result
+        if result == 0:
+            if target:
+                self._note_current_channel(target, "0x07 ack")
+            log.info("[%s] Doi kenh OK -> %s", self._label, target or "?")
+        elif result == 1:
+            if target:
+                self._note_current_channel(target, "0x07 ack same")
+            log.info("[%s] Doi kenh: da o san kenh %s", self._label, target or "?")
+        else:
+            log.warning("[%s] Doi kenh %s THAT BAI: %s (result=%d)",
+                        self._label, target or "?", CHANNEL_SWITCH_ERRORS.get(result, "loi khong ro"), result)
+        self._chan_switch_event.set()
 
     def _on_channel_list(self, pkt: bytes):
         """S2C 0x07 list: payload = [01 00][count 1B][ block 6B: ch2 cur2 cap2 ]*count."""
@@ -4755,11 +4969,17 @@ class GameClient:
             log.warning("[%s] KHONG kenh nao du %d cho trong cho ca party -> RETRY (cho kenh trong)",
                         self._label, need)
             return None
-        best = min(fit, key=lambda c: c[1])   # it nguoi nhat trong cac kenh du cho
-        log.info("[%s] Kenh it nguoi MA DU CHO ca party (%d): kenh %d (%d/%d) -> chuyen sang",
-                 self._label, need, best[0], best[1], best[2])
-        self.switch_channel(best[0])
-        return best[0]
+        tried = set()
+        for best in sorted(fit, key=lambda c: (c[1], c[0])):   # it nguoi nhat trong cac kenh du cho
+            tried.add(best[0])
+            log.info("[%s] Kenh it nguoi MA DU CHO ca party (%d): kenh %d (%d/%d) -> chuyen sang",
+                     self._label, need, best[0], best[1], best[2])
+            if self.switch_channel(best[0]):
+                return best[0]
+            log.warning("[%s] Khong doi duoc kenh %d -> thu kenh khac neu co", self._label, best[0])
+        log.warning("[%s] Da thu %d kenh du cho (%s) nhung khong doi duoc -> RETRY",
+                    self._label, len(tried), sorted(tried))
+        return None
 
     def invite_entity(self, entity: bytes):
         """Moi 1 nguoi vao party BANG ENTITY. C2S 0x0d sub=07 = 07 00 [entity 8B].

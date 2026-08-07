@@ -503,6 +503,11 @@ def _pstate(pidx):
     if pidx not in _party_state:
         _party_state[pidx] = {"channel": None,
                               "channel_ready": threading.Event(),
+                              "channel_failed": threading.Event(),
+                              "channel_failed_reason": "",
+                              "channel_expected_map": None,
+                              "channel_sync_gen": 0,
+                              "channel_map_reports": {},
                               "invited": threading.Event(),
                               "lock": threading.Lock(),
                               "ready_members": set(),   # member da vao DG + dung kenh leader
@@ -607,10 +612,13 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
                 # nhu mot luot train moi, neu khong leader/member co the dung im o thanh vi doc
                 # lai state cu cua phase DG.
                 for key in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
+                            "channel_failed",
                             "stop_leader_done", "route_party_ready", "route_done", "rally_ready",
                             "path_done", "route_plan_ready"):
                     st[key].clear()
                 st["channel"] = None
+                st["channel_expected_map"] = None
+                st["channel_map_reports"] = {}
                 st["mob_spot"] = None
                 st["rally_point"] = None
                 st["mob_path"] = None
@@ -837,11 +845,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         city_flag = pcfg.get("city_flag", 0)
         # checkbox "Lam nhiem vu hang ngay" (bingo 9 o + dungeon). Fallback key cu "do_dungeon".
         do_daily = pcfg.get("do_daily", pcfg.get("do_dungeon", True))
+        auto_world_boss = pcfg.get("auto_world_boss", True)
         auto_team_dungeon = pcfg.get("auto_team_dungeon", True)
         # Mode EVENT (40NPC): mac dinh KHONG lam daily quest (acc event chuyen tam vao event ngay,
         # khong di lang thang lam bingo/pho ban -> vao event nhanh, khong bi dump khoi map event).
         if pcfg.get("mode") == "event":
             do_daily = False
+            auto_world_boss = False
             auto_team_dungeon = False
         # mode: digioi | train | city (tap trung ve thanh) | stand (dung yen) | cleanbag
         #       | digioi_train (DG TRUOC, ca party xong DG -> TRAIN map)
@@ -910,6 +920,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                          label, before, after_remain)
             return True
 
+        def _maybe_auto_world_boss(reason: str):
+            if not auto_world_boss:
+                return
+            try:
+                log.info("[%s] Boss the gioi: auto danh het luot (%s)", label, reason)
+                c.do_world_boss_all()
+            except Exception as e:
+                log.warning("[%s] loi auto world boss (%s): %s", label, reason, e)
+
         def _finish_digioi_train_after_dg():
             _go_town_safe(c, label)
             if not _dt_wait_all_digioi_done(pidx, username, label, _stopped):
@@ -917,6 +936,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # Daily/team dungeon can require the whole party. Run it only after every account
             # has finished DG, otherwise an early member can wait for leader while leader is
             # still trying to form the DG party.
+            _maybe_auto_world_boss("sau DG, truoc pho ban doi")
             if auto_team_dungeon:
                 if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
                                                          is_leader, _stopped, pcfg):
@@ -1007,9 +1027,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 return
             log.info("[%s] (%s) reconnect do auto phó bản đội VỠ -> check/chạy lại auto phó bản",
                      label, role)
+        _do_startup_world_boss = bool(auto_world_boss and not is_digioi and not is_reconnect)
         _do_startup_team = bool(auto_team_dungeon and not is_digioi and (not is_reconnect or _td_redo))
         _do_startup_daily = bool(not is_digioi and do_daily and (not is_reconnect or _o5_redo))
-        if _do_startup_team or _do_startup_daily:
+        if _do_startup_world_boss or _do_startup_team or _do_startup_daily:
             if mode == "city":
                 try:
                     if c.go_to_town(sc, city_flag) and c.current_map == getattr(c, "NOI_DAT_SELL_CITY", 12061):
@@ -1024,6 +1045,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             elif mode == "stand" and train_safes and login_map == sc:
                 c.navigate_to(*_nearest_safe(c.pos, train_safes))       # stand map co safe -> ra safe
             # stand map la / khong co safe -> lam tai cho (ke me)
+            if _do_startup_world_boss:
+                _maybe_auto_world_boss("login, truoc pho ban doi")
             if _do_startup_team:
                 if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
                                                          is_leader, _stopped, pcfg):
@@ -1102,19 +1125,93 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
         # Map-train: goi sau khi ve safe (doi kenh tren map thuong khong sao).
         def do_channel_sync():
+            def _prepare_channel_switch():
+                # Client that khong cho doi kenh khi dang trong party; server tra result=3.
+                # Roi party cu truoc khi sync de bot khong tuong doi kenh OK trong khi server tu choi.
+                try:
+                    in_party = bool(getattr(c, "party_members", None) or getattr(c, "party_leader", None)
+                                    or is_joined(pidx, c.self_entity))
+                except Exception:
+                    in_party = bool(getattr(c, "party_members", None) or getattr(c, "party_leader", None))
+                if not in_party:
+                    return
+                try:
+                    c.leave_party()
+                    if is_leader:
+                        reset_party_joined(pidx)
+                    else:
+                        unmark_joined(pidx, c.self_entity)
+                    time.sleep(0.8)
+                except Exception as e:
+                    log.warning("[%s] (%s) sync kenh: loi roi party cu: %s", label, role, e)
+
+            def _report_channel_map(sync_gen, expected_map):
+                ok = expected_map is None or c.current_map == expected_map
+                with st["lock"]:
+                    if st.get("channel_sync_gen") != sync_gen:
+                        return False
+                    st["channel_map_reports"][username] = (bool(ok), c.current_map)
+                    if not ok:
+                        st["channel_failed_reason"] = (
+                            "%s map=%s, can=%s" % (label, c.current_map, expected_map)
+                        )
+                        st["channel_failed"].set()
+                if not ok:
+                    log.warning("[%s] (%s) sync kenh: doi kenh xong SAI MAP (%s != %s)",
+                                label, role, c.current_map, expected_map)
+                return ok
+
+            def _wait_channel_map_reports(sync_gen, expected_map, expected):
+                _last = 0
+                while c.running and not _stopped():
+                    with st["lock"]:
+                        if st.get("channel_sync_gen") != sync_gen:
+                            return False
+                        fail = st["channel_failed"].is_set()
+                        reason = st.get("channel_failed_reason") or "co acc khong ve dung map/kenh"
+                        reports = dict(st.get("channel_map_reports") or {})
+                        done = len(reports) + len(st["reconnecting"]) >= expected
+                    if fail:
+                        log.warning("[%s] (%s) sync kenh/map FAIL (%s) -> pick lai",
+                                    label, role, reason)
+                        return False
+                    if done:
+                        bad = {u: mp for u, (ok, mp) in reports.items() if not ok}
+                        if bad:
+                            log.warning("[%s] (%s) sync kenh/map FAIL, acc sai map: %s",
+                                        label, role, bad)
+                            return False
+                        log.info("[%s] (%s) sync kenh/map OK: %d/%d acc o map %s",
+                                 label, role, len(reports), expected, expected_map)
+                        return True
+                    if time.time() - _last > 15:
+                        _last = time.time()
+                        log.info("[%s] (%s) cho acc bao cao map sau sync kenh (%d/%d, map yeu cau=%s)...",
+                                 label, role, len(reports), expected, expected_map)
+                    time.sleep(1)
+                return False
+
+            _prepare_channel_switch()
             if is_picker:
                 # MOI VONG SYNC: clear channel_ready + channel cu -> member CHO pick MOI (tranh dung
                 # kenh cu vong truoc). channel_ready chi clear o start_party -> vong 2+ member ko cho
                 # -> kenh ko sync lai. Clear o day de moi vong deu re-sync that su.
-                st["channel_ready"].clear()
-                st["channel"] = None
                 # need = so acc cua party -> chi chon kenh con DU CHO cho CA PARTY (tranh ket instance).
                 # pick tra: 0=chi 1 kenh (giu nguyen) | None=co kenh nhung khong du cho (RETRY) | int=da chuyen.
                 # KIEN TRI: 30s dau thu lien tuc (3s/lan), sau do 60s/lan, cho toi khi gom du ve 1 kenh.
                 need = len(party_accounts(pidx))
                 t0 = time.time()
-                ch = 0
                 while c.running and not _stopped():
+                    expected_map = c.current_map
+                    with st["lock"]:
+                        st["channel_ready"].clear()
+                        st["channel_failed"].clear()
+                        st["channel_failed_reason"] = ""
+                        st["channel"] = None
+                        st["channel_expected_map"] = expected_map
+                        st["channel_map_reports"] = {}
+                        st["channel_sync_gen"] = int(st.get("channel_sync_gen", 0)) + 1
+                        sync_gen = st["channel_sync_gen"]
                     r = c.pick_best_channel(need=need)
                     if r is None:   # co kenh nhung khong kenh nao du cho ca party -> CHO kenh trong
                         if time.time() - t0 <= 30:
@@ -1124,23 +1221,62 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                      label, role, need)
                             time.sleep(60)         # sau do: 1 phut/lan
                         continue
-                    ch = r          # 0 (giu nguyen) hoac int (da chuyen) -> chot
+                    ch = r          # 0 (giu nguyen) hoac int (da chuyen) -> chot tam
+                    if not _report_channel_map(sync_gen, expected_map):
+                        log.warning("[%s] (%s) picker doi kenh xong sai map -> pick lai", label, role)
+                        time.sleep(2)
+                        continue
+                    with st["lock"]:
+                        st["channel"] = ch
+                        st["channel_ready"].set()
+                    if ch:
+                        log.info("[%s] (%s) chon kenh %s cho ca party (%d acc)", label, role, ch, need)
+                    else:
+                        log.info("[%s] (%s) ca party giu nguyen 1 kenh (khong tach)", label, role)
+                    if not _wait_channel_map_reports(sync_gen, expected_map, need):
+                        continue
                     break
-                st["channel"] = ch
-                st["channel_ready"].set()
-                if ch:
-                    log.info("[%s] (%s) chon kenh %s cho ca party (%d acc)", label, role, ch, need)
-                else:
-                    log.info("[%s] (%s) ca party giu nguyen 1 kenh (khong tach)", label, role)
             else:
                 # cho picker CHOT kenh (co the lau neu dang doi kenh trong) -> cho toi khi ready/stop
-                while not st["channel_ready"].wait(5):
-                    if not c.running or _stopped():
-                        return
-                ch = st["channel"]
-                if ch:
-                    c.switch_channel(ch)
-                    log.info("[%s] (member) chuyen sang kenh chung = %s", label, ch)
+                while c.running and not _stopped():
+                    while not st["channel_ready"].wait(5):
+                        if not c.running or _stopped():
+                            return
+                    with st["lock"]:
+                        ch = st["channel"]
+                        expected_map = st.get("channel_expected_map")
+                        sync_gen = st.get("channel_sync_gen", 0)
+                    if not ch:
+                        _report_channel_map(sync_gen, expected_map)
+                        break
+                    if c.switch_channel(ch, wait=4.0, retries=1):
+                        if _report_channel_map(sync_gen, expected_map):
+                            log.info("[%s] (member) da chuyen sang kenh chung = %s, map=%s",
+                                     label, ch, c.current_map)
+                            break
+                        while (c.running and not _stopped() and st["channel_ready"].is_set()
+                               and st.get("channel") == ch):
+                            time.sleep(0.5)
+                        continue
+                    _prepare_channel_switch()
+                    if c.switch_channel(ch, wait=4.0, retries=1):
+                        if _report_channel_map(sync_gen, expected_map):
+                            log.info("[%s] (member) da chuyen sang kenh chung = %s sau khi roi party cu, map=%s",
+                                     label, ch, c.current_map)
+                            break
+                        while (c.running and not _stopped() and st["channel_ready"].is_set()
+                               and st.get("channel") == ch):
+                            time.sleep(0.5)
+                        continue
+                    reason = "result=%s" % getattr(c, "_chan_switch_result", None)
+                    with st["lock"]:
+                        st["channel_failed_reason"] = "%s %s" % (label, reason)
+                        st["channel_failed"].set()
+                    log.warning("[%s] (member) khong doi duoc sang kenh chung %s (%s) -> bao leader pick lai",
+                                label, ch, reason)
+                    while (c.running and not _stopped() and st["channel_ready"].is_set()
+                           and st.get("channel") == ch):
+                        time.sleep(0.5)
                 time.sleep(2)
 
         def _do_reform(to_spot=True):
@@ -1753,6 +1889,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # ket tran lien tuc -> teleport boss/dungeon luc dang danh bi server KICK. Ve thanh
                 # an toan roi moi lam dailies.
                 _go_town_safe(c, label)
+                _maybe_auto_world_boss("het gio DG luc login, truoc pho ban doi")
                 if auto_team_dungeon:
                     if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
                                                              is_leader, _stopped, pcfg):
@@ -1785,6 +1922,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if c in _clients: _clients.remove(c)
                     return
                 _go_town_safe(c, label)   # ve thanh truoc (thoat o quai) roi lam dailies
+                _maybe_auto_world_boss("khong vao duoc DG, truoc pho ban doi")
                 if auto_team_dungeon:
                     if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
                                                              is_leader, _stopped, pcfg):
@@ -2494,9 +2632,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 c.leave_party(); reset_party_joined(pidx)   # huy party cu
             if kind == "channel":
                 ch = cmd[1]
-                try: c.switch_channel(ch); time.sleep(1.5)
-                except Exception as e: log.warning("[%s] manual: loi doi kenh: %s", label, e)
-                log.info("[%s] (%s) manual: da doi kenh -> %d", label, role, ch)
+                ok = False
+                try:
+                    ok = c.switch_channel(ch)
+                    time.sleep(1.5)
+                except Exception as e:
+                    log.warning("[%s] manual: loi doi kenh: %s", label, e)
+                if ok:
+                    with st["lock"]:
+                        st["channel"] = int(ch)
+                    log.info("[%s] (%s) manual: da doi kenh -> %d", label, role, ch)
+                else:
+                    log.warning("[%s] (%s) manual: doi kenh %d THAT BAI", label, role, ch)
             elif kind == "city":
                 cid, flag = cmd[1], cmd[2]
                 c.flee_mode = True
@@ -2911,8 +3058,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         if ch:
                             log.info("[%s] (member) chua vao party -> retry chuyen kenh %d", label, ch)
                             try:
-                                c.switch_channel(ch); time.sleep(1); c.combat_ready()
-                            except Exception: pass
+                                ok = c.switch_channel(ch); time.sleep(1); c.combat_ready()
+                                if not ok:
+                                    log.warning("[%s] (member) retry chuyen kenh %d THAT BAI", label, ch)
+                            except Exception:
+                                pass
             if train_on_map:
                 pass   # leader da chay long vong (run-around) tu dong tim quai
             elif not is_digioi:
@@ -2945,6 +3095,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     label, role, "" if (do_daily and not dt_mode) else " (doi DG+Train/tat dungeon)")
                         if not dt_mode:
                             _go_town_safe(c, label)
+                            _maybe_auto_world_boss("het gio DG, truoc pho ban doi")
                             if auto_team_dungeon:
                                 _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
                                                                   is_leader, _stopped, pcfg)
@@ -2972,6 +3123,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                         label, role, " + solo daily dungeon" if (do_daily and not dt_mode) else "")
                             if not dt_mode:
                                 _go_town_safe(c, label)
+                                _maybe_auto_world_boss("het gio DG, truoc pho ban doi")
                                 if auto_team_dungeon:
                                     _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
                                                                       is_leader, _stopped, pcfg)
@@ -3504,7 +3656,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         buy_sp=False, sp_qty=9999, sp_thresh=500000,
                         claim_offline_exp=True,
                         auto_team_dungeon=True, team_dungeons=None,
-                        auto_buy_shop=None, buy_thien_chau=False):
+                        auto_buy_shop=None, buy_thien_chau=False,
+                        auto_world_boss=True):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -3525,6 +3678,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "city_flag": int(city_flag), "server": "", "server_ip": server_ip,
         "server_id": int(server_id), "do_daily": bool(do_daily),
         "claim_offline_exp": bool(claim_offline_exp),
+        "auto_world_boss": bool(auto_world_boss),
         "auto_team_dungeon": bool(auto_team_dungeon),
         "team_dungeons": config.normalize_team_dungeons(team_dungeons),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
@@ -3738,7 +3892,6 @@ def party_switch_channel(pidx, channel):
     da setup (xu ly trong vong keepalive qua cmd_gen)."""
     st = _pstate(pidx)
     with st["lock"]:
-        st["channel"] = int(channel)   # de reform/setup dung dung kenh moi
         st["cmd"] = ("channel", int(channel))
         st["cmd_gen"] += 1
     log.info(">>> PARTY %s: lenh DOI KENH -> %d (huy party + ca lu chuyen + tiep tuc che do)",

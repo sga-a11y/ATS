@@ -554,6 +554,7 @@ if _aj is not None:
                 "server_id": _server_id(_srv),
                 "do_daily": bool(_party.get("do_daily", _party.get("do_dungeon", True))),
                 "claim_offline_exp": bool(_party.get("claim_offline_exp", True)),
+                "auto_world_boss": bool(_party.get("auto_world_boss", True)),
                 "auto_team_dungeon": bool(_party.get("auto_team_dungeon", True)),
                 "team_dungeons": normalize_team_dungeons(_party.get("team_dungeons")),
                 "digioi_mode": _party.get("digioi_mode", "party"),   # Di Gioi: "party" | "solo"

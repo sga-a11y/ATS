@@ -198,6 +198,7 @@ class BotForegroundService : Service() {
                 party.claimOfflineExp,
                 party.autoTeamDungeon, teamDungeonsJson(party.teamDungeons),
                 party.autoBuyShop, party.buyThienChau,
+                party.autoWorldBoss,
             )
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)

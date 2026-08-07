@@ -672,6 +672,7 @@ fun TsBotApp(
             initialLeaderWhitelist = partyBeingEdited.leaderWhitelist,
             initialDoDaily = partyBeingEdited.doDaily,
             initialClaimOfflineExp = partyBeingEdited.claimOfflineExp,
+            initialAutoWorldBoss = partyBeingEdited.autoWorldBoss,
             initialAutoTeamDungeon = partyBeingEdited.autoTeamDungeon,
             initialTeamDungeons = partyBeingEdited.teamDungeons,
             initialTrainMapKey = partyBeingEdited.trainMapKey,
@@ -1367,6 +1368,7 @@ fun AddPartyDialog(
     initialLeaderWhitelist: List<String> = emptyList(),
     initialDoDaily: Boolean = true,
     initialClaimOfflineExp: Boolean = true,
+    initialAutoWorldBoss: Boolean = true,
     initialAutoTeamDungeon: Boolean = true,
     initialTeamDungeons: Map<Int, Boolean> = defaultTeamDungeons(),
     initialTrainMapKey: String = "",
@@ -1404,6 +1406,7 @@ fun AddPartyDialog(
     var leaderWhitelistText by remember { mutableStateOf(initialLeaderWhitelist.joinToString("\n")) }
     var doDaily by remember { mutableStateOf(initialDoDaily) }
     var claimOfflineExp by remember { mutableStateOf(initialClaimOfflineExp) }
+    var autoWorldBoss by remember { mutableStateOf(initialAutoWorldBoss) }
     var autoTeamDungeon by remember { mutableStateOf(initialAutoTeamDungeon) }
     var teamDungeons by remember { mutableStateOf(defaultTeamDungeons(initialTeamDungeons)) }
     var showTeamDungeonList by remember { mutableStateOf(false) }
@@ -1458,6 +1461,7 @@ fun AddPartyDialog(
         leaderWhitelist = parseLeaderWhitelist(leaderWhitelistText),
         doDaily = doDaily,
         claimOfflineExp = claimOfflineExp,
+        autoWorldBoss = autoWorldBoss,
         autoTeamDungeon = autoTeamDungeon,
         teamDungeons = teamDungeons,
         trainMapKey = trainMapKey,
@@ -1628,6 +1632,10 @@ fun AddPartyDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = claimOfflineExp, onCheckedChange = { claimOfflineExp = it })
                             Text("Nhận exp offline")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = autoWorldBoss, onCheckedChange = { autoWorldBoss = it })
+                            Text("Đánh hết lượt World Boss")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = autoTeamDungeon, onCheckedChange = { autoTeamDungeon = it })
@@ -1943,6 +1951,7 @@ fun AddPartyDialog(
                             leaderWhitelist = parseLeaderWhitelist(leaderWhitelistText),
                             doDaily = doDaily,
                             claimOfflineExp = claimOfflineExp,
+                            autoWorldBoss = autoWorldBoss,
                             autoTeamDungeon = autoTeamDungeon,
                             teamDungeons = teamDungeons,
                             trainMapKey = trainMapKey,

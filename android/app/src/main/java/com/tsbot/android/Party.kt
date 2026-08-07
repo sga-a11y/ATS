@@ -22,6 +22,9 @@ data class Party(
     val doDaily: Boolean = true,
     // Nhan exp offline luc login. Mac dinh CO tick de giu hanh vi cu.
     val claimOfflineExp: Boolean = true,
+    // Danh het luot World Boss luc login trong gio 12h-23h, truoc khi di pho ban doi.
+    // Mac dinh CO tick. Neu tat, daily quest o2 van giu hanh vi cu: thieu thi danh 1 lan.
+    val autoWorldBoss: Boolean = true,
     // Tu di pho ban doi. Mac dinh: 20/50/80 bat, 110 tat.
     val autoTeamDungeon: Boolean = true,
     val teamDungeons: Map<Int, Boolean> = mapOf(20 to true, 50 to true, 80 to true, 110 to false),
@@ -34,7 +37,7 @@ data class Party(
     // - xem use_phuc_than_items() client.py). Mirror PC's use_phuc_than_var (gui.py). Mac dinh
     // KHONG tick (giong PC).
     val usePhucThan: Boolean = false,
-    // Dung Di Gioi Ho Phu (0xff8c) khi mode Di Gioi con <15 phut. Check luc login + moi 10p.
+    // Dung Di Gioi Ho Phu (0xff8c) khi mode Di Gioi con <15 phut. Check luc login + moi 5p.
     // Mac dinh KHONG tick, mirror PC's use_digioi_ho_phu_var (gui.py).
     val useDigioiHoPhu: Boolean = false,
     // Danh boss QD (do_legion_boss). Mirror PC's fight_boss_var (gui.py). Mac dinh CO tick (giu
@@ -69,6 +72,7 @@ data class Party(
 fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     doDaily = source.doDaily,
     claimOfflineExp = source.claimOfflineExp,
+    autoWorldBoss = source.autoWorldBoss,
     autoTeamDungeon = source.autoTeamDungeon,
     teamDungeons = source.teamDungeons,
     usePhucThan = source.usePhucThan,

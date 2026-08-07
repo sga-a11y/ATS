@@ -242,9 +242,10 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
   - **CC ti le thap / soft-or-less-reliable:** troi cay (`0x2714` Cay Tinh, `0x2731` Boc Cam,
     `0x4e39` Thu Tinh, `0x4e51` Thu Tinh Sieu), gio khoa (`0x32ca` Tuyen Phong,
     `0x32fc` The Loc Xoay, `0x32d7` Thanh Long, `0x4e3b` Hoan Phong, `0x4e50` Toan Phong Sieu,
-    `0x32fa` Bua Tiec, `0x32f6` Vo Tan Lam Phong), hon loan (`0x36c5` Hon Loan,
-    `0x36f1` C.Hon Loan, `0x4e2e` Tu Nhan Hon Loan, `0x4e57` S.Hon Loan,
-    `0x4e53` Cuu Vi Ho Mi Hoac, `0x4e5a` Ban Thu Doa Dia).
+    `0x32fa` Bua Tiec, `0x32f6` Vo Tan Lam Phong).
+  - **Hon Loan / chaos (nhom rieng):** `0x36c5` Hon Loan, `0x36f1` C.Hon Loan,
+    `0x4e2e` Tu Nhan Hon Loan, `0x4e57` S.Hon Loan, `0x4e53` Cuu Vi Ho Mi Hoac,
+    `0x4e5a` Ban Thu Doa Dia.
 - Phase AI trong quest:
   1) Hoi sinh.
   2) CC ti le cao, truoc buff bao ve.
@@ -256,16 +257,19 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
 - NPC nguy hiem can an CC truoc, uu tien theo thu tu:
   `Chu Cong` -> `Hang Nga` -> `Gia Cat Luong` -> `Tu Ma Y` -> `Luc Ton` -> `Bang Thong`
   -> `Lu Bo` -> `Tran Cung`.
-  Runtime normalize ten khong dau va map ten theo vi tri neu 0x0b enemy co row/col.
+  Runtime normalize ten khong dau va map ten theo vi tri neu 0x0b enemy co row/col. Neu khong co NPC
+  nguy hiem, auto CC chon dich current HP cao nhat truoc; neu cung HP thi chon vi tri lon hon.
 - 0x0b enemy dang PB110: body `05 00 [n] 07 [tid 2B] ... [row][col] [hp/sp...]`, row/col o
   `body[22:24]`. Vi du Tran Cung `0x9d3f` row=0 col=4.
 - Target CC thong minh:
   - Neu con dich nao chua co BAT KY CC nao: hard CC va soft CC deu uu tien target chua bi CC,
     khong trung target trong cung turn neu nhieu acc cung cast.
-  - Khi tat ca dich deu da co CC: chia theo 2 lop status de tranh de nhau:
-    * CC khoa (bang/hon me/stun/cay/gio...) chon con chua co CC khoa khac.
-    * Hon Loan chon con chua co Hon Loan.
-  - Hon Loan co the cast de len CC khoa nen phai theo rule tren de tranh de len khi van con target sach.
+  - Khi tat ca dich deu da co CC: chi chia 2 lop status de tranh de nhau:
+    * `control`: tat ca CC khong phai Hon Loan (bang/hon me/stun/cay/gio...). Cay Tinh khong duoc
+      cast de len Bang Phong, va nguoc lai.
+    * `chaos`: Hon Loan la nhom rieng, co the cast them len dich dang co `control`.
+  - User custom skill CC van di qua target/claim CC: giu tieu chi target user chon, nhung ne target da
+    co CC cung nhom hoac da duoc acc khac claim trong cung turn.
 
 ### S2C 0x33 — Stats per turn
 Pattern entries: `03 02 [type] [4-byte LE]`
@@ -764,8 +768,13 @@ Map dong nguoi (Di Gioi) chia nhieu sub-channel. **PHAI cung channel moi moi vao
 C2S 0x07 = c0 91 0b 00 00 00 07 02 00 [channel_id 2B LE]
 ```
 - channel 81 = `07 02 00 51 00`, channel 79 = `07 02 00 4f 00`, channel 38 = `07 02 00 26 00`
-- Sau khi gui -> server doi scene (0x27 + 0x61 + 0x0c handshake), nhan vat sang channel moi.
-- Bot.switch_channel(n) da implement.
+- S2C `0x07 0200 [result]` la ket qua doi kenh theo client Lua:
+  `0=OK`, `1=dang o san kenh nay`, `2=khong co kenh`, `3=dang party khong duoc doi`,
+  `4=kenh day`. **Khong duoc tu set current_channel ngay sau khi gui C2S**; phai cho ack nay.
+- Sau khi gui OK -> server doi scene (0x27 + 0x61 + 0x0c handshake), nhan vat sang channel moi.
+- KENH HIEN TAI client luu o `SceneManager.instanceId`: doc duoc tu S2C `0x03` PlayerAppear
+  (`instanceId` nam sau name UTF-16LE) va S2C `0x0c` ChangeScene (sau sceneTag).
+- Client game khong cho bam doi kenh neu dang trong party; bot phai roi/giai tan party cu truoc khi sync kenh.
 
 ## 7f. TIMER DI GIOI (packet 0x55)
 
@@ -1011,6 +1020,17 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   sau marker `c0 fe 03 00 00 00` là **2 byte mask (uint16 LE)** — **line L đã nhận = bit (L+3)**.
   Vd `32d0` → bits {4,6,7,9} → line {1,3,4,6} đã nhận. Bot đọc → skip line đã nhận (`_claimed_lines`).
   Verify nhiều nick: nhận hàng 1 → `3040`→`3050`; nhận hàng 3 → `3290`→`32d0`.
+- **Progress từng ô của Jiugongge nằm trong Jiugongge full/update** (chỉ dùng cho UI/quest bingo, không dùng làm counter World Boss):
+  - `S:91-1` (`0x5b 01 00 ...`) = full grid. Sau count 4B, mỗi grid có `[gridId 2B][difficulty 1B]`
+    rồi 9 ô, mỗi ô `[missionId 2B][progress u32][isCompleted 1B]`.
+  - `S:91-4` (`0x5b 04 00 ...`) = update 1 ô: `[gridId 2B][cell 1B][missionId 2B][progress u32][isCompleted 1B]`.
+- **World Boss 0/5 KHÔNG lấy từ S91/bingo.** Client game hiển thị số lượt World Boss bằng
+  `MarkManager.GetMission(12207).step` (xem `UI_UIMain.lua`, `Logic_Item.lua`). Packet sync là
+  mission-step opcode `0x18`: init `sub0600`, tăng `sub0100`, giảm `sub0200`, xóa `sub0400`.
+  Nếu mission `12207` không có trong bảng init thì coi là `0/5`.
+- Item tăng lượt World Boss là nhóm `ItemUse_203`; client chỉ cho dùng khi `mission 12207.step >= 5`.
+  User đã chốt item VN `0xb625 = Khiêu Chiến Boss`; bot chỉ dùng item này sau khi đã đủ `5/5`
+  rồi đọc/ước lượng về `4/5` để đánh tiếp.
 - **Bài học 1:** quest "đếm số lần" → bulk không lộ done, phải hỏi riêng từng ô.
 - **Bài học 2 (QUAN TRỌNG):** `analyze_pcap.py` từng cap `ln<=2000` → **DROP frame lớn** (0x51 ~1004B,
   0x55 ~15KB) → kết luận sai "server không gửi". ĐÃ sửa `ln<=65535`. Khi không thấy data trong gói,

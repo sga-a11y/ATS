@@ -170,6 +170,7 @@ _break_claims = {}
 _cc_lock = threading.Lock()
 _cc_claims = {}
 PROTECT_CLAIM_COOLDOWN = 2.5
+CC_CLAIM_COOLDOWN = 8.0
 
 
 def _short_claim(claims_by_group, lock, group, target, owner, ttl=PROTECT_CLAIM_COOLDOWN):
@@ -291,7 +292,9 @@ CC_HIGH_SKILLS = (11014, 11039, 20026, 11027, 11028, 14008, 13007)
 CC_LOW_LOCK_SKILLS = (10004, 10033, 20025, 20049, 13002, 13052, 13015,
                       20027, 20048, 13050, 13046)
 CC_CHAOS_SKILLS = (14021, 14065, 20014, 20051, 20055, 20058)
-CC_LOCK_SKILLS = frozenset(CC_HIGH_SKILLS + CC_LOW_LOCK_SKILLS)
+# Tat ca CC khong phai Hon Loan nam chung 1 nhom: Bang/choang/troi/gio khoa/hon me...
+CC_CONTROL_SKILLS = frozenset(CC_HIGH_SKILLS + CC_LOW_LOCK_SKILLS)
+CC_LOCK_SKILLS = CC_CONTROL_SKILLS
 CC_SKILLS = frozenset(CC_HIGH_SKILLS + CC_LOW_LOCK_SKILLS + CC_CHAOS_SKILLS)
 
 # NPC nguy hiem: neu nhieu con cung xuat hien thi CC theo thu tu nay truoc.
@@ -511,8 +514,8 @@ def _norm_name(name):
 def _cc_class(skill):
     if skill in CC_CHAOS_SKILLS:
         return "chaos"
-    if skill in CC_LOCK_SKILLS:
-        return "lock"
+    if skill in CC_CONTROL_SKILLS:
+        return "control"
     return None
 
 
@@ -835,7 +838,8 @@ def _cc_mode_enabled(state):
     return bool(getattr(state, "quest_mode", False) and not getattr(state, "boss_mode", False))
 
 
-def _cc_target_order(state, offered, cc_kind):
+def _enemy_target_candidates(state, offered, target_key):
+    target_key = target_key or "auto"
     off = set(offered or [])
     alive = [
         pos for pos in (getattr(state, "enemy_slots", []) or [])
@@ -843,30 +847,50 @@ def _cc_target_order(state, offered, cc_kind):
     ]
     if not alive:
         return []
-    clean = [pos for pos in alive if not _enemy_cc_classes(state, pos)]
+    if target_key == "enemy_low_hp":
+        return sorted(alive, key=lambda pos: (getattr(state, "enemy_hp", {}).get(pos, 1), pos))
+    if target_key == "enemy_high_hp":
+        return sorted(alive, key=lambda pos: (-getattr(state, "enemy_hp", {}).get(pos, 1), pos))
+    if target_key == "enemy_last":
+        return sorted(alive, reverse=True)
+    if target_key == "block":
+        first = _train_target(alive, offered)
+        rest = [pos for pos in sorted(alive) if pos != first]
+        return ([first] if first is not None else []) + rest
+    hp = getattr(state, "enemy_hp", {}) or {}
+    return sorted(alive, key=lambda pos: (_dangerous_enemy_rank(state, pos), -hp.get(pos, 1), -pos))
+
+
+def _cc_target_order(state, offered, cc_kind, target_key="auto"):
+    base = _enemy_target_candidates(state, offered, target_key)
+    if not base:
+        return []
+    clean = [pos for pos in base if not _enemy_cc_classes(state, pos)]
     if clean:
         candidates = clean
     elif cc_kind == "chaos":
-        candidates = [pos for pos in alive if "chaos" not in _enemy_cc_classes(state, pos)]
+        candidates = [pos for pos in base if "chaos" not in _enemy_cc_classes(state, pos)]
     else:
-        candidates = [pos for pos in alive if "lock" not in _enemy_cc_classes(state, pos)]
-    return sorted(candidates, key=lambda pos: (_dangerous_enemy_rank(state, pos), pos))
+        candidates = [pos for pos in base if "control" not in _enemy_cc_classes(state, pos)]
+    return candidates
 
 
-def _try_cc(state, unit, skills, stat, options, phase):
-    """Quest only: CC target, uu tien NPC nguy hiem neu biet ten theo vi tri."""
-    if not _cc_mode_enabled(state) or not getattr(state, "enemy_slots", None):
+def _try_cc_skill(state, unit, skill, stat, options, phase, target_key="auto", atype=None, require_mode=True):
+    """Chon target cho skill khong che, dung chung auto + custom de tranh de CC trung."""
+    if require_mode and not _cc_mode_enabled(state):
+        return None
+    if not getattr(state, "enemy_slots", None):
         return None
     if getattr(stat, "hp_max", 0) > 0 and getattr(stat, "hp", 0) <= 0:
         return None
-    offered = _offered_targets(options, state.my_atype)
+    at = state.my_atype if atype is None else atype
+    offered = _offered_targets(options, at)
     if not offered:
-        return None
-    skill = pick_cc_skill(skills, getattr(stat, "sp", 0), phase)
-    if skill is None:
         return None
     cc_kind = _cc_class(skill)
     if cc_kind is None:
+        return None
+    if getattr(stat, "sp", 0) < _skill_cost(skill):
         return None
     gen_attr = "last_atk_gen_char" if unit == config.UNIT_CHAR else "last_atk_gen_pet"
     if getattr(state, gen_attr, -1) == state.enemy_gen:
@@ -874,16 +898,26 @@ def _try_cc(state, unit, skills, stat, options, phase):
     group = getattr(state, "party_idx", None)
     if group is None:
         group = state.label
-    owner = state.label + (":char:cc:" if unit == config.UNIT_CHAR else ":pet:cc:") + phase
-    for pos in _cc_target_order(state, offered, cc_kind):
+    owner = state.label + (":char:cc:" if unit == config.UNIT_CHAR else ":pet:cc:") + str(phase)
+    for pos in _cc_target_order(state, offered, cc_kind, target_key):
         target_col = _resolve_target(pos, offered)
         if target_col is None:
             continue
         b1, b2 = _row(pos), _col(pos)
-        if _short_claim(_cc_claims, _cc_lock, group, (b1, b2), owner):
+        if _short_claim(_cc_claims, _cc_lock, group, (b1, b2), owner, ttl=CC_CLAIM_COOLDOWN):
             setattr(state, gen_attr, state.enemy_gen)
-            return Decision(unit, state.my_atype, target_col, skill, b=b1)
+            return Decision(unit, at, target_col, skill, b=b1)
     return None
+
+
+def _try_cc(state, unit, skills, stat, options, phase):
+    """Quest only: CC target, uu tien NPC nguy hiem neu biet ten theo vi tri."""
+    if not _cc_mode_enabled(state):
+        return None
+    skill = pick_cc_skill(skills, getattr(stat, "sp", 0), phase)
+    if skill is None:
+        return None
+    return _try_cc_skill(state, unit, skill, stat, options, phase, require_mode=False)
 
 
 def _try_sp_restore(state, unit, skills, stat):
@@ -1160,6 +1194,12 @@ def _custom_decision(state, unit, unit_key, skills, stat, options, atype=None):
                 rv = _revive_decision_for_skill(state, unit, stat, skill_id)
                 if rv is not None:
                     return rv
+                continue
+            if _is_cc_skill(skill_id):
+                cc = _try_cc_skill(state, unit, skill_id, stat, options, "custom",
+                                   target_key=target_key, atype=atype, require_mode=False)
+                if cc is not None:
+                    return cc
                 continue
         if target_key in ("ally_low_hp", "ally_high_hp", "ally_low_sp", "ally_high_sp",
                           "ally_revive_skill", "ally_protect_skill", "self"):
