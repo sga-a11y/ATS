@@ -104,6 +104,12 @@ Response: access_token, account_id
 | 0x55 | **Unit ready** (1 per char/pet) |
 | 0x6e | Entity info |
 
+Note 2026-08-07:
+- S2C `0x03` (`00 00 ...`) la `PlayerAppear` cho ca self va nguoi xung quanh, khong chi self-spawn.
+  Layout dung de doc ten: body `[00 00][entity 8B]... [name_len @ body[46]][name UTF-16LE] ...`.
+  Bot dung no de map ten->entity cho tinh nang moi them acc whitelist dung canh leader.
+- S2C `0x27/0900` cung co record entity + ten nguoi gan map; co the dung bo sung cho cache whitelist.
+
 ---
 
 ## 4. COMBAT PACKET (C2S 0x32)

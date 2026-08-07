@@ -1881,11 +1881,12 @@ class GameClient:
                 # 0x0c ChangeScene co them sceneTag(2) + instanceId/channel(2) sau toa do.
                 if opcode == 0x0c and len(pkt) >= 25:
                     self._note_current_channel(int.from_bytes(pkt[23:25], "little"), "0x0c")
-        # 0x03 = goi SELF server gui khi load map: [00 00][entity 8B][... 11B][map_id 2B].
-        # KHAC voi 0x0c/0x07 (broadcast nguoi xung quanh): 0x03 ve CHINH MINH -> doc duoc map
-        # NGAY CA KHI DUNG MOT MINH (DG/dungeon vang nguoi). Chi doc khi entity == self.
+        # 0x03 PlayerAppear: server gui cho ca self va nguoi xung quanh.
+        # Chi self-spawn moi dung de cap nhat map/pos; nguoi xung quanh dung de cache ten/entity
+        # cho whitelist invite.
         if opcode == 0x03 and len(pkt) >= 30 and pkt[7:9] == b"\x00\x00":
             ent = pkt[9:17]
+            self._remember_entity_name_from_03(pkt)
             if self.self_entity is None or ent == self.self_entity:
                 mid = int.from_bytes(pkt[28:30], "little")
                 if mid > 1000:
@@ -4850,15 +4851,7 @@ class GameClient:
             return None
         return int.from_bytes(body[end:end + 2], "little")
 
-    def _resolve_name_from_03(self, pkt: bytes):
-        """Ten nhan vat tu goi 0x03 self-spawn - gui cho MOI acc luc login (KHONG can bang hoi).
-        Layout: [0000][self_entity 8B][~36B stat][name_len 1B @body[46]][name UTF-16LE].
-        Guard: 2 byte truoc name_len = 0000. Verify 3/3 acc (haabo/gamo/luubay). Fallback: quet."""
-        if self.char_name or not self.self_entity or not pkt or len(pkt) < 55:
-            return
-        body = pkt[7:]
-        if len(body) < 48 or body[2:10] != self.self_entity:
-            return
+    def _name_from_03_body(self, body: bytes):
         def _try(off):
             if off < 2 or off + 1 >= len(body):
                 return None
@@ -4872,17 +4865,79 @@ class GameClient:
             except Exception:
                 return None
             return nm if (nm and nm.isprintable()) else None
-        nm = _try(46)   # offset co dinh
+        nm = _try(46)   # offset co dinh cua PlayerAppear da verify voi self-spawn
         if not nm:      # fallback: quet sau entity tim [0000][len][name printable]
             for off in range(12, min(len(body) - 1, 90)):
                 nm = _try(off)
                 if nm:
                     break
+        return nm
+
+    def _remember_entity_name(self, entity: bytes, name: str, source: str = ""):
+        if not entity or not name:
+            return
+        entity = bytes(entity)
+        name = str(name).strip()
+        if not name:
+            return
+        names = self.entity_names.setdefault(entity, set())
+        if name in names:
+            return
+        names.add(name)
+        leaders = (config.leaders_for(self.party_idx)
+                   if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
+        wanted = {str(x).strip().lower() for x in (leaders or []) if str(x).strip()}
+        if name.lower() in wanted:
+            log.info("[%s] thay acc whitelist '%s' entity=%s (%s)",
+                     self._label, name, entity.hex()[:12], source or "entity-name")
+
+    def _remember_entity_name_from_03(self, pkt: bytes):
+        """0x03 PlayerAppear den cho ca nguoi xung quanh. Luu ten/entity de moi whitelist."""
+        body = pkt[7:]
+        if len(body) < 48 or body[0:2] != b"\x00\x00":
+            return
+        entity = body[2:10]
+        name = self._name_from_03_body(body)
+        if name:
+            self._remember_entity_name(entity, name, "0x03")
+
+    def _resolve_name_from_03(self, pkt: bytes):
+        """Ten nhan vat tu goi 0x03 self-spawn - gui cho MOI acc luc login (KHONG can bang hoi).
+        Layout: [0000][self_entity 8B][~36B stat][name_len 1B @body[46]][name UTF-16LE].
+        Guard: 2 byte truoc name_len = 0000. Verify 3/3 acc (haabo/gamo/luubay). Fallback: quet."""
+        if self.char_name or not self.self_entity or not pkt or len(pkt) < 55:
+            return
+        body = pkt[7:]
+        if len(body) < 48 or body[2:10] != self.self_entity:
+            return
+        nm = self._name_from_03_body(body)
         if nm:
             self.char_name = nm
             self._label = nm
+            self._remember_entity_name(self.self_entity, nm, "0x03-self")
             _register_party_name(self.self_entity, nm)
             log.info("[%s] Ten nhan vat = '%s' (tu 0x03)", self._username, nm)
+
+    def _remember_entity_names_from_27_nearby(self, pkt: bytes):
+        """S2C 0x27/0900 co cac record entity + ten nguoi gan map; dung de tim whitelist."""
+        off = 9
+        parsed = 0
+        while off + 13 <= len(pkt):
+            entity = pkt[off:off + 8]
+            name_len = pkt[off + 12]
+            end = off + 13 + name_len
+            if name_len <= 0 or name_len > 80 or end > len(pkt):
+                break
+            try:
+                name = pkt[off + 13:end].decode("utf-16-le")
+            except Exception:
+                name = ""
+            if name:
+                self._remember_entity_name(entity, name, "0x27/0900")
+                parsed += 1
+            off = end
+        if parsed:
+            log.debug("[%s] 0x27/0900 parsed %d nearby players", self._label, parsed)
 
     def _on_player_info(self, pkt: bytes):
         """S2C 0x27 sub=0x02: danh sach thanh vien guild.
@@ -4894,6 +4949,9 @@ class GameClient:
             return
         payload = pkt[7:]
         sub = int.from_bytes(payload[0:2], 'little')
+        if sub == 0x09:
+            self._remember_entity_names_from_27_nearby(pkt)
+            return
         if sub != 0x02:
             return
         # --- TEN NHAN VAT CUA MINH: quet truc tiep self_entity trong goi roi doc name ngay sau
@@ -4918,7 +4976,7 @@ class GameClient:
             except Exception:
                 name = ''
             if name:
-                self.entity_names.setdefault(entity, set()).add(name)
+                self._remember_entity_name(entity, name, "0x27/0200")
                 # Neu la entity CUA MINH -> dung lam ten nhan vat trong log
                 if self.self_entity and entity == self.self_entity and self.char_name != name:
                     self.char_name = name
