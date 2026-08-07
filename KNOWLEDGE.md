@@ -105,10 +105,20 @@ Response: access_token, account_id
 | 0x6e | Entity info |
 
 Note 2026-08-07:
+- Client Lua `UITeam.UpdateList()` hien "tim nguoi/tim doi" tu `Role.players`, loc cung
+  `SceneManager.sceneId` va `SceneManager.instanceId`. Moi party thuong goi `Team.Invite(role)` ->
+  C2S `0x0d 0700 [roleId/entity 8B]`. Bot cung dung logic nay lam dieu kien gom party:
+  leader chi moi member khi da thay `PlayerAppear`/nearby cua member dung map + dung instanceId/kenh.
 - S2C `0x03` (`00 00 ...`) la `PlayerAppear` cho ca self va nguoi xung quanh, khong chi self-spawn.
-  Layout dung de doc ten: body `[00 00][entity 8B]... [name_len @ body[46]][name UTF-16LE] ...`.
-  Bot dung no de map ten->entity cho tinh nang moi them acc whitelist dung canh leader.
+  Layout theo client Lua `Role.PlayerAppear`: body
+  `[00 00][entity 8B][sex][element][turn3][lv][poor][godMission 4B][elfNo 2B][sceneId 2B][x 2B][y 2B] ... [serverId][turn][career][name_len @ body[46]][name UTF-16LE][instanceId 2B]`.
+  **Luu y:** 2 byte truoc `name_len` la `turn/career`, KHONG phai guard `00 00`; nhan vat chuyen sinh/nghe
+  co the khac 0. Bot dung 0x03 de map ten->entity + scene/channel cho tinh nang moi acc whitelist dung canh leader.
 - S2C `0x27/0900` cung co record entity + ten nguoi gan map; co the dung bo sung cho cache whitelist.
+- PB doi: UI client mo `UIInvite` tu `Social.friends` online du level, nhung packet moi van chi la
+  `Dungeon.SendInvite(roleId)` -> C2S `0x2f 0800 [roleId/entity 8B]`. Nhan invite S2C `0x2f 0f00`
+  chua `roomId`; dong y la join room C2S `0x2f 0300 [roomId 4B][password_len]`, roi ready `0x2f 0b00`.
+  PB invite KHONG bat buoc check gan nhu party thuong vi server/client cho moi theo roleId da biet.
 
 ---
 

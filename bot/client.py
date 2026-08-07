@@ -910,7 +910,8 @@ class GameClient:
         self.party_leader = None     # entity chu party (tu 0x0d sub=06)
         self.party_members = []      # list entity cac member theo thu tu (= slot B2)
         self.party_idx = None        # chi so party cua bot (tu config.ACCOUNT_PARTY) - de nhan moi cung party
-        self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x27
+        self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x03/0x27
+        self.entity_meta = {}        # entity(bytes) -> last seen scene/channel; dung loc nguoi dung canh minh
         self._running_route = False   # dang chay auto run-around
         self._di_gioi_anchor = None   # TAM run-around DG = diem tele VAO Di Gioi (co dinh). Sau
         #   disconnect -> relogin, self.pos co the bi 0x03 keo ve rìa map -> run-around anchor theo
@@ -4852,34 +4853,61 @@ class GameClient:
         return int.from_bytes(body[end:end + 2], "little")
 
     def _name_from_03_body(self, body: bytes):
-        def _try(off):
+        def _try(off, require_zero_prefix: bool = False):
             if off < 2 or off + 1 >= len(body):
                 return None
             nl = body[off]
             if not (0 < nl <= 40) or nl % 2 or off + 1 + nl > len(body):
                 return None
-            if body[off - 2:off] != b"\x00\x00":
+            if require_zero_prefix and body[off - 2:off] != b"\x00\x00":
                 return None
             try:
                 nm = body[off + 1:off + 1 + nl].decode("utf-16-le")
             except Exception:
                 return None
             return nm if (nm and nm.isprintable()) else None
-        nm = _try(46)   # offset co dinh cua PlayerAppear da verify voi self-spawn
+        # Client Lua: Role.PlayerAppear doc name_len ngay sau serverId/turn/career.
+        # Hai byte truoc name_len KHONG phai guard 0000; co the la turn/career cua nhan vat.
+        nm = _try(46)   # offset co dinh cua PlayerAppear da verify voi client Lua
         if not nm:      # fallback: quet sau entity tim [0000][len][name printable]
             for off in range(12, min(len(body) - 1, 90)):
-                nm = _try(off)
+                nm = _try(off, require_zero_prefix=True)
                 if nm:
                     break
         return nm
 
-    def _remember_entity_name(self, entity: bytes, name: str, source: str = ""):
+    def _remember_entity_name(
+        self,
+        entity: bytes,
+        name: str,
+        source: str = "",
+        *,
+        scene_id=None,
+        instance_id=None,
+        nearby: bool = False,
+    ):
         if not entity or not name:
             return
         entity = bytes(entity)
         name = str(name).strip()
         if not name:
             return
+        meta = self.entity_meta.setdefault(entity, {})
+        meta["seen"] = time.time()
+        meta["source"] = source or "entity-name"
+        if scene_id is not None:
+            try:
+                meta["scene_id"] = int(scene_id)
+            except Exception:
+                pass
+        if instance_id is not None:
+            try:
+                meta["instance_id"] = int(instance_id)
+            except Exception:
+                pass
+        if nearby or source in ("0x03", "0x27/0900"):
+            meta["nearby"] = True
+            meta["scene_generation"] = self._channel_scene_generation
         names = self.entity_names.setdefault(entity, set())
         if name in names:
             return
@@ -4898,8 +4926,25 @@ class GameClient:
             return
         entity = body[2:10]
         name = self._name_from_03_body(body)
+        scene_id = None
+        instance_id = None
+        try:
+            scene_id = int.from_bytes(body[21:23], "little")
+            name_len = body[46]
+            end = 47 + name_len
+            if 0 <= name_len <= 80 and name_len % 2 == 0 and end + 2 <= len(body):
+                instance_id = int.from_bytes(body[end:end + 2], "little")
+        except Exception:
+            pass
         if name:
-            self._remember_entity_name(entity, name, "0x03")
+            self._remember_entity_name(
+                entity,
+                name,
+                "0x03",
+                scene_id=scene_id,
+                instance_id=instance_id,
+                nearby=True,
+            )
 
     def _resolve_name_from_03(self, pkt: bytes):
         """Ten nhan vat tu goi 0x03 self-spawn - gui cho MOI acc luc login (KHONG can bang hoi).
@@ -4914,7 +4959,7 @@ class GameClient:
         if nm:
             self.char_name = nm
             self._label = nm
-            self._remember_entity_name(self.self_entity, nm, "0x03-self")
+            self._remember_entity_name(self.self_entity, nm, "0x03-self", nearby=True)
             _register_party_name(self.self_entity, nm)
             log.info("[%s] Ten nhan vat = '%s' (tu 0x03)", self._username, nm)
 
@@ -4933,7 +4978,14 @@ class GameClient:
             except Exception:
                 name = ""
             if name:
-                self._remember_entity_name(entity, name, "0x27/0900")
+                self._remember_entity_name(
+                    entity,
+                    name,
+                    "0x27/0900",
+                    scene_id=self.current_map,
+                    instance_id=self.current_channel,
+                    nearby=True,
+                )
                 parsed += 1
             off = end
         if parsed:
@@ -5112,21 +5164,81 @@ class GameClient:
             return
         self.send(protocol.OP_PLAYER_STATE, b"\x07\x00" + bytes(entity))
 
+    def _entity_is_visible_on_current_scene(self, entity: bytes, max_age: float = 300.0):
+        """Kiem tra entity co that su dang o gan leader/cung scene+khu hien tai khong.
+
+        Day la co che gom party: khong thay PlayerAppear/nearby cua member thi coi nhu member chua
+        tap trung dung map/kenh, khong gui moi party thuong 0x0d/07.
+        """
+        if not entity:
+            return False, "entity rong"
+        eb = bytes(entity)
+        meta = self.entity_meta.get(eb) or {}
+        if not meta.get("nearby"):
+            return False, "chua thay quanh leader"
+        seen = float(meta.get("seen") or 0.0)
+        if seen and time.time() - seen > max_age:
+            return False, "cache quanh map qua cu"
+        scene_id = meta.get("scene_id")
+        if self.current_map is not None:
+            if scene_id is None:
+                return False, "khong biet map cua entity"
+            try:
+                if int(scene_id) != int(self.current_map):
+                    return False, f"lech map {scene_id}!={self.current_map}"
+            except Exception:
+                return False, "map entity khong hop le"
+        instance_id = meta.get("instance_id")
+        if self.current_channel is not None:
+            if instance_id is None:
+                return False, "khong biet kenh cua entity"
+            try:
+                if int(instance_id) != int(self.current_channel):
+                    return False, f"lech kenh {instance_id}!={self.current_channel}"
+            except Exception:
+                return False, "kenh entity khong hop le"
+        return True, ""
+
     def invite_members(self, gap: float = 1.0):
         """Leader moi TAT CA entity member cung party (tru minh) bang 0x0d sub=07.
-        Bot da biet entity member qua _PARTY_ENTITIES (chia se trong process khi login)."""
-        ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
-        log.info("[%s] (LEADER) moi %d member theo entity: %s",
-                 self._label, len(ents), [e.hex()[:8] for e in ents])
+        Chi moi member ma leader da thay quanh map/cung kenh, de dam bao ca party da tap trung dung."""
+        all_ents = [bytes(e) for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
+        current_party = {bytes(e) for e in (self.party_members or []) if e}
+        if self.party_leader:
+            current_party.add(bytes(self.party_leader))
+        ents = []
+        skipped = []
+        for e in all_ents:
+            if e in current_party:
+                continue
+            ok, reason = self._entity_is_visible_on_current_scene(e)
+            if ok:
+                ents.append(e)
+            else:
+                skipped.append((e, reason))
+        if skipped:
+            now = time.time()
+            last = float(getattr(self, "_last_invite_member_skip_log", 0.0) or 0.0)
+            if now - last >= 15:
+                self._last_invite_member_skip_log = now
+                log.info("[%s] (LEADER) chua moi %d member vi chua thay dung map/kenh: %s",
+                         self._label, len(skipped),
+                         ["%s:%s" % (e.hex()[:8], reason) for e, reason in skipped])
+        if ents:
+            log.info("[%s] (LEADER) moi %d member theo entity (da thay dung map/kenh): %s",
+                     self._label, len(ents), [e.hex()[:8] for e in ents])
         for e in ents:
             self.invite_entity(e)
             time.sleep(gap)
+        return len(ents)
 
-    def _whitelist_leader_entities(self):
+    def _whitelist_leader_entities(self, require_nearby: bool = True):
         """Entity nhan vat ngoai bot nam trong whitelist leader, neu leader da thay ten cua ho.
 
         Party invite cua game gui theo entity 8B, khong gui truc tiep theo ten. Vi vay danh sach nay
-        chi moi duoc nhung acc ngoai da co trong cache entity_names cua client hien tai.
+        chi moi duoc nhung acc ngoai da co trong cache entity_names cua client hien tai. Client game
+        loc nguoi moi theo Role.players cung sceneId/instanceId khi la party thuong. Phong PB doi
+        co the moi xa neu da biet entity nen khong bat buoc require_nearby.
         """
         leaders = (config.leaders_for(self.party_idx)
                    if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
@@ -5145,6 +5257,10 @@ class GameClient:
             eb = bytes(entity)
             if eb in bot_entities or eb in current_party:
                 continue
+            if require_nearby:
+                ok, _reason = self._entity_is_visible_on_current_scene(eb)
+                if not ok:
+                    continue
             if any(str(name).strip().lower() in wanted for name in (names or [])):
                 out.append(eb)
         return out
@@ -5168,7 +5284,7 @@ class GameClient:
 
         Khong mark joined, khong cho doi accept: acc ngoai vao hay khong khong anh huong flow bot.
         """
-        ents = self._whitelist_leader_entities()
+        ents = self._whitelist_leader_entities(require_nearby=True)
         if not ents:
             self._log_no_whitelist_entity("party thuong")
             return 0
@@ -5185,7 +5301,7 @@ class GameClient:
         Khac party thuong 0x0d/07, phong pho ban doi dung 0x2f/08. Acc ngoai co vao hay khong
         khong tinh vao so bot-ready; leader van start khi du bot member nhu cu.
         """
-        ents = self._whitelist_leader_entities()
+        ents = self._whitelist_leader_entities(require_nearby=False)
         if not ents:
             self._log_no_whitelist_entity("phong pho ban doi")
             return 0
