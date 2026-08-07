@@ -106,6 +106,24 @@ Giữ lớp tương thích trong giai đoạn đầu:
 
 Không còn `available` tạo từ zero-status records. `_make_decisions` chỉ chạy một lần sau `0x34/01`, có guard `(generation, turn)` và chỉ gửi action cho source thuộc local acc.
 
+## Đồng bộ battle giữa nhiều acc trong cùng party
+
+Mỗi `GameClient` vẫn giữ tracker local cho dữ liệu nhận trên chính socket của acc đó, nhưng các acc cùng `party_idx` dùng chung một `PartyBattleCoordinator` trong process. Coordinator nhận semantic event đã parse hợp lệ, dựng canonical snapshot của trận và phân bổ target/action để các acc không chọn chồng lên nhau.
+
+Coordinator không dùng một acc cố định làm nguồn và không chờ đủ toàn bộ acc ở hàng rào READY:
+
+- Bản semantic event hợp lệ đến đầu tiên từ bất kỳ acc nào được dùng ngay. Acc bị chậm, đơ hoặc mất kết nối không khóa các acc còn lại.
+- Gói thiếu hoặc parse lỗi không được mutate canonical state; bản hợp lệ đến sau từ acc khác vẫn được nhận.
+- Event broadcast trùng được deduplicate theo ý nghĩa: action theo `(generation, turn, source, skill)`, status theo `(generation, turn, position, status_kind)`, ACK theo `(generation, turn, source)`, spawn/exit theo `(generation, role_id, position)`.
+- Nếu các bản cùng semantic key mâu thuẫn, coordinator giữ state đang có, ghi WARNING một lần và dùng bản được nhiều socket độc lập xác nhận hơn khi có đủ bằng chứng; tuyệt đối không dừng cả lượt để chờ biểu quyết.
+- `0x34/01` có payload giống nhau ở mọi lượt nên coordinator dùng phase state machine. Bản đầu tiên hợp lệ khi phase cho phép sẽ mở lượt kế; các bản từ socket khác chỉ xác nhận cùng lượt. `0x34` cũ đến muộn sau khi canonical turn đã tiến bị bỏ.
+
+Coordinator có thể khóa canonical snapshot, tính plan và reserve target ngay khi acc đầu tiên nhận `0x34`. Tuy nhiên từng acc chỉ được gửi C2S action sau khi chính socket của acc đó đã nhận `0x34/01` khớp `(generation, turn)`. Ví dụ A nhận trước thì chỉ A gửi action của A; B nhận sau mới được lấy action đã reserve cho B và gửi. Nếu B nhận quá muộn khi canonical turn đã đổi, action cũ của B bị hủy.
+
+Reservation nằm dưới một lock chung theo `(generation, turn)` và bao phủ CC, protection, hồi sinh, hồi HP/SP và phá bảo vệ. Nó chỉ ngăn các action không nên trùng; kịch bản chủ ý focus damage vẫn được phép cùng target. ACK và retry vẫn là state local của từng socket, có guard generation/turn/source.
+
+Battle event chung chỉ log một lần từ coordinator theo dạng `[P19 BATTLE g=... t=...]`. Mỗi acc chỉ log các sự kiện riêng `DECISION`, `SEND`, `ACK` để còn chẩn đoán socket nào chậm hoặc mất gói. Các party khác nhau dùng coordinator khác nhau và không ảnh hưởng nhau.
+
 ## Tương thích event và lỗi mạng
 
 - 40 NPC, PB20/50/80/110, Dị Giới và train cùng dùng một tracker.
@@ -123,7 +141,8 @@ Triển khai theo TDD với các lớp test:
 3. Test lifecycle: `0x34` không xóa roster; action chỉ một lần/turn; ACK đúng source; end chỉ khi `0x0B/00` khớp local ID; `0x14` không kết thúc tracker.
 4. Replay capture PB110: đúng 5 generation, 31 turn, 8 flyout/reinforcement, không cần `0x33`, roster/HP không âm và slot thay thế đúng.
 5. Test combat AI dùng HP/status tracker để tránh CC/protection trùng và áp ngưỡng HP địch.
-6. Chạy toàn bộ test hiện có, compile Python PC/APK, so hash các module mirror và `git diff --check`.
+6. Test coordinator nhiều acc: gói trùng đến lệch thời điểm chỉ tăng một turn/log một lần; acc nhanh không gửi thay acc chậm; acc chậm chỉ gửi sau `0x34` local; acc đơ/dis không khóa đội; packet cũ không được gửi action; reservation không trùng CC/protection/revive/heal.
+7. Chạy toàn bộ test hiện có, compile Python PC/APK, so hash các module mirror và `git diff --check`.
 
 ## Phạm vi không làm trong lượt này
 
