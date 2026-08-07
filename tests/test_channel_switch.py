@@ -1,7 +1,12 @@
 import unittest
 from unittest import mock
 
-from bot.client import GameClient
+import bot.client as client_module
+from bot.client import (
+    GameClient,
+    _PARTY_ENTITIES,
+    _register_party_client,
+)
 
 
 def _switch_result(result):
@@ -9,6 +14,11 @@ def _switch_result(result):
 
 
 class TestChannelSwitch(unittest.TestCase):
+    def tearDown(self):
+        if hasattr(client_module, "_PARTY_CLIENTS"):
+            client_module._PARTY_CLIENTS.clear()
+        _PARTY_ENTITIES.clear()
+
     def make_client(self):
         game = GameClient("user", "token")
         game._label = "hero"
@@ -69,6 +79,56 @@ class TestChannelSwitch(unittest.TestCase):
         pkt = b"\xc0\x91\x00\x00\x00\x00\x03" + bytes(body)
 
         self.assertEqual(game._parse_channel_from_03(pkt), 50)
+
+    def test_invite_uses_live_bot_scene_when_leader_nearby_cache_is_stale(self):
+        leader = self.make_client()
+        leader.party_idx = 19
+        leader.self_entity = bytes.fromhex("1111111111111111")
+        leader.current_map = 12001
+        leader.current_channel = 12
+
+        member = self.make_client()
+        member.party_idx = 19
+        member.self_entity = bytes.fromhex("2222222222222222")
+        member.current_map = 12001
+        member.current_channel = 12
+
+        _register_party_client(19, leader.self_entity, leader)
+        _register_party_client(19, member.self_entity, member)
+        _PARTY_ENTITIES[19] = {leader.self_entity, member.self_entity}
+        leader.entity_meta[member.self_entity] = {
+            "nearby": True,
+            "seen": 1.0,
+            "scene_id": 12001,
+            "instance_id": 12,
+        }
+
+        with mock.patch.object(leader, "invite_entity") as invite:
+            self.assertEqual(leader.invite_members(gap=0), 1)
+
+        invite.assert_called_once_with(member.self_entity)
+
+    def test_invite_rejects_live_bot_member_on_another_channel(self):
+        leader = self.make_client()
+        leader.party_idx = 19
+        leader.self_entity = bytes.fromhex("1111111111111111")
+        leader.current_map = 12001
+        leader.current_channel = 12
+
+        member = self.make_client()
+        member.party_idx = 19
+        member.self_entity = bytes.fromhex("2222222222222222")
+        member.current_map = 12001
+        member.current_channel = 13
+
+        _register_party_client(19, leader.self_entity, leader)
+        _register_party_client(19, member.self_entity, member)
+        _PARTY_ENTITIES[19] = {leader.self_entity, member.self_entity}
+
+        with mock.patch.object(leader, "invite_entity") as invite:
+            self.assertEqual(leader.invite_members(gap=0), 0)
+
+        invite.assert_not_called()
 
 
 if __name__ == "__main__":

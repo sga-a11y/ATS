@@ -1529,6 +1529,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # suc chua -> can PICK LAI qua do_channel_sync() (picker tu kiem tra du cho ca party
             # truoc khi chot, xem pick_best_channel) moi chac chan CA PARTY vao chung duoc 1 kenh.
             do_channel_sync()
+            if not is_leader:
+                # Reform da xong viec rieng + ve diem gom + sync map/kenh. Tu day member moi duoc
+                # accept loi moi party thuong; loi moi den som da duoc GameClient giu lai.
+                c.set_party_invite_ready(True)
             if is_leader:
                 # LAP LAI party TAI THANH: CHO VO HAN toi khi DU member join (khong gioi han 8 lan).
                 # Member dang reconnect -> bump reform_gen -> _ab() -> thoat de keepalive reform lai khi
@@ -2048,6 +2052,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.flee_mode = False   # bi danh thi tu danh, KHONG chay
             do_channel_sync()
 
+        _defer_party_invite_for_event = _is_npc_repeat_party_event(mode, has_leader, ev)
+        _solo_without_party = is_digioi and pcfg.get("digioi_mode") == "solo"
+        if not is_leader and not _defer_party_invite_for_event and not _solo_without_party:
+            # Da xong login chores + di toi map/diem tap ket + sync kenh. Bay gio moi mo gate
+            # party thuong va xu ly loi moi da den tu truoc. Dungeon invite co gate rieng, van
+            # hoat dong trong login chores de daily team dungeon khong bi khoa.
+            c.set_party_invite_ready(True)
         if not is_leader:
             with st["lock"]:
                 st["ready_members"].add(username)
@@ -2084,6 +2095,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # leader spam moi ma khong ai join -> khong danh duoc (bug user 40NPC 2026-07-29).
         if event_party_mode:
             do_channel_sync()
+            if not is_leader:
+                # 40NPC chi ready party sau khi DA vao map event va sync instance tai map event.
+                c.set_party_invite_ready(True)
         if event_stand_mode:
             # EVENT: da tele toi map event o tren -> DUNG YEN HOAN TOAN, cho moi tay. Moi nick doc lap,
             # KHONG lap party/sync kenh (bo qua het nhanh leader/member ben duoi). Auto-accept moi tay

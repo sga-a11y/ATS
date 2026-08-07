@@ -265,6 +265,7 @@ def execute_smart_route(client, route, abort=None, flee=True):
 # Registry entity cac bot cung party (chia se trong process). party_idx -> set(entity bytes).
 # Bot dang ky self_entity luc login -> khi nhan loi moi, accept neu nguoi moi cung party.
 _PARTY_ENTITIES = {}
+_PARTY_CLIENTS = {}
 _PARTY_LOCK = threading.Lock()
 
 def _register_party_entity(party_idx, entity):
@@ -272,6 +273,12 @@ def _register_party_entity(party_idx, entity):
         return
     with _PARTY_LOCK:
         _PARTY_ENTITIES.setdefault(party_idx, set()).add(bytes(entity))
+
+def _register_party_client(party_idx, entity, client):
+    if party_idx is None or not entity or client is None:
+        return
+    with _PARTY_LOCK:
+        _PARTY_CLIENTS.setdefault(party_idx, {})[bytes(entity)] = client
 
 def _is_party_member(party_idx, entity):
     if party_idx is None:
@@ -851,6 +858,8 @@ class GameClient:
         self._decision_timer = None
         self.auto_combat = True
         self.auto_accept_party = True
+        self.party_invite_ready = False
+        self._pending_party_invites = collections.OrderedDict()
         self.self_entity = None      # entity 8 byte cua nhan vat minh
         self.last_turn_time = 0.0    # thoi diem nhan luot/battle gan nhat
         self._label = ""             # nhan log: username luc dau, doi sang TEN NHAN VAT khi biet
@@ -2074,6 +2083,7 @@ class GameClient:
                 self.state.self_entity = self.self_entity
                 log.info("[%s] self_entity = %s", self._label, self.self_entity.hex())
                 _register_party_entity(self.party_idx, self.self_entity)  # chia se cho cung party
+                _register_party_client(self.party_idx, self.self_entity, self)
                 if self.char_int is not None:   # INT da nhan truoc 0x69 -> dang ky lai khi co entity
                     _register_party_int(self.party_idx, self.self_entity, self.char_int)
                 # ten nhan vat: neu 0x27 (guild list) da toi TRUOC 0x69 -> resolve tu goi da cache
@@ -2354,30 +2364,12 @@ class GameClient:
         sub = pkt[7]
         if sub == 0x09 and self.auto_accept_party and len(pkt) >= 17:
             entity = pkt[9:17]   # entity nguoi MOI (leader), KHONG set lam self_entity
-            # --- Uu tien: nguoi moi la THANH VIEN CUNG PARTY (theo entity chia se) -> accept luon ---
-            if _is_party_member(self.party_idx, entity):
-                self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
-                _mark_joined(self.party_idx, self.self_entity)   # bao LEADER: minh da join
-                log.info("[%s] Loi moi tu THANH VIEN CUNG PARTY -> ACCEPT (da join)", self._label)
+            if not self.party_invite_ready:
+                self._pending_party_invites[bytes(entity)] = time.time()
+                log.info("[%s] Chua san sang vao party -> GIU loi moi entity=%s, se accept sau viec vat",
+                         self._label, entity.hex()[:12])
                 return
-            # --- Loc theo whitelist (CHUNG + RIENG party) (nguoi ngoai/leader nguoi that) ---
-            leaders = (config.leaders_for(self.party_idx)
-                       if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
-            if leaders:
-                _ldlc = {l.strip().lower() for l in leaders}   # whitelist KHONG phan biet hoa/thuong
-                known = self.entity_names.get(entity, set())
-                if known:
-                    # Biet strings cua entity nay: accept neu BAT KY string nao khop (case-insensitive)
-                    if not any(s.strip().lower() in _ldlc for s in known):
-                        log.info("[%s] TU CHOI loi moi tu entity=%s strings=%s (khong trong PARTY_LEADERS=%s)",
-                                 self._label, entity.hex()[:12], known, leaders)
-                        return
-                else:
-                    # Chua biet ten -> cho qua, log canh bao
-                    log.info("[%s] Chua biet ten entity=%s -> CHAP NHAN (chua co 0x27)",
-                             self._label, entity.hex()[:12])
-            self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
-            log.info("[%s] Nhan loi moi party -> da gui ACCEPT", self._label)
+            self._accept_party_invite(entity)
         elif sub == 0x06 and len(pkt) >= 18:
             # roster: [sub 06][00][leader 8B][count 1B][member 8B]*count
             leader = pkt[9:17]
@@ -2411,6 +2403,43 @@ class GameClient:
                     self.state.self_slot = 2
                     log.info("[%s] Party roster: %d member, minh LA LEADER (atype=2)",
                              self._label, count)
+
+    def _accept_party_invite(self, entity: bytes) -> bool:
+        entity = bytes(entity)
+        if _is_party_member(self.party_idx, entity):
+            self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
+            _mark_joined(self.party_idx, self.self_entity)
+            log.info("[%s] Loi moi tu THANH VIEN CUNG PARTY -> ACCEPT (da join)", self._label)
+            return True
+        leaders = (config.leaders_for(self.party_idx)
+                   if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
+        if leaders:
+            wanted = {str(name).strip().casefold() for name in leaders if str(name).strip()}
+            known = self.entity_names.get(entity, set())
+            if known and not any(str(name).strip().casefold() in wanted for name in known):
+                log.info("[%s] TU CHOI loi moi tu entity=%s strings=%s (khong trong PARTY_LEADERS=%s)",
+                         self._label, entity.hex()[:12], known, leaders)
+                return False
+            if not known:
+                log.info("[%s] Chua biet ten entity=%s -> CHAP NHAN (chua co 0x27)",
+                         self._label, entity.hex()[:12])
+        self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
+        log.info("[%s] Nhan loi moi party -> da gui ACCEPT", self._label)
+        return True
+
+    def set_party_invite_ready(self, ready: bool = True):
+        """Mo gate party thuong va xu ly lai loi moi da den trong luc login chores."""
+        self.party_invite_ready = bool(ready)
+        if not self.party_invite_ready or not self._pending_party_invites:
+            return False
+        pending = list(self._pending_party_invites)
+        self._pending_party_invites.clear()
+        pending.sort(key=lambda entity: 0 if _is_party_member(self.party_idx, entity) else 1)
+        for entity in pending:
+            if self._accept_party_invite(entity):
+                log.info("[%s] Da san sang -> xu ly loi moi party da giu tu truoc", self._label)
+                return True
+        return False
 
     def _on_dungeon(self, pkt: bytes):
         """S2C 0x2f - party PHO BAN.
@@ -5210,9 +5239,34 @@ class GameClient:
                 return False, "kenh entity khong hop le"
         return True, ""
 
+    def _bot_member_is_on_current_scene(self, entity: bytes):
+        """Doc map/kenh live tu chinh client bot member, khong dua vao PlayerAppear cache."""
+        if not entity:
+            return False, "entity rong"
+        eb = bytes(entity)
+        with _PARTY_LOCK:
+            peer = _PARTY_CLIENTS.get(self.party_idx, {}).get(eb)
+        if peer is None:
+            return False, "chua co client live"
+        if not getattr(peer, "running", False):
+            return False, "client member khong chay"
+        my_map = self.current_map
+        peer_map = getattr(peer, "current_map", None)
+        if my_map is None or peer_map is None:
+            return False, "chua biet map live"
+        if int(peer_map) != int(my_map):
+            return False, f"lech map live {peer_map}!={my_map}"
+        my_channel = self.current_channel
+        peer_channel = getattr(peer, "current_channel", None)
+        if (my_channel is None) != (peer_channel is None):
+            return False, "chua du kenh live"
+        if my_channel is not None and int(peer_channel) != int(my_channel):
+            return False, f"lech kenh live {peer_channel}!={my_channel}"
+        return True, ""
+
     def invite_members(self, gap: float = 1.0):
         """Leader moi TAT CA entity member cung party (tru minh) bang 0x0d sub=07.
-        Chi moi member ma leader da thay quanh map/cung kenh, de dam bao ca party da tap trung dung."""
+        Chi moi bot member co client live cung map/kenh, de dam bao ca party da tap trung dung."""
         all_ents = [bytes(e) for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
         current_party = {bytes(e) for e in (self.party_members or []) if e}
         if self.party_leader:
@@ -5222,7 +5276,7 @@ class GameClient:
         for e in all_ents:
             if e in current_party:
                 continue
-            ok, reason = self._entity_is_visible_on_current_scene(e)
+            ok, reason = self._bot_member_is_on_current_scene(e)
             if ok:
                 ents.append(e)
             else:
@@ -5232,11 +5286,11 @@ class GameClient:
             last = float(getattr(self, "_last_invite_member_skip_log", 0.0) or 0.0)
             if now - last >= 15:
                 self._last_invite_member_skip_log = now
-                log.info("[%s] (LEADER) chua moi %d member vi chua thay dung map/kenh: %s",
+                log.info("[%s] (LEADER) chua moi %d member vi chua xac nhan live dung map/kenh: %s",
                          self._label, len(skipped),
                          ["%s:%s" % (e.hex()[:8], reason) for e, reason in skipped])
         if ents:
-            log.info("[%s] (LEADER) moi %d member theo entity (da thay dung map/kenh): %s",
+            log.info("[%s] (LEADER) moi %d member theo entity (live dung map/kenh): %s",
                      self._label, len(ents), [e.hex()[:8] for e in ents])
         for e in ents:
             self.invite_entity(e)

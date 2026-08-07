@@ -115,6 +115,14 @@ Note 2026-08-07:
   **Luu y:** 2 byte truoc `name_len` la `turn/career`, KHONG phai guard `00 00`; nhan vat chuyen sinh/nghe
   co the khac 0. Bot dung 0x03 de map ten->entity + scene/channel cho tinh nang moi acc whitelist dung canh leader.
 - S2C `0x27/0900` cung co record entity + ten nguoi gan map; co the dung bo sung cho cache whitelist.
+- Bot member khong duoc dung tuoi cache `PlayerAppear` de quyet dinh moi party: server khong phat lai
+  `0x03` dinh ky, nen sau 300 giay cache co the cu du ca party van dang cung map/kenh. Coordinator da
+  co `GameClient` live cua tung acc; `invite_members()` doi chieu truc tiep `running/current_map/current_channel`
+  cua member. Cache nearby chi dung cho acc ngoai bot/whitelist, vi khong co client live de doi chieu.
+- Loi moi party thuong `0x0d/0900` co the toi ngay trong login chores. Khong accept ngay: cache entity
+  nguoi moi, chi mo gate sau khi member lam xong viec vat, toi diem gom va sync map/kenh; loi moi cu
+  se duoc xu ly luc mo gate. Loi moi phong PB `0x2f/0f00` tach rieng va van accept trong chores, vi
+  daily team dungeon can no. Bot leader khong mo gate nhan party thuong; DG solo cung khong mo.
 - PB doi: UI client mo `UIInvite` tu `Social.friends` online du level, nhung packet moi van chi la
   `Dungeon.SendInvite(roleId)` -> C2S `0x2f 0800 [roleId/entity 8B]`. Nhan invite S2C `0x2f 0f00`
   chua `roomId`; dong y la join room C2S `0x2f 0300 [roomId 4B][password_len]`, roi ready `0x2f 0b00`.
