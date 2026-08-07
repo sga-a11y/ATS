@@ -266,6 +266,7 @@ fun TsBotApp(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val privacyOrdinals = remember(parties) { accountOrdinalMap(parties) }
+    var currentCoreVersion by remember { mutableStateOf(ApkUpdater.effectiveVersion(context)) }
     var updateInfo by remember { mutableStateOf<ApkUpdateInfo?>(null) }
     var updateBusyText by remember { mutableStateOf<String?>(null) }
     var updateMessage by remember { mutableStateOf<UpdateDialogMessage?>(null) }
@@ -296,15 +297,26 @@ fun TsBotApp(
         scope.launch {
             if (manual) updateBusyText = "Đang kiểm tra bản mới..."
             try {
+                if (manual) {
+                    val bundleUpdated = withContext(Dispatchers.IO) {
+                        ApkUpdater.updateBundleIfNeeded(context.applicationContext)
+                    }
+                    if (bundleUpdated) {
+                        currentCoreVersion = ApkUpdater.effectiveVersion(context)
+                    }
+                } else {
+                    currentCoreVersion = ApkUpdater.effectiveVersion(context)
+                }
                 val info = withContext(Dispatchers.IO) {
                     ApkUpdater.checkUpdate(BuildConfig.VERSION_NAME)
                 }
+                currentCoreVersion = ApkUpdater.effectiveVersion(context)
                 if (info != null) {
                     updateInfo = info
                 } else if (manual) {
                     updateMessage = UpdateDialogMessage(
                         "Update",
-                        "Đang là bản mới nhất (${BuildConfig.VERSION_NAME}).",
+                        "Đang là bản mới nhất: core v$currentCoreVersion\nAPK: v${BuildConfig.VERSION_NAME}",
                     )
                 }
             } catch (e: Exception) {
@@ -390,6 +402,12 @@ fun TsBotApp(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("aTSBot", fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "v$currentCoreVersion",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Spacer(Modifier.width(10.dp))
                         if (totalAccounts > 0) {
                             StatusDot(allPartiesColor)

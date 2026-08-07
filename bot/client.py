@@ -4925,8 +4925,8 @@ class GameClient:
         names.add(name)
         leaders = (config.leaders_for(self.party_idx)
                    if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
-        wanted = {str(x).strip().lower() for x in (leaders or []) if str(x).strip()}
-        if name.lower() in wanted:
+        wanted = {str(x).strip().casefold() for x in (leaders or []) if str(x).strip()}
+        if name.casefold() in wanted:
             log.info("[%s] thay acc whitelist '%s' entity=%s (%s)",
                      self._label, name, entity.hex()[:12], source or "entity-name")
 
@@ -5243,6 +5243,22 @@ class GameClient:
             time.sleep(gap)
         return len(ents)
 
+    def _entity_names_for_log(self, entity: bytes, names=None):
+        out = set()
+        if names:
+            out.update(str(n).strip() for n in names if str(n).strip())
+        n = name_for_entity(entity)
+        if n:
+            out.add(str(n).strip())
+        return sorted(out, key=lambda x: x.casefold())
+
+    def _entity_label_for_log(self, entity: bytes, names=None):
+        eb = bytes(entity)
+        ns = self._entity_names_for_log(eb, names)
+        if ns:
+            return "%s:%s" % ("/".join(ns), eb.hex()[:8])
+        return eb.hex()[:8]
+
     def _whitelist_leader_entities(self, require_nearby: bool = True):
         """Entity nhan vat ngoai bot nam trong whitelist leader, neu leader da thay ten cua ho.
 
@@ -5253,7 +5269,13 @@ class GameClient:
         """
         leaders = (config.leaders_for(self.party_idx)
                    if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
-        wanted = {str(x).strip().lower() for x in (leaders or []) if str(x).strip()}
+        wanted = {str(x).strip().casefold() for x in (leaders or []) if str(x).strip()}
+        self._last_whitelist_scan = {
+            "at": time.time(),
+            "wanted": [str(x).strip() for x in (leaders or []) if str(x).strip()],
+            "require_nearby": bool(require_nearby),
+            "items": [],
+        }
         if not wanted:
             return []
         with _PARTY_LOCK:
@@ -5266,20 +5288,42 @@ class GameClient:
         out = []
         for entity, names in list(self.entity_names.items()):
             eb = bytes(entity)
-            if eb in bot_entities or eb in current_party:
+            all_names = self._entity_names_for_log(eb, names)
+            hits = [n for n in all_names if n.casefold() in wanted]
+            if not hits:
+                continue
+            meta = self.entity_meta.get(eb, {}) or {}
+            item = {
+                "entity": eb,
+                "hits": hits,
+                "names": all_names,
+                "source": meta.get("source", "?"),
+                "status": "",
+            }
+            if eb in current_party:
+                item["status"] = "da o party roi"
+                self._last_whitelist_scan["items"].append(item)
+                continue
+            if eb in bot_entities:
+                item["status"] = "la bot member"
+                self._last_whitelist_scan["items"].append(item)
                 continue
             if require_nearby:
                 ok, _reason = self._entity_is_visible_on_current_scene(eb)
                 if not ok:
+                    item["status"] = _reason or "khong dung map/kenh"
+                    self._last_whitelist_scan["items"].append(item)
                     continue
-            if any(str(name).strip().lower() in wanted for name in (names or [])):
-                out.append(eb)
+            item["status"] = "se moi"
+            self._last_whitelist_scan["items"].append(item)
+            out.append(eb)
         return out
 
     def _log_no_whitelist_entity(self, context: str):
         leaders = (config.leaders_for(self.party_idx)
                    if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
         wanted = [str(x).strip() for x in (leaders or []) if str(x).strip()]
+        wanted_lc = {w.casefold() for w in wanted}
         now = time.time()
         last = float(getattr(self, "_last_whitelist_no_entity_log", 0.0) or 0.0)
         if now - last < 30:
@@ -5290,15 +5334,34 @@ class GameClient:
                      self._label, context)
             return
         known = []
-        for entity, names in list(self.entity_names.items()):
-            hit = [n for n in names if str(n).strip().lower() in {w.lower() for w in wanted}]
-            if hit:
-                meta = self.entity_meta.get(bytes(entity), {})
-                known.append("%s:%s/%s" % (
-                    ",".join(hit), entity.hex()[:8], meta.get("source", "?")
+        matched = set()
+        scan = getattr(self, "_last_whitelist_scan", None)
+        if isinstance(scan, dict) and now - float(scan.get("at") or 0.0) < 10.0:
+            for item in scan.get("items") or []:
+                hits = [str(n) for n in item.get("hits", []) if str(n).casefold() in wanted_lc]
+                if not hits:
+                    continue
+                matched.update(n.casefold() for n in hits)
+                ent = bytes(item.get("entity") or b"")
+                known.append("%s:%s/%s/%s" % (
+                    ",".join(hits),
+                    ent.hex()[:8],
+                    item.get("source", "?"),
+                    item.get("status", "?"),
                 ))
-        log.info("[%s] (LEADER) whitelist %s nhung chua co entity moi duoc (%s); known=%s",
-                 self._label, wanted, context, known or "-")
+        if not known:
+            for entity, names in list(self.entity_names.items()):
+                all_names = self._entity_names_for_log(bytes(entity), names)
+                hit = [n for n in all_names if n.casefold() in wanted_lc]
+                if hit:
+                    meta = self.entity_meta.get(bytes(entity), {})
+                    matched.update(n.casefold() for n in hit)
+                    known.append("%s:%s/%s" % (
+                        ",".join(hit), entity.hex()[:8], meta.get("source", "?")
+                    ))
+        missing = [w for w in wanted if w.casefold() not in matched]
+        log.info("[%s] (LEADER) whitelist %s nhung chua co entity moi duoc (%s); missing=%s; known=%s",
+                 self._label, wanted, context, missing or "-", known or "-")
 
     def invite_whitelist_leaders(self, gap: float = 1.0) -> int:
         """Moi them acc ngoai whitelist vao party sau khi BOT members da du.
@@ -5310,7 +5373,7 @@ class GameClient:
             self._log_no_whitelist_entity("party thuong")
             return 0
         log.info("[%s] (LEADER) moi them %d acc whitelist ngoai party: %s",
-                 self._label, len(ents), [e.hex()[:8] for e in ents])
+                 self._label, len(ents), [self._entity_label_for_log(e) for e in ents])
         for e in ents:
             self.invite_entity(e)
             time.sleep(gap)
@@ -5327,7 +5390,7 @@ class GameClient:
             self._log_no_whitelist_entity("phong pho ban doi")
             return 0
         log.info("[%s] (LEADER) moi them %d acc whitelist vao PHO BAN DOI: %s",
-                 self._label, len(ents), [e.hex()[:8] for e in ents])
+                 self._label, len(ents), [self._entity_label_for_log(e) for e in ents])
         for e in ents:
             self.send(0x2f, b"\x08\x00" + bytes(e))
             time.sleep(gap)

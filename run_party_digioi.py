@@ -784,17 +784,42 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         log.info("[%s] (%s) vao world.", label, role)
         log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
                  label, login_map)
-        c.log_bag_delayed()   # In tui khi snapshot ve + on dinh (adaptive, toi da 8s) -> dinh danh item
-        # MAP-TRAIN: bat flee NGAY tu login -> moi tran (truoc khi lap party) deu BO CHAY,
-        # khong danh lung tung; chi tat flee khi da vao diem train.
-        if config.TRAIN_MAPS.get(getattr(config, "START_CITY_ID", 0)) is not None:
+        # Doc party config SOM de biet mode/map ngay sau login. Neu dang login o map train thi
+        # chay ve safe TRUOC cac viec login chores (qua, van tieu, shop...) de khoi dung giua bai
+        # quai lau roi bi keo tran.
+        pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
+        _early_sc = pcfg.get("start_city_id", getattr(config, "START_CITY_ID", 0))
+        _early_raw_mode = pcfg.get("mode")
+        _early_dt_mode = (_early_raw_mode == "digioi_train")
+        _early_tm = config.TRAIN_MAPS.get(_early_sc)
+        if _early_dt_mode:
+            _early_mode = "digioi" if _pstate(pidx).get("dt_phase", "digioi") == "digioi" else "train"
+        else:
+            _early_mode = _early_raw_mode or ("train" if _early_tm else (
+                "digioi" if _early_sc == config.DIGIOI_MAP_ID else ("stand" if _early_sc == 0 else "city")
+            ))
+        _early_train_safes = []
+        if _early_tm is not None:
+            _rs = _resolve_train_safe(c, _early_sc, _early_tm.get("safe", []))
+            if _rs is not None:
+                _early_train_safes.append(_rs)
+        _login_safe_done = False
+        if _early_mode == "train" and _early_tm is not None:
             c.flee_mode = True
+            if login_map == _early_sc and _early_train_safes:
+                _safe0 = _nearest_safe(c.pos, _early_train_safes)
+                try:
+                    log.info("[%s] (%s) login o map train -> ve safe %s truoc login chores",
+                             label, role, _safe0)
+                    c.navigate_to(*_safe0, flee=True)
+                    login_map = c.current_map
+                    _login_safe_done = True
+                except Exception as e:
+                    log.warning("[%s] loi ve safe ngay sau login (bo qua): %s", label, e)
+        c.log_bag_delayed()   # In tui khi snapshot ve + on dinh (adaptive, toi da 8s) -> dinh danh item
         next_vantieu = None
         next_phuc_than = 0.0   # 0.0 -> kiem tra NGAY lan dau (khong cho 30p roi moi dung lan dau)
         next_ho_phu = 0.0      # Di Gioi Ho Phu: check login + moi 5p, chi khi mode Di Gioi
-        # pcfg doc SOM (truoc day chi doc o duoi, SAU khoi chores nay) - can ngay o day de biet
-        # "Danh boss QD" co bat hay khong TRUOC khi goi do_legion_boss() lan dau luc login.
-        pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
         c.fight_legion_boss = pcfg.get("fight_legion_boss", True)
         c.di_gioi_level = int(pcfg.get("di_gioi_level", 2))   # idx 1..15 cap quai DG (mac dinh 2=cap25)
         if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
@@ -1058,7 +1083,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception: pass
             elif train_on_map:
                 if login_map == sc and train_safes:
-                    c.navigate_to(*_nearest_safe(c.pos, train_safes))   # dang o bai -> ra diem safe
+                    if not _login_safe_done:
+                        c.navigate_to(*_nearest_safe(c.pos, train_safes))   # dang o bai -> ra diem safe
                 else:
                     try: c.teleport(12001, 0)                          # sai map -> ve Trac Quan (route keo ra sau)
                     except Exception: pass

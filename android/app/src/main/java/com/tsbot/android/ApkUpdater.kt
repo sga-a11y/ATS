@@ -119,12 +119,18 @@ object ApkUpdater {
     fun bundleDataFile(context: Context, name: String): File =
         File(context.filesDir, "bot_bundle/current/data/$name")
 
-    private fun installedBundleVersion(context: Context): String {
+    fun installedBundleVersion(context: Context): String {
         return try {
             File(context.filesDir, "bot_bundle/version.txt").readText(Charsets.UTF_8).trim()
         } catch (_: Exception) {
             ""
         }
+    }
+
+    fun effectiveVersion(context: Context): String {
+        val bundle = installedBundleVersion(context)
+        val apk = BuildConfig.VERSION_NAME
+        return if (isNewerVersion(bundle, apk)) bundle else apk
     }
 
     private fun downloadAndInstallBundle(context: Context, info: BundleUpdateInfo) {

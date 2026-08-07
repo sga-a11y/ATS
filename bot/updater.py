@@ -64,7 +64,11 @@ def is_frozen() -> bool:
         return True
     if getattr(sys, "frozen", False):   # PyInstaller/cx_Freeze fallback
         return True
-    return "python" not in os.path.basename(sys.executable).lower()
+    cand = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+    if cand.lower().endswith(".py"):
+        return False
+    exe = running_exe()
+    return "python" not in os.path.basename(exe).lower() and not exe.lower().endswith(".py")
 
 
 def _looks_like_ssl_error(exc) -> bool:
@@ -215,6 +219,16 @@ def _app_root_dir() -> str:
     return os.path.dirname(running_exe())
 
 
+def installed_app_version(fallback_version: str = "") -> str:
+    """Version cua app shell/exe dang cai. Bundle update khong ghi de file nay."""
+    try:
+        with open(os.path.join(_app_root_dir(), "version.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        return str(data.get("pc_app_version") or data.get("version") or fallback_version or "").strip()
+    except Exception:
+        return str(fallback_version or "").strip()
+
+
 def _bundle_root() -> str:
     return os.path.join(_app_root_dir(), "bot_bundle")
 
@@ -225,6 +239,14 @@ def installed_bundle_version(fallback_version: str = "") -> str:
             return f.read().strip()
     except Exception:
         return str(fallback_version or "").strip()
+
+
+def effective_version(fallback_version: str = "") -> str:
+    app_ver = installed_app_version(fallback_version)
+    bundle_ver = installed_bundle_version("")
+    if bundle_ver and _is_newer_version(bundle_ver, app_ver):
+        return bundle_ver
+    return app_ver or bundle_ver or str(fallback_version or "").strip()
 
 
 def check_bundle_update(current_app_version: str):

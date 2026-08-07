@@ -434,8 +434,16 @@ class BotGUI(tk.Tk):
             from bot._version import VERSION as _VER
         except Exception:
             _VER = "?"
+        self._app_version = _VER
         self._version = _VER
-        self.title(f"TS Online Bot Manager v{_VER}")
+        try:
+            from bot import updater as _updater
+            if _updater.is_frozen():
+                self._app_version = _updater.installed_app_version(_VER)
+                self._version = _updater.effective_version(_VER)
+        except Exception:
+            pass
+        self.title(f"TS Online Bot Manager v{self._version}")
         self.geometry("1100x720")
         self.minsize(900, 560)
         self._setup_style()
@@ -479,14 +487,14 @@ class BotGUI(tk.Tk):
             log.info("update: dang kiem tra thu cong...")
         def worker():
             try:
-                bundle_info = updater.check_bundle_update(self._version)
+                bundle_info = updater.check_bundle_update(self._app_version)
                 if bundle_info:
                     bver, burl, _bnotes = bundle_info
                     log.info("update: CO CORE BUNDLE MOI v%s -> tu tai va ap dung", bver)
                     updater.download_and_apply_bundle(burl, bver)
                     self.after(0, lambda v=bver: self._restart_after_bundle_update(v))
                     return
-                info = updater.check_update(self._version)
+                info = updater.check_update(self._app_version)
             except Exception as e:
                 # KHONG goi duoc server cap nhat (mang / GitHub CDN githubusercontent bi chan o VN /
                 # SSL / timeout). Log RO de khong tuong nham "da moi nhat" (bug cu nuot exception).
@@ -498,16 +506,22 @@ class BotGUI(tk.Tk):
                     self.after(0, lambda m=msg: self._show_update_error("Update", m))
                 return
             if info:
-                log.info("update: CO BAN MOI v%s (dang hien %s) -> hoi user", info[0], self._version)
+                log.info("update: CO BAN MOI v%s (app %s, core %s) -> hoi user",
+                         info[0], self._app_version, self._version)
                 self.after(0, lambda: self._prompt_update(*info))
             else:
-                log.info("update: dang la ban moi nhat (v%s)", self._version)
+                log.info("update: dang la ban moi nhat (core v%s, app v%s)",
+                         self._version, self._app_version)
                 if manual:
                     self.after(0, lambda: messagebox.showinfo(
-                        "Update", f"Dang la ban moi nhat: v{self._version}", parent=self))
+                        "Update",
+                        f"Dang la ban moi nhat: core v{self._version}\nApp: v{self._app_version}",
+                        parent=self))
         threading.Thread(target=worker, daemon=True).start()
 
     def _restart_after_bundle_update(self, ver):
+        self._version = str(ver)
+        self.title(f"TS Online Bot Manager v{self._version}")
         if bool(getattr(ctrl, "account_clients", {})):
             messagebox.showinfo(
                 "Update",
