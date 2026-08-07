@@ -379,6 +379,28 @@ def _merge_user_config(live_dir: str, stage_dir: str):
         except Exception:
             pass
 
+    live_p = os.path.join(live_dir, "dangerous_npcs.json")
+    stage_p = os.path.join(stage_dir, "dangerous_npcs.json")
+    if os.path.exists(live_p) and os.path.exists(stage_p):
+        try:
+            with open(live_p, encoding="utf-8") as f:
+                live = json.load(f)
+            with open(stage_p, encoding="utf-8") as f:
+                stage = json.load(f)
+            live_names = live.get("names", []) if isinstance(live, dict) else []
+            stage_names = stage.get("names", []) if isinstance(stage, dict) else []
+            merged = []
+            for name in list(stage_names or []) + list(live_names or []):
+                text = str(name or "").strip()
+                if text and text not in merged:
+                    merged.append(text)
+            if isinstance(stage, dict):
+                stage["names"] = merged
+                with open(stage_p, "w", encoding="utf-8") as f:
+                    json.dump(stage, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
 
 def download_and_swap(url: str, on_progress=None):
     """Tai aTSBot.zip (CA FOLDER: exe + JSON config) ve -> giai nen ra _update_stage -> viet

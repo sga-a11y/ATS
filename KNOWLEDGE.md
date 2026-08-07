@@ -252,6 +252,8 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
   3) Buff bao ve (Ket Gioi -> An Than -> Kinh).
   4) CC ti le thap.
   5) Hoi HP -> hoi SP -> pha bao ve dich -> danh.
+- Trong tung phase CC: skill vua gay dame vua khong che (vd `0x32cf` Huyen Kich) duoc uu tien
+  truoc skill chi khong che (vd Bang Phong thuan/ Hon Me thuan), neu unit da hoc va du SP.
 - Auto boss/danh don (`pick_boss_skill`) loai skill CC khoi fallback; neu khong co skill dame phu hop thi
   danh thuong. User custom skill thi van theo config user.
 - NPC nguy hiem can an CC truoc, uu tien theo thu tu:
@@ -259,6 +261,8 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
   -> `Lu Bo` -> `Tran Cung`.
   Runtime normalize ten khong dau va map ten theo vi tri neu 0x0b enemy co row/col. Neu khong co NPC
   nguy hiem, auto CC chon dich current HP cao nhat truoc; neu cung HP thi chon vi tri lon hon.
+  Danh sach nay luu trong `dangerous_npcs.json` (ship kem PC/APK, khong nam trong `accounts.json`);
+  UI Skill co target `dangerous_npc` / `NPC nguy hiem` va nut sua danh sach.
 - 0x0b enemy dang PB110: body `05 00 [n] 07 [tid 2B] ... [row][col] [hp/sp...]`, row/col o
   `body[22:24]`. Vi du Tran Cung `0x9d3f` row=0 col=4.
 - Target CC thong minh:
@@ -270,6 +274,15 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
     * `chaos`: Hon Loan la nhom rieng, co the cast them len dich dang co `control`.
   - User custom skill CC van di qua target/claim CC: giu tieu chi target user chon, nhung ne target da
     co CC cung nhom hoac da duoc acc khac claim trong cung turn.
+  - 0x35 status-list dau turn la nguon chuan cho CC dang ton tai. KHONG persist `crowd_status` tu echo
+    0x32 vi nhieu skill CC co ti le hut/het som; echo chi cho biet skill duoc cast/result, khong du de
+    ket luan target van dang bi CC. Claim CC chi nen ngan trong cung turn (~3s), khong de chan sang turn sau.
+  - Pha khong che va pha giai protect dich chi duoc chon target con song. CC di tu `enemy_slots` +
+    `enemy_hp > 0`; giai protect dich chi xet protect status co `pos in enemy_slots`.
+- Skip phase buff bao ve auto trong `quest_mode` neu tat ca NPC nguy hiem con song (neu co) da co
+  CC THAT trong status-list 0x35, va so NPC thuong con song chua co CC <= 2. Tran khong co NPC nguy
+  hiem cung skip neu tong dich chua co CC <= 2. KHONG tinh claim CC la da CC vi skill co the miss.
+  `boss_mode` khong skip vi boss khang CC. Custom rule user tu set protect van uu tien chay.
 
 ### S2C 0x33 — Stats per turn
 Pattern entries: `03 02 [type] [4-byte LE]`
@@ -433,6 +446,8 @@ entity 8B = [2B ngẫu nhiên][template_id 2B LE][1B type][3B base phiên]
   2 byte cuoi la skill id khac `0000` (vd `1a 27` Ket Gioi, `1f 27` Kinh). Day la server sync
   target nao dang co status/buff, KHONG phai offer danh. Combat handler phai tach 2 dang nay, neu khong se
   lay nham status chunk thanh available action.
+  Snapshot rong `01 00` hoac status-list row quai 0/1 voi `skill_id=0000` = het status -> phai clear
+  `protect_status`/`crowd_status`. Khong duoc giu cache cu lam bot tuong NPC nguy hiem van dang bi CC.
 
 ---
 
@@ -976,7 +991,9 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
     `[slot_index][start OADate double][end OADate double][kind][innIndex][effect1][effect2]`.
   - S2C `0x56 0400 [kind][effect1][effect2]`: yêu cầu hiện tại cho slot trống kế tiếp.
     Client lưu `normalDispatchKind/effect` rồi tra `dispatchBonusData`.
-  - S2C `0x56 0500 [result]`: nhận thưởng vận tiêu.
+  - S2C `0x56 0500 [result]`: nhận thưởng vận tiêu. Client xử lý:
+    `1=thành công`, `2=loại vận tiêu sai`, `3=chỉ số pet/slot sai`, `4=chưa hoàn thành`,
+    `5=túi đồ đầy/không đủ chỗ`, `6=vật phẩm/function đóng`.
   - S2C `0x56 0600 [N]`: số slot vận tiêu đã mở.
 - UI hiển thị yêu cầu bằng `UIDispatch.SetEffectUI/SetNpcEffectUI`:
   - `conditionKind == 1` (`EDispatchBonuseKind.Moral`) -> `string.GetMoral(conditionValue, true)`.
@@ -994,6 +1011,10 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
     (`0x56 0100`) để server trả `0300/0400` mới, rồi dùng `0400` mới cho slot trống tiếp theo.
   - Bot ship `vantieu_dispatch_bonus.json` sinh từ `DispatchBonus_C.dat` để decode trực tiếp
     effect id -> `{he, doanh}`; `vantieu_requests.json` chỉ còn là fallback cho dữ liệu cũ.
+- Khi claim thưởng, client UI `UIDispatch.OnClick_Start()` gọi `Item.CheckBagIsFull()` trước khi gửi
+  `0x56/0500`; nếu đầy túi thì hiện `string.Get(80359)` và không gửi claim. Bot gửi trực tiếp nên
+  phải chờ S2C `0x56/0500`; chỉ xóa slot khi result `1`, còn result `5` phải log đầy túi và backoff,
+  không pop slot mù rồi refresh liên tục.
 - Danh sách pet kho vận tiêu lấy từ S2C `0x1f sub0600`, index này là index gửi lại bằng
   C2S `0x56 0200 [pet_index]`.
 - Client game hiển thị doanh đầu tiên là **Huỳnh** (không phải Hoàng). Quy ước data bot hiện dùng

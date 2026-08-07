@@ -2,6 +2,7 @@
 Copy file nay thanh `config.py` roi dien thong tin that. config.py da bi gitignore.
 """
 from ._appdir import app_dir as _base_dir   # thu muc goc (dev=project, frozen=canh .exe)
+import json
 import os
 
 TEAM_DUNGEON_LEVELS = (20, 50, 80, 110)
@@ -64,8 +65,10 @@ PARTIES = [
     # ],
 ]
 
-# Whitelist TEN NHAN VAT chu party duoc phep moi - cho acc TU DIEU KHIEN tay + pho ban.
-# [] = nhan tu bat ky ai. (Bot cung party tu nhan nhau qua entity, KHONG can ghi o day.)
+# Whitelist TEN NHAN VAT ngoai party:
+# - Neu party KHONG co bot-leader: bot dung yen va chi nhan loi moi tu cac ten nay (rong = nhan bat ky).
+# - Neu party CO bot-leader: bot van lap party nhu cu, sau khi du bot member thi moi them cac ten nay.
+#   Acc ngoai vao hay khong khong anh huong flow bot.
 PARTY_LEADERS = []  # vi du: ["chihao", "haabo", "nasau"]
 
 # API login - API_KEY la HANG SO co dinh cua game, KHONG can sua.
@@ -310,6 +313,62 @@ def _load_npc_names():
     return out
 NPC_NAMES = _load_npc_names()   # template_id (int) -> ten quai/npc
 
+DEFAULT_DANGEROUS_NPC_NAMES = [
+    "Chu Công",
+    "Hằng Nga",
+    "Gia Cát Lượng",
+    "Tư Mã Ý",
+    "Lục Tốn",
+    "Bàng Thống",
+    "Lữ Bố",
+    "Trần Cung",
+]
+
+
+def _dangerous_npcs_path():
+    return os.path.join(_base_dir(), "dangerous_npcs.json")
+
+
+def normalize_dangerous_npc_names(value):
+    if isinstance(value, dict):
+        value = value.get("names", [])
+    out = []
+    if isinstance(value, str):
+        value = value.replace(",", "\n").splitlines()
+    if isinstance(value, (list, tuple, set)):
+        for name in value:
+            text = str(name or "").strip()
+            if text and text not in out:
+                out.append(text)
+    return out
+
+
+def _load_dangerous_npc_names():
+    path = _dangerous_npcs_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict) and "names" in data:
+            return normalize_dangerous_npc_names(data.get("names"))
+    except Exception:
+        pass
+    return list(DEFAULT_DANGEROUS_NPC_NAMES)
+
+
+def save_dangerous_npc_names(names):
+    clean = normalize_dangerous_npc_names(names)
+    path = _dangerous_npcs_path()
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"names": clean}, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+    global DANGEROUS_NPC_NAMES
+    DANGEROUS_NPC_NAMES = clean
+    return clean
+
+
+DANGEROUS_NPC_NAMES = _load_dangerous_npc_names()
+
 # DATA SKILL: doc tu skills_data.json (AUTO crack_skills.py). skill_id -> {cost, dame, splash}.
 # combat tu suy combo (dame AoE re) + boss (dame splash 4>1) -> KHONG can list cung.
 def _load_skill_info():
@@ -544,8 +603,8 @@ if _aj is not None:
         pass
 
 
-# White list RIENG tung party (pidx -> [ten leader]); CHUNG = PARTY_LEADERS.
-# leaders_for(pidx) = CHUNG + RIENG (union). Rong het -> nhan moi nguoi moi.
+# White list RIENG tung party (pidx -> [ten ngoai party]); CHUNG = PARTY_LEADERS.
+# leaders_for(pidx) = CHUNG + RIENG (union). Rong het -> no-leader se nhan moi nguoi moi.
 def leaders_for(pidx):
     out = list(PARTY_LEADERS)
     for nm in PARTY_LEADERS_BY_IDX.get(pidx, []):

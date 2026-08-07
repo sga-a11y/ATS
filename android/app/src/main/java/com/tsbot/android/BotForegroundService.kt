@@ -13,6 +13,7 @@ import android.os.PowerManager
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import org.json.JSONArray
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -412,6 +413,31 @@ class BotForegroundService : Service() {
     fun applyAccountBattle(username: String, battleJson: String): Boolean {
         return try {
             rpd().callAttr("apply_account_battle", username, battleJson)?.toBoolean() ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun dangerousNpcNames(): List<String> {
+        return try {
+            rpd().callAttr("dangerous_npc_names")
+                ?.asList()
+                ?.map { it.toString() }
+                ?.filter { it.isNotBlank() }
+                ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveDangerousNpcNames(names: List<String>): Boolean {
+        return try {
+            val arr = JSONArray()
+            names.forEach { name ->
+                val clean = name.trim()
+                if (clean.isNotEmpty()) arr.put(clean)
+            }
+            rpd().callAttr("save_dangerous_npc_names", arr.toString())?.toBoolean() ?: false
         } catch (e: Exception) {
             false
         }

@@ -170,7 +170,7 @@ _break_claims = {}
 _cc_lock = threading.Lock()
 _cc_claims = {}
 PROTECT_CLAIM_COOLDOWN = 2.5
-CC_CLAIM_COOLDOWN = 8.0
+CC_CLAIM_COOLDOWN = 3.0
 
 
 def _short_claim(claims_by_group, lock, group, target, owner, ttl=PROTECT_CLAIM_COOLDOWN):
@@ -308,7 +308,13 @@ DANGEROUS_CC_NPC_NAMES = (
     "lu bo",
     "tran cung",
 )
-_DANGEROUS_CC_NPC_RANK = {name: i for i, name in enumerate(DANGEROUS_CC_NPC_NAMES)}
+
+
+def _dangerous_npc_names():
+    raw = getattr(config, "DANGEROUS_NPC_NAMES", DANGEROUS_CC_NPC_NAMES)
+    if raw is None:
+        raw = DANGEROUS_CC_NPC_NAMES
+    return [_norm_name(n) for n in raw if str(n or "").strip()]
 
 
 class Decision:
@@ -533,20 +539,34 @@ def _enemy_cc_classes(state, pos):
 
 
 def _dangerous_enemy_rank(state, pos):
-    best = len(DANGEROUS_CC_NPC_NAMES)
+    names = _dangerous_npc_names()
+    best = len(names)
     for name in (getattr(state, "enemy_pos_names", {}) or {}).get(pos, ()) or ():
         norm = _norm_name(name)
-        for target, rank in _DANGEROUS_CC_NPC_RANK.items():
+        for rank, target in enumerate(names):
             if target in norm:
                 best = min(best, rank)
     return best
+
+
+def _dangerous_enemy_positions(state, positions):
+    names = _dangerous_npc_names()
+    ranked = []
+    for pos in positions:
+        rank = _dangerous_enemy_rank(state, pos)
+        if rank < len(names):
+            ranked.append((rank, pos))
+    hp = getattr(state, "enemy_hp", {}) or {}
+    return [pos for _rank, pos in sorted(ranked, key=lambda x: (x[0], -hp.get(x[1], 1), -x[1]))]
 
 
 def pick_cc_skill(skills, sp, phase):
     """Chon skill khong che cho quest_mode.
     phase='high': bang/hon me/stun; phase='low': cay/gio/hon loan."""
     learned = list(skills or [])
-    order = CC_HIGH_SKILLS if phase == "high" else (CC_LOW_LOCK_SKILLS + CC_CHAOS_SKILLS)
+    base_order = CC_HIGH_SKILLS if phase == "high" else (CC_LOW_LOCK_SKILLS + CC_CHAOS_SKILLS)
+    # Skill vua gay dame vua CC (vd Huyen Kich) uu tien hon skill chi CC, giu thu tu trong tung nhom.
+    order = [s for s in base_order if _is_attack(s)] + [s for s in base_order if not _is_attack(s)]
     for group_skill in order:
         if group_skill in learned and sp >= _skill_cost(group_skill):
             return group_skill
@@ -702,6 +722,25 @@ def _protect_mode_enabled(state):
     return bool(getattr(state, "quest_mode", False) or getattr(state, "boss_mode", False))
 
 
+def _should_skip_protect_after_cc(state):
+    """Quest: chi skip bao ve khi CC that da co trong status-list dau turn."""
+    if not _cc_mode_enabled(state):
+        return False
+    hp = getattr(state, "enemy_hp", {}) or {}
+    alive = [pos for pos in (getattr(state, "enemy_slots", []) or []) if hp.get(pos, 0) > 0]
+    if not alive:
+        return False
+    dangerous = _dangerous_enemy_positions(state, alive)
+    if any(not _enemy_cc_classes(state, pos) for pos in dangerous):
+        return False
+    dangerous_set = set(dangerous)
+    normal_uncc = [
+        pos for pos in alive
+        if pos not in dangerous_set and not _enemy_cc_classes(state, pos)
+    ]
+    return len(normal_uncc) <= 2
+
+
 def _alive_allies_with_self(state, unit, stat):
     cands = {}
     for key, u in getattr(state, "allies", {}).items():
@@ -765,6 +804,8 @@ def _try_protect(state, unit, skills, stat):
     """Quest/boss: sau Hoi Sinh, buff bao ve truoc khi heal HP/SP."""
     if not _protect_mode_enabled(state) or not getattr(state, "enemy_slots", None):
         return None
+    if _should_skip_protect_after_cc(state):
+        return None
     if getattr(stat, "hp_max", 0) > 0 and getattr(stat, "hp", 0) <= 0:
         return None
     skill = pick_protect_skill(skills, getattr(stat, "sp", 0))
@@ -800,8 +841,12 @@ def _try_break_enemy_protect(state, unit, skills, stat, options):
     if not offered:
         return None
     targets = []
+    alive_enemies = set(getattr(state, "enemy_slots", []) or [])
     for (b1, b2), ss in getattr(state, "protect_status", {}).items():
         if b1 not in (0, 1):
+            continue
+        pos = b1 * 10 + b2
+        if pos not in alive_enemies:
             continue
         classes = _status_classes(ss)
         if not classes:
@@ -843,7 +888,7 @@ def _enemy_target_candidates(state, offered, target_key):
     off = set(offered or [])
     alive = [
         pos for pos in (getattr(state, "enemy_slots", []) or [])
-        if getattr(state, "enemy_hp", {}).get(pos, 1) > 0 and _resolve_target(pos, off) is not None
+        if getattr(state, "enemy_hp", {}).get(pos, 0) > 0 and _resolve_target(pos, off) is not None
     ]
     if not alive:
         return []
@@ -853,6 +898,10 @@ def _enemy_target_candidates(state, offered, target_key):
         return sorted(alive, key=lambda pos: (-getattr(state, "enemy_hp", {}).get(pos, 1), pos))
     if target_key == "enemy_last":
         return sorted(alive, reverse=True)
+    if target_key == "dangerous_npc":
+        dangerous = _dangerous_enemy_positions(state, alive)
+        if dangerous:
+            return dangerous
     if target_key == "block":
         first = _train_target(alive, offered)
         rest = [pos for pos in sorted(alive) if pos != first]
@@ -1109,6 +1158,10 @@ def _enemy_target_pos(state, offered, target_key):
         return max(alive, key=lambda x: x[1])[0]
     if target_key == "enemy_last":
         return max(alive, key=lambda x: x[0])[0]
+    if target_key == "dangerous_npc":
+        dangerous = _dangerous_enemy_positions(state, [pos for pos, _hp in alive])
+        if dangerous:
+            return dangerous[0]
     return min(alive, key=lambda x: x[0])[0]
 
 

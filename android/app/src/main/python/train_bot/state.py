@@ -292,7 +292,7 @@ class BattleState:
         """Parse S2C 0x35 sub0100 dang status-list: [row][col][kind][skill_id u16].
 
         Cung opcode/sub voi available-actions, nen client.py phai goi ham nay truoc khi coi la offer.
-        Neu packet nay co skill_id != 0 thi xem nhu snapshot trang thai hien tai va KHONG arm action.
+        Status-list la snapshot trang thai hien tai: neu snapshot rong / het status thi phai clear cache.
         """
         body = pkt[7:] if len(pkt) > 7 and pkt[6] == 0x35 else pkt
         if len(body) < 2 or body[:2] != b"\x01\x00":
@@ -301,20 +301,30 @@ class BattleState:
             self.protect_status = {}
             self.crowd_status = {}
             return True
-        if len(body) < 7:
+        if len(body) < 7 or (len(body) - 2) % 5 != 0:
             return False
         entries = []
         i = 2
         has_status = False
+        offer_like = False
         while i + 5 <= len(body):
             b1, b2, kind = body[i], body[i + 1], body[i + 2]
             skill_id = body[i + 3] | (body[i + 4] << 8)
+            if b1 not in (0, 1, 2, 3) or b2 > 5:
+                return False
+            if skill_id == 0 and b1 in (2, 3):
+                offer_like = True
             if skill_id:
                 has_status = True
-                if b1 in (0, 1, 2, 3) and b2 <= 5:
-                    entries.append((b1, b2, kind, skill_id))
+            entries.append((b1, b2, kind, skill_id))
             i += 5
         if not has_status:
+            # Available-actions cung co dang 5-byte nhung unit=2/3 va skill=0. Neu chi thay row quai
+            # 0/1 skill=0 thi day la snapshot status het hieu luc -> clear cache CC/protect.
+            if entries and not offer_like:
+                self.protect_status = {}
+                self.crowd_status = {}
+                return True
             return False
         current_protect = {}
         current_crowd = {}
@@ -363,8 +373,10 @@ class BattleState:
                     # thanh cong la du de mark tam cho toi khi 0x35 status-list sync lai.
                     self._set_protect(tb1, tb2, skill_id)
                 elif skill_id in CC_SKILLS:
-                    # Mark tam CC cast thanh cong trong khi doi status-list dau turn sau sync lai.
-                    self._set_crowd(tb1, tb2, skill_id)
+                    # CC co ti le hut/miss va co the het som; 0x35 status-list dau turn la nguon chuan.
+                    # Khong persist CC tu echo 0x32, chi dung claim ngan trong combat.py de tranh
+                    # nhieu acc cung cast 1 target o cung turn.
+                    pass
                 elif skill_id in CLEAR_PROTECT_SKILLS:
                     self._clear_protect(tb1, tb2)
                 q = min(cend, q + attr_count * 5)

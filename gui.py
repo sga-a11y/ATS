@@ -124,6 +124,7 @@ LABEL_BATTLE_ACTIONS = {v: k for k, v in BATTLE_ACTION_LABELS.items()}
 BATTLE_TARGET_LABELS = {
     "auto": "Auto",
     "block": "Theo block",
+    "dangerous_npc": "NPC nguy hiểm",
     "enemy_low_hp": "Quái ít HP nhất",
     "enemy_high_hp": "Quái nhiều HP nhất",
     "enemy_first": "Quái đầu",
@@ -1116,13 +1117,13 @@ class BotGUI(tk.Tk):
         threading.Thread(target=ctrl.start_all, daemon=True).start()
 
     def _stop_all(self):
-        threading.Thread(target=ctrl.stop_all, daemon=True).start()
+        threading.Thread(target=ctrl.stop_all, args=("GUI Stop tat ca",), daemon=True).start()
 
     def _start_party(self, pidx):
         threading.Thread(target=ctrl.start_party, args=(pidx,), daemon=True).start()
 
     def _stop_party(self, pidx):
-        threading.Thread(target=ctrl.stop_party, args=(pidx,), daemon=True).start()
+        threading.Thread(target=ctrl.stop_party, args=(pidx, "GUI Stop party"), daemon=True).start()
 
     def _redeem_giftcode(self, pidx):
         # dem so acc dang chay cua party de bao cho nguoi dung
@@ -1215,7 +1216,7 @@ class BotGUI(tk.Tk):
     def _stop_sel(self, pidx):
         tree = self.party_trees[pidx]
         for u in tree.selection():
-            threading.Thread(target=ctrl.stop_account, args=(u,), daemon=True).start()
+            threading.Thread(target=ctrl.stop_account, args=(u, "GUI Stop acc chon"), daemon=True).start()
 
     # ---- refresh status ----
     def _refresh(self):
@@ -1383,7 +1384,7 @@ class BotGUI(tk.Tk):
         changed = [u for u in list(ctrl.account_clients)
                    if ctrl.is_account_running(u) and old.get(u) != new.get(u)]
         for u in changed:
-            ctrl.stop_account(u)
+            ctrl.stop_account(u, reason="GUI reload config: account/party setting changed")
         self._all_usernames = set(u for pidx in range(len(config.PARTIES))
                                   for (u, *_ ) in ctrl.party_accounts(pidx))
         self._build_ordinal()
@@ -1395,7 +1396,7 @@ class BotGUI(tk.Tk):
 
     def _on_close(self):
         if messagebox.askokcancel("Thoát", "Dừng tất cả acc và thoát?"):
-            try: ctrl.stop_all()
+            try: ctrl.stop_all(reason="GUI dong app")
             except Exception: pass
             self.destroy()
 
@@ -1499,7 +1500,7 @@ class PartyConfigFrame(ttk.Frame):
         accs = self._preset.get("accounts", [])
         no_leader = bool(accs) and not (accs[0].get("u", "").strip())
         shown = accs[1:] if no_leader else accs
-        # Hang: [Bot dung yen, cho nhan loi moi tu] [whitelist leader rieng party nay]
+        # Hang: tick -> dung yen/accept whitelist; khong tick -> bot-leader moi them whitelist.
         nlrow = ttk.Frame(self); nlrow.pack(fill="x", pady=(2, 0))
         self.no_leader_var = tk.BooleanVar(value=no_leader)
         # Di Gioi SOLO: khong lap party that -> "chu PT" khong co y nghia gi, an checkbox nay cho
@@ -1943,6 +1944,39 @@ class PartyConfigFrame(ttk.Frame):
 
         rule_rows = {"char": [], "pet": []}
 
+        def _open_dangerous_npcs_editor():
+            top = tk.Toplevel(win)
+            top.title("NPC nguy hiểm")
+            top.resizable(False, False)
+            top.transient(win)
+            top.grab_set()
+            body = ttk.Frame(top, padding=10)
+            body.pack(fill="both", expand=True)
+            ttk.Label(body, text="Mỗi dòng là một tên NPC, thứ tự trên trước.").pack(anchor="w", pady=(0, 6))
+            txt = tk.Text(body, width=36, height=12)
+            txt.pack(fill="both", expand=True)
+            txt.insert("1.0", "\n".join(getattr(config, "DANGEROUS_NPC_NAMES", []) or []))
+            btns = ttk.Frame(body)
+            btns.pack(fill="x", pady=(8, 0))
+
+            def _save():
+                names = [line.strip() for line in txt.get("1.0", "end").splitlines() if line.strip()]
+                ok = False
+                try:
+                    ok = bool(ctrl.save_dangerous_npc_names(names))
+                except Exception:
+                    ok = False
+                if not ok:
+                    try:
+                        config.save_dangerous_npc_names(names)
+                    except Exception as e:
+                        messagebox.showerror("NPC nguy hiểm", f"Không lưu được danh sách:\n{e}", parent=top)
+                        return
+                top.destroy()
+
+            ttk.Button(btns, text="Lưu", command=_save).pack(side="left")
+            ttk.Button(btns, text="Hủy", command=top.destroy).pack(side="left", padx=(8, 0))
+
         def _build_unit(parent, unit, title):
             box = ttk.LabelFrame(parent, text=title, padding=8)
             box.pack(fill="x", pady=(0, 8))
@@ -2004,8 +2038,17 @@ class PartyConfigFrame(ttk.Frame):
                 target_cb = ttk.Combobox(fr, textvariable=target_var, state="readonly", width=22,
                                          values=list(BATTLE_TARGET_LABELS.values()))
                 target_cb.pack(side="left", padx=(0, 4))
+                npc_btn = ttk.Button(fr, text="DS", width=3, command=_open_dangerous_npcs_editor)
                 rec = {"frame": fr, "enabled": enabled_var, "condition": cond_var,
                        "op": op_var, "value": value_var, "skill": skill_var, "target": target_var}
+
+                def _sync_target_button(*_a):
+                    target_key = LABEL_BATTLE_TARGETS.get(target_var.get(), "auto")
+                    if target_key == "dangerous_npc":
+                        if not npc_btn.winfo_ismapped():
+                            npc_btn.pack(side="left", padx=(0, 4), before=up_btn)
+                    else:
+                        npc_btn.pack_forget()
 
                 def _sync_condition(*_a):
                     ckey = LABEL_BATTLE_CONDITION_TYPES.get(cond_var.get(), "always")
@@ -2034,19 +2077,25 @@ class PartyConfigFrame(ttk.Frame):
                             skill_var.set(_skill_label(revs[0]))
                         target_var.set("Auto")
                         target_cb.configure(state="disabled")
+                        npc_btn.pack_forget()
                     else:
                         skill_cb.configure(values=_skill_values(unit, [_label_to_skill(skill_var.get())]),
                                            state="readonly")
                         target_cb.configure(state="readonly")
+                        _sync_target_button()
 
+                up_btn = ttk.Button(fr, text="↑", width=2,
+                                    command=lambda r=rec: _move_rule(unit, r, -1))
+                up_btn.pack(side="left", padx=(0, 2))
+                down_btn = ttk.Button(fr, text="↓", width=2,
+                                      command=lambda r=rec: _move_rule(unit, r, 1))
+                down_btn.pack(side="left", padx=(0, 2))
+                del_btn = ttk.Button(fr, text="X", width=2,
+                                     command=lambda r=rec: _remove_rule(unit, r))
+                del_btn.pack(side="left")
                 cond_var.trace_add("write", _sync_condition)
+                target_var.trace_add("write", _sync_target_button)
                 _sync_condition()
-                ttk.Button(fr, text="↑", width=2,
-                           command=lambda r=rec: _move_rule(unit, r, -1)).pack(side="left", padx=(0, 2))
-                ttk.Button(fr, text="↓", width=2,
-                           command=lambda r=rec: _move_rule(unit, r, 1)).pack(side="left", padx=(0, 2))
-                ttk.Button(fr, text="X", width=2,
-                           command=lambda r=rec: _remove_rule(unit, r)).pack(side="left")
                 rule_rows[unit].append(rec)
 
             def _remove_rule(unit_name, rec):
@@ -2311,7 +2360,7 @@ class PartyConfigFrame(ttk.Frame):
         self._render_dyn()
 
     def _update_no_leader_visibility(self):
-        """Chi hien whitelist rieng khi party KHONG co bot-leader.
+        """Whitelist co 2 nghia: tick = accept leader ngoai; khong tick = moi them acc ngoai.
         Di Gioi SOLO: khong lap party that -> an ca checkbox lan whitelist cho gon."""
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
         hide = (mode == "digioi" and self.digioi_solo_var.get())
@@ -2322,11 +2371,12 @@ class PartyConfigFrame(ttk.Frame):
         else:
             self.no_leader_cb.pack(side="left")
             if self.no_leader_var.get():
+                self.wl_lbl.configure(text="")
                 self.wl_lbl.pack(side="left")
-                self.wl_entry.pack(side="left", fill="x", expand=True, padx=4)
             else:
-                self.wl_lbl.pack_forget()
-                self.wl_entry.pack_forget()
+                self.wl_lbl.configure(text="Mời thêm:")
+                self.wl_lbl.pack(side="left", padx=(8, 0))
+            self.wl_entry.pack(side="left", fill="x", expand=True, padx=4)
 
     def _render_dyn(self):
         for w in self.dyn.winfo_children():

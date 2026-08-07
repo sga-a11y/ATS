@@ -355,6 +355,65 @@ def _load_npc_names():
     return out
 NPC_NAMES = _load_npc_names()   # template_id (int) -> ten quai/npc
 
+DEFAULT_DANGEROUS_NPC_NAMES = [
+    "Chu Công",
+    "Hằng Nga",
+    "Gia Cát Lượng",
+    "Tư Mã Ý",
+    "Lục Tốn",
+    "Bàng Thống",
+    "Lữ Bố",
+    "Trần Cung",
+]
+
+
+def _dangerous_npcs_path():
+    return os.path.join(_base_dir(), "dangerous_npcs.json")
+
+
+def normalize_dangerous_npc_names(value):
+    if isinstance(value, dict):
+        value = value.get("names", [])
+    out = []
+    if isinstance(value, str):
+        value = value.replace(",", "\n").splitlines()
+    if isinstance(value, (list, tuple, set)):
+        for name in value:
+            text = str(name or "").strip()
+            if text and text not in out:
+                out.append(text)
+    return out
+
+
+def _load_dangerous_npc_names():
+    path = _dangerous_npcs_path()
+    try:
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        else:
+            data = _load_json_root("dangerous_npcs.json")
+        if isinstance(data, dict) and "names" in data:
+            return normalize_dangerous_npc_names(data.get("names"))
+    except Exception:
+        pass
+    return list(DEFAULT_DANGEROUS_NPC_NAMES)
+
+
+def save_dangerous_npc_names(names):
+    clean = normalize_dangerous_npc_names(names)
+    path = _dangerous_npcs_path()
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"names": clean}, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+    global DANGEROUS_NPC_NAMES
+    DANGEROUS_NPC_NAMES = clean
+    return clean
+
+
+DANGEROUS_NPC_NAMES = _load_dangerous_npc_names()
+
 # DATA SKILL: doc tu skills_data.json (AUTO crack_skills.py). skill_id -> {cost, dame, splash}.
 # combat tu suy combo (dame AoE re) + boss (dame splash 4>1) -> KHONG can list cung.
 def _load_skill_info():

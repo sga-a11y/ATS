@@ -775,6 +775,12 @@ fun TsBotApp(
             initialBattleJson = account.battleJson,
             charSkills = skills.first,
             petSkills = skills.second,
+            dangerousNpcNames = {
+                service?.dangerousNpcNames()?.takeIf { it.isNotEmpty() } ?: DefaultDangerousNpcNames
+            },
+            onSaveDangerousNpcNames = { names ->
+                service?.saveDangerousNpcNames(names)
+            },
             onDismiss = { editingSkillAccount = null },
             onSave = { editedBattleJson ->
                 partyStore.updateAccountInParty(
@@ -1597,25 +1603,31 @@ fun AddPartyDialog(
                         }
                     }
                 }
-                // Bot dung yen cho leader ngoai/tay moi: an khi Di Gioi + SOLO (khong lap party).
-                // Chi khi bat moi hien o nhap whitelist leader.
+                // Whitelist co 2 nghia:
+                // - Bat: bot dung yen va accept leader ngoai.
+                // - Tat: bot-leader moi them acc ngoai sau khi du bot member.
                 Spacer(Modifier.height(8.dp))
                 if (!(selectedMode == RunModes.DIGIOI && digioiSolo)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = noLeader, onCheckedChange = { noLeader = it })
                         Text("Bot đứng yên, chờ nhận lời mời từ")
                     }
-                    if (noLeader) {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = leaderWhitelistText,
-                            onValueChange = { leaderWhitelistText = it },
-                            label = { Text("Tên leader") },
-                            supportingText = { Text("Mỗi dòng hoặc dấu phẩy = 1 tên nhân vật leader. Để trống = nhận lời mời từ mọi người.") },
-                            minLines = 2,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = leaderWhitelistText,
+                        onValueChange = { leaderWhitelistText = it },
+                        label = { Text(if (noLeader) "Tên leader" else "Mời thêm acc ngoài party") },
+                        supportingText = {
+                            Text(
+                                if (noLeader)
+                                    "Mỗi dòng hoặc dấu phẩy = 1 tên nhân vật leader. Để trống = nhận lời mời từ mọi người."
+                                else
+                                    "Bot sẽ mời các tên này sau khi đủ acc bot. Acc ngoài vào hay không không ảnh hưởng flow."
+                            )
+                        },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
                 // Cac setting IT KHI DOI gom vao "Cai dat nang cao" (mirror gui.py ben PC) - tranh
                 // dialog nay (da rat nhieu field) bi day dai them moi lan them setting moi.
@@ -2092,6 +2104,7 @@ private val BattleActionOptions = listOf(
 private val BattleTargetOptions = listOf(
     "auto" to "Auto",
     "block" to "Theo block",
+    "dangerous_npc" to "NPC nguy hiểm",
     "enemy_low_hp" to "Quái ít HP nhất",
     "enemy_high_hp" to "Quái nhiều HP nhất",
     "enemy_first" to "Quái đầu",
@@ -2102,6 +2115,17 @@ private val BattleTargetOptions = listOf(
     "ally_revive_skill" to "Đồng đội có skill Hồi sinh",
     "ally_protect_skill" to "Đồng đội có skill bảo vệ",
     "self" to "Bản thân",
+)
+
+private val DefaultDangerousNpcNames = listOf(
+    "Chu Công",
+    "Hằng Nga",
+    "Gia Cát Lượng",
+    "Tư Mã Ý",
+    "Lục Tốn",
+    "Bàng Thống",
+    "Lữ Bố",
+    "Trần Cung",
 )
 
 private fun defaultConditionValue(condition: String): String = when (condition) {
@@ -2300,6 +2324,7 @@ private fun BattleRuleUnitEditor(
     title: String,
     rules: List<BattleRuleUi>,
     skills: List<SkillChoice>,
+    onEditDangerousNpcs: () -> Unit,
     onRules: (List<BattleRuleUi>) -> Unit,
 ) {
     val isCharacter = title.equals("Char", ignoreCase = true)
@@ -2430,6 +2455,11 @@ private fun BattleRuleUnitEditor(
             if (rule.condition != "ally_dead") {
                 RuleDropdown("Target", rule.target, BattleTargetOptions) {
                     updateRule(rule.copy(target = it))
+                }
+                if (rule.target == "dangerous_npc") {
+                    TextButton(onClick = onEditDangerousNpcs) {
+                        Text("Danh sách NPC")
+                    }
                 }
             }
         }
@@ -2591,6 +2621,8 @@ fun SkillSettingsDialog(
     initialBattleJson: String,
     charSkills: List<SkillChoice>,
     petSkills: List<SkillChoice>,
+    dangerousNpcNames: () -> List<String>,
+    onSaveDangerousNpcNames: (List<String>) -> Unit,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
 ) {
@@ -2601,6 +2633,13 @@ fun SkillSettingsDialog(
         mutableStateOf(parseBattleRules(initialBattleJson, "pet"))
     }
     var confirmDefault by remember { mutableStateOf(false) }
+    var editDangerousNpc by remember { mutableStateOf(false) }
+    var dangerousNpcText by remember { mutableStateOf("") }
+
+    fun openDangerousNpcEditor() {
+        dangerousNpcText = dangerousNpcNames().joinToString("\n")
+        editDangerousNpc = true
+    }
 
     if (confirmDefault) {
         AlertDialog(
@@ -2621,6 +2660,40 @@ fun SkillSettingsDialog(
         )
     }
 
+    if (editDangerousNpc) {
+        AlertDialog(
+            onDismissRequest = { editDangerousNpc = false },
+            title = { Text("NPC nguy hiểm") },
+            text = {
+                Column {
+                    Text("Mỗi dòng là một tên NPC, thứ tự trên trước.")
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = dangerousNpcText,
+                        onValueChange = { dangerousNpcText = it },
+                        minLines = 8,
+                        maxLines = 12,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val names = dangerousNpcText
+                        .lines()
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .distinct()
+                    onSaveDangerousNpcNames(names)
+                    editDangerousNpc = false
+                }) { Text("Lưu") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editDangerousNpc = false }) { Text("Hủy") }
+            },
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Kịch bản Skill") },
@@ -2636,9 +2709,9 @@ fun SkillSettingsDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                BattleRuleUnitEditor("Char", charRules, charSkills) { charRules = it }
+                BattleRuleUnitEditor("Char", charRules, charSkills, ::openDangerousNpcEditor) { charRules = it }
                 Spacer(Modifier.height(8.dp))
-                BattleRuleUnitEditor("Pet", petRules, petSkills) { petRules = it }
+                BattleRuleUnitEditor("Pet", petRules, petSkills, ::openDangerousNpcEditor) { petRules = it }
             }
         },
         confirmButton = {

@@ -48,6 +48,14 @@ ONLINE_GIFT_ROLECOUNT = 10
 WORLD_BOSS_MISSION_ID = 12207
 WORLD_BOSS_MAX_ATTEMPTS = 5
 WORLD_BOSS_CHALLENGE_TIDS = (0xB625,)
+VANTIEU_CLAIM_RESULT_TEXT = {
+    1: "thanh cong",
+    2: "loai van tieu sai",
+    3: "chi so pet/slot sai",
+    4: "chua hoan thanh",
+    5: "tui do day",
+    6: "vat pham/function dong",
+}
 ONLINE_GIFT_DEFAULT_FLAGS = {
     10: 2,
     20: 3,
@@ -979,6 +987,10 @@ class GameClient:
         self.vantieu_started = None  # so luot van tieu DA gui hom nay (S2C 0x55 sid=0x08)
         self.vantieu_max = 3         # gioi han van tieu/ngay (server bao kem, mac dinh 3)
         self.vantieu_slots = {}      # slot -> {"end": OLE date ket thuc, "pet": id} (tu panel 0x56 0300)
+        self._vantieu_claim_pending_slot = None
+        self._vantieu_claim_result = None  # (slot, result_code) tu S2C 0x56/0500
+        self._vantieu_claim_event = threading.Event()
+        self._vantieu_claim_retry_after = 0.0
         # BOSS QUAN DOAN (server day luc login): count = so lan da danh hom nay (0x27 70), next = gio
         # danh tiep duoc = cooldown end epoch (0x27 76 OLE date). Server tu track -> khoi doan local.
         self.legion_boss_count = 0   # so lan DA danh boss QD hom nay (S2C 0x55 id 0x2a cur)
@@ -4409,9 +4421,27 @@ class GameClient:
         """S2C 0x56 panel Dispatch:
           0300: [count] + count*[slot][start OLE][end OLE][kind][innIndex][effect1][effect2]
           0400: [kind][effect1][effect2] = yeu cau slot trong hien tai.
+          0500: [result] = ket qua nhan thuong.
         """
         body = pkt[7:]
         if len(body) < 3:
+            return
+        if body[0:2] == b"\x05\x00":          # ket qua nhan thuong van tieu
+            code = body[2]
+            slot = self._vantieu_claim_pending_slot
+            self._vantieu_claim_result = (slot, code)
+            self._vantieu_claim_pending_slot = None
+            if code == 1:
+                if slot is not None:
+                    self.vantieu_slots.pop(slot, None)
+                self._vantieu_claim_retry_after = 0.0
+                log.info("[%s] Van tieu: nhan qua slot %s THANH CONG",
+                         self._label, slot if slot is not None else "?")
+            else:
+                msg = VANTIEU_CLAIM_RESULT_TEXT.get(code, f"ma loi {code}")
+                log.warning("[%s] Van tieu: nhan qua slot %s THAT BAI: %s",
+                            self._label, slot if slot is not None else "?", msg)
+            self._vantieu_claim_event.set()
             return
         if body[0:2] == b"\x06\x00":          # so slot DA MO (con lai khoa = can vang unlock)
             self.vantieu_unlocked = body[2]
@@ -4520,6 +4550,12 @@ class GameClient:
         import datetime
         if not getattr(config, "VANTIEU_ENABLE", False):
             return None
+        retry_after = float(getattr(self, "_vantieu_claim_retry_after", 0.0) or 0.0)
+        if retry_after > time.time():
+            log.info("[%s] Van tieu: tam dung nhan qua sau loi truoc, check lai luc %s",
+                     self._label, datetime.datetime.fromtimestamp(retry_after).strftime("%H:%M:%S"))
+            return retry_after
+
         def _refresh_panel(delay=1.2):
             self.vantieu_slots = {}
             self.vantieu_req_code = None
@@ -4532,15 +4568,45 @@ class GameClient:
         now = datetime.datetime.now()
         # 1) NHAN qua slot da xong (now >= gio ket thuc)
         claimed = False
+        claim_blocked_until = 0.0
         for slot, info in list(self.vantieu_slots.items()):
             if now >= self._ole_to_dt(info["end"]):
+                self._vantieu_claim_pending_slot = slot
+                self._vantieu_claim_result = None
+                self._vantieu_claim_event.clear()
                 self.send(0x56, b"\x05\x00" + bytes([slot & 0xFF]))
-                time.sleep(0.5)
-                self.vantieu_slots.pop(slot, None)
-                claimed = True
-                log.info("[%s] Van tieu: nhan qua slot %d (da xong)", self._label, slot)
+                if self._vantieu_claim_event.wait(2.0):
+                    ack_slot, code = self._vantieu_claim_result or (slot, None)
+                    if code == 1:
+                        self.vantieu_slots.pop(ack_slot or slot, None)
+                        claimed = True
+                    elif code == 5:
+                        claim_blocked_until = time.time() + 10 * 60
+                        self._vantieu_claim_retry_after = claim_blocked_until
+                        log.warning("[%s] Van tieu: tui do day, anh don bot tui roi bot se thu lai sau",
+                                    self._label)
+                        break
+                    else:
+                        msg = VANTIEU_CLAIM_RESULT_TEXT.get(code, f"ma loi {code}")
+                        claim_blocked_until = time.time() + 5 * 60
+                        self._vantieu_claim_retry_after = claim_blocked_until
+                        log.warning("[%s] Van tieu: tam dung nhan qua vi server bao %s",
+                                    self._label, msg)
+                        break
+                else:
+                    self._vantieu_claim_pending_slot = None
+                    claim_blocked_until = time.time() + 60
+                    self._vantieu_claim_retry_after = claim_blocked_until
+                    log.warning("[%s] Van tieu: khong nhan duoc ack 0x56/0500 khi nhan slot %d -> thu lai sau",
+                                self._label, slot)
+                    break
         if claimed:
             _refresh_panel(0.9)
+        if claim_blocked_until > 0:
+            _refresh_panel(0.9)
+            log.info("[%s] Van tieu: check lai luc %s",
+                     self._label, datetime.datetime.fromtimestamp(claim_blocked_until).strftime("%H:%M:%S"))
+            return claim_blocked_until
         # 2) GUI pet moi: CHI vao slot DA MO (1..vantieu_unlocked, KHONG tu unlock = ton vang)
         #    va trong gioi han luot/ngay (vantieu_max). slot dang chay -> bo qua.
         # cands = list (inn_index, ten_pet) de match. Uu tien ROSTER tu server (0x1f, AUTO);
@@ -4997,6 +5063,48 @@ class GameClient:
         for e in ents:
             self.invite_entity(e)
             time.sleep(gap)
+
+    def _whitelist_leader_entities(self):
+        """Entity nhan vat ngoai bot nam trong whitelist leader, neu leader da thay ten cua ho.
+
+        Party invite cua game gui theo entity 8B, khong gui truc tiep theo ten. Vi vay danh sach nay
+        chi moi duoc nhung acc ngoai da co trong cache entity_names cua client hien tai.
+        """
+        leaders = (config.leaders_for(self.party_idx)
+                   if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
+        wanted = {str(x).strip().lower() for x in (leaders or []) if str(x).strip()}
+        if not wanted:
+            return []
+        with _PARTY_LOCK:
+            bot_entities = set(_PARTY_ENTITIES.get(self.party_idx, set()))
+        current_party = {bytes(e) for e in (self.party_members or []) if e}
+        if self.party_leader:
+            current_party.add(bytes(self.party_leader))
+        if self.self_entity:
+            current_party.add(bytes(self.self_entity))
+        out = []
+        for entity, names in list(self.entity_names.items()):
+            eb = bytes(entity)
+            if eb in bot_entities or eb in current_party:
+                continue
+            if any(str(name).strip().lower() in wanted for name in (names or [])):
+                out.append(eb)
+        return out
+
+    def invite_whitelist_leaders(self, gap: float = 1.0) -> int:
+        """Moi them acc ngoai whitelist vao party sau khi BOT members da du.
+
+        Khong mark joined, khong cho doi accept: acc ngoai vao hay khong khong anh huong flow bot.
+        """
+        ents = self._whitelist_leader_entities()
+        if not ents:
+            return 0
+        log.info("[%s] (LEADER) moi them %d acc whitelist ngoai party: %s",
+                 self._label, len(ents), [e.hex()[:8] for e in ents])
+        for e in ents:
+            self.invite_entity(e)
+            time.sleep(gap)
+        return len(ents)
 
     def leave_party(self):
         """Roi/giai tan party hien tai (de co the VAO DI GIOI - khong vao duoc khi dang trong party).
