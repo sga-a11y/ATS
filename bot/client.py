@@ -5091,6 +5091,20 @@ class GameClient:
                 out.append(eb)
         return out
 
+    def _log_no_whitelist_entity(self, context: str):
+        leaders = (config.leaders_for(self.party_idx)
+                   if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
+        wanted = [str(x).strip() for x in (leaders or []) if str(x).strip()]
+        if not wanted:
+            return
+        now = time.time()
+        last = float(getattr(self, "_last_whitelist_no_entity_log", 0.0) or 0.0)
+        if now - last < 30:
+            return
+        self._last_whitelist_no_entity_log = now
+        log.info("[%s] (LEADER) whitelist %s nhung chua thay entity gan minh -> chua moi duoc (%s)",
+                 self._label, wanted, context)
+
     def invite_whitelist_leaders(self, gap: float = 1.0) -> int:
         """Moi them acc ngoai whitelist vao party sau khi BOT members da du.
 
@@ -5098,11 +5112,29 @@ class GameClient:
         """
         ents = self._whitelist_leader_entities()
         if not ents:
+            self._log_no_whitelist_entity("party thuong")
             return 0
         log.info("[%s] (LEADER) moi them %d acc whitelist ngoai party: %s",
                  self._label, len(ents), [e.hex()[:8] for e in ents])
         for e in ents:
             self.invite_entity(e)
+            time.sleep(gap)
+        return len(ents)
+
+    def invite_whitelist_team_dungeon(self, gap: float = 1.0) -> int:
+        """Moi them acc whitelist vao PHONG PHO BAN DOI.
+
+        Khac party thuong 0x0d/07, phong pho ban doi dung 0x2f/08. Acc ngoai co vao hay khong
+        khong tinh vao so bot-ready; leader van start khi du bot member nhu cu.
+        """
+        ents = self._whitelist_leader_entities()
+        if not ents:
+            self._log_no_whitelist_entity("phong pho ban doi")
+            return 0
+        log.info("[%s] (LEADER) moi them %d acc whitelist vao PHO BAN DOI: %s",
+                 self._label, len(ents), [e.hex()[:8] for e in ents])
+        for e in ents:
+            self.send(0x2f, b"\x08\x00" + bytes(e))
             time.sleep(gap)
         return len(ents)
 
@@ -5222,6 +5254,7 @@ class GameClient:
         reset_dungeon_ready(self.party_idx)
         for e in ents:
             self.send(0x2f, b"\x08\x00" + bytes(e)); time.sleep(1.0)
+        self.invite_whitelist_team_dungeon(gap=1.0)
         ready_wait_max = max(ready_wait, 40.0)
         t0 = time.time()
         while dungeon_ready_count(self.party_idx) < len(ents) and time.time() - t0 < ready_wait_max:
@@ -5730,6 +5763,7 @@ class GameClient:
         reset_dungeon_ready(self.party_idx)   # xoa tin hieu ready cu (lan pho ban truoc) tranh nham
         for e in ents:
             self.send(0x2f, b"\x08\x00" + bytes(e)); time.sleep(1.0)
+        self.invite_whitelist_team_dungeon(gap=1.0)
         # 3. Cho member auto-accept + auto-ready THAT SU (POLL dungeon_ready_count, KHONG doan gio
         # co dinh). _handle_o5_team CHI goi ham nay khi CA PARTY da bao "chua xong o5" (xem
         # run_party_digioi.py) -> luc nay moi member dang o trong vong CHO thu dong (khong lam viec
