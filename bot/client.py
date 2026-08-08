@@ -5723,6 +5723,25 @@ class GameClient:
                     self._label, level)
         return False
 
+    def _team_dungeon_roster_ok(self, expected_members: int, wait: float = 8.0) -> bool:
+        """RULE TOI THUONG 'du party moi danh': sau START (0x2f 0c00) server phat roster party
+        0x0d/06 cua PHONG PHO BAN -> doi chieu so member SERVER CONG NHAN vs so bot da moi.
+        Ready 4/4 (0x2f 0b00) la bot TU BAO (timer 2.5s sau accept, khong doi server xac nhan) -
+        accept co the FAIL am tham server-side (vd member vua relogin lech kenh) -> ready du ma
+        phong THIEU nguoi -> START danh thieu doi (log thuc te: ready 4/4 nhung roster 3 member).
+        GOI SAU START: caller phai tu xoa self.party_members truoc khi gui 0x2f 0c00 (roster cu
+        cua party train van con -> khong xoa se dem nham du). Tra False neu roster thieu."""
+        t0 = time.time()
+        while self.running and time.time() - t0 < wait:
+            if len(self.party_members) >= expected_members:
+                return True
+            time.sleep(0.5)
+        log.warning("[%s] (LEADER) roster phong pho ban chi %d/%d member sau %.1fs -> THIEU nguoi, "
+                    "HUY danh de gom lai (luot chua mat - mission step chi tang khi danh xong)",
+                    self._label, len(self.party_members), expected_members, time.time() - t0)
+        self._td_incomplete = True   # run_party_digioi doc co nay -> ca party relogin gom lai, danh lai
+        return False
+
     def _create_team_dungeon_room(self, dungeon_id: int, level_label: int, ready_wait: float = 9.0) -> bool:
         ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
         if not ents:
@@ -5731,6 +5750,7 @@ class GameClient:
             return False
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV%d: tao + moi %d member ===",
                  self._label, level_label, len(ents))
+        self._td_incomplete = False   # co "phong thieu nguoi sau START" (xem _team_dungeon_roster_ok)
         get_party_battle(self.party_idx).reset_session()
         self.flee_mode = False
         self._team_dungeon_until = time.time() + TEAM_DUNGEON_DURATION
@@ -5755,10 +5775,11 @@ class GameClient:
         log.info("[%s] (LEADER) lv%d member ready %d/%d sau %.1fs (whitelist=%d, grace=%ds) -> START",
                  self._label, level_label, nrdy, len(ents), time.time() - t0,
                  whitelist_count, TEAM_DUNGEON_WHITELIST_READY_GRACE)
+        self.party_members = []   # xoa roster party train CU -> cho roster MOI cua phong sau START
         self.send(0x2f, b"\x0c\x00"); time.sleep(2.0)
         self.combat_ready()
         time.sleep(0.5)
-        return True
+        return self._team_dungeon_roster_ok(len(ents))
 
     def do_team_dungeon_lv50(self, ready_wait: float = 9.0) -> bool:
         """PHO BAN TO DOI LV50 - script lay tu capture ts_capture_mumu12_teamdungeon_lv50.pcap."""
@@ -6236,6 +6257,7 @@ class GameClient:
             log.warning("[%s] (LEADER) do_team_dungeon_lv20: chua biet entity member -> bo qua", self._label)
             return False
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV20: tao + moi %d member ===", self._label, len(ents))
+        self._td_incomplete = False   # co "phong thieu nguoi sau START" (xem _team_dungeon_roster_ok)
         self.flee_mode = False   # PHO BAN: leader PHAI DANH (flee_mode tu flow daily -> leader bo chay,
                                  #   ket tran sai 0x14 0c00/0900/0800 thay vi WIN 0x14 sub0700 -> hong)
         self._team_dungeon_until = time.time() + TEAM_DUNGEON_DURATION
@@ -6273,8 +6295,10 @@ class GameClient:
                         self._label, nrdy, len(ents), time.time() - t0)
             self.state.quest_mode = False
             return False
-        log.info("[%s] (LEADER) member ready %d/%d sau %.1fs -> START", self._label, nrdy, len(ents),
-                 time.time() - t0)
+        log.info("[%s] (LEADER) member ready %d/%d sau %.1fs (whitelist=%d, grace=%ds) -> START",
+                 self._label, nrdy, len(ents), time.time() - t0,
+                 whitelist_count, TEAM_DUNGEON_WHITELIST_READY_GRACE)
+        self.party_members = []   # xoa roster party train CU -> cho roster MOI cua phong sau START
         self.send(0x2f, b"\x0c\x00"); time.sleep(2.0)
         # DBG: doi chieu capture nguoi that (dieusau) vs bot (cung acc) phat hien: nguoi that gui
         # 0x41 (OP_BATTLE_ENTER, "dang ky san sang battle" - da dung o _login_setup/combat_ready
@@ -6284,6 +6308,9 @@ class GameClient:
         # party (chinh xac tinh huong tuong tu: tao party moi cho pho ban).
         self.combat_ready()
         time.sleep(0.5)
+        if not self._team_dungeon_roster_ok(len(ents)):
+            self.state.quest_mode = False
+            return False
         # 4. Vong battle. Moi tran: (dismiss thoai thang loi) -> [set quan su sau B1] -> DI TOI CONG
         #    (moves, _route_move dam bao toi noi - THIEU buoc nay server DA leader!) -> transit -> spam
         #    dialog toi khi battle. Moves + transit lay tu capture team.pcap (KNOWLEDGE 7n).

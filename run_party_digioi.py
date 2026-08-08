@@ -3673,6 +3673,12 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 # hang/cot/tong ket co dinh kem o5. Goi lai claim_daily_quests(heavy=False) SAU KHI
                 # danh xong pho ban de claim bu (heavy=False -> KHONG lam lai o2/goi lai hook o5).
                 c.claim_daily_quests(heavy=False)
+            # PHONG THIEU NGUOI sau START (roster server < so bot moi - rule "du party moi danh"):
+            # leader da HUY danh truoc khi ton luot -> ca party relogin gom lai roi LAM LAI.
+            if getattr(c, "_td_incomplete", False):
+                log.warning("[%s] (LEADER) phong pho ban THIEU nguoi -> relogin ca party, danh lai", label)
+                try: c.relogin()
+                except Exception: pass
             # CASE 3: co dong doi ROT trong luc danh team dungeon -> leader cung RELOGIN thoat instance
             # (giong member) truoc khi ve flow. reform_gen (finally) + train reaction se gom lai sau.
             if st["disc_gen"] > _dg0 or st["reconnecting"]:
@@ -3685,7 +3691,8 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 # VO do co dis (chinh leader rot = not c.running, HOAC co member rot = disc_gen/
                 # reconnecting): bao member -> CA party relogin thoat instance (trong dungeon KHONG
                 # teleport ra duoc -> truoc day member spam go_to_town vo tan, xem log party xGAx).
-                if (not c.running) or st["disc_gen"] > _dg0 or st["reconnecting"]:
+                if ((not c.running) or st["disc_gen"] > _dg0 or st["reconnecting"]
+                        or getattr(c, "_td_incomplete", False)):
                     st["o5_broke"] = True
                     st["o5_need_redo"] = True   # team dungeon CHUA xong -> reconnect xong lam LAI
                 st["o5_state"] = "done"   # bao member (thanh cong hay fail deu THA member ra)
