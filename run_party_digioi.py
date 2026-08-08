@@ -1303,6 +1303,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             time.sleep(60)         # sau do: 1 phut/lan
                         continue
                     ch = r          # 0 (giu nguyen) hoac int (da chuyen) -> chot tam
+                    if ch == 0:
+                        # KHONG lay duoc danh sach kenh (0x07/0100 game KHONG ho tro - KNOWLEDGE 7e:
+                        # chi co SWITCH 0x07/0200 + current_channel tu 0x03/0x0c). "Giu nguyen" mu
+                        # quang lam member reconnect vao kenh khac bi BO ROI (bug that 20:55: leader
+                        # kenh 1, 2 member kenh 2 -> loop moi vo han "lech kenh live 2!=1"). -> GOM ca
+                        # party ve KENH LEADER: set channel = current_channel cua leader; member lech
+                        # se switch ve (0x07/0200 verified), member dung kenh thi switch_channel no-op.
+                        ch = c.current_channel or 0
                     if not _report_channel_map(sync_gen, expected_map):
                         log.warning("[%s] (%s) picker doi kenh xong sai map -> pick lai", label, role)
                         time.sleep(2)
