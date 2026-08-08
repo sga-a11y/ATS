@@ -5752,8 +5752,9 @@ class GameClient:
             log.warning("[%s] (LEADER) lv%d member ready %d/%d sau %.1fs -> HUY phong, relogin ca party",
                         self._label, level_label, nrdy, len(ents), time.time() - t0)
             return False
-        log.info("[%s] (LEADER) lv%d member ready %d/%d sau %.1fs -> START",
-                 self._label, level_label, nrdy, len(ents), time.time() - t0)
+        log.info("[%s] (LEADER) lv%d member ready %d/%d sau %.1fs (whitelist=%d, grace=%ds) -> START",
+                 self._label, level_label, nrdy, len(ents), time.time() - t0,
+                 whitelist_count, TEAM_DUNGEON_WHITELIST_READY_GRACE)
         self.send(0x2f, b"\x0c\x00"); time.sleep(2.0)
         self.combat_ready()
         time.sleep(0.5)
