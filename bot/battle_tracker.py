@@ -1,5 +1,7 @@
 """Protocol-driven battle lifecycle and state."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 import struct
 
