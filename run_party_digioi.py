@@ -3475,6 +3475,24 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
     while True:
         if stopped_fn() or not c.running:
             return False
+        # Dong doi rot / PB can danh lai TRONG luc leader dang cho report: truoc day leader KHONG
+        # co check nay -> member da _mark_team_dungeon_broken + relogin vao hang recover, con leader
+        # ket o vong cho report vo han (bug that: leader "cho report 1/5", member "cho relogin 4/5",
+        # 2 hang khac nhau khong bao gio gap). -> leader cung relogin vao hang recover de CA PARTY
+        # dong bo roi DANH LAI tu dau (giong het nhanh member o tren).
+        with st["lock"]:
+            _need_redo = bool(st.get("team_dungeon_need_redo"))
+            _recon = bool(st["reconnecting"])
+        if _recon or _need_redo:
+            log.warning("[%s] (LEADER) dong doi rot/PB vo khi cho report lv%d -> relogin vao hang "
+                        "recover de ca party danh lai", label, level)
+            with st["lock"]:
+                _mark_team_dungeon_broken(st, level)
+                st["reform_gen"] += 1
+            _clear_o5_client_flags(c)
+            return _force_supervisor_reconnect(
+                username, c, "phó bản đội vỡ (leader đồng bộ lại để đánh lại)"
+            )
         with st["lock"]:
             reports = dict(st.setdefault("team_dungeon_done_by", {}).setdefault(level, {}))
             reported = all(m in reports or m in st["reconnecting"] for m in members)
