@@ -69,16 +69,38 @@ class BotForegroundService : Service() {
         }
     }
 
-    private fun installPythonBundlePath() {
+    private fun installPythonBundlePath(excludePidx: Int? = null) {
         val bundlePath = ApkUpdater.pythonBundlePath(this)
         if (!File(bundlePath, "train_bot/run_party_digioi.py").isFile) return
         try {
-            val sys = Python.getInstance().getModule("sys")
-            val path = sys["path"] ?: return
+            // CORE UPDATE FIX: chi insert sys.path[0] la CHUA DU. 2 truong hop van chay code CU:
+            //  1) UI (MainActivity) da import train_bot.config tu assets APK TRUOC khi service cam
+            //     bundle path -> package train_bot bi cache trong sys.modules tro vao APK cu.
+            //  2) Foreground service giu process song: user update core -> file bundle tren dia da
+            //     moi nhung sys.modules van giu code cu (tat app cung khong chet process).
+            // => sau khi cam path, PURGE moi module train_bot* dang nap tu noi KHAC bundle.
+            //    (Chi purge khi bot chua chay account nao - dang chay thi de nguyen, lan Start sau se an.)
+            val py = Python.getInstance()
             val p = bundlePath.absolutePath
-            if (!path.asList().any { it.toString() == p }) {
-                path.callAttr("insert", 0, p)
-            }
+            val purge = runningPidx.isEmpty() && startingPidx.all { it == excludePidx }
+            val code = """
+import sys, logging
+_p = ${'"'}${'"'}${'"'}$p${'"'}${'"'}${'"'}
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+if ${if (purge) "True" else "False"}:
+    _stale = [_n for _n, _m in list(sys.modules.items())
+              if (_n == "train_bot" or _n.startswith("train_bot."))
+              and not (getattr(_m, "__file__", "") or "").startswith(_p)]
+    for _n in _stale:
+        del sys.modules[_n]
+    if _stale:
+        logging.getLogger("bot").warning("CORE RELOAD: bo %d module cu ngoai bundle: %s",
+                                         len(_stale), sorted(_stale))
+import train_bot.client as _c
+logging.getLogger("bot").info("CORE LOAD: client=%s", getattr(_c, "__file__", "?"))
+""".trimIndent()
+            py.getModule("builtins").callAttr("exec", code)
         } catch (e: Exception) {
             android.util.Log.w("aTSBot", "install bundle path failed: ${e.message}", e)
         }
@@ -170,6 +192,8 @@ class BotForegroundService : Service() {
     ) {
         val activeAccounts = party.accounts.filter { it.enabled }
         if (activeAccounts.isEmpty() || pidx in runningPidx || !startingPidx.add(pidx)) return
+        // Moi lan Start: cam lai bundle + purge module cu (neu vua update core ma process chua chet)
+        installPythonBundlePath(excludePidx = pidx)
         activeAccounts.forEach { account ->
             _status.update { it + (account.username to AccountStatus(RunState.CONNECTING)) }
         }
