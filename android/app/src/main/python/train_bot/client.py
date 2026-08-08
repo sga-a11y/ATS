@@ -3327,9 +3327,7 @@ class GameClient:
             log.info("[%s] Boss the gioi: tran ket thuc (sau %ds)", self._label, int(time.time() - t0))
         self.state.boss_mode = False
         self._wait_combat_clear()
-        self.do_heal()   # xong battle -> hoi HP/SP (char+pet) tro lai
-        if heal_after:
-            self.heal_full(force=True)
+        self.heal_full(force=True)   # xong world boss -> hoi FULL HP/SP char+pet
 
         # (4) teleport ve Trac Quan (thanh chung moi server) -> flow train sau do tu route tiep
         if self.running and (orig is None or self.current_map != orig):
@@ -3416,7 +3414,7 @@ class GameClient:
             time.sleep(1)
         self.state.boss_mode = False
         self._wait_combat_clear()
-        self.do_heal()                        # xong battle -> hoi HP/SP
+        self.heal_full(force=True)            # xong boss QD -> hoi FULL HP/SP char+pet
         # tang count trong phien (server day 0x55 id 0x2a moi luc login/update se ghi de = chuan);
         # server day 0x27 76 (cooldown moi) luc ket tran -> legion_boss_next tu cap nhat, fallback.
         self.legion_boss_count += 1
@@ -3789,7 +3787,7 @@ class GameClient:
             log.info("[%s] Xong dungeon luot %d (phien nay)", self._label, done_runs)
             time.sleep(2)
             self._wait_combat_clear()
-            self.do_heal()   # xong battle dungeon -> hoi HP/SP (char+pet) tro lai
+            self.heal_full(force=True)   # xong battle dungeon -> hoi FULL HP/SP char+pet
             # Re-query o1: server CHI bao done khi DU 2/2 (luc 1/2 van 020004 - panel KHONG lo tien do).
             # Done -> dung; xu ly dung ca khi nick da danh 1 luot o may/ban khac (khoi danh thua).
             try: self._query_quests()
