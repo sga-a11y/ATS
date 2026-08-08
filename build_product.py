@@ -121,15 +121,12 @@ def _glob_files(rel_dir, suffixes):
 
 
 def _app_shell_hashes():
-    # BUG THAT (xac nhan 08/08): exe build bang Nuitka voi "--include-package=bot" + "--follow-imports"
-    # -> gui.py, run_party_digioi.py VA CA bot/*.py deu BIEN DICH CUNG vao .exe. Nuitka nap module
-    # compiled qua sys.meta_path -> LUON THANG sys.path ma gui._bootstrap_bundle_path() chen bundle
-    # vao => core bundle KHONG override duoc code cua exe tren PC.
-    # Truoc day pc_shell chi hash "gui.py" -> sua bot/client.py bao nhieu lan hash van khong doi ->
-    # pc_app_required_version khong tang -> updater KHONG bat cai lai exe -> user chay exe cu (code cu)
-    # trong khi so core hien la ban moi => "dev dung, build sai".
-    # FIX: hash PHAI phu het code duoc nhung vao exe, de doi bot code la bat cai lai exe.
-    pc_shell = ["gui.py", "run_party_digioi.py"] + _glob_files("bot", (".py",))
+    # CHI hash gui.py = VO app (shell). bot/*.py + run_party_digioi.py tuy CO bien dich vao .exe
+    # (Nuitka --include-package=bot) NHUNG gui._BundleFirstFinder cam o sys.meta_path[0] ep lay ban
+    # trong core bundle truoc -> sua code bot CHI CAN core update, KHONG bat user cai lai exe.
+    # (Truoc 08/08 chua co finder do -> bundle bi Nuitka de bep, user chay code cu ma khong biet.)
+    # => Doi gui.py (vo/bootstrap) moi bat cai lai exe.
+    pc_shell = ["gui.py"]
     android_shell = [
         "android/app/build.gradle.kts",
         "android/build.gradle.kts",

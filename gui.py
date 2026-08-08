@@ -10,10 +10,48 @@ Tinh nang:
 Chay:  python gui.py
 """
 import os, sys, json, re, queue, logging, threading, time, collections, importlib, webbrowser
+import importlib.util   # can cho _BundleFirstFinder (spec_from_file_location)
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
 _LABEL_RE = re.compile(r"^\d\d:\d\d:\d\d \[([^\]]+)\]")
+
+class _BundleFirstFinder:
+    """Ep code bot lay tu CORE BUNDLE thay vi ban da bien dich san trong .exe.
+
+    BUG THAT (08/08): exe build bang Nuitka voi "--include-package=bot --follow-imports" nen
+    gui.py, run_party_digioi.py VA bot/*.py deu nam CUNG trong binary. Nuitka nap module compiled
+    qua sys.meta_path, ma sys.meta_path duoc xet TRUOC sys.path -> viec chen bundle vao sys.path
+    (o duoi) KHONG bao gio thang duoc => core bundle moi tai ve bi bo qua, user chay code cu
+    (xac nhan thuc te: exe 07/08 van chay client.py cu du core da la ban 08/08).
+
+    Finder nay cam o sys.meta_path[0] nen duoc hoi TRUOC Nuitka: co file trong bundle thi dung
+    bundle, khong co thi tra None -> tu dong roi ve ban compiled (exe chay duoc khi chua co bundle).
+    Nho vay sua bot/*.py CHI CAN core update, khong phai cai lai exe (dung y do thiet ke 04/08).
+    """
+
+    _TOP_LEVEL = ("bot", "run_party_digioi")
+
+    def __init__(self, root):
+        self._root = root
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split(".")[0] not in self._TOP_LEVEL:
+            return None
+        rel = fullname.replace(".", os.sep)
+        pkg_dir = os.path.join(self._root, rel)
+        pkg_init = os.path.join(pkg_dir, "__init__.py")
+        mod_py = os.path.join(self._root, rel + ".py")
+        try:
+            if os.path.isfile(pkg_init):
+                return importlib.util.spec_from_file_location(
+                    fullname, pkg_init, submodule_search_locations=[pkg_dir])
+            if os.path.isfile(mod_py):
+                return importlib.util.spec_from_file_location(fullname, mod_py)
+        except Exception:
+            return None
+        return None
+
 
 def _bootstrap_bundle_path():
     cand = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
@@ -25,6 +63,13 @@ def _bootstrap_bundle_path():
     if (os.path.isfile(os.path.join(bundle_pc, "run_party_digioi.py"))
             and os.path.isfile(os.path.join(bundle_pc, "bot", "config.py"))):
         sys.path.insert(0, bundle_pc)
+        # Chen TRUOC importer cua Nuitka (xem _BundleFirstFinder) - bat buoc, neu khong bundle
+        # chi nam trong sys.path va khong bao gio duoc dung.
+        try:
+            if not any(isinstance(f, _BundleFirstFinder) for f in sys.meta_path):
+                sys.meta_path.insert(0, _BundleFirstFinder(bundle_pc))
+        except Exception:
+            pass   # loi cam finder -> van chay duoc bang code compiled trong exe
 
 
 _bootstrap_bundle_path()
