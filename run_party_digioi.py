@@ -1235,7 +1235,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
 
             def _wait_channel_map_reports(sync_gen, expected_map, expected):
                 _last = 0
+                _t0 = time.time()   # SAFETY: co acc khong tham gia vong sync (da tan ra sau reform)
                 while c.running and not _stopped():
+                    # -> KHONG cho vo han (deadlock "1/5"): het 60s coi nhu vong sync fail, thoat ra
+                    # de leader moi/reform lai (member se dong bo o vong sau) thay vi treo mai.
+                    if time.time() - _t0 > 60:
+                        with st["lock"]:
+                            _n = len(dict(st.get("channel_map_reports") or {}))
+                        log.warning("[%s] (%s) sync kenh/map TIMEOUT 60s (%d/%d) -> thoat, moi/reform lai",
+                                    label, role, _n, expected)
+                        return False
                     with st["lock"]:
                         if st.get("channel_sync_gen") != sync_gen:
                             return False
@@ -2391,9 +2400,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # kho, du nguong -> khong di (khong roi map). Khi thieu -> acc DI TRAC QUAN mua -> off-map ->
         # reform san co keo CA PARTY ve thanh cho -> xong re-form train tiep (theo yeu cau user).
         next_buy_hpsp = time.time() + 7200
-        reform_gen_handled = startup_reform_gen_handled
-        # Init thuong=0 de neu
-        # co acc bi DUMP luc setup (da bump reform_gen) thi keepalive thay ngay -> reform don no
+        # reform_gen tang dan trong qua trinh toi-map/reconnect/keo qua cong (moi displaced/sai-map
+        # += 1). Neu init handled=0 thi ngay khi bat dau train, keepalive thay reform_gen (cao) >
+        # handled(0) -> REFORM NGAY du party VUA lap xong + moi acc dang dung dung map (bug that:
+        # log 15:42 - party vua "da vao party" la bi xe "REFORM gen 5" tu rac reform cu).
+        #  - Acc DANG dung dung train map (sc): moi reform_gen truoc do da resolved -> lay CURRENT
+        #    de KHONG replay (tranh xe party vua lap).
+        #  - Acc con LECH map (bi DUMP that luc setup): giu 0 de keepalive reform don no NGAY.
+        with st["lock"]:
+            reform_gen_handled = (max(startup_reform_gen_handled, st["reform_gen"])
+                                  if c.current_map == sc else startup_reform_gen_handled)
         with st["lock"]:
             cmd_gen_handled = st["cmd_gen"]   # lenh thu cong (GUI) da xu ly
             _pending_cmd = st.get("cmd")
