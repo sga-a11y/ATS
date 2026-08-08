@@ -80,6 +80,23 @@ class TestChannelSwitch(unittest.TestCase):
 
         self.assertEqual(game._parse_channel_from_03(pkt), 50)
 
+    def test_zero_channel_from_scene_does_not_replace_known_channel(self):
+        game = self.make_client()
+        game.current_channel = 1
+
+        game._note_current_channel(0, "0x0c")
+
+        self.assertEqual(game.current_channel, 1)
+
+    def test_refresh_current_channel_requests_scene_and_waits_for_positive_channel(self):
+        game = self.make_client()
+
+        with mock.patch.object(game, "send") as send:
+            send.side_effect = lambda _op, _payload: game._note_current_channel(1, "0x0c")
+            self.assertEqual(game.refresh_current_channel(wait=0.1), 1)
+
+        send.assert_called_once_with(0x0c, b"\x01\x00")
+
     def test_invite_uses_live_bot_scene_when_leader_nearby_cache_is_stale(self):
         leader = self.make_client()
         leader.party_idx = 19
@@ -129,6 +146,34 @@ class TestChannelSwitch(unittest.TestCase):
             self.assertEqual(leader.invite_members(gap=0), 0)
 
         invite.assert_not_called()
+
+    def test_train_party_invites_whitelist_before_bot_members(self):
+        leader = self.make_client()
+        events = []
+        leader.invite_whitelist_leaders = mock.Mock(
+            side_effect=lambda gap=1.0: events.append(("whitelist", gap)) or 1
+        )
+        leader.invite_members = mock.Mock(
+            side_effect=lambda gap=1.0: events.append(("bots", gap)) or 2
+        )
+
+        result = leader.invite_train_party_participants(gap=0)
+
+        self.assertEqual(result, (1, 2))
+        self.assertEqual(events, [("whitelist", 0), ("bots", 0)])
+
+    def test_train_party_still_invites_bots_when_whitelist_invite_fails(self):
+        leader = self.make_client()
+        events = []
+        leader.invite_whitelist_leaders = mock.Mock(side_effect=RuntimeError("scan failed"))
+        leader.invite_members = mock.Mock(
+            side_effect=lambda gap=1.0: events.append(("bots", gap)) or 2
+        )
+
+        result = leader.invite_train_party_participants(gap=0)
+
+        self.assertEqual(result, (0, 2))
+        self.assertEqual(events, [("bots", 0)])
 
 
 if __name__ == "__main__":

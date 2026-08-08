@@ -9,6 +9,7 @@ from unittest import mock
 from analyze_pcap import load_frames
 from bot import client as client_module, config
 from bot import team_dungeon_lv110 as pb110
+from bot.battle_tracker import BattleEvent
 from bot.state import BattleState
 
 
@@ -149,6 +150,14 @@ class TestTeamDungeon110PacketState(unittest.TestCase):
 
 
 class TestTeamDungeon110Execution(unittest.TestCase):
+    def test_whitelist_room_requires_ten_second_ready_grace(self):
+        self.assertTrue(hasattr(client_module, "_team_dungeon_can_start"))
+        can_start = client_module._team_dungeon_can_start
+
+        self.assertTrue(can_start(ready_count=4, needed=4, elapsed=0.0, whitelist_count=0))
+        self.assertFalse(can_start(ready_count=4, needed=4, elapsed=9.99, whitelist_count=1))
+        self.assertTrue(can_start(ready_count=4, needed=4, elapsed=10.0, whitelist_count=1))
+
     def test_coordinator_runs_pb110_when_whole_party_has_turns(self):
         with mock.patch.object(sys, "argv", [sys.argv[0]]):
             import run_party_digioi as coordinator
@@ -270,6 +279,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game.state = BattleState()
         game.send = mock.Mock()
         game.combat_ready = mock.Mock()
+        game.invite_whitelist_team_dungeon = mock.Mock(return_value=0)
         client_module._PARTY_ENTITIES[game.party_idx] = {game.self_entity, b"member01"}
         clock = {"now": 0.0}
 
@@ -289,6 +299,76 @@ class TestTeamDungeon110Execution(unittest.TestCase):
 
         self.assertNotIn(mock.call(0x2f, b"\x0c\x00"), game.send.call_args_list)
         game.combat_ready.assert_not_called()
+
+    def test_new_dungeon_room_resets_stale_active_battle_coordinator(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.running = True
+        game._label = "pb-battle-session-test"
+        game.party_idx = 99113
+        game.self_entity = b"leader01"
+        game.state = BattleState()
+        game.send = mock.Mock()
+        game.combat_ready = mock.Mock()
+        game.invite_whitelist_team_dungeon = mock.Mock(return_value=0)
+        client_module._PARTY_ENTITIES[game.party_idx] = {game.self_entity, b"member01"}
+        coordinator = client_module.get_party_battle(game.party_idx)
+        coordinator.observe("old", BattleEvent("start", 4, 0))
+        coordinator.observe("old", BattleEvent("turn_start", 4, 1))
+        clock = {"now": 0.0}
+
+        def fake_time():
+            clock["now"] += 41.0
+            return clock["now"]
+
+        try:
+            with (
+                mock.patch.object(client_module, "dungeon_ready_count", return_value=0),
+                mock.patch.object(client_module.time, "sleep", return_value=None),
+                mock.patch.object(client_module.time, "time", side_effect=fake_time),
+            ):
+                self.assertFalse(game._create_team_dungeon_room(0x0010, 110, ready_wait=0.0))
+        finally:
+            client_module._PARTY_ENTITIES.pop(game.party_idx, None)
+
+        self.assertFalse(coordinator.active)
+        self.assertTrue(coordinator.observe("new", BattleEvent("start", 1, 0)))
+        self.assertTrue(coordinator.observe("new", BattleEvent("turn_start", 1, 1)))
+        self.assertTrue(coordinator.can_send("new", 1, 1))
+
+    def test_room_invites_whitelist_before_bot_members(self):
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.running = True
+        game._label = "pb-invite-order-test"
+        game.party_idx = 99112
+        game.self_entity = b"leader01"
+        game.state = BattleState()
+        game.combat_ready = mock.Mock()
+        events = []
+        game.send = mock.Mock(side_effect=lambda op, payload: events.append(("send", op, payload)))
+        game.invite_whitelist_team_dungeon = mock.Mock(
+            side_effect=lambda gap=1.0: events.append(("whitelist", gap)) or 1
+        )
+        member = b"member01"
+        client_module._PARTY_ENTITIES[game.party_idx] = {game.self_entity, member}
+        clock = {"now": 0.0}
+
+        def fake_time():
+            clock["now"] += 5.0
+            return clock["now"]
+
+        try:
+            with (
+                mock.patch.object(client_module, "dungeon_ready_count", return_value=1),
+                mock.patch.object(client_module.time, "sleep", return_value=None),
+                mock.patch.object(client_module.time, "time", side_effect=fake_time),
+            ):
+                self.assertTrue(game._create_team_dungeon_room(0x000F, 80, ready_wait=0.0))
+        finally:
+            client_module._PARTY_ENTITIES.pop(game.party_idx, None)
+
+        whitelist_index = events.index(("whitelist", 1.0))
+        bot_invite_index = events.index(("send", 0x2f, b"\x08\x00" + member))
+        self.assertLess(whitelist_index, bot_invite_index)
 
     def test_end_wait_ignores_empty_enemies_and_false_combat(self):
         game = client_module.GameClient.__new__(client_module.GameClient)

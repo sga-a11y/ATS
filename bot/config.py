@@ -67,7 +67,7 @@ PARTIES = [
 
 # Whitelist TEN NHAN VAT ngoai party:
 # - Neu party KHONG co bot-leader: bot dung yen va chi nhan loi moi tu cac ten nay (rong = nhan bat ky).
-# - Neu party CO bot-leader: bot van lap party nhu cu, sau khi du bot member thi moi them cac ten nay.
+# - Neu party CO bot-leader va mode train: moi cac ten dang dung xung quanh TRUOC bot member.
 #   Acc ngoai vao hay khong khong anh huong flow bot.
 PARTY_LEADERS = []  # vi du: ["chihao", "haabo", "nasau"]
 

@@ -403,6 +403,29 @@ def _party_map_barrier(st, username, self_ok, expected, stopped):
         return all(st["map_results"].values())
 
 
+def _record_channel_map_report(st, username, current_map, sync_gen, expected_map, label=None):
+    """Ghi map vao dung generation sync, ke ca member da thoat startup sync va dang retry."""
+    map_ok = expected_map is None or current_map == expected_map
+    with st["lock"]:
+        if st.get("channel_sync_gen") != sync_gen:
+            return False
+        st["channel_map_reports"][username] = (bool(map_ok), current_map)
+        if not map_ok:
+            who = label or username
+            st["channel_failed_reason"] = "%s map=%s, can=%s" % (
+                who, current_map, expected_map,
+            )
+            st["channel_failed"].set()
+    return map_ok
+
+
+def _prepare_reform_channel_sync(st):
+    """Khong cho member dung channel_ready cua generation truoc khi leader mo sync reform moi."""
+    with st["lock"]:
+        st["channel_ready"].clear()
+        st["channel"] = None
+
+
 def _is_npc_repeat_party_event(mode, has_leader, ev):
     battle = (ev or {}).get("party_battle") or {}
     return mode == "event" and bool(has_leader) and battle.get("kind") == "npc_repeat"
@@ -425,6 +448,12 @@ def _should_resync_incomplete_digioi_party(
         is_digioi, digioi_solo, joined, needed, elapsed, threshold=20.0):
     return bool(is_digioi and not digioi_solo and needed > 0
                 and joined < needed and elapsed >= threshold)
+
+
+def _invite_party_participants(c, train_on_map, gap=1.0):
+    if train_on_map:
+        return c.invite_train_party_participants(gap=gap)
+    return c.invite_members(gap=gap)
 
 
 def _invite_whitelist_followers_if_bot_party_ready(c, st, pidx, label, force=False):
@@ -1171,6 +1200,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
         # Map-train: goi sau khi ve safe (doi kenh tren map thuong khong sao).
         def do_channel_sync():
+            current_channel = c.refresh_current_channel(wait=1.5)
+            log.info("[%s] (%s) cap nhat kenh hien tai truoc sync: %s",
+                     label, role, current_channel if current_channel is not None else "chua biet")
+
             def _prepare_channel_switch():
                 # Client that khong cho doi kenh khi dang trong party; server tra result=3.
                 # Roi party cu truoc khi sync de bot khong tuong doi kenh OK trong khi server tu choi.
@@ -1192,16 +1225,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (%s) sync kenh: loi roi party cu: %s", label, role, e)
 
             def _report_channel_map(sync_gen, expected_map):
-                ok = expected_map is None or c.current_map == expected_map
-                with st["lock"]:
-                    if st.get("channel_sync_gen") != sync_gen:
-                        return False
-                    st["channel_map_reports"][username] = (bool(ok), c.current_map)
-                    if not ok:
-                        st["channel_failed_reason"] = (
-                            "%s map=%s, can=%s" % (label, c.current_map, expected_map)
-                        )
-                        st["channel_failed"].set()
+                ok = _record_channel_map_report(
+                    st, username, c.current_map, sync_gen, expected_map, label=label,
+                )
                 if not ok:
                     log.warning("[%s] (%s) sync kenh: doi kenh xong SAI MAP (%s != %s)",
                                 label, role, c.current_map, expected_map)
@@ -1497,6 +1523,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # 3 member) nhung _mark_joined van dem -> leader tuong du 4/4, keo ca party di train
                     # BO chubon lai. Phai du mat CA PARTY o thanh roi moi di tiep (reconnecting cong vao
                     # de khoi deadlock - acc rot se duoc reform lai khi quay ve).
+                    if is_leader:
+                        # Member co the ve thanh truoc leader. Clear generation kenh CU truoc khi
+                        # leader mark arrived lam barrier du nguoi; sau khi barrier nha, member se
+                        # buoc phai cho picker mo generation MOI thay vi an channel_ready stale.
+                        _prepare_reform_channel_sync(st)
                     with st["lock"]:
                         _arr = st.setdefault("reform_arrived", {})
                         for _gk in [k for k in _arr if k < _g0]:
@@ -1539,10 +1570,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # no vao. Van hoan toan -> ca party dung o thanh cho (an toan).
                 while joined_member_count(pidx) < st["n_members"]:
                     if _ab(): return   # stop / reform moi hon -> thoat de keepalive xu lai
-                    try: c.invite_members(gap=1.0)
+                    try: _invite_party_participants(c, True, gap=1.0)
                     except Exception: pass
                     time.sleep(4)
-                _invite_whitelist_followers_if_bot_party_ready(c, st, pidx, label, force=True)
                 log.info("[%s] (LEADER) reform: %d/%d member join lai -> KEO qua cong ra train map",
                          label, joined_member_count(pidx), st["n_members"])
                 try: c.set_party_strategist()
@@ -2127,7 +2157,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # toi train map THEO PARTY (da lap party + cung kenh o thanh) -> KHOI moi lai
                 st["invited"].set()   # bao member khoi cho moi
                 log.info("[%s] (LEADER) toi train map theo party (da partied) -> bo qua moi lai", label)
-                _invite_whitelist_followers_if_bot_party_ready(c, st, pidx, label, force=True)
             else:
                 # PHAI DU PARTY MOI LAM (yeu cau user): leader CHO TAT CA member san sang (da vao DG /
                 # ve diem tap ket) roi moi + train. KHONG tru n_members. Rieng DG+Train: neu leader
@@ -2203,7 +2232,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         st["invited"].set()
                         _resync_t0 = time.time(); _t0 = time.time()
                         continue
-                    c.invite_members(gap=1.0)
+                    _invite_party_participants(c, train_on_map, gap=1.0)
                     st["invited"].set()
                     time.sleep(4)
                     if time.time() - _t0 > 30:
@@ -2213,7 +2242,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 st["invited"].set()
                 log.info("[%s] (LEADER) DU PARTY (%d/%d member join)",
                          label, joined_member_count(pidx), st["n_members"])
-                _invite_whitelist_followers_if_bot_party_ready(c, st, pidx, label, force=True)
+                if not train_on_map:
+                    _invite_whitelist_followers_if_bot_party_ready(
+                        c, st, pidx, label, force=True
+                    )
             # Bat dau train (set QS + ra cho danh). Goi khi DA co >=1 member (du quan su).
             training_started = False
             def _start_training():
@@ -2902,10 +2934,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 c.flee_mode = True               # ne quai trong luc CHO du party
                                 while joined_member_count(pidx) < st["n_members"]:   # CHO VO HAN: du party moi danh
                                     if not c.running or _stopped(): break
-                                    try: c.invite_members(gap=1.0)
+                                    try: _invite_party_participants(c, True, gap=1.0)
                                     except Exception: pass
                                     time.sleep(4)
-                                _invite_whitelist_followers_if_bot_party_ready(c, st, pidx, label, force=True)
                                 try: c.set_party_strategist()
                                 except Exception: pass
                             c.combat_ready(); c.flee_mode = False
@@ -2976,12 +3007,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         c.combat_ready(); c.flee_mode = False
                         for _ in range(4):           # moi lap lai, cho member (gio da tu do) accept
                             if not c.running or _stopped(): break
-                            try: c.invite_members(gap=1.0)
+                            try: _invite_party_participants(c, True, gap=1.0)
                             except Exception: pass
                             time.sleep(3)
                             if joined_member_count(pidx) >= st["n_members"]:
                                 break
-                        _invite_whitelist_followers_if_bot_party_ready(c, st, pidx, label, force=True)
                         log.info("[%s] (LEADER) sau relogin: %d/%d member join lai -> keo ra spot",
                                  label, joined_member_count(pidx), st["n_members"])
                         path = st.get("mob_path")
@@ -3113,7 +3143,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if nj < st["n_members"]:
                         log.info("[%s] (LEADER) chua du member (%d/%d) -> MOI LAI",
                                  label, nj, st["n_members"])
-                        try: c.invite_members(gap=1.0)
+                        try:
+                            _invite_party_participants(c, train_on_map, gap=1.0)
                         except Exception: pass
                     # co member join ma chua train (truoc do 0 QS dung yen) -> BAT DAU TRAIN
                     if nj >= 1 and not training_started:
@@ -3130,7 +3161,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         if ch:
                             log.info("[%s] (member) chua vao party -> retry chuyen kenh %d", label, ch)
                             try:
-                                ok = c.switch_channel(ch); time.sleep(1); c.combat_ready()
+                                ok = c.switch_channel(ch)
+                                if ok:
+                                    with st["lock"]:
+                                        sync_gen = st.get("channel_sync_gen", 0)
+                                        expected_map = st.get("channel_expected_map")
+                                    if _record_channel_map_report(
+                                            st, username, c.current_map, sync_gen,
+                                            expected_map, label=label):
+                                        log.info("[%s] (member) retry kenh %d -> da bao cao map=%s "
+                                                 "cho sync gen=%s", label, ch,
+                                                 c.current_map, sync_gen)
+                                time.sleep(1); c.combat_ready()
                                 if not ok:
                                     log.warning("[%s] (member) retry chuyen kenh %d THAT BAI", label, ch)
                             except Exception:

@@ -9,6 +9,8 @@ import json
 import os
 
 from . import config, protocol, combat, pathfind, npc40, pet_login_stats, team_dungeon_lv110
+from .battle_tracker import BattleTracker
+from .party_battle import get_party_battle
 
 
 from .auth import build_auth_packet
@@ -320,6 +322,15 @@ def dungeon_ready_count(party_idx):
 def reset_dungeon_ready(party_idx):
     with _PARTY_LOCK:
         _DUNGEON_READY.pop(party_idx, None)
+
+
+TEAM_DUNGEON_WHITELIST_READY_GRACE = 10.0
+
+
+def _team_dungeon_can_start(ready_count, needed, elapsed, whitelist_count):
+    if ready_count < needed:
+        return False
+    return not whitelist_count or elapsed >= TEAM_DUNGEON_WHITELIST_READY_GRACE
 
 def reset_party_joined(party_idx):
     """Xoa danh sach member da join (khi leader GIAI TAN party de relogin) -> leader tinh lai tu
@@ -851,6 +862,10 @@ class GameClient:
         self._recent_recvs = collections.deque(maxlen=40)  # (ts, op, hex) goi server gui - debug kick
         self.running = False
         self.state = BattleState()
+        self.battle_tracker = BattleTracker()
+        self.state.attach_tracker(self.battle_tracker)
+        self._battle_party_key = None
+        self._battle_party_coordinator = None
 
         # combat turn handling
         self.available = {}          # unit -> list (atype, target)
@@ -1306,24 +1321,12 @@ class GameClient:
 
     def in_combat(self, idle_secs: float = 4.0) -> bool:
         """Dang trong tran. Moc CHUAN = state.in_battle (set MOI luot 0x35 + 0x34 START, HA o 0x14
-        sub0700 END that). KHONG ep False theo idle ngan: giua cac luot quest khoang nghi co the >
-        idle_secs (log thay >13s) -> neu ep False se hoi item / vao gate GIUA TRAN.
-        Safety: im qua lau (END bi miss) moi ha co tranh ket vinh vien."""
+        sub0700/sub0800 END that). KHONG ep False theo enemy rong hay idle: server co the con dang
+        giai quyet animation/ket tran; gui dialog trong khoang nay se bi dong ket noi."""
         busy = (time.time() - self.last_turn_time) < idle_secs
-        # LEADER trong pho ban to doi thuong KHONG nhan duoc goi ket tran THAT (0x14 sub0800 tail=04)
-        # rieng cho no (chi member nhan) -> phai tu suy luan: khong con quai song (enemy_slots rong)
-        # + im lang vai giay = tran da ket, KHONG can cho toi 25s SAFETY.
-        # Fix that: "khong con quai song" (combat.py enemy_gen stale) KHONG dong nghia enemy_slots
-        # rong -> HP quai CU >0 van con luu vi leader khong nhan 0x33 cuoi de zero no. Dieu kien
-        # enemy_slots-rong o duoi hau nhu KHONG BAO GIO dung cho leader trong pho ban to doi.
-        if self.state.in_battle and not self.state.enemy_slots and (time.time() - self.last_turn_time) > 3.0:
-            log.info("[%s] khong con quai song + im 3s -> tu ha in_battle "
-                     "(leader suy luan, khong doi goi END rieng)", self._label)
-            self.state.in_battle = False
-            self._battle_end_grace_until = time.time() + 3.0
-        elif (self.state.in_battle and not getattr(self.state, "boss_mode", False)
-              and not getattr(self, "_in_scene_gate", False)
-              and _recent_battle_end(self.party_idx, within=3.0, map_id=self.current_map)):
+        if (self.state.in_battle and not getattr(self.state, "boss_mode", False)
+                and not getattr(self, "_in_scene_gate", False)
+                and _recent_battle_end(self.party_idx, within=3.0, map_id=self.current_map)):
             # BOSS (boss the gioi / dungeon): moi acc danh trận RIENG cua no -> member khac ket tran
             # KHONG lien quan -> KHONG suy luan theo member (boss_mode). Boss loop tu quan ly ket tran.
             # Truoc day chi ap dung cho pho ban to doi (_team_dungeon_until) -> tran PHUC KICH O
@@ -1337,10 +1340,6 @@ class GameClient:
                      "leader ha in_battle theo (khong doi SAFETY)", self._label)
             self.state.in_battle = False
             self._battle_end_grace_until = time.time() + 3.0
-        elif self.state.in_battle and (time.time() - self.last_turn_time) > 35.0:
-            log.warning("[%s] ha in_battle qua SAFETY 35s (KHONG PHAI goi ket tran that "
-                        "- co the da miss goi END, hoac tran that su CHUA xong)", self._label)
-            self.state.in_battle = False   # co le miss goi 0x14 END -> ha co an toan
         # KHONG reset _battle_entered/_first_turn: client THAT gui 0x41 + atype=2
         # chi 1 LAN/phien (join he thong battle), 6 tran sau van atype=3, khong gui lai 0x41
         return self.state.in_battle or busy
@@ -1647,6 +1646,7 @@ class GameClient:
         self._observe_team_dungeon_packet(opcode, pkt)
         self._observe_npc40_packet(opcode, pkt)
         self._observe_mob_packet(opcode, pkt)
+        self._track_battle_packet(opcode, pkt)
         # Pho ban to doi: theo doi thoai NPC de biet canh da HET that su chua (_adv_dialog_until_idle)
         # va tin hieu ket tran that (mot so canh boss tu dong xu ly, khong bao gio bat in_battle=True).
         if time.time() < getattr(self, "_team_dungeon_until", 0.0) and opcode == 0x14:
@@ -1664,7 +1664,8 @@ class GameClient:
         # KET TRAN that: S2C 0x14 sub 0700 (man tong ket battle) -> ban DUNG 1 lan/tran luc thang.
         # Day moi la moc ket tran dang tin (0x34 ban that thuong, 1 lan/nhieu tran). Reset quest_mode
         # + enemies o DAY -> quest_mode latch luc start (>5) GIU NGUYEN ca tran du quai con <=5.
-        if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x07\x00":
+        if (opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x07\x00"
+                and not self.battle_tracker.active):
             self._genuine_end_seen = time.time()
             log.info("[%s] nhan goi KET TRAN THAT 0x14 sub0700 (WIN) in_battle_truoc=%s "
                      "raw=%s -> in_battle=False",
@@ -1680,7 +1681,9 @@ class GameClient:
         # (Neu flee chua thanh cong/dang giua tran, luot 0x35 sau tu set lai in_battle=True.)
         # DBG: log CA khi in_battle DA la False truoc do (nghi ngo: sub nay co the la scene-transition
         # khac, KHONG phai ket tran that - user nghi dung luc nay in_battle con False ma van log).
-        if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] in (b"\x0c\x00", b"\x09\x00", b"\x08\x00"):
+        if (opcode == 0x14 and len(pkt) >= 9
+                and pkt[7:9] in (b"\x0c\x00", b"\x09\x00", b"\x08\x00")
+                and not self.battle_tracker.active):
             was_true = self.state.in_battle
             now = time.time()
             scene_end_like = (
@@ -1922,11 +1925,11 @@ class GameClient:
             elif self.char_name is None and ent == self.self_entity:
                 self._resolve_name_from_03(pkt)
         # (Server KHONG echo vi tri CUA MINH qua 0x06 -> dung dead-reckoning trong move_to/enter)
-        if opcode == protocol.OP_STAT_UPD:        # 0x33
+        if opcode == protocol.OP_STAT_UPD and not self.battle_tracker.generation:  # 0x33 legacy
             start_enemy_slots = self.state.update_0x33(pkt)
             if start_enemy_slots:
                 self._record_train_block_stats(start_enemy_slots)
-        elif opcode == 0x32:                       # battle action: HP cuoi tran nam trong cac block 0x19
+        elif opcode == 0x32 and not self.battle_tracker.generation:  # legacy battle action
             self.state.update_0x32(pkt)
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
             if self.self_entity is None:
@@ -2007,7 +2010,7 @@ class GameClient:
                 self._event14_acks.append("ket_qua_code=%d" % code)
                 if code == 0x06:
                     self._event14_bagfull = True
-        elif opcode == protocol.OP_ACTIONS:       # 0x35
+        elif opcode == protocol.OP_ACTIONS and not self.battle_tracker.generation:  # 0x35 legacy
             self._on_actions(pkt)
         elif opcode == 0x13 and len(pkt) >= 11 and pkt[7:9] in (b"\x04\x00", b"\x01\x00"):
             # pet dang dung: [04 00] luc login, [01 00] khi doi pet. id = 2B LE
@@ -2111,7 +2114,7 @@ class GameClient:
             log.info("[%s] CHANDBG 0x07 %s", self._label, pkt.hex())
         elif opcode == protocol.OP_PLAYER_STATE:  # 0x0d - party
             self._on_party(pkt)
-        elif opcode == protocol.OP_BATTLE_START:   # 0x34 - KHONG dung lam moc ket tran (ban that thuong)
+        elif opcode == protocol.OP_BATTLE_START and not self.battle_tracker.generation:  # 0x34 legacy
             # KHONG reset quest_mode o day: quest_mode reset o KET TRAN (0x14 sub0700). 0x34 ban that
             # thuong (1 lan/nhieu tran) -> reset_quest=False de KHONG mat latch khi quai con <=5.
             self.state.in_battle = True
@@ -2499,7 +2502,9 @@ class GameClient:
         if opcode == protocol.OP_BATTLE_START:
             self._battle_start_seq += 1
             return
-        if opcode == 0x14 and pkt[7:9] == b"\x07\x00":
+        tracker = getattr(self, "battle_tracker", None)
+        if (opcode == 0x14 and pkt[7:9] == b"\x07\x00"
+                and not getattr(tracker, "generation", 0)):
             self._team_dungeon_end_seq += 1
             return
         if opcode != 0x35:
@@ -2521,10 +2526,11 @@ class GameClient:
         )
 
     def _on_actions(self, pkt: bytes):
-        """0x35 sub0100 co 2 dang:
-        - available-actions: [unit][atype][target][00][00]
-        - status-list:       [row][col][kind][skill_id u16]
-        Chi dang available-actions moi duoc arm AI.
+        """0x35/01 = client ``FightManager.RevRestoreStatus`` records.
+
+        Every entry is ``[row][col][status_kind][skill_id u16]``.  The game
+        client applies ``skill_id=0`` too (clear that status kind).  Bot also
+        uses those zero-status rows for char/pet as the turn-action signal.
         """
         # TRU: dang trong grace period sau khi vua nhan goi KET TRAN THAT (0x14 sub0800 tail=04) ->
         # 0x35 nay la broadcast DU cua member khac chua xong luot, KHONG duoc phep set lai in_battle
@@ -2541,6 +2547,8 @@ class GameClient:
                 if skill_id == 0 and unit in (config.UNIT_CHAR, config.UNIT_PET):
                     offers.append((unit, atype, target))
                 i += 5
+        # Apply ALL records first, including skill_id=0.  This mirrors the game
+        # client's HandleStatus loop and keeps CC/protection current for targeting.
         self.state.update_0x35_status(pkt)
         if not offers:
             return  # 11-byte confirmation hoac status-list thuan -> khong phai luot ra lenh
@@ -2556,6 +2564,110 @@ class GameClient:
         # debounce: quyet dinh 0.4s sau goi 0x35 cuoi cung
         if self.auto_combat:
             self._arm_decision()
+
+    def _battle_coordinator(self):
+        party_key = self.party_idx if self.party_idx is not None else ("solo", id(self))
+        if party_key != self._battle_party_key:
+            self._battle_party_key = party_key
+            self._battle_party_coordinator = get_party_battle(party_key)
+            self.state.attach_tracker(self.battle_tracker, self._battle_party_coordinator)
+        return self._battle_party_coordinator
+
+    def _battle_account_id(self):
+        return self.user_id
+
+    def _track_battle_packet(self, opcode: int, pkt: bytes):
+        if opcode not in (0x0B, 0x14, 0x32, 0x33, 0x34, 0x35):
+            return ()
+        if self.self_entity:
+            self.battle_tracker.local_role_id = self.self_entity
+        coordinator = self._battle_coordinator()
+        account_id = self._battle_account_id()
+        body = pkt[7:] if len(pkt) > 7 and pkt[6] == opcode else pkt
+        if (opcode == 0x34 and body[:2] == b"\x01\x00"
+                and not self.battle_tracker.active):
+            snapshot = coordinator.canonical_snapshot()
+            if snapshot is not None and self.battle_tracker.restore_snapshot(snapshot):
+                if snapshot.turn > 0 and coordinator.open_local_turn(
+                        account_id, snapshot.generation, snapshot.turn):
+                    self.state.sync_from_tracker()
+                    self._prepare_tracker_turn()
+                    log.info(
+                        "[%s] BATTLE BOOTSTRAP g=%d t=%d tu snapshot party sau local 0x34",
+                        self._label, snapshot.generation, snapshot.turn,
+                    )
+                    return ()
+        server_end = (
+            opcode == 0x14
+            and body[:2] == b"\x08\x00"
+            and len(body) >= 3
+            and body[-1] in (0x03, 0x04)
+            and self.battle_tracker.active
+            and getattr(self, "_active_team_dungeon_level", None) != 110
+            and not any(
+                row in (0, 1) and unit.alive and unit.hp > 0
+                for (row, _col), unit in self.battle_tracker.units.items()
+            )
+        )
+        events = self.battle_tracker.confirm_end() if server_end else self.battle_tracker.apply(opcode, pkt)
+        if not events:
+            return ()
+        snapshot = self.battle_tracker.snapshot()
+        accepted = tuple(
+            coordinator.observe(account_id, event, snapshot=snapshot)
+            for event in events
+        )
+        self.state.sync_from_tracker()
+        for event in events:
+            if event.kind == "turn_start":
+                self._prepare_tracker_turn()
+            elif event.kind == "ack":
+                log.info(
+                    "[%s] BATTLE ACK g=%d t=%d source=%s",
+                    self._label, event.generation, event.turn, event.source,
+                )
+            elif event.kind == "end":
+                self.available = {}
+                if self._decision_timer:
+                    self._decision_timer.cancel()
+                    self._decision_timer = None
+                now = time.time()
+                self._genuine_end_seen = now
+                self._battle_end_grace_until = now + 3.0
+                _mark_battle_end(self.party_idx, who=self._label, map_id=self.current_map)
+                if getattr(self, "_active_team_dungeon_level", None) == 110:
+                    self._team_dungeon_end_seq += 1
+                in_team_dungeon = now < getattr(self, "_team_dungeon_until", 0.0)
+                self.state.reset_enemies(reset_quest=not in_team_dungeon)
+                self.state.in_battle = False
+                self._heal_after_battle()
+        return tuple(zip(events, accepted))
+
+    def _prepare_tracker_turn(self):
+        tracker = self.battle_tracker
+        if not tracker.active:
+            return
+        targets = sorted({
+            col
+            for (row, col), unit in tracker.units.items()
+            if row in (0, 1) and unit.alive and unit.hp > 0
+        })
+        atype = self.state.my_atype
+        self.available = {}
+        for unit_kind in (config.UNIT_CHAR, config.UNIT_PET):
+            unit = tracker.units.get((unit_kind, atype))
+            if unit is not None and unit.alive:
+                self.available[unit_kind] = [(atype, target) for target in targets]
+        self.last_turn_time = time.time()
+        self._acted_turn = False
+        if self.auto_combat and self.available:
+            self._arm_decision()
+
+    def _battle_can_send(self, source):
+        tracker = self.battle_tracker
+        return self._battle_coordinator().can_send(
+            self._battle_account_id(), tracker.generation, tracker.turn, source=source,
+        )
 
     def _arm_decision(self):
         if self._decision_timer:
@@ -2726,6 +2838,19 @@ class GameClient:
         lap/replay -> AM THAM BO QUA -> turn khong tien -> ket cung lap lai (xac nhan qua log: tran
         co quai HP cao/nhieu turn lien danh cung 1 con bi ket, tran quai yeu target doi lien tuc thi
         khong sao). LUON random (KHONG con env RAND_TAIL) de giong client that."""
+        source = (d.unit, d.atype)
+        tracker = self.battle_tracker
+        if tracker.generation:
+            coordinator = self._battle_coordinator()
+            if not coordinator.mark_sent(
+                self._battle_account_id(), source, tracker.generation, tracker.turn,
+            ):
+                log.debug(
+                    "[%s] bo SEND source=%s vi chua co local turn hoac da gui g=%d t=%d",
+                    self._label, source, tracker.generation, tracker.turn,
+                )
+                return False
+            tracker.register_action(source, d.skill, (d.b, d.target))
         import random
         if tail is None:
             tail = struct.pack("<H", random.randint(1, 0xFFFF))
@@ -2734,6 +2859,12 @@ class GameClient:
                    + struct.pack("<H", d.skill)
                    + tail)
         self.send(protocol.OP_COMBAT, payload)
+        if tracker.generation:
+            log.info(
+                "[%s] BATTLE SEND g=%d t=%d source=%s skill=%d target=%s",
+                self._label, tracker.generation, tracker.turn, source, d.skill, (d.b, d.target),
+            )
+        return True
 
     def flee_battle(self):
         """BO CHAY khoi tran: gui 0x32 skill=0x4651 cho ca char + pet, TARGET = chinh minh
@@ -4868,13 +4999,33 @@ class GameClient:
             channel = int(channel)
         except Exception:
             return
-        if channel < 0:
+        if channel <= 0:
             return
         old = self.current_channel
         self.current_channel = channel
         self._channel_scene_generation += 1
         if old != channel:
             log.info("[%s] Kenh hien tai = %s (tu %s)", self._label, channel, source)
+
+    def refresh_current_channel(self, wait: float = 1.5):
+        """Xin lai scene hien tai; chi nhan instanceId/kenh duong tu server."""
+        if not self.running:
+            return None
+        generation = self._channel_scene_generation
+        try:
+            self.send(0x0c, b"\x01\x00")
+        except OSError:
+            return None
+        deadline = time.time() + max(0.0, float(wait))
+        while self.running and time.time() < deadline:
+            if self._channel_scene_generation != generation:
+                break
+            time.sleep(0.05)
+        try:
+            channel = int(self.current_channel)
+        except (TypeError, ValueError):
+            return None
+        return channel if channel > 0 else None
 
     def _parse_channel_from_03(self, pkt: bytes):
         """Parse instanceId/channel tu S2C 0x03 PlayerAppear theo layout client Lua.
@@ -5418,7 +5569,7 @@ class GameClient:
                  self._label, wanted, context, missing or "-", known or "-")
 
     def invite_whitelist_leaders(self, gap: float = 1.0) -> int:
-        """Moi them acc ngoai whitelist vao party sau khi BOT members da du.
+        """Moi acc ngoai whitelist dang dung quanh leader vao party thuong.
 
         Khong mark joined, khong cho doi accept: acc ngoai vao hay khong khong anh huong flow bot.
         """
@@ -5432,6 +5583,17 @@ class GameClient:
             self.invite_entity(e)
             time.sleep(gap)
         return len(ents)
+
+    def invite_train_party_participants(self, gap: float = 1.0):
+        """Moi whitelist dang dung xung quanh truoc, sau do moi bot member train."""
+        whitelist_count = 0
+        try:
+            whitelist_count = self.invite_whitelist_leaders(gap=gap)
+        except Exception as exc:
+            log.warning("[%s] (LEADER) moi whitelist truoc party train loi: %s",
+                        self._label, exc)
+        bot_count = self.invite_members(gap=gap)
+        return whitelist_count, bot_count
 
     def invite_whitelist_team_dungeon(self, gap: float = 1.0) -> int:
         """Moi them acc whitelist vao PHONG PHO BAN DOI.
@@ -5449,6 +5611,19 @@ class GameClient:
             self.send(0x2f, b"\x08\x00" + bytes(e))
             time.sleep(gap)
         return len(ents)
+
+    def _invite_team_dungeon_participants(self, bot_entities, gap: float = 1.0) -> int:
+        """Moi acc whitelist truoc, sau do moi bot members vao phong pho ban.
+
+        Whitelist khong co bot auto-ready. Moi ho truoc tao them thoi gian de vao phong va bam
+        CHUAN BI trong luc cac bot members lan luot accept + auto-ready, tranh leader START ngay
+        khi whitelist vua moi vao phong.
+        """
+        whitelist_count = self.invite_whitelist_team_dungeon(gap=gap)
+        for entity in bot_entities:
+            self.send(0x2f, b"\x08\x00" + bytes(entity))
+            time.sleep(gap)
+        return whitelist_count
 
     def leave_party(self):
         """Roi/giai tan party hien tai (de co the VAO DI GIOI - khong vao duoc khi dang trong party).
@@ -5558,18 +5733,19 @@ class GameClient:
             return False
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV%d: tao + moi %d member ===",
                  self._label, level_label, len(ents))
+        get_party_battle(self.party_idx).reset_session()
         self.flee_mode = False
         self._team_dungeon_until = time.time() + TEAM_DUNGEON_DURATION
         self.state.quest_mode = True
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
         self.send(0x2f, b"\x02\x00" + struct.pack("<H", int(dungeon_id)) + b"\x01"); time.sleep(1.0)
         reset_dungeon_ready(self.party_idx)
-        for e in ents:
-            self.send(0x2f, b"\x08\x00" + bytes(e)); time.sleep(1.0)
-        self.invite_whitelist_team_dungeon(gap=1.0)
+        whitelist_count = self._invite_team_dungeon_participants(ents, gap=1.0)
         ready_wait_max = max(ready_wait, 40.0)
         t0 = time.time()
-        while dungeon_ready_count(self.party_idx) < len(ents) and time.time() - t0 < ready_wait_max:
+        while (not _team_dungeon_can_start(
+                dungeon_ready_count(self.party_idx), len(ents), time.time() - t0,
+                whitelist_count) and time.time() - t0 < ready_wait_max):
             if not self.running:
                 return False
             time.sleep(0.5)
@@ -6073,9 +6249,7 @@ class GameClient:
         self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)
         # 2. Moi tung member theo ENTITY (0x2f 0800 [entity 8B]) - KHAC party-invite 0x0d 07
         reset_dungeon_ready(self.party_idx)   # xoa tin hieu ready cu (lan pho ban truoc) tranh nham
-        for e in ents:
-            self.send(0x2f, b"\x08\x00" + bytes(e)); time.sleep(1.0)
-        self.invite_whitelist_team_dungeon(gap=1.0)
+        whitelist_count = self._invite_team_dungeon_participants(ents, gap=1.0)
         # 3. Cho member auto-accept + auto-ready THAT SU (POLL dungeon_ready_count, KHONG doan gio
         # co dinh). _handle_o5_team CHI goi ham nay khi CA PARTY da bao "chua xong o5" (xem
         # run_party_digioi.py) -> luc nay moi member dang o trong vong CHO thu dong (khong lam viec
@@ -6087,7 +6261,9 @@ class GameClient:
         # khong START mot minh.
         ready_wait_max = max(ready_wait, 40.0)
         t0 = time.time()
-        while dungeon_ready_count(self.party_idx) < len(ents) and time.time() - t0 < ready_wait_max:
+        while (not _team_dungeon_can_start(
+                dungeon_ready_count(self.party_idx), len(ents), time.time() - t0,
+                whitelist_count) and time.time() - t0 < ready_wait_max):
             if not self.running:
                 self.state.quest_mode = False
                 return False

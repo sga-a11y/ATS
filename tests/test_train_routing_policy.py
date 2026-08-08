@@ -30,7 +30,36 @@ class RecordingClient:
         return True
 
 
+class RecordingInviteClient:
+    def __init__(self):
+        self.calls = []
+
+    def invite_train_party_participants(self, gap=1.0):
+        self.calls.append(("train", gap))
+        return 1, 2
+
+    def invite_members(self, gap=1.0):
+        self.calls.append(("bots", gap))
+        return 2
+
+
 class TestTrainRoutingPolicy(unittest.TestCase):
+    def test_train_invite_pass_uses_whitelist_first_helper(self):
+        client = RecordingInviteClient()
+
+        result = coordinator._invite_party_participants(client, True, gap=0)
+
+        self.assertEqual(result, (1, 2))
+        self.assertEqual(client.calls, [("train", 0)])
+
+    def test_non_train_invite_pass_keeps_bot_only_flow(self):
+        client = RecordingInviteClient()
+
+        result = coordinator._invite_party_participants(client, False, gap=0)
+
+        self.assertEqual(result, 2)
+        self.assertEqual(client.calls, [("bots", 0)])
+
     def test_incomplete_train_party_reforms_after_short_invite_window(self):
         self.assertFalse(coordinator._should_reform_incomplete_party(True, 2, 4, 19.9))
         self.assertTrue(coordinator._should_reform_incomplete_party(True, 2, 4, 20.0))

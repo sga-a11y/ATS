@@ -49,6 +49,8 @@ class Unit:
 
 class BattleState:
     def __init__(self):
+        self.tracker = None
+        self.battle_coordinator = None
         self.char = Unit("char")
         self.pet = Unit("pet")
         self.self_entity = None   # entity 8 byte cua nhan vat minh (set tu client)
@@ -100,12 +102,64 @@ class BattleState:
         self.last_atk_gen_multipet = {}   # atype -> enemy_gen da danh (tranh danh lap khi 0x33 cu)
         # (row,col)->set(skill_id): trang thai bao ve hien co, tu 0x35 status-list.
         # row 0/1=dich, 2=pet minh, 3=char minh.
+        self.status_by_kind = {}       # (row,col)->{status_kind: skill_id}, giong client HandleStatus
         self.protect_status = {}
         self.crowd_status = {}          # (row,col)->set(skill_id) CC/khong che tu 0x35 status-list
+
+    def attach_tracker(self, tracker, coordinator=None):
+        self.tracker = tracker
+        self.battle_coordinator = coordinator
+
+    def sync_from_tracker(self):
+        tracker = self.tracker
+        if tracker is None:
+            return
+        self.in_battle = tracker.active
+        self.enemy_gen = tracker.revision
+        self.enemy_hp = {
+            row * 10 + col: unit.hp
+            for (row, col), unit in tracker.units.items()
+            if row in (0, 1)
+        }
+        self.enemy_slots = sorted(
+            position for position, hp in self.enemy_hp.items() if hp > 0
+        )
+        if self.self_entity:
+            for (row, col), tracked in tracker.units.items():
+                if row == 3 and tracked.role_id == self.self_entity:
+                    self.self_slot = col
+                    self.my_atype = col
+                    break
+        allies = {}
+        for position, tracked in tracker.units.items():
+            row, col = position
+            if row not in (2, 3):
+                continue
+            unit = Unit(tracked.role_id.hex())
+            unit.hp = tracked.hp
+            unit.hp_max = tracked.hp_max
+            unit.sp = tracked.sp
+            unit.sp_max = tracked.sp_max
+            unit.slot = col
+            allies[position] = unit
+            self.ally_hpmax[position] = tracked.hp_max
+            self.ally_spmax[position] = tracked.sp_max
+            if col == self.self_slot:
+                if row == 3:
+                    self.char = unit
+                else:
+                    self.pet = unit
+        self.allies = allies
+        self.status_by_kind = {
+            position: dict(by_kind)
+            for position, by_kind in tracker.statuses.items()
+        }
+        self._refresh_tracked_status()
 
     def reset_battle(self):
         self.mobs = []
         self.in_battle = False
+        self.status_by_kind = {}
         self.protect_status = {}
         self.crowd_status = {}
 
@@ -118,6 +172,7 @@ class BattleState:
         self.enemy_hp = {}
         self.enemy_slots = []
         if reset_protect:
+            self.status_by_kind = {}
             self.protect_status = {}
             self.crowd_status = {}
         if reset_quest:
@@ -288,53 +343,47 @@ class BattleState:
     def crowd_skills(self, b1, b2):
         return set(self.crowd_status.get((b1, b2), ()))
 
-    def update_0x35_status(self, pkt: bytes):
-        """Parse S2C 0x35 sub0100 dang status-list: [row][col][kind][skill_id u16].
+    def _refresh_tracked_status(self):
+        protect = {}
+        crowd = {}
+        for target, by_kind in self.status_by_kind.items():
+            for skill_id in by_kind.values():
+                if skill_id in PROTECT_SKILLS:
+                    protect.setdefault(target, set()).add(skill_id)
+                if skill_id in CC_SKILLS:
+                    crowd.setdefault(target, set()).add(skill_id)
+        self.protect_status = protect
+        self.crowd_status = crowd
 
-        Cung opcode/sub voi available-actions, nen client.py phai goi ham nay truoc khi coi la offer.
-        Status-list la snapshot trang thai hien tai: neu snapshot rong / het status thi phai clear cache.
+    def update_0x35_status(self, pkt: bytes):
+        """Apply S2C 0x35/01 records exactly like client ``RevRestoreStatus``.
+
+        Each record updates one ``status_kind`` on one battle target.  ``skill_id=0``
+        clears only that kind; packets are incremental and must not replace other targets.
         """
         body = pkt[7:] if len(pkt) > 7 and pkt[6] == 0x35 else pkt
         if len(body) < 2 or body[:2] != b"\x01\x00":
             return False
         if len(body) == 2:
-            self.protect_status = {}
-            self.crowd_status = {}
             return True
         if len(body) < 7 or (len(body) - 2) % 5 != 0:
             return False
-        entries = []
         i = 2
-        has_status = False
-        offer_like = False
         while i + 5 <= len(body):
             b1, b2, kind = body[i], body[i + 1], body[i + 2]
             skill_id = body[i + 3] | (body[i + 4] << 8)
             if b1 not in (0, 1, 2, 3) or b2 > 5:
                 return False
-            if skill_id == 0 and b1 in (2, 3):
-                offer_like = True
+            target = (b1, b2)
+            by_kind = self.status_by_kind.setdefault(target, {})
             if skill_id:
-                has_status = True
-            entries.append((b1, b2, kind, skill_id))
+                by_kind[kind] = skill_id
+            else:
+                by_kind.pop(kind, None)
+                if not by_kind:
+                    self.status_by_kind.pop(target, None)
             i += 5
-        if not has_status:
-            # Available-actions cung co dang 5-byte nhung unit=2/3 va skill=0. Neu chi thay row quai
-            # 0/1 skill=0 thi day la snapshot status het hieu luc -> clear cache CC/protect.
-            if entries and not offer_like:
-                self.protect_status = {}
-                self.crowd_status = {}
-                return True
-            return False
-        current_protect = {}
-        current_crowd = {}
-        for b1, b2, _kind, skill_id in entries:
-            if skill_id in PROTECT_SKILLS:
-                current_protect.setdefault((b1, b2), set()).add(skill_id)
-            if skill_id in CC_SKILLS:
-                current_crowd.setdefault((b1, b2), set()).add(skill_id)
-        self.protect_status = current_protect
-        self.crowd_status = current_crowd
+        self._refresh_tracked_status()
         return True
 
     def _update_protect_from_0x32(self, body: bytes):
@@ -374,8 +423,8 @@ class BattleState:
                     self._set_protect(tb1, tb2, skill_id)
                 elif skill_id in CC_SKILLS:
                     # CC co ti le hut/miss va co the het som; 0x35 status-list dau turn la nguon chuan.
-                    # Khong persist CC tu echo 0x32, chi dung claim ngan trong combat.py de tranh
-                    # nhieu acc cung cast 1 target o cung turn.
+                    # Khong persist CC tu echo 0x32. combat.py giu target-claim theo enemy_gen den
+                    # snapshot quai cua turn ke tiep de nhieu acc khong cast trung cung turn.
                     pass
                 elif skill_id in CLEAR_PROTECT_SKILLS:
                     self._clear_protect(tb1, tb2)

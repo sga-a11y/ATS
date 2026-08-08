@@ -119,6 +119,10 @@ Note 2026-08-07:
   `0x03` dinh ky, nen sau 300 giay cache co the cu du ca party van dang cung map/kenh. Coordinator da
   co `GameClient` live cua tung acc; `invite_members()` doi chieu truc tiep `running/current_map/current_channel`
   cua member. Cache nearby chi dung cho acc ngoai bot/whitelist, vi khong co client live de doi chieu.
+- Party train co bot-leader: moi moi vong phai goi acc whitelist dang hien dien dung map/kenh
+  **TRUOC**, sau do moi goi bot member live. Whitelist van la tuy chon, khong tinh vao
+  `joined_member_count` va loi/khong accept khong duoc chan viec moi bot. Quy tac nay ap dung ca
+  startup, reform, reconnect tai map train, relogin recovery va retry 60 giay; PB dung helper rieng.
 - Loi moi party thuong `0x0d/0900` co the toi ngay trong login chores. Khong accept ngay: cache entity
   nguoi moi, chi mo gate sau khi member lam xong viec vat, toi diem gom va sync map/kenh; loi moi cu
   se duoc xu ly luc mo gate. Loi moi phong PB `0x2f/0f00` tach rieng va van accept trong chores, vi
@@ -233,15 +237,19 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
     `0x2738` Thuan Kinh.
   - Passive/protect-status: `0x2afa` Bang Tuong. Neu dong doi dang co status nay thi coi la da co
     bao ve de KHONG buff Ket Gioi/An/Kinh de len; AI mac dinh chua tu cast Bang Tuong.
-- Khi vua cast xong, truoc khi server sync status-list luot moi, co the mark tam tu S2C `0x32` skill apply
-  thanh cong. Sau khi gap status-list thi tin status-list hon local cache. Luu y echo Ket Gioi thuc te co
+- Khi vua cast xong, truoc khi server sync status-list luot moi, phai mark tam tu S2C `0x32` skill apply
+  thanh cong va giu qua `0x34` turn moi; chi `result=1/2` moi duoc mark. `0x35/01 skill_id=0` cua dung
+  target/status-kind se xoa khi hieu ung het. Luu y echo Ket Gioi thuc te co
   chunk len `0x0011` tinh gan nhu gom ca 2 byte len va co tail ngan; parser khong duoc may moc dung
   `p + 2 + len` de bo qua ca packet, neu khong turn sau bot lai tu buff KG chinh minh.
 - KHONG clear `protect_status` theo `0x34`: goi nay co the ban giua moi turn, sau status-list/echo va
   truoc luc decision timer chay. Neu clear o day thi bot quen buff vua co va cast trung Ket Gioi/An Than/Kinh.
   Chi clear khi ket tran that (`0x14 sub0700/sub0800`) hoac reset battle; `0x35` status-list van la nguon chuan.
-- Status-list dau turn la snapshot chuan. Neu snapshot rong (`body == 01 00`) thi phai clear
-  `protect_status`; neu khong, khi Ket Gioi het han bot van tuong target con buff va bo qua khong buff lai.
+- Crack Lua client 2026-08-08: `protocolTable[53][1]` goi thang
+  `FightManager.RevRestoreStatus(data)`. Client KHONG thay ca snapshot: no lap tung record va goi
+  `fightRole:HandleStatus(status_kind, skillId)` cho dung target. `skillId=0` xoa RIENG
+  `status_kind` do; packet rong khong xoa gi. Bot phai merge theo
+  `(row,col)->{status_kind: skillId}`, khong duoc gan de ca `protect_status/crowd_status`.
 - Luu y `0xde` khong nen dung rieng le de ket luan Ket Gioi: `0x271f` (Kinh) cung co attr `0xde`.
   Phai ket hop voi `skill_id` trong S2C `0x32` hoac doc truc tiep skill trong status-list `0x35 sub0100`.
 - PB110 capture: Tran Cung `tid=0x9d3f` o pos `(0,4)` cast Kinh `0x271f` len `(0,2)` va `(0,4)`;
@@ -279,6 +287,9 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
   3) Buff bao ve (Ket Gioi -> An Than -> Kinh).
   4) CC ti le thap.
   5) Hoi HP -> hoi SP -> pha bao ve dich -> danh.
+- HP gate phase tu dong: neu phe dich khong con BAT KY con song nao co `current HP > 1500` thi bo
+  qua ca phase CC va buff bao ve dong minh. `current HP == 1500` cung bi bo qua. Phase pha bao ve
+  DICH van chay nhu cu; rule skill user tu cau hinh khong bi gate nay ghi de.
 - Trong tung phase CC: skill vua gay dame vua khong che (vd `0x32cf` Huyen Kich) duoc uu tien
   truoc skill chi khong che (vd Bang Phong thuan/ Hon Me thuan), neu unit da hoc va du SP.
 - Auto boss/danh don (`pick_boss_skill`) loai skill CC khoi fallback; neu khong co skill dame phu hop thi
@@ -301,9 +312,14 @@ Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 =
     * `chaos`: Hon Loan la nhom rieng, co the cast them len dich dang co `control`.
   - User custom skill CC van di qua target/claim CC: giu tieu chi target user chon, nhung ne target da
     co CC cung nhom hoac da duoc acc khac claim trong cung turn.
-  - 0x35 status-list dau turn la nguon chuan cho CC dang ton tai. KHONG persist `crowd_status` tu echo
+  - 0x35 status update la nguon xac nhan/clear CC. Rieng BP `11014/11039`, S2C `0x32` result `1/2`
+    phai seed status-kind 1 ngay khi skill trung; neu cho toi `0x35` moi ghi thi server co the chua gui
+    record kip truoc decision luot sau va bot se dong BP len dung target.
     0x32 vi nhieu skill CC co ti le hut/het som; echo chi cho biet skill duoc cast/result, khong du de
-    ket luan target van dang bi CC. Claim CC chi nen ngan trong cung turn (~3s), khong de chan sang turn sau.
+    ket luan target van dang bi CC.
+  - **Claim CC phai song tron turn**, khong dung TTL 3 giay: cac acc co the nhan offer/ra quyet dinh
+    lech nhau hon 3 giay, TTL het giua turn se lam 2 Bang Phong chon trung mot con. Claim duoc gan voi
+    `enemy_gen` (tang khi co snapshot quai 0x33 cua turn moi); chi khi generation doi moi xoa claim cu.
   - Pha khong che va pha giai protect dich chi duoc chon target con song. CC di tu `enemy_slots` +
     `enemy_hp > 0`; giai protect dich chi xet protect status co `pos in enemy_slots`.
 - Skip phase buff bao ve auto trong `quest_mode` neu tat ca NPC nguy hiem con song (neu co) da co
@@ -465,16 +481,60 @@ entity 8B = [2B ngẫu nhiên][template_id 2B LE][1B type][3B base phiên]
 - Dung idx+1 (vi tri trong member list) = SAI -> doc nham SP/HP cua char khac.
   Trieu chung: SP doc duoc giam 15/luot (cost Hoa Tien cua char KHAC) du minh danh thuong.
 
-### S2C 0x35 sub0100 — Available actions HOAC status-list
-`0x35 sub0100` co 2 dang rat de nham:
-- **Available actions/offer:** `01 00 [entries: unit action_type target 00 00]`.
-  2 byte cuoi cua moi entry = `00 00`. Bot doc entry unit=3 (char), unit=2 (pet) de lay action_type/target.
-- **Current status-list / RevRestoreStatus:** `01 00 [entries: row col status_kind skill_id_le]`.
-  2 byte cuoi la skill id khac `0000` (vd `1a 27` Ket Gioi, `1f 27` Kinh). Day la server sync
-  target nao dang co status/buff, KHONG phai offer danh. Combat handler phai tach 2 dang nay, neu khong se
-  lay nham status chunk thanh available action.
-  Snapshot rong `01 00` hoac status-list row quai 0/1 voi `skill_id=0000` = het status -> phai clear
-  `protect_status`/`crowd_status`. Khong duoc giu cache cu lam bot tuong NPC nguy hiem van dang bi CC.
+### S2C 0x35 sub0100 — RevRestoreStatus + tin hieu unit ra lenh
+Crack Lua client 2026-08-08 (`Common/protocal.lua`, `Logic/FightManager.lua`):
+- Schema duy nhat la `01 00 [entries: row col status_kind skill_id_le]`.
+- Client lap TAT CA record va goi `HandleStatus(status_kind, skillId)`. `skillId != 0` dat/thay status
+  cua dung kind; `skillId == 0` xoa dung kind tren dung target. Packet la update tang dan, KHONG phai
+  snapshot toan chien truong; packet rong khong clear tat ca.
+- Cac record row=2/3, `skillId=0` truoc day bot goi la available-actions thuc ra van la record clear
+  status. Bot dong thoi tan dung chung de biet char/pet nao toi luot, nhung van BAT BUOC apply vao
+  status state truoc khi quyet dinh.
+- Phai luu `(row,col)->{status_kind: skillId}` nhu client. Neu moi packet lai thay toan bo dict, packet
+  den sau se lam mat Bang Phong/Ket Gioi cua target khac va AI se cast de lai o turn sau.
+
+### BattleTracker protocol-driven + dong bo nhieu acc (xac nhan 2026-08-08)
+- Lifecycle chuan: `0x0b/fa00` tao tran + roster, `0x34/0100` mo turn, `0x0b/0000` co
+  `role_id=self` va `guard_index=0` ket thuc tran. `0x14` thuong la dialog/scene, KHONG duoc tu y ket
+  thuc battle khi tracker con active; rieng `0x14/0800 tail=03/04` chi xac nhan END khi roster tracker
+  khong con dich song va khong phai PB110 (PB110 co dialog giua wave truoc luc quan vien binh xuat hien).
+- `RoleAppear` header co dinh 42 byte (`<BB8sH8sBBIIIIHBB>`). Kind player `1/2/3/5` co appearance
+  bien do dai; NPC co ten `4/6`; NPC co dinh `7` khong co appearance. Hai byte sau `master_id`
+  la **`row, col`** (KHONG phai `col, row`). Bug dao thu tu chi lo ro khi co acc `atype=4`:
+  char `(3,4)` bi doc thanh row 4 roi ca RoleAppear bi loai, acc khong co char/pet de ra decision.
+- `0x32/0100` result gom chunk `len u16`, source row/col, skill u16, fight-area, danh sach target.
+  Attribute target la `{kind u8, value u32, sign u8}`; chi result `1/2` moi apply delta,
+  `sign=0` cong va `sign=1` tru. `0x33/0100` la gia tri absolute int32 (co revive flag).
+- Log PB110 `08:24:36-08:25:21` ngay 2026-08-08: khong co event status xen giua, nen KG da cast
+  vao `(3,2)/(3,3)` van bi cast lai o turn 2/3, BP da cast vao `(0,3)` o turn 2 van bi cast lai turn 3.
+  Tracker phai seed effect tu action success: BP `11014/11039 -> status_kind 1`, KG
+  `10010/10041 -> status_kind 2`; miss/result 0 khong seed. Trang thai ton tai qua turn va chi bi
+  record `0x35/01 skill_id=0` cung target/kind xoa.
+- `0x35/1400` Extra Buff record dung format `<HBBHBBBBHi>`: `statusID` la u16 va `value` la int32.
+- Replay `captures/teamdungeon_lv110_mumu12_20260805_202150.pcap`: doc duoc 5 encounter,
+  31 turn, 8 flyout; 354/354 packet action parse thanh cong, 1.276 target-action event.
+- Moi acc giu tracker va socket gate rieng. Party coordinator nhan ban semantic hop le den som nhat,
+  dedupe cac ban broadcast trung, va giu reservation theo `(generation,turn)` cho CC/protect/revive/
+  heal HP/heal SP/break. Damage focus duoc phep trung target.
+- Coordinator KHONG doi du ca party: acc treo/dis khong khoa team. Tuy nhien tung acc chi duoc gui
+  `0x32` sau khi CHINH socket cua acc do da nhan `0x34/0100` dung turn; moi source char/pet chi gui
+  mot lan/turn. Log common in mot lan/party; SEND/ACK/decision van ghi rieng tung acc.
+- Log PB80 2026-08-08 xac nhan co acc van nhan ACK/action broadcast nhung tracker local o `g=0 t=0`
+  (lo/miss hoac parse truot `0x0b/fa00`). Neu chi giu reservation ma khong giu canonical snapshot,
+  acc do se roi ve state legacy va co the bao "khong con quai" o turn sau. Coordinator phai luu snapshot
+  tu ban semantic hop le dau tien; acc thieu create chi bootstrap snapshot khi CHINH socket no nhan
+  `0x34/0100`. Neu canonical dang turn 0 thi local `0x34` phai tang thanh turn 1; tuyet doi khong mo
+  gate gui action o turn 0.
+- Log PB80 `07:52:45` ngay 2026-08-08 xac nhan KHONG duoc ha `in_battle` theo `enemy_slots=[] + im 3s`
+  hay safety 35s. Bot ha som, gui `0x14/0600` luc server con dang giai ket tran, server tra `0800/03`
+  roi dong ket noi leader. Tu day chi ha theo END server: tracker FightOver, `0800/03/04` du dieu kien
+  o tren, hoac END server ma member cung map da xac nhan va chia se cho leader qua party registry.
+- Log PB110 `08:09:44` ngay 2026-08-08: 24 dong `Decision` nhung **0 `BATTLE SEND`**, chi ACK cua
+  atype 3; dong thoi khong co common log `START/TURN START`. Nguyen nhan coordinator party con giu
+  generation/active cua phien PB truoc, trong khi GameClient/tracker moi quay ve `g=1`; socket gate
+  tu choi het `mark_sent()`. Moi lan leader tao phong pho ban moi phai `reset_session()` coordinator
+  truoc khi invite/start; packet generation thap van bi chan neu session hien tai dang active, nhung
+  session da inactive co the nhan generation local reset sau khi client duoc tao lai.
 
 ---
 
@@ -816,6 +876,9 @@ C2S 0x07 = c0 91 0b 00 00 00 07 02 00 [channel_id 2B LE]
 - Sau khi gui OK -> server doi scene (0x27 + 0x61 + 0x0c handshake), nhan vat sang channel moi.
 - KENH HIEN TAI client luu o `SceneManager.instanceId`: doc duoc tu S2C `0x03` PlayerAppear
   (`instanceId` nam sau name UTF-16LE) va S2C `0x0c` ChangeScene (sau sceneTag).
+- Truoc moi vong sync, tung acc gui `0x0c 0100` de xin lai scene va cap nhat `current_channel`.
+  `instanceId=0` la gia tri chua biet/khong hop le, khong phai kenh game: khong duoc ghi de kenh
+  duong da biet va khong duoc dung de ket luan whitelist lech kenh.
 - Client game khong cho bam doi kenh neu dang trong party; bot phai roi/giai tan party cu truoc khi sync kenh.
 
 ## 7f. TIMER DI GIOI (packet 0x55)
@@ -1268,7 +1331,9 @@ Chuỗi C2S (verify timeline team.pcap):
 1. **Mở panel:** `0x2f 0100` (×2).
 2. **Tạo phó bản:** `0x2f 02 00 01 00 01` (5 byte). Mật mã "22": nghi `0x41 0100 3232 ...` (`3232`="22"
    ASCII) nhưng bắn lúc t=118 (giữa battle 1) → CHƯA chắc. Mật mã có thể bỏ (bot chỉ mời nick mình).
-3. **Mời member theo ENTITY:** `0x2f 08 00 [entity 8B]` cho TỪNG member (KHÁC party-invite `0x0d 07`!).
+3. **Mời theo ENTITY:** `0x2f 08 00 [entity 8B]`. Nếu có acc ngoài whitelist thì mời whitelist
+   **trước**, sau đó mới mời TỪNG bot member (KHÁC party-invite `0x0d 07`!). Trong lúc bot lần lượt
+   accept + auto-ready, người thật có thêm thời gian vào phòng và bấm CHUẨN BỊ.
 4. **Start:** `0x2f 0c 00` (sau khi 4 member ready).
 
 ### Vòng battle (4 trận) — leader chạy. **TRIGGER BATTLE = spam `0x14 0600`**
@@ -1465,6 +1530,27 @@ rớt kết nối.** Đã gỡ hết log debug tạm (DBG33/DBG0B/DBG35/DBG-RAW/
   khi coordinator kiem tra. `do_team_dungeon(level) == False` cung phai coi la broken.
 - Retry sau PB vo phai co barrier: tat ca acc trong party reconnect lai roi moi xoa `team_dungeon_done_by`,
   `team_dungeon_state`, `team_dungeon_broke` va check status 0x18 lai tu dau. Khong duoc dung report cu.
+
+**BUG 12 — START ngay khi acc whitelist vua vao phong (2026-08-08):**
+- Log PB20: 3 bot duoc moi truoc va auto-ready; whitelist moi vao luc `00:02:03`, den `00:02:05`
+  leader thay bot-ready `3/3` va START, trong khi acc nguoi that chua kip bam CHUAN BI.
+- `dungeon_ready_count` chi theo doi bot clients, khong biet trang thai ready cua acc ngoai whitelist.
+- Fix dung chung cho PB20/50/80/110: tao phong -> moi whitelist truoc -> moi tung bot -> cho du
+  bot-ready -> START. Neu thuc su moi duoc it nhat 1 whitelist thi sau khi moi xong phai giu grace
+  san sang toi thieu 10 giay du bot da ready som; khong co whitelist thi khong cho them. Khong doi
+  whitelist thanh dieu kien bat buoc vi acc ngoai co the khong vao.
+
+**BUG 13 — Di Gioi cung map/kenh nhung leader ket barrier report 2/5 (2026-08-08):**
+- Ca that: leader reconnect/mo generation sync moi (kenh 58) sau khi member da thoat `do_channel_sync`
+  cua generation cu (kenh 62). Member o main loop van doc kenh 58 va switch thanh cong, nhung nhanh
+  retry cu khong ghi `channel_map_reports`; leader thay `2/5` vo han du game da cung map 49942/kenh 58.
+- Fix: moi lan member main-loop retry channel thanh cong phai ghi `(map_ok, current_map)` vao dung
+  `channel_sync_gen` hien tai. Report stale cua generation cu bi tu choi; report dung gen giup leader dat
+  5/5, thoat barrier va moi party.
+- Bien the REFORM: member ve thanh truoc leader co the vao `do_channel_sync()` khi `channel_ready` cua
+  generation cu van set, dung state cu roi thoat; leader den sau clear/mo gen moi va ket `1/N`. Leader
+  phai clear `channel_ready` + `channel` cu **truoc khi mark arrived** trong barrier diem gom. Barrier
+  chi nha sau khi leader da clear, nen member bat buoc cho picker mo generation moi va report lai.
 
 ### 7o. Event 40 NPC — party + battle lặp (capture 2026-07-20)
 

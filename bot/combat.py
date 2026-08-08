@@ -170,20 +170,50 @@ _break_claims = {}
 _cc_lock = threading.Lock()
 _cc_claims = {}
 PROTECT_CLAIM_COOLDOWN = 2.5
-CC_CLAIM_COOLDOWN = 3.0
 
 
-def _short_claim(claims_by_group, lock, group, target, owner, ttl=PROTECT_CLAIM_COOLDOWN):
+def _short_claim(claims_by_group, lock, group, target, owner,
+                 ttl=PROTECT_CLAIM_COOLDOWN, turn_token=None):
+    """Claim target ngan theo TTL, hoac giu tron turn neu co ``turn_token``."""
     now = time.time()
     with lock:
         claims = claims_by_group.setdefault(group, {})
-        for t, (_o, ts) in list(claims.items()):
-            if now - ts > ttl:
-                claims.pop(t, None)
+        if turn_token is None:
+            for t, (_o, ts) in list(claims.items()):
+                if now - ts > ttl:
+                    claims.pop(t, None)
+        else:
+            # CC phai giu claim den het turn, bat ke cac acc ra quyet dinh lech nhau bao lau.
+            # enemy_gen tang khi server gui snapshot quai cua turn moi; luc do moi xoa claim cu.
+            for t, (_o, claimed_turn) in list(claims.items()):
+                if claimed_turn != turn_token:
+                    claims.pop(t, None)
         if target in claims:
             return False
-        claims[target] = (owner, now)
+        claims[target] = (owner, now if turn_token is None else turn_token)
         return True
+
+
+def _claim_target(state, action_class, target, owner, claims, lock, group, turn_token=None):
+    coordinator = getattr(state, "battle_coordinator", None)
+    tracker = getattr(state, "tracker", None)
+    if coordinator is not None and tracker is not None and tracker.active:
+        return coordinator.reserve(
+            owner, action_class, target, tracker.generation, tracker.turn,
+        )
+    return _short_claim(
+        claims, lock, group, target, owner, turn_token=turn_token,
+    )
+
+
+def _claim_support_action(state, action_class, target, owner, sp, legacy_decider):
+    coordinator = getattr(state, "battle_coordinator", None)
+    tracker = getattr(state, "tracker", None)
+    if coordinator is not None and tracker is not None and tracker.active:
+        return coordinator.reserve(
+            owner, action_class, target, tracker.generation, tracker.turn,
+        )
+    return legacy_decider(owner, sp)
 
 
 # --- HOI SP TOAN TEAM (Toan Hoi Ma): dieu phoi giong heal - 1 con cast/luot, con SP cao nhat ---
@@ -296,6 +326,7 @@ CC_CHAOS_SKILLS = (14021, 14065, 20014, 20051, 20055, 20058)
 CC_CONTROL_SKILLS = frozenset(CC_HIGH_SKILLS + CC_LOW_LOCK_SKILLS)
 CC_LOCK_SKILLS = CC_CONTROL_SKILLS
 CC_SKILLS = frozenset(CC_HIGH_SKILLS + CC_LOW_LOCK_SKILLS + CC_CHAOS_SKILLS)
+AUTO_PHASE_ENEMY_HP_THRESHOLD = 1500
 
 # NPC nguy hiem: neu nhieu con cung xuat hien thi CC theo thu tu nay truoc.
 DANGEROUS_CC_NPC_NAMES = (
@@ -614,12 +645,22 @@ def _revive_decision_for_skill(state, unit, stat, rev):
         register_revive(pidx, 3 if unit == config.UNIT_CHAR else 2, state.self_slot)
     # target: co Hoi Sinh TRUOC; sau do moi den dang co bao ve / role support / maxHP.
     dead.sort(key=lambda x: _dead_target_sort_key(state, pidx, x))
-    target = _revive_decide(
-        state.label + (":char" if unit == config.UNIT_CHAR else ":pet"),
-        stat.sp,
-        pidx,
-        dead,
-    )
+    owner = state.label + (":char" if unit == config.UNIT_CHAR else ":pet")
+    coordinator = getattr(state, "battle_coordinator", None)
+    tracker = getattr(state, "tracker", None)
+    if coordinator is not None and tracker is not None and tracker.active:
+        target = next(
+            (
+                candidate for candidate in dead
+                if coordinator.reserve(
+                    owner, "revive", (candidate[0], candidate[1]),
+                    tracker.generation, tracker.turn,
+                )
+            ),
+            None,
+        )
+    else:
+        target = _revive_decide(owner, stat.sp, pidx, dead)
     if target is None:
         return None
     b1, b2, _hp = target
@@ -741,6 +782,14 @@ def _should_skip_protect_after_cc(state):
     return len(normal_uncc) <= 2
 
 
+def _has_high_hp_enemy(state, threshold=AUTO_PHASE_ENEMY_HP_THRESHOLD):
+    hp = getattr(state, "enemy_hp", {}) or {}
+    return any(
+        hp.get(pos, 0) > threshold
+        for pos in (getattr(state, "enemy_slots", []) or [])
+    )
+
+
 def _alive_allies_with_self(state, unit, stat):
     cands = {}
     for key, u in getattr(state, "allies", {}).items():
@@ -804,6 +853,8 @@ def _try_protect(state, unit, skills, stat):
     """Quest/boss: sau Hoi Sinh, buff bao ve truoc khi heal HP/SP."""
     if not _protect_mode_enabled(state) or not getattr(state, "enemy_slots", None):
         return None
+    if not _has_high_hp_enemy(state):
+        return None
     if _should_skip_protect_after_cc(state):
         return None
     if getattr(stat, "hp_max", 0) > 0 and getattr(stat, "hp", 0) <= 0:
@@ -816,7 +867,10 @@ def _try_protect(state, unit, skills, stat):
         group = state.label
     owner = state.label + (":char:protect" if unit == config.UNIT_CHAR else ":pet:protect")
     for b1, b2 in _protect_target_order(state, unit, stat):
-        if _short_claim(_protect_claims, _protect_lock, group, (b1, b2), owner):
+        if _claim_target(
+            state, "protect", (b1, b2), owner,
+            _protect_claims, _protect_lock, group,
+        ):
             return Decision(unit, state.my_atype, b2, skill, b=b1)
     return None
 
@@ -874,7 +928,10 @@ def _try_break_enemy_protect(state, unit, skills, stat, options):
             skill = BREAK_KINH
         if skill is None:
             continue
-        if _short_claim(_break_claims, _break_lock, group, (b1, b2), owner):
+        if _claim_target(
+            state, "break_protect", (b1, b2), owner,
+            _break_claims, _break_lock, group,
+        ):
             return Decision(unit, state.my_atype, target_col, skill, b=b1)
     return None
 
@@ -953,7 +1010,11 @@ def _try_cc_skill(state, unit, skill, stat, options, phase, target_key="auto", a
         if target_col is None:
             continue
         b1, b2 = _row(pos), _col(pos)
-        if _short_claim(_cc_claims, _cc_lock, group, (b1, b2), owner, ttl=CC_CLAIM_COOLDOWN):
+        if _claim_target(
+            state, "cc", (b1, b2), owner,
+            _cc_claims, _cc_lock, group,
+            turn_token=getattr(state, "enemy_gen", 0),
+        ):
             setattr(state, gen_attr, state.enemy_gen)
             return Decision(unit, at, target_col, skill, b=b1)
     return None
@@ -962,6 +1023,8 @@ def _try_cc_skill(state, unit, skill, stat, options, phase, target_key="auto", a
 def _try_cc(state, unit, skills, stat, options, phase):
     """Quest only: CC target, uu tien NPC nguy hiem neu biet ten theo vi tri."""
     if not _cc_mode_enabled(state):
+        return None
+    if not _has_high_hp_enemy(state):
         return None
     skill = pick_cc_skill(skills, getattr(stat, "sp", 0), phase)
     if skill is None:
@@ -997,7 +1060,9 @@ def _try_sp_restore(state, unit, skills, stat):
     if low_slot is None:
         return None
     key = state.label + (":char" if unit == config.UNIT_CHAR else ":pet") + ":spr"
-    if not _sprestore_decide(key, stat.sp):
+    if not _claim_support_action(
+        state, "heal_sp", (3, low_slot), key, stat.sp, _sprestore_decide,
+    ):
         return None
     return Decision(unit, state.my_atype, low_slot, spr, b=3)
 
@@ -1256,16 +1321,21 @@ def _custom_decision(state, unit, unit_key, skills, stat, options, atype=None):
                 continue
         if target_key in ("ally_low_hp", "ally_high_hp", "ally_low_sp", "ally_high_sp",
                           "ally_revive_skill", "ally_protect_skill", "self"):
+            b1, b2 = _ally_target(state, target_key, unit, at)
             if isinstance(skill_id, int) and skill_id != config.SKILL_NORMAL:
                 key = state.label + (":char" if unit == config.UNIT_CHAR else ":pet")
                 if skill_id in (getattr(config, "SKILL_HEAL_ALL", None),
                                 getattr(config, "SKILL_HEAL_ONE", None)):
-                    if not _heal_decide(key, stat.sp):
+                    if not _claim_support_action(
+                        state, "heal_hp", (b1, b2), key, stat.sp, _heal_decide,
+                    ):
                         continue
                 elif _cat(skill_id) == 6:
-                    if not _sprestore_decide(key + ":spr", stat.sp):
+                    if not _claim_support_action(
+                        state, "heal_sp", (b1, b2), key + ":spr", stat.sp,
+                        _sprestore_decide,
+                    ):
                         continue
-            b1, b2 = _ally_target(state, target_key, unit, at)
             return Decision(unit, at, b2, skill_id, b=b1)
         if not _can_attack_new_enemy_gen(state, unit, atype=atype):
             return None
@@ -1419,11 +1489,14 @@ def decide_char(state, options, first_turn=False):
     # HOI MAU: thanh vien HP yeu + du SP + co skill heal + la con SP cao nhat duoc heal
     if (state.any_ally_low(config.HEAL_HP_THRESHOLD)
             and state.char.sp >= config.HEAL_SP_COST
-            and config.SKILL_HEAL_ALL in state.skills_char
-            and _heal_decide(state.label + ":char", state.char.sp)):
+            and config.SKILL_HEAL_ALL in state.skills_char):
         _low = state.lowest_hp_ally()
         _ht = _low.slot if (_low is not None and getattr(_low, "slot", None) is not None) else at
-        return Decision(config.UNIT_CHAR, at, _ht, config.SKILL_HEAL_ALL, b=3)
+        if _claim_support_action(
+            state, "heal_hp", (3, _ht), state.label + ":char",
+            state.char.sp, _heal_decide,
+        ):
+            return Decision(config.UNIT_CHAR, at, _ht, config.SKILL_HEAL_ALL, b=3)
     # HOI SP TOAN TEAM (chi quest_mode): sau heal HP, truoc tan cong
     spr = _try_sp_restore(state, config.UNIT_CHAR, state.skills_char, state.char)
     if spr is not None:
@@ -1464,11 +1537,14 @@ def decide_pet(state, options, first_turn=False):
     # HOI MAU: pet co skill heal + dong doi yeu + du SP + la con SP cao nhat
     if (state.any_ally_low(config.HEAL_HP_THRESHOLD)
             and state.pet.sp >= config.HEAL_SP_COST
-            and config.SKILL_HEAL_ALL in state.pet_skills
-            and _heal_decide(state.label + ":pet", state.pet.sp)):
+            and config.SKILL_HEAL_ALL in state.pet_skills):
         _low = state.lowest_hp_ally()
         _ht = _low.slot if (_low is not None and getattr(_low, "slot", None) is not None) else at
-        return Decision(config.UNIT_PET, at, _ht, config.SKILL_HEAL_ALL, b=3)
+        if _claim_support_action(
+            state, "heal_hp", (3, _ht), state.label + ":pet",
+            state.pet.sp, _heal_decide,
+        ):
+            return Decision(config.UNIT_PET, at, _ht, config.SKILL_HEAL_ALL, b=3)
     # HOI SP TOAN TEAM (chi quest_mode): sau heal HP, truoc tan cong
     spr = _try_sp_restore(state, config.UNIT_PET, state.pet_skills, state.pet)
     if spr is not None:

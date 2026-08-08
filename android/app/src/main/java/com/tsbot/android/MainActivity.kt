@@ -1640,7 +1640,7 @@ fun AddPartyDialog(
                                 if (noLeader)
                                     "Mỗi dòng hoặc dấu phẩy = 1 tên nhân vật leader. Để trống = nhận lời mời từ mọi người."
                                 else
-                                    "Bot sẽ mời các tên này sau khi đủ acc bot. Acc ngoài vào hay không không ảnh hưởng flow."
+                                    "Khi train, bot mời các tên đang đứng xung quanh trước rồi mới mời acc bot. Acc ngoài vào hay không không ảnh hưởng flow."
                             )
                         },
                         minLines = 2,
