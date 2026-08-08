@@ -657,8 +657,8 @@ def record_leader_name(pidx, char_name):
     ten da co san - chi APPEND neu chua co). User phan anh: da cau hinh account nao la leader
     trong Party roi thi khong nen phai go tay TEN NHAN VAT lai vao o whitelist rieng (2 cho
     cau hinh trung nhau). Goi ngay sau khi leader login xong + biet char_name. Cap nhat CA
-    RAM (PARTY_LEADERS_BY_IDX, hieu luc ngay ca phien nay) LAN file accounts.json (hieu luc
-    lan chay sau, khong mat khi restart)."""
+    RAM (PARTY_LEADERS_BY_IDX, hieu luc ngay ca phien nay) LAN file cau hinh tren dia
+    (accounts.json cho PC / parties.json cho APK - hieu luc lan chay sau, khong mat khi restart)."""
     if not char_name:
         return
     name = char_name.strip()
@@ -668,8 +668,23 @@ def record_leader_name(pidx, char_name):
     if any(x.strip().lower() == name.lower() for x in cur):
         return   # da co san (khong phan biet hoa/thuong) -> khong them trung
     cur.append(name)
-    try:
-        import json, os
+    # LUU BEN vao KHO CAU HINH - CO HAI kho khac nhau, phai ghi ca hai:
+    #   - PC/GUI : accounts.json  {"profiles": {<active>: {"parties": [...]}}} (hoac dict phang)
+    #   - APK    : parties.json   MANG cac party, do PartyStore.kt ghi o Context.getFilesDir()
+    # Truoc day CHI ghi accounts.json -> tren APK ten leader chi vao RAM: khong hien len o
+    # whitelist trong UI va MAT sau khi restart app (user phan anh "mat vu tu dien ten leader").
+    import json, os
+
+    def _same(x):
+        return str(x).strip().lower() == name.lower()
+
+    def _write(path, data):
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)   # ghi nguyen tu: app bi kill giua chung khong lam hong file config
+
+    try:      # PC: accounts.json
         f = os.path.join(_base_dir(), "accounts.json")
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh)
@@ -680,10 +695,22 @@ def record_leader_name(pidx, char_name):
         parties = prof.get("parties", []) if isinstance(prof, dict) else []
         if 0 <= pidx < len(parties):
             leaders = parties[pidx].setdefault("leaders", [])
-            if not any(x.strip().lower() == name.lower() for x in leaders):
+            if not any(_same(x) for x in leaders):
                 leaders.append(name)
-                with open(f, "w", encoding="utf-8") as fh:
-                    json.dump(d, fh, ensure_ascii=False, indent=2)
+                _write(f, d)
+    except Exception:
+        pass
+
+    try:      # APK: parties.json (PartyStore.kt)
+        f = os.path.join(_base_dir(), "parties.json")
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        parties = d if isinstance(d, list) else (d.get("parties") if isinstance(d, dict) else None)
+        if isinstance(parties, list) and 0 <= pidx < len(parties) and isinstance(parties[pidx], dict):
+            leaders = parties[pidx].setdefault("leaders", [])
+            if not any(_same(x) for x in leaders):
+                leaders.append(name)
+                _write(f, d)
     except Exception:
         pass   # khong lam crash bot vi loi ghi file - RAM van da cap nhat, hieu luc phien nay
 
