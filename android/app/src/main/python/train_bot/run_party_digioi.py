@@ -3099,13 +3099,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if (not _exited_tower and ev is not None and st["event_exit_now"].is_set()
                     and _inside_floor_crawl_tower(ev, c.current_map)):
                 _exited_tower = True
-                log.info("[%s] (%s) 2K ket thuc -> di bo ra khoi thap (%s -> %s)", label, role,
-                         config.scene_name(c.current_map),
+                log.info("[%s] (%s) 2K ket thuc -> di bo ra khoi thap (%s -> %s) roi THOAT GAME",
+                         label, role, config.scene_name(c.current_map),
                          config.scene_name(int((ev.get("exit") or {}).get("out_map") or 0)))
                 try:
                     c.exit_event(ev)
                 except Exception as e:
                     log.warning("[%s] (%s) 2K: loi di ra khoi thap: %s", label, role, e)
+                # Ra xong thi THOAT GAME luon (giong nhanh 40NPC ngoai gio). Dung yen o 12003
+                # khong lam gi thi vo ich, va con giu instance/party treo.
+                _reason("2K ket thuc -> ra khoi thap -> thoat game")
+                c.close()
+                return
             # CHU PARTY da thoat (leader_gone) -> member cung THOAT theo (party tan, member o lai vo
             # nghia). TRU Di Gioi SOLO: KHONG lap party thuc su (moi acc chay doc lap hoan toan) ->
             # "leader" chi la vai tro danh nhan trong config, KHONG lien quan gi den viec cac acc
