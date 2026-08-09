@@ -5941,7 +5941,11 @@ class GameClient:
                          self._label, i + 1, ok_clear, self.state.in_battle)
                 self.do_heal()
                 extra_t0 = time.time()
-                while self.state.in_battle and self.running and time.time() - extra_t0 < 120.0:
+                # KHONG cap 120s khi con dang danh THAT: ta co moc ket tran chinh xac
+                # (0x14 sub0700 ha state.in_battle). Cap mu cat GIUA TRAN -> lam viec tiep
+                # (an thuoc/di chuyen/transit) trong luc battle NUOT lenh. Cung loi da sua o
+                # boss the gioi/boss QD (9d5b0d4), 4 cho nay bi bo sot.
+                while self.state.in_battle and self.running:
                     time.sleep(1.0)
                 if not self.running or self.state.in_battle:
                     log.warning("[%s] (LEADER) lv50 tran %d: tran truoc chua ket that -> dung",
@@ -5972,7 +5976,11 @@ class GameClient:
                      self._label, i + 1, n_battles)
         self._wait_combat_clear(idle=2.0, cap=240.0)
         extra_t0 = time.time()
-        while self.state.in_battle and self.running and time.time() - extra_t0 < 120.0:
+        # KHONG cap 120s khi con dang danh THAT: ta co moc ket tran chinh xac
+        # (0x14 sub0700 ha state.in_battle). Cap mu cat GIUA TRAN -> lam viec tiep
+        # (an thuoc/di chuyen/transit) trong luc battle NUOT lenh. Cung loi da sua o
+        # boss the gioi/boss QD (9d5b0d4), 4 cho nay bi bo sot.
+        while self.state.in_battle and self.running:
             time.sleep(1.0)
         if not self.running:
             log.warning("[%s] (LEADER) lv50 mat ket noi truoc khi roi pho ban -> fail", self._label)
@@ -6130,7 +6138,8 @@ class GameClient:
                          self._label, i + 1, ok_clear, self.state.in_battle)
                 self.do_heal()
                 extra_t0 = time.time()
-                while self.state.in_battle and self.running and time.time() - extra_t0 < 150.0:
+                # Nhu cac vong khac: khong cap thoi gian khi con dang danh THAT (xem 9d5b0d4).
+                while self.state.in_battle and self.running:
                     time.sleep(1.0)
                 if not self.running or self.state.in_battle:
                     log.warning("[%s] (LEADER) lv80 tran %d: tran truoc chua ket that -> dung",
@@ -6161,7 +6170,8 @@ class GameClient:
                              self._label, i + 1, n_battles)
         self._wait_combat_clear(idle=2.0, cap=300.0)
         extra_t0 = time.time()
-        while self.state.in_battle and self.running and time.time() - extra_t0 < 150.0:
+        # Nhu cac vong khac: khong cap thoi gian khi con dang danh THAT (xem 9d5b0d4).
+        while self.state.in_battle and self.running:
             time.sleep(1.0)
         if not self.running:
             log.warning("[%s] (LEADER) lv80 mat ket noi truoc khi roi pho ban -> fail", self._label)
@@ -6425,7 +6435,11 @@ class GameClient:
                 # hoac cham voi tran dang xu ly -> KICK ket noi (da xac nhan qua log thuc te: dung
                 # ngay diem nay). Doi THEM toi khi THAT SU het tran (hoac mat ket noi) truoc khi di tiep.
                 _extra_t0 = time.time()
-                while self.state.in_battle and self.running and time.time() - _extra_t0 < 120.0:
+                # KHONG cap 120s khi con dang danh THAT: ta co moc ket tran chinh xac
+                # (0x14 sub0700 ha state.in_battle). Cap mu cat GIUA TRAN -> lam viec tiep
+                # (an thuoc/di chuyen/transit) trong luc battle NUOT lenh. Cung loi da sua o
+                # boss the gioi/boss QD (9d5b0d4), 4 cho nay bi bo sot.
+                while self.state.in_battle and self.running:
                     time.sleep(1.0)
                 if not self.running:
                     self.state.quest_mode = False
@@ -6483,7 +6497,11 @@ class GameClient:
         # Tran co the CHUA THAT SU xong sau cap (nhu i>0 o tren) -> cho THEM toi khi that su
         # het tran truoc khi claim thuong/leave_party (tranh gui lenh de kick ket noi).
         _extra_t0 = time.time()
-        while self.state.in_battle and self.running and time.time() - _extra_t0 < 120.0:
+        # KHONG cap 120s khi con dang danh THAT: ta co moc ket tran chinh xac
+        # (0x14 sub0700 ha state.in_battle). Cap mu cat GIUA TRAN -> lam viec tiep
+        # (an thuoc/di chuyen/transit) trong luc battle NUOT lenh. Cung loi da sua o
+        # boss the gioi/boss QD (9d5b0d4), 4 cho nay bi bo sot.
+        while self.state.in_battle and self.running:
             time.sleep(1.0)
         # QUAN TRONG: kiem tra lai self.running TRUOC KHI claim thuong/bao thanh cong. send() khi
         # running=False chi AM THAM khong lam gi (khong loi) -> neu KHONG check o day, ham se chay
