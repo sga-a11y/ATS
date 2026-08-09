@@ -364,6 +364,24 @@ def _party_same_map(st, username, cur_map, expected, stopped, label="", role="",
     return False
 
 
+def _party_left_tower(pidx, ev):
+    """CO acc nao bi VANG khoi thap khong = dau hieu THUA (bay hon -> server day ve out_map).
+
+    party_defeated() doc HP cua allies nen KHONG bat duoc ca nay: acc bay hon bi day ra khoi
+    instance, HP cua no van binh thuong -> leader bao "party song 6/6" trong khi thuc te da thua
+    (log 13:03: ttbay pos=(502,495) map=12003 con leader van o 12932).
+    """
+    for u in _active_party_usernames(pidx):
+        cli = account_clients.get(u)
+        if cli is None or not cli.running:
+            continue
+        m = int(getattr(cli, "current_map", 0) or 0)
+        if m and not _inside_floor_crawl_tower(ev, m):
+            log.warning("[P%s] 2K: acc '%s' da VANG khoi thap (map %s) -> coi la THUA", pidx, u, m)
+            return True
+    return False
+
+
 def _2k_regroup_target(st, ev):
     """Tang GOM DOI khi party lech tang: TANG THAP NHAT ma ca doi toi duoc.
 
@@ -732,6 +750,7 @@ def _pstate(pidx):
                               "map_results": {},     # ROUTE barrier: username -> dang o train map? (de quyet dinh ca party)
                               "event_start_map": {}, # 2K: username -> map luc bat dau vong event (quyet dinh RESUME hay VAO LAI ca party)
                               "presync_maps": {},    # username -> (thoi diem, map) TRUOC khi sync kenh (chan sync khi khac map)
+                              "event_exit_now": threading.Event(),  # 2K ket thuc/THUA -> CA DOI di ra khoi thap
                               "member_maps": {},     # username -> current_map (member report lien tuc; leader check ai bi bo lai khi keo)
                               "mob_spot": None,      # diem quai leader chon (de _start_training dung lai)
                               "rally_point": None,   # safe GAN diem quai nhat -> CA PARTY ve day (gan leader)
@@ -824,6 +843,7 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
                 st["map_results"] = {}
                 st["event_start_map"] = {}
                 st["presync_maps"] = {}
+                st["event_exit_now"].clear()
                 st["o5_done_by"].clear()
                 st["o5_state"] = "idle"
                 st["o5_broke"] = False
@@ -2484,6 +2504,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             st["event_battle_active"] = False
                             st["event_battle_done"].set()   # THUA -> KHONG mo lai, ket thuc 2K
                         _set_party_quest_mode(pidx, False, label)
+                        # Het 2K (thua hay xong) -> CA DOI di bo ra khoi thap. Khong ra thi acc dung
+                        # chet gi trong thap: leader di gom doi vo ich, member dung im, sync map cho
+                        # mai (log 13:03-13:14).
+                        st["event_exit_now"].set()
                         log.info("[%s] (LEADER) 2K: ket thuc leo thap (%s)",
                                  label, "THUA" if lost else "xong/dung")
                     def _heal_party_2k():
@@ -2508,7 +2532,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         st["event_battle_active"] = True
                     c.flee_mode = False
                     _set_party_quest_mode(pidx, True, label)
-                    if c.start_floor_crawl(ev, _on_crawl_done, _heal_party_2k):
+                    if c.start_floor_crawl(ev, _on_crawl_done, _heal_party_2k,
+                                           lambda: _party_left_tower(pidx, ev)):
                         log.info("[%s] (LEADER) 2K: du party -> bat dau leo thap tu map %s",
                                  label, c.current_map)
                 elif event_party_mode:
@@ -3063,9 +3088,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c._return_safe_on_stop = train_safes
         elif (not is_leader) and train_on_map and has_leader:
             c._wait_leader_on_stop = True
+        _exited_tower = False
         while c.running:
             with st["lock"]:
                 st["member_maps"][username] = c.current_map
+            # 2K KET THUC (thua/xong) -> MOI acc tu di bo ra khoi thap. Trong map event khong
+            # teleport duoc nen phai di bo (exit_event -> smart scene route toi out_map).
+            # Thieu buoc nay: leader di gom doi vo ich con member dung im trong thap, sync map cho
+            # vo han (log 13:03-13:14 sau khi thua o tang 9).
+            if (not _exited_tower and ev is not None and st["event_exit_now"].is_set()
+                    and _inside_floor_crawl_tower(ev, c.current_map)):
+                _exited_tower = True
+                log.info("[%s] (%s) 2K ket thuc -> di bo ra khoi thap (%s -> %s)", label, role,
+                         config.scene_name(c.current_map),
+                         config.scene_name(int((ev.get("exit") or {}).get("out_map") or 0)))
+                try:
+                    c.exit_event(ev)
+                except Exception as e:
+                    log.warning("[%s] (%s) 2K: loi di ra khoi thap: %s", label, role, e)
             # CHU PARTY da thoat (leader_gone) -> member cung THOAT theo (party tan, member o lai vo
             # nghia). TRU Di Gioi SOLO: KHONG lap party thuc su (moi acc chay doc lap hoan toan) ->
             # "leader" chi la vai tro danh nhan trong config, KHONG lien quan gi den viec cac acc

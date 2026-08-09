@@ -68,7 +68,7 @@ def _active(client, stop_event):
     return client.running and not stop_event.is_set()
 
 
-def _fight_one(client, idx: int, stop_event, heal_party=None):
+def _fight_one(client, idx: int, stop_event, heal_party=None, lost_check=None):
     """Gui `0x14 0800 [idx]` roi cho xem co vao tran khong.
 
     Tra: "won" (danh xong, con song) | "lost" (party chet het) | None (idx nay khong ra tran).
@@ -103,7 +103,15 @@ def _fight_one(client, idx: int, stop_event, heal_party=None):
     # allies bi clear() moi 0x34 -> phai doc NGAY sau khi ket tran, truoc tran ke tiep.
     # DOC THUA TRUOC khi hoi mau: hoi xong thi HP len lai -> mat dau hieu party da chet het.
     defeated, alive, total = npc40.party_defeated(client.state.allies)
-    log.info("[%s] 2K: xong tran idx=%d, party song %d/%d", client._label, idx, alive, total)
+    # party_defeated chi doc HP -> KHONG bat duoc acc BAY HON (bi day ra khoi thap, HP van binh
+    # thuong). lost_check() kiem "co ai vang khoi thap khong" - do moi la dau hieu thua that o 2K.
+    if not defeated and lost_check is not None:
+        try:
+            defeated = bool(lost_check())
+        except Exception:
+            pass
+    log.info("[%s] 2K: xong tran idx=%d, party song %d/%d%s", client._label, idx, alive, total,
+             " (co acc vang khoi thap -> THUA)" if defeated and alive else "")
     # HOI FULL HP/SP ca party sau MOI tran - KE CA TRAN THUA: thua thi 2K dung, nhung acc con
     # phai di lam viec tiep theo (train/daily...) nen van can day mau. Doc `defeated` TRUOC khi
     # hoi vi hoi xong HP len lai -> khong con doc duoc dau hieu party chet sach.
@@ -196,7 +204,7 @@ def _fix_pos_after_gate(client, prev_scene, stop_event):
                         "lam moc (tranh di mu 30 lenh)", client._label, back)
 
 
-def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None):
+def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_check=None):
     """Leo tu tang hien tai len `top_map`. Chay thread rieng (giong npc40.run_loop).
 
     MEMBER KHONG chay ham nay: trong party, member tu dong di theo leader va khong tu di chuyen
@@ -249,7 +257,7 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None):
                     continue
                 _walk_to(client, points[k], stop_event)
                 k += 1
-                res = _fight_one(client, idx, stop_event, heal_party)
+                res = _fight_one(client, idx, stop_event, heal_party, lost_check)
                 if res == "lost":
                     log.warning("[%s] 2K: PARTY THUA o %s (idx=%d) -> KET THUC 2K",
                                 label, _floor_label(ev, scene), idx)

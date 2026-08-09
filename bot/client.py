@@ -7624,7 +7624,7 @@ class GameClient:
             log.warning("[%s] gom doi: KHONG di bo duoc %s -> %s", self._label, cur, dest)
         return ok
 
-    def start_floor_crawl(self, ev, on_done=None, heal_party=None) -> bool:
+    def start_floor_crawl(self, ev, on_done=None, heal_party=None, lost_check=None) -> bool:
         """Bat dau leo thap (event kieu floor_crawl, vd Nhi Kieu). Chay thread rieng nhu npc40."""
         if getattr(self, "_floor_crawl_started", False):
             return False
@@ -7633,7 +7633,7 @@ class GameClient:
         self._floor_crawl_stop = threading.Event()
         self._floor_crawl_thread = threading.Thread(
             target=floor_crawl.run_floor_crawl,
-            args=(self, ev, self._floor_crawl_stop, on_done, heal_party),
+            args=(self, ev, self._floor_crawl_stop, on_done, heal_party, lost_check),
             daemon=True,
             name="floorcrawl-%s" % (self._label or self._username),
         )
