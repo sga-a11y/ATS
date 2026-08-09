@@ -86,18 +86,30 @@ def _fight_one(client, idx: int, stop_event):
     return "lost" if defeated else "won"
 
 
-def _walk_toward_gate(client, center, stop_event):
-    """Di ve phia cong bang TIM DUONG THONG MINH, ngan sach ngan.
+def _floor_point(ev, scene: int):
+    """Diem CHOT cua tang (noi bam cac idx con lai + cong), doc tu events.json."""
+    pts = (ev.get("party_battle") or {}).get("points") or {}
+    p = pts.get(str(int(scene))) or pts.get("default")
+    return tuple(p) if p else None
 
-    CHUA CHAC tuong tac co doi dung gan cong khong (capture: rat it goi 0x06 moi tang, va toa do
-    trong 0x0c chua giai duoc chac chan) -> di best-effort roi VAN tuong tac, khong chan duong.
-    """
+
+def _floor_label(ev, scene: int):
+    """'tang N (map 12932)' - N suy tu floor_base (12924 = tang 1; 12922/12923 la khu vao)."""
+    base = int((ev.get("party_battle") or {}).get("floor_base") or 0)
+    n = int(scene) - base if base else 0
+    return "tang %d (map %s)" % (n, scene) if n >= 1 else "khu vao (map %s)" % scene
+
+
+def _walk_to(client, point, stop_event):
+    """Di toi diem bang TIM DUONG THONG MINH, ngan sach ngan roi thoi (best-effort)."""
+    if not point:
+        return
     t0 = time.time()
     try:
-        client.navigate_to(*center, flee=False,
+        client.navigate_to(*point, flee=False,
                            abort=lambda: stop_event.is_set() or time.time() - t0 > _WALK_BUDGET)
     except Exception as e:
-        log.debug("[%s] 2K: di toi cong loi (bo qua): %s", client._label, e)
+        log.debug("[%s] 2K: di toi %s loi (bo qua): %s", client._label, point, e)
 
 
 def run_floor_crawl(client, ev, stop_event, on_done=None):
@@ -121,33 +133,42 @@ def run_floor_crawl(client, ev, stop_event, on_done=None):
                 break
             up = _up_gate(scene)
             if up is None:
-                log.warning("[%s] 2K: tang %s KHONG co cong len trong world_nav -> DUNG o day. "
+                log.warning("[%s] 2K: %s KHONG co cong len trong world_nav -> DUNG o day. "
                             "Nghi la tang chot (cong len chi hien sau khi don sach tang). "
-                            "Gui log nay de bo sung du lieu.", label, scene)
+                            "Gui log nay de bo sung du lieu.", label, _floor_label(ev, scene))
                 break
             nxt, door, center = up
-            log.info("[%s] 2K: tang %s -> %s, cong door=%s tai %s", label, scene, nxt, door, center)
-            _walk_toward_gate(client, center, stop_event)
+            point = _floor_point(ev, scene)
+            log.info("[%s] 2K: %s -> len %s (cong door=%s), diem chot %s",
+                     label, _floor_label(ev, scene), nxt, door, point)
             # Danh het cac diem quai cua tang: idx 3..8 TRU idx cua cong.
+            # Theo capture: idx DAU bam ngay tai cho spawn (khong co goi move truoc no), cac idx
+            # sau + cong deu bam tu DIEM CHOT -> di toi diem chot TRUOC idx thu hai.
             fought = 0
+            walked = False
             for idx in _BATTLE_IDX_RANGE:
                 if not _active(client, stop_event):
                     break
                 if idx == door:
                     continue
+                if fought and not walked:
+                    _walk_to(client, point, stop_event)
+                    walked = True
                 res = _fight_one(client, idx, stop_event)
                 if res == "lost":
-                    log.warning("[%s] 2K: PARTY THUA o tang %s (idx=%d) -> KET THUC 2K",
-                                label, scene, idx)
+                    log.warning("[%s] 2K: PARTY THUA o %s (idx=%d) -> KET THUC 2K",
+                                label, _floor_label(ev, scene), idx)
                     lost = True
                     break
                 if res == "won":
                     fought += 1
             if lost or not _active(client, stop_event):
                 break
+            if not walked:
+                _walk_to(client, point, stop_event)   # cong cung bam tu diem chot
             if not fought:
-                log.warning("[%s] 2K: tang %s khong danh duoc tran nao (idx 3..8 deu khong ra tran) "
-                            "-> van thu qua cong", label, scene)
+                log.warning("[%s] 2K: %s khong danh duoc tran nao (idx 3..8 deu khong ra tran) "
+                            "-> van thu qua cong", label, _floor_label(ev, scene))
             # Qua cong len tang: cung dang `0x14 0800 [idx]`, dung _enter_gate de cho map doi that.
             client._in_scene_gate = True
             try:
@@ -155,9 +176,10 @@ def run_floor_crawl(client, ev, stop_event, on_done=None):
             finally:
                 client._in_scene_gate = False
             if not ok:
-                log.warning("[%s] 2K: ket o cong tang %s (door=%s) -> dung leo", label, scene, door)
+                log.warning("[%s] 2K: ket o cong %s (door=%s) -> dung leo",
+                            label, _floor_label(ev, scene), door)
                 break
-            log.info("[%s] 2K: da len tang %s", label, client.current_map)
+            log.info("[%s] 2K: da len %s", label, _floor_label(ev, client.current_map))
     finally:
         if on_done is not None:
             try:
