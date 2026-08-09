@@ -5052,6 +5052,28 @@ class GameClient:
             self._label = nm
             log.info("[%s] Ten nhan vat = '%s'", self._username, nm)
 
+    def digioi_minutes_live(self) -> float:
+        """So phut DG DA DUNG, NGOAI SUY tai thoi diem goi - giong client that.
+
+        Client (Logic/Dungeon.lua UpdateLimitTimeDungeonTime) TU DEM LUI moi giay, chi dung
+        RoleCount tu goi server 0x55 de DONG BO LAI khi co gia tri moi. Bot truoc day CHI doc
+        `digioi_minutes` -> server ngung day goi (vd bi da ra khoi DG luc het gio) la con so DONG
+        BANG -> khong bao gio ket luan het gio -> ca party treo (bug that 22:59-23:07: 3 acc dung
+        o Quang Truong, hang rao "2/5 acc xong" cho vo tan).
+
+        CHI dem khi DANG O TRONG map DG - user xac nhan: ra ngoai DG thi dong ho KHONG chay
+        (van hien so cu).
+        """
+        m = float(getattr(self, "digioi_minutes", 0) or 0)
+        ts = float(getattr(self, "_last_digioi_ts", 0.0) or 0.0)
+        if ts:
+            try:
+                if self.in_di_gioi():
+                    m += max(0.0, time.time() - ts) / 60.0
+            except Exception:
+                pass
+        return m
+
     def _note_current_channel(self, channel, source="server"):
         try:
             channel = int(channel)

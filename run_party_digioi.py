@@ -1210,7 +1210,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         log.info("[%s] (%s) MODE=%s start_city=%s", label, role, mode, sc)
 
         def _dg_remain_minutes():
-            return max(0, DIGIOI_LIMIT - getattr(c, "digioi_minutes", 0))
+            return max(0, int(DIGIOI_LIMIT - c.digioi_minutes_live()))
 
         def _maybe_use_di_gioi_ho_phu(reason: str) -> bool:
             if not (is_digioi and pcfg.get("use_digioi_ho_phu")):
@@ -1275,7 +1275,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         def _finish_digioi_train_if_time_over(reason: str) -> bool:
             if not (dt_mode and is_digioi):
                 return False
-            remain = max(0, DIGIOI_LIMIT - getattr(c, "digioi_minutes", 0))
+            remain = max(0, int(DIGIOI_LIMIT - c.digioi_minutes_live()))
             out_of_dg = (c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID
                          and not c.in_combat())
             if remain <= 0 or (out_of_dg and remain < 2):
@@ -1295,9 +1295,27 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 log.warning("[%s] (%s) dang cho party DG nhung bi ra ngoai DG (map=%s, con %d phut) "
                             "-> vao lai DG", label, role, c.current_map, remain)
                 try:
-                    c.enter_di_gioi_safe()
+                    back_in = c.enter_di_gioi_safe()
                 except Exception as e:
                     log.warning("[%s] loi vao lai DG luc cho party: %s", label, e)
+                    back_in = False
+                if not back_in:
+                    # SERVER KHONG CHO VAO LAI = HET GIO THAT. Day moi la bang chung chac chan,
+                    # khong phai dong ho noi bo. Phan biet duoc CHET (bi day ve 12003 nhung VAO LAI
+                    # DUOC) voi HET GIO (khong vao lai duoc). Truoc day vut gia tri tra ve di ->
+                    # lap "vao lai DG" mai mai, khong bao gio bao xong -> hang rao "2/5 acc xong"
+                    # treo ca dem (bug that 22:59-23:07).
+                    log.warning("[%s] (%s) KHONG vao lai duoc DG (map=%s) -> coi la HET GIO DG",
+                                label, role, c.current_map)
+                    _reason("het gio Di Gioi (server khong cho vao lai)")
+                    _finish_digioi_train_after_dg()
+                    try:
+                        c.close()
+                    except Exception:
+                        pass
+                    if c in _clients:
+                        _clients.remove(c)
+                    return True
             return False
 
         def _set_train_block_stats_spot(spot, enabled=False):
@@ -3613,7 +3631,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         elif not _ok and not c.flee_mode:
                             c.flee_mode = True
                             log.warning("[%s] Di Gioi SOLO: HET thuoc HP hoac SP -> DUNG YEN", label)
-                    remain = max(0, DIGIOI_LIMIT - c.digioi_minutes)
+                    remain = max(0, int(DIGIOI_LIMIT - c.digioi_minutes_live()))
                     h, m = divmod(remain, 60)
                     log.info("[%s] Di Gioi con lai: %dh%dm (da o %d phut)",
                              label, h, m, c.digioi_minutes)
@@ -3643,7 +3661,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 if c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
                     out_cnt += 1
                     if out_cnt >= 2:   # ~10s lien tuc ngoai DG
-                        remain = max(0, DIGIOI_LIMIT - c.digioi_minutes)
+                        remain = max(0, int(DIGIOI_LIMIT - c.digioi_minutes_live()))
                         if remain >= 2:
                             log.warning("[%s] (%s) KHONG o trong DG (map=%s, chet/bi day ra?) "
                                         "con %d phut -> VAO LAI DG", label, role, c.current_map, remain)
@@ -4593,7 +4611,7 @@ def account_status(username):
     st = _party_state.get(pidx, {})
     dg_remain = None
     if c.current_map == config.DIGIOI_MAP_ID:
-        dg_remain = max(0, DIGIOI_LIMIT - getattr(c, "digioi_minutes", 0))
+        dg_remain = max(0, int(DIGIOI_LIMIT - c.digioi_minutes_live()))
     account_last[username] = {"map": c.current_map, "char": c.char_name or "",
                               "char_level": getattr(c, "char_level", None),
                               "char_agi": getattr(c, "char_agi", None),
