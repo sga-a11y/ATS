@@ -2282,6 +2282,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # Sync kenh TRUOC go_to_event: CHI cho event STAND (moi tay). Event PARTY (40NPC) sync
             # LAI SAU khi vao map event (xem duoi) -> KHONG sync o day nua de tranh doi kenh 2 LAN
             # moi vong -> giam churn (leader nhay kenh lien tuc + relogin ca party -> server kick).
+            # 2K DA KET THUC (thua/xong) -> TUYET DOI khong gom doi/vao lai nua: ra khoi thap roi
+            # THOAT GAME. Cua kiem tra o vong keepalive KHONG du: leader (va acc vua relogin) chay
+            # LAI nhanh event nay TRUOC khi toi keepalive, roi vao vong "gom doi" va di bo mai trong
+            # thap trong khi cac nick khac da ra Quang Truong + thoat (bug that 16:02).
+            if ev is not None and st["event_exit_now"].is_set():
+                log.info("[%s] (%s) 2K da ket thuc -> KHONG gom doi nua, ra khoi thap roi THOAT GAME",
+                         label, role)
+                if _inside_floor_crawl_tower(ev, c.current_map):
+                    try:
+                        c.exit_event(ev)
+                    except Exception as e:
+                        log.warning("[%s] (%s) 2K: loi di ra khoi thap: %s", label, role, e)
+                _reason("2K ket thuc -> ra khoi thap -> thoat game")
+                c.close()
+                return
             if not _is_party_event(mode, has_leader, ev):
                 do_channel_sync()
             if ev is None:
