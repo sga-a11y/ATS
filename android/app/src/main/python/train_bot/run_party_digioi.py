@@ -313,6 +313,25 @@ def _running_party_usernames(pidx):
 PARTY_EVENT_DUNGEON_WINDOW = 3600.0   # do dai cua so "dang trong kich ban dungeon" cho event party
 
 
+def _inside_floor_crawl_tower(ev, map_id):
+    """Dang DUNG SAN trong thap cua event floor_crawl (2K) chua? (dest_map <= map <= top_map)
+
+    Dung khi login lai giua chung: game GIU nguyen vi tri trong thap. Neu con o trong thap thi
+    KHONG duoc chon lai event - goi 0x4d se keo ca doi ve map cho 12921 va MAT HET tang da leo
+    (xac nhan log 11:23: acc dang o 12922, sau khi chon event thi smart path chay tren 12921).
+    """
+    pb = (ev or {}).get("party_battle") or {}
+    if pb.get("kind") != "floor_crawl":
+        return False
+    dest = int((ev or {}).get("dest_map") or 0)
+    top = int(pb.get("top_map") or 0)
+    try:
+        m = int(map_id or 0)
+    except (TypeError, ValueError):
+        return False
+    return bool(dest and top and dest <= m <= top)
+
+
 def _set_party_quest_mode(pidx, on, label="", quiet=False):
     """Bat/tat quest_mode cho CA party (leader + member).
 
@@ -774,6 +793,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     label = username
     role = "LEADER" if is_leader else "member"
     has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None
+    _resume_2k = False   # True = login lai khi dang DUNG TRONG thap 2K -> leo tiep tai cho
     st = _pstate(pidx)
     stop_ev = account_stops.get(username)   # GUI yeu cau STOP -> thoat moi giai doan
     def _stopped():
@@ -2125,6 +2145,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if ev is None:
                 log.warning("[%s] (%s) mode event nhung KHONG co event nao trong events.json -> dung yen tai cho",
                             label, role)
+            elif _inside_floor_crawl_tower(ev, c.current_map):
+                # LOGIN LAI GIUA CHUNG 2K: van dung trong thap -> LEO TIEP tu tang nay, KHONG
+                # chon lai event (chon lai = bi keo ve 12921 = mat het tang da leo).
+                _resume_2k = True
+                log.info("[%s] (%s) 2K: dang o trong thap (%s) -> leo tiep tu day, khong vao lai",
+                         label, role, config.scene_name(c.current_map))
             else:
                 try:
                     c.go_to_event(ev)   # tu day het cinematic (9x 0x14 0600) roi thoat cutscene
@@ -2198,7 +2224,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # acc vao 1 instance khac nhau (vi tri spawn khac) -> moi entity khong toi -> joined=0/4 mai,
         # leader spam moi ma khong ai join -> khong danh duoc (bug user 40NPC 2026-07-29).
         if event_party_mode:
-            do_channel_sync()
+            if not _resume_2k:
+                do_channel_sync()
+            else:
+                # RESUME 2K: ca doi von dang cung mot instance trong thap. Doi kenh luc nay la
+                # RUI RO (co the bi day ra khoi instance / tach doi) va khong giai quyet gi.
+                log.info("[%s] (%s) 2K resume: bo qua sync kenh (ca doi da cung instance)",
+                         label, role)
             if not is_leader:
                 # 40NPC chi ready party sau khi DA vao map event va sync instance tai map event.
                 c.set_party_invite_ready(True)
