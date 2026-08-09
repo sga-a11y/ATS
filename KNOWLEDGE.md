@@ -793,6 +793,10 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
     `0x03/0x07`) + cung `scene_id`.** Server CHI gui nearby cho nguoi cung scene VA cung instance,
     nen do la bang chung du. Da bo so sanh instanceId trong
     `_entity_is_visible_on_current_scene` / `_bot_member_is_on_current_scene` (2026-08-09).
+    **NHUNG VAN PHAI BAO RA `current_channel`** (cot Kenh o GUI/APK): nguoi dung nhin so do de
+    chuyen nick TAY cua ho sang dung kenh/instance cua party. Tung thu "khong cap nhat kenh khi o
+    trong map instance" -> SAI, lam mat thong tin do. Chi bo viec DEM SO NAY RA SO SANH, khong bo
+    viec hien thi.
 - **S2C `0x0c` ChangeScene sub `00 00` CUNG layout do** (`[entity 8B][map u16][x u16][y u16]`,
   x `19:21`, y `21:23`) -> **doi map la server BAO LUON toa do moi**, khong can doi `0x03`.
   Xac nhan capture 2K (`nhikieu_2k_tang1_9_20260809.pcap`): vao 12922 -> `(1490,490)`, dung bang

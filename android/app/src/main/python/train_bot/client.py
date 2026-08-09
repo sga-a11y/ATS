@@ -5017,40 +5017,12 @@ class GameClient:
             self._label = nm
             log.info("[%s] Ten nhan vat = '%s'", self._username, nm)
 
-    def _in_event_instance_map(self) -> bool:
-        """Dang o trong MAP INSTANCE cua event (thap 2K...)? Doc dai map tu events.json."""
-        try:
-            cur = int(self.current_map or 0)
-        except (TypeError, ValueError):
-            return False
-        if not cur:
-            return False
-        for ev in (getattr(config, "EVENTS", {}) or {}).values():
-            pb = (ev or {}).get("party_battle") or {}
-            if pb.get("kind") != "floor_crawl":
-                continue
-            lo = int((ev or {}).get("dest_map") or 0)
-            hi = int(pb.get("top_map") or 0)
-            if lo and hi and lo <= cur <= hi:
-                return True
-        return False
-
     def _note_current_channel(self, channel, source="server"):
         try:
             channel = int(channel)
         except Exception:
             return
         if channel <= 0:
-            return
-        # TRONG MAP INSTANCE (thap 2K): con so nay la instanceId, KHONG phai kenh the gioi.
-        # Client Lua goi dung ten `instanceId`; capture 2K cho thay no TU DOI 1 -> 2 giua chung
-        # (leader giu 1 tu 12921 den 12931 roi nhay 2 o 12932) trong khi ca party van di cung nhau.
-        # Lay no lam "kenh" -> bot bao "lech kenh" trong khi server chi co 1 kenh. -> GIU nguyen
-        # kenh the gioi biet truoc khi vao instance.
-        # (Van nhan tu "0x07 ack" = phan hoi cho CHINH lenh doi kenh minh gui -> do la kenh THAT.)
-        if not str(source).startswith("0x07") and self._in_event_instance_map():
-            log.debug("[%s] bo qua instanceId=%s tu %s (dang trong map instance, khong phai kenh)",
-                      self._label, channel, source)
             return
         old = self.current_channel
         self.current_channel = channel
