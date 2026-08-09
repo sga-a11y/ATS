@@ -84,16 +84,16 @@ def _fight_one(client, idx: int, stop_event, heal_party=None):
     # DOC THUA TRUOC khi hoi mau: hoi xong thi HP len lai -> mat dau hieu party da chet het.
     defeated, alive, total = npc40.party_defeated(client.state.allies)
     log.info("[%s] 2K: xong tran idx=%d, party song %d/%d", client._label, idx, alive, total)
-    if defeated:
-        return "lost"
-    # HOI FULL HP/SP ca party sau MOI tran. Bat buoc phai lam o day: quest_mode=True lam
-    # _heal_after_battle() thoat som (client.py: "dungeon/boss flow tu quan ly heal") -> khong
-    # tu goi thi ca party khong duoc hoi giot nao suot ca thap.
+    # HOI FULL HP/SP ca party sau MOI tran - KE CA TRAN THUA: thua thi 2K dung, nhung acc con
+    # phai di lam viec tiep theo (train/daily...) nen van can day mau. Doc `defeated` TRUOC khi
+    # hoi vi hoi xong HP len lai -> khong con doc duoc dau hieu party chet sach.
+    # Bat buoc tu goi o day: quest_mode=True lam _heal_after_battle() thoat som
+    # (client.py: "dungeon/boss flow tu quan ly heal").
     if heal_party is not None:
         heal_party()
     else:
         client.heal_full(force=True)
-    return "won"
+    return "lost" if defeated else "won"
 
 
 def _battle_points(ev, scene: int):

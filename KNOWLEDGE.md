@@ -181,6 +181,16 @@ S2C 0x34 (battle start — thay cho 0x41!)
 
 ---
 
+### HẾT TRẬN: con chết tự về HP=1 (KHÔNG cần "hồi sinh")
+Trong trận, unit (**cả char LẪN pet**) có thể xuống HP=0. **Khi trận kết thúc, server tự đặt các
+con chết về `HP=1`** — không còn unit nào ở HP=0 sau mốc kết trận.
+
+Hệ quả cho code hồi máu: sau trận cứ `heal_full(force=True)` là đủ, **không cần** nhánh riêng kiểu
+`_heal_unit(thr_override=0.01)` để "kích lại" con HP=0. Từng có đoạn như vậy trong
+`heal_npc40_between_battles` — thừa, đã bỏ 2026-08-09.
+
+> Đã phải giải thích nhiều lần → ghi lại ở đây. Đừng suy ra "thua thì char nằm ở HP=0".
+
 ## 6. STATS PACKETS
 
 ### LƯỚI BATTLE: 4 HÀNG × tối đa 5 CỘT (KEY cho target + buff)

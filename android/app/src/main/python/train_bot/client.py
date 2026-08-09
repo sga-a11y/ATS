@@ -4367,17 +4367,16 @@ class GameClient:
         self._heal_after_battle_thread.start()
 
     def heal_npc40_between_battles(self):
-        """Hoi FULL HP/SP + dam bao char HP=0 duoc kich lai truoc khi leader mo tran ke.
+        """Hoi FULL HP/SP sau tran (event danh theo party: 40NPC, 2K).
 
-        Truoc day chi do_heal(force=True) = hoi THEO SETTING (nguong nguoi dung dat) -> vao tran
-        sau voi HP/SP lung chung. Doi sang heal_full cho dong bo voi 2K/boss/PB110 (yeu cau
-        nguoi dung 2026-08-09). Het thuoc thi hoi duoc bao nhieu hay bay nhieu."""
+        KHONG can xu ly rieng "unit HP=0": HET TRAN thi SERVER tu dat con chet (char LAN pet) ve
+        HP=1, khong con unit nao o HP=0 luc nay -> heal_full() phu duoc het. (Truoc day co doan
+        _heal_unit(thr_override=0.01) cho char HP=0 - thua, da bo.)
+        Truoc day dung do_heal(force=True) = hoi THEO SETTING -> vao tran sau voi HP/SP lung
+        chung; doi sang heal_full cho dong bo voi 2K/boss/PB110 (yeu cau 2026-08-09)."""
         if self.state.in_battle:
             return
         self.heal_full(force=True)
-        c = self.state.char
-        if c.hp_max > 0 and c.hp <= 0:
-            self._heal_unit(0, c, "char", "hp_char", "hp", thr_override=0.01, force=True)
 
     def heal_full(self, force: bool = False):
         """Hoi FULL HP+SP char + pet (nguong=1.0) - goi TRUOC khi danh boss (solo dungeon + world
