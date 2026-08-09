@@ -7489,19 +7489,71 @@ class GameClient:
         while staging and self.current_map != staging and time.time() - t0 < 20:
             if not self.running: return False
             time.sleep(1)
-        # (2) di chuyen toi cong + qua cong -> map event
-        for st in ev.get("steps", []):
-            if not self.running: return False
-            if "gate" in st:
-                if not self._event_gate(int(st["x"]), int(st["y"]), int(st["gate"]), dest):
-                    log.warning("[%s] go_to_event: ket o cong idx=%s", self._label, st.get("gate"))
-                    return False
-            else:
-                self._route_move(int(st["move"][0]), int(st["move"][1]))
+        # (2) di toi cong roi qua cong -> map event.
+        # DUONG DI: TIM DUONG THONG MINH (navigate_to -> Ground.mmg), KHONG chep cung tung buoc
+        # `move` nhu truoc (di 1 ti roi dung cho rat lau moi di tiep - _route_move cho het tran +
+        # settle moi buoc). Toa do tam cong + door index doc tu world_nav.json.
+        gate = self._event_entry_gate(staging, dest) if (staging and dest) else None
+        if gate is not None:
+            door, center = gate
+            log.info("[%s] go_to_event: di thong minh toi cong door=%s tai %s",
+                     self._label, door, center)
+            self.navigate_to(*center, flee=True)
+            if not self._event_gate(center[0], center[1], door, dest):
+                log.warning("[%s] go_to_event: ket o cong idx=%s", self._label, door)
+                return False
+        else:
+            # world_nav khong co canh staging->dest (event moi chua co du lieu) -> dung `steps`
+            # trong events.json lam duong lui, van hon la dung yen khong vao duoc.
+            log.warning("[%s] go_to_event: world_nav khong co cong %s->%s -> dung steps trong json",
+                        self._label, staging, dest)
+            for st in ev.get("steps", []):
+                if not self.running: return False
+                if "gate" in st:
+                    if not self._event_gate(int(st["x"]), int(st["y"]), int(st["gate"]), dest):
+                        log.warning("[%s] go_to_event: ket o cong idx=%s", self._label, st.get("gate"))
+                        return False
+                else:
+                    self._route_move(int(st["move"][0]), int(st["move"][1]))
         ok = (self.current_map == dest) if dest else True
         log.info("[%s] go_to_event '%s' xong: map=%s (dich %s) -> %s",
                  self._label, label, self.current_map, dest, "OK" if ok else "CHUA TOI")
         return ok
+
+    def _event_entry_gate(self, staging: int, dest: int):
+        """(door, (x,y)) cua cong staging->dest doc tu world_nav.json. None neu khong co du lieu."""
+        router = _smart_world_router()
+        if router is None:
+            return None
+        nav = router.nav
+        for edge in nav.data.get("edges", []):
+            if int(edge["scene"]) != int(staging) or int(edge["target_scene"]) != int(dest):
+                continue
+            gate = nav.get_gate(staging, edge["door"])
+            if gate and gate.get("center"):
+                return int(edge["door"]), tuple(gate["center"])
+        return None
+
+    def start_floor_crawl(self, ev, on_done=None) -> bool:
+        """Bat dau leo thap (event kieu floor_crawl, vd Nhi Kieu). Chay thread rieng nhu npc40."""
+        if getattr(self, "_floor_crawl_started", False):
+            return False
+        from . import floor_crawl
+        self._floor_crawl_started = True
+        self._floor_crawl_stop = threading.Event()
+        self._floor_crawl_thread = threading.Thread(
+            target=floor_crawl.run_floor_crawl,
+            args=(self, ev, self._floor_crawl_stop, on_done),
+            daemon=True,
+            name="floorcrawl-%s" % (self._label or self._username),
+        )
+        self._floor_crawl_thread.start()
+        return True
+
+    def stop_floor_crawl(self):
+        stop = getattr(self, "_floor_crawl_stop", None)
+        if stop is not None:
+            stop.set()
 
     def exit_event(self, ev) -> bool:
         """Ra khoi event bang toa do server moi va smart scene route tu du lieu map."""

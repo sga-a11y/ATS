@@ -426,9 +426,23 @@ def _prepare_reform_channel_sync(st):
         st["channel"] = None
 
 
-def _is_npc_repeat_party_event(mode, has_leader, ev):
+def _event_battle_kind(mode, has_leader, ev):
+    """Kieu danh cua event CO LAP PARTY: 'npc_repeat' (40NPC) | 'floor_crawl' (2K) | None."""
     battle = (ev or {}).get("party_battle") or {}
-    return mode == "event" and bool(has_leader) and battle.get("kind") == "npc_repeat"
+    kind = battle.get("kind")
+    if mode == "event" and has_leader and kind in ("npc_repeat", "floor_crawl"):
+        return kind
+    return None
+
+
+def _is_party_event(mode, has_leader, ev):
+    """Event can LAP PARTY roi moi danh (hoan moi party + sync kenh LAI tai map event).
+    Dung chung cho 40NPC lan 2K - phan khac nhau nam o buoc bat dau danh."""
+    return _event_battle_kind(mode, has_leader, ev) is not None
+
+
+def _is_npc_repeat_party_event(mode, has_leader, ev):
+    return _event_battle_kind(mode, has_leader, ev) == "npc_repeat"
 
 
 def _should_restart_event_party(event_party_mode, battle_active, disc_gen, handled_gen):
@@ -2063,7 +2077,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # Sync kenh TRUOC go_to_event: CHI cho event STAND (moi tay). Event PARTY (40NPC) sync
             # LAI SAU khi vao map event (xem duoi) -> KHONG sync o day nua de tranh doi kenh 2 LAN
             # moi vong -> giam churn (leader nhay kenh lien tuc + relogin ca party -> server kick).
-            if not _is_npc_repeat_party_event(mode, has_leader, ev):
+            if not _is_party_event(mode, has_leader, ev):
                 do_channel_sync()
             if ev is None:
                 log.warning("[%s] (%s) mode event nhung KHONG co event nao trong events.json -> dung yen tai cho",
@@ -2099,7 +2113,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.flee_mode = False   # bi danh thi tu danh, KHONG chay
             do_channel_sync()
 
-        _defer_party_invite_for_event = _is_npc_repeat_party_event(mode, has_leader, ev)
+        _defer_party_invite_for_event = _is_party_event(mode, has_leader, ev)
         _solo_without_party = is_digioi and pcfg.get("digioi_mode") == "solo"
         if not is_leader and not _defer_party_invite_for_event and not _solo_without_party:
             # Da xong login chores + di toi map/diem tap ket + sync kenh. Bay gio moi mo gate
@@ -2124,7 +2138,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         event_mode = (mode == "event")
         # EVENT 40NPC NGOAI GIO (event mo Thu 2/4/6 20-22h): KHONG quan tam co leader hay khong ->
         # HUY party, moi acc TU di doi 'qua chien dau 40NPC' (NPC map 12003) roi THOAT game.
-        if (event_mode and bool(ev) and (ev.get("party_battle") or {}).get("kind") == "npc_repeat"
+        if (event_mode and _is_npc_repeat_party_event(mode, has_leader, ev)
                 and not c.in_40npc_window()):
             log.info("[%s] (%s) 40NPC NGOAI GIO event -> huy party + di doi thuong + thoat game", label, role)
             try: c.leave_party()
@@ -2133,7 +2147,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             except Exception as e: log.warning("[%s] loi doi thuong 40NPC (ngoai gio): %s", label, e)
             _reason("40NPC ngoai gio -> doi thuong xong -> thoat game")
             c.close(); return
-        event_party_mode = _is_npc_repeat_party_event(mode, has_leader, ev)
+        event_party_mode = _is_party_event(mode, has_leader, ev)
         event_stand_mode = event_mode and not event_party_mode
         # EVENT PARTY (40NPC): kenh/instance cua MAP EVENT (vd 10991) DOC LAP voi kenh thanh -> sync
         # kenh o tren (luc con o thanh, truoc go_to_event) KHONG dam bao cung instance tren map event.
@@ -2267,7 +2281,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             training_started = False
             def _start_training():
                 c.set_party_strategist()    # set member INT cao nhat lam quan su (hoi SP)
-                if event_party_mode:
+                if event_party_mode and _event_battle_kind(mode, has_leader, ev) == "floor_crawl":
+                    # 2K (Nhi Kieu): DU PARTY roi moi bat dau leo thap. Moi acc tu di 12921->12922
+                    # rieng le (khong party - vao event dinh party la tele loi), toi map event moi
+                    # sync kenh + lap party (nhanh _defer_party_invite_for_event o tren lo).
+                    if st["event_battle_done"].is_set():
+                        c.flee_mode = False
+                        log.info("[%s] (LEADER) 2K da xong/dung -> khong leo lai", label)
+                        return
+                    def _on_crawl_done():
+                        with st["lock"]:
+                            st["event_battle_active"] = False
+                            st["event_battle_done"].set()
+                        log.info("[%s] (LEADER) 2K: ket thuc leo thap", label)
+                    with st["lock"]:
+                        st["event_battle_active"] = True
+                    c.flee_mode = False
+                    if c.start_floor_crawl(ev, _on_crawl_done):
+                        log.info("[%s] (LEADER) 2K: du party -> bat dau leo thap tu map %s",
+                                 label, c.current_map)
+                elif event_party_mode:
                     if st["event_battle_done"].is_set():
                         c.flee_mode = False
                         log.info("[%s] (LEADER) 40NPC da THUA -> dung yen, khong mo lai battle", label)
@@ -3731,7 +3764,7 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
         forced_reason = account_forced_reconnect_reason.pop(username, None)
         pcfg = (getattr(config, "PARTY_CONFIG", {}).get(pidx, {}) or {})
         ev = (getattr(config, "EVENTS", {}) or {}).get(pcfg.get("event_key") or "")
-        event_reset = (not forced and _is_npc_repeat_party_event(
+        event_reset = (not forced and _is_party_event(
             pcfg.get("mode"), config.PARTY_LEADER_ACC.get(pidx) is not None, ev
         ) and st.get("event_battle_active", False))
         train_reform = (not forced and config.PARTY_LEADER_ACC.get(pidx) is not None

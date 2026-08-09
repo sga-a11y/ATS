@@ -3,41 +3,9 @@
   "events": {
     "nhi_kieu": {
       "label": "Nhị Kiều",
-      "hidden": true,
       "select": "03000100",
       "staging_map": 12921,
       "dest_map": 12922,
-      "steps": [
-        {
-          "move": [
-            415,
-            607
-          ]
-        },
-        {
-          "move": [
-            410,
-            590
-          ]
-        },
-        {
-          "move": [
-            361,
-            395
-          ]
-        },
-        {
-          "move": [
-            350,
-            350
-          ]
-        },
-        {
-          "gate": 2,
-          "x": 350,
-          "y": 330
-        }
-      ],
       "exit": {
         "_note": "Ra khoi map event ve map thuong (out_map) roi moi teleport di mode khac duoc. Event map (12921/12922) KHONG teleport thang. Cong exit dung 0x14 04 (gate thuong).",
         "out_map": 12003,
@@ -84,6 +52,11 @@
             "y": 1250
           }
         ]
+      },
+      "_note": "Thap nhieu tang 12922->12959 (12940 khong ton tai). Toa do cong + door index tung tang doc tu world_nav.json, KHONG hardcode (door thay doi 1/2/3/5 tuy tang). Cong vao 12921->12922 co cinematic LAN DAU -> _event_gate; cong trong thap la cong thuong -> _enter_gate.",
+      "party_battle": {
+        "kind": "floor_crawl",
+        "top_map": 12959
       }
     },
     "npc_40": {
@@ -94,7 +67,10 @@
       "steps": [],
       "party_battle": {
         "kind": "npc_repeat",
-        "point": [910, 290]
+        "point": [
+          910,
+          290
+        ]
       },
       "_note": "Event tele THANG (0x4d 03000400) vao map roi dung yen - khong cong/di bo. Map 40NPC (10991) CHAN teleport; khi thoat bot tu suy duong theo ID map va toa do server.",
       "exit": {
