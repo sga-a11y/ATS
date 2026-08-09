@@ -1906,6 +1906,9 @@ class GameClient:
                     if 0 < sx < 20000 and 0 < sy < 20000:
                         self.pos = (sx, sy)
                         self._position_generation += 1
+                        # Toa do nay DI KEM chinh lan doi map nay -> _enter_gate KHONG duoc
+                        # xoa (xem _gate_reached).
+                        self._pos_valid_for_map = self.current_map
                 # 0x0c ChangeScene co them sceneTag(2) + instanceId/channel(2) sau toa do.
                 if opcode == 0x0c and len(pkt) >= 25:
                     self._note_current_channel(int.from_bytes(pkt[23:25], "little"), "0x0c")
@@ -1931,6 +1934,7 @@ class GameClient:
                     if 0 < sx < 20000 and 0 < sy < 20000:
                         self.pos = (sx, sy)
                         self._position_generation += 1
+                        self._pos_valid_for_map = self.current_map
                         log.info("[%s] RESYNC pos tu 0x03 = (%d,%d) map=%s",
                                  self._label, sx, sy, self.current_map)
             # TEN NHAN VAT tu 0x03 self-spawn (nguon dang tin: MOI acc co, KHONG can bang hoi).
@@ -6845,7 +6849,13 @@ class GameClient:
             cm = self.current_map
             if cm is None or cm == start_map:
                 return False
-            self.pos = None   # qua cong -> vi tri cu vo nghia (map moi) -> navigate sau di hao phong
+            # Qua cong -> vi tri CU vo nghia. NHUNG goi lam DOI MAP (0x0c/0x07) MANG
+            # LUON toa do moi (client Lua protocolTable[12][0]/[7][0] doc position ngay
+            # trong goi do) -> neu da co toa do di kem dung lan doi map nay thi GIU.
+            # Xoa di la vut mat chinh thu vua nhan -> navigate_to mat smart path ->
+            # di mu 30 lenh (bug 12:25).
+            if getattr(self, "_pos_valid_for_map", None) != cm:
+                self.pos = None
             if expected_map is not None and cm != expected_map:
                 log.warning("[%s] qua cong idx=%d NHUNG sai map: %s != %s",
                             self._label, idx, cm, expected_map)
