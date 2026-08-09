@@ -4367,10 +4367,14 @@ class GameClient:
         self._heal_after_battle_thread.start()
 
     def heal_npc40_between_battles(self):
-        """Hoi theo setting va dam bao char HP=0 duoc kich lai truoc khi leader mo tran ke."""
+        """Hoi FULL HP/SP + dam bao char HP=0 duoc kich lai truoc khi leader mo tran ke.
+
+        Truoc day chi do_heal(force=True) = hoi THEO SETTING (nguong nguoi dung dat) -> vao tran
+        sau voi HP/SP lung chung. Doi sang heal_full cho dong bo voi 2K/boss/PB110 (yeu cau
+        nguoi dung 2026-08-09). Het thuoc thi hoi duoc bao nhieu hay bay nhieu."""
         if self.state.in_battle:
             return
-        self.do_heal(force=True)
+        self.heal_full(force=True)
         c = self.state.char
         if c.hp_max > 0 and c.hp <= 0:
             self._heal_unit(0, c, "char", "hp_char", "hp", thr_override=0.01, force=True)
@@ -7534,7 +7538,7 @@ class GameClient:
                 return int(edge["door"]), tuple(gate["center"])
         return None
 
-    def start_floor_crawl(self, ev, on_done=None) -> bool:
+    def start_floor_crawl(self, ev, on_done=None, heal_party=None) -> bool:
         """Bat dau leo thap (event kieu floor_crawl, vd Nhi Kieu). Chay thread rieng nhu npc40."""
         if getattr(self, "_floor_crawl_started", False):
             return False
@@ -7543,7 +7547,7 @@ class GameClient:
         self._floor_crawl_stop = threading.Event()
         self._floor_crawl_thread = threading.Thread(
             target=floor_crawl.run_floor_crawl,
-            args=(self, ev, self._floor_crawl_stop, on_done),
+            args=(self, ev, self._floor_crawl_stop, on_done, heal_party),
             daemon=True,
             name="floorcrawl-%s" % (self._label or self._username),
         )

@@ -64,7 +64,7 @@ def _active(client, stop_event):
     return client.running and not stop_event.is_set()
 
 
-def _fight_one(client, idx: int, stop_event):
+def _fight_one(client, idx: int, stop_event, heal_party=None):
     """Gui `0x14 0800 [idx]` roi cho xem co vao tran khong.
 
     Tra: "won" (danh xong, con song) | "lost" (party chet het) | None (idx nay khong ra tran).
@@ -81,9 +81,19 @@ def _fight_one(client, idx: int, stop_event):
         return None
     client._wait_combat_clear(idle=3.0, cap=_MAX_FLOOR_SECONDS)
     # allies bi clear() moi 0x34 -> phai doc NGAY sau khi ket tran, truoc tran ke tiep.
+    # DOC THUA TRUOC khi hoi mau: hoi xong thi HP len lai -> mat dau hieu party da chet het.
     defeated, alive, total = npc40.party_defeated(client.state.allies)
     log.info("[%s] 2K: xong tran idx=%d, party song %d/%d", client._label, idx, alive, total)
-    return "lost" if defeated else "won"
+    if defeated:
+        return "lost"
+    # HOI FULL HP/SP ca party sau MOI tran. Bat buoc phai lam o day: quest_mode=True lam
+    # _heal_after_battle() thoat som (client.py: "dungeon/boss flow tu quan ly heal") -> khong
+    # tu goi thi ca party khong duoc hoi giot nao suot ca thap.
+    if heal_party is not None:
+        heal_party()
+    else:
+        client.heal_full(force=True)
+    return "won"
 
 
 def _battle_points(ev, scene: int):
@@ -122,7 +132,7 @@ def _walk_to(client, point, stop_event):
         log.debug("[%s] 2K: di toi %s loi (bo qua): %s", client._label, point, e)
 
 
-def run_floor_crawl(client, ev, stop_event, on_done=None):
+def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None):
     """Leo tu tang hien tai len `top_map`. Chay thread rieng (giong npc40.run_loop).
 
     MEMBER KHONG chay ham nay: trong party, member tu dong di theo leader va khong tu di chuyen
@@ -134,6 +144,9 @@ def run_floor_crawl(client, ev, stop_event, on_done=None):
         log.warning("[%s] 2K: thieu top_map trong events.json -> khong leo", label)
         return
     client.flee_mode = False   # VAO LA DANH (khac go_to_event dat flee_mode=True)
+    # EP quest_mode suot ca thap (giong pho ban to doi): KHONG de auto-latch quyet dinh - latch
+    # chi bat khi quai > 6 luc vao tran (state.py), tran 2K it quai hon la mat skill toan man.
+    client.state.quest_mode = True
     lost = False
     try:
         while _active(client, stop_event):
@@ -159,7 +172,7 @@ def run_floor_crawl(client, ev, stop_event, on_done=None):
                 if idx == door:
                     continue
                 _walk_to(client, points[fought], stop_event)
-                res = _fight_one(client, idx, stop_event)
+                res = _fight_one(client, idx, stop_event, heal_party)
                 if res == "lost":
                     log.warning("[%s] 2K: PARTY THUA o %s (idx=%d) -> KET THUC 2K",
                                 label, _floor_label(ev, scene), idx)
@@ -185,6 +198,7 @@ def run_floor_crawl(client, ev, stop_event, on_done=None):
                 break
             log.info("[%s] 2K: da len %s", label, _floor_label(ev, client.current_map))
     finally:
+        client.state.quest_mode = False   # KHONG de ket dinh sang cac tran train sau nay
         if on_done is not None:
             try:
                 on_done(lost)

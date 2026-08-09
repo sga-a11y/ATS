@@ -310,6 +310,22 @@ def _running_party_usernames(pidx):
             if is_account_running(u) and account_clients.get(u) is not None]
 
 
+def _set_party_quest_mode(pidx, on, label=""):
+    """Bat/tat quest_mode cho CA party (leader + member).
+
+    Event danh theo party (40NPC, 2K) phai EP quest_mode thay vi de auto-latch quyet dinh:
+    latch chi bat khi quai > 6 luc vao tran (state.py) -> tran it quai la mat skill toan man.
+    Member KHONG chay vong dieu khien nao ca (bi keo vao tran cua leader) nen phai set ho.
+    """
+    n = 0
+    for u in _active_party_usernames(pidx):
+        cli = account_clients.get(u)
+        if cli is not None and cli.running:
+            cli.state.quest_mode = bool(on)
+            n += 1
+    log.info("[%s] quest_mode=%s cho %d acc trong party", label or ("P%s" % pidx), bool(on), n)
+
+
 def _active_party_usernames(pidx):
     """Acc dang duoc START, ke ca dang reconnect/chua vao world xong."""
     active = []
@@ -2293,12 +2309,29 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         with st["lock"]:
                             st["event_battle_active"] = False
                             st["event_battle_done"].set()   # THUA -> KHONG mo lai, ket thuc 2K
+                        _set_party_quest_mode(pidx, False, label)
                         log.info("[%s] (LEADER) 2K: ket thuc leo thap (%s)",
                                  label, "THUA" if lost else "xong/dung")
+                    def _heal_party_2k():
+                        # HOI FULL HP/SP CA PARTY sau moi tran (song song, giong 40NPC). Leader tu
+                        # hoi thi khong du: member cung an don, ma quest_mode=True lam
+                        # _heal_after_battle() cua tung acc thoat som.
+                        clients = [account_clients.get(u) for u in _active_party_usernames(pidx)]
+                        clients = [x for x in clients if x is not None and x.running]
+                        def _heal_one(cli):
+                            if cli.running and not cli.state.in_battle:
+                                cli.heal_full(force=True)
+                        workers = [threading.Thread(target=_heal_one, args=(cli,), daemon=True)
+                                   for cli in clients]
+                        for w in workers: w.start()
+                        for w in workers: w.join(timeout=10)
+                        log.info("[%s] (LEADER) 2K: ca party (%d acc) da hoi FULL HP/SP",
+                                 label, len(clients))
                     with st["lock"]:
                         st["event_battle_active"] = True
                     c.flee_mode = False
-                    if c.start_floor_crawl(ev, _on_crawl_done):
+                    _set_party_quest_mode(pidx, True, label)
+                    if c.start_floor_crawl(ev, _on_crawl_done, _heal_party_2k):
                         log.info("[%s] (LEADER) 2K: du party -> bat dau leo thap tu map %s",
                                  label, c.current_map)
                 elif event_party_mode:
@@ -2311,6 +2344,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         with st["lock"]:
                             st["event_battle_active"] = False
                             st["event_battle_done"].set()
+                        _set_party_quest_mode(pidx, False, label)
                         log.warning("[%s] (LEADER) 40NPC: PARTY THUA -> chon KHONG va DUNG", label)
                     def _before_npc40_repeat():
                         # npc40.run_loop da chon NO + dong dialog truoc khi vao day. Luc nay moi duoc
@@ -2329,6 +2363,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     with st["lock"]:
                         st["event_battle_active"] = True
                     c.flee_mode = False
+                    _set_party_quest_mode(pidx, True, label)
                     if c.start_npc40_loop(point, _on_npc40_loss, _before_npc40_repeat):
                         log.info("[%s] (LEADER) 40NPC: du party -> den %s va bat dau lap battle", label, point)
                 elif train_on_map:
