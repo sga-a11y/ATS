@@ -1,19 +1,19 @@
-"""Event kieu LEO THAP nhieu tang (vd Nhi Kieu / '2K': map 12922 -> 12959).
+"""Event kieu LEO THAP nhieu tang (Nhi Kieu / '2K': 12922 -> 12959).
 
-KHAC event 40NPC (`kind: npc_repeat`, dung yen 1 cho mo lai tran cung diem): tang nao cung la
-"di toi diem co dinh -> NPC hien thoai -> vao tran -> danh xong -> di tiep toi cong -> len tang".
+Boc tu capture that `captures/nhikieu_2k_tang1_9_20260809.pcap` (leader 13e8e44c + 4 member,
+di lien tuc 12921 -> 12932 roi THUA):
 
-DUONG DI: KHONG chep cung toa do tung buoc. Toa do tam cong + door index cua TUNG TANG da co
-san trong `world_nav.json` (edges + gates) -> doc tu do, roi de TIM DUONG THONG MINH
-(`navigate_to` -> Ground.mmg find_world_path) tu lo duong di. Door len tang KHONG co dinh
-(thay 1/2/3/5 tuy tang) -> tuyet doi khong hardcode.
-
-CONG: cong TRONG thap la cong THUONG -> `_enter_gate`. Chi rieng cong VAO event (12921->12922)
-moi co cinematic (va chi o LAN DAU) -> do `go_to_event`/`_event_gate` lo, khong phai viec o day.
-
-DIEM NPC: khong can biet toa do. NPC nam tren duong len cong; bot cu di ve phia cong, cham NPC
-thi thoai bat len va CHAN di chuyen -> phat hien bang "di ma khong nhuc nhich" roi bam thoai
-(`_dialog_until_battle`) de vao tran.
+- Tang LIEN TIEP: 12921(cho) -> 12922 -> ... . Map id doc tu S2C 0x0c (0x03 KHONG bat moi lan
+  doi tang -> dung 0x03 de theo tang se sot).
+- MOI tuong tac tren tang = C2S `0x14 0800 [idx]`, DUNG CHUNG opcode cho ca danh quai lan cong:
+  * idx cua CONG len tang: lay tu world_nav.json - da doi chieu capture, KHOP 10/10 tang, ke ca
+    tang 12930 dung door 3 (khong phai 2).
+  * idx DANH QUAI: cac idx con lai. Quan sat 11/11 tang: nam trong 3..6, tru dung idx cua cong.
+    (vd 12930 gui 4,5,6 vi cong la 3; cac tang khac gui 3,4,5 vi cong la 1/2.)
+- THUA: KHONG dua vao "bi day ve 12003" - do la truong hop bay hon; thua binh thuong van dung
+  yen tai cho. Dung `npc40.party_defeated(state.allies)` - dung ham repo da dung cho 40NPC.
+- Moc bat dau/ket thuc tran: theo KNOWLEDGE muc 5 + CLAUDE.md -> bam `state.in_battle`
+  (`_wait_combat_clear`), KHONG tu che moc moi.
 """
 
 from __future__ import annotations
@@ -21,11 +21,14 @@ from __future__ import annotations
 import logging
 import time
 
+from . import npc40
+
 log = logging.getLogger("bot")
 
-_MAX_FLOOR_SECONDS = 600.0     # tran/tang ket qua lau -> bo tang, khoi treo vo han
-_ARRIVE_TOL = 60               # coi nhu da toi cong khi cach tam cong <= 60px
-_STUCK_TRIES = 3               # so lan di ma khong nhuc nhich -> coi la dang bi thoai chan
+_BATTLE_IDX_RANGE = range(3, 9)   # idx danh quai quan sat duoc (3..6); quet rong hon 1 chut
+_BATTLE_WAIT = 6.0                # cho sau khi gui idx de biet co vao tran khong
+_MAX_FLOOR_SECONDS = 900.0
+_WALK_BUDGET = 45.0               # ngan sach di toi cong moi tang (best-effort)
 
 
 def _nav():
@@ -38,11 +41,8 @@ def _nav():
 def _up_gate(scene: int):
     """(next_scene, door, (x,y)) cua cong LEN TANG, suy tu world_nav.json.
 
-    KHONG gia dinh `scene + 1`: thap co lo hong (12940 khong ton tai, 12939 noi thang len
-    12944). Lay canh co target_scene LON HON scene va gan nhat.
-
-    Tra None neu world_nav khong co canh len (tang 12934/12939/12943/12949/12954 chi co cong
-    di xuong - nghi la cong len chi hien sau khi don sach tang).
+    KHONG gia dinh `scene + 1`: thap co lo hong (12940 khong ton tai, 12939 noi thang 12944).
+    Tra None neu khong co canh len (12934/12939/12943/12949/12954 chi co cong xuong).
     """
     nav = _nav()
     if nav is None:
@@ -60,112 +60,98 @@ def _up_gate(scene: int):
     return best
 
 
-def _probe_gates(scene: int):
-    """Cong con lai cua tang (loai cac cong DI XUONG) - de do khi world_nav thieu canh len."""
-    nav = _nav()
-    if nav is None:
-        return []
-    down = {
-        int(e["door"]) for e in nav.data.get("edges", [])
-        if int(e["scene"]) == int(scene) and int(e["target_scene"]) < int(scene)
-    }
-    out = []
-    for door, gate in (nav.gates.get(str(int(scene)), {}) or {}).items():
-        if int(door) in down or not gate.get("center"):
-            continue
-        out.append((int(door), tuple(gate["center"])))
-    return sorted(out)
-
-
-def _finish_battle(client, stop_event):
-    """Cho HET tran THAT SU (0x14 sub0700/0800) roi moi di tiep - di giua tran thi server nuot lenh."""
-    client._wait_combat_clear(idle=3.0)
+def _active(client, stop_event):
     return client.running and not stop_event.is_set()
 
 
-def _walk_to_gate(client, center, stop_event) -> bool:
-    """Di toi tam cong bang TIM DUONG THONG MINH, danh moi tran chan duong.
+def _fight_one(client, idx: int, stop_event):
+    """Gui `0x14 0800 [idx]` roi cho xem co vao tran khong.
 
-    `navigate_to(flee=False)` tu di tung chang theo Ground.mmg va cho het tran neu dinh tran.
-    Nhung THOAI NPC (chua thanh tran) thi no khong biet - thoai chan di chuyen nen nhan vat dung
-    yen. Phat hien bang vi tri khong doi qua `_STUCK_TRIES` vong -> bam thoai de vao tran.
+    Tra: "won" (danh xong, con song) | "lost" (party chet het) | None (idx nay khong ra tran).
+    """
+    client.send(0x14, b"\x08\x00" + bytes([idx & 0xFF]) + b"\x00")
+    t0 = time.time()
+    while _active(client, stop_event) and time.time() - t0 < _BATTLE_WAIT:
+        if client.state.in_battle:
+            break
+        time.sleep(0.4)
+    else:
+        return None   # het gio ma khong vao tran -> idx nay khong phai diem danh quai
+    if not _active(client, stop_event):
+        return None
+    client._wait_combat_clear(idle=3.0, cap=_MAX_FLOOR_SECONDS)
+    # allies bi clear() moi 0x34 -> phai doc NGAY sau khi ket tran, truoc tran ke tiep.
+    defeated, alive, total = npc40.party_defeated(client.state.allies)
+    log.info("[%s] 2K: xong tran idx=%d, party song %d/%d", client._label, idx, alive, total)
+    return "lost" if defeated else "won"
+
+
+def _walk_toward_gate(client, center, stop_event):
+    """Di ve phia cong bang TIM DUONG THONG MINH, ngan sach ngan.
+
+    CHUA CHAC tuong tac co doi dung gan cong khong (capture: rat it goi 0x06 moi tang, va toa do
+    trong 0x0c chua giai duoc chac chan) -> di best-effort roi VAN tuong tac, khong chan duong.
     """
     t0 = time.time()
-    stuck = 0
-    last_pos = None
-    while client.running and not stop_event.is_set():
-        if time.time() - t0 > _MAX_FLOOR_SECONDS:
-            log.warning("[%s] 2K: qua %.0fs chua toi cong %s -> bo tang nay",
-                        client._label, _MAX_FLOOR_SECONDS, center)
-            return False
-        client.navigate_to(*center, flee=False, abort=lambda: stop_event.is_set())
-        if client.state.in_battle:
-            if not _finish_battle(client, stop_event):
-                return False
-            stuck = 0
-            last_pos = None
-            continue
-        pos = client.pos
-        if pos and abs(pos[0] - center[0]) <= _ARRIVE_TOL and abs(pos[1] - center[1]) <= _ARRIVE_TOL:
-            return True
-        if pos is not None and pos == last_pos:
-            stuck += 1
-        else:
-            stuck = 0
-        last_pos = pos
-        if stuck >= _STUCK_TRIES:
-            # Dung yen du da goi navigate_to -> gan nhu chac chan dang bi THOAI NPC chan.
-            log.info("[%s] 2K: dung yen tai %s -> bam thoai NPC de vao tran", client._label, pos)
-            client._dialog_until_battle(cap_n=12, gap=0.8)
-            if not _finish_battle(client, stop_event):
-                return False
-            stuck = 0
-            last_pos = None
-    return False
+    try:
+        client.navigate_to(*center, flee=False,
+                           abort=lambda: stop_event.is_set() or time.time() - t0 > _WALK_BUDGET)
+    except Exception as e:
+        log.debug("[%s] 2K: di toi cong loi (bo qua): %s", client._label, e)
 
 
 def run_floor_crawl(client, ev, stop_event, on_done=None):
-    """Leo tu tang hien tai len `top_map`. Chay trong thread rieng (giong npc40.run_loop)."""
+    """Leo tu tang hien tai len `top_map`. Chay thread rieng (giong npc40.run_loop).
+
+    MEMBER KHONG chay ham nay: trong party, member tu dong di theo leader va khong tu di chuyen
+    duoc (KNOWLEDGE muc 'Di chuyen': 0x06 bi vo hieu khi o trong party).
+    """
     label = client._label
     top = int((ev.get("party_battle") or {}).get("top_map") or 0)
     if not top:
         log.warning("[%s] 2K: thieu top_map trong events.json -> khong leo", label)
         return
-    client.flee_mode = False   # VAO LA DANH, khong bo chay (khac go_to_event dat flee_mode=True)
+    client.flee_mode = False   # VAO LA DANH (khac go_to_event dat flee_mode=True)
+    lost = False
     try:
-        while client.running and not stop_event.is_set():
+        while _active(client, stop_event):
             scene = int(client.current_map or 0)
             if scene >= top:
                 log.info("[%s] 2K: da toi tang cao nhat %s -> XONG", label, scene)
                 break
             up = _up_gate(scene)
             if up is None:
-                cands = _probe_gates(scene)
-                if not cands:
-                    log.warning("[%s] 2K: tang %s KHONG co cong len trong world_nav va khong con "
-                                "cong nao de do -> DUNG o day. Nghi la tang chot: cong len chi hien "
-                                "sau khi don sach tang. Gui log nay de bo sung du lieu.", label, scene)
+                log.warning("[%s] 2K: tang %s KHONG co cong len trong world_nav -> DUNG o day. "
+                            "Nghi la tang chot (cong len chi hien sau khi don sach tang). "
+                            "Gui log nay de bo sung du lieu.", label, scene)
+                break
+            nxt, door, center = up
+            log.info("[%s] 2K: tang %s -> %s, cong door=%s tai %s", label, scene, nxt, door, center)
+            _walk_toward_gate(client, center, stop_event)
+            # Danh het cac diem quai cua tang: idx 3..8 TRU idx cua cong.
+            fought = 0
+            for idx in _BATTLE_IDX_RANGE:
+                if not _active(client, stop_event):
                     break
-                log.warning("[%s] 2K: tang %s thieu canh len trong world_nav -> DO cong con lai %s",
-                            label, scene, [d for d, _ in cands])
-                nxt, (door, center) = 0, cands[0]
-            else:
-                nxt, door, center = up
-            log.info("[%s] 2K: tang %s -> %s, cong door=%s tai %s",
-                     label, scene, nxt or "?", door, center)
-            if not _walk_to_gate(client, center, stop_event):
+                if idx == door:
+                    continue
+                res = _fight_one(client, idx, stop_event)
+                if res == "lost":
+                    log.warning("[%s] 2K: PARTY THUA o tang %s (idx=%d) -> KET THUC 2K",
+                                label, scene, idx)
+                    lost = True
+                    break
+                if res == "won":
+                    fought += 1
+            if lost or not _active(client, stop_event):
                 break
-            if not client.running or stop_event.is_set():
-                break
-            # Cong trong thap = cong THUONG (khong cinematic) -> _enter_gate. Dat _in_scene_gate de
-            # tran phuc kich luc qua cong duoc xu ly rieng tung acc (xem chu thich trong client).
+            if not fought:
+                log.warning("[%s] 2K: tang %s khong danh duoc tran nao (idx 3..8 deu khong ra tran) "
+                            "-> van thu qua cong", label, scene)
+            # Qua cong len tang: cung dang `0x14 0800 [idx]`, dung _enter_gate de cho map doi that.
             client._in_scene_gate = True
             try:
-                # nxt=0 khi DO cong (chua biet tang dich) -> khong ep expected_map, chi can DOI map
-                ok = client._enter_gate(center[0], center[1], door,
-                                        expected_map=(nxt or None))
-                if ok and not nxt and int(client.current_map or 0) <= scene:
-                    ok = False   # do trung cong DI XUONG -> coi nhu that bai, dung leo
+                ok = client._enter_gate(center[0], center[1], door, expected_map=nxt)
             finally:
                 client._in_scene_gate = False
             if not ok:
@@ -175,6 +161,6 @@ def run_floor_crawl(client, ev, stop_event, on_done=None):
     finally:
         if on_done is not None:
             try:
-                on_done()
+                on_done(lost)
             except Exception:
                 pass

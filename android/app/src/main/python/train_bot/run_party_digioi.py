@@ -2289,11 +2289,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         c.flee_mode = False
                         log.info("[%s] (LEADER) 2K da xong/dung -> khong leo lai", label)
                         return
-                    def _on_crawl_done():
+                    def _on_crawl_done(lost=False):
                         with st["lock"]:
                             st["event_battle_active"] = False
-                            st["event_battle_done"].set()
-                        log.info("[%s] (LEADER) 2K: ket thuc leo thap", label)
+                            st["event_battle_done"].set()   # THUA -> KHONG mo lai, ket thuc 2K
+                        log.info("[%s] (LEADER) 2K: ket thuc leo thap (%s)",
+                                 label, "THUA" if lost else "xong/dung")
                     with st["lock"]:
                         st["event_battle_active"] = True
                     c.flee_mode = False
