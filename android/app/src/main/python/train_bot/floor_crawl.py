@@ -28,6 +28,7 @@ log = logging.getLogger("bot")
 _BATTLE_IDX_RANGE = range(3, 9)   # idx danh quai quan sat duoc (3..6); quet rong hon 1 chut
 _DIALOG_CAP = 15                  # so lan bam 0x14 0600 toi da de day thoai NPC vao tran
 _DIALOG_OPEN_WAIT = 3.0           # cho THOAI mo sau khi bam idx; khong mo = diem da het quai
+_POS_REFRESH_TRIES = 4            # so lan xin lai toa do sau khi qua cong (server hay im)
 _DUNGEON_WINDOW = 3600.0          # cua so "dang trong kich ban dungeon" (gia han moi tang)
 _MAX_FLOOR_SECONDS = 900.0
 _WALK_BUDGET = 120.0              # ngan sach di 1 chang (log that: 45s/30 lenh move cho 1 diem
@@ -151,6 +152,50 @@ def _walk_to(client, point, stop_event):
         log.debug("[%s] 2K: di toi %s loi (bo qua): %s", client._label, point, e)
 
 
+def _back_gate_center(scene: int, prev_scene: int):
+    """Toa do cong tren `scene` dan NGUOC ve `prev_scene` = cho buoc ra sau khi qua cong."""
+    nav = _nav()
+    if nav is None:
+        return None
+    for edge in nav.data.get("edges", []):
+        if int(edge["scene"]) != int(scene) or int(edge["target_scene"]) != int(prev_scene):
+            continue
+        gate = nav.get_gate(scene, edge["door"])
+        if gate and gate.get("center"):
+            return tuple(gate["center"])
+    return None
+
+
+def _fix_pos_after_gate(client, prev_scene, stop_event):
+    """Sau khi qua cong: bao dam client.pos co gia tri THAT, neu khong smart path bi vo hieu.
+
+    _enter_gate dat pos=None ("vi tri cu vo nghia o map moi"). Server KHONG phai luc nao cung ban
+    0x03 self-spawn ngay: log 12:25 di LEN 12930 -> "request scene khong co self-spawn va khong co
+    pos hop le" -> navigate_to roi ve gui move MU 30 lenh (~45s). (Di XUONG thi co pos ngay nen
+    chang do chay smart path binh thuong.)
+
+    -> Kien tri xin lai vai lan; van khong duoc thi lay CONG DOI UNG lam moc: qua cong thi buoc ra
+    o cai cong dan NGUOC lai chinh cho vua di. Xac nhan bang log: xuong 12931 -> 12930 ra dung
+    (790,190) = cong cua 12930 dan ve 12931. KHONG duoc lay diem quai 1 - chuyen tang xong con
+    phai di mot doan moi toi diem quai.
+    """
+    for _ in range(_POS_REFRESH_TRIES):
+        if not _active(client, stop_event) or client.pos is not None:
+            return
+        try:
+            if client.refresh_server_position(client.current_map):
+                return
+        except Exception:
+            pass
+        time.sleep(1.0)
+    if client.pos is None:
+        back = _back_gate_center(client.current_map, prev_scene)
+        if back:
+            client.pos = back
+            log.warning("[%s] 2K: server khong tra toa do sau khi qua cong -> lay cong doi ung %s "
+                        "lam moc (tranh di mu 30 lenh)", client._label, back)
+
+
 def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None):
     """Leo tu tang hien tai len `top_map`. Chay thread rieng (giong npc40.run_loop).
 
@@ -229,6 +274,7 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None):
                             label, _floor_label(ev, scene), door)
                 break
             log.info("[%s] 2K: da len %s", label, _floor_label(ev, client.current_map))
+            _fix_pos_after_gate(client, scene, stop_event)   # co pos -> smart path, khong thi di mu
     finally:
         client.state.quest_mode = False   # KHONG de ket dinh sang cac tran train sau nay
         client._team_dungeon_until = 0.0
