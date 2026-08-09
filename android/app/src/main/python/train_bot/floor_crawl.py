@@ -86,11 +86,16 @@ def _fight_one(client, idx: int, stop_event):
     return "lost" if defeated else "won"
 
 
-def _floor_point(ev, scene: int):
-    """Diem CHOT cua tang (noi bam cac idx con lai + cong), doc tu events.json."""
-    pts = (ev.get("party_battle") or {}).get("points") or {}
-    p = pts.get(str(int(scene))) or pts.get("default")
-    return tuple(p) if p else None
+def _battle_points(ev, scene: int):
+    """[(x,y)] cac diem DANH QUAI cua tang, doc tu events.json (khong hardcode).
+
+    TANG NAO CUNG phai di toi diem roi moi bam idx (xac nhan tu capture: moi idx deu co 4-10
+    goi 0x06 di truoc). Thu tu VI TRI co dinh; so idx doi tuy tang -> diem thu k dung cho lan
+    danh thu k.
+    """
+    pts = (ev.get("party_battle") or {}).get("battle_points") or {}
+    p = pts.get(str(int(scene))) or pts.get("default") or []
+    return [tuple(x) for x in p]
 
 
 def _floor_label(ev, scene: int):
@@ -138,22 +143,17 @@ def run_floor_crawl(client, ev, stop_event, on_done=None):
                             "Gui log nay de bo sung du lieu.", label, _floor_label(ev, scene))
                 break
             nxt, door, center = up
-            point = _floor_point(ev, scene)
-            log.info("[%s] 2K: %s -> len %s (cong door=%s), diem chot %s",
-                     label, _floor_label(ev, scene), nxt, door, point)
-            # Danh het cac diem quai cua tang: idx 3..8 TRU idx cua cong.
-            # Theo capture: idx DAU bam ngay tai cho spawn (khong co goi move truoc no), cac idx
-            # sau + cong deu bam tu DIEM CHOT -> di toi diem chot TRUOC idx thu hai.
+            points = _battle_points(ev, scene)
+            log.info("[%s] 2K: %s -> len %s (cong door=%s tai %s), %d diem danh quai",
+                     label, _floor_label(ev, scene), nxt, door, center, len(points))
+            # Duyet idx tang dan, BO idx cua cong. Truoc moi lan danh: DI TOI diem tuong ung.
             fought = 0
-            walked = False
             for idx in _BATTLE_IDX_RANGE:
-                if not _active(client, stop_event):
+                if not _active(client, stop_event) or fought >= len(points):
                     break
                 if idx == door:
                     continue
-                if fought and not walked:
-                    _walk_to(client, point, stop_event)
-                    walked = True
+                _walk_to(client, points[fought], stop_event)
                 res = _fight_one(client, idx, stop_event)
                 if res == "lost":
                     log.warning("[%s] 2K: PARTY THUA o %s (idx=%d) -> KET THUC 2K",
@@ -164,11 +164,10 @@ def run_floor_crawl(client, ev, stop_event, on_done=None):
                     fought += 1
             if lost or not _active(client, stop_event):
                 break
-            if not walked:
-                _walk_to(client, point, stop_event)   # cong cung bam tu diem chot
-            if not fought:
-                log.warning("[%s] 2K: %s khong danh duoc tran nao (idx 3..8 deu khong ra tran) "
-                            "-> van thu qua cong", label, _floor_label(ev, scene))
+            if fought < len(points):
+                log.warning("[%s] 2K: %s chi danh duoc %d/%d tran -> van thu qua cong",
+                            label, _floor_label(ev, scene), fought, len(points))
+            _walk_to(client, center, stop_event)   # di toi CONG (toa do tu world_nav)
             # Qua cong len tang: cung dang `0x14 0800 [idx]`, dung _enter_gate de cho map doi that.
             client._in_scene_gate = True
             try:

@@ -58,23 +58,37 @@
         "kind": "floor_crawl",
         "top_map": 12959,
         "floor_base": 12923,
-        "_note_points": "Diem chot moi tang: idx DAU danh ngay tai cho spawn (capture khong co goi move), sau do di toi diem nay roi bam cac idx con lai + cong. 12922/12923 la khu vao, layout khac; tu 12924 tro len giong nhau -> dung 'default'.",
-        "points": {
+        "_note_points": "Diem DANH QUAI moi tang (boc tu capture): TANG NAO CUNG PHAI DI TOI DIEM roi moi bam idx. Thu tu VI TRI co dinh; so idx thi doi tuy tang (vd 12930 dung 4,5,6 thay vi 3,4,5) -> duyet idx tang dan, diem thu k dung cho lan danh thu k. Diem CONG khong de o day - lay tu world_nav.json (da doi chieu capture: khop).",
+        "battle_points": {
           "12922": [
-            334,
-            401
+            [
+              987,
+              439
+            ],
+            [
+              370,
+              410
+            ]
           ],
           "12923": [
-            665,
-            521
-          ],
-          "12924": [
-            250,
-            670
+            [
+              590,
+              490
+            ]
           ],
           "default": [
-            290,
-            710
+            [
+              510,
+              1190
+            ],
+            [
+              290,
+              730
+            ],
+            [
+              510,
+              330
+            ]
           ]
         }
       }
