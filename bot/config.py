@@ -326,6 +326,30 @@ def _load_scene_names():
 SCENE_NAMES = _load_scene_names()   # map_id (int) -> ten map theo game
 
 
+def map_display_name(map_id):
+    """Ten map de HIEN THI (GUI/APK): ten theo game + so tang neu la thap event.
+
+    Thap 2K: 12924..12938 deu ten "Thang Thap" -> khong biet dang o tang may. Them so tang
+    (suy tu party_battle.floor_base cua event) -> "Thang Thap 8". Map khac tra ten theo game.
+    """
+    try:
+        mid = int(map_id)
+    except (TypeError, ValueError):
+        return str(map_id)
+    nm = SCENE_NAMES.get(mid)
+    if not nm:
+        return str(mid)
+    for ev in (EVENTS or {}).values():
+        pb = (ev or {}).get("party_battle") or {}
+        if pb.get("kind") != "floor_crawl":
+            continue
+        base = int(pb.get("floor_base") or 0)
+        top = int(pb.get("top_map") or 0)
+        if base and top and base < mid <= top:
+            return "%s %d" % (nm, mid - base)
+    return nm
+
+
 def scene_name(map_id, with_id=True):
     """Ten map theo game: 'Thang Thap (12924)'. Khong biet ten -> tra chinh map id."""
     try:

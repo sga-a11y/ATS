@@ -293,7 +293,16 @@ def _map_name(mid):
                 pass
         _MAP_NAMES.setdefault(10991, "40 NPC")   # map event 40 NPC (dest chua bat duoc qua capture)
         _MAP_NAMES.setdefault(55002, "Nhà Nam Tinh Quân")   # map di-bo dac biet (khong teleport)
-    return _MAP_NAMES.get(mid, str(mid))
+    nm = _MAP_NAMES.get(mid)
+    if nm:
+        return nm
+    # Khong nam trong cac bang gõ tay o tren -> lay TEN THEO GAME (scene_names.json, boc tu
+    # Data/TextData_C.dat). Truoc day rot thang ve str(mid) nen cac tang thap 2K hien so tho
+    # (12931...). config.map_display_name them ca so tang cho thap event.
+    try:
+        return config.map_display_name(mid)
+    except Exception:
+        return str(mid)
 
 
 _DEFAULT_GROUP = "Chưa phân nhóm"   # nhom mac dinh cho map chua gan group

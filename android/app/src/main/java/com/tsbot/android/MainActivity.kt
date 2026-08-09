@@ -869,6 +869,32 @@ fun loadStatusMapNames(context: Context): Map<Int, String> = buildMap {
     put(49942, "Dị Giới")
     put(10991, "40 NPC")
     put(55002, "Nhà Nam Tinh Quân")
+
+    // TEN THEO GAME cho MOI map con lai (scene_names.json - boc tu Data/TextData_C.dat bang
+    // tools/crack_scene_names.py). Dat CUOI + dung putIfAbsent de cac ten gõ tay o tren van
+    // thang. Thieu buoc nay: map ngoai cac bang tren hien SO THO (vd tang thap 2K "12931").
+    runCatching {
+        val root = readMapAsset("scene_names.json")
+        root.keys().forEach { k ->
+            val mapId = k.toIntOrNull() ?: return@forEach
+            if (mapId !in this) put(mapId, root.optString(k, k))
+        }
+    }
+    // Thap event (2K): 12924..12938 deu ten "Thang Thap" -> them SO TANG cho biet dang o dau.
+    runCatching {
+        val root = readMapAsset("events.json")
+        (root.optJSONObject("events") ?: root).forEachObject { _, info ->
+            val pb = info.optJSONObject("party_battle") ?: return@forEachObject
+            if (pb.optString("kind") != "floor_crawl") return@forEachObject
+            val base = pb.optInt("floor_base", 0)
+            val top = pb.optInt("top_map", 0)
+            if (base <= 0 || top <= 0) return@forEachObject
+            for (mid in (base + 1)..top) {
+                val nm = this[mid] ?: continue
+                if (nm.firstOrNull()?.isDigit() == false) put(mid, "$nm ${mid - base}")
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
