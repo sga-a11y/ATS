@@ -364,12 +364,19 @@ def _party_same_map(st, username, cur_map, expected, stopped, label="", role="",
     return False
 
 
-def _manual_whitelist_names(pidx):
-    """Ten trong whitelist MA KHONG phai bot cua party nay = nick NGUOI CHOI dieu khien TAY.
+def _manual_whitelist_names(pidx, c=None):
+    """Ten whitelist thoa CA BA dieu kien -> moi duoc cam doi kenh:
 
-    Bot doi kenh duoc cho chinh no, NHUNG KHONG doi ho nick tay duoc. Nen he doi kenh la nick tay
-    bi bo lai kenh cu -> khac instance -> KHONG nhan duoc loi moi party du dang dung canh nhau
-    (bug that 15:03: ca doi + brub o kenh 1, bot nhay sang kenh 3 roi moi brub -> moi vao cho trong).
+      1. KHONG phai acc bot nao dang chay (doi chieu account_clients TOAN BO, moi party -
+         nick do co the la bot cua party khac, van la bot, van tu doi kenh duoc).
+      2. La nick NGUOI CHOI dieu khien tay (he qua cua 1).
+      3. DANG DUNG DO THAT: leader thay entity cua no va no o cung map hien tai.
+
+    Bot doi kenh duoc cho chinh no nhung KHONG doi ho nick tay -> doi la bo roi ho o kenh cu,
+    ho khong nhan duoc loi moi party (bug that 15:03). NHUNG chi cam khi ho CO MAT: mot nick
+    khong dung do thi giu nguyen kenh chang cuu duoc ai, chi lam party nam rai nhieu kenh ->
+    3/4 member khong nhan duoc loi moi -> 1/4 -> giai tan -> lap vo tan (bug that 17:25:
+    member o kenh 3/3/2, leader kenh 1, whitelist ['tuyet','chihao'] deu KHONG co entity).
     """
     try:
         wanted = (config.leaders_for(pidx) if hasattr(config, "leaders_for")
@@ -377,13 +384,36 @@ def _manual_whitelist_names(pidx):
     except Exception:
         wanted = []
     bots = set()
-    for u in party_accounts(pidx):
+    for u, cli in list(account_clients.items()):
         bots.add(str(u).strip().casefold())
-        nm = getattr(account_clients.get(u), "char_name", None)
+        nm = getattr(cli, "char_name", None)
         if nm:
             bots.add(str(nm).strip().casefold())
-    return [str(x).strip() for x in (wanted or [])
-            if str(x).strip() and str(x).strip().casefold() not in bots]
+    for u in party_accounts(pidx):
+        bots.add(str(u).strip().casefold())
+
+    cands = [str(x).strip() for x in (wanted or [])
+             if str(x).strip() and str(x).strip().casefold() not in bots]
+    if not cands or c is None:
+        return []
+
+    out = []
+    for name in cands:
+        key = name.casefold()
+        ent = None
+        for e, names in list((getattr(c, "entity_names", None) or {}).items()):
+            if any(str(x).strip().casefold() == key for x in (names or ())):
+                ent = e
+                break
+        if ent is None:
+            continue                      # chua thay bao gio -> khong co mat -> KHONG cam
+        try:
+            visible, _why = c._entity_is_visible_on_current_scene(ent)
+        except Exception:
+            visible = False
+        if visible:
+            out.append(name)              # co mat that -> cam doi kenh
+    return out
 
 
 def _party_left_tower(pidx, ev):
@@ -1506,7 +1536,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # CO nick TAY trong whitelist -> TUYET DOI khong doi kenh: doi la bo roi ho
                     # o kenh cu, ho khong thay/khong nhan duoc loi moi nua (bot chi doi kenh duoc
                     # cho cac acc cua chinh no).
-                    _manual_wl = _manual_whitelist_names(pidx)
+                    _manual_wl = _manual_whitelist_names(pidx, c)
                     if _manual_wl:
                         log.info("[%s] (%s) co nick TAY trong whitelist %s -> GIU NGUYEN kenh %s "
                                  "(doi kenh se bo roi ho)", label, role, _manual_wl, c.current_channel)
@@ -2490,9 +2520,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         c.flee_mode = True
                         c.leave_party(); reset_party_joined(pidx)
                         st["invited"].clear()
-                        do_channel_sync()
+                        # BAO MEMBER TRUOC roi moi sync. Truoc day do_channel_sync() dung TRUOC
+                        # resync_gen += 1: leader dung cho member bao cao map trong khi member
+                        # (dang o keepalive) CHUA HE biet co vong sync moi -> khong ai bao ->
+                        # TIMEOUT 60s (1/5) -> lap vo tan (bug that 17:25-17:31).
                         with st["lock"]:
                             st["resync_gen"] += 1
+                        do_channel_sync()
                         st["invited"].set()
                         _resync_t0 = time.time(); _t0 = time.time()
                         continue
@@ -2523,8 +2557,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     "kenh + moi lai", label, joined_member_count(pidx), st["n_members"])
                         c.leave_party(); reset_party_joined(pidx)
                         st["invited"].clear()
-                        do_channel_sync()               # picker: chon kenh lai + set channel_ready
+                        # BAO MEMBER TRUOC roi moi sync (xem chu thich nhanh Di Gioi): dat
+                        # resync_gen SAU do_channel_sync la leader cho mot minh, khong ai bao cao.
                         with st["lock"]: st["resync_gen"] += 1   # bao member cung roi party + sync kenh
+                        do_channel_sync()               # picker: chon kenh lai + set channel_ready
                         st["invited"].set()
                         _resync_t0 = time.time(); _t0 = time.time()
                         continue
