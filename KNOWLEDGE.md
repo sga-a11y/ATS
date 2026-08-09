@@ -774,6 +774,12 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
 - S2C `0x07` sub `00 00` co layout
   `[entity 8B][map_id u16 LE][x u16 LE][y u16 LE]` (offset full packet:
   entity `9:17`, map `17:19`, x `19:21`, y `21:23`) -> vi tri entity luc vao tam nhin/map.
+- **XAC NHAN BANG CLIENT LUA (`Common/protocal.lua`, giai ma 2026-08-09):**
+  - `protocolTable[7][0]`: `ReadInt64 roleId` -> `ReadUInt16 sceneId` ->
+    `Vector2.New(ReadUInt16, ReadUInt16)` = x,y.
+  - `protocolTable[12][0]` (0x0c ChangeScene): `roleId` -> `sceneId` -> `position` ->
+    `sceneTag(u16)` -> `instanceId(u16)` -> equip... => **client biet vi tri sau khi doi map
+    CHINH TU GOI NAY**, khong doi `0x03`. `RoleController:ChangeScene` chi `Teleport(position)`.
 - **S2C `0x0c` ChangeScene sub `00 00` CUNG layout do** (`[entity 8B][map u16][x u16][y u16]`,
   x `19:21`, y `21:23`) -> **doi map la server BAO LUON toa do moi**, khong can doi `0x03`.
   Xac nhan capture 2K (`nhikieu_2k_tang1_9_20260809.pcap`): vao 12922 -> `(1490,490)`, dung bang
@@ -831,6 +837,10 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
 **Da giai ma Lua, khong can hook runtime:**
 - `LuaFileUtils.ReadFile` goi `CryptUtils.DeCrypt`; `ProjectSetting.cctor` cung cap AES/Rijndael
   CBC PKCS7 key `1234567870541704`, IV `7054170412345678`.
+- **TOOL SAN: `tools/decrypt_lua.py`** (dung key/IV tren). Lam lai bat cu luc nao:
+  `adb pull /sdcard/Android/data/com.vtcmobile.gz06/files/Lua _lua_enc`
+  `python tools/decrypt_lua.py _lua_enc _lua_dec`   -> 767 file .lua doc duoc.
+  File Lua tren may DA MA HOA - dung mat cong do quy luat/XOR, cu chay tool nay.
 - Da decrypt va doi chieu `MapManager.lua`, `MapData.lua`, `FindWay.lua`, `BlockController.lua`,
   `MoveController.lua`, `GridController.lua`, `Scene.lua`.
 - `BLOCK_UNIT=20`, `BLOCK_CONVERT=0.05`; world -> block:

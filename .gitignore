@@ -91,3 +91,7 @@ scan_maps/
 mob_packets_*.jsonl
 aTSBot-drive/
 *.pid
+_lua_enc/
+_lua_dec/
+_lua_*.lua
+_luadump/
