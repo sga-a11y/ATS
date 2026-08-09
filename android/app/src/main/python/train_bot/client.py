@@ -7539,6 +7539,58 @@ class GameClient:
                 return int(edge["door"]), tuple(gate["center"])
         return None
 
+    def regroup_to_event_start(self, ev) -> bool:
+        """DI BO xuong map tap trung cua event (dest_map, vd 2K = 12922 Thong Dao).
+
+        Trong map 2K KHONG teleport duoc (xem `exit._note` trong events.json) va chon lai event
+        (0x4d) tu tang sau cung khong chac keo ve duoc -> cach DUY NHAT chac chan la di bo xuong
+        theo cong, dung tim duong thong minh (world_nav co du cong xuong: 12931 -> 12003 qua 11
+        cong). Dung khi party bi LECH TANG -> gom lai o dest_map roi leo lai tu day.
+        """
+        dest = int((ev or {}).get("dest_map") or 0)
+        cur = int(self.current_map or 0)
+        if not dest:
+            return False
+        if cur == dest:
+            return True
+        log.info("[%s] gom doi: di bo %s -> %s (khong teleport duoc trong map event)",
+                 self._label, cur, dest)
+        self.flee_mode = True   # dang di gom doi -> ne tran, khong dung lai danh
+        if not self.refresh_server_position(cur):
+            return False
+        ok = self.follow_smart_scene_route(cur, dest, flee=True, refresh_position=False)
+        if not ok:
+            log.warning("[%s] gom doi: KHONG di bo duoc %s -> %s", self._label, cur, dest)
+        return ok
+
+    def regroup_to_event_start(self, ev, dest: int = None) -> bool:
+        """DI BO xuong map tap trung cua event. `dest` = tang gom (mac dinh dest_map = 12922).
+
+        Trong map event KHONG teleport duoc (xem `exit._note` trong events.json), va chon lai
+        event (0x4d) tu tang sau thi chua co bang chung la keo ve duoc -> cach chac chan la DI BO
+        xuong theo cong. KHONG co tim duong moi: dung dung `follow_smart_scene_route` nhu
+        exit_event(), chi khac DICH (dest_map thay vi exit.out_map) - world_nav du cong xuong
+        (12931 -> 12003 qua 11 cong).
+        Dung khi party BI LECH TANG -> gom nhau o TANG THAP NHAT ma ca doi toi duoc (xem
+        _2k_regroup_target trong run_party_digioi) roi leo lai tu day. Thap nhat co the la
+        12922 - luc do acc dang o NGOAI event tele vao binh thuong.
+        """
+        dest = int(dest or (ev or {}).get("dest_map") or 0)
+        cur = int(self.current_map or 0)
+        if not dest or not cur:
+            return False
+        if cur == dest:
+            return True
+        log.info("[%s] gom doi: di bo %s -> %s (map event khong teleport duoc)",
+                 self._label, cur, dest)
+        self.flee_mode = True   # dang di gom doi -> ne tran, khong dung lai danh
+        if not self.refresh_server_position(cur):
+            return False
+        ok = self.follow_smart_scene_route(cur, dest, flee=True, refresh_position=False)
+        if not ok:
+            log.warning("[%s] gom doi: KHONG di bo duoc %s -> %s", self._label, cur, dest)
+        return ok
+
     def start_floor_crawl(self, ev, on_done=None, heal_party=None) -> bool:
         """Bat dau leo thap (event kieu floor_crawl, vd Nhi Kieu). Chay thread rieng nhu npc40."""
         if getattr(self, "_floor_crawl_started", False):

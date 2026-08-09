@@ -364,6 +364,21 @@ def _party_same_map(st, username, cur_map, expected, stopped, label="", role="",
     return False
 
 
+def _2k_regroup_target(st, ev):
+    """Tang GOM DOI khi party lech tang: TANG THAP NHAT ma ca doi toi duoc.
+
+    - Ca doi deu trong thap -> min(map): dua o tang thap KHOI PHAI DI, dua tren di bo xuong.
+    - Co acc dang o NGOAI event -> phai la cua vao dest_map (12922): acc ngoai tele vao binh
+      thuong (go_to_event), acc trong thap di bo xuong day.
+    """
+    dest = int((ev or {}).get("dest_map") or 0)
+    with st["lock"]:
+        maps = [m for m in st.get("event_start_map", {}).values() if m]
+    if maps and all(_inside_floor_crawl_tower(ev, m) for m in maps):
+        return min(maps)
+    return dest
+
+
 def _decide_2k_resume(st, username, cur_map, ev, expected, stopped, label=""):
     """Quyet dinh RESUME 2K o CAP PARTY (khong phai tung acc tu quyet).
 
@@ -2228,6 +2243,29 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _resume_2k = True
                 log.info("[%s] (%s) 2K: ca party dang o trong thap (%s) -> leo tiep tu day",
                          label, role, config.scene_name(c.current_map))
+            elif _inside_floor_crawl_tower(ev, c.current_map):
+                # Con trong thap nhung PARTY LECH TANG -> phai gom lai. Trong map 2K KHONG
+                # teleport duoc, nen DI BO xuong map tap trung (12922) theo cong; acc dang o
+                # NGOAI thap thi vao binh thuong bang go_to_event (nhanh else ben duoi).
+                # KHONG dat _resume_2k: sau khi gom o 12922 van phai sync kenh (acc vao tu ngoai
+                # co the roi vao instance khac).
+                log.warning("[%s] (%s) 2K: party lech tang -> DI BO xuong %s de gom doi",
+                            label, role, config.scene_name(int(ev.get("dest_map") or 0)))
+                try:
+                    c.regroup_to_event_start(ev)
+                except Exception as e:
+                    log.warning("[%s] (%s) 2K: loi di bo gom doi: %s", label, role, e)
+            elif _inside_floor_crawl_tower(ev, c.current_map):
+                # Con trong thap nhung PARTY LECH TANG -> gom nhau. Trong map event KHONG teleport
+                # duoc, nen DI BO xuong TANG THAP NHAT ca doi toi duoc. KHONG dat _resume_2k: sau
+                # khi gom van phai sync kenh (acc vao tu ngoai co the o instance khac).
+                _tgt = _2k_regroup_target(st, ev)
+                log.warning("[%s] (%s) 2K: party lech tang -> di bo xuong %s de gom doi",
+                            label, role, config.scene_name(_tgt))
+                try:
+                    c.regroup_to_event_start(ev, dest=_tgt)
+                except Exception as e:
+                    log.warning("[%s] (%s) 2K: loi di bo gom doi: %s", label, role, e)
             else:
                 try:
                     c.go_to_event(ev)   # tu day het cinematic (9x 0x14 0600) roi thoat cutscene
