@@ -34,12 +34,30 @@ Dữ liệu nằm ở `events.json → events.nhi_kieu`. Code chạy: `client.go
 `do_team_dungeon_lv20` — nó đã đúng hình dạng "nhiều chặng nối tiếp": một list, mỗi phần tử là
 `{thoại, moves, transit}` cho một chặng. Khác là 2K thay `moves` cứng bằng smart route + scan quái.
 
+## Bản đồ tháp — ĐÃ CÓ SẴN trong `world_nav.json` (không cần pcap)
+Giả thuyết "map ID tăng dần" đã được xác nhận bằng dữ liệu:
+
+- Tháp chính: **12922 → 12959** (38 tầng), 12921 là map chờ. `12940` không tồn tại.
+- `edges` có sẵn cạnh nối từng tầng kèm **door index**, `gates` có sẵn **toạ độ tâm cổng**.
+  38/39 map có toạ độ cổng → leo tầng dựng được hoàn toàn từ dữ liệu tĩnh.
+- Door index lên tầng **không cố định**: đa số `2`, nhưng có `1` (12925, 12927, 12944, 12950-12953),
+  `3` (12930), `5` (12945-12947, 12955-12958). ⇒ **phải đọc từ `world_nav.json`, không hardcode.**
+- Nhánh riêng `12941 → 12942 → 12943` (12941 có cổng ra 10997) — chưa rõ là nhánh khác của 2K hay
+  event khác; đừng gộp vào tháp chính khi chưa xác minh.
+
+### Tầng KHÔNG có cổng lên trong dữ liệu tĩnh — **giả thuyết, cần pcap xác nhận**
+`12934, 12939, 12949, 12954` (và `12943` ở nhánh riêng) chỉ có **door 1 = đi xuống**, không có cổng
+lên. Nghi là **tầng boss/chốt**: cổng lên chỉ hiện sau khi dọn sạch tầng → không nằm trong file tĩnh.
+Chưa xác minh, **không được code như thể đã chắc**.
+
 ## Còn chờ pcap để chốt (KHÔNG được đoán)
-- **Chuyển tầng bằng gì**: cổng `0x14 08 [idx]`, đổi scene `0x0c`, hay transit riêng?
-- **Map id từng tầng** (12922 là tầng 1?)
 - **Cách chạm quái**: tự lao vào hay phải bấm/tương tác?
 - **Dấu hiệu "sạch quái tầng này"** để biết lúc nào được đi tiếp.
-- Số tầng; mốc kết thúc / thất bại.
+- **4 tầng chốt** ở trên: cổng lên xuất hiện thế nào sau khi clear?
+- Mốc kết thúc / thất bại; có phải leo hết 12959 không.
+
+(Đã tự trả lời được nhờ dữ liệu tĩnh: chuyển tầng bằng cổng thường + door index; map id từng tầng;
+số tầng ≈ 38.)
 
 Capture cần: từ lúc chọn event, qua cổng vào, **trọn 3 tầng liên tiếp** (2 tầng chưa đủ thấy quy
 luật lặp), và nếu tiện thì cả lúc kết thúc/thoát ra. Đặt tên file có `2k` hoặc `nhikieu`
