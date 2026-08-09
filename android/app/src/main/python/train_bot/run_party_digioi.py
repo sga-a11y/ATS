@@ -364,6 +364,28 @@ def _party_same_map(st, username, cur_map, expected, stopped, label="", role="",
     return False
 
 
+def _manual_whitelist_names(pidx):
+    """Ten trong whitelist MA KHONG phai bot cua party nay = nick NGUOI CHOI dieu khien TAY.
+
+    Bot doi kenh duoc cho chinh no, NHUNG KHONG doi ho nick tay duoc. Nen he doi kenh la nick tay
+    bi bo lai kenh cu -> khac instance -> KHONG nhan duoc loi moi party du dang dung canh nhau
+    (bug that 15:03: ca doi + brub o kenh 1, bot nhay sang kenh 3 roi moi brub -> moi vao cho trong).
+    """
+    try:
+        wanted = (config.leaders_for(pidx) if hasattr(config, "leaders_for")
+                  else list(getattr(config, "PARTY_LEADERS", []) or []))
+    except Exception:
+        wanted = []
+    bots = set()
+    for u in party_accounts(pidx):
+        bots.add(str(u).strip().casefold())
+        nm = getattr(account_clients.get(u), "char_name", None)
+        if nm:
+            bots.add(str(nm).strip().casefold())
+    return [str(x).strip() for x in (wanted or [])
+            if str(x).strip() and str(x).strip().casefold() not in bots]
+
+
 def _party_left_tower(pidx, ev):
     """CO acc nao bi VANG khoi thap khong = dau hieu THUA (bay hon -> server day ve out_map).
 
@@ -1481,7 +1503,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         st["channel_map_reports"] = {}
                         st["channel_sync_gen"] = int(st.get("channel_sync_gen", 0)) + 1
                         sync_gen = st["channel_sync_gen"]
-                    r = c.pick_best_channel(need=need)
+                    # CO nick TAY trong whitelist -> TUYET DOI khong doi kenh: doi la bo roi ho
+                    # o kenh cu, ho khong thay/khong nhan duoc loi moi nua (bot chi doi kenh duoc
+                    # cho cac acc cua chinh no).
+                    _manual_wl = _manual_whitelist_names(pidx)
+                    if _manual_wl:
+                        log.info("[%s] (%s) co nick TAY trong whitelist %s -> GIU NGUYEN kenh %s "
+                                 "(doi kenh se bo roi ho)", label, role, _manual_wl, c.current_channel)
+                        r = 0
+                    else:
+                        r = c.pick_best_channel(need=need)
                     if r is None:   # co kenh nhung khong kenh nao du cho ca party -> CHO kenh trong
                         if time.time() - t0 <= 30:
                             time.sleep(3)          # 30s dau: thu lien tuc
