@@ -1326,9 +1326,18 @@ class GameClient:
         sub0700/sub0800 END that). KHONG ep False theo enemy rong hay idle: server co the con dang
         giai quyet animation/ket tran; gui dialog trong khoang nay se bi dong ket noi."""
         busy = (time.time() - self.last_turn_time) < idle_secs
+        # CHI suy luan theo member khi DUNG LA MOT TRAN PARTY (battle_tracker.generation != 0).
+        # Tran party moi co chuyen "member xac nhan ket tran thay minh"; con moi acc danh tran
+        # RIENG (vd vua relogin, moi dua aggro quai cua no o map train) thi END cua dua khac
+        # KHONG lien quan gi. Truoc day khong phan biet -> acc DANG danh bi ha in_battle oan ->
+        # tuong het tran -> chay tiep flow "ve thanh" -> bat flee_mode -> trong tran no BO CHAY
+        # thay vi danh -> mau quai dung im, tran khong bao gio xong (bug that 17:56-17:58 ban APK).
+        # Them since=last_turn_time: chi tinh END xay ra SAU luot danh gan nhat cua chinh minh.
         if (self.state.in_battle and not getattr(self.state, "boss_mode", False)
                 and not getattr(self, "_in_scene_gate", False)
-                and _recent_battle_end(self.party_idx, within=3.0, map_id=self.current_map)):
+                and getattr(getattr(self, "battle_tracker", None), "generation", 0)
+                and _recent_battle_end(self.party_idx, within=3.0, map_id=self.current_map,
+                                       since=self.last_turn_time)):
             # BOSS (boss the gioi / dungeon): moi acc danh trận RIENG cua no -> member khac ket tran
             # KHONG lien quan -> KHONG suy luan theo member (boss_mode). Boss loop tu quan ly ket tran.
             # Truoc day chi ap dung cho pho ban to doi (_team_dungeon_until) -> tran PHUC KICH O
