@@ -310,20 +310,33 @@ def _running_party_usernames(pidx):
             if is_account_running(u) and account_clients.get(u) is not None]
 
 
-def _set_party_quest_mode(pidx, on, label=""):
+PARTY_EVENT_DUNGEON_WINDOW = 3600.0   # do dai cua so "dang trong kich ban dungeon" cho event party
+
+
+def _set_party_quest_mode(pidx, on, label="", quiet=False):
     """Bat/tat quest_mode cho CA party (leader + member).
 
     Event danh theo party (40NPC, 2K) phai EP quest_mode thay vi de auto-latch quyet dinh:
     latch chi bat khi quai > 6 luc vao tran (state.py) -> tran it quai la mat skill toan man.
     Member KHONG chay vong dieu khien nao ca (bi keo vao tran cua leader) nen phai set ho.
+
+    PHAI set kem `_team_dungeon_until`: het moi tran, handler 0x14 sub0700 goi
+    reset_enemies(reset_quest=not _in_team_dungeon) -> THIEU cua so nay thi quest_mode vua ep bi
+    XOA ngay sau tran DAU TIEN. Truoc day chi leader co cua so (dat trong floor_crawl) nen chi
+    leader giu duoc quest_mode; member tu tran 2 tro di tut ve TRAIN mode - xac nhan qua log:
+    tttam tran 1 danh 10012 (skill toan man), tran 2 danh 10005 (Nem Da, combo train).
+    => GOI LAI ham nay sau MOI tran de gia han cho ca party.
     """
     n = 0
+    until = (time.time() + PARTY_EVENT_DUNGEON_WINDOW) if on else 0.0
     for u in _active_party_usernames(pidx):
         cli = account_clients.get(u)
         if cli is not None and cli.running:
             cli.state.quest_mode = bool(on)
+            cli._team_dungeon_until = until
             n += 1
-    log.info("[%s] quest_mode=%s cho %d acc trong party", label or ("P%s" % pidx), bool(on), n)
+    if not quiet:
+        log.info("[%s] quest_mode=%s cho %d acc trong party", label or ("P%s" % pidx), bool(on), n)
 
 
 def _active_party_usernames(pidx):
@@ -2327,6 +2340,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         log.info("[%s] (LEADER) 2K: ket thuc leo thap (%s)",
                                  label, "THUA" if lost else "xong/dung")
                     def _heal_party_2k():
+                        # Gia han quest_mode + cua so dungeon cho CA party sau moi tran (member
+                        # khong tu gia han duoc - xem chu thich _set_party_quest_mode).
+                        _set_party_quest_mode(pidx, True, label, quiet=True)
                         # HOI FULL HP/SP CA PARTY sau moi tran (song song, giong 40NPC). Leader tu
                         # hoi thi khong du: member cung an don, ma quest_mode=True lam
                         # _heal_after_battle() cua tung acc thoat som.
@@ -2361,6 +2377,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         _set_party_quest_mode(pidx, False, label)
                         log.warning("[%s] (LEADER) 40NPC: PARTY THUA -> chon KHONG va DUNG", label)
                     def _before_npc40_repeat():
+                        _set_party_quest_mode(pidx, True, label, quiet=True)   # gia han cho ca party
                         # npc40.run_loop da chon NO + dong dialog truoc khi vao day. Luc nay moi duoc
                         # dung item; dung item khi prompt dang mo lam server tra 080001 va kick.
                         clients = [account_clients.get(u) for u in _active_party_usernames(pidx)]
