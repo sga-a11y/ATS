@@ -481,9 +481,23 @@ def _should_resync_incomplete_digioi_party(
 
 
 def _invite_party_participants(c, train_on_map, gap=1.0):
+    """RULE: LUON moi acc WHITELIST TRUOC, bot member SAU.
+
+    Whitelist la nguoi that/nick tay - khong co bot tu accept, can them thoi gian bam dong y;
+    moi ho truoc thi trong luc bot lan luot accept thi ho cung kip vao. Moi sau (nhu truoc day
+    o duong event/thuong) thi party co the da DU cho bot -> nguoi that KHONG con cho de vao.
+    Duong train da lam dung tu truoc (invite_train_party_participants); day la lam cho duong
+    con lai giong het.
+    """
     if train_on_map:
         return c.invite_train_party_participants(gap=gap)
-    return c.invite_members(gap=gap)
+    whitelist_count = 0
+    try:
+        whitelist_count = c.invite_whitelist_leaders(gap=gap)
+    except Exception as exc:
+        log.warning("[%s] (LEADER) moi whitelist truoc party loi: %s",
+                    getattr(c, "_label", "?"), exc)
+    return whitelist_count, c.invite_members(gap=gap)
 
 
 def _invite_whitelist_followers_if_bot_party_ready(c, st, pidx, label, force=False):
