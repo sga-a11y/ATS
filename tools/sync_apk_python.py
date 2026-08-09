@@ -8,6 +8,7 @@ File RIENG cua APK (KHONG dong bo): config.py (doc asset), __init__.py, _appdir.
 (adapter Kotlin), party_state.py (neu con).
 """
 import os
+import re
 import shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,14 +42,14 @@ OPTIONAL = ["pathfind.py", "world_nav.py", "smart_route.py"]
 def _rewrite_coordinator(src: str) -> str:
     """run_party_digioi.py o ROOT (khong trong package) dung 'from bot ...' tuyet doi -> khi vao
     package train_bot phai doi thanh tuong doi 'from . ...'."""
-    src = src.replace("from bot import config", "from . import config")
-    src = src.replace("from bot import mob_spots", "from . import mob_spots")
-    src = src.replace("from bot.mob_scanner import", "from .mob_scanner import")
-    src = src.replace("from bot.scene_fight import", "from .scene_fight import")
-    src = src.replace("from bot.train_maps_store import", "from .train_maps_store import")
-    src = src.replace("from bot.login import login", "from .login import login")
-    src = src.replace("from bot.client import", "from .client import")
-    src = src.replace("from bot._appdir import", "from ._appdir import")   # log path Android (PC khong co bot/_appdir -> fallback except)
+    # TONG QUAT bang regex, KHONG chep tay tung dong: truoc day la danh sach cung nen them
+    # `from bot import X` moi la SOT -> ban APK giu nguyen import tuyet doi -> ImportError.
+    # Da dinh that: `from bot import scan_image` (dong 222) khong duoc doi, may man nam trong
+    # try/except nen chi mat anh scan; cho khac thi crash.
+    src = re.sub(r"(?m)^(\s*)from bot import ", r"\g<1>from . import ", src)
+    src = re.sub(r"(?m)^(\s*)from bot\.(\w+) import ", r"\g<1>from .\g<2> import ", src)
+    src = re.sub(r"(?m)^(\s*)import bot\.(\w+) as (\w+)$", r"\g<1>from . import \g<2> as \g<3>", src)
+    src = re.sub(r"(?m)^(\s*)import bot\.(\w+)$", r"\g<1>from . import \g<2>", src)
     return src
 
 
@@ -69,6 +70,18 @@ def _check_no_drift():
             + " | chi rieng ban PC -> them vao PC_ONLY"
             + " (bo qua im lang = APK chay code cu, y het bug party_battle.py)"
         )
+
+
+def _check_no_abs_bot_import():
+    """Ban APK KHONG duoc con import tuyet doi `bot.*` (package do khong ton tai tren Android)."""
+    import glob
+    bad = []
+    for f in glob.glob(os.path.join(APK, "*.py")):
+        for i, line in enumerate(open(f, encoding="utf-8"), 1):
+            if re.match(r"\s*(from bot[ .]|import bot)", line):
+                bad.append("%s:%d %s" % (os.path.basename(f), i, line.strip()[:60]))
+    if bad:
+        raise SystemExit("SYNC DUNG: ban APK con import tuyet doi 'bot.*': " + " | ".join(bad))
 
 
 def _check_synced():
@@ -107,4 +120,5 @@ def main():
 if __name__ == "__main__":
     main()
     _check_synced()
+    _check_no_abs_bot_import()
     print("OK: PC va APK giong het nhau (%d file shared)" % len(SHARED))

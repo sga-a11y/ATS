@@ -219,7 +219,7 @@ def _stationary_train_mob_probe(client, map_id, train_map=None, stop=None, secon
     # ANH KET QUA SCAN (chi PC) - de mat nguoi kiem tra nhanh: dia hinh + duong chay tung con
     # quai + bbox + tam bai + safe + cac tram da dung quan sat.
     try:
-        from bot import scan_image
+        from . import scan_image
         _img = scan_image.render_scan(ground, map_id, session.bounded_traces(),
                                       centers, safes, stations=stations)
         if _img:
