@@ -332,6 +332,74 @@ def _inside_floor_crawl_tower(ev, map_id):
     return bool(dest and top and dest <= m <= top)
 
 
+def _party_same_map(st, username, cur_map, expected, stopped, label="", role="", wait=30.0):
+    """TRUOC KHI SYNC KENH: ca party phai dang o CUNG MOT MAP.
+
+    Sync kenh khi cac acc o KHAC map la VO NGHIA: picker chot expected_map = map cua RIENG no,
+    cac acc o map khac bao cao "sai map" mai -> vong sync treo (log 11:57: leader vao lai 12922
+    trong khi 3 member con o 12931 -> "cho acc bao cao map (1/4)" khong bao gio xong).
+    Ap dung cho MOI mode, khong rieng 2K.
+
+    Moi acc ghi map + moc thoi gian; chi tinh cac bao cao con MOI (bo bao cao cu cua vong truoc).
+    Tra True neu tat ca cung map (hoac chi co minh bao cao -> khong co gi de doi chieu).
+    """
+    now = time.time()
+    with st["lock"]:
+        st.setdefault("presync_maps", {})[username] = (now, int(cur_map or 0))
+    t0 = time.time()
+    while not stopped() and time.time() - t0 < wait:
+        with st["lock"]:
+            fresh = {u: m for u, (ts, m) in st["presync_maps"].items() if now - ts < 120}
+            n_rep = len(fresh) + len(st["reconnecting"])
+        if n_rep >= expected:
+            break
+        time.sleep(1)
+    with st["lock"]:
+        fresh = {u: m for u, (ts, m) in st.get("presync_maps", {}).items() if now - ts < 120}
+    maps = set(fresh.values())
+    if len(maps) <= 1:
+        return True
+    log.warning("[%s] (%s) BO QUA sync kenh: party dang o KHAC MAP %s -> sync kenh luc nay vo "
+                "nghia (picker se cho bao cao map mai khong xong)", label, role, sorted(maps))
+    return False
+
+
+def _decide_2k_resume(st, username, cur_map, ev, expected, stopped, label=""):
+    """Quyet dinh RESUME 2K o CAP PARTY (khong phai tung acc tu quyet).
+
+    Moi acc bao map hien tai; chi RESUME khi CA PARTY deu o trong thap VA CUNG MOT TANG.
+    Lech nhau -> ca doi VAO LAI tu 12921 de gom nhau (mat tang da leo, nhung con hon ket).
+
+    Bug that (log 11:56): leader bi day ra 12003 con 3 member con o 12931 -> moi acc tu quyet:
+    leader vao lai 12922, member o lai 12931 -> sync map cho vo han (1/4 mai).
+    """
+    if ((ev or {}).get("party_battle") or {}).get("kind") != "floor_crawl":
+        return False   # event khac (40NPC...) -> KHONG dung barrier nay, tranh chan 60s vo ich
+    m = 0
+    try:
+        m = int(cur_map or 0)
+    except (TypeError, ValueError):
+        m = 0
+    with st["lock"]:
+        st["event_start_map"][username] = m
+    t0 = time.time()
+    while not stopped() and time.time() - t0 < 60:
+        with st["lock"]:
+            n_rep = len(st["event_start_map"]) + len(st["reconnecting"])
+        if n_rep >= expected:
+            break
+        time.sleep(1)
+    with st["lock"]:
+        maps = [v for v in st["event_start_map"].values()]
+    inside = [_inside_floor_crawl_tower(ev, x) for x in maps]
+    same = len(set(maps)) == 1
+    ok = bool(maps) and all(inside) and same
+    if not ok and any(inside):
+        log.warning("[%s] 2K: party KHONG cung cho (map=%s) -> ca doi VAO LAI tu dau de gom nhau",
+                    label, sorted(set(maps)))
+    return ok
+
+
 def _set_party_quest_mode(pidx, on, label="", quiet=False):
     """Bat/tat quest_mode cho CA party (leader + member).
 
@@ -647,6 +715,8 @@ def _pstate(pidx):
                               "route_plan_ready": threading.Event(),   # ROUTE: leader da build smart/legacy plan cho ca party
                               "route_plan": None,                      # {"gen", "city", "flag", "route"|None, "missing"?}
                               "map_results": {},     # ROUTE barrier: username -> dang o train map? (de quyet dinh ca party)
+                              "event_start_map": {}, # 2K: username -> map luc bat dau vong event (quyet dinh RESUME hay VAO LAI ca party)
+                              "presync_maps": {},    # username -> (thoi diem, map) TRUOC khi sync kenh (chan sync khi khac map)
                               "member_maps": {},     # username -> current_map (member report lien tuc; leader check ai bi bo lai khi keo)
                               "mob_spot": None,      # diem quai leader chon (de _start_training dung lai)
                               "rally_point": None,   # safe GAN diem quai nhat -> CA PARTY ve day (gan leader)
@@ -737,6 +807,8 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
                 st["mob_path"] = None
                 st["route_plan"] = None
                 st["map_results"] = {}
+                st["event_start_map"] = {}
+                st["presync_maps"] = {}
                 st["o5_done_by"].clear()
                 st["o5_state"] = "idle"
                 st["o5_broke"] = False
@@ -1277,6 +1349,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
         # Map-train: goi sau khi ve safe (doi kenh tren map thuong khong sao).
         def do_channel_sync():
+            # CHAN TRUOC: ca party phai cung MAP thi sync kenh moi co nghia (xem _party_same_map).
+            if not _party_same_map(st, username, c.current_map, len(party_accounts(pidx)),
+                                   _stopped, label, role):
+                return False
             current_channel = c.refresh_current_channel(wait=1.5)
             log.info("[%s] (%s) cap nhat kenh hien tai truoc sync: %s",
                      label, role, current_channel if current_channel is not None else "chua biet")
@@ -2145,11 +2221,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if ev is None:
                 log.warning("[%s] (%s) mode event nhung KHONG co event nao trong events.json -> dung yen tai cho",
                             label, role)
-            elif _inside_floor_crawl_tower(ev, c.current_map):
-                # LOGIN LAI GIUA CHUNG 2K: van dung trong thap -> LEO TIEP tu tang nay, KHONG
-                # chon lai event (chon lai = bi keo ve 12921 = mat het tang da leo).
+            elif _decide_2k_resume(st, username, c.current_map, ev,
+                                    len(party_accounts(pidx)), _stopped, label):
+                # LOGIN LAI GIUA CHUNG 2K: CA PARTY con trong thap va CUNG TANG -> leo tiep tu day,
+                # KHONG chon lai event (chon lai = bi keo ve 12921 = mat het tang da leo).
                 _resume_2k = True
-                log.info("[%s] (%s) 2K: dang o trong thap (%s) -> leo tiep tu day, khong vao lai",
+                log.info("[%s] (%s) 2K: ca party dang o trong thap (%s) -> leo tiep tu day",
                          label, role, config.scene_name(c.current_map))
             else:
                 try:
@@ -4096,6 +4173,8 @@ def start_party(pidx, stagger=1.5):
         st["team_dungeon_recover_seen"].clear()
         st["team_dungeon_recover_ready"].clear()
         st["map_results"] = {}       # reset barrier map cho lan chay nay
+        st["event_start_map"] = {}   # reset quyet dinh resume 2K
+        st["presync_maps"] = {}      # reset bao cao map truoc sync kenh
         st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
     for u, p, is_leader, is_picker in accounts:
         if generation != _start_cancel_generation:
