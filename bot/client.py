@@ -1894,6 +1894,18 @@ class GameClient:
                 mid = int.from_bytes(pkt[17:19], "little")
                 if mid > 1000:   # loc gia tri rac (map_id that >1000)
                     self.current_map = mid
+                # TOA DO cung nam trong chinh goi nay: [entity 8B][map u16][x u16][y u16]
+                # (KNOWLEDGE muc 7: 0x07 sub0000 - 0x0c ChangeScene CUNG layout, xac nhan bang
+                # capture 2K: vao 12922 -> (1490,490), dung bang dong RESYNC trong log).
+                # Truoc day CHI doc map, VUT x/y -> qua cong xong pos=None -> navigate_to mat smart
+                # path -> di mu 30 lenh (~45s/chang). Va refresh_server_position() gui 0x0c 0100 roi
+                # cho _position_generation doi, ma bien do CHI tang o 0x03 -> luon timeout.
+                if len(pkt) >= 23:
+                    sx = int.from_bytes(pkt[19:21], "little")
+                    sy = int.from_bytes(pkt[21:23], "little")
+                    if 0 < sx < 20000 and 0 < sy < 20000:
+                        self.pos = (sx, sy)
+                        self._position_generation += 1
                 # 0x0c ChangeScene co them sceneTag(2) + instanceId/channel(2) sau toa do.
                 if opcode == 0x0c and len(pkt) >= 25:
                     self._note_current_channel(int.from_bytes(pkt[23:25], "little"), "0x0c")

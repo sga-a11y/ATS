@@ -774,6 +774,13 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
 - S2C `0x07` sub `00 00` co layout
   `[entity 8B][map_id u16 LE][x u16 LE][y u16 LE]` (offset full packet:
   entity `9:17`, map `17:19`, x `19:21`, y `21:23`) -> vi tri entity luc vao tam nhin/map.
+- **S2C `0x0c` ChangeScene sub `00 00` CUNG layout do** (`[entity 8B][map u16][x u16][y u16]`,
+  x `19:21`, y `21:23`) -> **doi map la server BAO LUON toa do moi**, khong can doi `0x03`.
+  Xac nhan capture 2K (`nhikieu_2k_tang1_9_20260809.pcap`): vao 12922 -> `(1490,490)`, dung bang
+  dong `RESYNC pos tu 0x03` trong log runtime. Bot tung CHI doc map va vut x/y -> qua cong xong
+  `pos=None` -> `navigate_to` mat smart path, di mu 30 lenh (~45s/chang); va
+  `refresh_server_position()` (gui `0x0c 0100` roi cho `_position_generation` doi) LUON timeout vi
+  bien do chi tang o `0x03`. Da sua 2026-08-09.
 - S2C `0x06` sub `01 00` co layout
   `[entity 8B][direction u8][x u16 LE][y u16 LE]` (offset full packet:
   entity `9:17`, direction `17`, x `18:20`, y `20:22`) -> entity di chuyen.
