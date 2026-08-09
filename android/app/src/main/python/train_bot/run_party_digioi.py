@@ -2129,7 +2129,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 if learned_safes:
                     train_safes[:] = learned_safes
                 if mob_index < 0 and mobs:
-                    import random
+                    # KHONG `import random` o day: no bien `random` thanh BIEN CUC BO cua CA HAM
+                    # run_account -> moi cho dung random TRUOC dong nay (vd retry login loi 1 o
+                    # dau ham) deu nem UnboundLocalError. Module da `import random` san o dau file.
                     spot = random.choice(mobs)
                 else:
                     spot = mobs[mob_index] if (mobs and 0 <= mob_index < len(mobs)) else (mobs[0] if mobs else None)
