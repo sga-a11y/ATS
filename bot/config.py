@@ -313,6 +313,31 @@ def _load_npc_names():
     return out
 NPC_NAMES = _load_npc_names()   # template_id (int) -> ten quai/npc
 
+# TEN MAP THEO GAME: doc tu scene_names.json (AUTO tools/crack_scene_names.py, boc tu
+# Data/SceneSet_C.dat + Data/TextData_C.dat cua client). map_id -> ten hien thi trong game
+# (vd 12924 -> "Thang Thap", 12934 -> "Dinh Thap"). Dung cho log/UI cho de doc.
+def _load_scene_names():
+    import json, os
+    try:
+        with open(os.path.join(_base_dir(), "scene_names.json"), encoding="utf-8") as fh:
+            return {int(k): v for k, v in json.load(fh).items()}
+    except Exception:
+        return {}
+SCENE_NAMES = _load_scene_names()   # map_id (int) -> ten map theo game
+
+
+def scene_name(map_id, with_id=True):
+    """Ten map theo game: 'Thang Thap (12924)'. Khong biet ten -> tra chinh map id."""
+    try:
+        mid = int(map_id)
+    except Exception:
+        return str(map_id)
+    nm = SCENE_NAMES.get(mid)
+    if not nm:
+        return str(mid)
+    return "%s (%d)" % (nm, mid) if with_id else nm
+
+
 DEFAULT_DANGEROUS_NPC_NAMES = [
     "Chu Công",
     "Hằng Nga",

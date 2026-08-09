@@ -743,6 +743,16 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
   quai dung/di qua co the train.
 - `gamedata/Data/SceneSet_C.dat` co `3677` record fixed `17` byte; moi train map match 1 record
   theo `map_id`, nhung record giong scene metadata/flag, chua thay toa do spawn.
+- **TEN MAP THEO GAME — da chot 2026-08-09.** SceneSet KHONG chua ten, chi chua ID CHUOI:
+  - `SceneSet_C.dat` record = `[text_id u32 LE][map_id u16 LE][11B con lai]` (4 byte header = count).
+  - `Data/TextData_C.dat` (~984KB, 11091 chuoi) = bang chuoi chung: `[count u32]` roi lien tiep
+    `[text_id u32 LE][len u16 LE][text UTF-16LE, len BYTE]`.
+  - => `ten map = TextData[SceneSet[map_id].text_id]`. Tool: `tools/crack_scene_names.py` ->
+    `scene_names.json` (3677 map). Dung qua `config.scene_name(map_id)`.
+  - Verify: 12001 "Cua thanh Trac Quan", 12003 "Quang Truong", 62002 "Thao Phat Thien Su"
+    (map pho ban to doi lv20), 10991 "Loi dai ti vo" (map 40NPC).
+  - Luu y: bang chuoi nay dung cho MOI thu can ten (khong chi map) - text_id o cac file `_C.dat`
+    khac cung tra vao day.
 - Huong dung hop ly: dung `SceneFight_C.dat` de biet map nao co random encounter + level range,
   lay toa do lam candidate/seed, roi ket hop `Ground.mmg` + thong ke battle runtime de hoc diem train tot.
 

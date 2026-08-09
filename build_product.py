@@ -45,7 +45,8 @@ DATA_JSON = ["servers.json", "cities.json", "train_maps.json", "train_routes.jso
              "mob_paths.json", "map_gates.json", "pets.json", "pet_hedoanh.json",
              "vantieu_requests.json", "vantieu_dispatch_bonus.json", "skills_db.json", "junk_scrolls.json", "skills_data.json",
              "items_gamedata.json", "donate_items.json", "use_items.json", "events.json", "login_awards.json",
-             "train_block_stats.json", "world_nav.json", "pet_stats.json", "dangerous_npcs.json"]
+             "train_block_stats.json", "world_nav.json", "pet_stats.json", "dangerous_npcs.json",
+             "scene_names.json"]
 
 DATA_FILES = {
     "gamedata/Ground.mmg": "gamedata/Ground.mmg",

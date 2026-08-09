@@ -99,10 +99,15 @@ def _battle_points(ev, scene: int):
 
 
 def _floor_label(ev, scene: int):
-    """'tang N (map 12932)' - N suy tu floor_base (12924 = tang 1; 12922/12923 la khu vao)."""
+    """'tang 9 - Thang Thap (12932)'. Ten map lay THEO GAME (config.scene_name, boc tu
+    Data/TextData_C.dat). N suy tu floor_base: 12924 = tang 1; 12921/12922/12923 la khu vao
+    ("Thap Luyen"/"Thong Dao"/"Dai Dien" - khong danh so tang)."""
+    from . import config
+
     base = int((ev.get("party_battle") or {}).get("floor_base") or 0)
     n = int(scene) - base if base else 0
-    return "tang %d (map %s)" % (n, scene) if n >= 1 else "khu vao (map %s)" % scene
+    where = config.scene_name(scene)
+    return ("tang %d - %s" % (n, where)) if n >= 1 else ("khu vao - %s" % where)
 
 
 def _walk_to(client, point, stop_event):
