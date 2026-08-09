@@ -26,9 +26,11 @@ from . import npc40
 log = logging.getLogger("bot")
 
 _BATTLE_IDX_RANGE = range(3, 9)   # idx danh quai quan sat duoc (3..6); quet rong hon 1 chut
-_BATTLE_WAIT = 6.0                # cho sau khi gui idx de biet co vao tran khong
+_DIALOG_CAP = 15                  # so lan bam 0x14 0600 toi da de day thoai NPC vao tran
+_DUNGEON_WINDOW = 3600.0          # cua so "dang trong kich ban dungeon" (gia han moi tang)
 _MAX_FLOOR_SECONDS = 900.0
-_WALK_BUDGET = 45.0               # ngan sach di toi cong moi tang (best-effort)
+_WALK_BUDGET = 120.0              # ngan sach di 1 chang (log that: 45s/30 lenh move cho 1 diem
+                                  # -> 45s la sat nut, bi cat giua duong)
 
 
 def _nav():
@@ -69,17 +71,22 @@ def _fight_one(client, idx: int, stop_event, heal_party=None):
 
     Tra: "won" (danh xong, con song) | "lost" (party chet het) | None (idx nay khong ra tran).
     """
+    # Chuoi THAT (capture): 0x14 0800[idx] -> S2C 0x14 0100 = THOAI MO -> phai bam 0x14 0600
+    # nhieu lan -> moi ra S2C 0x34 = BATTLE START. Truoc day chi gui idx roi ngoi cho in_battle
+    # -> khong bao gio vao tran, roi gui idx ke TRONG LUC THOAI DANG MO -> SERVER DA (xac nhan
+    # log 11:18:16: gui '0x14 08000400' xong la "Server dong ket noi").
     client.send(0x14, b"\x08\x00" + bytes([idx & 0xFF]) + b"\x00")
-    t0 = time.time()
-    while _active(client, stop_event) and time.time() - t0 < _BATTLE_WAIT:
-        if client.state.in_battle:
-            break
-        time.sleep(0.4)
-    else:
-        return None   # het gio ma khong vao tran -> idx nay khong phai diem danh quai
+    time.sleep(0.6)
+    if not client._dialog_until_battle(cap_n=_DIALOG_CAP, gap=0.7):
+        # Khong vao tran -> idx nay khong phai diem danh quai. Don thoai lo mo roi bo qua.
+        client._adv_dialog_until_idle(min_n=2, gap=0.4, idle=1.2, max_wait=8.0)
+        return None
     if not _active(client, stop_event):
         return None
     client._wait_combat_clear(idle=3.0, cap=_MAX_FLOOR_SECONDS)
+    # Sau tran co THOAI TONG KET (0x14 0100/1000/0d00) - phai bam het roi moi duoc gui idx ke,
+    # neu khong idx ke roi vao luc thoai dang mo -> server DA.
+    client._adv_dialog_until_idle(min_n=3, gap=0.5, idle=1.5, max_wait=25.0)
     # allies bi clear() moi 0x34 -> phai doc NGAY sau khi ket tran, truoc tran ke tiep.
     # DOC THUA TRUOC khi hoi mau: hoi xong thi HP len lai -> mat dau hieu party da chet het.
     defeated, alive, total = npc40.party_defeated(client.state.allies)
@@ -147,6 +154,12 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None):
     # EP quest_mode suot ca thap (giong pho ban to doi): KHONG de auto-latch quyet dinh - latch
     # chi bat khi quai > 6 luc vao tran (state.py), tran 2K it quai hon la mat skill toan man.
     client.state.quest_mode = True
+    # _team_dungeon_until = cua so "dang chay kich ban dungeon". BAT BUOC cho 2K vi:
+    #  - recv-loop CHI cap nhat _last_dialog_evt trong cua so nay -> thieu thi
+    #    _adv_dialog_until_idle() khong biet thoai da het chua.
+    #  - 0x14 sub0700 goi reset_enemies(reset_quest=not _in_team_dungeon) -> thieu thi quest_mode
+    #    vua ep bi XOA ngay sau tran DAU TIEN.
+    client._team_dungeon_until = time.time() + _DUNGEON_WINDOW
     lost = False
     try:
         while _active(client, stop_event):
@@ -154,6 +167,7 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None):
             if scene >= top:
                 log.info("[%s] 2K: da toi tang cao nhat %s -> XONG", label, scene)
                 break
+            client._team_dungeon_until = time.time() + _DUNGEON_WINDOW   # gia han moi tang
             up = _up_gate(scene)
             if up is None:
                 log.warning("[%s] 2K: %s KHONG co cong len trong world_nav -> DUNG o day. "
@@ -199,6 +213,7 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None):
             log.info("[%s] 2K: da len %s", label, _floor_label(ev, client.current_map))
     finally:
         client.state.quest_mode = False   # KHONG de ket dinh sang cac tran train sau nay
+        client._team_dungeon_until = 0.0
         if on_done is not None:
             try:
                 on_done(lost)
