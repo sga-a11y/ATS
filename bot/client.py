@@ -6472,6 +6472,17 @@ class GameClient:
                 for i in range(1, n + 1)
             ]
 
+        # VUA QUA CONG -> _enter_gate dat self.pos = None ("vi tri cu vo nghia o map moi").
+        # Ma smart path (Ground.mmg) CAN pos xuat phat -> pos=None thi rot xuong che do GUI MOVE MU,
+        # so lenh clamp toi 30 -> mot chang ngan cung ton ~50s (log that 12:16: "da toi diem
+        # (590,490) sau 30 lenh move", trong khi cung chang do co smart path chi 3 move-point).
+        # -> Xin lai toa do that tu server (0x0c) TRUOC, roi moi tinh duong.
+        if self.pos is None and self.current_map is not None:
+            try:
+                self.refresh_server_position(self.current_map)
+            except Exception as e:
+                log.debug("[%s] navigate_to: xin lai toa do loi (bo qua): %s", self._label, e)
+
         targets = [(x, y)]
         using_smart_path = False
         store = _ground_store() if self.pos and self.current_map is not None else None
