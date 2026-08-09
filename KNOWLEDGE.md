@@ -784,6 +784,15 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
     **sceneTag `23:25`**, **instanceId(KENH) `25:27`**. Capture 2K: sceneTag=0, instanceId=1.
     Bot tung doc kenh o `23:25` = SCENETAG (=0) -> `_note_current_channel` bo qua vi <=0 ->
     **0x0c chua bao gio cap nhat duoc kenh**, kenh chi den tu `0x03`. Sua 2026-08-09.
+  - **CANH BAO: `instanceId` KHONG phai "kenh the gioi".** Capture 2K: leader giu `instanceId=1`
+    suot 12921->12931 roi NHAY sang `2` o 12932, trong khi ca party van di cung nhau. Moi acc lai
+    cap nhat vao thoi diem khac nhau -> dem so nay ra so giua cac acc se ra "lech kenh" OAN
+    (user xac nhan: server chi co 1 kenh, cac nick dung canh nhau nhin thay nhau, bot van bao moi
+    dua 1 kenh).
+    => **Muon biet 2 nick co cung cho khong: dung "co thay nhau quanh khong" (`nearby` tu
+    `0x03/0x07`) + cung `scene_id`.** Server CHI gui nearby cho nguoi cung scene VA cung instance,
+    nen do la bang chung du. Da bo so sanh instanceId trong
+    `_entity_is_visible_on_current_scene` / `_bot_member_is_on_current_scene` (2026-08-09).
 - **S2C `0x0c` ChangeScene sub `00 00` CUNG layout do** (`[entity 8B][map u16][x u16][y u16]`,
   x `19:21`, y `21:23`) -> **doi map la server BAO LUON toa do moi**, khong can doi `0x03`.
   Xac nhan capture 2K (`nhikieu_2k_tang1_9_20260809.pcap`): vao 12922 -> `(1490,490)`, dung bang

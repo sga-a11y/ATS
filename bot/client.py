@@ -5017,12 +5017,40 @@ class GameClient:
             self._label = nm
             log.info("[%s] Ten nhan vat = '%s'", self._username, nm)
 
+    def _in_event_instance_map(self) -> bool:
+        """Dang o trong MAP INSTANCE cua event (thap 2K...)? Doc dai map tu events.json."""
+        try:
+            cur = int(self.current_map or 0)
+        except (TypeError, ValueError):
+            return False
+        if not cur:
+            return False
+        for ev in (getattr(config, "EVENTS", {}) or {}).values():
+            pb = (ev or {}).get("party_battle") or {}
+            if pb.get("kind") != "floor_crawl":
+                continue
+            lo = int((ev or {}).get("dest_map") or 0)
+            hi = int(pb.get("top_map") or 0)
+            if lo and hi and lo <= cur <= hi:
+                return True
+        return False
+
     def _note_current_channel(self, channel, source="server"):
         try:
             channel = int(channel)
         except Exception:
             return
         if channel <= 0:
+            return
+        # TRONG MAP INSTANCE (thap 2K): con so nay la instanceId, KHONG phai kenh the gioi.
+        # Client Lua goi dung ten `instanceId`; capture 2K cho thay no TU DOI 1 -> 2 giua chung
+        # (leader giu 1 tu 12921 den 12931 roi nhay 2 o 12932) trong khi ca party van di cung nhau.
+        # Lay no lam "kenh" -> bot bao "lech kenh" trong khi server chi co 1 kenh. -> GIU nguyen
+        # kenh the gioi biet truoc khi vao instance.
+        # (Van nhan tu "0x07 ack" = phan hoi cho CHINH lenh doi kenh minh gui -> do la kenh THAT.)
+        if not str(source).startswith("0x07") and self._in_event_instance_map():
+            log.debug("[%s] bo qua instanceId=%s tu %s (dang trong map instance, khong phai kenh)",
+                      self._label, channel, source)
             return
         old = self.current_channel
         self.current_channel = channel
@@ -5402,15 +5430,12 @@ class GameClient:
                     return False, f"lech map {scene_id}!={self.current_map}"
             except Exception:
                 return False, "map entity khong hop le"
-        instance_id = meta.get("instance_id")
-        if self.current_channel is not None:
-            if instance_id is None:
-                return False, "khong biet kenh cua entity"
-            try:
-                if int(instance_id) != int(self.current_channel):
-                    return False, f"lech kenh {instance_id}!={self.current_channel}"
-            except Exception:
-                return False, "kenh entity khong hop le"
+        # KHONG so instanceId nua: server CHI gui nearby/PlayerAppear cho nguoi CUNG scene VA
+        # CUNG instance -> da thay nhau quanh + cung map la du chac chan. So them instanceId chi
+        # lam hong: con so do la instanceId (client Lua goi dung ten do), no TU DOI giua chung
+        # (capture 2K: leader 1 -> 2 khi sang 12932) va moi acc cap nhat vao thoi diem khac nhau
+        # -> cu so la ra "lech kenh" trong khi thuc te dung canh nhau, nhin thay nhau
+        # (user xac nhan: chi co 1 kenh, thay het xung quanh, bot van bao moi dua 1 kenh).
         return True, ""
 
     def _bot_member_is_on_current_scene(self, entity: bytes):
@@ -5430,12 +5455,9 @@ class GameClient:
             return False, "chua biet map live"
         if int(peer_map) != int(my_map):
             return False, f"lech map live {peer_map}!={my_map}"
-        my_channel = self.current_channel
-        peer_channel = getattr(peer, "current_channel", None)
-        if (my_channel is None) != (peer_channel is None):
-            return False, "chua du kenh live"
-        if my_channel is not None and int(peer_channel) != int(my_channel):
-            return False, f"lech kenh live {peer_channel}!={my_channel}"
+        # Cung map live la DU - xem chu thich o _entity_is_visible_on_current_scene: con so
+        # "kenh" la instanceId, tu doi giua chung va moi acc doc o thoi diem khac nhau nen so
+        # nhau se ra "lech kenh live" oan (bug that: ca party dung canh nhau van bi bao lech).
         return True, ""
 
     def invite_members(self, gap: float = 1.0):
