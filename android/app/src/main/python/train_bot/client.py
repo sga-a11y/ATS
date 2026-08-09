@@ -3342,9 +3342,13 @@ class GameClient:
             log.info("[%s] Boss the gioi: khong vao duoc tran (ngoai gio event?) -> bo qua", self._label)
         else:
             log.info("[%s] Boss the gioi: DA VAO TRAN -> danh CHO HET TRAN", self._label)
-            # cho tran KET THUC THAT (in_battle ve False), cap 120s (boss khoe thi cap se cat)
+            # Cho tran KET THUC THAT. KHONG dat cap thoi gian: ta CO moc ket tran chinh xac
+            # (`0x14 sub0700` ha state.in_battle - xem CLAUDE.md), khong phai doan mo.
+            # Cap 120s cu CAT GIUA TRAN boss khoe (1 tran thuong o 2K da ~177s) -> boss_mode tat
+            # giua chung, an thuoc va teleport khi tran con chay (battle NUOT lenh 0x06/0x14).
+            # `self.running` van la duong thoat khi STOP/rot ket noi.
             t0 = time.time()
-            while self.running and self.state.in_battle and time.time() - t0 < 120:
+            while self.running and self.state.in_battle:
                 time.sleep(1)
             log.info("[%s] Boss the gioi: tran ket thuc (sau %ds)", self._label, int(time.time() - t0))
         self.state.boss_mode = False
@@ -3431,9 +3435,11 @@ class GameClient:
             self.relogin()
             return self.legion_boss_next
         log.info("[%s] Boss QD: DA VAO TRAN -> danh cho het tran", self._label)
+        # Nhu boss the gioi: cho moc ket tran THAT (0x14 sub0700), khong dem gio.
         t0 = time.time()
-        while self.running and self.state.in_battle and time.time() - t0 < 120:
+        while self.running and self.state.in_battle:
             time.sleep(1)
+        log.info("[%s] Boss QD: tran ket thuc (sau %ds)", self._label, int(time.time() - t0))
         self.state.boss_mode = False
         self._wait_combat_clear()
         self.heal_full(force=True)            # xong boss QD -> hoi FULL HP/SP char+pet
@@ -3729,7 +3735,19 @@ class GameClient:
         try:
             t0 = time.time()
             last_dbg = 0.0
-            while self.running and time.time() - t0 < max_sec:
+            # max_sec KHONG duoc cat khi dang danh. Ta biet chinh xac dang trong tran hay khong
+            # (state.in_battle theo 0x35/0x34 + 0x14 sub0700), nen dong ho chi de bat KET that su:
+            # dang trong tran = dang tien trien -> GIA HAN. Cap chi no khi da `max_sec` giay LIEN
+            # TUC khong co tran nao. Truoc day cat mu theo tong thoi gian -> lượt dai binh thuong
+            # bi cat GIUA TRAN, thoat vong ma KHONG claim thuong, KHONG leave_party -> ket trong
+            # dungeon.
+            while self.running:
+                if self.state.in_battle:
+                    t0 = time.time()
+                elif time.time() - t0 >= max_sec:
+                    log.warning("[%s] dungeon: %ds KHONG co tran nao (ket?) -> bo cuoc",
+                                self._label, int(max_sec))
+                    break
                 time.sleep(1)
                 now = time.time()
                 if now - last_dbg >= 6:   # log chan doan moi 6s: co trong tran ko, quai, HP
