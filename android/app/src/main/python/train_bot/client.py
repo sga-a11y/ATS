@@ -1203,6 +1203,8 @@ class GameClient:
         self._deliberate_close = True   # ta tu dong -> OSError trong recv KHONG phai server rot
         self.running = False
         self.stop_npc40_loop()
+        self.stop_floor_crawl()   # 2K: bao dung vong leo thap (thieu -> thread con bam tiep,
+                                  # co the gui 0x14 06 len socket dang dong)
         self.finish_mob_packet_capture()
         if self.sock:
             self.sock.close()
