@@ -83,22 +83,38 @@ class BotForegroundService : Service() {
             val py = Python.getInstance()
             val p = bundlePath.absolutePath
             val purge = runningPidx.isEmpty() && startingPidx.all { it == excludePidx }
+            val coreVer = try { ApkUpdater.installedBundleVersion(this) } catch (e: Exception) { "?" }
+            // PURGE TAT CA module train_bot*, KHONG loc theo duong dan.
+            // pythonBundlePath() la duong dan CO DINH (bot_bundle/current/android): update core chi
+            // GHI DE file BEN TRONG, duong dan khong doi -> module cu van co __file__ bat dau bang
+            // _p -> phep loc "khac duong dan" cu KHONG bao gio thay chung la cu -> process chay code
+            // cu mai cho toi khi bi kill. Bug that: core v1.1.202608100031 tren dia nhung log boss
+            // van thieu dong "Boss QD: tran ket thuc" cua ban do.
             val code = """
 import sys, logging
 _p = ${'"'}${'"'}${'"'}$p${'"'}${'"'}${'"'}
+_ver = ${'"'}${'"'}${'"'}$coreVer${'"'}${'"'}${'"'}
+_prev = getattr(sys, "__ats_core_loaded__", None)
 if _p not in sys.path:
     sys.path.insert(0, _p)
+if (not ${if (purge) "True" else "False"}) and _prev is not None and _prev != _ver:
+    # Co core MOI tren dia nhung dang co acc chay -> KHONG dam purge (thread dang chay giu tham
+    # chieu module cu; purge nua chung se thanh nua cu nua moi). Bao TO ra de user biet phai dung
+    # het roi chay lai, khong thi cu tuong da cap nhat ma van chay code cu (bug that 00:50).
+    logging.getLogger("bot").warning(
+        "CORE MOI v%s DA TAI nhung dang co acc CHAY -> VAN chay code cu v%s. "
+        "DUNG TAT CA roi chay lai de ap dung.", _ver, _prev)
 if ${if (purge) "True" else "False"}:
     _stale = [_n for _n, _m in list(sys.modules.items())
-              if (_n == "train_bot" or _n.startswith("train_bot."))
-              and not (getattr(_m, "__file__", "") or "").startswith(_p)]
+              if _n == "train_bot" or _n.startswith("train_bot.")]
     for _n in _stale:
         del sys.modules[_n]
     if _stale:
-        logging.getLogger("bot").warning("CORE RELOAD: bo %d module cu ngoai bundle: %s",
+        logging.getLogger("bot").warning("CORE RELOAD: bo %d module de nap lai tu bundle: %s",
                                          len(_stale), sorted(_stale))
 import train_bot.client as _c
-logging.getLogger("bot").info("CORE LOAD: client=%s", getattr(_c, "__file__", "?"))
+sys.__ats_core_loaded__ = _ver
+logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c, "__file__", "?"))
 """.trimIndent()
             py.getModule("builtins").callAttr("exec", code)
         } catch (e: Exception) {
