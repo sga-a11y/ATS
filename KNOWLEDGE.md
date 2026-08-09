@@ -780,6 +780,10 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
   - `protocolTable[12][0]` (0x0c ChangeScene): `roleId` -> `sceneId` -> `position` ->
     `sceneTag(u16)` -> `instanceId(u16)` -> equip... => **client biet vi tri sau khi doi map
     CHINH TU GOI NAY**, khong doi `0x03`. `RoleController:ChangeScene` chi `Teleport(position)`.
+  - **Offset day du 0x0c (full packet):** entity `9:17`, scene `17:19`, x `19:21`, y `21:23`,
+    **sceneTag `23:25`**, **instanceId(KENH) `25:27`**. Capture 2K: sceneTag=0, instanceId=1.
+    Bot tung doc kenh o `23:25` = SCENETAG (=0) -> `_note_current_channel` bo qua vi <=0 ->
+    **0x0c chua bao gio cap nhat duoc kenh**, kenh chi den tu `0x03`. Sua 2026-08-09.
 - **S2C `0x0c` ChangeScene sub `00 00` CUNG layout do** (`[entity 8B][map u16][x u16][y u16]`,
   x `19:21`, y `21:23`) -> **doi map la server BAO LUON toa do moi**, khong can doi `0x03`.
   Xac nhan capture 2K (`nhikieu_2k_tang1_9_20260809.pcap`): vao 12922 -> `(1490,490)`, dung bang

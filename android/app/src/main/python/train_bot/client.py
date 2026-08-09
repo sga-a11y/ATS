@@ -1909,9 +1909,13 @@ class GameClient:
                         # Toa do nay DI KEM chinh lan doi map nay -> _enter_gate KHONG duoc
                         # xoa (xem _gate_reached).
                         self._pos_valid_for_map = self.current_map
-                # 0x0c ChangeScene co them sceneTag(2) + instanceId/channel(2) sau toa do.
-                if opcode == 0x0c and len(pkt) >= 25:
-                    self._note_current_channel(int.from_bytes(pkt[23:25], "little"), "0x0c")
+                # 0x0c ChangeScene: sau toa do la sceneTag(2) ROI MOI den instanceId(2).
+                # Client Lua protocolTable[12][0]: roleId -> sceneId -> position(x,y) -> sceneTag
+                # -> instanceId. Capture 2K xac nhan: sceneTag=0, instanceId=1.
+                # KENH = instanceId -> pkt[25:27]. Truoc day doc pkt[23:25] = SCENETAG (luon 0
+                # trong thap) nen kenh doc tu 0x0c la RAC.
+                if opcode == 0x0c and len(pkt) >= 27:
+                    self._note_current_channel(int.from_bytes(pkt[25:27], "little"), "0x0c")
         # 0x03 PlayerAppear: server gui cho ca self va nguoi xung quanh.
         # Chi self-spawn moi dung de cap nhat map/pos; nguoi xung quanh dung de cache ten/entity
         # cho whitelist invite.
