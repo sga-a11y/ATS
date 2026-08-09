@@ -24,6 +24,13 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           "party_battle.py", "battle_tracker.py", "pathfind.py", "scan_image.py",
           "smart_route.py", "world_nav.py"]
 
+# File CHI CO o ban PC - phai liet ke TUONG MINH. Moi file .py trong bot/ khong nam trong
+# SHARED cung khong nam o day se lam sync BAO LOI, khong cho build tiep (xem _check_no_drift).
+PC_ONLY = ["config.py",        # APK doc tu asset, cau truc khac han
+           "_appdir.py",       # duong dan he thong, khac nen tang
+           "_version.py", "_guard.py", "updater.py", "donate_qr_data.py",   # chi ban PC dung
+           "__init__.py"]
+
 SHARED_ASSETS = ["events.json", "npc_names.json", "use_items.json", "dangerous_npcs.json",
                  "scene_names.json"]
 
@@ -45,7 +52,39 @@ def _rewrite_coordinator(src: str) -> str:
     return src
 
 
+def _check_no_drift():
+    """CHAN viec them file vao bot/ ma quen dong bo sang APK.
+
+    Rule cua user: "APK giong het PC". Truoc day SHARED la allowlist chep tay -> party_battle.py
+    bi bo sot, APK chay ban cu 48 dong am tham: build van chay, chi khac HANH VI (fix "khong nuot
+    lenh danh" khong len APK, khong ai biet). Gio thieu khai bao la BAO LOI ngay.
+    """
+    have = {f for f in os.listdir(os.path.join(ROOT, "bot")) if f.endswith(".py")}
+    unknown = sorted(have - set(SHARED) - set(OPTIONAL) - set(PC_ONLY))
+    if unknown:
+        raise SystemExit(
+            "SYNC DUNG: file trong bot/ chua khai bao: "
+            + ", ".join(unknown)
+            + " | dung chung ca 2 ban -> them vao SHARED"
+            + " | chi rieng ban PC -> them vao PC_ONLY"
+            + " (bo qua im lang = APK chay code cu, y het bug party_battle.py)"
+        )
+
+
+def _check_synced():
+    """Sau khi copy: doi chieu lai tung byte, lech la BAO LOI (copy hong/ghi de nguoc)."""
+    bad = []
+    for f in SHARED:
+        a = os.path.join(ROOT, "bot", f)
+        b = os.path.join(APK, f)
+        if not os.path.exists(b) or open(a, "rb").read() != open(b, "rb").read():
+            bad.append(f)
+    if bad:
+        raise SystemExit("SYNC DUNG: copy xong van LECH: %s" % ", ".join(bad))
+
+
 def main():
+    _check_no_drift()
     for f in SHARED:
         shutil.copy(os.path.join(ROOT, "bot", f), os.path.join(APK, f))
         print("synced (shared):", f)
@@ -67,3 +106,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    _check_synced()
+    print("OK: PC va APK giong het nhau (%d file shared)" % len(SHARED))
