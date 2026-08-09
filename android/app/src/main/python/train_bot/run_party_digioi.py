@@ -1522,14 +1522,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             time.sleep(60)         # sau do: 1 phut/lan
                         continue
                     ch = r          # 0 (giu nguyen) hoac int (da chuyen) -> chot tam
-                    if ch == 0:
-                        # KHONG lay duoc danh sach kenh (0x07/0100 game KHONG ho tro - KNOWLEDGE 7e:
-                        # chi co SWITCH 0x07/0200 + current_channel tu 0x03/0x0c). "Giu nguyen" mu
-                        # quang lam member reconnect vao kenh khac bi BO ROI (bug that 20:55: leader
-                        # kenh 1, 2 member kenh 2 -> loop moi vo han "lech kenh live 2!=1"). -> GOM ca
-                        # party ve KENH LEADER: set channel = current_channel cua leader; member lech
-                        # se switch ve (0x07/0200 verified), member dung kenh thi switch_channel no-op.
-                        ch = c.current_channel or 0
+                    # ch == 0 = server KHONG tra danh sach kenh = CHI CO 1 KENH -> GIU NGUYEN,
+                    # member se bo qua doi kenh (nhanh `if not ch`) va chi bao map.
+                    #
+                    # TUNG ep `ch = c.current_channel` o day de "gom ca party ve kenh leader" (bug
+                    # 20:55 "lech kenh live 2!=1"). BO di vi:
+                    #  1. Ly do do het hieu luc: check "lech kenh live" da bi xoa - gio xac dinh
+                    #     cung cho bang "co thay nhau quanh + cung map" chu khong so instanceId.
+                    #  2. Con so do la instanceId, KHONG phai kenh the gioi. Trong thap no la so
+                    #     instance -> ep member switch sang "kenh 2" -> server tra result=2 "khong
+                    #     co kenh nay" -> member bao fail -> leader pick lai -> LOOP VO TAN
+                    #     (bug that 16:05: sync lien tuc 10s/vong, khong bao gio thoat).
                     if not _report_channel_map(sync_gen, expected_map):
                         log.warning("[%s] (%s) picker doi kenh xong sai map -> pick lai", label, role)
                         time.sleep(2)

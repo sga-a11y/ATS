@@ -793,6 +793,10 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
     `0x03/0x07`) + cung `scene_id`.** Server CHI gui nearby cho nguoi cung scene VA cung instance,
     nen do la bang chung du. Da bo so sanh instanceId trong
     `_entity_is_visible_on_current_scene` / `_bot_member_is_on_current_scene` (2026-08-09).
+    **KHONG duoc lay `current_channel` lam DICH DEN de `switch_channel`.** Server chi co 1 kenh
+    ma bot doi "chuyen sang kenh 2" (2 = instanceId thap) -> `0x07/0200` tra `result=2` = "khong co
+    kenh nay" -> member bao fail -> leader pick lai -> **LOOP VO TAN 10s/vong** (bug that 16:05).
+    Khong lay duoc danh sach kenh = chi 1 kenh = **GIU NGUYEN**, dung ep ai chuyen di dau.
     **NHUNG VAN PHAI BAO RA `current_channel`** (cot Kenh o GUI/APK): nguoi dung nhin so do de
     chuyen nick TAY cua ho sang dung kenh/instance cua party. Tung thu "khong cap nhat kenh khi o
     trong map instance" -> SAI, lam mat thong tin do. Chi bo viec DEM SO NAY RA SO SANH, khong bo
