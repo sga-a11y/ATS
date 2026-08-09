@@ -45,6 +45,7 @@ _party_state = {}   # party_idx -> {"channel": ch, "channel_ready": Event, "invi
 _clients = []
 _threads = []   # thread tung acc - de biet khi nao TAT CA da thoat
 DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (de tinh "con lai")
+HO_PHU_CHECK_SEC = 180   # Di Gioi Ho Phu: check moi 3 phut (login + dinh ky)
 
 
 def _jitter(pt):
@@ -1093,7 +1094,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         c.log_bag_delayed()   # In tui khi snapshot ve + on dinh (adaptive, toi da 8s) -> dinh danh item
         next_vantieu = None
         next_phuc_than = 0.0   # 0.0 -> kiem tra NGAY lan dau (khong cho 30p roi moi dung lan dau)
-        next_ho_phu = 0.0      # Di Gioi Ho Phu: check login + moi 5p, chi khi mode Di Gioi
+        next_ho_phu = 0.0      # Di Gioi Ho Phu: check login + moi 3p, chi khi mode Di Gioi
         c.fight_legion_boss = pcfg.get("fight_legion_boss", True)
         c.di_gioi_level = int(pcfg.get("di_gioi_level", 2))   # idx 1..15 cap quai DG (mac dinh 2=cap25)
         if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
@@ -2253,7 +2254,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] loi dung Di Gioi Ho Phu luc login (bo qua): %s", label, e)
                 if not _ho_phu_busy:
-                    next_ho_phu = time.time() + 300   # check lai moi 5 phut
+                    next_ho_phu = time.time() + HO_PHU_CHECK_SEC   # check lai moi 3 phut
             # 0) PRE-CHECK: doc so phut DG hom nay tu BANG STAT login (0x55 id=0x1b).
             #    Da du gio (>= DIGIOI_LIMIT) -> KHOI vao (truoc day phai vao -> cho 150s moi biet).
             if (_used_ho_phu_at_login and not c.in_di_gioi()
@@ -3535,15 +3536,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             _quit(); return
                 except Exception as e:
                     log.warning("[%s] loi mua HP/SP giua phien (bo qua): %s", label, e)
-            # Di Gioi Ho Phu: chi mode Di Gioi, tick rieng, check moi 5p va chi dung khi con <15p.
+            # Di Gioi Ho Phu: chi mode Di Gioi, tick rieng, check moi 3p va chi dung khi con <15p.
             # Server se tu gui 0x55/id=0x1b sau khi dung; khong cong timer thu cong.
             if is_digioi and pcfg.get("use_digioi_ho_phu") and time.time() >= next_ho_phu:
                 if not c.in_combat():
                     try:
-                        _maybe_use_di_gioi_ho_phu("5p")
+                        _maybe_use_di_gioi_ho_phu("3p")
                     except Exception as e:
                         log.warning("[%s] loi dung Di Gioi Ho Phu (bo qua): %s", label, e)
-                    next_ho_phu = time.time() + 300
+                    next_ho_phu = time.time() + HO_PHU_CHECK_SEC
             # Van tieu: chi goi lai DUNG GIO escort xong (next_vantieu), KHONG check mu.
             if next_vantieu is not None and time.time() >= next_vantieu:
                 try:
