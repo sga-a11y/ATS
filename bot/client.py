@@ -2864,11 +2864,19 @@ class GameClient:
         tracker = self.battle_tracker
         if tracker.generation:
             coordinator = self._battle_coordinator()
-            if not coordinator.mark_sent(
-                self._battle_account_id(), source, tracker.generation, tracker.turn,
-            ):
-                log.debug(
-                    "[%s] bo SEND source=%s vi chua co local turn hoac da gui g=%d t=%d",
+            _acc_id = self._battle_account_id()
+            _key_ok, _turn_ok = coordinator.sent_state(_acc_id, tracker.generation, tracker.turn)
+            if not (_key_ok and _turn_ok):
+                # Phien dieu phoi lech (thuong sau relogin/reform) -> VAN GUI. Truoc day chan o day
+                # = mat sach lenh danh, im lang. Log WARNING de lan sau thay ngay.
+                log.warning(
+                    "[%s] party-battle lech phien (khop_key=%s thay_turn=%s) g=%d t=%d -> VAN GUI "
+                    "lenh danh (khong bo)", self._label, _key_ok, _turn_ok,
+                    tracker.generation, tracker.turn,
+                )
+            if not coordinator.mark_sent(_acc_id, source, tracker.generation, tracker.turn):
+                log.warning(
+                    "[%s] bo SEND source=%s vi DA GUI dung luot nay roi (g=%d t=%d)",
                     self._label, source, tracker.generation, tracker.turn,
                 )
                 return False
@@ -6820,8 +6828,16 @@ class GameClient:
     def _wait_combat_clear(self, idle: float = 1.0, cap: float = 90.0) -> bool:
         """Cho HET TRAN (khong co luot battle trong 'idle' giay) toi 'cap' giay.
         Tra False neu bi STOP/rot. Dung truoc khi move/transit (battle NUOT lenh 0x06/0x14)."""
+        # `cap` KHONG duoc no khi con dang danh THAT (state.in_battle theo 0x35/0x34 + 0x14
+        # sub0700). Truoc day cap 90s cat giua tran phuc kich o cong -> _enter_gate bo cuoc ->
+        # bao "sai map" -> pha party reform lai -> reform tele giua tran -> ket vong BO CHAY
+        # (bug that 17:09-17:13). cap chi con de bat cai duoi idle (khong chac chan).
         t0 = time.time()
-        while self.in_combat(idle_secs=idle) and self.running and time.time() - t0 < cap:
+        while self.in_combat(idle_secs=idle) and self.running:
+            if self.state.in_battle:
+                t0 = time.time()
+            elif time.time() - t0 >= cap:
+                break
             time.sleep(0.5)
         # Pho ban to doi (co _team_dungeon_until): neu in_battle vua ha qua SAFETY 25s (trong
         # in_combat()) - KHONG phai qua xac nhan ket tran that (_genuine_end_seen gan day) - thi
@@ -6927,9 +6943,15 @@ class GameClient:
         t0 = time.time()
         _attempt = 0
         gate_battled = False   # da tung no tran phuc kich tai cong -> KHONG gui lai 04/08 (kick)
-        while time.time() - t0 < timeout:
+        while True:
             if not self.running:
                 return False
+            # Dang danh = quai phuc kich tai cong, PHAI danh xong moi qua duoc -> khong tinh gio.
+            # timeout chi de bat cong HONG (khong danh, khong doi map).
+            if self.state.in_battle:
+                t0 = time.time()
+            elif time.time() - t0 >= timeout:
+                break
             if _gate_reached():
                 return True
             _attempt += 1

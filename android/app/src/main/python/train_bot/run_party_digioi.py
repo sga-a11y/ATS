@@ -1957,6 +1957,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 if not all_on_map:
                     log.info("[%s] (%s) PARTY co acc sai map -> CA PARTY ve thanh don nhau roi KEO toi %s"
                              " (dung _do_reform, dung o safe - chua ra spot)", label, role, sc)
+                    # DANG DANH thi KHONG duoc reform: viec dau tien cua reform la teleport, ma
+                    # battle NUOT lenh -> lap "Ve thanh ... (lap lai neu con battle chan teleport)"
+                    # vo tan (bug that 17:10-17:13). Cho moc ket tran THAT roi hang.
+                    if c.state.in_battle:
+                        log.info("[%s] (%s) dang trong tran -> danh xong roi moi reform", label, role)
+                        c._wait_combat_clear()
                     _do_reform(to_spot=False)
                     with st["lock"]: st["ready_members"].discard(username)
                     if c.current_map == sc:

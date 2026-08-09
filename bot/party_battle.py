@@ -77,9 +77,10 @@ class PartyBattleCoordinator:
             return self._snapshot
 
     def _observe_start(self, account_id, event):
-        if self.active and event.generation < self.generation:
-            return False
-        if not self.active or event.generation > self.generation:
+        # Generation KHAC (ke ca NHO HON) = server da mo phien battle MOI (vd ca party relogin sau
+        # khi PB vo -> server danh so lai tu dau). Server la su that: theo no. Truoc day loai
+        # generation nho hon -> phien cu ket lai vinh vien, moi turn sau deu bi loai.
+        if not self.active or event.generation != self.generation:
             self.generation = event.generation
             self.turn = 0
             self.active = True
@@ -94,7 +95,17 @@ class PartyBattleCoordinator:
 
     def _observe_turn(self, account_id, event):
         if not self.active or event.generation != self.generation:
-            return False
+            # Turn cua mot generation khac -> phien dang giu la RAC (xem _observe_start). Nhan
+            # phien moi tai day luon, khong thi ca tran khong ai gui duoc lenh nao.
+            self.generation = event.generation
+            self.turn = 0
+            self.active = True
+            self.local_turns = {}
+            self._reservations = {}
+            self._events = {}
+            self._variants.clear()
+            self._warned_conflicts.clear()
+            self._snapshot = None
         if event.turn < self.turn:
             return False
         if event.turn > self.turn:
@@ -204,21 +215,32 @@ class PartyBattleCoordinator:
             return self.active_key == (generation, turn)
 
     def can_send(self, account_id, generation: int, turn: int, source=None):
+        """CHI chan khi da GUI DUNG (account, source, generation, turn) nay roi.
+
+        TRUOC DAY con chan khi `active_key != (g,t)` hoac chua thay turn cua chinh minh ->
+        phien dong bo lech la NUOT SACH lenh danh, im lang (log.debug), tran dung hinh vinh vien
+        (bug that 17:09: enemy_hp 488/488/488 suot 4 luot, server hoi lai luot moi 26s, HP minh
+        van tut). Chan trung la viec CAN, chan vi "chua dong bo phien" la MAT LENH -> bo.
+        Khoa chong trung nay gan lien (generation, turn) nen dung CA KHI phien lech.
+        """
         with self._lock:
-            if self.active_key != (generation, turn):
-                return False
-            if self.local_turns.get(account_id) != (generation, turn):
-                return False
             if source is None:
                 return True
-            return (account_id, tuple(source)) not in self._sent
+            return (account_id, tuple(source), generation, turn) not in self._sent
+
+    def sent_state(self, account_id, generation: int, turn: int):
+        """(phien co khop khong, da thay turn cua minh chua) - de caller LOG canh bao, khong chan."""
+        with self._lock:
+            return (self.active_key == (generation, turn),
+                    self.local_turns.get(account_id) == (generation, turn))
 
     def mark_sent(self, account_id, source, generation: int, turn: int):
         source = tuple(source)
         with self._lock:
-            if not self.can_send(account_id, generation, turn, source):
+            key = (account_id, source, generation, turn)
+            if key in self._sent:
                 return False
-            self._sent.add((account_id, source))
+            self._sent.add(key)
             return True
 
     def reserve(self, account_id, action_class, target, generation: int, turn: int):
