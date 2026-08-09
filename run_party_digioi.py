@@ -939,8 +939,17 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
             return True
         if time.time() - last_log > 60:
             last_log = time.time()
-            log.info("[%s] DG+Train: xong DG, DUNG YEN cho party (%d/%d acc xong) - cho khong gioi han",
-                     label, len(done & users), len(users))
+            # NEU RA TEN + MAP cua acc con THIEU. Truoc day chi in "(2/5 acc xong)" -> treo ca dem
+            # ma khong biet dua nao ket o dau, acc ket lai KHONG in log gi (log 22:59-23:07: 3 acc
+            # dung o Quang Truong, khong mot dong log).
+            missing = sorted(users - done)
+            detail = ", ".join(
+                "%s@map%s" % (u, getattr(account_clients.get(u), "current_map", "?"))
+                for u in missing
+            )
+            log.info("[%s] DG+Train: xong DG, DUNG YEN cho party (%d/%d acc xong) - cho khong "
+                     "gioi han | CON THIEU: %s", label, len(done & users), len(users),
+                     detail or "-")
         time.sleep(5)
 
 
