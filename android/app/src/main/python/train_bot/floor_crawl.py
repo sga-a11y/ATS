@@ -27,6 +27,7 @@ log = logging.getLogger("bot")
 
 _BATTLE_IDX_RANGE = range(3, 9)   # idx danh quai quan sat duoc (3..6); quet rong hon 1 chut
 _DIALOG_CAP = 15                  # so lan bam 0x14 0600 toi da de day thoai NPC vao tran
+_DIALOG_OPEN_WAIT = 3.0           # cho THOAI mo sau khi bam idx; khong mo = diem da het quai
 _DUNGEON_WINDOW = 3600.0          # cua so "dang trong kich ban dungeon" (gia han moi tang)
 _MAX_FLOOR_SECONDS = 900.0
 _WALK_BUDGET = 120.0              # ngan sach di 1 chang (log that: 45s/30 lenh move cho 1 diem
@@ -75,8 +76,19 @@ def _fight_one(client, idx: int, stop_event, heal_party=None):
     # nhieu lan -> moi ra S2C 0x34 = BATTLE START. Truoc day chi gui idx roi ngoi cho in_battle
     # -> khong bao gio vao tran, roi gui idx ke TRONG LUC THOAI DANG MO -> SERVER DA (xac nhan
     # log 11:18:16: gui '0x14 08000400' xong la "Server dong ket noi").
+    prev_evt = getattr(client, "_last_dialog_evt", 0.0)   # CHOT MOC TRUOC khi gui. Khong so voi
+    t_send = time.time()                                  # time.time() luc gui: Windows ~15ms/tick
+                                                          # -> 2 lenh lien nhau co the ra CUNG so.
     client.send(0x14, b"\x08\x00" + bytes([idx & 0xFF]) + b"\x00")
-    time.sleep(0.6)
+    # Diem nay con quai khong? Con -> server MO THOAI (0x14 0100/1000/0d00 -> _last_dialog_evt).
+    # Het quai (da danh truoc do, vd login lai giua tang) -> khong co thoai -> bo qua NGAY, thay vi
+    # spam 15 lan 0x14 0600 roi cho tiep (~20s cho moi diem da chet - log that ket ca phut o tang 8).
+    while _active(client, stop_event) and time.time() - t_send < _DIALOG_OPEN_WAIT:
+        if client.state.in_battle or getattr(client, "_last_dialog_evt", 0.0) > prev_evt:
+            break
+        time.sleep(0.3)
+    else:
+        return None
     if not client._dialog_until_battle(cap_n=_DIALOG_CAP, gap=0.7):
         # Khong vao tran -> idx nay khong phai diem danh quai. Don thoai lo mo roi bo qua.
         client._adv_dialog_until_idle(min_n=2, gap=0.4, idle=1.2, max_wait=8.0)
@@ -179,13 +191,19 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None):
             log.info("[%s] 2K: %s -> len %s (cong door=%s tai %s), %d diem danh quai",
                      label, _floor_label(ev, scene), nxt, door, center, len(points))
             # Duyet idx tang dan, BO idx cua cong. Truoc moi lan danh: DI TOI diem tuong ung.
+            # `k` = chi so DIEM, tang theo TUNG LAN THU chu KHONG theo so tran THANG. Truoc day
+            # dung points[fought] (chi tang khi thang): login lai giua tang, con 1 da chet -> khong
+            # vao tran -> fought=0 mai -> moi idx deu quay lai DIEM 1, hai con con song o diem 2/3
+            # KHONG BAO GIO duoc danh (log that tang 8 - 12931).
             fought = 0
+            k = 0
             for idx in _BATTLE_IDX_RANGE:
-                if not _active(client, stop_event) or fought >= len(points):
+                if not _active(client, stop_event) or k >= len(points):
                     break
                 if idx == door:
                     continue
-                _walk_to(client, points[fought], stop_event)
+                _walk_to(client, points[k], stop_event)
+                k += 1
                 res = _fight_one(client, idx, stop_event, heal_party)
                 if res == "lost":
                     log.warning("[%s] 2K: PARTY THUA o %s (idx=%d) -> KET THUC 2K",
