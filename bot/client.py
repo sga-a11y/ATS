@@ -685,6 +685,24 @@ def _load_pet_stat_data() -> dict:
         _pet_stat_data = _load_json_data_file("pet_stats.json") or {}
     return _pet_stat_data
 
+_collect_style = None
+def _load_collect_style() -> dict:
+    """{ tid_int: (collectStyleId, part) } tu collect_style.json (246 tid do thoi trang, crack tu
+    CollectStyle_C.dat). Dung de biet item tui nao la thoi trang + gui dung (id,part) tha vao S.Tam."""
+    global _collect_style
+    if _collect_style is not None:
+        return _collect_style
+    _collect_style = {}
+    data = _load_json_data_file("collect_style.json")
+    if isinstance(data, dict):
+        for k, v in data.items():
+            try:
+                tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+                _collect_style[tid] = (int(v[0]), int(v[1]))
+            except Exception:
+                pass
+    return _collect_style
+
 
 
 
@@ -962,6 +980,7 @@ class GameClient:
         self._decompose_seq = 0      # tang moi khi nhan S2C 0x59 (xac nhan phan giai 1 cuon xong)
         self.furnace_shop = None     # ket qua soi lo (熔爐): {base_rate, active_rate, tabs:{kind:[items]}}
         self._furnace_seq = 0        # tang moi khi nhan S2C 0x59 sub01 (xac nhan soi lo xong)
+        self._fashion_deposit_seq = 0  # tang moi khi nhan S2C 0x59 sub02 (tha do thoi trang xong)
         self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
         self.bag_slots = {}          # slot (int) -> [tid, count]  (S2C 0x16 sub0400). Use item = gui slot.
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
@@ -1740,10 +1759,13 @@ class GameClient:
         # sub03=phan giai cuon -> Vo Tuong Phien (chips). Truoc day MOI 0x59 deu tang _decompose_seq;
         # gio tach sub01 (soi lo) ra parse rieng, con lai (sub03 phan giai + sub khac) GIU NGUYEN.
         if opcode == 0x59:
-            if len(pkt) >= 9 and pkt[7:9] == b"\x01\x00":
-                self._parse_furnace_shop(pkt)   # SOI LO (S:089-001)
+            _fsub = pkt[7:9] if len(pkt) >= 9 else b""
+            if _fsub == b"\x01\x00":
+                self._parse_furnace_shop(pkt)       # SOI LO (S:089-001)
+            elif _fsub == b"\x02\x00":
+                self._fashion_deposit_seq += 1      # ket qua THA DO THOI TRANG vao S.Tam (S:095-002)
             else:
-                self._decompose_seq += 1        # phan giai xong 1 cuon (S:089-003) - nhu cu
+                self._decompose_seq += 1            # phan giai cuon (S:089-003) + fashion data sub05
         # INT luc login: doc base/equip/turn3 tu 0x05 roi cong collection + horse giong client game.
         if opcode == 0x05 and len(pkt) > 16:
             self._parse_char_login_int(pkt)
@@ -4596,6 +4618,44 @@ class GameClient:
                              self._label, it["index"], it["id"], it["quant"], nm)
         except Exception as e:
             log.warning("[%s] SOI LO: loi parse (%s) raw=%s", self._label, e, pkt.hex())
+
+    def deposit_fashion_to_collection(self, wait: float = 1.0):
+        """THA DO THOI TRANG vao BO SUU TAM (收藏冊) -> gon tui + diem collection. Item vao S.Tam
+        VAN MAC LAI DUOC (khong mat). Quet bag_slots: tid nam trong collect_style.json = do thoi
+        trang -> gui C2S 0x5f sub02 [collectStyleId u16 LE][part u8]. Xac nhan capture
+        ts_capture_mumu12_congty.pcap: `5f 02 00 01 00 01` -> S2C `5f 02 00 01` (thanh cong).
+        THA TRUOC use_login_items (chac chan free slot; use_item doi khi de item moi lam day tui)."""
+        fmap = _load_collect_style()
+        if not fmap:
+            return
+        total = 0
+        guard = 0
+        while self.running and guard < 500:
+            guard += 1
+            # tim 1 SLOT con do thoi trang (tid nam trong map collect_style)
+            target = None
+            for slot, (tid, cnt) in list(self.bag_slots.items()):
+                if cnt > 0 and tid in fmap:
+                    target = (slot, tid)
+                    break
+            if target is None:
+                break   # het do thoi trang trong tui
+            slot, tid = target
+            cid, part = fmap[tid]
+            seq0 = self._fashion_deposit_seq
+            # C2S 0x5f sub02: [collectStyleId u16 LE][part u8]. KHONG gui bag-slot (server tu tim
+            # item theo (id,part) roi bo khoi tui).
+            self.send(0x5f, b"\x02\x00" + struct.pack("<H", cid) + bytes([part & 0xFF]))
+            t0 = time.time()
+            while self._fashion_deposit_seq == seq0 and time.time() - t0 < wait and self.running:
+                time.sleep(0.1)
+            # do thoi trang la item DUY NHAT (1 cai) -> bo slot khoi tracking (S2C 0x16 update lai)
+            self.bag_slots.pop(slot, None)
+            self.bag_counts[tid] = max(0, self.bag_counts.get(tid, 0) - 1)
+            total += 1
+        if total:
+            log.info("[%s] Tha %d do thoi trang vao Bo Suu Tam (gon tui + diem collection)",
+                     self._label, total)
 
     def decompose_junk_scrolls(self, wait: float = 1.2):
         """Phan giai cuon GOI PET RAC (gacha ra nhieu) -> nhan lai xu. C2S 0x59:

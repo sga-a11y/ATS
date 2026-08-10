@@ -747,6 +747,22 @@ cu dung lai kind+index tu item da soi.
 Vo Tuong = 10 cuon goi pet (random). Trang Bi = 10 trang bi (random). Chuyen Sinh = Kim Toa
 (reborn pet chua rb -> rb1) + Tuong Tinh (rb1 -> rb2).
 
+## 7d-COLLECT. THA DO THOI TRANG VAO BO SUU TAM (收藏冊, opcode 0x5f=proto 95) (xac nhan capture 2026-08-10)
+
+Nguon: crack `UI_UICollectBook.lua`/`Logic_CollectStyle.lua` + capture `ts_capture_mumu12_congty.pcap`.
+Nut "tha vao S.Tam" = `CollectStyle.SendStoreStyle(id, part)` -> gon tui + nhan diem collection.
+
+**C2S tha (store):** `0x5f` sub `02 00` + `collectStyleId(u16 LE)` + `part(u8)`.
+  Capture xac nhan: `5f 02 00 01 00 01` (id=1 part=1), `5f 02 00 01 00 03` (id=1 part=3).
+**S2C:** `0x5f 05 00 [index][data]` (cap nhat fashion data) roi `0x5f 02 00 [result]` (01=THANH CONG).
+  Lay ra lai: `0x5f` sub `03 00` + id(u16)+part(u8). Nhan thuong collect vo tuong: sub 01.
+
+**DATA** `gamedata/Data/CollectStyle_C.dat`: header count(u32)=50, moi entry 32B:
+  `id(u16) + name(u32 stringID) + itemId[1..5](u16 = 5 manh: dau/than/vukhi/tay/chan) + info(u32)
+   + itemScore[1..6](u16)`. itemId=0x0000 = khong co manh o vi tri do.
+  Vd id=1 itemId=[0x5c04,0x5c05,0x5c06,0x5c07,0x5c08]. Map nguoc tid->(id,part) de biet item tui
+  nao la thoi trang + gui dung (id,part). Vung tid thoi trang ~0x5c04..0x5cxx.
+
 ## 7d-RE. MAP COLLISION / SMART PATHFIND (xac nhan 2026-07-17)
 
 Muc tieu: tim data game biet o nao tren map di duoc / bi chan (tuong, song, object...) de pathfind dung hon.

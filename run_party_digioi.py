@@ -1117,6 +1117,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             try: c.scan_furnace()
             except Exception as e: log.warning("[%s] loi soi lo: %s", label, e)
             c.donate_legion()           # donate nguyen lieu rac (donate_items.json) cho quan doan -> don tui
+            # THA DO THOI TRANG vao Bo Suu Tam (gon tui + diem). DAT TRUOC use_login_items vi tha CHAC
+            # CHAN free slot, con use_item doi khi de item MOI ra lam day tui (theo yeu cau user).
+            try: c.deposit_fashion_to_collection()
+            except Exception as e: log.warning("[%s] loi tha do thoi trang: %s", label, e)
             c.use_login_items()         # tu dung item trong list (use_items.json) -> vd tui vat lieu su kien
             # Phuc Than NGAY SAU use_login_items() - luc nay con dung an toan o thanh/diem login
             # (chua di ra bai quai) -> tranh bug dung/deo Phuc Than GIUA luc dang combat ngoai bai
