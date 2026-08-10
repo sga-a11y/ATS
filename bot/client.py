@@ -6427,17 +6427,27 @@ class GameClient:
                 return True
         return False
 
-    def _advance_to_team_dungeon_battle(self, cap_n: int) -> bool:
+    def _advance_to_team_dungeon_battle(self, cap_n: int, grace: float = 20.0) -> bool:
         start_seq = self._battle_start_seq
+        started = lambda: self._battle_start_seq > start_seq
         for _ in range(cap_n):
             if not self.running:
                 return False
-            if self._battle_start_seq > start_seq:
+            if started():
                 return True
             self._adv_dialog(1, gap=0.8)
-            if self._battle_start_seq > start_seq:
+            if started():
                 return True
-        return False
+        # Da bam het dialog can thiet nhung 0x34 battle-start co the den MUON (server cham) -> cho
+        # them `grace` giay (van bam dialog nhe), thay 0x34/in_battle la vao. Truoc day het cap_n la
+        # BO CUOC NGAY -> thua race sat nut khi battle start cham (bug that: tran 1 start ~22s nhung
+        # cap_n~18s -> "khong thay battle start" -> FAIL du battle THAT SU dang chay g=1).
+        deadline = time.time() + grace
+        while self.running and time.time() < deadline:
+            if started():
+                return True
+            self._adv_dialog(1, gap=0.8)
+        return started()
 
     def _run_team_dungeon_lv110_stage(self, actions: tuple, stage_no: int) -> bool:
         for action in actions:
