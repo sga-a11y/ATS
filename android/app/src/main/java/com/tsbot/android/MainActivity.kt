@@ -2699,6 +2699,31 @@ fun HealSettingsDialog(
     }
 }
 
+/** Doc furnace_default_notify.json tu assets -> {poolName: set(tid_hex)} (cache).
+ *  Item cua vo tuong CO VU KHI CHUYEN DUNG -> mac dinh "Thong bao" thay vi "Bo qua".
+ *  Sinh boi tools/crack_furnace_notify.py. */
+private var _furnaceNotifyCache: Map<String, Set<String>>? = null
+
+fun loadFurnaceDefaultNotify(context: android.content.Context, poolName: String): Set<String> {
+    if (_furnaceNotifyCache == null) {
+        _furnaceNotifyCache = try {
+            val bytes = context.assets.open("train_bot_data/furnace_default_notify.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8))
+            val out = LinkedHashMap<String, Set<String>>()
+            for (k in root.keys()) {
+                val o = root.getJSONObject(k)
+                val s = LinkedHashSet<String>()
+                for (tid in o.keys()) s.add(tid)
+                out[k] = s
+            }
+            out
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+    return _furnaceNotifyCache?.get(poolName) ?: emptySet()
+}
+
 /** Doc furnace_pool.json tu assets -> {poolName: [(tid_hex, ten)]} (cache). */
 private var _furnacePoolCache: Map<String, List<Pair<String, String>>>? = null
 
@@ -2732,13 +2757,25 @@ fun FurnacePickerDialog(
 ) {
     val context = LocalContext.current
     val pool = remember(poolName) { loadFurnacePool(context, poolName) }
+    val dfltNotify = remember(poolName) { loadFurnaceDefaultNotify(context, poolName) }
     val modes = remember(initialItems) { mutableStateMapOf<String, String>().apply { putAll(initialItems) } }
+    // Config cua acc DE LEN mac dinh. Chua chon gi -> "Thong bao" neu la item cua vo tuong CO
+    // VU KHI CHUYEN DUNG, con lai -> "Bo qua".
+    val modeOf = { tid: String ->
+        val m = modes[tid]
+        when {
+            m == "skip" -> ""                                   // bo qua TUONG MINH
+            m != null -> m
+            dfltNotify.contains(tid) -> "notify"                // mac dinh cho item vo tuong co vkcd
+            else -> ""
+        }
+    }
     var query by remember { mutableStateOf("") }
     val rank = { m: String? -> when (m) { "auto" -> 0; "notify" -> 1; else -> 2 } }
     val filtered = remember(query, modes.toMap(), pool) {
         val kw = query.trim().lowercase()
         pool.filter { kw.isEmpty() || it.second.lowercase().contains(kw) || it.first.contains(kw) }
-            .sortedWith(compareBy({ rank(modes[it.first]) }, { it.second }))
+            .sortedWith(compareBy({ rank(modeOf(it.first)) }, { it.second }))
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2750,7 +2787,7 @@ fun FurnacePickerDialog(
                 Spacer(Modifier.height(6.dp))
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
                     items(filtered, key = { it.first }) { (tid, name) ->
-                        val m = modes[tid] ?: ""
+                        val m = modeOf(tid)
                         Row(verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
                             Text(name, modifier = Modifier.weight(1f), maxLines = 1,
@@ -2758,7 +2795,12 @@ fun FurnacePickerDialog(
                             listOf("" to "Bỏ qua", "auto" to "Tự mua", "notify" to "Thông báo").forEach { (mv, lbl) ->
                                 val sel = m == mv
                                 TextButton(onClick = {
-                                    if (mv.isEmpty()) modes.remove(tid) else modes[tid] = mv
+                                    if (mv.isEmpty()) {
+                                        // Item MAC DINH thong bao: phai luu "skip" moi tat duoc,
+                                        // xoa key la lan sau lai ve mac dinh notify.
+                                        if (dfltNotify.contains(tid)) modes[tid] = "skip"
+                                        else modes.remove(tid)
+                                    } else modes[tid] = mv
                                 }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
                                     Text(lbl, style = MaterialTheme.typography.labelSmall,
                                         color = if (sel) MaterialTheme.colorScheme.primary
@@ -2773,7 +2815,7 @@ fun FurnacePickerDialog(
         },
         confirmButton = {
             Button(onClick = {
-                onSave(modes.filterValues { it == "auto" || it == "notify" }.toMap())
+                onSave(modes.filterValues { it == "auto" || it == "notify" || it == "skip" }.toMap())
             }) { Text("Lưu") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },

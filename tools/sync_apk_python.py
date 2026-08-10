@@ -32,8 +32,16 @@ PC_ONLY = ["config.py",        # APK doc tu asset, cau truc khac han
            "_version.py", "_guard.py", "updater.py", "donate_qr_data.py",   # chi ban PC dung
            "__init__.py"]
 
+# Asset UI cua APK doc TRUC TIEP tu assets/train_bot_data (khong qua bundle) -> phai sync tu
+# ban goc o repo root. Truoc day chi liet ke 5 file, 14 file con lai duoc chep TAY -> lech am
+# tham y het vu party_battle.py. _check_assets_covered() gio chan viec do.
 SHARED_ASSETS = ["events.json", "npc_names.json", "use_items.json", "dangerous_npcs.json",
-                 "scene_names.json"]
+                 "scene_names.json",
+                 "cities.json", "collect_style.json", "donate_items.json", "furnace_pool.json",
+                 "furnace_default_notify.json", "items_gamedata.json", "login_awards.json",
+                 "pet_stats.json", "pets.json", "servers.json", "skills_data.json",
+                 "train_block_stats.json", "train_routes.json", "vantieu_dispatch_bonus.json",
+                 "vantieu_requests.json"]
 
 # File PC-only can cho coordinator/client neu co import (pathfind dung boi navigate). Copy neu ton tai.
 OPTIONAL = ["pathfind.py", "world_nav.py", "smart_route.py"]
@@ -69,6 +77,21 @@ def _check_no_drift():
             + " | dung chung ca 2 ban -> them vao SHARED"
             + " | chi rieng ban PC -> them vao PC_ONLY"
             + " (bo qua im lang = APK chay code cu, y het bug party_battle.py)"
+        )
+
+
+def _check_assets_covered():
+    """Moi file trong assets/train_bot_data phai nam trong SHARED_ASSETS (khong thi no chi duoc
+    cap nhat bang tay -> lech am tham voi ban goc o repo root)."""
+    d = os.path.join(ROOT, "android", "app", "src", "main", "assets", "train_bot_data")
+    if not os.path.isdir(d):
+        return
+    unknown = sorted(f for f in os.listdir(d) if f.endswith(".json") and f not in SHARED_ASSETS)
+    if unknown:
+        raise SystemExit(
+            "SYNC DUNG: asset APK chua khai bao trong SHARED_ASSETS: "
+            + ", ".join(unknown)
+            + " (them vao SHARED_ASSETS de duoc dong bo tu dong)"
         )
 
 
@@ -121,4 +144,5 @@ if __name__ == "__main__":
     main()
     _check_synced()
     _check_no_abs_bot_import()
+    _check_assets_covered()
     print("OK: PC va APK giong het nhau (%d file shared)" % len(SHARED))

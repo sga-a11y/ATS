@@ -678,6 +678,33 @@ def _load_gamedata_items() -> dict:
                                     "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     return _gamedata_items
 
+_furnace_notify_ids = None
+def _load_furnace_default_notify_ids() -> set:
+    """Set item_id MAC DINH "Thong bao" (furnace_default_notify.json).
+
+    Cuon goi / K.Toa / T.Tinh / Me cua vo tuong CO VU KHI CHUYEN DUNG -> mach cua no dang co gia
+    tri, khong duoc am tham bo qua. Sinh boi tools/crack_furnace_notify.py (ghep theo ID trong
+    gamedata_Item.dat, KHONG theo ten vi ten trong pool bi cat ngan).
+    Config rieng cua acc VAN DE LEN: user chon "Bo qua" item nao thi item do bo qua.
+    """
+    global _furnace_notify_ids
+    if _furnace_notify_ids is not None:
+        return _furnace_notify_ids
+    _furnace_notify_ids = set()
+    data = _load_json_data_file("furnace_default_notify.json")
+    if isinstance(data, dict):
+        for tab in data.values():
+            if not isinstance(tab, dict):
+                continue
+            for k in tab:
+                try:
+                    _furnace_notify_ids.add(
+                        int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k))
+                except Exception:
+                    pass
+    return _furnace_notify_ids
+
+
 _furnace_pool_ids = None
 def _load_furnace_pool_ids() -> set:
     """Set TAT CA item_id (int) da biet trong furnace_pool.json (pool hien tai cua game). Dung de
@@ -4685,10 +4712,21 @@ class GameClient:
                 if it["id"] == 0:
                     continue
                 mode = wl.get(it["id"]) or wl.get("0x%04x" % it["id"])
+                if mode == "skip":
+                    # User CHU Y chon "Bo qua" cho item nam trong danh sach mac-dinh-thong-bao.
+                    # Can gia tri RIENG ("skip") chu khong phai "" vi "" falsy -> bi coi la CHUA
+                    # cau hinh -> lai roi vao mac dinh notify (test bat duoc truoc khi len ban chay).
+                    continue
                 if not mode:
-                    # Khong co trong config: neu id NGOAI pool (game update them item moi) -> THONG BAO
-                    # luon (an toan, khong tu mua item la). Neu trong pool = user co chu y "Bo qua" -> skip.
+                    # Khong co trong config -> quyet dinh theo MAC DINH:
+                    #  1. id NGOAI pool (game update them item moi) -> THONG BAO (khong tu mua item la).
+                    #  2. id trong danh sach mac-dinh-thong-bao (cuon goi/K.Toa/T.Tinh/Me cua vo
+                    #     tuong CO vu khi chuyen dung) -> THONG BAO.
+                    #  3. con lai -> bo qua.
+                    # Config cua acc luon DE LEN cai nay (da lay o `wl` phia tren).
                     if pool_ids and it["id"] not in pool_ids:
+                        mode = "notify"
+                    elif it["id"] in _load_furnace_default_notify_ids():
                         mode = "notify"
                     else:
                         continue

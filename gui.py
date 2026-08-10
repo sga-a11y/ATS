@@ -1773,6 +1773,25 @@ class PartyConfigFrame(ttk.Frame):
             row=len(rows) + 7, column=0, columnspan=3, sticky="ew", padx=8, pady=(0, 8))
 
     # ---- SOI LO: pool + dialog chon item ----
+    _furnace_default_notify_cache = None
+
+    @classmethod
+    def _load_furnace_default_notify(cls):
+        """{pool_tab: {tid_hex: ten}} - item MAC DINH "Thong bao" (xem tools/crack_furnace_notify.py)."""
+        if PartyConfigFrame._furnace_default_notify_cache is None:
+            import json as _json, os as _os
+            PartyConfigFrame._furnace_default_notify_cache = {}
+            for p in (_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                    "furnace_default_notify.json"),
+                      "furnace_default_notify.json"):
+                try:
+                    with open(p, encoding="utf-8") as fh:
+                        PartyConfigFrame._furnace_default_notify_cache = _json.load(fh)
+                        break
+                except Exception:
+                    pass
+        return PartyConfigFrame._furnace_default_notify_cache
+
     _furnace_pool_cache = None
     FURNACE_TABS = [("vo_tuong", "Vo Tuong", "Võ Tướng thường"),
                     ("trang_bi", "Trang Bi", "Trang Bị thường"),
@@ -1803,8 +1822,17 @@ class PartyConfigFrame(ttk.Frame):
         MODE_TXT = {"auto": "Tự mua", "notify": "Thông báo", "": "Bỏ qua"}
         RANK = {"auto": 0, "notify": 1, "": 2}
         # state {tid_hex: mode}. cur co the co key hex ("0x..") HOAC int-string ("23456") tuy JSON.
+        dflt_notify = self._load_furnace_default_notify().get(pool_name, {})
+
         def _cur_mode(tid_hex):
-            return cur.get(tid_hex) or cur.get(str(int(tid_hex, 16))) or cur.get(int(tid_hex, 16)) or ""
+            # Config cua acc DE LEN mac dinh. Chua chon gi -> "Thong bao" neu item thuoc vo tuong
+            # CO VU KHI CHUYEN DUNG (furnace_default_notify.json), con lai -> "Bo qua".
+            m = cur.get(tid_hex) or cur.get(str(int(tid_hex, 16))) or cur.get(int(tid_hex, 16))
+            if m == "skip":     # bo qua TUONG MINH (xem save()) -> UI hien "Bo qua"
+                return ""
+            if m:
+                return m
+            return "notify" if tid_hex in dflt_notify else ""
         state = {tid_hex: _cur_mode(tid_hex) for tid_hex in pool}
 
         win = tk.Toplevel(self); win.title(f"Lò {tab_label}: {row['u'].get().strip()}")
@@ -1847,7 +1875,14 @@ class PartyConfigFrame(ttk.Frame):
             {"auto": "notify", "notify": "", "": "auto"}[state.get(tv.focus(), "")]))
 
         def save():
-            items = {t: m for t, m in state.items() if m in ("auto", "notify")}  # key = hex string
+            # Luu "skip" cho item MAC DINH thong bao ma user chon "Bo qua" - khong luu thi lan sau
+            # lai ve mac dinh notify (khong tat duoc). Item khac van khong can luu khi bo qua.
+            items = {}
+            for t, m in state.items():
+                if m in ("auto", "notify"):
+                    items[t] = m
+                elif not m and t in dflt_notify:
+                    items[t] = "skip"
             if items:
                 on = (furn.get(tab_key) or {}).get("on", True)
                 furn[tab_key] = {"on": on, "items": items}
