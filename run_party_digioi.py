@@ -1468,7 +1468,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
 
         # Dong bo kenh: 1 dua (picker) chon kenh it nguoi -> ca lu sang cung.
         # Map-train: goi sau khi ve safe (doi kenh tren map thuong khong sao).
+        def _dg_gather_giveup():
+            """DG+Train: da co acc HET GIO DG (dt_done) trong khi party dang o PHA DG -> party khong
+            bao gio gom du trong DG duoc nua (acc het gio dung NGOAI, khong vao lai instance duoc) ->
+            BO gom/sync. Moi acc con time DG tu chay DG SOLO den het gio roi vao barrier -> sang train.
+            Chi ap dung PHA DG (dt_phase='digioi'); pha train dt_done da clear nen khong dinh."""
+            if not (dt_mode and _pstate(pidx).get("dt_phase") == "digioi"):
+                return False
+            with st["lock"]:
+                return bool(st["dt_done"])
+
         def do_channel_sync():
+            # DG+Train: co acc het gio DG -> KHONG gom party DG nua (tranh reform vo han "1/5"),
+            # de acc con time chay DG solo den het gio. Bo qua sync, coi nhu xong.
+            if _dg_gather_giveup():
+                log.info("[%s] (%s) DG+Train: da co acc het gio DG -> BO gom party DG, chay DG SOLO den het gio",
+                         label, role)
+                return True
             # CHAN TRUOC: ca party phai cung MAP thi sync kenh moi co nghia (xem _party_same_map).
             if not _party_same_map(st, username, c.current_map, len(party_accounts(pidx)),
                                    _stopped, label, role):
@@ -1556,6 +1572,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 need = len(party_accounts(pidx))
                 t0 = time.time()
                 while c.running and not _stopped():
+                    # Race: vao sync roi moi co acc het gio DG -> bo gom ngay (khoi loop "1/5" vo han).
+                    if _dg_gather_giveup():
+                        log.info("[%s] (%s) DG+Train: acc het gio DG giua luc sync -> BO gom party DG",
+                                 label, role)
+                        return True
                     expected_map = c.current_map
                     with st["lock"]:
                         st["channel_ready"].clear()
@@ -1613,9 +1634,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             else:
                 # cho picker CHOT kenh (co the lau neu dang doi kenh trong) -> cho toi khi ready/stop
                 while c.running and not _stopped():
+                    if _dg_gather_giveup():   # co acc het gio DG -> khoi cho picker, chay DG solo
+                        return True
                     while not st["channel_ready"].wait(5):
                         if not c.running or _stopped():
                             return
+                        if _dg_gather_giveup():
+                            return True
                     with st["lock"]:
                         ch = st["channel"]
                         expected_map = st.get("channel_expected_map")
@@ -1870,10 +1895,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # LAP LAI party TAI THANH: CHO VO HAN toi khi DU member join (khong gioi han 8 lan).
                 # Member dang reconnect -> bump reform_gen -> _ab() -> thoat de keepalive reform lai khi
                 # no vao. Van hoan toan -> ca party dung o thanh cho (an toan).
+                _inv_t0 = time.time()
                 while joined_member_count(pidx) < st["n_members"]:
                     if _ab(): return   # stop / reform moi hon -> thoat de keepalive xu lai
                     try: _invite_party_participants(c, True, gap=1.0)
                     except Exception: pass
+                    # KHONG cho vo han: 1 member ket SAI MAP (khong the moi) -> truoc day leader moi
+                    # cac dua dung map MAI, ca team dung im ca ngay (bug that: a3570949 lech map
+                    # 22000!=14001, treo 7 phut+). Sau 120s chua du -> BUMP reform_gen -> ca party
+                    # (ke ca dua ket) reform lai tu thanh (dua ket se duoc teleport ve thanh gom).
+                    if time.time() - _inv_t0 > 120:
+                        with st["lock"]:
+                            st["reform_gen"] += 1
+                        log.warning("[%s] (LEADER) reform: 120s chua du party (%d/%d) - co member ket "
+                                    "sai map -> BUMP reform_gen, gom lai tu dau",
+                                    label, joined_member_count(pidx), st["n_members"])
+                        return
                     time.sleep(4)
                 log.info("[%s] (LEADER) reform: %d/%d member join lai -> KEO qua cong ra train map",
                          label, joined_member_count(pidx), st["n_members"])

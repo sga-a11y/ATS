@@ -1702,8 +1702,6 @@ class GameClient:
             )
             if scene_end_like:
                 self._genuine_end_seen = now
-            log.info("[%s] nhan goi 0x14 sub%s in_battle_TRUOC=%s raw=%s -> in_battle=False",
-                     self._label, pkt[7:9].hex(), was_true, pkt.hex())
             self.state.in_battle = False
             # KET TRAN THAT (xac nhan tu capture): sub0800 + byte cuoi=04 + dang THUC SU o
             # in_battle=True truoc do. Cac occurrence sub0800/0900 khac (login, cho, idle...)
@@ -1817,8 +1815,6 @@ class GameClient:
                 tgt = self.state.pet
             else:
                 tgt = None
-                log.info("[%s] 0x08 HP/SP unit LA = 0x%02x stat=0x%02x val=%d raw=%s",
-                         self._label, unit, stat, val, pkt.hex())
             if tgt is not None:
                 if stat == 0x19:
                     tgt.hp = val
@@ -1977,7 +1973,6 @@ class GameClient:
                     if slot < 10 and slot != self.state.self_slot:
                         self.state.self_slot = slot
                         self.state.my_atype = slot
-                        log.info("[%s] self_slot=%d (tu 0x0b battle, entity)", self._label, slot)
             self.state.update_0x0b(pkt)
             # Bat TEN QUAI trong tran (entity[2:4]=template_id -> npc_names). Cho dieu kien skill
             # 'quai khoang' + sau nay 'NPC nguy hiem'. Chi lam khi co self_entity (base phien).
@@ -2115,7 +2110,6 @@ class GameClient:
             if self.self_entity is None and len(pkt) >= 17:
                 self.self_entity = pkt[9:17]
                 self.state.self_entity = self.self_entity
-                log.info("[%s] self_entity = %s", self._label, self.self_entity.hex())
                 _register_party_entity(self.party_idx, self.self_entity)  # chia se cho cung party
                 _register_party_client(self.party_idx, self.self_entity, self)
                 if self.char_int is not None:   # INT da nhan truoc 0x69 -> dang ky lai khi co entity
@@ -2421,6 +2415,10 @@ class GameClient:
                     return
                 self.party_leader = leader
                 self.party_members = members
+                # CHI log khi roster THAY DOI (0x0d sub06 phat lien tuc -> truoc day spam moi goi).
+                _roster_sig = (leader, tuple(members))
+                _roster_changed = _roster_sig != getattr(self, "_last_roster_sig", None)
+                self._last_roster_sig = _roster_sig
                 # slot cua minh = vi tri trong danh sach member (1-based) -> map B2 trong 0x33
                 if self.self_entity in members:
                     idx = members.index(self.self_entity)
@@ -2429,14 +2427,16 @@ class GameClient:
                     self.state.my_atype = FILL[idx] if idx < len(FILL) else idx
                     # slot stats trong 0x33 = VI TRI BATTLE (= atype), KHONG phai idx+1
                     self.state.self_slot = self.state.my_atype
-                    log.info("[%s] Party roster: %d member, minh slot=atype=%d",
-                             self._label, count, self.state.my_atype)
+                    if _roster_changed:
+                        log.info("[%s] Party roster: %d member, minh slot=atype=%d",
+                                 self._label, count, self.state.my_atype)
                 else:
                     # minh LA LEADER -> luon o giua (atype=2)
                     self.state.my_atype = 2
                     self.state.self_slot = 2
-                    log.info("[%s] Party roster: %d member, minh LA LEADER (atype=2)",
-                             self._label, count)
+                    if _roster_changed:
+                        log.info("[%s] Party roster: %d member, minh LA LEADER (atype=2)",
+                                 self._label, count)
 
     def _accept_party_invite(self, entity: bytes) -> bool:
         entity = bytes(entity)
@@ -3642,9 +3642,6 @@ class GameClient:
                 if ent not in self.friend_entities:
                     self.friend_entities.append(ent); new.append(ent)
                 i += 9 + nl + 35
-            if new:
-                log.info("[%s] Ban be: %d ban (tu 0x0e 05): %s", self._label,
-                         len(self.friend_entities), [e.hex()[:4] for e in self.friend_entities])
         elif sub == 0x0d:         # xac nhan NHAN 1 qua tu ban: [0d 00][entity 8B][01 00]
             self._gift_recv += 1
         elif sub == 0x10 and len(body) >= 11:  # update online: [10 00][entity 8B][online 1B]
