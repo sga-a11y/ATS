@@ -6046,7 +6046,20 @@ class GameClient:
         return False
 
     def _create_team_dungeon_room(self, dungeon_id: int, level_label: int, ready_wait: float = 9.0) -> bool:
-        ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
+        # CHI dem member co client CON SONG. _PARTY_ENTITIES chi duoc THEM VAO, khong bao gio xoa:
+        # acc tung chay trong phien nay (roi bi Stop / go khoi party / rot han) van de lai entity
+        # -> len(ents) DOI hon so bot thuc su co the ready -> "ready 3/4 sau 40s -> HUY phong,
+        # relogin ca party" lap vo tan (bug that 23:45-23:47: party 4 acc nhung moi 4 member).
+        # invite_members() da loc theo client song tu truoc; rieng pho ban to doi thi khong.
+        with _PARTY_LOCK:
+            _live = dict(_PARTY_CLIENTS.get(self.party_idx, {}))
+        ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set())
+                if e != self.self_entity and getattr(_live.get(bytes(e)), "running", False)]
+        _all = len([e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity])
+        if _all != len(ents):
+            log.warning("[%s] (LEADER) pho ban lv%s: bo qua %d entity KHONG con client song "
+                        "(tong %d -> con %d)", self._label, level_label, _all - len(ents),
+                        _all, len(ents))
         if not ents:
             log.warning("[%s] (LEADER) team dungeon lv%d: chua biet entity member -> bo qua",
                         self._label, level_label)
