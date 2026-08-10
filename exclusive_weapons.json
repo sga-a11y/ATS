@@ -1,0 +1,779 @@
+{
+  "0xfbf5": {
+    "item": "Sách võ 1 dùng test",
+    "level": 24,
+    "npc": "Trương Giác",
+    "npc_id": 10001,
+    "quality": 4
+  },
+  "0xfbf6": {
+    "item": "Sách võ 2 dùng test",
+    "level": 24,
+    "npc": "Trương Bảo",
+    "npc_id": 10002,
+    "quality": 4
+  },
+  "0xfbf7": {
+    "item": "Vô Hà Song Đao",
+    "level": 24,
+    "npc": "Tôn Sách",
+    "npc_id": 13014,
+    "quality": 4
+  },
+  "0xfbf8": {
+    "item": "Thuý Duyên Phác Đao",
+    "level": 24,
+    "npc": "Hoàng Trung",
+    "npc_id": 12022,
+    "quality": 4
+  },
+  "0xfbf9": {
+    "item": "Hồ Quang Kiếm",
+    "level": 24,
+    "npc": "Tư Mã Ý",
+    "npc_id": 11010,
+    "quality": 4
+  },
+  "0xfbfa": {
+    "item": "Quân Sư Trường Kiếm",
+    "level": 24,
+    "npc": "Chu Du",
+    "npc_id": 13009,
+    "quality": 4
+  },
+  "0xfbfb": {
+    "item": "Lưu Ly Kiếm",
+    "level": 30,
+    "npc": "Thái Văn Cơ",
+    "npc_id": 14101,
+    "quality": 4
+  },
+  "0xfbfc": {
+    "item": "Ỷ Thiên Cực Dương",
+    "level": 30,
+    "npc": "Tào Tháo",
+    "npc_id": 11047,
+    "quality": 4
+  },
+  "0xfbfd": {
+    "item": "Uyên Ương Song Cổ",
+    "level": 30,
+    "npc": "Lưu Bị",
+    "npc_id": 12033,
+    "quality": 4
+  },
+  "0xfbfe": {
+    "item": "Địa Tức Mộc Kiếm",
+    "level": 30,
+    "npc": "Dương Tu",
+    "npc_id": 11063,
+    "quality": 4
+  },
+  "0xfbff": {
+    "item": "Ảm Nguyệt Trường Đao",
+    "level": 30,
+    "npc": "Mạnh Đạt",
+    "npc_id": 12094,
+    "quality": 4
+  },
+  "0xfc00": {
+    "item": "Bá Vương Thương",
+    "level": 30,
+    "npc": "Mã Siêu",
+    "npc_id": 12017,
+    "quality": 4
+  },
+  "0xfc01": {
+    "item": "Phương Thiên HọaKích",
+    "level": 30,
+    "npc": "Lữ Bố",
+    "npc_id": 14009,
+    "quality": 4
+  },
+  "0xfc02": {
+    "item": "Bát Xà Mâu",
+    "level": 30,
+    "npc": "Trương Phi",
+    "npc_id": 12020,
+    "quality": 4
+  },
+  "0xfc03": {
+    "item": "Long Đảm Thương",
+    "level": 30,
+    "npc": "Triệu Vân",
+    "npc_id": 12027,
+    "quality": 4
+  },
+  "0xfc04": {
+    "item": "Thuỷ Thần Thương",
+    "level": 30,
+    "npc": "Thái Sử Từ",
+    "npc_id": 13002,
+    "quality": 4
+  },
+  "0xfc05": {
+    "item": "Bôn Diệc Thương",
+    "level": 30,
+    "npc": "Văn Ương",
+    "npc_id": 11248,
+    "quality": 4
+  },
+  "0xfc06": {
+    "item": "Chấn Hồn Pháp Trượng",
+    "level": 30,
+    "npc": "Tưởng Tế",
+    "npc_id": 11144,
+    "quality": 4
+  },
+  "0xfc07": {
+    "item": "Băng Tinh Bạch Vũ",
+    "level": 30,
+    "npc": "Th.Quảng Nguyên",
+    "npc_id": 14490,
+    "quality": 4
+  },
+  "0xfc08": {
+    "item": "Chiến Thần Thiết Sừ",
+    "level": 30,
+    "npc": "Bào Xuất",
+    "npc_id": 14583,
+    "quality": 4
+  },
+  "0xfc09": {
+    "item": "Bích Ngọc Phiến",
+    "level": 30,
+    "npc": "Trương Hoành",
+    "npc_id": 13019,
+    "quality": 4
+  },
+  "0xfc0a": {
+    "item": "Phiếu Thần Y Điên",
+    "level": 30,
+    "npc": "Cát Bình",
+    "npc_id": 14503,
+    "quality": 4
+  },
+  "0xfc0b": {
+    "item": "Thiên Vũ Phiến",
+    "level": 30,
+    "npc": "Trần Cung",
+    "npc_id": 14054,
+    "quality": 4
+  },
+  "0xfc0c": {
+    "item": "Vô Song Chiến Kích",
+    "level": 30,
+    "npc": "Trương Cáp",
+    "npc_id": 11031,
+    "quality": 4
+  },
+  "0xfc0d": {
+    "item": "Vô Cực Huyền Ảo Bút",
+    "level": 30,
+    "npc": "Đổng Chiêu",
+    "npc_id": 11091,
+    "quality": 4
+  },
+  "0xfc0e": {
+    "item": "Nguyệt Nha Song Kiếm",
+    "level": 30,
+    "npc": "Lục Tốn",
+    "npc_id": 13021,
+    "quality": 4
+  },
+  "0xfc0f": {
+    "item": "Tịnh Tâm Pháp Khí",
+    "level": 30,
+    "npc": "Quách Gia",
+    "npc_id": 11053,
+    "quality": 4
+  },
+  "0xfc10": {
+    "item": "Phụng Hoàng Pháp Khí",
+    "level": 30,
+    "npc": "Bàng Thống",
+    "npc_id": 12041,
+    "quality": 4
+  },
+  "0xfc11": {
+    "item": "Vô Tương Quyển Trục",
+    "level": 30,
+    "npc": "Pháp Chính",
+    "npc_id": 12012,
+    "quality": 4
+  },
+  "0xfc12": {
+    "item": "Ngoạ Long Bạch Vũ",
+    "level": 30,
+    "npc": "Gia Cát Lượng",
+    "npc_id": 12001,
+    "quality": 4
+  },
+  "0xfc13": {
+    "item": "Thái Dương Kết Tráng",
+    "level": 30,
+    "npc": "Khảo Lỗ",
+    "npc_id": 27039,
+    "quality": 4
+  },
+  "0xfc14": {
+    "item": "Địa Linh Pháp Trượng",
+    "level": 30,
+    "npc": "Tiểu Kiều",
+    "npc_id": 13037,
+    "quality": 4
+  },
+  "0xfc15": {
+    "item": "Thái Tước Phân Vũ",
+    "level": 30,
+    "npc": "Đại Kiều",
+    "npc_id": 13036,
+    "quality": 4
+  },
+  "0xfc16": {
+    "item": "Chuỳ Tâm Hồng Hoa",
+    "level": 30,
+    "npc": "Tôn Thượng Hương",
+    "npc_id": 13038,
+    "quality": 4
+  },
+  "0xfc17": {
+    "item": "Bích Huy Trượng",
+    "level": 30,
+    "npc": "Điêu Thuyền",
+    "npc_id": 14200,
+    "quality": 4
+  },
+  "0xfc18": {
+    "item": "Thất Thái Khổng Vũ",
+    "level": 30,
+    "npc": "Chân Mật",
+    "npc_id": 11074,
+    "quality": 4
+  },
+  "0xfc19": {
+    "item": "Bích Hà Chiến Rìu",
+    "level": 30,
+    "npc": "Nhạn Điêu Tuyết",
+    "npc_id": 14597,
+    "quality": 4
+  },
+  "0xfc1a": {
+    "item": "Điện Tử Phiến",
+    "level": 30,
+    "npc": "Tiểu Kim",
+    "npc_id": 14520,
+    "quality": 4
+  },
+  "0xfc1b": {
+    "item": "Hàn Quang Trường",
+    "level": 30,
+    "npc": "Cửu Sởi",
+    "npc_id": 14096,
+    "quality": 4
+  },
+  "0xfc1c": {
+    "item": "Thanh Long YểnNguyệt",
+    "level": 30,
+    "npc": "Quan Vũ",
+    "npc_id": 12043,
+    "quality": 4
+  },
+  "0xfc1d": {
+    "item": "Phệ Huyết Thảm Trảo",
+    "level": 30,
+    "npc": "Yêu Quỷ Vương",
+    "npc_id": 14409,
+    "quality": 4
+  },
+  "0xfc1e": {
+    "item": "Lang Vương Đao",
+    "level": 30,
+    "npc": "Lỗ Tạp",
+    "npc_id": 15277,
+    "quality": 4
+  },
+  "0xfc1f": {
+    "item": "Trọng Thiết Tiêm",
+    "level": 30,
+    "npc": "Hạ Hầu Đôn",
+    "npc_id": 11020,
+    "quality": 4
+  },
+  "0xfc20": {
+    "item": "Mặc Duyên Trường Đao",
+    "level": 30,
+    "npc": "Trương Liêu",
+    "npc_id": 11034,
+    "quality": 4
+  },
+  "0xfc21": {
+    "item": "Hoàng Kim Chiến ",
+    "level": 30,
+    "npc": "Tào Chương",
+    "npc_id": 11045,
+    "quality": 4
+  },
+  "0xfc22": {
+    "item": "Toái Thạch Trọng",
+    "level": 30,
+    "npc": "Điển Vi",
+    "npc_id": 11018,
+    "quality": 4
+  },
+  "0xfc23": {
+    "item": "Bạch Ngạo Song Nhẫn",
+    "level": 30,
+    "npc": "Từ Hoảng",
+    "npc_id": 11024,
+    "quality": 4
+  },
+  "0xfc24": {
+    "item": "Hoàng Kim Tiêm",
+    "level": 30,
+    "npc": "Hứa Chử",
+    "npc_id": 11050,
+    "quality": 4
+  },
+  "0xfc25": {
+    "item": "Liệt Hoả Phác Đao",
+    "level": 30,
+    "npc": "Hạ Hầu Uyên",
+    "npc_id": 11021,
+    "quality": 4
+  },
+  "0xfc26": {
+    "item": "Hạo Nguyệt Phiến",
+    "level": 30,
+    "npc": "Tuân Úc",
+    "npc_id": 11026,
+    "quality": 4
+  },
+  "0xfc27": {
+    "item": "Tinh Thiết Song Nhẫn",
+    "level": 30,
+    "npc": "Ngụy Diên",
+    "npc_id": 12040,
+    "quality": 4
+  },
+  "0xfc28": {
+    "item": "Bạch Ngọc Xuyên Tâm",
+    "level": 30,
+    "npc": "Mã Đại",
+    "npc_id": 12028,
+    "quality": 4
+  },
+  "0xfc29": {
+    "item": "Bạch Phiên Trường",
+    "level": 30,
+    "npc": "Quan Ngân Bình",
+    "npc_id": 12066,
+    "quality": 4
+  },
+  "0xfc2a": {
+    "item": "Tướng Quân Trọng Đao",
+    "level": 30,
+    "npc": "Quan Bình",
+    "npc_id": 12042,
+    "quality": 4
+  },
+  "0xfc2b": {
+    "item": "Đào Mộc Phong Trượng",
+    "level": 30,
+    "npc": "Hoàng Nguyệt Anh",
+    "npc_id": 12059,
+    "quality": 4
+  },
+  "0xfc2c": {
+    "item": "Tiên Hạc Bạch Vũ Bút",
+    "level": 30,
+    "npc": "Mã Lương",
+    "npc_id": 12015,
+    "quality": 4
+  },
+  "0xfc2d": {
+    "item": "Phụ Cực Song Kiếm",
+    "level": 30,
+    "npc": "Lữ Mông",
+    "npc_id": 13005,
+    "quality": 4
+  },
+  "0xfc2e": {
+    "item": "Điện Thanh Đao",
+    "level": 30,
+    "npc": "Chu Thái",
+    "npc_id": 13008,
+    "quality": 4
+  },
+  "0xfc2f": {
+    "item": "Nguyệt Nha Song Đao",
+    "level": 30,
+    "npc": "Cam Ninh",
+    "npc_id": 13003,
+    "quality": 4
+  },
+  "0xfc30": {
+    "item": "Đế Vương Đao",
+    "level": 30,
+    "npc": "Tôn Quyền",
+    "npc_id": 13016,
+    "quality": 4
+  },
+  "0xfc31": {
+    "item": "Đoạn Dực Hắc Đao",
+    "level": 30,
+    "npc": "Tôn Kiên",
+    "npc_id": 13012,
+    "quality": 4
+  },
+  "0xfc32": {
+    "item": "Đạo Thuật Linh Cầu",
+    "level": 30,
+    "npc": "Trương Giác",
+    "npc_id": 10001,
+    "quality": 4
+  },
+  "0xfc33": {
+    "item": "Thiên Sư Trượng",
+    "level": 30,
+    "npc": "Trương Lỗ",
+    "npc_id": 10232,
+    "quality": 4
+  },
+  "0xfc34": {
+    "item": "Tam Xoa Tiệt Trượng",
+    "level": 30,
+    "npc": "Trương Bảo",
+    "npc_id": 10002,
+    "quality": 4
+  },
+  "0xfc35": {
+    "item": "Thiên Thuật Quyển",
+    "level": 30,
+    "npc": "Trương Lương",
+    "npc_id": 10003,
+    "quality": 4
+  },
+  "0xfc36": {
+    "item": "Xí Hồng Chiến Rìu",
+    "level": 30,
+    "npc": "Đổng Trác",
+    "npc_id": 14066,
+    "quality": 4
+  },
+  "0xfc37": {
+    "item": "Thiên Nhất Quyển",
+    "level": 30,
+    "npc": "Thôi Châu Bình",
+    "npc_id": 14489,
+    "quality": 4
+  },
+  "0xfc38": {
+    "item": "Lam Thiết Tiêm",
+    "level": 30,
+    "npc": "Tả Hiền Vương",
+    "npc_id": 14487,
+    "quality": 4
+  },
+  "0xfc39": {
+    "item": "Song Tiêm Trường Mâu",
+    "level": 30,
+    "npc": "Nhan Lương",
+    "npc_id": 14091,
+    "quality": 4
+  },
+  "0xfc3a": {
+    "item": "Cuồng Chiến Phác Đao",
+    "level": 30,
+    "npc": "Kỷ Linh",
+    "npc_id": 14024,
+    "quality": 4
+  },
+  "0xfc3b": {
+    "item": "Hủ Mộc Trường Trượng",
+    "level": 30,
+    "npc": "Phổ Tịnh",
+    "npc_id": 14488,
+    "quality": 4
+  },
+  "0xfc3c": {
+    "item": "Cự Hùng Song Trảo",
+    "level": 30,
+    "npc": "Nghiêm Bạch Hổ",
+    "npc_id": 14366,
+    "quality": 4
+  },
+  "0xfc3d": {
+    "item": "Bá Vương Kiếm",
+    "level": 30,
+    "npc": "Hạng Vũ",
+    "npc_id": 15493,
+    "quality": 4
+  },
+  "0xfc3e": {
+    "item": "Súng Nước Mùa Hè",
+    "level": 30,
+    "npc": "",
+    "npc_id": 41550,
+    "quality": 4
+  },
+  "0xfc3f": {
+    "item": "Phất Trần Ngạc Nhiên",
+    "level": 30,
+    "npc": "Mẹ Vĩ Đại",
+    "npc_id": 15478,
+    "quality": 4
+  },
+  "0xfc40": {
+    "item": "Chiêu Khách Kiếm",
+    "level": 30,
+    "npc": "Ông Chủ Khách Sạn",
+    "npc_id": 15479,
+    "quality": 4
+  },
+  "0xfc41": {
+    "item": "Long Yển Nguyệt Đao",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45437,
+    "quality": 4
+  },
+  "0xfc42": {
+    "item": "Quốc Sĩ Vô Song Kiếm",
+    "level": 30,
+    "npc": "Hàn Tín",
+    "npc_id": 15495,
+    "quality": 4
+  },
+  "0xfc43": {
+    "item": "Bạch Đế Cự Đao",
+    "level": 30,
+    "npc": "Lưu Bang",
+    "npc_id": 15494,
+    "quality": 4
+  },
+  "0xfc44": {
+    "item": "Bá Vương Hỏa Lôi Đao",
+    "level": 30,
+    "npc": "Hạng Vũ Bá Vương",
+    "npc_id": 15496,
+    "quality": 4
+  },
+  "0xfc45": {
+    "item": "Lốc Phiếu",
+    "level": 30,
+    "npc": "Vương Nguyên Cơ",
+    "npc_id": 11249,
+    "quality": 4
+  },
+  "0xfc46": {
+    "item": "Dịch Kim Chùy",
+    "level": 30,
+    "npc": "Gia Cát Quả",
+    "npc_id": 12179,
+    "quality": 4
+  },
+  "0xfc47": {
+    "item": "Liệt Quỷ Dạ Xoa",
+    "level": 30,
+    "npc": "Vương Dị",
+    "npc_id": 14747,
+    "quality": 4
+  },
+  "0xfc48": {
+    "item": "Đao Cong Loka",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45502,
+    "quality": 4
+  },
+  "0xfc49": {
+    "item": "Trượng Ma Thuật Nice",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45503,
+    "quality": 4
+  },
+  "0xfc4a": {
+    "item": "Kiếm Ma Vực",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45504,
+    "quality": 4
+  },
+  "0xfc4b": {
+    "item": "Ngọc Phong Ấn Ngàn Hồn",
+    "level": 30,
+    "npc": "",
+    "npc_id": 14748,
+    "quality": 4
+  },
+  "0xfc4c": {
+    "item": "Song Ba Kiếm Đực – Cái",
+    "level": 30,
+    "npc": " ",
+    "npc_id": 22113,
+    "quality": 4
+  },
+  "0xfc4d": {
+    "item": "Liệt Nhận Tráng Chí",
+    "level": 30,
+    "npc": "Hạ Hầu Bá",
+    "npc_id": 12219,
+    "quality": 4
+  },
+  "0xfc4e": {
+    "item": "Yển Nguyệt Đao Ba Long",
+    "level": 30,
+    "npc": " ",
+    "npc_id": 22114,
+    "quality": 4
+  },
+  "0xfc4f": {
+    "item": "Trảm Tướng Đoạt Kỳ",
+    "level": 30,
+    "npc": "Đặng Ngải",
+    "npc_id": 11252,
+    "quality": 4
+  },
+  "0xfc50": {
+    "item": "Thanh Âm Mùa Hạ Rực Rỡ",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45511,
+    "quality": 4
+  },
+  "0xfc51": {
+    "item": "Đao Ma Vương",
+    "level": 30,
+    "npc": " ",
+    "npc_id": 22117,
+    "quality": 4
+  },
+  "0xfc52": {
+    "item": "Micro Thần Tượng",
+    "level": 30,
+    "npc": "Thần Tượng Ba Đậu Ba Tương ",
+    "npc_id": 14749,
+    "quality": 4
+  },
+  "0xfc53": {
+    "item": "Nuốt Chửng 99 Pro Max",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45510,
+    "quality": 4
+  },
+  "0xfc54": {
+    "item": "Vũ Phiến Ba – Trí Tuyệt",
+    "level": 30,
+    "npc": " ",
+    "npc_id": 22119,
+    "quality": 4
+  },
+  "0xfc55": {
+    "item": "Họa Nguyệt Kích Long Tức",
+    "level": 30,
+    "npc": " ",
+    "npc_id": 22118,
+    "quality": 4
+  },
+  "0xfc56": {
+    "item": "Thước Kỷ Luật",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45513,
+    "quality": 4
+  },
+  "0xfc57": {
+    "item": "Ma Châm Định Hải",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45516,
+    "quality": 4
+  },
+  "0xfc58": {
+    "item": "Biểu Như Ý Thiên Hạ",
+    "level": 30,
+    "npc": "Dương Hỗ",
+    "npc_id": 11251,
+    "quality": 4
+  },
+  "0xfc59": {
+    "item": "Kiếm Vân Lưu Trấn Quốc",
+    "level": 30,
+    "npc": "Lục Kháng",
+    "npc_id": 13170,
+    "quality": 4
+  },
+  "0xfc5a": {
+    "item": "Kiếm Lôi Minh Phá Thiên",
+    "level": 30,
+    "npc": "Tào Duệ ",
+    "npc_id": 11253,
+    "quality": 4
+  },
+  "0xfc5b": {
+    "item": "Tưng Bừng Tân Xuân",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45514,
+    "quality": 4
+  },
+  "0xfc5c": {
+    "item": "Cổ Kiếm · Cự Khuyết",
+    "level": 30,
+    "npc": "Trụ Vương ",
+    "npc_id": 27217,
+    "quality": 4
+  },
+  "0xfc5d": {
+    "item": "Tiên Kiếm · Mị Cốt",
+    "level": 30,
+    "npc": "Đát Kỷ ",
+    "npc_id": 27214,
+    "quality": 4
+  },
+  "0xfc5e": {
+    "item": "Thần Kích Ly Hỏa",
+    "level": 30,
+    "npc": "Na Tra ",
+    "npc_id": 27218,
+    "quality": 4
+  },
+  "0xfc5f": {
+    "item": "Phá Ma Kích Huyền Dương",
+    "level": 30,
+    "npc": "Nhị Lang Thần ",
+    "npc_id": 27219,
+    "quality": 4
+  },
+  "0xfc60": {
+    "item": "Xà Mâu Xích Diễm",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45520,
+    "quality": 4
+  },
+  "0xfc61": {
+    "item": "Lưỡi Đao Kinh Vĩ ",
+    "level": 30,
+    "npc": "Dô Dự ",
+    "npc_id": 12220,
+    "quality": 4
+  },
+  "0xfc62": {
+    "item": "Yển Nguyệt Đao Cuồng Long",
+    "level": 30,
+    "npc": "",
+    "npc_id": 45523,
+    "quality": 4
+  },
+  "0xfc63": {
+    "item": "Vũ Hoàn Lưu Hà",
+    "level": 30,
+    "npc": "Điêu Thuyền Khuynh Quốc ",
+    "npc_id": 14750,
+    "quality": 4
+  }
+}
