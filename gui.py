@@ -1780,17 +1780,17 @@ class PartyConfigFrame(ttk.Frame):
 
     def _load_furnace_pool(self):
         """{pool_tab_name: {tid_hex: ten}} tu furnace_pool.json."""
-        if GameGUI._furnace_pool_cache is None:
+        if PartyConfigFrame._furnace_pool_cache is None:
             import json as _json, os as _os
-            GameGUI._furnace_pool_cache = {}
+            PartyConfigFrame._furnace_pool_cache = {}
             for p in (_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "furnace_pool.json"),
                       "furnace_pool.json"):
                 try:
                     with open(p, encoding="utf-8") as fh:
-                        GameGUI._furnace_pool_cache = _json.load(fh); break
+                        PartyConfigFrame._furnace_pool_cache = _json.load(fh); break
                 except Exception:
                     pass
-        return GameGUI._furnace_pool_cache
+        return PartyConfigFrame._furnace_pool_cache
 
     def _open_furnace_list_dialog(self, row, tab_key, pool_name, tab_label):
         """Chon item lo tab `tab_key`: Treeview (ten + che do), search, moi item dropdown
