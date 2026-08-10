@@ -6397,9 +6397,14 @@ class GameClient:
                 end_floor = now
             if candidate_at is not None and now - candidate_at >= 3.0:
                 return True
-            if candidate_at is None and _recent_battle_end(
+            # CHI coi tran ket khi CHINH LEADER da het in_battle (nhan WIN 0x14 sub0700 cua chinh no).
+            # Truoc day chi dua vao _recent_battle_end (dau hieu MEMBER ket tran) -> leader nhay stage
+            # sau TRONG KHI tran cua no chua xong (WIN den muon) -> gui cong stage sau giua tran ->
+            # tran sau khong start (bug that PB110: "tran 3 bat dau" luc 40:32 nhung WIN tran 2 den
+            # 40:56 -> tran 3 khong thay battle start -> FAIL -> relogin vo han).
+            if (candidate_at is None and not self.state.in_battle and _recent_battle_end(
                     getattr(self, "party_idx", None), within=3.0,
-                    map_id=getattr(self, "current_map", None), since=end_floor):
+                    map_id=getattr(self, "current_map", None), since=end_floor)):
                 candidate_at = now
                 candidate_reinforcement = reinforcement
             time.sleep(0.2)
