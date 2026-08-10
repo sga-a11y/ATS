@@ -1800,7 +1800,7 @@ class PartyConfigFrame(ttk.Frame):
             messagebox.showinfo("Thiếu pool", "Không đọc được furnace_pool.json."); return
         furn = row.setdefault("furnace", {})
         cur = dict((furn.get(tab_key) or {}).get("items") or {})   # {tid_hex: mode}
-        MODE_TXT = {"auto": "Tự mua", "notify": "Báo", "": "Bỏ"}
+        MODE_TXT = {"auto": "Tự mua", "notify": "Thông báo", "": "Bỏ qua"}
         RANK = {"auto": 0, "notify": 1, "": 2}
         # state {tid_hex: mode}. cur co the co key hex ("0x..") HOAC int-string ("23456") tuy JSON.
         def _cur_mode(tid_hex):
@@ -1813,10 +1813,14 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Label(top, text="Tìm:").pack(side="left")
         q = tk.StringVar()
         ttk.Entry(top, textvariable=q).pack(side="left", fill="x", expand=True, padx=4)
-        tv = ttk.Treeview(win, columns=("mode",), show="tree headings", height=18)
+        _tvf = ttk.Frame(win); _tvf.pack(fill="both", expand=True, padx=8)
+        tv = ttk.Treeview(_tvf, columns=("mode",), show="tree headings", height=18)
         tv.heading("#0", text="Item"); tv.heading("mode", text="Chế độ")
         tv.column("#0", width=330); tv.column("mode", width=90, anchor="center")
-        tv.pack(fill="both", expand=True, padx=8)
+        _vsb = ttk.Scrollbar(_tvf, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=_vsb.set)
+        _vsb.pack(side="right", fill="y")
+        tv.pack(side="left", fill="both", expand=True)
 
         def refresh():
             kw = q.get().strip().lower()
@@ -1837,8 +1841,8 @@ class PartyConfigFrame(ttk.Frame):
             refresh()
         bb = ttk.Frame(win); bb.pack(fill="x", padx=8, pady=6)
         ttk.Button(bb, text="Tự mua", command=lambda: set_mode("auto")).pack(side="left", padx=3)
-        ttk.Button(bb, text="Báo", command=lambda: set_mode("notify")).pack(side="left", padx=3)
-        ttk.Button(bb, text="Bỏ", command=lambda: set_mode("")).pack(side="left", padx=3)
+        ttk.Button(bb, text="Thông báo", command=lambda: set_mode("notify")).pack(side="left", padx=3)
+        ttk.Button(bb, text="Bỏ qua", command=lambda: set_mode("")).pack(side="left", padx=3)
         tv.bind("<Double-1>", lambda _e: set_mode(
             {"auto": "notify", "notify": "", "": "auto"}[state.get(tv.focus(), "")]))
 

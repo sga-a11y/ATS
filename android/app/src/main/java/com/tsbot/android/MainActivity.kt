@@ -2755,7 +2755,7 @@ fun FurnacePickerDialog(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
                             Text(name, modifier = Modifier.weight(1f), maxLines = 1,
                                 style = MaterialTheme.typography.bodySmall)
-                            listOf("" to "Bỏ", "auto" to "Tự mua", "notify" to "Báo").forEach { (mv, lbl) ->
+                            listOf("" to "Bỏ qua", "auto" to "Tự mua", "notify" to "Thông báo").forEach { (mv, lbl) ->
                                 val sel = m == mv
                                 TextButton(onClick = {
                                     if (mv.isEmpty()) modes.remove(tid) else modes[tid] = mv
