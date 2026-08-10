@@ -1260,13 +1260,17 @@ fun AccountRow(
                 val clipboard = LocalClipboardManager.current
                 // Doc log (get_account_log quet ca file + loc + mask regex) CHAY OFF-THREAD:
                 // truoc day goi tren MAIN thread trong remember{} -> mo log lag/suyt ANR khi log to.
+                // Doc off-thread + TU REFRESH moi 2s khi dang mo (live nhu PC). produceState huy
+                // vong lap khi thu gon log (roi khoi if(expanded)) hoac doi acc/charname.
                 val logText by produceState(
                     initialValue = "Đang tải log...",
-                    expanded, status.charName, privacyMode, privacyOrdinals,
+                    expanded, account.username, status.charName, privacyMode, privacyOrdinals,
                 ) {
-                    value = withContext(Dispatchers.IO) {
-                        val raw = onGetLog()
-                        maskAccountLog(raw, account.username, status.charName, privacyMode, privacyOrdinals)
+                    while (true) {
+                        value = withContext(Dispatchers.IO) {
+                            maskAccountLog(onGetLog(), account.username, status.charName, privacyMode, privacyOrdinals)
+                        }
+                        delay(2000)
                     }
                 }
                 val logScroll = rememberScrollState()

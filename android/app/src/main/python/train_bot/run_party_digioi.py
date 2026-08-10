@@ -32,8 +32,13 @@ try:
     _log_path = os.path.join(_app_dir(), "party.log")
 except Exception:
     _log_path = "party.log"
+# RotatingFileHandler: gioi han party.log ~50MB (backup 2 -> toi da ~150MB) de file KHONG phinh
+# vo han (truoc day 30 party 8h ra 570MB). mode="w" -> van truncate moi lan khoi dong nhu cu.
+from logging.handlers import RotatingFileHandler as _RotLog
+_file_handler = _RotLog(_log_path, mode="w", maxBytes=50 * 1024 * 1024, backupCount=2,
+                        encoding="utf-8")
 logging.basicConfig(level=_lvl, format="%(asctime)s %(message)s", datefmt="%H:%M:%S",
-                    handlers=[logging.FileHandler(_log_path, "w", "utf-8"), logging.StreamHandler()])
+                    handlers=[_file_handler, logging.StreamHandler()])
 log = logging.getLogger("partydg")
 
 check_duplicate_accounts(config.PARTIES)   # bao loi neu 1 user dien trung nhieu noi
@@ -4790,8 +4795,19 @@ def get_account_log(username, max_lines=500):
             tags.append("[%s]" % char_name)
         if not os.path.exists(_log_path):
             return "(chua co log - acc chua chay lan nao tren may nay)"
-        with open(_log_path, encoding="utf-8", errors="replace") as f:
-            lines = [ln.rstrip("\n") for ln in f if any(t in ln for t in tags)]
+        # TAIL-READ: chi doc ~2MB CUOI file (khong quet ca file) -> mo log NHANH bat ke file to.
+        # 2MB thua chua 500 dong cua 1 acc. Doc binary + seek de khoi nap ca file vao RAM.
+        _tail = 2 * 1024 * 1024
+        with open(_log_path, "rb") as f:
+            f.seek(0, 2)
+            _size = f.tell()
+            _start = max(0, _size - _tail)
+            f.seek(_start)
+            _data = f.read()
+        _text = _data.decode("utf-8", errors="replace")
+        if _start > 0 and "\n" in _text:
+            _text = _text.split("\n", 1)[1]   # bo dong dau bi cat giua chung
+        lines = [ln for ln in _text.splitlines() if any(t in ln for t in tags)]
         if not lines:
             return "(chua co dong log nao cho '%s')" % username
         return "\n".join(lines[-max_lines:])
