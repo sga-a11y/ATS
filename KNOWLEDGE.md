@@ -716,6 +716,15 @@ S2C 0x17: 08 00 [bagSlot] [tid 2B LE] [count 1B] ...   (xac nhan tid vao tui: 6a
 Vi du: mua 11 HP = `1b 0100010b000000`; mua 22 SP = `1b 01000216000000`.
 Code: `client.buy_hp_sp()` + route `TRAC_HPSP_ROUTE`; goi luc login trong run_party_digioi.py.
 
+## 7d-ITEMNAME. PARSE TEN ITEM TU Item_C.dat (khi items_gamedata.json thieu id) (xac nhan 2026-08-10)
+
+`items_gamedata.json` co the THIEU vai id (lo hong, vd 0x4e60/0x5736...). Ten that nam trong
+`gamedata/Data/Item_C.dat` (~6.7MB, UTF-16LE). Layout record: `[4B ?][namelen u16 = so BYTE][name
+UTF-16LE][1B flag][id u16][tail...]`. Tuc id u16 nam NGAY SAU ten (cach 1 byte flag).
+Cach dò 1 id: tim id dang u16-LE trong file; voi moi vi tri p, thu do dai L (chan, 2..80): neu
+`u16 tai (p-1-L-2) == L` thi `name = data[p-1-L : p-1].decode('utf-16-le')` -> khop namelen =
+dung. Da verify 9/9 khop items_gamedata voi id da biet. (Script ad-hoc, khong commit.)
+
 ## 7d-FURNACE. SOI LO / SHOP DAC BIET (熔爐, opcode 0x59 = protocol 89) (tu Lua crack, CHUA verify capture)
 
 Nguon: `.codex_mumu_probe/lua_decrypted_all/UI_UIFurnace.lua` + `Common_protocal.lua` (protocolTable[89]).

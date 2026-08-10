@@ -678,6 +678,26 @@ def _load_gamedata_items() -> dict:
                                     "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     return _gamedata_items
 
+_furnace_pool_ids = None
+def _load_furnace_pool_ids() -> set:
+    """Set TAT CA item_id (int) da biet trong furnace_pool.json (pool hien tai cua game). Dung de
+    phat hien item LA (game update them item moi ngoai pool) -> mac dinh THONG BAO cho user."""
+    global _furnace_pool_ids
+    if _furnace_pool_ids is not None:
+        return _furnace_pool_ids
+    _furnace_pool_ids = set()
+    data = _load_json_data_file("furnace_pool.json")
+    if isinstance(data, dict):
+        for tab in data.values():
+            if not isinstance(tab, dict):
+                continue
+            for k in tab:
+                try:
+                    _furnace_pool_ids.add(int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k))
+                except Exception:
+                    pass
+    return _furnace_pool_ids
+
 _pet_stat_data = None
 def _load_pet_stat_data() -> dict:
     global _pet_stat_data
@@ -4653,6 +4673,7 @@ class GameClient:
         if not self.scan_furnace() or not self.furnace_shop:
             return []
         gd = _load_gamedata_items()
+        pool_ids = _load_furnace_pool_ids()
         tabs = self.furnace_shop.get("tabs", {})
         notify = []
         for tab_name, kind in self.FURNACE_TAB_KIND.items():
@@ -4660,12 +4681,17 @@ class GameClient:
             if not tcfg.get("on"):
                 continue
             wl = tcfg.get("items") or {}
-            if not wl:
-                continue
             for it in tabs.get(kind, []):
-                mode = wl.get(it["id"]) or wl.get("0x%04x" % it["id"])
-                if not mode or it["id"] == 0:
+                if it["id"] == 0:
                     continue
+                mode = wl.get(it["id"]) or wl.get("0x%04x" % it["id"])
+                if not mode:
+                    # Khong co trong config: neu id NGOAI pool (game update them item moi) -> THONG BAO
+                    # luon (an toan, khong tu mua item la). Neu trong pool = user co chu y "Bo qua" -> skip.
+                    if pool_ids and it["id"] not in pool_ids:
+                        mode = "notify"
+                    else:
+                        continue
                 nm = (gd.get(it["id"]) or {}).get("name") or "0x%04x" % it["id"]
                 if it.get("bought"):
                     log.info("[%s] LO: %s (%s) DA MUA -> bo qua", self._label, nm, tab_name)
@@ -4676,9 +4702,12 @@ class GameClient:
                     if not ok:
                         log.warning("[%s] LO: mua %s KHONG co phan hoi (thieu chips?)", self._label, nm)
                 else:   # notify
-                    log.info("[%s] LO: CO %s (%s) - can BAO user quyet dinh mua", self._label, nm, tab_name)
+                    _new = pool_ids and it["id"] not in pool_ids
+                    log.info("[%s] LO: CO %s (%s)%s - can BAO user quyet dinh mua",
+                             self._label, nm, tab_name, " [ITEM LA ngoai pool]" if _new else "")
                     notify.append({"tab": tab_name, "kind": kind, "slot": it["index"],
-                                   "id": it["id"], "name": nm, "quant": it["quant"]})
+                                   "id": it["id"], "name": nm, "quant": it["quant"],
+                                   "new": bool(_new)})
         return notify
 
     def deposit_fashion_to_collection(self, wait: float = 1.0):
