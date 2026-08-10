@@ -1298,10 +1298,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             remain = max(0, int(DIGIOI_LIMIT - c.digioi_minutes_live()))
             out_of_dg = (c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID
                          and not c.in_combat())
-            if remain <= 0 or (out_of_dg and remain < 2):
-                log.warning("[%s] (%s) DG da het trong luc %s (map=%s, con %d phut) -> "
+            # Theo doi thoi gian KET NGOAI DG lien tuc (reset khi dang trong DG/dang danh).
+            if not out_of_dg:
+                c._dg_out_since = None
+            elif getattr(c, "_dg_out_since", None) is None:
+                c._dg_out_since = time.time()
+            # KET NGOAI DG >90s = HET GIO THAT du dong ho noi bo (digioi_minutes_live dung yen khi ra
+            # ngoai) van bao con gio: server da ra 12003 va enter_di_gioi_safe() "THANH CONG GIA" (vao
+            # 1 nhip roi bi da ra ngay) -> nhanh "remain>=2 -> vao lai DG" lap vo han, khong bao xong
+            # (bug that: dv607@12003 treo >7 phut, ca party cho mai). -> ep coi la het gio.
+            _stuck_out = out_of_dg and (time.time() - (getattr(c, "_dg_out_since", None) or time.time())) > 90
+            if remain <= 0 or (out_of_dg and remain < 2) or _stuck_out:
+                log.warning("[%s] (%s) DG da het trong luc %s (map=%s, con %d phut%s) -> "
                             "chuyen sang cho ca party xong DG",
-                            label, role, reason, c.current_map, remain)
+                            label, role, reason, c.current_map, remain,
+                            ", KET NGOAI DG >90s (server da ra lien tuc)" if _stuck_out else "")
                 _reason("het gio Di Gioi trong luc %s" % reason)
                 _finish_digioi_train_after_dg()
                 try:
@@ -4392,7 +4403,30 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
     }
     _flat = str(accounts).split("\x01") if accounts else []
     accs = []
-    if len(_flat) >= 4 and len(_flat) % 4 == 0:
+    if len(_flat) >= 5 and len(_flat) % 5 == 0:
+        # 5-tuple MOI (APK Kotlin+Python cung build -> nhat quan): u,p,battle,heal,furnace.
+        import json
+        for i in range(0, len(_flat) - 4, 5):
+            u, p, battle_json, heal_json, furnace_json = _flat[i:i + 5]
+            if not u:
+                continue
+            accs.append((u, p))
+            try:
+                bcfg = json.loads(battle_json) if battle_json else {}
+                apply_account_battle(u, bcfg if isinstance(bcfg, dict) else {})
+            except Exception:
+                apply_account_battle(u, {})
+            try:
+                hcfg = json.loads(heal_json) if heal_json else {}
+                apply_account_heal(u, hcfg if isinstance(hcfg, dict) else {})
+            except Exception:
+                apply_account_heal(u, {})
+            try:
+                fcfg = json.loads(furnace_json) if furnace_json else {}
+                apply_account_furnace(u, fcfg if isinstance(fcfg, dict) else {})
+            except Exception:
+                apply_account_furnace(u, {})
+    elif len(_flat) >= 4 and len(_flat) % 4 == 0:
         import json
         for i in range(0, len(_flat) - 3, 4):
             u, p, battle_json, heal_json = _flat[i], _flat[i + 1], _flat[i + 2], _flat[i + 3]

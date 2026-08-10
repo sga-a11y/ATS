@@ -1649,12 +1649,12 @@ class PartyConfigFrame(ttk.Frame):
             u = a.get("u", ""); on = a.get("on", True)
             if u.lstrip().startswith("#"):   # tuong thich co che '#' cu -> bo tick
                 on = False; u = u.lstrip().lstrip("#").strip()
-            self._add_acc_row(u, a.get("p", ""), on, a.get("heal"), a.get("settings"))
+            self._add_acc_row(u, a.get("p", ""), on, a.get("heal"), a.get("settings"), a.get("furnace"))
         ttk.Button(self, text="➕ Thêm dòng acc",
                    command=lambda: self._add_acc_row("", "", True)).pack(anchor="w", pady=(2, 0))
         self._render_dyn()
 
-    def _add_acc_row(self, u="", p="", on=True, heal=None, settings=None):
+    def _add_acc_row(self, u="", p="", on=True, heal=None, settings=None, furnace=None):
         fr = ttk.Frame(self._acc_inner); fr.pack(fill="x", pady=1)
         on_var = tk.BooleanVar(value=bool(on))
         ttk.Checkbutton(fr, variable=on_var).pack(side="left")
@@ -1665,6 +1665,7 @@ class PartyConfigFrame(ttk.Frame):
         # settings: config rieng khac cua acc (battle rules, legacy flags...).
         row = {"on": on_var, "u": e_u, "p": e_p, "frame": fr, "_realp": p,
                "heal": dict(heal) if isinstance(heal, dict) else {},
+               "furnace": dict(furnace) if isinstance(furnace, dict) else {},
                "settings": dict(settings) if isinstance(settings, dict) else {}}
         # Pass DA LUU -> hien placeholder '******' (giau pass that). Bam vao go thi xoa placeholder;
         # de trong khong go -> khoi phuc '******' (giu pass cu). Pass MOI (chua co) -> o trong, go ro.
@@ -1718,32 +1719,139 @@ class PartyConfigFrame(ttk.Frame):
                 m = maxv[k]
                 l.configure(text=(f"= {round(vv.get() / 100 * m)}" if m else "(offline)"))
             v.trace_add("write", _upd); _upd()
+        # --- SOI LO: 3 tab (tick bat + nut List chon item) ---
+        furn = row.setdefault("furnace", {})
+        furn_on = {}
+        _fr = len(rows) + 1
+        ttk.Separator(win, orient="horizontal").grid(row=_fr, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 2))
+        ttk.Label(win, text="Soi lò (mua item theo list):").grid(
+            row=_fr + 1, column=0, columnspan=3, sticky="w", padx=8, pady=(2, 2))
+        for j, (tab_key, pool_name, tab_label) in enumerate(self.FURNACE_TABS):
+            bon = tk.BooleanVar(value=bool((furn.get(tab_key) or {}).get("on", False)))
+            furn_on[tab_key] = bon
+            ttk.Checkbutton(win, text=tab_label, variable=bon).grid(
+                row=_fr + 2 + j, column=0, columnspan=2, sticky="w", padx=(8, 2), pady=1)
+            ttk.Button(win, text="📋 List", width=8,
+                       command=lambda tk_=tab_key, pn=pool_name, tl=tab_label:
+                           self._open_furnace_list_dialog(row, tk_, pn, tl)).grid(
+                row=_fr + 2 + j, column=2, sticky="w", padx=(4, 8), pady=1)
+        def _save_furnace():
+            for tab_key, bon in furn_on.items():
+                if tab_key in furn:
+                    furn[tab_key]["on"] = bool(bon.get())
         def _save():
             row["heal"] = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
             row["settings"].pop("char_defend", None)
+            _save_furnace()
             win.destroy()
         def _reset():
             for k, vv in vars_.items():
                 vv.set(int(round((glob_hp if k.startswith("hp") else glob_sp) * 100)))
         def _apply_all():
-            # Ap NGUONG DANG CHINH cho MOI acc o MOI PARTY (setup tung acc rat met).
+            # Ap NGUONG DANG CHINH + CONFIG LO cho MOI acc o MOI PARTY (setup tung acc rat met).
+            _save_furnace()
             vals = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
+            import copy as _copy
+            furn_snapshot = _copy.deepcopy(furn)
             if self.on_apply_heal_all:
                 n = self.on_apply_heal_all(vals)
+                self.apply_furnace_all(furn_snapshot)   # dong bo config lo cho moi acc party nay
                 messagebox.showinfo("Áp dụng cho tất cả",
-                                    f"Đã áp ngưỡng hồi máu cho {n} acc (tất cả party).\n"
+                                    f"Đã áp ngưỡng hồi máu + config lò cho {n} acc (tất cả party).\n"
                                     "Bấm Lưu để ghi vào cấu hình.", parent=win)
             else:   # fallback: chi party nay (khi mo doc lap, khong co callback)
                 n = self.apply_heal_all(vals)
+                self.apply_furnace_all(furn_snapshot)
                 messagebox.showinfo("Áp dụng cho tất cả",
-                                    f"Đã áp ngưỡng hồi máu cho {n} acc.", parent=win)
+                                    f"Đã áp ngưỡng hồi máu + config lò cho {n} acc.", parent=win)
             win.destroy()
-        bb = ttk.Frame(win); bb.grid(row=len(rows) + 1, column=0, columnspan=3, pady=(8, 2))
+        bb = ttk.Frame(win); bb.grid(row=len(rows) + 6, column=0, columnspan=3, pady=(8, 2))
         ttk.Button(bb, text="↺ Mặc định chung", command=_reset).pack(side="left", padx=4)
         ttk.Button(bb, text="💾 Lưu", command=_save).pack(side="left", padx=4)
         ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="left", padx=4)
         ttk.Button(win, text="📋 Áp dụng cho TẤT CẢ acc", command=_apply_all).grid(
-            row=len(rows) + 2, column=0, columnspan=3, sticky="ew", padx=8, pady=(0, 8))
+            row=len(rows) + 7, column=0, columnspan=3, sticky="ew", padx=8, pady=(0, 8))
+
+    # ---- SOI LO: pool + dialog chon item ----
+    _furnace_pool_cache = None
+    FURNACE_TABS = [("vo_tuong", "Vo Tuong", "Võ Tướng thường"),
+                    ("trang_bi", "Trang Bi", "Trang Bị thường"),
+                    ("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh thường")]
+
+    def _load_furnace_pool(self):
+        """{pool_tab_name: {tid_hex: ten}} tu furnace_pool.json."""
+        if GameGUI._furnace_pool_cache is None:
+            import json as _json, os as _os
+            GameGUI._furnace_pool_cache = {}
+            for p in (_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "furnace_pool.json"),
+                      "furnace_pool.json"):
+                try:
+                    with open(p, encoding="utf-8") as fh:
+                        GameGUI._furnace_pool_cache = _json.load(fh); break
+                except Exception:
+                    pass
+        return GameGUI._furnace_pool_cache
+
+    def _open_furnace_list_dialog(self, row, tab_key, pool_name, tab_label):
+        """Chon item lo tab `tab_key`: Treeview (ten + che do), search, moi item dropdown
+        Bo/Tu mua/Bao. Sort Tu mua -> Bao -> Bo. Luu vao row['furnace'][tab_key]['items']."""
+        pool = self._load_furnace_pool().get(pool_name, {})
+        if not pool:
+            messagebox.showinfo("Thiếu pool", "Không đọc được furnace_pool.json."); return
+        furn = row.setdefault("furnace", {})
+        cur = dict((furn.get(tab_key) or {}).get("items") or {})   # {tid_hex: mode}
+        MODE_TXT = {"auto": "Tự mua", "notify": "Báo", "": "Bỏ"}
+        RANK = {"auto": 0, "notify": 1, "": 2}
+        # state {tid_hex: mode}. cur co the co key hex ("0x..") HOAC int-string ("23456") tuy JSON.
+        def _cur_mode(tid_hex):
+            return cur.get(tid_hex) or cur.get(str(int(tid_hex, 16))) or cur.get(int(tid_hex, 16)) or ""
+        state = {tid_hex: _cur_mode(tid_hex) for tid_hex in pool}
+
+        win = tk.Toplevel(self); win.title(f"Lò {tab_label}: {row['u'].get().strip()}")
+        win.transient(self.winfo_toplevel()); win.grab_set(); win.geometry("460x520")
+        top = ttk.Frame(win); top.pack(fill="x", padx=8, pady=6)
+        ttk.Label(top, text="Tìm:").pack(side="left")
+        q = tk.StringVar()
+        ttk.Entry(top, textvariable=q).pack(side="left", fill="x", expand=True, padx=4)
+        tv = ttk.Treeview(win, columns=("mode",), show="tree headings", height=18)
+        tv.heading("#0", text="Item"); tv.heading("mode", text="Chế độ")
+        tv.column("#0", width=330); tv.column("mode", width=90, anchor="center")
+        tv.pack(fill="both", expand=True, padx=8)
+
+        def refresh():
+            kw = q.get().strip().lower()
+            tv.delete(*tv.get_children())
+            rows_ = []
+            for tid_hex, nm in pool.items():
+                if kw and kw not in (nm or "").lower() and kw not in tid_hex:
+                    continue
+                rows_.append((tid_hex, nm or tid_hex))
+            rows_.sort(key=lambda x: (RANK[state[x[0]]], x[1]))   # Tu mua -> Bao -> Bo
+            for tid_hex, nm in rows_:
+                tv.insert("", "end", iid=tid_hex, text=nm, values=(MODE_TXT[state[tid_hex]],))
+        q.trace_add("write", lambda *_a: refresh()); refresh()
+
+        def set_mode(m):
+            for iid in tv.selection():
+                state[iid] = m
+            refresh()
+        bb = ttk.Frame(win); bb.pack(fill="x", padx=8, pady=6)
+        ttk.Button(bb, text="Tự mua", command=lambda: set_mode("auto")).pack(side="left", padx=3)
+        ttk.Button(bb, text="Báo", command=lambda: set_mode("notify")).pack(side="left", padx=3)
+        ttk.Button(bb, text="Bỏ", command=lambda: set_mode("")).pack(side="left", padx=3)
+        tv.bind("<Double-1>", lambda _e: set_mode(
+            {"auto": "notify", "notify": "", "": "auto"}[state.get(tv.focus(), "")]))
+
+        def save():
+            items = {t: m for t, m in state.items() if m in ("auto", "notify")}  # key = hex string
+            if items:
+                on = (furn.get(tab_key) or {}).get("on", True)
+                furn[tab_key] = {"on": on, "items": items}
+            else:
+                furn.pop(tab_key, None)
+            win.destroy()
+        ttk.Button(bb, text="💾 Lưu", command=save).pack(side="right", padx=3)
+        ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="right", padx=3)
 
     def apply_heal_all(self, vals):
         """Ap nguong hoi mau `vals` cho moi acc (co username) trong party NAY. Tra so acc da ap."""
@@ -1752,6 +1860,17 @@ class PartyConfigFrame(ttk.Frame):
             if not r["u"].get().strip():
                 continue
             r["heal"] = dict(vals)
+            n += 1
+        return n
+
+    def apply_furnace_all(self, furn_cfg):
+        """Ap config SOI LO `furn_cfg` cho moi acc (co username) trong party NAY."""
+        import copy as _copy
+        n = 0
+        for r in self.acc_rows:
+            if not r["u"].get().strip():
+                continue
+            r["furnace"] = _copy.deepcopy(furn_cfg)
             n += 1
         return n
 
@@ -2591,6 +2710,8 @@ class PartyConfigFrame(ttk.Frame):
             acc = {"u": u, "p": pw, "on": bool(r["on"].get())}
             if r.get("heal"):
                 acc["heal"] = r["heal"]
+            if r.get("furnace"):
+                acc["furnace"] = r["furnace"]
             if r.get("settings"):
                 acc["settings"] = r["settings"]
             accs.append(acc)

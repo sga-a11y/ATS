@@ -66,7 +66,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.produceState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -746,12 +750,14 @@ fun TsBotApp(
             initialPassword = account.password,
             initialBattleJson = account.battleJson,
             initialHeal = account.heal,
+            initialFurnace = account.furnace,
             initialEnabled = account.enabled,
             onDismiss = { editingAccount = null },
             onSave = { edited ->
                 partyStore.updateAccountInParty(partyName, account.username, edited)
                 service?.applyAccountBattle(edited.username, edited.battleJson)
                 service?.applyAccountHeal(edited.username, edited.heal.toRuntimeJson())
+                service?.applyAccountFurnace(edited.username, edited.furnace.toRuntimeJson())
                 refresh()
                 editingAccount = null
             },
@@ -763,22 +769,26 @@ fun TsBotApp(
         val (partyName, account) = healAccount
         HealSettingsDialog(
             initialHeal = account.heal,
+            initialFurnace = account.furnace,
             onDismiss = { editingHealAccount = null },
-            onApplyToAll = { heal ->
+            onApplyToAll = { heal, furnace ->
                 val count = partyStore.applyHealToAllAccounts(heal)
+                partyStore.applyFurnaceToAllAccounts(furnace)
                 parties.flatMap { it.accounts }.forEach {
                     service?.applyAccountHeal(it.username, heal.toRuntimeJson())
+                    service?.applyAccountFurnace(it.username, furnace.toRuntimeJson())
                 }
                 refresh()
                 count
             },
-            onSave = { editedHeal ->
+            onSave = { editedHeal, editedFurnace ->
                 partyStore.updateAccountInParty(
                     partyName,
                     account.username,
-                    account.copy(heal = editedHeal),
+                    account.copy(heal = editedHeal, furnace = editedFurnace),
                 )
                 service?.applyAccountHeal(account.username, editedHeal.toRuntimeJson())
+                service?.applyAccountFurnace(account.username, editedFurnace.toRuntimeJson())
                 refresh()
                 editingHealAccount = null
             },
@@ -2535,6 +2545,7 @@ fun AddAccountDialog(
     initialPassword: String = "",
     initialBattleJson: String = "",
     initialHeal: HealSettings = HealSettings(),
+    initialFurnace: FurnaceConfig = FurnaceConfig(),
     initialEnabled: Boolean = true,
 ) {
     var username by remember { mutableStateOf(initialUsername) }
@@ -2566,7 +2577,7 @@ fun AddAccountDialog(
             Button(
                 onClick = {
                     if (username.isNotBlank() && password.isNotBlank()) {
-                        onSave(Account(username, password, initialBattleJson, initialHeal, initialEnabled))
+                        onSave(Account(username, password, initialBattleJson, initialHeal, initialFurnace, initialEnabled))
                     }
                 },
             ) {
@@ -2579,18 +2590,28 @@ fun AddAccountDialog(
     )
 }
 
+// tab furnace: key config -> (pool name trong furnace_pool.json, nhan hien thi)
+val FURNACE_TABS = listOf(
+    Triple("vo_tuong", "Vo Tuong", "Võ Tướng thường"),
+    Triple("trang_bi", "Trang Bi", "Trang Bị thường"),
+    Triple("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh thường"),
+)
+
 @Composable
 fun HealSettingsDialog(
     initialHeal: HealSettings,
     onDismiss: () -> Unit,
-    onSave: (HealSettings) -> Unit,
-    onApplyToAll: ((HealSettings) -> Int)? = null,
+    onSave: (HealSettings, FurnaceConfig) -> Unit,
+    initialFurnace: FurnaceConfig = FurnaceConfig(),
+    onApplyToAll: ((HealSettings, FurnaceConfig) -> Int)? = null,
 ) {
     var hpCharText by remember(initialHeal) { mutableStateOf(initialHeal.hpChar.toString()) }
     var spCharText by remember(initialHeal) { mutableStateOf(initialHeal.spChar.toString()) }
     var hpPetText by remember(initialHeal) { mutableStateOf(initialHeal.hpPet.toString()) }
     var spPetText by remember(initialHeal) { mutableStateOf(initialHeal.spPet.toString()) }
     var applyMessage by remember { mutableStateOf("") }
+    var furnace by remember(initialFurnace) { mutableStateOf(initialFurnace) }
+    var pickerTab by remember { mutableStateOf<Triple<String, String, String>?>(null) }
 
     fun pct(text: String, fallback: Int): Int = (text.toIntOrNull() ?: fallback).coerceIn(0, 100)
     fun currentHeal() = HealSettings(
@@ -2602,9 +2623,9 @@ fun HealSettingsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Hồi HP/SP") },
+        title = { Text("Hồi HP/SP + Soi lò") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
                     "Dùng item khi chỉ số tụt dưới ngưỡng (%)",
                     style = MaterialTheme.typography.bodySmall,
@@ -2621,36 +2642,141 @@ fun HealSettingsDialog(
                     HealPercentField("SP pet", spPetText, { spPetText = it }, Modifier.weight(1f))
                 }
                 TextButton(onClick = {
-                    hpCharText = "40"
-                    spCharText = "0"
-                    hpPetText = "40"
-                    spPetText = "0"
+                    hpCharText = "40"; spCharText = "0"; hpPetText = "40"; spPetText = "0"
                 }) { Text("Mặc định") }
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                Text("Soi lò (mua item theo list):", style = MaterialTheme.typography.bodySmall)
+                FURNACE_TABS.forEach { tab ->
+                    val t = furnace.tab(tab.first)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = t.on, onCheckedChange = {
+                            furnace = furnace.withTab(tab.first, t.copy(on = it))
+                        })
+                        Spacer(Modifier.width(6.dp))
+                        Text(tab.third, modifier = Modifier.weight(1f), maxLines = 1)
+                        TextButton(onClick = { pickerTab = tab }) {
+                            Text("📋 List (${t.items.size})", maxLines = 1)
+                        }
+                    }
+                }
                 if (onApplyToAll != null) {
                     OutlinedButton(
                         onClick = {
-                            val count = onApplyToAll(currentHeal())
+                            val count = onApplyToAll(currentHeal(), furnace)
                             applyMessage = "Đã áp dụng cho $count acc"
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Áp dụng cho tất cả acc") }
                     if (applyMessage.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            applyMessage,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Text(applyMessage, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(currentHeal()) }) { Text("Lưu") }
+            Button(onClick = { onSave(currentHeal(), furnace) }) { Text("Lưu") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Hủy") }
         },
+    )
+
+    val pt = pickerTab
+    if (pt != null) {
+        FurnacePickerDialog(
+            poolName = pt.second,
+            title = pt.third,
+            initialItems = furnace.tab(pt.first).items,
+            onDismiss = { pickerTab = null },
+            onSave = { items ->
+                val old = furnace.tab(pt.first)
+                furnace = furnace.withTab(pt.first, old.copy(items = items))
+                pickerTab = null
+            },
+        )
+    }
+}
+
+/** Doc furnace_pool.json tu assets -> {poolName: [(tid_hex, ten)]} (cache). */
+private var _furnacePoolCache: Map<String, List<Pair<String, String>>>? = null
+
+fun loadFurnacePool(context: android.content.Context, poolName: String): List<Pair<String, String>> {
+    if (_furnacePoolCache == null) {
+        try {
+            val bytes = context.assets.open("train_bot_data/furnace_pool.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8))
+            val out = LinkedHashMap<String, List<Pair<String, String>>>()
+            for (k in root.keys()) {
+                val o = root.getJSONObject(k)
+                val lst = ArrayList<Pair<String, String>>()
+                for (tid in o.keys()) lst.add(tid to o.optString(tid, tid))
+                out[k] = lst
+            }
+            _furnacePoolCache = out
+        } catch (e: Exception) {
+            _furnacePoolCache = emptyMap()
+        }
+    }
+    return _furnacePoolCache?.get(poolName) ?: emptyList()
+}
+
+@Composable
+fun FurnacePickerDialog(
+    poolName: String,
+    title: String,
+    initialItems: Map<String, String>,
+    onDismiss: () -> Unit,
+    onSave: (Map<String, String>) -> Unit,
+) {
+    val context = LocalContext.current
+    val pool = remember(poolName) { loadFurnacePool(context, poolName) }
+    val modes = remember(initialItems) { mutableStateMapOf<String, String>().apply { putAll(initialItems) } }
+    var query by remember { mutableStateOf("") }
+    val rank = { m: String? -> when (m) { "auto" -> 0; "notify" -> 1; else -> 2 } }
+    val filtered = remember(query, modes.toMap(), pool) {
+        val kw = query.trim().lowercase()
+        pool.filter { kw.isEmpty() || it.second.lowercase().contains(kw) || it.first.contains(kw) }
+            .sortedWith(compareBy({ rank(modes[it.first]) }, { it.second }))
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Lò $title", maxLines = 1) },
+        text = {
+            Column {
+                OutlinedTextField(query, { query = it }, label = { Text("Tìm theo tên") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(6.dp))
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
+                    items(filtered, key = { it.first }) { (tid, name) ->
+                        val m = modes[tid] ?: ""
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+                            Text(name, modifier = Modifier.weight(1f), maxLines = 1,
+                                style = MaterialTheme.typography.bodySmall)
+                            listOf("" to "Bỏ", "auto" to "Tự mua", "notify" to "Báo").forEach { (mv, lbl) ->
+                                val sel = m == mv
+                                TextButton(onClick = {
+                                    if (mv.isEmpty()) modes.remove(tid) else modes[tid] = mv
+                                }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                                    Text(lbl, style = MaterialTheme.typography.labelSmall,
+                                        color = if (sel) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(modes.filterValues { it == "auto" || it == "notify" }.toMap())
+            }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
     )
 }
 

@@ -39,6 +39,7 @@ class PartyStore(private val context: Context) {
                     a.getString("password"),
                     a.optString("battle", ""),
                     healSettingsFromJson(a.optJSONObject("heal")),
+                    furnaceConfigFromJson(a.optJSONObject("furnace")),
                     a.optBoolean("enabled", true),
                 )
             }
@@ -138,6 +139,7 @@ class PartyStore(private val context: Context) {
                 ao.put("enabled", a.enabled)
                 if (a.battleJson.isNotBlank()) ao.put("battle", a.battleJson)
                 if (!a.heal.isDefault()) ao.put("heal", a.heal.toJsonObject())
+                if (!a.furnace.isEmpty()) ao.put("furnace", a.furnace.toJsonObject())
                 accArr.put(ao)
             }
             o.put("accounts", accArr)
@@ -193,6 +195,18 @@ class PartyStore(private val context: Context) {
             party.copy(accounts = party.accounts.map {
                 count += 1
                 it.copy(heal = heal)
+            })
+        }
+        save(updated)
+        return count
+    }
+
+    fun applyFurnaceToAllAccounts(furnace: FurnaceConfig): Int {
+        var count = 0
+        val updated = load().map { party ->
+            party.copy(accounts = party.accounts.map {
+                count += 1
+                it.copy(furnace = furnace)
             })
         }
         save(updated)

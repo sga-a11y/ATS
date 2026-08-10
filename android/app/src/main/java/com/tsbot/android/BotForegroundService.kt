@@ -223,7 +223,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
             // hiem gap (U+0001), Python tu split() lai.
             val SEP = ""
             val accountsFlat = activeAccounts.joinToString(SEP) {
-                "${it.username}$SEP${it.password}$SEP${it.battleJson}$SEP${it.heal.toRuntimeJson()}"
+                "${it.username}$SEP${it.password}$SEP${it.battleJson}$SEP${it.heal.toRuntimeJson()}" +
+                    "$SEP${it.furnace.toRuntimeJson()}"
             }
             val py = rpd()
             val leaders = party.leaderWhitelist.joinToString("\n")
@@ -486,6 +487,14 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
     fun applyAccountHeal(username: String, healJson: String): Boolean {
         return try {
             rpd().callAttr("apply_account_heal", username, healJson)?.toBoolean() ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun applyAccountFurnace(username: String, furnaceJson: String): Boolean {
+        return try {
+            rpd().callAttr("apply_account_furnace", username, furnaceJson)?.toBoolean() ?: false
         } catch (e: Exception) {
             false
         }

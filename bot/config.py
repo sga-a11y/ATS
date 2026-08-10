@@ -526,6 +526,12 @@ ACCOUNT_HEAL = {
     # "acc1": {"hp_char": 0.7, "sp_char": 0.5, "hp_pet": 0.6, "sp_pet": 0.4},
 }
 
+# Config SOI LO rieng tung acc (accounts.json field "furnace"). {tab: {"on": bool, "items":
+# {tid: "auto"/"notify"}}} voi tab in vo_tuong/trang_bi/chuyen_sinh. auto=tu mua, notify=chi bao.
+ACCOUNT_FURNACE = {
+    # "acc1": {"vo_tuong": {"on": True, "items": {"0x5c04": "auto"}}},
+}
+
 # Config RIENG tung acc (accounts.json field "settings" moi acc - TACH khoi "heal" vi heal chi
 # giu 4 nguong hoi mau; settings la cho gom cac config rieng acc, se them key moi sau nay).
 # char_defend: "Char đứng Phòng thủ (phục vụ train pet ko vỡ Ngọc phúc thần)" - True -> char CHI
@@ -589,6 +595,26 @@ if _aj is not None:
                 if _u and isinstance(_h, dict):
                     ACCOUNT_HEAL[_u] = {_k: float(_v) for _k, _v in _h.items()
                                         if _k in ("hp_char", "sp_char", "hp_pet", "sp_pet")}
+                _f = _a.get("furnace")
+                if _u and isinstance(_f, dict):
+                    _fc = {}
+                    for _tab in ("vo_tuong", "trang_bi", "chuyen_sinh"):
+                        _t = _f.get(_tab)
+                        if not isinstance(_t, dict):
+                            continue
+                        _items = {}
+                        for _ik, _iv in (_t.get("items") or {}).items():
+                            if _iv not in ("auto", "notify"):
+                                continue
+                            try:
+                                _tid = int(_ik, 16) if isinstance(_ik, str) and _ik.lower().startswith("0x") else int(_ik)
+                                _items[_tid] = _iv
+                            except Exception:
+                                pass
+                        if _items:
+                            _fc[_tab] = {"on": bool(_t.get("on", True)), "items": _items}
+                    if _fc:
+                        ACCOUNT_FURNACE[_u] = _fc
                 _s = _a.get("settings")
                 if _u and isinstance(_s, dict):
                     if _s.get("char_defend"):
