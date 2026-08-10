@@ -943,6 +943,7 @@ class GameClient:
         self.pos = None              # vi tri hien tai (x,y) cua minh - doc tu S2C 0x03 self
         self._position_generation = 0  # tang khi server xac nhan self pos qua S2C 0x03
         self.train_block_stats_enabled = False
+        self._block_stats_gen = None   # generation da ghi train_block_stats (1 lan/tran, tracker moi)
         self.train_block_map_id = None
         self.train_block_spot = None
         self.digioi_minutes = 0      # so phut DI GIOI hom nay (tu S2C 0x55 id=0x1b)
@@ -959,6 +960,8 @@ class GameClient:
         self.dungeon_runs_today = None  # so luot dungeon da danh hom nay (S2C 0x55 stat 0x9b)
         self.xu = None               # so XU hien co (tu S2C 0x1a id=4) - None = chua nhan
         self._decompose_seq = 0      # tang moi khi nhan S2C 0x59 (xac nhan phan giai 1 cuon xong)
+        self.furnace_shop = None     # ket qua soi lo (熔爐): {base_rate, active_rate, tabs:{kind:[items]}}
+        self._furnace_seq = 0        # tang moi khi nhan S2C 0x59 sub01 (xac nhan soi lo xong)
         self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
         self.bag_slots = {}          # slot (int) -> [tid, count]  (S2C 0x16 sub0400). Use item = gui slot.
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
@@ -1733,10 +1736,14 @@ class GameClient:
                 _in_team_dungeon = time.time() < getattr(self, "_team_dungeon_until", 0.0)
                 self.state.reset_enemies(reset_quest=not _in_team_dungeon)
                 self._heal_after_battle()   # hoi HP/SP NGAY khi ket tran (khong doi tick keepalive)
-        # Phan giai cuon pet: S2C 0x59 = ket qua phan giai 1 cuon (nhan xu). Tang seq de
-        # decompose_junk_scrolls biet cuon vua gui da phan giai THANH CONG (con cuon -> gui tiep).
+        # Lo (熔爐, opcode 0x59) co NHIEU sub: sub01=shop data (soi lo), sub02=ket qua mua,
+        # sub03=phan giai cuon -> Vo Tuong Phien (chips). Truoc day MOI 0x59 deu tang _decompose_seq;
+        # gio tach sub01 (soi lo) ra parse rieng, con lai (sub03 phan giai + sub khac) GIU NGUYEN.
         if opcode == 0x59:
-            self._decompose_seq += 1
+            if len(pkt) >= 9 and pkt[7:9] == b"\x01\x00":
+                self._parse_furnace_shop(pkt)   # SOI LO (S:089-001)
+            else:
+                self._decompose_seq += 1        # phan giai xong 1 cuon (S:089-003) - nhu cu
         # INT luc login: doc base/equip/turn3 tu 0x05 roi cong collection + horse giong client game.
         if opcode == 0x05 and len(pkt) > 16:
             self._parse_char_login_int(pkt)
@@ -2652,6 +2659,13 @@ class GameClient:
         for event in events:
             if event.kind == "turn_start":
                 self._prepare_tracker_turn()
+                # train_block_stats: battle tracker MOI thay nhanh 0x33 legacy -> ghi so block quai
+                # o day, 1 lan/tran (theo generation). Truoc day _record_train_block_stats CHI goi o
+                # nhanh 0x33 legacy (bi skip khi battle_tracker.generation != 0) -> tracker moi bat =>
+                # train_block_stats.json KHONG cap nhat (bug user bao "ko ghi block sau moi tran").
+                if getattr(self, "_block_stats_gen", None) != event.generation and self.state.enemy_slots:
+                    self._block_stats_gen = event.generation
+                    self._record_train_block_stats(list(self.state.enemy_slots))
             elif event.kind == "ack":
                 log.info(
                     "[%s] BATTLE ACK g=%d t=%d source=%s",
@@ -4517,6 +4531,71 @@ class GameClient:
                 else:
                     unit.sp = min(mx, unit.sp + gain)
                 time.sleep(0.2)
+
+    def scan_furnace(self, wait: float = 3.0):
+        """SOI LO thuong (熔爐): gui C:089-001 (0x59 sub01, khong payload) -> server tra S:089-001
+        -> _parse_furnace_shop() luu self.furnace_shop + log 3 tab. Pha 1: CHI doc/log, chua mua.
+        Tra True neu nhan duoc data trong `wait` giay."""
+        self.furnace_shop = None
+        seq0 = self._furnace_seq
+        log.info("[%s] SOI LO: gui query (0x59 sub01)...", self._label)
+        self.send(0x59, b"\x01\x00")
+        t0 = time.time()
+        while self._furnace_seq == seq0 and time.time() - t0 < wait and self.running:
+            time.sleep(0.1)
+        if self._furnace_seq == seq0:
+            log.warning("[%s] SOI LO: khong nhan duoc data sau %.0fs (lo dong / khong o gan lo?)",
+                        self._label, wait)
+            return False
+        return self.furnace_shop is not None
+
+    # kind lo -> ten tab. Lo thuong: 1/2/5; hoang kim: 3/4/6 (chua mo).
+    FURNACE_KIND_NAME = {1: "Vo Tuong", 2: "Trang Bi", 5: "Chuyen Sinh",
+                         3: "HK-VoTuong", 4: "HK-TrangBi", 6: "HK-ChuyenSinh"}
+
+    def _parse_furnace_shop(self, pkt: bytes):
+        """Parse S2C 0x59 sub01 (熔爐 shop data). Data tu pkt[9]:
+          result(1) + baseRate(double8) + activeRate(double8) + bOpen(1) + count(1)
+          + <<kind(1) + isCrit(1) + itemCount(1) <<itemId(u16 LE) + quant(i32 LE)>>>>
+        Luu self.furnace_shop = {base_rate, active_rate, tabs:{kind:[{index,id,quant,crit}]}}."""
+        try:
+            p = 9
+            result = pkt[p]; p += 1
+            self._furnace_seq += 1
+            if result != 1:
+                log.info("[%s] SOI LO: server tra that bai (result=%d)", self._label, result)
+                self.furnace_shop = {}
+                return
+            base_rate = struct.unpack_from("<d", pkt, p)[0]; p += 8
+            active_rate = struct.unpack_from("<d", pkt, p)[0]; p += 8
+            _bopen = pkt[p]; p += 1
+            count = pkt[p]; p += 1
+            tabs = {}
+            for _ in range(count):
+                kind = pkt[p]; p += 1
+                is_crit = pkt[p]; p += 1
+                item_count = pkt[p]; p += 1
+                items = []
+                for j in range(1, item_count + 1):
+                    item_id = struct.unpack_from("<H", pkt, p)[0]; p += 2
+                    quant = struct.unpack_from("<i", pkt, p)[0]; p += 4
+                    items.append({"index": j, "id": item_id, "quant": quant, "crit": is_crit})
+                tabs[kind] = items
+            self.furnace_shop = {"base_rate": base_rate, "active_rate": active_rate, "tabs": tabs}
+            gd = _load_gamedata_items()
+            log.info("[%s] === SOI LO (baseRate=%.4f activeRate=%.4f, %d tab) ===",
+                     self._label, base_rate, active_rate, count)
+            for kind, items in tabs.items():
+                crit = bool(items and items[0]["crit"] == 1)
+                log.info("[%s] --- Tab %s (kind=%d): %d item%s ---", self._label,
+                         self.FURNACE_KIND_NAME.get(kind, "kind%d" % kind), kind, len(items),
+                         " [BAO KICH x0.5 gia]" if crit else "")
+                for it in items:
+                    nm = (gd.get(it["id"]) or {}).get("name") or "??? CHUA BIET"
+                    log.info("[%s]   slot%d: id=0x%04x quant=%d -> %s",
+                             self._label, it["index"], it["id"], it["quant"], nm)
+        except Exception as e:
+            log.warning("[%s] SOI LO: loi parse (%s) raw=%s", self._label, e, pkt.hex())
 
     def decompose_junk_scrolls(self, wait: float = 1.2):
         """Phan giai cuon GOI PET RAC (gacha ra nhieu) -> nhan lai xu. C2S 0x59:

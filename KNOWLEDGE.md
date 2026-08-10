@@ -716,6 +716,37 @@ S2C 0x17: 08 00 [bagSlot] [tid 2B LE] [count 1B] ...   (xac nhan tid vao tui: 6a
 Vi du: mua 11 HP = `1b 0100010b000000`; mua 22 SP = `1b 01000216000000`.
 Code: `client.buy_hp_sp()` + route `TRAC_HPSP_ROUTE`; goi luc login trong run_party_digioi.py.
 
+## 7d-FURNACE. SOI LO / SHOP DAC BIET (熔爐, opcode 0x59 = protocol 89) (tu Lua crack, CHUA verify capture)
+
+Nguon: `.codex_mumu_probe/lua_decrypted_all/UI_UIFurnace.lua` + `Common_protocal.lua` (protocolTable[89]).
+"Lo" = shop ban item dac biet bang currency "manh" (chips). Co lo THUONG + lo HOANG KIM (chua mo).
+
+**C2S soi lo** (`QueryFurnace` = `Network.Send(89, 1)`): chi `0x59` + sub `01 00`, KHONG payload.
+
+**S2C 089-001 (shop data)** parse (`ReciveShopData`):
+```
+result(1)   = 1 thanh cong / 2 that bai
+baseRate    = double 8B   (ti le manh)
+activeRate  = double 8B   (ti le manh su kien)
+bOpen(1)                  (co mo UI khong)
+count(1)                  (so tab)
+moi tab: kind(1) + isCrit(1) + itemCount(1)
+         moi item: itemId(uint16 LE) + quant(int32 LE)
+```
+`kind` = gia tri ESelect: **1=Vo Tuong, 2=Trang Bi, 5=Chuyen Sinh** (lo thuong);
+3=GoldNpc, 4=GoldEquip, 6=GoldTurnItem (hoang kim - bo qua). isCrit=1 -> gia x0.5.
+Gia mua = `itemData.furnaceCount * quant * crit * storeRate` (storeRate=2 neu tab gold).
+
+**C2S mua** (`0x59` sub `02 00`): `kind(1) + index(1) + itemId(uint16)`.
+QUAN TRONG: `kind` + `index` LAY Y NGUYEN tu goi soi (`shops[kind][index]`) -> KHONG can doan enum,
+cu dung lai kind+index tu item da soi.
+
+**S2C 089-002 (buy result)**: result(1): 1=thanh cong (+itemId 2B) | 2=kind loi | 3=slot loi |
+4=item loi | 5=DA MUA roi | 6=thieu manh(chips) | 7/8=loi khac.
+
+Vo Tuong = 10 cuon goi pet (random). Trang Bi = 10 trang bi (random). Chuyen Sinh = Kim Toa
+(reborn pet chua rb -> rb1) + Tuong Tinh (rb1 -> rb2).
+
 ## 7d-RE. MAP COLLISION / SMART PATHFIND (xac nhan 2026-07-17)
 
 Muc tieu: tim data game biet o nao tren map di duoc / bi chan (tuong, song, object...) de pathfind dung hon.

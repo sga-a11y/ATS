@@ -1111,7 +1111,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.claim_event_14day()   # event tang qua 14 ngay (0x7c) - khac cai tren
             c.claim_legion_gift()   # nhan qua quan doan hang ngay
             c.claim_friend_gifts()  # tang qua tat ca ban + nhan qua ban tang (hang ngay)
-            c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> nhan xu
+            c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> Vo Tuong Phien
+            # PHA 1 SOI LO: gui query 0x59 sub01 -> log 3 tab (Vo Tuong/Trang Bi/Chuyen Sinh) de verify
+            # protocol tren server that. Pha 2 se them wishlist + auto mua. Chi log, KHONG mua.
+            try: c.scan_furnace()
+            except Exception as e: log.warning("[%s] loi soi lo: %s", label, e)
             c.donate_legion()           # donate nguyen lieu rac (donate_items.json) cho quan doan -> don tui
             c.use_login_items()         # tu dung item trong list (use_items.json) -> vd tui vat lieu su kien
             # Phuc Than NGAY SAU use_login_items() - luc nay con dung an toan o thanh/diem login
@@ -1576,6 +1580,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # KIEN TRI: 30s dau thu lien tuc (3s/lan), sau do 60s/lan, cho toi khi gom du ve 1 kenh.
                 need = len(party_accounts(pidx))
                 t0 = time.time()
+                _sync_fail = 0
                 while c.running and not _stopped():
                     # Chinh acc nay het gio DG giua luc sync -> bao done + cho party (khong ket im).
                     if _finish_digioi_train_if_time_over("sync kenh DG (picker)"):
@@ -1637,6 +1642,19 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     else:
                         log.info("[%s] (%s) ca party giu nguyen 1 kenh (khong tach)", label, role)
                     if not _wait_channel_map_reports(sync_gen, expected_map, need):
+                        _sync_fail += 1
+                        # Sync fail = co member KET SAI MAP (khong bao cao). Truoc day chi retry sync
+                        # noi bo MAI (member dung i o map khac o keepalive, khong ai reform) -> ca party
+                        # dung ca ngay (bug that: leader loop "1/5", member dung yen map 21863). NGAY sau
+                        # 1 lan timeout (~60s) -> BUMP reform_gen: keepalive CA PARTY (ke ca member
+                        # idling) se _do_reform -> ve thanh regroup roi sync lai o CUNG map.
+                        if _sync_fail >= 1 and (train_on_map or is_digioi):
+                            with st["lock"]:
+                                st["reform_gen"] += 1
+                            log.warning("[%s] (%s) sync kenh/map FAIL %d lan (member ket sai map) -> "
+                                        "BUMP reform_gen, ca party ve thanh regroup",
+                                        label, role, _sync_fail)
+                            return False
                         continue
                     break
             else:
@@ -1667,6 +1685,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             break
                         while (c.running and not _stopped() and st["channel_ready"].is_set()
                                and st.get("channel") == ch):
+                            # Member report map FAIL (bi day ra 12003) -> ket o day cho picker doi kenh.
+                            # PHAI check het gio DG: neu khong -> ket im o Quang Truong, party cho vo han
+                            # (bug that: dv607@12003 remain=0 van khong bao xong DG).
+                            if _finish_digioi_train_if_time_over("sync kenh DG (member ch-wait)"):
+                                return True
                             time.sleep(0.5)
                         continue
                     _prepare_channel_switch()
@@ -1677,6 +1700,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             break
                         while (c.running and not _stopped() and st["channel_ready"].is_set()
                                and st.get("channel") == ch):
+                            # Member report map FAIL (bi day ra 12003) -> ket o day cho picker doi kenh.
+                            # PHAI check het gio DG: neu khong -> ket im o Quang Truong, party cho vo han
+                            # (bug that: dv607@12003 remain=0 van khong bao xong DG).
+                            if _finish_digioi_train_if_time_over("sync kenh DG (member ch-wait)"):
+                                return True
                             time.sleep(0.5)
                         continue
                     reason = "result=%s" % getattr(c, "_chan_switch_result", None)
@@ -1687,6 +1715,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 label, ch, reason)
                     while (c.running and not _stopped() and st["channel_ready"].is_set()
                            and st.get("channel") == ch):
+                        if _finish_digioi_train_if_time_over("sync kenh DG (member ch-wait2)"):
+                            return True
                         time.sleep(0.5)
                 time.sleep(2)
 
@@ -3727,15 +3757,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     out_cnt += 1
                     if out_cnt >= 2:   # ~10s lien tuc ngoai DG
                         remain = max(0, int(DIGIOI_LIMIT - c.digioi_minutes_live()))
+                        _back_in = False
                         if remain >= 2:
                             log.warning("[%s] (%s) KHONG o trong DG (map=%s, chet/bi day ra?) "
-                                        "con %d phut -> VAO LAI DG", label, role, c.current_map, remain)
-                            try: c.enter_di_gioi_safe()
-                            except Exception: pass
+                                        "con %d phut -> thu VAO LAI DG", label, role, c.current_map, remain)
+                            try: _back_in = c.enter_di_gioi_safe()
+                            except Exception: _back_in = False
+                        if _back_in:
                             out_cnt = 0
                         else:
-                            log.warning("[%s] (%s) HET GIO DG that -> thoat party%s",
-                                        label, role, " + solo daily dungeon" if (do_daily and not dt_mode) else "")
+                            # remain<2 HOAC con gio noi bo nhung SERVER KHONG CHO VAO LAI (dong ho noi
+                            # bo tre) = HET GIO THAT. Truoc day nhanh remain>=2 VUT return cua
+                            # enter_di_gioi_safe() -> lap "VAO LAI DG" mai o Quang Truong (12003), KHONG
+                            # bao xong DG -> ca party cho vo han (bug that: dv607@map12003 13:31).
+                            log.warning("[%s] (%s) HET GIO DG that (map=%s) -> thoat party%s",
+                                        label, role, c.current_map,
+                                        " + solo daily dungeon" if (do_daily and not dt_mode) else "")
                             if not dt_mode:
                                 _go_town_safe(c, label)
                                 _maybe_auto_world_boss("het gio DG, truoc pho ban doi")
