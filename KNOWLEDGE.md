@@ -747,6 +747,14 @@ cu dung lai kind+index tu item da soi.
 Vo Tuong = 10 cuon goi pet (random). Trang Bi = 10 trang bi (random). Chuyen Sinh = Kim Toa
 (reborn pet chua rb -> rb1) + Tuong Tinh (rb1 -> rb2).
 
+**DA MUA hay chua** (KHONG nam trong goi 089-001): moi (kind,slot) co 1 BitFlag id co dinh
+(UI_UIFurnace.lua `flags[subtag][slot]`): Npc(kind1) slot1-8=1518-1525, Equip(kind2)=1526-1533,
+TurnItem(kind5)=7257-7264, GoldNpc(3)=7067-7074, GoldEquip(4)=7075-7082, GoldTurnItem(6)=7265-7272.
+`BitFlag.Get(flagId)` set = DA MUA (mua 1 lan/item/reset). Bitmap 永標 tu **S:081-002 (0x51 sub02)**
+luc login (count u16 + array bytes), update qua **S:081-001 (0x51 sub01)** (count u32 + <<id u16 +
+val u8>>). Doc bit: `byteIdx=(id-1)//8, bit=(id-1)%8`. Bot da parse san vao self._bitflag_bytes ->
+dung self._bitflag_get(flagId). LENH MUA dung kind+slot+itemId (KHONG dung flagId).
+
 ## 7d-COLLECT. THA DO THOI TRANG VAO BO SUU TAM (收藏冊, opcode 0x5f=proto 95) (xac nhan capture 2026-08-10)
 
 Nguon: crack `UI_UICollectBook.lua`/`Logic_CollectStyle.lua` + capture `ts_capture_mumu12_congty.pcap`.

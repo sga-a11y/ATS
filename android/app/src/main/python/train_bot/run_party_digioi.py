@@ -302,6 +302,7 @@ account_stops = {}     # username -> threading.Event (GUI yeu cau dung acc nay)
 account_threads = {}   # username -> Thread
 account_last = {}      # username -> {"map","char"} luc CUOI truoc khi thoat (de biet thoat o dau)
 account_exit_reason = {}  # username -> ly do thoat (de tong ket 1 dong khi ca party tat het)
+account_furnace_notify = {}  # username -> list item lo can BAO (mode notify) de GUI popup hoi mua
 account_stop_reasons = {}  # username -> ai/nhanh nao set stop_ev gan nhat
 account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT (supervisor login lai)
 account_forced_reconnect = set()  # survivor 40NPC bi dong de relogin cung party; KHONG tang disc_gen
@@ -1112,10 +1113,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.claim_legion_gift()   # nhan qua quan doan hang ngay
             c.claim_friend_gifts()  # tang qua tat ca ban + nhan qua ban tang (hang ngay)
             c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> Vo Tuong Phien
-            # PHA 1 SOI LO: gui query 0x59 sub01 -> log 3 tab (Vo Tuong/Trang Bi/Chuyen Sinh) de verify
-            # protocol tren server that. Pha 2 se them wishlist + auto mua. Chi log, KHONG mua.
-            try: c.scan_furnace()
-            except Exception as e: log.warning("[%s] loi soi lo: %s", label, e)
+            # SOI LO + xu ly theo config per-acc (ACCOUNT_FURNACE): tab bat + item auto mua / notify.
+            # Config trong -> chi soi + log 3 tab (nhu Pha 1). Notify list -> log (Pha 2 GUI popup).
+            try:
+                _fcfg = getattr(config, "ACCOUNT_FURNACE", {}).get(username, {})
+                _notify = c.process_furnace(_fcfg)
+                if _notify:
+                    account_furnace_notify[username] = _notify   # GUI doc de popup hoi mua
+            except Exception as e:
+                log.warning("[%s] loi soi/mua lo: %s", label, e)
             c.donate_legion()           # donate nguyen lieu rac (donate_items.json) cho quan doan -> don tui
             # THA DO THOI TRANG vao Bo Suu Tam (gon tui + diem). DAT TRUOC use_login_items vi tha CHAC
             # CHAN free slot, con use_item doi khi de item MOI ra lam day tui (theo yeu cau user).
@@ -4879,6 +4885,44 @@ def apply_account_heal(username, heal_config=None):
         config.ACCOUNT_HEAL.pop(username, None)
     if username in account_clients:
         log.info("[%s] da apply nguong hoi HP/SP moi (live): %s", username, cfg or "mac dinh")
+    return True
+
+
+def apply_account_furnace(username, furnace_config=None):
+    """GUI/API: apply config SOI LO rieng acc. furnace_config = {tab: {"on": bool, "items":
+    {tid_hex/int: "auto"/"notify"}}} voi tab in vo_tuong/trang_bi/chuyen_sinh."""
+    username = str(username or "").strip()
+    if not username:
+        return False
+    if isinstance(furnace_config, str):
+        try:
+            import json
+            furnace_config = json.loads(furnace_config) if furnace_config else {}
+        except Exception:
+            furnace_config = {}
+    cfg = {}
+    if isinstance(furnace_config, dict):
+        for tab in ("vo_tuong", "trang_bi", "chuyen_sinh"):
+            t = furnace_config.get(tab)
+            if not isinstance(t, dict):
+                continue
+            items = {}
+            for k, v in (t.get("items") or {}).items():
+                if v not in ("auto", "notify"):
+                    continue
+                try:
+                    tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+                    items[tid] = v
+                except Exception:
+                    pass
+            if items:
+                cfg[tab] = {"on": bool(t.get("on", True)), "items": items}
+    if not isinstance(getattr(config, "ACCOUNT_FURNACE", None), dict):
+        config.ACCOUNT_FURNACE = {}
+    if cfg:
+        config.ACCOUNT_FURNACE[username] = cfg
+    else:
+        config.ACCOUNT_FURNACE.pop(username, None)
     return True
 
 

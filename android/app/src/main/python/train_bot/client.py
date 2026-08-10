@@ -4574,6 +4574,15 @@ class GameClient:
     # kind lo -> ten tab. Lo thuong: 1/2/5; hoang kim: 3/4/6 (chua mo).
     FURNACE_KIND_NAME = {1: "Vo Tuong", 2: "Trang Bi", 5: "Chuyen Sinh",
                          3: "HK-VoTuong", 4: "HK-TrangBi", 6: "HK-ChuyenSinh"}
+    # DA MUA hay chua: moi (kind,slot) co 1 BitFlag id co dinh (tu UI_UIFurnace.lua). slot 1..8.
+    # base + (slot-1). Set = da mua. Doc tu bitmap 0x51 (self._bitflag_get). Mua moi item 1 lan/reset.
+    FURNACE_BOUGHT_FLAG_BASE = {1: 1518, 2: 1526, 5: 7257, 3: 7067, 4: 7075, 6: 7265}
+
+    def _furnace_bought(self, kind: int, slot: int) -> bool:
+        base = self.FURNACE_BOUGHT_FLAG_BASE.get(kind)
+        if base is None or not (1 <= slot <= 8):
+            return False
+        return self._bitflag_get(base + slot - 1)
 
     def _parse_furnace_shop(self, pkt: bytes):
         """Parse S2C 0x59 sub01 (熔爐 shop data). Data tu pkt[9]:
@@ -4601,7 +4610,8 @@ class GameClient:
                 for j in range(1, item_count + 1):
                     item_id = struct.unpack_from("<H", pkt, p)[0]; p += 2
                     quant = struct.unpack_from("<i", pkt, p)[0]; p += 4
-                    items.append({"index": j, "id": item_id, "quant": quant, "crit": is_crit})
+                    items.append({"index": j, "id": item_id, "quant": quant, "crit": is_crit,
+                                  "bought": self._furnace_bought(kind, j)})
                 tabs[kind] = items
             self.furnace_shop = {"base_rate": base_rate, "active_rate": active_rate, "tabs": tabs}
             gd = _load_gamedata_items()
@@ -4614,10 +4624,62 @@ class GameClient:
                          " [BAO KICH x0.5 gia]" if crit else "")
                 for it in items:
                     nm = (gd.get(it["id"]) or {}).get("name") or "??? CHUA BIET"
-                    log.info("[%s]   slot%d: id=0x%04x quant=%d -> %s",
-                             self._label, it["index"], it["id"], it["quant"], nm)
+                    log.info("[%s]   slot%d: id=0x%04x quant=%d -> %s%s",
+                             self._label, it["index"], it["id"], it["quant"], nm,
+                             "  [DA MUA]" if it["bought"] else "")
         except Exception as e:
             log.warning("[%s] SOI LO: loi parse (%s) raw=%s", self._label, e, pkt.hex())
+
+    # ten tab config (per-acc) -> kind trong shop packet (ESelect: 1/2/5 lo thuong)
+    FURNACE_TAB_KIND = {"vo_tuong": 1, "trang_bi": 2, "chuyen_sinh": 5}
+
+    def buy_furnace_item(self, kind: int, slot: int, item_id: int, wait: float = 1.5) -> bool:
+        """MUA 1 item trong lo: C:089-002 = 0x59 sub02 + [kind u8][slot u8][itemId u16 LE].
+        kind/slot/itemId LAY TU goi soi (shops[kind][slot]). Server tra S:089-002 result:
+        1=OK, 5=da mua, 6=thieu chips. Tra True neu gui + nhan phan hoi (khong chac thanh cong)."""
+        seq0 = self._fashion_deposit_seq  # 0x59 sub02 (buy) dung chung seq voi tha do (deu sub02)
+        self.send(0x59, b"\x02\x00" + bytes([kind & 0xFF, slot & 0xFF]) + struct.pack("<H", item_id))
+        t0 = time.time()
+        while self._fashion_deposit_seq == seq0 and time.time() - t0 < wait and self.running:
+            time.sleep(0.1)
+        return self._fashion_deposit_seq != seq0
+
+    def process_furnace(self, cfg: dict):
+        """SOI LO + xu ly theo config per-acc cfg = {tab: {"on": bool, "items": {tid_int: "auto"/"notify"}}}.
+        tab in vo_tuong/trang_bi/chuyen_sinh. Item trong shop khop list:
+          - "auto" + CHUA mua (bought=False) -> MUA luon.
+          - "notify" -> gom lai bao (log) de user tu quyet.
+        Tra list item can BAO (notify) de GUI popup: [{tab,kind,slot,id,name,quant}]."""
+        if not self.scan_furnace() or not self.furnace_shop:
+            return []
+        gd = _load_gamedata_items()
+        tabs = self.furnace_shop.get("tabs", {})
+        notify = []
+        for tab_name, kind in self.FURNACE_TAB_KIND.items():
+            tcfg = (cfg or {}).get(tab_name) or {}
+            if not tcfg.get("on"):
+                continue
+            wl = tcfg.get("items") or {}
+            if not wl:
+                continue
+            for it in tabs.get(kind, []):
+                mode = wl.get(it["id"]) or wl.get("0x%04x" % it["id"])
+                if not mode or it["id"] == 0:
+                    continue
+                nm = (gd.get(it["id"]) or {}).get("name") or "0x%04x" % it["id"]
+                if it.get("bought"):
+                    log.info("[%s] LO: %s (%s) DA MUA -> bo qua", self._label, nm, tab_name)
+                    continue
+                if mode == "auto":
+                    log.info("[%s] LO: AUTO MUA %s (%s slot%d)", self._label, nm, tab_name, it["index"])
+                    ok = self.buy_furnace_item(kind, it["index"], it["id"])
+                    if not ok:
+                        log.warning("[%s] LO: mua %s KHONG co phan hoi (thieu chips?)", self._label, nm)
+                else:   # notify
+                    log.info("[%s] LO: CO %s (%s) - can BAO user quyet dinh mua", self._label, nm, tab_name)
+                    notify.append({"tab": tab_name, "kind": kind, "slot": it["index"],
+                                   "id": it["id"], "name": nm, "quant": it["quant"]})
+        return notify
 
     def deposit_fashion_to_collection(self, wait: float = 1.0):
         """THA DO THOI TRANG vao BO SUU TAM (收藏冊) -> gon tui + diem collection. Item vao S.Tam
