@@ -1479,7 +1479,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 return bool(st["dt_done"])
 
         def do_channel_sync():
-            # DG+Train: co acc het gio DG -> KHONG gom party DG nua (tranh reform vo han "1/5"),
+            # DG+Train: chinh acc NAY het gio DG (bi day ra Quang Truong giua luc gom/sync) -> BAO
+            # XONG DG cho party (mark dt_done) roi cho party + relogin train, thay vi ket o vong sync
+            # ma khong bao (bug that: acc dung o Quang Truong, party cho mai khong biet no da xong).
+            if _finish_digioi_train_if_time_over("sync kenh DG"):
+                return True
+            # DG+Train: co acc KHAC het gio DG -> KHONG gom party DG nua (tranh reform vo han "1/5"),
             # de acc con time chay DG solo den het gio. Bo qua sync, coi nhu xong.
             if _dg_gather_giveup():
                 log.info("[%s] (%s) DG+Train: da co acc het gio DG -> BO gom party DG, chay DG SOLO den het gio",
@@ -1572,7 +1577,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 need = len(party_accounts(pidx))
                 t0 = time.time()
                 while c.running and not _stopped():
-                    # Race: vao sync roi moi co acc het gio DG -> bo gom ngay (khoi loop "1/5" vo han).
+                    # Chinh acc nay het gio DG giua luc sync -> bao done + cho party (khong ket im).
+                    if _finish_digioi_train_if_time_over("sync kenh DG (picker)"):
+                        return True
+                    # Race: vao sync roi moi co acc KHAC het gio DG -> bo gom ngay (khoi loop "1/5").
                     if _dg_gather_giveup():
                         log.info("[%s] (%s) DG+Train: acc het gio DG giua luc sync -> BO gom party DG",
                                  label, role)
@@ -1634,11 +1642,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             else:
                 # cho picker CHOT kenh (co the lau neu dang doi kenh trong) -> cho toi khi ready/stop
                 while c.running and not _stopped():
-                    if _dg_gather_giveup():   # co acc het gio DG -> khoi cho picker, chay DG solo
+                    if _finish_digioi_train_if_time_over("sync kenh DG (member)"):
+                        return True
+                    if _dg_gather_giveup():   # co acc KHAC het gio DG -> khoi cho picker, chay DG solo
                         return True
                     while not st["channel_ready"].wait(5):
                         if not c.running or _stopped():
                             return
+                        if _finish_digioi_train_if_time_over("sync kenh DG (member wait)"):
+                            return True
                         if _dg_gather_giveup():
                             return True
                     with st["lock"]:
@@ -2783,9 +2795,19 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     c.combat_ready(); c.flee_mode = False   # toi noi -> TAT flee -> dung cay danh
                     log.info("[%s] (LEADER) ra diem quai %s -> dung cay danh.", label, spot)
                 elif is_digioi:
-                    c.combat_ready(); c.flee_mode = False
-                    c.start_run_around()        # DG: chay long vong tim quai
-                    log.info("[%s] (LEADER) bat dau chay long vong.", label)
+                    if _dg_gather_giveup():
+                        # Co acc KHAC het gio DG -> party khong gom duoc nua -> KHONG chay long vong
+                        # danh 1 minh (de chet vi khong co party hoi mau). DUNG YEN burn time trong DG
+                        # den khi het gio cua chinh minh -> ca party xong -> sang train (theo y user).
+                        c.flee_mode = True
+                        try: c.stop_run_around()
+                        except Exception: pass
+                        log.info("[%s] (LEADER) DG+Train: da co acc het gio DG -> DUNG YEN trong DG "
+                                 "cho het gio (khong chay long vong danh le)", label)
+                    else:
+                        c.combat_ready(); c.flee_mode = False
+                        c.start_run_around()        # DG: chay long vong tim quai
+                        log.info("[%s] (LEADER) bat dau chay long vong.", label)
                 else:
                     # city/stand: chi set QS, DUNG YEN (cho ban dieu khien tay di nhiem vu)
                     c.flee_mode = False
