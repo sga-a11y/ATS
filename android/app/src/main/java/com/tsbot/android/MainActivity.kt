@@ -66,6 +66,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1257,9 +1258,16 @@ fun AccountRow(
             // dang mo (remember(expanded) -> khong doc lien tuc moi lan recompose khi dong).
             if (expanded) {
                 val clipboard = LocalClipboardManager.current
-                val rawLogText = remember(expanded) { onGetLog() }
-                val logText = remember(rawLogText, status.charName, privacyMode, privacyOrdinals) {
-                    maskAccountLog(rawLogText, account.username, status.charName, privacyMode, privacyOrdinals)
+                // Doc log (get_account_log quet ca file + loc + mask regex) CHAY OFF-THREAD:
+                // truoc day goi tren MAIN thread trong remember{} -> mo log lag/suyt ANR khi log to.
+                val logText by produceState(
+                    initialValue = "Đang tải log...",
+                    expanded, status.charName, privacyMode, privacyOrdinals,
+                ) {
+                    value = withContext(Dispatchers.IO) {
+                        val raw = onGetLog()
+                        maskAccountLog(raw, account.username, status.charName, privacyMode, privacyOrdinals)
+                    }
                 }
                 val logScroll = rememberScrollState()
                 // Tu cuon xuong dong MOI NHAT ngay khi mo - KHONG bat nguoi dung tu keo xuong.
