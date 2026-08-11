@@ -8,9 +8,13 @@ mac dinh phai BAO cho user quyet dinh, khong duoc am tham bo qua:
 GHEP THEO ID (khong theo ten - ten trong pool bi CAT NGAN, vd "Trieu V. Khuong Me"):
   kind 38 (Bi Cap) : spare3           = npc GOC
   kind 37 (K.Toa)  : attribute[1].value (a1k==65) = npc GOC, a2v = npc CHUYEN SINH
-  kind 51 (T.Tinh) : a1v = npc CHUYEN SINH  -> bac cau qua K.Toa ve npc GOC
+  kind 51 (T.Tinh) : a1v = npc CHUYEN SINH  -> LAN NGUOC chuoi ve npc GOC
   kind 58 (Me)     : a1v = npc CHUYEN SINH  -> nhu tren
-Do phu do duoc: 1188/1192 muc trong furnace_pool.json (sot 4).
+CHUYEN SINH CO NHIEU TANG (goc -> tang1 -> tang2) va Me cua moi tuong tro vao TANG KHAC NHAU:
+  Quan Vu  Me -> 41050 (tang 1)      Tu Ma Y  Me -> 45416 (tang 2)
+Nen phai lan nguoc chuoi, khong duoc bac cau 1 nhip (1 nhip chi dung ngau nhien - tung lam SOT
+Me cua Tu Ma Y / Gia Cat Luong / Bang Thong / Luc Ton, dung nhom tuong manh nhat).
+Do phu: 1192/1192 muc trong furnace_pool.json.
 
 Nguon: gamedata_Item.dat (KHONG theo repo - copy tu client) + furnace_pool.json +
 exclusive_weapons.json (tools/crack_exclusive_weapons.py).
@@ -68,11 +72,26 @@ def main():
     items = read_items(item_path)
     by_id = {d["id"]: d for d in items}
 
-    # Cau noi npc CHUYEN SINH -> npc GOC, hoc tu chinh item K.Toa (mang ca hai id)
-    reinc2base = {}
+    # CHUYEN SINH CO NHIEU TANG, khong phai mot:
+    #   Tu Ma Y: goc 11010 -> 41036 (tang 1) -> 45416 (tang 2)
+    #     K.Toa  a1v=11010  a2v=41036      T.Tinh a1v=41036 a2v=45416      Me a1v=45416
+    # Me cua moi tuong lai tro vao TANG KHAC NHAU (Quan Vu tro tang 1, Tu Ma Y tro tang 2) ->
+    # cau 1 nhip chi dung ngau nhien. Gom canh "con -> cha" tu CA K.Toa lan T.Tinh roi LAN NGUOC
+    # chuoi toi khi het, dau chuoi la npc GOC.
+    up = {}
     for d in items:
         if d["kind"] == KIND_KIMTOA and d["a1k"] == ATTR_KIND_NPC and d["a1v"] and d["a2v"]:
-            reinc2base.setdefault(d["a2v"], d["a1v"])
+            up.setdefault(d["a2v"], d["a1v"])
+        elif d["kind"] == KIND_TUONGTINH and d["a1v"] and d["a2v"]:
+            up.setdefault(d["a2v"], d["a1v"])
+
+    def to_base(npc):
+        """Lan nguoc chuoi chuyen sinh ve npc goc. Chan lap vo han neu data co chu trinh."""
+        seen = set()
+        while npc in up and npc not in seen:
+            seen.add(npc)
+            npc = up[npc]
+        return npc
 
     def base_npc(d):
         if d["kind"] == KIND_SUMMON and d["spare3"]:
@@ -80,7 +99,7 @@ def main():
         if d["kind"] == KIND_KIMTOA and d["a1k"] == ATTR_KIND_NPC:
             return d["a1v"]
         if d["kind"] in (KIND_TUONGTINH, KIND_ME) and d["a1v"]:
-            return reinc2base.get(d["a1v"], 0)
+            return to_base(d["a1v"])
         return 0
 
     vkcd = json.load(open(VKCD, encoding="utf-8"))
