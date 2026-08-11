@@ -725,6 +725,22 @@ def _load_furnace_pool_ids() -> set:
                     pass
     return _furnace_pool_ids
 
+_npc_names = None
+def _load_npc_names() -> dict:
+    """{ npc_id_int: ten } tu npc_names.json (dung log ten vo tuong thuong nhan cuoi tran)."""
+    global _npc_names
+    if _npc_names is not None:
+        return _npc_names
+    _npc_names = {}
+    data = _load_json_data_file("npc_names.json")
+    if isinstance(data, dict):
+        for k, v in data.items():
+            try:
+                _npc_names[int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)] = v
+            except Exception:
+                pass
+    return _npc_names
+
 _pet_stat_data = None
 def _load_pet_stat_data() -> dict:
     global _pet_stat_data
@@ -1741,6 +1757,11 @@ class GameClient:
         # Hoan thanh dungeon: S2C 0x14 sub 0x64 (man tong ket) -> set co de do_daily_dungeon biet xong
         if opcode == 0x14 and len(pkt) >= 8 and pkt[7] == 0x64:
             self.dungeon_complete = True
+            self._log_battle_rewards(pkt)   # (20-100) log vat pham/exp/vang... nhan duoc cuoi tran
+        # (20-042) EXP nhan duoc: 0x14 sub 0x2a, kind(1)=1 -> exp(4). Log de biet moi tran duoc bao nhieu.
+        if (opcode == 0x14 and pkt[7:9] == b"\x2a\x00" and len(pkt) >= 14 and pkt[9] == 1):
+            _exp = int.from_bytes(pkt[10:14], "little")
+            log.info("[%s] KET TRAN: +%d EXP", self._label, _exp)
         # KET TRAN that: S2C 0x14 sub 0700 (man tong ket battle) -> ban DUNG 1 lan/tran luc thang.
         # Day moi la moc ket tran dang tin (0x34 ban that thuong, 1 lan/nhieu tran). Reset quest_mode
         # + enemies o DAY -> quest_mode latch luc start (>5) GIU NGUYEN ca tran du quai con <=5.
@@ -1936,6 +1957,22 @@ class GameClient:
                 for it, c in self.bag_slots.values():
                     self.bag_counts[it] = self.bag_counts.get(it, 0) + c
                 self._bag_time = time.time()   # moc nhan snapshot tui (cho log_bag_delayed adaptive)
+        # NHAN/DROP ITEM 1 SLOT: S2C 0x17 sub=0800 (023-008 <bag set item> [slot 1B][item data][showMsg]).
+        # Server chi gui SLOT thay doi (khong phai ca tui). Layout id/count giong record snapshot:
+        #   [slot][item_id 2B LE][count 4B LE]. CHI log TEN item khi count TANG (nhan duoc) - dung
+        #   bag_slots cu (O(1), khong diff ca tui); khong log so luong. Bo qua khi count giam (dung item).
+        elif opcode == 0x17 and len(pkt) >= 16 and pkt[7:9] == b"\x08\x00":
+            slot = pkt[9]
+            item_id = int.from_bytes(pkt[10:12], "little")
+            cnt = int.from_bytes(pkt[12:16], "little")
+            if item_id > 0 and 0 < cnt < 10_000_000:
+                old = self.bag_slots.get(slot)
+                old_cnt = old[1] if old and old[0] == item_id else 0
+                self.bag_slots[slot] = [item_id, cnt]
+                self.bag_counts[item_id] = self.bag_counts.get(item_id, 0) - old_cnt + cnt
+                if cnt > old_cnt:   # thuc su NHAN them (khong phai dung item/giam)
+                    nm = (_load_gamedata_items().get(item_id) or {}).get("name") or ("0x%04x" % item_id)
+                    log.info("[%s] Nhan item: %s", self._label, nm.strip())
         # BAN BE / qua hang ngay: S2C 0x0e
         #   sub 05 = list ban luc login: [05 00][count 2B] + N*[entity 8B][namelen 1B][name][trailer 35B]
         #   sub 0c = status qua:        [0c 00][count 1B] + N*[entity 8B][status 1B] (03=co qua nhan, 07=da nhan)
@@ -6020,6 +6057,44 @@ class GameClient:
                 break
         return sent
 
+    _REWARD_KIND = {2: "Vang", 3: "EXP tuong", 4: "Chien doanh", 6: "Skill", 7: "Diem thuoc tinh",
+                    8: "Diem skill", 9: "Nguyen bao", 10: "Manh tuong", 11: "Manh skill"}
+
+    def _log_battle_rewards(self, pkt: bytes):
+        """Log phan thuong cuoi tran/dungeon: S2C 0x14 sub0x64 (20-100 <hoan thanh nhiem vu thuong>):
+        [missionId u16][count i32] << [kind i32][id u16][quant i32] >>. kind: 1=vat pham 2=vang
+        3=exp tuong 4=chien doanh 5=vo tuong 6=skill 7=diem tt 8=diem skill 9=nguyen bao
+        10=manh tuong 11=manh skill (tu crack Common_protocal.lua 20-100). Parse phong thu:
+        loi/thieu byte -> bo qua, khong crash."""
+        try:
+            if len(pkt) < 15:
+                return
+            count = int.from_bytes(pkt[11:15], "little", signed=True)
+            if count <= 0 or count > 200:
+                return
+            gd = _load_gamedata_items()
+            npc = _load_npc_names()
+            o = 15
+            parts = []
+            for _ in range(count):
+                if o + 10 > len(pkt):
+                    break
+                kind = int.from_bytes(pkt[o:o + 4], "little", signed=True)
+                rid = int.from_bytes(pkt[o + 4:o + 6], "little")
+                quant = int.from_bytes(pkt[o + 6:o + 10], "little", signed=True)
+                o += 10
+                if kind == 1:
+                    nm = (gd.get(rid) or {}).get("name") or ("0x%04x" % rid)
+                    parts.append("%s x%d" % (nm.strip(), quant))
+                elif kind == 5:
+                    parts.append("Vo tuong %s" % (npc.get(rid) or ("0x%04x" % rid)))
+                else:
+                    parts.append("%s x%d" % (self._REWARD_KIND.get(kind, "kind%d" % kind), quant))
+            if parts:
+                log.info("[%s] KET TRAN nhan: %s", self._label, ", ".join(parts))
+        except Exception:
+            pass
+
     def _adv_dialog(self, n: int = 3, gap: float = 0.4):
         """Bam 'next' qua doan thoai NPC: C2S 0x14 0600 (advance scene). n lan, cach 'gap' giay
         (+- jitter ngau nhien de giong nguoi that, tranh nhip gui deu tuyet doi/may moc)."""
@@ -6507,9 +6582,13 @@ class GameClient:
                 return True
         return False
 
-    def _advance_to_team_dungeon_battle(self, cap_n: int, grace: float = 20.0) -> bool:
+    def _advance_to_team_dungeon_battle(self, cap_n: int, grace: float = 22.0) -> bool:
         start_seq = self._battle_start_seq
-        started = lambda: self._battle_start_seq > start_seq
+        end0 = self._team_dungeon_end_seq
+        t0 = time.time()
+        started = lambda: (self._battle_start_seq > start_seq or self.state.in_battle
+                           or self._team_dungeon_end_seq > end0 or self._genuine_end_seen > t0)
+        # PHASE 1: bam dialog (0x14 0600) qua doan chuyen canh de TRIGGER battle. Bounded cap_n.
         for _ in range(cap_n):
             if not self.running:
                 return False
@@ -6518,15 +6597,15 @@ class GameClient:
             self._adv_dialog(1, gap=0.8)
             if started():
                 return True
-        # Da bam het dialog can thiet nhung 0x34 battle-start co the den MUON (server cham) -> cho
-        # them `grace` giay (van bam dialog nhe), thay 0x34/in_battle la vao. Truoc day het cap_n la
-        # BO CUOC NGAY -> thua race sat nut khi battle start cham (bug that: tran 1 start ~22s nhung
-        # cap_n~18s -> "khong thay battle start" -> FAIL du battle THAT SU dang chay g=1).
+        # PHASE 2 (grace): 0x34 battle-start co the den MUON (server/emulator cham). CHO THU DONG -
+        # CHI poll, KHONG gui them 0x14 0600. Truoc day grace van _adv_dialog moi vong -> spam 0x14
+        # 0600 luc chuyen canh/da ket -> SERVER KICK ("Server dong ket noi", log 09:04). Dialog da bam
+        # xong o phase 1 roi; battle-start tu server ve khong can nudge them.
         deadline = time.time() + grace
         while self.running and time.time() < deadline:
             if started():
                 return True
-            self._adv_dialog(1, gap=0.8)
+            time.sleep(0.5)
         return started()
 
     def _run_team_dungeon_lv110_stage(self, actions: tuple, stage_no: int) -> bool:

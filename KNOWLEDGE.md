@@ -191,6 +191,15 @@ Hệ quả cho code hồi máu: sau trận cứ `heal_full(force=True)` là đ�
 
 > Đã phải giải thích nhiều lần → ghi lại ở đây. Đừng suy ra "thua thì char nằm ở HP=0".
 
+### PHẦN THƯỞNG / EXP CUỐI TRẬN (crack Common_protocal.lua, 2026-08-11)
+- **EXP người chơi:** `S2C 0x14 sub 0x2a` (20-042) `[kind u8][...]`; kind=1 → `[exp i32 LE]`. Log:
+  `KET TRAN: +N EXP`.
+- **Thưởng hoàn thành (dungeon/nhiệm vụ):** `S2C 0x14 sub 0x64` (20-100 `<hoàn thành nhiệm vụ
+  thưởng>`): `[missionId u16][count i32]` rồi `count ×` `[kind i32][id u16][quant i32]`.
+  kind: **1=vật phẩm** (itemDatas[id]) **2=vàng 3=exp tướng 4=chiến doanh 5=võ tướng** (npcDatas[id])
+  **6=skill 7=điểm thuộc tính 8=điểm skill 9=nguyên bảo 10=mảnh tướng 11=mảnh skill**. Bot cũng dùng
+  chính sub 0x64 này set `dungeon_complete=True`. Code: `_log_battle_rewards()` (parse phòng thủ).
+
 ## 6. STATS PACKETS
 
 ### LƯỚI BATTLE: 4 HÀNG × tối đa 5 CỘT (KEY cho target + buff)
