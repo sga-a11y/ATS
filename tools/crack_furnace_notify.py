@@ -4,6 +4,8 @@ Yeu cau user: vo tuong nao CO VU KHI CHUYEN DUNG (vkcd) thi mach cua no dang co 
 mac dinh phai BAO cho user quyet dinh, khong duoc am tham bo qua:
   - Lo VO TUONG   : cuon goi pet (Bi Cap) cua tuong co vkcd
   - Lo CHUYEN SINH: K.Toa + T.Tinh + Me cua tuong co vkcd
+  - Lo TRANG BI   : item co CHI SO >= +40 (bat ca do Lv thap chi so cao) - quy tac tu commit
+                    0d9a5cf, sinh lai tu equip_stats.json
 
 GHEP THEO ID (khong theo ten - ten trong pool bi CAT NGAN, vd "Trieu V. Khuong Me"):
   kind 38 (Bi Cap) : spare3           = npc GOC
@@ -36,6 +38,8 @@ from crack_exclusive_weapons import Reader, _find          # noqa: E402  (dung c
 OUT = os.path.join(ROOT, "furnace_default_notify.json")
 POOL = os.path.join(ROOT, "furnace_pool.json")
 VKCD = os.path.join(ROOT, "exclusive_weapons.json")
+EQUIP = os.path.join(ROOT, "equip_stats.json")
+EQUIP_MIN_BONUS = 40    # tab Trang Bi: chi so >= +40 -> mac dinh Thong bao (111 mon)
 
 KIND_SUMMON = 38        # Bi Cap - cuon goi pet
 KIND_KIMTOA = 37        # K.Toa
@@ -107,7 +111,29 @@ def main():
     pool = json.load(open(POOL, encoding="utf-8"))
 
     out = {}
-    for tab in ("Vo Tuong", "Chuyen Sinh"):     # Trang Bi KHONG doi (khong gan vao vo tuong)
+    # TAB TRANG BI: khong gan vao vo tuong nen khong dung vkcd - lay theo CHI SO.
+    # PHAI sinh o day: tool GHI DE ca file, bo qua tab nay la XOA MAT 111 mon da co
+    # (da tung lam mat that: chay tool -> file con 2 tab, user hoi "sao khong thay gi").
+    try:
+        equip = json.load(open(EQUIP, encoding="utf-8"))
+    except Exception:
+        equip = {}
+    if equip:
+        sel = {}
+        for tid_hex, nm in pool.get("Trang Bi", {}).items():
+            v = equip.get(tid_hex)
+            if not v:
+                continue
+            if max([val - 100 for _k, val in v.get("a", [])] or [0]) >= EQUIP_MIN_BONUS:
+                sel[tid_hex] = nm
+        out["Trang Bi"] = dict(sorted(sel.items()))
+        print("  %-12s %3d/%d item -> mac dinh THONG BAO (chi so >= +%d)"
+              % ("Trang Bi", len(sel), len(pool.get("Trang Bi", {})), EQUIP_MIN_BONUS))
+    else:
+        print("  CANH BAO: khong doc duoc equip_stats.json -> BO QUA tab Trang Bi "
+              "(file cu se bi ghi de MAT tab nay)")
+
+    for tab in ("Vo Tuong", "Chuyen Sinh"):
         sel = {}
         for tid_hex, nm in pool.get(tab, {}).items():
             d = by_id.get(int(tid_hex, 16))
