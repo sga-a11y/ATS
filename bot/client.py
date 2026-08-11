@@ -25,6 +25,50 @@ def _open_game_socket(host, port):
     return sock
 
 
+# ===== UU TIEN THREAD KHI DANH PHO BAN TO DOI (PB) =====
+# 15 party x 5 acc = ~75 client / 1 tien trinh Python -> GIL: moi luc chi 1 thread chay bytecode.
+# Khi nhieu party cung chay, thread cua acc DANG DANH PB bi tranh CPU -> heartbeat/lenh danh tre ->
+# server da / lech phien -> PB vo. Giai phap: nang priority OS cho thread acc DANG trong PB (recv +
+# heartbeat), va HA priority thread acc dang TRAIN khi co party khac dang danh PB (dua GIL cho PB).
+# Best-effort: sai moi truong / thieu quyen -> bo qua an toan (Windows chac chan chay; Android nang
+# can quyen nhung HA train thi khong -> van co tac dung tuong doi).
+_TD_ACTIVE = 0                    # so client dang trong pho ban to doi (leader + member)
+_TD_LOCK = threading.Lock()
+
+def _td_active_inc(delta: int) -> int:
+    global _TD_ACTIVE
+    with _TD_LOCK:
+        _TD_ACTIVE = max(0, _TD_ACTIVE + delta)
+        return _TD_ACTIVE
+
+_WIN_K32 = None
+def _win_kernel32():
+    """kernel32 da cau hinh argtypes/restype (BAT BUOC: pseudo-handle GetCurrentThread = 0xFFFF...FFFE,
+    thieu c_void_p thi ctypes truncate HANDLE 64-bit -> SetThreadPriority FAIL am tham)."""
+    global _WIN_K32
+    if _WIN_K32 is None:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.GetCurrentThread.restype = ctypes.c_void_p
+        k.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        k.SetThreadPriority.restype = ctypes.c_int
+        _WIN_K32 = k
+    return _WIN_K32
+
+def _set_thread_prio(level: int):
+    """level: 1=cao (dang danh PB), 0=thuong, -1=thap (train khi co party khac danh PB)."""
+    try:
+        if os.name == "nt":
+            k = _win_kernel32()
+            # THREAD_PRIORITY: ABOVE_NORMAL=1, NORMAL=0, BELOW_NORMAL=-1
+            k.SetThreadPriority(k.GetCurrentThread(), {1: 1, 0: 0, -1: -1}[level])
+        else:
+            # *nix/Android: nang (-2) can quyen -> co the fail (bo qua); ha (+5) khong can quyen.
+            os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), {1: -2, 0: 0, -1: 5}[level])
+    except Exception:
+        pass
+
+
 PHUC_THAN_PROTECTION_PRIORITY = (
     (0x5AAB, "equip"),
     (0x5A2D, "equip"),
@@ -1572,7 +1616,14 @@ class GameClient:
 
     # ---- heartbeat ----
     def _heartbeat_loop(self):
+        prio = 0
         while self.running:
+            # Uu tiên thread nếu acc này đang trong PB (heartbeat KHÔNG được trễ -> tránh server đá).
+            want = 1 if time.time() < getattr(self, "_team_dungeon_until", 0.0) else (
+                -1 if _TD_ACTIVE > 0 else 0)
+            if want != prio:
+                _set_thread_prio(want)
+                prio = want
             time.sleep(15)
             try:
                 self.send(protocol.OP_HEARTBEAT, b"\x00\x00")
@@ -1581,7 +1632,30 @@ class GameClient:
 
     # ---- recv ----
     def _recv_loop(self, sock):
+        # Wrapper mong: dam bao GIAM _TD_ACTIVE + tra priority ve thuong o finally (khong leak counter
+        # du thread thoat kieu gi). Than vong lap that o _recv_loop_impl (giu nguyen logic cu).
+        self._recv_prio = 0
+        self._recv_td_counted = False
+        try:
+            self._recv_loop_impl(sock)
+        finally:
+            if self._recv_td_counted:
+                _td_active_inc(-1)
+                self._recv_td_counted = False
+            _set_thread_prio(0)
+
+    def _recv_loop_impl(self, sock):
         while self.running and sock is self.sock:
+            # Uu tien thread theo trang thai PB (leader+member qua _team_dungeon_until):
+            #   dang danh PB -> CAO; co party KHAC dang danh PB -> THAP; con lai -> thuong.
+            in_td = time.time() < getattr(self, "_team_dungeon_until", 0.0)
+            if in_td != self._recv_td_counted:
+                _td_active_inc(1 if in_td else -1)
+                self._recv_td_counted = in_td
+            want = 1 if in_td else (-1 if _TD_ACTIVE > 0 else 0)
+            if want != self._recv_prio:
+                _set_thread_prio(want)
+                self._recv_prio = want
             try:
                 data = sock.recv(8192)
             except OSError as e:
@@ -2834,6 +2908,10 @@ class GameClient:
         self._decision_timer.start()
 
     def _make_decisions(self):
+        # Thread Timer nay GUI lenh danh 0x32. Khi dang PB -> uu tien de lenh khong bi cac acc train
+        # lam tre (tre -> lech phien/mat luot -> luot cham 25s). Timer ngan han nen set moi lan.
+        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+            _set_thread_prio(1)
         if self._acted_turn:
             return
         # VUA nhan goi KET TRAN THAT (grace) -> tran DA xong: KHONG ra BAT KY quyet dinh nao (ke ca
