@@ -348,7 +348,7 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
             lst.mapNotNull { po ->
                 try {
                     val m = HashMap<String, String>()
-                    for (k in listOf("user", "tab", "id", "name", "bag", "slot", "kind")) {
+                    for (k in listOf("user", "tab", "id", "name", "bag", "slot", "kind", "new")) {
                         po.callAttr("get", k)?.let { m[k] = it.toString() }
                     }
                     m

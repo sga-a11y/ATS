@@ -2845,17 +2845,20 @@ private fun furnaceNotifyLine(context: android.content.Context, it: Map<String, 
     val u = it["user"] ?: "?"
     val tab = it["tab"] ?: ""
     var nm = (it["name"] ?: "?").trim()
+    // ITEM LA = id khong co trong furnace_pool.json (game update them item moi) - engine danh dau
+    // "new"; phai neu ro chu khong de nhin y het item thuong.
+    val nw = if (it["new"]?.lowercase() in listOf("true", "1")) " ⚠ ITEM LẠ (ngoài danh sách đã biết)" else ""
     return when (tab) {
         "trang_bi" -> {
             val tid = it["id"]?.toIntOrNull()
             if (tid != null) {
                 nm = equipDisplay(loadEquipStats(context)[String.format("0x%04x", tid)], nm)
             }
-            "$u soi lò trang bị thường có \"$nm\" - trong túi đang có ${it["bag"] ?: 0} món"
+            "$u soi lò trang bị thường có \"$nm\" - trong túi đang có ${it["bag"] ?: 0} món$nw"
         }
-        "vo_tuong" -> "$u soi lò võ tướng thường có \"$nm\""
-        "chuyen_sinh" -> "$u soi lò chuyển sinh thường có \"$nm\""
-        else -> "$u: lò có \"$nm\""
+        "vo_tuong" -> "$u soi lò võ tướng thường có \"$nm\"$nw"
+        "chuyen_sinh" -> "$u soi lò chuyển sinh thường có \"$nm\"$nw"
+        else -> "$u: lò có \"$nm\"$nw"
     }
 }
 

@@ -1328,18 +1328,21 @@ class BotGUI(tk.Tk):
     def _furnace_notify_line(self, username, it):
         _u = self._mask_user(username)
         tab = it.get("tab"); nm = (it.get("name") or "?").strip()
+        # ITEM LA = id KHONG co trong furnace_pool.json (game update them item moi). Engine da danh
+        # dau "new" tu lau nhung UI chua dung -> nhin y het item thuong. Phai neu ro de user chu y.
+        _new = " ⚠ ITEM LẠ (ngoài danh sách đã biết)" if it.get("new") else ""
         if tab == "trang_bi":
             # Ten DAI kem chi so (giong hien thi trong list) - chi co ten thi khong quyet dinh
             # duoc co dang mua hay khong.
             _tid = it.get("id")
             if _tid:
                 nm = PartyConfigFrame._equip_display("0x%04x" % int(_tid), nm)
-            return f'{_u} soi lò trang bị thường có "{nm}" - trong túi đang có {it.get("bag", 0)} món'
+            return f'{_u} soi lò trang bị thường có "{nm}" - trong túi đang có {it.get("bag", 0)} món{_new}'
         if tab == "vo_tuong":
-            return f'{_u} soi lò võ tướng thường có "{nm}"'
+            return f'{_u} soi lò võ tướng thường có "{nm}"{_new}'
         if tab == "chuyen_sinh":
-            return f'{_u} soi lò chuyển sinh thường có "{nm}"'
-        return f'{_u}: lò có "{nm}"'
+            return f'{_u} soi lò chuyển sinh thường có "{nm}"{_new}'
+        return f'{_u}: lò có "{nm}"{_new}'
 
     def _furnace_buy_for(self, username, it):
         c = ctrl.account_clients.get(username)
