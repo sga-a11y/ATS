@@ -48,6 +48,13 @@ data class Party(
     val doVanTieu: Boolean = true,
     // Tu ban Noi Dat o NPC Nha buon Ng.Thanh khi pre-route random ve Ng.Thanh. Mac dinh CO tick.
     val autoSellNoiDat: Boolean = true,
+    // "Tu don tui do" = CONG TONG cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
+    // Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
+    val autoBagClean: Boolean = true,
+    val autoDiscardJunk: Boolean = true,
+    val autoDecomposeScrolls: Boolean = false,
+    // tid_hex -> "keep"/"drop", CHI chua muc user doi khac mac dinh (vkcd = keep)
+    val scrollModes: Map<String, String> = emptyMap(),
     // Mua shop (mac dinh TAT). Master autoBuyShop + list item ben duoi.
     // Ho Phu: mua 3/ngay. Thien Chau: mua 1/ngay. Bao Hop: mua 1/ngay khi xu > baoHopXuThreshold.
     val autoBuyShop: Boolean = false,
@@ -80,6 +87,10 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     fightLegionBoss = source.fightLegionBoss,
     doVanTieu = source.doVanTieu,
     autoSellNoiDat = source.autoSellNoiDat,
+    autoBagClean = source.autoBagClean,
+    autoDiscardJunk = source.autoDiscardJunk,
+    autoDecomposeScrolls = source.autoDecomposeScrolls,
+    scrollModes = source.scrollModes,
     autoBuyShop = source.autoBuyShop,
     buyHoPhu = source.buyHoPhu,
     buyThienChau = source.buyThienChau,

@@ -241,6 +241,9 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.autoTeamDungeon, teamDungeonsJson(party.teamDungeons),
                 party.autoBuyShop, party.buyThienChau,
                 party.autoWorldBoss,
+                // THEM O CUOI signature Python (setup_party_runtime) - goi THEO VI TRI
+                party.autoBagClean, party.autoDiscardJunk,
+                party.autoDecomposeScrolls, party.scrollModes,
             )
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)

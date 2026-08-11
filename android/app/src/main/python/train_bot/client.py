@@ -759,6 +759,31 @@ def _load_gamedata_items() -> dict:
                                     "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
     return _gamedata_items
 
+_pet_scrolls = None
+def _load_pet_scrolls() -> dict:
+    """{ tid_int: {"name","npc","vkcd"} } tu pet_scrolls.json - TAT CA cuon goi vo tuong (Bi Cap).
+
+    Dung cho "Tu phan giai cuon vo tuong rac": mac dinh cuon cua tuong CO vu khi chuyen dung
+    (vkcd) = GIU LAI, con lai = PHAN GIAI. Mac dinh nay chi la GOI Y - pet co vkcd nhieu con van
+    lom nen user doi duoc ca 2 chieu. Sinh boi tools/crack_pet_scrolls.py.
+    """
+    global _pet_scrolls
+    if _pet_scrolls is not None:
+        return _pet_scrolls
+    _pet_scrolls = {}
+    data = _load_json_data_file("pet_scrolls.json")
+    if isinstance(data, dict):
+        for k, v in data.items():
+            try:
+                tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+            except Exception:
+                continue
+            if isinstance(v, dict):
+                _pet_scrolls[tid] = {"name": v.get("name", ""), "npc": v.get("npc", ""),
+                                     "vkcd": bool(v.get("vkcd"))}
+    return _pet_scrolls
+
+
 _furnace_notify_ids = None
 def _load_furnace_default_notify_ids() -> set:
     """Set item_id MAC DINH "Thong bao" (furnace_default_notify.json).
@@ -1206,6 +1231,12 @@ class GameClient:
         # Setting party "Tu ban Noi Dat" (mac dinh BAT). run_party_digioi.py chi bat setting nay
         # cho mode train/city, va pre-route chi thuc hien khi random tele ve Ng.Thanh.
         self.auto_sell_noi_dat = True
+        # "Tu don tui do" (Cai dat nang cao) = CONG TONG cua 3 muc con ben duoi; tat -> ca 3 ngung.
+        self.auto_bag_clean = True
+        self.auto_discard_junk = True        # vut item rac (Ngoc Hu) - mac dinh BAT
+        self.auto_decompose_scrolls = False  # phan giai cuon vo tuong rac - mac dinh TAT (an toan:
+                                             # phan giai la MAT HAN, user phai tu tick va soat list)
+        self.scroll_modes = {}               # {tid: "keep"|"drop"} - override so voi mac dinh vkcd
         self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - fallback VANTIEU_REQUESTS
         self.vantieu_req = None      # {he, doanh} decode tu DispatchBonus_C.dat (0400 effect1/effect2)
         self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
@@ -4399,6 +4430,9 @@ class GameClient:
     def discard_junk_items(self):
         """Quet tui, vut bo HET cac tid trong DISCARD_JUNK_TIDS (vd Ngoc Hu). Khong confirm rieng
         (server KHONG gui lai 0x16 refresh bag) -> tu tru bag_slots ngay sau khi gui lenh."""
+        if not (getattr(self, "auto_bag_clean", True)
+                and getattr(self, "auto_discard_junk", True)):
+            return
         total = 0
         for slot, (tid, cnt) in list(self.bag_slots.items()):
             if cnt > 0 and tid in self.DISCARD_JUNK_TIDS:
@@ -4985,23 +5019,35 @@ class GameClient:
             log.info("[%s] Tha %d do thoi trang vao Bo Suu Tam (gon tui + diem collection)",
                      self._label, total)
 
+    def _decompose_scroll_tids(self) -> set:
+        """Set tid cuon SE PHAN GIAI = mac dinh (khong vkcd) + override cua party.
+
+        scroll_modes: {tid_int: "keep"|"drop"} - CHI chua muc user da doi khac mac dinh, nen
+        list cuon moi cua game tu dong theo mac dinh, khong can user tick lai.
+        """
+        modes = getattr(self, "scroll_modes", None) or {}
+        out = set()
+        for tid, info in _load_pet_scrolls().items():
+            m = modes.get(tid)
+            if m == "drop" or (m is None and not info["vkcd"]):
+                out.add(tid)
+        return out
+
     def decompose_junk_scrolls(self, wait: float = 1.2):
         """Phan giai cuon GOI PET RAC (gacha ra nhieu) -> nhan lai xu. C2S 0x59:
           03 00 01 [slot 1B][01] 00 00 00   (giong use-item: tham chieu theo SLOT, KHONG phai tid).
         AN TOAN: chi phan giai SLOT co tid nam trong CONFIG.JUNK_PET_SCROLLS (= danh sach TID cuon rac,
         template -> dung mọi acc). Tim slot trong bag_slots theo tid -> gui 0x59 voi slot do.
-        So luong biet tu bag_slots[slot]; khong confirm -> dung ngay (tranh ban mu)."""
-        junk_tids = set()
-        # NGUON CHINH: items_known.json -> tid co type chua 'scroll'/'junk' = cuon rac (phan giai).
-        for tid, info in _load_known_items().items():
-            if str(info.get("type", "")).lower() in ("scroll", "junk", "cuon"):
-                junk_tids.add(tid)
-        # Tuong thich cu: junk_scrolls.json / config.JUNK_PET_SCROLLS (key = tid hex).
-        for k in (getattr(config, "JUNK_PET_SCROLLS", {}) or {}):
-            try:
-                junk_tids.add(int(k, 16) if isinstance(k, str) else int(k))
-            except Exception:
-                pass
+        So luong biet tu bag_slots[slot]; khong confirm -> dung ngay (tranh ban mu).
+
+        DANH SACH lay tu pet_scrolls.json (807 cuon) + override cua party:
+        mac dinh cuon cua tuong CO vkcd = GIU LAI, con lai = PHAN GIAI; user doi duoc ca 2 chieu
+        trong "Cai dat nang cao -> Tu don tui do -> List". KHONG con lay tu items_known.json:
+        nguon do bat theo type 'scroll'/'junk' nen se phan giai ca cuon user tick GIU LAI."""
+        if not (getattr(self, "auto_bag_clean", True)
+                and getattr(self, "auto_decompose_scrolls", False)):
+            return
+        junk_tids = self._decompose_scroll_tids()
         if not junk_tids:
             return
         total = 0
@@ -7729,7 +7775,8 @@ class GameClient:
         Packet sell da xac nhan tu capture:
         C2S 0x1b = 02 00 01 [slot] [qty LE16] 00 00. Server ack S2C 0x17 0900...
         """
-        if not getattr(self, "auto_sell_noi_dat", True):
+        if not (getattr(self, "auto_bag_clean", True)
+                and getattr(self, "auto_sell_noi_dat", True)):
             return False
         if self.current_map != self.NOI_DAT_SELL_CITY:
             return False

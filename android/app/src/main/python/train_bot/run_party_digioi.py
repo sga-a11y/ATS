@@ -55,6 +55,22 @@ DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (de tinh "con lai")
 HO_PHU_CHECK_SEC = 180   # Di Gioi Ho Phu: check moi 3 phut (login + dinh ky)
 
 
+def _scroll_modes_map(raw):
+    """{"0xc946": "drop"} (config) -> {51526: "drop"} (client). Chi chua muc user DA DOI khac
+    mac dinh (mac dinh: cuon cua tuong co vkcd = keep, con lai = drop) nen cuon moi cua game tu
+    theo mac dinh, khong bat user tick lai."""
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if v not in ("keep", "drop"):
+                continue
+            try:
+                out[int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)] = v
+            except Exception:
+                pass
+    return out
+
+
 def _jitter(pt):
     """Xê dịch tọa độ ±10 ngẫu nhiên (9 khả năng) để bot không đứng cùng 1 điểm."""
     dx, dy = random.choice([-10, 0, 10]), random.choice([-10, 0, 10])
@@ -1219,6 +1235,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         is_digioi = (mode == "digioi")
         dt_dg_finished = False   # mode digioi_train: vua HET GIO DG -> cho party roi sang train
         c.auto_sell_noi_dat = bool(pcfg.get("auto_sell_noi_dat", True) and mode in ("train", "city"))
+        # "Tu don tui do" (Cai dat nang cao): cong tong + 2 muc con moi. Phan giai cuon MAC DINH
+        # TAT vi phan giai la mat han - user phai tu tick sau khi soat list.
+        c.auto_bag_clean = bool(pcfg.get("auto_bag_clean", True))
+        c.auto_discard_junk = bool(pcfg.get("auto_discard_junk", True))
+        c.auto_decompose_scrolls = bool(pcfg.get("auto_decompose_scrolls", False))
+        c.scroll_modes = _scroll_modes_map(pcfg.get("scroll_modes"))
         ev = None
         train_safes = []
         if tm is not None:
@@ -4530,7 +4552,11 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         claim_offline_exp=True,
                         auto_team_dungeon=True, team_dungeons=None,
                         auto_buy_shop=None, buy_thien_chau=False,
-                        auto_world_boss=True):
+                        auto_world_boss=True,
+                        # THEM O CUOI: Kotlin goi THEO VI TRI (BotForegroundService.kt) nen
+                        # chen vao giua se lam lech het cac tham so phia sau.
+                        auto_bag_clean=True, auto_discard_junk=True,
+                        auto_decompose_scrolls=False, scroll_modes=None):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -4559,6 +4585,10 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "fight_legion_boss": bool(fight_legion_boss),
         "do_van_tieu": bool(do_van_tieu),
         "auto_sell_noi_dat": bool(auto_sell_noi_dat),
+        "auto_bag_clean": bool(auto_bag_clean),
+        "auto_discard_junk": bool(auto_discard_junk),
+        "auto_decompose_scrolls": bool(auto_decompose_scrolls),
+        "scroll_modes": scroll_modes or {},
         "auto_buy_shop": bool(auto_buy_shop) if auto_buy_shop is not None else bool(buy_ho_phu or buy_thien_chau or buy_bao_hop),
         "shop_items": config.normalize_shop_items(None, {
             "ho_phu": bool(buy_ho_phu),

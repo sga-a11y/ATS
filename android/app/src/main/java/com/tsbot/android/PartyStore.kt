@@ -72,6 +72,12 @@ class PartyStore(private val context: Context) {
                 fightLegionBoss = o.optBoolean("fight_legion_boss", true),
                 doVanTieu = o.optBoolean("do_van_tieu", true),
                 autoSellNoiDat = o.optBoolean("auto_sell_noi_dat", true),
+                autoBagClean = o.optBoolean("auto_bag_clean", true),
+                autoDiscardJunk = o.optBoolean("auto_discard_junk", true),
+                autoDecomposeScrolls = o.optBoolean("auto_decompose_scrolls", false),
+                scrollModes = o.optJSONObject("scroll_modes")?.let { m ->
+                    m.keys().asSequence().mapNotNull { k -> m.optString(k, "").takeIf { it.isNotEmpty() }?.let { k to it } }.toMap()
+                } ?: emptyMap(),
                 autoBuyShop = o.optBoolean("auto_buy_shop", buyHoPhu || buyThienChau || buyBaoHop),
                 buyHoPhu = buyHoPhu,
                 buyThienChau = buyThienChau,
@@ -114,6 +120,10 @@ class PartyStore(private val context: Context) {
             o.put("fight_legion_boss", p.fightLegionBoss)
             o.put("do_van_tieu", p.doVanTieu)
             o.put("auto_sell_noi_dat", p.autoSellNoiDat)
+            o.put("auto_bag_clean", p.autoBagClean)
+            o.put("auto_discard_junk", p.autoDiscardJunk)
+            o.put("auto_decompose_scrolls", p.autoDecomposeScrolls)
+            o.put("scroll_modes", JSONObject().apply { p.scrollModes.forEach { (k, v) -> put(k, v) } })
             o.put("auto_buy_shop", p.autoBuyShop)
             o.put("shop_items", JSONObject().apply {
                 put("ho_phu", p.buyHoPhu)

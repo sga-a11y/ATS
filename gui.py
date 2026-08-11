@@ -201,7 +201,9 @@ _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831
                   "city_flag": 0, "do_daily": True, "claim_offline_exp": True,
                   "auto_world_boss": True,
                   "auto_team_dungeon": True, "team_dungeons": _team_dungeons_json(DEFAULT_TEAM_DUNGEONS),
-                  "auto_sell_noi_dat": True, "auto_buy_shop": False,
+                  "auto_sell_noi_dat": True, "auto_bag_clean": True,
+                  "auto_discard_junk": True, "auto_decompose_scrolls": False,
+                  "auto_buy_shop": False,
                   "shop_items": _shop_items_json(DEFAULT_SHOP_ITEMS), "leaders": [],
                   "accounts": [{"u": "acc1", "p": "pass1", "on": True},
                                {"u": "acc2", "p": "pass2", "on": True},
@@ -1730,6 +1732,13 @@ class PartyConfigFrame(ttk.Frame):
         # Tu ban Noi Dat: mac dinh CO tick. Chi co tac dung khi bot tele trung gian ve Ng.Thanh
         # trong mode train/city; tat -> bo qua hoan toan.
         self.auto_sell_noi_dat_var = tk.BooleanVar(value=bool(self._preset.get("auto_sell_noi_dat", True)))
+        # "Tu don tui do" = cong tong cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
+        # Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
+        self.auto_bag_clean_var = tk.BooleanVar(value=bool(self._preset.get("auto_bag_clean", True)))
+        self.auto_discard_junk_var = tk.BooleanVar(value=bool(self._preset.get("auto_discard_junk", True)))
+        self.auto_decompose_scrolls_var = tk.BooleanVar(
+            value=bool(self._preset.get("auto_decompose_scrolls", False)))
+        self.scroll_modes = dict(self._preset.get("scroll_modes") or {})
         # Mua shop (mac dinh TAT): master "Tu mua shop" + list vat pham. Key cu van doc de
         # account.json doi cu update len khong bi mat setting.
         self.shop_items = _normalize_shop_items(self._preset.get("shop_items"), {
@@ -2594,6 +2603,110 @@ class PartyConfigFrame(ttk.Frame):
         if row in self.acc_rows:
             self.acc_rows.remove(row)
 
+    _pet_scrolls_cache = None
+
+    @classmethod
+    def _load_pet_scrolls(cls):
+        """{tid_hex: {name,npc,vkcd}} tu pet_scrolls.json - TAT CA cuon goi vo tuong trong game."""
+        if PartyConfigFrame._pet_scrolls_cache is None:
+            import json as _json, os as _os
+            PartyConfigFrame._pet_scrolls_cache = {}
+            for p in (_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "pet_scrolls.json"),
+                      "pet_scrolls.json"):
+                try:
+                    with open(p, encoding="utf-8") as fh:
+                        PartyConfigFrame._pet_scrolls_cache = _json.load(fh); break
+                except Exception:
+                    pass
+        return PartyConfigFrame._pet_scrolls_cache
+
+    def _open_bag_clean_detail(self):
+        """Bang chi tiet cua "Tu don tui do": 3 muc con. Bo tick o tong -> ca 3 ngung."""
+        win = tk.Toplevel(self); win.title("Dọn dẹp túi đồ"); win.transient(self); win.grab_set()
+        win.resizable(False, False)
+        frm = ttk.Frame(win, padding=12); frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text='Các việc bot làm khi bật "Tự dọn túi đồ":').pack(anchor="w")
+        ttk.Checkbutton(frm, text="Tự bán Nồi đất (ở Nhà buôn Ng.Thành)",
+                        variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(8, 0))
+        ttk.Checkbutton(frm, text="Tự vứt item rác (Ngọc Hư)",
+                        variable=self.auto_discard_junk_var).pack(anchor="w", pady=(4, 0))
+        _sc = ttk.Frame(frm); _sc.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_sc, text="Tự phân giải cuộn võ tướng rác",
+                        variable=self.auto_decompose_scrolls_var).pack(side="left")
+        ttk.Button(_sc, text="List", command=self._open_scroll_list).pack(side="left", padx=(8, 0))
+        ttk.Label(frm, foreground="#a00", wraplength=420, justify="left",
+                  text="Lưu ý: phân giải là MẤT HẲN cuộn. Mặc định cuộn của tướng có vũ khí "
+                       "chuyên dụng được giữ lại, còn lại phân giải — nên soát List trước khi bật."
+                  ).pack(anchor="w", pady=(8, 0))
+        ttk.Button(frm, text="Đóng", command=win.destroy).pack(anchor="e", pady=(12, 0))
+
+    def _open_scroll_list(self):
+        """List TAT CA cuon goi vo tuong: double-click doi GIU LAI <-> PHAN GIAI.
+
+        self.scroll_modes CHI luu muc DOI KHAC mac dinh (mac dinh: co vkcd = giu lai) -> cuon moi
+        cua game tu theo mac dinh, va bang mac dinh sua lai sau nay van co hieu luc.
+        """
+        data = self._load_pet_scrolls()
+        if not data:
+            messagebox.showwarning("List cuộn", "Không đọc được pet_scrolls.json")
+            return
+        win = tk.Toplevel(self); win.title("Cuộn võ tướng"); win.transient(self); win.grab_set()
+        frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
+        top = ttk.Frame(frm); top.pack(fill="x")
+        ttk.Label(top, text="Double-click để đổi trạng thái. Tìm:").pack(side="left")
+        q_var = tk.StringVar()
+        ttk.Entry(top, textvariable=q_var, width=24).pack(side="left", padx=(4, 0))
+        # Thanh nut phai pack TRUOC widget expand, khong thi bi bop mat khi cua so nho lai
+        bar = ttk.Frame(frm); bar.pack(side="bottom", fill="x", pady=(10, 0))
+        mid = ttk.Frame(frm); mid.pack(fill="both", expand=True)
+        tv = ttk.Treeview(mid, columns=("st",), show="tree headings", height=20)
+        tv.heading("#0", text="Cuộn"); tv.heading("st", text="Trạng thái")
+        tv.column("#0", width=320); tv.column("st", width=110, anchor="center")
+        sb = ttk.Scrollbar(mid, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        tv.pack(side="left", fill="both", expand=True, pady=(8, 0))
+        sb.pack(side="right", fill="y", pady=(8, 0))
+        # state: tid_hex -> "keep"/"drop" (day du MOI cuon, luc Luu moi loc ra phan khac mac dinh)
+        state = {tid: self.scroll_modes.get(tid, "keep" if v.get("vkcd") else "drop")
+                 for tid, v in data.items()}
+
+        def _label(tid):
+            v = data[tid]
+            nm = v.get("name", "")
+            if v.get("npc") and v["npc"] not in nm:
+                nm = "%s (%s)" % (nm, v["npc"])
+            return nm + (" ★vkcd" if v.get("vkcd") else "")
+
+        def _fill():
+            q = q_var.get().strip().lower()
+            tv.delete(*tv.get_children())
+            # "Phan giai" len TRUOC de user soat cai se bi mat truoc tien
+            for tid in sorted(data, key=lambda t: (state[t] != "drop", _label(t))):
+                if q and q not in _label(tid).lower():
+                    continue
+                tv.insert("", "end", iid=tid, text=_label(tid),
+                          values=("Phân giải" if state[tid] == "drop" else "Giữ lại",))
+
+        def _toggle(_e=None):
+            tid = tv.focus()
+            if not tid:
+                return
+            state[tid] = "keep" if state[tid] == "drop" else "drop"
+            tv.item(tid, values=("Phân giải" if state[tid] == "drop" else "Giữ lại",))
+
+        def _save():
+            self.scroll_modes = {
+                tid: m for tid, m in state.items()
+                if m != ("keep" if data[tid].get("vkcd") else "drop")}
+            win.destroy()
+
+        tv.bind("<Double-1>", _toggle)
+        q_var.trace_add("write", lambda *_a: _fill())
+        _fill()
+        ttk.Label(bar, text="★vkcd = tướng có vũ khí chuyên dụng").pack(side="left")
+        ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="right")
+        ttk.Button(bar, text="Lưu", command=_save).pack(side="right", padx=(0, 8))
+
     def _open_team_dungeon_list(self):
         win = tk.Toplevel(self)
         win.title("List phó bản")
@@ -2674,8 +2787,11 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.fight_boss_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Vận tiêu (nhận quà + gửi pet)",
                         variable=self.van_tieu_var).pack(anchor="w", pady=(4, 0))
-        ttk.Checkbutton(frm, text="Tự bán Nồi đất",
-                        variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(4, 0))
+        _bag = ttk.Frame(frm); _bag.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_bag, text="Tự dọn túi đồ",
+                        variable=self.auto_bag_clean_var).pack(side="left")
+        ttk.Button(_bag, text="Chi tiết",
+                   command=self._open_bag_clean_detail).pack(side="left", padx=(8, 0))
         _shop = ttk.Frame(frm); _shop.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_shop, text="Tự mua shop",
                         variable=self.auto_buy_shop_var).pack(side="left")
@@ -2714,6 +2830,10 @@ class PartyConfigFrame(ttk.Frame):
             "fight_legion_boss": bool(self.fight_boss_var.get()),
             "do_van_tieu": bool(self.van_tieu_var.get()),
             "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+            "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
+            "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
+            "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
+            "scroll_modes": dict(self.scroll_modes),
             "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
             "shop_items": _shop_items_json({
                 "ho_phu": self.buy_ho_phu_var.get(),
@@ -2745,6 +2865,10 @@ class PartyConfigFrame(ttk.Frame):
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
         self.van_tieu_var.set(bool(data.get("do_van_tieu", True)))
         self.auto_sell_noi_dat_var.set(bool(data.get("auto_sell_noi_dat", True)))
+        self.auto_bag_clean_var.set(bool(data.get("auto_bag_clean", True)))
+        self.auto_discard_junk_var.set(bool(data.get("auto_discard_junk", True)))
+        self.auto_decompose_scrolls_var.set(bool(data.get("auto_decompose_scrolls", False)))
+        self.scroll_modes = dict(data.get("scroll_modes") or {})
         shop_items = _normalize_shop_items(data.get("shop_items"), {
             "ho_phu": data.get("buy_ho_phu", False),
             "thien_chau": data.get("buy_thien_chau", False),
@@ -2957,6 +3081,10 @@ class PartyConfigFrame(ttk.Frame):
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
                 "do_van_tieu": bool(self.van_tieu_var.get()),
                 "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+                "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
+                "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
+                "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
+                "scroll_modes": dict(self.scroll_modes),
                 "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
                 "shop_items": _shop_items_json({
                     "ho_phu": self.buy_ho_phu_var.get(),

@@ -712,6 +712,10 @@ fun TsBotApp(
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
             initialDoVanTieu = partyBeingEdited.doVanTieu,
             initialAutoSellNoiDat = partyBeingEdited.autoSellNoiDat,
+            initialAutoBagClean = partyBeingEdited.autoBagClean,
+            initialAutoDiscardJunk = partyBeingEdited.autoDiscardJunk,
+            initialAutoDecomposeScrolls = partyBeingEdited.autoDecomposeScrolls,
+            initialScrollModes = partyBeingEdited.scrollModes,
             initialAutoBuyShop = partyBeingEdited.autoBuyShop,
             initialBuyHoPhu = partyBeingEdited.buyHoPhu,
             initialBuyThienChau = partyBeingEdited.buyThienChau,
@@ -1497,6 +1501,10 @@ fun AddPartyDialog(
     initialFightLegionBoss: Boolean = true,
     initialDoVanTieu: Boolean = true,
     initialAutoSellNoiDat: Boolean = true,
+    initialAutoBagClean: Boolean = true,
+    initialAutoDiscardJunk: Boolean = true,
+    initialAutoDecomposeScrolls: Boolean = false,
+    initialScrollModes: Map<String, String> = emptyMap(),
     initialAutoBuyShop: Boolean = false,
     initialBuyHoPhu: Boolean = false,
     initialBuyThienChau: Boolean = false,
@@ -1544,6 +1552,12 @@ fun AddPartyDialog(
     var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
     var doVanTieu by remember { mutableStateOf(initialDoVanTieu) }
     var autoSellNoiDat by remember { mutableStateOf(initialAutoSellNoiDat) }
+    var autoBagClean by remember { mutableStateOf(initialAutoBagClean) }
+    var autoDiscardJunk by remember { mutableStateOf(initialAutoDiscardJunk) }
+    var autoDecomposeScrolls by remember { mutableStateOf(initialAutoDecomposeScrolls) }
+    var scrollModes by remember { mutableStateOf(initialScrollModes) }
+    var showBagClean by remember { mutableStateOf(false) }
+    var showScrollList by remember { mutableStateOf(false) }
     var autoBuyShop by remember { mutableStateOf(initialAutoBuyShop) }
     var buyHoPhu by remember { mutableStateOf(initialBuyHoPhu) }
     var buyThienChau by remember { mutableStateOf(initialBuyThienChau) }
@@ -1590,6 +1604,10 @@ fun AddPartyDialog(
         fightLegionBoss = fightLegionBoss,
         doVanTieu = doVanTieu,
         autoSellNoiDat = autoSellNoiDat,
+        autoBagClean = autoBagClean,
+        autoDiscardJunk = autoDiscardJunk,
+        autoDecomposeScrolls = autoDecomposeScrolls,
+        scrollModes = scrollModes,
         autoBuyShop = autoBuyShop,
         buyHoPhu = buyHoPhu,
         buyThienChau = buyThienChau,
@@ -1787,8 +1805,12 @@ fun AddPartyDialog(
                             Text("Vận tiêu (nhận quà + gửi pet)")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = autoSellNoiDat, onCheckedChange = { autoSellNoiDat = it })
-                            Text("Tự bán Nồi đất")
+                            Checkbox(checked = autoBagClean, onCheckedChange = { autoBagClean = it })
+                            Text("Tự dọn túi đồ")
+                            OutlinedButton(
+                                onClick = { showBagClean = true },
+                                modifier = Modifier.padding(start = 8.dp),
+                            ) { Text("Chi tiết") }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = autoBuyShop, onCheckedChange = { autoBuyShop = it })
@@ -2086,6 +2108,10 @@ fun AddPartyDialog(
                             fightLegionBoss = fightLegionBoss,
                             doVanTieu = doVanTieu,
                             autoSellNoiDat = autoSellNoiDat,
+                            autoBagClean = autoBagClean,
+                            autoDiscardJunk = autoDiscardJunk,
+                            autoDecomposeScrolls = autoDecomposeScrolls,
+                            scrollModes = scrollModes,
                             autoBuyShop = autoBuyShop,
                             buyHoPhu = buyHoPhu,
                             buyThienChau = buyThienChau,
@@ -2110,6 +2136,53 @@ fun AddPartyDialog(
             TextButton(onClick = onDismiss) { Text("Hủy") }
         },
     )
+    if (showBagClean) {
+        AlertDialog(
+            onDismissRequest = { showBagClean = false },
+            title = { Text("Dọn dẹp túi đồ") },
+            text = {
+                Column {
+                    Text("Các việc bot làm khi bật \"Tự dọn túi đồ\":")
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoSellNoiDat, onCheckedChange = { autoSellNoiDat = it })
+                        Text("Tự bán Nồi đất")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoDiscardJunk, onCheckedChange = { autoDiscardJunk = it })
+                        Text("Tự vứt item rác (Ngọc Hư)")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoDecomposeScrolls, onCheckedChange = { autoDecomposeScrolls = it })
+                        Text("Tự phân giải cuộn võ tướng rác")
+                        OutlinedButton(
+                            onClick = { showScrollList = true },
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) { Text("List") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Lưu ý: phân giải là MẤT HẲN cuộn. Mặc định giữ lại cuộn của tướng có vũ " +
+                            "khí chuyên dụng, còn lại phân giải — nên soát List trước khi bật.",
+                        color = androidx.compose.ui.graphics.Color(0xFFAA0000),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBagClean = false }) { Text("Đóng") }
+            },
+        )
+    }
+
+    if (showScrollList) {
+        ScrollListDialog(
+            modes = scrollModes,
+            onDismiss = { showScrollList = false },
+            onSave = { scrollModes = it; showScrollList = false },
+        )
+    }
+
     if (showShopList) {
         AlertDialog(
             onDismissRequest = { showShopList = false },
@@ -2744,6 +2817,104 @@ fun HealSettingsDialog(
             },
         )
     }
+}
+
+/** 1 cuon goi vo tuong trong pet_scrolls.json. vkcd = tuong co vu khi chuyen dung. */
+data class PetScroll(val tid: String, val name: String, val npc: String, val vkcd: Boolean) {
+    /** Nhan hien thi: ten cuon (+ ten tuong neu khac) + dau sao neu co vkcd. */
+    fun label(): String {
+        val nm = if (npc.isNotEmpty() && !name.contains(npc)) "$name ($npc)" else name
+        return if (vkcd) "$nm ★vkcd" else nm
+    }
+}
+
+/** Doc pet_scrolls.json tu assets -> list TAT CA cuon goi vo tuong (cache).
+ *  Sinh boi tools/crack_pet_scrolls.py. */
+private var _petScrollsCache: List<PetScroll>? = null
+
+fun loadPetScrolls(context: android.content.Context): List<PetScroll> {
+    if (_petScrollsCache == null) {
+        _petScrollsCache = try {
+            val bytes = context.assets.open("train_bot_data/pet_scrolls.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8))
+            val out = ArrayList<PetScroll>()
+            for (tid in root.keys()) {
+                val o = root.getJSONObject(tid)
+                out.add(PetScroll(tid, o.optString("name", ""), o.optString("npc", ""),
+                                  o.optBoolean("vkcd", false)))
+            }
+            out
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    return _petScrollsCache ?: emptyList()
+}
+
+/** List cuon vo tuong: bam 1 dong de doi GIU LAI <-> PHAN GIAI (mirror gui.py _open_scroll_list).
+ *  modes CHI luu muc DOI KHAC mac dinh (vkcd = giu lai) -> cuon moi cua game tu theo mac dinh. */
+@Composable
+fun ScrollListDialog(
+    modes: Map<String, String>,
+    onDismiss: () -> Unit,
+    onSave: (Map<String, String>) -> Unit,
+) {
+    val context = LocalContext.current
+    val all = remember { loadPetScrolls(context) }
+    val state = remember {
+        mutableStateMapOf<String, String>().apply {
+            all.forEach { put(it.tid, modes[it.tid] ?: if (it.vkcd) "keep" else "drop") }
+        }
+    }
+    var query by remember { mutableStateOf("") }
+    // "Phan giai" len TRUOC de user soat cai se bi MAT truoc tien
+    val shown = all.filter { query.isBlank() || it.label().contains(query, ignoreCase = true) }
+        .sortedWith(compareBy({ state[it.tid] != "drop" }, { it.label() }))
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cuộn võ tướng (${all.size})") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    label = { Text("Tìm") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text("Bấm 1 dòng để đổi trạng thái.", style = MaterialTheme.typography.bodySmall)
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(shown.size) { i ->
+                        val sc = shown[i]
+                        val drop = state[sc.tid] == "drop"
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { state[sc.tid] = if (drop) "keep" else "drop" }
+                                .padding(vertical = 6.dp),
+                        ) {
+                            Text(sc.label(), modifier = Modifier.weight(1f))
+                            Text(
+                                if (drop) "Phân giải" else "Giữ lại",
+                                color = if (drop) androidx.compose.ui.graphics.Color(0xFFAA0000)
+                                        else androidx.compose.ui.graphics.Color(0xFF007700),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                // chi luu phan KHAC mac dinh -> file config gon, va mac dinh sua sau van co hieu luc
+                onSave(all.filter { state[it.tid] != (if (it.vkcd) "keep" else "drop") }
+                    .associate { it.tid to (state[it.tid] ?: "drop") })
+            }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
+    )
 }
 
 /** Doc furnace_default_notify.json tu assets -> {poolName: set(tid_hex)} (cache).
