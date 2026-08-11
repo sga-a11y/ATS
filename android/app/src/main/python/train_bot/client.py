@@ -19,9 +19,18 @@ from .state import BattleState, Unit
 log = logging.getLogger("bot")
 
 
+# recv KHONG block vo han: server lom hay rot kieu "half-open" (khong gui RST/FIN) -> recv() block mai
+# -> acc DUNG HINH, khong nhan goi, khong log, ca party cho vo han (bug that: sga019/lbo005 im tuyet
+# doi @12003). Dat timeout de recv co co hoi thoat + kiem tra "bao lau khong nhan gi"; qua nguong ->
+# coi nhu ROT -> supervisor relogin (day la DISCONNECT that, khong phai lech pha).
+RECV_SOCK_TIMEOUT = 30.0    # giay: moi lan recv toi da block bao lau
+RECV_DEAD_SECS = 120.0      # khong nhan GOI nao suot >120s -> coi server half-open (rot) -> relogin
+                            # (heartbeat gui moi 15s -> server song gan nhu chac chan gui gi do <120s;
+                            #  im hoan toan 120s = rot that. Nguong an toan tranh false-positive luc idle.)
+
 def _open_game_socket(host, port):
     sock = socket.create_connection((host, port), timeout=15)
-    sock.settimeout(None)
+    sock.settimeout(RECV_SOCK_TIMEOUT)
     return sock
 
 
@@ -1664,6 +1673,7 @@ class GameClient:
         # du thread thoat kieu gi). Than vong lap that o _recv_loop_impl (giu nguyen logic cu).
         self._recv_prio = 0
         self._recv_td_counted = False
+        self._last_recv_ts = time.time()   # moc nhan goi gan nhat (phat hien half-open o _recv_loop_impl)
         try:
             self._recv_loop_impl(sock)
         finally:
@@ -1686,6 +1696,19 @@ class GameClient:
                 self._recv_prio = want
             try:
                 data = sock.recv(8192)
+            except socket.timeout:
+                # recv timeout (RECV_SOCK_TIMEOUT giay khong co goi). Neu KHONG nhan goi nao suot
+                # >RECV_DEAD_SECS -> server half-open (rot kieu khong RST/FIN) -> acc dung hinh ->
+                # coi nhu ROT de supervisor relogin. Chua qua nguong = luc im binh thuong -> cho tiep.
+                if sock is not self.sock or self._deliberate_close:
+                    break
+                if time.time() - self._last_recv_ts > RECV_DEAD_SECS:
+                    log.warning("[%s] Server im >%ds (half-open/rot khong RST) -> coi nhu ROT, relogin",
+                                self._label or self._username, int(RECV_DEAD_SECS))
+                    self.server_closed = True
+                    self.running = False
+                    break
+                continue
             except OSError as e:
                 if sock is not self.sock:
                     break
@@ -1709,6 +1732,7 @@ class GameClient:
                 self.server_closed = True   # server CHU DONG dong (rot/bao tri/kick) - khong phai STOP
                 self.running = False   # rot ket noi -> dung MOI vong lap
                 break
+            self._last_recv_ts = time.time()   # nhan duoc goi -> reset dong ho half-open
             self.recv_buf += protocol.xor(data)
             pkts, consumed = protocol.parse_stream(self.recv_buf)
             self.recv_buf = self.recv_buf[consumed:]

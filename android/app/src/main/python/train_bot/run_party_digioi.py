@@ -33,10 +33,11 @@ try:
     _log_path = os.path.join(_app_dir(), "party.log")
 except Exception:
     _log_path = "party.log"
-# RotatingFileHandler: gioi han party.log ~50MB (backup 2 -> toi da ~150MB) de file KHONG phinh
+# RotatingFileHandler: gioi han party.log ~100MB (backup 2 -> toi da ~300MB) de file KHONG phinh
 # vo han (truoc day 30 party 8h ra 570MB). mode="w" -> van truncate moi lan khoi dong nhu cu.
+# 50MB truoc day mat log nhieu qua (acc kẹt -> can log cu de dieu tra) -> tang len 100MB.
 from logging.handlers import RotatingFileHandler as _RotLog
-_file_handler = _RotLog(_log_path, mode="w", maxBytes=50 * 1024 * 1024, backupCount=2,
+_file_handler = _RotLog(_log_path, mode="w", maxBytes=100 * 1024 * 1024, backupCount=2,
                         encoding="utf-8")
 logging.basicConfig(level=_lvl, format="%(asctime)s %(message)s", datefmt="%H:%M:%S",
                     handlers=[_file_handler, logging.StreamHandler()])
@@ -2644,8 +2645,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 c.flee_mode = True
                 log.warning("[%s] Di Gioi SOLO -> THIEU thuoc hoi HP hoac SP trong tui -> DUNG YEN "
                             "(khong chay long vong, tranh chet/can SP khong ai cuu)", label)
+        # DG+Train: DA CO acc het gio DG (giveup) ngay luc setup -> KHONG lap party nua (khong the gom
+        # du trong DG: acc het gio dung NGOAI, khong vao lai instance). Acc con time TU chay DG (danh/
+        # dung) den HET GIO CUA MINH roi bao xong -> barrier -> train. Truoc day van vao nhanh leader/
+        # member -> leader CHO member vo han (member het gio khong bao gio ready) -> ca lu IM tu do
+        # (bug that: party 24, daiba het gio -> 4 acc kia log "chay DG SOLO" xong im hoan toan).
+        elif is_digioi and _dg_gather_giveup():
+            if c.has_hp_and_sp_items():
+                c.flee_mode = False
+                c.combat_ready()
+                c.start_run_around()
+            else:
+                c.flee_mode = True
+            log.info("[%s] (%s) DG+Train: co acc het gio DG -> chay DG SOLO den het gio (khong lap party)",
+                     label, role)
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
         elif is_leader:
+            _dg_solo_bail = False   # True = DG+Train giveup giua chung -> bo lap party, chay DG solo
             if via_route:
                 # toi train map THEO PARTY (da lap party + cung kenh o thanh) -> KHOI moi lai
                 st["invited"].set()   # bao member khoi cho moi
@@ -2656,11 +2672,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # het gio DG ngay trong luc cho/moi party thi thoat vong cho, danh dau xong DG va cho
                 # ca party cung xong DG roi moi sang phase train.
                 _t0 = time.time()
+                _dg_solo_bail = False
                 while len(st["ready_members"]) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
                     if not c.running: c.close(); return
                     if _finish_digioi_train_if_time_over("cho member san sang"):
                         return
+                    # RACE: giveup xay ra GIUA luc cho member (1 member vua het gio DG) -> KHONG cho
+                    # vo han nua, chuyen sang chay DG SOLO den het gio cua minh (nhu nhanh giveup tren).
+                    if _dg_gather_giveup():
+                        if c.has_hp_and_sp_items():
+                            c.flee_mode = False; c.combat_ready(); c.start_run_around()
+                        else:
+                            c.flee_mode = True
+                        log.info("[%s] (LEADER) DG+Train: co acc het gio DG luc cho member -> chay DG "
+                                 "SOLO den het gio (bo lap party)", label)
+                        _dg_solo_bail = True
+                        break
                     if time.time() - _t0 > 30:
                         log.info("[%s] (LEADER) CHO du member san sang (%d/%d)...",
                                  label, len(st["ready_members"]), st["n_members"])
@@ -2671,11 +2699,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # MOI toi khi DU PARTY join (khong gioi han 6 lan): member da san sang, invite se toi.
                 _t0 = time.time()
                 _resync_t0 = time.time()
-                while joined_member_count(pidx) < st["n_members"]:
+                while not _dg_solo_bail and joined_member_count(pidx) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
                     if not c.running: c.close(); return
                     if _finish_digioi_train_if_time_over("moi member vao party DG"):
                         return
+                    # RACE: giveup luc dang MOI party (member vua het gio DG) -> bo moi, chay DG SOLO.
+                    if _dg_gather_giveup():
+                        if c.has_hp_and_sp_items():
+                            c.flee_mode = False; c.combat_ready(); c.start_run_around()
+                        else:
+                            c.flee_mode = True
+                        log.info("[%s] (LEADER) DG+Train: co acc het gio DG luc moi -> chay DG SOLO "
+                                 "den het gio (bo lap party)", label)
+                        _dg_solo_bail = True
+                        break
                     _joined_now = joined_member_count(pidx)
                     _invite_elapsed = time.time() - _resync_t0
                     if _should_resync_incomplete_digioi_party(
@@ -2897,7 +2935,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.info("[%s] (LEADER) %s -> party da tu, DUNG YEN cho dieu khien tay", label, mode)
             _joined = joined_member_count(pidx)
             _can_start = (_joined >= st["n_members"] if event_party_mode else _joined >= 1)
-            if _can_start:
+            if _dg_solo_bail:
+                pass   # DG giveup -> khong train party, da set solo o tren -> roi xuong main loop DG
+            elif _can_start:
                 time.sleep(1)
                 _start_training(); training_started = True
             else:
@@ -2934,6 +2974,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
 
         # --- Giu song ---
         out_cnt = 0
+        _dg_gp_out_since = None   # moc bat dau ket NGOAI DG lien tuc (ep het gio neu keo dai)
         last_remove = time.time()
         last_retry = time.time()
         last_dg = 0.0
@@ -3818,16 +3859,28 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 #   - het gio that -> thoat party + danh solo daily dungeon roi dong acc
                 if c.current_map is not None and c.current_map != config.DIGIOI_MAP_ID and not c.in_combat():
                     out_cnt += 1
+                    if _dg_gp_out_since is None:
+                        _dg_gp_out_since = time.time()
                     if out_cnt >= 2:   # ~10s lien tuc ngoai DG
                         remain = max(0, int(DIGIOI_LIMIT - c.digioi_minutes_live()))
                         _back_in = False
-                        if remain >= 2:
+                        # KET NGOAI DG >120s lien tuc: du dong ho noi bo con bao con gio (remain>=2) va
+                        # enter_di_gioi_safe() "vao gia" (True roi bi day ra ngay) -> KHONG thu vao lai
+                        # nua, EP het gio -> bao xong. Tranh loop "VAO LAI DG" vo han o 12003 lam ca
+                        # party cho doi (bug that: acc @12003 khong bao xong DG).
+                        _stuck_long = (time.time() - _dg_gp_out_since) > 120
+                        if remain >= 2 and not _stuck_long:
                             log.warning("[%s] (%s) KHONG o trong DG (map=%s, chet/bi day ra?) "
                                         "con %d phut -> thu VAO LAI DG", label, role, c.current_map, remain)
                             try: _back_in = c.enter_di_gioi_safe()
                             except Exception: _back_in = False
+                        elif _stuck_long:
+                            log.warning("[%s] (%s) KET NGOAI DG >120s (map=%s, con %d phut noi bo nhung "
+                                        "server da ra) -> EP HET GIO, bao xong DG", label, role,
+                                        c.current_map, remain)
                         if _back_in:
                             out_cnt = 0
+                            _dg_gp_out_since = None
                         else:
                             # remain<2 HOAC con gio noi bo nhung SERVER KHONG CHO VAO LAI (dong ho noi
                             # bo tre) = HET GIO THAT. Truoc day nhanh remain>=2 VUT return cua
@@ -3853,6 +3906,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             break
                 else:
                     out_cnt = 0
+                    _dg_gp_out_since = None   # dang trong DG/dang danh -> reset dong ho ket-ngoai
         # MODE DG+Train: xong DG -> ve thanh DUNG YEN cho CA PARTY xong roi relogin sang pha train.
         if dt_dg_finished:
             _finish_digioi_train_after_dg()
