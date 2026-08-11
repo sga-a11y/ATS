@@ -28,7 +28,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 from crack_exclusive_weapons import _find, parse_npc_names        # noqa: E402
-from crack_furnace_notify import read_items                       # noqa: E402
+from crack_furnace_notify import (build_reincarnation_up, read_items,  # noqa: E402
+                                  to_base)
 
 OUT = os.path.join(ROOT, "pet_scrolls.json")
 VKCD = os.path.join(ROOT, "exclusive_weapons.json")
@@ -47,6 +48,12 @@ def main():
 
     vk = json.load(open(VKCD, encoding="utf-8"))
     vk_npc = {int(v["npc_id"]) for v in vk.values() if v.get("npc_id")}
+    # Cuon cua BAN NANG CAP / CHUYEN SINH cua mot tuong van la tuong do, vd:
+    #   "BC Truong Giac Chan" -> npc 41003 --(lan nguoc)--> 10001 Truong Giac (CO vkcd)
+    # exclusive_weapons.json chi liet ke npc GOC nen phai LAN NGUOC chuoi truoc khi doi chieu,
+    # khong thi ban nang cap cua tuong xin bi xep "phan giai".
+    # (Chuoi nay gom tu canh K.Toa/T.Tinh - no noi ca ban nang cap lan ban chuyen sinh.)
+    up = build_reincarnation_up(items)
 
     out = {}
     for d in items:
@@ -66,7 +73,7 @@ def main():
             "name": d["name"],
             "npc_id": npc,
             "npc": npcs.get(npc, ""),
-            "vkcd": bool(npc and npc in vk_npc),
+            "vkcd": to_base(npc, up) in vk_npc,
         }
     out = dict(sorted(out.items(), key=lambda kv: kv[1]["name"]))
     with open(OUT, "w", encoding="utf-8") as fh:

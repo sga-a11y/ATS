@@ -69,6 +69,33 @@ def read_items(path):
     return [{nm: fn[t]() for nm, t in FIELDS} for _ in range(r.u32())]
 
 
+def build_reincarnation_up(items):
+    """{npc_chuyen_sinh: npc_tang_truoc} gom tu CA K.Toa lan T.Tinh (canh "con -> cha").
+
+    CHUYEN SINH CO NHIEU TANG, khong phai mot:
+      Tu Ma Y: goc 11010 -> 41036 (tang 1) -> 45416 (tang 2)
+        K.Toa  a1v=11010  a2v=41036    T.Tinh a1v=41036 a2v=45416    Me a1v=45416
+    Me cua moi tuong lai tro vao TANG KHAC NHAU (Quan Vu tro tang 1, Tu Ma Y tro tang 2) ->
+    bac cau 1 nhip chi dung ngau nhien, phai LAN NGUOC ca chuoi (xem to_base).
+    """
+    up = {}
+    for d in items:
+        if d["kind"] == KIND_KIMTOA and d["a1k"] == ATTR_KIND_NPC and d["a1v"] and d["a2v"]:
+            up.setdefault(d["a2v"], d["a1v"])
+        elif d["kind"] == KIND_TUONGTINH and d["a1v"] and d["a2v"]:
+            up.setdefault(d["a2v"], d["a1v"])
+    return up
+
+
+def to_base(npc, up):
+    """Lan nguoc chuoi chuyen sinh ve npc GOC. Chan lap vo han neu data co chu trinh."""
+    seen = set()
+    while npc in up and npc not in seen:
+        seen.add(npc)
+        npc = up[npc]
+    return npc
+
+
 def main():
     item_path = _find("gamedata_Item.dat", os.path.join("gamedata", "Data", "Item_C.dat"))
     if not item_path:
@@ -76,26 +103,7 @@ def main():
     items = read_items(item_path)
     by_id = {d["id"]: d for d in items}
 
-    # CHUYEN SINH CO NHIEU TANG, khong phai mot:
-    #   Tu Ma Y: goc 11010 -> 41036 (tang 1) -> 45416 (tang 2)
-    #     K.Toa  a1v=11010  a2v=41036      T.Tinh a1v=41036 a2v=45416      Me a1v=45416
-    # Me cua moi tuong lai tro vao TANG KHAC NHAU (Quan Vu tro tang 1, Tu Ma Y tro tang 2) ->
-    # cau 1 nhip chi dung ngau nhien. Gom canh "con -> cha" tu CA K.Toa lan T.Tinh roi LAN NGUOC
-    # chuoi toi khi het, dau chuoi la npc GOC.
-    up = {}
-    for d in items:
-        if d["kind"] == KIND_KIMTOA and d["a1k"] == ATTR_KIND_NPC and d["a1v"] and d["a2v"]:
-            up.setdefault(d["a2v"], d["a1v"])
-        elif d["kind"] == KIND_TUONGTINH and d["a1v"] and d["a2v"]:
-            up.setdefault(d["a2v"], d["a1v"])
-
-    def to_base(npc):
-        """Lan nguoc chuoi chuyen sinh ve npc goc. Chan lap vo han neu data co chu trinh."""
-        seen = set()
-        while npc in up and npc not in seen:
-            seen.add(npc)
-            npc = up[npc]
-        return npc
+    up = build_reincarnation_up(items)
 
     def base_npc(d):
         if d["kind"] == KIND_SUMMON and d["spare3"]:
@@ -103,7 +111,7 @@ def main():
         if d["kind"] == KIND_KIMTOA and d["a1k"] == ATTR_KIND_NPC:
             return d["a1v"]
         if d["kind"] in (KIND_TUONGTINH, KIND_ME) and d["a1v"]:
-            return to_base(d["a1v"])
+            return to_base(d["a1v"], up)
         return 0
 
     vkcd = json.load(open(VKCD, encoding="utf-8"))

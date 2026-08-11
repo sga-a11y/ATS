@@ -42,8 +42,18 @@ bắt buộc user tự tick sau khi soát List.
 
 | Mặc định | Điều kiện |
 |---|---|
-| Giữ lại | tướng **có vũ khí chuyên dụng** (85 cuộn) — đối chiếu `exclusive_weapons.json` |
-| Phân giải | còn lại (392 cuộn) |
+| Giữ lại | tướng **có vũ khí chuyên dụng** (86 cuộn) — đối chiếu `exclusive_weapons.json` |
+| Phân giải | còn lại (391 cuộn) |
+
+Cuộn của **bản nâng cấp** một tướng vẫn là tướng đó, mà `exclusive_weapons.json` chỉ liệt kê npc
+gốc → phải lần ngược chuỗi trước khi đối chiếu (dùng chung `build_reincarnation_up`/`to_base` với
+`crack_furnace_notify.py`):
+
+    "BC Trương Giác Chân" → npc 41003 → (lần ngược) → 10001 Trương Giác (CÓ vkcd)
+
+> **Còn hở**: 22 cuộn bản nâng cấp (npc id ≥ 40000, vd "BC Yến Nhân Trương Phi" 46407,
+> "Bí Cấp Ma Quan Vũ" 45437) **không nối được vào chuỗi** — data K.Toá/T.Tinh không có cạnh cho
+> chúng, và tên npc cũng không tra được. Chúng đang mặc định "Phân giải"; user tự đổi nếu muốn giữ.
 
 Mặc định chỉ là **gợi ý, không khoá cứng**: pet có vkcd nhiều con vẫn lởm, user đổi được cả hai
 chiều.
