@@ -797,6 +797,8 @@ def _pstate(pidx):
                               "team_dungeon_done_by": {},     # level -> {username -> remaining}; auto team dungeon theo 0x18 mission step
                               "team_dungeon_state": {},       # level -> "idle"|"running"|"done"
                               "team_dungeon_broke": {},       # level -> co dis/fail can relogin thoat instance
+                              "team_dungeon_tries": {},       # level -> so lan da thu (1 dau + 1 retry)
+                              "team_dungeon_skip_all": False, # het luot thu -> bo qua TAT CA cac PB
                               "team_dungeon_need_redo": False,
                               "team_dungeon_recover_seen": set(),
                               "team_dungeon_recover_ready": threading.Event(),
@@ -912,6 +914,8 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
                 st["team_dungeon_done_by"] = {}
                 st["team_dungeon_state"] = {}
                 st["team_dungeon_broke"] = {}
+                st["team_dungeon_tries"] = {}
+                st["team_dungeon_skip_all"] = False
                 st["team_dungeon_need_redo"] = False
                 st["team_dungeon_recover_seen"].clear()
                 st["team_dungeon_recover_ready"].clear()
@@ -4042,7 +4046,17 @@ def _force_supervisor_reconnect(username, c, reason):
     return False
 
 
+TEAM_DUNGEON_MAX_TRIES = 2   # 1 lan dau + 1 lan RETRY. Qua so nay -> BO QUA HET cac PB.
+
+
 def _mark_team_dungeon_broken(st, level):
+    # Dem so lan da thu level nay. Team yeu thi retry vo han chi lam ket ca party ca dem
+    # (log 23:45-23:47: fail -> relogin -> fail -> relogin...). User: moi PB chi retry 1 LAN,
+    # van khong qua -> bo qua TAT CA cac PB, di lam viec tiep theo.
+    tries = st.setdefault("team_dungeon_tries", {})
+    tries[level] = tries.get(level, 0) + 1
+    if tries[level] >= TEAM_DUNGEON_MAX_TRIES:
+        st["team_dungeon_skip_all"] = True
     st.setdefault("team_dungeon_broke", {})[level] = True
     st["team_dungeon_need_redo"] = True
     st.setdefault("team_dungeon_state", {})[level] = "done"
@@ -4061,15 +4075,24 @@ def _prepare_team_dungeon_redo_after_reconnect(st, username, label, pidx, stoppe
         seen = st.setdefault("team_dungeon_recover_seen", set())
         seen.add(username)
         if len(seen) >= len(members):
+            _skip_all = bool(st.get("team_dungeon_skip_all"))
             st["team_dungeon_done_by"] = {}
-            st["team_dungeon_state"] = {}
             st["team_dungeon_broke"] = {}
             st["team_dungeon_need_redo"] = False
+            if not _skip_all:
+                st["team_dungeon_state"] = {}   # xoa -> chay lai tu dau (lan RETRY duy nhat)
             seen.clear()
             ev.set()
             ready_now = True
     if ready_now:
-        log.info("[%s] auto phó bản đội: cả party đã relogin sau PB vỡ -> chạy lại từ đầu", label)
+        if st.get("team_dungeon_skip_all"):
+            # Da het luot thu (1 dau + 1 retry) -> GIU nguyen team_dungeon_state (moi level da
+            # "done") de khong chay lai, di thang sang viec tiep theo.
+            log.warning("[%s] auto phó bản đội: RETRY vẫn KHÔNG qua -> BỎ QUA TẤT CẢ phó bản đội, "
+                        "chuyển sang việc tiếp theo", label)
+        else:
+            log.info("[%s] auto phó bản đội: cả party đã relogin sau PB vỡ -> chạy lại từ đầu "
+                     "(lần retry duy nhất)", label)
         return True
     last_log = 0.0
     while not ev.is_set():
@@ -4242,6 +4265,10 @@ def _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, s
         return True
     flags = _team_dungeon_flags(pcfg)
     levels = getattr(config, "TEAM_DUNGEON_LEVELS", (20, 50, 80))
+    if st.get("team_dungeon_skip_all"):
+        log.info("[%s] auto phó bản đội: đã bỏ qua tất cả (retry không qua) -> không chạy PB nữa",
+                 label)
+        return True
     for level in levels:
         if not flags.get(int(level), False):
             continue
