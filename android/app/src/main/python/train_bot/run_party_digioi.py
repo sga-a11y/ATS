@@ -1506,6 +1506,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 return bool(st["dt_done"])
 
         def do_channel_sync():
+            # Gen reform luc BAT DAU sync. Neu ca party BUMP reform_gen (chuyen sang reform moi) trong
+            # luc acc nay dang cho channel_ready -> picker da bo gen cu -> channel_ready gen cu KHONG
+            # BAO GIO set -> acc ket "cho picker chot kenh" VO HAN (online ma im, bug that: ton4005 qua
+            # barrier gen cu roi ket o do_channel_sync khi ca lu da sang gen 3). -> Cac vong cho ben
+            # duoi check ham nay de THOAT khi gen doi, quay ve keepalive re-reform theo gen moi.
+            _sync_reform_g0 = st["reform_gen"]
+            def _sync_gen_moved():
+                return st["reform_gen"] > _sync_reform_g0
             # DG+Train: chinh acc NAY het gio DG (bi day ra Quang Truong giua luc gom/sync) -> BAO
             # XONG DG cho party (mark dt_done) roi cho party + relogin train, thay vi ket o vong sync
             # ma khong bao (bug that: acc dung o Quang Truong, party cho mai khong biet no da xong).
@@ -1558,6 +1566,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _last = 0
                 _t0 = time.time()   # SAFETY: co acc khong tham gia vong sync (da tan ra sau reform)
                 while c.running and not _stopped():
+                    if _sync_gen_moved():   # ca party sang reform gen moi -> thoat cho ngay
+                        return False
                     # -> KHONG cho vo han (deadlock "1/5"): het 60s coi nhu vong sync fail, thoat ra
                     # de leader moi/reform lai (member se dong bo o vong sau) thay vi treo mai.
                     if time.time() - _t0 > 60:
@@ -1613,6 +1623,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         log.info("[%s] (%s) DG+Train: acc het gio DG giua luc sync -> BO gom party DG",
                                  label, role)
                         return True
+                    if _sync_gen_moved():   # ca party sang reform gen moi -> thoat sync, re-reform
+                        log.info("[%s] (picker) reform gen doi luc sync kenh -> thoat, dong bo lai", label)
+                        return False
                     expected_map = c.current_map
                     with st["lock"]:
                         st["channel_ready"].clear()
@@ -1687,6 +1700,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         return True
                     if _dg_gather_giveup():   # co acc KHAC het gio DG -> khoi cho picker, chay DG solo
                         return True
+                    if _sync_gen_moved():     # ca party sang reform gen moi -> thoat, re-reform theo gen moi
+                        log.info("[%s] (member) reform gen doi luc cho kenh -> thoat sync, dong bo lai", label)
+                        return False
                     while not st["channel_ready"].wait(5):
                         if not c.running or _stopped():
                             return
@@ -1694,6 +1710,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             return True
                         if _dg_gather_giveup():
                             return True
+                        if _sync_gen_moved():   # gen doi giua luc cho channel_ready -> thoat (bug ton4005)
+                            log.info("[%s] (member) reform gen doi luc cho channel_ready -> thoat sync", label)
+                            return False
                     with st["lock"]:
                         ch = st["channel"]
                         expected_map = st.get("channel_expected_map")
