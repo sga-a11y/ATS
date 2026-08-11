@@ -1329,11 +1329,11 @@ class BotGUI(tk.Tk):
         _u = self._mask_user(username)
         tab = it.get("tab"); nm = (it.get("name") or "?").strip()
         if tab == "trang_bi":
-            return f'{_u} thấy lò trang bị thường có "{nm}" - trong túi đang có {it.get("bag", 0)} món'
+            return f'{_u} soi lò trang bị thường có "{nm}" - trong túi đang có {it.get("bag", 0)} món'
         if tab == "vo_tuong":
-            return f'{_u} thấy lò võ tướng thường có cuộn gọi "{nm}"'
+            return f'{_u} soi lò võ tướng thường có "{nm}"'
         if tab == "chuyen_sinh":
-            return f'{_u} thấy lò chuyển sinh thường có "{nm}"'
+            return f'{_u} soi lò chuyển sinh thường có "{nm}"'
         return f'{_u}: lò có "{nm}"'
 
     def _furnace_buy_for(self, username, it):
