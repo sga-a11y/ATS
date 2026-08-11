@@ -798,7 +798,7 @@ def _pstate(pidx):
                               "team_dungeon_state": {},       # level -> "idle"|"running"|"done"
                               "team_dungeon_broke": {},       # level -> co dis/fail can relogin thoat instance
                               "team_dungeon_tries": {},       # level -> so lan da thu (1 dau + 1 retry)
-                              "team_dungeon_skip_all": False, # het luot thu -> bo qua TAT CA cac PB
+                              "team_dungeon_skip_all": False, # bo qua PB con lai CUA LUOT NAY (doc 1 lan roi xoa)
                               "team_dungeon_need_redo": False,
                               "team_dungeon_recover_seen": set(),
                               "team_dungeon_recover_ready": threading.Event(),
@@ -4052,7 +4052,8 @@ TEAM_DUNGEON_MAX_TRIES = 2   # 1 lan dau + 1 lan RETRY. Qua so nay -> BO QUA HET
 def _mark_team_dungeon_broken(st, level):
     # Dem so lan da thu level nay. Team yeu thi retry vo han chi lam ket ca party ca dem
     # (log 23:45-23:47: fail -> relogin -> fail -> relogin...). User: moi PB chi retry 1 LAN,
-    # van khong qua -> bo qua TAT CA cac PB, di lam viec tiep theo.
+    # van khong qua -> bo qua cac PB CON LAI CUA LUOT NAY roi di lam viec tiep theo. KHONG
+    # khoa ca ngay: luot chay sau van check PB binh thuong.
     tries = st.setdefault("team_dungeon_tries", {})
     tries[level] = tries.get(level, 0) + 1
     if tries[level] >= TEAM_DUNGEON_MAX_TRIES:
