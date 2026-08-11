@@ -2055,8 +2055,10 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Button(bb, text="Tự mua", command=lambda: set_mode("auto")).pack(side="left", padx=3)
         ttk.Button(bb, text="Thông báo", command=lambda: set_mode("notify")).pack(side="left", padx=3)
         ttk.Button(bb, text="Bỏ qua", command=lambda: set_mode("")).pack(side="left", padx=3)
-        tv.bind("<Double-1>", lambda _e: set_mode(
-            {"auto": "notify", "notify": "", "": "auto"}[state.get(tv.focus(), "")]))
+        # Vong doi che do khi double-click: Thong bao -> Tu mua -> Bo qua -> Thong bao...
+        # (truoc day: Tu mua -> Thong bao -> Bo qua)
+        _NEXT_MODE = {"notify": "auto", "auto": "", "": "notify"}
+        tv.bind("<Double-1>", lambda _e: set_mode(_NEXT_MODE[state.get(tv.focus(), "")]))
 
         def save():
             # Luu "skip" cho item MAC DINH thong bao ma user chon "Bo qua" - khong luu thi lan sau
