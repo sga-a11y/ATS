@@ -340,6 +340,34 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         )
     }
 
+    // --- SOI LO: thong bao "Chu y" (item lo mode notify) ---
+    /** [{user, tab, id, name, bag, slot, kind}] cua ca party. Du lieu THO, UI tu dung cau chu. */
+    fun furnaceNotifyItems(pidx: Int): List<Map<String, String>> {
+        return try {
+            val lst = rpd().callAttr("furnace_notify_items", pidx)?.asList() ?: return emptyList()
+            lst.mapNotNull { po ->
+                try {
+                    val m = HashMap<String, String>()
+                    for (k in listOf("user", "tab", "id", "name", "bag", "slot", "kind")) {
+                        po.callAttr("get", k)?.let { m[k] = it.toString() }
+                    }
+                    m
+                } catch (_: Exception) { null }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun furnaceNotifyCount(pidx: Int): Int =
+        try { rpd().callAttr("furnace_notify_count", pidx)?.toInt() ?: 0 } catch (_: Exception) { 0 }
+
+    fun furnaceNotifyBuy(username: String, tid: Int): Boolean =
+        try { rpd().callAttr("furnace_notify_buy", username, tid)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
+    fun furnaceNotifySkip(username: String, tid: Int): Boolean =
+        try { rpd().callAttr("furnace_notify_skip", username, tid)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
     fun stopParty(pidx: Int) {
         try { rpd().callAttr("stop_party", pidx) } catch (_: Exception) { }
         runningPidx.remove(pidx)

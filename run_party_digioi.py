@@ -4907,6 +4907,71 @@ def is_account_running(username):
     return t is not None and t.is_alive()
 
 
+def furnace_notify_items(pidx):
+    """[{user, tab, id, name, bag, slot, kind, new}] - thong bao lo cua CA party pidx.
+
+    Cau noi cho UI (GUI PC dung truc tiep account_furnace_notify; APK goi ham nay qua Chaquopy).
+    Tra du lieu THO - ben UI tu dung cau chu (APK da co equip_stats.json de hien chi so trang bi).
+    """
+    out = []
+    try:
+        accs = party_accounts(pidx)
+    except Exception:
+        return out
+    for tpl in accs:
+        u = tpl[0] if isinstance(tpl, (tuple, list)) else tpl
+        for it in list(account_furnace_notify.get(u) or []):
+            d = {"user": u}
+            for k in ("tab", "id", "name", "bag", "slot", "kind", "new", "quant"):
+                if k in it:
+                    d[k] = it[k]
+            out.append(d)
+    return out
+
+
+def furnace_notify_count(pidx):
+    """So thong bao lo dang cho cua party (de hien badge tren nut 'Chu y')."""
+    return len(furnace_notify_items(pidx))
+
+
+def _furnace_notify_drop(username, tid):
+    lst = account_furnace_notify.get(username)
+    if not lst:
+        return False
+    for i, it in enumerate(list(lst)):
+        if int(it.get("id", -1)) == int(tid):
+            lst.pop(i)
+            return True
+    return False
+
+
+def furnace_notify_buy(username, tid):
+    """MUA item lo dang cho o acc `username`. Tra True neu server nhan lenh mua."""
+    it = None
+    for x in list(account_furnace_notify.get(username) or []):
+        if int(x.get("id", -1)) == int(tid):
+            it = x
+            break
+    if it is None:
+        return False
+    c = account_clients.get(username)
+    if c is None or not getattr(c, "running", False):
+        return False
+    try:
+        ok = bool(c.buy_furnace_item(it["kind"], it["slot"], it["id"]))
+    except Exception as e:
+        log.warning("[%s] mua item lo tu UI loi: %s", username, e)
+        return False
+    if ok:
+        _furnace_notify_drop(username, tid)
+    return ok
+
+
+def furnace_notify_skip(username, tid):
+    """BO QUA: go khoi danh sach cho, khong mua."""
+    return _furnace_notify_drop(username, tid)
+
+
 def account_status(username):
     """Dict trang thai live cua acc (cho GUI). running, char, map, channel, in_party, dg_remain..."""
     c = account_clients.get(username)

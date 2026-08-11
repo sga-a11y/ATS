@@ -546,6 +546,13 @@ fun TsBotApp(
                             party.accounts.firstOrNull { service?.isRunning(it.username) == true }
                                 ?.let { service?.getChannels(it.username) } ?: emptyList()
                         },
+                        onFurnaceNotify = {
+                            // pidx suy tu vi tri party trong list (giong startPartyIn)
+                            val _pi = parties.indexOf(party)
+                            if (_pi >= 0) service?.furnaceNotifyItems(_pi) ?: emptyList() else emptyList()
+                        },
+                        onFurnaceBuy = { u, tid -> service?.furnaceNotifyBuy(u, tid) ?: false },
+                        onFurnaceSkip = { u, tid -> service?.furnaceNotifySkip(u, tid) ?: false },
                         onCurrentChannel = {
                             party.accounts.firstOrNull { service?.isRunning(it.username) == true }
                                 ?.let { service?.currentChannel(it.username) }
@@ -934,6 +941,10 @@ fun PartyCard(
     onSendRouteMaps: (Int, Int) -> Unit,
     onSendGiftcode: (String) -> Unit,
     onGetChannels: () -> List<Triple<Int, Int, Int>>,
+    // SOI LO - thong bao "Chu y": lay danh sach / mua / bo qua (goi xuong Python qua service)
+    onFurnaceNotify: () -> List<Map<String, String>> = { emptyList() },
+    onFurnaceBuy: (String, Int) -> Boolean = { _, _ -> false },
+    onFurnaceSkip: (String, Int) -> Boolean = { _, _ -> false },
     onCurrentChannel: () -> Int?,
     onGetLog: (String) -> String = { "" },
 ) {
@@ -1036,10 +1047,16 @@ fun PartyCard(
             var showCityDialog by remember { mutableStateOf(false) }
             var showGiftcodeDialog by remember { mutableStateOf(false) }
             var showAgiDialog by remember { mutableStateOf(false) }
-            // poll kenh hien tai moi 5s (chi khi party co acc)
+            var showNotifyDialog by remember { mutableStateOf(false) }
+            var notifyCount by remember { mutableStateOf(0) }
+            var notifyItems by remember { mutableStateOf<List<Map<String, String>>>(emptyList()) }
+            // poll kenh hien tai + so thong bao lo moi 5s (chi khi party co acc)
             LaunchedEffect(party.accounts.firstOrNull()?.username) {
                 while (party.accounts.isNotEmpty()) {
                     curChannel = withContext(Dispatchers.IO) { onCurrentChannel() }
+                    val n = withContext(Dispatchers.IO) { onFurnaceNotify() }
+                    notifyItems = n
+                    notifyCount = n.size
                     delay(5000)
                 }
             }
@@ -1069,16 +1086,35 @@ fun PartyCard(
                     ) { Text("Giftcode", maxLines = 2) }
                 }
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(
-                    onClick = { showAgiDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = if (agiWarning) Color(0xFFFFB74D) else Color.Transparent,
-                        contentColor = if (agiWarning) Color(0xFF3E2723) else MaterialTheme.colorScheme.primary,
-                    ),
-                ) {
-                    Text(if (agiWarning) "⚠ Check AGI (lệch $agiSpread)" else "⚡ Check AGI",
-                        fontWeight = if (agiWarning) FontWeight.Bold else FontWeight.Medium)
+                // Check AGI THU GON (weight) de nhuong cho nut "Chu y" cung hang. Nut Chu y chi
+                // hien khi CO thong bao (giong PC: an mac dinh, pack khi co).
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick = { showAgiDialog = true },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (agiWarning) Color(0xFFFFB74D) else Color.Transparent,
+                            contentColor = if (agiWarning) Color(0xFF3E2723) else MaterialTheme.colorScheme.primary,
+                        ),
+                    ) {
+                        Text(if (agiWarning) "⚠ AGI (lệch $agiSpread)" else "⚡ Check AGI",
+                            maxLines = 1, style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (agiWarning) FontWeight.Bold else FontWeight.Medium)
+                    }
+                    if (notifyCount > 0) {
+                        OutlinedButton(
+                            onClick = { showNotifyDialog = true },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color(0xFFFFF3CD), contentColor = Color(0xFF8A6D00),
+                            ),
+                        ) {
+                            Text("⚠ Chú ý ($notifyCount)", maxLines = 1,
+                                style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
             if (showChannelDialog) {
@@ -1101,6 +1137,17 @@ fun PartyCard(
                 GiftcodeDialog(
                     onDismiss = { showGiftcodeDialog = false },
                     onSave = { code -> onSendGiftcode(code); showGiftcodeDialog = false },
+                )
+            }
+            if (showNotifyDialog) {
+                FurnaceNotifyDialog(
+                    items = notifyItems,
+                    onDismiss = { showNotifyDialog = false },
+                    onBuy = { u, tid -> onFurnaceBuy(u, tid) },
+                    onSkip = { u, tid -> onFurnaceSkip(u, tid) },
+                    onRefresh = {
+                        val n = onFurnaceNotify(); notifyItems = n; notifyCount = n.size
+                    },
                 )
             }
             if (showAgiDialog) {
@@ -2790,6 +2837,78 @@ fun equipDisplay(s: EquipStat?, name: String): String {
     if (s.e != 0) sb.append("_").append(EQ_ELEM[s.e] ?: "?").append(" ").append(sgn(s.ev - 100))
     sb.append("_").append(EQ_QUAL[s.q] ?: "?")
     return sb.toString()
+}
+
+/** Cau chu thong bao lo - giong ban PC (_furnace_notify_line trong gui.py).
+ *  Rieng tab trang_bi hien TEN DAI kem chi so (equipDisplay) de quyet dinh mua hay khong. */
+private fun furnaceNotifyLine(context: android.content.Context, it: Map<String, String>): String {
+    val u = it["user"] ?: "?"
+    val tab = it["tab"] ?: ""
+    var nm = (it["name"] ?: "?").trim()
+    return when (tab) {
+        "trang_bi" -> {
+            val tid = it["id"]?.toIntOrNull()
+            if (tid != null) {
+                nm = equipDisplay(loadEquipStats(context)[String.format("0x%04x", tid)], nm)
+            }
+            "$u soi lò trang bị thường có \"$nm\" - trong túi đang có ${it["bag"] ?: 0} món"
+        }
+        "vo_tuong" -> "$u soi lò võ tướng thường có \"$nm\""
+        "chuyen_sinh" -> "$u soi lò chuyển sinh thường có \"$nm\""
+        else -> "$u: lò có \"$nm\""
+    }
+}
+
+@Composable
+fun FurnaceNotifyDialog(
+    items: List<Map<String, String>>,
+    onDismiss: () -> Unit,
+    onBuy: (String, Int) -> Boolean,
+    onSkip: (String, Int) -> Boolean,
+    onRefresh: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Chú ý - thông báo lò") },
+        text = {
+            if (items.isEmpty()) {
+                Text("(không có thông báo)")
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
+                    items(items, key = { (it["user"] ?: "") + (it["id"] ?: "") }) { it0 ->
+                        val u = it0["user"] ?: return@items
+                        val tid = it0["id"]?.toIntOrNull() ?: return@items
+                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Text(furnaceNotifyLine(context, it0),
+                                style = MaterialTheme.typography.bodySmall)
+                            Row(horizontalArrangement = Arrangement.End,
+                                modifier = Modifier.fillMaxWidth()) {
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) { onSkip(u, tid) }
+                                        onRefresh()
+                                    }
+                                }) { Text("Bỏ qua") }
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        val ok = withContext(Dispatchers.IO) { onBuy(u, tid) }
+                                        onRefresh()
+                                        android.widget.Toast.makeText(context,
+                                            if (ok) "Đã mua" else "Mua không thành công (acc tắt / hết chips / lò đã đổi)",
+                                            android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }) { Text("Mua") }
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
+    )
 }
 
 @Composable
