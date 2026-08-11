@@ -4086,10 +4086,10 @@ def _prepare_team_dungeon_redo_after_reconnect(st, username, label, pidx, stoppe
             ready_now = True
     if ready_now:
         if st.get("team_dungeon_skip_all"):
-            # Da het luot thu (1 dau + 1 retry) -> GIU nguyen team_dungeon_state (moi level da
-            # "done") de khong chay lai, di thang sang viec tiep theo.
-            log.warning("[%s] auto phó bản đội: RETRY vẫn KHÔNG qua -> BỎ QUA TẤT CẢ phó bản đội, "
-                        "chuyển sang việc tiếp theo", label)
+            # Het luot thu (1 dau + 1 retry) -> KHONG xoa team_dungeon_state, va co skip_all se
+            # chan not cac PB con lai CUA LUOT NAY (doc mot lan roi tu xoa).
+            log.warning("[%s] auto phó bản đội: RETRY vẫn KHÔNG qua -> BỎ QUA các phó bản đội còn "
+                        "lại của lượt này, chuyển sang việc tiếp theo", label)
         else:
             log.info("[%s] auto phó bản đội: cả party đã relogin sau PB vỡ -> chạy lại từ đầu "
                      "(lần retry duy nhất)", label)
@@ -4265,9 +4265,16 @@ def _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, s
         return True
     flags = _team_dungeon_flags(pcfg)
     levels = getattr(config, "TEAM_DUNGEON_LEVELS", (20, 50, 80))
-    if st.get("team_dungeon_skip_all"):
-        log.info("[%s] auto phó bản đội: đã bỏ qua tất cả (retry không qua) -> không chạy PB nữa",
-                 label)
+    # Bo qua CHI LUOT CHAY NAY: doc xong la XOA co ngay. Luot chay moi (login/chu ky sau) lai
+    # check PB binh thuong - KHONG khoa ca ngay.
+    with st["lock"]:
+        _skip_now = bool(st.get("team_dungeon_skip_all"))
+        if _skip_now:
+            st["team_dungeon_skip_all"] = False
+            st["team_dungeon_tries"] = {}
+    if _skip_now:
+        log.info("[%s] auto phó bản đội: retry không qua -> BỎ QUA phó bản đội LƯỢT NÀY, "
+                 "chuyển sang việc tiếp theo (lượt sau vẫn check bình thường)", label)
         return True
     for level in levels:
         if not flags.get(int(level), False):
