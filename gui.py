@@ -1329,6 +1329,11 @@ class BotGUI(tk.Tk):
         _u = self._mask_user(username)
         tab = it.get("tab"); nm = (it.get("name") or "?").strip()
         if tab == "trang_bi":
+            # Ten DAI kem chi so (giong hien thi trong list) - chi co ten thi khong quyet dinh
+            # duoc co dang mua hay khong.
+            _tid = it.get("id")
+            if _tid:
+                nm = PartyConfigFrame._equip_display("0x%04x" % int(_tid), nm)
             return f'{_u} soi lò trang bị thường có "{nm}" - trong túi đang có {it.get("bag", 0)} món'
         if tab == "vo_tuong":
             return f'{_u} soi lò võ tướng thường có "{nm}"'
@@ -1935,7 +1940,8 @@ class PartyConfigFrame(ttk.Frame):
     _EQ_QUAL = {0: "trắng", 1: "xanh", 2: "lam", 3: "tím", 4: "đỏ"}
     _EQ_FIT = {1: "Đầu", 2: "Thân", 3: "Vũ khí", 4: "Tay", 5: "Chân", 6: "Đặc biệt", 100: "Choàng"}
 
-    def _load_equip_stats(self):
+    @classmethod
+    def _load_equip_stats(cls):
         """{tid_hex: {n,lv,q,e,ev,a:[[kind,val]...]}} tu equip_stats.json (chi so trang bi)."""
         if PartyConfigFrame._furnace_equip_cache is None:
             import json as _json, os as _os
@@ -1953,20 +1959,26 @@ class PartyConfigFrame(ttk.Frame):
         v = self._load_equip_stats().get(tid_hex)
         return max([val - 100 for _k, val in v["a"]] or [0]) if v else -999
 
-    def _equip_display(self, tid_hex, name):
-        """ten_Lv_chiso1_chiso2_..._he_pham (vd 'Kiem Ngo Vuong_Lv40_atk +10_agi +1_tím')."""
-        v = self._load_equip_stats().get(tid_hex)
+    @classmethod
+    def _equip_display(cls, tid_hex, name):
+        """ten_Lv_chiso1_chiso2_..._he_pham (vd 'Kiem Ngo Vuong_Lv40_atk +10_agi +1_tím').
+
+        classmethod: BotGUI._furnace_notify_line dung lai de THONG BAO lo trang bi hien du chi so
+        (chi co ten thi khong quyet dinh duoc mua hay khong). Item lo vo tuong / chuyen sinh KHONG
+        co trong equip_stats.json -> tra ve nguyen ten.
+        """
+        v = cls._load_equip_stats().get(tid_hex)
         if not v:
             return name
         parts = [name]
         if v.get("fit"):
-            parts.append(self._EQ_FIT.get(v["fit"], "?"))   # vi tri: Dau/Than/Vu khi/Tay/Chan
+            parts.append(cls._EQ_FIT.get(v["fit"], "?"))   # vi tri: Dau/Than/Vu khi/Tay/Chan
         parts.append("Lv%d" % v["lv"])
         for k, val in v["a"]:
-            parts.append("%s %+d" % (self._EQ_ATTR.get(k, "#%d" % k), val - 100))
+            parts.append("%s %+d" % (cls._EQ_ATTR.get(k, "#%d" % k), val - 100))
         if v.get("e"):
-            parts.append("%s %+d" % (self._EQ_ELEM.get(v["e"], "?"), v.get("ev", 100) - 100))
-        parts.append(self._EQ_QUAL.get(v.get("q", 0), "?"))
+            parts.append("%s %+d" % (cls._EQ_ELEM.get(v["e"], "?"), v.get("ev", 100) - 100))
+        parts.append(cls._EQ_QUAL.get(v.get("q", 0), "?"))
         return "_".join(parts)
 
     def _open_furnace_list_dialog(self, row, tab_key, pool_name, tab_label):
