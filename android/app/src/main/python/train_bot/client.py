@@ -4908,12 +4908,14 @@ class GameClient:
                 if mode == "auto":
                     # Luat tu mua theo TAB (bag_counts = so luong trong TUI, KHONG tinh do da mac):
                     #  - Vo tuong (kind1): co la mua luon (khong gioi han).
-                    #  - Trang bi (kind2): chi mua khi trong tui <2 cai.
+                    #  - Trang bi (kind2): chi mua khi trong tui CHUA CO cai nao (>=1 la thoi) -
+                    #    giong K.Toa / Me ben chuyen sinh. Truoc day la <2 (tuc da co 1 van mua
+                    #    them cai thu 2) -> phi chips.
                     #  - Chuyen sinh (kind5): Tuong Tinh -> mua khong gioi han; K.Toa / Me -> da co (>=1)
                     #    trong tui thi THOI.
                     _bag = self.bag_counts.get(it["id"], 0)
                     _skip = False
-                    if kind == 2 and _bag >= 2:
+                    if kind == 2 and _bag >= 1:
                         _skip = True
                     elif kind == 5:
                         _nm = nm.strip()
