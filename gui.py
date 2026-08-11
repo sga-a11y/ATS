@@ -189,6 +189,11 @@ def _load_donate_qr_image():
     return tk.PhotoImage(data=DONATE_QR_PNG_B64)
 
 
+def _load_group_qr_image():
+    from bot.group_qr_data import GROUP_QR_PNG_B64
+    return tk.PhotoImage(data=GROUP_QR_PNG_B64)
+
+
 # Party MAU cho profile moi (placeholder de user thay = acc that)
 # Mac dinh mode TRAIN map Rung Noi Huynh (12831) - nhieu user tao acc xong KHONG chon che do,
 # de "stand" (dung yen) thi bot khong lam gi -> tuong bot loi. Train Noi Huynh chay duoc ngay.
@@ -668,6 +673,15 @@ class BotGUI(tk.Tk):
 
         ttk.Label(box, text="Nếu bạn không happy với bot, bạn hãy join nhóm chat để chửi bot:",
                   wraplength=420, justify="center").pack()
+        try:
+            gimg = _load_group_qr_image()
+            gscale = max(1, (max(gimg.width(), gimg.height()) + 219) // 220)
+            if gscale > 1:
+                gimg = gimg.subsample(gscale, gscale)
+            top._group_qr_img = gimg
+            ttk.Label(box, image=gimg).pack(pady=(8, 4))
+        except Exception:
+            pass
         link = tk.Label(box, text=DONATE_CHAT_URL, fg="#0563c1", cursor="hand2")
         link.pack(pady=(4, 12))
         link.bind("<Button-1>", lambda _e: webbrowser.open(DONATE_CHAT_URL, new=2))

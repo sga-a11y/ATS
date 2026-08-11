@@ -29,7 +29,7 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
 # SHARED cung khong nam o day se lam sync BAO LOI, khong cho build tiep (xem _check_no_drift).
 PC_ONLY = ["config.py",        # APK doc tu asset, cau truc khac han
            "_appdir.py",       # duong dan he thong, khac nen tang
-           "_version.py", "_guard.py", "updater.py", "donate_qr_data.py",   # chi ban PC dung
+           "_version.py", "_guard.py", "updater.py", "donate_qr_data.py", "group_qr_data.py",   # chi ban PC dung
            "__init__.py"]
 
 # Asset UI cua APK doc TRUC TIEP tu assets/train_bot_data (khong qua bundle) -> phai sync tu
