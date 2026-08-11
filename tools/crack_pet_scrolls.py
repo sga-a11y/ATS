@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -32,6 +33,8 @@ from crack_furnace_notify import read_items                       # noqa: E402
 OUT = os.path.join(ROOT, "pet_scrolls.json")
 VKCD = os.path.join(ROOT, "exclusive_weapons.json")
 KIND_SUMMON = 38        # Bi Cap - cuon goi pet
+# Cuon goi vo tuong: ten LUON "Bi Cap <ten tuong>" (vai muc viet tat "BC <ten tuong>")
+NAME_RE = re.compile(r"^(BC |Bí\s*Cấp)")
 
 
 def main():
@@ -50,10 +53,14 @@ def main():
         if d["kind"] != KIND_SUMMON:
             continue
         npc = d["spare3"]
-        # kind 38 con om ca HOP QUA / PHIEU CHON ("Qua Tan Thu", "Phieu chon vu khi..."):
-        # cung kind nhung spare3 = 0 vi khong goi ra vo tuong nao -> loai, neu khong list se
-        # ra 5553 muc thay vi ~400 cuon that (va bot co the phan giai nham hop qua).
-        if not npc:
+        # kind 38 = "dung vao thi nhan duoc mot thu gi do", KHONG rieng cuon goi vo tuong:
+        #   spare3 = 0  -> hop qua / phieu chon ("Qua Tan Thu", "Phieu chon vu khi chuyen dung")
+        #   spare3 > 0  -> VAN con thu cuoi ("Ba Dau", "Bach Ho Phieu"), chan dung, thoi trang,
+        #                  do an... vi chung cung tro vao mot npc id.
+        # Loc kind 38 + spare3>0 ra 807 muc thi 330 muc KHONG phai cuon -> bot se phan giai
+        # nham thu cuoi/chan dung. Cuon goi vo tuong LUON ten "Bi Cap <ten tuong>" (3 muc viet
+        # tat "BC <ten tuong>"); da doi chieu: khong co cuon nao mang chu "Cap" ma nam ngoai.
+        if not npc or not NAME_RE.match(d["name"] or ""):
             continue
         out["0x%04x" % d["id"]] = {
             "name": d["name"],

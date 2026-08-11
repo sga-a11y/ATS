@@ -19,23 +19,31 @@ Tắt công tổng → cả 3 mục con ngưng, không cần bỏ tick từng c�
 ## Vì sao "phân giải cuộn" mặc định TẮT
 
 Phân giải là **mất hẳn** cuộn. Trước đây bot luôn phân giải theo `junk_scrolls.json` (51 cuộn,
-sửa tay, không tắt được). Nay danh sách mở rộng lên 807 cuộn nên bật sẵn sẽ phá đồ của user —
+sửa tay, không tắt được). Nay danh sách mở rộng lên 477 cuộn nên bật sẵn sẽ phá đồ của user —
 bắt buộc user tự tick sau khi soát List.
 
 > **Đổi hành vi**: bản này bot KHÔNG còn tự phân giải 51 cuộn cũ cho tới khi user tick.
 
 ## List cuộn — mặc định & override
 
-`pet_scrolls.json` (807 cuộn) sinh bởi `tools/crack_pet_scrolls.py` từ `gamedata_Item.dat`:
-`kind 38` (Bí Cấp) và `spare3 > 0` (`spare3` = npc id của tướng được gọi).
+`pet_scrolls.json` (477 cuộn) sinh bởi `tools/crack_pet_scrolls.py` từ `gamedata_Item.dat`:
+`kind 38` + `spare3 > 0` + **tên bắt đầu bằng "Bí Cấp" / "BC "**.
 
-> `kind 38` còn ôm cả hộp quà / phiếu chọn — chúng có `spare3 = 0`. Không lọc thì list ra 5553
-> mục và bot có thể phân giải nhầm hộp quà.
+`kind 38` = "dùng vào thì nhận được một thứ gì đó", không riêng cuộn gọi võ tướng:
+
+| Lọc | Còn lại | Vấn đề |
+|---|---|---|
+| `kind 38` | 5553 | ôm cả hộp quà, phiếu chọn (`spare3 = 0`) |
+| `+ spare3 > 0` | 807 | vẫn còn thú cưỡi ("Ba Đậu", "Bạch Hổ Phiếu"), chân dung, thời trang, đồ ăn — chúng cũng trỏ vào một npc id |
+| `+ tên "Bí Cấp"/"BC "` | **477** | đúng cuộn gọi võ tướng |
+
+Đã đối chiếu: không có cuộn nào mang chữ "Cấp" mà nằm ngoài bộ lọc, và đủ cả 51 cuộn của
+`junk_scrolls.json` cũ.
 
 | Mặc định | Điều kiện |
 |---|---|
-| Giữ lại | tướng **có vũ khí chuyên dụng** (109 cuộn) — đối chiếu `exclusive_weapons.json` |
-| Phân giải | còn lại (698 cuộn) |
+| Giữ lại | tướng **có vũ khí chuyên dụng** (85 cuộn) — đối chiếu `exclusive_weapons.json` |
+| Phân giải | còn lại (392 cuộn) |
 
 Mặc định chỉ là **gợi ý, không khoá cứng**: pet có vkcd nhiều con vẫn lởm, user đổi được cả hai
 chiều.
