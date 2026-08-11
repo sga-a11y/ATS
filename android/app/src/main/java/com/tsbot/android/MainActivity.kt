@@ -2772,10 +2772,17 @@ fun FurnacePickerDialog(
     }
     var query by remember { mutableStateOf("") }
     val rank = { m: String? -> when (m) { "auto" -> 0; "notify" -> 1; else -> 2 } }
-    val filtered = remember(query, modes.toMap(), pool) {
+    // Sort theo che do luc MO dialog (snapshot) -> doi che do KHONG re-sort live (item khong nhay cho).
+    // Chi sort lai khi tim/mo lai ("luc luu moi can sort" -> lan mo sau da sap xep san).
+    val sortModes = remember { modes.toMap() }
+    val modeOfSort = { tid: String ->
+        val m = sortModes[tid]
+        when { m == "skip" -> ""; m != null -> m; dfltNotify.contains(tid) -> "notify"; else -> "" }
+    }
+    val filtered = remember(query, pool) {
         val kw = query.trim().lowercase()
         pool.filter { kw.isEmpty() || it.second.lowercase().contains(kw) || it.first.contains(kw) }
-            .sortedWith(compareBy({ rank(modeOf(it.first)) }, { it.second }))
+            .sortedWith(compareBy({ rank(modeOfSort(it.first)) }, { it.second }))
     }
     AlertDialog(
         onDismissRequest = onDismiss,

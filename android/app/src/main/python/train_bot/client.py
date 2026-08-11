@@ -25,6 +25,34 @@ def _open_game_socket(host, port):
     return sock
 
 
+# ===== BAO CAO CONG VIEC MOI ACC (activity) =====
+# De biet acc dang lam gi -> luc reform/barrier ket ("4/5, cho 1 thang khong ve") log ra duoc thang
+# thieu DANG LAM GI + bao lau roi -> phan biet "dang lam viec khac chua xong" (vd danh boss QD, dungeon)
+# vs "k/treo reform that". Moi acc cap nhat 1 chuoi ngan + timestamp; ai cung doc duoc.
+_ACC_ACTIVITY = {}               # username -> (task_str, phase, ts_cap_nhat)
+_ACC_ACTIVITY_LOCK = threading.Lock()
+
+# Cac PHA (phase) de member so voi leader. Leader la nhac truong -> pha party = pha leader.
+#   train        = dang train binh thuong
+#   reform       = dang reform (ve thanh gom + lap lai party)
+#   team_dungeon = dang o pha pho ban to doi (cho report luot / danh)
+#   boss_qd      = dang danh boss Quan Doan   (WHITELIST: member cho la hop le)
+#   login_chore  = viec vat sau login (world boss, daily dungeon solo, van tieu...)  (WHITELIST)
+_PHASE_WHITELIST = ("boss_qd", "login_chore")   # leader o pha nay -> member CHO, khong bo viec
+
+def set_account_activity(username, task, phase=""):
+    if not username:
+        return
+    with _ACC_ACTIVITY_LOCK:
+        _ACC_ACTIVITY[username] = (task, phase, time.time())
+
+def get_account_activity(username):
+    """Tra (task, phase, so_giay_ke_tu_cap_nhat) hoac None neu chua tung report."""
+    with _ACC_ACTIVITY_LOCK:
+        v = _ACC_ACTIVITY.get(username)
+    return (v[0], v[1], time.time() - v[2]) if v else None
+
+
 # ===== UU TIEN THREAD KHI DANH PHO BAN TO DOI (PB) =====
 # 15 party x 5 acc = ~75 client / 1 tien trinh Python -> GIL: moi luc chi 1 thread chay bytecode.
 # Khi nhieu party cung chay, thread cua acc DANG DANH PB bi tranh CPU -> heartbeat/lenh danh tre ->
@@ -3653,6 +3681,8 @@ class GameClient:
         # Nhu boss the gioi: cho moc ket tran THAT (0x14 sub0700), khong dem gio.
         t0 = time.time()
         while self.running and self.state.in_battle:
+            set_account_activity(self._username, "boss QD: dang danh tran %ds" % int(time.time() - t0),
+                                 phase="boss_qd")
             time.sleep(1)
         log.info("[%s] Boss QD: tran ket thuc (sau %ds)", self._label, int(time.time() - t0))
         self.state.boss_mode = False
@@ -4820,7 +4850,7 @@ class GameClient:
         notify = []
         for tab_name, kind in self.FURNACE_TAB_KIND.items():
             tcfg = (cfg or {}).get(tab_name) or {}
-            if not tcfg.get("on"):
+            if not tcfg.get("on", True):   # mac dinh TICK: thieu config tab = coi nhu BAT
                 continue
             wl = tcfg.get("items") or {}
             for it in tabs.get(kind, []):

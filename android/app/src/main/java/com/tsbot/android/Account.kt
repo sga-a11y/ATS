@@ -43,7 +43,7 @@ fun HealSettings.toRuntimeJson(): String = toJsonObject().toString()
 fun HealSettings.isDefault(): Boolean = this == HealSettings()
 
 // --- SOI LO (furnace): config per-acc. 3 tab thuong; items = tid_hex -> "auto"/"notify". ---
-data class FurnaceTab(val on: Boolean = false, val items: Map<String, String> = emptyMap())
+data class FurnaceTab(val on: Boolean = true, val items: Map<String, String> = emptyMap())  // mac dinh TICK
 
 data class FurnaceConfig(
     val voTuong: FurnaceTab = FurnaceTab(),
@@ -56,7 +56,10 @@ data class FurnaceConfig(
     fun withTab(key: String, t: FurnaceTab): FurnaceConfig = when (key) {
         "vo_tuong" -> copy(voTuong = t); "trang_bi" -> copy(trangBi = t); else -> copy(chuyenSinh = t)
     }
-    fun isEmpty(): Boolean = voTuong.items.isEmpty() && trangBi.items.isEmpty() && chuyenSinh.items.isEmpty()
+    // Coi la rong CHI khi khong tab nao bat VA khong co items (truoc day chi xet items -> tab tick ON
+    // ma chua mo List bi coi la rong -> mat tick khi luu + khong gui runtime).
+    fun isEmpty(): Boolean = !voTuong.on && !trangBi.on && !chuyenSinh.on &&
+        voTuong.items.isEmpty() && trangBi.items.isEmpty() && chuyenSinh.items.isEmpty()
 }
 
 private fun furnaceTabFromJson(o: JSONObject?): FurnaceTab {
@@ -80,7 +83,7 @@ fun furnaceConfigFromJson(o: JSONObject?): FurnaceConfig {
 }
 
 private fun FurnaceTab.toJsonOrNull(): JSONObject? {
-    if (items.isEmpty()) return null
+    if (!on && items.isEmpty()) return null   // giu tab tick ON du chua co items (chua mo List)
     val io = JSONObject(); for ((k, v) in items) io.put(k, v)
     return JSONObject().apply { put("on", on); put("items", io) }
 }

@@ -1741,7 +1741,7 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Label(win, text="Soi lò (mua item theo list):").grid(
             row=_fr + 1, column=0, columnspan=3, sticky="w", padx=8, pady=(2, 2))
         for j, (tab_key, pool_name, tab_label) in enumerate(self.FURNACE_TABS):
-            bon = tk.BooleanVar(value=bool((furn.get(tab_key) or {}).get("on", False)))
+            bon = tk.BooleanVar(value=bool((furn.get(tab_key) or {}).get("on", True)))  # mac dinh TICK
             furn_on[tab_key] = bon
             ttk.Checkbutton(win, text=tab_label, variable=bon).grid(
                 row=_fr + 2 + j, column=0, columnspan=2, sticky="w", padx=(8, 2), pady=1)
@@ -1750,9 +1750,11 @@ class PartyConfigFrame(ttk.Frame):
                            self._open_furnace_list_dialog(row, tk_, pn, tl)).grid(
                 row=_fr + 2 + j, column=2, sticky="w", padx=(4, 8), pady=1)
         def _save_furnace():
+            # setdefault: tao entry KE CA khi chua mo List (truoc day chi luu neu tab_key da co trong
+            # furn -> tick o ma chua mo List thi mat tick). Entry {"on": True} khong items van hop le
+            # (engine: on=True, wl rong -> item ngoai pool van Thong bao).
             for tab_key, bon in furn_on.items():
-                if tab_key in furn:
-                    furn[tab_key]["on"] = bool(bon.get())
+                furn.setdefault(tab_key, {})["on"] = bool(bon.get())
         def _save():
             row["heal"] = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
             row["settings"].pop("char_defend", None)
@@ -1878,9 +1880,12 @@ class PartyConfigFrame(ttk.Frame):
         q.trace_add("write", lambda *_a: refresh()); refresh()
 
         def set_mode(m):
+            # Cap nhat che do TAI CHO (khong re-sort) -> item KHONG nhay cho khi dang chinh. Sort chi
+            # chay khi mo/tim (refresh) -> lan mo sau da sap xep san ("luc luu moi can sort").
             for iid in tv.selection():
                 state[iid] = m
-            refresh()
+                if tv.exists(iid):
+                    tv.set(iid, "mode", MODE_TXT[m])
         bb = ttk.Frame(win); bb.pack(fill="x", padx=8, pady=6)
         ttk.Button(bb, text="Tự mua", command=lambda: set_mode("auto")).pack(side="left", padx=3)
         ttk.Button(bb, text="Thông báo", command=lambda: set_mode("notify")).pack(side="left", padx=3)

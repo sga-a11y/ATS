@@ -21,7 +21,8 @@ from bot.scene_fight import get_scene_fight_seed
 from bot.train_maps_store import save_learned_regions
 from bot.login import login
 from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
-                        is_strategist, reset_party_joined, unmark_joined)
+                        is_strategist, reset_party_joined, unmark_joined,
+                        set_account_activity, get_account_activity)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
 try:
@@ -1787,12 +1788,28 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     return
             else:
                 _last_plan_log = 0
+                _lead_other_since = 0.0   # thoi diem thay leader o pha KHAC reform (grace chong nhay)
                 while not _ab():
                     with st["lock"]:
                         _p = st.get("route_plan")
                         if _p and _p.get("gen") == _g0:
                             plan = dict(_p)
                             break
+                    set_account_activity(username, "reform: cho leader lap route -> %s" % sc, phase="reform")
+                    # DONG BO THEO LEADER: leader LIVE + dang o pha KHAC reform (khong phai boss/chore)
+                    # on dinh >30s -> leader se KHONG publish route (da sang pha khac) -> BO reform,
+                    # quay ve vong chinh vao dung pha leader. Khong relogin, khong cho vo tan (bug that:
+                    # gclchin ket "cho leader lap route" 20 phut trong khi leader o pha PB).
+                    _lph = _leader_live_phase(pidx, st)
+                    if _lph is not None and _lph not in ("reform", "boss_qd", "login_chore"):
+                        if not _lead_other_since:
+                            _lead_other_since = time.time()
+                        elif time.time() - _lead_other_since > 30:
+                            log.warning("[%s] (%s) reform: leader da sang pha '%s' (khong reform) -> "
+                                        "BO reform, dong bo theo leader", label, role, _lph)
+                            return
+                    else:
+                        _lead_other_since = 0.0   # leader ve reform/whitelist/khong-live -> reset grace
                     if time.time() - _last_plan_log > 15:
                         log.info("[%s] (%s) reform: cho leader lap duong toi map %s...", label, role, sc)
                         _last_plan_log = time.time()
@@ -1858,6 +1875,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     _target_city = 12061 if _nghiep_fallback_active() else fc
                     _target_name = "Nghiep Thanh" if _target_city == 12061 else f"thanh {fc}"
                     while not _ab() and c.current_map != _target_city:
+                        set_account_activity(username, "reform: ve %s (dang o map %s)" % (_target_name, c.current_map),
+                                             phase="reform")
                         _town_ok = False
                         try:
                             if _target_city == fc:
@@ -1924,7 +1943,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             _arr.pop(_gk, None)   # don gen cu
                         _arr.setdefault(_g0, {})[username] = _target_city
                     _t0 = time.time()
+                    _barrier_t0 = time.time()
                     while not _ab():
+                        set_account_activity(username, "reform: da ve %s, cho ca party (%.0fs)"
+                                             % (_target_name, time.time() - _barrier_t0), phase="reform")
                         if _nghiep_fallback_active() and _target_city != 12061:
                             with st["lock"]:
                                 st.get("reform_arrived", {}).get(_g0, {}).pop(username, None)
@@ -1937,8 +1959,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             _arrival_done = True
                             break
                         if time.time() - _t0 > 30:
-                            log.info("[%s] (%s) reform: CHO ca party ve %s (%d/%d, reconnecting=%d)...",
-                                     label, role, _target_name, _n_arr, _expected, _n_rec)
+                            # Log ra acc THIEU (chua ve) DANG LAM GI + bao lau -> biet no dang lam viec
+                            # khac (boss/dungeon) chua xong hay treo reform that.
+                            _missing = []
+                            for _u, _up, _uil, _uip in party_accounts(pidx):
+                                if _arr_gen.get(_u) == _target_city or _u in st["reconnecting"]:
+                                    continue
+                                _act = get_account_activity(_u)
+                                _missing.append("%s[%s]" % (_u, "%s %.0fs truoc" % (_act[0], _act[2])
+                                                            if _act else "chua report"))
+                            log.info("[%s] (%s) reform: CHO ca party ve %s (%d/%d, reconnecting=%d) - THIEU: %s",
+                                     label, role, _target_name, _n_arr, _expected, _n_rec,
+                                     ", ".join(_missing) or "?")
                             _t0 = time.time()
                         time.sleep(1)
                 if _ab():
@@ -3387,6 +3419,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
+            set_account_activity(username, "train map=%s combat=%s" % (c.current_map, c.in_combat()),
+                                 phase="train")
             # ==== 40NPC: run_loop (leader) bao HET GIO / THUA 2 TRAN (c._npc40_done) -> leader phat
             # tin hieu go_claim -> CA party (leader + member) di doi thuong + THOAT game. ====
             if event_party_mode:
@@ -3593,9 +3627,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             else:
                 displaced_cnt = 0
             # Bat ky acc nao thay reform_gen TANG (co dua van map) -> CA PARTY cung reform tai cho.
-            if train_on_map and st["reform_gen"] > reform_gen_handled:
+            # NGOAI RA: neu dang co GATHER o thanh (reform_arrived[gen] co entry) ma MINH CHUA co trong
+            # do -> phai ve thanh gop du minh dang o dung train map + da "handled" gen. Bug that: tttam
+            # vao lai map train (relogin) -> dong 2927 NUOT reform_gen -> ngoi im, 4 acc kia cho o thanh
+            # 21011 vo tan (4/5) vi doi tttam. Bam reform_arrived de tttam biet "co nguoi dang cho minh".
+            with st["lock"]:
+                _gather = st.get("reform_arrived", {}).get(st["reform_gen"], {})
+                _gather_wait_me = bool(_gather) and username not in _gather
+            if train_on_map and (st["reform_gen"] > reform_gen_handled or _gather_wait_me):
                 reform_gen_handled = st["reform_gen"]
-                log.warning("[%s] (%s) -> REFORM party (gen %d)", label, role, reform_gen_handled)
+                log.warning("[%s] (%s) -> REFORM party (gen %d%s)", label, role, reform_gen_handled,
+                            ", gop gather dang cho" if _gather_wait_me else "")
                 try: _do_reform()
                 except Exception as e:
                     log.warning("[%s] loi reform (bo qua): %s", label, e)
@@ -3870,6 +3912,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
 # ============================================================
 #  API DIEU KHIEN (cho GUI gui.py goi). Cung dung cho CLI ben duoi.
 # ============================================================
+def _leader_live_phase(pidx, st):
+    """Pha (phase) hien tai cua LEADER neu leader dang LIVE; None neu khong co leader / leader
+    dang reconnecting / activity cu (>45s khong update -> thread chet/treo, khong tin duoc).
+    Dung cho member: leader la nhac truong -> member dong bo theo pha leader (chi khi leader live)."""
+    lead = config.PARTY_LEADER_ACC.get(pidx)
+    if not lead:
+        return None
+    with st["lock"]:
+        if lead in st["reconnecting"]:
+            return None
+    act = get_account_activity(lead)
+    if not act:
+        return None
+    _task, phase, age = act
+    if age > 45:
+        return None            # leader im >45s -> khong live -> member CHO (leader se tu resync khi ve)
+    return phase
+
+
 def party_accounts(pidx):
     """List (username, password, is_leader, is_picker) cua party pidx (bo slot trong)."""
     party = config.PARTIES[pidx]
@@ -3970,6 +4031,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
         while True:
             if stopped_fn() or not c.running:
                 return False
+            set_account_activity(username, "PB lv%d: cho leader xu ly" % level, phase="team_dungeon")
             if time.time() - last_log > 60:
                 log.info("[%s] (member) chờ leader xử lý phó bản đội lv%d...", label, level)
                 last_log = time.time()
@@ -4033,6 +4095,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
             reported = all(m in reports or m in st["reconnecting"] for m in members)
         if reported:
             break
+        set_account_activity(username, "PB lv%d: cho party report" % level, phase="team_dungeon")
         if time.time() - last_log > 30:
             log.info("[%s] (LEADER) chờ cả party report lượt phó bản đội lv%d (%d/%d)...",
                      label, level, len(reports), len(members))
