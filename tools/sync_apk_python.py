@@ -38,7 +38,7 @@ PC_ONLY = ["config.py",        # APK doc tu asset, cau truc khac han
 SHARED_ASSETS = ["events.json", "npc_names.json", "use_items.json", "dangerous_npcs.json",
                  "scene_names.json",
                  "cities.json", "collect_style.json", "donate_items.json", "furnace_pool.json",
-                 "furnace_default_notify.json", "items_gamedata.json", "login_awards.json",
+                 "furnace_default_notify.json", "equip_stats.json", "items_gamedata.json", "login_awards.json",
                  "pet_stats.json", "pets.json", "servers.json", "skills_data.json",
                  "train_block_stats.json", "train_routes.json", "vantieu_dispatch_bonus.json",
                  "vantieu_requests.json"]

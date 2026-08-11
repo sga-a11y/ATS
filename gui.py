@@ -1011,6 +1011,7 @@ class BotGUI(tk.Tk):
             self.nb.forget(tab)
         self.party_trees = {}       # pidx -> Treeview
         self.party_agi_buttons = {} # pidx -> nut Check AGI/canh bao do lech
+        self.party_notify_buttons = {}  # pidx -> nut "Chu y" (an neu party khong co thong bao)
         self.party_subframes = {}   # pidx -> sub-tab frame (cham trang thai party qua sub_nb.tab)
         self.group_nb = {}          # gidx -> sub-Notebook (chua cac party tab)
         self.group_frames = {}      # gidx -> group tab frame (cham trang thai group)
@@ -1070,6 +1071,12 @@ class BotGUI(tk.Tk):
                             command=lambda p=pidx: self._show_party_agi(p))
         agi_btn.pack(side="left", padx=2)
         self.party_agi_buttons[pidx] = agi_btn
+        # Nut "Chu y": AN mac dinh (pack luc co thong bao). Party co nick can thong bao (vd item lo
+        # de "Thong bao") -> hien nut; click -> dialog danh sach thong bao (mua ho / bo qua).
+        notify_btn = tk.Button(btns, text="⚠ Chú ý", relief="raised", padx=8,
+                               bg="#fff3cd", fg="#8a6d00", activebackground="#ffe69c",
+                               command=lambda p=pidx: self._show_party_notify(p))
+        self.party_notify_buttons[pidx] = notify_btn   # chua pack -> an; _update_notify_buttons se hien
         tree = ttk.Treeview(frame, columns=self._COLS, show="headings", height=max(len(accs), 3))
         for col in self._COLS:
             if col in ("acc", "char"):   # BAM header de che/hien tai khoan + ten (3 trang thai)
@@ -1301,6 +1308,90 @@ class BotGUI(tk.Tk):
             threading.Thread(target=ctrl.stop_account, args=(u, "GUI Stop acc chon"), daemon=True).start()
 
     # ---- refresh status ----
+    # ---- THONG BAO PARTY (hien tai: lo; sau nay them tui day / het thuoc...) ----
+    def _party_notify_items(self, pidx):
+        """List (username, item_lo) cua MOI acc trong party co thong bao (account_furnace_notify)."""
+        out = []
+        try:
+            accs = ctrl.party_accounts(pidx)
+        except Exception:
+            return out
+        notify = getattr(ctrl, "account_furnace_notify", {}) or {}
+        for (u, _p, _l, _pk) in accs:
+            for it in list(notify.get(u) or []):
+                out.append((u, it))
+        return out
+
+    def _party_notify_count(self, pidx):
+        return len(self._party_notify_items(pidx))
+
+    def _furnace_notify_line(self, username, it):
+        _u = self._mask_user(username)
+        tab = it.get("tab"); nm = (it.get("name") or "?").strip()
+        if tab == "trang_bi":
+            return f'{_u} thấy lò trang bị thường có "{nm}" - trong túi đang có {it.get("bag", 0)} món'
+        if tab == "vo_tuong":
+            return f'{_u} thấy lò võ tướng thường có cuộn gọi "{nm}"'
+        if tab == "chuyen_sinh":
+            return f'{_u} thấy lò chuyển sinh thường có "{nm}"'
+        return f'{_u}: lò có "{nm}"'
+
+    def _furnace_buy_for(self, username, it):
+        c = ctrl.account_clients.get(username)
+        if c is None or not getattr(c, "running", False):
+            return False
+        try:
+            return bool(c.buy_furnace_item(it["kind"], it["slot"], it["id"]))
+        except Exception:
+            return False
+
+    def _remove_notify(self, username, it):
+        lst = (getattr(ctrl, "account_furnace_notify", {}) or {}).get(username)
+        if lst:
+            try:
+                lst.remove(it)
+            except ValueError:
+                pass
+
+    def _show_party_notify(self, pidx):
+        items = self._party_notify_items(pidx)
+        win = tk.Toplevel(self); win.title(f"Chú ý - Party {pidx + 1}")
+        win.transient(self.winfo_toplevel()); win.grab_set(); win.geometry("580x430")
+        ttk.Label(win, text="Thông báo của party (hiện tại: lò):",
+                  font=(None, 10, "bold")).pack(anchor="w", padx=10, pady=(8, 4))
+        _cv = tk.Frame(win); _cv.pack(fill="both", expand=True, padx=8, pady=4)
+        canvas = tk.Canvas(_cv, highlightthickness=0)
+        sb = ttk.Scrollbar(_cv, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y"); canvas.pack(side="left", fill="both", expand=True)
+
+        def _add_row(u, it):
+            rowf = ttk.Frame(inner); rowf.pack(fill="x", pady=2)
+            ttk.Button(rowf, text="Bỏ qua", width=7,
+                       command=lambda: (self._remove_notify(u, it), rowf.destroy())).pack(side="right", padx=2)
+
+            def _buy():
+                self._remove_notify(u, it); rowf.destroy()   # optimistic: xoa nut ngay
+                import threading as _t
+                def _do():
+                    ok = self._furnace_buy_for(u, it)
+                    if not ok:
+                        self.after(0, lambda: messagebox.showwarning(
+                            "Mua", "Mua không thành công (acc tắt / hết chips / lò đã đổi).", parent=win))
+                _t.Thread(target=_do, daemon=True).start()
+            ttk.Button(rowf, text="Mua", width=6, command=_buy).pack(side="right", padx=2)
+            ttk.Label(rowf, text=self._furnace_notify_line(u, it), wraplength=400,
+                      justify="left").pack(side="left", fill="x", expand=True)
+
+        if not items:
+            ttk.Label(inner, text="(không có thông báo)").pack(anchor="w", padx=4, pady=6)
+        for u, it in items:
+            _add_row(u, it)
+        ttk.Button(win, text="Đóng", command=win.destroy).pack(pady=6)
+
     def _refresh(self):
         # cap nhat map ten nhan vat -> username (de loc log theo acc/party)
         for u, c in list(ctrl.account_clients.items()):
@@ -1365,6 +1456,16 @@ class BotGUI(tk.Tk):
                 else:
                     agi_btn.configure(text="⚡ Check AGI", bg="#e9ecef", fg="#111111",
                                       activebackground="#d9dde1")
+            # Nut "Chu y": hien khi party CO thong bao (item lo mode notify), an neu khong.
+            nbtn = self.party_notify_buttons.get(pidx)
+            if nbtn is not None:
+                _ncnt = self._party_notify_count(pidx)
+                if _ncnt > 0:
+                    nbtn.configure(text=f"⚠ Chú ý ({_ncnt})")
+                    if not nbtn.winfo_ismapped():
+                        nbtn.pack(side="left", padx=2)
+                elif nbtn.winfo_ismapped():
+                    nbtn.pack_forget()
         # cham trang thai TUNG GROUP TAB: xanh = du | vang = mot phan | xam = tat
         for gidx, gframe in self.group_frames.items():
             gr = group_run.get(gidx, 0); gt = group_total.get(gidx, 0)
@@ -1827,9 +1928,51 @@ class PartyConfigFrame(ttk.Frame):
                     pass
         return PartyConfigFrame._furnace_pool_cache
 
+    _furnace_equip_cache = None
+    _EQ_ATTR = {207: "hp", 208: "sp", 210: "atk", 211: "def", 212: "int",
+                214: "agi", 218: "tc", 219: "nl"}
+    _EQ_ELEM = {1: "địa", 2: "thủy", 3: "hỏa", 4: "phong", 5: "tâm", 7: "quang", 8: "ám"}
+    _EQ_QUAL = {0: "trắng", 1: "xanh", 2: "lam", 3: "tím", 4: "đỏ"}
+    _EQ_FIT = {1: "Đầu", 2: "Thân", 3: "Vũ khí", 4: "Tay", 5: "Chân", 6: "Đặc biệt", 100: "Choàng"}
+
+    def _load_equip_stats(self):
+        """{tid_hex: {n,lv,q,e,ev,a:[[kind,val]...]}} tu equip_stats.json (chi so trang bi)."""
+        if PartyConfigFrame._furnace_equip_cache is None:
+            import json as _json, os as _os
+            PartyConfigFrame._furnace_equip_cache = {}
+            for p in (_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "equip_stats.json"),
+                      "equip_stats.json"):
+                try:
+                    with open(p, encoding="utf-8") as fh:
+                        PartyConfigFrame._furnace_equip_cache = _json.load(fh); break
+                except Exception:
+                    pass
+        return PartyConfigFrame._furnace_equip_cache
+
+    def _equip_maxbonus(self, tid_hex):
+        v = self._load_equip_stats().get(tid_hex)
+        return max([val - 100 for _k, val in v["a"]] or [0]) if v else -999
+
+    def _equip_display(self, tid_hex, name):
+        """ten_Lv_chiso1_chiso2_..._he_pham (vd 'Kiem Ngo Vuong_Lv40_atk +10_agi +1_tím')."""
+        v = self._load_equip_stats().get(tid_hex)
+        if not v:
+            return name
+        parts = [name]
+        if v.get("fit"):
+            parts.append(self._EQ_FIT.get(v["fit"], "?"))   # vi tri: Dau/Than/Vu khi/Tay/Chan
+        parts.append("Lv%d" % v["lv"])
+        for k, val in v["a"]:
+            parts.append("%s %+d" % (self._EQ_ATTR.get(k, "#%d" % k), val - 100))
+        if v.get("e"):
+            parts.append("%s %+d" % (self._EQ_ELEM.get(v["e"], "?"), v.get("ev", 100) - 100))
+        parts.append(self._EQ_QUAL.get(v.get("q", 0), "?"))
+        return "_".join(parts)
+
     def _open_furnace_list_dialog(self, row, tab_key, pool_name, tab_label):
         """Chon item lo tab `tab_key`: Treeview (ten + che do), search, moi item dropdown
-        Bo/Tu mua/Bao. Sort Tu mua -> Bao -> Bo. Luu vao row['furnace'][tab_key]['items']."""
+        Bo/Tu mua/Bao. Sort Tu mua -> Bao -> Bo. Luu vao row['furnace'][tab_key]['items'].
+        Rieng tab Trang Bi: hien ten + Lv + chi so + pham, sort theo CHI SO giam dan."""
         pool = self._load_furnace_pool().get(pool_name, {})
         if not pool:
             messagebox.showinfo("Thiếu pool", "Không đọc được furnace_pool.json."); return
@@ -1852,7 +1995,8 @@ class PartyConfigFrame(ttk.Frame):
         state = {tid_hex: _cur_mode(tid_hex) for tid_hex in pool}
 
         win = tk.Toplevel(self); win.title(f"Lò {tab_label}: {row['u'].get().strip()}")
-        win.transient(self.winfo_toplevel()); win.grab_set(); win.geometry("460x520")
+        win.transient(self.winfo_toplevel()); win.grab_set()
+        win.geometry("640x560" if pool_name == "Trang Bi" else "460x520")
         top = ttk.Frame(win); top.pack(fill="x", padx=8, pady=6)
         ttk.Label(top, text="Tìm:").pack(side="left")
         q = tk.StringVar()
@@ -1860,23 +2004,29 @@ class PartyConfigFrame(ttk.Frame):
         _tvf = ttk.Frame(win); _tvf.pack(fill="both", expand=True, padx=8)
         tv = ttk.Treeview(_tvf, columns=("mode",), show="tree headings", height=18)
         tv.heading("#0", text="Item"); tv.heading("mode", text="Chế độ")
-        tv.column("#0", width=330); tv.column("mode", width=90, anchor="center")
+        tv.column("#0", width=(510 if pool_name == "Trang Bi" else 330)); tv.column("mode", width=90, anchor="center")
         _vsb = ttk.Scrollbar(_tvf, orient="vertical", command=tv.yview)
         tv.configure(yscrollcommand=_vsb.set)
         _vsb.pack(side="right", fill="y")
         tv.pack(side="left", fill="both", expand=True)
 
+        _is_equip = (pool_name == "Trang Bi")
         def refresh():
             kw = q.get().strip().lower()
             tv.delete(*tv.get_children())
             rows_ = []
             for tid_hex, nm in pool.items():
-                if kw and kw not in (nm or "").lower() and kw not in tid_hex:
+                disp = self._equip_display(tid_hex, nm or tid_hex) if _is_equip else (nm or tid_hex)
+                if kw and kw not in disp.lower() and kw not in tid_hex:
                     continue
-                rows_.append((tid_hex, nm or tid_hex))
-            rows_.sort(key=lambda x: (RANK[state[x[0]]], x[1]))   # Tu mua -> Bao -> Bo
-            for tid_hex, nm in rows_:
-                tv.insert("", "end", iid=tid_hex, text=nm, values=(MODE_TXT[state[tid_hex]],))
+                rows_.append((tid_hex, disp))
+            if _is_equip:
+                # Trang Bi: nhom theo che do, trong moi nhom sort CHI SO (+bonus) giam dan.
+                rows_.sort(key=lambda x: (RANK[state[x[0]]], -self._equip_maxbonus(x[0]), x[1]))
+            else:
+                rows_.sort(key=lambda x: (RANK[state[x[0]]], x[1]))   # Tu mua -> Bao -> Bo
+            for tid_hex, disp in rows_:
+                tv.insert("", "end", iid=tid_hex, text=disp, values=(MODE_TXT[state[tid_hex]],))
         q.trace_add("write", lambda *_a: refresh()); refresh()
 
         def set_mode(m):

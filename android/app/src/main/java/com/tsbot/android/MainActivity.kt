@@ -2747,6 +2747,51 @@ fun loadFurnacePool(context: android.content.Context, poolName: String): List<Pa
     return _furnacePoolCache?.get(poolName) ?: emptyList()
 }
 
+/** Chi so trang bi (equip_stats.json): {tid_hex: EquipStat}. Value dang goc-100 (bonus that = val-100). */
+data class EquipStat(val lv: Int, val q: Int, val e: Int, val ev: Int, val fit: Int, val attrs: List<Pair<Int, Int>>)
+private var _equipStatCache: Map<String, EquipStat>? = null
+private val EQ_ATTR = mapOf(207 to "hp", 208 to "sp", 210 to "atk", 211 to "def", 212 to "int",
+    214 to "agi", 218 to "tc", 219 to "nl")
+private val EQ_ELEM = mapOf(1 to "địa", 2 to "thủy", 3 to "hỏa", 4 to "phong", 5 to "tâm", 7 to "quang", 8 to "ám")
+private val EQ_QUAL = mapOf(0 to "trắng", 1 to "xanh", 2 to "lam", 3 to "tím", 4 to "đỏ")
+private val EQ_FIT = mapOf(1 to "Đầu", 2 to "Thân", 3 to "Vũ khí", 4 to "Tay", 5 to "Chân", 6 to "Đặc biệt", 100 to "Choàng")
+
+fun loadEquipStats(context: android.content.Context): Map<String, EquipStat> {
+    if (_equipStatCache == null) {
+        try {
+            val bytes = context.assets.open("train_bot_data/equip_stats.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8))
+            val out = HashMap<String, EquipStat>()
+            for (k in root.keys()) {
+                val o = root.getJSONObject(k)
+                val a = o.optJSONArray("a")
+                val attrs = ArrayList<Pair<Int, Int>>()
+                if (a != null) for (i in 0 until a.length()) {
+                    val pr = a.getJSONArray(i); attrs.add(pr.getInt(0) to pr.getInt(1))
+                }
+                out[k] = EquipStat(o.optInt("lv"), o.optInt("q"), o.optInt("e"), o.optInt("ev", 100), o.optInt("fit"), attrs)
+            }
+            _equipStatCache = out
+        } catch (e: Exception) { _equipStatCache = emptyMap() }
+    }
+    return _equipStatCache ?: emptyMap()
+}
+
+private fun sgn(x: Int) = (if (x >= 0) "+" else "") + x
+
+fun equipMaxBonus(s: EquipStat?): Int = s?.attrs?.maxOfOrNull { it.second - 100 } ?: -999
+
+fun equipDisplay(s: EquipStat?, name: String): String {
+    if (s == null) return name
+    val sb = StringBuilder(name)
+    if (s.fit != 0) sb.append("_").append(EQ_FIT[s.fit] ?: "?")   // vi tri: Dau/Than/Vu khi/Tay/Chan
+    sb.append("_Lv").append(s.lv)
+    for ((k, v) in s.attrs) sb.append("_").append(EQ_ATTR[k] ?: "#$k").append(" ").append(sgn(v - 100))
+    if (s.e != 0) sb.append("_").append(EQ_ELEM[s.e] ?: "?").append(" ").append(sgn(s.ev - 100))
+    sb.append("_").append(EQ_QUAL[s.q] ?: "?")
+    return sb.toString()
+}
+
 @Composable
 fun FurnacePickerDialog(
     poolName: String,
@@ -2779,10 +2824,15 @@ fun FurnacePickerDialog(
         val m = sortModes[tid]
         when { m == "skip" -> ""; m != null -> m; dfltNotify.contains(tid) -> "notify"; else -> "" }
     }
+    // Tab Trang Bi: hien ten + Lv + chi so + pham, sort theo CHI SO (+bonus) giam dan.
+    val isEquip = poolName == "Trang Bi"
+    val equipStats = remember(poolName) { if (isEquip) loadEquipStats(context) else emptyMap() }
+    val disp = { tid: String, name: String -> if (isEquip) equipDisplay(equipStats[tid], name) else name }
     val filtered = remember(query, pool) {
         val kw = query.trim().lowercase()
-        pool.filter { kw.isEmpty() || it.second.lowercase().contains(kw) || it.first.contains(kw) }
-            .sortedWith(compareBy({ rank(modeOfSort(it.first)) }, { it.second }))
+        val f = pool.filter { kw.isEmpty() || disp(it.first, it.second).lowercase().contains(kw) || it.first.contains(kw) }
+        if (isEquip) f.sortedWith(compareBy({ rank(modeOfSort(it.first)) }, { -equipMaxBonus(equipStats[it.first]) }, { it.second }))
+        else f.sortedWith(compareBy({ rank(modeOfSort(it.first)) }, { it.second }))
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2797,7 +2847,8 @@ fun FurnacePickerDialog(
                         val m = modeOf(tid)
                         Row(verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
-                            Text(name, modifier = Modifier.weight(1f), maxLines = 1,
+                            Text(disp(tid, name), modifier = Modifier.weight(1f),
+                                maxLines = if (isEquip) 2 else 1,
                                 style = MaterialTheme.typography.bodySmall)
                             listOf("" to "Bỏ qua", "auto" to "Tự mua", "notify" to "Thông báo").forEach { (mv, lbl) ->
                                 val sel = m == mv

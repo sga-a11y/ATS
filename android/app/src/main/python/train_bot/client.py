@@ -1125,6 +1125,7 @@ class GameClient:
         self.furnace_shop = None     # ket qua soi lo (熔爐): {base_rate, active_rate, tabs:{kind:[items]}}
         self._furnace_seq = 0        # tang moi khi nhan S2C 0x59 sub01 (xac nhan soi lo xong)
         self._fashion_deposit_seq = 0  # tang moi khi nhan S2C 0x59 sub02 (tha do thoi trang xong)
+        self._send_lock = threading.Lock()   # serial hoa sendall (nhieu thread gui: bot + GUI mua ho lo)
         self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
         self.bag_slots = {}          # slot (int) -> [tid, count]  (S2C 0x16 sub0400). Use item = gui slot.
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
@@ -1308,7 +1309,8 @@ class GameClient:
             log.debug("[%s] SEND op=0x%02x: %s", self._label, opcode, payload.hex())
             self._recent_sends.append((time.strftime("%H:%M:%S"), opcode, payload.hex()))
         try:
-            self.sock.sendall(protocol.encode(opcode, payload))
+            with self._send_lock:
+                self.sock.sendall(protocol.encode(opcode, payload))
         except OSError:
             self.running = False   # socket dong -> dung gui, dung moi vong lap
             if not self._deliberate_close:
@@ -4904,17 +4906,43 @@ class GameClient:
                     log.info("[%s] LO: %s (%s) DA MUA -> bo qua", self._label, nm, tab_name)
                     continue
                 if mode == "auto":
-                    log.info("[%s] LO: AUTO MUA %s (%s slot%d)", self._label, nm, tab_name, it["index"])
+                    # Luat tu mua theo TAB (bag_counts = so luong trong TUI, KHONG tinh do da mac):
+                    #  - Vo tuong (kind1): co la mua luon (khong gioi han).
+                    #  - Trang bi (kind2): chi mua khi trong tui <2 cai.
+                    #  - Chuyen sinh (kind5): Tuong Tinh -> mua khong gioi han; K.Toa / Me -> da co (>=1)
+                    #    trong tui thi THOI.
+                    _bag = self.bag_counts.get(it["id"], 0)
+                    _skip = False
+                    if kind == 2 and _bag >= 2:
+                        _skip = True
+                    elif kind == 5:
+                        _nm = nm.strip()
+                        _limited = ("Tỏa" in _nm) or _nm.endswith("Mê")   # Kim Toa / Me = gioi han 1
+                        if _limited and _bag >= 1:
+                            _skip = True
+                    if _skip:
+                        log.info("[%s] LO: %s (%s) da co %d trong tui -> KHONG tu mua",
+                                 self._label, nm, tab_name, _bag)
+                        continue
+                    log.info("[%s] LO: AUTO MUA %s (%s slot%d, tui=%d)",
+                             self._label, nm, tab_name, it["index"], _bag)
                     ok = self.buy_furnace_item(kind, it["index"], it["id"])
                     if not ok:
                         log.warning("[%s] LO: mua %s KHONG co phan hoi (thieu chips?)", self._label, nm)
                 else:   # notify
+                    _bag = self.bag_counts.get(it["id"], 0)
+                    # Me / Kim toa: chi can 1 cai -> DA CO trong tui (>=1) thi KHONG thong bao nua
+                    # (du de "Thong bao"), vi co them cung vo ich.
+                    if kind == 5:
+                        _nm2 = nm.strip()
+                        if (("Tỏa" in _nm2) or _nm2.endswith("Mê")) and _bag >= 1:
+                            continue
                     _new = pool_ids and it["id"] not in pool_ids
                     log.info("[%s] LO: CO %s (%s)%s - can BAO user quyet dinh mua",
                              self._label, nm, tab_name, " [ITEM LA ngoai pool]" if _new else "")
                     notify.append({"tab": tab_name, "kind": kind, "slot": it["index"],
                                    "id": it["id"], "name": nm, "quant": it["quant"],
-                                   "new": bool(_new)})
+                                   "bag": _bag, "new": bool(_new)})
         return notify
 
     def deposit_fashion_to_collection(self, wait: float = 1.0):
