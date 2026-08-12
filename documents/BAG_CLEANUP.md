@@ -58,6 +58,15 @@ gốc → phải lần ngược chuỗi trước khi đối chiếu (dùng chung
 Mặc định chỉ là **gợi ý, không khoá cứng**: pet có vkcd nhiều con vẫn lởm, user đổi được cả hai
 chiều.
 
+### Đồ chuyển sinh đi theo cuộn
+
+Cuộn ở trạng thái **Phân giải** thì **K.Toả + T.Tinh + Mê** của đúng con pet đó cũng bị phân giải
+(mạch của pet bỏ đi thì giữ làm gì) — trường `extra` trong `pet_scrolls.json`, ghép theo npc gốc
+giống `crack_furnace_notify.py`. Mặc định: 357 cuộn phân giải kéo theo 626 món.
+
+Nhiều cuộn có thể trỏ cùng một npc gốc (`Bí Cấp X` và `BC X Chân`) nên **dùng chung** đồ chuyển
+sinh — 4 trường hợp. Khi một cuộn giữ, một cuộn phân giải thì **GIỮ LẠI THẮNG**, không phá đồ.
+
 `scroll_modes` trong config **chỉ lưu mục user đã đổi khác mặc định** → game ra cuộn mới thì tự
 theo mặc định, và sửa bảng mặc định sau này vẫn có hiệu lực, không bắt user tick lại.
 

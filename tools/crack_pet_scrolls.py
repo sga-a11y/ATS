@@ -57,6 +57,10 @@ KEEP_OVERRIDE_NPC = {
     45407,   # Khuat Nguyen           lv55
 }
 RARE_NAME = {1: "đồng", 2: "đồng", 3: "đồng", 4: "bạc", 5: "vàng"}
+# Do CHUYEN SINH di kem tung vo tuong: cuon pet bi PHAN GIAI thi mach cua no cung vo dung ->
+# phan giai luon (yeu cau user). Cung cach ghep npc GOC nhu tools/crack_furnace_notify.py.
+KIND_KIMTOA, KIND_TUONGTINH, KIND_ME = 37, 51, 58
+ATTR_KIND_NPC = 65      # attribute[1].kind == 65 -> value la npc id (o item K.Toa)
 SPECIAL_MIN_LV = 128    # duoi nguong nay tu khoa chi bat nham tuong thuong / quai event
 
 
@@ -81,6 +85,18 @@ def main():
     # (Chuoi nay gom tu canh K.Toa/T.Tinh - no noi ca ban nang cap lan ban chuyen sinh.)
     up = build_reincarnation_up(items)
     vk_names = {v["name"].strip() for i, v in npcs.items() if i in vk_npc and v.get("name")}
+
+    # npc GOC -> [tid] cua K.Toa / T.Tinh / Me cua vo tuong do. Cuon o trang thai "phan giai" thi
+    # bot phan giai luon may mon nay (mach cua pet bo di thi giu lam gi).
+    extra_by_npc = {}
+    for d in items:
+        if d["kind"] == KIND_KIMTOA and d["a1k"] == ATTR_KIND_NPC and d["a1v"]:
+            b = d["a1v"]
+        elif d["kind"] in (KIND_TUONGTINH, KIND_ME) and d["a1v"]:
+            b = to_base(d["a1v"], up)
+        else:
+            continue
+        extra_by_npc.setdefault(b, []).append("0x%04x" % d["id"])
 
     out = {}
     for d in items:
@@ -119,6 +135,7 @@ def main():
             "lv": info.get("level", 0),
             "rare": RARE_NAME.get(info.get("rare", 0), ""),
             "vkcd": vkcd,
+            "extra": sorted(set(extra_by_npc.get(to_base(npc, up), []))),
         }
     out = dict(sorted(out.items(), key=lambda kv: kv[1]["name"]))
     with open(OUT, "w", encoding="utf-8") as fh:

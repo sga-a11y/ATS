@@ -5,7 +5,8 @@
     "npc": "Thái Phó Dương Hỗ",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xbd84": {
     "name": "BC Trương Giác Chân",
@@ -13,7 +14,13 @@
     "npc": "Trương Giác",
     "lv": 130,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb79b",
+      "0xb91b",
+      "0xc739",
+      "0xe2ed"
+    ]
   },
   "0xbd7c": {
     "name": "BC Yến Nhân Trương Phi",
@@ -21,7 +28,8 @@
     "npc": "Yến Nhân Trương Phi",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xcae0": {
     "name": "Bí Cấp BDY Hỏa",
@@ -29,7 +37,8 @@
     "npc": "Hỏa Đậu Yêu",
     "lv": 3,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xcae1": {
     "name": "Bí Cấp BDY Phong",
@@ -37,7 +46,8 @@
     "npc": "Ba Đậu Yêu Hệ Phong",
     "lv": 3,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xcadf": {
     "name": "Bí Cấp BDY Thủy",
@@ -45,7 +55,8 @@
     "npc": "Thủy Đậu Yêu",
     "lv": 3,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xcade": {
     "name": "Bí Cấp BDY Địa",
@@ -53,7 +64,8 @@
     "npc": "Địa Đậu Yêu",
     "lv": 3,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xca8a": {
     "name": "Bí Cấp Ba Đậu Võ Sĩ",
@@ -61,7 +73,8 @@
     "npc": "Ba Đậu Võ Sĩ",
     "lv": 130,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xca4c": {
     "name": "Bí Cấp Bàng Dục",
@@ -69,7 +82,12 @@
     "npc": "Bàng Dục",
     "lv": 124,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb84f",
+      "0xc796",
+      "0xe2d7"
+    ]
   },
   "0xcab0": {
     "name": "Bí Cấp Bàng Hy",
@@ -77,7 +95,10 @@
     "npc": "Bàng Hy",
     "lv": 103,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e8"
+    ]
   },
   "0xca57": {
     "name": "Bí Cấp Bàng Thống",
@@ -85,7 +106,12 @@
     "npc": "Bàng Thống",
     "lv": 171,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7cc",
+      "0xc84a",
+      "0xe304"
+    ]
   },
   "0xc975": {
     "name": "Bí Cấp Bàng Đức",
@@ -93,7 +119,12 @@
     "npc": "Bàng Đức",
     "lv": 131,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7c0",
+      "0xc814",
+      "0xe2b2"
+    ]
   },
   "0xc9b1": {
     "name": "Bí Cấp Bàng Đức Công",
@@ -101,7 +132,12 @@
     "npc": "Bàng Đức Công",
     "lv": 103,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb896",
+      "0xc7df",
+      "0xe2e2"
+    ]
   },
   "0xcaab": {
     "name": "Bí Cấp Bành Dạng",
@@ -109,7 +145,12 @@
     "npc": "Bành Dạng",
     "lv": 106,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb86c",
+      "0xc7e0",
+      "0xe2e1"
+    ]
   },
   "0xca54": {
     "name": "Bí Cấp Bào Tam Nương",
@@ -117,7 +158,10 @@
     "npc": "Bào Tam Nương",
     "lv": 119,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb856"
+    ]
   },
   "0xca43": {
     "name": "Bí Cấp Bào Xuất",
@@ -125,7 +169,11 @@
     "npc": "Bào Xuất",
     "lv": 130,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb852",
+      "0xc816"
+    ]
   },
   "0xcae8": {
     "name": "Bí Cấp Bánh Bao",
@@ -133,7 +181,11 @@
     "npc": "Bánh Bao Thịt",
     "lv": 1,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb955",
+      "0xc85f"
+    ]
   },
   "0xcae7": {
     "name": "Bí Cấp Bánh Trứng",
@@ -141,7 +193,11 @@
     "npc": "Bánh Bao Trứng",
     "lv": 1,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb954",
+      "0xc85e"
+    ]
   },
   "0xca5a": {
     "name": "Bí Cấp Bí Ngô Ma",
@@ -149,7 +205,8 @@
     "npc": "Bí Ngô Ma",
     "lv": 40,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xc939": {
     "name": "Bí Cấp Bạch Nhiễu",
@@ -157,7 +214,11 @@
     "npc": "Bạch Nhiễu",
     "lv": 69,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7aa",
+      "0xc83a"
+    ]
   },
   "0xca37": {
     "name": "Bí Cấp Bỉnh Nguyên",
@@ -165,7 +226,11 @@
     "npc": "Bỉnh Nguyên",
     "lv": 33,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8fc",
+      "0xc82c"
+    ]
   },
   "0xc9ba": {
     "name": "Bí Cấp Bộ Chất",
@@ -173,7 +238,11 @@
     "npc": "Bộ Chất",
     "lv": 72,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e6",
+      "0xc809"
+    ]
   },
   "0xca83": {
     "name": "Bí Cấp Bộ Độ Căn",
@@ -181,7 +250,11 @@
     "npc": "Bộ Độ Căn",
     "lv": 114,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e0",
+      "0xc824"
+    ]
   },
   "0xc953": {
     "name": "Bí Cấp Cam Lãm",
@@ -189,7 +262,11 @@
     "npc": "Cam Lãm",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb810",
+      "0xc73f"
+    ]
   },
   "0xc9b6": {
     "name": "Bí Cấp Cam Ninh",
@@ -197,7 +274,11 @@
     "npc": "Cam Ninh",
     "lv": 129,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7d9",
+      "0xc811"
+    ]
   },
   "0xca1e": {
     "name": "Bí Cấp Cao Cán",
@@ -205,7 +286,10 @@
     "npc": "Cao Cán",
     "lv": 74,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb905"
+    ]
   },
   "0xc984": {
     "name": "Bí Cấp Cao Nhu",
@@ -213,7 +297,11 @@
     "npc": "Cao Nhu",
     "lv": 85,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ac",
+      "0xc80b"
+    ]
   },
   "0xca1c": {
     "name": "Bí Cấp Cao Thuận",
@@ -221,7 +309,12 @@
     "npc": "Cao Thuận",
     "lv": 111,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7f1",
+      "0xc73d",
+      "0xe2f4"
+    ]
   },
   "0xcab2": {
     "name": "Bí Cấp Chu Bình Dung",
@@ -229,7 +322,10 @@
     "npc": "Chu Bình Dung",
     "lv": 82,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb90e"
+    ]
   },
   "0xc9bc": {
     "name": "Bí Cấp Chu Du",
@@ -237,7 +333,12 @@
     "npc": "Chu Du",
     "lv": 135,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7de",
+      "0xc7c5",
+      "0xe2a6"
+    ]
   },
   "0xcd17": {
     "name": "Bí Cấp Chu Du 80",
@@ -245,7 +346,8 @@
     "npc": "Chu Du",
     "lv": 80,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc9dc": {
     "name": "Bí Cấp Chu Hoàn",
@@ -253,7 +355,11 @@
     "npc": "Chu Hoàn",
     "lv": 93,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb83c",
+      "0xc7cf"
+    ]
   },
   "0xc946": {
     "name": "Bí Cấp Chu Linh",
@@ -261,7 +367,11 @@
     "npc": "Chu Linh",
     "lv": 69,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8aa",
+      "0xc7db"
+    ]
   },
   "0xc9db": {
     "name": "Bí Cấp Chu Nhiên",
@@ -269,7 +379,11 @@
     "npc": "Chu Nhiên",
     "lv": 91,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7e3",
+      "0xc748"
+    ]
   },
   "0xcac5": {
     "name": "Bí Cấp Chu Phù",
@@ -277,7 +391,10 @@
     "npc": "Chu Phù",
     "lv": 101,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb89d"
+    ]
   },
   "0xc94d": {
     "name": "Bí Cấp Chu Quang",
@@ -285,7 +402,11 @@
     "npc": "Chu Quang",
     "lv": 99,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8bc",
+      "0xc7f6"
+    ]
   },
   "0xca77": {
     "name": "Bí Cấp Chu Thiện",
@@ -293,7 +414,11 @@
     "npc": "Chu Thiện",
     "lv": 94,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8b1",
+      "0xc7c9"
+    ]
   },
   "0xc9bb": {
     "name": "Bí Cấp Chu Thái",
@@ -301,7 +426,12 @@
     "npc": "Chu Thái",
     "lv": 120,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7db",
+      "0xc842",
+      "0xe2ae"
+    ]
   },
   "0xc99b": {
     "name": "Bí Cấp Chu Thương",
@@ -309,7 +439,11 @@
     "npc": "Chu Thương",
     "lv": 92,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7c6",
+      "0xc756"
+    ]
   },
   "0xc9b7": {
     "name": "Bí Cấp Chu Trị",
@@ -317,7 +451,11 @@
     "npc": "Chu Trị",
     "lv": 70,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb909",
+      "0xc80a"
+    ]
   },
   "0xca75": {
     "name": "Bí Cấp Chu Tuấn",
@@ -325,7 +463,10 @@
     "npc": "Chu Tuấn",
     "lv": 82,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8bb"
+    ]
   },
   "0xc974": {
     "name": "Bí Cấp Chung Do",
@@ -333,7 +474,11 @@
     "npc": "Chung Do",
     "lv": 76,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb88a",
+      "0xc7d6"
+    ]
   },
   "0xc973": {
     "name": "Bí Cấp Chân Mật",
@@ -341,7 +486,12 @@
     "npc": "Chân Mật",
     "lv": 145,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7c3",
+      "0xc77b",
+      "0xe2f7"
+    ]
   },
   "0xcaca": {
     "name": "Bí Cấp Chúc Dung",
@@ -349,7 +499,10 @@
     "npc": "Chúc Dung",
     "lv": 131,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb924"
+    ]
   },
   "0xcaba": {
     "name": "Bí Cấp Chủ Khách Sạn",
@@ -357,7 +510,12 @@
     "npc": "Ông Chủ Khách Sạn",
     "lv": 120,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb94a",
+      "0xc84e",
+      "0xe301"
+    ]
   },
   "0xbd85": {
     "name": "Bí Cấp Cuồng Lữ Mông",
@@ -365,7 +523,8 @@
     "npc": "Quang Lữ Mông",
     "lv": 177,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xca3e": {
     "name": "Bí Cấp Cát Bình",
@@ -373,7 +532,11 @@
     "npc": "Cát Bình",
     "lv": 82,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb8b9",
+      "0xc7f1"
+    ]
   },
   "0xc9e6": {
     "name": "Bí Cấp Công T.Dương",
@@ -381,7 +544,11 @@
     "npc": "Công Tôn Dương",
     "lv": 105,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb879",
+      "0xc7c6"
+    ]
   },
   "0xc9f1": {
     "name": "Bí Cấp Công Tôn Toản",
@@ -389,7 +556,11 @@
     "npc": "Công Tôn Toản",
     "lv": 65,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7ab",
+      "0xc82b"
+    ]
   },
   "0xcab5": {
     "name": "Bí Cấp Công Tôn Tập",
@@ -397,7 +568,10 @@
     "npc": "Công Tôn Tập",
     "lv": 121,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8d4"
+    ]
   },
   "0xbd7d": {
     "name": "Bí Cấp Cẩm Mã Siêu",
@@ -405,7 +579,8 @@
     "npc": "Cẩm Mã Siêu",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc9d2": {
     "name": "Bí Cấp Cố Ung",
@@ -413,7 +588,11 @@
     "npc": "Cố Ung",
     "lv": 64,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb880",
+      "0xc7f7"
+    ]
   },
   "0xc96b": {
     "name": "Bí Cấp Cổ Quỳ",
@@ -421,7 +600,12 @@
     "npc": "Cổ Quỳ",
     "lv": 108,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb821",
+      "0xc76a",
+      "0xe2d4"
+    ]
   },
   "0xca12": {
     "name": "Bí Cấp Cửu Sởi",
@@ -429,7 +613,11 @@
     "npc": "Cửu Sởi",
     "lv": 6,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb910",
+      "0xc851"
+    ]
   },
   "0xca39": {
     "name": "Bí Cấp Di Di",
@@ -437,7 +625,12 @@
     "npc": "Di Di",
     "lv": 94,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb79d",
+      "0xc818",
+      "0xe2fc"
+    ]
   },
   "0xc981": {
     "name": "Bí Cấp Diêm Nhu",
@@ -445,7 +638,12 @@
     "npc": "Diêm Nhu",
     "lv": 73,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb829",
+      "0xc76c",
+      "0xe2d6"
+    ]
   },
   "0xc93f": {
     "name": "Bí Cấp Diêm Phố",
@@ -453,7 +651,11 @@
     "npc": "Diêm Phố",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8b0",
+      "0xc81a"
+    ]
   },
   "0xca2f": {
     "name": "Bí Cấp Diêm Tượng",
@@ -461,7 +663,10 @@
     "npc": "Diêm Tượng",
     "lv": 75,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8a8"
+    ]
   },
   "0xca23": {
     "name": "Bí Cấp Doãn Giai",
@@ -469,7 +674,10 @@
     "npc": "Doãn Giai",
     "lv": 77,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb904"
+    ]
   },
   "0xca2e": {
     "name": "Bí Cấp Dương Hoằng",
@@ -477,7 +685,11 @@
     "npc": "Dương Hoằng",
     "lv": 96,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb85b",
+      "0xc763"
+    ]
   },
   "0xcaec": {
     "name": "Bí Cấp Dương Hỗ",
@@ -485,7 +697,11 @@
     "npc": "Dương Hỗ",
     "lv": 80,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb958",
+      "0xc862"
+    ]
   },
   "0xc93e": {
     "name": "Bí Cấp Dương Ngang",
@@ -493,7 +709,10 @@
     "npc": "Dương Ngang",
     "lv": 89,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb92d"
+    ]
   },
   "0xca60": {
     "name": "Bí Cấp Dương Nghi",
@@ -501,7 +720,10 @@
     "npc": "Dương Nghi",
     "lv": 86,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb941"
+    ]
   },
   "0xc93d": {
     "name": "Bí Cấp Dương Nhâm",
@@ -509,7 +731,10 @@
     "npc": "Dương Nhâm",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8d9"
+    ]
   },
   "0xca97": {
     "name": "Bí Cấp Dương Phong",
@@ -517,7 +742,10 @@
     "npc": "Dương Phong",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb865"
+    ]
   },
   "0xca8f": {
     "name": "Bí Cấp Dương Phụ",
@@ -525,7 +753,10 @@
     "npc": "Dương Phụ",
     "lv": 113,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb89b"
+    ]
   },
   "0xca05": {
     "name": "Bí Cấp Dương Phụng",
@@ -533,7 +764,10 @@
     "npc": "Dương Phụng",
     "lv": 95,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb93e"
+    ]
   },
   "0xc96a": {
     "name": "Bí Cấp Dương Tu",
@@ -541,7 +775,12 @@
     "npc": "Dương Tu",
     "lv": 134,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb833",
+      "0xc7e9",
+      "0xe2f6"
+    ]
   },
   "0xca98": {
     "name": "Bí Cấp Dương Tùng",
@@ -549,7 +788,11 @@
     "npc": "Dương Tùng",
     "lv": 69,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8f5",
+      "0xc803"
+    ]
   },
   "0xcd18": {
     "name": "Bí Cấp G.C.Lượng 80",
@@ -557,7 +800,8 @@
     "npc": "Chư Cát Lượng",
     "lv": 80,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc9ce": {
     "name": "Bí Cấp Gia Cát Cẩn",
@@ -565,7 +809,11 @@
     "npc": "Gia Cát Cẩn",
     "lv": 98,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb826",
+      "0xc7c8"
+    ]
   },
   "0xca56": {
     "name": "Bí Cấp Gia Cát Lượng",
@@ -573,7 +821,12 @@
     "npc": "Gia Cát Lượng",
     "lv": 180,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7cb",
+      "0xc848",
+      "0xe302"
+    ]
   },
   "0xca65": {
     "name": "Bí Cấp Gia Cát Quân",
@@ -581,7 +834,11 @@
     "npc": "Gia Cát Quân",
     "lv": 85,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb816",
+      "0xc753"
+    ]
   },
   "0xcada": {
     "name": "Bí Cấp Gia Cát Quả",
@@ -589,7 +846,12 @@
     "npc": "Gia Cát Quả",
     "lv": 140,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb94e",
+      "0xc857",
+      "0xe30f"
+    ]
   },
   "0xc96c": {
     "name": "Bí Cấp Giả Hủ",
@@ -597,7 +859,11 @@
     "npc": "Gia Hủ",
     "lv": 115,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7be",
+      "0xc769"
+    ]
   },
   "0xc9a8": {
     "name": "Bí Cấp Giản Ung",
@@ -605,7 +871,11 @@
     "npc": "Giản Ung",
     "lv": 41,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a6",
+      "0xc838"
+    ]
   },
   "0xca04": {
     "name": "Bí Cấp Hoa Hùng",
@@ -613,7 +883,12 @@
     "npc": "Hoa Hùng",
     "lv": 110,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb82b",
+      "0xc792",
+      "0xe2bc"
+    ]
   },
   "0xcd16": {
     "name": "Bí Cấp Hoa Hùng 80",
@@ -621,7 +896,8 @@
     "npc": "Hoa Hùng",
     "lv": 80,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc9e7": {
     "name": "Bí Cấp Hoàng Bính",
@@ -629,7 +905,10 @@
     "npc": "Hoàng Bính",
     "lv": 83,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e3"
+    ]
   },
   "0xc9ca": {
     "name": "Bí Cấp Hoàng Cái",
@@ -637,7 +916,12 @@
     "npc": "Hoàng Cái",
     "lv": 117,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7e4",
+      "0xc745",
+      "0xe2fa"
+    ]
   },
   "0xcd1a": {
     "name": "Bí Cấp Hoàng Cái 80",
@@ -645,7 +929,8 @@
     "npc": "Hoàng Cái",
     "lv": 80,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xbd81": {
     "name": "Bí Cấp Hoàng Cái Quang",
@@ -653,7 +938,8 @@
     "npc": "Cuồng Quang Hoàng Cái",
     "lv": 177,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc9af": {
     "name": "Bí Cấp Hoàng Ng.Anh",
@@ -661,7 +947,12 @@
     "npc": "Hoàng Nguyệt Anh",
     "lv": 112,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7d2",
+      "0xc797",
+      "0xe29c"
+    ]
   },
   "0xca18": {
     "name": "Bí Cấp Hoàng P.Tung",
@@ -669,7 +960,11 @@
     "npc": "Hoàng Phủ Tung",
     "lv": 106,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb841",
+      "0xc7ae"
+    ]
   },
   "0xcaa3": {
     "name": "Bí Cấp Hoàng Quyền",
@@ -677,7 +972,11 @@
     "npc": "Hoàng Quyền",
     "lv": 96,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb87b",
+      "0xc7b2"
+    ]
   },
   "0xca67": {
     "name": "Bí Cấp Hoàng Th.Ngạn",
@@ -685,7 +984,12 @@
     "npc": "Hoàng Thừa Ngạn",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb845",
+      "0xc7ac",
+      "0xe2d5"
+    ]
   },
   "0xca48": {
     "name": "Bí Cấp Hoàng Trung",
@@ -693,7 +997,12 @@
     "npc": "Hoàng Trung",
     "lv": 132,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7ce",
+      "0xc841",
+      "0xe2ec"
+    ]
   },
   "0xca6e": {
     "name": "Bí Cấp Hoàng Tự",
@@ -701,7 +1010,10 @@
     "npc": "Hoàng Tự",
     "lv": 85,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb943"
+    ]
   },
   "0xca64": {
     "name": "Bí Cấp Hoắc Tuấn",
@@ -709,7 +1021,11 @@
     "npc": "Hoắc Tuấn",
     "lv": 87,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb832",
+      "0xc758"
+    ]
   },
   "0xca51": {
     "name": "Bí Cấp Huân Quyết",
@@ -717,7 +1033,8 @@
     "npc": "Huân Quyết",
     "lv": 66,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xca2d": {
     "name": "Bí Cấp Hà Quỳ",
@@ -725,7 +1042,11 @@
     "npc": "Hà Quỳ",
     "lv": 88,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb884",
+      "0xc7bc"
+    ]
   },
   "0xc978": {
     "name": "Bí Cấp Hàn Hạo",
@@ -733,7 +1054,11 @@
     "npc": "Hàn Hạo",
     "lv": 86,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb863",
+      "0xc770"
+    ]
   },
   "0xca2a": {
     "name": "Bí Cấp Hàn Mãnh",
@@ -741,7 +1066,12 @@
     "npc": "Hàn Mãnh",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb862",
+      "0xc760",
+      "0xe2c0"
+    ]
   },
   "0xca27": {
     "name": "Bí Cấp Hàn Toại",
@@ -749,7 +1079,12 @@
     "npc": "Hàn Toại",
     "lv": 97,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb889",
+      "0xc7cd",
+      "0xe2cc"
+    ]
   },
   "0xc934": {
     "name": "Bí Cấp Hàn Trung",
@@ -757,7 +1092,11 @@
     "npc": "Hàn Trung",
     "lv": 55,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a9",
+      "0xc839"
+    ]
   },
   "0xcae4": {
     "name": "Bí Cấp Hàn Tín",
@@ -765,7 +1104,11 @@
     "npc": "Hàn Tín",
     "lv": 120,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb952",
+      "0xc85c"
+    ]
   },
   "0xc9d0": {
     "name": "Bí Cấp Hàn Đương",
@@ -773,7 +1116,12 @@
     "npc": "Hàn Đương",
     "lv": 105,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb830",
+      "0xc78e",
+      "0xe2d8"
+    ]
   },
   "0xc951": {
     "name": "Bí Cấp Hác Chiêu",
@@ -781,7 +1129,10 @@
     "npc": "Hác Chiêu",
     "lv": 119,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb91f"
+    ]
   },
   "0xca6b": {
     "name": "Bí Cấp Hác Phổ",
@@ -789,7 +1140,10 @@
     "npc": "Hác Phổ",
     "lv": 96,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb877"
+    ]
   },
   "0xc9d1": {
     "name": "Bí Cấp Hám Trạch",
@@ -797,7 +1151,12 @@
     "npc": "Hám Trạch",
     "lv": 98,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7e6",
+      "0xc742",
+      "0xe2fb"
+    ]
   },
   "0xca81": {
     "name": "Bí Cấp Hình Đạo Vinh",
@@ -805,7 +1164,11 @@
     "npc": "Hình Đạo Vinh",
     "lv": 81,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ea",
+      "0xc7fa"
+    ]
   },
   "0xca7f": {
     "name": "Bí Cấp Hô Trù Tuyền",
@@ -813,7 +1176,10 @@
     "npc": "Hô Trù Tuyền",
     "lv": 103,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb919"
+    ]
   },
   "0xc97d": {
     "name": "Bí Cấp Hý Chí Tài",
@@ -821,7 +1187,12 @@
     "npc": "Hý Chí Tài",
     "lv": 112,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb822",
+      "0xc78f",
+      "0xe2df"
+    ]
   },
   "0xca66": {
     "name": "Bí Cấp Hướng Lãng",
@@ -829,7 +1200,11 @@
     "npc": "Hướng Lãng",
     "lv": 75,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8c1",
+      "0xc7fd"
+    ]
   },
   "0xca5e": {
     "name": "Bí Cấp Hướng Sủng",
@@ -837,7 +1212,11 @@
     "npc": "Hướng Sủng",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7d6",
+      "0xc757"
+    ]
   },
   "0xcaf0": {
     "name": "Bí Cấp Hạ Hầu Bá",
@@ -845,7 +1224,11 @@
     "npc": "Hạ Hầu Bá",
     "lv": 50,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb95a",
+      "0xc864"
+    ]
   },
   "0xc952": {
     "name": "Bí Cấp Hạ Hầu Thượng",
@@ -853,7 +1236,11 @@
     "npc": "Hạ Hầu Thượng",
     "lv": 97,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb875",
+      "0xc7f9"
+    ]
   },
   "0xc94c": {
     "name": "Bí Cấp Hạ Hầu Uyên",
@@ -861,7 +1248,12 @@
     "npc": "Hạ Hầu Uyên",
     "lv": 128,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7b0",
+      "0xc846",
+      "0xe2a0"
+    ]
   },
   "0xc94b": {
     "name": "Bí Cấp Hạ Hầu Đôn",
@@ -869,7 +1261,12 @@
     "npc": "Hạ Hầu Đôn",
     "lv": 130,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7af",
+      "0xc786",
+      "0xe2b0"
+    ]
   },
   "0xc9d8": {
     "name": "Bí Cấp Hạ Tề",
@@ -877,7 +1274,11 @@
     "npc": "Hạ Tề",
     "lv": 81,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb84e",
+      "0xc7d0"
+    ]
   },
   "0xcad9": {
     "name": "Bí Cấp Hạng Vũ",
@@ -885,7 +1286,12 @@
     "npc": "Hạng Vũ",
     "lv": 120,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb94d",
+      "0xc856",
+      "0xe30e"
+    ]
   },
   "0xcae5": {
     "name": "Bí Cấp Hạng Vũ",
@@ -893,7 +1299,11 @@
     "npc": "Hạng Vũ Bá Vương",
     "lv": 120,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb953",
+      "0xc85d"
+    ]
   },
   "0xc9a2": {
     "name": "Bí Cấp Hồ Ban",
@@ -901,7 +1311,10 @@
     "npc": "Hồ Ban",
     "lv": 58,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb944"
+    ]
   },
   "0xc9ef": {
     "name": "Bí Cấp Hồ Tống",
@@ -909,7 +1322,10 @@
     "npc": "Hồ Tống",
     "lv": 102,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8dd"
+    ]
   },
   "0xca2b": {
     "name": "Bí Cấp Hồ Xa Nhi",
@@ -917,7 +1333,10 @@
     "npc": "Hồ Xa Nhi",
     "lv": 88,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb92c"
+    ]
   },
   "0xca38": {
     "name": "Bí Cấp Hồng Minh",
@@ -925,7 +1344,10 @@
     "npc": "Hồng Minh",
     "lv": 78,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb917"
+    ]
   },
   "0xcae9": {
     "name": "Bí Cấp Hồng Đăng",
@@ -933,7 +1355,8 @@
     "npc": "Hồng Đăng",
     "lv": 30,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xc963": {
     "name": "Bí Cấp Hứa Chử",
@@ -941,7 +1364,11 @@
     "npc": "Hứa Chử",
     "lv": 131,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7b6",
+      "0xc843"
+    ]
   },
   "0xcd1c": {
     "name": "Bí Cấp Hứa Chử 80",
@@ -949,7 +1376,8 @@
     "npc": "Hứa Trử",
     "lv": 80,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc961": {
     "name": "Bí Cấp Hứa Du",
@@ -957,7 +1385,12 @@
     "npc": "Hứa Du",
     "lv": 94,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb839",
+      "0xc795",
+      "0xe2d2"
+    ]
   },
   "0xca14": {
     "name": "Bí Cấp Hứa Thiệu",
@@ -965,7 +1398,11 @@
     "npc": "Hứa Thiệu",
     "lv": 116,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb838",
+      "0xc783"
+    ]
   },
   "0xcaad": {
     "name": "Bí Cấp Hứa Tĩnh",
@@ -973,7 +1410,11 @@
     "npc": "Hứa Tĩnh",
     "lv": 108,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb840",
+      "0xc826"
+    ]
   },
   "0xca82": {
     "name": "Bí Cấp Kha Bỉ Năng",
@@ -981,7 +1422,10 @@
     "npc": "Kha Bỉ Năng",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8d2"
+    ]
   },
   "0xca5b": {
     "name": "Bí Cấp Khiên Chiêu",
@@ -989,7 +1433,11 @@
     "npc": "Khiên Chiêu",
     "lv": 79,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb890",
+      "0xc7bd"
+    ]
   },
   "0xca0a": {
     "name": "Bí Cấp Khoái Việt",
@@ -997,7 +1445,10 @@
     "npc": "Khoái Việt",
     "lv": 49,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb915"
+    ]
   },
   "0xcabd": {
     "name": "Bí Cấp Khu Vương",
@@ -1005,7 +1456,10 @@
     "npc": "Khu Vương",
     "lv": 131,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8cc"
+    ]
   },
   "0xbd83": {
     "name": "Bí Cấp Khuất Nguyên",
@@ -1013,7 +1467,8 @@
     "npc": "Khuất Nguyên",
     "lv": 55,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xca25": {
     "name": "Bí Cấp Khâu Lực Cư",
@@ -1021,7 +1476,11 @@
     "npc": "Khâu Lực Cư",
     "lv": 43,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7ad",
+      "0xc82f"
+    ]
   },
   "0xcaea": {
     "name": "Bí Cấp Khương Duy",
@@ -1029,7 +1488,11 @@
     "npc": "Khương Duy",
     "lv": 50,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb956",
+      "0xc860"
+    ]
   },
   "0xca53": {
     "name": "Bí Cấp Khương Tự",
@@ -1037,7 +1500,8 @@
     "npc": "Khương Tự",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xcad2": {
     "name": "Bí Cấp Khảo Lỗ",
@@ -1045,7 +1509,11 @@
     "npc": "Khảo Lỗ",
     "lv": 131,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb8a0",
+      "0xc83d"
+    ]
   },
   "0xc941": {
     "name": "Bí Cấp Khổng Dung",
@@ -1053,7 +1521,10 @@
     "npc": "Khổng Dung",
     "lv": 36,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb913"
+    ]
   },
   "0xca80": {
     "name": "Bí Cấp Khứ Ti",
@@ -1061,7 +1532,10 @@
     "npc": "Khứ Ti",
     "lv": 94,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb92b"
+    ]
   },
   "0xca30": {
     "name": "Bí Cấp Kiều Nhuy",
@@ -1069,7 +1543,10 @@
     "npc": "Kiều Nhuy",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb937"
+    ]
   },
   "0xc9fb": {
     "name": "Bí Cấp Kỷ Linh",
@@ -1077,7 +1554,11 @@
     "npc": "Kỷ Linh",
     "lv": 105,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb836",
+      "0xc766"
+    ]
   },
   "0xcac6": {
     "name": "Bí Cấp L.Mộc La Na",
@@ -1085,7 +1566,10 @@
     "npc": "Lan Mộc La Na",
     "lv": 86,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb90f"
+    ]
   },
   "0xca8e": {
     "name": "Bí Cấp Lang Trĩ",
@@ -1093,7 +1577,10 @@
     "npc": "Lang Trĩ",
     "lv": 114,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb935"
+    ]
   },
   "0xc99d": {
     "name": "Bí Cấp Liêu Hóa",
@@ -1101,7 +1588,12 @@
     "npc": "Liêu Hóa",
     "lv": 88,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb815",
+      "0xc778",
+      "0xe2eb"
+    ]
   },
   "0xca68": {
     "name": "Bí Cấp Liêu Lập",
@@ -1109,7 +1601,12 @@
     "npc": "Liêu Lập",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb84a",
+      "0xc754",
+      "0xe2e4"
+    ]
   },
   "0xcab9": {
     "name": "Bí Cấp Liễu Thụ Xuân",
@@ -1117,7 +1614,10 @@
     "npc": "Liệu Thụ Xuân",
     "lv": 70,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb91d"
+    ]
   },
   "0xc989": {
     "name": "Bí Cấp Lâu Khuê",
@@ -1125,7 +1625,11 @@
     "npc": "Lâu Khuê",
     "lv": 85,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb814",
+      "0xc74b"
+    ]
   },
   "0xcaf1": {
     "name": "Bí Cấp Lôi Ám K.Minh",
@@ -1133,7 +1637,8 @@
     "npc": "Lôi Ám Khổng Minh",
     "lv": 180,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xcaa0": {
     "name": "Bí Cấp Lôi Đồng",
@@ -1141,7 +1646,10 @@
     "npc": "Lôi Đồng",
     "lv": 88,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8db"
+    ]
   },
   "0xcaa5": {
     "name": "Bí Cấp Lý Khôi",
@@ -1149,7 +1657,11 @@
     "npc": "Lý Khôi",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb86b",
+      "0xc7b4"
+    ]
   },
   "0xca07": {
     "name": "Bí Cấp Lý Mông",
@@ -1157,7 +1669,10 @@
     "npc": "Lý Mông",
     "lv": 83,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb931"
+    ]
   },
   "0xca9d": {
     "name": "Bí Cấp Lý Nghiêm",
@@ -1165,7 +1680,10 @@
     "npc": "Lý Nghiêm",
     "lv": 127,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb83a"
+    ]
   },
   "0xc9f9": {
     "name": "Bí Cấp Lý Nho",
@@ -1173,7 +1691,12 @@
     "npc": "Lý Nho",
     "lv": 106,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7f0",
+      "0xc73a",
+      "0xe2b8"
+    ]
   },
   "0xc983": {
     "name": "Bí Cấp Lý Phu",
@@ -1181,7 +1704,11 @@
     "npc": "Lý Phu",
     "lv": 78,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb885",
+      "0xc7eb"
+    ]
   },
   "0xc9d9": {
     "name": "Bí Cấp Lý Thuật",
@@ -1189,7 +1716,11 @@
     "npc": "Lý Thuật",
     "lv": 96,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb85e",
+      "0xc75c"
+    ]
   },
   "0xc9f8": {
     "name": "Bí Cấp Lý Thôi",
@@ -1197,7 +1728,10 @@
     "npc": "Lý Thôi",
     "lv": 96,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb895"
+    ]
   },
   "0xc977": {
     "name": "Bí Cấp Lý Thông",
@@ -1205,7 +1739,12 @@
     "npc": "Lý Thông",
     "lv": 82,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb828",
+      "0xc750",
+      "0xe2dc"
+    ]
   },
   "0xc9f7": {
     "name": "Bí Cấp Lý Túc",
@@ -1213,7 +1752,11 @@
     "npc": "Lý Túc",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb87d",
+      "0xc79f"
+    ]
   },
   "0xc948": {
     "name": "Bí Cấp Lý Điển",
@@ -1221,7 +1764,11 @@
     "npc": "Lý Điển",
     "lv": 100,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb801",
+      "0xc76e"
+    ]
   },
   "0xc93a": {
     "name": "Bí Cấp Lý Đại Mục",
@@ -1229,7 +1776,11 @@
     "npc": "Lý Đại Mục",
     "lv": 66,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a0",
+      "0xc820"
+    ]
   },
   "0xc9bd": {
     "name": "Bí Cấp Lăng Thống",
@@ -1237,7 +1788,11 @@
     "npc": "Lăng Thống",
     "lv": 95,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7e2",
+      "0xc768"
+    ]
   },
   "0xca89": {
     "name": "Bí Cấp Lưu Ba",
@@ -1245,7 +1800,12 @@
     "npc": "Lưu Ba",
     "lv": 109,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb844",
+      "0xc7a2",
+      "0xe2c6"
+    ]
   },
   "0xcae3": {
     "name": "Bí Cấp Lưu Bang",
@@ -1253,7 +1813,11 @@
     "npc": "Lưu Bang",
     "lv": 120,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb951",
+      "0xc85b"
+    ]
   },
   "0xc9a4": {
     "name": "Bí Cấp Lưu Bị",
@@ -1261,7 +1825,12 @@
     "npc": "Lưu Bị",
     "lv": 110,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7cd",
+      "0xc7ba",
+      "0xe2f2"
+    ]
   },
   "0xc944": {
     "name": "Bí Cấp Lưu Diệp",
@@ -1269,7 +1838,12 @@
     "npc": "Lưu Diệp",
     "lv": 113,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb80d",
+      "0xc799",
+      "0xe2b6"
+    ]
   },
   "0xca31": {
     "name": "Bí Cấp Lưu Huân",
@@ -1277,7 +1851,10 @@
     "npc": "Lưu Huân",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb93f"
+    ]
   },
   "0xca7a": {
     "name": "Bí Cấp Lưu Kỳ",
@@ -1285,7 +1862,10 @@
     "npc": "Lưu Kỳ",
     "lv": 36,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb918"
+    ]
   },
   "0xc98f": {
     "name": "Bí Cấp Lưu Nhược",
@@ -1293,7 +1873,10 @@
     "npc": "Lưu Nhược",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8be"
+    ]
   },
   "0xc9a3": {
     "name": "Bí Cấp Lưu Phong",
@@ -1301,7 +1884,11 @@
     "npc": "Lưu Phong",
     "lv": 84,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb83e",
+      "0xc7b7"
+    ]
   },
   "0xcaae": {
     "name": "Bí Cấp Lưu Quý",
@@ -1309,7 +1896,11 @@
     "npc": "Lưu Quý",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8c7",
+      "0xc7ed"
+    ]
   },
   "0xc990": {
     "name": "Bí Cấp Lưu Triển",
@@ -1317,7 +1908,10 @@
     "npc": "Lưu Triển",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8cf"
+    ]
   },
   "0xcad0": {
     "name": "Bí Cấp Lưu Tử Bân",
@@ -1325,7 +1919,10 @@
     "npc": "Lưu Tử Bân",
     "lv": 139,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb928"
+    ]
   },
   "0xcaa2": {
     "name": "Bí Cấp Lưu Ung",
@@ -1333,7 +1930,10 @@
     "npc": "Lưu Ung",
     "lv": 79,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb942"
+    ]
   },
   "0xca41": {
     "name": "Bí Cấp Lương Hưng",
@@ -1341,7 +1941,10 @@
     "npc": "Lương Hưng",
     "lv": 98,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb939"
+    ]
   },
   "0xc980": {
     "name": "Bí Cấp Lương Tập",
@@ -1349,7 +1952,11 @@
     "npc": "Lương Tập",
     "lv": 89,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb860",
+      "0xc76f"
+    ]
   },
   "0xbd7a": {
     "name": "Bí Cấp Lạc Thần",
@@ -1357,7 +1964,8 @@
     "npc": "Lạc Thần Chân Mật",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc9df": {
     "name": "Bí Cấp Lạc Thống",
@@ -1365,7 +1973,11 @@
     "npc": "Lạc Thống",
     "lv": 75,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb868",
+      "0xc7a3"
+    ]
   },
   "0xca73": {
     "name": "Bí Cấp Lại Cung",
@@ -1373,7 +1985,12 @@
     "npc": "Lại Cung",
     "lv": 113,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb89f",
+      "0xc7de",
+      "0xe2e0"
+    ]
   },
   "0xc9cf": {
     "name": "Bí Cấp Lỗ Túc",
@@ -1381,7 +1998,12 @@
     "npc": "Lỗ Túc",
     "lv": 112,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7e7",
+      "0xc793",
+      "0xe2c5"
+    ]
   },
   "0xca88": {
     "name": "Bí Cấp Lỗ Tạp",
@@ -1389,7 +2011,12 @@
     "npc": "Lỗ Tạp",
     "lv": 133,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb817",
+      "0xc77a",
+      "0xe2bb"
+    ]
   },
   "0xc97a": {
     "name": "Bí Cấp Lộ Chiêu",
@@ -1397,7 +2024,11 @@
     "npc": "Lộ Chiêu",
     "lv": 74,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ab",
+      "0xc7dc"
+    ]
   },
   "0xcaef": {
     "name": "Bí Cấp Lục Kháng",
@@ -1405,7 +2036,11 @@
     "npc": "Lục Kháng",
     "lv": 50,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb959",
+      "0xc863"
+    ]
   },
   "0xc9c7": {
     "name": "Bí Cấp Lục Tích",
@@ -1413,7 +2048,11 @@
     "npc": "Lục Tích",
     "lv": 68,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb888",
+      "0xc7ca"
+    ]
   },
   "0xca58": {
     "name": "Bí Cấp Lục Tốn",
@@ -1421,7 +2060,12 @@
     "npc": "Lục Tốn",
     "lv": 167,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7e0",
+      "0xc84b",
+      "0xe305"
+    ]
   },
   "0xc9f5": {
     "name": "Bí Cấp Lữ Bố",
@@ -1429,7 +2073,12 @@
     "npc": "Lữ Bố",
     "lv": 150,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7ea",
+      "0xc847",
+      "0xe2f3"
+    ]
   },
   "0xcacb": {
     "name": "Bí Cấp Lữ Khải",
@@ -1437,7 +2086,10 @@
     "npc": "Lữ Khải",
     "lv": 103,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb926"
+    ]
   },
   "0xc947": {
     "name": "Bí Cấp Lữ Kiền",
@@ -1445,7 +2097,12 @@
     "npc": "Lữ Kiền",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb89c",
+      "0xc7da",
+      "0xe2db"
+    ]
   },
   "0xc9b8": {
     "name": "Bí Cấp Lữ Mông",
@@ -1453,7 +2110,12 @@
     "npc": "Lữ Mông",
     "lv": 122,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7da",
+      "0xc7ef",
+      "0xe29f"
+    ]
   },
   "0xcaaa": {
     "name": "Bí Cấp Lữ Nghĩa",
@@ -1461,7 +2123,11 @@
     "npc": "Lữ Nghĩa",
     "lv": 74,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb903",
+      "0xc810"
+    ]
   },
   "0xc9b9": {
     "name": "Bí Cấp Lữ Phạm",
@@ -1469,7 +2135,11 @@
     "npc": "Lữ Phạm",
     "lv": 68,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb90a",
+      "0xc80f"
+    ]
   },
   "0xc9e1": {
     "name": "Bí Cấp Lữ Đại",
@@ -1477,7 +2147,11 @@
     "npc": "Lữ Đại",
     "lv": 84,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb87f",
+      "0xc82a"
+    ]
   },
   "0xcac8": {
     "name": "Bí Cấp Ma Cổ Lạp",
@@ -1485,7 +2159,10 @@
     "npc": "Ma Cổ Lạp",
     "lv": 126,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb921"
+    ]
   },
   "0xcae2": {
     "name": "Bí Cấp Ma Quan Vũ",
@@ -1493,7 +2170,8 @@
     "npc": "Ma Quan Vũ",
     "lv": 180,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xcaed": {
     "name": "Bí Cấp Ma Tống Dũng",
@@ -1501,7 +2179,8 @@
     "npc": "Ma Tống Dũng",
     "lv": 180,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xcaee": {
     "name": "Bí Cấp Ma Tống Nhân",
@@ -1509,7 +2188,8 @@
     "npc": "Ma Tống Nhân",
     "lv": 180,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc9a7": {
     "name": "Bí Cấp Mi Phương",
@@ -1517,7 +2197,10 @@
     "npc": "My Phương",
     "lv": 44,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a5"
+    ]
   },
   "0xc9a6": {
     "name": "Bí Cấp Mi Trúc",
@@ -1525,7 +2208,10 @@
     "npc": "My Trúc",
     "lv": 37,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a4"
+    ]
   },
   "0xca3f": {
     "name": "Bí Cấp Mã Hưu",
@@ -1533,7 +2219,10 @@
     "npc": "Mã Hưu",
     "lv": 102,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb89e"
+    ]
   },
   "0xca4b": {
     "name": "Bí Cấp Mã Lương",
@@ -1541,7 +2230,12 @@
     "npc": "Mã Lương",
     "lv": 121,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb80c",
+      "0xc77f",
+      "0xe2ad"
+    ]
   },
   "0xc931": {
     "name": "Bí Cấp Mã Ng.Nghĩa",
@@ -1549,7 +2243,10 @@
     "npc": "Mã Nguyên Nghĩa",
     "lv": 70,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7fb"
+    ]
   },
   "0xc99e": {
     "name": "Bí Cấp Mã Siêu",
@@ -1557,7 +2254,12 @@
     "npc": "Mã Siêu",
     "lv": 134,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7d0",
+      "0xc782",
+      "0xe2ab"
+    ]
   },
   "0xca40": {
     "name": "Bí Cấp Mã Thiết",
@@ -1565,7 +2267,11 @@
     "npc": "Mã Thiết",
     "lv": 100,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb876",
+      "0xc83b"
+    ]
   },
   "0xca5f": {
     "name": "Bí Cấp Mã Tắc",
@@ -1573,7 +2279,11 @@
     "npc": "Mã Tắc",
     "lv": 102,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb831",
+      "0xc772"
+    ]
   },
   "0xc9a1": {
     "name": "Bí Cấp Mã Đại",
@@ -1581,7 +2291,12 @@
     "npc": "Mã Đại",
     "lv": 115,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb82c",
+      "0xc79d",
+      "0xe2bd"
+    ]
   },
   "0xca26": {
     "name": "Bí Cấp Mã Đằng",
@@ -1589,7 +2304,12 @@
     "npc": "Mã Đằng",
     "lv": 105,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7f7",
+      "0xc755",
+      "0xe294"
+    ]
   },
   "0xc96e": {
     "name": "Bí Cấp Mãn Sủng",
@@ -1597,7 +2317,12 @@
     "npc": "Mãn Sủng",
     "lv": 88,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb85d",
+      "0xc773",
+      "0xe2e3"
+    ]
   },
   "0xcac4": {
     "name": "Bí Cấp Mạn Đà La",
@@ -1605,7 +2330,10 @@
     "npc": "Mạn Đà La",
     "lv": 147,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb900"
+    ]
   },
   "0xca1a": {
     "name": "Bí Cấp Mạnh Công Uy",
@@ -1613,7 +2341,11 @@
     "npc": "Mạnh Công Uy",
     "lv": 42,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb88e",
+      "0xc7b3"
+    ]
   },
   "0xcac9": {
     "name": "Bí Cấp Mạnh Hoạch",
@@ -1621,7 +2353,10 @@
     "npc": "Mạnh Hoạch",
     "lv": 130,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb923"
+    ]
   },
   "0xc9b3": {
     "name": "Bí Cấp Mạnh Đạt",
@@ -1629,7 +2364,11 @@
     "npc": "Mạnh Đạt",
     "lv": 115,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb851",
+      "0xc798"
+    ]
   },
   "0xca87": {
     "name": "Bí Cấp Mẹ Vĩ Đại",
@@ -1637,7 +2376,12 @@
     "npc": "Mẹ Vĩ Đại",
     "lv": 120,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb949",
+      "0xc84d",
+      "0xe300"
+    ]
   },
   "0xcad5": {
     "name": "Bí Cấp Mễ Nã",
@@ -1645,7 +2389,11 @@
     "npc": "Mễ Nã",
     "lv": 131,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8a1",
+      "0xc83e"
+    ]
   },
   "0xca44": {
     "name": "Bí Cấp Mộng M.Cư Sĩ",
@@ -1653,7 +2401,11 @@
     "npc": "Mộng Mai Cư Sĩ",
     "lv": 145,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8b3",
+      "0xe2de"
+    ]
   },
   "0xcab3": {
     "name": "Bí Cấp Na Lị",
@@ -1661,7 +2413,12 @@
     "npc": "Na Lị",
     "lv": 51,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb79e",
+      "0xc836",
+      "0xe2fe"
+    ]
   },
   "0xcad4": {
     "name": "Bí Cấp Na Âu",
@@ -1669,7 +2426,11 @@
     "npc": "Na Âu",
     "lv": 130,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8a2",
+      "0xc83f"
+    ]
   },
   "0xca32": {
     "name": "Bí Cấp Nghiêm B.Hổ",
@@ -1677,7 +2438,12 @@
     "npc": "Nghiêm Bạch Hổ",
     "lv": 101,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb804",
+      "0xc73e",
+      "0xe29e"
+    ]
   },
   "0xca49": {
     "name": "Bí Cấp Nghiêm Nhan",
@@ -1685,7 +2451,11 @@
     "npc": "Nghiêm Nhan",
     "lv": 124,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7d7",
+      "0xc7e4"
+    ]
   },
   "0xc9cb": {
     "name": "Bí Cấp Ngu Phiên",
@@ -1693,7 +2463,12 @@
     "npc": "Ngu Phiên",
     "lv": 83,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb812",
+      "0xc743",
+      "0xe2c8"
+    ]
   },
   "0xc99a": {
     "name": "Bí Cấp Nguyễn Vũ",
@@ -1701,7 +2476,10 @@
     "npc": "Nguyễn Vũ",
     "lv": 68,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb91a"
+    ]
   },
   "0xbd82": {
     "name": "Bí Cấp Nguyệt Anh Ám",
@@ -1709,7 +2487,8 @@
     "npc": "Ám Hoàng Nguyệt Anh",
     "lv": 177,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xca9a": {
     "name": "Bí Cấp Ngô Ban",
@@ -1717,7 +2496,11 @@
     "npc": "Ngô Ban",
     "lv": 89,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8f1",
+      "0xc80e"
+    ]
   },
   "0xc998": {
     "name": "Bí Cấp Ngô Chất",
@@ -1725,7 +2508,10 @@
     "npc": "Ngô Chất",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e4"
+    ]
   },
   "0xca9b": {
     "name": "Bí Cấp Ngô Lan",
@@ -1733,7 +2519,10 @@
     "npc": "Ngô Lan",
     "lv": 82,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb902"
+    ]
   },
   "0xc9e3": {
     "name": "Bí Cấp Ngô Phạm",
@@ -1741,7 +2530,10 @@
     "npc": "Ngô Phạm",
     "lv": 87,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb892"
+    ]
   },
   "0xc9e0": {
     "name": "Bí Cấp Ngô Xán",
@@ -1749,7 +2541,12 @@
     "npc": "Ngô Xán",
     "lv": 78,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb859",
+      "0xc744",
+      "0xe2c7"
+    ]
   },
   "0xca9c": {
     "name": "Bí Cấp Ngô Ý",
@@ -1757,7 +2554,12 @@
     "npc": "Ngô Ý",
     "lv": 98,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb842",
+      "0xc7b6",
+      "0xe2e8"
+    ]
   },
   "0xc943": {
     "name": "Bí Cấp Ngưu Kim",
@@ -1765,7 +2567,11 @@
     "npc": "Ngưu Kim",
     "lv": 88,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7ff",
+      "0xc7b8"
+    ]
   },
   "0xc9f6": {
     "name": "Bí Cấp Ngưu Phụ",
@@ -1773,7 +2579,10 @@
     "npc": "Ngưu Phụ",
     "lv": 99,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb899"
+    ]
   },
   "0xcadd": {
     "name": "Bí Cấp Ngọc Thố",
@@ -1781,7 +2590,10 @@
     "npc": "Ngọc Thố Bảo Bảo",
     "lv": 20,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb950"
+    ]
   },
   "0xcacc": {
     "name": "Bí Cấp Ngột Đột Cốt",
@@ -1789,7 +2601,10 @@
     "npc": "Ngột Đột Cốt",
     "lv": 127,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb925"
+    ]
   },
   "0xc9a9": {
     "name": "Bí Cấp Ngụy Diên",
@@ -1797,7 +2612,12 @@
     "npc": "Ngụy Diên",
     "lv": 126,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7cf",
+      "0xc780",
+      "0xe298"
+    ]
   },
   "0xca11": {
     "name": "Bí Cấp Ngụy Tục",
@@ -1805,7 +2625,10 @@
     "npc": "Ngụy Tục",
     "lv": 89,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb93a"
+    ]
   },
   "0xcad3": {
     "name": "Bí Cấp Nh.Đ.Tuyết 2",
@@ -1813,7 +2636,11 @@
     "npc": "Nhạn Điêu Tuyết 2",
     "lv": 140,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xc84f",
+      "0xe307"
+    ]
   },
   "0xc9ea": {
     "name": "Bí Cấp Nhan Liên",
@@ -1821,7 +2648,10 @@
     "npc": "Nhan Liên",
     "lv": 76,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8df"
+    ]
   },
   "0xca10": {
     "name": "Bí Cấp Nhan Lương",
@@ -1829,7 +2659,12 @@
     "npc": "Nhan Lương",
     "lv": 121,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7ee",
+      "0xc78a",
+      "0xe299"
+    ]
   },
   "0xc9e9": {
     "name": "Bí Cấp Nhiêu Trợ",
@@ -1837,7 +2672,10 @@
     "npc": "Nhiêu Trợ",
     "lv": 76,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8de"
+    ]
   },
   "0xca3b": {
     "name": "Bí Cấp Nhĩ Chi",
@@ -1845,7 +2683,10 @@
     "npc": "Nhĩ Chi",
     "lv": 95,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb932"
+    ]
   },
   "0xc970": {
     "name": "Bí Cấp Nhạc Tiến",
@@ -1853,7 +2694,12 @@
     "npc": "Nhạc Tiến",
     "lv": 112,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb819",
+      "0xc76d",
+      "0xe2d9"
+    ]
   },
   "0xcab8": {
     "name": "Bí Cấp Nhạn Đ.Tuyết",
@@ -1861,7 +2707,11 @@
     "npc": "Nhạn Điêu Tuyết",
     "lv": 122,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb911",
+      "0xc850"
+    ]
   },
   "0xc9cc": {
     "name": "Bí Cấp Phan Chương",
@@ -1869,7 +2719,11 @@
     "npc": "Phan Chương",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb881",
+      "0xc7b0"
+    ]
   },
   "0xcab6": {
     "name": "Bí Cấp Phu La Hàn",
@@ -1877,7 +2731,11 @@
     "npc": "Phu La Hàn",
     "lv": 117,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ce",
+      "0xc82e"
+    ]
   },
   "0xca0d": {
     "name": "Bí Cấp Phàn Trù",
@@ -1885,7 +2743,11 @@
     "npc": "Phàn Trù",
     "lv": 94,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb891",
+      "0xc819"
+    ]
   },
   "0xca4a": {
     "name": "Bí Cấp Pháp Chính",
@@ -1893,7 +2755,12 @@
     "npc": "Pháp Chính",
     "lv": 132,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7d1",
+      "0xc7dd",
+      "0xe2af"
+    ]
   },
   "0xcaa4": {
     "name": "Bí Cấp Phí Quan",
@@ -1901,7 +2768,11 @@
     "npc": "Phí Quan",
     "lv": 86,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8f3",
+      "0xc800"
+    ]
   },
   "0xca3d": {
     "name": "Bí Cấp Phí Sạn",
@@ -1909,7 +2780,10 @@
     "npc": "Phí Sạn",
     "lv": 103,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb938"
+    ]
   },
   "0xc968": {
     "name": "Bí Cấp Phó Cán",
@@ -1917,7 +2791,11 @@
     "npc": "Phó Cán",
     "lv": 84,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb85c",
+      "0xc76b"
+    ]
   },
   "0xca72": {
     "name": "Bí Cấp Phó Đồng",
@@ -1925,7 +2803,10 @@
     "npc": "Phó Đồng",
     "lv": 107,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8c2"
+    ]
   },
   "0xca1f": {
     "name": "Bí Cấp Phùng Kỷ",
@@ -1933,7 +2814,11 @@
     "npc": "Phùng Kỷ",
     "lv": 82,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb811",
+      "0xc73b"
+    ]
   },
   "0xca69": {
     "name": "Bí Cấp Phùng Tập",
@@ -1941,7 +2826,10 @@
     "npc": "Phùng Tập",
     "lv": 82,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ad"
+    ]
   },
   "0xca6f": {
     "name": "Bí Cấp Phượng Nhi",
@@ -1949,7 +2837,10 @@
     "npc": "Phượng Nhi",
     "lv": 105,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb857"
+    ]
   },
   "0xcabf": {
     "name": "Bí Cấp Phạm Sư Mạn",
@@ -1957,7 +2848,10 @@
     "npc": "Phạm Sư Mạn",
     "lv": 129,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8c6"
+    ]
   },
   "0xcac0": {
     "name": "Bí Cấp Phạm Tầm",
@@ -1965,7 +2859,10 @@
     "npc": "Phạm Tầm",
     "lv": 125,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8c4"
+    ]
   },
   "0xcabe": {
     "name": "Bí Cấp Phạm Vương",
@@ -1973,7 +2870,10 @@
     "npc": "Phạm Vương",
     "lv": 120,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ca"
+    ]
   },
   "0xcac2": {
     "name": "Bí Cấp Phất La",
@@ -1981,7 +2881,10 @@
     "npc": "Phất La",
     "lv": 98,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ed"
+    ]
   },
   "0xca3c": {
     "name": "Bí Cấp Phổ Tịnh",
@@ -1989,7 +2892,12 @@
     "npc": "Phổ Tịnh",
     "lv": 146,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb850",
+      "0xc858",
+      "0xe2d0"
+    ]
   },
   "0xcaa1": {
     "name": "Bí Cấp Phụ Khuông",
@@ -1997,7 +2905,11 @@
     "npc": "Phụ Khuông",
     "lv": 86,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb86e",
+      "0xc7e8"
+    ]
   },
   "0xc987": {
     "name": "Bí Cấp Qu.Nữ Vương",
@@ -2005,7 +2917,10 @@
     "npc": "Quách Nữ Vương",
     "lv": 104,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb823"
+    ]
   },
   "0xc9aa": {
     "name": "Bí Cấp Quan Bình",
@@ -2013,7 +2928,11 @@
     "npc": "Quan Bình",
     "lv": 104,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7c7",
+      "0xc790"
+    ]
   },
   "0xca63": {
     "name": "Bí Cấp Quan Hưng",
@@ -2021,7 +2940,10 @@
     "npc": "Quan Hưng",
     "lv": 127,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7d4"
+    ]
   },
   "0xc9b0": {
     "name": "Bí Cấp Quan Ng.Bình",
@@ -2029,7 +2951,11 @@
     "npc": "Quan Ngân Bình",
     "lv": 96,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb80e",
+      "0xc7e5"
+    ]
   },
   "0xca62": {
     "name": "Bí Cấp Quan Sách",
@@ -2037,7 +2963,10 @@
     "npc": "Quan Sách",
     "lv": 125,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb855"
+    ]
   },
   "0xc9ab": {
     "name": "Bí Cấp Quan Vũ",
@@ -2045,7 +2974,12 @@
     "npc": "Quan Vũ",
     "lv": 135,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7ca",
+      "0xc7fe",
+      "0xe2f0"
+    ]
   },
   "0xbd7b": {
     "name": "Bí Cấp Quang Lưu Bị",
@@ -2053,7 +2987,8 @@
     "npc": "Lưu Bị",
     "lv": 177,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xca00": {
     "name": "Bí Cấp Quách Dĩ",
@@ -2061,7 +2996,11 @@
     "npc": "Quách Dĩ",
     "lv": 95,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb893",
+      "0xc806"
+    ]
   },
   "0xc964": {
     "name": "Bí Cấp Quách Gia",
@@ -2069,7 +3008,12 @@
     "npc": "Quách Gia",
     "lv": 135,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7b4",
+      "0xc7d1",
+      "0xe2a4"
+    ]
   },
   "0xcd19": {
     "name": "Bí Cấp Quách Gia 80",
@@ -2077,7 +3021,8 @@
     "npc": "Quách Gia",
     "lv": 80,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xca90": {
     "name": "Bí Cấp Quách Hoài",
@@ -2085,7 +3030,10 @@
     "npc": "Quách Hoài",
     "lv": 112,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8d8"
+    ]
   },
   "0xca79": {
     "name": "Bí Cấp Quách Viên",
@@ -2093,7 +3041,12 @@
     "npc": "Quách Viên",
     "lv": 104,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb867",
+      "0xc75e",
+      "0xe2f8"
+    ]
   },
   "0xc932": {
     "name": "Bí Cấp Quách Đại",
@@ -2101,7 +3054,11 @@
     "npc": "Quách Đại",
     "lv": 47,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a8",
+      "0xc827"
+    ]
   },
   "0xca01": {
     "name": "Bí Cấp Quách Đồ",
@@ -2109,7 +3066,11 @@
     "npc": "Quách Đồ",
     "lv": 92,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb84c",
+      "0xc73c"
+    ]
   },
   "0xc935": {
     "name": "Bí Cấp Quản Hợi",
@@ -2117,7 +3078,11 @@
     "npc": "Quản Hợi",
     "lv": 78,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8f7",
+      "0xc802"
+    ]
   },
   "0xc995": {
     "name": "Bí Cấp Quản Lộ",
@@ -2125,7 +3090,10 @@
     "npc": "Quản Lộ",
     "lv": 141,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8f8"
+    ]
   },
   "0xca28": {
     "name": "Bí Cấp Quản Ninh",
@@ -2133,7 +3101,11 @@
     "npc": "Quản Ninh",
     "lv": 32,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8b2",
+      "0xc7d2"
+    ]
   },
   "0xca22": {
     "name": "Bí Cấp Quản Thừa",
@@ -2141,7 +3113,10 @@
     "npc": "Quản Thừa",
     "lv": 104,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb933"
+    ]
   },
   "0xca86": {
     "name": "Bí Cấp Quỷ Krampus",
@@ -2149,7 +3124,8 @@
     "npc": "Quỷ Krampus",
     "lv": 40,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xca4f": {
     "name": "Bí Cấp Sa Ma Kha",
@@ -2157,7 +3133,11 @@
     "npc": "Sa Ma Kha",
     "lv": 126,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb864",
+      "0xc7f2"
+    ]
   },
   "0xcad6": {
     "name": "Bí Cấp Sa Âu Sa",
@@ -2165,7 +3145,11 @@
     "npc": "Sa Âu Sa",
     "lv": 131,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8a3",
+      "0xc840"
+    ]
   },
   "0xca8c": {
     "name": "Bí Cấp Sĩ Hữu",
@@ -2173,7 +3157,10 @@
     "npc": "Sĩ Hữu",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8a9"
+    ]
   },
   "0xca8d": {
     "name": "Bí Cấp Sĩ Vũ",
@@ -2181,7 +3168,10 @@
     "npc": "Sĩ Vũ",
     "lv": 94,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8af"
+    ]
   },
   "0xc979": {
     "name": "Bí Cấp Sử Hoán",
@@ -2189,7 +3179,11 @@
     "npc": "Sử Hoán",
     "lv": 73,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8eb",
+      "0xc80c"
+    ]
   },
   "0xcac3": {
     "name": "Bí Cấp T.Già Bà La",
@@ -2197,7 +3191,10 @@
     "npc": "Tăng Già Bà La",
     "lv": 135,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb922"
+    ]
   },
   "0xc971": {
     "name": "Bí Cấp Tang Bá",
@@ -2205,7 +3202,12 @@
     "npc": "Tang Bá",
     "lv": 104,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7f5",
+      "0xc7ff",
+      "0xe2f5"
+    ]
   },
   "0xca7e": {
     "name": "Bí Cấp Th.Qu.Nguyên",
@@ -2213,7 +3215,12 @@
     "npc": "Th.Quảng Nguyên",
     "lv": 104,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb82e",
+      "0xc78b",
+      "0xe2c4"
+    ]
   },
   "0xca96": {
     "name": "Bí Cấp Thiên Vạn",
@@ -2221,7 +3228,10 @@
     "npc": "Thiên Vạn",
     "lv": 101,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb93c"
+    ]
   },
   "0xcacd": {
     "name": "Bí Cấp Thiết Mộc Gia",
@@ -2229,7 +3239,10 @@
     "npc": "Thiết Mộc Gia",
     "lv": 146,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb92a"
+    ]
   },
   "0xca16": {
     "name": "Bí Cấp Thuần V.Quỳnh",
@@ -2237,7 +3250,12 @@
     "npc": "Thuần Vu Quỳnh",
     "lv": 94,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb886",
+      "0xc7c2",
+      "0xe2bf"
+    ]
   },
   "0xca93": {
     "name": "Bí Cấp Thành C.Anh",
@@ -2245,7 +3263,10 @@
     "npc": "Thành Công Anh",
     "lv": 102,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8cd"
+    ]
   },
   "0xc96f": {
     "name": "Bí Cấp Thái Dương",
@@ -2253,7 +3274,11 @@
     "npc": "Thái Dương",
     "lv": 73,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8da",
+      "0xc7ee"
+    ]
   },
   "0xca0f": {
     "name": "Bí Cấp Thái Mạo",
@@ -2261,7 +3286,11 @@
     "npc": "Thái Mạo",
     "lv": 85,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb84d",
+      "0xc7f4"
+    ]
   },
   "0xca74": {
     "name": "Bí Cấp Thái Sử Hưởng",
@@ -2269,7 +3298,11 @@
     "npc": "Thái Sử Hưởng",
     "lv": 100,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ba",
+      "0xc822"
+    ]
   },
   "0xc9b5": {
     "name": "Bí Cấp Thái Sử Từ",
@@ -2277,7 +3310,12 @@
     "npc": "Thái Sử Từ",
     "lv": 134,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7d8",
+      "0xc7cb",
+      "0xe2ac"
+    ]
   },
   "0xca0e": {
     "name": "Bí Cấp Thái Ung",
@@ -2285,7 +3323,10 @@
     "npc": "Thái Ung",
     "lv": 23,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb914"
+    ]
   },
   "0xca13": {
     "name": "Bí Cấp Thái Văn Cơ",
@@ -2293,7 +3334,11 @@
     "npc": "Thái Văn Cơ",
     "lv": 78,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7c1",
+      "0xc74c"
+    ]
   },
   "0xca7d": {
     "name": "Bí Cấp Thôi Ch.Bình",
@@ -2301,7 +3346,11 @@
     "npc": "Thôi Châu Bình",
     "lv": 125,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb80a",
+      "0xc779"
+    ]
   },
   "0xc982": {
     "name": "Bí Cấp Thôi Diễm",
@@ -2309,7 +3358,12 @@
     "npc": "Thôi Diễm",
     "lv": 126,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb825",
+      "0xc7b9",
+      "0xe2a2"
+    ]
   },
   "0xc9fa": {
     "name": "Bí Cấp Thư Thụ",
@@ -2317,7 +3371,11 @@
     "npc": "Thư Thụ",
     "lv": 133,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7f3",
+      "0xc781"
+    ]
   },
   "0xca34": {
     "name": "Bí Cấp Thương Thăng",
@@ -2325,7 +3383,11 @@
     "npc": "Thương Thăng",
     "lv": 79,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7ed",
+      "0xc81d"
+    ]
   },
   "0xcace": {
     "name": "Bí Cấp Thạch Thí",
@@ -2333,7 +3395,10 @@
     "npc": "Thạch Thí",
     "lv": 132,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb927"
+    ]
   },
   "0xcae6": {
     "name": "Bí Cấp Thần Lữ Bố",
@@ -2341,7 +3406,8 @@
     "npc": "Thần Lữ Bố",
     "lv": 180,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xbd75": {
     "name": "Bí Cấp Thần Quan Vũ",
@@ -2349,7 +3415,8 @@
     "npc": "Võ Thần Quan Vũ",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xbd80": {
     "name": "Bí Cấp Thần Quảng Mục",
@@ -2357,7 +3424,8 @@
     "npc": "Tây Thiên Vương",
     "lv": 184,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xca0c": {
     "name": "Bí Cấp Thẩm Phối",
@@ -2365,7 +3433,11 @@
     "npc": "Thẩm Phối",
     "lv": 117,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb81f",
+      "0xc759"
+    ]
   },
   "0xc9f0": {
     "name": "Bí Cấp Thị Nghi",
@@ -2373,7 +3445,10 @@
     "npc": "Thị Nghi",
     "lv": 101,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8c9"
+    ]
   },
   "0xca45": {
     "name": "Bí Cấp Ti Di Hô",
@@ -2381,7 +3456,12 @@
     "npc": "Ti Di Hô",
     "lv": 99,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb79a",
+      "0xc762",
+      "0xe292"
+    ]
   },
   "0xca3a": {
     "name": "Bí Cấp Ti Nô Mẫu Ly",
@@ -2389,7 +3469,11 @@
     "npc": "Ti Nô Mẫu Ly",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb81a",
+      "0xc752"
+    ]
   },
   "0xc97f": {
     "name": "Bí Cấp Tiên Vu Phụ",
@@ -2397,7 +3481,11 @@
     "npc": "Tiên Vu Phụ",
     "lv": 82,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb86a",
+      "0xc82d"
+    ]
   },
   "0xca76": {
     "name": "Bí Cấp Tiên Vu Đan",
@@ -2405,7 +3493,11 @@
     "npc": "Tiên Vu Đan",
     "lv": 82,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e2",
+      "0xc825"
+    ]
   },
   "0xcab7": {
     "name": "Bí Cấp Tiết Quy Nê",
@@ -2413,7 +3505,10 @@
     "npc": "Tiết Quy Nê",
     "lv": 106,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ec"
+    ]
   },
   "0xbd76": {
     "name": "Bí Cấp Tiểu Binh Quang",
@@ -2421,7 +3516,8 @@
     "npc": "Tiểu Tiểu Binh Ba",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xbd77": {
     "name": "Bí Cấp Tiểu Binh Ám",
@@ -2429,7 +3525,8 @@
     "npc": "Tiểu Tiểu Binh Ba",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xca84": {
     "name": "Bí Cấp Tiểu Kim",
@@ -2437,7 +3534,12 @@
     "npc": "Tiểu Kim",
     "lv": 123,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb81b",
+      "0xc852",
+      "0xe2b4"
+    ]
   },
   "0xc9d4": {
     "name": "Bí Cấp Tiểu Kiều",
@@ -2445,7 +3547,12 @@
     "npc": "Tiểu Kiều",
     "lv": 94,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7e8",
+      "0xc75a",
+      "0xe291"
+    ]
   },
   "0xc9da": {
     "name": "Bí Cấp Toàn Nhu",
@@ -2453,7 +3560,11 @@
     "npc": "Toàn Nhu",
     "lv": 68,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8f9",
+      "0xc805"
+    ]
   },
   "0xc9ec": {
     "name": "Bí Cấp Toàn Tông",
@@ -2461,7 +3572,10 @@
     "npc": "Toàn Tông",
     "lv": 102,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8cb"
+    ]
   },
   "0xc930": {
     "name": "Bí Cấp Tr.M.Thành",
@@ -2469,7 +3583,12 @@
     "npc": "Trương Mạn Thành",
     "lv": 72,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7fa",
+      "0xc75f",
+      "0xe2c1"
+    ]
   },
   "0xcd1b": {
     "name": "Bí Cấp Tr.Sừng 80",
@@ -2477,7 +3596,8 @@
     "npc": "Trương Giác",
     "lv": 80,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xcac7": {
     "name": "Bí Cấp Tr.Thụ Truân",
@@ -2485,7 +3605,10 @@
     "npc": "Triệu Thụ Truân",
     "lv": 107,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb90d"
+    ]
   },
   "0xc936": {
     "name": "Bí Cấp Tr.V.Khương",
@@ -2493,7 +3616,12 @@
     "npc": "Triệu V. Khương",
     "lv": 93,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb79c",
+      "0xc740",
+      "0xe295"
+    ]
   },
   "0xca61": {
     "name": "Bí Cấp Triệu Lũy",
@@ -2501,7 +3629,11 @@
     "npc": "Triệu Lũy",
     "lv": 77,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ae",
+      "0xc7e2"
+    ]
   },
   "0xca19": {
     "name": "Bí Cấp Triệu Nga",
@@ -2509,7 +3641,11 @@
     "npc": "Triệu Nga",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb799",
+      "0xc817"
+    ]
   },
   "0xca92": {
     "name": "Bí Cấp Triệu Ngang",
@@ -2517,7 +3653,10 @@
     "npc": "Triệu Ngang",
     "lv": 103,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e9"
+    ]
   },
   "0xc98b": {
     "name": "Bí Cấp Triệu Nghiễm",
@@ -2525,7 +3664,12 @@
     "npc": "Triệu Nghiễm",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb866",
+      "0xc79b",
+      "0xe2b9"
+    ]
   },
   "0xc994": {
     "name": "Bí Cấp Triệu Ngung",
@@ -2533,7 +3677,10 @@
     "npc": "Triệu Ngung",
     "lv": 89,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8c5"
+    ]
   },
   "0xc9a0": {
     "name": "Bí Cấp Triệu Vân",
@@ -2541,7 +3688,12 @@
     "npc": "Triệu Vân",
     "lv": 133,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7c8",
+      "0xc815",
+      "0xe2a5"
+    ]
   },
   "0xcd15": {
     "name": "Bí Cấp Triệu Vân 80",
@@ -2549,7 +3701,8 @@
     "npc": "Trương Phi",
     "lv": 80,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc9c8": {
     "name": "Bí Cấp Trình Bỉnh",
@@ -2557,7 +3710,11 @@
     "npc": "Trình Bỉnh",
     "lv": 69,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb887",
+      "0xc7a4"
+    ]
   },
   "0xc969": {
     "name": "Bí Cấp Trình Dục",
@@ -2565,7 +3722,12 @@
     "npc": "Trình Dục",
     "lv": 115,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7b5",
+      "0xc749",
+      "0xe293"
+    ]
   },
   "0xca42": {
     "name": "Bí Cấp Trình Ngân",
@@ -2573,7 +3735,10 @@
     "npc": "Trình Ngân",
     "lv": 95,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb936"
+    ]
   },
   "0xc9c9": {
     "name": "Bí Cấp Trình Phổ",
@@ -2581,7 +3746,12 @@
     "npc": "Trình Phổ",
     "lv": 115,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7e1",
+      "0xc7b5",
+      "0xe2e7"
+    ]
   },
   "0xc9dd": {
     "name": "Bí Cấp Trình Tư",
@@ -2589,7 +3759,10 @@
     "npc": "Trình Tư",
     "lv": 80,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8a7"
+    ]
   },
   "0xca9f": {
     "name": "Bí Cấp Trương Bào",
@@ -2597,7 +3770,10 @@
     "npc": "Trương Bao",
     "lv": 127,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7d5"
+    ]
   },
   "0xc92e": {
     "name": "Bí Cấp Trương Bảo",
@@ -2605,7 +3781,12 @@
     "npc": "Trương Bảo",
     "lv": 110,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7f8",
+      "0xc7a1",
+      "0xe2ee"
+    ]
   },
   "0xc9c4": {
     "name": "Bí Cấp Trương Chiêu",
@@ -2613,7 +3794,12 @@
     "npc": "Trương Chiêu",
     "lv": 123,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb806",
+      "0xc741",
+      "0xe2c3"
+    ]
   },
   "0xc954": {
     "name": "Bí Cấp Trương Cáp",
@@ -2621,7 +3807,12 @@
     "npc": "Trương Cáp",
     "lv": 130,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7b9",
+      "0xc845",
+      "0xe2b1"
+    ]
   },
   "0xca7b": {
     "name": "Bí Cấp Trương Doãn",
@@ -2629,7 +3820,10 @@
     "npc": "Trương Doãn",
     "lv": 83,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8fb"
+    ]
   },
   "0xcaa7": {
     "name": "Bí Cấp Trương Dực",
@@ -2637,7 +3831,10 @@
     "npc": "Trương Dực",
     "lv": 90,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb88f"
+    ]
   },
   "0xc92d": {
     "name": "Bí Cấp Trương Giác",
@@ -2645,7 +3842,13 @@
     "npc": "Trương Giác",
     "lv": 120,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb79b",
+      "0xb91b",
+      "0xc739",
+      "0xe2ed"
+    ]
   },
   "0xc9c5": {
     "name": "Bí Cấp Trương Hoành",
@@ -2653,7 +3856,12 @@
     "npc": "Trương Hoành",
     "lv": 118,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb818",
+      "0xc761",
+      "0xe296"
+    ]
   },
   "0xca17": {
     "name": "Bí Cấp Trương Huân",
@@ -2661,7 +3869,10 @@
     "npc": "Trương Huân",
     "lv": 90,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb907"
+    ]
   },
   "0xc988": {
     "name": "Bí Cấp Trương Hỷ",
@@ -2669,7 +3880,10 @@
     "npc": "Trương Hỷ",
     "lv": 87,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8bf"
+    ]
   },
   "0xc98c": {
     "name": "Bí Cấp Trương Ký",
@@ -2677,7 +3891,11 @@
     "npc": "Trương Ký",
     "lv": 88,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb894",
+      "0xc7d3"
+    ]
   },
   "0xc956": {
     "name": "Bí Cấp Trương Liêu",
@@ -2685,7 +3903,12 @@
     "npc": "Trương Liêu",
     "lv": 134,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7b7",
+      "0xc7f8",
+      "0xe2a8"
+    ]
   },
   "0xc92f": {
     "name": "Bí Cấp Trương Lương",
@@ -2693,7 +3916,12 @@
     "npc": "Trương Lương",
     "lv": 102,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7f9",
+      "0xc7aa",
+      "0xe2ef"
+    ]
   },
   "0xca4e": {
     "name": "Bí Cấp Trương Lỗ",
@@ -2701,7 +3929,11 @@
     "npc": "Trương Lỗ",
     "lv": 124,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb843",
+      "0xc791"
+    ]
   },
   "0xca6a": {
     "name": "Bí Cấp Trương Nam",
@@ -2709,7 +3941,10 @@
     "npc": "Trương Nam",
     "lv": 81,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8c3"
+    ]
   },
   "0xcaa8": {
     "name": "Bí Cấp Trương Nghi",
@@ -2717,7 +3952,11 @@
     "npc": "Trương Nghi",
     "lv": 92,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb883",
+      "0xc7e7"
+    ]
   },
   "0xca4d": {
     "name": "Bí Cấp Trương Nhiệm",
@@ -2725,7 +3964,11 @@
     "npc": "Trương Nhiệm",
     "lv": 125,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb854",
+      "0xc7ec"
+    ]
   },
   "0xca47": {
     "name": "Bí Cấp Trương Nhượng",
@@ -2733,7 +3976,11 @@
     "npc": "Trương Nhượng",
     "lv": 110,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb83f",
+      "0xc821"
+    ]
   },
   "0xc99f": {
     "name": "Bí Cấp Trương Phi",
@@ -2741,7 +3988,12 @@
     "npc": "Trương Phi",
     "lv": 134,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7c9",
+      "0xc7d7",
+      "0xe2f1"
+    ]
   },
   "0xc9e8": {
     "name": "Bí Cấp Trương Phấn",
@@ -2749,7 +4001,11 @@
     "npc": "Trương Phấn",
     "lv": 106,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb87e",
+      "0xc7c7"
+    ]
   },
   "0xc9e2": {
     "name": "Bí Cấp Trương Thừa",
@@ -2757,7 +4013,11 @@
     "npc": "Trương Thừa",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8b8",
+      "0xc7f0"
+    ]
   },
   "0xc93c": {
     "name": "Bí Cấp Trương Tu",
@@ -2765,7 +4025,10 @@
     "npc": "Trương Tu",
     "lv": 61,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7fe"
+    ]
   },
   "0xc9b2": {
     "name": "Bí Cấp Trương Tùng",
@@ -2773,7 +4036,11 @@
     "npc": "Trương Tùng",
     "lv": 133,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb835",
+      "0xc7fb"
+    ]
   },
   "0xc957": {
     "name": "Bí Cấp Trương Tú",
@@ -2781,7 +4048,10 @@
     "npc": "Trương Tú",
     "lv": 95,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8f6"
+    ]
   },
   "0xc9ff": {
     "name": "Bí Cấp Trương Tế",
@@ -2789,7 +4059,10 @@
     "npc": "Trương Tế",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb897"
+    ]
   },
   "0xc955": {
     "name": "Bí Cấp Trương Vệ",
@@ -2797,7 +4070,10 @@
     "npc": "Trương Vệ",
     "lv": 81,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb92e"
+    ]
   },
   "0xc986": {
     "name": "Bí Cấp Trương X.Hoa",
@@ -2805,7 +4081,12 @@
     "npc": "Trương Xuân Hoa",
     "lv": 106,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb878",
+      "0xc79a",
+      "0xe2b7"
+    ]
   },
   "0xc9de": {
     "name": "Bí Cấp Trương Ôn",
@@ -2813,7 +4094,11 @@
     "npc": "Trương Ôn",
     "lv": 73,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb85f",
+      "0xc764"
+    ]
   },
   "0xc937": {
     "name": "Bí Cấp Trần Bại",
@@ -2821,7 +4106,11 @@
     "npc": "Trần Bại",
     "lv": 61,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7fd",
+      "0xc833"
+    ]
   },
   "0xc9ae": {
     "name": "Bí Cấp Trần Chấn",
@@ -2829,7 +4118,11 @@
     "npc": "Trần Chấn",
     "lv": 61,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb901",
+      "0xc80d"
+    ]
   },
   "0xca02": {
     "name": "Bí Cấp Trần Cung",
@@ -2837,7 +4130,12 @@
     "npc": "Trần Cung",
     "lv": 130,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb809",
+      "0xc789",
+      "0xe2b5"
+    ]
   },
   "0xc967": {
     "name": "Bí Cấp Trần Kiểu",
@@ -2845,7 +4143,11 @@
     "npc": "Trần Kiểu",
     "lv": 82,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb87a",
+      "0xc7d5"
+    ]
   },
   "0xc966": {
     "name": "Bí Cấp Trần Quần",
@@ -2853,7 +4155,12 @@
     "npc": "Trần Quần",
     "lv": 105,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb82f",
+      "0xc74a",
+      "0xe2d3"
+    ]
   },
   "0xca9e": {
     "name": "Bí Cấp Trần Thức",
@@ -2861,7 +4168,10 @@
     "npc": "Trần Thức",
     "lv": 82,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8f2"
+    ]
   },
   "0xc9c6": {
     "name": "Bí Cấp Trần Vũ",
@@ -2869,7 +4179,12 @@
     "npc": "Trần Vũ",
     "lv": 98,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb82a",
+      "0xc7a6",
+      "0xe2ce"
+    ]
   },
   "0xc9ad": {
     "name": "Bí Cấp Trần Đáo",
@@ -2877,7 +4192,12 @@
     "npc": "Trần Đáo",
     "lv": 89,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb81e",
+      "0xc777",
+      "0xe2ea"
+    ]
   },
   "0xc965": {
     "name": "Bí Cấp Trần Đăng",
@@ -2885,7 +4205,11 @@
     "npc": "Trần Đăng",
     "lv": 47,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb88b",
+      "0xc7ab"
+    ]
   },
   "0xcab1": {
     "name": "Bí Cấp Trịnh Độ",
@@ -2893,7 +4217,11 @@
     "npc": "Trịnh Độ",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8d1",
+      "0xc7fc"
+    ]
   },
   "0xc96d": {
     "name": "Bí Cấp Tuân Du",
@@ -2901,7 +4229,10 @@
     "npc": "Tuân Du",
     "lv": 125,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7bf"
+    ]
   },
   "0xc997": {
     "name": "Bí Cấp Tuân Uẩn",
@@ -2909,7 +4240,10 @@
     "npc": "Tuân Uẩn",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e5"
+    ]
   },
   "0xc950": {
     "name": "Bí Cấp Tuân Úc",
@@ -2917,7 +4251,12 @@
     "npc": "Tuân Úc",
     "lv": 131,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7b2",
+      "0xc77d",
+      "0xe297"
+    ]
   },
   "0xca46": {
     "name": "Bí Cấp Ty Cẩu",
@@ -2925,7 +4264,12 @@
     "npc": "Ty Cẩu",
     "lv": 138,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb846",
+      "0xc788",
+      "0xe2e5"
+    ]
   },
   "0xc98e": {
     "name": "Bí Cấp Ty Trạm",
@@ -2933,7 +4277,11 @@
     "npc": "Ty Trạm",
     "lv": 88,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8a4",
+      "0xc7c3"
+    ]
   },
   "0xc95c": {
     "name": "Bí Cấp Tào Chân",
@@ -2941,7 +4289,11 @@
     "npc": "Tào Chân",
     "lv": 103,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb83d",
+      "0xc7ad"
+    ]
   },
   "0xc95f": {
     "name": "Bí Cấp Tào Chương",
@@ -2949,7 +4301,12 @@
     "npc": "Tào Chương",
     "lv": 126,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7bd",
+      "0xc7bf",
+      "0xe2a9"
+    ]
   },
   "0xc95a": {
     "name": "Bí Cấp Tào Hưu",
@@ -2957,7 +4314,10 @@
     "npc": "Tào Hưu",
     "lv": 102,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb81d"
+    ]
   },
   "0xc95b": {
     "name": "Bí Cấp Tào Hồng",
@@ -2965,7 +4325,12 @@
     "npc": "Tào Hồng",
     "lv": 104,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb80b",
+      "0xc74d",
+      "0xe29b"
+    ]
   },
   "0xc958": {
     "name": "Bí Cấp Tào Nhân",
@@ -2973,7 +4338,12 @@
     "npc": "Tào Nhân",
     "lv": 111,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7b1",
+      "0xc765",
+      "0xe2ca"
+    ]
   },
   "0xc959": {
     "name": "Bí Cấp Tào Phi",
@@ -2981,7 +4351,11 @@
     "npc": "Tào Phi",
     "lv": 105,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7ba",
+      "0xc7a9"
+    ]
   },
   "0xc95d": {
     "name": "Bí Cấp Tào Thuần",
@@ -2989,7 +4363,12 @@
     "npc": "Tào Thuần",
     "lv": 94,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb88c",
+      "0xc7af",
+      "0xe2dd"
+    ]
   },
   "0xc960": {
     "name": "Bí Cấp Tào Tháo",
@@ -2997,7 +4376,12 @@
     "npc": "Tào Tháo",
     "lv": 150,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7b3",
+      "0xc7f5",
+      "0xe30b"
+    ]
   },
   "0xc95e": {
     "name": "Bí Cấp Tào Thực",
@@ -3005,7 +4389,11 @@
     "npc": "Tào Thực",
     "lv": 115,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7bb",
+      "0xc787"
+    ]
   },
   "0xc962": {
     "name": "Bí Cấp Tào Xung",
@@ -3013,7 +4401,11 @@
     "npc": "Tào Xung",
     "lv": 134,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb834",
+      "0xc813"
+    ]
   },
   "0xcac1": {
     "name": "Bí Cấp Tát Bà Địa Ca",
@@ -3021,7 +4413,11 @@
     "npc": "Tát Bà Địa Ca",
     "lv": 111,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8dc",
+      "0xc823"
+    ]
   },
   "0xc949": {
     "name": "Bí Cấp Tân Bì",
@@ -3029,7 +4425,11 @@
     "npc": "Tân Bì",
     "lv": 49,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a2",
+      "0xc831"
+    ]
   },
   "0xca1b": {
     "name": "Bí Cấp Tân Bình",
@@ -3037,7 +4437,12 @@
     "npc": "Tân Bình",
     "lv": 88,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb85a",
+      "0xc75b",
+      "0xe2ba"
+    ]
   },
   "0xbd7e": {
     "name": "Bí Cấp Tân Chu Du",
@@ -3045,7 +4450,8 @@
     "npc": "Chu Du",
     "lv": 185,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xcab4": {
     "name": "Bí Cấp Tây Na Bà Đế",
@@ -3053,7 +4459,12 @@
     "npc": "Tây Na Bà Địa",
     "lv": 115,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8d0",
+      "0xc835",
+      "0xe2ff"
+    ]
   },
   "0xca78": {
     "name": "Bí Cấp Tô Do",
@@ -3061,7 +4472,10 @@
     "npc": "Tô Do",
     "lv": 89,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8b7"
+    ]
   },
   "0xca7c": {
     "name": "Bí Cấp Tô Phi",
@@ -3069,7 +4483,10 @@
     "npc": "Tô Phi",
     "lv": 72,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb90c"
+    ]
   },
   "0xc99c": {
     "name": "Bí Cấp Tôn Cang",
@@ -3077,7 +4494,11 @@
     "npc": "Tôn Cang",
     "lv": 46,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a3",
+      "0xc837"
+    ]
   },
   "0xc9c1": {
     "name": "Bí Cấp Tôn Du",
@@ -3085,7 +4506,12 @@
     "npc": "Tôn Du",
     "lv": 93,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb848",
+      "0xc7ce",
+      "0xe2cd"
+    ]
   },
   "0xc9bf": {
     "name": "Bí Cấp Tôn Dực",
@@ -3093,7 +4519,12 @@
     "npc": "Tôn Dực",
     "lv": 111,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb81c",
+      "0xc794",
+      "0xe2cb"
+    ]
   },
   "0xc9ed": {
     "name": "Bí Cấp Tôn Hoán",
@@ -3101,7 +4532,11 @@
     "npc": "Tôn Hoán",
     "lv": 90,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e1",
+      "0xc808"
+    ]
   },
   "0xc9be": {
     "name": "Bí Cấp Tôn Kiên",
@@ -3109,7 +4544,10 @@
     "npc": "Tôn Kiên",
     "lv": 137,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb824"
+    ]
   },
   "0xc9e5": {
     "name": "Bí Cấp Tôn Kiểu",
@@ -3117,7 +4555,11 @@
     "npc": "Tôn Kiểu",
     "lv": 103,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb872",
+      "0xc7a5"
+    ]
   },
   "0xc9ee": {
     "name": "Bí Cấp Tôn Lăng",
@@ -3125,7 +4567,11 @@
     "npc": "Tôn Lăng",
     "lv": 95,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8fa",
+      "0xc807"
+    ]
   },
   "0xc9c2": {
     "name": "Bí Cấp Tôn Quyền",
@@ -3133,7 +4579,11 @@
     "npc": "Tôn Quyền",
     "lv": 130,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7dd",
+      "0xc7e3"
+    ]
   },
   "0xc9c0": {
     "name": "Bí Cấp Tôn Sách",
@@ -3141,7 +4591,12 @@
     "npc": "Tôn Sách",
     "lv": 135,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7dc",
+      "0xc77c",
+      "0xe2a3"
+    ]
   },
   "0xc9d5": {
     "name": "Bí Cấp Tôn Th.Hương",
@@ -3149,7 +4604,11 @@
     "npc": "Tôn Thượng Hương",
     "lv": 100,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7e9",
+      "0xc812"
+    ]
   },
   "0xc9e4": {
     "name": "Bí Cấp Tôn Thiều",
@@ -3157,7 +4616,11 @@
     "npc": "Tôn Thiều",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb89a",
+      "0xc7f3"
+    ]
   },
   "0xc9eb": {
     "name": "Bí Cấp Tôn Thiệu",
@@ -3165,7 +4628,11 @@
     "npc": "Tôn Thiệu",
     "lv": 122,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb86f",
+      "0xc829"
+    ]
   },
   "0xc933": {
     "name": "Bí Cấp Tôn Trọng",
@@ -3173,7 +4640,11 @@
     "npc": "Tôn Trọng",
     "lv": 40,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a7",
+      "0xc830"
+    ]
   },
   "0xca21": {
     "name": "Bí Cấp Tông Bảo",
@@ -3181,7 +4652,11 @@
     "npc": "Tông Bảo",
     "lv": 67,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7ac",
+      "0xc81f"
+    ]
   },
   "0xca71": {
     "name": "Bí Cấp Tông Dự",
@@ -3189,7 +4664,11 @@
     "npc": "Tông Dự",
     "lv": 78,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ee",
+      "0xc83c"
+    ]
   },
   "0xc999": {
     "name": "Bí Cấp Tông Thế Lâm",
@@ -3197,7 +4676,11 @@
     "npc": "Tông Thế Lâm",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8c8",
+      "0xe2c2"
+    ]
   },
   "0xc9ac": {
     "name": "Bí Cấp Tư Mã Huy",
@@ -3205,7 +4688,11 @@
     "npc": "Tư Mã Huy",
     "lv": 114,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7c4",
+      "0xc771"
+    ]
   },
   "0xc976": {
     "name": "Bí Cấp Tư Mã Lãng",
@@ -3213,7 +4700,12 @@
     "npc": "Tư Mã Lãng",
     "lv": 68,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8a6",
+      "0xc7be",
+      "0xe2f9"
+    ]
   },
   "0xca55": {
     "name": "Bí Cấp Tư Mã Ý",
@@ -3221,7 +4713,12 @@
     "npc": "Tư Mã Ý",
     "lv": 176,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7bc",
+      "0xc849",
+      "0xe303"
+    ]
   },
   "0xc972": {
     "name": "Bí Cấp Tưởng Cán",
@@ -3229,7 +4726,11 @@
     "npc": "Tưởng Cán",
     "lv": 57,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb802",
+      "0xc832"
+    ]
   },
   "0xc9cd": {
     "name": "Bí Cấp Tưởng Khâm",
@@ -3237,7 +4738,11 @@
     "npc": "Tưởng Khâm",
     "lv": 76,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7e5",
+      "0xc747"
+    ]
   },
   "0xca15": {
     "name": "Bí Cấp Tưởng Ngh.Cừ",
@@ -3245,7 +4750,12 @@
     "npc": "Tưởng Nghĩa Cừ",
     "lv": 106,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb84b",
+      "0xc79e",
+      "0xe2be"
+    ]
   },
   "0xc98d": {
     "name": "Bí Cấp Tưởng Tế",
@@ -3253,7 +4763,12 @@
     "npc": "Tưởng Tế",
     "lv": 107,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb80f",
+      "0xc78d",
+      "0xe2d1"
+    ]
   },
   "0xca6d": {
     "name": "Bí Cấp Tưởng Uyển",
@@ -3261,7 +4776,11 @@
     "npc": "Tưởng Uyển",
     "lv": 120,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb88d",
+      "0xc7b1"
+    ]
   },
   "0xca50": {
     "name": "Bí Cấp Tả Hiền Vương",
@@ -3269,7 +4788,12 @@
     "npc": "Tả Hiền Vương",
     "lv": 124,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb827",
+      "0xc784",
+      "0xe2c9"
+    ]
   },
   "0xca03": {
     "name": "Bí Cấp Tả Linh",
@@ -3277,7 +4801,11 @@
     "npc": "Tả Linh",
     "lv": 90,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb87c",
+      "0xc79c"
+    ]
   },
   "0xcaa6": {
     "name": "Bí Cấp Tần Mật",
@@ -3285,7 +4813,10 @@
     "npc": "Tần Mật",
     "lv": 77,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8e7"
+    ]
   },
   "0xca94": {
     "name": "Bí Cấp Tống Kiến",
@@ -3293,7 +4824,11 @@
     "npc": "Tống Kiến",
     "lv": 125,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb837",
+      "0xc7c0"
+    ]
   },
   "0xc9d6": {
     "name": "Bí Cấp Tổ Mậu",
@@ -3301,7 +4836,11 @@
     "npc": "Tổ Mậu",
     "lv": 101,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb820",
+      "0xc78c"
+    ]
   },
   "0xc94e": {
     "name": "Bí Cấp Từ Hoảng",
@@ -3309,7 +4848,12 @@
     "npc": "Từ Hoảng",
     "lv": 132,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7b8",
+      "0xc844",
+      "0xe2aa"
+    ]
   },
   "0xc9c3": {
     "name": "Bí Cấp Từ Thịnh",
@@ -3317,7 +4861,11 @@
     "npc": "Từ Thịnh",
     "lv": 102,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7df",
+      "0xc746"
+    ]
   },
   "0xc94f": {
     "name": "Bí Cấp Từ Thứ",
@@ -3325,7 +4873,12 @@
     "npc": "Từ Thứ",
     "lv": 117,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7c5",
+      "0xc751",
+      "0xe2a7"
+    ]
   },
   "0xc9fc": {
     "name": "Bí Cấp Từ Vinh",
@@ -3333,7 +4886,10 @@
     "npc": "Từ Vinh",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb871"
+    ]
   },
   "0xca24": {
     "name": "Bí Cấp Tự Hộc",
@@ -3341,7 +4897,11 @@
     "npc": "Tự Hộc",
     "lv": 81,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8b5",
+      "0xc801"
+    ]
   },
   "0xca29": {
     "name": "Bí Cấp Tự Tông",
@@ -3349,7 +4909,10 @@
     "npc": "Tự Tông",
     "lv": 76,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8d6"
+    ]
   },
   "0xca8b": {
     "name": "Bí Cấp Uy Ngạn",
@@ -3357,7 +4920,10 @@
     "npc": "Uy Ngạn",
     "lv": 105,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8d3"
+    ]
   },
   "0xcad7": {
     "name": "Bí Cấp V.Nguyên Cơ",
@@ -3365,7 +4931,11 @@
     "npc": "Vương Nguyên Cơ",
     "lv": 164,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb94c",
+      "0xc853"
+    ]
   },
   "0xca91": {
     "name": "Bí Cấp Vi Khang",
@@ -3373,7 +4943,10 @@
     "npc": "Vi Khang",
     "lv": 77,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8fd"
+    ]
   },
   "0xca2c": {
     "name": "Bí Cấp Viên Hoán",
@@ -3381,7 +4954,10 @@
     "npc": "Viên Hoán",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb86d"
+    ]
   },
   "0xc9fd": {
     "name": "Bí Cấp Viên Thiệu",
@@ -3389,7 +4965,12 @@
     "npc": "Viên Thiệu",
     "lv": 95,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb803",
+      "0xc7e6",
+      "0xe2e9"
+    ]
   },
   "0xc9fe": {
     "name": "Bí Cấp Viên Thuật",
@@ -3397,7 +4978,10 @@
     "npc": "Viên Thuật",
     "lv": 88,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb83b"
+    ]
   },
   "0xca1d": {
     "name": "Bí Cấp Viên Thượng",
@@ -3405,7 +4989,11 @@
     "npc": "Viên Thượng",
     "lv": 78,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8a5",
+      "0xc7c4"
+    ]
   },
   "0xc940": {
     "name": "Bí Cấp Vu Cấm",
@@ -3413,7 +5001,12 @@
     "npc": "Vu Cấm",
     "lv": 101,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7c2",
+      "0xc74e",
+      "0xe2fd"
+    ]
   },
   "0xc938": {
     "name": "Bí Cấp Vu Độc",
@@ -3421,7 +5014,11 @@
     "npc": "Vu Độc",
     "lv": 70,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb79f",
+      "0xc81e"
+    ]
   },
   "0xc992": {
     "name": "Bí Cấp Vân Tắc",
@@ -3429,7 +5026,10 @@
     "npc": "Vân Tắc",
     "lv": 90,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb93d"
+    ]
   },
   "0xc942": {
     "name": "Bí Cấp Văn Sính",
@@ -3437,7 +5037,12 @@
     "npc": "Văn Sính",
     "lv": 91,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb82d",
+      "0xc767",
+      "0xe2cf"
+    ]
   },
   "0xc9f2": {
     "name": "Bí Cấp Văn Xú",
@@ -3445,7 +5050,12 @@
     "npc": "Văn Xú",
     "lv": 117,
     "rare": "vàng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7ef",
+      "0xc75d",
+      "0xe29d"
+    ]
   },
   "0xcad1": {
     "name": "Bí Cấp Văn Ương",
@@ -3453,7 +5063,12 @@
     "npc": "Văn Ương",
     "lv": 159,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb94b",
+      "0xc84c",
+      "0xe306"
+    ]
   },
   "0xca0b": {
     "name": "Bí Cấp Vũ An Quốc",
@@ -3461,7 +5076,11 @@
     "npc": "Vũ An Quốc",
     "lv": 79,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7f2",
+      "0xc81b"
+    ]
   },
   "0xc993": {
     "name": "Bí Cấp Vũ Chu",
@@ -3469,7 +5088,11 @@
     "npc": "Vũ Chu",
     "lv": 100,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8b4",
+      "0xc7ea"
+    ]
   },
   "0xcacf": {
     "name": "Bí Cấp Vũ Văn Chí",
@@ -3477,7 +5100,10 @@
     "npc": "Vũ Văn Chí",
     "lv": 130,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb929"
+    ]
   },
   "0xca99": {
     "name": "Bí Cấp Vương Bình",
@@ -3485,7 +5111,11 @@
     "npc": "Vương Bình",
     "lv": 118,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8f0",
+      "0xc834"
+    ]
   },
   "0xcadc": {
     "name": "Bí Cấp Vương Dị",
@@ -3493,7 +5123,11 @@
     "npc": "Vương Dị",
     "lv": 150,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb94f",
+      "0xc85a"
+    ]
   },
   "0xcaa9": {
     "name": "Bí Cấp Vương Liên",
@@ -3501,7 +5135,10 @@
     "npc": "Vương Liên",
     "lv": 78,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb908"
+    ]
   },
   "0xca33": {
     "name": "Bí Cấp Vương Lãng",
@@ -3509,7 +5146,10 @@
     "npc": "Vương Lãng",
     "lv": 39,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb916"
+    ]
   },
   "0xca5c": {
     "name": "Bí Cấp Vương Phủ",
@@ -3517,7 +5157,10 @@
     "npc": "Vương Phủ",
     "lv": 74,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb90b"
+    ]
   },
   "0xc945": {
     "name": "Bí Cấp Vương Song",
@@ -3525,7 +5168,10 @@
     "npc": "Vương Song",
     "lv": 120,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb91e"
+    ]
   },
   "0xc985": {
     "name": "Bí Cấp Vương Xán",
@@ -3533,7 +5179,10 @@
     "npc": "Vương Xán",
     "lv": 47,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb906"
+    ]
   },
   "0xc996": {
     "name": "Bí Cấp Vương Đồ",
@@ -3541,7 +5190,10 @@
     "npc": "Vương Đồ",
     "lv": 72,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb930"
+    ]
   },
   "0xc97b": {
     "name": "Bí Cấp Xa Trụ",
@@ -3549,7 +5201,12 @@
     "npc": "Xa Trụ",
     "lv": 95,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb849",
+      "0xc7d9",
+      "0xe2da"
+    ]
   },
   "0xca52": {
     "name": "Bí Cấp Y Lị",
@@ -3557,7 +5214,8 @@
     "npc": "Y Lị",
     "lv": 103,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": []
   },
   "0xca5d": {
     "name": "Bí Cấp Y Tịch",
@@ -3565,7 +5223,11 @@
     "npc": "Y Tịch",
     "lv": 77,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb861",
+      "0xc774"
+    ]
   },
   "0xcabc": {
     "name": "Bí Cấp Yêu Quỷ Vương",
@@ -3573,7 +5235,12 @@
     "npc": "Yêu Quỷ Vương",
     "lv": 155,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb912",
+      "0xc855",
+      "0xe30d"
+    ]
   },
   "0xca59": {
     "name": "Bí Cấp Ác Ma Ðậu Yêu",
@@ -3581,7 +5248,8 @@
     "npc": "Ác Ma Ba Đậu Yêu",
     "lv": 155,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xca6c": {
     "name": "Bí Cấp Ân Quan",
@@ -3589,7 +5257,10 @@
     "npc": "Ân Quan",
     "lv": 73,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb940"
+    ]
   },
   "0xcabb": {
     "name": "Bí Cấp Ðạo Trưởng",
@@ -3597,7 +5268,10 @@
     "npc": "Đạo Trưởng",
     "lv": 51,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb920"
+    ]
   },
   "0xc9b4": {
     "name": "Bí Cấp Đinh Phụng",
@@ -3605,7 +5279,11 @@
     "npc": "Đinh Phụng",
     "lv": 76,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb800",
+      "0xc7a7"
+    ]
   },
   "0xca20": {
     "name": "Bí Cấp Điêu Thuyền",
@@ -3613,7 +5291,12 @@
     "npc": "Điêu Thuyền",
     "lv": 126,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7eb",
+      "0xc7cc",
+      "0xe29a"
+    ]
   },
   "0xcad8": {
     "name": "Bí Cấp Điêu Thuyền 2",
@@ -3621,7 +5304,8 @@
     "npc": "Điêu Thuyền Noel",
     "lv": 80,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xbd78": {
     "name": "Bí Cấp Điêu Thuyền Ám",
@@ -3629,7 +5313,8 @@
     "npc": "Điêu Thuyền",
     "lv": 128,
     "rare": "đồng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": []
   },
   "0xc97e": {
     "name": "Bí Cấp Điền Dự",
@@ -3637,7 +5322,11 @@
     "npc": "Điền Dự",
     "lv": 85,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb813",
+      "0xc74f"
+    ]
   },
   "0xc9f3": {
     "name": "Bí Cấp Điền Phong",
@@ -3645,7 +5334,11 @@
     "npc": "Điền Phong",
     "lv": 131,
     "rare": "bạc",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb807",
+      "0xc785"
+    ]
   },
   "0xc991": {
     "name": "Bí Cấp Điển Mãn",
@@ -3653,7 +5346,11 @@
     "npc": "Điển Mãn",
     "lv": 110,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb874",
+      "0xc7d8"
+    ]
   },
   "0xc94a": {
     "name": "Bí Cấp Điển Vi",
@@ -3661,7 +5358,12 @@
     "npc": "Điển Vi",
     "lv": 135,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7ae",
+      "0xc77e",
+      "0xe2b3"
+    ]
   },
   "0xca70": {
     "name": "Bí Cấp Điệp Nhi",
@@ -3669,7 +5371,10 @@
     "npc": "Điệp Nhi",
     "lv": 104,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb858"
+    ]
   },
   "0xc93b": {
     "name": "Bí Cấp Đại Hồng",
@@ -3677,7 +5382,11 @@
     "npc": "Đại Hồng",
     "lv": 70,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7a1",
+      "0xc828"
+    ]
   },
   "0xc9d3": {
     "name": "Bí Cấp Đại Kiều",
@@ -3685,7 +5394,12 @@
     "npc": "Đại Kiều",
     "lv": 93,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7f6",
+      "0xc776",
+      "0xe2a1"
+    ]
   },
   "0xcadb": {
     "name": "Bí Cấp Đại Kiều Bơi",
@@ -3693,7 +5407,11 @@
     "npc": "Đại Kiều Đồ Bơi",
     "lv": 140,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xc859",
+      "0xe310"
+    ]
   },
   "0xca35": {
     "name": "Bí Cấp Đạp Đốn",
@@ -3701,7 +5419,12 @@
     "npc": "Đạp Đốn",
     "lv": 105,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb808",
+      "0xc775",
+      "0xe2e6"
+    ]
   },
   "0xca95": {
     "name": "Bí Cấp Đậu Mậu",
@@ -3709,7 +5432,10 @@
     "npc": "Đậu Mậu",
     "lv": 103,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb934"
+    ]
   },
   "0xc9a5": {
     "name": "Bí Cấp Đặng Chi",
@@ -3717,7 +5443,10 @@
     "npc": "Đặng Chi",
     "lv": 82,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8d5"
+    ]
   },
   "0xcaaf": {
     "name": "Bí Cấp Đặng Hiền",
@@ -3725,7 +5454,10 @@
     "npc": "Đặng Hiền",
     "lv": 88,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8ff"
+    ]
   },
   "0xcaeb": {
     "name": "Bí Cấp Đặng Ngải",
@@ -3733,7 +5465,11 @@
     "npc": "Đặng Ngải",
     "lv": 50,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb957",
+      "0xc861"
+    ]
   },
   "0xc97c": {
     "name": "Bí Cấp Đổng Chiêu",
@@ -3741,7 +5477,11 @@
     "npc": "Đổng Chiêu",
     "lv": 103,
     "rare": "bạc",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb847",
+      "0xc7bb"
+    ]
   },
   "0xca06": {
     "name": "Bí Cấp Đổng Hoàng",
@@ -3749,7 +5489,11 @@
     "npc": "Đổng Hoàng",
     "lv": 102,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb898",
+      "0xc7c1"
+    ]
   },
   "0xcaac": {
     "name": "Bí Cấp Đổng Hòa",
@@ -3757,7 +5501,11 @@
     "npc": "Đổng Hòa",
     "lv": 94,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb882",
+      "0xc7e1"
+    ]
   },
   "0xca09": {
     "name": "Bí Cấp Đổng Mân",
@@ -3765,7 +5513,10 @@
     "npc": "Đổng Mân",
     "lv": 109,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb8b6"
+    ]
   },
   "0xca08": {
     "name": "Bí Cấp Đổng Trác",
@@ -3773,7 +5524,12 @@
     "npc": "Đổng Trác",
     "lv": 150,
     "rare": "vàng",
-    "vkcd": true
+    "vkcd": true,
+    "extra": [
+      "0xb7ec",
+      "0xc854",
+      "0xe30c"
+    ]
   },
   "0xc9d7": {
     "name": "Bí Cấp Đổng Tập",
@@ -3781,7 +5537,11 @@
     "npc": "Đổng Tập",
     "lv": 84,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb873",
+      "0xc7a8"
+    ]
   },
   "0xc9f4": {
     "name": "Bí Cấp Đổng Việt",
@@ -3789,7 +5549,11 @@
     "npc": "Đổng Việt",
     "lv": 105,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb870",
+      "0xc804"
+    ]
   },
   "0xc98a": {
     "name": "Bí Cấp Đỗ Kỳ",
@@ -3797,7 +5561,11 @@
     "npc": "Đỗ Kỳ",
     "lv": 90,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb869",
+      "0xc7d4"
+    ]
   },
   "0xca85": {
     "name": "Bí Cấp Đỗ Lỗ Ni",
@@ -3805,7 +5573,10 @@
     "npc": "Đỗ Lỗ Ni",
     "lv": 61,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb91c"
+    ]
   },
   "0xca36": {
     "name": "Bí Cấp Ư Phu La",
@@ -3813,6 +5584,10 @@
     "npc": "Ư Phu La",
     "lv": 88,
     "rare": "đồng",
-    "vkcd": false
+    "vkcd": false,
+    "extra": [
+      "0xb7f4",
+      "0xc7a0"
+    ]
   }
 }

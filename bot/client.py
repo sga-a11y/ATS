@@ -779,8 +779,14 @@ def _load_pet_scrolls() -> dict:
             except Exception:
                 continue
             if isinstance(v, dict):
+                _extra = []
+                for e in (v.get("extra") or ()):
+                    try:
+                        _extra.append(int(e, 16) if isinstance(e, str) else int(e))
+                    except Exception:
+                        pass
                 _pet_scrolls[tid] = {"name": v.get("name", ""), "npc": v.get("npc", ""),
-                                     "vkcd": bool(v.get("vkcd"))}
+                                     "vkcd": bool(v.get("vkcd")), "extra": _extra}
     return _pet_scrolls
 
 
@@ -5084,14 +5090,22 @@ class GameClient:
 
         scroll_modes: {tid_int: "keep"|"drop"} - CHI chua muc user da doi khac mac dinh, nen
         list cuon moi cua game tu dong theo mac dinh, khong can user tick lai.
+
+        Cuon o trang thai PHAN GIAI thi K.Toa / T.Tinh / Me cua dung con pet do cung phan giai
+        (mach cua pet bo di thi giu lam gi) - "extra" trong pet_scrolls.json.
         """
         modes = getattr(self, "scroll_modes", None) or {}
         out = set()
+        extra_drop, extra_keep = set(), set()
         for tid, info in _load_pet_scrolls().items():
             m = modes.get(tid)
-            if m == "drop" or (m is None and not info["vkcd"]):
+            drop = (m == "drop") or (m is None and not info["vkcd"])
+            if drop:
                 out.add(tid)
-        return out
+            (extra_drop if drop else extra_keep).update(info.get("extra") or ())
+        # Nhieu cuon co the tro CUNG mot npc goc (vd "Bi Cap X" va "Bi Cap X 80") nen dung CHUNG
+        # do chuyen sinh. Neu mot cuon giu, mot cuon phan giai -> GIU LAI THANG (khong pha do).
+        return out | (extra_drop - extra_keep)
 
     def decompose_junk_scrolls(self, wait: float = 1.2):
         """Phan giai cuon GOI PET RAC (gacha ra nhieu) -> nhan lai xu. C2S 0x59:
