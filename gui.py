@@ -1944,6 +1944,8 @@ class PartyConfigFrame(ttk.Frame):
             _save_furnace()
             win.destroy()
         def _reset():
+            # "Mac dinh chung": chi RESET cac o TAI CHO (khong ap dung cho ai, khong dong dialog).
+            # User xem lai roi tu bam Luu / Ap dung cho tat ca.
             for k, vv in vars_.items():
                 vv.set(int(round((glob_hp if k.startswith("hp") else glob_sp) * 100)))
             # Reset SOI LO ve mac dinh: tick 3 tab ON + XOA het config List (item ve default:
@@ -1951,7 +1953,9 @@ class PartyConfigFrame(ttk.Frame):
             for _bk, _bon in furn_on.items():
                 _bon.set(True)
             furn.clear()
-            # Ap NGUONG DANG CHINH + CONFIG LO cho MOI acc o MOI PARTY (setup tung acc rat met).
+            _save_furnace()
+        def _apply_all():
+            # Ap NGUONG DANG CHINH + CONFIG LO (tick + LIST) cho MOI acc o MOI PARTY.
             _save_furnace()
             vals = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
             import copy as _copy
