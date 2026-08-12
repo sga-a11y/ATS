@@ -513,7 +513,7 @@
   "0xfc3e": {
     "item": "Súng Nước Mùa Hè",
     "level": 30,
-    "npc": "",
+    "npc": "Nhạn Điêu Tuyết 2",
     "npc_id": 41550,
     "quality": 4
   },
@@ -534,7 +534,7 @@
   "0xfc41": {
     "item": "Long Yển Nguyệt Đao",
     "level": 30,
-    "npc": "",
+    "npc": "Ma Quan Vũ",
     "npc_id": 45437,
     "quality": 4
   },
@@ -583,21 +583,21 @@
   "0xfc48": {
     "item": "Đao Cong Loka",
     "level": 30,
-    "npc": "",
+    "npc": "Loka",
     "npc_id": 45502,
     "quality": 4
   },
   "0xfc49": {
     "item": "Trượng Ma Thuật Nice",
     "level": 30,
-    "npc": "",
+    "npc": "Nisi",
     "npc_id": 45503,
     "quality": 4
   },
   "0xfc4a": {
     "item": "Kiếm Ma Vực",
     "level": 30,
-    "npc": "",
+    "npc": "Fred",
     "npc_id": 45504,
     "quality": 4
   },
@@ -639,7 +639,7 @@
   "0xfc50": {
     "item": "Thanh Âm Mùa Hạ Rực Rỡ",
     "level": 30,
-    "npc": "",
+    "npc": "Hạ Ngữ Dao",
     "npc_id": 45511,
     "quality": 4
   },
@@ -688,7 +688,7 @@
   "0xfc57": {
     "item": "Ma Châm Định Hải",
     "level": 30,
-    "npc": "",
+    "npc": "Ma Ngộ Không ",
     "npc_id": 45516,
     "quality": 4
   },
@@ -751,7 +751,7 @@
   "0xfc60": {
     "item": "Xà Mâu Xích Diễm",
     "level": 30,
-    "npc": "",
+    "npc": "Vạn Nhân Địch Trương Phi",
     "npc_id": 45520,
     "quality": 4
   },
@@ -765,7 +765,7 @@
   "0xfc62": {
     "item": "Yển Nguyệt Đao Cuồng Long",
     "level": 30,
-    "npc": "",
+    "npc": "Võ Thần Quan Vũ",
     "npc_id": 45523,
     "quality": 4
   },

@@ -129,7 +129,11 @@ def parse_items(path):
 
 
 def parse_npc_names(path):
-    """Ten NPC theo id - dung lai cach quet cua tools/crack_npc_names.py (record bien do dai)."""
+    """Ten NPC theo id - QUET BYTE theo mau (cach cu cua tools/crack_npc_names.py).
+
+    CHI giu lai cho tuong thich: no BO SOT nhieu npc (ban dac biet 45xxx/46xxx) va doi khi cat
+    mat chu dau. Code moi nen dung tools/crack_npc_table.py (doc TUAN TU dung layout NpcData.New).
+    """
     buf = open(path, "rb").read()
     names = {}
     i = 0
@@ -161,7 +165,10 @@ def main():
     if not item_path:
         raise SystemExit("Khong thay gamedata_Item.dat (hoac gamedata/Data/Item_C.dat)")
     items = parse_items(item_path)
-    npcs = parse_npc_names(npc_path) if npc_path else {}
+    # Doc TUAN TU (crack_npc_table) thay vi quet byte: bang cu bo sot dung cac ban dac biet
+    # ('Ma Quan Vu', 'Nhan Dieu Tuyet 2', 'Loka'...) -> 13 vkcd tung khong co ten tuong.
+    from crack_npc_table import read_npcs
+    npcs = {i: v["name"] for i, v in read_npcs(npc_path).items()} if npc_path else {}
     print("doc %d item tu %s" % (len(items), os.path.basename(item_path)))
     print("doc %d ten npc" % len(npcs))
 
