@@ -1623,7 +1623,7 @@ class PartyConfigFrame(ttk.Frame):
     """1 tab cau hinh 1 party: mode (dropdown) + map/quai/thanh (dropdown) + acc."""
     _PW_MASK = "******"   # placeholder pass da luu (giau pass that khi mo lai Settings)
     def __init__(self, master, party, train_maps, cities, servers, on_apply_advanced_to_all=None,
-                 on_apply_di_gioi_level=None, on_apply_heal_all=None):
+                 on_apply_di_gioi_level=None, on_apply_heal_all=None, on_apply_furnace_all=None):
         super().__init__(master, padding=8)
         self.train_maps = train_maps   # list (map_id, name, mobs)
         self.cities = cities           # list (city_id, flag, name)
@@ -1631,6 +1631,7 @@ class PartyConfigFrame(ttk.Frame):
         self.on_apply_advanced_to_all = on_apply_advanced_to_all
         self.on_apply_di_gioi_level = on_apply_di_gioi_level
         self.on_apply_heal_all = on_apply_heal_all   # ap nguong hoi mau cho MOI acc MOI party
+        self.on_apply_furnace_all = on_apply_furnace_all  # ap config lo cho MOI acc MOI party
         self._preset = party or {}
 
         srow = ttk.Frame(self); srow.pack(fill="x", pady=4)
@@ -1889,7 +1890,12 @@ class PartyConfigFrame(ttk.Frame):
             furn_snapshot = _copy.deepcopy(furn)
             if self.on_apply_heal_all:
                 n = self.on_apply_heal_all(vals)
-                self.apply_furnace_all(furn_snapshot)   # dong bo config lo cho moi acc party nay
+                # config lo (tick + LIST) cho MOI acc MOI party (truoc day apply_furnace_all chi ap
+                # party NAY -> party khac khong sync list; tick nhin tuong sync vi mac dinh True).
+                if self.on_apply_furnace_all:
+                    self.on_apply_furnace_all(furn_snapshot)
+                else:
+                    self.apply_furnace_all(furn_snapshot)
                 messagebox.showinfo("Áp dụng cho tất cả",
                                     f"Đã áp ngưỡng hồi máu + config lò cho {n} acc (tất cả party).\n"
                                     "Bấm Lưu để ghi vào cấu hình.", parent=win)
@@ -3700,7 +3706,8 @@ class ConfigDialog(tk.Toplevel):
                                    self.train_maps, self.cities, self.servers,
                                    on_apply_advanced_to_all=on_apply,
                                    on_apply_di_gioi_level=on_apply_dg,
-                                   on_apply_heal_all=self._apply_heal_to_all)
+                                   on_apply_heal_all=self._apply_heal_to_all,
+                                   on_apply_furnace_all=self._apply_furnace_to_all)
             cfg.pack(fill="both", expand=True)
             entry["cfg"] = cfg
         return entry["cfg"]
@@ -3719,6 +3726,25 @@ class ConfigDialog(tk.Toplevel):
                     if not str(a.get("u", "")).strip():
                         continue           # slot 0 rong (khong co chu PT) -> bo qua
                     a["heal"] = dict(vals)
+                    total += 1
+                preset["accounts"] = accs
+                entry["preset"] = preset
+        return total
+
+    def _apply_furnace_to_all(self, furn_cfg):
+        """Ap config SOI LO (tick + LIST) cho MOI acc o MOI party (giong _apply_heal_to_all)."""
+        import copy as _copy
+        total = 0
+        for entry in self.frames:
+            if entry["cfg"] is not None:
+                total += entry["cfg"].apply_furnace_all(furn_cfg)
+            else:
+                preset = dict(entry["preset"] or {})
+                accs = [dict(a) for a in (preset.get("accounts") or [])]
+                for a in accs:
+                    if not str(a.get("u", "")).strip():
+                        continue
+                    a["furnace"] = _copy.deepcopy(furn_cfg)
                     total += 1
                 preset["accounts"] = accs
                 entry["preset"] = preset
