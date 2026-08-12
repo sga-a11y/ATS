@@ -2821,11 +2821,20 @@ fun HealSettingsDialog(
 }
 
 /** 1 cuon goi vo tuong trong pet_scrolls.json. vkcd = tuong co vu khi chuyen dung. */
-data class PetScroll(val tid: String, val name: String, val npc: String, val vkcd: Boolean) {
-    /** Nhan hien thi: ten cuon (+ ten tuong neu khac) + dau sao neu co vkcd. */
+data class PetScroll(
+    val tid: String, val name: String, val npc: String, val vkcd: Boolean,
+    val lv: Int = 0, val rare: String = "",
+) {
+    /** "ten cuon — ten tuong · Lv### · hang hiem" (+ ★ neu mac dinh giu).
+     *  Hien Lv/hang de user tu quyet: khong truong nao trong data phan loai duoc xin/rac. */
     fun label(): String {
-        val nm = if (npc.isNotEmpty() && !name.contains(npc)) "$name ($npc)" else name
-        return if (vkcd) "$nm ★vkcd" else nm
+        val extra = listOf(
+            if (npc.isNotEmpty() && !name.contains(npc)) npc else "",
+            if (lv > 0) "Lv$lv" else "",
+            rare,
+        ).filter { it.isNotEmpty() }
+        val nm = if (extra.isEmpty()) name else "$name — " + extra.joinToString(" · ")
+        return if (vkcd) "$nm ★" else nm
     }
 }
 
@@ -2842,7 +2851,8 @@ fun loadPetScrolls(context: android.content.Context): List<PetScroll> {
             for (tid in root.keys()) {
                 val o = root.getJSONObject(tid)
                 out.add(PetScroll(tid, o.optString("name", ""), o.optString("npc", ""),
-                                  o.optBoolean("vkcd", false)))
+                                  o.optBoolean("vkcd", false),
+                                  o.optInt("lv", 0), o.optString("rare", "")))
             }
             out
         } catch (e: Exception) {
@@ -2870,7 +2880,7 @@ fun ScrollListDialog(
     var query by remember { mutableStateOf("") }
     // "Phan giai" len TRUOC de user soat cai se bi MAT truoc tien
     val shown = all.filter { query.isBlank() || it.label().contains(query, ignoreCase = true) }
-        .sortedWith(compareBy({ state[it.tid] != "drop" }, { it.label() }))
+        .sortedWith(compareBy({ state[it.tid] != "drop" }, { -it.lv }, { it.label() }))
 
     AlertDialog(
         onDismissRequest = onDismiss,

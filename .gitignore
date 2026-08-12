@@ -95,3 +95,4 @@ _lua_enc/
 _lua_dec/
 _lua_*.lua
 _luadump/
+party.log*

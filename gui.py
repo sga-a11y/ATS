@@ -2749,17 +2749,27 @@ class PartyConfigFrame(ttk.Frame):
                  for tid, v in data.items()}
 
         def _label(tid):
+            """ten cuon — ten tuong · Lv### · hang hiem (+ ★ neu mac dinh giu).
+
+            Hien Lv/hang de user tu quyet: KHONG co truong nao trong data phan loai duoc
+            xin/rac (da doi chieu - 'rare' lan 'level' deu khong tach sach), nen bang phai
+            dua du thong tin thay vi bat user tin mac dinh.
+            """
             v = data[tid]
             nm = v.get("name", "")
-            if v.get("npc") and v["npc"] not in nm:
-                nm = "%s (%s)" % (nm, v["npc"])
-            return nm + (" ★vkcd" if v.get("vkcd") else "")
+            extra = [x for x in (v.get("npc") if v.get("npc") not in nm else "",
+                                 "Lv%s" % v["lv"] if v.get("lv") else "",
+                                 v.get("rare", "")) if x]
+            if extra:
+                nm = "%s — %s" % (nm, " · ".join(extra))
+            return nm + (" ★" if v.get("vkcd") else "")
 
         def _fill():
             q = q_var.get().strip().lower()
             tv.delete(*tv.get_children())
             # "Phan giai" len TRUOC de user soat cai se bi mat truoc tien
-            for tid in sorted(data, key=lambda t: (state[t] != "drop", _label(t))):
+            for tid in sorted(data, key=lambda t: (state[t] != "drop",
+                                                  -int(data[t].get("lv") or 0), _label(t))):
                 if q and q not in _label(tid).lower():
                     continue
                 tv.insert("", "end", iid=tid, text=_label(tid),
@@ -2781,7 +2791,7 @@ class PartyConfigFrame(ttk.Frame):
         tv.bind("<Double-1>", _toggle)
         q_var.trace_add("write", lambda *_a: _fill())
         _fill()
-        ttk.Label(bar, text="★vkcd = tướng có vũ khí chuyên dụng").pack(side="left")
+        ttk.Label(bar, text="★ = mặc định giữ (tướng có vũ khí chuyên dụng / bản đặc biệt)").pack(side="left")
         ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="right")
         ttk.Button(bar, text="Lưu", command=_save).pack(side="right", padx=(0, 8))
 
