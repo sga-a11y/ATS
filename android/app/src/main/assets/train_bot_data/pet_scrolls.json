@@ -3,7 +3,7 @@
     "name": "BC Thái Phó Dương Hỗ",
     "npc_id": 46411,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xbd84": {
     "name": "BC Trương Giác Chân",
@@ -15,7 +15,7 @@
     "name": "BC Yến Nhân Trương Phi",
     "npc_id": 46407,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xcae0": {
     "name": "Bí Cấp BDY Hỏa",
@@ -45,7 +45,7 @@
     "name": "Bí Cấp Ba Đậu Võ Sĩ",
     "npc_id": 22093,
     "npc": "Ba Đậu Võ Sĩ",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca4c": {
     "name": "Bí Cấp Bàng Dục",
@@ -183,7 +183,7 @@
     "name": "Bí Cấp Chu Du 80",
     "npc_id": 38522,
     "npc": "Chu Du",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc9dc": {
     "name": "Bí Cấp Chu Hoàn",
@@ -273,7 +273,7 @@
     "name": "Bí Cấp Cuồng Lữ Mông",
     "npc_id": 45409,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca3e": {
     "name": "Bí Cấp Cát Bình",
@@ -303,7 +303,7 @@
     "name": "Bí Cấp Cẩm Mã Siêu",
     "npc_id": 46410,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc9d2": {
     "name": "Bí Cấp Cố Ung",
@@ -417,7 +417,7 @@
     "name": "Bí Cấp G.C.Lượng 80",
     "npc_id": 38523,
     "npc": "Chư Cát Lượng",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc9ce": {
     "name": "Bí Cấp Gia Cát Cẩn",
@@ -465,7 +465,7 @@
     "name": "Bí Cấp Hoa Hùng 80",
     "npc_id": 38521,
     "npc": "Hoa Hùng",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc9e7": {
     "name": "Bí Cấp Hoàng Bính",
@@ -483,13 +483,13 @@
     "name": "Bí Cấp Hoàng Cái 80",
     "npc_id": 38525,
     "npc": "Hoàng Cái",
-    "vkcd": false
+    "vkcd": true
   },
   "0xbd81": {
     "name": "Bí Cấp Hoàng Cái Quang",
     "npc_id": 46413,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc9af": {
     "name": "Bí Cấp Hoàng Ng.Anh",
@@ -711,7 +711,7 @@
     "name": "Bí Cấp Hứa Chử 80",
     "npc_id": 38527,
     "npc": "Hứa Trử",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc961": {
     "name": "Bí Cấp Hứa Du",
@@ -759,7 +759,7 @@
     "name": "Bí Cấp Khuất Nguyên",
     "npc_id": 45407,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca25": {
     "name": "Bí Cấp Khâu Lực Cư",
@@ -771,7 +771,7 @@
     "name": "Bí Cấp Khương Duy",
     "npc_id": 12218,
     "npc": "Khương Duy",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca53": {
     "name": "Bí Cấp Khương Tự",
@@ -849,7 +849,7 @@
     "name": "Bí Cấp Lôi Ám K.Minh",
     "npc_id": 45501,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xcaa0": {
     "name": "Bí Cấp Lôi Đồng",
@@ -1017,7 +1017,7 @@
     "name": "Bí Cấp Lạc Thần",
     "npc_id": 45406,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc9df": {
     "name": "Bí Cấp Lạc Thống",
@@ -1125,13 +1125,13 @@
     "name": "Bí Cấp Ma Tống Dũng",
     "npc_id": 45497,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xcaee": {
     "name": "Bí Cấp Ma Tống Nhân",
     "npc_id": 45498,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc9a7": {
     "name": "Bí Cấp Mi Phương",
@@ -1281,7 +1281,7 @@
     "name": "Bí Cấp Nguyệt Anh Ám",
     "npc_id": 46414,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca9a": {
     "name": "Bí Cấp Ngô Ban",
@@ -1335,7 +1335,7 @@
     "name": "Bí Cấp Ngọc Thố",
     "npc_id": 22095,
     "npc": "Ngọc Thố Bảo Bảo",
-    "vkcd": false
+    "vkcd": true
   },
   "0xcacc": {
     "name": "Bí Cấp Ngột Đột Cốt",
@@ -1539,7 +1539,7 @@
     "name": "Bí Cấp Quang Lưu Bị",
     "npc_id": 46408,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca00": {
     "name": "Bí Cấp Quách Dĩ",
@@ -1557,7 +1557,7 @@
     "name": "Bí Cấp Quách Gia 80",
     "npc_id": 38524,
     "npc": "Quách Gia",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca90": {
     "name": "Bí Cấp Quách Hoài",
@@ -1755,19 +1755,19 @@
     "name": "Bí Cấp Thần Lữ Bố",
     "npc_id": 45441,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xbd75": {
     "name": "Bí Cấp Thần Quan Vũ",
     "npc_id": 45397,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xbd80": {
     "name": "Bí Cấp Thần Quảng Mục",
     "npc_id": 45356,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca0c": {
     "name": "Bí Cấp Thẩm Phối",
@@ -1815,13 +1815,13 @@
     "name": "Bí Cấp Tiểu Binh Quang",
     "npc_id": 45404,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xbd77": {
     "name": "Bí Cấp Tiểu Binh Ám",
     "npc_id": 45405,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca84": {
     "name": "Bí Cấp Tiểu Kim",
@@ -1857,7 +1857,7 @@
     "name": "Bí Cấp Tr.Sừng 80",
     "npc_id": 38526,
     "npc": "Trương Giác",
-    "vkcd": false
+    "vkcd": true
   },
   "0xcac7": {
     "name": "Bí Cấp Tr.Thụ Truân",
@@ -1911,7 +1911,7 @@
     "name": "Bí Cấp Triệu Vân 80",
     "npc_id": 38520,
     "npc": "Trương Phi",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc9c8": {
     "name": "Bí Cấp Trình Bỉnh",
@@ -2283,7 +2283,7 @@
     "name": "Bí Cấp Tân Chu Du",
     "npc_id": 46412,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xcab4": {
     "name": "Bí Cấp Tây Na Bà Đế",
@@ -2433,7 +2433,7 @@
     "name": "Bí Cấp Tưởng Ngh.Cừ",
     "npc_id": 14111,
     "npc": "Tưởng Nghĩa Cừ",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc98d": {
     "name": "Bí Cấp Tưởng Tế",
@@ -2685,7 +2685,7 @@
     "name": "Bí Cấp Ác Ma Ðậu Yêu",
     "npc_id": 22030,
     "npc": "Ác Ma Ba Đậu Yêu",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca6c": {
     "name": "Bí Cấp Ân Quan",
@@ -2715,13 +2715,13 @@
     "name": "Bí Cấp Điêu Thuyền 2",
     "npc_id": 11250,
     "npc": "Điêu Thuyền Noel",
-    "vkcd": false
+    "vkcd": true
   },
   "0xbd78": {
     "name": "Bí Cấp Điêu Thuyền Ám",
     "npc_id": 45400,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xc97e": {
     "name": "Bí Cấp Điền Dự",
@@ -2769,7 +2769,7 @@
     "name": "Bí Cấp Đại Kiều Bơi",
     "npc_id": 41553,
     "npc": "",
-    "vkcd": false
+    "vkcd": true
   },
   "0xca35": {
     "name": "Bí Cấp Đạp Đốn",

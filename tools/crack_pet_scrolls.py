@@ -36,6 +36,15 @@ VKCD = os.path.join(ROOT, "exclusive_weapons.json")
 KIND_SUMMON = 38        # Bi Cap - cuon goi pet
 # Cuon goi vo tuong: ten LUON "Bi Cap <ten tuong>" (vai muc viet tat "BC <ten tuong>")
 NAME_RE = re.compile(r"^(BC |Bí\s*Cấp)")
+# GIU LAI thu cong theo npc_id (pet xin KHONG co vu khi chuyen dung, khong dinh dang dac biet nao
+# o tren -> user chi dinh giu). Giu qua REGEN. Them npc_id vao day khi user bao "giu con X".
+KEEP_OVERRIDE_NPC = {
+    22093,   # Ba Dau Vo Si
+    22030,   # Ac Ma Ba Dau Yeu
+    22095,   # Ngoc Tho Bao Bao
+    14111,   # Tuong Nghia Cu
+    12218,   # Khuong Duy
+}
 
 
 def main():
@@ -69,11 +78,20 @@ def main():
         # tat "BC <ten tuong>"); da doi chieu: khong co cuon nao mang chu "Cap" ma nam ngoai.
         if not npc or not NAME_RE.match(d["name"] or ""):
             continue
+        npc_name = npcs.get(npc, "")
+        # Ban DAC BIET cua pet xin -> mac dinh GIU LAI (user van doi 2 chieu trong GUI). Cac dang:
+        #  1) Than/Yen Nhan/Am/Quang/Cuong/Cam/Tan... : npc_id doi cao (45xxx/46xxx) KHONG co trong
+        #     Npc_C.dat -> npc_name RONG, to_base khong phu -> tung bi xep "phan giai" oan
+        #     (vd "Than Lu Bo", "Yen Nhan Truong Phi" = pet xin nhat game).
+        #  2) Series Lv80 ("... 80", npc 38520-38527) = ban Lv80 cua pet base xin.
+        #  3) Skin theo mua (Noel...) = ban suu tap cua pet base xin.
+        special = (not npc_name) or (d["name"] or "").rstrip().endswith(" 80") or "Noel" in npc_name
+        vkcd = to_base(npc, up) in vk_npc or special or npc in KEEP_OVERRIDE_NPC
         out["0x%04x" % d["id"]] = {
             "name": d["name"],
             "npc_id": npc,
-            "npc": npcs.get(npc, ""),
-            "vkcd": to_base(npc, up) in vk_npc,
+            "npc": npc_name,
+            "vkcd": vkcd,
         }
     out = dict(sorted(out.items(), key=lambda kv: kv[1]["name"]))
     with open(OUT, "w", encoding="utf-8") as fh:
