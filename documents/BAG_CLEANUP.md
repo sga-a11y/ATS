@@ -35,15 +35,16 @@ bắt buộc user tự tick sau khi soát List.
 |---|---|---|
 | `kind 38` | 5553 | ôm cả hộp quà, phiếu chọn (`spare3 = 0`) |
 | `+ spare3 > 0` | 807 | vẫn còn thú cưỡi ("Ba Đậu", "Bạch Hổ Phiếu"), chân dung, thời trang, đồ ăn — chúng cũng trỏ vào một npc id |
-| `+ tên "Bí Cấp"/"BC "` | **477** | đúng cuộn gọi võ tướng |
+| `+ tên "Bí Cấp"/"BC "` | 477 | đúng cuộn gọi võ tướng |
+| `+ furnaceCount > 0` | **448** | game chỉ cho phân giải khi `furnaceCount > 0` (`Item.IsDismantle`, `Logic/Item.lua:2519`) — 29 cuộn không phân giải được, hầu hết là bản đặc biệt |
 
 Đã đối chiếu: không có cuộn nào mang chữ "Cấp" mà nằm ngoài bộ lọc, và đủ cả 51 cuộn của
 `junk_scrolls.json` cũ.
 
 | Mặc định | Điều kiện |
 |---|---|
-| Giữ lại | tướng **có vũ khí chuyên dụng** (86 cuộn) — đối chiếu `exclusive_weapons.json` |
-| Phân giải | còn lại (391 cuộn) |
+| Giữ lại | tướng **có vũ khí chuyên dụng** (95 cuộn) — đối chiếu `exclusive_weapons.json` |
+| Phân giải | còn lại (353 cuộn) |
 
 Cuộn của **bản nâng cấp** một tướng vẫn là tướng đó, mà `exclusive_weapons.json` chỉ liệt kê npc
 gốc → phải lần ngược chuỗi trước khi đối chiếu (dùng chung `build_reincarnation_up`/`to_base` với
@@ -62,10 +63,11 @@ chiều.
 
 Cuộn ở trạng thái **Phân giải** thì **K.Toả + T.Tinh + Mê** của đúng con pet đó cũng bị phân giải
 (mạch của pet bỏ đi thì giữ làm gì) — trường `extra` trong `pet_scrolls.json`, ghép theo npc gốc
-giống `crack_furnace_notify.py`. Mặc định: 357 cuộn phân giải kéo theo 626 món.
+giống `crack_furnace_notify.py`. Mặc định: 353 cuộn phân giải kéo theo 626 món (tổng 979 tid).
 
 Nhiều cuộn có thể trỏ cùng một npc gốc (`Bí Cấp X` và `BC X Chân`) nên **dùng chung** đồ chuyển
-sinh — 4 trường hợp. Khi một cuộn giữ, một cuộn phân giải thì **GIỮ LẠI THẮNG**, không phá đồ.
+sinh. Khi một cuộn giữ, một cuộn phân giải thì **GIỮ LẠI THẮNG**, không phá đồ. (Hiện 0 trường
+hợp trùng, nhưng user đổi trạng thái tay là tạo ra ngay.)
 
 `scroll_modes` trong config **chỉ lưu mục user đã đổi khác mặc định** → game ra cuộn mới thì tự
 theo mặc định, và sửa bảng mặc định sau này vẫn có hiệu lực, không bắt user tick lại.

@@ -45,17 +45,14 @@ SPECIAL_WORDS = {"Thần", "Ma", "Cuồng", "Quang", "Ám"}
 # GIU LAI thu cong theo npc_id: pet xin KHONG co vkcd va KHONG dinh dang dac biet nao o tren.
 # Giu qua REGEN. Them npc_id vao day khi user bao "giu con X".
 KEEP_OVERRIDE_NPC = {
-    22093,   # Ba Dau Vo Si
     22030,   # Ac Ma Ba Dau Yeu
     22095,   # Ngoc Tho Bao Bao
     14111,   # Tuong Nghia Cu
     12218,   # Khuong Duy
-    46411,   # Thai Pho Duong Ho      lv128
-    46407,   # Yen Nhan Truong Phi    lv128
-    46410,   # Cam Ma Sieu            lv128
     41553,   # Dai Kieu Do Boi        lv140
-    45407,   # Khuat Nguyen           lv55
 }
+# (Ba Dau Vo Si / Thai Pho Duong Ho / Yen Nhan Truong Phi / Cam Ma Sieu / Khuat Nguyen da bo:
+#  cuon cua chung furnaceCount = 0 nen KHONG con trong list, giu override chi la rac.)
 RARE_NAME = {1: "đồng", 2: "đồng", 3: "đồng", 4: "bạc", 5: "vàng"}
 # Do CHUYEN SINH di kem tung vo tuong: cuon pet bi PHAN GIAI thi mach cua no cung vo dung ->
 # phan giai luon (yeu cau user). Cung cach ghep npc GOC nhu tools/crack_furnace_notify.py.
@@ -96,7 +93,8 @@ def main():
             b = to_base(d["a1v"], up)
         else:
             continue
-        extra_by_npc.setdefault(b, []).append("0x%04x" % d["id"])
+        if d["furnaceCount"] > 0:      # Item.IsDismantle: chi phan giai duoc khi furnaceCount > 0
+            extra_by_npc.setdefault(b, []).append("0x%04x" % d["id"])
 
     out = {}
     for d in items:
@@ -111,6 +109,12 @@ def main():
         # nham thu cuoi/chan dung. Cuon goi vo tuong LUON ten "Bi Cap <ten tuong>" (3 muc viet
         # tat "BC <ten tuong>"); da doi chieu: khong co cuon nao mang chu "Cap" ma nam ngoai.
         if not npc or not NAME_RE.match(d["name"] or ""):
+            continue
+        # Item.IsDismantle(itemData) = itemData.furnaceCount > 0 (Logic/Item.lua:2519).
+        # 29 cuon co furnaceCount = 0 -> game KHONG cho phan giai (gan het la ban dac biet:
+        # "Than Quang Muc", series " 80", "Yen Nhan Truong Phi"...). Bo han khoi list cho gon,
+        # khong thi bang co 29 dong vo nghia va bot ban lenh 0x59 vo ich moi vong.
+        if d["furnaceCount"] <= 0:
             continue
         info = npcs.get(npc) or {}
         npc_name = info.get("name", "")
