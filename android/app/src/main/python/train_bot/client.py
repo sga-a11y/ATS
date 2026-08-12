@@ -1151,6 +1151,10 @@ class GameClient:
         self._furnace_seq = 0        # tang moi khi nhan S2C 0x59 sub01 (xac nhan soi lo xong)
         self._fashion_deposit_seq = 0  # tang moi khi nhan S2C 0x59 sub02 (tha do thoi trang xong)
         self._send_lock = threading.Lock()   # serial hoa sendall (nhieu thread gui: bot + GUI mua ho lo)
+        self._bag_slot_price = None    # (money, kind) gia mua slot tui (0x54 sub01 sellId=3)
+        self._bag_slot_price_seq = 0
+        self._bag_slot_buy_seq = 0
+        self._bag_slot_buy_result = 0
         self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
         self.bag_slots = {}          # slot (int) -> [tid, count]  (S2C 0x16 sub0400). Use item = gui slot.
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
@@ -2340,10 +2344,14 @@ class GameClient:
                             self._label, pid, pid)
         elif opcode == 0x2f:                      # party PHO BAN (dungeon)
             self._on_dungeon(pkt)
-        elif opcode == 0x54:                      # exp offline / query luot dungeon
-            self._dg_query = pkt[7:]              # luu raw de query_dungeon_attempts doc
-            self._dg_query_event.set()
-            self._on_offline_exp(pkt)
+        elif opcode == 0x54:                      # exp offline / query luot dungeon / mua slot tui
+            # Mua slot tui (UISell sellId=3) dung CHUNG opcode 0x54 -> phan biet bang payload[0:2]=0300.
+            if pkt[7:9] in (b"\x01\x00", b"\x02\x00") and pkt[9:11] == b"\x03\x00":
+                self._on_bag_slot(pkt)
+            else:
+                self._dg_query = pkt[7:]              # luu raw de query_dungeon_attempts doc
+                self._dg_query_event.set()
+                self._on_offline_exp(pkt)
         elif opcode == 0x55 and pkt[7:9] == b"\x01\x00" and len(pkt) >= 17:
             # BANG STAT: [01 00][count 4B] + count*([id 2B][val 4B][max 4B] = 10B).
             # Login gui FULL (~1500 stat); update le gui count=1. Doc digioi/dungeon/van tieu.
@@ -3236,6 +3244,58 @@ class GameClient:
         self.send(0x53, b"\x01\x00" + payload); time.sleep(0.6)   # nhan qua TAT CA mail
         self.send(0x53, b"\x02\x00" + payload); time.sleep(0.6)   # xoa TAT CA mail
         log.info("[%s] Mail: da nhan qua + xoa %d mail", self._label, n)
+
+    # ===== SLOT TUI DO (dung luong tui + mua them slot) =====
+    # capacity = 50 (goc) + (Bag_1[103]+Bag_2[106]+Bag_3[124]) * 5.  Bag_x = RoleCount (0x55, da track).
+    # Mua slot = UISell sellId=3 (0x54): query gia sub01, confirm sub02. Tang Bag_1 (max 30 -> +150 slot).
+    # Gia = NGUYEN BAO (kind=1), tang dan moi lan.
+    _BAG_ROLECOUNT_IDS = (103, 106, 124)
+
+    def bag_capacity(self) -> int:
+        exp = sum(self.role_counts.get(sid, (0, 0))[0] for sid in self._BAG_ROLECOUNT_IDS)
+        return 50 + exp * 5
+
+    def bag_used_slots(self) -> int:
+        return len(self.bag_slots)
+
+    def bag_free_slots(self) -> int:
+        return max(0, self.bag_capacity() - len(self.bag_slots))
+
+    def bag_slot_maxed(self) -> bool:
+        """Bag_1 (103) da mua toi da (value >= max) -> khong mua them slot duoc nua."""
+        v, mx = self.role_counts.get(103, (0, 30))
+        return mx > 0 and v >= mx
+
+    def _on_bag_slot(self, pkt: bytes):
+        """S2C 0x54 sellId=3 (mua slot tui).
+        sub01 (bao gia): [03 00][kind 1B][money 4B LE].  sub02 (ket qua): [03 00][result 1B] (1=OK)."""
+        sub = pkt[7:9]; body = pkt[9:]
+        if sub == b"\x01\x00" and len(body) >= 7:
+            self._bag_slot_price = (int.from_bytes(body[3:7], "little"), body[2])   # (money, kind)
+            self._bag_slot_price_seq += 1
+        elif sub == b"\x02\x00" and len(body) >= 3:
+            self._bag_slot_buy_result = body[2]
+            self._bag_slot_buy_seq += 1
+
+    def query_bag_slot_price(self, wait: float = 2.0):
+        """Query gia mua slot tui (0x54 sub01 sellId=3). Tra (money, kind) hoac None."""
+        seq = self._bag_slot_price_seq
+        self.send(0x54, b"\x01\x00\x03\x00")
+        t0 = time.time()
+        while self._bag_slot_price_seq == seq and time.time() - t0 < wait and self.running:
+            time.sleep(0.1)
+        return self._bag_slot_price if self._bag_slot_price_seq > seq else None
+
+    def buy_bag_slot(self, wait: float = 2.0) -> bool:
+        """Mua 1 slot tui (0x54 sub02 sellId=3). Tra True neu result=1 (thanh cong)."""
+        if self.bag_slot_maxed():
+            return False
+        seq = self._bag_slot_buy_seq
+        self.send(0x54, b"\x02\x00\x02\x03\x00")
+        t0 = time.time()
+        while self._bag_slot_buy_seq == seq and time.time() - t0 < wait and self.running:
+            time.sleep(0.1)
+        return self._bag_slot_buy_seq > seq and self._bag_slot_buy_result == 1
 
     def _on_offline_exp(self, pkt: bytes):
         """S2C 0x54.

@@ -1014,6 +1014,7 @@ class BotGUI(tk.Tk):
         self.party_trees = {}       # pidx -> Treeview
         self.party_agi_buttons = {} # pidx -> nut Check AGI/canh bao do lech
         self.party_notify_buttons = {}  # pidx -> nut "Chu y" (an neu party khong co thong bao)
+        self._bag_notify_dismissed = set()  # username da bam "Bo qua" thong bao tui day (an phien nay)
         self.party_subframes = {}   # pidx -> sub-tab frame (cham trang thai party qua sub_nb.tab)
         self.group_nb = {}          # gidx -> sub-Notebook (chua cac party tab)
         self.group_frames = {}      # gidx -> group tab frame (cham trang thai group)
@@ -1311,9 +1312,34 @@ class BotGUI(tk.Tk):
 
     # ---- refresh status ----
     # ---- THONG BAO PARTY (hien tai: lo; sau nay them tui day / het thuoc...) ----
-    def _party_notify_items(self, pidx):
-        """List (username, item_lo) cua MOI acc trong party co thong bao (account_furnace_notify)."""
+    def _party_bag_notify(self, pidx):
+        """List (username, {_bag}) cho acc co slot tui trong <=5 (chua bam Bo qua). Tui LEN DAU."""
         out = []
+        try:
+            accs = ctrl.party_accounts(pidx)
+        except Exception:
+            return out
+        for (u, _p, _l, _pk) in accs:
+            if u in self._bag_notify_dismissed:
+                continue
+            c = ctrl.account_clients.get(u)
+            if c is None or not getattr(c, "running", False):
+                continue
+            try:
+                if not getattr(c, "bag_slots", None):   # chua co snapshot tui -> chua tinh duoc
+                    continue
+                free = c.bag_free_slots()
+                if free > 5:
+                    continue
+                out.append((u, {"_bag": True, "used": c.bag_used_slots(),
+                                "cap": c.bag_capacity(), "free": free, "maxed": c.bag_slot_maxed()}))
+            except Exception:
+                continue
+        return out
+
+    def _party_notify_items(self, pidx):
+        """List (username, item): thong bao TUI (len dau) + thong bao LO (account_furnace_notify)."""
+        out = list(self._party_bag_notify(pidx))
         try:
             accs = ctrl.party_accounts(pidx)
         except Exception:
@@ -1380,6 +1406,44 @@ class BotGUI(tk.Tk):
 
         def _add_row(u, it):
             rowf = ttk.Frame(inner); rowf.pack(fill="x", pady=2)
+            # --- THONG BAO TUI DAY (len dau) ---
+            if it.get("_bag"):
+                used, cap, maxed = it["used"], it["cap"], it["maxed"]
+                ttk.Button(rowf, text="Bỏ qua", width=7,
+                           command=lambda: (self._bag_notify_dismissed.add(u), rowf.destroy())).pack(side="right", padx=2)
+                if not maxed:
+                    buybtn = tk.Button(rowf, text="Mua slot\n(đang xem giá...)", justify="center")
+                    def _buy_slot():
+                        buybtn.configure(state="disabled")
+                        import threading as _t
+                        def _do():
+                            c = ctrl.account_clients.get(u)
+                            try: ok = bool(c and c.buy_bag_slot())
+                            except Exception: ok = False
+                            def _done():
+                                if ok:
+                                    rowf.destroy()   # +5 slot -> bo dong nay
+                                elif buybtn.winfo_exists():
+                                    buybtn.configure(state="normal")
+                                    messagebox.showwarning("Mua slot",
+                                        "Mua slot không thành công (acc tắt / hết vàng / đã tối đa).", parent=win)
+                            self.after(0, _done)
+                        _t.Thread(target=_do, daemon=True).start()
+                    buybtn.configure(command=_buy_slot); buybtn.pack(side="right", padx=2)
+                    import threading as _t2
+                    def _price():
+                        c = ctrl.account_clients.get(u)
+                        try: pr = c and c.query_bag_slot_price()
+                        except Exception: pr = None
+                        _txt = f"Mua slot\n{pr[0]} vàng" if pr else "Mua slot\n(?)"
+                        self.after(0, lambda: buybtn.winfo_exists() and buybtn.configure(text=_txt))
+                    _t2.Thread(target=_price, daemon=True).start()
+                    _line = f'{self._mask_user(u)} túi đồ sắp đầy {used}/{cap}'
+                else:
+                    _line = f'{self._mask_user(u)} túi đồ ĐẦY {used}/{cap} (đã tối đa slot, không mua thêm được)'
+                ttk.Label(rowf, text=_line, wraplength=380, justify="left").pack(side="left", fill="x", expand=True)
+                return
+            # --- THONG BAO LO ---
             ttk.Button(rowf, text="Bỏ qua", width=7,
                        command=lambda: (self._remove_notify(u, it), rowf.destroy())).pack(side="right", padx=2)
 
@@ -1882,7 +1946,11 @@ class PartyConfigFrame(ttk.Frame):
         def _reset():
             for k, vv in vars_.items():
                 vv.set(int(round((glob_hp if k.startswith("hp") else glob_sp) * 100)))
-        def _apply_all():
+            # Reset SOI LO ve mac dinh: tick 3 tab ON + XOA het config List (item ve default:
+            # VKCD/chi so>=+40 -> Thong bao, con lai -> Bo qua). Xoa furn -> mo List thay mac dinh.
+            for _bk, _bon in furn_on.items():
+                _bon.set(True)
+            furn.clear()
             # Ap NGUONG DANG CHINH + CONFIG LO cho MOI acc o MOI PARTY (setup tung acc rat met).
             _save_furnace()
             vals = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}

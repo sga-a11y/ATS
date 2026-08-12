@@ -2763,6 +2763,7 @@ fun HealSettingsDialog(
                 }
                 TextButton(onClick = {
                     hpCharText = "40"; spCharText = "0"; hpPetText = "40"; spPetText = "0"
+                    furnace = FurnaceConfig()   // reset lo ve mac dinh: 3 tab on, xoa config List
                 }) { Text("Mặc định") }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 Text("Soi lò (mua item theo list):", style = MaterialTheme.typography.bodySmall)

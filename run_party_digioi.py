@@ -1853,6 +1853,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         elif time.time() - _lead_other_since > 30:
                             log.warning("[%s] (%s) reform: leader da sang pha '%s' (khong reform) -> "
                                         "BO reform, dong bo theo leader", label, role, _lph)
+                            # DUT DIEM loop reform-vs-PB: khong the tin keepalive check bat trung pha
+                            # 'team_dungeon' (pha leader flip-flop team_dungeon<->train giua report-wait
+                            # va pos-log -> check hay truot -> member re-reform vo tan). Abort NAY fire
+                            # chac chan -> THAM GIA PB LUON tu day (report luot khong phu thuoc map).
+                            if _lph == "team_dungeon" and auto_team_dungeon and not is_leader:
+                                log.info("[%s] (member) -> THAM GIA PB thay vi reform (tu abort)", label)
+                                try:
+                                    _run_auto_team_dungeons_if_needed(
+                                        c, st, username, label, pidx, is_leader, _stopped, pcfg)
+                                except Exception as e:
+                                    log.warning("[%s] loi tham gia PB theo leader (bo qua): %s", label, e)
                             return
                     else:
                         _lead_other_since = 0.0   # leader ve reform/whitelist/khong-live -> reset grace
