@@ -3697,6 +3697,20 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         last_combat = time.time()    # cho them 90s nua truoc khi relogin tiep
                 except Exception as e:
                     log.warning("[%s] loi relogin recovery (bo qua): %s", label, e)
+            # DONG BO PHA THEO LEADER: leader dang o pha PB (team_dungeon) ma member lai dang reform-
+            # to-train -> member THAM GIA PB (report luot + danh) thay vi reform vo vong. Bug that:
+            # leader "cho report luot 4/5", 4 member sai map cu bump reform_gen loop mai (phase-sync
+            # abort duoc nhung displaced re-bump lien tuc). _run_auto... BLOCK trong wait cua member
+            # nen khong spam; report luot khong phu thuoc map (doc daily-flag server).
+            if (not is_leader and auto_team_dungeon
+                    and _leader_live_phase(pidx, st) == "team_dungeon"):
+                log.info("[%s] (member) leader dang PB (team_dungeon) -> THAM GIA PB thay vi reform", label)
+                try:
+                    _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, _stopped, pcfg)
+                except Exception as e:
+                    log.warning("[%s] loi tham gia PB theo leader (bo qua): %s", label, e)
+                last_reform = time.time(); displaced_cnt = 0
+                continue
             # DISPLACED: dang train ma BI VAN khoi train map (99% = quai danh chet -> hoi sinh ve
             # thanh). KHONG tu ve lai le loi (party da vo) -> YEU CAU CA PARTY REFORM: acc nao tu
             # thay minh van map thi bump reform_gen -> ca party ve thanh, leader giai tan + lap lai
