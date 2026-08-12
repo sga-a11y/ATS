@@ -733,11 +733,30 @@ fun TsBotApp(
             },
             onDismiss = { editingParty = null },
             onSave = { edited ->
+                // Cuon vua chuyen sang PHAN GIAI -> tat Bi Cap/K.Toa/T.Tinh/Me ben lo cua MOI
+                // account trong party (config lo la cua TUNG account, list phan giai la cua party
+                // -> khong quet het thi acc khac van mua roi bi pha).
+                val dropped = newlyDroppedScrolls(
+                    context, partyBeingEdited.scrollModes, edited.scrollModes)
+                var syncedFurnace = 0
+                val accs = partyBeingEdited.accounts.map { acc ->
+                    val (f, n) = furnaceWithScrollsSkipped(context, acc.furnace, dropped)
+                    syncedFurnace += n
+                    if (n > 0) acc.copy(furnace = f) else acc
+                }
                 // Giu nguyen danh sach account, chi doi ten/server.
                 val saved = partyStore.updateParty(
                     partyBeingEdited.name,
-                    edited.copy(accounts = partyBeingEdited.accounts),
+                    edited.copy(accounts = accs),
                 )
+                if (saved && syncedFurnace > 0) {
+                    accs.forEach { service?.applyAccountFurnace(it.username, it.furnace.toRuntimeJson()) }
+                    android.widget.Toast.makeText(
+                        context,
+                        "Đã chuyển $syncedFurnace mục bên lò sang \"Bỏ qua\"",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
                 if (saved) {
                     refresh()
                     editingParty = null
@@ -765,6 +784,23 @@ fun TsBotApp(
             initialEnabled = account.enabled,
             onDismiss = { editingAccount = null },
             onSave = { edited ->
+                // Item lo vua thoat "Bo qua" -> cuon so huu no ve "Giu lai" (khong thi vua
+                // mua vua phan giai). scrollModes la cua PARTY nen ghi vao party dang sua.
+                run {
+                    val un = furnaceUnskippedTids(context, account.furnace, edited.furnace)
+                    val party = parties.firstOrNull { it.name == partyName }
+                    if (party != null && un.isNotEmpty()) {
+                        val (m, n) = scrollModesAfterUnskip(context, party.scrollModes, un)
+                        if (n > 0) {
+                            partyStore.updateParty(party.name, party.copy(scrollModes = m))
+                            android.widget.Toast.makeText(
+                                context,
+                                "Đã chuyển $n cuộn sang \"Giữ lại\"",
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
+                }
                 partyStore.updateAccountInParty(partyName, account.username, edited)
                 service?.applyAccountBattle(edited.username, edited.battleJson)
                 service?.applyAccountHeal(edited.username, edited.heal.toRuntimeJson())
@@ -793,6 +829,23 @@ fun TsBotApp(
                 count
             },
             onSave = { editedHeal, editedFurnace ->
+                // Item lo vua thoat "Bo qua" -> cuon so huu no ve "Giu lai" (khong thi vua
+                // mua vua phan giai). scrollModes la cua PARTY nen ghi vao party dang sua.
+                run {
+                    val un = furnaceUnskippedTids(context, account.furnace, editedFurnace)
+                    val party = parties.firstOrNull { it.name == partyName }
+                    if (party != null && un.isNotEmpty()) {
+                        val (m, n) = scrollModesAfterUnskip(context, party.scrollModes, un)
+                        if (n > 0) {
+                            partyStore.updateParty(party.name, party.copy(scrollModes = m))
+                            android.widget.Toast.makeText(
+                                context,
+                                "Đã chuyển $n cuộn sang \"Giữ lại\"",
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
+                }
                 partyStore.updateAccountInParty(
                     partyName,
                     account.username,
@@ -2823,7 +2876,7 @@ fun HealSettingsDialog(
 /** 1 cuon goi vo tuong trong pet_scrolls.json. vkcd = tuong co vu khi chuyen dung. */
 data class PetScroll(
     val tid: String, val name: String, val npc: String, val vkcd: Boolean,
-    val lv: Int = 0, val rare: String = "",
+    val lv: Int = 0, val rare: String = "", val extra: List<String> = emptyList(),
 ) {
     /** "ten cuon — ten tuong · Lv### · hang hiem" (+ ★ neu mac dinh giu).
      *  Hien Lv/hang de user tu quyet: khong truong nao trong data phan loai duoc xin/rac. */
@@ -2852,7 +2905,10 @@ fun loadPetScrolls(context: android.content.Context): List<PetScroll> {
                 val o = root.getJSONObject(tid)
                 out.add(PetScroll(tid, o.optString("name", ""), o.optString("npc", ""),
                                   o.optBoolean("vkcd", false),
-                                  o.optInt("lv", 0), o.optString("rare", "")))
+                                  o.optInt("lv", 0), o.optString("rare", ""),
+                                  o.optJSONArray("extra")?.let { arr ->
+                                      (0 until arr.length()).map { arr.optString(it) }
+                                  } ?: emptyList()))
             }
             out
         } catch (e: Exception) {
@@ -2860,6 +2916,115 @@ fun loadPetScrolls(context: android.content.Context): List<PetScroll> {
         }
     }
     return _petScrollsCache ?: emptyList()
+}
+
+/* ---- Dong bo LIST PHAN GIAI <-> SOI LO (mirror gui.py, chi chay luc an Luu) --------------
+ * Hai cau hinh de da nhau: lo "tu mua" K.Toa/Me khi tui trong -> phan giai xoa di -> vong lo
+ * sau lai mua. Engine chi mua khi tui CHUA CO nen vong dot tien nay LAP VINH VIEN.
+ * PHAM VI: config lo theo TUNG ACCOUNT, list phan giai theo PARTY -> phai quet MOI account. */
+private val FURNACE_SCROLL_TABS = mapOf("vo_tuong" to "Vo Tuong", "chuyen_sinh" to "Chuyen Sinh")
+
+/** {tid mon do -> tid cuon so huu}, gom ca chinh cuon lan K.Toa/T.Tinh/Me cua no. */
+fun scrollOwnerMap(context: android.content.Context): Map<String, String> {
+    val out = HashMap<String, String>()
+    for (sc in loadPetScrolls(context)) {
+        out[sc.tid] = sc.tid
+        for (e in sc.extra) out.putIfAbsent(e, sc.tid)
+    }
+    return out
+}
+
+/** Cuon vua chuyen sang PHAN GIAI -> dat "skip" cho Bi Cap + K.Toa/T.Tinh/Me cua no. */
+fun furnaceWithScrollsSkipped(
+    context: android.content.Context,
+    furnace: FurnaceConfig,
+    droppedScrolls: Set<String>,
+): Pair<FurnaceConfig, Int> {
+    if (droppedScrolls.isEmpty()) return furnace to 0
+    val byTid = loadPetScrolls(context).associateBy { it.tid }
+    val want = HashSet<String>()
+    for (t in droppedScrolls) {
+        want.add(t)
+        byTid[t]?.extra?.let { want.addAll(it) }
+    }
+    var out = furnace
+    var n = 0
+    for ((tabKey, poolName) in FURNACE_SCROLL_TABS) {
+        val pool = loadFurnacePool(context, poolName).map { it.first }.toSet()
+        val old = out.tab(tabKey)
+        val items = HashMap(old.items)
+        for (t in want.intersect(pool)) {
+            // "skip" TUONG MINH: item mac dinh Thong bao ma xoa key thi lan sau lai ve notify
+            if (items[t] != "skip") { items[t] = "skip"; n++ }
+        }
+        if (n > 0) out = out.withTab(tabKey, old.copy(items = items))
+    }
+    return out to n
+}
+
+/** Che do HIEU LUC cua 1 item lo: config cua acc de len mac dinh (vkcd -> "notify"). */
+private fun furnaceEffectiveMode(
+    items: Map<String, String>, tid: String, dfltNotify: Set<String>,
+): String {
+    val m = items[tid]
+    if (m == "skip") return ""
+    if (!m.isNullOrEmpty()) return m
+    return if (tid in dfltNotify) "notify" else ""
+}
+
+/** Tid vua thoat khoi "Bo qua" (skip -> tu mua/thong bao) khi so 2 ban config lo. */
+fun furnaceUnskippedTids(
+    context: android.content.Context, old: FurnaceConfig, new: FurnaceConfig,
+): List<String> {
+    val out = ArrayList<String>()
+    for ((tabKey, poolName) in FURNACE_SCROLL_TABS) {
+        val dflt = loadFurnaceDefaultNotify(context, poolName)
+        val o = old.tab(tabKey).items
+        val n = new.tab(tabKey).items
+        for (tid in loadFurnacePool(context, poolName).map { it.first }) {
+            if (furnaceEffectiveMode(o, tid, dflt).isEmpty() &&
+                furnaceEffectiveMode(n, tid, dflt).isNotEmpty()
+            ) out.add(tid)
+        }
+    }
+    return out
+}
+
+/** Cuon vua chuyen sang PHAN GIAI khi so 2 ban scrollModes (mac dinh = vkcd -> giu). */
+fun newlyDroppedScrolls(
+    context: android.content.Context, old: Map<String, String>, new: Map<String, String>,
+): Set<String> {
+    val out = HashSet<String>()
+    for (sc in loadPetScrolls(context)) {
+        val dflt = if (sc.vkcd) "keep" else "drop"
+        val before = old[sc.tid] ?: dflt
+        val after = new[sc.tid] ?: dflt
+        if (after == "drop" && before != "drop") out.add(sc.tid)
+    }
+    return out
+}
+
+/** Item lo chuyen BO QUA -> Tu mua/Thong bao => cuon so huu no ve "Giu lai". */
+fun scrollModesAfterUnskip(
+    context: android.content.Context,
+    modes: Map<String, String>,
+    unskipped: List<String>,
+): Pair<Map<String, String>, Int> {
+    if (unskipped.isEmpty()) return modes to 0
+    val owner = scrollOwnerMap(context)
+    val byTid = loadPetScrolls(context).associateBy { it.tid }
+    val out = HashMap(modes)
+    var n = 0
+    for (t in unskipped) {
+        val sc = owner[t] ?: continue   // mon do khong thuoc cuon nao (vd tab Trang Bi)
+        // modes chi luu muc KHAC mac dinh -> mac dinh da la "giu" thi XOA key di
+        if (byTid[sc]?.vkcd == true) {
+            if (out.remove(sc) == "drop") n++
+        } else if (out[sc] != "keep") {
+            out[sc] = "keep"; n++
+        }
+    }
+    return out to n
 }
 
 /** List cuon vo tuong: bam 1 dong de doi GIU LAI <-> PHAN GIAI (mirror gui.py _open_scroll_list).

@@ -2071,6 +2071,72 @@ class PartyConfigFrame(ttk.Frame):
         parts.append(cls._EQ_QUAL.get(v.get("q", 0), "?"))
         return "_".join(parts)
 
+    # ---- Dong bo LIST PHAN GIAI <-> SOI LO (chi chay luc an Luu) -------------------------
+    # Hai cau hinh nay de da nhau: lo "tu mua" K.Toa/Me khi tui trong -> phan giai xoa di ->
+    # vong lo sau lai mua. Engine chi mua khi tui CHUA CO nen vong dot tien nay LAP VINH VIEN.
+    # Luu y PHAM VI: config lo theo TUNG ACCOUNT, con list phan giai theo PARTY -> dong bo phai
+    # quet MOI account trong party (neu khong, acc khac van mua roi bi pha).
+    _SCROLL_TAB = {"vo_tuong": "Vo Tuong", "chuyen_sinh": "Chuyen Sinh"}
+
+    def _scroll_owner_map(self):
+        """{tid_hex mon do -> tid_hex cuon so huu}. Gom ca chinh cuon lan K.Toa/T.Tinh/Me cua no."""
+        out = {}
+        for tid, v in self._load_pet_scrolls().items():
+            out[tid] = tid
+            for e in (v.get("extra") or ()):
+                out.setdefault(e, tid)
+        return out
+
+    def _sync_furnace_from_scrolls(self, newly_drop):
+        """Cuon chuyen GIU -> PHAN GIAI: dat "Bo qua" cho Bi Cap + K.Toa/T.Tinh/Me cua no o lo
+        cua MOI account trong party. Tra ve so muc da doi.
+
+        Chieu nguoc lai (phan giai -> giu) KHONG lam gi: giu cuon thi mua/bao ben lo van hop ly.
+        """
+        data = self._load_pet_scrolls()
+        want = set()
+        for tid in newly_drop:
+            want.add(tid)
+            want.update(data.get(tid, {}).get("extra") or ())
+        if not want:
+            return 0
+        n = 0
+        for r in self.acc_rows:
+            if not r["u"].get().strip():
+                continue
+            furn = r.setdefault("furnace", {})
+            for tab_key, pool_name in self._SCROLL_TAB.items():
+                pool = self._load_furnace_pool().get(pool_name, {})
+                tab = furn.get(tab_key) or {}
+                items = dict(tab.get("items") or {})
+                for t in want & set(pool):
+                    # "skip" TUONG MINH: item mac dinh Thong bao ma xoa key thi lan sau ve notify
+                    if items.get(t) != "skip":
+                        items[t] = "skip"
+                        n += 1
+                if items:
+                    furn[tab_key] = {"on": tab.get("on", True), "items": items}
+        return n
+
+    def _sync_scrolls_from_furnace(self, unskipped):
+        """Item lo chuyen BO QUA -> Tu mua/Thong bao: cuon so huu no ve "Giu lai".
+        `unskipped` = list tid_hex. Tra ve so cuon da doi."""
+        owner = self._scroll_owner_map()
+        data = self._load_pet_scrolls()
+        n = 0
+        for t in unskipped:
+            sc = owner.get(t)
+            if not sc:
+                continue    # mon do khong thuoc cuon nao trong list (vd tab Trang Bi)
+            # scroll_modes chi luu muc KHAC mac dinh -> mac dinh da la "giu" thi xoa key di
+            if data.get(sc, {}).get("vkcd"):
+                if self.scroll_modes.pop(sc, None) == "drop":
+                    n += 1
+            elif self.scroll_modes.get(sc) != "keep":
+                self.scroll_modes[sc] = "keep"
+                n += 1
+        return n
+
     def _open_furnace_list_dialog(self, row, tab_key, pool_name, tab_label):
         """Chon item lo tab `tab_key`: Treeview (ten + che do), search, moi item dropdown
         Bo/Tu mua/Bao. Sort Tu mua -> Bao -> Bo. Luu vao row['furnace'][tab_key]['items'].
@@ -2095,6 +2161,7 @@ class PartyConfigFrame(ttk.Frame):
                 return m
             return "notify" if tid_hex in dflt_notify else ""
         state = {tid_hex: _cur_mode(tid_hex) for tid_hex in pool}
+        _mode0 = dict(state)     # trang thai LUC MO -> biet muc nao vua thoat "Bo qua"
 
         win = tk.Toplevel(self); win.title(f"Lò {tab_label}: {row['u'].get().strip()}")
         win.transient(self.winfo_toplevel()); win.grab_set()
@@ -2156,12 +2223,21 @@ class PartyConfigFrame(ttk.Frame):
                     items[t] = m
                 elif not m and t in dflt_notify:
                     items[t] = "skip"
+            # Item chuyen BO QUA -> Tu mua/Thong bao thi cuon so huu no phai ve "Giu lai",
+            # khong thi vua mua vua phan giai. So voi trang thai LUC MO dialog (_mode0).
+            _unskipped = [t for t, m in state.items() if m in ("auto", "notify") and not _mode0.get(t)]
             if items:
                 on = (furn.get(tab_key) or {}).get("on", True)
                 furn[tab_key] = {"on": on, "items": items}
             else:
                 furn.pop(tab_key, None)
+            _n = self._sync_scrolls_from_furnace(_unskipped) if tab_key in self._SCROLL_TAB else 0
             win.destroy()
+            if _n:
+                messagebox.showinfo("Đồng bộ phân giải",
+                                    f"Đã chuyển {_n} cuộn sang \"Giữ lại\" "
+                                    "(vì mục của chúng bên lò không còn Bỏ qua).",
+                                    parent=self.winfo_toplevel())
         ttk.Button(bb, text="💾 Lưu", command=save).pack(side="right", padx=3)
         ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="right", padx=3)
 
@@ -2783,10 +2859,22 @@ class PartyConfigFrame(ttk.Frame):
             tv.item(tid, values=("Phân giải" if state[tid] == "drop" else "Giữ lại",))
 
         def _save():
+            _was_drop = {t for t in data
+                         if (self.scroll_modes.get(t) or ("keep" if data[t].get("vkcd") else "drop"))
+                         == "drop"}
             self.scroll_modes = {
                 tid: m for tid, m in state.items()
                 if m != ("keep" if data[tid].get("vkcd") else "drop")}
+            # Chi cac cuon VUA chuyen sang phan giai moi phai tat ben lo (chieu nguoc lai khong
+            # can lam gi). Quet MOI account trong party vi config lo la cua tung account.
+            _now_drop = {t for t, m in state.items() if m == "drop"}
+            _n = self._sync_furnace_from_scrolls(_now_drop - _was_drop)
             win.destroy()
+            if _n:
+                messagebox.showinfo("Đồng bộ soi lò",
+                                    f"Đã chuyển {_n} mục bên lò sang \"Bỏ qua\" "
+                                    "(Bí Cấp / K.Toả / T.Tinh / Mê của cuộn vừa đặt Phân giải).",
+                                    parent=self.winfo_toplevel())
 
         tv.bind("<Double-1>", _toggle)
         q_var.trace_add("write", lambda *_a: _fill())
