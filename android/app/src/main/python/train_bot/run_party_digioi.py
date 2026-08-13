@@ -4687,7 +4687,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         # THEM O CUOI: Kotlin goi THEO VI TRI (BotForegroundService.kt) nen
                         # chen vao giua se lam lech het cac tham so phia sau.
                         auto_bag_clean=True, auto_discard_junk=True,
-                        auto_decompose_scrolls=False, scroll_modes=None):
+                        auto_decompose_scrolls=False, scroll_modes=None,
+                        auto_donate_materials=True, material_modes=None):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -4720,6 +4721,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "auto_discard_junk": bool(auto_discard_junk),
         "auto_decompose_scrolls": bool(auto_decompose_scrolls),
         "scroll_modes": scroll_modes or {},
+        "auto_donate_materials": bool(auto_donate_materials),
+        "material_modes": material_modes or {},
         "auto_buy_shop": bool(auto_buy_shop) if auto_buy_shop is not None else bool(buy_ho_phu or buy_thien_chau or buy_bao_hop),
         "shop_items": config.normalize_shop_items(None, {
             "ho_phu": bool(buy_ho_phu),

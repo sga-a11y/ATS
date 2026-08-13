@@ -55,6 +55,10 @@ data class Party(
     val autoDecomposeScrolls: Boolean = false,
     // tid_hex -> "keep"/"drop", CHI chua muc user doi khac mac dinh (vkcd = keep)
     val scrollModes: Map<String, String> = emptyMap(),
+    // Tu dong gop nguyen lieu cho quan doan (mac dinh BAT). List edit duoc: mac dinh donate HET.
+    val autoDonateMaterials: Boolean = true,
+    // tid_hex -> "keep", CHI chua nguyen lieu user danh dau GIU (mac dinh donate)
+    val materialModes: Map<String, String> = emptyMap(),
     // Mua shop (mac dinh TAT). Master autoBuyShop + list item ben duoi.
     // Ho Phu: mua 3/ngay. Thien Chau: mua 1/ngay. Bao Hop: mua 1/ngay khi xu > baoHopXuThreshold.
     val autoBuyShop: Boolean = false,
@@ -91,6 +95,8 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     autoDiscardJunk = source.autoDiscardJunk,
     autoDecomposeScrolls = source.autoDecomposeScrolls,
     scrollModes = source.scrollModes,
+    autoDonateMaterials = source.autoDonateMaterials,
+    materialModes = source.materialModes,
     autoBuyShop = source.autoBuyShop,
     buyHoPhu = source.buyHoPhu,
     buyThienChau = source.buyThienChau,

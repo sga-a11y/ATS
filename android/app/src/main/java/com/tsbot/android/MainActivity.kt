@@ -716,6 +716,8 @@ fun TsBotApp(
             initialAutoDiscardJunk = partyBeingEdited.autoDiscardJunk,
             initialAutoDecomposeScrolls = partyBeingEdited.autoDecomposeScrolls,
             initialScrollModes = partyBeingEdited.scrollModes,
+            initialAutoDonateMaterials = partyBeingEdited.autoDonateMaterials,
+            initialMaterialModes = partyBeingEdited.materialModes,
             initialAutoBuyShop = partyBeingEdited.autoBuyShop,
             initialBuyHoPhu = partyBeingEdited.buyHoPhu,
             initialBuyThienChau = partyBeingEdited.buyThienChau,
@@ -1558,6 +1560,8 @@ fun AddPartyDialog(
     initialAutoDiscardJunk: Boolean = true,
     initialAutoDecomposeScrolls: Boolean = false,
     initialScrollModes: Map<String, String> = emptyMap(),
+    initialAutoDonateMaterials: Boolean = true,
+    initialMaterialModes: Map<String, String> = emptyMap(),
     initialAutoBuyShop: Boolean = false,
     initialBuyHoPhu: Boolean = false,
     initialBuyThienChau: Boolean = false,
@@ -1609,6 +1613,9 @@ fun AddPartyDialog(
     var autoDiscardJunk by remember { mutableStateOf(initialAutoDiscardJunk) }
     var autoDecomposeScrolls by remember { mutableStateOf(initialAutoDecomposeScrolls) }
     var scrollModes by remember { mutableStateOf(initialScrollModes) }
+    var autoDonateMaterials by remember { mutableStateOf(initialAutoDonateMaterials) }
+    var materialModes by remember { mutableStateOf(initialMaterialModes) }
+    var showMaterialList by remember { mutableStateOf(false) }
     var showBagClean by remember { mutableStateOf(false) }
     var showScrollList by remember { mutableStateOf(false) }
     var autoBuyShop by remember { mutableStateOf(initialAutoBuyShop) }
@@ -1661,6 +1668,8 @@ fun AddPartyDialog(
         autoDiscardJunk = autoDiscardJunk,
         autoDecomposeScrolls = autoDecomposeScrolls,
         scrollModes = scrollModes,
+        autoDonateMaterials = autoDonateMaterials,
+        materialModes = materialModes,
         autoBuyShop = autoBuyShop,
         buyHoPhu = buyHoPhu,
         buyThienChau = buyThienChau,
@@ -2165,6 +2174,8 @@ fun AddPartyDialog(
                             autoDiscardJunk = autoDiscardJunk,
                             autoDecomposeScrolls = autoDecomposeScrolls,
                             scrollModes = scrollModes,
+                            autoDonateMaterials = autoDonateMaterials,
+                            materialModes = materialModes,
                             autoBuyShop = autoBuyShop,
                             buyHoPhu = buyHoPhu,
                             buyThienChau = buyThienChau,
@@ -2206,6 +2217,14 @@ fun AddPartyDialog(
                         Text("Tự vứt item rác (Ngọc Hư)")
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoDonateMaterials, onCheckedChange = { autoDonateMaterials = it })
+                        Text("Tự đóng góp nguyên liệu cho quân đoàn")
+                        OutlinedButton(
+                            onClick = { showMaterialList = true },
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) { Text("List") }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoDecomposeScrolls, onCheckedChange = { autoDecomposeScrolls = it })
                         Text("Tự phân giải cuộn võ tướng rác")
                         OutlinedButton(
@@ -2233,6 +2252,14 @@ fun AddPartyDialog(
             modes = scrollModes,
             onDismiss = { showScrollList = false },
             onSave = { scrollModes = it; showScrollList = false },
+        )
+    }
+
+    if (showMaterialList) {
+        MaterialListDialog(
+            modes = materialModes,
+            onDismiss = { showMaterialList = false },
+            onSave = { materialModes = it; showMaterialList = false },
         )
     }
 
@@ -3087,6 +3114,99 @@ fun ScrollListDialog(
                 // chi luu phan KHAC mac dinh -> file config gon, va mac dinh sua sau van co hieu luc
                 onSave(all.filter { state[it.tid] != (if (it.vkcd) "keep" else "drop") }
                     .associate { it.tid to (state[it.tid] ?: "drop") })
+            }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
+    )
+}
+
+/** 1 nguyen lieu donate quan doan trong donate_materials.json. Sinh boi crack_donate_materials.py. */
+data class DonateMaterial(val tid: String, val name: String, val kind: Int, val lv: Int) {
+    fun label(): String {
+        val cat = MAT_KIND_NAME[kind] ?: ""
+        val extra = listOf(cat, if (lv > 0) "Lv$lv" else "").filter { it.isNotEmpty() }
+        return if (extra.isEmpty()) name else "$name — " + extra.joinToString(" · ")
+    }
+}
+private val MAT_KIND_NAME = mapOf(
+    24 to "Sành", 25 to "Gỗ", 26 to "Vỏ", 27 to "Xương", 28 to "Ngọc Sa", 29 to "Đá quý",
+    30 to "Da", 31 to "Vải", 32 to "Giấy", 33 to "Trúc", 34 to "Thảo mộc", 35 to "Hạt Đá",
+    36 to "Băng", 40 to "Kim Sa", 41 to "Ngân Phấn", 42 to "Bột Đồng", 43 to "Thiết",
+    44 to "Thiếc", 45 to "Tử Tinh", 46 to "Hồng Tinh")
+private var _donateMaterialsCache: List<DonateMaterial>? = null
+
+fun loadDonateMaterials(context: android.content.Context): List<DonateMaterial> {
+    if (_donateMaterialsCache == null) {
+        _donateMaterialsCache = try {
+            val bytes = context.assets.open("train_bot_data/donate_materials.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8)).getJSONObject("items")
+            val out = ArrayList<DonateMaterial>()
+            for (tid in root.keys()) {
+                val o = root.getJSONObject(tid)
+                out.add(DonateMaterial(tid, o.optString("name", ""), o.optInt("kind", 0), o.optInt("lv", 0)))
+            }
+            out
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    return _donateMaterialsCache ?: emptyList()
+}
+
+@Composable
+fun MaterialListDialog(
+    modes: Map<String, String>,
+    onDismiss: () -> Unit,
+    onSave: (Map<String, String>) -> Unit,
+) {
+    val context = LocalContext.current
+    val all = remember { loadDonateMaterials(context) }
+    val state = remember {
+        mutableStateMapOf<String, String>().apply {
+            all.forEach { put(it.tid, if (modes[it.tid] == "keep") "keep" else "donate") }
+        }
+    }
+    var query by remember { mutableStateOf("") }
+    // "Dong gop" (se MAT) len TRUOC, Lv cao len tren de soat nguyen lieu quy
+    val shown = all.filter { query.isBlank() || it.label().contains(query, ignoreCase = true) }
+        .sortedWith(compareBy({ state[it.tid] != "donate" }, { -it.lv }, { it.label() }))
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nguyên liệu (${all.size})") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it }, singleLine = true,
+                    label = { Text("Tìm") }, modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text("Bấm 1 dòng để đổi trạng thái. Mặc định ĐÓNG GÓP hết.",
+                     style = MaterialTheme.typography.bodySmall)
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(shown.size) { i ->
+                        val m = shown[i]
+                        val donate = state[m.tid] != "keep"
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { state[m.tid] = if (donate) "keep" else "donate" }
+                                .padding(vertical = 6.dp),
+                        ) {
+                            Text(m.label(), modifier = Modifier.weight(1f))
+                            Text(
+                                if (donate) "Đóng góp" else "Giữ lại",
+                                color = if (donate) androidx.compose.ui.graphics.Color(0xFFAA0000)
+                                        else androidx.compose.ui.graphics.Color(0xFF007700),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                // chi luu muc GIU (khac mac dinh donate) -> nguyen lieu moi tu donate theo mac dinh
+                onSave(all.filter { state[it.tid] == "keep" }.associate { it.tid to "keep" })
             }) { Text("Lưu") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },

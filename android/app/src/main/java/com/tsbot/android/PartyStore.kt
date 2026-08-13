@@ -78,6 +78,10 @@ class PartyStore(private val context: Context) {
                 scrollModes = o.optJSONObject("scroll_modes")?.let { m ->
                     m.keys().asSequence().mapNotNull { k -> m.optString(k, "").takeIf { it.isNotEmpty() }?.let { k to it } }.toMap()
                 } ?: emptyMap(),
+                autoDonateMaterials = o.optBoolean("auto_donate_materials", true),
+                materialModes = o.optJSONObject("material_modes")?.let { m ->
+                    m.keys().asSequence().mapNotNull { k -> m.optString(k, "").takeIf { it.isNotEmpty() }?.let { k to it } }.toMap()
+                } ?: emptyMap(),
                 autoBuyShop = o.optBoolean("auto_buy_shop", buyHoPhu || buyThienChau || buyBaoHop),
                 buyHoPhu = buyHoPhu,
                 buyThienChau = buyThienChau,
@@ -124,6 +128,8 @@ class PartyStore(private val context: Context) {
             o.put("auto_discard_junk", p.autoDiscardJunk)
             o.put("auto_decompose_scrolls", p.autoDecomposeScrolls)
             o.put("scroll_modes", JSONObject().apply { p.scrollModes.forEach { (k, v) -> put(k, v) } })
+            o.put("auto_donate_materials", p.autoDonateMaterials)
+            o.put("material_modes", JSONObject().apply { p.materialModes.forEach { (k, v) -> put(k, v) } })
             o.put("auto_buy_shop", p.autoBuyShop)
             o.put("shop_items", JSONObject().apply {
                 put("ho_phu", p.buyHoPhu)
