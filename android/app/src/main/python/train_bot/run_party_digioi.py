@@ -4101,16 +4101,21 @@ def _mark_team_dungeon_broken(st, level):
     # (log 23:45-23:47: fail -> relogin -> fail -> relogin...). User: moi PB chi retry 1 LAN,
     # van khong qua -> bo qua cac PB CON LAI CUA LUOT NAY roi di lam viec tiep theo. KHONG
     # khoa ca ngay: luot chay sau van check PB binh thuong.
-    tries = st.setdefault("team_dungeon_tries", {})
-    tries[level] = tries.get(level, 0) + 1
-    if tries[level] >= TEAM_DUNGEON_MAX_TRIES:
-        st["team_dungeon_skip_all"] = True
+    # CHI dem/clear MOT LAN moi chu ky vo (khi need_redo dang False -> True). Bug that: MOI acc goi
+    # _mark deu clear recover_seen -> acc phat hien PB vo TRE (thuong leader o 4231) clear MAT nhung
+    # member da qua barrier (_prepare da add seen roi vao vong cho) -> ket "4/5" vo tan, khong bao gio
+    # du 5. Ngoai ra tries + 1/acc lam skip_all som. Guard bang need_redo (moi caller deu giu st.lock).
+    fresh = not st.get("team_dungeon_need_redo")
+    if fresh:
+        tries = st.setdefault("team_dungeon_tries", {})
+        tries[level] = tries.get(level, 0) + 1
+        if tries[level] >= TEAM_DUNGEON_MAX_TRIES:
+            st["team_dungeon_skip_all"] = True
+        st.setdefault("team_dungeon_recover_seen", set()).clear()
+        st.setdefault("team_dungeon_recover_ready", threading.Event()).clear()
     st.setdefault("team_dungeon_broke", {})[level] = True
     st["team_dungeon_need_redo"] = True
     st.setdefault("team_dungeon_state", {})[level] = "done"
-    st.setdefault("team_dungeon_recover_seen", set()).clear()
-    ev = st.setdefault("team_dungeon_recover_ready", threading.Event())
-    ev.clear()
 
 
 def _prepare_team_dungeon_redo_after_reconnect(st, username, label, pidx, stopped_fn):
