@@ -1203,7 +1203,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     account_furnace_notify[username] = _notify   # GUI doc de popup hoi mua
             except Exception as e:
                 log.warning("[%s] loi soi/mua lo: %s", label, e)
-            c.donate_legion()           # donate nguyen lieu rac (donate_items.json) cho quan doan -> don tui
+            if pcfg.get("auto_donate_materials", True):
+                c.donate_legion()       # donate nguyen lieu cho quan doan (list edit duoc, mac dinh het) -> don tui
             # THA DO THOI TRANG vao Bo Suu Tam (gon tui + diem). DAT TRUOC use_login_items vi tha CHAC
             # CHAN free slot, con use_item doi khi de item MOI ra lam day tui (theo yeu cau user).
             try: c.deposit_fashion_to_collection()
@@ -1300,6 +1301,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         c.auto_discard_junk = bool(pcfg.get("auto_discard_junk", True))
         c.auto_decompose_scrolls = bool(pcfg.get("auto_decompose_scrolls", False))
         c.scroll_modes = _scroll_modes_map(pcfg.get("scroll_modes"))
+        c.auto_donate_materials = bool(pcfg.get("auto_donate_materials", True))
+        c.material_modes = _scroll_modes_map(pcfg.get("material_modes"))   # {tid:'keep'} - nguyen lieu GIU
         ev = None
         train_safes = []
         if tm is not None:

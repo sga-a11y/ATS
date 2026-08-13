@@ -466,6 +466,22 @@ def _load_donate_items():
     return out
 DONATE_ITEMS = _load_donate_items()
 
+# NGUYEN LIEU DONATE quan doan (list EDIT duoc, giong list phan giai cuon pet): TAT CA nguyen lieu
+# hop thanh (20 kind, donate_materials.json). MAC DINH donate HET; user danh dau GIU trong GUI
+# (material_modes[tid]='keep'). itemId_int -> {name, kind, lv}. Sinh boi crack_donate_materials.py.
+def _load_donate_materials():
+    import json, os
+    f = os.path.join(_base_dir(), "donate_materials.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("items", {}).items():
+                out[int(k, 16)] = v
+    except Exception:
+        pass
+    return out
+DONATE_MATERIALS = _load_donate_materials()
+
 # Item TU DONG SU DUNG luc login. Doc tu use_items.json. 2 format value:
 #   "0x..": "Ten"                          -> dung HET ca stack, TUNG CAI 1 (item chi cho dung 1/lenh)
 #   "0x..": {"name":"Ten","qty":25}        -> dung TOI DA 25 cai/login (co > 25 -> dung 25, de lai du;

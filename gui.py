@@ -203,6 +203,7 @@ _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831
                   "auto_team_dungeon": True, "team_dungeons": _team_dungeons_json(DEFAULT_TEAM_DUNGEONS),
                   "auto_sell_noi_dat": True, "auto_bag_clean": True,
                   "auto_discard_junk": True, "auto_decompose_scrolls": False,
+                  "auto_donate_materials": True,
                   "auto_buy_shop": False,
                   "shop_items": _shop_items_json(DEFAULT_SHOP_ITEMS), "leaders": [],
                   "accounts": [{"u": "acc1", "p": "pass1", "on": True},
@@ -1818,6 +1819,9 @@ class PartyConfigFrame(ttk.Frame):
         self.auto_decompose_scrolls_var = tk.BooleanVar(
             value=bool(self._preset.get("auto_decompose_scrolls", False)))
         self.scroll_modes = dict(self._preset.get("scroll_modes") or {})
+        self.auto_donate_materials_var = tk.BooleanVar(
+            value=bool(self._preset.get("auto_donate_materials", True)))   # mac dinh BAT
+        self.material_modes = dict(self._preset.get("material_modes") or {})   # {tid:'keep'} - nguyen lieu GIU
         # Mua shop (mac dinh TAT): master "Tu mua shop" + list vat pham. Key cu van doc de
         # account.json doi cu update len khong bi mat setting.
         self.shop_items = _normalize_shop_items(self._preset.get("shop_items"), {
@@ -2788,6 +2792,27 @@ class PartyConfigFrame(ttk.Frame):
                     pass
         return PartyConfigFrame._pet_scrolls_cache
 
+    _donate_materials_cache = None
+    _MAT_KIND = {24: "Sành", 25: "Gỗ", 26: "Vỏ", 27: "Xương", 28: "Ngọc Sa", 29: "Đá quý",
+                 30: "Da", 31: "Vải", 32: "Giấy", 33: "Trúc", 34: "Thảo mộc", 35: "Hạt Đá",
+                 36: "Băng", 40: "Kim Sa", 41: "Ngân Phấn", 42: "Bột Đồng", 43: "Thiết",
+                 44: "Thiếc", 45: "Tử Tinh", 46: "Hồng Tinh"}
+
+    @classmethod
+    def _load_donate_materials(cls):
+        """{tid_hex: {name,kind,lv}} tu donate_materials.json - TAT CA nguyen lieu donate duoc."""
+        if PartyConfigFrame._donate_materials_cache is None:
+            import json as _json, os as _os
+            PartyConfigFrame._donate_materials_cache = {}
+            for p in (_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "donate_materials.json"),
+                      "donate_materials.json"):
+                try:
+                    with open(p, encoding="utf-8") as fh:
+                        PartyConfigFrame._donate_materials_cache = _json.load(fh).get("items", {}); break
+                except Exception:
+                    pass
+        return PartyConfigFrame._donate_materials_cache
+
     def _open_bag_clean_detail(self):
         """Bang chi tiet cua "Tu don tui do": 3 muc con. Bo tick o tong -> ca 3 ngung."""
         win = tk.Toplevel(self); win.title("Dọn dẹp túi đồ"); win.transient(self); win.grab_set()
@@ -2806,6 +2831,14 @@ class PartyConfigFrame(ttk.Frame):
                   text="Lưu ý: phân giải là MẤT HẲN cuộn. Mặc định cuộn của tướng có vũ khí "
                        "chuyên dụng được giữ lại, còn lại phân giải — nên soát List trước khi bật."
                   ).pack(anchor="w", pady=(8, 0))
+        _mt = ttk.Frame(frm); _mt.pack(anchor="w", fill="x", pady=(8, 0))
+        ttk.Checkbutton(_mt, text="Tự đóng góp nguyên liệu cho quân đoàn",
+                        variable=self.auto_donate_materials_var).pack(side="left")
+        ttk.Button(_mt, text="List", command=self._open_material_list).pack(side="left", padx=(8, 0))
+        ttk.Label(frm, foreground="#a00", wraplength=420, justify="left",
+                  text="Lưu ý: đóng góp là MẤT HẲN nguyên liệu. MẶC ĐỊNH donate HẾT — mở List "
+                       "đánh dấu GIỮ LẠI nguyên liệu quý (tier cao) trước khi bật."
+                  ).pack(anchor="w", pady=(4, 0))
         ttk.Button(frm, text="Đóng", command=win.destroy).pack(anchor="e", pady=(12, 0))
 
     def _open_scroll_list(self):
@@ -2894,6 +2927,70 @@ class PartyConfigFrame(ttk.Frame):
         q_var.trace_add("write", lambda *_a: _fill())
         _fill()
         ttk.Label(bar, text="★ = mặc định giữ (tướng có vũ khí chuyên dụng / bản đặc biệt)").pack(side="left")
+        ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="right")
+        ttk.Button(bar, text="Lưu", command=_save).pack(side="right", padx=(0, 8))
+
+    def _open_material_list(self):
+        """List TAT CA nguyen lieu donate duoc: double-click doi DONATE <-> GIU LAI.
+        MAC DINH donate HET -> self.material_modes CHI luu muc user danh dau GIU (mac dinh khong luu)."""
+        data = self._load_donate_materials()
+        if not data:
+            messagebox.showwarning("List nguyên liệu", "Không đọc được donate_materials.json")
+            return
+        win = tk.Toplevel(self); win.title("Nguyên liệu (đóng góp quân đoàn)")
+        win.transient(self); win.grab_set()
+        frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
+        top = ttk.Frame(frm); top.pack(fill="x")
+        ttk.Label(top, text="Double-click để đổi trạng thái. Tìm:").pack(side="left")
+        q_var = tk.StringVar()
+        ttk.Entry(top, textvariable=q_var, width=24).pack(side="left", padx=(4, 0))
+        bar = ttk.Frame(frm); bar.pack(side="bottom", fill="x", pady=(10, 0))
+        mid = ttk.Frame(frm); mid.pack(fill="both", expand=True)
+        tv = ttk.Treeview(mid, columns=("st",), show="tree headings", height=20)
+        tv.heading("#0", text="Nguyên liệu"); tv.heading("st", text="Trạng thái")
+        tv.column("#0", width=340); tv.column("st", width=110, anchor="center")
+        sb = ttk.Scrollbar(mid, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        tv.pack(side="left", fill="both", expand=True, pady=(8, 0))
+        sb.pack(side="right", fill="y", pady=(8, 0))
+        # state: tid_hex -> "keep"/"donate"; MAC DINH donate (chi keep neu material_modes danh dau)
+        state = {tid: ("keep" if self.material_modes.get(tid) == "keep" else "donate")
+                 for tid in data}
+
+        def _label(tid):
+            v = data[tid]
+            cat = self._MAT_KIND.get(v.get("kind"), "")
+            extra = [x for x in (cat, "Lv%s" % v["lv"] if v.get("lv") else "") if x]
+            nm = v.get("name", "")
+            return "%s — %s" % (nm, " · ".join(extra)) if extra else nm
+
+        def _fill():
+            q = q_var.get().strip().lower()
+            tv.delete(*tv.get_children())
+            # "Donate" (se MAT) len TRUOC, roi theo Lv giam dan de soat mon quy tier cao
+            for tid in sorted(data, key=lambda t: (state[t] != "donate",
+                                                   -int(data[t].get("lv") or 0), _label(t))):
+                if q and q not in _label(tid).lower():
+                    continue
+                tv.insert("", "end", iid=tid, text=_label(tid),
+                          values=("Đóng góp" if state[tid] == "donate" else "Giữ lại",))
+
+        def _toggle(_e=None):
+            tid = tv.focus()
+            if not tid:
+                return
+            state[tid] = "keep" if state[tid] == "donate" else "donate"
+            tv.item(tid, values=("Đóng góp" if state[tid] == "donate" else "Giữ lại",))
+
+        def _save():
+            # CHI luu muc GIU (khac mac dinh donate) -> nguyen lieu moi cua game tu donate theo mac dinh
+            self.material_modes = {tid: "keep" for tid, m in state.items() if m == "keep"}
+            win.destroy()
+
+        tv.bind("<Double-1>", _toggle)
+        q_var.trace_add("write", lambda *_a: _fill())
+        _fill()
+        ttk.Label(bar, text="Mặc định ĐÓNG GÓP hết — đánh dấu Giữ lại nguyên liệu quý").pack(side="left")
         ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="right")
         ttk.Button(bar, text="Lưu", command=_save).pack(side="right", padx=(0, 8))
 
@@ -3024,6 +3121,8 @@ class PartyConfigFrame(ttk.Frame):
             "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
             "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
             "scroll_modes": dict(self.scroll_modes),
+            "auto_donate_materials": bool(self.auto_donate_materials_var.get()),
+            "material_modes": dict(self.material_modes),
             "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
             "shop_items": _shop_items_json({
                 "ho_phu": self.buy_ho_phu_var.get(),

@@ -1247,6 +1247,8 @@ class GameClient:
         self.auto_decompose_scrolls = False  # phan giai cuon vo tuong rac - mac dinh TAT (an toan:
                                              # phan giai la MAT HAN, user phai tu tick va soat list)
         self.scroll_modes = {}               # {tid: "keep"|"drop"} - override so voi mac dinh vkcd
+        self.material_modes = {}             # {tid: "keep"} - nguyen lieu GIU lai (mac dinh donate het)
+        self.auto_donate_materials = False   # tick "tu dong gop nguyen lieu quan doan" (GUI)
         self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - fallback VANTIEU_REQUESTS
         self.vantieu_req = None      # {he, doanh} decode tu DispatchBonus_C.dat (0400 effect1/effect2)
         self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
@@ -5288,13 +5290,21 @@ class GameClient:
         AN TOAN: chi donate SLOT co tid nam trong config.DONATE_ITEMS (danh sach TID rac, template
         -> dung mọi acc). Xac nhan qua 2 capture: 5 go ngo dong (slot 0x80) va 20 vai tho (slot
         0x74) -> deu la '0x27 0f000000000000[slot]', so luong khong nam trong goi."""
+        # NGUON MOI: donate_materials.json = TAT CA nguyen lieu (20 kind), MAC DINH donate het; user
+        # danh dau GIU trong GUI (material_modes[tid]='keep'). Fallback DONATE_ITEMS (list rac cu) neu
+        # chua co material list. Ten lay tu ca 2 nguon.
+        mats = getattr(config, "DONATE_MATERIALS", {}) or {}
         donate_names = getattr(config, "DONATE_ITEMS", {}) or {}
-        donate_tids = set()
-        for k in donate_names:
-            try:
-                donate_tids.add(int(k, 16) if isinstance(k, str) else int(k))
-            except Exception:
-                pass
+        keep = getattr(self, "material_modes", None) or {}
+        if mats:
+            donate_tids = {t for t in mats if str(keep.get(t, "")).lower() != "keep"}
+        else:   # chua co material list -> giu hanh vi cu (list rac cung)
+            donate_tids = set()
+            for k in donate_names:
+                try:
+                    donate_tids.add(int(k, 16) if isinstance(k, str) else int(k))
+                except Exception:
+                    pass
         if not donate_tids:
             return
         # SNAPSHOT truoc: cac slot co item can donate. Donate lam RONG chinh slot do, KHONG doi
@@ -5322,7 +5332,8 @@ class GameClient:
             self.send(0x27, b"\x0f\x00\x00\x00\x00\x00" + bytes([slot & 0xFF]))
             self.bag_slots.pop(slot, None)   # donate ca stack -> slot rong (S2C 0x17 se update lai)
             total += cnt
-            _nm = ((items.get(tid) or {}).get("name")
+            _nm = ((mats.get(tid) or {}).get("name")
+                   or (items.get(tid) or {}).get("name")
                    or donate_names.get(tid)
                    or donate_names.get(hex(tid), ""))
             log.info("[%s] donate quan doan slot=%d tid=0x%04x x%d ('%s')",

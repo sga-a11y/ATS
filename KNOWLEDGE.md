@@ -583,6 +583,29 @@ Nguồn: `.codex_mumu_probe/lua_decrypted_all/` (Common_protocal.lua, Logic_Role
 - **Giá**: học cấp 1 = `learnPt`; mỗi cấp sau = `lvUpPt`. Đã impl `client.auto_upgrade_pet_skills()`
   (login → mỗi pet có điểm → nâng index 0→1→2, index nào TỚI MAX mới sang con sau). Gated `pcfg.auto_pet_skill`.
 
+### ĐÓNG GÓP QUÂN ĐOÀN (crack UI_UIArmy.lua / Logic_Organization.lua / Logic_City.lua)
+**Client KHÔNG lấy list từ server — TỰ LỌC BAG tại chỗ.** Có 3 loại đóng góp (2 opcode):
+
+**1+3) Nguyên liệu (hồi HP/SP + nguyên liệu hợp thành)** → `C:039-015 <捐獻資源>` = opcode **0x27 sub0x0F**,
+payload `[資源數 u32][背包索引 u8]*n`. Bot HIỆN gửi từng slot `0x27 0f 00000000 [slot]` (đang chạy — chỉ
+donate list cứng `config.DONATE_ITEMS`/donate_items.json = nguyên liệu rác). Filter thật của client
+(`UIArmy.ArmyFilter`): donate được khi
+  - `kind == 53` → luôn được (kind 53 = xe công thành/quân bị?), HOẶC
+  - `level > 0` VÀ `material ∈ {1..36 set}` VÀ `kind ∉ {20,21,22}` (loại trang bị) VÀ không
+    khóa/đánh dấu bán/gửi VÀ ID không nằm blacklist
+    (10505,19209,20209,21609,22909,20747-9,26209-19,16000,21610,19210,22910,20210,11046).
+  - `material` (Item_C.dat field [13]): 1金屬 2石 3木 4紙 5布 6皮 7食物 8土壤 9水 10結晶 11硬殼 12骨...
+  - Map material→tài nguyên (`Organization.resourceItemMaterial`): 糧(food)={7,22,36} 礦(mineral)={1,2,8,10-19,26-35}
+    木(wood)={3,4,20,21} 布(cloth)={5,6,24,25}; 金/兵/器 = {} (không nhận item).
+
+**2) Trang bị / quân bị** → `C:039-053 <歸還軍備>` = opcode **0x27 sub0x35**, payload `[背包索引 u8]*n`
+(KHÔNG có count). Filter: item ID ∈ `City.weaponItemId` (14 xe công thành cố định):
+53005-53011 (木欄/井欄/衝車/刀車/努車/投石車/箭塔) + 53016-53022 (bản mạnh). CHỈ chief/sub-chief donate được.
+
+**CHƯA LÀM (note để sau)**: donate HP/SP + trang bị. Muốn làm phải crack thêm `material`/`kind`/`level`
+per item từ Item_C.dat (items_gamedata.json hiện chỉ có {id:name}) rồi replicate ArmyFilter. Hiện chỉ
+donate nguyên liệu rác qua list cứng — GIỮ NGUYÊN.
+
 ### Targeting Rules (TRAIN - dùng CHUNG đánh thường + combo để đồng target → combo ăn)
 - **Chọn target (đánh thường & combo):**
   1. Block 3 quái liền nhau cùng hàng (đầu tiên) → con **GIỮA** (AoE trúng cả 3)
