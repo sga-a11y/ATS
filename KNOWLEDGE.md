@@ -489,8 +489,13 @@ entity 8B = [2B ngẫu nhiên][template_id 2B LE][1B type][3B base phiên]
 - **DẠNG 2 (quái KHOÁNG — xác nhận capture mumu12):** một số quái (khoáng) KHÔNG có entity 8B trong
   0x0b mà là block `05 00 [n] [type] [tid 2B]` với **type byte3: `07`=địch, `04`=đồng đội**, tid ở
   **offset 4** (vd `0x61c7`=Khoáng Sắt). `note_enemy_entities` bắt CẢ 2 dạng.
-- Dùng cho điều kiện skill `mineral`: chỉ tên bắt đầu bằng `"Khoáng "`; không dùng tên chứa
-  `"Khoáng"` ở giữa/cuối (vd `Trình Khoáng`) và không suy theo dải template ID.
+- **Quái khoáng (điều kiện skill `mineral` → bỏ chạy)**: nhận diện CHUẨN bằng **NPC kind==16**
+  (client `Logic_FightField.CheckMineral`), KHÔNG theo tên. `config.MINERAL_NPC_IDS` = 252 template_id
+  kind==16 (`crack_mineral_npcs.py` từ Npc_C.dat). `state._is_mineral_enemy(tid,name)` check `tid in
+  MINERAL_NPC_IDS` trước (fallback tên `"Khoáng "`). Bài học: heuristic tên cũ chỉ bắt ~9/252 — SÓT
+  Thủy Tinh Đỏ/Tím, Hồng/Tử Thủy Tinh, các loại Quảng (lv116+), Khoáng đảo chữ (Kim/Ngân/Thiết Khoáng
+  lv122+), Long Thủ Khoáng (lv143+), và `Khoáng.N.Thạch` (dấu chấm) → map khoáng lv cao bot đánh nhầm
+  thay vì bỏ chạy.
   Xem `state.note_enemy_entities` + `state.enemy_names` + `combat._rule_condition_ok` cond=`mineral`.
 - **Model-id ở gói spawn `0x07`** (`body[10:12]`, quái đi rong trên map) là 1 field KHÁC entity[2:4]
   — client hiện đọc field này nhưng gán nhầm là map_id (scanner học từ `0x06` nên vô hại).

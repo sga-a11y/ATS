@@ -8,6 +8,7 @@ Phan tich tu cac packet S2C:
 import struct
 import unicodedata
 import logging
+from . import config
 log = logging.getLogger("bot")
 
 # Stat type trong 0x33 / 0x0b
@@ -185,6 +186,11 @@ class BattleState:
 
     @staticmethod
     def _is_mineral_enemy(tid=None, name=None):
+        # CHUAN: template_id thuoc set NPC kind==16 (config.MINERAL_NPC_IDS, crack_mineral_npcs.py) -
+        # khop dung client CheckMineral, KHONG phu thuoc ten (252 con: Thuy Tinh/Quang/Long Thu/Khoang
+        # dao chu... ma heuristic ten cu sot gan het). Fallback ten "Khoang " khi chua co set/tid.
+        if tid is not None and tid in getattr(config, "MINERAL_NPC_IDS", ()):
+            return True
         if name:
             norm = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii").lower()
             return norm.startswith("khoang ")

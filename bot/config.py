@@ -482,6 +482,24 @@ def _load_donate_materials():
     return out
 DONATE_MATERIALS = _load_donate_materials()
 
+# QUAI KHOANG (NPC kind==16): set template_id -> bot check quai trong tran de BO CHAY. Client nhan
+# dien bang kind==16 (CheckMineral), KHONG theo ten -> bot cu bat ten "Khoang " sot gan het (9/252).
+def _load_mineral_npc_ids():
+    import json, os
+    f = os.path.join(_base_dir(), "mineral_npcs.json")
+    out = set()
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k in json.load(fh).get("ids", {}):
+                try:
+                    out.add(int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return out
+MINERAL_NPC_IDS = _load_mineral_npc_ids()
+
 # Item TU DONG SU DUNG luc login. Doc tu use_items.json. 2 format value:
 #   "0x..": "Ten"                          -> dung HET ca stack, TUNG CAI 1 (item chi cho dung 1/lenh)
 #   "0x..": {"name":"Ten","qty":25}        -> dung TOI DA 25 cai/login (co > 25 -> dung 25, de lai du;
