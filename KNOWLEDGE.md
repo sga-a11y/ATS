@@ -1315,6 +1315,24 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 - Item tăng lượt World Boss là nhóm `ItemUse_203`; client chỉ cho dùng khi `mission 12207.step >= 5`.
   User đã chốt item VN `0xb625 = Khiêu Chiến Boss`; bot chỉ dùng item này sau khi đã đủ `5/5`
   rồi đọc/ước lượng về `4/5` để đánh tiếp.
+- **Crack Lua đầy đủ (UIJiugongge + Logic/Jiugongge + BitFlag) — xác nhận cơ chế:**
+  - `0x51` = opcode **81 BitFlag (永標 forever flags)**: sub **0200** = FULL array lúc login
+    (`BitFlag.Init`), sub **0100** = delta `[count u32]<<[flagId u16][bool]>>` (`BitFlag.Set`).
+    "Mask claimed line" bot đọc chính là mảng này — line L = `getFlag` (chỉ số bit) của award L
+    trong bảng `JiugonggeInfo_C.dat` (file KHÔNG có trong repo → bot dò bằng marker
+    `c0 ?? 03000000 [mask 2B] 01000000`, bit L+3, đã verify nhiều nick).
+  - Client **TỰ TÍNH ô xong cục bộ** (`JiugonggeMissionData:IsComplete` ← `CheckCondition` trên
+    RoleCount...), đạt thì chủ động gửi `C:91-2` từng ô để server ghi nhận; **S:91-2 =
+    `[result 1B: 1 ok][gridId u16][index 1B]`** (nên `02 00 01 01 00 [ô]` = result=1, grid=1, ô).
+    `020003/020004` = result code khác (chưa xong) — không phải cấu trúc khác.
+  - `C:91-3` claim = `[gridId u16][index 1B: 1-3 hàng, 4-6 cột, 7 tổng][missionId u16]`, missionId
+    = mission của **Ô SỐ index** (ô N id `0x2e+N`) → claim line L gửi `0x2f+L-1`, tổng gửi `0x35`.
+  - **Claim TỔNG (index 7): UI client đòi cả 6 line ĐÃ NHẬN (`canGetAward==2`)** mới cho gửi
+    (msg 21291 nếu thiếu) — không phải chỉ "đủ 6 line hoàn thành". Bot gửi 6 claim rồi claim 7
+    ngay trên cùng connection: server xử tuần tự nên hợp lệ; 1 line fail thì claim 7 fail theo,
+    login sau tự bù.
+  - `missionId` bot hardcode `0x2f..0x37`: client thật lấy từ **S:91-1** (full grid, nạp lúc
+    login) — server đổi bảng mission thì bot lệch (chưa từng xảy ra, ghi nhớ).
 - **Bài học 1:** quest "đếm số lần" → bulk không lộ done, phải hỏi riêng từng ô.
 - **Bài học 2 (QUAN TRỌNG):** `analyze_pcap.py` từng cap `ln<=2000` → **DROP frame lớn** (0x51 ~1004B,
   0x55 ~15KB) → kết luận sai "server không gửi". ĐÃ sửa `ln<=65535`. Khi không thấy data trong gói,
