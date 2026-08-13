@@ -36,7 +36,11 @@ def parse_skills(path):
                 cost = int.from_bytes(d[ip + 2:ip + 4], "little")
                 if SK_LO <= sid <= SK_HI and cost <= 300:
                     if sid not in out:
-                        out[sid] = {"name": name, "cost": cost, "cat": d[ip + 11], "splash": d[ip + 12]}
+                        # Layout SkillData.New (client): ip+17=limitLv (level can de HOC), ip+18=learnPoint
+                        # (gia hoc cap 1), ip+19=levelUpPoint (gia moi cap sau), ip+20=maxLv (1/5/6/8/10).
+                        out[sid] = {"name": name, "cost": cost, "cat": d[ip + 11], "splash": d[ip + 12],
+                                    "needLv": d[ip + 17], "learnPt": d[ip + 18], "lvUpPt": d[ip + 19],
+                                    "maxLv": d[ip + 20]}
                     i = ip + 2
                     continue
         i += 1
@@ -49,8 +53,10 @@ def parse_skills(path):
 
 # Skill mo neo bo sot (ten combining) - gia tri doc TAI VI TRI RECORD DUNG (da verify):
 MANUAL = {
-    0x2f05: {"name": "Liệt Trảm", "cost": 84, "cat": 1, "splash": 1},   # combo
-    0x2f0a: {"name": "Trị Liệu", "cost": 54, "cat": 7, "splash": 3},    # heal
+    0x2f05: {"name": "Liệt Trảm", "cost": 84, "cat": 1, "splash": 1,
+             "needLv": 0, "learnPt": 1, "lvUpPt": 1, "maxLv": 10},   # combo
+    0x2f0a: {"name": "Trị Liệu", "cost": 54, "cat": 7, "splash": 3,
+             "needLv": 0, "learnPt": 1, "lvUpPt": 1, "maxLv": 5},    # heal
 }
 
 
@@ -62,7 +68,9 @@ def main():
         "_note": "AUTO-SINH tu tools/crack_skills.py (Skill_C.dat, mo neo ten). skill_id hex -> "
                  "name, cost (SP), cat (idx11: LOAI - 1=dame combo duoc, 2=dame khong combo, 4..15=support), "
                  "splash (idx12: 1=don,2=trai doc,3=trai ngang,4=don dap,8=toan bo quai). "
-                 "combat: DAME=cat in{1,2}; COMBO=cat==1; ALL-TARGET=splash==8.",
+                 "combat: DAME=cat in{1,2}; COMBO=cat==1; ALL-TARGET=splash==8. "
+                 "needLv (ip+17)=level can de hoc, learnPt (ip+18)=diem hoc cap 1, "
+                 "lvUpPt (ip+19)=diem moi cap sau, maxLv (ip+20)=cap toi da (1/5/6/8/10).",
         "skills": {"0x%04x" % k: sk[k] for k in sorted(sk)},
     }
     with open(OUT, "w", encoding="utf-8") as f:

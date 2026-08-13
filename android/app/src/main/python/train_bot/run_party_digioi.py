@@ -1187,6 +1187,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.claim_legion_gift()   # nhan qua quan doan hang ngay
             c.claim_friend_gifts()  # tang qua tat ca ban + nhan qua ban tang (hang ngay)
             c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> Vo Tuong Phien
+            if pcfg.get("auto_pet_skill", True):   # AUTO NANG SKILL PET: pet co diem skill -> nang (index 0->1->2 toi max)
+                try:
+                    _n = c.auto_upgrade_pet_skills()
+                    if _n:
+                        log.info("[%s] auto nang skill pet: da gui nang cho %d pet", label, _n)
+                except Exception as e:
+                    log.warning("[%s] loi auto nang skill pet (bo qua): %s", label, e)
             # SOI LO + xu ly theo config per-acc (ACCOUNT_FURNACE): tab bat + item auto mua / notify.
             # Config trong -> chi soi + log 3 tab (nhu Pha 1). Notify list -> log (Pha 2 GUI popup).
             try:

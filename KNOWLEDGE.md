@@ -569,6 +569,20 @@ Crack Lua client 2026-08-08 (`Common/protocal.lua`, `Logic/FightManager.lua`):
 | 11010 | Toàn Trị Liệu | heal AoE | 42 | all ally | Hồi HP toàn party, char only |
 | 12006 | ??? | ? | ? | ? | Pet skill, chưa khám phá |
 
+### HỆ THỐNG HỌC/NÂNG SKILL (char + pet) — crack tu client Lua
+Nguồn: `.codex_mumu_probe/lua_decrypted_all/` (Common_protocal.lua, Logic_Role.lua, Data_SkillData.lua, UI_UISkillTree.lua).
+- **Skill_C.dat** (skills_data.json, crack_skills.py): mỗi skill có `needLv`(ip+17, level cần để học),
+  `learnPt`(ip+18, điểm học cấp 1), `lvUpPt`(ip+19, điểm mỗi cấp sau), `maxLv`(ip+20 = 1/5/6/8/10).
+- **Điểm skill + level skill PET**: nằm trong **`0x0f` sub0800** (S:015-008 `主角隨身武將資料`), mỗi record pet
+  (block `武將資料`, parse tại `Logic_Role.FollowNpcAppear`): từ đầu record — `[7]`=petLv, `[29:31]`=**điểm
+  skill (u16 LE)**, `[31]`=namelen, **3 byte NGAY SAU tên = skillLv[0..2]** (level 3 skill). Pet học tối đa
+  3 skill (`maxNpcSkill=3`); skill id = `config.PET_SKILLS[pid][0..2]` (Npc_C, đúng thứ tự khớp skillLv).
+- **C2S NÂNG skill pet**: `C:028-002 <武將技能升級>` = opcode **0x1C sub02** payload
+  `[pet_slot u8] + [skillId u16 LE][newLevel u8]*n` (batch nhiều skill). Server tự trừ điểm.
+  (char: `C:028-001` = 0x1C sub01 `<<[skillId u16][level u8]>>`.)
+- **Giá**: học cấp 1 = `learnPt`; mỗi cấp sau = `lvUpPt`. Đã impl `client.auto_upgrade_pet_skills()`
+  (login → mỗi pet có điểm → nâng index 0→1→2, index nào TỚI MAX mới sang con sau). Gated `pcfg.auto_pet_skill`.
+
 ### Targeting Rules (TRAIN - dùng CHUNG đánh thường + combo để đồng target → combo ăn)
 - **Chọn target (đánh thường & combo):**
   1. Block 3 quái liền nhau cùng hàng (đầu tiên) → con **GIỮA** (AoE trúng cả 3)

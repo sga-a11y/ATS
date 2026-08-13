@@ -2481,6 +2481,7 @@ class GameClient:
         n = b[2]
         start, chosen, first = 3, None, None
         _dbg = []   # DEBUG: (marker, pid) tung record de doi chieu voi vi tri THAT trong game
+        self._pet_skill_rows = []   # AUTO NANG SKILL PET: (slot,pid,petLv,skillPoint,[skillLv*3])
         for _ in range(n):
             if start + 33 > len(b):
                 break
@@ -2489,6 +2490,16 @@ class GameClient:
             marker = b[start]
             pid = int.from_bytes(b[start + 1:start + 3], "little")
             _dbg.append((marker, pid))
+            # AUTO NANG SKILL PET: block 武將資料 (client Logic_Role.FollowNpcAppear) - tu dau record:
+            #   [7]=petLv, [29:31]=DIEM SKILL (u16 LE), [31]=namelen, 3 byte NGAY SAU ten = skillLv*3.
+            try:
+                _nl = b[start + 31]
+                _sp = int.from_bytes(b[start + 29:start + 31], "little")
+                _lv = list(b[start + 32 + _nl:start + 32 + _nl + 3])
+                if len(_lv) == 3:
+                    self._pet_skill_rows.append((marker, pid, b[start + 7], _sp, _lv))
+            except Exception:
+                pass
             at = self._pet_marker_to_atype(marker)
             if at is not None:
                 sk = config.PET_SKILLS.get(pid)
@@ -2551,6 +2562,58 @@ class GameClient:
                         self.pet_name = nm
                 except Exception:
                     pass
+
+    def auto_upgrade_pet_skills(self):
+        """AUTO NANG SKILL PET (login): moi pet co DIEM SKILL -> nang skill theo thu tu index 0->1->2,
+        con index nao TOI MAX moi qua con sau (rule user). Gui C:028-002 (opcode 0x1C sub02):
+        [pet_slot u8] + [skillId u16 LE][newLevel u8]*n. Gia: cap 1 = learnPt, cap sau = lvUpPt.
+        skillId = config.PET_SKILLS[pid] (Npc_C, dung thu tu khop skillLv). Server tu tru diem."""
+        rows = getattr(self, "_pet_skill_rows", None)
+        if not rows:
+            return 0
+        sent = 0
+        for slot, pid, petlv, sp, curlv in rows:
+            if sp <= 0:
+                continue
+            skills = list(config.PET_SKILLS.get(pid, []))[:3]
+            if not skills:
+                continue
+            budget = sp
+            targets = []            # (skillId, newLevel)
+            for i, sid in enumerate(skills):
+                if i >= 3:
+                    break
+                info = config.SKILL_INFO.get(sid) or {}
+                mx = int(info.get("maxLv", 0) or 0)
+                need_lv = int(info.get("needLv", 0) or 0)
+                learn = int(info.get("learnPt", 0) or 0)
+                lvup = int(info.get("lvUpPt", 1) or 1)
+                if mx <= 0 or petlv < need_lv:
+                    continue
+                lv = curlv[i] if i < len(curlv) else 0
+                new = lv
+                while new < mx:
+                    cost = learn if new == 0 else lvup
+                    if budget < cost:
+                        break
+                    budget -= cost
+                    new += 1
+                if new > lv:
+                    targets.append((sid, new))
+                    # RULE: index 0 phai TOI MAX moi sang index 1 -> con diem ma skill nay
+                    # chua max (do het diem giua chung) thi DUNG luon, khong nhay skill sau.
+                    if new < mx:
+                        break
+            if targets:
+                body = b"\x02\x00" + bytes([slot])
+                for sid, nl in targets:
+                    body += sid.to_bytes(2, "little") + bytes([nl])
+                self.send(0x1C, body)
+                sent += 1
+                log.info("[%s] AUTO NANG SKILL PET slot=%d pid=0x%04x diem=%d -> %s (con ~%d)",
+                         self._label, slot, pid, sp,
+                         [("0x%04x" % s, nl) for s, nl in targets], budget)
+        return sent
 
     def _refresh_active_pet_login_stats(self):
         record = getattr(self, "_active_pet_login", None)
