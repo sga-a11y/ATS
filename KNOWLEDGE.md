@@ -1331,8 +1331,10 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
     (msg 21291 nếu thiếu) — không phải chỉ "đủ 6 line hoàn thành". Bot gửi 6 claim rồi claim 7
     ngay trên cùng connection: server xử tuần tự nên hợp lệ; 1 line fail thì claim 7 fail theo,
     login sau tự bù.
-  - `missionId` bot hardcode `0x2f..0x37`: client thật lấy từ **S:91-1** (full grid, nạp lúc
-    login) — server đổi bảng mission thì bot lệch (chưa từng xảy ra, ghi nhớ).
+  - `missionId`: bot nay parse **S:91-1/91-4** vào `_quest_missions` (cell → missionId thật) và
+    dùng nó cho bulk/claim; `0x2f..0x37` chỉ còn là fallback khi chưa nhận S:91-1. Bot cũng parse
+    **S:91-3** (claim result) vào `_claimed_lines` và **đợi xác nhận 6 line (≤3s) trước khi claim
+    tổng** đúng rule client; xác nhận lạc thì vẫn thử claim tổng (server tự validate, vô hại).
 - **Bài học 1:** quest "đếm số lần" → bulk không lộ done, phải hỏi riêng từng ô.
 - **Bài học 2 (QUAN TRỌNG):** `analyze_pcap.py` từng cap `ln<=2000` → **DROP frame lớn** (0x51 ~1004B,
   0x55 ~15KB) → kết luận sai "server không gửi". ĐÃ sửa `ln<=65535`. Khi không thấy data trong gói,

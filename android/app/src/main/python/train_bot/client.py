@@ -1173,6 +1173,8 @@ class GameClient:
         self._use_confirmed = False        # True khi nhan confirm cho _pending_confirm_slot
         self._no_item = set()        # (target,kind) het thuoc -> skip toi TRAN SAU (reset khi 0x34)
         self._quest_cells = set()    # o nhiem vu hang ngay DA HOAN THANH (S2C 0x5b 02 00 01 01 00 [cell])
+        self._quest_missions = {}    # cell(1-9) -> missionId THAT tu S:91-1/91-4 (client lay tu day,
+                                     # bot truoc hardcode 0x2f..0x37 - van la fallback)
         self.world_boss_count = None # MarkManager mission 12207 step = so luot boss the gioi da danh
         self.world_boss_max = WORLD_BOSS_MAX_ATTEMPTS
         self._world_boss_progress_loaded = False
@@ -1846,10 +1848,49 @@ class GameClient:
         self._set_world_boss_progress(cur, WORLD_BOSS_MAX_ATTEMPTS, source or "mission-step")
 
     def _on_daily_quest_packet(self, pkt: bytes):
-        """S2C 0x5b Jiugongge/daily bingo. Chi dung cell da xong cho logic daily cu."""
+        """S2C 0x5b (op 91) Jiugongge/daily bingo - parse dung 4 sub nhu client Lua:
+          0100 = FULL grid  [count]<<[gridId u16][diff 1B] 9*<<[missionId u16][progress u32][done 1B]>>>>
+                 -> nguon missionId THAT (thay hardcode 0x2f..0x37) + o da xong luc login.
+          0400 = update 1 o [gridId u16][cell 1B][missionId u16][progress u32][done 1B]
+          0200 = ket qua ghi nhan o [result 1B][gridId u16][index 1B] (1 = xong)
+          0300 = ket qua CLAIM line [result 1B][gridId u16][index 1B] -> _claimed_lines
+                 (nguon xac nhan "da nhan" giua phien - chinh xac hon marker 0x51 dang do)
+        Chi quan tam grid daily (gridId == 1)."""
         body = pkt[7:]
-        if len(body) >= 6 and body[:5] == b"\x02\x00\x01\x01\x00":
-            self._quest_cells.add(body[5])
+        if len(body) < 2:
+            return
+        sub = body[:2]
+        if sub == b"\x02\x00":
+            if len(body) >= 6 and body[2:5] == b"\x01\x01\x00":
+                self._quest_cells.add(body[5])
+        elif sub == b"\x01\x00" and len(body) >= 3:
+            off = 3
+            for _ in range(body[2]):
+                if off + 3 + 9 * 7 > len(body):
+                    break
+                gid = int.from_bytes(body[off:off + 2], "little")
+                off += 3
+                for c in range(1, 10):
+                    mid = int.from_bytes(body[off:off + 2], "little")
+                    done = body[off + 6]
+                    off += 7
+                    if gid == 1:
+                        if mid:
+                            self._quest_missions[c] = mid
+                        if done:
+                            self._quest_cells.add(c)
+        elif sub == b"\x04\x00" and len(body) >= 12:
+            gid = int.from_bytes(body[2:4], "little")
+            cell = body[4]
+            if gid == 1 and 1 <= cell <= 9:
+                mid = int.from_bytes(body[5:7], "little")
+                if mid:
+                    self._quest_missions[cell] = mid
+                if body[11]:
+                    self._quest_cells.add(cell)
+        elif sub == b"\x03\x00" and len(body) >= 6:
+            if body[2] == 1 and int.from_bytes(body[3:5], "little") == 1 and 1 <= body[5] <= 7:
+                self._claimed_lines.add(body[5])
 
     def _bitflag_get(self, flag_id: int):
         """Tra ve True/False neu da co full BitFlag, None neu server chua sync."""
@@ -3965,6 +4006,10 @@ class GameClient:
     _Q_OPEN = bytes.fromhex(
         "0200090100012f0001000230000100033100010004320001000533000100063400010007350001000836000100")
 
+    def _q_mission_id(self, cell: int) -> int:
+        """missionId cua o `cell`: uu tien bang S:91-1 (nguon client that), fallback 0x2e+cell."""
+        return self._quest_missions.get(cell, 0x2e + cell)
+
     def _on_mission_steps(self, pkt: bytes):
         """S2C 0x18 mission-step. UI phó bản đội lấy còn lượt từ dayilyFlag trong bảng này."""
         if len(pkt) < 9:
@@ -4036,11 +4081,17 @@ class GameClient:
         (S2C 0x5b 02 00 01 01 00 [cell] -> handler nhet vao self._quest_cells).
         KHONG reset _quest_cells o day -> TICH LUY qua nhieu lan query (frame status TO 208B co the
         chi ve o lan mo panel DAU; query lan 2 reset se mat -> thieu o nhu o9). Reset o claim_daily_quests."""
-        self.send(0x5b, self._Q_OPEN)
+        if self._quest_missions:    # co bang mission THAT tu S:91-1 -> build bulk dong
+            _q = b"\x02\x00\x09" + b"".join(
+                b"\x01\x00" + bytes([c]) + struct.pack("<H", self._q_mission_id(c))
+                for c in range(1, 10))
+        else:
+            _q = self._Q_OPEN
+        self.send(0x5b, _q)
         time.sleep(1.5)             # cho server gui status 9 o (bulk)
         # O9 (battle-50, quest DEM) trong bulk LUON tra 020003 (ko ro done) -> QUERY RIENG o9
         # (id 0x37): server tra 020001010009 neu DA xong -> handler bat. Chua xong: 020003/020004.
-        self.send(0x5b, bytes.fromhex("0200010100093700"))
+        self.send(0x5b, b"\x02\x00\x01\x01\x00\x09" + struct.pack("<H", self._q_mission_id(9)))
         time.sleep(0.9)
         return self._quest_cells
 
@@ -4080,12 +4131,21 @@ class GameClient:
                  if all(c in done for c in cells) and L not in self._claimed_lines]
         n = 0
         for L in lines:                       # claim tung hang/cot chua nhan
-            self.send(0x5b, b"\x03\x00\x01\x00" + bytes([L]) + struct.pack("<H", 0x2f + L - 1))
+            # missionId = mission cua O SO L (client: jiugonggeSet[index].Id) - uu tien bang that
+            self.send(0x5b, b"\x03\x00\x01\x00" + bytes([L]) + struct.pack("<H", self._q_mission_id(L)))
             time.sleep(0.3); n += 1
-        # du 6 hang/cot (da nhan + vua nhan) VA tong ket (line 7) chua nhan -> claim tong ket
+        # Client chi cho claim TONG khi ca 6 line DA NHAN (canGetAward==2, msg 21291) -> doi
+        # S:91-3 xac nhan cac line vua gui (handler nhet vao _claimed_lines) toi 3s.
+        if lines:
+            _t0 = time.time()
+            while time.time() - _t0 < 3.0 and not all(L in self._claimed_lines for L in lines):
+                time.sleep(0.2)
+        # du 6 hang/cot (da nhan + vua nhan) VA tong ket (line 7) chua nhan -> claim tong ket.
+        # Van tinh "L in lines" du chua confirm: xac nhan that lac thi THU claim tong - server tu
+        # validate, fail thi login sau bu (giu do li cua hanh vi cu).
         n_lines6 = sum(1 for L in range(1, 7) if L in self._claimed_lines or L in lines)
         if n_lines6 >= 6 and 7 not in self._claimed_lines:
-            self.send(0x5b, b"\x03\x00\x01\x00\x07" + struct.pack("<H", 0x2f + 6))
+            self.send(0x5b, b"\x03\x00\x01\x00\x07" + struct.pack("<H", self._q_mission_id(7)))
             time.sleep(0.3); n += 1
         log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), da nhan truoc=%s, claim them %d line (line %s)",
                  self._label, sorted(done), len(done), sorted(self._claimed_lines), n, lines)
