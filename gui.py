@@ -3370,6 +3370,8 @@ class PartyConfigFrame(ttk.Frame):
                 "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
                 "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
                 "scroll_modes": dict(self.scroll_modes),
+                "auto_donate_materials": bool(self.auto_donate_materials_var.get()),
+                "material_modes": dict(self.material_modes),
                 "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
                 "shop_items": _shop_items_json({
                     "ho_phu": self.buy_ho_phu_var.get(),
@@ -3948,7 +3950,10 @@ class ConfigDialog(tk.Toplevel):
     def _build_groups(self, parties, focus_pidx=0):
         import math
         for t in self.nb.tabs():
-            self.nb.forget(t)
+            try:
+                self.nametowidget(t).destroy()   # DESTROY (khong chi forget) -> giai phong widget cu
+            except Exception:
+                self.nb.forget(t)
         self.frames = []
         self.cfg_group_nb = {}
         n = len(parties)
@@ -3989,7 +3994,27 @@ class ConfigDialog(tk.Toplevel):
                                    on_apply_furnace_all=self._apply_furnace_to_all)
             cfg.pack(fill="both", expand=True)
             entry["cfg"] = cfg
+        self._free_other_built_frames(entry)
         return entry["cfg"]
+
+    def _free_other_built_frames(self, keep):
+        """CHI giu 1 PartyConfigFrame song (dang xem). Cac frame party khac da mo: FLUSH data hien
+        tai -> preset roi DESTROY. Bug that: _build_entry dung frame moi cho moi tab party ma KHONG
+        huy -> bam qua 30 party = 30 bang nang (5 acc x nhieu widget) song cung luc -> can GDI/USER
+        handle Windows -> DO (user 39 party). Data round-trip qua preset nen Save/apply-all van du
+        (get_data == serialize luc Save)."""
+        for e in self.frames:
+            if e is keep or e.get("cfg") is None:
+                continue
+            try:
+                e["preset"] = e["cfg"].get_data()
+            except Exception:
+                pass
+            try:
+                e["cfg"].destroy()
+            except Exception:
+                pass
+            e["cfg"] = None
 
     def _apply_heal_to_all(self, vals):
         """Ap nguong hoi mau cho MOI acc o MOI party. Party da mo (cfg) -> set thang vao acc_rows;
