@@ -3011,6 +3011,15 @@ class GameClient:
     def _battle_account_id(self):
         return self.user_id
 
+    def _log_battle_verbose(self):
+        """Log battle (SEND/ACK/Decision) CHI in o LEADER cho gon (party 5 acc x ~10 unit = rat nhieu
+        dong). Member an di. Khong co leader (solo) -> van in."""
+        try:
+            lead = config.PARTY_LEADER_ACC.get(self.party_idx)
+        except Exception:
+            lead = None
+        return lead is None or lead == self._username
+
     def _track_battle_packet(self, opcode: int, pkt: bytes):
         if opcode not in (0x0B, 0x14, 0x32, 0x33, 0x34, 0x35):
             return ()
@@ -3064,10 +3073,11 @@ class GameClient:
                     self._block_stats_gen = event.generation
                     self._record_train_block_stats(list(self.state.enemy_slots))
             elif event.kind == "ack":
-                log.info(
-                    "[%s] BATTLE ACK g=%d t=%d source=%s",
-                    self._label, event.generation, event.turn, event.source,
-                )
+                if self._log_battle_verbose():
+                    log.info(
+                        "[%s] BATTLE ACK g=%d t=%d source=%s",
+                        self._label, event.generation, event.turn, event.source,
+                    )
             elif event.kind == "end":
                 self.available = {}
                 if self._decision_timer:
@@ -3230,12 +3240,13 @@ class GameClient:
                     log.info("[%s] CHAR khong con quai song -> bo qua (tran da ket)", self._label)
                 else:
                     self._send_combat(d)
-                    _off = sorted(t for a, t in char_opts if a == self.state.my_atype)
-                    log.info("[%s] CHAR %s | %s | skills=%s | quai@%s | offer(my_at=%s)=%s | enemy_hp=%s",
-                             self._label, d, self.state.char,
-                             [hex(s) for s in sorted(self.state.skills_char)],
-                             self.state.enemy_slots, self.state.my_atype, _off,
-                             {k: v for k, v in sorted(self.state.enemy_hp.items()) if v > 0})
+                    if self._log_battle_verbose():
+                        _off = sorted(t for a, t in char_opts if a == self.state.my_atype)
+                        log.info("[%s] CHAR %s | %s | skills=%s | quai@%s | offer(my_at=%s)=%s | enemy_hp=%s",
+                                 self._label, d, self.state.char,
+                                 [hex(s) for s in sorted(self.state.skills_char)],
+                                 self.state.enemy_slots, self.state.my_atype, _off,
+                                 {k: v for k, v in sorted(self.state.enemy_hp.items()) if v > 0})
             elif char_opts and char_dead:
                 log.info("[%s] CHAR HP=0 (da chet) -> KHONG gui lenh attack", self._label)
             if self.state.solo_multipet:
@@ -3256,15 +3267,17 @@ class GameClient:
                     d = combat.decide_multipet(self.state, pat, skills_at, unit, opts_at)
                     if d is not None:
                         self._send_combat(d)
-                        log.info("[%s] PET(atype=%d) %s | skills=%s | %s", self._label, pat, d,
-                                 [hex(s) for s in skills_at], unit)
+                        if self._log_battle_verbose():
+                            log.info("[%s] PET(atype=%d) %s | skills=%s | %s", self._label, pat, d,
+                                     [hex(s) for s in skills_at], unit)
             elif pet_opts and not pet_dead:
                 d = combat.decide_pet(self.state, pet_opts, ft)
                 if d is None:
                     log.info("[%s] PET khong con quai song -> bo qua (tran da ket)", self._label)
                 else:
                     self._send_combat(d)
-                    log.info("[%s] PET  %s | %s", self._label, d, self.state.pet)
+                    if self._log_battle_verbose():
+                        log.info("[%s] PET  %s | %s", self._label, d, self.state.pet)
             elif pet_opts and pet_dead:
                 log.info("[%s] PET HP=0 (da chet) -> KHONG gui lenh attack", self._label)
             self._first_turn = False
@@ -3313,7 +3326,7 @@ class GameClient:
                    + struct.pack("<H", d.skill)
                    + tail)
         self.send(protocol.OP_COMBAT, payload)
-        if tracker.generation:
+        if tracker.generation and self._log_battle_verbose():
             log.info(
                 "[%s] BATTLE SEND g=%d t=%d source=%s skill=%d target=%s",
                 self._label, tracker.generation, tracker.turn, source, d.skill, (d.b, d.target),
