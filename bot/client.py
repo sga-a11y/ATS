@@ -1209,7 +1209,7 @@ class GameClient:
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
-        self.friend_status = {}      # entity hex -> trailer[18]: bit0x01=DA TANG, bit0x02=CO QUA nhan
+        self.friend_status = {}      # entity hex -> trailer[18] (功能標記): bit0x01=DA TANG, bit0x02=CO QUA nhan, bit0x04=DA NHAN
         self.friend_online = {}      # entity hex -> bool online (S2C 0x0e 05 / 0x0e 10)
         self._gift_recv = 0          # dem qua ban tang da nhan (S2C 0x0e 0d xac nhan nhan 1 qua)
         self.vantieu_started = None  # so luot van tieu DA gui hom nay (S2C 0x55 sid=0x08)
@@ -4119,14 +4119,18 @@ class GameClient:
         """TANG qua cho ban CHUA tang + NHAN qua ban da tang minh. HOAN TOAN theo STATUS server
         (friend_status[entity]=trailer[18] tu 0x0e 05 login): bit0x01=DA TANG, bit0x02=CO QUA nhan.
           TANG:  C2S 0x0e [12 00][count][entity*N]  - chi ban CHUA tang (status & 0x01 == 0)
-          NHAN:  C2S 0x0e [13 00][count][entity*N]  - chi ban CO QUA   (status & 0x02)
+          NHAN:  C2S 0x0e [13 00][count][entity*N]  - ban CO QUA (0x02) VA CHUA nhan (0x04 == 0)
         KHONG can daily_mark: status doc truc tiep -> relogin se thay 'da tang/da nhan' -> tu bo qua
         (idempotent). Chay moi login -> bat duoc ca qua ban gui TRONG NGAY."""
         ents = list(self.friend_entities)
         if not ents:
             return   # chua nhan duoc list ban -> login sau thu lai
         to_send = [e for e in ents if not (self.friend_status.get(e.hex(), 0) & 0x01)]  # chua tang
-        to_recv = [e for e in ents if (self.friend_status.get(e.hex(), 0) & 0x02)]       # co qua
+        # NHAN: co qua (0x02) VA CHUA nhan (0x04 chua set) - khop client Social.ReceiveAllGift
+        # (CheckFlag(flag,2) and not CheckFlag(flag,3)). Thieu check 0x04 -> gui lai lenh nhan thua
+        # cho ban da nhan qua (co 0x02 van con) -> log "nhan N qua" phong.
+        to_recv = [e for e in ents if (self.friend_status.get(e.hex(), 0) & 0x02)
+                   and not (self.friend_status.get(e.hex(), 0) & 0x04)]
         if to_send:
             self.send(0x0e, b"\x12\x00" + bytes([len(to_send)]) + b"".join(to_send))
             time.sleep(0.5)
