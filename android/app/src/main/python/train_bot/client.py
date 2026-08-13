@@ -2615,6 +2615,59 @@ class GameClient:
                          [("0x%04x" % s, nl) for s, nl in targets], budget)
         return sent
 
+    def befriend_nearby(self, max_friends=50, recent_secs=90):
+        """KET BAN nguoi xung quanh (dung trong DG dong nguoi): gui C:014-005 (opcode 0x0e sub05)
+        theo TEN moi player gan day tren MAP/KENH HIEN TAI. CHI khi so ban < max_friends (game toi
+        da 50 ban). Ten gui UTF-16LE, byte-len prefix (client WriteStringWithByteL). Nguon player
+        quanh minh = entity_meta[e]['nearby'] (tu 0x03 PlayerAppear), ten o entity_names[e].
+        Dedup: bo qua nguoi da la ban + da gui trong phien nay."""
+        cur = len(getattr(self, "friend_entities", []) or [])
+        if cur >= max_friends:
+            log.info("[%s] ket ban xung quanh: da du %d/%d ban -> bo qua", self._label, cur, max_friends)
+            return 0
+        slots = max_friends - cur
+        now = time.time()
+        gen = getattr(self, "_channel_scene_generation", None)
+        sent_set = getattr(self, "_friend_req_sent", None)
+        if sent_set is None:
+            sent_set = self._friend_req_sent = set()
+        friend_names = set()   # ten ban HIEN CO -> khong moi lai
+        for ent in (self.friend_entities or []):
+            for nm in self.entity_names.get(bytes(ent), ()):
+                friend_names.add(nm.casefold())
+        sent = 0
+        for entity, meta in list(self.entity_meta.items()):
+            if sent >= slots:
+                break
+            if not meta.get("nearby"):
+                continue
+            if gen is not None and meta.get("scene_generation") != gen:
+                continue    # player o map/kenh KHAC hien tai -> bo qua
+            if now - meta.get("seen", 0) > recent_secs:
+                continue    # khong con o gan (cu) -> bo qua
+            if self.self_entity and bytes(entity) == bytes(self.self_entity):
+                continue    # chinh minh
+            names = self.entity_names.get(entity)
+            if not names:
+                continue
+            name = next(iter(names)).strip()
+            if not name:
+                continue
+            key = name.casefold()
+            if key in friend_names or key in sent_set:
+                continue
+            nb = name.encode("utf-16-le")
+            if not (0 < len(nb) <= 255):
+                continue
+            self.send(0x0e, b"\x05\x00" + bytes([len(nb)]) + nb)   # C:014-005 <<[byteLen][name UTF16]>>
+            sent_set.add(key)
+            sent += 1
+            time.sleep(0.3)     # gian cach tranh server rate-limit
+        if sent:
+            log.info("[%s] KET BAN xung quanh: gui %d loi moi (ban hien %d/%d)",
+                     self._label, sent, cur, max_friends)
+        return sent
+
     def _refresh_active_pet_login_stats(self):
         record = getattr(self, "_active_pet_login", None)
         if not record:

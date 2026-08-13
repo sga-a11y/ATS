@@ -2595,6 +2595,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             #    + lap party. KHONG lam o NANG (boss teleport se van ra khoi DG) -> de SAU khi het gio DG.
             if do_daily:
                 c.claim_daily_quests(heavy=False)
+            # 2b) KET BAN nguoi xung quanh trong DG (DG dong nguoi) -> gom du 50 ban. CHI login moi +
+            #     khi con < 50 ban (max game). Lam TRUOC sync kenh (yeu cau user). Player quanh minh
+            #     lay tu 0x03 PlayerAppear (da nhan luc vao DG + lam daily nhe o tren).
+            if not is_reconnect and pcfg.get("auto_add_friend", True):
+                try:
+                    c.befriend_nearby()
+                except Exception as e:
+                    log.warning("[%s] loi ket ban xung quanh (bo qua): %s", label, e)
             # 3) Dong bo kenh (gom ca party ve cung instance DG). Doi kenh trong DG VAN o trong DG.
             #    SOLO -> moi acc chay rieng, KHONG can chung kenh voi ai -> bo qua.
             if pcfg.get("digioi_mode") != "solo":
