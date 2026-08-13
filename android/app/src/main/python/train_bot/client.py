@@ -2862,7 +2862,12 @@ class GameClient:
                 log.info("[%s] Chua biet ten entity=%s -> CHAP NHAN (chua co 0x27)",
                          self._label, entity.hex()[:12])
         self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
-        log.info("[%s] Nhan loi moi party -> da gui ACCEPT", self._label)
+        # NGUOI NGOAI (user choi tay/whitelist) moi bot di danh cung -> TAT flee_mode NGAY luc accept.
+        # Bug that: flee_mode=True thuong truc (mode stand/di chuyen), guard chi dua vao party_members
+        # (roster 0x0d sub06) - user keo vao tran TRUOC khi roster ve -> guard vo hieu -> bot BO CHAY
+        # -> server kick khoi party -> user moi lai -> lap vo tan "cu battle la flee".
+        self.flee_mode = False
+        log.info("[%s] Nhan loi moi party -> da gui ACCEPT (tat flee_mode, danh cung nguoi moi)", self._label)
         return True
 
     def set_party_invite_ready(self, ready: bool = True):
