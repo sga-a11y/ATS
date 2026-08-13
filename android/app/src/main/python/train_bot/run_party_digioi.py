@@ -2598,7 +2598,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # 2b) KET BAN nguoi xung quanh trong DG (DG dong nguoi) -> gom du 50 ban. CHI login moi +
             #     khi con < 50 ban (max game). Lam TRUOC sync kenh (yeu cau user). Player quanh minh
             #     lay tu 0x03 PlayerAppear (da nhan luc vao DG + lam daily nhe o tren).
-            if not is_reconnect and pcfg.get("auto_add_friend", True):
+            if not is_reconnect:
                 try:
                     c.befriend_nearby()
                 except Exception as e:
