@@ -889,6 +889,17 @@ class BotGUI(tk.Tk):
             win.destroy()
         ttk.Button(win, text="✔ Chuyển sang kênh này", command=_go).pack(pady=8)
 
+    def _force_resync(self, pidx):
+        """BAM header 'Vai tro' -> EP DONG BO ca party theo leader (uu tien cao nhat): moi acc thoat
+        hanh dong/vong cho hien tai + relogin bam leader. Dung khi party bi lech/ket barrier."""
+        import tkinter.messagebox as mb
+        if not mb.askyesno("Ép đồng bộ",
+                           f"P{pidx + 1}: ÉP CẢ PARTY đồng bộ lại theo leader?\n\n"
+                           "Mọi acc sẽ THOÁT hành động hiện tại + relogin bám leader.\n"
+                           "Dùng khi party bị lệch nhịp / kẹt chờ vô hạn."):
+            return
+        threading.Thread(target=ctrl.request_party_resync, args=(pidx, "GUI"), daemon=True).start()
+
     def _popup_cities(self, pidx):
         import tkinter.messagebox as mb
         if not self.cities:
@@ -1084,6 +1095,9 @@ class BotGUI(tk.Tk):
         for col in self._COLS:
             if col in ("acc", "char"):   # BAM header de che/hien tai khoan + ten (3 trang thai)
                 tree.heading(col, text=self._priv_head(col), command=self._toggle_privacy)
+            elif col == "role":          # BAM header Vai tro -> EP DONG BO ca party theo leader
+                tree.heading(col, text=self._HEADS[col] + " ↧",
+                             command=lambda p=pidx: self._force_resync(p))
             elif col == "ch":            # BAM header Kenh -> doi kenh ca party
                 tree.heading(col, text=self._HEADS[col] + " ↧",
                              command=lambda p=pidx: self._popup_channels(p))

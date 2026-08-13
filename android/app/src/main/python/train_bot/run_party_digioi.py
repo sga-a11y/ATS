@@ -325,7 +325,54 @@ account_stop_reasons = {}  # username -> ai/nhanh nao set stop_ev gan nhat
 account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT (supervisor login lai)
 account_forced_reconnect = set()  # survivor 40NPC bi dong de relogin cung party; KHONG tang disc_gen
 account_forced_reconnect_reason = {}
+account_sync_epoch = {}   # username -> epoch dang chay; != st["sync_epoch"] => ep dong bo (relogin)
 _start_cancel_generation = 0  # STOP ALL tang so nay de huy chuoi START dang do
+
+
+class ResyncSignal(BaseException):
+    """EP DONG BO - uu tien TUYET DOI. Ke thua BaseException (KHONG phai Exception) de KHONG bi
+    cac `except Exception` sau trong barrier nuot mat -> unwind xuyen MOI vong cho vo han, ra thang
+    supervisor. Supervisor coi nhu forced-reconnect -> relogin -> duong reconnect tu bam leader
+    (clear sach hanh dong + tham so cu, dung nhu yeu cau: dong bo uu tien cao nhat)."""
+    pass
+
+
+def _resync_ck(st, username):
+    """Goi trong MOI vong cho vo han (barrier report/relogin PB, reform, sync kenh, keo route, DG...).
+    Khi sync_epoch bi bump (leader/GUI/watchdog ep dong bo) -> raise ResyncSignal ngay lan check ke."""
+    if account_sync_epoch.get(username) != st.get("sync_epoch", 0):
+        raise ResyncSignal
+
+
+BARRIER_STUCK_SECS = 180.0   # barrier ket qua lau (khong nhich) -> AUTO ep dong bo (watchdog)
+RESYNC_COOLDOWN = 300.0      # khong AUTO-resync cung party qua 1 lan / 5p (chong loop relogin)
+
+
+def request_party_resync(pidx, reason="ép đồng bộ", cooldown=0.0):
+    """EP CA PARTY dong bo lai theo leader: bump sync_epoch + xoa barrier ton dong. Moi acc dang ket
+    trong vong cho se raise ResyncSignal o lan _resync_ck ke tiep -> relogin -> bam pha leader.
+    cooldown>0 (watchdog auto): bo qua neu vua resync trong `cooldown` giay (chong loop); GUI ep tay
+    dung cooldown=0 (luon chay). Tra ep moi, hoac None neu bi cooldown chan."""
+    st = _pstate(pidx)
+    now = time.time()
+    with st["lock"]:
+        if cooldown and now - st.get("last_resync_ts", 0.0) < cooldown:
+            return None
+        st["last_resync_ts"] = now
+        st["sync_epoch"] = int(st.get("sync_epoch", 0)) + 1
+        ep = st["sync_epoch"]
+        st.setdefault("team_dungeon_recover_seen", set()).clear()
+        st.setdefault("team_dungeon_recover_ready", threading.Event()).clear()
+        st["team_dungeon_need_redo"] = False
+    log.warning("[party %s] EP DONG BO (%s) -> sync_epoch=%d, moi acc relogin bam leader", pidx, reason, ep)
+    return ep
+
+
+def _barrier_watchdog(st, pidx, t0, tag):
+    """Goi moi vong cho: barrier ket > BARRIER_STUCK_SECS -> AUTO ep dong bo (cooldown chong loop).
+    Khong tu raise - vong cho da co _resync_ck ngay sau se bat epoch moi va raise ResyncSignal."""
+    if time.time() - t0 > BARRIER_STUCK_SECS:
+        request_party_resync(pidx, "watchdog:" + tag, cooldown=RESYNC_COOLDOWN)
 LOGIN_ERR1_RETRY_MIN_SEC = 60
 LOGIN_ERR1_RETRY_MAX_SEC = 120
 
@@ -837,6 +884,8 @@ def _pstate(pidx):
                               "path_done": threading.Event(),    # leader da di xong follow_path toi diem quai (member bi keo theo)
                               "reform_gen": 0,       # +1 moi khi co acc van map (chet) -> CA party reform tai cho
                               "resync_gen": 0,       # +1 khi leader moi 1p khong du party -> CA party giai tan + sync kenh lai + moi lai (event 40NPC)
+                              "sync_epoch": 0,       # +1 = EP DONG BO uu tien cao nhat (request_party_resync): moi acc relogin bam leader
+
                               "go_claim": threading.Event(),  # 40NPC: het gio/thua 2 tran -> CA party di doi thuong + thoat
                               "cmd_gen": 0,          # +1 moi khi GUI ra lenh thu cong (doi kenh/teleport thanh)
                               "cmd": None,           # ("channel", ch) | ("city", city_id, flag) | ("route", a, b)
@@ -992,6 +1041,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None
     _resume_2k = False   # True = login lai khi dang DUNG TRONG thap 2K -> leo tiep tai cho
     st = _pstate(pidx)
+    # EP DONG BO: ghi epoch phien nay dang chay. Sau khi relogin (do resync) run_account chay lai ->
+    # doc epoch MOI (da bump) -> khop -> khong raise lai. _resync_ck so sanh voi gia tri nay.
+    account_sync_epoch[username] = st.get("sync_epoch", 0)
     stop_ev = account_stops.get(username)   # GUI yeu cau STOP -> thoat moi giai doan
     def _stopped():
         return stop_ev is not None and stop_ev.is_set()
@@ -1732,6 +1784,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     while not st["channel_ready"].wait(5):
                         if not c.running or _stopped():
                             return
+                        _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                         if _finish_digioi_train_if_time_over("sync kenh DG (member wait)"):
                             return True
                         if _dg_gather_giveup():
@@ -1835,7 +1888,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             else:
                 _last_plan_log = 0
                 _lead_other_since = 0.0   # thoi diem thay leader o pha KHAC reform (grace chong nhay)
+                _wd0 = time.time()
                 while not _ab():
+                    _barrier_watchdog(st, pidx, _wd0, "reform-cho-leader-route")
+                    _resync_ck(st, username)   # ep dong bo -> thoat reform, relogin bam leader
                     with st["lock"]:
                         _p = st.get("route_plan")
                         if _p and _p.get("gen") == _g0:
@@ -2152,11 +2208,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # Dang trong party nen tu bi keo qua cong theo leader (giong startup via_route).
                 while not st["route_party_ready"].is_set():   # CHO VO HAN leader lap xong party
                     if _ab(): return   # tu rot / stop / reform moi hon -> keepalive xu lai
+                    _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                     time.sleep(2)
                 _full = st.get("n_members", 0) > 0 and joined_member_count(pidx) >= st["n_members"]
                 c.flee_mode = not _full   # du party -> DANH bat chap khi bi keo
                 while not st["route_done"].is_set():           # CHO VO HAN leader keo xong qua route
                     if _ab(): return
+                    _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                     time.sleep(2)
                 for _ in range(15):                # cho map cap nhat sau khi bi keo
                     if c.current_map == sc or _stopped(): break
@@ -2260,6 +2318,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (LEADER) SAI MAP (o %s, can train map %s) - KHONG HUY PARTY, "
                                 "lap reform toi khi len train map...", label, c.current_map, sc)
                     while c.running and not _stopped():
+                        _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                         _do_reform(to_spot=False)
                         with st["lock"]: st["ready_members"].discard(username)
                         if c.current_map == sc:
@@ -2299,6 +2358,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (member) SAI MAP (o %s, can %s) - KHONG THOAT, cho leader keo "
                                 "qua route (retry reform)...", label, c.current_map, sc)
                     while c.running and not _stopped():
+                        _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                         if st["leader_gone"].is_set() or st["leader_bad"].is_set():
                             _reason("leader gone/bad khi member cho reform -> THOAT theo party")
                             log.warning("[%s] (member) leader gone/bad khi cho reform -> THOAT", label)
@@ -2426,6 +2486,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _t0 = time.time()
                 while True:   # CHO VO HAN cho ca party xong dungeon (reconnecting cong vao, khoi deadlock)
                     if _stopped() or not c.running: _quit(); return
+                    _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                     with st["lock"]:
                         if (st["started_train"] > 0 and
                                 st["dungeon_done"] + len(st["reconnecting"]) >= st["started_train"]):
@@ -3008,6 +3069,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # roi danh le). Leader dang reconnect -> chua moi -> member dung cho o safe.
                 while not st["invited"].is_set():
                     if _stopped() or not c.running: break
+                    _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                     st["invited"].wait(2)
             # DA vao party -> NGUNG flee, DANH tran chung (ca map-train LAN Di Gioi).
             # FLEE trong tran party bi server KICK (vd Tao Thao: member flee -> dis ngay).
@@ -4148,9 +4210,12 @@ def _prepare_team_dungeon_redo_after_reconnect(st, username, label, pidx, stoppe
                      "(lần retry duy nhất)", label)
         return True
     last_log = 0.0
+    _wd0 = time.time()
     while not ev.is_set():
         if stopped_fn():
             return False
+        _barrier_watchdog(st, pidx, _wd0, "relogin-PB-vo")
+        _resync_ck(st, username)   # ep dong bo -> raise ResyncSignal (thoat barrier, relogin bam leader)
         if time.time() - last_log > 30:
             with st["lock"]:
                 n_seen = len(st.setdefault("team_dungeon_recover_seen", set()))
@@ -4177,9 +4242,12 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
         return True
     if not is_leader:
         last_log = 0.0
+        _wd0 = time.time()
         while True:
             if stopped_fn() or not c.running:
                 return False
+            _barrier_watchdog(st, pidx, _wd0, "member-cho-leader-PB")
+            _resync_ck(st, username)   # ep dong bo -> thoat cho, relogin bam leader
             set_account_activity(username, "PB lv%d: cho leader xu ly" % level, phase="team_dungeon")
             if time.time() - last_log > 60:
                 log.info("[%s] (member) chờ leader xử lý phó bản đội lv%d...", label, level)
@@ -4218,9 +4286,12 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
     if len(members) < 2:
         return True
     last_log = 0.0
+    _wd0 = time.time()
     while True:
         if stopped_fn() or not c.running:
             return False
+        _barrier_watchdog(st, pidx, _wd0, "leader-cho-report-PB")
+        _resync_ck(st, username)   # ep dong bo -> thoat cho report, relogin bam leader
         # Dong doi rot / PB can danh lai TRONG luc leader dang cho report: truoc day leader KHONG
         # co check nay -> member da _mark_team_dungeon_broken + relogin vao hang recover, con leader
         # ket o vong cho report vo han (bug that: leader "cho report 1/5", member "cho relogin 4/5",
@@ -4480,7 +4551,19 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
     first = True
     while True:
         account_reconnect[username] = False
-        run_account(username, password, pidx, is_leader, is_picker, is_reconnect=not first)
+        try:
+            run_account(username, password, pidx, is_leader, is_picker, is_reconnect=not first)
+        except ResyncSignal:
+            # EP DONG BO: barrier sau da unwind ra day -> dong socket + coi nhu forced reconnect ->
+            # relogin ngay (wait=1s) -> duong reconnect bam pha leader (clear sach state cu).
+            cli = account_clients.get(username)
+            if cli is not None:
+                try: cli.close()
+                except Exception: pass
+            account_reconnect[username] = True
+            account_forced_reconnect.add(username)
+            account_forced_reconnect_reason[username] = "ép đồng bộ theo leader"
+            log.warning("[%s] EP DONG BO -> relogin bam leader", username)
         first = False
         if _st() or not account_reconnect.get(username):
             break   # GUI Stop / thoat binh thuong / khong reconnectable -> dung han
