@@ -2823,6 +2823,10 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(8, 0))
         ttk.Checkbutton(frm, text="Tự vứt item rác (Ngọc Hư)",
                         variable=self.auto_discard_junk_var).pack(anchor="w", pady=(4, 0))
+        _mt = ttk.Frame(frm); _mt.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_mt, text="Tự đóng góp nguyên liệu cho quân đoàn",
+                        variable=self.auto_donate_materials_var).pack(side="left")
+        ttk.Button(_mt, text="List", command=self._open_material_list).pack(side="left", padx=(8, 0))
         _sc = ttk.Frame(frm); _sc.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_sc, text="Tự phân giải cuộn võ tướng rác",
                         variable=self.auto_decompose_scrolls_var).pack(side="left")
@@ -2831,14 +2835,6 @@ class PartyConfigFrame(ttk.Frame):
                   text="Lưu ý: phân giải là MẤT HẲN cuộn. Mặc định cuộn của tướng có vũ khí "
                        "chuyên dụng được giữ lại, còn lại phân giải — nên soát List trước khi bật."
                   ).pack(anchor="w", pady=(8, 0))
-        _mt = ttk.Frame(frm); _mt.pack(anchor="w", fill="x", pady=(8, 0))
-        ttk.Checkbutton(_mt, text="Tự đóng góp nguyên liệu cho quân đoàn",
-                        variable=self.auto_donate_materials_var).pack(side="left")
-        ttk.Button(_mt, text="List", command=self._open_material_list).pack(side="left", padx=(8, 0))
-        ttk.Label(frm, foreground="#a00", wraplength=420, justify="left",
-                  text="Lưu ý: đóng góp là MẤT HẲN nguyên liệu. MẶC ĐỊNH donate HẾT — mở List "
-                       "đánh dấu GIỮ LẠI nguyên liệu quý (tier cao) trước khi bật."
-                  ).pack(anchor="w", pady=(4, 0))
         ttk.Button(frm, text="Đóng", command=win.destroy).pack(anchor="e", pady=(12, 0))
 
     def _open_scroll_list(self):
