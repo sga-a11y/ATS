@@ -1153,6 +1153,16 @@ S2C 0x1a sau do:    +exp vao nhan vat (vd 0x12c = 300 exp)
     (khong co `S:019-001` -> bot giu pet cu, chay tiep).
   - Doi pet xong PHAI doc lai `active_pet_slot` tu goi `0x0f` (handler `0x13` da lam san) -
     thieu buoc nay thi hoi pet bay vao slot sai (bug cu "hoi 40 vien ma pet van 1HP").
+- **PET NAO DANG XUAT CHIEN: CHI biet duoc tu opcode 19 (`0x13`), KHONG co nguon nao khac.**
+  `Role.fightNpc` trong client chi duoc dat boi: `S:019-001` (xac nhan doi), `S:019-004` (luc
+  login), `S:019-002` -> 0 (thu pet ve), va noi bo khi pet do bi phong truc -> 0.
+  Cac goi DANH SACH vo tuong deu KHONG co co "dang xuat chien":
+  - `S:015-004` / `S:015-007`: `[followIndex][npcId][soulId][beenRide][canGrow][nameL][name]`
+  - `S:015-008` (= goi `0x0f sub0008` bot dang doc): exp/level/HP/SP/chi so/skill/item... - chi
+    la CHI TIET tung con, khong danh dau con nao ra tran.
+  > Nen fallback "lay record DAU cua 0x0f lam pet active" KHONG co co so trong protocol. Bot giu
+  > `state.active_pet_confirmed`: chi True khi active_pet_id den tu goi `0x13` that. `switch_pet`
+  > chi duoc bo qua goi doi khi DA xac nhan - chua xac nhan ma tin la danh ca phien bang pet SAI.
 - **S2C 0x13** `01 00 [pet_id]` = xac nhan doi pet.
 - **S2C 0x13** `04 00 [pet_id]` = pet dang dung, gui luc LOGIN.
 - pet_id (vd 0xa051, 0xa0db) = id pet -> bot doc luc login de biet pet nao.
