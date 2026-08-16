@@ -2368,6 +2368,7 @@ class GameClient:
             pid = int.from_bytes(pkt[9:11], "little")
             if pid == 0:
                 self.state.active_pet_id = None
+                self.state.active_pet_confirmed = True
                 self.active_pet_slot = None
                 self._active_pet_login = None
                 self.pet_name = None
@@ -2375,6 +2376,7 @@ class GameClient:
                 self.pet_agi = None
                 return
             self.state.active_pet_id = pid
+            self.state.active_pet_confirmed = True    # goi 0x13 = su that tu server
             if self.state.pet_cfg_owner is None:
                 self.state.pet_cfg_owner = pid   # pet dau tien sau login (xem state.py)
             if self._cached_pet_list_pkt is not None:
@@ -2582,6 +2584,8 @@ class GameClient:
             # 0x13 (active pet) co luc khong den truoc man config skill. 0x0f record dau
             # dang duoc dung lam fallback active pet san roi, nen ap luon skill/name de UI co du lieu.
             self.state.active_pet_id = chosen_pid
+            # DOAN TAM (record dau list), CHUA chac la pet dang xuat chien -> khong danh dau
+            # xac nhan; switch_pet se VAN gui lenh doi thay vi tin va bo qua.
             apid = chosen_pid
         found_active = apid is not None and chosen_pid == apid
         if found_active and not getattr(self.state, "pet_skills", None):
@@ -4921,7 +4925,11 @@ class GameClient:
             return False
         if pid <= 0 or not self.running:
             return False
-        if pid == getattr(self.state, "active_pet_id", None):
+        # Bo qua goi doi CHI khi active_pet_id da duoc SERVER xac nhan (goi 0x13). Neu no chi la
+        # doan tam tu record dau 0x0f thi VAN gui - doan truot ma tin la bot danh bang pet SAI
+        # ma khong ai biet.
+        if (pid == getattr(self.state, "active_pet_id", None)
+                and getattr(self.state, "active_pet_confirmed", False)):
             return True
         if getattr(self.state, "in_battle", False):
             log.info("[%s] doi pet: DANG TRONG TRAN -> hoan", self._label)

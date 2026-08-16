@@ -64,6 +64,8 @@ class BattleState:
         self.pet_skills = []      # LIST skill cua pet dang dung (pets.json, giu thu tu - skill[0]=boss fallback)
         self.active_pet_id = None # id pet dang dung (tu S2C 0x13)
         self.carried_pets = []    # [(pid, ten)] pet mang theo (0x0f) - tab skill per-pet
+        self.active_pet_confirmed = False  # True = active_pet_id den tu goi 0x13 THAT (server),
+                                          # False = doan tam tu record dau 0x0f (xem client)
         self.pet_cfg_owner = None # pet DAU TIEN thay sau login = chu cua bo rule 'pet' CHUNG cu:
                                   # config cu khong ghi pet id, coi rule do la cua pet user dang
                                   # dung; doi sang pet khac -> auto (yeu cau user, xem combat)
