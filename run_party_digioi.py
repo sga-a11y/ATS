@@ -9,7 +9,7 @@ Flow moi party (slot 0 = chu party / leader, slot 1-4 = member):
 
 Chay:  python run_party_digioi.py [so_phut]   (mac dinh chay vo han)
 """
-import os, sys, time, logging, threading, random
+import os, sys, time, json, logging, threading, random
 try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
@@ -3545,6 +3545,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 c.ensure_pet_role("quest" if mode == "event" else "train")
             except Exception as e:
                 log.debug("[%s] tra pet ve vai thuong loi: %s", label, e)
+            # Cache skill/pet cho dialog dung khi acc TAT. save_... tu so chu ky nen chi thuc su
+            # ghi file khi du lieu DOI (doi pet, doi pet mang theo...), khong ghi moi vong lap.
+            try:
+                if getattr(c.state, "carried_pets", None):
+                    save_account_skills_cache(username, _skills_snapshot(c.state))
+            except Exception as e:
+                log.debug("[%s] cache skill loi: %s", label, e)
             # 2K KET THUC (thua/xong) -> MOI acc tu di bo ra khoi thap. Trong map event khong
             # teleport duoc nen phai di bo (exit_event -> smart scene route toi out_map).
             # Thieu buoc nay: leader di gom doi vo ich con member dung im trong thap, sync map cho
@@ -5221,32 +5228,89 @@ def party_agi_report(pidx):
             "warning": spread is not None and spread > 10}
 
 
-def account_skills(username):
-    """GUI/API: tra skill live cua acc dang online de render dropdown cau hinh battle."""
-    def _skill_choice(sid):
+# ---- CACHE skill/pet theo account (de dialog Kich ban Skill dung duoc khi acc DA TAT) ----
+# Chi phuc vu HIEN THI. Bot chay van doc du lieu THAT tu server (0x0f/0x13) - cache khong bao
+# gio anh huong hanh vi. File nam canh accounts.json (PC) / files dir cua app (Android).
+def _skill_cache_path():
+    try:
+        from bot._appdir import app_dir as _ad
+        return os.path.join(_ad(), "account_skills_cache.json")
+    except Exception:
+        return "account_skills_cache.json"
+
+
+def _load_skill_cache():
+    try:
+        with open(_skill_cache_path(), encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+_skill_cache_lock = threading.Lock()
+_skill_cache_sig = {}     # username -> chu ky lan ghi cuoi (tranh ghi file moi vong lap)
+
+
+def save_account_skills_cache(username, data):
+    """Ghi cache cho 1 account. Chi ghi khi DU LIEU DOI (so chu ky) - vong lap chinh goi lien tuc."""
+    username = str(username or "").strip()
+    if not username or not data:
+        return False
+    sig = json.dumps(data, sort_keys=True, ensure_ascii=False)
+    with _skill_cache_lock:
+        if _skill_cache_sig.get(username) == sig:
+            return False
+        allc = _load_skill_cache()
+        allc[username] = dict(data, ts=int(time.time()))
+        try:
+            with open(_skill_cache_path(), "w", encoding="utf-8") as fh:
+                json.dump(allc, fh, ensure_ascii=False)
+        except Exception as e:
+            log.debug("ghi cache skill loi: %s", e)
+            return False
+        _skill_cache_sig[username] = sig
+        return True
+
+
+def _skills_snapshot(st):
+    """Dung dict skill/pet tu state (dung chung cho account_skills va cache)."""
+    def _choice(sid):
         sid = int(sid)
         info = getattr(config, "SKILL_INFO", {}).get(sid, {}) or {}
         return [sid, info.get("name") or ("Skill %d" % sid), info.get("cost"), info.get("cat")]
 
-    c = account_clients.get(username)
-    st = c.state if (c is not None and getattr(c, "state", None)) else None
-    if st is None:
-        return {"char": [], "pet": []}
-    pet_skills = list(getattr(st, "pet_skills", []) or [])
-    if not pet_skills:
-        pet_skills = list(getattr(st, "skills_pet", []) or [])
-    # "pets": [[pid, ten, [choice...]], ...] cho tab skill PER-PET (APK); "active" = pet dang dung
-    # (de migrate config "pet" chung cu -> gan cho pet dang dung, pet khac auto - chot voi user).
+    pet_skills = list(getattr(st, "pet_skills", []) or []) or list(getattr(st, "skills_pet", []) or [])
     pets = []
     for pid, nm in (getattr(st, "carried_pets", []) or [])[:4]:
         sks = sorted(set(getattr(config, "PET_SKILLS", {}).get(pid, []) or []))
-        pets.append([int(pid), nm or ("Pet 0x%04x" % pid), [_skill_choice(x) for x in sks]])
+        pets.append([int(pid), nm or ("Pet 0x%04x" % pid), [_choice(x) for x in sks]])
     return {
-        "char": [_skill_choice(s) for s in sorted(list(getattr(st, "skills_char", []) or []))],
-        "pet": [_skill_choice(s) for s in sorted(set(pet_skills))],
+        "char": [_choice(s) for s in sorted(list(getattr(st, "skills_char", []) or []))],
+        "pet": [_choice(s) for s in sorted(set(pet_skills))],
         "pets": pets,
         "active": int(getattr(st, "active_pet_id", 0) or 0),
     }
+
+
+def account_skills(username):
+    """GUI/API: skill + pet cua acc de render dialog Kich ban Skill.
+
+    Acc DANG CHAY -> du lieu LIVE. Acc DA TAT -> lay CACHE cua lan chay gan nhat (kem "ts") de
+    user van sua duoc config, khoi phai bat acc len chi de mo dialog. Cache CHI de hien thi.
+    "pets": [[pid, ten, [choice...]], ...] cho tab per-pet; "active" = pet dang dung (dung de
+    migrate config "pet" chung cu -> gan cho pet dang dung, pet khac auto).
+    """
+    c = account_clients.get(username)
+    st = c.state if (c is not None and getattr(c, "state", None)) else None
+    if st is not None:
+        data = _skills_snapshot(st)
+        save_account_skills_cache(username, data)   # tuoi -> cap nhat cache luon
+        return data
+    cached = _load_skill_cache().get(str(username or "").strip())
+    if isinstance(cached, dict):
+        return dict(cached, cached=1)
+    return {"char": [], "pet": [], "pets": [], "active": 0}
 
 
 def apply_account_battle(username, battle_config=None):

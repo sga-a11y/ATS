@@ -2296,6 +2296,15 @@ class PartyConfigFrame(ttk.Frame):
 
         c = ctrl.account_clients.get(uname)
         st = c.state if (c is not None and getattr(c, "state", None)) else None
+        # Acc DA TAT -> lay skill/pet tu CACHE lan chay gan nhat (account_skills tu fallback) de
+        # van sua duoc config, khoi phai bat acc len chi de mo dialog. Cache CHI de hien thi.
+        _snap = {}
+        if st is None:
+            try:
+                _snap = ctrl.account_skills(uname) or {}
+            except Exception as e:
+                log.warning("[%s] doc cache skill loi: %s", uname, e)
+        _cached_ts = _snap.get("ts") if _snap.get("cached") else None
 
         def _unit_pid(unit):
             """"pet:41003" -> 41003; "char"/"pet" -> None."""
@@ -2306,10 +2315,19 @@ class PartyConfigFrame(ttk.Frame):
                     return None
             return None
 
+        def _cache_ids(key, pid=None):
+            """id skill lay tu CACHE (acc dang tat): key "char", hoac skill cua pet theo pid."""
+            if key == "char":
+                return sorted({int(x[0]) for x in (_snap.get("char") or []) if x})
+            for row in (_snap.get("pets") or []):
+                if pid is not None and int(row[0]) == pid:
+                    return sorted({int(x[0]) for x in (row[2] or []) if x})
+            return []
+
         def _live_skill_ids(unit):
             if unit == "char":
                 if st is None:
-                    return []
+                    return _cache_ids("char")
                 return sorted(getattr(st, "skills_char", []) or [])
             # Tab per-pet: skill RIENG cua pet do tu pets.json (offline van co) - truoc day moi
             # pet deu hien skill cua pet DANG RA TRAN (st.pet_skills) la sai voi tab.
@@ -2578,10 +2596,18 @@ class PartyConfigFrame(ttk.Frame):
         win = tk.Toplevel(self); win.title(f"Skill: {uname}"); win.resizable(False, False)
         win.transient(self.winfo_toplevel()); win.grab_set()
         frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
-        ttk.Label(frm, text=("Acc đang online: có thể chọn skill đã học."
-                             if online else
-                             "Acc đang offline: muốn chọn skill đã học thì Start acc trước."),
-                  foreground=("#0a0" if online else "#a60")).pack(anchor="w", pady=(0, 8))
+        # Ghi RO nguon du lieu: live / cache lan chay gan nhat / khong co gi. Cache co the CU
+        # (user tu login tay doi pet giua 2 lan chay bot) -> phai cho user biet moc thoi gian.
+        if online:
+            _src_txt, _src_fg = "Acc đang online: có thể chọn skill đã học.", "#0a0"
+        elif _cached_ts:
+            _src_txt = ("Acc đang tắt — dữ liệu từ lần chạy gần nhất (%s). Start acc để lấy mới."
+                        % time.strftime("%d/%m %H:%M", time.localtime(_cached_ts)))
+            _src_fg = "#a60"
+        else:
+            _src_txt, _src_fg = ("Acc đang tắt và chưa có dữ liệu cũ: Start acc một lần "
+                                 "để bot ghi lại skill/pet."), "#a60"
+        ttk.Label(frm, text=_src_txt, foreground=_src_fg).pack(anchor="w", pady=(0, 8))
 
         rule_rows = {"char": []}    # + "pet:<pid>" per tab (them dong o _build_unit)
 
@@ -2759,6 +2785,8 @@ class PartyConfigFrame(ttk.Frame):
             pids = []
             if st is not None:
                 pids = [p_ for p_, _nm in (getattr(st, "carried_pets", []) or [])]
+            if not pids:      # acc tat -> pet cua LAN CHAY GAN NHAT (cache)
+                pids = [int(r[0]) for r in (_snap.get("pets") or [])]
             if not pids:
                 pids = _pet_cfg_ids()
             if not pids and st is not None and getattr(st, "active_pet_id", None):
