@@ -2287,24 +2287,38 @@ class PartyConfigFrame(ttk.Frame):
             messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
         settings = row.setdefault("settings", {})
         battle = settings.get("battle") if isinstance(settings.get("battle"), dict) else {}
+        _tab_pids = []   # pid cac tab pet (gan o _resolve_tab_pids; list de closure dung chung)
 
         c = ctrl.account_clients.get(uname)
         st = c.state if (c is not None and getattr(c, "state", None)) else None
 
+        def _unit_pid(unit):
+            """"pet:41003" -> 41003; "char"/"pet" -> None."""
+            if isinstance(unit, str) and unit.startswith("pet:"):
+                try:
+                    return int(unit.split(":", 1)[1])
+                except ValueError:
+                    return None
+            return None
+
         def _live_skill_ids(unit):
-            if st is None:
-                return []
             if unit == "char":
+                if st is None:
+                    return []
                 return sorted(getattr(st, "skills_char", []) or [])
-            skills = list(getattr(st, "pet_skills", []) or [])
-            if not skills:
-                skills = list(getattr(st, "skills_pet", []) or [])
+            # Tab per-pet: skill RIENG cua pet do tu pets.json (offline van co) - truoc day moi
+            # pet deu hien skill cua pet DANG RA TRAN (st.pet_skills) la sai voi tab.
+            pid = _unit_pid(unit)
+            skills = list(getattr(config, "PET_SKILLS", {}).get(pid, [])) if pid else []
+            if not skills and st is not None and pid == getattr(st, "active_pet_id", None):
+                skills = list(getattr(st, "pet_skills", []) or [])
             return sorted({int(s) for s in skills if isinstance(s, int) or str(s).isdigit()})
 
-        live_skills = {
-            "char": _live_skill_ids("char"),
-            "pet": _live_skill_ids("pet"),
-        }
+        class _LiveSkills(dict):     # tra theo unit dong ("pet:<pid>"), cache nhe
+            def __missing__(self, unit):
+                self[unit] = _live_skill_ids(unit)
+                return self[unit]
+        live_skills = _LiveSkills()
         online = st is not None
 
         def _skill_label(skill_id):
@@ -2395,8 +2409,37 @@ class PartyConfigFrame(ttk.Frame):
                 return "50"
             return ""
 
+        def _pet_cfg_ids():
+            """pid da co config rieng trong battle["pets"]."""
+            out = []
+            for k in (battle.get("pets") or {}):
+                try:
+                    out.append(int(k))
+                except (TypeError, ValueError):
+                    pass
+            return out
+
+        def _migrate_owner_pid(pet_ids):
+            """Config CU chi co battle["pet"] (khong ghi pet id): coi bo rule do la cua pet DANG
+            DUNG (active), cac pet khac auto (chot voi user). Offline khong biet active -> pet dau."""
+            if st is not None and getattr(st, "active_pet_id", None) in pet_ids:
+                return st.active_pet_id
+            return pet_ids[0] if pet_ids else None
+
         def _normalize_rules(unit):
-            raw = battle.get(unit)
+            pid = _unit_pid(unit)
+            if pid is not None:
+                pets_cfg = battle.get("pets")
+                if isinstance(pets_cfg, dict):
+                    raw = pets_cfg.get(str(pid)) or pets_cfg.get(pid)
+                elif isinstance(battle.get("pet"), list):
+                    raw = battle["pet"] if pid == _migrate_owner_pid(_tab_pids) else None
+                else:
+                    raw = battle.get("pet") if pid == _migrate_owner_pid(_tab_pids) else None
+                return _normalize_raw(raw)
+            return _normalize_raw(battle.get(unit), unit)
+
+        def _normalize_raw(raw, unit=""):
             if isinstance(raw, list):
                 out = []
                 for r in raw:
@@ -2535,7 +2578,7 @@ class PartyConfigFrame(ttk.Frame):
                              "Acc đang offline: muốn chọn skill đã học thì Start acc trước."),
                   foreground=("#0a0" if online else "#a60")).pack(anchor="w", pady=(0, 8))
 
-        rule_rows = {"char": [], "pet": []}
+        rule_rows = {"char": []}    # + "pet:<pid>" per tab (them dong o _build_unit)
 
         def _open_dangerous_npcs_editor():
             top = tk.Toplevel(win)
@@ -2571,6 +2614,7 @@ class PartyConfigFrame(ttk.Frame):
             ttk.Button(btns, text="Hủy", command=top.destroy).pack(side="left", padx=(8, 0))
 
         def _build_unit(parent, unit, title):
+            rule_rows.setdefault(unit, [])
             box = ttk.LabelFrame(parent, text=title, padding=8)
             box.pack(fill="x", pady=(0, 8))
             hdr = ttk.Frame(box); hdr.pack(fill="x")
@@ -2702,7 +2746,37 @@ class PartyConfigFrame(ttk.Frame):
                        command=lambda: _add_rule()).pack(anchor="w", pady=(4, 0))
 
         _build_unit(frm, "char", "Char")
-        _build_unit(frm, "pet", "Pet")
+
+        # ---- PET: tach 4 TAB theo TUNG PET mang theo (mirror client MachineBox.fightSettings
+        # per npcId). Online: tab = pet dang mang (0x0f); offline: pet da co config; config CU
+        # ("pet" chung): 1 tab cho pet dang dung (migration - pet khac auto).
+        def _resolve_tab_pids():
+            pids = []
+            if st is not None:
+                pids = [p_ for p_, _nm in (getattr(st, "carried_pets", []) or [])]
+            if not pids:
+                pids = _pet_cfg_ids()
+            if not pids and st is not None and getattr(st, "active_pet_id", None):
+                pids = [st.active_pet_id]
+            return pids[:4]
+        _tab_pids[:] = _resolve_tab_pids()
+
+        def _pet_tab_title(pid):
+            nm = getattr(config, "PET_NAMES", {}).get(pid) or "Pet"
+            return f"{nm} (0x{pid:04x})"
+
+        pet_box = ttk.LabelFrame(frm, text="Pet (rule riêng từng pet)", padding=4)
+        pet_box.pack(fill="x", pady=(0, 8))
+        if _tab_pids:
+            _nb = ttk.Notebook(pet_box); _nb.pack(fill="both", expand=True)
+            for _pid in _tab_pids:
+                _tab = ttk.Frame(_nb, padding=4)
+                _nb.add(_tab, text=_pet_tab_title(_pid))
+                _build_unit(_tab, f"pet:{_pid}", "")
+        else:
+            ttk.Label(pet_box, foreground="#a60",
+                      text="Chưa biết acc mang pet nào — login acc rồi mở lại để set rule từng pet."
+                      ).pack(anchor="w", pady=4)
 
         def _read_rules(unit):
             out = []
@@ -2731,10 +2805,25 @@ class PartyConfigFrame(ttk.Frame):
         def _is_default(data):
             default = [{"enabled": True, "condition": "always", "op": "gte", "value": "",
                         "skill": "auto", "target": "auto"}]
-            return data.get("char") == default and data.get("pet") == default
+            if data.get("char") != default:
+                return False
+            if data.get("pet"):     # config "pet" chung cu giu lai (chua login) -> khong duoc pop
+                return False
+            return all(v == default or v == [] for v in (data.get("pets") or {}).values())
 
         def _save():
-            data = {"char": _read_rules("char"), "pet": _read_rules("pet")}
+            # Format MOI: "pets" {pid: rules}; key "pet" chung cu bi THAY THE han (engine gap
+            # "pets" la bo qua "pet"). Tab nao user de default -> khong luu (auto).
+            default = [{"enabled": True, "condition": "always", "op": "gte", "value": "",
+                        "skill": "auto", "target": "auto"}]
+            _pets = {}
+            for _pid in _tab_pids:
+                _r = _read_rules(f"pet:{_pid}")
+                if _r and _r != default:
+                    _pets[str(_pid)] = _r
+            data = {"char": _read_rules("char"), "pets": _pets}
+            if not _tab_pids and isinstance(battle.get("pet"), list):
+                data["pet"] = battle["pet"]   # chua login: giu nguyen config cu, khong pha
             if _is_default(data):
                 settings.pop("battle", None)
                 live_cfg = {}
@@ -2755,7 +2844,8 @@ class PartyConfigFrame(ttk.Frame):
                     f"Nạp kịch bản skill mặc định cho acc '{uname}' và lưu áp dụng ngay?",
                     parent=win):
                 return
-            data = {"char": _default_rule_template("char"), "pet": _default_rule_template("pet")}
+            data = {"char": _default_rule_template("char"),
+                    "pets": {str(_pid): _default_rule_template(f"pet:{_pid}") for _pid in _tab_pids}}
             settings["battle"] = data
             settings.pop("char_defend", None)
             row["settings"] = settings
@@ -4084,7 +4174,20 @@ class ConfigDialog(tk.Toplevel):
                 return e
         return None
 
+    def _visible_sub(self):
+        """sub-Notebook cua NHOM dang hien thi (self.nb dang chon)."""
+        try:
+            return self.cfg_group_nb.get(self.nb.index(self.nb.select()))
+        except Exception:
+            return None
+
     def _on_cfg_party_tab(self, event=None):
+        # CHI build cho sub-notebook DANG HIEN THI. Bind nay dat TRUOC khi add tab nen luc dung
+        # dialog, MOI nhom deu ban <<NotebookTabChanged>> -> truoc day build lan luot P1, P11,
+        # P21, P31 va _free_other_built_frames HUY frame nhom truoc -> tab dang xem (P1) bi huy
+        # => TRANG TRON. (Bug that sau commit "chi giu 1 frame song" chong do 39 party.)
+        if event is not None and event.widget is not self._visible_sub():
+            return
         e = self._entry_of_sub(event.widget)
         if e is not None:
             self._build_entry(e)
