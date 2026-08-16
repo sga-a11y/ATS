@@ -7,6 +7,7 @@ CHAY TRUOC MOI LAN BUILD APK:  python tools/sync_apk_python.py
 File RIENG cua APK (KHONG dong bo): config.py (doc asset), __init__.py, _appdir.py, train_runner.py
 (adapter Kotlin), party_state.py (neu con).
 """
+import json
 import os
 import re
 import shutil
@@ -96,6 +97,30 @@ def _check_assets_covered():
         )
 
 
+def _check_servers_fallback():
+    """FALLBACK trong Servers.kt phai phu DU key cua servers.json.
+
+    Servers.kt tung la map CHEP TAY va da lech that: PC 17 server, APK 16 (thieu Truong Lieu
+    id 18) vi them server moi chi sua servers.json. Nay Servers.kt doc thang asset, FALLBACK chi
+    dung khi doc loi - nhung van phai dung, khong thi loi doc asset = mat server am tham.
+    """
+    kt = os.path.join(ROOT, "android", "app", "src", "main", "java", "com", "tsbot", "android",
+                      "Servers.kt")
+    js = os.path.join(ROOT, "servers.json")
+    if not (os.path.isfile(kt) and os.path.isfile(js)):
+        return
+    with open(js, encoding="utf-8") as fh:
+        keys = set(json.load(fh).get("servers", {}))
+    src = open(kt, encoding="utf-8").read()
+    missing = sorted(k for k in keys if ('"%s"' % k) not in src)
+    if missing:
+        raise SystemExit(
+            "SYNC DUNG: Servers.kt FALLBACK thieu server co trong servers.json: "
+            + ", ".join(missing)
+            + " (them vao FALLBACK trong Servers.kt)"
+        )
+
+
 def _check_no_abs_bot_import():
     """Ban APK KHONG duoc con import tuyet doi `bot.*` (package do khong ton tai tren Android)."""
     import glob
@@ -146,4 +171,5 @@ if __name__ == "__main__":
     _check_synced()
     _check_no_abs_bot_import()
     _check_assets_covered()
+    _check_servers_fallback()
     print("OK: PC va APK giong het nhau (%d file shared)" % len(SHARED))

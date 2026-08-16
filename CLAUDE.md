@@ -33,7 +33,7 @@ tay vì không nằm trong git:
 - **`gamedata_*.dat`** — CHỈ cần khi chạy lại `tools/crack_*.py` để sinh JSON. Build KHÔNG cần
   (các JSON đã commit sẵn).
 
-### Bốn cổng chặn tự động — build sẽ DỪNG, không ra bản thiếu
+### Năm cổng chặn tự động — build sẽ DỪNG, không ra bản thiếu
 `build_bundle()` và `build_apk()` đều gọi `tools/sync_apk_python.py` trước; `run()` `sys.exit(1)`
 khi lệnh con lỗi. Nên các lỗi dưới đây KHÔNG thể lọt ra bản build:
 | Thông báo | Nghĩa là | Cách sửa |
@@ -42,10 +42,19 @@ khi lệnh con lỗi. Nên các lỗi dưới đây KHÔNG thể lọt ra bản 
 | `copy xong van LECH` | Chép hỏng / bị ghi đè ngược | Chạy lại sync |
 | `ban APK con import tuyet doi 'bot.*'` | Trên Android không có package `bot` | Sync tự đổi bằng regex; lỗi này = regex chưa phủ dạng import mới |
 | `asset APK chua khai bao trong SHARED_ASSETS` | File assets chỉ được chép tay | Thêm vào `SHARED_ASSETS` |
+| `Servers.kt FALLBACK thieu server` | Thêm server vào `servers.json` mà quên `Servers.kt` | Thêm vào `FALLBACK` trong `Servers.kt` |
 
 **Bài học đắt**: `SHARED`/`SHARED_ASSETS` từng là allowlist chép tay nên thiếu mà KHÔNG AI BÁO —
 `party_battle.py` lệch 48 dòng và 14 file assets chỉ cập nhật tay. Build vẫn chạy, chỉ khác HÀNH VI.
 Thêm file dùng chung mà không khai báo = bản APK chạy code cũ âm thầm.
+
+**Tái phạm (2026-08-14)**: `Servers.kt` cũng là map chép tay → PC có 17 server, APK chỉ 16
+(**thiếu Trương Liêu id 18**) vì thêm server mới chỉ sửa `servers.json`. Đã cho `Servers.kt` đọc
+thẳng `assets/train_bot_data/servers.json`; map cũ chỉ còn là FALLBACK khi đọc asset lỗi, và có
+cổng chặn bắt FALLBACK phải phủ đủ key.
+
+> **Quy tắc rút ra**: dữ liệu dùng chung PC/APK thì bản Kotlin phải **ĐỌC file JSON**, không được
+> chép lại thành hằng số. Chép tay ở đâu là ở đó sẽ lệch, chỉ là sớm hay muộn.
 
 ### APK: cập nhật core phải DỪNG HẾT party trước
 Dọn `sys.modules` chỉ chạy khi không acc nào đang chạy. Update core lúc đang chạy → vẫn chạy code
