@@ -129,6 +129,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Servers.init(applicationContext)   // danh sach server doc tu assets/servers.json
 
         setContent {
             TsBotTheme {
@@ -865,11 +866,13 @@ fun TsBotApp(
     if (skillAccount != null) {
         val (partyName, account) = skillAccount
         val skills = service?.accountSkills(account.username)
-            ?: (emptyList<SkillChoice>() to emptyList())
+            ?: BotForegroundService.AccountSkills(emptyList(), emptyList(), emptyList(), 0)
         SkillSettingsDialog(
             initialBattleJson = account.battleJson,
-            charSkills = skills.first,
-            petSkills = skills.second,
+            charSkills = skills.char,
+            petSkills = skills.pet,
+            pets = skills.pets,
+            activePid = skills.activePid,
             dangerousNpcNames = {
                 service?.dangerousNpcNames()?.takeIf { it.isNotEmpty() } ?: DefaultDangerousNpcNames
             },
@@ -2429,7 +2432,12 @@ private fun parseBattleRules(json: String, unit: String): List<BattleRuleUi> {
     if (json.isBlank()) return listOf(BattleRuleUi())
     return try {
         val obj = JSONObject(json)
-        val arr = obj.optJSONArray(unit)
+        // unit "pets/<pid>" = mang nam trong object "pets" (format per-pet moi)
+        val arr = if (unit.startsWith("pets/")) {
+            obj.optJSONObject("pets")?.optJSONArray(unit.substringAfter("/"))
+        } else {
+            obj.optJSONArray(unit)
+        }
         if (arr == null || arr.length() == 0) return listOf(BattleRuleUi())
         (0 until arr.length()).mapNotNull { i ->
             val r = arr.optJSONObject(i) ?: return@mapNotNull null
@@ -2458,12 +2466,65 @@ private fun parseBattleRules(json: String, unit: String): List<BattleRuleUi> {
     }
 }
 
-private fun battleJson(charRules: List<BattleRuleUi>, petRules: List<BattleRuleUi>): String {
+/** Vai tro pet: {"train"/"boss"/"quest": pet_id}. Nam TRONG battleJson nen di theo duong config
+ *  san co, khong phai them tham so cho service. */
+val PetRoleLabels = listOf("train" to "Train", "boss" to "Boss", "quest" to "Quest/PB/Event")
+
+private fun parsePetRoles(json: String): Map<String, Int> {
+    if (json.isBlank()) return emptyMap()
+    return try {
+        val o = JSONObject(json).optJSONObject("pet_roles") ?: return emptyMap()
+        o.keys().asSequence().mapNotNull { k -> o.optInt(k, 0).takeIf { it > 0 }?.let { k to it } }.toMap()
+    } catch (_: Exception) {
+        emptyMap()
+    }
+}
+
+/** Rule cua 1 pet: uu tien "pets"[pid]; config CU chi co "pet" -> gan cho pet DANG DUNG. */
+private fun parsePetRules(json: String, pid: Int, activePid: Int): List<BattleRuleUi> {
+    if (json.isBlank()) return listOf(BattleRuleUi())
+    return try {
+        val root = JSONObject(json)
+        val petsObj = root.optJSONObject("pets")
+        if (petsObj != null) {
+            if (petsObj.has(pid.toString())) parseBattleRules(json, "pets/$pid")
+            else listOf(BattleRuleUi())
+        } else if (root.has("pet") && (pid == activePid || activePid == 0)) {
+            parseBattleRules(json, "pet")
+        } else {
+            listOf(BattleRuleUi())
+        }
+    } catch (_: Exception) {
+        listOf(BattleRuleUi())
+    }
+}
+
+/** battleJson format MOI: {"char":[...], "pets":{"<pid>":[...]}} - tab default khong luu. */
+private fun battleJsonPets(
+    charRules: List<BattleRuleUi>,
+    petsMap: Map<Int, List<BattleRuleUi>>,
+    petRoles: Map<String, Int> = emptyMap(),
+): String {
     val def = BattleRuleUi()
     val charClean = charRules.ifEmpty { listOf(def) }
-    val petClean = petRules.ifEmpty { listOf(def) }
-    if (charClean == listOf(def) && petClean == listOf(def)) return ""
-    fun ruleObj(r: BattleRuleUi) = JSONObject().apply {
+    val petsClean = petsMap.filterValues { it.isNotEmpty() && it != listOf(def) }
+    if (charClean == listOf(def) && petsClean.isEmpty() && petRoles.isEmpty()) return ""
+    return JSONObject()
+        .apply {
+            if (petRoles.isNotEmpty()) {
+                put("pet_roles", JSONObject().apply { petRoles.forEach { (r, p) -> put(r, p) } })
+            }
+        }
+        .put("char", JSONArray().also { arr -> charClean.forEach { arr.put(battleRuleObj(it)) } })
+        .put("pets", JSONObject().apply {
+            petsClean.forEach { (pid, rules) ->
+                put(pid.toString(), JSONArray().also { arr -> rules.forEach { arr.put(battleRuleObj(it)) } })
+            }
+        })
+        .toString()
+}
+
+private fun battleRuleObj(r: BattleRuleUi) = JSONObject().apply {
         val cleanValue = if (r.condition in BattleNumericConditions) {
             r.value.ifBlank { defaultConditionValue(r.condition) }
         } else {
@@ -2477,10 +2538,16 @@ private fun battleJson(charRules: List<BattleRuleUi>, petRules: List<BattleRuleU
         val asInt = r.skill.toIntOrNull()
         if (asInt != null) put("skill", asInt) else put("skill", r.skill)
         put("target", if (r.condition == "ally_dead") "auto" else r.target)
-    }
+}
+
+private fun battleJson(charRules: List<BattleRuleUi>, petRules: List<BattleRuleUi>): String {
+    val def = BattleRuleUi()
+    val charClean = charRules.ifEmpty { listOf(def) }
+    val petClean = petRules.ifEmpty { listOf(def) }
+    if (charClean == listOf(def) && petClean == listOf(def)) return ""
     return JSONObject()
-        .put("char", JSONArray().also { arr -> charClean.forEach { arr.put(ruleObj(it)) } })
-        .put("pet", JSONArray().also { arr -> petClean.forEach { arr.put(ruleObj(it)) } })
+        .put("char", JSONArray().also { arr -> charClean.forEach { arr.put(battleRuleObj(it)) } })
+        .put("pet", JSONArray().also { arr -> petClean.forEach { arr.put(battleRuleObj(it)) } })
         .toString()
 }
 
@@ -3496,13 +3563,24 @@ fun SkillSettingsDialog(
     onSaveDangerousNpcNames: (List<String>) -> Unit,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
+    pets: List<BotForegroundService.PetSkillSet> = emptyList(),
+    activePid: Int = 0,
 ) {
     var charRules by remember(initialBattleJson) {
         mutableStateOf(parseBattleRules(initialBattleJson, "char"))
     }
+    // Acc OFFLINE (pets rong): giu editor "Pet" chung cu - luu lai nguyen key "pet".
     var petRules by remember(initialBattleJson) {
         mutableStateOf(parseBattleRules(initialBattleJson, "pet"))
     }
+    // Acc ONLINE: TAB rieng tung pet (mirror PC + client MachineBox.fightSettings per npcId).
+    // Config "pet" chung cu -> gan cho pet DANG DUNG (activePid), pet khac auto (chot voi user).
+    var petTab by remember { mutableStateOf(0) }
+    var petRulesMap by remember(initialBattleJson, pets) {
+        mutableStateOf(pets.associate { it.pid to parsePetRules(initialBattleJson, it.pid, activePid) })
+    }
+    // Vai tro pet: 1 vai chi 1 pet -> tick vai o pet nay thi cac pet khac tu nha vai do.
+    var petRoles by remember(initialBattleJson) { mutableStateOf(parsePetRoles(initialBattleJson)) }
     var confirmDefault by remember { mutableStateOf(false) }
     var editDangerousNpc by remember { mutableStateOf(false) }
     var dangerousNpcText by remember { mutableStateOf("") }
@@ -3521,8 +3599,12 @@ fun SkillSettingsDialog(
                 TextButton(onClick = {
                     confirmDefault = false
                     val nextChar = defaultBattleRules(charSkills)
-                    val nextPet = defaultBattleRules(petSkills)
-                    onSave(battleJson(nextChar, nextPet))
+                    if (pets.isEmpty()) {
+                        onSave(battleJson(nextChar, defaultBattleRules(petSkills)))
+                    } else {
+                        onSave(battleJsonPets(nextChar,
+                            pets.associate { it.pid to defaultBattleRules(it.skills) }, petRoles))
+                    }
                 }) { Text("Đồng ý") }
             },
             dismissButton = {
@@ -3582,11 +3664,51 @@ fun SkillSettingsDialog(
                 Spacer(Modifier.height(8.dp))
                 BattleRuleUnitEditor("Char", charRules, charSkills, ::openDangerousNpcEditor) { charRules = it }
                 Spacer(Modifier.height(8.dp))
-                BattleRuleUnitEditor("Pet", petRules, petSkills, ::openDangerousNpcEditor) { petRules = it }
+                if (pets.isEmpty()) {
+                    BattleRuleUnitEditor("Pet", petRules, petSkills, ::openDangerousNpcEditor) { petRules = it }
+                } else {
+                    Text("Pet (rule riêng từng pet)", style = MaterialTheme.typography.titleSmall)
+                    ScrollableTabRow(selectedTabIndex = petTab, edgePadding = 0.dp) {
+                        pets.forEachIndexed { i, ps ->
+                            Tab(selected = petTab == i, onClick = { petTab = i },
+                                text = { Text(ps.name) })
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    val cur = pets[petTab]
+                    Text("Dùng pet này khi:", style = MaterialTheme.typography.bodySmall)
+                    Row {
+                        PetRoleLabels.forEach { (role, label) ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = petRoles[role] == cur.pid,
+                                    onCheckedChange = { on ->
+                                        petRoles = petRoles.toMutableMap().apply {
+                                            if (on) put(role, cur.pid) else remove(role)
+                                        }
+                                    },
+                                )
+                                Text(label, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    Text(
+                        "Vai không tick pet nào → giữ nguyên pet đang dùng.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    BattleRuleUnitEditor("", petRulesMap[cur.pid] ?: listOf(BattleRuleUi()),
+                        cur.skills, ::openDangerousNpcEditor) {
+                        petRulesMap = petRulesMap.toMutableMap().apply { put(cur.pid, it) }
+                    }
+                }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(battleJson(charRules, petRules)) }) { Text("Lưu") }
+            Button(onClick = {
+                if (pets.isEmpty()) onSave(battleJson(charRules, petRules))
+                else onSave(battleJsonPets(charRules, petRulesMap, petRoles))
+            }) { Text("Lưu") }
         },
         dismissButton = {
             Row {

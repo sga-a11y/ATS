@@ -63,6 +63,10 @@ class BattleState:
         self.battle_config = {}   # custom battle settings rieng acc (accounts.json settings.battle)
         self.pet_skills = []      # LIST skill cua pet dang dung (pets.json, giu thu tu - skill[0]=boss fallback)
         self.active_pet_id = None # id pet dang dung (tu S2C 0x13)
+        self.carried_pets = []    # [(pid, ten)] pet mang theo (0x0f) - tab skill per-pet
+        self.pet_cfg_owner = None # pet DAU TIEN thay sau login = chu cua bo rule 'pet' CHUNG cu:
+                                  # config cu khong ghi pet id, coi rule do la cua pet user dang
+                                  # dung; doi sang pet khac -> auto (yeu cau user, xem combat)
         self.boss_mode = False    # True = dang trong dungeon danh boss -> pet dung skill manh (tu suy)
         # SP DAY (sp==sp_max) luc nao trong tran -> spam combo CA TRAN, bat chap so quai (1 quai cung dung).
         self.char_spam = False

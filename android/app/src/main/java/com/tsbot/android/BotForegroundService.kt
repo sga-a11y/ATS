@@ -56,6 +56,7 @@ class BotForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Servers.init(applicationContext)   // danh sach server doc tu assets/servers.json
         materializeSmartNavAssets()
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
@@ -451,7 +452,16 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         }
     }
 
-    fun accountSkills(username: String): Pair<List<SkillChoice>, List<SkillChoice>> {
+    /** Skill set cua 1 pet mang theo - tab per-pet trong dialog Kich ban Skill. */
+    data class PetSkillSet(val pid: Int, val name: String, val skills: List<SkillChoice>)
+    data class AccountSkills(
+        val char: List<SkillChoice>,
+        val pet: List<SkillChoice>,
+        val pets: List<PetSkillSet>,
+        val activePid: Int,
+    )
+
+    fun accountSkills(username: String): AccountSkills {
         fun parseSkill(item: PyObject): SkillChoice? {
             return try {
                 val parts = item.asList()
@@ -472,14 +482,25 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
             }
         }
 
+        val empty = AccountSkills(emptyList(), emptyList(), emptyList(), 0)
         return try {
-            val d = rpd().callAttr("account_skills", username)
-                ?: return emptyList<SkillChoice>() to emptyList<SkillChoice>()
+            val d = rpd().callAttr("account_skills", username) ?: return empty
             val charSkills = d.callAttr("get", "char")?.asList()?.mapNotNull { parseSkill(it) } ?: emptyList()
             val petSkills = d.callAttr("get", "pet")?.asList()?.mapNotNull { parseSkill(it) } ?: emptyList()
-            charSkills to petSkills
+            val pets = d.callAttr("get", "pets")?.asList()?.mapNotNull { row ->
+                try {
+                    val parts = row.asList()
+                    PetSkillSet(
+                        parts[0].toInt(),
+                        parts[1].toString(),
+                        parts[2].asList().mapNotNull { parseSkill(it) },
+                    )
+                } catch (_: Exception) { null }
+            } ?: emptyList()
+            val active = try { d.callAttr("get", "active")?.toInt() ?: 0 } catch (_: Exception) { 0 }
+            AccountSkills(charSkills, petSkills, pets, active)
         } catch (e: Exception) {
-            emptyList<SkillChoice>() to emptyList<SkillChoice>()
+            empty
         }
     }
 

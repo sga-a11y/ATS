@@ -1142,6 +1142,17 @@ S2C 0x1a sau do:    +exp vao nhan vat (vd 0x12c = 300 exp)
 ## 7i. PET DANG DUNG (opcode 0x13)
 
 - **C2S 0x13** `01 00 [pet_id 2B LE]` = doi pet (chon pet tu tui).
+- **Crack client xac nhan (UITeam.OnClick_FollowNpcState + protocolTable[19])**:
+  - `C:019-001 <跟隨武將出戰> +NPCID(2)` = doi pet; `C:019-002 <出戰武將收回>` = thu pet ve.
+  - `S:019-001` / `S:019-004` deu goi `Role.SetFightNpc(npcId)` -> day la XAC NHAN doi xong.
+    `S:019-006` = pet chet `<<[followIndex 1B][isDead 1B]>>`, `S:019-007` = pet ha da.
+  - Client chan gui lenh khi: `isDead` (msg 60032), `data.isRetire` (71312), `beenRide` (50073 -
+    vo tuong dang bi CUOI lam ngua, khac he thu cuoi), va dang danh
+    (`Role.player.war ~= EWar.None and not FightField.IsCanControl()`).
+  - Bot chi tu chan 2 cai: DANG TRONG TRAN + pet khong mang theo. Con lai de server tu choi
+    (khong co `S:019-001` -> bot giu pet cu, chay tiep).
+  - Doi pet xong PHAI doc lai `active_pet_slot` tu goi `0x0f` (handler `0x13` da lam san) -
+    thieu buoc nay thi hoi pet bay vao slot sai (bug cu "hoi 40 vien ma pet van 1HP").
 - **S2C 0x13** `01 00 [pet_id]` = xac nhan doi pet.
 - **S2C 0x13** `04 00 [pet_id]` = pet dang dung, gui luc LOGIN.
 - pet_id (vd 0xa051, 0xa0db) = id pet -> bot doc luc login de biet pet nao.

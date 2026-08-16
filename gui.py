@@ -2288,6 +2288,11 @@ class PartyConfigFrame(ttk.Frame):
         settings = row.setdefault("settings", {})
         battle = settings.get("battle") if isinstance(settings.get("battle"), dict) else {}
         _tab_pids = []   # pid cac tab pet (gan o _resolve_tab_pids; list de closure dung chung)
+        # VAI TRO PET: {"train"/"boss"/"quest": pet_id}. Luu TRONG battle nen di theo duong config
+        # san co (apply_account_battle + accounts.json), khong phai them tham so cho PC lan APK.
+        _PET_ROLE_LABELS = [("train", "Train"), ("boss", "Boss"), ("quest", "Quest/PB/Event")]
+        _role_vars = {}          # (pid, role) -> BooleanVar
+        _pet_roles0 = {r: (battle.get("pet_roles") or {}).get(r) for r, _l in _PET_ROLE_LABELS}
 
         c = ctrl.account_clients.get(uname)
         st = c.state if (c is not None and getattr(c, "state", None)) else None
@@ -2765,6 +2770,27 @@ class PartyConfigFrame(ttk.Frame):
             nm = getattr(config, "PET_NAMES", {}).get(pid) or "Pet"
             return f"{nm} (0x{pid:04x})"
 
+        def _build_role_row(parent, pid):
+            """Hang tick vai tro cua 1 pet. Tick vai nao thi TU BO tick vai do o MOI pet khac
+            (1 vai chi 1 pet). Khong tick gi = pet nay khong tu duoc goi ra."""
+            rowf = ttk.Frame(parent); rowf.pack(anchor="w", pady=(0, 6))
+            ttk.Label(rowf, text="Dùng pet này khi:").pack(side="left", padx=(0, 6))
+
+            def _on_toggle(role, pid_):
+                if not _role_vars[(pid_, role)].get():
+                    return
+                for (p2, r2), v2 in _role_vars.items():   # nha vai do o cac pet khac
+                    if r2 == role and p2 != pid_:
+                        v2.set(False)
+
+            for role, lbl in _PET_ROLE_LABELS:
+                var = tk.BooleanVar(value=(_pet_roles0.get(role) == pid))
+                _role_vars[(pid, role)] = var
+                ttk.Checkbutton(rowf, text=lbl, variable=var,
+                                command=lambda r=role, p=pid: _on_toggle(r, p)).pack(side="left", padx=(0, 8))
+            ttk.Label(rowf, foreground="#666",
+                      text="(vai không tick pet nào → giữ nguyên pet đang dùng)").pack(side="left")
+
         pet_box = ttk.LabelFrame(frm, text="Pet (rule riêng từng pet)", padding=4)
         pet_box.pack(fill="x", pady=(0, 8))
         if _tab_pids:
@@ -2772,6 +2798,7 @@ class PartyConfigFrame(ttk.Frame):
             for _pid in _tab_pids:
                 _tab = ttk.Frame(_nb, padding=4)
                 _nb.add(_tab, text=_pet_tab_title(_pid))
+                _build_role_row(_tab, _pid)
                 _build_unit(_tab, f"pet:{_pid}", "")
         else:
             ttk.Label(pet_box, foreground="#a60",
@@ -2809,6 +2836,8 @@ class PartyConfigFrame(ttk.Frame):
                 return False
             if data.get("pet"):     # config "pet" chung cu giu lai (chua login) -> khong duoc pop
                 return False
+            if data.get("pet_roles"):
+                return False
             return all(v == default or v == [] for v in (data.get("pets") or {}).values())
 
         def _save():
@@ -2821,7 +2850,15 @@ class PartyConfigFrame(ttk.Frame):
                 _r = _read_rules(f"pet:{_pid}")
                 if _r and _r != default:
                     _pets[str(_pid)] = _r
+            _roles = {}
+            for (p_, r_), v_ in _role_vars.items():
+                if v_.get():
+                    _roles[r_] = p_       # rang buoc 1-vai-1-pet da giu o _on_toggle
             data = {"char": _read_rules("char"), "pets": _pets}
+            if _roles:
+                data["pet_roles"] = _roles
+            elif not _tab_pids and (battle.get("pet_roles") or {}):
+                data["pet_roles"] = battle["pet_roles"]   # chua login: giu nguyen, khong xoa
             if not _tab_pids and isinstance(battle.get("pet"), list):
                 data["pet"] = battle["pet"]   # chua login: giu nguyen config cu, khong pha
             if _is_default(data):

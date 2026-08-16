@@ -3537,6 +3537,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         while c.running:
             with st["lock"]:
                 st["member_maps"][username] = c.current_map
+            # VE PET MAC DINH: vong lap nay chay GIUA cac hoat dong (boss/PB/quest goi tuan tu
+            # trong cung thread) nen day la cho tra pet ve vai thuong. Mode event dung chung pet
+            # voi quest/PB. ensure_pet_role khong gui goi nao neu dang dung dung pet -> gan nhu
+            # mien phi, va switch_pet tu chan khi dang trong tran.
+            try:
+                c.ensure_pet_role("quest" if mode == "event" else "train")
+            except Exception as e:
+                log.debug("[%s] tra pet ve vai thuong loi: %s", label, e)
             # 2K KET THUC (thua/xong) -> MOI acc tu di bo ra khoi thap. Trong map event khong
             # teleport duoc nen phai di bo (exit_event -> smart scene route toi out_map).
             # Thieu buoc nay: leader di gom doi vo ich con member dung im trong thap, sync map cho
@@ -5227,9 +5235,17 @@ def account_skills(username):
     pet_skills = list(getattr(st, "pet_skills", []) or [])
     if not pet_skills:
         pet_skills = list(getattr(st, "skills_pet", []) or [])
+    # "pets": [[pid, ten, [choice...]], ...] cho tab skill PER-PET (APK); "active" = pet dang dung
+    # (de migrate config "pet" chung cu -> gan cho pet dang dung, pet khac auto - chot voi user).
+    pets = []
+    for pid, nm in (getattr(st, "carried_pets", []) or [])[:4]:
+        sks = sorted(set(getattr(config, "PET_SKILLS", {}).get(pid, []) or []))
+        pets.append([int(pid), nm or ("Pet 0x%04x" % pid), [_skill_choice(x) for x in sks]])
     return {
         "char": [_skill_choice(s) for s in sorted(list(getattr(st, "skills_char", []) or []))],
         "pet": [_skill_choice(s) for s in sorted(set(pet_skills))],
+        "pets": pets,
+        "active": int(getattr(st, "active_pet_id", 0) or 0),
     }
 
 

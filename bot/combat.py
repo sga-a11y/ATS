@@ -1083,6 +1083,19 @@ _CUSTOM_AUTO = object()
 def _battle_rules(state, unit_key):
     cfg = getattr(state, "battle_config", {}) or {}
     raw = cfg.get(unit_key)
+    if unit_key == "pet":
+        pets_cfg = cfg.get("pets")
+        if isinstance(pets_cfg, dict):
+            # Format MOI: rule RIENG TUNG PET (GUI 4 tab), key = str(pet id). Pet chua co
+            # config -> auto (list rong), KHONG roi ve bo "pet" chung.
+            pid = getattr(state, "active_pet_id", None)
+            raw = pets_cfg.get(str(pid)) if pid is not None else None
+        elif raw is not None:
+            # Format CU (chi co "pet" chung): rule do la cua PET USER DANG DUNG luc set config
+            # (config cu khong ghi pet id) -> chi ap cho pet DAU TIEN thay sau login
+            # (pet_cfg_owner); doi pet khac -> auto. (Yeu cau user khi len ban per-pet.)
+            if getattr(state, "active_pet_id", None) != getattr(state, "pet_cfg_owner", None):
+                raw = None
     if isinstance(raw, list):
         return [r for r in raw if isinstance(r, dict) and r.get("enabled", True) is not False]
     if isinstance(raw, dict):   # tuong thich ban format tam thoi cu

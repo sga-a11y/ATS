@@ -2375,6 +2375,8 @@ class GameClient:
                 self.pet_agi = None
                 return
             self.state.active_pet_id = pid
+            if self.state.pet_cfg_owner is None:
+                self.state.pet_cfg_owner = pid   # pet dau tien sau login (xem state.py)
             if self._cached_pet_list_pkt is not None:
                 self._on_pet_list(self._cached_pet_list_pkt)
             self.state.pet_skills = getattr(config, "PET_SKILLS", {}).get(pid, [])   # LIST (boss skill[0])
@@ -2524,6 +2526,7 @@ class GameClient:
         n = b[2]
         start, chosen, first = 3, None, None
         _dbg = []   # DEBUG: (marker, pid) tung record de doi chieu voi vi tri THAT trong game
+        self.state.carried_pets = []   # [(pid, ten)] pet MANG THEO - GUI tab skill per-pet doc
         self._pet_skill_rows = []   # AUTO NANG SKILL PET: (slot,pid,petLv,skillPoint,[skillLv*3])
         for _ in range(n):
             if start + 33 > len(b):
@@ -2533,6 +2536,9 @@ class GameClient:
             marker = b[start]
             pid = int.from_bytes(b[start + 1:start + 3], "little")
             _dbg.append((marker, pid))
+            if pid:
+                self.state.carried_pets.append(
+                    (pid, getattr(config, "PET_NAMES", {}).get(pid, "")))
             # AUTO NANG SKILL PET: block 武將資料 (client Logic_Role.FollowNpcAppear) - tu dau record:
             #   [7]=petLv, [29:31]=DIEM SKILL (u16 LE), [31]=namelen, 3 byte NGAY SAU ten = skillLv*3.
             try:
@@ -3855,6 +3861,7 @@ class GameClient:
         if not self.running:
             return False
         time.sleep(1.0)
+        self.ensure_pet_role("boss")   # pet vai BOSS (neu user co gan) - switch_pet tu hoi full
         self.heal_full(force=heal_after)  # auto full-run ep hoi ky; daily o2 giu hanh vi cu
         self.state.boss_mode = True
         # TAT FLEE NGAY (truoc khi teleport): tran boss co the bat dau ngay luc transit/toi noi ->
@@ -3948,6 +3955,7 @@ class GameClient:
             return self.legion_boss_next      # con cooldown (server bao hoac da luu) -> check lai dung luc do
         # --- thu danh 1 luot ---
         self._wait_combat_clear()
+        self.ensure_pet_role("boss")   # pet vai BOSS (neu user co gan) - switch_pet tu hoi full
         self.heal_full()
         self.state.boss_mode = True
         self.flee_mode = False
@@ -4105,6 +4113,7 @@ class GameClient:
         Chay moi login: o da xong -> bo qua; gacha thieu xu lan truoc -> login sau tu retry."""
         # CHI tin trang thai server tra LUC NAY (KHONG cache): moi lan query server gui lai DAY DU o da
         # xong (020001010009...). Cache cu thua + tung POISON (parse sai o9 -> luu nham -> relogin van bao xong).
+        self.ensure_pet_role("quest")   # pet vai QUEST/PB/EVENT (neu user co gan)
         self._quest_cells = set()
         done = self._query_quests()
         # Cho frame 0x51 (line da nhan, trigger boi 0x62 020002 luc login) toi 2s neu chua nhan
@@ -4250,6 +4259,7 @@ class GameClient:
         if not self.running:
             return False
         time.sleep(1.0)               # them 1s cho server chot "ra tran"
+        self.ensure_pet_role("boss")   # pet vai BOSS (neu user co gan) - switch_pet tu hoi full
         self.heal_full()              # HOI FULL HP/SP truoc khi vao danh boss dungeon
         self.state.boss_mode = True
         self.dungeon_complete = False
@@ -4886,6 +4896,75 @@ class GameClient:
             if has_hp and has_sp:
                 return True
         return False
+
+    # ---- DOI PET THEO VAI TRO (train / boss / quest-PB-event) -----------------------------
+    # Crack client (UITeam.OnClick_FollowNpcState + protocolTable[19]):
+    #   C:019-001 <跟隨武將出戰> +NPCID(2)   -> gui 0x13 sub 0100 + [pet_id u16 LE]
+    #   S:019-001 / S:019-004                -> Role.SetFightNpc(npcId) = XAC NHAN doi xong
+    #   C:019-002 <出戰武將收回>             -> thu pet ve (bot KHONG dung)
+    # Bot CHI tu chan 2 dieu kien: DANG TRONG TRAN (client: war ~= None and not IsCanControl)
+    # va pet KHONG mang theo. Cac truong hop con lai cua client (pet chet - tu hoi sinh sau tran
+    # nen khong dang ke; da ha da; dang bi cuoi lam ngua - rat hiem) KHONG check truoc: server
+    # khong xac nhan thi bot giu pet cu va chay tiep, khong hong gi.
+    PET_ROLES = ("train", "boss", "quest")
+
+    def switch_pet(self, pid: int, wait: float = 4.0) -> bool:
+        """Doi pet xuat chien sang `pid`. True = da doi xong (hoac dang dung san con do).
+
+        KHONG doi giua tran (client cam) va KHONG doi sang pet khong mang theo. Xac nhan bang
+        S2C 0x13 0100 - handler co san se cap nhat active_pet_id VA doc lai active_pet_slot tu
+        goi 0x0f cache (quan trong: hoi pet phai dung slot, khong thi item bay vao slot sai).
+        """
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError):
+            return False
+        if pid <= 0 or not self.running:
+            return False
+        if pid == getattr(self.state, "active_pet_id", None):
+            return True
+        if getattr(self.state, "in_battle", False):
+            log.info("[%s] doi pet: DANG TRONG TRAN -> hoan", self._label)
+            return False
+        carried = {p for p, _nm in (getattr(self.state, "carried_pets", []) or [])}
+        if carried and pid not in carried:
+            log.warning("[%s] doi pet: 0x%04x KHONG co trong tui pet -> bo qua", self._label, pid)
+            return False
+        old = getattr(self.state, "active_pet_id", None)
+        self.send(0x13, b"\x01\x00" + pid.to_bytes(2, "little"))
+        t0 = time.time()
+        while time.time() - t0 < wait and self.running:
+            if getattr(self.state, "active_pet_id", None) == pid:
+                nm = getattr(config, "PET_NAMES", {}).get(pid, "?")
+                log.info("[%s] DOI PET: 0x%04x -> 0x%04x ('%s') slot=%s",
+                         self._label, old or 0, pid, nm, getattr(self, "active_pet_slot", None))
+                # Pet moi vao voi HP/SP CUA CHINH NO (khong ke thua mau con cu) -> HOI FULL
+                # ngay truoc khi danh tiep (yeu cau user), khong doi nguong hoi thuong.
+                try:
+                    self.heal_full(force=True)
+                except Exception as e:
+                    log.warning("[%s] hoi full sau khi doi pet loi: %s", self._label, e)
+                return True
+            time.sleep(0.2)
+        # Khong confirm = server tu choi (pet chet / ha da / dang bi cuoi) -> giu pet cu, chay tiep
+        log.warning("[%s] doi pet sang 0x%04x KHONG duoc xac nhan (pet chet/ha da/dang cuoi?) "
+                    "-> giu pet cu", self._label, pid)
+        return False
+
+    def ensure_pet_role(self, role: str) -> bool:
+        """Dam bao pet dang xuat chien la pet user gan cho `role`. Vai KHONG gan pet -> khong dung.
+
+        pet_roles nam TRONG battle_config (cung dialog Kich ban Skill) nen khong phai them duong
+        truyen config moi cho ca PC lan APK.
+        """
+        cfg = getattr(self.state, "battle_config", {}) or {}
+        roles = cfg.get("pet_roles")
+        if not isinstance(roles, dict):
+            return False
+        pid = roles.get(role)
+        if not pid:
+            return False   # vai nay khong gan pet -> giu nguyen pet dang dung
+        return self.switch_pet(pid)
 
     def do_heal(self, force: bool = False):
         """Hoi mau NGOAI tran cho CHAR + pet, dung thuoc DA BIET (gamedata/khai).
@@ -6618,6 +6697,8 @@ class GameClient:
 
     def do_team_dungeon(self, level: int) -> bool:
         level = int(level)
+        # Vai QUEST/PB/EVENT: doi TRUOC khi vao PB (do_team_dungeon la cua duy nhat cho moi level).
+        self.ensure_pet_role("quest")
         if level == 20:
             return self.do_team_dungeon_lv20()
         if level == 50:
