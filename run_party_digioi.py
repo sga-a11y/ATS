@@ -1297,6 +1297,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         c.auto_sell_noi_dat = bool(pcfg.get("auto_sell_noi_dat", True) and mode in ("train", "city"))
         # "Tu don tui do" (Cai dat nang cao): cong tong + 2 muc con moi. Phan giai cuon MAC DINH
         # TAT vi phan giai la mat han - user phai tu tick sau khi soat list.
+        # Mode event dung chung pet voi quest/PB -> vai "mac dinh" cua no la quest.
+        c.default_pet_role = "quest" if mode == "event" else "train"
         c.auto_bag_clean = bool(pcfg.get("auto_bag_clean", True))
         c.auto_discard_junk = bool(pcfg.get("auto_discard_junk", True))
         c.auto_decompose_scrolls = bool(pcfg.get("auto_decompose_scrolls", False))
@@ -3545,13 +3547,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 c.ensure_pet_role("quest" if mode == "event" else "train")
             except Exception as e:
                 log.debug("[%s] tra pet ve vai thuong loi: %s", label, e)
-            # Cache skill/pet cho dialog dung khi acc TAT. save_... tu so chu ky nen chi thuc su
-            # ghi file khi du lieu DOI (doi pet, doi pet mang theo...), khong ghi moi vong lap.
-            try:
-                if getattr(c.state, "carried_pets", None):
-                    save_account_skills_cache(username, _skills_snapshot(c.state))
-            except Exception as e:
-                log.debug("[%s] cache skill loi: %s", label, e)
             # 2K KET THUC (thua/xong) -> MOI acc tu di bo ra khoi thap. Trong map event khong
             # teleport duoc nen phai di bo (exit_event -> smart scene route toi out_map).
             # Thieu buoc nay: leader di gom doi vo ich con member dung im trong thap, sync map cho
@@ -5248,49 +5243,10 @@ def _load_skill_cache():
         return {}
 
 
-_skill_cache_lock = threading.Lock()
-_skill_cache_sig = {}     # username -> chu ky lan ghi cuoi (tranh ghi file moi vong lap)
-
-
-def save_account_skills_cache(username, data):
-    """Ghi cache cho 1 account. Chi ghi khi DU LIEU DOI (so chu ky) - vong lap chinh goi lien tuc."""
-    username = str(username or "").strip()
-    if not username or not data:
-        return False
-    sig = json.dumps(data, sort_keys=True, ensure_ascii=False)
-    with _skill_cache_lock:
-        if _skill_cache_sig.get(username) == sig:
-            return False
-        allc = _load_skill_cache()
-        allc[username] = dict(data, ts=int(time.time()))
-        try:
-            with open(_skill_cache_path(), "w", encoding="utf-8") as fh:
-                json.dump(allc, fh, ensure_ascii=False)
-        except Exception as e:
-            log.debug("ghi cache skill loi: %s", e)
-            return False
-        _skill_cache_sig[username] = sig
-        return True
-
-
-def _skills_snapshot(st):
-    """Dung dict skill/pet tu state (dung chung cho account_skills va cache)."""
-    def _choice(sid):
-        sid = int(sid)
-        info = getattr(config, "SKILL_INFO", {}).get(sid, {}) or {}
-        return [sid, info.get("name") or ("Skill %d" % sid), info.get("cost"), info.get("cat")]
-
-    pet_skills = list(getattr(st, "pet_skills", []) or []) or list(getattr(st, "skills_pet", []) or [])
-    pets = []
-    for pid, nm in (getattr(st, "carried_pets", []) or [])[:4]:
-        sks = sorted(set(getattr(config, "PET_SKILLS", {}).get(pid, []) or []))
-        pets.append([int(pid), nm or ("Pet 0x%04x" % pid), [_choice(x) for x in sks]])
-    return {
-        "char": [_choice(s) for s in sorted(list(getattr(st, "skills_char", []) or []))],
-        "pet": [_choice(s) for s in sorted(set(pet_skills))],
-        "pets": pets,
-        "active": int(getattr(st, "active_pet_id", 0) or 0),
-    }
+# Ghi cache nam trong bot/client.py (cho chac chan chay: _on_pet_list luc login + moi lan doi
+# pet). O day chi DOC lai + dung chung ham dung snapshot de khong co 2 ban code.
+from bot.client import save_skill_cache as save_account_skills_cache   # noqa: E402
+from bot.client import skills_snapshot as _skills_snapshot             # noqa: E402
 
 
 def account_skills(username):

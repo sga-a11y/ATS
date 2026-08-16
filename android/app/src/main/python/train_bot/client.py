@@ -1,4 +1,5 @@
 """TCP client TS Online: ket noi, auth, heartbeat, recv loop, dispatch + combat."""
+import functools
 import socket
 import struct
 import threading
@@ -1043,6 +1044,99 @@ def _save_legion_boss_next(label: str, next_ts: float):
             pass
 
 
+# ---- CACHE skill/pet theo account: de dialog Kich ban Skill dung duoc khi acc DA TAT --------
+# Ghi tu CLIENT (khong phai tu vong lap cua run_party_digioi): luong that co nhieu nhanh khong
+# di qua vong lap do (da dinh 1 lan - cache khong bao gio duoc ghi). _on_pet_list chay luc login
+# VA moi lan doi pet (handler 0x13 goi lai) nen la cho chac chan nhat.
+_skill_cache_lock = threading.Lock()
+_skill_cache_sig = {}
+
+
+def _skill_cache_path():
+    # import TUONG DOI nhu _learned_file_path/_load_json_data_file: ban APK khong co package "bot"
+    # (cong chan trong tools/sync_apk_python.py bat import tuyet doi 'bot.*').
+    try:
+        from ._appdir import app_dir
+        import os
+        return os.path.join(app_dir(), "account_skills_cache.json")
+    except Exception:
+        return "account_skills_cache.json"
+
+
+def save_skill_cache(username, data):
+    """Ghi cache 1 account. Chi ghi khi DU LIEU DOI (so chu ky) - ham nay bi goi rat nhieu."""
+    import json, os
+    username = str(username or "").strip()
+    if not username or not data:
+        return False
+    sig = json.dumps(data, sort_keys=True, ensure_ascii=False)
+    with _skill_cache_lock:
+        if _skill_cache_sig.get(username) == sig:
+            return False
+        path = _skill_cache_path()
+        allc = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    allc = json.load(fh) or {}
+            except Exception:
+                allc = {}
+        allc[username] = dict(data, ts=int(time.time()))
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(allc, fh, ensure_ascii=False)
+        except Exception as e:
+            log.debug("ghi cache skill loi: %s", e)
+            return False
+        _skill_cache_sig[username] = sig
+        return True
+
+
+def skills_snapshot(st):
+    """{char, pet, pets:[[pid,ten,[choice]]], active} tu state - dung chung cho cache va GUI."""
+    def _choice(sid):
+        sid = int(sid)
+        info = getattr(config, "SKILL_INFO", {}).get(sid, {}) or {}
+        return [sid, info.get("name") or ("Skill %d" % sid), info.get("cost"), info.get("cat")]
+
+    pet_skills = list(getattr(st, "pet_skills", []) or []) or list(getattr(st, "skills_pet", []) or [])
+    pets = []
+    for pid, nm in (getattr(st, "carried_pets", []) or [])[:4]:
+        sks = sorted(set(getattr(config, "PET_SKILLS", {}).get(pid, []) or []))
+        pets.append([int(pid), nm or ("Pet 0x%04x" % pid), [_choice(x) for x in sks]])
+    return {
+        "char": [_choice(x) for x in sorted(list(getattr(st, "skills_char", []) or []))],
+        "pet": [_choice(x) for x in sorted(set(pet_skills))],
+        "pets": pets,
+        "active": int(getattr(st, "active_pet_id", 0) or 0),
+    }
+
+
+def _pet_role(role):
+    """Doi pet sang `role` truoc khi chay hoat dong, va LUON tra ve vai mac dinh khi xong.
+
+    Dung try/finally o CHINH ham hoat dong thay vi dua vao vong lap ngoai: luong that co nhieu
+    nhanh khong di qua vong lap keepalive cua run_account (bug that: danh PB xong khong doi lai
+    pet train, log co "DOI PET" nhung khong bao gio doi nguoc).
+    """
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrap(self, *a, **k):
+            try:
+                self.ensure_pet_role(role)
+            except Exception as e:
+                log.warning("[%s] doi pet vai '%s' loi: %s", self._label, role, e)
+            try:
+                return fn(self, *a, **k)
+            finally:
+                try:
+                    self.ensure_pet_role(getattr(self, "default_pet_role", "train"))
+                except Exception as e:
+                    log.warning("[%s] tra pet ve vai mac dinh loi: %s", self._label, e)
+        return wrap
+    return deco
+
+
 class GameClient:
     def __init__(self, user_id: str, access_token: str, host: str = None, server_id: int = 1):
         self.user_id = user_id
@@ -1208,6 +1302,9 @@ class GameClient:
         self._npc40_started = False
         self._npc40_stop = threading.Event()
         self._npc40_thread = None
+        # Vai tro pet MAC DINH khi khong o trong hoat dong nao (decorator _pet_role tra ve day).
+        # run_party_digioi dat "quest" cho mode event (event dung chung pet voi quest/PB).
+        self.default_pet_role = "train"
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
@@ -2597,6 +2694,12 @@ class GameClient:
                 log.info("[%s] Pet id=0x%x '%s' -> skills=%s (tu PET-LIST)",
                          self._label, chosen_pid, name or "?",
                          [hex(s) for s in sorted(self.state.pet_skills)])
+        # Cache skill/pet cho dialog dung khi acc TAT (save_skill_cache tu bo qua neu khong doi).
+        try:
+            if self.state.carried_pets:
+                save_skill_cache(getattr(self, "_username", None), skills_snapshot(self.state))
+        except Exception as e:
+            log.debug("[%s] cache skill loi: %s", self._label, e)
         lvl = b[chosen + 7]   # LEVEL cua con active (truoc day b[p+6], p=pet_id_off -> = chosen+7)
         if 1 <= lvl <= 200:
             self.pet_level = lvl
@@ -3847,6 +3950,7 @@ class GameClient:
                         self._label, max_loops)
         return did_any
 
+    @_pet_role("boss")
     def do_world_boss(self, heal_after: bool = False):
         """BOSS THE GIOI (nhiem vu o 2): event teleport (0x20 02 00 08) -> map boss 0x2d ->
         engage NPC 0x3232 (0x41) -> VAO 1 tran (combat engine tu danh). CHI CAN VAO TRAN la o2
@@ -3865,7 +3969,6 @@ class GameClient:
         if not self.running:
             return False
         time.sleep(1.0)
-        self.ensure_pet_role("boss")   # pet vai BOSS (neu user co gan) - switch_pet tu hoi full
         self.heal_full(force=heal_after)  # auto full-run ep hoi ky; daily o2 giu hanh vi cu
         self.state.boss_mode = True
         # TAT FLEE NGAY (truoc khi teleport): tran boss co the bat dau ngay luc transit/toi noi ->
@@ -3927,6 +4030,7 @@ class GameClient:
         return (self.legion_boss_count < self.legion_boss_max
                 and (not self.legion_boss_next or time.time() >= self.legion_boss_next))
 
+    @_pet_role("boss")
     def do_legion_boss(self):
         """BOSS QUAN DOAN: danh SOLO truc tiep (nhu solo dungeon, KHONG teleport nhu world boss).
         3 lan/ngay, cach 4h - SERVER track het:
@@ -3959,7 +4063,6 @@ class GameClient:
             return self.legion_boss_next      # con cooldown (server bao hoac da luu) -> check lai dung luc do
         # --- thu danh 1 luot ---
         self._wait_combat_clear()
-        self.ensure_pet_role("boss")   # pet vai BOSS (neu user co gan) - switch_pet tu hoi full
         self.heal_full()
         self.state.boss_mode = True
         self.flee_mode = False
@@ -4107,6 +4210,7 @@ class GameClient:
         time.sleep(0.9)
         return self._quest_cells
 
+    @_pet_role("quest")
     def claim_daily_quests(self, heavy: bool = True):
         """STATUS-DRIVEN: query 9 o -> o CHUA xong (bot lam duoc) thi LAM -> re-query -> claim
         hang/cot du 3 o (0x5b 03 00 01 00 [line][id]) + TONG KET neu du 6.
@@ -4117,7 +4221,6 @@ class GameClient:
         Chay moi login: o da xong -> bo qua; gacha thieu xu lan truoc -> login sau tu retry."""
         # CHI tin trang thai server tra LUC NAY (KHONG cache): moi lan query server gui lai DAY DU o da
         # xong (020001010009...). Cache cu thua + tung POISON (parse sai o9 -> luu nham -> relogin van bao xong).
-        self.ensure_pet_role("quest")   # pet vai QUEST/PB/EVENT (neu user co gan)
         self._quest_cells = set()
         done = self._query_quests()
         # Cho frame 0x51 (line da nhan, trigger boi 0x62 020002 luc login) toi 2s neu chua nhan
@@ -4263,7 +4366,6 @@ class GameClient:
         if not self.running:
             return False
         time.sleep(1.0)               # them 1s cho server chot "ra tran"
-        self.ensure_pet_role("boss")   # pet vai BOSS (neu user co gan) - switch_pet tu hoi full
         self.heal_full()              # HOI FULL HP/SP truoc khi vao danh boss dungeon
         self.state.boss_mode = True
         self.dungeon_complete = False
@@ -4369,6 +4471,7 @@ class GameClient:
         log.info("[%s] Mua ve dungeon: khong nhan phan hoi -> coi nhu THAT BAI", self._label)
         return False
 
+    @_pet_role("boss")
     def do_daily_dungeon(self, max_sec: int = 360):
         """SOLO daily dungeon den khi SERVER bao o1 XONG (2/2). KHONG dem local nua (server truth
         chuan hon: dung ca khi chay song song nhieu may/ban build+dev cung nick). Moi luot: thu VE
@@ -6703,10 +6806,9 @@ class GameClient:
                 return True
         return self.state.in_battle
 
+    @_pet_role("quest")
     def do_team_dungeon(self, level: int) -> bool:
         level = int(level)
-        # Vai QUEST/PB/EVENT: doi TRUOC khi vao PB (do_team_dungeon la cua duy nhat cho moi level).
-        self.ensure_pet_role("quest")
         if level == 20:
             return self.do_team_dungeon_lv20()
         if level == 50:
