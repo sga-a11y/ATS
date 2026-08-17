@@ -3488,7 +3488,30 @@ fun FurnaceNotifyDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
+        confirmButton = {
+            Row {
+                TextButton(onClick = onDismiss) { Text("Đóng") }
+                // "Bo qua tat ca": bo qua MOI dong dang hien roi dong bang (mirror gui.py).
+                TextButton(onClick = {
+                    val all = items.toList()
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            for (row in all) {
+                                val u = row["user"] ?: continue
+                                val tid = row["id"]?.toIntOrNull() ?: continue
+                                try {
+                                    onSkip(u, tid)
+                                } catch (e: Exception) {
+                                    android.util.Log.w("tsbot", "bo qua tat ca: loi 1 dong", e)
+                                }
+                            }
+                        }
+                        onRefresh()
+                        onDismiss()
+                    }
+                }) { Text("Bỏ qua tất cả") }
+            }
+        },
     )
 }
 

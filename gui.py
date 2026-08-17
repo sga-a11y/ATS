@@ -1419,13 +1419,20 @@ class BotGUI(tk.Tk):
         canvas.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y"); canvas.pack(side="left", fill="both", expand=True)
 
+        # (rowf, ham_bo_qua) cua tung dong -> nut "Bo qua tat ca" goi lai dung cac ham NAY thay vi
+        # tu suy ra cach bo qua (dong loai moi them sau nay tu dong duoc phu theo).
+        _skips = []
+
         def _add_row(u, it):
             rowf = ttk.Frame(inner); rowf.pack(fill="x", pady=2)
             # --- THONG BAO TUI DAY (len dau) ---
             if it.get("_bag"):
                 used, cap, maxed = it["used"], it["cap"], it["maxed"]
+                def _skip_bag():
+                    self._bag_notify_dismissed.add(u); rowf.destroy()
+                _skips.append((rowf, _skip_bag))
                 ttk.Button(rowf, text="Bỏ qua", width=7,
-                           command=lambda: (self._bag_notify_dismissed.add(u), rowf.destroy())).pack(side="right", padx=2)
+                           command=_skip_bag).pack(side="right", padx=2)
                 if not maxed:
                     buybtn = tk.Button(rowf, text="Mua slot\n(đang xem giá...)", justify="center")
                     def _buy_slot():
@@ -1459,8 +1466,11 @@ class BotGUI(tk.Tk):
                 ttk.Label(rowf, text=_line, wraplength=380, justify="left").pack(side="left", fill="x", expand=True)
                 return
             # --- THONG BAO LO ---
+            def _skip_furnace():
+                self._remove_notify(u, it); rowf.destroy()
+            _skips.append((rowf, _skip_furnace))
             ttk.Button(rowf, text="Bỏ qua", width=7,
-                       command=lambda: (self._remove_notify(u, it), rowf.destroy())).pack(side="right", padx=2)
+                       command=_skip_furnace).pack(side="right", padx=2)
 
             def _buy():
                 self._remove_notify(u, it); rowf.destroy()   # optimistic: xoa nut ngay
@@ -1479,7 +1489,22 @@ class BotGUI(tk.Tk):
             ttk.Label(inner, text="(không có thông báo)").pack(anchor="w", padx=4, pady=6)
         for u, it in items:
             _add_row(u, it)
-        ttk.Button(win, text="Đóng", command=win.destroy).pack(pady=6)
+        _bar = ttk.Frame(win); _bar.pack(pady=6)
+        ttk.Button(_bar, text="Đóng", command=win.destroy).pack(side="left", padx=4)
+
+        def _skip_all():
+            """Bo qua MOI dong con lai roi dong bang. Chi goi ham bo qua cua dong CON TON TAI -
+            dong da bam Mua/Bo qua roi thi da destroy, goi lai la vo ich (va _remove_notify da
+            chay -> khong nen tru 2 lan)."""
+            for _rowf, _fn in _skips:
+                try:
+                    if _rowf.winfo_exists():
+                        _fn()
+                except Exception as e:
+                    log.warning("bo qua tat ca: loi 1 dong: %s", e)
+            win.destroy()
+
+        ttk.Button(_bar, text="Bỏ qua tất cả", command=_skip_all).pack(side="left", padx=4)
 
     def _refresh(self):
         # cap nhat map ten nhan vat -> username (de loc log theo acc/party)
