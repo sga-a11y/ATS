@@ -1147,6 +1147,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # chay ve safe TRUOC cac viec login chores (qua, van tieu, shop...) de khoi dung giua bai
         # quai lau roi bi keo tran.
         pcfg = getattr(config, "PARTY_CONFIG", {}).get(pidx, {})
+        # NHOM "TU DON TUI DO" phai gan NGAY O DAY (khong de xuong duoi cung voi cac config khac):
+        # decompose_junk_scrolls() / discard_junk_items() / sell_noi_dat() duoc goi trong khoi
+        # "viec hang ngay sau login" o TREN cho gan config cu -> luc do co van la mac dinh
+        # (auto_decompose_scrolls = False) nen user TICK ma bot KHONG phan giai (bug that user gap).
+        c.auto_bag_clean = bool(pcfg.get("auto_bag_clean", True))
+        c.auto_discard_junk = bool(pcfg.get("auto_discard_junk", True))
+        c.auto_decompose_scrolls = bool(pcfg.get("auto_decompose_scrolls", False))
+        c.scroll_modes = _scroll_modes_map(pcfg.get("scroll_modes"))
         _early_sc = pcfg.get("start_city_id", getattr(config, "START_CITY_ID", 0))
         _early_raw_mode = pcfg.get("mode")
         _early_dt_mode = (_early_raw_mode == "digioi_train")
@@ -1310,10 +1318,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         if c.state.force_quest_mode:
             c.state.quest_mode = True
         c.default_pet_role = "quest" if mode == "event" else "train"
-        c.auto_bag_clean = bool(pcfg.get("auto_bag_clean", True))
-        c.auto_discard_junk = bool(pcfg.get("auto_discard_junk", True))
-        c.auto_decompose_scrolls = bool(pcfg.get("auto_decompose_scrolls", False))
-        c.scroll_modes = _scroll_modes_map(pcfg.get("scroll_modes"))
+        # (nhom auto_bag_clean/discard_junk/decompose_scrolls/scroll_modes da gan SOM o tren -
+        #  ngay sau khi co pcfg - vi cac ham do duoc goi trong khoi viec-hang-ngay o TREN cho nay.)
         c.auto_donate_materials = bool(pcfg.get("auto_donate_materials", True))
         c.material_modes = _scroll_modes_map(pcfg.get("material_modes"))   # {tid:'keep'} - nguyen lieu GIU
         ev = None
