@@ -1298,6 +1298,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # "Tu don tui do" (Cai dat nang cao): cong tong + 2 muc con moi. Phan giai cuon MAC DINH
         # TAT vi phan giai la mat han - user phai tu tick sau khi soat list.
         # Mode event dung chung pet voi quest/PB -> vai "mac dinh" cua no la quest.
+        # Mode EVENT (40NPC / 2K) LUON danh o quest_mode - khong phu thuoc co leader hay khong
+        # (truoc day chi ep trong nhanh is_leader -> khong leader thi bot chay TRAIN mode).
+        c.state.force_quest_mode = (mode == "event")
+        if c.state.force_quest_mode:
+            c.state.quest_mode = True
         c.default_pet_role = "quest" if mode == "event" else "train"
         c.auto_bag_clean = bool(pcfg.get("auto_bag_clean", True))
         c.auto_discard_junk = bool(pcfg.get("auto_discard_junk", True))

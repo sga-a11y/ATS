@@ -92,6 +92,11 @@ class BattleState:
         self.self_slot = None          # B2 (vi tri tran) cua minh - tu 0x0b battle (entity-based)
         # QUEST mode: START tran ma >6 quai -> True ca tran (latch). >6 con -> all-target; <=6 -> nhu boss.
         self.quest_mode = False
+        # MODE EVENT (40NPC / 2K): LUON quest_mode, khong phu thuoc leader hay so quai.
+        # Truoc day chi ep trong nhanh "elif is_leader" cua run_party_digioi -> mode event KHONG
+        # CO LEADER thi khong ai ep, phai nho auto-latch (>6 quai). Tran mo ra <=6 quai la chay
+        # nguyen TRAIN mode ca tran -> chi dung AoE RE NHAT (Hoa Tien/Nem Da) du quai rat dong.
+        self.force_quest_mode = False
         self._battle_counted = False   # latch: da dem so quai luc start tran chua
         # DEM THE HE du lieu quai: tang moi lan CO goi 0x33 THAT cap nhat nhom quai (saw_enemy_group).
         # Goi 0x35 (offer luot) KHONG mang du lieu quai -> neu 0x35 den ma KHONG co 0x33 moi kem theo
@@ -187,7 +192,7 @@ class BattleState:
             self.enemy_pos_names = {}
             self.enemy_pos_tids = {}
             self.mineral_battle = False
-            self.quest_mode = False
+            self.quest_mode = bool(self.force_quest_mode)   # event: khong bao gio ha xuong False
             self._battle_counted = False
 
     @staticmethod
@@ -256,7 +261,7 @@ class BattleState:
             if not self._battle_counted and self.enemy_slots:
                 self._battle_counted = True
                 start_enemy_slots = tuple(self.enemy_slots)
-                if len(self.enemy_slots) > 6:
+                if self.force_quest_mode or len(self.enemy_slots) > 6:
                     self.quest_mode = True
         # DI GIOI SOLO: 4 pet CUNG LUC, moi con atype RIENG (b1=2, b2=atype - xac nhan qua capture
         # thuc te: b2 trong 0x33 CHINH LA atype dung de gui 0x32, KHONG can quy doi them). Cap nhat
