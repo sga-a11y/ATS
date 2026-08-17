@@ -53,6 +53,10 @@ _clients = []
 _threads = []   # thread tung acc - de biet khi nao TAT CA da thoat
 DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (de tinh "con lai")
 HO_PHU_CHECK_SEC = 180   # Di Gioi Ho Phu: check moi 3 phut (login + dinh ky)
+# Phuc Than: chay theo SU KIEN (buff tut < 5 / ngoc hong -> client.phuc_than_pending). So nay chi
+# la LUOI AN TOAN khi server khong gui goi - truoc day la 1800 (30 phut) va la duong CHINH nen
+# phan ung rat cham (ngoc hong phut thu 1 -> mat he so EXP toi 29 phut).
+PHUC_THAN_CHECK_SEC = 300
 
 
 def _scroll_modes_map(raw):
@@ -1214,10 +1218,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # (chua di ra bai quai) -> tranh bug dung/deo Phuc Than GIUA luc dang combat ngoai bai
             # (da tung xay ra vi next_phuc_than=0.0 chi trigger o tick dau cua vong lap chinh, co
             # the roi vao luc dang di ra spot/dang danh).
-            if pcfg.get("use_phuc_than"):
+            # Mode EVENT (40NPC/2K): KHONG dung Phuc Than (yeu cau user - vao event khong an he so
+            # EXP nay, dung la phi item).
+            if pcfg.get("use_phuc_than") and mode != "event":
                 try: c.use_phuc_than_items()
                 except Exception as e: log.warning("[%s] loi dung phuc than luc login: %s", label, e)
-                next_phuc_than = time.time() + 1800
+                next_phuc_than = time.time() + PHUC_THAN_CHECK_SEC
             # Van tieu: nhan qua xong + gui pet; tra ve gio check tiep. Cong tac "Van tieu" trong
             # Cai dat nang cao (mac dinh CO tick - giu hanh vi cu); tat -> khong lam + khong hen gio.
             next_vantieu = c.do_van_tieu() if pcfg.get("do_van_tieu", True) else None
@@ -3875,12 +3881,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # Phuc Than: dinh ky 30p/lan (KHONG phai 1 lan luc login) - CHI khi party bat cong tac
             # "Su dung Phuc Than". Danh gia moi tick (nhu claim_online_gifts) thay vi tach thread rieng.
             # BAT BUOC khong dang combat (dung/deo giua luc danh trong bai quai la vo ly + bug thuc te).
-            if pcfg.get("use_phuc_than") and time.time() >= next_phuc_than and not c.in_combat():
+            # Chay theo SU KIEN: buff tut < 5 (0x18 sub0800) hoac ngoc HONG (0x17 sub1b00/2300)
+            # -> client bat c.phuc_than_pending -> lam NGAY. Truoc day cho mu 30 phut: ngoc hong
+            # phut thu 1 thi mat he so EXP toi 29 phut. Vong dinh ky chi con la LUOI AN TOAN cho
+            # server khong gui goi (PHUC_THAN_CHECK_SEC).
+            if (pcfg.get("use_phuc_than") and mode != "event"
+                    and (getattr(c, "phuc_than_pending", False) or time.time() >= next_phuc_than)
+                    and not c.in_combat()):
                 try:
                     c.use_phuc_than_items()
                 except Exception as e:
                     log.warning("[%s] loi dung item phuc than (bo qua): %s", label, e)
-                next_phuc_than = time.time() + 1800   # 30 phut
+                next_phuc_than = time.time() + PHUC_THAN_CHECK_SEC
             # NHAN QUA nhiem vu hang ngay dinh ky (1h/lan) - xem ghi chu o cho khoi tao next_daily_claim.
             if do_daily and time.time() >= next_daily_claim and not c.in_combat():
                 next_daily_claim = time.time() + 3600   # set TRUOC de loi cung khong spam

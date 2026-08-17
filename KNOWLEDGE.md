@@ -476,6 +476,12 @@ Pattern entries: `03 02 [type] [4-byte LE]`
       `damage >= Damaged` -> doi chieu `damagedItemId` -> `C:023-013` VUT -> `SendUseEquip` deo ngoc
       moi; con item tieu hao chi dung khi `godMission < 1`. Bot theo huong nay, nguong rong hon theo
       yeu cau user: dung khi `< 5`, toi da 10 cai/luot (TONG, uu tien Dai Phuc Than truoc).
+    - **CHAY THEO SU KIEN, khong cho chu ky**: `0x18 sub0800` bao buff `< 5`, hoac `0x17
+      sub1b00/sub2300` bao ngoc `damage >= 250` -> handler bat `client.phuc_than_pending`, vong lap
+      run_account lam NGAY khi khong con trong tran. Vong dinh ky chi con la luoi an toan
+      (`PHUC_THAN_CHECK_SEC = 300`) cho server khong gui goi. Truoc day cho mu 1800s -> ngoc hong
+      phut thu 1 la mat he so EXP toi 29 phut.
+    - **Mode EVENT (40NPC/2K): KHONG dung Phuc Than** (yeu cau user - vao event khong an he so nay).
 
 ### S2C 0x08 sub0200 — current HP/SP sau khi dung item len pet
 - Xac nhan `captures/pet_heal_20260715.pcap`: sau C2S `0x17` dung item vao pet target N,

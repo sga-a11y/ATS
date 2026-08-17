@@ -1275,6 +1275,10 @@ class GameClient:
         # SO PHUC THAN CON LAI (godMission trong client): tu S2C 0x18 sub0800
         # <設定衰神福神> [roleId i64][kind u16][count i32]. None = server chua gui.
         self.god_mission = None
+        # True = CO SU KIEN can xu ly Phuc Than NGAY (buff tut < PHUC_THAN_LOW hoac ngoc HONG),
+        # khong phai cho het chu ky. Handler goi tin chi BAT co (chay o thread doc goi, khong duoc
+        # gui/sleep o day); vong lap trong run_party_digioi TIEU THU khi khong con trong tran.
+        self.phuc_than_pending = False
         self._active_pet_login = None
         self._collect_style_flags = {}
         self._collect_card_equipped = []
@@ -4236,6 +4240,8 @@ class GameClient:
                     self.god_mission = int.from_bytes(body[12:16], "little", signed=True)
                     log.info("[%s] Phuc Than con lai: %s (kind=%d)", self._label, self.god_mission,
                              int.from_bytes(body[10:12], "little"))
+                    if self.god_mission < PHUC_THAN_LOW:
+                        self.phuc_than_pending = True   # dung item NGAY, khong cho het chu ky
             elif sub in (0x01, 0x02) and len(body) >= 5:
                 mid = int.from_bytes(body[2:4], "little")
                 step = body[4]
@@ -4888,6 +4894,8 @@ class GameClient:
             _nm = (_load_gamedata_items().get(rec.get("id", 0)) or {}).get("name", "?")
             log.info("[%s] NGOC '%s' do ben: %d -> %d%s", self._label, _nm, old, damage,
                      "  (HONG)" if damage >= 250 else "")
+        if damage >= 250:
+            self.phuc_than_pending = True   # vut + deo ngoc moi NGAY (mat he so EXP tung giay)
 
     def _on_equip_broken(self, pkt: bytes):
         """S:023-035: do hong -> thay HAN ban ghi. Chi xu ly do CHAR (followIndex 0) o O NGOC."""
@@ -4909,6 +4917,7 @@ class GameClient:
         _was = (_load_gamedata_items().get(rec["damaged_item_id"]) or {}).get("name", "?")
         log.info("[%s] NGOC HONG: o ngoc thanh 0x%04x (truoc la '%s') -> se vut + deo ngoc moi",
                  self._label, rec["id"], _was)
+        self.phuc_than_pending = True
 
     def discard_equipped(self, pos: int) -> bool:
         """Vut do DANG MAC theo VI TRI. C:023-013 <丟棄玩家裝備> +背包索引(1) = 0x17 sub0d00 [pos].
@@ -4970,6 +4979,7 @@ class GameClient:
         # nha mu 25+50 cai moi 30 phut, khong xet con bao nhieu).
         # god_mission is None = server chua gui 0x18 sub0800 -> VAN dung (nhung van cap 10) de
         # khong mat tinh nang o server khong gui goi nay.
+        self.phuc_than_pending = False   # da xu ly (ha co truoc khi lam, tranh lap vo han)
         _gm = self.god_mission
         if _gm is not None and _gm >= PHUC_THAN_LOW:
             log.info("[%s] Phuc Than con %d (>= %d) -> CHUA dung them item",
