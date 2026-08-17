@@ -2950,6 +2950,16 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="left", padx=4)
 
     def _del_acc_row(self, row):
+        # HOI TRUOC khi xoa (bam nham la mat acc, khong khoi phuc duoc) - dong bo voi ban APK.
+        try:
+            _u = (row.get("u").get() or "").strip() if row.get("u") is not None else ""
+        except Exception:
+            _u = ""
+        if not messagebox.askyesno(
+                "Xóa tài khoản",
+                ("Xóa tài khoản '%s' khỏi party?" % _u) if _u else "Xóa dòng tài khoản này?",
+                parent=self.winfo_toplevel()):
+            return
         row["frame"].destroy()
         if row in self.acc_rows:
             self.acc_rows.remove(row)
@@ -4344,6 +4354,19 @@ class ConfigDialog(tk.Toplevel):
         if len(self.frames) <= 1:
             return
         cur = self._cur_party_index()
+        # HOI TRUOC khi xoa ca party (bam nham la mat het acc trong do) - dong bo voi ban APK.
+        try:
+            _e = self.frames[cur]
+            _n = (len(_e["cfg"].acc_rows) if _e.get("cfg") is not None
+                  else len((_e.get("preset") or {}).get("accounts") or []))
+        except Exception:
+            _n = 0
+        if not messagebox.askyesno(
+                "Xóa party",
+                "Xóa Party %d và %d tài khoản trong đó?\nKhông khôi phục lại được."
+                % (cur + 1, _n),
+                parent=self):
+            return
         parties = self._snapshot()
         del parties[cur]
         self._build_groups(parties, min(cur, len(parties) - 1))

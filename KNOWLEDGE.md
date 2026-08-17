@@ -607,6 +607,22 @@ Nguồn: `.codex_mumu_probe/lua_decrypted_all/` (Common_protocal.lua, Logic_Role
   và **cả 4 PB tổ đội đều `skipFlag=0x0000`** → phải đánh thật. (Mã lỗi `S:047-005`: 0 OK, 2 sai level,
   3 đang trong phòng, 4 hết lượt, 5 không được tổ đội, 8 đang đánh, 9 không có cờ quét.)
 
+### CÓ QUÂN ĐOÀN HAY KHÔNG — đọc `orgId` (khớp client 100%)
+- Client: `Organization.Id` (`Logic_Organization.lua`), **`orgId == 0` = KHÔNG có quân đoàn**
+  (`RoleController:SetOrganization` → xoá UI quân đoàn + báo "chưa có"). Nguồn:
+  **`S:005-003 <玩家資料>` = opcode `0x05 sub03`** → `Role.ReceivePlayerData` … `SetOrganization(ReadUInt32())`.
+- Mọi trường TRƯỚC `orgId` đều **cố định độ dài** → offset tính được: **payload+89 → `pkt[98:102]` (u32 LE)**.
+  (Element1 hp4 sp2 Int2 Atk2 Def2 Agi2 Hpx2 Spx2 Lv1 Exp4 SkillPt2 AttrPt2 KillNum4 BattleHonor2
+  GovReq1 Astrolabe2 MaxHp4 MaxSp2 Equip*×8=32 Moral×5=10 PracCount4 → **89**.)
+- **Đối chiếu 2 mốc có sẵn trên CÙNG gói**: INT ở `pkt[16]`, LEVEL ở `pkt[28]` → khớp layout trên.
+  Capture thật: Lv=148/149, INT=229/231, `orgId`=896/55 (id guild nhỏ, hợp lý). Giả lập orgId=0 → OK.
+- Bot: `client._parse_org_id_0x05()` set `org_id` / `has_legion` / `_no_legion_confirmed` ngay lúc login.
+  **Trước đây** chỉ dò gián tiếp: mở panel quân đoàn (`0x7c 0400`) rồi chờ `0x27 sub02` — acc KHÔNG có
+  quân đoàn thì server **không bao giờ gửi** gói đó, nên phải suy ra từ "im lặng" (giữ làm fallback).
+- Dùng cho: donate quân đoàn; và khi **chưa có quân đoàn** thì **BÁN** nguyên liệu ở NPC Nhà buôn
+  ngay trong chuyến bán Nồi Đất (`_sell_donate_materials`, dùng chung list đóng góp: mục "Đóng góp"
+  → bán, mục "Giữ lại" → giữ). Chỉ bán khi đã xác nhận chắc chắn không có quân đoàn.
+
 ### ĐÓNG GÓP QUÂN ĐOÀN (crack UI_UIArmy.lua / Logic_Organization.lua / Logic_City.lua)
 **Client KHÔNG lấy list từ server — TỰ LỌC BAG tại chỗ.** Có 3 loại đóng góp (2 opcode):
 

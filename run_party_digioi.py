@@ -3127,6 +3127,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # kho, du nguong -> khong di (khong roi map). Khi thieu -> acc DI TRAC QUAN mua -> off-map ->
         # reform san co keo CA PARTY ve thanh cho -> xong re-form train tiep (theo yeu cau user).
         next_buy_hpsp = time.time() + 7200
+        # NHAN QUA nhiem vu hang ngay DINH KY (1h/lan). Cac o hoan thanh MUON (o5 pho ban to doi,
+        # o9 danh 50 tran - xong trong luc train, hang gio sau) lam hang/cot du dieu kien SAU moc
+        # claim luc login -> truoc day khong ai nhan -> reset ngay la MAT qua (ke ca qua TONG KET).
+        # heavy=False: CHI query + claim, KHONG di lam nhiem vu, KHONG goi lai hook pho ban to doi.
+        next_daily_claim = time.time() + 3600
         # reform_gen tang dan trong qua trinh toi-map/reconnect/keo qua cong (moi displaced/sai-map
         # += 1). Neu init handled=0 thi ngay khi bat dau train, keepalive thay reform_gen (cao) >
         # handled(0) -> REFORM NGAY du party VUA lap xong + moi acc dang dung dung map (bug that:
@@ -3871,6 +3876,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] loi dung item phuc than (bo qua): %s", label, e)
                 next_phuc_than = time.time() + 1800   # 30 phut
+            # NHAN QUA nhiem vu hang ngay dinh ky (1h/lan) - xem ghi chu o cho khoi tao next_daily_claim.
+            if do_daily and time.time() >= next_daily_claim and not c.in_combat():
+                next_daily_claim = time.time() + 3600   # set TRUOC de loi cung khong spam
+                try:
+                    c.claim_daily_quests(heavy=False)
+                except Exception as e:
+                    log.warning("[%s] loi claim daily quest dinh ky (bo qua): %s", label, e)
             # MUA HP/SP giua phien (chi MODE TRAIN, moi 2h): kho thap -> di Trac Quan mua. buy_hp_sp
             # tu check nguong (du -> khong di). Acc di mua -> off-map -> reform keo party ve thanh cho.
             if (train_on_map and (pcfg.get("buy_hp") or pcfg.get("buy_sp"))

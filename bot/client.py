@@ -1273,8 +1273,8 @@ class GameClient:
         self.world_boss_max = WORLD_BOSS_MAX_ATTEMPTS
         self._world_boss_progress_loaded = False
         self._world_boss_progress_ts = 0.0
-        self._claimed_lines = set()  # hang/cot DA NHAN thuong (bitmask trong frame 0x51 luc login)
-        self._claimed_loaded = False # da nhan frame 0x51 (de claim_daily_quests cho truoc khi claim)
+        self._claimed_lines = set()  # hang/cot DA NHAN thuong - suy tu BitFlag (giong client)
+        self._claimed_loaded = False # da biet trang thai "da nhan" (de claim_daily_quests cho truoc)
         self._bitflag_bytes = bytearray()  # S2C 0x51 sub0200: bang BitFlag giong client
         self._bitflags_loaded = False
         self._online_gift_pending = None   # moc phut vua gui claim, do 0x57 response khong tra id
@@ -1337,6 +1337,11 @@ class GameClient:
         # khong hop le) khi has_legion=False - tranh lam roi trang thai map/transition truoc khi vao
         # Di Gioi (goc re bug "vao Di Gioi that bai du fresh login").
         self.has_legion = False
+        # True = donate_legion DA MO PANEL QUAN DOAN va XAC NHAN acc KHONG co quan doan.
+        # has_legion mac dinh False nen 'chua biet' va 'khong co' KHONG phan biet duoc -> phai co
+        # co xac nhan rieng nay truoc khi DAM BAN nguyen lieu (xem _sell_donate_materials).
+        self._no_legion_confirmed = False
+        self.org_id = None           # ID quan doan doc tu 0x05 sub03 (0 = KHONG co, giong client)
         # Setting party "Danh boss QD" (Cai dat nang cao, mac dinh BAT) - run_party_digioi.py set
         # lai theo pcfg ngay sau login. Mac dinh True o day de test/goi truc tiep khong bi chan.
         self.fight_legion_boss = True
@@ -1992,6 +1997,28 @@ class GameClient:
             if body[2] == 1 and int.from_bytes(body[3:5], "little") == 1 and 1 <= body[5] <= 7:
                 self._claimed_lines.add(body[5])
 
+    # getFlag cua 7 phan thuong BANG 1 (JiugonggeInfo_C.dat: awards[i].getFlag) - line L -> 1540+L.
+    # Client: award "DA NHAN" <=> BitFlag.Get(getFlag) (Logic_Jiugongge.SetJiugonggeState:
+    #   canGetAward = 2 neu BitFlag.Get(...), = 1 neu du 3 o isCompleted, con lai = 0).
+    _Q_LINE_FLAG = {L: 1540 + L for L in range(1, 8)}
+
+    def _refresh_quest_claimed_from_bitflags(self):
+        """Trang thai "DA NHAN" cua 7 hang/cot bingo - LAY DUNG NHU CLIENT (BitFlag / 永標).
+
+        Truoc day bot quet PATTERN BYTE trong frame 0x51 (`c0 ?? 03000000 [mask] 01000000`, line L =
+        bit L+3) - chinh comment cu da ghi "CHUA khop het server, CON DANG DO". Doi chieu capture:
+        acc da nhan DU 7 line ma pattern KHONG match duoc -> bot tuong CHUA nhan gi -> claim lai het
+        (server reject, ton goi + log rac); nguy hiem hon la neu match NHAM se BO QUA line chua nhan
+        -> MAT qua. BitFlag la nguon that (S:081-002 full bang + S:081-001 update le) va bot da parse
+        san; _bitflag_get() trung khop CheckFlag() cua client (byte=(id-1)//8, bit=(id-1)%8).
+        """
+        if not self._bitflags_loaded:
+            return
+        got = {L for L, fid in self._Q_LINE_FLAG.items() if self._bitflag_get(fid)}
+        # HOP voi xac nhan giua phien (S:91-3 -> _claimed_lines) de khong mat thong tin vua claim.
+        self._claimed_lines |= got
+        self._claimed_loaded = True
+
     def _bitflag_get(self, flag_id: int):
         """Tra ve True/False neu da co full BitFlag, None neu server chua sync."""
         try:
@@ -2038,6 +2065,7 @@ class GameClient:
                 self._bitflag_bytes = bytearray(pkt[11:11 + size])
                 self._bitflags_loaded = True
                 self._refresh_online_claimed_from_bitflags()
+                self._refresh_quest_claimed_from_bitflags()
         elif sub == 0x01 and len(pkt) >= 13:
             count = int.from_bytes(pkt[9:13], "little")
             off = 13
@@ -2048,6 +2076,7 @@ class GameClient:
                 off += 3
             if self._bitflags_loaded:
                 self._refresh_online_claimed_from_bitflags()
+                self._refresh_quest_claimed_from_bitflags()
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
@@ -2148,6 +2177,7 @@ class GameClient:
                 self._decompose_seq += 1            # phan giai cuon (S:089-003) + fashion data sub05
         # INT luc login: doc base/equip/turn3 tu 0x05 roi cong collection + horse giong client game.
         if opcode == 0x05 and len(pkt) > 16:
+            self._parse_org_id_0x05(pkt)   # QUAN DOAN: orgId==0 = khong co (giong client)
             self._parse_char_login_int(pkt)
             # CAP nhan vat: payload offset 21 = pkt[28] (khop capture: char lv 64). Hien o GUI.
             if len(pkt) > 28 and 1 <= pkt[28] <= 200:
@@ -2304,12 +2334,10 @@ class GameClient:
                     pkt[11:11 + size], _load_pet_stat_data())
                 self._refresh_char_int()
                 self._refresh_char_agi()
-            # Record reward bingo: c0 [XX] 03 00 00 00 [mask 2B] 01 00 00 00. Byte thu 2 (XX) DOI theo
-            # server (fe/ff...) -> KHONG hardcode; anchor = c0 ?? 03000000 ... 01000000. line L da nhan
-            # = bit (L+3) cua mask. CHUA khop het server (vd len 1011) + concurrent login -> CON DANG DO.
-            # Match duoc thi skip line da nhan; khong match -> _claimed_lines rong -> claim het (server
-            # tu reject line da nhan -> VO HAI). (offset ~196 nhung dung pattern cho chac.)
-            for i in range(len(pkt) - 12):
+            # DU PHONG (chi khi BitFlag CHUA ve): quet pattern `c0 ?? 03000000 [mask 2B] 01000000`,
+            # line L da nhan = bit (L+3). Cach nay KHONG chac (co capture khong match duoc) -> chi
+            # dung tam; nguon CHINH la BitFlag o _refresh_quest_claimed_from_bitflags() (giong client).
+            for i in range(0 if not self._bitflags_loaded else len(pkt), len(pkt) - 12):
                 if pkt[i] == 0xc0 and pkt[i+2:i+6] == b"\x03\x00\x00\x00" and pkt[i+8:i+12] == b"\x01\x00\x00\x00":
                     mask = int.from_bytes(pkt[i+6:i+8], "little")
                     self._claimed_lines = {L for L in range(1, 8) if (mask >> (L + 3)) & 1}
@@ -5589,9 +5617,13 @@ class GameClient:
         while self.running and self.has_legion is False and time.time() - opened_at < 1.5:
             time.sleep(0.1)
         if self.has_legion is False:
-            log.info("[%s] Donate quan doan: khong co quan doan -> bo qua %d slot nguyen lieu rac",
-                     self._label, len(targets))
+            # DA DO THAT (mo panel + cho) -> chac chan khong co quan doan. Danh dau de chuyen di
+            # ban Noi Dat ban luon cho nguyen lieu nay (xem _sell_donate_materials).
+            self._no_legion_confirmed = True
+            log.info("[%s] Donate quan doan: khong co quan doan -> de danh BAN o Nha buon (%d slot "
+                     "nguyen lieu)", self._label, len(targets))
             return
+        self._no_legion_confirmed = False
         remain = 0.4 - (time.time() - opened_at)
         if remain > 0:
             time.sleep(remain)
@@ -7962,6 +7994,31 @@ class GameClient:
             time.sleep(2.0)
         return self.running
 
+    def _parse_org_id_0x05(self, pkt: bytes):
+        """QUAN DOAN: doc orgId tu S2C 0x05 sub03 (S:005-003 <玩家資料>) - GIONG HET client.
+
+        Client (Logic_Role.ReceivePlayerData -> RoleController:SetOrganization): `orgId == 0` = KHONG
+        co quan doan (client xoa UI quan doan + hien thong bao). Cac truong TRUOC orgId deu CO DINH
+        do dai nen tinh duoc offset: payload+89 -> pkt[98:102] (u32 LE).
+        Da doi chieu 2 moc co san cua bot TREN CUNG GOI: INT o pkt[16], LEVEL o pkt[28] -> khop;
+        capture that cho Lv=148/149, INT=229/231 va orgId=896/55 (id guild nho, hop ly).
+
+        Truoc day bot chi DO GIAN TIEP (mo panel quan doan roi cho 0x27 sub02 - acc KHONG co quan
+        doan thi server khong bao gio gui goi do). Nguon nay chac chan hon va den NGAY luc login.
+        """
+        if pkt[7:9] != b"\x03\x00" or len(pkt) < 102:
+            return
+        org = int.from_bytes(pkt[98:102], "little")
+        if org > 0x7FFFFFF:   # gia tri vo ly -> layout server khac -> bo qua, giu co che do cu
+            return
+        if self.org_id == org:
+            return
+        self.org_id = org
+        self.has_legion = org > 0
+        self._no_legion_confirmed = (org == 0)
+        log.info("[%s] Quan doan: orgId=%d -> %s (0x05 sub03, giong client)",
+                 self._label, org, "CO quan doan" if org else "KHONG co quan doan")
+
     def _td_party_gone(self, where: str = "") -> bool:
         """CO dong doi ROT giua pho ban to doi? (coordinator cam callback _td_party_broken).
 
@@ -8326,6 +8383,65 @@ class GameClient:
                 found.append((int(slot), int(cnt)))
         return sorted(found)
 
+    def _donate_material_slots(self):
+        """[(slot, tid, cnt)] cac slot NGUYEN LIEU dang o trang thai "dong gop" trong list quan doan.
+        Muc user danh dau GIU LAI (material_modes[tid]=='keep') -> bo qua. Dung CHUNG nguon voi
+        donate_legion nen list trong GUI dieu khien ca 2 (dong gop / ban)."""
+        mats = getattr(config, "DONATE_MATERIALS", {}) or {}
+        if not mats:
+            return []
+        keep = getattr(self, "material_modes", None) or {}
+        out = []
+        for slot, val in list(getattr(self, "bag_slots", {}).items()):
+            try:
+                tid, cnt = int(val[0]), int(val[1])
+            except Exception:
+                continue
+            if cnt > 0 and tid in mats and str(keep.get(tid, "")).lower() != "keep":
+                out.append((int(slot), tid, cnt))
+        return sorted(out)
+
+    def _sell_donate_materials(self, max_slots: int = 60) -> int:
+        """BAN nguyen lieu quan doan tai NPC Nha buon - dung khi acc CHUA CO QUAN DOAN.
+
+        User: tick "tu dong gop nguyen lieu" ma acc chua vao quan doan -> truoc day BO QUA HAN ->
+        nguyen lieu chat day tui. Gio ghep luon vao chuyen di ban Noi Dat: item nao trong list dang
+        "dong gop" thi BAN, item nao "giu lai" thi VAN GIU (dung 1 list, khong phai cau hinh rieng).
+        PHAI goi TRONG luc dialog Nha buon DANG MO (xem sell_noi_dat). Tra so slot da ban.
+        """
+        if not getattr(self, "auto_donate_materials", False):
+            return 0
+        # CHI ban khi DA DO THAT va xac nhan KHONG co quan doan (donate_legion mo panel 0x7c 0400).
+        # KHONG duoc dua vao mot minh has_legion: no mac dinh False nen "chua biet" cung la False
+        # -> acc CO quan doan ma goi tin 0x27 sub02 chua toi se bi ban mat do dang le donate duoc.
+        if not getattr(self, "_no_legion_confirmed", False) or self.has_legion is not False:
+            return 0
+        targets = self._donate_material_slots()[:max_slots]
+        if not targets:
+            return 0
+        mats = getattr(config, "DONATE_MATERIALS", {}) or {}
+        sold = 0
+        for slot, tid, cnt in targets:
+            if not self.running:
+                break
+            if slot < 0 or slot > 255 or cnt <= 0:
+                continue
+            self.send(0x1B, b"\x02\x00\x01" + bytes([slot & 0xFF])
+                      + struct.pack("<H", min(cnt, 9999)) + b"\x00\x00")
+            try:
+                self.bag_slots.pop(slot, None)
+                self.bag_counts[tid] = max(0, int(self.bag_counts.get(tid, 0)) - cnt)
+            except Exception:
+                pass
+            sold += 1
+            log.info("[%s] Ban nguyen lieu (chua co quan doan) slot=%d tid=0x%04x x%d ('%s')",
+                     self._label, slot, tid, cnt, (mats.get(tid) or {}).get("name", ""))
+            time.sleep(0.4)
+        if sold:
+            log.info("[%s] Ban nguyen lieu quan doan: %d slot (acc CHUA CO quan doan -> ban thay "
+                     "vi dong gop)", self._label, sold)
+        return sold
+
     def sell_noi_dat(self, max_qty: int = 9999) -> bool:
         """Ban Noi Dat (0x7d2b) o NPC Nha buon Ng.Thanh.
 
@@ -8388,6 +8504,12 @@ class GameClient:
                 pass
             log.info("[%s] Ban Noi Dat: slot=%d x%d", self._label, slot, qty)
             time.sleep(0.4)
+        # GHEP: acc CHUA CO quan doan -> ban luon nguyen lieu quan doan (dialog Nha buon dang mo,
+        # khong ton them chuyen di). Xem _sell_donate_materials.
+        try:
+            self._sell_donate_materials()
+        except Exception as e:
+            log.warning("[%s] loi ban nguyen lieu quan doan (bo qua): %s", self._label, e)
         self.send(0x14, b"\x06\x00")
         log.info("[%s] Ban Noi Dat: da ban %d/%d cai (toi da %d)",
                  self._label, sold, total_have, max_qty)

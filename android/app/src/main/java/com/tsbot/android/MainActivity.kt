@@ -262,6 +262,10 @@ fun TsBotApp(
     // (ten party, account) dang duoc sua (user/pass) - null = khong sua acc nao
     var editingAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     var editingHealAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    // XOA phai HOI TRUOC (user: bam phat xoa luon -> bam nham la khoc).
+    // (ten party, username) dang cho xac nhan xoa acc | ten party dang cho xac nhan xoa party.
+    var confirmDeleteAccount by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var confirmDeleteParty by remember { mutableStateOf<String?>(null) }
     var editingSkillAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     // Tab party dang chon (moi party = 1 tab, giong ban PC)
     var selectedTab by remember { mutableStateOf(0) }
@@ -526,13 +530,10 @@ fun TsBotApp(
                             refresh()
                         },
                         onRemoveAccount = { username ->
-                            partyStore.removeAccountFromParty(party.name, username)
-                            refresh()
+                            confirmDeleteAccount = party.name to username   // hoi truoc khi xoa
                         },
                         onRemoveParty = {
-                            partyStore.removeParty(party.name)
-                            selectedTab = 0
-                            refresh()
+                            confirmDeleteParty = party.name                 // hoi truoc khi xoa
                         },
                         onStart = { account -> startAccountIn(party, account) },
                         onStop = { username -> service?.stopAccount(username) },
@@ -687,6 +688,49 @@ fun TsBotApp(
                 refresh()
                 addAccountForParty = null
             },
+        )
+    }
+
+    // ---- XAC NHAN XOA (user: bam phat xoa luon -> bam nham la khoc) ----
+    val delAcc = confirmDeleteAccount
+    if (delAcc != null) {
+        val (pName, uName) = delAcc
+        AlertDialog(
+            onDismissRequest = { confirmDeleteAccount = null },
+            title = { Text("Xóa tài khoản?") },
+            text = { Text("Xóa '" + uName + "' khỏi party '" + pName + "'?\nKhông khôi phục lại được.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmDeleteAccount = null
+                        partyStore.removeAccountFromParty(pName, uName)
+                        refresh()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusError),
+                ) { Text("Xóa") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeleteAccount = null }) { Text("Hủy") } },
+        )
+    }
+    val delParty = confirmDeleteParty
+    if (delParty != null) {
+        val nAcc = parties.firstOrNull { it.name == delParty }?.accounts?.size ?: 0
+        AlertDialog(
+            onDismissRequest = { confirmDeleteParty = null },
+            title = { Text("Xóa party?") },
+            text = { Text("Xóa party '" + delParty + "' và " + nAcc + " tài khoản trong đó?\nKhông khôi phục lại được.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmDeleteParty = null
+                        partyStore.removeParty(delParty)
+                        selectedTab = 0
+                        refresh()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusError),
+                ) { Text("Xóa") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeleteParty = null }) { Text("Hủy") } },
         )
     }
 
