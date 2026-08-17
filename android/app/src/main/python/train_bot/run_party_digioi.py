@@ -1228,7 +1228,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # the roi vao luc dang di ra spot/dang danh).
             # Mode EVENT (40NPC/2K): KHONG dung Phuc Than (yeu cau user - vao event khong an he so
             # EXP nay, dung la phi item).
-            if pcfg.get("use_phuc_than") and mode != "event":
+            # DUNG _early_mode: bien `mode` mai ~1300 moi gan (SAU cho nay) -> dung `mode` o day
+            # la UnboundLocalError, thread run_account CHET va CA PARTY thoat (bug that 00:48).
+            if pcfg.get("use_phuc_than") and _early_mode != "event":
                 try: c.use_phuc_than_items()
                 except Exception as e: log.warning("[%s] loi dung phuc than luc login: %s", label, e)
                 next_phuc_than = time.time() + PHUC_THAN_CHECK_SEC
