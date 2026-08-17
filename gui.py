@@ -1606,7 +1606,7 @@ class BotGUI(tk.Tk):
             gidx = self.nb.index("@%d,%d" % (event.x, event.y))
         except Exception:
             return   # double-click ngoai vung tab header -> bo qua
-        ConfigDialog(self, open_pidx=self._group_cur_party(gidx))
+        self._open_config_dialog(self._group_cur_party(gidx))
 
     def _on_party_dblclick(self, event):
         # double-click PARTY sub-tab -> mo Setting cua party do
@@ -1619,7 +1619,7 @@ class BotGUI(tk.Tk):
                     return
                 members = self.group_members.get(gidx, [])
                 if 0 <= i < len(members):
-                    ConfigDialog(self, open_pidx=members[i])
+                    self._open_config_dialog(members[i])
                 return
 
     def _open_config(self):
@@ -1628,7 +1628,31 @@ class BotGUI(tk.Tk):
             gidx = self.nb.index(self.nb.select())
         except Exception:
             gidx = 0
-        ConfigDialog(self, open_pidx=self._group_cur_party(gidx))
+        self._open_config_dialog(self._group_cur_party(gidx))
+
+    def _open_config_dialog(self, pidx):
+        """Mo bang Setting - CHI MOT bang song tai mot thoi diem.
+
+        User bao: mo setting -> tat -> mo party khac ... toi ~31 lan thi setting KHONG mo ra nua.
+        Moi lan mo truoc day deu tao ConfigDialog MOI (khong nap lai bang cu); bang cu chi that su
+        duoc giai phong neu destroy chay het. Gio: dang co bang -> DONG han bang cu roi mo bang moi
+        (khong bao gio de 2 bang chong nhau), va log so cua so con song de soi khi con ket lai.
+        """
+        old = getattr(self, "_cfg_dialog", None)
+        if old is not None:
+            try:
+                if old.winfo_exists():
+                    old._close()
+            except Exception:
+                pass
+            self._cfg_dialog = None
+        try:
+            n_top = len([w for w in self.winfo_children() if isinstance(w, tk.Toplevel)])
+            log.info("[GUI] mo Setting party %d (cua so con dang song: %d)", pidx + 1, n_top)
+        except Exception:
+            pass
+        self._cfg_dialog = ConfigDialog(self, open_pidx=pidx)
+        return self._cfg_dialog
 
     def reload_config(self):
         """Nap lai accounts.json + dung lai tab. TU STOP acc nao config (mode/map) bi DOI
@@ -4087,7 +4111,36 @@ class ConfigDialog(tk.Toplevel):
 
         bar = ttk.Frame(self, padding=6); bar.pack(fill="x")
         ttk.Button(bar, text="💾 Lưu", command=self._save).pack(side="right", padx=3)
-        ttk.Button(bar, text="Hủy", command=self.destroy).pack(side="right", padx=3)
+        ttk.Button(bar, text="Hủy", command=self._close).pack(side="right", padx=3)
+        # BAM X cua cua so cung phai di qua _close (mac dinh Tk chi destroy -> khong nha grab,
+        # khong huy tay cac PartyConfigFrame da dung, khong xoa tham chieu o App).
+        self.protocol("WM_DELETE_WINDOW", self._close)
+
+    def _close(self):
+        """DONG dut diem: nha grab -> huy TAY moi PartyConfigFrame da dung -> destroy -> xoa
+        tham chieu o App. Bug user bao: mo/tat setting nhieu party, toi ~31 lan thi setting
+        khong mo ra nua (het tai nguyen GUI cua tien trinh)."""
+        try:
+            self.grab_release()
+        except Exception:
+            pass
+        for e in getattr(self, "frames", []) or []:
+            cfg = e.get("cfg")
+            e["cfg"] = None
+            if cfg is not None:
+                try:
+                    cfg.destroy()
+                except Exception:
+                    pass
+        self.frames = []
+        self.cfg_group_nb = {}
+        try:
+            master = self.master
+            if getattr(master, "_cfg_dialog", None) is self:
+                master._cfg_dialog = None
+        except Exception:
+            pass
+        self.destroy()
 
     def _load(self):
         """Bo cau hinh DANG CHON (rut tu accounts.json dang profiles, hoac flat cu)."""
@@ -4413,7 +4466,7 @@ class ConfigDialog(tk.Toplevel):
         self._prof["active"] = self._active
         _save_profiles(self._prof)
         master = self.master
-        self.destroy()
+        self._close()   # nha grab + huy tay cac PartyConfigFrame (xem _close), khong chi destroy
         if hasattr(master, "reload_config"):
             master.reload_config()   # tu nap lai - khong can dong app
         # chuyen GUI chinh ve dung party (group + sub-tab) vua sua

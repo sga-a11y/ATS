@@ -1286,6 +1286,9 @@ class GameClient:
         self._team_dungeon_until = 0.0  # < time.time() = dang trong pho ban to doi -> delay 0x32 random 0.5-2s
         self._active_team_dungeon_level = None
         self._team_dungeon_end_seq = 0
+        # Callback do coordinator cam TRUOC khi goi do_team_dungeon: True = co dong doi ROT.
+        # Leader phai DUNG danh ngay (xem _td_party_gone).
+        self._td_party_broken = None
         self._team_dungeon_reinforcement_seq = 0
         self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
         self._genuine_end_seen = 0.0  # thoi diem nhan goi 0x14 sub0800 tail=03/04 (ket tran THAT, moi context)
@@ -6965,6 +6968,8 @@ class GameClient:
         for i, actions in enumerate(battle_scripts):
             if not self.running:
                 return False
+            if self._td_party_gone("lv50 tran %d" % (i + 1)):
+                return False
             self.flee_mode = False
             log.info("[%s] (LEADER) pho ban to doi lv50 tran %d: bat dau (map=%s pos=%s in_battle=%s)",
                      self._label, i + 1, self.current_map, self.pos, self.state.in_battle)
@@ -7160,6 +7165,8 @@ class GameClient:
         for i, actions in enumerate(battle_scripts):
             if not self.running:
                 return False
+            if self._td_party_gone("lv80 tran %d" % (i + 1)):
+                return False
             self.flee_mode = False
             log.info("[%s] (LEADER) pho ban to doi lv80 tran %d: bat dau (map=%s pos=%s in_battle=%s)",
                      self._label, i + 1, self.current_map, self.pos, self.state.in_battle)
@@ -7223,6 +7230,8 @@ class GameClient:
         while self.running and time.time() < deadline:
             if self._team_dungeon_end_seq > start_seq:
                 return True
+            if self._td_party_gone("cho ket tran PB110"):
+                return False
             now = time.time()
             reinforcement = getattr(self, "_team_dungeon_reinforcement_seq", 0)
             if candidate_at is not None and reinforcement != candidate_reinforcement:
@@ -7289,6 +7298,8 @@ class GameClient:
     def _run_team_dungeon_lv110_stage(self, actions: tuple, stage_no: int) -> bool:
         for action in actions:
             if not self.running:
+                return False
+            if self._td_party_gone("PB110 tran %d" % stage_no):
                 return False
             kind = action[0]
             if kind == "send":
@@ -7470,6 +7481,9 @@ class GameClient:
                 self.state.quest_mode = False
                 return False
             seg = segments[i]
+            if self._td_party_gone("lv20 tran %d" % (i + 1)):
+                self.state.quest_mode = False
+                return False
             self.flee_mode = False   # giu DANH suot pho ban (khong bo chay tran nao)
             log.info("[%s] (LEADER) tran %d: bat dau (map=%s pos=%s in_battle=%s)",
                      self._label, i + 1, self.current_map, self.pos, self.state.in_battle)
@@ -7947,6 +7961,26 @@ class GameClient:
                 and self._genuine_end_seen < time.time() - 2.0):
             time.sleep(2.0)
         return self.running
+
+    def _td_party_gone(self, where: str = "") -> bool:
+        """CO dong doi ROT giua pho ban to doi? (coordinator cam callback _td_party_broken).
+
+        Leader PHAI dung danh ngay: party thieu nguoi thi cac tran sau khong qua noi, danh tiep chi
+        ton 10-20 phut roi van fail. Bug that (log user 14:06): 4 member bi day ra relogin giua PB110
+        ma leader van danh mot minh toi tran 4. Coordinator (run_party_digioi) da co san duong xu ly
+        khi do_team_dungeon tra False: _mark_team_dungeon_broken + relogin CA PARTY roi danh lai.
+        """
+        cb = getattr(self, "_td_party_broken", None)
+        if cb is None:
+            return False
+        try:
+            gone = bool(cb())
+        except Exception:
+            return False
+        if gone:
+            log.warning("[%s] (LEADER) DONG DOI ROT giua pho ban%s -> DUNG danh, bao FAIL de ca "
+                        "party relogin danh lai", self._label, (" (%s)" % where) if where else "")
+        return gone
 
     def _td_walk(self, points, budget: float = 90.0, tag: str = "") -> bool:
         """PHO BAN TO DOI: di toi diem CUOI cua chuoi waypoint bang TIM DUONG THONG MINH.

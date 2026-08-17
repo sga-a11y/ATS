@@ -4274,8 +4274,12 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
         while True:
             if stopped_fn() or not c.running:
                 return False
-            _barrier_watchdog(st, pidx, _wd0, "member-cho-leader-PB")
-            _resync_ck(st, username)   # ep dong bo -> thoat cho, relogin bam leader
+            # KHONG dat _barrier_watchdog o day! Member cho leader chay HET pho ban la CHUYEN
+            # BINH THUONG va lau 10-20 phut (5 tran + di duong + thoai). Watchdog 180s tuong la
+            # "ket" -> ep dong bo -> DA CA 4 MEMBER RA relogin GIUA pho ban, pha nat luot PB
+            # (log that 14:03:10 member bat dau cho -> 14:06:10 = dung 180s -> "EP DONG BO").
+            # Vong nay da co du duong thoat: stop/rot, st["reconnecting"], leader bao xong.
+            _resync_ck(st, username)   # ep dong bo TAY (GUI) van thoat duoc
             set_account_activity(username, "PB lv%d: cho leader xu ly" % level, phase="team_dungeon")
             if time.time() - last_log > 60:
                 log.info("[%s] (member) chờ leader xử lý phó bản đội lv%d...", label, level)
@@ -4384,6 +4388,10 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
         dg0 = st["disc_gen"]
         ok = False
         broken = False
+        # LEADER phai biet dong doi ROT NGAY GIUA pho ban (truoc day chi biet SAU khi danh xong:
+        # leader danh mot minh het 5 tran ~15 phut roi moi bao vo - log user 14:06). Cam callback
+        # de client tu dung o ranh gioi tran / vong cho ket tran (xem client._td_party_gone).
+        c._td_party_broken = lambda: bool(st["reconnecting"]) or st["disc_gen"] > dg0
         try:
             ok = bool(c.do_team_dungeon(level))
             if not ok:
@@ -4392,6 +4400,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                 log.warning("[%s] (LEADER) đồng đội rớt trong phó bản đội lv%d -> relogin thoát instance",
                             label, level)
         finally:
+            c._td_party_broken = None   # het pho ban -> go callback (khong de ro ri sang viec khac)
             active = _clear_o5_client_flags(c)
             with st["lock"]:
                 broken = ((not ok) or (not c.running)
