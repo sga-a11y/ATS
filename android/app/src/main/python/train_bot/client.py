@@ -5329,9 +5329,8 @@ class GameClient:
             return False
         return self.furnace_shop is not None
 
-    # kind lo -> ten tab. Lo thuong: 1/2/5; hoang kim: 3/4/6 (chua mo).
-    FURNACE_KIND_NAME = {1: "Vo Tuong", 2: "Trang Bi", 5: "Chuyen Sinh",
-                         3: "HK-VoTuong", 4: "HK-TrangBi", 6: "HK-ChuyenSinh"}
+    # (Ghi nho protocol: kind lo thuong = 1 Vo Tuong / 2 Trang Bi / 5 Chuyen Sinh; hoang kim
+    #  3/4/6 - CHUA MO, server tra 8 slot id=0. Xem FURNACE_TAB_KIND o duoi de map ten tab config.)
     # DA MUA hay chua: moi (kind,slot) co 1 BitFlag id co dinh (tu UI_UIFurnace.lua). slot 1..8.
     # base + (slot-1). Set = da mua. Doc tu bitmap 0x51 (self._bitflag_get). Mua moi item 1 lan/reset.
     FURNACE_BOUGHT_FLAG_BASE = {1: 1518, 2: 1526, 5: 7257, 3: 7067, 4: 7075, 6: 7265}
@@ -5372,19 +5371,9 @@ class GameClient:
                                   "bought": self._furnace_bought(kind, j)})
                 tabs[kind] = items
             self.furnace_shop = {"base_rate": base_rate, "active_rate": active_rate, "tabs": tabs}
-            gd = _load_gamedata_items()
-            log.info("[%s] === SOI LO (baseRate=%.4f activeRate=%.4f, %d tab) ===",
-                     self._label, base_rate, active_rate, count)
-            for kind, items in tabs.items():
-                crit = bool(items and items[0]["crit"] == 1)
-                log.info("[%s] --- Tab %s (kind=%d): %d item%s ---", self._label,
-                         self.FURNACE_KIND_NAME.get(kind, "kind%d" % kind), kind, len(items),
-                         " [BAO KICH x0.5 gia]" if crit else "")
-                for it in items:
-                    nm = (gd.get(it["id"]) or {}).get("name") or "??? CHUA BIET"
-                    log.info("[%s]   slot%d: id=0x%04x quant=%d -> %s%s",
-                             self._label, it["index"], it["id"], it["quant"], nm,
-                             "  [DA MUA]" if it["bought"] else "")
+            # KHONG log liet ke 6 tab x 8 slot (~56 dong/lan soi lo, ken log vo ich - yeu cau
+            # user). Item dang quan tam da co log rieng o process_furnace (THONG BAO / AUTO MUA).
+            # Muon xem lai toan bo thi doc self.furnace_shop.
         except Exception as e:
             log.warning("[%s] SOI LO: loi parse (%s) raw=%s", self._label, e, pkt.hex())
 
