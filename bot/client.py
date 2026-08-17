@@ -114,6 +114,20 @@ PHUC_THAN_PROTECTION_PRIORITY = (
 )
 PHUC_THAN_GEM_TIDS = {0x5AAB, 0x5A2D}
 BROKEN_PHUC_THAN_TID = 0x59F0
+# EItemFitType.Equip_Spec = 6 (ItemData.lua) - O DO cua NGOC. Ca 3 tid ngoc (Sieu/Dai/Ngoc Hu)
+# deu fitType=6 (xac nhan tu gamedata_Item.dat) nen ngoc LUON nam o vi tri nay.
+# Client suy vi tri tu fitType cua item (S:023-011 khong gui vi tri) - bot chi can ngoc CHAR nen
+# hardcode 6 la du (ngoc Phuc Than KHONG deo cho pet duoc).
+EQUIP_POS_SPEC = 6
+# Nguong con lai de dung item Phuc Than (client goc: godMission < 1; user chon < 5) va so item
+# toi da moi luot.
+PHUC_THAN_LOW = 5
+PHUC_THAN_USE_MAX = 10
+# THU TU DUNG item tieu hao: manh truoc (Dai Phuc Than > Phuc Than) -> dung IT item hon cho cung
+# so luot buff. Item khong co trong bang nay xep sau cung. (KHONG sap theo "qty" trong
+# use_items.json: qty la so dung/luot, Phuc Than = 50 > Dai = 25 -> sap theo do la chon nham
+# loai YEU truoc.)
+PHUC_THAN_CONSUMABLE_ORDER = (0xB3D6, 0xB3D5)
 CHANNEL_SWITCH_ERRORS = {
     1: "dang o san kenh nay",
     2: "khong co kenh nay",
@@ -1258,6 +1272,9 @@ class GameClient:
         self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
         self.bag_slots = {}          # slot (int) -> [tid, count]  (S2C 0x16 sub0400). Use item = gui slot.
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
+        # SO PHUC THAN CON LAI (godMission trong client): tu S2C 0x18 sub0800
+        # <設定衰神福神> [roleId i64][kind u16][count i32]. None = server chua gui.
+        self.god_mission = None
         self._active_pet_login = None
         self._collect_style_flags = {}
         self._collect_card_equipped = []
@@ -2279,6 +2296,15 @@ class GameClient:
         # TRANG BI DANG MAC luc login: [count u8] + count * ThingData 35B.
         elif opcode == 0x17 and len(pkt) >= 10 and pkt[7:9] == b"\x0b\x00":
             self._parse_equipment_snapshot(pkt)
+        # DO BEN DOI (S:023-027 = sub1b00): [vi tri do 1B][damage 1B]. Moc 100/200/250 (250=HONG).
+        # Bot CHI theo ngoc CHAR o vi tri 6 (ngoc Phuc Than khong deo cho pet duoc).
+        elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x1b\x00":
+            self._on_equip_damage(pkt[9], pkt[10])
+        # DO HONG -> server THAY HAN ban ghi (S:023-035 = sub2300): [vi tri 1B][ThingData 35B]
+        # [followIndex 1B]. Ngoc hong -> id thanh 0x59f0 (Ngoc Hu), damage=250, nhung damagedItemId
+        # VAN giu id ngoc goc. followIndex != 0 = do cua PET -> bo qua.
+        elif opcode == 0x17 and len(pkt) >= 45 and pkt[7:9] == b"\x23\x00":
+            self._on_equip_broken(pkt)
         elif opcode == 0x18:
             self._on_mission_steps(pkt)
         # INVENTORY (TUI THAT): S2C 0x17 sub=0500. header [00][count 2B] + record 36B:
@@ -4199,6 +4225,17 @@ class GameClient:
                 self.team_dungeon_steps = steps
                 self.team_dungeon_status_loaded = True
                 self._sync_world_boss_from_mission_steps("S24-6")
+            elif sub == 0x08 and len(body) >= 16:
+                # S:024-008 <設定衰神福神> [roleId i64][kind u16][count i32]. count = SO LUOT
+                # Phuc Than CON LAI (client: Role.player.data.godMission) -> dung de biet buff
+                # con hay het thay vi nha item mu moi 30p.
+                # LUU Y: chu thich trong Lua ghi "+種類(1) +次數(1)" NHUNG CODE doc ReadUInt16 +
+                # ReadInt32 -> tin CODE.
+                _rid = body[2:10]
+                if self.self_entity is None or _rid == self.self_entity:
+                    self.god_mission = int.from_bytes(body[12:16], "little", signed=True)
+                    log.info("[%s] Phuc Than con lai: %s (kind=%d)", self._label, self.god_mission,
+                             int.from_bytes(body[10:12], "little"))
             elif sub in (0x01, 0x02) and len(body) >= 5:
                 mid = int.from_bytes(body[2:4], "little")
                 step = body[4]
@@ -4740,6 +4777,9 @@ class GameClient:
         # Moi lan chi chon 1 bao ho. Tinh ca ngoc dang deo tu snapshot login de khong thay ngang cap,
         # ha Ngoc Sieu xuong Ngoc Dai, hoac mo tui oan.
         priority_tids = {tid for tid, _action in PHUC_THAN_PROTECTION_PRIORITY}
+        # Ngoc da HONG (Ngoc Hu) van chiem O NGOC -> phai VUT truoc, khong thi deo ngoc moi khong
+        # duoc. Day la dung thu tu client goc lam (MachineBox 檢查福神: C:023-013 roi SendUseEquip).
+        self._drop_broken_gem()
         equipped_tid = self._equipped_phuc_than_tid()
         if equipped_tid != 0x5AAB:
             for tid, action in PHUC_THAN_PROTECTION_PRIORITY:
@@ -4765,7 +4805,8 @@ class GameClient:
                 if done and action == "equip":
                     old = [x for x in getattr(self, "equipped_items", [])
                            if x.get("id") not in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID}]
-                    self.equipped_items = old + [{"id": tid, "damage": 0, "damaged_item_id": 0}]
+                    self.equipped_items = old + [{"id": tid, "pos": EQUIP_POS_SPEC,
+                                                  "damage": 0, "damaged_item_id": 0}]
                 _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
                 log.info("[%s] tu %s item (%s) slot=%d tid=0x%04x ('%s') %s",
                          self._label, "trang bi" if action == "equip" else "dung",
@@ -4810,13 +4851,92 @@ class GameClient:
             if off + 35 > len(pkt):
                 break
             raw = pkt[off:off + 35]
+            _tid = int.from_bytes(raw[0:2], "little")
+            # Client suy VI TRI tu fitType cua item (S:023-011 khong gui vi tri). Bot chi can O
+            # NGOC nen chi danh dau pos=6 cho 3 tid ngoc; do khac khong dung pos.
             equipped.append({
-                "id": int.from_bytes(raw[0:2], "little"),
+                "id": _tid,
+                "pos": (EQUIP_POS_SPEC
+                        if _tid in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID} else 0),
                 "damage": raw[6],
                 "damaged_item_id": int.from_bytes(raw[27:29], "little"),
             })
             off += 35
         self.equipped_items = equipped
+
+    def _gem_record(self):
+        """Ban ghi do dang deo o O NGOC (vi tri 6). None = chua biet (chua nhan snapshot login)."""
+        for item in getattr(self, "equipped_items", []):
+            if item.get("pos") == EQUIP_POS_SPEC:
+                return item
+        # Snapshot cu (chua co "pos") -> suy theo tid: ca 3 tid ngoc deu fitType=6
+        for item in getattr(self, "equipped_items", []):
+            if item.get("id") in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID}:
+                return item
+        return None
+
+    def _on_equip_damage(self, pos: int, damage: int):
+        """S:023-027: do ben cua do o `pos` doi. Chi quan tam O NGOC (6) cua CHAR."""
+        if pos != EQUIP_POS_SPEC:
+            return
+        rec = self._gem_record()
+        if rec is None:
+            return
+        old = rec.get("damage", 0)
+        rec["damage"] = damage
+        if damage != old:
+            _nm = (_load_gamedata_items().get(rec.get("id", 0)) or {}).get("name", "?")
+            log.info("[%s] NGOC '%s' do ben: %d -> %d%s", self._label, _nm, old, damage,
+                     "  (HONG)" if damage >= 250 else "")
+
+    def _on_equip_broken(self, pkt: bytes):
+        """S:023-035: do hong -> thay HAN ban ghi. Chi xu ly do CHAR (followIndex 0) o O NGOC."""
+        pos = pkt[9]
+        raw = pkt[10:45]
+        follow = pkt[45] if len(pkt) >= 46 else 0
+        if follow != 0 or pos != EQUIP_POS_SPEC:
+            return
+        rec = {
+            "pos": pos,
+            "id": int.from_bytes(raw[0:2], "little"),
+            "damage": raw[6],
+            "damaged_item_id": int.from_bytes(raw[27:29], "little"),
+        }
+        others = [x for x in getattr(self, "equipped_items", [])
+                  if x.get("pos") != EQUIP_POS_SPEC
+                  and x.get("id") not in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID}]
+        self.equipped_items = others + [rec]
+        _was = (_load_gamedata_items().get(rec["damaged_item_id"]) or {}).get("name", "?")
+        log.info("[%s] NGOC HONG: o ngoc thanh 0x%04x (truoc la '%s') -> se vut + deo ngoc moi",
+                 self._label, rec["id"], _was)
+
+    def discard_equipped(self, pos: int) -> bool:
+        """Vut do DANG MAC theo VI TRI. C:023-013 <丟棄玩家裝備> +背包索引(1) = 0x17 sub0d00 [pos].
+        Dung cho Ngoc Hu: no nam o O DO (vi tri 6), KHONG nam trong tui nen discard_item (theo slot
+        tui) khong bao gio thay - day la cach client goc lam (MachineBox routine 檢查福神)."""
+        if not self.running:
+            return False
+        self.send(0x17, b"\x0d\x00" + bytes([pos & 0xFF]))
+        return True
+
+    def _drop_broken_gem(self) -> bool:
+        """Ngoc o vi tri 6 da HONG (damage>=250 / id=Ngoc Hu) -> vut di de deo ngoc moi duoc.
+        Theo dung client: kiem damagedItemId de chac chan no TUNG la ngoc Phuc Than."""
+        rec = self._gem_record()
+        if rec is None:
+            return False
+        broken = rec.get("damage", 0) >= 250 or rec.get("id") == BROKEN_PHUC_THAN_TID
+        was_gem = (rec.get("damaged_item_id") in PHUC_THAN_GEM_TIDS
+                   or rec.get("id") in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID})
+        if not (broken and was_gem):
+            return False
+        if not self.discard_equipped(EQUIP_POS_SPEC):
+            return False
+        log.info("[%s] da vut ngoc HONG o o ngoc (vi tri %d)", self._label, EQUIP_POS_SPEC)
+        self.equipped_items = [x for x in getattr(self, "equipped_items", [])
+                               if x is not rec]
+        time.sleep(0.4)
+        return True
 
     def _equipped_phuc_than_tid(self) -> int:
         for item in getattr(self, "equipped_items", []):
@@ -4844,6 +4964,43 @@ class GameClient:
         can dinh ky check lai (vd nhat/mua them giua chung), khong phai loai dung 1 lan roi thoi."""
         cfg = {tid: v for tid, v in (getattr(config, "USE_LOGIN_ITEMS", {}) or {}).items()
                if v.get("phuc_than")}
+        # ITEM TIEU HAO (Phuc Than / Dai Phuc Than): client goc chi dung khi buff HET
+        # (Role.player.data.godMission < 1). Bot theo huong do nhung nguong rong hon theo yeu cau
+        # user: chi dung khi CON < PHUC_THAN_LOW, va toi da PHUC_THAN_USE_MAX cai/luot (truoc day
+        # nha mu 25+50 cai moi 30 phut, khong xet con bao nhieu).
+        # god_mission is None = server chua gui 0x18 sub0800 -> VAN dung (nhung van cap 10) de
+        # khong mat tinh nang o server khong gui goi nay.
+        _gm = self.god_mission
+        if _gm is not None and _gm >= PHUC_THAN_LOW:
+            log.info("[%s] Phuc Than con %d (>= %d) -> CHUA dung them item",
+                     self._label, _gm, PHUC_THAN_LOW)
+            cfg = {tid: v for tid, v in cfg.items() if tid in PHUC_THAN_GEM_TIDS}
+        else:
+            # Cap PHUC_THAN_USE_MAX la TONG (khong phai moi loai). Uu tien loai CO GIA TRI CAO
+            # truoc (Dai Phuc Than > Phuc Than) = dung it item hon cho cung so luot buff.
+            _budget = PHUC_THAN_USE_MAX
+            _have = {}
+            for _s, (_t, _n) in self.bag_slots.items():
+                if _n > 0 and _t in cfg and _t not in PHUC_THAN_GEM_TIDS:
+                    _have[_t] = _have.get(_t, 0) + _n
+            _new = {}
+            def _order(kv):
+                try:
+                    return PHUC_THAN_CONSUMABLE_ORDER.index(kv[0])
+                except ValueError:
+                    return len(PHUC_THAN_CONSUMABLE_ORDER)
+            for _t, _v in sorted(cfg.items(), key=_order):
+                if _t in PHUC_THAN_GEM_TIDS:
+                    _new[_t] = _v
+                    continue
+                _take = min(_budget, _have.get(_t, 0))
+                if _take > 0:
+                    _new[_t] = dict(_v, qty=_take)
+                    _budget -= _take
+            cfg = _new
+            if _gm is not None:
+                log.info("[%s] Phuc Than con %d (< %d) -> dung them toi da %d cai (tong)",
+                         self._label, _gm, PHUC_THAN_LOW, PHUC_THAN_USE_MAX)
         self._use_items_from_cfg(cfg, "phuc than dinh ky")
         self.discard_junk_items()
 

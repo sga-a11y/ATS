@@ -457,8 +457,25 @@ Pattern entries: `03 02 [type] [4-byte LE]`
     day du khi mon do bi hong/thay thanh vat pham hong. Voi ngoc char, slot 6 se thanh ID `23024` (`Ngoc Hu`),
     `damage=250`, va `damagedItemId` van giu ID ngoc goc (vi du `23211` = Ngoc Sieu Phuc Than).
   - Vi vay logic Phuc Than chu ky 30 phut khong can doan hay relogin: giu cache 6 slot tu `sub0b00`, cap nhat
-    `damage` bang `sub1b00`, va thay ca record bang `sub2300`. Bot hien tai chua parse cac goi nay thi se khong
-    biet ngoc da hong hay con nguyen sau login.
+    `damage` bang `sub1b00`, va thay ca record bang `sub2300`.
+  - **DA IMPLEMENT (crack client, xac nhan tung chi tiet):**
+    - Thang do ben `EThingsDurability` (Logic/Item.lua): `Perfect=0 / Good=100 / Normal=200 / Damaged=250`.
+      250 = HONG. Client hien thong bao giua man o dung 3 moc 100/200/250.
+    - `EItemFitType.Equip_Spec = 6` = O NGOC. Ca 3 tid ngoc (`0x5AAB` Sieu / `0x5A2D` Dai /
+      `0x59F0` Ngoc Hu) deu `fitType=6` -> ngoc LUON o vi tri 6. `S:023-011` KHONG gui vi tri:
+      client suy vi tri tu `itemDatas[Id].fitType`.
+    - Ngoc hong KHONG roi khoi o do: `Id` doi thanh `23024`/`0x59F0` (Ngoc Hu), `damage=250`,
+      `damagedItemId` VAN giu id ngoc goc -> day la cach biet no TUNG la ngoc gi.
+    - **Ngoc Hu nam o O DO, KHONG nam trong tui** -> phai vut bang
+      `C:023-013` = `0x17 sub0d00 [vi tri]` (bot: `discard_equipped`). Quet tui tim `0x59F0`
+      (nhu `discard_junk_items`) KHONG BAO GIO thay.
+    - `S:024-008` = `0x18 sub0800`: `[roleId i64][kind u16][count i32]`; `count` = **so luot Phuc
+      Than con lai** (client: `Role.player.data.godMission`). CHU THICH trong Lua ghi
+      `+kind(1) +count(1)` la SAI - CODE doc `ReadUInt16` + `ReadInt32`, tin CODE.
+    - Auto-train cua chinh game (`MachineBox`, routine kiem tra Phuc Than) lam dung thu tu: thay
+      `damage >= Damaged` -> doi chieu `damagedItemId` -> `C:023-013` VUT -> `SendUseEquip` deo ngoc
+      moi; con item tieu hao chi dung khi `godMission < 1`. Bot theo huong nay, nguong rong hon theo
+      yeu cau user: dung khi `< 5`, toi da 10 cai/luot (TONG, uu tien Dai Phuc Than truoc).
 
 ### S2C 0x08 sub0200 — current HP/SP sau khi dung item len pet
 - Xac nhan `captures/pet_heal_20260715.pcap`: sau C2S `0x17` dung item vao pet target N,
