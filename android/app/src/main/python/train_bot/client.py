@@ -6907,10 +6907,8 @@ class GameClient:
         self.set_party_strategist()
 
         def _moves(points, battle_no):
-            for x, y in points:
-                self._route_move(x, y)
-                log.info("[%s] (LEADER) lv50 tran %d: sau move (%s,%s) -> pos=%s",
-                         self._label, battle_no, x, y, self.pos)
+            # TIM DUONG THONG MINH toi diem cuoi (xem _td_walk) thay vi replay tung waypoint capture.
+            self._td_walk(points, tag="lv50 tran %d" % battle_no)
 
         def _send(op, body, delay=0.4):
             self.send(op, body)
@@ -7022,7 +7020,7 @@ class GameClient:
             return False
         self._adv_dialog_until_idle(min_n=6, gap=0.4, idle=1.5, max_wait=20.0)
         self._adv_dialog(1, gap=0.4)
-        self._route_move(2508, 365)
+        self._td_walk([(2508, 365)], tag="lv50 ra cong")
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV50 XONG -> roi pho ban ===", self._label)
         self.leave_party()
         time.sleep(2.0)
@@ -7045,10 +7043,8 @@ class GameClient:
         self.set_party_strategist()
 
         def _moves(points, battle_no):
-            for x, y in points:
-                self._route_move(x, y)
-                log.info("[%s] (LEADER) lv80 tran %d: sau move (%s,%s) -> pos=%s",
-                         self._label, battle_no, x, y, self.pos)
+            # TIM DUONG THONG MINH toi diem cuoi (xem _td_walk) thay vi replay tung waypoint capture.
+            self._td_walk(points, tag="lv80 tran %d" % battle_no)
 
         def _send(op, body, delay=0.4):
             self.send(op, body)
@@ -7212,7 +7208,7 @@ class GameClient:
             log.warning("[%s] (LEADER) lv80 mat ket noi truoc khi roi pho ban -> fail", self._label)
             return False
         self._adv_dialog_until_idle(min_n=3, gap=0.4, idle=1.5, max_wait=20.0)
-        self._route_move(730, 790)
+        self._td_walk([(730, 790)], tag="lv80 ra cong")
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV80 XONG -> roi pho ban ===", self._label)
         self.leave_party()
         time.sleep(2.0)
@@ -7301,8 +7297,8 @@ class GameClient:
             elif kind == "advance":
                 self._adv_dialog(action[1], gap=0.4)
             elif kind == "moves":
-                for x, y in action[1]:
-                    self._route_move(x, y)
+                # TIM DUONG THONG MINH toi diem cuoi (xem _td_walk).
+                self._td_walk(action[1], tag="lv110 tran %d" % stage_no)
             elif kind == "heal_full":
                 time.sleep(0.5)
                 self.heal_full(force=True)
@@ -7351,7 +7347,7 @@ class GameClient:
         self.state.in_battle = False
         self.heal_full(force=True)
         self._adv_dialog(1, gap=0.4)
-        self._route_move(2124, 283)
+        self._td_walk([(2124, 283)], tag="lv110 ra cong")
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV110 XONG -> roi pho ban ===", self._label)
         self.leave_party()
         time.sleep(2.0)
@@ -7515,10 +7511,8 @@ class GameClient:
                          "toi khi im lang", self._label, i + 1, n_sent, seg["vdlg"])
                 if i == 1:
                     self.set_party_strategist()                # set quan su SAU tran 1 (sau thoai thang loi)
-                for (x, y) in seg["moves"]:
-                    self._route_move(x, y)                     # DI toi cong (dam bao toi noi truoc transit)
-                    log.info("[%s] (LEADER) tran %d: sau move (%s,%s) -> pos=%s in_battle=%s",
-                             self._label, i + 1, x, y, self.pos, self.state.in_battle)
+                # DI toi cong bang TIM DUONG THONG MINH (xem _td_walk) truoc khi transit.
+                self._td_walk(seg["moves"], tag="lv20 tran %d" % (i + 1))
             for op, body in seg["transit"]:
                 self.send(op, body); time.sleep(0.4)
             log.info("[%s] (LEADER) tran %d: da gui transit -> spam dialog cho battle...",
@@ -7952,6 +7946,61 @@ class GameClient:
         if (self.running and time.time() < getattr(self, "_team_dungeon_until", 0.0)
                 and self._genuine_end_seen < time.time() - 2.0):
             time.sleep(2.0)
+        return self.running
+
+    def _td_walk(self, points, budget: float = 90.0, tag: str = "") -> bool:
+        """PHO BAN TO DOI: di toi diem CUOI cua chuoi waypoint bang TIM DUONG THONG MINH.
+
+        Truoc day replay TUNG waypoint boc tu capture bang _route_move. Moi diem ton:
+        _wait_combat_clear() (trong pho ban co guard `time.sleep(2.0)` rieng) + settle 0.6s
+        => ~2.6s/diem; chang 11 diem cua PB50 = ~29s -> dung hien tuong user bao "di 1 ty roi
+        dung mot luc moi di tiep". Waypoint capture con la duong di cua NGUOI THAT xuat phat tu
+        vi tri cua HO; bot dung cho khac se di vong hoac quay dau.
+
+        Gio lam GIONG event 2K (floor_crawl._walk_to): cho het tran -> lay VI TRI THAT (server
+        gui 0x0c/0x07 kem toa do sau MOI lan transit trong pho ban - da doi chieu capture) ->
+        navigate_to() tu vi tri that toi DICH, de Ground.mmg tu tinh duong.
+        Da kiem chung: ca 4 map pho ban (62002/62011/62012/62013) deu co trong Ground.mmg va
+        smart path ra duong thang cho cac chang trong capture.
+
+        Fallback: khong lay duoc pos / map khong co duong smart -> replay waypoint capture cu.
+        """
+        pts = [(int(p[0]), int(p[1])) for p in (points or [])]
+        if not pts:
+            return True
+        if not self.running:
+            return False
+        if not self._wait_combat_clear():
+            return False
+        tx, ty = pts[-1]
+        # Sau transit (0x14 0800 / 0x20), server gui 0x0c ChangeScene KEM toa do -> self.pos da
+        # dung. Chi khi thieu moi phai xin lai (0x0c 0100).
+        if self.pos is None and self.current_map is not None:
+            try:
+                self.refresh_server_position(self.current_map)
+            except Exception as e:
+                log.debug("[%s] PB %s: xin lai toa do loi (bo qua): %s", self._label, tag, e)
+        smart = None
+        store = _ground_store() if (self.pos and self.current_map is not None) else None
+        if store is not None:
+            try:
+                smart = store.find_world_path(self.current_map, self.pos, (tx, ty))
+            except Exception as e:
+                log.debug("[%s] PB %s: find_world_path loi (bo qua): %s", self._label, tag, e)
+        if smart:
+            t0 = time.time()
+            log.info("[%s] (LEADER) PB %s: di THONG MINH %s -> (%d,%d) (bo qua %d waypoint capture)",
+                     self._label, tag, self.pos, tx, ty, len(pts))
+            self.navigate_to(tx, ty, flee=False,
+                             abort=lambda: (not self.running) or time.time() - t0 > budget)
+            return self.running
+        # Khong co smart path -> giu duong capture (da chay duoc tu truoc), khong di mu.
+        log.info("[%s] (LEADER) PB %s: khong co smart path (pos=%s map=%s) -> replay %d waypoint capture",
+                 self._label, tag, self.pos, self.current_map, len(pts))
+        for x, y in pts:
+            if not self.running:
+                return False
+            self._route_move(x, y)
         return self.running
 
     def _route_move(self, x: int, y: int, settle: float = 0.6, tries: int = 8):

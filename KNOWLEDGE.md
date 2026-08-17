@@ -588,6 +588,25 @@ Nguồn: `.codex_mumu_probe/lua_decrypted_all/` (Common_protocal.lua, Logic_Role
 - **Giá**: học cấp 1 = `learnPt`; mỗi cấp sau = `lvUpPt`. Đã impl `client.auto_upgrade_pet_skills()`
   (login → mỗi pet có điểm → nâng index 0→1→2, index nào TỚI MAX mới sang con sau). Gated `pcfg.auto_pet_skill`.
 
+### PHÓ BẢN TỔ ĐỘI 20/50/80/110 — di chuyển THÔNG MINH (không replay capture)
+- **Scene** (Dungeon_C.dat, layout `Data_DungeonData.lua`): PB20=**62002**, PB50=**62011**,
+  PB80=**62012**, PB110=**62013**; `kind=1` (tổ đội), `maxPlayer=5`, `time=20` phút (khớp
+  `TEAM_DUNGEON_DURATION`), `dailyFlag` khớp `TEAM_DUNGEONS` (0x302e/0x30a6/0x30aa/0x30ae).
+- **CẢ 4 scene ĐỀU CÓ trong Ground.mmg** → smart path (`find_world_path`) chạy được. Đã test mọi
+  chặng của 4 PB: 100% ra đường (0-2 waypoint), không chặng nào phải fallback.
+- **Sau mỗi transit trong PB** (`0x14 0800 [idx]` / `0x20 0200 08`), server GỬI `0x0c`/`0x07` kèm
+  **toạ độ mới** → `self.pos` tự đúng, smart path đi tiếp được ngay (không cần đoán).
+  (capture PB50: idx=2 → (1530,2070); idx=4 → (630,750); idx=6 → (2290,530).)
+- **`_td_walk(points)`** (client.py) thay cho replay `_route_move` từng waypoint capture: chờ hết
+  trận → lấy vị trí thật → `navigate_to(điểm CUỐI, flee=False)`. Fallback replay waypoint cũ khi
+  không có smart path. Lý do: `_route_move` tốn `_wait_combat_clear()` (trong PB có guard
+  `sleep(2.0)`) + settle 0.6s ⇒ **~2.6s/waypoint**; PB50 có 38 waypoint ⇒ ~99s → còn ~36s (**~2.8×**).
+  Waypoint capture còn là đường của NGƯỜI THẬT xuất phát từ vị trí của họ → bot ở chỗ khác sẽ đi vòng.
+- **QUÉT (掃蕩/sweep) KHÔNG dùng được cho PB tổ đội**: có protocol `C:047-005` = `Dungeon.SendSkip`
+  (opcode **0x2f sub05** `[dungeonId u16]`), nhưng UI chỉ bật khi `MarkManager.GetMissionFlag(skipFlag)`
+  và **cả 4 PB tổ đội đều `skipFlag=0x0000`** → phải đánh thật. (Mã lỗi `S:047-005`: 0 OK, 2 sai level,
+  3 đang trong phòng, 4 hết lượt, 5 không được tổ đội, 8 đang đánh, 9 không có cờ quét.)
+
 ### ĐÓNG GÓP QUÂN ĐOÀN (crack UI_UIArmy.lua / Logic_Organization.lua / Logic_City.lua)
 **Client KHÔNG lấy list từ server — TỰ LỌC BAG tại chỗ.** Có 3 loại đóng góp (2 opcode):
 
