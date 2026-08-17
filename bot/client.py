@@ -1293,6 +1293,11 @@ class GameClient:
         self._last_dialog_evt = 0.0  # lan cuoi nhan goi 0x14 lien quan thoai (de biet canh da HET that su chua)
         self._genuine_end_seen = 0.0  # thoi diem nhan goi 0x14 sub0800 tail=03/04 (ket tran THAT, moi context)
         self._battle_end_grace_until = 0.0  # < time.time() = vua nhan goi ket tran THAT -> 0x35 khong duoc set lai in_battle
+        # THE HE tran ung voi grace o tren. Grace chi duoc chan goi 0x35 TAN DU CUA CHINH TRAN
+        # DA KET (cung generation). Tran MOI da START (generation tang) -> grace PHAI HET hieu
+        # luc ngay, khong thi luot 1 cua tran moi bi bo IM LANG (bug 40NPC: END 20:49:09, START
+        # tran moi 20:49:11 -> ca 4 bot mat luot 1, cho server timeout 37s moi danh o luot 2).
+        self._battle_end_grace_gen = -1
         self._battle_start_seq = 0     # tang moi S2C 0x34; 40NPC doi generation moi thay vi canh timing bool
         self._npc40_prompt_seq = 0     # tang khi co du cap 0x41 0a0001 + dialog 0x14 0100...0300
         self._npc40_prompt_pending = False
@@ -1568,7 +1573,7 @@ class GameClient:
         self._npc40_last_total = total
         self._npc40_prompt_seq += 1
         self.state.in_battle = False
-        self._battle_end_grace_until = time.time() + 3.0
+        self._set_battle_end_grace()
         log.info("[%s] 40NPC: het tran, party alive=%d/%d defeated=%s prompt_seq=%d",
                  self._label, alive, total, defeated, self._npc40_prompt_seq)
 
@@ -1668,7 +1673,7 @@ class GameClient:
             log.info("[%s] MEMBER trong party da xac nhan ket tran THAT -> "
                      "leader ha in_battle theo (khong doi SAFETY)", self._label)
             self.state.in_battle = False
-            self._battle_end_grace_until = time.time() + 3.0
+            self._set_battle_end_grace()
         # KHONG reset _battle_entered/_first_turn: client THAT gui 0x41 + atype=2
         # chi 1 LAN/phien (join he thong battle), 6 tran sau van atype=3, khong gui lai 0x41
         return self.state.in_battle or busy
@@ -2146,7 +2151,7 @@ class GameClient:
                 # kien. Chi can in_battle_TRUOC=True la du tin cay (moi lan False truoc do
                 # deu la noise, khong lien quan tran).
                 self._genuine_end_seen = now
-                self._battle_end_grace_until = now + 3.0
+                self._set_battle_end_grace()
                 _mark_battle_end(self.party_idx, who=self._label, map_id=self.current_map)
                 log.info("[%s] XAC NHAN ket tran THAT (sub0800, in_battle_TRUOC=True) -> "
                          "grace 3s chan 0x35 set lai in_battle + bao party (leader dua vao de ha nhanh)",
@@ -3157,10 +3162,11 @@ class GameClient:
         client applies ``skill_id=0`` too (clear that status kind).  Bot also
         uses those zero-status rows for char/pet as the turn-action signal.
         """
-        # TRU: dang trong grace period sau khi vua nhan goi KET TRAN THAT (0x14 sub0800 tail=04) ->
-        # 0x35 nay la broadcast DU cua member khac chua xong luot, KHONG duoc phep set lai in_battle
+        # TRU: dang trong grace sau KET TRAN THAT (0x14 sub0800 tail=04) VA van dung the he tran do
+        # -> 0x35 nay la broadcast DU cua member khac chua xong luot, KHONG duoc set lai in_battle
         # (bug: truoc day set lai lam leader ket "tran da ket" nhung van cho toi 25s SAFETY moi ha).
-        if time.time() < getattr(self, "_battle_end_grace_until", 0.0):
+        # Kiem theo THE HE (khong chi theo thoi gian): tran MOI start trong 3s do van phai danh duoc.
+        if self._in_battle_end_grace():
             return
         body = pkt[7:]
         offers = []
@@ -3275,7 +3281,7 @@ class GameClient:
                     self._decision_timer = None
                 now = time.time()
                 self._genuine_end_seen = now
-                self._battle_end_grace_until = now + 3.0
+                self._set_battle_end_grace()
                 _mark_battle_end(self.party_idx, who=self._label, map_id=self.current_map)
                 if getattr(self, "_active_team_dungeon_level", None) == 110:
                     self._team_dungeon_end_seq += 1
@@ -3305,6 +3311,19 @@ class GameClient:
         if self.auto_combat and self.available:
             self._arm_decision()
 
+    def _set_battle_end_grace(self, seconds: float = 3.0):
+        """Mo grace sau KET TRAN, GAN voi the he tran hien tai (xem _battle_end_grace_gen)."""
+        self._battle_end_grace_until = time.time() + seconds
+        self._battle_end_grace_gen = getattr(getattr(self, "battle_tracker", None), "generation", -1)
+
+    def _in_battle_end_grace(self) -> bool:
+        """Con trong grace VA van dung the he tran da ket -> goi 0x35 la TAN DU, bo qua.
+        Tran MOI da START (generation khac) -> KHONG chan, phai danh luot 1 ngay."""
+        if time.time() >= getattr(self, "_battle_end_grace_until", 0.0):
+            return False
+        gen = getattr(getattr(self, "battle_tracker", None), "generation", -1)
+        return gen == getattr(self, "_battle_end_grace_gen", -1)
+
     def _battle_can_send(self, source):
         tracker = self.battle_tracker
         return self._battle_coordinator().can_send(
@@ -3331,11 +3350,11 @@ class GameClient:
             _set_thread_prio(1)
         if self._acted_turn:
             return
-        # VUA nhan goi KET TRAN THAT (grace) -> tran DA xong: KHONG ra BAT KY quyet dinh nao (ke ca
+        # VUA nhan goi KET TRAN THAT (grace, CUNG THE HE) -> tran DA xong: KHONG ra quyet dinh nao (ke ca
         # Hoi Sinh). Timer quyet dinh co the da ARM tu goi 0x35 luot cuoi TRUOC khi sub0800 toi, roi
         # fire SAU khi ket tran -> decide tren state tan du (quai da clear) -> cast Hoi Sinh oan
         # (bug that user gap: chinh acc da "XAC NHAN ket tran THAT" xong VAN ra lenh Hoi Sinh 1s sau).
-        if time.time() < getattr(self, "_battle_end_grace_until", 0.0):
+        if self._in_battle_end_grace():
             return
         self.state.party_idx = self.party_idx   # sync de dieu phoi hoi sinh chéo account
         # DANG QUA CONG (gui chuoi 0x14): KHONG gui 0x32 danh -> tranh "vua qua cong vua danh"
