@@ -1785,14 +1785,19 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         # dung ca ngay (bug that: leader loop "1/5", member dung yen map 21863). NGAY sau
                         # 1 lan timeout (~60s) -> BUMP reform_gen: keepalive CA PARTY (ke ca member
                         # idling) se _do_reform -> ve thanh regroup roi sync lai o CUNG map.
-                        if _sync_fail >= 1 and (train_on_map or is_digioi):
-                            with st["lock"]:
-                                st["reform_gen"] += 1
-                            log.warning("[%s] (%s) sync kenh/map FAIL %d lan (member ket sai map) -> "
-                                        "BUMP reform_gen, ca party ve thanh regroup",
-                                        label, role, _sync_fail)
-                            return False
-                        continue
+                        #
+                        # KHONG gioi han theo mode nua: truoc day dieu kien la
+                        # "(train_on_map or is_digioi)" nen MODE EVENT (40NPC/2K) roi thang xuong
+                        # `continue` -> pick kenh khac roi lai cho 60s -> LAP VO HAN, khong bao gio
+                        # lap duoc party (bug that: leader loop "cho acc bao cao map (1/5)" o map
+                        # 10991, moi vong doi 1 kenh: 2 -> 6 -> ...). Bump reform_gen ap dung cho MOI
+                        # mode: khong reform duoc thi cung phai thoat vong nay de tang len vong moi.
+                        with st["lock"]:
+                            st["reform_gen"] += 1
+                        log.warning("[%s] (%s) sync kenh/map FAIL %d lan (member ket sai map) -> "
+                                    "BUMP reform_gen, ca party ve thanh regroup",
+                                    label, role, _sync_fail)
+                        return False
                     break
             else:
                 # cho picker CHOT kenh (co the lau neu dang doi kenh trong) -> cho toi khi ready/stop
