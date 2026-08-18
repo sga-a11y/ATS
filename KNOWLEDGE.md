@@ -1414,15 +1414,21 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   Hai cờ này là **chỉ số bit trong mảng forever-flags** (gói `0x51` = opcode 81) mà bot đã parse
   sẵn (`_bitflag_get`) → **không cần tính điều kiện thành tựu**.
 - Client **chỉ gửi nhận khi túi còn chỗ** (`Item.CheckBagIsFull`) — bot theo y hệt, túi đầy thì hoãn.
-- `IsComplete()` (tính cục bộ, 20 loại điều kiện trong `CheckCondition`) chỉ dùng cho: chuỗi tiến
-  độ `(x / y)`, và `CheckAllCompeleteAchievement()` lúc login để gửi `C:082-001`. **Bot chưa làm
-  phần này** — nếu server không tự đánh dấu hoàn thành thì log "N/600 đã hoàn thành" sẽ đứng yên,
-  lúc đó mới cần làm thêm.
+- **ĐÃ CHẠY THẬT (2026-08-18, hoangtnam): `48/600 đã hoàn thành, 18 chưa nhận → nhận 18/18 OK`.**
+  Hai điều CHỐT được từ lần chạy đó:
+  - **Server TỰ đánh dấu hoàn thành.** 48 cờ complete đã bật trong khi bot CHƯA HỀ gửi `C:082-001`
+    → **không cần cài `IsComplete()`** (20 loại điều kiện trong `CheckCondition`). Phần đó ở client
+    chỉ để hiện chuỗi tiến độ `(x / y)` và `CheckAllCompeleteAchievement()` lúc login.
+  - **Bitmap `0x51` ĐỦ DÀI.** Cờ thành tựu chạy tới bit 8000 (cần ≥1000 byte) trong khi ghi chú cũ
+    ước gói `0x51` chỉ ~1004 byte TỔNG → nghi 28/600 cờ nằm ngoài bitmap, bị đọc thành "chưa hoàn
+    thành" ÂM THẦM. Chạy thật KHÔNG hiện cảnh báo → bitmap phủ đủ, **ước lượng ~1004B là sai**.
+    Cảnh báo vẫn giữ trong `claim_achievements` để nếu server đổi kích thước thì biết ngay.
+- Quà nhận xong rơi vào túi rồi được bước "tự dùng item (login)" dùng luôn (Ngọc Năng Lượng, Hạo
+  Giác, Phiếu Rút Thẻ...) — không phải làm gì thêm.
 - Data: `AchievementData_C.dat` (600 mục) → `tools/crack_achievements.py` → `achievements.json`.
   Record **37 byte cố định**; đã verify `4 + 600*37 = 22204` = đúng kích thước file, không cờ nào
   trùng. Tên lấy từ `TextData_C.dat`.
-- **Lấy file .dat từ MuMu**: `adb` của MuMu ở `E:\Mumu\MuMuPlayerGlobal
-x_maindb.exe`,
+- **Lấy file .dat từ MuMu**: `adb` của MuMu ở `E:\Mumu\MuMuPlayerGlobal\nx_main\adb.exe`,
   kết nối `127.0.0.1:7555`, data game ở
   `/sdcard/Android/data/com.vtcmobile.gz06/files/Data/`. Git Bash tự đổi đường dẫn → phải
   `MSYS_NO_PATHCONV=1` khi `adb pull`.
