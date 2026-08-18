@@ -26,10 +26,22 @@ class PartyStore(private val context: Context) {
         return defaults
     }
 
+    /** Su kien doi -> tick 'tu doi qua event' cua su kien CU khong con nghia (id vat pham khac).
+     *  Dung CHUNG ham Python voi ban PC (bot/event_exchange.py: is_new_event) de khong lech. */
+    private fun isNewEvent(): Boolean = try {
+        com.chaquo.python.Python.getInstance()
+            .getModule("train_bot.event_exchange")
+            .callAttr("is_new_event")
+            .toBoolean()
+    } catch (e: Exception) {
+        false
+    }
+
     fun load(): List<Party> {
         if (!file.exists()) return emptyList()
         val arr = JSONArray(file.readText())
-        return (0 until arr.length()).map { i ->
+        val newEvent = isNewEvent()
+        val loaded = (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             val accArr = o.getJSONArray("accounts")
             val accounts = (0 until accArr.length()).map { j ->
@@ -82,6 +94,10 @@ class PartyStore(private val context: Context) {
                 materialModes = o.optJSONObject("material_modes")?.let { m ->
                     m.keys().asSequence().mapNotNull { k -> m.optString(k, "").takeIf { it.isNotEmpty() }?.let { k to it } }.toMap()
                 } ?: emptyMap(),
+                autoEventExchange = o.optBoolean("auto_event_exchange", false),
+                eventExchangeItems = o.optJSONArray("event_exchange_items")?.let { a ->
+                    (0 until a.length()).mapNotNull { a.optString(it, "").takeIf { s -> s.isNotEmpty() } }
+                } ?: emptyList(),
                 autoBuyShop = o.optBoolean("auto_buy_shop", buyHoPhu || buyThienChau || buyBaoHop),
                 buyHoPhu = buyHoPhu,
                 buyThienChau = buyThienChau,
@@ -97,6 +113,15 @@ class PartyStore(private val context: Context) {
                 accounts = accounts,
             )
         }
+        if (!newEvent) return loaded
+        // Bo tick + xoa list, roi GHI LAI ngay: khong de lan mo sau van thay cau hinh cu.
+        val reset = loaded.map {
+            if (it.autoEventExchange || it.eventExchangeItems.isNotEmpty())
+                it.copy(autoEventExchange = false, eventExchangeItems = emptyList())
+            else it
+        }
+        if (reset != loaded) save(reset)
+        return reset
     }
 
     fun save(parties: List<Party>) {
@@ -130,6 +155,8 @@ class PartyStore(private val context: Context) {
             o.put("scroll_modes", JSONObject().apply { p.scrollModes.forEach { (k, v) -> put(k, v) } })
             o.put("auto_donate_materials", p.autoDonateMaterials)
             o.put("material_modes", JSONObject().apply { p.materialModes.forEach { (k, v) -> put(k, v) } })
+            o.put("auto_event_exchange", p.autoEventExchange)
+            o.put("event_exchange_items", JSONArray().apply { p.eventExchangeItems.forEach { put(it) } })
             o.put("auto_buy_shop", p.autoBuyShop)
             o.put("shop_items", JSONObject().apply {
                 put("ho_phu", p.buyHoPhu)

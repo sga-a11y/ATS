@@ -630,6 +630,20 @@ Nguồn: `.codex_mumu_probe/lua_decrypted_all/` (Common_protocal.lua, Logic_Role
   và **cả 4 PB tổ đội đều `skipFlag=0x0000`** → phải đánh thật. (Mã lỗi `S:047-005`: 0 OK, 2 sai level,
   3 đang trong phòng, 4 hết lượt, 5 không được tổ đội, 8 đang đánh, 9 không có cờ quét.)
 
+### GIỜ DỊ GIỚI (đọc đúng như client)
+- Nguồn dữ liệu: **`LimitTimeDungeon_C.dat`** (1 mục): `scene=49942` (map Dị Giới),
+  **`limitIndex=0x1b`**, **`limitTime=120` phút**, `missionId=13137`.
+- **`RoleCount(0x1b)` = số phút ĐÃ DÙNG** (không phải còn lại). Client `Logic_Dungeon`:
+  `StartLimitTimeDungeonTime(index,t)` → `time = (t - RoleCount(index)) * 60` giây, rồi **đếm lùi
+  mỗi giây**; mỗi lần `RoleCount` đổi thì **đồng bộ lại** từ server. UIMain chỉ khởi động đồng hồ
+  khi đang đứng ở `sceneId == 49942`.
+- ⇒ **Hết giờ THẬT ⟺ `RoleCount(0x1b) >= 120`** (giá trị server). Bot: `digioi_minutes` (0x55 id 0x1b)
+  + `digioi_minutes_live()` ngoại suy khi đang trong DG.
+- **Bài học**: từng có heuristic "kẹt ngoài DG > 90s ⇒ ép coi là hết giờ" → acc bị khai tử oan giữa
+  lúc **sync kênh DG** dù server còn 58-60 phút (user báo: đứng ở Trác Quận, Stop/Start lại là vào
+  DG bình thường). Sửa: chỉ coi là hết giờ khi **server cũng báo còn ≤ 5 phút**; còn nhiều giờ mà kẹt
+  ngoài thì **RELOGIN** (đúng thao tác Stop/Start tay của user), tối đa 3 lần rồi mới chịu thua.
+
 ### CÓ QUÂN ĐOÀN HAY KHÔNG — đọc `orgId` (khớp client 100%)
 - Client: `Organization.Id` (`Logic_Organization.lua`), **`orgId == 0` = KHÔNG có quân đoàn**
   (`RoleController:SetOrganization` → xoá UI quân đoàn + báo "chưa có"). Nguồn:

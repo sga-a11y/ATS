@@ -500,6 +500,23 @@ def _load_mineral_npc_ids():
     return out
 MINERAL_NPC_IDS = _load_mineral_npc_ids()
 
+# BANG NHIEM VU 3x3 (九宮格): gid -> {name, kind, awards[7].flag}. Sinh boi tools/crack_jiugongge.py.
+#   kind 1 = Nhiem vu moi ngay | 2 = Nhiem vu tan thu | 3 = EVENT (vd "Mung Game Ra Mat Hai Thang")
+# Bot KHONG phu thuoc file nay de biet bang nao dang chay / o nao xong (server gui het trong S:91-1);
+# file chi dung de: biet line nao DA NHAN (co 永標) + hien ten bang trong log. Thieu file van chay.
+def _load_jiugongge():
+    import json, os
+    f = os.path.join(_base_dir(), "jiugongge.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in json.load(fh).get("grids", {}).items():
+                out[int(k)] = v
+    except Exception:
+        pass
+    return out
+JIUGONGGE = _load_jiugongge()
+
 # Item TU DONG SU DUNG luc login. Doc tu use_items.json. 2 format value:
 #   "0x..": "Ten"                          -> dung HET ca stack, TUNG CAI 1 (item chi cho dung 1/lenh)
 #   "0x..": {"name":"Ten","qty":25}        -> dung TOI DA 25 cai/login (co > 25 -> dung 25, de lai du;
@@ -667,7 +684,14 @@ if _aj is not None:
                 "bao_hop": _party.get("buy_bao_hop", False),
             })
             _auto_buy_shop = bool(_party.get("auto_buy_shop", any(_shop_items.values())))
-            PARTY_CONFIG[_i] = {
+            # PASSTHROUGH truoc: MOI key GUI ghi vao accounts.json deu xuong bot.
+            # (Truoc day day la danh sach CHEP TAY -> them tick moi o GUI ma quen them o day thi
+            #  bot chay mac dinh, KHONG AI BAO. Da mat: material_modes, auto_bag_clean,
+            #  auto_event_exchange... - xem CLAUDE.md muc "chep tay o dau la lech o do".)
+            PARTY_CONFIG[_i] = {_k: _v for _k, _v in _party.items()
+                                if _k not in ("accounts", "leaders")}
+            # Cac dong duoi CHI de EP KIEU / doi ten / mac dinh - khong phai de "khai bao key".
+            PARTY_CONFIG[_i].update({
                 "mode": _party.get("mode", "stand"),
                 "start_city_id": int(_party.get("start_city_id", 0)),
                 "mob_index": int(_party.get("mob_index", -1)),  # mac dinh -1 = Bot tu chon
@@ -700,7 +724,7 @@ if _aj is not None:
                 "sp_qty": int(_party.get("sp_qty", 9999)),
                 "sp_thresh": int(_party.get("sp_thresh", 500000)),
                 "di_gioi_level": int(_party.get("di_gioi_level", 2)),   # idx 1..15 cap quai DG (2=cap25)
-            }
+            })
             PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])
         if PARTY_CONFIG:
             START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]

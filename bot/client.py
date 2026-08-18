@@ -10,6 +10,7 @@ import json
 import os
 
 from . import config, protocol, combat, pathfind, npc40, pet_login_stats, team_dungeon_lv110
+from . import event_exchange as _evx
 from .battle_tracker import BattleTracker
 from .party_battle import get_party_battle
 
@@ -1295,6 +1296,21 @@ class GameClient:
         self._world_boss_progress_loaded = False
         self._world_boss_progress_ts = 0.0
         self._claimed_lines = set()  # hang/cot DA NHAN thuong - suy tu BitFlag (giong client)
+        # MOI bang 3x3 server gui (S:91-1), khong rieng bang daily: gid -> {cells:set, missions:{cell:mid}}
+        # Bang EVENT doi theo thang (file .dat bi ghi de: panel 10 tu "thu thap chu" -> "Mung Game Ra
+        # Mat Hai Thang") nhung CO CHE khong doi -> parse tong quat, khong phai sua code moi lan.
+        self._quest_grids = {}
+        self._claimed_by_grid = {}   # gid -> set(line DA NHAN)
+        # DOI THUONG SU KIEN (0x7c): server gui toan bo danh sach -> cache ra JSON cho GUI.
+        self._activities = {}     # activityId -> {title, kind, open, missions[]}
+        self._acts_expired = set()   # id su kien server bao DA HET (duoc xoa khoi cache)
+        self._activity_done = {}  # missionId -> so lan DA LAM (S:124-001)
+        self._activity_got = {}   # missionId -> so lan DA DOI (S:124-002)
+        # TIEN SU KIEN (eResourceType.ActivityCoin = 1): KHONG nam trong tui -> doc rieng
+        # (S:124-010 ten, S:124-011 so luong). Nguyen lieu su kien (Ngoc Thuc / Trang ...) thuong
+        # la loai nay; moi cost/award deu co `kind`: 1 = tien su kien, 2 = vat pham tui.
+        self._coin_names = {}     # coinId -> ten
+        self._coin_quant = {}     # coinId -> so luong dang co
         self._claimed_loaded = False # da biet trang thai "da nhan" (de claim_daily_quests cho truoc)
         self._bitflag_bytes = bytearray()  # S2C 0x51 sub0200: bang BitFlag giong client
         self._bitflags_loaded = False
@@ -2001,10 +2017,16 @@ class GameClient:
                     break
                 gid = int.from_bytes(body[off:off + 2], "little")
                 off += 3
+                # Luu MOI bang (bang event dung chung co che) - xem claim_event_boards().
+                _g = self._quest_grids.setdefault(gid, {"cells": set(), "missions": {}})
                 for c in range(1, 10):
                     mid = int.from_bytes(body[off:off + 2], "little")
                     done = body[off + 6]
                     off += 7
+                    if mid:
+                        _g["missions"][c] = mid
+                    if done:
+                        _g["cells"].add(c)
                     if gid == 1:
                         if mid:
                             self._quest_missions[c] = mid
@@ -2013,15 +2035,25 @@ class GameClient:
         elif sub == b"\x04\x00" and len(body) >= 12:
             gid = int.from_bytes(body[2:4], "little")
             cell = body[4]
-            if gid == 1 and 1 <= cell <= 9:
+            if 1 <= cell <= 9:
                 mid = int.from_bytes(body[5:7], "little")
+                _g = self._quest_grids.setdefault(gid, {"cells": set(), "missions": {}})
                 if mid:
-                    self._quest_missions[cell] = mid
+                    _g["missions"][cell] = mid
                 if body[11]:
-                    self._quest_cells.add(cell)
+                    _g["cells"].add(cell)
+                if gid == 1:
+                    if mid:
+                        self._quest_missions[cell] = mid
+                    if body[11]:
+                        self._quest_cells.add(cell)
         elif sub == b"\x03\x00" and len(body) >= 6:
-            if body[2] == 1 and int.from_bytes(body[3:5], "little") == 1 and 1 <= body[5] <= 7:
-                self._claimed_lines.add(body[5])
+            # Ghi nhan CLAIM theo TUNG BANG (khong chi bang daily) - bang event dung chung co che.
+            _gid = int.from_bytes(body[3:5], "little")
+            if body[2] == 1 and 1 <= body[5] <= 7:
+                self._claimed_by_grid.setdefault(_gid, set()).add(body[5])
+                if _gid == 1:
+                    self._claimed_lines.add(body[5])
 
     # getFlag cua 7 phan thuong BANG 1 (JiugonggeInfo_C.dat: awards[i].getFlag) - line L -> 1540+L.
     # Client: award "DA NHAN" <=> BitFlag.Get(getFlag) (Logic_Jiugongge.SetJiugonggeState:
@@ -2043,7 +2075,17 @@ class GameClient:
         got = {L for L, fid in self._Q_LINE_FLAG.items() if self._bitflag_get(fid)}
         # HOP voi xac nhan giua phien (S:91-3 -> _claimed_lines) de khong mat thong tin vua claim.
         self._claimed_lines |= got
+        self._claimed_by_grid.setdefault(1, set()).update(got)
         self._claimed_loaded = True
+        # CAC BANG KHAC (event...): co "da nhan" doc tu jiugongge.json (crack_jiugongge.py).
+        for gid, info in (getattr(config, "JIUGONGGE", {}) or {}).items():
+            if gid == 1:
+                continue
+            aw = (info or {}).get("awards") or []
+            got2 = {L for L in range(1, 8)
+                    if L <= len(aw) and self._bitflag_get(aw[L - 1].get("flag"))}
+            if got2:
+                self._claimed_by_grid.setdefault(gid, set()).update(got2)
 
     def _bitflag_get(self, flag_id: int):
         """Tra ve True/False neu da co full BitFlag, None neu server chua sync."""
@@ -2502,6 +2544,7 @@ class GameClient:
                         break
                     off = nxt
         elif opcode == 0x7c:                      # event "qua 14 ngay" (panel claim item)
+            self._on_activity_model(pkt)          # DOI THUONG su kien (S:124-000/001/002)
             # sub 01 = list phan qua: [01 00][count 4B LE] + count*[itemid 4B LE][qty 4B LE]
             if pkt[7:9] == b"\x01\x00" and len(pkt) >= 13:
                 cnt = int.from_bytes(pkt[9:13], "little")
@@ -3848,13 +3891,81 @@ class GameClient:
                         "se thu lai login sau", self._label, name, dict(Counter(stats)))
         return True
 
+    _RC_LOGIN_SIGN_DAY = 107     # ERoleCount.LoginSingDay - so lan DA nhan thuong diem danh
+
     def claim_checkin(self):
-        """DIEM DANH hang ngay (0x57 type=01)."""
-        return self._claim_daily_gift("checkin", 0x01, 40, "Diem danh")
+        """DIEM DANH hang ngay (0x57 type=01) - lam DUNG NHU CLIENT: 1 goi, khong quet.
+
+        Client UI_UILoginAward.lua:1994 gui SendGetAward(Login, RoleCount(107) + 1). RoleCount la
+        so SERVER gui (0x55), khong phai dem tay -> khong bao gio lech, khong can scan.
+        Chi khi CHUA co RoleCount 107 (goi 0x55 chua ve) moi dung cach cu de khong mat luot.
+        """
+        import datetime
+        today = datetime.date.today().isoformat()
+        st = _load_checkin(self._label, "checkin")
+        if st.get("date") == today:
+            # KHONG thoat im lang: khong co dong nay thi khong biet bot da diem danh hay bo sot.
+            log.info("[%s] Diem danh: hom nay da lam roi (ngay %d)", self._label, st.get("day", 0))
+            return True
+        rc = self.role_counts.get(self._RC_LOGIN_SIGN_DAY)
+        if rc is None:
+            log.info("[%s] Diem danh: chua co RoleCount %d tu server -> dung cach cu (quet)",
+                     self._label, self._RC_LOGIN_SIGN_DAY)
+            return self._claim_daily_gift("checkin", 0x01, 40, "Diem danh")
+        done = int(rc[0])                       # so ngay DA nhan (theo server)
+        s = self._gift_claim(0x01, done + 1)    # y het client: nhan ngay ke tiep
+        if s == 0:
+            _save_checkin(self._label, "checkin", today, done + 1)
+            log.info("[%s] Diem danh ngay %d OK", self._label, done + 1)
+        elif s == 2:
+            _save_checkin(self._label, "checkin", today, done)
+            log.info("[%s] Diem danh: hom nay da nhan roi (server: %d ngay)", self._label, done)
+        else:
+            log.info("[%s] Diem danh ngay %d -> status=%d (0=OK,2=da nhan,5=chua toi,-1=ko phan hoi)",
+                     self._label, done + 1, s)
+        return True
 
     def claim_14day_gift(self):
         """QUA 14 NGAY user moi (0x57 type=04). Nhan het 14 ngay thi dung."""
         return self._claim_daily_gift("gift14", 0x04, 14, "Qua 14 ngay", finite=True)
+
+    # Toan tu so sanh cua dieu kien nhiem vu (EMissionOperator trong Logic_ActivityModel.lua)
+    _MISSION_OP = {1: lambda p, c: p == c, 2: lambda p, c: p > c, 3: lambda p, c: p >= c,
+                   4: lambda p, c: p < c, 5: lambda p, c: p <= c, 6: lambda p, c: p != c}
+    _COND_SPECIFIED_DATE_LOGIN = 31      # EMissionConditionType.SpecifiedDateLogin
+    _COND_RECHARGE90, _COND_RECHARGE2990 = 3, 8
+
+    def _mission_claimable(self, m) -> int:
+        """So lan CON NHAN DUOC cua 1 muc (0 = khong nhan duoc) - COPY dung logic client.
+
+        Client: Logic_ActivityModel.lua ~424-470 (EMissionType.Complete). Truoc day bot gui bua
+        het moi muc roi de server tu choi -> hang chuc goi rac moi lan login.
+        """
+        mid = int(m["id"])
+        if int(m.get("cond", 0)) == 1:       # EMissionType.Exchange -> viec cua do_event_exchange
+            return 0
+        lim = int(m.get("limit") or 0)
+        complete = int(self._activity_done.get(mid, 0))
+        get = int(self._activity_got.get(mid, 0))
+        cond = int(m.get("cond", 0))
+        opr = int(m.get("opr", 0))
+        need = int(m.get("need", 0))
+        cmp_ = self._MISSION_OP.get(opr, lambda p, c: False)
+
+        get_count = get if lim > 1 else 1
+        if cond == self._COND_SPECIFIED_DATE_LOGIN:
+            ok = complete > 0
+        elif (self._COND_RECHARGE90 <= cond <= self._COND_RECHARGE2990) or lim <= 1:
+            ok = cmp_(complete, need * get_count)
+        else:
+            ok = cmp_(complete, need * (get_count + 1))
+        if not ok:
+            return 0                          # Processing: chua du dieu kien
+        if get >= lim:
+            return 1 if lim == 0 else 0       # limit 0 = khong gioi han
+        if complete - get > 0:
+            return (complete - get) if lim <= 0 else min(complete - get, lim - get)
+        return 0 if complete >= lim else 0
 
     def claim_event_14day(self):
         """Event TANG QUA 14 NGAY (opcode 0x7c) - KHAC qua 14 ngay new-user (0x57).
@@ -3871,18 +3982,42 @@ class GameClient:
         items = list(self._event14_items)
         if not items:
             return
+        # BO QUA muc DOI BANG VAT PHAM (cond == 1). Goi nhan qua o day CHINH LA SendGetAward cua
+        # client -> bam bua vao muc doi se TU DOI MAT nguyen lieu su kien (Trang/Ngoc...) ma user
+        # khong he chon. Muc doi do tinh nang rieng lo (do_event_exchange, theo list user tick).
+        by_id = {int(m["id"]): m for a in self._activities.values()
+                 for m in (a.get("missions") or ())}
+        todo, skipped, unknown = [], 0, 0
         for it in items:
+            mid = int.from_bytes(it, "little")
+            m = by_id.get(mid)
+            if m is None:
+                # Mission KHONG thuoc su kien dang mo (thuong la su kien DA HET HAN - S:124-001 van
+                # gui tien do cua chung). Client AN han, khong bao gio bam duoc -> bot cung khong gui.
+                # Ngoai le: chua nhan duoc S:124-000 => khong biet gi ca -> van thu de khoi mat luot.
+                unknown += 1
+                if not by_id:
+                    todo.append((it, 1))
+                continue
+            cnt = self._mission_claimable(m)
+            if cnt <= 0:
+                skipped += 1                   # chua du dieu kien / da nhan het -> KHONG gui
+                continue
+            todo.append((it, cnt))
+        for it, cnt in todo:
             if not self.running or self._event14_bagfull:
                 break                          # tui day -> dung luon, khoi thu tiep
-            self.send(0x7c, b"\x03\x00" + it + b"\x01\x00\x00\x00")   # nhan 1 phan
+            self._evx_last_sent = (0, 0)   # KHONG phai lenh doi qua -> handler khong canh bao
+            self.send(0x7c, b"\x03\x00" + it + struct.pack("<I", int(cnt)))
             time.sleep(0.5)
         time.sleep(0.6)
         if self._event14_bagfull:
             log.warning("[%s] Event 14 ngay: KHONG nhan duoc vi TUI DO DAY (server code 06) "
                         "-> Anh don bot tui roi login lai de bot nhan.", self._label)
         else:
-            log.info("[%s] Event 14 ngay: thu %d phan, nhan thanh cong %d",
-                     self._label, len(items), self._event14_ok)
+            log.info("[%s] Event su kien: gui %d/%d muc (bo qua %d chua du dk/da nhan, "
+                     "%d cua su kien da het han), nhan thanh cong %d",
+                     self._label, len(todo), len(items), skipped, unknown, self._event14_ok)
 
     def redeem_giftcode(self, code: str):
         """NHAP GIFTCODE (C2S 0x57 sub=02). Qua thuong ve qua MAIL -> tu claim_mail() nhan.
@@ -4303,6 +4438,562 @@ class GameClient:
         time.sleep(0.9)
         return self._quest_cells
 
+    # ---------- DOI THUONG SU KIEN (S:124-xxx = opcode 0x7c) ----------
+    # Server GUI TOAN BO danh sach doi (khong nam trong file data nao) -> bot chi can doc goi:
+    #   S:124-000 <cap nhat mau hoat dong> [so hoat dong u32] + moi hoat dong:
+    #       id u8, open u8, kind u8, banner u8, rolePic u8, sort u8, hintStringId u32,
+    #       ten(1+n), mo ta(1+n), soTrang u32 + moi trang: trang u8, ten(1+n), mo ta(1+n),
+    #       4 x thoi gian (double OLE), soTien u32 + moi: coinId u16,
+    #       soMuc u32 + moi MUC DOI:
+    #           missionId u32, order u16, conditionId u8, opr u8, conditionCount u32, getLimit u8,
+    #           NHAN: 5 x (kind u8, itemId u16, quant u32),  MAT: 2 x (kind u8, itemId u16, quant u32),
+    #           discount u8
+    #   S:124-001 [missionId u32][so lan DA LAM u32]     S:124-002 [missionId u32][so lan DA DOI u32]
+    #   C:124-003 [missionId u32][so luong u32]  = GUI DOI
+    # (Layout boc tu Logic_ActivityModel.GetData + chu thich protocol; da test tren 3 capture:
+    #  dung DUNG 725/725 byte, ra "Tam Quoc Do x100 + Dong x5000 -> The Luu Bi x1".)
+    # EVENT DOI THEO THANG -> KHONG hardcode gi: doc duoc bao nhieu ghi bay nhieu ra cache JSON de
+    # GUI hien danh sach cho user tick.
+    _EXCHANGE_CACHE = "event_exchange.json"
+    # Ma ket qua doi qua su kien (S:124-003), lay NGUYEN VAN tu client Lua.
+    _EXCHANGE_RESULT = {
+        0: "thanh cong", 1: "khong co hoat dong nay", 2: "chua mo nhan thuong",
+        3: "gui qua nhanh (server chan)", 4: "khong tim thay muc doi",
+        5: "VUOT QUA so lan doi cho phep", 6: "TUI DO KHONG DU CHO",
+        7: "khong du dieu kien", 8: "KHONG DU vat pham de doi",
+        9: "tru vat pham/tien that bai", 255: "hoat dong chua mo",
+    }
+
+    def _on_activity_model(self, pkt: bytes):
+        body = pkt[7:]
+        if len(body) < 2:
+            return
+        sub, data = body[:2], body[2:]
+        try:
+            if sub == b"\x00\x00":
+                self._parse_activity_list(data)
+            elif sub in (b"\x01\x00", b"\x02\x00") and len(data) >= 4:
+                # S:124-001 (so lan DA LAM dieu kien) / S:124-002 (so lan DA NHAN/DA DOI):
+                #   [count u32] + count x ([missionId u32][so lan u32])  <- CO COUNT o dau!
+                # (Truoc day doc data[0:4] lam missionId = doc trung vao COUNT -> sai het.)
+                store = self._activity_done if sub == b"\x01\x00" else self._activity_got
+                off, cnt = 4, int.from_bytes(data[0:4], "little")
+                for _ in range(cnt):
+                    if off + 8 > len(data):
+                        break
+                    store[int.from_bytes(data[off:off + 4], "little")] = int.from_bytes(
+                        data[off + 4:off + 8], "little")
+                    off += 8
+            elif sub == b"\x03\x00" and len(data) >= 4:
+                # S:124-003 KET QUA doi: [count u32] + count x [ket qua 1B]. Server KHONG kem
+                # missionId -> doi chieu voi lenh vua gui (_evx_last_sent).
+                cnt = int.from_bytes(data[0:4], "little")
+                codes = list(data[4:4 + cnt])
+                ok = sum(1 for c in codes if c == 0)
+                self._evx_result = (ok, codes)      # do_event_exchange dang cho ket qua nay
+                mid, _n = getattr(self, "_evx_last_sent", (0, 0))
+                if not mid:
+                    # Goi 0x7c sub03 con duoc claim_event_14day dung (nhan qua 14 ngay). "Da nhan
+                    # roi"/"chua toi ngay" o do la BINH THUONG -> khong keu, ham do tu tong ket.
+                    return
+                if ok == len(codes) and codes:
+                    log.debug("[%s] doi muc %d: %d/%d OK", self._label, mid, ok, len(codes))
+                elif codes:
+                    bad = {}
+                    for c in codes:
+                        if c:
+                            bad[c] = bad.get(c, 0) + 1
+                    log.warning("[%s] DOI QUA muc %d: %d/%d THANH CONG - loi: %s",
+                                self._label, mid, ok, len(codes),
+                                ", ".join("%dx %s" % (v, self._EXCHANGE_RESULT.get(k, "ma %d" % k))
+                                          for k, v in sorted(bad.items())))
+            elif sub == b"\x0a\x00" and len(data) >= 4:
+                # S:124-010 DINH NGHIA tien su kien: [count u32] + [coinId u16][ten(1+n)][icon u16]
+                off, cnt = 4, int.from_bytes(data[0:4], "little")
+                for _ in range(cnt):
+                    if off + 3 > len(data):
+                        break
+                    cid = int.from_bytes(data[off:off + 2], "little"); off += 2
+                    ln = data[off]; off += 1
+                    self._coin_names[cid] = data[off:off + ln].decode("utf-16-le", "replace").rstrip("\x00")
+                    off += ln + 2
+            elif sub == b"\x0b\x00" and len(data) >= 4:
+                # S:124-011 SO LUONG tien su kien CUA NGUOI CHOI: [count u32] + [coinId u16][quant u32]
+                off, cnt = 4, int.from_bytes(data[0:4], "little")
+                for _ in range(cnt):
+                    if off + 6 > len(data):
+                        break
+                    cid = int.from_bytes(data[off:off + 2], "little")
+                    self._coin_quant[cid] = int.from_bytes(data[off + 2:off + 6], "little")
+                    off += 6
+        except Exception as e:
+            log.debug("[%s] bo qua loi parse 0x7c activity: %s", self._label, e)
+
+    def _res_name(self, kind: int, res_id: int) -> str:
+        """Ten nguyen lieu: kind 1 = TIEN SU KIEN (ten tu S:124-010), kind 2 = vat pham TUI."""
+        if int(kind) == 1:
+            return self._coin_names.get(int(res_id)) or ("coin %d" % res_id)
+        return (_load_gamedata_items().get(int(res_id)) or {}).get("name", "") or ("item %d" % res_id)
+
+    def _res_have(self, kind: int, res_id: int) -> int:
+        """So luong DANG CO: tien su kien doc S:124-011, vat pham doc tui (bag_counts)."""
+        if int(kind) == 1:
+            n = int(self._coin_quant.get(int(res_id), 0))
+        else:
+            n = int((getattr(self, "bag_counts", {}) or {}).get(int(res_id), 0))
+        # Tru phan DA GUI LENH DOI trong phien nay ma server chua kip tru vao tui. Khong co so
+        # sach nay thi lan lap sau doc so CU -> lap ke hoach thua -> ngoc trung gian ket trong tui.
+        return n + int((getattr(self, "_evx_spent", {}) or {}).get((int(kind), int(res_id)), 0))
+
+    def _parse_activity_list(self, d: bytes):
+        off = 0
+
+        def u8():
+            nonlocal off
+            v = d[off]; off += 1; return v
+
+        def u16():
+            nonlocal off
+            v = int.from_bytes(d[off:off + 2], "little"); off += 2; return v
+
+        def u32():
+            nonlocal off
+            v = int.from_bytes(d[off:off + 4], "little"); off += 4; return v
+
+        def skip(n):
+            nonlocal off
+            off += n
+
+        def text():
+            nonlocal off
+            n = u8()
+            v = d[off:off + n].decode("utf-16-le", "replace").rstrip("\x00")
+            off += n
+            return v
+
+        acts = []
+        for _ in range(u32()):
+            a = {"id": u8(), "open": u8(), "kind": u8()}
+            skip(3); skip(4)                       # banner/rolePic/sort + hintStringId
+            a["title"] = text(); a["desc"] = text()
+            for _p in range(u32()):
+                u8(); text(); text()               # trang: so + ten + mo ta
+            _t = []
+            for _i in range(4):                    # batDau / ketThuc / hienTu / hienDen (OLE double)
+                _t.append(struct.unpack_from("<d", d, off)[0]); off += 8
+            a["time"] = _t
+            a["coins"] = [u16() for _ in range(u32())]
+            a["missions"] = []
+            for _m in range(u32()):
+                m = {"id": u32(), "order": u16(), "cond": u8()}
+                u8()                               # operator
+                m["need"] = u32(); m["limit"] = u8()
+                m["award"] = [(u8(), u16(), u32()) for _ in range(5)]
+                m["cost"] = [(u8(), u16(), u32()) for _ in range(2)]
+                u8()                               # discount
+                a["missions"].append(m)
+            acts.append(a)
+        if not acts:
+            return
+        # LOC GIONG CLIENT (Logic_ActivityModel.GetData -> isCurrentActivity):
+        #   now < ketThuc-hien  VA  isOpen != 0  VA  (now >= batDau-hien HOAC now >= batDau)
+        # Server VAN gui ca su kien DA HET HAN (client an di) -> khong loc thi cache day muc doi cu.
+        import datetime as _dt
+        _now = _dt.datetime.now()
+        _live = []
+        for a in acts:
+            t = a.get("time") or [0, 0, 0, 0]
+            try:
+                start, _end, show_from, show_to = (self._ole_to_dt(x) for x in t)
+                a["active"] = bool(a["open"]) and _now < show_to and (_now >= show_from or _now >= start)
+                a["until"] = show_to.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                a["active"] = bool(a["open"])
+                a["until"] = ""
+            if a["active"]:
+                _live.append(a)
+            else:
+                # Nho lai de _save_exchange_cache biet su kien nay THAT SU het, duoc phep xoa khoi
+                # file cache (phan biet voi "phien nay chua nhan duoc goi cua no").
+                self._acts_expired.add(str(a["id"]))
+                log.info("[%s] su kien '%s' (id=%d) DA HET HAN/chua mo -> bo qua (giong client an di)",
+                         self._label, a["title"], a["id"])
+        acts = _live
+        if not acts:
+            return
+        # GOP, KHONG ghi de: server gui NHIEU goi 124-000 (moi su kien 1 goi) -> gan de thi chi con
+        # su kien cuoi, mat cac su kien truoc (da dinh khi test capture: mat 'Doi Thuong', chi con
+        # 'Mung Update').
+        self._activities.update({a["id"]: a for a in acts})
+        self._save_exchange_cache(list(self._activities.values()))
+        for a in acts:
+            log.info("[%s] SU KIEN '%s' (id=%d, %s): %d muc doi",
+                     self._label, a["title"], a["id"],
+                     "DANG MO" if a["open"] else "dong", len(a["missions"]))
+
+    def _save_exchange_cache(self, acts):
+        """Ghi danh sach doi ra JSON de GUI hien cho user TICK (giong list lo/nguyen lieu).
+
+        Danh sach nay CHI co khi acc dang nhap (server gui) nen khong the ship san trong repo ->
+        bot chay 1 lan la GUI co du lieu; EVENT DOI THANG SAU thi file tu cap nhat theo.
+        """
+        try:
+            from ._appdir import app_dir
+            items = _load_gamedata_items()
+
+            def _nm(i):
+                return (items.get(int(i)) or {}).get("name", "") or ("item %d" % i)
+
+            out = {}
+            for a in acts:
+                ms = []
+                for m in a["missions"]:
+                    # CHI ghi phan DOI BANG VAT PHAM (client: conditionId == EMissionConditionType
+                    # .Exchange = 1 -> EMissionType.Exchange). Cac muc khac la "hoan thanh dieu kien"
+                    # (diem danh / tich luy ngay dang nhap...) - BOT DA TU LAM LAU NAY qua claim_checkin
+                    # / claim_event_14day, khong can ghi ra file cho user tick.
+                    if int(m.get("cond", 0)) != 1:
+                        continue
+                    # `kind`: 1 = TIEN SU KIEN (doc _coin_quant), 2 = vat pham TUI (bag_counts)
+                    cost = [{"item": i, "kind": k, "name": self._res_name(k, i), "quant": q}
+                            for k, i, q in m["cost"] if i]
+                    award = [{"item": i, "kind": k, "name": self._res_name(k, i), "quant": q}
+                             for k, i, q in m["award"] if i]
+                    # KHONG ghi so lan DA DOI vao day: do la so RIENG TUNG ACC (_activity_got),
+                    # ma file nay DUNG CHUNG cho moi acc -> acc ghi sau se de len acc truoc.
+                    # (client: getLimit == 0 = KHONG GIOI HAN; get >= getLimit = het luot.)
+                    ms.append({"id": m["id"], "cond": m["cond"], "limit": m["limit"],
+                               "need": m["need"], "cost": cost, "award": award})
+                if not ms:
+                    continue          # su kien khong co muc doi nao (chi diem danh) -> bo qua han
+                out[str(a["id"])] = {"title": a["title"], "kind": a["kind"],
+                                     "open": bool(a["open"]), "until": a.get("until", ""),
+                                     "missions": ms}
+            path = os.path.join(app_dir(), self._EXCHANGE_CACHE)
+            # GOP voi noi dung DANG CO trong file: goi nay co the moi mang 1 su kien, cac su kien
+            # khac chi la CHUA NHAN DUOC goi chu khong phai da het. Chi bo nhung cai server bao
+            # het han (_acts_expired) -> khong con canh ghi file rong roi ghi lai.
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    for k, v in (json.load(fh).get("activities") or {}).items():
+                        if k not in out and k not in self._acts_expired:
+                            out[k] = v
+            except Exception:
+                pass
+            payload = {"_note": "AUTO-SINH khi bot nhan S:124-000 (doi thuong su kien). GUI doc file"
+                                " nay de hien danh sach cho user tick. Su kien doi -> tu cap nhat."
+                                " CHI chua phan DUNG CHUNG (danh sach/gia/thuong/gioi han); so lan"
+                                " DA DOI la rieng tung acc nen khong ghi o day.",
+                       "activities": out}
+            # CHI GHI KHI NOI DUNG DOI. Moi acc login deu nhan goi nay (39 party x 5 acc = ~200 luot
+            # ghi de moi dot login) -> so sanh truoc, giong thi thoi. Nho vay file chi doi khi SU KIEN
+            # THAY DOI that (dung luc user can biet).
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    if json.load(fh).get("activities") == out:
+                        return
+            except Exception:
+                pass
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh, ensure_ascii=False, indent=1)
+            os.replace(tmp, path)
+            log.info("[%s] cap nhat %s: %s", self._label, self._EXCHANGE_CACHE,
+                     ", ".join("%s (%d muc doi)" % (v["title"], len(v["missions"]))
+                               for v in out.values()))
+        except Exception as e:
+            log.debug("[%s] khong ghi duoc %s: %s", self._label, self._EXCHANGE_CACHE, e)
+
+    def run_event_pre_dungeon(self) -> None:
+        """DOI QUA (theo tick) -> NHAN THUONG BANG 3x3 -> (caller danh PB TO DOI).
+
+        Dung thu tu user yeu cau. Goi o DAU _run_auto_team_dungeons_if_needed nen ap dung cho MOI
+        mode (train/di gioi/event...), khong phu thuoc claim_daily_quests co chay hay khong.
+        CHAY 1 LAN moi phien dang nhap: PB to doi duoc goi tu 8 cho khac nhau.
+        """
+        if getattr(self, "_evx_ran", False):
+            return
+        self._evx_ran = True
+        if getattr(self, "auto_event_exchange", False):
+            try:
+                self.do_event_exchange(getattr(self, "event_exchange_items", None))
+            except Exception as e:
+                log.warning("[%s] loi doi qua su kien (bo qua): %s", self._label, e)
+        try:
+            self.claim_event_boards()
+        except Exception as e:
+            log.warning("[%s] loi claim bang su kien (bo qua): %s", self._label, e)
+
+    def do_event_exchange(self, picks, wait: float = 1.2) -> int:
+        """TU DOI QUA SU KIEN theo danh sach user tick (CHI qua CUOI, xem event_exchange.py).
+
+        picks: iterable id qua cuoi (hoac "kind:id"). Voi moi qua: TRUY NGUOC ca chuoi nguyen lieu
+        (Trang -> Ngoc -> Thien Thu -> qua), tru so DANG CO va so LUOT DA DOI; du HET chuoi moi bat
+        dau doi tu nguyen lieu GOC len. Thieu bat ky tang nao -> khong doi gi (tranh doi ra nguyen
+        lieu trung gian roi ket, chiem slot tui).
+        `wait` = GIAN CACH giua 2 lenh doi. Server chan theo KHOANG CACH THOI GIAN (ma 3
+        "太頻繁" = gui qua nhanh), KHONG theo so luong trong goi. Moi qua = 4 lenh lien tiep
+        (3 nguon ra ngoc + 1 doi qua) nen de 0.6s van dinh chan (log 17:32) -> 1.2s. Co che thu lai
+        khi dinh ma 3 chi la luoi do phong server doi nguong.
+        """
+        want = set()
+        for p in (picks or ()):
+            try:
+                if isinstance(p, str) and ":" in p:
+                    k, i = p.split(":", 1)
+                    want.add((int(k), int(i)))
+                else:
+                    want.add((2, int(p)))
+            except Exception:
+                pass
+        if not want:
+            log.info("[%s] Doi qua su kien: BAT nhung chua tick qua nao -> bo qua "
+                     "(Cai dat nang cao > List qua)", self._label)
+            return 0
+        missions = [m for a in self._activities.values() for m in a.get("missions") or ()]
+        if not missions:
+            # Hay gap nhat: server chua gui S:124-000 (hoac goi bi lo) -> KHONG duoc im lang.
+            log.warning("[%s] Doi qua su kien: chua nhan duoc danh sach doi thuong tu server "
+                        "(0 su kien) -> bo qua lan nay", self._label)
+            return 0
+        # TUI DO PHAI VE TRUOC (ke hoach doi dua tren so luong trong tui). Dung DUNG dieu kien cua
+        # log_bag_delayed(): snapshot 0x17/05 la goi TU MO TA (co count trong goi) -> nhan duoc la
+        # xong; chi cho them 1.5s phong truong hop tui to server chia NHIEU goi.
+        # Thuc te toi day tui da ve tu luc login -> vong nay thoat ngay, khong cho giay nao.
+        _t0 = time.time()
+        while self.running and time.time() - _t0 < 8.0:
+            if self.bag_slots and time.time() - self._bag_time > 1.5:
+                break
+            time.sleep(0.3)
+        if not self.bag_slots:
+            log.warning("[%s] Doi qua su kien: TUI DO chua ve (khong nhan duoc snapshot 0x17/05) "
+                        "-> bo qua lan nay, khong doi mo de tranh tinh sai", self._label)
+            return 0
+        if time.time() - _t0 > 1.0:
+            log.info("[%s] Doi qua su kien: da cho tui do %.1fs", self._label, time.time() - _t0)
+        # `missions` o day la ban RAW (cost/award dang tuple) -> chuyen ve dang dict cho planner.
+        norm = []
+        for m in missions:
+            norm.append({
+                "id": m["id"], "cond": m["cond"], "limit": m["limit"],
+                "cost": [{"kind": k, "item": i, "quant": q, "name": self._res_name(k, i)}
+                         for k, i, q in m["cost"] if i],
+                "award": [{"kind": k, "item": i, "quant": q, "name": self._res_name(k, i)}
+                          for k, i, q in m["award"] if i],
+            })
+        total = 0
+        packets = 0               # so GOI that su gui len (1 goi = 1 muc, kem so lan)
+        # BAT DAU = 0: gui NGAY khi co ACK cua lenh truoc (dung y user). Chi khi server that su
+        # keu ma 3 moi tu noi rong - khong dat san con so doan mo.
+        self._evx_gap = 0.0
+        self._evx_last_ts = 0.0
+        self._evx_spent = {}      # (kind,id) -> chenh lech so voi tui (am = da tieu, duong = vua nhan)
+        log.info("[%s] Doi qua su kien: %d qua da tick, %d su kien dang mo",
+                 self._label, len(want), len(self._activities))
+        for kind, item in sorted(want):
+            # Qua cuoi nay co trong su kien dang mo khong?
+            if not any((int(a.get("kind") or 2), int(a["item"])) == (kind, item)
+                       for m in norm for a in m["award"]):
+                log.info("[%s] Doi qua: '%s' KHONG co trong su kien dang mo -> bo qua "
+                         "(su kien da doi? vao List qua tick lai)",
+                         self._label, self._res_name(kind, item))
+                continue
+            done_this = 0
+            # CHI 1 LAN: da tinh so luong toi da ngay tu dau. Lap them vong nua se doc `bag_counts`
+            # con CU (server chua tru xong) -> ke hoach thua -> doi ra ngoc roi ket, khong thanh qua.
+            for _round in range(1):
+                if not self.running:
+                    break
+                # Lap ke hoach cho SO LUONG LON NHAT doi duoc, khong phai tung cai mot: tang gap doi
+                # roi chia doi (thuan tinh toan, khong ton goi mang). Truoc day moi vong chi doi 1
+                # cai -> 50 vong x nhieu goi cho 1 mon.
+                why = {}
+                best, best_n = None, 0
+                _lo, _try = 1, 1
+                while _try <= 10000:
+                    _p = _evx.plan_for(kind, item, norm, self._res_have, self._activity_got,
+                                       want=_try, why=(why if _try == 1 else None))
+                    if not _p:
+                        break
+                    best, best_n, _lo = _p, _try, _try
+                    _try *= 2
+                _hi = _try - 1
+                while _lo + 1 <= _hi:                 # tinh chinh giua [best_n+1 .. _hi]
+                    _mid = (_lo + _hi + 1) // 2
+                    if _mid <= best_n:
+                        break
+                    _p = _evx.plan_for(kind, item, norm, self._res_have, self._activity_got,
+                                       want=_mid)
+                    if _p:
+                        best, best_n, _lo = _p, _mid, _mid
+                    else:
+                        _hi = _mid - 1
+                plan = best
+                if not plan:
+                    if not done_this:
+                        self._log_exchange_block(kind, item, why)
+                    break
+                name = self._res_name(kind, item)
+                log.info("[%s] DOI QUA SU KIEN '%s' x%d -> %s", self._label, name, best_n,
+                         " | ".join("muc %d x%d" % (m["id"], n) for m, n in plan))
+                for m, n in plan:
+                    if not self.running:
+                        break
+                    # CHO SERVER CAP XONG nguyen lieu cua buoc TRUOC. Cac buoc trong 1 ke hoach noi
+                    # tiep nhau (Trang -> Ngoc -> Qua): ban lien tiep thi buoc cuoi toi noi luc
+                    # server MOI CAP MOT PHAN ngoc -> bi tu choi, ngoc ket lai trong tui.
+                    if not self._wait_materials(m, n):
+                        log.warning("[%s] Doi qua: '%s' -> server chua cap du nguyen lieu cho muc "
+                                    "%d sau 20s -> dung chuoi (phan da doi van giu)",
+                                    self._label, name, int(m["id"]))
+                        break
+                    # 1 GOI cho CA n lan: C:124-003 = +任務ID(4) +次數(4), 次數 = SO LAN doi.
+                    # (Truoc day ban n goi count=1 -> cham va de dinh ma loi 3 "太頻繁" cua server.)
+                    # Server chan theo KHOANG CACH giua 2 lenh (ma 3 "太頻繁"), khong theo so luong
+                    # trong goi -> dinh ma 3 thi CHO LAU HON roi gui lai, khong bo cuoc.
+                    _res = None
+                    for _attempt in range(3):
+                        if not self.running:
+                            break
+                        # GIAN CACH TRUOC KHI GUI: doi du _evx_gap giay ke tu lenh truoc.
+                        _due = self._evx_last_ts + self._evx_gap - time.time()
+                        if _due > 0:
+                            time.sleep(_due)
+                        self._evx_last_sent = (int(m["id"]), int(n))
+                        self._evx_result = None
+                        packets += 1
+                        self._evx_last_ts = time.time()
+                        self.send(0x7c, b"\x03\x00" + struct.pack("<II", int(m["id"]), int(n)))
+                        _t0 = time.time()   # cho ACK (S:124-003) roi moi xu ly tiep
+                        while self.running and self._evx_result is None and time.time() - _t0 < 10.0:
+                            time.sleep(0.2)
+                        _res = self._evx_result
+                        if _res is None or not any(c == 3 for c in _res[1]):
+                            break
+                        # Van bi chan -> gian cach dang dung CHUA DU: noi rong va NHO cho ca phien
+                        # (cac buoc sau dung luon muc moi, khong dinh lai cung loi).
+                        self._evx_gap = min(max(self._evx_gap * 2, 1.0), 6.0)   # 0 -> 1 -> 2 -> 4 -> 6
+                        log.info("[%s] Doi qua: bi chan 'gui qua nhanh' -> nang gian cach len "
+                                 "%.1fs roi gui lai muc %d", self._label, self._evx_gap, int(m["id"]))
+                    if _res is None:
+                        log.warning("[%s] Doi qua: muc %d khong co phan hoi sau 10s -> dung chuoi",
+                                    self._label, int(m["id"]))
+                        break
+                    _ok, _codes = _res
+                    if _ok < len(_codes):
+                        # Da co log chi tiet ma loi o handler. Dung ngay: cac buoc tren phu thuoc
+                        # buoc nay, doi tiep chi tao them nguyen lieu thua.
+                        break
+                    n = _ok
+                    # Server tu tru nguyen lieu + gui lai S:124-002/011 -> lan lap sau tinh lai
+                    # tren so LIEU MOI. Cong tam o day de vong nay khong doi qua so luot.
+                    self._activity_got[int(m["id"])] = self._activity_got.get(int(m["id"]), 0) + n
+                    # SO SACH TAM: tru nguyen lieu + cong phan thuong NGAY, khong doi server.
+                    _sp = self._evx_spent
+                    for _c in m["cost"]:
+                        _k = (int(_c.get("kind") or 2), int(_c["item"]))
+                        _sp[_k] = _sp.get(_k, 0) - int(_c["quant"]) * n
+                    for _a in m["award"]:
+                        _k = (int(_a.get("kind") or 2), int(_a["item"]))
+                        _sp[_k] = _sp.get(_k, 0) + int(_a["quant"]) * n
+                    total += n
+                    done_this += n
+        if total:
+            log.info("[%s] Doi qua su kien: %d luot doi trong %d goi", self._label, total, packets)
+        return total
+
+    def _wait_res_raw(self, kind: int, res_id: int) -> int:
+        """So luong THUC TE server dang ghi nhan (KHONG tru so sach tam _evx_spent)."""
+        if int(kind) == 1:
+            return int(self._coin_quant.get(int(res_id), 0))
+        return int((getattr(self, "bag_counts", {}) or {}).get(int(res_id), 0))
+
+    def _wait_materials(self, m, times: int, timeout: float = 20.0) -> bool:
+        """Cho den khi TUI that su du nguyen lieu de doi `times` lan muc `m`.
+
+        Nguyen lieu cua buoc sau chinh la phan thuong cua buoc truoc -> phai doi server cap xong
+        moi gui, khong thi server tu choi ma minh khong biet.
+        """
+        need = [((int(c.get("kind") or 2), int(c["item"])), int(c["quant"]) * int(times))
+                for c in (m.get("cost") or ()) if c.get("item")]
+        if not need:
+            return True
+        t0 = time.time()
+        while self.running:
+            if all(self._wait_res_raw(k, i) >= q for (k, i), q in need):
+                return True
+            if time.time() - t0 >= timeout:
+                return False
+            time.sleep(0.4)
+        return False
+
+    def _log_exchange_block(self, kind, item, why):
+        """Noi RO vi sao khong doi duoc - khong bao chung chung 'khong du nguyen lieu'."""
+        name = self._res_name(kind, item)
+        res = why.get("res")
+        if not res:
+            log.info("[%s] Doi qua: '%s' khong lap duoc ke hoach doi", self._label, name)
+            return
+        rname = self._res_name(res[0], res[1])
+        if why.get("limit_only"):
+            log.info("[%s] Doi qua: '%s' -> HET LUOT doi '%s' hom nay/su kien (server gioi han)",
+                     self._label, name, rname)
+        else:
+            log.info("[%s] Doi qua: '%s' -> thieu '%s': can %d, dang co %d",
+                     self._label, name, rname, int(why.get("need") or 0), int(why.get("have") or 0))
+
+    def claim_event_boards(self, wait: float = 1.2) -> int:
+        """NHAN THUONG cac BANG 3x3 KHAC ngoai "Nhiem vu moi ngay" (hien la bang EVENT theo thang).
+
+        TONG QUAT - KHONG hardcode nhiem vu: EVENT DOI THEO THANG (file .dat bi ghi de, vd panel 10
+        tu "thu thap chu" -> "Mung Game Ra Mat Hai Thang") nhung CO CHE khong doi:
+          - Bang nao dang chay  -> server gui trong S:91-1 (self._quest_grids)
+          - O nao da xong       -> co 'done' tung o trong chinh goi do
+          - Hang/cot an thuong  -> thuan logic 3x3 (1-3 hang, 4-6 cot, 7 = TAT CA)
+          - Line da nhan        -> 永標 theo getFlag (jiugongge.json); thieu file van chay duoc vi
+                                   server tu tu choi line da nhan.
+        LOC theo `kind` (jiugongge.json): 1 = nhiem vu ngay (ham khac lo), 3 = EVENT -> LAM;
+        2 = nhiem vu tan thu -> BO QUA (yeu cau user). Bang LA (chua co trong data, vd event moi
+        ra sau khi crack) -> VAN LAM (kha nang cao la event moi).
+        Goi C:91-3 giong client: 0x5b [03 00][gridId u16][line][missionId cua O SO `line`].
+        """
+        grids = dict(getattr(self, "_quest_grids", {}) or {})
+        if not grids:
+            return 0
+        meta = getattr(config, "JIUGONGGE", {}) or {}
+        total = 0
+        for gid, g in sorted(grids.items()):
+            if gid == 1:
+                continue                      # bang nhiem vu ngay: claim_daily_quests lo
+            info = meta.get(gid) or {}
+            kind = info.get("kind")
+            if kind == 2:
+                continue                      # nhiem vu tan thu -> bo qua
+            cells = set(g.get("cells") or ())
+            missions = dict(g.get("missions") or {})
+            if not cells:
+                continue
+            claimed = set(self._claimed_by_grid.get(gid) or ())
+            lines = [L for L, cs in self._Q_LINES.items()
+                     if all(c in cells for c in cs) and L not in claimed]
+            name = info.get("name") or ("bang %d" % gid)
+            for L in lines:
+                self.send(0x5b, b"\x03\x00" + struct.pack("<H", gid) + bytes([L])
+                          + struct.pack("<H", int(missions.get(L, 0))))
+                time.sleep(0.3)
+                total += 1
+            # TAT CA (line 7): client bat buoc ca 6 line PHAI da nhan (msg 21291).
+            n6 = sum(1 for L in range(1, 7) if L in claimed or L in lines)
+            if n6 >= 6 and 7 not in claimed and 7 not in lines:
+                self.send(0x5b, b"\x03\x00" + struct.pack("<H", gid) + b"\x07"
+                          + struct.pack("<H", int(missions.get(7, 0))))
+                time.sleep(0.3)
+                total += 1
+            if lines or (n6 >= 6):
+                log.info("[%s] '%s' (bang %d): o xong=%s -> claim %s",
+                         self._label, name, gid, sorted(cells), lines or "line TAT CA")
+        return total
+
     @_pet_role("quest")
     def claim_daily_quests(self, heavy: bool = True):
         """STATUS-DRIVEN: query 9 o -> o CHUA xong (bot lam duoc) thi LAM -> re-query -> claim
@@ -4358,8 +5049,12 @@ class GameClient:
             time.sleep(0.3); n += 1
         log.info("[%s] Nhiem vu hang ngay: o xong=%s (%d/9), da nhan truoc=%s, claim them %d line (line %s)",
                  self._label, sorted(done), len(done), sorted(self._claimed_lines), n, lines)
-        # O5 PHO BAN TO DOI = BUOC CUOI cung (sau khi check + thu lam moi o khac - o khac fail van OK).
+        # DOI QUA + BANG 3x3 SU KIEN: chay o DAU pho ban to doi (xem run_event_pre_dungeon).
+        # Goi o day chi de PHONG khi party TAT pho ban to doi -> khong ai goi ham kia.
+        self.run_event_pre_dungeon()
+        # 3) O5 PHO BAN TO DOI = BUOC CUOI (sau khi check + thu lam moi o khac - o khac fail van OK).
         #   Moi acc report o5 da xong chua; LEADER chi chay khi CA party deu chua xong (xem run_party_digioi).
+        #   PHAI o SAU 2 buoc tren: ham nay CHAN o day rat lau (leader danh xong ca 5 tran PB moi ve).
         if heavy and self._o5_team_fn:
             try:
                 self._o5_team_fn(5 in done)

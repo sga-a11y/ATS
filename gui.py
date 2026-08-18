@@ -16,6 +16,44 @@ from tkinter import ttk, messagebox, simpledialog
 
 _LABEL_RE = re.compile(r"^\d\d:\d\d:\d\d \[([^\]]+)\]")
 
+def _os_path_exists_cache():
+    import os
+    try:
+        from bot._appdir import app_dir
+        return os.path.isfile(os.path.join(app_dir(), "event_exchange.json"))
+    except Exception:
+        return os.path.isfile("event_exchange.json")
+
+
+def _reset_event_ticks_if_new_event(cfg):
+    """Su kien doi -> BO TICK 'tu doi qua event' o TAT CA party.
+
+    Tick luu theo id vat pham cua su kien cu; su kien moi dung id khac -> giu lai la doi nham/vo
+    nghia. Bat user tick lai la co y: doi qua la MAT nguyen lieu, khong duoc tu suy dien.
+    """
+    try:
+        from bot import event_exchange as _evx
+        if not _evx.is_new_event():
+            return
+    except Exception:
+        return
+    n = 0
+    for p in (cfg.get("parties") or ()):
+        if p.get("auto_event_exchange") or p.get("event_exchange_items"):
+            p["auto_event_exchange"] = False
+            p["event_exchange_items"] = []
+            n += 1
+    if n:
+        try:
+            messagebox.showinfo(
+                "Sự kiện mới",
+                "Phát hiện sự kiện đổi thưởng MỚI.\n\n"
+                "Đã bỏ tick \"Tự đổi quà event\" ở %d party (quà cũ không còn).\n"
+                "Mở Cài đặt nâng cao → List quà để chọn lại." % n)
+        except Exception:
+            pass
+
+
 class _BundleFirstFinder:
     """Ep code bot lay tu CORE BUNDLE thay vi ban da bien dich san trong .exe.
 
@@ -1864,6 +1902,10 @@ class PartyConfigFrame(ttk.Frame):
         # "Tu don tui do" = cong tong cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
         # Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
         self.auto_bag_clean_var = tk.BooleanVar(value=bool(self._preset.get("auto_bag_clean", True)))
+        # DOI QUA SU KIEN: mac dinh TAT, list rong (khong tu dong doi gi khi user chua tick).
+        self.auto_event_exchange_var = tk.BooleanVar(
+            value=bool(self._preset.get("auto_event_exchange", False)))
+        self.event_exchange_items = list(self._preset.get("event_exchange_items") or [])
         self.auto_discard_junk_var = tk.BooleanVar(value=bool(self._preset.get("auto_discard_junk", True)))
         self.auto_decompose_scrolls_var = tk.BooleanVar(
             value=bool(self._preset.get("auto_decompose_scrolls", False)))
@@ -3228,6 +3270,50 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Button(bar, text="Lưu", command=_save).pack(side="left")
         ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="left", padx=(8, 0))
 
+    def _open_event_exchange_list(self):
+        """Chi hien QUA CUOI cua su kien (event_exchange.py phan loai tu dong, khong hardcode ten)
+        -> su kien thang sau doi nhiem vu/vat pham van chay. Nguyen lieu trung gian KHONG hien:
+        bot tu truy nguoc chuoi khi doi."""
+        from bot import event_exchange as _evx
+        rows = []
+        for line in _evx.options_from_cache():
+            key, _, label = line.partition("\t")
+            rows.append((key, label))
+        if not rows and not _os_path_exists_cache():
+            messagebox.showinfo(
+                "Chưa có dữ liệu",
+                "Chưa có dữ liệu đổi thưởng.\n\n"
+                "Danh sách này do BOT ghi lại khi đăng nhập "
+                "(server gửi khi vào game). Chạy bot 1 lần rồi mở lại.")
+            return
+        if not rows:
+            messagebox.showinfo("Không có quà",
+                                "Sự kiện hiện tại không có mục đổi quà cuối nào.")
+            return
+        win = tk.Toplevel(self)
+        win.title("Chọn quà event muốn tự đổi")
+        win.transient(self.winfo_toplevel())
+        win.grab_set()
+        ttk.Label(win, text="Chỉ hiện QUÀ CUỐI. Bot tự truy ngược chuỗi nguyên liệu, "
+                            "và CHỈ đổi khi đủ\ntoàn bộ chuỗi (tránh đổi ra nguyên liệu trung gian chiếm túi).",
+                  justify="left").pack(anchor="w", padx=10, pady=(10, 6))
+        picked = set(self.event_exchange_items)
+        vars_ = {}
+        box = ttk.Frame(win)
+        box.pack(fill="both", expand=True, padx=10)
+        for key, label in rows:
+            v = tk.BooleanVar(value=key in picked)
+            vars_[key] = v
+            ttk.Checkbutton(box, text=label, variable=v).pack(anchor="w")
+
+        def _ok():
+            self.event_exchange_items = [k for k, v in vars_.items() if v.get()]
+            win.destroy()
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=10, pady=10)
+        ttk.Button(bar, text="OK", command=_ok).pack(side="right")
+        ttk.Button(bar, text="Huỷ", command=win.destroy).pack(side="right", padx=(0, 6))
+
     def _open_shop_list(self):
         win = tk.Toplevel(self); win.title("List shop"); win.transient(self); win.grab_set()
         win.resizable(False, False)
@@ -3289,6 +3375,11 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.auto_bag_clean_var).pack(side="left")
         ttk.Button(_bag, text="Chi tiết",
                    command=self._open_bag_clean_detail).pack(side="left", padx=(8, 0))
+        _evx = ttk.Frame(frm); _evx.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_evx, text="Tự đổi quà event",
+                        variable=self.auto_event_exchange_var).pack(side="left")
+        ttk.Button(_evx, text="List quà",
+                   command=self._open_event_exchange_list).pack(side="left", padx=(8, 0))
         _shop = ttk.Frame(frm); _shop.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_shop, text="Tự mua shop",
                         variable=self.auto_buy_shop_var).pack(side="left")
@@ -3333,6 +3424,8 @@ class PartyConfigFrame(ttk.Frame):
             "scroll_modes": dict(self.scroll_modes),
             "auto_donate_materials": bool(self.auto_donate_materials_var.get()),
             "material_modes": dict(self.material_modes),
+            "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
+            "event_exchange_items": list(self.event_exchange_items),
             "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
             "shop_items": _shop_items_json({
                 "ho_phu": self.buy_ho_phu_var.get(),
@@ -3368,6 +3461,12 @@ class PartyConfigFrame(ttk.Frame):
         self.auto_discard_junk_var.set(bool(data.get("auto_discard_junk", True)))
         self.auto_decompose_scrolls_var.set(bool(data.get("auto_decompose_scrolls", False)))
         self.scroll_modes = dict(data.get("scroll_modes") or {})
+        # 2 dong duoi TUNG BI THIEU: co trong _advanced_settings_data nhung khong apply nguoc ->
+        # "Ap dung cho cac party khac" khong mang theo cau hinh nguyen lieu quan doan.
+        self.auto_donate_materials_var.set(bool(data.get("auto_donate_materials", True)))
+        self.material_modes = dict(data.get("material_modes") or {})
+        self.auto_event_exchange_var.set(bool(data.get("auto_event_exchange", False)))
+        self.event_exchange_items = list(data.get("event_exchange_items") or [])
         shop_items = _normalize_shop_items(data.get("shop_items"), {
             "ho_phu": data.get("buy_ho_phu", False),
             "thien_chau": data.get("buy_thien_chau", False),
@@ -3580,6 +3679,8 @@ class PartyConfigFrame(ttk.Frame):
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
                 "do_van_tieu": bool(self.van_tieu_var.get()),
                 "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+                "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
+                "event_exchange_items": list(self.event_exchange_items),
                 "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
                 "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
                 "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
@@ -4185,8 +4286,11 @@ class ConfigDialog(tk.Toplevel):
         except Exception:
             return {"channel": 2, "parties": []}
         if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
-            return d["profiles"].get(d.get("active")) or {"channel": 2, "parties": []}
-        return d
+            cfg = d["profiles"].get(d.get("active")) or {"channel": 2, "parties": []}
+        else:
+            cfg = d
+        _reset_event_ticks_if_new_event(cfg)
+        return cfg
 
     PARTIES_PER_GROUP = 10
 

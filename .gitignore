@@ -70,6 +70,9 @@ nuitka-crash-report.xml
 *.dist/
 *.onefile-build/
 scroll_bags.json
+# Bot TU SINH luc chay (danh sach doi thuong su kien tu goi S:124-000) - moi may/moi
+# su kien mot khac -> KHONG theo git; GUI doc file nay canh app.
+event_exchange.json
 team_dungeon_capture_*.txt
 
 # ==== Android (android/) ====

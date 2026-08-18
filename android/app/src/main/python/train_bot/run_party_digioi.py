@@ -330,6 +330,10 @@ account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT
 account_forced_reconnect = set()  # survivor 40NPC bi dong de relogin cung party; KHONG tang disc_gen
 account_forced_reconnect_reason = {}
 account_sync_epoch = {}   # username -> epoch dang chay; != st["sync_epoch"] => ep dong bo (relogin)
+# username -> so lan DA relogin vi 'ket ngoai DG nhung server con gio'. PHAI de o day (khong
+# phai tren client): moi lan relogin, run_account tao GameClient MOI -> dem tren `c` se reset
+# ve 0 -> RELOGIN VO HAN va party treo o hang rao 'x/5 acc xong DG' (dung bug cu can tranh).
+_dg_stuck_relogin = {}
 _start_cancel_generation = 0  # STOP ALL tang so nay de huy chuoi START dang do
 
 
@@ -1155,6 +1159,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         c.auto_discard_junk = bool(pcfg.get("auto_discard_junk", True))
         c.auto_decompose_scrolls = bool(pcfg.get("auto_decompose_scrolls", False))
         c.scroll_modes = _scroll_modes_map(pcfg.get("scroll_modes"))
+        # CUNG LY DO: donate_legion() (dong gop nguyen lieu quan doan) cung nam trong khoi
+        # viec-hang-ngay o TREN cho gan config cu -> gan muon thi material_modes con RONG -> bot
+        # DONG GOP LUON nguyen lieu user danh dau "Giu lai" (mat do). sell_noi_dat() cung doc
+        # auto_donate_materials de ban nguyen lieu khi acc chua co quan doan.
+        c.auto_donate_materials = bool(pcfg.get("auto_donate_materials", True))
+        c.material_modes = _scroll_modes_map(pcfg.get("material_modes"))   # {tid:'keep'} - nguyen lieu GIU
+        # DOI QUA SU KIEN (config CHUNG CA PARTY, o Cai dat nang cao). Gan SOM cung ly do tren:
+        # claim_daily_quests() (goi trong khoi viec-hang-ngay ben duoi) doc 2 bien nay.
+        c.auto_event_exchange = bool(pcfg.get("auto_event_exchange", False))   # mac dinh TAT
+        c.event_exchange_items = list(pcfg.get("event_exchange_items") or [])  # qua CUOI user tick
         _early_sc = pcfg.get("start_city_id", getattr(config, "START_CITY_ID", 0))
         _early_raw_mode = pcfg.get("mode")
         _early_dt_mode = (_early_raw_mode == "digioi_train")
@@ -1322,8 +1336,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         c.default_pet_role = "quest" if mode == "event" else "train"
         # (nhom auto_bag_clean/discard_junk/decompose_scrolls/scroll_modes da gan SOM o tren -
         #  ngay sau khi co pcfg - vi cac ham do duoc goi trong khoi viec-hang-ngay o TREN cho nay.)
-        c.auto_donate_materials = bool(pcfg.get("auto_donate_materials", True))
-        c.material_modes = _scroll_modes_map(pcfg.get("material_modes"))   # {tid:'keep'} - nguyen lieu GIU
         ev = None
         train_safes = []
         if tm is not None:
@@ -1418,7 +1430,32 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # ngoai) van bao con gio: server da ra 12003 va enter_di_gioi_safe() "THANH CONG GIA" (vao
             # 1 nhip roi bi da ra ngay) -> nhanh "remain>=2 -> vao lai DG" lap vo han, khong bao xong
             # (bug that: dv607@12003 treo >7 phut, ca party cho mai). -> ep coi la het gio.
-            _stuck_out = out_of_dg and (time.time() - (getattr(c, "_dg_out_since", None) or time.time())) > 90
+            _stuck_secs = time.time() - (getattr(c, "_dg_out_since", None) or time.time())
+            # SERVER moi la su that: RoleCount 0x1b = so phut DA DUNG (client Logic_Dungeon:
+            # time = (limitTime - RoleCount)*60; LimitTimeDungeon_C.dat: scene 49942, limitIndex
+            # 0x1b, limitTime 120). Chi coi "ket ngoai DG" la HET GIO khi SERVER cung bao gan het.
+            _srv_left = max(0, DIGIOI_LIMIT - int(getattr(c, "digioi_minutes", 0) or 0))
+            _stuck_out = out_of_dg and _stuck_secs > 90 and _srv_left <= 5
+            # KET NGOAI DG lau MA SERVER VAN CON NHIEU GIO -> KHONG phai het gio: truoc day ep coi
+            # la het gio nen acc bi khai tu oan giua luc SYNC KENH DG (bug that user bao: dung o
+            # Trac Quan, bang bao con 58-59 phut; Stop/Start lai la vao DG binh thuong).
+            # -> RELOGIN (dung viec Stop/Start tay ma user lam) thay vi bo pha DG.
+            if not out_of_dg:
+                _dg_stuck_relogin.pop(username, None)   # da vao lai duoc DG -> quen so lan cu
+            if out_of_dg and _stuck_secs > 90 and _srv_left > 5:
+                _n = int(_dg_stuck_relogin.get(username, 0)) + 1
+                _dg_stuck_relogin[username] = _n
+                if _n <= 2:
+                    log.warning("[%s] (%s) KET NGOAI DG %.0fs trong luc %s nhung SERVER con %d phut "
+                                "-> RELOGIN vao lai DG (lan %d/2), KHONG coi la het gio",
+                                label, role, _stuck_secs, reason, _srv_left, _n)
+                    c._dg_out_since = None
+                    _force_supervisor_reconnect(username, c, "ket ngoai DG nhung con gio -> vao lai")
+                    return True
+                log.warning("[%s] (%s) KET NGOAI DG %.0fs, da relogin 2 lan van khong vao lai duoc "
+                            "(server con %d phut) -> danh chiu, coi nhu xong DG",
+                            label, role, _stuck_secs, _srv_left)
+                _stuck_out = True
             if remain <= 0 or (out_of_dg and remain < 2) or _stuck_out:
                 log.warning("[%s] (%s) DG da het trong luc %s (map=%s, con %d phut%s) -> "
                             "chuyen sang cho ca party xong DG",
@@ -4464,6 +4501,14 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
 
 
 def _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, stopped_fn, pcfg):
+    # THU TU user yeu cau: DOI QUA su kien -> NHAN THUONG BANG 3x3 -> roi moi DANH PB TO DOI.
+    # Dat o DAY chu KHONG trong claim_daily_quests: mode TRAIN goi thang ham nay, con
+    # claim_daily_quests chay SAU va chi khi do_daily -> tung lam doi qua khong bao gio chay.
+    # TRUOC ca check auto_team_dungeon: tat PB doi thi van phai doi qua.
+    try:
+        c.run_event_pre_dungeon()
+    except Exception as e:
+        log.warning("[%s] loi doi qua/bang su kien truoc pho ban doi (bo qua): %s", label, e)
     if not pcfg.get("auto_team_dungeon", True):
         return True
     flags = _team_dungeon_flags(pcfg)
@@ -4498,6 +4543,10 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
     dang trong pho ban -> gui 0x06/0x14/0x44 xen vao giua tran -> server khong nhan atk hop le -> turn
     timeout lap lai ~20-25s -> KET CUNG (da xac nhan qua log thuc te: chuba tu "xong daily login ->
     sync kenh + lap party -> teleport" NGAY GIUA LUC dang danh tran 1)."""
+
+    # THU TU user yeu cau: DOI QUA su kien -> NHAN THUONG BANG 3x3 -> roi moi DANH PB TO DOI.
+    # Dat o DAY (khong phai trong claim_daily_quests) vi mode TRAIN goi thang ham nay, con
+    # claim_daily_quests chay SAU va chi khi do_daily -> tung lam doi qua khong bao gio chay.
     with st["lock"]:
         st["o5_done_by"][username] = bool(o5_done)
     has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None
@@ -4749,7 +4798,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         # chen vao giua se lam lech het cac tham so phia sau.
                         auto_bag_clean=True, auto_discard_junk=True,
                         auto_decompose_scrolls=False, scroll_modes=None,
-                        auto_donate_materials=True, material_modes=None):
+                        auto_donate_materials=True, material_modes=None,
+                        auto_event_exchange=False, event_exchange_items=None):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -4784,6 +4834,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "scroll_modes": scroll_modes or {},
         "auto_donate_materials": bool(auto_donate_materials),
         "material_modes": material_modes or {},
+        "auto_event_exchange": bool(auto_event_exchange),
+        "event_exchange_items": list(event_exchange_items or []),
         "auto_buy_shop": bool(auto_buy_shop) if auto_buy_shop is not None else bool(buy_ho_phu or buy_thien_chau or buy_bao_hop),
         "shop_items": config.normalize_shop_items(None, {
             "ho_phu": bool(buy_ho_phu),

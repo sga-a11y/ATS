@@ -246,6 +246,7 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.autoBagClean, party.autoDiscardJunk,
                 party.autoDecomposeScrolls, party.scrollModes,
                 party.autoDonateMaterials, party.materialModes,
+                party.autoEventExchange, party.eventExchangeItems,
             )
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)

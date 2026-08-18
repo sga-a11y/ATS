@@ -59,6 +59,10 @@ data class Party(
     val autoDonateMaterials: Boolean = true,
     // tid_hex -> "keep", CHI chua nguyen lieu user danh dau GIU (mac dinh donate)
     val materialModes: Map<String, String> = emptyMap(),
+    // Tu doi qua su kien (mac dinh TAT, list RONG). Moi phan tu = "kind:itemId" cua QUA CUOI;
+    // bot tu truy nguoc chuoi nguyen lieu (xem bot/event_exchange.py).
+    val autoEventExchange: Boolean = false,
+    val eventExchangeItems: List<String> = emptyList(),
     // Mua shop (mac dinh TAT). Master autoBuyShop + list item ben duoi.
     // Ho Phu: mua 3/ngay. Thien Chau: mua 1/ngay. Bao Hop: mua 1/ngay khi xu > baoHopXuThreshold.
     val autoBuyShop: Boolean = false,
@@ -97,6 +101,8 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     scrollModes = source.scrollModes,
     autoDonateMaterials = source.autoDonateMaterials,
     materialModes = source.materialModes,
+    autoEventExchange = source.autoEventExchange,
+    eventExchangeItems = source.eventExchangeItems,
     autoBuyShop = source.autoBuyShop,
     buyHoPhu = source.buyHoPhu,
     buyThienChau = source.buyThienChau,

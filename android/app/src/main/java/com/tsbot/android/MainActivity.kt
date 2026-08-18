@@ -763,6 +763,8 @@ fun TsBotApp(
             initialScrollModes = partyBeingEdited.scrollModes,
             initialAutoDonateMaterials = partyBeingEdited.autoDonateMaterials,
             initialMaterialModes = partyBeingEdited.materialModes,
+            initialAutoEventExchange = partyBeingEdited.autoEventExchange,
+            initialEventExchangeItems = partyBeingEdited.eventExchangeItems,
             initialAutoBuyShop = partyBeingEdited.autoBuyShop,
             initialBuyHoPhu = partyBeingEdited.buyHoPhu,
             initialBuyThienChau = partyBeingEdited.buyThienChau,
@@ -1609,6 +1611,8 @@ fun AddPartyDialog(
     initialScrollModes: Map<String, String> = emptyMap(),
     initialAutoDonateMaterials: Boolean = true,
     initialMaterialModes: Map<String, String> = emptyMap(),
+    initialAutoEventExchange: Boolean = false,
+    initialEventExchangeItems: List<String> = emptyList(),
     initialAutoBuyShop: Boolean = false,
     initialBuyHoPhu: Boolean = false,
     initialBuyThienChau: Boolean = false,
@@ -1663,6 +1667,9 @@ fun AddPartyDialog(
     var autoDonateMaterials by remember { mutableStateOf(initialAutoDonateMaterials) }
     var materialModes by remember { mutableStateOf(initialMaterialModes) }
     var showMaterialList by remember { mutableStateOf(false) }
+    var autoEventExchange by remember { mutableStateOf(initialAutoEventExchange) }
+    var eventExchangeItems by remember { mutableStateOf(initialEventExchangeItems) }
+    var showEventExchange by remember { mutableStateOf(false) }
     var showBagClean by remember { mutableStateOf(false) }
     var showScrollList by remember { mutableStateOf(false) }
     var autoBuyShop by remember { mutableStateOf(initialAutoBuyShop) }
@@ -2223,6 +2230,8 @@ fun AddPartyDialog(
                             scrollModes = scrollModes,
                             autoDonateMaterials = autoDonateMaterials,
                             materialModes = materialModes,
+                            autoEventExchange = autoEventExchange,
+                            eventExchangeItems = eventExchangeItems,
                             autoBuyShop = autoBuyShop,
                             buyHoPhu = buyHoPhu,
                             buyThienChau = buyThienChau,
@@ -2272,6 +2281,14 @@ fun AddPartyDialog(
                         ) { Text("List") }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoEventExchange, onCheckedChange = { autoEventExchange = it })
+                        Text("Tự đổi quà event")
+                        OutlinedButton(
+                            onClick = { showEventExchange = true },
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) { Text("List quà") }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoDecomposeScrolls, onCheckedChange = { autoDecomposeScrolls = it })
                         Text("Tự phân giải cuộn võ tướng rác")
                         OutlinedButton(
@@ -2299,6 +2316,14 @@ fun AddPartyDialog(
             modes = scrollModes,
             onDismiss = { showScrollList = false },
             onSave = { scrollModes = it; showScrollList = false },
+        )
+    }
+
+    if (showEventExchange) {
+        EventExchangeDialog(
+            picked = eventExchangeItems,
+            onDismiss = { showEventExchange = false },
+            onSave = { eventExchangeItems = it; showEventExchange = false },
         )
     }
 
@@ -3262,6 +3287,71 @@ fun loadDonateMaterials(context: android.content.Context): List<DonateMaterial> 
         }
     }
     return _donateMaterialsCache ?: emptyList()
+}
+
+@Composable
+fun EventExchangeDialog(
+    picked: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (List<String>) -> Unit,
+) {
+    // Danh sach do PYTHON tinh (bot/event_exchange.py: options_from_cache) tu file cache bot ghi
+    // luc dang nhap -> KHONG chep tay sang Kotlin, khong the lech voi ban PC.
+    val rows = remember {
+        try {
+            com.chaquo.python.Python.getInstance()
+                .getModule("train_bot.event_exchange")
+                .callAttr("options_from_cache")
+                .asList()
+                .mapNotNull { line ->
+                    val t = line.toString().split("\t", limit = 2)
+                    if (t.size == 2) t[0] to t[1] else null
+                }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    val state = remember { mutableStateMapOf<String, Boolean>().apply { picked.forEach { put(it, true) } } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Quà event (${rows.size})") },
+        text = {
+            Column {
+                if (rows.isEmpty()) {
+                    Text(
+                        "Chưa có dữ liệu đổi thưởng.\n\nDanh sách này do BOT ghi lại khi đăng " +
+                            "nhập (server gửi). Chạy bot 1 lần rồi mở lại.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    Text(
+                        "Chỉ hiện QUÀ CUỐI. Bot tự truy ngược chuỗi nguyên liệu và CHỈ đổi khi đủ " +
+                            "toàn bộ chuỗi (tránh đổi ra nguyên liệu trung gian chiếm túi).",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                        items(rows.size) { i ->
+                            val (key, label) = rows[i]
+                            val on = state[key] == true
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable { state[key] = !on }
+                                    .padding(vertical = 6.dp),
+                            ) {
+                                Checkbox(checked = on, onCheckedChange = { state[key] = it })
+                                Text(label, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(state.filterValues { it }.keys.toList()) }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
+    )
 }
 
 @Composable
