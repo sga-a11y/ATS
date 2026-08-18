@@ -1928,6 +1928,17 @@ fun AddPartyDialog(
                                 modifier = Modifier.padding(start = 8.dp),
                             ) { Text("Chi tiết") }
                         }
+                        // "Tu doi qua event" thuoc CAI DAT NANG CAO (giong gui.py, ngay sau "Tu don
+                        // tui do"). Truoc day bi dat NHAM trong dialog "Don dep tui do" -> user mo
+                        // Cai dat nang cao khong thay dau, tuong ban APK thieu tinh nang.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = autoEventExchange, onCheckedChange = { autoEventExchange = it })
+                            Text("Tự đổi quà event")
+                            OutlinedButton(
+                                onClick = { showEventExchange = true },
+                                modifier = Modifier.padding(start = 8.dp),
+                            ) { Text("List quà") }
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = autoBuyShop, onCheckedChange = { autoBuyShop = it })
                             Text("Tự mua shop")
@@ -2279,14 +2290,6 @@ fun AddPartyDialog(
                             onClick = { showMaterialList = true },
                             modifier = Modifier.padding(start = 8.dp),
                         ) { Text("List") }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = autoEventExchange, onCheckedChange = { autoEventExchange = it })
-                        Text("Tự đổi quà event")
-                        OutlinedButton(
-                            onClick = { showEventExchange = true },
-                            modifier = Modifier.padding(start = 8.dp),
-                        ) { Text("List quà") }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoDecomposeScrolls, onCheckedChange = { autoDecomposeScrolls = it })
