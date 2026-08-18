@@ -1380,6 +1380,24 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   `1=Huynh, 2=Nguy, 3=Thuc, 4=Ngo, 5=Du`; byte hệ tại `+50`:
   `1=Dia, 2=Thuy, 3=Hoa, 4=Phong`.
 
+## 7o. HỢP VẬT PHẨM (ô7 bingo) — item nào hợp được?
+
+- **Điều kiện nằm ở `restrict` của item** (`ItemData.lua:346` `--[30] 限制`), là **BITMASK**:
+  `1` vứt là mất · `2` không chuyển nhượng · **`4` KHÔNG PHẢI NGUYÊN LIỆU HỢP** ·
+  **`8` KHÔNG THỂ BỊ HỢP** · `16` không bán cho Npc · `32` không gửi ngân hàng.
+- Client lọc item cho tab 合成 bằng **đúng bit 4** (`UICompound.lua:435`):
+  `if bit.band(itemDatas[id].restrict, 4) ~= 0 then return false end`
+- Ví dụ thực tế (user báo): `Bơ Tây 0x6669` restrict=**12**, `Hương Dũng Đại Dược 0x675c` và
+  `Ma Dược 0x675d` restrict=**31** → đều bật bit 4 → KHÔNG hợp được, dù có hồi HP/SP.
+  Item hợp được (Măng Khô/Cá Thu/Thương Dược) đều `restrict = 0`.
+- `items_gamedata.json` nay có thêm trường `restrict` (sinh bởi `tools/crack_items_gamedata.py`).
+  **Đừng lọc theo TÊN** — cách cũ hardcode 2 tên "Hương Dũng" nên sót Bơ Tây và mọi item mới.
+
+> ⚠️ Còn nợ: ~1237 mục trong `items_gamedata.json` có **TÊN LỆCH BẢN GHI** (vd `0x1f41` đang là
+> `"Trang Bị Cấp 40<rác>"` trong khi `.dat` là `"Túi Tình Nhân Đỏ"`) — cùng loại lỗi với bảng NPC
+> cũ. `crack_items_gamedata.py` CHỈ thêm `restrict`, cố ý KHÔNG sửa tên vì đổi tên ảnh hưởng log
+> túi/thông báo/đối chiếu theo tên. Sửa tên phải làm thành việc riêng có kiểm chứng.
+
 ## 7m. NHIỆM VỤ HÀNG NGÀY (BINGO 9 Ô) — opcode 0x5b
 
 - **Mở panel (bulk):** C2S `0x5b 02 00 09 01 00 01 [id 2B][cell] ...` (9 ô, id ô N = `0x2e+N`, vd ô1=0x2f, ô9=0x37).

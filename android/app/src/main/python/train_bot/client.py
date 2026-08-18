@@ -762,7 +762,11 @@ def _load_known_items() -> dict:
 # Bot tra item_id -> biet loai+heal NGAY, KHONG can probe. items_known.json (m khai) uu tien hon.
 _gamedata_items = None
 def _load_gamedata_items() -> dict:
-    """{ item_id_int: {name,hp,sp} } tu items_gamedata.json (622 thuoc HP/SP, crack tu gamedata)."""
+    """{ item_id_int: {name,hp,sp,battle,restrict} } tu items_gamedata.json (crack tu gamedata).
+
+    `restrict` = bitmask han che cua item (ItemData.lua --[30]); bit 4 = KHONG dung lam nguyen
+    lieu HOP - do_combine_item dua vao day de loc (xem RESTRICT_NOT_COMBINE_MATERIAL).
+    """
     global _gamedata_items
     if _gamedata_items is not None:
         return _gamedata_items
@@ -772,7 +776,8 @@ def _load_gamedata_items() -> dict:
         for k, v in data.items():
             iid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
             _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
-                                    "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0))}
+                                    "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0)),
+                                    "restrict": int(v.get("restrict", 0) or 0)}
     return _gamedata_items
 
 _pet_scrolls = None
@@ -4047,7 +4052,12 @@ class GameClient:
         log.info("[%s] Nhan qua quan doan hang ngay", self._label)
 
     # Thuoc cao cap KHONG dung lam nguyen lieu hop (giu lai de danh boss)
-    _COMBINE_EXCLUDE = ("Hương Dũng Ma Dược", "Hương Dũng Đại Dược")
+    # restrict (ItemData.lua:346 --[30]) la BITMASK:
+    #   1 vut la mat | 2 khong chuyen nhuong | 4 KHONG PHAI NGUYEN LIEU HOP | 8 KHONG THE BI HOP
+    #   16 khong ban cho Npc | 32 khong gui ngan hang
+    # Client loc item cho HOP bang DUNG bit 4 (UICompound.lua:435):
+    #   if bit.band(itemDatas[id].restrict, 4) ~= 0 then return false end
+    RESTRICT_NOT_COMBINE_MATERIAL = 4
 
     def do_combine_item(self):
         """HOP VAT PHAM (nhiem vu bingo o 7): hop 2 do an/thuoc -> ra item random.
@@ -4065,7 +4075,10 @@ class GameClient:
                 continue
             if info.get("battle"):     # item hoi sinh (Phuc Hon/Tu Quang) - khong hop
                 continue
-            if any(x in info.get("name", "") for x in self._COMBINE_EXCLUDE):
+            # Loc theo CO trong data (giong client), KHONG theo TEN: hardcode ten truoc day
+            # ("Huong Dung Ma/Dai Duoc") sot "Bo Tay" va moi item moi cua game -> bot gui lenh hop
+            # vo ich (user bao: Bo Tay hoi HP nhung KHONG hop duoc).
+            if info.get("restrict", 0) & self.RESTRICT_NOT_COMBINE_MATERIAL:
                 continue
             pots.append((cnt, idx, tid))
         pots.sort()   # it nhat truoc
