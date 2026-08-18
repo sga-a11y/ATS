@@ -1207,6 +1207,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if pcfg.get("claim_offline_exp", True):
                 c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
             c.claim_mail()          # nhan qua mail + xoa mail da doc (qua bao tri,...)
+            # NHAN QUA THANH TUU (yeu cau user: ngay SAU check mail, LUON chay - khong can tick).
+            # Chi doc 2 bit trong forever-flags (0x51) nen re; tui day thi tu hoan.
+            try:
+                c.claim_achievements()
+            except Exception as e:
+                log.warning("[%s] loi nhan qua thanh tuu (bo qua): %s", label, e)
             c.claim_checkin()       # diem danh hang ngay (tu dem so lan)
             c.claim_14day_gift()    # qua 14 ngay user moi (0x57)
             c.claim_event_14day()   # event tang qua 14 ngay (0x7c) - khac cai tren

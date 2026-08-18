@@ -1398,6 +1398,35 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 > cũ. `crack_items_gamedata.py` CHỈ thêm `restrict`, cố ý KHÔNG sửa tên vì đổi tên ảnh hưởng log
 > túi/thông báo/đối chiếu theo tên. Sửa tên phải làm thành việc riêng có kiểm chứng.
 
+## 7p. THÀNH TỰU — opcode 82 (`0x52`)
+
+- **Giao thức** (`Logic/Achievement.lua`):
+  | Lệnh | Payload | Ý nghĩa |
+  |---|---|---|
+  | `C:082-001` | `[count 1B][id u16]` | báo đã hoàn thành |
+  | `S:082-001` | `[result 1B][id u16]` | 0 OK · 1 không có data · 2 đã xong · 3 chưa đủ · 4 data lỗi |
+  | **`C:082-002`** | `[id u16]` | **NHẬN THƯỞNG** (bot dùng cái này) |
+  | `S:082-002` | `[result 1B]` (+`id u16` nếu OK) | 0 OK · 1 fail |
+- **3 trạng thái hiển thị CHỈ dựa vào 2 BIT** (`UIAchievement.lua:97-116`), KHÔNG dùng
+  `IsComplete()`:
+  `completeFlag` bật + `getFlag` tắt → **có thể nhận** (hiện nút) · cả hai bật → đã nhận (mờ) ·
+  còn lại → đang làm.
+  Hai cờ này là **chỉ số bit trong mảng forever-flags** (gói `0x51` = opcode 81) mà bot đã parse
+  sẵn (`_bitflag_get`) → **không cần tính điều kiện thành tựu**.
+- Client **chỉ gửi nhận khi túi còn chỗ** (`Item.CheckBagIsFull`) — bot theo y hệt, túi đầy thì hoãn.
+- `IsComplete()` (tính cục bộ, 20 loại điều kiện trong `CheckCondition`) chỉ dùng cho: chuỗi tiến
+  độ `(x / y)`, và `CheckAllCompeleteAchievement()` lúc login để gửi `C:082-001`. **Bot chưa làm
+  phần này** — nếu server không tự đánh dấu hoàn thành thì log "N/600 đã hoàn thành" sẽ đứng yên,
+  lúc đó mới cần làm thêm.
+- Data: `AchievementData_C.dat` (600 mục) → `tools/crack_achievements.py` → `achievements.json`.
+  Record **37 byte cố định**; đã verify `4 + 600*37 = 22204` = đúng kích thước file, không cờ nào
+  trùng. Tên lấy từ `TextData_C.dat`.
+- **Lấy file .dat từ MuMu**: `adb` của MuMu ở `E:\Mumu\MuMuPlayerGlobal
+x_maindb.exe`,
+  kết nối `127.0.0.1:7555`, data game ở
+  `/sdcard/Android/data/com.vtcmobile.gz06/files/Data/`. Git Bash tự đổi đường dẫn → phải
+  `MSYS_NO_PATHCONV=1` khi `adb pull`.
+
 ## 7m. NHIỆM VỤ HÀNG NGÀY (BINGO 9 Ô) — opcode 0x5b
 
 - **Mở panel (bulk):** C2S `0x5b 02 00 09 01 00 01 [id 2B][cell] ...` (9 ô, id ô N = `0x2e+N`, vd ô1=0x2f, ô9=0x37).

@@ -780,6 +780,34 @@ def _load_gamedata_items() -> dict:
                                     "restrict": int(v.get("restrict", 0) or 0)}
     return _gamedata_items
 
+_achievements = None
+def _load_achievements() -> dict:
+    """{ id_int: {"name","cf","gf","item","count"} } tu achievements.json.
+
+    cf = complete_flag, gf = get_flag: CHI SO BIT trong mang "forever flags" (goi 0x51 = opcode
+    81) ma bot da parse san. Client ve DUNG 3 trang thai chi bang 2 bit nay (UIAchievement.lua:97):
+        cf BAT + gf TAT -> co the NHAN | cf BAT + gf BAT -> da nhan | con lai -> dang lam
+    Sinh boi tools/crack_achievements.py.
+    """
+    global _achievements
+    if _achievements is not None:
+        return _achievements
+    _achievements = {}
+    data = _load_json_data_file("achievements.json")
+    if isinstance(data, dict):
+        for k, v in data.items():
+            try:
+                aid = int(k)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(v, dict) and v.get("complete_flag") and v.get("get_flag"):
+                _achievements[aid] = {"name": v.get("name", ""),
+                                      "cf": int(v["complete_flag"]), "gf": int(v["get_flag"]),
+                                      "item": int(v.get("item", 0) or 0),
+                                      "count": int(v.get("count", 0) or 0)}
+    return _achievements
+
+
 _pet_scrolls = None
 def _load_pet_scrolls() -> dict:
     """{ tid_int: {"name","npc","vkcd"} } tu pet_scrolls.json - TAT CA cuon goi vo tuong (Bi Cap).
@@ -2359,6 +2387,17 @@ class GameClient:
         # VAN giu id ngoc goc. followIndex != 0 = do cua PET -> bo qua.
         elif opcode == 0x17 and len(pkt) >= 45 and pkt[7:9] == b"\x23\x00":
             self._on_equip_broken(pkt)
+        # THANH TUU (opcode 82): S:082-002 <成就領獎> [result 1B] (+id u16 neu result==0).
+        # result 0 = nhan OK -> server cung set bit getFlag qua 0x51 delta. 1 = fail.
+        elif opcode == 0x52 and len(pkt) >= 10 and pkt[7:9] == b"\x02\x00":
+            _res = pkt[9]
+            if _res == 0 and len(pkt) >= 12:
+                _aid = int.from_bytes(pkt[10:12], "little")
+                _a = _load_achievements().get(_aid) or {}
+                log.info("[%s] Thanh tuu: NHAN OK '%s' (id=%d)",
+                         self._label, _a.get("name", "?"), _aid)
+            elif _res != 0:
+                log.warning("[%s] Thanh tuu: nhan qua THAT BAI (result=%d)", self._label, _res)
         elif opcode == 0x18:
             self._on_mission_steps(pkt)
         # INVENTORY (TUI THAT): S2C 0x17 sub=0500. header [00][count 2B] + record 36B:
@@ -3683,6 +3722,47 @@ class GameClient:
     # capacity = 50 (goc) + (Bag_1[103]+Bag_2[106]+Bag_3[124]) * 5.  Bag_x = RoleCount (0x55, da track).
     # Mua slot = UISell sellId=3 (0x54): query gia sub01, confirm sub02. Tang Bag_1 (max 30 -> +150 slot).
     # Gia = NGUYEN BAO (kind=1), tang dan moi lan.
+    # ---- NHAN QUA THANH TUU (opcode 82) ---------------------------------------------------
+    # Crack client (Logic/Achievement.lua + UI/UIAchievement.lua):
+    #   C:082-002 <成就領獎> +成就ID(2)  -> 0x52 sub 0200 + [id u16 LE]
+    #   S:082-002 [result 1B] (+id u16 neu result==0). result 0 = OK, 1 = fail.
+    # UI chi cho bam nhan khi: not HaveGetFlag() and HaveCompeleteFlag(), va TUI DAY thi khong
+    # nhan (Item.CheckBagIsFull) -> bot theo y het.
+    # KHONG can tinh dieu kien thanh tuu: 3 trang thai deu doc tu 2 BIT trong mang forever-flags
+    # (goi 0x51) ma bot da co (_bitflag_get).
+    def claim_achievements(self, wait: float = 0.35, max_claim: int = 40) -> int:
+        """Nhan thuong cac thanh tuu DA XONG ma CHUA NHAN. Tra so cai da gui lenh nhan."""
+        data = _load_achievements()
+        if not data or not self._bitflags_loaded:
+            return 0
+        if self.bag_free_slots() <= 0:      # client: tui day -> KHONG nhan (qua se roi mat)
+            log.info("[%s] Thanh tuu: TUI DAY -> hoan nhan qua", self._label)
+            return 0
+        pend = [(aid, v) for aid, v in sorted(data.items())
+                if self._bitflag_get(v["cf"]) is True and self._bitflag_get(v["gf"]) is not True]
+        n_done = sum(1 for v in data.values() if self._bitflag_get(v["cf"]) is True)
+        if not pend:
+            log.info("[%s] Thanh tuu: %d/%d da hoan thanh, khong co qua nao cho nhan",
+                     self._label, n_done, len(data))
+            return 0
+        log.info("[%s] Thanh tuu: %d/%d da hoan thanh, %d cai CHUA NHAN qua -> nhan",
+                 self._label, n_done, len(data), len(pend))
+        items = _load_gamedata_items()
+        n = 0
+        for aid, v in pend[:max_claim]:
+            if not self.running or self.bag_free_slots() <= 0:
+                break
+            self.send(0x52, b"\x02\x00" + int(aid).to_bytes(2, "little"))
+            n += 1
+            _it = (items.get(v["item"]) or {}).get("name", "")
+            log.info("[%s] Thanh tuu: nhan qua '%s' -> %s x%d",
+                     self._label, v["name"] or aid, _it or hex(v["item"]), v["count"])
+            time.sleep(wait)
+        if len(pend) > max_claim:
+            log.info("[%s] Thanh tuu: con %d cai chua nhan -> de lan login sau",
+                     self._label, len(pend) - max_claim)
+        return n
+
     _BAG_ROLECOUNT_IDS = (103, 106, 124)
 
     def bag_capacity(self) -> int:
