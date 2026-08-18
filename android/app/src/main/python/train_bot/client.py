@@ -3738,6 +3738,16 @@ class GameClient:
         if self.bag_free_slots() <= 0:      # client: tui day -> KHONG nhan (qua se roi mat)
             log.info("[%s] Thanh tuu: TUI DAY -> hoan nhan qua", self._label)
             return 0
+        # BITMAP CO DU DAI KHONG: co thanh tuu chay toi bit 8000 -> can >= 1000 byte, ma goi 0x51
+        # full chi ~1004 byte TONG (tru header con ~993 -> phu toi bit ~7944). Bit NGOAI bitmap thi
+        # _bitflag_get tra False = "chua hoan thanh" -> bo qua AM THAM. Canh bao ro de biet ngay.
+        _bits = len(self._bitflag_bytes) * 8
+        _out = [aid for aid, v in data.items() if max(v["cf"], v["gf"]) > _bits]
+        if _out:
+            log.warning("[%s] Thanh tuu: bitmap 0x51 chi co %d bit (%d byte) -> %d/%d thanh tuu co "
+                        "co NGOAI bitmap, KHONG doc duoc trang thai (bit max can = %d)",
+                        self._label, _bits, len(self._bitflag_bytes), len(_out), len(data),
+                        max(max(v["cf"], v["gf"]) for v in data.values()))
         pend = [(aid, v) for aid, v in sorted(data.items())
                 if self._bitflag_get(v["cf"]) is True and self._bitflag_get(v["gf"]) is not True]
         n_done = sum(1 for v in data.values() if self._bitflag_get(v["cf"]) is True)
