@@ -4835,7 +4835,10 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "auto_donate_materials": bool(auto_donate_materials),
         "material_modes": material_modes or {},
         "auto_event_exchange": bool(auto_event_exchange),
-        "event_exchange_items": list(event_exchange_items or []),
+        # APK truyen CHUOI noi bang "\n" (xem BotForegroundService.kt); PC truyen list.
+        "event_exchange_items": ([x for x in event_exchange_items.split("\n") if x.strip()]
+                                 if isinstance(event_exchange_items, str)
+                                 else list(event_exchange_items or [])),
         "auto_buy_shop": bool(auto_buy_shop) if auto_buy_shop is not None else bool(buy_ho_phu or buy_thien_chau or buy_bao_hop),
         "shop_items": config.normalize_shop_items(None, {
             "ho_phu": bool(buy_ho_phu),
