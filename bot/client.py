@@ -1286,6 +1286,7 @@ class GameClient:
         # gui/sleep o day); vong lap trong run_party_digioi TIEU THU khi khong con trong tran.
         self.phuc_than_pending = False
         self._active_pet_login = None
+        self._pet_login_logged = None   # chu ky dong log PET login gan nhat
         self._collect_style_flags = {}
         self._collect_card_equipped = []
         self._collect_card_levels = {}
@@ -1537,6 +1538,8 @@ class GameClient:
         self.state.in_battle = False
         self.last_turn_time = 0.0
         self.pos = None   # se duoc 0x03 self-spawn resync ngay sau login
+        self._pet_login_logged = None   # RELOGIN dung lai CUNG object -> khong reset thi dong log
+                                        # "PET login active" cua lan login moi bi nuot
         try:
             self.sock = _open_game_socket(self.host, config.GAME_PORT)
             self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
@@ -2582,6 +2585,7 @@ class GameClient:
                 self.state.active_pet_confirmed = True
                 self.active_pet_slot = None
                 self._active_pet_login = None
+                self._pet_login_logged = None
                 self.pet_name = None
                 self.pet_level = None
                 self.pet_agi = None
@@ -2969,9 +2973,15 @@ class GameClient:
         p.sp = record["sp"]
         p.hp_max = hp_max
         p.sp_max = sp_max
-        log.info("[%s] PET login active slot=%d id=0x%x HP=%d/%d SP=%d/%d AGI=%d",
-                 self._label, record["marker"], record["id"], p.hp, p.hp_max, p.sp, p.sp_max,
-                 self.pet_agi)
+        # Ham nay chay lai MOI LAN co them du lieu cong them (0x0f pet list, 0x5f sub04 co thoi
+        # trang, sub09 the trang bi, cap the) - viec TINH LAI la can, nhung LOG thi thua: luc login
+        # ra 4-5 dong Y HET nhau. Chi log khi ket qua THAT SU doi.
+        _sig = (record["marker"], record["id"], p.hp, p.hp_max, p.sp, p.sp_max, self.pet_agi)
+        if _sig != getattr(self, "_pet_login_logged", None):
+            self._pet_login_logged = _sig
+            log.info("[%s] PET login active slot=%d id=0x%x HP=%d/%d SP=%d/%d AGI=%d",
+                     self._label, record["marker"], record["id"], p.hp, p.hp_max, p.sp, p.sp_max,
+                     self.pet_agi)
 
     def _parse_char_login_int(self, pkt: bytes):
         body = pkt[7:]
