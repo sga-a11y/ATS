@@ -1258,7 +1258,11 @@ dung yen thi quai lao vao danh). Di Gioi thi danh duoc binh thuong.
 0x19 2900f0 | 0x2b 0400 | 0x01 1000 | 0x7c 0400 | 0x41 0200 | 0x0c 0100 |
 0x57 0300 | 0x01 1000 | 0x62 020001000000 | 0x41 01003235010100000101000000
 ```
-Quan trong nhat: **0x41 `01003235010100000101000000`** = "dang ky san sang battle".
+**SUA (19/08/2026 - doc client):** `0x41` = opcode 65 = **機關盒 MachineBox**, tuc HOP MAY TU DANH co san cua game (auto-play/treo may), KHONG phai "dang ky san sang battle":
+  - `C:065-001 <啟動機關盒>` = BAT, `C:065-002 <暫停機關盒>` = DUNG (`MachineBox.lua:377-397`). `Function.lua:806` la nut TOGGLE cho user tu bam.
+  - Payload `C:065-001` theo dung thu tu `MachineBox.SetAutoFight`: `[nguong HP% char][nguong SP% char][nguong HP% tuong][nguong SP% tuong][het do hoi HP ve thanh][het do hoi SP ve thanh][char chet ve thanh][tuong chet ve thanh][false][tu dung do exp][tu doi qua ta]`.
+  - Chuoi cu `3235...` la CHEP TU CAPTURE may that: `0x32`=50, `0x35`=53 -> hop may TU DUNG khi HP<50% / SP<53%. **Day la nguyen nhan bug "danh 2 tran roi quai di ngang khong danh nua"** (user bao 19/08). Da doi thanh `0000` -> khong bao gio tu dung, va bot BAT `S:065-002` de arm lai.
+  - **Cau "quan trong nhat la 0x41" ben duoi la QUY SAI CONG**: chinh ghi chu do da viet "gui lai moi 0x41 KHONG du -> phai gui lai TOAN BO chuoi" -> thu co tac dung nam o goi KHAC trong chuoi, CHUA xac dinh duoc la goi nao.
 
 **Bay cuc khó:** DOI KENH (0x07 switch_channel) + LAP PARTY **RESET** trang thai combat-active.
 Gui lai MOI 1 goi 0x41 KHONG du -> phai gui lai **TOAN BO chuoi setup** (`combat_ready()` =

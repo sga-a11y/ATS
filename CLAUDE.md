@@ -16,7 +16,14 @@ cấu trúc gói. Sau khi xác nhận điều mới → cập nhật lại `KNOW
 - **`0x33`** = stat per-turn: chỉ HP_cur/SP_cur/HP_max (0xcd). **KHÔNG có SP_max.**
 - **`0x08`** = stat theo entity: chỉ CHAR (unit 01). **Không mang pet.**
 
-## Mốc kết trận = `0x14 sub0700` (KHÔNG dùng idle/`0x34`)
+## Mốc kết trận (bot dùng) = `0x14 sub0700` (KHÔNG dùng idle/`0x34`)
+> **Lưu ý tên gọi (sửa 19/08/2026):** trong client `S:020-007` là **`<事件換場景>`** (event đổi
+> scene), KHÔNG phải "kết trận". Kết trận thật là **`S:011-000 <結束戰鬥>`** ->
+> `FightManager.FightOver` (đặt `war = None`). Mốc `0x14 sub0700` vẫn dùng được vì thực nghiệm
+> nó tới đúng lúc hết trận, nhưng đừng tưởng đó là gói kết trận của game.
+> **Hết trận client KHÔNG gửi gói nào** — đã đọc cả `FightOver` lẫn `FightField.ExitFight`:
+> không có `Network.Send`. Trận là lớp phủ cùng scene (`fightRoot:SetActive(false)`), không đổi
+> scene nên cũng không có `C:012-001 <換場景完畢>`. Đừng đi tìm "gói ready sau trận", không có.
 `0x34` bắn thất thường (1 lần/nhiều trận). `in_combat()` / `quest_mode` / reset phải bám
 `state.in_battle` (set mỗi lượt `0x35` + `0x34`, HẠ ở `0x14 sub0700` END thật). Đừng ép hết-trận theo
 idle ngắn → nghỉ giữa lượt quest có thể >13s → hồi item/vào gate giữa trận.

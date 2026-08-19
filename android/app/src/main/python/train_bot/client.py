@@ -1489,7 +1489,15 @@ class GameClient:
                # game client gui 2 goi 0x62: 020002 (trigger server day frame 0x51 daily-reward) + 020001.
                # Thieu 020002 -> bot KHONG nhan 0x51 -> khong biet line da nhan.
                (0x62, "020002000000"), (0x62, "020001000000"),
-               (0x41, "01003235010100000101000000")]
+               # C:065-001 <啟動機關盒> (MachineBox.lua:377-389). Thu tu truong:
+               #   [nguong HP% char][nguong SP% char][nguong HP% tuong][nguong SP% tuong]
+               #   [het do hoi HP ve thanh][het do hoi SP ve thanh][char chet ve thanh]
+               #   [tuong chet ve thanh][false][tu dung do exp][tu doi qua ta]
+               # Chuoi cu "3235 0101 ..." la CHEP TU CAPTURE cua may that: 0x32=50, 0x35=53 ->
+               # HOP MAY TU DUNG khi HP<50% hoac SP<53%. Danh vai tran la SP tut qua nguong ->
+               # bot dung tu danh, quai di ngang KHONG danh nua (bug user bao). Bot tu quan ly
+               # hoi HP/SP rieng nen dat het nguong = 0 -> hop may KHONG bao gio tu dung.
+               (0x41, "01000000010100000101000000")]
         for op, pl in seq:
             try:
                 self.send(op, bytes.fromhex(pl))
@@ -2398,6 +2406,21 @@ class GameClient:
                          self._label, _a.get("name", "?"), _aid)
             elif _res != 0:
                 log.warning("[%s] Thanh tuu: nhan qua THAT BAI (result=%d)", self._label, _res)
+        # S:065-002 <暫停機關盒> (protocal.lua:11551): server bao HOP MAY DA DUNG -> char thoi tu
+        # danh, quai di ngang qua ma khong vao tran. Truoc day bot KHONG doc goi nay -> bi dung ma
+        # khong he biet, dung ngay den khi user phat hien. Bat lai va tu ARM lai (chi gui 0x41
+        # start, KHONG ca _login_setup vi trong do co 0x7c/0x62 gay side-effect). Cach nhau it
+        # nhat 30s de neu server co ly do dung that thi khong thanh vong gui lien tuc.
+        elif opcode == 0x41 and len(pkt) >= 9 and pkt[7:9] == b"\x02\x00":
+            _last = getattr(self, "_machinebox_rearm_at", 0.0)
+            log.warning("[%s] HOP MAY bi server DUNG (S:065-002) -> quai se khong vao tran", self._label)
+            if time.time() - _last >= 30.0:
+                self._machinebox_rearm_at = time.time()
+                try:
+                    self.send(0x41, bytes.fromhex("01000000010100000101000000"))
+                    log.info("[%s] -> da bat lai hop may", self._label)
+                except OSError:
+                    pass
         elif opcode == 0x18:
             self._on_mission_steps(pkt)
         # INVENTORY (TUI THAT): S2C 0x17 sub=0500. header [00][count 2B] + record 36B:
