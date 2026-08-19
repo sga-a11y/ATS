@@ -3381,10 +3381,6 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.auto_bag_clean_var).pack(side="left")
         ttk.Button(_bag, text="Chi tiết",
                    command=self._open_bag_clean_detail).pack(side="left", padx=(8, 0))
-        ttk.Checkbutton(frm, text="Char chết về thành",
-                        variable=self.death_return_town_var).pack(anchor="w", pady=(4, 0))
-        ttk.Checkbutton(frm, text="Pet chết về thành",
-                        variable=self.pet_death_return_town_var).pack(anchor="w", pady=(4, 0))
         _evx = ttk.Frame(frm); _evx.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_evx, text="Tự đổi quà event",
                         variable=self.auto_event_exchange_var).pack(side="left")
@@ -3409,6 +3405,10 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Label(_sp, text="khi tổng SP có thể hồi từ item trong túi <").pack(side="left", padx=(6, 0))
         ttk.Entry(_sp, textvariable=self.sp_thresh_var, width=9).pack(side="left", padx=(4, 0))
         # (Cap quai Di Gioi da chuyen ra setting mode Di Gioi ngoai - khong lap lai o day)
+        ttk.Checkbutton(frm, text="Char chết về thành",
+                        variable=self.death_return_town_var).pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(frm, text="Pet chết về thành",
+                        variable=self.pet_death_return_town_var).pack(anchor="w", pady=(4, 0))
         bar = ttk.Frame(frm); bar.pack(fill="x", pady=(12, 0))
         if self.on_apply_advanced_to_all:
             ttk.Button(bar, text="Áp dụng cho các party khác",

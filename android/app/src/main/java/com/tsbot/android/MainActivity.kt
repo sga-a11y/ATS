@@ -1929,16 +1929,6 @@ fun AddPartyDialog(
                             Text("Vận tiêu (nhận quà + gửi pet)")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = deathReturnTown,
-                                onCheckedChange = { deathReturnTown = it })
-                            Text("Char chết về thành")
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = petDeathReturnTown,
-                                onCheckedChange = { petDeathReturnTown = it })
-                            Text("Pet chết về thành")
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = autoBagClean, onCheckedChange = { autoBagClean = it })
                             Text("Tự dọn túi đồ")
                             OutlinedButton(
@@ -2002,6 +1992,16 @@ fun AddPartyDialog(
                                 modifier = Modifier.width(104.dp).padding(start = 6.dp),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = deathReturnTown,
+                                onCheckedChange = { deathReturnTown = it })
+                            Text("Char chết về thành")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = petDeathReturnTown,
+                                onCheckedChange = { petDeathReturnTown = it })
+                            Text("Pet chết về thành")
                         }
                         // (Cap quai Di Gioi da chuyen ra section mode Di Gioi ngoai - khong lap lai o day)
                         if (onApplyAdvancedToAll != null) {
