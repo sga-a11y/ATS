@@ -55,5 +55,6 @@ object Servers {
         // id 16 = Bang Thong DA DONG (loi ky thuat) -> nhay thang 17, khong phai thieu sot
         "dien_vi" to Info("Điển Vi", "103.190.202.60", 17),
         "truong_lieu" to Info("Trương Liêu", "103.190.202.61", 18),
+        "dong_trac" to Info("Đồng Trác", "103.190.202.63", 19),
     )
 }
