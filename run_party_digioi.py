@@ -4698,6 +4698,24 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
             account_forced_reconnect.add(username)
             account_forced_reconnect_reason[username] = "ép đồng bộ theo leader"
             log.warning("[%s] EP DONG BO -> relogin bam leader", username)
+        except Exception:
+            # LOI KHONG LUONG TRUOC -> truoc day luong CHET CAM: khong log, khong relogin, GUI van
+            # xanh "CHAY". Acc chet giua chung nen KHONG kip vao st["reconnecting"] -> barrier
+            # reform dem _n_arr + _n_rec KHONG BAO GIO du -> CA PARTY dung hinh vinh vien, chi in
+            # "CHO ca party ve ... - THIEU: <acc>" moi 30s (bug that: party 38 ket 4h38').
+            # Rule TOI THUONG la gom DU party -> phai CUU acc (relogin), TUYET DOI khong bo qua no.
+            log.exception("[%s] LOI CHET LUONG (khong phai ResyncSignal) -> relogin de cuu party",
+                          username)
+            cli = account_clients.get(username)
+            if cli is not None:
+                try: cli.close()
+                except Exception: pass
+            # KHONG dat `forced`: forced = relogin 1s va BO QUA nhanh train_reform (dieu kien
+            # `not forced`). Loi lap lai chac chan se thanh vong crash 1s/lan, va party cung khong
+            # duoc bump reform_gen de gom lai. Luong chet thuc chat LA mot kieu rot -> di duong rot
+            # binh thuong: co backoff 5s/30s/60s + disc_gen + reform_gen nhu moi lan mat ket noi.
+            account_reconnect[username] = True
+            account_forced_reconnect_reason[username] = "luồng lỗi bất ngờ"
         first = False
         if _st() or not account_reconnect.get(username):
             break   # GUI Stop / thoat binh thuong / khong reconnectable -> dung han
