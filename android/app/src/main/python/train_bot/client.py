@@ -1479,25 +1479,41 @@ class GameClient:
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         self._login_setup()   # chuoi setup sau auth -> char thanh combat-active (quai moi aggro)
 
+    def machinebox_payload(self) -> bytes:
+        """Payload C:065-001 <啟動機關盒> - BAT hop may tu danh (MachineBox.lua:377-389).
+
+        Thu tu truong dung y WriteByte/WriteBoolean cua MachineBox.SetAutoFight:
+          [0] nguong HP% char      -> 0x32=50: HP duoi 50% thi hop may UONG BINH len ~50%
+          [1] nguong SP% char      -> 0x35=53   (day la nguong UONG BINH, KHONG phai nguong dung auto)
+          [2] nguong HP% tuong     [3] nguong SP% tuong
+          [4] het binh HP -> ve thanh   [5] het binh SP -> ve thanh   (deu TAT)
+          [6] CHAR chet -> ve thanh     <- theo tick "Char chết về thành"
+          [7] TUONG chet -> ve thanh    <- theo tick "Pet chết về thành"
+          [8] (hang false)  [9] tu dung do EXP  [10] tu doi chuy
+        Client THAT mac dinh BAT ca [6] va [7] (MachineBox.Initialize dong 220) nen 2 tick cung
+        mac dinh BAT -> khong doi hanh vi cu. CLIENT KHONG he tu xu ly 2 co nay (ca file chi co 2
+        dong WriteBoolean, khong cho nao kiem tra "chet chua") -> SERVER thi hanh.
+        """
+        return bytes([0x32, 0x35, 0x01, 0x01, 0x00, 0x00,
+                      1 if getattr(self, "death_return_town", True) else 0,
+                      1 if getattr(self, "pet_death_return_town", True) else 0,
+                      0x00, 0x00, 0x00])
+
     def _login_setup(self):
         """Chuoi C2S client THAT gui NGAY sau auth (capture login.pcap). Thieu chuoi nay ->
         char ket noi nhung KHONG combat-active -> quai tren map thuong NGO LO bot (khong aggro).
-        Quan trong nhat la 0x41 'dang ky san sang battle'. (DG van danh duoc du thieu, nhung map
-        thuong thi BAT BUOC.)"""
+        (DG van danh duoc du thieu, nhung map thuong thi BAT BUOC.)
+
+        LUU Y: ghi chu cu ghi "quan trong nhat la 0x41 dang ky san sang battle" la QUY SAI CONG -
+        0x41 la HOP MAY TU DANH (機關盒), va chinh ghi chu do cung viet "gui lai moi 0x41 KHONG du,
+        phai gui lai TOAN BO chuoi" => thu co tac dung nam o goi KHAC, chua xac dinh duoc goi nao."""
         seq = [(0x19, "2900f0"), (0x2b, "0400"), (0x01, "1000"), (0x7c, "0400"),
                (0x41, "0200"), (0x0c, "0100"), (0x57, "0300"), (0x01, "1000"),
                # game client gui 2 goi 0x62: 020002 (trigger server day frame 0x51 daily-reward) + 020001.
                # Thieu 020002 -> bot KHONG nhan 0x51 -> khong biet line da nhan.
                (0x62, "020002000000"), (0x62, "020001000000"),
-               # C:065-001 <啟動機關盒> (MachineBox.lua:377-389). Thu tu truong:
-               #   [nguong HP% char][nguong SP% char][nguong HP% tuong][nguong SP% tuong]
-               #   [het do hoi HP ve thanh][het do hoi SP ve thanh][char chet ve thanh]
-               #   [tuong chet ve thanh][false][tu dung do exp][tu doi qua ta]
-               # Chuoi cu "3235 0101 ..." la CHEP TU CAPTURE cua may that: 0x32=50, 0x35=53 ->
-               # HOP MAY TU DUNG khi HP<50% hoac SP<53%. Danh vai tran la SP tut qua nguong ->
-               # bot dung tu danh, quai di ngang KHONG danh nua (bug user bao). Bot tu quan ly
-               # hoi HP/SP rieng nen dat het nguong = 0 -> hop may KHONG bao gio tu dung.
-               (0x41, "01000000010100000101000000")]
+               # BAT hop may - 2 co "chet ve thanh" theo tick cua user, xem machinebox_payload()
+               (0x41, "0100" + self.machinebox_payload().hex())]
         for op, pl in seq:
             try:
                 self.send(op, bytes.fromhex(pl))
@@ -2417,7 +2433,7 @@ class GameClient:
             if time.time() - _last >= 30.0:
                 self._machinebox_rearm_at = time.time()
                 try:
-                    self.send(0x41, bytes.fromhex("01000000010100000101000000"))
+                    self.send(0x41, b"\x01\x00" + self.machinebox_payload())
                     log.info("[%s] -> da bat lai hop may", self._label)
                 except OSError:
                     pass

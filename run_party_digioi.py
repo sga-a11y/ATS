@@ -1093,6 +1093,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 c._o5_team_fn = (lambda o5d, _c=c:
                                  _handle_o5_team(_c, st, username, label, pidx, is_leader, _stopped, o5d))
                 c.submit_delay = 0.3
+                # 2 co "chet -> ve thanh" cua HOP MAY: phai set TRUOC connect() vi chuoi 0x41 duoc
+                # gui ngay trong connect(). Doc thang config.PARTY_CONFIG chu khong dung bien pcfg
+                # (pcfg mai dong ~1153 moi co, tuc SAU connect). Mac dinh BAT = giong client that.
+                _pc0 = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
+                c.death_return_town = bool(_pc0.get("death_return_town", True))
+                c.pet_death_return_town = bool(_pc0.get("pet_death_return_town", True))
                 c.connect()
                 # cho self_entity + map (map=None = chua vao world xong)
                 for _ in range(15):
@@ -4823,7 +4829,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         auto_bag_clean=True, auto_discard_junk=True,
                         auto_decompose_scrolls=False, scroll_modes=None,
                         auto_donate_materials=True, material_modes=None,
-                        auto_event_exchange=False, event_exchange_items=None):
+                        auto_event_exchange=False, event_exchange_items=None,
+                        death_return_town=True, pet_death_return_town=True):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -4852,6 +4859,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "fight_legion_boss": bool(fight_legion_boss),
         "do_van_tieu": bool(do_van_tieu),
         "auto_sell_noi_dat": bool(auto_sell_noi_dat),
+        "death_return_town": bool(death_return_town),
+        "pet_death_return_town": bool(pet_death_return_town),
         "auto_bag_clean": bool(auto_bag_clean),
         "auto_discard_junk": bool(auto_discard_junk),
         "auto_decompose_scrolls": bool(auto_decompose_scrolls),

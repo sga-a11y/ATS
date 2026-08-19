@@ -1261,7 +1261,20 @@ dung yen thi quai lao vao danh). Di Gioi thi danh duoc binh thuong.
 **SUA (19/08/2026 - doc client):** `0x41` = opcode 65 = **機關盒 MachineBox**, tuc HOP MAY TU DANH co san cua game (auto-play/treo may), KHONG phai "dang ky san sang battle":
   - `C:065-001 <啟動機關盒>` = BAT, `C:065-002 <暫停機關盒>` = DUNG (`MachineBox.lua:377-397`). `Function.lua:806` la nut TOGGLE cho user tu bam.
   - Payload `C:065-001` theo dung thu tu `MachineBox.SetAutoFight`: `[nguong HP% char][nguong SP% char][nguong HP% tuong][nguong SP% tuong][het do hoi HP ve thanh][het do hoi SP ve thanh][char chet ve thanh][tuong chet ve thanh][false][tu dung do exp][tu doi qua ta]`.
-  - Chuoi cu `3235...` la CHEP TU CAPTURE may that: `0x32`=50, `0x35`=53 -> hop may TU DUNG khi HP<50% / SP<53%. **Day la nguyen nhan bug "danh 2 tran roi quai di ngang khong danh nua"** (user bao 19/08). Da doi thanh `0000` -> khong bao gio tu dung, va bot BAT `S:065-002` de arm lai.
+  - `3235` = `0x32`/`0x35` = 50%/53% la **NGUONG UONG BINH**, KHONG phai nguong dung auto:
+    `MachineBox.lua:755` `needHp = ceil(MaxHp * playerHp * 0.01) - Hp` roi uong binh cho DU
+    nguong (hoi LEN TOI nguong, khong phai hoi day; lam tron len nen thuong vuot 1 binh).
+    **CHAN DOAN SAI DA BI BAC (19/08):** tung ket luan "SP tut duoi 53% -> hop may tu dung ->
+    quai khong danh nua" va da doi thanh `0000`; user bac dung -> DA TRA LAI `3235`. Dat `0000`
+    con CO HAI: hop may khong bao gio uong binh nua.
+  - Thu THUC SU lam dung auto la 3 co "ve thanh": het binh HP/SP (2 co dau, dang TAT) va
+    **CHET** (byte 7 = char chet, byte 8 = tuong chet - deu BAT theo mac dinh client that).
+    Client KHONG tu xu ly 2 co nay (ca file chi co 2 dong `WriteBoolean`, khong cho nao kiem
+    tra "chet chua") -> **SERVER thi hanh**. Da lam 2 tick trong Cai dat nang cao
+    ("Char chet ve thanh" / "Pet chet ve thanh", mac dinh BAT) -> `client.machinebox_payload()`.
+  - Bot da BAT `S:065-002` (truoc day khong doc): log `HOP MAY bi server DUNG` + tu arm lai,
+    throttle 30s. **Nguyen nhan that cua bug "danh 2 tran roi thoi" VAN CHUA XAC DINH** - dong
+    log nay chinh la thu de xac dinh lan toi.
   - **Cau "quan trong nhat la 0x41" ben duoi la QUY SAI CONG**: chinh ghi chu do da viet "gui lai moi 0x41 KHONG du -> phai gui lai TOAN BO chuoi" -> thu co tac dung nam o goi KHAC trong chuoi, CHUA xac dinh duoc la goi nao.
 
 **Bay cuc khó:** DOI KENH (0x07 switch_channel) + LAP PARTY **RESET** trang thai combat-active.

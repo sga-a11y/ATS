@@ -50,6 +50,10 @@ data class Party(
     val autoSellNoiDat: Boolean = true,
     // "Tu don tui do" = CONG TONG cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
     // Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
+    // 2 co cua HOP MAY (0x41 C:065-001): SERVER keo ve thanh khi chet (client chi gui co,
+    // khong tu xu ly). Mac dinh BAT = giong client that (MachineBox.Initialize).
+    val deathReturnTown: Boolean = true,
+    val petDeathReturnTown: Boolean = true,
     val autoBagClean: Boolean = true,
     val autoDiscardJunk: Boolean = true,
     val autoDecomposeScrolls: Boolean = false,
@@ -95,6 +99,8 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     fightLegionBoss = source.fightLegionBoss,
     doVanTieu = source.doVanTieu,
     autoSellNoiDat = source.autoSellNoiDat,
+    deathReturnTown = source.deathReturnTown,
+    petDeathReturnTown = source.petDeathReturnTown,
     autoBagClean = source.autoBagClean,
     autoDiscardJunk = source.autoDiscardJunk,
     autoDecomposeScrolls = source.autoDecomposeScrolls,

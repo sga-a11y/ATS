@@ -84,6 +84,8 @@ class PartyStore(private val context: Context) {
                 fightLegionBoss = o.optBoolean("fight_legion_boss", true),
                 doVanTieu = o.optBoolean("do_van_tieu", true),
                 autoSellNoiDat = o.optBoolean("auto_sell_noi_dat", true),
+                deathReturnTown = o.optBoolean("death_return_town", true),
+                petDeathReturnTown = o.optBoolean("pet_death_return_town", true),
                 autoBagClean = o.optBoolean("auto_bag_clean", true),
                 autoDiscardJunk = o.optBoolean("auto_discard_junk", true),
                 autoDecomposeScrolls = o.optBoolean("auto_decompose_scrolls", false),
@@ -149,6 +151,8 @@ class PartyStore(private val context: Context) {
             o.put("fight_legion_boss", p.fightLegionBoss)
             o.put("do_van_tieu", p.doVanTieu)
             o.put("auto_sell_noi_dat", p.autoSellNoiDat)
+            o.put("death_return_town", p.deathReturnTown)
+            o.put("pet_death_return_town", p.petDeathReturnTown)
             o.put("auto_bag_clean", p.autoBagClean)
             o.put("auto_discard_junk", p.autoDiscardJunk)
             o.put("auto_decompose_scrolls", p.autoDecomposeScrolls)

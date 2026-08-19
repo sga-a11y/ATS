@@ -240,6 +240,7 @@ _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831
                   "auto_world_boss": True,
                   "auto_team_dungeon": True, "team_dungeons": _team_dungeons_json(DEFAULT_TEAM_DUNGEONS),
                   "auto_sell_noi_dat": True, "auto_bag_clean": True,
+                  "death_return_town": True, "pet_death_return_town": True,
                   "auto_discard_junk": True, "auto_decompose_scrolls": False,
                   "auto_donate_materials": True,
                   "auto_buy_shop": False,
@@ -1902,6 +1903,11 @@ class PartyConfigFrame(ttk.Frame):
         # "Tu don tui do" = cong tong cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
         # Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
         self.auto_bag_clean_var = tk.BooleanVar(value=bool(self._preset.get("auto_bag_clean", True)))
+        # 2 co cua HOP MAY (0x41): server keo ve thanh khi chet. Mac dinh BAT = giong client that.
+        self.death_return_town_var = tk.BooleanVar(
+            value=bool(self._preset.get("death_return_town", True)))
+        self.pet_death_return_town_var = tk.BooleanVar(
+            value=bool(self._preset.get("pet_death_return_town", True)))
         # DOI QUA SU KIEN: mac dinh TAT, list rong (khong tu dong doi gi khi user chua tick).
         self.auto_event_exchange_var = tk.BooleanVar(
             value=bool(self._preset.get("auto_event_exchange", False)))
@@ -3375,6 +3381,10 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.auto_bag_clean_var).pack(side="left")
         ttk.Button(_bag, text="Chi tiết",
                    command=self._open_bag_clean_detail).pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(frm, text="Char chết về thành",
+                        variable=self.death_return_town_var).pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(frm, text="Pet chết về thành",
+                        variable=self.pet_death_return_town_var).pack(anchor="w", pady=(4, 0))
         _evx = ttk.Frame(frm); _evx.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_evx, text="Tự đổi quà event",
                         variable=self.auto_event_exchange_var).pack(side="left")
@@ -3418,6 +3428,8 @@ class PartyConfigFrame(ttk.Frame):
             "fight_legion_boss": bool(self.fight_boss_var.get()),
             "do_van_tieu": bool(self.van_tieu_var.get()),
             "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+            "death_return_town": bool(self.death_return_town_var.get()),
+            "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
             "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
             "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
             "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
@@ -3457,6 +3469,8 @@ class PartyConfigFrame(ttk.Frame):
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
         self.van_tieu_var.set(bool(data.get("do_van_tieu", True)))
         self.auto_sell_noi_dat_var.set(bool(data.get("auto_sell_noi_dat", True)))
+        self.death_return_town_var.set(bool(data.get("death_return_town", True)))
+        self.pet_death_return_town_var.set(bool(data.get("pet_death_return_town", True)))
         self.auto_bag_clean_var.set(bool(data.get("auto_bag_clean", True)))
         self.auto_discard_junk_var.set(bool(data.get("auto_discard_junk", True)))
         self.auto_decompose_scrolls_var.set(bool(data.get("auto_decompose_scrolls", False)))
@@ -3681,6 +3695,8 @@ class PartyConfigFrame(ttk.Frame):
                 "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
                 "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
                 "event_exchange_items": list(self.event_exchange_items),
+                "death_return_town": bool(self.death_return_town_var.get()),
+                "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
                 "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
                 "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
                 "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),

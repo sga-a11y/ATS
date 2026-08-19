@@ -250,6 +250,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 // thang List<String>: ban release bi R8 rut gon ten lop -> Chaquopy bao
                 // "TypeError: 't' object is not iterable" (loi APK 1.1.202608181827).
                 party.autoEventExchange, party.eventExchangeItems.joinToString("\n"),
+                // 2 co "chet -> ve thanh" cua HOP MAY. THEM O CUOI CUNG (goi theo VI TRI).
+                party.deathReturnTown, party.petDeathReturnTown,
             )
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)

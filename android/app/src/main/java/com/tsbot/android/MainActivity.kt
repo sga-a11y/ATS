@@ -757,6 +757,8 @@ fun TsBotApp(
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
             initialDoVanTieu = partyBeingEdited.doVanTieu,
             initialAutoSellNoiDat = partyBeingEdited.autoSellNoiDat,
+            initialDeathReturnTown = partyBeingEdited.deathReturnTown,
+            initialPetDeathReturnTown = partyBeingEdited.petDeathReturnTown,
             initialAutoBagClean = partyBeingEdited.autoBagClean,
             initialAutoDiscardJunk = partyBeingEdited.autoDiscardJunk,
             initialAutoDecomposeScrolls = partyBeingEdited.autoDecomposeScrolls,
@@ -1605,6 +1607,8 @@ fun AddPartyDialog(
     initialFightLegionBoss: Boolean = true,
     initialDoVanTieu: Boolean = true,
     initialAutoSellNoiDat: Boolean = true,
+    initialDeathReturnTown: Boolean = true,
+    initialPetDeathReturnTown: Boolean = true,
     initialAutoBagClean: Boolean = true,
     initialAutoDiscardJunk: Boolean = true,
     initialAutoDecomposeScrolls: Boolean = false,
@@ -1660,6 +1664,8 @@ fun AddPartyDialog(
     var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
     var doVanTieu by remember { mutableStateOf(initialDoVanTieu) }
     var autoSellNoiDat by remember { mutableStateOf(initialAutoSellNoiDat) }
+    var deathReturnTown by remember { mutableStateOf(initialDeathReturnTown) }
+    var petDeathReturnTown by remember { mutableStateOf(initialPetDeathReturnTown) }
     var autoBagClean by remember { mutableStateOf(initialAutoBagClean) }
     var autoDiscardJunk by remember { mutableStateOf(initialAutoDiscardJunk) }
     var autoDecomposeScrolls by remember { mutableStateOf(initialAutoDecomposeScrolls) }
@@ -1718,6 +1724,8 @@ fun AddPartyDialog(
         fightLegionBoss = fightLegionBoss,
         doVanTieu = doVanTieu,
         autoSellNoiDat = autoSellNoiDat,
+        deathReturnTown = deathReturnTown,
+        petDeathReturnTown = petDeathReturnTown,
         autoBagClean = autoBagClean,
         autoDiscardJunk = autoDiscardJunk,
         autoDecomposeScrolls = autoDecomposeScrolls,
@@ -1919,6 +1927,16 @@ fun AddPartyDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = doVanTieu, onCheckedChange = { doVanTieu = it })
                             Text("Vận tiêu (nhận quà + gửi pet)")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = deathReturnTown,
+                                onCheckedChange = { deathReturnTown = it })
+                            Text("Char chết về thành")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = petDeathReturnTown,
+                                onCheckedChange = { petDeathReturnTown = it })
+                            Text("Pet chết về thành")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = autoBagClean, onCheckedChange = { autoBagClean = it })
@@ -2235,6 +2253,8 @@ fun AddPartyDialog(
                             fightLegionBoss = fightLegionBoss,
                             doVanTieu = doVanTieu,
                             autoSellNoiDat = autoSellNoiDat,
+                            deathReturnTown = deathReturnTown,
+                            petDeathReturnTown = petDeathReturnTown,
                             autoBagClean = autoBagClean,
                             autoDiscardJunk = autoDiscardJunk,
                             autoDecomposeScrolls = autoDecomposeScrolls,
