@@ -1649,6 +1649,12 @@ class GameClient:
         LUU Y: ghi chu cu ghi "quan trong nhat la 0x41 dang ky san sang battle" la QUY SAI CONG -
         0x41 la HOP MAY TU DANH (機關盒), va chinh ghi chu do cung viet "gui lai moi 0x41 KHONG du,
         phai gui lai TOAN BO chuoi" => thu co tac dung nam o goi KHAC, chua xac dinh duoc goi nao."""
+        # Chuoi nay CO CHU Y gui 0x41 0200 (C:065-002 = TAM DUNG hop may) roi cuoi chuoi moi BAT
+        # lai. Server ACK lenh do bang S:065-002 -> handler bat S:065-002 phai BIET day la ACK
+        # cua CHINH MINH, khong thi no tuong bi dung ngoai y muon va CHEN goi bat-lai vao GIUA
+        # chuoi login (log that 22:46:51 acc dieubon: 0x41 0200 -> 0x41 start CHEN -> 0x0c 0100 ...
+        # -> chuoi lai gui start lan 2). Dat moc truoc khi gui de handler bo qua.
+        self._machinebox_pause_sent_at = time.time()
         seq = [(0x19, "2900f0"), (0x2b, "0400"), (0x01, "1000"), (0x7c, "0400"),
                (0x41, "0200"), (0x0c, "0100"), (0x57, "0300"), (0x01, "1000"),
                # game client gui 2 goi 0x62: 020002 (trigger server day frame 0x51 daily-reward) + 020001.
@@ -2607,6 +2613,11 @@ class GameClient:
         # start, KHONG ca _login_setup vi trong do co 0x7c/0x62 gay side-effect). Cach nhau it
         # nhat 30s de neu server co ly do dung that thi khong thanh vong gui lien tuc.
         elif opcode == 0x41 and len(pkt) >= 9 and pkt[7:9] == b"\x02\x00":
+            # ACK cua CHINH MINH: _login_setup co chu y gui 0x41 0200 roi moi BAT lai o cuoi chuoi.
+            # Khong loc thi bot tu chen goi bat-lai vao GIUA chuoi login (xem ghi chu o _login_setup)
+            # -> vua thua, vua co nguy co lam hong trinh tu dang nhap.
+            if time.time() - float(getattr(self, "_machinebox_pause_sent_at", 0.0) or 0.0) < 10.0:
+                return
             _last = getattr(self, "_machinebox_rearm_at", 0.0)
             log.warning("[%s] HOP MAY bi server DUNG (S:065-002) -> quai se khong vao tran", self._label)
             if time.time() - _last >= 30.0:
