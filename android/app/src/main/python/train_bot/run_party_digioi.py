@@ -1959,30 +1959,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if _sync_gen_moved():     # ca party sang reform gen moi -> thoat, re-reform theo gen moi
                         log.info("[%s] (member) reform gen doi luc cho kenh -> thoat sync, dong bo lai", label)
                         return False
-                    # DEADLOCK CHEO PHA (bug that party 4, 20/08 22:12): member di duong KHAC
-                    # (vd xong pho ban don -> bi dump ra thanh -> vao sync kenh) nen KHONG qua barrier
-                    # reform; leader thi dang DUNG O BARRIER cho member bao "da toi". Member cho
-                    # channel_ready (chi leader/picker set SAU khi barrier nha) -> leader cho member,
-                    # member cho leader. Log that: 4 member IM LANG hon 2 phut, leader in
-                    # "CHO ca party ve thanh 23001 (1/5)" moi 30s trong khi CA 4 DANG DUNG DUNG map do.
-                    # Timeout 60s cua _wait_channel_map_reports KHONG cuu duoc vi no o chang SAU.
-                    # Loi thoat duy nhat cua vong nay la _sync_gen_moved(), ma nguoi bump reform_gen
-                    # lai chinh la leader dang ket -> cho VO HAN.
-                    # -> Het gio thi TU bump reform_gen: member thoat qua _sync_gen_moved(), leader
-                    # thoat qua _ab() (= reform_gen > _g0). Ca party lam lai reform tu dau, KHONG BO
-                    # AI LAI (rule toi thuong: phai gom du party).
-                    _ck_t0 = time.time()
                     while not st["channel_ready"].wait(5):
                         if not c.running or _stopped():
                             return
-                        if time.time() - _ck_t0 > 120:
-                            with st["lock"]:
-                                st["reform_gen"] += 1
-                                _gen_now = st["reform_gen"]
-                            log.warning("[%s] (member) cho channel_ready QUA 120s (nghi deadlock cheo "
-                                        "pha voi leader) -> bump reform gen %d, ca party reform lai",
-                                        label, _gen_now)
-                            return False
                         _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                         if _finish_digioi_train_if_time_over("sync kenh DG (member wait)"):
                             return True
@@ -2295,10 +2274,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         # ca party dung hinh (bug that: party 38 ket 4h38', party 41 log 13:52).
                         # Fix truoc chi cuu duoc luong acc CHET. Qua han -> LEADER ep relogin acc ket:
                         # duong reconnect se gom lai tu dau, mat vai chuc giay con hon ket ca gio.
-                        if is_leader and time.time() - _barrier_t0 > BARRIER_RESCUE_SEC:
+                        # PHAN BIET "KET" voi "BAN THAT" thay vi chi nhin dong ho: truoc day het
+                        # BARRIER_RESCUE_SEC la relogin MOI acc chua ve, ke ca acc dang danh dungeon
+                        # ngon lanh -> vi so da nham nen deadline phai de tan 4', khien acc KET THAT
+                        # cung phai cho 4'. Tuoi hoat dong (get_account_activity) phan biet duoc ngay:
+                        # acc dang lam viec cap nhat lien tuc (1-5s), acc ket thi tuoi tang vo han
+                        # (party 38: 16667s; party 4: 4 member im hon 2').
+                        # -> acc IM QUA BARRIER_STALE_SEC: cuu SOM o moc BARRIER_STALE_RESCUE_SEC.
+                        # -> acc VAN BAO tien do: giu nguyen han cu BARRIER_RESCUE_SEC (khong pha ngang).
+                        _barrier_el = time.time() - _barrier_t0
+                        if is_leader and _barrier_el > BARRIER_STALE_RESCUE_SEC:
+                            def _acc_stuck(_u):
+                                if _barrier_el > BARRIER_RESCUE_SEC:
+                                    return True          # han cung: cuu tat ca, du dang bao tien do
+                                _a = get_account_activity(_u)
+                                return _a is None or _a[2] > BARRIER_STALE_SEC
                             _stuck = [
                                 _u for _u, _up, _uil, _uip in party_accounts(pidx)
                                 if _arr_gen.get(_u) != _target_city and _u not in st["reconnecting"]
+                                and _acc_stuck(_u)
                             ]
                             for _u in _stuck:
                                 _uc = account_clients.get(_u)
@@ -2311,7 +2305,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                                                 "ket o barrier reform")
                                 else:
                                     account_reconnect[_u] = True
-                            _barrier_t0 = time.time()   # cho vong cuu tiep theo
+                            if _stuck:
+                                # CHI reset khi THUC SU co cuu ai do. Reset vo dieu kien =
+                                # moi vong lai lui moc -> han cung BARRIER_RESCUE_SEC khong bao
+                                # gio toi duoc, acc bao tien do gia (vd ket trong vong co log)
+                                # se cho MAI MAI.
+                                _barrier_t0 = time.time()   # cho vong cuu tiep theo
                         time.sleep(1)
                 if _ab():
                     return
@@ -4437,7 +4436,9 @@ def _force_supervisor_reconnect(username, c, reason):
     return False
 
 
-BARRIER_RESCUE_SEC = 240   # barrier reform cho toi da 4' roi EP RELOGIN acc ket (khong cho vo han)
+BARRIER_RESCUE_SEC = 240   # HAN CUNG: cho toi da 4' roi EP RELOGIN acc chua ve, du no dang bao tien do
+BARRIER_STALE_RESCUE_SEC = 90   # acc IM (khong bao tien do) thi cuu som o moc nay, khong doi 4'
+BARRIER_STALE_SEC = 60          # "im" = tuoi hoat dong qua bao lau (acc dang lam viec bao moi 1-5s)
 TEAM_DUNGEON_MAX_TRIES = 2   # 1 lan dau + 1 lan RETRY. Qua so nay -> BO QUA HET cac PB.
 
 
