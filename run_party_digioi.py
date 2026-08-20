@@ -33,11 +33,12 @@ try:
     _log_path = os.path.join(_app_dir(), "party.log")
 except Exception:
     _log_path = "party.log"
-# RotatingFileHandler: gioi han party.log ~100MB (backup 2 -> toi da ~300MB) de file KHONG phinh
+# RotatingFileHandler: gioi han party.log ~500MB (backup 2 -> toi da ~1.5GB) de file KHONG phinh
 # vo han (truoc day 30 party 8h ra 570MB). mode="w" -> van truncate moi lan khoi dong nhu cu.
-# 50MB truoc day mat log nhieu qua (acc kẹt -> can log cu de dieu tra) -> tang len 100MB.
+# Lich su: 50MB -> 100MB -> 500MB (20/08). Ly do tang tiep: dieu tra acc ket/party dung hinh
+# can log CU hang gio truoc; 100MB voi 30 party chi giu duoc vai chuc phut.
 from logging.handlers import RotatingFileHandler as _RotLog
-_file_handler = _RotLog(_log_path, mode="w", maxBytes=100 * 1024 * 1024, backupCount=2,
+_file_handler = _RotLog(_log_path, mode="w", maxBytes=500 * 1024 * 1024, backupCount=2,
                         encoding="utf-8")
 logging.basicConfig(level=_lvl, format="%(asctime)s %(message)s", datefmt="%H:%M:%S",
                     handlers=[_file_handler, logging.StreamHandler()])
@@ -1958,9 +1959,30 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if _sync_gen_moved():     # ca party sang reform gen moi -> thoat, re-reform theo gen moi
                         log.info("[%s] (member) reform gen doi luc cho kenh -> thoat sync, dong bo lai", label)
                         return False
+                    # DEADLOCK CHEO PHA (bug that party 4, 20/08 22:12): member di duong KHAC
+                    # (vd xong pho ban don -> bi dump ra thanh -> vao sync kenh) nen KHONG qua barrier
+                    # reform; leader thi dang DUNG O BARRIER cho member bao "da toi". Member cho
+                    # channel_ready (chi leader/picker set SAU khi barrier nha) -> leader cho member,
+                    # member cho leader. Log that: 4 member IM LANG hon 2 phut, leader in
+                    # "CHO ca party ve thanh 23001 (1/5)" moi 30s trong khi CA 4 DANG DUNG DUNG map do.
+                    # Timeout 60s cua _wait_channel_map_reports KHONG cuu duoc vi no o chang SAU.
+                    # Loi thoat duy nhat cua vong nay la _sync_gen_moved(), ma nguoi bump reform_gen
+                    # lai chinh la leader dang ket -> cho VO HAN.
+                    # -> Het gio thi TU bump reform_gen: member thoat qua _sync_gen_moved(), leader
+                    # thoat qua _ab() (= reform_gen > _g0). Ca party lam lai reform tu dau, KHONG BO
+                    # AI LAI (rule toi thuong: phai gom du party).
+                    _ck_t0 = time.time()
                     while not st["channel_ready"].wait(5):
                         if not c.running or _stopped():
                             return
+                        if time.time() - _ck_t0 > 120:
+                            with st["lock"]:
+                                st["reform_gen"] += 1
+                                _gen_now = st["reform_gen"]
+                            log.warning("[%s] (member) cho channel_ready QUA 120s (nghi deadlock cheo "
+                                        "pha voi leader) -> bump reform gen %d, ca party reform lai",
+                                        label, _gen_now)
+                            return False
                         _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                         if _finish_digioi_train_if_time_over("sync kenh DG (member wait)"):
                             return True
