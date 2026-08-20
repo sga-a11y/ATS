@@ -72,9 +72,14 @@ def _chain_depth(res, producers, depth=0, seen=None):
 
 
 def final_items(missions):
-    """[(kind, id, ten, mission)] cac QUA CUOI - GUI chi hien nhung cai nay de tick.
+    """[(kind, id, ten, mission)] MOI MUC DOI ra qua cuoi - GUI hien de tick.
 
-    Sap theo DO SAU CHUOI giam dan: qua phai qua nhieu tang doi nhat (= qua xin nhat) len DAU.
+    MOI MUC MOT DONG, khong gop theo vat pham: 1 qua co the co NHIEU muc doi voi nguyen lieu /
+    gia / gioi han KHAC NHAU (vd Quoc Khanh: 2 muc Xu Vang an 2 cap chu khac nhau; 2 muc Hoan Cot
+    Hoan gia 20+20 va 30+30). Gop lai la tuoc quyen chon cua user va hien sai so muc so voi game.
+
+    Sap: DO SAU CHUOI giam dan (qua xin nhat len dau) -> ten -> RE TRUOC (tong nguyen lieu it hon
+    len truoc, de user thay ngay muc hoi).
     Khong hardcode ten -> su kien thang sau doi vat pham van tu sap dung.
     """
     producers, consumed = build_graph(missions)
@@ -82,11 +87,13 @@ def final_items(missions):
     for res, plist in producers.items():
         if res in consumed:
             continue
-        m = plist[0][0]
-        name = next((a.get("name") or "" for a in (m.get("award") or ()) if _key(a) == res), "")
-        out.append((_chain_depth(res, producers), res[0], res[1], name, m))
-    out.sort(key=lambda t: (-t[0], t[3]))
-    return [(k, i, n, m) for _d, k, i, n, m in out]
+        depth = _chain_depth(res, producers)
+        for m, per in plist:
+            name = next((a.get("name") or "" for a in (m.get("award") or ()) if _key(a) == res), "")
+            cost = sum(int(c.get("quant") or 0) for c in (m.get("cost") or ()) if c.get("item"))
+            out.append((depth, name, cost / max(1, per), res[0], res[1], m))
+    out.sort(key=lambda t: (-t[0], t[1], t[2]))
+    return [(k, i, n, m) for _d, n, _c, k, i, m in out]
 
 
 def _remaining(m, got, used):
@@ -165,7 +172,7 @@ def _ensure(res, qty, stock, used, producers, got, depth=0, why=None):
     return steps
 
 
-def plan_for(kind, item, missions, have_fn, got, want=1, why=None):
+def plan_for(kind, item, missions, have_fn, got, want=1, why=None, only_mission=None):
     """Ke hoach doi THEM `want` cai qua cuoi (kind,item).
 
     have_fn(kind, id) -> so luong dang co (tien su kien hay vat pham tui deu duoc).
@@ -176,6 +183,14 @@ def plan_for(kind, item, missions, have_fn, got, want=1, why=None):
     goal = (int(kind), int(item))
     if goal not in producers:
         return None
+    if only_mission:
+        # User tick 1 MUC cu the -> chi duoc dung dung muc do de ra qua cuoi. Cac tang NGUYEN LIEU
+        # ben duoi van tu do chon muc (vd ngoc doi tu nhieu loai trang).
+        producers = dict(producers)
+        producers[goal] = [(m, per) for m, per in producers[goal]
+                           if int(m["id"]) == int(only_mission)]
+        if not producers[goal]:
+            return None
     stock = {}
     for m in missions or ():
         if int(m.get("cond", 0)) != 1:
@@ -229,8 +244,8 @@ def options_from_cache(path=None):
             cost = " + ".join("%s x%d" % (c.get("name") or c.get("item"), c.get("quant") or 1)
                               for c in (m.get("cost") or ()) if c.get("item"))
             lim = int(m.get("limit") or 0)
-            out.append("%d:%d\t%s  [%s]  ← cần %s%s" % (
-                kind, item, name, act.get("title") or "", cost,
+            out.append("%d:%d:%d\t%s  [%s]  ← cần %s%s" % (
+                kind, item, int(m["id"]), name, act.get("title") or "", cost,
                 "" if lim <= 0 else "  (tối đa %d lần)" % lim))
     return out
 

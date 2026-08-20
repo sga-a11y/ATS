@@ -5081,14 +5081,17 @@ class GameClient:
         (3 nguon ra ngoc + 1 doi qua) nen de 0.6s van dinh chan (log 17:32) -> 1.2s. Co che thu lai
         khi dinh ma 3 chi la luoi do phong server doi nguong.
         """
+        # Khoa tick: "kind:item:missionId" (MOI - dung 1 MUC doi cu the) hoac "kind:item" (CU -
+        # bat ky muc nao ra vat pham do). Giu ca 2 de config cu khong vo.
         want = set()
         for p in (picks or ()):
             try:
                 if isinstance(p, str) and ":" in p:
-                    k, i = p.split(":", 1)
-                    want.add((int(k), int(i)))
+                    parts = p.split(":")
+                    want.add((int(parts[0]), int(parts[1]),
+                              int(parts[2]) if len(parts) > 2 and parts[2] else 0))
                 else:
-                    want.add((2, int(p)))
+                    want.add((2, int(p), 0))
             except Exception:
                 pass
         if not want:
@@ -5145,9 +5148,10 @@ class GameClient:
         self._evx_spent = {}      # (kind,id) -> chenh lech so voi tui (am = da tieu, duong = vua nhan)
         log.info("[%s] Doi qua su kien: %d qua da tick, %d su kien dang mo",
                  self._label, len(want), len(self._activities))
-        for kind, item in sorted(want):
-            # Qua cuoi nay co trong su kien dang mo khong?
+        for kind, item, mid in sorted(want):
+            # Qua cuoi nay co trong su kien dang mo khong? (kem dung MUC do neu user tick theo muc)
             if not any((int(a.get("kind") or 2), int(a["item"])) == (kind, item)
+                       and (not mid or int(m["id"]) == mid)
                        for m in norm for a in m["award"]):
                 log.info("[%s] Doi qua: '%s' KHONG co trong su kien dang mo -> bo qua "
                          "(su kien da doi? vao List qua tick lai)",
@@ -5167,7 +5171,8 @@ class GameClient:
                 _lo, _try = 1, 1
                 while _try <= 10000:
                     _p = _evx.plan_for(kind, item, norm, self._res_have, self._activity_got,
-                                       want=_try, why=(why if _try == 1 else None))
+                                       want=_try, why=(why if _try == 1 else None),
+                                       only_mission=mid)
                     if not _p:
                         break
                     best, best_n, _lo = _p, _try, _try
@@ -5178,7 +5183,7 @@ class GameClient:
                     if _mid <= best_n:
                         break
                     _p = _evx.plan_for(kind, item, norm, self._res_have, self._activity_got,
-                                       want=_mid)
+                                       want=_mid, only_mission=mid)
                     if _p:
                         best, best_n, _lo = _p, _mid, _mid
                     else:
