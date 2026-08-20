@@ -2116,6 +2116,12 @@ class GameClient:
                 self.running = False   # rot ket noi -> dung MOI vong lap
                 break
             self._last_recv_ts = time.time()   # nhan duoc goi -> reset dong ho half-open
+            # NHIP TIM cho watcher: con nhan goi = con song, ke ca dang lam viec lau (boss 15').
+            # Lay tu day thay vi bat moi vong lap tu goi task_heartbeat -> khong the quen.
+            # Throttle 5s: chi cham vao dict co khoa khi that su can.
+            if self._last_recv_ts - getattr(self, "_hb_ts", 0.0) > 5.0:
+                self._hb_ts = self._last_recv_ts
+                task_heartbeat(self._username)
             self.recv_buf += protocol.xor(data)
             pkts, consumed = protocol.parse_stream(self.recv_buf)
             self.recv_buf = self.recv_buf[consumed:]

@@ -945,6 +945,45 @@ def _route_mismatch_timed_out(state, leader_map, mismatch, now, timeout=15.0):
     return now - state["since"] >= timeout
 
 
+DT_RECHECK_SEC = 300   # dang cho dong doi -> cu 5' soat lai gio DG / Ho Phu mot lan
+
+
+def _dt_recheck_time_left(username, label):
+    """Acc da bao xong DG: CON GIO THAT khong? Con Ho Phu thi dung. Tra True = con gio, vao lai DG.
+
+    Doc so SERVER (RoleCount 0x1b = so phut DA DUNG), khong tin ket luan cu: sang nay da co ca
+    "bi tinh het gio nhung thuc ra van con", stop/start la vao lai duoc.
+    """
+    c = account_clients.get(username)
+    if c is None or not c.running:
+        return False
+    used = getattr(c, "digioi_minutes", None)
+    if used is None:
+        return False                       # chua co so server -> khong doan
+    left = DIGIOI_LIMIT - int(used)
+    if left > 0:
+        log.warning("[%s] DG+Train: dang cho dong doi nhung SOAT LAI thay CON %d phut DG "
+                    "(server: da dung %d/%d) -> vao lai DG danh tiep",
+                    label, left, int(used), DIGIOI_LIMIT)
+        return True
+    # Het gio that -> con Ho Phu thi dung de duoc them gio (config phai bat).
+    if not getattr(c, "use_digioi_ho_phu", False):
+        return False
+    if not c.use_di_gioi_ho_phu():
+        return False
+    # Ho Phu dung xong: server cap nhat lai 0x55/0x1b -> cho vai giay roi doc lai.
+    for _ in range(10):
+        time.sleep(1.0)
+        used2 = getattr(c, "digioi_minutes", None)
+        if used2 is not None and DIGIOI_LIMIT - int(used2) > 0:
+            log.warning("[%s] DG+Train: da dung Di Gioi Ho Phu -> con %d phut -> vao lai DG",
+                        label, DIGIOI_LIMIT - int(used2))
+            return True
+    log.info("[%s] DG+Train: da dung Ho Phu nhung server chua cong gio -> cho tiep, soat lai sau",
+             label)
+    return False
+
+
 def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
     """MODE digioi_train: acc nay DA XONG DG -> danh dau + DUNG YEN cho CA PARTY xong DG.
     Du het -> doi pha party sang "train" (moi acc relogin se chay mode train). Tra True neu
@@ -1005,9 +1044,23 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
         return prepared
 
     last_log = 0.0
+    last_recheck = 0.0
     while True:
         if stopped_fn():
             return False
+        # ==== TU SOAT LAI TRONG LUC CHO (moi DT_RECHECK_SEC) ====
+        # Dang cho dong doi (co the 2 TIENG) -> thoi gian chet. Truoc khi chiu dung yen, kiem tra
+        # lai bang so SERVER xem CO THAT SU het gio khong, va con Ho Phu thi dung de vao danh tiep.
+        # (Sang nay da co bug "bi tinh het gio nhung thuc ra van con" -> khong duoc tin ket luan cu.)
+        if time.time() - last_recheck > DT_RECHECK_SEC:
+            last_recheck = time.time()
+            try:
+                if _dt_recheck_time_left(username, label):
+                    with st["lock"]:
+                        st["dt_done"].discard(username)      # con gio -> KHONG con la "da xong"
+                    return "back_to_dg"
+            except Exception as e:
+                log.warning("[%s] DG+Train: loi soat lai gio DG (bo qua): %s", label, e)
         users = set(_dt_party_usernames(pidx))
         switch_to_train = False
         n_users = 0
@@ -1410,7 +1463,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
 
         def _finish_digioi_train_after_dg():
             _go_town_safe(c, label)
-            if not _dt_wait_all_digioi_done(pidx, username, label, _stopped):
+            _wait_res = _dt_wait_all_digioi_done(pidx, username, label, _stopped)
+            if _wait_res == "back_to_dg":
+                # Soat lai trong luc cho: CON GIO DG (hoac vua dung Ho Phu) -> quay lai DG danh
+                # tiep, KHONG di train. relogin de vao lai DG theo dung luong dau vao.
+                # relogin: supervisor se chay lai run_account -> vao lai DG theo dung luong dau
+                # vao (mode van la digioi_train vi dt_phase CHUA doi sang train).
+                _dt["relogin_train"] = True
+                return False
+            if not _wait_res:
                 return False
             # Daily/team dungeon can require the whole party. Run it only after every account
             # has finished DG, otherwise an early member can wait for leader while leader is
