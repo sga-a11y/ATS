@@ -1938,6 +1938,7 @@ class PartyConfigFrame(ttk.Frame):
         self.auto_event_exchange_var = tk.BooleanVar(
             value=bool(self._preset.get("auto_event_exchange", False)))
         self.event_exchange_items = list(self._preset.get("event_exchange_items") or [])
+        self.event_exchange_sig = self._preset.get("event_exchange_sig", "")
         self.auto_discard_junk_var = tk.BooleanVar(value=bool(self._preset.get("auto_discard_junk", True)))
         self.auto_decompose_scrolls_var = tk.BooleanVar(
             value=bool(self._preset.get("auto_decompose_scrolls", False)))
@@ -3464,7 +3465,7 @@ class PartyConfigFrame(ttk.Frame):
             "material_modes": dict(self.material_modes),
             "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
             "event_exchange_items": list(self.event_exchange_items),
-            "event_exchange_sig": _event_sig_now(),
+            "event_exchange_sig": _event_sig_now() if self.event_exchange_items else "",
             "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
             "shop_items": _shop_items_json({
                 "ho_phu": self.buy_ho_phu_var.get(),
@@ -3508,6 +3509,9 @@ class PartyConfigFrame(ttk.Frame):
         self.material_modes = dict(data.get("material_modes") or {})
         self.auto_event_exchange_var.set(bool(data.get("auto_event_exchange", False)))
         self.event_exchange_items = list(data.get("event_exchange_items") or [])
+        # Sig phai di kem tick, khong thi party duoc copy co tick nhung sig rong -> mo lan sau bi
+        # coi la "tick cua su kien khac" va bi xoa oan.
+        self.event_exchange_sig = data.get("event_exchange_sig", "")
         shop_items = _normalize_shop_items(data.get("shop_items"), {
             "ho_phu": data.get("buy_ho_phu", False),
             "thien_chau": data.get("buy_thien_chau", False),
@@ -3723,7 +3727,7 @@ class PartyConfigFrame(ttk.Frame):
                 "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
                 "event_exchange_items": list(self.event_exchange_items),
                 # Chu ky su kien LUC TICK -> lan sau su kien doi thi tu biet ma xoa tick.
-                "event_exchange_sig": _event_sig_now(),
+                "event_exchange_sig": _event_sig_now() if self.event_exchange_items else "",
                 "death_return_town": bool(self.death_return_town_var.get()),
                 "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
                 "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
