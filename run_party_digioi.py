@@ -2586,9 +2586,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     while c.running and not _stopped():
                         _resync_ck(st, username)   # ep dong bo -> relogin bam leader
                         if st["leader_gone"].is_set() or st["leader_bad"].is_set():
-                            _reason("leader gone/bad khi member cho reform -> THOAT theo party")
-                            log.warning("[%s] (member) leader gone/bad khi cho reform -> THOAT", label)
-                            _quit(); return
+                            # CHONG TIN HIEU CU: server dut ket noi -> leader rot -> co duoc dat,
+                            # nhung supervisor cua leader DANG login lai chu chua he bo cuoc. Truoc
+                            # day member thay co la THOAT HAN -> acc chet toi khi user tu bat lai,
+                            # trong khi leader vai chuc giay sau da chay tiep binh thuong (log that
+                            # party 20: dieubon/dieunam THOAT luc 22:49:27 con leader dieumot
+                            # RECONNECT xong 22:50:34 va van reform). Nhanh o duoi (~dong 3798) da
+                            # co dung guard nay roi; cho nay bi SOT -> dung y het cho nhat quan.
+                            if _leader_thread_active():
+                                log.warning("[%s] (member) leader gone/bad STALE (leader thread van "
+                                            "chay - dang login lai) -> KHONG thoat, cho tiep", label)
+                                st["leader_gone"].clear()
+                                st["leader_bad"].clear()
+                            else:
+                                _reason("leader gone/bad khi member cho reform -> THOAT theo party")
+                                log.warning("[%s] (member) leader gone/bad khi cho reform -> THOAT", label)
+                                _quit(); return
                         _do_reform(to_spot=False)
                         if c.current_map == sc:
                             self_map_ok = True; login_map = sc; via_route = True
