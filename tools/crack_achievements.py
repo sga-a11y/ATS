@@ -54,10 +54,10 @@ def read_achievements(path):
         r.byte()                        # showKind
         rec["content_id"] = r.u32()     # noi dung dat duoc
         rec["score"] = r.byte()         # diem thanh tuu
-        r.byte()                        # conditions.kind
-        r.u32()                         # conditions.kindValue
-        r.byte()                        # conditions.opr
-        r.u32()                         # conditions.value
+        rec["kind"] = r.byte()          # conditions.kind  (ECondition: 14=RoleCount 15=MissionFlag...)
+        rec["kind_value"] = r.u32()     # conditions.kindValue (id RoleCount / id nhiem vu ...)
+        rec["opr"] = r.byte()           # conditions.opr   (1 = / 2 > / 3 >= / 4 < / 5 <= / 6 !=)
+        rec["value"] = r.u32()          # conditions.value (nguong)
         rec["item"] = r.u16()           # 獎勵物品ID
         rec["count"] = r.byte()         # 獎勵物品數量
         rec["complete_flag"] = r.u16()  # 完成永標  <- BitFlag "da hoan thanh"
@@ -102,6 +102,11 @@ def main():
             "item": d["item"],
             "count": d["count"],
             "score": d["score"],
+            # DIEU KIEN: de bot tu tinh "da hoan thanh" roi gui C:082-001 (giong client)
+            "kind": d["kind"],
+            "kind_value": d["kind_value"],
+            "opr": d["opr"],
+            "value": d["value"],
         }
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, indent=1, sort_keys=True)

@@ -780,6 +780,25 @@ def _load_gamedata_items() -> dict:
                                     "restrict": int(v.get("restrict", 0) or 0)}
     return _gamedata_items
 
+_mark_bitids = None
+def _load_mark_bitids() -> dict:
+    """{missionId: bitId} tu mark_bitids.json (tools/crack_mark_bitids.py).
+
+    Dung cho dieu kien thanh tuu kind=15 (MissionFlag): client tra
+    CheckFlag(MarkManager.flags, markDatas[missionId].bitId).
+    """
+    global _mark_bitids
+    if _mark_bitids is not None:
+        return _mark_bitids
+    _mark_bitids = {}
+    for k, v in (_load_json_data_file("mark_bitids.json") or {}).items():
+        try:
+            _mark_bitids[int(k)] = int(v)
+        except Exception:
+            pass
+    return _mark_bitids
+
+
 _achievements = None
 def _load_achievements() -> dict:
     """{ id_int: {"name","cf","gf","item","count"} } tu achievements.json.
@@ -804,7 +823,13 @@ def _load_achievements() -> dict:
                 _achievements[aid] = {"name": v.get("name", ""),
                                       "cf": int(v["complete_flag"]), "gf": int(v["get_flag"]),
                                       "item": int(v.get("item", 0) or 0),
-                                      "count": int(v.get("count", 0) or 0)}
+                                      "count": int(v.get("count", 0) or 0),
+                                      # DIEU KIEN: de bot tu tinh hoan thanh (C:082-001)
+                                      "score": int(v.get("score", 0) or 0),
+                                      "kind": int(v.get("kind", 0) or 0),
+                                      "kind_value": int(v.get("kind_value", 0) or 0),
+                                      "opr": int(v.get("opr", 3) or 3),
+                                      "value": int(v.get("value", 0) or 0)}
     return _achievements
 
 
@@ -1337,6 +1362,10 @@ class GameClient:
         self._claimed_by_grid = {}   # gid -> set(line DA NHAN)
         # DOI THUONG SU KIEN (0x7c): server gui toan bo danh sach -> cache ra JSON cho GUI.
         self._activities = {}     # activityId -> {title, kind, open, missions[]}
+        self.char_attrs = {}      # CHI SO GOC tu 0x08: EAttribute -> gia tri (dung cho thanh tuu)
+        self.max_friend_count = None   # so ban TOI DA tung co (S:014-017) - dieu kien thanh tuu
+        self.mark_flags = {}      # CO NHIEM VU (0x18 sub07/05): chi so BYTE -> gia tri byte
+        self._mark_flags_loaded = False
         self._acts_expired = set()   # id su kien server bao DA HET (duoc xoa khoi cache)
         self._activity_done = {}  # missionId -> so lan DA LAM (S:124-001)
         self._activity_got = {}   # missionId -> so lan DA DOI (S:124-002)
@@ -2364,14 +2393,31 @@ class GameClient:
             self._refresh_char_int()
             self._refresh_char_agi()
         # Cap nhat INT khi cong diem (S2C 0x08: 01 00 1b 01 [val 2B])
-        elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
+        if opcode == 0x0e and len(pkt) >= 13 and pkt[7:9] == b"\x11\x00":
+            # S:014-017 so ban TOI DA tung co (client: Social.maxRecordFriendCount)
+            self.max_friend_count = int.from_bytes(pkt[9:13], "little", signed=True)
+        if opcode == 0x08 and len(pkt) >= 15 and pkt[7:9] == b"\x01\x00":
+            # CHI SO GOC (dung cau truc client: [kind 1B][sign 1B][value i32][arg i32]).
+            # Ghi rieng, khong dung vao cac nhanh cu ben duoi.
+            _v = int.from_bytes(pkt[11:15], "little", signed=True)
+            self.char_attrs[pkt[9]] = -_v if pkt[10] == 2 else _v
+        if opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
             self._char_int_base = int.from_bytes(pkt[11:13], "little")
             self._refresh_char_int()
         elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_AGI and pkt[10] == 0x01:
             self._char_agi_base = int.from_bytes(pkt[11:13], "little")
             self._refresh_char_agi()
-        # HP/SP LIVE: S2C 0x08 sub=0100 [stat 1B][unit 1B][val 2B LE]. 0x19=HP, 0x1a=SP.
-        # unit: 01=char, 02=pet (?). Ban CA NGOAI combat -> nguon HP/SP de hoi mau (0x33 chi trong tran).
+        # HP/SP LIVE: S2C 0x08 sub=0100. 0x19=HP, 0x1a=SP. Ban CA NGOAI combat -> nguon HP/SP de
+        # hoi mau (0x33 chi trong tran).
+        # CAU TRUC THAT (Common_protocal.lua:1127): S:008-001 <設定主角屬性>
+        #     +種類(1) +正負號(1) +數值(4) +參數(4)
+        # => byte thu 2 la DAU (1 duong / 2 am), KHONG phai "unit char/pet"; gia tri 4 BYTE.
+        # Goi nay la 主角 = CHI NHAN VAT CHINH (pet di goi S:008-002, co them 人物種類/索引).
+        # Nhanh `unit == 0x02 -> state.pet` ben duoi vi vay la SAI VE NGHIA, nhung DO CAP:
+        # quet het capture trong repo -> 369/369 goi HP/SP deu sign=1, chua bao gio co sign=2
+        # (goi nay la "DAT gia tri", khong phai "cong/tru" nen khong can dau am). Doc 2 byte thay
+        # vi 4 cung dung chung nao gia tri < 65536. GIU NGUYEN de khong dung vao logic hoi mau;
+        # neu sau nay thay HP/SP pet nhay lung tung thi day la cho dau tien can soi.
         elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] in (0x19, 0x1a):
             stat = pkt[9]
             unit = pkt[10]
@@ -2413,6 +2459,20 @@ class GameClient:
             self._on_equip_broken(pkt)
         # THANH TUU (opcode 82): S:082-002 <成就領獎> [result 1B] (+id u16 neu result==0).
         # result 0 = nhan OK -> server cung set bit getFlag qua 0x51 delta. 1 = fail.
+        elif opcode == 0x52 and len(pkt) >= 12 and pkt[7:9] == b"\x01\x00":
+            # S:082-001 ket qua BAO HOAN THANH: [result 1B][id u16]
+            _res = pkt[9]
+            _aid = int.from_bytes(pkt[10:12], "little")
+            if _res == 0:
+                self._ach_report_ok = getattr(self, "_ach_report_ok", 0) + 1
+                self._ach_report_bad = 0
+            elif _res != 2:      # 2 = server da biet roi, binh thuong
+                self._ach_report_bad = getattr(self, "_ach_report_bad", 0) + 1
+                _a = _load_achievements().get(_aid) or {}
+                log.warning("[%s] Thanh tuu: bao hoan thanh '%s' (id=%d) BI TU CHOI - %s",
+                            self._label, _a.get("name", "?"), _aid,
+                            {1: "khong co du lieu", 3: "DIEU KIEN KHONG DU (cong thuc bot sai?)",
+                             4: "du lieu loi"}.get(_res, "ma %d" % _res))
         elif opcode == 0x52 and len(pkt) >= 10 and pkt[7:9] == b"\x02\x00":
             _res = pkt[9]
             if _res == 0 and len(pkt) >= 12:
@@ -3769,11 +3829,107 @@ class GameClient:
     # nhan (Item.CheckBagIsFull) -> bot theo y het.
     # KHONG can tinh dieu kien thanh tuu: 3 trang thai deu doc tu 2 BIT trong mang forever-flags
     # (goi 0x51) ma bot da co (_bitflag_get).
+    # ECondition (Logic_CheckCondition.lua) -> nguon gia tri. Chi cai cac loai thanh tuu THUC SU
+    # dung (khao sat AchievementData_C.dat: 15/14/6/20/1/7-12/18).
+    _COND_GOLD, _COND_ACH_SCORE = 1, 6
+    _COND_INT, _COND_ATK, _COND_AGI, _COND_DEF, _COND_HPX, _COND_SPX = 7, 8, 9, 10, 11, 12
+    _COND_ROLECOUNT, _COND_MISSION_FLAG = 14, 15
+    _COND_FRIEND_COUNT, _COND_NOW_LEVEL = 18, 20
+
+    def _achievement_value(self, kind: int, kind_value: int):
+        """Gia tri hien tai cua dieu kien, hoac None neu bot KHONG co du lieu (-> khong doan)."""
+        k = int(kind)
+        if k == self._COND_MISSION_FLAG:            # 435/600 - co nhiem vu (0x18 sub07/05)
+            if not self._mark_flags_loaded:
+                return None
+            bit = _load_mark_bitids().get(int(kind_value))
+            return None if bit is None else (1 if self.mark_flag_get(bit) else 0)
+        if k == self._COND_ROLECOUNT:               # 91/600
+            rc = self.role_counts.get(int(kind_value))
+            return None if rc is None else int(rc[0])
+        if k == self._COND_ACH_SCORE:
+            # Client (Achievement.InitTotalScore) chi cong diem cai DA NHAN THUONG - dung getFlag,
+            # KHONG phai completeFlag (trong Lua con dong cu bi comment lai de doi sang getFlag:
+            # "有領獎的再計算積分").
+            if not self._bitflags_loaded:
+                return None
+            return sum(int(v.get("score") or 0) for v in _load_achievements().values()
+                       if self._bitflag_get(v["gf"]) is True)
+        if k == self._COND_GOLD:
+            return self.xu
+        # Chi so GOC tu 0x08 - dung y client (GetAttribute), KHONG dung so "thuc te" bot tu cong
+        # them trang bi/chuyen sinh/ngua (thanh tuu chi tinh chi so goc).
+        _attr = {self._COND_INT: 27, self._COND_ATK: 28, self._COND_DEF: 29,
+                 self._COND_AGI: 30, self._COND_HPX: 31, self._COND_SPX: 32,
+                 self._COND_NOW_LEVEL: 35}.get(k)
+        if _attr is not None:
+            return self.char_attrs.get(_attr)
+        if k == self._COND_FRIEND_COUNT:
+            return self.max_friend_count      # S:014-017; None = server chua gui -> bo qua
+        return None
+
+    def report_completed_achievements(self, wait: float = 0.25, max_send: int = 60) -> int:
+        """Tu tinh dieu kien roi BAO SERVER thanh tuu da xong (C:082-001), y het client login.
+
+        Khong lam viec nay thi cac thanh tuu dat duoc trong luc chi co bot chay se KHONG BAO GIO
+        duoc danh dau -> claim_achievements() khong thay gi de nhan.
+        """
+        data = _load_achievements()
+        if not data or not self._bitflags_loaded:
+            return 0
+        self._ach_report_ok = 0
+        self._ach_report_bad = 0
+        pend, no_data = [], 0
+        for aid, v in sorted(data.items()):
+            if self._bitflag_get(v["cf"]) is True:
+                continue                              # server da biet roi
+            cur = self._achievement_value(v.get("kind"), v.get("kind_value"))
+            if cur is None:
+                no_data += 1
+                continue                              # thieu du lieu -> KHONG gui bua
+            if not self._MISSION_OP.get(int(v.get("opr") or 3),
+                                        lambda p, c: False)(cur, int(v.get("value") or 0)):
+                continue
+            pend.append((aid, v))
+        if not pend:
+            log.info("[%s] Thanh tuu: khong co cai nao vua dat (%d cai bot chua doc duoc dieu kien)",
+                     self._label, no_data)
+            return 0
+        log.info("[%s] Thanh tuu: %d cai VUA DAT -> bao server (client that lam viec nay luc login)",
+                 self._label, len(pend))
+        n = 0
+        for aid, v in pend[:max_send]:
+            if not self.running:
+                break
+            # PHANH: server tu choi lien tiep = cong thuc tinh dieu kien cua bot SAI -> dung ngay,
+            # khong ban tiep ca loat (tinh nang nay chua duoc test tren server that).
+            if getattr(self, "_ach_report_bad", 0) >= 5:
+                log.warning("[%s] Thanh tuu: server tu choi 5 cai LIEN TIEP -> DUNG bao hoan thanh "
+                            "(cong thuc dieu kien cua bot co the sai)", self._label)
+                break
+            # C:082-001 <完成成就> [count 1B][id u16]
+            self.send(0x52, b"\x01\x00" + b"\x01" + int(aid).to_bytes(2, "little"))
+            n += 1
+            log.info("[%s] Thanh tuu: bao hoan thanh '%s'", self._label, v["name"] or aid)
+            time.sleep(wait)
+        if len(pend) > max_send:
+            log.info("[%s] Thanh tuu: con %d cai -> de lan login sau", self._label, len(pend) - max_send)
+        time.sleep(1.0)          # cho server bat co (0x51 delta) truoc khi claim
+        _ok = getattr(self, "_ach_report_ok", 0)
+        log.info("[%s] Thanh tuu: bao %d cai -> server chap nhan %d", self._label, n, _ok)
+        return n
+
     def claim_achievements(self, wait: float = 0.35, max_claim: int = 40) -> int:
         """Nhan thuong cac thanh tuu DA XONG ma CHUA NHAN. Tra so cai da gui lenh nhan."""
         data = _load_achievements()
         if not data or not self._bitflags_loaded:
             return 0
+        # BAO HOAN THANH TRUOC (giong client login): server khong tu danh dau, khong bao thi
+        # nhung thanh tuu vua dat se khong co co -> khong co gi de nhan.
+        try:
+            self.report_completed_achievements()
+        except Exception as e:
+            log.warning("[%s] Thanh tuu: loi bao hoan thanh (bo qua): %s", self._label, e)
         if self.bag_free_slots() <= 0:      # client: tui day -> KHONG nhan (qua se roi mat)
             log.info("[%s] Thanh tuu: TUI DAY -> hoan nhan qua", self._label)
             return 0
@@ -4492,6 +4648,15 @@ class GameClient:
         """missionId cua o `cell`: uu tien bang S:91-1 (nguon client that), fallback 0x2e+cell."""
         return self._quest_missions.get(cell, 0x2e + cell)
 
+    def mark_flag_get(self, bit_id: int) -> bool:
+        """CheckFlag(MarkManager.flags, bitId) - co NHIEM VU da hoan thanh chua.
+
+        Byte (bitId//8), bit (bitId%8) - giong BitFlag 0x51.
+        """
+        if not bit_id:
+            return False
+        return bool(self.mark_flags.get(int(bit_id) // 8, 0) & (1 << (int(bit_id) % 8)))
+
     def _on_mission_steps(self, pkt: bytes):
         """S2C 0x18 mission-step. UI phó bản đội lấy còn lượt từ dayilyFlag trong bảng này."""
         if len(pkt) < 9:
@@ -4516,6 +4681,34 @@ class GameClient:
                 self.team_dungeon_steps = steps
                 self.team_dungeon_status_loaded = True
                 self._sync_world_boss_from_mission_steps("S24-6")
+            elif sub == 0x07 and len(body) >= 4:
+                # S:024-007 INIT co nhiem vu: [count u16] << [byteIndex u16][gia tri 1B] >>
+                cnt = int.from_bytes(body[2:4], "little")
+                off = 4
+                flags = {}
+                for _ in range(cnt):
+                    if off + 3 > len(body):
+                        break
+                    flags[int.from_bytes(body[off:off + 2], "little")] = body[off + 2]
+                    off += 3
+                self.mark_flags = flags
+                self._mark_flags_loaded = True
+                log.debug("[%s] co nhiem vu: nhan %d byte co (S24-7)", self._label, len(flags))
+            elif sub == 0x05 and len(body) >= 6:
+                # S:024-005 CAP NHAT co: [count u32] << [bitIndex u16][gia tri 1B] >>
+                # LUU Y: sub 05 dung CHI SO BIT (SetMissionFlag(bitIndex,...)), khac sub 07 dung
+                # chi so BYTE -> phai set dung 1 bit, khong ghi de ca byte.
+                cnt = int.from_bytes(body[2:6], "little")
+                off = 6
+                for _ in range(cnt):
+                    if off + 3 > len(body):
+                        break
+                    bit = int.from_bytes(body[off:off + 2], "little")
+                    val = body[off + 2]
+                    off += 3
+                    bidx, mask = bit // 8, 1 << (bit % 8)
+                    cur = self.mark_flags.get(bidx, 0)
+                    self.mark_flags[bidx] = (cur | mask) if val else (cur & ~mask)
             elif sub == 0x08 and len(body) >= 16:
                 # S:024-008 <設定衰神福神> [roleId i64][kind u16][count i32]. count = SO LUOT
                 # Phuc Than CON LAI (client: Role.player.data.godMission) -> dung de biet buff

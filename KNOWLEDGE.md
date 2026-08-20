@@ -1432,10 +1432,37 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   sẵn (`_bitflag_get`) → **không cần tính điều kiện thành tựu**.
 - Client **chỉ gửi nhận khi túi còn chỗ** (`Item.CheckBagIsFull`) — bot theo y hệt, túi đầy thì hoãn.
 - **ĐÃ CHẠY THẬT (2026-08-18, hoangtnam): `48/600 đã hoàn thành, 18 chưa nhận → nhận 18/18 OK`.**
-  Hai điều CHỐT được từ lần chạy đó:
-  - **Server TỰ đánh dấu hoàn thành.** 48 cờ complete đã bật trong khi bot CHƯA HỀ gửi `C:082-001`
-    → **không cần cài `IsComplete()`** (20 loại điều kiện trong `CheckCondition`). Phần đó ở client
-    chỉ để hiện chuỗi tiến độ `(x / y)` và `CheckAllCompeleteAchievement()` lúc login.
+- ⚠️ **BÁC BỎ (2026-08-19): "Server TỰ đánh dấu hoàn thành" là KẾT LUẬN SAI.** 48 cờ complete đó
+  bật sẵn vì acc **từng chơi bằng client thật** — chính client bật chúng. Client lúc login chạy
+  `Achievement.CheckAllCompeleteAchievement()` (`Logic_Achievement.lua:104`):
+  `if not v:HaveCompeleteFlag() and v:IsComplete() then SendCompleteAchievement(v.Id) end`
+  → **client TỰ TÍNH điều kiện rồi gửi `C:082-001`**, server không tự làm.
+  Hệ quả của việc tin nhầm: thành tựu đạt được trong lúc **chỉ có bot chạy** thì không ai bật cờ
+  → bot không bao giờ thấy để nhận. User xác nhận: login client thật 1 lần → cờ bật → bot vào sau
+  nhận sạch. **Bài học: "quan sát thấy X đã xảy ra" ≠ "server làm X".**
+- **Bot nay TỰ BÁO HOÀN THÀNH** (`client.report_completed_achievements`, gọi trước `claim_`):
+  chép đúng công thức client, `IsComplete()` = `giá trị hiện tại <toán tử> ngưỡng`
+  (`Data_AchievementData.lua:64`; cả 600 mục đều dùng `>=`). Nguồn giá trị theo `ECondition`
+  (`Logic_CheckCondition.lua`) — khảo sát `AchievementData_C.dat` chỉ dùng 8 loại:
+
+  | kind | Nguồn | Số mục | Bot lấy từ |
+  |---|---|---|---|
+  | 15 MissionFlag | `CheckFlag(MarkManager.flags, markDatas[id].bitId)` | 435 | `0x18 sub07` (init) + `sub05` (delta) + `mark_bitids.json` |
+  | 14 RoleCount | `RoleCount.Get(kindValue)` | 91 | `0x55` |
+  | 6 AchievementScore | tổng `score` các mục **đã NHẬN** (`getFlag`, KHÔNG phải completeFlag — Lua còn dòng cũ bị comment lại: `有領獎的再計算積分`) | 17 | tự cộng |
+  | 20 NowLevel / 1 Gold | thuộc tính / xu | 18 | `0x08` kind 35 / `0x1a` |
+  | 7-12 Int/Atk/Agi/Def/Hpx/Spx | `Role.player:GetAttribute()` = **CHỈ SỐ GỐC**, không cộng trang bị/chuyển sinh | 36 | `0x08` kind 27-32 |
+  | 18 FriendCount | `Social.maxRecordFriendCount` = **tối đa TỪNG CÓ**, không phải đang có | 3 | `0x0e sub17` |
+
+  Phủ **600/600**. Có phanh: server từ chối 5 cái liên tiếp (mã 3 = điều kiện không đủ) → dừng.
+- **`S:008-001 <設定主角屬性> +種類(1) +正負號(1) +數值(4) +參數(4)`** — byte thứ 2 là **DẤU**
+  (1 dương / 2 âm), **KHÔNG** phải "unit char/pet"; giá trị **4 byte**. Gói này là 主角 =
+  **chỉ nhân vật chính**, pet đi gói `S:008-002` (có thêm `人物種類/索引`). Nhánh HP/SP cũ trong bot
+  hiểu byte đó là unit (`02 -> pet`) là sai về nghĩa nhưng **chưa từng nổ**: quét hết capture trong
+  repo → **369/369 gói HP/SP đều `sign=1`** (gói "ĐẶT giá trị", không phải cộng/trừ).
+- `mark_bitids.json` (missionId → bitId) sinh bởi `tools/crack_mark_bitids.py` từ
+  `gamedata/Data/Mark_C.dat`; parse khớp trọn file, 1788/3448 nhiệm vụ có cờ, tra được **435/435**
+  mục kind=15.
   - **Bitmap `0x51` ĐỦ DÀI.** Cờ thành tựu chạy tới bit 8000 (cần ≥1000 byte) trong khi ghi chú cũ
     ước gói `0x51` chỉ ~1004 byte TỔNG → nghi 28/600 cờ nằm ngoài bitmap, bị đọc thành "chưa hoàn
     thành" ÂM THẦM. Chạy thật KHÔNG hiện cảnh báo → bitmap phủ đủ, **ước lượng ~1004B là sai**.
