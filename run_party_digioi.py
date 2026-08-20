@@ -4393,9 +4393,22 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
     if not is_leader:
         last_log = 0.0
         _wd0 = time.time()
+        with st["lock"]:
+            _pb_g0 = st["reform_gen"]     # gen luc BAT DAU cho; doi = leader da goi ve thanh
         while True:
             if stopped_fn() or not c.running:
                 return False
+            # LEADER BI KEO DI REFORM trong luc minh dang cho -> phai THEO, khong thi ca party ket
+            # (log 14:04: leader "CHO ca party ve thanh 23001 1/5", 4 member "cho leader xu ly PB").
+            # Nguyen nhan hay gap: acc con luot BOSS THE GIOI danh 10-20' -> sync kenh timeout 60s
+            # -> bump reform_gen -> leader bo PB di reform, member khong biet.
+            with st["lock"]:
+                _pb_gnow = st["reform_gen"]
+            if _pb_gnow > _pb_g0:
+                log.warning("[%s] (member) phó bản đội lv%d: leader chuyển sang REFORM "
+                            "(reform_gen %d->%d) -> bỏ chờ, về thành cùng party",
+                            label, level, _pb_g0, _pb_gnow)
+                return True
             # KHONG dat _barrier_watchdog o day! Member cho leader chay HET pho ban la CHUYEN
             # BINH THUONG va lau 10-20 phut (5 tran + di duong + thoai). Watchdog 180s tuong la
             # "ket" -> ep dong bo -> DA CA 4 MEMBER RA relogin GIUA pho ban, pha nat luot PB
