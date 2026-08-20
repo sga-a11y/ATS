@@ -252,6 +252,9 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.autoEventExchange, party.eventExchangeItems.joinToString("\n"),
                 // 2 co "chet -> ve thanh" cua HOP MAY. THEM O CUOI CUNG (goi theo VI TRI).
                 party.deathReturnTown, party.petDeathReturnTown,
+                // Chu ky su kien luc user tick -> bot tu tu choi doi khi su kien da doi.
+                // THEM O CUOI CUNG (goi theo VI TRI).
+                party.eventExchangeSig,
             )
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)

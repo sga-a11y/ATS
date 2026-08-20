@@ -1175,6 +1175,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # claim_daily_quests() (goi trong khoi viec-hang-ngay ben duoi) doc 2 bien nay.
         c.auto_event_exchange = bool(pcfg.get("auto_event_exchange", False))   # mac dinh TAT
         c.event_exchange_items = list(pcfg.get("event_exchange_items") or [])  # qua CUOI user tick
+        # Chu ky su kien LUC USER TICK -> bot tu tu choi neu su kien da doi (xem do_event_exchange)
+        c.event_exchange_sig = pcfg.get("event_exchange_sig", "") or ""
         _early_sc = pcfg.get("start_city_id", getattr(config, "START_CITY_ID", 0))
         _early_raw_mode = pcfg.get("mode")
         _early_dt_mode = (_early_raw_mode == "digioi_train")
@@ -4830,7 +4832,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         auto_decompose_scrolls=False, scroll_modes=None,
                         auto_donate_materials=True, material_modes=None,
                         auto_event_exchange=False, event_exchange_items=None,
-                        death_return_town=True, pet_death_return_town=True):
+                        death_return_town=True, pet_death_return_town=True,
+                        event_exchange_sig=""):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -4868,6 +4871,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "auto_donate_materials": bool(auto_donate_materials),
         "material_modes": material_modes or {},
         "auto_event_exchange": bool(auto_event_exchange),
+        "event_exchange_sig": str(event_exchange_sig or ""),
         # APK truyen CHUOI noi bang "\n" (xem BotForegroundService.kt); PC truyen list.
         "event_exchange_items": ([x for x in event_exchange_items.split("\n") if x.strip()]
                                  if isinstance(event_exchange_items, str)

@@ -5095,6 +5095,16 @@ class GameClient:
             log.info("[%s] Doi qua su kien: BAT nhung chua tick qua nao -> bo qua "
                      "(Cai dat nang cao > List qua)", self._label)
             return 0
+        # TICK THUOC SU KIEN NAO? Chu ky luu luc user tick (config) phai trung chu ky su kien DANG
+        # MO. Khac = su kien da doi -> KHONG doi gi ca, du mon do tinh co van con o su kien moi
+        # (nguyen lieu da khac han - user phai chon lai). Chan ngay trong bot vi bot dang chay thi
+        # khong ai mo GUI de bo tick.
+        _sig_now = _evx.cache_signature()
+        _sig_pick = getattr(self, "event_exchange_sig", "") or ""
+        if _sig_now and _sig_pick != _sig_now:
+            log.warning("[%s] Doi qua su kien: tick dang co thuoc SU KIEN KHAC -> KHONG doi. "
+                        "Mo Cai dat nang cao > List qua de chon lai theo su kien moi.", self._label)
+            return 0
         missions = [m for a in self._activities.values() for m in a.get("missions") or ()]
         if not missions:
             # Hay gap nhat: server chua gui S:124-000 (hoac goi bi lo) -> KHONG duoc im lang.
