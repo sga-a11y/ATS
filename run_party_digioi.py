@@ -1834,6 +1834,36 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         reason = st.get("channel_failed_reason") or "co acc khong ve dung map/kenh"
                         reports = dict(st.get("channel_map_reports") or {})
                         done = len(reports) + len(st["reconnecting"]) >= expected
+                    # DOC THANG map cua tung acc thay vi CHO "bao cao": ca party chay chung MOT
+                    # tien trinh, leader nam san account_clients[u].current_map. Bat member phai tu
+                    # khai la thua VA de ket: member ban viec khac (dang train) thi khong chay doan
+                    # bao cao -> leader dung do 60s roi timeout, bump reform, lap lai. Log that
+                    # party 18: 23:36-23:43 leader dot ~6' voi "cho acc bao cao map (1/5)" trong khi
+                    # 4 member dang o map 14823 - thong tin leader THAY duoc ngay tu dau.
+                    _live = {}
+                    for _u, _up, _uil, _uip in party_accounts(pidx):
+                        _uc = account_clients.get(_u)
+                        if _uc is None or not getattr(_uc, "running", False):
+                            continue
+                        _m = getattr(_uc, "current_map", None)
+                        if _m is not None:
+                            _live[_u] = _m
+                    for _u, _m in _live.items():           # acc DA o dung map -> tinh NGAY
+                        if _u not in reports and (expected_map is None or _m == expected_map):
+                            reports[_u] = (True, _m)
+                    with st["lock"]:
+                        done = len(reports) + len(st["reconnecting"]) >= expected
+                    # Acc o map KHAC han: khong co cua thanh cong -> dung cho cho het 60s. Cho 10s
+                    # an toan vi luc teleport current_map con la map CU trong chocc lat.
+                    if not done and time.time() - _t0 > 10:
+                        _sai = {_u: _m for _u, _m in _live.items()
+                                if _u not in reports and expected_map is not None
+                                and _m != expected_map}
+                        if _sai:
+                            log.warning("[%s] (%s) sync kenh/map: %d/%d acc dung cho, acc con lai o "
+                                        "MAP KHAC %s (can %s) -> khong cho het 60s, regroup luon",
+                                        label, role, len(reports), expected, _sai, expected_map)
+                            return False
                     if fail:
                         log.warning("[%s] (%s) sync kenh/map FAIL (%s) -> pick lai",
                                     label, role, reason)
