@@ -2317,8 +2317,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             def _acc_stuck(_u):
                                 if _barrier_el > BARRIER_RESCUE_SEC:
                                     return True          # han cung: cuu tat ca, du dang bao tien do
-                                _a = get_account_activity(_u)
-                                return _a is None or _a[2] > BARRIER_STALE_SEC
+                                _a = get_account_task(_u)
+                                if _a is None:
+                                    return True
+                                # `age` (tuoi tu lan cap nhat cuoi) CHI bat duoc acc mat han nhip -
+                                # vd luong chet + socket cung chet. KHONG du: task_heartbeat duoc goi
+                                # tu VONG RECV moi 5s khi co goi ve, nen acc ket cung van "tre 1-6s"
+                                # (log that party 11: luu008/luu009 xong pho ban luc 00:55:53 roi
+                                # dung im 3.5' ma leader van thay chung "1s truoc" -> khong cuu).
+                                if _a["age"] > BARRIER_STALE_SEC:
+                                    return True
+                                # XONG viec ma khong nhan viec moi qua lau = ket that su. Viec DANG
+                                # chay (done=False) thi KHONG dung, du lau (boss the gioi ~15').
+                                return (_a.get("done")
+                                        and time.time() - float(_a.get("done_at") or 0.0)
+                                        > BARRIER_STALE_SEC)
                             _stuck = [
                                 _u for _u, _up, _uil, _uip in party_accounts(pidx)
                                 if _arr_gen.get(_u) != _target_city and _u not in st["reconnecting"]

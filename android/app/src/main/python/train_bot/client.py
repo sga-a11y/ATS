@@ -108,6 +108,9 @@ def mark_account_task_done(username, task=""):
         v["done"] = True
         v["phase"] = PHASE_IDLE
         v["update"] = time.time()
+        v["done_at"] = v["update"]   # XONG luc nao. KHONG dung `update` de do: `update` bi
+        # task_heartbeat (vong RECV) dap lai moi 5s khi co goi ve -> no chi chung minh SOCKET con
+        # song, khong chung minh luong con TIEN. Acc xong viec roi ket cung van "tre 1-6s".
         v["task"] = "xong: %s" % (task or v.get("task") or "")
 
 
