@@ -9307,6 +9307,24 @@ class GameClient:
                          self._label)
                 self.flee_mode = False
                 return False
+            # DANG O TRONG PHO BAN TO DOI: server CHAN teleport -> gui bao nhieu lan cung vo ich.
+            # Nhanh `_phoban_until` o tren chi phu luc VUA NHAN LOI MOI, khong phu luc DA O TRONG.
+            # Bug that (party 5, 01:08-01:09): 4 acc trong map PB 62012 spam "Teleport -> city 12061"
+            # MOI GIAY, ca log 1388 lan, cho toi khi het deadline moi bao "Chua ve duoc thanh".
+            # Phai danh PB xong (hoac bi day ra) roi moi ve thanh duoc -> tra False cho caller lo.
+            if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+                log.info("[%s] go_to_town: DANG TRONG pho ban to doi (map=%s) -> khong teleport, "
+                         "danh xong da", self._label, self.current_map)
+                self.flee_mode = False
+                return False
+            # VAN o DI GIOI: exit_di_gioi() chi chay MOT LAN truoc vong; that bai thi truoc day cu
+            # spam teleport toi het deadline (log that: thsau map=49942 spam lien tuc roi moi bao
+            # "Chua ve duoc thanh 12061"). Teleport o Di Gioi bi server tu choi -> gui vo ich.
+            if self.in_di_gioi():
+                log.info("[%s] go_to_town: VAN dang o Di Gioi (map=%s) -> khong teleport, ra cong "
+                         "thoat da", self._label, self.current_map)
+                self.flee_mode = False
+                return False
             # DANG BATTLE -> teleport bi chan, spam teleport luc battle PHA luot FLEE -> BAT flee, cho thoat.
             # Moc chinh = state.in_battle (chinh xac: 0x34 START -> True, 0x14 sub0700 END -> False).
             # CU dung in_combat(4.0) time-based: re-aggro <4s thi in_combat LUON True -> ko bao gio toi
