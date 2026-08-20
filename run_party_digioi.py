@@ -2161,17 +2161,45 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         if time.time() - _t0 > 30:
                             # Log ra acc THIEU (chua ve) DANG LAM GI + bao lau -> biet no dang lam viec
                             # khac (boss/dungeon) chua xong hay treo reform that.
+                            # MAP doc THANG tu client, KHONG lay trong chuoi activity: chuoi do dong
+                            # bang tu luc bat dau di ve thanh -> acc da toi noi ma ket o buoc sau thi
+                            # chuoi van in map CU (log 13:52 party 41: bao "dang o map 12831" trong khi
+                            # acc dang dung o Cu Loc) -> noi SAI, dan di nham huong.
                             _missing = []
                             for _u, _up, _uil, _uip in party_accounts(pidx):
                                 if _arr_gen.get(_u) == _target_city or _u in st["reconnecting"]:
                                     continue
+                                _uc = account_clients.get(_u)
+                                _umap = getattr(_uc, "current_map", None) if _uc else None
                                 _act = get_account_activity(_u)
-                                _missing.append("%s[%s]" % (_u, "%s %.0fs truoc" % (_act[0], _act[2])
-                                                            if _act else "chua report"))
+                                _missing.append("%s[map=%s, %s]" % (
+                                    _u, _umap,
+                                    "%s %.0fs truoc" % (_act[0], _act[2]) if _act else "chua report"))
                             log.info("[%s] (%s) reform: CHO ca party ve %s (%d/%d, reconnecting=%d) - THIEU: %s",
                                      label, role, _target_name, _n_arr, _expected, _n_rec,
                                      ", ".join(_missing) or "?")
                             _t0 = time.time()
+                        # KHONG CHO VO HAN. Acc con SONG nhung khong bao gio danh dau "da toi" ->
+                        # ca party dung hinh (bug that: party 38 ket 4h38', party 41 log 13:52).
+                        # Fix truoc chi cuu duoc luong acc CHET. Qua han -> LEADER ep relogin acc ket:
+                        # duong reconnect se gom lai tu dau, mat vai chuc giay con hon ket ca gio.
+                        if is_leader and time.time() - _barrier_t0 > BARRIER_RESCUE_SEC:
+                            _stuck = [
+                                _u for _u, _up, _uil, _uip in party_accounts(pidx)
+                                if _arr_gen.get(_u) != _target_city and _u not in st["reconnecting"]
+                            ]
+                            for _u in _stuck:
+                                _uc = account_clients.get(_u)
+                                log.warning("[%s] (LEADER) reform: %s KET %.0fs khong ve duoc %s "
+                                            "(map=%s) -> EP RELOGIN de cuu party",
+                                            label, _u, time.time() - _barrier_t0, _target_name,
+                                            getattr(_uc, "current_map", None) if _uc else None)
+                                if _uc is not None:
+                                    _force_supervisor_reconnect(_u, _uc,
+                                                                "ket o barrier reform")
+                                else:
+                                    account_reconnect[_u] = True
+                            _barrier_t0 = time.time()   # cho vong cuu tiep theo
                         time.sleep(1)
                 if _ab():
                     return
@@ -4276,6 +4304,7 @@ def _force_supervisor_reconnect(username, c, reason):
     return False
 
 
+BARRIER_RESCUE_SEC = 240   # barrier reform cho toi da 4' roi EP RELOGIN acc ket (khong cho vo han)
 TEAM_DUNGEON_MAX_TRIES = 2   # 1 lan dau + 1 lan RETRY. Qua so nay -> BO QUA HET cac PB.
 
 
