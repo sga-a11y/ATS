@@ -67,6 +67,8 @@ data class Party(
     // bot tu truy nguoc chuoi nguyen lieu (xem bot/event_exchange.py).
     val autoEventExchange: Boolean = false,
     val eventExchangeItems: List<String> = emptyList(),
+    // Chu ky su kien LUC USER TICK. Khac chu ky hien tai = su kien da doi -> xoa tick.
+    val eventExchangeSig: String = "",
     // Mua shop (mac dinh TAT). Master autoBuyShop + list item ben duoi.
     // Ho Phu: mua 3/ngay. Thien Chau: mua 1/ngay. Bao Hop: mua 1/ngay khi xu > baoHopXuThreshold.
     val autoBuyShop: Boolean = false,
@@ -109,6 +111,7 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     materialModes = source.materialModes,
     autoEventExchange = source.autoEventExchange,
     eventExchangeItems = source.eventExchangeItems,
+    eventExchangeSig = source.eventExchangeSig,
     autoBuyShop = source.autoBuyShop,
     buyHoPhu = source.buyHoPhu,
     buyThienChau = source.buyThienChau,

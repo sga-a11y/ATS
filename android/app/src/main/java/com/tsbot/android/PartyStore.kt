@@ -26,21 +26,24 @@ class PartyStore(private val context: Context) {
         return defaults
     }
 
-    /** Su kien doi -> tick 'tu doi qua event' cua su kien CU khong con nghia (id vat pham khac).
-     *  Dung CHUNG ham Python voi ban PC (bot/event_exchange.py: is_new_event) de khong lech. */
-    private fun isNewEvent(): Boolean = try {
-        com.chaquo.python.Python.getInstance()
-            .getModule("train_bot.event_exchange")
-            .callAttr("is_new_event")
-            .toBoolean()
-    } catch (e: Exception) {
-        false
+    companion object {
+        /** Chu ky su kien doi thuong DANG MO (tap key qua cuoi). Rong = chua doc duoc.
+         *  Dung CHUNG ham Python voi ban PC (bot/event_exchange.py: cache_signature) de khong
+         *  lech. Khong can context nen de o companion -> UI goi PartyStore.eventSigNow(). */
+        fun eventSigNow(): String = try {
+            com.chaquo.python.Python.getInstance()
+                .getModule("train_bot.event_exchange")
+                .callAttr("cache_signature")
+                .toString()
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     fun load(): List<Party> {
         if (!file.exists()) return emptyList()
         val arr = JSONArray(file.readText())
-        val newEvent = isNewEvent()
+        val curSig = eventSigNow()
         val loaded = (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             val accArr = o.getJSONArray("accounts")
@@ -100,6 +103,7 @@ class PartyStore(private val context: Context) {
                 eventExchangeItems = o.optJSONArray("event_exchange_items")?.let { a ->
                     (0 until a.length()).mapNotNull { a.optString(it, "").takeIf { s -> s.isNotEmpty() } }
                 } ?: emptyList(),
+                eventExchangeSig = o.optString("event_exchange_sig", ""),
                 autoBuyShop = o.optBoolean("auto_buy_shop", buyHoPhu || buyThienChau || buyBaoHop),
                 buyHoPhu = buyHoPhu,
                 buyThienChau = buyThienChau,
@@ -115,11 +119,15 @@ class PartyStore(private val context: Context) {
                 accounts = accounts,
             )
         }
-        if (!newEvent) return loaded
-        // Bo tick + xoa list, roi GHI LAI ngay: khong de lan mo sau van thay cau hinh cu.
+        if (curSig.isEmpty()) return loaded    // chua doc duoc su kien -> khong dung vao config
+        // Chu ky luc user tick KHAC chu ky hien tai = su kien da doi -> xoa tick (ke ca khi mon
+        // do van con o su kien moi: nguyen lieu da khac han, phai bat chon lai).
+        // Config cu chua co truong sig -> khong biet thuoc event nao -> cung xoa 1 lan.
         val reset = loaded.map {
-            if (it.autoEventExchange || it.eventExchangeItems.isNotEmpty())
-                it.copy(autoEventExchange = false, eventExchangeItems = emptyList())
+            if ((it.autoEventExchange || it.eventExchangeItems.isNotEmpty()) &&
+                it.eventExchangeSig != curSig)
+                it.copy(autoEventExchange = false, eventExchangeItems = emptyList(),
+                        eventExchangeSig = "")
             else it
         }
         if (reset != loaded) save(reset)
@@ -161,6 +169,7 @@ class PartyStore(private val context: Context) {
             o.put("material_modes", JSONObject().apply { p.materialModes.forEach { (k, v) -> put(k, v) } })
             o.put("auto_event_exchange", p.autoEventExchange)
             o.put("event_exchange_items", JSONArray().apply { p.eventExchangeItems.forEach { put(it) } })
+            o.put("event_exchange_sig", p.eventExchangeSig)
             o.put("auto_buy_shop", p.autoBuyShop)
             o.put("shop_items", JSONObject().apply {
                 put("ho_phu", p.buyHoPhu)

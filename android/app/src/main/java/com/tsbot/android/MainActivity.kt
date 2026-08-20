@@ -2263,6 +2263,8 @@ fun AddPartyDialog(
                             materialModes = materialModes,
                             autoEventExchange = autoEventExchange,
                             eventExchangeItems = eventExchangeItems,
+                            eventExchangeSig = if (eventExchangeItems.isEmpty()) ""
+                                               else PartyStore.eventSigNow(),
                             autoBuyShop = autoBuyShop,
                             buyHoPhu = buyHoPhu,
                             buyThienChau = buyThienChau,

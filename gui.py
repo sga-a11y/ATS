@@ -25,6 +25,15 @@ def _os_path_exists_cache():
         return os.path.isfile("event_exchange.json")
 
 
+def _event_sig_now() -> str:
+    """Chu ky su kien doi thuong dang mo (tap key qua cuoi). Rong = chua doc duoc."""
+    try:
+        from bot import event_exchange as _evx
+        return _evx.cache_signature()
+    except Exception:
+        return ""
+
+
 def _reset_event_ticks_if_new_event(prof):
     """Su kien doi -> BO TICK 'tu doi qua event' o TAT CA party cua MOI cau hinh, roi GHI FILE.
 
@@ -36,17 +45,24 @@ def _reset_event_ticks_if_new_event(prof):
     """
     try:
         from bot import event_exchange as _evx
-        if not _evx.is_new_event():
-            return
+        _cur = _evx.cache_signature()
     except Exception:
         return
+    if not _cur:
+        return          # chua doc duoc su kien nao -> KHONG dung vao config cua user
     n = 0
     for _cfg in (prof.get("profiles") or {}).values():
         for p in (_cfg.get("parties") or ()):
-            if p.get("auto_event_exchange") or p.get("event_exchange_items"):
-                p["auto_event_exchange"] = False
-                p["event_exchange_items"] = []
-                n += 1
+            if not (p.get("auto_event_exchange") or p.get("event_exchange_items")):
+                continue
+            # Chu ky luc USER TICK. Khac chu ky hien tai = SU KIEN DA DOI -> xoa het tick.
+            # Config cu chua co truong nay -> khong biet thuoc event nao -> cung xoa (1 lan).
+            if p.get("event_exchange_sig") == _cur:
+                continue
+            p["auto_event_exchange"] = False
+            p["event_exchange_items"] = []
+            p.pop("event_exchange_sig", None)
+            n += 1
     if n:
         try:
             _save_profiles(prof)      # GHI NGAY: khong doi user bam Luu moi co tac dung
@@ -55,8 +71,9 @@ def _reset_event_ticks_if_new_event(prof):
         try:
             messagebox.showinfo(
                 "Sự kiện mới",
-                "Phát hiện sự kiện đổi thưởng MỚI.\n\n"
-                "Đã bỏ tick \"Tự đổi quà event\" ở %d party (quà cũ không còn).\n"
+                "Sự kiện đổi thưởng đã thay đổi.\n\n"
+                "Đã bỏ tick \"Tự đổi quà event\" ở %d party vì quà đã tick không còn "
+                "trong sự kiện đang mở.\n"
                 "Mở Cài đặt nâng cao → List quà để chọn lại." % n)
         except Exception:
             pass
@@ -3447,6 +3464,7 @@ class PartyConfigFrame(ttk.Frame):
             "material_modes": dict(self.material_modes),
             "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
             "event_exchange_items": list(self.event_exchange_items),
+            "event_exchange_sig": _event_sig_now(),
             "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
             "shop_items": _shop_items_json({
                 "ho_phu": self.buy_ho_phu_var.get(),
@@ -3704,6 +3722,8 @@ class PartyConfigFrame(ttk.Frame):
                 "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
                 "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
                 "event_exchange_items": list(self.event_exchange_items),
+                # Chu ky su kien LUC TICK -> lan sau su kien doi thi tu biet ma xoa tick.
+                "event_exchange_sig": _event_sig_now(),
                 "death_return_town": bool(self.death_return_town_var.get()),
                 "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
                 "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
