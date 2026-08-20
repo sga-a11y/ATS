@@ -64,11 +64,27 @@ def main():
             rec.pop("restrict", None)
         out[key] = rec
 
+    # THEM item MOI (id chua co trong file). KHONG dung vao muc da co -> ten cu giu nguyen,
+    # khong doi hanh vi cho nao dang doi chieu theo ten. Khong co buoc nay thi MOI item game
+    # them sau nay deu hien la "item 30558" (vd event Mung Quoc Khanh).
+    n_add = 0
+    for tid, d in sorted(by_id.items()):
+        if ("0x%04x" % tid) in out or str(tid) in out:
+            continue
+        name = (d.get("name") or "").strip()
+        if not name:
+            continue
+        rec = {"name": name}
+        if d.get("restrict"):
+            rec["restrict"] = d["restrict"]
+        out["0x%04x" % tid] = rec
+        n_add += 1
+
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False)
     n_nocombine = sum(1 for v in out.values() if (v.get("restrict", 0) & 4))
-    print("=> %s: %d item (%d co restrict != 0, %d KHONG dung de hop duoc - bit 4)"
-          % (os.path.basename(OUT), len(out), n_new, n_nocombine))
+    print("=> %s: %d item (+%d MOI, %d co restrict != 0, %d KHONG dung de hop duoc - bit 4)"
+          % (os.path.basename(OUT), len(out), n_add, n_new, n_nocombine))
 
 
 if __name__ == "__main__":

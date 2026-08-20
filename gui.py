@@ -25,11 +25,14 @@ def _os_path_exists_cache():
         return os.path.isfile("event_exchange.json")
 
 
-def _reset_event_ticks_if_new_event(cfg):
-    """Su kien doi -> BO TICK 'tu doi qua event' o TAT CA party.
+def _reset_event_ticks_if_new_event(prof):
+    """Su kien doi -> BO TICK 'tu doi qua event' o TAT CA party cua MOI cau hinh, roi GHI FILE.
 
     Tick luu theo id vat pham cua su kien cu; su kien moi dung id khac -> giu lai la doi nham/vo
     nghia. Bat user tick lai la co y: doi qua la MAT nguyen lieu, khong duoc tu suy dien.
+
+    Goi tu _load_profiles() (duong doc accounts.json THAT luc khoi dong). TUNG dat nham trong
+    ConfigDialog._load() - ham do la nhanh du phong, gan nhu khong chay -> tinh nang chet am tham.
     """
     try:
         from bot import event_exchange as _evx
@@ -38,12 +41,17 @@ def _reset_event_ticks_if_new_event(cfg):
     except Exception:
         return
     n = 0
-    for p in (cfg.get("parties") or ()):
-        if p.get("auto_event_exchange") or p.get("event_exchange_items"):
-            p["auto_event_exchange"] = False
-            p["event_exchange_items"] = []
-            n += 1
+    for _cfg in (prof.get("profiles") or {}).values():
+        for p in (_cfg.get("parties") or ()):
+            if p.get("auto_event_exchange") or p.get("event_exchange_items"):
+                p["auto_event_exchange"] = False
+                p["event_exchange_items"] = []
+                n += 1
     if n:
+        try:
+            _save_profiles(prof)      # GHI NGAY: khong doi user bam Luu moi co tac dung
+        except Exception:
+            pass
         try:
             messagebox.showinfo(
                 "Sự kiện mới",
@@ -272,6 +280,7 @@ def _load_profiles():
     except Exception:
         d = {"channel": 2, "parties": []}
     if isinstance(d, dict) and isinstance(d.get("profiles"), dict) and d["profiles"]:
+        _reset_event_ticks_if_new_event(d)
         return d
     # FLAT cu {channel,parties} -> MIGRATE: Cau hinh 1 = config THAT cua user (giu nguyen), Cau hinh 2
     # = template mau.
@@ -4302,11 +4311,8 @@ class ConfigDialog(tk.Toplevel):
         except Exception:
             return {"channel": 2, "parties": []}
         if isinstance(d, dict) and isinstance(d.get("profiles"), dict):
-            cfg = d["profiles"].get(d.get("active")) or {"channel": 2, "parties": []}
-        else:
-            cfg = d
-        _reset_event_ticks_if_new_event(cfg)
-        return cfg
+            return d["profiles"].get(d.get("active")) or {"channel": 2, "parties": []}
+        return d
 
     PARTIES_PER_GROUP = 10
 

@@ -100,3 +100,4 @@ _lua_*.lua
 _luadump/
 party.log*
 account_skills_cache.json
+event_exchange_sig.txt
