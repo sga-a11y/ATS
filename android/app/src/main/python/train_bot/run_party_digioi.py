@@ -955,6 +955,9 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
     st = _pstate(pidx)
     with st["lock"]:
         st["dt_done"].add(username)
+    # Xong DG truoc -> DUNG CHO ca party (co the toi 2 TIENG). Danh dau CHO de watcher khong keu
+    # "TREO" oan, va de biet day la cho HOP LE chu khong phai lech viec.
+    set_account_activity(username, "xong Di Gioi - cho ca party xong", phase="wait")
 
     def _prepare_train_phase_once():
         prepared = False
@@ -1984,7 +1987,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         if _p and _p.get("gen") == _g0:
                             plan = dict(_p)
                             break
-                    set_account_activity(username, "reform: cho leader lap route -> %s" % sc, phase="reform")
+                    set_account_activity(username, "reform: cho leader lap route -> %s" % sc, phase="wait")
                     # DONG BO THEO LEADER: leader LIVE + dang o pha KHAC reform (khong phai boss/chore)
                     # on dinh >30s -> leader se KHONG publish route (da sang pha khac) -> BO reform,
                     # quay ve vong chinh vao dung pha leader. Khong relogin, khong cho vo tan (bug that:
@@ -2146,7 +2149,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     _barrier_t0 = time.time()
                     while not _ab():
                         set_account_activity(username, "reform: da ve %s, cho ca party (%.0fs)"
-                                             % (_target_name, time.time() - _barrier_t0), phase="reform")
+                                             % (_target_name, time.time() - _barrier_t0), phase="wait")
                         if _nghiep_fallback_active() and _target_city != 12061:
                             with st["lock"]:
                                 st.get("reform_arrived", {}).get(_g0, {}).pop(username, None)
@@ -3714,8 +3717,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
-            set_account_activity(username, "train map=%s combat=%s" % (c.current_map, c.in_combat()),
-                                 phase="train")
+            # Pha DI GIOI khac train thuong: acc trong DG va acc DA XONG DG deu chay vong nay,
+            # bao cung "train" thi watcher khong phan biet duoc trong/ngoai DG.
+            set_account_activity(username,
+                                 "%s map=%s combat=%s" % (
+                                     "digioi" if _pstate(pidx).get("dt_phase") == "digioi" else "train",
+                                     c.current_map, c.in_combat()),
+                                 phase=("digioi" if _pstate(pidx).get("dt_phase") == "digioi"
+                                        else "train"))
             # ==== 40NPC: run_loop (leader) bao HET GIO / THUA 2 TRAN (c._npc40_done) -> leader phat
             # tin hieu go_claim -> CA party (leader + member) di doi thuong + THOAT game. ====
             if event_party_mode:
@@ -4404,7 +4413,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
             # (log that 14:03:10 member bat dau cho -> 14:06:10 = dung 180s -> "EP DONG BO").
             # Vong nay da co du duong thoat: stop/rot, st["reconnecting"], leader bao xong.
             _resync_ck(st, username)   # ep dong bo TAY (GUI) van thoat duoc
-            set_account_activity(username, "PB lv%d: cho leader xu ly" % level, phase="team_dungeon")
+            set_account_activity(username, "PB lv%d: cho leader xu ly" % level, phase="wait")
             if time.time() - last_log > 60:
                 log.info("[%s] (member) chờ leader xử lý phó bản đội lv%d...", label, level)
                 last_log = time.time()
@@ -4484,7 +4493,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
             reported = all(m in reports or m in st["reconnecting"] for m in members)
         if reported:
             break
-        set_account_activity(username, "PB lv%d: cho party report" % level, phase="team_dungeon")
+        set_account_activity(username, "PB lv%d: cho party report" % level, phase="wait")
         if time.time() - last_log > 30:
             log.info("[%s] (LEADER) chờ cả party report lượt phó bản đội lv%d (%d/%d)...",
                      label, level, len(reports), len(members))
@@ -5081,13 +5090,16 @@ WATCH_MISMATCH_SEC = 300    # ca party lech viec lien tuc qua lau -> ep dong bo
 WATCH_SOLO_MAX = 1800       # viec le chay qua 30' -> bat thuong, bao (khong tu ep)
 
 _PHASE_SOLO = ("login_chore", "boss_qd")     # viec LE: dong doi phai CHO, khong phai lech viec
-_PHASE_TEAM = ("train", "reform", "team_dungeon")
+_PHASE_TEAM = ("train", "reform", "team_dungeon", "digioi")
+_PHASE_WAIT = "wait"                        # dang CHO dong doi - KHONG phai treo (xem duoi)
+WATCH_ALLWAIT_SEC = 120                     # CA PARTY cung cho qua lau = deadlock that
 
 
 def _party_watcher(pidx):
     """Luong quan sat 1 party. Chi DOC trang thai, khong tham gia vao luong lam viec."""
     st = _pstate(pidx)
     mismatch_t0 = None
+    allwait_t0 = None
     while True:
         time.sleep(WATCH_EVERY_SEC)
         accs = [u for u, _p, _l, _k in party_accounts(pidx)]
@@ -5107,9 +5119,28 @@ def _party_watcher(pidx):
 
         solo = [(u, d) for u, d in live if d["phase"] in _PHASE_SOLO]
         team = [(u, d) for u, d in live if d["phase"] in _PHASE_TEAM]
-        stuck = [(u, d) for u, d in live if d["age"] > WATCH_STUCK_AGE]
+        waiting = [(u, d) for u, d in live if d["phase"] == _PHASE_WAIT]
+        # TREO chi tinh cho acc dang LAM. Acc dang CHO dong doi thi im lau la BINH THUONG
+        # (xong DG truoc -> doi ca party, co the 2 TIENG; cho leader danh PB 10-20 phut).
+        stuck = [(u, d) for u, d in live
+                 if d["age"] > WATCH_STUCK_AGE and d["phase"] != _PHASE_WAIT]
 
-        # 1) ACC IM QUA LAU -> nghi treo. Bao ro (co ten viec + bao lau) de con truy.
+        # 1) CA PARTY CUNG CHO = DEADLOCK THAT (khong ai lam gi de ma cho).
+        #    Dung ca 2 ca hom nay: leader cho ca party ve thanh + member cho leader danh PB.
+        if waiting and len(waiting) == len(live):
+            if allwait_t0 is None:
+                allwait_t0 = time.time()
+                log.warning("[party %d] WATCH: CA PARTY DEU DANG CHO -> %s", pidx + 1,
+                            ", ".join("%s='%s'" % (u, d["task"][:40]) for u, d in waiting))
+            elif time.time() - allwait_t0 >= WATCH_ALLWAIT_SEC:
+                log.warning("[party %d] WATCH: ca party cho nhau %.0fs -> DEADLOCK, EP DONG BO",
+                            pidx + 1, time.time() - allwait_t0)
+                request_party_resync(pidx, "watcher: ca party cho nhau", cooldown=WATCH_ALLWAIT_SEC)
+                allwait_t0 = None
+            continue
+        allwait_t0 = None
+
+        # 2) ACC DANG LAM ma im qua lau -> nghi treo. Bao ro (ten viec + bao lau) de con truy.
         for u, d in stuck:
             log.warning("[party %d] WATCH: %s IM %.0fs khi dang '%s' (pha=%s, viec da chay %.0fs)"
                         " -> nghi TREO", pidx + 1, u, d["age"], d["task"], d["phase"], d["elapsed"])
@@ -5123,7 +5154,13 @@ def _party_watcher(pidx):
             mismatch_t0 = None
             continue
 
-        # 3) DEU LAM VIEC TEAM: cung pha thi thoi, LECH PHA thi tinh gio.
+        # 3) Co acc dang CHO (nhung khong phai tat ca) -> co nguoi dang lam, cho la HOP LE.
+        #    Vd: 3 acc xong DG dung cho, 2 acc con dang trong DG -> khong phai lech viec.
+        if waiting:
+            mismatch_t0 = None
+            continue
+
+        # 4) DEU LAM VIEC TEAM: cung pha thi thoi, LECH PHA thi tinh gio.
         phases = {d["phase"] for _u, d in team}
         if len(phases) <= 1:
             mismatch_t0 = None

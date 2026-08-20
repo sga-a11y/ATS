@@ -58,6 +58,11 @@ PHASE_TRAIN = "train"
 PHASE_REFORM = "reform"
 PHASE_TEAM_DUNGEON = "team_dungeon"
 PHASE_IDLE = "idle"                 # vua xong 1 viec, chua sang viec moi
+PHASE_DIGIOI = "digioi"             # dang trong Di Gioi (khac train thuong)
+# DANG CHO DONG DOI - KHONG phai treo. Cho co the rat lau va van hoan toan binh thuong:
+#   xong DG truoc, doi ca party xong (toi 2 TIENG); cho leader danh xong PB (10-20 phut).
+# Chi la van de khi CA PARTY cung dang cho -> luc do moi la deadlock that.
+PHASE_WAIT = "wait"
 
 _ACC_TASK_SEQ = 0
 
