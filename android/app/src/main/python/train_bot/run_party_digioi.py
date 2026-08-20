@@ -4398,17 +4398,6 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
         while True:
             if stopped_fn() or not c.running:
                 return False
-            # LEADER BI KEO DI REFORM trong luc minh dang cho -> phai THEO, khong thi ca party ket
-            # (log 14:04: leader "CHO ca party ve thanh 23001 1/5", 4 member "cho leader xu ly PB").
-            # Nguyen nhan hay gap: acc con luot BOSS THE GIOI danh 10-20' -> sync kenh timeout 60s
-            # -> bump reform_gen -> leader bo PB di reform, member khong biet.
-            with st["lock"]:
-                _pb_gnow = st["reform_gen"]
-            if _pb_gnow > _pb_g0:
-                log.warning("[%s] (member) phó bản đội lv%d: leader chuyển sang REFORM "
-                            "(reform_gen %d->%d) -> bỏ chờ, về thành cùng party",
-                            label, level, _pb_g0, _pb_gnow)
-                return True
             # KHONG dat _barrier_watchdog o day! Member cho leader chay HET pho ban la CHUYEN
             # BINH THUONG va lau 10-20 phut (5 tran + di duong + thoai). Watchdog 180s tuong la
             # "ket" -> ep dong bo -> DA CA 4 MEMBER RA relogin GIUA pho ban, pha nat luot PB
@@ -4429,6 +4418,19 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                 return _force_supervisor_reconnect(
                     username, c, "phó bản đội vỡ do đồng đội rớt"
                 )
+            # LEADER BI KEO DI REFORM trong luc minh dang cho -> phai THEO, khong thi ca party
+            # ket (log 14:04: leader "CHO ca party ve thanh 23001 1/5", 4 member "cho leader xu ly
+            # PB"). Ngoi no hay gap: acc con luot BOSS THE GIOI danh 10-20' -> sync kenh timeout
+            # 60s -> bump reform_gen -> leader bo PB di reform, member khong hay biet.
+            # DAT SAU nhanh "dong doi rot" o tren: nhanh do cung bump reform_gen nhung phai di
+            # duong RELOGIN de ca party danh LAI PB - khong duoc de check nay cuop mat.
+            with st["lock"]:
+                _pb_gnow = st["reform_gen"]
+            if _pb_gnow > _pb_g0:
+                log.warning("[%s] (member) phó bản đội lv%d: leader chuyển sang REFORM "
+                            "(reform_gen %d->%d) -> bỏ chờ, về thành cùng party",
+                            label, level, _pb_g0, _pb_gnow)
+                return True
             with st["lock"]:
                 state = st.setdefault("team_dungeon_state", {}).get(level, "idle")
                 broke = bool(st.setdefault("team_dungeon_broke", {}).get(level, False))
