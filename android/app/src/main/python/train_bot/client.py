@@ -537,6 +537,19 @@ def reset_party_joined(party_idx):
     with _PARTY_LOCK:
         _PARTY_JOINED.pop(party_idx, None)
 
+def _sync_party_joined(party_idx, leader, members):
+    """Dat _PARTY_JOINED theo ROSTER SERVER (0x0d sub06). Leader KHONG tinh la member."""
+    if party_idx is None:
+        return
+    lead = bytes(leader) if leader else None
+    now = {bytes(m) for m in (members or []) if m and (lead is None or bytes(m) != lead)}
+    with _PARTY_LOCK:
+        cur = _PARTY_JOINED.get(party_idx)
+        if cur == now:
+            return
+        _PARTY_JOINED[party_idx] = now
+
+
 def is_joined(party_idx, entity):
     """Member nay da accept vao party chua (self_entity co trong _PARTY_JOINED)."""
     if party_idx is None or not entity:
@@ -3341,6 +3354,11 @@ class GameClient:
                     return
                 self.party_leader = leader
                 self.party_members = members
+                # ROSTER SERVER LA SU THAT (giong client: S:013-006 -> Team.AddMember). Dong bo
+                # _PARTY_JOINED theo roster thay vi cho member tu ghi so luc accept loi moi:
+                # party co san tu truoc / reform xoa so -> so rong ma party trong game van con
+                # -> leader dem "0/4" roi MOI LAI vo han (log 18:13 party 6).
+                _sync_party_joined(self.party_idx, leader, members)
                 # CHI log khi roster THAY DOI (0x0d sub06 phat lien tuc -> truoc day spam moi goi).
                 _roster_sig = (leader, tuple(members))
                 _roster_changed = _roster_sig != getattr(self, "_last_roster_sig", None)
