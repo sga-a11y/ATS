@@ -22,7 +22,7 @@ from bot.train_maps_store import save_learned_regions
 from bot.login import login
 from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined,
-                        set_account_activity, get_account_activity)
+                        set_account_activity, get_account_activity, get_account_task)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
 try:
@@ -5065,7 +5065,80 @@ def start_party(pidx, stagger=1.5):
         if start_account(u, p, pidx, is_leader, is_picker):
             started += 1
             time.sleep(stagger)
+    if started:
+        # 1 watcher/party, chay nen. Tu thoat khi party dung han.
+        threading.Thread(target=_party_watcher, args=(pidx,),
+                         name="watch-p%d" % (pidx + 1), daemon=True).start()
     return started
+
+
+# ===================== WATCHER: QUAN SAT VIEC CUA CA PARTY =====================
+# Doc bao cao "dang lam gi" cua tung acc (bot/client.py: account_task/get_account_task) roi ket
+# luan o MOT CHO, thay vi de moi vong cho tu phan doan.
+WATCH_EVERY_SEC = 20        # nhip quet
+WATCH_STUCK_AGE = 180       # acc khong cap nhat tien do qua lau -> nghi TREO
+WATCH_MISMATCH_SEC = 300    # ca party lech viec lien tuc qua lau -> ep dong bo
+WATCH_SOLO_MAX = 1800       # viec le chay qua 30' -> bat thuong, bao (khong tu ep)
+
+_PHASE_SOLO = ("login_chore", "boss_qd")     # viec LE: dong doi phai CHO, khong phai lech viec
+_PHASE_TEAM = ("train", "reform", "team_dungeon")
+
+
+def _party_watcher(pidx):
+    """Luong quan sat 1 party. Chi DOC trang thai, khong tham gia vao luong lam viec."""
+    st = _pstate(pidx)
+    mismatch_t0 = None
+    while True:
+        time.sleep(WATCH_EVERY_SEC)
+        accs = [u for u, _p, _l, _k in party_accounts(pidx)]
+        if not accs or not any(is_account_running(u) for u in accs):
+            return                                  # party da dung han -> thoat luong
+        with st["lock"]:
+            recon = set(st["reconnecting"])
+        rows = []
+        for u in accs:
+            if u in recon or not is_account_running(u):
+                continue
+            d = get_account_task(u)
+            rows.append((u, d))
+        live = [(u, d) for u, d in rows if d]
+        if not live:
+            continue
+
+        solo = [(u, d) for u, d in live if d["phase"] in _PHASE_SOLO]
+        team = [(u, d) for u, d in live if d["phase"] in _PHASE_TEAM]
+        stuck = [(u, d) for u, d in live if d["age"] > WATCH_STUCK_AGE]
+
+        # 1) ACC IM QUA LAU -> nghi treo. Bao ro (co ten viec + bao lau) de con truy.
+        for u, d in stuck:
+            log.warning("[party %d] WATCH: %s IM %.0fs khi dang '%s' (pha=%s, viec da chay %.0fs)"
+                        " -> nghi TREO", pidx + 1, u, d["age"], d["task"], d["phase"], d["elapsed"])
+
+        # 2) CO ACC LAM VIEC LE -> ca party CHO no, day KHONG phai lech viec.
+        if solo:
+            for u, d in solo:
+                if d["elapsed"] > WATCH_SOLO_MAX:
+                    log.warning("[party %d] WATCH: %s lam viec le '%s' da %.0f phut -> qua lau",
+                                pidx + 1, u, d["task"], d["elapsed"] / 60.0)
+            mismatch_t0 = None
+            continue
+
+        # 3) DEU LAM VIEC TEAM: cung pha thi thoi, LECH PHA thi tinh gio.
+        phases = {d["phase"] for _u, d in team}
+        if len(phases) <= 1:
+            mismatch_t0 = None
+            continue
+        if mismatch_t0 is None:
+            mismatch_t0 = time.time()
+            log.info("[party %d] WATCH: party LECH VIEC -> %s", pidx + 1,
+                     ", ".join("%s=%s" % (u, d["phase"]) for u, d in team))
+            continue
+        if time.time() - mismatch_t0 >= WATCH_MISMATCH_SEC:
+            log.warning("[party %d] WATCH: LECH VIEC lien tuc %.0f phut (%s) -> EP DONG BO",
+                        pidx + 1, (time.time() - mismatch_t0) / 60.0,
+                        ", ".join("%s=%s" % (u, d["phase"]) for u, d in team))
+            request_party_resync(pidx, "watcher: party lech viec", cooldown=WATCH_MISMATCH_SEC)
+            mismatch_t0 = None
 
 
 def start_all():

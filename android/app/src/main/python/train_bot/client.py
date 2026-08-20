@@ -51,17 +51,112 @@ _ACC_ACTIVITY_LOCK = threading.Lock()
 #   login_chore  = viec vat sau login (world boss, daily dungeon solo, van tieu...)  (WHITELIST)
 _PHASE_WHITELIST = ("boss_qd", "login_chore")   # leader o pha nay -> member CHO, khong bo viec
 
-def set_account_activity(username, task, phase=""):
+# Pha VIEC LE: acc lam mot minh, dong doi phai CHO chu khong duoc coi la "lech viec".
+PHASE_LOGIN_CHORE = "login_chore"   # boss the gioi, van tieu, PB don, doi qua, thanh tuu...
+PHASE_BOSS_QD = "boss_qd"
+PHASE_TRAIN = "train"
+PHASE_REFORM = "reform"
+PHASE_TEAM_DUNGEON = "team_dungeon"
+PHASE_IDLE = "idle"                 # vua xong 1 viec, chua sang viec moi
+
+_ACC_TASK_SEQ = 0
+
+
+def set_account_activity(username, task, phase="", _new_task=True):
+    """Bao "dang lam gi". _new_task=False = chi cap nhat tien do cua viec DANG lam (giu `start`)."""
+    global _ACC_TASK_SEQ
+    if not username:
+        return
+    now = time.time()
+    with _ACC_ACTIVITY_LOCK:
+        old = _ACC_ACTIVITY.get(username)
+        same = (old is not None and not _new_task
+                and old.get("task") == task and old.get("phase") == phase)
+        if same:
+            old["update"] = now
+            return
+        _ACC_TASK_SEQ += 1
+        _ACC_ACTIVITY[username] = {"task": task, "phase": phase, "start": now,
+                                   "update": now, "seq": _ACC_TASK_SEQ, "done": False}
+
+
+def task_heartbeat(username, task=None):
+    """Viec dang chay: cap nhat `update` (KHONG doi `start`). Dung trong vong lap lau."""
     if not username:
         return
     with _ACC_ACTIVITY_LOCK:
-        _ACC_ACTIVITY[username] = (task, phase, time.time())
+        v = _ACC_ACTIVITY.get(username)
+        if v is not None:
+            v["update"] = time.time()
+            if task:
+                v["task"] = task
 
-def get_account_activity(username):
-    """Tra (task, phase, so_giay_ke_tu_cap_nhat) hoac None neu chua tung report."""
+
+def mark_account_task_done(username, task=""):
+    """Danh dau XONG viec hien tai -> dong doi biet no da xong chu khong phai treo."""
+    if not username:
+        return
     with _ACC_ACTIVITY_LOCK:
         v = _ACC_ACTIVITY.get(username)
-    return (v[0], v[1], time.time() - v[2]) if v else None
+        if v is None:
+            return
+        v["done"] = True
+        v["phase"] = PHASE_IDLE
+        v["update"] = time.time()
+        v["task"] = "xong: %s" % (task or v.get("task") or "")
+
+
+def get_account_activity(username):
+    """Tra (task, phase, so_giay_ke_tu_cap_nhat) - GIU nguyen dang cu cho code dang dung."""
+    with _ACC_ACTIVITY_LOCK:
+        v = _ACC_ACTIVITY.get(username)
+    return (v["task"], v["phase"], time.time() - v["update"]) if v else None
+
+
+def get_account_task(username):
+    """Ban ghi DAY DU cho watcher: {task, phase, start, update, seq, done, age, elapsed}."""
+    with _ACC_ACTIVITY_LOCK:
+        v = _ACC_ACTIVITY.get(username)
+        if v is None:
+            return None
+        now = time.time()
+        d = dict(v)
+    d["age"] = now - d["update"]        # bao lau khong cap nhat (nghi treo)
+    d["elapsed"] = now - d["start"]     # viec nay da chay bao lau (viec lau la binh thuong)
+    return d
+
+
+class account_task:
+    """Bao viec + TU DANH DAU XONG khi thoat (ke ca khi loi).
+
+    with account_task(user, "boss the gioi", PHASE_LOGIN_CHORE):
+        ...
+    """
+
+    def __init__(self, username, task, phase=""):
+        self.username, self.task, self.phase = username, task, phase
+
+    def __enter__(self):
+        set_account_activity(self.username, self.task, self.phase)
+        return self
+
+    def beat(self, task=None):
+        task_heartbeat(self.username, task)
+
+    def __exit__(self, et, ev, tb):
+        mark_account_task_done(self.username, self.task)
+        return False
+
+
+def task_report(task, phase=""):
+    """Decorator cho method cua GameClient: tu bao viec + danh dau xong. Khong the quen."""
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrap(self, *a, **k):
+            with account_task(getattr(self, "_username", ""), task, phase):
+                return fn(self, *a, **k)
+        return wrap
+    return deco
 
 
 # ===== UU TIEN THREAD KHI DANH PHO BAN TO DOI (PB) =====
@@ -3783,6 +3878,7 @@ class GameClient:
         """Hoi info exp offline (type 0x1c). Neu co exp -> tu nhan (xu ly o _on_offline_exp)."""
         self.send(0x54, b"\x01\x00" + struct.pack("<H", exp_type))
 
+    @task_report("nhan mail", PHASE_LOGIN_CHORE)
     def claim_mail(self):
         """Mail (opcode 0x53): voi MOI mail trong list -> doc + nhan qua + xoa.
         (mailid, cat) doc tu S2C 0x53 sub=01 (server push luc login), KHONG hardcode.
@@ -3919,6 +4015,7 @@ class GameClient:
         log.info("[%s] Thanh tuu: bao %d cai -> server chap nhan %d", self._label, n, _ok)
         return n
 
+    @task_report("nhan qua thanh tuu", PHASE_LOGIN_CHORE)
     def claim_achievements(self, wait: float = 0.35, max_claim: int = 40) -> int:
         """Nhan thuong cac thanh tuu DA XONG ma CHUA NHAN. Tra so cai da gui lenh nhan."""
         data = _load_achievements()
@@ -4193,6 +4290,7 @@ class GameClient:
 
     _RC_LOGIN_SIGN_DAY = 107     # ERoleCount.LoginSingDay - so lan DA nhan thuong diem danh
 
+    @task_report("diem danh", PHASE_LOGIN_CHORE)
     def claim_checkin(self):
         """DIEM DANH hang ngay (0x57 type=01) - lam DUNG NHU CLIENT: 1 goi, khong quet.
 
@@ -4267,6 +4365,7 @@ class GameClient:
             return (complete - get) if lim <= 0 else min(complete - get, lim - get)
         return 0 if complete >= lim else 0
 
+    @task_report("qua su kien 14 ngay", PHASE_LOGIN_CHORE)
     def claim_event_14day(self):
         """Event TANG QUA 14 NGAY (opcode 0x7c) - KHAC qua 14 ngay new-user (0x57).
         Mo list (7c 0100) -> server tra cac phan claim duoc (S2C 0x7c sub=01) ->
@@ -4335,6 +4434,7 @@ class GameClient:
         self.claim_mail()           # qua giftcode ve mail -> nhan + xoa luon
         return True
 
+    @task_report("qua quan doan", PHASE_LOGIN_CHORE)
     def claim_legion_gift(self):
         """Nhan qua QUAN DOAN hang ngay. C2S 0x27 [69 00] -> server tra reward (0x17).
         1 lan/ngay (daily_state.json). Khong trong quan doan thi vo hai."""
@@ -4435,6 +4535,7 @@ class GameClient:
                 return ok
         return False
 
+    @task_report("boss the gioi", PHASE_LOGIN_CHORE)
     def do_world_boss_all(self, max_loops: int = 20) -> bool:
         """Danh boss the gioi den 5/5; neu 5/5 co Khiêu Chiến Boss thi dung ve 4/5 roi danh tiep."""
         if not self._world_boss_event_open():
@@ -4553,6 +4654,7 @@ class GameClient:
         return (self.legion_boss_count < self.legion_boss_max
                 and (not self.legion_boss_next or time.time() >= self.legion_boss_next))
 
+    @task_report("boss quan doan", PHASE_BOSS_QD)
     @_pet_role("boss")
     def do_legion_boss(self):
         """BOSS QUAN DOAN: danh SOLO truc tiep (nhu solo dungeon, KHONG teleport nhu world boss).
@@ -5069,6 +5171,7 @@ class GameClient:
         except Exception as e:
             log.warning("[%s] loi claim bang su kien (bo qua): %s", self._label, e)
 
+    @task_report("doi qua su kien", PHASE_LOGIN_CHORE)
     def do_event_exchange(self, picks, wait: float = 1.2) -> int:
         """TU DOI QUA SU KIEN theo danh sach user tick (CHI qua CUOI, xem event_exchange.py).
 
@@ -5302,6 +5405,7 @@ class GameClient:
             log.info("[%s] Doi qua: '%s' -> thieu '%s': can %d, dang co %d",
                      self._label, name, rname, int(why.get("need") or 0), int(why.get("have") or 0))
 
+    @task_report("bang 3x3 su kien", PHASE_LOGIN_CHORE)
     def claim_event_boards(self, wait: float = 1.2) -> int:
         """NHAN THUONG cac BANG 3x3 KHAC ngoai "Nhiem vu moi ngay" (hien la bang EVENT theo thang).
 
@@ -5354,6 +5458,7 @@ class GameClient:
                          self._label, name, gid, sorted(cells), lines or "line TAT CA")
         return total
 
+    @task_report("nhiem vu hang ngay", PHASE_LOGIN_CHORE)
     @_pet_role("quest")
     def claim_daily_quests(self, heavy: bool = True):
         """STATUS-DRIVEN: query 9 o -> o CHUA xong (bot lam duoc) thi LAM -> re-query -> claim
@@ -5459,6 +5564,7 @@ class GameClient:
             ent = body[2:10]
             self.friend_online[ent.hex()] = bool(body[10])
 
+    @task_report("qua ban be", PHASE_LOGIN_CHORE)
     def claim_friend_gifts(self):
         """TANG qua cho ban CHUA tang + NHAN qua ban da tang minh. HOAN TOAN theo STATUS server
         (friend_status[entity]=trailer[18] tu 0x0e 05 login): bit0x01=DA TANG, bit0x02=CO QUA nhan.
@@ -5619,6 +5725,7 @@ class GameClient:
         log.info("[%s] Mua ve dungeon: khong nhan phan hoi -> coi nhu THAT BAI", self._label)
         return False
 
+    @task_report("pho ban don (daily)", PHASE_LOGIN_CHORE)
     @_pet_role("boss")
     def do_daily_dungeon(self, max_sec: int = 360):
         """SOLO daily dungeon den khi SERVER bao o1 XONG (2/2). KHONG dem local nua (server truth
@@ -7016,6 +7123,7 @@ class GameClient:
                  self._label, req, best, best_nm, best_hd, tag)
         return best
 
+    @task_report("van tieu", PHASE_LOGIN_CHORE)
     def do_van_tieu(self):
         """Van tieu (escort) opcode 0x56. Gui pet (VANTIEU_PETS = index list quan tro) ->
         ~4h sau nhan qua. Goi luc login + dinh ky.
@@ -9672,6 +9780,7 @@ class GameClient:
                      "vi dong gop)", self._label, sold)
         return sold
 
+    @task_report("ban noi dat", PHASE_LOGIN_CHORE)
     def sell_noi_dat(self, max_qty: int = 9999) -> bool:
         """Ban Noi Dat (0x7d2b) o NPC Nha buon Ng.Thanh.
 
