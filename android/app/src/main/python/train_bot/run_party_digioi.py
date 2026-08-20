@@ -984,6 +984,32 @@ def _dt_recheck_time_left(username, label):
     return False
 
 
+def _party_members_off_place(c, pidx):
+    """Member nao KHAC MAP hoac KHAC KENH voi leader -> tra list mo ta; rong = ca party cung cho.
+
+    Doc THANG tu client cua tung acc (cung tien trinh) nen chinh xac, khong phai bao cao cu.
+    Khac map = leader KHONG THAY entity -> moi chac chan that bai, phai gom lai truoc.
+    """
+    out = []
+    lead_map = getattr(c, "current_map", None)
+    lead_ch = getattr(c, "current_channel", None)
+    for u, _p, is_lead, _k in party_accounts(pidx):
+        if is_lead:
+            continue
+        mc = account_clients.get(u)
+        if mc is None or not mc.running:
+            continue                       # acc chua len/da rot -> duong reconnect lo, khong tinh
+        if is_joined(pidx, getattr(mc, "self_entity", None)):
+            continue                       # da vao party roi
+        m_map = getattr(mc, "current_map", None)
+        m_ch = getattr(mc, "current_channel", None)
+        if m_map is not None and lead_map is not None and m_map != lead_map:
+            out.append("%s o map %s (leader %s)" % (u, m_map, lead_map))
+        elif m_ch is not None and lead_ch is not None and m_ch != lead_ch:
+            out.append("%s o kenh %s (leader %s)" % (u, m_ch, lead_ch))
+    return out
+
+
 def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
     """MODE digioi_train: acc nay DA XONG DG -> danh dau + DUNG YEN cho CA PARTY xong DG.
     Du het -> doi pha party sang "train" (moi acc relogin se chay mode train). Tra True neu
@@ -3282,6 +3308,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         _dg_gp_out_since = None   # moc bat dau ket NGOAI DG lien tuc (ep het gio neu keo dai)
         last_remove = time.time()
         last_retry = time.time()
+        _last_regroup = 0.0   # rate-limit gom lai khi member lech map/kenh
         last_dg = 0.0
         last_combat = time.time()   # lan cuoi thay in_combat -> de RE-ARM combat khi ket
         last_rearm = 0.0
@@ -4127,11 +4154,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 if is_leader:
                     nj = joined_member_count(pidx)
                     if nj < st["n_members"]:
-                        log.info("[%s] (LEADER) chua du member (%d/%d) -> MOI LAI",
-                                 label, nj, st["n_members"])
-                        try:
-                            _invite_party_participants(c, train_on_map, gap=1.0)
-                        except Exception: pass
+                        # CHECK MAP + KENH TRUOC KHI MOI. Khac map thi leader KHONG THAY entity ->
+                        # moi bang niem tin, lap vo han (log 17:33 party 6: leader o map 21826,
+                        # 4 member o Truong Sa, cu 60s "MOI LAI" mai khong duoc).
+                        _lech = _party_members_off_place(c, pidx)
+                        if _lech:
+                            log.warning("[%s] (LEADER) chua du member (%d/%d) NHUNG %s -> KHONG moi "
+                                        "mu, GOM LAI party truoc",
+                                        label, nj, st["n_members"],
+                                        "; ".join(_lech))
+                            if time.time() - _last_regroup > 120:
+                                _last_regroup = time.time()
+                                with st["lock"]:
+                                    st["reform_gen"] += 1
+                        else:
+                            log.info("[%s] (LEADER) chua du member (%d/%d), ca party cung map+kenh "
+                                     "-> MOI LAI", label, nj, st["n_members"])
+                            try:
+                                _invite_party_participants(c, train_on_map, gap=1.0)
+                            except Exception: pass
                     # co member join ma chua train (truoc do 0 QS dung yen) -> BAT DAU TRAIN
                     if nj >= 1 and not training_started:
                         log.info("[%s] (LEADER) da co %d member -> SET QS + bat dau train", label, nj)
