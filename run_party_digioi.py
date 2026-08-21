@@ -847,9 +847,28 @@ def _party_average_level(pidx):
     return _average_party_levels(rows)
 
 
+def _bump_reform(st, reason=""):
+    """Tang reform_gen VA log RO ai bump. CALLER PHAI DANG GIU st["lock"].
+
+    Truoc day co 15 cho tang thang reform_gen va KHONG cho nao noi minh la ai -> moi lan party
+    "tu dung doi reform" la phai mo nguoc ca 15 cho (that: hoi 00:50 sau khi PB lv50 xong).
+    Lay so dong cua NGUOI GOI bang sys._getframe(1) -> khong phai go tay 15 ly do khac nhau.
+    """
+    st["reform_gen"] = st.get("reform_gen", 0) + 1
+    try:
+        _ln = sys._getframe(1).f_lineno
+    except Exception:
+        _ln = 0
+    log.info("[party %s] REFORM gen -> %d (bump tai run_party_digioi.py:%d)%s",
+             (st.get("pidx", -1) + 1) if st.get("pidx") is not None else "?",
+             st["reform_gen"], _ln, (" - " + reason) if reason else "")
+    return st["reform_gen"]
+
+
 def _pstate(pidx):
     if pidx not in _party_state:
-        _party_state[pidx] = {"channel": None,
+        _party_state[pidx] = {"pidx": pidx,
+                              "channel": None,
                               "channel_ready": threading.Event(),
                               "channel_failed": threading.Event(),
                               "channel_failed_reason": "",
@@ -1993,7 +2012,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         # 10991, moi vong doi 1 kenh: 2 -> 6 -> ...). Bump reform_gen ap dung cho MOI
                         # mode: khong reform duoc thi cung phai thoat vong nay de tang len vong moi.
                         with st["lock"]:
-                            st["reform_gen"] += 1
+                            _bump_reform(st)
                         log.warning("[%s] (%s) sync kenh/map FAIL %d lan (member ket sai map) -> "
                                     "BUMP reform_gen, ca party ve thanh regroup",
                                     label, role, _sync_fail)
@@ -2403,7 +2422,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # (ke ca dua ket) reform lai tu thanh (dua ket se duoc teleport ve thanh gom).
                     if time.time() - _inv_t0 > 120:
                         with st["lock"]:
-                            st["reform_gen"] += 1
+                            _bump_reform(st)
                         log.warning("[%s] (LEADER) reform: 120s chua du party (%d/%d) - co member ket "
                                     "sai map -> BUMP reform_gen, gom lai tu dau",
                                     label, joined_member_count(pidx), st["n_members"])
@@ -2431,7 +2450,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         log.warning("[%s] (LEADER) keo di bo Nghiep->%s that bai (map=%s) -> reform lai",
                                     label, fc, c.current_map)
                         with st["lock"]:
-                            st["reform_gen"] += 1
+                            _bump_reform(st)
                         c._reform_via_nghiep = False
                         c.flee_mode = True
                         st["route_done"].set()
@@ -2486,7 +2505,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (LEADER) reform xong NHUNG dang o SAI MAP (%s != %s) -> "
                                 "yeu cau REFORM lai ngay, khong cho watchdog", label, c.current_map, sc)
                     with st["lock"]:
-                        st["reform_gen"] += 1
+                        _bump_reform(st)
                     c.flee_mode = True
                     st["route_done"].set()   # tha member (keepalive se reform lai tu dau)
                     return
@@ -2773,7 +2792,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (%s) sau dungeon BI DUMP ra %s -> yeu cau CA PARTY reform (ve thanh don)",
                                 label, role, c.current_map)
                     with st["lock"]:
-                        st["reform_gen"] += 1
+                        _bump_reform(st)
                         st["dungeon_done"] += 1
                 else:
                     # VE RALLY (safe GAN mob spot leader chon), KHONG phai safe[0] co dinh: truoc day
@@ -3180,7 +3199,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     _joined_now, st["n_members"])
                         st["invited"].set()   # tha member khoi startup de cung nhan reform_gen
                         with st["lock"]:
-                            st["reform_gen"] += 1
+                            _bump_reform(st)
                             _startup_gen = st["reform_gen"]
                         c.flee_mode = True
                         try:
@@ -3347,7 +3366,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     "tran chien xen giua day di) -> yeu cau REFORM ngay, khong cho watchdog",
                                     label, c.current_map, sc)
                         with st["lock"]:
-                            st["reform_gen"] += 1
+                            _bump_reform(st)
                         c.flee_mode = True
                         return
                     _set_train_block_stats_spot(spot, enabled=True)
@@ -4135,7 +4154,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 if displaced_cnt >= 2:   # 2 lan lien tiep (~10s) khac map train -> chac chan displaced
                     displaced_cnt = 0
                     with st["lock"]:
-                        st["reform_gen"] += 1
+                        _bump_reform(st)
                     log.warning("[%s] (%s) BI VAN khoi train map (dang o %s, vd chet) -> yeu cau CA PARTY reform (gen %d)",
                                 label, role, c.current_map, st["reform_gen"])
             else:
@@ -4246,7 +4265,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             elif not c.in_combat():
                 if train_on_map:
                     if not boss_reform_pending:   # chi trigger 1 lan / dot con luot (tranh spam reform)
-                        with st["lock"]: st["reform_gen"] += 1
+                        with st["lock"]: _bump_reform(st)
                         boss_reform_pending = True
                         log.info("[%s] (%s) boss QD den luot -> TRIGGER REFORM party ve thanh de danh",
                                  label, role)
@@ -4274,7 +4293,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             if time.time() - _last_regroup > 120:
                                 _last_regroup = time.time()
                                 with st["lock"]:
-                                    st["reform_gen"] += 1
+                                    _bump_reform(st)
                         else:
                             log.info("[%s] (LEADER) chua du member (%d/%d), ca party cung map+kenh "
                                      "-> MOI LAI", label, nj, st["n_members"])
@@ -4651,7 +4670,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                             label, level)
                 with st["lock"]:
                     _mark_team_dungeon_broken(st, level)
-                    st["reform_gen"] += 1
+                    _bump_reform(st)
                 _clear_o5_client_flags(c)
                 return _exit_pb_or_reconnect(
                     username, c, "phó bản đội vỡ do đồng đội rớt"
@@ -4712,7 +4731,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                         "recover de ca party danh lai", label, level)
             with st["lock"]:
                 _mark_team_dungeon_broken(st, level)
-                st["reform_gen"] += 1
+                _bump_reform(st)
             _clear_o5_client_flags(c)
             return _exit_pb_or_reconnect(
                 username, c, "phó bản đội vỡ (leader đồng bộ lại để đánh lại)"
@@ -4802,7 +4821,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                 if broken:
                     _mark_team_dungeon_broken(st, level)
                 st.setdefault("team_dungeon_state", {})[level] = "done"
-                st["reform_gen"] += 1
+                _bump_reform(st)
         if broken:
             return _exit_pb_or_reconnect(
                 username, c, "phó bản đội vỡ" if active else "phó bản đội fail"
@@ -4982,7 +5001,7 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 # lai -> truoc day member out het, leader chay ra bai TRAIN MOT MINH (khong reform).
                 # Bump reform_gen -> co che reform co san (_do_reform, dung cho cac truong hop
                 # "bi dump khoi dungeon" khac) se tu dong keo ca party tap hop + lap lai.
-                st["reform_gen"] += 1
+                _bump_reform(st)
     else:
         with st["lock"]:
             st["o5_state"] = "done"      # khong danh -> tha member ngay
@@ -5054,7 +5073,7 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
             if train_reform:
                 # Mot gen chung bat buoc ca survivors LAN acc vua login lai cung ve thanh,
                 # sync kenh va lap party. Khong phu thuoc marker reconnect con ton tai bao lau.
-                st["reform_gen"] += 1
+                _bump_reform(st)
             if event_reset:
                 st["ready_members"].clear()
                 st["invited"].clear()
