@@ -4523,6 +4523,23 @@ def _force_supervisor_reconnect(username, c, reason):
     return False
 
 
+def _exit_pb_or_reconnect(username, c, reason):
+    """RA KHOI instance pho ban roi bao "da xu ly" (tra False y het _force_supervisor_reconnect).
+
+    Uu tien lenh THOAT cua client C:047-010 (giu nguyen ket noi). CHI relogin khi thoat khong duoc:
+    tu khi server chan toc do dang nhap (ma 90), relogin de dong bo PB lam acc ket vong login hang
+    phut (log that party 6, 23:15-23:25). Rule retry PB (team_dungeon_need_redo / o5_need_redo)
+    KHONG doi - caller da danh dau truoc khi goi ham nay.
+    """
+    try:
+        if c.leave_team_dungeon():
+            log.info("[%s] da thoat PB bang C:047-010 -> KHONG relogin (%s)", username, reason)
+            return False
+    except Exception as e:
+        log.warning("[%s] loi thoat PB (%s) -> quay ve relogin: %s", username, reason, e)
+    return _force_supervisor_reconnect(username, c, reason)
+
+
 BARRIER_RESCUE_SEC = 240   # HAN CUNG: cho toi da 4' roi EP RELOGIN acc chua ve, du no dang bao tien do
 BARRIER_STALE_RESCUE_SEC = 90   # acc IM (khong bao tien do) thi cuu som o moc nay, khong doi 4'
 BARRIER_STALE_SEC = 60          # "im" = tuoi hoat dong qua bao lau (acc dang lam viec bao moi 1-5s)
@@ -4636,7 +4653,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                     _mark_team_dungeon_broken(st, level)
                     st["reform_gen"] += 1
                 _clear_o5_client_flags(c)
-                return _force_supervisor_reconnect(
+                return _exit_pb_or_reconnect(
                     username, c, "phó bản đội vỡ do đồng đội rớt"
                 )
             # LEADER BI KEO DI REFORM trong luc minh dang cho -> phai THEO, khong thi ca party
@@ -4660,7 +4677,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                     log.warning("[%s] (member) phó bản đội lv%d vỡ -> relogin thoát instance",
                                 label, level)
                     _clear_o5_client_flags(c)
-                    return _force_supervisor_reconnect(
+                    return _exit_pb_or_reconnect(
                         username, c, "phó bản đội vỡ"
                     )
                 _clear_o5_client_flags(c)
@@ -4697,7 +4714,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                 _mark_team_dungeon_broken(st, level)
                 st["reform_gen"] += 1
             _clear_o5_client_flags(c)
-            return _force_supervisor_reconnect(
+            return _exit_pb_or_reconnect(
                 username, c, "phó bản đội vỡ (leader đồng bộ lại để đánh lại)"
             )
         # DOC THANG state cua tung member thay vi CHO no "report": ca party chay chung MOT tien
@@ -4787,7 +4804,7 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                 st.setdefault("team_dungeon_state", {})[level] = "done"
                 st["reform_gen"] += 1
         if broken:
-            return _force_supervisor_reconnect(
+            return _exit_pb_or_reconnect(
                 username, c, "phó bản đội vỡ" if active else "phó bản đội fail"
             )
         return c.running

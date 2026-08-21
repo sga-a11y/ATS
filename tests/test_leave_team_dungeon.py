@@ -70,8 +70,15 @@ class TestLeaveTeamDungeon(unittest.TestCase):
         self.assertEqual(o_calls, [])
 
     def test_moi_duong_thoat_PB_deu_da_bo_relogin(self):
-        """4 cho tung dung relogin de thoat instance gio phai dung leave_team_dungeon."""
-        self.assertEqual(SRC.count("c.leave_team_dungeon()"), 4)
+        """Moi duong thoat instance phai THU THOAT TRUOC, chi relogin khi thoat khong duoc."""
+        # 4 cho goi thang + 1 trong helper _exit_pb_or_reconnect = 5
+        self.assertEqual(SRC.count("c.leave_team_dungeon()"), 5)
+        # 4 duong con lai dung _force_supervisor_reconnect (relogin) -> phai qua helper
+        self.assertEqual(SRC.count("return _exit_pb_or_reconnect("), 4)
+        # helper KHONG duoc goi lai chinh no (de quy vo han)
+        _i = SRC.index("def _exit_pb_or_reconnect")
+        _than = SRC[SRC.index(":", _i):_i + 1200]
+        self.assertNotIn("_exit_pb_or_reconnect(", _than)
         # relogin con lai chi duoc dung cho viec KHAC (resync vi tri), khong con o duong PB
         for dong in SRC.splitlines():
             if "c.relogin()" in dong:
