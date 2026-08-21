@@ -23,7 +23,7 @@ from .login import login
 from .client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined,
                         set_account_activity, get_account_activity, get_account_task,
-                        DISCONNECT_RATE_LIMIT)
+                        DISCONNECT_RATE_LIMIT, TEAM_DUNGEON_MAPS)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
 try:
@@ -4700,8 +4700,27 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
             return _force_supervisor_reconnect(
                 username, c, "phó bản đội vỡ (leader đồng bộ lại để đánh lại)"
             )
+        # DOC THANG state cua tung member thay vi CHO no "report": ca party chay chung MOT tien
+        # trinh, leader nam san account_clients[m]. team_dungeon_remaining() chi doc state cua
+        # chinh client do va tra None khi chua co status 0x18 -> goi thang duoc, khong phai cho.
+        # Bat member tu khai la thua VA de ket: member ban viec khac / vua relogin thi khong chay
+        # doan report -> leader dung do "cho report (1/5)" hang phut (log that party 1, 00:33).
+        _live_rem = {}
+        for m in members:
+            _mc = account_clients.get(m)
+            if _mc is None or not getattr(_mc, "running", False):
+                continue
+            try:
+                _r = _mc.team_dungeon_remaining(level)
+            except Exception:
+                _r = None
+            if _r is not None:
+                _live_rem[m] = _r
         with st["lock"]:
-            reports = dict(st.setdefault("team_dungeon_done_by", {}).setdefault(level, {}))
+            _store = st.setdefault("team_dungeon_done_by", {}).setdefault(level, {})
+            for m, _r in _live_rem.items():
+                _store.setdefault(m, _r)      # KHONG de len report that (member tu bao chinh xac hon)
+            reports = dict(_store)
             reported = all(m in reports or m in st["reconnecting"] for m in members)
         if reported:
             break
@@ -5370,8 +5389,26 @@ def _party_watcher(pidx):
         stuck = [(u, d) for u, d in live
                  if d["age"] > WATCH_STUCK_AGE and d["phase"] != _PHASE_WAIT]
 
+        # DANG DANH PHO BAN TO DOI thi "ca party cung cho" la BINH THUONG, KHONG phai deadlock:
+        # member cho leader danh la DUNG THIET KE, va 1 luot PB (4 tran + nhan thuong) lau hon
+        # WATCH_ALLWAIT_SEC nhieu. Truoc day watcher ep dong bo giua chung -> ca party relogin ngay
+        # sau khi vua danh XONG va NHAN THUONG (log that party 1, 00:32:43-50: nhan "Pho Ban Cap 20
+        # II" xong thi 00:32:46 WATCH bao DEADLOCK -> 4 member "EP DONG BO -> relogin", leader thay
+        # "dong doi rot" nen cung relogin theo). Chinh chu thich cu da noi no CO Y bat ca "member cho
+        # leader danh PB" - do la nham.
+        # PHAI LA CA PARTY dang trong PB moi bo qua. CHI MOT acc trong PB con lai dung cho ->
+        # DUNG LA deadlock, phai pha (ca party 6: 1 acc login lai vao map PB, 4 acc kia cho mai).
+        _ca_party_trong_PB = bool(live) and all(
+            getattr(account_clients.get(u), "current_map", None) in TEAM_DUNGEON_MAPS
+            for u, _d in live)
+        if _ca_party_trong_PB:
+            if allwait_t0 is not None:
+                log.info("[party %d] WATCH: CA PARTY dang trong PHO BAN -> khong tinh la deadlock",
+                         pidx + 1)
+            allwait_t0 = None
+            continue
+
         # 1) CA PARTY CUNG CHO = DEADLOCK THAT (khong ai lam gi de ma cho).
-        #    Dung ca 2 ca hom nay: leader cho ca party ve thanh + member cho leader danh PB.
         if waiting and len(waiting) == len(live):
             if allwait_t0 is None:
                 allwait_t0 = time.time()

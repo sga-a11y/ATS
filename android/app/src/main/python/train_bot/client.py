@@ -179,6 +179,11 @@ DISCONNECT_CAUSE = {
 }
 DISCONNECT_RATE_LIMIT = 90     # ma 90: login lai ngay lap tuc chi lam server chan tiep
 
+# 4 map PHO BAN TO DOI (instance). Da kiem chung deu co trong Ground.mmg (xem _td_walk).
+# Dung de biet acc DANG O TRONG pho ban: trong do khong teleport/ve thanh duoc, va "ca party
+# cung cho nhau" la BINH THUONG (member cho leader danh) chu khong phai deadlock.
+TEAM_DUNGEON_MAPS = frozenset({62002, 62011, 62012, 62013})
+
 def task_report(task, phase=""):
     """Decorator cho method cua GameClient: tu bao viec + danh dau xong. Khong the quen."""
     def deco(fn):
