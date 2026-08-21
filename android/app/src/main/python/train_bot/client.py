@@ -4831,11 +4831,25 @@ class GameClient:
     def mark_flag_get(self, bit_id: int) -> bool:
         """CheckFlag(MarkManager.flags, bitId) - co NHIEM VU da hoan thanh chua.
 
-        Byte (bitId//8), bit (bitId%8) - giong BitFlag 0x51.
+        CHI SO 1-BASED, y het functions.lua CheckFlag:
+            tableIndex = (flagIndex - 1) // 8 + 1
+            bit trong byte = (flagIndex - 1) % 8
+        Khoa cua self.mark_flags la chi so byte SERVER GUI o S:024-007, va client luu nguyen
+        (`this.flags[index] = ReadByte()`) roi tra bang tableIndex tren -> khoa do la 1-BASED.
+
+        BUG DA SUA (21/08): truoc day dung `bitId // 8` va `bitId % 8` (0-based) -> SAI CA khoa
+        byte LAN vi tri bit, doc nham sang co cua nhiem vu KHAC. Hau qua: bot tuong nhiem vu da
+        xong -> gui C:082-001 bao hoan thanh thanh tuu -> server tu choi "dieu kien khong du"
+        (log that: id 204/300/336/388/390, deu kind=15 MissionFlag, 5 cai lien tiep bi tu choi).
+        Chu thich cu ghi "giong BitFlag 0x51" nhung code lai KHAC _bitflag_get - chinh
+        _bitflag_get moi la ban lam DUNG.
         """
         if not bit_id:
             return False
-        return bool(self.mark_flags.get(int(bit_id) // 8, 0) & (1 << (int(bit_id) % 8)))
+        b = int(bit_id) - 1
+        if b < 0:
+            return False
+        return bool(self.mark_flags.get(b // 8 + 1, 0) & (1 << (b % 8)))
 
     def _on_mission_steps(self, pkt: bytes):
         """S2C 0x18 mission-step. UI phó bản đội lấy còn lượt từ dayilyFlag trong bảng này."""
@@ -4886,7 +4900,9 @@ class GameClient:
                     bit = int.from_bytes(body[off:off + 2], "little")
                     val = body[off + 2]
                     off += 3
-                    bidx, mask = bit // 8, 1 << (bit % 8)
+                    # 1-BASED nhu SetFlag trong functions.lua (xem mark_flag_get). Dung
+                    # 0-based thi bit ghi vao mot noi, doc ra mot neo.
+                    bidx, mask = (bit - 1) // 8 + 1, 1 << ((bit - 1) % 8)
                     cur = self.mark_flags.get(bidx, 0)
                     self.mark_flags[bidx] = (cur | mask) if val else (cur & ~mask)
             elif sub == 0x08 and len(body) >= 16:
