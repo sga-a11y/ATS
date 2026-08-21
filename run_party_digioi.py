@@ -4821,7 +4821,12 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                 if broken:
                     _mark_team_dungeon_broken(st, level)
                 st.setdefault("team_dungeon_state", {})[level] = "done"
-                _bump_reform(st)
+                # CHI DANH DAU, KHONG bump ngay. Bump o day = bump sau MOI level (20/50/80) ->
+                # 3 lan/vong, moi lan da member ra khoi trang thai cho de "ve thanh cung party"
+                # roi vai giay sau lai moi vao PB ke tiep (log that 01:12:43-53: lv50 xong ->
+                # reform_gen 0->1 -> 4 member "bo cho, ve thanh" -> 01:12:47 duoc moi vao lv80).
+                # Reform chi CAN 1 LAN sau khi xong HET cac PB, vi luc do moi that su quay lai train.
+                st["td_need_reform"] = True
         if broken:
             return _exit_pb_or_reconnect(
                 username, c, "phó bản đội vỡ" if active else "phó bản đội fail"
@@ -4864,6 +4869,12 @@ def _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, s
         if not _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader,
                                          stopped_fn, int(level)):
             return False
+    # XONG HET cac PB moi reform MOT LAN: luong PB tu giai tan party chung de vao instance, nen
+    # phai lap lai party train - nhung chi can lap lai khi THUC SU quay ve train, khong phai sau
+    # tung level (xem ghi chu o _handle_auto_team_dungeon).
+    with st["lock"]:
+        if st.pop("td_need_reform", False):
+            _bump_reform(st, "xong het pho ban to doi -> lap lai party train")
     return True
 
 
