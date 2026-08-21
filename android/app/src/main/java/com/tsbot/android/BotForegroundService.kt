@@ -335,8 +335,13 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         fun gBool(k: String): Boolean = try { d.callAttr("get", k)?.toBoolean() ?: false } catch (_: Exception) { false }
         fun gString(k: String): String = try { d.callAttr("get", k)?.toString() ?: "" } catch (_: Exception) { "" }
         val running = gBool("running")
+        // DANG LOGIN (logging_in tu Python): thread con song nhung CHUA vao world - vd vua bi
+        // server dut va dang login lai. Truoc day map thang sang RUNNING -> user tuong acc dang
+        // danh trong khi no dang dang nhap lai.
+        val loggingIn = gBool("logging_in")
         return AccountStatus(
-            state = if (running) RunState.RUNNING else RunState.STOPPED,
+            state = if (loggingIn) RunState.CONNECTING
+                    else if (running) RunState.RUNNING else RunState.STOPPED,
             hp = gInt("hp"),
             sp = gInt("sp"),
             hpMax = gInt("hp_max"),

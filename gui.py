@@ -1177,6 +1177,9 @@ class BotGUI(tk.Tk):
         tree.tag_configure("on", foreground="#0a0")
         tree.tag_configure("off", foreground="#999")
         tree.tag_configure("qs", foreground="#c25e00")
+        # DANG LOGIN: vang/cam - phan biet voi CHAY (xanh). Truoc day acc dang login lai sau
+        # khi server dut van hien "CHAY" -> user tuong no dang danh.
+        tree.tag_configure("login", foreground="#b8860b")
         tree.bind("<<TreeviewSelect>>", lambda e, p=pidx: self._on_acc_select(p))
         tree.bind("<Double-1>", lambda e, p=pidx: self._on_acc_dblclick(p, e))
         tree.pack(fill="x", expand=False)
@@ -1577,10 +1580,11 @@ class BotGUI(tk.Tk):
             if c is not None and c.char_name:
                 self._char2user[c.char_name] = u
         group_run = {}    # gidx -> so acc dang chay
+        group_login = {}  # gidx -> so acc DANG LOGIN (con 1 acc login -> cham nhom VANG)
         group_total = {}  # gidx -> tong so acc
         for pidx, tree in self.party_trees.items():
             any_running = False
-            p_total = 0; p_run = 0   # dem acc cua party de quyet dinh mau cham
+            p_total = 0; p_run = 0; p_login = 0   # dem acc cua party de quyet dinh mau cham
             # Di Gioi SOLO: khong co khai niem leader/member/quan su that (moi acc chay doc lap) ->
             # hien "solo" cho de hieu, tranh hieu lam la co lap party/phu thuoc leader.
             pcfg_gui = config.PARTY_CONFIG.get(pidx, {})
@@ -1603,10 +1607,15 @@ class BotGUI(tk.Tk):
                     role = "picker"
                 else:
                     role = "member"
-                run = "● CHẠY" if s["running"] else "Tắt"
+                _dang_login = bool(s.get("logging_in"))
+                if _dang_login:
+                    p_login += 1
+                run = ("● ĐANG LOGIN" if _dang_login
+                       else ("● CHẠY" if s["running"] else "Tắt"))
                 dg = f"{s['dg_remain']}p" if s["dg_remain"] is not None else "-"
-                tag = "qs" if (s["running"] and s.get("strategist")) else \
-                      ("on" if s["running"] else "off")
+                tag = ("login" if _dang_login else
+                       ("qs" if (s["running"] and s.get("strategist")) else
+                        ("on" if s["running"] else "off")))
                 tree.item(u, values=(self._mask_user(u), self._char_cell(s), role, run, _map_name(s["map"]),
                                      s["channel"] if s["channel"] else "-",
                                      "✔" if s["in_party"] else "-", dg,
@@ -1617,14 +1626,18 @@ class BotGUI(tk.Tk):
             gidx = self.group_of.get(pidx)
             subf = self.party_subframes.get(pidx)
             sub = self.group_nb.get(gidx)
+            # XANH chi khi DU acc chay VA KHONG con ai dang login (yeu cau user: "chi xanh
+            # khi tat ca deu da login xong"). Con acc dang login -> VANG.
             p_dot = (self._dot_off if p_run == 0 else
-                     (self._dot_on if p_run >= p_total and p_total > 0 else self._dot_warn))
+                     (self._dot_on if (p_run >= p_total and p_total > 0 and p_login == 0)
+                      else self._dot_warn))
             if sub is not None and subf is not None:
                 try:
                     sub.tab(subf, image=p_dot)
                 except Exception:
                     pass
             group_run[gidx] = group_run.get(gidx, 0) + p_run
+            group_login[gidx] = group_login.get(gidx, 0) + p_login
             group_total[gidx] = group_total.get(gidx, 0) + p_total
             agi_report = ctrl.party_agi_report(pidx)
             agi_btn = self.party_agi_buttons.get(pidx)
@@ -1648,8 +1661,9 @@ class BotGUI(tk.Tk):
         # cham trang thai TUNG GROUP TAB: xanh = du | vang = mot phan | xam = tat
         for gidx, gframe in self.group_frames.items():
             gr = group_run.get(gidx, 0); gt = group_total.get(gidx, 0)
+            gl = group_login.get(gidx, 0)
             g_dot = (self._dot_off if gr == 0 else
-                     (self._dot_on if gr >= gt and gt > 0 else self._dot_warn))
+                     (self._dot_on if (gr >= gt and gt > 0 and gl == 0) else self._dot_warn))
             try:
                 self.nb.tab(gframe, image=g_dot)
             except Exception:

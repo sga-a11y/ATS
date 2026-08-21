@@ -5646,8 +5646,13 @@ def account_status(username):
                        if config.PARTY_LEADER_ACC.get(pidx) == username else None)
     if c is None:
         # da tat/thoat -> GIU map + nhan vat LUC CUOI (de biet thoat o dau, dung map khong)
+        # THREAD CON SONG ma chua co client = DANG LOGIN (supervisor da dong socket cu, chua kip
+        # tao client moi). Truoc day tinh la "chay" -> user tuong dang danh trong khi no dang
+        # login lai sau khi bi server dut.
         last = account_last.get(username, {})
-        return {"running": running, "char": last.get("char", ""), "map": last.get("map"),
+        return {"running": running, "logging_in": running,
+                "state": "logging_in" if running else "stopped",
+                "char": last.get("char", ""), "map": last.get("map"),
                 "in_party": False, "dg_remain": None, "combat": False, "channel": None,
                 "strategist": False, "char_level": last.get("char_level"),
                 "char_agi": last.get("char_agi"),
@@ -5682,7 +5687,11 @@ def account_status(username):
         "pet_agi": getattr(c, "pet_agi", None),
         "party_avg_level": party_avg_level,
         # --- them cho UI APK (poll qua account_status thay callback on_status) ---
-        "state": "running" if running else "stopped",
+        # DANG LOGIN = thread song nhung CHUA vao world. Moc "vao world xong" dung y het luc
+        # connect() cho o run_account: self_entity va current_map deu phai co.
+        "logging_in": bool(running and (c.self_entity is None or c.current_map is None)),
+        "state": ("logging_in" if (running and (c.self_entity is None or c.current_map is None))
+                  else ("running" if running else "stopped")),
         "hp": getattr(_ch, "hp", None), "sp": getattr(_ch, "sp", None),
         "hp_max": getattr(_ch, "hp_max", None), "sp_max": getattr(_ch, "sp_max", None),
     }
