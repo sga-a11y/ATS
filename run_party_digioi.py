@@ -1164,6 +1164,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         c = None
         ok = False
         attempt = 0
+        _rl_hits = 0   # so lan bi server CHAN TOC DO dang nhap (ma 90)
         while attempt < 6:
             if _stopped():
                 log.info("[%s] STOP truoc khi login xong", label); return
@@ -1191,6 +1192,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     time.sleep(1)
                 if ok:
                     break
+                # SERVER CHAN TOC DO (S:000-000 ma 90): thu lai sau ~20s van bi chan tiep -> ket
+                # vong. Log that (party 6, 23:15-23:17): taot001/taot003 lap lai deu dan moi ~22s,
+                # lan nao cung "DANG NHAP QUA THUONG XUYEN". Backoff o supervisor KHONG cuu duoc vi
+                # vong nay nam TRONG run_account, chua he thoat ra toi do.
+                # -> cho lau dan, va KHONG tinh la lan login that bai (giong nhanh error_code=1):
+                #    day la server chan, khong phai sai tai khoan.
+                if int(getattr(c, "disconnect_cause", 0) or 0) == DISCONNECT_RATE_LIMIT:
+                    _rl = _rl_hits + 1
+                    _w = min(30 * _rl, 300)
+                    log.warning("[%s] chua vao world - SERVER CHAN TOC DO DANG NHAP (lan %d) "
+                                "-> nghi %ds roi thu lai, KHONG tinh la fail", label, _rl, _w)
+                    c.close()
+                    for _ in range(_w):
+                        if _stopped():
+                            break
+                        time.sleep(1)
+                    _rl_hits = _rl
+                    continue
                 log.warning("[%s] chua vao world (entity=%s map=%s) -> login lai...",
                             label, c.self_entity is not None, c.current_map)
                 c.close(); attempt += 1; time.sleep(5)
