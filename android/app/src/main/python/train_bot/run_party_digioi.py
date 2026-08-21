@@ -3070,11 +3070,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # --- Leader: CHO du member san sang roi MOI, roi CAY ---
         elif is_leader:
             _dg_solo_bail = False   # True = DG+Train giveup giua chung -> bo lap party, chay DG solo
-            if via_route:
-                # toi train map THEO PARTY (da lap party + cung kenh o thanh) -> KHOI moi lai
+            # `via_route` = toi train map THEO PARTY (da lap party + cung kenh o thanh) -> binh
+            # thuong thi khoi moi lai. NHUNG phai KIEM TRA LAI so member: member co the RUNG DOC
+            # DUONG (bi dut/bi chan login) sau luc leader dem du o thanh.
+            # Bug that (party 2, 18/08... 21/08 18:18): 18:18:16 "4/4 member join lai -> KEO qua cong",
+            # 18:18:23 roster con 3, 18:18:59 con 2 -> leader van "da partied -> bo qua moi lai" roi
+            # KEO 3 acc ra spot train, bo 2 acc lai. Vi pham rule toi thuong: PHAI DU PARTY.
+            _joined_now = joined_member_count(pidx)
+            if via_route and _joined_now >= st["n_members"]:
                 st["invited"].set()   # bao member khoi cho moi
-                log.info("[%s] (LEADER) toi train map theo party (da partied) -> bo qua moi lai", label)
+                log.info("[%s] (LEADER) toi train map theo party (da partied, du %d/%d) -> bo qua moi lai",
+                         label, _joined_now, st["n_members"])
             else:
+                if via_route:
+                    log.warning("[%s] (LEADER) toi train map theo party NHUNG chi con %d/%d member "
+                                "(rung doc duong) -> KHONG train thieu, cho + moi lai cho du",
+                                label, _joined_now, st["n_members"])
                 # PHAI DU PARTY MOI LAM (yeu cau user): leader CHO TAT CA member san sang (da vao DG /
                 # ve diem tap ket) roi moi + train. KHONG tru n_members. Rieng DG+Train: neu leader
                 # het gio DG ngay trong luc cho/moi party thi thoat vong cho, danh dau xong DG va cho
@@ -4988,6 +4999,18 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
             reset_party_joined(pidx)
         attempt += 1
         wait = 1 if forced else (5 if attempt <= 3 else (30 if attempt <= 13 else 60))
+        # GIAN CACH TUNG ACC TRONG PARTY khi relogin HANG LOAT (ep dong bo theo leader): truoc day
+        # ca 5 acc dung wait=1 -> 5 lenh dang nhap don trong ~1s -> server tra ma 90 "dang nhap qua
+        # thuong xuyen" -> acc khong vao lai duoc hang phut, party train thieu nguoi.
+        # Bug that (party 2, 18:17-18:21): "ep dong bo theo leader -> login lai sau 1s" cho ca party
+        # -> 18:18:16 leader keo di khi roster DU 4/4 -> 18:18:23 con 3 -> 18:18:59 con 2.
+        # Xep hang theo VI TRI acc trong party -> 1s, 4s, 7s, 10s, 13s.
+        if forced:
+            try:
+                _order = [u for u, _p, _l, _k in party_accounts(pidx)]
+                wait += 3 * _order.index(username)
+            except ValueError:
+                pass
         # SERVER CHAN TOC DO DANG NHAP (S:000-000 ma 90 "dang nhap qua thuong xuyen"): login lai
         # ngay chi lam server chan tiep -> VONG XOAY: dut -> login nhanh -> bi chan -> dut...
         # Do tren party.log 1 phien: 1232/1574 lan dut la ma 90 (78%). Nhung lan do backoff dang
