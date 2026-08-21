@@ -4845,11 +4845,13 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
             if time.time() - _t0log > 60:
                 log.info("[%s] (member) CHO leader danh xong team dungeon...", label)
                 _t0log = time.time()
-            # CASE 3: dong doi ROT trong luc dang danh team dungeon -> RELOGIN de bi day ra ngoai
-            # instance (trong dungeon teleport/ve thanh bi chan -> chi relogin moi thoat -> chay tiep).
+            # CASE 3: dong doi ROT trong luc dang danh team dungeon -> phai RA KHOI instance
+            # (trong dungeon teleport/ve thanh bi chan). Truoc day dung relogin; tu khi server chan
+            # toc do dang nhap (ma 90) thi relogin lam acc ket vong login -> dung C:047-010.
             if st["reconnecting"]:
-                log.warning("[%s] (member) dong doi ROT trong team dungeon -> RELOGIN thoat instance", label)
-                try: c.relogin()
+                log.warning("[%s] (member) dong doi ROT trong team dungeon -> THOAT PB (C:047-010), "
+                            "khong relogin", label)
+                try: c.leave_team_dungeon()
                 except Exception: pass
                 _clear_o5_client_flags(c)
                 return
@@ -4859,10 +4861,14 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
             if state == "done":
                 if _broke:
                     # team dungeon VO do co dis -> member CON KET trong instance (map dungeon),
-                    # go_to_town KHONG thoat duoc -> RELOGIN moi ra (dung nguyen tac "du party thi
-                    # cung nhau"). Truoc day chi return -> spam go_to_town vo tan.
-                    log.warning("[%s] (member) team dungeon VO (co dis) -> RELOGIN thoat instance", label)
-                    try: c.relogin()
+                    # go_to_town KHONG thoat duoc. TRUOC DAY relogin de ra ("relogin xong la ca lu
+                    # tu thoat PB") - dung, nhung tu khi server CHAN TOC DO DANG NHAP (ma 90) thi
+                    # login lai rat kho: acc ket vong dang nhap hang phut (party 6, 23:15-23:25).
+                    # Gio thoat bang dung lenh cua client C:047-010, GIU NGUYEN ket noi, roi dong bo
+                    # + danh lai PB theo rule retry cu (o5_need_redo).
+                    log.warning("[%s] (member) team dungeon VO (co dis) -> THOAT PB (C:047-010), "
+                                "khong relogin", label)
+                    try: c.leave_team_dungeon()
                     except Exception: pass
                 # Leader da xong (thanh cong hay fail deu vay) -> HA NGAY _phoban_until (thay vi
                 # cho het 600s co dinh dat luc accept moi pho ban). Khong ha som -> go_to_town() cua
@@ -4912,14 +4918,17 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
             # PHONG THIEU NGUOI sau START (roster server < so bot moi - rule "du party moi danh"):
             # leader da HUY danh truoc khi ton luot -> ca party relogin gom lai roi LAM LAI.
             if getattr(c, "_td_incomplete", False):
-                log.warning("[%s] (LEADER) phong pho ban THIEU nguoi -> relogin ca party, danh lai", label)
-                try: c.relogin()
+                # THOAT INSTANCE bang C:047-010, KHONG relogin: tu khi server chan toc do dang nhap
+                # (ma 90), relogin de dong bo PB lam acc ket vong login hang phut (party 6, 23:15).
+                log.warning("[%s] (LEADER) phong pho ban THIEU nguoi -> thoat PB, gom lai danh lai", label)
+                try: c.leave_team_dungeon()
                 except Exception: pass
             # CASE 3: co dong doi ROT trong luc danh team dungeon -> leader cung RELOGIN thoat instance
             # (giong member) truoc khi ve flow. reform_gen (finally) + train reaction se gom lai sau.
             if st["disc_gen"] > _dg0 or st["reconnecting"]:
-                log.warning("[%s] (LEADER) dong doi ROT trong team dungeon -> RELOGIN thoat instance", label)
-                try: c.relogin()
+                log.warning("[%s] (LEADER) dong doi ROT trong team dungeon -> THOAT PB (C:047-010), "
+                            "khong relogin", label)
+                try: c.leave_team_dungeon()
                 except Exception: pass
         finally:
             _clear_o5_client_flags(c)

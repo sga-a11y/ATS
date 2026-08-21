@@ -1745,6 +1745,40 @@ class GameClient:
                 # -> member CHET IM (tat), khong reconnect (bug thha/sga012/chu703 chet sau khi join).
                 self.server_closed = True
 
+    def leave_team_dungeon(self, wait: float = 6.0) -> bool:
+        """THOAT PHO BAN TO DOI bang dung lenh cua client: C:047-010 <離開組隊>.
+
+        Crack client: UIDungeon.OnClickTeamExit (nut "Thoat" cua UI to doi) -> Dungeon.SendLeaveTeam()
+        -> Network.Send(47, 10), KHONG co payload. Server tra S:047-010 [roleId i64][result 1B]:
+            0 tu roi to doi | 1 chu phong da | 2 mat ket noi | 3 ROI PHO BAN
+            4 mat ket noi DANG NHAP LAI roi roi pho ban
+        (Logic/Dungeon.lua RecivePlayerLeave.)
+
+        VI SAO CAN: trong pho ban KHONG teleport ra duoc, nen truoc day bot dung relogin() lam
+        phuong tien thoat instance ("relogin xong la ca lu tu thoat PB"). Cach do dung, nhung tu
+        khi server CHAN TOC DO DANG NHAP (ma 90) thi login lai rat kho -> relogin de dong bo PB
+        bien acc thanh ket vong dang nhap hang phut (log that party 6, 23:15-23:25). Gio thoat
+        bang dung lenh nay, GIU NGUYEN ket noi, roi dong bo + danh lai PB theo rule retry cu.
+        """
+        log.info("[%s] THOAT PHO BAN TO DOI (C:047-010) - khong relogin", self._label)
+        _map0 = self.current_map
+        try:
+            self.send(0x2f, b"\x0a\x00")
+        except OSError:
+            return False
+        # cho server day ra khoi instance (doi map). Khong doi map cung KHONG relogin bu o day:
+        # caller tu quyet dinh, tranh am tham quay lai dung cach cu.
+        _t0 = time.time()
+        while self.running and time.time() - _t0 < wait:
+            if self.current_map != _map0:
+                log.info("[%s] -> da ra khoi pho ban (map %s -> %s)",
+                         self._label, _map0, self.current_map)
+                return True
+            time.sleep(0.3)
+        log.warning("[%s] -> gui C:047-010 roi ma %.0fs chua ra khoi map %s",
+                    self._label, wait, _map0)
+        return False
+
     def relogin(self):
         """Thoat game roi login lai (cung acc). Server tha DUNG CHO LOGOUT (login=logout pos)
         + gui 0x03 self-spawn -> self.pos RESYNC ve toa do THAT (het drift dead-reckoning).
