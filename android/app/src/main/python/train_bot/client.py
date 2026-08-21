@@ -156,6 +156,29 @@ class account_task:
         return False
 
 
+# ===== LY DO SERVER NGAT KET NOI: S:000-000 <斷線> +斷線原因(1) (protocal.lua:32) =====
+# Truoc day bot KHONG doc goi nay -> 1574 lan dut trong 1 phien ma chi biet "Server dong ket noi",
+# khong biet vi sao. Doc ra moi thay 78% la ma 90 = DANG NHAP QUA THUONG XUYEN (server chan toc do).
+DISCONNECT_CAUSE = {
+    1: "goi du lieu qua nhieu", 2: "sai cau hoi 3 lan", 3: "login sai 3 lan",
+    4: "bi server kick", 5: "su kien vi pham", 6: "su kien vi pham",
+    7: "khong tim thay su kien", 8: "trigger ngoai du kien", 9: "sai phien ban bang su kien",
+    10: "loi tra bang", 11: "di vao diem chuong ngai", 12: "bam min khong hop le",
+    13: "gui goi lien tuc qua nhanh", 14: "di chuyen QUA XA",
+    15: "xoa thanh cong, khoi dong lai", 16: "IP dang nhap khong hop le",
+    17: "sai phien ban, can cap nhat", 18: "sua du lieu", 19: "DANG NHAP TRUNG LAP",
+    20: "server bat thuong", 21: "loi thong tin file save", 22: "sai dinh dang goi",
+    23: "doi ten", 24: "mat khau qua ngan", 25: "ten trung",
+    26: "su kien vi pham", 27: "loi dang nhap", 28: "phong ve",
+    29: "du lieu don qua nhieu", 30: "khoa tai khoan", 31: "ID chua duoc mo",
+    32: "chien dau lien scene", 33: "scene khong khop moc", 34: "trung lap lien server",
+    35: "gui goi dang nhap lien tuc", 36: "ID ngoai pham vi", 37: "khac scene",
+    38: "scene dich khong khop", 40: "sua goi hop thanh",
+    60: "SERVER TAT MAY BAO TRI", 61: "thong bao rieng cua server",
+    90: "DANG NHAP QUA THUONG XUYEN (server chan toc do)",
+}
+DISCONNECT_RATE_LIMIT = 90     # ma 90: login lai ngay lap tuc chi lam server chan tiep
+
 def task_report(task, phase=""):
     """Decorator cho method cua GameClient: tu bao viec + danh dau xong. Khong the quen."""
     def deco(fn):
@@ -1391,6 +1414,8 @@ class GameClient:
         self._chan_switch_result = None
         self._channel_scene_generation = 0
         self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
+        self.disconnect_cause = 0    # ma ly do tu S:000-000 (0 = server khong noi ly do)
+        self.disconnect_reason = ""  # dien giai ma tren (DISCONNECT_CAUSE)
         self._deliberate_close = False  # True khi CHINH TA dong socket (close/relogin) -> OSError ko phai rot
         self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
         self._gate_transit = False   # True khi dang gui chuoi 0x14 qua cong -> combat KHONG gui 0x32
@@ -2630,6 +2655,16 @@ class GameClient:
                     log.info("[%s] -> da bat lai hop may", self._label)
                 except OSError:
                     pass
+        # S:000-000 <斷線> +斷線原因(1): server BAO TRUOC ly do roi moi dong ket noi.
+        # Layout (xac nhan tu dump that): [header 7B][sub 2B = 00 00][cause 1B][...]
+        #   ...00 00 5a...  -> 5a = 90 = dang nhap qua thuong xuyen   (1232/1574 lan trong 1 phien)
+        #   ...00 00 13...  -> 13 = 19 = dang nhap trung lap          (212 lan)
+        #   ...00 00 0e...  -> 0e = 14 = di chuyen qua xa             (84 lan)
+        elif opcode == 0x00 and len(pkt) >= 10 and pkt[7:9] == b"\x00\x00":
+            self.disconnect_cause = pkt[9]
+            self.disconnect_reason = DISCONNECT_CAUSE.get(pkt[9], "ma la %d" % pkt[9])
+            log.warning("[%s] SERVER NGAT KET NOI: %s (ma %d)",
+                        self._label, self.disconnect_reason, pkt[9])
         elif opcode == 0x18:
             self._on_mission_steps(pkt)
         # INVENTORY (TUI THAT): S2C 0x17 sub=0500. header [00][count 2B] + record 36B:

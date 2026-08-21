@@ -22,7 +22,8 @@ from bot.train_maps_store import save_learned_regions
 from bot.login import login
 from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined,
-                        set_account_activity, get_account_activity, get_account_task)
+                        set_account_activity, get_account_activity, get_account_task,
+                        DISCONNECT_RATE_LIMIT)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
 try:
@@ -4987,9 +4988,21 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
             reset_party_joined(pidx)
         attempt += 1
         wait = 1 if forced else (5 if attempt <= 3 else (30 if attempt <= 13 else 60))
-        log.warning("[%s] RECONNECT: %s -> login lai sau %ds (lan %d)", username,
+        # SERVER CHAN TOC DO DANG NHAP (S:000-000 ma 90 "dang nhap qua thuong xuyen"): login lai
+        # ngay chi lam server chan tiep -> VONG XOAY: dut -> login nhanh -> bi chan -> dut...
+        # Do tren party.log 1 phien: 1232/1574 lan dut la ma 90 (78%). Nhung lan do backoff dang
+        # la 1-5s. Voi ma nay phai CHO LAU, va cang thu nhieu cang phai cho lau hon.
+        _cli_last = account_clients.get(username)
+        _cause = int(getattr(_cli_last, "disconnect_cause", 0) or 0)
+        _reason_extra = ""
+        if _cause == DISCONNECT_RATE_LIMIT:
+            wait = max(wait, min(30 * attempt, 300))
+            _reason_extra = " [server chan toc do dang nhap -> gian nhip]"
+        elif _cause:
+            _reason_extra = " [%s]" % getattr(_cli_last, "disconnect_reason", "")
+        log.warning("[%s] RECONNECT: %s%s -> login lai sau %ds (lan %d)", username,
                     forced_reason or ("bat buoc relogin ca party" if forced else "server rot"),
-                    wait, attempt)
+                    _reason_extra, wait, attempt)
         for _ in range(wait):
             if _st():
                 break
