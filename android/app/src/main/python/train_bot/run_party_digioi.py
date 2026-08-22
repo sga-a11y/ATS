@@ -358,24 +358,53 @@ BARRIER_STUCK_SECS = 180.0   # barrier ket qua lau (khong nhich) -> AUTO ep dong
 RESYNC_COOLDOWN = 300.0      # khong AUTO-resync cung party qua 1 lan / 5p (chong loop relogin)
 
 
-def request_party_resync(pidx, reason="ép đồng bộ", cooldown=0.0):
-    """EP CA PARTY dong bo lai theo leader: bump sync_epoch + xoa barrier ton dong. Moi acc dang ket
-    trong vong cho se raise ResyncSignal o lan _resync_ck ke tiep -> relogin -> bam pha leader.
-    cooldown>0 (watchdog auto): bo qua neu vua resync trong `cooldown` giay (chong loop); GUI ep tay
-    dung cooldown=0 (luon chay). Tra ep moi, hoac None neu bi cooldown chan."""
+RESYNC_SOFT_TRIES = 2   # so lan ep dong bo NHE truoc khi buoc phai relogin (nang)
+
+
+def request_party_resync(pidx, reason="ép đồng bộ", cooldown=0.0, hard=False):
+    """EP CA PARTY dong bo lai theo leader.
+
+    NHE (mac dinh) - bump reform_gen: acc dang di duong tu DUNG (navigate_to/follow_path/
+    follow_smart_route deu nhan abort=_ab co xet reform_gen), roi ca party gom ve cung thanh +
+    cung kenh + lap lai party. KHONG login lai.
+    NANG (hard=True) - bump sync_epoch: acc dang cho se raise ResyncSignal -> RELOGIN.
+
+    VI SAO DOI MAC DINH: truoc day CHI co duong nang. Log that (10:55, acc chumuoi): acc VUA LOGIN
+    XONG, dang dung DUNG map train 14823, chi vi party co acc khac map ma bi "EP DONG BO -> relogin
+    bam leader" - trong khi no chi can DI/TELEPORT. Tu khi server chan toc do dang nhap (ma 90),
+    relogin thua nhu vay lam acc ket vong dang nhap hang phut (10:55:21 -> 10:56:26 van chua vao
+    duoc). User: "tai sao lai phai relogin, chi can chuyen map thoi chu".
+
+    Van GIU duong nang lam BUOC LEO THANG: nhe RESYNC_SOFT_TRIES lan lien tiep ma party van ket
+    thi moi relogin.
+    cooldown>0 (auto): bo qua neu vua resync trong `cooldown` giay (chong loop).
+    Tra (gen_moi, da_dung_hard) hoac None neu bi cooldown chan."""
     st = _pstate(pidx)
     now = time.time()
     with st["lock"]:
         if cooldown and now - st.get("last_resync_ts", 0.0) < cooldown:
             return None
         st["last_resync_ts"] = now
-        st["sync_epoch"] = int(st.get("sync_epoch", 0)) + 1
-        ep = st["sync_epoch"]
         st.setdefault("team_dungeon_recover_seen", set()).clear()
         st.setdefault("team_dungeon_recover_ready", threading.Event()).clear()
         st["team_dungeon_need_redo"] = False
-    log.warning("[party %s] EP DONG BO (%s) -> sync_epoch=%d, moi acc relogin bam leader", pidx, reason, ep)
-    return ep
+        _soft = int(st.get("resync_soft_count", 0))
+        if not hard and _soft >= RESYNC_SOFT_TRIES:
+            hard = True            # nhe mai khong an -> leo thang
+        if hard:
+            st["resync_soft_count"] = 0
+            st["sync_epoch"] = int(st.get("sync_epoch", 0)) + 1
+            ep = st["sync_epoch"]
+        else:
+            st["resync_soft_count"] = _soft + 1
+            ep = _bump_reform(st, "ep dong bo (nhe): " + reason)
+    if hard:
+        log.warning("[party %s] EP DONG BO NANG (%s) -> sync_epoch=%d, moi acc RELOGIN bam leader",
+                    pidx, reason, ep)
+    else:
+        log.warning("[party %s] EP DONG BO NHE (%s) -> reform_gen=%d, gom ve cung map/kenh "
+                    "(KHONG relogin)", pidx, reason, ep)
+    return ep, hard
 
 
 def _barrier_watchdog(st, pidx, t0, tag):

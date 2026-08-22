@@ -964,7 +964,10 @@ class BotGUI(tk.Tk):
                            "Mọi acc sẽ THOÁT hành động hiện tại + relogin bám leader.\n"
                            "Dùng khi party bị lệch nhịp / kẹt chờ vô hạn."):
             return
-        threading.Thread(target=ctrl.request_party_resync, args=(pidx, "GUI"), daemon=True).start()
+        # NUT BAM TAY = duong NANG (relogin). Auto (watchdog/watcher) dung duong NHE
+        # (gom ve cung map/kenh, khong relogin) - xem request_party_resync.
+        threading.Thread(target=ctrl.request_party_resync, args=(pidx, "GUI"),
+                         kwargs={"hard": True}, daemon=True).start()
 
     def _popup_cities(self, pidx):
         import tkinter.messagebox as mb
