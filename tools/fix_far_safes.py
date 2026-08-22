@@ -81,6 +81,10 @@ def main():
         mobs = [list(map(int, p)) for p in (m.get("mobs") or []) if len(p) == 2]
         if not mobs or len(safes) != len(mobs):
             continue
+        # 2 bai cung 1 cho KHONG phai loi: luat hien hanh la "1 trace (1 con quai) = 1 bai"
+        # (324228a), nen 2 con chay CHUNG mot vong tuan tra thi ra bbox y het nhau -> tam y het
+        # nhau. Thuc te bai sat nhau rat pho bien: tren 655 bai co 21 cap cach <=300, 4 cap <=100.
+        # Chi liet ke cho biet, KHONG dung toi.
         trung = [_pt(b) for b in mobs if mobs.count(b) > 1]
         if trung:
             bai_trung.append((mid, m.get("name", "?"), sorted(set(map(tuple, trung)))))
@@ -117,7 +121,7 @@ def main():
         for mid, ten, vx in van_xa:
             print("   %s  %s  ->  %s" % (mid, ten, vx))
     if bai_trung:
-        print("\nBAI TRUNG KHIT (loi du lieu KHAC, tool nay khong dung toi):")
+        print("\nBAI TRUNG CHO (BINH THUONG, khong phai loi - chi bao de biet):")
         for mid, ten, pts in bai_trung:
             print("   %s  %s  ->  %s" % (mid, ten, pts))
     if bo_qua:
