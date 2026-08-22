@@ -15,6 +15,47 @@ NPC = os.path.join(ROOT, "gamedata", "Data", "Npc_C.dat")
 OUT = os.path.join(ROOT, "npc_names.json")
 
 
+def parse_names_seq(path):
+    """Doc TUAN TU theo NpcData.New - CHINH XAC, thay cho quet chu ky.
+
+    Ban ghi: [nameLen u16][name utf-16le][kind 1][id u16] + 78 byte co dinh (het o +80 sau id).
+    Chot tu kiem chung: phai TIEU HET FILE va rideOffset raw (ip+70) quanh 1000.
+
+    VI SAO BO KIEU QUET: doi chieu tren chinh file nay - quet ra 6074 ten, tuan tu ra 8326.
+    Quet THIEU 2270 ten (vd 0x2f87 "Oan Truong Phi", 0x396d "Manh Hoach"), BIA 18 muc, va sai 26
+    ten: 0x564e ra rac 'rac2ky' thay vi "Banh Trung Thu"; 0x3ee3 cut dau "Quan Cong Tuong" (dung
+    la "Tuy Quan Cong Tuong"). Ten quai dung de khop dieu kien skill trong tran -> thieu ten =
+    dieu kien AM THAM khong bao gio dung.
+    """
+    import struct
+    d = open(path, "rb").read()
+    count = struct.unpack_from("<i", d, 0)[0]
+    if not (0 < count < 100000):
+        raise SystemExit("header so ban ghi bat thuong: %s" % count)
+    names, i, xa = {}, 4, 0
+    for _ in range(count):
+        nl = struct.unpack_from("<H", d, i)[0]
+        j = i + 2 + nl
+        if nl > 400 or j + 1 + 80 > len(d):
+            raise SystemExit("parse lech tai ban ghi thu %d" % len(names))
+        ip = j + 1
+        pid = struct.unpack_from("<H", d, ip)[0]
+        if not (500 <= struct.unpack_from("<H", d, ip + 70)[0] <= 1500):
+            xa += 1
+        try:
+            nm = d[i + 2:j].decode("utf-16-le").strip()
+        except Exception:
+            nm = ""
+        if pid and nm:
+            names[pid] = nm
+        i = ip + 80
+    if abs(i - len(d)) > 8:
+        raise SystemExit("parse xong con du %d byte -> nghi lech" % (len(d) - i))
+    if xa > count * 0.05:
+        raise SystemExit("nghi parse lech: %d/%d ban ghi co rideOffset bat thuong" % (xa, count))
+    return names
+
+
 def parse_names(path):
     """Quet TOAN BO record co dang [namelen][name][sep][id]. Anchor = 1 ten UTF-16LE tieng Viet
     hop le, ngay sau la 1 byte sep nho (<0x20) roi id 2B. Sai so (record rac) vo hai: bot chi tra
@@ -46,7 +87,7 @@ def parse_names(path):
 
 
 def main():
-    names = parse_names(NPC)
+    names = parse_names_seq(NPC)
     out = {("0x%04x" % k): v for k, v in sorted(names.items())}
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, indent=0)
