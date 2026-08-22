@@ -56,4 +56,15 @@ Sau mỗi lần bồi dưỡng, bot đọc **giá trị tuyệt đối** server 
 - Nâng cấp: server không xác nhận → dừng ngay.
 - Bồi dưỡng: `MOUNT_MAX_FEED = 400` lệnh/lần login, và mỗi lệnh phải được server xác nhận mới đi
   tiếp.
-- `time.sleep(0.35)` giữa các viên để không dội gói server.
+- `MOUNT_GAP = 0.12` giữa các viên để không dội gói server.
+
+## Tốc độ (user báo "đơ hơn 10s")
+Log thật: 60 viên mất **33 giây** (~0.55s/viên). Gồm 2 phần:
+`time.sleep(0.35)` giữa các viên **+ 0.2s do vòng chờ ack poll mỗi 0.2s** — kể cả khi server trả
+lời tức thì vẫn phải đợi hết nhịp poll.
+
+Sửa: chờ ack bằng **`threading.Event`** (server về là đi tiếp ngay, không còn độ trễ poll) và hạ
+gap xuống `0.12`. Đo lại cùng 60 viên: **33s → 9.1s**.
+
+Không bỏ hẳn gap được: đây vốn là **N lượt gói đi-về tuần tự**, mỗi viên phải được server xác nhận
+mới gửi tiếp (nếu không thì mất cơ chế chống chạy lố khi server từ chối).

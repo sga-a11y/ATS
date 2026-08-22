@@ -7,6 +7,7 @@ Luat lay TU CLIENT GOC (_lua_dec/Logic/Mounts.lua):
   CHAN: cap chi so KHONG duoc vuot cap thu cuoi (Mounts.AttributeUp) -> phai nang cap truoc.
 Payload gui BAG INDEX chu KHONG phai item id.
 """
+import threading
 import unittest
 from unittest import mock
 
@@ -48,16 +49,25 @@ def make_client(level=1, points=None, bag=None, xac_nhan=True):
     c.bag_counts = dict(bag)
     c.bag_slots = {i + 1: [tid, n] for i, (tid, n) in enumerate(bag.items())}
     c.sent = []
+    c._mount_level_ev = threading.Event()
+    c._mount_point_ev = {}
+    c._mount_base_int = 0
+    c._refresh_char_int = lambda: None
+    c._refresh_char_agi = lambda: None
 
     def _send(op, payload=b""):
+        """Gia lap server: tra ve bang cach goi CHINH HANDLER THAT (_on_mount_level /
+        _on_mount_point) voi goi dung dinh dang -> test luon ca day chuyen Event, khong chi test
+        rieng ham gui."""
         c.sent.append((op, payload))
         if not xac_nhan:
             return
-        if payload[:2] == b"\x03\x00":            # nang cap
-            c.mount_level += 1
-        elif payload[:2] == b"\x04\x00":          # boi duong: server tra diem MOI (+1)
+        if payload[:2] == b"\x03\x00":            # nang cap -> S:079-002 [cap moi]
+            c._on_mount_level(bytes(7) + bytes([0x02, 0x00, c.mount_level + 1]))
+        elif payload[:2] == b"\x04\x00":          # boi duong -> S:079-003 [kind][diem moi]
             k = payload[2]
-            c.mount_points[k] = c.mount_points.get(k, 0) + 1
+            diem = c.mount_points.get(k, 0) + 1   # 1 vien = 1 diem
+            c._on_mount_point(bytes(7) + bytes([0x03, 0x00, k]) + diem.to_bytes(2, "little"))
     c.send = _send
     return c
 
@@ -197,6 +207,8 @@ class TestParseGoiMount(unittest.TestCase):
         c.mount_level = 0
         c.mount_points = {}
         c._mount_base_int = 0
+        c._mount_level_ev = threading.Event()
+        c._mount_point_ev = {}
         c._refresh_char_int = lambda: None
         c._refresh_char_agi = lambda: None
         return c

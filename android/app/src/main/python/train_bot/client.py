@@ -1447,6 +1447,8 @@ class GameClient:
         self._char_turn3_agi = 0
         self.mount_level = 0         # cap thu cuoi (S:079-001 luc login, S:079-002 khi len cap)
         self.mount_points = {}       # kind(1..6) -> diem CONG DON (S:079-001, S:079-003)
+        self._mount_level_ev = threading.Event()   # S:079-002 ve -> khong phai poll
+        self._mount_point_ev = {}                  # kind -> Event (S:079-003)
         self._mount_base_int = 0
         self._mount_equip_int = 0
         self._mount_equip_agi = 0
@@ -6433,6 +6435,19 @@ class GameClient:
     MOUNT_KIND_TEN = {1: "Cong", 2: "Tri", 3: "Phong", 4: "HP", 5: "SP"}
     MOUNT_ACK_WAIT = 3.0     # cho server xac nhan (S:079-002 / S:079-003)
     MOUNT_MAX_FEED = 400     # tran an toan so lenh boi duong / 1 lan login (chong lap vo han)
+    MOUNT_GAP = 0.12         # nghi giua 2 vien - chi de khong doi goi server
+
+    def _mount_item_name(self, tid: int):
+        g = (_load_gamedata_items() or {}).get(int(tid)) or {}
+        return g.get("name") or ("0x%04x" % tid)
+
+    def _mount_wait_ack(self, ev) -> bool:
+        """Cho server xac nhan bang EVENT chu khong poll.
+
+        Truoc day vong cho poll moi 0.2s -> KE CA khi server tra loi tuc thi van phai doi het nhip
+        poll. Cong voi MOUNT_GAP thi moi vien ton ~0.55s: 60 vien = 33s, nhin nhu bot bi DO
+        (user bao). Dung Event thi chi ton dung thoi gian di-ve that cua goi."""
+        return ev.wait(self.MOUNT_ACK_WAIT)
 
     def _on_mount_data(self, pkt: bytes):
         """S:079-001 <座騎資料> +cap(1) +diem(2)*6 +so trang bi(1) <<+do(16)>> +NPCID(2).
@@ -6452,6 +6467,7 @@ class GameClient:
     def _on_mount_level(self, pkt: bytes):
         """S:079-002 <設定座騎等級> +cap(1): server XAC NHAN nang cap thu cuoi xong."""
         self.mount_level = pkt[9]
+        self._mount_level_ev.set()
         log.info("[%s] Thu cuoi: LEN CAP %d", self._label, self.mount_level)
 
     def _on_mount_point(self, pkt: bytes):
@@ -6461,6 +6477,9 @@ class GameClient:
         luan; cu doc thang so server bao thi khong bao gio lech)."""
         k = pkt[9]
         self.mount_points[k] = int.from_bytes(pkt[10:12], "little")
+        ev = self._mount_point_ev.get(k)
+        if ev is not None:
+            ev.set()
         if k == 2:      # INT doi -> tinh lai INT char (dung de chon quan su)
             self._mount_base_int = pet_login_stats.mount_base_int(
                 self.mount_points[k], _load_pet_stat_data())
@@ -6502,8 +6521,7 @@ class GameClient:
         if co < r["up_count"]:
             log.info("[%s] Thu cuoi cap %d: can %d '%s' de len cap, dang co %d -> bo qua",
                      self._label, self.mount_level, r["up_count"],
-                     (getattr(config, "ITEM_NAMES", {}) or {}).get(r["up_item"],
-                                                                   "0x%04x" % r["up_item"]), co)
+                     self._mount_item_name(r["up_item"]), co)
             return False
         slot = self._bag_slot_of(r["up_item"])
         if slot is None:
@@ -6511,12 +6529,10 @@ class GameClient:
         # KHONG tu kiem VANG: bot khong theo doi vang, ma gui hut thi server tu choi, KHONG mat gi.
         # Server xac nhan bang S:079-002 -> khong thay = thieu vang / cham tran VIP -> thoi.
         cu = self.mount_level
+        self._mount_level_ev.clear()
         self.send(0x4f, b"\x03\x00" + bytes([slot & 0xFF]))
-        t0 = time.time()
-        while time.time() - t0 < self.MOUNT_ACK_WAIT and self.running:
-            if self.mount_level != cu:
-                return True
-            time.sleep(0.2)
+        if self._mount_wait_ack(self._mount_level_ev) and self.mount_level != cu:
+            return True
         log.info("[%s] Thu cuoi: gui len cap %d->%d nhung server KHONG xac nhan "
                  "(thieu vang? cham tran VIP?) -> thoi", self._label, cu, cu + 1)
         return False
@@ -6538,13 +6554,10 @@ class GameClient:
         if slot is None:
             return False
         cu = int((self.mount_points or {}).get(kind, 0))
+        ev = self._mount_point_ev.setdefault(kind, threading.Event())
+        ev.clear()
         self.send(0x4f, b"\x04\x00" + bytes([kind & 0xFF, slot & 0xFF]))
-        t0 = time.time()
-        while time.time() - t0 < self.MOUNT_ACK_WAIT and self.running:
-            if int((self.mount_points or {}).get(kind, 0)) != cu:
-                return True
-            time.sleep(0.2)
-        return False
+        return self._mount_wait_ack(ev) and int((self.mount_points or {}).get(kind, 0)) != cu
 
     @task_report("thu cuoi", PHASE_LOGIN_CHORE)
     def do_mount_upgrade(self):
@@ -6566,7 +6579,7 @@ class GameClient:
             return
         lv0 = self.mount_level
         while self.running and self._mount_level_up_once():
-            time.sleep(0.5)
+            time.sleep(self.MOUNT_GAP)
         if self.mount_level != lv0:
             log.info("[%s] Thu cuoi: cap %d -> %d", self._label, lv0, self.mount_level)
 
@@ -6577,7 +6590,7 @@ class GameClient:
             while self.running and n < self.MOUNT_MAX_FEED and self._mount_feed_once(kind):
                 n += 1
                 tong += 1
-                time.sleep(0.35)
+                time.sleep(self.MOUNT_GAP)
             if n:
                 lv_moi, du = self.mount_attr_level(kind)
                 log.info("[%s] Thu cuoi %s: dung %d vien -> cap %d->%d (du %d diem)",
