@@ -4022,6 +4022,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             time.sleep(5)
             log.info("[%s] (%s) pos=%s map=%s combat=%s",
                      label, role, c.pos, c.current_map, c.in_combat())
+            # 2 co "chet ve thanh" cua HOP MAY doi theo PHA: BAT khi train, TAT khi PB/quest/event
+            # (chet giua PB ma bi keo ve thanh = vo luot PB, ca party phai lam lai). Ham nay chi
+            # GUI KHI THUC SU DOI va khong gui giua tran -> goi moi nhip cho re.
+            try: c.sync_machinebox_flags()
+            except Exception: pass
             # Pha DI GIOI khac train thuong: acc trong DG va acc DA XONG DG deu chay vong nay,
             # bao cung "train" thi watcher khong phan biet duoc trong/ngoai DG.
             set_account_activity(username,

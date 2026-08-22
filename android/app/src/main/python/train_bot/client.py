@@ -1677,10 +1677,49 @@ class GameClient:
         mac dinh BAT -> khong doi hanh vi cu. CLIENT KHONG he tu xu ly 2 co nay (ca file chi co 2
         dong WriteBoolean, khong cho nao kiem tra "chet chua") -> SERVER thi hanh.
         """
+        _ve_thanh = not self.in_pb_quest_event()
         return bytes([0x32, 0x35, 0x01, 0x01, 0x00, 0x00,
-                      1 if getattr(self, "death_return_town", True) else 0,
-                      1 if getattr(self, "pet_death_return_town", True) else 0,
+                      1 if (_ve_thanh and getattr(self, "death_return_town", True)) else 0,
+                      1 if (_ve_thanh and getattr(self, "pet_death_return_town", True)) else 0,
                       0x00, 0x00, 0x00])
+
+    def in_pb_quest_event(self) -> bool:
+        """Dang o pha PHO BAN / QUEST / EVENT? (khac voi train thuong)
+
+        Cac pha nay bi KEO VE THANH giua chung la VO LUOT: dang danh pho ban ma chet, server keo
+        ve thanh -> mat luot PB, ca party phai lam lai. Train thi nguoc lai: ve thanh la dung
+        (hoi mau, khoi nam do). Nen 2 co "chet ve thanh" chi BAT o train.
+        - trong pho ban to doi: _team_dungeon_until con han HOAC dang dung tren map PB
+        - quest/event: state.quest_mode (mode event bi ep quest_mode - xem force_quest_mode)
+        """
+        if time.time() < getattr(self, "_team_dungeon_until", 0.0):
+            return True
+        if getattr(self, "current_map", None) in TEAM_DUNGEON_MAPS:
+            return True
+        return bool(getattr(getattr(self, "state", None), "quest_mode", False))
+
+    def sync_machinebox_flags(self):
+        """Gui lai 0x41 khi 2 co "chet ve thanh" DOI (train <-> PB/quest/event).
+
+        Chi gui KHI THUC SU DOI (so voi lan gui truoc) va KHONG gui giua tran - tranh chen goi vao
+        luc dang danh. Goi dinh ky tu vong keepalive, re: khong doi thi khong lam gi.
+        """
+        if not self.running:
+            return False
+        pl = self.machinebox_payload()
+        if pl == getattr(self, "_machinebox_last_payload", None):
+            return False
+        if getattr(getattr(self, "state", None), "in_battle", False):
+            return False        # dang danh -> de lan sau, khong chen goi giua tran
+        try:
+            self.send(0x41, b"\x01\x00" + pl)
+        except OSError:
+            return False
+        self._machinebox_last_payload = pl
+        log.info("[%s] HOP MAY: %s pha PB/quest/event -> chet ve thanh = %s/%s (char/pet)",
+                 self._label, "VAO" if self.in_pb_quest_event() else "RA KHOI",
+                 bool(pl[6]), bool(pl[7]))
+        return True
 
     def _login_setup(self):
         """Chuoi C2S client THAT gui NGAY sau auth (capture login.pcap). Thieu chuoi nay ->
