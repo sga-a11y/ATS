@@ -355,6 +355,49 @@ def _load_npc_names():
     return out
 NPC_NAMES = _load_npc_names()   # template_id (int) -> ten quai/npc
 
+# ==== 3 BANG DATA TUNG BI THIEU HAN O BAN APK (sua 2026-08-22) ====
+# client.py/combat.py DUNG CHUNG cho ca 2 ban va co doc 3 bang nay, nhung config.py ban APK
+# KHONG he dinh nghia chung -> getattr(config, ..., {}) tra RONG -> tinh nang chet AM THAM tren
+# APK (dac ky pet khong bao gio dung duoc, ca trong combat lan dialog skill).
+# Vi sao cong sync khong bat: config.py KHONG nam trong SHARED (PC doc file dia, APK doc asset)
+# nen moi ban mot bang loader chep tay - dung cai bay "chep tay o dau la lech o do" trong CLAUDE.md.
+# 3 asset thi VAN duoc dong goi day du (SHARED_ASSETS co phu), chi thieu HAM NAP.
+
+# DAC KY RIENG cua vo tuong (NpcData [35] specialSkill). pet_id -> skill_id.
+# Co ID trong bang nay MOI la dieu kien can; dieu kien du la co CO da mo cua CHINH con do
+# (client.pet_special_skill, doc tu goi pet list).
+def _load_pet_special_skill():
+    out = {}
+    try:
+        for k, v in (json.loads(_read_asset("npc_special_skill.json")).get("skills") or {}).items():
+            out[int(k, 16)] = int(v)
+    except Exception as error:
+        _log_asset_error("npc_special_skill.json", error)
+    return out
+PET_SPECIAL_SKILL = _load_pet_special_skill()
+
+# NGUYEN LIEU DONATE quan doan: itemId_int -> {name, kind, lv}.
+def _load_donate_materials():
+    out = {}
+    try:
+        for k, v in (json.loads(_read_asset("donate_materials.json")).get("items") or {}).items():
+            out[int(k, 16)] = v
+    except Exception as error:
+        _log_asset_error("donate_materials.json", error)
+    return out
+DONATE_MATERIALS = _load_donate_materials()
+
+# BANG NHIEM VU 3x3 (九宮格): gid -> {name, kind, awards[7].flag}. Thieu file van chay duoc.
+def _load_jiugongge():
+    out = {}
+    try:
+        for k, v in (json.loads(_read_asset("jiugongge.json")).get("grids") or {}).items():
+            out[int(k)] = v
+    except Exception as error:
+        _log_asset_error("jiugongge.json", error)
+    return out
+JIUGONGGE = _load_jiugongge()
+
 # TEN MAP THEO GAME: doc tu scene_names.json (AUTO tools/crack_scene_names.py, boc tu
 # Data/SceneSet_C.dat + Data/TextData_C.dat cua client). map_id -> ten hien thi trong game
 # (vd 12924 -> "Thang Thap", 12934 -> "Dinh Thap"). Dung cho log/UI cho de doc.
