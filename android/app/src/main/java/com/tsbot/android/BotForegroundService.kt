@@ -224,7 +224,7 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
             // hiem gap (U+0001), Python tu split() lai.
             val SEP = ""
             val accountsFlat = activeAccounts.joinToString(SEP) {
-                "${it.username}$SEP${it.password}$SEP${it.battleJson}$SEP${it.heal.toRuntimeJson()}" +
+                "${it.username}$SEP${it.password}$SEP${it.battleJson}$SEP${it.heal.toRuntimeJson(it.vantieu)}" +
                     "$SEP${it.furnace.toRuntimeJson()}"
             }
             val py = rpd()
@@ -474,6 +474,22 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         val pets: List<PetSkillSet>,
         val activePid: Int,
     )
+
+    /** Pet trong NHA TRO cua acc (de chon con nao duoc di van tieu): (pet_id, ten).
+     *  Acc dang chay -> LIVE tu roster server; acc da tat -> CACHE lan chay gan nhat. */
+    fun accountInnPets(username: String): List<Pair<Int, String>> = try {
+        val d = rpd().callAttr("account_inn_pets", username)
+        d?.callAttr("get", "pets")?.asList()?.mapNotNull { row ->
+            try {
+                val p = row.asList()
+                Pair(p[0].toInt(), p[1].toString())
+            } catch (_: Exception) {
+                null
+            }
+        } ?: emptyList()
+    } catch (_: Exception) {
+        emptyList()
+    }
 
     fun accountSkills(username: String): AccountSkills {
         fun parseSkill(item: PyObject): SkillChoice? {

@@ -71,6 +71,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -832,6 +833,7 @@ fun TsBotApp(
             initialBattleJson = account.battleJson,
             initialHeal = account.heal,
             initialFurnace = account.furnace,
+            initialVantieu = account.vantieu,   // giu config van tieu khi sua thong tin dang nhap
             initialEnabled = account.enabled,
             onDismiss = { editingAccount = null },
             onSave = { edited ->
@@ -854,7 +856,7 @@ fun TsBotApp(
                 }
                 partyStore.updateAccountInParty(partyName, account.username, edited)
                 service?.applyAccountBattle(edited.username, edited.battleJson)
-                service?.applyAccountHeal(edited.username, edited.heal.toRuntimeJson())
+                service?.applyAccountHeal(edited.username, edited.heal.toRuntimeJson(edited.vantieu))
                 service?.applyAccountFurnace(edited.username, edited.furnace.toRuntimeJson())
                 refresh()
                 editingAccount = null
@@ -868,18 +870,23 @@ fun TsBotApp(
         HealSettingsDialog(
             initialHeal = account.heal,
             initialFurnace = account.furnace,
+            initialVantieu = account.vantieu,
+            innPets = service?.accountInnPets(account.username) ?: emptyList(),
             onDismiss = { editingHealAccount = null },
-            onApplyToAll = { heal, furnace ->
+            onApplyToAll = { heal, furnace, vantieuOn ->
                 val count = partyStore.applyHealToAllAccounts(heal)
                 partyStore.applyFurnaceToAllAccounts(furnace)
-                parties.flatMap { it.accounts }.forEach {
-                    service?.applyAccountHeal(it.username, heal.toRuntimeJson())
+                // VAN TIEU: chi dong bo O TICK, KHONG dong bo list pet - pet nha tro moi acc mot
+                // khac (id khac han nhau) nen ap list cua acc nay sang acc khac la vo nghia.
+                partyStore.applyVantieuOnToAllAccounts(vantieuOn)
+                partyStore.load().flatMap { it.accounts }.forEach {
+                    service?.applyAccountHeal(it.username, heal.toRuntimeJson(it.vantieu))
                     service?.applyAccountFurnace(it.username, furnace.toRuntimeJson())
                 }
                 refresh()
                 count
             },
-            onSave = { editedHeal, editedFurnace ->
+            onSave = { editedHeal, editedFurnace, editedVantieu ->
                 // Item lo vua thoat "Bo qua" -> cuon so huu no ve "Giu lai" (khong thi vua
                 // mua vua phan giai). scrollModes la cua PARTY nen ghi vao party dang sua.
                 run {
@@ -900,9 +907,10 @@ fun TsBotApp(
                 partyStore.updateAccountInParty(
                     partyName,
                     account.username,
-                    account.copy(heal = editedHeal, furnace = editedFurnace),
+                    account.copy(heal = editedHeal, furnace = editedFurnace,
+                                 vantieu = editedVantieu),
                 )
-                service?.applyAccountHeal(account.username, editedHeal.toRuntimeJson())
+                service?.applyAccountHeal(account.username, editedHeal.toRuntimeJson(editedVantieu))
                 service?.applyAccountFurnace(account.username, editedFurnace.toRuntimeJson())
                 refresh()
                 editingHealAccount = null
@@ -1924,10 +1932,9 @@ fun AddPartyDialog(
                             Checkbox(checked = fightLegionBoss, onCheckedChange = { fightLegionBoss = it })
                             Text("Đánh boss QD")
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = doVanTieu, onCheckedChange = { doVanTieu = it })
-                            Text("Vận tiêu (nhận quà + gửi pet)")
-                        }
+                        // VAN TIEU da CHUYEN sang bang setting "Hoi HP SP" CUA TUNG ACC (kem nut
+                        // List chon rieng pet nao duoc di van tieu -> don EXP cho vai con). Bo o
+                        // tick CHUNG o day de khong co 2 noi dieu khien cung mot thu.
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = autoBagClean, onCheckedChange = { autoBagClean = it })
                             Text("Tự dọn túi đồ")
@@ -2907,6 +2914,7 @@ fun AddAccountDialog(
     initialBattleJson: String = "",
     initialHeal: HealSettings = HealSettings(),
     initialFurnace: FurnaceConfig = FurnaceConfig(),
+    initialVantieu: VantieuConfig = VantieuConfig(),
     initialEnabled: Boolean = true,
 ) {
     var username by remember { mutableStateOf(initialUsername) }
@@ -2938,7 +2946,15 @@ fun AddAccountDialog(
             Button(
                 onClick = {
                     if (username.isNotBlank() && password.isNotBlank()) {
-                        onSave(Account(username, password, initialBattleJson, initialHeal, initialFurnace, initialEnabled))
+                        onSave(Account(
+                            username = username,
+                            password = password,
+                            battleJson = initialBattleJson,
+                            heal = initialHeal,
+                            furnace = initialFurnace,
+                            vantieu = initialVantieu,
+                            enabled = initialEnabled,
+                        ))
                     }
                 },
             ) {
@@ -2962,9 +2978,11 @@ val FURNACE_TABS = listOf(
 fun HealSettingsDialog(
     initialHeal: HealSettings,
     onDismiss: () -> Unit,
-    onSave: (HealSettings, FurnaceConfig) -> Unit,
+    onSave: (HealSettings, FurnaceConfig, VantieuConfig) -> Unit,
     initialFurnace: FurnaceConfig = FurnaceConfig(),
-    onApplyToAll: ((HealSettings, FurnaceConfig) -> Int)? = null,
+    initialVantieu: VantieuConfig = VantieuConfig(),
+    innPets: List<Pair<Int, String>> = emptyList(),   // (pet_id, ten) trong nha tro; rong = chua biet
+    onApplyToAll: ((HealSettings, FurnaceConfig, Boolean) -> Int)? = null,
 ) {
     var hpCharText by remember(initialHeal) { mutableStateOf(initialHeal.hpChar.toString()) }
     var spCharText by remember(initialHeal) { mutableStateOf(initialHeal.spChar.toString()) }
@@ -2973,6 +2991,8 @@ fun HealSettingsDialog(
     var applyMessage by remember { mutableStateOf("") }
     var furnace by remember(initialFurnace) { mutableStateOf(initialFurnace) }
     var pickerTab by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+    var vantieu by remember(initialVantieu) { mutableStateOf(initialVantieu) }
+    var showVantieuPets by remember { mutableStateOf(false) }
 
     fun pct(text: String, fallback: Int): Int = (text.toIntOrNull() ?: fallback).coerceIn(0, 100)
     fun currentHeal() = HealSettings(
@@ -3021,10 +3041,24 @@ fun HealSettingsDialog(
                         }
                     }
                 }
+                // --- VAN TIEU: tick bat + nut List chon rieng pet nao duoc di ---
+                // Chuyen tu Cai dat nang cao ve day: van tieu CO EXP nen user muon don exp cho
+                // vai con thay vi dan deu ca nha tro.
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = vantieu.on,
+                        onCheckedChange = { vantieu = vantieu.copy(on = it) })
+                    Text("Vận tiêu", modifier = Modifier.weight(1f), maxLines = 1)
+                    TextButton(onClick = { showVantieuPets = true }) {
+                        Text(if (vantieu.pets.isEmpty()) "📋 List (tất cả)"
+                             else "📋 List (${vantieu.pets.size})", maxLines = 1)
+                    }
+                }
                 if (onApplyToAll != null) {
                     OutlinedButton(
                         onClick = {
-                            val count = onApplyToAll(currentHeal(), furnace)
+                            val count = onApplyToAll(currentHeal(), furnace, vantieu.on)
                             applyMessage = "Đã áp dụng cho $count acc"
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -3038,12 +3072,61 @@ fun HealSettingsDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(currentHeal(), furnace) }) { Text("Lưu") }
+            Button(onClick = { onSave(currentHeal(), furnace, vantieu) }) { Text("Lưu") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Hủy") }
         },
     )
+
+    if (showVantieuPets) {
+        // Chon rieng pet nao duoc di VAN TIEU. Tick theo PET ID (index nha tro xe dich khi
+        // them/bot pet). KHONG tick con nao = dung TAT CA (mac dinh, y het hanh vi cu).
+        // Pet MOI (chua co trong list da luu) mac dinh KHONG tick.
+        val chon = remember(vantieu) { mutableStateListOf<Int>().also { it.addAll(vantieu.pets) } }
+        AlertDialog(
+            onDismissRequest = { showVantieuPets = false },
+            title = { Text("Pet vận tiêu") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    if (innPets.isEmpty()) {
+                        Text("Chưa biết pet trong nhà trọ của acc này. " +
+                             "List pet do server gửi lúc login. Chạy acc một lần rồi mở lại là " +
+                             "có, sau đó chỉnh được cả khi acc đang tắt.")
+                    } else {
+                        Text("Không tick con nào = dùng TẤT CẢ (như cũ).",
+                            style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(6.dp))
+                        innPets.forEach { (pid, ten) ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = chon.contains(pid),
+                                    onCheckedChange = {
+                                        if (it) { if (!chon.contains(pid)) chon.add(pid) }
+                                        else chon.remove(pid)
+                                    },
+                                )
+                                Text(ten, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    // Tick HET => luu RONG: "tat ca" va "khong con nao" cho ket qua giong nhau;
+                    // luu rong thi them pet ve sau khong bi ket vao dien "tick le" ngoai y muon.
+                    vantieu = vantieu.copy(
+                        pets = if (innPets.isNotEmpty() && chon.size == innPets.size) emptyList()
+                               else chon.sorted())
+                    showVantieuPets = false
+                }) { Text("Lưu") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVantieuPets = false }) { Text("Hủy") }
+            },
+        )
+    }
 
     val pt = pickerTab
     if (pt != null) {

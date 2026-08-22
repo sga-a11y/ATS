@@ -1390,6 +1390,27 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   không pop slot mù rồi refresh liên tục.
 - Danh sách pet kho vận tiêu lấy từ S2C `0x1f sub0600`, index này là index gửi lại bằng
   C2S `0x56 0200 [pet_index]`.
+- **Cấu trúc bản ghi `S:031-006` `<客棧武將資料>`** (đã bóc từ `vt_kholog.pcap`, KHÔNG phải đoán —
+  đối chiếu `npc_names.json` khớp **4/4**):
+
+  | offset | rộng | ý nghĩa |
+  |---|---|---|
+  | +0 | 1B | index nhà trọ (= index gửi `0x56 0200`) |
+  | +1 | 2B LE | **NPCID = pet ID** — khoá ỔN ĐỊNH, không đổi khi thêm/bớt pet |
+  | +3 | 1B | level |
+  | +4 | 4B | exp |
+  | +8 | 4B | HP |
+  | +12 | 1B | `L` = độ dài **VÙNG** tên (byte) |
+  | +13 | L | tên UTF-16LE kết thúc ` `, **phần dư trong vùng là RÁC** (idx1 dư `'n'`, idx4 dư ` `) |
+  | +13+L | 1B | trạng thái võ tướng |
+
+  ⚠️ `L` là độ dài VÙNG chứ không phải độ dài tên → phải cắt tên tại ` ` đầu tiên rồi nhảy
+  nguyên `L` byte, đừng nhảy theo độ dài tên. `protocal.lua:6798` ghi thiếu trường exp (4B) so với
+  gói thật, nên đọc theo bảng này chứ đừng theo dòng mô tả đó.
+- Nhà trọ còn 2 gói **CHƯA DÙNG** (note để sau): `S:031-003 <客棧存武將>` +index nhà trọ(1)
+  +index trên người(1) = GỬI pet vào nhà trọ; `S:031-004 <客棧刪武將>` +index nhà trọ(1) = LẤY pet
+  ra / xoá khỏi nhà trọ. Bắt được 2 gói này thì cập nhật được roster lúc đang chạy mà không cần
+  login lại. Phía client còn `C:031-001..004` tương ứng.
 - Client game hiển thị doanh đầu tiên là **Huỳnh** (không phải Hoàng). Quy ước data bot hiện dùng
   không dấu: `Huynh/Nguy/Thuc/Ngo/Du`. `Hoang` chỉ là tên cũ trong data bot; code match phải coi
   `Hoang` là alias của `Huynh` để không vỡ file cũ.

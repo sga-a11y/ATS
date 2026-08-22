@@ -1232,6 +1232,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _pc0 = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
                 c.death_return_town = bool(_pc0.get("death_return_town", True))
                 c.pet_death_return_town = bool(_pc0.get("pet_death_return_town", True))
+                # VAN TIEU per-acc (bang setting Hoi HP/SP cua acc). Mac dinh: BAT, KHONG tick con
+                # nao -> vantieu_candidates() tra ve TAT CA = y het hanh vi cu.
+                _vt0 = (getattr(config, "ACCOUNT_VANTIEU", {}) or {}).get(username, {}) or {}
+                c.vantieu_enable = bool(_vt0.get("on", getattr(config, "VANTIEU_ENABLE", True)))
+                c.vantieu_pick_ids = tuple(_vt0.get("pets") or ())
                 c.connect()
                 # cho self_entity + map (map=None = chua vao world xong)
                 for _ in range(15):
@@ -1415,7 +1420,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 next_phuc_than = time.time() + PHUC_THAN_CHECK_SEC
             # Van tieu: nhan qua xong + gui pet; tra ve gio check tiep. Cong tac "Van tieu" trong
             # Cai dat nang cao (mac dinh CO tick - giu hanh vi cu); tat -> khong lam + khong hen gio.
-            next_vantieu = c.do_van_tieu() if pcfg.get("do_van_tieu", True) else None
+            # Cong tac van tieu nay o TUNG ACC (bang setting Hoi HP/SP), khong con o cap party ->
+            # goi thang, chinh do_van_tieu() doc c.vantieu_enable roi tu quyet dinh.
+            next_vantieu = c.do_van_tieu()
             # MUA SHOP (Cai dat nang cao, mac dinh TAT): master auto_buy_shop + list shop.
             # Dua theo RoleCount server 0x55 neu biet counter; item chua ro counter thi server tu reject.
             if pcfg.get("auto_buy_shop"):
@@ -5981,6 +5988,25 @@ from .client import save_skill_cache as save_account_skills_cache   # noqa: E402
 from .client import skills_snapshot as _skills_snapshot             # noqa: E402
 
 
+def account_inn_pets(username):
+    """GUI/API: list pet trong NHA TRO cua acc, de render dialog chon pet van tieu.
+
+    Tra {"pets": [[pet_id, ten], ...], "cached": 0/1}. Acc DANG CHAY -> lay LIVE tu roster server
+    gui luc login; acc DA TAT -> lay CACHE lan chay gan nhat (user van tick duoc khi offline).
+    Acc chua chay bao gio / khong co pet trong nha tro -> pets rong (caller hien thong bao).
+    Thu tu = thu tu index nha tro; nhung KHOA la pet_id vi index xe dich khi them/bot pet."""
+    username = str(username or "").strip()
+    c = account_clients.get(username)
+    roster = getattr(c, "vantieu_roster", None) if c is not None else None
+    if roster:
+        ids = getattr(c, "vantieu_roster_ids", {}) or {}
+        return {"pets": [[int(ids.get(i, 0)), roster[i]] for i in sorted(roster)], "cached": 0}
+    cached = _load_skill_cache().get(username)
+    if isinstance(cached, dict) and cached.get("inn"):
+        return {"pets": [[int(p), n] for p, n in cached["inn"]], "cached": 1}
+    return {"pets": [], "cached": 1}
+
+
 def account_skills(username):
     """GUI/API: skill + pet cua acc de render dialog Kich ban Skill.
 
@@ -6085,8 +6111,30 @@ def apply_account_heal(username, heal_config=None):
         config.ACCOUNT_HEAL[username] = cfg
     else:
         config.ACCOUNT_HEAL.pop(username, None)
+    # VAN TIEU di chung heal_json vi cung mot dialog (bang setting Hoi HP/SP cua acc) VA vi duong
+    # heal_json da duoc noi san o CA PC lan APK -> khong phai them tham so vi tri moi cho
+    # setup_party_runtime (Kotlin goi theo VI TRI, them tham so giua chung la vo).
+    vt = (heal_config or {}).get("vantieu") if isinstance(heal_config, dict) else None
+    if not isinstance(getattr(config, "ACCOUNT_VANTIEU", None), dict):
+        config.ACCOUNT_VANTIEU = {}
+    if isinstance(vt, dict):
+        pets = []
+        for x in (vt.get("pets") or []):
+            try:
+                pets.append(int(x))
+            except Exception:
+                pass
+        config.ACCOUNT_VANTIEU[username] = {"on": bool(vt.get("on", True)), "pets": pets}
+    else:
+        config.ACCOUNT_VANTIEU.pop(username, None)
+    c = account_clients.get(username)
+    if c is not None:
+        _vt = config.ACCOUNT_VANTIEU.get(username) or {}
+        c.vantieu_enable = bool(_vt.get("on", getattr(config, "VANTIEU_ENABLE", True)))
+        c.vantieu_pick_ids = tuple(_vt.get("pets") or ())
     if username in account_clients:
-        log.info("[%s] da apply nguong hoi HP/SP moi (live): %s", username, cfg or "mac dinh")
+        log.info("[%s] da apply nguong hoi HP/SP moi (live): %s | van tieu: %s",
+                 username, cfg or "mac dinh", config.ACCOUNT_VANTIEU.get(username) or "mac dinh")
     return True
 
 

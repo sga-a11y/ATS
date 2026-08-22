@@ -55,6 +55,7 @@ class PartyStore(private val context: Context) {
                     a.optString("battle", ""),
                     healSettingsFromJson(a.optJSONObject("heal")),
                     furnaceConfigFromJson(a.optJSONObject("furnace")),
+                    vantieuFromJson(a.optJSONObject("vantieu")),
                     a.optBoolean("enabled", true),
                 )
             }
@@ -196,6 +197,7 @@ class PartyStore(private val context: Context) {
                 if (a.battleJson.isNotBlank()) ao.put("battle", a.battleJson)
                 if (!a.heal.isDefault()) ao.put("heal", a.heal.toJsonObject())
                 if (!a.furnace.isEmpty()) ao.put("furnace", a.furnace.toJsonObject())
+                if (!a.vantieu.isDefault()) ao.put("vantieu", a.vantieu.toJsonObject())
                 accArr.put(ao)
             }
             o.put("accounts", accArr)
@@ -251,6 +253,20 @@ class PartyStore(private val context: Context) {
             party.copy(accounts = party.accounts.map {
                 count += 1
                 it.copy(heal = heal)
+            })
+        }
+        save(updated)
+        return count
+    }
+
+    /** Dong bo O TICK van tieu cho MOI acc. KHONG dong bo list pet: pet nha tro moi acc mot
+     *  khac (pet id khac han nhau) nen ap list cua acc nay sang acc khac la vo nghia. */
+    fun applyVantieuOnToAllAccounts(on: Boolean): Int {
+        var count = 0
+        val updated = load().map { party ->
+            party.copy(accounts = party.accounts.map {
+                count += 1
+                it.copy(vantieu = it.vantieu.copy(on = on))
             })
         }
         save(updated)

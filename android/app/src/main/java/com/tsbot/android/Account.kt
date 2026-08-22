@@ -38,6 +38,34 @@ fun HealSettings.toJsonObject(): JSONObject = JSONObject().apply {
     put("sp_pet", spPet.coerceIn(0, 100) / 100.0)
 }
 
+// --- VAN TIEU (dispatch): config per-acc, nam chung bang setting "Hoi HP/SP" cua acc. ---
+// pets RONG = dung TAT CA pet trong nha tro (mac dinh, y het hanh vi cu truoc khi co tinh nang
+// nay). Tick theo PET ID chu khong theo index nha tro: index xe dich khi them/bot pet.
+data class VantieuConfig(
+    val on: Boolean = true,          // mac dinh BAT
+    val pets: List<Int> = emptyList(),
+) {
+    fun isDefault(): Boolean = on && pets.isEmpty()
+}
+
+fun vantieuFromJson(o: JSONObject?): VantieuConfig {
+    if (o == null) return VantieuConfig()
+    val arr = o.optJSONArray("pets")
+    val ids = ArrayList<Int>()
+    if (arr != null) for (i in 0 until arr.length()) ids.add(arr.optInt(i))
+    return VantieuConfig(on = o.optBoolean("on", true), pets = ids.filter { it > 0 })
+}
+
+fun VantieuConfig.toJsonObject(): JSONObject = JSONObject().apply {
+    put("on", on)
+    put("pets", org.json.JSONArray().also { a -> pets.forEach { a.put(it) } })
+}
+
+// Van tieu di CHUNG heal_json: cung mot dialog, va duong heal_json da duoc noi san toi
+// setup_party_runtime -> khong phai them tham so VI TRI moi (Kotlin goi theo vi tri).
+fun HealSettings.toRuntimeJson(vantieu: VantieuConfig): String =
+    toJsonObject().apply { put("vantieu", vantieu.toJsonObject()) }.toString()
+
 fun HealSettings.toRuntimeJson(): String = toJsonObject().toString()
 
 fun HealSettings.isDefault(): Boolean = this == HealSettings()
@@ -102,5 +130,6 @@ data class Account(
     val battleJson: String = "",
     val heal: HealSettings = HealSettings(),
     val furnace: FurnaceConfig = FurnaceConfig(),
+    val vantieu: VantieuConfig = VantieuConfig(),
     val enabled: Boolean = true,
 )

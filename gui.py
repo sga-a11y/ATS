@@ -1939,7 +1939,6 @@ class PartyConfigFrame(ttk.Frame):
         self.fight_boss_var = tk.BooleanVar(value=bool(self._preset.get("fight_legion_boss", True)))
         # Van tieu: mac dinh CO tick (giu hanh vi cu - truoc gio luon lam). Tat -> khong nhan qua
         # escort + khong gui pet van tieu + khong hen gio check lai.
-        self.van_tieu_var = tk.BooleanVar(value=bool(self._preset.get("do_van_tieu", True)))
         # Tu ban Noi Dat: mac dinh CO tick. Chi co tac dung khi bot tele trung gian ve Ng.Thanh
         # trong mode train/city; tat -> bo qua hoan toan.
         self.auto_sell_noi_dat_var = tk.BooleanVar(value=bool(self._preset.get("auto_sell_noi_dat", True)))
@@ -2005,12 +2004,14 @@ class PartyConfigFrame(ttk.Frame):
             u = a.get("u", ""); on = a.get("on", True)
             if u.lstrip().startswith("#"):   # tuong thich co che '#' cu -> bo tick
                 on = False; u = u.lstrip().lstrip("#").strip()
-            self._add_acc_row(u, a.get("p", ""), on, a.get("heal"), a.get("settings"), a.get("furnace"))
+            self._add_acc_row(u, a.get("p", ""), on, a.get("heal"), a.get("settings"),
+                              a.get("furnace"), a.get("vantieu"))
         ttk.Button(self, text="➕ Thêm dòng acc",
                    command=lambda: self._add_acc_row("", "", True)).pack(anchor="w", pady=(2, 0))
         self._render_dyn()
 
-    def _add_acc_row(self, u="", p="", on=True, heal=None, settings=None, furnace=None):
+    def _add_acc_row(self, u="", p="", on=True, heal=None, settings=None, furnace=None,
+                     vantieu=None):
         fr = ttk.Frame(self._acc_inner); fr.pack(fill="x", pady=1)
         on_var = tk.BooleanVar(value=bool(on))
         ttk.Checkbutton(fr, variable=on_var).pack(side="left")
@@ -2022,6 +2023,8 @@ class PartyConfigFrame(ttk.Frame):
         row = {"on": on_var, "u": e_u, "p": e_p, "frame": fr, "_realp": p,
                "heal": dict(heal) if isinstance(heal, dict) else {},
                "furnace": dict(furnace) if isinstance(furnace, dict) else {},
+               # vantieu: {"on": bool, "pets": [pet_id...]}. pets RONG = dung TAT CA pet nha tro.
+               "vantieu": dict(vantieu) if isinstance(vantieu, dict) else {},
                "settings": dict(settings) if isinstance(settings, dict) else {}}
         # Pass DA LUU -> hien placeholder '******' (giau pass that). Bam vao go thi xoa placeholder;
         # de trong khong go -> khoi phuc '******' (giu pass cu). Pass MOI (chua co) -> o trong, go ro.
@@ -2091,6 +2094,31 @@ class PartyConfigFrame(ttk.Frame):
                        command=lambda tk_=tab_key, pn=pool_name, tl=tab_label:
                            self._open_furnace_list_dialog(row, tk_, pn, tl)).grid(
                 row=_fr + 2 + j, column=2, sticky="w", padx=(4, 8), pady=1)
+        # --- VAN TIEU: tick bat + nut List chon rieng pet nao duoc di ---
+        # Chuyen tu Cai dat nang cao (o tick CHUNG) ve day theo yeu cau user: van tieu CO EXP nen
+        # user muon don exp cho vai con thay vi dan deu ca nha tro.
+        _vt = row.setdefault("vantieu", {})
+        vt_on = tk.BooleanVar(value=bool(_vt.get("on", True)))     # mac dinh TICK
+        _vr = _fr + 2 + len(self.FURNACE_TABS)
+        ttk.Separator(win, orient="horizontal").grid(
+            row=_vr, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 2))
+        ttk.Checkbutton(win, text="Vận tiêu (nhận quà + gửi pet)", variable=vt_on).grid(
+            row=_vr + 1, column=0, columnspan=2, sticky="w", padx=(8, 2), pady=1)
+        _vt_lbl = ttk.Label(win, text="", foreground="#666")
+        _vt_lbl.grid(row=_vr + 2, column=0, columnspan=3, sticky="w", padx=(24, 8))
+
+        def _vt_refresh():
+            n = len(_vt.get("pets") or [])
+            _vt_lbl.configure(text=("Dùng TẤT CẢ pet trong nhà trọ" if not n
+                                    else "Chỉ %d pet đã chọn" % n))
+        ttk.Button(win, text="📋 List", width=8,
+                   command=lambda: self._open_vantieu_list_dialog(row, uname, _vt_refresh)).grid(
+            row=_vr + 1, column=2, sticky="w", padx=(4, 8), pady=1)
+        _vt_refresh()
+
+        def _save_vantieu():
+            _vt["on"] = bool(vt_on.get())
+
         def _save_furnace():
             # setdefault: tao entry KE CA khi chua mo List (truoc day chi luu neu tab_key da co trong
             # furn -> tick o ma chua mo List thi mat tick). Entry {"on": True} khong items van hop le
@@ -2101,6 +2129,7 @@ class PartyConfigFrame(ttk.Frame):
             row["heal"] = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
             row["settings"].pop("char_defend", None)
             _save_furnace()
+            _save_vantieu()
             win.destroy()
         def _reset():
             # "Mac dinh chung": chi RESET cac o TAI CHO (khong ap dung cho ai, khong dong dialog).
@@ -2115,7 +2144,13 @@ class PartyConfigFrame(ttk.Frame):
             _save_furnace()
         def _apply_all():
             # Ap NGUONG DANG CHINH + CONFIG LO (tick + LIST) cho MOI acc o MOI PARTY.
+            # VAN TIEU: CHI dong bo O TICK, KHONG dong bo list pet - pet nha tro moi acc MOT KHAC
+            # (id khac han nhau), ap list cua acc nay sang acc khac la vo nghia (user yeu cau).
             _save_furnace()
+            _save_vantieu()
+            _vt_on_all = bool(vt_on.get())
+            for _r in self.acc_rows:
+                _r.setdefault("vantieu", {})["on"] = _vt_on_all
             vals = {k: max(0, min(100, vv.get())) / 100.0 for k, vv in vars_.items()}
             import copy as _copy
             furn_snapshot = _copy.deepcopy(furn)
@@ -2136,12 +2171,12 @@ class PartyConfigFrame(ttk.Frame):
                 messagebox.showinfo("Áp dụng cho tất cả",
                                     f"Đã áp ngưỡng hồi máu + config lò cho {n} acc.", parent=win)
             win.destroy()
-        bb = ttk.Frame(win); bb.grid(row=len(rows) + 6, column=0, columnspan=3, pady=(8, 2))
+        bb = ttk.Frame(win); bb.grid(row=_vr + 3, column=0, columnspan=3, pady=(8, 2))
         ttk.Button(bb, text="↺ Mặc định chung", command=_reset).pack(side="left", padx=4)
         ttk.Button(bb, text="💾 Lưu", command=_save).pack(side="left", padx=4)
         ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="left", padx=4)
         ttk.Button(win, text="📋 Áp dụng cho TẤT CẢ acc", command=_apply_all).grid(
-            row=len(rows) + 7, column=0, columnspan=3, sticky="ew", padx=8, pady=(0, 8))
+            row=_vr + 4, column=0, columnspan=3, sticky="ew", padx=8, pady=(0, 8))
 
     # ---- SOI LO: pool + dialog chon item ----
     _furnace_default_notify_cache = None
@@ -2295,6 +2330,60 @@ class PartyConfigFrame(ttk.Frame):
                 self.scroll_modes[sc] = "keep"
                 n += 1
         return n
+
+    def _open_vantieu_list_dialog(self, row, uname, on_close=None):
+        """Chon rieng pet nao duoc di VAN TIEU (van tieu co EXP -> user don exp cho vai con).
+
+        - Acc DANG CHAY: list lay LIVE tu roster server. Acc DA TAT: lay CACHE lan chay gan nhat.
+        - Tick luu theo PET ID (khong theo index nha tro: index xe dich khi them/bot pet).
+        - KHONG tick con nao = dung TAT CA (giong hanh vi cu) -> day la MAC DINH.
+        - Pet MOI xuat hien (chua co trong list da luu) mac dinh KHONG tick (yeu cau user).
+        """
+        try:
+            data = ctrl.account_inn_pets(uname)
+        except Exception as e:
+            messagebox.showerror("Vận tiêu", "Không đọc được list pet nhà trọ: %s" % e); return
+        pets = data.get("pets") or []
+        vt = row.setdefault("vantieu", {})
+        if not pets:
+            messagebox.showinfo(
+                "Vận tiêu: %s" % uname,
+                "Chưa biết pet trong nhà trọ của acc này.\n\n"
+                "List pet do server gửi lúc login. Chạy acc một lần rồi mở lại là có,\n"
+                "sau đó chỉnh được cả khi acc đang tắt.")
+            return
+        win = tk.Toplevel(self); win.title("Vận tiêu: %s" % uname); win.resizable(False, False)
+        win.transient(self.winfo_toplevel()); win.grab_set()
+        ttk.Label(win, text=("Pet trong nhà trọ%s — tick con được đi vận tiêu:"
+                             % (" (cache, acc đang tắt)" if data.get("cached") else ""))).pack(
+            anchor="w", padx=8, pady=(8, 2))
+        ttk.Label(win, text="Không tick con nào = dùng TẤT CẢ (như cũ).",
+                  foreground="#666").pack(anchor="w", padx=8, pady=(0, 6))
+        da_tick = {int(x) for x in (vt.get("pets") or [])}
+        vars_ = {}
+        body = ttk.Frame(win); body.pack(fill="both", padx=8)
+        for pid, nm in pets:
+            v = tk.BooleanVar(value=int(pid) in da_tick)   # pet MOI -> mac dinh KHONG tick
+            vars_[int(pid)] = v
+            ttk.Checkbutton(body, text="%s  (#%04x)" % (nm, int(pid)), variable=v).pack(anchor="w")
+
+        def _set_all(val):
+            for v in vars_.values():
+                v.set(val)
+
+        def _save():
+            # Tick HET => luu RONG: "tat ca" va "khong con nao" cho ket qua giong nhau, luu rong
+            # thi them/bot pet ve sau khong bi ke t vao dien "tick le" ngoai y muon.
+            chon = [pid for pid, v in vars_.items() if v.get()]
+            vt["pets"] = [] if len(chon) == len(vars_) else sorted(chon)
+            win.destroy()
+            if on_close:
+                on_close()
+        bb = ttk.Frame(win); bb.pack(pady=8)
+        ttk.Button(bb, text="Tick hết", command=lambda: _set_all(True)).pack(side="left", padx=4)
+        ttk.Button(bb, text="Bỏ hết", command=lambda: _set_all(False)).pack(side="left", padx=4)
+        ttk.Button(bb, text="💾 Lưu", command=_save).pack(side="left", padx=4)
+        ttk.Button(bb, text="Hủy", command=win.destroy).pack(side="left", padx=4)
 
     def _open_furnace_list_dialog(self, row, tab_key, pool_name, tab_label):
         """Chon item lo tab `tab_key`: Treeview (ten + che do), search, moi item dropdown
@@ -3433,8 +3522,9 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.use_digioi_ho_phu_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Đánh boss QD",
                         variable=self.fight_boss_var).pack(anchor="w", pady=(4, 0))
-        ttk.Checkbutton(frm, text="Vận tiêu (nhận quà + gửi pet)",
-                        variable=self.van_tieu_var).pack(anchor="w", pady=(4, 0))
+        # VAN TIEU da CHUYEN sang bang setting "Hồi HP SP" CUA TUNG ACC (co them nut List de chon
+        # rieng pet nao duoc di van tieu -> don EXP cho vai con). Bo o tick CHUNG o day de khong
+        # co 2 noi dieu khien cung mot thu.
         _bag = ttk.Frame(frm); _bag.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_bag, text="Tự dọn túi đồ",
                         variable=self.auto_bag_clean_var).pack(side="left")
@@ -3485,7 +3575,6 @@ class PartyConfigFrame(ttk.Frame):
             "use_phuc_than": bool(self.use_phuc_than_var.get()),
             "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
             "fight_legion_boss": bool(self.fight_boss_var.get()),
-            "do_van_tieu": bool(self.van_tieu_var.get()),
             "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
             "death_return_town": bool(self.death_return_town_var.get()),
             "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
@@ -3527,7 +3616,6 @@ class PartyConfigFrame(ttk.Frame):
         self.use_phuc_than_var.set(bool(data.get("use_phuc_than", False)))
         self.use_digioi_ho_phu_var.set(bool(data.get("use_digioi_ho_phu", False)))
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
-        self.van_tieu_var.set(bool(data.get("do_van_tieu", True)))
         self.auto_sell_noi_dat_var.set(bool(data.get("auto_sell_noi_dat", True)))
         self.death_return_town_var.set(bool(data.get("death_return_town", True)))
         self.pet_death_return_town_var.set(bool(data.get("pet_death_return_town", True)))
@@ -3736,6 +3824,8 @@ class PartyConfigFrame(ttk.Frame):
                 acc["heal"] = r["heal"]
             if r.get("furnace"):
                 acc["furnace"] = r["furnace"]
+            if r.get("vantieu"):
+                acc["vantieu"] = r["vantieu"]
             if r.get("settings"):
                 acc["settings"] = r["settings"]
             accs.append(acc)
@@ -3754,7 +3844,6 @@ class PartyConfigFrame(ttk.Frame):
                 "use_phuc_than": bool(self.use_phuc_than_var.get()),
                 "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
-                "do_van_tieu": bool(self.van_tieu_var.get()),
                 "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
                 "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
                 "event_exchange_items": list(self.event_exchange_items),

@@ -590,6 +590,10 @@ SP_THRESHOLD = 0.0          # = 0 -> KHONG uong thuoc SP (tat hoi SP) - MAC DINH
 # Override nguong hoi mau RIENG tung acc (theo username). GUI ghi vao accounts.json (field "heal"
 # moi acc) -> tu nap vao day. 4 nguong: hp_char/sp_char (char), hp_pet/sp_pet (pet). Thieu key nao
 # -> lay HP_THRESHOLD/SP_THRESHOLD chung. Acc khong liet ke -> dung mac dinh het.
+# VAN TIEU rieng tung acc (GUI ghi field "vantieu" cho moi acc trong accounts.json).
+# {username: {"on": bool, "pets": [pet_id...]}}. Khong co entry = mac dinh BAT + dung TAT CA pet.
+ACCOUNT_VANTIEU = {}
+
 ACCOUNT_HEAL = {
     # "acc1": {"hp_char": 0.7, "sp_char": 0.5, "hp_pet": 0.6, "sp_pet": 0.4},
 }
@@ -683,6 +687,17 @@ if _aj is not None:
                             _fc[_tab] = {"on": bool(_t.get("on", True)), "items": _items}
                     if _fc:
                         ACCOUNT_FURNACE[_u] = _fc
+                # VAN TIEU rieng tung acc: {"on": bool, "pets": [pet_id...]}.
+                # pets RONG = dung TAT CA pet trong nha tro (mac dinh, y het hanh vi cu).
+                _v = _a.get("vantieu")
+                if _u and isinstance(_v, dict):
+                    _vp = []
+                    for _x in (_v.get("pets") or []):
+                        try:
+                            _vp.append(int(_x))
+                        except Exception:
+                            pass
+                    ACCOUNT_VANTIEU[_u] = {"on": bool(_v.get("on", True)), "pets": _vp}
                 _s = _a.get("settings")
                 if _u and isinstance(_s, dict):
                     if _s.get("char_defend"):

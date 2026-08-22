@@ -1298,7 +1298,12 @@ def save_skill_cache(username, data):
                     allc = json.load(fh) or {}
             except Exception:
                 allc = {}
+        # GIU khoa "inn" (list pet nha tro, do save_inn_cache ghi): ham nay THAY nguyen entry nen
+        # khong giu thi moi lan cache skill se xoa mat list pet -> dialog van tieu trong khi acc tat.
+        cu = allc.get(username) or {}
         allc[username] = dict(data, ts=int(time.time()))
+        if isinstance(cu, dict) and cu.get("inn"):
+            allc[username]["inn"] = cu["inn"]
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(allc, fh, ensure_ascii=False)
@@ -1306,6 +1311,45 @@ def save_skill_cache(username, data):
             log.debug("ghi cache skill loi: %s", e)
             return False
         _skill_cache_sig[username] = sig
+        return True
+
+
+def save_inn_cache(username, inn):
+    """Ghi cache PET NHA TRO cua 1 acc (de dialog van tieu sua duoc khi acc DA TAT).
+
+    `inn` = [[pet_id, ten], ...] theo thu tu index nha tro. Dung CHUNG file
+    account_skills_cache.json (khoa "inn") thay vi them file moi: file do da co san duong nap o ca
+    PC lan APK, va da co san co che "acc tat thi doc cache".
+    KHONG ghi de cac khoa khac cua acc (char/pet/pets/active)."""
+    import json, os
+    username = str(username or "").strip()
+    if not username or not inn:
+        return False
+    sig = json.dumps(inn, ensure_ascii=False)
+    with _skill_cache_lock:
+        if _skill_cache_sig.get("inn:" + username) == sig:
+            return False
+        path = _skill_cache_path()
+        allc = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    allc = json.load(fh) or {}
+            except Exception:
+                allc = {}
+        entry = allc.get(username)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["inn"] = inn
+        entry["inn_ts"] = int(time.time())
+        allc[username] = entry
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(allc, fh, ensure_ascii=False)
+        except Exception as e:
+            log.debug("ghi cache pet nha tro loi: %s", e)
+            return False
+        _skill_cache_sig["inn:" + username] = sig
         return True
 
 
@@ -1618,6 +1662,9 @@ class GameClient:
         self.vantieu_req_code = None # ma yeu cau slot ke tiep (0x56 0400, hex b0b1b2) - fallback VANTIEU_REQUESTS
         self.vantieu_req = None      # {he, doanh} decode tu DispatchBonus_C.dat (0400 effect1/effect2)
         self.vantieu_roster = {}     # index pet KHO (1-based) -> ten (S2C 0x1f 0600 luc login) -> tra PET_HEDOANH
+        self.vantieu_roster_ids = {} # index pet KHO -> NPCID (pet id) - KHOA ON DINH de user tick
+        self.vantieu_enable = True   # per-acc (thay config.VANTIEU_ENABLE cu, la cong tac CHUNG)
+        self.vantieu_pick_ids = ()   # pet id user DA TICK. rong / tick HET = dung TAT CA (nhu cu)
         self.vantieu_unlocked = 1    # so slot DA MO (S2C 0x56 0600 [N]); slot con lai khoa = can vang
         self._dg_query = None        # raw S2C 0x54 (tra loi query luot dungeon)
         self._dg_query_event = threading.Event()
@@ -7319,34 +7366,90 @@ class GameClient:
             off += 21
 
     def _on_vantieu_roster(self, pkt: bytes):
-        """S2C 0x1f sub=0600: list pet KHO dung de van tieu (gui luc login).
-        Entry: [index 1B][11B: ?+pet_id+stats][ten UTF-16LE][null 0000]. index = chi so gui 0x56 0200."""
+        """S2C 0x1f sub=0600 <客棧武將資料>: list pet KHO (nha tro) de van tieu, gui luc login.
+
+        Bo cuc 1 ban ghi (BOC TU GOI THAT vt_kholog.pcap, doi chieu npc_names.json khop 4/4 -
+        xem KNOWLEDGE.md muc van tieu; protocal.lua:6798 ghi THIEU truong exp nen dung bang nay):
+            +0 index nha tro 1B (= index gui 0x56 0200) | +1 NPCID 2B LE | +3 level 1B
+            +4 exp 4B | +8 HP 4B | +12 L 1B = do dai VUNG ten
+            +13 vung ten L byte: UTF-16LE ket thuc \\0, PHAN DU LA RAC | +13+L trang thai 1B
+
+        L la do dai VUNG chu KHONG phai do dai ten -> cat ten tai \\0 dau tien nhung nhay nguyen
+        L byte. Parser cu khong doc L, quet toi \\0\\0 roi TU DONG BO lai bang cach do +1 - ra dung
+        ten nhung gion. Nay doc tuan tu theo L.
+
+        Ghi CA pet id: id la khoa ON DINH de user tick pet nao duoc van tieu (index nha tro XE DICH
+        khi them/bot pet -> tick theo index se truot sang con khac)."""
         b = pkt[7:]
-        roster, pos = {}, 2
+        roster, ids, pos = {}, {}, 2
         while pos + 13 < len(b):
             index = b[pos]
+            npc_id = struct.unpack_from("<H", b, pos + 1)[0]
+            ln = b[pos + 12]
             npos = pos + 13
-            end = npos
-            while end + 1 < len(b) and b[end:end + 2] != b"\x00\x00":
-                end += 2
+            if ln <= 0 or npos + ln > len(b):
+                pos += 1
+                continue
+            vung = b[npos:npos + ln]
+            # Tim \0\0 tai vi tri CHAN thoi: ten UTF-16 ket thuc bang 'i' (=69 00) roi terminator
+            # 00 00 -> chuoi byte ...69 00 00 00, bytes.find(b"\0\0") bat trung cap LECH (tra ve
+            # offset le) -> cat mat ky tu cuoi. Phai duyet theo tung ky tu 2 byte.
+            cut = len(vung) - (len(vung) % 2)
+            for k in range(0, len(vung) - 1, 2):
+                if vung[k:k + 2] == b"\x00\x00":
+                    cut = k
+                    break
             try:
-                name = b[npos:end].decode("utf-16-le")
+                name = vung[:cut].decode("utf-16-le")
             except Exception:
                 name = ""
             if name and 1 <= index <= 30 and all(0x20 <= ord(c) for c in name):
                 roster[index] = name
-                pos = end + 2
+                ids[index] = npc_id
+                pos = npos + ln + 1          # +1 = byte trang thai vo tuong
             else:
                 pos += 1
         if roster:
             self.vantieu_roster = roster
+            self.vantieu_roster_ids = ids
             log.info("[%s] Van tieu roster (kho): %s", self._label,
-                     {i: roster[i] for i in sorted(roster)})
+                     {i: "%s#%04x" % (roster[i], ids.get(i, 0)) for i in sorted(roster)})
+            # Cache de dialog van tieu sua duoc khi acc DA TAT (khoi bat acc len chi de tick pet).
+            try:
+                save_inn_cache(getattr(self, "_username", None),
+                               [[int(ids.get(i, 0)), roster[i]] for i in sorted(roster)])
+            except Exception as e:
+                log.debug("[%s] cache pet nha tro loi: %s", self._label, e)
 
     @staticmethod
     def _ole_to_dt(ole):
         import datetime
         return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=ole)
+
+    def vantieu_candidates(self):
+        """Danh sach (inn_index, ten) DUOC PHEP van tieu, da loc theo pet user TICK.
+
+        LUAT (yeu cau user):
+          - roster rong (acc KHONG co pet trong nha tro) -> [] , caller bo qua.
+          - khong tick con nao, HOAC tick HET  -> dung TAT CA (y het hanh vi cu, khong doi thoi
+            quen user dang chay bot).
+          - tick le  -> CHI nhung con duoc tick. Sau do _match_vantieu_pet van cham diem he/doanh
+            trong pham vi nay; khong con nao khop thi no tu lay con DAU danh sach (score 0).
+        Tick luu theo PET ID chu khong theo index nha tro: index XE DICH khi them/bot pet -> tick
+        theo index se truot sang con khac."""
+        roster = self.vantieu_roster or {}
+        tat_ca = [(i, roster[i]) for i in sorted(roster)]
+        if not tat_ca:
+            return []
+        pick = set(self.vantieu_pick_ids or ())
+        if not pick:
+            return tat_ca
+        ids = self.vantieu_roster_ids or {}
+        loc = [(i, nm) for i, nm in tat_ca if ids.get(i) in pick]
+        # Tick HET = coi nhu khong loc (giong "khong tick con nao").
+        if not loc or len(loc) == len(tat_ca):
+            return tat_ca
+        return loc
 
     def _match_vantieu_pet(self, cands, used, req):
         """cands = list (inn_index, ten_pet). Chon con KHOP 'req' (he,doanh) nhat trong con CON TRONG.
@@ -7384,7 +7487,10 @@ class GameClient:
         TRA VE: epoch thoi diem CAN GOI LAI (escort xong som nhat) hoac None (het viec hom nay)
         -> caller hen dung gio, KHONG check mu dinh ky."""
         import datetime
-        if not getattr(config, "VANTIEU_ENABLE", False):
+        # Cong tac van tieu nay la PER-ACC (bang setting Hoi HP/SP cua tung acc), khong con la o
+        # tick CHUNG o Cai dat nang cao. config.VANTIEU_ENABLE chi con la mac dinh cho acc chua
+        # co thiet lap rieng.
+        if not getattr(self, "vantieu_enable", getattr(config, "VANTIEU_ENABLE", False)):
             return None
         retry_after = float(getattr(self, "_vantieu_claim_retry_after", 0.0) or 0.0)
         if retry_after > time.time():
@@ -7448,7 +7554,9 @@ class GameClient:
         # cands = list (inn_index, ten_pet) de match. Uu tien ROSTER tu server (0x1f, AUTO);
         # khong co thi dung config VANTIEU_PETS_NAMES (theo thu tu slot).
         if self.vantieu_roster:
-            cands = [(i, self.vantieu_roster[i]) for i in sorted(self.vantieu_roster)]
+            cands = self.vantieu_candidates()      # da loc theo pet user TICK (xem ham do)
+            if not cands:
+                log.info("[%s] Van tieu: acc khong co pet nao trong nha tro -> bo qua", self._label)
         else:
             cands = [(i + 1, nm) for i, nm in enumerate(getattr(config, "VANTIEU_PETS_NAMES", []) or [])]
         # Smart match: 0400 = [kind][effect1][effect2] cua job slot trong hien tai. Gui xong 1 pet
@@ -7469,7 +7577,16 @@ class GameClient:
             else:
                 started = self.vantieu_started
             sent_before = started
-            used, i = set(), 0
+            # BUG CO SAN (lo ra khi user chi tick VAI pet): `used` cu chi nho pet gui trong LAN CHAY
+            # NAY, khong nho pet DANG chay o slot tu truoc -> gui lai chinh con do. Truoc day it lo
+            # vi roster nhieu con nen hiem khi dung; nhung "mo 2-3 slot ma chi tick 1 pet" thi sai
+            # chac chan. vantieu_slots[slot]["pet"] chinh la innIndex server dang cho chay -> loai.
+            used = {info.get("pet") for info in self.vantieu_slots.values()
+                    if info.get("pet")}
+            if used:
+                log.info("[%s] Van tieu: %d pet dang chay do -> khong gui lai: %s",
+                         self._label, len(used), sorted(used))
+            i = 0
             while started < daily_cap:
                 unlocked = self.vantieu_unlocked or 1
                 occupied = set(self.vantieu_slots)
@@ -7509,6 +7626,12 @@ class GameClient:
                 elif not free_slots:
                     log.info("[%s] Van tieu: %d/%d slot dang chay -> cho xong roi gui tiep",
                              self._label, len(occupied), self.vantieu_unlocked or 1)
+                elif used:
+                    # Ca user neu: mo 2-3 slot ma chi tick 1 pet -> con do dang chay, con lai
+                    # KHONG duoc tick nen khong duoc phep gui. Phai CHO chu khong gui bua.
+                    log.info("[%s] Van tieu: %d pet duoc tick deu dang van tieu -> CHO xong roi "
+                             "gui tiep (con slot trong nhung khong duoc gui pet ngoai list tick)",
+                             self._label, len(used))
                 else:
                     log.info("[%s] Van tieu: khong co pet phu hop/con trong de gui -> bo qua",
                              self._label)
