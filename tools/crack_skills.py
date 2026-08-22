@@ -18,6 +18,52 @@ OUT = os.path.join(ROOT, "skills_data.json")
 SK_LO, SK_HI = 0x2710, 0x5000
 
 
+def parse_skills_seq(path):
+    """Doc TUAN TU theo dung SkillData.New (Data/SkillData.lua:4) - CHINH XAC, thay cho quet chu ky.
+
+    Bo cuc 1 ban ghi:
+      [nameLen u16][name utf-16le][kind 1][id u16][34 byte co dinh][descLen u16][desc utf-16le]
+    Trong 34 byte tinh tu vi tri id (ip):
+      ip+2 requireSp(u16) | ip+4 element | ip+5 numerical(u32) | ip+9 attribute | ip+10 level
+      ip+11 fightWay | ip+12 fightArea | ip+13 round | ip+14 spendSecond | ip+15 hitStatus
+      ip+16 howMuchTimes | ip+17 limitLv | ip+18 learnPoint | ip+19 levelUpPoint | ip+20 maxLv
+      ip+21 preSkill(u16) | ip+23 atkKind(u16) | ip+25 turnKind | ip+26 preSkill2(u16)
+      ip+28 learnLimit | ip+29 useLimit(u16) | ip+31 fightWayGrowType(u16)  -> het o ip+33
+    6 moc ip+11/12/17/18/19/20 TRUNG voi cac offset tool quet cu da dung lau -> bo cuc dung.
+
+    VI SAO BO KIEU QUET: header file ghi 541 ban ghi, quet chu ky chi ra 377 (sot 164, trong do co
+    TOAN BO dac ky vo tuong 21001..21025), lai con ghep NHAM ten (skill 12042 bi gan ten "Tri Lieu"
+    cat=7 support, thuc te la "Xa Mau Hon Phe Kich Ao Dieu" cat=1 dame) va BIA ra skill 16640
+    khong co trong file.
+    """
+    import struct
+    d = open(path, "rb").read()
+    count = struct.unpack_from("<i", d, 0)[0]
+    if not (0 < count < 100000):
+        raise SystemExit("header so ban ghi bat thuong: %s" % count)
+    out, i = {}, 4
+    for _ in range(count):
+        nl = struct.unpack_from("<H", d, i)[0]
+        j = i + 2 + nl
+        if nl > 400 or j + 34 + 2 > len(d):
+            raise SystemExit("parse lech tai ban ghi thu %d" % len(out))
+        ip = j + 1                       # bo kind(1) -> tro toi id
+        sid = struct.unpack_from("<H", d, ip)[0]
+        if sid:
+            out[sid] = {
+                "name": d[i + 2:j].decode("utf-16-le", "replace"),
+                "cost": struct.unpack_from("<H", d, ip + 2)[0],
+                "cat": d[ip + 11], "splash": d[ip + 12],
+                "needLv": d[ip + 17], "learnPt": d[ip + 18],
+                "lvUpPt": d[ip + 19], "maxLv": d[ip + 20],
+            }
+        k = j + 34
+        i = k + 2 + struct.unpack_from("<H", d, k)[0]
+    if abs(i - len(d)) > 8:              # TIEU HET FILE = parse dung
+        raise SystemExit("parse xong con du %d byte -> nghi lech" % (len(d) - i))
+    return out
+
+
 def parse_skills(path):
     d = open(path, "rb").read()
     n = len(d)
@@ -63,7 +109,7 @@ MANUAL = {
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sk = parse_skills(SKILL)
+    sk = parse_skills_seq(SKILL)
     data = {
         "_note": "AUTO-SINH tu tools/crack_skills.py (Skill_C.dat, mo neo ten). skill_id hex -> "
                  "name, cost (SP), cat (idx11: LOAI - 1=dame combo duoc, 2=dame khong combo, 4..15=support), "

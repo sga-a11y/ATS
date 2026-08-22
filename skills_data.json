@@ -942,7 +942,7 @@
 "maxLv": 10
 },
 "0x2b29": {
-"name": ",Ta ra lệnh cho ngươi! ",
+"name": "Ta ra lệnh cho ngươi! ",
 "cost": 250,
 "cat": 8,
 "splash": 6,
@@ -1312,17 +1312,27 @@
 "maxLv": 5
 },
 "0x2f05": {
-"name": "Liệt Trảm",
+"name": "Chân-Tước Long Bá Liệt Trảm",
 "cost": 84,
 "cat": 1,
 "splash": 1,
-"needLv": 0,
-"learnPt": 1,
+"needLv": 1,
+"learnPt": 16,
 "lvUpPt": 1,
 "maxLv": 10
 },
 "0x2f06": {
 "name": "Đại Thánh Trảm Yêu",
+"cost": 84,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 16,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x2f07": {
+"name": "Đại Thánh Trảm Yêu Ảo Diệu",
 "cost": 84,
 "cat": 1,
 "splash": 1,
@@ -1352,9 +1362,9 @@
 "maxLv": 5
 },
 "0x2f0a": {
-"name": "Trị Liệu",
+"name": "Xà Mâu Hồn Phệ Kích Ảo Diệu",
 "cost": 54,
-"cat": 7,
+"cat": 1,
 "splash": 3,
 "needLv": 0,
 "learnPt": 1,
@@ -1519,6 +1529,16 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
+"maxLv": 5
+},
+"0x2f1b": {
+"name": "Thập Cửu Phách · Hỏa Tiễn Ngợp Trời ",
+"cost": 250,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
 "maxLv": 5
 },
 "0x32c9": {
@@ -2891,6 +2911,86 @@
 "lvUpPt": 0,
 "maxLv": 5
 },
+"0x3706": {
+"name": "【Bị động】ST Địa Tăng (%)",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 15
+},
+"0x3707": {
+"name": "【Bị động】ST Thủy Tăng (%)",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 15
+},
+"0x3708": {
+"name": "【Bị động】ST Hỏa Tăng (%)",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 15
+},
+"0x3709": {
+"name": "【Bị động】ST Phong Tăng (%)",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 15
+},
+"0x370a": {
+"name": "【Bị động】ST Địa Tăng (%)",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 15
+},
+"0x370b": {
+"name": "【Bị động】ST Thủy Tăng (%)",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 15
+},
+"0x370c": {
+"name": "【Bị động】ST Hỏa Tăng (%)",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 15
+},
+"0x370d": {
+"name": "【Bị động】ST Phong Tăng (%)",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 15
+},
 "0x370e": {
 "name": "BOSS dùng khiên miễn nhiễm",
 "cost": 0,
@@ -3121,6 +3221,16 @@
 "lvUpPt": 1,
 "maxLv": 10
 },
+"0x3a9d": {
+"name": "Phạn Đoàn Bộ Võng Thành Công",
+"cost": 0,
+"cat": 11,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 10
+},
 "0x3e81": {
 "name": "Tiễn Lâu",
 "cost": 0,
@@ -3140,16 +3250,6 @@
 "learnPt": 0,
 "lvUpPt": 1,
 "maxLv": 10
-},
-"0x4100": {
-"name": "cự ly gần(Chân",
-"cost": 256,
-"cat": 104,
-"splash": 0,
-"needLv": 110,
-"learnPt": 0,
-"lvUpPt": 32,
-"maxLv": 0
 },
 "0x4269": {
 "name": "Phòng Ngự",
@@ -3770,6 +3870,1546 @@
 "learnPt": 0,
 "lvUpPt": 1,
 "maxLv": 10
+},
+"0x5209": {
+"name": "Chấn Địa Chùy",
+"cost": 54,
+"cat": 1,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x520a": {
+"name": "Hàn Băng Quán",
+"cost": 44,
+"cat": 2,
+"splash": 5,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x520b": {
+"name": "Hồng Liên Hỏa",
+"cost": 54,
+"cat": 2,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x520c": {
+"name": "Phá Không Thiểm",
+"cost": 48,
+"cat": 1,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x520d": {
+"name": "Mãnh Ngưu Kích",
+"cost": 48,
+"cat": 1,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x520e": {
+"name": "Băng Nha Nhẫn",
+"cost": 36,
+"cat": 1,
+"splash": 3,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x520f": {
+"name": "Diệm Chính Nộ",
+"cost": 48,
+"cat": 1,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5210": {
+"name": "Độc Phong",
+"cost": 30,
+"cat": 15,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5211": {
+"name": "Vẫn Tinh Lực",
+"cost": 48,
+"cat": 1,
+"splash": 5,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5212": {
+"name": "Trùng Quyền",
+"cost": 48,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5213": {
+"name": "Hỏa Phụng Thiên",
+"cost": 72,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5214": {
+"name": "Hồi Mã Thương",
+"cost": 52,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5215": {
+"name": "Hóa Thú Sư Phệ",
+"cost": 64,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5216": {
+"name": "Liềm Trảm",
+"cost": 72,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5217": {
+"name": "Nhị Đoạn Thức",
+"cost": 56,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5218": {
+"name": "Động Ngân",
+"cost": 72,
+"cat": 2,
+"splash": 7,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5219": {
+"name": "Thâm Uyên",
+"cost": 65,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x521a": {
+"name": "Nhẫm Trảm",
+"cost": 75,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x521b": {
+"name": "Tiễn Thần Đinh Quân",
+"cost": 72,
+"cat": 2,
+"splash": 2,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x521c": {
+"name": "Thiên Tru Chú",
+"cost": 80,
+"cat": 2,
+"splash": 3,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x521d": {
+"name": "Địa Diệt Trận",
+"cost": 80,
+"cat": 2,
+"splash": 6,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x521e": {
+"name": "Táng Hỏa",
+"cost": 80,
+"cat": 2,
+"splash": 2,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x521f": {
+"name": "Trời vàng lên ngôi ",
+"cost": 80,
+"cat": 1,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5220": {
+"name": "Lãnh Nguyệt Thanh Hồng",
+"cost": 77,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5221": {
+"name": "Cuồng Xà Đoạt Thủ",
+"cost": 77,
+"cat": 1,
+"splash": 2,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5222": {
+"name": "Nhân Giả Vô Dịch",
+"cost": 77,
+"cat": 19,
+"splash": 3,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5223": {
+"name": "Đào Viên Kết Nghĩa",
+"cost": 77,
+"cat": 1,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5224": {
+"name": "Nhân Giả Vô Địch",
+"cost": 77,
+"cat": 15,
+"splash": 3,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5225": {
+"name": "Lạc Thủy Ngưng Tức",
+"cost": 82,
+"cat": 2,
+"splash": 6,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5226": {
+"name": "Nham Diệp Phiêu Kiếm",
+"cost": 82,
+"cat": 2,
+"splash": 6,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5227": {
+"name": "Hoả Kiếm",
+"cost": 80,
+"cat": 1,
+"splash": 4,
+"needLv": 1,
+"learnPt": 9,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5228": {
+"name": "Khương Thị",
+"cost": 80,
+"cat": 1,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5229": {
+"name": "Sấm Vang",
+"cost": 53,
+"cat": 1,
+"splash": 2,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x522a": {
+"name": "Băng Chùy",
+"cost": 30,
+"cat": 1,
+"splash": 3,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x522b": {
+"name": "Liệt Phong",
+"cost": 70,
+"cat": 1,
+"splash": 3,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x522c": {
+"name": "Thiên Hỏa",
+"cost": 35,
+"cat": 1,
+"splash": 3,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x522d": {
+"name": "Hải Đồn",
+"cost": 48,
+"cat": 4,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x522e": {
+"name": "Yển Nguyệt",
+"cost": 85,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x522f": {
+"name": "Bạch Đế",
+"cost": 95,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5230": {
+"name": "Quyết Tử",
+"cost": 80,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5231": {
+"name": "Vô Song",
+"cost": 1,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5232": {
+"name": "Gia Cát Cuồng Long",
+"cost": 1,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5233": {
+"name": "Thâu Độ Phục Kích",
+"cost": 180,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5234": {
+"name": "Kỳ Môn Bát Quái",
+"cost": 278,
+"cat": 2,
+"splash": 6,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x5235": {
+"name": "Long Tức ．Quỷ Thần ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x55f1": {
+"name": "Quang Mâu Thuật",
+"cost": 15,
+"cat": 1,
+"splash": 3,
+"needLv": 1,
+"learnPt": 4,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x55f2": {
+"name": "Phật Quang Chưởng",
+"cost": 52,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 5,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x55f3": {
+"name": "Huyễn Quang",
+"cost": 72,
+"cat": 1,
+"splash": 4,
+"needLv": 1,
+"learnPt": 8,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x55f4": {
+"name": "Liệt Diễm Chi Quang",
+"cost": 30,
+"cat": 2,
+"splash": 5,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x55f5": {
+"name": "Quang Dữ Thuật",
+"cost": 15,
+"cat": 5,
+"splash": 3,
+"needLv": 1,
+"learnPt": 12,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x55f6": {
+"name": "Quang Chi Kính",
+"cost": 46,
+"cat": 19,
+"splash": 3,
+"needLv": 0,
+"learnPt": 1,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x55f7": {
+"name": "Quang Tuyền Quán Chú",
+"cost": 72,
+"cat": 14,
+"splash": 1,
+"needLv": 1,
+"learnPt": 15,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x55f8": {
+"name": "Hồi Quang Phản Chiếu",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 1,
+"learnPt": 1,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x55f9": {
+"name": "Quang Tốc",
+"cost": 104,
+"cat": 2,
+"splash": 5,
+"needLv": 1,
+"learnPt": 7,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x55fa": {
+"name": "Kim Tệ Công Kích",
+"cost": 24,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 7,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x55fb": {
+"name": "Bạch Hổ",
+"cost": 120,
+"cat": 2,
+"splash": 3,
+"needLv": 245,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x55fc": {
+"name": "Triệu Hoán Tiểu Bạch Hổ",
+"cost": 120,
+"cat": 2,
+"splash": 5,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x55fd": {
+"name": "Triệu Hoán Trung Bạch Hổ",
+"cost": 120,
+"cat": 2,
+"splash": 6,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x55fe": {
+"name": "Triểu Hoán Đại Bạch Hổ",
+"cost": 120,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x55ff": {
+"name": "Tạp Thúc Quang Đạn",
+"cost": 84,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 14,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x5600": {
+"name": "Đồng Quang Chi Bán",
+"cost": 52,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 5,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x5601": {
+"name": "Chân-Đồng Quang Chi Bán",
+"cost": 52,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 5,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x5602": {
+"name": "Chân-Liệt Diễm Chi Quang",
+"cost": 30,
+"cat": 2,
+"splash": 5,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x5603": {
+"name": "Chân-Huyễn Quang",
+"cost": 72,
+"cat": 1,
+"splash": 4,
+"needLv": 1,
+"learnPt": 8,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x5604": {
+"name": "Chân-Phật Quang Chưởng",
+"cost": 52,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 5,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x5605": {
+"name": "Siêu Quang Ba",
+"cost": 52,
+"cat": 1,
+"splash": 2,
+"needLv": 1,
+"learnPt": 10,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x5606": {
+"name": "Quyền Khuynh Vạn Lý",
+"cost": 30,
+"cat": 2,
+"splash": 6,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x5607": {
+"name": "Linh Quang Kính",
+"cost": 0,
+"cat": 0,
+"splash": 2,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x5608": {
+"name": "Kính Linh",
+"cost": 206,
+"cat": 4,
+"splash": 5,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5609": {
+"name": "Vân Lưu Trảm",
+"cost": 1,
+"cat": 22,
+"splash": 255,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x560a": {
+"name": "Bá Khí",
+"cost": 218,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x560b": {
+"name": "Đao Cong La Sát ",
+"cost": 109,
+"cat": 1,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x560c": {
+"name": "Lôi Băng Tuyết ",
+"cost": 83,
+"cat": 1,
+"splash": 5,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x560d": {
+"name": "Cứu Thiêu Bạo Liệt ",
+"cost": 94,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x560e": {
+"name": "Trảm Thư Hùng Lưu Tinh ",
+"cost": 258,
+"cat": 2,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x560f": {
+"name": "Lĩnh Vực Ma Vương ",
+"cost": 392,
+"cat": 4,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5610": {
+"name": "Thuấn Vịnh Xuyên Tâm ",
+"cost": 163,
+"cat": 2,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 6
+},
+"0x5611": {
+"name": "Luận Xuất Sư Biểu ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x5618": {
+"name": "Thanh Long Hạo Nguyệt ",
+"cost": 365,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x5619": {
+"name": "Ta chính là Trương Dực Đứ",
+"cost": 342,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x561a": {
+"name": "Ám Hồn Truy Thảo Sát ",
+"cost": 266,
+"cat": 2,
+"splash": 5,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x561b": {
+"name": "Cuồng Lôi Nhớ Mẹ ",
+"cost": 254,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x561c": {
+"name": "Băng Tinh Thủ Hộ ",
+"cost": 188,
+"cat": 4,
+"splash": 3,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x561d": {
+"name": "Âm Thanh Từ Mùa Hạ",
+"cost": 220,
+"cat": 18,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x561e": {
+"name": "Hào Quang Thần Tượng",
+"cost": 238,
+"cat": 4,
+"splash": 8,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x561f": {
+"name": "Chân ‧ Quang Mâu Thuật",
+"cost": 33,
+"cat": 1,
+"splash": 3,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 10
+},
+"0x5620": {
+"name": "Nghe lời thầy dạy",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x5621": {
+"name": "Hồ Già Thập Bát Phách",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x5622": {
+"name": "Kiêu Hùng Ngạo Sắc",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x5623": {
+"name": "Hắc Ám Sắc Lệnh",
+"cost": 500,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x5624": {
+"name": "Hầu Mao Phân Thân Thuật",
+"cost": 120,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x59d9": {
+"name": "Ám Độc Tiễn",
+"cost": 15,
+"cat": 1,
+"splash": 3,
+"needLv": 1,
+"learnPt": 4,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59da": {
+"name": "Ám Nhẫn Trảm",
+"cost": 66,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 18,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59db": {
+"name": "Hắc Toàn Trảm",
+"cost": 72,
+"cat": 1,
+"splash": 4,
+"needLv": 1,
+"learnPt": 16,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59dc": {
+"name": "Vu Độc",
+"cost": 30,
+"cat": 2,
+"splash": 2,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x59dd": {
+"name": "Tụ Lý Kiếm",
+"cost": 30,
+"cat": 2,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x59de": {
+"name": "Ném Khô Lâu",
+"cost": 52,
+"cat": 2,
+"splash": 5,
+"needLv": 1,
+"learnPt": 7,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x59df": {
+"name": "Vu Độc Oa Oa",
+"cost": 50,
+"cat": 15,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x59e0": {
+"name": "Yêu Thuật Kích Hóa",
+"cost": 69,
+"cat": 19,
+"splash": 5,
+"needLv": 0,
+"learnPt": 1,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x59e1": {
+"name": "Mê Hoặc Độc Châm",
+"cost": 30,
+"cat": 2,
+"splash": 3,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x59e2": {
+"name": "Độc Phi Luân",
+"cost": 56,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 9,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59e3": {
+"name": "Huyền Vũ",
+"cost": 120,
+"cat": 15,
+"splash": 3,
+"needLv": 245,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59e4": {
+"name": "Triệu Hoán Tiểu Huyền Vũ",
+"cost": 120,
+"cat": 2,
+"splash": 5,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x59e5": {
+"name": "Triệu Hoán Trung Huyền Vũ",
+"cost": 120,
+"cat": 2,
+"splash": 6,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x59e6": {
+"name": "Triệu Hoán Đại Huyền Vũ",
+"cost": 120,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 1
+},
+"0x59e7": {
+"name": "Trảm Choáng",
+"cost": 56,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 9,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59e8": {
+"name": "Ám Hắc Liên Trảm",
+"cost": 84,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 16,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59e9": {
+"name": "Chân-Ám Độc Tiễn",
+"cost": 15,
+"cat": 1,
+"splash": 3,
+"needLv": 1,
+"learnPt": 4,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59ea": {
+"name": "Chân-Vu Độc",
+"cost": 30,
+"cat": 2,
+"splash": 2,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x59eb": {
+"name": "Vạn Độc Xuyên Tâm",
+"cost": 72,
+"cat": 2,
+"splash": 8,
+"needLv": 1,
+"learnPt": 9,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59ec": {
+"name": "Chân-Độc Phi Luân",
+"cost": 56,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 9,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59ed": {
+"name": "Chân-Án Nhẫn Trảm",
+"cost": 66,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 18,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59ee": {
+"name": "Chân-Mê Hoặc Độc Châm",
+"cost": 30,
+"cat": 2,
+"splash": 3,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x59ef": {
+"name": "Phiêu Diêu Lưu Phong",
+"cost": 82,
+"cat": 2,
+"splash": 6,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 5
+},
+"0x59f0": {
+"name": "Hắc Lôi",
+"cost": 72,
+"cat": 1,
+"splash": 4,
+"needLv": 1,
+"learnPt": 16,
+"lvUpPt": 1,
+"maxLv": 6
+},
+"0x59f1": {
+"name": "Hắc Ám Tiễn",
+"cost": 15,
+"cat": 1,
+"splash": 3,
+"needLv": 1,
+"learnPt": 4,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59f2": {
+"name": "Ám Hồn Trảm",
+"cost": 36,
+"cat": 1,
+"splash": 1,
+"needLv": 1,
+"learnPt": 18,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59f3": {
+"name": "Hắc Quang",
+"cost": 118,
+"cat": 2,
+"splash": 6,
+"needLv": 1,
+"learnPt": 16,
+"lvUpPt": 1,
+"maxLv": 6
+},
+"0x59f4": {
+"name": "Yêu Hồn Nghịch Thiên ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 1,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x59f5": {
+"name": "Diệu Uy Phấn Võ ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x59f6": {
+"name": "Giáo Dục Tình Yêu",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x59f7": {
+"name": "Kháng Trạng Thái Tiền Quân",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x59f8": {
+"name": "Càn Khôn Nhất Trịch",
+"cost": 90,
+"cat": 2,
+"splash": 2,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 1,
+"maxLv": 10
+},
+"0x59f9": {
+"name": "Kim Cang Bất Hoại",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x59fa": {
+"name": "Đoạn Tuyệt Bất Như Ý",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x59fb": {
+"name": "Thánh Chở Che ",
+"cost": 280,
+"cat": 7,
+"splash": 7,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x59fc": {
+"name": "Kiếm Trí Phá Thiên ",
+"cost": 165,
+"cat": 1,
+"splash": 3,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x59fd": {
+"name": "Pilipala ",
+"cost": 210,
+"cat": 2,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x59fe": {
+"name": "Hùng Đồ Bá Nghiệp ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d01": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d02": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d03": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d04": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d05": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d06": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d07": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d08": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d09": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x7d0a": {
+"name": "BUFF Ải Mới ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0x9c40": {
+"name": "Sức Mạnh Phong Thần ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0x9c41": {
+"name": "Ngự Ảnh Linh Thuẫn",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0xa029": {
+"name": "Kiếm Chém Cửu Thiên ",
+"cost": 320,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0xa02a": {
+"name": "Khuynh Thế Mi Hồ ",
+"cost": 320,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0xa02b": {
+"name": "Sí Diễm Phá Thiên ",
+"cost": 84,
+"cat": 1,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0xa02c": {
+"name": "Tiên Quyết · Trảm Phá Ma",
+"cost": 320,
+"cat": 2,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0xa411": {
+"name": "Khí Chất Đế Vương ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0xa412": {
+"name": "Thiên Sinh Mị Thể ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0xa413": {
+"name": "Thuần Dương Liên Tâm ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0xa414": {
+"name": "Huyền Diệt Thiên Nhãn ",
+"cost": 84,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0xafc8": {
+"name": "Buff Vực Sâu Địa Tầng ",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0xafc9": {
+"name": "Xích Xà Đoạt Hồn",
+"cost": 84,
+"cat": 1,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 5
+},
+"0xb3b1": {
+"name": "Uy Thế Áp Đảo ",
+"cost": 352,
+"cat": 2,
+"splash": 8,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
+},
+"0xc739": {
+"name": "Tam Lược Phạt Mưu ",
+"cost": 72,
+"cat": 1,
+"splash": 4,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 6
+},
+"0xcb21": {
+"name": "Kinh Vĩ Càn Khôn",
+"cost": 0,
+"cat": 0,
+"splash": 1,
+"needLv": 0,
+"learnPt": 0,
+"lvUpPt": 0,
+"maxLv": 1
 }
 }
 }
