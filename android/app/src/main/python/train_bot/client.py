@@ -1611,6 +1611,7 @@ class GameClient:
         # Vai tro pet MAC DINH khi khong o trong hoat dong nao (decorator _pet_role tra ve day).
         # run_party_digioi dat "quest" cho mode event (event dung chung pet voi quest/PB).
         self.default_pet_role = "train"
+        self._pet_switch_fail = {}   # pet_id -> so lan doi HUT (xem PET_SWITCH_MAX_TRY)
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
@@ -6694,6 +6695,14 @@ class GameClient:
     # PB don nam trong nhom quest, THUC TE no nam trong nhom boss.
     PET_ROLES = ("train", "boss", "quest", "pb_don")
 
+    # So lan THU doi sang MOT con pet truoc khi bo cuoc. Pet HET DO TRUNG THANH thi server tu choi
+    # -> switch_pet khong bao gio confirm, ma ensure_pet_role lai duoc goi MOI lan vao hoat dong
+    # (decorator @_pet_role) -> thu lai vo han, moi lan phi 4s cho + log rac (user bao).
+    # Dem theo PET ID chu khong theo VAI: nguyen nhan chan nam o CON PET, mot con gan 2 vai khong
+    # duoc an 6 lan thu. Bo dem nam tren client nen relogin la tu reset (do trung thanh co the da
+    # duoc hoi lai, hoac user da cho pet an).
+    PET_SWITCH_MAX_TRY = 3
+
     def switch_pet(self, pid: int, wait: float = 4.0) -> bool:
         """Doi pet xuat chien sang `pid`. True = da doi xong (hoac dang dung san con do).
 
@@ -6713,12 +6722,16 @@ class GameClient:
         if (pid == getattr(self.state, "active_pet_id", None)
                 and getattr(self.state, "active_pet_confirmed", False)):
             return True
+        # DANG TRAN = ly do TAM THOI (het tran la doi duoc) -> KHONG tinh vao so lan thu.
         if getattr(self.state, "in_battle", False):
             log.info("[%s] doi pet: DANG TRONG TRAN -> hoan", self._label)
+            return False
+        if self._pet_switch_gave_up(pid):
             return False
         carried = {p for p, _nm in (getattr(self.state, "carried_pets", []) or [])}
         if carried and pid not in carried:
             log.warning("[%s] doi pet: 0x%04x KHONG co trong tui pet -> bo qua", self._label, pid)
+            self._pet_switch_failed(pid, "khong co trong tui pet")
             return False
         old = getattr(self.state, "active_pet_id", None)
         self.send(0x13, b"\x01\x00" + pid.to_bytes(2, "little"))
@@ -6734,12 +6747,29 @@ class GameClient:
                     self.heal_full(force=True)
                 except Exception as e:
                     log.warning("[%s] hoi full sau khi doi pet loi: %s", self._label, e)
+                self._pet_switch_fail.pop(pid, None)   # doi duoc roi -> xoa bo dem
                 return True
             time.sleep(0.2)
-        # Khong confirm = server tu choi (pet chet / ha da / dang bi cuoi) -> giu pet cu, chay tiep
-        log.warning("[%s] doi pet sang 0x%04x KHONG duoc xac nhan (pet chet/ha da/dang cuoi?) "
-                    "-> giu pet cu", self._label, pid)
+        # Khong confirm = server tu choi (HET DO TRUNG THANH / pet chet / ha da / dang bi cuoi)
+        # -> giu pet cu, chay tiep.
+        log.warning("[%s] doi pet sang 0x%04x KHONG duoc xac nhan (het trung thanh/pet chet/"
+                    "ha da/dang cuoi?) -> giu pet cu", self._label, pid)
+        self._pet_switch_failed(pid, "server khong xac nhan")
         return False
+
+    def _pet_switch_gave_up(self, pid: int) -> bool:
+        """Da thu du PET_SWITCH_MAX_TRY lan ma khong doi duoc -> thoi, giu pet hien tai."""
+        return self._pet_switch_fail.get(pid, 0) >= self.PET_SWITCH_MAX_TRY
+
+    def _pet_switch_failed(self, pid: int, ly_do: str):
+        """Ghi 1 lan that bai. Cham nguong thi log RO MOT LAN roi im (khong spam moi hoat dong)."""
+        n = self._pet_switch_fail.get(pid, 0) + 1
+        self._pet_switch_fail[pid] = n
+        if n == self.PET_SWITCH_MAX_TRY:
+            faith = (getattr(self, "pet_faith", None) or {}).get(pid)
+            log.warning("[%s] doi pet 0x%04x THAT BAI %d lan (%s%s) -> THOI doi, giu pet hien tai "
+                        "cho toi khi login lai", self._label, pid, n, ly_do,
+                        "" if faith is None else ", trung thanh=%d" % faith)
 
     def ensure_pet_role(self, role: str) -> bool:
         """Dam bao pet dang xuat chien la pet user gan cho `role`. Vai KHONG gan pet -> khong dung.

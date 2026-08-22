@@ -100,3 +100,18 @@ truyền config mới cho cả PC lẫn APK.
 
 Nhãn UI là **2 bản chép tay** (`gui.py` `_PET_ROLE_LABELS` và `MainActivity.kt` `PetRoleLabels`) —
 `tests/test_pet_role_pb_don.py` có test bắt hai bản phải phủ đủ 4 vai và dùng cùng nhãn.
+
+## Giới hạn số lần đổi pet (2026-08-22)
+Pet **hết độ trung thành** → server từ chối đổi → `switch_pet` không bao giờ confirm. Mà
+`ensure_pet_role` được gọi **mỗi lần vào hoạt động** (decorator `@_pet_role`) → bot thử lại
+**vô hạn**, mỗi lần phí 4s chờ + log rác.
+
+`PET_SWITCH_MAX_TRY = 3`: thử tối đa 3 lần cho **một con**, sau đó **giữ pet hiện tại**.
+
+- Đếm theo **PET ID**, không theo vai — nguyên nhân chặn nằm ở *con pet*, một con gán 2 vai không
+  được ăn 6 lần thử.
+- **"Đang trong trận" KHÔNG tính** vào số lần thử: đó là lý do tạm thời, hết trận là đổi được.
+- Đổi được → **xoá bộ đếm** (lần sau vẫn đủ quota).
+- Bộ đếm nằm trên client → **relogin là tự reset** (độ trung thành có thể đã được hồi, hoặc user
+  đã cho pet ăn).
+- Log **rõ MỘT lần** khi bỏ cuộc, kèm `trung thành=N` để user biết lý do; sau đó im, không spam.
