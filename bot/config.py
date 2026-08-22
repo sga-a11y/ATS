@@ -295,6 +295,23 @@ def _load_pets():
     return skills, names, hedoanh
 PET_SKILLS, PET_NAMES, PET_HE_DOANH = _load_pets()   # pet_id -> skills/ten/(he,doanh)
 
+
+# DAC KY RIENG cua vo tuong (NpcData [35] 武將特有技) - AUTO-SINH tools/crack_npc_special_skill.py.
+# CHI duoc dung khi CON PET DO da MO dac ky (co specialSkillLearned, doc tu goi pet list ->
+# client.pet_special_skill). Client kiem tra DUNG hai dieu kien nay (RoleController.lua:4786).
+def _load_pet_special_skill():
+    import json, os
+    f = os.path.join(_base_dir(), "npc_special_skill.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in (json.load(fh).get("skills") or {}).items():
+                out[int(k, 16)] = int(v)
+    except Exception:
+        pass
+    return out
+PET_SPECIAL_SKILL = _load_pet_special_skill()   # pet_id -> skill_id dac ky (chua chac da mo)
+
 # DATA TEN QUAI/NPC: doc tu npc_names.json (AUTO tools/crack_npc_names.py). template_id -> ten.
 # Dung tra TEN QUAI trong battle (entity[2:4] = template_id) cho dieu kien skill 'quai khoang'
 # (ten bat dau bang 'Khoang ') va sau nay 'NPC nguy hiem' (ten thuoc list cau hinh).

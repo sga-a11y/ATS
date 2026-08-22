@@ -4892,6 +4892,23 @@ class GameClient:
         """missionId cua o `cell`: uu tien bang S:91-1 (nguon client that), fallback 0x2e+cell."""
         return self._quest_missions.get(cell, 0x2e + cell)
 
+    def pet_usable_skills(self, pet_id: int) -> list:
+        """Skill con pet nay THUC SU dung duoc = 3 skill thuong + DAC KY (neu DA MO).
+
+        Y het client (Controller/RoleController.lua:4786):
+            if self.data.specialSkillLearned and skillDatas[npcDatas[id].specialSkill] ~= nil
+        -> phai DU CA HAI: co ID dac ky trong bang (config.PET_SPECIAL_SKILL, sinh boi
+        tools/crack_npc_special_skill.py) VA co da mo cua CHINH con do (self.pet_special_skill,
+        doc tu goi pet list / S:020-049). Chua mo ma cu gui la server tu choi.
+        """
+        pid = int(pet_id)
+        out = list(getattr(config, "PET_SKILLS", {}).get(pid) or [])
+        if self.pet_special_skill.get(pid):
+            _sp = (getattr(config, "PET_SPECIAL_SKILL", {}) or {}).get(pid)
+            if _sp and _sp not in out:
+                out.append(_sp)
+        return out
+
     def mark_flag_get(self, bit_id: int) -> bool:
         """CheckFlag(MarkManager.flags, bitId) - co NHIEM VU da hoan thanh chua.
 

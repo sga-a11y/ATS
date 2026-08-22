@@ -40,7 +40,7 @@ SHARED_ASSETS = ["achievements.json", "mark_bitids.json", "events.json", "npc_na
                  "scene_names.json",
                  "cities.json", "collect_style.json", "donate_items.json", "donate_materials.json", "mineral_npcs.json", "jiugongge.json", "furnace_pool.json",
                  "furnace_default_notify.json", "equip_stats.json", "items_gamedata.json", "login_awards.json",
-                 "pet_scrolls.json", "pet_stats.json", "pets.json", "servers.json",
+                 "pet_scrolls.json", "pet_stats.json", "pets.json", "npc_special_skill.json", "servers.json",
                  "skills_data.json",
                  "train_block_stats.json", "train_routes.json", "vantieu_dispatch_bonus.json",
                  "vantieu_requests.json"]

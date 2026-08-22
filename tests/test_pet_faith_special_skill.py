@@ -94,5 +94,34 @@ class TestPetFaithSpecialSkill(unittest.TestCase):
         self.assertEqual(c.pet_special_skill, {})
 
 
+class TestPetUsableSkills(unittest.TestCase):
+    """Dac ky chi duoc dua vao danh sach khi DU CA HAI dieu kien (giong client)."""
+
+    def test_chi_them_dac_ky_khi_DA_MO(self):
+        from bot import config as C
+        pid = next(p for p in C.PET_SPECIAL_SKILL if C.PET_SKILLS.get(p))
+        sp = C.PET_SPECIAL_SKILL[pid]
+        c = make_client()
+
+        c.pet_special_skill = {pid: False}
+        self.assertNotIn(sp, c.pet_usable_skills(pid))
+
+        c.pet_special_skill = {pid: True}
+        self.assertEqual(c.pet_usable_skills(pid), list(C.PET_SKILLS[pid]) + [sp])
+
+    def test_pet_khong_co_trong_bang_thi_rong(self):
+        c = make_client()
+        c.pet_special_skill = {0xFFFF: True}
+        self.assertEqual(c.pet_usable_skills(0xFFFF), [])
+
+    def test_bang_dac_ky_nap_duoc_va_hop_le(self):
+        from bot import config as C
+        self.assertGreater(len(C.PET_SPECIAL_SKILL), 100,
+                           "npc_special_skill.json chua duoc sinh / khong nap duoc")
+        # skill id nam trong dai skill (giong SK_LO/SK_HI cua tool crack)
+        for _pid, _sk in list(C.PET_SPECIAL_SKILL.items())[:200]:
+            self.assertTrue(0x2710 <= _sk <= 0x7FFF, "dac ky ngoai dai: 0x%04x" % _sk)
+
+
 if __name__ == "__main__":
     unittest.main()
