@@ -48,11 +48,15 @@ class TestBachHaiCaptureRegression(unittest.TestCase):
 
         centers = compute_centers(session, None, (410, 1050), now=now + 8.1)
 
-        self.assertEqual(len(centers), 2)
+        # DOI CHINH SACH (324228a): bo gom bai theo khoang cach - 1 TRACE (1 con quai) = 1 BAI.
+        # Cung capture nay: 5 con -> truoc gom con 2 bai (3 con + 2 con), nay ra du 5 bai.
+        # Gia tri hoi quy that su cua test la VI TRI hoc duoc, khong phai so bai -> van kiem day du:
+        # 3 con quanh (530, 930) va 2 con quanh (1150, 530).
         points = [center.point for center in centers]
-        self.assertTrue(any(math.dist(point, (530, 930)) <= 180 for point in points))
-        self.assertTrue(any(math.dist(point, (1150, 530)) <= 120 for point in points))
-        self.assertEqual(sorted(center.monster_count for center in centers), [2, 3])
+        self.assertEqual(len(centers), 5)
+        self.assertEqual([c.monster_count for c in centers], [1] * 5)
+        self.assertEqual(sum(1 for p in points if math.dist(p, (530, 930)) <= 180), 3)
+        self.assertEqual(sum(1 for p in points if math.dist(p, (1150, 530)) <= 120), 2)
 
 
 if __name__ == "__main__":

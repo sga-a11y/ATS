@@ -102,7 +102,10 @@ class TestMobScanSession(unittest.TestCase):
             self.session, None, (3990, 2490), now=2.0, stable_only=False
         )
 
-        self.assertEqual([center.point for center in centers], [(3990, 2490)])
+        # Tam bai = TAM BBOX o vuong tuan tra (x 3900..4040 -> 3970, y 2400..2490 -> 2445).
+        # Truoc day la _medoid (mot diem CO THAT trong trace) -> doi (3990, 2490). Doi sang bbox
+        # o commit 324228a vi medoid lech ve cho quai DUNG LAU chu khong phai giua bai.
+        self.assertEqual([center.point for center in centers], [(3970, 2445)])
 
 
 class TestCenterComputation(unittest.TestCase):
@@ -119,8 +122,11 @@ class TestCenterComputation(unittest.TestCase):
 
         centers = compute_centers(session, None, (410, 1050), now=30.0)
 
-        self.assertEqual(len(centers), 2)
-        self.assertEqual(sorted(c.monster_count for c in centers), [1, 2])
+        # DOI CHINH SACH (324228a): KHONG con gom bai theo khoang cach - 1 TRACE (1 con quai) =
+        # 1 BAI. Gom lam map 20801 chi hoc duoc 7/16 bai vi bai quai lat SAT NHAU bi dinh lam mot;
+        # bo gom -> 16/16. Nen 3 con o day = 3 bai, moi bai dung 1 con.
+        self.assertEqual(len(centers), 3)
+        self.assertEqual(sorted(c.monster_count for c in centers), [1, 1, 1])
 
     def test_wall_prevents_nearby_patrols_from_merging(self):
         session = self._session()
@@ -137,7 +143,8 @@ class TestCenterComputation(unittest.TestCase):
 
         center = compute_centers(session, ProjectingGround(), (410, 1050), now=30.0)[0]
 
-        self.assertIn(center.point, {(320, 860), (440, 940), (540, 840)})
+        # tam bbox (420, 880) roi ProjectingGround day sang o di duoc (+10, +10)
+        self.assertEqual(center.point, (430, 890))
         self.assertEqual(center.monster_count, 1)
 
     def test_regions_pair_each_center_with_safe_outside_all_traces(self):
