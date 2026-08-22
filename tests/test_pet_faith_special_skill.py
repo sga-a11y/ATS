@@ -183,5 +183,62 @@ class TestCombatDungDacKy(unittest.TestCase):
         self.assertEqual(quyet_dinh(base + [sp]), sp, "da mo ma combat KHONG chon dac ky")
 
 
+class TestAllTargetChonDatNhat(unittest.TestCase):
+    """all-target: lay DAT NHAT (manh nhat) trong tam SP, khong lay re nhat nhu truoc."""
+
+    @staticmethod
+    def _pet_co_ca_hai():
+        from bot import config as C
+
+        def sp8(sk):
+            return C.SKILL_INFO.get(sk, {}).get("splash") == 8
+
+        def gia(sk):
+            return C.SKILL_INFO.get(sk, {}).get("cost", 0)
+
+        for p, sk in C.PET_SPECIAL_SKILL.items():
+            base = C.PET_SKILLS.get(p) or []
+            re_nhat = [x for x in base if sp8(x)]
+            if sp8(sk) and re_nhat and gia(sk) > min(gia(x) for x in re_nhat):
+                return p, sk, min(re_nhat, key=gia)
+        return None, None, None
+
+    def test_du_SP_lay_DAT_nhat_thieu_SP_lay_RE_nhat(self):
+        from bot import combat, config as C
+        pid, sp, re_nhat = self._pet_co_ca_hai()
+        if pid is None:
+            self.skipTest("khong co pet nao co ca 2 loai all-target")
+        sks = list(C.PET_SKILLS[pid]) + [sp]
+        gia = lambda x: C.SKILL_INFO[x]["cost"]
+        self.assertEqual(combat.pick_alltarget_skill(sks, 10000), sp)      # du SP -> dat nhat
+        self.assertEqual(combat.pick_alltarget_skill(sks, gia(sp)), sp)    # vua du -> van dat nhat
+        # THIEU SP: phai tra RE NHAT de caller tu loai, KHONG duoc tra dat nhat (se mat ca nhanh
+        # all-target -> roi xuong danh thuong du dang co skill re dung duoc)
+        self.assertEqual(combat.pick_alltarget_skill(sks, gia(sp) - 1), re_nhat)
+        self.assertEqual(combat.pick_alltarget_skill(sks), sp)             # khong xet SP -> dat nhat
+
+    def test_qua_COMBAT_that_trong_PB_dong_quai(self):
+        from bot import combat, config as C
+        from bot.state import BattleState
+        pid, sp, re_nhat = self._pet_co_ca_hai()
+        if pid is None:
+            self.skipTest("khong co pet nao co ca 2 loai all-target")
+
+        def danh(sp_hien_co):
+            st = BattleState()
+            st.my_atype = 2
+            st.quest_mode = True                        # PB dat quest_mode (client.py:8444)
+            st.enemy_slots = {i: 500 for i in range(8)}  # >6 quai -> nhanh all-target
+            st.enemy_gen = 1
+            st.pet_skills = list(C.PET_SKILLS[pid]) + [sp]
+            st.pet = type("U", (), {"hp": 1900, "hp_max": 1900,
+                                    "sp": sp_hien_co, "sp_max": 460})()
+            return getattr(combat.decide_pet(st, options=[(2, t) for t in range(5)]), "skill", None)
+
+        self.assertEqual(danh(400), sp, "du SP ma khong dung dac ky")
+        self.assertEqual(danh(C.SKILL_INFO[sp]["cost"] - 6), re_nhat,
+                         "thieu SP thi phai dung skill all-target re, khong duoc mat luot")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -710,10 +710,27 @@ def pick_boss_skill(skills):
     return lst[0] if lst else None
 
 
-def pick_alltarget_skill(skills):
-    """Skill DAME danh TOAN BO quai (splash==8). RE nhat neu nhieu. None neu pet khong co."""
+def pick_alltarget_skill(skills, sp=None):
+    """Skill DAME danh TOAN BO quai (splash==8). DAT NHAT (= manh nhat) TRONG TAM SP.
+
+    Truoc day lay RE NHAT -> dac ky all-target (thuong dat) gan nhu khong bao gio duoc dung khi
+    pet co san mot skill all-target thuong re hon: do duoc 8/48 pet roi vao canh nay, nang nhat la
+    0x9f94 "Quan Vu Ba" co dac ky 365SP ma luon danh skill thuong 84SP. User: doi lai lay skill
+    DAT NHAT truoc.
+
+    VI SAO PHAI XET SP o day chu khong de caller lo: caller chi kiem `sp >= cost(allt)` roi thoi -
+    tra ve skill dat ma KHONG DU SP thi caller BO LUON ca nhanh all-target, roi xuong combo/danh
+    thuong, MAT ca skill all-target re ma dang le dung duoc. Nen: chon dat nhat trong so DU SP;
+    khong con nao du SP thi tra cai RE NHAT de caller tu loai (giu y het hanh vi cu o ca do).
+    sp=None -> khong xet SP, lay dat nhat (dung cho cho nao chi can biet "skill all-target manh nhat").
+    """
     allt = [s for s in skills if _is_alltarget(s)]
-    return min(allt, key=_skill_cost) if allt else None
+    if not allt:
+        return None
+    if sp is None:
+        return max(allt, key=_skill_cost)
+    du = [s for s in allt if _skill_cost(s) <= sp]
+    return max(du, key=_skill_cost) if du else min(allt, key=_skill_cost)
 
 
 def pick_sp_restore_skill(skills):
@@ -1411,7 +1428,7 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
         if _has_support_skill(skills) and sp <= getattr(config, "SUPPORT_RESERVE_SP", 100):
             return _attack(unit, at, low_or_train(), config.SKILL_NORMAL, fb, offered)
         if len(es) > 6:
-            allt = pick_alltarget_skill(skills)
+            allt = pick_alltarget_skill(skills, sp)
             if allt and sp >= cost(allt):
                 return _attack(unit, at, _train_target(es, offered), allt, fb, offered)
             combo = pick_combo_skill(skills)   # ko co all-target -> combo AoE thuong
