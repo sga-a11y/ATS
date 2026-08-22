@@ -67,3 +67,36 @@ chắc chắn. Nay loại luôn các `vantieu_slots[slot]["pet"]` (innIndex serv
 ## Còn nợ
 `S:031-003` (gửi pet vào nhà trọ) và `S:031-004` (lấy pet ra) **chưa xử lý** — bắt được 2 gói này
 thì cập nhật roster lúc đang chạy mà không cần login lại. Hiện roster chỉ tươi sau mỗi lần login.
+
+---
+
+# VAI TRÒ PET (pet_roles) — liên quan cùng ý tưởng "dồn EXP"
+
+Bot tự đổi pet xuất chiến theo **vai** trước khi vào từng hoạt động (`@_pet_role(...)` →
+`ensure_pet_role`). Cùng ý tưởng với chọn pet vận tiêu: cho user dồn EXP vào con mình muốn.
+
+| Vai | Nhãn UI | Hoạt động |
+|---|---|---|
+| `train` | Train | mặc định, khi không ở hoạt động nào |
+| `boss` | Boss | `do_world_boss`, `do_legion_boss` |
+| `quest` | Quest/PB đội/Event | `claim_daily_quests`, `do_team_dungeon` (PB **đội**) |
+| `pb_don` | PB đơn | `do_daily_dungeon` (PB **đơn**) |
+
+## Tách `pb_don` khỏi `boss` (2026-08-22)
+PB đơn cho **nhiều EXP** nên user muốn dành riêng một con.
+
+⚠️ **Điểm dễ hiểu nhầm:** nhãn cũ `Quest/PB/Event` khiến người ta tưởng PB đơn nằm trong nhóm
+quest. **Thực tế nó nằm trong nhóm `boss`** (`do_daily_dungeon` từng gắn `@_pet_role("boss")`).
+Nên đây là tách khỏi **`boss`**, không phải khỏi `quest`. Hệ quả: pet đang gán vai **Boss** thôi
+không đánh PB đơn nữa; pet vai **Quest** không đổi gì. Nhãn `quest` đã ghi rõ **PB đội** để không
+lặp lại hiểu nhầm này.
+
+**Tương thích ngược** (user chọn): config cũ không có `pb_don` → `ensure_pet_role` trả `False` →
+**giữ nguyên pet đang dùng**, KHÔNG fallback sang pet của vai `boss`. Giống mọi vai chưa gán.
+
+## Lưu ở đâu
+`pet_roles` nằm **trong `battle_config`** (cùng dialog Kịch bản Skill) nên không phải thêm đường
+truyền config mới cho cả PC lẫn APK.
+
+Nhãn UI là **2 bản chép tay** (`gui.py` `_PET_ROLE_LABELS` và `MainActivity.kt` `PetRoleLabels`) —
+`tests/test_pet_role_pb_don.py` có test bắt hai bản phải phủ đủ 4 vai và dùng cùng nhãn.

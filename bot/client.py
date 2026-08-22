@@ -6022,7 +6022,7 @@ class GameClient:
         return False
 
     @task_report("pho ban don (daily)", PHASE_LOGIN_CHORE)
-    @_pet_role("boss")
+    @_pet_role("pb_don")
     def do_daily_dungeon(self, max_sec: int = 360):
         """SOLO daily dungeon den khi SERVER bao o1 XONG (2/2). KHONG dem local nua (server truth
         chuan hon: dung ca khi chay song song nhieu may/ban build+dev cung nick). Moi luot: thu VE
@@ -6688,7 +6688,11 @@ class GameClient:
     # va pet KHONG mang theo. Cac truong hop con lai cua client (pet chet - tu hoi sinh sau tran
     # nen khong dang ke; da ha da; dang bi cuoi lam ngua - rat hiem) KHONG check truoc: server
     # khong xac nhan thi bot giu pet cu va chay tiep, khong hong gi.
-    PET_ROLES = ("train", "boss", "quest")
+    # "pb_don" TACH RA KHOI "boss" (2026-08-22): PB don cho NHIEU EXP nen user muon danh rieng
+    # mot con de don exp, giong y tuong chon pet van tieu. Truoc day do_daily_dungeon dung chung
+    # vai "boss" voi world boss / legion boss - nhan UI cu "Quest/PB/Event" de gay hieu nham la
+    # PB don nam trong nhom quest, THUC TE no nam trong nhom boss.
+    PET_ROLES = ("train", "boss", "quest", "pb_don")
 
     def switch_pet(self, pid: int, wait: float = 4.0) -> bool:
         """Doi pet xuat chien sang `pid`. True = da doi xong (hoac dang dung san con do).

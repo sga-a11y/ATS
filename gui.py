@@ -2520,7 +2520,8 @@ class PartyConfigFrame(ttk.Frame):
         _tab_pids = []   # pid cac tab pet (gan o _resolve_tab_pids; list de closure dung chung)
         # VAI TRO PET: {"train"/"boss"/"quest": pet_id}. Luu TRONG battle nen di theo duong config
         # san co (apply_account_battle + accounts.json), khong phai them tham so cho PC lan APK.
-        _PET_ROLE_LABELS = [("train", "Train"), ("boss", "Boss"), ("quest", "Quest/PB/Event")]
+        _PET_ROLE_LABELS = [("train", "Train"), ("boss", "Boss"),
+                            ("quest", "Quest/PB đội/Event"), ("pb_don", "PB đơn")]
         _role_vars = {}          # (pid, role) -> BooleanVar
         _pet_roles0 = {r: (battle.get("pet_roles") or {}).get(r) for r, _l in _PET_ROLE_LABELS}
 

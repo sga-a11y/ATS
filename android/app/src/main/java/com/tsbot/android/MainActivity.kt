@@ -2569,7 +2569,12 @@ private fun parseBattleRules(json: String, unit: String): List<BattleRuleUi> {
 
 /** Vai tro pet: {"train"/"boss"/"quest": pet_id}. Nam TRONG battleJson nen di theo duong config
  *  san co, khong phai them tham so cho service. */
-val PetRoleLabels = listOf("train" to "Train", "boss" to "Boss", "quest" to "Quest/PB/Event")
+// "pb_don" tach khoi "boss": PB don cho nhieu EXP nen user muon danh rieng mot con de don exp.
+// Nhan "quest" ghi ro la PB DOI de khong lan voi PB don.
+val PetRoleLabels = listOf(
+    "train" to "Train", "boss" to "Boss",
+    "quest" to "Quest/PB đội/Event", "pb_don" to "PB đơn",
+)
 
 private fun parsePetRoles(json: String): Map<String, Int> {
     if (json.isBlank()) return emptyMap()
@@ -3942,18 +3947,26 @@ fun SkillSettingsDialog(
                     Spacer(Modifier.height(4.dp))
                     val cur = pets[petTab]
                     Text("Dùng pet này khi:", style = MaterialTheme.typography.bodySmall)
-                    Row {
-                        PetRoleLabels.forEach { (role, label) ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = petRoles[role] == cur.pid,
-                                    onCheckedChange = { on ->
-                                        petRoles = petRoles.toMutableMap().apply {
-                                            if (on) put(role, cur.pid) else remove(role)
-                                        }
-                                    },
-                                )
-                                Text(label, style = MaterialTheme.typography.bodySmall)
+                    // 4 vai (them "PB don") + nhan dai hon -> mot Row co dinh la TRAN NGANG tren
+                    // dien thoai. Xep 2 vai/hang de doc duoc o man hinh hep.
+                    PetRoleLabels.chunked(2).forEach { hang ->
+                        Row {
+                            hang.forEach { (role, label) ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Checkbox(
+                                        checked = petRoles[role] == cur.pid,
+                                        onCheckedChange = { on ->
+                                            petRoles = petRoles.toMutableMap().apply {
+                                                if (on) put(role, cur.pid) else remove(role)
+                                            }
+                                        },
+                                    )
+                                    Text(label, style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 2)
+                                }
                             }
                         }
                     }
