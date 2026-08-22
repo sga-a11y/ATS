@@ -429,6 +429,48 @@ Pattern entries: `03 02 [type] [4-byte LE]`
   `INT+10, ATK+1, DEF+9, MaxHP+50, MaxSP+5` (sau do client nhan `collectionBonus` va floor).
   Doi chieu UI char lv148: base + do char + fashion + horse =
   `INT/ATK/DEF/AGI/HPX/SPX = 311/3/13/76/1/1`, HP `458/542`, SP `240/270`.
+- **BOI DUONG THU CUOI (座騎) — opcode 79 = `0x4f`** (boc tu `_lua_dec/Logic/Mounts.lua`):
+
+  | Lenh | Nghia | Payload |
+  |---|---|---|
+  | `C:079-001` | 上座騎 len thu cuoi | — |
+  | `C:079-002` | 下座騎 xuong | — |
+  | `C:079-003` | 座騎升級 **NANG CAP thu cuoi** | `[bag_index 1B]` |
+  | `C:079-004` | 座騎投點 **BOI DUONG (dau tu diem)** | `[kind 1B][bag_index 1B]` |
+
+  `kind` (tu `Mounts.SetAttributePoint`): **1=Atk, 2=Int, 3=Def, 4=ExtraHp, 5=ExtraSp**.
+  Luu y payload gui **bag_index** (`Item.GetItemIndex`), KHONG phai item id.
+
+  **5 vat pham boi duong** (tra `items_gamedata.json`, id lien tiep dung thu tu kind):
+  `0x7d66` Cong Ky Don (kind 1) · `0x7d67` Tri Ky Don (2) · `0x7d68` Phong Ky Don (3) ·
+  `0x7d69` Hp Ky Don (4) · `0x7d6a` Sp Ky Don (5). Rieng `0x7d65` **Tang Cap Ky Don** dung cho
+  `C:079-003` (nang cap), va `0xb22c` Tui Toa Ky Dan la tui mo ra cac vien tren.
+  ⚠️ Anh xa item↔kind o tren la SUY TU TEN + ID LIEN TIEP, chua doi chieu bang goc: nguon chuan la
+  `mountsGrowDatas[lv+1].attributes[kind].upItemId` va no **tra theo CAP**, tuc item CO THE DOI o
+  cap cao. Muon chac phai boc lai `MountsGrow_C.dat` (khong co trong repo) hoac bat pcap.
+
+  **Dieu kien client CHAN truoc khi gui** (`Mounts.AttributeUp`):
+  1. Con cap tiep theo trong bang (`mountsGrowDatas[attributeLv+1] ~= nil`), toi da **cap 15**.
+  2. **`attributeLv < mountsLv`** — chi so KHONG duoc vuot cap THU CUOI. Muon boi duong tiep thi
+     phai nang cap thu cuoi truoc (`C:079-003`).
+  3. Co vat pham trong tui (`Item.GetItemIndex ~= 0`).
+
+  **Dieu kien nang cap** (`Mounts.LevelUp`): khong o trong tran; `mountsLv < VIP_mount + 10`
+  (**tran theo VIP**); du `upItemCount` vien Tang Cap Ky Don; du vang `upMoney`.
+
+  **Cach tinh cap tu diem**: server gui `[6 attributePoint u16]` trong `S:079-001` (= `0x4f
+  sub0100`). Diem la **CONG DON**, tru dan qua tung cap theo `upItemCount`
+  (`Mounts.GetAttributeProgress`). Cot INT da co trong `pet_stats.json.mount_int_grow`:
+  diem can moi cap `[10,20,30,50,100,300,500,1000,2000,3000,3500,4000,4500,5000,5000]`,
+  addValue `[1,2,3,4,5,6,7,8,9,10,12,15,20,30,50]`.
+  Kiem chung voi capture that (`horse level 3, point [22,34,16,15,22,0]`): INT 34 diem ->
+  34-10-20=4, cap **2** -> addValue **2** -> khop dung dong "INT+2" ghi o tren.
+
+  **Bo cuc `MountsGrow_C.dat`** (`MountsGrowData.New`, ban ghi 39B): `[level u8][speed u8]
+  [upItemId u16][upItemCount u8][upMoney u32]` roi **5 lan** `[addValue u16][upItemId u16]
+  [upItemCount u16]`. `tools/generate_pet_stat_data.py:138` da doc dung bo cuc nay nhung **VUT BO
+  upItemId** va chi giu cot INT -> muon lam tinh nang boi duong phai sua tool giu them
+  upItemId/upItemCount cua ca 5 kind + upItemId/upMoney cua level.
 - **Phan biet nguon chi so trang bi luc login:**
   - Char: S2C `0x05 sub0300` co **current/max HP/SP truc tiep** ngay luc login:
     body `+3` = `HP_cur u32`, `+7` = `SP_cur u16`, `+39` = `HP_max u32`, `+43` = `SP_max u32`.
