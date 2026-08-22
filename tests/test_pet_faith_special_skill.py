@@ -148,5 +148,40 @@ class TestPetUsableSkills(unittest.TestCase):
             self.assertTrue(0x2710 <= _sk <= 0x7FFF, "dac ky ngoai dai: 0x%04x" % _sk)
 
 
+class TestCombatDungDacKy(unittest.TestCase):
+    """Chuoi day du: goi pet list -> co -> bang skill -> state.pet_skills -> COMBAT CHON duoc."""
+
+    def test_combat_chon_dac_ky_khi_no_la_lua_chon_tot_nhat(self):
+        from bot import combat, config as C
+        from bot.state import BattleState
+
+        def all_target(sk):
+            return C.SKILL_INFO.get(sk, {}).get("splash") == 8
+
+        # chon con ma DAC KY la lua chon all-target DUY NHAT -> neu bot chon no thi chac chan
+        # la nho dac ky, khong phai trung voi skill thuong
+        cand = [(p, sk) for p, sk in C.PET_SPECIAL_SKILL.items()
+                if all_target(sk) and C.PET_SKILLS.get(p)
+                and not any(all_target(x) for x in C.PET_SKILLS[p])]
+        if not cand:
+            self.skipTest("khong co pet nao thoa dieu kien")
+        pid, sp = cand[0]
+
+        def quyet_dinh(skills):
+            st = BattleState()
+            st.my_atype = 2
+            st.quest_mode = True                       # dong quai -> uu tien all-target
+            st.enemy_slots = {i: 500 for i in range(8)}
+            st.enemy_gen = 1
+            st.pet_skills = list(skills)
+            st.pet = type("U", (), {"hp": 1900, "hp_max": 1900, "sp": 460, "sp_max": 460})()
+            d = combat.decide_pet(st, options=[(2, t) for t in range(5)])
+            return getattr(d, "skill", None)
+
+        base = list(C.PET_SKILLS[pid])
+        self.assertNotEqual(quyet_dinh(base), sp, "chua mo ma da chon dac ky")
+        self.assertEqual(quyet_dinh(base + [sp]), sp, "da mo ma combat KHONG chon dac ky")
+
+
 if __name__ == "__main__":
     unittest.main()
