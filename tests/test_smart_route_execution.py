@@ -41,7 +41,10 @@ class FakeClient:
         self.calls.append(("navigate", x, y))
         self.pos = (x, y)
 
-    def _enter_gate(self, x, y, gate, expected_map=None):
+    # Chu ky THAT (bot/client.py:_enter_gate) da them timeout/board_boat/on_boat -> fake phai
+    # nhan het, khong thi TypeError khi code that truyen board_boat=...
+    def _enter_gate(self, x, y, gate, timeout=90.0, expected_map=None,
+                    board_boat=False, on_boat=False):
         self.calls.append(("gate", gate, x, y, expected_map))
         if gate == self.fail_gate:
             return False

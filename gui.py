@@ -2476,6 +2476,14 @@ class PartyConfigFrame(ttk.Frame):
             skills = list(getattr(config, "PET_SKILLS", {}).get(pid, [])) if pid else []
             if not skills and st is not None and pid == getattr(st, "active_pet_id", None):
                 skills = list(getattr(st, "pet_skills", []) or [])
+            # DAC KY (skill phai lam nhiem vu moi mo): PET_SKILLS chi co 3 skill THUONG. Them dac
+            # ky khi CON NAY da mo (st.pet_special_skill, doc tu goi pet list) VA bot co du lieu
+            # skill do - y het dieu kien cua client va cua client.pet_usable_skills().
+            # (Acc TAT thi lay tu cache o _cache_ids -> cache do skills_snapshot sinh, DA co dac ky.)
+            if pid and st is not None and (getattr(st, "pet_special_skill", None) or {}).get(pid):
+                _sp = (getattr(config, "PET_SPECIAL_SKILL", {}) or {}).get(pid)
+                if _sp and _sp in (getattr(config, "SKILL_INFO", {}) or {}):
+                    skills.append(_sp)
             return sorted({int(s) for s in skills if isinstance(s, int) or str(s).isdigit()})
 
         class _LiveSkills(dict):     # tra theo unit dong ("pet:<pid>"), cache nhe

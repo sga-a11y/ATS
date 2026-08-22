@@ -3210,6 +3210,13 @@ class GameClient:
                 self.active_pet_slot = b[first]
         # DEBUG hoi pet sai vi tri: in danh sach pet doc duoc + vi tri chon lam target hoi item.
         # Doi chieu voi vi tri THAT cua pet dang xuat chien trong game -> neu lech = parse sai.
+        # TRUNG THANH + DAC KY doc tu chinh goi nay - IN RA de KIEM CHUNG OFFSET tren goi THAT.
+        # (Test truoc day dung goi TU DUNG bang chinh offset do -> lap luan vong tron, khong chung
+        # minh duoc gi. Faith la moc tot: phai la 0..100, ra so la = offset lech.)
+        if self.pet_faith:
+            log.info("[%s] PET-LIST: trung thanh/dac ky = %s", self._label,
+                     {("0x%04x" % k): (v, bool(self.pet_special_skill.get(k)))
+                      for k, v in self.pet_faith.items()})
         log.info("[%s] PET-LIST parse: apid=%s records=%s -> active_pet_slot=%s",
                  self._label, hex(apid) if apid else None,
                  [(m, hex(p)) for m, p in _dbg], self.active_pet_slot)

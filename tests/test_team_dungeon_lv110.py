@@ -36,6 +36,28 @@ REPLACEMENTS = [
 ]
 
 
+
+def _new_game():
+    """Tao GameClient tran de test, DAT SAN cac thuoc tinh __init__ that co.
+
+    Fixture cu dung GameClient.__new__ roi chi dat vai thuoc tinh -> moi lan code that dung them
+    mot thuoc tinh moi (last_turn_time, bag_slots, _label...) la ca loat test do AttributeError,
+    du CODE KHONG SAI. Gom vao mot cho de lan sau chi sua 1 dong.
+    Test van co the ghi de sau khi goi ham nay.
+    """
+    g = client_module.GameClient.__new__(client_module.GameClient)
+    g._label = "pb110-test"
+    g.running = True
+    g.last_turn_time = 0.0
+    g.bag_slots = {}
+    g.bag_counts = {}
+    g.pos = (0, 0)
+    g.current_map = 62011
+    g._genuine_end_seen = 0.0
+    g.state = BattleState()
+    return g
+
+
 class TestTeamDungeon110Config(unittest.TestCase):
     def test_pc_missing_setting_defaults_110_off(self):
         self.assertEqual(config.TEAM_DUNGEON_LEVELS, (20, 50, 80, 110))
@@ -108,13 +130,16 @@ class TestTeamDungeon110Capture(unittest.TestCase):
 class TestTeamDungeon110PacketState(unittest.TestCase):
     @staticmethod
     def make_client():
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game._label = "pb110-test"
         game.running = True
         game._active_team_dungeon_level = 110
         game._team_dungeon_end_seq = 0
         game._team_dungeon_reinforcement_seq = 0
         game._battle_end_grace_until = 0.0
+        # code that dung them cac thuoc tinh nay; fixture tao bang __new__ nen phai tu dat,
+        # khong thi AttributeError (khong phai loi code)
+        game.last_turn_time = 0.0
         game.state = BattleState()
         return game
 
@@ -263,7 +288,8 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertTrue(state["team_dungeon_recover_ready"].is_set())
 
     def test_dispatch_calls_pb110(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
+        game._label = "pb110-dispatch"      # code that co log -> can _label
         game.do_team_dungeon_lv110 = mock.Mock(return_value=True)
 
         self.assertTrue(game.do_team_dungeon(110))
@@ -271,7 +297,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game.do_team_dungeon_lv110.assert_called_once_with()
 
     def test_room_creation_does_not_start_when_members_are_not_ready(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game.running = True
         game._label = "pb-ready-test"
         game.party_idx = 99111
@@ -301,7 +327,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game.combat_ready.assert_not_called()
 
     def test_new_dungeon_room_resets_stale_active_battle_coordinator(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game.running = True
         game._label = "pb-battle-session-test"
         game.party_idx = 99113
@@ -336,7 +362,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertTrue(coordinator.can_send("new", 1, 1))
 
     def test_room_invites_whitelist_before_bot_members(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game.running = True
         game._label = "pb-invite-order-test"
         game.party_idx = 99112
@@ -371,7 +397,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertLess(whitelist_index, bot_invite_index)
 
     def test_end_wait_ignores_empty_enemies_and_false_combat(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game.running = True
         game._team_dungeon_end_seq = 4
         game.state = BattleState()
@@ -384,7 +410,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             self.assertFalse(game._wait_team_dungeon_end(4, timeout=1.0))
 
     def test_end_wait_accepts_recent_party_member_genuine_end(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game.running = True
         game.party_idx = 99110
         game.current_map = 49942
@@ -410,7 +436,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             client_module._PARTY_BATTLE_END.pop(game.party_idx, None)
 
     def test_wrapper_always_clears_pb110_mode(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game.state = BattleState()
         game._team_dungeon_until = 10.0
         game._phoban_until = 10.0
@@ -424,7 +450,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertEqual(game._phoban_until, 0.0)
 
     def test_stage_runs_captured_actions_then_waits_for_explicit_end(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game.running = True
         game._label = "pb110-test"
         game._battle_start_seq = 10
@@ -458,7 +484,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertGreater(wait_call.kwargs["since"], 0.0)
 
     def test_final_stage_waits_for_genuine_end_before_post_battle_flow(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game.running = True
         game._label = "pb110-test"
         game._battle_start_seq = 10
@@ -471,7 +497,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game._wait_team_dungeon_end.assert_called_once()
 
     def test_force_full_heal_bypasses_post_battle_busy_window(self):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game._label = "pb110-test"
         game.state = BattleState()
         game.state.char.hp, game.state.char.hp_max = 100, 500
@@ -493,7 +519,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
 
     @staticmethod
     def configured_inner_client(completes=True):
-        game = client_module.GameClient.__new__(client_module.GameClient)
+        game = _new_game()
         game.running = True
         game._label = "pb110-test"
         game.state = BattleState()
