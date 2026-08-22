@@ -2473,6 +2473,13 @@ class PartyConfigFrame(ttk.Frame):
             # Tab per-pet: skill RIENG cua pet do tu pets.json (offline van co) - truoc day moi
             # pet deu hien skill cua pet DANG RA TRAN (st.pet_skills) la sai voi tab.
             pid = _unit_pid(unit)
+            # ACC TAT: phai lay tu CACHE (cache do skills_snapshot sinh -> DA gom dac ky). Truoc
+            # day nhanh pet KHONG he goi _cache_ids (chi char moi goi) -> offline luon roi ve
+            # PET_SKILLS = 3 skill THUONG, mat dac ky. User bao dung ca nay.
+            if st is None and pid:
+                _cached = _cache_ids("pet", pid)
+                if _cached:
+                    return _cached
             skills = list(getattr(config, "PET_SKILLS", {}).get(pid, [])) if pid else []
             if not skills and st is not None and pid == getattr(st, "active_pet_id", None):
                 skills = list(getattr(st, "pet_skills", []) or [])

@@ -26,6 +26,8 @@ class TestPhucThanPriority(unittest.TestCase):
         game.equipped_items = list(equipped or [])
         game.running = True
         game._label = "test"
+        game.sock = None           # discard_equipped() goi send() -> can co thuoc tinh sock
+        game.send = lambda *a, **k: None
         equip_calls = []
         use_calls = []
 
@@ -121,7 +123,9 @@ class TestPhucThanPriority(unittest.TestCase):
         self.assertEqual(len(game.equipped_items), 2)
         self.assertEqual(
             game.equipped_items[1],
-            {"id": SUPER_GEM, "damage": 12, "damaged_item_id": 0},
+            # code THEM "pos" (vi tri o trang bi) khi lam Phuc Than: can biet ngoc dang deo o
+            # o nao de vut dung o. Test cu giu dict truoc khi co truong do.
+            {"id": SUPER_GEM, "pos": 6, "damage": 12, "damaged_item_id": 0},
         )
 
     def test_normal_blessings_still_run_but_bag_is_skipped_when_gem_exists(self):

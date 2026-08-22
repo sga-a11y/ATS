@@ -21,8 +21,16 @@ class TestMineralDetection(unittest.TestCase):
         state.enemy_names = {"Khoáng Đồng"}
         self.assertTrue(_is_mineral_battle(state))
 
-    def test_template_id_alone_does_not_mark_mineral(self):
-        self.assertFalse(BattleState._is_mineral_enemy(tid=0x61C7))
+    def test_template_id_trong_bang_LA_quai_khoang(self):
+        """Doi luat (co chu y): nay nhan dien theo config.MINERAL_NPC_IDS (252 con, crack tu
+        NPC kind==16, khop CheckMineral cua client) chu khong doan theo TEN - heuristic ten cu
+        sot gan het. Test cu assertFalse(tid=0x61C7) la SAI: 0x61C7 chinh la "Khoang Sat".
+        """
+        from bot import config
+        self.assertIn(0x61C7, getattr(config, "MINERAL_NPC_IDS", ()))
+        self.assertTrue(BattleState._is_mineral_enemy(tid=0x61C7))
+        # id KHONG nam trong bang thi khong duoc coi la khoang
+        self.assertFalse(BattleState._is_mineral_enemy(tid=0x0001))
 
 
 if __name__ == "__main__":

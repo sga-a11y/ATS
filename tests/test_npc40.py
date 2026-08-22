@@ -204,6 +204,8 @@ class TestNpc40ClientIntegration(unittest.TestCase):
         game._label = "test"
         game.running = True
         game._npc40_started = started
+        game.bag_slots = {}        # heal_full() doc tui -> fixture __new__ phai tu dat
+        game.bag_counts = {}
         game._battle_start_seq = 0
         game._npc40_prompt_seq = 0
         game._npc40_prompt_pending = False
