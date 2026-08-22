@@ -1511,6 +1511,8 @@ class GameClient:
         self.char_attrs = {}      # CHI SO GOC tu 0x08: EAttribute -> gia tri (dung cho thanh tuu)
         self.max_friend_count = None   # so ban TOI DA tung co (S:014-017) - dieu kien thanh tuu
         self.mark_flags = {}      # CO NHIEM VU (0x18 sub07/05): chi so BYTE -> gia tri byte
+        self.pet_faith = {}          # pet_id -> TRUNG THANH (0..100), doc tu goi pet list
+        self.pet_special_skill = {}  # pet_id -> DA MO dac ky chua (bool)
         self._mark_flags_loaded = False
         self._acts_expired = set()   # id su kien server bao DA HET (duoc xoa khoi cache)
         self._activity_done = {}  # missionId -> so lan DA LAM (S:124-001)
@@ -2704,6 +2706,19 @@ class GameClient:
             self.disconnect_reason = DISCONNECT_CAUSE.get(pkt[9], "ma la %d" % pkt[9])
             log.warning("[%s] SERVER NGAT KET NOI: %s (ma %d)",
                         self._label, self.disconnect_reason, pkt[9])
+        # S:020-049 <武將學習特殊技> +武將索引(1): pet VUA MO duoc dac ky (skill phai lam nhiem vu
+        # moi co). Bat goi nay de biet NGAY, khong phai cho login lai doc goi pet list.
+        # Client: protocal.lua:3140 -> followNpc.data.specialSkillLearned = true.
+        # LUU Y: goi cho INDEX vo tuong (slot mang theo), khong cho pet_id -> doi chieu qua
+        # carried_pets (thu tu = marker slot doc o _on_pet_list).
+        elif opcode == 0x14 and len(pkt) >= 10 and pkt[7:9] == b"\x31\x00":
+            _idx = pkt[9]
+            _pets = list(getattr(self.state, "carried_pets", None) or ())
+            _pid = _pets[_idx - 1][0] if 1 <= _idx <= len(_pets) else None
+            if _pid:
+                self.pet_special_skill[_pid] = True
+            log.info("[%s] PET vua MO DAC KY (S:020-049 idx=%d, pet=%s)", self._label, _idx,
+                     ("0x%04x" % _pid) if _pid else "chua biet")
         elif opcode == 0x18:
             self._on_mission_steps(pkt)
         # INVENTORY (TUI THAT): S2C 0x17 sub=0500. header [00][count 2B] + record 36B:
@@ -3109,6 +3124,16 @@ class GameClient:
                 _lv = list(b[start + 32 + _nl:start + 32 + _nl + 3])
                 if len(_lv) == 3:
                     self._pet_skill_rows.append((marker, pid, b[start + 7], _sp, _lv))
+                # TRUNG THANH + DA MO DAC KY: 2 truong nam SAN trong chinh goi nay, truoc day
+                # khong doc. Thu tu truong theo Logic/Role.lua FollowNpcAppear:
+                #   +26 dieCount | +27 Faith(忠誠) | +28 canGrow | +29 SkillPoint(2) | +31 namelen
+                #   +32 ten | +32+nl skillLv*3 | +35+nl sublimeCount | +36+nl specialSkillLearned
+                # 3 moc +29/+31/+32+nl da duoc dung tu truoc va DUNG -> bang offset nay tin duoc.
+                # specialSkillLearned = "DA MO dac ky chua" (dac ky phai lam nhiem vu moi co).
+                # Client chi cho dung dac ky khi CO CO NAY (RoleController.lua:4786):
+                #   if self.data.specialSkillLearned and skillDatas[npcDatas[id].specialSkill] then
+                self.pet_faith[pid] = b[start + 27]
+                self.pet_special_skill[pid] = bool(b[start + 36 + _nl])
             except Exception:
                 pass
             at = self._pet_marker_to_atype(marker)
