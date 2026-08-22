@@ -19,7 +19,9 @@ class TestAndroidHealAllAndSkillSections(unittest.TestCase):
         self.assertIn("fun applyHealToAllAccounts(heal: HealSettings): Int", STORE)
         self.assertIn("it.copy(heal = heal)", STORE)
         self.assertIn('Text("Áp dụng cho tất cả acc")', UI)
-        self.assertIn("onApplyToAll(currentHeal())", UI)
+        # nay onApplyToAll(currentHeal(), furnace) - furnace la tham so THEM SAU, khong lien quan
+        # den viec "ap cho moi acc" ma test nay bao ve -> khop tien to thay vi doi chuoi y nguyen
+        self.assertRegex(UI, r"onApplyToAll\(currentHeal\(\)[,)]")
         self.assertIn("partyStore.applyHealToAllAccounts(heal)", UI)
 
 

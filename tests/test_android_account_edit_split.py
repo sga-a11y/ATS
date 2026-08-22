@@ -9,28 +9,29 @@ SOURCE = (
 ).read_text(encoding="utf-8")
 
 
+def fun_body(name):
+    """Cat than 1 @Composable: tu "fun <name>(" toi @Composable KE TIEP.
+
+    Truoc day test neo bang regex doi 2 ham phai DINH NHAU (AddAccountDialog roi NGAY sau la
+    @Composable fun HealSettingsDialog) -> chi can chen bat cu thu gi vao giua la test do, du
+    tinh nang khong sao. Thuc te da chen "val FURNACE_TABS" -> hong. Bam theo CHINH ham thi
+    khong con gion nhu vay.
+    """
+    i = SOURCE.index("fun %s(" % name)
+    j = SOURCE.find("\n@Composable", i)
+    return SOURCE[i:j if j != -1 else len(SOURCE)]
+
+
 class TestAndroidAccountEditSplit(unittest.TestCase):
     def test_account_row_exposes_credentials_heal_and_skill_actions(self):
-        row = re.search(
-            r"fun AccountRow\((.*?)\n}\n\n@Composable",
-            SOURCE,
-            re.DOTALL,
-        )
-        self.assertIsNotNone(row)
-        body = row.group(1)
+        body = fun_body("AccountRow")
         self.assertIn("onEditHeal", body)
         self.assertIn("onEditSkill", body)
         self.assertIn('contentDescription = "Hồi HP SP"', body)
         self.assertRegex(body, r'Text\("Skill"[,)]')
 
     def test_credentials_dialog_does_not_include_heal_or_skill_editors(self):
-        credentials = re.search(
-            r"fun AddAccountDialog\((.*?)\n}\n\n@Composable\nfun HealSettingsDialog",
-            SOURCE,
-            re.DOTALL,
-        )
-        self.assertIsNotNone(credentials)
-        body = credentials.group(1)
+        body = fun_body("AddAccountDialog")
         self.assertNotIn("hpCharText", body)
         self.assertNotIn("BattleRuleUnitEditor", body)
 
@@ -39,7 +40,8 @@ class TestAndroidAccountEditSplit(unittest.TestCase):
         self.assertIn("fun SkillSettingsDialog(", SOURCE)
         self.assertIn("editingHealAccount", SOURCE)
         self.assertIn("editingSkillAccount", SOURCE)
-        self.assertIn("account.copy(heal = editedHeal)", SOURCE)
+        # heal nay luu KEM furnace trong cung 1 copy() -> dung regex thay vi doi chuoi y nguyen
+        self.assertRegex(SOURCE, r"account\.copy\(heal = editedHeal[,)]")
         self.assertIn("account.copy(battleJson = editedBattleJson)", SOURCE)
 
 
