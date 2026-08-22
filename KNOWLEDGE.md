@@ -443,11 +443,17 @@ Pattern entries: `03 02 [type] [4-byte LE]`
 
   **5 vat pham boi duong** (tra `items_gamedata.json`, id lien tiep dung thu tu kind):
   `0x7d66` Cong Ky Don (kind 1) · `0x7d67` Tri Ky Don (2) · `0x7d68` Phong Ky Don (3) ·
-  `0x7d69` Hp Ky Don (4) · `0x7d6a` Sp Ky Don (5). Rieng `0x7d65` **Tang Cap Ky Don** dung cho
-  `C:079-003` (nang cap), va `0xb22c` Tui Toa Ky Dan la tui mo ra cac vien tren.
-  ⚠️ Anh xa item↔kind o tren la SUY TU TEN + ID LIEN TIEP, chua doi chieu bang goc: nguon chuan la
-  `mountsGrowDatas[lv+1].attributes[kind].upItemId` va no **tra theo CAP**, tuc item CO THE DOI o
-  cap cao. Muon chac phai boc lai `MountsGrow_C.dat` (khong co trong repo) hoac bat pcap.
+  `0x7d69` Hp Ky Don (4) · `0x7d6a` Sp Ky Don (5). `0xb22c` Tui Toa Ky Dan la tui mo ra cac vien.
+  ✅ **DA XAC NHAN tu bang goc** (`MountsGrow_C.dat`, keo ve bang adb roi boc bang
+  `tools/crack_mounts_grow.py` -> `mounts_grow.json`): anh xa item↔kind **CO DINH suot ca 15 cap**.
+
+  ⚠️ NHUNG item **NANG CAP** thi **DOI theo cap**: cap 1-9 dung `0x7d65` Tang Cap Ky Don;
+  **cap 10-14 dung `0x7d6b` "Tinh Hoa Nang Cap Toa Ky VIP"** (item KHAC HAN); cap 15 = het cap
+  (`upItemId = 0`). Vang nang cap: 1k/2k/5k/10k/50k/100k/500k/1tr/5tr roi 5tr deu tu cap 10.
+
+  **Diem can moi cap** (giong nhau cho ca 5 kind):
+  `10, 20, 30, 50, 100, 300, 500, 1000, 2000, 3000, 3500, 4000, 4500, 5000, 5000`.
+  addValue: Atk/Int/Def = `1..10, 12, 15, 20, 30, 50`; ExtraHp = `x10` so do; ExtraSp = `x5`.
 
   **Dieu kien client CHAN truoc khi gui** (`Mounts.AttributeUp`):
   1. Con cap tiep theo trong bang (`mountsGrowDatas[attributeLv+1] ~= nil`), toi da **cap 15**.
