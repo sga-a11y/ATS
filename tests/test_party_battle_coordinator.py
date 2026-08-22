@@ -14,15 +14,20 @@ class TestPartyBattleCoordinator(unittest.TestCase):
         self.coordinator = PartyBattleCoordinator(19)
         self.coordinator.observe("a", event("start", generation=4))
 
-    def test_fast_account_does_not_send_for_slow_account(self):
+    def test_acc_cham_VAN_gui_duoc_nhung_sent_state_bao_chua_dong_bo(self):
+        """can_send khong con la "cong dong bo phien" - no CHI chan lenh trung (xem docstring
+        can_send). Viec "chua thay turn cua minh" chuyen sang sent_state de caller LOG canh bao."""
         turn = event("turn_start", generation=4, turn=1)
 
         self.assertTrue(self.coordinator.observe("a", turn))
 
         self.assertTrue(self.coordinator.can_send("a", 4, 1))
-        self.assertFalse(self.coordinator.can_send("b", 4, 1))
+        self.assertTrue(self.coordinator.can_send("b", 4, 1), "lech phien lai bi nuot lenh danh")
+        self.assertEqual(self.coordinator.sent_state("b", 4, 1), (True, False))
+
         self.coordinator.observe("b", turn)
         self.assertTrue(self.coordinator.can_send("b", 4, 1))
+        self.assertEqual(self.coordinator.sent_state("b", 4, 1), (True, True))
 
     def test_missing_account_never_blocks_others(self):
         self.coordinator.register_accounts(("a", "b", "frozen"))
@@ -41,18 +46,25 @@ class TestPartyBattleCoordinator(unittest.TestCase):
         self.assertEqual(self.coordinator.active_key, (4, 1))
         self.assertEqual(self.coordinator.common_event_count, 2)  # start + turn
 
-    def test_stale_local_turn_cannot_send_after_canonical_turn_advances(self):
+    def test_local_turn_cu_bi_bo_lai_thi_sent_state_bao_lech_nhung_van_gui(self):
         self.coordinator.observe("a", event("turn_start", generation=4, turn=1))
         self.coordinator.observe("a", event("turn_start", generation=4, turn=2))
 
-        self.coordinator.open_local_turn("b", 4, 1)
+        # luot chinh thuc da sang 2 -> khong mo lai duoc luot 1 da qua
+        self.assertFalse(self.coordinator.open_local_turn("b", 4, 1))
 
-        self.assertFalse(self.coordinator.can_send("b", 4, 1))
-        self.assertFalse(self.coordinator.can_send("b", 4, 2))
+        # b lech ca 2 mat (sai luot, chua thay turn cua minh) - nhung van phai gui duoc
+        self.assertEqual(self.coordinator.sent_state("b", 4, 1), (False, False))
+        self.assertTrue(self.coordinator.can_send("b", 4, 1))
+        self.assertTrue(self.coordinator.can_send("b", 4, 2))
 
-    def test_inactive_coordinator_accepts_new_session_with_reset_generation(self):
-        self.assertFalse(self.coordinator.observe("new", event("start", generation=1)))
-        self.coordinator.observe("a", event("end", generation=4))
+    def test_start_generation_khac_luon_mo_phien_moi_ke_ca_dang_active(self):
+        """Server la su that: ca party relogin sau khi PB vo -> server danh so generation lai tu
+        dau. Truoc day loai generation nho hon -> phien cu ket vinh vien, moi turn sau deu bi loai."""
+        self.assertTrue(self.coordinator.observe("new", event("start", generation=1)))
+        self.assertEqual(self.coordinator.generation, 1)
+
+        self.coordinator.observe("a", event("end", generation=1))
 
         self.assertTrue(self.coordinator.observe("new", event("start", generation=1)))
         self.assertTrue(self.coordinator.observe("new", event("turn_start", generation=1, turn=1)))

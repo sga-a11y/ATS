@@ -203,9 +203,14 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             "team_dungeon_broke": {},
             "reconnecting": set(),
             "disc_gen": 0,
+            # run_account() ghi account_sync_epoch[user] = st["sync_epoch"] TRUOC moi vong cho;
+            # fixture bo qua buoc do -> _resync_ck so None != 0 -> raise ResyncSignal ngay.
+            "sync_epoch": 0,
             "reform_gen": 0,
         }
 
+        coordinator.account_sync_epoch["leader"] = 0
+        self.addCleanup(coordinator.account_sync_epoch.pop, "leader", None)
         with (
             mock.patch.object(coordinator, "party_accounts", return_value=[("leader",), ("member",)]),
             mock.patch.object(coordinator.config, "PARTY_LEADER_ACC", {0: "leader"}),
@@ -243,9 +248,14 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             "team_dungeon_recover_ready": threading.Event(),
             "reconnecting": set(),
             "disc_gen": 0,
+            # run_account() ghi account_sync_epoch[user] = st["sync_epoch"] TRUOC moi vong cho;
+            # fixture bo qua buoc do -> _resync_ck so None != 0 -> raise ResyncSignal ngay.
+            "sync_epoch": 0,
             "reform_gen": 0,
         }
 
+        coordinator.account_sync_epoch["leader"] = 0
+        self.addCleanup(coordinator.account_sync_epoch.pop, "leader", None)
         with (
             mock.patch.object(coordinator, "party_accounts", return_value=[("leader",), ("member",)]),
             mock.patch.object(coordinator.config, "PARTY_LEADER_ACC", {0: "leader"}),
@@ -307,6 +317,11 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game.combat_ready = mock.Mock()
         game.invite_whitelist_team_dungeon = mock.Mock(return_value=0)
         client_module._PARTY_ENTITIES[game.party_idx] = {game.self_entity, b"member01"}
+        # _create_team_dungeon_room CHI dem member co client CON SONG (_PARTY_CLIENTS),
+        # them sau khi test nay viet. Khong dang ky client song -> ents rong -> tra False.
+        client_module._PARTY_CLIENTS[game.party_idx] = {
+            bytes(b"member01"): SimpleNamespace(running=True)}
+        self.addCleanup(client_module._PARTY_CLIENTS.pop, game.party_idx, None)
         clock = {"now": 0.0}
 
         def fake_time():
@@ -337,6 +352,11 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game.combat_ready = mock.Mock()
         game.invite_whitelist_team_dungeon = mock.Mock(return_value=0)
         client_module._PARTY_ENTITIES[game.party_idx] = {game.self_entity, b"member01"}
+        # _create_team_dungeon_room CHI dem member co client CON SONG (_PARTY_CLIENTS),
+        # them sau khi test nay viet. Khong dang ky client song -> ents rong -> tra False.
+        client_module._PARTY_CLIENTS[game.party_idx] = {
+            bytes(b"member01"): SimpleNamespace(running=True)}
+        self.addCleanup(client_module._PARTY_CLIENTS.pop, game.party_idx, None)
         coordinator = client_module.get_party_battle(game.party_idx)
         coordinator.observe("old", BattleEvent("start", 4, 0))
         coordinator.observe("old", BattleEvent("turn_start", 4, 1))
@@ -376,6 +396,14 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         )
         member = b"member01"
         client_module._PARTY_ENTITIES[game.party_idx] = {game.self_entity, member}
+        # _create_team_dungeon_room CHI dem member co client CON SONG (_PARTY_CLIENTS),
+        # them sau khi test nay viet. Khong dang ky client song -> ents rong -> tra False.
+        client_module._PARTY_CLIENTS[game.party_idx] = {
+            bytes(member): SimpleNamespace(running=True)}
+        self.addCleanup(client_module._PARTY_CLIENTS.pop, game.party_idx, None)
+        # Test nay chi kiem THU TU moi (whitelist truoc bot). Cong "du roster" sau START co test
+        # rieng ben duoi (TestTeamDungeonRosterRule) -> stub de khong lan viec.
+        game._team_dungeon_roster_ok = mock.Mock(return_value=True)
         clock = {"now": 0.0}
 
         def fake_time():
@@ -409,7 +437,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         with mock.patch.object(client_module.time, "sleep", side_effect=stop_client):
             self.assertFalse(game._wait_team_dungeon_end(4, timeout=1.0))
 
-    def test_end_wait_accepts_recent_party_member_genuine_end(self):
+    def _end_wait_game(self, in_battle):
         game = _new_game()
         game.running = True
         game.party_idx = 99110
@@ -417,7 +445,32 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game._team_dungeon_end_seq = 0
         game._team_dungeon_reinforcement_seq = 0
         game.state = BattleState()
-        game.state.in_battle = True
+        game.state.in_battle = in_battle
+        return game
+
+    def test_end_wait_KHONG_nhan_khi_tran_cua_CHINH_LEADER_chua_xong(self):
+        """Bug that PB110: leader thay MEMBER ket tran nen nhay stage sau TRONG KHI tran cua chinh
+        no chua xong (WIN 0x14 sub0700 den muon) -> gui cong stage sau giua tran -> tran sau khong
+        start -> FAIL -> relogin vo han. Nay phai doi CHINH leader het in_battle."""
+        game = self._end_wait_game(in_battle=True)
+        now = [client_module.time.time()]
+
+        def clock():
+            now[0] += 0.25
+            return now[0]
+
+        try:
+            client_module._mark_battle_end(game.party_idx, "member", game.current_map)
+            with (
+                mock.patch.object(client_module.time, "time", side_effect=clock),
+                mock.patch.object(client_module.time, "sleep", return_value=None),
+            ):
+                self.assertFalse(game._wait_team_dungeon_end(0, timeout=5.0))
+        finally:
+            client_module._PARTY_BATTLE_END.pop(game.party_idx, None)
+
+    def test_end_wait_accepts_recent_party_member_genuine_end(self):
+        game = self._end_wait_game(in_battle=False)
         base = client_module.time.time()
         now = [base]
 
@@ -616,6 +669,45 @@ class TestTeamDungeon110AndroidParity(unittest.TestCase):
                 ROOT / "android/app/src/main/python/train_bot/client.py", wanted
             ),
         )
+
+
+class TestTeamDungeonRosterRule(unittest.TestCase):
+    """RULE TOI THUONG cua user: "phai gom du pt moi danh".
+
+    Ready 4/4 (0x2f 0b00) la bot TU BAO (timer 2.5s sau accept, khong doi server xac nhan) ->
+    accept co the FAIL am tham server-side (vd member vua relogin lech kenh) -> ready du ma phong
+    THIEU nguoi. _team_dungeon_roster_ok doi chieu lai voi roster 0x0d/06 SERVER phat sau START.
+    Truoc do khong he co test nao cho cong nay.
+    """
+
+    def _game(self, members):
+        game = _new_game()
+        game.running = True
+        game._label = "pb-roster"
+        game.party_members = list(members)
+        game._td_incomplete = False
+        return game
+
+    def test_du_roster_thi_cho_danh(self):
+        game = self._game(["m1", "m2", "m3"])
+        with mock.patch.object(client_module.time, "sleep", return_value=None):
+            self.assertTrue(game._team_dungeon_roster_ok(3))
+        self.assertFalse(game._td_incomplete)
+
+    def test_thieu_roster_thi_HUY_va_bat_co_de_ca_party_gom_lai(self):
+        game = self._game(["m1", "m2"])       # ready bao 3 nhung server chi cong nhan 2
+        with (mock.patch.object(client_module.time, "sleep", return_value=None),
+              self.assertLogs("bot", level="WARNING")):
+            self.assertFalse(game._team_dungeon_roster_ok(3, wait=0.5))
+        self.assertTrue(game._td_incomplete, "khong bat co -> run_party_digioi khong gom lai")
+
+    def test_roster_den_MUON_van_duoc_chap_nhan(self):
+        """Roster server phat sau START vai giay - phai CHO chu khong ket luan ngay."""
+        game = self._game([])
+        def _late_sleep(_):
+            game.party_members = ["m1", "m2", "m3"]
+        with mock.patch.object(client_module.time, "sleep", side_effect=_late_sleep):
+            self.assertTrue(game._team_dungeon_roster_ok(3))
 
 
 if __name__ == "__main__":

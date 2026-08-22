@@ -58,7 +58,10 @@ class TestClientBattleFlow(unittest.TestCase):
         self.assertEqual(game.available[2], [(2, 1)])
         self.assertTrue(game._battle_can_send((3, 2)))
 
-    def test_each_account_waits_for_its_own_turn_packet(self):
+    def test_acc_chua_thay_turn_cua_minh_VAN_duoc_gui(self):
+        """DOI CHINH SACH (bug that 17:09): truoc day acc chua thay turn cua chinh no thi bi CHAN
+        gui -> phien lech la nuot sach lenh danh, tran dung hinh (enemy_hp 488/488/488 suot 4 luot).
+        Nay can_send CHI chan lenh TRUNG. Chua dong bo thi VAN GUI, chi log canh bao."""
         fast = self.make_client("fast")
         slow = self.make_client("slow")
         self.start_battle(fast)
@@ -67,7 +70,7 @@ class TestClientBattleFlow(unittest.TestCase):
         fast._track_battle_packet(0x34, self.packet(0x34, b"\x01\x00"))
 
         self.assertTrue(fast._battle_can_send((3, 2)))
-        self.assertFalse(slow._battle_can_send((3, 2)))
+        self.assertTrue(slow._battle_can_send((3, 2)), "lech phien lai bi nuot lenh danh")
         slow._track_battle_packet(0x34, self.packet(0x34, b"\x01\x00"))
         self.assertTrue(slow._battle_can_send((3, 2)))
 
@@ -78,7 +81,6 @@ class TestClientBattleFlow(unittest.TestCase):
         fast._track_battle_packet(0x34, self.packet(0x34, b"\x01\x00"))
 
         self.assertEqual(late.battle_tracker.generation, 0)
-        self.assertFalse(late._battle_can_send((3, 2)))
 
         late._track_battle_packet(0x34, self.packet(0x34, b"\x01\x00"))
 
@@ -191,17 +193,18 @@ class TestClientBattleFlow(unittest.TestCase):
 
         self.assertTrue(game.state.in_battle)
 
-    def test_send_requires_local_turn_and_is_once_per_source(self):
+    def test_send_la_MOT_LAN_moi_source_nhung_khong_doi_local_turn(self):
+        """Chong TRUNG thi giu; chan vi "chua co local turn" thi BO (xem test lech phien o tren)."""
         game = self.make_client("a")
         self.start_battle(game)
         sent = []
         game.send = lambda opcode, payload: sent.append((opcode, payload))
         decision = combat.Decision(3, 2, 1, 10000, b=0)
 
-        self.assertFalse(game._send_combat(decision, tail=b"\x01\x02"))
         game._track_battle_packet(0x34, self.packet(0x34, b"\x01\x00"))
         self.assertTrue(game._send_combat(decision, tail=b"\x01\x02"))
-        self.assertFalse(game._send_combat(decision, tail=b"\x03\x04"))
+        self.assertFalse(game._send_combat(decision, tail=b"\x03\x04"),
+                         "gui TRUNG cung (source,g,t) - phai bi chan")
 
         self.assertEqual(len(sent), 1)
         self.assertIn((3, 2), game.battle_tracker.pending_actions)
@@ -248,6 +251,14 @@ class TestClientBattleFlow(unittest.TestCase):
         self.assertEqual(game._team_dungeon_end_seq, before + 1)
 
     def test_send_and_ack_have_per_account_logs(self):
+        # Log SEND/ACK bi GATE boi _log_battle_verbose() = "chi in o LEADER". Test nay tung do
+        # config THAT cua may dev (PARTY_LEADER_ACC[19]='dieu901' != 'a') -> gate tat -> khong co
+        # dong log nao -> fail. Tren may sach (config.example.py) lai pass. Test khong duoc phu
+        # thuoc config cua may chay: ep PARTY_LEADER_ACC rong = "solo" -> gate luon bat.
+        from bot import config
+        _cu = config.PARTY_LEADER_ACC
+        config.PARTY_LEADER_ACC = {}
+        self.addCleanup(setattr, config, "PARTY_LEADER_ACC", _cu)
         game = self.make_client("a")
         self.start_battle(game)
         game.send = lambda opcode, payload: None
