@@ -21,6 +21,50 @@ SKILL_OFF = (50, 52, 54)   # offset 3 skill so voi pet_id (giong nhau MOI sectio
 SK_LO, SK_HI = 0x2710, 0x7fff
 
 
+def parse_pets_seq(path):
+    """Doc TUAN TU theo dung NpcData.New (Data/NpcData.lua:236) - CHINH XAC, thay cho quet chu ky.
+
+    Ban ghi: [nameLen u16][name utf-16le][kind 1][id u16] + 78 byte CO DINH (het o +80 sau id).
+    Cac offset tinh tu vi tri id (ip): ip+22 canBeCatch (dung lam "doi reborn" nhu ban cu),
+    ip+50/52/54 skills, ip+56 specialSkill, ip+70 rideOffset raw (~1000 -> moc tu kiem chung).
+
+    VI SAO BO KIEU QUET: header file ghi 8360 ban ghi. Kieu quet chu ky (tim 3 u16 giong skill o
+    +50/52/54) SOT 59 pet - trong do co pet co ten hallo nhu 0x399e "Dieu Thuyen Khuynh Quoc" -
+    va BIA them 13 muc khong co that. Pet bi sot = bot khong biet skill cua no.
+    """
+    import struct
+    d = open(path, "rb").read()
+    count = struct.unpack_from("<i", d, 0)[0]
+    if not (0 < count < 100000):
+        raise SystemExit("header so ban ghi bat thuong: %s" % count)
+    pets, i, xa = {}, 4, 0
+    for _ in range(count):
+        nl = struct.unpack_from("<H", d, i)[0]
+        j = i + 2 + nl
+        if nl > 400 or j + 1 + 80 > len(d):
+            raise SystemExit("parse lech tai ban ghi thu %d" % len(pets))
+        ip = j + 1                       # bo kind(1) -> tro toi id
+        pid = struct.unpack_from("<H", d, ip)[0]
+        raw = [struct.unpack_from("<H", d, ip + o)[0] for o in SKILL_OFF]
+        sk = [v for v in raw if SK_LO <= v <= SK_HI]
+        ride = struct.unpack_from("<H", d, ip + 70)[0]
+        if not (500 <= ride <= 1500):
+            xa += 1
+        # GIU NGUYEN bo loc cu: >=2 skill that va cac o con lai la skill hoac 0
+        if pid and len(sk) >= 2 and all(SK_LO <= v <= SK_HI or v == 0 for v in raw):
+            try:
+                name = d[i + 2:j].decode("utf-16-le")
+            except Exception:
+                name = ""
+            pets[pid] = {"name": name, "skills": sk, "rb": d[ip + 22]}
+        i = ip + 80
+    if abs(i - len(d)) > 8:              # TIEU HET FILE = parse dung
+        raise SystemExit("parse xong con du %d byte -> nghi lech" % (len(d) - i))
+    if xa > count * 0.05:                # rideOffset raw phai quanh 1000
+        raise SystemExit("nghi parse lech: %d/%d ban ghi co rideOffset bat thuong" % (xa, count))
+    return pets
+
+
 def parse_pets(path):
     """Quet TOAN BO dai id (KHONG gioi han 0xa0xx) -> bat het cac DANG pet: ban goc + reborn +
     reborn2 (id khac dai, skills khac nhau). Anchor = chu ky skill @+50/52/54 (ca 3 slot phai
@@ -63,7 +107,7 @@ def _form_name(base, rb):
 
 
 def main():
-    pets = parse_pets(NPC)
+    pets = parse_pets_seq(NPC)
     hedoanh = {}
     try:
         hedoanh = json.load(open(HEDOANH, encoding="utf-8"))
@@ -74,6 +118,14 @@ def main():
         p = pets[pid]
         rec = {"name": _form_name(p["name"], p["rb"]), "skills": p["skills"]}
         hd = hedoanh.get(p["name"])   # join he/doanh theo TEN GOC
+        if not hd:
+            # DU PHONG theo HAU TO: pet_hedoanh.json khoa theo ten sinh tu ban CU (quet chu ky) nen
+            # co khoa bi CUT DAU. Vd pet 0xb1b4 ten that "Am Hoang Nguyet Anh" nhung bang chi co
+            # "Hoang Nguyet Anh" -> khop theo hau to CO RANH GIOI TU (dung dau cach) de khong ghep bua.
+            for _k, _v in hedoanh.items():
+                if _k and p["name"].endswith(" " + _k):
+                    hd = _v
+                    break
         if hd:
             rec["he"], rec["doanh"] = hd.get("he", ""), hd.get("doanh", "")
         out["0x%04x" % pid] = rec

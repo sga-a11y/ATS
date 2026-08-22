@@ -1,98 +1,6 @@
 {
  "_note": "AUTO-SINH tu tools/crack_pets.py (Npc_C.dat). pet_id hex -> name (nhan DOI tu idx22: rb0=base, ten=reborn/rb1, rb2), skills (FULL), he/doanh (join pet_hedoanh.json theo ten goc). boss/combo tu suy o combat tu skills_data.json.",
  "pets": {
-  "0x0000": {
-   "name": "B¦B rb0",
-   "skills": [
-    20736,
-    29952,
-    24832
-   ]
-  },
-  "0x03f3": {
-   "name": "Trưởng Hải Tặc ȟ rb5",
-   "skills": [
-    10037,
-    21001
-   ]
-  },
-  "0x04bf": {
-   "name": "Ma Tiểu Đậu Yêu། rb0",
-   "skills": [
-    14015,
-    14021
-   ]
-  },
-  "0x0508": {
-   "name": "Tỏa Tiểu Tiên਒ rb2",
-   "skills": [
-    12031,
-    12033
-   ]
-  },
-  "0x0537": {
-   "name": "· Tướng Bỏ Trốn‟ rb13",
-   "skills": [
-    20026,
-    20049
-   ]
-  },
-  "0x053e": {
-   "name": "Nhân Trốn Thoát℟ rb8",
-   "skills": [
-    13011,
-    20027
-   ]
-  },
-  "0x0566": {
-   "name": "Đàn Hùng Miêuᠥ rb0",
-   "skills": [
-    13025,
-    20027
-   ]
-  },
-  "0x056f": {
-   "name": "Phụ Binh Đoàn༢ rb0",
-   "skills": [
-    11005,
-    20026
-   ]
-  },
-  "0x0570": {
-   "name": "Hạm Binh Đoànᠢ rb0",
-   "skills": [
-    13010,
-    20027
-   ]
-  },
-  "0x0571": {
-   "name": "Hạm Binh Đoànᨢ rb0",
-   "skills": [
-    10010,
-    20025
-   ]
-  },
-  "0x0573": {
-   "name": "Quan Binh Đoànᬢ rb0",
-   "skills": [
-    11005,
-    20026
-   ]
-  },
-  "0x0575": {
-   "name": "Quân Binh Đoànሢ rb0",
-   "skills": [
-    13013,
-    20027
-   ]
-  },
-  "0x05a2": {
-   "name": "Châu Binh Đoànဢ rb0",
-   "skills": [
-    12015,
-    20014
-   ]
-  },
   "0x2711": {
    "name": "Trương Giác rb0",
    "skills": [
@@ -5118,7 +5026,9 @@
     12027,
     12033,
     21025
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
   },
   "0x2f88": {
    "name": "Đỗ Lộ rb0",
@@ -13602,11 +13512,19 @@
    ]
   },
   "0x399d": {
-   "name": "Ba Đậu Ba Tương ",
+   "name": "Thần Tượng Ba Đậu Ba Tương ",
    "skills": [
     22001,
     22004,
     22005
+   ]
+  },
+  "0x399e": {
+   "name": "Điêu Thuyền Khuynh Quốc ",
+   "skills": [
+    11014,
+    21006,
+    11012
    ]
   },
   "0x3aa1": {
@@ -14206,7 +14124,9 @@
    "skills": [
     10006,
     10010
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
   },
   "0x4543": {
    "name": "Quan Gia Quân",
@@ -14232,7 +14152,7 @@
    ]
   },
   "0x4546": {
-   "name": "Thục Tiên Phong",
+   "name": "Tây Thục Tiên Phong",
    "skills": [
     10010,
     10013
@@ -14243,7 +14163,9 @@
    "skills": [
     11002,
     11010
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Du"
   },
   "0x4548": {
    "name": "Di Lăng Đại Đạo",
@@ -14285,7 +14207,9 @@
    "skills": [
     11002,
     11005
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0x454e": {
    "name": "Ngũ Khê Điêu Nữ",
@@ -14334,7 +14258,9 @@
    "skills": [
     10006,
     10010
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Thuc"
   },
   "0x456e": {
    "name": "Nam Trung Lực Sĩ",
@@ -15453,7 +15379,7 @@
    ]
   },
   "0x5651": {
-   "name": "Đậu Yêu Hệ Phong",
+   "name": "Ba Đậu Yêu Hệ Phong",
    "skills": [
     13001,
     13004
@@ -15471,6 +15397,86 @@
    "skills": [
     11005,
     10004
+   ]
+  },
+  "0x565c": {
+   "name": " ",
+   "skills": [
+    10008,
+    10011,
+    10013
+   ]
+  },
+  "0x565d": {
+   "name": " ",
+   "skills": [
+    13006,
+    13009,
+    13013
+   ]
+  },
+  "0x565e": {
+   "name": " ",
+   "skills": [
+    12006,
+    12009,
+    12011
+   ]
+  },
+  "0x5661": {
+   "name": " ",
+   "skills": [
+    10008,
+    10011,
+    10013
+   ]
+  },
+  "0x5662": {
+   "name": " ",
+   "skills": [
+    13006,
+    13009,
+    13013
+   ]
+  },
+  "0x5663": {
+   "name": " ",
+   "skills": [
+    12006,
+    12009,
+    12011
+   ]
+  },
+  "0x5664": {
+   "name": " ",
+   "skills": [
+    12009,
+    12010,
+    12011
+   ]
+  },
+  "0x5665": {
+   "name": " ",
+   "skills": [
+    10006,
+    10011,
+    10012
+   ]
+  },
+  "0x5666": {
+   "name": " ",
+   "skills": [
+    12012,
+    12014,
+    12015
+   ]
+  },
+  "0x5667": {
+   "name": " ",
+   "skills": [
+    13005,
+    13006,
+    13015
    ]
   },
   "0x6979": {
@@ -16470,7 +16476,7 @@
    ]
   },
   "0x69fd": {
-   "name": "Châu Tiểu Đồng",
+   "name": "Dung Châu Tiểu Đồng",
    "skills": [
     12014,
     12023,
@@ -16853,7 +16859,7 @@
    ]
   },
   "0x6a30": {
-   "name": "Nhạc Kim Thạch",
+   "name": "Ai Nhạc Kim Thạch",
    "skills": [
     12027,
     21018,
@@ -16874,6 +16880,14 @@
     10021,
     10023,
     10026
+   ]
+  },
+  "0x6a33": {
+   "name": "Thủy Long-Diệt Đào",
+   "skills": [
+    11023,
+    11027,
+    20026
    ]
   },
   "0x6a34": {
@@ -17184,7 +17198,9 @@
     11002,
     11005,
     11011
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0x6d99": {
    "name": "Kim Lai Phúc rb0",
@@ -17695,6 +17711,14 @@
     20058
    ]
   },
+  "0x88f8": {
+   "name": "Linh hồn lưu luyến không về ",
+   "skills": [
+    23018,
+    20033,
+    14020
+   ]
+  },
   "0x947a": {
    "name": "Thú Thiên Niên",
    "skills": [
@@ -17771,7 +17795,7 @@
    ]
   },
   "0x94b5": {
-   "name": "Tưởng Hòa Thượng",
+   "name": "Vô Tưởng Hòa Thượng",
    "skills": [
     13010,
     13023,
@@ -17779,7 +17803,7 @@
    ]
   },
   "0x94b6": {
-   "name": "Lượng Hòa Thượng",
+   "name": "Vô Lượng Hòa Thượng",
    "skills": [
     10010,
     10023,
@@ -17850,6 +17874,14 @@
     12034
    ]
   },
+  "0x94c0": {
+   "name": "Vương Thành Mật Sử",
+   "skills": [
+    11023,
+    11034,
+    20026
+   ]
+  },
   "0x94c1": {
    "name": "Hoàng Giáp Võ Sĩ",
    "skills": [
@@ -17888,6 +17920,13 @@
     14006,
     14013,
     14037
+   ]
+  },
+  "0x94c8": {
+   "name": "Hương Loan Tiểu Quỷ",
+   "skills": [
+    13013,
+    13024
    ]
   },
   "0x94c9": {
@@ -17938,8 +17977,16 @@
     20026
    ]
   },
+  "0x94d1": {
+   "name": "Lôi Phong Thủ Tướng",
+   "skills": [
+    10021,
+    10028,
+    20025
+   ]
+  },
   "0x94d2": {
-   "name": "Phong Thủ  Binh",
+   "name": "Lôi Phong Thủ  Binh",
    "skills": [
     12015,
     12027,
@@ -17952,6 +17999,14 @@
     14006,
     14015,
     21010
+   ]
+  },
+  "0x94d4": {
+   "name": "Hương Bao Ba Đậu Yêu",
+   "skills": [
+    14015,
+    14021,
+    20014
    ]
   },
   "0x94d5": {
@@ -17968,6 +18023,14 @@
     14029,
     14030,
     21010
+   ]
+  },
+  "0x94d7": {
+   "name": "Ái Thần Ba Đậu Yêu",
+   "skills": [
+    14008,
+    14021,
+    20014
    ]
   },
   "0x94d8": {
@@ -18171,7 +18234,7 @@
    "doanh": "Nguy"
   },
   "0x94ec": {
-   "name": "Tướng Vong Cốt",
+   "name": "Tần Tướng Vong Cốt",
    "skills": [
     12033,
     21014,
@@ -18194,11 +18257,25 @@
     12015
    ]
   },
+  "0x94f1": {
+   "name": "Ông Già Noel Xấu Xa rb0",
+   "skills": [
+    10004,
+    10006
+   ]
+  },
   "0x94f2": {
    "name": "Đại Đạo Noel rb0",
    "skills": [
     10004,
     10007
+   ]
+  },
+  "0x94f7": {
+   "name": "Ông Già Noel Xấu Xa rb0",
+   "skills": [
+    10004,
+    10006
    ]
   },
   "0x94f8": {
@@ -18563,12 +18640,28 @@
     22009
    ]
   },
+  "0x9537": {
+   "name": "Ám Băng Đội Trưởng",
+   "skills": [
+    23016,
+    23003,
+    23007
+   ]
+  },
   "0x9538": {
    "name": "Ám Vương Mẫu",
    "skills": [
     23010,
     23015,
     14054
+   ]
+  },
+  "0x9539": {
+   "name": "Quốc Khánh Sứ Giả",
+   "skills": [
+    12010,
+    12023,
+    12026
    ]
   },
   "0x953b": {
@@ -18733,7 +18826,9 @@
     13029,
     13013,
     13010
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0x9550": {
    "name": "Lữ Bố",
@@ -18841,7 +18936,9 @@
     20051,
     11033,
     11034
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0x955b": {
    "name": "Từ Hoảng",
@@ -18862,6 +18959,14 @@
    ],
    "he": "Hoa",
    "doanh": "Nguy"
+  },
+  "0x955d": {
+   "name": "Ngụy Quân Thủy Binh",
+   "skills": [
+    11028,
+    11022,
+    11005
+   ]
   },
   "0x955e": {
    "name": "Ngụy Quân Cung Binh",
@@ -18907,7 +19012,9 @@
     10033,
     10021,
     21005
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Thuc"
   },
   "0x9563": {
    "name": "Gia Hủ",
@@ -18925,6 +19032,16 @@
     11014,
     11027,
     11023
+   ],
+   "he": "Dia",
+   "doanh": "Thuc"
+  },
+  "0x9565": {
+   "name": "Ngụy Quân Thuật Sĩ",
+   "skills": [
+    10027,
+    10032,
+    10033
    ]
   },
   "0x9566": {
@@ -18963,7 +19080,9 @@
     10033,
     10021,
     21005
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Thuc"
   },
   "0x956a": {
    "name": "Ngụy Hổ Báo Kỵ",
@@ -20918,12 +21037,22 @@
     11023
    ]
   },
+  "0x9c76": {
+   "name": "Giang Đông Thủy Binh",
+   "skills": [
+    11005,
+    11014,
+    11022
+   ]
+  },
   "0x9c77": {
    "name": "Thiếu Niên Chu Du",
    "skills": [
     11003,
     11011
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Ngo"
   },
   "0x9c78": {
    "name": "Vân Trung Lão Đạo",
@@ -21015,6 +21144,20 @@
     20026
    ]
   },
+  "0x9c84": {
+   "name": "Thừa Hoàng Ấu Thú",
+   "skills": [
+    11010,
+    11022
+   ]
+  },
+  "0x9c85": {
+   "name": "Thừa Hoàng Ấu Thú",
+   "skills": [
+    13012,
+    13023
+   ]
+  },
   "0x9c86": {
    "name": "Phong Hỏa Đài Thủ",
    "skills": [
@@ -21087,6 +21230,14 @@
     20026
    ]
   },
+  "0x9c90": {
+   "name": "Thừa Hoàng Cự Thú",
+   "skills": [
+    12022,
+    12031,
+    12016
+   ]
+  },
   "0x9c91": {
    "name": "Phì Di Cự Thú",
    "skills": [
@@ -21127,6 +21278,14 @@
     10010,
     10021,
     10023
+   ]
+  },
+  "0x9c96": {
+   "name": "Nam Trung Thuẫn Binh",
+   "skills": [
+    10006,
+    10021,
+    21005
    ]
   },
   "0x9c97": {
@@ -21185,7 +21344,9 @@
    "skills": [
     12006,
     12027
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Thuc"
   },
   "0x9c9e": {
    "name": "Thông Thiên Sa Tặc",
@@ -21221,6 +21382,27 @@
     12026,
     12029,
     12016
+   ]
+  },
+  "0x9ca3": {
+   "name": "Thông Thiên Quỷ Binh",
+   "skills": [
+    13007,
+    13010
+   ]
+  },
+  "0x9ca4": {
+   "name": "Thông Thiên Mộc Nhân",
+   "skills": [
+    12006,
+    12015
+   ]
+  },
+  "0x9ca5": {
+   "name": "Thông Thiên Mộc Nhân",
+   "skills": [
+    13005,
+    13009
    ]
   },
   "0x9ca6": {
@@ -21264,7 +21446,7 @@
    ]
   },
   "0x9caf": {
-   "name": "Hoàng Hắc Lại",
+   "name": "Tần Hoàng Hắc Lại",
    "skills": [
     12026,
     21022
@@ -21275,6 +21457,13 @@
    "skills": [
     13010,
     13026
+   ]
+  },
+  "0x9cb1": {
+   "name": "Kình Diện Quan Lại",
+   "skills": [
+    10024,
+    10016
    ]
   },
   "0x9cb2": {
@@ -21498,7 +21687,9 @@
     11021,
     11023,
     14021
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0x9ce5": {
    "name": "Trương Lương",
@@ -21516,7 +21707,9 @@
     11021,
     11023,
     14021
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0x9ce9": {
    "name": "Trương Bảo",
@@ -21574,17 +21767,19 @@
     11021,
     11023,
     14021
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0x9cf2": {
-   "name": "Rương Tiểu Quỷ",
+   "name": "Bảo Rương Tiểu Quỷ",
    "skills": [
     12015,
     12022
    ]
   },
   "0x9cf5": {
-   "name": "Rương Trung Quỷ",
+   "name": "Bảo Rương Trung Quỷ",
    "skills": [
     12015,
     12022
@@ -21958,6 +22153,16 @@
     10006,
     10007,
     10011
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
+  "0x9d2e": {
+   "name": "Tây Lương Thương Binh",
+   "skills": [
+    11003,
+    11005,
+    11012
    ]
   },
   "0x9d2f": {
@@ -22880,7 +23085,9 @@
    "skills": [
     11005,
     11014
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0x9da1": {
    "name": "Binh Khăn Vàng",
@@ -25838,7 +26045,9 @@
     12009,
     12015,
     12016
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0x9ee9": {
    "name": "Ma Tống Dũng",
@@ -25846,7 +26055,9 @@
     13013,
     13007,
     13009
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0x9eea": {
    "name": "Ông già Nô-en",
@@ -26009,20 +26220,24 @@
    ]
   },
   "0x9efe": {
-   "name": "· Hải Tặc Nhị Ca",
+   "name": "Hồn · Hải Tặc Nhị Ca",
    "skills": [
     10006,
     10037,
     21001
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Du"
   },
   "0x9eff": {
-   "name": "· Hải Tặc Đại Ca",
+   "name": "Hồn · Hải Tặc Đại Ca",
    "skills": [
     11005,
     11011,
     21015
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0x9f00": {
    "name": "Hồn · Hải Tặc",
@@ -26030,14 +26245,24 @@
     12049,
     12013,
     12011
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0x9f01": {
-   "name": "Đầu Mục Hải Tặc ",
+   "name": "Hồn · Đầu Mục Hải Tặc ",
    "skills": [
     13043,
     13045,
     13006
+   ]
+  },
+  "0x9f02": {
+   "name": "Hồn · Đội Trưởng Hải Tặc ",
+   "skills": [
+    10006,
+    10037,
+    21001
    ]
   },
   "0x9f03": {
@@ -26048,8 +26273,16 @@
     21015
    ]
   },
+  "0x9f04": {
+   "name": "Hồn · Trương Man Thành ",
+   "skills": [
+    10006,
+    10037,
+    10012
+   ]
+  },
   "0x9f05": {
-   "name": "Ma Nguyên Nghĩa ",
+   "name": "Hồn · Ma Nguyên Nghĩa ",
    "skills": [
     13043,
     13045,
@@ -26066,6 +26299,14 @@
   },
   "0x9f07": {
    "name": "Hồn ‧ Cao Thăng ",
+   "skills": [
+    10006,
+    10037,
+    10012
+   ]
+  },
+  "0x9f08": {
+   "name": "Hồn ‧ Bùi Nguyên Thiệu ",
    "skills": [
     10006,
     10037,
@@ -26126,7 +26367,9 @@
     10002,
     10006,
     10008
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
   },
   "0x9f10": {
    "name": "Hồn ‧ Bạch Nhiễu ",
@@ -26230,7 +26473,9 @@
     10040,
     10037,
     10016
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
   },
   "0x9f1d": {
    "name": "Hồn · Dương Bách",
@@ -26238,7 +26483,9 @@
     12049,
     12013,
     12012
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0x9f1e": {
    "name": "Hồn · Hiệu Úy",
@@ -26254,7 +26501,9 @@
     10008,
     10037,
     10013
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0x9f20": {
    "name": "Hồn · Tướng Bỏ Trốn",
@@ -26264,8 +26513,16 @@
     20049
    ]
   },
+  "0x9f21": {
+   "name": "Hồn · Phạm Nhân Trốn Thoát",
+   "skills": [
+    13038,
+    13011,
+    20027
+   ]
+  },
   "0x9f22": {
-   "name": "· Công Tôn Toản ",
+   "name": "Hồn · Công Tôn Toản ",
    "skills": [
     12054,
     12014,
@@ -26286,7 +26543,9 @@
     12005,
     12007,
     12010
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0x9f25": {
    "name": "Hồn · Phùng Phương",
@@ -26294,7 +26553,9 @@
     11045,
     20026,
     11043
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0x9f26": {
    "name": "Hồn · Hạ Mâu",
@@ -26310,7 +26571,9 @@
     13004,
     13006,
     13009
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Ngo"
   },
   "0x9f28": {
    "name": "Hồn · Tháo Binh ",
@@ -26350,15 +26613,19 @@
     13038,
     13004,
     13015
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0x9f2d": {
-   "name": "· Công Tôn Khang",
+   "name": "Hồn · Công Tôn Khang",
    "skills": [
     13043,
     13041,
     21004
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0x9f2e": {
    "name": "Hồn · Công Tôn Tục",
@@ -26366,7 +26633,9 @@
     13038,
     13004,
     13015
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0x9f2f": {
    "name": "Hồn · Công Tôn Phạm",
@@ -26374,7 +26643,9 @@
     13043,
     13041,
     21004
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0x9f30": {
    "name": "Hồn · Công Tôn Độc",
@@ -26382,7 +26653,9 @@
     12054,
     12014,
     12050
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0x9f31": {
    "name": "Hồn · Công Tôn Mô",
@@ -26390,7 +26663,9 @@
     13043,
     13041,
     21004
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0x9f32": {
    "name": "Hồn · Quân Trưởng",
@@ -26417,12 +26692,14 @@
    ]
   },
   "0x9f35": {
-   "name": "· Mộng Mai Cư Sĩ",
+   "name": "Hồn · Mộng Mai Cư Sĩ",
    "skills": [
     13038,
     21008,
     13015
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0x9f36": {
    "name": "Hồn · Lưu Hùng",
@@ -26430,7 +26707,9 @@
     10037,
     20049,
     10038
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Du"
   },
   "0x9f37": {
    "name": "Hồn · Cận Phú",
@@ -26438,10 +26717,12 @@
     11045,
     20026,
     11043
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0x9f38": {
-   "name": "Bốc Bình Nguyên ",
+   "name": "Hồn ‧ Thần Bốc Bình Nguyên ",
    "skills": [
     11046,
     20026,
@@ -26454,7 +26735,9 @@
     13043,
     13015,
     13013
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0x9f3a": {
    "name": "Hồn · Bộ Độ Căn",
@@ -26462,7 +26745,9 @@
     11041,
     21006,
     11044
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0x9f3b": {
    "name": "Hồn ‧ Lãnh Quân ",
@@ -26510,10 +26795,12 @@
     13043,
     13006,
     13009
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0x9f41": {
-   "name": "· Tát Ba Địa Qua",
+   "name": "Hồn · Tát Ba Địa Qua",
    "skills": [
     11003,
     11008,
@@ -26526,10 +26813,12 @@
     12050,
     12014,
     12052
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0x9f43": {
-   "name": "Qua Luân Chí Địa",
+   "name": "Hồn · Qua Luân Chí Địa",
    "skills": [
     10037,
     10016,
@@ -26537,12 +26826,14 @@
    ]
   },
   "0x9f44": {
-   "name": "· Ất Địa Già Lan",
+   "name": "Hồn · Ất Địa Già Lan",
    "skills": [
     11041,
     11039,
     21006
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0x9f45": {
    "name": "Hồn · Bà La Môn",
@@ -26550,7 +26841,9 @@
     10037,
     10006,
     12044
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Du"
   },
   "0x9f46": {
    "name": "Hồn · Chiến Sĩ",
@@ -27063,7 +27356,7 @@
    ]
   },
   "0x9f85": {
-   "name": "Vương Bạo Ngược ",
+   "name": "Lang Vương Bạo Ngược ",
    "skills": [
     12050,
     12025,
@@ -27071,7 +27364,7 @@
    ]
   },
   "0x9f86": {
-   "name": "Vương Bạo Ngược ",
+   "name": "Lang Vương Bạo Ngược ",
    "skills": [
     10037,
     10015,
@@ -27196,6 +27489,54 @@
     12031,
     12033,
     12027
+   ]
+  },
+  "0x9f96": {
+   "name": "Hoàng Kim Ba Dị Giới ",
+   "skills": [
+    14006,
+    14015,
+    20006
+   ]
+  },
+  "0x9f97": {
+   "name": "Ba Lang Thang Dị Giới ",
+   "skills": [
+    14006,
+    14008,
+    20006
+   ]
+  },
+  "0x9f98": {
+   "name": "Vua Dịch Bệnh Dị Giới ",
+   "skills": [
+    13043,
+    13031,
+    22042
+   ]
+  },
+  "0x9f99": {
+   "name": "Vua Thối Rữa Dị Giới ",
+   "skills": [
+    23027,
+    21038,
+    23011
+   ]
+  },
+  "0x9f9a": {
+   "name": "Vua Bạo Ngược Dị Giới ",
+   "skills": [
+    10037,
+    10026,
+    10028
+   ]
+  },
+  "0x9f9b": {
+   "name": "Vua Xảo Quyệt Dị Giới ",
+   "skills": [
+    12050,
+    12037,
+    12046
    ]
   },
   "0x9f9c": {
@@ -29761,7 +30102,7 @@
    "doanh": "Du"
   },
   "0xa0e3": {
-   "name": "Lang Ba Đậu Yêu",
+   "name": "Lưu Lang Ba Đậu Yêu",
    "skills": [
     14006,
     14008,
@@ -33507,12 +33848,14 @@
    ]
   },
   "0xa269": {
-   "name": "Quốc Điêu Thuyền",
+   "name": "Khuynh Quốc Điêu Thuyền",
    "skills": [
     11021,
     21006,
     11025
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0xa411": {
    "name": "Binh Khăn Vàng",
@@ -33604,21 +33947,27 @@
    "skills": [
     11005,
     11014
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0xa41b": {
    "name": "Quỷ Tốt Khăn Vàng",
    "skills": [
     13005,
     13010
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0xa41c": {
    "name": "Tế Tửu Khăn Vàng",
    "skills": [
     12010,
     12014
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0xa41d": {
    "name": "Ba Tài",
@@ -33915,7 +34264,9 @@
    "skills": [
     10006,
     10015
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
   },
   "0xa43e": {
    "name": "Quỷ Binh",
@@ -34760,7 +35111,9 @@
    "skills": [
     13013,
     13021
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
   },
   "0xa49f": {
    "name": "Lý Ứng",
@@ -35029,7 +35382,9 @@
    "skills": [
     12006,
     12022
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
   },
   "0xa4be": {
    "name": "P.H Câu Binh",
@@ -35360,7 +35715,9 @@
     11002,
     11005,
     20026
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
   },
   "0xa7fc": {
    "name": "Đại Đao Khăn Vàng",
@@ -35368,7 +35725,9 @@
     13007,
     13013,
     20027
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0xa7fd": {
    "name": "Thương Khăn Vàng",
@@ -35376,7 +35735,9 @@
     12009,
     12015,
     20014
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0xa7fe": {
    "name": "Kích Khăn Vàng",
@@ -35384,7 +35745,9 @@
     10012,
     10015,
     20025
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
   },
   "0xa7ff": {
    "name": "Hoàn Đao Đoàn",
@@ -35534,6 +35897,14 @@
     20025
    ]
   },
+  "0xa812": {
+   "name": "Thục Quân Binh Đoàn",
+   "skills": [
+    13007,
+    13013,
+    20027
+   ]
+  },
   "0xa813": {
    "name": "Hoài Nam Phủ Binh",
    "skills": [
@@ -35594,13 +35965,23 @@
     20025
    ]
   },
+  "0xa81b": {
+   "name": "Tương Quan Binh Đoàn",
+   "skills": [
+    11002,
+    11005,
+    20026
+   ]
+  },
   "0xa81c": {
    "name": "Ích Châu Mưu Sĩ",
    "skills": [
     11003,
     11010,
     20026
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Thuc"
   },
   "0xa81d": {
    "name": "Thục Trung Vệ Đội",
@@ -35624,7 +36005,9 @@
     12011,
     12014,
     20014
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Thuc"
   },
   "0xa820": {
    "name": "Thanh Châu Vệ Đội",
@@ -35651,7 +36034,7 @@
    ]
   },
   "0xa823": {
-   "name": "Trịnh Tinh Binh",
+   "name": "Nam Trịnh Tinh Binh",
    "skills": [
     12013,
     12014,
@@ -35705,7 +36088,7 @@
    ]
   },
   "0xa82a": {
-   "name": "Tần Thuẫn Binh",
+   "name": "Đại Tần Thuẫn Binh",
    "skills": [
     10006,
     10021
@@ -39423,7 +39806,9 @@
     23003,
     23015,
     23016
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0xb14a": {
    "name": "Quang Lữ Bố",
@@ -39431,6 +39816,16 @@
     22003,
     22016,
     22011
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0xb14b": {
+   "name": "Ám Băng Đội Trưởng",
+   "skills": [
+    23002,
+    23003,
+    23011
    ]
   },
   "0xb14c": {
@@ -39479,7 +39874,9 @@
     23017,
     23002,
     23019
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Nguy"
   },
   "0xb152": {
    "name": "Quang Thần Thố",
@@ -39585,7 +39982,9 @@
     23001,
     23019,
     23010
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Nguy"
   },
   "0xb15f": {
    "name": "Khuất Nguyên",
@@ -39609,7 +40008,9 @@
     22001,
     22010,
     22011
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Ngo"
   },
   "0xb162": {
    "name": "Hạ Hầu Đôn",
@@ -39627,7 +40028,9 @@
     12031,
     12033,
     12034
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0xb164": {
    "name": "Chu Du",
@@ -39867,7 +40270,9 @@
     23003,
     23015,
     23016
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Thuc"
   },
   "0xb17e": {
    "name": "Lưu Bang",
@@ -39899,7 +40304,9 @@
     22019,
     22016,
     22009
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0xb182": {
    "name": "Khương Duy",
@@ -40097,7 +40504,9 @@
     23003,
     23015,
     23016
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Thuc"
   },
   "0xb197": {
    "name": "Tiểu Kiều",
@@ -40175,7 +40584,9 @@
     13022,
     20048,
     13031
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Ngo"
   },
   "0xb19f": {
    "name": "Thái Văn Cơ",
@@ -40337,7 +40748,9 @@
     22001,
     22010,
     22011
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Ngo"
   },
   "0xb1b1": {
    "name": "Quang Trương Giác",
@@ -40345,7 +40758,9 @@
     22002,
     22003,
     22011
-   ]
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
   },
   "0xb1b2": {
    "name": "Quang Lữ Bố",
@@ -40353,7 +40768,9 @@
     22003,
     22016,
     22011
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0xb1b3": {
    "name": "Ám Vương Mẫu",
@@ -40364,7 +40781,7 @@
    ]
   },
   "0xb1b4": {
-   "name": "Hoàng Nguyệt Anh",
+   "name": "Ám Hoàng Nguyệt Anh",
    "skills": [
     23002,
     23003,
@@ -40387,7 +40804,9 @@
     23017,
     23018,
     23011
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0xb1b7": {
    "name": "Ám Lữ Bố",
@@ -40395,7 +40814,9 @@
     23003,
     23015,
     23016
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0xb1b8": {
    "name": "Dương Hỗ",
@@ -40411,7 +40832,9 @@
     13029,
     13033,
     13021
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Du"
   },
   "0xb1ba": {
    "name": "Ma Tống Nhân",
@@ -40419,7 +40842,9 @@
     12054,
     12028,
     12034
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0xb1bb": {
    "name": "Lục Kháng",
@@ -40538,6 +40963,16 @@
     10038
    ]
   },
+  "0xb1d0": {
+   "name": "Vạn Nhân Địch Trương Phi",
+   "skills": [
+    12031,
+    14042,
+    21025
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
   "0xb1d1": {
    "name": "Đỗ Dự",
    "skills": [
@@ -40560,15 +40995,19 @@
     13029,
     13033,
     21024
-   ]
+   ],
+   "he": "Phong",
+   "doanh": "Thuc"
   },
   "0xb1d4": {
-   "name": "Quốc Điêu Thuyền",
+   "name": "Khuynh Quốc Điêu Thuyền",
    "skills": [
     11027,
     11013,
     11034
-   ]
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
   },
   "0xb415": {
    "name": "Thiên Đàn Tiên Hổ",
@@ -40594,13 +41033,23 @@
     20014
    ]
   },
+  "0xb418": {
+   "name": "Thiên Đàn Hùng Miêu",
+   "skills": [
+    13024,
+    13025,
+    20027
+   ]
+  },
   "0xb547": {
    "name": "Yến Nhân Trương Phi",
    "skills": [
     12027,
     12033,
     12041
-   ]
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
   },
   "0xb548": {
    "name": "Lưu Bị",
@@ -40648,8 +41097,18 @@
    "he": "Thuy",
    "doanh": "Ngo"
   },
+  "0xb54d": {
+   "name": "Cuồng Quang Hoàng Cái",
+   "skills": [
+    22003,
+    22002,
+    22015
+   ],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
   "0xb54e": {
-   "name": "Hoàng Nguyệt Anh",
+   "name": "Ám Hoàng Nguyệt Anh",
    "skills": [
     23002,
     23003,
@@ -40755,7 +41214,7 @@
    ]
   },
   "0xb7a5": {
-   "name": "Nhãn Thiên Tướng",
+   "name": "Tam Nhãn Thiên Tướng",
    "skills": [
     11002,
     11022,
@@ -41012,12 +41471,44 @@
     11007
    ]
   },
+  "0xbb85": {
+   "name": "Chiêm Tinh Ba Đậu Yêu",
+   "skills": [
+    14029,
+    14030,
+    20006
+   ]
+  },
   "0xbb86": {
-   "name": "Binh Phương Đông",
+   "name": "Thiên Binh Phương Đông",
    "skills": [
     10004,
     10006,
     10011
+   ]
+  },
+  "0xbb87": {
+   "name": "Thiên Binh Phương Nam",
+   "skills": [
+    11002,
+    11005,
+    11008
+   ]
+  },
+  "0xbb88": {
+   "name": "Thiên Binh Phương Tây",
+   "skills": [
+    12006,
+    12009,
+    12014
+   ]
+  },
+  "0xbb89": {
+   "name": "Thiên Binh Phương Bắc",
+   "skills": [
+    13003,
+    13009,
+    13010
    ]
   },
   "0xbb8a": {
@@ -41160,6 +41651,14 @@
    "he": "Dia",
    "doanh": "Du"
   },
+  "0xbb9b": {
+   "name": "Thiên Niên Linh Quân ",
+   "skills": [
+    13011,
+    13022,
+    13023
+   ]
+  },
   "0xbb9c": {
    "name": "Vu Cát ",
    "skills": [
@@ -41193,11 +41692,27 @@
    ]
   },
   "0xbba0": {
-   "name": "Thượng Lão Quân ",
+   "name": "Thái Thượng Lão Quân ",
    "skills": [
     11023,
     11024,
     20026
+   ]
+  },
+  "0xbba1": {
+   "name": "Ám Bắc Đẩu Tinh Quân ",
+   "skills": [
+    13007,
+    13023,
+    14021
+   ]
+  },
+  "0xbba2": {
+   "name": "Ám Nam Đẩu Tinh Quân ",
+   "skills": [
+    12015,
+    12026,
+    14021
    ]
   },
   "0xbba3": {
@@ -41366,11 +41881,25 @@
     31008
    ]
   },
+  "0xee55": {
+   "name": "Tiễn Đồng Đấu Hạm",
+   "skills": [
+    31004,
+    31009
+   ]
+  },
   "0xee56": {
    "name": "Chu Bột Đấu Hạm",
    "skills": [
     31004,
     31009
+   ]
+  },
+  "0xee57": {
+   "name": "Nghiêm Dư Lâu Thuyền",
+   "skills": [
+    31005,
+    31010
    ]
   },
   "0xee58": {
