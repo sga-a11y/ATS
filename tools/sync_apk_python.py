@@ -127,7 +127,7 @@ def _check_no_abs_bot_import():
     bad = []
     for f in glob.glob(os.path.join(APK, "*.py")):
         for i, line in enumerate(open(f, encoding="utf-8"), 1):
-            if re.match(r"\s*(from bot[ .]|import bot)", line):
+            if re.match(r"\s*(from bot[ .]|import bot\b)", line):
                 bad.append("%s:%d %s" % (os.path.basename(f), i, line.strip()[:60]))
     if bad:
         raise SystemExit("SYNC DUNG: ban APK con import tuyet doi 'bot.*': " + " | ".join(bad))

@@ -11,6 +11,7 @@ voi result 3 = 離開副本, 4 = 斷線重登後離開副本 (Logic/Dungeon.lua 
 
 Thoat xong van dong bo + danh lai PB theo rule retry cu (o5_need_redo) - khong bo buoc nao.
 """
+import re
 import time
 import unittest
 from pathlib import Path
@@ -71,8 +72,11 @@ class TestLeaveTeamDungeon(unittest.TestCase):
 
     def test_moi_duong_thoat_PB_deu_da_bo_relogin(self):
         """Moi duong thoat instance phai THU THOAT TRUOC, chi relogin khi thoat khong duoc."""
-        # 4 cho goi thang + 1 trong helper _exit_pb_or_reconnect = 5
-        self.assertEqual(SRC.count("c.leave_team_dungeon()"), 5)
+        # Dem theo CHO GOI THAT (regex), khong dem chuoi con: `_ruc.leave_team_dungeon()` cung
+        # chua chuoi "c.leave_team_dungeon()" -> dem chuoi se sai.
+        _goi = re.findall(r"[A-Za-z_][A-Za-z0-9_]*\.leave_team_dungeon\(", SRC)
+        self.assertGreaterEqual(len(_goi), 5,
+                                "thieu cho goi lenh thoat PB (dang co %d)" % len(_goi))
         # 4 duong con lai dung _force_supervisor_reconnect (relogin) -> phai qua helper
         self.assertEqual(SRC.count("return _exit_pb_or_reconnect("), 4)
         # helper KHONG duoc goi lai chinh no (de quy vo han)

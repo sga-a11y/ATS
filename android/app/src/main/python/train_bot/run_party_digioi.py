@@ -3129,6 +3129,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # het gio DG ngay trong luc cho/moi party thi thoat vong cho, danh dau xong DG va cho
                 # ca party cung xong DG roi moi sang phase train.
                 _t0 = time.time()
+                _ready_t0 = time.time()    # chong VONG TRON leader<->member (xem ghi chu duoi)
+                _rw_split_t0 = None        # tu luc thay party LECH MAP (None = dang cung map)
                 _dg_solo_bail = False
                 while len(st["ready_members"]) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
@@ -3150,6 +3152,65 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         log.info("[%s] (LEADER) CHO du member san sang (%d/%d)...",
                                  label, len(st["ready_members"]), st["n_members"])
                         _t0 = time.time()
+                    # VONG TRON leader <-> member (log that P24, 09:50-09:53 va cu the mai):
+                    #   member: "reform: cho leader lap duong toi map 21872"   (cho route)
+                    #   leader: "CHO du member san sang (3/4)"                 (cho ready)
+                    # ma member CHI vao ready_members SAU KHI toi duoc train map - viec can chinh
+                    # cai route leader dang khong cong bo (leader da sang pha 'wait'). Khong ai
+                    # nhuc nhich, va CA HAI vong deu khong co loi thoat cho ca nay.
+                    # NGUYEN TAC (user): cu O KHAC MAP NHAU la GOM VE cung map + cung kenh truoc,
+                    # KHONG can biet map nao dung/sai. Leader THAY map cua tung acc (chung mot tien
+                    # trinh) nen khong phai cho het gio moi biet.
+                    #
+                    # KHONG break ra ngoai: break = di moi party khi CON THIEU nguoi (pha rule "du
+                    # party moi lam"). Thay vao do TU CHAY REFORM ngay tai day roi cho tiep - reform
+                    # moi la thu THUC SU gom ca party ve cung thanh + cung kenh.
+                    #
+                    # Bump reform_gen TRUOC khi reform: cac acc dang di duong tu dung lai qua
+                    # abort=_ab cua navigate_to/follow_path/follow_smart_route (da co san) -> dung
+                    # hanh dong cu roi moi lam hanh dong moi, khong keo le giua chung.
+                    _rw_maps = set()
+                    for _ru, _rp, _rl, _rk in party_accounts(pidx):
+                        _ruc = account_clients.get(_ru)
+                        if _ruc is not None and getattr(_ruc, "running", False):
+                            _rm = getattr(_ruc, "current_map", None)
+                            if _rm is not None:
+                                _rw_maps.add(_rm)
+                    # LUU Y: ca party cung o trong PB thi len(_rw_maps) == 1 -> KHONG kich hoat,
+                    # nen PB dang chay binh thuong khong bao gio bi dung vao. Chi no khi CO DUA
+                    # TRONG PB DUA NGOAI = dung trang thai hong can don.
+                    # Da quyet dinh dong bo lai thi phai LOI HET RA KHOI PB (user), khong de lung lo:
+                    # thoat bang C:047-010 (giu ket noi), KHONG relogin.
+                    _rw_lech = len(_rw_maps) > 1
+                    if _rw_lech and _rw_split_t0 is None:
+                        _rw_split_t0 = time.time()
+                        log.warning("[%s] (LEADER) party dang o %d MAP KHAC NHAU %s -> se gom ve cung "
+                                    "map/kenh", label, len(_rw_maps), sorted(_rw_maps))
+                    elif not _rw_lech:
+                        _rw_split_t0 = None
+                    _qua_han = time.time() - _ready_t0 > READY_WAIT_REFORM_SEC
+                    _lech_lau = _rw_split_t0 is not None and time.time() - _rw_split_t0 > READY_WAIT_SPLIT_SEC
+                    if _lech_lau or _qua_han:
+                        _ready_t0 = time.time()
+                        _rw_split_t0 = None
+                        # LOI HET ACC CON KET TRONG PB RA TRUOC: trong PB khong teleport/ve thanh
+                        # duoc, de nguyen thi reform khong bao gio gom duoc no.
+                        for _ru, _rp, _rl, _rk in party_accounts(pidx):
+                            _ruc = account_clients.get(_ru)
+                            if _ruc is None or not getattr(_ruc, "running", False):
+                                continue
+                            if getattr(_ruc, "current_map", None) not in TEAM_DUNGEON_MAPS:
+                                continue
+                            log.warning("[%s] (LEADER) %s con ket trong PHO BAN -> thoat PB truoc khi gom",
+                                        label, _ru)
+                            try:
+                                _ruc.leave_team_dungeon()
+                            except Exception as _e:
+                                log.warning("[%s] loi thoat PB ho %s: %s", label, _ru, _e)
+                        with st["lock"]:
+                            _bump_reform(st, ("party lech map %s -> gom ve cung map/kenh" % sorted(_rw_maps))
+                                         if _lech_lau else "cho member san sang qua lau -> reform")
+                        _do_reform(to_spot=False)
                     time.sleep(2)
                 log.info("[%s] (LEADER) DU %d/%d member san sang -> MOI (theo entity)",
                          label, len(st["ready_members"]), st["n_members"])
@@ -4559,6 +4620,8 @@ def _exit_pb_or_reconnect(username, c, reason):
     return _force_supervisor_reconnect(username, c, reason)
 
 
+READY_WAIT_SPLIT_SEC = 15    # party o KHAC MAP nhau qua lau -> leader tu reform de gom ve
+READY_WAIT_REFORM_SEC = 120  # leader cho member "san sang" qua lau -> reform de cong bo route
 BARRIER_RESCUE_SEC = 240   # HAN CUNG: cho toi da 4' roi EP RELOGIN acc chua ve, du no dang bao tien do
 BARRIER_STALE_RESCUE_SEC = 90   # acc IM (khong bao tien do) thi cuu som o moc nay, khong doi 4'
 BARRIER_STALE_SEC = 60          # "im" = tuoi hoat dong qua bao lau (acc dang lam viec bao moi 1-5s)
