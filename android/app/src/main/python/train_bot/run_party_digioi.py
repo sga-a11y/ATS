@@ -1406,6 +1406,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             try: c.deposit_fashion_to_collection()
             except Exception as e: log.warning("[%s] loi tha do thoi trang: %s", label, e)
             c.use_login_items()         # tu dung item trong list (use_items.json) -> vd tui vat lieu su kien
+            # THU CUOI: nang cap + boi duong bang 5 vien ky don. CHAY NGAY SAU use_login_items()
+            # (yeu cau user) vi tui vat pham vua duoc mo ra o buoc tren co the CHINH LA nguon vien
+            # ky don (vd "Tui Toa Ky Dan" 0xb22c). LUON BAT, khong co o tick trong setting.
+            try:
+                c.do_mount_upgrade()
+            except Exception as e:
+                log.warning("[%s] loi nang cap thu cuoi: %s", label, e)
             # Phuc Than NGAY SAU use_login_items() - luc nay con dung an toan o thanh/diem login
             # (chua di ra bai quai) -> tranh bug dung/deo Phuc Than GIUA luc dang combat ngoai bai
             # (da tung xay ra vi next_phuc_than=0.0 chi trigger o tick dau cua vong lap chinh, co

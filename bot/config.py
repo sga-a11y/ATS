@@ -534,6 +534,30 @@ def _load_jiugongge():
     return out
 JIUGONGGE = _load_jiugongge()
 
+# BANG NANG CAP + BOI DUONG THU CUOI (座騎). Sinh boi tools/crack_mounts_grow.py tu MountsGrow_C.dat.
+#   {level: {speed, up_item, up_count, up_money, attrs: {kind: {add, item, need}}}}
+#   kind: 1=Atk 2=Int 3=Def 4=ExtraHp 5=ExtraSp. 'need' = so DIEM can de len 1 cap chi so do.
+def _load_mounts_grow():
+    import json, os
+    f = os.path.join(_base_dir(), "mounts_grow.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, v in (json.load(fh).get("levels") or {}).items():
+                out[int(k)] = {
+                    "up_item": int(v.get("up_item", 0)),
+                    "up_count": int(v.get("up_count", 0)),
+                    "up_money": int(v.get("up_money", 0)),
+                    "attrs": {int(kk): {"add": int(a.get("add", 0)),
+                                        "item": int(a.get("item", 0)),
+                                        "need": int(a.get("need", 0))}
+                              for kk, a in (v.get("attrs") or {}).items()},
+                }
+    except Exception:
+        pass
+    return out
+MOUNTS_GROW = _load_mounts_grow()
+
 # Item TU DONG SU DUNG luc login. Doc tu use_items.json. 2 format value:
 #   "0x..": "Ten"                          -> dung HET ca stack, TUNG CAI 1 (item chi cho dung 1/lenh)
 #   "0x..": {"name":"Ten","qty":25}        -> dung TOI DA 25 cai/login (co > 25 -> dung 25, de lai du;

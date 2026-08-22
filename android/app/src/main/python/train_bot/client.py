@@ -1445,6 +1445,8 @@ class GameClient:
         self._char_agi_base = None
         self._char_equip_agi = 0
         self._char_turn3_agi = 0
+        self.mount_level = 0         # cap thu cuoi (S:079-001 luc login, S:079-002 khi len cap)
+        self.mount_points = {}       # kind(1..6) -> diem CONG DON (S:079-001, S:079-003)
         self._mount_base_int = 0
         self._mount_equip_int = 0
         self._mount_equip_agi = 0
@@ -2659,10 +2661,11 @@ class GameClient:
             self._refresh_char_agi()
         # Horse login: diem thu 2 la INT base. Trang bi horse aggregate den rieng o sub0800.
         elif opcode == 0x4f and len(pkt) >= 14 and pkt[7:9] == b"\x01\x00":
-            self._mount_base_int = pet_login_stats.mount_base_int(
-                int.from_bytes(pkt[12:14], "little"), _load_pet_stat_data())
-            self._refresh_char_int()
-            self._refresh_char_agi()
+            self._on_mount_data(pkt)
+        elif opcode == 0x4f and len(pkt) >= 10 and pkt[7:9] == b"\x02\x00":
+            self._on_mount_level(pkt)
+        elif opcode == 0x4f and len(pkt) >= 12 and pkt[7:9] == b"\x03\x00":
+            self._on_mount_point(pkt)
         elif opcode == 0x4f and len(pkt) >= 10 and pkt[7:9] == b"\x08\x00":
             count = pkt[9]
             for i in range(count):
@@ -6424,6 +6427,165 @@ class GameClient:
         cfg = {tid: v for tid, v in (getattr(config, "USE_LOGIN_ITEMS", {}) or {}).items()
                if not v.get("phuc_than")}
         self._use_items_from_cfg(cfg, "login")
+
+    # --- THU CUOI (座騎): nang cap + boi duong. Opcode 79 = 0x4f. Xem KNOWLEDGE.md muc
+    # "BOI DUONG THU CUOI" va documents/THU_CUOI.md. LUON BAT, khong co o tick trong setting. ---
+    MOUNT_KIND_TEN = {1: "Cong", 2: "Tri", 3: "Phong", 4: "HP", 5: "SP"}
+    MOUNT_ACK_WAIT = 3.0     # cho server xac nhan (S:079-002 / S:079-003)
+    MOUNT_MAX_FEED = 400     # tran an toan so lenh boi duong / 1 lan login (chong lap vo han)
+
+    def _on_mount_data(self, pkt: bytes):
+        """S:079-001 <座騎資料> +cap(1) +diem(2)*6 +so trang bi(1) <<+do(16)>> +NPCID(2).
+
+        Truoc day CHI lay diem INT (pkt[12:14] = kind 2) de tinh INT chon quan su. Nay luu CA CAP
+        va CA 6 DIEM de con tu nang cap / boi duong thu cuoi (do_mount_upgrade)."""
+        self.mount_level = pkt[9]
+        self.mount_points = {
+            k: int.from_bytes(pkt[10 + (k - 1) * 2:12 + (k - 1) * 2], "little")
+            for k in range(1, 7) if 12 + (k - 1) * 2 <= len(pkt)
+        }
+        self._mount_base_int = pet_login_stats.mount_base_int(
+            self.mount_points.get(2, 0), _load_pet_stat_data())
+        self._refresh_char_int()
+        self._refresh_char_agi()
+
+    def _on_mount_level(self, pkt: bytes):
+        """S:079-002 <設定座騎等級> +cap(1): server XAC NHAN nang cap thu cuoi xong."""
+        self.mount_level = pkt[9]
+        log.info("[%s] Thu cuoi: LEN CAP %d", self._label, self.mount_level)
+
+    def _on_mount_point(self, pkt: bytes):
+        """S:079-003 <設定座騎點數> +loai(1) +diem(2): server XAC NHAN boi duong xong.
+
+        Diem la gia tri TUYET DOI moi -> bot KHONG tu doan cong don (1 vien = 1 diem chi la suy
+        luan; cu doc thang so server bao thi khong bao gio lech)."""
+        k = pkt[9]
+        self.mount_points[k] = int.from_bytes(pkt[10:12], "little")
+        if k == 2:      # INT doi -> tinh lai INT char (dung de chon quan su)
+            self._mount_base_int = pet_login_stats.mount_base_int(
+                self.mount_points[k], _load_pet_stat_data())
+            self._refresh_char_int()
+
+    def _bag_slot_of(self, tid: int):
+        """Slot tui dang chua tid (client gui BAG INDEX chu khong phai item id). None = khong co."""
+        for slot, v in (self.bag_slots or {}).items():
+            if v and int(v[0]) == int(tid) and int(v[1]) > 0:
+                return int(slot)
+        return None
+
+    def mount_attr_level(self, kind: int):
+        """Doi DIEM cong don -> CAP cua chi so, y het Mounts.GetAttributeProgress cua client:
+        duyet tung cap, tru dan `need` cua cap do khi con du diem. Tra (cap, diem con du)."""
+        grow = getattr(config, "MOUNTS_GROW", {}) or {}
+        point = int((self.mount_points or {}).get(kind, 0))
+        lv = 0
+        for c in sorted(grow):
+            a = (grow[c].get("attrs") or {}).get(kind)
+            if not a:
+                break
+            need = a["need"]
+            if point < need:
+                break
+            point -= need
+            lv = c
+        return lv, point
+
+    def _mount_level_up_once(self) -> bool:
+        """Mot lan nang cap thu cuoi. True = server DA xac nhan len cap."""
+        grow = getattr(config, "MOUNTS_GROW", {}) or {}
+        r = grow.get(self.mount_level)
+        if not r or not r["up_item"]:
+            return False                       # het cap (cap 15 co up_item = 0)
+        if self.mount_level + 1 not in grow:
+            return False
+        co = int((self.bag_counts or {}).get(r["up_item"], 0))
+        if co < r["up_count"]:
+            log.info("[%s] Thu cuoi cap %d: can %d '%s' de len cap, dang co %d -> bo qua",
+                     self._label, self.mount_level, r["up_count"],
+                     (getattr(config, "ITEM_NAMES", {}) or {}).get(r["up_item"],
+                                                                   "0x%04x" % r["up_item"]), co)
+            return False
+        slot = self._bag_slot_of(r["up_item"])
+        if slot is None:
+            return False
+        # KHONG tu kiem VANG: bot khong theo doi vang, ma gui hut thi server tu choi, KHONG mat gi.
+        # Server xac nhan bang S:079-002 -> khong thay = thieu vang / cham tran VIP -> thoi.
+        cu = self.mount_level
+        self.send(0x4f, b"\x03\x00" + bytes([slot & 0xFF]))
+        t0 = time.time()
+        while time.time() - t0 < self.MOUNT_ACK_WAIT and self.running:
+            if self.mount_level != cu:
+                return True
+            time.sleep(0.2)
+        log.info("[%s] Thu cuoi: gui len cap %d->%d nhung server KHONG xac nhan "
+                 "(thieu vang? cham tran VIP?) -> thoi", self._label, cu, cu + 1)
+        return False
+
+    def _mount_feed_once(self, kind: int) -> bool:
+        """Mot lan boi duong chi so `kind`. True = server DA xac nhan diem tang."""
+        grow = getattr(config, "MOUNTS_GROW", {}) or {}
+        lv, _du = self.mount_attr_level(kind)
+        # Luat CLIENT (Mounts.AttributeUp): het bang thi thoi, VA cap chi so KHONG duoc vuot cap
+        # thu cuoi -> muon boi duong tiep phai nang cap thu cuoi truoc.
+        if lv + 1 not in grow:
+            return False
+        if lv >= self.mount_level:
+            return False
+        a = (grow[lv + 1].get("attrs") or {}).get(kind)
+        if not a or not a["item"]:
+            return False
+        slot = self._bag_slot_of(a["item"])
+        if slot is None:
+            return False
+        cu = int((self.mount_points or {}).get(kind, 0))
+        self.send(0x4f, b"\x04\x00" + bytes([kind & 0xFF, slot & 0xFF]))
+        t0 = time.time()
+        while time.time() - t0 < self.MOUNT_ACK_WAIT and self.running:
+            if int((self.mount_points or {}).get(kind, 0)) != cu:
+                return True
+            time.sleep(0.2)
+        return False
+
+    @task_report("thu cuoi", PHASE_LOGIN_CHORE)
+    def do_mount_upgrade(self):
+        """LUON CHAY sau use_login_items(): nang cap thu cuoi roi boi duong 5 chi so.
+
+        1) Du 'Tang Cap Ky Don' + vang -> nang cap (lap toi khi het dieu kien).
+        2) Trong tui co Cong/Tri/Phong/HP/SP Ky Don va chi so do CHUA MAX -> dung het.
+
+        "Chua max" = con cap tiep trong bang VA cap chi so < cap thu cuoi (luat cua client).
+        Vi the phai nang cap TRUOC roi moi boi duong: nang cap mo them tran cho chi so.
+        """
+        if not (getattr(config, "MOUNTS_GROW", {}) or {}):
+            log.info("[%s] Thu cuoi: thieu mounts_grow.json -> bo qua", self._label)
+            return
+        if not self.mount_level:
+            log.info("[%s] Thu cuoi: chua nhan duoc S:079-001 (cap/diem) -> bo qua", self._label)
+            return
+        if self.state.in_battle:
+            return
+        lv0 = self.mount_level
+        while self.running and self._mount_level_up_once():
+            time.sleep(0.5)
+        if self.mount_level != lv0:
+            log.info("[%s] Thu cuoi: cap %d -> %d", self._label, lv0, self.mount_level)
+
+        tong = 0
+        for kind in (1, 2, 3, 4, 5):
+            lv_cu, _ = self.mount_attr_level(kind)
+            n = 0
+            while self.running and n < self.MOUNT_MAX_FEED and self._mount_feed_once(kind):
+                n += 1
+                tong += 1
+                time.sleep(0.35)
+            if n:
+                lv_moi, du = self.mount_attr_level(kind)
+                log.info("[%s] Thu cuoi %s: dung %d vien -> cap %d->%d (du %d diem)",
+                         self._label, self.MOUNT_KIND_TEN[kind], n, lv_cu, lv_moi, du)
+        if not tong and self.mount_level == lv0:
+            log.info("[%s] Thu cuoi: khong co gi de lam (cap %d, diem %s)",
+                     self._label, self.mount_level,
+                     {self.MOUNT_KIND_TEN[k]: self.mount_points.get(k, 0) for k in (1, 2, 3, 4, 5)})
 
     def use_phuc_than_items(self):
         """Dung dinh ky (KHONG phai 1 lan luc login) cac item danh dau "phuc_than": true trong

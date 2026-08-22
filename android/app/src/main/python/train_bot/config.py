@@ -398,6 +398,26 @@ def _load_jiugongge():
     return out
 JIUGONGGE = _load_jiugongge()
 
+
+# BANG NANG CAP + BOI DUONG THU CUOI (座騎), xem ban PC de biet bo cuc.
+def _load_mounts_grow():
+    out = {}
+    try:
+        for k, v in (json.loads(_read_asset("mounts_grow.json")).get("levels") or {}).items():
+            out[int(k)] = {
+                "up_item": int(v.get("up_item", 0)),
+                "up_count": int(v.get("up_count", 0)),
+                "up_money": int(v.get("up_money", 0)),
+                "attrs": {int(kk): {"add": int(a.get("add", 0)),
+                                    "item": int(a.get("item", 0)),
+                                    "need": int(a.get("need", 0))}
+                          for kk, a in (v.get("attrs") or {}).items()},
+            }
+    except Exception as error:
+        _log_asset_error("mounts_grow.json", error)
+    return out
+MOUNTS_GROW = _load_mounts_grow()
+
 # TEN MAP THEO GAME: doc tu scene_names.json (AUTO tools/crack_scene_names.py, boc tu
 # Data/SceneSet_C.dat + Data/TextData_C.dat cua client). map_id -> ten hien thi trong game
 # (vd 12924 -> "Thang Thap", 12934 -> "Dinh Thap"). Dung cho log/UI cho de doc.
