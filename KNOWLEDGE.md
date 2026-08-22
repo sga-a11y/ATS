@@ -1401,10 +1401,10 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   | +4 | 4B | exp |
   | +8 | 4B | HP |
   | +12 | 1B | `L` = độ dài **VÙNG** tên (byte) |
-  | +13 | L | tên UTF-16LE kết thúc ` `, **phần dư trong vùng là RÁC** (idx1 dư `'n'`, idx4 dư ` `) |
+  | +13 | L | tên UTF-16LE kết thúc `\0`, **phần dư trong vùng là RÁC** (idx1 dư `'n'`, idx4 dư `\0`) |
   | +13+L | 1B | trạng thái võ tướng |
 
-  ⚠️ `L` là độ dài VÙNG chứ không phải độ dài tên → phải cắt tên tại ` ` đầu tiên rồi nhảy
+  ⚠️ `L` là độ dài VÙNG chứ không phải độ dài tên → phải cắt tên tại `\0` đầu tiên rồi nhảy
   nguyên `L` byte, đừng nhảy theo độ dài tên. `protocal.lua:6798` ghi thiếu trường exp (4B) so với
   gói thật, nên đọc theo bảng này chứ đừng theo dòng mô tả đó.
 - Nhà trọ còn 2 gói **CHƯA DÙNG** (note để sau): `S:031-003 <客棧存武將>` +index nhà trọ(1)

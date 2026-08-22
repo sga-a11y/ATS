@@ -8,6 +8,22 @@ cấu trúc gói. Sau khi xác nhận điều mới → cập nhật lại `KNOW
 > Bài học: từng tốn rất nhiều vòng mò nguồn pet maxSP (qua 0x08/0x33/share) trong khi `KNOWLEDGE.md`
 > đã note `0x0b = Full stats có SP_max` ngay từ đầu.
 
+### ⚠️ BẪY: viết file bằng heredoc làm HỎNG `KNOWLEDGE.md` → grep im lặng bỏ qua cả file
+Ghi file qua `python - <<'PY'` thì dãy escape trong chuỗi Python **bị nuốt một tầng**:
+`\0` → **byte NUL 0x00 thật**, `\b` → **backspace 0x08**, `\n` → **xuống dòng thật**.
+
+Đã xảy ra thật (2026-08-22): ghi mục vận tiêu vào `KNOWLEDGE.md`, `\0` thành 3 byte NUL →
+**`grep` coi cả file là nhị phân và bỏ qua TOÀN BỘ, không báo lỗi gì**. Hệ quả: tra
+"thú cưỡi" ra rỗng nên kết luận nhầm là `KNOWLEDGE.md` không có mục đó, trong khi nó **có**
+(mục `Horse/Mount login`, `0x4f sub0100`). Tức bẫy này không chỉ hỏng 1 dòng — nó **vô hiệu hoá
+chính file kiến thức mà mục trên bắt phải đọc trước**.
+
+Cách làm đúng:
+- Ưu tiên **Write/Edit tool** cho nội dung có dấu `\`; heredoc chỉ dùng cho thao tác đơn giản.
+- Bắt buộc dùng heredoc → viết `chr(92) + "0"` thay vì `\0`.
+- Ghi xong file text thì **kiểm ngay**: `python -c "print(b'\x00' in open('F','rb').read())"`
+  (hoặc `grep -c "" F` — ra `Binary file ... matches` là hỏng).
+
 ### Nguồn stat trong battle (hay nhầm — nhớ kỹ)
 - **`0x0b` party-broadcast (>100B, lúc spawn)** = full-stat MỌI member: block
   `[b1][slot][HPmax 4B][SPmax 4B][HPcur 4B][SPcur 4B]` (b1=3 char / 2 pet). **NGUỒN DUY NHẤT có pet
