@@ -12,8 +12,11 @@ Ngoai ra co goi bao NGAY luc vua mo: S:020-049 <武將學習特殊技> +武將�
 -> protocal.lua:3140 followNpc.data.specialSkillLearned = true.
 """
 import unittest
+from pathlib import Path
 
 from bot.client import GameClient
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def pet_record(marker, pid, name, faith, special, skill_lv=(1, 2, 3), level=45, skill_point=7):
@@ -99,7 +102,9 @@ class TestPetUsableSkills(unittest.TestCase):
 
     def test_chi_them_dac_ky_khi_DA_MO(self):
         from bot import config as C
-        pid = next(p for p in C.PET_SPECIAL_SKILL if C.PET_SKILLS.get(p))
+        # phai chon con ma bot CO du lieu skill dac ky, khong thi bi loai dung theo thiet ke
+        pid = next(p for p, sk in C.PET_SPECIAL_SKILL.items()
+                   if C.PET_SKILLS.get(p) and sk in C.SKILL_INFO)
         sp = C.PET_SPECIAL_SKILL[pid]
         c = make_client()
 
@@ -108,6 +113,26 @@ class TestPetUsableSkills(unittest.TestCase):
 
         c.pet_special_skill = {pid: True}
         self.assertEqual(c.pet_usable_skills(pid), list(C.PET_SKILLS[pid]) + [sp])
+
+    def test_KHONG_dung_dac_ky_khi_bot_chua_co_du_lieu_skill(self):
+        """Dua skill la vao combat = chon mu (khong biet cost/splash). Thieu du lieu -> bo qua."""
+        from bot import config as C
+        la = [p for p, sk in C.PET_SPECIAL_SKILL.items()
+              if sk not in C.SKILL_INFO and C.PET_SKILLS.get(p)]
+        if not la:
+            self.skipTest("skills_data.json da phu het dac ky")
+        pid = la[0]
+        c = make_client()
+        c.pet_special_skill = {pid: True}
+        self.assertEqual(c.pet_usable_skills(pid), list(C.PET_SKILLS[pid]))
+        self.assertNotIn(C.PET_SPECIAL_SKILL[pid], c.pet_usable_skills(pid))
+
+    def test_combat_lay_skill_qua_pet_usable_skills(self):
+        """3 cho combat lay skill pet phai goi pet_usable_skills, khong lay thang PET_SKILLS."""
+        src = (ROOT / "bot/client.py").read_text(encoding="utf-8")
+        self.assertIn("self.state.pet_skills = self.pet_usable_skills(pid)", src)
+        self.assertIn("self.state.pet_skills = self.pet_usable_skills(chosen_pid)", src)
+        self.assertIn("sk = self.pet_usable_skills(pid)", src)
 
     def test_pet_khong_co_trong_bang_thi_rong(self):
         c = make_client()

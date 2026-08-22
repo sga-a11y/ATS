@@ -1319,7 +1319,13 @@ def skills_snapshot(st):
     pet_skills = list(getattr(st, "pet_skills", []) or []) or list(getattr(st, "skills_pet", []) or [])
     pets = []
     for pid, nm in (getattr(st, "carried_pets", []) or [])[:4]:
-        sks = sorted(set(getattr(config, "PET_SKILLS", {}).get(pid, []) or []))
+        sks = set(getattr(config, "PET_SKILLS", {}).get(pid, []) or [])
+        # DAC KY: chi hien cho con DA MO va bot co du lieu skill (giong pet_usable_skills)
+        if (getattr(st, "pet_special_skill", None) or {}).get(pid):
+            _sp = (getattr(config, "PET_SPECIAL_SKILL", {}) or {}).get(pid)
+            if _sp and _sp in (getattr(config, "SKILL_INFO", {}) or {}):
+                sks.add(_sp)
+        sks = sorted(sks)
         pets.append([int(pid), nm or ("Pet 0x%04x" % pid), [_choice(x) for x in sks]])
     return {
         "char": [_choice(x) for x in sorted(list(getattr(st, "skills_char", []) or []))],
@@ -2956,7 +2962,10 @@ class GameClient:
                 self.state.pet_cfg_owner = pid   # pet dau tien sau login (xem state.py)
             if self._cached_pet_list_pkt is not None:
                 self._on_pet_list(self._cached_pet_list_pkt)
-            self.state.pet_skills = getattr(config, "PET_SKILLS", {}).get(pid, [])   # LIST (boss skill[0])
+            # pet_usable_skills = 3 skill thuong + DAC KY neu con nay DA MO (va bot co du lieu
+            # skill do). Truoc day chi lay 3 skill thuong -> dac ky lam nhiem vu moi co KHONG
+            # BAO GIO duoc dung.
+            self.state.pet_skills = self.pet_usable_skills(pid)   # LIST (boss skill[0])
             known = pid in getattr(config, "PET_NAMES", {}) or pid in getattr(config, "PET_SKILLS", {})
             name = getattr(config, "PET_NAMES", {}).get(pid, "?")
             # TEN pet DANG DUNG = ten cua active_pet_id tu pets.json (TIN CAY, dung nhu log login).
@@ -3134,11 +3143,14 @@ class GameClient:
                 #   if self.data.specialSkillLearned and skillDatas[npcDatas[id].specialSkill] then
                 self.pet_faith[pid] = b[start + 27]
                 self.pet_special_skill[pid] = bool(b[start + 36 + _nl])
+                # GUI (tab skill per-pet) doc tu STATE chu khong co client -> cho state thay chung
+                self.state.pet_faith = self.pet_faith
+                self.state.pet_special_skill = self.pet_special_skill
             except Exception:
                 pass
             at = self._pet_marker_to_atype(marker)
             if at is not None:
-                sk = config.PET_SKILLS.get(pid)
+                sk = self.pet_usable_skills(pid)
                 if sk:
                     self.state.multi_pet_skills[at] = sk
             # KHONG break som du tim thay active_pet_id: truoc day break ngay -> cac record SAU
@@ -3174,7 +3186,7 @@ class GameClient:
             apid = chosen_pid
         found_active = apid is not None and chosen_pid == apid
         if found_active and not getattr(self.state, "pet_skills", None):
-            self.state.pet_skills = list(getattr(config, "PET_SKILLS", {}).get(chosen_pid, []))
+            self.state.pet_skills = self.pet_usable_skills(chosen_pid)
             name = getattr(config, "PET_NAMES", {}).get(chosen_pid, "")
             if name and name != "?":
                 self.pet_name = name
@@ -4903,10 +4915,26 @@ class GameClient:
         """
         pid = int(pet_id)
         out = list(getattr(config, "PET_SKILLS", {}).get(pid) or [])
-        if self.pet_special_skill.get(pid):
-            _sp = (getattr(config, "PET_SPECIAL_SKILL", {}) or {}).get(pid)
-            if _sp and _sp not in out:
-                out.append(_sp)
+        if not self.pet_special_skill.get(pid):
+            return out
+        _sp = (getattr(config, "PET_SPECIAL_SKILL", {}) or {}).get(pid)
+        if not _sp or _sp in out:
+            return out
+        # CHI dua vao khi bot CO DU LIEU skill do (SP ton bao nhieu, dame hay support, danh may o).
+        # Thieu ma van dua vao -> combat chon mu: khong biet cost/splash nen tinh sai luot, co the
+        # gui skill khong dung duoc. Hien skills_data.json moi phu 43/661 dac ky (Skill_C.dat tren
+        # may nay chua co ban day du) -> con lai TU DONG duoc dung khi ai do chay lai
+        # tools/crack_skills.py voi file .dat moi, KHONG phai sua code.
+        if _sp not in (getattr(config, "SKILL_INFO", {}) or {}):
+            if _sp not in getattr(self, "_sp_skill_warned", ()):
+                if not hasattr(self, "_sp_skill_warned"):
+                    self._sp_skill_warned = set()
+                self._sp_skill_warned.add(_sp)
+                log.warning("[%s] pet 0x%04x DA MO dac ky %d nhung skills_data.json chua co du lieu "
+                            "-> chua dam dung (chay lai tools/crack_skills.py de bo sung)",
+                            self._label, pid, _sp)
+            return out
+        out.append(_sp)
         return out
 
     def mark_flag_get(self, bit_id: int) -> bool:
