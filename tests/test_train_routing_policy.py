@@ -57,7 +57,9 @@ class TestTrainRoutingPolicy(unittest.TestCase):
 
         result = coordinator._invite_party_participants(client, False, gap=0)
 
-        self.assertEqual(result, 2)
+        # Nay CA HAI nhanh deu tra tuple (so whitelist, so bot) cho dong nhat - truoc day nhanh
+        # non-train tra so tran, khien caller phai phan biet 2 kieu tra ve.
+        self.assertEqual(result, (0, 2))
         self.assertEqual(client.calls, [("bots", 0)])
 
     def test_incomplete_train_party_reforms_after_short_invite_window(self):

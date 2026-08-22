@@ -142,7 +142,12 @@ class TestTrainMobScanPolicy(unittest.TestCase):
             LearnedRegion(CenterCandidate((2910, 1470), 1, 0.7), (2710, 1470)),
         ]
         train_map = {"safe": [(4050, 2430)], "mobs": []}
-        clock = mock.Mock(side_effect=[0.0, 0.0, 30.0, 60.0])
+        # Clock cu la danh sach 4 gia tri CO DINH -> prod them vai lan goi time() (log tien do
+        # 10s/lan) la StopIteration, test do ma khong lien quan gi den dieu no kiem. Nay: chay het
+        # cac moc roi GHIM o 60.0 (= het `seconds`) -> vong quet luon ket thuc, goi bao nhieu lan
+        # cung duoc.
+        _ticks = iter([0.0, 0.0, 30.0])
+        clock = mock.Mock(side_effect=lambda: next(_ticks, 60.0))
         sleeps = []
 
         centers = coordinator._stationary_train_mob_probe(

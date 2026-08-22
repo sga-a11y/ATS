@@ -125,7 +125,7 @@ class TestChannelSwitch(unittest.TestCase):
 
         invite.assert_called_once_with(member.self_entity)
 
-    def test_invite_rejects_live_bot_member_on_another_channel(self):
+    def test_invite_VAN_moi_khi_khac_kenh_vi_so_kenh_khong_dang_tin(self):
         leader = self.make_client()
         leader.party_idx = 19
         leader.self_entity = bytes.fromhex("1111111111111111")
@@ -142,9 +142,55 @@ class TestChannelSwitch(unittest.TestCase):
         _register_party_client(19, member.self_entity, member)
         _PARTY_ENTITIES[19] = {leader.self_entity, member.self_entity}
 
+        # DOI CHINH SACH: bo so "kenh" (instanceId) khi quyet dinh moi. instanceId tu doi giua
+        # chung va moi acc doc o thoi diem khac nhau -> so nhau ra "lech kenh live" OAN (bug that:
+        # ca party dung canh nhau van bi bao lech -> khong bao gio moi duoc ai). Nay CUNG MAP live
+        # la du.
+        with mock.patch.object(leader, "invite_entity") as invite:
+            self.assertEqual(leader.invite_members(gap=0), 1)
+
+        invite.assert_called_once_with(member.self_entity)
+
+    def test_invite_KHONG_moi_khi_lech_MAP_live(self):
+        """Cong con lai sau khi bo so kenh: lech MAP thi van phai chan."""
+        leader = self.make_client()
+        leader.party_idx = 19
+        leader.self_entity = bytes.fromhex("1111111111111111")
+        leader.current_map = 12001
+        leader.current_channel = 12
+
+        member = self.make_client()
+        member.party_idx = 19
+        member.self_entity = bytes.fromhex("2222222222222222")
+        member.current_map = 14821          # map KHAC
+        member.current_channel = 12
+
+        _register_party_client(19, leader.self_entity, leader)
+        _register_party_client(19, member.self_entity, member)
+        _PARTY_ENTITIES[19] = {leader.self_entity, member.self_entity}
+
         with mock.patch.object(leader, "invite_entity") as invite:
             self.assertEqual(leader.invite_members(gap=0), 0)
+        invite.assert_not_called()
 
+    def test_invite_KHONG_moi_khi_client_member_da_tat(self):
+        leader = self.make_client()
+        leader.party_idx = 19
+        leader.self_entity = bytes.fromhex("1111111111111111")
+        leader.current_map = 12001
+
+        member = self.make_client()
+        member.party_idx = 19
+        member.self_entity = bytes.fromhex("2222222222222222")
+        member.current_map = 12001
+        member.running = False
+
+        _register_party_client(19, leader.self_entity, leader)
+        _register_party_client(19, member.self_entity, member)
+        _PARTY_ENTITIES[19] = {leader.self_entity, member.self_entity}
+
+        with mock.patch.object(leader, "invite_entity") as invite:
+            self.assertEqual(leader.invite_members(gap=0), 0)
         invite.assert_not_called()
 
     def test_train_party_invites_whitelist_before_bot_members(self):

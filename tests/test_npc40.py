@@ -302,20 +302,36 @@ class TestNpc40ClientIntegration(unittest.TestCase):
         self.assertFalse(hasattr(game, "_heal_after_battle_thread"))
         game.do_heal.assert_not_called()
 
-    def test_npc40_between_battles_revives_dead_char_even_with_zero_threshold(self):
+    def test_npc40_giua_tran_hoi_FULL_chu_khong_theo_setting(self):
+        """DOI CHINH SACH (2026-08-09): truoc dung do_heal(force=True) = hoi THEO SETTING -> vao
+        tran sau voi HP/SP lung chung. Nay heal_full(nguong=1.0) cho dong bo voi 2K/boss/PB110.
+        Nhanh rieng cho char HP=0 (thr_override=0.01) da BO: het tran server tu dat con chet ve
+        HP=1 nen khong con unit nao o HP=0 luc goi ham nay."""
         game = self._client(hp=1)
         game.state.in_battle = False
         game.state.char = SimpleNamespace(hp=0, hp_max=600)
+        game.state.pet = SimpleNamespace(hp=0, hp_max=0)
+        game.state.solo_multipet = False
+        game.bag_slots = {1: 0x1234}   # heal_full() bo qua khi tui RONG -> phai co do
         game.do_heal = mock.Mock()
         game._heal_unit = mock.Mock()
 
         game.heal_npc40_between_battles()
 
-        game.do_heal.assert_called_once_with(force=True)
-        game._heal_unit.assert_called_once_with(
-            0, game.state.char, "char", "hp_char", "hp",
-            thr_override=0.01, force=True,
-        )
+        game.do_heal.assert_not_called()
+        thrs = {(c.args[3], c.kwargs.get("thr_override")) for c in game._heal_unit.call_args_list}
+        self.assertIn(("hp_char", 1.0), thrs)
+        self.assertIn(("sp_char", 1.0), thrs)
+        self.assertTrue(all(c.kwargs.get("force") for c in game._heal_unit.call_args_list))
+
+    def test_npc40_giua_tran_KHONG_hoi_khi_dang_danh(self):
+        game = self._client(hp=1)
+        game.state.in_battle = True
+        game._heal_unit = mock.Mock()
+
+        game.heal_npc40_between_battles()
+
+        game._heal_unit.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -22,8 +22,11 @@ class TestSmartWorldRouter(unittest.TestCase):
         route = self.router.build_route(14821, (1230, 470))
         self.assertEqual(route["city"], 14001)
         self.assertEqual([leg["gate"] for leg in route["legs"]], [1, 17])
+        # Khoa cache = nav.fingerprint + ":" + _ROUTE_CACHE_VERSION (de bump thuat toan route la
+        # tu vo hieu cache cu). Test cu doc bang nav.fingerprint TRAN -> luon None, trong khi
+        # cache van ghi dung. Doc qua chinh ham router dung de khong lech nua.
         self.assertEqual(
-            self.cache.get(14821, (1230, 470), self.nav.fingerprint),
+            self.cache.get(14821, (1230, 470), self.router._cache_fingerprint()),
             route,
         )
 
@@ -43,7 +46,7 @@ class TestSmartWorldRouter(unittest.TestCase):
         route = self.router.build_route(14821, (1230, 470))
         reloaded = SmartRouteCache(self.cache.path)
         self.assertEqual(
-            reloaded.get(14821, (1230, 470), self.nav.fingerprint),
+            reloaded.get(14821, (1230, 470), self.router._cache_fingerprint()),
             route,
         )
         self.assertFalse(os.path.exists(self.cache.path + ".tmp"))
