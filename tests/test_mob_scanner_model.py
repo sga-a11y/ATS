@@ -36,6 +36,20 @@ class SafeGround(ProjectingGround):
         return center[0] + 200, center[1]
 
 
+class PartialSafeGround(ProjectingGround):
+    """Chi tim duoc safe cho bai co x < 2000; bai o giua map thi chiu (tra None)."""
+
+    def nearest_walkable_outside(self, _map_id, center, _hazards, clearance, max_path):
+        if center[0] >= 2000:
+            return None
+        return center[0] + 200, center[1]
+
+
+class NoSafeGround(ProjectingGround):
+    def nearest_walkable_outside(self, *_a, **_kw):
+        return None
+
+
 class TestMobScanSession(unittest.TestCase):
     def setUp(self):
         self.self_entity = b"self0000"
@@ -127,6 +141,45 @@ class TestCenterComputation(unittest.TestCase):
         # bo gom -> 16/16. Nen 3 con o day = 3 bai, moi bai dung 1 con.
         self.assertEqual(len(centers), 3)
         self.assertEqual(sorted(c.monster_count for c in centers), [1, 1, 1])
+
+    def test_bai_khong_co_safe_thi_muon_safe_HANG_XOM_chu_khong_ve_goc_map(self):
+        """Truoc day roi thang ve `fallback_safe` = MOT diem duy nhat ca map (cho bot dung quan
+        sat, thuong o goc map) -> moi bai hong deu nhan cung diem o tan dau map. Do la ly do
+        35/111 map co cap safe-bai cach hang NGHIN (20801: 2744; 14801: 5 bai chung 1 safe)."""
+        session = self._session()
+        feed_cycle(session, b"monster1", [(410, 500), (450, 500)])      # tim duoc safe
+        feed_cycle(session, b"monster2", [(2410, 500), (2450, 500)])    # KHONG tim duoc
+
+        goc_map = (9000, 9000)
+        regions = compute_regions(session, PartialSafeGround(), (410, 500),
+                                  fallback_safe=goc_map, now=30.0)
+
+        theo_bai = {r.center.point: r.safe for r in regions}
+        self.assertEqual(len(theo_bai), 2)
+        (bai_tot, safe_tot), = [kv for kv in theo_bai.items() if kv[0][0] < 2000]
+        (bai_hong, safe_hong), = [kv for kv in theo_bai.items() if kv[0][0] >= 2000]
+        self.assertEqual(safe_tot, (bai_tot[0] + 200, bai_tot[1]))
+        self.assertEqual(safe_hong, safe_tot, "bai hong phai muon safe cua hang xom")
+        self.assertNotEqual(safe_hong, goc_map, "lai roi ve goc map")
+
+    def test_ca_map_khong_bai_nao_co_safe_thi_moi_dung_fallback(self):
+        session = self._session()
+        feed_cycle(session, b"monster1", [(410, 500), (450, 500)])
+        feed_cycle(session, b"monster2", [(2410, 500), (2450, 500)])
+
+        goc_map = (9000, 9000)
+        regions = compute_regions(session, NoSafeGround(), (410, 500),
+                                  fallback_safe=goc_map, now=30.0)
+
+        self.assertEqual([r.safe for r in regions], [goc_map, goc_map])
+
+    def test_khong_co_safe_va_khong_co_fallback_thi_de_None(self):
+        session = self._session()
+        feed_cycle(session, b"monster1", [(410, 500), (450, 500)])
+
+        regions = compute_regions(session, NoSafeGround(), (410, 500), now=30.0)
+
+        self.assertEqual([r.safe for r in regions], [None])
 
     def test_wall_prevents_nearby_patrols_from_merging(self):
         session = self._session()

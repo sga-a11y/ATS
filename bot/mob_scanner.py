@@ -282,7 +282,22 @@ def compute_regions(session: MobScanSession, ground, start: Point,
                 session.map_id, center.point, hazards,
                 clearance=200, max_path=600,
             )
-        regions.append(LearnedRegion(center, safe or fallback_safe))
+        regions.append(LearnedRegion(center, safe))   # safe=None = chua tim duoc, va o duoi
+    # LUOT 2 - bai KHONG tim duoc safe rieng thi muon safe cua bai HANG XOM gan nhat.
+    # Truoc day roi thang ve `fallback_safe` = MOT diem duy nhat cho ca map (cho bot dung quan
+    # sat, thuong o goc map) -> moi bai hong deu nhan cung 1 diem o tan dau map. Do la ly do
+    # 35/111 map co cap safe-bai cach hang NGHIN (20801: 2744 va 2545; 14801: 5 bai chung 1 safe,
+    # xa toi 2292) -> train o do la cu moi lan nghi lai chay ca nua map.
+    # Vi sao bai o giua map hay hong: safe phai cach MOI vet tuan tra cua MOI con quai >=200
+    # (clearance) va duong di tu tam bai <=600 (max_path); bai bi vay tu phia thi khong con cho
+    # nao thoa. Cang nhieu bai (sau khi bo gom bai o 324228a) thi cang de bi bop.
+    hoc_duoc = [r.safe for r in regions if r.safe is not None]
+    if hoc_duoc:
+        regions = [r if r.safe is not None else LearnedRegion(
+            r.center, min(hoc_duoc, key=lambda p: math.dist(r.center.point, p)))
+            for r in regions]
+    regions = [r if r.safe is not None else LearnedRegion(r.center, fallback_safe)
+               for r in regions]
     return sorted(regions, key=lambda region: (
         -region.center.monster_count, -region.center.confidence,
         region.center.point[1], region.center.point[0],
