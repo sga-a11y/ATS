@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import struct
+
+log = logging.getLogger("bot")
 
 
 ROLE_HEADER_FORMAT = "<BB8sH8sBBIIIIHBB"
@@ -67,6 +70,7 @@ class BattleSnapshot:
 class BattleTracker:
     def __init__(self, local_role_id: bytes = b""):
         self.local_role_id = bytes(local_role_id)
+        self._end_warned = set()   # (generation, ly do) da log - xem _log_end_bo
         self.generation = 0
         self.turn = 0
         self.revision = 0
@@ -586,12 +590,41 @@ class BattleTracker:
         return (self._event("turn_start"),)
 
     def _end(self, data: bytes):
+        """S:011-000 <結束戰鬥> +玩家ID(8) +NPCIndex(2) -> FightManager.FightOver.
+
+        Server gui goi nay CHO TUNG NGUOI tham chien ("某id玩家結束戰役"), guardIndex==0 la nguoi
+        choi. Client goc chi coi la "tran cua MINH xong" khi roleId == Role.playerId -> bot loc y het.
+
+        3 nhanh loai bo o day TRUOC DAY IM LANG HOAN TOAN (return () khong log). Khi no truot thi
+        bot chi don gian NGOI IM khong danh, khong bao gi -> loi song rat lau vi khong ai thay.
+        Log that bai (co gioi han) de lan sau biet no rot o dieu kien NAO.
+        Dac biet: `local_role_id` dang duoc gan = self_entity (client.py). S:011-000 mang
+        玩家ID (Int64) - CHUA CHUNG MINH duoc hai thu do la mot; log ra de doi chieu."""
         if len(data) != 10:
+            self._log_end_bo("do dai != 10 (%d)" % len(data))
             return ()
         role_id, guard_index = struct.unpack("<8sH", data)
-        if guard_index or role_id != self.local_role_id or not self.active:
+        if guard_index:
+            self._log_end_bo("guard_index=%d (khong phai nguoi choi)" % guard_index)
+            return ()
+        if role_id != self.local_role_id:
+            self._log_end_bo("role_id KHAC: goi=%s local_role_id=%s"
+                             % (role_id.hex(), bytes(self.local_role_id or b"").hex() or "(rong)"))
+            return ()
+        if not self.active:
+            self._log_end_bo("tracker khong active (da ket tran tu truoc?)")
             return ()
         return self.confirm_end()
+
+    def _log_end_bo(self, ly_do: str):
+        """Log 1 lan cho moi (the he tran, ly do) - khong spam nhung khong bo sot ca nao."""
+        key = (self.generation, ly_do.split(":")[0])
+        if key in self._end_warned:
+            return
+        if len(self._end_warned) > 200:
+            self._end_warned.clear()
+        self._end_warned.add(key)
+        log.warning("[BATTLE g=%s] BO goi KET TRAN (0x0b sub0): %s", self.generation, ly_do)
 
     def _exit(self, data: bytes):
         if len(data) != 2:
