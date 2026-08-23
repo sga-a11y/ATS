@@ -11,8 +11,20 @@ log = logging.getLogger("bot")
 
 ROLE_HEADER_FORMAT = "<BB8sH8sBBIIIIHBB"
 ROLE_HEADER_SIZE = struct.calcsize(ROLE_HEADER_FORMAT)
-PLAYER_ROLE_KINDS = frozenset((1, 2, 3, 5))
-NAMED_NPC_ROLE_KINDS = frozenset((4, 6))
+# role_kind = EHuman (RoleController.lua). CHI 2 nhom co DU LIEU THEM sau header, dung y
+# FightField.RoleAppear:
+#   if kind in (Player=1, Players=2, Divide=9, AutomanualPlayer=28) -> ngoai hinh nguoi choi
+#   elif kind in (FollowNpc=4, AutomanualNpc=29)                    -> [L][ten]
+#   con lai (ke ca MapNpc=3) -> KHONG co gi them
+#
+# BUG THAT (user: "vao tran ma bot khong danh", log 12:31:25):
+#   PLAYER_ROLE_KINDS cu = (1,2,3,5) -> co 3 = EHuman.MapNpc = QUAI. Bot coi QUAI la nguoi choi
+#   roi di doc phan ngoai hinh KHONG HE TON TAI -> goi 42 byte (dung bang ROLE_HEADER_SIZE, tuc
+#   header an het, khong con byte nao) -> parse hong -> VUT SACH ca roster -> tracker khong co
+#   unit nao -> available rong -> _arm_decision khong bao gio duoc goi -> BOT DUNG IM.
+#   Con 5 = SceneElm va 6 = GuardNpc thi Lua KHONG doc them gi -> cung phai bo ra.
+PLAYER_ROLE_KINDS = frozenset((1, 2, 9, 28))
+NAMED_NPC_ROLE_KINDS = frozenset((4, 29))
 ACTION_EFFECT_STATUS_KIND = {
     11014: 1,  # Bang Phong
     11039: 1,

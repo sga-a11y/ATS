@@ -101,5 +101,39 @@ class TestKhongXoaQuaiKhiTrackerRong(unittest.TestCase):
         self.assertEqual(len(st3.enemy_slots), 10, "mat mot hang quai")
 
 
+class TestRoleKindTheoClient(unittest.TestCase):
+    """GOC that cua "vao tran ma bot khong danh" (log 12:31:25).
+
+    role_kind = EHuman (RoleController.lua). FightField.RoleAppear chi doc DU LIEU THEM cho:
+        Player=1, Players=2, Divide=9, AutomanualPlayer=28  -> ngoai hinh nguoi choi
+        FollowNpc=4, AutomanualNpc=29                       -> [L][ten]
+    Con lai, KE CA MapNpc=3 (QUAI), khong co gi them.
+
+    Bot cu khai PLAYER_ROLE_KINDS = (1,2,3,5): co 3 = QUAI -> di doc ngoai hinh KHONG TON TAI ->
+    goi 42 byte (dung bang ROLE_HEADER_SIZE) parse hong -> vut sach ca roster -> tracker rong ->
+    available rong -> _arm_decision khong duoc goi -> bot dung im.
+    """
+
+    # 24 byte dau LAY TU LOG THAT, dem 0 cho du 42 byte (ROLE_HEADER_SIZE)
+    GOI_QUAI = bytes.fromhex("0303122b0000000000000200000000000000000000020b06") + bytes(18)
+
+    def test_quai_MapNpc_kind3_phai_parse_duoc(self):
+        from bot.battle_tracker import BattleTracker
+        u = BattleTracker._parse_roles(self.GOI_QUAI, tag="test")
+        self.assertEqual(len(u or []), 1, "van vut ban ghi quai (bug cu)")
+        self.assertEqual(u[0].role_kind, 3)
+        self.assertEqual((u[0].row, u[0].col), (0, 2), "quai phai o HANG 0")
+
+    def test_kind3_KHONG_duoc_coi_la_nguoi_choi(self):
+        from bot.battle_tracker import PLAYER_ROLE_KINDS, NAMED_NPC_ROLE_KINDS
+        self.assertNotIn(3, PLAYER_ROLE_KINDS, "MapNpc(3) = QUAI, khong phai nguoi choi")
+        self.assertNotIn(3, NAMED_NPC_ROLE_KINDS)
+
+    def test_cac_kind_khop_dung_client(self):
+        from bot.battle_tracker import PLAYER_ROLE_KINDS, NAMED_NPC_ROLE_KINDS
+        self.assertEqual(PLAYER_ROLE_KINDS, frozenset((1, 2, 9, 28)))
+        self.assertEqual(NAMED_NPC_ROLE_KINDS, frozenset((4, 29)))
+
+
 if __name__ == "__main__":
     unittest.main()
