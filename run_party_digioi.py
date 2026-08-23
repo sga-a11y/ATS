@@ -1589,7 +1589,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if auto_team_dungeon:
                 if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
                                                          is_leader, _stopped, pcfg):
-                    return False
+                    # PB HONG KHONG PHAI LY DO DE GIET PARTY. DG da het gio -> viec tiep theo LUON
+                    # la TRAIN, du viec vat co xong hay khong.
+                    # BUG THAT (party 19, 13:46-13:57): rule "phai du pt moi danh PB" huy tran vi
+                    # roster chi 1/4 member -> ham nay `return False` -> _dt["relogin_train"] khong
+                    # duoc set -> reconnectable=False -> st["leader_gone"].set() -> member thay
+                    # leader chet that -> THOAT THEO -> CA PARTY CHET, phai bat tay lai.
+                    log.warning("[%s] (%s) pho ban to doi khong xong -> VAN chuyen sang pha TRAIN "
+                                "(khong bo party)", label, role)
+                    _dt["relogin_train"] = True
+                    return True
             if do_daily:
                 try:
                     c.do_daily_dungeon()
