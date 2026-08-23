@@ -5547,6 +5547,10 @@ _PHASE_SOLO = ("login_chore", "boss_qd")     # viec LE: dong doi phai CHO, khong
 _PHASE_TEAM = ("train", "reform", "team_dungeon", "digioi")
 _PHASE_WAIT = "wait"                        # dang CHO dong doi - KHONG phai treo (xem duoi)
 WATCH_ALLWAIT_SEC = 120                     # CA PARTY cung cho qua lau = deadlock that
+# Bao cao "dang cho" phai con TUOI thi moi tinh la CHO THAT. Acc cho that lam moi bao cao MOI VONG
+# LAP (~1-2s: reform route, reform ve thanh, PB cho leader, PB cho report) -> tuoi luon ~1s.
+# Bao cao GIA = acc DA di lam viec khac ma khong ai doi pha -> tuoi tang vo han.
+WATCH_WAIT_FRESH_SEC = 15                   # bien rong gap ~7 lan nhip lam moi
 
 
 def _party_watcher(pidx):
@@ -5574,6 +5578,8 @@ def _party_watcher(pidx):
         solo = [(u, d) for u, d in live if d["phase"] in _PHASE_SOLO]
         team = [(u, d) for u, d in live if d["phase"] in _PHASE_TEAM]
         waiting = [(u, d) for u, d in live if d["phase"] == _PHASE_WAIT]
+        # CHI dung cho luat (1) DEADLOCK ben duoi. KHONG dung cho la chan (3) - xem chu thich o do.
+        waiting_tuoi = [(u, d) for u, d in waiting if d["age"] <= WATCH_WAIT_FRESH_SEC]
         # TREO chi tinh cho acc dang LAM. Acc dang CHO dong doi thi im lau la BINH THUONG
         # (xong DG truoc -> doi ca party, co the 2 TIENG; cho leader danh PB 10-20 phut).
         stuck = [(u, d) for u, d in live
@@ -5599,11 +5605,17 @@ def _party_watcher(pidx):
             continue
 
         # 1) CA PARTY CUNG CHO = DEADLOCK THAT (khong ai lam gi de ma cho).
-        if waiting and len(waiting) == len(live):
+        # DUNG waiting_tuoi (bao cao con TUOI) chu KHONG phai waiting.
+        # BUG THAT (party 19 va 35): acc roi vong cho roi di lam viec khac ma KHONG AI doi pha ->
+        # bao cao ket lai o "reform: da ve thanh..., cho ca party" mai mai. Watcher khong xet tuoi
+        # nen thay "ca party deu cho" -> cu 120s ep dong bo mot lan, KEO CA PARTY DANG CHAY TOT ve
+        # thanh. Log: 10:05:16 leader bao "sync kenh/map OK 5/5", 10:05:24 "KEO qua cong ra train
+        # map", 10:05:40 dang danh - the ma 10:07:12 watcher van tuyen bo DEADLOCK.
+        if waiting_tuoi and len(waiting_tuoi) == len(live):
             if allwait_t0 is None:
                 allwait_t0 = time.time()
                 log.warning("[party %d] WATCH: CA PARTY DEU DANG CHO -> %s", pidx + 1,
-                            ", ".join("%s='%s'" % (u, d["task"][:40]) for u, d in waiting))
+                            ", ".join("%s='%s'" % (u, d["task"][:40]) for u, d in waiting_tuoi))
             elif time.time() - allwait_t0 >= WATCH_ALLWAIT_SEC:
                 log.warning("[party %d] WATCH: ca party cho nhau %.0fs -> DEADLOCK, EP DONG BO",
                             pidx + 1, time.time() - allwait_t0)
@@ -5628,6 +5640,10 @@ def _party_watcher(pidx):
 
         # 3) Co acc dang CHO (nhung khong phai tat ca) -> co nguoi dang lam, cho la HOP LE.
         #    Vd: 3 acc xong DG dung cho, 2 acc con dang trong DG -> khong phai lech viec.
+        #    CO Y dung `waiting` (KHONG phai waiting_tuoi): day la LA CHAN. Vong cho DG
+        #    ("xong Di Gioi - cho ca party xong") set bao cao DUNG 1 LAN roi ngu 5s/vong, cho co
+        #    the toi 2 TIENG -> bao cao luon "gia". Neu doi sang waiting_tuoi thi acc do MAT la
+        #    chan -> bo do "lech viec" no oan. Doi ngan gon: la chan de RONG, deadlock de CHAT.
         if waiting:
             mismatch_t0 = None
             continue
