@@ -80,5 +80,42 @@ class TestBanGiaoDGSangTrain(unittest.TestCase):
         self.assertIn('_dt["relogin_train"] = True', self.than[i:i + 600])
 
 
+class TestMoiCHO_PB_hong_deu_khong_giet_party(unittest.TestCase):
+    """RA CA LOP van de, khong va tung cho.
+
+    `_run_auto_team_dungeons_if_needed` tra False cho CA HAI: GUI Stop VA "PB that bai". Moi caller
+    truoc day deu `c.close(); return` -> thread chet khong ghi ly do -> leader_gone -> ca party chet.
+    Bug that: party 19 (PB lv20, roster 1/4) va party 35 (PB lv110, roster 2/4).
+    """
+
+    @staticmethod
+    def _bo_comment(doan):
+        """Chu thich trong code co KE LAI bug cu (chua chinh cac chuoi dang tim: "return False",
+        "_dt[...]") -> khong bo di thi test bat nham loi giai thich. Da dinh 2 lan."""
+        nl = chr(10)
+        return nl.join(d for d in doan.split(nl) if not d.strip().startswith("#"))
+
+    def test_moi_caller_deu_co_guard(self):
+        """Moi cho ma PB tra False dan den `return` deu phai duoc xu ly an toan."""
+        for m in re.finditer(r"if \(?not _run_auto_team_dungeons_if_needed\(", SRC):
+            doan = self._bo_comment(SRC[m.start():m.start() + 1500])
+            ket = doan.split("return")[0]
+            # HAI cach xu ly hop le:
+            #   1. qua guard _pb_that_bai_co_phai_dung_han (chi dung han khi Stop/client chet)
+            #   2. nhanh ban giao DG->train: set relogin_train roi return True (supervisor bat lai)
+            self.assertTrue(
+                "_pb_that_bai_co_phai_dung_han" in ket
+                or '_dt["relogin_train"] = True' in doan.split("return False")[0],
+                "co caller PB con giet thread thang tay: " + doan[:300])
+
+    def test_guard_chi_dung_khi_STOP_hoac_client_chet(self):
+        than = than_ham("_pb_that_bai_co_phai_dung_han")
+        self.assertIn("stopped_fn()", than)
+        self.assertIn('getattr(c, "running", False)', than)
+        # PB hong (khong stop, client con song) -> tra False = KHONG dung han
+        sau = than[than.index("return True"):]
+        self.assertIn("return False", sau, "PB hong van bi coi la ly do dung han")
+
+
 if __name__ == "__main__":
     unittest.main()

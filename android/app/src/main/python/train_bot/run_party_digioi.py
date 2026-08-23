@@ -1761,8 +1761,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if _do_startup_world_boss:
                 _maybe_auto_world_boss("login, truoc pho ban doi")
             if _do_startup_team:
-                if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
-                                                         is_leader, _stopped, pcfg):
+                if (not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
+                                                          is_leader, _stopped, pcfg)
+                        and _pb_that_bai_co_phai_dung_han(c, _stopped, label, role)):
                     try: c.close()
                     except Exception: pass
                     return
@@ -2908,8 +2909,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _go_town_safe(c, label)
                 _maybe_auto_world_boss("het gio DG luc login, truoc pho ban doi")
                 if auto_team_dungeon:
-                    if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
-                                                             is_leader, _stopped, pcfg):
+                    if (not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
+                                                              is_leader, _stopped, pcfg)
+                            and _pb_that_bai_co_phai_dung_han(c, _stopped, label, role)):
                         try: c.close()
                         except Exception: pass
                         if c in _clients: _clients.remove(c)
@@ -2941,8 +2943,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _go_town_safe(c, label)   # ve thanh truoc (thoat o quai) roi lam dailies
                 _maybe_auto_world_boss("khong vao duoc DG, truoc pho ban doi")
                 if auto_team_dungeon:
-                    if not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
-                                                             is_leader, _stopped, pcfg):
+                    if (not _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
+                                                              is_leader, _stopped, pcfg)
+                            and _pb_that_bai_co_phai_dung_han(c, _stopped, label, role)):
                         try: c.close()
                         except Exception: pass
                         if c in _clients: _clients.remove(c)
@@ -4957,6 +4960,26 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
     log.info("[%s] (LEADER) phó bản đội lv%d: không phải cả party đều còn lượt (đã hết: %s) -> bỏ qua",
              label, level, done)
     return True
+
+
+def _pb_that_bai_co_phai_dung_han(c, stopped_fn, label, role):
+    """PB to doi tra False: co PHAI ly do de DUNG HAN thread khong?
+
+    `_run_auto_team_dungeons_if_needed` tra False cho CA HAI ca: GUI Stop, va PB that bai (vd
+    "roster phong chi 2/4 member -> HUY danh" theo rule "phai du pt"). Caller khong phan biet
+    duoc nen truoc day cu `c.close(); return` -> thread chet MA KHONG GHI LY DO -> reconnectable
+    = False -> st["leader_gone"].set() -> member thay leader chet that -> THOAT THEO -> CA PARTY
+    CHET, phai bat tay lai.
+
+    BUG THAT: party 19 (13:46 PB lv20 roster 1/4) va party 35 (13:48 PB lv110 roster 2/4) - ca hai
+    deu chet ca party ngay sau khi PB bi huy.
+
+    CHI dung han khi THUC SU la Stop hoac client da chet. PB hong thi chay tiep viec khac."""
+    if stopped_fn() or not getattr(c, "running", False):
+        return True
+    log.warning("[%s] (%s) pho ban to doi khong xong -> KHONG bo party, chay tiep viec khac",
+                label, role)
+    return False
 
 
 def _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, stopped_fn, pcfg):
