@@ -1,10 +1,20 @@
 """Doc TRUNG THANH (忠誠) va CO DA MO DAC KY (武將特有技) cua tung pet.
 
-Ca hai nam SAN trong goi PET LIST bot da nhan tu truoc (S:015-008 = 0x0f sub08) - chi la truoc
-day khong doc toi. Thu tu truong theo Logic/Role.lua FollowNpcAppear:
+Ca hai nam SAN trong goi PET LIST (S:015-008 = 0x0f sub08). Thu tu truong lay tu
+Logic/Role.lua FollowNpcAppear (doi chieu protocal.lua S:015-008):
     +26 dieCount | +27 Faith | +28 canGrow | +29 SkillPoint(2) | +31 namelen
-    +32 ten | +32+nl skillLv*3 | +35+nl sublimeCount | +36+nl specialSkillLearned
-3 moc +29 / +31 / +32+nl da duoc bot dung tu truoc va DUNG -> bang offset nay tin duoc.
+    +32 ten | +32+nl skillLv * maxNpcSkill(3)
+    roi TRANG BI PET: maxEquip(6) x ThingData(35B) = 210 BYTE
+    roi sublimeCount(1) | specialSkillLearned(1) | soulId(4) | hpPill(1) | spPill(1) | upgradeLv(1)
+
+LOI DA TUNG MAC (sua 2026-08-23): doc co dac ky o +36+nl, tuc BO QUA 210 byte trang bi -> doc
+RAC giua khoi trang bi. Tren goi THAT byte do ra 78/80 - khong the la boolean.
+Ly le tu tran an luc do cung sai: "cac moc +29/+31/+32+nl dung nen bang offset tin duoc" - may
+moc do nam TRUOC khoi dai thay doi, dung o do khong chung minh duoc gi cho truong nam SAU.
+Va TEST cu cung sai kieu VONG TRON: no tu dung goi bang CHINH offset can kiem -> luon xanh du
+offset sai. Nay test bang BAN GHI THAT lay tu vt_kholog.pcap.
+
+Co dung o record_end - 8 (sau no la soulId 4 + hpPill 1 + spPill 1 + upgradeLv 1) = +246+nl.
 
 DAC KY phai LAM NHIEM VU moi mo. Client chi cho dung khi CO CO (RoleController.lua:4786):
     if self.data.specialSkillLearned and skillDatas[npcDatas[self.npcId].specialSkill] ~= nil
@@ -19,21 +29,38 @@ from bot.client import GameClient
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# BAN GHI THAT lay tu vt_kholog.pcap (pet 3: Quan Vu 0xa05a, nl=16, sublime=1, hpPill=6,
+# spPill=6). Nhung nguyen ven thay vi tu dung goi -> khong the "test vong tron".
+REC_THAT = bytes.fromhex(
+    "035aa06f1421003b4704000026002b0095003f004c0044001a000064010000105100750061006e002000560069010000"
+    "0a050ab74e0100000000000000000000000000000000000000000000000000000000000000003e4a0100000000000000"
+    "00000000000000000000000000000000000000000000000000e62e010000000000000000000000000000000000000000"
+    "000000000000000000000000d652010000000000000000000000000000000000000000000000000000000000000000f6"
+    "550100000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000"
+    "000000000000000000000000000000000000000000010000000000060600"
+)
+
+
 def pet_record(marker, pid, name, faith, special, skill_lv=(1, 2, 3), level=45, skill_point=7):
-    """Dung 1 ban ghi pet y het layout that (dai 254 + namelen)."""
+    """1 ban ghi pet: lay BAN GHI THAT roi sua cac truong can test.
+
+    Do dai 254+nl da duoc kiem tren 5 capture that: duyet het ban ghi thi ket thuc DUNG cuoi goi
+    (837/837, 839/839, 819/819, 829/829, 547/547)."""
     nl = len(name) * 2
-    r = bytearray(254 + nl)
+    r = bytearray(REC_THAT)
+    goc_nl = r[31]
+    if nl != goc_nl:                      # doi do dai ten -> chen/cat DUNG trong vung ten
+        r[32:32 + goc_nl] = bytes(nl)
+        r[31] = nl
     r[0] = marker
     r[1:3] = pid.to_bytes(2, "little")
     r[7] = level
     r[27] = faith
     r[29:31] = skill_point.to_bytes(2, "little")
-    r[31] = nl
     r[32:32 + nl] = name.encode("utf-16-le")
     r[32 + nl:35 + nl] = bytes(skill_lv)
-    r[35 + nl] = 0                              # sublimeCount
-    r[36 + nl] = 1 if special else 0            # specialSkillLearned
-    return bytes(r)
+    r[246 + nl] = 1 if special else 0     # specialSkillLearned = record_end - 8
+    return bytes(r[:254 + nl])
 
 
 class _State:
@@ -238,6 +265,40 @@ class TestAllTargetChonDatNhat(unittest.TestCase):
         self.assertEqual(danh(400), sp, "du SP ma khong dung dac ky")
         self.assertEqual(danh(C.SKILL_INFO[sp]["cost"] - 6), re_nhat,
                          "thieu SP thi phai dung skill all-target re, khong duoc mat luot")
+
+
+class TestOffsetCoDacKy(unittest.TestCase):
+    """Chan TAI PHAM offset co dac ky. Bug that: user bao 'MacLienNhat co Chu Du da hoc dac ky
+    ma bot khong thay' -> hoa ra doc o +36+nl, tuc BO QUA 210 byte trang bi (6 x ThingData 35B)."""
+
+    def test_byte_o_offset_CU_KHONG_phai_boolean(self):
+        """Bang chung offset cu sai: tren ban ghi THAT, byte do la 78 - khong the la co bat/tat."""
+        nl = REC_THAT[31]
+        self.assertNotIn(REC_THAT[36 + nl], (0, 1),
+                         "byte @36+nl bong nhien la boolean -> ban ghi mau da bi doi, xem lai test")
+
+    def test_byte_o_offset_MOI_la_boolean(self):
+        nl = REC_THAT[31]
+        self.assertIn(REC_THAT[246 + nl], (0, 1))
+
+    def test_co_nam_dung_record_end_tru_8(self):
+        """Sau co la soulId(4) + hpPill(1) + spPill(1) + upgradeLv(1) = 7 byte -> co o end-8."""
+        nl = REC_THAT[31]
+        self.assertEqual(246 + nl, len(REC_THAT) - 8)
+
+    def test_cac_truong_duoi_ban_ghi_that_deu_hop_ly(self):
+        """Neu lech 1 byte thi ca day nay vo nghia ngay -> day la moc can chinh cua offset."""
+        end = len(REC_THAT)
+        self.assertEqual(REC_THAT[end - 9], 1, "sublimeCount")
+        self.assertEqual(REC_THAT[end - 8], 0, "specialSkillLearned")
+        self.assertEqual(int.from_bytes(REC_THAT[end - 7:end - 3], "little"), 0, "soulId")
+        self.assertEqual(REC_THAT[end - 3], 6, "hpPillCount")
+        self.assertEqual(REC_THAT[end - 2], 6, "spPillCount")
+
+    def test_code_that_khong_con_dung_offset_cu(self):
+        src = (ROOT / "bot" / "client.py").read_text(encoding="utf-8")
+        self.assertNotIn("start + 36 + _nl", src, "quay lai offset CU (bo qua trang bi pet)")
+        self.assertIn("start + 246 + _nl", src)
 
 
 if __name__ == "__main__":

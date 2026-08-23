@@ -1438,6 +1438,20 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   không pop slot mù rồi refresh liên tục.
 - Danh sách pet kho vận tiêu lấy từ S2C `0x1f sub0600`, index này là index gửi lại bằng
   C2S `0x56 0200 [pet_index]`.
+- **Cờ ĐÃ MỞ ĐẶC KỸ của pet nằm ở `record_end - 8` trong `S:015-008`, KHÔNG phải `+36+namelen`**
+  (sửa 2026-08-23). Thứ tự thật (`Role.lua FollowNpcAppear`):
+  `+32 tên(L)` → `skillLv × maxNpcSkill(3)` → **trang bị pet: maxEquip(6) × ThingData(35B) = 210
+  byte** → `sublimeCount(1)` → `specialSkillLearned(1)` → `soulId(4)` → `hpPill(1)` → `spPill(1)`
+  → `upgradeLv(1)`.
+
+  ⚠️ Bot từng đọc ở `+36+nl`, tức **bỏ qua trọn 210 byte trang bị** → đọc rác giữa khối trang bị
+  (trên gói thật byte đó ra **78/80** — không thể là boolean). Lý lẽ tự trấn an lúc đó cũng sai:
+  *"các mốc `+29/+31/+32+nl` dùng lâu rồi và đúng nên bảng offset tin được"* — mấy mốc đó nằm
+  **TRƯỚC** khối dài thay đổi, đúng ở đó không chứng minh được gì cho trường nằm **SAU**.
+
+  Cách neo đáng tin: cờ ở `record_end - 8` (sau nó là 7 byte cố định). Độ dài bản ghi `254+nl` đã
+  kiểm trên **5 capture thật** — duyệt hết bản ghi thì kết thúc **khít cuối gói**
+  (837/837, 839/839, 819/819, 829/829, 547/547). Kiểm chéo: `32+nl + 3 + 210 + 1 = 246+nl`.
 - **Cấu trúc bản ghi `S:031-006` `<客棧武將資料>`** (đã bóc từ `vt_kholog.pcap`, KHÔNG phải đoán —
   đối chiếu `npc_names.json` khớp **4/4**):
 

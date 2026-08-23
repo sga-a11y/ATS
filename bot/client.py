@@ -3225,16 +3225,30 @@ class GameClient:
                 _lv = list(b[start + 32 + _nl:start + 32 + _nl + 3])
                 if len(_lv) == 3:
                     self._pet_skill_rows.append((marker, pid, b[start + 7], _sp, _lv))
-                # TRUNG THANH + DA MO DAC KY: 2 truong nam SAN trong chinh goi nay, truoc day
-                # khong doc. Thu tu truong theo Logic/Role.lua FollowNpcAppear:
+                # TRUNG THANH + DA MO DAC KY. Thu tu truong theo Logic/Role.lua FollowNpcAppear
+                # (doi chieu them protocal.lua S:015-008):
                 #   +26 dieCount | +27 Faith(忠誠) | +28 canGrow | +29 SkillPoint(2) | +31 namelen
-                #   +32 ten | +32+nl skillLv*3 | +35+nl sublimeCount | +36+nl specialSkillLearned
-                # 3 moc +29/+31/+32+nl da duoc dung tu truoc va DUNG -> bang offset nay tin duoc.
+                #   +32 ten | +32+nl skillLv * maxNpcSkill(=3)
+                #   roi TRANG BI PET: maxEquip(=6) x ThingData(35B) = 210 BYTE
+                #   roi sublimeCount(1) | specialSkillLearned(1) | soulId(4) | hpPill(1)
+                #      | spPill(1) | upgradeLv(1)
+                #
+                # LOI CU (sua 2026-08-23, user bao "MacLienNhat co Chu Du da hoc dac ky ma bot
+                # khong thay"): doc co o +36+nl, tuc BO QUA TRON 210 BYTE TRANG BI -> roi vao
+                # giua khoi trang bi, doc RAC. Ly le tu tran an luc do cung sai: "cac moc +29/+31/
+                # +32+nl dung nen bang offset tin duoc" - may moc do nam TRUOC khoi dai thay doi,
+                # dung o do KHONG chung minh duoc gi cho truong nam SAU no.
+                #
+                # Nay neo tu CUOI ban ghi: sau co dac ky con dung 8 byte CO DINH (soulId 4 +
+                # hpPill 1 + spPill 1 + upgradeLv 1 + chinh no 1) -> co = record_end - 8.
+                # Do dai ban ghi 254+nl da duoc dung lau va DUNG (ten/pid/faith deu chuan).
+                # Kiem cheo: 32+nl (sau ten) + 3 (skillLv) + 210 + 1 (sublime) = 246+nl -> khop.
+                #
                 # specialSkillLearned = "DA MO dac ky chua" (dac ky phai lam nhiem vu moi co).
                 # Client chi cho dung dac ky khi CO CO NAY (RoleController.lua:4786):
                 #   if self.data.specialSkillLearned and skillDatas[npcDatas[id].specialSkill] then
                 self.pet_faith[pid] = b[start + 27]
-                self.pet_special_skill[pid] = bool(b[start + 36 + _nl])
+                self.pet_special_skill[pid] = bool(b[start + 246 + _nl])
                 # GUI (tab skill per-pet) doc tu STATE chu khong co client -> cho state thay chung
                 self.state.pet_faith = self.pet_faith
                 self.state.pet_special_skill = self.pet_special_skill
