@@ -257,10 +257,23 @@ class BattleState:
             # enemy_slots = TAT CA slot con song theo enemy_hp TICH LUY (khong chi goi nay).
             # Tranh mat con khong bi danh trong turn (vd giet 1-2-3 con con o slot 7 van song).
             self.enemy_slots = sorted(s for s, hp in self.enemy_hp.items() if hp > 0)
-            # LATCH quest_mode: dem so quai LUC START tran (lan dau thay quai). >6 -> QUEST ca tran.
-            if not self._battle_counted and self.enemy_slots:
-                self._battle_counted = True
-                start_enemy_slots = tuple(self.enemy_slots)
+            # LATCH quest_mode: TRAN CO >6 QUAI -> QUEST ca tran (yeu cau user, tuyet doi).
+            #
+            # BUG THAT (party 1, map 12930 thap 2K, 66 tran khong lan nao vao quest mode): truoc day
+            # chi cham DUNG MOT LAN o `not self._battle_counted` = lan DAU thay quai. Nhung quai
+            # xep theo HANG, moi hang toi da 5 con -> goi 0x33 dau tien thuong chi mang 1 hang
+            # (<=5) -> cham False roi KHOA LUON, 5 con hang sau den cung khong xet lai.
+            # Ket qua: dung nhung tran 10 quai (2 hang) - tuc dung luc rule >6 CAN chay nhat - thi
+            # no khong bao gio chay. Bang chung: char co CC 11014 Bang Phong ma 0 lan dung.
+            #
+            # Nay xet MOI lan du lieu quai doi. Chi BAT len True, khong bao gio ha -> giet bot quai
+            # con <=6 van giu quest ca tran (dung y dinh cu cua latch).
+            if self.enemy_slots:
+                # _battle_counted / start_enemy_slots van la "LAN DAU thay quai" - thong ke block
+                # train (_record_train_block_stats) can dung nghia do, KHONG duoc gop vao latch.
+                if not self._battle_counted:
+                    self._battle_counted = True
+                    start_enemy_slots = tuple(self.enemy_slots)
                 if self.force_quest_mode or len(self.enemy_slots) > 6:
                     self.quest_mode = True
         # DI GIOI SOLO: 4 pet CUNG LUC, moi con atype RIENG (b1=2, b2=atype - xac nhan qua capture
