@@ -7604,35 +7604,40 @@ class GameClient:
         Ghi CA pet id: id la khoa ON DINH de user tick pet nao duoc van tieu (index nha tro XE DICH
         khi them/bot pet -> tick theo index se truot sang con khac)."""
         b = pkt[7:]
-        roster, ids, pos = {}, {}, 2
-        while pos + 13 < len(b):
+        # GOM DON theo index, KHONG thay ca bang. Client lam dung the: protocolTable[31][6] chi
+        # goi Inn.SaveNpc(index,...) ghi vao O this.npcs[index]; xoa sach chi o Inn.Clear() rieng.
+        # BUG THAT (user bao "chi nhan dung 1 con"): bot gan `self.vantieu_roster = roster` = THAY
+        # SACH moi goi -> server chia pet ra nhieu goi thi GOI CUOI THANG, chi con 1 con (acc
+        # quanmot con moi index 3, khong phai con dau -> dung la goi cuoi thang chu khong phai
+        # parse hong).
+        roster = dict(self.vantieu_roster or {})
+        ids = dict(self.vantieu_roster_ids or {})
+        moi, pos = {}, 2
+        while pos + 14 <= len(b):
             index = b[pos]
             npc_id = struct.unpack_from("<H", b, pos + 1)[0]
             ln = b[pos + 12]
             npos = pos + 13
-            if ln <= 0 or npos + ln > len(b):
-                pos += 1
-                continue
+            if npos + ln + 1 > len(b):
+                break                        # cut goi -> dung, KHONG do lai
             vung = b[npos:npos + ln]
-            # Tim \0\0 tai vi tri CHAN thoi: ten UTF-16 ket thuc bang 'i' (=69 00) roi terminator
-            # 00 00 -> chuoi byte ...69 00 00 00, bytes.find(b"\0\0") bat trung cap LECH (tra ve
-            # offset le) -> cat mat ky tu cuoi. Phai duyet theo tung ky tu 2 byte.
+            # L la do dai VUNG ten, ten ket thuc \x00 BEN TRONG vung, phan du la RAC. Tim \x00\x00 o
+            # vi tri CHAN: ten ket thuc 'i' (69 00) roi terminator 00 00 -> chuoi ...69 00 00 00,
+            # bytes.find(b"\x00\x00") bat trung cap LECH -> cat mat ky tu cuoi.
             cut = len(vung) - (len(vung) % 2)
             for k in range(0, len(vung) - 1, 2):
                 if vung[k:k + 2] == b"\x00\x00":
                     cut = k
                     break
-            try:
-                name = vung[:cut].decode("utf-16-le")
-            except Exception:
-                name = ""
-            if name and 1 <= index <= 30 and all(0x20 <= ord(c) for c in name):
-                roster[index] = name
+            name = vung[:cut].decode("utf-16-le", "ignore")
+            pos = npos + ln + 1              # +1 = byte trang thai; bo cuc CO DINH -> nhay thang
+            # KHONG loai ban ghi theo NOI DUNG ten. Parser cu doi ten "toan ky tu in duoc", sai
+            # mot cai la do lui `pos += 1` -> lech het phan sau (acc quanmot mat 2 con dau).
+            if 1 <= index <= 30 and name:
+                moi[index] = name
                 ids[index] = npc_id
-                pos = npos + ln + 1          # +1 = byte trang thai vo tuong
-            else:
-                pos += 1
-        if roster:
+        roster.update(moi)
+        if moi:
             self.vantieu_roster = roster
             self.vantieu_roster_ids = ids
             log.info("[%s] Van tieu roster (kho): %s", self._label,
