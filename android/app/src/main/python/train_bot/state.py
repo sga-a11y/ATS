@@ -128,14 +128,24 @@ class BattleState:
             return
         self.in_battle = tracker.active
         self.enemy_gen = tracker.revision
-        self.enemy_hp = {
+        # CHI dung tracker lam nguon quai khi tracker THUC SU CO ban ghi quai.
+        #
+        # BUG THAT (party 1, "vao tran ma bot khong danh"): roster quai den trong goi S:011-005;
+        # neu ban ghi nao lam lech con tro thi _parse_roles BO SACH ca danh sach (im lang) ->
+        # tracker.units khong co con quai nao. Ham nay truoc day GHI DE VO DIEU KIEN -> xoa luon
+        # enemy_hp/enemy_slots ma 0x33 vua doc DUNG (0x33 co ca 2 hang: pos = b1*10 + b2) ->
+        # bot con 0 muc tieu -> dung im du in_battle=True.
+        # Tracker CO quai (ke ca da chet het, hp=0) thi van la nguon dung -> ghi de binh thuong.
+        _quai_tracker = {
             row * 10 + col: unit.hp
             for (row, col), unit in tracker.units.items()
             if row in (0, 1)
         }
-        self.enemy_slots = sorted(
-            position for position, hp in self.enemy_hp.items() if hp > 0
-        )
+        if _quai_tracker:
+            self.enemy_hp = _quai_tracker
+            self.enemy_slots = sorted(
+                position for position, hp in self.enemy_hp.items() if hp > 0
+            )
         if self.self_entity:
             for (row, col), tracked in tracker.units.items():
                 if row == 3 and tracked.role_id == self.self_entity:

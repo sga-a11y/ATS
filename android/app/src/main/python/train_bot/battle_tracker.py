@@ -165,7 +165,9 @@ class BattleTracker:
     def _create(self, data: bytes):
         if len(data) < 3:
             return ()
-        units = self._parse_roles(data[3:])
+        # _create THAY NGUYEN tran -> du lieu MOT PHAN o day la nguy hiem (goi cat cut se xoa
+        # mat tran dang chay). Giu nghiem: hong thi KHONG dung gi ca.
+        units = self._parse_roles(data[3:], tag="create")
         if units is None:
             return ()
         self.generation += 1
@@ -184,8 +186,10 @@ class BattleTracker:
         return tuple(events)
 
     def _spawn(self, data: bytes):
-        units = self._parse_roles(data)
-        if units is None:
+        # _spawn chi THEM unit vao tran dang co -> lay duoc bao nhieu tot bay nhieu. Truoc day
+        # hong 1 ban ghi la bo SACH danh sach (im lang) -> mat het roster quai.
+        units = self._parse_roles(data, tag="spawn", mot_phan=True)
+        if not units:
             return ()
         for unit in units:
             self.units[unit.position] = unit
@@ -194,29 +198,41 @@ class BattleTracker:
         return tuple(self._spawn_event(unit) for unit in units)
 
     @classmethod
-    def _parse_roles(cls, data: bytes):
+    def _parse_roles(cls, data: bytes, tag: str = "", mot_phan: bool = False):
+        """Doc danh sach nhan vat tham chien (S:011-005 / S:011-250).
+
+        TRUOC DAY: gap bat ky loi nao la `return None` -> caller VUT BO TOAN BO danh sach, va
+        KHONG LOG GI. Hau qua that (party 1, map thap 2K): phe minh (role_kind thuoc
+        PLAYER_ROLE_KINDS) parse duoc, nhung neu ban ghi QUAI co role_kind la khac -> lech con tro
+        -> mat SACH roster quai -> tracker khong co muc tieu nao -> BOT VAO TRAN KHONG DANH, ma
+        khong mot dong log nao.
+        NAY: giu lai nhung ban ghi DA doc duoc truoc cho hong (chung parse voi offset dung nen van
+        tin duoc), va LOG ro hong o dau. Du lieu MOT PHAN van hon khong co gi."""
         units = []
         offset = 0
         while offset < len(data):
             chunk = data[offset:offset + ROLE_HEADER_SIZE]
             if len(chunk) != ROLE_HEADER_SIZE:
-                return None
+                return cls._hong(tag, "thieu byte header", offset, data, units, mot_phan)
             values = struct.unpack_from(ROLE_HEADER_FORMAT, chunk)
             war_type, role_kind, role_id, template_id, master_id = values[:5]
             row, col, hp_max, sp_max, hp, sp, level, upgrade, element = values[5:]
             if row > 3 or col > 5:
-                return None
+                return cls._hong(tag, "row=%d col=%d ngoai bang (role_kind=%d)"
+                                 % (row, col, role_kind), offset, data, units, mot_phan)
             cursor = offset + ROLE_HEADER_SIZE
             name = ""
             if role_kind in PLAYER_ROLE_KINDS:
                 parsed = cls._parse_player_appearance(data, cursor)
                 if parsed is None:
-                    return None
+                    return cls._hong(tag, "doc ngoai hinh nguoi choi hong (role_kind=%d)"
+                                     % role_kind, offset, data, units, mot_phan)
                 name, cursor = parsed
             elif role_kind in NAMED_NPC_ROLE_KINDS:
                 parsed = cls._parse_name(data, cursor)
                 if parsed is None:
-                    return None
+                    return cls._hong(tag, "doc ten NPC hong (role_kind=%d)" % role_kind,
+                                     offset, data, units, mot_phan)
                 name, cursor = parsed
             units.append(BattleUnit(
                 row=row,
@@ -238,6 +254,29 @@ class BattleTracker:
             ))
             offset = cursor
         return units
+
+    _parse_warned = set()
+
+    @classmethod
+    def _hong(cls, tag, ly_do, offset, data, units, mot_phan):
+        """Log roi tra ket qua: nhanh CHO PHEP mot phan thi giu nhung ban ghi doc duoc (chung
+        parse voi offset dung nen van tin duoc); nhanh NGHIEM (create) tra None de caller khong
+        dung gi ca."""
+        cls._log_parse_hong(tag, ly_do, offset, data, units)
+        return units if mot_phan else None
+
+    @classmethod
+    def _log_parse_hong(cls, tag: str, ly_do: str, offset: int, data: bytes, units):
+        """Log 1 lan cho moi ly do - de biet NGAY ban ghi nao lam lech, thay vi im lang mat roster."""
+        if ly_do.split("(")[0] in cls._parse_warned:
+            return
+        if len(cls._parse_warned) > 50:
+            cls._parse_warned.clear()
+        cls._parse_warned.add(ly_do.split("(")[0])
+        log.warning("[BATTLE] doc roster%s HONG tai offset %d/%d: %s -> giu %d ban ghi doc duoc, "
+                    "BO phan con lai. raw[%d:%d]=%s",
+                    (" " + tag) if tag else "", offset, len(data), ly_do, len(units),
+                    offset, offset + 24, data[offset:offset + 24].hex())
 
     @staticmethod
     def _parse_name(data: bytes, offset: int):
