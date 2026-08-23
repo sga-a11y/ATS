@@ -146,6 +146,11 @@ class BattleState:
             self.enemy_slots = sorted(
                 position for position, hp in self.enemy_hp.items() if hp > 0
             )
+            # PHAI cham latch O DAY NUA. Truoc day latch CHI nam trong update_0x33; sau khi sua
+            # loi roster (bot coi QUAI MapNpc=3 la nguoi choi) thi TRACKER tro thanh nguon quai
+            # chinh -> 10 quai vao bang duong nay ma KHONG AI XET -> tran 10 quai van khong vao
+            # quest mode (user bao dung: "tran 1 quai danh luon roi ma tran 10 quai van khong vao").
+            self.latch_quest_mode()
         if self.self_entity:
             for (row, col), tracked in tracker.units.items():
                 if row == 3 and tracked.role_id == self.self_entity:
@@ -177,6 +182,15 @@ class BattleState:
             for position, by_kind in tracker.statuses.items()
         }
         self._refresh_tracked_status()
+
+    def latch_quest_mode(self):
+        """RULE (user, tuyet doi): tran co >6 quai thi PHAI vao quest mode.
+
+        Xet MOI lan du lieu quai doi, chi BAT len True khong bao gio ha (giet bot quai con <=6 van
+        giu quest ca tran). Goi tu CA HAI nguon quai: update_0x33 va sync_from_tracker - de mot
+        nguon nao do tro thanh nguon chinh thi luat van chay."""
+        if self.force_quest_mode or len(self.enemy_slots) > 6:
+            self.quest_mode = True
 
     def reset_battle(self):
         self.mobs = []
@@ -284,8 +298,7 @@ class BattleState:
                 if not self._battle_counted:
                     self._battle_counted = True
                     start_enemy_slots = tuple(self.enemy_slots)
-                if self.force_quest_mode or len(self.enemy_slots) > 6:
-                    self.quest_mode = True
+                self.latch_quest_mode()
         # DI GIOI SOLO: 4 pet CUNG LUC, moi con atype RIENG (b1=2, b2=atype - xac nhan qua capture
         # thuc te: b2 trong 0x33 CHINH LA atype dung de gui 0x32, KHONG can quy doi them). Cap nhat
         # RIENG cho tung atype, KHONG dua vao self_slot (self_slot chi ung voi pet DUY NHAT truong

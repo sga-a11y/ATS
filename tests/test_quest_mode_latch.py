@@ -88,21 +88,33 @@ class TestQuestModeLatch(unittest.TestCase):
 
 
 class TestLuatNamTrongCodeThat(unittest.TestCase):
-    def test_update_0x33_khong_con_khoa_latch_sau_lan_dau(self):
-        """Chan tai pham: neu ai do gan lai dieu kien latch vao `not self._battle_counted` thi
-        bug cu quay lai ngay."""
+    """Chan tai pham cho CA HAI kieu hong da tung gap."""
+
+    def test_latch_KHONG_bi_long_vao_nhanh_lan_dau(self):
+        """Hong lan 1: latch nam trong `if not self._battle_counted:` -> chi cham 1 lan, tran 2
+        hang quai (goi dau <=5) khong bao gio vao quest mode."""
         import inspect
         src = inspect.getsource(BattleState.update_0x33)
-        i = src.index("LATCH quest_mode")
-        doan = src[i:i + 1400]
-        self.assertIn("if self.force_quest_mode or len(self.enemy_slots) > 6:", doan)
-        vt_latch = doan.index("len(self.enemy_slots) > 6")
-        vt_counted = doan.index("if not self._battle_counted:")
-        self.assertLess(vt_counted, vt_latch, "cau truc doi - xem lai")
-        # dieu kien latch KHONG duoc nam trong than cua `if not self._battle_counted:`
-        than = doan[vt_counted:vt_latch]
+        vt_counted = src.index("if not self._battle_counted:")
+        vt_latch = src.index("self.latch_quest_mode()")
+        than = src[vt_counted:vt_latch]
         self.assertIn("start_enemy_slots", than)
-        self.assertLessEqual(than.count("\n"), 4, "latch bi long vao trong nhanh lan-dau")
+        self.assertLessEqual(than.count(chr(10)), 4, "latch bi long vao trong nhanh lan-dau")
+
+    def test_CA_HAI_nguon_quai_deu_cham_latch(self):
+        """Hong lan 2: sau khi sua loi roster, TRACKER thanh nguon quai chinh, ma latch chi nam o
+        update_0x33 -> 10 quai vao bang duong tracker thi khong ai xet."""
+        import inspect
+        for ten in ("update_0x33", "sync_from_tracker"):
+            src = inspect.getsource(getattr(BattleState, ten))
+            self.assertIn("self.latch_quest_mode()", src, "%s khong cham latch" % ten)
+
+    def test_luat_chi_nam_o_MOT_cho(self):
+        """Tranh chep tay 2 ban luat roi lech nhau."""
+        import inspect
+        src = inspect.getsource(BattleState)
+        self.assertEqual(src.count("len(self.enemy_slots) > 6"), 1,
+                         "luat >6 bi chep o nhieu cho")
 
 
 if __name__ == "__main__":
