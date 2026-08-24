@@ -17,6 +17,13 @@ from ._appdir import app_dir
 _LOCK = threading.Lock()
 _FILE = "train_block_stats.json"
 MAX_SPOT_BATTLES = 100_000   # toi da so tran ghi/diem (du thay ti le, file khoi phinh)
+MAX_SPOT_MOBS = 100_000      # toi da so CON quai ghi/diem - dem RIENG voi so tran
+
+# EElement (Logic_Fight_Skill.lua:547). Npc_C.dat dung 0 cho VO HE; so 6 (None) khong con nao dung.
+ELEMENT_NAMES = {0: "Vô hệ", 1: "Địa", 2: "Thủy", 3: "Hỏa", 4: "Phong",
+                 5: "Tâm", 6: "Vô hệ", 7: "Quang", 8: "Ám"}
+
+_NPC_TABLE = None
 
 
 def _path() -> str:
@@ -136,11 +143,28 @@ def block_pattern_from_slots(enemy_slots: Iterable[int]) -> str:
     return block_pattern_from_cells(cells_from_enemy_slots(enemy_slots))
 
 
-def record_battle(map_id: int, spot, enemy_slots: Iterable[int]) -> dict | None:
+def _tids_for_cells(cells, pos_tids) -> list[int]:
+    """template_id cua TUNG O quai. Thieu du lieu 1 o -> tra rong, BO QUA ca tran.
+
+    Ghi thieu con lam lech ti le he/level (cai duy nhat bang nay dung de tinh), nen tha khong ghi.
+    """
+    if not pos_tids:
+        return []
+    out = []
+    for row, col in cells:
+        got = pos_tids.get(row * 10 + col)
+        if not got:
+            return []
+        out.append(int(sorted(got)[0]))
+    return out
+
+
+def record_battle(map_id: int, spot, enemy_slots: Iterable[int], enemy_pos_tids=None) -> dict | None:
     cells = cells_from_enemy_slots(enemy_slots)
     if not cells:
         return None
     pattern = block_pattern_from_cells(cells)
+    tids = _tids_for_cells(cells, enemy_pos_tids)
     mkey = str(int(map_id))
     skey = spot_key(spot)
     now = int(time.time())
@@ -151,16 +175,29 @@ def record_battle(map_id: int, spot, enemy_slots: Iterable[int]) -> dict | None:
                          .setdefault(mkey, {})
                          .setdefault("spots", {})
                          .setdefault(skey, {"total": 0, "patterns": {}}))
-        if int(spot_data.get("total", 0)) >= MAX_SPOT_BATTLES:
+        # 2 bo dem DOC LAP: block dem theo TRAN, quai dem theo CON. Diem da day tran van con ghi
+        # duoc quai (va nguoc lai) - neu dung chung 1 tran thi cai day truoc giet luon cai kia.
+        block_full = int(spot_data.get("total", 0)) >= MAX_SPOT_BATTLES
+        mob_full = sum(int(v) for v in (spot_data.get("mobs") or {}).values()) >= MAX_SPOT_MOBS
+        if block_full and mob_full:
             return None
-        spot_data["total"] = int(spot_data.get("total", 0)) + 1
+
         patterns = spot_data.setdefault("patterns", {})
-        patterns[pattern] = int(patterns.get(pattern, 0)) + 1
-        spot_data["last_slots"] = [f"{row}:{col}" for row, col in cells]
-        spot_data["last_pattern"] = pattern
+        if not block_full:
+            spot_data["total"] = int(spot_data.get("total", 0)) + 1
+            patterns[pattern] = int(patterns.get(pattern, 0)) + 1
+            spot_data["last_slots"] = [f"{row}:{col}" for row, col in cells]
+            spot_data["last_pattern"] = pattern
+        if tids and not mob_full:
+            # Dem theo CON: 3 con lv89 + 1 con lv90 -> +3 va +1 (ra dung TI LE quai cua diem).
+            mobs = spot_data.setdefault("mobs", {})
+            for tid in tids:
+                k = str(tid)
+                mobs[k] = int(mobs.get(k, 0)) + 1
         spot_data["updated_at"] = now
         _save_unlocked(data)
-        return {"total": spot_data["total"], "pattern": pattern, "count": patterns[pattern]}
+        return {"total": int(spot_data.get("total", 0)), "pattern": pattern,
+                "count": int(patterns.get(pattern, 0))}
 
 
 def get_spot_summary(map_id: int, spot) -> dict:
@@ -174,4 +211,59 @@ def get_spot_summary(map_id: int, spot) -> dict:
 def format_patterns(patterns: dict, limit: int = 6) -> str:
     rows = sorted(((str(k), int(v)) for k, v in (patterns or {}).items()),
                   key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join(f"{k}: {v}" for k, v in rows[:limit])
+
+
+def _npc_table() -> dict:
+    """npc_table.json (AUTO tools/crack_npc_table.py): tid -> {name, level, element, ...}.
+
+    File thong ke chi luu template_id; he/level tra o DAY luc hien. Khong chep he/level vao file
+    thong ke: chep du lieu game sang file khac la se lech khi game doi (bai hoc Servers.kt).
+    """
+    global _NPC_TABLE
+    if _NPC_TABLE is None:
+        _NPC_TABLE = {}
+        try:
+            from .config import _base_dir
+            with open(os.path.join(_base_dir(), "npc_table.json"), encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                _NPC_TABLE = data
+        except Exception:
+            pass
+        if not _NPC_TABLE:      # Android: file nam trong assets/train_bot_data
+            try:
+                from .config import _read_asset
+                data = json.loads(_read_asset("npc_table.json"))
+                if isinstance(data, dict):
+                    _NPC_TABLE = data
+            except Exception:
+                pass
+    return _NPC_TABLE
+
+
+def mob_label(tid) -> str:
+    """tid -> 'Thủy lv110'. Khong tra duoc thi giu nguyen id (khong doan bua)."""
+    info = _npc_table().get(str(int(tid))) or {}
+    if not info:
+        return f"id {tid}"
+    elem = ELEMENT_NAMES.get(int(info.get("element") or 0), "?")
+    return f"{elem} lv{int(info.get('level') or 0)}"
+
+
+def mob_name(tid) -> str:
+    info = _npc_table().get(str(int(tid))) or {}
+    return str(info.get("name") or f"id {tid}")
+
+
+def format_mobs(mobs: dict, limit: int = 8) -> str:
+    """'Thủy lv110: 7777, Hỏa lv112: 6666' - gop cac tid cung he+level lam mot."""
+    groups = {}
+    for tid, n in (mobs or {}).items():
+        try:
+            label = mob_label(tid)
+        except Exception:
+            label = f"id {tid}"
+        groups[label] = groups.get(label, 0) + int(n)
+    rows = sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))
     return ", ".join(f"{k}: {v}" for k, v in rows[:limit])

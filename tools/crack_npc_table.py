@@ -1,4 +1,7 @@
-"""Doc DUNG bang Npc_C.dat -> npc_table.json { npc_id: {"name", "rare", "level"} }.
+"""Doc DUNG bang Npc_C.dat -> npc_table.json { npc_id: {"name", "rare", "level", "turn", "element"} }.
+
+element (EElement, Logic_Fight_Skill.lua:547): 1=Dia 2=Thuy 3=Hoa 4=Phong 5=Tam 7=Quang 8=Am,
+0 = VO HE (enum ghi None=6 nhung .dat khong dung so 6). Dung cho rule chon bai train theo he.
 
 Khac tools/crack_npc_names.py: file do QUET BYTE theo mau [len][name][sep][id] nen bo sot
 nhieu npc (vd 46407 "Yen Nhan Truong Phi", 45437 "Ma Quan Vu" - deu CO trong file nhung
@@ -49,7 +52,11 @@ def read_npcs(path):
             r.u16()
         r.byte()                            # [22] moral
         r.u16()                             # [23] moralValue
-        r.byte()                            # [24] element
+        # [24] element - EElement (Logic_Fight_Skill.lua:547):
+        #   1=Dia 2=Thuy 3=Hoa 4=Phong 5=Tam 7=Quang 8=Am
+        #   0 = VO HE. LUU Y: enum co None=6 nhung Npc_C.dat KHONG dung (0 npc), quai vo he ghi 0
+        #   (vd Quy Dao Binh, Luu Thien) - dem thuc te: 453 npc he 0, 0 npc he 6.
+        element = r.byte()
         for _i in range(MAX_NPC_SKILL):     # [25].. skills
             r.u16()
         r.u16()                             # specialSkill
@@ -62,7 +69,8 @@ def read_npcs(path):
         r.byte()                            # shadowKind
         rare = r.byte()                     # [49] rare 1~3 dong, 4 bac, 5 vang
         if nid:
-            out[nid] = {"name": name, "rare": rare, "level": level, "turn": turn}
+            out[nid] = {"name": name, "rare": rare, "level": level, "turn": turn,
+                        "element": element}
     return out
 
 

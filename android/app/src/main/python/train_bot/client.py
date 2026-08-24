@@ -2215,7 +2215,8 @@ class GameClient:
             return
         try:
             from . import train_block_stats
-            train_block_stats.record_battle(self.train_block_map_id, self.train_block_spot, enemy_slots)
+            train_block_stats.record_battle(self.train_block_map_id, self.train_block_spot,
+                                            enemy_slots, dict(self.state.enemy_pos_tids))
         except Exception as e:
             log.debug("[%s] loi ghi thong ke block quai: %s", self._label, e)
 

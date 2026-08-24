@@ -4094,30 +4094,34 @@ class TrainMapEditor(tk.Toplevel):
         top = tk.Toplevel(self)
         top.title(f"Thống kê block - {m.get('name', mid)}")
         top.transient(self)
-        top.geometry("760x420")
+        top.geometry("980x420")
         box = ttk.Frame(top, padding=8)
         box.pack(fill="both", expand=True)
 
-        cols = ("idx", "spot", "total", "patterns")
+        cols = ("idx", "spot", "total", "patterns", "mobs")
         tree = ttk.Treeview(box, columns=cols, show="headings", height=14)
         tree.heading("idx", text="#")
         tree.heading("spot", text="Điểm train")
         tree.heading("total", text="Số trận")
         tree.heading("patterns", text="Block xuất hiện")
+        tree.heading("mobs", text="Hệ + level quái")
         tree.column("idx", width=48, anchor="center")
         tree.column("spot", width=120, anchor="center")
         tree.column("total", width=80, anchor="center")
-        tree.column("patterns", width=480, anchor="w")
+        tree.column("patterns", width=300, anchor="w")
+        tree.column("mobs", width=300, anchor="w")
         tree.pack(fill="both", expand=True)
 
         mobs = m.get("mobs") or []
         if not mobs:
-            tree.insert("", "end", values=("-", "-", 0, "Map này chưa có mob point."))
+            tree.insert("", "end", values=("-", "-", 0, "Map này chưa có mob point.", "-"))
         for i, spot in enumerate(mobs, 1):
             summary = train_block_stats.get_spot_summary(int(mid), spot)
             patterns = train_block_stats.format_patterns(summary.get("patterns", {}))
+            mob_txt = train_block_stats.format_mobs(summary.get("mobs", {}))
             tree.insert("", "end", values=(i, train_block_stats.spot_key(spot),
-                                           int(summary.get("total", 0)), patterns or "-"))
+                                           int(summary.get("total", 0)), patterns or "-",
+                                           mob_txt or "-"))
 
         ttk.Label(box, text="Bot chỉ cộng thống kê từ danh sách quái ở đầu trận train map."
                   ).pack(anchor="w", pady=(8, 0))
