@@ -174,6 +174,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
     private data class ModeCfg(
         val mode: String, val startCity: Int, val cityFlag: Int, val mobIndex: Int,
         val eventKey: String, val digioiMode: String, val hasLeader: Boolean,
+        // "" = map co dinh (startCity/mobIndex); khac "" = bot tu tim map+diem theo level party.
+        val trainPick: String = "",
     )
 
     private fun mapMode(party: Party): ModeCfg = when (party.runMode) {
@@ -183,12 +185,18 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         }
         RunModes.STAY_LOGIN -> ModeCfg("stand", 0, 0, -1, "", "party", false)   // login dung yen do
         RunModes.DIGIOI_TRAIN -> ModeCfg(
-            "digioi_train", party.trainMapKey.toIntOrNull() ?: 0, 0, party.trainMobIndex,
-            "", "party", !party.noLeader,
+            "digioi_train",
+            if (party.trainPick.isEmpty()) party.trainMapKey.toIntOrNull() ?: 0 else 0,
+            0,
+            if (party.trainPick.isEmpty()) party.trainMobIndex else -1,
+            "", "party", !party.noLeader, party.trainPick,
         )
         RunModes.TRAIN -> ModeCfg(
-            "train", party.trainMapKey.toIntOrNull() ?: 0, 0, party.trainMobIndex,
-            "", "party", !party.noLeader,
+            "train",
+            if (party.trainPick.isEmpty()) party.trainMapKey.toIntOrNull() ?: 0 else 0,
+            0,
+            if (party.trainPick.isEmpty()) party.trainMobIndex else -1,
+            "", "party", !party.noLeader, party.trainPick,
         )
         RunModes.DIGIOI -> ModeCfg(
             "digioi", 0, 0, -1, "",
@@ -255,6 +263,10 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 // Chu ky su kien luc user tick -> bot tu tu choi doi khi su kien da doi.
                 // THEM O CUOI CUNG (goi theo VI TRI).
                 party.eventExchangeSig,
+                // TU CHON MAP TRAIN. THEM O CUOI CUNG (goi theo VI TRI). mobElements noi bang ","
+                // - KHONG truyen thang List (R8 rut gon ten lop -> "'t' object is not iterable").
+                m.trainPick, party.mobMin, party.mobMax,
+                party.mobElements.joinToString(","),
             )
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)

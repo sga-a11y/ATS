@@ -753,6 +753,10 @@ fun TsBotApp(
             initialTeamDungeons = partyBeingEdited.teamDungeons,
             initialTrainMapKey = partyBeingEdited.trainMapKey,
             initialTrainMobIndex = partyBeingEdited.trainMobIndex,
+            initialTrainPick = partyBeingEdited.trainPick,
+            initialMobMin = partyBeingEdited.mobMin,
+            initialMobMax = partyBeingEdited.mobMax,
+            initialMobElements = partyBeingEdited.mobElements,
             initialUsePhucThan = partyBeingEdited.usePhucThan,
             initialUseDigioiHoPhu = partyBeingEdited.useDigioiHoPhu,
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
@@ -1539,10 +1543,33 @@ fun StatBar(label: String, cur: Int, max: Int, color: Color) {
 val DG_LEVELS = listOf(10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180)
 
 // (key, ten hien thi, nhom). Nhom = field 'group' trong train_maps.json (mac dinh 'Chua phan nhom').
+/** Tien to khoa cua 5 muc "bot tu chon map" trong dropdown Map. */
+const val PICK_PREFIX = "pick:"
+const val PICK_GROUP = "\u2605 Bot tự chọn map"
+
+private fun pyTrainPick() =
+    com.chaquo.python.Python.getInstance().getModule("train_bot.train_pick")
+
+/** 5 muc tu chon map: (khoa "pick:avg-25", nhan, nhom). Nhan LAY TU PYTHON train_pick.PICK_MODES. */
+fun trainPickOptions(): List<Triple<String, String, String>> =
+    pyTrainPick().get("PICK_MODES")!!.asList().map { row ->
+        val pair = row.asList()
+        Triple(PICK_PREFIX + pair[0].toString(), pair[1].toString(), PICK_GROUP)
+    }
+
+/** 8 he: 7 he cua game + Vo he. (id, ten) - lay tu Python train_pick.ELEMENTS. */
+fun elementList(): List<Pair<Int, String>> =
+    pyTrainPick().get("ELEMENTS")!!.asList().map { row ->
+        val pair = row.asList()
+        pair[0].toInt() to pair[1].toString()
+    }
+
+fun allElementIds(): List<Int> = elementList().map { it.first }
+
 fun trainMapOptions(): List<Triple<String, String, String>> {
     val config = com.chaquo.python.Python.getInstance().getModule("train_bot.config")
     val maps = config.get("TRAIN_MAPS")!!
-    return maps.asMap().entries.map { (k, v) ->
+    return trainPickOptions() + maps.asMap().entries.map { (k, v) ->
         val name = v.callAttr("get", "name")?.toString()
         val group = v.callAttr("get", "group")?.toString()?.ifBlank { "Chưa phân nhóm" } ?: "Chưa phân nhóm"
         Triple(k.toString(), if (name.isNullOrBlank()) k.toString() else name, group)
@@ -1610,6 +1637,10 @@ fun AddPartyDialog(
     initialTeamDungeons: Map<Int, Boolean> = defaultTeamDungeons(),
     initialTrainMapKey: String = "",
     initialTrainMobIndex: Int = -1,
+    initialTrainPick: String = "",
+    initialMobMin: Int = 3,
+    initialMobMax: Int = 4,
+    initialMobElements: List<Int> = listOf(0, 1, 2, 3, 4, 5, 7, 8),
     initialUsePhucThan: Boolean = false,
     initialUseDigioiHoPhu: Boolean = false,
     initialFightLegionBoss: Boolean = true,
@@ -1658,13 +1689,24 @@ fun AddPartyDialog(
     var teamDungeons by remember { mutableStateOf(defaultTeamDungeons(initialTeamDungeons)) }
     var showTeamDungeonList by remember { mutableStateOf(false) }
     val initialTrainMapOptions = remember { trainMapOptions() }
-    var trainMapKey by remember { mutableStateOf(initialTrainMapKey.ifEmpty { initialTrainMapOptions.firstOrNull()?.first ?: "" }) }
+    var trainMapKey by remember {
+        mutableStateOf(
+            if (initialTrainPick.isNotEmpty()) PICK_PREFIX + initialTrainPick
+            else initialTrainMapKey.ifEmpty { initialTrainMapOptions.firstOrNull()?.first ?: "" },
+        )
+    }
     var trainMapText by remember {
         val initialMapName = initialTrainMapOptions.find { it.first == trainMapKey }?.second ?: trainMapKey
         mutableStateOf(TextFieldValue(initialMapName))
     }
     var trainMobExpanded by remember { mutableStateOf(false) }
     var trainMobIndex by remember { mutableStateOf(initialTrainMobIndex) }
+    var mobMin by remember { mutableStateOf(initialMobMin.toString()) }
+    var mobMax by remember { mutableStateOf(initialMobMax.toString()) }
+    var mobElements by remember { mutableStateOf(initialMobElements.toSet()) }
+    var showElementList by remember { mutableStateOf(false) }
+    val allElems = remember { allElementIds() }
+    val isPickMode = trainMapKey.startsWith(PICK_PREFIX)
     var trainMapExpanded by remember { mutableStateOf(false) }
     var collapsedTrainMapGroups by remember { mutableStateOf(emptySet<String>()) }
     var usePhucThan by remember { mutableStateOf(initialUsePhucThan) }
@@ -1725,8 +1767,12 @@ fun AddPartyDialog(
         autoWorldBoss = autoWorldBoss,
         autoTeamDungeon = autoTeamDungeon,
         teamDungeons = teamDungeons,
-        trainMapKey = trainMapKey,
-        trainMobIndex = trainMobIndex,
+        trainMapKey = if (isPickMode) "" else trainMapKey,
+        trainMobIndex = if (isPickMode) -1 else trainMobIndex,
+        trainPick = if (isPickMode) trainMapKey.removePrefix(PICK_PREFIX) else "",
+        mobMin = mobMin.toIntOrNull()?.coerceIn(1, 5) ?: 3,
+        mobMax = mobMax.toIntOrNull()?.coerceIn(1, 5) ?: 4,
+        mobElements = (if (mobElements.isEmpty()) allElems.toSet() else mobElements).sorted(),
         usePhucThan = usePhucThan,
         useDigioiHoPhu = useDigioiHoPhu,
         fightLegionBoss = fightLegionBoss,
@@ -2143,21 +2189,69 @@ fun AddPartyDialog(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    val mobOptions = trainMobOptions(trainMapKey)
-                    ExposedDropdownMenuBox(expanded = trainMobExpanded, onExpandedChange = { trainMobExpanded = it }) {
-                        OutlinedTextField(
-                            value = mobOptions.find { it.first == trainMobIndex }?.second ?: "Bot tự chọn",
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Quái") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trainMobExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor(),
-                        )
-                        DropdownMenu(expanded = trainMobExpanded, onDismissRequest = { trainMobExpanded = false }) {
-                            mobOptions.forEach { (idx, label) ->
-                                DropdownMenuItem(text = { Text(label) }, onClick = {
-                                    trainMobIndex = idx; trainMobExpanded = false
-                                })
+                    if (isPickMode) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = mobMin,
+                                onValueChange = { v -> mobMin = v.filter { it.isDigit() }.take(1) },
+                                label = { Text("Quái min") }, singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedTextField(
+                                value = mobMax,
+                                onValueChange = { v -> mobMax = v.filter { it.isDigit() }.take(1) },
+                                label = { Text("Quái max") }, singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(onClick = { showElementList = true }) {
+                                Text("Hệ (" + mobElements.size + "/" + allElems.size + ")")
+                            }
+                        }
+                        if (showElementList) {
+                            AlertDialog(
+                                onDismissRequest = { showElementList = false },
+                                confirmButton = {
+                                    TextButton(onClick = { showElementList = false }) { Text("Xong") }
+                                },
+                                title = { Text("Hệ quái muốn đánh") },
+                                text = {
+                                    Column {
+                                        Text("Tick hết hoặc không tick gì = đánh tất cả các hệ.")
+                                        elementList().forEach { (eid, name) ->
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Checkbox(
+                                                    checked = eid in mobElements,
+                                                    onCheckedChange = { on ->
+                                                        mobElements =
+                                                            if (on) mobElements + eid else mobElements - eid
+                                                    },
+                                                )
+                                                Text(name)
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        val mobOptions = trainMobOptions(trainMapKey)
+                        ExposedDropdownMenuBox(expanded = trainMobExpanded, onExpandedChange = { trainMobExpanded = it }) {
+                            OutlinedTextField(
+                                value = mobOptions.find { it.first == trainMobIndex }?.second ?: "Bot tự chọn",
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Quái") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trainMobExpanded) },
+                                modifier = Modifier.fillMaxWidth().menuAnchor(),
+                            )
+                            DropdownMenu(expanded = trainMobExpanded, onDismissRequest = { trainMobExpanded = false }) {
+                                mobOptions.forEach { (idx, label) ->
+                                    DropdownMenuItem(text = { Text(label) }, onClick = {
+                                        trainMobIndex = idx; trainMobExpanded = false
+                                    })
+                                }
                             }
                         }
                     }
@@ -2253,8 +2347,12 @@ fun AddPartyDialog(
                             autoWorldBoss = autoWorldBoss,
                             autoTeamDungeon = autoTeamDungeon,
                             teamDungeons = teamDungeons,
-                            trainMapKey = trainMapKey,
-                            trainMobIndex = trainMobIndex,
+                            trainMapKey = if (isPickMode) "" else trainMapKey,
+                            trainMobIndex = if (isPickMode) -1 else trainMobIndex,
+                            trainPick = if (isPickMode) trainMapKey.removePrefix(PICK_PREFIX) else "",
+                            mobMin = mobMin.toIntOrNull()?.coerceIn(1, 5) ?: 3,
+                            mobMax = mobMax.toIntOrNull()?.coerceIn(1, 5) ?: 4,
+                            mobElements = (if (mobElements.isEmpty()) allElems.toSet() else mobElements).sorted(),
                             usePhucThan = usePhucThan,
                             useDigioiHoPhu = useDigioiHoPhu,
                             fightLegionBoss = fightLegionBoss,

@@ -33,6 +33,14 @@ data class Party(
     // Chi dung khi runMode == RunModes.TRAIN: index trong tm["mobs"] cua map do, -1 = "Bot tu chon"
     // (leader chon ngau nhien moi lan vao/reform). Mirror PC's mob_index (-1 mac dinh).
     val trainMobIndex: Int = -1,
+    // TU CHON MAP TRAIN. "" = dung trainMapKey/trainMobIndex nhu cu; khac "" = bot tu tim map+diem
+    // theo level party (khoa trong train_pick.PICK_MODES: avg-20/avg-25/avg-30/min+29/max-29).
+    val trainPick: String = "",
+    // Chi dung khi trainPick != "": so quai/tran muon danh, va he quai (7 he + 0 = Vo he).
+    // Tick het hoac khong tick gi = danh tat ca cac he. Mirror PC's mob_min/mob_max/mob_elements.
+    val mobMin: Int = 3,
+    val mobMax: Int = 4,
+    val mobElements: List<Int> = listOf(0, 1, 2, 3, 4, 5, 7, 8),
     // Su dung Phuc Than (item nhom "phuc_than" trong use_items.json, dung/trang bi dinh ky 30p/lan
     // - xem use_phuc_than_items() client.py). Mirror PC's use_phuc_than_var (gui.py). Mac dinh
     // KHONG tick (giong PC).

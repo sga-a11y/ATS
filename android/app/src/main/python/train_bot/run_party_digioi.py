@@ -17,6 +17,7 @@ except Exception:
 from . import config
 from . import mob_spots
 from . import train_pick
+from . import train_pick as train_pick_mod   # alias: trong setup_party_runtime co tham so ten train_pick
 from .mob_scanner import MobScanSession, compute_regions, scan_full_map
 from .scene_fight import get_scene_fight_seed
 from .train_maps_store import save_learned_regions
@@ -5407,7 +5408,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         auto_donate_materials=True, material_modes=None,
                         auto_event_exchange=False, event_exchange_items=None,
                         death_return_town=True, pet_death_return_town=True,
-                        event_exchange_sig=""):
+                        event_exchange_sig="",
+                        train_pick="", mob_min=0, mob_max=0, mob_elements=""):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -5424,6 +5426,13 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         except Exception:
             team_dungeons = None
     config.PARTY_CONFIG[pidx] = {
+        # TU CHON MAP TRAIN. mob_elements: Kotlin truyen CHUOI noi bang "," (khong truyen List -
+        # R8 rut gon ten lop -> Chaquopy "TypeError: 't' object is not iterable").
+        "train_pick": str(train_pick or ""),
+        "mob_min": int(mob_min or train_pick_mod.DEFAULT_MOB_MIN),
+        "mob_max": int(mob_max or train_pick_mod.DEFAULT_MOB_MAX),
+        "mob_elements": ([int(x) for x in str(mob_elements).split(",") if x.strip().isdigit()]
+                         or list(train_pick_mod.ALL_ELEMENTS)),
         "mode": mode, "start_city_id": int(start_city_id), "mob_index": int(mob_index),
         "city_flag": int(city_flag), "server": "", "server_ip": server_ip,
         "server_id": int(server_id), "do_daily": bool(do_daily),
