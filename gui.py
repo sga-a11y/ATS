@@ -1837,9 +1837,8 @@ def _spot_infos(map_id, mobs):
         try:
             s = spots.get(train_block_stats.spot_key(xy)) or {}
             parts = [p for p in (
-                train_block_stats.format_mob_range(s.get("patterns", {}), s.get("total", 0)),
-                train_block_stats.format_mobs(s.get("mobs", {}), limit=4, short=True,
-                                              min_share=0.01),
+                train_block_stats.format_mob_range(s.get("patterns", {})),
+                train_block_stats.format_mobs(s.get("mobs", {}), limit=4, short=True),
             ) if p]
             if parts:
                 out[i] = " | " + " | ".join(parts)
