@@ -214,6 +214,46 @@ def format_patterns(patterns: dict, limit: int = 6) -> str:
     return ", ".join(f"{k}: {v}" for k, v in rows[:limit])
 
 
+def _mobs_in_pattern(pattern: str) -> int:
+    """'3x1 + 1x1' -> 4 con. Sai dinh dang -> 0."""
+    total = 0
+    for part in str(pattern).split("+"):
+        try:
+            w, c = part.strip().split("x")
+            total += int(w) * int(c)
+        except Exception:
+            return 0
+    return total
+
+
+def spot_mob_range(patterns: dict, total: int = 0, min_share: float = 0.01):
+    """(min, max) SO CON quai 1 tran, da BO the tran hiem.
+
+    Min-max tho vo dung: gan nhu bai nao cung ra 1-5 chi vi vai tran le (vd diem 990,610 co
+    6900/6929 tran la 3 con, nhung con dinh 11 tran 1 con + 4 tran 5 con -> hoa '1-5').
+    Nen bo the tran chiem duoi min_share; neu bo sach thi lay the tran dong nhat.
+    """
+    rows = [(_mobs_in_pattern(p), int(c)) for p, c in (patterns or {}).items()]
+    rows = [(n, c) for n, c in rows if n > 0 and c > 0]
+    if not rows:
+        return None
+    total = int(total) or sum(c for _n, c in rows)
+    keep = [(n, c) for n, c in rows if c / float(total) >= min_share]
+    if not keep:
+        keep = [max(rows, key=lambda nc: nc[1])]
+    nums = [n for n, _c in keep]
+    return min(nums), max(nums)
+
+
+def format_mob_range(patterns: dict, total: int = 0) -> str:
+    """'3-5', hoac '3' khi luc nao cung 3 con."""
+    rng = spot_mob_range(patterns, total)
+    if not rng:
+        return ""
+    lo, hi = rng
+    return str(lo) if lo == hi else f"{lo}-{hi}"
+
+
 def _npc_table() -> dict:
     """npc_table.json (AUTO tools/crack_npc_table.py): tid -> {name, level, element, ...}.
 
@@ -242,13 +282,17 @@ def _npc_table() -> dict:
     return _NPC_TABLE
 
 
-def mob_label(tid) -> str:
-    """tid -> 'Thủy lv110'. Khong tra duoc thi giu nguyen id (khong doan bua)."""
+def mob_label(tid, short: bool = False) -> str:
+    """tid -> 'Thủy lv110' (short=True: 'Thủy 110', cho dropdown chat cho).
+
+    Khong tra duoc thi giu nguyen id (khong doan bua).
+    """
     info = _npc_table().get(str(int(tid))) or {}
     if not info:
         return f"id {tid}"
     elem = ELEMENT_NAMES.get(int(info.get("element") or 0), "?")
-    return f"{elem} lv{int(info.get('level') or 0)}"
+    lv = int(info.get("level") or 0)
+    return f"{elem} {lv}" if short else f"{elem} lv{lv}"
 
 
 def mob_name(tid) -> str:
@@ -256,14 +300,25 @@ def mob_name(tid) -> str:
     return str(info.get("name") or f"id {tid}")
 
 
-def format_mobs(mobs: dict, limit: int = 8) -> str:
-    """'Thủy lv110: 7777, Hỏa lv112: 6666' - gop cac tid cung he+level lam mot."""
+def format_mobs(mobs: dict, limit: int = 8, short: bool = False, min_share: float = 0.0) -> str:
+    """'Thủy lv110: 7777, Hỏa lv112: 6666' - gop cac tid cung he+level lam mot.
+
+    short=True -> bo so dem va chu 'lv': 'Thủy 110, Địa 112' (dung cho dropdown diem quai).
+    min_share > 0 -> bo loai quai hiem duoi ty le do (nhu spot_mob_range).
+    """
     groups = {}
     for tid, n in (mobs or {}).items():
         try:
-            label = mob_label(tid)
+            label = mob_label(tid, short=short)
         except Exception:
             label = f"id {tid}"
         groups[label] = groups.get(label, 0) + int(n)
     rows = sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))
+    if min_share > 0:
+        total = sum(groups.values())
+        if total:
+            kept = [kv for kv in rows if kv[1] / float(total) >= min_share]
+            rows = kept or rows[:1]
+    if short:
+        return ", ".join(k for k, _v in rows[:limit])
     return ", ".join(f"{k}: {v}" for k, v in rows[:limit])

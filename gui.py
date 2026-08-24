@@ -1816,6 +1816,38 @@ def _load_json(name):
         return {}
 
 
+def _spot_infos(map_id, mobs):
+    """Chuoi phu cho tung diem quai trong dropdown: ' | 3-5 | Thủy 110, Địa 112'.
+
+    Nap train_block_stats.json MOT lan cho ca map (get_spot_summary nap lai ca file moi lan goi).
+    Diem chua co so lieu -> chuoi rong, dropdown hien nhu cu.
+    """
+    out = ["" for _ in mobs]
+    if map_id is None:
+        return out
+    try:
+        from bot import train_block_stats
+        spots = (train_block_stats.load_stats().get("maps", {})
+                 .get(str(int(map_id)), {}).get("spots", {}))
+    except Exception:
+        return out
+    if not spots:
+        return out
+    for i, xy in enumerate(mobs):
+        try:
+            s = spots.get(train_block_stats.spot_key(xy)) or {}
+            parts = [p for p in (
+                train_block_stats.format_mob_range(s.get("patterns", {}), s.get("total", 0)),
+                train_block_stats.format_mobs(s.get("mobs", {}), limit=4, short=True,
+                                              min_share=0.01),
+            ) if p]
+            if parts:
+                out[i] = " | " + " | ".join(parts)
+        except Exception:
+            pass
+    return out
+
+
 MODE_OPTIONS = [
     ("digioi", "Train Dị Giới"),
     ("train", "Train map"),
@@ -3719,7 +3751,7 @@ class PartyConfigFrame(ttk.Frame):
                         group_fn=lambda r: r[3],                    # gom theo nhom trong popup
                         on_pick=self._fill_mobs)
             ttk.Label(self.dyn, text="Quái:", width=6).pack(side="left", padx=(10, 0))
-            self.mob_cb = ttk.Combobox(self.dyn, textvariable=self.mob_var, state="readonly", width=22)
+            self.mob_cb = ttk.Combobox(self.dyn, textvariable=self.mob_var, state="readonly", width=46)
             self.mob_cb.pack(side="left")
             ttk.Button(self.dyn, text="✎ Sửa map", command=self._edit_maps).pack(side="left", padx=(8, 0))
             idx = next((i for i, (mid, _n, _m, _g) in enumerate(self.train_maps)
@@ -3771,10 +3803,12 @@ class PartyConfigFrame(ttk.Frame):
 
     def _fill_mobs(self, preset_index=None):
         sel = self.map_var.get()
+        mid = next((i for (i, n, _m, _g) in self.train_maps if n == sel), None)
         mobs = next((m for (_i, n, m, _g) in self.train_maps if n == sel), [])
         # Index 0 = "Bot tu chon" (ngau nhien). Index 1.. = diem cu the.
-        opts = ["🎲 Bot tự chọn (ngẫu nhiên)"] + [f"Điểm {i + 1} {tuple(xy)}"
-                                                  for i, xy in enumerate(mobs)]
+        info = _spot_infos(mid, mobs)
+        opts = ["🎲 Bot tự chọn (ngẫu nhiên)"] + [
+            f"Điểm {i + 1} {tuple(xy)}{info[i]}" for i, xy in enumerate(mobs)]
         if self.mob_cb:
             self.mob_cb.configure(values=opts)
             # preset_index: -1 (hoac None) -> auto (0); >=0 -> diem do (+1)
