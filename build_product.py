@@ -47,7 +47,8 @@ DATA_JSON = ["servers.json", "cities.json", "train_maps.json", "train_routes.jso
              "items_gamedata.json", "donate_items.json", "donate_materials.json", "mineral_npcs.json", "jiugongge.json", "use_items.json", "events.json", "login_awards.json",
              "train_block_stats.json", "world_nav.json", "pet_stats.json", "dangerous_npcs.json",
              "scene_names.json", "collect_style.json", "furnace_pool.json",
-             "furnace_default_notify.json", "equip_stats.json"]
+             "furnace_default_notify.json", "equip_stats.json",
+             "npc_table.json", "mounts_grow.json"]
 
 DATA_FILES = {
     "gamedata/Ground.mmg": "gamedata/Ground.mmg",
@@ -55,6 +56,30 @@ DATA_FILES = {
 }
 
 BUNDLE_EXTRA_DATA_JSON = ["npc_names.json", "pet_hedoanh.json"]
+
+
+def validate_pc_data_covers_shared(root=ROOT):
+    """DUNG BUILD neu file APK co ma ban exe THIEU.
+
+    DATA_JSON la danh sach CHEP TAY -> them asset dung chung ma quen khai bao o day thi ban exe
+    van chay, chi THIEU DU LIEU am tham (dung bai hoc Servers.kt/SHARED_ASSETS trong CLAUDE.md).
+    Da dinh 2 lan that:
+      - npc_table.json: bang thong ke hien 'id 17363' thay vi 'Thủy lv130'.
+      - mounts_grow.json: log 'Thu cuoi: thieu mounts_grow.json -> bo qua' -> exe bo han thu cuoi.
+    Chieu nguoc lai KHONG chan: exe co quyen co them file rieng (world_nav/train_maps/...).
+    """
+    sys.path.insert(0, os.path.join(root, "tools"))
+    try:
+        from sync_apk_python import SHARED_ASSETS
+    except Exception as exc:
+        raise SystemExit("Khong doc duoc SHARED_ASSETS de doi chieu: %s" % exc)
+    have = set(DATA_JSON) | set(BUNDLE_EXTRA_DATA_JSON)
+    missing = sorted(a for a in SHARED_ASSETS if a not in have)
+    if missing:
+        raise SystemExit(
+            "asset APK chua khai bao trong DATA_JSON cua build_product.py: %s\n"
+            "  -> them vao DATA_JSON, khong ban exe se thieu du lieu am tham."
+            % ", ".join(missing))
 
 
 def validate_navigation_assets(root=ROOT):
@@ -527,6 +552,7 @@ def upload_release():
 
 if __name__ == "__main__":
     print("=== BUILD PRODUCT (PyArmor + PyInstaller onefile) ===")
+    validate_pc_data_covers_shared()
     validate_navigation_assets()
     ver = _build_version()
     clean()
