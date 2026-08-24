@@ -1833,6 +1833,7 @@ class GameClient:
         Xac nhan tren CA 2 capture thuyen (thuyen_thanhchau + thuyen_thanhchau2): MOI lan
         s2c `0x14 08 2a` deu co dung chuoi `0x0c 01` -> `0x14 06` ngay truoc, va move dau tien
         chi den SAU do 0.1-0.5s. Client that KHONG he gui 0x41 (rearm) o cac cho nay."""
+        self._need_scene_resume = False
         try:
             self.send(0x0c, b"\x01\x00"); time.sleep(settle)
             self.send(0x14, b"\x06\x00"); time.sleep(settle)
@@ -2925,6 +2926,15 @@ class GameClient:
             if self.self_entity is None or ent == self.self_entity:
                 mid = int.from_bytes(pkt[17:19], "little")
                 if mid > 1000:   # loc gia tri rac (map_id that >1000)
+                    if self.current_map is not None and mid != self.current_map:
+                        # DOI SCENE do SERVER DAY: bi leader KEO qua cong theo party. Minh KHONG tu
+                        # goi _enter_gate nen KHONG ai chay scene_resume() -> thieu `0x14 06` ->
+                        # lenh move dau tien bi tu choi: "di chuyen QUA XA (ma 14)" -> KICK.
+                        # Log 18:29 map 21826: leader TU di qua cong (co resume) -> song; 4 member bi
+                        # KEO qua -> khong resume -> ca 4 rot trong CUNG MOT GIAY.
+                        # CHI dat co o day (dang trong recv loop) - scene_resume() co sleep, de
+                        # navigate_to goi, khong duoc chan luong doc goi.
+                        self._need_scene_resume = True
                     self.current_map = mid
                 # TOA DO cung nam trong chinh goi nay: [entity 8B][map u16][x u16][y u16]
                 # (KNOWLEDGE muc 7: 0x07 sub0000 - 0x0c ChangeScene CUNG layout, xac nhan bang
@@ -9623,6 +9633,16 @@ class GameClient:
                 (round(ax + (bx - ax) * i / n), round(ay + (by - ay) * i / n))
                 for i in range(1, n + 1)
             ]
+
+        # BI KEO SANG SCENE MOI (server day, khong tu qua cong) -> chua ai chay scene_resume().
+        # Phai chay TRUOC lenh move dau tien, khong thi server tu choi "di chuyen QUA XA (ma 14)"
+        # va DUT KET NOI (log 18:29: ca 4 member bi keo qua cong roi rot cung mot giay).
+        # Chan khi DANG DANH: scene_resume() gui 0x14 06, ma gui goi do luc server con giai tran
+        # thi server DONG KET NOI (bai hoc cu, xem _gate_wait_clear).
+        if getattr(self, "_need_scene_resume", False) and not self.in_combat(idle_secs=1.5):
+            log.info("[%s] bi keo sang map %s (khong tu qua cong) -> chay scene_resume truoc khi di",
+                     self._label, self.current_map)
+            self.scene_resume()
 
         # VUA QUA CONG -> _enter_gate dat self.pos = None ("vi tri cu vo nghia o map moi").
         # Ma smart path (Ground.mmg) CAN pos xuat phat -> pos=None thi rot xuong che do GUI MOVE MU,
