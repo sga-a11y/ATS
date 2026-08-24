@@ -1869,8 +1869,17 @@ class GameClient:
         bien acc thanh ket vong dang nhap hang phut (log that party 6, 23:15-23:25). Gio thoat
         bang dung lenh nay, GIU NGUYEN ket noi, roi dong bo + danh lai PB theo rule retry cu.
         """
-        log.info("[%s] THOAT PHO BAN TO DOI (C:047-010) - khong relogin", self._label)
         _map0 = self.current_map
+        # KHONG O TRONG PHO BAN thi TUYET DOI khong gui. Server nay kick khi nhan goi sai ngu canh
+        # (da dinh voi 0x14 06 gui luc server con xu battle). Log that 17:56: leader BO QUA pho ban
+        # (ca party da xong) roi RUNG, 4 member dang dung o THANH 12001 van chay nhanh "dong doi ROT
+        # -> THOAT PB" -> gui C:047-010 giua thanh -> 6s sau CA 4 CUNG RUNG.
+        # Chan o DAY (mot cho) vi co 3+ noi goi ham nay.
+        if _map0 not in TEAM_DUNGEON_MAPS:
+            log.info("[%s] khong o trong pho ban to doi (map=%s) -> KHONG gui C:047-010",
+                     self._label, _map0)
+            return True     # coi nhu da o ngoai - dung muc dich cua caller
+        log.info("[%s] THOAT PHO BAN TO DOI (C:047-010) - khong relogin", self._label)
         try:
             self.send(0x2f, b"\x0a\x00")
         except OSError:
