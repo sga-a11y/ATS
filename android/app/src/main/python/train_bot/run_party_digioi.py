@@ -2224,7 +2224,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             )
             spot = st.get("mob_spot")
             _g0 = st["reform_gen"]   # gen reform DANG xu; co gen MOI hon (acc khac van) -> abort keo, quay lai xu
-            _ab = lambda: _stopped() or (not c.running) or st["reform_gen"] > _g0
+
+            def _ab(_seen=[]):
+                """abort cho moi buoc di duong cua reform. NOI RO vi sao bat (1 lan/reform).
+
+                Truoc day la lambda cam: acc dang di bo giua duong tu dung, khong mot dong log ->
+                khong phan biet duoc "bi bump reform_gen" voi "route hong" (that: 16:39 leader di
+                4/7 cong roi dung o 18801, mat ca buoi doan xem timeout hay du lieu sai).
+                """
+                if _stopped():
+                    why = "party da dung"
+                elif not c.running:
+                    why = "client khong con chay"
+                elif st["reform_gen"] > _g0:
+                    why = "reform_gen %d -> %d (acc khac bump)" % (_g0, st["reform_gen"])
+                else:
+                    return False
+                if not _seen:
+                    _seen.append(1)
+                    log.info("[%s] (%s) ABORT di duong reform: %s", label, role, why)
+                return True
             plan_ready = st.setdefault("route_plan_ready", threading.Event())
             plan = None
             smart_route2 = None
@@ -2568,8 +2587,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         _walk_ok = False
                         log.warning("[%s] (LEADER) loi keo di bo Nghiep->fc: %s", label, e)
                     if not _walk_ok or c.current_map != fc:
-                        log.warning("[%s] (LEADER) keo di bo Nghiep->%s that bai (map=%s) -> reform lai",
-                                    label, fc, c.current_map)
+                        # IN LY DO: execute_smart_route co 3 loi thoat IM LANG (aborted /
+                        # unexpected_scene / gate_failed) va da ghi san vao _smart_route_failure,
+                        # nhung truoc day dong log nay VUT DI -> khong ai biet vi sao dung giua
+                        # duong (that: 16:39 di 4/7 cong roi dung o 18801, khong mot dong ly do).
+                        log.warning("[%s] (LEADER) keo di bo Nghiep->%s that bai (map=%s, ly do=%s) "
+                                    "-> reform lai", label, fc, c.current_map,
+                                    getattr(c, "_smart_route_failure", None) or "khong ro")
                         with st["lock"]:
                             _bump_reform(st)
                         c._reform_via_nghiep = False

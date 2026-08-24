@@ -411,6 +411,11 @@ def execute_smart_route(client, route, abort=None, flee=True):
                 client._smart_route_failure = "aborted"
                 return False
             if client.current_map != leg["scene"]:
+                # Loi thoat IM LANG truoc day: dung giua duong ma khong mot dong log -> caller chi
+                # thay "that bai (map=X)". Neu roi vao day nghia la route va map thuc te da lech
+                # nhau TRUOC KHI di chang nay (bi keo/day sang map khac).
+                log.warning("[%s] scene route DUNG o chang %d: dang o map %s nhung chang nay xuat "
+                            "phat tu %s", client._label, _i, client.current_map, leg["scene"])
                 client._smart_route_failure = "unexpected_scene"
                 return False
             # Tren thuyen (sail tren nuoc) o cac leg BIEN [first_sea..last_sea]; ngoai do di bo dat lien.
