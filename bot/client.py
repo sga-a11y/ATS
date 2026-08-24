@@ -182,7 +182,21 @@ DISCONNECT_RATE_LIMIT = 90     # ma 90: login lai ngay lap tuc chi lam server ch
 # 4 map PHO BAN TO DOI (instance). Da kiem chung deu co trong Ground.mmg (xem _td_walk).
 # Dung de biet acc DANG O TRONG pho ban: trong do khong teleport/ve thanh duoc, va "ca party
 # cung cho nhau" la BINH THUONG (member cho leader danh) chu khong phai deadlock.
-TEAM_DUNGEON_MAPS = frozenset({62002, 62011, 62012, 62013})
+TEAM_DUNGEON_MAPS = frozenset({62002, 62011, 62012, 62013})   # 4 PB bot co danh (lv20/50/80/110)
+
+# CA DAI 62xxx la khong gian PHO BAN/INSTANCE (20 map: Thao Phat Thien Su, Dai Chien Lu Bo, San Kho
+# Bau, Bach Chien...). Da kiem: KHONG map 62xxx nao la map train hay thanh.
+# Dung cho cau hoi "minh co DANG O TRONG instance khong" - RONG hon TEAM_DUNGEON_MAPS co y:
+# lay 4 map kia de tra loi cau nay thi acc lac vao instance KHAC se bi tra "dang o ngoai" -> caller
+# bo luon duong relogin du phong -> KET TRONG PHO BAN VINH VIEN.
+_INSTANCE_MAP_LO, _INSTANCE_MAP_HI = 62000, 63000
+
+
+def in_instance_map(map_id) -> bool:
+    try:
+        return _INSTANCE_MAP_LO <= int(map_id) < _INSTANCE_MAP_HI
+    except (TypeError, ValueError):
+        return False
 
 def task_report(task, phase=""):
     """Decorator cho method cua GameClient: tu bao viec + danh dau xong. Khong the quen."""
@@ -1874,8 +1888,10 @@ class GameClient:
         # (da dinh voi 0x14 06 gui luc server con xu battle). Log that 17:56: leader BO QUA pho ban
         # (ca party da xong) roi RUNG, 4 member dang dung o THANH 12001 van chay nhanh "dong doi ROT
         # -> THOAT PB" -> gui C:047-010 giua thanh -> 6s sau CA 4 CUNG RUNG.
-        # Chan o DAY (mot cho) vi co 3+ noi goi ham nay.
-        if _map0 not in TEAM_DUNGEON_MAPS:
+        # Chan o DAY (mot cho) vi co 6 noi goi ham nay.
+        # Dung in_instance_map (ca dai 62xxx) chu KHONG dung TEAM_DUNGEON_MAPS (4 map): o trong
+        # instance KHAC ma tra "da o ngoai" thi caller bo duong relogin du phong -> ket vinh vien.
+        if not in_instance_map(_map0):
             log.info("[%s] khong o trong pho ban to doi (map=%s) -> KHONG gui C:047-010",
                      self._label, _map0)
             return True     # coi nhu da o ngoai - dung muc dich cua caller
