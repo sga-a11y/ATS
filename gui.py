@@ -3967,8 +3967,10 @@ class PartyConfigFrame(ttk.Frame):
                    self.servers[0][0] if self.servers else "trieu_van")
         leaders = [x.strip() for x in self.leaders_var.get().split(",") if x.strip()]
         def _num(var, dflt):
+            # Khoang 1..6 (user chot). Truoc de 1..5 -> go 6 bi doi am tham thanh 5, trong khi du
+            # lieu that co 6549 tran 6 con.
             try:
-                return max(1, min(5, int(str(var.get()).strip())))
+                return max(1, min(6, int(str(var.get()).strip())))
             except Exception:
                 return dflt
         mob_min = _num(self.mob_min_var, _TP.DEFAULT_MOB_MIN)
