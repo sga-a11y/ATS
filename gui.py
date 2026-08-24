@@ -1816,19 +1816,6 @@ def _load_json(name):
         return {}
 
 
-def _widen_combo_popup(cb, chars):
-    """Noi rieng DANH SACH BUNG cua combobox, giu o dong hep nhu cu.
-
-    Nhan diem quai dai ('Điểm 1 (1230, 550) | 3-5 | Thủy 110, Địa 112') ma noi ca o dong thi day
-    nut '✎ Sửa map' ra ngoai cua so (user bao mat nut). Loi Tk -> bo qua, dropdown van dung.
-    """
-    try:
-        popdown = cb.tk.call("ttk::combobox::PopdownWindow", cb)
-        cb.tk.call(popdown + ".f.l", "configure", "-width", int(chars))
-    except Exception:
-        pass
-
-
 def _spot_infos(map_id, mobs):
     """Chuoi phu cho tung diem quai trong dropdown: ' | 3-5 | Thủy 110, Địa 112'.
 
@@ -3763,10 +3750,11 @@ class PartyConfigFrame(ttk.Frame):
                         group_fn=lambda r: r[3],                    # gom theo nhom trong popup
                         on_pick=self._fill_mobs)
             ttk.Label(self.dyn, text="Quái:", width=6).pack(side="left", padx=(10, 0))
-            self.mob_cb = ttk.Combobox(self.dyn, textvariable=self.mob_var, state="readonly", width=22)
+            # Rong 40: Tk EP cua so dropdown bang dung be rong o dong (chinh -width cua listbox ben
+            # trong KHONG an thua - da do: -width 20 va 66 deu ra popup 155px). Muon danh sach to
+            # thi phai noi chinh o nay -> ConfigDialog rong 760 de nut '✎ Sửa map' con cho.
+            self.mob_cb = ttk.Combobox(self.dyn, textvariable=self.mob_var, state="readonly", width=40)
             self.mob_cb.pack(side="left")
-            # 66 = du cho nhan dai nhat ('Điểm 1 | 2-3 | 4 he+level | (1310, 550)' ~63 ky tu).
-            _widen_combo_popup(self.mob_cb, 66)   # o dong giu 22 (khong day nut Sua map ra ngoai)
             ttk.Button(self.dyn, text="✎ Sửa map", command=self._edit_maps).pack(side="left", padx=(8, 0))
             idx = next((i for i, (mid, _n, _m, _g) in enumerate(self.train_maps)
                         if mid == self._preset.get("start_city_id")), 0)
@@ -4423,7 +4411,7 @@ class ConfigDialog(tk.Toplevel):
     def __init__(self, master, open_pidx=0):
         super().__init__(master)
         self.title("Cấu hình party")
-        self.geometry("640x600")
+        self.geometry("760x600")   # 760 (cu 640): du cho dropdown diem quai rong 40 + nut Sua map
         self.transient(master); self.grab_set()
         # PROFILES: nhieu bo cau hinh, doi 1 phat. active = bo dang dung (= accounts.json).
         self._prof = _load_profiles()
