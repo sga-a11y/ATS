@@ -2131,6 +2131,35 @@ def choose_action(sp_cur, sp_max, hp_cur, hp_max, mobs, party):
 
 ## 10. TODO
 
+### CON 7 VONG CHO VO HAN — WATCHER KHONG CUU DUOC (do 24/08, de may nha lam)
+
+Watcher (`_party_watcher`) chi HANH DONG 2 truong hop:
+1. CA PARTY cung `phase="wait"` **va bao cao con TUOI** (`<= WATCH_WAIT_FRESH_SEC`) -> ep dong bo
+2. Deu viec TEAM ma lech pha lien tuc `WATCH_MISMATCH_SEC` -> ep dong bo
+
+Truong hop "acc im qua lau" (`TREO`) **chi ghi log, khong hanh dong**.
+
+Do lai `run_party_digioi.py`: **24 vong cho acc khac, 7 vong KHONG CO HAN CHO**, va ca 7 deu
+**khong bao cao gi** -> watcher khong thay chung dang cho -> chi ghi `TREO` roi thoi. Ket van ket:
+
+| dong | ham | ban chat cho | han hop ly |
+|---|---|---|---|
+| 461 | `_party_same_map` | ca party toi cung map | vai phut |
+| 582 | `_decide_2k_resume` | quyet dinh resume event 2K | vai phut |
+| 705 | `_party_map_barrier` | barrier map | vai phut |
+| 1990 | `_wait_channel_map_reports` | acc bao map sau sync kenh | vai chuc giay |
+| 2076 | `_wait_channel_map_reports` | nhu tren | vai chuc giay |
+| 2681 | `_daily_then_quit` | ca party xong daily | dai hon |
+| 5177 | `_run_account_supervised` | vong giam sat ngoai cung | co the vo han HOP LE |
+
+**KHONG duoc sua bang cach nhet `phase="wait"` vao chung.** Commit `b59c187` da chung minh: bao cao
+luon tuoi thi acc roi vao luat "ca party cung cho = deadlock", nen **cho HOP LE 2 tieng (doi DG) se
+bi ep dong bo sau 120s** - nguy hiem hon bug goc.
+
+Huong dung: **han cho RIENG cho tung vong theo ban chat cong viec** (bang tren), het han thi goi co
+che cuu san co (`_force_supervisor_reconnect` / bump `reform_gen`), KHONG nhet chung vao luat watcher.
+
+
 - [ ] Code login.py (HTTP → access_token)
 - [ ] Code game_client.py (TCP + auth + heartbeat)
 - [ ] Code combat_bot.py (lắng nghe 0x33/0x35 → gửi 0x32)

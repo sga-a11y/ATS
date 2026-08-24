@@ -5482,21 +5482,47 @@ def party_idx_of(username):
     return getattr(config, "ACCOUNT_PARTY", {}).get(username)
 
 
-def start_party(pidx, stagger=1.5):
-    """Khoi dong tat ca acc trong 1 party."""
+def _start_party_accounts(pidx, accounts, generation, stagger, skip_running):
+    """Khoi dong tung acc cua party. Tach rieng de goi duoc CA khi KHONG reset state chung."""
+    started = 0
+    for u, p, is_leader, is_picker in accounts:
+        if generation != _start_cancel_generation:
+            log.info(">>> PARTY %s: huy khoi dong cac acc con lai do STOP TAT CA", pidx + 1)
+            break
+        if skip_running and is_account_running(u):
+            continue      # START TAT CA: acc dang chay -> de yen, khong dung roi chay lai
+        account_exit_reason.pop(u, None)   # xoa ly do cu
+        if start_account(u, p, pidx, is_leader, is_picker):
+            started += 1
+            time.sleep(stagger)
+    return started
+
+
+def start_party(pidx, stagger=1.5, skip_running=False):
+    """Khoi dong tat ca acc trong 1 party.
+
+    skip_running=True (START TAT CA goi): acc DANG CHAY thi BO QUA, khong dung-roi-chay-lai.
+    Mac dinh False cho nut "Start party" rieng: van restart de ap config moi (doi map/mode).
+    """
     generation = _start_cancel_generation
     started = 0
     accounts = party_accounts(pidx)
     # Party da tat han -> tao session state MOI. Reset tung field nhu truoc de sot route_plan/
     # reform_gen cua map cu, member co the doc plan cu truoc khi leader ghi plan map moi.
-    if not any(is_account_running(u) for u, *_ in accounts):
+    _fresh = not any(is_account_running(u) for u, *_ in accounts)   # party bat dau PHIEN MOI
+    if _fresh:
         _party_state.pop(pidx, None)
         reset_party_joined(pidx)
         for u, *_ in accounts:
             account_forced_reconnect.discard(u)
             account_forced_reconnect_reason.pop(u, None)
     st = _pstate(pidx)
-    # RESET state dung chung (tranh sot tu lan chay truoc: leader_bad cu -> member quit oan)
+    # RESET state dung chung (tranh sot tu lan chay truoc: leader_bad cu -> member quit oan).
+    # CHI khi party bat dau phien MOI. Party dang co acc CHAY (START TAT CA them acc con thieu,
+    # hoac start lai 1 acc) ma xoa channel/team_dungeon_state/dailies_done... la PHA acc dang chay:
+    # chung dang dua vao chinh nhung state do de phoi hop voi nhau.
+    if not _fresh:
+        return _start_party_accounts(pidx, accounts, generation, stagger, skip_running)
     for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
               "stop_leader_done", "route_party_ready", "route_done", "rally_ready",
               "path_done"):
@@ -5520,14 +5546,7 @@ def start_party(pidx, stagger=1.5):
         st["event_start_map"] = {}   # reset quyet dinh resume 2K
         st["presync_maps"] = {}      # reset bao cao map truoc sync kenh
         st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
-    for u, p, is_leader, is_picker in accounts:
-        if generation != _start_cancel_generation:
-            log.info(">>> PARTY %s: huy khoi dong cac acc con lai do STOP TAT CA", pidx + 1)
-            break
-        account_exit_reason.pop(u, None)   # xoa ly do cu
-        if start_account(u, p, pidx, is_leader, is_picker):
-            started += 1
-            time.sleep(stagger)
+    started += _start_party_accounts(pidx, accounts, generation, stagger, skip_running)
     if started:
         # 1 watcher/party, chay nen. Tu thoat khi party dung han.
         threading.Thread(target=_party_watcher, args=(pidx,),
@@ -5667,9 +5686,23 @@ def _party_watcher(pidx):
 
 
 def start_all():
+    """START TAT CA = khoi dong nhung gi CHUA chay, KHONG dung-roi-chay-lai cai dang chay.
+
+    Truoc day goi start_party() thang -> start_account() giet thread cu (join toi 12s) roi login
+    lai tu dau, nen party dang chay ngon bi pha (user bao: "start rieng vai party roi start all
+    thi party da chay van bi chay lai").
+    """
     n = 0
+    skipped = 0
     for pidx in range(len(config.PARTIES)):
-        n += start_party(pidx)
+        accs = [u for u, _p, _l, _k in party_accounts(pidx)]
+        run = sum(1 for u in accs if is_account_running(u))
+        if accs and run == len(accs):
+            skipped += 1
+            continue                    # ca party dang chay du -> khong dung toi
+        n += start_party(pidx, skip_running=True)
+    if skipped:
+        log.info(">>> START TAT CA: bo qua %d party dang chay, khoi dong %d acc", skipped, n)
     return n
 
 
