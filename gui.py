@@ -1816,6 +1816,25 @@ def _load_json(name):
         return {}
 
 
+from bot import train_pick as _TP   # noqa: E402  (loi tu chon map/diem train)
+
+
+_PICK_GROUP = "★ Bot tự chọn map"
+
+
+def _pick_labels():
+    return [lbl for _k, lbl in _TP.PICK_MODES]
+
+
+def _pick_label(key):
+    return next((lbl for k, lbl in _TP.PICK_MODES if k == key), "")
+
+
+def _pick_key(label):
+    """Nhan tren dropdown Map -> khoa train_pick, '' neu do la map cu the."""
+    return next((k for k, lbl in _TP.PICK_MODES if lbl == label), "")
+
+
 def _spot_infos(map_id, mobs):
     """Chuoi phu cho tung diem quai trong dropdown: ' | 3-5 | Thủy 110, Địa 112'.
 
@@ -1921,6 +1940,15 @@ class PartyConfigFrame(ttk.Frame):
         self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
         self.map_cb = self.mob_cb = self.city_cb = None
+        # Chi dung khi Map = 1 trong 5 muc TU CHON MAP (xem train_pick.py).
+        self.mob_box = self.elem_btn = None
+        self.mob_min_var = tk.StringVar(
+            value=str(self._preset.get("mob_min") or _TP.DEFAULT_MOB_MIN))
+        self.mob_max_var = tk.StringVar(
+            value=str(self._preset.get("mob_max") or _TP.DEFAULT_MOB_MAX))
+        saved_el = self._preset.get("mob_elements")
+        self.mob_elems = ({int(e) for e in saved_el if int(e) in _TP.ALL_ELEMENTS}
+                          if saved_el else set(_TP.ALL_ELEMENTS)) or set(_TP.ALL_ELEMENTS)
         # EVENT: list (key, label) tu events.json -> picker khi mode=event. Bo qua event co
         # "hidden": true (an tam - chua lam xong; giu data, bo co de hien lai).
         self.events = [(k, v.get("label", k)) for k, v in (getattr(config, "EVENTS", {}) or {}).items()
@@ -3737,33 +3765,39 @@ class PartyConfigFrame(ttk.Frame):
         if mode in ("train", "digioi_train"):
             # (Cap quai DG da nam NGANG HANG voi Che do o tren - khong lap lai o day.)
             ttk.Label(self.dyn, text="Map:", width=10).pack(side="left")
-            names = [n for (_i, n, _m, _g) in self.train_maps]
+            # 5 muc TU CHON MAP dung DAU danh sach, roi den map cu the (chon tay nhu cu). Phai nhet
+            # vao CHINH items cua ComboSearch: no ghi de `values` va chiem <Button-1> (chan dropdown
+            # native), nen de rieng o `values` thi user khong bao gio thay.
+            rows = [(0, lbl, [], _PICK_GROUP) for lbl in _pick_labels()] + list(self.train_maps)
             # Combobox GO DUOC de tim nhanh (list map dai): go ID hoac TEN -> loc values + mo dropdown.
             self.map_cb = ttk.Combobox(self.dyn, textvariable=self.map_var, state="normal",
-                                       width=32, values=names)
+                                       width=32)
             self.map_cb.pack(side="left")
             self.map_cb.bind("<<ComboboxSelected>>", lambda e: self._fill_mobs())
             # Autocomplete: go ten HOAC id -> popup loc bung ngay duoi, van go tiep duoc; ↓ so dropdown.
-            ComboSearch(self.map_cb, self.train_maps,
+            ComboSearch(self.map_cb, rows,
                         key_fn=lambda r: f"{r[1]} {r[0]} {r[3]}",   # match ten + id + nhom
                         label_fn=lambda r: r[1],                    # hien thi = ten map
                         group_fn=lambda r: r[3],                    # gom theo nhom trong popup
                         on_pick=self._fill_mobs)
             ttk.Label(self.dyn, text="Quái:", width=6).pack(side="left", padx=(10, 0))
-            # Rong 40: Tk EP cua so dropdown bang dung be rong o dong (chinh -width cua listbox ben
-            # trong KHONG an thua - da do: -width 20 va 66 deu ra popup 155px). Muon danh sach to
-            # thi phai noi chinh o nay -> ConfigDialog rong 760 de nut '✎ Sửa map' con cho.
-            self.mob_cb = ttk.Combobox(self.dyn, textvariable=self.mob_var, state="readonly", width=40)
-            self.mob_cb.pack(side="left")
+            # Khung thay doi theo lua chon Map: map CU THE -> dropdown chon diem; TU CHON MAP ->
+            # min/max so quai + nut He (bot tu tim diem, khong co diem co dinh de chon).
+            self.mob_box = ttk.Frame(self.dyn)
+            self.mob_box.pack(side="left")
             ttk.Button(self.dyn, text="✎ Sửa map", command=self._edit_maps).pack(side="left", padx=(8, 0))
-            idx = next((i for i, (mid, _n, _m, _g) in enumerate(self.train_maps)
-                        if mid == self._preset.get("start_city_id")), 0)
-            if names:
-                self.map_var.set(names[idx])
+            was_train = self._preset.get("mode") in ("train", "digioi_train")
+            pick = self._preset.get("train_pick", "") if was_train else _TP.DEFAULT_PICK
+            if pick in _TP.PICK_KEYS:
+                self.map_var.set(_pick_label(pick))
+            else:
+                idx = next((i for i, (mid, _n, _m, _g) in enumerate(self.train_maps)
+                            if mid == self._preset.get("start_city_id")), 0)
+                if self.train_maps:
+                    self.map_var.set(self.train_maps[idx][1])
             # Chi dung mob_index DA LUU neu preset von la 'train'/'digioi_train'. Doi tu mode khac
             # sang -> mac dinh "Bot tu chon" (-1), KHONG lay mob_index=0 (rac) cua mode khac.
-            pmob = (self._preset.get("mob_index", -1)
-                    if self._preset.get("mode") in ("train", "digioi_train") else -1)
+            pmob = self._preset.get("mob_index", -1) if was_train else -1
             self._fill_mobs(pmob)
         elif mode == "city":
             ttk.Label(self.dyn, text="Thành:", width=10).pack(side="left")
@@ -3803,8 +3837,58 @@ class PartyConfigFrame(ttk.Frame):
         else:
             ttk.Label(self.dyn, text="→ Dọn dẹp túi đồ (chưa làm — placeholder)").pack(side="left")
 
+    def _elem_btn_text(self):
+        n = len(self.mob_elems)
+        return f"⬦ Hệ ({n}/{len(_TP.ALL_ELEMENTS)})"
+
+    def _open_elements(self):
+        """Bang tick 8 he (7 he + Vo he). Tick het HOAC khong tick gi = danh tat ca."""
+        top = tk.Toplevel(self)
+        top.title("Hệ quái muốn đánh")
+        top.transient(self); top.grab_set()
+        box = ttk.Frame(top, padding=10); box.pack(fill="both", expand=True)
+        ttk.Label(box, text="Tick hết hoặc không tick gì = đánh tất cả các hệ.").pack(anchor="w")
+        vars_ = {}
+        grid = ttk.Frame(box); grid.pack(anchor="w", pady=(8, 0))
+        for i, (eid, name) in enumerate(_TP.ELEMENTS):
+            v = tk.BooleanVar(value=(eid in self.mob_elems))
+            vars_[eid] = v
+            ttk.Checkbutton(grid, text=name, variable=v).grid(
+                row=i // 2, column=i % 2, sticky="w", padx=(0, 20))
+
+        def save():
+            self.mob_elems = {e for e, v in vars_.items() if v.get()} or set(_TP.ALL_ELEMENTS)
+            if self.elem_btn:
+                self.elem_btn.configure(text=self._elem_btn_text())
+            top.destroy()
+
+        bar = ttk.Frame(box); bar.pack(fill="x", pady=(12, 0))
+        ttk.Button(bar, text="Lưu", command=save).pack(side="right")
+        ttk.Button(bar, text="Hủy", command=top.destroy).pack(side="right", padx=(0, 6))
+
     def _fill_mobs(self, preset_index=None):
+        """Ve lai khung 'Quái' theo lua chon Map hien tai.
+
+        Map CU THE  -> dropdown chon diem (nhu cu, van chon tay duoc).
+        TU CHON MAP -> min/max so quai + nut He (bot tu tim diem theo train_pick.py).
+        """
+        if not getattr(self, "mob_box", None):
+            return
+        for w in self.mob_box.winfo_children():
+            w.destroy()
+        self.mob_cb = self.elem_btn = None
         sel = self.map_var.get()
+
+        if _pick_key(sel):
+            ttk.Label(self.mob_box, text="min").pack(side="left")
+            ttk.Entry(self.mob_box, textvariable=self.mob_min_var, width=4).pack(side="left", padx=(2, 4))
+            ttk.Label(self.mob_box, text="max").pack(side="left")
+            ttk.Entry(self.mob_box, textvariable=self.mob_max_var, width=4).pack(side="left", padx=(2, 6))
+            self.elem_btn = ttk.Button(self.mob_box, text=self._elem_btn_text(),
+                                       command=self._open_elements, width=12)
+            self.elem_btn.pack(side="left")
+            return
+
         mid = next((i for (i, n, _m, _g) in self.train_maps if n == sel), None)
         mobs = next((m for (_i, n, m, _g) in self.train_maps if n == sel), [])
         # Index 0 = "Bot tu chon" (ngau nhien). Index 1.. = diem cu the.
@@ -3812,12 +3896,15 @@ class PartyConfigFrame(ttk.Frame):
         # Toa do de CUOI: 'Điểm 1 | 2-3 | Thủy 111, Địa 112 | (1210, 550)' - phan hay doc nam truoc.
         opts = ["🎲 Bot tự chọn (ngẫu nhiên)"] + [
             f"Điểm {i + 1}{info[i]} | {tuple(xy)}" for i, xy in enumerate(mobs)]
-        if self.mob_cb:
-            self.mob_cb.configure(values=opts)
-            # preset_index: -1 (hoac None) -> auto (0); >=0 -> diem do (+1)
-            ci = (preset_index + 1) if (preset_index is not None and preset_index >= 0) else 0
-            ci = min(ci, len(opts) - 1)
-            self.mob_var.set(opts[ci])
+        # Rong 40: Tk EP cua so dropdown bang dung be rong o dong (chinh -width cua listbox ben
+        # trong KHONG an thua - da do: -width 20 va 66 deu ra popup 155px).
+        self.mob_cb = ttk.Combobox(self.mob_box, textvariable=self.mob_var,
+                                   state="readonly", width=40, values=opts)
+        self.mob_cb.pack(side="left")
+        # preset_index: -1 (hoac None) -> auto (0); >=0 -> diem do (+1)
+        ci = (preset_index + 1) if (preset_index is not None and preset_index >= 0) else 0
+        ci = min(ci, len(opts) - 1)
+        self.mob_var.set(opts[ci])
 
     def _edit_maps(self):
         # Mo editor chon SAN map dang train (theo dropdown Map) cho tien sua ngay.
@@ -3835,14 +3922,20 @@ class PartyConfigFrame(ttk.Frame):
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
         sc, mob_index, city_flag = 0, 0, 0
         event_key = ""
+        train_pick = ""
         if mode == "digioi":
             sc = 49942
         elif mode in ("train", "digioi_train"):
             # digioi_train: start_city_id = MAP TRAIN (pha 2). Pha 1 (DG) dung DIGIOI_MAP_ID co dinh
             # trong runner, khong luu o day.
-            sc = next((mid for (mid, n, _m, _g) in self.train_maps if n == self.map_var.get()), 0)
-            cur = self.mob_cb.current() if self.mob_cb else 0
-            mob_index = (cur - 1) if cur >= 1 else -1   # 0 = "Bot tu chon" -> -1; k -> diem k-1
+            train_pick = _pick_key(self.map_var.get())
+            if train_pick:
+                # TU CHON MAP: khong co map/diem co dinh - runner tu tim theo level party.
+                sc, mob_index = 0, -1
+            else:
+                sc = next((mid for (mid, n, _m, _g) in self.train_maps if n == self.map_var.get()), 0)
+                cur = self.mob_cb.current() if self.mob_cb else 0
+                mob_index = (cur - 1) if cur >= 1 else -1   # 0 = "Bot tu chon" -> -1; k -> diem k-1
         elif mode == "city":
             for (cid, f, n) in self.cities:
                 if n == self.city_var.get():
@@ -3873,7 +3966,18 @@ class PartyConfigFrame(ttk.Frame):
         srv = next((k for k, lbl in self.servers if lbl == self.server_var.get()),
                    self.servers[0][0] if self.servers else "trieu_van")
         leaders = [x.strip() for x in self.leaders_var.get().split(",") if x.strip()]
+        def _num(var, dflt):
+            try:
+                return max(1, min(5, int(str(var.get()).strip())))
+            except Exception:
+                return dflt
+        mob_min = _num(self.mob_min_var, _TP.DEFAULT_MOB_MIN)
+        mob_max = _num(self.mob_max_var, _TP.DEFAULT_MOB_MAX)
+        if mob_min > mob_max:
+            mob_min, mob_max = mob_max, mob_min
         data = {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
+                "train_pick": train_pick, "mob_min": mob_min, "mob_max": mob_max,
+                "mob_elements": sorted(self.mob_elems or _TP.ALL_ELEMENTS),
                 "city_flag": city_flag, "do_daily": bool(self.daily_var.get()),
                 "claim_offline_exp": bool(self.claim_offline_exp_var.get()),
                 "auto_world_boss": bool(self.auto_world_boss_var.get()),

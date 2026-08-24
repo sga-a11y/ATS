@@ -16,6 +16,7 @@ except Exception:
     pass
 from . import config
 from . import mob_spots
+from . import train_pick
 from .mob_scanner import MobScanSession, compute_regions, scan_full_map
 from .scene_fight import get_scene_fight_seed
 from .train_maps_store import save_learned_regions
@@ -876,6 +877,65 @@ def _party_average_level(pidx):
     return _average_party_levels(rows)
 
 
+def _party_levels(pidx):
+    """Level CUA CA CHAR VA PET moi thanh vien -> list phang, cho train_pick.
+
+    Khac _party_average_level: acc nao chua biet level thi BO QUA thay vi tra None ca cum. Chon map
+    bang du lieu thieu van hon la khong chon duoc (acc dang goi ham nay chac chan da login xong nen
+    luon co it nhat 1 level; acc khac lay account_last da luu tu lan chay truoc).
+    """
+    out = []
+    for username, *_ in party_accounts(pidx):
+        c = account_clients.get(username)
+        row = ({"char_level": getattr(c, "char_level", None),
+                "pet_name": getattr(c, "pet_name", None),
+                "pet_level": getattr(c, "pet_level", None)}
+               if c is not None else account_last.get(username, {}))
+        lv = row.get("char_level")
+        if isinstance(lv, int) and lv > 0:
+            out.append(lv)
+        if row.get("pet_name"):
+            plv = row.get("pet_level")
+            if isinstance(plv, int) and plv > 0:
+                out.append(plv)
+    return out
+
+
+def _auto_train_target(pidx, pcfg):
+    """(map_id, mob_index) cho party dat 'Tu chon map'. QUYET 1 LAN roi giu trong party state.
+
+    Giu lai vi 2 le: (1) moi acc goi rieng, khong chot thi moi dua ra 1 map khac nhau; (2) co yeu to
+    ngau nhien khi nhieu diem cung hop -> goi lai la ra diem khac, ca party lech nhau.
+    """
+    st = _pstate(pidx)
+    with st["lock"]:
+        cur = st.get("auto_train")
+        if cur:
+            return cur
+        levels = _party_levels(pidx)
+        if not levels:
+            log.warning(">>> PARTY %s: TU CHON MAP nhung chua biet level acc nao -> bo qua lan nay",
+                        pidx + 1)
+            return None
+        maps = [(mid, m.get("name") or str(mid), m.get("mobs") or [])
+                for mid, m in getattr(config, "TRAIN_MAPS", {}).items()]
+        got = train_pick.pick_train_spot(
+            pcfg.get("train_pick"), levels, maps,
+            mob_min=int(pcfg.get("mob_min") or train_pick.DEFAULT_MOB_MIN),
+            mob_max=int(pcfg.get("mob_max") or train_pick.DEFAULT_MOB_MAX),
+            elements=pcfg.get("mob_elements") or train_pick.ALL_ELEMENTS)
+        if not got:
+            log.warning(">>> PARTY %s: TU CHON MAP khong tim duoc diem nao (level party %s)",
+                        pidx + 1, sorted(levels))
+            return None
+        map_id, idx, used_level, why = got
+        name = (getattr(config, "TRAIN_MAPS", {}).get(map_id) or {}).get("name", map_id)
+        log.info(">>> PARTY %s: TU CHON MAP -> %s (map %s) diem %d | level quai %d | %s",
+                 pidx + 1, name, map_id, idx + 1, used_level, why)
+        st["auto_train"] = (map_id, idx)
+        return st["auto_train"]
+
+
 def _bump_reform(st, reason=""):
     """Tang reform_gen VA log RO ai bump. CALLER PHAI DANG GIU st["lock"].
 
@@ -1494,6 +1554,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 mode, sc = "digioi", config.DIGIOI_MAP_ID
             else:
                 mode = "train"
+        # TU CHON MAP TRAIN (train_pick): sc/mob_index trong config = 0/-1, map+diem do bot tu tim
+        # theo level party. Quyet 1 LAN cho CA PARTY (xem _auto_train_target) - moi acc tu boc thi
+        # ca party toe ra cac map khac nhau.
+        if (raw_mode in ("train", "digioi_train")) and pcfg.get("train_pick"):
+            _auto = _auto_train_target(pidx, pcfg)
+            if _auto:
+                sc, mob_index = _auto
         tm = config.TRAIN_MAPS.get(sc)          # dict {safe, mobs} neu la map train
         if not dt_mode:
             mode = raw_mode
