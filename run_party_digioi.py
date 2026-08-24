@@ -2570,6 +2570,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     time.sleep(4)
                 log.info("[%s] (LEADER) reform: %d/%d member join lai -> KEO qua cong ra train map",
                          label, joined_member_count(pidx), st["n_members"])
+                # BAO CAO DANG LAM VIEC. Truoc day tu day tro di leader KHONG bao cao gi nua, nen pha
+                # cua no VAN NAM NGUYEN o "wait" cua vong cho party o thanh (2448), con heartbeat vong
+                # mang thi tiep tuc lam bao cao "tuoi". Member cho leader lap route cung bao "wait"
+                # (dung - ho cho that) => CA PARTY "wait" + tuoi => watcher ket luan DEADLOCK, sau
+                # WATCH_ALLWAIT_SEC=120s ep dong bo -> bump reform_gen -> _ab() cua chinh leader bat ->
+                # dang di bo giua duong thi tu dung. Log that 16:37:10 keo -> 16:39:14 "keo di bo
+                # Nghiep->18001 that bai (map=18801)": party HOAN TOAN KHOE, chi vi leader quen khai
+                # bao la minh dang lam viec.
+                set_account_activity(username, "reform: keo party ra bai %s" % sc, phase="reform")
                 try: c.set_party_strategist()
                 except Exception: pass
                 st["route_party_ready"].set()    # bao member: party lap xong, sap keo
