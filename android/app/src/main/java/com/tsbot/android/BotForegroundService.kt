@@ -267,6 +267,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 // - KHONG truyen thang List (R8 rut gon ten lop -> "'t' object is not iterable").
                 m.trainPick, party.mobMin, party.mobMax,
                 party.mobElements.joinToString(","),
+                // Tu chon CAP QUAI DG. THEM O CUOI CUNG (goi theo VI TRI).
+                party.diGioiPick,
             )
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)

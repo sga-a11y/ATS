@@ -902,6 +902,31 @@ def _party_levels(pidx):
     return out
 
 
+def _auto_dg_level(pidx, pick_mode):
+    """idx cap quai Di Gioi (1..15) suy tu level party. None neu chua biet level acc nao.
+
+    Chot 1 LAN/phien giong _auto_train_target: ca party phai cung MOT cap quai.
+    """
+    st = _pstate(pidx)
+    with st["lock"]:
+        cur = st.get("auto_dg_level")
+        if cur:
+            return cur
+        levels = _party_levels(pidx)
+        if not levels:
+            log.warning(">>> PARTY %s: TU CHON CAP QUAI DG nhung chua biet level acc nao -> dung "
+                        "cap da luu", pidx + 1)
+            return None
+        tier = train_pick.desired_dg_level(pick_mode, levels)
+        if not tier:
+            return None
+        idx = train_pick.DG_LEVELS.index(tier) + 1
+        log.info(">>> PARTY %s: TU CHON CAP QUAI DG -> cap %d (muon %d, level party %s)",
+                 pidx + 1, tier, train_pick.desired_level(pick_mode, levels), sorted(levels))
+        st["auto_dg_level"] = idx
+        return idx
+
+
 def _auto_train_target(pidx, pcfg):
     """(map_id, mob_index) cho party dat 'Tu chon map'. QUYET 1 LAN roi giu trong party state.
 
@@ -1428,6 +1453,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         next_ho_phu = 0.0      # Di Gioi Ho Phu: check login + moi 3p, chi khi mode Di Gioi
         c.fight_legion_boss = pcfg.get("fight_legion_boss", True)
         c.di_gioi_level = int(pcfg.get("di_gioi_level", 2))   # idx 1..15 cap quai DG (mac dinh 2=cap25)
+        # TU CHON CAP QUAI DG: suy tu level party -> MOC gan nhat (bang nhau lay moc THAP hon).
+        # Quyet 1 LAN cho ca party giong _auto_train_target: co random dau nhung level lay tu
+        # account_last cua acc chua login co the doi giua cac lan goi -> moi acc ra 1 moc khac.
+        _dgp = pcfg.get("di_gioi_pick") or ""
+        if _dgp in train_pick.PICK_KEYS:
+            _dg_auto = _auto_dg_level(pidx, _dgp)
+            if _dg_auto:
+                c.di_gioi_level = _dg_auto
         if not is_reconnect:    # RECONNECT nhe: bo qua exp/qua/gacha/mail/vantieu (da lam phien truoc)
             if pcfg.get("claim_offline_exp", True):
                 c.request_offline_exp() # NHAN EXP OFFLINE (treo may) - tu nhan neu co
@@ -5442,7 +5475,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         auto_event_exchange=False, event_exchange_items=None,
                         death_return_town=True, pet_death_return_town=True,
                         event_exchange_sig="",
-                        train_pick="", mob_min=0, mob_max=0, mob_elements=""):
+                        train_pick="", mob_min=0, mob_max=0, mob_elements="",
+                        di_gioi_pick=""):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -5462,6 +5496,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         # TU CHON MAP TRAIN. mob_elements: Kotlin truyen CHUOI noi bang "," (khong truyen List -
         # R8 rut gon ten lop -> Chaquopy "TypeError: 't' object is not iterable").
         "train_pick": str(train_pick or ""),
+        "di_gioi_pick": str(di_gioi_pick or ""),
         "mob_min": int(mob_min or train_pick_mod.DEFAULT_MOB_MIN),
         "mob_max": int(mob_max or train_pick_mod.DEFAULT_MOB_MAX),
         "mob_elements": ([int(x) for x in str(mob_elements).split(",") if x.strip().isdigit()]

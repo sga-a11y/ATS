@@ -95,6 +95,9 @@ data class Party(
     val spThresh: Int = 500000,
     // Cap quai Di Gioi: idx 1..15 (goi 0x61 02 00 idx) -> cap 10..180. Mac dinh 2 = cap 25.
     val diGioiLevel: Int = 2,
+    // TU CHON CAP QUAI DG: "" = dung diGioiLevel co dinh; khac "" = bot suy tu level party ->
+    // MOC gan nhat (bang nhau lay moc THAP hon). Khoa nam trong train_pick.PICK_MODES.
+    val diGioiPick: String = "",
     val accounts: List<Account> = emptyList(),
 )
 

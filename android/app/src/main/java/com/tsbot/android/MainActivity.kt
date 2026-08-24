@@ -784,6 +784,7 @@ fun TsBotApp(
             initialSpQty = partyBeingEdited.spQty,
             initialSpThresh = partyBeingEdited.spThresh,
             initialDiGioiLevel = partyBeingEdited.diGioiLevel,
+            initialDiGioiPick = partyBeingEdited.diGioiPick,
             onApplyDiGioiLevel = { idx ->
                 service?.setDiGioiLevel(partyBeingEdited.accounts.map { it.username }, idx)
             },
@@ -1540,7 +1541,20 @@ fun StatBar(label: String, cur: Int, max: Int, color: Color) {
  * UnsupportedOperationException "dict_keys object has no attribute __getitem__", da xac nhan qua
  * crash log that) giu dung thu tu Python dict (json.loads tu Python 3.7+ giu insertion order). */
 // Cap quai Di Gioi: idx 1..15 (goi 0x61 02 00 idx) -> cap hien thi. Xem KNOWLEDGE.md.
-val DG_LEVELS = listOf(10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180)
+val DG_LEVELS: List<Int> by lazy {
+    try {
+        pyTrainPick().get("DG_LEVELS")!!.asList().map { it.toInt() }
+    } catch (e: Exception) {
+        listOf(10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180)
+    }
+}
+
+/** 5 muc tu chon CAP QUAI DG: (khoa, nhan NGAN). Lay tu Python train_pick.PICK_MODES[i][2]. */
+fun dgPickOptions(): List<Pair<String, String>> =
+    pyTrainPick().get("PICK_MODES")!!.asList().map { row ->
+        val r = row.asList()
+        r[0].toString() to r[2].toString()
+    }
 
 // (key, ten hien thi, nhom). Nhom = field 'group' trong train_maps.json (mac dinh 'Chua phan nhom').
 /** Tien to khoa cua 5 muc "bot tu chon map" trong dropdown Map. */
@@ -1668,6 +1682,7 @@ fun AddPartyDialog(
     initialSpQty: Int = 9999,
     initialSpThresh: Int = 500000,
     initialDiGioiLevel: Int = 2,
+    initialDiGioiPick: String = "",
     onApplyAdvancedToAll: ((Party) -> Int)? = null,
     onApplyDiGioiLevel: ((Int) -> Unit)? = null,
 ) {
@@ -1741,6 +1756,8 @@ fun AddPartyDialog(
     var spThreshText by remember { mutableStateOf(initialSpThresh.toString()) }
     // Cap quai Di Gioi: idx 1..15 (1-based). UI hien theo cap 10..180.
     var diGioiLevel by remember { mutableStateOf(initialDiGioiLevel.coerceIn(1, DG_LEVELS.size)) }
+    var diGioiPick by remember { mutableStateOf(initialDiGioiPick) }
+    val dgPicks = remember { try { dgPickOptions() } catch (e: Exception) { emptyList() } }
     var diGioiExpandedMode by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
     var showShopList by remember { mutableStateOf(false) }
@@ -1798,6 +1815,7 @@ fun AddPartyDialog(
         spQty = spQtyText.toIntOrNull() ?: 9999,
         spThresh = spThreshText.toIntOrNull() ?: 500000,
         diGioiLevel = diGioiLevel,
+        diGioiPick = diGioiPick,
     )
 
     AlertDialog(
@@ -1897,16 +1915,28 @@ fun AddPartyDialog(
                         Text("Cấp quái:")
                         Box(modifier = Modifier.padding(start = 6.dp)) {
                             OutlinedButton(onClick = { diGioiExpandedMode = true }) {
-                                Text(DG_LEVELS[diGioiLevel - 1].toString())
+                                Text(
+                                    dgPicks.find { it.first == diGioiPick }?.second
+                                        ?: DG_LEVELS[diGioiLevel - 1].toString(),
+                                )
                             }
                             DropdownMenu(expanded = diGioiExpandedMode, onDismissRequest = { diGioiExpandedMode = false }) {
+                                dgPicks.forEach { (key, label) ->
+                                    DropdownMenuItem(text = { Text(label) },
+                                        onClick = { diGioiPick = key; diGioiExpandedMode = false })
+                                }
                                 DG_LEVELS.forEachIndexed { i, lv ->
                                     DropdownMenuItem(text = { Text(lv.toString()) },
-                                        onClick = { diGioiLevel = i + 1; diGioiExpandedMode = false })
+                                        onClick = {
+                                            diGioiLevel = i + 1; diGioiPick = ""
+                                            diGioiExpandedMode = false
+                                        })
                                 }
                             }
                         }
-                        if (onApplyDiGioiLevel != null) {
+                        // Dang TU CHON thi khong ap ngay duoc: moc quai chi tinh duoc luc chay (can
+                        // level ca party), bam nut se ap NHAM cap dang hien.
+                        if (onApplyDiGioiLevel != null && diGioiPick.isEmpty()) {
                             TextButton(onClick = { onApplyDiGioiLevel(diGioiLevel) },
                                 modifier = Modifier.padding(start = 8.dp)) { Text("Áp dụng ngay") }
                         }
@@ -2382,6 +2412,7 @@ fun AddPartyDialog(
                             spQty = spQtyText.toIntOrNull() ?: 9999,
                             spThresh = spThreshText.toIntOrNull() ?: 500000,
                             diGioiLevel = diGioiLevel,
+                            diGioiPick = diGioiPick,
                         ))
                         if (!saved) nameError = "Tên party đã tồn tại"
                     }

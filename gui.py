@@ -195,7 +195,9 @@ def _shop_items_json(value):
 
 
 # Cap quai Di Gioi: idx 1..15 (gói 0x61 02 00 idx) -> cap hien thi. Xem KNOWLEDGE.md.
-_DG_LEVELS = [10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180]
+from bot import train_pick as _TP   # noqa: E402  (loi tu chon map/diem/cap quai theo level party)
+
+_DG_LEVELS = _TP.DG_LEVELS   # NGUON DUY NHAT o train_pick.py (runner + APK cung doc), khong chep tay
 
 def _dg_level_to_idx(level_val, default=2):
     try:
@@ -1816,23 +1818,20 @@ def _load_json(name):
         return {}
 
 
-from bot import train_pick as _TP   # noqa: E402  (loi tu chon map/diem train)
-
-
 _PICK_GROUP = "★ Bot tự chọn map"
 
 
-def _pick_labels():
-    return [lbl for _k, lbl in _TP.PICK_MODES]
+def _pick_labels(short=False):
+    return [_TP.pick_label(k, short) for k in _TP.PICK_KEYS]
 
 
-def _pick_label(key):
-    return next((lbl for k, lbl in _TP.PICK_MODES if k == key), "")
+def _pick_label(key, short=False):
+    return _TP.pick_label(key, short)
 
 
 def _pick_key(label):
-    """Nhan tren dropdown Map -> khoa train_pick, '' neu do la map cu the."""
-    return next((k for k, lbl in _TP.PICK_MODES if lbl == label), "")
+    """Nhan (dai o dropdown Map, ngan o 'Cap quai DG') -> khoa, '' neu la map/cap cu the."""
+    return _TP.pick_key(label)
 
 
 def _spot_infos(map_id, mobs):
@@ -1926,16 +1925,16 @@ class PartyConfigFrame(ttk.Frame):
         # Hien khi mode = digioi / digioi_train (pack/pack_forget trong _render_dyn).
         # Cap quai Di Gioi: luu idx 1..15; UI hien theo cap (10..180). Mac dinh idx 2 = cap 25.
         _dg_idx = int(self._preset.get("di_gioi_level", 2))
+        _dg_pick = self._preset.get("di_gioi_pick", "")
         self.di_gioi_level_var = tk.StringVar(
-            value=str(_DG_LEVELS[_dg_idx - 1] if 1 <= _dg_idx <= 15 else 25))
+            value=(_pick_label(_dg_pick, short=True) if _dg_pick in _TP.PICK_KEYS
+                   else str(_DG_LEVELS[_dg_idx - 1] if 1 <= _dg_idx <= 15 else 25)))
         self.dg_lvl_lbl = ttk.Label(row, text="  │  Cấp quái DG:")
-        self.dg_lvl_cb = ttk.Combobox(row, textvariable=self.di_gioi_level_var, width=6,
-                                      state="readonly", values=[str(v) for v in _DG_LEVELS])
-        self.dg_apply_btn = ttk.Button(
-            row, text="Áp dụng ngay",
-            command=lambda: (self.on_apply_di_gioi_level(
-                _dg_level_to_idx(self.di_gioi_level_var.get()))
-                if getattr(self, "on_apply_di_gioi_level", None) else None))
+        # 5 muc TU CHON (nhan NGAN) len dau, roi den cac moc cu the.
+        self.dg_lvl_cb = ttk.Combobox(row, textvariable=self.di_gioi_level_var, width=21,
+                                      state="readonly",
+                                      values=_pick_labels(short=True) + [str(v) for v in _DG_LEVELS])
+        self.dg_apply_btn = ttk.Button(row, text="Áp dụng ngay", command=self._apply_dg_level_now)
 
         self.dyn = ttk.Frame(self); self.dyn.pack(fill="x", pady=6)
         self.map_var = tk.StringVar(); self.mob_var = tk.StringVar(); self.city_var = tk.StringVar()
@@ -3824,18 +3823,35 @@ class PartyConfigFrame(ttk.Frame):
                 self.event_var.set(labels[idx])
         elif mode == "digioi":
             ttk.Label(self.dyn, text="Cấp quái:", width=10).pack(side="left")
-            ttk.Combobox(self.dyn, textvariable=self.di_gioi_level_var, width=6, state="readonly",
-                         values=[str(v) for v in _DG_LEVELS]).pack(side="left")
+            ttk.Combobox(self.dyn, textvariable=self.di_gioi_level_var, width=21, state="readonly",
+                         values=_pick_labels(short=True) + [str(v) for v in _DG_LEVELS]
+                         ).pack(side="left")
             if getattr(self, "on_apply_di_gioi_level", None):
                 ttk.Button(self.dyn, text="Áp dụng ngay",
-                           command=lambda: self.on_apply_di_gioi_level(
-                               _dg_level_to_idx(self.di_gioi_level_var.get()))
-                           ).pack(side="left", padx=(8, 0))
+                           command=self._apply_dg_level_now).pack(side="left", padx=(8, 0))
             ttk.Label(self.dyn, text="  (Dị Giới, START_CITY_ID=49942)").pack(side="left")
         elif mode == "stand":
             ttk.Label(self.dyn, text="→ Login ở đâu đứng yên đó (START_CITY_ID = 0)").pack(side="left")
         else:
             ttk.Label(self.dyn, text="→ Dọn dẹp túi đồ (chưa làm — placeholder)").pack(side="left")
+
+    def _apply_dg_level_now(self):
+        """Nut 'Ap dung ngay' cho Cap quai DG.
+
+        Dang chon 1 trong 5 muc TU CHON thi KHONG ap duoc: moc quai chi tinh duoc khi biet level ca
+        party (runner tinh luc chay), GUI khong co so do. Truoc day _dg_level_to_idx() gap nhan chu
+        se nem ValueError -> tra mac dinh 2 => bam nut la am tham ap CAP 25, sai hoan toan.
+        """
+        if not getattr(self, "on_apply_di_gioi_level", None):
+            return
+        cur = self.di_gioi_level_var.get()
+        if _pick_key(cur):
+            messagebox.showinfo(
+                "Cấp quái Dị Giới",
+                "Đang để '%s' — bot tự tính cấp quái theo level party khi chạy, "
+                "nên không áp ngay được. Muốn áp ngay thì chọn một cấp cụ thể." % cur)
+            return
+        self.on_apply_di_gioi_level(_dg_level_to_idx(cur))
 
     def _elem_btn_text(self):
         n = len(self.mob_elems)
@@ -4017,6 +4033,9 @@ class PartyConfigFrame(ttk.Frame):
                 "buy_sp": bool(self.buy_sp_var.get()),
                 "sp_qty": _parse_int(self.sp_qty_var.get(), 9999),
                 "sp_thresh": _parse_int(self.sp_thresh_var.get(), 500000),
+                # TU CHON CAP QUAI DG: di_gioi_pick != "" -> runner tu tinh moc theo level party.
+                # di_gioi_level van giu idx cu lam MAC DINH (khi chua biet level acc nao).
+                "di_gioi_pick": _pick_key(self.di_gioi_level_var.get()),
                 "di_gioi_level": _dg_level_to_idx(self.di_gioi_level_var.get()),
                 "leaders": leaders, "accounts": accs}
         if mode == "digioi":

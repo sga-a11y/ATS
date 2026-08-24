@@ -84,6 +84,7 @@ class PartyStore(private val context: Context) {
                 trainMapKey = o.optString("train_map_key", ""),
                 trainMobIndex = o.optInt("train_mob_index", -1),
                 trainPick = o.optString("train_pick", ""),
+                diGioiPick = o.optString("di_gioi_pick", ""),
                 mobMin = o.optInt("mob_min", 3),
                 mobMax = o.optInt("mob_max", 4),
                 mobElements = o.optJSONArray("mob_elements")?.let { arr ->
@@ -162,6 +163,7 @@ class PartyStore(private val context: Context) {
             o.put("train_map_key", p.trainMapKey)
             o.put("train_mob_index", p.trainMobIndex)
             o.put("train_pick", p.trainPick)
+            o.put("di_gioi_pick", p.diGioiPick)
             o.put("mob_min", p.mobMin)
             o.put("mob_max", p.mobMax)
             o.put("mob_elements", JSONArray().also { a -> p.mobElements.forEach { a.put(it) } })

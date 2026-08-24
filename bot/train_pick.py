@@ -16,14 +16,25 @@ import re
 from . import train_block_stats
 
 # Cach suy level quai mong muon tu level party. Khoa nay luu trong accounts.json.
+# (khoa, nhan DAI cho dropdown Map, nhan NGAN cho o hep nhu 'Cap quai DG').
 PICK_MODES = [
-    ("avg-20", "Tự chọn map: level TB -20"),
-    ("avg-25", "Tự chọn map: level TB -25"),
-    ("avg-30", "Tự chọn map: level TB -30"),
-    ("min+29", "Tự chọn map: level thấp nhất +29"),
-    ("max-29", "Tự chọn map: level cao nhất -29"),
+    ("avg-20", "Tự chọn map: level TB -20", "Tự chọn: TB -20"),
+    ("avg-25", "Tự chọn map: level TB -25", "Tự chọn: TB -25"),
+    ("avg-30", "Tự chọn map: level TB -30", "Tự chọn: TB -30"),
+    ("min+29", "Tự chọn map: level thấp nhất +29", "Tự chọn: thấp nhất +29"),
+    ("max-29", "Tự chọn map: level cao nhất -29", "Tự chọn: cao nhất -29"),
 ]
-PICK_KEYS = [k for k, _lbl in PICK_MODES]
+PICK_KEYS = [row[0] for row in PICK_MODES]
+
+
+def pick_label(key, short=False):
+    i = 2 if short else 1
+    return next((row[i] for row in PICK_MODES if row[0] == key), "")
+
+
+def pick_key(label):
+    """Nhan (dai HOAC ngan) -> khoa. '' neu khong phai muc tu chon."""
+    return next((row[0] for row in PICK_MODES if label in (row[1], row[2])), "")
 DEFAULT_PICK = "avg-25"        # mac dinh khi doi sang mode train
 
 # 7 he cua game + VO HE. So 6 (EElement.None) khong npc nao dung nen khong dua vao.
@@ -32,6 +43,32 @@ ELEMENTS = [(1, "Địa"), (2, "Thủy"), (3, "Hỏa"), (4, "Phong"),
 ALL_ELEMENTS = [e for e, _n in ELEMENTS]
 DEFAULT_MOB_MIN = 3
 DEFAULT_MOB_MAX = 4
+
+
+# Cac MOC cap quai Di Gioi (goi 0x61 02 00 idx; idx = vi tri trong list + 1).
+DG_LEVELS = [10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180]
+
+
+def nearest_tier(level, tiers=None):
+    """Moc gan `level` nhat. BANG NHAU thi lay moc THAP HON (user chot).
+
+    VD level 115, moc 110 va 120 deu cach 5 -> tra 110.
+    """
+    tiers = sorted(int(t) for t in (tiers or DG_LEVELS))
+    if not tiers:
+        return None
+    level = int(level)
+    # key: khoang cach truoc, roi -t de khi bang nhau cai THAP HON thang (min lay cai dau tien khi
+    # sap xep tang dan theo key; -t lam moc thap co key lon hon... nen dung t truc tiep).
+    return min(tiers, key=lambda t: (abs(t - level), t))
+
+
+def desired_dg_level(pick_mode, levels, tiers=None):
+    """Level party -> level quai mong muon -> MOC Di Gioi gan nhat. None neu chua tinh duoc."""
+    want = desired_level(pick_mode, levels)
+    if want is None:
+        return None
+    return nearest_tier(want, tiers)
 
 
 def map_level_range(name):
