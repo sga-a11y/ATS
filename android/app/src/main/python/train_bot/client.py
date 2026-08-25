@@ -10913,11 +10913,12 @@ class GameClient:
         target = None if safe is None else tuple(safe)
         return router.build_route(int(dest_map), target)
 
-    def nearest_smart_city(self, dest_map: int, exclude_map=None):
+    def nearest_smart_city(self, dest_map: int, exclude_map=None, allowed=None):
+        """allowed = chi duoc chon trong tap city_id nay (vd: thanh CA PARTY deu da mo)."""
         router = _smart_world_router()
         if router is None:
             return None
-        return router.nearest_city(int(dest_map), exclude_city=exclude_map)
+        return router.nearest_city(int(dest_map), exclude_city=exclude_map, allowed=allowed)
 
     def refresh_server_position(self, source_map: int, request_timeout: float = 2.0) -> bool:
         source_map = int(source_map)

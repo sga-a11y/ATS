@@ -107,12 +107,22 @@ class SmartWorldRouter:
             int(edge["door"]),
         ) in _FORCE_WALK_SEA_GATES
 
-    def nearest_city(self, dest_map, exclude_city=None):
+    def nearest_city(self, dest_map, exclude_city=None, allowed=None):
+        """Thanh gan `dest_map` nhat (theo so cong roi den quang duong THAT).
+
+        allowed = tap city_id duoc phep chon (None = khong gioi han). Dung cho "chi lay thanh MA
+        CA PARTY DA MO teleport": chon thanh chua mo thi ca party dung im o buoc teleport.
+        Loc o DAY chu khong tu tinh khoang cach rieng ben ngoai - ham nay con biet cong nao di bo
+        qua duoc (image [0,0,0] = warp event, khong di duoc), tu tinh lay se chon phai thanh ma
+        router KHONG dinh tuyen noi.
+        """
         dest_map = int(dest_map)
         exclude_city = None if exclude_city in (None, 0) else int(exclude_city)
+        allowed = None if allowed is None else {int(x) for x in allowed}
         candidates = [
             item for item in self.nav.rank_cities(dest_map)
-            if exclude_city is None or int(item["city"]) != exclude_city
+            if (exclude_city is None or int(item["city"]) != exclude_city)
+            and (allowed is None or int(item["city"]) in allowed)
         ]
         gate_counts = sorted({item["gate_count"] for item in candidates})
         for gate_count in gate_counts:

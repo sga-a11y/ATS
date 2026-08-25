@@ -17,7 +17,6 @@ except Exception:
 from . import config
 from . import mob_spots
 from . import train_pick
-from . import city_pick
 from . import train_pick as train_pick_mod   # alias: trong setup_party_runtime co tham so ten train_pick
 from .mob_scanner import MobScanSession, compute_regions, scan_full_map
 from .scene_fight import get_scene_fight_seed
@@ -941,13 +940,22 @@ def _pick_start_city(pidx, dest_city):
     mo = _party_unlocked_cities(pidx)
     if not mo:
         return None
-    got = city_pick.nearest_start_city(dest_city, mo)
-    if not got:
+    # Dung ROUTER co san (nearest_city) chu KHONG tu tinh khoang cach: no con biet cong nao di bo
+    # qua duoc (image [0,0,0] = warp event, khong di duoc). Tu dem cong se chon phai thanh ma
+    # router KHONG dinh tuyen noi -> ca party ket o buoc keo.
+    c = next((account_clients[u] for u, *_ in party_accounts(pidx)
+              if account_clients.get(u) is not None), None)
+    if c is None:
         return None
-    cid, hops = got
+    got = c.nearest_smart_city(dest_city, allowed=mo)
+    if not got:
+        log.warning(">>> PARTY %s: khong thanh nao CA PARTY da mo ma di toi %s duoc (da mo: %s)",
+                    pidx + 1, dest_city, sorted(mo))
+        return None
+    cid = int(got["city"])
     ten = (getattr(config, "TELEPORT_CITIES", None) or {}).get(cid, {}).get("name", cid)
-    log.info(">>> PARTY %s: thanh xuat phat = %s (id %s, cach dich %d cong; ca party deu da mo)",
-             pidx + 1, ten, cid, hops)
+    log.info(">>> PARTY %s: thanh xuat phat = %s (id %s, %d cong toi %s; ca party deu da mo)",
+             pidx + 1, ten, cid, len(got.get("route", {}).get("legs", ())), dest_city)
     return cid
 
 
