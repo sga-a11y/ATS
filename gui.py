@@ -1959,6 +1959,20 @@ class BagDialog(tk.Toplevel):
         self.btn_buy.pack(side="right")
         ttk.Button(top, text="Làm mới", command=self.refresh).pack(side="right", padx=(0, 6))
 
+        # DOI TUONG: "Su dung" va "Trang bi" deu co khai niem NGUOI NHAN (followIndex/武將索引):
+        #   dung item  C:023-015 [slot][qty][followIndex][useType]  - CUNG goi, khac followIndex
+        #   mac do     C:023-011 (nhan vat, KHONG co cho ghi ai) vs C:023-017 (pet) - HAI goi khac
+        # Dung RADIO chu khong phai nut boi sang: ngay tren da co mot hang NUT (4 tab), hai hang nut
+        # chong nhau de nham "dang loc gi" voi "dang lam cho ai".
+        tgt = ttk.Frame(self, padding=(8, 6)); tgt.pack(fill="x")
+        ttk.Label(tgt, text="Cho:").pack(side="left", padx=(0, 6))
+        self.target_var = tk.IntVar(value=0)      # 0 = nhan vat (LUON mac dinh khi mo tui)
+        ttk.Radiobutton(tgt, text="Nhân vật", variable=self.target_var, value=0,
+                        command=self._retarget).pack(side="left", padx=(0, 10))
+        for idx, nm in self._pet_list():
+            ttk.Radiobutton(tgt, text=nm, variable=self.target_var, value=idx,
+                            command=self._retarget).pack(side="left", padx=(0, 10))
+
         mid = ttk.Frame(self, padding=(8, 0)); mid.pack(fill="both", expand=True)
         canvas = tk.Canvas(mid, highlightthickness=0)
         sb = ttk.Scrollbar(mid, orient="vertical", command=canvas.yview)
@@ -1990,6 +2004,28 @@ class BagDialog(tk.Toplevel):
         self.destroy()
 
     # ---- du lieu ----
+    def _pet_list(self):
+        """[(followIndex, nhan)] cac pet MANG THEO. Ten lay tu state.carried_pets (bot doc san tu
+        goi 0x0f), danh dau con DANG RA TRAN theo active_pet_slot."""
+        pets = list(getattr(self.c.state, "carried_pets", None) or ())[:4]
+        cur = getattr(self.c, "active_pet_slot", None)
+        out = []
+        for i, rec in enumerate(pets, 1):
+            nm = (rec[1] if isinstance(rec, (tuple, list)) and len(rec) > 1 else None) or ("Pet %d" % i)
+            out.append((i, nm + (" ★" if i == cur else "")))
+        return out
+
+    def _target_name(self):
+        i = self.target_var.get()
+        if not i:
+            return "Nhân vật"
+        return dict(self._pet_list()).get(i, "Pet %d" % i).replace(" ★", "")
+
+    def _retarget(self):
+        """Doi doi tuong -> ve lai bo nut (nhan nut co ten nguoi nhan)."""
+        if self._sel_slot is not None:
+            self._select(self._sel_slot)
+
     def _item(self, tid):
         return self._items_db.get("0x%04x" % int(tid)) or self._items_db.get(str(int(tid))) or {}
 
@@ -2071,10 +2107,14 @@ class BagDialog(tk.Toplevel):
         # DO MAC DUOC thi CHI hien "Trang bi", KHONG hien "Su dung": hai lenh KHAC HAN nhau
         # (0x17 sub0b = deo len nguoi / sub0f = tieu hao), gui nham la sai lenh.
         _equip = _BAG.can_equip(d.get("ft"), d.get("kd"))
+        _who = self.target_var.get()          # 0 = nhan vat, 1..4 = followIndex cua pet
+        _hau_to = "" if not _who else " cho %s" % self._target_name()
         if _equip:
-            acts.append(("Trang bị", lambda: self.c.equip_item(slot)))
+            acts.append(("Trang bị" + _hau_to,
+                         (lambda: self.c.equip_item(slot)) if not _who
+                         else (lambda: self.c.equip_pet_item(_who, slot))))
         elif _BAG.can_use(d.get("bs")):
-            acts.append(("Sử dụng", lambda: self.c.use_slot(slot)))
+            acts.append(("Sử dụng" + _hau_to, lambda: self.c.use_slot(slot, target=_who)))
         if _BAG.can_dismantle(d.get("fc")):
             acts.append(("Phân giải", lambda: self.c.decompose_slot(slot)))
         if self.c.is_fashion_item(tid):
@@ -2102,7 +2142,10 @@ class BagDialog(tk.Toplevel):
         c = self.c
         bag = tuple(sorted((k, tuple(v)) for k, v in getattr(c, "bag_slots", {}).items()))
         eq = tuple(sorted(i.get("id", 0) for i in getattr(c, "equipped_items", []) or []))
-        return bag, eq
+        # Lenh mac do cho PET KHONG dung toi 2 cai tren o mot so truong hop -> phai theo doi rieng,
+        # khong thi lan nao mac cho pet cung bao "chua thay thay doi".
+        pet = int(getattr(c, "_pet_equip_seq", 0))
+        return bag, eq, pet
 
     def _run(self, text, fn):
         if text == "Bỏ" and not messagebox.askyesno(
