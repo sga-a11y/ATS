@@ -1553,7 +1553,7 @@ class GameClient:
         # Server TU DAY snapshot, KHONG co lenh nao xin lai (da tra het 66 lenh C:023-*).
         self.bag_slots = {}
         self.pet_equipped = {}       # followIndex (1..4) -> [tid] do da mac cho pet (S2C 0x17 sub17)
-        self._pet_equip_seq = 0      # tang moi lan pet mac do -> dung de XAC NHAN lenh co an khong
+        self._equip_seq = 0          # tang moi lan MAC XONG (char hoac pet) -> de XAC NHAN lenh
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
         # SO PHUC THAN CON LAI (godMission trong client): tu S2C 0x18 sub0800
         # <設定衰神福神> [roleId i64][kind u16][count i32]. None = server chua gui.
@@ -2777,11 +2777,14 @@ class GameClient:
         # TRANG BI DANG MAC luc login: [count u8] + count * ThingData 35B.
         elif opcode == 0x17 and len(pkt) >= 10 and pkt[7:9] == b"\x0b\x00":
             self._parse_equipment_snapshot(pkt)
-        # PET mac do xong (S:023-023). Lenh cua pet KHONG dung toi snapshot sub0b cua nhan vat nen
-        # neu bo qua goi nay thi mac do cho pet la "khong dau vet gi" - tui hien sai + khong the
-        # xac nhan lenh co an hay khong.
+        # DA MAC XONG - 2 goi RIENG, deu KHAC voi sub 0b (sub 0b = danh sach do luc LOGIN, khong
+        # phai tra loi cua tung lan mac):
+        #   S:023-017 <穿上裝備>     [bagIndex]           -> nhan vat (sub 17 = 0x11)
+        #   S:023-023 <武將穿上裝備> [petIndex][bagIndex] -> pet      (sub 23 = 0x17)
+        elif opcode == 0x17 and len(pkt) >= 10 and pkt[7:9] == b"\x11\x00":
+            self._on_equip_done(pkt[9], follow=0)
         elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x17\x00":
-            self._on_pet_equip(pkt)
+            self._on_equip_done(pkt[10], follow=pkt[9])
         # DO BEN DOI (S:023-027 = sub1b00): [vi tri do 1B][damage 1B]. Moc 100/200/250 (250=HONG).
         # Bot CHI theo ngoc CHAR o vi tri 6 (ngoc Phuc Than khong deo cho pet duoc).
         elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x1b\x00":
@@ -6853,26 +6856,35 @@ class GameClient:
             return False
         return True
 
-    def _on_pet_equip(self, pkt: bytes):
-        """S:023-023 <武將穿上裝備> [武將索引 1B][背包索引 1B] - pet DA mac xong.
+    def _on_equip_done(self, slot: int, follow: int = 0):
+        """DA MAC XONG 1 mon. Dung chung cho ca NHAN VAT lan PET (2 goi khac nhau, xu ly y het):
+            S:023-017 <穿上裝備>     [背包索引]              -> nhan vat (follow = 0)
+            S:023-023 <武將穿上裝備> [武將索引][背包索引]    -> pet
 
-        Day la DAU HIEU DUY NHAT cua viec mac do cho pet: khac lenh cua nhan vat (server tra CA
-        danh sach do dang mac qua sub 0b), lenh pet chi bao dung 2 byte nay.
+        VI SAO CAN: truoc day bot CHI bat S:023-011 <所有裝備> = danh sach do LUC LOGIN, khong
+        phai goi tra loi cua tung lan mac. Nen mac do KHONG DE LAI DAU VET NAO: tui van hien mon
+        da roi tui, va khong the biet lenh co an hay khong (user bao "van khong trang bi duoc"
+        trong khi item HP/SP thi bao dung duoc - dung vay: use co goi confirm rieng, equip thi
+        khong ai bat).
+        Anh huong NGOAI cua so tui: use_phuc_than_items() cung deo ngoc bang duong nay -> bag_slots
+        cua no cung dang sai tu truoc toi gio.
 
-        Theo client (protocolTable[23][23]): item RA KHOI TUI; neu pet DANG mac san mon khac thi
-        mon CU quay VE dung o do. Bot khong theo doi do pet nen KHONG biet mon cu la gi -> o day
-        chi xoa slot (truong hop hay gap: mac vao o pet dang TRONG). Neu la DOI DO thi tui hien
-        hoi cu cho toi khi server gui lai snapshot 0x16 - ghi ro de sau khong tuong la bug moi.
+        Theo client (protocolTable[23][17] va [23][23]): item RA KHOI TUI; neu DANG mac san mon
+        khac o cung vi tri thi mon CU quay VE dung o do. Bot khong theo doi do dang mac day du nen
+        khong biet mon cu -> o day chi xoa slot (truong hop hay gap: o do dang TRONG). Neu la DOI
+        DO thi tui hoi cu cho toi khi server gui lai snapshot - ghi ro de sau khong tuong bug moi.
         """
-        if len(pkt) < 11:
-            return
-        follow, slot = pkt[9], pkt[10]
-        rec = self.bag_slots.pop(slot, None)
+        rec = self.bag_slots.pop(int(slot), None)
         if rec:
             tid = rec[0]
             self.bag_counts[tid] = max(0, self.bag_counts.get(tid, 0) - 1)
-            self.pet_equipped.setdefault(follow, []).append(tid)
-        self._pet_equip_seq += 1
+            if follow:
+                self.pet_equipped.setdefault(int(follow), []).append(tid)
+            else:
+                self.equipped_items = list(getattr(self, "equipped_items", []) or [])
+                self.equipped_items.append({"id": tid, "pos": 0, "damage": 0,
+                                            "damaged_item_id": 0})
+        self._equip_seq += 1
 
     def _learn_item(self, tid: int, dhp: int, dsp: int, room_hp: bool = True, room_sp: bool = True,
                     cap_hp: bool = False, cap_sp: bool = False):

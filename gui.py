@@ -2170,10 +2170,11 @@ class BagDialog(tk.Toplevel):
         c = self.c
         bag = tuple(sorted((k, tuple(v)) for k, v in getattr(c, "bag_slots", {}).items()))
         eq = tuple(sorted(i.get("id", 0) for i in getattr(c, "equipped_items", []) or []))
-        # Lenh mac do cho PET KHONG dung toi 2 cai tren o mot so truong hop -> phai theo doi rieng,
-        # khong thi lan nao mac cho pet cung bao "chua thay thay doi".
-        pet = int(getattr(c, "_pet_equip_seq", 0))
-        return bag, eq, pet
+        # MAC DO (ca char lan pet) co goi tra loi RIENG (S:023-017 / S:023-023) - KHAC voi sub 0b
+        # ma bot van bat (do la danh sach luc LOGIN). Truoc day khong ai bat 2 goi do nen mac do
+        # khong de lai dau vet gi -> luon bao "chua thay thay doi".
+        eq_seq = int(getattr(c, "_equip_seq", 0))
+        return bag, eq, eq_seq
 
     def _run(self, text, fn):
         if text == "Bỏ" and not messagebox.askyesno(
