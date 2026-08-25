@@ -971,6 +971,38 @@ Cach dò 1 id: tim id dang u16-LE trong file; voi moi vi tri p, thu do dai L (ch
 `u16 tai (p-1-L-2) == L` thi `name = data[p-1-L : p-1].decode('utf-16-le')` -> khop namelen =
 dung. Da verify 9/9 khop items_gamedata voi id da biet. (Script ad-hoc, khong commit.)
 
+## 7d-ITEMDESC. MO TA / TAC DUNG CUA ITEM (xac nhan 2026-08-25)
+
+Item_C.dat co san mo ta tieng Viet. La truong **CUOI CUNG** cua record (`ItemData.lua:401`
+`self.description`, chu thich `說明 Length <= 254`), dang `[L u16 = so BYTE][text UTF-16LE]` -
+giong het truong `name` o dau record. **25634/25634 item deu co mo ta**, dai nhat 272 ky tu.
+
+Parser `tools/crack_furnace_notify.py: read_items()` DA doc san truong nay (`FIELDS` co
+`("desc","t")`) - truoc day chi khong ai ghi ra file. Doc het 55 truong theo dung thu tu trong
+`_lua_dec/Data/ItemData.lua:300` la ra.
+
+De o file **RIENG `items_desc.json`** (`{hex_id: mo_ta}`, 2.02MB), KHONG nhap vao
+`items_gamedata.json`: tong mo ta la 1.32 trieu ky tu, ma `items_gamedata.json` duoc MOI tien
+trinh party load het vao RAM (bot chay chuc party) trong khi mo ta chi phuc vu dialog Tui do
+ben `gui.py`. Vi vay file nay khai bao trong `DATA_JSON` (ban exe) nhung **KHONG** trong
+`SHARED_ASSETS` - APK khong co man hinh do.
+
+Sinh lai: `python tools/crack_items_gamedata.py` (can `gamedata_Item.dat`, khong theo git).
+
+## 7d-BAGSORT. THU TU SAP XEP TUI DO CUA CLIENT (xac nhan 2026-08-25)
+
+Client **KHONG** bay tui do theo so o. `Item.GetBagByCategory` (`_lua_dec/Logic/Item.lua:364`)
+gan `v.sort = itemDatas[v.Id].sort` roi `table.sort(bagCategory, Item.Sort)`, va `Item.Sort`
+(`Item.lua:369`) la:
+
+    sort ASC   ->   neu bang thi   Id ASC
+
+`sort` = truong 排序 cua ItemData (`--[45]`, o `ip+?` doc tuan tu - xem FIELDS trong
+`tools/crack_furnace_notify.py`). Gia tri chay **1..254, khong co 0**, nen moi item deu co.
+Da luu thanh khoa **`"st"`** trong `items_gamedata.json` (cung cho voi `ft`/`kd`/`bs`/`fc`),
++250KB. GUI dung o `BagDialog._rows`, them `slot` lam khoa thu 3 cho on dinh (client dung
+`table.sort` khong on dinh nen 2 o cung id thi thu tu tuy y).
+
 ## 7d-FURNACE. SOI LO / SHOP DAC BIET (熔爐, opcode 0x59 = protocol 89) (tu Lua crack, CHUA verify capture)
 
 Nguon: `.codex_mumu_probe/lua_decrypted_all/UI_UIFurnace.lua` + `Common_protocal.lua` (protocolTable[89]).

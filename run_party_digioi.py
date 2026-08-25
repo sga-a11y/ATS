@@ -17,6 +17,7 @@ except Exception:
 from bot import config
 from bot import mob_spots
 from bot import train_pick
+from bot import loandau
 from bot import train_pick as train_pick_mod   # alias: trong setup_party_runtime co tham so ten train_pick
 from bot.mob_scanner import MobScanSession, compute_regions, scan_full_map
 from bot.scene_fight import get_scene_fight_seed
@@ -762,6 +763,42 @@ def _is_party_event(mode, has_leader, ev):
 
 def _is_npc_repeat_party_event(mode, has_leader, ev):
     return _event_battle_kind(mode, has_leader, ev) == "npc_repeat"
+
+
+# Event SOLO: moi acc TU danh, KHONG lap party, KHONG can leader, khong sync kenh.
+_SOLO_BATTLE_EVENTS = ("chaos_vs",)
+
+
+def _event_solo_battle_kind(mode, ev):
+    """Kieu danh cua event SOLO ('chaos_vs' = loan dau loi dai) | None.
+
+    Day la DANG THU BA cua event. Truoc day chi co hai: 'co leader -> lap party roi danh'
+    (npc_repeat/floor_crawl) va 'khong leader -> dung yen cho dieu khien tay'. Loan dau khong
+    lap party nhung VAN phai tu danh -> phai tach ham rieng.
+
+    KHONG duoc nhet 'chaos_vs' vao `_event_battle_kind`: lam vay se keo theo ca duong lap party
+    + sync kenh lai + barrier cua 40NPC/2K, tuc pha duong dang chay cua hai event kia.
+    """
+    if mode != "event":
+        return None
+    kind = ((ev or {}).get("party_battle") or {}).get("kind")
+    return kind if kind in _SOLO_BATTLE_EVENTS else None
+
+
+def _loandau_ra_khoi_map(c, ev, label):
+    """Ra khoi map loan dau (10991 -> 12003) truoc khi tat game.
+
+    KHONG co buoc doi thuong - server TU trao (user xac nhan 25/08). Nhung van phai ra khoi map
+    event: de nguyen trong 10991 thi lan login sau bot bat dau tu map event, khong phai tu thanh.
+    Dang o map khac roi thi khong lam gi.
+    """
+    try:
+        if int(c.current_map or 0) != int((ev or {}).get("dest_map") or 0):
+            return False
+        return bool(c.exit_event(ev))
+    except Exception as e:
+        log.warning("[%s] Loan dau: loi ra khoi map event: %s", label, e)
+        return False
 
 
 def _should_restart_event_party(event_party_mode, battle_active, disc_gen, handled_gen):
@@ -3262,7 +3299,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _reason("2K ket thuc -> ra khoi thap -> thoat game")
                 c.close()
                 return
-            if not _is_party_event(mode, has_leader, ev):
+            # Event SOLO (loan dau): moi acc tu dang ky va tu danh -> KHONG sync kenh.
+            # `do_channel_sync` la mot BARRIER: leader phai doi DU ca party roi moi chon kenh, con
+            # member dung cho `channel_ready`. Voi event danh chung thi doi nhau la can (phai cung
+            # instance), nhung danh SOLO thi cho nhau khong duoc gi - acc nao xong truoc van phai
+            # dung im cho acc dang login, mat luot dang ky (user bao 25/08).
+            if not _is_party_event(mode, has_leader, ev) and not _event_solo_battle_kind(mode, ev):
                 do_channel_sync()
             if ev is None:
                 log.warning("[%s] (%s) mode event nhung KHONG co event nao trong events.json -> dung yen tai cho",
@@ -3362,8 +3404,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             except Exception as e: log.warning("[%s] loi doi thuong 40NPC (ngoai gio): %s", label, e)
             _reason("40NPC ngoai gio -> doi thuong xong -> thoat game")
             c.close(); return
+        # LOAN DAU NGOAI GIO (mo THU 3 20-22h): khong vao map lam gi, thoat luon.
+        if event_mode and _event_solo_battle_kind(mode, ev) == "chaos_vs" \
+                and not loandau.in_event_window():
+            log.info("[%s] (%s) LOAN DAU ngoai gio event -> ra khoi map + thoat game", label, role)
+            _loandau_ra_khoi_map(c, ev, label)
+            _reason("Loan dau ngoai gio -> ra khoi map -> thoat game")
+            c.close(); return
         event_party_mode = _is_party_event(mode, has_leader, ev)
-        event_stand_mode = event_mode and not event_party_mode
+        event_solo_kind = _event_solo_battle_kind(mode, ev)
+        # Event solo VAN danh -> KHONG duoc roi vao nhanh "dung yen cho tay".
+        event_stand_mode = event_mode and not event_party_mode and not event_solo_kind
         # EVENT PARTY (40NPC): kenh/instance cua MAP EVENT (vd 10991) DOC LAP voi kenh thanh -> sync
         # kenh o tren (luc con o thanh, truoc go_to_event) KHONG dam bao cung instance tren map event.
         # PHAI sync LAI SAU khi ca party da vao map event, TRUOC khi leader moi. Thieu buoc nay: moi
@@ -3380,7 +3431,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if not is_leader:
                 # 40NPC chi ready party sau khi DA vao map event va sync instance tai map event.
                 c.set_party_invite_ready(True)
-        if event_stand_mode:
+        if event_solo_kind == "chaos_vs":
+            # LOAN DAU LOI DAI: da tele toi map 10991 o tren. Moi acc TU chay - khong party,
+            # khong sync kenh, khong barrier. Quest mode da bat san (force_quest_mode o mode
+            # event). Xem documents/LOAN_DAU.md.
+            c.flee_mode = False
+            point = tuple((ev.get("party_battle") or {}).get("point") or (910, 290))
+
+            def _before_loandau_repeat():
+                # AN TOAN o day: dialog da dong (`0x14 08 26`) truoc khi ham nay duoc goi. Dung
+                # item luc dialog dang mo lam server tra 08 0001 roi KICK (bai hoc 40NPC).
+                if c.running and not c.state.in_battle:
+                    c.heal_npc40_between_battles()
+
+            if c.start_loandau_loop(point, _before_loandau_repeat):
+                log.info("[%s] (%s) LOAN DAU: toi %s va bat dau vong dang ky/danh", label, role, point)
+        elif event_stand_mode:
             # EVENT: da tele toi map event o tren -> DUNG YEN HOAN TOAN, cho moi tay. Moi nick doc lap,
             # KHONG lap party/sync kenh (bo qua het nhanh leader/member ben duoi). Auto-accept moi tay
             # xu ly o client (0x2f). training_started=False -> keepalive KHONG danh chu dong.
@@ -4331,6 +4397,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     except Exception as e: log.warning("[%s] loi doi thuong 40NPC: %s", label, e)
                     _reason("40NPC het gio/thua 2 -> doi thuong xong -> thoat game")
                     c.close(); break
+            # ==== LOAN DAU: run_loop bao HET GIO (qua 22h) -> thoat game. Moi acc tu xu ly, khong
+            # co tin hieu party nao ca. ====
+            if event_solo_kind == "chaos_vs" and getattr(c, "_loandau_done", False):
+                log.info("[%s] (%s) LOAN DAU: het gio, thang %d tran -> ra khoi map + thoat game",
+                         label, role, getattr(c, "_loandau_wins", 0))
+                # KHONG co buoc doi thuong: server TU trao (user xac nhan 25/08). Chi can ra khoi
+                # map event roi tat - de nguyen trong 10991 thi lan login sau bat dau tu map event.
+                _loandau_ra_khoi_map(c, ev, label)
+                _reason("Loan dau het gio -> ra khoi map -> thoat game")
+                c.close(); break
             # ==== RESYNC party (40NPC / Di Gioi): leader moi khong du -> giai tan + sync kenh lai.
             # Member roi party cu + sync kenh (chuyen sang kenh moi cua leader) -> auto-accept se
             # re-join khi leader moi lai. (Leader tu xu ly trong vong moi, khong vao day.) ====

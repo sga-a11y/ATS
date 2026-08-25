@@ -29,6 +29,12 @@ from crack_furnace_notify import read_items        # noqa: E402
 
 OUT = os.path.join(ROOT, "items_gamedata.json")
 
+# Mo ta item (ItemData.lua --[55] 說明) TACH RA FILE RIENG, KHONG nhap vao items_gamedata.json.
+# Ly do: 25634 item deu co mo ta, tong 1.32 TRIEU ky tu -> nhet chung se day file tu 2.4MB len
+# ~6.5MB, ma items_gamedata.json duoc MOI tien trinh party load het vao RAM (bot chay chuc party).
+# Mo ta chi phuc vu dialog Tui do ben GUI -> de rieng, chi luc mo dialog moi doc.
+OUT_DESC = os.path.join(ROOT, "items_desc.json")
+
 
 def _set_tab_fields(rec, src):
     """Ghi `ft` (fitType) + `kd` (kind) - 2 truong DUY NHAT can de chia 4 tab tui do.
@@ -46,6 +52,10 @@ def _set_tab_fields(rec, src):
                       # bs = btnState: >0 moi hien nut "Su dung" (Item.CheckItemUseState,
                       #      Logic_Item.lua:3278). ==11 thi trong TRAN khong dung duoc.
                       ("bs", "btnState"),
+                      # st = sort (ItemData --[45] 排序): THU TU SAP XEP trong tui do cua client.
+                      #      Item.GetBagByCategory sap theo Item.Sort = (sort ASC, id ASC), KHONG
+                      #      phai theo so o. Chay 1..254, khong co 0 -> muc nao cung duoc ghi.
+                      ("st", "sort"),
                       # fc = furnaceCount: >0 moi hien nut "Phan giai" (Item.IsDismantle:2519).
                       ("fc", "furnaceCount")):
         v = src.get(field) or 0
@@ -108,11 +118,23 @@ def main():
         out["0x%04x" % tid] = rec
         n_add += 1
 
+    # Mo ta lay THANG tu .dat theo id cua chinh ban ghi do, khong dinh gi den ten cu trong
+    # items_gamedata.json (~1237 muc dang lech ten). Bo mo ta rong cho file gon.
+    desc = {}
+    for tid, d in sorted(by_id.items()):
+        s = (d.get("desc") or "").strip()
+        if s:
+            desc["0x%04x" % tid] = s
+    with open(OUT_DESC, "w", encoding="utf-8") as fh:
+        json.dump(desc, fh, ensure_ascii=False)
+
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False)
     n_nocombine = sum(1 for v in out.values() if (v.get("restrict", 0) & 4))
     print("=> %s: %d item (+%d MOI, %d co restrict != 0, %d KHONG dung de hop duoc - bit 4)"
           % (os.path.basename(OUT), len(out), n_add, n_new, n_nocombine))
+    print("=> %s: %d mo ta (%.2f MB)"
+          % (os.path.basename(OUT_DESC), len(desc), os.path.getsize(OUT_DESC) / 1048576.0))
 
 
 if __name__ == "__main__":

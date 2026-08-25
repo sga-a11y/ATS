@@ -616,6 +616,19 @@ def _has_support_skill(skills):
     return pick_sp_restore_skill(skills) is not None
 
 
+def _hang_cua(state, unit):
+    """Hang cua unit CUA MINH trong tran (b1). Tran thuong: char=3, pet=2.
+
+    LOAN DAU (PvP) server co the xep minh o phe kia -> char=0, pet=1. Doc tu state thay vi viet
+    chet; mac dinh cua state GIU y het gia tri cu nen moi mode khac khong doi.
+    """
+    char_row = getattr(state, "char_row", 3)
+    if unit == config.UNIT_CHAR:
+        return char_row
+    khac = [r for r in getattr(state, "ally_rows", (2, 3)) if r != char_row]
+    return khac[0] if khac else 2
+
+
 def _revive_decision_for_skill(state, unit, stat, rev):
     """Dung skill hoi sinh cu the, target con chet tu dong theo rule uu tien chung."""
     if rev is None or not _is_revive(rev):
@@ -642,7 +655,7 @@ def _revive_decision_for_skill(state, unit, stat, rev):
     # dang ky chinh minh CO revive (de party biet vi tri minh la nguoi cuu duoc)
     pidx = getattr(state, "party_idx", None)
     if state.self_slot is not None:
-        register_revive(pidx, 3 if unit == config.UNIT_CHAR else 2, state.self_slot)
+        register_revive(pidx, _hang_cua(state, unit), state.self_slot)
     # target: co Hoi Sinh TRUOC; sau do moi den dang co bao ve / role support / maxHP.
     dead.sort(key=lambda x: _dead_target_sort_key(state, pidx, x))
     owner = state.label + (":char" if unit == config.UNIT_CHAR else ":pet")
@@ -772,7 +785,7 @@ def _register_current_unit(state, unit, skills):
     slot = getattr(state, "self_slot", None)
     if slot is None:
         return
-    b1 = 3 if unit == config.UNIT_CHAR else 2
+    b1 = _hang_cua(state, unit)
     register_support_skills(getattr(state, "party_idx", None), b1, slot, skills)
 
 
@@ -811,12 +824,12 @@ def _alive_allies_with_self(state, unit, stat):
     cands = {}
     for key, u in getattr(state, "allies", {}).items():
         b1, b2 = key
-        if b1 not in (2, 3) or u.hp_max <= 0 or u.hp <= 0:
+        if b1 not in state.ally_rows or u.hp_max <= 0 or u.hp <= 0:
             continue
         cands[key] = u
     slot = getattr(state, "self_slot", None)
     if slot is not None and getattr(stat, "hp_max", 0) > 0 and getattr(stat, "hp", 0) > 0:
-        cands[(3 if unit == config.UNIT_CHAR else 2, slot)] = stat
+        cands[(_hang_cua(state, unit), slot)] = stat
     return [(b1, b2, u) for (b1, b2), u in cands.items()]
 
 
@@ -827,7 +840,7 @@ def _hp_abs(u):
 def _protect_target_order(state, unit, stat):
     pidx = getattr(state, "party_idx", None)
     self_slot = getattr(state, "self_slot", None)
-    self_key = (3 if unit == config.UNIT_CHAR else 2, self_slot) if self_slot is not None else None
+    self_key = (_hang_cua(state, unit), self_slot) if self_slot is not None else None
     all_alive = _alive_allies_with_self(state, unit, stat)
     available = []
     for b1, b2, u in all_alive:
@@ -914,7 +927,7 @@ def _try_break_enemy_protect(state, unit, skills, stat, options):
     targets = []
     alive_enemies = set(getattr(state, "enemy_slots", []) or [])
     for (b1, b2), ss in getattr(state, "protect_status", {}).items():
-        if b1 not in (0, 1):
+        if b1 not in state.enemy_rows:
             continue
         pos = b1 * 10 + b2
         if pos not in alive_enemies:
@@ -1072,7 +1085,7 @@ def _try_sp_restore(state, unit, skills, stat):
         return None
     if not getattr(state, "quest_mode", False) and _has_group2(state.enemy_slots):
         return None
-    b1 = 3 if unit == config.UNIT_CHAR else 2
+    b1 = _hang_cua(state, unit)
     low_slot = state.ally_low_sp(getattr(config, "SP_RESTORE_THRESHOLD", 0.5), (b1, state.self_slot))
     if low_slot is None:
         return None
@@ -1137,7 +1150,7 @@ def _compare_num(actual, op, expect):
 def _caster_key(state, unit):
     if getattr(state, "self_slot", None) is None:
         return None
-    return (3 if unit == config.UNIT_CHAR else 2), state.self_slot
+    return _hang_cua(state, unit), state.self_slot
 
 
 def _any_ally_hp_below(state, pct, exclude=None):
@@ -1262,7 +1275,7 @@ def _enemy_target_pos(state, offered, target_key):
 
 def _ally_target(state, target_key, unit, atype):
     if target_key == "self":
-        return (3 if unit == config.UNIT_CHAR else 2), atype
+        return _hang_cua(state, unit), atype
     cands = []
     pidx = getattr(state, "party_idx", None)
     for (b1, b2), u in getattr(state, "allies", {}).items():
@@ -1272,7 +1285,7 @@ def _ally_target(state, target_key, unit, atype):
         sppct = (u.sp / spmax) if spmax else 1.0
         cands.append((b1, b2, u.hp / u.hp_max, sppct))
     if not cands:
-        return (3 if unit == config.UNIT_CHAR else 2), atype
+        return _hang_cua(state, unit), atype
     if target_key == "ally_high_hp":
         b1, b2, *_ = max(cands, key=lambda x: x[2])
     elif target_key == "ally_low_sp":
@@ -1329,9 +1342,9 @@ def _custom_decision(state, unit, unit_key, skills, stat, options, atype=None):
         if skill == "auto":
             return _CUSTOM_AUTO
         if skill == "defend":
-            return Decision(unit, at, at, config.SKILL_DEFEND, b=(3 if unit == config.UNIT_CHAR else 2))
+            return Decision(unit, at, at, config.SKILL_DEFEND, b=_hang_cua(state, unit))
         if skill == "flee":
-            return Decision(unit, at, at, config.SKILL_FLEE, b=(3 if unit == config.UNIT_CHAR else 2))
+            return Decision(unit, at, at, config.SKILL_FLEE, b=_hang_cua(state, unit))
         skill_id = config.SKILL_NORMAL if skill == "normal" else skill
         if isinstance(skill_id, int) and skill_id != config.SKILL_NORMAL:
             if skill_id not in learned:
@@ -1408,7 +1421,7 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
         return None
     if _is_mineral_battle(state):
         return Decision(unit, at, at, config.SKILL_FLEE,
-                        b=(3 if unit == config.UNIT_CHAR else 2))
+                        b=_hang_cua(state, unit))
 
     def low_or_train():
         p = _lowest_hp_enemy(state, offered)

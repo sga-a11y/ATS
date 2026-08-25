@@ -9,7 +9,7 @@ import collections
 import json
 import os
 
-from . import config, protocol, combat, pathfind, npc40, pet_login_stats, team_dungeon_lv110
+from . import config, protocol, combat, pathfind, npc40, loandau, pet_login_stats, team_dungeon_lv110
 from . import event_exchange as _evx
 from .battle_tracker import BattleTracker
 from .party_battle import get_party_battle
@@ -1668,6 +1668,16 @@ class GameClient:
         self._npc40_started = False
         self._npc40_stop = threading.Event()
         self._npc40_thread = None
+        # --- LOAN DAU LOI DAI (solo, khong party). Xem bot/loandau.py + documents/LOAN_DAU.md ---
+        self._loandau_registered_seq = 0   # tang moi `0x14 08 2a` = dang ky xong, bat dau cho ghep
+        self._loandau_create_seq = 0       # tang moi `0x0b sub 250` = TAO TRAN (moc vao tran that)
+        self._loandau_end_seq = 0          # tang moi `0x14 08 26` = tran/phien ket thuc
+        self._loandau_dialog = ""          # hex page dialog gan nhat -> biet da toi buoc chon chua
+        self._loandau_wins = 0             # so tran thang, doc tu `0x25` sub01 (lo cuoi moi vong)
+        self._loandau_done = False         # run_loop bao: het gio -> di doi thuong + thoat
+        self._loandau_started = False
+        self._loandau_stop = threading.Event()
+        self._loandau_thread = None
         # Vai tro pet MAC DINH khi khong o trong hoat dong nao (decorator _pet_role tra ve day).
         # run_party_digioi dat "quest" cho mode event (event dung chung pet voi quest/PB).
         self.default_pet_role = "train"
@@ -2125,6 +2135,7 @@ class GameClient:
         self._deliberate_close = True   # ta tu dong -> OSError trong recv KHONG phai server rot
         self.running = False
         self.stop_npc40_loop()
+        self.stop_loandau_loop()  # thieu -> thread loan dau con gui 0x14 06 len socket dang dong
         self.stop_floor_crawl()   # 2K: bao dung vong leo thap (thieu -> thread con bam tiep,
                                   # co the gui 0x14 06 len socket dang dong)
         self.finish_mob_packet_capture()
@@ -2219,6 +2230,75 @@ class GameClient:
             self.send(0x14, b"\x06\x00"); time.sleep(0.5)
         log.info("[%s] doi thuong 40NPC: da doi qua chien dau o NPC map 12003", self._label)
         return True
+
+    # ---------- LOAN DAU LOI DAI ----------
+    def _observe_loandau_packet(self, opcode, pkt):
+        """Bam 4 moc cua loan dau. KHONG chan bang `_loandau_started` cho rieng `0x25`: so tran
+        thang duoc ban theo LO luc mot vong ket thuc, co the toi truoc/sau khi vong chay bat dau."""
+        # Doc bang getattr: mot so duong (test, client dung dang do) chua chay het __init__.
+        win = loandau.parse_vs_win(opcode, pkt, getattr(self, "self_entity", None))
+        if win is not None and win != getattr(self, "_loandau_wins", None):
+            self._loandau_wins = win
+            log.info("[%s] Loan dau: so tran thang = %d", self._label, win)
+        if not getattr(self, "_loandau_started", False):
+            return
+        page = loandau.dialog_page(opcode, pkt)
+        if page is not None:
+            self._loandau_dialog = page
+            return
+        if loandau.is_registered(opcode, pkt):
+            self._loandau_registered_seq += 1
+        elif loandau.is_battle_over(opcode, pkt):
+            self._loandau_end_seq += 1
+            self.state.in_battle = False
+            self._set_battle_end_grace()
+        elif loandau.is_battle_create(opcode, pkt):
+            # Moc VAO TRAN that. Dung `0x0b sub 250` chu khong phai `0x34`: capture cho thay
+            # sub 250 toi TRUOC 0.19s, va `0x34` co the tre/that thuong.
+            self._loandau_create_seq += 1
+            self._loandau_dat_phe(pkt)
+
+    def _loandau_dat_phe(self, pkt):
+        """Loan dau la PvP: phai suy phe tu o CUA MINH, khong duoc mac dinh dich o hang 0-1.
+
+        Khong doc duoc o cua minh -> de `enemy_rows` RONG: bot se khong thay muc tieu nao nen
+        KHONG danh, thay vi danh mo roi bi server da han (ly do 42 `修改戰鬥封包`). Bo mot tran
+        con hon mat acc.
+        """
+        self.state.dat_phe_mac_dinh()
+        o = loandau.o_cua_minh(pkt, self.self_entity)
+        if o is None:
+            self.state.enemy_rows = ()
+            # Xoa luon quai cu: `enemy_rows` rong lam sync/0x33 khong ghi de nua, nen neu khong
+            # xoa thi bot se danh theo vi tri quai cua TRAN TRUOC -> dung cai ket ma minh dang
+            # tranh.
+            self.state.reset_enemies(reset_quest=False, reset_protect=False)
+            log.warning("[%s] Loan dau: KHONG doc duoc o cua minh trong goi tao tran"
+                        " -> bo luot tran nay (khong danh mo de khoi bi da)", self._label)
+            return
+        row, col = o
+        self.state.doi_phe_theo_hang_cua_minh(row)
+        log.info("[%s] Loan dau: minh o (%d,%d) -> phe ta hang %s, dich hang %s",
+                 self._label, row, col, self.state.ally_rows, self.state.enemy_rows)
+
+    def start_loandau_loop(self, point, before_repeat=None):
+        if self._loandau_started:
+            return False
+        self._loandau_started = True
+        self._loandau_stop.clear()
+        self._loandau_thread = threading.Thread(
+            target=loandau.run_loop,
+            args=(self, tuple(point), self._loandau_stop, before_repeat),
+            daemon=True,
+            name="loandau-%s" % (self._label or self._username),
+        )
+        self._loandau_thread.start()
+        return True
+
+    def stop_loandau_loop(self):
+        stop = getattr(self, "_loandau_stop", None)
+        if stop is not None:
+            stop.set()
 
     def start_npc40_loop(self, point, on_loss, before_repeat=None):
         if getattr(self, "_npc40_started", False):
@@ -2717,6 +2797,7 @@ class GameClient:
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
         self._observe_team_dungeon_packet(opcode, pkt)
         self._observe_npc40_packet(opcode, pkt)
+        self._observe_loandau_packet(opcode, pkt)
         # Su kien cong (cau Gioi kieu...) phai nghe o DAY, KHONG nhet trong _observe_npc40_packet:
         # ham do mo dau bang `if not self._npc40_started: return` nen chi chay khi DANG lam nhiem vu
         # 40 NPC. Qua cong thi co do TAT -> handler khong bao gio duoc goi. Day la ly do that su bot
@@ -4083,7 +4164,7 @@ class GameClient:
             and self.battle_tracker.active
             and getattr(self, "_active_team_dungeon_level", None) != 110
             and not any(
-                row in (0, 1) and unit.alive and unit.hp > 0
+                row in self.state.enemy_rows and unit.alive and unit.hp > 0
                 for (row, _col), unit in self.battle_tracker.units.items()
             )
         )
@@ -4136,7 +4217,7 @@ class GameClient:
         targets = sorted({
             col
             for (row, col), unit in tracker.units.items()
-            if row in (0, 1) and unit.alive and unit.hp > 0
+            if row in self.state.enemy_rows and unit.alive and unit.hp > 0
         })
         atype = self.state.my_atype
         self.available = {}
@@ -4344,7 +4425,13 @@ class GameClient:
         lap/replay -> AM THAM BO QUA -> turn khong tien -> ket cung lap lai (xac nhan qua log: tran
         co quai HP cao/nhieu turn lien danh cung 1 con bi ket, tran quai yeu target doi lien tuc thi
         khong sao). LUON random (KHONG con env RAND_TAIL) de giong client that."""
-        source = (d.unit, d.atype)
+        # HANG NGUON. `d.unit` vua la "char hay pet" (3/2) vua duoc dung THANG lam hang nguon
+        # trong goi - trung nhau vi tran thuong luon xep phe ta o hang 2-3. LOAN DAU thi minh co
+        # the o hang 0-1: gui hang nguon 3/2 luc dang dung o hang 0 = ban ghi khong phai cua minh
+        # -> server tra `S:000-000` ly do 42 `修改戰鬥封包` va DA HAN acc (su co 25/08 21:58).
+        # `_hang_cua` tra dung 3/2 o mac dinh nen tran thuong khong doi mot ly nao.
+        hang_nguon = combat._hang_cua(self.state, d.unit)
+        source = (hang_nguon, d.atype)
         tracker = self.battle_tracker
         if tracker.generation:
             coordinator = self._battle_coordinator()
@@ -4369,7 +4456,7 @@ class GameClient:
         if tail is None:
             tail = struct.pack("<H", random.randint(1, 0xFFFF))
         payload = (b"\x01\x00"
-                   + bytes([d.unit, d.atype, getattr(d, "b", 0), d.target])
+                   + bytes([hang_nguon, d.atype, getattr(d, "b", 0), d.target])
                    + struct.pack("<H", d.skill)
                    + tail)
         self.send(protocol.OP_COMBAT, payload)

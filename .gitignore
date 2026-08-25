@@ -10,6 +10,9 @@ certs/
 *.apk
 *.zpk
 *.bin
+# NGOAI LE: goi mau cat tu capture, dung lam fixture cho test (vd tests/loandau_create_*.bin).
+# Thieu file nay thi may khac clone ve la test do.
+!tests/*.bin
 frida-server
 frida-server.xz
 libtolua.so

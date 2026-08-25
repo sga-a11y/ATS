@@ -1990,17 +1990,29 @@ class BagDialog(tk.Toplevel):
     tren main thread la treo ca GUI.
     """
     COLS = 10
+    # Kich thuoc 1 o tui do. Ban dau 88x88; user yeu cau RONG con 2/3 va CAO con 1/2
+    # -> 88*2/3 = 59, 88/2 = 44. Doi 2 so nay la _cell() tu co lai theo (toa do ben trong
+    # deu tinh tu W/H, khong hardcode).
+    CELL_W = 59
+    CELL_H = 44
 
     def __init__(self, master, username, client):
         super().__init__(master)
         self.title("Túi đồ - %s" % username)
-        self.geometry("980x620")
+        # Rong = vua LUOI 10 cot voi o moi (59+4 = 63/o -> 630) + thanh cuon + le, va van du cho
+        # hang nut o tren (4 tab + so luong + nut Mua slot). Ban cu 980 la tinh theo o 88 -> sau khi
+        # thu o con 59 thi du ~350px trong ben phai.
+        # CAO giu nguyen 620: o thap di mot nua nen hien duoc GAP DOI so hang trong cung chieu cao.
+        self.geometry("%dx620" % ((self.CELL_W + 4) * self.COLS + 60))
         self.transient(master); self.grab_set()
         self.username = username
         self.c = client
         self._tab = _BAG.ALL
         self._sel_slot = None
         self._items_db = _load_json("items_gamedata.json")
+        # Mo ta item de RIENG file (2MB) va chi doc o day - dialog nay chi ton tai khi user mo tui
+        # do, nen bot chay chuc party khong ai phai gong them 2MB nay trong RAM.
+        self._desc_db = _load_json("items_desc.json")
 
         top = ttk.Frame(self, padding=8); top.pack(fill="x")
         self._tab_btns = {}
@@ -2044,9 +2056,13 @@ class BagDialog(tk.Toplevel):
         self._canvas = canvas
 
         self.info = ttk.Frame(self, padding=8); self.info.pack(fill="x")
+        _rong = (self.CELL_W + 4) * self.COLS + 20   # bam theo be ngang cua so (xem geometry)
         self.lbl_info = ttk.Label(self.info, text="Bấm vào một món để xem hành động.",
-                                  wraplength=940, justify="left")
+                                  wraplength=_rong, justify="left")
         self.lbl_info.pack(anchor="w")
+        self.lbl_desc = ttk.Label(self.info, text="", wraplength=_rong, justify="left",
+                                  foreground="#555", font=("Segoe UI", 8))
+        self.lbl_desc.pack(anchor="w", pady=(2, 0))
         self.act_fr = ttk.Frame(self.info); self.act_fr.pack(anchor="w", pady=(6, 0))
         self.lbl_result = ttk.Label(self.info, text="", font=("Segoe UI", 9, "bold"))
         self.lbl_result.pack(anchor="w", pady=(4, 0))
@@ -2109,8 +2125,22 @@ class BagDialog(tk.Toplevel):
     def _item(self, tid):
         return self._items_db.get("0x%04x" % int(tid)) or self._items_db.get(str(int(tid))) or {}
 
+    def _desc(self, tid):
+        """Mo ta/tac dung cua item (truong 說明 trong Item_C.dat). "" neu khong co."""
+        return (self._desc_db.get("0x%04x" % int(tid))
+                or self._desc_db.get(str(int(tid))) or "")
+
     def _rows(self):
-        """[(slot, tid, count, rec)] cua tab hien tai, sap theo SLOT (giong thu tu trong game)."""
+        """[(slot, tid, count, rec)] cua tab hien tai, sap GIONG CLIENT GAME.
+
+        Client KHONG bay theo so o: `Item.GetBagByCategory` (Logic/Item.lua:364) sap bang
+        `Item.Sort` = **(sort ASC, id ASC)**, voi `sort` la truong 排序 cua ItemData (--[45],
+        luu thanh "st" trong items_gamedata.json). Truoc day bot bay theo slot nen nhin la mat.
+
+        Them `slot` lam khoa cuoi: hai o cung mot id thi client de thu tu tuy y (table.sort
+        khong on dinh) - bam theo slot cho minh luon ra cung ket qua.
+        Item khong co trong gamedata -> khong co "st" -> day xuong cuoi (999) thay vi len dau.
+        """
         out = []
         for slot, rec in sorted(self.c.bag_slots.items()):
             tid, cnt = rec[0], rec[1]
@@ -2119,6 +2149,7 @@ class BagDialog(tk.Toplevel):
             d = self._item(tid)
             if _BAG.matches_tab(self._tab, d.get("ft"), d.get("kd")):
                 out.append((slot, tid, cnt, d))
+        out.sort(key=lambda r: (r[3].get("st", 999), r[1], r[0]))
         return out
 
     # ---- ve ----
@@ -2154,17 +2185,22 @@ class BagDialog(tk.Toplevel):
     def _cell(self, parent, r, col, slot, tid, cnt, d):
         name = d.get("name") or ("item %d" % tid)
         bg = self._BAG_Q.get(int(d.get("quality") or 0), "#f0f0f0")
-        f = tk.Frame(parent, width=88, height=88, bd=1, relief="solid", bg=bg)
-        f.grid(row=r, column=col, padx=3, pady=3)
+        # O tui do: RONG 2/3 va CAO 1/2 so voi ban cu 88x88 (yeu cau user) -> 59x44.
+        # Toa do ben trong phai co THEO TI LE, khong thi chu tran ra ngoai o.
+        W, H = self.CELL_W, self.CELL_H
+        _day = 12                      # chieu cao hang duoi (so luong + so slot)
+        f = tk.Frame(parent, width=W, height=H, bd=1, relief="solid", bg=bg)
+        f.grid(row=r, column=col, padx=2, pady=2)
         f.grid_propagate(False)
         # CHUA CO ICON: gameplay icon nam trong atlas Unity (jmg01.jmg) + anh xa iconId->o nam trong
         # libil2cpp.so, chua dich nguoc duoc. Tam dung ten rut gon + mau theo pham chat.
-        tk.Label(f, text=name[:22], bg=bg, wraplength=82, justify="center",
-                 font=("Segoe UI", 7)).place(x=2, y=4, width=84, height=58)
+        tk.Label(f, text=name[:22], bg=bg, wraplength=W - 6, justify="center",
+                 font=("Segoe UI", 7)).place(x=2, y=1, width=W - 4, height=H - _day - 3)
         tk.Label(f, text=("x%d" % cnt) if cnt > 1 else "", bg=bg,
-                 font=("Segoe UI", 8, "bold"), fg="#004080").place(x=2, y=64, width=50, height=18)
-        tk.Label(f, text="#%d" % slot, bg=bg, font=("Segoe UI", 7),
-                 fg="#888").place(x=54, y=64, width=32, height=18)
+                 font=("Segoe UI", 7, "bold"), fg="#004080").place(
+                     x=2, y=H - _day - 1, width=W // 2, height=_day)
+        tk.Label(f, text="#%d" % slot, bg=bg, font=("Segoe UI", 6),
+                 fg="#888").place(x=W // 2 + 2, y=H - _day - 1, width=W // 2 - 4, height=_day)
         for w in (f,) + tuple(f.winfo_children()):
             w.bind("<Button-1>", lambda _e, s=slot: self._select(s))
 
@@ -2176,9 +2212,11 @@ class BagDialog(tk.Toplevel):
         tid, cnt = rec[0], rec[1]
         d = self._item(tid)
         self.lbl_info.configure(
-            text="Ô #%d  •  %s  •  số lượng %d  •  id 0x%04x%s"
-                 % (slot, d.get("name") or "?", cnt, tid,
-                    ("\n" + d["desc"]) if d.get("desc") else ""))
+            text="Ô #%d  •  %s  •  số lượng %d  •  id 0x%04x"
+                 % (slot, d.get("name") or "?", cnt, tid))
+        # Mo ta dai toi 272 ky tu -> KHONG nhet cung dong voi id (cua so chi con 690px), de
+        # dong rieng ngay duoi, tu xuong dong theo be ngang.
+        self.lbl_desc.configure(text=self._desc(tid))
         self._show_actions((slot, tid, cnt, d))
 
     def _show_actions(self, sel):

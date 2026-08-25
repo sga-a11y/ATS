@@ -331,6 +331,42 @@
    "he": "Dia",
    "doanh": "Huynh"
   },
+  "0x2732": {
+   "name": "Đại.Ph.Tướng rb0",
+   "skills": [
+    10002
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
+  "0x2733": {
+   "name": "Tiểu.Ph.Tướng rb0",
+   "skills": [
+    10001
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
+  "0x2734": {
+   "name": "Lính Khăn Vàng rb0",
+   "skills": [
+    11001
+   ],
+   "he": "Thuy",
+   "doanh": "Huynh"
+  },
+  "0x2735": {
+   "name": "Quỷ Đạo Binh rb0",
+   "skills": []
+  },
+  "0x2736": {
+   "name": "Binh Khăn Vàng rb0",
+   "skills": [
+    10001
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
   "0x2737": {
    "name": "Nam Hoa Lão Tiên",
    "skills": [
@@ -339,6 +375,14 @@
     12026
    ],
    "he": "Hoa",
+   "doanh": "Huynh"
+  },
+  "0x273f": {
+   "name": "Dân Binh rb0",
+   "skills": [
+    10003
+   ],
+   "he": "Dia",
    "doanh": "Huynh"
   },
   "0x275b": {
@@ -531,6 +575,14 @@
    "he": "Thuy",
    "doanh": "Huynh"
   },
+  "0x277f": {
+   "name": "Binh Khăn Vàng rb0",
+   "skills": [
+    13001
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
   "0x27b1": {
    "name": "Ngưu Giác rb0",
    "skills": [
@@ -571,6 +623,14 @@
    "he": "Thuy",
    "doanh": "Huynh"
   },
+  "0x27b6": {
+   "name": "Đại.Ph.Tướng rb0",
+   "skills": [
+    10003
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
   "0x27bb": {
    "name": "Triệu Từ rb0",
    "skills": [
@@ -599,6 +659,14 @@
     13009
    ],
    "he": "Phong",
+   "doanh": "Huynh"
+  },
+  "0x27dd": {
+   "name": "Binh Khăn Vàng rb0",
+   "skills": [
+    11001
+   ],
+   "he": "Dia",
    "doanh": "Huynh"
   },
   "0x27e9": {
@@ -677,6 +745,22 @@
     13001,
     13004,
     13009
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
+  "0x27f1": {
+   "name": "Binh Khăn Vàng rb0",
+   "skills": [
+    10006
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
+  "0x27f2": {
+   "name": "Binh Khăn Vàng rb0",
+   "skills": [
+    12002
    ],
    "he": "Dia",
    "doanh": "Huynh"
@@ -2568,6 +2652,14 @@
    "he": "Hoa",
    "doanh": "Nguy"
   },
+  "0x2b92": {
+   "name": "Tào Tháo",
+   "skills": [
+    12009
+   ],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
   "0x2b93": {
    "name": "Điển Mãn rb0",
    "skills": [
@@ -2785,6 +2877,12 @@
     12008,
     12010
    ],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0x2ba9": {
+   "name": "Tào Tháo rb0",
+   "skills": [],
    "he": "Hoa",
    "doanh": "Nguy"
   },
@@ -3166,6 +3264,18 @@
     12006
    ],
    "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0x2bd3": {
+   "name": "Đặng Ngải",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0x2bd4": {
+   "name": "Chung Hội",
+   "skills": [],
+   "he": "Dia",
    "doanh": "Nguy"
   },
   "0x2bd5": {
@@ -4663,6 +4773,18 @@
    "he": "Phong",
    "doanh": "Thuc"
   },
+  "0x2f60": {
+   "name": "Bàng Thống",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
+  "0x2f61": {
+   "name": "Bàng Thống",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
   "0x2f62": {
    "name": "Lý Thiệu rb0",
    "skills": [
@@ -4700,6 +4822,12 @@
     10005,
     10006
    ],
+   "he": "Dia",
+   "doanh": "Thuc"
+  },
+  "0x2f66": {
+   "name": "Mã Siêu",
+   "skills": [],
    "he": "Dia",
    "doanh": "Thuc"
   },
@@ -5050,6 +5178,14 @@
    "he": "Dia",
    "doanh": "Thuc"
   },
+  "0x2f8a": {
+   "name": "Lưu Bị",
+   "skills": [
+    10001
+   ],
+   "he": "Dia",
+   "doanh": "Thuc"
+  },
   "0x2f8b": {
    "name": "Trương Bao",
    "skills": [
@@ -5088,6 +5224,14 @@
     10013
    ],
    "he": "Dia",
+   "doanh": "Thuc"
+  },
+  "0x2f90": {
+   "name": "Hoàng Trung",
+   "skills": [
+    13007
+   ],
+   "he": "Phong",
    "doanh": "Thuc"
   },
   "0x2f92": {
@@ -6719,6 +6863,14 @@
    "he": "Thuy",
    "doanh": "Ngo"
   },
+  "0x3349": {
+   "name": "Tôn Quyền",
+   "skills": [
+    13004
+   ],
+   "he": "Phong",
+   "doanh": "Ngo"
+  },
   "0x334a": {
    "name": "Lục Thương Nhân rb0",
    "skills": [
@@ -6844,6 +6996,22 @@
     11002,
     11003,
     11008
+   ],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0x3357": {
+   "name": "Tôn Hoàn",
+   "skills": [
+    11005
+   ],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0x3358": {
+   "name": "Cam Ninh",
+   "skills": [
+    11005
    ],
    "he": "Thuy",
    "doanh": "Ngo"
@@ -8038,6 +8206,14 @@
    "he": "Dia",
    "doanh": "Du"
   },
+  "0x3710": {
+   "name": "Cửu Sởi rb0",
+   "skills": [
+    11003
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
+  },
   "0x3712": {
    "name": "Châu Tĩnh rb0",
    "skills": [
@@ -8066,6 +8242,22 @@
     11011
    ],
    "he": "Thuy",
+   "doanh": "Du"
+  },
+  "0x3719": {
+   "name": "Tống Nhân rb0",
+   "skills": [
+    12001
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0x371a": {
+   "name": "Tống Dũng rb0",
+   "skills": [
+    13001
+   ],
+   "he": "Phong",
    "doanh": "Du"
   },
   "0x371b": {
@@ -8375,6 +8567,14 @@
     12009
    ],
    "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0x375a": {
+   "name": "Mạnh Công Uy rb0",
+   "skills": [
+    13004
+   ],
+   "he": "Phong",
    "doanh": "Du"
   },
   "0x375c": {
@@ -11857,6 +12057,38 @@
    "he": "Thuy",
    "doanh": "Du"
   },
+  "0x38ec": {
+   "name": "Hắc Khách rb0",
+   "skills": [
+    10006
+   ],
+   "he": "Dia",
+   "doanh": "Du"
+  },
+  "0x38ed": {
+   "name": "Tử Khách rb0",
+   "skills": [
+    11005
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
+  },
+  "0x38ee": {
+   "name": "Hồng Khách rb0",
+   "skills": [
+    12009
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0x38ef": {
+   "name": "Lục Khách rb0",
+   "skills": [
+    13009
+   ],
+   "he": "Phong",
+   "doanh": "Du"
+  },
   "0x38f0": {
    "name": "Sơn Đại Vương rb0",
    "skills": [
@@ -11865,6 +12097,12 @@
     10007
    ],
    "he": "Thuy",
+   "doanh": "Du"
+  },
+  "0x38f2": {
+   "name": "Đổng Trác rb0",
+   "skills": [],
+   "he": "Dia",
    "doanh": "Du"
   },
   "0x38f3": {
@@ -13037,6 +13275,14 @@
    "he": "Phong",
    "doanh": "Du"
   },
+  "0x396a": {
+   "name": "Mạnh Ưu",
+   "skills": [
+    10006
+   ],
+   "he": "Dia",
+   "doanh": "Du"
+  },
   "0x396b": {
    "name": "Mạnh Tiết rb0",
    "skills": [
@@ -13092,6 +13338,14 @@
     12006,
     20006
    ]
+  },
+  "0x3971": {
+   "name": "Chúc Dung",
+   "skills": [
+    12006
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
   },
   "0x3972": {
    "name": "Bách Trì",
@@ -13566,6 +13820,10 @@
     12012
    ]
   },
+  "0x3aff": {
+   "name": "Thương Binh",
+   "skills": []
+  },
   "0x3b07": {
    "name": "Vân Du Thần Toán rb0",
    "skills": [
@@ -13586,6 +13844,12 @@
    "skills": [
     10002,
     10003
+   ]
+  },
+  "0x3b27": {
+   "name": "Chu Bình Dung rb0",
+   "skills": [
+    11005
    ]
   },
   "0x3b3e": {
@@ -13612,12 +13876,46 @@
     11011
    ]
   },
+  "0x3b45": {
+   "name": "Y Chi Mã rb0",
+   "skills": []
+  },
+  "0x3b46": {
+   "name": "Nan Thăng Mễ rb0",
+   "skills": []
+  },
+  "0x3b47": {
+   "name": "Ngưu Lợi rb0",
+   "skills": []
+  },
+  "0x3b48": {
+   "name": "Di Mã Thăng rb0",
+   "skills": []
+  },
+  "0x3b49": {
+   "name": "Nô Giai Đề rb0",
+   "skills": []
+  },
+  "0x3b4e": {
+   "name": "Phượng Nhi rb0",
+   "skills": [
+    13004
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
   "0x3b6f": {
    "name": "Ác Đạo Sĩ rb0",
    "skills": [
     10001,
     10005,
     10006
+   ]
+  },
+  "0x3b71": {
+   "name": "Na Lị rb0",
+   "skills": [
+    13001
    ]
   },
   "0x3b7f": {
@@ -13644,6 +13942,12 @@
     14021
    ]
   },
+  "0x3b9d": {
+   "name": "Dương Phong rb0",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Thuc"
+  },
   "0x3bad": {
    "name": "Lỗ Tạp rb0",
    "skills": [
@@ -13667,6 +13971,10 @@
     10006,
     10008
    ]
+  },
+  "0x3bc4": {
+   "name": "Thương Binh rb0",
+   "skills": []
   },
   "0x3bc6": {
    "name": "Cam Thủy rb0",
@@ -13772,6 +14080,12 @@
     12006
    ]
   },
+  "0x3c2a": {
+   "name": "Kim Đao Đại Trù rb0",
+   "skills": [
+    12006
+   ]
+  },
   "0x3c2b": {
    "name": "Đỗ Hoạch",
    "skills": [
@@ -13802,6 +14116,12 @@
     10006,
     10007,
     14037
+   ]
+  },
+  "0x3c39": {
+   "name": "Nhiệt Bố Ba Lạp rb0",
+   "skills": [
+    13001
    ]
   },
   "0x3c41": {
@@ -14055,6 +14375,12 @@
     10011
    ]
   },
+  "0x4326": {
+   "name": "Cấm Vệ Quân rb0",
+   "skills": [
+    13006
+   ]
+  },
   "0x433e": {
    "name": "Thiên Tướng",
    "skills": [
@@ -14117,6 +14443,12 @@
     13005,
     13006,
     13007
+   ]
+  },
+  "0x4491": {
+   "name": "Củ Trận Quân rb0",
+   "skills": [
+    10006
    ]
   },
   "0x452a": {
@@ -14267,6 +14599,424 @@
    "skills": [
     10006,
     10021
+   ]
+  },
+  "0x4581": {
+   "name": "Dị Giới Cung Thủ rb0",
+   "skills": [
+    14036
+   ]
+  },
+  "0x4582": {
+   "name": "Dị Giới Xạ Thủ rb0",
+   "skills": [
+    13009
+   ]
+  },
+  "0x4583": {
+   "name": "Dị Giới Tặc rb0",
+   "skills": [
+    11005
+   ]
+  },
+  "0x4584": {
+   "name": "Dị Giới Đạo rb0",
+   "skills": [
+    12009
+   ]
+  },
+  "0x4585": {
+   "name": "Dị Giới Tốt rb0",
+   "skills": [
+    12006
+   ]
+  },
+  "0x4586": {
+   "name": "Dị Giới Binh rb0",
+   "skills": [
+    13002
+   ]
+  },
+  "0x4587": {
+   "name": "Dị Giới Bộ Binh rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x4588": {
+   "name": "Dị Giới Sĩ Tộc rb0",
+   "skills": [
+    11005
+   ]
+  },
+  "0x4589": {
+   "name": "Dị Giới Giáo Úy rb0",
+   "skills": [
+    12008
+   ]
+  },
+  "0x458a": {
+   "name": "Dị Giới Binh Trưởng rb0",
+   "skills": [
+    10008
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
+  },
+  "0x458b": {
+   "name": "Dị Giới Đào Binh rb0",
+   "skills": [
+    11008
+   ]
+  },
+  "0x458c": {
+   "name": "Dị Giới Đào Tốt rb0",
+   "skills": [
+    13010
+   ]
+  },
+  "0x458e": {
+   "name": "Dị Giới Thương Nhân rb0",
+   "skills": [
+    12010
+   ]
+  },
+  "0x458f": {
+   "name": "Dị Giới Biên Úy rb0",
+   "skills": [
+    12009
+   ]
+  },
+  "0x4590": {
+   "name": "Dị Giới Sở Vệ rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x4591": {
+   "name": "Dị Giới Chiến Sĩ rb0",
+   "skills": [
+    13009
+   ]
+  },
+  "0x4592": {
+   "name": "Dị Giới Tướng rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x4595": {
+   "name": "Dị Giới Hiệp Khách rb0",
+   "skills": [
+    11005
+   ]
+  },
+  "0x4597": {
+   "name": "Dị Giới Phỉ rb0",
+   "skills": [
+    10001
+   ]
+  },
+  "0x4598": {
+   "name": "Dị Giới Truy Binh",
+   "skills": [
+    13001
+   ]
+  },
+  "0x4599": {
+   "name": "Dị Giới Bộ Binh rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x459a": {
+   "name": "Dị Giới Kỵ Binh rb0",
+   "skills": [
+    11008
+   ]
+  },
+  "0x459c": {
+   "name": "Dị Giới Thái Úy rb0",
+   "skills": [
+    13001
+   ]
+  },
+  "0x459d": {
+   "name": "Dị Giới Đào Tướng rb0",
+   "skills": [
+    11008
+   ]
+  },
+  "0x459e": {
+   "name": "Dị Giới Đào Phạm rb0",
+   "skills": [
+    13002
+   ]
+  },
+  "0x459f": {
+   "name": "Dị Giới Thủ Vệ rb0",
+   "skills": [
+    10001
+   ]
+  },
+  "0x45a0": {
+   "name": "Dị Giới Hộ Vệ rb0",
+   "skills": [
+    12001
+   ]
+  },
+  "0x45a1": {
+   "name": "Dị Giới Phó Đội rb0",
+   "skills": [
+    11001
+   ]
+  },
+  "0x45a2": {
+   "name": "Dị Giới Lĩnh Quân rb0",
+   "skills": [
+    13001
+   ]
+  },
+  "0x45a3": {
+   "name": "Dị Giới Trung Úy rb0",
+   "skills": [
+    11001
+   ]
+  },
+  "0x45a4": {
+   "name": "Dị Giới Hộ Quân rb0",
+   "skills": [
+    13002
+   ]
+  },
+  "0x45a5": {
+   "name": "Dị Giới Dũng Sĩ rb0",
+   "skills": [
+    11001
+   ]
+  },
+  "0x45a6": {
+   "name": "Dị Giới Nguyên Soái rb0",
+   "skills": [
+    12009
+   ]
+  },
+  "0x45a7": {
+   "name": "Dị Giới Cung Thủ rb0",
+   "skills": [
+    14036
+   ]
+  },
+  "0x45a8": {
+   "name": "Dị Giới Xạ Thủ rb0",
+   "skills": [
+    13009
+   ]
+  },
+  "0x45a9": {
+   "name": "Dị Giới Hiệp Khách rb0",
+   "skills": [
+    11005
+   ]
+  },
+  "0x45aa": {
+   "name": "Dị Giới Lữ Nhân rb0",
+   "skills": [
+    12001
+   ]
+  },
+  "0x45ab": {
+   "name": "Dị Giới Tặc rb0",
+   "skills": [
+    11005
+   ]
+  },
+  "0x45ac": {
+   "name": "Dị Giới Đạo rb0",
+   "skills": [
+    12009
+   ]
+  },
+  "0x45ad": {
+   "name": "Dị Giới Phỉ rb0",
+   "skills": [
+    10001
+   ]
+  },
+  "0x45ae": {
+   "name": "Dị Giới Truy Binh",
+   "skills": [
+    13001
+   ]
+  },
+  "0x45af": {
+   "name": "Dị Giới Bộ Binh rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x45b0": {
+   "name": "Dị Giới Kỵ Binh rb0",
+   "skills": [
+    11008
+   ]
+  },
+  "0x45b1": {
+   "name": "Dị Giới Tốt rb0",
+   "skills": [
+    12006
+   ]
+  },
+  "0x45b2": {
+   "name": "Dị Giới Binh rb0",
+   "skills": [
+    13002
+   ]
+  },
+  "0x45b3": {
+   "name": "Dị Giới Chiến Binh rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x45b4": {
+   "name": "Dị Giới Sĩ Tộc rb0",
+   "skills": [
+    11005
+   ]
+  },
+  "0x45b5": {
+   "name": "Dị Giới Truân Úy rb0",
+   "skills": [
+    12004
+   ]
+  },
+  "0x45b6": {
+   "name": "Dị Giới Thái Úy rb0",
+   "skills": [
+    13001
+   ]
+  },
+  "0x45b7": {
+   "name": "Dị Giới Đào Tướng rb0",
+   "skills": [
+    11008
+   ]
+  },
+  "0x45b8": {
+   "name": "Dị Giới Đào Phạm rb0",
+   "skills": [
+    13002
+   ]
+  },
+  "0x45b9": {
+   "name": "Dị Giới Giáo Úy rb0",
+   "skills": [
+    12008
+   ]
+  },
+  "0x45ba": {
+   "name": "Dị Giới Binh Trưởng rb0",
+   "skills": [
+    10008
+   ],
+   "he": "Hoa",
+   "doanh": "Huynh"
+  },
+  "0x45bb": {
+   "name": "Dị Giới Đào Binh rb0",
+   "skills": [
+    11008
+   ]
+  },
+  "0x45bc": {
+   "name": "Dị Giới Đào Tốt rb0",
+   "skills": [
+    13010
+   ]
+  },
+  "0x45bd": {
+   "name": "Dị Giới Thủ Vệ rb0",
+   "skills": [
+    10001
+   ]
+  },
+  "0x45be": {
+   "name": "Dị Giới Hộ Vệ rb0",
+   "skills": [
+    12001
+   ]
+  },
+  "0x45bf": {
+   "name": "Dị Giới Phó Đội rb0",
+   "skills": [
+    11001
+   ]
+  },
+  "0x45c0": {
+   "name": "Dị Giới Lĩnh Quân rb0",
+   "skills": [
+    13001
+   ]
+  },
+  "0x45c1": {
+   "name": "Dị Giới Quân Trưởng rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x45c2": {
+   "name": "Dị Giới Thương Nhân rb0",
+   "skills": [
+    12010
+   ]
+  },
+  "0x45c3": {
+   "name": "Dị Giới Biên Úy rb0",
+   "skills": [
+    12009
+   ]
+  },
+  "0x45c4": {
+   "name": "Dị Giới Sở Vệ rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x45c5": {
+   "name": "Dị Giới Trung Úy rb0",
+   "skills": [
+    11001
+   ]
+  },
+  "0x45c6": {
+   "name": "Dị Giới Hộ Quân rb0",
+   "skills": [
+    13002
+   ]
+  },
+  "0x45c7": {
+   "name": "Dị Giới Chiến Sĩ rb0",
+   "skills": [
+    13009
+   ]
+  },
+  "0x45c8": {
+   "name": "Dị Giới Tướng rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x45c9": {
+   "name": "Dị Giới Dũng Sĩ rb0",
+   "skills": [
+    11001
+   ]
+  },
+  "0x45ca": {
+   "name": "Dị Giới Nguyên Soái rb0",
+   "skills": [
+    12009
    ]
   },
   "0x4660": {
@@ -14672,6 +15422,24 @@
     20006
    ]
   },
+  "0x46e0": {
+   "name": "Cải Bắp",
+   "skills": [
+    10007
+   ]
+  },
+  "0x46ed": {
+   "name": "Thanh Long",
+   "skills": [
+    10007
+   ]
+  },
+  "0x46f9": {
+   "name": "Chu Tước",
+   "skills": [
+    10007
+   ]
+  },
   "0x4a39": {
    "name": "Hoàng Đế",
    "skills": [
@@ -14792,6 +15560,12 @@
     12006
    ]
   },
+  "0x4a58": {
+   "name": "Phục Hoàng Hậu rb0",
+   "skills": [
+    13001
+   ]
+  },
   "0x4a59": {
    "name": "Phục Hoàn rb0",
    "skills": [
@@ -14868,6 +15642,12 @@
     12026
    ]
   },
+  "0x4a6c": {
+   "name": "Trấn Triều Đại Tướng",
+   "skills": [
+    10021
+   ]
+  },
   "0x4a71": {
    "name": "Tả Phong",
    "skills": [
@@ -14906,6 +15686,30 @@
     13001,
     13003,
     13006
+   ]
+  },
+  "0x55f6": {
+   "name": "Bánh Bao Trứng rb0",
+   "skills": []
+  },
+  "0x55f7": {
+   "name": "Bánh Bao Thịt rb0",
+   "skills": []
+  },
+  "0x55f8": {
+   "name": "Vua Bánh Bao rb0",
+   "skills": []
+  },
+  "0x5600": {
+   "name": "Bao Cải Vàng rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0x5601": {
+   "name": "Bao Thịt Lớn rb0",
+   "skills": [
+    11005
    ]
   },
   "0x560c": {
@@ -15148,6 +15952,18 @@
     13004,
     13006,
     13009
+   ]
+  },
+  "0x562e": {
+   "name": "Phúc Đậu Đậu",
+   "skills": [
+    12031
+   ]
+  },
+  "0x562f": {
+   "name": "Lễ Đậu Đậu",
+   "skills": [
+    14030
    ]
   },
   "0x5630": {
@@ -15477,6 +16293,60 @@
     13005,
     13006,
     13015
+   ]
+  },
+  "0x629c": {
+   "name": "Long Thủ Thạch",
+   "skills": [
+    10006
+   ]
+  },
+  "0x629d": {
+   "name": "Long Thủ Tích",
+   "skills": [
+    10006
+   ]
+  },
+  "0x629e": {
+   "name": "Long Thủ Thiết",
+   "skills": [
+    10006
+   ]
+  },
+  "0x629f": {
+   "name": "Long Thủ Đồng",
+   "skills": [
+    10006
+   ]
+  },
+  "0x62a0": {
+   "name": "Long Thủ Ngân",
+   "skills": [
+    10006
+   ]
+  },
+  "0x62a1": {
+   "name": "Long Thủ Ngọc",
+   "skills": [
+    13010
+   ]
+  },
+  "0x62a2": {
+   "name": "Long Thủ Hồng Tinh",
+   "skills": [
+    12006
+   ]
+  },
+  "0x62a3": {
+   "name": "Long Thủ Tử Tinh",
+   "skills": [
+    12006
+   ]
+  },
+  "0x62a4": {
+   "name": "Long Thủ Kim Khoáng",
+   "skills": [
+    10006
    ]
   },
   "0x6979": {
@@ -16587,6 +17457,12 @@
     20026
    ]
   },
+  "0x6a0c": {
+   "name": "Diệt Thế Chi Nộ",
+   "skills": [
+    20029
+   ]
+  },
   "0x6a0d": {
    "name": "Cứu Thục Quan",
    "skills": [
@@ -17088,6 +17964,12 @@
     12015,
     12022,
     12025
+   ]
+  },
+  "0x6a4d": {
+   "name": "Oán Niệm Đại Tương Quân",
+   "skills": [
+    20029
    ]
   },
   "0x6a4e": {
@@ -17719,6 +18601,70 @@
     14020
    ]
   },
+  "0x8ca5": {
+   "name": "Tướng Giáp Nhẹ",
+   "skills": [
+    20044
+   ]
+  },
+  "0x8ca6": {
+   "name": "Tướng Giáp Cứng",
+   "skills": [
+    20044
+   ]
+  },
+  "0x8ca7": {
+   "name": "Tướng Giáp Nặng",
+   "skills": [
+    20044
+   ]
+  },
+  "0x8ca8": {
+   "name": "Tướng Siêu Giáp",
+   "skills": [
+    20044
+   ]
+  },
+  "0x9098": {
+   "name": "Kiên Mộc Lan",
+   "skills": []
+  },
+  "0x9099": {
+   "name": "Cường Cung Tỉnh Lan",
+   "skills": [
+    20038
+   ]
+  },
+  "0x909a": {
+   "name": "Ngưu Đầu Trùng Xa",
+   "skills": [
+    20034
+   ]
+  },
+  "0x909b": {
+   "name": "Tinh Cương Đao Xa",
+   "skills": [
+    20035
+   ]
+  },
+  "0x909c": {
+   "name": "Liên Nỏ Xa",
+   "skills": [
+    20036
+   ]
+  },
+  "0x909d": {
+   "name": "Đầu Thạch Cự Xa",
+   "skills": [
+    20037
+   ]
+  },
+  "0x909e": {
+   "name": "Thần Tiễn Tháp",
+   "skills": [
+    20039
+   ]
+  },
   "0x947a": {
    "name": "Thú Thiên Niên",
    "skills": [
@@ -17864,6 +18810,12 @@
     13001,
     13005,
     13009
+   ]
+  },
+  "0x94be": {
+   "name": "Vong Cốt Tướng Quân",
+   "skills": [
+    20033
    ]
   },
   "0x94bf": {
@@ -18257,6 +19209,14 @@
     12015
    ]
   },
+  "0x94ef": {
+   "name": "Ông Già Noel",
+   "skills": []
+  },
+  "0x94f0": {
+   "name": "Ông Già Noel",
+   "skills": []
+  },
   "0x94f1": {
    "name": "Ông Già Noel Xấu Xa rb0",
    "skills": [
@@ -18409,6 +19369,10 @@
     20014,
     21022
    ]
+  },
+  "0x9517": {
+   "name": "Võ Tướng Tăng Cấp",
+   "skills": []
   },
   "0x9519": {
    "name": "Kim Long Đại Tiên",
@@ -18722,6 +19686,14 @@
     12026
    ],
    "he": "Hoa",
+   "doanh": "Huynh"
+  },
+  "0x9544": {
+   "name": "Binh Khăn Vàng",
+   "skills": [
+    10001
+   ],
+   "he": "Phong",
    "doanh": "Huynh"
   },
   "0x9545": {
@@ -19330,6 +20302,18 @@
     12015
    ]
   },
+  "0x95a2": {
+   "name": "Khuất Nguyên",
+   "skills": []
+  },
+  "0x95a5": {
+   "name": "Hằng Nga",
+   "skills": []
+  },
+  "0x95b8": {
+   "name": "Thần Long",
+   "skills": []
+  },
   "0x95ba": {
    "name": "Chủ Khách Sạn",
    "skills": [
@@ -19338,11 +20322,59 @@
     13005
    ]
   },
+  "0x95cc": {
+   "name": "Cửu Di Binh",
+   "skills": [
+    13013
+   ]
+  },
+  "0x95cd": {
+   "name": "Bát Man Binh",
+   "skills": [
+    12009
+   ],
+   "he": "Thuy",
+   "doanh": "Du"
+  },
+  "0x95ce": {
+   "name": "Lục Nhung Binh",
+   "skills": []
+  },
+  "0x95cf": {
+   "name": "Ngũ Địch Binh",
+   "skills": [
+    11022
+   ]
+  },
+  "0x95d0": {
+   "name": "Tam Tần Binh",
+   "skills": [
+    10021
+   ]
+  },
+  "0x95d1": {
+   "name": "Cửu Di Tướng",
+   "skills": [
+    13033
+   ]
+  },
   "0x95d2": {
    "name": "Bát Man Tướng",
    "skills": [
     12033,
     12025
+   ]
+  },
+  "0x95d3": {
+   "name": "Lục Nhung Tướng",
+   "skills": [
+    14036
+   ]
+  },
+  "0x95d4": {
+   "name": "Ngũ Địch Tướng",
+   "skills": [
+    11028
    ]
   },
   "0x95d5": {
@@ -19367,6 +20399,12 @@
     10034
    ]
   },
+  "0x95d9": {
+   "name": "Huyền Vũ",
+   "skills": [
+    11030
+   ]
+  },
   "0x95da": {
    "name": "Hữu Trảo",
    "skills": [
@@ -19381,6 +20419,92 @@
     20021,
     10034,
     14062
+   ]
+  },
+  "0x95dc": {
+   "name": "Địa Hành Dạ Xoa",
+   "skills": [
+    14062
+   ]
+  },
+  "0x95dd": {
+   "name": "Thiên Hành Dạ Xoa",
+   "skills": [
+    14062
+   ]
+  },
+  "0x95de": {
+   "name": "Quỷ La Sát",
+   "skills": [
+    12009
+   ]
+  },
+  "0x95df": {
+   "name": "Thiên La Sát",
+   "skills": [
+    12027
+   ]
+  },
+  "0x95e0": {
+   "name": "Thanh Cương Thi",
+   "skills": [
+    11026
+   ]
+  },
+  "0x95e1": {
+   "name": "Huyết Cương Thi",
+   "skills": [
+    11026
+   ]
+  },
+  "0x95e2": {
+   "name": "Oán Ác Quỷ",
+   "skills": [
+    13007
+   ]
+  },
+  "0x95e3": {
+   "name": "Ác Quỷ Nguyền Rủa",
+   "skills": [
+    20049
+   ]
+  },
+  "0x95e4": {
+   "name": "Quỷ Phàn Khoái",
+   "skills": [
+    12031
+   ]
+  },
+  "0x95e5": {
+   "name": "Quỷ Bạch Khởi",
+   "skills": [
+    10021
+   ]
+  },
+  "0x95e6": {
+   "name": "Quỷ Hàn Tín",
+   "skills": [
+    11033
+   ]
+  },
+  "0x95e7": {
+   "name": "Quỷ Lý Quảng",
+   "skills": [
+    13029
+   ]
+  },
+  "0x95e8": {
+   "name": "Long Thủy Xà",
+   "skills": []
+  },
+  "0x95e9": {
+   "name": "Lễ Tặc",
+   "skills": []
+  },
+  "0x95ea": {
+   "name": "Xích Hổ",
+   "skills": [
+    13008
    ]
   },
   "0x95eb": {
@@ -19399,6 +20523,20 @@
     12023
    ]
   },
+  "0x95ed": {
+   "name": "Địa Lang",
+   "skills": []
+  },
+  "0x95ee": {
+   "name": "Nhân Hùng",
+   "skills": []
+  },
+  "0x95ef": {
+   "name": "Xích Hổ Yêu",
+   "skills": [
+    13008
+   ]
+  },
   "0x95f0": {
    "name": "Bác Mã Quái",
    "skills": [
@@ -19415,6 +20553,22 @@
     12026
    ]
   },
+  "0x95f2": {
+   "name": "Lệ Lang Quỷ",
+   "skills": [
+    10021
+   ]
+  },
+  "0x95f3": {
+   "name": "Ảo Trư Ma",
+   "skills": []
+  },
+  "0x95f4": {
+   "name": "Hổ Uy Ma Vương",
+   "skills": [
+    13008
+   ]
+  },
   "0x95f5": {
    "name": "Họa Bì",
    "skills": [
@@ -19429,6 +20583,12 @@
     13032,
     13032,
     12032
+   ]
+  },
+  "0x95f7": {
+   "name": "Hoạn Quỷ",
+   "skills": [
+    10028
    ]
   },
   "0x95f8": {
@@ -19506,6 +20666,86 @@
    "he": "Hoa",
    "doanh": "Nguy"
   },
+  "0x9602": {
+   "name": "Kim Trụ Quân",
+   "skills": [
+    11005
+   ]
+  },
+  "0x9603": {
+   "name": "Củ Trận Quân",
+   "skills": [
+    10006
+   ]
+  },
+  "0x9604": {
+   "name": "Cường Thuẫn Quân",
+   "skills": [
+    13013
+   ]
+  },
+  "0x9605": {
+   "name": "Tâm Phúc Lưu Yên",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0x9606": {
+   "name": "Chung Quỳ",
+   "skills": []
+  },
+  "0x9607": {
+   "name": "Ngũ Phúc Vương Gia",
+   "skills": []
+  },
+  "0x9608": {
+   "name": "Văn Xương Đế Quân",
+   "skills": []
+  },
+  "0x9609": {
+   "name": "Ôn Thần",
+   "skills": [
+    21008
+   ]
+  },
+  "0x960a": {
+   "name": "Tộc Nhân Hận Yên",
+   "skills": []
+  },
+  "0x960b": {
+   "name": "Ban Tổ Chức",
+   "skills": []
+  },
+  "0x960c": {
+   "name": "Đại Kiều",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Ngo"
+  },
+  "0x960d": {
+   "name": "Tiểu Kiều",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Ngo"
+  },
+  "0x960e": {
+   "name": "Nhạn Điêu Tuyết",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Du"
+  },
+  "0x9612": {
+   "name": "Chu Du",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0x9613": {
+   "name": "Tôn Sách",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
   "0x9614": {
    "name": "Kẻ Canh Linh Chi",
    "skills": [
@@ -19526,6 +20766,20 @@
     13005,
     13007
    ]
+  },
+  "0x961f": {
+   "name": "Trương Phi",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
+  "0x9624": {
+   "name": "Chức Nữ",
+   "skills": []
+  },
+  "0x962c": {
+   "name": "Đại Kiều Đồ Bơi",
+   "skills": []
   },
   "0x962f": {
    "name": "Điển Vi",
@@ -19647,6 +20901,18 @@
    "he": "Dia",
    "doanh": "Du"
   },
+  "0x963d": {
+   "name": "Hằng Nga",
+   "skills": []
+  },
+  "0x9640": {
+   "name": "Vương Mẫu",
+   "skills": []
+  },
+  "0x9641": {
+   "name": "Ngô Cương",
+   "skills": []
+  },
   "0x9662": {
    "name": "Quái Đạo Nhân",
    "skills": [
@@ -19734,6 +21000,12 @@
     12015,
     12012
    ]
+  },
+  "0x9675": {
+   "name": "Khương Duy",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Thuc"
   },
   "0x9676": {
    "name": "Ngụy Quốc Tiếu Binh",
@@ -21006,6 +22278,12 @@
     14015
    ]
   },
+  "0x9c6e": {
+   "name": "Hàm Oán Tần Tướng",
+   "skills": [
+    12022
+   ]
+  },
   "0x9c6f": {
    "name": "Hàm Oán Tần Kỵ",
    "skills": [
@@ -21212,6 +22490,12 @@
     13022,
     13023,
     13015
+   ]
+  },
+  "0x9c8d": {
+   "name": "Quần Yêu Ác Thủ",
+   "skills": [
+    20033
    ]
   },
   "0x9c8e": {
@@ -21437,12 +22721,24 @@
     12029
    ]
   },
+  "0x9cac": {
+   "name": "An Kỳ Sinh",
+   "skills": [
+    11009
+   ]
+  },
   "0x9cad": {
    "name": "Mông Điềm Chi Hồn",
    "skills": [
     13010,
     13024,
     13033
+   ]
+  },
+  "0x9cae": {
+   "name": "Tử Anh",
+   "skills": [
+    11010
    ]
   },
   "0x9caf": {
@@ -21577,6 +22873,36 @@
     10034
    ]
   },
+  "0x9cc1": {
+   "name": "Cơ Quan Tần Binh",
+   "skills": [
+    11023
+   ]
+  },
+  "0x9cc2": {
+   "name": "Truyền Lệnh Tần Binh",
+   "skills": [
+    12021
+   ]
+  },
+  "0x9cc3": {
+   "name": "Bồi Táng Cung Nữ",
+   "skills": [
+    10023
+   ]
+  },
+  "0x9cc4": {
+   "name": "Thâm Uyên Quỷ Đầu",
+   "skills": [
+    12027
+   ]
+  },
+  "0x9cc5": {
+   "name": "Thanh Đồng Yêu Trư",
+   "skills": [
+    13024
+   ]
+  },
   "0x9cc6": {
    "name": "Tô Giác",
    "skills": [
@@ -21599,6 +22925,24 @@
     12021,
     12022,
     12027
+   ]
+  },
+  "0x9cc9": {
+   "name": "Phục Sinh",
+   "skills": [
+    10034
+   ]
+  },
+  "0x9cca": {
+   "name": "Mao Tiêu",
+   "skills": [
+    12034
+   ]
+  },
+  "0x9ccb": {
+   "name": "Ngọc Cơ",
+   "skills": [
+    11034
    ]
   },
   "0x9ccc": {
@@ -21681,6 +23025,14 @@
     11006
    ]
   },
+  "0x9ce2": {
+   "name": "Binh Khăn Vàng",
+   "skills": [
+    10001
+   ],
+   "he": "Phong",
+   "doanh": "Huynh"
+  },
   "0x9ce3": {
    "name": "Yêu Sư Khăn Vàng",
    "skills": [
@@ -21699,6 +23051,14 @@
     12011
    ],
    "he": "Hoa",
+   "doanh": "Huynh"
+  },
+  "0x9ce6": {
+   "name": "Binh Khăn Vàng",
+   "skills": [
+    10001
+   ],
+   "he": "Phong",
    "doanh": "Huynh"
   },
   "0x9ce7": {
@@ -24301,6 +25661,12 @@
    "skills": [
     10006,
     10026
+   ]
+  },
+  "0x9e26": {
+   "name": "Bao Thịt Lớn",
+   "skills": [
+    10005
    ]
   },
   "0x9e27": {
@@ -28839,6 +30205,14 @@
     13006
    ],
    "he": "Phong",
+   "doanh": "Thuc"
+  },
+  "0xa063": {
+   "name": "Khương Duy",
+   "skills": [
+    10001
+   ],
+   "he": "Dia",
    "doanh": "Thuc"
   },
   "0xa064": {
@@ -36108,6 +37482,24 @@
     12027
    ]
   },
+  "0xabe7": {
+   "name": "Hoàng Phủ Tung",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0xabea": {
+   "name": "Viên Thiệu",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Du"
+  },
+  "0xabeb": {
+   "name": "Viên Thuật",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Du"
+  },
   "0xafc9": {
    "name": "Trương Giác",
    "skills": [
@@ -38786,6 +40178,30 @@
    "he": "Hoa",
    "doanh": "Nguy"
   },
+  "0xb0d7": {
+   "name": "Tư Mã Ý",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Nguy"
+  },
+  "0xb0d8": {
+   "name": "Lục Tốn",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0xb0d9": {
+   "name": "Bàng Thống",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
+  "0xb0da": {
+   "name": "Gia Cát Lượng",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Thuc"
+  },
   "0xb0db": {
    "name": "Tiểu Kiều",
    "skills": [
@@ -39660,6 +41076,18 @@
     13033,
     13043,
     14083
+   ]
+  },
+  "0xb136": {
+   "name": "Test 6",
+   "skills": [
+    14079
+   ]
+  },
+  "0xb137": {
+   "name": "Test 7",
+   "skills": [
+    14080
    ]
   },
   "0xb138": {
@@ -41009,6 +42437,618 @@
    "he": "Thuy",
    "doanh": "Du"
   },
+  "0xb3b1": {
+   "name": "Thăng Phàm Quan",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3b2": {
+   "name": "Ổn Đà Quan",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3b3": {
+   "name": "Trường Kiếm Sĩ",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb3b4": {
+   "name": "Bản Phủ Tướng",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3b5": {
+   "name": "Thiết Dân Đoàn",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3b6": {
+   "name": "Nộ Dân Đoàn",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3b7": {
+   "name": "Khoái Đao Tiểu Nương",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3b8": {
+   "name": "Điện Kiếm Tiểu Nương",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3b9": {
+   "name": "Trụ Giáp Quân",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3ba": {
+   "name": "Nhiễu Trướng Binh",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3bb": {
+   "name": "Huyễn Đạo Quân",
+   "skills": [
+    12023
+   ]
+  },
+  "0xb3bc": {
+   "name": "Thánh Pháp Sư",
+   "skills": [
+    11021
+   ]
+  },
+  "0xb3bd": {
+   "name": "Tả Trấn Binh",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3be": {
+   "name": "Trì Vũ Quân",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3bf": {
+   "name": "Đồ Đao Binh",
+   "skills": [
+    13024
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
+  "0xb3c0": {
+   "name": "Hoàn Giáp Doanh",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb3c1": {
+   "name": "Tấn Quỷ Doanh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3c2": {
+   "name": "Phấn Kích Sĩ",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3c3": {
+   "name": "Hoành Thương Đoàn",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3c4": {
+   "name": "Song Kích Đoàn",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3c5": {
+   "name": "Doanh Binh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3c6": {
+   "name": "Phương Đao Tướng",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3c7": {
+   "name": "Trung Lũy Doanh",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3c8": {
+   "name": "Thiết Bích Quân",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3c9": {
+   "name": "Tỏa Giáp Binh",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3ca": {
+   "name": "Cường Nhẫn Quân",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3cb": {
+   "name": "Thương Lão Đạo",
+   "skills": [
+    11023
+   ]
+  },
+  "0xb3cc": {
+   "name": "Khai Lão Đạo",
+   "skills": [
+    10022
+   ]
+  },
+  "0xb3cd": {
+   "name": "Quận Điển Binh",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3ce": {
+   "name": "Ngũ Doanh Úy",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3cf": {
+   "name": "Hữu Trấn Binh",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb3d0": {
+   "name": "Tuất Truân Tiểu Giáo",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3d1": {
+   "name": "Lữ Vệ Đội",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3d2": {
+   "name": "Trọng Quyền Tử Sĩ",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3d3": {
+   "name": "Sử Thôn Phu",
+   "skills": [
+    12026
+   ]
+  },
+  "0xb3d4": {
+   "name": "Canh Thôn Phu",
+   "skills": [
+    13022
+   ]
+  },
+  "0xb3d5": {
+   "name": "Túc Vệ Đội",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3d6": {
+   "name": "Truân Tác Sĩ",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb3d7": {
+   "name": "Dan Dương Thanh Cân",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3d8": {
+   "name": "Chiết Trùng Binh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3d9": {
+   "name": "Trường Thủy Binh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3da": {
+   "name": "Mã Nhàn Binh",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3db": {
+   "name": "Huấn Bổ Doanh",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3dc": {
+   "name": "Hương Lý Binh",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3dd": {
+   "name": "Cường Việt Binh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3de": {
+   "name": "Việt Dũng Tướng",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3df": {
+   "name": "Việt Hãn Binh",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3e0": {
+   "name": "Quách Việt Sĩ",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3e1": {
+   "name": "Việt Đao Binh",
+   "skills": [
+    13024
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
+  "0xb3e2": {
+   "name": "Việt Linh Sư",
+   "skills": [
+    10022
+   ]
+  },
+  "0xb3e3": {
+   "name": "Bạc Trung Đạo",
+   "skills": [
+    11021
+   ]
+  },
+  "0xb3e4": {
+   "name": "Thiết Hoàn Tặc",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3e5": {
+   "name": "Tả Điền Quân",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3e6": {
+   "name": "Thích Binh Đoàn",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3e7": {
+   "name": "Hữu Điền Quân",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3e8": {
+   "name": "Liên Khải Doanh",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3e9": {
+   "name": "Phù Thuyền Binh",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3ea": {
+   "name": "Trọng Tưởng Sĩ",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3eb": {
+   "name": "Dương Phàm Binh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3ec": {
+   "name": "Tuần Đĩnh Quân",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3ed": {
+   "name": "Đại Hạm Doanh",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3ee": {
+   "name": "Trịch Thạch Tráng Sĩ",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3ef": {
+   "name": "Hổ Lâm Quân",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3f0": {
+   "name": "Độ Trạch Binh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3f1": {
+   "name": "Bá Quyền Đội",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3f2": {
+   "name": "Xuyên Sơn Tướng",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3f3": {
+   "name": "Tấn Tinh Binh",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3f4": {
+   "name": "Truân Sở Tướng",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3f5": {
+   "name": "Yết Tử Sĩ",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb3f6": {
+   "name": "Yết Mãnh Tướng",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb3f7": {
+   "name": "Trú Bắc Quân",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3f8": {
+   "name": "Vọng Lâu Thủ Tướng",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3f9": {
+   "name": "Trừ Thảo Nữ",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb3fa": {
+   "name": "Tráng Nong Dân",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb3fb": {
+   "name": "Dật Thế Ẩn Sĩ",
+   "skills": [
+    12023
+   ]
+  },
+  "0xb3fc": {
+   "name": "Hồng Nho Ẩn Sĩ",
+   "skills": [
+    10024
+   ]
+  },
+  "0xb3fd": {
+   "name": "Cường Cung Binh",
+   "skills": [
+    14036
+   ]
+  },
+  "0xb3fe": {
+   "name": "Phi Thỉ Binh",
+   "skills": [
+    14036
+   ]
+  },
+  "0xb3ff": {
+   "name": "Trọng Thuẫn Doanh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb400": {
+   "name": "Hám Sơn Dũng Sĩ",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb401": {
+   "name": "Yếu Tắc Quân",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb402": {
+   "name": "Thành Phòng Binh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb403": {
+   "name": "Báo Kỵ Binh",
+   "skills": [
+    13024
+   ],
+   "he": "Thuy",
+   "doanh": "Thuc"
+  },
+  "0xb404": {
+   "name": "Hổ Kỵ Binh",
+   "skills": [
+    12022
+   ],
+   "he": "Thuy",
+   "doanh": "Thuc"
+  },
+  "0xb405": {
+   "name": "Huyết Vệ Binh",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb406": {
+   "name": "Thiết Kỵ Binh",
+   "skills": [
+    10021
+   ],
+   "he": "Thuy",
+   "doanh": "Thuc"
+  },
+  "0xb407": {
+   "name": "Bôn Tập Doanh",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb408": {
+   "name": "Trọng Kỵ Binh",
+   "skills": [
+    11022
+   ],
+   "he": "Thuy",
+   "doanh": "Thuc"
+  },
+  "0xb409": {
+   "name": "Du Tham",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb40a": {
+   "name": "Kim Trụ Binh",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb40b": {
+   "name": "Hùng Hổ Quân",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb40c": {
+   "name": "Tật Chuẩn Binh",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb40d": {
+   "name": "Đăng Hạm Doanh",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb40e": {
+   "name": "Áp Thương Binh",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb40f": {
+   "name": "Thủy Quân Giáo",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb410": {
+   "name": "Nham Lực Sĩ",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb411": {
+   "name": "Hoảng Kiếm Đội",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb412": {
+   "name": "Quan Trung Thiết Kỵ",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb413": {
+   "name": "Hắc Trụ Binh",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb414": {
+   "name": "Ung Lương Thiết Kỵ",
+   "skills": [
+    12022
+   ]
+  },
   "0xb415": {
    "name": "Thiên Đàn Tiên Hổ",
    "skills": [
@@ -41039,6 +43079,968 @@
     13024,
     13025,
     20027
+   ]
+  },
+  "0xb419": {
+   "name": "Truân Điền Nông Phu",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb41a": {
+   "name": "Hương Qua Thôn Cô",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb41b": {
+   "name": "Bồ Đào Thôn Cô",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb41c": {
+   "name": "Khẩn Hoang Nông Phu",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb41d": {
+   "name": "Mã Hàn Khẩn Phu",
+   "skills": [
+    10023
+   ]
+  },
+  "0xb41e": {
+   "name": "Ác Lục Quỷ",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb41f": {
+   "name": "Mã Hàn Vu Nữ",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb420": {
+   "name": "Tà Âm Dương",
+   "skills": [
+    13022
+   ]
+  },
+  "0xb421": {
+   "name": "Tự Hổ Sa Tặc",
+   "skills": [
+    10023
+   ]
+  },
+  "0xb422": {
+   "name": "Lộng Xà Nữ",
+   "skills": [
+    11023
+   ]
+  },
+  "0xb423": {
+   "name": "Hóa Nhân Hổ",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb424": {
+   "name": "Vũ Sĩ Xà",
+   "skills": [
+    13023
+   ]
+  },
+  "0xb425": {
+   "name": "Đằng Giáp Tinh Binh",
+   "skills": [
+    10023
+   ]
+  },
+  "0xb426": {
+   "name": "Nam Man Chiến Tượng",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb427": {
+   "name": "Hổ Man Nhân",
+   "skills": [
+    11023
+   ]
+  },
+  "0xb428": {
+   "name": "Nam Man Mãnh Hổ",
+   "skills": [
+    13023
+   ]
+  },
+  "0xb429": {
+   "name": "Ngân Khanh Sĩ Tượng",
+   "skills": [
+    10023
+   ]
+  },
+  "0xb42a": {
+   "name": "Phệ Nhân Man Tốt",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb42b": {
+   "name": "Phệ Huyết Độc Xà",
+   "skills": [
+    11023
+   ]
+  },
+  "0xb42c": {
+   "name": "Đằng Giáp Man Tướng",
+   "skills": [
+    13023
+   ]
+  },
+  "0xb42d": {
+   "name": "Địa Nhẫn Tướng",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb42e": {
+   "name": "Thủy Nhẫn Tướng",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb42f": {
+   "name": "Hỏa Nhẫn Tướng",
+   "skills": [
+    12026
+   ]
+  },
+  "0xb430": {
+   "name": "Phong Nhẫn Tướng",
+   "skills": [
+    13023
+   ]
+  },
+  "0xb431": {
+   "name": "Đạo Thuật Nê Nhân",
+   "skills": [
+    10023
+   ]
+  },
+  "0xb432": {
+   "name": "Phụ Hồn Mộc Nhân",
+   "skills": [
+    11023
+   ]
+  },
+  "0xb433": {
+   "name": "Yêu Thuật Khô Lâu",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb434": {
+   "name": "Tà Khải Mãnh Sư",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb435": {
+   "name": "Phủ Quỷ",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb436": {
+   "name": "Phiến Tinh",
+   "skills": [
+    11023
+   ]
+  },
+  "0xb437": {
+   "name": "Thương Linh",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb438": {
+   "name": "Thư Hồn",
+   "skills": [
+    13023
+   ]
+  },
+  "0xb439": {
+   "name": "Nam Thiên Binh",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb43a": {
+   "name": "Bắc Thiên Binh",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb43b": {
+   "name": "Thi Tiên Nữ",
+   "skills": [
+    12026
+   ]
+  },
+  "0xb43c": {
+   "name": "Thư Tiên Nữ",
+   "skills": [
+    13023
+   ]
+  },
+  "0xb43d": {
+   "name": "Lễ Tiên Nữ",
+   "skills": [
+    10024
+   ]
+  },
+  "0xb43e": {
+   "name": "Nhạc Tiên Nữ",
+   "skills": [
+    11023
+   ]
+  },
+  "0xb43f": {
+   "name": "Tây Thiên Binh",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb440": {
+   "name": "Đông Thiên Binh",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb441": {
+   "name": "Thần Tinh Tiên Kỵ",
+   "skills": [
+    10028
+   ]
+  },
+  "0xb442": {
+   "name": "Thái Bạch Tiên Kỵ",
+   "skills": [
+    11028
+   ]
+  },
+  "0xb443": {
+   "name": "Huỳnh Hoặc Tiên Kỵ",
+   "skills": [
+    12029
+   ]
+  },
+  "0xb444": {
+   "name": "Tuế Tinh Tiên Kỵ",
+   "skills": [
+    13027
+   ]
+  },
+  "0xb445": {
+   "name": "Cầm Trung Tiên",
+   "skills": [
+    10027
+   ]
+  },
+  "0xb446": {
+   "name": "Kỳ Trung Tiên",
+   "skills": [
+    11027
+   ]
+  },
+  "0xb447": {
+   "name": "Thư Trung Tiên",
+   "skills": [
+    12027
+   ]
+  },
+  "0xb448": {
+   "name": "Họa Trung Tiên",
+   "skills": [
+    13026
+   ]
+  },
+  "0xb449": {
+   "name": "Đông Quân Đầu Lĩnh",
+   "skills": [
+    10028
+   ]
+  },
+  "0xb44a": {
+   "name": "Thủy Quân Đầu Lĩnh",
+   "skills": [
+    11028
+   ]
+  },
+  "0xb44b": {
+   "name": "Trung Quân Giáo Đầu",
+   "skills": [
+    12029
+   ]
+  },
+  "0xb44c": {
+   "name": "Tiền Quân Giáo Đầu",
+   "skills": [
+    13027
+   ]
+  },
+  "0xb44d": {
+   "name": "Lương Sơn Giáo Đầu",
+   "skills": [
+    22002
+   ]
+  },
+  "0xb44e": {
+   "name": "Lương Sơn Đầu Lĩnh",
+   "skills": [
+    23002
+   ]
+  },
+  "0xb44f": {
+   "name": "Tả Quân Đại Tướng",
+   "skills": [
+    10027
+   ]
+  },
+  "0xb450": {
+   "name": "Hữu Quân Đại Tướng",
+   "skills": [
+    11027
+   ]
+  },
+  "0xb451": {
+   "name": "Tiên Phong Đại Tướng",
+   "skills": [
+    12027
+   ]
+  },
+  "0xb452": {
+   "name": "Hợp Hậu Đại Tướng",
+   "skills": [
+    13026
+   ]
+  },
+  "0xb453": {
+   "name": "Lương Sơn Quân Soái",
+   "skills": [
+    22002
+   ]
+  },
+  "0xb454": {
+   "name": "Lương Sơn Tiên Phong",
+   "skills": [
+    23002
+   ]
+  },
+  "0xb455": {
+   "name": "Yến Nhiên Đô Quản",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb456": {
+   "name": "Yến Nhiên Đề Hạt",
+   "skills": [
+    11023
+   ]
+  },
+  "0xb457": {
+   "name": "Cấm Quân Giáo Đầu",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb458": {
+   "name": "Binh Mã Tổng Giám",
+   "skills": [
+    13023
+   ]
+  },
+  "0xb459": {
+   "name": "Lương Sơn Thống Chế",
+   "skills": [
+    22010
+   ]
+  },
+  "0xb45a": {
+   "name": "Lương Sơn Xích Hậu",
+   "skills": [
+    23010
+   ]
+  },
+  "0xb45b": {
+   "name": "Dân Tị Nạn",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb45c": {
+   "name": "Dân Binh",
+   "skills": [
+    12005
+   ],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
+  "0xb45d": {
+   "name": "Đao Binh",
+   "skills": [
+    11005
+   ],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
+  "0xb45e": {
+   "name": "Thương Binh",
+   "skills": [
+    12005
+   ]
+  },
+  "0xb45f": {
+   "name": "T.Thí Dụng Đô Quản",
+   "skills": []
+  },
+  "0xb460": {
+   "name": "T.Thí Dụng Đề Hạt",
+   "skills": []
+  },
+  "0xb461": {
+   "name": "T.Thí Dụng Giáo Đầu",
+   "skills": []
+  },
+  "0xb462": {
+   "name": "T.T.Dụng Tổng Quản",
+   "skills": []
+  },
+  "0xb463": {
+   "name": "T.T.Dụng Thống Chế",
+   "skills": []
+  },
+  "0xb464": {
+   "name": "T.T.Dụng Xích Hậu",
+   "skills": []
+  },
+  "0xb465": {
+   "name": "Vô Giới Mã Tặc",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb466": {
+   "name": "Vô Giới Bang Chúng",
+   "skills": [
+    11005
+   ]
+  },
+  "0xb467": {
+   "name": "Vô Giới Đạo Sĩ",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb468": {
+   "name": "Vô Giới Nữ Cướp",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb469": {
+   "name": "Vô Giới Quỷ Binh",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb46a": {
+   "name": "Vô Giới Nữ Trộm",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb46b": {
+   "name": "Vô Giới Võ Phu",
+   "skills": [
+    13001
+   ]
+  },
+  "0xb46c": {
+   "name": "Vô Giới Nho Sĩ",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb46d": {
+   "name": "Vô Giới Côn Đồ",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb46e": {
+   "name": "Vô Giới Vu Sư",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb46f": {
+   "name": "Vô Giới Giáo Đầu",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb470": {
+   "name": "Vô Giới Thích Khách",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb471": {
+   "name": "Vô Giới Hộ Viện",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb472": {
+   "name": "Vô Giới Tà Giáo Chủ",
+   "skills": [
+    11021
+   ]
+  },
+  "0xb473": {
+   "name": "Vô Giới Tr.Thương",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb474": {
+   "name": "Vô Giới Võ Quan",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb475": {
+   "name": "Vô Giới Lão Tướng",
+   "skills": [
+    10005
+   ]
+  },
+  "0xb476": {
+   "name": "Vô Giới Hải Quân",
+   "skills": [
+    11001
+   ]
+  },
+  "0xb477": {
+   "name": "Vô Giới Lính Th.Nhân",
+   "skills": [
+    13009
+   ]
+  },
+  "0xb478": {
+   "name": "Vô Giới Yêu Q.Trưởng",
+   "skills": [
+    12005
+   ]
+  },
+  "0xb479": {
+   "name": "Vô Giới Lính Bướng",
+   "skills": [
+    10024
+   ]
+  },
+  "0xb47a": {
+   "name": "Vô Giới Hải Tặc",
+   "skills": [
+    11022
+   ],
+   "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0xb47b": {
+   "name": "Vô Giới Phi Tướng",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb47c": {
+   "name": "Vô Giới Lính Man Tộc",
+   "skills": [
+    12022
+   ],
+   "he": "Phong",
+   "doanh": "Du"
+  },
+  "0xb492": {
+   "name": "Hải Tặc Dị Giới",
+   "skills": [
+    11005
+   ]
+  },
+  "0xb4b9": {
+   "name": "Mã Tặc Di Giới ",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb4ba": {
+   "name": "Bang Chúng Dị Giới ",
+   "skills": [
+    11005
+   ]
+  },
+  "0xb4bb": {
+   "name": "Đạo Sĩ Dị Giới ",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb4bc": {
+   "name": "Nữ Cường Đạo Dị Giới ",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb4bd": {
+   "name": "Quỷ Binh Dị Giới ",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb4be": {
+   "name": "Nữ Nghĩa Tặc Dị Giới",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb4bf": {
+   "name": "Võ Phu Dị Giới ",
+   "skills": [
+    13001
+   ]
+  },
+  "0xb4c0": {
+   "name": "Nho Sĩ Dị Giới ",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb4c1": {
+   "name": "Địa Bĩ Dị Giới ",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb4c2": {
+   "name": "Vu Sư Dị Giới ",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb4c3": {
+   "name": "Giáo Đầu Dị Giới ",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb4c4": {
+   "name": "Thích Khách Dị Giới ",
+   "skills": [
+    12021
+   ]
+  },
+  "0xb4c5": {
+   "name": "Hộ Viện Dị Giới ",
+   "skills": [
+    10021
+   ]
+  },
+  "0xb4c6": {
+   "name": "Tà Giáo Chủ Dị Giới ",
+   "skills": [
+    11021
+   ]
+  },
+  "0xb4c7": {
+   "name": "Thương Đội Trưởng Dị Giới ",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb4c8": {
+   "name": "Võ Quan Dị Giới",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb4c9": {
+   "name": "Lão Tướng Quân Dị Giới",
+   "skills": [
+    10005
+   ]
+  },
+  "0xb4ca": {
+   "name": "Hải Quân Dị Giới",
+   "skills": [
+    11001
+   ]
+  },
+  "0xb4cb": {
+   "name": "Lính Thương Đoàn Dị Giới ",
+   "skills": [
+    13009
+   ]
+  },
+  "0xb4cc": {
+   "name": "Trưởng Đội Yêu Dị Giới ",
+   "skills": [
+    12005
+   ]
+  },
+  "0xb4cd": {
+   "name": "Man Binh Dị Giới",
+   "skills": [
+    10024
+   ]
+  },
+  "0xb4ce": {
+   "name": "Hải Tặc Dị Giới",
+   "skills": [
+    11022
+   ]
+  },
+  "0xb4cf": {
+   "name": "Phi Tướng Dị Giới",
+   "skills": [
+    13024
+   ]
+  },
+  "0xb4d0": {
+   "name": "Man Tộc Binh Dị Giới",
+   "skills": [
+    12022
+   ]
+  },
+  "0xb4d1": {
+   "name": "Thánh Cung Thủ Dị Giới rb0",
+   "skills": [
+    14036
+   ]
+  },
+  "0xb4d2": {
+   "name": "Thánh Xạ Thủ Dị Giới rb0",
+   "skills": [
+    13009
+   ]
+  },
+  "0xb4d3": {
+   "name": "Thánh Hiệp Khách Dị Giới rb0",
+   "skills": [
+    11005
+   ]
+  },
+  "0xb4d4": {
+   "name": "Thánh Lữ Nhân Dị Giới rb0",
+   "skills": [
+    12001
+   ]
+  },
+  "0xb4d5": {
+   "name": "Thánh Tặc Dị Giới rb0",
+   "skills": [
+    11005
+   ]
+  },
+  "0xb4d6": {
+   "name": "Thánh Đạo Tặc Dị Giới rb0",
+   "skills": [
+    12009
+   ]
+  },
+  "0xb4d7": {
+   "name": "Thánh Phỉ Dị Giới rb0",
+   "skills": [
+    10001
+   ]
+  },
+  "0xb4d8": {
+   "name": "Thánh Truy Binh Dị Giới",
+   "skills": [
+    13001
+   ]
+  },
+  "0xb4d9": {
+   "name": "Thánh Bộ Binh Dị Giới rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb4da": {
+   "name": "Thánh Kỵ Binh Dị Giới rb0",
+   "skills": [
+    11008
+   ]
+  },
+  "0xb4db": {
+   "name": "Thánh Tốt Dị Giới  rb0",
+   "skills": [
+    12006
+   ]
+  },
+  "0xb4dc": {
+   "name": "Thánh Binh Dị Giới  rb0",
+   "skills": [
+    13002
+   ]
+  },
+  "0xb4dd": {
+   "name": "Thánh Bộ Binh Dị Giới  rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb4de": {
+   "name": "Thánh Sĩ Tộc Dị Giới  rb0",
+   "skills": [
+    11005
+   ]
+  },
+  "0xb4df": {
+   "name": "Thánh Đồn Úy Dị Giới  rb0",
+   "skills": [
+    12004
+   ]
+  },
+  "0xb4e0": {
+   "name": "Thánh Thái Úy Dị Giới  rb0",
+   "skills": [
+    13001
+   ]
+  },
+  "0xb4e1": {
+   "name": "Thánh Đào Tướng Dị Giới  rb0",
+   "skills": [
+    11008
+   ]
+  },
+  "0xb4e2": {
+   "name": "Thánh Đào Phạm Dị Giới  rb0",
+   "skills": [
+    13002
+   ]
+  },
+  "0xb4e3": {
+   "name": "Thánh Hiệu Úy Dị Giới  rb0",
+   "skills": [
+    12008
+   ]
+  },
+  "0xb4e4": {
+   "name": "Thánh Binh Trưởng Dị Giới  rb0",
+   "skills": [
+    10008
+   ]
+  },
+  "0xb4e5": {
+   "name": "Thánh Đào Binh Dị Giới  rb0",
+   "skills": [
+    11008
+   ]
+  },
+  "0xb4e6": {
+   "name": "Thánh Đào Tốt Dị Giới  rb0",
+   "skills": [
+    13010
+   ]
+  },
+  "0xb4e7": {
+   "name": "Thánh Thủ Vệ Dị Giới  rb0",
+   "skills": [
+    10001
+   ]
+  },
+  "0xb4e8": {
+   "name": "Thánh Hộ Vệ Dị Giới  rb0",
+   "skills": [
+    12001
+   ]
+  },
+  "0xb4e9": {
+   "name": "Thánh Phó Đội Dị Giới  rb0",
+   "skills": [
+    11001
+   ]
+  },
+  "0xb4ea": {
+   "name": "Thánh Lĩnh Quân Dị Giới rb0",
+   "skills": [
+    13001
+   ]
+  },
+  "0xb4eb": {
+   "name": "Thánh Quân Trưởng Dị Giới rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb4ec": {
+   "name": "Thánh Thương Nhân Dị Giới rb0",
+   "skills": [
+    12010
+   ]
+  },
+  "0xb4ed": {
+   "name": "Thánh Biên Úy Dị Giới rb0",
+   "skills": [
+    12009
+   ]
+  },
+  "0xb4ee": {
+   "name": "Thánh Sở Vệ Dị Giới rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb4ef": {
+   "name": "Thánh Trung Úy Dị Giới rb0",
+   "skills": [
+    11001
+   ]
+  },
+  "0xb4f0": {
+   "name": "Thánh Hộ Quân Dị Giới rb0",
+   "skills": [
+    13002
+   ]
+  },
+  "0xb4f1": {
+   "name": "Thánh Chiến Sĩ Dị Giới rb0",
+   "skills": [
+    13009
+   ]
+  },
+  "0xb4f2": {
+   "name": "Thánh Tướng Dị Giới rb0",
+   "skills": [
+    10006
+   ]
+  },
+  "0xb4f3": {
+   "name": "Thánh Dũng Sĩ Dị Giới rb0",
+   "skills": [
+    11001
+   ]
+  },
+  "0xb4f4": {
+   "name": "Thánh Nguyên Soái Dị Giới rb0",
+   "skills": [
+    12009
    ]
   },
   "0xb547": {
@@ -41116,6 +44118,368 @@
    ],
    "he": "Phong",
    "doanh": "Thuc"
+  },
+  "0xb550": {
+   "name": "Trương Bảo",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Huynh"
+  },
+  "0xb551": {
+   "name": "Trương Lương",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Huynh"
+  },
+  "0xb554": {
+   "name": "Điển Vi",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0xb559": {
+   "name": "Chu Thương",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Thuc"
+  },
+  "0xb55c": {
+   "name": "Hoàng Cái",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0xb55d": {
+   "name": "Trương Chiêu",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0xb55e": {
+   "name": "Thái Sử Từ",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0xb55f": {
+   "name": "Tiểu Kiều",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Ngo"
+  },
+  "0xb560": {
+   "name": "Thái Mạo",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Du"
+  },
+  "0xb561": {
+   "name": "Công Tôn Toản",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0xb563": {
+   "name": "Tiểu Kim",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Du"
+  },
+  "0xb564": {
+   "name": "Hàn Trung",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Huynh"
+  },
+  "0xb565": {
+   "name": "Trương Mạn Thành",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
+  "0xb568": {
+   "name": "Từ Hoảng",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0xb56d": {
+   "name": "Liêu Hóa",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Thuc"
+  },
+  "0xb572": {
+   "name": "Lăng Thống",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0xb574": {
+   "name": "Hoa Hùng ",
+   "skills": []
+  },
+  "0xb575": {
+   "name": "Triệu Nga ",
+   "skills": []
+  },
+  "0xb576": {
+   "name": "Ngột Đột Cốt",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Du"
+  },
+  "0xb578": {
+   "name": "Trương Cáp",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Nguy"
+  },
+  "0xb579": {
+   "name": "Trương Liêu",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0xb57a": {
+   "name": "Mã Siêu",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Thuc"
+  },
+  "0xb57b": {
+   "name": "Hoàng Trung",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Thuc"
+  },
+  "0xb57c": {
+   "name": "Tôn Kiên",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0xb57d": {
+   "name": "Đại Kiều",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Ngo"
+  },
+  "0xb57e": {
+   "name": "Chu Du",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0xb57f": {
+   "name": "Văn Xú",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Du"
+  },
+  "0xb580": {
+   "name": "Lý Nho",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Du"
+  },
+  "0xb581": {
+   "name": "Bào Xuất",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Du"
+  },
+  "0xb582": {
+   "name": "Trương Lỗ",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
+  "0xb584": {
+   "name": "Hạ Hầu Uyên",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0xb585": {
+   "name": "Khổng Dung",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Nguy"
+  },
+  "0xb586": {
+   "name": "Tào Xung",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0xb587": {
+   "name": "Văn Sính",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Nguy"
+  },
+  "0xb588": {
+   "name": "Tôn Thượng Hương",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Ngo"
+  },
+  "0xb589": {
+   "name": "Mã Lương",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Thuc"
+  },
+  "0xb58a": {
+   "name": "Vương Bình",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Thuc"
+  },
+  "0xb58b": {
+   "name": "Lữ Mông",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0xb58c": {
+   "name": "Trương Giác",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Huynh"
+  },
+  "0xb58d": {
+   "name": "Hạ Hầu Đôn",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0xb58e": {
+   "name": "Tôn Sách",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Ngo"
+  },
+  "0xb58f": {
+   "name": "Hoàng Nguyệt Anh",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Thuc"
+  },
+  "0xb590": {
+   "name": "Thái Văn Cơ",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0xb591": {
+   "name": "Tôn Quyền",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Ngo"
+  },
+  "0xb593": {
+   "name": "Ngụy Diên",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Thuc"
+  },
+  "0xb594": {
+   "name": "Trần Cung",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Du"
+  },
+  "0xb595": {
+   "name": "Nhan Lương",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Du"
+  },
+  "0xb596": {
+   "name": "Sa Ma Kha",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Thuc"
+  },
+  "0xb597": {
+   "name": "Tả Từ",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Du"
+  },
+  "0xb598": {
+   "name": "Mạnh Hoạch",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Du"
+  },
+  "0xb599": {
+   "name": "Chúc Dung",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0xb59a": {
+   "name": "Tào Tháo",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Nguy"
+  },
+  "0xb59b": {
+   "name": "Lưu Bị",
+   "skills": [],
+   "he": "Dia",
+   "doanh": "Thuc"
+  },
+  "0xb59c": {
+   "name": "Lữ Bố",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Du"
+  },
+  "0xb59d": {
+   "name": "Trương Phi",
+   "skills": [],
+   "he": "Hoa",
+   "doanh": "Thuc"
+  },
+  "0xb59e": {
+   "name": "Quan Vũ",
+   "skills": [],
+   "he": "Phong",
+   "doanh": "Thuc"
+  },
+  "0xb59f": {
+   "name": "Điêu Thuyền",
+   "skills": [],
+   "he": "Thuy",
+   "doanh": "Du"
+  },
+  "0xb5a0": {
+   "name": "Hằng Nga",
+   "skills": []
+  },
+  "0xb5a1": {
+   "name": "Ngô Cương",
+   "skills": []
+  },
+  "0xb5a2": {
+   "name": "Tam Nhãn Thiên Tướng",
+   "skills": []
+  },
+  "0xb5a3": {
+   "name": "Vương Mẫu Nương Nương",
+   "skills": []
+  },
+  "0xb5a4": {
+   "name": "Hạo Thiên Khuyển",
+   "skills": []
+  },
+  "0xb5a5": {
+   "name": "Vạn Niên Quân Tiên",
+   "skills": []
   },
   "0xb799": {
    "name": "Quy Tiên",

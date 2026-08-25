@@ -90,6 +90,18 @@ class BattleState:
         self.enemy_pos_tids = {}        # pos(row*10+col) -> set template_id
         self.mineral_battle = False    # True neu tran co quai khoang (bat theo ten hoac template id)
         self.self_slot = None          # B2 (vi tri tran) cua minh - tu 0x0b battle (entity-based)
+        # --- PHE TRONG TRAN ---
+        # Moi tran thuong (train / PB / Di Gioi / 40NPC / 2K) deu xep PHE TA o hang 2-3 va DICH o
+        # hang 0-1, nen truoc day hai hang nay duoc viet CHET khap noi. LOAN DAU (PvP) thi KHONG:
+        # server xep minh vao phe nao cung duoc - capture 25/08 cho thay nguoi that o (0,1) tran 1
+        # va (0,0) tran 2. Danh vao hang 0-1 luc dang DUNG o do = danh dong doi -> server tra
+        # `S:000-000` ly do 42 `修改戰鬥封包` (goi chien dau bi sua) va DA HAN acc (quit=true).
+        #
+        # Gia tri MAC DINH duoi day GIU Y HET hanh vi cu -> moi mode khac khong doi mot ly nao.
+        # CHI loan dau goi `doi_phe_theo_hang_cua_minh()` de lat lai.
+        self.enemy_rows = (0, 1)       # hang cua DICH
+        self.ally_rows = (2, 3)        # hang cua PHE TA
+        self.char_row = 3              # trong phe ta: hang cua CHAR (hang con lai la pet)
         # QUEST mode: START tran ma >6 quai -> True ca tran (latch). >6 con -> all-target; <=6 -> nhu boss.
         self.quest_mode = False
         # MODE EVENT (40NPC / 2K): LUON quest_mode, khong phu thuoc leader hay so quai.
@@ -139,7 +151,7 @@ class BattleState:
         _quai_tracker = {
             row * 10 + col: unit.hp
             for (row, col), unit in tracker.units.items()
-            if row in (0, 1)
+            if row in self.enemy_rows
         }
         if _quai_tracker:
             self.enemy_hp = _quai_tracker
@@ -153,14 +165,14 @@ class BattleState:
             self.latch_quest_mode()
         if self.self_entity:
             for (row, col), tracked in tracker.units.items():
-                if row == 3 and tracked.role_id == self.self_entity:
+                if row == self.char_row and tracked.role_id == self.self_entity:
                     self.self_slot = col
                     self.my_atype = col
                     break
         allies = {}
         for position, tracked in tracker.units.items():
             row, col = position
-            if row not in (2, 3):
+            if row not in self.ally_rows:
                 continue
             unit = Unit(tracked.role_id.hex())
             unit.hp = tracked.hp
@@ -191,6 +203,30 @@ class BattleState:
         nguon nao do tro thanh nguon chinh thi luat van chay."""
         if self.force_quest_mode or len(self.enemy_slots) > 6:
             self.quest_mode = True
+
+    PHE_MAC_DINH = ((0, 1), (2, 3), 3)     # (hang dich, hang phe ta, hang char) - tran thuong
+
+    def dat_phe_mac_dinh(self):
+        """Tra ve cach chia phe CUA TRAN THUONG. Goi moi khi bat dau tran de mot tran loan dau
+        khong lam lech tran ke tiep."""
+        self.enemy_rows, self.ally_rows, self.char_row = self.PHE_MAC_DINH
+
+    def doi_phe_theo_hang_cua_minh(self, hang_cua_minh):
+        """LOAN DAU: suy phe tu chinh o cua minh trong goi tao tran.
+
+        Bo cuc dau truong (capture 25/08): char (kind=2) o hang 0 va 3, pet (kind=4) o hang 1 va 2
+        -> hai phe la {0,1} va {3,2}. Minh o hang nao thi phe do la TA.
+        Tra ve True neu co doi so voi hien tai.
+        """
+        if hang_cua_minh in (0, 1):
+            moi = ((2, 3), (0, 1), 0)
+        elif hang_cua_minh in (2, 3):
+            moi = ((0, 1), (2, 3), 3)
+        else:
+            return False
+        cu = (self.enemy_rows, self.ally_rows, self.char_row)
+        self.enemy_rows, self.ally_rows, self.char_row = moi
+        return cu != moi
 
     def reset_battle(self):
         self.mobs = []
@@ -233,7 +269,7 @@ class BattleState:
 
     def _remember_enemy_entity(self, row, col, tid, name):
         """Ghi nho ten/id quai theo vi tri battle neu packet co du row/col."""
-        if row not in (0, 1) or col > 5:
+        if row not in self.enemy_rows or col > 5:
             return
         pos = row * 10 + col
         if name:
@@ -272,7 +308,7 @@ class BattleState:
         saw_enemy_group = False
         start_enemy_slots = None
         for (b1, b2), d in groups.items():
-            if b1 in (0x00, 0x01):
+            if b1 in self.enemy_rows:
                 saw_enemy_group = True
                 pos = b1 * 10 + b2
                 self.enemy_hp[pos] = d.get(T_HP_CUR, 0)
@@ -305,7 +341,7 @@ class BattleState:
         # hop binh thuong, sai hoan toan khi co 4 pet).
         if self.solo_multipet:
             for (b1, b2), d in groups.items():
-                if b1 == 0x02:
+                if b1 == next((r for r in self.ally_rows if r != self.char_row), 0x02):
                     u = self.multi_pet.get(b2)
                     if u is None:
                         u = Unit(f"pet_at{b2}")
@@ -316,12 +352,13 @@ class BattleState:
         # self_slot xac dinh tu 0x0b battle (entity-based, o client) hoac roster. KHONG dua HP.
         # Doc HP/SP char+pet cua minh theo slot (uu tien roster -> chinh xac, KHONG can 0x0b)
         if self.self_slot is not None:
-            pd = groups.get((0x02, self.self_slot))
+            _hang_pet = next((r for r in self.ally_rows if r != self.char_row), 0x02)
+            pd = groups.get((_hang_pet, self.self_slot))
             if pd:
                 if T_HP_MAX in pd: self.pet.hp_max = pd[T_HP_MAX]
                 if T_HP_CUR in pd: self.pet.hp = pd[T_HP_CUR]
                 if T_SP_CUR in pd: self.pet.sp = pd[T_SP_CUR]
-            cd = groups.get((0x03, self.self_slot))
+            cd = groups.get((self.char_row, self.self_slot))
             if cd:
                 if T_HP_MAX in cd: self.char.hp_max = cd[T_HP_MAX]
                 if T_HP_CUR in cd: self.char.hp = cd[T_HP_CUR]
@@ -378,7 +415,7 @@ class BattleState:
         self.protect_status.setdefault((b1, b2), set()).add(skill_id)
 
     def _set_crowd(self, b1, b2, skill_id):
-        if b1 not in (0, 1) or b2 > 5 or skill_id not in CC_SKILLS:
+        if b1 not in self.enemy_rows or b2 > 5 or skill_id not in CC_SKILLS:
             return
         self.crowd_status.setdefault((b1, b2), set()).add(skill_id)
 
@@ -517,7 +554,7 @@ class BattleState:
             j = 0
             while j + 18 <= len(pkt):
                 bb, sl = pkt[j], pkt[j + 1]
-                if bb in (2, 3) and sl < 6:
+                if bb in self.ally_rows and sl < 6:
                     mh, ms, ch, cs = struct.unpack_from("<IIII", pkt, j + 2)
                     if 50 < mh < 1_000_000 and 0 < ms < 100_000 and ch <= mh and cs <= ms + 1 and mh > ms:
                         u = self.allies.get((bb, sl))

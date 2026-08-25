@@ -26,23 +26,38 @@ def parse_pets_seq(path):
 
     Ban ghi: [nameLen u16][name utf-16le][kind 1][id u16] + 78 byte CO DINH (het o +80 sau id).
     Cac offset tinh tu vi tri id (ip): ip+22 canBeCatch (dung lam "doi reborn" nhu ban cu),
-    ip+50/52/54 skills, ip+56 specialSkill, ip+70 rideOffset raw (~1000 -> moc tu kiem chung).
+    ip+50/52/54 skills, ip+56 specialSkill, ip+58 turn (DOI CHUYEN SINH that, xem duoi),
+    ip+70 rideOffset raw (~1000 -> moc tu kiem chung).
 
     VI SAO BO KIEU QUET: header file ghi 8360 ban ghi. Kieu quet chu ky (tim 3 u16 giong skill o
     +50/52/54) SOT 59 pet - trong do co pet co ten hallo nhu 0x399e "Dieu Thuyen Khuynh Quoc" -
     va BIA them 13 muc khong co that. Pet bi sot = bot khong biet skill cua no.
+
+    BO LOC "co ban chuyen sinh" (2026-08-25): bo loc cu ">=2 skill" LOAI NHAM vo tuong that chi
+    co 1 skill - vd 0x3710 "Cuu Soi" (user dang nuoi, GUI hien tro "Pet (0x3710)"), va ca vo
+    tuong 0 skill nhu Tao Thao/Bang Thong/Dang Ngai. Khong the noi thanh ">=1 skill": 2468 ban
+    ghi 1-skill phan lon la QUAI (Du Binh, Tieu Vo Si...) -> do rac vao bang tra.
+    Dau hieu tach dung: vo tuong THAT co BAN CHUYEN SINH, quai thi khong. Cot `turn` (--[36]
+    判斷有無轉生限制) o ip+58 nhan 0/1/2 = doi chuyen sinh. Nen: nhan ban ghi neu >=2 skill
+    HOAC ten do co it nhat mot ban `turn > 0`. Ket qua: +436 muc 1-skill va +126 muc 0-skill
+    (deu la vo tuong), van loai 2032 quai 1-skill.
+
+    CANH BAO: `rb` duoi day doc ip+22 - do la `canBeCatch` (--[10] 抓捕否) chu KHONG phai doi
+    chuyen sinh (da kiem: ip+22 chi nhan 0/1, trong khi doi chuyen sinh phai co ca gia tri 2).
+    Tuc hau to "rb0/rb1" trong ten pet lau nay SAI NGHIA. Chua sua vi doi offset lam DOI TEN
+    2306/4566 pet -> anh huong moi cho doi chieu theo ten; phai tach thanh viec rieng.
     """
     import struct
     d = open(path, "rb").read()
     count = struct.unpack_from("<i", d, 0)[0]
     if not (0 < count < 100000):
         raise SystemExit("header so ban ghi bat thuong: %s" % count)
-    pets, i, xa = {}, 4, 0
+    ban_ghi, i, xa = [], 4, 0
     for _ in range(count):
         nl = struct.unpack_from("<H", d, i)[0]
         j = i + 2 + nl
         if nl > 400 or j + 1 + 80 > len(d):
-            raise SystemExit("parse lech tai ban ghi thu %d" % len(pets))
+            raise SystemExit("parse lech tai ban ghi thu %d" % len(ban_ghi))
         ip = j + 1                       # bo kind(1) -> tro toi id
         pid = struct.unpack_from("<H", d, ip)[0]
         raw = [struct.unpack_from("<H", d, ip + o)[0] for o in SKILL_OFF]
@@ -50,18 +65,27 @@ def parse_pets_seq(path):
         ride = struct.unpack_from("<H", d, ip + 70)[0]
         if not (500 <= ride <= 1500):
             xa += 1
-        # GIU NGUYEN bo loc cu: >=2 skill that va cac o con lai la skill hoac 0
-        if pid and len(sk) >= 2 and all(SK_LO <= v <= SK_HI or v == 0 for v in raw):
-            try:
-                name = d[i + 2:j].decode("utf-16-le")
-            except Exception:
-                name = ""
-            pets[pid] = {"name": name, "skills": sk, "rb": d[ip + 22]}
+        try:
+            name = d[i + 2:j].decode("utf-16-le")
+        except Exception:
+            name = ""
+        ban_ghi.append((pid, name, sk, raw, d[ip + 22], d[ip + 58]))
         i = ip + 80
     if abs(i - len(d)) > 8:              # TIEU HET FILE = parse dung
         raise SystemExit("parse xong con du %d byte -> nghi lech" % (len(d) - i))
     if xa > count * 0.05:                # rideOffset raw phai quanh 1000
         raise SystemExit("nghi parse lech: %d/%d ban ghi co rideOffset bat thuong" % (xa, count))
+
+    # Ten nao co ban CHUYEN SINH -> ten do la vo tuong that (xem docstring).
+    co_chuyen_sinh = {nm for _p, nm, _s, _r, _c, turn in ban_ghi if turn > 0}
+
+    pets = {}
+    for pid, name, sk, raw, canbecatch, _turn in ban_ghi:
+        if not pid or not all(SK_LO <= v <= SK_HI or v == 0 for v in raw):
+            continue
+        if len(sk) < 2 and name not in co_chuyen_sinh:
+            continue
+        pets[pid] = {"name": name, "skills": sk, "rb": canbecatch}
     return pets
 
 
