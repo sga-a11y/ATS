@@ -1775,6 +1775,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 with st["lock"]:
                     st.setdefault("wb_done", set()).add(username)
 
+        def _ket_thuc_pha_dg():
+            """Doi pha DG -> train: GIU ket noi neu duoc, khong thi dong nhu cu.
+
+            CO 5 DUONG THOAT khac nhau sau _finish_digioi_train_after_dg() (het gio luc login,
+            het gio giua chung, server khong cho vao lai, ...), moi duong tu dong ket noi + return.
+            Lan truoc toi chi va MOT duong (4803) nen thuc te van relogin - log 16:39 di duong
+            "DG da HET GIO hom nay -> khong vao" (3152) va van thay "Da gui auth".
+            Gio moi duong deu goi ham nay.
+            """
+            if (_dt.get("relogin_train") and c is not None and getattr(c, "running", False)
+                    and not getattr(c, "server_closed", False) and not _stopped()):
+                account_continue[username] = c    # supervisor chay lai NGAY tren ket noi nay
+                return
+            try:
+                c.close()
+            except Exception:
+                pass
+            if c in _clients:
+                _clients.remove(c)
+
         def _finish_digioi_train_after_dg():
             _go_town_safe(c, label)
             _wait_res = _dt_wait_all_digioi_done(pidx, username, label, _stopped)
@@ -1864,12 +1884,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             ", KET NGOAI DG >90s (server da ra lien tuc)" if _stuck_out else "")
                 _reason("het gio Di Gioi trong luc %s" % reason)
                 _finish_digioi_train_after_dg()
-                try:
-                    c.close()
-                except Exception:
-                    pass
-                if c in _clients:
-                    _clients.remove(c)
+                _ket_thuc_pha_dg()
                 return True
             if out_of_dg:
                 log.warning("[%s] (%s) dang cho party DG nhung bi ra ngoai DG (map=%s, con %d phut) "
@@ -1889,12 +1904,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 label, role, c.current_map)
                     _reason("het gio Di Gioi (server khong cho vao lai)")
                     _finish_digioi_train_after_dg()
-                    try:
-                        c.close()
-                    except Exception:
-                        pass
-                    if c in _clients:
-                        _clients.remove(c)
+                    _ket_thuc_pha_dg()
                     return True
             return False
 
@@ -3150,9 +3160,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _reason("het gio Di Gioi hom nay (doc tu login)")
                 if dt_mode:
                     _finish_digioi_train_after_dg()
-                    try: c.close()
-                    except Exception: pass
-                    if c in _clients: _clients.remove(c)
+                    _ket_thuc_pha_dg()
                     return
                 # HET GIO DG -> BAY VE THANH (Trac Quan) TRUOC: login co the o map quai (12831...) ->
                 # ket tran lien tuc -> teleport boss/dungeon luc dang danh bi server KICK. Ve thanh
@@ -3187,9 +3195,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 log.warning("[%s] (%s) khong vao duoc DG (het gio?) -> TAT acc nay", label, role)
                 if dt_mode:
                     _finish_digioi_train_after_dg()
-                    try: c.close()
-                    except Exception: pass
-                    if c in _clients: _clients.remove(c)
+                    _ket_thuc_pha_dg()
                     return
                 _go_town_safe(c, label)   # ve thanh truoc (thoat o quai) roi lam dailies
                 _maybe_auto_world_boss("khong vao duoc DG, truoc pho ban doi")
@@ -4801,11 +4807,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # MODE DG+Train: xong DG -> ve thanh DUNG YEN cho CA PARTY xong roi relogin sang pha train.
         if dt_dg_finished:
             _finish_digioi_train_after_dg()
-        # CHUYEN PHA train: GIU ket noi, trao client cho supervisor chay lai run_account NGAY.
-        # Chi ap dung khi day dung la doi pha (relogin_train) va ket noi CON TOT.
-        if (_dt.get("relogin_train") and c is not None and getattr(c, "running", False)
-                and not getattr(c, "server_closed", False) and not _stopped()):
-            account_continue[username] = c
+            _ket_thuc_pha_dg()
             return
         try: c.close()
         except Exception: pass
