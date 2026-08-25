@@ -1885,6 +1885,19 @@ class GameClient:
         except OSError:
             pass
 
+    def _dump_recent(self, ly_do: str):
+        """In 12 goi GUI + 12 goi NHAN gan nhat -> tim goi gay kick.
+
+        Truoc day CHI in o nhanh "empty data". Con 2 nhanh kia (OSError = connection reset, va
+        "server im lang" = half-open) thi im -> mat rot ma khong biet vi sao. Log 15:37 dinh dung
+        cho do: 5 acc deu rot, khong mot dong goi-cuoi nao de lan.
+        """
+        log.warning("[%s] === GOI GAN NHAT TRUOC KHI ROT (%s) ===", self._label, ly_do)
+        for ts, op, hx in list(self._recent_sends)[-12:]:
+            log.warning("[%s]   gui-cuoi %s 0x%02x %s", self._label, ts, op, hx)
+        for ts, op, hx in list(self._recent_recvs)[-12:]:
+            log.warning("[%s]   nhan-cuoi %s 0x%02x %s", self._label, ts, op, hx)
+
     def scene_resume(self, settle: float = 0.6):
         """SAU KHI DOI SCENE (qua cong / len thuyen / thang tran phuc kich o cong) client THAT
         gui `0x0c 01 00` roi `0x14 06 00`; server tra `0x14 08 2a` -> MOI di chuyen duoc.
@@ -2366,6 +2379,7 @@ class GameClient:
                 if time.time() - self._last_recv_ts > RECV_DEAD_SECS:
                     log.warning("[%s] Server im >%ds (half-open/rot khong RST) -> coi nhu ROT, relogin",
                                 self._label or self._username, int(RECV_DEAD_SECS))
+                    self._dump_recent("server im lang")
                     self.server_closed = True
                     self.running = False
                     break
@@ -2378,6 +2392,7 @@ class GameClient:
                 # empty-data). Truoc day nhanh nay KHONG set -> nick rot kieu reset "chet am tham".
                 if not self._deliberate_close:
                     log.warning("[%s] Server dong ket noi (OSError: %s)", self._label or self._username, e)
+                    self._dump_recent("OSError %s" % e)
                     self.server_closed = True
                 self.running = False   # rot ket noi -> dung MOI vong lap (tranh loop mai tren socket chet)
                 break
@@ -2385,11 +2400,7 @@ class GameClient:
                 if sock is not self.sock or self._deliberate_close:
                     break
                 log.warning("[%s] Server dong ket noi", self._label or self._username)
-                # DUMP 12 goi gui + 12 goi NHAN gan nhat -> tim goi gay kick
-                for ts, op, hx in list(self._recent_sends)[-12:]:
-                    log.warning("[%s]   gui-cuoi %s 0x%02x %s", self._label, ts, op, hx)
-                for ts, op, hx in list(self._recent_recvs)[-12:]:
-                    log.warning("[%s]   nhan-cuoi %s 0x%02x %s", self._label, ts, op, hx)
+                self._dump_recent("server dong (empty data)")
                 self.server_closed = True   # server CHU DONG dong (rot/bao tri/kick) - khong phai STOP
                 self.running = False   # rot ket noi -> dung MOI vong lap
                 break
