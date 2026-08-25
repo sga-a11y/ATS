@@ -785,6 +785,47 @@ C2S 0x44: c0 91 0c 00 00 00 44 01 00 [city_id 2B LE] [flag 1B]
 
 Lưu ý: phải thoát/giải tán party mới teleport được.
 
+## 7d-EVENT. SU KIEN CUA (cong co hoi thoai — vd CAU GIOI KIEU)
+
+Nguon: crack `Logic_Event_EventManager.lua` + `Logic_Event_EventHandler.lua`, xac nhan bang
+capture `captures/gioikieu_20260825.pcap` (bam tay trong client that, cong 10 map 63000).
+
+**Cua co su kien KHONG tu sang map.** Cham cua -> client gui `C:020 <事件觸發>` roi server dieu
+khien tung buoc; phai tra loi dung buoc thi server moi di tiep.
+
+| Goi | Y nghia |
+|---|---|
+| C2S `0x14 08 [doorId u16]` | `EEventTrigger.MeetDoor = 8` — cham cua. **Client that CHI gui cai nay** (capture khong he co `0x14 04`). |
+| C2S `0x14 06` | `C:020-006 <事件下一步>` — **"buoc tiep hoi thoai"**, KHONG phai "scene resume". Gui sai luc = `su kien vi pham (ma 5)` -> server NGAT KET NOI. |
+| C2S `0x14 09 [ma]` | `C:020-009 <事件選擇>` — chon muc. |
+| S2C `0x14 01..06` | `S:020-001..006 <一般事件>` — **deu vao chung `ReceiveCommonEvent`, SUB KHONG phai loai buoc**. |
+
+**Loai buoc = `resultType`, o payload byte +4** (`[diag 1][groupNo 2][resultNo 1][resultType 1]
+[resultClass 1][parameter 2][paramStyle 1][resultValue 4][resultMeanNo 2]`):
+
+| resultType | La gi | Bot phai lam |
+|---|---|---|
+| 1 | Thoai | gui `0x14 06` |
+| 3 | Vao tran | danh |
+| **6** | **Tuong tac — server DUNG cho chon** | gui `0x14 09 + ma` |
+
+**Ma chon** (`Logic_Event_EventHandler.lua:412-455`) — hai dang, tuy surface co danh sach hay khong:
+- Khong co danh sach -> hop Co/Khong: **20 = Co, 21 = Khong**
+- **Co danh sach -> 30 + so thu tu** (muc 1 = 30, muc 2 = 31...), 60+(i-9) tu muc 11; **40 = dong**
+
+**CAU GIOI KIEU (cong 10, map 63000) la DANG DANH SACH**: `30 = danh` (qua duoc cau),
+`31 = khong danh` (dong bang). Capture:
+```
+0x14 08 0a00 -> 0x14 09 001f (31) -> 0x14 06          khong danh
+0x14 08 0a00 -> 0x14 09 001f (31) -> 0x14 06          khong danh
+0x14 08 0a00 -> 0x14 09 001e (30) -> 0x14 06 -> 0x32  DANH -> vao tran -> qua cau
+```
+> **Da mat 4 lan chay de hoc**: tung doan ma 20 (Co/Khong) -> server tra `ma 5` roi ngat ket noi.
+> Doan sai o day RAT dat vi moi lan sai la mat ket noi. Cua moi thi doc capture, dung doan.
+
+**Chi LEADER duoc tra loi**: `TriggerEvent`/`SelectEvent` deu `return` som neu la member
+(`Team.IsMember and not Team.IsLeader`).
+
 ## 7d. DI CHUYEN & DOI MAP
 
 **Di chuyen:** C2S 0x06 = `c0 91 0e 00 00 00 06 01 00 01 [x 2B LE] [y 2B LE]`

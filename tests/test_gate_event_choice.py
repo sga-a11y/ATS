@@ -93,7 +93,7 @@ class TestGateEventChoice(unittest.TestCase):
         c = _bot()
         _nhan(c, _pkt(3, Client.EVENT_RESULT_INTERACT))
         self.assertTrue(c._send_gate_choice())
-        self.assertEqual(c.sent, [(0x14, "090014")])   # 0x14 sub09 + ma 20 (=0x14) CO
+        self.assertEqual(c.sent, [(0x14, "09001e")])   # 0x14 sub09 + ma 30 (=0x1e) = DANH
 
     def test_leo_thang_khi_server_hoi_lai(self):
         """Server hoi lai = ma vua roi sai -> thu ma khac, khong bam mai mot ma."""
@@ -103,7 +103,7 @@ class TestGateEventChoice(unittest.TestCase):
             _nhan(c, _pkt(1, Client.EVENT_RESULT_INTERACT))
             if c._send_gate_choice():
                 codes.append(int(c.sent[-1][1][4:6], 16))
-        self.assertEqual(codes, [20, 30, 31, 40])
+        self.assertEqual(codes, [30, 20, 31, 40])
 
     def test_ngoai_cong_thi_khong_dung_toi(self):
         """Hop thoai NPC nhiem vu/40NPC co duong rieng - tra bua o day la bam lung tung."""
@@ -130,7 +130,7 @@ class TestGateChoiceHocMa(unittest.TestCase):
             _nhan(c, _pkt(1, Client.EVENT_RESULT_INTERACT))
             c._send_gate_choice()
             ma.append(int(c.sent[-1][1][4:6], 16))
-        self.assertEqual(ma, [20, 30, 31], "moi lan chay phai tien MOT buoc")
+        self.assertEqual(ma, [30, 20, 31], "moi lan chay phai tien MOT buoc")
 
     def test_ma_dung_duoc_ghi_nho(self):
         c = _bot()

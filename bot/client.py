@@ -1870,11 +1870,18 @@ class GameClient:
     # Doi chieu: bot da dung san `0x14 09 1e` (0x1e = 30 = muc dau danh sach) cho teleport boss.
     EVENT_YES, EVENT_NO, EVENT_CLOSE = 20, 21, 40
 
-    # Thu tu ma se thu khi server CHO CHON o cong (resultType 6). Khong doan duoc truoc la hop
-    # Co/Khong hay danh sach vi dieu do nam trong surfaceDatas (file Eve cua client, KHONG co
-    # trong repo) - nen thu 20 (CO) truoc, server khong nhuc nhich thi 30 (muc dau danh sach),
-    # cuoi cung 40 (dong) de khong treo vinh vien.
-    GATE_CHOICE_CODES = (20, 30, 31, 40)
+    # Thu tu ma thu khi server CHO CHON o cong (resultType 6).
+    #
+    # 30 DUNG DAU - KHONG con doan: capture `captures/gioikieu_20260825.pcap` (user tu bam trong
+    # client that o cau Gioi kieu, cong 10 map 63000: 2 lan bam "khong danh", lan 3 bam "danh"):
+    #     0x14 08 0a00 -> 0x14 09 001f (31) -> 0x14 06     khong danh
+    #     0x14 08 0a00 -> 0x14 09 001f (31) -> 0x14 06     khong danh
+    #     0x14 08 0a00 -> 0x14 09 001e (30) -> 0x14 06 -> 0x32   DANH -> vao tran -> qua cau
+    # => cua nay la DANH SACH (30 = muc 1 = danh, 31 = muc 2 = khong danh), KHONG phai hop
+    # Co/Khong. Ma 20 toi tung doan la SAI han - server tra "su kien vi pham" roi ngat ket noi.
+    #
+    # 20 giu lai o vi tri 2 cho cua nao that su la hop Co/Khong; 40 cuoi de dong bang, khoi treo.
+    GATE_CHOICE_CODES = (30, 20, 31, 40)
 
     # resultType trong <一般事件> (Logic_Event_EventHandler.lua, bang EventHandler[...]):
     #   1 = Thoai      -> client tra `0x14 06` (buoc tiep)
