@@ -7385,6 +7385,44 @@ class GameClient:
                                    "bag": _bag, "new": bool(_new)})
         return notify
 
+    def decompose_slot(self, slot: int, wait: float = 1.2) -> bool:
+        """PHAN GIAI 1 SLOT do user chon (tui do trong bot). Cung goi voi decompose_junk_scrolls
+        nhung KHONG loc theo danh sach cuon rac - user tu chon nen tu chiu.
+        C2S 0x59: 03 00 01 [slot 1B][01] 00 00 00 (tham chieu theo SLOT, giong use-item)."""
+        seq0 = self._decompose_seq
+        try:
+            self.send(0x59, b"\x03\x00\x01" + bytes([int(slot) & 0xFF, 0x01]) + b"\x00\x00\x00")
+        except OSError:
+            return False
+        t0 = time.time()
+        while self._decompose_seq == seq0 and time.time() - t0 < wait and self.running:
+            time.sleep(0.1)
+        return self._decompose_seq > seq0
+
+    def deposit_fashion_slot(self, slot: int, wait: float = 1.0) -> bool:
+        """THA 1 MON do thoi trang o `slot` vao BO SUU TAM. C2S 0x5f sub02 [collectStyleId u16][part u8].
+        Server tu tim item theo (id, part) nen KHONG gui slot - o day chi dung slot de tra ra tid."""
+        rec = self.bag_slots.get(int(slot))
+        if not rec:
+            return False
+        cid_part = _load_collect_style().get(rec[0])
+        if not cid_part:
+            return False          # khong phai do thoi trang -> khong tha duoc
+        cid, part = cid_part
+        seq0 = self._fashion_deposit_seq
+        try:
+            self.send(0x5f, b"\x02\x00" + struct.pack("<H", cid) + bytes([part & 0xFF]))
+        except OSError:
+            return False
+        t0 = time.time()
+        while self._fashion_deposit_seq == seq0 and time.time() - t0 < wait and self.running:
+            time.sleep(0.1)
+        return self._fashion_deposit_seq > seq0
+
+    def is_fashion_item(self, tid) -> bool:
+        """tid co phai do thoi trang (tha vao S.Tam duoc) khong."""
+        return int(tid) in _load_collect_style()
+
     def deposit_fashion_to_collection(self, wait: float = 1.0):
         """THA DO THOI TRANG vao BO SUU TAM (收藏冊) -> gon tui + diem collection. Item vao S.Tam
         VAN MAC LAI DUOC (khong mat). Quet bag_slots: tid nam trong collect_style.json = do thoi

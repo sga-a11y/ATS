@@ -196,6 +196,7 @@ def _shop_items_json(value):
 
 # Cap quai Di Gioi: idx 1..15 (gói 0x61 02 00 idx) -> cap hien thi. Xem KNOWLEDGE.md.
 from bot import train_pick as _TP   # noqa: E402  (loi tu chon map/diem/cap quai theo level party)
+from bot import bag_tabs as _BAG    # noqa: E402  (phan loai 4 tab tui do - sao logic client)
 
 _DG_LEVELS = _TP.DG_LEVELS   # NGUON DUY NHAT o train_pick.py (runner + APK cung doc), khong chep tay
 
@@ -1878,6 +1879,230 @@ _MODE_LABEL = dict(MODE_OPTIONS)
 _LABEL_MODE = {v: k for k, v in MODE_OPTIONS}
 
 
+class BagDialog(tk.Toplevel):
+    """TUI DO cua 1 acc - dung 4 tab nhu game (xem bot/bag_tabs.py, sao logic client).
+
+    Du lieu tui la SNAPSHOT SONG trong client (c.bag_slots: slot -> [tid, count]), khong doc file.
+    Nut nao hien cho item nao = dung luat cua client:
+        Su dung   btnState == 0            (bag_tabs.can_use - CAN THAN, client hieu NGUOC)
+        Trang bi  fitType la do mac duoc   (bag_tabs.can_equip)
+        Phan giai furnaceCount > 0         (bag_tabs.can_dismantle)
+        S.Tam     tid co trong collect_style.json
+        Bo        luon co
+    Moi lenh chay trong THREAD RIENG: cac ham client deu CHO server tra loi (toi 2s) - goi thang
+    tren main thread la treo ca GUI.
+    """
+    COLS = 10
+
+    def __init__(self, master, username, client):
+        super().__init__(master)
+        self.title("Túi đồ - %s" % username)
+        self.geometry("980x620")
+        self.transient(master); self.grab_set()
+        self.username = username
+        self.c = client
+        self._tab = _BAG.ALL
+        self._sel_slot = None
+        self._items_db = _load_json("items_gamedata.json")
+
+        top = ttk.Frame(self, padding=8); top.pack(fill="x")
+        self._tab_btns = {}
+        for tab, name in _BAG.TAB_NAMES:
+            b = ttk.Button(top, text=name, width=11,
+                           command=lambda t=tab: self._set_tab(t))
+            b.pack(side="left", padx=(0, 4))
+            self._tab_btns[tab] = b
+        self.lbl_count = ttk.Label(top, text="", font=("Segoe UI", 10, "bold"))
+        self.lbl_count.pack(side="left", padx=(16, 0))
+        self.btn_buy = ttk.Button(top, text="Mua slot", command=self._buy_slot)
+        self.btn_buy.pack(side="right")
+        ttk.Button(top, text="Làm mới", command=self.refresh).pack(side="right", padx=(0, 6))
+
+        mid = ttk.Frame(self, padding=(8, 0)); mid.pack(fill="both", expand=True)
+        canvas = tk.Canvas(mid, highlightthickness=0)
+        sb = ttk.Scrollbar(mid, orient="vertical", command=canvas.yview)
+        self.grid_fr = ttk.Frame(canvas)
+        self.grid_fr.bind("<Configure>",
+                          lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=self.grid_fr, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+        self._canvas = canvas
+
+        self.info = ttk.Frame(self, padding=8); self.info.pack(fill="x")
+        self.lbl_info = ttk.Label(self.info, text="Bấm vào một món để xem hành động.",
+                                  wraplength=940, justify="left")
+        self.lbl_info.pack(anchor="w")
+        self.act_fr = ttk.Frame(self.info); self.act_fr.pack(anchor="w", pady=(6, 0))
+
+        self.protocol("WM_DELETE_WINDOW", self._close)
+        self._set_tab(_BAG.ALL)
+        self._price_async()
+
+    def _close(self):
+        try: self._canvas.unbind_all("<MouseWheel>")
+        except Exception: pass
+        self.destroy()
+
+    # ---- du lieu ----
+    def _item(self, tid):
+        return self._items_db.get("0x%04x" % int(tid)) or self._items_db.get(str(int(tid))) or {}
+
+    def _rows(self):
+        """[(slot, tid, count, rec)] cua tab hien tai, sap theo SLOT (giong thu tu trong game)."""
+        out = []
+        for slot, rec in sorted(self.c.bag_slots.items()):
+            tid, cnt = rec[0], rec[1]
+            if not cnt:
+                continue
+            d = self._item(tid)
+            if _BAG.matches_tab(self._tab, d.get("ft"), d.get("kd")):
+                out.append((slot, tid, cnt, d))
+        return out
+
+    # ---- ve ----
+    def _set_tab(self, tab):
+        self._tab = tab
+        for t, b in self._tab_btns.items():
+            b.state(["disabled"] if t == tab else ["!disabled"])
+        self.refresh()
+
+    def refresh(self):
+        for w in self.grid_fr.winfo_children():
+            w.destroy()
+        self._sel_slot = None
+        self._show_actions(None)
+        rows = self._rows()
+        for i, (slot, tid, cnt, d) in enumerate(rows):
+            r, col = divmod(i, self.COLS)
+            self._cell(self.grid_fr, r, col, slot, tid, cnt, d)
+        used, cap = self.c.bag_used_slots(), self.c.bag_capacity()
+        extra = "" if self._tab == _BAG.ALL else "  (tab này: %d)" % len(rows)
+        self.lbl_count.configure(text="%d/%d%s" % (used, cap, extra))
+        maxed = False
+        try: maxed = self.c.bag_slot_maxed()
+        except Exception: pass
+        self.btn_buy.configure(text="Đã tối đa slot" if maxed else self.btn_buy.cget("text"))
+        if maxed:
+            self.btn_buy.state(["disabled"])
+
+    def _cell(self, parent, r, col, slot, tid, cnt, d):
+        name = d.get("name") or ("item %d" % tid)
+        bg = self._BAG_Q.get(int(d.get("quality") or 0), "#f0f0f0")
+        f = tk.Frame(parent, width=88, height=88, bd=1, relief="solid", bg=bg)
+        f.grid(row=r, column=col, padx=3, pady=3)
+        f.grid_propagate(False)
+        # CHUA CO ICON: gameplay icon nam trong atlas Unity (jmg01.jmg) + anh xa iconId->o nam trong
+        # libil2cpp.so, chua dich nguoc duoc. Tam dung ten rut gon + mau theo pham chat.
+        tk.Label(f, text=name[:22], bg=bg, wraplength=82, justify="center",
+                 font=("Segoe UI", 7)).place(x=2, y=4, width=84, height=58)
+        tk.Label(f, text=("x%d" % cnt) if cnt > 1 else "", bg=bg,
+                 font=("Segoe UI", 8, "bold"), fg="#004080").place(x=2, y=64, width=50, height=18)
+        tk.Label(f, text="#%d" % slot, bg=bg, font=("Segoe UI", 7),
+                 fg="#888").place(x=54, y=64, width=32, height=18)
+        for w in (f,) + tuple(f.winfo_children()):
+            w.bind("<Button-1>", lambda _e, s=slot: self._select(s))
+
+    def _select(self, slot):
+        self._sel_slot = slot
+        rec = self.c.bag_slots.get(slot)
+        if not rec:
+            self._show_actions(None); return
+        tid, cnt = rec[0], rec[1]
+        d = self._item(tid)
+        self.lbl_info.configure(
+            text="Ô #%d  •  %s  •  số lượng %d  •  id 0x%04x%s"
+                 % (slot, d.get("name") or "?", cnt, tid,
+                    ("\n" + d["desc"]) if d.get("desc") else ""))
+        self._show_actions((slot, tid, cnt, d))
+
+    def _show_actions(self, sel):
+        for w in self.act_fr.winfo_children():
+            w.destroy()
+        if not sel:
+            return
+        slot, tid, cnt, d = sel
+        acts = []
+        # DO MAC DUOC thi CHI hien "Trang bi", KHONG hien "Su dung": hai lenh KHAC HAN nhau
+        # (0x17 sub0b = deo len nguoi / sub0f = tieu hao), gui nham la sai lenh.
+        _equip = _BAG.can_equip(d.get("ft"), d.get("kd"))
+        if _equip:
+            acts.append(("Trang bị", lambda: self.c.equip_item(slot)))
+        elif _BAG.can_use(d.get("bs")):
+            acts.append(("Sử dụng", lambda: self.c.use_slot(slot)))
+        if _BAG.can_dismantle(d.get("fc")):
+            acts.append(("Phân giải", lambda: self.c.decompose_slot(slot)))
+        if self.c.is_fashion_item(tid):
+            acts.append(("Thả vào sưu tầm", lambda: self.c.deposit_fashion_slot(slot)))
+        acts.append(("Bỏ", lambda: self.c.discard_item(slot, cnt)))
+        for text, fn in acts:
+            ttk.Button(self.act_fr, text=text, width=16,
+                       command=lambda t=text, f=fn: self._run(t, f)).pack(side="left", padx=(0, 6))
+        if not _equip and not _BAG.can_use(d.get("bs")):
+            ttk.Label(self.act_fr, text="(không dùng trực tiếp được)",
+                      foreground="#888").pack(side="left", padx=(8, 0))
+
+    # ---- chay lenh ----
+    def _run(self, text, fn):
+        if text == "Bỏ" and not messagebox.askyesno(
+                "Bỏ vật phẩm", "Bỏ hẳn món này khỏi túi?\nKhông lấy lại được.", parent=self):
+            return
+        for w in self.act_fr.winfo_children():
+            try: w.state(["disabled"])
+            except Exception: pass
+
+        def _work():
+            try: ok = bool(fn())
+            except Exception as e:
+                ok = False
+                log.warning("[%s] tui do: loi '%s': %s", self.username, text, e)
+            self.after(0, lambda: self._done(text, ok))
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _done(self, text, ok):
+        if not self.winfo_exists():
+            return
+        if not ok:
+            messagebox.showwarning(text, "'%s' không thành công." % text, parent=self)
+        self.refresh()
+
+    # ---- mua slot (dung lai luong cua thong bao tui day) ----
+    def _price_async(self):
+        def _work():
+            try: pr = self.c.query_bag_slot_price()
+            except Exception: pr = None
+            txt = ("Mua slot (%s vàng)" % pr[0]) if pr else "Mua slot"
+            self.after(0, lambda: self.winfo_exists() and self.btn_buy.cget("text").startswith("Mua")
+                       and self.btn_buy.configure(text=txt))
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _buy_slot(self):
+        self.btn_buy.state(["disabled"])
+
+        def _work():
+            try: ok = bool(self.c.buy_bag_slot())
+            except Exception: ok = False
+
+            def _done():
+                if not self.winfo_exists():
+                    return
+                self.btn_buy.state(["!disabled"])
+                if ok:
+                    self.refresh()
+                else:
+                    messagebox.showwarning("Mua slot",
+                                           "Mua slot không thành công (hết vàng / đã tối đa).",
+                                           parent=self)
+            self.after(0, _done)
+        threading.Thread(target=_work, daemon=True).start()
+
+
+BagDialog._BAG_Q = {0: "#f0f0f0", 1: "#e8f4e8", 2: "#e0ecff",
+                    3: "#efe4ff", 4: "#fff0d8", 5: "#ffe0e0"}
+
+
 class PartyConfigFrame(ttk.Frame):
     """1 tab cau hinh 1 party: mode (dropdown) + map/quai/thanh (dropdown) + acc."""
     _PW_MASK = "******"   # placeholder pass da luu (giau pass that khi mo lai Settings)
@@ -2098,6 +2323,7 @@ class PartyConfigFrame(ttk.Frame):
             e_p.bind("<FocusOut>", _fout)
         ttk.Button(fr, text="⚙", width=2, command=lambda: self._open_heal_dialog(row)).pack(side="left")
         ttk.Button(fr, text="Skill", width=5, command=lambda: self._open_skill_dialog(row)).pack(side="left")
+        ttk.Button(fr, text="🎒", width=3, command=lambda: self._open_bag_dialog(row)).pack(side="left")
         ttk.Button(fr, text="✕", width=2, command=lambda: self._del_acc_row(row)).pack(side="left")
         self.acc_rows.append(row)
 
@@ -2567,6 +2793,28 @@ class PartyConfigFrame(ttk.Frame):
             r["furnace"] = _copy.deepcopy(furn_cfg)
             n += 1
         return n
+
+    # ================== TUI DO ==================
+    _BAG_COLS = 10          # so item moi hang (user chot)
+    _BAG_QUALITY_BG = {0: "#f0f0f0", 1: "#e8f4e8", 2: "#e0ecff",
+                       3: "#efe4ff", 4: "#fff0d8", 5: "#ffe0e0"}
+
+    def _open_bag_dialog(self, row):
+        """Tui do cua 1 acc: 4 tab giong game, 10 item/hang, bam item -> cac nut hanh dong.
+
+        CAN acc DANG CHAY: du lieu tui la snapshot song trong client (bag_slots), khong luu ra file.
+        """
+        uname = row["u"].get().strip()
+        if not uname:
+            messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
+        c = ctrl.account_clients.get(uname)
+        if c is None or not getattr(c, "bag_slots", None):
+            messagebox.showinfo(
+                "Túi đồ",
+                "Acc '%s' chưa chạy (hoặc chưa nhận được túi đồ).\n"
+                "Bật acc lên rồi mở lại." % uname, parent=self)
+            return
+        BagDialog(self, uname, c)
 
     def _open_skill_dialog(self, row):
         """Popup rule battle rieng tung acc: Dieu kien -> Skill/action -> Target."""

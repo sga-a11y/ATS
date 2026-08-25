@@ -30,6 +30,31 @@ from crack_furnace_notify import read_items        # noqa: E402
 OUT = os.path.join(ROOT, "items_gamedata.json")
 
 
+def _set_tab_fields(rec, src):
+    """Ghi `ft` (fitType) + `kd` (kind) - 2 truong DUY NHAT can de chia 4 tab tui do.
+
+    Xem bot/bag_tabs.py: sao dung Item.ConditionEquip/Props/Material cua client. Da kiem tren
+    ca 25668 item: 3 tab chia TRON VEN, khong mon nao thuoc 2 tab, khong mon nao lot ra ngoai.
+
+    Bo qua gia tri 0 cho file gon (fitType=0 o 12934/25668 muc = khong phai trang bi). `kind`
+    khong bao gio 0 nen luon ghi. Tong: 1.77MB -> 2.42MB.
+
+    Item CHI co trong file ma KHONG co trong .dat (624 muc, them tu cac lan crack truoc) thi
+    khong co 2 truong nay -> bag_tabs coi la "Vat pham", va van hien o tab "Tat ca".
+    """
+    for key, field in (("ft", "fitType"), ("kd", "kind"),
+                      # bs = btnState: >0 moi hien nut "Su dung" (Item.CheckItemUseState,
+                      #      Logic_Item.lua:3278). ==11 thi trong TRAN khong dung duoc.
+                      ("bs", "btnState"),
+                      # fc = furnaceCount: >0 moi hien nut "Phan giai" (Item.IsDismantle:2519).
+                      ("fc", "furnaceCount")):
+        v = src.get(field) or 0
+        if v:
+            rec[key] = int(v)
+        else:
+            rec.pop(key, None)
+
+
 def main():
     path = _find("gamedata_Item.dat", os.path.join("gamedata", "Data", "Item_C.dat"))
     if not path:
@@ -55,13 +80,15 @@ def main():
             tid = int(key, 16) if key.lower().startswith("0x") else int(key)
         except ValueError:
             continue
-        r = (by_id.get(tid) or {}).get("restrict", 0)
+        src = by_id.get(tid) or {}
+        r = src.get("restrict", 0)
         rec = dict(rec)
         if r:
             rec["restrict"] = r
             n_new += 1
         else:
             rec.pop("restrict", None)
+        _set_tab_fields(rec, src)
         out[key] = rec
 
     # THEM item MOI (id chua co trong file). KHONG dung vao muc da co -> ten cu giu nguyen,
@@ -77,6 +104,7 @@ def main():
         rec = {"name": name}
         if d.get("restrict"):
             rec["restrict"] = d["restrict"]
+        _set_tab_fields(rec, d)
         out["0x%04x" % tid] = rec
         n_add += 1
 
