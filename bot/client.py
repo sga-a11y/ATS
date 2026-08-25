@@ -1518,6 +1518,7 @@ class GameClient:
         self._in_scene_gate = False  # True khi dang qua cong scene-walk -> in_combat() KHONG ha in_battle
         self._gate_choice_pending = False  # server dang CHO CHON trong su kien cong (resultType 6)
         self._gate_choice_try = 0          # da thu may ma trong GATE_CHOICE_CODES
+        self._gate_event_logged = 0        # so buoc su kien da in trong lan qua cong nay
         #   theo member-confirm (moi acc danh tran RIENG tai cong -> tin member se transit oan -> KICK)
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._mob_observer = None
@@ -1895,6 +1896,12 @@ class GameClient:
         if pkt[8] != 0 or not (1 <= sub <= 6) or len(pkt) < 14:
             return
         rtype = pkt[9 + 4]
+        # In toi da 8 buoc su kien moi lan qua cong: cong nao ket thi doc log la biet server gui
+        # gi, KHOI phai doan. (Hai lan truoc toi doan sai nen cong van ket.)
+        if self._gate_event_logged < 8:
+            self._gate_event_logged += 1
+            log.info("[%s] CONG map %s: buoc su kien sub=%d resultType=%d goi=%s",
+                     self._label, self.current_map, pkt[7], rtype, pkt[7:].hex())
         if rtype != self.EVENT_RESULT_INTERACT:
             return          # thoai/tran/hieu ung -> vong `0x14 06` cua _enter_gate lo
         if self._gate_choice_pending:
@@ -2099,7 +2106,6 @@ class GameClient:
         #  - page2 choice fresh (...0200) / prompt giua-event (...0300) -> chon LUON, KHONG advance
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x01\x00":
             self._npc40_last_dialog = pkt[7:].hex()
-            self._on_route_dialog(pkt)
 
         # 0x41 0a0001 chi ARM viec cho prompt. Live co the chen 0x14 08002a truoc page choice;
         # giu pending qua cac goi trung gian va chi xac nhan khi thay dialog ...0300 trong 5 giay.
@@ -2669,6 +2675,13 @@ class GameClient:
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
         self._observe_team_dungeon_packet(opcode, pkt)
         self._observe_npc40_packet(opcode, pkt)
+        # Su kien cong (cau Gioi kieu...) phai nghe o DAY, KHONG nhet trong _observe_npc40_packet:
+        # ham do mo dau bang `if not self._npc40_started: return` nen chi chay khi DANG lam nhiem vu
+        # 40 NPC. Qua cong thi co do TAT -> handler khong bao gio duoc goi. Day la ly do that su bot
+        # ket o cong idx=10 map 63000 (log 16:46 va 17:12), ke ca ban dau tien cua toi.
+        # `S:020-001..006 <一般事件>` deu la buoc su kien -> dua CA 6 sub vao, ham tu loc resultType.
+        if opcode == 0x14 and len(pkt) >= 9 and pkt[8] == 0 and 1 <= pkt[7] <= 6:
+            self._on_route_dialog(pkt)
         self._observe_mob_packet(opcode, pkt)
         self._track_battle_packet(opcode, pkt)
         # Pho ban to doi: theo doi thoai NPC de biet canh da HET that su chua (_adv_dialog_until_idle)
@@ -10500,6 +10513,7 @@ class GameClient:
         # Moi cong co luot thu ma chon RIENG (xem GATE_CHOICE_CODES).
         self._gate_choice_pending = False
         self._gate_choice_try = 0
+        self._gate_event_logged = 0
         while True:
             if not self.running:
                 return False

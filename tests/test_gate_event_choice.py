@@ -32,6 +32,17 @@ def _pkt(sub, result_type, extra=b""):
     return b"\xc0\x91" + b"\x00\x00" + b"\x00\x00" + b"\x14" + bytes([sub, 0]) + payload
 
 
+def _nhan(c, pkt):
+    """Bom goi qua DUNG duong dispatch that, KHONG goi thang handler.
+
+    Bai hoc: ban test dau tien goi thang _on_route_dialog nen VAN XANH trong khi duong that hong.
+    Duong that hong o HAI cho: (1) cho goi con loc `sub == 01`, (2) - nang hon - handler nam
+    trong _observe_npc40_packet, ma ham do mo dau bang `if not self._npc40_started: return` nen
+    khi qua cong KHONG BAO GIO chay. Test phai di tu _dispatch moi thay duoc.
+    """
+    c._dispatch(0x14, pkt)
+
+
 def _bot():
     c = Client.__new__(Client)
     c._label = "test"
@@ -39,6 +50,15 @@ def _bot():
     c._in_scene_gate = True
     c._gate_choice_pending = False
     c._gate_choice_try = 0
+    c._gate_event_logged = 0
+    c._npc40_last_dialog = None
+    c._npc40_prompt_pending = False
+    c._npc40_prompt_pending_at = 0.0
+    # Cac observer anh em can nhieu trang thai khong lien quan -> cho rong. VAN di qua _dispatch
+    # that de bai test con bat duoc loi "handler nam nham trong ham chi chay khi lam 40 NPC".
+    for _ten in ("_observe_team_dungeon_packet", "_observe_npc40_packet", "_observe_mob_packet",
+                 "_track_battle_packet"):
+        setattr(c, _ten, lambda *a, **k: None)
     c.sent = []
     c.send = lambda op, pl: c.sent.append((op, pl.hex()))
     return c
@@ -48,7 +68,7 @@ class TestGateEventChoice(unittest.TestCase):
     def test_goi_thoai_khong_bi_tra_loi_nham(self):
         """resultType 1 = thoai -> KHONG duoc bam chon (day la loi cu)."""
         c = _bot()
-        c._on_route_dialog(_pkt(1, Client.EVENT_RESULT_TALK))
+        _nhan(c, _pkt(1, Client.EVENT_RESULT_TALK))
         self.assertFalse(c._gate_choice_pending)
         self.assertFalse(c._send_gate_choice())
         self.assertEqual(c.sent, [])
@@ -57,12 +77,12 @@ class TestGateEventChoice(unittest.TestCase):
         """resultType 6 den tren BAT KY sub nao trong 1..6 deu phai bat duoc."""
         for sub in range(1, 7):
             c = _bot()
-            c._on_route_dialog(_pkt(sub, Client.EVENT_RESULT_INTERACT))
+            _nhan(c, _pkt(sub, Client.EVENT_RESULT_INTERACT))
             self.assertTrue(c._gate_choice_pending, "sub %d bi bo sot" % sub)
 
     def test_tra_loi_dung_goi_C020_009(self):
         c = _bot()
-        c._on_route_dialog(_pkt(3, Client.EVENT_RESULT_INTERACT))
+        _nhan(c, _pkt(3, Client.EVENT_RESULT_INTERACT))
         self.assertTrue(c._send_gate_choice())
         self.assertEqual(c.sent, [(0x14, "090014")])   # 0x14 sub09 + ma 20 (=0x14) CO
 
@@ -71,7 +91,7 @@ class TestGateEventChoice(unittest.TestCase):
         c = _bot()
         codes = []
         for _ in range(4):
-            c._on_route_dialog(_pkt(1, Client.EVENT_RESULT_INTERACT))
+            _nhan(c, _pkt(1, Client.EVENT_RESULT_INTERACT))
             if c._send_gate_choice():
                 codes.append(int(c.sent[-1][1][4:6], 16))
         self.assertEqual(codes, [20, 30, 40])   # Co -> muc dau danh sach -> dong
@@ -80,7 +100,7 @@ class TestGateEventChoice(unittest.TestCase):
         """Hop thoai NPC nhiem vu/40NPC co duong rieng - tra bua o day la bam lung tung."""
         c = _bot()
         c._in_scene_gate = False
-        c._on_route_dialog(_pkt(1, Client.EVENT_RESULT_INTERACT))
+        _nhan(c, _pkt(1, Client.EVENT_RESULT_INTERACT))
         self.assertFalse(c._gate_choice_pending)
 
 
