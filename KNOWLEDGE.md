@@ -826,6 +826,38 @@ khien tung buoc; phai tra loi dung buoc thi server moi di tiep.
 **Chi LEADER duoc tra loi**: `TriggerEvent`/`SelectEvent` deu `return` som neu la member
 (`Team.IsMember and not Team.IsLeader`).
 
+### MOI CONG MOT KIEU — ma chi la VI TRI MUC, khong mang y nghia
+
+Bang chon nam trong `surfaceDatas[resultMeanNo]`, la du lieu RIENG cua tung man tuong tac. Doc
+bang `tools/crack_eve_surface.py` (doc `CompreseData/Eve.emg` + `CompreseData/Talk_C.dat`):
+
+```
+python tools/crack_eve_surface.py --scene 63000            # ca map
+python tools/crack_eve_surface.py --scene 63000 --surface 2
+```
+
+Hai file KHONG nam trong git (`gamedata/*` da ignore) — keo tu may ao:
+```
+adb -s 127.0.0.1:16768 pull /sdcard/Android/data/com.vtcmobile.gz06/files/CompreseData/Eve.emg      gamedata/
+adb -s 127.0.0.1:16768 pull /sdcard/Android/data/com.vtcmobile.gz06/files/CompreseData/Talk_C.dat   gamedata/
+```
+
+Bang chung THU TU KHONG CO DINH — ngay trong CUNG map 63000:
+
+| surface | ma 30 | ma 31 |
+|---|---|---|
+| 1 | "Truc tiep thong qua" | **"Danh"** |
+| 2 | **"Ta muon khieu chien"** | "Ta muon ve luyen tap" |
+| 3 | "Xac dinh" | "De sau vay." |
+
+Va map 12001 surface 1 la **cau do 4 dap an** ("...em toi may tuoi?" -> 15/18/20/24 tuoi): bam
+ma 30 o do la tra loi SAI. Map 12011 surface 1 thi `optionCount=0`, chi co nut "Dong y"/"Khong
+dong y" -> day moi la dang **Co/Khong (20/21)**.
+
+> Nen `GATE_CHOICE_CODES = (30, ...)` trong `bot/client.py` chi la PHONG DOAN cho cong chua biet.
+> No dung o cau Gioi kieu vi DA DOC CAPTURE. Cong moi thi chay `crack_eve_surface.py` de biet
+> chac, dung du vao thu tu.
+
 ## 7d. DI CHUYEN & DOI MAP
 
 **Di chuyen:** C2S 0x06 = `c0 91 0e 00 00 00 06 01 00 01 [x 2B LE] [y 2B LE]`
