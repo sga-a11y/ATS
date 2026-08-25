@@ -820,6 +820,8 @@ khien tung buoc; phai tra loi dung buoc thi server moi di tiep.
 0x14 08 0a00 -> 0x14 09 001f (31) -> 0x14 06          khong danh
 0x14 08 0a00 -> 0x14 09 001e (30) -> 0x14 06 -> 0x32  DANH -> vao tran -> qua cau
 ```
+> **DA CHAY THAT OK** (2026-08-25, bot qua duoc cau).
+>
 > **Da mat 4 lan chay de hoc**: tung doan ma 20 (Co/Khong) -> server tra `ma 5` roi ngat ket noi.
 > Doan sai o day RAT dat vi moi lan sai la mat ket noi. Cua moi thi doc capture, dung doan.
 
