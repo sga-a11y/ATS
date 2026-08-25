@@ -48,7 +48,7 @@ DATA_JSON = ["servers.json", "cities.json", "train_maps.json", "train_routes.jso
              "train_block_stats.json", "world_nav.json", "pet_stats.json", "dangerous_npcs.json",
              "scene_names.json", "collect_style.json", "furnace_pool.json",
              "furnace_default_notify.json", "equip_stats.json",
-             "npc_table.json", "mounts_grow.json"]
+             "npc_table.json", "mounts_grow.json", "warp_points.json"]
 
 DATA_FILES = {
     "gamedata/Ground.mmg": "gamedata/Ground.mmg",

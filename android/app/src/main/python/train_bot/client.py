@@ -947,6 +947,21 @@ def _load_gamedata_items() -> dict:
     return _gamedata_items
 
 _mark_bitids = None
+_warp_points = None
+def _load_warp_points() -> list:
+    """[{scene, mark, x, y}] tu warp_points.json (tools/crack_warp.py = Warp_C.dat).
+
+    `mark` = co nhiem vu can co de MO diem dich chuyen do (Data_WarpData.lua --身上標記).
+    Dung cho city_unlocked(): biet TRUOC thanh nao da mo thay vi tele mu roi doan.
+    """
+    global _warp_points
+    if _warp_points is not None:
+        return _warp_points
+    data = _load_json_data_file("warp_points.json") or {}
+    _warp_points = data.get("warps") or []
+    return _warp_points
+
+
 def _load_mark_bitids() -> dict:
     """{missionId: bitId} tu mark_bitids.json (tools/crack_mark_bitids.py).
 
@@ -5164,6 +5179,29 @@ class GameClient:
         if b < 0:
             return False
         return bool(self.mark_flags.get(b // 8 + 1, 0) & (1 << (b % 8)))
+
+    def city_unlocked(self, city_id: int):
+        """Thanh nay DA MO teleport chua? True/False, None = chua biet (chua nhan co nhiem vu).
+
+        SAO DUNG client (UI_UITeleport.lua:656 SetupSkyPointData):
+            if warpDatas[i].mark ~= 0
+               and CheckFlag(MarkManager.flags, markDatas[warpDatas[i].mark].bitId)
+        Tuc moi diem dich chuyen co MOT co nhiem vu; co co do = da mo. Client BIET TRUOC, khong
+        he thu roi doan nhu bot dang lam ("tele mu, khong di duoc thi moi doan la chua mo").
+
+        Tra None khi CHUA CO du lieu co (mark_flags rong luc vua login) - caller phai phan biet
+        "chua biet" voi "chua mo", khong duoc coi None la False roi bo qua thanh do oan.
+        """
+        if not getattr(self, "_mark_flags_loaded", False) or not self.mark_flags:
+            return None
+        for w in _load_warp_points():
+            if int(w.get("scene", 0)) != int(city_id):
+                continue
+            mark = int(w.get("mark", 0) or 0)
+            if not mark:
+                return False        # mark = 0: client coi la KHONG BAO GIO hien trong danh sach
+            return self.mark_flag_get(_load_mark_bitids().get(mark, 0))
+        return None                 # khong co trong bang warp -> khong phai thanh teleport
 
     def _on_mission_steps(self, pkt: bytes):
         """S2C 0x18 mission-step. UI phó bản đội lấy còn lượt từ dayilyFlag trong bảng này."""
