@@ -4907,6 +4907,9 @@ class GameClient:
         if len(pots) >= 2:                  # 2 loai it nhat (don stack le)
             (_, i1, t1), (_, i2, t2) = pots[0], pots[1]
         elif pots and pots[0][0] >= 2:      # chi 1 loai -> hop 2 cai cua no
+            # HOP CUNG MOT O voi chinh no: OK, mien la stack du so luong (user XAC NHAN 25/08).
+            # Ghi lai vi nhin code de nghi la sai (client that thi nguoi choi keo HAI stack khac
+            # nhau vao bang hop) - da mot lan nghi oan cho no khi truy vu 5 acc rot luc 15:37.
             (_, i1, t1) = pots[0]; i2, t2 = i1, t1
         else:
             log.info("[%s] Hop do: khong du do an/thuoc trong tui de hop", self._label)
