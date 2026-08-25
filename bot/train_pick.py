@@ -182,14 +182,23 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
 
     maps = [(map_id, ten_map, [diem...])]. Ha dan level mong muon cho toi khi ra diem.
     """
-    level = desired_level(pick_mode, levels)
-    if level is None:
+    want = desired_level(pick_mode, levels)
+    if want is None:
         return None
     rng = rng or random
     stats = stats if stats is not None else train_block_stats.load_stats()
     all_spots = stats.get("maps", {})
-    start = level
-    while level >= 1:
+    # Thu level MONG MUON truoc, roi HA dan (luat user). Ha het ma khong ra thi QUAY LEN tim.
+    # Khong co nhanh len thi level mong muon THAP HON map thap nhat cua game la chet han: vd party
+    # level 39 chon "TB -30" -> muon lv9, ma map thap nhat la lv28 -> ha 9,8,...,1 roi bo cuoc,
+    # KHONG chon duoc map nao (user phat hien 25/08).
+    hi = 0
+    for _mid, _name, _mobs in maps:
+        r = map_level_range(_name)
+        if r and not is_soul_map(_name):
+            hi = max(hi, r[1])
+    thu = list(range(want, 0, -1)) + list(range(want + 1, hi + 1))
+    for level in thu:
         cands = _spots_of_maps(maps, level)
         if cands:
             profs = []
@@ -210,5 +219,4 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
             if ok:
                 map_id, idx = rng.choice(ok)
                 return map_id, idx, level, "khop level/so quai/he"
-        level -= 1
-    return None if start is None else None
+    return None
