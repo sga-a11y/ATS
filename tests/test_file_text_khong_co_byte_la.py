@@ -19,6 +19,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DUOI = (".md", ".py", ".json", ".txt", ".gradle", ".kts", ".cfg", ".ini", ".yml", ".yaml")
 BO_THU_MUC = {".git", "__pycache__", "build", "_lua_dec", "_lua_enc", "_work", "_stage",
+              # _nk = cache Nuitka (no TU TAI bo bien dich MinGW ve). Thu vien chuan Python trong
+              # do co 0x0c (dau ngat trang) HOP LE -> may nao da build 1 lan la test bao SAI 22 file
+              # khong phai ma nguon cua minh. Da co trong .gitignore.
+              "_nk",
               "aTSBot", "gui.dist", "gui.build", "gui.onefile-build", "node_modules",
               "scan_maps", ".gradle", ".idea", "venv", ".venv"}
 
