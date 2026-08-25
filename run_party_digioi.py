@@ -2488,6 +2488,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     _activate_nghiep_fallback(
                         "route-plan city %s KHONG phai thanh teleport" % fc
                     )
+                elif fc and c.city_unlocked(fc) is False:
+                    # BIET TRUOC thanh dich chua mo -> gom ngay o diem gom, KHONG thu tele 3 lan
+                    # roi moi chuyen (log 15:27: spam "Teleport -> city 12011" hang chuc lan).
+                    _activate_nghiep_fallback("thanh %s CHUA MO tele voi acc nay" % fc)
 
                 # _town_fail BEN tren client (KHONG reset moi vong _do_reform): reform_gen la bien
                 # CHUNG party -> acc khac bump -> _ab() True -> _do_reform BI ABORT + goi lai lien tuc.

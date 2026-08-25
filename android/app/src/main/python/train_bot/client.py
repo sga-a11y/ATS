@@ -10137,6 +10137,12 @@ class GameClient:
             log.warning("[%s] go_to_town: %s KHONG phai thanh teleport (co the la map train) -> bo qua",
                         self._label, city_id)
             return False
+        # THANH CHUA MO -> teleport KHONG BAO GIO an. Truoc day van lap toi 30 lan (log 15:27:
+        # "Teleport -> city 12011" hang chuc lan roi moi bo cuoc). Gio biet truoc thi bo NGAY.
+        if self.city_unlocked(city_id) is False:
+            log.warning("[%s] go_to_town: thanh %s CHUA MO tele -> bo qua ngay (khong spam)",
+                        self._label, city_id)
+            return False
         log.info("[%s] Ve thanh %d (lap lai neu con battle chan teleport)...", self._label, city_id)
         # Dang o DI GIOI -> teleport (0x44) bi tu choi. PHAI di bo ra cong thoat truoc.
         if self.in_di_gioi():
@@ -10916,8 +10922,14 @@ class GameClient:
         TRUOC (chon ngau nhien 50-50) roi moi tele thanh route. User bao: bay ve thanh route truc
         tiep tu map la hay bi loi ngay doan tele; qua 1 thanh trung gian truoc thi on dinh."""
         import random
-        city, flag = random.choice([(12001, 0), (12061, 2)])   # Trac Quan / Ng.Thanh
-        log.info("[%s] pre-route: tele trung gian ve thanh %s truoc (50-50)", self._label, city)
+        # CHI chon thanh DA MO. Chua mo Nghiep Thanh -> dung Trac Quan (acc moi LUON co san).
+        # Truoc day boc 50-50 mu -> acc chua mo Nghiep Thanh spam "Teleport -> city 12061" hang
+        # chuc lan khong bao gio toi (log 15:27).
+        _ung_vien = [(12001, 0), (12061, 2)]
+        _mo = [cf for cf in _ung_vien if self.city_unlocked(cf[0]) is not False]
+        city, flag = random.choice(_mo or [(12001, 0)])
+        log.info("[%s] pre-route: tele trung gian ve thanh %s truoc (%d thanh da mo)",
+                 self._label, city, len(_mo))
         try:
             ok = self.go_to_town(city, flag)
             if ok and city == self.NOI_DAT_SELL_CITY and getattr(self, "auto_sell_noi_dat", True):
