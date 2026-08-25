@@ -959,6 +959,29 @@ def _pick_start_city(pidx, dest_city):
     return cid
 
 
+def _gather_city(pidx, dest_city, gen):
+    """Diem GOM cua party khi khong ve thang `dest_city` duoc: thanh GAN NHAT ma CA PARTY da mo.
+
+    Truoc day co dinh NGHIEP THANH (12061). Hai loi user chi ra (25/08):
+      1. Chinh Nghiep Thanh cung co the CHUA MO -> ke hoach chet han.
+      2. Khong he "gan": Nghiep Thanh -> Kien Nghiep mat 5 cong, tu Hoi Ke chi 2.
+
+    Chot 1 LAN moi reform gen roi giu: moi acc tu tinh se ra thanh khac nhau (danh sach thanh da mo
+    doi theo acc nao dang chay), ca party se toe ra.
+    Fallback 12061 chi dung khi CHUA BIET gi (chua nhan co) - giu hanh vi cu, khong lam te hon.
+    """
+    st = _pstate(pidx)
+    with st["lock"]:
+        cur = st.get("gather_city")
+        if cur and st.get("gather_city_gen") == gen:
+            return cur
+    cid = _pick_start_city(pidx, dest_city) or 12061
+    with st["lock"]:
+        st["gather_city"] = cid
+        st["gather_city_gen"] = gen
+    return cid
+
+
 def _auto_dg_level(pidx, pick_mode):
     """idx cap quai Di Gioi (1..15) suy tu level party. None neu chua biet level acc nao.
 
@@ -2462,8 +2485,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _expected = len(party_accounts(pidx))
                 _arrival_done = False
                 while not _ab() and not _arrival_done:
-                    _target_city = 12061 if _nghiep_fallback_active() else fc
-                    _target_name = "Nghiep Thanh" if _target_city == 12061 else f"thanh {fc}"
+                    _gc = _gather_city(pidx, fc, _g0)
+                    _target_city = _gc if _nghiep_fallback_active() else fc
+                    _gc_name = (getattr(config, "TELEPORT_CITIES", None) or {}).get(
+                        _gc, {}).get("name", _gc)
+                    _target_name = _gc_name if _target_city == _gc else f"thanh {fc}"
                     while not _ab() and c.current_map != _target_city:
                         set_account_activity(username, "reform: ve %s (dang o map %s)" % (_target_name, c.current_map),
                                              phase="reform")
@@ -2476,7 +2502,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 # fc chua mo thi 3 lan ~1 phut la chuyen sang gom o Nghiep Thanh.
                                 _town_ok = c.go_to_town(fc, ff, tries=6, wait=2.0, battle_grace=0.0)
                             else:
-                                _town_ok = c.go_to_town(12061, 2)
+                                _gc_flag = (getattr(config, "TELEPORT_CITIES", None) or {}).get(
+                                    _gc, {}).get("flag", 2)
+                                _town_ok = c.go_to_town(_gc, _gc_flag)
                         except Exception as e:
                             log.warning("[%s] reform: loi ve %s: %s", label, _target_name, e)
                         if _town_ok or c.current_map == _target_city:
@@ -2494,12 +2522,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         return
                     # Co acc khac vua bat fallback trong luc minh da toi fc -> quay lai outer loop
                     # de cung ve Nghiep, khong cho barrier dem nham "toi noi" khac map nhau.
-                    if _nghiep_fallback_active() and _target_city != 12061:
+                    if _nghiep_fallback_active() and _target_city != _gc:
                         continue
                     if c.current_map != _target_city:
                         continue
                     c._reform_town_fail = 0
-                    c._reform_via_nghiep = (_target_city == 12061)
+                    c._reform_via_nghiep = (_target_city == _gc)
                     # BOSS QUAN DOAN mid-session: reform nay CO THE do boss QD toi luot (train mode
                     # khong danh trong party -> keepalive bump reform_gen ve thanh). Dang SOLO o thanh
                     # (party da giai tan o dau reform) -> DANH LUON, TRUOC khi mark "da toi" -> barrier
@@ -2537,7 +2565,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     while not _ab():
                         set_account_activity(username, "reform: da ve %s, cho ca party (%.0fs)"
                                              % (_target_name, time.time() - _barrier_t0), phase="wait")
-                        if _nghiep_fallback_active() and _target_city != 12061:
+                        if _nghiep_fallback_active() and _target_city != _gc:
                             with st["lock"]:
                                 st.get("reform_arrived", {}).get(_g0, {}).pop(username, None)
                             break
