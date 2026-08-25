@@ -6330,7 +6330,11 @@ def account_status(username):
         "running": running,
         "char": c.char_name or "",
         "map": c.current_map,
-        "channel": st.get("channel"),
+        # Kenh THAT cua chinh acc nay (c.current_channel - bot doc tu 0x03/0x0c), khong phai
+        # st["channel"] la kenh party CHON: cai do bi clear moi vong sync nen cot "Kenh" gan nhu
+        # luon rong, va giong het nhau moi acc -> nhin khong ra vu lech kenh (log 17:25: leader
+        # kenh 2, member kenh 1). Con st["channel"] chi dung khi chua doc duoc kenh that.
+        "channel": getattr(c, "current_channel", None) or st.get("channel"),
         "in_party": is_joined(pidx, c.self_entity),
         "dg_remain": dg_remain,
         "combat": c.in_combat() if running else False,

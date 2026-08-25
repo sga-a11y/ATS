@@ -8719,7 +8719,19 @@ class GameClient:
         cand = [(ch, cur, cap) for ch, (cur, cap) in self.channels.items()
                 if ch not in exclude]
         if not cand:
-            log.info("[%s] Chi co kenh mac dinh -> giu nguyen (ca party cung kenh)", self._label)
+            # `cand` rong = KHONG CON KENH NAO DE CHUYEN SANG (kenh da full nen server khong con
+            # liet ke), CHU KHONG PHAI "ca party dang cung kenh". Truoc day tra 0 (= giu nguyen)
+            # nen leader o kenh 2 con member o kenh 1 van bi coi la cung kenh -> leader moi VO HAN
+            # ma khong ai thay loi moi (log 17:25).
+            #
+            # Het cho de tach ra thi gom NGUOC LAI: ca party ve KENH CUA LEADER. Leader dang o do
+            # san nen chac chan vao duoc; member chuyen sang la thay nhau ngay.
+            cur = getattr(self, "current_channel", None)
+            if cur:
+                log.info("[%s] Khong con kenh trong de tach -> GOM ca party ve kenh cua leader (%s)",
+                         self._label, cur)
+                return int(cur)
+            log.info("[%s] Chua biet kenh hien tai -> giu nguyen", self._label)
             return 0
         # CHI chon kenh con DU CHO cho ca party (cap - cur >= need)
         fit = [c for c in cand if (c[2] - c[1]) >= need]
