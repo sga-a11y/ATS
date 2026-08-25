@@ -3373,6 +3373,26 @@ class GameClient:
                 except Exception:
                     pass
 
+    def pet_name_out(self):
+        """Ten pet CHI khi CHAC CHAN dang xuat chien. Chua chac -> None.
+
+        _on_pet_list() co nhanh DOAN TAM: goi 0x13 (pet dang dung) doi luc toi SAU man config skill,
+        nen neu chua co apid thi lay luon record DAU danh sach pet mang theo lam active de co skill
+        ma vao tran. Nhanh do dat self.pet_name.
+
+        Van de: "chua co 0x13" va "KHONG xuat chien con nao" nhin giong het nhau tu goi 0x0f. Acc
+        khong tha pet van bi gan ten pet -> UI hien 'ten_lv_TenPet_lvPet' (user bao 25/08), va
+        _party_levels/_average_party_levels dem CA level con pet khong ra tran vao level party ->
+        chon nham bai train / cap quai Di Gioi.
+
+        state.active_pet_confirmed CHI True khi co goi 0x13 THAT tu server (ke ca 0x13 voi pid=0 =
+        khong tha pet - luc do pet_name da bi xoa san). Dung dung cai do de tra loi.
+        KHONG bo nhanh doan tam: no van can cho skill/hoi pet khi 0x13 toi muon.
+        """
+        if not getattr(getattr(self, "state", None), "active_pet_confirmed", False):
+            return None
+        return self.pet_name
+
     def auto_upgrade_pet_skills(self):
         """AUTO NANG SKILL PET (login): moi pet co DIEM SKILL -> nang skill theo thu tu index 0->1->2,
         con index nao TOI MAX moi qua con sau (rule user). Gui C:028-002 (opcode 0x1C sub02):

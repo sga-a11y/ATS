@@ -870,7 +870,7 @@ def _party_average_level(pidx):
         if c is not None:
             rows.append({
                 "char_level": getattr(c, "char_level", None),
-                "pet_name": getattr(c, "pet_name", None),
+                "pet_name": c.pet_name_out(),
                 "pet_level": getattr(c, "pet_level", None),
             })
         else:
@@ -889,7 +889,7 @@ def _party_levels(pidx):
     for username, *_ in party_accounts(pidx):
         c = account_clients.get(username)
         row = ({"char_level": getattr(c, "char_level", None),
-                "pet_name": getattr(c, "pet_name", None),
+                "pet_name": c.pet_name_out(),
                 "pet_level": getattr(c, "pet_level", None)}
                if c is not None else account_last.get(username, {}))
         lv = row.get("char_level")
@@ -4727,7 +4727,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         if c is not None and getattr(c, "current_map", None) is not None:
             account_last[username] = {"map": c.current_map, "char": c.char_name or username,
                                       "char_level": getattr(c, "char_level", None),
-                                      "pet_name": getattr(c, "pet_name", None),
+                                      "pet_name": c.pet_name_out(),
                                       "pet_level": getattr(c, "pet_level", None)}
         account_clients.pop(username, None)
         if not reconnectable:   # reconnect thi CHUA tong ket "party thoat het" (nick se login lai)
@@ -6138,7 +6138,7 @@ def account_status(username):
     account_last[username] = {"map": c.current_map, "char": c.char_name or "",
                               "char_level": getattr(c, "char_level", None),
                               "char_agi": getattr(c, "char_agi", None),
-                              "pet_name": getattr(c, "pet_name", None),
+                              "pet_name": c.pet_name_out(),
                               "pet_level": getattr(c, "pet_level", None),
                               "pet_agi": getattr(c, "pet_agi", None)}  # luu lai luc cuoi
     _ch = getattr(getattr(c, "state", None), "char", None)   # hp/sp cho UI APK (PC GUI bo qua)
@@ -6153,7 +6153,7 @@ def account_status(username):
         "strategist": is_strategist(pidx, c.self_entity),
         "char_level": getattr(c, "char_level", None),
         "char_agi": getattr(c, "char_agi", None),
-        "pet_name": getattr(c, "pet_name", None) or "",
+        "pet_name": c.pet_name_out() or "",
         "pet_level": getattr(c, "pet_level", None),
         "pet_agi": getattr(c, "pet_agi", None),
         "party_avg_level": party_avg_level,
