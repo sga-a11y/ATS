@@ -51,6 +51,7 @@ def _bot():
     c._gate_choice_pending = False
     c._gate_choice_try = 0
     c._gate_event_logged = 0
+    c._gate_choice_sent_at = 0.0
     c._npc40_last_dialog = None
     c._npc40_prompt_pending = False
     c._npc40_prompt_pending_at = 0.0
@@ -102,6 +103,28 @@ class TestGateEventChoice(unittest.TestCase):
         c._in_scene_gate = False
         _nhan(c, _pkt(1, Client.EVENT_RESULT_INTERACT))
         self.assertFalse(c._gate_choice_pending)
+
+
+class TestGateChoiceThuTuGoi(unittest.TestCase):
+    """Server ngat ket noi neu SAI THU TU goi - neo lai bang goi that."""
+
+    def test_khong_duoc_gui_next_ngay_sau_khi_chon(self):
+        """Log 17:19:45 (goi that): 0x14 0600 roi 0x14 090014 -> "su kien vi pham (ma 5)" -> da.
+
+        `0x14 06` la <事件下一步>. Bam "buoc tiep" trong luc server dang cho CHON, hoac ngay sau
+        khi vua chon, deu bi coi la vi pham.
+        """
+        c = _bot()
+        _nhan(c, _pkt(1, Client.EVENT_RESULT_INTERACT))
+        self.assertFalse(c._gate_next_blocked())   # chua chon -> chua chan
+        self.assertTrue(c._send_gate_choice())
+        self.assertTrue(c._gate_next_blocked())    # vua chon -> PHAI chan 0x14 06
+
+    def test_het_chan_sau_vai_giay(self):
+        import time as _t
+        c = _bot()
+        c._gate_choice_sent_at = _t.time() - 10.0
+        self.assertFalse(c._gate_next_blocked())
 
 
 if __name__ == "__main__":

@@ -1519,6 +1519,7 @@ class GameClient:
         self._gate_choice_pending = False  # server dang CHO CHON trong su kien cong (resultType 6)
         self._gate_choice_try = 0          # da thu may ma trong GATE_CHOICE_CODES
         self._gate_event_logged = 0        # so buoc su kien da in trong lan qua cong nay
+        self._gate_choice_sent_at = 0.0    # luc vua gui lua chon (chan 0x14 06 ngay sau)
         #   theo member-confirm (moi acc danh tran RIENG tai cong -> tin member se transit oan -> KICK)
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._mob_observer = None
@@ -1925,7 +1926,15 @@ class GameClient:
             self.send(0x14, b"\x09\x00" + bytes([code]))
         except OSError:
             return False
+        self._gate_choice_sent_at = time.time()
         return True
+
+    def _gate_next_blocked(self) -> bool:
+        """True = VUA chon xong, chua duoc gui `0x14 06`.
+
+        `0x14 06` la <事件下一步>. Bam "buoc tiep" ngay sau khi chon, luc server con dang xu ly,
+        cung bi tinh la SAI THU TU. Cho server bat nhip roi hang tinh."""
+        return time.time() - getattr(self, "_gate_choice_sent_at", 0.0) < 3.0
 
     def _dump_recent(self, ly_do: str):
         """In 12 goi GUI + 12 goi NHAN gan nhat -> tim goi gay kick.
@@ -10514,6 +10523,7 @@ class GameClient:
         self._gate_choice_pending = False
         self._gate_choice_try = 0
         self._gate_event_logged = 0
+        self._gate_choice_sent_at = 0.0
         while True:
             if not self.running:
                 return False
@@ -10599,6 +10609,12 @@ class GameClient:
                         return True
                     if _sel == "battle":
                         gate_battled = True
+                    elif self._gate_choice_pending:
+                        # Server DANG CHO CHON (cau Gioi kieu). Gui `0x0c 01` / `0x14 06` luc nay la
+                        # SAI THU TU -> server tra loi "su kien vi pham (ma 5)" roi NGAT KET NOI.
+                        # Log 17:19:45 dinh dung bay nay: 0x14 0600 xong moi 0x14 090014 -> bi da.
+                        self._send_gate_choice()
+                        time.sleep(1.5)
                     else:
                         self.send(0x0c, b"\x01\x00"); time.sleep(0.2)
                         _sel = _gate_select_result(0.8)
@@ -10606,6 +10622,9 @@ class GameClient:
                             return True
                         if _sel == "battle":
                             gate_battled = True
+                        elif self._gate_choice_pending:
+                            self._send_gate_choice()
+                            time.sleep(1.5)
                         else:
                             self.send(0x14, b"\x06\x00"); time.sleep(1.0)
             finally:
@@ -10640,6 +10659,9 @@ class GameClient:
                         if self._send_gate_choice():
                             time.sleep(2.0)
                             continue
+                        if self._gate_next_blocked():
+                            time.sleep(0.5)
+                            continue
                         self.send(0x14, b"\x06\x00")
                         time.sleep(0.8)
                     break
@@ -10649,6 +10671,9 @@ class GameClient:
                 # ich - phai gui `0x14 09 + ma`. Gui xong cho lau hon: chon "danh" -> vao tran.
                 if self._send_gate_choice():
                     time.sleep(2.0)
+                    continue
+                if self._gate_next_blocked():
+                    time.sleep(0.5)
                     continue
                 self.send(0x14, b"\x06\x00")
                 time.sleep(0.6)
