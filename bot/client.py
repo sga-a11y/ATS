@@ -3013,7 +3013,16 @@ class GameClient:
                         # KEO qua -> khong resume -> ca 4 rot trong CUNG MOT GIAY.
                         # CHI dat co o day (dang trong recv loop) - scene_resume() co sleep, de
                         # navigate_to goi, khong duoc chan luong doc goi.
-                        self._need_scene_resume = True
+                        #
+                        # LOAI TRU doi map do CHINH BOT ra lenh (teleport/thoat DG): duong do KHONG
+                        # can resume, va gui `0x14 06` sai luc thi SERVER DONG KET NOI.
+                        # BUG THAT do chinh cho nay (log 15:09): 3 acc vua thoat DG bang teleport
+                        # (49942 -> 12003 -> 12001) roi chuyen pha train -> navigate_to ban 0x14 06
+                        # -> ca 3 RUNG. Acc con dang danh boss khong di dau nen KHONG rung.
+                        _tu_minh = (time.time() - getattr(self, "_self_map_change_at", 0.0)) < 15.0
+                        if not _tu_minh and not getattr(self, "_in_scene_gate", False):
+                            self._need_scene_resume = True
+                            self._need_scene_resume_at = time.time()
                     self.current_map = mid
                 # TOA DO cung nam trong chinh goi nay: [entity 8B][map u16][x u16][y u16]
                 # (KNOWLEDGE muc 7: 0x07 sub0000 - 0x0c ChangeScene CUNG layout, xac nhan bang
@@ -9868,7 +9877,10 @@ class GameClient:
         # va DUT KET NOI (log 18:29: ca 4 member bi keo qua cong roi rot cung mot giay).
         # Chan khi DANG DANH: scene_resume() gui 0x14 06, ma gui goi do luc server con giai tran
         # thi server DONG KET NOI (bai hoc cu, xem _gate_wait_clear).
-        if getattr(self, "_need_scene_resume", False) and not self.in_combat(idle_secs=1.5):
+        # Co qua 60s thi BO: luc do da di lai binh thuong roi, gui `0x14 06` chi them rui ro.
+        if (getattr(self, "_need_scene_resume", False)
+                and time.time() - getattr(self, "_need_scene_resume_at", 0.0) < 60.0
+                and not self.in_combat(idle_secs=1.5)):
             log.info("[%s] bi keo sang map %s (khong tu qua cong) -> chay scene_resume truoc khi di",
                      self._label, self.current_map)
             self.scene_resume()
@@ -10200,6 +10212,9 @@ class GameClient:
                         self._label, city_id)
             return False
         payload = b"\x01\x00" + struct.pack("<H", city_id) + bytes([flag])
+        # DANH DAU: lan doi map sap toi la DO BOT RA LENH -> KHONG can scene_resume, va gui
+        # `0x14 06` o duong nay thi SERVER DONG KET NOI (xem _need_scene_resume).
+        self._self_map_change_at = time.time()
         self.send(protocol.OP_TELEPORT, payload)
         log.info("[%s] Teleport -> city %s (flag %s)", self._label, city_id, flag)
         return True

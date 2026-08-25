@@ -25,6 +25,7 @@ from bot.login import login
 from bot.client import (GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined,
                         set_account_activity, get_account_activity, get_account_task,
+                        in_instance_map,
                         DISCONNECT_RATE_LIMIT, TEAM_DUNGEON_MAPS)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
@@ -1743,13 +1744,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             return True
 
         def _maybe_auto_world_boss(reason: str):
-            if not auto_world_boss:
-                return
             try:
-                log.info("[%s] Boss the gioi: auto danh het luot (%s)", label, reason)
-                c.do_world_boss_all()
+                if auto_world_boss:
+                    log.info("[%s] Boss the gioi: auto danh het luot (%s)", label, reason)
+                    c.do_world_boss_all()
             except Exception as e:
                 log.warning("[%s] loi auto world boss (%s): %s", label, reason, e)
+            finally:
+                # DANH DAU DA XONG - leader cho co nay truoc khi lap pho ban (xem
+                # _wait_party_world_boss). Dat trong `finally` de loi/tat boss van danh dau,
+                # khong thi ca party treo cho mot acc khong bao gio bao xong.
+                with st["lock"]:
+                    st.setdefault("wb_done", set()).add(username)
 
         def _finish_digioi_train_after_dg():
             _go_town_safe(c, label)
@@ -4895,8 +4901,14 @@ def _exit_pb_or_reconnect(username, c, reason):
     KHONG doi - caller da danh dau truoc khi goi ham nay.
     """
     try:
+        # leave_team_dungeon() tra True o CA HAI truong hop: vua gui lenh thoat XONG, va "von da o
+        # NGOAI nen khong gui gi". Truoc day cau log duoi noi chung la "da thoat PB bang C:047-010"
+        # -> nhin log tuong bot VAN gui goi giua thanh (user chan doan nham 25/08). Phan biet ra.
+        _trong_pb = in_instance_map(c.current_map)
         if c.leave_team_dungeon():
-            log.info("[%s] da thoat PB bang C:047-010 -> KHONG relogin (%s)", username, reason)
+            log.info("[%s] %s -> KHONG relogin (%s)", username,
+                     "da thoat PB bang C:047-010" if _trong_pb else "von da o NGOAI pho ban",
+                     reason)
             return False
     except Exception as e:
         log.warning("[%s] loi thoat PB (%s) -> quay ve relogin: %s", username, reason, e)
@@ -5205,6 +5217,42 @@ def _pb_that_bai_co_phai_dung_han(c, stopped_fn, label, role):
     return False
 
 
+WB_WAIT_SEC = 300.0     # cho toi da 5' - 1 luot boss ~20s, du cho ca 5 acc danh het luot
+
+
+def _wait_party_world_boss(st, pidx, label, stopped_fn):
+    """LEADER cho CA PARTY danh xong boss the gioi roi moi lap pho ban to doi.
+
+    BUG THAT (log 15:09, party tq4xx): moi acc chay DOC LAP - ai da du 5/5 luot thi xong ngay, con
+    tq402 con 0/5 nen dang danh (moi tran ~20s). Leader thay minh xong la lap phong PB va moi luon
+    -> tq402 nhan loi moi + an CHUAN BI trong luc DANG TRONG TRAN boss -> khong vao duoc instance ->
+    "roster phong pho ban chi 3/4 member" -> HUY danh, ca party thoat ra lam lai.
+
+    Cho theo CO wb_done (dat trong finally cua _maybe_auto_world_boss) chu KHONG theo "dang trong
+    tran": acc co the giua 2 luot boss, luc do khong o trong tran nhung van chua xong viec.
+    """
+    t0 = time.time()
+    _log = 0.0
+    while not stopped_fn():
+        con = [u for u, _p, _l, _k in party_accounts(pidx)
+               if is_account_running(u) and account_clients.get(u) is not None
+               and u not in (st.get("wb_done") or ())]
+        if not con:
+            return True
+        if time.time() - t0 > WB_WAIT_SEC:
+            log.warning("[%s] (LEADER) cho boss the gioi qua %.0fs ma con %s -> lap pho ban luon",
+                        label, WB_WAIT_SEC, con)
+            return False
+        if time.time() - _log > 20:
+            _log = time.time()
+            log.info("[%s] (LEADER) CHO %d acc danh xong boss the gioi roi moi lap pho ban: %s",
+                     label, len(con), con)
+        set_account_activity(st.get("leader_user") or label,
+                             "cho party xong boss the gioi", phase="wait")
+        time.sleep(2)
+    return False
+
+
 def _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, stopped_fn, pcfg):
     # THU TU user yeu cau: DOI QUA su kien -> NHAN THUONG BANG 3x3 -> roi moi DANH PB TO DOI.
     # Dat o DAY chu KHONG trong claim_daily_quests: mode TRAIN goi thang ham nay, con
@@ -5216,6 +5264,8 @@ def _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, s
         log.warning("[%s] loi doi qua/bang su kien truoc pho ban doi (bo qua): %s", label, e)
     if not pcfg.get("auto_team_dungeon", True):
         return True
+    if is_leader:
+        _wait_party_world_boss(st, pidx, label, stopped_fn)
     flags = _team_dungeon_flags(pcfg)
     levels = getattr(config, "TEAM_DUNGEON_LEVELS", (20, 50, 80))
     # Bo qua CHI LUOT CHAY NAY: doc xong la XOA co ngay. Luot chay moi (login/chu ky sau) lai
