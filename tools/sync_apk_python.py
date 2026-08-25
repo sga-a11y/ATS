@@ -19,7 +19,7 @@ APK = os.path.join(ROOT, "android", "app", "src", "main", "python", "train_bot")
 SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login.py",
           "train_block_stats.py", "mob_scanner.py", "mob_spots.py", "scene_fight.py",
           "train_maps_store.py", "npc40.py", "pet_login_stats.py", "team_dungeon_lv110.py",
-          "floor_crawl.py", "event_exchange.py", "train_pick.py", "bag_tabs.py",
+          "floor_crawl.py", "event_exchange.py", "train_pick.py", "bag_tabs.py", "city_pick.py",
           # Core dung chung nhung TRUOC DAY BI BO SOT khoi danh sach -> APK chay ban cu am
           # tham (party_battle.py lech 48 dong: fix "khong nuot lenh danh" khong len APK).
           # 5 file con lai dang trung khop nhung khong duoc sync = bom hen gio.

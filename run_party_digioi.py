@@ -17,6 +17,7 @@ except Exception:
 from bot import config
 from bot import mob_spots
 from bot import train_pick
+from bot import city_pick
 from bot import train_pick as train_pick_mod   # alias: trong setup_party_runtime co tham so ten train_pick
 from bot.mob_scanner import MobScanSession, compute_regions, scan_full_map
 from bot.scene_fight import get_scene_fight_seed
@@ -900,6 +901,54 @@ def _party_levels(pidx):
             if isinstance(plv, int) and plv > 0:
                 out.append(plv)
     return out
+
+
+def _party_city_unlocked(pidx, city_id):
+    """(danh sach acc CHUA MO thanh nay, danh sach acc CHUA BIET).
+
+    city_unlocked() tra None = CHUA BIET (chua nhan goi co nhiem vu). Phai tach rieng: coi None la
+    "chua mo" thi acc vua login se bi ket luan oan, coi la "da mo" thi lai tele mu nhu cu.
+    """
+    chua_mo, chua_biet = [], []
+    for username, *_ in party_accounts(pidx):
+        c = account_clients.get(username)
+        if c is None:
+            continue
+        st = c.city_unlocked(city_id)
+        if st is None:
+            chua_biet.append(username)
+        elif st is False:
+            chua_mo.append(username)
+    return chua_mo, chua_biet
+
+
+def _party_unlocked_cities(pidx):
+    """city_id ma CA PARTY (acc dang chay) deu da mo. Acc chua biet -> BO QUA thanh do cho chac."""
+    out = []
+    for cid in (getattr(config, "TELEPORT_CITY_IDS", None) or ()):
+        chua_mo, chua_biet = _party_city_unlocked(pidx, cid)
+        if not chua_mo and not chua_biet:
+            out.append(cid)
+    return out
+
+
+def _pick_start_city(pidx, dest_city):
+    """Thanh xuat phat cho party: GAN `dest_city` nhat trong so thanh CA PARTY deu mo.
+
+    Thay cho viec co dinh gom o NGHIEP THANH - cach cu chet khi chinh Nghiep Thanh chua mo, va
+    cung khong he gan (Nghiep Thanh -> Kien Nghiep 5 cong, trong khi Hoi Ke chi 2).
+    """
+    mo = _party_unlocked_cities(pidx)
+    if not mo:
+        return None
+    got = city_pick.nearest_start_city(dest_city, mo)
+    if not got:
+        return None
+    cid, hops = got
+    ten = (getattr(config, "TELEPORT_CITIES", None) or {}).get(cid, {}).get("name", cid)
+    log.info(">>> PARTY %s: thanh xuat phat = %s (id %s, cach dich %d cong; ca party deu da mo)",
+             pidx + 1, ten, cid, hops)
+    return cid
 
 
 def _auto_dg_level(pidx, pick_mode):
