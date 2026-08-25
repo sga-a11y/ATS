@@ -940,7 +940,10 @@ def _load_gamedata_items() -> dict:
             iid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
             _gamedata_items[iid] = {"name": v.get("name", ""), "battle": bool(v.get("battle")),
                                     "hp": int(v.get("hp", 0)), "sp": int(v.get("sp", 0)),
-                                    "restrict": int(v.get("restrict", 0) or 0)}
+                                    "restrict": int(v.get("restrict", 0) or 0),
+                                    # ft = fitType = VI TRI MAC (1 mu, 2 ao, 3 vu khi...). Can de
+                                    # suy mon DANG mac o vi tri do khi THAY DO - xem _on_equip_done.
+                                    "ft": int(v.get("ft", 0) or 0)}
     return _gamedata_items
 
 _mark_bitids = None
@@ -1554,6 +1557,11 @@ class GameClient:
         self.bag_slots = {}
         self.pet_equipped = {}       # followIndex (1..4) -> [tid] do da mac cho pet (S2C 0x17 sub17)
         self._equip_seq = 0          # tang moi lan MAC XONG (char hoac pet) -> de XAC NHAN lenh
+        # fitType (vi tri mac) -> tid dang mac. CAN de xu ly THAY DO: server KHONG gui goi cap nhat
+        # tui cho mon bi thay ra (da doc protocolTable[23][17]: client TU dat lai vao tui tu trang
+        # thai do dang mac cua chinh no). Khong co bang nay thi mon cu bien mat khoi tui.
+        self.equip_by_fit = {}        # do cua NHAN VAT
+        self.pet_equip_by_fit = {}    # followIndex -> {fitType: tid}
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
         # SO PHUC THAN CON LAI (godMission trong client): tu S2C 0x18 sub0800
         # <設定衰神福神> [roleId i64][kind u16][count i32]. None = server chua gui.
@@ -2785,6 +2793,16 @@ class GameClient:
             self._on_equip_done(pkt[9], follow=0)
         elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x17\x00":
             self._on_equip_done(pkt[10], follow=pkt[9])
+        # S:023-024 <武將穿上裝備> [武將索引][物品資料 16B] - server bao PET DANG MAC mon nay.
+        # Client dung goi NAY de dung trang thai do pet (protocolTable[23][20] = <武將所有裝備> la
+        # ham RONG - no khong dung goi do). Bot can bang nay vi cung ly do nhu do char: THAY DO thi
+        # phai biet mon cu de tra ve tui. ThingData mo dau bang Id (2B LE).
+        elif opcode == 0x17 and len(pkt) >= 12 and pkt[7:9] == b"\x18\x00":
+            _fl = pkt[9]
+            _tid = int.from_bytes(pkt[10:12], "little")
+            _fit = int((_load_gamedata_items().get(_tid) or {}).get("ft", 0) or 0)
+            if _tid and _fit:
+                self.pet_equip_by_fit.setdefault(_fl, {})[_fit] = _tid
         # DO BEN DOI (S:023-027 = sub1b00): [vi tri do 1B][damage 1B]. Moc 100/200/250 (250=HONG).
         # Bot CHI theo ngoc CHAR o vi tri 6 (ngoc Phuc Than khong deo cho pet duoc).
         elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x1b\x00":
@@ -6421,6 +6439,14 @@ class GameClient:
             })
             off += 35
         self.equipped_items = equipped
+        # BANG THEO VI TRI MAC. Khong co bang nay thi lan THAY DO dau tien se lam MAT mon cu:
+        # server khong gui goi cap nhat tui cho no (client tu dat lai - protocolTable[23][17]),
+        # nen phai biet truoc dang mac gi o vi tri do.
+        self.equip_by_fit = {}
+        for it in equipped:
+            fit = int((_load_gamedata_items().get(it["id"]) or {}).get("ft", 0) or 0)
+            if fit:
+                self.equip_by_fit[fit] = it["id"]
 
     def _gem_record(self):
         """Ban ghi do dang deo o O NGOC (vi tri 6). None = chua biet (chua nhan snapshot login)."""
@@ -6874,14 +6900,28 @@ class GameClient:
         khong biet mon cu -> o day chi xoa slot (truong hop hay gap: o do dang TRONG). Neu la DOI
         DO thi tui hoi cu cho toi khi server gui lai snapshot - ghi ro de sau khong tuong bug moi.
         """
-        rec = self.bag_slots.pop(int(slot), None)
+        slot = int(slot)
+        follow = int(follow)
+        rec = self.bag_slots.get(slot)
         if rec:
             tid = rec[0]
             self.bag_counts[tid] = max(0, self.bag_counts.get(tid, 0) - 1)
-            if follow:
-                self.pet_equipped.setdefault(int(follow), []).append(tid)
+            table = (self.pet_equip_by_fit.setdefault(follow, {}) if follow else self.equip_by_fit)
+            fit = int((_load_gamedata_items().get(tid) or {}).get("ft", 0) or 0)
+            cu = table.get(fit) if fit else None
+            if cu:
+                # THAY DO: mon CU quay ve DUNG O vua lay mon moi ra (y het protocolTable[23][17]).
+                self.bag_slots[slot] = [cu, 1]
+                self.bag_counts[cu] = self.bag_counts.get(cu, 0) + 1
             else:
-                self.equipped_items = list(getattr(self, "equipped_items", []) or [])
+                self.bag_slots.pop(slot, None)
+            if fit:
+                table[fit] = tid
+            if follow:
+                self.pet_equipped.setdefault(follow, []).append(tid)
+            else:
+                self.equipped_items = [i for i in (getattr(self, "equipped_items", []) or [])
+                                       if i.get("id") != cu]
                 self.equipped_items.append({"id": tid, "pos": 0, "damage": 0,
                                             "damaged_item_id": 0})
         self._equip_seq += 1
