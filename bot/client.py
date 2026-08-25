@@ -1853,6 +1853,38 @@ class GameClient:
         chuoi setup (gom 0x41 'san sang battle') de quai aggro lai."""
         self._login_setup()
 
+    # Ma LUA CHON cua hop thoai su kien - doc tu client (Logic_Event_EventHandler.lua:429-436,
+    # 450-453 + EventManager.SelectEvent -> C:020-009 <事件選擇> +選擇碼(1)):
+    #     Co/Khong : 20 = CO, 21 = KHONG
+    #     Danh sach: 30 + so thu tu (muc 1..10) | 60 + (thu tu - 9) (muc 11+)
+    #     Dong/huy : 40
+    # Doi chieu: bot da dung san `0x14 09 1e` (0x1e = 30 = muc dau danh sach) cho teleport boss.
+    EVENT_YES, EVENT_NO, EVENT_CLOSE = 20, 21, 40
+
+    def _on_route_dialog(self, pkt: bytes):
+        """Hop thoai NPC CHAN DUONG khi dang di qua cong (vd cau Gioi kieu, map 12441).
+
+        User: di tu Trac Quan vao cau Gioi kieu se hien bang chon "danh / khong danh"; danh thi qua
+        duoc, khong danh thi tat bang. Bot truoc day khong tra loi -> dung im giua duong.
+
+        CHI xu ly khi DANG qua cong (_in_scene_gate) - hop thoai o cho khac (40NPC, NPC nhiem vu...)
+        da co duong rieng, tra bua o day la bam nham lung tung.
+
+        CHUA XAC NHAN TREN SERVER THAT: ma 20 suy tu code client, chua co capture nao cua doan cau
+        nay. Nen LOG NGUYEN GOI truoc khi tra loi - chay that 1 lan la biet dung/sai thay vi doan.
+        """
+        if not getattr(self, "_in_scene_gate", False):
+            return
+        if getattr(self, "_route_dialog_map", None) == self.current_map:
+            return          # moi map chi tra loi MOT lan, tranh spam khi server gui lai
+        self._route_dialog_map = self.current_map
+        log.info("[%s] HOP THOAI chan duong o map %s: %s -> tra loi CO (ma %d)",
+                 self._label, self.current_map, pkt[7:].hex(), self.EVENT_YES)
+        try:
+            self.send(0x14, b"\x09\x00" + bytes([self.EVENT_YES]))
+        except OSError:
+            pass
+
     def scene_resume(self, settle: float = 0.6):
         """SAU KHI DOI SCENE (qua cong / len thuyen / thang tran phuc kich o cong) client THAT
         gui `0x0c 01 00` roi `0x14 06 00`; server tra `0x14 08 2a` -> MOI di chuyen duoc.
@@ -2019,6 +2051,7 @@ class GameClient:
         #  - page2 choice fresh (...0200) / prompt giua-event (...0300) -> chon LUON, KHONG advance
         if opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x01\x00":
             self._npc40_last_dialog = pkt[7:].hex()
+            self._on_route_dialog(pkt)
 
         # 0x41 0a0001 chi ARM viec cho prompt. Live co the chen 0x14 08002a truoc page choice;
         # giu pending qua cac goi trung gian va chi xac nhan khi thay dialog ...0300 trong 5 giay.
