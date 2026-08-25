@@ -1516,6 +1516,8 @@ class GameClient:
         self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
         self._gate_transit = False   # True khi dang gui chuoi 0x14 qua cong -> combat KHONG gui 0x32
         self._in_scene_gate = False  # True khi dang qua cong scene-walk -> in_combat() KHONG ha in_battle
+        self._gate_choice_pending = False  # server dang CHO CHON trong su kien cong (resultType 6)
+        self._gate_choice_try = 0          # da thu may ma trong GATE_CHOICE_CODES
         #   theo member-confirm (moi acc danh tran RIENG tai cong -> tin member se transit oan -> KICK)
         self.current_map = None      # map_id hien tai (doc tu broadcast 0x0c/0x07/0x03)
         self._mob_observer = None
@@ -1861,29 +1863,62 @@ class GameClient:
     # Doi chieu: bot da dung san `0x14 09 1e` (0x1e = 30 = muc dau danh sach) cho teleport boss.
     EVENT_YES, EVENT_NO, EVENT_CLOSE = 20, 21, 40
 
+    # Thu tu ma se thu khi server CHO CHON o cong (resultType 6). Khong doan duoc truoc la hop
+    # Co/Khong hay danh sach vi dieu do nam trong surfaceDatas (file Eve cua client, KHONG co
+    # trong repo) - nen thu 20 (CO) truoc, server khong nhuc nhich thi 30 (muc dau danh sach),
+    # cuoi cung 40 (dong) de khong treo vinh vien.
+    GATE_CHOICE_CODES = (20, 30, 40)
+
+    # resultType trong <一般事件> (Logic_Event_EventHandler.lua, bang EventHandler[...]):
+    #   1 = Thoai      -> client tra `0x14 06` (buoc tiep)
+    #   3 = Vao tran   -> danh
+    #   6 = TUONG TAC  -> server DUNG LAI cho `0x14 09 + ma`
+    EVENT_RESULT_TALK, EVENT_RESULT_FIGHT, EVENT_RESULT_INTERACT = 1, 3, 6
+
     def _on_route_dialog(self, pkt: bytes):
-        """Hop thoai NPC CHAN DUONG khi dang di qua cong (vd cau Gioi kieu, map 12441).
+        """Bat luc server CHO CHON trong su kien cong (vd cau Gioi kieu tren duong Trac Quan).
 
-        User: di tu Trac Quan vao cau Gioi kieu se hien bang chon "danh / khong danh"; danh thi qua
-        duoc, khong danh thi tat bang. Bot truoc day khong tra loi -> dung im giua duong.
+        LOI CU (log 16:46, bot ket o cong idx=10 map 63000): ham nay bat theo `sub == 01` roi tra
+        loi NGAY gois DAU TIEN, moi map dung mot lan. Nhung crack client cho thay `S:020-001..006`
+        deu vao chung `EventManager.ReceiveCommonEvent` - sub KHONG phai loai buoc. Loai buoc nam o
+        `resultType` trong payload (byte +4). Goi dau tien gan nhu luon la THOAI (resultType 1),
+        nen bot bam chon vao luc server chua hoi -> roi tu khoa, khong tra loi luc server hoi that
+        -> server treo o buoc chon -> cong khong sang map.
 
-        CHI xu ly khi DANG qua cong (_in_scene_gate) - hop thoai o cho khac (40NPC, NPC nhiem vu...)
-        da co duong rieng, tra bua o day la bam nham lung tung.
-
-        CHUA XAC NHAN TREN SERVER THAT: ma 20 suy tu code client, chua co capture nao cua doan cau
-        nay. Nen LOG NGUYEN GOI truoc khi tra loi - chay that 1 lan la biet dung/sai thay vi doan.
+        Gio bat DUNG `resultType == 6` (tuong tac). Chi DANH DAU o day; viec gui do `_enter_gate`
+        lam - de moi lenh gui van nam trong luong worker, khong chen ngang luong recv (giu nguyen
+        rang buoc cua `_gate_transit`).
         """
         if not getattr(self, "_in_scene_gate", False):
+            return          # hop thoai cho khac (40NPC, NPC nhiem vu) da co duong rieng
+        sub = pkt[7]
+        if pkt[8] != 0 or not (1 <= sub <= 6) or len(pkt) < 14:
             return
-        if getattr(self, "_route_dialog_map", None) == self.current_map:
-            return          # moi map chi tra loi MOT lan, tranh spam khi server gui lai
-        self._route_dialog_map = self.current_map
-        log.info("[%s] HOP THOAI chan duong o map %s: %s -> tra loi CO (ma %d)",
-                 self._label, self.current_map, pkt[7:].hex(), self.EVENT_YES)
+        rtype = pkt[9 + 4]
+        if rtype != self.EVENT_RESULT_INTERACT:
+            return          # thoai/tran/hieu ung -> vong `0x14 06` cua _enter_gate lo
+        if self._gate_choice_pending:
+            return
+        self._gate_choice_pending = True
+        log.info("[%s] CONG map %s: server CHO CHON (resultType 6) goi=%s -> se tra loi",
+                 self._label, self.current_map, pkt[7:].hex())
+
+    def _send_gate_choice(self) -> bool:
+        """Tra loi mot buoc CHON o cong. True = da gui."""
+        if not self._gate_choice_pending:
+            return False
+        self._gate_choice_pending = False
+        i = self._gate_choice_try
+        self._gate_choice_try += 1
+        if i >= len(self.GATE_CHOICE_CODES):
+            return False
+        code = self.GATE_CHOICE_CODES[i]
+        log.info("[%s] CONG map %s: chon ma %d (lan thu %d)", self._label, self.current_map, code, i + 1)
         try:
-            self.send(0x14, b"\x09\x00" + bytes([self.EVENT_YES]))
+            self.send(0x14, b"\x09\x00" + bytes([code]))
         except OSError:
-            pass
+            return False
+        return True
 
     def _dump_recent(self, ly_do: str):
         """In 12 goi GUI + 12 goi NHAN gan nhat -> tim goi gay kick.
@@ -10462,6 +10497,9 @@ class GameClient:
         t0 = time.time()
         _attempt = 0
         gate_battled = False   # da tung no tran phuc kich tai cong -> KHONG gui lai 04/08 (kick)
+        # Moi cong co luot thu ma chon RIENG (xem GATE_CHOICE_CODES).
+        self._gate_choice_pending = False
+        self._gate_choice_try = 0
         while True:
             if not self.running:
                 return False
@@ -10585,10 +10623,18 @@ class GameClient:
                                 return False
                         if _gate_wait_grace():
                             continue
+                        if self._send_gate_choice():
+                            time.sleep(2.0)
+                            continue
                         self.send(0x14, b"\x06\x00")
                         time.sleep(0.8)
                     break
                 if _gate_wait_grace():
+                    continue
+                # Server DUNG o buoc CHON (cau Gioi kieu: "danh / khong danh") thi `0x14 06` vo
+                # ich - phai gui `0x14 09 + ma`. Gui xong cho lau hon: chon "danh" -> vao tran.
+                if self._send_gate_choice():
+                    time.sleep(2.0)
                     continue
                 self.send(0x14, b"\x06\x00")
                 time.sleep(0.6)
