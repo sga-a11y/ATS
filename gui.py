@@ -1819,6 +1819,47 @@ def _load_json(name):
         return {}
 
 
+_BAG_ICON = {}          # id(root) -> PhotoImage (PHAI giu tham chieu, xem chu thich duoi)
+
+
+def _bag_icon(widget):
+    """Icon tui do 16x16 ve bang pixel.
+
+    Truoc dung emoji 🎒 nhung font mac dinh cua Tk tren Windows khong co -> nut hien O VUONG
+    (user bao 25/08). Ve tay thi khong phu thuoc font nao.
+
+    PhotoImage PHAI duoc giu tham chieu o bien song lau (dict duoi) - Tk khong giu ho, bi thu gom
+    rac la nut thanh TRONG TRON.
+    """
+    root = widget.winfo_toplevel()
+    key = id(root)
+    img = _BAG_ICON.get(key)
+    if img is not None:
+        return img
+    W = H = 16
+    img = tk.PhotoImage(master=root, width=W, height=H)
+    for y in range(H):                      # nen trong suot
+        for x in range(W):
+            img.transparency_set(x, y, True)
+
+    def _px(x1, y1, x2, y2, color):
+        img.put(color, to=(x1, y1, x2 + 1, y2 + 1))
+        for yy in range(y1, y2 + 1):
+            for xx in range(x1, x2 + 1):
+                img.transparency_set(xx, yy, False)
+
+    VIEN, THAN, NAP = "#6b4a2b", "#c08a4a", "#a06f38"
+    _px(5, 2, 6, 5, VIEN)                   # quai trai
+    _px(9, 2, 10, 5, VIEN)                  # quai phai
+    _px(6, 2, 9, 3, VIEN)                   # ngang tren quai
+    _px(2, 5, 13, 15, VIEN)                 # vien than tui
+    _px(3, 6, 12, 14, THAN)                 # ruot tui
+    _px(3, 6, 12, 8, NAP)                   # nap tui
+    _px(7, 9, 8, 11, VIEN)                  # khoa
+    _BAG_ICON[key] = img
+    return img
+
+
 _PICK_GROUP = "★ Bot tự chọn map"
 
 
@@ -2323,7 +2364,9 @@ class PartyConfigFrame(ttk.Frame):
             e_p.bind("<FocusOut>", _fout)
         ttk.Button(fr, text="⚙", width=2, command=lambda: self._open_heal_dialog(row)).pack(side="left")
         ttk.Button(fr, text="Skill", width=5, command=lambda: self._open_skill_dialog(row)).pack(side="left")
-        ttk.Button(fr, text="🎒", width=3, command=lambda: self._open_bag_dialog(row)).pack(side="left")
+        _bag_btn = ttk.Button(fr, width=3, command=lambda: self._open_bag_dialog(row))
+        _bag_btn.configure(image=_bag_icon(fr))
+        _bag_btn.pack(side="left")
         ttk.Button(fr, text="✕", width=2, command=lambda: self._del_acc_row(row)).pack(side="left")
         self.acc_rows.append(row)
 
