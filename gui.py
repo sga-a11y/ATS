@@ -1977,6 +1977,8 @@ class BagDialog(tk.Toplevel):
                                   wraplength=940, justify="left")
         self.lbl_info.pack(anchor="w")
         self.act_fr = ttk.Frame(self.info); self.act_fr.pack(anchor="w", pady=(6, 0))
+        self.lbl_result = ttk.Label(self.info, text="", font=("Segoe UI", 9, "bold"))
+        self.lbl_result.pack(anchor="w", pady=(4, 0))
 
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._set_tab(_BAG.ALL)
@@ -2086,6 +2088,22 @@ class BagDialog(tk.Toplevel):
                       foreground="#888").pack(side="left", padx=(8, 0))
 
     # ---- chay lenh ----
+    def _state_fp(self):
+        """Dau van trang thai de biet lenh CO AN hay khong.
+
+        Cac ham client deu tra True NGAY khi vua gui goi, KHONG cho server tra loi - nen tri tra ve
+        cua chung KHONG noi len dieu gi (user bao: mac "Áo Hiện Đại" xong "khong thay gi ca", va
+        khong biet co thanh cong khong).
+        Cach chac chan: doi chieu trang thai TRUOC/SAU theo goi SERVER gui ve:
+          - tui do  : bag_slots doi (0x17 sub09 tru so luong, 0x16 gui lai snapshot)
+          - do dang mac: equipped_items doi (0x17 sub0b = server tra CA danh sach do dang mac,
+            day la dau hieu DUY NHAT cua lenh trang bi - no khong dung toi tui do)
+        """
+        c = self.c
+        bag = tuple(sorted((k, tuple(v)) for k, v in getattr(c, "bag_slots", {}).items()))
+        eq = tuple(sorted(i.get("id", 0) for i in getattr(c, "equipped_items", []) or []))
+        return bag, eq
+
     def _run(self, text, fn):
         if text == "Bỏ" and not messagebox.askyesno(
                 "Bỏ vật phẩm", "Bỏ hẳn món này khỏi túi?\nKhông lấy lại được.", parent=self):
@@ -2095,19 +2113,50 @@ class BagDialog(tk.Toplevel):
             except Exception: pass
 
         def _work():
-            try: ok = bool(fn())
+            before = self._state_fp()
+            err = None
+            try:
+                sent = bool(fn())
             except Exception as e:
-                ok = False
+                sent, err = False, e
                 log.warning("[%s] tui do: loi '%s': %s", self.username, text, e)
-            self.after(0, lambda: self._done(text, ok))
+            changed = False
+            if sent:
+                # CHO server phan hoi. 2.5s: lenh nang nhat (phan giai) da cho san 1.2s ben trong.
+                t0 = time.time()
+                while time.time() - t0 < 2.5:
+                    if self._state_fp() != before:
+                        changed = True
+                        break
+                    time.sleep(0.1)
+            self.after(0, lambda: self._done(text, sent, changed, err))
         threading.Thread(target=_work, daemon=True).start()
 
-    def _done(self, text, ok):
+    def _done(self, text, sent, changed, err=None):
         if not self.winfo_exists():
             return
-        if not ok:
-            messagebox.showwarning(text, "'%s' không thành công." % text, parent=self)
         self.refresh()
+        if err is not None:
+            messagebox.showerror(text, "Lỗi khi %s: %s" % (text.lower(), err), parent=self)
+        elif not sent:
+            messagebox.showwarning(text, "Không gửi được lệnh '%s' (ô trống / acc mất kết nối)."
+                                   % text, parent=self)
+        elif changed:
+            self._flash("✔ %s: xong" % text, "#0a7a2f")
+        else:
+            # Gui roi ma trang thai khong doi trong 2.5s. KHONG khang dinh la that bai: co lenh
+            # server im lang tu choi (khong du dieu kien, dang trong tran...), cung co lenh phan hoi
+            # cham. Noi DUNG cai minh biet.
+            self._flash("⚠ %s: đã gửi nhưng chưa thấy thay đổi" % text, "#a06000")
+
+    def _flash(self, msg, color):
+        """Bao ket qua ngay tren cua so (khong bat user bam OK moi lan dung 1 mon)."""
+        if not self.winfo_exists():
+            return
+        self.lbl_result.configure(text=msg, foreground=color)
+        self.after(4000, lambda: self.winfo_exists()
+                   and self.lbl_result.cget("text") == msg
+                   and self.lbl_result.configure(text=""))
 
     # ---- mua slot (dung lai luong cua thong bao tui day) ----
     def _price_async(self):
