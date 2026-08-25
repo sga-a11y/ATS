@@ -4809,6 +4809,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                               or _unexpected_error
                               or (c is not None and getattr(c, "server_closed", False))))
         account_reconnect[username] = reconnectable
+        # NOI DUNG LY DO. Cau log cua supervisor mac dinh la "server rot" -> relogin CO Y (chuyen
+        # pha train sau khi xong DG + viec vat) nhin y het bi server da. Da ton mot buoi truy vu
+        # "5 acc party 25 rot lien tuc" ma that ra KHONG acc nao bi rot: khong he co dong
+        # "Server dong ket noi", khong co goi-cuoi nao - vi don gian la server khong dong gi ca.
+        if (reconnectable and not _forced_reconnect and not _login_failed and not _unexpected_error
+                and not (c is not None and getattr(c, "server_closed", False))
+                and _dt["relogin_train"]):
+            account_forced_reconnect_reason[username] = "chuyen pha TRAIN (relogin CO Y, khong phai rot)"
         if is_leader and not reconnectable and account_threads.get(username) is threading.current_thread():
             st["leader_gone"].set()   # leader thoat that su -> member ngung co vao party
         # ghi lai ly do thoat (neu GUI bam STOP ma chua co ly do cu the -> ghi STOP)
