@@ -13,6 +13,7 @@ goi THOAI chu khong phai goi hoi -> ket o cong (log 16:46, cong idx=10 map 63000
 """
 import unittest
 
+import bot.client as _bc
 from bot.client import GameClient as Client
 
 
@@ -52,6 +53,10 @@ def _bot():
     c._gate_choice_try = 0
     c._gate_event_logged = 0
     c._gate_choice_sent_at = 0.0
+    c._gate_choice_last = None
+    c._gate_choice_key = (63000, 10)
+    # bang nho o cap MODULE (co y: song qua relogin) -> moi bai test phai tu don,
+    # khong thi bai truoc do het ma se lam bai sau do sai.
     c._npc40_last_dialog = None
     c._npc40_prompt_pending = False
     c._npc40_prompt_pending_at = 0.0
@@ -66,6 +71,9 @@ def _bot():
 
 
 class TestGateEventChoice(unittest.TestCase):
+    def setUp(self):
+        _bc._GATE_CHOICE_STATE.pop((63000, 10), None)
+
     def test_goi_thoai_khong_bi_tra_loi_nham(self):
         """resultType 1 = thoai -> KHONG duoc bam chon (day la loi cu)."""
         c = _bot()
@@ -91,11 +99,11 @@ class TestGateEventChoice(unittest.TestCase):
         """Server hoi lai = ma vua roi sai -> thu ma khac, khong bam mai mot ma."""
         c = _bot()
         codes = []
-        for _ in range(4):
+        for _ in range(5):
             _nhan(c, _pkt(1, Client.EVENT_RESULT_INTERACT))
             if c._send_gate_choice():
                 codes.append(int(c.sent[-1][1][4:6], 16))
-        self.assertEqual(codes, [20, 30, 40])   # Co -> muc dau danh sach -> dong
+        self.assertEqual(codes, [20, 30, 31, 40])
 
     def test_ngoai_cong_thi_khong_dung_toi(self):
         """Hop thoai NPC nhiem vu/40NPC co duong rieng - tra bua o day la bam lung tung."""
@@ -105,8 +113,42 @@ class TestGateEventChoice(unittest.TestCase):
         self.assertFalse(c._gate_choice_pending)
 
 
+class TestGateChoiceHocMa(unittest.TestCase):
+    """Chon SAI ma -> server NGAT KET NOI. Luot thu phai song qua lan dang nhap lai."""
+
+    def setUp(self):
+        _bc._GATE_CHOICE_STATE.pop((63000, 10), None)
+
+    def test_luot_thu_song_qua_relogin(self):
+        """Log 17:44: ma 20 sai -> server da -> client bi tao lai. Neu dem o client thi lan sau
+        lai do ma 20 -> ket VINH VIEN. Phai tien sang ma tiep theo."""
+        ma = []
+        for _ in range(3):          # 3 lan "chay", moi lan mot client MOI
+            c = _bot()
+            _bc._GATE_CHOICE_STATE.setdefault((63000, 10), _bc._GATE_CHOICE_STATE.get((63000, 10))
+                                              or {"try": 0, "ok": None})
+            _nhan(c, _pkt(1, Client.EVENT_RESULT_INTERACT))
+            c._send_gate_choice()
+            ma.append(int(c.sent[-1][1][4:6], 16))
+        self.assertEqual(ma, [20, 30, 31], "moi lan chay phai tien MOT buoc")
+
+    def test_ma_dung_duoc_ghi_nho(self):
+        c = _bot()
+        _nhan(c, _pkt(1, Client.EVENT_RESULT_INTERACT))
+        c._send_gate_choice()                      # thu ma 20
+        _bc._GATE_CHOICE_STATE[(63000, 10)]["ok"] = 30   # gia su 30 la ma dung
+        c2 = _bot()
+        _bc._GATE_CHOICE_STATE[(63000, 10)] = {"try": 1, "ok": 30}
+        _nhan(c2, _pkt(1, Client.EVENT_RESULT_INTERACT))
+        c2._send_gate_choice()
+        self.assertEqual(int(c2.sent[-1][1][4:6], 16), 30, "phai dung thang ma da biet")
+
+
 class TestGateChoiceThuTuGoi(unittest.TestCase):
     """Server ngat ket noi neu SAI THU TU goi - neo lai bang goi that."""
+
+    def setUp(self):
+        _bc._GATE_CHOICE_STATE.pop((63000, 10), None)
 
     def test_khong_duoc_gui_next_ngay_sau_khi_chon(self):
         """Log 17:19:45 (goi that): 0x14 0600 roi 0x14 090014 -> "su kien vi pham (ma 5)" -> da.

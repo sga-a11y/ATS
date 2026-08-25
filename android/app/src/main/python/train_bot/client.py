@@ -513,6 +513,11 @@ def execute_smart_route(client, route, abort=None, flee=True):
 
 # Registry entity cac bot cung party (chia se trong process). party_idx -> set(entity bytes).
 # Bot dang ky self_entity luc login -> khi nhan loi moi, accept neu nguoi moi cung party.
+# (map, cong) -> {"try": da do bao nhieu ma, "ok": ma DUNG neu da tim ra}.
+# De o cap MODULE chu khong o client: chon sai ma thi server NGAT KET NOI, client bi tao lai ->
+# dem o client se reset ve 0 moi lan, do mai mot ma dau tien va ket vinh vien (log 17:44).
+_GATE_CHOICE_STATE = {}
+
 _PARTY_ENTITIES = {}
 _PARTY_CLIENTS = {}
 _PARTY_LOCK = threading.Lock()
@@ -1869,7 +1874,7 @@ class GameClient:
     # Co/Khong hay danh sach vi dieu do nam trong surfaceDatas (file Eve cua client, KHONG co
     # trong repo) - nen thu 20 (CO) truoc, server khong nhuc nhich thi 30 (muc dau danh sach),
     # cuoi cung 40 (dong) de khong treo vinh vien.
-    GATE_CHOICE_CODES = (20, 30, 40)
+    GATE_CHOICE_CODES = (20, 30, 31, 40)
 
     # resultType trong <一般事件> (Logic_Event_EventHandler.lua, bang EventHandler[...]):
     #   1 = Thoai      -> client tra `0x14 06` (buoc tiep)
@@ -1912,16 +1917,37 @@ class GameClient:
                  self._label, self.current_map, pkt[7:].hex())
 
     def _send_gate_choice(self) -> bool:
-        """Tra loi mot buoc CHON o cong. True = da gui."""
+        """Tra loi mot buoc CHON o cong. True = da gui.
+
+        Luot thu ma nam o _GATE_CHOICE_STATE (cap module) chu KHONG o client: chon SAI ma thi
+        server ngat ket noi luon (log 17:44: ma 20 -> "su kien vi pham ma 5"), client bi tao lai,
+        nen neu dem o client thi lan sau lai bat dau tu ma 20 -> ket vinh vien. Dem o cap module
+        thi moi lan chay tien MOT buoc, chay may lan la ra ma dung, va ma dung duoc GHI NHO.
+        """
         if not self._gate_choice_pending:
             return False
         self._gate_choice_pending = False
-        i = self._gate_choice_try
-        self._gate_choice_try += 1
+        key = getattr(self, "_gate_choice_key", None)
+        st = _GATE_CHOICE_STATE.setdefault(key, {"try": 0, "ok": None})
+        if st["ok"] is not None:
+            code = st["ok"]
+            log.info("[%s] CONG map %s: chon ma %d (ma DA BIET dung cho cong nay)",
+                     self._label, self.current_map, code)
+            self._gate_choice_last = code
+            try:
+                self.send(0x14, b"\x09\x00" + bytes([code]))
+            except OSError:
+                return False
+            self._gate_choice_sent_at = time.time()
+            return True
+        i = st["try"]
+        st["try"] += 1
         if i >= len(self.GATE_CHOICE_CODES):
             return False
         code = self.GATE_CHOICE_CODES[i]
-        log.info("[%s] CONG map %s: chon ma %d (lan thu %d)", self._label, self.current_map, code, i + 1)
+        self._gate_choice_last = code
+        log.info("[%s] CONG map %s: chon ma %d (dang do ma, lan thu %d/%d)",
+                 self._label, self.current_map, code, i + 1, len(self.GATE_CHOICE_CODES))
         try:
             self.send(0x14, b"\x09\x00" + bytes([code]))
         except OSError:
@@ -10469,6 +10495,15 @@ class GameClient:
             cm = self.current_map
             if cm is None or cm == start_map:
                 return False
+            # Qua duoc cong SAU KHI da tra loi mot buoc chon -> ma do DUNG, ghi nho de lan sau
+            # dung thang, khoi do lai tu dau.
+            _last = getattr(self, "_gate_choice_last", None)
+            if _last is not None:
+                _st = _GATE_CHOICE_STATE.setdefault(self._gate_choice_key, {"try": 0, "ok": None})
+                if _st.get("ok") != _last:
+                    _st["ok"] = _last
+                    log.info("[%s] CONG %s: ma %d DUNG -> ghi nho cho lan sau",
+                             self._label, self._gate_choice_key, _last)
             # Qua cong -> vi tri CU vo nghia. NHUNG goi lam DOI MAP (0x0c/0x07) MANG
             # LUON toa do moi (client Lua protocolTable[12][0]/[7][0] doc position ngay
             # trong goi do) -> neu da co toa do di kem dung lan doi map nay thi GIU.
@@ -10536,6 +10571,8 @@ class GameClient:
         self._gate_choice_try = 0
         self._gate_event_logged = 0
         self._gate_choice_sent_at = 0.0
+        self._gate_choice_last = None
+        self._gate_choice_key = (start_map, idx)
         while True:
             if not self.running:
                 return False
