@@ -1098,6 +1098,7 @@ class BotGUI(tk.Tk):
         self.party_agi_buttons = {} # pidx -> nut Check AGI/canh bao do lech
         self.party_notify_buttons = {}  # pidx -> nut "Chu y" (an neu party khong co thong bao)
         self._bag_notify_dismissed = set()  # username da bam "Bo qua" thong bao tui day (an phien nay)
+        self._city_notify_dismissed = set()  # (username, city_id) da bam "Bo qua" thong bao chua mo thanh
         self.party_subframes = {}   # pidx -> sub-tab frame (cham trang thai party qua sub_nb.tab)
         self.group_nb = {}          # gidx -> sub-Notebook (chua cac party tab)
         self.group_frames = {}      # gidx -> group tab frame (cham trang thai group)
@@ -1426,9 +1427,49 @@ class BotGUI(tk.Tk):
                 continue
         return out
 
+    def _party_city_notify(self, pidx):
+        """List (username, {_city}) cho acc CHUA MO thanh ma party can.
+
+        Thanh can la thanh nao:
+          - mode "city" (ve thanh dung yen): chinh thanh user chon (start_city_id).
+          - mode train: thanh gan bai train - CHI BIET LUC CHAY, nen runner ghi vao party state
+            (st["need_city"]) roi o day doc ra.
+        Bot van tu xoay so duoc (gom o thanh gan nhat roi di bo toi), nhung di bo lau va co the
+        vuong su kien giua duong -> bao de user chu dong di mo thanh.
+        """
+        out = []
+        try:
+            accs = ctrl.party_accounts(pidx)
+            pcfg = (getattr(ctrl.config, "PARTY_CONFIG", None) or {}).get(pidx) or {}
+        except Exception:
+            return out
+        need = 0
+        if pcfg.get("mode") == "city":
+            need = int(pcfg.get("start_city_id", 0) or 0)
+        if not need:
+            try:
+                need = int((ctrl._pstate(pidx) or {}).get("need_city") or 0)
+            except Exception:
+                need = 0
+        if not need:
+            return out
+        ten = (getattr(ctrl.config, "TELEPORT_CITIES", None) or {}).get(need, {}).get("name", need)
+        for (u, _p, _l, _pk) in accs:
+            if (u, need) in self._city_notify_dismissed:
+                continue
+            c = ctrl.account_clients.get(u)
+            if c is None or not getattr(c, "running", False):
+                continue
+            try:
+                if c.city_unlocked(need) is False:      # None = CHUA BIET -> khong bao
+                    out.append((u, {"_city": True, "city_id": need, "city_name": ten}))
+            except Exception:
+                continue
+        return out
+
     def _party_notify_items(self, pidx):
         """List (username, item): thong bao TUI (len dau) + thong bao LO (account_furnace_notify)."""
-        out = list(self._party_bag_notify(pidx))
+        out = list(self._party_bag_notify(pidx)) + list(self._party_city_notify(pidx))
         try:
             accs = ctrl.party_accounts(pidx)
         except Exception:
@@ -1499,6 +1540,21 @@ class BotGUI(tk.Tk):
 
         def _add_row(u, it):
             rowf = ttk.Frame(inner); rowf.pack(fill="x", pady=2)
+            # --- CHUA MO THANH ---
+            if it.get("_city"):
+                _cid = it["city_id"]
+
+                def _skip_city(_u=u, _c=_cid, _r=rowf):
+                    self._city_notify_dismissed.add((_u, _c)); _r.destroy()
+                _skips.append((rowf, _skip_city))
+                ttk.Button(rowf, text="Bỏ qua", width=7,
+                           command=_skip_city).pack(side="right", padx=2)
+                ttk.Label(rowf, wraplength=380, justify="left", foreground="#a06000",
+                          text='%s CHƯA MỞ thành "%s" — cần mở tele để đi nhanh '
+                               '(bot vẫn tự đi bộ từ thành gần nhất được, nhưng lâu)'
+                               % (self._mask_user(u), it["city_name"])
+                          ).pack(side="left", fill="x", expand=True)
+                return
             # --- THONG BAO TUI DAY (len dau) ---
             if it.get("_bag"):
                 used, cap, maxed = it["used"], it["cap"], it["maxed"]

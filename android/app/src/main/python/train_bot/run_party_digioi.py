@@ -2435,6 +2435,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 label, role)
                     return
             fc = int(plan.get("city", 0)); ff = int(plan.get("flag", 0))
+            # Bao GUI biet party dang can thanh nao -> thong bao acc nao chua mo (thanh gan
+            # bai train CHI biet luc chay, GUI khong tu suy ra duoc).
+            if fc:
+                st["need_city"] = fc
             smart_route2 = plan.get("route") if is_leader else None
             fc_is_city = (not fc) or getattr(config, "is_teleport_city", lambda _city: True)(fc)
             c.flee_mode = True
