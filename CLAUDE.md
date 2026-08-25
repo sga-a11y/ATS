@@ -56,7 +56,22 @@ tay vì không nằm trong git:
 - **`gamedata_*.dat`** — CHỈ cần khi chạy lại `tools/crack_*.py` để sinh JSON. Build KHÔNG cần
   (các JSON đã commit sẵn).
 
-### Năm cổng chặn tự động — build sẽ DỪNG, không ra bản thiếu
+**Build xong thì máy đó có thư mục `_nk/`** (Nuitka TỰ TẢI bộ biên dịch MinGW về, đã gitignore).
+Đừng ngạc nhiên nếu thấy nó chiếm chỗ, và **đừng để test đi bộ vào đó** — thư viện chuẩn Python
+bên trong có byte `0x0c` hợp lệ. Đã bỏ qua trong `tests/test_file_text_khong_co_byte_la.py`
+(2026-08-24); trước khi bỏ, máy nào build 1 lần là test đỏ 22 file **không phải mã của mình**,
+và bộ test chạy 83s thay vì 26s chỉ vì đi bộ qua đó.
+
+### Sửa Kotlin thì PHẢI chạy `python -m unittest discover -s tests`
+`gradlew compileReleaseKotlin` chỉ nói code **biên dịch được**, KHÔNG nói nó còn đúng ý. Nhiều test
+Python **đọc thẳng `MainActivity.kt`/`BotForegroundService.kt` bằng regex** để giữ hành vi.
+
+Đã xảy ra (2026-08-24): thêm `trainPick` làm `ModeCfg` đổi từ
+`party.trainMapKey.toIntOrNull() ?: 0` thành `if (party.trainPick.isEmpty()) ... else 0` →
+`test_digioi_train_maps_to_party_mode_with_selected_train_target` đứt. Biên dịch vẫn PASS nên
+lọt qua, máy kia pull về mới phát hiện. Bài test giờ neo theo **ý nghĩa** thay vì dạng chữ.
+
+### Sáu cổng chặn tự động — build sẽ DỪNG, không ra bản thiếu
 `build_bundle()` và `build_apk()` đều gọi `tools/sync_apk_python.py` trước; `run()` `sys.exit(1)`
 khi lệnh con lỗi. Nên các lỗi dưới đây KHÔNG thể lọt ra bản build:
 | Thông báo | Nghĩa là | Cách sửa |
@@ -66,6 +81,19 @@ khi lệnh con lỗi. Nên các lỗi dưới đây KHÔNG thể lọt ra bản 
 | `ban APK con import tuyet doi 'bot.*'` | Trên Android không có package `bot` | Sync tự đổi bằng regex; lỗi này = regex chưa phủ dạng import mới |
 | `asset APK chua khai bao trong SHARED_ASSETS` | File assets chỉ được chép tay | Thêm vào `SHARED_ASSETS` |
 | `Servers.kt FALLBACK thieu server` | Thêm server vào `servers.json` mà quên `Servers.kt` | Thêm vào `FALLBACK` trong `Servers.kt` |
+| `asset APK chua khai bao trong DATA_JSON cua build_product.py` | File có trong `SHARED_ASSETS` (APK có) nhưng bản **exe** không đóng gói | Thêm vào `DATA_JSON` trong `build_product.py` |
+
+**Tái phạm lần 3 (2026-08-24)** — cổng thứ 6 sinh ra từ đây. Thêm `npc_table.json` vào
+`SHARED_ASSETS` (APK) nhưng quên `DATA_JSON` (exe) → bản exe không có file → bảng thống kê hiện
+`id 17363` thay vì `Thủy lv130`. **Không ai báo** vì vòng copy dùng `if os.path.exists(src)` —
+thiếu thì im lặng bỏ qua.
+
+Đối chiếu hai danh sách lòi thêm một lỗi **có sẵn từ lâu**: `mounts_grow.json` cũng thiếu →
+**bản exe lâu nay bỏ hẳn tính năng thú cưỡi**, log chỉ ghi `Thu cuoi: thieu mounts_grow.json -> bo qua`.
+
+> Quy tắc: mỗi lần thêm file dữ liệu dùng chung phải khai báo ở **CẢ HAI** nơi —
+> `SHARED_ASSETS` (`tools/sync_apk_python.py`, cho APK) và `DATA_JSON` (`build_product.py`, cho exe).
+> Giờ quên là build DỪNG, không ra bản thiếu nữa.
 
 **Bài học đắt**: `SHARED`/`SHARED_ASSETS` từng là allowlist chép tay nên thiếu mà KHÔNG AI BÁO —
 `party_battle.py` lệch 48 dòng và 14 file assets chỉ cập nhật tay. Build vẫn chạy, chỉ khác HÀNH VI.
