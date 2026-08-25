@@ -1957,7 +1957,8 @@ class BagDialog(tk.Toplevel):
         self.lbl_count.pack(side="left", padx=(16, 0))
         self.btn_buy = ttk.Button(top, text="Mua slot", command=self._buy_slot)
         self.btn_buy.pack(side="right")
-        ttk.Button(top, text="Làm mới", command=self.refresh).pack(side="right", padx=(0, 6))
+        self.lbl_live = ttk.Label(top, text="", foreground="#888")
+        self.lbl_live.pack(side="right", padx=(0, 8))
 
         # DOI TUONG: "Su dung" va "Trang bi" deu co khai niem NGUOI NHAN (followIndex/武將索引):
         #   dung item  C:023-015 [slot][qty][followIndex][useType]  - CUNG goi, khac followIndex
@@ -1995,10 +1996,33 @@ class BagDialog(tk.Toplevel):
         self.lbl_result.pack(anchor="w", pady=(4, 0))
 
         self.protocol("WM_DELETE_WINDOW", self._close)
+        self._alive = True
         self._set_tab(_BAG.ALL)
         self._price_async()
+        self._watch_fp = self._state_fp()
+        self._watch()
+
+    def _watch(self):
+        """TU ve lai khi tui doi. Bot DANG CHAY nen tui doi lien tuc (nhat do, tu dung item, ban
+        rac) - cua so dung yen se hien so cu ma user khong biet.
+
+        KHONG the "hoi lai server": da tra het 66 lenh C:023-* trong Common_protocal.lua, KHONG co
+        lenh nao xin lai tui. Server TU day S:023-005. Nen viec duy nhat lam duoc la ve lai theo
+        cai bot DA NHAN - va lam TU DONG thay vi bat user bam nut.
+        """
+        if not self._alive or not self.winfo_exists():
+            return
+        fp = self._state_fp()
+        if fp != self._watch_fp:
+            self._watch_fp = fp
+            self.refresh()
+            self.lbl_live.configure(text="↻ vừa cập nhật")
+            self.after(2500, lambda: self.winfo_exists()
+                       and self.lbl_live.configure(text=""))
+        self.after(1000, self._watch)
 
     def _close(self):
+        self._alive = False
         try: self._canvas.unbind_all("<MouseWheel>")
         except Exception: pass
         self.destroy()
@@ -2051,12 +2075,16 @@ class BagDialog(tk.Toplevel):
     def refresh(self):
         for w in self.grid_fr.winfo_children():
             w.destroy()
-        self._sel_slot = None
-        self._show_actions(None)
+        _giu = self._sel_slot          # ve lai TU DONG thi khong duoc lam mat lua chon cua user
         rows = self._rows()
         for i, (slot, tid, cnt, d) in enumerate(rows):
             r, col = divmod(i, self.COLS)
             self._cell(self.grid_fr, r, col, slot, tid, cnt, d)
+        if _giu is not None and _giu in self.c.bag_slots:
+            self._select(_giu)
+        else:
+            self._sel_slot = None
+            self._show_actions(None)
         used, cap = self.c.bag_used_slots(), self.c.bag_capacity()
         extra = "" if self._tab == _BAG.ALL else "  (tab này: %d)" % len(rows)
         self.lbl_count.configure(text="%d/%d%s" % (used, cap, extra))
@@ -2179,6 +2207,7 @@ class BagDialog(tk.Toplevel):
         if not self.winfo_exists():
             return
         self.refresh()
+        self._watch_fp = self._state_fp()
         if err is not None:
             messagebox.showerror(text, "Lỗi khi %s: %s" % (text.lower(), err), parent=self)
         elif not sent:

@@ -1548,7 +1548,10 @@ class GameClient:
         self._bag_slot_buy_seq = 0
         self._bag_slot_buy_result = 0
         self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
-        self.bag_slots = {}          # slot (int) -> [tid, count]  (S2C 0x16 sub0400). Use item = gui slot.
+        # slot (int) -> [tid, count]. Snapshot tu S2C 0x17 sub05 (S:023-005) - chu thich cu ghi
+        # "0x16 sub0400" la SAI (0x16=22 la MapNpc, khong dinh gi den tui). Use item = gui slot nay.
+        # Server TU DAY snapshot, KHONG co lenh nao xin lai (da tra het 66 lenh C:023-*).
+        self.bag_slots = {}
         self.pet_equipped = {}       # followIndex (1..4) -> [tid] do da mac cho pet (S2C 0x17 sub17)
         self._pet_equip_seq = 0      # tang moi lan pet mac do -> dung de XAC NHAN lenh co an khong
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
