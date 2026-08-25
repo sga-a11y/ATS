@@ -6884,7 +6884,7 @@ class GameClient:
         gdata = _load_gamedata_items()
         learned = self._learned()
         n_known = n_gdata = n_learn = n_unknown = 0
-        log.info("[%s] === BAG (%d slot) === slot(idx): item_id x count -> item", self._label, len(self.bag_slots))
+        _la = []      # item bot CHUA BIET - phan duy nhat con dang in ra
         for slot in sorted(self.bag_slots):
             tid, cnt = self.bag_slots[slot]
             k = known.get(tid); g = gdata.get(tid); lv = learned.get(str(tid)) or {}
@@ -6907,10 +6907,15 @@ class GameClient:
             elif lv.get("unusable"):
                 n_learn += 1; tag = "HOC: ko dung duoc"
             else:
-                n_unknown += 1; tag = "??? CHUA BIET"
-            log.info("[%s]   slot %d: id=0x%04x x %d -> %s", self._label, slot, tid, cnt, tag)
-        log.info("[%s] === Tong: %d KHAI, %d gamedata, %d HOC, %d CHUA BIET ===",
-                 self._label, n_known, n_gdata, n_learn, n_unknown)
+                n_unknown += 1
+                _la.append("slot %d: id=0x%04x x %d" % (slot, tid, cnt))
+        # KHONG in ca tui nua: gio da co CUA SO TUI DO rieng (nut 🎒 canh nut Skill), in het ra log
+        # chi lam troi log - moi acc ~25 dong moi lan login, 5 acc/party.
+        # VAN GIU canh bao item CHUA BIET: do la cach lau nay phat hien item moi cua game de bo sung
+        # du lieu. Khong co item la thi im hoan toan.
+        if _la:
+            log.warning("[%s] TUI: %d item bot CHUA BIET (%d/%d slot) -> %s",
+                        self._label, n_unknown, n_unknown, len(self.bag_slots), "; ".join(_la[:10]))
 
     # ---------- HOI MAU: closed-loop tren HP/SP live (S2C 0x08) + self-calibrate ----------
     def _heal_threshold(self, kind: str) -> float:
