@@ -331,7 +331,11 @@ account_last = {}      # username -> {"map","char"} luc CUOI truoc khi thoat (de
 account_exit_reason = {}  # username -> ly do thoat (de tong ket 1 dong khi ca party tat het)
 account_furnace_notify = {}  # username -> list item lo can BAO (mode notify) de GUI popup hoi mua
 account_stop_reasons = {}  # username -> ai/nhanh nao set stop_ev gan nhat
-account_reconnect = {}    # username -> True neu lan thoat vua roi la SERVER ROT (supervisor login lai)
+account_reconnect = {}
+# username -> client CON SONG, trao tay giua 2 pha (DG -> train) de KHOI dang nhap lai.
+account_continue = {}     # username -> client CON SONG, trao tay giua 2 pha (DG -> train).
+                          # Co gia tri = DOI PHA tai cho, KHONG phai rot: supervisor chay lai
+                          # run_account NGAY voi chinh ket noi do, khong dang nhap lai.
 account_forced_reconnect = set()  # survivor 40NPC bi dong de relogin cung party; KHONG tang disc_gen
 account_forced_reconnect_reason = {}
 account_sync_epoch = {}   # username -> epoch dang chay; != st["sync_epoch"] => ep dong bo (relogin)
@@ -1338,7 +1342,8 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
         time.sleep(5)
 
 
-def run_account(username, password, pidx, is_leader, is_picker=False, is_reconnect=False):
+def run_account(username, password, pidx, is_leader, is_picker=False, is_reconnect=False,
+                reuse_client=None):
     # is_reconnect=True (supervisor goi lai sau khi rot): RECONNECT NHE - bo qua daily/gacha/mail/
     # vantieu (da lam phien truoc) -> vao world la di THANG toi sync kenh + gom party + keo ra bai,
     # KHONG teleport ve Trac Quan lam daily (truoc day: reconnect chay full startup -> lech nhip leader
@@ -1380,7 +1385,20 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         ok = False
         attempt = 0
         _rl_hits = 0   # so lan bi server CHAN TOC DO dang nhap (ma 90)
-        while attempt < 6:
+        if reuse_client is not None:
+            # CHUYEN PHA (DG -> train) GIU NGUYEN KET NOI: khong dang nhap lai.
+            # User: "relogin thi lam kho login" - server chan toc do dang nhap (ma 90), 5 acc
+            # relogin cung luc la ca party ket vong login hang phut. Ma viec o day chi la doi PHA,
+            # ket noi van tot nguyen.
+            c = reuse_client
+            c._label = label; c._username = username
+            c.party_idx = pidx
+            c._o5_team_fn = (lambda o5d, _c=c:
+                             _handle_o5_team(_c, st, username, label, pidx, is_leader, _stopped, o5d))
+            account_clients[username] = c
+            ok = True
+            log.info("[%s] CHUYEN PHA train - GIU NGUYEN ket noi (khong dang nhap lai)", label)
+        while not ok and attempt < 6:
             if _stopped():
                 log.info("[%s] STOP truoc khi login xong", label); return
             try:
@@ -4783,6 +4801,12 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # MODE DG+Train: xong DG -> ve thanh DUNG YEN cho CA PARTY xong roi relogin sang pha train.
         if dt_dg_finished:
             _finish_digioi_train_after_dg()
+        # CHUYEN PHA train: GIU ket noi, trao client cho supervisor chay lai run_account NGAY.
+        # Chi ap dung khi day dung la doi pha (relogin_train) va ket noi CON TOT.
+        if (_dt.get("relogin_train") and c is not None and getattr(c, "running", False)
+                and not getattr(c, "server_closed", False) and not _stopped()):
+            account_continue[username] = c
+            return
         try: c.close()
         except Exception: pass
         if c in _clients: _clients.remove(c)
@@ -5461,8 +5485,10 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
     first = True
     while True:
         account_reconnect[username] = False
+        _tiep = account_continue.pop(username, None)
         try:
-            run_account(username, password, pidx, is_leader, is_picker, is_reconnect=not first)
+            run_account(username, password, pidx, is_leader, is_picker, is_reconnect=not first,
+                        reuse_client=_tiep)
         except ResyncSignal:
             # EP DONG BO: barrier sau da unwind ra day -> dong socket + coi nhu forced reconnect ->
             # relogin ngay (wait=1s) -> duong reconnect bam pha leader (clear sach state cu).
@@ -5493,6 +5519,11 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
             account_reconnect[username] = True
             account_forced_reconnect_reason[username] = "luồng lỗi bất ngờ"
         first = False
+        if account_continue.get(username) is not None:
+            # DOI PHA tai cho: KHONG dem la rot -> khong bump disc_gen, khong danh dau
+            # st["reconnecting"] (dong doi se khong bao dong gia "dong doi ROT"), khong cho backoff.
+            first = False
+            continue
         if _st() or not account_reconnect.get(username):
             break   # GUI Stop / thoat binh thuong / khong reconnectable -> dung han
         forced = username in account_forced_reconnect
