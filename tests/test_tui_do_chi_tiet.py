@@ -287,5 +287,74 @@ class TestChiSoAmLaHopLe(unittest.TestCase):
         self.assertNotIn("max(0,", s[i:i + 900], "kep ve 0 la bao sai so cho user")
 
 
+class TestGiaTriChiSoLechMot100(unittest.TestCase):
+    """Gia tri chi so trong du lieu item LECH 100.
+
+    Data_ItemData.lua ItemData:GetAttributeText:
+        if value ~= 0 and value ~= 100 then ... " +", (value - 100)
+    Tuc 100 = KHONG cong gi, 104 = +4, 96 = -4.
+    Toi hien thang so tho nen ra "+104" trong khi that ra la "+4" (user bao 26/08: "+ thua 100",
+    "item nay dung thi int+41, agi+4 thoi").
+    """
+
+    def test_tru_100(self):
+        s = _doc("gui.py")
+        self.assertIn("_n = int(_v) - 100", s)
+
+    def test_bo_qua_gia_tri_100(self):
+        s = _doc("gui.py")
+        self.assertIn("if not _k or not _v or int(_v) == 100:", s)
+
+    def test_he_cung_lech_100(self):
+        s = _doc("gui.py")
+        self.assertIn('if d.get("elv") and int(d["elv"]) != 100:', s)
+
+
+class TestMonCuThe(unittest.TestCase):
+    """Cuong hoa / da / dong phu nam o MON CU THE (ThingData), khong o ban mau item.
+
+    Bo cuc Logic_Item.lua ThingData.New:
+      +0 Id(2) +2 quant(4) +6 damage +7 element +8 elementValue +9 proofKind +10 growLv
+      +11 growExp(4) +15 specialKind +16 stoneAttr +17 stoneLv +18 enhanceLv +19 delTime(8)
+      +27 damagedItemId(2) +29 isLock +30 Reinforced +31 affix1 +32 affix2 +33 affix3 +34 styleLv
+    Tong 35. Nam moc bot da dung tu truoc (7, 8, 16, 17, 27) deu trung -> bo cuc tin duoc.
+    """
+
+    def test_ham_doc_ThingData(self):
+        from bot.client import thing_data_info
+        raw = bytearray(35)
+        raw[30] = 7          # Reinforced
+        raw[31] = 3          # affix1
+        raw[16], raw[17] = 2, 5   # stone Cong cap 5
+        raw[18] = 4          # enhanceLv
+        info = thing_data_info(bytes(raw))
+        self.assertEqual(info["reinforced"], 7)
+        self.assertEqual(info["affix"][0], 3)
+        self.assertEqual(info["stone_attr"], 2)
+        self.assertEqual(info["stone_lv"], 5)
+        self.assertEqual(info["enhance_lv"], 4)
+
+    def test_thieu_byte_thi_tra_rong(self):
+        from bot.client import thing_data_info
+        self.assertEqual(thing_data_info(b"123"), {})
+
+    def test_tui_luu_ThingData_thay_vi_vut_29_byte(self):
+        s = _doc("bot", "client.py")
+        self.assertIn("new_info[idx] = thing_data_info(_td)", s)
+        self.assertIn("self.bag_items = new_info", s)
+
+    def test_gui_hien_cuong_hoa_va_dong_phu(self):
+        s = _doc("gui.py")
+        self.assertIn("def _mon_cu_the", s)
+        self.assertIn("Cường hoá +", s)
+        self.assertIn("Dòng phụ:", s)
+        self.assertIn("Linh đá:", s)
+
+    def test_dung_cho_CA_tui_lan_do_dang_mac(self):
+        s = _doc("gui.py")
+        self.assertEqual(s.count("self._mon_cu_the("), 2,
+                         "phai dung o CA _select (tui) lan _select_equip (dang mac)")
+
+
 if __name__ == "__main__":
     unittest.main()

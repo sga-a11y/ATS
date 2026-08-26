@@ -518,6 +518,28 @@ def execute_smart_route(client, route, abort=None, flee=True):
 # dem o client se reset ve 0 moi lan, do mai mot ma dau tien va ket vinh vien (log 17:44).
 _GATE_CHOICE_STATE = {}
 
+def thing_data_info(raw: bytes) -> dict:
+    """Doc ThingData (35 byte) = du lieu cua MON CU THE trong tui, khac han ban mau item.
+
+    Bo cuc lay tu Logic_Item.lua ThingData.New (KHONG doan):
+      +0  Id(2) | +2 quant(4) | +6 damage(1) | +7 element(1) | +8 elementValue(1)
+      +9  proofKind(1) | +10 growLv(1) | +11 growExp(4) | +15 specialKind(1)
+      +16 stoneAttr(1) | +17 stoneLv(1) | +18 enhanceLv(1) | +19 delTime(double 8)
+      +27 damagedItemId(2) | +29 isLock(1) | +30 Reinforced(1) = CAP CUONG HOA
+      +31 affix1 | +32 affix2 | +33 affix3 = DONG PHU | +34 styleLv
+    Tong 35 -> khop. 5 moc bot da dung tu truoc (7, 8, 16, 17, 27) deu trung -> tin duoc.
+    """
+    if len(raw) < 35:
+        return {}
+    return {
+        "damage": raw[6], "element": raw[7], "element_value": raw[8],
+        "proof": raw[9], "grow_lv": raw[10],
+        "stone_attr": raw[16], "stone_lv": raw[17], "enhance_lv": raw[18],
+        "lock": bool(raw[29]), "reinforced": raw[30],
+        "affix": [raw[31], raw[32], raw[33]], "style_lv": raw[34],
+    }
+
+
 _PARTY_ENTITIES = {}
 _PARTY_CLIENTS = {}
 _PARTY_LOCK = threading.Lock()
@@ -1575,6 +1597,9 @@ class GameClient:
         self._bag_slot_buy_seq = 0
         self._bag_slot_buy_result = 0
         self.bag_counts = {}         # tid (int) -> tong so luong (gom moi slot) - cho decompose/owns
+        # slot -> du lieu MON CU THE (cuong hoa / da / dong phu / he...). Xem thing_data_info().
+        # bag_slots chi co [id, so luong]; may thu nay nam trong 29 byte ma truoc day bot vut di.
+        self.bag_items = {}
         # slot (int) -> [tid, count]. Snapshot tu S2C 0x17 sub05 (S:023-005) - chu thich cu ghi
         # "0x16 sub0400" la SAI (0x16=22 la MapNpc, khong dinh gi den tui). Use item = gui slot nay.
         # Server TU DAY snapshot, KHONG co lenh nao xin lai (da tra het 66 lenh C:023-*).
@@ -3146,16 +3171,21 @@ class GameClient:
             n = int.from_bytes(body[1:3], "little")
             off = 3
             new_slots = {}
+            new_info = {}
             for _ in range(n):
                 if off + 7 > len(body):
                     break
                 idx = body[off]
                 item_id = int.from_bytes(body[off + 1:off + 3], "little")
                 cnt = int.from_bytes(body[off + 3:off + 7], "little")
+                _td = body[off + 1:off + 36]     # 35 byte ThingData ngay sau idx
                 off += 36
                 if 0 < idx < 256 and item_id > 0 and 0 < cnt < 10_000_000:
                     new_slots[idx] = [item_id, cnt]
+                    if len(_td) >= 35:
+                        new_info[idx] = thing_data_info(_td)
             if new_slots:
+                self.bag_items = new_info
                 self.bag_slots = new_slots
                 self.bag_counts = {}
                 for it, c in self.bag_slots.values():
@@ -6858,15 +6888,11 @@ class GameClient:
                 "id": _tid,
                 "pos": (EQUIP_POS_SPEC
                         if _tid in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID} else 0),
-                "damage": raw[6],
                 "damaged_item_id": int.from_bytes(raw[27:29], "little"),
-                # Cac truong CAN de tinh cong tu do (he/linh da) - bo cuc ThingData y het pet,
-                # xem pet_login_stats.parse_record. Truoc day bo qua nen thay do xong khong tinh
-                # lai duoc chi so (user bao 26/08).
-                "element": raw[7],
-                "element_value": raw[8],
-                "stone_attr": raw[16],
-                "stone_lv": raw[17],
+                # DU cac truong cua MON CU THE: he, linh da (de tinh cong tu do) va cuong hoa /
+                # dong phu (de hien trong tui do). Truoc day chi lay damage -> thay do xong khong
+                # tinh lai duoc chi so, va bam vao mon dang mac cung khong thay cuong hoa/dong phu.
+                **thing_data_info(raw),
             })
             off += 35
         self.equipped_items = equipped

@@ -2233,7 +2233,10 @@ class BagDialog(tk.Toplevel):
                     "Nhân vật" if not who else self._target_name()))
         # Chi tiet trang bi (vi tri / cap yeu cau / chi so cong / he / bo) dat TRUOC mo ta:
         # user hoi thong tin nay, con mo ta chi la loi van.
-        _ct = self._item_chi_tiet(tid)
+        # Dong 2 = MON CU THE dang mac (cuong hoa / da / dong phu).
+        _cm = next((self._mon_cu_the(x) for x in (getattr(self.c, "equipped_items", None) or [])
+                    if int(x.get("id", 0)) == int(tid)), "")
+        _ct = "\n".join(x for x in (self._item_chi_tiet(tid), _cm) if x)
         _mt = self._desc(tid)
         self.lbl_desc.configure(text=("%s\n%s" % (_ct, _mt) if (_ct and _mt) else (_ct or _mt)))
         for w in self.act_fr.winfo_children():
@@ -2321,20 +2324,64 @@ class BagDialog(tk.Toplevel):
         # cap yeu cau + he + bo do KHONG BAO GIO hien (loi that, user bao 26/08 "chi so hien sai").
         if d.get("nl"):
             ra.append("Yêu cầu cấp %s" % d["nl"])
+        # GIA TRI LUU LECH 100 - Data_ItemData.lua ItemData:GetAttributeText:
+        #     if value ~= 0 and value ~= 100 then ... " +", (value - 100)
+        # Tuc 100 = KHONG cong gi, 104 = +4, 96 = -4. Toi hien thang so tho nen ra "+104" trong
+        # khi that ra la "+4" (user bao 26/08: "+ thua 100").
         for _k, _v in ((d.get("a1k"), d.get("a1v")), (d.get("a2k"), d.get("a2v"))):
-            if _k and _v:
-                ra.append("%s +%s" % (self._ITEM_ATTR.get(int(_k), "chỉ số %s" % _k), _v))
+            if not _k or not _v or int(_v) == 100:
+                continue
+            _n = int(_v) - 100
+            ra.append("%s %s%d" % (self._ITEM_ATTR.get(int(_k), "chỉ số %s" % _k),
+                                   "+" if _n > 0 else "", _n))
         if d.get("el"):
             _e = "Hệ %s" % self._HE.get(int(d["el"]), str(d["el"]))
-            if d.get("elv"):
-                _e += " (%s)" % d["elv"]
+            # elv cung lech 100 (100 = khong cong).
+            if d.get("elv") and int(d["elv"]) != 100:
+                _e += " %+d" % (int(d["elv"]) - 100)
             ra.append(_e)
-        elif d.get("elv"):
-            ra.append("Trị số hệ %s" % d["elv"])
         if d.get("su"):
             ra.append("Bộ #%s" % d["su"])
         if d.get("fc"):
             ra.append("Phân giải: %s mảnh" % d["fc"])
+        return "   •   ".join(ra)
+
+    # Linh da: EStoneAttr (Data_ItemData.lua) 1知力 2攻擊 3防禦 4體質 5能量 6敏捷 7暴擊
+    _STONE = {1: "Trí", 2: "Công", 3: "Phòng", 4: "Thể chất", 5: "Năng lượng", 6: "Nhanh nhẹn",
+              7: "Bạo kích"}
+
+    def _mon_cu_the(self, info):
+        """Dong rieng cho MON CU THE: cuong hoa, da, dong phu, he... (khac ban mau item).
+
+        Du lieu nay nam trong ThingData - 29 byte ma bot truoc day vut di khi doc tui.
+        """
+        if not info:
+            return ""
+        ra = []
+        if info.get("reinforced"):
+            ra.append("Cường hoá +%d" % info["reinforced"])
+        if info.get("enhance_lv"):
+            ra.append("Chuyên vũ +%d" % info["enhance_lv"])
+        if info.get("stone_attr") and info.get("stone_lv"):
+            ra.append("Linh đá: %s cấp %d"
+                      % (self._STONE.get(int(info["stone_attr"]), str(info["stone_attr"])),
+                         info["stone_lv"]))
+        _af = [x for x in (info.get("affix") or []) if x]
+        if _af:
+            ra.append("Dòng phụ: " + "/".join("+%d" % x for x in _af))
+        if info.get("element"):
+            _e = "Hệ %s" % self._HE.get(int(info["element"]), str(info["element"]))
+            if info.get("element_value") and int(info["element_value"]) != 100:
+                _e += " %+d" % (int(info["element_value"]) - 100)
+            ra.append(_e)
+        if info.get("grow_lv"):
+            ra.append("Thành trưởng cấp %d" % info["grow_lv"])
+        if info.get("style_lv"):
+            ra.append("Thời trang +%d" % info["style_lv"])
+        if info.get("damage"):
+            ra.append("Độ hỏng %d" % info["damage"])
+        if info.get("lock"):
+            ra.append("ĐÃ KHOÁ")
         return "   •   ".join(ra)
 
     def _item(self, tid):
@@ -2435,7 +2482,9 @@ class BagDialog(tk.Toplevel):
         # dong rieng ngay duoi, tu xuong dong theo be ngang.
         # Chi tiet trang bi (vi tri / cap yeu cau / chi so cong / he / bo) dat TRUOC mo ta:
         # user hoi thong tin nay, con mo ta chi la loi van.
-        _ct = self._item_chi_tiet(tid)
+        # Dong 2 = MON CU THE trong o nay (cuong hoa / da / dong phu) - khac ban mau item.
+        _cm = self._mon_cu_the((getattr(self.c, "bag_items", None) or {}).get(slot))
+        _ct = "\n".join(x for x in (self._item_chi_tiet(tid), _cm) if x)
         _mt = self._desc(tid)
         self.lbl_desc.configure(text=("%s\n%s" % (_ct, _mt) if (_ct and _mt) else (_ct or _mt)))
         self._show_actions((slot, tid, cnt, d))
