@@ -2093,6 +2093,20 @@ class BagDialog(tk.Toplevel):
         self.lbl_stats = ttk.Label(self, text="", padding=(10, 4))
         self.lbl_stats.pack(fill="x", padx=8)
 
+        # BO DO: luu san mot bo (char + 4 pet), khi can doi CA BO mot lan.
+        bo = ttk.Frame(self, padding=(8, 2)); bo.pack(fill="x")
+        ttk.Label(bo, text="Bộ đồ:").pack(side="left", padx=(0, 6))
+        self.outfit_var = tk.StringVar()
+        self.outfit_cb = ttk.Combobox(bo, textvariable=self.outfit_var, state="readonly", width=22)
+        self.outfit_cb.pack(side="left")
+        ttk.Button(bo, text="Mặc bộ này", width=13,
+                   command=self._mac_bo).pack(side="left", padx=(6, 0))
+        ttk.Button(bo, text="Lưu bộ đang mặc…", width=17,
+                   command=self._luu_bo).pack(side="left", padx=(6, 0))
+        ttk.Button(bo, text="Xoá bộ", width=9,
+                   command=self._xoa_bo).pack(side="left", padx=(6, 0))
+        self._nap_ds_bo()
+
         mid = ttk.Frame(self, padding=(8, 0)); mid.pack(fill="both", expand=True)
         canvas = tk.Canvas(mid, highlightthickness=0)
         sb = ttk.Scrollbar(mid, orient="vertical", command=canvas.yview)
@@ -2210,6 +2224,78 @@ class BagDialog(tk.Toplevel):
             else:
                 lb.configure(text="— trống —", fg="#aaa")
         self.lbl_stats.configure(text=self._stats_line(who))
+
+    # ---- BO DO ----
+    def _nap_ds_bo(self, chon=None):
+        try:
+            ds = sorted(ctrl.load_outfits(self.username) or {})
+        except Exception:
+            ds = []
+        self.outfit_cb.configure(values=ds)
+        if chon and chon in ds:
+            self.outfit_var.set(chon)
+        elif ds and self.outfit_var.get() not in ds:
+            self.outfit_var.set(ds[0])
+        elif not ds:
+            self.outfit_var.set("")
+
+    def _luu_bo(self):
+        """Chup do DANG MAC thanh mot bo. Trung ten -> hoi de ghi de."""
+        cu = self.outfit_var.get()
+        ten = simpledialog.askstring("Lưu bộ đồ",
+                                     "Tên bộ đồ (đang mặc gì thì lưu nấy):",
+                                     initialvalue=cu, parent=self)
+        if not ten or not ten.strip():
+            return
+        ten = ten.strip()
+        co = ctrl.load_outfits(self.username) or {}
+        if ten in co and not messagebox.askyesno(
+                "Ghi đè", "Đã có bộ '%s'.\nGhi đè bằng đồ đang mặc?" % ten, parent=self):
+            return
+        bo = self.c.outfit_snapshot()
+        _n = len(bo.get("char") or {}) + sum(len(v) for v in (bo.get("pets") or {}).values())
+        if not _n:
+            messagebox.showwarning("Lưu bộ đồ",
+                                   "Chưa đọc được đồ đang mặc — thử lại sau khi login xong.",
+                                   parent=self)
+            return
+        ctrl.save_outfit(self.username, ten, bo)
+        self._nap_ds_bo(ten)
+        self._flash("✔ Đã lưu bộ '%s' (%d món)" % (ten, _n), "#0a7a2f")
+
+    def _xoa_bo(self):
+        ten = self.outfit_var.get()
+        if not ten:
+            return
+        # XOA la mat han -> hoi xac nhan (user dan 26/08).
+        if not messagebox.askyesno("Xoá bộ đồ",
+                                   "Xoá bộ '%s'?\nKhông lấy lại được." % ten, parent=self):
+            return
+        ctrl.save_outfit(self.username, ten, None)
+        self._nap_ds_bo()
+        self._flash("✔ Đã xoá bộ '%s'" % ten, "#0a7a2f")
+
+    def _mac_bo(self):
+        ten = self.outfit_var.get()
+        if not ten:
+            return
+        bo = (ctrl.load_outfits(self.username) or {}).get(ten)
+        if not bo:
+            return
+        self._run("Mặc bộ '%s'" % ten, lambda: self._mac_bo_worker(bo))
+
+    def _mac_bo_worker(self, bo):
+        gui_di, thieu = self.c.apply_outfit(bo)
+        if thieu:
+            self.after(0, lambda: messagebox.showwarning(
+                "Mặc bộ đồ",
+                "Đã mặc %d món.\nTHIẾU %d món không có trong túi:\n%s"
+                % (gui_di, len(thieu),
+                   "\n".join("  %s • vị trí %s • id 0x%04x"
+                             % ("Nhân vật" if f == 0 else "Pet #%d" % f, p, t)
+                             for f, p, t in thieu[:10])),
+                parent=self))
+        return bool(gui_di)
 
     def _select_equip(self, fit):
         """Bam vao mot O TRANG BI DANG MAC -> hien thong tin + nut "Cởi ra".

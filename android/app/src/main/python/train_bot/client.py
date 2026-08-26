@@ -4798,6 +4798,82 @@ class GameClient:
     def bag_free_slots(self) -> int:
         return max(0, self.bag_capacity() - len(self.bag_slots))
 
+    # --- BO DO (outfit): luu san mot bo, khi can doi CA BO mot lan ---
+    # Luu theo ID MON, khong theo o tui: o tui doi lien tuc (ban do, nhat do, sap xep) nen luu o
+    # la vo nghia. He qua: hai mon TRUNG ID khac cuong hoa thi khong phan biet duoc -> uu tien
+    # mon cuong hoa cao hon (xem _bag_slot_best).
+    OUTFIT_FITS = (1, 2, 3, 4, 5, 6)      # 6 vi tri that (Item.IsEquip)
+
+    def outfit_snapshot(self) -> dict:
+        """Chup bo do DANG MAC -> {"char": {fit: tid}, "pets": {petIdx: {fit: tid}}}."""
+        pets = {}
+        for idx, m in (self.pet_equip_by_fit or {}).items():
+            row = {int(f): int(t) for f, t in (m or {}).items()
+                   if int(f) in self.OUTFIT_FITS and t}
+            if row:
+                pets[int(idx)] = row
+        return {
+            "char": {int(f): int(t) for f, t in (self.equip_by_fit or {}).items()
+                     if int(f) in self.OUTFIT_FITS and t},
+            "pets": pets,
+        }
+
+    def _bag_slot_best(self, tid: int):
+        """O tui chua `tid`, uu tien mon CUONG HOA cao nhat (roi den linh da cao nhat).
+
+        Bo do chi luu duoc ID nen khi co nhieu ban sao phai tu chon. Lay ban "xin" nhat la lua
+        chon it gay bat ngo nhat - dung ban thuong trong khi dang co ban +10 la user se chui.
+        """
+        ung = []
+        for slot, v in (self.bag_slots or {}).items():
+            if v and int(v[0]) == int(tid) and int(v[1]) > 0:
+                info = (getattr(self, "bag_items", None) or {}).get(slot) or {}
+                ung.append((int(info.get("reinforced") or 0), int(info.get("stone_lv") or 0),
+                            int(slot)))
+        if not ung:
+            return None
+        ung.sort(key=lambda x: (-x[0], -x[1], x[2]))
+        return ung[0][2]
+
+    def apply_outfit(self, outfit: dict):
+        """Mac ca bo. Tra (so lenh da gui, danh sach mon THIEU trong tui).
+
+        MAC DE, khong coi truoc (user chot 26/08): gui thang lenh mac, server tu tra mon cu ve o
+        cu - bot da xu ly o _on_equip_done. It lenh hon va khong can o tui trong.
+        Mon nao DANG MAC DUNG roi thi bo qua, khong gui thua.
+        """
+        if not outfit:
+            return 0, []
+        gui, thieu = 0, []
+        _viec = [(0, outfit.get("char") or {})]
+        for _p, _m in (outfit.get("pets") or {}).items():
+            _viec.append((int(_p), _m or {}))
+        for follow, muon in _viec:
+            dang = (self.pet_equip_by_fit.get(follow) if follow else self.equip_by_fit) or {}
+            for fit, tid in sorted((int(f), int(t)) for f, t in muon.items()):
+                if int(dang.get(fit, 0)) == tid:
+                    continue                      # dang mac dung mon nay roi
+                slot = self._bag_slot_best(tid)
+                if slot is None:
+                    thieu.append((follow, fit, tid))
+                    continue
+                try:
+                    if follow:
+                        self.equip_pet_item(follow, slot)
+                    else:
+                        self.equip_item(slot)
+                    gui += 1
+                    time.sleep(0.35)              # cho server tra mon cu ve tui truoc lenh sau
+                except OSError:
+                    break
+        if thieu:
+            log.warning("[%s] Bo do: thieu %d mon trong tui: %s", self._label, len(thieu),
+                        ", ".join("%s/%s 0x%04x" % ("char" if f == 0 else "pet%d" % f, p, t)
+                                  for f, p, t in thieu[:6]))
+        log.info("[%s] Bo do: da gui %d lenh mac%s", self._label, gui,
+                 (", THIEU %d mon" % len(thieu)) if thieu else "")
+        return gui, thieu
+
     # --- HANG DOI LENH TUI DO khi DANG TRONG TRAN ---
     # Client that CHAN cac lenh nay trong tran: Item.UnEquip / Item.Use deu co
     #     if FightField.conIdx ~= FightField.GetPlayerIdx() then ShowCenterMessage(22595); return

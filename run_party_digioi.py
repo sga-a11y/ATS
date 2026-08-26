@@ -6466,6 +6466,59 @@ def party_agi_report(pidx):
 # ---- CACHE skill/pet theo account (de dialog Kich ban Skill dung duoc khi acc DA TAT) ----
 # Chi phuc vu HIEN THI. Bot chay van doc du lieu THAT tu server (0x0f/0x13) - cache khong bao
 # gio anh huong hanh vi. File nam canh accounts.json (PC) / files dir cua app (Android).
+# ---- BO DO (outfit) theo ACCOUNT: luu file rieng canh accounts.json ----
+# KHONG nhet vao accounts.json: bo do la du lieu do TUI DO quan ly (BagDialog chi co username +
+# client, khong voi toi duoc hang cau hinh acc ben dialog party). Tach file thi ca GUI lan runner
+# deu doc duoc, va sua bo do khong dung vao file chua mat khau.
+def _outfits_path():
+    try:
+        from bot._appdir import app_dir as _ad
+        return os.path.join(_ad(), "outfits.json")
+    except Exception:
+        return "outfits.json"
+
+
+def load_outfits(username=None):
+    """{username: {ten_bo: {"char": {...}, "pets": {...}}}} - hoac rieng 1 acc neu co username."""
+    try:
+        with open(_outfits_path(), encoding="utf-8") as fh:
+            data = json.load(fh) or {}
+    except Exception:
+        data = {}
+    out = data.get("accounts") or {}
+    if username is None:
+        return out
+    return out.get(str(username)) or {}
+
+
+def save_outfit(username, ten, bo):
+    """Luu/ghi de mot bo do. bo = None -> XOA bo do."""
+    try:
+        with open(_outfits_path(), encoding="utf-8") as fh:
+            data = json.load(fh) or {}
+    except Exception:
+        data = {}
+    accs = data.setdefault("accounts", {})
+    row = accs.setdefault(str(username), {})
+    if bo is None:
+        row.pop(str(ten), None)
+    else:
+        # Khoa JSON phai la CHUOI. fitType/petIdx dang int -> json.dump tu doi thanh chuoi, nhung
+        # doc lai se ra chuoi -> so sanh int(fit) o apply_outfit se lech neu khong ep. Ep ngay day.
+        row[str(ten)] = {
+            "char": {str(k): int(v) for k, v in (bo.get("char") or {}).items()},
+            "pets": {str(p): {str(k): int(v) for k, v in (m or {}).items()}
+                     for p, m in (bo.get("pets") or {}).items()},
+        }
+    if not row:
+        accs.pop(str(username), None)
+    tmp = _outfits_path() + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, _outfits_path())
+    return True
+
+
 def _skill_cache_path():
     try:
         from bot._appdir import app_dir as _ad
