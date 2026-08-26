@@ -293,8 +293,11 @@ class TestGiaTriChiSoLechMot100(unittest.TestCase):
     Data_ItemData.lua ItemData:GetAttributeText:
         if value ~= 0 and value ~= 100 then ... " +", (value - 100)
     Tuc 100 = KHONG cong gi, 104 = +4, 96 = -4.
-    Toi hien thang so tho nen ra "+104" trong khi that ra la "+4" (user bao 26/08: "+ thua 100",
-    "item nay dung thi int+41, agi+4 thoi").
+    Toi hien thang so tho nen ra "+104" trong khi that ra la "+4" (user bao 26/08: "+ thua 100").
+
+    CHOT: item 0x3afb 'Ngu Thien Phap Truong' co a1v=131 -> INT +31, a2v=104 -> AGI +4. User ban
+    dau go "int+41" roi TU DINH CHINH la go nham, +31 moi dung. Ghi lai de sau nay khong ai di
+    truy "thieu 10 diem INT" - KHONG CO chuyen do.
     """
 
     def test_tru_100(self):
