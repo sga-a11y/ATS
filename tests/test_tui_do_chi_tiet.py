@@ -306,8 +306,9 @@ class TestGiaTriChiSoLechMot100(unittest.TestCase):
         self.assertIn("if not _k or not _v or int(_v) == 100:", s)
 
     def test_he_cung_lech_100(self):
+        """He CHINH: value = (elementValue - 100 neu >100) + growLv (GetMainElementText)."""
         s = _doc("gui.py")
-        self.assertIn('if d.get("elv") and int(d["elv"]) != 100:', s)
+        self.assertIn('_n = max(0, int(d.get("elv") or 0) - 100) + int((info or {}).get("grow_lv") or 0)', s)
 
 
 class TestMonCuThe(unittest.TestCase):
@@ -398,6 +399,43 @@ class TestUuTienSoCuaServer(unittest.TestCase):
         self.assertIn("co_server = self.ATTR_AGI in attrs or self.ATTR_INT in attrs", doan)
         self.assertIn("else:", doan)
         self.assertIn("CHUA co LONG", doan, "phai ghi ro duong lui la so THIEU")
+
+
+class TestHeChinhVaHePhuLong(unittest.TestCase):
+    """Client co HAI dong he khac nhau (Data_ItemData.lua):
+
+      GetMainElementText - 主屬性 (HE CHINH): lay tu BAN MAU item (element/elementValue),
+          tri so = (elementValue - 100 neu >100) + itemSave.growLv
+      GetElementText - chu thich ngay tren ham la "--附屬性" (HE PHU): lay tu MON CU THE
+          (itemSave.element/elementValue)
+
+    HE PHU chinh la THUOC TINH LONG: long = 附加羽毛 ("long gan them"), gan vao mon thi ghi vao
+    element/elementValue cua mon do. User hoi 26/08: "thuoc tinh long cua do thi client lay dau
+    ra hien thi nhi".
+    """
+
+    def test_he_chinh_co_cong_growLv(self):
+        s = _doc("gui.py")
+        self.assertIn("Hệ chính", s)
+        self.assertIn('int((info or {}).get("grow_lv") or 0)', s,
+                      "thieu growLv la hien THIEU tri so he chinh")
+
+    def test_he_phu_ghi_ro_la_long(self):
+        s = _doc("gui.py")
+        self.assertIn("Hệ phụ (lông)", s)
+
+    def test_hai_dong_lay_hai_nguon_KHAC_nhau(self):
+        """He chinh doc d (ban mau), he phu doc info (mon cu the). Lay chung nguon la sai."""
+        s = _doc("gui.py")
+        i = s.find("def _item_chi_tiet")
+        j = s.find("def _mon_cu_the")
+        self.assertIn('d.get("el")', s[i:j], "he chinh phai doc ban mau")
+        self.assertIn('info.get("element")', s[j:j + 1800], "he phu phai doc mon cu the")
+
+    def test_truyen_ThingData_vao_ham_chi_tiet(self):
+        s = _doc("gui.py")
+        self.assertEqual(s.count("self._item_chi_tiet(tid, _info)"), 2,
+                         "ca 2 cho (tui + dang mac) deu phai truyen mon cu the vao")
 
 
 if __name__ == "__main__":

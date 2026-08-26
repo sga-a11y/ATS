@@ -2234,9 +2234,10 @@ class BagDialog(tk.Toplevel):
         # Chi tiet trang bi (vi tri / cap yeu cau / chi so cong / he / bo) dat TRUOC mo ta:
         # user hoi thong tin nay, con mo ta chi la loi van.
         # Dong 2 = MON CU THE dang mac (cuong hoa / da / dong phu).
-        _cm = next((self._mon_cu_the(x) for x in (getattr(self.c, "equipped_items", None) or [])
-                    if int(x.get("id", 0)) == int(tid)), "")
-        _ct = "\n".join(x for x in (self._item_chi_tiet(tid), _cm) if x)
+        _info = next((x for x in (getattr(self.c, "equipped_items", None) or [])
+                      if int(x.get("id", 0)) == int(tid)), None)
+        _ct = "\n".join(x for x in (self._item_chi_tiet(tid, _info),
+                                    self._mon_cu_the(_info)) if x)
         _mt = self._desc(tid)
         self.lbl_desc.configure(text=("%s\n%s" % (_ct, _mt) if (_ct and _mt) else (_ct or _mt)))
         for w in self.act_fr.winfo_children():
@@ -2312,8 +2313,12 @@ class BagDialog(tk.Toplevel):
                   217: "Thuyền tốc", 218: "Thể chất", 219: "Năng lượng"}
     _HE = {1: "Địa", 2: "Thủy", 3: "Hỏa", 4: "Phong", 5: "Tâm", 7: "Quang", 8: "Ám"}
 
-    def _item_chi_tiet(self, tid):
-        """Dong chi tiet cua mot item: vi tri mac, level yeu cau, chi so cong them, he, bo do."""
+    def _item_chi_tiet(self, tid, info=None):
+        """Dong chi tiet cua mot item: vi tri mac, level yeu cau, chi so cong them, he, bo do.
+
+        `info` = ThingData cua MON CU THE (neu co) - can vi HE CHINH duoc cong them growLv cua
+        chinh mon do (Data_ItemData.lua GetMainElementText).
+        """
         d = self._item(tid) or {}
         ra = []
         fit = int(d.get("ft") or 0)
@@ -2334,11 +2339,14 @@ class BagDialog(tk.Toplevel):
             _n = int(_v) - 100
             ra.append("%s %s%d" % (self._ITEM_ATTR.get(int(_k), "chỉ số %s" % _k),
                                    "+" if _n > 0 else "", _n))
+        # HE CHINH (主屬性) - Data_ItemData.lua GetMainElementText:
+        #     value = (elementValue - 100 neu >100) + itemSave.growLv
+        # Tuc tri so he chinh CO CONG growLv cua chinh mon do. Thieu growLv la hien thieu.
         if d.get("el"):
-            _e = "Hệ %s" % self._HE.get(int(d["el"]), str(d["el"]))
-            # elv cung lech 100 (100 = khong cong).
-            if d.get("elv") and int(d["elv"]) != 100:
-                _e += " %+d" % (int(d["elv"]) - 100)
+            _e = "Hệ chính %s" % self._HE.get(int(d["el"]), str(d["el"]))
+            _n = max(0, int(d.get("elv") or 0) - 100) + int((info or {}).get("grow_lv") or 0)
+            if _n:
+                _e += " +%d" % _n
             ra.append(_e)
         if d.get("su"):
             ra.append("Bộ #%s" % d["su"])
@@ -2369,13 +2377,16 @@ class BagDialog(tk.Toplevel):
         _af = [x for x in (info.get("affix") or []) if x]
         if _af:
             ra.append("Dòng phụ: " + "/".join("+%d" % x for x in _af))
+        # HE PHU (附屬性) - Data_ItemData.lua GetElementText, chu thich ngay tren ham la "--附屬性".
+        # Day chinh la THUOC TINH LONG: long = 附加羽毛 ("lông gắn thêm"), gan vao mon thi ghi
+        # element/elementValue cua MON CU THE. Khac han he CHINH (lay tu ban mau item).
         if info.get("element"):
-            _e = "Hệ %s" % self._HE.get(int(info["element"]), str(info["element"]))
-            if info.get("element_value") and int(info["element_value"]) != 100:
-                _e += " %+d" % (int(info["element_value"]) - 100)
+            _e = "Hệ phụ (lông) %s" % self._HE.get(int(info["element"]), str(info["element"]))
+            if info.get("element_value") and int(info["element_value"]) > 100:
+                _e += " +%d" % (int(info["element_value"]) - 100)
             ra.append(_e)
         if info.get("grow_lv"):
-            ra.append("Thành trưởng cấp %d" % info["grow_lv"])
+            ra.append("Thành trưởng %d (đã cộng vào hệ chính)" % info["grow_lv"])
         if info.get("style_lv"):
             ra.append("Thời trang +%d" % info["style_lv"])
         if info.get("damage"):
@@ -2483,8 +2494,9 @@ class BagDialog(tk.Toplevel):
         # Chi tiet trang bi (vi tri / cap yeu cau / chi so cong / he / bo) dat TRUOC mo ta:
         # user hoi thong tin nay, con mo ta chi la loi van.
         # Dong 2 = MON CU THE trong o nay (cuong hoa / da / dong phu) - khac ban mau item.
-        _cm = self._mon_cu_the((getattr(self.c, "bag_items", None) or {}).get(slot))
-        _ct = "\n".join(x for x in (self._item_chi_tiet(tid), _cm) if x)
+        _info = (getattr(self.c, "bag_items", None) or {}).get(slot)
+        _ct = "\n".join(x for x in (self._item_chi_tiet(tid, _info),
+                                    self._mon_cu_the(_info)) if x)
         _mt = self._desc(tid)
         self.lbl_desc.configure(text=("%s\n%s" % (_ct, _mt) if (_ct and _mt) else (_ct or _mt)))
         self._show_actions((slot, tid, cnt, d))
