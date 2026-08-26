@@ -222,6 +222,24 @@ class TestLuongSoanBoDo(unittest.TestCase):
         self.assertIn("self._cong_cua_mon(tid, self._thing_cua_tid(tid))", s)
 
 
+class TestSoanBoKhongDungDoThat(unittest.TestCase):
+    def test_bam_o_tren_khi_SOAN_BO_thi_KHONG_co_nut_coi_ra(self):
+        """User 26/08: "chon do trong bo va chon coi ra thi thanh coi do dang mac tren nguoi".
+
+        Dang soan bo thi 6 o tren la do CUA BO (xem truoc) - bam vao chi duoc sua BO.
+        """
+        s = _doc("gui.py")
+        i = s.find("def _select_equip")
+        doan = s[i:s.find("_ATTR = ((27", i)]
+        self.assertIn("_soan = self._bo_soan is not None", doan)
+        self.assertIn("self._equip_map_xem(who) if _soan else", doan)
+        j = doan.find("if _soan:", doan.find("act_fr.winfo_children"))
+        self.assertGreater(j, 0, "phai re nhanh truoc khi tao nut Coi ra")
+        nhanh = doan[j:doan.find("return", j)]
+        self.assertIn("_bo_mon_khoi_bo(fit)", nhanh)
+        self.assertNotIn("unequip_item", nhanh)
+
+
 class TestKhoiTaoDialog(unittest.TestCase):
     def test_nap_ds_bo_phai_SAU_khi_dung_luoi(self):
         """_nap_ds_bo -> _doi_bo -> refresh() -> dung self.grid_fr.

@@ -2504,7 +2504,11 @@ class BagDialog(tk.Toplevel):
         "phan giai"/"bo" nhu trong tui: mon dang mac phai coi ra tui truoc da.
         """
         who = self.target_var.get()
-        tid = self._equip_map(who).get(fit)
+        # DANG SOAN BO: 6 o tren la do CUA BO (xem truoc), khong phai do that tren nguoi. Bam vao
+        # day ma goi unequip_item la COI NHAM do dang mac (user bao 26/08: "chon do trong bo va
+        # chon coi ra thi thanh coi do dang mac tren nguoi").
+        _soan = self._bo_soan is not None
+        tid = (self._equip_map_xem(who) if _soan else self._equip_map(who)).get(fit)
         _ten_vt = dict(self._EQUIP_SLOTS).get(fit, "?")
         if not tid:
             self.lbl_info.configure(text="%s — %s: đang trống."
@@ -2516,8 +2520,9 @@ class BagDialog(tk.Toplevel):
         self._sel_slot = None          # bo chon o tui (dang chon mon DANG MAC, khong o trong tui)
         d = self._item(tid) or {}
         self.lbl_info.configure(
-            text="ĐANG MẶC • %s  •  %s  •  id 0x%04x  •  %s"
-                 % (_ten_vt, d.get("name") or "?", tid,
+            text="%s • %s  •  %s  •  id 0x%04x  •  %s"
+                 % (("TRONG BỘ '%s'" % self._bo_ten) if _soan else "ĐANG MẶC",
+                    _ten_vt, d.get("name") or "?", tid,
                     "Nhân vật" if not who else self._target_name()))
         # Chi tiet trang bi (vi tri / cap yeu cau / chi so cong / he / bo) dat TRUOC mo ta:
         # user hoi thong tin nay, con mo ta chi la loi van.
@@ -2530,6 +2535,13 @@ class BagDialog(tk.Toplevel):
         self.lbl_desc.configure(text=("%s\n%s" % (_ct, _mt) if (_ct and _mt) else (_ct or _mt)))
         for w in self.act_fr.winfo_children():
             w.destroy()
+        if _soan:
+            # Chi sua BO trong RAM - khong dung gi den do that tren nguoi.
+            ttk.Button(self.act_fr, text="Bỏ khỏi bộ", width=16,
+                       command=lambda: self._bo_mon_khoi_bo(fit)).pack(side="left", padx=(0, 6))
+            ttk.Label(self.act_fr, text="(chỉ sửa bộ đồ, không cởi đồ đang mặc)",
+                      foreground="#888").pack(side="left", padx=(8, 0))
+            return
         ttk.Button(self.act_fr, text="Cởi ra", width=16,
                    command=lambda: self._run("Cởi ra",
                                              lambda: self.c.unequip_item(fit, follow=who))
