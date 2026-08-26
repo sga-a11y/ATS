@@ -123,7 +123,7 @@ class TestGuiTuiDo(unittest.TestCase):
         s = _doc("gui.py")
         self.assertIn('ttk.Label(bo, text="Bộ đồ:")', s)
         self.assertIn('text="Mặc bộ này"', s)
-        self.assertIn('text="Lưu bộ đang mặc…"', s)
+        self.assertIn('text="Lưu thành bộ mới…"', s)
         self.assertIn('text="Xoá bộ"', s)
 
     def test_XOA_phai_hoi_xac_nhan(self):
@@ -136,13 +136,76 @@ class TestGuiTuiDo(unittest.TestCase):
 
     def test_ghi_de_cung_hoi(self):
         s = _doc("gui.py")
-        i = s.find("def _luu_bo")
-        self.assertIn("askyesno", s[i:i + 900])
+        i = s.find("def _luu_bo_moi")
+        self.assertIn("askyesno", s[i:i + 1400])
 
     def test_mac_bo_di_qua_run_de_bi_xep_hang_khi_dang_danh(self):
         """Phai goi qua _run: trong do co queue_bag_cmd -> dang danh thi xep hang."""
         s = _doc("gui.py")
-        self.assertIn('self._run("Mặc bộ \'%s\'" % ten', s)
+        self.assertIn("self._run(\"Mặc bộ '%s'\" % self._bo_ten", s)
+
+
+class TestLuongSoanBoDo(unittest.TestCase):
+    """User chot lai luong 26/08:
+      - dong DAU dropdown la "Đồ đang mặc"; chon no thi KHONG co nut "Mặc bộ này"
+      - chon mot bo -> 6 o tren hien DO CUA BO DO (xem truoc), chua mac
+      - luoi duoi co CA tui do LAN 6 mon dang mac (do dang mac khong nam trong tui)
+      - sua setup KHONG ap dung ngay, phai bam "Mặc bộ này"
+      - co dong uoc tinh chi so se doi the nao
+    """
+
+    def test_dong_dau_la_do_dang_mac(self):
+        s = _doc("gui.py")
+        self.assertIn('DANG_MAC = "— Đồ đang mặc —"', s)
+        self.assertIn("values=[self.DANG_MAC] + ds", s)
+
+    def test_chon_do_dang_mac_thi_TAT_nut_mac(self):
+        s = _doc("gui.py")
+        self.assertIn('_co = self._bo_soan is not None', s)
+        self.assertIn('_b.state(["!disabled"] if _hien else ["disabled"])', s)
+
+    def test_6_o_tren_hien_BO_DANG_SOAN(self):
+        s = _doc("gui.py")
+        self.assertIn("def _equip_map_xem", s)
+        self.assertIn("emap = self._equip_map_xem(who)", s)
+
+    def test_luoi_co_them_do_dang_mac(self):
+        """Do dang mac KHONG nam trong tui -> phai chen vao luoi moi chon vao bo duoc."""
+        s = _doc("gui.py")
+        self.assertIn("them.append((-int(fit), int(tid), 1, d))", s)
+        self.assertIn("out = them + out", s)
+
+    def test_slot_am_xu_ly_duoc(self):
+        s = _doc("gui.py")
+        self.assertIn("if int(slot) < 0:", s)
+        self.assertIn("_giu < 0 or _giu in self.c.bag_slots", s)
+
+    def test_sua_setup_KHONG_mac_ngay(self):
+        s = _doc("gui.py")
+        i = s.find("def _dat_vao_bo")
+        doan = s[i:i + 500]
+        self.assertIn("m[int(fit)] = int(tid)", doan)
+        for cam in ("equip_item", "apply_outfit", "save_outfit"):
+            self.assertNotIn(cam, doan, "dat vao bo KHONG duoc mac/luu ngay")
+
+    def test_soan_bo_thi_AN_nut_lam_doi_tui(self):
+        """Dang soan bo ma lo tay bam 'Phan giai' la mat mon."""
+        s = _doc("gui.py")
+        i = s.find("if self._bo_soan is not None:", s.find("def _show_actions"))
+        self.assertGreater(i, 0)
+        self.assertIn("return", s[i:i + 1400])
+
+    def test_co_dong_uoc_tinh_chenh_lech(self):
+        s = _doc("gui.py")
+        self.assertIn("def _dong_delta", s)
+        self.assertIn("Mặc bộ này: ", s)
+        self.assertIn("ước tính", s, "phai ghi ro la uoc tinh, chua tinh linh da/long")
+
+    def test_luu_thay_doi_TACH_khoi_sua(self):
+        """Sua trong bo chi nam o RAM cho toi khi bam 'Lưu thay đổi'."""
+        s = _doc("gui.py")
+        self.assertIn("def _luu_thay_doi", s)
+        self.assertIn("ctrl.save_outfit(self.username, self._bo_ten, self._bo_soan)", s)
 
 
 if __name__ == "__main__":

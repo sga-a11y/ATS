@@ -33,6 +33,9 @@ def _bag(slots):
     st._tab = gui._BAG.ALL
     st._items_db = gui._load_json("items_gamedata.json")
     st._item = lambda tid: gui.BagDialog._item(st, tid)
+    # Dang SOAN BO DO thi _rows chen them 6 mon dang mac vao dau luoi (do dang mac khong nam
+    # trong tui). Bai test nay chi kiem THU TU SAP XEP cua tui -> de None = dang xem do that.
+    st._bo_soan = None
     return [(slot, tid) for slot, tid, _cnt, _d in gui.BagDialog._rows(st)]
 
 

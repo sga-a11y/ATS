@@ -356,8 +356,9 @@ class TestMonCuThe(unittest.TestCase):
 
     def test_dung_cho_CA_tui_lan_do_dang_mac(self):
         s = _doc("gui.py")
-        self.assertEqual(s.count("self._mon_cu_the("), 2,
-                         "phai dung o CA _select (tui) lan _select_equip (dang mac)")
+        self.assertEqual(s.count("self._mon_cu_the("), 3,
+                         "phai dung o _select (tui), _select_equip (6 o dang mac), va nhanh o AM "
+                         "(mon dang mac chen vao luoi khi soan bo do)")
 
 
 class TestUuTienSoCuaServer(unittest.TestCase):
@@ -437,8 +438,9 @@ class TestHeChinhVaHePhuLong(unittest.TestCase):
 
     def test_truyen_ThingData_vao_ham_chi_tiet(self):
         s = _doc("gui.py")
-        self.assertEqual(s.count("self._item_chi_tiet(tid, _info)"), 2,
-                         "ca 2 cho (tui + dang mac) deu phai truyen mon cu the vao")
+        self.assertEqual(s.count("self._item_chi_tiet(tid, _info)"), 3,
+                         "ca 3 cho (tui / dang mac o 6 o / mon dang mac chen vao luoi khi soan "
+                         "bo do) deu phai truyen mon cu the vao")
 
 
 if __name__ == "__main__":

@@ -2099,12 +2099,23 @@ class BagDialog(tk.Toplevel):
         self.outfit_var = tk.StringVar()
         self.outfit_cb = ttk.Combobox(bo, textvariable=self.outfit_var, state="readonly", width=22)
         self.outfit_cb.pack(side="left")
-        ttk.Button(bo, text="Mặc bộ này", width=13,
-                   command=self._mac_bo).pack(side="left", padx=(6, 0))
-        ttk.Button(bo, text="Lưu bộ đang mặc…", width=17,
-                   command=self._luu_bo).pack(side="left", padx=(6, 0))
-        ttk.Button(bo, text="Xoá bộ", width=9,
-                   command=self._xoa_bo).pack(side="left", padx=(6, 0))
+        self.outfit_cb.bind("<<ComboboxSelected>>", lambda _e: self._doi_bo())
+        # "Mặc bộ này" chi hien khi dang XEM MOT BO. Chon "Đồ đang mặc" thi khong co gi de mac.
+        self.btn_mac = ttk.Button(bo, text="Mặc bộ này", width=13, command=self._mac_bo)
+        self.btn_luubo = ttk.Button(bo, text="Lưu thay đổi", width=13, command=self._luu_thay_doi)
+        ttk.Button(bo, text="Lưu thành bộ mới…", width=17,
+                   command=self._luu_bo_moi).pack(side="right", padx=(6, 0))
+        self.btn_xoabo = ttk.Button(bo, text="Xoá bộ", width=9, command=self._xoa_bo)
+        self.btn_xoabo.pack(side="right", padx=(6, 0))
+        self.btn_luubo.pack(side="left", padx=(6, 0))
+        self.btn_mac.pack(side="left", padx=(6, 0))
+        # Chenh lech chi so neu mac bo dang xem - de user uoc tinh co dang dung khong.
+        self.lbl_delta = ttk.Label(self, text="", padding=(10, 0), foreground="#0a4a9a")
+        self.lbl_delta.pack(fill="x", padx=8)
+        # BO DO DANG SOAN: None = dang xem "Đồ đang mặc". Sua o day KHONG ap dung ngay - phai
+        # bam "Mặc bộ này" (user chot 26/08).
+        self._bo_soan = None
+        self._bo_ten = ""
         self._nap_ds_bo()
 
         mid = ttk.Frame(self, padding=(8, 0)); mid.pack(fill="both", expand=True)
@@ -2193,6 +2204,41 @@ class BagDialog(tk.Toplevel):
     _EQUIP_SLOTS = ((3, "Vũ khí"), (1, "Mũ"), (2, "Áo"), (4, "Hộ uyển"), (5, "Giày"),
                     (6, "Đặc biệt"))
 
+    def _equip_map_xem(self, who):
+        """Bang do DE HIEN o 6 o tren: bo dang soan neu co, khong thi do THAT tren nguoi."""
+        m = self._bo_map(who)
+        return dict(m) if m is not None else self._equip_map(who)
+
+    def _cong_cua_bo(self, emap):
+        """{ma chi so: tong cong} uoc tinh tu DU LIEU ITEM cua mot bang do.
+
+        UOC TINH thoi: chi cong duoc phan ghi trong ban mau item (a1k/a1v, a2k/a2v - da tru 100).
+        Linh da / long / bo do nam o TUNG MON CU THE nen khong tinh duoc cho mon dang o trong tui
+        neu chua co ThingData. Vi vay dong chenh lech phai ghi ro la "ước tính".
+        """
+        out = {}
+        for tid in (emap or {}).values():
+            d = self._item(tid) or {}
+            for _k, _v in ((d.get("a1k"), d.get("a1v")), (d.get("a2k"), d.get("a2v"))):
+                if _k and _v and int(_v) != 100:
+                    out[int(_k)] = out.get(int(_k), 0) + (int(_v) - 100)
+        return out
+
+    def _dong_delta(self, who):
+        """Dong 'mac bo nay thi chi so doi the nao'. "" neu dang xem do that."""
+        if self._bo_soan is None:
+            return ""
+        moi = self._cong_cua_bo(self._bo_map(who) or {})
+        cu = self._cong_cua_bo(self._equip_map(who))
+        phan = []
+        for ma in sorted(set(moi) | set(cu)):
+            d = moi.get(ma, 0) - cu.get(ma, 0)
+            if d:
+                phan.append("%s %+d" % (self._ten_attr(ma), d))
+        if not phan:
+            return "Mặc bộ này: chỉ số không đổi (ước tính từ dữ liệu item)"
+        return "Mặc bộ này: " + "   ".join(phan) + "   (ước tính — chưa tính linh đá/lông)"
+
     def _equip_map(self, who):
         """{fitType: tid} cua doi tuong dang chon. who = 0 (char) hoac followIndex pet 1..4.
 
@@ -2212,10 +2258,16 @@ class BagDialog(tk.Toplevel):
         who = self.target_var.get()
         ten = "Nhân vật" if not who else self._target_name()
         try:
-            self.equip_fr.configure(text="Trang bị đang mặc — %s" % ten)
+            self.equip_fr.configure(
+                text=("Trang bị đang mặc — %s" % ten) if self._bo_soan is None
+                else ("Bộ '%s' — %s   (chưa mặc, bấm \"Mặc bộ này\")" % (self._bo_ten, ten)))
         except Exception:
             pass
-        emap = self._equip_map(who)
+        try:
+            self.lbl_delta.configure(text=self._dong_delta(who))
+        except Exception:
+            pass
+        emap = self._equip_map_xem(who)
         for fit, lb in self.equip_cells.items():
             tid = emap.get(fit)
             if tid:
@@ -2226,45 +2278,92 @@ class BagDialog(tk.Toplevel):
         self.lbl_stats.configure(text=self._stats_line(who))
 
     # ---- BO DO ----
+    DANG_MAC = "— Đồ đang mặc —"      # dong DAU dropdown: xem do that tren nguoi
+
     def _nap_ds_bo(self, chon=None):
         try:
             ds = sorted(ctrl.load_outfits(self.username) or {})
         except Exception:
             ds = []
-        self.outfit_cb.configure(values=ds)
-        if chon and chon in ds:
-            self.outfit_var.set(chon)
-        elif ds and self.outfit_var.get() not in ds:
-            self.outfit_var.set(ds[0])
-        elif not ds:
-            self.outfit_var.set("")
+        self.outfit_cb.configure(values=[self.DANG_MAC] + ds)
+        self.outfit_var.set(chon if (chon and chon in ds) else self.DANG_MAC)
+        self._doi_bo()
 
-    def _luu_bo(self):
-        """Chup do DANG MAC thanh mot bo. Trung ten -> hoi de ghi de."""
-        cu = self.outfit_var.get()
-        ten = simpledialog.askstring("Lưu bộ đồ",
-                                     "Tên bộ đồ (đang mặc gì thì lưu nấy):",
-                                     initialvalue=cu, parent=self)
-        if not ten or not ten.strip():
+    def _doi_bo(self):
+        """Doi muc trong dropdown -> nap bo do dang soan + bat/tat nut."""
+        ten = self.outfit_var.get()
+        if not ten or ten == self.DANG_MAC:
+            self._bo_soan, self._bo_ten = None, ""
+        else:
+            self._bo_ten = ten
+            _bo = (ctrl.load_outfits(self.username) or {}).get(ten) or {}
+            # Ep ve int + copy: sua o day KHONG duoc dung vao file cho toi khi bam "Lưu thay đổi".
+            self._bo_soan = {
+                "char": {int(k): int(v) for k, v in (_bo.get("char") or {}).items()},
+                "pets": {int(p): {int(k): int(v) for k, v in (m or {}).items()}
+                         for p, m in (_bo.get("pets") or {}).items()},
+            }
+        _co = self._bo_soan is not None
+        for _b, _hien in ((self.btn_mac, _co), (self.btn_luubo, _co), (self.btn_xoabo, _co)):
+            _b.state(["!disabled"] if _hien else ["disabled"])
+        self.refresh()
+
+    def _bo_map(self, who):
+        """{fit: tid} cua bo DANG SOAN cho doi tuong `who`. None = dang xem do that."""
+        if self._bo_soan is None:
+            return None
+        if not who:
+            return self._bo_soan.setdefault("char", {})
+        return self._bo_soan.setdefault("pets", {}).setdefault(int(who), {})
+
+    def _dat_vao_bo(self, tid, fit):
+        """Gan mot mon vao o `fit` cua bo dang soan. KHONG mac ngay."""
+        m = self._bo_map(self.target_var.get())
+        if m is None:
             return
-        ten = ten.strip()
-        co = ctrl.load_outfits(self.username) or {}
-        if ten in co and not messagebox.askyesno(
-                "Ghi đè", "Đã có bộ '%s'.\nGhi đè bằng đồ đang mặc?" % ten, parent=self):
+        m[int(fit)] = int(tid)
+        self.refresh()
+        self._flash("Đã đặt vào bộ '%s' — bấm \"Mặc bộ này\" để thay đồ" % self._bo_ten, "#a06000")
+
+    def _bo_mon_khoi_bo(self, fit):
+        m = self._bo_map(self.target_var.get())
+        if m is None or int(fit) not in m:
             return
-        bo = self.c.outfit_snapshot()
-        _n = len(bo.get("char") or {}) + sum(len(v) for v in (bo.get("pets") or {}).values())
+        m.pop(int(fit), None)
+        self.refresh()
+
+    def _luu_thay_doi(self):
+        if self._bo_soan is None or not self._bo_ten:
+            return
+        ctrl.save_outfit(self.username, self._bo_ten, self._bo_soan)
+        self._flash("✔ Đã lưu bộ '%s'" % self._bo_ten, "#0a7a2f")
+
+    def _luu_bo_moi(self):
+        """Tao bo MOI tu thu dang xem (do that, hoac bo dang soan)."""
+        goc = self._bo_soan if self._bo_soan is not None else self.c.outfit_snapshot()
+        _n = len(goc.get("char") or {}) + sum(len(v) for v in (goc.get("pets") or {}).values())
         if not _n:
             messagebox.showwarning("Lưu bộ đồ",
                                    "Chưa đọc được đồ đang mặc — thử lại sau khi login xong.",
                                    parent=self)
             return
-        ctrl.save_outfit(self.username, ten, bo)
+        ten = simpledialog.askstring("Lưu thành bộ mới", "Tên bộ đồ:", parent=self)
+        if not ten or not ten.strip():
+            return
+        ten = ten.strip()
+        if ten == self.DANG_MAC:
+            messagebox.showwarning("Lưu bộ đồ", "Tên này đã dành cho mục xem đồ đang mặc.",
+                                   parent=self)
+            return
+        if ten in (ctrl.load_outfits(self.username) or {}) and not messagebox.askyesno(
+                "Ghi đè", "Đã có bộ '%s'.\nGhi đè?" % ten, parent=self):
+            return
+        ctrl.save_outfit(self.username, ten, goc)
         self._nap_ds_bo(ten)
         self._flash("✔ Đã lưu bộ '%s' (%d món)" % (ten, _n), "#0a7a2f")
 
     def _xoa_bo(self):
-        ten = self.outfit_var.get()
+        ten = self._bo_ten
         if not ten:
             return
         # XOA la mat han -> hoi xac nhan (user dan 26/08).
@@ -2276,13 +2375,10 @@ class BagDialog(tk.Toplevel):
         self._flash("✔ Đã xoá bộ '%s'" % ten, "#0a7a2f")
 
     def _mac_bo(self):
-        ten = self.outfit_var.get()
-        if not ten:
+        if self._bo_soan is None:
             return
-        bo = (ctrl.load_outfits(self.username) or {}).get(ten)
-        if not bo:
-            return
-        self._run("Mặc bộ '%s'" % ten, lambda: self._mac_bo_worker(bo))
+        bo = self._bo_soan
+        self._run("Mặc bộ '%s'" % self._bo_ten, lambda: self._mac_bo_worker(bo))
 
     def _mac_bo_worker(self, bo):
         gui_di, thieu = self.c.apply_outfit(bo)
@@ -2560,6 +2656,16 @@ class BagDialog(tk.Toplevel):
             if _BAG.matches_tab(self._tab, d.get("ft"), d.get("kd")):
                 out.append((slot, tid, cnt, d))
         out.sort(key=lambda r: (r[3].get("st", 999), r[1], r[0]))
+        # Do DANG MAC khong nam trong tui -> khong hien o luoi. Nhung khi SOAN BO DO thi van phai
+        # chon duoc chung (user 26/08: "o duoi la co tui do va ca 6 item o bo dang mac, vi no ko
+        # hien thi o tui do"). Them vao DAU luoi voi slot AM lam dau (xem _cell/_select).
+        if self._bo_soan is not None:
+            them = []
+            for fit, tid in sorted(self._equip_map(self.target_var.get()).items()):
+                d = self._item(tid)
+                if _BAG.matches_tab(self._tab, d.get("ft"), d.get("kd")):
+                    them.append((-int(fit), int(tid), 1, d))
+            out = them + out
         return out
 
     # ---- ve ----
@@ -2579,7 +2685,7 @@ class BagDialog(tk.Toplevel):
         for i, (slot, tid, cnt, d) in enumerate(rows):
             r, col = divmod(i, self.COLS)
             self._cell(self.grid_fr, r, col, slot, tid, cnt, d)
-        if _giu is not None and _giu in self.c.bag_slots:
+        if _giu is not None and (_giu < 0 or _giu in self.c.bag_slots):
             self._select(_giu)
         else:
             self._sel_slot = None
@@ -2618,6 +2724,26 @@ class BagDialog(tk.Toplevel):
 
     def _select(self, slot):
         self._sel_slot = slot
+        # SLOT AM = mon DANG MAC duoc chen vao luoi khi soan bo do (xem _rows). No khong nam
+        # trong bag_slots nen phai lay tu bang do dang mac.
+        if int(slot) < 0:
+            _fit = -int(slot)
+            tid = int(self._equip_map(self.target_var.get()).get(_fit, 0))
+            if not tid:
+                self._show_actions(None); return
+            d = self._item(tid)
+            _info = next((x for x in (getattr(self.c, "equipped_items", None) or [])
+                          if int(x.get("id", 0)) == tid), None)
+            self.lbl_info.configure(
+                text="ĐANG MẶC • %s  •  %s  •  id 0x%04x"
+                     % (dict(self._EQUIP_SLOTS).get(_fit, "?"), d.get("name") or "?", tid))
+            _ct = "\n".join(x for x in (self._item_chi_tiet(tid, _info),
+                                        self._mon_cu_the(_info)) if x)
+            _mt = self._desc(tid)
+            self.lbl_desc.configure(
+                text=("%s\n%s" % (_ct, _mt) if (_ct and _mt) else (_ct or _mt)))
+            self._show_actions((slot, tid, 1, d))
+            return
         rec = self.c.bag_slots.get(slot)
         if not rec:
             self._show_actions(None); return
@@ -2651,6 +2777,23 @@ class BagDialog(tk.Toplevel):
         _who = self.target_var.get()          # 0 = nhan vat, 1..4 = followIndex cua pet
         _hau_to = "" if not _who else " cho %s" % self._target_name()
         _doi = self._exchange_rows(tid)
+        # DANG SOAN BO DO: bam item la DAT VAO BO, khong mac ngay (user chot: "thay doi setup thi
+        # ko ap dung luon ma phai chwof click Mặc bộ này"). Cac nut lam DOI TUI (dung/phan giai/bo)
+        # van an - dang soan bo ma lo tay phan giai mat mon la hong.
+        if self._bo_soan is not None:
+            _fit = int((d.get("ft") or 0))
+            if _equip and _fit in self.c.OUTFIT_FITS:
+                ttk.Button(self.act_fr, text="Đặt vào bộ '%s'" % self._bo_ten, width=22,
+                           command=lambda: self._dat_vao_bo(tid, _fit)).pack(side="left",
+                                                                            padx=(0, 6))
+                if int((self._bo_map(_who) or {}).get(_fit, 0)) == int(tid):
+                    ttk.Button(self.act_fr, text="Bỏ khỏi bộ", width=12,
+                               command=lambda: self._bo_mon_khoi_bo(_fit)).pack(side="left",
+                                                                               padx=(0, 6))
+            else:
+                ttk.Label(self.act_fr, text="(không phải đồ mặc được — không đặt vào bộ)",
+                          foreground="#888").pack(side="left")
+            return
         if _equip:
             acts.append(("Trang bị" + _hau_to,
                          (lambda: self.c.equip_item(slot)) if not _who
