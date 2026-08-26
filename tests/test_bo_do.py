@@ -195,11 +195,47 @@ class TestLuongSoanBoDo(unittest.TestCase):
         self.assertGreater(i, 0)
         self.assertIn("return", s[i:i + 1400])
 
-    def test_co_dong_uoc_tinh_chenh_lech(self):
+    def test_co_dong_chenh_lech_va_KHONG_con_la_uoc_tinh(self):
+        """User 26/08: "phai co du het roi chu nhi" - dung, bot giu du ThingData ca tui lan do
+        dang mac nen tinh DUNG duoc, khong duoc ghi "uoc tinh" nua."""
         s = _doc("gui.py")
         self.assertIn("def _dong_delta", s)
         self.assertIn("Mặc bộ này: ", s)
-        self.assertIn("ước tính", s, "phai ghi ro la uoc tinh, chua tinh linh da/long")
+        self.assertNotIn("ước tính", s)
+        self.assertIn("đã gồm linh đá / cường hoá / dòng phụ", s)
+
+    def test_cong_cua_mon_gom_du_4_nguon(self):
+        """Ban mau + linh da + cuong hoa + dong phu. Thieu nguon nao la so chenh lech sai."""
+        s = _doc("gui.py")
+        i = s.find("def _cong_cua_mon")
+        doan = s[i:s.find("def _cong_cua_bo", i)]
+        self.assertIn("_STONE_ATTR", doan)
+        self.assertIn("self._rf_db", doan)
+        self.assertIn("self._affix_db", doan)
+        self.assertIn("int(_v) - 100", doan, "gia tri ban mau LECH 100")
+
+    def test_lay_dung_MON_CU_THE_chu_khong_chi_ban_mau(self):
+        s = _doc("gui.py")
+        self.assertIn("def _thing_cua_tid", s)
+        self.assertIn("self._cong_cua_mon(tid, self._thing_cua_tid(tid))", s)
+
+
+class TestBangCuongHoa(unittest.TestCase):
+    def test_eq_affix_json_co_bang_cuong_hoa(self):
+        import json
+        with io.open(os.path.join(ROOT, "eq_affix.json"), encoding="utf-8") as fh:
+            d = json.load(fh)
+        self.assertTrue(d.get("reinforced"), "thieu bang luat cuong hoa")
+        self.assertTrue(d.get("value"), "thieu bang tri so cuong hoa")
+        for r in d["reinforced"]:
+            self.assertEqual(sorted(r), ["attr", "c1", "c2", "ft", "q"])
+
+    def test_items_gamedata_co_quality(self):
+        """Luat cuong hoa khop theo quality -> thieu `q` la khong tinh duoc."""
+        import json
+        with io.open(os.path.join(ROOT, "items_gamedata.json"), encoding="utf-8") as fh:
+            d = json.load(fh)
+        self.assertTrue(any("q" in v for v in d.values()))
 
     def test_luu_thay_doi_TACH_khoi_sua(self):
         """Sua trong bo chi nam o RAM cho toi khi bam 'Lưu thay đổi'."""

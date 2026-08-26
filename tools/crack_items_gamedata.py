@@ -73,7 +73,10 @@ def _set_tab_fields(rec, src):
                       # = "ti le bao kich" user hoi 26/08). Dong nay KHONG nam o bang dong phu -
                       # da kiem chung bang du lieu THAT: EquipmentAffix / EquipmentReinforced /
                       # EquipmentReinforcedValue deu khong co ma bao kich nao.
-                      ("sa", "specialAbility")):
+                      ("sa", "specialAbility"),
+                      # q = quality (0 trang 1 luc 2 lam 3 tim 4 do). Luat CUONG HOA tra
+                      # theo (fitType, a1k, quality) - thieu q la khong tinh duoc.
+                      ("q", "quality")):
         v = src.get(field) or 0
         if v:
             rec[key] = int(v)

@@ -41,6 +41,37 @@ def read_affix(path):
     return out
 
 
+def read_reinforced(path):
+    """[{fitType, attr, quality, c1, c2}] - Data_EQReinforcedData.lua: 6 byte/ban ghi."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    count = struct.unpack_from("<i", data, 0)[0]
+    cur, out = 4, []
+    for _ in range(count):
+        if cur + 6 > len(data):
+            break
+        ft, attr, q, c1, c2 = struct.unpack_from("<BHBBB", data, cur)
+        cur += 6
+        out.append({"ft": ft, "attr": attr, "q": q, "c1": c1, "c2": c2})
+    return out
+
+
+def read_value(path):
+    """{index: {attr, lv[15]}} - Data_EQValueData.lua: 33 byte/ban ghi."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    count = struct.unpack_from("<i", data, 0)[0]
+    cur, out = 4, {}
+    for _ in range(count):
+        if cur + 33 > len(data):
+            break
+        idx, attr = struct.unpack_from("<BH", data, cur)
+        lv = list(struct.unpack_from("<15H", data, cur + 3))
+        cur += 33
+        out[idx] = {"attr": attr, "lv": lv}
+    return out
+
+
 def main():
     path = os.path.join(ROOT, "gamedata", "Data", "EquipmentAffix_C.dat")
     if not os.path.exists(path):
@@ -49,9 +80,19 @@ def main():
               "gamedata/Data/")
         return 1
     rows = read_affix(path)
+    out = {"affix": {str(k): v for k, v in sorted(rows.items())}}
+    # CUONG HOA (升階) - Data_ItemData.lua GetReinforcedText:
+    #   tim row co (fitType, attribute == a1k cua item, quality) khop -> class_1/class_2
+    #   -> eqValueDatas[class].attribute + .level[Reinforced]
+    _rf = os.path.join(ROOT, "gamedata", "Data", "EquipmentReinforced_C.dat")
+    _vl = os.path.join(ROOT, "gamedata", "Data", "EquipmentReinforcedValue_C.dat")
+    if os.path.exists(_rf) and os.path.exists(_vl):
+        out["reinforced"] = read_reinforced(_rf)
+        out["value"] = {str(k): v for k, v in sorted(read_value(_vl).items())}
+        print("   + cuong hoa: %d luat, %d bang tri so"
+              % (len(out["reinforced"]), len(out["value"])))
     with open(OUT, "w", encoding="utf-8") as fh:
-        json.dump({"affix": {str(k): v for k, v in sorted(rows.items())}}, fh,
-                  ensure_ascii=False, separators=(",", ":"))
+        json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
     print("da ghi %s: %d dong phu" % (os.path.basename(OUT), len(rows)))
     return 0
 

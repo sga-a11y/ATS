@@ -2033,7 +2033,12 @@ class BagDialog(tk.Toplevel):
         # do, nen bot chay chuc party khong ai phai gong them 2MB nay trong RAM.
         self._desc_db = _load_json("items_desc.json")
         # Bang DONG PHU (洗rèn): affix1/2/3 trong ThingData la ID tra bang nay, khong phai cap.
-        self._affix_db = (_load_json("eq_affix.json") or {}).get("affix") or {}
+        _eq = _load_json("eq_affix.json") or {}
+        self._affix_db = _eq.get("affix") or {}
+        # CUONG HOA (升階): _rf_db = luat khop theo (fitType, a1k, quality) -> class_1/class_2;
+        # _val_db = bang tri so cua tung class theo cap cuong hoa.
+        self._rf_db = _eq.get("reinforced") or []
+        self._val_db = _eq.get("value") or {}
 
         top = ttk.Frame(self, padding=8); top.pack(fill="x")
         self._tab_btns = {}
@@ -2209,19 +2214,72 @@ class BagDialog(tk.Toplevel):
         m = self._bo_map(who)
         return dict(m) if m is not None else self._equip_map(who)
 
-    def _cong_cua_bo(self, emap):
-        """{ma chi so: tong cong} uoc tinh tu DU LIEU ITEM cua mot bang do.
+    # Linh da: EStoneAttr -> ma chi so + tri so theo cap (bot/pet_login_stats.py, sao tu client).
+    _STONE_ATTR = {1: 212, 2: 210, 3: 211, 4: 218, 5: 219, 6: 214}
+    _STONE_VAL = (1, 2, 3, 4, 5, 7, 9, 11, 13, 15, 18, 21, 24, 27, 30)
 
-        UOC TINH thoi: chi cong duoc phan ghi trong ban mau item (a1k/a1v, a2k/a2v - da tru 100).
-        Linh da / long / bo do nam o TUNG MON CU THE nen khong tinh duoc cho mon dang o trong tui
-        neu chua co ThingData. Vi vay dong chenh lech phai ghi ro la "ước tính".
+    def _thing_cua_tid(self, tid):
+        """ThingData cua mon `tid`: uu tien mon DANG MAC, khong thi lay trong tui (ban xin nhat).
+
+        Bot DA luu du ThingData cho ca tui lan do dang mac -> tinh duoc that, khong phai uoc tinh
+        (user chi ra 26/08: "phai co du het roi chu nhi").
         """
+        for x in (getattr(self.c, "equipped_items", None) or []):
+            if int(x.get("id", 0)) == int(tid):
+                return x
+        try:
+            slot = self.c._bag_slot_best(int(tid))
+        except Exception:
+            slot = None
+        if slot is None:
+            return None
+        return (getattr(self.c, "bag_items", None) or {}).get(slot)
+
+    def _cong_cua_mon(self, tid, info):
+        """{ma chi so: cong} cua MOT mon: ban mau + linh da + cuong hoa + dong phu."""
+        out = {}
+        d = self._item(tid) or {}
+
+        def _add(ma, v):
+            if ma and v:
+                out[int(ma)] = out.get(int(ma), 0) + int(v)
+        # 1) ban mau item - gia tri LECH 100
+        for _k, _v in ((d.get("a1k"), d.get("a1v")), (d.get("a2k"), d.get("a2v"))):
+            if _k and _v and int(_v) != 100:
+                _add(_k, int(_v) - 100)
+        if not info:
+            return out
+        # 2) LINH DA: EStoneAttr -> ma chi so, tri so theo cap (STONE_VALUES)
+        _sa, _sl = int(info.get("stone_attr") or 0), int(info.get("stone_lv") or 0)
+        if _sa in self._STONE_ATTR and 1 <= _sl <= len(self._STONE_VAL):
+            _add(self._STONE_ATTR[_sa], self._STONE_VAL[_sl - 1])
+        # 3) CUONG HOA - Data_ItemData.lua GetReinforcedText: tim luat khop
+        #    (fitType, attribute == a1k, quality) -> class_1/class_2 -> value[class].lv[Reinforced]
+        _rf = int(info.get("reinforced") or 0)
+        if _rf and self._rf_db:
+            for row in self._rf_db:
+                if (int(row.get("ft", 0)) == int(d.get("ft") or 0)
+                        and int(row.get("attr", 0)) == int(d.get("a1k") or 0)
+                        and int(row.get("q", 0)) == int(d.get("q") or 0)):
+                    for _c in (row.get("c1"), row.get("c2")):
+                        _v = self._val_db.get(str(int(_c or 0)))
+                        if _v and 1 <= _rf <= len(_v.get("lv") or []):
+                            _add(_v.get("attr"), _v["lv"][_rf - 1])
+                    break
+        # 4) DONG PHU: id tra bang, dong thu N lay level[N]
+        for _i, _id in enumerate((info.get("affix") or [])[:3], 1):
+            _row = self._affix_db.get(str(int(_id or 0)))
+            if _row:
+                _lv = _row.get("lv") or []
+                _add(_row.get("attr"), _lv[_i - 1] if _i <= len(_lv) else 0)
+        return out
+
+    def _cong_cua_bo(self, emap):
+        """{ma chi so: tong cong} cua mot bang do - da gom linh da / cuong hoa / dong phu."""
         out = {}
         for tid in (emap or {}).values():
-            d = self._item(tid) or {}
-            for _k, _v in ((d.get("a1k"), d.get("a1v")), (d.get("a2k"), d.get("a2v"))):
-                if _k and _v and int(_v) != 100:
-                    out[int(_k)] = out.get(int(_k), 0) + (int(_v) - 100)
+            for ma, v in self._cong_cua_mon(tid, self._thing_cua_tid(tid)).items():
+                out[ma] = out.get(ma, 0) + v
         return out
 
     def _dong_delta(self, who):
@@ -2236,8 +2294,10 @@ class BagDialog(tk.Toplevel):
             if d:
                 phan.append("%s %+d" % (self._ten_attr(ma), d))
         if not phan:
-            return "Mặc bộ này: chỉ số không đổi (ước tính từ dữ liệu item)"
-        return "Mặc bộ này: " + "   ".join(phan) + "   (ước tính — chưa tính linh đá/lông)"
+            return "Mặc bộ này: chỉ số không đổi"
+        # KHONG con la "uoc tinh": bot da giu du ThingData cua ca mon trong tui (bag_items) lan mon
+        # dang mac (equipped_items) nen tinh dung linh da / cuong hoa / dong phu cua TUNG mon.
+        return "Mặc bộ này: " + "   ".join(phan) + "   (đã gồm linh đá / cường hoá / dòng phụ)"
 
     def _equip_map(self, who):
         """{fitType: tid} cua doi tuong dang chon. who = 0 (char) hoac followIndex pet 1..4.
