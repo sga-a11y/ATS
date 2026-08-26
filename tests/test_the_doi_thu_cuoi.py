@@ -128,7 +128,10 @@ class TestChiMoKhiDU(_CfgMixin, unittest.TestCase):
     """User: "neu mo Boi duong toa ky ma DU thi mo ra de nang cap".
 
     Bug that (log 10:04): thieu 142, chi co 17 the (17*5 = 85 - khong bao gio du) -> bot van mo
-    HET 17 the, mat trang. Toi da bo mat chu "ma du" trong yeu cau cua user.
+    HET 17 the. Toi da bo mat chu "ma du" trong yeu cau cua user.
+
+    Do KHONG mat (dan van trong tui, dung duoc lan sau) - cai mat la QUYEN CHON: the con doi duoc
+    thu khac, mo roi la het duong lui.
     """
 
     def test_mo_cung_khong_du_thi_KHONG_mo(self):
@@ -136,7 +139,7 @@ class TestChiMoKhiDU(_CfgMixin, unittest.TestCase):
         sau = c._mount_open_cards_for(0x7d65, thieu=142, dang_co=8)
         self.assertEqual(c.sent, [], "mo cung khong du -> phai giu the lai")
         self.assertEqual(sau, 8)
-        self.assertEqual(c.bag_counts[0x7de7], 17, "khong duoc mat the nao")
+        self.assertEqual(c.bag_counts[0x7de7], 17, "the phai con nguyen (con doi duoc thu khac)")
 
     def test_vua_du_thi_mo(self):
         """thieu 85, co 17 the x5 = 85 -> DUNG du -> mo."""

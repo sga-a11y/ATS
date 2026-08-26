@@ -6905,11 +6905,13 @@ class GameClient:
     def _mount_open_cards_for(self, want_tid: int, thieu: int, dang_co: int) -> int:
         """Mo the doi de bu `thieu` item `want_tid` - CHI KHI MO LA DU. Tra ve so luong sau do.
 
-        User noi ro: "neu mo ma DU thi mo ra de nang cap". Mo ma van khong du = VUT THE di khong
-        duoc gi (the con dung viec khac, vd doi 'Tui Toa Ky Dan').
+        User noi ro: "neu mo ma DU thi mo ra de nang cap".
 
         Bug that (log 10:04): thieu 142 nhung chi co 17 the (17*5 = 85, khong bao gio du) - bot
         van mo het 17 the. Toi da bo mat chu "ma du" trong yeu cau.
+
+        Do KHONG mat (dan van nam trong tui, dung duoc cho lan nang cap sau) - cai mat la QUYEN
+        CHON: the con doi duoc thu khac (vd 'Tui Toa Ky Dan'), mo roi thi het duong lui.
 
         Vi du dung (user): "dang co 33/50 -> thieu 17 -> co 10 the -> mo 4 cai de lay 20".
         """
