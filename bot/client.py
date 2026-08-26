@@ -1586,6 +1586,9 @@ class GameClient:
         # thai do dang mac cua chinh no). Khong co bang nay thi mon cu bien mat khoi tui.
         self.equip_by_fit = {}        # do cua NHAN VAT
         self.pet_equip_by_fit = {}    # followIndex -> {fitType: tid}
+        # slot tui (1..4) -> ban ghi login cua TUNG pet (pet_login_stats.parse_record) + level/pid.
+        # Co ban ghi nay thi tinh duoc HP/SP/AGI cua CA pet KHONG xuat chien.
+        self.pet_login_records = {}
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
         # SO PHUC THAN CON LAI (godMission trong client): tu S2C 0x18 sub0800
         # <設定衰神福神> [roleId i64][kind u16][count i32]. None = server chua gui.
@@ -3538,6 +3541,18 @@ class GameClient:
             if pid:
                 self.state.carried_pets.append(
                     (pid, getattr(config, "PET_NAMES", {}).get(pid, "")))
+            # Ban ghi login CUA TUNG PET (khong rieng con xuat chien). pet_login_stats.parse_record
+            # von la ham TONG QUAT - nhan offset bat ky - nhung truoc day chi duoc goi cho con
+            # active, nen bot khong biet HP/SP/AGI cua 3 con con lai. Luu het o day de UI (tui do)
+            # hien duoc chi so moi con. Cap doc thang tu +7.
+            try:
+                _rec = pet_login_stats.parse_record(b, start)
+                if _rec is not None and 1 <= marker <= 4:
+                    _rec["level"] = b[start + 7]
+                    _rec["pid"] = pid
+                    self.pet_login_records[marker] = _rec
+            except Exception:
+                pass
             # AUTO NANG SKILL PET: block 武將資料 (client Logic_Role.FollowNpcAppear) - tu dau record:
             #   [7]=petLv, [29:31]=DIEM SKILL (u16 LE), [31]=namelen, 3 byte NGAY SAU ten = skillLv*3.
             try:
@@ -4690,6 +4705,73 @@ class GameClient:
 
     def bag_free_slots(self) -> int:
         return max(0, self.bag_capacity() - len(self.bag_slots))
+
+    def bag_first_empty_slot(self):
+        """O tui TRONG dau tien (1-based, theo bag_capacity). None = tui day.
+
+        Lenh COI DO phai chi RO o nao de nhet mon vua coi vao (client tu tim, khong phai server)."""
+        dung = set(self.bag_slots or {})
+        for slot in range(1, self.bag_capacity() + 1):
+            if slot not in dung:
+                return slot
+        return None
+
+    def unequip_item(self, fit_pos: int, follow: int = 0) -> bool:
+        """COI mon dang mac o vi tri `fit_pos` (fitType 1..6) ra tui. follow = 0 char, 1..4 pet.
+
+        Crack client (Logic_Item.lua:2690-2704, ham Item.UnEquip - dung la lua chon DUY NHAT khi
+        bam vao mon dang mac, xem UI_UIStatus.lua:1896):
+            char: C:023-012 <卸下玩家裝備>     +vi tri do(1) +o tui trong(1)      = 0x17 sub0c
+            pet : C:023-018 <卸下武將裝備>     +petIdx(1) +vi tri do(1) +o tui(1)  = 0x17 sub12
+        O tui trong do CLIENT tu chon roi gui len (server khong tu tim) -> tui day la khong coi
+        duoc, phai bao thay vi gui hut.
+        """
+        o_trong = self.bag_first_empty_slot()
+        if o_trong is None:
+            log.warning("[%s] Coi do: TUI DAY (%d/%d) -> khong coi duoc",
+                        self._label, self.bag_used_slots(), self.bag_capacity())
+            return False
+        try:
+            if follow:
+                self.send(0x17, b"\x12\x00" + bytes([follow & 0xFF, fit_pos & 0xFF,
+                                                     o_trong & 0xFF]))
+            else:
+                self.send(0x17, b"\x0c\x00" + bytes([fit_pos & 0xFF, o_trong & 0xFF]))
+        except OSError:
+            return False
+        return True
+
+    def pet_stats(self, slot: int):
+        """Chi so cua pet o slot tui 1..4, KE CA con khong xuat chien. None = chua biet.
+
+        -> {"level","hp","hp_max","sp","sp_max","agi"}.
+        pet_login_stats von la ham tong quat; truoc day bot chi goi cho con dang xuat chien nen
+        khong biet gi ve 3 con con lai (user hoi 26/08: "co the hien thi tat ca chi so khong, ca
+        pet khong xuat chien nua").
+        """
+        rec = (getattr(self, "pet_login_records", None) or {}).get(int(slot))
+        if not rec:
+            return None
+        out = {"level": rec.get("level"), "hp": rec.get("hp"), "sp": rec.get("sp"),
+               "hp_max": None, "sp_max": None, "agi": None}
+        data = _load_pet_stat_data()
+        if not data:
+            return out
+        try:
+            flags = getattr(self, "_collect_style_flags", {})
+            eq = getattr(self, "_collect_card_equipped", [])
+            lv = getattr(self, "_collect_card_levels", {})
+            out["hp_max"], out["sp_max"] = pet_login_stats.calculate(
+                rec, data,
+                style=pet_login_stats.style_bonus(data, flags),
+                cards=pet_login_stats.card_bonus(data, eq, lv))
+            out["agi"] = pet_login_stats.calculate_agi(
+                rec, data,
+                style_agi=pet_login_stats.style_attribute(data, flags, 30),
+                card_agi=pet_login_stats.card_attribute(data, eq, lv, 30))
+        except Exception as e:
+            log.debug("[%s] pet_stats(slot=%s) loi: %s", self._label, slot, e)
+        return out
 
     def bag_slot_maxed(self) -> bool:
         """Bag_1 (103) da mua toi da (value >= max) -> khong mua them slot duoc nua."""

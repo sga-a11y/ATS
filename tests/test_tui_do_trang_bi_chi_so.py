@@ -87,14 +87,19 @@ class TestDauVanTrangThai(unittest.TestCase):
 
 
 class TestChiSoKhongDoan(unittest.TestCase):
-    def test_pet_khong_xuat_chien_thi_noi_thang_la_chua_biet(self):
-        """Bot chi theo doi cap/AGI/HP/SP cua pet DANG XUAT CHIEN.
+    def test_pet_nao_cung_co_so_rieng_cua_no(self):
+        """MOI pet mang theo deu co so rieng, khong rieng con xuat chien (user yeu cau 26/08).
 
-        Gan so cua con dang danh cho con khac la bia so - phai noi thang la chua biet.
+        Truoc day bot chi tinh cho con active nen phai ghi "chua co so" cho 3 con kia. Nay goi
+        0x0f mang ban ghi cua tung con va pet_login_stats von la ham tong quat -> tinh duoc het.
+        Dieu PHAI giu: khong duoc gan so cua con dang danh cho con khac.
         """
         s = _src()
-        self.assertIn("chỉ theo dõi pet đang xuất chiến", s)
-        self.assertIn('_active = int(getattr(c, "active_pet_slot", 0) or 0)', s)
+        self.assertIn("c.pet_stats(int(who))", s, "phai lay so THEO SLOT cua chinh con do")
+        self.assertNotIn("chỉ theo dõi pet đang xuất chiến", s, "cau tu choi cu da het dung")
+        # HP/SP cua state.pet la cua con DANG DANH -> chi duoc dung khi who == active
+        self.assertIn('unit = getattr(st, "pet", None) if (st and _active and int(who) == _active)',
+                      s)
 
     def test_thieu_so_thi_ghi_dau_hoi(self):
         s = _src()

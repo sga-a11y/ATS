@@ -2075,6 +2075,10 @@ class BagDialog(tk.Toplevel):
             lb = tk.Label(cell, text="—", font=("", 8), wraplength=98, justify="left",
                           anchor="nw", fg="#888")
             lb.pack(fill="both", expand=True, padx=3)
+            # Bam vao mon DANG MAC -> hien thong tin + nut "Cởi ra" (giong client: do la lua chon
+            # duy nhat khi bam mon dang mac - Item.UnEquip, UI_UIStatus.lua:1896).
+            for _w in (cell, lb):
+                _w.bind("<Button-1>", lambda _e, f=_fit: self._select_equip(f))
             self.equip_cells[_fit] = lb
         self.lbl_stats = ttk.Label(self, text="", padding=(10, 4))
         self.lbl_stats.pack(fill="x", padx=8)
@@ -2197,6 +2201,38 @@ class BagDialog(tk.Toplevel):
                 lb.configure(text="— trống —", fg="#aaa")
         self.lbl_stats.configure(text=self._stats_line(who))
 
+    def _select_equip(self, fit):
+        """Bam vao mot O TRANG BI DANG MAC -> hien thong tin + nut "Cởi ra".
+
+        Client chi cho DUNG MOT lua chon o day (Item.UnEquip - UI_UIStatus.lua:1896), khong co
+        "phan giai"/"bo" nhu trong tui: mon dang mac phai coi ra tui truoc da.
+        """
+        who = self.target_var.get()
+        tid = self._equip_map(who).get(fit)
+        _ten_vt = dict(self._EQUIP_SLOTS).get(fit, "?")
+        if not tid:
+            self.lbl_info.configure(text="%s — %s: đang trống."
+                                    % ("Nhân vật" if not who else self._target_name(), _ten_vt))
+            self.lbl_desc.configure(text="")
+            for w in self.act_fr.winfo_children():
+                w.destroy()
+            return
+        self._sel_slot = None          # bo chon o tui (dang chon mon DANG MAC, khong o trong tui)
+        d = self._item(tid) or {}
+        self.lbl_info.configure(
+            text="ĐANG MẶC • %s  •  %s  •  id 0x%04x  •  %s"
+                 % (_ten_vt, d.get("name") or "?", tid,
+                    "Nhân vật" if not who else self._target_name()))
+        self.lbl_desc.configure(text=self._desc(tid))
+        for w in self.act_fr.winfo_children():
+            w.destroy()
+        ttk.Button(self.act_fr, text="Cởi ra", width=16,
+                   command=lambda: self._run("Cởi ra",
+                                             lambda: self.c.unequip_item(fit, follow=who))
+                   ).pack(side="left", padx=(0, 6))
+        ttk.Label(self.act_fr, text="(cởi ra sẽ nằm ở ô trống đầu tiên trong túi)",
+                  foreground="#888").pack(side="left", padx=(8, 0))
+
     def _stats_line(self, who):
         """Dong chi so. CHI ghi cai bot THAT SU biet - thieu thi de dau '?', khong doan."""
         c = self.c
@@ -2209,16 +2245,25 @@ class BagDialog(tk.Toplevel):
                     "AGI %s" % (agi if agi is not None else "?"),
                     "INT %s" % (intel if intel is not None else "?")]
         else:
-            # Bot chi theo doi cap/AGI/HP/SP cua PET DANG XUAT CHIEN. Pet khac trong doi hinh thi
-            # chua co so -> noi thang la chua biet chu khong lay so cua con dang danh gan cho no.
+            # MOI pet mang theo deu co so, khong rieng con xuat chien: goi 0x0f mang ban ghi cua
+            # tung con, va pet_login_stats von la ham TONG QUAT (xem client.pet_stats).
             _active = int(getattr(c, "active_pet_slot", 0) or 0)
-            if _active and int(who) == _active:
-                lv, agi = getattr(c, "pet_level", None), getattr(c, "pet_agi", None)
-                unit = getattr(st, "pet", None) if st else None
-                phan = ["Cấp %s" % (lv if lv is not None else "?"),
-                        "AGI %s" % (agi if agi is not None else "?")]
-            else:
-                return "Chỉ số: chỉ theo dõi pet đang xuất chiến (con này chưa có số)."
+            unit = getattr(st, "pet", None) if (st and _active and int(who) == _active) else None
+            try:
+                ps = c.pet_stats(int(who))
+            except Exception:
+                ps = None
+            if not ps:
+                return "Chỉ số: chưa nhận được dữ liệu pet (gói 0x0f) — thử lại sau khi login xong."
+            phan = ["Cấp %s" % (ps.get("level") if ps.get("level") is not None else "?"),
+                    "AGI %s" % (ps.get("agi") if ps.get("agi") is not None else "?")]
+            if ps.get("hp_max"):
+                phan.append("HP %s/%s" % (ps.get("hp"), ps["hp_max"]))
+            if ps.get("sp_max"):
+                phan.append("SP %s/%s" % (ps.get("sp"), ps["sp_max"]))
+            if int(who) == _active:
+                phan.append("★ đang xuất chiến")
+            return "Chỉ số:   " + "   •   ".join(phan)
         if unit is not None and getattr(unit, "hp_max", 0):
             phan.append("HP %d/%d" % (unit.hp, unit.hp_max))
             if getattr(unit, "sp_max", 0):
