@@ -2112,7 +2112,7 @@ class BagDialog(tk.Toplevel):
 
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._alive = True
-        self._set_tab(_BAG.ALL)
+        self._set_tab(self._tab)   # GIU tab mac dinh dat o tren (Trang bi), dung ep ve "Tat ca"
         self._price_async()
         self._watch_fp = self._state_fp()
         self._watch()
@@ -2253,14 +2253,17 @@ class BagDialog(tk.Toplevel):
             lv = getattr(c, "char_level", None)
             unit = getattr(st, "char", None) if st else None
             phan = ["Cấp %s" % (lv if lv is not None else "?")]
+            # char_stat_full = GOC + CONG TU DO, doc tu goi 0x05 sub03 (bo cuc crack tu
+            # Logic_Role.ReceivePlayerData). char_attrs chi la cac id server ban le -> thieu
+            # ATK/DEF/HPx/SPx, dung mot minh no thi bang chi so cut ngon nhu truoc.
+            try:
+                full = c.char_stat_full() or {}
+            except Exception:
+                full = {}
             attrs = getattr(c, "char_attrs", None) or {}
             for _id, _ten in self._ATTR:
-                # AGI/INT lay tu char_agi/char_int: 2 cai do da CONG do/collection/thu cuoi
-                # (xem _refresh_char_agi), con char_attrs chi la so GOC tu server.
-                if _id == 30 and getattr(c, "char_agi", None) is not None:
-                    phan.append("AGI %s" % c.char_agi)
-                elif _id == 27 and getattr(c, "char_int", None) is not None:
-                    phan.append("INT %s" % c.char_int)
+                if _id in full:
+                    phan.append("%s %s" % (_ten, full[_id]))
                 elif _id in attrs:
                     phan.append("%s %s" % (_ten, attrs[_id]))
         else:
@@ -2303,18 +2306,25 @@ class BagDialog(tk.Toplevel):
         fit = int(d.get("ft") or 0)
         if fit:
             ra.append("Vị trí: %s" % dict(self._EQUIP_SLOTS).get(fit, "khác (%d)" % fit))
-        if d.get("needLv"):
-            ra.append("Yêu cầu cấp %s" % d["needLv"])
+        # TEN KHOA trong items_gamedata.json la dang RUT GON (nl/el/elv/su) - xem
+        # tools/crack_items_gamedata.py. Doc bang ten dai (needLv/element/suitId) thi luon rong:
+        # cap yeu cau + he + bo do KHONG BAO GIO hien (loi that, user bao 26/08 "chi so hien sai").
+        if d.get("nl"):
+            ra.append("Yêu cầu cấp %s" % d["nl"])
         for _k, _v in ((d.get("a1k"), d.get("a1v")), (d.get("a2k"), d.get("a2v"))):
             if _k and _v:
                 ra.append("%s +%s" % (self._ITEM_ATTR.get(int(_k), "chỉ số %s" % _k), _v))
-        if d.get("element"):
-            _e = "Hệ %s" % self._HE.get(int(d["element"]), str(d["element"]))
-            if d.get("elementValue"):
-                _e += " (%s)" % d["elementValue"]
+        if d.get("el"):
+            _e = "Hệ %s" % self._HE.get(int(d["el"]), str(d["el"]))
+            if d.get("elv"):
+                _e += " (%s)" % d["elv"]
             ra.append(_e)
-        if d.get("suitId"):
-            ra.append("Bộ #%s" % d["suitId"])
+        elif d.get("elv"):
+            ra.append("Trị số hệ %s" % d["elv"])
+        if d.get("su"):
+            ra.append("Bộ #%s" % d["su"])
+        if d.get("fc"):
+            ra.append("Phân giải: %s mảnh" % d["fc"])
         return "   •   ".join(ra)
 
     def _item(self, tid):

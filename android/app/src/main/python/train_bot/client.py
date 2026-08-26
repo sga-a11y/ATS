@@ -1622,6 +1622,10 @@ class GameClient:
         # DOI THUONG SU KIEN (0x7c): server gui toan bo danh sach -> cache ra JSON cho GUI.
         self._activities = {}     # activityId -> {title, kind, open, missions[]}
         self.char_attrs = {}      # CHI SO GOC tu 0x08: EAttribute -> gia tri (dung cho thanh tuu)
+        # Chi so char doc tu goi 0x05 sub03 (Role.ReceivePlayerData). EAttribute -> gia tri.
+        #   char_base  = so GOC (chua cong do) | char_equip = phan CONG TU TRANG BI
+        self.char_base = {}
+        self.char_equip = {}
         self.max_friend_count = None   # so ban TOI DA tung co (S:014-017) - dieu kien thanh tuu
         self.mark_flags = {}      # CO NHIEM VU (0x18 sub07/05): chi so BYTE -> gia tri byte
         self.pet_faith = {}          # pet_id -> TRUNG THANH (0..100), doc tu goi pet list
@@ -3861,10 +3865,21 @@ class GameClient:
             return
         # 0x05 sub0300 co san current/max HP/SP cua char luc login. Nap ngay de heal_full()
         # truoc boss co du stat, khong phai doi den 0x33/0x0b trong tran dau tien.
+        # BO CUC DAY DU - crack Logic_Role.lua Role.ReceivePlayerData (KHONG doan offset):
+        #   +2  element(1) | +3 hp(4) | +7 sp(2) | +9 Int(2) | +11 Atk(2) | +13 Def(2)
+        #   +15 Agi(2) | +17 Hpx(2) | +19 Spx(2) | +21 Lv(1) | +22 Exp(4) | +26 SkillPoint(2)
+        #   +28 AttrPoint(2) | +30 KillNum(4) | +34 BattleHonor(2) | +36 GovRequire(1)
+        #   +37 Astrolabe(2) | +39 MaxHp(4) | +43 MaxSp(2)
+        #   +45 EquipAtk(4) | +49 EquipDef(4) | +53 EquipInt(4) | +57 EquipAgi(4)
+        #   +61 EquipMaxHp(4) | +65 EquipMaxSp(4) | +69 EquipHpx(4) | +73 EquipSpx(4)
+        # (moc +9/+15/+53/+57 khop y het cai bot dang dung tu truoc -> bo cuc nay tin duoc.)
         hp = int.from_bytes(body[3:7], "little")
         sp = int.from_bytes(body[7:9], "little")
         hp_max = int.from_bytes(body[39:43], "little")
-        sp_max = int.from_bytes(body[43:47], "little")
+        # MaxSp la UInt16 (2 byte). Truoc day bot doc 4 byte -> nuot luon 2 byte dau cua
+        # EquipAtk -> ra so khong lo -> tu roi vao nhanh kiem tra "sp_max < 100_000" va BO QUA
+        # ca khoi HP/SP login. Chay duoc lau nay chi vi co nguon khac (0x08 sub0100 id 0x19/0x1a).
+        sp_max = int.from_bytes(body[43:45], "little")
         if 0 <= hp <= hp_max < 1_000_000 and 0 <= sp <= sp_max < 100_000 and hp_max > 0 and sp_max > 0:
             c = self.state.char
             old = (c.hp, c.hp_max, c.sp, c.sp_max)
@@ -3878,6 +3893,19 @@ class GameClient:
         self._char_equip_int = int.from_bytes(body[53:57], "little", signed=True)
         self._char_agi_base = int.from_bytes(body[15:17], "little")
         self._char_equip_agi = int.from_bytes(body[57:61], "little", signed=True)
+        # DAY DU chi so char (user hoi 3 lan: "hien thi day du chi so, atk, int, def, Hpx...").
+        # Truoc day bot chi lay INT/AGI nen bang chi so thieu han ATK/DEF/HPx/SPx - KHONG phai
+        # vi server khong gui, ma vi khong ai doc. Khoa = EAttribute (Controller_RoleController).
+        def _u16(o):
+            return int.from_bytes(body[o:o + 2], "little")
+
+        def _i32(o):
+            return int.from_bytes(body[o:o + 4], "little", signed=True)
+        self.char_base = {27: _u16(9), 28: _u16(11), 29: _u16(13), 30: _u16(15),
+                          31: _u16(17), 32: _u16(19)}
+        if len(body) >= 77:
+            self.char_equip = {28: _i32(45), 29: _i32(49), 27: _i32(53), 30: _i32(57),
+                               31: _i32(69), 32: _i32(73)}
         skill_count = int.from_bytes(body[96:98], "little")
         turn3_off = 98 + skill_count * 3
         if turn3_off + 11 <= len(body):
@@ -7406,6 +7434,24 @@ class GameClient:
     #   218 The chat (HPx) | 219 Nang luong (SPx)
     ATTR_HP, ATTR_SP, ATTR_ATK, ATTR_DEF = 207, 208, 210, 211
     ATTR_INT, ATTR_AGI, ATTR_HPX, ATTR_SPX = 212, 214, 218, 219
+
+    def char_stat_full(self) -> dict:
+        """{ma EAttribute: tong} chi so char = GOC + CONG TU DO. {} neu chua nhan goi 0x05 sub03.
+
+        27 Int | 28 Atk | 29 Def | 30 Agi | 31 Hpx | 32 Spx.
+        INT/AGI thi lay thang self.char_int/char_agi neu co - hai so do da cong them ca suu tap,
+        the va thu cuoi (xem _refresh_char_agi), khong chi rieng trang bi.
+        """
+        base = getattr(self, "char_base", None) or {}
+        if not base:
+            return {}
+        eq = getattr(self, "char_equip", None) or {}
+        out = {k: int(base.get(k, 0)) + int(eq.get(k, 0)) for k in base}
+        if getattr(self, "char_int", None) is not None:
+            out[27] = int(self.char_int)
+        if getattr(self, "char_agi", None) is not None:
+            out[30] = int(self.char_agi)
+        return out
 
     def char_equip_bonus(self) -> dict:
         """{ma chi so: tong cong them} tu DO DANG MAC cua nhan vat. {} neu chua du du lieu.

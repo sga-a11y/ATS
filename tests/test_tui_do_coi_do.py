@@ -173,8 +173,16 @@ class TestChiSoDayDu(unittest.TestCase):
         self.assertEqual(co.get(32), "SPx")
 
     def test_agi_int_lay_so_DA_CONG_do(self):
-        """char_agi/char_int da cong do/collection/thu cuoi; char_attrs chi la so GOC."""
-        self.assertIn('if _id == 30 and getattr(c, "char_agi", None) is not None:', _src())
+        """char_agi/char_int da cong do/suu tap/the/thu cuoi -> phai thang so goc+do.
+
+        Luat nay TRUOC nam trong gui.py, nay chuyen vao client.char_stat_full() de moi noi dung
+        chung mot cach tinh. Neo theo Y NGHIA chu khong theo dong code cu.
+        """
+        s = _doc(os.path.join(ROOT, "bot", "client.py"))
+        self.assertIn('if getattr(self, "char_int", None) is not None:', s)
+        self.assertIn("out[27] = int(self.char_int)", s)
+        self.assertIn("out[30] = int(self.char_agi)", s)
+        self.assertIn("c.char_stat_full()", _src(), "gui phai dung ham tong hop")
 
 
 if __name__ == "__main__":

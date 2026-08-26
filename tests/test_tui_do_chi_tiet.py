@@ -118,5 +118,85 @@ class TestTinhLaiChiSoKhiThayDo(unittest.TestCase):
         self.assertEqual(GameClient.ATTR_SPX, 219)
 
 
+class TestChiSoDayDuTuGoi0x05(unittest.TestCase):
+    """User hoi 3 lan: "hien thi day du chi so, atk, int, def, Hpx...".
+
+    Truoc day bot chi doc INT/AGI tu goi 0x05 sub03 nen bang chi so THIEU HAN ATK/DEF/HPx/SPx -
+    khong phai server khong gui, ma khong ai doc.
+    Bo cuc crack Logic_Role.lua Role.ReceivePlayerData (KHONG doan offset):
+      +9 Int(2) +11 Atk(2) +13 Def(2) +15 Agi(2) +17 Hpx(2) +19 Spx(2)
+      +39 MaxHp(4) +43 MaxSp(2)
+      +45 EquipAtk(4) +49 EquipDef(4) +53 EquipInt(4) +57 EquipAgi(4)
+      +61 EquipMaxHp(4) +65 EquipMaxSp(4) +69 EquipHpx(4) +73 EquipSpx(4)
+    Moc +9/+15/+53/+57 khop y het cai bot dung tu truoc -> bo cuc tin duoc.
+    """
+
+    def test_doc_du_6_chi_so_goc(self):
+        s = _doc("bot", "client.py")
+        self.assertIn("self.char_base = {27: _u16(9), 28: _u16(11), 29: _u16(13), 30: _u16(15)", s)
+
+    def test_doc_du_phan_cong_tu_do(self):
+        s = _doc("bot", "client.py")
+        self.assertIn("self.char_equip = {28: _i32(45), 29: _i32(49), 27: _i32(53), 30: _i32(57)", s)
+
+    def test_maxsp_doc_2_byte_khong_phai_4(self):
+        """Client doc UInt16. Doc 4 byte la nuot 2 byte dau cua EquipAtk -> so khong lo ->
+        tu roi vao nhanh kiem tra roi BO QUA ca khoi HP/SP login."""
+        s = _doc("bot", "client.py")
+        self.assertIn('sp_max = int.from_bytes(body[43:45], "little")', s)
+        self.assertNotIn('sp_max = int.from_bytes(body[43:47], "little")', s)
+
+    def test_ham_tong_hop(self):
+        self.assertTrue(hasattr(GameClient, "char_stat_full"))
+
+    def test_tong_la_goc_cong_do(self):
+        c = GameClient.__new__(GameClient)
+        c.char_base = {28: 100, 29: 50, 31: 10, 32: 5, 27: 200, 30: 40}
+        c.char_equip = {28: 30, 29: 20, 31: 3, 32: 2, 27: 143, 30: 34}
+        c.char_int = None
+        c.char_agi = None
+        f = c.char_stat_full()
+        self.assertEqual(f[28], 130, "ATK = goc + do")
+        self.assertEqual(f[29], 70)
+        self.assertEqual(f[31], 13)
+
+    def test_INT_AGI_uu_tien_so_da_cong_du(self):
+        """char_int/char_agi da cong ca suu tap/the/thu cuoi - khong chi rieng trang bi."""
+        c = GameClient.__new__(GameClient)
+        c.char_base = {27: 200, 30: 40}
+        c.char_equip = {27: 143, 30: 34}
+        c.char_int = 385
+        c.char_agi = 76
+        f = c.char_stat_full()
+        self.assertEqual(f[27], 385)
+        self.assertEqual(f[30], 76)
+
+    def test_chua_nhan_goi_thi_tra_rong(self):
+        c = GameClient.__new__(GameClient)
+        c.char_base = {}
+        self.assertEqual(c.char_stat_full(), {})
+
+
+class TestSuaKhoaJsonRutGon(unittest.TestCase):
+    """items_gamedata.json dung ten khoa RUT GON. Doc bang ten dai thi luon rong."""
+
+    def test_doc_dung_ten_khoa(self):
+        s = _doc("gui.py")
+        self.assertIn('d.get("nl")', s)
+        self.assertIn('d.get("el")', s)
+        self.assertIn('d.get("su")', s)
+        self.assertNotIn('d.get("needLv")', s)
+        self.assertNotIn('d.get("suitId")', s)
+
+
+class TestTabMacDinhKhongBiDe(unittest.TestCase):
+    def test_khong_ep_ve_tab_tat_ca(self):
+        """Dat _tab = EQUIP o tren roi nhung _set_tab(_BAG.ALL) o duoi DE LEN -> van ra tab
+        Tat ca (user bao 26/08 lan 2)."""
+        s = _doc("gui.py")
+        self.assertIn("self._set_tab(self._tab)", s)
+        self.assertNotIn("self._set_tab(_BAG.ALL)", s)
+
+
 if __name__ == "__main__":
     unittest.main()
