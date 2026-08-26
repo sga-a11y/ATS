@@ -39,7 +39,7 @@ PC_ONLY = ["config.py",        # APK doc tu asset, cau truc khac han
 SHARED_ASSETS = ["achievements.json", "mark_bitids.json", "events.json", "npc_names.json", "use_items.json", "mounts_grow.json", "dangerous_npcs.json",
                  "scene_names.json", "npc_table.json", "warp_points.json",
                  "cities.json", "collect_style.json", "donate_items.json", "donate_materials.json", "mineral_npcs.json", "jiugongge.json", "furnace_pool.json",
-                 "exchange.json",
+                 "exchange.json", "eq_affix.json",
                  "furnace_default_notify.json", "equip_stats.json", "items_gamedata.json", "login_awards.json",
                  "pet_scrolls.json", "pet_stats.json", "pets.json", "npc_special_skill.json", "servers.json",
                  "skills_data.json",

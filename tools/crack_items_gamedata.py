@@ -67,7 +67,13 @@ def _set_tab_fields(rec, src):
                       #   217 Thuyen toc | 218 The chat (HPx) | 219 Nang luong (SPx)
                       ("a1k", "a1k"), ("a1v", "a1v"), ("a2k", "a2k"), ("a2v", "a2v"),
                       # el/elv = he + tri so he; su = bo do (suit).
-                      ("el", "element"), ("elv", "elementValue"), ("su", "suitId")):
+                      ("el", "element"), ("elv", "elementValue"), ("su", "suitId"),
+                      # sa = specialAbility (EItemUseKind). Tren TRANG BI day la dong hieu ung
+                      # dac biet, vd 42 = 有機率出現兩倍殺傷力 (co xac suat gay sat thuong gap doi
+                      # = "ti le bao kich" user hoi 26/08). Dong nay KHONG nam o bang dong phu -
+                      # da kiem chung bang du lieu THAT: EquipmentAffix / EquipmentReinforced /
+                      # EquipmentReinforcedValue deu khong co ma bao kich nao.
+                      ("sa", "specialAbility")):
         v = src.get(field) or 0
         if v:
             rec[key] = int(v)

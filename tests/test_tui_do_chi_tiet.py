@@ -430,7 +430,7 @@ class TestHeChinhVaHePhuLong(unittest.TestCase):
         i = s.find("def _item_chi_tiet")
         j = s.find("def _mon_cu_the")
         self.assertIn('d.get("el")', s[i:j], "he chinh phai doc ban mau")
-        self.assertIn('info.get("element")', s[j:j + 1800], "he phu phai doc mon cu the")
+        self.assertIn('info.get("element")', s[j:j + 3200], "he phu phai doc mon cu the")
 
     def test_truyen_ThingData_vao_ham_chi_tiet(self):
         s = _doc("gui.py")

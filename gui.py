@@ -2032,6 +2032,8 @@ class BagDialog(tk.Toplevel):
         # Mo ta item de RIENG file (2MB) va chi doc o day - dialog nay chi ton tai khi user mo tui
         # do, nen bot chay chuc party khong ai phai gong them 2MB nay trong RAM.
         self._desc_db = _load_json("items_desc.json")
+        # Bang DONG PHU (洗rèn): affix1/2/3 trong ThingData la ID tra bang nay, khong phai cap.
+        self._affix_db = (_load_json("eq_affix.json") or {}).get("affix") or {}
 
         top = ttk.Frame(self, padding=8); top.pack(fill="x")
         self._tab_btns = {}
@@ -2312,6 +2314,35 @@ class BagDialog(tk.Toplevel):
     _ITEM_ATTR = {207: "HP", 208: "SP", 210: "ATK", 211: "DEF", 212: "INT", 214: "AGI",
                   217: "Thuyền tốc", 218: "Thể chất", 219: "Năng lượng"}
     _HE = {1: "Địa", 2: "Thủy", 3: "Hỏa", 4: "Phong", 5: "Tâm", 7: "Quang", 8: "Ám"}
+    # Cac ma chi so PHAN TRAM (Data_ItemData.lua GetAttrText 101..114) - dong phu / thien quan
+    # co the dung. 103 = 暴擊率 (ti le bao kich).
+    _ITEM_ATTR_PCT = {101: "ATK%", 102: "DEF%", 103: "Bạo kích%", 104: "Sát thương bạo kích",
+                      105: "Né%", 106: "Chính xác%", 107: "HP%", 108: "SP%", 109: "INT%",
+                      110: "Hồi phục%", 111: "Được hồi%", 112: "Giảm sát thương dai%",
+                      113: "Tăng sát thương%", 114: "Giảm sát thương%",
+                      87: "Sát thương bạo kích", 88: "Hút HP", 89: "Hút SP",
+                      90: "Kháng dị thường", 91: "Phản thương"}
+
+    # Hieu ung dac biet cua TRANG BI (EItemUseKind - Data_ItemData.lua). Chi liet ke cac ma
+    # THUC SU gap tren trang bi; ma khac (cuon, item chuc nang) khong hien o day.
+    #   40 使用時經驗值為1.5倍 | 41 有機率出現兩倍的敏捷 | 42 有機率出現兩倍殺傷力
+    # Ma 42 chinh la dong "ti le bao kich" user hoi 26/08 - no la specialAbility cua item, KHONG
+    # phai dong phu (da kiem: bang EquipmentAffix/Reinforced/ReinforcedValue deu khong co ma nao
+    # cho bao kich).
+    _SPECIAL = {40: "Kinh nghiệm x1.5",
+                41: "Có xác suất nhân đôi AGI",
+                42: "Có xác suất nhân đôi sát thương (bạo kích)"}
+
+    def _ten_attr(self, attr):
+        """Ten chi so cho MOT ma. attr 1..8 la HE (xem chu thich trong EQAffixData.New:
+        "洗鍊數值(1地 2水 3火 4風 5心 6光 7暗 207:提昇總HP 208...")."""
+        try:
+            a = int(attr)
+        except (TypeError, ValueError):
+            return "?"
+        if 1 <= a <= 8:
+            return "Hệ %s" % self._HE.get(a, str(a))
+        return (self._ITEM_ATTR.get(a) or self._ITEM_ATTR_PCT.get(a) or ("chỉ số %d" % a))
 
     def _item_chi_tiet(self, tid, info=None):
         """Dong chi tiet cua mot item: vi tri mac, level yeu cau, chi so cong them, he, bo do.
@@ -2348,6 +2379,8 @@ class BagDialog(tk.Toplevel):
             if _n:
                 _e += " +%d" % _n
             ra.append(_e)
+        if d.get("sa") and int(d["sa"]) in self._SPECIAL:
+            ra.append(self._SPECIAL[int(d["sa"])])
         if d.get("su"):
             ra.append("Bộ #%s" % d["su"])
         if d.get("fc"):
@@ -2374,9 +2407,20 @@ class BagDialog(tk.Toplevel):
             ra.append("Linh đá: %s cấp %d"
                       % (self._STONE.get(int(info["stone_attr"]), str(info["stone_attr"])),
                          info["stone_lv"]))
-        _af = [x for x in (info.get("affix") or []) if x]
-        if _af:
-            ra.append("Dòng phụ: " + "/".join("+%d" % x for x in _af))
+        # DONG PHU (洗鍊): affix1/2/3 KHONG phai "cap" ma la ID TRA BANG eqAffixAllDatas.
+        # Client (Data_ItemData.lua GetAffixText):
+        #     GetAttrText(eqAffixAllDatas[affixN].attr) .. " +" .. eqAffixAllDatas[affixN].level[N]
+        # Tuc dong thu N lay `level[N]` - CUNG mot id nhung o dong khac thi tri so khac.
+        for _i, _id in enumerate((info.get("affix") or [])[:3], 1):
+            if not _id:
+                continue
+            _row = self._affix_db.get(str(int(_id)))
+            if not _row:
+                ra.append("Dòng phụ %d: id %d (chưa có trong bảng)" % (_i, _id))
+                continue
+            _lv = (_row.get("lv") or [0, 0, 0])
+            _v = _lv[_i - 1] if _i <= len(_lv) else 0
+            ra.append("Dòng phụ: %s +%s" % (self._ten_attr(_row.get("attr")), _v))
         # HE PHU (附屬性) - Data_ItemData.lua GetElementText, chu thich ngay tren ham la "--附屬性".
         # Day chinh la THUOC TINH LONG: long = 附加羽毛 ("lông gắn thêm"), gan vao mon thi ghi
         # element/elementValue cua MON CU THE. Khac han he CHINH (lay tu ban mau item).
