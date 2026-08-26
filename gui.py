@@ -2035,9 +2035,15 @@ class BagDialog(tk.Toplevel):
 
         top = ttk.Frame(self, padding=8); top.pack(fill="x")
         self._tab_btns = {}
+        # Tab dang chon: dung Radiobutton KIEU NUT (indicatoron=0) -> nut LOM XUONG + chu dam.
+        # Truoc day danh dau bang state(["disabled"]) -> chu xam nhu bi khoa, user tuong tab do
+        # KHONG BAM DUOC (bao 26/08: "t cu nghi la disable co").
+        self._tab_var = tk.IntVar(value=self._tab)
         for tab, name in _BAG.TAB_NAMES:
-            b = ttk.Button(top, text=name, width=11,
-                           command=lambda t=tab: self._set_tab(t))
+            b = tk.Radiobutton(top, text=name, width=11, variable=self._tab_var, value=tab,
+                               indicatoron=0, relief="raised", bd=1, padx=4, pady=3,
+                               selectcolor="#cfe3ff",          # nen tab dang chon
+                               command=lambda t=tab: self._set_tab(t))
             b.pack(side="left", padx=(0, 4))
             self._tab_btns[tab] = b
         self.lbl_count = ttk.Label(top, text="", font=("Segoe UI", 10, "bold"))
@@ -2360,8 +2366,9 @@ class BagDialog(tk.Toplevel):
     # ---- ve ----
     def _set_tab(self, tab):
         self._tab = tab
+        self._tab_var.set(tab)      # Radiobutton tu lom xuong; KHONG dung disabled nua
         for t, b in self._tab_btns.items():
-            b.state(["disabled"] if t == tab else ["!disabled"])
+            b.configure(font=("Segoe UI", 9, "bold" if t == tab else "normal"))
         self.refresh()
 
     def refresh(self):

@@ -198,5 +198,26 @@ class TestTabMacDinhKhongBiDe(unittest.TestCase):
         self.assertNotIn("self._set_tab(_BAG.ALL)", s)
 
 
+class TestTabDangChonKhongTrongNhuBiKhoa(unittest.TestCase):
+    """User: "tab bi chon no text mau xam, t cu nghi la disable co".
+
+    Danh dau tab dang chon bang state(["disabled"]) lam chu xam y het nut bi khoa. Doi sang
+    Radiobutton kieu nut: lom xuong + chu dam, van bam duoc.
+    """
+
+    def test_khong_dung_disabled_de_danh_dau(self):
+        s = _doc("gui.py")
+        self.assertNotIn('b.state(["disabled"] if t == tab else ["!disabled"])', s)
+
+    def test_dung_radiobutton_kieu_nut(self):
+        s = _doc("gui.py")
+        self.assertIn("indicatoron=0", s)
+        self.assertIn("self._tab_var.set(tab)", s)
+
+    def test_tab_dang_chon_in_dam(self):
+        s = _doc("gui.py")
+        self.assertIn('"bold" if t == tab else "normal"', s)
+
+
 if __name__ == "__main__":
     unittest.main()
