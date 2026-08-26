@@ -148,6 +148,34 @@ def spot_profile(spot_data):
 # Ti le so tran phai roi vao khoang min/max thi diem moi duoc coi la HOP (user chot 26/08).
 MATCH_SHARE = 0.40
 
+def _la_block_cham(pattern) -> bool:
+    """'1x2' / '1x3' / '1x4' / '3x1 + 1x2' -> True. '1x1', '2x1', '3x1', '4x1' -> False.
+
+    Dang 'WxC' = C khoi, moi khoi W quai (doc y het _mobs_in_pattern de khong lech cach hieu).
+    W == 1 va C >= 2 = nhieu khoi le -> phai danh tung khoi mot -> RAT LAU. User chot: loai.
+
+    LUU Y '1x2' KHAC '2x1' (user nhac): 1x2 = HAI khoi, moi khoi 1 quai -> loai.
+    2x1 = MOT khoi 2 quai -> danh mot lan, GIU. '1x1' = mot con le, cung GIU.
+    """
+    for part in str(pattern).split("+"):
+        try:
+            w, c = part.strip().split("x")
+            w, c = int(w), int(c)
+        except Exception:
+            continue
+        if w == 1 and c >= 2:
+            return True
+    return False
+
+
+def has_slow_block(patterns) -> bool:
+    """Diem tung ghi nhan block 1x2/1x3/1x4 -> loai han, KHONG tinh ti le.
+
+    User chot 26/08: "khong can nguong dau, khi nao can t se bao loc luon file block train, bot do
+    phai tinh toan nhieu". Tuc lam sach du lieu o NGUON, khong bat bot doan nhieu moi lan chon.
+    """
+    return any(_la_block_cham(k) for k in (patterns or {}))
+
 
 def mob_share_in_range(patterns, mob_min, mob_max):
     """Ti le tran co so quai nam trong [mob_min, mob_max]. 0.0 neu chua co du lieu.
@@ -173,6 +201,8 @@ def spot_matches(prof, level, mob_min, mob_max, elements):
     lv = prof.get("levels")
     if not lv or not (lv[0] <= level <= lv[1]):
         return False
+    if has_slow_block(prof.get("patterns")):
+        return False        # block 1x2/1x3/1x4 -> danh qua lau
     if prof.get("patterns") and mob_share_in_range(prof["patterns"], mob_min, mob_max) < MATCH_SHARE:
         return False
     want = set(elements or ALL_ELEMENTS)

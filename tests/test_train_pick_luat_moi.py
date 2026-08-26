@@ -131,5 +131,43 @@ class TestNamLuat(unittest.TestCase):
         self.assertIn("THAP HON map thap nhat", got[3])
 
 
+class TestLoaiBlockCham(unittest.TestCase):
+    """Loai diem co block 1x2 / 1x3 / 1x4 - danh qua lau (user chot 26/08)."""
+
+    def test_1x2_KHAC_2x1(self):
+        """User nhac rieng cho nay. 1x2 = HAI khoi moi khoi 1 quai -> loai.
+        2x1 = MOT khoi 2 quai -> danh mot lan -> GIU."""
+        self.assertTrue(TP._la_block_cham("1x2"))
+        self.assertFalse(TP._la_block_cham("2x1"))
+
+    def test_1x1_KHONG_bi_chan(self):
+        """User dan: 'dung co tien tay chan luon 1x1 day nhe'."""
+        self.assertFalse(TP._la_block_cham("1x1"))
+        self.assertFalse(TP._la_block_cham("3x1 + 1x1"))
+        self.assertFalse(TP.has_slow_block({"1x1": 999, "3x1": 5}))
+
+    def test_1x3_1x4_bi_chan(self):
+        self.assertTrue(TP._la_block_cham("1x3"))
+        self.assertTrue(TP._la_block_cham("1x4"))
+
+    def test_block_cham_nam_o_ve_sau_cung_bi_chan(self):
+        self.assertTrue(TP._la_block_cham("3x1 + 1x2"))
+
+    def test_khong_dung_nguong_ti_le(self):
+        """User: 'khong can nguong dau, khi nao can t se bao loc luon file block train'.
+        Dinh 1 lan cung loai."""
+        self.assertTrue(TP.has_slow_block({"2x1": 99999, "1x3": 1}))
+
+    def test_diem_co_block_cham_thi_khong_duoc_chon(self):
+        tid = _tid_lv(100)
+        if not tid:
+            self.skipTest("npc_table khong co quai level 100")
+        maps = [_mp(9010, "Map thu 100", 2)]
+        st = _st([(9010, (90100, 0), {"4x1": 500, "1x2": 500}, tid),   # co block cham
+                  (9010, (90101, 0), {"4x1": 900}, tid)])              # sach, nhung NHIEU tran hon
+        got = TP.pick_train_spot("avg-30", [130], maps, mob_min=4, mob_max=6, stats=st)
+        self.assertEqual(got[1], 1, "phai bo diem co 1x2 du no it tran hon")
+
+
 if __name__ == "__main__":
     unittest.main()
