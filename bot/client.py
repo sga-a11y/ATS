@@ -3006,12 +3006,22 @@ class GameClient:
             slot = pkt[9]
             if slot == self._pending_confirm_slot:
                 self._use_confirmed = True
+            # `S:023-009 <背包減少物品> +索引(1) +數量(4)` - goi MANG SO LUONG. Truoc day bot vut
+            # so luong di va luon tru 1 -> moi lan tieu thu NHIEU cai mot luc la tui ao lech han.
+            # Bug that (log 10:02): nang cap thu cuoi an 100 'Tang Cap Ky Don', bot chi tru 1 ->
+            # tuong con 102 trong khi that su con 3 -> tinh sai "thieu", roi mo the ma khong bao
+            # gio thay so dan tang (moc so sanh lech 99) -> bao "tui day" va MAT TRANG the.
+            n = 1
+            if len(pkt) >= 14:
+                n = int.from_bytes(pkt[10:14], "little", signed=True)
+                if n <= 0 or n > 10_000_000:
+                    n = 1
             rec = self.bag_slots.get(slot)
             if rec:
-                rec[1] = max(0, rec[1] - 1)
+                rec[1] = max(0, rec[1] - n)
                 tid = rec[0]
                 if tid in self.bag_counts:
-                    self.bag_counts[tid] = max(0, self.bag_counts[tid] - 1)
+                    self.bag_counts[tid] = max(0, self.bag_counts[tid] - n)
         # TRANG BI DANG MAC luc login: [count u8] + count * ThingData 35B.
         elif opcode == 0x17 and len(pkt) >= 10 and pkt[7:9] == b"\x0b\x00":
             self._parse_equipment_snapshot(pkt)
@@ -6850,13 +6860,20 @@ class GameClient:
             return False
         nhan_tid, nhan_n = int(muc["id"]), int(muc["n"])
         cu = int((self.bag_counts or {}).get(nhan_tid, 0))
+        the_cu = int((self.bag_counts or {}).get(int(tid), 0))
         try:
             self.send(0x5a, b"\x01\x00" + struct.pack("<HBB", int(tid), 1, int(index)))
         except OSError:
             return False
         t0 = time.time()
         while time.time() - t0 < self.EXCHANGE_ACK_WAIT:
+            # Nhan bang HAI dau hieu: nhan duoc do MOI, HOAC the bi tru. Chi bam vao "nhan duoc
+            # do" la du neu tui ao chuan, nhung tui ao tung lech (goi giam 0x17 sub09 mang so
+            # luong ma truoc day bot tru 1) -> moc so sanh sai -> bot tuong that bai trong khi
+            # server DA an the. Dau hieu "the bi tru" khong dinh loi do.
             if int((self.bag_counts or {}).get(nhan_tid, 0)) >= cu + nhan_n:
+                return True
+            if int((self.bag_counts or {}).get(int(tid), 0)) < the_cu:
                 return True
             time.sleep(0.1)
         return False
@@ -6886,12 +6903,25 @@ class GameClient:
         return out
 
     def _mount_open_cards_for(self, want_tid: int, thieu: int, dang_co: int) -> int:
-        """Mo VUA DU the doi de bu `thieu` item `want_tid`. Tra ve so luong SAU khi mo.
+        """Mo the doi de bu `thieu` item `want_tid` - CHI KHI MO LA DU. Tra ve so luong sau do.
 
-        User: "dang co 33/50 -> thieu 17 -> co 10 the -> mo 4 cai de lay 20". Tuc lay tran tren
-        cua thieu/moi_the, KHONG mo het ca chong the.
+        User noi ro: "neu mo ma DU thi mo ra de nang cap". Mo ma van khong du = VUT THE di khong
+        duoc gi (the con dung viec khac, vd doi 'Tui Toa Ky Dan').
+
+        Bug that (log 10:04): thieu 142 nhung chi co 17 the (17*5 = 85, khong bao gio du) - bot
+        van mo het 17 the. Toi da bo mat chu "ma du" trong yeu cau.
+
+        Vi du dung (user): "dang co 33/50 -> thieu 17 -> co 10 the -> mo 4 cai de lay 20".
         """
-        for card_tid, index, moi_lan, co_the in self._cards_giving(want_tid):
+        nguon = self._cards_giving(want_tid)
+        co_the_bu = sum(moi_lan * co_the for _t, _i, moi_lan, co_the in nguon)
+        if co_the_bu < thieu:
+            if nguon:
+                log.info("[%s] Thu cuoi: thieu %d '%s' nhung the doi chi bu duoc %d -> KHONG mo "
+                         "(mo cung khong du, giu the lai)",
+                         self._label, thieu, self._mount_item_name(want_tid), co_the_bu)
+            return dang_co
+        for card_tid, index, moi_lan, co_the in nguon:
             if thieu <= 0:
                 break
             can_mo = -(-thieu // moi_lan)          # tran tren
