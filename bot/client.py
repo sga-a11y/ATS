@@ -3036,6 +3036,15 @@ class GameClient:
             self._on_equip_done(pkt[9], follow=0)
         elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x17\x00":
             self._on_equip_done(pkt[10], follow=pkt[9])
+        # COI DO XONG - server XAC NHAN. Truoc day bot KHONG bat 2 goi nay: gui lenh coi thi mon
+        # co ve tui (0x17 sub08 bot co bat) nhung bang "do dang mac" van hien y nguyen -> user bam
+        # "Cởi ra" xong thay KHONG CO GI XAY RA (bao 26/08).
+        #   S:023-016 <卸下裝備>       +vi tri do(1) +o tui(1)              -> sub 16 = 0x10 (char)
+        #   S:023-021 <武將卸下裝備>   +petIdx(1) +vi tri do(1)             -> sub 21 = 0x15 (pet)
+        elif opcode == 0x17 and len(pkt) >= 10 and pkt[7:9] == b"\x10\x00":
+            self._on_unequip_done(pkt[9], follow=0)
+        elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x15\x00":
+            self._on_unequip_done(pkt[10], follow=pkt[9])
         # S:023-024 <武將穿上裝備> [武將索引][物品資料 16B] - server bao PET DANG MAC mon nay.
         # Client dung goi NAY de dung trang thai do pet (protocolTable[23][20] = <武將所有裝備> la
         # ham RONG - no khong dung goi do). Bot can bang nay vi cung ly do nhu do char: THAY DO thi
@@ -3551,6 +3560,18 @@ class GameClient:
                     _rec["level"] = b[start + 7]
                     _rec["pid"] = pid
                     self.pet_login_records[marker] = _rec
+                # TRANG BI PET doc THANG tu day: sau ten + 3 byte skillLv la 6 x ThingData(35B),
+                # moi ThingData mo dau bang Id (2B LE). O thu i (0-based) = fitType i+1.
+                # Truoc day bot chi trong vao S:023-024 (sub 0x18) - goi do khong phai luc nao
+                # cung ve luc login, nen bang do pet TRONG TRON (user bao 26/08 "chua thay hien
+                # thi do pet dang mac"). Goi 0x0f thi LUC NAO CUNG co.
+                _nl2 = b[start + 31]
+                _eq = start + 35 + _nl2
+                if 1 <= marker <= 4 and _eq + 6 * 35 <= len(b):
+                    for _k in range(6):
+                        _t = int.from_bytes(b[_eq + _k * 35:_eq + _k * 35 + 2], "little")
+                        if _t:
+                            self.pet_equip_by_fit.setdefault(marker, {})[_k + 1] = _t
             except Exception:
                 pass
             # AUTO NANG SKILL PET: block 武將資料 (client Logic_Role.FollowNpcAppear) - tu dau record:
@@ -7372,6 +7393,21 @@ class GameClient:
         except OSError:
             return False
         return True
+
+    def _on_unequip_done(self, fit_pos: int, follow: int = 0):
+        """DA COI XONG 1 mon (server xac nhan). Xoa khoi bang do dang mac + bump _equip_seq.
+
+        Mon vua coi TU VE TUI qua goi rieng (0x17 sub08) - bot da bat san, khong xu ly o day.
+        """
+        table = (self.pet_equip_by_fit.setdefault(follow, {}) if follow else self.equip_by_fit)
+        cu = table.pop(int(fit_pos), None)
+        if not follow:
+            self.equipped_items = [x for x in (self.equipped_items or [])
+                                   if int(x.get("id", 0)) != int(cu or -1)]
+        self._equip_seq = int(getattr(self, "_equip_seq", 0)) + 1
+        log.info("[%s] Da coi do: vi tri %s cua %s (%s)", self._label, fit_pos,
+                 "nhan vat" if not follow else "pet #%d" % follow,
+                 self._mount_item_name(cu) if cu else "?")
 
     def _on_equip_done(self, slot: int, follow: int = 0):
         """DA MAC XONG 1 mon. Dung chung cho ca NHAN VAT lan PET (2 goi khac nhau, xu ly y het):

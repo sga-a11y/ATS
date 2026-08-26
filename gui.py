@@ -2233,17 +2233,30 @@ class BagDialog(tk.Toplevel):
         ttk.Label(self.act_fr, text="(cởi ra sẽ nằm ở ô trống đầu tiên trong túi)",
                   foreground="#888").pack(side="left", padx=(8, 0))
 
+    # Bang chi so cua game - Controller_RoleController.lua EAttribute (KHONG tu dat so).
+    # Bot da thu san MOI id vao c.char_attrs (0x08 sub0100), truoc day chi hien 3 cai.
+    _ATTR = ((28, "ATK"), (29, "DEF"), (27, "INT"), (30, "AGI"),
+             (31, "HPx"), (32, "SPx"), (88, "Hút HP"), (89, "Hút SP"),
+             (90, "Kháng"), (87, "Cường hoá"))
+
     def _stats_line(self, who):
-        """Dong chi so. CHI ghi cai bot THAT SU biet - thieu thi de dau '?', khong doan."""
+        """Dong chi so. CHI ghi cai bot THAT SU biet - thieu thi bo qua, khong doan."""
         c = self.c
         st = getattr(c, "state", None)
         if not who:
-            lv, agi, intel = (getattr(c, "char_level", None), getattr(c, "char_agi", None),
-                              getattr(c, "char_int", None))
+            lv = getattr(c, "char_level", None)
             unit = getattr(st, "char", None) if st else None
-            phan = ["Cấp %s" % (lv if lv is not None else "?"),
-                    "AGI %s" % (agi if agi is not None else "?"),
-                    "INT %s" % (intel if intel is not None else "?")]
+            phan = ["Cấp %s" % (lv if lv is not None else "?")]
+            attrs = getattr(c, "char_attrs", None) or {}
+            for _id, _ten in self._ATTR:
+                # AGI/INT lay tu char_agi/char_int: 2 cai do da CONG do/collection/thu cuoi
+                # (xem _refresh_char_agi), con char_attrs chi la so GOC tu server.
+                if _id == 30 and getattr(c, "char_agi", None) is not None:
+                    phan.append("AGI %s" % c.char_agi)
+                elif _id == 27 and getattr(c, "char_int", None) is not None:
+                    phan.append("INT %s" % c.char_int)
+                elif _id in attrs:
+                    phan.append("%s %s" % (_ten, attrs[_id]))
         else:
             # MOI pet mang theo deu co so, khong rieng con xuat chien: goi 0x0f mang ban ghi cua
             # tung con, va pet_login_stats von la ham TONG QUAT (xem client.pet_stats).
