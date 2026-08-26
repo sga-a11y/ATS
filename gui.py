@@ -2282,22 +2282,63 @@ class BagDialog(tk.Toplevel):
                 out[ma] = out.get(ma, 0) + v
         return out
 
+    # Ma chi so trong DU LIEU ITEM -> ma chi so cua NHAN VAT / khoa cua pet_stats.
+    _I2CHAR = {212: 27, 210: 28, 211: 29, 218: 31, 219: 32, 214: 30}
+    _I2PET = {212: "int", 210: "atk", 211: "def", 218: "hpx", 219: "spx", 214: "agi"}
+
     def _dong_delta(self, who):
-        """Dong 'mac bo nay thi chi so doi the nao'. "" neu dang xem do that."""
+        """Dong chi so SAU KHI mac bo dang xem. "" neu dang xem do that.
+
+        User 26/08: "dung ghi du tinh +- bao nhieu, ghi luon chi so neu thay bo do" -> hien con so
+        KET QUA, khong hien do lech.
+        """
         if self._bo_soan is None:
             return ""
         moi = self._cong_cua_bo(self._bo_map(who) or {})
         cu = self._cong_cua_bo(self._equip_map(who))
+        d = {ma: moi.get(ma, 0) - cu.get(ma, 0) for ma in set(moi) | set(cu)}
+        # 25/26 (HP/SP tren item hoi phuc) va 207/208 la cung mot cho tren nhan vat.
+        for _a, _b in ((25, 207), (26, 208)):
+            if d.get(_a):
+                d[_b] = d.get(_b, 0) + d.pop(_a)
+
         phan = []
-        for ma in sorted(set(moi) | set(cu)):
-            d = moi.get(ma, 0) - cu.get(ma, 0)
-            if d:
-                phan.append("%s %+d" % (self._ten_attr(ma), d))
+        if not who:
+            try:
+                full = dict(self.c.char_stat_full() or {})
+            except Exception:
+                full = {}
+            for _k, _v in (getattr(self.c, "char_attrs", None) or {}).items():
+                full.setdefault(_k, _v)
+            for _i, _ten in ((212, "INT"), (210, "ATK"), (211, "DEF"),
+                             (218, "HPx"), (219, "SPx"), (214, "AGI")):
+                _c = full.get(self._I2CHAR[_i])
+                if _c is not None:
+                    phan.append("%s %d" % (_ten, int(_c) + d.get(_i, 0)))
+            _u = getattr(getattr(self.c, "state", None), "char", None)
+            if _u is not None and getattr(_u, "hp_max", 0):
+                phan.append("HP %d" % (int(_u.hp_max) + d.get(207, 0)))
+                if getattr(_u, "sp_max", 0):
+                    phan.append("SP %d" % (int(_u.sp_max) + d.get(208, 0)))
+        else:
+            try:
+                ps = self.c.pet_stats(int(who)) or {}
+            except Exception:
+                ps = {}
+            for _i, _ten in ((212, "INT"), (210, "ATK"), (211, "DEF"),
+                             (218, "HPx"), (219, "SPx"), (214, "AGI")):
+                _c = ps.get(self._I2PET[_i])
+                if _c is not None:
+                    phan.append("%s %d" % (_ten, int(_c) + d.get(_i, 0)))
+            if ps.get("hp_max"):
+                phan.append("HP %d" % (int(ps["hp_max"]) + d.get(207, 0)))
+            if ps.get("sp_max"):
+                phan.append("SP %d" % (int(ps["sp_max"]) + d.get(208, 0)))
         if not phan:
-            return "Mặc bộ này: chỉ số không đổi"
-        # KHONG con la "uoc tinh": bot da giu du ThingData cua ca mon trong tui (bag_items) lan mon
-        # dang mac (equipped_items) nen tinh dung linh da / cuong hoa / dong phu cua TUNG mon.
-        return "Mặc bộ này: " + "   ".join(phan) + "   (đã gồm linh đá / cường hoá / dòng phụ)"
+            return "Mặc bộ này: chưa đủ dữ liệu chỉ số"
+        # Con so nay tinh DU: ban mau + linh da + cuong hoa + dong phu cua tung mon cu the (bot
+        # giu ThingData cho ca mon trong tui lan mon dang mac).
+        return "Nếu mặc bộ này:   " + "   •   ".join(phan)
 
     def _equip_map(self, who):
         """{fitType: tid} cua doi tuong dang chon. who = 0 (char) hoac followIndex pet 1..4.

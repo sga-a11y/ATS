@@ -200,9 +200,11 @@ class TestLuongSoanBoDo(unittest.TestCase):
         dang mac nen tinh DUNG duoc, khong duoc ghi "uoc tinh" nua."""
         s = _doc("gui.py")
         self.assertIn("def _dong_delta", s)
-        self.assertIn("Mặc bộ này: ", s)
         self.assertNotIn("ước tính", s)
-        self.assertIn("đã gồm linh đá / cường hoá / dòng phụ", s)
+        # User 26/08: "dung ghi du tinh +- bao nhieu, ghi luon chi so neu thay bo do"
+        self.assertIn('"Nếu mặc bộ này:   "', s)
+        i = s.find("def _dong_delta")
+        self.assertNotIn("%+d", s[i:i + 2600], "khong duoc hien do lech +-, phai hien so KET QUA")
 
     def test_cong_cua_mon_gom_du_4_nguon(self):
         """Ban mau + linh da + cuong hoa + dong phu. Thieu nguon nao la so chenh lech sai."""
