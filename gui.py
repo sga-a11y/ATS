@@ -2311,7 +2311,12 @@ class BagDialog(tk.Toplevel):
     # Ten cac ma chi so trong DU LIEU ITEM (Data_ItemData.lua GetAttributeName -> TextData_C.dat).
     # KHONG tu dat: 20348='HP :' 20349='SP :' 20350='Atk:' 20351='Def:' 20352='Int:' 20353='Agi:'
     # 10068='Thể chất' 10069='Năng lượng' 90136='Thuyền tốc'.
-    _ITEM_ATTR = {207: "HP", 208: "SP", 210: "ATK", 211: "DEF", 212: "INT", 214: "AGI",
+    # DU bang cua ItemData.GetAttrText (Data_ItemData.lua:457) -> TextData_C.dat. Doi chieu tung
+    # ma, KHONG tu dat. Thieu ma nao thi UI hien "chỉ số 25 +104" - vo nghia (user bao 26/08:
+    # "item hoi phuc dang ghi la 25/26, hinh nhu la HP/SP nhi").
+    #   25 HP: | 26 SP: | 64 Trung thành | 1..8 la HE (xu ly rieng o _ten_attr)
+    _ITEM_ATTR = {25: "HP", 26: "SP", 64: "Trung thành",
+                  207: "HP", 208: "SP", 210: "ATK", 211: "DEF", 212: "INT", 214: "AGI",
                   217: "Thuyền tốc", 218: "Thể chất", 219: "Năng lượng"}
     _HE = {1: "Địa", 2: "Thủy", 3: "Hỏa", 4: "Phong", 5: "Tâm", 7: "Quang", 8: "Ám"}
     # Cac ma chi so PHAN TRAM (Data_ItemData.lua GetAttrText 101..114) - dong phu / thien quan
@@ -2665,6 +2670,14 @@ class BagDialog(tk.Toplevel):
             except Exception: pass
 
         def _work():
+            # DANG TRONG TRAN -> XEP HANG, het tran moi gui. Client that cung chan (Item.UnEquip /
+            # Item.Use: chi doi do duoc khi TOI LUOT MINH), gui bua giua tran la server nuot lenh.
+            try:
+                if self.c.queue_bag_cmd(text, fn):
+                    self.after(0, lambda: self._done_queued(text))
+                    return
+            except Exception:
+                pass
             before = self._state_fp()
             err = None
             try:
@@ -2683,6 +2696,13 @@ class BagDialog(tk.Toplevel):
                     time.sleep(0.1)
             self.after(0, lambda: self._done(text, sent, changed, err))
         threading.Thread(target=_work, daemon=True).start()
+
+    def _done_queued(self, text):
+        """Lenh bi XEP HANG vi dang trong tran - bao ro chu khong de user tuong bam hut."""
+        for w in self.act_fr.winfo_children():
+            try: w.state(["!disabled"])
+            except Exception: pass
+        self._flash("⏳ %s: đang trong trận — sẽ gửi ngay khi đánh xong" % text, "#a06000")
 
     def _done(self, text, sent, changed, err=None):
         if not self.winfo_exists():

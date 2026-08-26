@@ -1600,6 +1600,8 @@ class GameClient:
         # slot -> du lieu MON CU THE (cuong hoa / da / dong phu / he...). Xem thing_data_info().
         # bag_slots chi co [id, so luong]; may thu nay nam trong 29 byte ma truoc day bot vut di.
         self.bag_items = {}
+        # Lenh tui do bam TAY luc dang trong tran -> xep hang, het tran moi gui (xem queue_bag_cmd)
+        self._bag_queue = []
         # slot (int) -> [tid, count]. Snapshot tu S2C 0x17 sub05 (S:023-005) - chu thich cu ghi
         # "0x16 sub0400" la SAI (0x16=22 la MapNpc, khong dinh gi den tui). Use item = gui slot nay.
         # Server TU DAY snapshot, KHONG co lenh nao xin lai (da tra het 66 lenh C:023-*).
@@ -2531,6 +2533,16 @@ class GameClient:
                 _set_thread_prio(want)
                 prio = want
             time.sleep(15)
+            # LUOI AN TOAN cho hang doi lenh tui do: `in_battle` duoc HA o 8 CHO khac nhau (ket
+            # tran that, bo chay, doi map, reset...). Bam vao mot nhanh la kieu loi toi da mac
+            # nhieu lan - vao dung nhanh do thi chay, vao nhanh khac thi lenh ket vinh vien.
+            # Moc nhanh (0x14 sub0700) van giu de user khong phai cho lau; day chi la bat cac
+            # truong hop con lai.
+            try:
+                if self._bag_queue and not self.state.in_battle:
+                    self._flush_bag_queue()
+            except Exception:
+                pass
             try:
                 self.send(protocol.OP_HEARTBEAT, b"\x00\x00")
             except OSError:
@@ -2873,6 +2885,7 @@ class GameClient:
             self.state.reset_enemies(reset_quest=not _in_team_dungeon)
             self.state.in_battle = False
             self._heal_after_battle()   # hoi HP/SP NGAY khi ket tran (khong doi tick keepalive)
+            self._flush_bag_queue()     # lenh tui do user bam giua tran -> gui bay gio
         # KET TRAN khi BO CHAY: flee KHONG sinh 0x14 sub0700 (man THANG) ma chuoi 0x14 0c00 -> 0900 ->
         # 0800 (xac nhan capture flee.pcap). -> cung ha in_battle de go_to_town teleport duoc sau flee.
         # (Neu flee chua thanh cong/dang giua tran, luot 0x35 sau tu set lai in_battle=True.)
@@ -4784,6 +4797,38 @@ class GameClient:
 
     def bag_free_slots(self) -> int:
         return max(0, self.bag_capacity() - len(self.bag_slots))
+
+    # --- HANG DOI LENH TUI DO khi DANG TRONG TRAN ---
+    # Client that CHAN cac lenh nay trong tran: Item.UnEquip / Item.Use deu co
+    #     if FightField.conIdx ~= FightField.GetPlayerIdx() then ShowCenterMessage(22595); return
+    # tuc trong tran CHI doi do duoc khi TOI LUOT MINH. Bot gui bua giua tran thi server nuot lenh
+    # (hoac te hon - cac cho khac trong bot da dinh: gui 0x06/0x14 luc dang battle bi DA ket noi).
+    # Nen user bam luc dang danh -> XEP HANG, het tran moi gui.
+    def queue_bag_cmd(self, ten: str, fn) -> bool:
+        """True = DA XEP HANG (dang trong tran). False = khong trong tran, cu goi thang.
+
+        Chi de danh cho lenh TAY tu tui do. Luong tu dong cua bot da tu biet tranh battle.
+        """
+        if not self.state.in_battle:
+            return False
+        self._bag_queue.append((ten, fn))
+        log.info("[%s] Tui do: dang TRONG TRAN -> xep hang '%s', het tran se gui (%d lenh cho)",
+                 self._label, ten, len(self._bag_queue))
+        return True
+
+    def _flush_bag_queue(self):
+        """Xa hang doi sau khi ket tran. Goi tu cho HA in_battle."""
+        if not self._bag_queue:
+            return
+        cho = self._bag_queue
+        self._bag_queue = []
+        for ten, fn in cho:
+            try:
+                log.info("[%s] Tui do: het tran -> gui lenh da xep hang '%s'", self._label, ten)
+                fn()
+            except Exception as e:
+                log.warning("[%s] Tui do: lenh '%s' loi khi xa hang doi: %s", self._label, ten, e)
+            time.sleep(0.3)
 
     def bag_first_empty_slot(self):
         """O tui TRONG dau tien (1-based, theo bag_capacity). None = tui day.
