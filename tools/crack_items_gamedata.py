@@ -57,7 +57,17 @@ def _set_tab_fields(rec, src):
                       #      phai theo so o. Chay 1..254, khong co 0 -> muc nao cung duoc ghi.
                       ("st", "sort"),
                       # fc = furnaceCount: >0 moi hien nut "Phan giai" (Item.IsDismantle:2519).
-                      ("fc", "furnaceCount")):
+                      ("fc", "furnaceCount"),
+                      # --- CHI TIET TRANG BI (cho dialog Tui do ben gui.py) ---
+                      # nl = needLv: cap toi thieu de mac.
+                      ("nl", "needLv"),
+                      # a1k/a1v, a2k/a2v = 2 dong chi so cong them. Ma chi so tra o
+                      # Data_ItemData.lua GetAttributeName -> TextData_C.dat:
+                      #   207 HP | 208 SP | 210 Atk | 211 Def | 212 Int | 214 Agi
+                      #   217 Thuyen toc | 218 The chat (HPx) | 219 Nang luong (SPx)
+                      ("a1k", "a1k"), ("a1v", "a1v"), ("a2k", "a2k"), ("a2v", "a2v"),
+                      # el/elv = he + tri so he; su = bo do (suit).
+                      ("el", "element"), ("elv", "elementValue"), ("su", "suitId")):
         v = src.get(field) or 0
         if v:
             rec[key] = int(v)

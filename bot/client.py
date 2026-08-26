@@ -6820,6 +6820,13 @@ class GameClient:
                         if _tid in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID} else 0),
                 "damage": raw[6],
                 "damaged_item_id": int.from_bytes(raw[27:29], "little"),
+                # Cac truong CAN de tinh cong tu do (he/linh da) - bo cuc ThingData y het pet,
+                # xem pet_login_stats.parse_record. Truoc day bo qua nen thay do xong khong tinh
+                # lai duoc chi so (user bao 26/08).
+                "element": raw[7],
+                "element_value": raw[8],
+                "stone_attr": raw[16],
+                "stone_lv": raw[17],
             })
             off += 35
         self.equipped_items = equipped
@@ -7394,6 +7401,52 @@ class GameClient:
             return False
         return True
 
+    # Ma chi so trong du lieu ITEM (Data_ItemData.lua GetAttributeName + TextData_C.dat):
+    #   207 HP | 208 SP | 210 Atk | 211 Def | 212 Int | 214 Agi | 217 Thuyen toc
+    #   218 The chat (HPx) | 219 Nang luong (SPx)
+    ATTR_HP, ATTR_SP, ATTR_ATK, ATTR_DEF = 207, 208, 210, 211
+    ATTR_INT, ATTR_AGI, ATTR_HPX, ATTR_SPX = 212, 214, 218, 219
+
+    def char_equip_bonus(self) -> dict:
+        """{ma chi so: tong cong them} tu DO DANG MAC cua nhan vat. {} neu chua du du lieu.
+
+        Dung chung ham voi pet (pet_login_stats.equipment_bonus) - no da tinh du ca linh da,
+        he trang bi va bo do (suit). Bot chi can dung ThingData ma no can.
+        """
+        eq = [x for x in (self.equipped_items or []) if x.get("id")]
+        if not eq:
+            return {}
+        data = _load_pet_stat_data()
+        if not data:
+            return {}
+        rec = {"equipment": [{"id": x["id"], "element": x.get("element", 0),
+                              "element_value": x.get("element_value", 0),
+                              "stone_attr": x.get("stone_attr", 0),
+                              "stone_lv": x.get("stone_lv", 0)} for x in eq]}
+        try:
+            # He cua char: EAttribute.Element = 24 (Controller_RoleController.lua), bot da thu
+            # san vao char_attrs. Sai he thi chi mat phan cong THEM cua do cung he, khong hong.
+            _he = int((getattr(self, "char_attrs", None) or {}).get(24, 0) or 0)
+            return pet_login_stats.equipment_bonus(rec, data, _he)
+        except Exception as e:
+            log.debug("[%s] char_equip_bonus loi: %s", self._label, e)
+            return {}
+
+    def _recalc_char_equip_stats(self):
+        """Tinh lai phan CONG TU DO roi cap nhat AGI/INT.
+
+        `_char_equip_agi` / `_char_equip_int` truoc day CHI duoc dat MOT LAN luc login (goi 0x05).
+        Thay do thi server khong gui lai 2 so do - client tu tinh tai cho. Bot khong tinh nen
+        chi so va nut "Check AGI" dung nguyen so cu (user bao 26/08).
+        """
+        b = self.char_equip_bonus()
+        if not b:
+            return
+        self._char_equip_agi = int(b.get(self.ATTR_AGI, 0))
+        self._char_equip_int = int(b.get(self.ATTR_INT, 0))
+        self._refresh_char_agi()
+        self._refresh_char_int()
+
     def _on_unequip_done(self, fit_pos: int, follow: int = 0):
         """DA COI XONG 1 mon (server xac nhan). Xoa khoi bang do dang mac + bump _equip_seq.
 
@@ -7405,6 +7458,8 @@ class GameClient:
             self.equipped_items = [x for x in (self.equipped_items or [])
                                    if int(x.get("id", 0)) != int(cu or -1)]
         self._equip_seq = int(getattr(self, "_equip_seq", 0)) + 1
+        if not follow:
+            self._recalc_char_equip_stats()
         log.info("[%s] Da coi do: vi tri %s cua %s (%s)", self._label, fit_pos,
                  "nhan vat" if not follow else "pet #%d" % follow,
                  self._mount_item_name(cu) if cu else "?")
@@ -7452,6 +7507,8 @@ class GameClient:
                 self.equipped_items.append({"id": tid, "pos": 0, "damage": 0,
                                             "damaged_item_id": 0})
         self._equip_seq += 1
+        if not follow:
+            self._recalc_char_equip_stats()   # thay do -> AGI/INT phai doi theo (ca nut Check AGI)
 
     def _learn_item(self, tid: int, dhp: int, dsp: int, room_hp: bool = True, room_sp: bool = True,
                     cap_hp: bool = False, cap_sp: bool = False):

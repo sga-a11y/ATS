@@ -2024,7 +2024,9 @@ class BagDialog(tk.Toplevel):
         self.transient(master); self.grab_set()
         self.username = username
         self.c = client
-        self._tab = _BAG.ALL
+        # Mo tui do la vao thang tab TRANG BI (user chot 26/08: "do nhoc bot, do nhieu item").
+        # Tab "Tat ca" ve toan bo 120-170 o -> ve lai moi lan refresh la nang.
+        self._tab = _BAG.EQUIP
         self._sel_slot = None
         self._items_db = _load_json("items_gamedata.json")
         # Mo ta item de RIENG file (2MB) va chi doc o day - dialog nay chi ton tai khi user mo tui
@@ -2223,7 +2225,11 @@ class BagDialog(tk.Toplevel):
             text="ĐANG MẶC • %s  •  %s  •  id 0x%04x  •  %s"
                  % (_ten_vt, d.get("name") or "?", tid,
                     "Nhân vật" if not who else self._target_name()))
-        self.lbl_desc.configure(text=self._desc(tid))
+        # Chi tiet trang bi (vi tri / cap yeu cau / chi so cong / he / bo) dat TRUOC mo ta:
+        # user hoi thong tin nay, con mo ta chi la loi van.
+        _ct = self._item_chi_tiet(tid)
+        _mt = self._desc(tid)
+        self.lbl_desc.configure(text=("%s\n%s" % (_ct, _mt) if (_ct and _mt) else (_ct or _mt)))
         for w in self.act_fr.winfo_children():
             w.destroy()
         ttk.Button(self.act_fr, text="Cởi ra", width=16,
@@ -2282,6 +2288,34 @@ class BagDialog(tk.Toplevel):
             if getattr(unit, "sp_max", 0):
                 phan.append("SP %d/%d" % (unit.sp, unit.sp_max))
         return "Chỉ số:   " + "   •   ".join(phan)
+
+    # Ten cac ma chi so trong DU LIEU ITEM (Data_ItemData.lua GetAttributeName -> TextData_C.dat).
+    # KHONG tu dat: 20348='HP :' 20349='SP :' 20350='Atk:' 20351='Def:' 20352='Int:' 20353='Agi:'
+    # 10068='Thể chất' 10069='Năng lượng' 90136='Thuyền tốc'.
+    _ITEM_ATTR = {207: "HP", 208: "SP", 210: "ATK", 211: "DEF", 212: "INT", 214: "AGI",
+                  217: "Thuyền tốc", 218: "Thể chất", 219: "Năng lượng"}
+    _HE = {1: "Địa", 2: "Thủy", 3: "Hỏa", 4: "Phong", 5: "Tâm", 7: "Quang", 8: "Ám"}
+
+    def _item_chi_tiet(self, tid):
+        """Dong chi tiet cua mot item: vi tri mac, level yeu cau, chi so cong them, he, bo do."""
+        d = self._item(tid) or {}
+        ra = []
+        fit = int(d.get("ft") or 0)
+        if fit:
+            ra.append("Vị trí: %s" % dict(self._EQUIP_SLOTS).get(fit, "khác (%d)" % fit))
+        if d.get("needLv"):
+            ra.append("Yêu cầu cấp %s" % d["needLv"])
+        for _k, _v in ((d.get("a1k"), d.get("a1v")), (d.get("a2k"), d.get("a2v"))):
+            if _k and _v:
+                ra.append("%s +%s" % (self._ITEM_ATTR.get(int(_k), "chỉ số %s" % _k), _v))
+        if d.get("element"):
+            _e = "Hệ %s" % self._HE.get(int(d["element"]), str(d["element"]))
+            if d.get("elementValue"):
+                _e += " (%s)" % d["elementValue"]
+            ra.append(_e)
+        if d.get("suitId"):
+            ra.append("Bộ #%s" % d["suitId"])
+        return "   •   ".join(ra)
 
     def _item(self, tid):
         return self._items_db.get("0x%04x" % int(tid)) or self._items_db.get(str(int(tid))) or {}
@@ -2378,7 +2412,11 @@ class BagDialog(tk.Toplevel):
                  % (slot, d.get("name") or "?", cnt, tid))
         # Mo ta dai toi 272 ky tu -> KHONG nhet cung dong voi id (cua so chi con 690px), de
         # dong rieng ngay duoi, tu xuong dong theo be ngang.
-        self.lbl_desc.configure(text=self._desc(tid))
+        # Chi tiet trang bi (vi tri / cap yeu cau / chi so cong / he / bo) dat TRUOC mo ta:
+        # user hoi thong tin nay, con mo ta chi la loi van.
+        _ct = self._item_chi_tiet(tid)
+        _mt = self._desc(tid)
+        self.lbl_desc.configure(text=("%s\n%s" % (_ct, _mt) if (_ct and _mt) else (_ct or _mt)))
         self._show_actions((slot, tid, cnt, d))
 
     def _show_actions(self, sel):

@@ -121,12 +121,15 @@ class TestPhucThanPriority(unittest.TestCase):
         )
         game._parse_equipment_snapshot(packet)
         self.assertEqual(len(game.equipped_items), 2)
-        self.assertEqual(
-            game.equipped_items[1],
-            # code THEM "pos" (vi tri o trang bi) khi lam Phuc Than: can biet ngoc dang deo o
-            # o nao de vut dung o. Test cu giu dict truoc khi co truong do.
-            {"id": SUPER_GEM, "pos": 6, "damage": 12, "damaged_item_id": 0},
-        )
+        # Neo theo Y NGHIA (tap con), khong so khop NGUYEN dict: ban ghi nay duoc THEM truong
+        # dan theo nhu cau - "pos" (o dang deo ngoc, luc lam Phuc Than) roi element/stone (luc
+        # tinh lai chi so khi thay do). So khop nguyen dict thi cu them truong la test do oan
+        # trong khi hanh vi khong he doi.
+        for k, v in {"id": SUPER_GEM, "pos": 6, "damage": 12, "damaged_item_id": 0}.items():
+            self.assertEqual(game.equipped_items[1][k], v)
+        # 4 truong ThingData can de tinh cong tu do (xem pet_login_stats.equipment_bonus)
+        for k in ("element", "element_value", "stone_attr", "stone_lv"):
+            self.assertIn(k, game.equipped_items[1])
 
     def test_normal_blessings_still_run_but_bag_is_skipped_when_gem_exists(self):
         equip, used = self._run_items(
