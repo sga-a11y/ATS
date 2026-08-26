@@ -2329,9 +2329,11 @@ class BagDialog(tk.Toplevel):
     # Ma 42 chinh la dong "ti le bao kich" user hoi 26/08 - no la specialAbility cua item, KHONG
     # phai dong phu (da kiem: bang EquipmentAffix/Reinforced/ReinforcedValue deu khong co ma nao
     # cho bao kich).
-    _SPECIAL = {40: "Kinh nghiệm x1.5",
-                41: "Có xác suất nhân đôi AGI",
-                42: "Có xác suất nhân đôi sát thương (bạo kích)"}
+    # User goi day la "DONG DAC BIET" cua item (khong phai "dong phu" - dong phu la 洗鍊, tra bang
+    # eqAffixAllDatas). Hai thu KHAC NHAU, de nham thi di tim sai cho.
+    _SPECIAL = {40: "Đặc biệt: kinh nghiệm x1.5",
+                41: "Đặc biệt: có xác suất nhân đôi AGI",
+                42: "Đặc biệt: có xác suất nhân đôi sát thương (bạo kích)"}
 
     def _ten_attr(self, attr):
         """Ten chi so cho MOT ma. attr 1..8 la HE (xem chu thich trong EQAffixData.New:
