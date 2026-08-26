@@ -2240,7 +2240,11 @@ class BagDialog(tk.Toplevel):
             # THE DOI (specialAbility 219): gui goi RIENG `C:090-001` = 0x5a sub01 kem INDEX muc
             # chon, KHONG phai goi dung item thuong. Bam "Sử dụng" o day se gui sai lenh -> phai
             # hoi user chon muc truoc.
-            acts.append(("Mở / chọn quà…", lambda: self._chon_qua_doi(tid, _doi)))
+            # co ba `True` = KHONG boc trong _run: nut nay chi MO HOP THOAI chon, chua gui goi nao.
+            # Boc vao _run thi no thay ham tra None -> bao nham "Khong gui duoc lenh (o trong /
+            # acc mat ket noi)" hien de len chinh bang chon vua mo (anh chup cua user).
+            # Goi that gui o buoc sau, trong _chon_qua_doi -> do co _run rieng.
+            acts.append(("Mở / chọn quà…", lambda: self._chon_qua_doi(tid, _doi), True))
         elif _BAG.can_use(d.get("bs")):
             acts.append(("Sử dụng" + _hau_to, lambda: self.c.use_slot(slot, target=_who)))
         if _BAG.can_dismantle(d.get("fc")):
@@ -2248,9 +2252,13 @@ class BagDialog(tk.Toplevel):
         if self.c.is_fashion_item(tid):
             acts.append(("Thả vào sưu tầm", lambda: self.c.deposit_fashion_slot(slot)))
         acts.append(("Bỏ", lambda: self.c.discard_item(slot, cnt)))
-        for text, fn in acts:
+        for _a in acts:
+            text, fn = _a[0], _a[1]
+            _mo_hop_thoai = len(_a) > 2 and _a[2]   # True = chi mo hop thoai, KHONG boc _run
+            cmd = ((lambda f=fn: f()) if _mo_hop_thoai
+                   else (lambda t=text, f=fn: self._run(t, f)))
             ttk.Button(self.act_fr, text=text, width=16,
-                       command=lambda t=text, f=fn: self._run(t, f)).pack(side="left", padx=(0, 6))
+                       command=cmd).pack(side="left", padx=(0, 6))
         if not _equip and not _doi and not _BAG.can_use(d.get("bs")):
             ttk.Label(self.act_fr, text="(không dùng trực tiếp được)",
                       foreground="#888").pack(side="left", padx=(8, 0))
@@ -2286,7 +2294,10 @@ class BagDialog(tk.Toplevel):
         def _ok():
             i = int(var.get())
             top.destroy()
-            self._run("Mở quà", lambda: self.c.open_exchange_card(tid, i))
+            # cho_xac_nhan=False: _run tu doi chieu trang thai truoc/sau de bao ket qua, giong moi
+            # lenh khac trong tui do. Neu de True thi het 3s cho la tra False -> _run bao nham
+            # "Khong gui duoc lenh (o trong / acc mat ket noi)" du goi DA gui.
+            self._run("Mở quà", lambda: self.c.open_exchange_card(tid, i, cho_xac_nhan=False))
         ttk.Button(btns, text="Mở", width=10, command=_ok).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Huỷ", width=10, command=top.destroy).pack(side="left")
 

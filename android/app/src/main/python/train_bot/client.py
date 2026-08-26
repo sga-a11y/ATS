@@ -6839,8 +6839,17 @@ class GameClient:
     # --- THE DOI / hop chon qua (specialAbility 219 = EItemUseKind.Exchange) ---
     EXCHANGE_ACK_WAIT = 3.0
 
-    def open_exchange_card(self, tid: int, index: int) -> bool:
-        """Mo MOT the doi `tid`, chon muc thu `index` (1-based). True = tui da nhan them do.
+    def open_exchange_card(self, tid: int, index: int, cho_xac_nhan: bool = True) -> bool:
+        """Mo MOT the doi `tid`, chon muc thu `index` (1-based).
+
+        cho_xac_nhan=True  -> True khi tui THAT SU doi (dung cho luong tu dong: phai biet chac
+                              da nhan duoc do moi tinh tiep).
+        cho_xac_nhan=False -> True ngay khi GUI XONG goi. Tui do cua bot dung kieu nay, GIONG
+                              use_slot/equip_item: no tu doi chieu trang thai truoc/sau
+                              (_state_fp) de bao "xong" hay "da gui nhung chua thay doi".
+                              Truoc day o day tra False khi het 3s cho -> hop thoai bao
+                              "Khong gui duoc lenh (o trong / acc mat ket noi)" trong khi goi DA
+                              gui va o VAN co 21 the -> user tuong bot hong (anh chup 10:0x).
 
         Goi RIENG, khong phai goi dung item thuong (Logic_Item.lua:2033):
             C:090-001 <兌換> +兌換物品ID(2) +選取數量(1) <<+選取索引(1)>>  = 0x5a sub01
@@ -6865,6 +6874,8 @@ class GameClient:
             self.send(0x5a, b"\x01\x00" + struct.pack("<HBB", int(tid), 1, int(index)))
         except OSError:
             return False
+        if not cho_xac_nhan:
+            return True
         t0 = time.time()
         while time.time() - t0 < self.EXCHANGE_ACK_WAIT:
             # Nhan bang HAI dau hieu: nhan duoc do MOI, HOAC the bi tru. Chi bam vao "nhan duoc

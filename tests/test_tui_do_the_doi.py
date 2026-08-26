@@ -39,7 +39,29 @@ class TestTuiDoTheDoi(unittest.TestCase):
 
     def test_goi_dung_ham_open_exchange_card(self):
         s = _src()
-        self.assertIn("self.c.open_exchange_card(tid, i)", s)
+        self.assertIn("self.c.open_exchange_card(tid, i, cho_xac_nhan=False)", s)
+
+    def test_tui_do_KHONG_cho_xac_nhan(self):
+        """Tui do phai dung cho_xac_nhan=False.
+
+        Cac lenh khac (use_slot/equip_item) tra True NGAY khi gui xong; _run tu doi chieu trang
+        thai truoc/sau de bao ket qua. De cho_xac_nhan=True thi het 3s cho la tra False -> _run
+        bao nham "Khong gui duoc lenh (o trong / acc mat ket noi)" du goi DA gui va o van co the.
+        """
+        s = _src()
+        self.assertIn("cho_xac_nhan=False", s)
+
+    def test_nut_mo_hop_thoai_KHONG_boc_trong_run(self):
+        """Nut "Mở / chọn quà..." chi MO BANG CHON, chua gui goi nao.
+
+        Bug that (anh chup cua user): nut bi boc trong _run -> _run thay ham tra None -> bao
+        "Khong gui duoc lenh (o trong / acc mat ket noi)", hien de len chinh bang chon vua mo.
+        Goi that gui o buoc sau (trong _chon_qua_doi), cho do co _run rieng.
+        """
+        s = _src()
+        self.assertIn('lambda: self._chon_qua_doi(tid, _doi), True)', s,
+                      "phai co co True = khong boc _run")
+        self.assertIn("_mo_hop_thoai", s, "vong dung nut phai biet bo qua _run")
 
     def test_khong_bao_nham_khong_dung_duoc(self):
         """The doi co btnState=0 -> truoc day se hien '(không dùng trực tiếp được)' gay hieu nham."""
