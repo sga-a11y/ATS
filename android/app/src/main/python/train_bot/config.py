@@ -418,6 +418,19 @@ def _load_mounts_grow():
     return out
 MOUNTS_GROW = _load_mounts_grow()
 
+# BANG DOI cua "the doi" (specialAbility 219 = Exchange), xem ban PC de biet bo cuc.
+def _load_exchange():
+    out = {}
+    try:
+        for k, rows in (json.loads(_read_asset("exchange.json")).get("groups") or {}).items():
+            out[int(k, 16)] = [{"i": int(r["i"]), "id": int(r["id"], 16),
+                                "n": int(r["n"]), "ten": r.get("ten") or ""}
+                               for r in rows]
+    except Exception as error:
+        _log_asset_error("exchange.json", error)
+    return out
+EXCHANGE = _load_exchange()
+
 # TEN MAP THEO GAME: doc tu scene_names.json (AUTO tools/crack_scene_names.py, boc tu
 # Data/SceneSet_C.dat + Data/TextData_C.dat cua client). map_id -> ten hien thi trong game
 # (vd 12924 -> "Thang Thap", 12934 -> "Dinh Thap"). Dung cho log/UI cho de doc.

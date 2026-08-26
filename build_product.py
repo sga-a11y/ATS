@@ -49,6 +49,7 @@ DATA_JSON = ["servers.json", "cities.json", "train_maps.json", "train_routes.jso
              "scene_names.json", "collect_style.json", "furnace_pool.json",
              "furnace_default_notify.json", "equip_stats.json",
              "npc_table.json", "mounts_grow.json", "warp_points.json",
+             "exchange.json",
              # CHI ban exe: mo ta item chi dung o dialog Tui do ben gui.py (PC). APK khong co
              # man hinh do nen khong khai bao trong SHARED_ASSETS -> do APK khong phinh 2MB.
              "items_desc.json"]

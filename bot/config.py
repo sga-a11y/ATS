@@ -558,6 +558,27 @@ def _load_mounts_grow():
     return out
 MOUNTS_GROW = _load_mounts_grow()
 
+# BANG DOI cua "the doi" (item co specialAbility 219 = EItemUseKind.Exchange). Sinh boi
+# tools/crack_exchange.py tu Data/Exchange_C.dat.
+#   {item_id: [{"i": index, "id": item_nhan, "n": so_luong, "ten": ...}, ...]}
+# Loai item nay KHONG dung goi dung item thuong ma gui `C:090-001 <兌換>` = 0x5a sub01 kem
+# INDEX muc chon. Client doc danh sach muc tu file nay chu server khong gui qua mang -> bot
+# phai co bang moi biet index nao ra item gi.
+def _load_exchange():
+    import json, os
+    f = os.path.join(_base_dir(), "exchange.json")
+    out = {}
+    try:
+        with open(f, encoding="utf-8") as fh:
+            for k, rows in (json.load(fh).get("groups") or {}).items():
+                out[int(k, 16)] = [{"i": int(r["i"]), "id": int(r["id"], 16),
+                                    "n": int(r["n"]), "ten": r.get("ten") or ""}
+                                   for r in rows]
+    except Exception:
+        pass
+    return out
+EXCHANGE = _load_exchange()
+
 # Item TU DONG SU DUNG luc login. Doc tu use_items.json. 2 format value:
 #   "0x..": "Ten"                          -> dung HET ca stack, TUNG CAI 1 (item chi cho dung 1/lenh)
 #   "0x..": {"name":"Ten","qty":25}        -> dung TOI DA 25 cai/login (co > 25 -> dung 25, de lai du;

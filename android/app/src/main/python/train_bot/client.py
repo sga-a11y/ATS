@@ -6826,6 +6826,92 @@ class GameClient:
         g = (_load_gamedata_items() or {}).get(int(tid)) or {}
         return g.get("name") or ("0x%04x" % tid)
 
+    # --- THE DOI / hop chon qua (specialAbility 219 = EItemUseKind.Exchange) ---
+    EXCHANGE_ACK_WAIT = 3.0
+
+    def open_exchange_card(self, tid: int, index: int) -> bool:
+        """Mo MOT the doi `tid`, chon muc thu `index` (1-based). True = tui da nhan them do.
+
+        Goi RIENG, khong phai goi dung item thuong (Logic_Item.lua:2033):
+            C:090-001 <兌換> +兌換物品ID(2) +選取數量(1) <<+選取索引(1)>>  = 0x5a sub01
+        So muc phai chon = itemData.elementValue; cac hop kieu nay deu la 1.
+
+        Client con chan truoc khi gui: `GetBagLeftCount(Bag) < elementValue` -> bao "tui day".
+        Bot cung phai check, khong thi gui hut ma tuong da mo.
+        """
+        rows = (getattr(config, "EXCHANGE", {}) or {}).get(int(tid))
+        if not rows:
+            return False
+        muc = next((r for r in rows if r["i"] == int(index)), None)
+        if muc is None:
+            return False
+        slot = self._bag_slot_of(int(tid))
+        if slot is None:
+            return False
+        nhan_tid, nhan_n = int(muc["id"]), int(muc["n"])
+        cu = int((self.bag_counts or {}).get(nhan_tid, 0))
+        try:
+            self.send(0x5a, b"\x01\x00" + struct.pack("<HBB", int(tid), 1, int(index)))
+        except OSError:
+            return False
+        t0 = time.time()
+        while time.time() - t0 < self.EXCHANGE_ACK_WAIT:
+            if int((self.bag_counts or {}).get(nhan_tid, 0)) >= cu + nhan_n:
+                return True
+            time.sleep(0.1)
+        return False
+
+    def _exchange_index_for(self, tid: int, want_tid: int):
+        """Muc nao cua the `tid` cho ra `want_tid`? -> (index, so_luong) hoac None."""
+        for r in (getattr(config, "EXCHANGE", {}) or {}).get(int(tid)) or []:
+            if int(r["id"]) == int(want_tid):
+                return int(r["i"]), int(r["n"])
+        return None
+
+    def _cards_giving(self, want_tid: int):
+        """Cac the doi DANG CO TRONG TUI ma mo ra duoc `want_tid`.
+
+        -> [(card_tid, index, so_luong_moi_lan, so_the_dang_co)], the cho NHIEU nhat dung truoc
+        (mo it lan hon = it goi hon).
+        """
+        out = []
+        for card_tid in (getattr(config, "EXCHANGE", {}) or {}):
+            co = int((self.bag_counts or {}).get(int(card_tid), 0))
+            if co <= 0:
+                continue
+            hit = self._exchange_index_for(card_tid, want_tid)
+            if hit:
+                out.append((int(card_tid), hit[0], hit[1], co))
+        out.sort(key=lambda x: -x[2])
+        return out
+
+    def _mount_open_cards_for(self, want_tid: int, thieu: int, dang_co: int) -> int:
+        """Mo VUA DU the doi de bu `thieu` item `want_tid`. Tra ve so luong SAU khi mo.
+
+        User: "dang co 33/50 -> thieu 17 -> co 10 the -> mo 4 cai de lay 20". Tuc lay tran tren
+        cua thieu/moi_the, KHONG mo het ca chong the.
+        """
+        for card_tid, index, moi_lan, co_the in self._cards_giving(want_tid):
+            if thieu <= 0:
+                break
+            can_mo = -(-thieu // moi_lan)          # tran tren
+            mo = min(can_mo, co_the)
+            log.info("[%s] Thu cuoi: thieu %d '%s' -> mo %d/%d '%s' (moi cai duoc %d)",
+                     self._label, thieu, self._mount_item_name(want_tid), mo, co_the,
+                     self._mount_item_name(card_tid), moi_lan)
+            duoc = 0
+            for _ in range(mo):
+                if not self.running or not self.open_exchange_card(card_tid, index):
+                    break
+                duoc += moi_lan
+                time.sleep(self.MOUNT_GAP)
+            if duoc < mo * moi_lan:
+                log.warning("[%s] Thu cuoi: mo the '%s' khong tron (duoc %d/%d) - tui day?",
+                            self._label, self._mount_item_name(card_tid), duoc, mo * moi_lan)
+            dang_co += duoc
+            thieu -= duoc
+        return dang_co
+
     def _mount_wait_ack(self, ev) -> bool:
         """Cho server xac nhan bang EVENT chu khong poll.
 
@@ -6903,6 +6989,10 @@ class GameClient:
         if self.mount_level + 1 not in grow:
             return False
         co = int((self.bag_counts or {}).get(r["up_item"], 0))
+        if co < r["up_count"]:
+            # Thieu dan -> thu MO THE DOI trong tui cho du (vd "Ve Boi Duong Toa Ky" 0x7de7 ->
+            # muc 1 = Tang Cap Ky Don x5). Chi mo DUNG SO CAN, khong mo het.
+            co = self._mount_open_cards_for(r["up_item"], r["up_count"] - co, co)
         if co < r["up_count"]:
             log.info("[%s] Thu cuoi cap %d: can %d '%s' de len cap, dang co %d -> bo qua",
                      self._label, self.mount_level, r["up_count"],

@@ -5,12 +5,9 @@
     "0xff7a": "Tăng Ô Túi Đeo",
     "0xff7c": "Tăng Ô Tiền Trang",
     "0xff88": "Phiếu Rút Thẻ",
-  "0xb22c": {
-   "name": "Túi Tọa Kỵ Đan",
-   "qty": 100
-  },
-  "0xb297": "Quà Thái Văn Cơ",
-  "0x799d": "Vé Đích Lô",
+    "0xb22c": {"name": "Túi Tọa Kỵ Đan","qty": 100},
+    "0xb297": "Quà Thái Văn Cơ",
+    "0x799d": "Vé Đích Lô",
     "0xff87": "Phiếu Rút Võ Tướng",
     "0xb749": {"name": "Phó Bản Cấp 20 II", "qty": 100},
     "0xb74a": {"name": "Phó Bản Cấp 50 II", "qty": 100},
