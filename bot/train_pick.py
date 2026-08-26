@@ -136,16 +136,36 @@ def spot_profile(spot_data):
             levels.append(lv)
         elements.add(int(info.get("element") or 0))
     patterns = spot_data.get("patterns") or {}
-    top_count = 0
-    if patterns:
-        top = max(patterns.items(), key=lambda kv: int(kv[1]))[0]
-        top_count = train_block_stats._mobs_in_pattern(top)
     return {
         "levels": (min(levels), max(levels)) if levels else None,
         "elements": elements or None,
-        "top_count": top_count,
+        "patterns": patterns,
+        "battles": sum(int(v) for v in patterns.values()),
         "has_data": bool(levels),
     }
+
+
+# Ti le so tran phai roi vao khoang min/max thi diem moi duoc coi la HOP (user chot 26/08).
+MATCH_SHARE = 0.40
+
+
+def mob_share_in_range(patterns, mob_min, mob_max):
+    """Ti le tran co so quai nam trong [mob_min, mob_max]. 0.0 neu chua co du lieu.
+
+    THAY CHO cach cu "lay dang xuat hien nhieu nhat roi so": game spawn moi diem theo DUNG HAI
+    muc, gan nhu 50/50 (do that: diem 4 'Rung Doi Phuong2' co 4x1:9386 vs 2x1:9295 - chenh 0.5%).
+    Lay dang dong nhat thi con so do la TUNG DONG XU - may nay ra 4, may kia ra 2, cung mot cau
+    hinh lai chon hai map khac nhau (user gap 26/08, mat ca buoi truy).
+    Con mot le nua: cai user NHIN tren dropdown la khoang min-max cua CA CAC DANG
+    (format_mob_range), nen loc theo mot dang don la loc theo con so user khong he thay.
+    """
+    patterns = patterns or {}
+    tong = sum(int(v) for v in patterns.values())
+    if not tong:
+        return 0.0
+    trong = sum(int(v) for k, v in patterns.items()
+                if mob_min <= train_block_stats._mobs_in_pattern(k) <= mob_max)
+    return trong / tong
 
 
 def spot_matches(prof, level, mob_min, mob_max, elements):
@@ -153,8 +173,7 @@ def spot_matches(prof, level, mob_min, mob_max, elements):
     lv = prof.get("levels")
     if not lv or not (lv[0] <= level <= lv[1]):
         return False
-    top = prof.get("top_count") or 0
-    if top and not (mob_min <= top <= mob_max):
+    if prof.get("patterns") and mob_share_in_range(prof["patterns"], mob_min, mob_max) < MATCH_SHARE:
         return False
     want = set(elements or ALL_ELEMENTS)
     got = prof.get("elements")
@@ -188,51 +207,80 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
     rng = rng or random
     stats = stats if stats is not None else train_block_stats.load_stats()
     all_spots = stats.get("maps", {})
-    # Thu level MONG MUON truoc, roi HA dan (luat user). Ha het ma khong ra thi QUAY LEN tim.
-    # Khong co nhanh len thi level mong muon THAP HON map thap nhat cua game la chet han: vd party
-    # level 39 chon "TB -30" -> muon lv9, ma map thap nhat la lv28 -> ha 9,8,...,1 roi bo cuoc,
-    # KHONG chon duoc map nao (user phat hien 25/08).
-    hi = 0
+
+    def _profs(level):
+        """[(map_id, idx, prof)] cua moi diem thuoc level do."""
+        out = []
+        for map_id, idx, xy in _spots_of_maps(maps, level):
+            sd = (all_spots.get(str(map_id), {}).get("spots", {})
+                  .get(train_block_stats.spot_key(xy)))
+            out.append((map_id, idx, spot_profile(sd)))
+        return out
+
+    def _it_tran_nhat(ds):
+        """Diem CO IT TRAN NHAT (user: de fill day train_block_stats.json). Hoa -> random."""
+        it = min(p["battles"] for _m, _i, p in ds)
+        return rng.choice([(m, i) for m, i, p in ds if p["battles"] == it])
+
+    # Vet duong ha level. Thieu no thi khi bot chon level 122 trong khi muon 130, KHONG AI biet vi
+    # sao - phai ngoi do nguoc bang tay (da xay ra that 26/08, mat ca buoi).
+    vet = []
+
+    def _ly_do(chinh):
+        return chinh + (" | tut tu %d: %s" % (want, ", ".join(vet[:8])) if vet else "")
+
+    # LUAT USER 26/08: CHI HA level, TOI DA -5. "Tang len kho danh" nen khong tim len nua.
+    khoang = [lv for lv in range(want, want - 6, -1) if lv >= 1]
+    for level in khoang:
+        ds = _profs(level)
+        if not ds:
+            vet.append("%d khong map" % level)
+            continue
+        chua_data = [(m, i) for m, i, p in ds if not p["has_data"]]
+        if chua_data:                     # LUAT: uu tien diem CHUA co du lieu (de fill thong ke)
+            map_id, idx = rng.choice(chua_data)
+            return map_id, idx, level, _ly_do("chua co du lieu quai (gom du lieu)")
+        ok = [(m, i, p) for m, i, p in ds
+              if spot_matches(p, level, mob_min, mob_max, elements)]
+        if ok:                            # LUAT: nhieu diem hop -> lay diem IT TRAN NHAT
+            map_id, idx = _it_tran_nhat(ok)
+            return map_id, idx, level, _ly_do("khop level/so quai/he (diem it tran nhat)")
+        vet.append("%d co %d diem nhung BO LOC loai het" % (level, len(ds)))
+
+    # LUAT: het ca khoang [want-5, want] ma khong diem nao hop -> lay diem IT TRAN NHAT trong CA
+    # khoang do (van train duoc, va gom them du lieu cho nhung diem con thieu).
+    theo_level = {lv: _profs(lv) for lv in khoang}
+    ca_khoang = [(lv, m, i, p) for lv, ds in theo_level.items() for m, i, p in ds]
+    if ca_khoang:
+        it = min(p["battles"] for _lv, _m, _i, p in ca_khoang)
+        lv, map_id, idx, _p = rng.choice([r for r in ca_khoang if r[3]["battles"] == it])
+        return map_id, idx, lv, _ly_do(
+            "khong diem nao hop trong %d..%d -> lay diem it tran nhat" % (khoang[-1], want))
+
+    # LUAT: ca khoang [want-5, want] KHONG CO MAP NAO (khac han "co map ma khong hop") -> HA TIEP
+    # level cho toi khi gap map GAN NHAT, lay diem it tran nhat. KHONG BAO GIO tim len: user
+    # "tang len kho danh".
+    for level in range(khoang[-1] - 1, 0, -1):
+        ds = _profs(level)
+        if ds:
+            map_id, idx = _it_tran_nhat(ds)
+            return map_id, idx, level, _ly_do(
+                "khong map nao o %d..%d -> ha tiep, map gan nhat o level %d (diem it tran nhat)"
+                % (khoang[-1], want, level))
+
+    # LUAT: level muon THAP HON map thap nhat cua game -> lay luon MAP THAP NHAT.
+    # Vd party level 39 chon "TB -30" -> muon lv9, map thap nhat la lv28. Khong co nhanh nay thi
+    # bot khong chon duoc map nao (bug 25/08).
+    lo = None
     for _mid, _name, _mobs in maps:
         r = map_level_range(_name)
         if r and not is_soul_map(_name):
-            hi = max(hi, r[1])
-    thu = list(range(want, 0, -1)) + list(range(want + 1, hi + 1))
-    # Vet duong HA LEVEL: level nao bi bo, vi "khong co map" hay "co diem nhung BO LOC loai het".
-    # Thieu vet nay thi khi bot chon level 122 trong khi muon 130, KHONG AI biet vi sao - phai
-    # ngoi do nguoc bang tay (da xay ra that: user hoi "sao chon Hoa Dung dao4", mat ca buoi doi
-    # chieu du lieu 2 may moi ra la do train_block_stats.json khac nhau).
-    vet = []
-
-    def _ly_do():
-        if not vet:
-            return ""
-        return " | tut tu %d: %s" % (want, ", ".join(vet[:8]))
-
-    for level in thu:
-        cands = _spots_of_maps(maps, level)
-        if not cands:
-            if level <= want:
-                vet.append("%d khong map" % level)
-        if cands:
-            profs = []
-            no_data = []
-            for map_id, idx, xy in cands:
-                sd = (all_spots.get(str(map_id), {}).get("spots", {})
-                      .get(train_block_stats.spot_key(xy)))
-                prof = spot_profile(sd)
-                if not prof["has_data"]:
-                    no_data.append((map_id, idx))
-                else:
-                    profs.append((map_id, idx, prof))
-            if no_data:
-                map_id, idx = rng.choice(no_data)
-                return map_id, idx, level, "chua co du lieu quai (gom du lieu)" + _ly_do()
-            ok = [(m, i) for m, i, p in profs
-                  if spot_matches(p, level, mob_min, mob_max, elements)]
-            if ok:
-                map_id, idx = rng.choice(ok)
-                return map_id, idx, level, "khop level/so quai/he" + _ly_do()
-            if level <= want:
-                vet.append("%d co %d diem nhung BO LOC loai het" % (level, len(cands)))
+            lo = r[0] if lo is None else min(lo, r[0])
+    if lo is not None:
+        ds = _profs(lo)
+        if ds:
+            map_id, idx = _it_tran_nhat(ds)
+            return map_id, idx, lo, _ly_do(
+                "muon lv%d THAP HON map thap nhat cua game (lv%d) -> lay map thap nhat "
+                "(diem it tran nhat)" % (want, lo))
     return None
