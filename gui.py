@@ -2121,7 +2121,6 @@ class BagDialog(tk.Toplevel):
         # bam "Mặc bộ này" (user chot 26/08).
         self._bo_soan = None
         self._bo_ten = ""
-        self._nap_ds_bo()
 
         mid = ttk.Frame(self, padding=(8, 0)); mid.pack(fill="both", expand=True)
         canvas = tk.Canvas(mid, highlightthickness=0)
@@ -2150,6 +2149,10 @@ class BagDialog(tk.Toplevel):
 
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._alive = True
+        # PHAI nap dropdown bo do o DAY, sau khi da dung xong luoi (grid_fr) - _nap_ds_bo goi
+        # _doi_bo -> self.refresh(), ma refresh dung grid_fr. De o tren (canh cac nut Bo do) thi
+        # __init__ nem AttributeError giua chung -> dialog mo ra KHONG CO luoi tui do nao.
+        self._nap_ds_bo()
         self._set_tab(self._tab)   # GIU tab mac dinh dat o tren (Trang bi), dung ep ve "Tat ca"
         self._price_async()
         self._watch_fp = self._state_fp()

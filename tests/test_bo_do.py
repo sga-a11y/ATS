@@ -222,6 +222,21 @@ class TestLuongSoanBoDo(unittest.TestCase):
         self.assertIn("self._cong_cua_mon(tid, self._thing_cua_tid(tid))", s)
 
 
+class TestKhoiTaoDialog(unittest.TestCase):
+    def test_nap_ds_bo_phai_SAU_khi_dung_luoi(self):
+        """_nap_ds_bo -> _doi_bo -> refresh() -> dung self.grid_fr.
+
+        De truoc cho tao grid_fr thi __init__ nem AttributeError giua chung: dialog van hien tab
+        va 6 o trang bi (da tao roi) nhung KHONG CO luoi tui do, khong co nhan dem, khong co dong
+        "Bam vao mot mon". Da xay ra that 26/08 - user bao "m lam mat luon bo item".
+        """
+        s = _doc("gui.py")
+        i_grid = s.find("self.grid_fr = ttk.Frame(canvas)")
+        i_nap = s.find("self._nap_ds_bo()")
+        self.assertGreater(i_grid, 0)
+        self.assertGreater(i_nap, i_grid, "_nap_ds_bo() dang goi TRUOC khi co grid_fr")
+
+
 class TestBangCuongHoa(unittest.TestCase):
     def test_eq_affix_json_co_bang_cuong_hoa(self):
         import json
