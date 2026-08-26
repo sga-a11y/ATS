@@ -34,12 +34,17 @@ class TestStatusLoggingIn(unittest.TestCase):
         self.assertIn('"● ĐANG LOGIN" if _dang_login', GUI)
         self.assertIn('tag = ("login" if _dang_login else', GUI)
 
+    # Hai bai duoi neo theo Y NGHIA (dieu kien XANH), khong neo dang chu cua ca bieu thuc: dieu
+    # kien nay tung nam thang trong bieu thuc `p_dot = ...`, sau do tach ra bien `_du_acc`/`_g_du`
+    # khi them cham CAM cho lech AGI. Luat khong doi, chi doi cho dat.
     def test_pc_cham_party_chi_XANH_khi_khong_con_ai_dang_login(self):
-        self.assertIn("self._dot_on if (p_run >= p_total and p_total > 0 and p_login == 0)", GUI)
+        self.assertIn("p_run >= p_total and p_total > 0 and p_login == 0", GUI)
+        self.assertIn("self._dot_on if _du_acc", GUI)
         self.assertIn("p_login += 1", GUI)
 
     def test_pc_cham_NHOM_cung_theo_quy_tac_do(self):
-        self.assertIn("self._dot_on if (gr >= gt and gt > 0 and gl == 0)", GUI)
+        self.assertIn("gr >= gt and gt > 0 and gl == 0", GUI)
+        self.assertIn("self._dot_on if _g_du", GUI)
         self.assertIn("group_login[gidx] = group_login.get(gidx, 0) + p_login", GUI)
 
     def test_apk_map_sang_CONNECTING_va_co_mau_vang(self):

@@ -580,6 +580,9 @@ class BotGUI(tk.Tk):
         self._dot_on = self._make_dot("#16c60c")    # xanh la: DU acc dang chay
         self._dot_warn = self._make_dot("#f0c000")  # vang: chay MOT PHAN (thieu acc - chet/rot)
         self._dot_off = self._make_dot("#888888")   # xam: khong co acc nao chay
+        # CAM: ca party dang chay DU nhung AGI lech > 10 -> khoi phai mo tung party moi biet.
+        # Cung mau voi nut "Check AGI" luc canh bao (#f59e0b) de nhin la lien tuong ngay.
+        self._dot_agi = self._make_dot("#f59e0b")
         # list thanh (cho popup teleport khi bam header Map). Doc tu cities.json giong ConfigDialog.
         ct_raw = _load_json("cities.json").get("cities", {})
         self.cities = [(v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()]
@@ -1644,6 +1647,7 @@ class BotGUI(tk.Tk):
         group_run = {}    # gidx -> so acc dang chay
         group_login = {}  # gidx -> so acc DANG LOGIN (con 1 acc login -> cham nhom VANG)
         group_total = {}  # gidx -> tong so acc
+        agi_warn_groups = set()   # gidx co IT NHAT 1 party lech AGI -> cham nhom cung CAM
         for pidx, tree in self.party_trees.items():
             any_running = False
             p_total = 0; p_run = 0; p_login = 0   # dem acc cua party de quyet dinh mau cham
@@ -1684,15 +1688,24 @@ class BotGUI(tk.Tk):
                                      "⚔" if s["combat"] else "-"),
                           tags=(tag,))
             # cham trang thai TUNG PARTY (sub-tab trong group):
-            #   xanh = DU acc chay | vang = chay MOT PHAN (thieu) | xam = tat het
+            #   xanh = DU acc chay | CAM = du acc nhung LECH AGI | vang = chay MOT PHAN | xam = tat
             gidx = self.group_of.get(pidx)
             subf = self.party_subframes.get(pidx)
             sub = self.group_nb.get(gidx)
+            agi_report = ctrl.party_agi_report(pidx)
             # XANH chi khi DU acc chay VA KHONG con ai dang login (yeu cau user: "chi xanh
             # khi tat ca deu da login xong"). Con acc dang login -> VANG.
+            _du_acc = p_run >= p_total and p_total > 0 and p_login == 0
+            # CAM chi thay cho XANH, KHONG de len vang/xam:
+            #  - vang/xam = dang thieu acc, viec do gap hon va da co mau rieng
+            #  - luc thieu acc thi so AGI cung KHONG day du (report chi gop acc dang chay) nen
+            #    do lech doc duoc chua chac dung -> bao cam luc do la bao bua.
+            _lech_agi = bool(agi_report.get("warning")) and _du_acc
+            if _lech_agi:
+                agi_warn_groups.add(gidx)
             p_dot = (self._dot_off if p_run == 0 else
-                     (self._dot_on if (p_run >= p_total and p_total > 0 and p_login == 0)
-                      else self._dot_warn))
+                     (self._dot_agi if _lech_agi else
+                      (self._dot_on if _du_acc else self._dot_warn)))
             if sub is not None and subf is not None:
                 try:
                     sub.tab(subf, image=p_dot)
@@ -1701,7 +1714,6 @@ class BotGUI(tk.Tk):
             group_run[gidx] = group_run.get(gidx, 0) + p_run
             group_login[gidx] = group_login.get(gidx, 0) + p_login
             group_total[gidx] = group_total.get(gidx, 0) + p_total
-            agi_report = ctrl.party_agi_report(pidx)
             agi_btn = self.party_agi_buttons.get(pidx)
             if agi_btn is not None:
                 if agi_report["warning"]:
@@ -1720,12 +1732,15 @@ class BotGUI(tk.Tk):
                         nbtn.pack(side="left", padx=2)
                 elif nbtn.winfo_ismapped():
                     nbtn.pack_forget()
-        # cham trang thai TUNG GROUP TAB: xanh = du | vang = mot phan | xam = tat
+        # cham trang thai TUNG GROUP TAB: xanh = du | CAM = du nhung co party lech AGI |
+        #                                 vang = mot phan | xam = tat
         for gidx, gframe in self.group_frames.items():
             gr = group_run.get(gidx, 0); gt = group_total.get(gidx, 0)
             gl = group_login.get(gidx, 0)
+            _g_du = gr >= gt and gt > 0 and gl == 0
             g_dot = (self._dot_off if gr == 0 else
-                     (self._dot_on if (gr >= gt and gt > 0 and gl == 0) else self._dot_warn))
+                     (self._dot_agi if (_g_du and gidx in agi_warn_groups) else
+                      (self._dot_on if _g_du else self._dot_warn)))
             try:
                 self.nb.tab(gframe, image=g_dot)
             except Exception:
