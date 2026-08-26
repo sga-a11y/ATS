@@ -2018,7 +2018,9 @@ class BagDialog(tk.Toplevel):
         # hang nut o tren (4 tab + so luong + nut Mua slot). Ban cu 980 la tinh theo o 88 -> sau khi
         # thu o con 59 thi du ~350px trong ben phai.
         # CAO giu nguyen 620: o thap di mot nua nen hien duoc GAP DOI so hang trong cung chieu cao.
-        self.geometry("%dx620" % ((self.CELL_W + 4) * self.COLS + 60))
+        # +100px so voi 620 cu: hang 6 o trang bi (~75) + dong chi so (~25) nam TREN luoi tui,
+        # khong noi ra thi luoi bi bop con vai hang.
+        self.geometry("%dx720" % ((self.CELL_W + 4) * self.COLS + 60))
         self.transient(master); self.grab_set()
         self.username = username
         self.c = client
@@ -2056,6 +2058,26 @@ class BagDialog(tk.Toplevel):
         for idx, nm in self._pet_list():
             ttk.Radiobutton(tgt, text=nm, variable=self.target_var, value=idx,
                             command=self._retarget).pack(side="left", padx=(0, 10))
+
+        # HANG 6 O TRANG BI + hang CHI SO cua DUNG doi tuong dang tick o hang "Cho:" tren.
+        # 6 o = dung 6 vi tri that cua game (Item.IsEquip, Data_ItemData.lua:1-8):
+        # fitType 1..6 = mu / ao / vu khi / ho uyen / giay / dac biet. Thoi trang (7..11) va
+        # ao choang (100) KHONG tinh - client cung tach rieng.
+        self.equip_fr = ttk.LabelFrame(self, text="Trang bị đang mặc", padding=(8, 6))
+        self.equip_fr.pack(fill="x", padx=8, pady=(4, 0))
+        self.equip_cells = {}
+        for _c, (_fit, _ten) in enumerate(self._EQUIP_SLOTS):
+            cell = tk.Frame(self.equip_fr, bd=1, relief="solid", width=104, height=52)
+            cell.grid(row=0, column=_c, padx=3, pady=2, sticky="nsew")
+            cell.grid_propagate(False)
+            self.equip_fr.grid_columnconfigure(_c, weight=1)
+            tk.Label(cell, text=_ten, font=("", 7), fg="#666").pack(anchor="w", padx=3)
+            lb = tk.Label(cell, text="—", font=("", 8), wraplength=98, justify="left",
+                          anchor="nw", fg="#888")
+            lb.pack(fill="both", expand=True, padx=3)
+            self.equip_cells[_fit] = lb
+        self.lbl_stats = ttk.Label(self, text="", padding=(10, 4))
+        self.lbl_stats.pack(fill="x", padx=8)
 
         mid = ttk.Frame(self, padding=(8, 0)); mid.pack(fill="both", expand=True)
         canvas = tk.Canvas(mid, highlightthickness=0)
@@ -2133,9 +2155,75 @@ class BagDialog(tk.Toplevel):
         return dict(self._pet_list()).get(i, "Pet %d" % i).replace(" ★", "")
 
     def _retarget(self):
-        """Doi doi tuong -> ve lai bo nut (nhan nut co ten nguoi nhan)."""
+        """Doi doi tuong -> ve lai bo nut (nhan nut co ten nguoi nhan) + 2 hang tren."""
+        self._refresh_equip_stats()    # tick sang pet nao thi hien do/chi so cua pet do
         if self._sel_slot is not None:
             self._select(self._sel_slot)
+
+    # 6 vi tri trang bi THAT (Item.IsEquip - Data_ItemData.lua EItemFitType 1..6). Xep theo thu tu
+    # nhin quen mat: vu khi truoc, roi tren xuong duoi.
+    _EQUIP_SLOTS = ((3, "Vũ khí"), (1, "Mũ"), (2, "Áo"), (4, "Hộ uyển"), (5, "Giày"),
+                    (6, "Đặc biệt"))
+
+    def _equip_map(self, who):
+        """{fitType: tid} cua doi tuong dang chon. who = 0 (char) hoac followIndex pet 1..4.
+
+        Char: equip_by_fit (dung tu S:023-011 luc login).
+        Pet : pet_equip_by_fit[followIndex] (dung tu S:023-024; S:023-020 <武將所有裝備> la ham
+              RONG trong client nen day la nguon DUY NHAT).
+        """
+        c = self.c
+        if not who:
+            return dict(getattr(c, "equip_by_fit", None) or {})
+        return dict((getattr(c, "pet_equip_by_fit", None) or {}).get(int(who)) or {})
+
+    def _refresh_equip_stats(self):
+        """Ve lai 6 o trang bi + dong chi so cho doi tuong dang tick."""
+        if not self.winfo_exists():
+            return
+        who = self.target_var.get()
+        ten = "Nhân vật" if not who else self._target_name()
+        try:
+            self.equip_fr.configure(text="Trang bị đang mặc — %s" % ten)
+        except Exception:
+            pass
+        emap = self._equip_map(who)
+        for fit, lb in self.equip_cells.items():
+            tid = emap.get(fit)
+            if tid:
+                lb.configure(text=(self._item(tid) or {}).get("name") or ("0x%04x" % tid),
+                             fg="#111111")
+            else:
+                lb.configure(text="— trống —", fg="#aaa")
+        self.lbl_stats.configure(text=self._stats_line(who))
+
+    def _stats_line(self, who):
+        """Dong chi so. CHI ghi cai bot THAT SU biet - thieu thi de dau '?', khong doan."""
+        c = self.c
+        st = getattr(c, "state", None)
+        if not who:
+            lv, agi, intel = (getattr(c, "char_level", None), getattr(c, "char_agi", None),
+                              getattr(c, "char_int", None))
+            unit = getattr(st, "char", None) if st else None
+            phan = ["Cấp %s" % (lv if lv is not None else "?"),
+                    "AGI %s" % (agi if agi is not None else "?"),
+                    "INT %s" % (intel if intel is not None else "?")]
+        else:
+            # Bot chi theo doi cap/AGI/HP/SP cua PET DANG XUAT CHIEN. Pet khac trong doi hinh thi
+            # chua co so -> noi thang la chua biet chu khong lay so cua con dang danh gan cho no.
+            _active = int(getattr(c, "active_pet_slot", 0) or 0)
+            if _active and int(who) == _active:
+                lv, agi = getattr(c, "pet_level", None), getattr(c, "pet_agi", None)
+                unit = getattr(st, "pet", None) if st else None
+                phan = ["Cấp %s" % (lv if lv is not None else "?"),
+                        "AGI %s" % (agi if agi is not None else "?")]
+            else:
+                return "Chỉ số: chỉ theo dõi pet đang xuất chiến (con này chưa có số)."
+        if unit is not None and getattr(unit, "hp_max", 0):
+            phan.append("HP %d/%d" % (unit.hp, unit.hp_max))
+            if getattr(unit, "sp_max", 0):
+                phan.append("SP %d/%d" % (unit.sp, unit.sp_max))
+        return "Chỉ số:   " + "   •   ".join(phan)
 
     def _item(self, tid):
         return self._items_db.get("0x%04x" % int(tid)) or self._items_db.get(str(int(tid))) or {}
@@ -2175,6 +2263,7 @@ class BagDialog(tk.Toplevel):
         self.refresh()
 
     def refresh(self):
+        self._refresh_equip_stats()    # thay do / len cap -> 2 hang tren phai theo kip luoi tui
         for w in self.grid_fr.winfo_children():
             w.destroy()
         _giu = self._sel_slot          # ve lai TU DONG thi khong duoc lam mat lua chon cua user
@@ -2335,7 +2424,13 @@ class BagDialog(tk.Toplevel):
         # ma bot van bat (do la danh sach luc LOGIN). Truoc day khong ai bat 2 goi do nen mac do
         # khong de lai dau vet gi -> luon bao "chua thay thay doi".
         eq_seq = int(getattr(c, "_equip_seq", 0))
-        return bag, eq, eq_seq
+        # 2 bang do dang mac: hang "Trang bi dang mac" doc THANG tu day. Chung con duoc dien dan
+        # luc LOGIN (S:023-011 cho char, S:023-024 cho pet) - luc do _equip_seq KHONG doi, nen
+        # thieu 2 dong nay thi mo tui do som se thay o trong va khong bao gio tu day lai.
+        fit_c = tuple(sorted((getattr(c, "equip_by_fit", None) or {}).items()))
+        fit_p = tuple(sorted((k, tuple(sorted(v.items())))
+                             for k, v in (getattr(c, "pet_equip_by_fit", None) or {}).items()))
+        return bag, eq, eq_seq, fit_c, fit_p
 
     def _run(self, text, fn):
         if text == "Bỏ" and not messagebox.askyesno(
