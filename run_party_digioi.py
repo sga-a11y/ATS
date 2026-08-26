@@ -1078,8 +1078,13 @@ def _auto_train_target(pidx, pcfg):
             return None
         map_id, idx, used_level, why = got
         name = (getattr(config, "TRAIN_MAPS", {}).get(map_id) or {}).get("name", map_id)
-        log.info(">>> PARTY %s: TU CHON MAP -> %s (map %s) diem %d | level quai %d | %s",
-                 pidx + 1, name, map_id, idx + 1, used_level, why)
+        # In CA "muon" lan "level party" - giong dong tu chon cap quai DG. Thieu 2 so nay thi khi
+        # user hoi "sao lai chon map nay" la KHONG TRA LOI DUOC tu log: khong biet bot ha level
+        # xuong (do khong map nao khop bo loc) hay tai level party khac voi user tuong.
+        _muon = train_pick.desired_level(pcfg.get("train_pick"), levels)
+        log.info(">>> PARTY %s: TU CHON MAP -> %s (map %s) diem %d | level quai %d "
+                 "(muon %s, level party %s) | %s",
+                 pidx + 1, name, map_id, idx + 1, used_level, _muon, sorted(levels), why)
         st["auto_train"] = (map_id, idx)
         return st["auto_train"]
 

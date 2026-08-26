@@ -4456,11 +4456,22 @@ class PartyConfigFrame(ttk.Frame):
             ttk.Button(self.dyn, text="✎ Sửa map", command=self._edit_maps).pack(side="left", padx=(8, 0))
             was_train = self._preset.get("mode") in ("train", "digioi_train")
             pick = self._preset.get("train_pick", "") if was_train else _TP.DEFAULT_PICK
+            _sc_luu = self._preset.get("start_city_id")
             if pick in _TP.PICK_KEYS:
                 self.map_var.set(_pick_label(pick))
+            elif was_train and not _sc_luu:
+                # start_city_id = 0 nghia la preset nay VON dat "Tu chon map" (luc luu, nhanh tu
+                # chon ghi sc=0/mob_index=-1). Toi day ma `pick` khong khop PICK_KEYS = chuoi
+                # train_pick cu/la (doi ten khoa giua cac ban).
+                # TRUOC DAY roi thang xuong nhanh duoi: tim map co id == 0 -> khong co -> lay
+                # `idx = 0` = MAP DAU DANH SACH (Hoa Dung dao4 120-122), roi luu de la party train
+                # THAT o map do. Hong am tham, khong mot dong canh bao nao.
+                self.map_var.set(_pick_label(_TP.DEFAULT_PICK))
+                log.warning("Party: 'train_pick' khong doc duoc (%r) -> dat lai mac dinh %s. "
+                            "Kiem tra lai muc Map truoc khi chay.", pick, _TP.DEFAULT_PICK)
             else:
                 idx = next((i for i, (mid, _n, _m, _g) in enumerate(self.train_maps)
-                            if mid == self._preset.get("start_city_id")), 0)
+                            if mid == _sc_luu), 0)
                 if self.train_maps:
                     self.map_var.set(self.train_maps[idx][1])
             # Chi dung mob_index DA LUU neu preset von la 'train'/'digioi_train'. Doi tu mode khac
