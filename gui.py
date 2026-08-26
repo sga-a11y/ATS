@@ -2231,10 +2231,16 @@ class BagDialog(tk.Toplevel):
         _equip = _BAG.can_equip(d.get("ft"), d.get("kd"))
         _who = self.target_var.get()          # 0 = nhan vat, 1..4 = followIndex cua pet
         _hau_to = "" if not _who else " cho %s" % self._target_name()
+        _doi = self._exchange_rows(tid)
         if _equip:
             acts.append(("Trang bị" + _hau_to,
                          (lambda: self.c.equip_item(slot)) if not _who
                          else (lambda: self.c.equip_pet_item(_who, slot))))
+        elif _doi:
+            # THE DOI (specialAbility 219): gui goi RIENG `C:090-001` = 0x5a sub01 kem INDEX muc
+            # chon, KHONG phai goi dung item thuong. Bam "Sử dụng" o day se gui sai lenh -> phai
+            # hoi user chon muc truoc.
+            acts.append(("Mở / chọn quà…", lambda: self._chon_qua_doi(tid, _doi)))
         elif _BAG.can_use(d.get("bs")):
             acts.append(("Sử dụng" + _hau_to, lambda: self.c.use_slot(slot, target=_who)))
         if _BAG.can_dismantle(d.get("fc")):
@@ -2245,9 +2251,44 @@ class BagDialog(tk.Toplevel):
         for text, fn in acts:
             ttk.Button(self.act_fr, text=text, width=16,
                        command=lambda t=text, f=fn: self._run(t, f)).pack(side="left", padx=(0, 6))
-        if not _equip and not _BAG.can_use(d.get("bs")):
+        if not _equip and not _doi and not _BAG.can_use(d.get("bs")):
             ttk.Label(self.act_fr, text="(không dùng trực tiếp được)",
                       foreground="#888").pack(side="left", padx=(8, 0))
+
+    @staticmethod
+    def _exchange_rows(tid):
+        """Cac muc chon cua the doi `tid` (rong = khong phai the doi)."""
+        try:
+            from bot import config as _cfg
+            return (getattr(_cfg, "EXCHANGE", {}) or {}).get(int(tid)) or []
+        except Exception:
+            return []
+
+    def _chon_qua_doi(self, tid, rows):
+        """Hoi user chon MOT muc roi gui `C:090-001`.
+
+        Phai hoi that: bang chon la du lieu cua tung the, moi the mot kieu - bot khong duoc tu
+        quyet ho user o day (khac voi cho nang cap thu cuoi: o do da biet ro can item nao)."""
+        top = tk.Toplevel(self)
+        top.title("Chọn quà")
+        top.transient(self)
+        top.grab_set()
+        _ten = (self._item(tid) or {}).get("name") or ("0x%04x" % int(tid))
+        ttk.Label(top, text="Mở %s — chọn 1 phần thưởng:" % _ten,
+                  font=("", 10, "bold")).pack(anchor="w", padx=12, pady=(12, 8))
+        var = tk.IntVar(value=int(rows[0]["i"]))
+        for r in rows:
+            ttk.Radiobutton(top, text="%s x%d" % (r.get("ten") or ("0x%04x" % r["id"]), r["n"]),
+                            variable=var, value=int(r["i"])).pack(anchor="w", padx=24, pady=2)
+        btns = ttk.Frame(top)
+        btns.pack(anchor="e", padx=12, pady=12)
+
+        def _ok():
+            i = int(var.get())
+            top.destroy()
+            self._run("Mở quà", lambda: self.c.open_exchange_card(tid, i))
+        ttk.Button(btns, text="Mở", width=10, command=_ok).pack(side="left", padx=(0, 6))
+        ttk.Button(btns, text="Huỷ", width=10, command=top.destroy).pack(side="left")
 
     # ---- chay lenh ----
     def _state_fp(self):
