@@ -198,8 +198,22 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
         if r and not is_soul_map(_name):
             hi = max(hi, r[1])
     thu = list(range(want, 0, -1)) + list(range(want + 1, hi + 1))
+    # Vet duong HA LEVEL: level nao bi bo, vi "khong co map" hay "co diem nhung BO LOC loai het".
+    # Thieu vet nay thi khi bot chon level 122 trong khi muon 130, KHONG AI biet vi sao - phai
+    # ngoi do nguoc bang tay (da xay ra that: user hoi "sao chon Hoa Dung dao4", mat ca buoi doi
+    # chieu du lieu 2 may moi ra la do train_block_stats.json khac nhau).
+    vet = []
+
+    def _ly_do():
+        if not vet:
+            return ""
+        return " | tut tu %d: %s" % (want, ", ".join(vet[:8]))
+
     for level in thu:
         cands = _spots_of_maps(maps, level)
+        if not cands:
+            if level <= want:
+                vet.append("%d khong map" % level)
         if cands:
             profs = []
             no_data = []
@@ -213,10 +227,12 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
                     profs.append((map_id, idx, prof))
             if no_data:
                 map_id, idx = rng.choice(no_data)
-                return map_id, idx, level, "chua co du lieu quai (gom du lieu)"
+                return map_id, idx, level, "chua co du lieu quai (gom du lieu)" + _ly_do()
             ok = [(m, i) for m, i, p in profs
                   if spot_matches(p, level, mob_min, mob_max, elements)]
             if ok:
                 map_id, idx = rng.choice(ok)
-                return map_id, idx, level, "khop level/so quai/he"
+                return map_id, idx, level, "khop level/so quai/he" + _ly_do()
+            if level <= want:
+                vet.append("%d co %d diem nhung BO LOC loai het" % (level, len(cands)))
     return None
