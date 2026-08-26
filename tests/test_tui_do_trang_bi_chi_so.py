@@ -66,7 +66,7 @@ class TestDoiDoiTuong(unittest.TestCase):
         s = _src()
         i_re = s.find("def _retarget")
         self.assertGreater(i_re, 0)
-        doan = s[i_re:i_re + 400]
+        doan = s[i_re:i_re + 900]
         self.assertIn("_refresh_equip_stats()", doan,
                       "doi doi tuong phai ve lai 2 hang tren")
 

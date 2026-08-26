@@ -2202,7 +2202,15 @@ class BagDialog(tk.Toplevel):
         return dict(self._pet_list()).get(i, "Pet %d" % i).replace(" ★", "")
 
     def _retarget(self):
-        """Doi doi tuong -> ve lai bo nut (nhan nut co ten nguoi nhan) + 2 hang tren."""
+        """Doi doi tuong -> ve lai bo nut (nhan nut co ten nguoi nhan) + 2 hang tren.
+
+        Bo do luu RIENG cho tung doi tuong -> phai nap lai dropdown, khong thi dang xem bo cua
+        pet khac ma tuong la cua con dang tick.
+        """
+        try:
+            self._nap_ds_bo()          # cung goi _doi_bo -> refresh()
+        except Exception:
+            pass
         self._refresh_equip_stats()    # tick sang pet nao thi hien do/chi so cua pet do
         if self._sel_slot is not None:
             self._select(self._sel_slot)
@@ -2384,9 +2392,18 @@ class BagDialog(tk.Toplevel):
     # ---- BO DO ----
     DANG_MAC = "— Đồ đang mặc —"      # dong DAU dropdown: xem do that tren nguoi
 
+    def _dt_key(self, who=None):
+        """Khoa DOI TUONG cho kho bo do: "char" hoac "pet<slot>".
+
+        User chot 26/08: "moi con co save bo rieng" -> nhan vat va TUNG pet co danh sach bo
+        rieng, khong dung chung mot bo goi ca nha nhu ban dau.
+        """
+        w = self.target_var.get() if who is None else who
+        return "char" if not w else ("pet%d" % int(w))
+
     def _nap_ds_bo(self, chon=None):
         try:
-            ds = sorted(ctrl.load_outfits(self.username) or {})
+            ds = sorted(ctrl.load_outfits(self.username, self._dt_key()) or {})
         except Exception:
             ds = []
         self.outfit_cb.configure(values=[self.DANG_MAC] + ds)
@@ -2400,25 +2417,21 @@ class BagDialog(tk.Toplevel):
             self._bo_soan, self._bo_ten = None, ""
         else:
             self._bo_ten = ten
-            _bo = (ctrl.load_outfits(self.username) or {}).get(ten) or {}
+            _bo = (ctrl.load_outfits(self.username, self._dt_key()) or {}).get(ten) or {}
             # Ep ve int + copy: sua o day KHONG duoc dung vao file cho toi khi bam "Lưu thay đổi".
-            self._bo_soan = {
-                "char": {int(k): int(v) for k, v in (_bo.get("char") or {}).items()},
-                "pets": {int(p): {int(k): int(v) for k, v in (m or {}).items()}
-                         for p, m in (_bo.get("pets") or {}).items()},
-            }
+            self._bo_soan = {int(k): int(v) for k, v in _bo.items()}
         _co = self._bo_soan is not None
         for _b, _hien in ((self.btn_mac, _co), (self.btn_luubo, _co), (self.btn_xoabo, _co)):
             _b.state(["!disabled"] if _hien else ["disabled"])
         self.refresh()
 
     def _bo_map(self, who):
-        """{fit: tid} cua bo DANG SOAN cho doi tuong `who`. None = dang xem do that."""
-        if self._bo_soan is None:
-            return None
-        if not who:
-            return self._bo_soan.setdefault("char", {})
-        return self._bo_soan.setdefault("pets", {}).setdefault(int(who), {})
+        """{fit: tid} cua bo DANG SOAN. None = dang xem do that.
+
+        Bo do gio thuoc ve DUNG doi tuong dang tick, nen khong con tra theo `who` nua - doi
+        doi tuong la _retarget nap lai danh sach bo khac.
+        """
+        return self._bo_soan
 
     def _dat_vao_bo(self, tid, fit):
         """Gan mot mon vao o `fit` cua bo dang soan. KHONG mac ngay."""
@@ -2439,13 +2452,19 @@ class BagDialog(tk.Toplevel):
     def _luu_thay_doi(self):
         if self._bo_soan is None or not self._bo_ten:
             return
-        ctrl.save_outfit(self.username, self._bo_ten, self._bo_soan)
-        self._flash("✔ Đã lưu bộ '%s'" % self._bo_ten, "#0a7a2f")
+        ctrl.save_outfit(self.username, self._dt_key(), self._bo_ten, self._bo_soan)
+        self._flash("✔ Đã lưu bộ '%s' (%s)" % (self._bo_ten, self._ten_dt()), "#0a7a2f")
+
+    def _ten_dt(self):
+        _w = self.target_var.get()
+        return "Nhân vật" if not _w else self._target_name()
 
     def _luu_bo_moi(self):
-        """Tao bo MOI tu thu dang xem (do that, hoac bo dang soan)."""
-        goc = self._bo_soan if self._bo_soan is not None else self.c.outfit_snapshot()
-        _n = len(goc.get("char") or {}) + sum(len(v) for v in (goc.get("pets") or {}).values())
+        """Tao bo MOI tu thu dang xem (do that, hoac bo dang soan) - CUA DOI TUONG dang tick."""
+        goc = dict(self._bo_soan) if self._bo_soan is not None else {
+            int(f): int(t) for f, t in self._equip_map(self.target_var.get()).items()
+            if int(f) in self.c.OUTFIT_FITS and t}
+        _n = len(goc)
         if not _n:
             messagebox.showwarning("Lưu bộ đồ",
                                    "Chưa đọc được đồ đang mặc — thử lại sau khi login xong.",
@@ -2459,29 +2478,35 @@ class BagDialog(tk.Toplevel):
             messagebox.showwarning("Lưu bộ đồ", "Tên này đã dành cho mục xem đồ đang mặc.",
                                    parent=self)
             return
-        if ten in (ctrl.load_outfits(self.username) or {}) and not messagebox.askyesno(
-                "Ghi đè", "Đã có bộ '%s'.\nGhi đè?" % ten, parent=self):
+        if ten in (ctrl.load_outfits(self.username, self._dt_key()) or {}) \
+                and not messagebox.askyesno(
+                    "Ghi đè", "Đã có bộ '%s' cho %s.\nGhi đè?" % (ten, self._ten_dt()),
+                    parent=self):
             return
-        ctrl.save_outfit(self.username, ten, goc)
+        ctrl.save_outfit(self.username, self._dt_key(), ten, goc)
         self._nap_ds_bo(ten)
-        self._flash("✔ Đã lưu bộ '%s' (%d món)" % (ten, _n), "#0a7a2f")
+        self._flash("✔ Đã lưu bộ '%s' cho %s (%d món)" % (ten, self._ten_dt(), _n), "#0a7a2f")
 
     def _xoa_bo(self):
         ten = self._bo_ten
         if not ten:
             return
         # XOA la mat han -> hoi xac nhan (user dan 26/08).
-        if not messagebox.askyesno("Xoá bộ đồ",
-                                   "Xoá bộ '%s'?\nKhông lấy lại được." % ten, parent=self):
+        if not messagebox.askyesno(
+                "Xoá bộ đồ", "Xoá bộ '%s' của %s?\nKhông lấy lại được." % (ten, self._ten_dt()),
+                parent=self):
             return
-        ctrl.save_outfit(self.username, ten, None)
+        ctrl.save_outfit(self.username, self._dt_key(), ten, None)
         self._nap_ds_bo()
         self._flash("✔ Đã xoá bộ '%s'" % ten, "#0a7a2f")
 
     def _mac_bo(self):
         if self._bo_soan is None:
             return
-        bo = self._bo_soan
+        # apply_outfit nhan dang {"char": .., "pets": {..}} -> boc lai cho DUNG doi tuong dang tick.
+        _w = self.target_var.get()
+        bo = ({"char": dict(self._bo_soan)} if not _w
+              else {"pets": {int(_w): dict(self._bo_soan)}})
         self._run("Mặc bộ '%s'" % self._bo_ten, lambda: self._mac_bo_worker(bo))
 
     def _mac_bo_worker(self, bo):

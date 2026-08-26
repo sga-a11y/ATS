@@ -222,6 +222,42 @@ class TestLuongSoanBoDo(unittest.TestCase):
         self.assertIn("self._cong_cua_mon(tid, self._thing_cua_tid(tid))", s)
 
 
+class TestBoRiengTungDoiTuong(unittest.TestCase):
+    """User 26/08: "moi con co save bo rieng" - char va TUNG pet mot danh sach bo doc lap."""
+
+    def test_khoa_doi_tuong(self):
+        s = _doc("gui.py")
+        self.assertIn('return "char" if not w else ("pet%d" % int(w))', s)
+
+    def test_nap_ds_theo_doi_tuong(self):
+        s = _doc("gui.py")
+        self.assertIn("ctrl.load_outfits(self.username, self._dt_key())", s)
+
+    def test_doi_doi_tuong_thi_NAP_LAI_ds_bo(self):
+        """Khong nap lai la dang xem bo cua pet khac ma tuong la cua con dang tick."""
+        s = _doc("gui.py")
+        i = s.find("def _retarget")
+        self.assertIn("self._nap_ds_bo()", s[i:i + 900])
+
+    def test_mac_bo_chi_ap_cho_doi_tuong_dang_tick(self):
+        s = _doc("gui.py")
+        i = s.find("def _mac_bo(")
+        doan = s[i:s.find("def _mac_bo_worker", i)]
+        self.assertIn('{"char": dict(self._bo_soan)} if not _w', doan)
+        self.assertIn('{"pets": {int(_w): dict(self._bo_soan)}}', doan)
+
+    def test_migrate_bo_CU_khong_lam_mat_du_lieu(self):
+        import run_party_digioi as rp
+        cu = {"PB": {"char": {"1": 17}, "pets": {"2": {"3": 99}}}}
+        moi = rp._migrate_outfits(cu)
+        self.assertEqual(moi, {"char": {"PB": {"1": 17}}, "pet2": {"PB": {"3": 99}}})
+
+    def test_migrate_khong_dung_vao_du_lieu_MOI(self):
+        import run_party_digioi as rp
+        moi = {"char": {"PB": {"1": 17}}, "pet2": {"train": {}}}
+        self.assertEqual(rp._migrate_outfits(moi), moi)
+
+
 class TestSoanBoKhongDungDoThat(unittest.TestCase):
     def test_bam_o_tren_khi_SOAN_BO_thi_KHONG_co_nut_coi_ra(self):
         """User 26/08: "chon do trong bo va chon coi ra thi thanh coi do dang mac tren nguoi".
@@ -276,7 +312,8 @@ class TestBangCuongHoa(unittest.TestCase):
         """Sua trong bo chi nam o RAM cho toi khi bam 'Lưu thay đổi'."""
         s = _doc("gui.py")
         self.assertIn("def _luu_thay_doi", s)
-        self.assertIn("ctrl.save_outfit(self.username, self._bo_ten, self._bo_soan)", s)
+        self.assertIn("ctrl.save_outfit(self.username, self._dt_key(), self._bo_ten, self._bo_soan)",
+                      s)
 
 
 if __name__ == "__main__":
