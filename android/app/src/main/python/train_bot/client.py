@@ -7458,6 +7458,9 @@ class GameClient:
         if not base:
             return {}
         eq = getattr(self, "char_equip", None) or {}
+        # SO AM LA BINH THUONG - user xac nhan 26/08: "so am duoc, vi item co am ma".
+        # Vd char phap su: ATK -6, DEF -2 (gay tang INT nhung tru ATK/DEF). TUYET DOI khong kep
+        # ve 0 hay coi la loi parse - lam vay la bao sai so cho user.
         out = {k: int(base.get(k, 0)) + int(eq.get(k, 0)) for k in base}
         if getattr(self, "char_int", None) is not None:
             out[27] = int(self.char_int)

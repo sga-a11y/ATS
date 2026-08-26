@@ -264,5 +264,28 @@ class TestPetDayDuChiSo(unittest.TestCase):
         self.assertIn("b = pet_login_stats.equipment_bonus(rec, data, _he)", s)
 
 
+class TestChiSoAmLaHopLe(unittest.TestCase):
+    """User xac nhan 26/08: "so am duoc, vi item co am ma".
+
+    Vd char phap su: ATK -6, DEF -2 (gay tang INT nhung tru ATK/DEF). Bai test nay de ai do sau
+    nay thay so am roi tuong loi parse ma di kep ve 0 thi DO ngay.
+    """
+
+    def test_khong_kep_ve_0(self):
+        c = GameClient.__new__(GameClient)
+        c.char_base = {28: 0, 29: 0}
+        c.char_equip = {28: -6, 29: -2}
+        c.char_int = None
+        c.char_agi = None
+        f = c.char_stat_full()
+        self.assertEqual(f[28], -6, "ATK am phai giu nguyen")
+        self.assertEqual(f[29], -2)
+
+    def test_khong_co_max_0_trong_ma_nguon(self):
+        s = _doc("bot", "client.py")
+        i = s.find("def char_stat_full")
+        self.assertNotIn("max(0,", s[i:i + 900], "kep ve 0 la bao sai so cho user")
+
+
 if __name__ == "__main__":
     unittest.main()
