@@ -356,5 +356,49 @@ class TestMonCuThe(unittest.TestCase):
                          "phai dung o CA _select (tui) lan _select_equip (dang mac)")
 
 
+class TestUuTienSoCuaServer(unittest.TestCase):
+    """Server tra TONG phan cong tu do, khong phai so tung mon.
+
+    Role.ReceivePlayerData doc MOT so cho moi loai:
+        SetAttribute(EAttribute.EquipAtk, data:ReadInt32())  -- 裝備普通攻擊力
+    Tong nay DA gom du linh da, LONG, bo do. Server con ban lai qua 0x08 sub0100 moi khi doi
+    (EAttribute 207/208/210/211/212/214/218/219).
+
+    Tu tinh bang pet_login_stats.equipment_bonus la SAI HUONG: ham do khong biet LONG
+    (EItemKind.Feather) -> ra so THIEU, ghi de len so dung cua server (user chi ra 26/08).
+    """
+
+    def test_ma_equip_dung_cua_client(self):
+        self.assertEqual(GameClient.EQUIP_ATTR, (207, 208, 210, 211, 212, 214, 218, 219))
+
+    def test_uu_tien_char_attrs_hon_so_luc_login(self):
+        c = GameClient.__new__(GameClient)
+        c.char_base = {28: 100, 30: 40}
+        c.char_equip = {28: 30, 30: 34}          # anh chup luc LOGIN (da cu sau khi thay do)
+        c.char_attrs = {210: 55, 214: 60}        # so MOI server ban lai
+        c.char_int = None
+        c.char_agi = None
+        f = c.char_stat_full()
+        self.assertEqual(f[28], 155, "ATK phai dung EquipAtk moi cua server (100+55)")
+        self.assertEqual(f[30], 100, "AGI phai dung EquipAgi moi (40+60)")
+
+    def test_khong_co_so_server_thi_dung_so_login(self):
+        c = GameClient.__new__(GameClient)
+        c.char_base = {28: 100}
+        c.char_equip = {28: 30}
+        c.char_attrs = {}
+        c.char_int = None
+        c.char_agi = None
+        self.assertEqual(c.char_stat_full()[28], 130)
+
+    def test_recalc_uu_tien_server_truoc(self):
+        s = _doc("bot", "client.py")
+        i = s.find("def _recalc_char_equip_stats")
+        doan = s[i:i + 1800]
+        self.assertIn("co_server = self.ATTR_AGI in attrs or self.ATTR_INT in attrs", doan)
+        self.assertIn("else:", doan)
+        self.assertIn("CHUA co LONG", doan, "phai ghi ro duong lui la so THIEU")
+
+
 if __name__ == "__main__":
     unittest.main()

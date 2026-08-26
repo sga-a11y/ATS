@@ -7483,7 +7483,14 @@ class GameClient:
         base = getattr(self, "char_base", None) or {}
         if not base:
             return {}
-        eq = getattr(self, "char_equip", None) or {}
+        eq = dict(getattr(self, "char_equip", None) or {})
+        # Server ban lai phan CONG TU DO qua 0x08 sub0100 moi khi doi (id 210/211/212/214/218/219
+        # - xem EQUIP_ATTR). So do MOI NHAT va DA gom du linh da, LONG, bo do. char_equip chi la
+        # anh chup luc login -> thay do xong la cu. Uu tien so server.
+        attrs = getattr(self, "char_attrs", None) or {}
+        for _ma, _dich in ((210, 28), (211, 29), (212, 27), (214, 30), (218, 31), (219, 32)):
+            if _ma in attrs:
+                eq[_dich] = int(attrs[_ma])
         # SO AM LA BINH THUONG - user xac nhan 26/08: "so am duoc, vi item co am ma".
         # Vd char phap su: ATK -6, DEF -2 (gay tang INT nhung tru ATK/DEF). TUYET DOI khong kep
         # ve 0 hay coi la loi parse - lam vay la bao sai so cho user.
@@ -7519,18 +7526,39 @@ class GameClient:
             log.debug("[%s] char_equip_bonus loi: %s", self._label, e)
             return {}
 
-    def _recalc_char_equip_stats(self):
-        """Tinh lai phan CONG TU DO roi cap nhat AGI/INT.
+    # Ma phan CONG TU DO do SERVER tinh san (Controller_RoleController.lua EAttribute):
+    #   207 EquipMaxHp | 208 EquipMaxSp | 210 EquipAtk | 211 EquipDef | 212 EquipInt
+    #   214 EquipAgi | 218 EquipHpx | 219 EquipSpx
+    EQUIP_ATTR = (207, 208, 210, 211, 212, 214, 218, 219)
 
-        `_char_equip_agi` / `_char_equip_int` truoc day CHI duoc dat MOT LAN luc login (goi 0x05).
-        Thay do thi server khong gui lai 2 so do - client tu tinh tai cho. Bot khong tinh nen
-        chi so va nut "Check AGI" dung nguyen so cu (user bao 26/08).
+    def _recalc_char_equip_stats(self):
+        """Cap nhat phan CONG TU DO sau khi thay do.
+
+        `_char_equip_agi`/`_char_equip_int` truoc day CHI duoc dat MOT LAN luc login (goi 0x05)
+        -> thay do xong chi so va nut "Check AGI" dung nguyen so cu (user bao 26/08).
+
+        UU TIEN SO CUA SERVER (char_attrs id 210/212/214, ban qua 0x08 sub0100). So do la tong
+        server tinh, DA gom du linh da, LONG, bo do, moi thu.
+        Tu tinh bang char_equip_bonus() CHI la duong lui: ham do (pet_login_stats.equipment_bonus)
+        khong biet LONG (EItemKind.Feather) -> ra so THIEU. Ghi de so dung cua server bang so
+        thieu do la lam hong chi so (user chi ra 26/08: "m tinh chi so nhan vat kieu gi, no phai
+        lay duoc ca thong tin long chu").
         """
-        b = self.char_equip_bonus()
-        if not b:
-            return
-        self._char_equip_agi = int(b.get(self.ATTR_AGI, 0))
-        self._char_equip_int = int(b.get(self.ATTR_INT, 0))
+        attrs = getattr(self, "char_attrs", None) or {}
+        co_server = self.ATTR_AGI in attrs or self.ATTR_INT in attrs
+        if co_server:
+            if self.ATTR_AGI in attrs:
+                self._char_equip_agi = int(attrs[self.ATTR_AGI])
+            if self.ATTR_INT in attrs:
+                self._char_equip_int = int(attrs[self.ATTR_INT])
+        else:
+            b = self.char_equip_bonus()
+            if not b:
+                return
+            log.debug("[%s] chua co so EquipAgi/EquipInt tu server -> tu tinh (CHUA co LONG)",
+                      self._label)
+            self._char_equip_agi = int(b.get(self.ATTR_AGI, 0))
+            self._char_equip_int = int(b.get(self.ATTR_INT, 0))
         self._refresh_char_agi()
         self._refresh_char_int()
 
