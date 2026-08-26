@@ -785,6 +785,80 @@ C2S 0x44: c0 91 0c 00 00 00 44 01 00 [city_id 2B LE] [flag 1B]
 
 Lưu ý: phải thoát/giải tán party mới teleport được.
 
+## 7d-EQUIP. TRANG BI: mac / coi / do PET / chi tiet mon (DA CHAY THAT 26/08)
+
+**Coi do** (client chi cho DUNG MOT lua chon khi bam mon dang mac — `Item.UnEquip`,
+`UI_UIStatus.lua:1896`; khong co "phan giai"/"bo" nhu trong tui):
+
+| Chieu | Goi |
+|---|---|
+| C2S char | `C:023-012` = `0x17 sub0c` + `[vi tri do 1B][o tui TRONG 1B]` |
+| C2S pet | `C:023-018` = `0x17 sub12` + `[petIdx][vi tri do][o tui TRONG]` |
+| S2C char | `S:023-016` = `0x17 sub10` + `[vi tri do][o tui]` |
+| S2C pet | `S:023-021` = `0x17 sub15` + `[petIdx][vi tri do]` |
+
+> O tui trong do **CLIENT tu chon** roi gui len (`Item.ThingFindEmpty`, 1-based) — server KHONG tu
+> tim. Tui day = khong coi duoc.
+> Phai bat CA HAI goi S2C: khong bat thi bang "do dang mac" khong bao gio doi, nhin ra nhu
+> "bam khong an gi" du lenh DA chay (dinh that 26/08).
+
+**Do dang mac cua PET**: doc thang tu goi pet list `0x0f`, KHONG doi `S:023-024`.
+Trong ban ghi pet, sau `ten + 3 byte skillLv` la **6 x ThingData(35B)**, o thu i = fitType i+1.
+`S:023-024` khong phai luc nao cung ve luc login -> trong vao no thi bang do pet trong tron.
+
+**Bo cuc ThingData (35B)** — `Logic_Item.lua ThingData.New`. Day la du lieu cua MON CU THE, khac
+han ban mau item:
+```
++0 Id(2) +2 quant(4) +6 damage +7 element +8 elementValue +9 proofKind +10 growLv
++11 growExp(4) +15 specialKind +16 stoneAttr +17 stoneLv +18 enhanceLv +19 delTime(double 8)
++27 damagedItemId(2) +29 isLock +30 Reinforced(CUONG HOA) +31/+32/+33 affix1/2/3 +34 styleLv
+```
+Ban ghi tui (`0x17 sub05`) la **36 byte = `[idx 1B]` + ThingData**. Bot tung chi lay id/count roi
+**vut 29 byte con lai** — chinh 29 byte do chua cuong hoa / da / dong phu.
+
+**Bon dong de NHAM khi hien thong tin mon** (da nham that, mat may vong):
+
+| Dong | Nguon | Ghi chu |
+|---|---|---|
+| Chi so cong (`a1k/a1v`, `a2k/a2v`) | ban mau item | **LECH 100**: 104 = +4, 100 = khong cong gi |
+| He CHINH (`主屬性`) | ban mau + `growLv` cua mon | `(elementValue-100) + growLv` |
+| He PHU (`附屬性`) = **LONG** | MON CU THE | long = `附加羽毛` "long gan them" |
+| **Dong phu** (`洗鍊`) | `affix1/2/3` = **ID TRA BANG** | dong thu N lay `level[N]` cua `eq_affix.json` |
+| **Dong dac biet** | `specialAbility` cua ban mau | vd 42 = xac suat nhan doi sat thuong (bao kich) |
+
+> "Dong phu" va "dong dac biet" la HAI THU KHAC NHAU. Tim "bao kich" trong 3 bang
+> `EquipmentAffix` / `EquipmentReinforced` / `EquipmentReinforcedValue` la **khong bao gio thay** —
+> da kiem bang du lieu that: 84/53/43 ban ghi, khong bang nao co ma bao kich.
+
+**Chi so CHAR: dung SO TONG cua server, dung tu cong tung mon.**
+`Role.ReceivePlayerData` (goi `0x05 sub03`) co san truong `Equip*` la TONG da gom du linh da,
+**long**, bo do. Server con ban lai tong nay qua `0x08 sub0100` moi khi doi (`EAttribute`
+207 EquipMaxHp / 208 EquipMaxSp / 210 EquipAtk / 211 EquipDef / 212 EquipInt / 214 EquipAgi /
+218 EquipHpx / 219 EquipSpx).
+> Tu cong bang `pet_login_stats.equipment_bonus` la SAI: ham do khong biet LONG -> ra so THIEU roi
+> ghi de len so dung cua server.
+
+Bo cuc `0x05 sub03` (tinh tu `body`, `body[0:2]` la sub):
+```
++2 element +3 hp(4) +7 sp(2) +9 Int(2) +11 Atk(2) +13 Def(2) +15 Agi(2) +17 Hpx(2) +19 Spx(2)
++21 Lv +22 Exp(4) +26 SkillPoint(2) +28 AttrPoint(2) +30 KillNum(4) +34 BattleHonor(2)
++36 GovRequire +37 Astrolabe(2) +39 MaxHp(4) +43 MaxSp(2)
++45 EquipAtk(4) +49 EquipDef(4) +53 EquipInt(4) +57 EquipAgi(4)
++61 EquipMaxHp(4) +65 EquipMaxSp(4) +69 EquipHpx(4) +73 EquipSpx(4)
+```
+> `MaxSp` la **UInt16**. Doc 4 byte la nuot 2 byte dau cua `EquipAtk` -> so khong lo -> tu roi vao
+> nhanh kiem tra roi BO QUA ca khoi HP/SP login (loi that, chay am tham lau).
+
+**Ban ghi PET trong `0x0f`** — `Logic_Role.lua Role.FollowNpcAppear`:
+```
++3 Exp(4) +7 Lv +8 Hp(4) +12 Sp(2) +14 Int(2) +16 Atk(2) +18 Def(2)
++20 Agi(2) +22 Hpx(2) +24 Spx(2) +26 dieCount +27 Faith +31 namelen
+```
+Khac char: ban ghi pet **chi co so GOC**, phai cong them `equipment_bonus()` moi ra tong.
+
+**Chi so AM la hop le** — item co the co chi so am (vd gay tang INT nhung tru ATK). TUYET DOI
+khong kep ve 0.
+
 ## 7d-EVENT. SU KIEN CUA (cong co hoi thoai — vd CAU GIOI KIEU)
 
 Nguon: crack `Logic_Event_EventManager.lua` + `Logic_Event_EventHandler.lua`, xac nhan bang
