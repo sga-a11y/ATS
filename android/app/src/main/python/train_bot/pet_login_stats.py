@@ -32,6 +32,13 @@ def parse_record(body: bytes, off: int) -> dict | None:
         "level": body[off + 7],
         "hp": int.from_bytes(body[off + 8:off + 12], "little"),
         "sp": int.from_bytes(body[off + 12:off + 14], "little"),
+        # Int/Atk/Def: thu tu truong theo Logic_Role.lua Role.FollowNpcAppear
+        #   +3 Exp(4) +7 Lv(1) +8 Hp(4) +12 Sp(2) +14 Int(2) +16 Atk(2) +18 Def(2)
+        #   +20 Agi(2) +22 Hpx(2) +24 Spx(2) +26 dieCount +27 Faith +31 namelen
+        # 3 moc +20/+22/+24 duoi day von da dung tu truoc -> bo cuc nay tin duoc.
+        "int": int.from_bytes(body[off + 14:off + 16], "little"),
+        "atk": int.from_bytes(body[off + 16:off + 18], "little"),
+        "def": int.from_bytes(body[off + 18:off + 20], "little"),
         "agi": int.from_bytes(body[off + 20:off + 22], "little"),
         "hpx": int.from_bytes(body[off + 22:off + 24], "little"),
         "spx": int.from_bytes(body[off + 24:off + 26], "little"),

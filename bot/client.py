@@ -4802,7 +4802,10 @@ class GameClient:
         if not rec:
             return None
         out = {"level": rec.get("level"), "hp": rec.get("hp"), "sp": rec.get("sp"),
-               "hp_max": None, "sp_max": None, "agi": None}
+               "hp_max": None, "sp_max": None, "agi": None,
+               # GOC tu ban ghi; cong them phan trang bi o duoi.
+               "int": rec.get("int"), "atk": rec.get("atk"), "def": rec.get("def"),
+               "hpx": rec.get("hpx"), "spx": rec.get("spx")}
         data = _load_pet_stat_data()
         if not data:
             return out
@@ -4818,6 +4821,15 @@ class GameClient:
                 rec, data,
                 style_agi=pet_login_stats.style_attribute(data, flags, 30),
                 card_agi=pet_login_stats.card_attribute(data, eq, lv, 30))
+            # Int/Atk/Def/Hpx/Spx: ban ghi chi co so GOC (khac goi char - char co san truong
+            # Equip* rieng). Cong them phan trang bi bang dung ham client van dung.
+            _he = int((getattr(self, "char_attrs", None) or {}).get(24, 0) or 0)
+            b = pet_login_stats.equipment_bonus(rec, data, _he)
+            for _k, _ma in (("int", self.ATTR_INT), ("atk", self.ATTR_ATK),
+                            ("def", self.ATTR_DEF), ("hpx", self.ATTR_HPX),
+                            ("spx", self.ATTR_SPX)):
+                if out.get(_k) is not None:
+                    out[_k] = int(out[_k]) + int(b.get(_ma, 0))
         except Exception as e:
             log.debug("[%s] pet_stats(slot=%s) loi: %s", self._label, slot, e)
         return out

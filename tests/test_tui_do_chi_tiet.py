@@ -219,5 +219,50 @@ class TestTabDangChonKhongTrongNhuBiKhoa(unittest.TestCase):
         self.assertIn('"bold" if t == tab else "normal"', s)
 
 
+class TestThuTuChiSo(unittest.TestCase):
+    """User chot thu tu: INT, ATK, DEF, HPx, SPx, AGI, roi HP SP."""
+
+    def test_char_dung_thu_tu(self):
+        s = _doc("gui.py")
+        i = s.find("_ATTR = (")
+        khoi = s[i:i + 260]
+        vt = [khoi.find('"%s"' % t) for t in ("INT", "ATK", "DEF", "HPx", "SPx", "AGI")]
+        self.assertTrue(all(x > 0 for x in vt), "thieu chi so nao do")
+        self.assertEqual(vt, sorted(vt), "sai thu tu INT/ATK/DEF/HPx/SPx/AGI")
+
+    def test_pet_cung_thu_tu_do(self):
+        s = _doc("gui.py")
+        i = s.find('for _k, _ten in (("int", "INT")')
+        self.assertGreater(i, 0, "pet phai duyet theo cung bang thu tu")
+        khoi = s[i:i + 220]
+        vt = [khoi.find('"%s"' % t) for t in ("INT", "ATK", "DEF", "HPx", "SPx", "AGI")]
+        self.assertEqual(vt, sorted(vt))
+
+
+class TestPetDayDuChiSo(unittest.TestCase):
+    """Pet cung phai co du INT/ATK/DEF/HPx/SPx nhu char.
+
+    Bo cuc ban ghi pet - Logic_Role.lua Role.FollowNpcAppear:
+      +3 Exp(4) +7 Lv(1) +8 Hp(4) +12 Sp(2) +14 Int(2) +16 Atk(2) +18 Def(2)
+      +20 Agi(2) +22 Hpx(2) +24 Spx(2)
+    Ba moc +20/+22/+24 von da dung tu truoc -> bo cuc tin duoc, khong phai doan.
+    """
+
+    def test_parse_record_doc_them_int_atk_def(self):
+        s = _doc("bot", "pet_login_stats.py")
+        self.assertIn('"int": int.from_bytes(body[off + 14:off + 16], "little")', s)
+        self.assertIn('"atk": int.from_bytes(body[off + 16:off + 18], "little")', s)
+        self.assertIn('"def": int.from_bytes(body[off + 18:off + 20], "little")', s)
+
+    def test_pet_stats_tra_du_khoa(self):
+        s = _doc("bot", "client.py")
+        self.assertIn('"int": rec.get("int"), "atk": rec.get("atk"), "def": rec.get("def")', s)
+
+    def test_pet_cong_them_phan_trang_bi(self):
+        """Ban ghi pet chi co so GOC (khac goi char - char co truong Equip* rieng)."""
+        s = _doc("bot", "client.py")
+        self.assertIn("b = pet_login_stats.equipment_bonus(rec, data, _he)", s)
+
+
 if __name__ == "__main__":
     unittest.main()

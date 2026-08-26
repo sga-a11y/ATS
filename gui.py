@@ -2247,9 +2247,9 @@ class BagDialog(tk.Toplevel):
 
     # Bang chi so cua game - Controller_RoleController.lua EAttribute (KHONG tu dat so).
     # Bot da thu san MOI id vao c.char_attrs (0x08 sub0100), truoc day chi hien 3 cai.
-    _ATTR = ((28, "ATK"), (29, "DEF"), (27, "INT"), (30, "AGI"),
-             (31, "HPx"), (32, "SPx"), (88, "Hút HP"), (89, "Hút SP"),
-             (90, "Kháng"), (87, "Cường hoá"))
+    # THU TU user chot 26/08: INT, ATK, DEF, HPx, SPx, AGI (HP/SP them o cuoi).
+    _ATTR = ((27, "INT"), (28, "ATK"), (29, "DEF"), (31, "HPx"), (32, "SPx"), (30, "AGI"),
+             (88, "Hút HP"), (89, "Hút SP"), (90, "Kháng"), (87, "Cường hoá"))
 
     def _stats_line(self, who):
         """Dong chi so. CHI ghi cai bot THAT SU biet - thieu thi bo qua, khong doan."""
@@ -2283,8 +2283,12 @@ class BagDialog(tk.Toplevel):
                 ps = None
             if not ps:
                 return "Chỉ số: chưa nhận được dữ liệu pet (gói 0x0f) — thử lại sau khi login xong."
-            phan = ["Cấp %s" % (ps.get("level") if ps.get("level") is not None else "?"),
-                    "AGI %s" % (ps.get("agi") if ps.get("agi") is not None else "?")]
+            # CUNG THU TU voi char: INT, ATK, DEF, HPx, SPx, AGI, roi HP/SP.
+            phan = ["Cấp %s" % (ps.get("level") if ps.get("level") is not None else "?")]
+            for _k, _ten in (("int", "INT"), ("atk", "ATK"), ("def", "DEF"),
+                             ("hpx", "HPx"), ("spx", "SPx"), ("agi", "AGI")):
+                if ps.get(_k) is not None:
+                    phan.append("%s %s" % (_ten, ps[_k]))
             if ps.get("hp_max"):
                 phan.append("HP %s/%s" % (ps.get("hp"), ps["hp_max"]))
             if ps.get("sp_max"):
