@@ -6478,38 +6478,67 @@ def _outfits_path():
         return "outfits.json"
 
 
-def load_outfits(username=None):
-    """{username: {ten_bo: {"char": {...}, "pets": {...}}}} - hoac rieng 1 acc neu co username."""
+def _migrate_outfits(row):
+    """Bo do CU (chung ca char + pet) -> tach ra MOI DOI TUONG mot danh sach rieng.
+
+    User chot 26/08: "moi con co save bo rieng". Ban cu luu {ten: {char:.., pets:{slot:..}}};
+    ban moi luu {doi_tuong: {ten: {fit: tid}}} voi doi_tuong = "char" | "pet<slot>".
+    Chuyen ngay khi doc de khong ai mat bo da luu.
+    """
+    if not row or all(k in ("char",) or str(k).startswith("pet") for k in row):
+        return row or {}
+    moi = {}
+    for ten, bo in row.items():
+        if not isinstance(bo, dict):
+            continue
+        if bo.get("char"):
+            moi.setdefault("char", {})[str(ten)] = dict(bo["char"])
+        for p, m in (bo.get("pets") or {}).items():
+            if m:
+                moi.setdefault("pet%s" % p, {})[str(ten)] = dict(m)
+    return moi
+
+
+def load_outfits(username=None, doi_tuong=None):
+    """Bo do da luu.
+
+    - khong username: {username: {doi_tuong: {ten: {fit: tid}}}}
+    - co username: {doi_tuong: {ten: ...}}; them doi_tuong -> {ten: {fit: tid}}
+    `doi_tuong` = "char" hoac "pet<slot>" (moi con mot danh sach rieng).
+    """
     try:
         with open(_outfits_path(), encoding="utf-8") as fh:
             data = json.load(fh) or {}
     except Exception:
         data = {}
-    out = data.get("accounts") or {}
+    out = {k: _migrate_outfits(v) for k, v in (data.get("accounts") or {}).items()}
     if username is None:
         return out
-    return out.get(str(username)) or {}
+    row = out.get(str(username)) or {}
+    if doi_tuong is None:
+        return row
+    return row.get(str(doi_tuong)) or {}
 
 
-def save_outfit(username, ten, bo):
-    """Luu/ghi de mot bo do. bo = None -> XOA bo do."""
+def save_outfit(username, doi_tuong, ten, bo):
+    """Luu/ghi de mot bo do CUA MOT DOI TUONG. bo = None -> XOA bo do."""
     try:
         with open(_outfits_path(), encoding="utf-8") as fh:
             data = json.load(fh) or {}
     except Exception:
         data = {}
     accs = data.setdefault("accounts", {})
-    row = accs.setdefault(str(username), {})
+    accs[str(username)] = _migrate_outfits(accs.get(str(username)) or {})
+    row = accs[str(username)]
+    ds = row.setdefault(str(doi_tuong), {})
     if bo is None:
-        row.pop(str(ten), None)
+        ds.pop(str(ten), None)
     else:
-        # Khoa JSON phai la CHUOI. fitType/petIdx dang int -> json.dump tu doi thanh chuoi, nhung
-        # doc lai se ra chuoi -> so sanh int(fit) o apply_outfit se lech neu khong ep. Ep ngay day.
-        row[str(ten)] = {
-            "char": {str(k): int(v) for k, v in (bo.get("char") or {}).items()},
-            "pets": {str(p): {str(k): int(v) for k, v in (m or {}).items()}
-                     for p, m in (bo.get("pets") or {}).items()},
-        }
+        # Khoa JSON phai la CHUOI. fitType dang int -> json.dump tu doi thanh chuoi, nhung doc lai
+        # se ra chuoi -> so sanh int(fit) o apply_outfit se lech neu khong ep. Ep ngay day.
+        ds[str(ten)] = {str(k): int(v) for k, v in (bo or {}).items()}
+    if not ds:
+        row.pop(str(doi_tuong), None)
     if not row:
         accs.pop(str(username), None)
     tmp = _outfits_path() + ".tmp"

@@ -1602,6 +1602,7 @@ class GameClient:
         self.bag_items = {}
         # Lenh tui do bam TAY luc dang trong tran -> xep hang, het tran moi gui (xem queue_bag_cmd)
         self._bag_queue = []
+        self._bag_flush_running = False   # dang co thread xa hang doi -> khong xa chong len
         # slot (int) -> [tid, count]. Snapshot tu S2C 0x17 sub05 (S:023-005) - chu thich cu ghi
         # "0x16 sub0400" la SAI (0x16=22 la MapNpc, khong dinh gi den tui). Use item = gui slot nay.
         # Server TU DAY snapshot, KHONG co lenh nao xin lai (da tra het 66 lenh C:023-*).
@@ -2286,6 +2287,10 @@ class GameClient:
             self._loandau_end_seq += 1
             self.state.in_battle = False
             self._set_battle_end_grace()
+            # Loan dau ket tran bang `0x14 08 26`, KHONG phai `0x14 sub0700` - nen cho goi
+            # _flush_bag_queue o nhanh sub0700 khong bao gio chay o day. Thieu dong nay thi lenh
+            # tui do user bam giua tran phai doi luoi an toan trong heartbeat (toi 15 giay).
+            self._flush_bag_queue()
         elif loandau.is_battle_create(opcode, pkt):
             # Moc VAO TRAN that. Dung `0x0b sub 250` chu khong phai `0x34`: capture cho thay
             # sub 250 toi TRUOC 0.19s, va `0x34` co the tre/that thuong.
@@ -4841,6 +4846,13 @@ class GameClient:
         MAC DE, khong coi truoc (user chot 26/08): gui thang lenh mac, server tu tra mon cu ve o
         cu - bot da xu ly o _on_equip_done. It lenh hon va khong can o tui trong.
         Mon nao DANG MAC DUNG roi thi bo qua, khong gui thua.
+
+        O TRONG trong bo = COI mon dang deo o o do ra (user chot 27/08). Truoc day ham nay CHI
+        BIET MAC nen bo de trong o Giay ma pet dang deo giay thi mac xong giay VAN CON tren nguoi
+        -> bo khong bao gio ra dung hinh, va vi khong co gi de mac nen gui 0 lenh, GUI lai bao
+        nham "o trong / acc mat ket noi".
+        Coi do CAN o tui trong (client tu chon o roi gui len, xem unequip_item) -> tui day thi
+        `unequip_item` tra False va ghi log, khong gui hut.
         """
         if not outfit:
             return 0, []
@@ -4849,8 +4861,11 @@ class GameClient:
         for _p, _m in (outfit.get("pets") or {}).items():
             _viec.append((int(_p), _m or {}))
         for follow, muon in _viec:
+            # Khoa ve INT: bo do luu ra JSON thi khoa thanh CHUOI, tra `muon.get(5)` se truot ->
+            # tuong o do trong -> COI NHAM mon ma bo dang co. Chuan hoa mot lan o day.
+            muon = {int(f): int(t or 0) for f, t in (muon or {}).items()}
             dang = (self.pet_equip_by_fit.get(follow) if follow else self.equip_by_fit) or {}
-            for fit, tid in sorted((int(f), int(t)) for f, t in muon.items()):
+            for fit, tid in sorted((f, t) for f, t in muon.items() if t):
                 if int(dang.get(fit, 0)) == tid:
                     continue                      # dang mac dung mon nay roi
                 slot = self._bag_slot_best(tid)
@@ -4864,6 +4879,17 @@ class GameClient:
                         self.equip_item(slot)
                     gui += 1
                     time.sleep(0.35)              # cho server tra mon cu ve tui truoc lenh sau
+                except OSError:
+                    break
+            # O TRONG trong bo -> COI mon dang deo o do. Lam SAU cac lenh mac de o tui vua duoc
+            # giai phong (mac xong mon cu tu ve tui) khong bi tinh nham la day.
+            for fit in self.OUTFIT_FITS:
+                if int(muon.get(fit, 0) or 0) or not int(dang.get(fit, 0) or 0):
+                    continue
+                try:
+                    if self.unequip_item(int(fit), follow=follow):
+                        gui += 1
+                        time.sleep(0.35)
                 except OSError:
                     break
         if thieu:
@@ -4892,19 +4918,70 @@ class GameClient:
                  self._label, ten, len(self._bag_queue))
         return True
 
+    BAG_FLUSH_TRIES = 3        # so lan thu lai mot lenh bi server nuot
+    BAG_FLUSH_VERIFY = 1.2     # giay cho server phan hoi truoc khi coi la bi nuot
+
     def _flush_bag_queue(self):
-        """Xa hang doi sau khi ket tran. Goi tu cho HA in_battle."""
-        if not self._bag_queue:
+        """Xa hang doi sau khi ket tran. Goi tu cho HA in_battle.
+
+        Chay o THREAD RIENG: vong nay co ngu (cho server phan hoi) ma no duoc goi tu thread doc
+        goi - ngu o do la chan luon viec doc socket.
+        """
+        if not self._bag_queue or getattr(self, "_bag_flush_running", False):
             return
         cho = self._bag_queue
         self._bag_queue = []
-        for ten, fn in cho:
-            try:
-                log.info("[%s] Tui do: het tran -> gui lenh da xep hang '%s'", self._label, ten)
-                fn()
-            except Exception as e:
-                log.warning("[%s] Tui do: lenh '%s' loi khi xa hang doi: %s", self._label, ten, e)
-            time.sleep(0.3)
+        self._bag_flush_running = True
+        threading.Thread(target=self._bag_flush_worker, args=(cho,), daemon=True,
+                         name="bagflush-%s" % (self._label or self._username)).start()
+
+    def _bag_flush_worker(self, cho):
+        """Gui tung lenh roi KIEM lenh co an khong; bi nuot thi xep lai de thu lai.
+
+        VI SAO CAN KIEM: moc xa hang doi la `0x14 sub0700`, ma goi do KHONG phai goi ket tran
+        that (no la `S:020-007 <事件換場景>`; ket tran that la `S:011-000` = `0x0b sub 0`). Dang
+        TRAIN thi tran ke tiep bat dau chi ~2 giay sau, nen lenh doi do gui o moc do bi server
+        NUOT IM LANG - user bam 6 lan lien khong an mot lan nao (log 26/08 22:09-22:10), trong
+        khi dung yen khong train thi bam phat an ngay.
+        Server co phan hoi thi `_equip_seq` tang (xem _on_equip_done/_on_unequip_done) -> lay do
+        lam bang chung. Lenh khong lien quan do (vd 'Bo') thi khong co dau hieu -> khong thu lai.
+        """
+        try:
+            for muc in cho:
+                ten, fn = muc[0], muc[1]
+                lan = (muc[2] if len(muc) > 2 else 1)
+                log.info("[%s] Tui do: het tran -> gui lenh da xep hang '%s'%s",
+                         self._label, ten, "" if lan == 1 else " (lan %d)" % lan)
+                truoc = int(getattr(self, "_equip_seq", 0))
+                try:
+                    fn()
+                except Exception as e:
+                    log.warning("[%s] Tui do: lenh '%s' loi khi xa hang doi: %s",
+                                self._label, ten, e)
+                    continue
+                if not self._la_lenh_do(ten):
+                    time.sleep(0.3)
+                    continue
+                het = time.time() + self.BAG_FLUSH_VERIFY
+                while time.time() < het and int(getattr(self, "_equip_seq", 0)) == truoc:
+                    time.sleep(0.1)
+                if int(getattr(self, "_equip_seq", 0)) != truoc:
+                    continue
+                if lan >= self.BAG_FLUSH_TRIES:
+                    log.warning("[%s] Tui do: lenh '%s' KHONG an sau %d lan -> bo. Thu lai luc "
+                                "dung yen (khong danh nhau).", self._label, ten, lan)
+                    continue
+                log.info("[%s] Tui do: lenh '%s' bi server nuot -> xep lai de thu lai",
+                         self._label, ten)
+                self._bag_queue.append((ten, fn, lan + 1))
+        finally:
+            self._bag_flush_running = False
+
+    @staticmethod
+    def _la_lenh_do(ten: str) -> bool:
+        """Lenh MAC/COI do - loai co the xac nhan bang `_equip_seq`."""
+        t = (ten or "").lower()
+        return t.startswith("trang bị") or t.startswith("cởi ra") or t.startswith("mặc bộ")
 
     def bag_first_empty_slot(self):
         """O tui TRONG dau tien (1-based, theo bag_capacity). None = tui day.
@@ -7683,6 +7760,62 @@ class GameClient:
         self._refresh_char_agi()
         self._refresh_char_int()
 
+    def _cap_nhat_do_trong_ban_ghi_pet(self, follow: int, fit: int, tid=None, td=None):
+        """Sua o do thu `fit` trong ban ghi login cua pet `follow` (tid=None = go do ra).
+
+        VI SAO CAN: `pet_stats()` tinh phan cong cua trang bi tu `pet_login_records[follow]
+        ["equipment"]` - ban ghi den tu goi pet-list LUC LOGIN. Ma KHONG CO lenh nao xin lai goi
+        do (da tra het C:015-*: chi co them/duoi/doi ten/gui xe...). Nen thay do cho pet xong ma
+        khong sua ban ghi thi CHI SO PET DUNG YEN toi tan lan login sau - dung hien tuong user
+        bao 26/08: "thay cho char thi update luon, thay cho pet thi khong".
+        Ben CHAR khong dinh loi nay vi co duong rieng `_recalc_char_equip_stats()`.
+
+        ThingData trong tui (`bag_items`) va trong ban ghi pet dung Y HET 5 khoa
+        (id/element/element_value/stone_attr/stone_lv) nen chep thang sang duoc, giu nguyen ca
+        linh da - khong phai uoc tinh tu ban mau item.
+        """
+        if not fit or not (1 <= int(fit) <= 6):
+            return
+        # HAI ban ghi RIENG cung mo ta pet nay, deu la ket qua `parse_record` nhung la HAI object
+        # khac nhau - va moi cai nuoi mot cho hien thi khac nhau:
+        #   pet_login_records[follow] -> pet_stats()                  -> chi so trong TUI DO
+        #   _active_pet_login         -> _refresh_active_pet_login_stats() -> `pet_agi`, tuc nut
+        #                                                                "Check AGI"
+        # Va chi con DANG XUAT CHIEN moi co ban ghi thu hai. Sua mot cai thi cho kia dung so cu -
+        # dung hien tuong user bao 26/08: "chi so trong tui do update roi, cho check agi chua".
+        rec = (getattr(self, "pet_login_records", None) or {}).get(int(follow))
+        active = getattr(self, "_active_pet_login", None)
+        if not isinstance(active, dict) or int(active.get("marker", -1) or -1) != int(follow):
+            active = None
+        dsach = [r for r in (rec, active) if isinstance(r, dict)]
+        # Cung MOT object (neu sau nay gop lai) thi chi sua mot lan.
+        dsach = [r for i, r in enumerate(dsach) if all(r is not x for x in dsach[:i])]
+        if not dsach:
+            return
+        trong = {"id": 0, "element": 0, "element_value": 0, "stone_attr": 0, "stone_lv": 0}
+        # `id` LUON ghi tu tid. Truoc day ham nay tu tra ThingData theo o tui roi lay ca `id` tu
+        # do - o tui luc ay DA bi ghi de bang mon CU nen tra ra rong -> ghi thanh O TRONG. Ket qua
+        # dung nhu user do duoc: "chi go do cu ra, chua lap do moi vao" (AGI 85 -> 89 thay vi 87).
+        # Khong co ThingData thi van ghi id: mat phan linh da/he, nhung con hon mat ca mon.
+        if tid:
+            moi = dict(trong)
+            moi["id"] = int(tid)
+            if isinstance(td, dict) and int(td.get("id", 0) or 0) == int(tid):
+                for k in ("element", "element_value", "stone_attr", "stone_lv"):
+                    moi[k] = td.get(k, 0)
+            else:
+                log.debug("[%s] do pet: khong co ThingData cua 0x%04x -> chi tinh ban mau item",
+                          self._label, int(tid))
+        else:
+            moi = dict(trong)
+        for r in dsach:
+            eq = r.get("equipment")
+            if isinstance(eq, list) and len(eq) >= 6:
+                eq[int(fit) - 1] = dict(moi)
+        if active is not None:
+            # `pet_agi` chi doi khi tinh lai - nut "Check AGI" doc thang bien do.
+            self._refresh_active_pet_login_stats()
+
     def _on_unequip_done(self, fit_pos: int, follow: int = 0):
         """DA COI XONG 1 mon (server xac nhan). Xoa khoi bang do dang mac + bump _equip_seq.
 
@@ -7696,6 +7829,8 @@ class GameClient:
         self._equip_seq = int(getattr(self, "_equip_seq", 0)) + 1
         if not follow:
             self._recalc_char_equip_stats()
+        else:
+            self._cap_nhat_do_trong_ban_ghi_pet(follow, int(fit_pos), tid=None)
         log.info("[%s] Da coi do: vi tri %s cua %s (%s)", self._label, fit_pos,
                  "nhan vat" if not follow else "pet #%d" % follow,
                  self._mount_item_name(cu) if cu else "?")
@@ -7724,6 +7859,9 @@ class GameClient:
         if rec:
             tid = rec[0]
             self.bag_counts[tid] = max(0, self.bag_counts.get(tid, 0) - 1)
+            # ThingData cua mon VUA MAC phai lay NGAY BAY GIO: vai dong duoi day o tui `slot` bi
+            # ghi de bang mon CU (do thay do), luc do tra lai la ra mon cu / rong.
+            _td_moi = (getattr(self, "bag_items", None) or {}).get(slot)
             table = (self.pet_equip_by_fit.setdefault(follow, {}) if follow else self.equip_by_fit)
             fit = int((_load_gamedata_items().get(tid) or {}).get("ft", 0) or 0)
             cu = table.get(fit) if fit else None
@@ -7737,6 +7875,7 @@ class GameClient:
                 table[fit] = tid
             if follow:
                 self.pet_equipped.setdefault(follow, []).append(tid)
+                self._cap_nhat_do_trong_ban_ghi_pet(follow, fit, tid=tid, td=_td_moi)
             else:
                 self.equipped_items = [i for i in (getattr(self, "equipped_items", []) or [])
                                        if i.get("id") != cu]

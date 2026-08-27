@@ -32,7 +32,25 @@ def _bot(in_battle):
     c._label = "test"
     c.state = _St(in_battle)
     c._bag_queue = []
+    c._bag_flush_running = False
     return c
+
+
+def _cho_xa_xong(c, han=5.0):
+    """`_flush_bag_queue` chay o THREAD RIENG (26/08).
+
+    Truoc day no dong bo, nhung phai them buoc KIEM lenh co an khong (server nuot lenh doi do neu
+    gui qua som - xem tests/test_tui_do_xa_hang_doi_thu_lai.py). Buoc kiem phai NGU cho phan hoi,
+    ma ham nay duoc goi tu chinh thread doc goi -> ngu o do la tu chan phan hoi minh dang doi.
+    Cac bai test duoi van kiem dung viec cu (thu tu + mot lenh loi khong chan lenh sau).
+    """
+    import time
+    het = time.time() + han
+    while time.time() < het:
+        if not getattr(c, "_bag_flush_running", False):
+            return True
+        time.sleep(0.02)
+    return False
 
 
 class TestXepHang(unittest.TestCase):
@@ -56,6 +74,7 @@ class TestXepHang(unittest.TestCase):
             c.queue_bag_cmd(t, lambda t=t: goi.append(t))
         c.state.in_battle = False
         c._flush_bag_queue()
+        self.assertTrue(_cho_xa_xong(c))
         self.assertEqual(goi, ["a", "b", "c"])
         self.assertEqual(c._bag_queue, [], "xa xong phai rong")
 
@@ -68,6 +87,7 @@ class TestXepHang(unittest.TestCase):
         c.queue_bag_cmd("hong", _no)
         c.queue_bag_cmd("ok", lambda: goi.append("ok"))
         c._flush_bag_queue()
+        self.assertTrue(_cho_xa_xong(c))
         self.assertEqual(goi, ["ok"])
 
     def test_xa_rong_thi_khong_lam_gi(self):

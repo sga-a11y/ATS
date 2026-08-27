@@ -3082,8 +3082,14 @@ class BagDialog(tk.Toplevel):
         if err is not None:
             messagebox.showerror(text, "Lỗi khi %s: %s" % (text.lower(), err), parent=self)
         elif not sent:
-            messagebox.showwarning(text, "Không gửi được lệnh '%s' (ô trống / acc mất kết nối)."
-                                   % text, parent=self)
+            # "Khong gui duoc" va "KHONG CAN gui" la hai chuyen khac han. Mac bo ma nguoi/pet da
+            # deo dung y het bo do -> apply_outfit gui 0 lenh, TRUOC DAY hien nham "acc mat ket
+            # noi" lam user tuong rot mang (bao 27/08).
+            if text.startswith("Mặc bộ"):
+                self._flash("✔ %s: đã đúng bộ sẵn rồi, không phải thay gì" % text, "#0a7a2f")
+            else:
+                messagebox.showwarning(text, "Không gửi được lệnh '%s' (ô trống / acc mất kết nối)."
+                                       % text, parent=self)
         elif changed:
             self._flash("✔ %s: xong" % text, "#0a7a2f")
         else:
