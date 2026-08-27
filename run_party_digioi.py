@@ -814,6 +814,30 @@ def _should_reform_incomplete_party(train_on_map, joined, needed, elapsed, thres
     return bool(train_on_map and needed > 0 and joined < needed and elapsed >= threshold)
 
 
+def _party_train_tai_cho(maps, kenhs, train_map):
+    """CA PARTY DA O MAP TRAIN chua? -> 'cung_kenh' | 'lech_kenh' | 'lech_map'.
+
+    User chot 27/08: "cung o map train roi thi check kenh, neu cung kenh roi thi lap party keo ra
+    train, ko cung kenh thi sync kenh thoi, ko can ve thanh". Truoc day moi lan thieu nguoi trong
+    party la _do_reform() -> teleport CA PARTY ve thanh roi di bo/route len lai, du ai cung dang
+    dung san o bai train -> mat vai phut va de lac them nguoi giua duong.
+
+    Chua doc duoc kenh cua ai (None) thi KHONG dam ket luan 'cung kenh' - coi la lech de di
+    duong sync kenh (sync tai cho, van khong ve thanh).
+    """
+    try:
+        tm = int(train_map or 0)
+    except (TypeError, ValueError):
+        tm = 0
+    ms = {int(m) for m in (maps or []) if m is not None}
+    if not tm or not ms or ms != {tm}:
+        return "lech_map"
+    ks = [k for k in (kenhs or [])]
+    if any(k is None for k in ks) or len({int(k) for k in ks if k is not None}) > 1:
+        return "lech_kenh"
+    return "cung_kenh"
+
+
 def _should_resync_incomplete_digioi_party(
         is_digioi, digioi_solo, joined, needed, elapsed, threshold=20.0):
     return bool(is_digioi and not digioi_solo and needed > 0
@@ -2105,6 +2129,28 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             with st["lock"]:
                 return bool(st["dt_done"])
 
+        def _ra_safe_truoc_khi_doi_kenh(ly_do=""):
+            """DOI KENH thi phai ra DIEM AN TOAN truoc, khong duoc doi ngay giua bay quai.
+
+            User chot 27/08. Doi kenh KHONG doi map/toa do: sang kenh moi la dung Y NGUYEN cho cu,
+            nhung o kenh moi cho do co the day quai va party VUA TAN (leave_party truoc khi doi)
+            -> tung acc dung le giua bai, an dan ngay khi vua vao kenh.
+            """
+            if not train_on_map or c.current_map != sc:
+                return
+            diem = st.get("rally_point") or (train_safes[0] if train_safes else None)
+            if not diem:
+                return
+            log.info("[%s] (%s) %s: ra diem an toan %s truoc khi doi kenh",
+                     label, role, ly_do or "doi kenh", diem)
+            try:
+                c.flee_mode = True      # tren duong ra safe thi BO CHAY, khong dung lai danh
+                c.navigate_to(*_jitter(diem), flee=True,
+                              abort=lambda: (_stopped() or not c.running))
+            except Exception as e:
+                log.warning("[%s] (%s) %s: loi ra safe truoc khi doi kenh: %s",
+                            label, role, ly_do or "doi kenh", e)
+
         def do_channel_sync():
             # Gen reform luc BAT DAU sync. Neu ca party BUMP reform_gen (chuyen sang reform moi) trong
             # luc acc nay dang cho channel_ready -> picker da bo gen cu -> channel_ready gen cu KHONG
@@ -2129,6 +2175,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if not _party_same_map(st, username, c.current_map, len(party_accounts(pidx)),
                                    _stopped, label, role):
                 return False
+            # Sync kenh TAI CHO (dang o bai train) -> ra safe truoc, dung doi kenh giua bay quai.
+            _ra_safe_truoc_khi_doi_kenh("sync kenh")
             current_channel = c.refresh_current_channel(wait=1.5)
             log.info("[%s] (%s) cap nhat kenh hien tai truoc sync: %s",
                      label, role, current_channel if current_channel is not None else "chua biet")
@@ -2885,6 +2933,51 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     time.sleep(1)
                 c.combat_ready(); c.flee_mode = False
 
+        def _party_tai_cho_xu_ly(ly_do=""):
+            """CA PARTY dang dung o MAP TRAIN roi -> xu ly TAI CHO, KHONG ve thanh. True = da xu ly.
+
+            User chot 27/08 (ap dung cho CA reform lan luc moi di train):
+              - cung map train + cung kenh -> giai tan + lap lai party ngay tai bai, keo ra spot.
+              - cung map train + lech kenh  -> chi sync kenh, khong can ve thanh.
+            Lech map that su moi ve thanh gom nhau (van la _do_reform nhu cu).
+            """
+            _maps, _kenhs = [], []
+            for _u, _up, _uil, _uip in party_accounts(pidx):
+                _uc = account_clients.get(_u)
+                if _uc is None or not getattr(_uc, "running", False):
+                    continue
+                _maps.append(getattr(_uc, "current_map", None))
+                _kenhs.append(getattr(_uc, "current_channel", None))
+            _tinh = _party_train_tai_cho(_maps, _kenhs, sc)
+            if _tinh == "lech_map":
+                return False
+            if is_leader:
+                c.leave_party()          # giai tan party cu de lap lai (van dung o bai train)
+                reset_party_joined(pidx)
+                st["invited"].clear()
+            if _tinh == "lech_kenh":
+                log.warning("[%s] (%s) %s: ca party DA o map train %s nhung LECH KENH -> chi sync "
+                            "kenh tai cho, KHONG ve thanh", label, role, ly_do or "dong bo", sc)
+                with st["lock"]:
+                    st["resync_gen"] += 1
+                do_channel_sync()
+            else:
+                log.info("[%s] (%s) %s: ca party DA o map train %s va CUNG KENH -> lap lai party "
+                         "tai cho, KHONG ve thanh", label, role, ly_do or "dong bo", sc)
+            if is_leader:
+                st["invited"].set()
+                try:                      # MOI LAI NGAY, khong doi vong retry 60s cua keepalive
+                    _invite_party_participants(c, train_on_map, gap=1.0)
+                except Exception as e:
+                    log.warning("[%s] (LEADER) %s: loi moi lai party tai cho: %s",
+                                label, ly_do or "dong bo", e)
+            # BAT LAI DANH: caller (reform / lenh tay) da dat flee_mode=True de dung yen ma di
+            # duong. Nhanh _do_reform ket thuc bang combat_ready()+flee_mode=False; nhanh tai cho
+            # nay bo qua thi bot dung o dung diem quai ma CU BO CHAY, khong danh con nao.
+            c.combat_ready()
+            c.flee_mode = False
+            return True
+
         via_route = False   # True neu toi train map bang KEO PARTY -> da cung kenh + da danh dungeon o thanh
         if train_on_map:
             # PHAI dung map login (toa do safe/mobs chi dung tren map do).
@@ -2928,6 +3021,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if route_available and has_leader:
                 expected = len(party_accounts(pidx))
                 all_on_map = _party_map_barrier(st, username, self_map_ok, expected, _stopped)
+                if not all_on_map and _party_tai_cho_xu_ly("luc di train"):
+                    # Barrier bao "co acc sai map" nhung doc map THAT thi ca party dang dung o bai
+                    # train (barrier truot do co acc khong bao cao kip) -> xu ly tai cho.
+                    self_map_ok = (c.current_map == sc)
+                    all_on_map = True
                 if not all_on_map:
                     log.info("[%s] (%s) PARTY co acc sai map -> CA PARTY ve thanh don nhau roi KEO toi %s"
                              " (dung _do_reform, dung o safe - chua ra spot)", label, role, sc)
@@ -3576,6 +3674,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if _lech_lau or _qua_han:
                         _ready_t0 = time.time()
                         _rw_split_t0 = None
+                        # CA PARTY DA DUNG SAN O MAP TRAIN -> KHONG ve thanh nua (user 27/08):
+                        # cung kenh thi cu cho/moi tai cho, lech kenh thi sync kenh tai cho.
+                        if train_on_map and _party_tai_cho_xu_ly("cho member san sang"):
+                            time.sleep(2)
+                            continue
                         # LOI HET ACC CON KET TRONG PB RA TRUOC: trong PB khong teleport/ve thanh
                         # duoc, de nguyen thi reform khong bao gio gom duoc no.
                         for _ru, _rp, _rl, _rk in party_accounts(pidx):
@@ -3638,6 +3741,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         continue
                     if _should_reform_incomplete_party(
                             train_on_map, _joined_now, st["n_members"], _invite_elapsed):
+                        # Ca party dang dung san o bai train -> xu ly tai cho, khong ve thanh.
+                        if _party_tai_cho_xu_ly("moi %.0fs chua du party" % _invite_elapsed):
+                            _resync_t0 = time.time(); _t0 = time.time()
+                            continue
                         log.warning("[%s] (LEADER) moi %.0fs chua du party (%d/%d) -> REFORM "
                                     "dong bo lai map + kenh", label, _invite_elapsed,
                                     _joined_now, st["n_members"])
@@ -4245,6 +4352,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if kind == "channel":
                 ch = cmd[1]
                 ok = False
+                _ra_safe_truoc_khi_doi_kenh("lenh doi kenh tay")
                 try:
                     ok = c.switch_channel(ch)
                     time.sleep(1.5)
@@ -4294,7 +4402,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             elif train_on_map:
                 # train map: dua CA party ve bai + lap lai (dung lai flow reform). _do_reform ve thanh
                 # gom nhau -> switch dung st['channel'] (da set kenh moi neu lenh channel) -> keo ra spot.
-                _do_reform()
+                # Ca party dang o san bai train thi lap lai/sync kenh TAI CHO (user 27/08).
+                if not _party_tai_cho_xu_ly("lenh tay"):
+                    _do_reform()
 
         stop_ev = account_stops.get(username)
         # Bao stop_account: ACC NAY khi STOP -> thread TU xu ly (KHONG dong socket ngay).
@@ -4484,7 +4594,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             except Exception as e:
                                 log.warning("[%s] reconnect: loi build smart route: %s", label, e)
                         if _train_route_available(_smart_r, _route_r, has_leader):
-                            try: _do_reform()
+                            try:
+                                # Reconnect vao DUNG bai train va ca party cung o do -> khong ve thanh.
+                                if not _party_tai_cho_xu_ly("sau reconnect"):
+                                    _do_reform()
                             except Exception as e: log.warning("[%s] reconnect reform loi: %s", label, e)
                         elif c.current_map != sc:                # route-less + MINH lech map -> TAT CA PARTY
                             log.warning("[%s] (%s) route-less + minh KHAC map train (%s != %s) -> TAT CA PARTY",
@@ -4630,7 +4743,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 reform_gen_handled = st["reform_gen"]
                 log.warning("[%s] (%s) -> REFORM party (gen %d%s)", label, role, reform_gen_handled,
                             ", gop gather dang cho" if _gather_wait_me else "")
-                try: _do_reform()
+                try:
+                    # Con dang cho nhau o THANH (reform_arrived co entry) thi phai ve gop that;
+                    # con lai, ca party dung san o bai train -> xu ly tai cho, khong ve thanh.
+                    _tai_cho = (not _gather_wait_me
+                                and _party_tai_cho_xu_ly("reform gen %d" % reform_gen_handled))
+                    if not _tai_cho:
+                        _do_reform()
                 except Exception as e:
                     log.warning("[%s] loi reform (bo qua): %s", label, e)
                 last_reform = time.time()
