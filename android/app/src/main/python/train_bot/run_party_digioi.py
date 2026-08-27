@@ -3022,6 +3022,31 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if _full:
                 c.combat_ready()
 
+        def _ra_rally_gom_lai(ly_do=""):
+            """PARTY HONG -> acc NAY dut tran + chay ve DIEM TAP KET, roi mo i lap lai party.
+
+            User chot 27/08: "no dang danh ma co dua ko danh thi tuc la party hong me no roi" ->
+            "truong nay thi cho chay het ra diem an toan roi tim cach party lai".
+            Party train danh THEO PARTY: dua danh dua khong = party da vo. Dung o diem quai ma moi
+            lai thi tran noi tran, moi khong toi noi (log 27/08 20:15-20:19: leader moi ca chuc
+            lan, member combat lech nhau, party khong bao gio du).
+            Da dung san o rally (<=60) thi KHONG chay lai - tranh di lai vo ich qua vung quai.
+            """
+            _rl = st.get("rally_point") or (train_safes[0] if train_safes else None)
+            if not _rl or c.current_map != sc:
+                return
+            try:
+                c.flee_mode = True                      # dut tran: BO CHAY, khong danh tiep
+                c._wait_combat_clear(idle=2.0, cap=60.0)
+                if c.pos and ((c.pos[0] - _rl[0]) ** 2 + (c.pos[1] - _rl[1]) ** 2) <= 60 ** 2:
+                    return                              # da o diem tap ket roi
+                log.info("[%s] (%s) %s: PARTY HONG -> ve diem tap ket %s roi lap lai party",
+                         label, role, ly_do or "gom lai", _rl)
+                c.navigate_to(*_jitter(_rl), flee=True,
+                              abort=lambda: (_stopped() or not c.running))
+            except Exception as e:
+                log.warning("[%s] (%s) loi ve diem tap ket de gom party: %s", label, role, e)
+
         def _party_tai_cho_xu_ly(ly_do=""):
             """CA PARTY dang dung o MAP TRAIN roi -> xu ly TAI CHO, KHONG ve thanh. True = da xu ly.
 
@@ -3040,6 +3065,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             _tinh = _party_train_tai_cho(_maps, _kenhs, sc)
             if _tinh == "lech_map":
                 return False
+            # MOI acc (leader lan member) tu dut tran + ve diem tap ket TRUOC khi lap lai party.
+            _ra_rally_gom_lai(ly_do)
             if is_leader:
                 c.leave_party()          # giai tan party cu de lap lai (van dung o bai train)
                 reset_party_joined(pidx)

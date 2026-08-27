@@ -228,6 +228,27 @@ class TestApVaoLuong(unittest.TestCase):
         self.assertIn('joined_member_count(pidx) >= st["n_members"]', doan)
         self.assertIn("_thieu_since = 0.0", doan)
 
+    def test_PARTY_HONG_thi_ra_diem_tap_ket_TRUOC_khi_lap_lai(self):
+        """User chot 27/08: "no dang danh ma co dua ko danh thi tuc la party hong me no roi" ->
+        "truong nay thi cho chay het ra diem an toan roi tim cach party lai".
+
+        Log 20:15-20:19 party 6: leader moi ca chuc lan, member combat lech nhau (dua danh dua
+        khong = party da vo), party khong bao gio du. Dung o diem quai ma moi lai thi tran noi
+        tran, loi moi khong toi noi.
+        """
+        s = _src()
+        self.assertIn("def _ra_rally_gom_lai(", s)
+        i = s.find("def _ra_rally_gom_lai(")
+        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 1800]
+        self.assertIn("c.flee_mode = True", than, "phai dut tran truoc")
+        self.assertIn("c._wait_combat_clear(", than)
+        self.assertIn("c.navigate_to(", than, "phai ve diem tap ket")
+        self.assertIn("<= 60 ** 2", than, "da o rally thi khong chay lai")
+        # goi TRUOC khi giai tan/moi lai party
+        j = s.find("_ra_rally_gom_lai(ly_do)")
+        self.assertGreater(j, 0)
+        self.assertLess(j, s.find("c.leave_party()", j), "ra rally TRUOC khi giai tan party")
+
     def test_van_ve_thanh_khi_dang_gom_nhau_o_thanh(self):
         """reform_arrived co entry = co nguoi DANG DUNG CHO o thanh -> ve gop that, khong bo roi ho."""
         s = _src()
