@@ -10775,6 +10775,17 @@ class GameClient:
             log.info("[%s] bi keo sang map %s (khong tu qua cong) -> chay scene_resume truoc khi di",
                      self._label, self.current_map)
             self.scene_resume()
+            # ... VA XIN LAI TOA DO THAT. scene_resume chi bao server "toi vao scene xong", KHONG
+            # tra vi tri. self.pos van la dead-reckoning cua map CU / cho leader dung luc keo, ma
+            # server dat member canh leader O THOI DIEM KEO - leader thi da di tiep. Gui move theo
+            # pos sai = server thay minh nhay ca nghin don vi -> "di chuyen QUA XA (ma 14)" + DUT
+            # KET NOI. Log that 27/08 12:24:11: ca 4 member vua bi keo sang 12831, tinh duong tu
+            # (1310,2410) roi rot CUNG MOT GIAY, leader luc do dang o (1180,480).
+            if self.current_map is not None:
+                try:
+                    self.refresh_server_position(self.current_map)
+                except Exception as e:
+                    log.debug("[%s] xin lai toa do sau khi bi keo loi (bo qua): %s", self._label, e)
 
         # VUA QUA CONG -> _enter_gate dat self.pos = None ("vi tri cu vo nghia o map moi").
         # Ma smart path (Ground.mmg) CAN pos xuat phat -> pos=None thi rot xuong che do GUI MOVE MU,

@@ -74,10 +74,21 @@ class TestApVaoLuong(unittest.TestCase):
         self.assertIn("c.combat_ready()", doan)
         self.assertIn("c.flee_mode = False", doan)
 
+    def test_sync_kenh_CHUA_XONG_thi_KHONG_moi_party(self):
+        """Moi party luc con lech kenh = loi moi khong toi noi, party mai khong du."""
+        s = _src()
+        i = s.find("def _party_tai_cho_xu_ly(")
+        doan = s[i:i + 3000]
+        self.assertIn("if not do_channel_sync():", doan)
+        j = doan.find("if not do_channel_sync():")
+        nhanh = doan[j:doan.find("else:", j)]
+        self.assertIn("return True", nhanh, "van la 'da xu ly tai cho' - KHONG ve thanh")
+        self.assertNotIn("_invite_party_participants", nhanh)
+
     def test_leader_moi_lai_NGAY_khong_doi_60s(self):
         s = _src()
         i = s.find("def _party_tai_cho_xu_ly(")
-        self.assertIn("_invite_party_participants(c, train_on_map, gap=1.0)", s[i:i + 2600])
+        self.assertIn("_invite_party_participants(c, train_on_map, gap=1.0)", s[i:i + 3200])
 
     def test_RA_SAFE_truoc_khi_doi_kenh(self):
         """User 27/08: "phai chay ra diem an toan roi moi switch chu".
@@ -108,6 +119,38 @@ class TestApVaoLuong(unittest.TestCase):
         i = s.find("_gather_wait_me = bool(_gather)")
         doan = s[i:i + 900]
         self.assertIn("not _gather_wait_me", doan)
+
+
+class TestSyncKenhPhaiCheckKenh(unittest.TestCase):
+    """User hoi 27/08: "luc dong bo kenh m da check cung kenh roi moi moi party chua".
+
+    Barrier cua do_channel_sync von CHI kiem MAP. No con co duong tat: leader doc map LIVE cua
+    tung acc va tu tinh la "xong" ma khong can acc do bao cao - duong tat do bo qua KENH, nen acc
+    dang ban viec khac (map dung, chua he doi kenh) van duoc tinh la xong -> sync bao OK -> MOI
+    PARTY trong khi no o kenh khac -> loi moi khong bao gio toi.
+    """
+
+    def test_duong_tat_phai_xet_ca_kenh(self):
+        s = _src()
+        i = s.find("_live_ch[_u] = getattr(_uc")
+        self.assertGreater(i, 0, "phai doc ca current_channel cua tung acc")
+        doan = s[i:i + 1400]
+        self.assertIn('_ch_chot = st.get("channel")', doan)
+        self.assertIn("int(_uch) != _ch_chot", doan)
+        self.assertIn("continue", doan)
+
+    def test_giu_nguyen_1_kenh_thi_khong_so_kenh(self):
+        """ch = 0 = server chi co 1 kenh (hoac co nick tay -> giu nguyen) -> khong co gi de so."""
+        s = _src()
+        i = s.find("_ch_chot = int(_ch_chot) if _ch_chot else 0")
+        self.assertGreater(i, 0)
+        self.assertIn("if _ch_chot:", s[i:i + 400])
+
+    def test_lech_kenh_phai_LOG_RO_ten_acc(self):
+        """Truoc day chi thay "cho acc bao cao map (3/5)" - khong biet ai, kenh nao."""
+        s = _src()
+        self.assertIn("CHUA sang: %s", s)
+        self.assertIn("_lech_ch = {_u: _live_ch.get(_u)", s)
 
 
 if __name__ == "__main__":

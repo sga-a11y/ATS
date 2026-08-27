@@ -2049,7 +2049,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     except Exception: pass
                     return
             if _do_startup_daily:
-                c.claim_daily_quests()
+                # O SO 2 cua nhiem vu hang ngay = BOSS THE GIOI -> do_world_boss() TELEPORT di roi
+                # tra ve Trac Quan. Do la ly do login dung map train ma van thay "tele ve thanh"
+                # (roi phai reform di route len lai bai). User chot 27/08: "chi can tele neu can
+                # danh world boss thoi, con nhung cai khac thi chi can chay ra diem an toan dung".
+                # -> Dang o bai train ma KHONG bat world boss thi lam nhiem vu NHE thoi (gacha,
+                # hop vat pham, claim) - toan viec khong roi cho. Bat world boss thi heavy=True
+                # nhu cu (luc do tele la DUNG y user).
+                _heavy = bool(auto_world_boss) or not train_on_map
+                if not _heavy:
+                    log.info("[%s] (%s) o bai train + KHONG bat boss the gioi -> nhiem vu hang ngay "
+                             "lam phan NHE thoi, khong teleport di dau", label, role)
+                c.claim_daily_quests(heavy=_heavy)
         elif is_reconnect and train_on_map and train_safes:
             if login_map == sc:
                 c.navigate_to(*_nearest_safe(c.pos, train_safes))   # reconnect + dang o bai -> ra safe cho keo
@@ -2238,6 +2249,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # party 18: 23:36-23:43 leader dot ~6' voi "cho acc bao cao map (1/5)" trong khi
                     # 4 member dang o map 14823 - thong tin leader THAY duoc ngay tu dau.
                     _live = {}
+                    _live_ch = {}
                     for _u, _up, _uil, _uip in party_accounts(pidx):
                         _uc = account_clients.get(_u)
                         if _uc is None or not getattr(_uc, "running", False):
@@ -2245,9 +2257,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         _m = getattr(_uc, "current_map", None)
                         if _m is not None:
                             _live[_u] = _m
-                    for _u, _m in _live.items():           # acc DA o dung map -> tinh NGAY
-                        if _u not in reports and (expected_map is None or _m == expected_map):
-                            reports[_u] = (True, _m)
+                        _live_ch[_u] = getattr(_uc, "current_channel", None)
+                    # DUONG TAT nay tinh acc la "xong" ma KHONG can no bao cao. Phai xet CA KENH:
+                    # acc dang ban viec khac (vd train) co map DUNG nhung CHUA HE doi kenh -> truoc
+                    # day leader tinh la xong -> sync bao OK -> MOI PARTY trong khi no o kenh khac
+                    # -> loi moi khong toi, party khong bao gio du (user hoi 27/08: "luc dong bo
+                    # kenh m da check cung kenh roi moi moi party chua").
+                    # ch = 0 (giu nguyen 1 kenh) hoac chua biet kenh cua chinh minh -> khong so.
+                    with st["lock"]:
+                        _ch_chot = st.get("channel")
+                    _ch_chot = int(_ch_chot) if _ch_chot else 0
+                    for _u, _m in _live.items():           # acc DA o dung map + DUNG KENH -> tinh NGAY
+                        if _u in reports:
+                            continue
+                        if expected_map is not None and _m != expected_map:
+                            continue
+                        if _ch_chot:
+                            _uch = _live_ch.get(_u)
+                            if _uch is None or int(_uch) != _ch_chot:
+                                continue      # chua sang kenh chung -> KHONG tinh la xong
+                        reports[_u] = (True, _m)
                     with st["lock"]:
                         done = len(reports) + len(st["reconnecting"]) >= expected
                     # Acc o map KHAC han: khong co cua thanh cong -> dung cho cho het 60s. Cho 10s
@@ -2261,6 +2290,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                         "MAP KHAC %s (can %s) -> khong cho het 60s, regroup luon",
                                         label, role, len(reports), expected, _sai, expected_map)
                             return False
+                        # DUNG MAP nhung LECH KENH -> noi ro ten acc + kenh cua no. Truoc day im
+                        # lang (chi thay "cho acc bao cao map (3/5)") nen khong doan duoc vi sao.
+                        _lech_ch = {_u: _live_ch.get(_u) for _u in _live
+                                    if _u not in reports and _ch_chot}
+                        if _lech_ch:
+                            log.warning("[%s] (%s) sync kenh: %d/%d acc da sang kenh %s, con lai "
+                                        "CHUA sang: %s", label, role, len(reports), expected,
+                                        _ch_chot, _lech_ch)
                     if fail:
                         log.warning("[%s] (%s) sync kenh/map FAIL (%s) -> pick lai",
                                     label, role, reason)
@@ -2960,7 +2997,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             "kenh tai cho, KHONG ve thanh", label, role, ly_do or "dong bo", sc)
                 with st["lock"]:
                     st["resync_gen"] += 1
-                do_channel_sync()
+                if not do_channel_sync():
+                    # Sync kenh CHUA XONG (co acc chua sang duoc, vd kenh vua day) -> KHONG duoc
+                    # moi party: moi luc dang lech kenh la loi moi khong toi noi, party mai khong
+                    # du. Van tra True = da xu ly tai cho, KHONG ve thanh; do_channel_sync da bump
+                    # reform_gen nen keepalive se quay lai day dong bo tiep.
+                    log.warning("[%s] (%s) %s: sync kenh CHUA xong -> chua moi party, dong bo lai",
+                                label, role, ly_do or "dong bo")
+                    c.combat_ready()
+                    c.flee_mode = False
+                    return True
             else:
                 log.info("[%s] (%s) %s: ca party DA o map train %s va CUNG KENH -> lap lai party "
                          "tai cho, KHONG ve thanh", label, role, ly_do or "dong bo", sc)
