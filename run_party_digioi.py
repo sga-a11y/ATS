@@ -4447,18 +4447,69 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if kind == "channel":
                 ch = cmd[1]
                 ok = False
-                _ra_safe_truoc_khi_doi_kenh("lenh doi kenh tay")
-                try:
-                    ok = c.switch_channel(ch)
-                    time.sleep(1.5)
-                except Exception as e:
-                    log.warning("[%s] manual: loi doi kenh: %s", label, e)
+                # DANG TRAIN thi party danh lien tuc: vong cho o tren cap 60s roi BREAK va van
+                # gui switch_channel GIUA TRAN -> server bo qua ma bot van bao "da doi kenh".
+                # User 27/08: "dang train ma bam doi kenh thi phai ket thuc tran, chay ra diem an
+                # toan roi doi kenh chu". -> KIEN TRI: het tran THAT -> ra safe -> doi; chua dut
+                # duoc tran thi THU LAI, KHONG doi kenh giua tran va KHONG bao thanh cong.
+                # KIEN TRI toi 5 phut chu khong bo sau vai lan: dang train thi tran noi tiep tran,
+                # vai lan thu dau gan nhu chac chan roi vao giua tran. Bo som = lenh cua user bi
+                # nuot im. Chi bo som khi server bao kenh KHONG TON TAI (2) / KENH DAY (4) - thu
+                # lai cung the, de vong sync kenh chon kenh khac.
+                _han = time.time() + 300
+                _lan = 0
+                while time.time() < _han:
+                    _lan += 1
+                    if not c.running or _stopped():
+                        break
+                    # Co lenh tay MOI (user bam cai khac) -> bo lenh cu, khong giu cho nua.
+                    if st.get("cmd_gen", 0) != cmd_gen_handled:
+                        log.info("[%s] (%s) manual: co lenh moi -> bo lenh doi kenh %d dang thu",
+                                 label, role, ch)
+                        break
+                    c.flee_mode = True
+                    c._wait_combat_clear(idle=2.0, cap=120.0)
+                    if c.in_combat(idle_secs=3.0):
+                        log.warning("[%s] (%s) manual: VAN dang trong tran -> chua doi kenh %d, "
+                                    "thu lai (lan %d, con %.0fs)", label, role, ch, _lan,
+                                    _han - time.time())
+                        time.sleep(3)
+                        continue
+                    _ra_safe_truoc_khi_doi_kenh("lenh doi kenh tay")
+                    if c.in_combat(idle_secs=3.0):     # bi keo tran tren duong ra safe
+                        log.warning("[%s] (%s) manual: dinh tran luc ra safe -> thu lai (lan %d)",
+                                    label, role, _lan)
+                        continue
+                    try:
+                        ok = c.switch_channel(ch)
+                        time.sleep(1.5)
+                    except Exception as e:
+                        log.warning("[%s] manual: loi doi kenh: %s", label, e)
+                    if ok:
+                        break
+                    _res = getattr(c, "_chan_switch_result", None)
+                    log.warning("[%s] (%s) manual: doi kenh %d THAT BAI (lan %d, result=%s)",
+                                label, role, ch, _lan, _res)
+                    if _res in (2, 4):
+                        # 2 = khong co kenh do | 4 = kenh DAY. Thu lai cung the -> de vong sync
+                        # kenh ben duoi tu chon kenh khac cho CA PARTY (khong de moi acc mot noi).
+                        log.warning("[%s] (%s) manual: kenh %d %s -> BO lenh tay, de sync kenh chon "
+                                    "kenh khac cho ca party", label, role, ch,
+                                    "khong ton tai" if _res == 2 else "DA DAY")
+                        break
+                    time.sleep(2)
                 if ok:
                     with st["lock"]:
                         st["channel"] = int(ch)
                     log.info("[%s] (%s) manual: da doi kenh -> %d", label, role, ch)
                 else:
-                    log.warning("[%s] (%s) manual: doi kenh %d THAT BAI", label, role, ch)
+                    # KHONG bo lung: xuong duoi la nhanh "tiep tuc che do" -> _party_tai_cho_xu_ly
+                    # se thay party LECH KENH (acc khac doi duoc) va goi do_channel_sync de gom ca
+                    # party ve MOT kenh. Tuc lenh tay that bai thi party van dong bo, chi la co the
+                    # o kenh khac kenh user chon.
+                    log.warning("[%s] (%s) manual: doi kenh %d THAT BAI (%d lan thu) -> GIU kenh cu "
+                                "%s, de buoc dong bo kenh gom ca party lai",
+                                label, role, ch, _lan, getattr(c, "current_channel", None))
             elif kind == "city":
                 cid, flag = cmd[1], cmd[2]
                 c.flee_mode = True

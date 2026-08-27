@@ -120,10 +120,54 @@ class TestApVaoLuong(unittest.TestCase):
         self.assertIn('_ra_safe_truoc_khi_doi_kenh("lenh doi kenh tay")', s)
         self.assertIn('_ra_safe_truoc_khi_doi_kenh("sync kenh")', s)
 
+    def test_KHONG_doi_kenh_giua_tran(self):
+        """User 27/08: "party dang trong battle va ko doi kenh duoc nhung bot bao doi kenh thanh
+        cong". Vong cho ket tran o tren cap 60s roi BREAK, va van gui switch_channel giua tran.
+        Train thi party danh lien tuc -> gan nhu luon roi vao canh do.
+        """
+        s = _src()
+        i = s.find('if kind == "channel":')
+        doan = s[i:i + 2600]
+        self.assertIn("c._wait_combat_clear(idle=2.0, cap=120.0)", doan)
+        self.assertIn("VAN dang trong tran -> chua doi kenh", doan)
+        # phai CHUA doi kenh khi con in_combat -> co continue truoc switch_channel
+        j = doan.find("c.in_combat(idle_secs=3.0)")
+        self.assertGreater(j, 0)
+        self.assertLess(j, doan.find("c.switch_channel("), "check tran phai TRUOC switch_channel")
+
+    def test_doi_kenh_that_bai_thi_KHONG_bao_thanh_cong(self):
+        s = _src()
+        i = s.find('if kind == "channel":')
+        doan = s[i:i + 4400]
+        self.assertIn("GIU kenh cu", doan)
+        # st["channel"] chi duoc ghi khi ok
+        k = doan.find('st["channel"] = int(ch)')
+        self.assertGreater(k, 0)
+        self.assertIn("if ok:", doan[max(0, k - 120):k])
+
+    def test_kien_tri_chu_khong_bo_som(self):
+        """User 27/08: "roi sau do the nao, bot do luon a". Bo sau vai lan = lenh cua user bi nuot
+        im, vi dang train thi tran noi tiep tran nen vai lan dau chac chan roi vao giua tran."""
+        s = _src()
+        i = s.find('if kind == "channel":')
+        doan = s[i:i + 3600]
+        self.assertIn("_han = time.time() + 300", doan, "kien tri toi 5 phut")
+        self.assertIn("while time.time() < _han:", doan)
+        # user bam lenh KHAC thi bo lenh cu, khong giu cho
+        self.assertIn('st.get("cmd_gen", 0) != cmd_gen_handled', doan)
+
+    def test_kenh_day_hoac_khong_ton_tai_thi_BO_SOM(self):
+        """result 2/4: thu lai cung the -> de vong sync kenh chon kenh khac cho CA PARTY."""
+        s = _src()
+        i = s.find('if kind == "channel":')
+        doan = s[i:i + 3600]
+        self.assertIn("if _res in (2, 4):", doan)
+        self.assertIn("de sync kenh chon", doan)
+
     def test_ra_safe_goi_TRUOC_switch_channel(self):
         s = _src()
         i = s.find('if kind == "channel":')
-        doan = s[i:i + 500]
+        doan = s[i:i + 2600]
         self.assertLess(doan.find("_ra_safe_truoc_khi_doi_kenh"), doan.find("c.switch_channel("),
                         "phai ra safe TRUOC khi doi kenh")
 
