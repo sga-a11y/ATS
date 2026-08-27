@@ -53,5 +53,39 @@ class TestDailyKhongKeoRaKhoiBai(unittest.TestCase):
                              "%s la viec NHE, khong duoc phu thuoc heavy" % nhe)
 
 
+class TestXongDGKhongVeThanh(unittest.TestCase):
+    """DG+Train: het gio DG ma dang DUNG SAN o bai train -> khong duoc tele ve thanh.
+
+    Log that 27/08 13:49:54 (party 42, luu_bi): ca 5 acc login o (1170,470) map 12831 - dung
+    safe cua bai train - DG da het gio (120/120) nen khong vao DG, vay ma:
+        [luubmot] Ve thanh 12001 ... Teleport -> city 12001 (flag 0)
+    roi pha train ngay sau do: "RECONNECT o map 12001, train map 12831 di bang ROUTE -> de reform
+    keo" -> 12001 -> 12011 -> bo cong len lai DUNG CHO vua dung.
+    """
+
+    def test_co_nhanh_ra_safe_thay_vi_ve_thanh(self):
+        s = _doc("run_party_digioi.py")
+        self.assertIn("def _ve_cho_cho_pha_train(", s)
+        i = s.find("def _ve_cho_cho_pha_train(")
+        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 1800]
+        self.assertIn("if c.current_map == sc and train_safes:", than)
+        self.assertIn("c.navigate_to(*_s0, flee=True)", than)
+        self.assertIn("return", than)
+
+    def test_khong_o_bai_train_thi_VAN_ve_thanh(self):
+        """Het gio DG luc dang o map DG / map la -> van phai ve thanh nhu cu."""
+        s = _doc("run_party_digioi.py")
+        i = s.find("def _ve_cho_cho_pha_train(")
+        than = s[i:i + 1800]
+        self.assertIn("_go_town_safe(c, label)", than, "nhanh du phong phai con")
+
+    def test_finish_dg_dung_nhanh_moi(self):
+        s = _doc("run_party_digioi.py")
+        i = s.find("def _finish_digioi_train_after_dg():")
+        doan = s[i:i + 200]
+        self.assertIn("_ve_cho_cho_pha_train(", doan)
+        self.assertNotIn("_go_town_safe(c, label)", doan)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1861,8 +1861,31 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if c in _clients:
                 _clients.remove(c)
 
-        def _finish_digioi_train_after_dg():
+        def _ve_cho_cho_pha_train(ly_do=""):
+            """Cho DUNG doi cac acc khac xong DG. DANG O BAI TRAIN thi DUNG NGUYEN, chi ra safe.
+
+            User 27/08: "login vao va da dung o map roi ma no van ve thanh". Truoc day luon
+            _go_town_safe() (tele ve Trac Quan 12001) roi pha train ngay sau do lai phai reform:
+            12001 -> 12061/12011 -> di route qua cong -> ve dung cho vua dung. Log 13:49:54:
+            ca 5 acc login san o (1170,470) map 12831 = safe cua chinh bai train, DG het gio ->
+            van bay ve thanh roi bo cong len lai.
+            """
+            if c.current_map == sc and train_safes:
+                try:
+                    c.flee_mode = True
+                    c._wait_combat_clear(idle=2.0, cap=15.0)
+                    _s0 = _nearest_safe(c.pos, train_safes)
+                    log.info("[%s] (%s) %s: dang o bai train %s -> ra safe %s dung cho, "
+                             "KHONG ve thanh", label, role, ly_do or "xong DG", sc, _s0)
+                    c.navigate_to(*_s0, flee=True)
+                    return
+                except Exception as e:
+                    log.warning("[%s] (%s) loi ra safe cho pha train (ve thanh thay the): %s",
+                                label, role, e)
             _go_town_safe(c, label)
+
+        def _finish_digioi_train_after_dg():
+            _ve_cho_cho_pha_train("xong DG -> cho ca party")
             _wait_res = _dt_wait_all_digioi_done(pidx, username, label, _stopped)
             if _wait_res == "back_to_dg":
                 # Soat lai trong luc cho: CON GIO DG (hoac vua dung Ho Phu) -> quay lai DG danh
