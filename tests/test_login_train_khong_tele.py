@@ -67,16 +67,31 @@ class TestXongDGKhongVeThanh(unittest.TestCase):
         s = _doc("run_party_digioi.py")
         self.assertIn("def _ve_cho_cho_pha_train(", s)
         i = s.find("def _ve_cho_cho_pha_train(")
-        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 1800]
-        self.assertIn("if c.current_map == sc and train_safes:", than)
+        than = s[i:s.find("def _finish_digioi_train_after_dg", i)]
+        self.assertIn("if c.current_map == sc and _ds:", than)
         self.assertIn("c.navigate_to(*_s0, flee=True)", than)
         self.assertIn("return", than)
+
+    def test_dung_DANH_SACH_SAFE_DAY_DU_va_dung_yen_neu_da_o_safe(self):
+        """train_safes luc do CHI CO 1 diem (cache/gan pos luc login); danh sach day du chi co
+        sang pha train (`train_safes[:] = learned_safes`).
+
+        Log 27/08 15:11: ca party dung san o safe (310,2090) -> bi bat chay 10 buoc toi (450,1210),
+        22s sau pha train lai keo 11 buoc NGUOC ve (310,2090). Di lai qua vung quai 2 luot -> dinh
+        tran lien tuc ("BO CHAY", "party-battle lech phien...").
+        """
+        s = _doc("run_party_digioi.py")
+        i = s.find("def _ve_cho_cho_pha_train(")
+        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 2600]
+        self.assertIn('(tm or {}).get("safe")', than, "phai lay safe DAY DU tu config map")
+        self.assertIn("<= 60 ** 2", than, "da dung san o safe thi DUNG YEN")
+        self.assertIn("DUNG YEN", than)
 
     def test_khong_o_bai_train_thi_VAN_ve_thanh(self):
         """Het gio DG luc dang o map DG / map la -> van phai ve thanh nhu cu."""
         s = _doc("run_party_digioi.py")
         i = s.find("def _ve_cho_cho_pha_train(")
-        than = s[i:i + 1800]
+        than = s[i:s.find("def _finish_digioi_train_after_dg", i)]
         self.assertIn("_go_town_safe(c, label)", than, "nhanh du phong phai con")
 
     def test_finish_dg_dung_nhanh_moi(self):

@@ -1870,11 +1870,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             ca 5 acc login san o (1170,470) map 12831 = safe cua chinh bai train, DG het gio ->
             van bay ve thanh roi bo cong len lai.
             """
-            if c.current_map == sc and train_safes:
+            # DANH SACH SAFE DAY DU cua map (config), KHONG dung `train_safes`: luc nay train_safes
+            # moi co DUNG MOT diem (cache mob_spots hoac diem gan pos luc login) - phai sang pha
+            # train moi co dong `train_safes[:] = learned_safes`. Dung mot diem do thi acc dang
+            # dung SAN tren mot safe khac van bi bat chay ca chuc buoc qua vung quai, roi pha train
+            # lai keo nguoc ve gan cho cu. Log 27/08 15:11: dung o safe (310,2090), chay 10 buoc
+            # toi (450,1210), 22s sau chay 11 buoc nguoc lai (310,2090) - dinh tran ca luot di lan ve.
+            _ds = [tuple(map(int, p)) for p in ((tm or {}).get("safe") or []) if len(p) == 2]
+            _ds = _ds or list(train_safes or ())
+            if c.current_map == sc and _ds:
                 try:
                     c.flee_mode = True
                     c._wait_combat_clear(idle=2.0, cap=15.0)
-                    _s0 = _nearest_safe(c.pos, train_safes)
+                    _s0 = _nearest_safe(c.pos, _ds)
+                    # DA DUNG NGAY TREN/SAT mot safe -> dung yen, khong di dau ca.
+                    if c.pos and _s0 and ((c.pos[0] - _s0[0]) ** 2
+                                          + (c.pos[1] - _s0[1]) ** 2) <= 60 ** 2:
+                        log.info("[%s] (%s) %s: dang dung san o safe %s cua bai train %s -> DUNG YEN",
+                                 label, role, ly_do or "xong DG", _s0, sc)
+                        return
                     log.info("[%s] (%s) %s: dang o bai train %s -> ra safe %s dung cho, "
                              "KHONG ve thanh", label, role, ly_do or "xong DG", sc, _s0)
                     c.navigate_to(*_s0, flee=True)
