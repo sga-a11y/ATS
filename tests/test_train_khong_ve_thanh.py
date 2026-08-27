@@ -71,8 +71,22 @@ class TestApVaoLuong(unittest.TestCase):
         s = _src()
         i = s.find("def _party_tai_cho_xu_ly(")
         doan = s[i:i + 2600]
-        self.assertIn("c.combat_ready()", doan)
-        self.assertIn("c.flee_mode = False", doan)
+        self.assertIn("_bat_danh_neu_du_party()", doan)
+
+    def test_CHUA_DU_PARTY_thi_KHONG_danh(self):
+        """User 27/08: "lam lon gi ma leader danh 1 minh". Party vua bi giai tan de lap lai ->
+        bat danh vo dieu kien la leader dam quai mot minh giua bai, pham nguyen tac
+        "DU FULL PARTY MOI TRAIN". _do_reform lam dung: `c.flee_mode = not _full`.
+        """
+        s = _src()
+        i = s.find("def _bat_danh_neu_du_party():")
+        self.assertGreater(i, 0)
+        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 1400]
+        self.assertIn("joined_member_count(pidx) >= st[\"n_members\"]", than)
+        self.assertIn("c.flee_mode = not _full", than)
+        self.assertIn("if _full:", than)
+        # combat_ready phai NAM TRONG nhanh _full
+        self.assertLess(than.find("if _full:"), than.find("c.combat_ready()"))
 
     def test_sync_kenh_CHUA_XONG_thi_KHONG_moi_party(self):
         """Moi party luc con lech kenh = loi moi khong toi noi, party mai khong du."""
@@ -113,11 +127,68 @@ class TestApVaoLuong(unittest.TestCase):
         self.assertLess(doan.find("_ra_safe_truoc_khi_doi_kenh"), doan.find("c.switch_channel("),
                         "phai ra safe TRUOC khi doi kenh")
 
+    def test_BOSS_QD_danh_TAI_BAI_khong_ve_thanh(self):
+        """User 27/08: "ve thanh lam cai lon gi vay, danh boss QD o safe point thoi chu".
+
+        do_legion_boss() KHONG teleport (khac boss the gioi): chi gui 0x27 7700 + 0x14 08000100
+        de vao INSTANCE boss - dung duoc tu bat ky dau. Reform ve thanh la thua ca mot vong route,
+        va bi luat "da o bai train thi xu ly tai cho" nuot -> doi mai khong bao gio danh.
+        """
+        s = _src()
+        i = s.find("boss QD den luot")
+        self.assertGreater(i, 0)
+        doan = s[max(0, i - 1500):i + 1800]
+        self.assertIn("c.do_legion_boss()", doan, "phai danh ngay tai cho")
+        self.assertIn("c.navigate_to(", doan, "ra safe truoc khi danh")
+        self.assertIn("c.leave_party()", doan, "boss QD la instance SOLO -> roi party truoc")
+        # KHONG duoc bump reform de ve thanh nua
+        self.assertNotIn("_bump_reform(st)", doan)
+
+    def test_MAT_PARTY_giua_chung_thi_GOM_LAI(self):
+        """Pha train = GOM DU PARTY roi RA TRAIN (user 27/08: "phai gom du pt roi ra train chu").
+
+        Party tan giua chung thi phai TIM MOI CACH GOM: moi lai lien tuc, thieu qua lau thi
+        reform/sync kenh. Trong luc gom KHONG danh le - leader dung san o diem quai nen quai cu
+        vao, no danh MOT MINH (log 27/08 14:36:09-14:37:57).
+        """
+        s = _src()
+        i = s.find("MAT PARTY GIUA CHUNG")
+        self.assertGreater(i, 0)
+        doan = s[i:i + 2200]
+        self.assertIn("_invite_party_participants(c, train_on_map, gap=1.0)", doan, "phai moi lai")
+        self.assertIn("_bump_reform(st", doan, "moi mai khong duoc thi gom bang reform")
+        self.assertIn("c.flee_mode = True", doan, "khong danh le trong luc gom")
+        self.assertIn("_thieu_since", doan)
+        # KHONG duoc "rut ve safe roi ha co train" - gom la viec chinh, khong phai di dau ca
+        self.assertNotIn("training_started = False", doan)
+        self.assertNotIn("c.navigate_to(", doan)
+
+    def test_DU_PARTY_moi_ra_train(self):
+        """Truoc day `nj >= 1` -> chi can MOT member la leader keo ra spot danh, du party con
+        thieu 3 nguoi."""
+        s = _src()
+        self.assertIn('if nj >= st["n_members"] and not training_started:', s)
+        self.assertNotIn("if nj >= 1 and not training_started:", s)
+
+    def test_thieu_nguoi_THOANG_QUA_thi_khong_ha_train(self):
+        """Party lap lai binh thuong chi mat vai giay - ha ngay se thanh nhay ra/nhay vao spot."""
+        s = _src()
+        i = s.find("MAT PARTY GIUA CHUNG")
+        doan = s[i:i + 2200]
+        self.assertIn("time.time() - _thieu_since > 20", doan)
+
+    def test_du_party_thi_RESET_moc_thieu(self):
+        s = _src()
+        i = s.find("MAT PARTY GIUA CHUNG")
+        doan = s[i:i + 2200]
+        self.assertIn('joined_member_count(pidx) >= st["n_members"]', doan)
+        self.assertIn("_thieu_since = 0.0", doan)
+
     def test_van_ve_thanh_khi_dang_gom_nhau_o_thanh(self):
         """reform_arrived co entry = co nguoi DANG DUNG CHO o thanh -> ve gop that, khong bo roi ho."""
         s = _src()
         i = s.find("_gather_wait_me = bool(_gather)")
-        doan = s[i:i + 900]
+        doan = s[i:i + 1600]
         self.assertIn("not _gather_wait_me", doan)
 
 

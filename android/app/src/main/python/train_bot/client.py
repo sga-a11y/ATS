@@ -5638,7 +5638,17 @@ class GameClient:
 
     def legion_boss_available(self) -> bool:
         """Con danh boss QD duoc khong: con luot (count < max) VA het cooldown (server bao). Dung de
-        keepalive quyet dinh co trigger REFORM (ve thanh danh) hay khong."""
+        keepalive quyet dinh co trigger REFORM (ve thanh danh) hay khong.
+
+        PHAI khop DIEU KIEN DAU cua do_legion_boss(), khong thi bot doi reform de danh mot thu ma
+        chinh no bo qua ngay sau do. Log that 27/08 14:35-14:36: luubhai KHONG CO QUAN DOAN van
+        "boss QD den luot -> TRIGGER REFORM" -> reform gen 1, gen 2... con do_legion_boss() thi
+        "Boss QD: khong co quan doan -> bo qua hoan toan" -> party bi giai tan/lap lai vo ich.
+        """
+        if not getattr(self, "fight_legion_boss", True):
+            return False
+        if self.has_legion is False:       # None = chua biet -> van cho thu
+            return False
         return (self.legion_boss_count < self.legion_boss_max
                 and (not self.legion_boss_next or time.time() >= self.legion_boss_next))
 

@@ -2993,6 +2993,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     time.sleep(1)
                 c.combat_ready(); c.flee_mode = False
 
+        def _bat_danh_neu_du_party():
+            """Bat lai danh SAU khi xu ly tai cho - nhung CHI khi DU PARTY.
+
+            Caller (reform / lenh doi kenh tay) da dat flee_mode=True de di duong, khong bat lai
+            thi bot dung o diem quai ma cu bo chay. NHUNG bat vo dieu kien thi pham nguyen tac
+            "DU FULL PARTY MOI TRAIN": party vua bi giai tan de lap lai, leader danh mot minh
+            giua bai (user bao 27/08: "lam lon gi ma leader danh 1 minh").
+            _do_reform lam dung the nay: `_full = ...; c.flee_mode = not _full`.
+            """
+            _full = (st.get("n_members", 0) > 0
+                     and joined_member_count(pidx) >= st["n_members"])
+            c.flee_mode = not _full
+            if _full:
+                c.combat_ready()
+
         def _party_tai_cho_xu_ly(ly_do=""):
             """CA PARTY dang dung o MAP TRAIN roi -> xu ly TAI CHO, KHONG ve thanh. True = da xu ly.
 
@@ -3027,8 +3042,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # reform_gen nen keepalive se quay lai day dong bo tiep.
                     log.warning("[%s] (%s) %s: sync kenh CHUA xong -> chua moi party, dong bo lai",
                                 label, role, ly_do or "dong bo")
-                    c.combat_ready()
-                    c.flee_mode = False
+                    _bat_danh_neu_du_party()
                     return True
             else:
                 log.info("[%s] (%s) %s: ca party DA o map train %s va CUNG KENH -> lap lai party "
@@ -3040,11 +3054,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] (LEADER) %s: loi moi lai party tai cho: %s",
                                 label, ly_do or "dong bo", e)
-            # BAT LAI DANH: caller (reform / lenh tay) da dat flee_mode=True de dung yen ma di
-            # duong. Nhanh _do_reform ket thuc bang combat_ready()+flee_mode=False; nhanh tai cho
-            # nay bo qua thi bot dung o dung diem quai ma CU BO CHAY, khong danh con nao.
-            c.combat_ready()
-            c.flee_mode = False
+            _bat_danh_neu_du_party()
             return True
 
         via_route = False   # True neu toi train map bang KEO PARTY -> da cung kenh + da danh dungeon o thanh
@@ -4056,6 +4066,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         last_remove = time.time()
         last_retry = time.time()
         _last_regroup = 0.0   # rate-limit gom lai khi member lech map/kenh
+        _thieu_since = 0.0    # tu luc nao party THIEU nguoi (0 = dang du) - de gom lai khi mat party
+        _last_gom = 0.0       # rate-limit moi lai khi mat party giua train
         last_dg = 0.0
         last_combat = time.time()   # lan cuoi thay in_combat -> de RE-ARM combat khi ket
         last_rearm = 0.0
@@ -4815,6 +4827,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 try:
                     # Con dang cho nhau o THANH (reform_arrived co entry) thi phai ve gop that;
                     # con lai, ca party dung san o bai train -> xu ly tai cho, khong ve thanh.
+                    #
                     _tai_cho = (not _gather_wait_me
                                 and _party_tai_cho_xu_ly("reform gen %d" % reform_gen_handled))
                     if not _tai_cho:
@@ -4902,24 +4915,81 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 except Exception as e:
                     log.warning("[%s] loi van tieu (bo qua): %s", label, e)
                     next_vantieu = time.time() + 600   # loi -> thu lai sau 10p
-            # BOSS QUAN DOAN: con luot + het cooldown -> danh. Dang trong battle-party (train) KHONG
-            # danh duoc -> TRIGGER REFORM (bump reform_gen) cho ca party ve thanh; luc reform (solo o
-            # thanh) moi nick tu danh (xem _do_reform). Solo mode (event/city/stand) -> danh thang.
+            # BOSS QUAN DOAN: con luot + het cooldown -> danh NGAY TAI BAI TRAIN.
+            # do_legion_boss() KHONG teleport (khac boss the gioi): no chi gui 0x27 7700 + 0x14
+            # 08000100 de vao INSTANCE boss - dung duoc tu bat ky dau. Truoc day bot bump
+            # reform_gen cho CA PARTY VE THANH roi moi nick tu danh -> thua ca mot vong route,
+            # va khi luat "da o bai train thi xu ly tai cho" ra doi thi reform do bi nuot ->
+            # doi mai khong bao gio danh (log 27/08 14:35-14:37, party bi giai tan gen 1, gen 2).
+            # Viec THAT SU can: ra safe (khoi bi quai keo tran) + roi party (boss la instance
+            # SOLO) roi danh tai cho. Party thieu nguoi se duoc khoi "MAT PARTY -> GOM LAI" ben
+            # duoi gom lai nhu binh thuong.
             if not pcfg.get("fight_legion_boss", True):
-                pass   # setting tat -> bo qua hoan toan, KHONG trigger reform vo ich de danh boss
+                pass   # setting tat -> bo qua hoan toan, KHONG lam gi
             elif not c.legion_boss_available():
-                boss_reform_pending = False   # da danh xong / het luot / dang cooldown -> reset
+                boss_reform_pending = False   # da danh xong / het luot / dang cooldown / khong QD
             elif not c.in_combat():
                 if train_on_map:
-                    if not boss_reform_pending:   # chi trigger 1 lan / dot con luot (tranh spam reform)
-                        with st["lock"]: _bump_reform(st)
+                    if not boss_reform_pending:   # 1 lan / dot con luot (tranh lam lai lien tuc)
                         boss_reform_pending = True
-                        log.info("[%s] (%s) boss QD den luot -> TRIGGER REFORM party ve thanh de danh",
-                                 label, role)
+                        _sf = st.get("rally_point") or (train_safes[0] if train_safes else None)
+                        log.info("[%s] (%s) boss QD den luot -> ra safe %s + danh NGAY TAI BAI "
+                                 "(khong ve thanh)", label, role, _sf)
+                        try:
+                            c.flee_mode = True
+                            c._wait_combat_clear(idle=2.0, cap=20.0)
+                            if _sf:
+                                c.navigate_to(*_jitter(_sf), flee=True,
+                                              abort=lambda: (_stopped() or not c.running))
+                            # Boss QD la instance SOLO -> roi party truoc khi vao.
+                            try:
+                                c.leave_party()
+                                if is_leader:
+                                    reset_party_joined(pidx)
+                                else:
+                                    unmark_joined(pidx, c.self_entity)
+                            except Exception as e:
+                                log.warning("[%s] boss QD: loi roi party truoc khi danh: %s",
+                                            label, e)
+                            c.do_legion_boss()
+                        except Exception as e:
+                            log.warning("[%s] loi boss QD tai bai train: %s", label, e)
+                        finally:
+                            boss_reform_pending = False   # danh xong/loi -> vong sau tu check lai
                 elif mode in ("city", "stand"):   # city/stand: nick dung yen SOLO -> danh thang (event
                     try: c.do_legion_boss()       # KHONG danh mid-session vi se roi khoi map event;
                     except Exception as e:        # digioi mid-session bo qua - login da danh)
                         log.warning("[%s] loi boss QD: %s", label, e)
+            # --- MAT PARTY GIUA CHUNG -> GOM LAI NGAY (khong danh le trong luc gom) ---
+            # Pha train = GOM DU PARTY roi RA TRAIN. Party tan giua chung (reform lap lai party,
+            # member rot, bi keo...) thi viec duy nhat can lam la GOM CHO DU: moi lai lien tuc,
+            # va thieu keo dai thi bump reform de gom/sync kenh. KHONG danh le trong luc do:
+            # leader dang dung o diem quai nen quai cu vao, no danh MOT MINH (log 27/08
+            # 14:36:09-14:37:57: party tan, 4 member dung o safe, leader danh 10 tran mot minh).
+            # Cho 20s truoc khi coi la "mat party": lap lai party binh thuong chi mat vai giay.
+            if train_on_map and int(st.get("n_members") or 0) > 0:
+                if joined_member_count(pidx) >= st["n_members"]:
+                    _thieu_since = 0.0
+                else:
+                    if not _thieu_since:
+                        _thieu_since = time.time()
+                    elif time.time() - _thieu_since > 20:
+                        c.flee_mode = True          # khong danh le trong luc dang gom
+                        if is_leader and time.time() - _last_gom > 10:
+                            _last_gom = time.time()
+                            log.warning("[%s] (LEADER) MAT PARTY giua chung (%d/%d) -> GOM LAI "
+                                        "(moi lai; thieu qua lau thi reform/sync kenh)",
+                                        label, joined_member_count(pidx), st["n_members"])
+                            try:
+                                _invite_party_participants(c, train_on_map, gap=1.0)
+                            except Exception as e:
+                                log.warning("[%s] (LEADER) loi moi lai khi mat party: %s", label, e)
+                            # Moi mai khong duoc (60s) = co dua lech map/kenh -> gom bang reform.
+                            if (time.time() - _thieu_since > 60
+                                    and time.time() - _last_regroup > 120):
+                                _last_regroup = time.time()
+                                with st["lock"]:
+                                    _bump_reform(st, "mat party giua train -> gom lai")
             # --- RETRY KENH + RE-MOI moi 60s (ca DG lan map-train) ---
             # Kenh it nguoi nhat co the KHONG du cho ca party -> co dua ket lai kenh cu.
             # Leader cu train; dua chua join thi 1p chuyen lai kenh chung 1 lan; leader 1p moi lai.
@@ -4947,9 +5017,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             try:
                                 _invite_party_participants(c, train_on_map, gap=1.0)
                             except Exception: pass
-                    # co member join ma chua train (truoc do 0 QS dung yen) -> BAT DAU TRAIN
-                    if nj >= 1 and not training_started:
-                        log.info("[%s] (LEADER) da co %d member -> SET QS + bat dau train", label, nj)
+                    # DU PARTY roi ma chua train -> SET QS + RA TRAIN. Truoc day dieu kien la
+                    # `nj >= 1`: CHI CAN MOT member la leader keo ra spot danh, du party con
+                    # thieu 3 nguoi -> pham thang nguyen tac "gom DU party roi moi ra train"
+                    # (user 27/08: "phai gom du pt roi ra train chu").
+                    if nj >= st["n_members"] and not training_started:
+                        log.info("[%s] (LEADER) DU %d/%d member -> SET QS + ra train",
+                                 label, nj, st["n_members"])
                         try:
                             _start_training(); training_started = True
                         except Exception as e:
