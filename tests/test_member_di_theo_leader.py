@@ -46,6 +46,7 @@ def _cli(entity, pos, map_id=23821, running=True):
     c.running = running
     c._position_generation = 0
     c._pos_valid_for_map = None
+    c._cho_bam_leader = False
     return c
 
 
@@ -56,6 +57,7 @@ class TestTheoLeaderSuaPos(unittest.TestCase):
         self.mem = _cli(TOI, (2150, 1810))
         self.mem.party_leader = CHU
         self.mem.party_members = [CHU, TOI]
+        self.mem._cho_bam_leader = True      # vua vao doi (Team.AddMember)
         CL._register_party_client(77, CHU, self.lead)
         CL._register_party_client(77, TOI, self.mem)
 
@@ -71,6 +73,34 @@ class TestTheoLeaderSuaPos(unittest.TestCase):
         self.mem._theo_leader_sua_pos()
         self.assertGreater(self.mem._position_generation, gen)
         self.assertEqual(self.mem._pos_valid_for_map, 23821)
+
+    def test_CHI_bam_MOT_LAN_dung_luc_vao_doi(self):
+        """Client teleport member toi cho leader DUNG MOT LAN, trong `AddMember` (Team.lua:176);
+        sau do member tu di bang chan cua no. Bam moi lan `navigate_to` la DAP toa do THAT.
+
+        Log 31/08 party 1 (15:17:06): 4 member vua qua cong toi (3970,1210) - toa do DUNG - bi ghi
+        de thanh (1237,543) cua leader (lech 2800); goi ngay sau gui tu goc sai -> CA 4 dinh
+        `SERVER NGAT KET NOI: ma la 47` cung mot giay.
+        """
+        self.assertTrue(self.mem._theo_leader_sua_pos())
+        self.mem.pos = (3970, 1210)          # vd: tu qua cong, toa do nay la THAT
+        self.assertFalse(self.mem._theo_leader_sua_pos(), "bam lan hai = dap toa do that")
+        self.assertEqual(self.mem.pos, (3970, 1210))
+
+    def test_CHUA_vao_doi_thi_KHONG_bam(self):
+        self.mem._cho_bam_leader = False
+        self.assertFalse(self.mem._theo_leader_sua_pos())
+        self.assertEqual(self.mem.pos, (2150, 1810))
+
+    def test_co_bat_khi_CHINH_MINH_vao_doi(self):
+        with open(os.path.join(ROOT, "bot", "client.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        i = src.find("vao doi (leader=%s) -> roster %d nguoi")
+        self.assertGreater(i, 0)
+        khoi = src[i:i + 900]
+        self.assertIn("if _ai == self.self_entity and _ai != _lead:", khoi,
+                      "bat co cho ca nguoi khac vao doi -> bam nham")
+        self.assertIn("self._cho_bam_leader = True", khoi)
 
     def test_LECH_IT_thi_giu_nguyen(self):
         """Member di sau leader vai chuc don vi la binh thuong, dung giat toa do lien tuc."""

@@ -552,10 +552,15 @@ fun TsBotApp(
                         onFurnaceNotify = {
                             // pidx suy tu vi tri party trong list (giong startPartyIn)
                             val _pi = parties.indexOf(party)
-                            if (_pi >= 0) service?.furnaceNotifyItems(_pi) ?: emptyList() else emptyList()
+                            // QUAN DOAN truoc, LO sau - cung thu tu voi GUI PC.
+                            if (_pi >= 0)
+                                (service?.legionNotifyItems(_pi) ?: emptyList()) +
+                                    (service?.furnaceNotifyItems(_pi) ?: emptyList())
+                            else emptyList()
                         },
                         onFurnaceBuy = { u, tid -> service?.furnaceNotifyBuy(u, tid) ?: false },
                         onFurnaceSkip = { u, tid -> service?.furnaceNotifySkip(u, tid) ?: false },
+                        onLegionSkip = { u -> service?.legionNotifySkip(u) ?: false },
                         onCurrentChannel = {
                             party.accounts.firstOrNull { service?.isRunning(it.username) == true }
                                 ?.let { service?.currentChannel(it.username) }
@@ -1068,6 +1073,7 @@ fun PartyCard(
     onFurnaceNotify: () -> List<Map<String, String>> = { emptyList() },
     onFurnaceBuy: (String, Int) -> Boolean = { _, _ -> false },
     onFurnaceSkip: (String, Int) -> Boolean = { _, _ -> false },
+    onLegionSkip: (String) -> Boolean = { _ -> false },
     onCurrentChannel: () -> Int?,
     onGetLog: (String) -> String = { "" },
 ) {
@@ -1268,6 +1274,7 @@ fun PartyCard(
                     onDismiss = { showNotifyDialog = false },
                     onBuy = { u, tid -> onFurnaceBuy(u, tid) },
                     onSkip = { u, tid -> onFurnaceSkip(u, tid) },
+                    onLegionSkip = { u -> onLegionSkip(u) },
                     onRefresh = {
                         val n = onFurnaceNotify(); notifyItems = n; notifyCount = n.size
                     },
@@ -1409,7 +1416,7 @@ fun AccountRow(
                     Icon(Icons.Default.Settings, contentDescription = "Hồi HP SP", modifier = Modifier.size(18.dp))
                 }
                 TextButton(onClick = onEditSkill) {
-                    Text("Skill", maxLines = 1)
+                    Text("Battle", maxLines = 1)
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = StatusError, modifier = Modifier.size(18.dp))
@@ -3778,20 +3785,39 @@ fun FurnaceNotifyDialog(
     onDismiss: () -> Unit,
     onBuy: (String, Int) -> Boolean,
     onSkip: (String, Int) -> Boolean,
+    onLegionSkip: (String) -> Boolean = { _ -> false },
     onRefresh: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Chú ý - thông báo lò") },
+        title = { Text("Chú ý") },
         text = {
             if (items.isEmpty()) {
                 Text("(không có thông báo)")
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
-                    items(items, key = { (it["user"] ?: "") + (it["id"] ?: "") }) { it0 ->
+                    items(items, key = { (it["user"] ?: "") + (it["kind"] ?: "") + (it["id"] ?: "") }) { it0 ->
                         val u = it0["user"] ?: return@items
+                        if (it0["kind"] == "legion") {
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Text("$u KHÔNG có quân đoàn — mất phần donate quân đoàn, " +
+                                     "boss quân đoàn và các quyền lợi đi kèm",
+                                     style = MaterialTheme.typography.bodySmall)
+                                Row(horizontalArrangement = Arrangement.End,
+                                    modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) { onLegionSkip(u) }
+                                            onRefresh()
+                                        }
+                                    }) { Text("Bỏ qua") }
+                                }
+                                HorizontalDivider()
+                            }
+                            return@items
+                        }
                         val tid = it0["id"]?.toIntOrNull() ?: return@items
                         Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                             Text(furnaceNotifyLine(context, it0),
@@ -4048,7 +4074,7 @@ fun SkillSettingsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Kịch bản Skill") },
+        title = { Text("Kịch bản Battle") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(

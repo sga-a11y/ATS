@@ -12,9 +12,14 @@ GREAT_BAG = 0xB5F4
 GREAT_BLESSING = 0xB3D6
 BLESSING = 0xB3D5
 BROKEN_GEM = 0x59F0
+BA_GEM = 0x5AAC      # Ngoc Ba Phuc Than   x3
+TIEU_GEM = 0x59EF    # Ngoc Tieu Phuc Than x1,5
+# DU 4 LOAI ngoc, xep TOT -> KEM, item tieu hao o CUOI (xem test_ngoc_phuc_than_du_4_loai.py).
 EXPECTED_PRIORITY = (
+    (BA_GEM, "equip"),
     (SUPER_GEM, "equip"),
     (GREAT_GEM, "equip"),
+    (TIEU_GEM, "equip"),
     (GREAT_BAG, "use"),
 )
 
@@ -145,17 +150,19 @@ class TestPhucThanPriority(unittest.TestCase):
 
     def test_desktop_and_android_define_the_same_priority(self):
         def read_priority(path):
+            """Doc gia tri THAT SU cua hang so (khong `literal_eval`): gio no duoc SINH RA tu
+            `PHUC_THAN_GEM_ORDER` chu khong con la tuple viet tay - chep tay la quen mot cho khi
+            them ngoc moi."""
+            ns = {}
             with open(path, encoding="utf-8") as fh:
                 tree = ast.parse(fh.read())
             for node in tree.body:
-                if isinstance(node, ast.Assign):
-                    if any(
-                        isinstance(target, ast.Name)
-                        and target.id == "PHUC_THAN_PROTECTION_PRIORITY"
-                        for target in node.targets
-                    ):
-                        return ast.literal_eval(node.value)
-            return None
+                if isinstance(node, ast.Assign) and any(
+                        isinstance(t, ast.Name)
+                        and t.id in ("PHUC_THAN_GEM_ORDER", "PHUC_THAN_PROTECTION_PRIORITY")
+                        for t in node.targets):
+                    exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), ns)
+            return ns.get("PHUC_THAN_PROTECTION_PRIORITY")
 
         self.assertEqual(read_priority("bot/client.py"), EXPECTED_PRIORITY)
         self.assertEqual(

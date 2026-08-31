@@ -28,7 +28,9 @@ class TestAndroidAccountEditSplit(unittest.TestCase):
         self.assertIn("onEditHeal", body)
         self.assertIn("onEditSkill", body)
         self.assertIn('contentDescription = "Hồi HP SP"', body)
-        self.assertRegex(body, r'Text\("Skill"[,)]')
+        # Nut ten "Battle" chu khong phai "Skill": o day set up HANH VI TRONG TRAN (dieu kien,
+        # muc tieu, thu tu ra chieu), khong phai bang skill.
+        self.assertRegex(body, r'Text\("Battle"[,)]')
 
     def test_credentials_dialog_does_not_include_heal_or_skill_editors(self):
         body = fun_body("AddAccountDialog")

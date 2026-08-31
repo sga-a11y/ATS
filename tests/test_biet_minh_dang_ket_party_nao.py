@@ -151,7 +151,7 @@ class TestMemberTuGo(unittest.TestCase):
             s = fh.read()
         i = s.find("elif not is_joined(pidx, c.self_entity):")
         self.assertGreater(i, 0)
-        khoi = s[i:i + 2600]
+        khoi = s[i:i + 4600]
         self.assertIn("_doi_truong_dang_ket()", khoi,
                       "chi tin party_members local -> ket ma van tuong minh dang ranh")
         i_ket = khoi.find("_ket_party_la or not getattr(c,")

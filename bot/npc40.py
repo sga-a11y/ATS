@@ -14,13 +14,6 @@ def in_event_window(now=None):
     return now.weekday() in (0, 2, 4) and 20 <= now.hour < 22
 
 
-def _wait_until_after_window(client, stop_event, sleep_fn):
-    """Cho toi khi HET gio event (qua 22h) hoac bi STOP/rot. Dung khi thua 2 tran lien tiep ->
-    dung yen trong map event, cho qua 22h roi moi di doi thuong."""
-    while _active(client, stop_event) and in_event_window():
-        sleep_fn(15)
-
-
 def _end_npc_dialog(client, sleep_fn):
     """Thoat dialog NPC 40 sach se (chon KHONG + 2 advance) truoc khi roi di doi thuong."""
     client.send(OP_DIALOG, CHOOSE_NO)
@@ -169,16 +162,31 @@ def run_loop(client, point, stop_event, on_loss, before_repeat=None, sleep_fn=ti
         consec_loss = (consec_loss + 1) if client._npc40_last_defeated else 0
         past_window = not in_event_window()   # sau MOI tran: check qua 22h chua
 
-        # THUA 2 TRAN LIEN TIEP (con trong gio) -> dung yen trong map event, cho qua 22h.
+        # THUA 2 TRAN LIEN TIEP -> ngung danh, CHO TOI 22H roi doi thuong + tat acc.
+        #
+        # KHONG duoc tat som: server chi cho doi thuong sau 22h (user 31/08), tat truoc do la mat
+        # trang phan thuong ca van. Nhung vong cho PHAI BAO TRANG THAI moi phut - im lang thi nhin
+        # tu ngoai khong phan biet duoc voi treo.
+        # THUA 2 TRAN LIEN TIEP -> THOAT LUON (user chot 31/08: "thua 2 lan cu thoat di").
+        #
+        # KHONG MAT THUONG: server chi cho doi thuong sau 22h, va chay lai bot sau 22h thi no
+        # nhan binh thuong (user xac nhan 31/08) - nen thoat som chi la khong doi NGAY BAY GIO.
+        # Truoc day dung yen trong map cho toi 22h -> nhin tu ngoai acc "dang chay" ma khong lam
+        # gi, khong phan biet duoc voi treo (user: "dung yen tai cho thi t cha biet the nao ma lan").
         if consec_loss >= 2 and not past_window:
-            log.warning("[%s] 40NPC: THUA 2 tran lien tiep -> dung yen trong map, cho qua 22h", lbl)
             on_loss()   # bao party ngung mo battle
-            _wait_until_after_window(client, stop_event, sleep_fn)
+            if in_event_window():
+                client._npc40_bo_thuong = True    # chua toi 22h -> doi thuong bay gio khong an
+                log.warning("[%s] 40NPC: THUA 2 tran lien tiep -> THOAT LUON. Chua toi 22h nen "
+                            "chua doi thuong duoc; chay lai bot sau 22h la nhan (khong mat gi)", lbl)
+            else:
+                log.warning("[%s] 40NPC: THUA 2 tran lien tiep -> doi thuong roi thoat", lbl)
             past_window = True
 
-        # QUA 22H (het gio event) -> ket dialog + BAO di doi thuong (client._npc40_done).
+        # HET GIO (qua 22h) HOAC THUA 2 TRAN -> ket dialog + BAO di doi thuong (client._npc40_done).
         if past_window:
-            log.info("[%s] 40NPC: het gio event (qua 22h) -> ket + di doi thuong", lbl)
+            log.info("[%s] 40NPC: %s -> ket dialog + thoat", lbl,
+                     "thua 2 tran lien tiep" if consec_loss >= 2 else "het gio event (qua 22h)")
             _end_npc_dialog(client, sleep_fn)
             client._npc40_done = True
             return True

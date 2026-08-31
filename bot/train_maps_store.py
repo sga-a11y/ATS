@@ -105,9 +105,12 @@ def save_learned_regions(path: str, map_id: int, safes, centers) -> bool:
             return False
         maps = data.setdefault("maps", {})
         entry = maps.setdefault(str(int(map_id)), {"name": str(int(map_id))})
-        if entry.get("mobs"):
+        # `rescan` = nguoi dung danh dau map nay CAN QUET LAI (du lieu cu sai). Khong co co do
+        # thi giu nguyen luat cu: map da co bai la khong ghi de.
+        if entry.get("mobs") and not entry.get("rescan"):
             return False
         entry["safe"] = safe_points
         entry["mobs"] = center_points
+        entry.pop("rescan", None)      # da quet lai xong -> bo co
         _atomic_write(path, data)
     return True

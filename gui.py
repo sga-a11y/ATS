@@ -1470,9 +1470,33 @@ class BotGUI(tk.Tk):
                 continue
         return out
 
+    def _party_legion_notify(self, pidx):
+        """List (username, {_legion}) cho acc KHONG co quan doan (chua bam Bo qua).
+
+        Luat nam trong `ctrl.legion_notify_items` (dung chung PC/APK) de hai ban khong lech.
+        """
+        out = []
+        try:
+            ctrl.party_accounts(pidx)
+        except Exception:
+            return out
+        for it in ctrl.legion_notify_items(pidx):
+            out.append((it["user"], {"_legion": True}))
+        return out
+
     def _party_notify_items(self, pidx):
-        """List (username, item): thong bao TUI (len dau) + thong bao LO (account_furnace_notify)."""
-        out = list(self._party_bag_notify(pidx)) + list(self._party_city_notify(pidx))
+        """List (username, item): TUI -> THANH chua mo -> BA DAU -> QUAN DOAN -> DU DIEM -> LO.
+
+        BA DAU dat TRUOC quan doan (user chot 01/09): no la viec CO HAN GIO (het la mat quyen loi
+        hoi day HP/SP), con quan doan/du diem thi luc nao lam cung duoc.
+        """
+        out = (list(self._party_bag_notify(pidx))
+               + list(self._party_city_notify(pidx))
+               + [(it["user"], {"_ba_dau": True, "luc": it["luc"]})
+                  for it in ctrl.ba_dau_notify_items(pidx)]
+               + list(self._party_legion_notify(pidx))
+               + [(it["user"], {"_diem_du": True, "diem": it["diem"]})
+                  for it in ctrl.diem_du_notify_items(pidx)])
         try:
             accs = ctrl.party_accounts(pidx)
         except Exception:
@@ -1526,7 +1550,7 @@ class BotGUI(tk.Tk):
         items = self._party_notify_items(pidx)
         win = tk.Toplevel(self); win.title(f"Chú ý - Party {pidx + 1}")
         win.transient(self.winfo_toplevel()); win.grab_set(); win.geometry("580x430")
-        ttk.Label(win, text="Thông báo của party (hiện tại: lò):",
+        ttk.Label(win, text="Thông báo của party (túi đồ, thành chưa mở, Ba Đậu, quân đoàn, dư điểm, lò):",
                   font=(None, 10, "bold")).pack(anchor="w", padx=10, pady=(8, 4))
         _cv = tk.Frame(win); _cv.pack(fill="both", expand=True, padx=8, pady=4)
         canvas = tk.Canvas(_cv, highlightthickness=0)
@@ -1543,6 +1567,45 @@ class BotGUI(tk.Tk):
 
         def _add_row(u, it):
             rowf = ttk.Frame(inner); rowf.pack(fill="x", pady=2)
+            # --- BA DAU SAP HET HAN (con duoi 1 ngay) ---
+            if it.get("_ba_dau"):
+                def _skip_ba_dau(_u=u, _r=rowf):
+                    ctrl.ba_dau_notify_skip(_u); _r.destroy()
+                _skips.append((rowf, _skip_ba_dau))
+                ttk.Button(rowf, text="Bỏ qua", width=7,
+                           command=_skip_ba_dau).pack(side="right", padx=2)
+                ttk.Label(rowf, wraplength=380, justify="left", foreground="#b45309",
+                          font=(None, 9, "bold"),
+                          text="%s: Ba Đậu Yêu sẽ hết hạn vào lúc %s"
+                               % (self._mask_user(u), it["luc"])
+                          ).pack(side="left", fill="x", expand=True)
+                return
+            # --- CON DU DIEM TIEM NANG CHUA CONG ---
+            if it.get("_diem_du"):
+                def _skip_diem(_u=u, _r=rowf):
+                    ctrl.diem_du_notify_skip(_u); _r.destroy()
+                _skips.append((rowf, _skip_diem))
+                ttk.Button(rowf, text="Bỏ qua", width=7,
+                           command=_skip_diem).pack(side="right", padx=2)
+                ttk.Label(rowf, wraplength=380, justify="left", foreground="#a06000",
+                          text="%s còn dư %s điểm chưa dùng — bảng tự cộng đã duyệt hết mà "
+                               "vẫn thừa (mở nút Point để thêm dòng)"
+                               % (self._mask_user(u), it["diem"])
+                          ).pack(side="left", fill="x", expand=True)
+                return
+            # --- KHONG CO QUAN DOAN ---
+            if it.get("_legion"):
+                def _skip_legion(_u=u, _r=rowf):
+                    ctrl.legion_notify_skip(_u); _r.destroy()
+                _skips.append((rowf, _skip_legion))
+                ttk.Button(rowf, text="Bỏ qua", width=7,
+                           command=_skip_legion).pack(side="right", padx=2)
+                ttk.Label(rowf, wraplength=380, justify="left", foreground="#a06000",
+                          text="%s KHÔNG có quân đoàn — mất phần donate quân đoàn, "
+                               "boss quân đoàn và các quyền lợi đi kèm"
+                               % self._mask_user(u)
+                          ).pack(side="left", fill="x", expand=True)
+                return
             # --- CHUA MO THANH ---
             if it.get("_city"):
                 _cid = it["city_id"]
@@ -1727,7 +1790,14 @@ class BotGUI(tk.Tk):
             if nbtn is not None:
                 _ncnt = self._party_notify_count(pidx)
                 if _ncnt > 0:
+                    # CAM = co viec CAN CHU Y NGAY (hien tai: Ba Dau sap het han) - cung mau voi
+                    # nut "Check AGI" luc lech, de nhin luot qua la thay. Con lai giu vang nhat.
+                    _gap = bool(ctrl.ba_dau_notify_items(pidx))
                     nbtn.configure(text=f"⚠ Chú ý ({_ncnt})")
+                    if _gap:
+                        nbtn.configure(bg="#f59e0b", fg="#3b2500", activebackground="#d97706")
+                    else:
+                        nbtn.configure(bg="#fff3cd", fg="#8a6d00", activebackground="#ffe69c")
                     if not nbtn.winfo_ismapped():
                         nbtn.pack(side="left", padx=2)
                 elif nbtn.winfo_ismapped():
@@ -1989,6 +2059,194 @@ MODE_OPTIONS = [
 ]
 _MODE_LABEL = dict(MODE_OPTIONS)
 _LABEL_MODE = {v: k for k, v in MODE_OPTIONS}
+
+
+class PointDialog(tk.Toplevel):
+    """DIEM TIEM NANG cua NHAN VAT (khong quan tam pet - user chot 31/08).
+
+    Ba phan:
+      1. Bang 6 chi so: GOC (thu ma cong diem tac dong toi) va TONG (da gom trang bi/thu cuoi/
+         the/suu tap). Hien CA HAI de user de quyet dinh.
+      2. Cong TAY: chon so cho tung chi so roi bam -> gui `C:008-001` tung o mot.
+      3. Bang TU CONG kieu rule (giong ben Battle): dong dau CO DINH "Point de danh", cac dong
+         sau la MUC DICH tung chi so, duyet TU TREN XUONG. Rule chot theo diem GOC.
+    """
+
+    STATS = [("int", "INT"), ("atk", "ATK"), ("def", "DEF"),
+             ("hpx", "HPx"), ("spx", "SPx"), ("agi", "AGI")]
+
+    def __init__(self, master, username, row):
+        super().__init__(master)
+        self.username = username
+        self.row = row
+        self.title("Point: %s" % username)
+        self.resizable(False, False)
+        self.transient(master.winfo_toplevel()); self.grab_set()
+        frm = ttk.Frame(self, padding=10); frm.pack(fill="both", expand=True)
+
+        # ---- 1 + 2: bang chi so + cong tay ----
+        box = ttk.LabelFrame(frm, text="Chỉ số nhân vật", padding=6)
+        box.pack(fill="x")
+        hdr = ttk.Frame(box); hdr.pack(fill="x")
+        for _t, _w in (("Chỉ số", 8), ("Gốc", 8), ("Tổng", 8), ("Cộng thêm", 10)):
+            ttk.Label(hdr, text=_t, width=_w, anchor="center").pack(side="left", padx=2)
+        self.var_add = {}
+        self.lbl_goc = {}
+        self.lbl_tong = {}
+        for key, ten in self.STATS:
+            r = ttk.Frame(box); r.pack(fill="x", pady=1)
+            ttk.Label(r, text=ten, width=8, anchor="w").pack(side="left", padx=2)
+            self.lbl_goc[key] = ttk.Label(r, text="?", width=8, anchor="center")
+            self.lbl_goc[key].pack(side="left", padx=2)
+            self.lbl_tong[key] = ttk.Label(r, text="?", width=8, anchor="center")
+            self.lbl_tong[key].pack(side="left", padx=2)
+            v = tk.StringVar(value="0")
+            self.var_add[key] = v
+            ttk.Spinbox(r, from_=0, to=999, width=8, textvariable=v).pack(side="left", padx=2)
+        self.lbl_left = ttk.Label(box, text="Điểm dư: ?", font=(None, 10, "bold"))
+        self.lbl_left.pack(anchor="w", pady=(6, 0))
+        br = ttk.Frame(box); br.pack(fill="x", pady=(4, 0))
+        ttk.Button(br, text="Cộng ngay", command=self._cong_tay).pack(side="left")
+        # "Doc lai" = doc lai so tu client dang chay. Can vi dialog KHONG tu cap nhat: cong xong,
+        # hoac acc len cap trong luc dialog dang mo, thi so tren man hinh la so CU.
+        ttk.Button(br, text="Đọc lại", command=self._nap).pack(side="left", padx=6)
+        self.lbl_nguon = ttk.Label(br, text="", foreground="#888")
+        self.lbl_nguon.pack(side="left", padx=6)
+
+        # ---- 3: bang tu cong ----
+        auto = ttk.LabelFrame(frm, text="Tự cộng Điểm (duyệt từ trên xuống)", padding=6)
+        auto.pack(fill="both", expand=True, pady=(8, 0))
+        r0 = ttk.Frame(auto); r0.pack(fill="x", pady=2)
+        ttk.Label(r0, text="Point để dành:", width=16, anchor="w").pack(side="left")
+        self.var_reserve = tk.StringVar(value="999")
+        ttk.Spinbox(r0, from_=0, to=99999, width=8,
+                    textvariable=self.var_reserve).pack(side="left")
+        ttk.Label(r0, text="(luôn giữ lại; dư hơn số này mới cộng cho các dòng dưới)",
+                  foreground="#888").pack(side="left", padx=6)
+        self.rules_fr = ttk.Frame(auto); self.rules_fr.pack(fill="both", expand=True, pady=(4, 0))
+        self.rules = []
+        ttk.Button(auto, text="+ Thêm dòng", command=lambda: self._them_dong()).pack(anchor="w")
+
+        bb = ttk.Frame(frm); bb.pack(fill="x", pady=(8, 0))
+        ttk.Button(bb, text="Lưu", command=self._luu).pack(side="right")
+        ttk.Button(bb, text="Đóng", command=self.destroy).pack(side="right", padx=6)
+
+        self._nap_rules()
+        self._nap()
+
+    # ---------------- doc so ----------------
+
+    def _nap(self):
+        info = {}
+        try:
+            info = ctrl.point_info(self.username) or {}
+        except Exception as e:
+            log.warning("[%s] doc bang diem loi: %s", self.username, e)
+        if not info:
+            self.lbl_left.configure(text="Điểm dư: ? (acc chưa chạy và chưa có số đã lưu)")
+            self.lbl_nguon.configure(text="")
+            return
+        for st in info.get("stats") or []:
+            k = st.get("key")
+            if k in self.lbl_goc:
+                self.lbl_goc[k].configure(text=str(st.get("goc")))
+                self.lbl_tong[k].configure(text=str(st.get("tong")))
+        left = info.get("left")
+        self.lbl_left.configure(text="Điểm dư: %s" % ("?" if left is None else left))
+        # Acc TAT -> so doc tu cache (chi de XEM; cong diem phai bat acc len vi phai gui goi len
+        # server). Noi RO keo user tuong so dang live roi bam cong mai khong an.
+        if info.get("cache"):
+            import datetime as _dt
+            _ts = info.get("ts") or 0
+            _luc = (_dt.datetime.fromtimestamp(_ts).strftime("%d/%m %H:%M") if _ts else "?")
+            self.lbl_nguon.configure(
+                text="(acc đang TẮT — số đã lưu lúc %s, bật acc mới cộng được)" % _luc)
+        else:
+            self.lbl_nguon.configure(text="(số đọc trực tiếp từ acc đang chạy)")
+
+    def _cong_tay(self):
+        n = 0
+        cho = []
+        for key, ten in self.STATS:
+            try:
+                add = int(self.var_add[key].get() or 0)
+            except ValueError:
+                continue
+            if add <= 0:
+                continue
+            kq = ctrl.add_point(self.username, key, add)
+            if kq == "queued":
+                # Dang trong tran -> DA XEP HANG, het tran bot tu gui (giong lenh tui do).
+                cho.append("%s +%d" % (ten, add))
+                self.var_add[key].set("0")
+            elif kq:
+                n += 1
+                self.var_add[key].set("0")
+            else:
+                messagebox.showwarning(
+                    "Cộng điểm",
+                    "Không cộng được %d vào %s.\n"
+                    "Acc phải đang chạy và còn đủ điểm dư."
+                    % (add, ten), parent=self)
+                break
+        if cho:
+            messagebox.showinfo(
+                "Cộng điểm",
+                "Đang trong trận nên chưa gửi được — đã xếp hàng, "
+                "đánh xong bot tự cộng:\n  %s" % "\n  ".join(cho), parent=self)
+        if n or cho:
+            self.after(800, self._nap)
+
+    # ---------------- bang rule ----------------
+
+    def _nap_rules(self):
+        settings = self.row.setdefault("settings", {})
+        cfg = settings.get("point")
+        cfg = cfg if isinstance(cfg, dict) else {}
+        self.var_reserve.set(str(cfg.get("reserve", 999)))
+        for r in cfg.get("rules") or []:
+            if isinstance(r, dict):
+                self._them_dong(r.get("stat"), r.get("target"))
+
+    def _them_dong(self, stat=None, target=None):
+        row = ttk.Frame(self.rules_fr); row.pack(fill="x", pady=1)
+        v_stat = tk.StringVar(value=(stat or "int"))
+        v_target = tk.StringVar(value=str(target if target is not None else 0))
+        ttk.Combobox(row, width=8, state="readonly", textvariable=v_stat,
+                     values=[k for k, _t in self.STATS]).pack(side="left", padx=2)
+        ttk.Spinbox(row, from_=0, to=99999, width=8,
+                    textvariable=v_target).pack(side="left", padx=2)
+        ttk.Label(row, text="(chưa đạt thì cộng cho đủ, đạt rồi thì xuống dòng sau)",
+                  foreground="#888").pack(side="left", padx=6)
+        rec = {"fr": row, "stat": v_stat, "target": v_target}
+
+        def _xoa():
+            self.rules.remove(rec); row.destroy()
+        ttk.Button(row, text="✕", width=2, command=_xoa).pack(side="right", padx=2)
+        self.rules.append(rec)
+
+    def _luu(self):
+        try:
+            reserve = max(0, int(self.var_reserve.get() or 0))
+        except ValueError:
+            messagebox.showwarning("Point để dành", "Phải là số.", parent=self); return
+        rules = []
+        for rec in self.rules:
+            try:
+                t = int(rec["target"].get() or 0)
+            except ValueError:
+                continue
+            if t > 0:
+                rules.append({"stat": rec["stat"].get(), "target": t})
+        cfg = {"reserve": reserve, "rules": rules}
+        settings = self.row.setdefault("settings", {})
+        settings["point"] = cfg
+        self.row["settings"] = settings
+        try:
+            ctrl.apply_point_config(self.username, cfg)
+        except Exception as e:
+            log.warning("[%s] apply live bang cong diem loi: %s", self.username, e)
+        self.destroy()
 
 
 class BagDialog(tk.Toplevel):
@@ -3361,10 +3619,11 @@ class PartyConfigFrame(ttk.Frame):
             e_p.bind("<FocusIn>", _fin)
             e_p.bind("<FocusOut>", _fout)
         ttk.Button(fr, text="⚙", width=2, command=lambda: self._open_heal_dialog(row)).pack(side="left")
-        ttk.Button(fr, text="Skill", width=5, command=lambda: self._open_skill_dialog(row)).pack(side="left")
+        ttk.Button(fr, text="Battle", width=6, command=lambda: self._open_skill_dialog(row)).pack(side="left")
         _bag_btn = ttk.Button(fr, width=3, command=lambda: self._open_bag_dialog(row))
         _bag_btn.configure(image=_bag_icon(fr))
         _bag_btn.pack(side="left")
+        ttk.Button(fr, text="Point", width=6, command=lambda: self._open_point_dialog(row)).pack(side="left")
         ttk.Button(fr, text="✕", width=2, command=lambda: self._del_acc_row(row)).pack(side="left")
         self.acc_rows.append(row)
 
@@ -3857,6 +4116,22 @@ class PartyConfigFrame(ttk.Frame):
             return
         BagDialog(self, uname, c)
 
+    def _open_point_dialog(self, row):
+        """Popup DIEM TIEM NANG rieng tung acc (CHI nhan vat, khong pet).
+
+        Bo cuc user chot 31/08:
+          - bang 6 chi so: cot GOC (diem that su cong vao) va cot TONG (da gom trang bi/thu
+            cuoi/the/suu tap) -> nhin ca hai moi quyet duoc,
+          - so diem DU chua cong,
+          - khu cong TAY tung chi so,
+          - bang TU CONG kieu rule giong ben Battle: dong dau CO DINH "Point de danh", cac dong
+            sau la muc dich tung chi so, duyet TU TREN XUONG.
+        """
+        uname = row["u"].get().strip()
+        if not uname:
+            messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
+        PointDialog(self, uname, row)
+
     def _open_skill_dialog(self, row):
         """Popup rule battle rieng tung acc: Dieu kien -> Skill/action -> Target."""
         uname = row["u"].get().strip()
@@ -4186,7 +4461,7 @@ class PartyConfigFrame(ttk.Frame):
                           "skill": "normal", "target": "auto"})
             return rules
 
-        win = tk.Toplevel(self); win.title(f"Skill: {uname}"); win.resizable(False, False)
+        win = tk.Toplevel(self); win.title(f"Battle: {uname}"); win.resizable(False, False)
         win.transient(self.winfo_toplevel()); win.grab_set()
         frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
         # Ghi RO nguon du lieu: live / cache lan chay gan nhat / khong co gi. Cache co the CU

@@ -401,6 +401,22 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         try { rpd().callAttr("furnace_notify_skip", username, tid)?.toBoolean() ?: false }
         catch (_: Exception) { false }
 
+    /** Acc KHONG o quan doan nao - [{user, kind:'legion'}]. Luat o `legion_notify_items` (dung
+     *  chung voi GUI PC) de hai ban khong lech. */
+    fun legionNotifyItems(pidx: Int): List<Map<String, String>> {
+        return try {
+            val lst = rpd().callAttr("legion_notify_items", pidx)?.asList() ?: return emptyList()
+            lst.mapNotNull { row ->
+                val m = row?.asMap() ?: return@mapNotNull null
+                m.entries.associate { (k, v) -> k.toString() to (v?.toString() ?: "") }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun legionNotifySkip(username: String): Boolean =
+        try { rpd().callAttr("legion_notify_skip", username)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
     fun stopParty(pidx: Int) {
         try { rpd().callAttr("stop_party", pidx) } catch (_: Exception) { }
         runningPidx.remove(pidx)

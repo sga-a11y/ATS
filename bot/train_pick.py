@@ -246,6 +246,23 @@ def spot_matches(prof, level, mob_min, mob_max, elements):
     return not vi_sao_loai(prof, level, mob_min, mob_max, elements)
 
 
+def _maps_chua_quet(maps, level):
+    """[map_id] cua map CO KHOANG LEVEL chua `level` nhung CHUA CO DIEM NAO (chua quet quai).
+
+    Uu tien cao nhat khi chon map: co map chua quet thi den do quet truoc da - vua co them bai
+    train, vua la cach DUY NHAT de map moi config vao duoc dung. `_needs_train_mob_probe` chi
+    chay khi party DA DUNG TREN map, nen map khong bao gio duoc chon = khong bao gio duoc quet.
+    """
+    out = []
+    for map_id, name, mobs in maps:
+        if is_soul_map(name) or (mobs or []):
+            continue
+        rng = map_level_range(name)
+        if rng and rng[0] <= level <= rng[1]:
+            out.append(int(map_id))
+    return out
+
+
 def _spots_of_maps(maps, level):
     """[(map_id, spot_index, spot_xy)] cua moi map co chua `level` trong khoang ten map."""
     out = []
@@ -297,6 +314,12 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
     # LUAT USER 26/08: CHI HA level, TOI DA -5. "Tang len kho danh" nen khong tim len nua.
     khoang = [lv for lv in range(want, want - 6, -1) if lv >= 1]
     for level in khoang:
+        # UU TIEN 1: map CHUA QUET (khong co diem nao). Den do quet truoc - vua them bai train,
+        # vua la cach duy nhat map moi config vao duoc dung (khong chon = khong ai toi = khong
+        # bao gio quet). Tra idx = -1 = "chua co diem", caller quet xong roi random 1 bai.
+        _chua_quet = _maps_chua_quet(maps, level)
+        if _chua_quet:
+            return rng.choice(_chua_quet), -1, level, _ly_do("map CHUA QUET quai -> den quet truoc")
         ds = _profs(level)
         if not ds:
             vet.append("%d khong map" % level)

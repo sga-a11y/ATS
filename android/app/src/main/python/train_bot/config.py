@@ -227,7 +227,11 @@ MOB_SCAN_MAX_PATROL_DIAMETER = 800
 MOB_SCAN_MERGE_DISTANCE = 60
 MOB_SCAN_SECOND_PASS = True
 MOB_SPOTS_CACHE_PATH = os.path.join(_base_dir(), "mob_spots.json")
-MOB_PACKET_PROBE_SECONDS = 60
+# Thoi gian DUNG YEN quet quai cua mot tram (giay). 60s bo sot: nhieu con di tuan tra vong
+# rong, mot phut chua di het vung nen tam bai tinh ra lech -> co safe nam sat diem quai
+# (31/08: map 21812 diem 1 safe cach mob 128, trong khi 4 diem con lai cua chinh map do la
+# 360-404). 120s cho moi con di du it nhat mot vong.
+MOB_PACKET_PROBE_SECONDS = 120
 MOB_PACKET_CAPTURE_MAX_PACKETS = 50000
 MOB_PACKET_CAPTURE_DIR = _base_dir()
 def _load_train_routes(path=None):

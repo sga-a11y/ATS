@@ -147,8 +147,11 @@ class TestBatGoiCoiDoTraVe(unittest.TestCase):
 
     def test_dispatch_bat_dung_2_sub(self):
         src = _doc(CLIENT)
-        self.assertIn("_on_unequip_done(pkt[9], follow=0)", src)
+        self.assertIn("_on_unequip_done(pkt[9], follow=0,", src)
         self.assertIn("_on_unequip_done(pkt[10], follow=pkt[9])", src)
+        # Sub 22 (S:023-022 <pet coi do vao tui>) la goi DUY NHAT cua pet co kem o tui - thieu no
+        # thi coi do pet lan hai tro trung o cu. Xem test_coi_do_lan_hai.py.
+        self.assertIn("_on_unequip_done(pkt[10], follow=pkt[9], o_tui=pkt[11])", src)
 
 
 class TestDoPetDocTuGoi0x0f(unittest.TestCase):

@@ -2459,6 +2459,161 @@ Nguồn: `captures/40npc_loop_20260720.pcap` (chọn Có) và
   không leader=đứng yên); ngoài giờ = huy party + mỗi acc tự đổi thưởng + thoát game; sau mỗi trận
   check qua 22h → đổi thưởng; thua 2 trận liên tiếp → đứng yên chờ 22h → đổi thưởng.
 
+## 7o. TĂNG ĐIỂM TIỀM NĂNG NHÂN VẬT (attribute point) — `C:008-001`
+
+Tra crack client 31/08. **Chưa cài vào bot**, đây là ghi chú giao thức để làm bot tự tăng điểm.
+
+### Gói gửi lên
+```
+C:008-001 <設定屬性> +武將索引(2) +種類(1) +數值(4) +參數(1)
+```
+opcode `0x08`, sub `0x0001`. Thân gói (little-endian, theo `Logic/Status.lua:388 SendAddAttribute`):
+
+| Offset | Cỡ | Ý nghĩa |
+|---|---|---|
+| 0 | 2B | **武將索引** — `0` = NHÂN VẬT CHÍNH. Pet thì ghi `role.index` |
+| 2 | 1B | **種類** = mã `EAttribute` (xem bảng dưới) |
+| 3 | 4B | **數值** = SỐ ĐIỂM CỘNG THÊM (không phải giá trị đích) |
+| 7 | 1B | **參數** = `0` (client luôn ghi 0 ở đường này) |
+
+```lua
+-- Logic/Status.lua:388
+function Status.SendAddAttribute(role, attKind, add)
+  if add > 0 then                              -- add <= 0 thi KHONG gui gi ca
+    sendBuffer:Clear();
+    if role == Role.player then sendBuffer:WriteUInt16(0);
+    else sendBuffer:WriteUInt16(role.index); end
+    ...
+    sendBuffer:WriteByte(att);                 -- ma EAttribute
+    sendBuffer:WriteInt32(add);                -- SO DIEM CONG THEM
+    sendBuffer:WriteByte(0);
+    Network.Send(8, 1, sendBuffer);
+  end
+end
+```
+
+### Bảng `種類` — đúng `EAttribute` trong `Controller/RoleController.lua:34`
+Client map chỉ số ô 1..6 trên UI sang mã này (`Status.lua:399-412`):
+
+| Ô UI | Tên | `EAttribute` |
+|---|---|---|
+| 1 | INT (知力) | **27** |
+| 2 | ATK (攻擊力) | **28** |
+| 3 | DEF (防禦力) | **29** |
+| 4 | HPx (Hp上升幅度) | **31** |
+| 5 | SPx (Sp上升幅度) | **32** |
+| 6 | AGI (敏捷) | **30** |
+
+Lưu ý thứ tự: ô 4/5 là **Hpx/Spx (31/32)**, ô 6 mới là **Agi (30)** — KHÔNG phải 27..32 liền mạch.
+
+### Điểm còn lại đọc ở đâu
+`EAttribute.AttrPoint = 38` (`屬性點數`). Bot đã thu sẵn mọi id vào `char_attrs` qua `0x08 sub0100`
+(xem mục STATS PACKETS), nên số điểm chưa tiêu = `char_attrs[38]`.
+
+Server báo khi được thêm điểm: `S:020-022 <獲得屬性點數訊息> +點數(1)` (opcode `0x14` sub `0x0016`)
+— chỉ là thông báo hiển thị, KHÔNG mang tổng điểm.
+
+### Ràng buộc client kiểm TRƯỚC khi gửi (`UI/UIStatus.lua:2009`)
+1. `Role.player.war` phải là `EWar.None` hoặc `EWar.Guest` — **đang trong trận thì không tăng được**.
+2. `SceneManager.sceneId ~= 10701` — đang bị giam trong ngục thì không tăng được.
+3. Tổng số điểm cộng của cả 6 ô `<= AttrPoint` hiện có (`UIStatus.lua:919` trừ dần `point - count`).
+4. Mỗi lần bấm cộng bị chặn `math.clamp(current + change, 0, maxPoint)` với
+   `maxPoint = 999` (`Logic/Status.lua:6`) — đó là trần MỖI LẦN thao tác trên UI, không phải trần stat.
+
+### Gửi nhiều ô một lượt
+Client gửi **MỖI Ô MỘT GÓI RIÊNG**, lặp `for i = 1, 6` (`UIStatus.lua:2020`), ô nào `add = 0` thì bỏ
+qua vì `SendAddAttribute` có `if add > 0`. Không có gói gộp.
+
+### Server trả lời
+`S:008-001 <設定主角屬性> +種類(1) +正負號(1) +數值(4) +參數(4)` (opcode `0x08` sub `0x0001`).
+`正負號` = 2 nghĩa là số ÂM (`attrValue * -1`). Bot đã parse `0x08 sub0100` vào `char_attrs` rồi —
+đối chiếu `char_attrs[38]` giảm đi là biết lệnh ăn.
+
+### Có thể làm sau
+- `C:008-016 <無界重置配點>` = reset điểm (chỉ khi `Network.InUnbound`); ngoài Vô Giới thì client
+  mở `UISell.Launch(15)` = phải mua item reset.
+- `C:023-075 <屬性轉換符> +背包索引(1) +屬性(1)` = dùng phù chuyển thuộc tính.
+- Client có "bộ điểm" lưu sẵn (`allAttSets`, `SendApplyAttSet`) — chỉ là tiện ích UI, nó vẫn gửi
+  từng gói `C:008-001` như trên.
+
+## 7p. BA ĐẬU (auto đầy HP/SP sau trận) — thời hạn ở `S:023-135`
+
+Tra crack client 01/09. **Chưa cài vào bot**, đây là ghi chú giao thức.
+
+### Item là cái gì
+| tid | Tên | Mô tả (items_desc.json) |
+|---|---|---|
+| `0xb5f1` (46577) | **Ba Đậu 30 Ngày** | "Nhân vật và võ tướng xuất chiến tự động hồi đầy HP và SP sau khi kết thúc giao đấu, thời hạn 30 ngày **có thể tích lũy thêm**" |
+| `0xb74d` (46925) | Thẻ Vip Tháng | như trên + exp x2, 30 ngày |
+| `0xb790` (46992) | Đá Thủ Hộ 1 Ngày | trang bị không hao mòn 1 ngày |
+
+Trong client nó là **`ETimeBuff.VipBenefit = 1`** (`暢玩卡`), khai ở `Logic/DrugBuff.lua:15-25`:
+```lua
+ETimeBuff = { VipBenefit = 1, EquipProtect = 2, DoubleExp = 3,
+              IntUp = 4, AtkUp = 5, DefUp = 6, AgiUp = 7, HpxUp = 8, SpxUp = 9 }
+this.timeBuffs[ETimeBuff.VipBenefit]  = { ... itemId = 46577 }  --暢玩卡      = Ba Đậu
+this.timeBuffs[ETimeBuff.EquipProtect]= { ... itemId = 46992 }  --守護者之心 = Đá Thủ Hộ
+this.timeBuffs[ETimeBuff.DoubleExp]   = { ... itemId = 46925 }  --經驗加倍   = Thẻ Vip Tháng
+```
+
+### Gói mang THỜI HẠN — `S:023-135`
+```
+S:023-135 <各種到期時間> +結果(1) +種類(1)
+  結果 1: thành công, theo sau là +時間(8)
+  結果 2: thất bại, +原因(1)
+種類  1 = VipBenefit (Ba Đậu) | 2 = EquipProtect | 3 = DoubleExp
+```
+opcode `0x17`, sub `135` = `0x87`. `protocolTable[23][135]`:
+```lua
+if result == 1 then
+  local kind = data:ReadByte();
+  if kind == 1 then DrugBuff.SetTimeBuff(ETimeBuff.VipBenefit, data:ReadDouble());
+  elseif kind == 2 then ... EquipProtect ...
+  elseif kind == 3 then ... DoubleExp ... end
+```
+
+**`時間(8)` là mốc HẾT HẠN tuyệt đối, KHÔNG phải số giây còn lại**, và **KHÔNG phải Unix
+timestamp** — nó là **OLE Automation Date** (`double`): số ngày kể từ `1899-12-30`, phần thập phân
+là giờ trong ngày. Client đổi bằng `DateTime.FromOADate(time)` (`DrugBuff.SetTimeBuff`).
+
+```python
+# doi OADate -> datetime
+import datetime
+def oadate(d):
+    return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=float(d))
+```
+
+### Tính "còn lại bao lâu" — phải dùng GIỜ SERVER
+`DrugBuff.GetTimeBuff(kind)` so với **`CGTimer.serverTime`**, không phải giờ máy:
+```lua
+function DrugBuff.GetTimeBuff(kind)
+  if this.timeBuffs[kind].time ~= nil
+     and DateTime.Compare(CGTimer.serverTime, this.timeBuffs[kind].time) < 0 then
+    return this.timeBuffs[kind].time;   -- con han
+  end
+  return nil;                            -- het han
+end
+```
+Giờ server lấy từ:
+- **`S:001-000` (login)**: sau `playerId(8)` là `Server時間(8)` — cùng dạng OADate
+  (`protocal.lua:348`, `CGTimer.SetServerTime(time)`).
+- **`S:001-016 <收Server時間> +Server時間(8)`** — server đẩy lại về sau.
+
+`CGTimer.SetServerTime` lưu luôn `serverTimeSpan = serverTime - DateTime.Now` rồi mỗi tick cộng
+lệch đó vào giờ máy → khỏi hỏi lại liên tục.
+
+### Vài điểm phải nhớ khi làm bot
+- **Không có lệnh hỏi riêng.** Không tồn tại `C:023-135`; server TỰ gửi `S:023-135` (lúc login và
+  khi nạp thêm). Đừng đi tìm packet query.
+- `S:023-133 <充值暢玩卡結果>` / `S:023-134 <充值經驗加倍結果>` là kết quả NẠP THÊM, chỉ có
+  `+結果(1)`, **không mang thời hạn** — thời hạn mới về qua `S:023-135`.
+- `結果 = 2` là THẤT BẠI (kèm `原因`), không phải "kind 2".
+- Hết hạn thì client tự dọn trong `DrugBuff.CheckTimeBuff()` (so `serverTime` mỗi vòng), server
+  không gửi gói "đã hết hạn".
+- Đây **KHÔNG phải** Hộp Máy (`MachineBox`, opcode `0x65`) mà bot đang dùng. Hộp Máy có ngưỡng
+  HP/SP và tự uống thuốc (tốn item); Ba Đậu là buff hồi đầy **miễn phí** sau mỗi trận. `MachineBox`
+  chỉ có `EMachineBoxStats.StartTime` = số giây đã chạy phiên này, **không** mang hạn dùng.
+
 ## 8. GAME MECHANICS
 
 | Mechanic | Mô tả |

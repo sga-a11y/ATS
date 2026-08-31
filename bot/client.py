@@ -256,12 +256,29 @@ def _set_thread_prio(level: int):
         pass
 
 
+# NGOC PHUC THAN - DU 4 LOAI, xep TOT -> KEM theo he so kinh nghiem (items_desc.json).
+# Ca 4 deu `ft=6` (EQUIP_POS_SPEC), cap yeu cau 15 -> dung mot o, deo duoc nhu nhau.
+#   0x5AAC Ngoc Ba Phuc Than    x3
+#   0x5AAB Ngoc Sieu Phuc Than  x2,5
+#   0x5A2D Ngoc Dai Phuc Than   x2
+#   0x59EF Ngoc Tieu Phuc Than  x1,5
+# Truoc day bot chi biet Sieu + Dai -> co Ba (xin nhat) van deo Sieu, va chi con Tieu thi khong
+# deo gi ca ma nhay thang sang item tieu hao (user phat hien 31/08).
+PHUC_THAN_GEM_ORDER = (0x5AAC, 0x5AAB, 0x5A2D, 0x59EF)
 PHUC_THAN_PROTECTION_PRIORITY = (
-    (0x5AAB, "equip"),
-    (0x5A2D, "equip"),
-    (0xB5F4, "use"),
+    tuple((_tid, "equip") for _tid in PHUC_THAN_GEM_ORDER) + ((0xB5F4, "use"),)
 )
-PHUC_THAN_GEM_TIDS = {0x5AAB, 0x5A2D}
+PHUC_THAN_GEM_TIDS = set(PHUC_THAN_GEM_ORDER)
+
+
+def phuc_than_hang(tid) -> int:
+    """Thu hang ngoc Phuc Than: 0 = tot nhat. Khong phai ngoc -> so RAT LON (coi nhu khong co).
+
+    Dung de so sanh "co dang deo cai TOT HON khong" thay vi hardcode tung tid."""
+    try:
+        return PHUC_THAN_GEM_ORDER.index(int(tid))
+    except (ValueError, TypeError):
+        return 999
 BROKEN_PHUC_THAN_TID = 0x59F0
 # EItemFitType.Equip_Spec = 6 (ItemData.lua) - O DO cua NGOC. Ca 3 tid ngoc (Sieu/Dai/Ngoc Hu)
 # deu fitType=6 (xac nhan tu gamedata_Item.dat) nen ngoc LUON nam o vi tri nay.
@@ -573,7 +590,9 @@ def _is_party_member(party_idx, entity):
 # party_idx -> set(self_entity cua cac member da join). Tin cay hon doc roster broadcast.
 _PARTY_JOINED = {}
 
-def _mark_joined(party_idx, entity):
+def mark_joined(party_idx, entity):
+    """Ghi nhan 1 member DA vao party. Cong khai (khong con `_`) vi coordinator can sua so dem khi
+    ROSTER SERVER noi member da o trong doi ma so nho noi la chua - su that thuoc ve server."""
     if party_idx is None or not entity:
         return
     with _PARTY_LOCK:
@@ -615,7 +634,7 @@ def _team_dungeon_can_start(ready_count, needed, elapsed, whitelist_count):
 
 def reset_party_joined(party_idx):
     """Xoa danh sach member da join (khi leader GIAI TAN party de relogin) -> leader tinh lai tu
-    dau, vong retry 60s se MOI LAI cho du member. Member se _mark_joined lai khi accept loi moi moi."""
+    dau, vong retry 60s se MOI LAI cho du member. Member se mark_joined lai khi accept loi moi moi."""
     if party_idx is None:
         return
     with _PARTY_LOCK:
@@ -740,6 +759,22 @@ def is_strategist(party_idx, entity):
 # party_idx -> {entity: int_value}.  STAT_INT = id 0x1b (xac nhan tu int.pcap).
 STAT_INT = 0x1b
 STAT_AGI = 0x1e
+
+# TANG DIEM TIEM NANG (xem KNOWLEDGE.md muc 7o). Ma = `EAttribute` trong
+# `_lua_dec/Controller/RoleController.lua:34`. THU TU O TREN UI KHONG LIEN MACH:
+# o 4/5 la Hpx/Spx (31/32), o 6 moi la Agi (30) - `Logic/Status.lua:399-412`.
+ATTR_POINT = 38                    # EAttribute.AttrPoint - so diem CHUA CONG
+ATTR_KINDS = (                     # (ma, khoa, ten hien thi) - dung THU TU O UI cua client
+    (27, "int", "INT"),
+    (28, "atk", "ATK"),
+    (29, "def", "DEF"),
+    (31, "hpx", "HPx"),
+    (32, "spx", "SPx"),
+    (30, "agi", "AGI"),
+)
+ATTR_KEY_TO_CODE = {k: c for c, k, _t in ATTR_KINDS}
+ATTR_CODE_TO_KEY = {c: k for c, k, _t in ATTR_KINDS}
+ATTR_CODE_TO_TEN = {c: t for c, _k, t in ATTR_KINDS}
 _PARTY_INT = {}
 
 def _register_party_int(party_idx, entity, value):
@@ -1462,6 +1497,69 @@ def save_inn_cache(username, inn):
         return True
 
 
+def save_point_cache(username, diem):
+    """Ghi cache BANG DIEM cua 1 acc de dialog Point XEM DUOC khi acc DA TAT.
+
+    `diem` = {"left": int|None, "stats": [{key, ten, ma, goc, tong}, ...]}.
+    Dung CHUNG file `account_skills_cache.json` (khoa "point") y het cach `save_inn_cache` lam:
+    file do da co san duong nap o ca PC lan APK va da co san co che "acc tat thi doc cache".
+    KHONG ghi de cac khoa khac cua acc.
+
+    Chi de XEM. CONG DIEM van phai co acc dang chay (phai gui goi `C:008-001` len server).
+    """
+    import json, os
+    username = str(username or "").strip()
+    if not username or not diem:
+        return False
+    sig = json.dumps(diem, sort_keys=True, ensure_ascii=False)
+    with _skill_cache_lock:
+        if _skill_cache_sig.get("point:" + username) == sig:
+            return False
+        path = _skill_cache_path()
+        allc = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    allc = json.load(fh) or {}
+            except Exception:
+                allc = {}
+        entry = allc.get(username)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["point"] = diem
+        entry["point_ts"] = int(time.time())
+        allc[username] = entry
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(allc, fh, ensure_ascii=False)
+        except Exception as e:
+            log.debug("ghi cache bang diem loi: %s", e)
+            return False
+        _skill_cache_sig["point:" + username] = sig
+        return True
+
+
+def load_point_cache(username):
+    """Bang diem da cache cua 1 acc -> (diem, ts) hoac (None, 0)."""
+    import json, os
+    username = str(username or "").strip()
+    if not username:
+        return None, 0
+    path = _skill_cache_path()
+    if not os.path.exists(path):
+        return None, 0
+    try:
+        with open(path, encoding="utf-8") as fh:
+            allc = json.load(fh) or {}
+    except Exception:
+        return None, 0
+    entry = allc.get(username)
+    if not isinstance(entry, dict):
+        return None, 0
+    diem = entry.get("point")
+    return (diem if isinstance(diem, dict) else None), int(entry.get("point_ts") or 0)
+
+
 def skills_snapshot(st):
     """{char, pet, pets:[[pid,ten,[choice]]], active} tu state - dung chung cho cache va GUI."""
     def _choice(sid):
@@ -1606,6 +1704,9 @@ class GameClient:
         self._pending_0b = []        # buffer 0x0b den TRUOC khi co self_entity (race login)
         self._pending_03 = None      # cache 0x03 self-spawn (resolve ten neu toi TRUOC 0x69)
         self.party_leader = None     # entity chu party (tu 0x0d sub=06)
+        # Chi True trong khoang tu luc CHINH MINH vao doi den lan di dau tien: client teleport
+        # member toi cho leader DUNG MOT LAN o `AddMember` (Team.lua:176), khong bam lien tuc.
+        self._cho_bam_leader = False
         self.party_members = []      # list entity cac member theo thu tu (= slot B2)
         # Ban do entity -> ID DOI TRUONG cua MOI party thay duoc quanh map (S:013-006 phat theo
         # map, mang nhieu party mot luc) = ban sao cua `Team.members` ben client Lua. Dung de
@@ -1747,6 +1848,11 @@ class GameClient:
         self._npc40_prompt_pending = False
         self._npc40_prompt_pending_at = 0.0
         self._npc40_last_defeated = False
+        self._npc40_hp_snap = None     # (defeated, alive, total) chot gan nhat khi allies con du lieu
+        # HAN DUNG dich vu theo thoi gian (S:023-135) -> {"ba_dau"/"da_thu_ho"/"the_vip": datetime}
+        self.han_dung = {}
+        self._server_time_span = None   # gio server - gio may (dat o `_nho_gio_server`)
+        self._npc40_bo_thuong = False  # thoat som (thua 2 tran, chua toi 22h) -> doi thuong se khong an
         self._npc40_last_alive = 0
         self._npc40_last_total = 0
         self._npc40_last_dialog = ""   # hex page dialog NPC 40 (0x14 0100...) gan nhat -> biet fresh/giua-event
@@ -2236,8 +2342,19 @@ class GameClient:
                 and now - getattr(self, "_npc40_prompt_pending_at", 0.0) > 5.0):
             self._npc40_prompt_pending = False
             self._npc40_prompt_pending_at = 0.0
+        # CHOT LIEN TUC tinh trang HP dong doi TRONG luc con doc duoc.
+        #
+        # `state.allies` bi `clear()` moi `0x34` (vao tran moi) va co luc rong han sau khi tran ket
+        # -> doc no O THOI DIEM dialog sau tran thi `known` rong, `party_defeated` tra
+        # `(False, 0, 0)` -> bot KHONG BAO GIO thay "thua". Do la ly do
+        # `consec_loss` khong bao gio tang va luat "thua 2 tran lien tiep" chua tung chay mot lan.
+        # Do tren party.log 31/08: 1079/1079 lan ket tran cua acc THAT deu la
+        # `alive=0/0 defeated=False`, ke ca van party 1 luc 21:44:45 leader `CHAR HP=0 (da chet)`.
+        if self.state.allies:
+            self._npc40_hp_snap = npc40.party_defeated(self.state.allies)
         if opcode == protocol.OP_BATTLE_START:
             self._battle_start_seq += 1
+            self._npc40_hp_snap = None      # tran MOI -> bo chot cua tran truoc
             self._npc40_prompt_pending = False
             self._npc40_prompt_pending_at = 0.0
         # Luu page dialog NPC (0x14 sub=0100...) gan nhat -> run_loop biet dang o page nao:
@@ -2263,7 +2380,10 @@ class GameClient:
         self._npc40_prompt_pending = False
         self._npc40_prompt_pending_at = 0.0
 
+        # Uu tien doc TRUC TIEP; rong (da bi clear) thi lay chot gan nhat trong tran.
         defeated, alive, total = npc40.party_defeated(self.state.allies)
+        if not total and getattr(self, "_npc40_hp_snap", None):
+            defeated, alive, total = self._npc40_hp_snap
         self._npc40_last_defeated = defeated
         self._npc40_last_alive = alive
         self._npc40_last_total = total
@@ -3139,10 +3259,24 @@ class GameClient:
         # "Cởi ra" xong thay KHONG CO GI XAY RA (bao 26/08).
         #   S:023-016 <卸下裝備>       +vi tri do(1) +o tui(1)              -> sub 16 = 0x10 (char)
         #   S:023-021 <武將卸下裝備>   +petIdx(1) +vi tri do(1)             -> sub 21 = 0x15 (pet)
+        #   S:023-022 <武將卸下裝備到背包> +petIdx(1) +vi tri do(1) +o tui(1) -> sub 22 = 0x16 (pet)
+        # `o tui` PHAI dung: server KHONG gui 023-008 cho mon vua coi, chinh CLIENT bo no vao tui
+        # (xem `_on_unequip_done`). Bo qua truong nay -> `bag_slots` khong biet mon do -> lan coi
+        # THU HAI chon trung o cu, server nuot im.
         elif opcode == 0x17 and len(pkt) >= 10 and pkt[7:9] == b"\x10\x00":
-            self._on_unequip_done(pkt[9], follow=0)
+            self._on_unequip_done(pkt[9], follow=0,
+                                  o_tui=(pkt[10] if len(pkt) >= 11 else None))
         elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x15\x00":
             self._on_unequip_done(pkt[10], follow=pkt[9])
+        elif opcode == 0x17 and len(pkt) >= 12 and pkt[7:9] == b"\x16\x00":
+            self._on_unequip_done(pkt[10], follow=pkt[9], o_tui=pkt[11])
+        # HAN DUNG "Ba Dau" / Da Thu Ho / The Vip Thang - xem KNOWLEDGE.md muc 7p.
+        #   S:023-135 <各種到期時間> +ket qua(1) +loai(1) [+thoi gian(8) neu ket qua=1]
+        #   loai 1 = Ba Dau (auto day HP/SP sau tran) | 2 = Da Thu Ho | 3 = The Vip Thang
+        # sub 135 = 0x87. `thoi gian` la MOC HET HAN dang OLE Automation Date (double) - KHONG
+        # phai so giay con lai, KHONG phai unix timestamp.
+        elif opcode == 0x17 and len(pkt) >= 11 and pkt[7:9] == b"\x87\x00":
+            self._on_han_dung(pkt)
         # S:023-024 <武將穿上裝備> [武將索引][物品資料 16B] - server bao PET DANG MAC mon nay.
         # Client dung goi NAY de dung trang thai do pet (protocolTable[23][20] = <武將所有裝備> la
         # ham RONG - no khong dung goi do). Bot can bang nay vi cung ly do nhu do char: THAY DO thi
@@ -3371,6 +3505,14 @@ class GameClient:
         # PlayerAppear`: co goi nay thi "da thay tan mat" phai bi HUY, khong thi bot cu tuong
         # nguoi ta con dung canh minh mai (`appear_at` khong bao gio het han - va DUNG la khong
         # duoc het han theo thoi gian, xem `da_thay_tan_mat`).
+        # GIO SERVER - can de tinh han dung Ba Dau (xem KNOWLEDGE.md muc 7p): client so han voi
+        # `CGTimer.serverTime`, KHONG phai gio may. Hai nguon, deu la OLE Automation Date (double):
+        #   S:001-000 (login): body = ketqua(1) dbId(2) sId(2) playerId(8) SERVER_TIME(8) -> pkt+22
+        #   S:001-016 <收Server時間> +Server時間(8)                                       -> pkt+9
+        if opcode == 0x01 and len(pkt) >= 30 and pkt[7:9] == b"\x00\x00":
+            self._nho_gio_server(pkt[22:30])
+        if opcode == 0x01 and len(pkt) >= 17 and pkt[7:9] == b"\x10\x00":
+            self._nho_gio_server(pkt[9:17])
         if opcode == 0x01 and len(pkt) >= 17 and pkt[7:9] == b"\x01\x00":
             _ra = bytes(pkt[9:17])
             _m = (self.entity_meta or {}).get(_ra)
@@ -4034,6 +4176,13 @@ class GameClient:
             return int.from_bytes(body[o:o + 4], "little", signed=True)
         self.char_base = {27: _u16(9), 28: _u16(11), 29: _u16(13), 30: _u16(15),
                           31: _u16(17), 32: _u16(19)}
+        # DIEM TIEM NANG CHUA CONG (`EAttribute.AttrPoint = 38`), o `+28` trong bo cuc tren.
+        # Server con day rieng qua `0x08 sub0100` khi doi -> `char_attrs[38]`; doc o day de biet
+        # NGAY LUC LOGIN, khong phai cho lan doi diem dau tien.
+        if len(body) >= 30:
+            self.attr_point = _u16(28)
+            if isinstance(getattr(self, "char_attrs", None), dict):
+                self.char_attrs.setdefault(ATTR_POINT, self.attr_point)
         if len(body) >= 77:
             self.char_equip = {28: _i32(45), 29: _i32(49), 27: _i32(53), 30: _i32(57),
                                31: _i32(69), 32: _i32(73)}
@@ -4176,6 +4325,11 @@ class GameClient:
                          _ai.hex()[:8], _lead.hex()[:8], len(self.party_members or []))
                 _sync_party_joined(self.party_idx, _lead, self.party_members,
                                    nguoi_ghi=self.self_entity, label=self._label)
+                if _ai == self.self_entity and _ai != _lead:
+                    # CHINH MINH vua vao doi -> client teleport minh toi cho leader NGAY LUC NAY
+                    # (`Team.lua:176` trong `AddMember`: `Role.players[roleId]:Teleport(
+                    # leader.position)`). Do la lan DUY NHAT client bam pos theo leader.
+                    self._cho_bam_leader = True
             return
         if sub == 0x09 and self.auto_accept_party and len(pkt) >= 17:
             entity = pkt[9:17]   # entity nguoi MOI (leader), KHONG set lam self_entity
@@ -4284,7 +4438,7 @@ class GameClient:
         entity = bytes(entity)
         if _is_party_member(self.party_idx, entity):
             self.send(protocol.OP_PLAYER_STATE, b"\x08\x00\x01" + entity)
-            _mark_joined(self.party_idx, self.self_entity)
+            mark_joined(self.party_idx, self.self_entity)
             log.info("[%s] Loi moi tu THANH VIEN CUNG PARTY -> ACCEPT (da join)", self._label)
             return True
         leaders = (config.leaders_for(self.party_idx)
@@ -7226,11 +7380,14 @@ class GameClient:
         # duoc. Day la dung thu tu client goc lam (MachineBox 檢查福神: C:023-013 roi SendUseEquip).
         self._drop_broken_gem()
         equipped_tid = self._equipped_phuc_than_tid()
-        if equipped_tid != 0x5AAB:
+        _hang_dang_deo = phuc_than_hang(equipped_tid)
+        if _hang_dang_deo != 0:      # da deo cai TOT NHAT (Ngoc Ba) -> khong dong toi
             for tid, action in PHUC_THAN_PROTECTION_PRIORITY:
                 if tid not in cfg:
                     continue
-                if tid == 0x5A2D and equipped_tid == 0x5A2D:
+                if action == "equip" and phuc_than_hang(tid) >= _hang_dang_deo:
+                    # Ngoc trong tui KHONG tot hon cai dang deo -> dung han: cac tid sau con kem
+                    # hon nua. Thay bang cai bang/kem hon la HA CAP mot cach vo ich.
                     break
                 if action == "use" and equipped_tid in PHUC_THAN_GEM_TIDS:
                     break
@@ -7916,6 +8073,78 @@ class GameClient:
             out[30] = int(self.char_agi)
         return out
 
+    # ---------------- TANG DIEM TIEM NANG (xem KNOWLEDGE.md muc 7o) ----------------
+
+    def attr_point_left(self):
+        """So diem tiem nang CHUA CONG. None = chua biet (chua nhan goi login/0x08).
+
+        Hai nguon, deu la `EAttribute.AttrPoint = 38`:
+          - goi login `0x05 sub0300` (+28) -> `self.attr_point`,
+          - server day rieng `0x08 sub0100` moi khi doi -> `char_attrs[38]` (MOI HON, uu tien).
+        """
+        v = (getattr(self, "char_attrs", None) or {}).get(ATTR_POINT)
+        if v is None:
+            v = getattr(self, "attr_point", None)
+        return None if v is None else max(0, int(v))
+
+    def char_diem_goc(self) -> dict:
+        """{ma EAttribute: diem GOC} - phan CONG DIEM tac dong toi. {} neu chua co goi login.
+
+        KHAC `char_stat_full()` (goc + trang bi/thu cuoi/the/suu tap): rule tang diem chot theo
+        GOC (user 31/08), vi do la thu diem thuc su tac dong toi va khong bi thao/deo do lam nhieu.
+        """
+        return dict(getattr(self, "char_base", None) or {})
+
+    def add_attr_point(self, kind: int, add: int) -> bool:
+        """Cong `add` diem vao chi so `kind` (ma EAttribute) cho NHAN VAT CHINH.
+
+        `C:008-001 <設定屬性> +武將索引(2) +種類(1) +數值(4) +參數(1)` = `0x08 sub0100`.
+        Chi so 武將索引 = 0 la nhan vat chinh (pet thi ghi `role.index` - bot khong lam pet).
+        數值 la SO DIEM CONG THEM, khong phai gia tri dich.
+
+        Client chan san (`UI/UIStatus.lua:2009`): DANG TRONG TRAN thi khong cong duoc. Caller phai
+        tu cho het tran; o day chi chan cho chac de khong ban goi vo ich.
+
+        CAU TRUC DA DUOC CAPTURE XAC NHAN (`int.pcap`, tang INT id=0x1b): goi that la
+        `01 00 | 00 00 | 1b | 01 00 00 00 | 00` = sub + index(2)=0 + kind(1) + value(i32) + arg(1),
+        khop y het bo cuc trong `protocal.lua`. (Ham `increase_stat` cu dung chinh capture nay
+        nhung khong ai goi va khong co mot rang buoc nao - da gop vao day.)
+        """
+        try:
+            add = int(add)
+            kind = int(kind)
+        except (TypeError, ValueError):
+            return False
+        if add <= 0 or kind not in ATTR_CODE_TO_KEY:
+            return False        # client cung `if add > 0` moi gui (Logic/Status.lua:389)
+        if self.in_combat(idle_secs=1.0):
+            log.warning("[%s] Cong diem: DANG TRONG TRAN -> khong cong duoc (client cung chan)",
+                        self._label)
+            return False
+        con = self.attr_point_left()
+        if con is not None and add > con:
+            log.warning("[%s] Cong diem: muon cong %d vao %s nhung chi con %d diem -> bo",
+                        self._label, add, ATTR_CODE_TO_TEN.get(kind, kind), con)
+            return False
+        try:
+            self.send(0x08, b"\x01\x00" + struct.pack("<HBiB", 0, kind, add, 0))
+        except OSError:
+            return False
+        # TRU NGAY tai cho: server co gui lai `0x08 sub0100` nhung khong tuc thi, ma caller
+        # thuong cong LIEN TIEP nhieu o -> doc lai so cu se tuong con du diem va tieu qua tay.
+        if con is not None:
+            self.char_attrs[ATTR_POINT] = max(0, con - add)
+            self.attr_point = self.char_attrs[ATTR_POINT]
+        # Diem GOC cung tang ngay - rule duyet cac dong sau doc `char_diem_goc()`.
+        try:
+            self.char_base[kind] = int((self.char_base or {}).get(kind, 0)) + add
+        except Exception:
+            pass
+        log.info("[%s] Cong diem: +%d %s (con lai %s)", self._label, add,
+                 ATTR_CODE_TO_TEN.get(kind, kind),
+                 "?" if con is None else con - add)
+        return True
+
     def char_equip_bonus(self) -> dict:
         """{ma chi so: tong cong them} tu DO DANG MAC cua nhan vat. {} neu chua du du lieu.
 
@@ -8033,13 +8262,35 @@ class GameClient:
             # `pet_agi` chi doi khi tinh lai - nut "Check AGI" doc thang bien do.
             self._refresh_active_pet_login_stats()
 
-    def _on_unequip_done(self, fit_pos: int, follow: int = 0):
-        """DA COI XONG 1 mon (server xac nhan). Xoa khoi bang do dang mac + bump _equip_seq.
+    def _on_unequip_done(self, fit_pos: int, follow: int = 0, o_tui: int = None):
+        """DA COI XONG 1 mon (server xac nhan). Xoa khoi bang do dang mac + bump _equip_seq, VA
+        TU BO MON DO VAO TUI dung o server chi (`o_tui`).
 
-        Mon vua coi TU VE TUI qua goi rieng (0x17 sub08) - bot da bat san, khong xu ly o day.
+        SERVER KHONG GUI 023-008 cho mon vua coi - CHINH CLIENT chuyen no vao tui
+        (`protocolTable[23][16]`):
+            local fitType  = data:ReadByte();
+            local bagIndex = data:ReadByte();
+            Item.SetBagItem(EThings.Bag, bagIndex, Item.GetBagItem(EThings.Equip, fitType, 0), true);
+            Item.DelBagItem(EThings.Equip, fitType);
+        (pet: `protocolTable[23][22]` = S:023-022 <武將卸下裝備到背包>, y het + followIndex.)
+
+        Chu thich cu o day ghi "mon tu ve tui qua goi 0x17 sub08 - bot da bat san" -> SAI, va no
+        lam hong lan coi THU HAI: `bag_slots` khong bao gio biet mon vua coi nen
+        `bag_first_empty_slot()` tra DUNG O CU -> lenh coi tiep tro toi o da co do -> server nuot
+        im, user thay "khong co gi xay ra".
+        Log 31/08: quan809 15:49:51 `Da coi do: vi tri 3 cua nhan vat (Ngự Thiên Pháp Trượng)` ma
+        KHONG he co dong `Nhan item` di kem - dung la mon khong vao `bag_slots`.
         """
         table = (self.pet_equip_by_fit.setdefault(follow, {}) if follow else self.equip_by_fit)
         cu = table.pop(int(fit_pos), None)
+        if o_tui is not None and cu:
+            try:
+                _o = int(o_tui)
+                if 0 < _o < 256 and _o not in (self.bag_slots or {}):
+                    self.bag_slots[_o] = [int(cu), 1]
+                    self.bag_counts[int(cu)] = self.bag_counts.get(int(cu), 0) + 1
+            except Exception as e:
+                log.debug("[%s] coi do: ghi mon vua coi vao tui loi (bo qua): %s", self._label, e)
         if not follow:
             self.equipped_items = [x for x in (self.equipped_items or [])
                                    if int(x.get("id", 0)) != int(cu or -1)]
@@ -9024,6 +9275,76 @@ class GameClient:
             except Exception as e:
                 log.debug("[%s] cache pet nha tro loi: %s", self._label, e)
 
+    # loai (種類) trong S:023-135 -> khoa noi bo
+    HAN_DUNG_LOAI = {1: "ba_dau", 2: "da_thu_ho", 3: "the_vip"}
+
+    def _on_han_dung(self, pkt):
+        """S:023-135 <各種到期時間>: luu MOC HET HAN cua Ba Dau / Da Thu Ho / The Vip Thang.
+
+        `ket qua` = 2 la THAT BAI (kem `nguyen nhan`), KHONG phai "loai 2".
+        Khong co lenh hoi (`C:023-135` khong ton tai) - server tu gui luc login va khi nap them.
+        """
+        body = pkt[9:]
+        if len(body) < 10 or body[0] != 1:
+            return                      # rong / ket qua 2 = that bai
+        loai = self.HAN_DUNG_LOAI.get(body[1])
+        if not loai:
+            return
+        try:
+            ole = struct.unpack("<d", body[2:10])[0]
+        except Exception:
+            return
+        if not ole:                     # 0 = KHONG co han (client: `time ~= 0` moi set)
+            self.han_dung.pop(loai, None)
+            return
+        try:
+            het = self._ole_to_dt(ole)
+        except Exception:
+            return
+        self.han_dung[loai] = het
+        log.info("[%s] Han dung %s: het luc %s", self._label, loai,
+                 het.strftime("%d/%m/%Y %H:%M"))
+
+    def _nho_gio_server(self, raw8):
+        """Luu DO LECH gio server so voi gio may (y het `CGTimer.SetServerTime`).
+
+        Luu DO LECH chu khong luu moc: gio server troi tiep theo dong ho may, khong dung yen o moc
+        vua nhan. `raw8` = OLE Automation Date (double, little-endian).
+        """
+        import datetime
+        try:
+            ole = struct.unpack("<d", bytes(raw8))[0]
+        except Exception:
+            return
+        if not ole or ole < 30000:        # < ~1982 -> rac, khong phai gio that
+            return
+        try:
+            self._server_time_span = self._ole_to_dt(ole) - datetime.datetime.now()
+        except Exception:
+            return
+
+    def gio_server(self):
+        """Gio SERVER hien tai (datetime). None = chua nhan duoc.
+
+        Han dung phai so voi gio SERVER, khong phai gio may: client so voi `CGTimer.serverTime`
+        (`DrugBuff.GetTimeBuff`). Bot luu DO LECH luc login roi cong vao gio may, y het
+        `CGTimer.SetServerTime` (`serverTimeSpan = serverTime - DateTime.Now`).
+        """
+        import datetime
+        lech = getattr(self, "_server_time_span", None)
+        if lech is None:
+            return None
+        return datetime.datetime.now() + lech
+
+    def han_dung_con_lai(self, loai="ba_dau"):
+        """Thoi gian CON LAI (timedelta) cua mot han dung. None = khong co / chua biet / DA HET."""
+        het = (getattr(self, "han_dung", None) or {}).get(loai)
+        now = self.gio_server()
+        if het is None or now is None:
+            return None
+        con = het - now
+        return con if con.total_seconds() > 0 else None
+
     @staticmethod
     def _ole_to_dt(ole):
         import datetime
@@ -9730,7 +10051,7 @@ class GameClient:
                 log.warning("[%s] Doi kenh %d bi TU CHOI: DANG TO DOI (ma 3) -> roi party roi thu lai",
                             self._label, channel)
                 try:
-                    self.leave_party()
+                    self.leave_party(server_bao_dang_o_party=True)
                 except Exception as e:
                     log.warning("[%s] doi kenh: loi roi party de doi kenh: %s", self._label, e)
                 time.sleep(0.5)
@@ -9818,9 +10139,23 @@ class GameClient:
                 return int(cur)
             log.info("[%s] Chua biet kenh hien tai -> giu nguyen", self._label)
             return 0
-        # CHI chon kenh con DU CHO cho ca party (cap - cur >= need)
-        fit = [c for c in cand if (c[2] - c[1]) >= need]
+        # CHI chon kenh con DU CHO cho ca party (cap - cur >= need) - NHUNG phai TRU RA so acc
+        # CUA CHINH PARTY dang dung trong kenh do: chung da chiem cho san, doi kenh vao day thi
+        # khong ton them cho nao. Khong tru la doi kenh phai con du 5 cho TRONG khi party da an
+        # het 5 cho o do -> khong kenh nao "du", RETRY vo han.
+        # Log 31/08 party 2 (20:39, map su kien 40NPC 10991, 39 kenh): leader gamo lap
+        # "KHONG kenh nao du 5 cho trong cho ca party -> RETRY" moi 3s, trong khi ca 5 acc DA o
+        # tren map do roi (nasau kenh 34, so con lai kenh 39) -> party khong bao gio lap duoc.
+        fit = [c for c in cand if (c[2] - c[1] + self._so_acc_party_o_kenh(c[0])) >= need]
         if not fit:
+            # Khong tach ra duoc thi GOM NGUOC LAI ve kenh cua leader - y het nhanh `cand` rong o
+            # tren. Leader dang dung trong kenh do nen chac chan co cho cho no; member chuyen sang
+            # neu day thi server tra ma 4 va vong sau thu lai. Van hon la RETRY vo han.
+            _cur = getattr(self, "current_channel", None)
+            if _cur and any(c[0] == int(_cur) for c in cand):
+                log.warning("[%s] KHONG kenh nao du %d cho -> GOM ca party ve kenh cua leader (%s)",
+                            self._label, need, _cur)
+                return int(_cur)
             log.warning("[%s] KHONG kenh nao du %d cho trong cho ca party -> RETRY (cho kenh trong)",
                         self._label, need)
             return None
@@ -9831,10 +10166,42 @@ class GameClient:
                      self._label, need, best[0], best[1], best[2])
             if self.switch_channel(best[0]):
                 return best[0]
+            if getattr(self, "_chan_switch_result", None) == 3:
+                # Ma 3 <組隊不可換分區> la loi PARTY, khong dinh dang gi toi kenh: kenh nao cung se
+                # tra dung ma 3. Quet tiep = dot het danh sach kenh mot cach vo ich, moi kenh 2
+                # luot ack (log 31/08 party 7, 14:45-14:55: 67 luot, khong bao gio thoat).
+                # Dung han, tra None de caller cho roi dong bo lai - luc do `leave_party` da gui
+                # 013-004 nen vong sau nhieu kha nang da roi duoc party.
+                log.warning("[%s] Doi kenh bi chan vi DANG TO DOI (ma 3) -> DUNG quet kenh "
+                            "(kenh nao cung the), cho vong sau", self._label)
+                return None
             log.warning("[%s] Khong doi duoc kenh %d -> thu kenh khac neu co", self._label, best[0])
         log.warning("[%s] Da thu %d kenh du cho (%s) nhung khong doi duoc -> RETRY",
                     self._label, len(tried), sorted(tried))
         return None
+
+    def _so_acc_party_o_kenh(self, ch):
+        """So acc CUA CHINH PARTY dang o kenh `ch` (cung map). Chung da chiem cho san nen khi tinh
+        "kenh con du cho khong" phai cong tra lai - khong thi doi kenh tai cho la bat kha thi.
+
+        Doc thang `_PARTY_CLIENTS` (cac client cung tien trinh) - khong can goi nao.
+        """
+        try:
+            ch = int(ch)
+            with _PARTY_LOCK:
+                peers = list((_PARTY_CLIENTS.get(self.party_idx) or {}).values())
+            n = 0
+            for p in peers:
+                if not getattr(p, "running", False):
+                    continue
+                if getattr(p, "current_map", None) != self.current_map:
+                    continue          # so kenh chi co nghia trong CUNG mot map
+                cur = getattr(p, "current_channel", None)
+                if cur is not None and int(cur) == ch:
+                    n += 1
+            return n
+        except Exception:
+            return 0
 
     def invite_entity(self, entity: bytes):
         """Moi 1 nguoi vao party BANG ENTITY. C2S 0x0d sub=07 = 07 00 [entity 8B].
@@ -10181,7 +10548,7 @@ class GameClient:
             time.sleep(gap)
         return whitelist_count
 
-    def leave_party(self, leader_entity=None):
+    def leave_party(self, leader_entity=None, server_bao_dang_o_party=False):
         """Roi/giai tan party hien tai (de co the VAO DI GIOI - khong vao duoc khi dang trong party).
         `C:013-004 <離開隊伍> +隊長玩家ID(8)` - truong nay la ID **DOI TRUONG**, KHONG phai cua
         minh. Client gui dung vay (Logic/Team.lua:138 `Team.Leave`):
@@ -10217,6 +10584,20 @@ class GameClient:
             _chu = self.party_leader or self.self_entity
         if not _chu and leader_entity and self.party_leader:
             _chu = leader_entity
+        if not _chu and server_bao_dang_o_party:
+            # SERVER VUA TU NOI la minh dang o party (`S:007-002` ma 3 <組隊不可換分區>). Do la
+            # bang chung MANH NHAT co the co - manh hon ca roster, vi roster chi la thu bot nho.
+            # Khong co lenh nao hoi roster (`protocal.lua` chi co C:013-001/003/004/005/006/007/
+            # 008/009/010/015 - khong co truy van) nen phai doan doi truong: la CHINH MINH.
+            # Dung voi ca hai the: leader thi `members[minh] == minh`; con member ma roster rong
+            # thi day la party MA, gui gi cung khong lam hong them.
+            #
+            # Log 31/08 party 7 (14:45-14:55): ttsau bi ma 3 SAU T LAN, moi lan deu "KHONG o party
+            # nao ... KHONG gui 013-004" roi thu kenh khac -> quet het kenh 2,3,4,... 67 luot,
+            # khong bao gio doi duoc kenh, party khong bao gio gom lai duoc.
+            _chu = self.self_entity
+            log.warning("[%s] Roi party: roster rong NHUNG server vua bao DANG TO DOI -> tin "
+                        "SERVER, gui 013-004 voi ID cua chinh minh", self._label)
         if not _chu:
             self.party_members = []
             log.info("[%s] KHONG o party nao (roster server + local deu rong) -> KHONG gui "
@@ -11162,12 +11543,6 @@ class GameClient:
         self.state.quest_mode = False   # het dungeon -> ha quest_mode ep buoc, ve mac dinh auto-latch
         return True
 
-    def increase_stat(self, stat_id: int, amount: int = 1):
-        """Tang 1 chi so. C2S 0x08 = 01 00 00 00 [stat_id] [amount] 00 00 00 00
-        (xac nhan tu int.pcap: tang INT id=0x1b). Dung cho auto cong diem sau nay."""
-        self.send(0x08, b"\x01\x00\x00\x00" + bytes([stat_id & 0xFF, amount & 0xFF]) + b"\x00\x00\x00\x00")
-        log.info("[%s] Tang stat id=0x%02x +%d", self._label, stat_id, amount)
-
     def move_to(self, x: int, y: int):
         """C2S 0x06: di chuyen nhan vat toi (x,y). Server tu di toi do.
         Dead-reckoning: server KHONG echo vi tri minh -> tu nho pos = diem vua gui di."""
@@ -11193,6 +11568,15 @@ class GameClient:
         nen doc thang duoc - khong can goi nao.
         """
         try:
+            # CHI bam MOT LAN, dung luc vua vao doi - y client (`Team.lua:176`, trong `AddMember`).
+            # Client KHONG bam lien tuc: sau khi vao doi, member tu di bang chan cua no.
+            #
+            # Goi moi lan `navigate_to` la DAP toa do THAT cua member. Log 31/08 party 1 (15:17:06):
+            # 4 member vua qua cong toi (3970,1210) - toa do DUNG - thi bi ghi de thanh (1237,543)
+            # cua leader, lech 2800 don vi; goi ngay sau do gui tu goc sai -> CA 4 bi
+            # `SERVER NGAT KET NOI: ma la 47` cung mot giay.
+            if not getattr(self, "_cho_bam_leader", False):
+                return False
             if not self.party_members or not self.party_leader:
                 return False
             lead = bytes(self.party_leader)
@@ -11213,6 +11597,7 @@ class GameClient:
             self.pos = (int(lp[0]), int(lp[1]))
             self._position_generation += 1
             self._pos_valid_for_map = self.current_map
+            self._cho_bam_leader = False      # da bam roi - lan sau tu di bang chan cua minh
             return True
         except Exception as e:
             log.debug("[%s] sua pos theo leader loi (bo qua): %s", self._label, e)

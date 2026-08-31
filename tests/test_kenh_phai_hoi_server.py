@@ -102,7 +102,9 @@ class TestSwitchChannelKhongBoQua(unittest.TestCase):
         self.assertGreater(i3, 0)
         khoi = than[i3:i3 + 900]
         self.assertIn("DANG TO DOI (ma 3)", khoi, "phai LOG ro, khong duoc im lang")
-        self.assertIn("self.leave_party()", khoi, "khong roi party thi doi kenh mai khong duoc")
+        self.assertIn("self.leave_party(server_bao_dang_o_party=True)", khoi,
+                      "khong bat co thi guard 'roster rong' chan luon -> quet kenh vo han "
+                      "(party 7, 31/08 14:45-14:55: 67 luot ma 3 ma khong lan nao gui 013-004)")
         self.assertIn("continue", khoi, "phai THU LAI sau khi roi party")
 
     def test_bang_ma_loi_chep_dung_client(self):

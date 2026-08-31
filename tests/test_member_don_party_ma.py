@@ -28,7 +28,7 @@ class TestDonPartyMa(unittest.TestCase):
         self.src = _doc("run_party_digioi.py")
         i = self.src.find("elif not is_joined(pidx, c.self_entity):")
         self.assertGreater(i, 0, "khong tim thay nhanh member retry vao party")
-        self.khoi = self.src[i:i + 3600]
+        self.khoi = self.src[i:i + 5600]
 
     def test_co_goi_leave_party_khi_retry(self):
         than = re.sub(r"#.*", "", self.khoi)      # bo chu thich - bay hay gap trong repo nay
@@ -64,9 +64,12 @@ class TestDonPartyMa(unittest.TestCase):
     def test_loi_khi_don_KHONG_chan_retry(self):
         """Don party ma chi la don dep - loi o day khong duoc lam member bo luon buoc doi kenh."""
         than = re.sub(r"#.*", "", self.khoi)
-        i_try = than.find("try:")
+        # Neo theo CHINH loi goi leave_party (khoi nay con nhieu try/except khac), khong lay
+        # "try:" dau tien cua ca doan.
         i_leave = than.find("c.leave_party(")
-        i_except = than.find("except Exception as e:")
+        self.assertGreater(i_leave, 0)
+        i_try = than.rfind("try:", 0, i_leave)
+        i_except = than.find("except Exception as e:", i_leave)
         self.assertTrue(0 <= i_try < i_leave < i_except, "loi khi don party ma khong duoc bao")
 
 

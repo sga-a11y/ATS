@@ -41,13 +41,12 @@ class TestPartyMustBeFull(unittest.TestCase):
 
     def test_relogin_hang_loat_duoc_GIAN_CACH(self):
         """5 acc cung wait=1 -> server chan toc do. Phai xep hang theo vi tri trong party."""
-        self.assertIn("wait += 3 * _order.index(username)", SRC)
-        i = SRC.index("wait += 3 * _order.index(username)")
-        self.assertIn("if forced:", SRC[i - 400:i])
+        self.assertIn("_them = _gian_buoc * _order.index(username)", SRC)
+        self.assertIn("_gian_buoc = 3 if forced else", SRC, "mat buoc gian cua nhanh forced")
 
     def test_gian_cach_cho_ra_moc_tang_dan(self):
-        """Mo phong dung cong thuc trong file: 1s, 4s, 7s, 10s, 13s cho 5 acc."""
-        m = re.search(r"wait \+= (\d+) \* _order\.index\(username\)", SRC)
+        """Mo phong dung cong thuc trong file: 1s, 4s, 7s, 10s, 13s cho 5 acc (nhanh forced)."""
+        m = re.search(r"_gian_buoc = (\d+) if forced else", SRC)
         buoc = int(m.group(1))
         moc = [1 + buoc * i for i in range(5)]
         self.assertEqual(moc, [1, 4, 7, 10, 13])
