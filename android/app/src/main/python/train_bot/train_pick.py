@@ -168,13 +168,32 @@ def _la_block_cham(pattern) -> bool:
     return False
 
 
-def has_slow_block(patterns) -> bool:
-    """Diem tung ghi nhan block 1x2/1x3/1x4 -> loai han, KHONG tinh ti le.
+# Block cham chiem duoi ti le nay = NHIEU, khong loai diem (user chot 30/08: "duoi 1% la nhieu").
+# CO Y de RAT THAP: luat goc cua user van la "co block 1x2/1x3 thi loai luon diem do"; nguong nay
+# chi de bo qua ghi nhan LE TE (vai tran tren hang tram), khong phai de noi tay luat.
+SLOW_BLOCK_MAX_SHARE = 0.01
 
-    User chot 26/08: "khong can nguong dau, khi nao can t se bao loc luon file block train, bot do
-    phai tinh toan nhieu". Tuc lam sach du lieu o NGUON, khong bat bot doan nhieu moi lan chon.
+
+def slow_block_share(patterns) -> float:
+    """Ti le tran roi vao block cham (1x2/1x3/1x4). 0.0 neu chua co du lieu."""
+    patterns = patterns or {}
+    tong = sum(int(v) for v in patterns.values())
+    if not tong:
+        return 0.0
+    return sum(int(v) for k, v in patterns.items() if _la_block_cham(k)) / tong
+
+
+def has_slow_block(patterns) -> bool:
+    """Diem co QUA NHIEU block 1x2/1x3/1x4 -> loai (danh qua lau).
+
+    User chot 26/08: "khong can nguong dau" - loai ngay khi TUNG ghi nhan mot lan. Nhung thuc te
+    30/08 cho thay chot tuyet doi do loai oan diem TOT NHAT: 'Trai Pham Thanh3 145-146' diem 0 co
+    `4x1: 426 / 439 tran` = 97% dung y user muon, ma bi loai chi vi DUNG MOT tran `1x3` (0.2%).
+    Party 1 vi the phai tut xuong map 142-143.
+    Nen: van GIU luat "co block cham thi loai", chi bo qua khi no le te duoi
+    `SLOW_BLOCK_MAX_SHARE` (user chot 30/08: duoi 1%) - tuc quai lang thang lac vao / ghi nhan le.
     """
-    return any(_la_block_cham(k) for k in (patterns or {}))
+    return slow_block_share(patterns) >= SLOW_BLOCK_MAX_SHARE
 
 
 def mob_share_in_range(patterns, mob_min, mob_max):
@@ -196,19 +215,35 @@ def mob_share_in_range(patterns, mob_min, mob_max):
     return trong / tong
 
 
-def spot_matches(prof, level, mob_min, mob_max, elements):
-    """Diem co hop cau hinh khong (chi goi khi diem DA CO du lieu)."""
+def vi_sao_loai(prof, level, mob_min, mob_max, elements):
+    """"" = diem HOP; khac rong = LY DO bi loai (de log noi duoc vi sao chon map thap hon).
+
+    Truoc day chi tra True/False nen log ghi tron "co N diem nhung BO LOC loai het" - user hoi
+    "tai sao no chon map 142-143" thi phai ngoi do bang tay lai tung diem.
+    """
     lv = prof.get("levels")
     if not lv or not (lv[0] <= level <= lv[1]):
-        return False
+        return "level quai %s khong chua %d" % (lv, level)
     if has_slow_block(prof.get("patterns")):
-        return False        # block 1x2/1x3/1x4 -> danh qua lau
-    if prof.get("patterns") and mob_share_in_range(prof["patterns"], mob_min, mob_max) < MATCH_SHARE:
-        return False
+        return "block cham (1x2/1x3/1x4) chiem %d%% (nguong %d%%)" % (
+            round(slow_block_share(prof.get("patterns")) * 100),
+            round(SLOW_BLOCK_MAX_SHARE * 100))
+    if prof.get("patterns"):
+        _ty = mob_share_in_range(prof["patterns"], mob_min, mob_max)
+        if _ty < MATCH_SHARE:
+            return "chi %d%% tran co %d-%d quai (can >=%d%%)" % (
+                round(_ty * 100), mob_min, mob_max, round(MATCH_SHARE * 100))
     want = set(elements or ALL_ELEMENTS)
     got = prof.get("elements")
     # Diem phai TOAN quai thuoc he da tick: tick nghia la "chi danh nhung he nay".
-    return not got or got <= want
+    if got and not got <= want:
+        return "co he %s ngoai he da tick" % sorted(got - want)
+    return ""
+
+
+def spot_matches(prof, level, mob_min, mob_max, elements):
+    """Diem co hop cau hinh khong (chi goi khi diem DA CO du lieu)."""
+    return not vi_sao_loai(prof, level, mob_min, mob_max, elements)
 
 
 def _spots_of_maps(maps, level):
@@ -275,7 +310,16 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
         if ok:                            # LUAT: nhieu diem hop -> lay diem IT TRAN NHAT
             map_id, idx = _it_tran_nhat(ok)
             return map_id, idx, level, _ly_do("khop level/so quai/he (diem it tran nhat)")
-        vet.append("%d co %d diem nhung BO LOC loai het" % (level, len(ds)))
+        # NOI RO vi sao loai: gom theo ly do + dem. Khong thi log chi ghi "BO LOC loai het" va
+        # user phai ngoi do lai tung diem bang tay de biet vuong so quai hay vuong he.
+        _dem = {}
+        for _m, _i, _p in ds:
+            _ly = vi_sao_loai(_p, level, mob_min, mob_max, elements)
+            if _ly:
+                _dem[_ly] = _dem.get(_ly, 0) + 1
+        _chi_tiet = "; ".join("%dx %s" % (n, ly) for ly, n in
+                              sorted(_dem.items(), key=lambda kv: -kv[1])[:3])
+        vet.append("%d co %d diem nhung BO LOC loai het (%s)" % (level, len(ds), _chi_tiet))
 
     # LUAT: het ca khoang [want-5, want] ma khong diem nao hop -> lay diem IT TRAN NHAT trong CA
     # khoang do (van train duoc, va gom them du lieu cho nhung diem con thieu).

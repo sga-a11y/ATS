@@ -104,6 +104,198 @@ Response: access_token, account_id
 | 0x55 | **Unit ready** (1 per char/pet) |
 | 0x6e | Entity info |
 
+### ⚠️ PARTY THƯỜNG `0x0d` — ba chỗ bot từng làm SAI so với client (sửa 2026-08-27)
+
+**1. `S:013-006 <隊伍資料>` chứa NHIỀU party trong MỘT gói.** Client duyệt hết gói:
+```lua
+while data.length > 0 do
+  local leaderId = data:ReadInt64(); local count = data:ReadByte()
+  for i = 1, count do Team.AddMember(leaderId, data:ReadInt64(), false) end
+end
+```
+Gói phát theo MAP nên party khác cùng map đi chung một gói. Bot cũ chỉ đọc **nhóm đầu** rồi
+`return` nếu mình không ở trong đó → party của mình nằm nhóm thứ 2 trở đi là **mất trắng cả gói**
+→ leader không bao giờ thấy roster. (Party 15, 27/08: roster cuối 08:48:44, sau đó 35 phút leader
+đếm `roster server=0` trong khi member vẫn accept đều → kẹt vĩnh viễn.)
+
+**2. `S:013-005 <玩家加入隊伍> +隊長ID(8) +玩家ID(8)`** = server báo **từng người** vào đội
+(`Team.AddMember`). Bot cũ chỉ trông vào roster đầy đủ `sub06`, bỏ lỡ gói lẻ này.
+
+**3. Hai gói server nói RÕ vì sao thất bại — bot cũ ĐIẾC hoàn toàn:**
+
+| gói | nội dung |
+|---|---|
+| `S:013-010 <邀請組隊結果> +結果(1) +L(1) +名字(L)` | 1 đồng ý · 2 từ chối · 3 không phản hồi |
+| `S:013-013 <組隊訊息> +訊息種類(1)` | mã lý do, xem bảng dưới |
+
+Mã của `S:013-013`: 1 đội đó đầy · 2 đội mình đầy · **3 người đó đang trong sự kiện** · 4/5 giới
+hạn level · 6 đội đã giải tán · **7 mình đang trong nhóm PHÓ BẢN** · **8 người kia đang trong
+nhóm PHÓ BẢN**.
+
+Mã 7/8 rất dễ gặp với bot vì nó làm phó bản tổ đội hằng ngày — và `leave_party` (`0x0d sub04`)
+**KHÔNG** thoát được nhóm phó bản, phải `C:047-010` (`leave_team_dungeon`).
+
+**4. `C:013-004 <離開隊伍> +隊長玩家ID(8)` mang ID ĐỘI TRƯỞNG, KHÔNG phải ID của mình.**
+Client (`Logic/Team.lua:138`):
+```lua
+function Team.Leave()
+  if this.members[Role.playerId] == nil then return end
+  sendBuffer:WriteInt64(this.members[Role.playerId]);   -- members[minh] = leaderId
+  Network.Send(13, 4, sendBuffer);
+end
+```
+Bot cũ gửi `self_entity`. Với **leader** thì tình cờ đúng (self == leader) nên leader vẫn giải
+tán được; với **member** thì sai trường → server bỏ qua → **member không bao giờ rời được party**.
+Chú thích cũ trong `leave_party` còn ghi *"member -> server bo qua (vo hai)"* như thể là cố ý.
+
+Hệ quả dây chuyền: member kẹt trong party ma vĩnh viễn → mà **server không gửi lời mời cho người
+đang ở party** → leader mời hàng trăm lượt không bao giờ tới nơi, và **không có gói báo lỗi nào**.
+Đã tốn nhiều vòng điều tra vì triệu chứng nhìn như "server im lặng nuốt lời mời".
+
+**5. `Team.members` = bản đồ `entity -> ID đội trưởng` của MỌI party thấy được (bổ sung 2026-08-30).**
+`AddMember` ghi `this.members[roleId] = leaderId` cho **từng nhóm** trong `S:013-006`, kể cả party
+của người lạ. Hai chỗ client dùng nó, và đó chính là hai chỗ bot từng sai:
+
+| client | dùng để |
+|---|---|
+| `Team.Leave` → `this.members[Role.playerId]` | ID đội trưởng của **party MÌNH ĐANG Ở** |
+| `Team.Invite` → `if IsAlone(roleId) then C:013-007 else C:013-001` | **chỉ gửi 007 cho người đang RẢNH** |
+
+`IsAlone(roleId) = leaders[roleId] == nil and members[roleId] == nil`. Người đã ở party thì client
+gửi `C:013-001 <要求組隊>` (xin vào đội họ), **không bao giờ** gửi 007. Bắn 007 vào người đang ở
+party = server nuốt im lặng, **không có mã lỗi nào** — đúng triệu chứng "mời mãi không ai vào".
+
+Bot cũ `break` ngay khi thấy nhóm của mình → vứt hết các nhóm khác → không biết mình đang kẹt ở
+party nào (gửi `013-004` kèm ID đội trưởng ĐOÁN = party mình muốn vào → sai trường → server bỏ qua)
+và không biết người kia đã ở party chưa. Nay lưu thành `client.team_of` + `team_of_at`
+(`_doi_truong_dang_ket()`, `dang_o_party_khac()`), roster quá 60s thì không tin nữa.
+
+> **Party 2 (30/08 15:16–15:23)** — ca chứng minh: `nasau` (`f4d0d7f8`) **cùng map 21851, cùng kênh 3
+> và cả hai bên đều có ack `0x07`**, leader `sga001` mời lại mỗi 5 giây suốt 6 phút,
+> `da join=3 | roster server=3`, **không một mã từ chối nào**. Không phải lỗi đồng bộ kênh.
+
+**6. `S:013-011 <軍師資料> <<+玩家ID(8)>>` KHÔNG có nghĩa "mình đang ở party".** Nó là danh sách
+quân sư của các party **quanh map** (loop `<<>>`, giống `S:013-006`), và `Team.AddAdviser` mở đầu
+bằng `if this.members[roleId] == nil then return end` — client bỏ qua nếu chưa biết người đó là
+thành viên. Đừng dùng gói này để suy ra tình trạng party của mình (đã suýt kết luận sai 30/08).
+
+**7. `current_channel` là số NHỚ SẴN và nó SAI ĐƯỢC — đừng coi ack `0x07` là bằng chứng
+(30/08).** Ack `0x07 result=0` chỉ nói *server đã nhận lệnh*; giá trị sau đó nằm trong biến nhớ và
+có thể lệch thực tế (sót lại qua reconnect, hoặc server không thực sự chuyển). Kiểm chứng tận mắt:
+bot hiển thị **cả 5 nick party 3 ở kênh 12**, đăng nhập vào game xem thì là **12/12/12/2/1**.
+
+Hai chỗ hỏng vì tin nó:
+- `switch_channel` thấy `current_channel == N` → *"Đã ở sẵn kênh N → bỏ qua đổi kênh"* → **không
+  đổi thật** → cả party nằm rải nhiều kênh.
+- `_bot_member_is_on_current_scene` in log `(live dung map/kenh)` nhưng **chưa bao giờ kiểm kênh**
+  (chú thích cũ: *"cùng map live là ĐỦ"*, bỏ so instanceId vì hay lệch oan) → leader coi là đủ điều
+  kiện rồi mời → **lời mời không bao giờ tới nơi, và KHÔNG có một mã từ chối nào**.
+
+> Đây là lời giải cho triệu chứng đã đuổi nhiều ngày: *"cùng map, cùng kênh, mời mãi không vào,
+> server im lặng"*. Không phải server im lặng — **họ không hề cùng kênh**.
+
+**KHÔNG CÓ LỆNH HỎI "tôi đang ở kênh nào"** — đã tra client, đừng đi tìm lại:
+- Kênh của client = `SceneManager.instanceId`, chỉ đổi khi **có đổi scene**:
+  `S:012-000 <玩家更換場景> … +區號(2)` → `RoleController:ChangeScene` → `SceneManager.ChangeScene`.
+- `S:007-001 <分區列表>` chỉ liệt kê kênh + số người, **không** nói mình đang ở kênh nào.
+- `0x0c 0100` là `C:012-001 <換場景完畢>` — gói **THÔNG BÁO**, không phải câu hỏi; bình thường
+  server không trả lời gì.
+
+> Đã thử coi "server không trả lời = chưa rõ" → **treo toàn bộ đồng bộ kênh** (30/08 20:01: mọi acc
+> log `hoi lai kenh: server KHONG tra loi`, leader thấy `{'sga002': None, …}` = *chưa sang* → party
+> không bao giờ đồng bộ được). Đừng lặp lại.
+
+Cách đúng: **`switch_channel` KHÔNG được bỏ qua theo giá trị nhớ sẵn** — cứ gửi `0x07 0200`.
+Đó là **vòng request/response duy nhất** liên quan đến kênh. `kenh_that()` chỉ trả giá trị server
+đẩy đến lần cuối (`0x03` / `0x0c` / ack `0x07`), không đi hỏi.
+
+**`S:007-002 <換分區結果> +結果(1)`** (protocal.lua:1091) — **chỉ `0` là THÀNH CÔNG**; 1–4 đều là
+thông báo **LỖI** (`ShowCenterMessage`):
+
+| mã | 中文 | nghĩa |
+|---|---|---|
+| 0 | *(nhánh `else`, đóng UI)* | **đổi kênh xong** |
+| 1 | `不可換到同一區` | không đổi sang **cùng khu** được → suy ra **đang ở sẵn khu đó** |
+| 2 | `無指定區可換` | không có khu đó |
+| 3 | `組隊不可換分區` | **ĐANG TỔ ĐỘI thì KHÔNG đổi khu được** |
+| 4 | `人數已滿` | khu đã đầy |
+
+> **Mã 3 là vòng luẩn quẩn đã làm party không bao giờ đủ:** kẹt trong một party (kể cả party ma)
+> → không đổi được kênh → nằm khác kênh với leader → server không gửi lời mời tới → không vào được
+> party mới → vẫn kẹt. Bot cũ `return False` **im lặng** ở đây nên cả vòng này vô hình trong log.
+> Nay: log rõ + `leave_party()` rồi **thử lại**.
+
+Và **mã 1 không phải "server xác nhận đã đổi xong"** — nó là lỗi "trùng khu đang ở". Dùng nó để
+suy ra kênh hiện tại thì được, gọi là *xác nhận* thì sai. **Có server còn IM LẶNG hẳn** khi đích
+trùng kênh đang ở (không gửi cả mã 1) — log 30/08 21:10 `sga001`: đang ở kênh 3, xin sang 3 →
+TIMEOUT cả 2 lượt. Nên timeout + đích == kênh đang nhớ ⇒ coi như đang ở đó, đừng tính là thất bại.
+
+### Cách BIẾT CHẮC hai acc có cùng kênh không — `0x03` / `S:001-001`
+
+Luật (user chốt 30/08): **cùng map + cùng kênh ⇒ THẤY NHAU. Không thấy nhau ⇒ KHÁC KÊNH.**
+
+- `S:003 PlayerAppear` chỉ được gửi cho người **cùng scene + cùng instance** → nhận được = bằng
+  chứng server-side "đang cùng chỗ". Client thật cũng vậy: `UITeam.UpdateList` chỉ liệt kê từ
+  `Role.players` rồi lọc `sceneId` + `instanceId`.
+- **Đừng dùng `meta["nearby"]`** — `0x27/0900` (danh sách tên quanh map) cũng set cờ đó.
+- **Đừng cho hết hạn theo thời gian.** `0x03` chỉ bắn khi ai đó *xuất hiện*; đứng yên cạnh nhau cả
+  tiếng cũng không có gói mới. Đặt hạn 300s là kết tội oan cả party đang đứng ở rally — log
+  30/08 21:09: cả 4 member `lan cuoi thay ... 450s truoc` trong khi đang đứng im tại chỗ.
+- Vế còn lại của cặp: **`S:001-001 <玩家離線> +玩家ID(8)`** (rời tầm nhìn) và **`S:012-000`** (người
+  khác đổi sang scene khác) → **huỷ** cờ "đã thấy". Có hai gói đó thì "đã thấy" mới đúng nghĩa
+  *đang cùng chỗ*, không cần hạn thời gian.
+
+Không thấy nhau → **không phải về thành**: cả party ra điểm an toàn → leader chọn **kênh mới**
+(`st["kenh_hong"]` để picker tránh đúng kênh vừa hỏng) → đồng bộ lại → mời.
+
+**8. `da toi diem (x,y)` từng là BỊA — và `refresh_server_position` không dùng để xác nhận được
+(30/08).** `navigate_to` kết thúc bằng `self.pos = (x, y)` rồi in *"đã tới điểm"*: **tự gán cho mình
+cái đích rồi báo là tới**. Lệnh move bị trận chiến nuốt / địa hình chặn / hết `waypoint_moves` giữa
+đường đều cho ra đúng dòng log đó. Mọi thứ bên trên (ra rally, gom party, kéo ra spot, kiểm "đã ra
+điểm tập kết chưa") đều tin dòng này.
+
+Bẫy kèm theo: `refresh_server_position()` **hết giờ vẫn trả `True`** và giữ nguyên `self.pos` —
+tức trả về chính con số dead-reckoning mình tự đoán. Dùng nó để "xác minh" là tự lừa mình.
+Phải dùng **`toa_do_that()`**: gửi `0x0c 0100`, chỉ trả toạ độ khi `_position_generation` đổi
+(có `0x03` self-spawn mới); hết giờ → `None`.
+
+**KHÔNG có lệnh hỏi toạ độ, và server KHÔNG echo lệnh move của chính mình.** Đo trên log 30/08:
+**184 gói `0x06` đã gửi, 0 gói `S:006-001` nhận về mang entity của chính mình** (45 gói nhận về
+đều của người khác). Client thật cũng vậy — `MoveController.SendMove` **gửi toạ độ lên**
+(`C:006-001`), còn `Role.player.position` là biến **local**; `protocolTable[6][1]` chỉ để vẽ
+**người khác** đi. Đừng đi tìm lại lệnh này.
+
+Các điểm server **có** sửa vị trí cho mình — bot phải bắt đủ:
+`S:007-000 <玩家瞬移>` · `S:012-000 <玩家更換場景>` (opcode `0x07`/`0x0c` sub `0000`) ·
+`S:013-004 <玩家離開隊伍>` (kèm toạ độ) · `0x03` self-spawn.
+
+**Và một nguồn KHÔNG có gói nào: MEMBER TỰ ĐI THEO LEADER.** `Logic/Team.lua:176` (`AddMember`):
+```lua
+Role.players[roleId]:Teleport(leader.position);
+Role.players[roleId]:UpdateSpeed(leader.speed);
+```
+Hoàn toàn client-side. Nên `pos` của member **trôi khỏi thực tế ngay khi leader di chuyển**, và
+đó là nguồn sai toạ độ lớn nhất:
+- `laochin` (party 3, 30/08 23:33) báo `pos=(990,480)` đúng rally, `combat=True` liên tục, trong
+  khi 3 member cùng chỗ `combat=False` suốt → thực tế nó vẫn ở điểm quái, mà đường tắt *"đã ở
+  rally rồi"* khiến nó **không bao giờ đi**;
+- 4 acc party 6 gửi move từ toạ độ cũ → `di chuyen QUA XA (ma 14)` → đứt kết nối cùng một giây.
+
+Cách chữa: `GameClient._theo_leader_sua_pos()` — member trong party lệch leader > 200 thì **lấy
+vị trí leader làm của mình** (client leader nằm cùng tiến trình, đọc thẳng). Gọi ở đầu
+`navigate_to` và ở hai chỗ kiểm "đã ra rally chưa".
+
+`toa_do_that()` thường trả `None` khi đi lại bình thường — **`None` = chưa xác nhận được, KHÔNG
+phải "chưa tới"**; coi nhầm là treo cả luồng.
+
+`navigate_to` giờ: hỏi server → cách đích > `NAV_TOI_NOI` (60) thì **đi bù rồi hỏi lại**, tối đa
+`NAV_XAC_NHAN_LAN` (3) vòng, vẫn không tới thì **trả `False`** kèm log
+`KHONG toi duoc (x,y) ... server noi dang o (...)`. Server không trả lời → giữ hành vi cũ nhưng
+log rõ `(server KHONG xac nhan duoc)`.
+
+> Cùng một bệnh với mục 7: **bot tin con số nó tự nhớ/tự suy ra thay vì hỏi server.**
+> Gặp bất kỳ chỗ nào kết luận từ biến nội bộ (kênh, toạ độ, roster) — hỏi lại server trước.
+
 Note 2026-08-07:
 - Client Lua `UITeam.UpdateList()` hien "tim nguoi/tim doi" tu `Role.players`, loc cung
   `SceneManager.sceneId` va `SceneManager.instanceId`. Moi party thuong goi `Team.Invite(role)` ->

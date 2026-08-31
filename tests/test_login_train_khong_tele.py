@@ -82,7 +82,7 @@ class TestXongDGKhongVeThanh(unittest.TestCase):
         """
         s = _doc("run_party_digioi.py")
         i = s.find("def _ve_cho_cho_pha_train(")
-        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 2600]
+        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 4200]
         self.assertIn('(tm or {}).get("safe")', than, "phai lay safe DAY DU tu config map")
         self.assertIn("<= 60 ** 2", than, "da dung san o safe thi DUNG YEN")
         self.assertIn("DUNG YEN", than)

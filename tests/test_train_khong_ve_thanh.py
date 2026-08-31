@@ -12,6 +12,7 @@ san o bai train. Mat vai phut moi vong va de lac them nguoi giua duong.
 """
 import io
 import os
+import re
 import unittest
 
 import run_party_digioi as rp
@@ -52,7 +53,7 @@ class TestApVaoLuong(unittest.TestCase):
         s = _src()
         self.assertIn("def _party_tai_cho_xu_ly(", s)
         i = s.find("def _party_tai_cho_xu_ly(")
-        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 2200]   # bo docstring
+        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 5600]   # bo docstring
         self.assertIn("do_channel_sync()", than, "lech kenh -> sync kenh tai cho")
         self.assertNotIn("_do_reform", than, "xu ly tai cho KHONG duoc ve thanh")
 
@@ -70,7 +71,7 @@ class TestApVaoLuong(unittest.TestCase):
         quai ma cu bo chay, khong danh con nao."""
         s = _src()
         i = s.find("def _party_tai_cho_xu_ly(")
-        doan = s[i:i + 2600]
+        doan = s[i:i + 5600]
         self.assertIn("_bat_danh_neu_du_party()", doan)
 
     def test_CHUA_DU_PARTY_thi_KHONG_danh(self):
@@ -81,7 +82,7 @@ class TestApVaoLuong(unittest.TestCase):
         s = _src()
         i = s.find("def _bat_danh_neu_du_party():")
         self.assertGreater(i, 0)
-        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 1400]
+        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 3000]
         self.assertIn("joined_member_count(pidx) >= st[\"n_members\"]", than)
         self.assertIn("c.flee_mode = not _full", than)
         self.assertIn("if _full:", than)
@@ -92,7 +93,7 @@ class TestApVaoLuong(unittest.TestCase):
         """Moi party luc con lech kenh = loi moi khong toi noi, party mai khong du."""
         s = _src()
         i = s.find("def _party_tai_cho_xu_ly(")
-        doan = s[i:i + 3000]
+        doan = s[i:i + 8300]
         self.assertIn("if not do_channel_sync():", doan)
         j = doan.find("if not do_channel_sync():")
         nhanh = doan[j:doan.find("else:", j)]
@@ -102,7 +103,7 @@ class TestApVaoLuong(unittest.TestCase):
     def test_leader_moi_lai_NGAY_khong_doi_60s(self):
         s = _src()
         i = s.find("def _party_tai_cho_xu_ly(")
-        self.assertIn("_invite_party_participants(c, train_on_map, gap=1.0)", s[i:i + 3200])
+        self.assertIn("_invite_party_participants(c, train_on_map, gap=1.0)", s[i:i + 6200])
 
     def test_RA_SAFE_truoc_khi_doi_kenh(self):
         """User 27/08: "phai chay ra diem an toan roi moi switch chu".
@@ -113,8 +114,10 @@ class TestApVaoLuong(unittest.TestCase):
         s = _src()
         self.assertIn("def _ra_safe_truoc_khi_doi_kenh(", s)
         i = s.find("def _ra_safe_truoc_khi_doi_kenh(")
-        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 1600]
-        self.assertIn("c.navigate_to(", than)
+        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 3200]
+        # Di qua `_ra_rally_gom_lai` (bo chay + DOC LAI TOA DO xac nhan da toi + thu lai 3 lan)
+        # thay vi `navigate_to` tran - xem tests/test_lenh_doi_kenh_tay.py.
+        self.assertIn("_ra_rally_gom_lai(", than)
         self.assertIn('st.get("rally_point")', than)
         # Ca 2 duong doi kenh deu phai goi: lenh tay tu GUI va sync kenh trong luong
         self.assertIn('_ra_safe_truoc_khi_doi_kenh("lenh doi kenh tay")', s)
@@ -127,7 +130,7 @@ class TestApVaoLuong(unittest.TestCase):
         """
         s = _src()
         i = s.find('if kind == "channel":')
-        doan = s[i:i + 2600]
+        doan = s[i:i + 8600]
         self.assertIn("c._wait_combat_clear(idle=2.0, cap=120.0)", doan)
         self.assertIn("VAN dang trong tran -> chua doi kenh", doan)
         # phai CHUA doi kenh khi con in_combat -> co continue truoc switch_channel
@@ -138,7 +141,7 @@ class TestApVaoLuong(unittest.TestCase):
     def test_doi_kenh_that_bai_thi_KHONG_bao_thanh_cong(self):
         s = _src()
         i = s.find('if kind == "channel":')
-        doan = s[i:i + 4400]
+        doan = s[i:i + 10400]
         self.assertIn("GIU kenh cu", doan)
         # st["channel"] chi duoc ghi khi ok
         k = doan.find('st["channel"] = int(ch)')
@@ -150,7 +153,7 @@ class TestApVaoLuong(unittest.TestCase):
         im, vi dang train thi tran noi tiep tran nen vai lan dau chac chan roi vao giua tran."""
         s = _src()
         i = s.find('if kind == "channel":')
-        doan = s[i:i + 3600]
+        doan = s[i:i + 9600]
         self.assertIn("_han = time.time() + 300", doan, "kien tri toi 5 phut")
         self.assertIn("while time.time() < _han:", doan)
         # user bam lenh KHAC thi bo lenh cu, khong giu cho
@@ -160,14 +163,14 @@ class TestApVaoLuong(unittest.TestCase):
         """result 2/4: thu lai cung the -> de vong sync kenh chon kenh khac cho CA PARTY."""
         s = _src()
         i = s.find('if kind == "channel":')
-        doan = s[i:i + 3600]
+        doan = s[i:i + 9600]
         self.assertIn("if _res in (2, 4):", doan)
         self.assertIn("de sync kenh chon", doan)
 
     def test_ra_safe_goi_TRUOC_switch_channel(self):
         s = _src()
         i = s.find('if kind == "channel":')
-        doan = s[i:i + 2600]
+        doan = s[i:i + 8600]
         self.assertLess(doan.find("_ra_safe_truoc_khi_doi_kenh"), doan.find("c.switch_channel("),
                         "phai ra safe TRUOC khi doi kenh")
 
@@ -209,10 +212,24 @@ class TestApVaoLuong(unittest.TestCase):
 
     def test_DU_PARTY_moi_ra_train(self):
         """Truoc day `nj >= 1` -> chi can MOT member la leader keo ra spot danh, du party con
-        thieu 3 nguoi."""
+        thieu 3 nguoi.
+
+        Nhanh nay gio bam VI TRI (du party ma khong danh -> xem dang dung o dau) thay vi chi bam
+        co `training_started`; dieu KHONG doi la: chua du member thi KHONG ra train.
+        """
         s = _src()
-        self.assertIn('if nj >= st["n_members"] and not training_started:', s)
+        i = s.find('if nj < st["n_members"]:')
+        self.assertGreater(i, 0, "mat chot 'chua du member thi khong ra train'")
+        doan = re.sub(r"#.*", "", s[i:i + 7000])   # chu thich hay nhac lai chinh cau lenh
         self.assertNotIn("if nj >= 1 and not training_started:", s)
+        # Chi ra train o nhanh `elif` cua chot tren = da du n_members.
+        self.assertIn("_start_training(", doan)
+        # Nhanh "du party" la `else` cua chot thieu member (dang trong tran thi CHO het tran roi
+        # van xu, khong bo qua vong - xem test_du_party_thi_phai_ra_diem_quai).
+        i_else = doan.find("\n                    else:\n")
+        self.assertGreater(i_else, 0, "nhanh 'du party' phai la nhanh else cua chot thieu member")
+        self.assertLess(i_else, doan.find("_start_training("),
+                        "goi _start_training TRUOC khi qua chot du member")
 
     def test_thieu_nguoi_THOANG_QUA_thi_khong_ha_train(self):
         """Party lap lai binh thuong chi mat vai giay - ha ngay se thanh nhay ra/nhay vao spot."""
@@ -239,11 +256,11 @@ class TestApVaoLuong(unittest.TestCase):
         s = _src()
         self.assertIn("def _ra_rally_gom_lai(", s)
         i = s.find("def _ra_rally_gom_lai(")
-        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 1800]
+        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 6500]
         self.assertIn("c.flee_mode = True", than, "phai dut tran truoc")
         self.assertIn("c._wait_combat_clear(", than)
         self.assertIn("c.navigate_to(", than, "phai ve diem tap ket")
-        self.assertIn("<= 60 ** 2", than, "da o rally thi khong chay lai")
+        self.assertIn("if _da_toi():", than, "da o rally thi khong chay lai")
         # goi TRUOC khi giai tan/moi lai party
         j = s.find("_ra_rally_gom_lai(ly_do)")
         self.assertGreater(j, 0)
@@ -253,7 +270,7 @@ class TestApVaoLuong(unittest.TestCase):
         """reform_arrived co entry = co nguoi DANG DUNG CHO o thanh -> ve gop that, khong bo roi ho."""
         s = _src()
         i = s.find("_gather_wait_me = bool(_gather)")
-        doan = s[i:i + 1600]
+        doan = s[i:i + 3200]
         self.assertIn("not _gather_wait_me", doan)
 
 
@@ -268,9 +285,9 @@ class TestSyncKenhPhaiCheckKenh(unittest.TestCase):
 
     def test_duong_tat_phai_xet_ca_kenh(self):
         s = _src()
-        i = s.find("_live_ch[_u] = getattr(_uc")
-        self.assertGreater(i, 0, "phai doc ca current_channel cua tung acc")
-        doan = s[i:i + 1400]
+        i = s.find("_live_ch[_u] = _uc.kenh_that()")
+        self.assertGreater(i, 0, "phai hoi lai server kenh THAT cua tung acc, khong doc so nho san")
+        doan = s[i:i + 3000]
         self.assertIn('_ch_chot = st.get("channel")', doan)
         self.assertIn("int(_uch) != _ch_chot", doan)
         self.assertIn("continue", doan)

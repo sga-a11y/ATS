@@ -1,3 +1,4 @@
+import time
 import unittest
 from unittest import mock
 
@@ -27,6 +28,10 @@ class TestChannelSwitch(unittest.TestCase):
 
     def test_switch_channel_waits_for_success_ack(self):
         game = self.make_client()
+        # Kenh hien tai da TUOI -> `kenh_that()` khong phai hoi lai server (khong sinh goi 0x0c),
+        # de assert duoi day van do dung MOT goi 0x07 nhu truoc.
+        game.current_channel = 1
+        game.current_channel_at = time.time()
 
         with mock.patch.object(game, "send") as send:
             send.side_effect = lambda _op, _payload: game._on_channel_switch_result(_switch_result(0))
@@ -103,12 +108,14 @@ class TestChannelSwitch(unittest.TestCase):
         leader.self_entity = bytes.fromhex("1111111111111111")
         leader.current_map = 12001
         leader.current_channel = 12
+        leader.current_channel_at = time.time()
 
         member = self.make_client()
         member.party_idx = 19
         member.self_entity = bytes.fromhex("2222222222222222")
         member.current_map = 12001
         member.current_channel = 12
+        member.current_channel_at = time.time()
 
         _register_party_client(19, leader.self_entity, leader)
         _register_party_client(19, member.self_entity, member)
@@ -125,31 +132,34 @@ class TestChannelSwitch(unittest.TestCase):
 
         invite.assert_called_once_with(member.self_entity)
 
-    def test_invite_VAN_moi_khi_khac_kenh_vi_so_kenh_khong_dang_tin(self):
+    def test_invite_KHONG_moi_khi_LECH_KENH_that(self):
         leader = self.make_client()
         leader.party_idx = 19
         leader.self_entity = bytes.fromhex("1111111111111111")
         leader.current_map = 12001
         leader.current_channel = 12
+        leader.current_channel_at = time.time()
 
         member = self.make_client()
         member.party_idx = 19
         member.self_entity = bytes.fromhex("2222222222222222")
         member.current_map = 12001
         member.current_channel = 13
+        member.current_channel_at = time.time()
 
         _register_party_client(19, leader.self_entity, leader)
         _register_party_client(19, member.self_entity, member)
         _PARTY_ENTITIES[19] = {leader.self_entity, member.self_entity}
 
-        # DOI CHINH SACH: bo so "kenh" (instanceId) khi quyet dinh moi. instanceId tu doi giua
-        # chung va moi acc doc o thoi diem khac nhau -> so nhau ra "lech kenh live" OAN (bug that:
-        # ca party dung canh nhau van bi bao lech -> khong bao gio moi duoc ai). Nay CUNG MAP live
-        # la du.
+        # DOI LAI CHINH SACH (30/08): tung bo han so kenh vi hai gia tri NHO SAN hay lech oan.
+        # Nhung bo han thi party nam rai nhieu kenh van duoc coi la du dieu kien moi - user kiem
+        # chung tan mat: bot hien ca 5 nick party 3 o kenh 12, trong game la 12/12/12/2/1, moi
+        # mai khong ai vao doi va khong mot ma tu choi nao. Nay HOI LAI SERVER (`kenh_that`) roi
+        # moi so -> lech kenh THAT thi KHONG moi.
         with mock.patch.object(leader, "invite_entity") as invite:
-            self.assertEqual(leader.invite_members(gap=0), 1)
+            self.assertEqual(leader.invite_members(gap=0), 0)
 
-        invite.assert_called_once_with(member.self_entity)
+        invite.assert_not_called()
 
     def test_invite_KHONG_moi_khi_lech_MAP_live(self):
         """Cong con lai sau khi bo so kenh: lech MAP thi van phai chan."""

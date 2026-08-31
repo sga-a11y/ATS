@@ -153,10 +153,25 @@ class TestLoaiBlockCham(unittest.TestCase):
     def test_block_cham_nam_o_ve_sau_cung_bi_chan(self):
         self.assertTrue(TP._la_block_cham("3x1 + 1x2"))
 
-    def test_khong_dung_nguong_ti_le(self):
-        """User: 'khong can nguong dau, khi nao can t se bao loc luon file block train'.
-        Dinh 1 lan cung loai."""
-        self.assertTrue(TP.has_slow_block({"2x1": 99999, "1x3": 1}))
+    def test_block_cham_LE_TE_thi_KHONG_loai(self):
+        """User chot 26/08 'khong can nguong dau' -> dinh 1 lan cung loai. Nhung 30/08 lo ra la
+        chot do loai oan diem TOT NHAT: 'Trai Pham Thanh3 145-146' diem 0 co 4x1 426/439 tran
+        (97% - dung y user) ma bi loai chi vi DUNG MOT tran 1x3 (0.2%) -> party 1 phai tut xuong
+        map 142-143. Nay duoi nguong thi coi la nhieu."""
+        self.assertFalse(TP.has_slow_block({"2x1": 99999, "1x3": 1}))
+        self.assertFalse(TP.has_slow_block({"4x1": 426, "3x1": 11, "1x3": 1, "2x1": 1}))
+
+    def test_block_cham_NHIEU_thi_VAN_loai(self):
+        self.assertTrue(TP.has_slow_block({"2x1": 50, "1x3": 50}))
+        self.assertTrue(TP.has_slow_block({"2x1": 85, "1x2": 15}))
+        self.assertTrue(TP.has_slow_block({"4x1": 96, "1x3": 4}))   # 4% -> van loai
+
+    def test_nguong_DUOI_1_PHAN_TRAM(self):
+        """User chot 30/08: "doi lai duoi 1% la nhieu". Luat GOC van la "co block 1x2/1x3 thi loai
+        luon diem do" - nguong nay chi de bo qua ghi nhan LE TE, khong phai de noi tay luat."""
+        self.assertEqual(TP.SLOW_BLOCK_MAX_SHARE, 0.01)
+        self.assertFalse(TP.has_slow_block({"4x1": 426, "3x1": 11, "1x3": 1, "2x1": 1}))  # 0.2%
+        self.assertTrue(TP.has_slow_block({"4x1": 98, "1x3": 2}))                          # 2%
 
     def test_diem_co_block_cham_thi_khong_duoc_chon(self):
         tid = _tid_lv(100)
