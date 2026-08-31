@@ -881,10 +881,27 @@ def _leader_tu_kiem_kenh(c, st, label=""):
         # la chan ca vong moi party (log 30/08 21:09: 2 luot x 6s TIMEOUT moi 30s).
         ok = c.switch_channel(int(ch), wait=2.5, retries=1)
         if not ok:
-            # KHONG chan viec moi party: doi kenh hong la chuyen rieng, con moi thi cu moi.
-            log.warning("[%s] (LEADER) tu kiem kenh: chua ve duoc kenh party %s (nho san %s) "
-                        "-> van moi, vong sau kiem lai", label, ch,
-                        getattr(c, "current_channel", None))
+            _res = getattr(c, "_chan_switch_result", None)
+            if _res in (2, 4):
+                # 2 = KHONG CO khu do | 4 = kenh DA DAY. Kenh chot cua party la kenh KHONG VAO
+                # DUOC: giu nguyen thi ca party doi mai mot cho khong ai toi duoc.
+                #
+                # Log 31/08 party 1 (13:33-13:49): `st["channel"]=3` ma ca leader lan 3 member deu
+                # `Doi kenh 3 THAT BAI: khong co khu do de doi (result=2)`. Member bao "-> bao
+                # leader pick lai" roi nam cho `channel_ready` (khong ai set lai), con leader thi
+                # "van moi, vong sau kiem lai" -> moi 13s/lan suot 16 phut, `da join=1`.
+                log.warning("[%s] (LEADER) tu kiem kenh: kenh party %s KHONG VAO DUOC (%s) -> BO "
+                            "kenh nay, chon lai kenh khac cho ca party", label, ch,
+                            "khong ton tai" if _res == 2 else "DA DAY")
+                with st["lock"]:
+                    st["channel"] = None
+                    st["channel_ready"].clear()
+                    _bump_reform(st)
+            else:
+                # KHONG chan viec moi party: doi kenh hong la chuyen rieng, con moi thi cu moi.
+                log.warning("[%s] (LEADER) tu kiem kenh: chua ve duoc kenh party %s (nho san %s) "
+                            "-> van moi, vong sau kiem lai", label, ch,
+                            getattr(c, "current_channel", None))
         elif _truoc is not None and int(_truoc) != int(ch):
             log.warning("[%s] (LEADER) tu kiem kenh: dang o kenh %s chu KHONG phai %s -> da doi ve",
                         label, _truoc, ch)
@@ -7053,6 +7070,9 @@ WATCH_ALLWAIT_SEC = 120                     # CA PARTY cung cho qua lau = deadlo
 # LAP (~1-2s: reform route, reform ve thanh, PB cho leader, PB cho report) -> tuoi luon ~1s.
 # Bao cao GIA = acc DA di lam viec khac ma khong ai doi pha -> tuoi tang vo han.
 WATCH_WAIT_FRESH_SEC = 15                   # bien rong gap ~7 lan nhip lam moi
+# Party o map train ma THIEU NGUOI lien tuc qua lau -> ep dong bo. Doc THANG so nguoi da join,
+# khong qua bao cao pha, nen khong bi cac la chan "co nguoi dang lam" che mat.
+WATCH_THIEU_NGUOI_SEC = 300
 
 
 def _party_watcher(pidx):
@@ -7060,6 +7080,7 @@ def _party_watcher(pidx):
     st = _pstate(pidx)
     mismatch_t0 = None
     allwait_t0 = None
+    thieu_t0 = None
     while True:
         time.sleep(WATCH_EVERY_SEC)
         accs = [u for u, _p, _l, _k in party_accounts(pidx)]
@@ -7139,6 +7160,35 @@ def _party_watcher(pidx):
                                 pidx + 1, u, d["task"], d["elapsed"] / 60.0)
             mismatch_t0 = None
             continue
+
+        # 2b) PARTY THIEU NGUOI QUA LAU -> EP DONG BO, bat ke ai dang "lam" hay "cho".
+        #
+        # Day la lo hong that: luat (1) doi CA PARTY cung cho, ma leader thi luon ban (moi party
+        # 13-20s/lan) nen khong bao gio du; luat (3) ben duoi thay "co acc dang cho" la bo qua ->
+        # party ket 1/4 VO HAN ma khong luat nao dong toi.
+        # Log 31/08 party 1 (13:33-13:49, 16 phut): st["channel"]=3 khong ton tai (result=2), 3
+        # member nam cho `channel_ready` khong ai set lai, leader moi lien tuc `da join=1 |
+        # roster server=1`. Watcher im lang suot.
+        # Log 31/08 party 14 (09:14-09:26, 12 phut): trubon ket trong sync kenh nen cong loi moi
+        # khong mo, leader `da join=3` mai.
+        try:
+            _can = int(st.get("n_members") or 0)
+            _co = joined_member_count(pidx) + 1 if _can else 0   # +1: chinh leader
+        except Exception:
+            _can = _co = 0
+        if _can and _co < _can and st.get("training_started"):
+            if thieu_t0 is None:
+                thieu_t0 = time.time()
+                log.info("[party %d] WATCH: party THIEU NGUOI (%d/%d) -> bat dau tinh gio",
+                         pidx + 1, _co, _can)
+            elif time.time() - thieu_t0 >= WATCH_THIEU_NGUOI_SEC:
+                log.warning("[party %d] WATCH: THIEU NGUOI (%d/%d) lien tuc %.0f phut -> EP DONG BO",
+                            pidx + 1, _co, _can, (time.time() - thieu_t0) / 60.0)
+                request_party_resync(pidx, "watcher: party thieu nguoi qua lau",
+                                     cooldown=WATCH_THIEU_NGUOI_SEC)
+                thieu_t0 = None
+            continue
+        thieu_t0 = None
 
         # 3) Co acc dang CHO (nhung khong phai tat ca) -> co nguoi dang lam, cho la HOP LE.
         #    Vd: 3 acc xong DG dung cho, 2 acc con dang trong DG -> khong phai lech viec.

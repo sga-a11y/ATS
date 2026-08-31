@@ -11294,6 +11294,30 @@ class GameClient:
         self.flee_mode = flee
         moves = attempts = 0
         previous = self.pos
+        # DOI MAP GIUA CHUNG -> HUY LUON CHUYEN DI. Dich (x,y) la toa do cua MAP CU; o map moi no
+        # la mot cho hoan toan khac, gui move toi do = nhay ca nghin don vi -> `ma 14`.
+        #
+        # Client lam dung the (`_lua_dec/Logic/SceneManager.lua:468-474`):
+        #   if Role.player ~= nil and stopMove then Role.player:StopMove() end
+        #   if CGTimer.ContainsListener(MoveController.SendRolePosition) and stopMove then
+        #     CGTimer.RemoveListener(MoveController.SendRolePosition) end
+        # tuc HUY dich dang di VA go luon bo gui move.
+        #
+        # Log 31/08 party 1 (14:05:42-45): minhminhmq dang chay `ve diem tap ket (3170,530)` cua
+        # map 21814 thi `bi keo sang map 12003 (khong tu qua cong)`; navigate_to van di tiep ->
+        # `SERVER NGAT KET NOI: di chuyen QUA XA (ma 14)` -> relogin ra 12003 -> ca party lech map
+        # -> reform, keo nhau ve thanh. Mot lan bi keo map lam hong ca vong train.
+        _map_bat_dau = self.current_map
+
+        def _da_doi_map():
+            if _map_bat_dau is None or self.current_map is None:
+                return False
+            if self.current_map == _map_bat_dau:
+                return False
+            log.warning("[%s] navigate_to: DOI MAP giua chung (%s -> %s) -> HUY chuyen di toi "
+                        "(%d,%d) (dich thuoc map cu)",
+                        self._label, _map_bat_dau, self.current_map, x, y)
+            return True
         # Moc de biet co NGUON NAO sua pos trong luc di khong (0x03 / S:007-000 / S:012-000 /
         # S:013-004 / bam theo leader). Khong doi = khong co gi de xac nhan -> dung ngoi cho.
         _gen_truoc_khi_di = self._position_generation
@@ -11314,6 +11338,8 @@ class GameClient:
                     return False
                 if abort and abort():
                     log.info("[%s] navigate_to: abort (reform moi/stop) -> dung", self._label)
+                    return False
+                if _da_doi_map():
                     return False
                 # DUNG TRAN GIUA DUONG: DUNG YEN CHO, KHONG TINH VAO NGAN SACH BUOC DI.
                 #
@@ -11359,6 +11385,8 @@ class GameClient:
         #    `0x03` self-spawn / `S:007-000` / `S:012-000` / `S:013-004` / bam theo leader.
         #    Khong co thi thoi, KHONG cho.
         for _vong in range(1, self.NAV_XAC_NHAN_LAN + 1):
+            if _da_doi_map():
+                return False
             _that = None
             try:
                 if self._position_generation != _gen_truoc_khi_di:
@@ -11386,6 +11414,8 @@ class GameClient:
             while _them < 8 and self.running:
                 if abort and abort():
                     log.info("[%s] navigate_to: abort khi di bu -> dung", self._label)
+                    return False
+                if _da_doi_map():
                     return False
                 if self.in_combat(idle_secs=1.0):
                     if _cho_bu > self.NAV_CHO_TRAN_CAP:
