@@ -4301,8 +4301,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 if c.running and not c.state.in_battle:
                     c.heal_npc40_between_battles()
 
-            if c.start_loandau_loop(point, _before_loandau_repeat):
-                log.info("[%s] (%s) LOAN DAU: toi %s va bat dau vong dang ky/danh", label, role, point)
+            _mot_tran = bool(pcfg.get("loandau_mot_tran"))
+            if c.start_loandau_loop(point, _before_loandau_repeat, mot_tran=_mot_tran):
+                log.info("[%s] (%s) LOAN DAU: toi %s va bat dau vong dang ky/danh%s", label, role,
+                         point, " (CHI 1 TRAN roi thoat)" if _mot_tran else "")
         elif event_stand_mode:
             # EVENT: da tele toi map event o tren -> DUNG YEN HOAN TOAN, cho moi tay. Moi nick doc lap,
             # KHONG lap party/sync kenh (bo qua het nhanh leader/member ben duoi). Auto-accept moi tay
@@ -5454,8 +5456,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # ==== LOAN DAU: run_loop bao HET GIO (qua 22h) -> thoat game. Moi acc tu xu ly, khong
             # co tin hieu party nao ca. ====
             if event_solo_kind == "chaos_vs" and getattr(c, "_loandau_done", False):
-                log.info("[%s] (%s) LOAN DAU: het gio, thang %d tran -> ra khoi map + thoat game",
-                         label, role, getattr(c, "_loandau_wins", 0))
+                log.info("[%s] (%s) LOAN DAU: %s, thang %d tran -> ra khoi map + thoat game",
+                         label, role,
+                         "danh xong 1 tran (tick chi danh 1 tran)"
+                         if pcfg.get("loandau_mot_tran") else "het gio",
+                         getattr(c, "_loandau_wins", 0))
                 # KHONG co buoc doi thuong: server TU trao (user xac nhan 25/08). Chi can ra khoi
                 # map event roi tat - de nguyen trong 10991 thi lan login sau bat dau tu map event.
                 _loandau_ra_khoi_map(c, ev, label)
@@ -7046,7 +7051,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         death_return_town=True, pet_death_return_town=True,
                         event_exchange_sig="",
                         train_pick="", mob_min=0, mob_max=0, mob_elements="",
-                        di_gioi_pick=""):
+                        di_gioi_pick="", loandau_mot_tran=False):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -7079,6 +7084,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "auto_team_dungeon": bool(auto_team_dungeon),
         "team_dungeons": config.normalize_team_dungeons(team_dungeons),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
+        "loandau_mot_tran": bool(loandau_mot_tran),
         "use_phuc_than": bool(use_phuc_than), "use_digioi_ho_phu": bool(use_digioi_ho_phu),
         "fight_legion_boss": bool(fight_legion_boss),
         "do_van_tieu": bool(do_van_tieu),

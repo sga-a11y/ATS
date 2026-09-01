@@ -131,6 +131,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Servers.init(applicationContext)   // danh sach server doc tu assets/servers.json
+        Events.init(applicationContext)    // danh sach event doc tu assets/events.json
 
         setContent {
             TsBotTheme {
@@ -798,6 +799,7 @@ fun TsBotApp(
             initialSpThresh = partyBeingEdited.spThresh,
             initialDiGioiLevel = partyBeingEdited.diGioiLevel,
             initialDiGioiPick = partyBeingEdited.diGioiPick,
+            initialLoanDauMotTran = partyBeingEdited.loanDauMotTran,
             onApplyDiGioiLevel = { idx ->
                 service?.setDiGioiLevel(partyBeingEdited.accounts.map { it.username }, idx)
             },
@@ -1736,6 +1738,7 @@ fun AddPartyDialog(
     initialSpThresh: Int = 500000,
     initialDiGioiLevel: Int = 2,
     initialDiGioiPick: String = "",
+    initialLoanDauMotTran: Boolean = false,
     onApplyAdvancedToAll: ((Party) -> Int)? = null,
     onApplyDiGioiLevel: ((Int) -> Unit)? = null,
 ) {
@@ -1747,6 +1750,8 @@ fun AddPartyDialog(
     var selectedMode by remember { mutableStateOf(initialRunMode) }
     var cityExpanded by remember { mutableStateOf(false) }
     var selectedCity by remember { mutableStateOf(initialCityKey) }
+    // LOAN DAU: chi vao danh MOT tran roi thoat event. Mac dinh TAT.
+    var loanDauMotTran by remember { mutableStateOf(initialLoanDauMotTran) }
     var digioiSolo by remember { mutableStateOf(initialDigioiSolo) }
     var noLeader by remember { mutableStateOf(initialNoLeader) }
     var leaderWhitelistText by remember { mutableStateOf(initialLeaderWhitelist.joinToString("\n")) }
@@ -1869,6 +1874,7 @@ fun AddPartyDialog(
         spThresh = spThreshText.toIntOrNull() ?: 500000,
         diGioiLevel = diGioiLevel,
         diGioiPick = diGioiPick,
+        loanDauMotTran = loanDauMotTran,
     )
 
     AlertDialog(
@@ -2402,6 +2408,15 @@ fun AddPartyDialog(
                             }
                         }
                     }
+                    // LOAN DAU: "Chi danh 1 tran" - danh xong tran dau la ra khoi map + tat acc.
+                    // Chi hien khi event dang chon co ho tro (party_battle.kind == "chaos_vs").
+                    if (Events.ALL[selectedCity]?.motTranDuoc == true) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = loanDauMotTran,
+                                     onCheckedChange = { loanDauMotTran = it })
+                            Text("Chỉ đánh 1 trận")
+                        }
+                    }
                 }
                 // De trong cuoi Column: cac dropdown gan cuoi (vd "Quai" khi mode Train) can CHO
                 // BEN DUOI de DropdownMenu popup bung ra - dialog nay co RAT NHIEU field nen field
@@ -2466,6 +2481,7 @@ fun AddPartyDialog(
                             spThresh = spThreshText.toIntOrNull() ?: 500000,
                             diGioiLevel = diGioiLevel,
                             diGioiPick = diGioiPick,
+                            loanDauMotTran = loanDauMotTran,
                         ))
                         if (!saved) nameError = "Tên party đã tồn tại"
                     }

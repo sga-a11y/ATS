@@ -629,6 +629,16 @@ def _hang_cua(state, unit):
     return khac[0] if khac else 2
 
 
+def _hang_char_ta(state):
+    """Hang cua CHAR phe TA. Tran thuong = 3, LOAN DAU bi xep phe kia = 0."""
+    return _hang_cua(state, config.UNIT_CHAR)
+
+
+def _hang_pet_ta(state):
+    """Hang cua PET phe TA. Tran thuong = 2, LOAN DAU bi xep phe kia = 1."""
+    return _hang_cua(state, config.UNIT_PET)
+
+
 def _revive_decision_for_skill(state, unit, stat, rev):
     """Dung skill hoi sinh cu the, target con chet tu dong theo rule uu tien chung."""
     if rev is None or not _is_revive(rev):
@@ -1090,11 +1100,14 @@ def _try_sp_restore(state, unit, skills, stat):
     if low_slot is None:
         return None
     key = state.label + (":char" if unit == config.UNIT_CHAR else ":pet") + ":spr"
+    # HANG DICH = hang CHAR phe TA (khong phai hang 3 co dinh): LOAN DAU co the bi xep sang phe
+    # kia -> char ta o hang 0, gui b=3 la HOI SP CHO DICH (va co the bi coi la goi chien dau sai).
+    _hc = _hang_char_ta(state)
     if not _claim_support_action(
-        state, "heal_sp", (3, low_slot), key, stat.sp, _sprestore_decide,
+        state, "heal_sp", (_hc, low_slot), key, stat.sp, _sprestore_decide,
     ):
         return None
-    return Decision(unit, state.my_atype, low_slot, spr, b=3)
+    return Decision(unit, state.my_atype, low_slot, spr, b=_hc)
 
 
 def _lowest_hp_enemy(state, offered):
@@ -1485,7 +1498,7 @@ def decide_multipet(state, atype, skills, stat, options):
     elif custom is not None:
         return custom
     if _is_mineral_battle(state):
-        return Decision(config.UNIT_PET, atype, atype, config.SKILL_FLEE, b=2)
+        return Decision(config.UNIT_PET, atype, atype, config.SKILL_FLEE, b=_hang_pet_ta(state))
     # CHI danh khi CO du lieu quai MOI rieng cho ATYPE nay (tranh danh lap tren 0x33 cu - xem
     # _combat_attack ban goc; o day dung dict rieng theo atype vi 4 pet KHONG the dung chung 1
     # bien gen (se dam vao nhau, chi 1 con "thay" du lieu moi moi luot)).
@@ -1535,11 +1548,12 @@ def decide_char(state, options, first_turn=False):
             and config.SKILL_HEAL_ALL in state.skills_char):
         _low = state.lowest_hp_ally()
         _ht = _low.slot if (_low is not None and getattr(_low, "slot", None) is not None) else at
+        _hc = _hang_char_ta(state)   # LOAN DAU doi phe -> char ta khong con o hang 3
         if _claim_support_action(
-            state, "heal_hp", (3, _ht), state.label + ":char",
+            state, "heal_hp", (_hc, _ht), state.label + ":char",
             state.char.sp, _heal_decide,
         ):
-            return Decision(config.UNIT_CHAR, at, _ht, config.SKILL_HEAL_ALL, b=3)
+            return Decision(config.UNIT_CHAR, at, _ht, config.SKILL_HEAL_ALL, b=_hc)
     # HOI SP TOAN TEAM (chi quest_mode): sau heal HP, truoc tan cong
     spr = _try_sp_restore(state, config.UNIT_CHAR, state.skills_char, state.char)
     if spr is not None:
@@ -1548,7 +1562,8 @@ def decide_char(state, options, first_turn=False):
     if br is not None:
         return br
     if _is_mineral_battle(state):
-        return Decision(config.UNIT_CHAR, at, at, config.SKILL_FLEE, b=3)
+        # BO CHAY nham CHINH MINH -> hang phai la hang cua MINH (loan dau = 0, khong phai 3).
+        return Decision(config.UNIT_CHAR, at, at, config.SKILL_FLEE, b=_hang_char_ta(state))
     return _combat_attack(state, config.UNIT_CHAR, state.skills_char, state.char, options,
                           "char_spam", config.CHAR_FIRE_MIN_SP)
 
@@ -1583,11 +1598,12 @@ def decide_pet(state, options, first_turn=False):
             and config.SKILL_HEAL_ALL in state.pet_skills):
         _low = state.lowest_hp_ally()
         _ht = _low.slot if (_low is not None and getattr(_low, "slot", None) is not None) else at
+        _hc = _hang_char_ta(state)   # LOAN DAU doi phe -> char ta khong con o hang 3
         if _claim_support_action(
-            state, "heal_hp", (3, _ht), state.label + ":pet",
+            state, "heal_hp", (_hc, _ht), state.label + ":pet",
             state.pet.sp, _heal_decide,
         ):
-            return Decision(config.UNIT_PET, at, _ht, config.SKILL_HEAL_ALL, b=3)
+            return Decision(config.UNIT_PET, at, _ht, config.SKILL_HEAL_ALL, b=_hc)
     # HOI SP TOAN TEAM (chi quest_mode): sau heal HP, truoc tan cong
     spr = _try_sp_restore(state, config.UNIT_PET, state.pet_skills, state.pet)
     if spr is not None:
@@ -1596,6 +1612,6 @@ def decide_pet(state, options, first_turn=False):
     if br is not None:
         return br
     if _is_mineral_battle(state):
-        return Decision(config.UNIT_PET, at, at, config.SKILL_FLEE, b=2)
+        return Decision(config.UNIT_PET, at, at, config.SKILL_FLEE, b=_hang_pet_ta(state))
     return _combat_attack(state, config.UNIT_PET, state.pet_skills, state.pet, options,
                           "pet_spam", config.PET_FIRE_MIN_SP)

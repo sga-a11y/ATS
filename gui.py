@@ -1405,8 +1405,14 @@ class BotGUI(tk.Tk):
 
     # ---- refresh status ----
     # ---- THONG BAO PARTY (hien tai: lo; sau nay them tui day / het thuoc...) ----
+    # Slot tui con it hon nguong nay -> canh bao trong "Chu y". User chot 01/09 nang tu 5 len 10:
+    # tui gan day thi nhieu viec HONG AM THAM truoc khi tui day han - vd nhan qua mail that bai
+    # (xem `claim_mail`), nhat do rot trong tran, mua do o lo.
+    BAG_CANH_BAO_SLOT_TRONG = 10
+
     def _party_bag_notify(self, pidx):
-        """List (username, {_bag}) cho acc co slot tui trong <=5 (chua bam Bo qua). Tui LEN DAU."""
+        """List (username, {_bag}) cho acc con < BAG_CANH_BAO_SLOT_TRONG slot trong (chua bam
+        "Bo qua"). Tui LEN DAU."""
         out = []
         try:
             accs = ctrl.party_accounts(pidx)
@@ -1422,7 +1428,7 @@ class BotGUI(tk.Tk):
                 if not getattr(c, "bag_slots", None):   # chua co snapshot tui -> chua tinh duoc
                     continue
                 free = c.bag_free_slots()
-                if free > 5:
+                if free >= self.BAG_CANH_BAO_SLOT_TRONG:
                     continue
                 out.append((u, {"_bag": True, "used": c.bag_used_slots(),
                                 "cap": c.bag_capacity(), "free": free, "maxed": c.bag_slot_maxed()}))
@@ -1656,9 +1662,11 @@ class BotGUI(tk.Tk):
                         _txt = f"Mua slot\n{pr[0]} vàng" if pr else "Mua slot\n(?)"
                         self.after(0, lambda: buybtn.winfo_exists() and buybtn.configure(text=_txt))
                     _t2.Thread(target=_price, daemon=True).start()
-                    _line = f'{self._mask_user(u)} túi đồ sắp đầy {used}/{cap}'
+                    _line = (f'{self._mask_user(u)} túi đồ sắp đầy {used}/{cap} '
+                             f'(còn {it["free"]} slot trống)')
                 else:
-                    _line = f'{self._mask_user(u)} túi đồ ĐẦY {used}/{cap} (đã tối đa slot, không mua thêm được)'
+                    _line = (f'{self._mask_user(u)} túi đồ {used}/{cap}, còn {it["free"]} slot '
+                             f'trống (đã tối đa slot, không mua thêm được)')
                 ttk.Label(rowf, text=_line, wraplength=380, justify="left").pack(side="left", fill="x", expand=True)
                 return
             # --- THONG BAO LO ---
@@ -3480,6 +3488,9 @@ class PartyConfigFrame(ttk.Frame):
         self.events = [(k, v.get("label", k)) for k, v in (getattr(config, "EVENTS", {}) or {}).items()
                        if not v.get("hidden")]
         self.event_var = tk.StringVar(); self.event_cb = None
+        # LOAN DAU: chi vao danh MOT tran roi ra khoi map event + tat acc. Mac dinh TAT.
+        self.loandau_mot_tran_var = tk.BooleanVar(
+            value=bool(self._preset.get("loandau_mot_tran", False)))
         # Di Gioi: party (mac dinh, giu nguyen hanh vi cu - lap party chung, dong bo kenh) vs solo
         # (moi acc chay rieng le, khong lap party, khong dong bo kenh - dung khi acc khong can/khong
         # muon gop chung, vd khac nick khong lien quan nhau).
@@ -5401,6 +5412,21 @@ class PartyConfigFrame(ttk.Frame):
             idx = next((i for i, (k, _l) in enumerate(self.events) if k == cur), 0)
             if labels:
                 self.event_var.set(labels[idx])
+            # Tick NGAY BEN PHAI o chon event; chi co nghia voi Loan dau nen tu bat/tat theo event.
+            self.loandau_cb = ttk.Checkbutton(self.dyn, text="Chỉ đánh 1 trận",
+                                              variable=self.loandau_mot_tran_var)
+            self.loandau_cb.pack(side="left", padx=(8, 0))
+
+            def _hop_loan_dau(*_a):
+                # Neo theo DU LIEU (`party_battle.kind == "chaos_vs"` trong events.json) chu khong
+                # theo key/nhan: doi ten event hay them event loan dau moi la khong phai sua GUI.
+                _k = next((k for k, lbl in self.events if lbl == self.event_var.get()), "")
+                _ev = (getattr(config, "EVENTS", {}) or {}).get(_k) or {}
+                _la_loan_dau = ((_ev.get("party_battle") or {}).get("kind") == "chaos_vs")
+                self.loandau_cb.configure(state="normal" if _la_loan_dau else "disabled")
+
+            self.event_cb.bind("<<ComboboxSelected>>", _hop_loan_dau, add="+")
+            _hop_loan_dau()
         elif mode == "digioi":
             ttk.Label(self.dyn, text="Cấp quái:", width=10).pack(side="left")
             ttk.Combobox(self.dyn, textvariable=self.di_gioi_level_var, width=21, state="readonly",
@@ -5622,6 +5648,7 @@ class PartyConfigFrame(ttk.Frame):
             data["digioi_mode"] = "solo" if self.digioi_solo_var.get() else "party"
         if mode == "event":
             data["event_key"] = event_key
+            data["loandau_mot_tran"] = bool(self.loandau_mot_tran_var.get())
         return data
 
 

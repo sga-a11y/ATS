@@ -1067,6 +1067,76 @@ def _load_gamedata_items() -> dict:
                                     "ft": int(v.get("ft", 0) or 0)}
     return _gamedata_items
 
+
+# Item tab CHUYEN SINH (lo) -> vo tuong nao, bac nao. tid -> {"loai", "rb0", "rb1", "rb2"}
+_chuyen_sinh_map = None
+
+# a1k/a2k trong items_gamedata.json phan biet 3 loai item chuyen sinh (da doi chieu ca 777 item
+# trong furnace_pool.json - moi item CHI thuoc dung mot loai, va a1k luon == a2k):
+CS_KIM_TOA, CS_ME, CS_TUONG_TINH = 65, 66, 67
+
+
+def _load_chuyen_sinh_map() -> dict:
+    """{item_id: {"loai": 65/66/67, "rb0"/"rb1"/"rb2": npc_id}} cho item tab chuyen sinh.
+
+    Ten item bi VIET TAT trong game ("K.Toa Ma Ng.Nghia" trong khi vo tuong ten day du la "Ma
+    Nguyen Nghia") nen KHONG the ghep item voi vo tuong bang ten. Nhung `items_gamedata.json` co
+    san npc_id:
+
+        K.Toa Ma Ng.Nghia  a1k=65 a1v=10007 (0x2717 "Ma Nguyen Nghia rb0")  a2v=41099 (rb1)
+        Tieu Kieu Me       a1k=66 a1v=41080 (rb1)                           a2v=45034 (rb2)
+        T.Tinh Tran Cung   a1k=67 a1v=41113 (rb1)                           a2v=45081 (rb2)
+
+    => dai id: 10xxx (0x27xx) = rb0, 41xxx (0xA0xx) = rb1, 45xxx = rb2.
+    Kim Toa chi cho biet rb0+rb1; rb2 suy tiep tu item Me/T.Tinh CUNG rb1.
+    """
+    global _chuyen_sinh_map
+    if _chuyen_sinh_map is not None:
+        return _chuyen_sinh_map
+    # CHI nhan gia tri THAT SU la npc_id vo tuong. `a1v`/`a2v` khong phai luc nao cung la vo tuong:
+    #   'Me Nhan Dieu Tuyet' a1k=66 a1v=100 (LEVEL yeu cau, khong phai npc) a2v=45424 (moi la npc)
+    #   'K.Toa Ngoc Tho'     a1v=22095 a2v=22096 - ca hai deu KHONG co trong pets.json
+    # 50/938 mon dinh truong hop nay. Lay bua vao la chan nham (hoac bo sot) mon can mua.
+    _pets = _load_json_data_file("pets.json") or {}
+    _pets = _pets.get("pets", _pets) if isinstance(_pets, dict) else {}
+    npc_hop_le = set()
+    for k in _pets:
+        try:
+            npc_hop_le.add(int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k))
+        except Exception:
+            pass
+
+    def _npc(v):
+        v = int(v or 0)
+        return v if v in npc_hop_le else 0
+
+    tho = {}
+    for iid, v in (_load_json_data_file("items_gamedata.json") or {}).items():
+        if not isinstance(v, dict):
+            continue
+        a1k, a2k = int(v.get("a1k", 0) or 0), int(v.get("a2k", 0) or 0)
+        if a1k != a2k or a1k not in (CS_KIM_TOA, CS_ME, CS_TUONG_TINH):
+            continue
+        try:
+            tid = int(iid, 16) if isinstance(iid, str) and iid.lower().startswith("0x") else int(iid)
+        except Exception:
+            continue
+        tho[tid] = (a1k, _npc(v.get("a1v")), _npc(v.get("a2v")))
+    # rb1 -> rb2 (chi Me/T.Tinh moi mang cap nay)
+    rb2_theo_rb1 = {a1v: a2v for (k, a1v, a2v) in tho.values()
+                    if k in (CS_ME, CS_TUONG_TINH) and a1v and a2v}
+    _chuyen_sinh_map = {}
+    for tid, (k, a1v, a2v) in tho.items():
+        if k == CS_KIM_TOA:
+            m = {"loai": k, "rb0": a1v, "rb1": a2v, "rb2": rb2_theo_rb1.get(a2v, 0)}
+        else:
+            m = {"loai": k, "rb0": 0, "rb1": a1v, "rb2": a2v}
+        if not (m["rb1"] or m["rb2"]):
+            continue        # khong lan ra vo tuong nao -> giu nguyen hanh vi cu (van mua)
+        _chuyen_sinh_map[tid] = m
+    return _chuyen_sinh_map
+
+
 _mark_bitids = None
 _warp_points = None
 def _load_warp_points() -> list:
@@ -1572,6 +1642,67 @@ def load_point_cache(username):
         return None, 0
     diem = entry.get("point")
     return (diem if isinstance(diem, dict) else None), int(entry.get("point_ts") or 0)
+
+
+def load_dac_ky_cache(username) -> set:
+    """Set npc_id vo tuong TUNG THAY da hoc dac ky (khoa "dac_ky" trong account_skills_cache.json).
+
+    VI SAO PHAI CACHE: co `specialSkillLearned` CHI co trong goi `0x0f` (vo tuong MANG THEO,
+    `Role.lua:857`). Vo tuong nam NHA TRO chi ve qua `S:031-006` -> `Inn.SaveNpc` voi vo ven
+    npcId/level/exp/hp/name/status (`_lua_dec/Logic/Inn.lua:25`) - KHONG co co dac ky, tuc CHINH
+    CLIENT cung khong biet. Nen phai nho lai luc no con mang theo.
+    """
+    import json, os
+    username = str(username or "").strip()
+    if not username:
+        return set()
+    path = _skill_cache_path()
+    if not os.path.exists(path):
+        return set()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            allc = json.load(fh) or {}
+    except Exception:
+        return set()
+    entry = allc.get(username)
+    if not isinstance(entry, dict):
+        return set()
+    return {int(x) for x in (entry.get("dac_ky") or []) if str(x).isdigit() or isinstance(x, int)}
+
+
+def save_dac_ky_cache(username, npc_ids) -> bool:
+    """GOP them npc_id vo cache dac ky (khong bao gio xoa: dac ky hoc roi la vinh vien)."""
+    import json, os
+    username = str(username or "").strip()
+    moi = {int(i) for i in (npc_ids or ()) if i}
+    if not username or not moi:
+        return False
+    with _skill_cache_lock:
+        # `load_dac_ky_cache` KHONG lay lock (co y) -> goi trong day an toan. `_skill_cache_lock`
+        # la Lock thuong, KHONG reentrant: dung cho ham nao lay lock vao day.
+        cu = load_dac_ky_cache(username)
+        if moi <= cu:
+            return False
+        path = _skill_cache_path()
+        allc = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    allc = json.load(fh) or {}
+            except Exception:
+                allc = {}
+        entry = allc.get(username)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["dac_ky"] = sorted(cu | moi)
+        allc[username] = entry
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(allc, fh, ensure_ascii=False)
+        except Exception as e:
+            log.debug("ghi cache dac ky loi: %s", e)
+            return False
+        return True
 
 
 def skills_snapshot(st):
@@ -2187,17 +2318,23 @@ class GameClient:
         return time.time() - getattr(self, "_gate_choice_sent_at", 0.0) < 3.0
 
     def _dump_recent(self, ly_do: str):
-        """In 12 goi GUI + 12 goi NHAN gan nhat -> tim goi gay kick.
+        """In 24 goi gan nhat, GUI va NHAN TRON CHUNG theo dung THU TU THOI GIAN.
 
         Truoc day CHI in o nhanh "empty data". Con 2 nhanh kia (OSError = connection reset, va
         "server im lang" = half-open) thi im -> mat rot ma khong biet vi sao. Log 15:37 dinh dung
         cho do: 5 acc deu rot, khong mot dong goi-cuoi nao de lan.
+
+        VA phai TRON CHUNG hai chieu: truoc day in hai danh sach RIENG, moc thoi gian lai chi toi
+        GIAY -> khong biet bot gui `0x32` TRUOC hay SAU khi server gui `0x35` offer cua luot do.
+        Dung dieu can biet nhat khi dieu tra vu rot ma 42 `修改戰鬥封包` o loan dau (01/09).
         """
         log.warning("[%s] === GOI GAN NHAT TRUOC KHI ROT (%s) ===", self._label, ly_do)
-        for ts, op, hx in list(self._recent_sends)[-12:]:
-            log.warning("[%s]   gui-cuoi %s 0x%02x %s", self._label, ts, op, hx)
-        for ts, op, hx in list(self._recent_recvs)[-12:]:
-            log.warning("[%s]   nhan-cuoi %s 0x%02x %s", self._label, ts, op, hx)
+        _goi = ([(ts, ">>gui ", op, hx) for ts, op, hx in self._recent_sends]
+                + [(ts, "<<nhan", op, hx) for ts, op, hx in self._recent_recvs])
+        for ts, chieu, op, hx in sorted(_goi, key=lambda x: x[0])[-24:]:
+            log.warning("[%s]   %s.%03d %s 0x%02x %s", self._label,
+                        time.strftime("%H:%M:%S", time.localtime(ts)), int(ts * 1000) % 1000,
+                        chieu, op, hx)
 
     def scene_resume(self, settle: float = 0.6):
         """SAU KHI DOI SCENE (qua cong / len thuyen / thang tran phuc kich o cong) client THAT
@@ -2231,7 +2368,7 @@ class GameClient:
             return   # da rot ket noi -> bo qua (timer combat co the fire sau khi socket dong)
         if opcode != protocol.OP_HEARTBEAT:
             log.debug("[%s] SEND op=0x%02x: %s", self._label, opcode, payload.hex())
-            self._recent_sends.append((time.strftime("%H:%M:%S"), opcode, payload.hex()))
+            self._recent_sends.append((time.time(), opcode, payload.hex()))
         try:
             with self._send_lock:
                 self.sock.sendall(protocol.encode(opcode, payload))
@@ -2506,7 +2643,7 @@ class GameClient:
         log.info("[%s] Loan dau: minh o (%d,%d) -> phe ta hang %s, dich hang %s",
                  self._label, row, col, self.state.ally_rows, self.state.enemy_rows)
 
-    def start_loandau_loop(self, point, before_repeat=None):
+    def start_loandau_loop(self, point, before_repeat=None, mot_tran=False):
         if self._loandau_started:
             return False
         self._loandau_started = True
@@ -2514,6 +2651,7 @@ class GameClient:
         self._loandau_thread = threading.Thread(
             target=loandau.run_loop,
             args=(self, tuple(point), self._loandau_stop, before_repeat),
+            kwargs={"mot_tran": bool(mot_tran)},
             daemon=True,
             name="loandau-%s" % (self._label or self._username),
         )
@@ -2813,7 +2951,7 @@ class GameClient:
             pkts, consumed = protocol.parse_stream(self.recv_buf)
             self.recv_buf = self.recv_buf[consumed:]
             for opcode, pkt in pkts:
-                self._recent_recvs.append((time.strftime("%H:%M:%S"), opcode, pkt.hex()[:60]))
+                self._recent_recvs.append((time.time(), opcode, pkt.hex()[:60]))
                 try:
                     self._dispatch(opcode, pkt)
                 except Exception as e:
@@ -3377,6 +3515,7 @@ class GameClient:
             _pid = _pets[_idx - 1][0] if 1 <= _idx <= len(_pets) else None
             if _pid:
                 self.pet_special_skill[_pid] = True
+                self._nho_dac_ky(_pid)
             log.info("[%s] PET vua MO DAC KY (S:020-049 idx=%d, pet=%s)", self._label, _idx,
                      ("0x%04x" % _pid) if _pid else "chua biet")
         elif opcode == 0x18:
@@ -3912,6 +4051,10 @@ class GameClient:
                 #   if self.data.specialSkillLearned and skillDatas[npcDatas[id].specialSkill] then
                 self.pet_faith[pid] = b[start + 27]
                 self.pet_special_skill[pid] = bool(b[start + 246 + _nl])
+                if self.pet_special_skill[pid]:
+                    # NHO LAI: cat vao nha tro roi thi khong con doc duoc co nay nua (xem
+                    # `load_dac_ky_cache`) - ma luat "khong mua Me cho tuong da hoc dac ky" van can.
+                    self._nho_dac_ky(pid)
                 # GUI (tab skill per-pet) doc tu STATE chu khong co client -> cho state thay chung
                 self.state.pet_faith = self.pet_faith
                 self.state.pet_special_skill = self.pet_special_skill
@@ -4966,7 +5109,15 @@ class GameClient:
             tracker.register_action(source, d.skill, (d.b, d.target))
         import random
         if tail is None:
-            tail = struct.pack("<H", random.randint(1, 0xFFFF))
+            # HAI byte cuoi = Y HET CLIENT (`FightRoleController.lua:2659`):
+            #     local checkByte = math.random(220);   -- 1..220, KHONG phai 1..255
+            #     sendBuffer:WriteByte(checkByte);
+            #     sendBuffer:WriteByte(math.random(256));
+            # Bot truoc day random ca hai byte trong 1..0xFFFF -> byte checkByte co the > 220, thu
+            # ma client THAT khong bao gio gui. Log 01/09 20:34:10 (loan dau, acc ttsau): goi pet
+            # `...d532 EA bb` co checkByte = 234 -> server tra `S:000-000` ly do 42
+            # `修改戰鬥封包` (sua goi chien dau) va DA HAN acc (quit = true).
+            tail = bytes([random.randint(1, 220), random.randint(0, 255)])
         payload = (b"\x01\x00"
                    + bytes([hang_nguon, d.atype, getattr(d, "b", 0), d.target])
                    + struct.pack("<H", d.skill)
@@ -8876,6 +9027,57 @@ class GameClient:
     # ten tab config (per-acc) -> kind trong shop packet (ESelect: 1/2/5 lo thuong)
     FURNACE_TAB_KIND = {"vo_tuong": 1, "trang_bi": 2, "chuyen_sinh": 5}
 
+    def _nho_dac_ky(self, npc_id):
+        """Ghi nho vo tuong nay DA HOC dac ky (song qua viec cat vao nha tro / tat acc)."""
+        try:
+            self._dac_ky_biet = set(getattr(self, "_dac_ky_biet", None)
+                                    or load_dac_ky_cache(getattr(self, "_username", None)))
+            self._dac_ky_biet.add(int(npc_id))
+            save_dac_ky_cache(getattr(self, "_username", None), [int(npc_id)])
+        except Exception as e:
+            log.debug("[%s] nho dac ky loi: %s", self._label, e)
+
+    def dac_ky_da_hoc(self) -> set:
+        """Set npc_id da hoc dac ky = dang mang theo (chac chan) + tung thay truoc day (cache)."""
+        biet = set(getattr(self, "_dac_ky_biet", None) or ())
+        if not biet:
+            biet = load_dac_ky_cache(getattr(self, "_username", None))
+            self._dac_ky_biet = set(biet)
+        return biet | {pid for pid, co in (self.pet_special_skill or {}).items() if co}
+
+    def vo_tuong_dang_co(self) -> set:
+        """Set npc_id vo tuong acc dang so huu: 4 con MANG THEO + tat ca con o NHA TRO.
+
+        Nha tro ve qua `S:031-006` ngay luc login (`vantieu_roster_ids`) nen luc soi lo da co du.
+        """
+        ids = {int(p[0]) for p in (getattr(self.state, "carried_pets", None) or ()) if p and p[0]}
+        ids |= {int(v) for v in (self.vantieu_roster_ids or {}).values() if v}
+        return ids
+
+    def _lo_da_du_khoi_mua(self, item_id: int):
+        """Item chuyen sinh nay DA VO DUNG voi acc -> ly do (str) de bo qua, None = van nen mua.
+
+        User chot 01/09: mua re, nhung mua mon KHONG CAN DUNG NUA la TON SLOT TUI.
+          - Kim Toa <X>: da co <X> o rb1 HOAC rb2 (mang theo hoac nha tro) -> khoi mua.
+          - Me <X>: <X> da hoc dac ky -> khoi mua.
+          - Tuong Tinh: KHONG gioi han (user giu nguyen).
+        """
+        info = _load_chuyen_sinh_map().get(int(item_id))
+        if not info:
+            return None
+        if info["loai"] == CS_KIM_TOA:
+            co = self.vo_tuong_dang_co()
+            for bac in ("rb1", "rb2"):
+                if info.get(bac) and info[bac] in co:
+                    return "da co %s (npc 0x%04x)" % (bac, info[bac])
+            return None
+        if info["loai"] == CS_ME:
+            hoc = self.dac_ky_da_hoc()
+            for bac in ("rb1", "rb2"):
+                if info.get(bac) and info[bac] in hoc:
+                    return "vo tuong nay DA HOC dac ky (npc 0x%04x)" % info[bac]
+        return None
+
     def buy_furnace_item(self, kind: int, slot: int, item_id: int, wait: float = 1.5) -> bool:
         """MUA 1 item trong lo: C:089-002 = 0x59 sub02 + [kind u8][slot u8][itemId u16 LE].
         kind/slot/itemId LAY TU goi soi (shops[kind][slot]). Server tra S:089-002 result:
@@ -8950,6 +9152,12 @@ class GameClient:
                     if _skip:
                         log.info("[%s] LO: %s (%s) da co %d trong tui -> KHONG tu mua",
                                  self._label, nm, tab_name, _bag)
+                        continue
+                    # Vo dung voi acc nay (da reborn / da hoc dac ky) -> mua ve chi TON SLOT TUI.
+                    _thua = self._lo_da_du_khoi_mua(it["id"]) if kind == 5 else None
+                    if _thua:
+                        log.info("[%s] LO: %s (%s) %s -> KHONG tu mua (mua ve chi ton slot tui)",
+                                 self._label, nm, tab_name, _thua)
                         continue
                     log.info("[%s] LO: AUTO MUA %s (%s slot%d, tui=%d)",
                              self._label, nm, tab_name, it["index"], _bag)

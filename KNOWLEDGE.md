@@ -344,6 +344,48 @@ c0 91 11 00 00 00 32 01 00 [unit] [action_type] [b11] [target_pos] [skill_lo ski
 | skill_id | 2 | LE uint16 | |
 | crc | 2 | varies | server không validate chặt |
 
+### Bố cục THẬT (soi `FightRoleController.lua:2655-2667`, 2026-09-01)
+
+```lua
+sendBuffer:WriteByte(fightRole.colm);   -- NGUỒN
+sendBuffer:WriteByte(fightRole.row);
+sendBuffer:WriteByte(self.colm);        -- ĐÍCH
+sendBuffer:WriteByte(self.row);
+sendBuffer:WriteUInt16(useID);
+sendBuffer:WriteByte(checkByte);        -- math.random(220)  <-- CHỈ TỚI 220
+sendBuffer:WriteByte(math.random(256));
+Network.Send(50, kind, sendBuffer);     -- kind 1 = dùng skill, 2 = dùng đồ
+```
+
+`fightRole` = **người hành động**, `self` = **mục tiêu** — thấy rõ ở dòng ngay trên:
+`if fightRole.party_Kind ~= self.party_Kind then` ("không được dùng đồ hồi phục cho phe địch").
+
+> **Client đặt tên NGƯỢC trực giác**: `MaxChipColm = 4`, `MaxChipRow = 5` (`FightField.lua:10-13`),
+> mà lưới là 4 HÀNG × 5 CỘT ⇒ `colm` chính là **HÀNG** (0..3), `row` là **CỘT** (0..4).
+> Nên bố cục thật là `[nguồn.hàng][nguồn.cột][đích.hàng][đích.cột]` — **đúng y** cái bot đang gửi
+> (`[unit][atype][b][target]`). Đừng lại đi nghi hoán vị lần nữa.
+
+**Hai byte cuối KHÔNG phải random tự do**: byte áp chót là `checkByte = math.random(220)`, tức
+**1..220**. Bot từng random cả 2 byte trong `1..0xFFFF`.
+
+## LOẠN ĐẤU (đấu trường PvP) — server có thể xếp mình sang phe kia
+
+Bố cục đấu trường (capture 25/08): char ở hàng **0 và 3**, pet ở hàng **1 và 2** → hai phe là
+`{0,1}` và `{3,2}`. Mình ở hàng nào thì phe đó là TA (`BattleState.doi_phe_theo_hang_cua_minh`).
+Cột thì pet **cùng cột với char**, không đổi.
+
+Hệ quả: **mọi** giá trị hàng trong `0x32` phải suy từ phe thật (`char_row` / `ally_rows`), không
+được viết cứng `3` (char) / `2` (pet):
+- hàng NGUỒN → `combat._hang_cua(state, unit)`
+- hàng ĐÍCH khi buff / hồi máu / hồi SP → `_hang_char_ta()` / `_hang_pet_ta()`
+- `SKILL_FLEE` nhắm **chính mình** → cũng phải là hàng của chính unit đó
+
+> **Sự cố 2026-09-01 (party 7, acc `ttsau`)**: rớt `S:000-000` lý do **42** `修改戰鬥封包`
+> ("sửa gói chiến đấu", `quit = true` → bị đá hẳn), 2 lần liên tiếp ngay lượt đầu trận loạn đấu.
+> Tìm ra hai lỗi: gói pet có `checkByte = 234` (> 220); và buff/heal/flee còn viết cứng `b=2/3`
+> nên khi đổi phe thành **hồi máu cho địch** / nhắm vào ô không phải của mình.
+> Trước đó đã có một sự cố cùng mã 42 (25/08 21:58) do gửi hàng nguồn `3/2` khi đang đứng ở hàng 0.
+
 ---
 
 ## 5. BATTLE FLOW
@@ -2823,6 +2865,51 @@ Nên client **không bao giờ xoá mail còn quà chưa nhận được**.
 > không đợi xác nhận. **Túi đầy → server từ chối cho nhận → bot vẫn xoá → MẤT QUÀ.**
 > Sửa: chỉ xoá mail có trong `S:083-002`, mail rỗng thì `53 03` (đã đọc) trước rồi mới xoá; mail
 > còn quà mà không nhận được thì GIỮ LẠI + cảnh báo (dọn túi rồi login lại là nhận).
+
+## 7s. ITEM TAB CHUYỂN SINH (lò) — ghép item ↔ võ tướng bằng `a1k/a1v/a2v`
+
+Nguồn: `items_gamedata.json` (crack gamedata) đối chiếu toàn bộ 777 item tab Chuyển Sinh trong
+`furnace_pool.json`. Mỗi item chỉ thuộc **một** loại, và `a1k` luôn `== a2k`:
+
+| `a1k` | Loại | `a1v` | `a2v` | Số món |
+|---|---|---|---|---|
+| 65 | Kim Tỏa | npc **rb0** | npc **rb1** | 458 |
+| 66 | Mê | npc **rb1** | npc **rb2** | 170 |
+| 67 | Tướng Tinh | npc **rb1** | npc **rb2** | 310 |
+
+```
+K.Tỏa Mã Ng.Nghĩa (0xb7fb)  a1k=65 a1v=10007 (0x2717 "Mã Nguyên Nghĩa rb0") a2v=41099 (rb1)
+Tiểu Kiều Mê                a1k=66 a1v=41080 (rb1)                          a2v=45034 (rb2)
+T.Tinh Trần Cung            a1k=67 a1v=41113 (rb1)                          a2v=45081 (rb2)
+```
+
+> **KHÔNG ghép bằng TÊN.** Tên item bị viết tắt: `K.Tỏa Mã Ng.Nghĩa` ↔ võ tướng `Mã Nguyên Nghĩa`,
+> `T.Tinh Tưởng Ngh.Cừ` ↔ `Tưởng Nghiễm Cừ`. Ghép bằng npc_id là chính xác tuyệt đối.
+
+> **KHÔNG đoán bậc reborn theo dải id, cũng không gộp theo tên.** Cùng một tướng có nhiều id ở
+> nhiều dải (Vu Độc = 10098 / 41010 / 42091 / 45230), và **"Quan Vũ" có 19 bản** hiển thị cùng tên
+> (`0x2f0b` rb0, `0x2f75`, `0x9d20`, `0xa05a`, `0xb08e`, ... ). Chỉ dùng `a1v`/`a2v` của item.
+
+> **`a1v`/`a2v` KHÔNG phải lúc nào cũng là npc_id.** `Mê Nhạn Điêu Tuyết` có `a1v=100` (level yêu
+> cầu); `K.Tỏa Ngọc Thố` có `a1v=22095 a2v=22096` không hề nằm trong `pets.json`. 50/938 món dính
+> kiểu này → phải lọc qua tập id của `pets.json` trước khi dùng.
+
+Bot dựng bảng runtime bằng `_load_chuyen_sinh_map()` (`bot/client.py`); rb2 của món Kim Tỏa suy
+tiếp từ món Mê/T.Tinh có cùng rb1 (148/458 món không suy được vì tướng đó không có Mê/T.Tinh).
+
+### Đặc kỹ (`specialSkillLearned`) — võ tướng trong NHÀ TRỌ thì KHÔNG đọc được
+
+| Nguồn | Có cờ đặc kỹ? |
+|---|---|
+| `0x0f` võ tướng MANG THEO (`Role.lua:857`) | **có** |
+| `S:020-049 <武將學習特殊技>` khi vừa học (`protocal.lua:3146`) | **có** (theo index slot) |
+| `S:031-006` nhà trọ → `Inn.SaveNpc` (`Logic/Inn.lua:25`) | **KHÔNG** — chỉ `npcId/level/exp/hp/name/status` |
+
+`status` trong bản ghi nhà trọ chỉ là `ENpcInnStatus.Dispatch` (đang đi vận tiêu hay không), không
+liên quan đặc kỹ. **Chính client cũng không biết** con trong kho đã học đặc kỹ chưa — nên cách duy
+nhất là NHỚ LẠI lúc nó còn mang theo (bot: khoá `dac_ky` trong `account_skills_cache.json`).
+
+Xem thêm `documents/SOI_LO.md` cho luật tự mua đầy đủ.
 
 ## 7e-RE. ROUTE QUA BIỂN (thuyền) — ĐANG DỞ (tạm dừng 2026-07-24)
 

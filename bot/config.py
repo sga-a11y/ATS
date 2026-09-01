@@ -793,6 +793,8 @@ if _aj is not None:
                 "team_dungeons": normalize_team_dungeons(_party.get("team_dungeons")),
                 "digioi_mode": _party.get("digioi_mode", "party"),   # Di Gioi: "party" | "solo"
                 "event_key": _party.get("event_key", ""),   # mode 'event': key trong events.json (npc_40, nhi_kieu...)
+                # LOAN DAU: tick "Chi danh 1 tran" -> danh xong tran dau la ra khoi map + tat acc.
+                "loandau_mot_tran": bool(_party.get("loandau_mot_tran", False)),
                 "use_phuc_than": bool(_party.get("use_phuc_than", False)),
                 "use_digioi_ho_phu": bool(_party.get("use_digioi_ho_phu", False)),
                 "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),

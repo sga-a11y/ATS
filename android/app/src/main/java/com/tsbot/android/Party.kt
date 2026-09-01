@@ -98,6 +98,8 @@ data class Party(
     // TU CHON CAP QUAI DG: "" = dung diGioiLevel co dinh; khac "" = bot suy tu level party ->
     // MOC gan nhat (bang nhau lay moc THAP hon). Khoa nam trong train_pick.PICK_MODES.
     val diGioiPick: String = "",
+    // LOAN DAU: chi vao danh MOT tran roi ra khoi map event + tat acc. Mac dinh TAT.
+    val loanDauMotTran: Boolean = false,
     val accounts: List<Account> = emptyList(),
 )
 

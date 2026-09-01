@@ -57,6 +57,7 @@ class BotForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         Servers.init(applicationContext)   // danh sach server doc tu assets/servers.json
+        Events.init(applicationContext)    // danh sach event doc tu assets/events.json
         materializeSmartNavAssets()
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
@@ -269,6 +270,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.mobElements.joinToString(","),
                 // Tu chon CAP QUAI DG. THEM O CUOI CUNG (goi theo VI TRI).
                 party.diGioiPick,
+                // LOAN DAU "chi danh 1 tran". THEM O CUOI CUNG (goi theo VI TRI).
+                party.loanDauMotTran,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,

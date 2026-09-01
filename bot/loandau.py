@@ -175,11 +175,16 @@ def dang_ky(client, stop_event, sleep_fn, poll_interval=0.4, max_advance=MAX_ADV
 
 
 def run_loop(client, point, stop_event, before_repeat=None, sleep_fn=time.sleep,
-             poll_interval=0.4, wait_battle_sec=WAIT_BATTLE_SEC, window_fn=in_event_window):
+             poll_interval=0.4, wait_battle_sec=WAIT_BATTLE_SEC, window_fn=in_event_window,
+             mot_tran=False):
     """Vong loan dau cua MOT acc. Tra ve khi het gio / bi stop / rot.
 
     `before_repeat` goi giua 2 tran (hoi HP/SP) - dung o day la AN TOAN vi dialog da dong
     (`08 26`); tuyet doi khong hoi luc dialog dang mo (bai hoc 40NPC: bi kick).
+
+    `mot_tran` (tick "Chi danh 1 tran" trong GUI, mac dinh TAT): danh XONG tran dau tien la dung,
+    khong dang ky tran tiep. Ket thuc y het nhanh HET GIO - dat `_loandau_done` de vong chinh
+    `run_party_digioi` ra khoi map event roi TAT ACC.
     """
     lbl = getattr(client, "_label", "?")
     if not client.navigate_to(int(point[0]), int(point[1]), flee=False):
@@ -221,6 +226,11 @@ def run_loop(client, point, stop_event, before_repeat=None, sleep_fn=time.sleep,
             log.warning("[%s] Loan dau: tran khong thay ket thuc -> dung", lbl)
             return False
         log.info("[%s] Loan dau: het tran (thang=%d)", lbl, getattr(client, "_loandau_wins", 0))
+
+        if mot_tran:
+            log.info("[%s] Loan dau: tick 'chi danh 1 tran' -> XONG, khong dang ky tiep", lbl)
+            client._loandau_done = True
+            return True
 
         if before_repeat is not None and _active(client, stop_event) and window_fn():
             try:
