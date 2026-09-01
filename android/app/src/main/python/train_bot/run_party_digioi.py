@@ -25,6 +25,7 @@ from .train_maps_store import save_learned_regions
 from .login import login
 from .client import (ATTR_KEY_TO_CODE, ATTR_CODE_TO_TEN, ATTR_KINDS,
                         save_point_cache, load_point_cache,
+                        save_skill_char_cache, load_skill_char_cache,
                         GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined, mark_joined,
                         set_account_activity, get_account_activity, get_account_task,
@@ -1884,6 +1885,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # TU CONG DIEM TIEM NANG cua NHAN VAT (bang rule rieng tung acc). Chi chay MOT LAN
             # luc login, cung cho voi cac viec vat khac.
             _tu_cong_diem(c, username, label)
+            # TU NANG SKILL NHAN VAT (bang rule rieng tung acc, giong Point). Dat NGAY SAU tu cong
+            # diem: cung la "tieu diem theo bang rule", va cung chi chay MOT LAN luc login.
+            _tu_nang_skill(c, username, label)
             _kiem_han_ba_dau(c, username, label)   # Ba Dau sap het han -> bao o man Chu y
             if pcfg.get("auto_pet_skill", True):   # AUTO NANG SKILL PET: pet co diem skill -> nang (index 0->1->2 toi max)
                 try:
@@ -2321,9 +2325,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 return
             log.info("[%s] (%s) reconnect do auto phó bản đội VỠ -> check/chạy lại auto phó bản",
                      label, role)
-        _do_startup_world_boss = bool(auto_world_boss and not is_digioi and not is_reconnect)
-        _do_startup_team = bool(auto_team_dungeon and not is_digioi and (not is_reconnect or _td_redo))
-        _do_startup_daily = bool(not is_digioi and do_daily and (not is_reconnect or _o5_redo))
+        # CHUYEN PHA (DG -> train) KHONG PHAI RECONNECT: `_run_account_supervised` goi lai
+        # `run_account` voi `is_reconnect=not first` nen pha train luon bi coi la reconnect ->
+        # bi chan het 3 viec duoi. Nhung day la LAN DAU chay pha train trong phien, chua he lam
+        # boss the gioi / pho ban to doi / nhiem vu hang ngay lan nao.
+        #
+        # BUG THAT (log 01-02/09, mode digioi_train): o 1 (dungeon solo), o 2 (boss the gioi),
+        # o 5 (pho ban to doi) KHONG BAO GIO duoc lam - bi chan ca BA cua:
+        #   pha DG      -> `not is_digioi`
+        #   het gio DG  -> khoi do nam sau `if not dt_mode:` (dt_mode chinh la DG+Train)
+        #   pha train   -> `is_reconnect`
+        # Do 700/700 luot "CHUYEN PHA train" trong log: khong mot lan nao co daily hay boss, va
+        # 115/115 acc digioi_train deu dung o `o xong=[3,4,6,7,8]` (chi con cac o NHE tu keepalive).
+        _chuyen_pha = reuse_client is not None
+        _lan_dau = (not is_reconnect) or _chuyen_pha
+        _do_startup_world_boss = bool(auto_world_boss and not is_digioi and _lan_dau)
+        _do_startup_team = bool(auto_team_dungeon and not is_digioi and (_lan_dau or _td_redo))
+        _do_startup_daily = bool(not is_digioi and do_daily and (_lan_dau or _o5_redo))
         if _do_startup_world_boss or _do_startup_team or _do_startup_daily:
             if mode == "city":
                 try:
@@ -7678,7 +7696,9 @@ def furnace_notify_items(pidx):
 legion_notify_dismissed = set()
 
 
-DIEM_DE_DANH_MAC_DINH = 999        # acc chua config -> KHONG tieu diem nao
+DIEM_DE_DANH_MAC_DINH = 999
+# Diem skill DE DANH mac dinh - giong o Point: khong tick gi thi bot KHONG tieu diem cua user.
+SKILL_DE_DANH_MAC_DINH = 999        # acc chua config -> KHONG tieu diem nao
 
 
 def diem_rules_mac_dinh():
@@ -7857,6 +7877,87 @@ def point_info(username):
     except Exception as e:
         log.debug("[%s] ghi cache bang diem loi (bo qua): %s", username, e)
     return out
+
+
+def skill_char_info(username):
+    """Bang SKILL NHAN VAT cua 1 acc cho UI: he + diem skill con lai + cap tung skill.
+
+    ACC DANG CHAY -> doc live va GHI CACHE. ACC DA TAT -> doc CACHE de van XEM duoc cay skill
+    (them khoa `cache: True` + `ts`). NANG skill thi van phai bat acc len (phai gui goi len server).
+    """
+    c = account_clients.get(username)
+    if c is not None and (getattr(c, "char_skill_lv", None) or c.he_nhan_vat()):
+        out = {
+            # He lay tu `char_attrs[24]` khi `S:008-013` chua toi - dialog can biet mo tab he nao.
+            "element": c.he_nhan_vat(),
+            "left": c.skill_point_left(),
+            "lv": {"0x%04x" % int(k): int(v) for k, v in (c.char_skill_lv or {}).items()},
+            "char_level": getattr(c, "char_level", None),
+        }
+        try:
+            save_skill_char_cache(username, out)
+        except Exception as e:
+            log.debug("[%s] ghi cache skill nhan vat loi (bo qua): %s", username, e)
+        return out
+    _cache, _ts = load_skill_char_cache(username)
+    if _cache:
+        return dict(_cache, cache=True, ts=_ts)
+    return {}
+
+
+def nang_skill_ngay(username, skill_id, cap_dich):
+    """Hoc/nang TAY mot skill nhan vat tu dialog.
+
+    -> True = da gui | "queued" = dang trong tran, DA XEP HANG | (False, ly_do) = khong lam duoc.
+
+    DANG TRONG TRAN thi XEP HANG y het cong diem (`add_point`) / lenh tui do: client that chan
+    thao tac bang skill khi dang danh, gui bua la server nuot.
+    `de_danh=0`: day la lenh TAY cua user, khong dinh gi toi o "de danh" cua bang tu nang.
+    """
+    c = account_clients.get(username)
+    if c is None:
+        return False, "acc chưa chạy"
+    sid, cap = int(skill_id), int(cap_dich)
+    ten = "Nâng skill %s -> cấp %d" % (c._ten_skill(sid), cap)
+    try:
+        if c.queue_bag_cmd(ten, lambda: c.nang_skill_char([[sid, cap]], 0)):
+            return "queued"
+    except Exception as e:
+        log.debug("[%s] xep hang nang skill loi (gui thang): %s", username, e)
+    try:
+        da, ly_do = c.nang_skill_char([[sid, cap]], 0)
+    except Exception as e:
+        return False, str(e)
+    return (True if da else (False, ly_do or "không nâng được"))
+
+
+def apply_skill_config(username, cfg):
+    """GUI luu bang tu nang skill -> ap NGAY vao config dang chay (khong phai restart acc)."""
+    if not username:
+        return False
+    cu = dict((getattr(config, "ACCOUNT_SKILL", None) or {}).get(username) or {})
+    cu.update(cfg or {})
+    if not hasattr(config, "ACCOUNT_SKILL"):
+        config.ACCOUNT_SKILL = {}
+    config.ACCOUNT_SKILL[username] = cu
+    return True
+
+
+def _tu_nang_skill(client, username, label):
+    """Viec vat luc login: tu nang skill nhan vat theo bang rule cua acc."""
+    cfg = (getattr(config, "ACCOUNT_SKILL", None) or {}).get(username) or {}
+    rules = cfg.get("rules") or []
+    if not rules:
+        return
+    de_danh = cfg.get("reserve")
+    de_danh = SKILL_DE_DANH_MAC_DINH if de_danh is None else de_danh
+    try:
+        da, ly_do = client.nang_skill_char(rules, de_danh)
+    except Exception as e:
+        log.warning("[%s] loi tu nang skill: %s", label, e)
+        return
+    if not da and ly_do:
+        log.info("[%s] Tu nang skill: %s", label, ly_do)
 
 
 def add_point(username, stat_key, add):

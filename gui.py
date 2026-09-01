@@ -2074,6 +2074,28 @@ _MODE_LABEL = dict(MODE_OPTIONS)
 _LABEL_MODE = {v: k for k, v in MODE_OPTIONS}
 
 
+def _chan_cuon_doi_gia_tri(w, cuon_thay=None):
+    """CHAN lan chuot lam DOI GIA TRI cua Combobox/Spinbox.
+
+    ttk.Combobox va Spinbox mac dinh doi gia tri khi lan chuot len chung. Trong bang rule (Point /
+    Skill) cac o nay nam san sat nhau nen chi luot chuot qua la doi nham skill/chi so ma khong he
+    hay biet (user 01/09: "chi chuot vao day va cuon chuot thi no doi skill, lam t bi doi nham").
+
+    `cuon_thay` (neu co) = ham nhan delta de CUON BANG thay vi doi gia tri - de lan chuot trong
+    vung bang van cuon duoc nhu binh thuong.
+    """
+    def _nuot(e):
+        if cuon_thay is not None:
+            _d = getattr(e, "delta", 0)
+            if not _d:                     # X11 dung Button-4/5 thay vi delta
+                _d = 120 if getattr(e, "num", 0) == 4 else -120
+            cuon_thay(_d)
+        return "break"                     # KHONG cho widget xu ly tiep -> khong doi gia tri
+    for _ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+        w.bind(_ev, _nuot)
+    return w
+
+
 class PointDialog(tk.Toplevel):
     """DIEM TIEM NANG cua NHAN VAT (khong quan tam pet - user chot 31/08).
 
@@ -2176,6 +2198,7 @@ class PointDialog(tk.Toplevel):
                 text="(acc đang TẮT — số đã lưu lúc %s, bật acc mới cộng được)" % _luc)
         else:
             self.lbl_nguon.configure(text="(số đọc trực tiếp từ acc đang chạy)")
+        self._cap_nhat_done_tat_ca()      # chi so vua doi -> dong nao xong thi hien "Done"
 
     def _cong_tay(self):
         n = 0
@@ -2225,10 +2248,13 @@ class PointDialog(tk.Toplevel):
         row = ttk.Frame(self.rules_fr); row.pack(fill="x", pady=1)
         v_stat = tk.StringVar(value=(stat or "int"))
         v_target = tk.StringVar(value=str(target if target is not None else 0))
-        ttk.Combobox(row, width=8, state="readonly", textvariable=v_stat,
-                     values=[k for k, _t in self.STATS]).pack(side="left", padx=2)
-        ttk.Spinbox(row, from_=0, to=99999, width=8,
-                    textvariable=v_target).pack(side="left", padx=2)
+        _cb = ttk.Combobox(row, width=8, state="readonly", textvariable=v_stat,
+                           values=[k for k, _t in self.STATS])
+        _cb.pack(side="left", padx=2)
+        _sp = ttk.Spinbox(row, from_=0, to=99999, width=8, textvariable=v_target)
+        _sp.pack(side="left", padx=2)
+        for _w in (_cb, _sp):
+            _chan_cuon_doi_gia_tri(_w)
         ttk.Label(row, text="(chưa đạt thì cộng cho đủ, đạt rồi thì xuống dòng sau)",
                   foreground="#888").pack(side="left", padx=6)
         rec = {"fr": row, "stat": v_stat, "target": v_target}
@@ -2236,7 +2262,37 @@ class PointDialog(tk.Toplevel):
         def _xoa():
             self.rules.remove(rec); row.destroy()
         ttk.Button(row, text="✕", width=2, command=_xoa).pack(side="right", padx=2)
+        # "Done" XANH khi chi so GOC da dat muc dich (rule chot theo diem GOC, xem `_tu_cong_diem`).
+        lbl_done = tk.Label(row, text="", fg="#1a7f37")
+        lbl_done.pack(side="right", padx=6)
+        rec["done"] = lbl_done
+
+        def _kiem_done(*_a):
+            self._cap_nhat_done(rec)
+        v_stat.trace_add("write", _kiem_done)
+        v_target.trace_add("write", _kiem_done)
         self.rules.append(rec)
+        self._cap_nhat_done(rec)
+
+    def _cap_nhat_done(self, rec):
+        try:
+            dich = int(rec["target"].get() or 0)
+        except ValueError:
+            return
+        key = rec["stat"].get()
+        try:
+            goc = int(self.lbl_goc[key].cget("text"))
+        except Exception:
+            goc = None
+        try:
+            rec["done"].configure(text="Done" if (goc is not None and dich > 0 and goc >= dich)
+                                  else "")
+        except Exception:
+            pass
+
+    def _cap_nhat_done_tat_ca(self):
+        for rec in list(self.rules):
+            self._cap_nhat_done(rec)
 
     def _luu(self):
         try:
@@ -2259,6 +2315,364 @@ class PointDialog(tk.Toplevel):
             ctrl.apply_point_config(self.username, cfg)
         except Exception as e:
             log.warning("[%s] apply live bang cong diem loi: %s", self.username, e)
+        self.destroy()
+
+
+class SkillDialog(tk.Toplevel):
+    """TU NANG SKILL NHAN VAT - bo cuc GIONG BANG POINT (user chot 01/09).
+
+    Hai phan:
+      1. CAY SKILL theo tab he (Dia/Thuy/Hoa/Phong/1 chuyen/Quang Am) - mo dung tab HE CUA CHAR.
+         Hien dang CAY vi hoc cai duoi phai hoc cai tren truoc; moi dong ghi ro cap hien tai /
+         tran, va gia HOC (learnPt, GAP DOI neu khac he) va gia NANG (lvUpPt).
+      2. Bang TU NANG kieu rule: dong dau CO DINH "Skill point de danh" (mac dinh 999), cac dong
+         sau la skill + CAP MUON DAT, duyet TU TREN XUONG. Khong du diem thi hoc/nang toi sat
+         nhat; skill chua du tien quyet thi bot TU LAN theo cay hoc dan (xem `nang_skill_char`).
+    """
+
+    # Ten tab trong client (`local ESkillTag` cua UISkillTree.lua) -> nhan tieng Viet + so he.
+    # `element` cua skill: 1 Dia, 2 Thuy, 3 Hoa, 4 Phong -> dung de mo dung tab he cua char.
+    # KHONG co "Quang/Am" (LightDark): game CHUA MO cay do (user chot 01/09).
+    TABS = [("Earth", "Địa", 1), ("Water", "Thủy", 2), ("Fire", "Hỏa", 3),
+            ("Wind", "Phong", 4), ("Mind", "Tâm", 5), ("Turn1", "Chuyển sinh", None)]
+    TEN_TAB = {t: ten for t, ten, _e in TABS}
+    # Tab TAM chi hien skill DA HOC: no co toi 104 skill sinh hoat (Trinh Tham, Mua Ban, Dao
+    # Khoan...) ma acc chi dung vai cai -> hien het thi khong tim noi.
+    TAB_CHI_HIEN_DA_HOC = ("Mind",)
+    SO_DONG_HIEN = 5        # so dong rule hien cung luc; nhieu hon -> cuon
+    CAO_DONG = 30           # px moi dong (Combobox + Spinbox + nut xoa)
+
+    def __init__(self, master, username, row):
+        super().__init__(master)
+        self.username = username
+        self.row = row
+        self.title("Skill: %s" % username)
+        self.resizable(False, False)
+        self.transient(master.winfo_toplevel()); self.grab_set()
+        frm = ttk.Frame(self, padding=10); frm.pack(fill="both", expand=True)
+
+        self.info = {}
+        self.cap = {}          # skill_id -> cap hien tai
+
+        box = ttk.LabelFrame(frm, text="Cây skill nhân vật", padding=6)
+        box.pack(fill="both", expand=True)
+        self.lbl_left = ttk.Label(box, text="Điểm skill: ?")
+        self.lbl_left.pack(anchor="w")
+        self.nb = ttk.Notebook(box); self.nb.pack(fill="both", expand=True, pady=(4, 0))
+        self.trees = {}
+        for tab, ten, _el in self.TABS:
+            fr = ttk.Frame(self.nb)
+            tv = ttk.Treeview(fr, columns=("cap", "gia"), height=11, selectmode="browse")
+            tv.heading("#0", text="Skill"); tv.column("#0", width=260, anchor="w")
+            tv.heading("cap", text="Cấp"); tv.column("cap", width=70, anchor="center")
+            tv.heading("gia", text="Điểm"); tv.column("gia", width=150, anchor="w")
+            sb = ttk.Scrollbar(fr, orient="vertical", command=tv.yview)
+            tv.configure(yscrollcommand=sb.set)
+            tv.pack(side="left", fill="both", expand=True); sb.pack(side="right", fill="y")
+            self.nb.add(fr, text=ten)
+            self.trees[tab] = tv
+        # HOC/NANG TAY - doi xung voi nut "Cong ngay" ben bang Point: chon skill trong cay, chon
+        # cap muon len roi bam la gui luon (dang trong tran thi XEP HANG, het tran bot tu gui).
+        br = ttk.Frame(box); br.pack(fill="x", pady=(4, 0))
+        ttk.Label(br, text="Lên cấp:").pack(side="left")
+        self.var_cap_tay = tk.StringVar(value="1")
+        self.sp_cap_tay = ttk.Spinbox(br, from_=1, to=10, width=4,
+                                      textvariable=self.var_cap_tay)
+        self.sp_cap_tay.pack(side="left", padx=(2, 6))
+        self.btn_nang_tay = ttk.Button(br, text="Học / Nâng ngay", command=self._nang_tay)
+        self.btn_nang_tay.pack(side="left")
+        # Chua chon skill / skill DA MAX -> hai o nay XAM (khong bam duoc). Chon skill chua max ->
+        # o so tu nhay ve CAP HIEN TAI + 1 (user chot 01/09).
+        for _tv in self.trees.values():
+            _tv.bind("<<TreeviewSelect>>", self._doi_skill_chon, add="+")
+        self.nb.bind("<<NotebookTabChanged>>", self._doi_skill_chon, add="+")
+        ttk.Button(br, text="Thêm vào bảng dưới", command=self._them_tu_cay).pack(side="left", padx=6)
+        ttk.Button(br, text="Đọc lại", command=self._nap).pack(side="left")
+        self.lbl_nguon = ttk.Label(br, text="", foreground="#888")
+        self.lbl_nguon.pack(side="left", padx=6)
+
+        auto = ttk.LabelFrame(frm, text="Tự nâng Skill (duyệt từ trên xuống)", padding=6)
+        auto.pack(fill="both", expand=True, pady=(8, 0))
+        r0 = ttk.Frame(auto); r0.pack(fill="x", pady=2)
+        ttk.Label(r0, text="Skill point để dành:", width=18, anchor="w").pack(side="left")
+        self.var_reserve = tk.StringVar(value="999")
+        ttk.Spinbox(r0, from_=0, to=99999, width=8,
+                    textvariable=self.var_reserve).pack(side="left")
+        ttk.Label(r0, text="(luôn giữ lại; dư hơn số này mới nâng cho các dòng dưới)",
+                  foreground="#888").pack(side="left", padx=6)
+        # VUNG CUON: hien toi da `SO_DONG_HIEN` dong, nhieu hon thi cuon (user 01/09: "t add
+        # nhieu dong auto qua lam cai bang no tran luon"). Tkinter khong co "max height" cho Frame
+        # -> phai dat Frame vao Canvas co chieu cao co dinh.
+        _wrap = ttk.Frame(auto); _wrap.pack(fill="both", expand=True, pady=(4, 0))
+        self._rules_canvas = tk.Canvas(_wrap, height=self.CAO_DONG * self.SO_DONG_HIEN,
+                                       highlightthickness=0, bd=0)
+        self._rules_sb = ttk.Scrollbar(_wrap, orient="vertical",
+                                       command=self._rules_canvas.yview)
+        self._rules_canvas.configure(yscrollcommand=self._rules_sb.set)
+        self._rules_canvas.pack(side="left", fill="both", expand=True)
+        self.rules_fr = ttk.Frame(self._rules_canvas)
+        self._rules_win = self._rules_canvas.create_window((0, 0), window=self.rules_fr,
+                                                           anchor="nw")
+
+        def _co_lai(_e=None):
+            self._rules_canvas.configure(scrollregion=self._rules_canvas.bbox("all"))
+            self._rules_canvas.itemconfigure(self._rules_win,
+                                             width=self._rules_canvas.winfo_width())
+            # Chi hien thanh cuon khi THUC SU tran - it dong ma van co thanh cuon thi xau.
+            _can = len(self.rules) > self.SO_DONG_HIEN
+            if _can and not self._rules_sb.winfo_ismapped():
+                self._rules_sb.pack(side="right", fill="y")
+            elif not _can and self._rules_sb.winfo_ismapped():
+                self._rules_sb.pack_forget()
+        self._rules_fit = _co_lai
+        self.rules_fr.bind("<Configure>", _co_lai)
+        self._rules_canvas.bind("<Configure>", _co_lai)
+        # Lan chuot cuon duoc khi con tro dang o trong vung bang.
+        for _w in (self._rules_canvas, self.rules_fr):
+            _w.bind("<MouseWheel>",
+                    lambda e: self._rules_canvas.yview_scroll(-1 if e.delta > 0 else 1, "units"))
+        self.rules = []
+        ttk.Button(auto, text="+ Thêm dòng", command=lambda: self._them_dong()).pack(anchor="w")
+
+        bb = ttk.Frame(frm); bb.pack(fill="x", pady=(8, 0))
+        ttk.Button(bb, text="Lưu", command=self._luu).pack(side="right")
+        ttk.Button(bb, text="Đóng", command=self.destroy).pack(side="right", padx=6)
+
+        # `_nap()` TRUOC `_nap_rules()`: bang rule can `self.cap` de loc skill Tam chua hoc.
+        self._nap()
+        self._nap_rules()
+
+    # ---------------- du lieu ----------------
+
+    @staticmethod
+    def _skills_theo_tab(tab):
+        return {sid: v for sid, v in (getattr(config, "SKILL_INFO", {}) or {}).items()
+                if v.get("tree") == tab}
+
+    def _ten(self, sid):
+        info = (getattr(config, "SKILL_INFO", {}) or {}).get(int(sid)) or {}
+        return info.get("name") or ("0x%04x" % int(sid))
+
+    def _nap(self):
+        try:
+            self.info = ctrl.skill_char_info(self.username) or {}
+        except Exception as e:
+            log.warning("[%s] doc bang skill loi: %s", self.username, e)
+            self.info = {}
+        self.cap = {int(k, 16) if isinstance(k, str) else int(k): int(v)
+                    for k, v in (self.info.get("lv") or {}).items()}
+        left = self.info.get("left")
+        self.lbl_left.configure(text="Điểm skill: %s" % ("?" if left is None else left))
+        if not self.info:
+            self.lbl_nguon.configure(text="(acc chưa chạy và chưa có số đã lưu)")
+        elif self.info.get("cache"):
+            import datetime as _dt
+            _ts = self.info.get("ts") or 0
+            _luc = (_dt.datetime.fromtimestamp(_ts).strftime("%d/%m %H:%M") if _ts else "?")
+            self.lbl_nguon.configure(
+                text="(acc đang TẮT — số đã lưu lúc %s, bật acc mới nâng được)" % _luc)
+        else:
+            self.lbl_nguon.configure(text="(số đọc trực tiếp từ acc đang chạy)")
+        self._ve_cay()
+        self._cap_nhat_done_tat_ca()      # cap vua doi -> dong nao xong thi hien "Done"
+
+    def _ve_cay(self):
+        """Ve tung tab dang CAY: skill con nam DUOI skill tien quyet cua no."""
+        el_char = self.info.get("element")
+        for tab, _ten, _e in self.TABS:
+            tv = self.trees[tab]
+            tv.delete(*tv.get_children())
+            ds = self._skills_theo_tab(tab)
+            if tab in self.TAB_CHI_HIEN_DA_HOC:
+                ds = {sid: v for sid, v in ds.items() if self.cap.get(sid, 0) > 0}
+            con = {}
+            for sid, v in ds.items():
+                cha = int(v.get("pre") or 0)
+                con.setdefault(cha if cha in ds else 0, []).append(sid)
+
+            def _them(cha, duoi):
+                for sid in sorted(con.get(cha, [])):
+                    v = ds[sid]
+                    cap = self.cap.get(sid, 0)
+                    gia_hoc = int(v.get("learnPt") or 0)
+                    el = int(v.get("element") or 0)
+                    if 1 <= el <= 4 and el_char and el != int(el_char):
+                        gia_hoc *= 2
+                    mo_ta = ("nâng %d điểm/cấp" % int(v.get("lvUpPt") or 1) if cap
+                             else "học %d điểm" % gia_hoc)
+                    tv.insert(duoi, "end", iid=str(sid), text=self._ten(sid), open=True,
+                              values=("%d/%d" % (cap, int(v.get("maxLv") or 0)), mo_ta))
+                    _them(sid, str(sid))
+            _them(0, "")
+        # Mo dung tab HE CUA CHAR
+        for i, (_tab, _ten, el) in enumerate(self.TABS):
+            if el and el_char and int(el_char) == el:
+                self.nb.select(i)
+                break
+        self._doi_skill_chon()
+
+    # ---------------- bang rule ----------------
+
+    def _nap_rules(self):
+        cfg = ((self.row.get("settings") or {}).get("skill") or {})
+        self.var_reserve.set(str(cfg.get("reserve", 999)))
+        for r in cfg.get("rules") or []:
+            try:
+                sid, cap = int(r[0]), int(r[1])
+            except Exception:
+                continue
+            self._them_dong(sid, cap)
+
+    def _doi_skill_chon(self, _e=None):
+        """Bat/tat o "Len cap" + nut "Hoc / Nang ngay" theo skill dang chon."""
+        sid = self._skill_dang_chon(im_lang=True)
+        info = (getattr(config, "SKILL_INFO", {}) or {}).get(sid) if sid else None
+        cap = self.cap.get(sid, 0) if sid else 0
+        max_lv = int((info or {}).get("maxLv") or 0)
+        _bat = bool(info) and (max_lv <= 0 or cap < max_lv)
+        _tt = "normal" if _bat else "disabled"
+        try:
+            self.sp_cap_tay.configure(state=_tt, to=max(1, max_lv or 10))
+            self.btn_nang_tay.configure(state=_tt)
+        except Exception:
+            return
+        if _bat:
+            self.var_cap_tay.set(str(cap + 1))
+
+    def _skill_dang_chon(self, im_lang=False):
+        tv = self.trees[self.TABS[self.nb.index(self.nb.select())][0]]
+        sel = tv.selection()
+        if not sel:
+            if not im_lang:
+                messagebox.showinfo("Skill", "Chọn một skill trong cây trước.", parent=self)
+            return None
+        return int(sel[0])
+
+    def _nang_tay(self):
+        """Hoc/nang NGAY skill dang chon (khong dinh toi bang tu nang o duoi)."""
+        sid = self._skill_dang_chon()
+        if sid is None:
+            return
+        try:
+            cap = int(self.var_cap_tay.get() or 0)
+        except ValueError:
+            messagebox.showwarning("Nâng skill", "Cấp phải là số.", parent=self); return
+        if cap <= 0:
+            return
+        try:
+            kq = ctrl.nang_skill_ngay(self.username, sid, cap)
+        except Exception as e:
+            messagebox.showwarning("Nâng skill", "Lỗi: %s" % e, parent=self); return
+        if kq == "queued":
+            messagebox.showinfo(
+                "Nâng skill",
+                "Đang trong trận — đã xếp hàng '%s → cấp %d', hết trận bot tự gửi."
+                % (self._ten(sid), cap), parent=self)
+            return
+        if kq is True:
+            self._nap()
+            return
+        _ly_do = kq[1] if isinstance(kq, tuple) else "không nâng được"
+        messagebox.showwarning("Nâng skill", "%s: %s" % (self._ten(sid), _ly_do), parent=self)
+
+    def _them_tu_cay(self):
+        sid = self._skill_dang_chon()
+        if sid is None:
+            return
+        info = (getattr(config, "SKILL_INFO", {}) or {}).get(sid) or {}
+        self._them_dong(sid, int(info.get("maxLv") or 1))
+
+    def _them_dong(self, sid=None, cap=1):
+        row = ttk.Frame(self.rules_fr); row.pack(fill="x", pady=1)
+        # CHI cac tab dang hien o tren (bo Turn2 = 2 chuyen, bo LightDark = game chua mo), va bo
+        # skill tab TAM chua hoc. Rule DA LUU thi luon giu lai du bi loc - khong thi mo dialog la
+        # mat dong do.
+        def _duoc_chon(_sid, _v):
+            _t = _v.get("tree")
+            if _t not in self.TEN_TAB:
+                return False
+            if _t in self.TAB_CHI_HIEN_DA_HOC and self.cap.get(_sid, 0) <= 0:
+                return _sid == sid
+            return True
+
+        ds = sorted(((s, v) for s, v in (getattr(config, "SKILL_INFO", {}) or {}).items()
+                     if _duoc_chon(s, v)),
+                    key=lambda x: (x[1].get("tree") or "", x[1].get("name") or ""))
+        nhan = ["%s — %s" % (v.get("name") or hex(s), self.TEN_TAB.get(v.get("tree"), ""))
+                for s, v in ds]
+        ids = [s for s, _v in ds]
+        var = tk.StringVar(value=nhan[ids.index(sid)] if sid in ids else (nhan[0] if nhan else ""))
+        ttk.Label(row, text="Học/nâng:", width=10, anchor="w").pack(side="left")
+        _cb = ttk.Combobox(row, textvariable=var, values=nhan, state="readonly", width=34)
+        _cb.pack(side="left")
+        ttk.Label(row, text="đến cấp").pack(side="left", padx=4)
+        var_cap = tk.StringVar(value=str(cap))
+        _sp = ttk.Spinbox(row, from_=1, to=10, width=5, textvariable=var_cap)
+        _sp.pack(side="left")
+        # Lan chuot tren hai o nay -> CUON BANG (bang co the dai hon 5 dong), KHONG doi gia tri.
+        for _w in (_cb, _sp, row):
+            _chan_cuon_doi_gia_tri(
+                _w, lambda d: self._rules_canvas.yview_scroll(-1 if d > 0 else 1, "units"))
+        rec = {"skill": var, "cap": var_cap, "ids": ids, "nhan": nhan}
+
+        def _xoa():
+            self.rules.remove(rec); row.destroy()
+            self.after(10, self._rules_fit)
+        ttk.Button(row, text="✕", width=2, command=_xoa).pack(side="right", padx=2)
+        # "Done" XANH khi dong nay da dat cap dich - nhin phat biet dong nao con phai lam.
+        lbl_done = tk.Label(row, text="", fg="#1a7f37")
+        lbl_done.pack(side="right", padx=6)
+        rec["done"] = lbl_done
+
+        def _kiem_done(*_a):
+            self._cap_nhat_done(rec)
+        var.trace_add("write", _kiem_done)
+        var_cap.trace_add("write", _kiem_done)
+        self.rules.append(rec)
+        self._cap_nhat_done(rec)
+        self.after(10, self._rules_fit)
+
+    def _cap_nhat_done(self, rec):
+        """Hien 'Done' khi skill cua dong nay DA DAT cap dich (hoac da toi tran)."""
+        try:
+            sid = rec["ids"][rec["nhan"].index(rec["skill"].get())]
+            dich = int(rec["cap"].get() or 0)
+        except Exception:
+            return
+        cap = self.cap.get(int(sid), 0)
+        max_lv = int(((getattr(config, "SKILL_INFO", {}) or {}).get(int(sid)) or {}).get("maxLv") or 0)
+        xong = cap > 0 and (cap >= dich or (max_lv and cap >= max_lv))
+        try:
+            rec["done"].configure(text="Done" if xong else "")
+        except Exception:
+            pass
+
+    def _cap_nhat_done_tat_ca(self):
+        for rec in list(self.rules):
+            self._cap_nhat_done(rec)
+
+    def _luu(self):
+        try:
+            reserve = max(0, int(self.var_reserve.get() or 0))
+        except ValueError:
+            messagebox.showwarning("Skill point để dành", "Phải là số.", parent=self); return
+        rules = []
+        for rec in self.rules:
+            try:
+                sid = rec["ids"][rec["nhan"].index(rec["skill"].get())]
+                cap = int(rec["cap"].get() or 0)
+            except Exception:
+                continue
+            if cap > 0:
+                rules.append([int(sid), cap])
+        cfg = {"reserve": reserve, "rules": rules}
+        settings = self.row.setdefault("settings", {})
+        settings["skill"] = cfg
+        self.row["settings"] = settings
+        try:
+            ctrl.apply_skill_config(self.username, cfg)
+        except Exception as e:
+            log.warning("[%s] apply live bang nang skill loi: %s", self.username, e)
         self.destroy()
 
 
@@ -3640,6 +4054,10 @@ class PartyConfigFrame(ttk.Frame):
         _bag_btn.configure(image=_bag_icon(fr))
         _bag_btn.pack(side="left")
         ttk.Button(fr, text="Point", width=6, command=lambda: self._open_point_dialog(row)).pack(side="left")
+        # NGAY BEN PHAI nut Point (user chot 01/09). Ten ham KHONG duoc la `_open_skill_dialog`:
+        # ten do da thuoc ve nut "Battle" (cau hinh skill danh trong tran).
+        ttk.Button(fr, text="Skill", width=6,
+                   command=lambda: self._open_char_skill_dialog(row)).pack(side="left")
         ttk.Button(fr, text="✕", width=2, command=lambda: self._del_acc_row(row)).pack(side="left")
         self.acc_rows.append(row)
 
@@ -4147,6 +4565,14 @@ class PartyConfigFrame(ttk.Frame):
         if not uname:
             messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
         PointDialog(self, uname, row)
+
+    def _open_char_skill_dialog(self, row):
+        """Popup TU NANG SKILL NHAN VAT (cay skill + bang rule). Khac han `_open_skill_dialog`
+        (nut "Battle" - cau hinh skill DANH trong tran)."""
+        uname = row["u"].get().strip()
+        if not uname:
+            messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
+        SkillDialog(self, uname, row)
 
     def _open_skill_dialog(self, row):
         """Popup rule battle rieng tung acc: Dieu kien -> Skill/action -> Target."""

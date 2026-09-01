@@ -56,6 +56,13 @@ def parse_skills_seq(path):
                 "cat": d[ip + 11], "splash": d[ip + 12],
                 "needLv": d[ip + 17], "learnPt": d[ip + 18],
                 "lvUpPt": d[ip + 19], "maxLv": d[ip + 20],
+                # CAN CHO TU NANG SKILL NHAN VAT (xem KNOWLEDGE muc 7q):
+                #   element  - hoc skill KHAC HE thi TON GAP DOI learnPoint (UISkillTree ~1084)
+                #   pre/pre2 - skill tien quyet; client chan neu MOI cai tien quyet deu dang cap 0
+                #              (chi can MOT cai da hoc la qua)
+                "element": d[ip + 4],
+                "pre": struct.unpack_from("<H", d, ip + 21)[0],
+                "pre2": struct.unpack_from("<H", d, ip + 26)[0],
             }
         k = j + 34
         i = k + 2 + struct.unpack_from("<H", d, k)[0]
@@ -106,17 +113,70 @@ MANUAL = {
 }
 
 
+# Ten tab trong `UISkillTree.lua` (local ESkillTag). `Turn2` co skillId = 0 (client dien DONG
+# luc chay) nen khong bao gio ra danh sach - dung the de BIET skill nao KHONG phai 2 chuyen.
+TREE_TAGS = ("Npc", "Earth", "Water", "Fire", "Wind", "Mind", "Turn1", "Turn2", "LightDark", "Hero")
+SKILL_TREE_LUA = os.path.join(ROOT, "_lua_dec", "UI", "UISkillTree.lua")
+
+
+def parse_skill_tree(path=SKILL_TREE_LUA):
+    """{skill_id: ten_tab} tu `skillInfos[ESkillTag.X][i] = { skillId, ... }`.
+
+    VI SAO CAN: nang skill o tab `Turn2` phai gui `C:028-005` (bo cuc khac han, co 3 truong dem
+    UInt32) chu KHONG phai `C:028-001` - xem KNOWLEDGE muc 7q. Bot chi tu nang skill nam trong
+    cac tab THUONG; skill khong biet tab thi KHONG dung toi cho an toan.
+
+    `_lua_dec/` KHONG nam trong git (da ignore) -> may khong co crack se bo qua, va `tree` cu
+    trong skills_data.json duoc GIU NGUYEN (khong xoa mat du lieu da sinh).
+    """
+    import re
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            s = fh.read()
+    except OSError:
+        return None
+    out = {}
+    for m in re.finditer(r"skillInfos\[ESkillTag\.(\w+)\]\[\d+\]\s*=\s*\{\s*(\d+)", s):
+        tag, sid = m.group(1), int(m.group(2))
+        if sid and tag in TREE_TAGS:
+            out[sid] = tag
+    return out or None
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sk = parse_skills_seq(SKILL)
+    tree = parse_skill_tree()
+    if tree is None:                     # khong co _lua_dec -> giu `tree` da sinh tu lan truoc
+        try:
+            with open(OUT, encoding="utf-8") as fh:
+                cu = json.load(fh).get("skills", {})
+            tree = {int(k, 16): v["tree"] for k, v in cu.items() if v.get("tree")}
+            print("khong co _lua_dec -> giu `tree` cu (%d skill)" % len(tree))
+        except Exception:
+            tree = {}
+    for sid, tag in (tree or {}).items():
+        if sid in sk:
+            sk[sid]["tree"] = tag
+    # TAB TAM: client dien DONG luc chay (`Role.player:GetElementSkill(ESkillTag.Mind)`) nen khong
+    # co danh sach tinh trong Lua - nhung skill Tam deu mang `element = 5` (Trinh Tham, Dao Tau,
+    # Mua Ban, Luyen Don...). Chi gan cho skill CHUA thuoc tab nao ("Trieu Goi" co element 5 nhung
+    # nam trong cay he -> giu tab cu).
+    for sid, rec in sk.items():
+        if not rec.get("tree") and rec.get("element") == 5:
+            rec["tree"] = "Mind"
     data = {
         "_note": "AUTO-SINH tu tools/crack_skills.py (Skill_C.dat, mo neo ten). skill_id hex -> "
                  "name, cost (SP), cat (idx11: LOAI - 1=dame combo duoc, 2=dame khong combo, 4..15=support), "
                  "splash (idx12: 1=don,2=trai doc,3=trai ngang,4=don dap,8=toan bo quai). "
                  "combat: DAME=cat in{1,2}; COMBO=cat==1; ALL-TARGET=splash==8. "
                  "needLv (ip+17)=level can de hoc, learnPt (ip+18)=diem hoc cap 1, "
-                 "lvUpPt (ip+19)=diem moi cap sau, maxLv (ip+20)=cap toi da (1/5/6/8/10).",
+                 "lvUpPt (ip+19)=diem moi cap sau, maxLv (ip+20)=cap toi da (1/5/6/8/10). "
+                 "element (ip+4)=he skill (hoc KHAC he ton GAP DOI learnPt), pre/pre2 (ip+21/ip+26)"
+                 "=skill tien quyet (chi can MOT cai da hoc la duoc cong). "
+                 "tree=tab trong UISkillTree.lua - tab Turn2 phai gui C:028-005, cac tab khac dung "
+                 "C:028-001 (xem KNOWLEDGE muc 7q).",
         "skills": {"0x%04x" % k: sk[k] for k in sorted(sk)},
     }
     with open(OUT, "w", encoding="utf-8") as f:

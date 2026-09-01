@@ -89,6 +89,42 @@ class TestKhongCon_HANG_VIET_CUNG(unittest.TestCase):
         self.assertEqual(self.src.count("config.SKILL_FLEE, b=_hang_pet_ta(state)"), 2)
 
 
+class TestClientPyCungKhongVietCUNG(unittest.TestCase):
+    """`bot/client.py` co duong FLEE RIENG (flee_battle + nhanh flee_mode trong _make_decisions),
+    khong di qua combat.py -> sua moi combat.py la con sot."""
+
+    def setUp(self):
+        with io.open(os.path.join(ROOT, "bot", "client.py"), encoding="utf-8") as fh:
+            self.src = fh.read()
+
+    def test_khong_con_SKILL_FLEE_b_3_hay_b_2(self):
+        for xau in ("config.SKILL_FLEE, b=3)", "config.SKILL_FLEE, b=2)"):
+            self.assertNotIn(xau, self.src)
+
+    def test_flee_lay_hang_dong_tu_combat(self):
+        self.assertGreaterEqual(
+            self.src.count("combat._hang_cua(self.state, config.UNIT_CHAR)"), 2)
+        self.assertGreaterEqual(
+            self.src.count("combat._hang_cua(self.state, config.UNIT_PET)"), 2)
+
+
+class TestLogBattleTrongLoanDau(unittest.TestCase):
+    """Loan dau moi acc danh DOC LAP -> phai log het, khong an theo leader cua config."""
+
+    def setUp(self):
+        with io.open(os.path.join(ROOT, "bot", "client.py"), encoding="utf-8") as fh:
+            s = fh.read()
+        i = s.find("def _log_battle_verbose(")
+        self.than = s[i:s.find("\n    def ", i + 10)]
+
+    def test_loan_dau_luon_log(self):
+        self.assertIn('if getattr(self, "_loandau_started", False):', self.than)
+        self.assertIn("return True", self.than)
+
+    def test_van_giu_luat_cu_cho_party_train(self):
+        self.assertIn("config.PARTY_LEADER_ACC.get(self.party_idx)", self.than)
+
+
 class TestCheckByteGiongClient(unittest.TestCase):
     def setUp(self):
         with io.open(os.path.join(ROOT, "bot", "client.py"), encoding="utf-8") as fh:

@@ -1,5 +1,5 @@
 {
-"_note": "AUTO-SINH tu tools/crack_skills.py (Skill_C.dat, mo neo ten). skill_id hex -> name, cost (SP), cat (idx11: LOAI - 1=dame combo duoc, 2=dame khong combo, 4..15=support), splash (idx12: 1=don,2=trai doc,3=trai ngang,4=don dap,8=toan bo quai). combat: DAME=cat in{1,2}; COMBO=cat==1; ALL-TARGET=splash==8. needLv (ip+17)=level can de hoc, learnPt (ip+18)=diem hoc cap 1, lvUpPt (ip+19)=diem moi cap sau, maxLv (ip+20)=cap toi da (1/5/6/8/10).",
+"_note": "AUTO-SINH tu tools/crack_skills.py (Skill_C.dat, mo neo ten). skill_id hex -> name, cost (SP), cat (idx11: LOAI - 1=dame combo duoc, 2=dame khong combo, 4..15=support), splash (idx12: 1=don,2=trai doc,3=trai ngang,4=don dap,8=toan bo quai). combat: DAME=cat in{1,2}; COMBO=cat==1; ALL-TARGET=splash==8. needLv (ip+17)=level can de hoc, learnPt (ip+18)=diem hoc cap 1, lvUpPt (ip+19)=diem moi cap sau, maxLv (ip+20)=cap toi da (1/5/6/8/10). element (ip+4)=he skill (hoc KHAC he ton GAP DOI learnPt), pre/pre2 (ip+21/ip+26)=skill tien quyet (chi can MOT cai da hoc la duoc cong). tree=tab trong UISkillTree.lua - tab Turn2 phai gui C:028-005, cac tab khac dung C:028-001 (xem KNOWLEDGE muc 7q).",
 "skills": {
 "0x2710": {
 "name": "Đấu Vật",
@@ -9,7 +9,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x2711": {
 "name": "Mưa Đá",
@@ -19,7 +22,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 0,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x2712": {
 "name": "Lôi Mộc",
@@ -29,7 +36,11 @@
 "needLv": 1,
 "learnPt": 3,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10001,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x2713": {
 "name": "Cạm Bẫy",
@@ -39,7 +50,11 @@
 "needLv": 1,
 "learnPt": 3,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10001,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x2714": {
 "name": "Cây Tinh",
@@ -49,7 +64,11 @@
 "needLv": 1,
 "learnPt": 6,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10002,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x2715": {
 "name": "Ném Đá",
@@ -59,7 +78,11 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10003,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x2716": {
 "name": "Địa Nha",
@@ -69,7 +92,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10004,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x2717": {
 "name": "Đá Lăn",
@@ -79,7 +106,11 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10005,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x2718": {
 "name": "Phi Sa Tẩu Thạch",
@@ -89,7 +120,11 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10005,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x2719": {
 "name": "Giải Kết Giới",
@@ -99,7 +134,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 10006,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x271a": {
 "name": "Kết Giới",
@@ -109,7 +148,11 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10006,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x271b": {
 "name": "Thái Sơn Ấp Đỉnh",
@@ -119,7 +162,11 @@
 "needLv": 1,
 "learnPt": 14,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10007,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x271c": {
 "name": "Long Trời Lỡ Đất",
@@ -129,7 +176,11 @@
 "needLv": 1,
 "learnPt": 18,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10008,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x271d": {
 "name": "Vạn Mã Phi Đằng",
@@ -139,7 +190,11 @@
 "needLv": 1,
 "learnPt": 14,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10008,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x271e": {
 "name": "Giải Kính",
@@ -149,7 +204,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 10010,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x271f": {
 "name": "Kính",
@@ -159,7 +218,11 @@
 "needLv": 1,
 "learnPt": 18,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 10010,
+"pre2": 0,
+"tree": "Earth"
 },
 "0x2720": {
 "name": "Nham Quái",
@@ -169,7 +232,10 @@
 "needLv": 245,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2721": {
 "name": "Gọi Tiểu Nham",
@@ -179,7 +245,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2722": {
 "name": "Gọi Trung Nham",
@@ -189,7 +258,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2723": {
 "name": "Gọi Đại Nham",
@@ -199,7 +271,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2724": {
 "name": "Địa Khí",
@@ -209,7 +284,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 0,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2725": {
 "name": "Địa Liệt",
@@ -219,7 +298,11 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10020,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2726": {
 "name": "Địa Động",
@@ -229,7 +312,11 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10020,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2727": {
 "name": "Khu Tượng",
@@ -239,7 +326,11 @@
 "needLv": 1,
 "learnPt": 13,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10024,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2728": {
 "name": "Hoàng Thổ",
@@ -249,7 +340,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10022,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2729": {
 "name": "Thổ Băng",
@@ -259,7 +354,11 @@
 "needLv": 1,
 "learnPt": 11,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 10021,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x272a": {
 "name": "Linh Kính",
@@ -269,7 +368,11 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 10025,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x272b": {
 "name": "Chấn Ba",
@@ -279,7 +382,10 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10011,
+"pre2": 0
 },
 "0x272c": {
 "name": "Hồn Phủ",
@@ -289,7 +395,10 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10021,
+"pre2": 0
 },
 "0x272d": {
 "name": "Thiết Pháo",
@@ -299,7 +408,10 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10005,
+"pre2": 0
 },
 "0x272e": {
 "name": "Tinh Pháo",
@@ -309,7 +421,10 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10008,
+"pre2": 0
 },
 "0x272f": {
 "name": "Chung Trảo",
@@ -319,7 +434,10 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10015,
+"pre2": 0
 },
 "0x2730": {
 "name": "Xung Phong",
@@ -329,7 +447,10 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10013,
+"pre2": 0
 },
 "0x2731": {
 "name": "Bộc Cầm",
@@ -339,7 +460,10 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 10025,
+"pre2": 0
 },
 "0x2732": {
 "name": "Vương Sát",
@@ -349,7 +473,10 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 10024,
+"pre2": 0
 },
 "0x2733": {
 "name": "Sa Bạo",
@@ -359,7 +486,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2734": {
 "name": "Sa Khâu",
@@ -369,7 +499,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2735": {
 "name": "Địa Nha Siêu",
@@ -379,7 +512,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2736": {
 "name": "Song Kính",
@@ -389,7 +525,10 @@
 "needLv": 1,
 "learnPt": 18,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2737": {
 "name": "Duệ Kính",
@@ -399,7 +538,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2738": {
 "name": "Thuẫn Kính",
@@ -409,7 +551,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2739": {
 "name": "S.Kết Giới",
@@ -419,7 +564,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x273a": {
 "name": "Khách Lai",
@@ -429,7 +577,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x273b": {
 "name": "Bạo Lưu Sa",
@@ -439,7 +590,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x273c": {
 "name": "Chung Phản",
@@ -449,7 +603,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x273d": {
 "name": "Nhân Ba Vô Địch",
@@ -459,7 +616,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2af9": {
 "name": "Nước Ngập",
@@ -469,7 +629,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 0,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2afa": {
 "name": "Băng Tường",
@@ -479,7 +643,11 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 11001,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2afb": {
 "name": "Băng Kiếm",
@@ -489,7 +657,11 @@
 "needLv": 1,
 "learnPt": 3,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11001,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2afc": {
 "name": "Thanh Lưu",
@@ -499,7 +671,11 @@
 "needLv": 1,
 "learnPt": 6,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11002,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2afd": {
 "name": "Dũng Tuyền",
@@ -509,7 +685,11 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11003,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2afe": {
 "name": "Hồi Ma",
@@ -519,7 +699,11 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11004,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2aff": {
 "name": "Trị Liệu",
@@ -529,7 +713,11 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11004,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2b00": {
 "name": "Hồng Thủy",
@@ -539,7 +727,11 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11005,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2b01": {
 "name": "Toàn Hồi Ma Thuật",
@@ -549,7 +741,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11006,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2b02": {
 "name": "Toàn Trị Liệu Thuật",
@@ -559,7 +755,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11007,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2b03": {
 "name": "Băng Đá",
@@ -569,7 +769,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11008,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2b04": {
 "name": "Giải Trừ",
@@ -579,7 +783,11 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 11009,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2b05": {
 "name": "Hồi Sinh",
@@ -589,7 +797,11 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11010,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2b06": {
 "name": "Băng Phong",
@@ -599,7 +811,11 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11011,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2b07": {
 "name": "Tan Băng",
@@ -609,7 +825,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 11011,
+"pre2": 0,
+"tree": "Water"
 },
 "0x2b08": {
 "name": "Thủy Thần",
@@ -619,7 +839,10 @@
 "needLv": 245,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b09": {
 "name": "Gọi Tiểu Thủy",
@@ -629,7 +852,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b0a": {
 "name": "Gọi Trung Thủy",
@@ -639,7 +865,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b0b": {
 "name": "Gọi Đại Thủy",
@@ -649,7 +878,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b0c": {
 "name": "Thủy Khí",
@@ -659,7 +891,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 0,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2b0d": {
 "name": "Băng Trảm",
@@ -669,7 +905,11 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11020,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2b0e": {
 "name": "Băng Phách",
@@ -679,7 +919,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11021,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2b0f": {
 "name": "Băng Thương",
@@ -689,7 +933,11 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11022,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2b10": {
 "name": "Đình Thủy",
@@ -699,7 +947,11 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 11020,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2b11": {
 "name": "Trạng Giải",
@@ -709,7 +961,11 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 11024,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2b12": {
 "name": "Miêu Thủy",
@@ -719,7 +975,11 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11025,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2b13": {
 "name": "Thiên Băng Vũ",
@@ -729,7 +989,10 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 11014,
+"pre2": 0
 },
 "0x2b14": {
 "name": "Sương Quyền",
@@ -739,7 +1002,10 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 11014,
+"pre2": 0
 },
 "0x2b15": {
 "name": "Ma Thuật",
@@ -749,7 +1015,10 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11009,
+"pre2": 0
 },
 "0x2b16": {
 "name": "Cam Lâm",
@@ -759,7 +1028,10 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11010,
+"pre2": 0
 },
 "0x2b17": {
 "name": "Giải Thuật",
@@ -769,7 +1041,10 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 11025,
+"pre2": 0
 },
 "0x2b18": {
 "name": "Vô Tưởng",
@@ -779,7 +1054,10 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 11024,
+"pre2": 0
 },
 "0x2b19": {
 "name": "Nhất Thiểm",
@@ -789,7 +1067,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11022,
+"pre2": 0
 },
 "0x2b1a": {
 "name": "Lục Băng Vũ",
@@ -799,7 +1080,10 @@
 "needLv": 1,
 "learnPt": 14,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 11023,
+"pre2": 0
 },
 "0x2b1b": {
 "name": "Hải Đào",
@@ -809,7 +1093,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b1c": {
 "name": "Lãng Triều",
@@ -819,7 +1106,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b1d": {
 "name": "Phun Nước",
@@ -829,7 +1119,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b1e": {
 "name": "Thủy Kích",
@@ -839,7 +1132,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b1f": {
 "name": "Băng Siêu",
@@ -849,7 +1145,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b20": {
 "name": "C.Giải Trừ",
@@ -859,7 +1158,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b21": {
 "name": "Nhất Chấn",
@@ -869,7 +1171,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b22": {
 "name": "Thiên Băng",
@@ -879,7 +1184,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b23": {
 "name": "Tử Thiểm",
@@ -889,7 +1197,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b24": {
 "name": "Mai Phục",
@@ -899,7 +1210,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b25": {
 "name": "Trì Độn",
@@ -909,7 +1223,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b26": {
 "name": "Băng Kiếm",
@@ -919,7 +1236,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b27": {
 "name": "Thiên Lôi ",
@@ -929,7 +1249,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b28": {
 "name": "Băng Thỉ Thuật ",
@@ -939,7 +1262,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2b29": {
 "name": "Ta ra lệnh cho ngươi! ",
@@ -949,7 +1275,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x2ee1": {
 "name": "Phóng Hỏa",
@@ -959,7 +1288,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2ee2": {
 "name": "Liệt Hỏa",
@@ -969,7 +1302,11 @@
 "needLv": 1,
 "learnPt": 3,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12001,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2ee3": {
 "name": "Hỏa Tiễn",
@@ -979,7 +1316,11 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12001,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2ee4": {
 "name": "Hỏa Cầu",
@@ -989,7 +1330,11 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12002,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2ee5": {
 "name": "Hỏa Luân",
@@ -999,7 +1344,11 @@
 "needLv": 1,
 "learnPt": 6,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12002,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2ee6": {
 "name": "Nhất Kích",
@@ -1009,7 +1358,11 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12003,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2ee7": {
 "name": "Vũ Điệu Nóng Bỏng",
@@ -1019,7 +1372,11 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12004,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2ee8": {
 "name": "Phong Hỏa Luân",
@@ -1029,7 +1386,11 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12005,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2ee9": {
 "name": "Hỏa Kiếm",
@@ -1039,7 +1400,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12006,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2eea": {
 "name": "Hỏa Long",
@@ -1049,7 +1414,11 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12007,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2eeb": {
 "name": "Bát Diện Hỏa Luân",
@@ -1059,7 +1428,11 @@
 "needLv": 1,
 "learnPt": 13,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12008,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2eec": {
 "name": "Cuồng Điện Trảm",
@@ -1069,7 +1442,11 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12009,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2eed": {
 "name": "Tam Vị Chân Hỏa",
@@ -1079,7 +1456,11 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12010,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2eee": {
 "name": "Liêu Nguyên Hỏa",
@@ -1089,7 +1470,11 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12011,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2eef": {
 "name": "Bạch Hồng Quán Nhật",
@@ -1099,7 +1484,11 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12012,
+"pre2": 0,
+"tree": "Fire"
 },
 "0x2ef0": {
 "name": "Phụng Hoàng",
@@ -1109,7 +1498,10 @@
 "needLv": 245,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2ef1": {
 "name": "Gọi Tiểu Phụng",
@@ -1119,7 +1511,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2ef2": {
 "name": "Gọi Trung Phụng",
@@ -1129,7 +1524,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2ef3": {
 "name": "Gọi Đại Phụng",
@@ -1139,7 +1537,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2ef4": {
 "name": "Hỏa Khí",
@@ -1149,7 +1550,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2ef5": {
 "name": "Cửu Kiếm",
@@ -1159,7 +1564,11 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12020,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2ef6": {
 "name": "Cuồng Long",
@@ -1169,7 +1578,11 @@
 "needLv": 1,
 "learnPt": 18,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12024,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2ef7": {
 "name": "Diễm Vô Nhị",
@@ -1179,7 +1592,11 @@
 "needLv": 1,
 "learnPt": 11,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12020,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2ef8": {
 "name": "Hỏa Hộ Thân",
@@ -1189,7 +1606,11 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 12021,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2ef9": {
 "name": "Cuồng Nộ",
@@ -1199,7 +1620,11 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 12026,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2efa": {
 "name": "Ngũ Lôi",
@@ -1209,7 +1634,11 @@
 "needLv": 1,
 "learnPt": 13,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12023,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x2efb": {
 "name": "Nhất Kích",
@@ -1219,7 +1648,10 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12006,
+"pre2": 0
 },
 "0x2efc": {
 "name": "Hào Hỏa",
@@ -1229,7 +1661,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12011,
+"pre2": 0
 },
 "0x2efd": {
 "name": "Xích Long Cự",
@@ -1239,7 +1674,10 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12004,
+"pre2": 0
 },
 "0x2efe": {
 "name": "Triệu Lâm",
@@ -1249,7 +1687,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12010,
+"pre2": 0
 },
 "0x2eff": {
 "name": "Dương Viêm",
@@ -1259,7 +1700,10 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12015,
+"pre2": 0
 },
 "0x2f00": {
 "name": "Phần Dã",
@@ -1269,7 +1713,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12014,
+"pre2": 0
 },
 "0x2f01": {
 "name": "Liệt Trảm",
@@ -1279,7 +1726,10 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12022,
+"pre2": 0
 },
 "0x2f02": {
 "name": "Chấn Hề",
@@ -1289,7 +1739,10 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 12026,
+"pre2": 0
 },
 "0x2f03": {
 "name": "Hỏa Thiệt",
@@ -1299,7 +1752,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f04": {
 "name": "Liệt Diễm",
@@ -1309,7 +1765,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f05": {
 "name": "Chân-Tước Long Bá Liệt Trảm",
@@ -1319,7 +1778,10 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f06": {
 "name": "Đại Thánh Trảm Yêu",
@@ -1329,7 +1791,10 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f07": {
 "name": "Đại Thánh Trảm Yêu Ảo Diệu",
@@ -1339,7 +1804,10 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f08": {
 "name": "Kim Tinh Hỏa Nhãn",
@@ -1349,7 +1817,10 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f09": {
 "name": "Xà Mâu Hồn Phệ Kích",
@@ -1359,7 +1830,10 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f0a": {
 "name": "Xà Mâu Hồn Phệ Kích Ảo Diệu",
@@ -1369,7 +1843,10 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f0b": {
 "name": "Bạch Hổ Tòng Địa",
@@ -1379,7 +1856,10 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2f0c": {
 "name": "Bạch Hổ Tòng Địa Ảo",
@@ -1389,7 +1869,10 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x2f0d": {
 "name": "Nhiệt Hống",
@@ -1399,7 +1882,10 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f0e": {
 "name": "Lôi Kích",
@@ -1409,7 +1895,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f0f": {
 "name": "Long Nhật",
@@ -1419,7 +1908,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f10": {
 "name": "SíDiểm Hỏa",
@@ -1429,7 +1921,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f11": {
 "name": "Hoả Tiễn",
@@ -1439,7 +1934,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f12": {
 "name": "DT Loạn Vũ",
@@ -1449,7 +1947,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f13": {
 "name": "Diễm Vô Kính",
@@ -1459,7 +1960,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f14": {
 "name": "Hút Hồn",
@@ -1469,7 +1973,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f15": {
 "name": "P.HoàngĐản",
@@ -1479,7 +1986,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f16": {
 "name": "Hỏa Tiễn Cải",
@@ -1489,7 +1999,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f17": {
 "name": "X Trảm Bạo Liệt ",
@@ -1499,7 +2012,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f18": {
 "name": "Nộ Lôi Bộc Liệt ",
@@ -1509,7 +2025,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f19": {
 "name": "Nộ Viêm Vô Kính",
@@ -1519,7 +2038,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f1a": {
 "name": "Long Tức · Tức Sát",
@@ -1529,7 +2051,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x2f1b": {
 "name": "Thập Cửu Phách · Hỏa Tiễn Ngợp Trời ",
@@ -1539,7 +2064,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x32c9": {
 "name": "Ngự Phong",
@@ -1549,7 +2077,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32ca": {
 "name": "Tuyền Phong",
@@ -1559,7 +2091,11 @@
 "needLv": 1,
 "learnPt": 3,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13001,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32cb": {
 "name": "Lẫn Tránh",
@@ -1569,7 +2105,11 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13001,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32cc": {
 "name": "Cuồng Phong",
@@ -1579,7 +2119,11 @@
 "needLv": 1,
 "learnPt": 6,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13002,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32cd": {
 "name": "Ẩn Mình",
@@ -1589,7 +2133,11 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13003,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32ce": {
 "name": "Bão Phong",
@@ -1599,7 +2147,11 @@
 "needLv": 1,
 "learnPt": 11,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13004,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32cf": {
 "name": "Huyền Kích",
@@ -1609,7 +2161,11 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13004,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32d0": {
 "name": "Phân Thân",
@@ -1619,7 +2175,11 @@
 "needLv": 1,
 "learnPt": 13,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 13005,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32d1": {
 "name": "Phong Cuốn Tàn Vân",
@@ -1629,7 +2189,11 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13006,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32d2": {
 "name": "Liên Kích",
@@ -1639,7 +2203,11 @@
 "needLv": 1,
 "learnPt": 13,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13007,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32d3": {
 "name": "Thu Nhỏ",
@@ -1649,7 +2217,11 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13008,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32d4": {
 "name": "Phóng To",
@@ -1659,7 +2231,11 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13008,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32d5": {
 "name": "Loạn Kích",
@@ -1669,7 +2245,11 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13010,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32d6": {
 "name": "Nguyên Khí",
@@ -1679,7 +2259,11 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13011,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x32d7": {
 "name": "Thanh Long",
@@ -1689,7 +2273,10 @@
 "needLv": 245,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32d8": {
 "name": "Gọi Tiểu Long",
@@ -1699,7 +2286,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32d9": {
 "name": "Gọi Trung Long",
@@ -1709,7 +2299,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32da": {
 "name": "Gọi Đại Long",
@@ -1719,7 +2312,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32db": {
 "name": "Phong Khí",
@@ -1729,7 +2325,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x32dc": {
 "name": "Phong Chi",
@@ -1739,7 +2339,11 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13021,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x32dd": {
 "name": "Đẩu Chuyển",
@@ -1749,7 +2353,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13019,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x32de": {
 "name": "Liệt Phong",
@@ -1759,7 +2367,11 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13019,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x32df": {
 "name": "Phong Thần",
@@ -1769,7 +2381,11 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13024,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x32e0": {
 "name": "Huyền Ảnh",
@@ -1779,7 +2395,11 @@
 "needLv": 1,
 "learnPt": 11,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13022,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x32e1": {
 "name": "Vô Hình",
@@ -1789,7 +2409,11 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13020,
+"pre2": 0,
+"tree": "Turn1"
 },
 "0x32e2": {
 "name": "Băng Lôi",
@@ -1799,7 +2423,10 @@
 "needLv": 1,
 "learnPt": 11,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13009,
+"pre2": 0
 },
 "0x32e3": {
 "name": "Thần Ly",
@@ -1809,7 +2436,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13006,
+"pre2": 0
 },
 "0x32e4": {
 "name": "Phi Kiếm",
@@ -1819,7 +2449,10 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13004,
+"pre2": 0
 },
 "0x32e5": {
 "name": "Sơn Cương",
@@ -1829,7 +2462,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13024,
+"pre2": 0
 },
 "0x32e6": {
 "name": "Hút Hồn",
@@ -1839,7 +2475,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13014,
+"pre2": 0
 },
 "0x32e7": {
 "name": "Lôi Minh",
@@ -1849,7 +2488,10 @@
 "needLv": 1,
 "learnPt": 11,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13023,
+"pre2": 0
 },
 "0x32e8": {
 "name": "Thân Thuật",
@@ -1859,7 +2501,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 13005,
+"pre2": 0
 },
 "0x32e9": {
 "name": "Chấn Điện",
@@ -1869,7 +2514,10 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 13013,
+"pre2": 0
 },
 "0x32ea": {
 "name": "Cuồng Phong",
@@ -1879,7 +2527,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32eb": {
 "name": "Xuy Phất",
@@ -1889,7 +2540,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32ec": {
 "name": "Yển Nguyệt Trảm",
@@ -1899,7 +2553,10 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32ed": {
 "name": "Yển Nguyệt Trảm Ảo Diệu",
@@ -1909,7 +2566,10 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32ee": {
 "name": "Tán Đạn",
@@ -1919,7 +2579,10 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32ef": {
 "name": "Liên Đạn",
@@ -1929,7 +2592,10 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f0": {
 "name": "Siêu Nhỏ",
@@ -1939,7 +2605,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f1": {
 "name": "C.Bạo Kích",
@@ -1949,7 +2618,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f2": {
 "name": "S.Ẩn Thân",
@@ -1959,7 +2631,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f3": {
 "name": "S.ChấnĐiện",
@@ -1969,7 +2644,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f4": {
 "name": "Nhục Bao",
@@ -1979,7 +2657,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f5": {
 "name": "X.Tâm Cốt",
@@ -1989,7 +2670,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f6": {
 "name": "Vô Tận Lam Phong",
@@ -1999,7 +2683,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f7": {
 "name": "Nước Xốt",
@@ -2009,7 +2696,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f8": {
 "name": "Từng Tí Một",
@@ -2019,7 +2709,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32f9": {
 "name": "Tuyệt ",
@@ -2029,7 +2722,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32fa": {
 "name": "Bữa Tiệc",
@@ -2039,7 +2735,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x32fb": {
 "name": "Ba Long Phong Chương ",
@@ -2049,7 +2748,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x32fc": {
 "name": "Thẻ Lốc Xoáy ",
@@ -2059,7 +2761,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x36b1": {
 "name": "Trinh Thám",
@@ -2069,7 +2774,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36b2": {
 "name": "Đào Tẩu",
@@ -2079,7 +2788,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 14001,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36b3": {
 "name": "Mua Bán",
@@ -2089,7 +2802,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 8
+"maxLv": 8,
+"element": 5,
+"pre": 14001,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36b4": {
 "name": "Dò Xét",
@@ -2099,7 +2816,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14001,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36b5": {
 "name": "Luyện Đơn",
@@ -2109,7 +2830,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14001,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36b6": {
 "name": "Đại Hô",
@@ -2119,7 +2844,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14001,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36b7": {
 "name": "Giải Mê",
@@ -2129,7 +2858,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 14002,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36b8": {
 "name": "Hôn Mê",
@@ -2139,7 +2872,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14002,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36b9": {
 "name": "Người Làm",
@@ -2149,7 +2886,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 2,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14003,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36ba": {
 "name": "Đào Khoán",
@@ -2159,7 +2900,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14004,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36bb": {
 "name": "Đúc Luyện",
@@ -2169,7 +2914,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14005,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36bc": {
 "name": "Đồng Tâm",
@@ -2179,7 +2928,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14006,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36bd": {
 "name": "Cổ Vũ",
@@ -2189,7 +2942,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14006,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36be": {
 "name": "Giải Độc",
@@ -2199,7 +2956,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36bf": {
 "name": "Bỏ Độc",
@@ -2209,7 +2970,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c0": {
 "name": "Thuật Giao Dịch",
@@ -2219,7 +2984,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14009,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c1": {
 "name": "Tịnh Toạ",
@@ -2229,7 +2998,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14009,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c2": {
 "name": "Đào Sâu",
@@ -2239,7 +3012,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14010,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c3": {
 "name": "Chế Tạo",
@@ -2249,7 +3026,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14011,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c4": {
 "name": "Ly Gián",
@@ -2259,7 +3040,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14012,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c5": {
 "name": "Hỗn Loạn",
@@ -2269,7 +3054,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14013,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c6": {
 "name": "Giải Hỗn Loạn",
@@ -2279,7 +3068,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c7": {
 "name": "Cưỡi Ngựa",
@@ -2289,7 +3082,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c8": {
 "name": "Linh Quang Thuật",
@@ -2299,7 +3096,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36c9": {
 "name": "Chiếm Đoạt",
@@ -2309,7 +3110,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36ca": {
 "name": "Triệu Gọi",
@@ -2319,7 +3124,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Wind"
 },
 "0x36cb": {
 "name": "Đạo Sư",
@@ -2329,7 +3138,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36cc": {
 "name": "Đoàn Kết",
@@ -2339,7 +3152,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36cd": {
 "name": "Cát Phổ Đạn",
@@ -2349,7 +3166,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36ce": {
 "name": "Cát Phổ Áp Đỉnh",
@@ -2359,7 +3180,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36cf": {
 "name": "Tiếp Chiêu",
@@ -2369,7 +3194,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d0": {
 "name": "Tinh Luyện",
@@ -2379,7 +3208,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14019,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d1": {
 "name": "Xuyên Tâm Tiễn",
@@ -2389,7 +3222,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14037,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d2": {
 "name": "Kỵ Binh",
@@ -2399,7 +3236,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d3": {
 "name": "Chuyển Thể",
@@ -2409,7 +3250,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d4": {
 "name": "Bách Xuyên",
@@ -2419,7 +3264,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d5": {
 "name": "Tiễn Vũ",
@@ -2429,7 +3278,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14036,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d6": {
 "name": "Đại Chu Thiên",
@@ -2439,7 +3292,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d7": {
 "name": "Bá Khí",
@@ -2449,7 +3306,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d8": {
 "name": "Bá Ý",
@@ -2459,7 +3320,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36d9": {
 "name": "Lực Bạc Sơn Hề",
@@ -2469,7 +3334,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36da": {
 "name": "Sóng Cuồng",
@@ -2479,7 +3348,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36db": {
 "name": "Ảnh Khí Hộ Thân",
@@ -2489,7 +3362,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36dc": {
 "name": "Thiên Thần Thuẫn",
@@ -2499,7 +3376,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36dd": {
 "name": "Tâm Nhãn",
@@ -2509,7 +3390,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36de": {
 "name": "Ngưng Khí Hộ Thân",
@@ -2519,7 +3404,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36df": {
 "name": "Dùng Kế",
@@ -2529,7 +3418,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36e0": {
 "name": "Trí Thủ",
@@ -2539,7 +3432,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36e1": {
 "name": "Chống Địch",
@@ -2549,7 +3446,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36e2": {
 "name": "Sách Động",
@@ -2559,7 +3460,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36e3": {
 "name": "Tiên Khiếu",
@@ -2569,7 +3474,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36e4": {
 "name": "Hỏa Huyết Đan Hồn",
@@ -2579,7 +3488,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36e5": {
 "name": "Thánh Linh Thuật",
@@ -2589,7 +3502,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36e6": {
 "name": "Càn Khôn Thiên Lôi",
@@ -2599,7 +3516,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 14038,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36e7": {
 "name": "Tổn Huyết",
@@ -2609,7 +3530,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36e8": {
 "name": "Tiên Khí Hộ Thân",
@@ -2619,7 +3543,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36e9": {
 "name": "Giảm Sát Thương",
@@ -2629,7 +3556,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36ea": {
 "name": "Thiết Bố Sam",
@@ -2639,7 +3570,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36eb": {
 "name": "Đằng Giáp Thuật",
@@ -2649,7 +3584,11 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36ec": {
 "name": "Toàn Thể Thiên Lôi",
@@ -2659,7 +3598,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36ed": {
 "name": "Thiên Lôi Hộ Thuẫn",
@@ -2669,7 +3612,11 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36ee": {
 "name": "Chú Hồn",
@@ -2679,7 +3626,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36ef": {
 "name": "Nộ Hống",
@@ -2689,7 +3640,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36f0": {
 "name": "K.Tâm Tiễn",
@@ -2699,7 +3654,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36f1": {
 "name": "C.Hỗn Loạn",
@@ -2709,7 +3668,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36f2": {
 "name": "Trí Cao",
@@ -2719,7 +3682,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36f3": {
 "name": "Công Cao",
@@ -2729,7 +3695,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36f4": {
 "name": "Phù thủ hộ",
@@ -2739,7 +3708,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36f5": {
 "name": "Thạch Hộ Thể",
@@ -2749,7 +3721,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36f6": {
 "name": "Thủy Hộ Thể",
@@ -2759,7 +3734,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36f7": {
 "name": "Tốc Chi Lực",
@@ -2769,7 +3747,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36f8": {
 "name": "V.Cổ Chi Lực",
@@ -2779,7 +3760,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36f9": {
 "name": "CNham Quái",
@@ -2789,7 +3773,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36fa": {
 "name": "CThủy Thần",
@@ -2799,7 +3786,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36fb": {
 "name": "C.P.Hoàng",
@@ -2809,7 +3799,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36fc": {
 "name": "CThanhLong",
@@ -2819,7 +3812,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36fd": {
 "name": "Triệu Gọi",
@@ -2829,7 +3825,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x36fe": {
 "name": "Ẩn Nhẫn",
@@ -2839,7 +3839,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x36ff": {
 "name": "Trí Biến",
@@ -2849,7 +3852,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3700": {
 "name": "Phụng Sồ",
@@ -2859,7 +3865,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3701": {
 "name": "Ngọa Long",
@@ -2869,7 +3878,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3702": {
 "name": "Chuyển Đổi",
@@ -2879,7 +3891,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3703": {
 "name": "Tiên Thiên Bát Quái",
@@ -2889,7 +3905,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3704": {
 "name": "Kiểm Tra Kỹ Năng",
@@ -2899,7 +3918,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x3705": {
 "name": "Gương Linh Quang Boss ",
@@ -2909,7 +3931,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3706": {
 "name": "【Bị động】ST Địa Tăng (%)",
@@ -2919,7 +3945,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 15
+"maxLv": 15,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3707": {
 "name": "【Bị động】ST Thủy Tăng (%)",
@@ -2929,7 +3958,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 15
+"maxLv": 15,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3708": {
 "name": "【Bị động】ST Hỏa Tăng (%)",
@@ -2939,7 +3971,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 15
+"maxLv": 15,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3709": {
 "name": "【Bị động】ST Phong Tăng (%)",
@@ -2949,7 +3984,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 15
+"maxLv": 15,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x370a": {
 "name": "【Bị động】ST Địa Tăng (%)",
@@ -2959,7 +3997,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 15
+"maxLv": 15,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x370b": {
 "name": "【Bị động】ST Thủy Tăng (%)",
@@ -2969,7 +4010,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 15
+"maxLv": 15,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x370c": {
 "name": "【Bị động】ST Hỏa Tăng (%)",
@@ -2979,7 +4023,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 15
+"maxLv": 15,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x370d": {
 "name": "【Bị động】ST Phong Tăng (%)",
@@ -2989,7 +4036,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 15
+"maxLv": 15,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x370e": {
 "name": "BOSS dùng khiên miễn nhiễm",
@@ -2999,7 +4049,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x370f": {
 "name": "Boss Tự Suy  ",
@@ -3009,7 +4063,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3710": {
 "name": "Thể Tấn Công Vàng ",
@@ -3019,7 +4077,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x3711": {
 "name": "Thẻ Búa Chấn Địa ",
@@ -3029,7 +4090,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3712": {
 "name": "Thẻ Liên Kích ",
@@ -3039,7 +4104,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3713": {
 "name": "Thẻ Đạp Nộ Đào Chiến ",
@@ -3049,7 +4118,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3714": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3059,7 +4132,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3715": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3069,7 +4146,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3716": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3079,7 +4160,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3717": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3089,7 +4174,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3718": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3099,7 +4188,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3719": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3109,7 +4202,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x371a": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3119,7 +4216,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x371b": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3129,7 +4230,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x371c": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3139,7 +4244,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x371d": {
 "name": "Chiếm dụng Chiến Quân Đoàn ",
@@ -3149,7 +4258,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x371e": {
 "name": "Lĩnh Vực Triển Khai ",
@@ -3159,7 +4272,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x371f": {
 "name": "Lĩnh Vực Triển Khai ",
@@ -3169,7 +4286,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3720": {
 "name": "Long Tức · Uy Áp",
@@ -3179,7 +4300,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x3a99": {
 "name": "Bắt Cóc",
@@ -3189,7 +4314,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3a9a": {
 "name": "Thả Lưới",
@@ -3199,7 +4327,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3a9b": {
 "name": "Thả Lưới Thánh Công",
@@ -3209,7 +4340,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3a9c": {
 "name": "Phạn Đoàn Bộ Võng",
@@ -3219,7 +4353,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3a9d": {
 "name": "Phạn Đoàn Bộ Võng Thành Công",
@@ -3229,7 +4366,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3e81": {
 "name": "Tiễn Lâu",
@@ -3239,7 +4379,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x3e82": {
 "name": "Thành Môn",
@@ -3249,7 +4392,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4269": {
 "name": "Phòng Ngự",
@@ -3259,7 +4405,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4651": {
 "name": "Chạy Trốn",
@@ -3269,7 +4418,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4652": {
 "name": "Chạy Thất Bại",
@@ -3279,7 +4431,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4a39": {
 "name": "Vật Phẩm",
@@ -3289,7 +4444,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e21": {
 "name": "Hồi Phục",
@@ -3299,7 +4457,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e22": {
 "name": "Trúng Độc",
@@ -3309,7 +4470,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e23": {
 "name": "Phản Đòn",
@@ -3319,7 +4483,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e24": {
 "name": "Thần Xui Xẻo",
@@ -3329,7 +4496,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e25": {
 "name": "Phúc Thần",
@@ -3339,7 +4509,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e26": {
 "name": "Hộ Chủ",
@@ -3349,7 +4522,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x4e27": {
 "name": "Giải Hộ Chủ",
@@ -3359,7 +4536,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e28": {
 "name": "Bùa Chú",
@@ -3369,7 +4549,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 0
+"maxLv": 0,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e29": {
 "name": "Xe Xung Phong",
@@ -3379,7 +4562,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e2a": {
 "name": "Xe Đao",
@@ -3389,7 +4575,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e2b": {
 "name": "Xe Nỏ",
@@ -3399,7 +4588,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e2c": {
 "name": "Xe Ném Đá",
@@ -3409,7 +4601,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e2d": {
 "name": "Tháp Tên",
@@ -3419,7 +4614,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e2e": {
 "name": "Tứ Nhân Hỗn Loạn",
@@ -3429,7 +4627,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e2f": {
 "name": "Tứ Nhân Giải Loạn",
@@ -3439,7 +4640,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e30": {
 "name": "Long Đầu",
@@ -3449,7 +4653,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e31": {
 "name": "Hữu Long Trảo",
@@ -3459,7 +4666,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e32": {
 "name": "Tả Long Trảo",
@@ -3469,7 +4679,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e33": {
 "name": "Giải Thoát",
@@ -3479,7 +4692,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e34": {
 "name": "Tam Sát",
@@ -3489,7 +4705,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e35": {
 "name": "Long Nha",
@@ -3499,7 +4718,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e36": {
 "name": "Quy Thúc",
@@ -3509,7 +4731,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e37": {
 "name": "Tứ Độc Thủ",
@@ -3519,7 +4744,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e38": {
 "name": "Thập Khí",
@@ -3529,7 +4757,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e39": {
 "name": "Thụ Tinh",
@@ -3539,7 +4770,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x4e3a": {
 "name": "Băng Phong",
@@ -3549,7 +4783,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x4e3b": {
 "name": "Hoàn Phong",
@@ -3559,7 +4796,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x4e3c": {
 "name": "Bạo Phong",
@@ -3569,7 +4809,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x4e3d": {
 "name": "Bạch Hổ Pháo",
@@ -3579,7 +4822,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x4e3e": {
 "name": "Bạch Hổ Đầu",
@@ -3589,7 +4835,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e3f": {
 "name": "Tả Hổ Trảo",
@@ -3599,7 +4848,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e40": {
 "name": "Hữu Hổ Trảo",
@@ -3609,7 +4861,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e41": {
 "name": "Tuyệt Vọng Kiếm",
@@ -3619,7 +4874,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e42": {
 "name": "Xa Đầu Ngưu",
@@ -3629,7 +4887,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e43": {
 "name": "Xe Đao",
@@ -3639,7 +4900,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e44": {
 "name": "Xe Cung",
@@ -3649,7 +4913,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e45": {
 "name": "Xe Đá Lớn",
@@ -3659,7 +4926,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e46": {
 "name": "Xe Cung Lớn",
@@ -3669,7 +4939,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e47": {
 "name": "Tháp Thần Tiễn",
@@ -3679,7 +4952,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e48": {
 "name": "Tường Đinh",
@@ -3689,7 +4965,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e49": {
 "name": "Cung Tre",
@@ -3699,7 +4978,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e4a": {
 "name": "Thuốc Nổ",
@@ -3709,7 +4991,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e4b": {
 "name": "Đá Lớn",
@@ -3719,7 +5004,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e4c": {
 "name": "Phá Hủy",
@@ -3729,7 +5017,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e4d": {
 "name": "Thần Nộ Thiên Tru",
@@ -3739,7 +5030,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e4e": {
 "name": "Đuổi Địch",
@@ -3749,7 +5043,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e4f": {
 "name": "Thi Độc Cường",
@@ -3759,7 +5056,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x4e50": {
 "name": "Toàn Phong Siêu",
@@ -3769,7 +5070,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x4e51": {
 "name": "Thử Tinh Siêu",
@@ -3779,7 +5083,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x4e52": {
 "name": "Giải Trừ Cường",
@@ -3789,7 +5096,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x4e53": {
 "name": "Cửu Vĩ Hồ Mị Hoặc",
@@ -3799,7 +5109,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x4e54": {
 "name": "Viêm Bạo",
@@ -3809,7 +5123,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x4e55": {
 "name": "Lôi Kích",
@@ -3819,7 +5136,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x4e56": {
 "name": "L.NhânGiải",
@@ -3829,7 +5149,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x4e57": {
 "name": "S.Hỗn Loạn",
@@ -3839,7 +5162,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x4e58": {
 "name": "Phì Bàn Quang Tuyến",
@@ -3849,7 +5175,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x4e59": {
 "name": "Bàn Thú Thần Quyền",
@@ -3859,7 +5189,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x4e5a": {
 "name": "Bàn Thú Đóa Địa",
@@ -3869,7 +5203,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x5209": {
 "name": "Chấn Địa Chùy",
@@ -3879,7 +5217,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x520a": {
 "name": "Hàn Băng Quán",
@@ -3889,7 +5230,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x520b": {
 "name": "Hồng Liên Hỏa",
@@ -3899,7 +5243,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x520c": {
 "name": "Phá Không Thiểm",
@@ -3909,7 +5256,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x520d": {
 "name": "Mãnh Ngưu Kích",
@@ -3919,7 +5269,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x520e": {
 "name": "Băng Nha Nhẫn",
@@ -3929,7 +5282,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x520f": {
 "name": "Diệm Chính Nộ",
@@ -3939,7 +5295,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x5210": {
 "name": "Độc Phong",
@@ -3949,7 +5308,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x5211": {
 "name": "Vẫn Tinh Lực",
@@ -3959,7 +5321,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x5212": {
 "name": "Trùng Quyền",
@@ -3969,7 +5334,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x5213": {
 "name": "Hỏa Phụng Thiên",
@@ -3979,7 +5347,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x5214": {
 "name": "Hồi Mã Thương",
@@ -3989,7 +5360,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x5215": {
 "name": "Hóa Thú Sư Phệ",
@@ -3999,7 +5373,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x5216": {
 "name": "Liềm Trảm",
@@ -4009,7 +5386,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x5217": {
 "name": "Nhị Đoạn Thức",
@@ -4019,7 +5399,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x5218": {
 "name": "Động Ngân",
@@ -4029,7 +5412,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x5219": {
 "name": "Thâm Uyên",
@@ -4039,7 +5425,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x521a": {
 "name": "Nhẫm Trảm",
@@ -4049,7 +5438,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x521b": {
 "name": "Tiễn Thần Đinh Quân",
@@ -4059,7 +5451,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x521c": {
 "name": "Thiên Tru Chú",
@@ -4069,7 +5464,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x521d": {
 "name": "Địa Diệt Trận",
@@ -4079,7 +5477,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x521e": {
 "name": "Táng Hỏa",
@@ -4089,7 +5490,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x521f": {
 "name": "Trời vàng lên ngôi ",
@@ -4099,7 +5503,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x5220": {
 "name": "Lãnh Nguyệt Thanh Hồng",
@@ -4109,7 +5516,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x5221": {
 "name": "Cuồng Xà Đoạt Thủ",
@@ -4119,7 +5529,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x5222": {
 "name": "Nhân Giả Vô Dịch",
@@ -4129,7 +5542,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x5223": {
 "name": "Đào Viên Kết Nghĩa",
@@ -4139,7 +5555,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x5224": {
 "name": "Nhân Giả Vô Địch",
@@ -4149,7 +5568,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x5225": {
 "name": "Lạc Thủy Ngưng Tức",
@@ -4159,7 +5581,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x5226": {
 "name": "Nham Diệp Phiêu Kiếm",
@@ -4169,7 +5594,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x5227": {
 "name": "Hoả Kiếm",
@@ -4179,7 +5607,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x5228": {
 "name": "Khương Thị",
@@ -4189,7 +5620,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 0,
+"pre": 0,
+"pre2": 0
 },
 "0x5229": {
 "name": "Sấm Vang",
@@ -4199,7 +5633,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x522a": {
 "name": "Băng Chùy",
@@ -4209,7 +5646,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x522b": {
 "name": "Liệt Phong",
@@ -4219,7 +5659,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x522c": {
 "name": "Thiên Hỏa",
@@ -4229,7 +5672,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x522d": {
 "name": "Hải Đồn",
@@ -4239,7 +5685,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x522e": {
 "name": "Yển Nguyệt",
@@ -4249,7 +5698,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x522f": {
 "name": "Bạch Đế",
@@ -4259,7 +5711,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x5230": {
 "name": "Quyết Tử",
@@ -4269,7 +5724,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x5231": {
 "name": "Vô Song",
@@ -4279,7 +5737,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x5232": {
 "name": "Gia Cát Cuồng Long",
@@ -4289,7 +5750,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x5233": {
 "name": "Thâu Độ Phục Kích",
@@ -4299,7 +5763,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x5234": {
 "name": "Kỳ Môn Bát Quái",
@@ -4309,7 +5776,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x5235": {
 "name": "Long Tức ．Quỷ Thần ",
@@ -4319,7 +5789,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x55f1": {
 "name": "Quang Mâu Thuật",
@@ -4329,7 +5803,11 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x55f2": {
 "name": "Phật Quang Chưởng",
@@ -4339,7 +5817,11 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x55f3": {
 "name": "Huyễn Quang",
@@ -4349,7 +5831,11 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x55f4": {
 "name": "Liệt Diễm Chi Quang",
@@ -4359,7 +5845,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x55f5": {
 "name": "Quang Dữ Thuật",
@@ -4369,7 +5859,10 @@
 "needLv": 1,
 "learnPt": 12,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x55f6": {
 "name": "Quang Chi Kính",
@@ -4379,7 +5872,10 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x55f7": {
 "name": "Quang Tuyền Quán Chú",
@@ -4389,7 +5885,11 @@
 "needLv": 1,
 "learnPt": 15,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x55f8": {
 "name": "Hồi Quang Phản Chiếu",
@@ -4399,7 +5899,10 @@
 "needLv": 1,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x55f9": {
 "name": "Quang Tốc",
@@ -4409,7 +5912,10 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x55fa": {
 "name": "Kim Tệ Công Kích",
@@ -4419,7 +5925,11 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x55fb": {
 "name": "Bạch Hổ",
@@ -4429,7 +5939,11 @@
 "needLv": 245,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x55fc": {
 "name": "Triệu Hoán Tiểu Bạch Hổ",
@@ -4439,7 +5953,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x55fd": {
 "name": "Triệu Hoán Trung Bạch Hổ",
@@ -4449,7 +5966,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x55fe": {
 "name": "Triểu Hoán Đại Bạch Hổ",
@@ -4459,7 +5979,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x55ff": {
 "name": "Tạp Thúc Quang Đạn",
@@ -4469,7 +5992,11 @@
 "needLv": 1,
 "learnPt": 14,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x5600": {
 "name": "Đồng Quang Chi Bán",
@@ -4479,7 +6006,11 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x5601": {
 "name": "Chân-Đồng Quang Chi Bán",
@@ -4489,7 +6020,10 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5602": {
 "name": "Chân-Liệt Diễm Chi Quang",
@@ -4499,7 +6033,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5603": {
 "name": "Chân-Huyễn Quang",
@@ -4509,7 +6046,10 @@
 "needLv": 1,
 "learnPt": 8,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5604": {
 "name": "Chân-Phật Quang Chưởng",
@@ -4519,7 +6059,10 @@
 "needLv": 1,
 "learnPt": 5,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5605": {
 "name": "Siêu Quang Ba",
@@ -4529,7 +6072,10 @@
 "needLv": 1,
 "learnPt": 10,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5606": {
 "name": "Quyền Khuynh Vạn Lý",
@@ -4539,7 +6085,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5607": {
 "name": "Linh Quang Kính",
@@ -4549,7 +6098,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5608": {
 "name": "Kính Linh",
@@ -4559,7 +6111,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5609": {
 "name": "Vân Lưu Trảm",
@@ -4569,7 +6124,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x560a": {
 "name": "Bá Khí",
@@ -4579,7 +6137,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x560b": {
 "name": "Đao Cong La Sát ",
@@ -4589,7 +6150,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x560c": {
 "name": "Lôi Băng Tuyết ",
@@ -4599,7 +6163,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x560d": {
 "name": "Cứu Thiêu Bạo Liệt ",
@@ -4609,7 +6176,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x560e": {
 "name": "Trảm Thư Hùng Lưu Tinh ",
@@ -4619,7 +6189,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x560f": {
 "name": "Lĩnh Vực Ma Vương ",
@@ -4629,7 +6202,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0x5610": {
 "name": "Thuấn Vịnh Xuyên Tâm ",
@@ -4639,7 +6215,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 6
+"maxLv": 6,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x5611": {
 "name": "Luận Xuất Sư Biểu ",
@@ -4649,7 +6228,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5618": {
 "name": "Thanh Long Hạo Nguyệt ",
@@ -4659,7 +6241,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x5619": {
 "name": "Ta chính là Trương Dực Đứ",
@@ -4669,7 +6254,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x561a": {
 "name": "Ám Hồn Truy Thảo Sát ",
@@ -4679,7 +6268,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x561b": {
 "name": "Cuồng Lôi Nhớ Mẹ ",
@@ -4689,7 +6281,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x561c": {
 "name": "Băng Tinh Thủ Hộ ",
@@ -4699,7 +6294,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x561d": {
 "name": "Âm Thanh Từ Mùa Hạ",
@@ -4709,7 +6307,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x561e": {
 "name": "Hào Quang Thần Tượng",
@@ -4719,7 +6320,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x561f": {
 "name": "Chân ‧ Quang Mâu Thuật",
@@ -4729,7 +6333,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 10
+"maxLv": 10,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x5620": {
 "name": "Nghe lời thầy dạy",
@@ -4739,7 +6346,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x5621": {
 "name": "Hồ Già Thập Bát Phách",
@@ -4749,7 +6359,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x5622": {
 "name": "Kiêu Hùng Ngạo Sắc",
@@ -4759,7 +6372,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x5623": {
 "name": "Hắc Ám Sắc Lệnh",
@@ -4769,7 +6385,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x5624": {
 "name": "Hầu Mao Phân Thân Thuật",
@@ -4779,7 +6398,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59d9": {
 "name": "Ám Độc Tiễn",
@@ -4789,7 +6411,11 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x59da": {
 "name": "Ám Nhẫn Trảm",
@@ -4799,7 +6425,11 @@
 "needLv": 1,
 "learnPt": 18,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x59db": {
 "name": "Hắc Toàn Trảm",
@@ -4809,7 +6439,11 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x59dc": {
 "name": "Vu Độc",
@@ -4819,7 +6453,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x59dd": {
 "name": "Tụ Lý Kiếm",
@@ -4829,7 +6467,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59de": {
 "name": "Ném Khô Lâu",
@@ -4839,7 +6480,10 @@
 "needLv": 1,
 "learnPt": 7,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59df": {
 "name": "Vu Độc Oa Oa",
@@ -4849,7 +6493,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59e0": {
 "name": "Yêu Thuật Kích Hóa",
@@ -4859,7 +6506,10 @@
 "needLv": 0,
 "learnPt": 1,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59e1": {
 "name": "Mê Hoặc Độc Châm",
@@ -4869,7 +6519,11 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x59e2": {
 "name": "Độc Phi Luân",
@@ -4879,7 +6533,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x59e3": {
 "name": "Huyền Vũ",
@@ -4889,7 +6547,11 @@
 "needLv": 245,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x59e4": {
 "name": "Triệu Hoán Tiểu Huyền Vũ",
@@ -4899,7 +6561,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59e5": {
 "name": "Triệu Hoán Trung Huyền Vũ",
@@ -4909,7 +6574,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59e6": {
 "name": "Triệu Hoán Đại Huyền Vũ",
@@ -4919,7 +6587,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59e7": {
 "name": "Trảm Choáng",
@@ -4929,7 +6600,11 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x59e8": {
 "name": "Ám Hắc Liên Trảm",
@@ -4939,7 +6614,11 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0,
+"tree": "LightDark"
 },
 "0x59e9": {
 "name": "Chân-Ám Độc Tiễn",
@@ -4949,7 +6628,10 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59ea": {
 "name": "Chân-Vu Độc",
@@ -4959,7 +6641,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59eb": {
 "name": "Vạn Độc Xuyên Tâm",
@@ -4969,7 +6654,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59ec": {
 "name": "Chân-Độc Phi Luân",
@@ -4979,7 +6667,10 @@
 "needLv": 1,
 "learnPt": 9,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59ed": {
 "name": "Chân-Án Nhẫn Trảm",
@@ -4989,7 +6680,10 @@
 "needLv": 1,
 "learnPt": 18,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59ee": {
 "name": "Chân-Mê Hoặc Độc Châm",
@@ -4999,7 +6693,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59ef": {
 "name": "Phiêu Diêu Lưu Phong",
@@ -5009,7 +6706,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f0": {
 "name": "Hắc Lôi",
@@ -5019,7 +6719,10 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 6
+"maxLv": 6,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f1": {
 "name": "Hắc Ám Tiễn",
@@ -5029,7 +6732,10 @@
 "needLv": 1,
 "learnPt": 4,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f2": {
 "name": "Ám Hồn Trảm",
@@ -5039,7 +6745,10 @@
 "needLv": 1,
 "learnPt": 18,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f3": {
 "name": "Hắc Quang",
@@ -5049,7 +6758,10 @@
 "needLv": 1,
 "learnPt": 16,
 "lvUpPt": 1,
-"maxLv": 6
+"maxLv": 6,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f4": {
 "name": "Yêu Hồn Nghịch Thiên ",
@@ -5059,7 +6771,10 @@
 "needLv": 1,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f5": {
 "name": "Diệu Uy Phấn Võ ",
@@ -5069,7 +6784,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f6": {
 "name": "Giáo Dục Tình Yêu",
@@ -5079,7 +6797,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f7": {
 "name": "Kháng Trạng Thái Tiền Quân",
@@ -5089,7 +6810,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f8": {
 "name": "Càn Khôn Nhất Trịch",
@@ -5099,7 +6823,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 1,
-"maxLv": 10
+"maxLv": 10,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59f9": {
 "name": "Kim Cang Bất Hoại",
@@ -5109,7 +6836,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x59fa": {
 "name": "Đoạn Tuyệt Bất Như Ý",
@@ -5119,7 +6849,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0x59fb": {
 "name": "Thánh Chở Che ",
@@ -5129,7 +6862,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 2,
+"pre": 0,
+"pre2": 0
 },
 "0x59fc": {
 "name": "Kiếm Trí Phá Thiên ",
@@ -5139,7 +6875,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 4,
+"pre": 0,
+"pre2": 0
 },
 "0x59fd": {
 "name": "Pilipala ",
@@ -5149,7 +6888,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0x59fe": {
 "name": "Hùng Đồ Bá Nghiệp ",
@@ -5159,7 +6901,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0x7d01": {
 "name": "BUFF Ải Mới ",
@@ -5169,7 +6914,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x7d02": {
 "name": "BUFF Ải Mới ",
@@ -5179,7 +6928,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x7d03": {
 "name": "BUFF Ải Mới ",
@@ -5189,7 +6942,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x7d04": {
 "name": "BUFF Ải Mới ",
@@ -5199,7 +6956,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x7d05": {
 "name": "BUFF Ải Mới ",
@@ -5209,7 +6970,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x7d06": {
 "name": "BUFF Ải Mới ",
@@ -5219,7 +6984,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x7d07": {
 "name": "BUFF Ải Mới ",
@@ -5229,7 +6998,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x7d08": {
 "name": "BUFF Ải Mới ",
@@ -5239,7 +7012,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x7d09": {
 "name": "BUFF Ải Mới ",
@@ -5249,7 +7026,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x7d0a": {
 "name": "BUFF Ải Mới ",
@@ -5259,7 +7040,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x9c40": {
 "name": "Sức Mạnh Phong Thần ",
@@ -5269,7 +7054,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0x9c41": {
 "name": "Ngự Ảnh Linh Thuẫn",
@@ -5279,7 +7068,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0xa029": {
 "name": "Kiếm Chém Cửu Thiên ",
@@ -5289,7 +7082,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0xa02a": {
 "name": "Khuynh Thế Mi Hồ ",
@@ -5299,7 +7095,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0xa02b": {
 "name": "Sí Diễm Phá Thiên ",
@@ -5309,7 +7108,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0xa02c": {
 "name": "Tiên Quyết · Trảm Phá Ma",
@@ -5319,7 +7121,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0xa411": {
 "name": "Khí Chất Đế Vương ",
@@ -5329,7 +7134,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 7,
+"pre": 0,
+"pre2": 0
 },
 "0xa412": {
 "name": "Thiên Sinh Mị Thể ",
@@ -5339,7 +7147,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 8,
+"pre": 0,
+"pre2": 0
 },
 "0xa413": {
 "name": "Thuần Dương Liên Tâm ",
@@ -5349,7 +7160,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0xa414": {
 "name": "Huyền Diệt Thiên Nhãn ",
@@ -5359,7 +7173,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0xafc8": {
 "name": "Buff Vực Sâu Địa Tầng ",
@@ -5369,7 +7186,11 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 5,
+"pre": 0,
+"pre2": 0,
+"tree": "Mind"
 },
 "0xafc9": {
 "name": "Xích Xà Đoạt Hồn",
@@ -5379,7 +7200,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 5
+"maxLv": 5,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0xb3b1": {
 "name": "Uy Thế Áp Đảo ",
@@ -5389,7 +7213,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 3,
+"pre": 0,
+"pre2": 0
 },
 "0xc739": {
 "name": "Tam Lược Phạt Mưu ",
@@ -5399,7 +7226,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 6
+"maxLv": 6,
+"element": 1,
+"pre": 0,
+"pre2": 0
 },
 "0xcb21": {
 "name": "Kinh Vĩ Càn Khôn",
@@ -5409,7 +7239,10 @@
 "needLv": 0,
 "learnPt": 0,
 "lvUpPt": 0,
-"maxLv": 1
+"maxLv": 1,
+"element": 1,
+"pre": 0,
+"pre2": 0
 }
 }
 }

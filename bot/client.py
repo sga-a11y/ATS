@@ -1644,6 +1644,65 @@ def load_point_cache(username):
     return (diem if isinstance(diem, dict) else None), int(entry.get("point_ts") or 0)
 
 
+def save_skill_char_cache(username, du_lieu) -> bool:
+    """Cache BANG SKILL NHAN VAT (khoa "skill_char") de dialog XEM duoc khi acc DA TAT.
+
+    `du_lieu` = {"element": int|None, "left": int|None, "lv": {"0x2b02": 3, ...}}.
+    Dung CHUNG file `account_skills_cache.json` y het `save_point_cache`.
+    """
+    import json, os
+    username = str(username or "").strip()
+    if not username or not du_lieu:
+        return False
+    sig = json.dumps(du_lieu, ensure_ascii=False, sort_keys=True)
+    with _skill_cache_lock:
+        if _skill_cache_sig.get("skill_char:" + username) == sig:
+            return False
+        path = _skill_cache_path()
+        allc = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    allc = json.load(fh) or {}
+            except Exception:
+                allc = {}
+        entry = allc.get(username)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["skill_char"] = du_lieu
+        entry["skill_char_ts"] = int(time.time())
+        allc[username] = entry
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(allc, fh, ensure_ascii=False)
+        except Exception as e:
+            log.debug("ghi cache skill nhan vat loi: %s", e)
+            return False
+        _skill_cache_sig["skill_char:" + username] = sig
+        return True
+
+
+def load_skill_char_cache(username):
+    """(du_lieu, ts) hoac (None, 0)."""
+    import json, os
+    username = str(username or "").strip()
+    if not username:
+        return None, 0
+    path = _skill_cache_path()
+    if not os.path.exists(path):
+        return None, 0
+    try:
+        with open(path, encoding="utf-8") as fh:
+            allc = json.load(fh) or {}
+    except Exception:
+        return None, 0
+    entry = allc.get(username)
+    if not isinstance(entry, dict):
+        return None, 0
+    d = entry.get("skill_char")
+    return (d if isinstance(d, dict) else None), int(entry.get("skill_char_ts") or 0)
+
+
 def load_dac_ky_cache(username) -> set:
     """Set npc_id vo tuong TUNG THAY da hoc dac ky (khoa "dac_ky" trong account_skills_cache.json).
 
@@ -1947,6 +2006,10 @@ class GameClient:
         # DOI THUONG SU KIEN (0x7c): server gui toan bo danh sach -> cache ra JSON cho GUI.
         self._activities = {}     # activityId -> {title, kind, open, missions[]}
         self.char_attrs = {}      # CHI SO GOC tu 0x08: EAttribute -> gia tri (dung cho thanh tuu)
+        # S:008-013 <設定主角技能>: he nhan vat + diem skill con lai + CAP tung skill.
+        self.char_element = None      # 1..4 = he; hoc skill KHAC he ton GAP DOI learnPt
+        self.char_skill_point = None  # diem skill con lai (server chot)
+        self.char_skill_lv = {}       # skill_id -> cap HIEN TAI (khong co = chua hoc)
         # Chi so char doc tu goi 0x05 sub03 (Role.ReceivePlayerData). EAttribute -> gia tri.
         #   char_base  = so GOC (chua cong do) | char_equip = phan CONG TU TRANG BI
         self.char_base = {}
@@ -3345,6 +3408,14 @@ class GameClient:
         if opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
             self._char_int_base = int.from_bytes(pkt[11:13], "little")
             self._refresh_char_int()
+        # S:008-013 <設定主角技能> +元素(1) +技能點數(2) +技能數量(2) + <<+技能ID(2) +等級(1)>>
+        # NGUON DUY NHAT co CAP cua tung skill nhan vat (0x05 co [id][lv] nhung parser cu vut lv,
+        # 0x28 chi la skill BAR). Can cho tu nang skill: biet cap hien tai moi tinh duoc con ton
+        # bao nhieu diem. Xem KNOWLEDGE muc 7q.
+        # LUU Y: chu thich giao thuc ghi 技能數量(1) nhung `Role.ReceivePlayerSkillData`
+        # (Logic/Role.lua:1729) doc `ReadUInt16()` -> count la 2 BYTE. Code moi la chan ly.
+        elif opcode == 0x08 and len(pkt) >= 14 and pkt[7:9] == b"\x0d\x00":
+            self._on_char_skill_data(pkt)
         elif opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_AGI and pkt[10] == 0x01:
             self._char_agi_base = int.from_bytes(pkt[11:13], "little")
             self._refresh_char_agi()
@@ -4332,6 +4403,18 @@ class GameClient:
             if old != (c.hp, c.hp_max, c.sp, c.sp_max):
                 log.info("[%s] CHAR login HP=%d/%d SP=%d/%d",
                          self._label, c.hp, c.hp_max, c.sp, c.sp_max)
+        # HE NHAN VAT + DIEM SKILL: doc TRUOC rao `len(body) < 98` ben duoi vi ca hai nam o offset
+        # rat som (+2 va +26) - chan theo do dai cua phan TRANG BI o cuoi goi la mat oan.
+        #   he   (`EAttribute.Element`: 1 Dia, 2 Thuy, 3 Hoa, 4 Phong, 5 Tam) o `+2`
+        #   diem skill (`EAttribute.SkillPoint = 37`) o `+26`, ngay canh AttrPoint (+28)
+        # Day la nguon DUY NHAT co ngay luc login: `S:008-013` chi toi khi mo bang skill trong
+        # game, con `0x08 sub0100` thi server khong day kind 24. Thieu -> dialog Skill khong mo
+        # dung tab he (user bao 2 lan: "mo skill van chua focus vao he cua minh"), hien
+        # "Diem skill: ?", va gia hoc skill KHAC HE bi tinh THIEU MOT NUA.
+        if len(body) > 2 and 1 <= body[2] <= 5:
+            self.char_element = body[2]
+        if len(body) >= 28:
+            self.char_skill_point = int.from_bytes(body[26:28], "little")
         if len(body) < 98:
             return
         self._char_int_base = int.from_bytes(body[9:11], "little")
@@ -4783,7 +4866,16 @@ class GameClient:
 
     def _log_battle_verbose(self):
         """Log battle (SEND/ACK/Decision) CHI in o LEADER cho gon (party 5 acc x ~10 unit = rat nhieu
-        dong). Member an di. Khong co leader (solo) -> van in."""
+        dong). Member an di. Khong co leader (solo) -> van in.
+
+        LOAN DAU LA NGOAI LE: moi acc danh DOC LAP, khong he lap party (log: "KHONG o party nao"),
+        nen khai bao leader trong config KHONG con y nghia o day - an log member chi lam mat dau
+        vet. Log 01/09 party 22: tran keo 12 PHUT ma chi thay leader gclmot gui lenh, 4 acc kia
+        khong mot dong nao -> khong the biet chung co danh hay dang dung im (user hoi dung cau do:
+        "m xem bot co gui lenh danh ko"). Loan dau moi acc ~2 dong/luot nen khong so ngap log.
+        """
+        if getattr(self, "_loandau_started", False):
+            return True
         try:
             lead = config.PARTY_LEADER_ACC.get(self.party_idx)
         except Exception:
@@ -5006,10 +5098,15 @@ class GameClient:
                 if char_opts:
                     a = my_at if my_at in {o[0] for o in char_opts} else char_opts[0][0]
                     if not char_dead:   # char con song moi flee (xac chet -> khong gui)
-                        self._send_combat(combat.Decision(config.UNIT_CHAR, a, a, config.SKILL_FLEE, b=3))
+                        # hang = hang CUA MINH (loan dau doi phe -> 0, khong phai 3 co dinh)
+                        self._send_combat(combat.Decision(
+                            config.UNIT_CHAR, a, a, config.SKILL_FLEE,
+                            b=combat._hang_cua(self.state, config.UNIT_CHAR)))
                 # Gui pet flee CHI khi 0x35 co option pet o DUNG slot char dang flee (a) VA pet con song.
                 if a is not None and a in pet_atypes and not pet_dead:
-                    self._send_combat(combat.Decision(config.UNIT_PET, a, a, config.SKILL_FLEE, b=2))
+                    self._send_combat(combat.Decision(
+                        config.UNIT_PET, a, a, config.SKILL_FLEE,
+                        b=combat._hang_cua(self.state, config.UNIT_PET)))
                 log.info("[%s] BO CHAY (flee_mode, char_at=%s pet_at=%s my_atype=%s char_opts=%s pet_opts=%s)",
                          self._label, a, (a if (a is not None and a in pet_atypes) else None),
                          my_at, sorted({o[0] for o in char_opts}), sorted(pet_atypes))
@@ -5133,11 +5230,15 @@ class GameClient:
     def flee_battle(self):
         """BO CHAY khoi tran: gui 0x32 skill=0x4651 cho ca char + pet, TARGET = chinh minh
         (target = vi tri tran cua minh = atype; flee.pcap: char atype=2->target=2).
-        char b=3, pet b=2 (tu flee.pcap)."""
+        char b=3, pet b=2 (tu flee.pcap) - nhung do la HANG CUA PHE TA o tran thuong; LOAN DAU bi
+        xep sang phe kia thi char ta o hang 0 / pet hang 1, gui 3/2 la nham vao o KHONG PHAI cua
+        minh -> server coi la sua goi chien dau (ma 42). Lay hang dong tu `combat._hang_cua`."""
         at = self.state.my_atype
-        self._send_combat(combat.Decision(unit=config.UNIT_CHAR, atype=at, target=at, skill=config.SKILL_FLEE, b=3))
+        _hc = combat._hang_cua(self.state, config.UNIT_CHAR)
+        _hp = combat._hang_cua(self.state, config.UNIT_PET)
+        self._send_combat(combat.Decision(unit=config.UNIT_CHAR, atype=at, target=at, skill=config.SKILL_FLEE, b=_hc))
         if self.state.active_pet_id is not None:   # chi gui pet khi CO pet (theo goi 0x13 login)
-            self._send_combat(combat.Decision(unit=config.UNIT_PET, atype=at, target=at, skill=config.SKILL_FLEE, b=2))
+            self._send_combat(combat.Decision(unit=config.UNIT_PET, atype=at, target=at, skill=config.SKILL_FLEE, b=_hp))
         log.info("[%s] BO CHAY khoi tran (skill %d, target=atype=%d)", self._label, config.SKILL_FLEE, at)
 
     # ---- qua online (0x57) ----
@@ -8306,6 +8407,219 @@ class GameClient:
         """
         return dict(getattr(self, "char_base", None) or {})
 
+    # Tab skill phai gui `C:028-005` (bo cuc khac han) thay vi `C:028-001` - xem KNOWLEDGE 7q.
+    SKILL_TAB_028_005 = ("Turn2",)
+
+    # EAttribute.Element = 24 (1 Dia, 2 Thuy, 3 Hoa, 4 Phong) - `RoleController.lua:36`.
+    ATTR_ELEMENT = 24
+
+    def he_nhan_vat(self):
+        """He cua nhan vat (1..4) hoac None.
+
+        `S:008-013` co mang he, NHUNG goi do server khong gui san luc login - phai vao bang skill
+        moi co. Trong khi `char_attrs[24]` da co san tu `0x08 sub0100` ngay luc login. Thieu cai
+        nay thi dialog Skill khong biet mo tab he nao (user 01/09: "t bao khi mo skill thi tu chon
+        tab co he cua nhan vat co ma"), va tinh gia hoc skill khac he cung sai.
+        """
+        if self.char_element:
+            return int(self.char_element)
+        v = (self.char_attrs or {}).get(self.ATTR_ELEMENT)
+        return int(v) if v else None
+
+    def skill_point_left(self):
+        """Diem skill con lai. `S:008-013` la nguon chot; `char_attrs[37]` la du phong."""
+        if self.char_skill_point is not None:
+            return int(self.char_skill_point)
+        v = (self.char_attrs or {}).get(37)
+        return int(v) if v is not None else None
+
+    def skill_cap_hien_tai(self, sid: int) -> int:
+        return int((self.char_skill_lv or {}).get(int(sid), 0) or 0)
+
+    def _tien_quyet(self, sid: int):
+        """[skill tien quyet] cua `sid`. Client chi can HOC MOT trong so nay (cap > 0) la cho cong
+        (`checkCount > 0 and checkCount == failCount` moi chan)."""
+        info = (getattr(config, "SKILL_INFO", {}) or {}).get(int(sid)) or {}
+        return [x for x in (int(info.get("pre") or 0), int(info.get("pre2") or 0)) if x]
+
+    def _tien_quyet_da_du(self, sid: int) -> bool:
+        tq = self._tien_quyet(sid)
+        return (not tq) or any(self.skill_cap_hien_tai(x) > 0 for x in tq)
+
+    def _chuoi_hoc_toi(self, sid: int, _sau=None):
+        """Chuoi skill PHAI HOC TRUOC de mo duong toi `sid` (khong ke chinh no), re nhat.
+
+        User chot 01/09: "neu de AAA cap 5 ma AAA chua duoc hoc, can hoc BBB truoc, de hoc BBB thi
+        can hoc CCC truoc thi m cu lan theo skill tree de tien dan den skill mong muon".
+        Moi mat xich chi can CAP 1 (client chi kiem `> 0`). Nhanh nao re hon thi di nhanh do.
+        """
+        sid = int(sid)
+        _sau = _sau or set()
+        if sid in _sau:                    # vong lap du lieu -> bo nhanh nay
+            return None
+        if self._tien_quyet_da_du(sid):
+            return []
+        re_nhat = None
+        for tq in self._tien_quyet(sid):
+            info = (getattr(config, "SKILL_INFO", {}) or {}).get(tq)
+            if not info or not info.get("tree") or info.get("tree") in self.SKILL_TAB_028_005:
+                continue
+            trc = self._chuoi_hoc_toi(tq, _sau | {sid})
+            if trc is None:
+                continue
+            duong = trc + [tq]
+            # gia = tong learnPt cua ca chuoi (moi mat xich chi hoc cap 1)
+            gia = sum((getattr(config, "SKILL_INFO", {}).get(x) or {}).get("learnPt", 0)
+                      for x in duong)
+            if re_nhat is None or gia < re_nhat[0]:
+                re_nhat = (gia, duong)
+        return None if re_nhat is None else re_nhat[1]
+
+    def _skill_co_the_nang(self, sid: int, den_cap: int):
+        """(chi_phi, ly_do_tu_choi). chi_phi None = KHONG nang duoc."""
+        info = (getattr(config, "SKILL_INFO", {}) or {}).get(int(sid))
+        if not info:
+            return None, "khong co trong skills_data.json"
+        tab = info.get("tree")
+        if not tab:
+            # Khong biet skill nay o tab nao -> co the la skill 2 chuyen/dac ky -> KHONG dung toi.
+            return None, "khong ro thuoc tab nao (chi nang skill cua cay skill thuong)"
+        if tab in self.SKILL_TAB_028_005:
+            return None, "skill 2 chuyen (phai dung C:028-005, bot chua ho tro)"
+        cap = self.skill_cap_hien_tai(sid)
+        den_cap = int(den_cap)
+        max_lv = int(info.get("maxLv") or 0)
+        if max_lv and den_cap > max_lv:
+            den_cap = max_lv                     # cat bot thay vi bo han: nang toi tran la hop y
+        if den_cap <= cap:
+            return None, "da dat cap %d" % cap
+        can_lv = int(info.get("needLv") or 0)
+        cua_toi = int(getattr(self, "char_level", 0) or 0)
+        if can_lv and cua_toi and cua_toi < can_lv:
+            return None, "can level %d (dang %d)" % (can_lv, cua_toi)
+        if cap == 0 and not self._tien_quyet_da_du(sid):
+            return None, "chua hoc skill tien quyet"
+        # GIA: cap 0->1 an `learnPt` (GAP DOI neu KHAC HE), cac cap sau moi cap an `lvUpPt`.
+        lvup = int(info.get("lvUpPt") or 1)
+        if cap == 0:
+            gia = int(info.get("learnPt") or 0)
+            el = int(info.get("element") or 0)
+            _he = self.he_nhan_vat()
+            if 1 <= el <= 4 and _he and el != _he:
+                gia *= 2
+            gia += (den_cap - 1) * lvup
+        else:
+            gia = (den_cap - cap) * lvup
+        return (gia, den_cap), None
+
+    def nang_skill_char(self, rules, de_danh: int = 0):
+        """Tu nang skill NHAN VAT theo bang rule (tu tren xuong). Tra (da_nang, thong_bao).
+
+        `rules` = [(skill_id, cap_dich), ...]. `de_danh` = so diem GIU LAI khong tieu.
+        Gui MOT goi `C:028-001` chua NHIEU skill: `[01 00] << [id u16][CAP DICH u8] >>` - luu y
+        gui CAP DICH chu khong phai so cap cong them (nguoc voi `C:008-001` tang diem tiem nang).
+        Xem KNOWLEDGE muc 7q.
+        """
+        con = self.skill_point_left()
+        if con is None:
+            return [], "chua doc duoc diem skill (chua nhan S:008-013)"
+        ngan_sach = max(0, int(con) - max(0, int(de_danh or 0)))
+        if ngan_sach <= 0:
+            return [], "con %s diem, de danh %s -> khong tieu" % (con, de_danh)
+        chon, bo_qua = [], []
+        # Mat xich vua xep vao goi phai duoc coi la DA HOC ngay, neu khong thi mat xich ke tiep van
+        # bi cham "chua hoc tien quyet" (CCC hoc roi ma BBB van bao thieu). Ghi thang vao
+        # `char_skill_lv`: chung THUC SU nam trong goi sap gui, va `S:008-013` cua server se chot lai.
+        def _danh_dau(_s, _cap):
+            self.char_skill_lv[int(_s)] = max(self.skill_cap_hien_tai(_s), int(_cap))
+
+        # HOAN THANH DONG TREN MOI XUONG DONG DUOI (user chot 01/09: "da bao lam nhu ben point
+        # thi phai hoan thanh duoc dong tren thi moi xuong dong duoi chu").
+        # Truoc day rule nao thieu diem thi BO QUA va diem roi xuong rule duoi (re hon) -> "Hoa
+        # Tien de tan cuoi ma da nang len 2 roi, tu Hoi Sinh xuong duoi la chua hoc".
+        # PHAN BIET hai loai ly do khong lam duoc:
+        #   - THIEU DIEM        -> tieu toi da cho dong nay roi DUNG HAN (tich tiep lan login sau)
+        #   - KHONG BAO GIO DAT -> di tiep xuong dong duoi, neu khong thi mot dong hong se chan
+        #     vinh vien moi dong sau (vd rule dat skill can level 90 ma acc dang level 30)
+        for sid, den_cap in rules or ():
+            sid = int(sid)
+            # CHUA DU TIEN QUYET -> LAN THEO CAY: hoc dan CCC -> BBB roi moi toi AAA. Moi mat xich
+            # chi hoc CAP 1 (du de mo duong), phan con lai danh cho chinh skill dich.
+            if self.skill_cap_hien_tai(sid) == 0 and not self._tien_quyet_da_du(sid):
+                _duong = self._chuoi_hoc_toi(sid)
+                if _duong is None:
+                    bo_qua.append("%s: khong lan duoc duong hoc (thieu skill tien quyet)"
+                                  % self._ten_skill(sid))
+                    continue                      # khong bao gio dat -> xuong dong duoi
+                _het_diem = False
+                for _tq in _duong:
+                    if self.skill_cap_hien_tai(_tq) > 0:
+                        continue
+                    _kq, _ld = self._skill_co_the_nang(_tq, 1)
+                    if _kq is None:
+                        bo_qua.append("%s: can hoc truoc '%s' (%s)"
+                                      % (self._ten_skill(sid), self._ten_skill(_tq), _ld))
+                        _het_diem = None          # mat xich HONG -> coi nhu khong bao gio dat
+                        break
+                    if _kq[0] > ngan_sach:
+                        bo_qua.append("%s: dang hoc dan, con thieu diem cho '%s' (can %d, con %d)"
+                                      % (self._ten_skill(sid), self._ten_skill(_tq),
+                                         _kq[0], ngan_sach))
+                        _het_diem = True
+                        break
+                    ngan_sach -= _kq[0]
+                    _danh_dau(_tq, 1)
+                    chon.append((_tq, 1, _kq[0]))
+                if _het_diem is True:
+                    break                         # DUNG: dong nay chua xong thi khong xuong duoi
+                if _het_diem is None:
+                    continue
+            ket_qua, ly_do = self._skill_co_the_nang(sid, den_cap)
+            if ket_qua is None:
+                if ly_do and not ly_do.startswith("da dat cap"):
+                    bo_qua.append("%s: %s" % (self._ten_skill(sid), ly_do))
+                continue                          # da dat cap / thieu level / tab la -> di tiep
+            gia, cap_that = ket_qua
+            if gia > ngan_sach:
+                # Ha cap dich xuong cho vua ngan sach roi DUNG: dong nay chua toi dich, lan login
+                # sau di tiep. (Hoc MOI thi khong chia nho duoc: thieu `learnPt` la khong hoc noi.)
+                _ha = cap_that - 1
+                while _ha > self.skill_cap_hien_tai(sid):
+                    _kq, _ = self._skill_co_the_nang(sid, _ha)
+                    if _kq and _kq[0] <= ngan_sach:
+                        break
+                    _ha -= 1
+                if _ha <= self.skill_cap_hien_tai(sid):
+                    bo_qua.append("%s: can %d diem, con %d -> DUNG, de danh cho dong nay"
+                                  % (self._ten_skill(sid), gia, ngan_sach))
+                    break
+                gia, cap_that = self._skill_co_the_nang(sid, _ha)[0]
+                ngan_sach -= gia
+                chon.append((sid, cap_that, gia))
+                _danh_dau(sid, cap_that)
+                bo_qua.append("%s: moi len cap %d/%d -> DUNG, cac dong duoi cho luot sau"
+                              % (self._ten_skill(sid), cap_that, int(den_cap)))
+                break
+            ngan_sach -= gia
+            chon.append((sid, cap_that, gia))
+            _danh_dau(sid, cap_that)
+        if not chon:
+            return [], "; ".join(bo_qua) if bo_qua else "khong co skill nao can nang"
+        goi = b"".join(struct.pack("<HB", sid, cap) for sid, cap, _g in chon)
+        self.send(0x1c, b"\x01\x00" + goi)
+        for sid, cap, gia in chon:
+            log.info("[%s] Nang skill '%s' -> cap %d (ton %d diem)",
+                     self._label, self._ten_skill(sid), cap, gia)
+        if self.char_skill_point is not None:
+            self.char_skill_point = ngan_sach + max(0, int(de_danh or 0))
+        if bo_qua:
+            log.info("[%s] Nang skill: bo qua %s", self._label, "; ".join(bo_qua))
+        return chon, "; ".join(bo_qua)
+
+    def _ten_skill(self, sid: int) -> str:
+        info = (getattr(config, "SKILL_INFO", {}) or {}).get(int(sid)) or {}
+        return info.get("name") or ("0x%04x" % int(sid))
+
     def add_attr_point(self, kind: int, add: int) -> bool:
         """Cong `add` diem vao chi so `kind` (ma EAttribute) cho NHAN VAT CHINH.
 
@@ -9874,6 +10188,31 @@ class GameClient:
                          "THANH CONG" if status == 0 else f"status={status}")
 
     # ---- parse skill DA HOC DAY DU (0x05 char-info) ----
+    def _on_char_skill_data(self, pkt: bytes):
+        """S:008-013: he + diem skill con lai + CAP tung skill nhan vat. Xem KNOWLEDGE 7q."""
+        b = pkt[9:]
+        if len(b) < 5:
+            return
+        el = b[0]
+        diem = int.from_bytes(b[1:3], "little")
+        cnt = int.from_bytes(b[3:5], "little")
+        if cnt > 200 or 5 + cnt * 3 > len(b):
+            return                       # goi cut / doc lech -> KHONG ghi de du lieu dang dung
+        lvs = {}
+        for i in range(cnt):
+            p = 5 + i * 3
+            sid = int.from_bytes(b[p:p + 2], "little")
+            if sid:
+                lvs[sid] = b[p + 2]
+        self.char_element = el
+        self.char_skill_point = diem
+        self.char_skill_lv = lvs
+        for sid in lvs:                  # 0x05/0x28 co the toi sau -> giu danh sach hop nhat
+            if sid not in self.state.skills_char:
+                self.state.skills_char.append(sid)
+        log.info("[%s] Skill nhan vat: he=%s, con %d diem skill, %d skill da hoc",
+                 self._label, el, diem, len(lvs))
+
     def _parse_skill_list_0x05(self, pkt: bytes):
         """Trong goi char-info 0x05 co list skill DA HOC: [count 2B LE] + count*[skill 2B LE]
         [level 1B]. (0x28 chi la skill BAR -> thieu skill khong dat phim tat.) Tim list bang
@@ -9886,6 +10225,7 @@ class GameClient:
             if not (1 <= c <= 60) or off + 2 + c * 3 > n:
                 continue
             ids = []
+            lv_map = {}
             ok = True
             for k in range(c):
                 p = off + 2 + k * 3
@@ -9895,11 +10235,16 @@ class GameClient:
                     ok = False
                     break
                 ids.append(sid)
+                lv_map[sid] = lv
             if ok and ids:
                 # GIU THU TU (skill[0]=boss fallback): append id chua co. 0x05 la list day du.
                 for s in ids:
                     if s not in self.state.skills_char:
                         self.state.skills_char.append(s)
+                # GIU CA CAP (goi nay von co [id][lv] nhung parser cu VUT lv di). Chi dung khi
+                # `S:008-013` chua toi - goi do moi la nguon chuan, den sau thi ghi de.
+                if not self.char_skill_lv:
+                    self.char_skill_lv = dict(lv_map)
                 log.info("[%s] Char skills (day du tu 0x05, %d): %s", self._label, len(ids),
                          [hex(s) for s in ids])
                 return

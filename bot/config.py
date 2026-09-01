@@ -662,6 +662,9 @@ ACCOUNT_BATTLE = {}        # username -> {"char": {...}, "pet": {...}} custom ba
 # username -> {"reserve": int, "rules": [{"stat": "int|atk|def|hpx|spx|agi", "target": int}]}
 # Bang TU CONG DIEM TIEM NANG (xem KNOWLEDGE.md muc 7o). Acc khong co = khong tu cong gi.
 ACCOUNT_POINT = {}
+# username -> {"reserve": int, "rules": [[skill_id, cap_dich], ...]}
+# Bang TU NANG SKILL NHAN VAT (xem KNOWLEDGE.md muc 7q). Acc khong co = khong tu nang gi.
+ACCOUNT_SKILL = {}
 
 # Unit IDs
 UNIT_CHAR = 3
@@ -760,6 +763,9 @@ if _aj is not None:
                     _pt = _s.get("point")
                     if isinstance(_pt, dict):
                         ACCOUNT_POINT[_u] = _pt
+                    _sk = _s.get("skill")
+                    if isinstance(_sk, dict):
+                        ACCOUNT_SKILL[_u] = _sk
         # accounts.json TON TAI -> LUON dung no (ke ca RONG) => ban product accounts.json rong thi
         # KHONG hien party mac dinh cua config (tranh lo/nham acc).
         PARTIES = _ps
