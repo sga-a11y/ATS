@@ -7126,7 +7126,7 @@ class GameClient:
                     log.info("[%s] Dungeon HOAN THANH -> nhan thuong + ra", self._label)
                     self.send(0x52, b"\x01\x00\x01\x1d\x00")   # claim/confirm tong ket
                     time.sleep(0.6)
-                    self.leave_party()                          # thoat dungeon (game tu dua ve map cu)
+                    self.leave_single_dungeon()   # thoat dungeon (game tu dua ve map cu)
                     break
             # cho game tu dua ve map train (current_map cap nhat lai khi thay nguoi o safe)
             for _ in range(15):
@@ -10608,6 +10608,34 @@ class GameClient:
         self.party_members = []   # da roi party -> xoa roster (de flee_mode lai flee duoc khi teleport/reform)
         log.info("[%s] Roi/giai tan party cu (gui ID doi truong=%s)", self._label, _chu.hex()[:8])
 
+    def leave_single_dungeon(self) -> bool:
+        """RA KHOI PHO BAN SOLO. Client: `Logic/Dungeon.lua:243`
+
+            function Dungeon.LeaveSinglePlayDungeon()
+              sendBuffer:WriteInt64(Role.playerId);   -- ID CUA CHINH MINH
+              Network.Send(13, 4, sendBuffer);        -- C:013-004
+            end
+
+        Cung goi `C:013-004` nhu roi party, NHUNG mang ID CUA CHINH MINH chu khong phai ID doi
+        truong (`Team.Leave` moi gui `members[playerId]` = leaderId). Day la duong THOAT INSTANCE
+        cua game, KHONG phai "roi party" -> khong duoc di qua guard cua `leave_party` (guard do
+        chan gui MU vao party minh khong o; o day thi client THAT cung gui dung the).
+
+        Bug 01/09: buoc nay truoc dung `leave_party()`; sau khi them guard "khong o party thi
+        KHONG gui 013-004", dungeon SOLO khong co party nao -> bi chan -> KHONG BAO GIO RA khoi
+        map 62001. Log: moi acc moi luot deu "Dungeon HOAN THANH -> nhan thuong + ra" roi ngay sau
+        la "KHONG o party nao ... KHONG gui 013-004", sau do `go_to_town` spam teleport 2 giay/lan
+        cho toi khi server da vi `ma 13` (gui goi lien tuc qua nhanh).
+        """
+        if not self.self_entity:
+            return False
+        try:
+            self.send(protocol.OP_PLAYER_STATE, b"\x04\x00" + bytes(self.self_entity))
+        except OSError:
+            return False
+        log.info("[%s] Thoat pho ban SOLO (013-004 voi ID cua chinh minh)", self._label)
+        return True
+
     TEAM_OF_MAX_AGE = 60.0   # roster cu hon the la khong con dang tin (party doi lien tuc)
 
     def _doi_truong_dang_ket(self):
@@ -12061,6 +12089,20 @@ class GameClient:
             if self.in_di_gioi():
                 log.info("[%s] go_to_town: VAN dang o Di Gioi (map=%s) -> khong teleport, ra cong "
                          "thoat da", self._label, self.current_map)
+                self.flee_mode = False
+                return False
+            # DANG O TRONG BAT KY INSTANCE NAO (ca dai 62xxx): server CHAN teleport -> gui bao
+            # nhieu lan cung vo ich, ma con la nguon spam goi -> `ma 13` (gui goi lien tuc qua
+            # nhanh) roi dut ket noi.
+            #
+            # Nhanh `_team_dungeon_until` o tren CHI phu PHO BAN TO DOI. Pho ban SOLO hang ngay
+            # (map 62001) khong co moc do -> lot qua het.
+            # Log 01/09 08:21:20-08:23:02: 4 acc (vuhai, quantam, quanchin, quanmuoi) xong dungeon
+            # solo o map 62001, spam "Teleport -> city 12001" MOI 2 GIAY suot hon 100 giay, va
+            # truoc do ca 4 deu dinh `SERVER NGAT KET NOI: gui goi lien tuc qua nhanh (ma 13)`.
+            if in_instance_map(self.current_map):
+                log.info("[%s] go_to_town: DANG TRONG instance (map=%s) -> khong teleport, phai "
+                         "ra khoi pho ban truoc", self._label, self.current_map)
                 self.flee_mode = False
                 return False
             # DANG BATTLE -> teleport bi chan, spam teleport luc battle PHA luot FLEE -> BAT flee, cho thoat.

@@ -270,6 +270,17 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 // Tu chon CAP QUAI DG. THEM O CUOI CUNG (goi theo VI TRI).
                 party.diGioiPick,
             )
+            // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
+            // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,
+            // `config.ACCOUNT_POINT` doc tu accounts.json; ben APK phai bom vao bang duong nay.
+            activeAccounts.forEach { acc ->
+                if (acc.pointJson.isNotBlank()) {
+                    try { py.callAttr("apply_point_config", acc.username, acc.pointJson) }
+                    catch (e: Exception) {
+                        android.util.Log.w("aTSBot", "apply_point_config loi: ${e.message}")
+                    }
+                }
+            }
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)
             if (generation == startGeneration) {
@@ -406,6 +417,62 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
     fun legionNotifyItems(pidx: Int): List<Map<String, String>> {
         return try {
             val lst = rpd().callAttr("legion_notify_items", pidx)?.asList() ?: return emptyList()
+            lst.mapNotNull { row ->
+                val m = row?.asMap() ?: return@mapNotNull null
+                m.entries.associate { (k, v) -> k.toString() to (v?.toString() ?: "") }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    // ---- TANG DIEM TIEM NANG (xem KNOWLEDGE.md muc 7o) ----
+
+    /** Bang diem 1 acc: {left, stats:[{key,ten,ma,goc,tong}], cache?, ts?}. Acc TAT -> doc cache. */
+    fun pointInfo(username: String): Map<String, String> {
+        return try {
+            val m = rpd().callAttr("point_info", username)?.asMap() ?: return emptyMap()
+            m.entries.associate { (k, v) -> k.toString() to (v?.toString() ?: "") }
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    /** JSON bang diem (de UI parse `stats`). "" = acc chua chay va chua co so da luu. */
+    fun pointInfoJson(username: String): String {
+        return try {
+            val py = com.chaquo.python.Python.getInstance()
+            val json = py.getModule("json")
+            val info = rpd().callAttr("point_info", username) ?: return ""
+            if (info.asMap().isEmpty()) "" else json.callAttr("dumps", info).toString()
+        } catch (_: Exception) { "" }
+    }
+
+    /** Cong TAY. -> "queued" = dang trong tran, da xep hang (het tran bot tu gui). */
+    fun addPoint(username: String, statKey: String, add: Int): String {
+        return try {
+            rpd().callAttr("add_point", username, statKey, add)?.toString() ?: "False"
+        } catch (_: Exception) { "False" }
+    }
+
+    fun applyPointConfig(username: String, pointJson: String): Boolean =
+        try { rpd().callAttr("apply_point_config", username, pointJson)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
+    /** Acc con du diem sau khi duyet het bang rule - [{user, kind:'diem_du', diem}]. */
+    fun diemDuNotifyItems(pidx: Int): List<Map<String, String>> = notifyRows("diem_du_notify_items", pidx)
+
+    fun diemDuNotifySkip(username: String): Boolean =
+        try { rpd().callAttr("diem_du_notify_skip", username)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
+    /** Ba Dau sap het han (con duoi 1 ngay) - [{user, kind:'ba_dau', luc}]. Xem KNOWLEDGE.md 7p. */
+    fun baDauNotifyItems(pidx: Int): List<Map<String, String>> = notifyRows("ba_dau_notify_items", pidx)
+
+    fun baDauNotifySkip(username: String): Boolean =
+        try { rpd().callAttr("ba_dau_notify_skip", username)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
+    /** Doc mot ham `*_notify_items(pidx)` ben Python -> list map string. */
+    private fun notifyRows(fn: String, pidx: Int): List<Map<String, String>> {
+        return try {
+            val lst = rpd().callAttr(fn, pidx)?.asList() ?: return emptyList()
             lst.mapNotNull { row ->
                 val m = row?.asMap() ?: return@mapNotNull null
                 m.entries.associate { (k, v) -> k.toString() to (v?.toString() ?: "") }

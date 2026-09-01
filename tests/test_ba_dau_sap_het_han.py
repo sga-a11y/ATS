@@ -210,5 +210,38 @@ class TestGUI(unittest.TestCase):
         self.assertIn('bg="#f59e0b"', self.src[i_agi:i_agi + 300])
 
 
+class TestAPKCoCanhBao(unittest.TestCase):
+    def _kt(self, ten):
+        with io.open(os.path.join(ROOT, "android", "app", "src", "main", "java", "com", "tsbot",
+                                  "android", ten), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_service_co_cau_noi(self):
+        s = self._kt("BotForegroundService.kt")
+        # `ba_dau_notify_items` di qua helper chung `notifyRows(fn, pidx)` -> ten ham la THAM SO.
+        self.assertIn('"ba_dau_notify_items"', s)
+        self.assertIn('callAttr("ba_dau_notify_skip"', s)
+
+    def test_gop_vao_man_chu_y_va_dat_TRUOC_quan_doan(self):
+        s = self._kt("MainActivity.kt")
+        i = s.find("baDauNotifyItems(_pi)")
+        j = s.find("legionNotifyItems(_pi)")
+        self.assertGreater(i, 0, "APK khong hien canh bao Ba Dau")
+        self.assertLess(i, j, "Ba Dau phai len TRUOC quan doan")
+
+    def test_co_dong_hien_thi(self):
+        s = self._kt("MainActivity.kt")
+        self.assertIn('it0["kind"] == "ba_dau"', s)
+        self.assertIn("Ba Đậu Yêu sẽ hết hạn vào lúc", s)
+
+    def test_nut_Chu_y_doi_mau_CAM(self):
+        """`StatusConnecting` = 0xFFF59E0B - DUNG mau cam voi nut Check AGI ben PC (#f59e0b)."""
+        s = self._kt("MainActivity.kt")
+        self.assertIn('notifyItems.any { it["kind"] == "ba_dau" }', s)
+        i = s.find("val gapNotify")
+        self.assertIn("StatusConnecting", s[i:i + 600])
+        self.assertIn("val StatusConnecting = Color(0xFFF59E0B)", self._kt("Theme.kt"))
+
+
 if __name__ == "__main__":
     unittest.main()

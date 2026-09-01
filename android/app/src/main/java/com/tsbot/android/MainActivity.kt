@@ -268,6 +268,7 @@ fun TsBotApp(
     var confirmDeleteAccount by remember { mutableStateOf<Pair<String, String>?>(null) }
     var confirmDeleteParty by remember { mutableStateOf<String?>(null) }
     var editingSkillAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    var editingPointAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     // Tab party dang chon (moi party = 1 tab, giong ban PC)
     var selectedTab by remember { mutableStateOf(0) }
     var privacyMode by rememberSaveable { mutableStateOf(PRIVACY_MASK) }
@@ -522,6 +523,7 @@ fun TsBotApp(
                         onEditAccount = { account -> editingAccount = party.name to account },
                         onEditHeal = { account -> editingHealAccount = party.name to account },
                         onEditSkill = { account -> editingSkillAccount = party.name to account },
+                        onEditPoint = { account -> editingPointAccount = party.name to account },
                         onEnabledChange = { account, enabled ->
                             partyStore.updateAccountInParty(
                                 party.name,
@@ -552,15 +554,21 @@ fun TsBotApp(
                         onFurnaceNotify = {
                             // pidx suy tu vi tri party trong list (giong startPartyIn)
                             val _pi = parties.indexOf(party)
-                            // QUAN DOAN truoc, LO sau - cung thu tu voi GUI PC.
+                            // THU TU giong GUI PC: BA DAU -> QUAN DOAN -> DU DIEM -> LO.
+                            // Ba Dau len dau vi no la viec CO HAN GIO (het la mat quyen loi hoi
+                            // day HP/SP), con lai luc nao lam cung duoc.
                             if (_pi >= 0)
-                                (service?.legionNotifyItems(_pi) ?: emptyList()) +
+                                (service?.baDauNotifyItems(_pi) ?: emptyList()) +
+                                    (service?.legionNotifyItems(_pi) ?: emptyList()) +
+                                    (service?.diemDuNotifyItems(_pi) ?: emptyList()) +
                                     (service?.furnaceNotifyItems(_pi) ?: emptyList())
                             else emptyList()
                         },
                         onFurnaceBuy = { u, tid -> service?.furnaceNotifyBuy(u, tid) ?: false },
                         onFurnaceSkip = { u, tid -> service?.furnaceNotifySkip(u, tid) ?: false },
                         onLegionSkip = { u -> service?.legionNotifySkip(u) ?: false },
+                        onBaDauSkip = { u -> service?.baDauNotifySkip(u) ?: false },
+                        onDiemDuSkip = { u -> service?.diemDuNotifySkip(u) ?: false },
                         onCurrentChannel = {
                             party.accounts.firstOrNull { service?.isRunning(it.username) == true }
                                 ?.let { service?.currentChannel(it.username) }
@@ -928,6 +936,25 @@ fun TsBotApp(
         )
     }
 
+    val pointAccount = editingPointAccount
+    if (pointAccount != null) {
+        val (partyName, account) = pointAccount
+        PointSettingsDialog(
+            username = account.username,
+            initialPointJson = account.pointJson,
+            onLoadInfo = { service?.pointInfoJson(account.username) ?: "" },
+            onAddPoint = { key, add -> service?.addPoint(account.username, key, add) ?: "False" },
+            onDismiss = { editingPointAccount = null },
+            onSave = { json ->
+                partyStore.updateAccountInParty(
+                    partyName, account.username, account.copy(pointJson = json))
+                service?.applyPointConfig(account.username, json)
+                refresh()
+                editingPointAccount = null
+            },
+        )
+    }
+
     val skillAccount = editingSkillAccount
     if (skillAccount != null) {
         val (partyName, account) = skillAccount
@@ -1056,6 +1083,7 @@ fun PartyCard(
     onEditAccount: (Account) -> Unit,
     onEditHeal: (Account) -> Unit,
     onEditSkill: (Account) -> Unit,
+    onEditPoint: (Account) -> Unit = {},
     onEnabledChange: (Account, Boolean) -> Unit,
     onRemoveAccount: (String) -> Unit,
     onRemoveParty: () -> Unit,
@@ -1074,6 +1102,8 @@ fun PartyCard(
     onFurnaceBuy: (String, Int) -> Boolean = { _, _ -> false },
     onFurnaceSkip: (String, Int) -> Boolean = { _, _ -> false },
     onLegionSkip: (String) -> Boolean = { _ -> false },
+    onBaDauSkip: (String) -> Boolean = { _ -> false },
+    onDiemDuSkip: (String) -> Boolean = { _ -> false },
     onCurrentChannel: () -> Int?,
     onGetLog: (String) -> String = { "" },
 ) {
@@ -1232,12 +1262,16 @@ fun PartyCard(
                             fontWeight = if (agiWarning) FontWeight.Bold else FontWeight.Medium)
                     }
                     if (notifyCount > 0) {
+                        // CAM = co viec CAN CHU Y NGAY (hien tai: Ba Dau sap het han) - cung mau
+                        // voi nut "Check AGI" luc lech, de nhin luot qua la thay. Con lai vang nhat.
+                        val gapNotify = notifyItems.any { it["kind"] == "ba_dau" }
                         OutlinedButton(
                             onClick = { showNotifyDialog = true },
                             modifier = Modifier.weight(1f),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
                             colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color(0xFFFFF3CD), contentColor = Color(0xFF8A6D00),
+                                containerColor = if (gapNotify) StatusConnecting else Color(0xFFFFF3CD),
+                                contentColor = if (gapNotify) Color(0xFF3B2500) else Color(0xFF8A6D00),
                             ),
                         ) {
                             Text("⚠ Chú ý ($notifyCount)", maxLines = 1,
@@ -1275,6 +1309,8 @@ fun PartyCard(
                     onBuy = { u, tid -> onFurnaceBuy(u, tid) },
                     onSkip = { u, tid -> onFurnaceSkip(u, tid) },
                     onLegionSkip = { u -> onLegionSkip(u) },
+                    onBaDauSkip = { u -> onBaDauSkip(u) },
+                    onDiemDuSkip = { u -> onDiemDuSkip(u) },
                     onRefresh = {
                         val n = onFurnaceNotify(); notifyItems = n; notifyCount = n.size
                     },
@@ -1307,6 +1343,7 @@ fun PartyCard(
                         onEdit = { onEditAccount(account) },
                         onEditHeal = { onEditHeal(account) },
                         onEditSkill = { onEditSkill(account) },
+                        onEditPoint = { onEditPoint(account) },
                         onEnabledChange = { enabled -> onEnabledChange(account, enabled) },
                         onDelete = { onRemoveAccount(account.username) },
                         expanded = expandedLogUser == account.username,
@@ -1333,6 +1370,7 @@ fun AccountRow(
     onEdit: () -> Unit,
     onEditHeal: () -> Unit,
     onEditSkill: () -> Unit,
+    onEditPoint: () -> Unit,
     onEnabledChange: (Boolean) -> Unit,
     onDelete: () -> Unit,
     expanded: Boolean = false,
@@ -1417,6 +1455,9 @@ fun AccountRow(
                 }
                 TextButton(onClick = onEditSkill) {
                     Text("Battle", maxLines = 1)
+                }
+                TextButton(onClick = onEditPoint) {
+                    Text("Point", maxLines = 1)
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = StatusError, modifier = Modifier.size(18.dp))
@@ -3786,6 +3827,8 @@ fun FurnaceNotifyDialog(
     onBuy: (String, Int) -> Boolean,
     onSkip: (String, Int) -> Boolean,
     onLegionSkip: (String) -> Boolean = { _ -> false },
+    onBaDauSkip: (String) -> Boolean = { _ -> false },
+    onDiemDuSkip: (String) -> Boolean = { _ -> false },
     onRefresh: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -3800,6 +3843,43 @@ fun FurnaceNotifyDialog(
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
                     items(items, key = { (it["user"] ?: "") + (it["kind"] ?: "") + (it["id"] ?: "") }) { it0 ->
                         val u = it0["user"] ?: return@items
+                        if (it0["kind"] == "ba_dau") {
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Text("$u: Ba Đậu Yêu sẽ hết hạn vào lúc ${it0["luc"]}",
+                                     style = MaterialTheme.typography.bodySmall,
+                                     fontWeight = FontWeight.Bold,
+                                     color = StatusConnecting)
+                                Row(horizontalArrangement = Arrangement.End,
+                                    modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) { onBaDauSkip(u) }
+                                            onRefresh()
+                                        }
+                                    }) { Text("Bỏ qua") }
+                                }
+                                HorizontalDivider()
+                            }
+                            return@items
+                        }
+                        if (it0["kind"] == "diem_du") {
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Text("$u còn dư ${it0["diem"]} điểm chưa dùng — bảng tự cộng đã " +
+                                     "duyệt hết mà vẫn thừa (mở nút Point để thêm dòng)",
+                                     style = MaterialTheme.typography.bodySmall)
+                                Row(horizontalArrangement = Arrangement.End,
+                                    modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) { onDiemDuSkip(u) }
+                                            onRefresh()
+                                        }
+                                    }) { Text("Bỏ qua") }
+                                }
+                                HorizontalDivider()
+                            }
+                            return@items
+                        }
                         if (it0["kind"] == "legion") {
                             Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                                 Text("$u KHÔNG có quân đoàn — mất phần donate quân đoàn, " +
@@ -3976,6 +4056,216 @@ private fun HealPercentField(
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = modifier,
+    )
+}
+
+/** 6 chi so cong diem duoc, DUNG THU TU o tren UI cua client (Logic/Status.lua:399-412):
+ *  o 4/5 la Hpx/Spx, o 6 moi la Agi - KHONG lien mach 27..32. Xem KNOWLEDGE.md muc 7o. */
+private val PointStats = listOf(
+    "int" to "INT", "atk" to "ATK", "def" to "DEF",
+    "hpx" to "HPx", "spx" to "SPx", "agi" to "AGI",
+)
+
+private data class PointRule(val stat: String, val target: Int)
+
+private fun parsePointRules(json: String): Pair<Int, List<PointRule>> {
+    if (json.isBlank()) return 999 to emptyList()
+    return try {
+        val o = org.json.JSONObject(json)
+        val arr = o.optJSONArray("rules")
+        val rules = mutableListOf<PointRule>()
+        for (i in 0 until (arr?.length() ?: 0)) {
+            val r = arr!!.optJSONObject(i) ?: continue
+            val t = r.optInt("target", 0)
+            if (t > 0) rules.add(PointRule(r.optString("stat", "int"), t))
+        }
+        o.optInt("reserve", 999) to rules
+    } catch (_: Exception) { 999 to emptyList() }
+}
+
+private fun buildPointJson(reserve: Int, rules: List<PointRule>): String {
+    val arr = org.json.JSONArray()
+    rules.forEach { arr.put(org.json.JSONObject().put("stat", it.stat).put("target", it.target)) }
+    return org.json.JSONObject().put("reserve", reserve).put("rules", arr).toString()
+}
+
+/**
+ * DIEM TIEM NANG cua NHAN VAT (khong quan tam pet). Ban Kotlin cua PointDialog ben PC - cung mot
+ * luat, cung mot ham core (`point_info` / `add_point` / `apply_point_config`).
+ *
+ *  1. Bang 6 chi so: GOC (thu ma cong diem tac dong toi) va TONG (da gom trang bi/thu cuoi/the).
+ *  2. Cong TAY: dang trong tran -> XEP HANG, het tran bot tu gui.
+ *  3. Bang TU CONG: dong dau CO DINH "Point de danh", cac dong sau la muc dich tung chi so,
+ *     duyet TU TREN XUONG. Rule chot theo diem GOC.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PointSettingsDialog(
+    username: String,
+    initialPointJson: String,
+    onLoadInfo: () -> String,
+    onAddPoint: (String, Int) -> String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val (initReserve, initRules) = remember(initialPointJson) { parsePointRules(initialPointJson) }
+    var reserve by remember { mutableStateOf(initReserve.toString()) }
+    val rules = remember { mutableStateListOf<PointRule>().apply { addAll(initRules) } }
+    var infoJson by remember { mutableStateOf("") }
+    val adds = remember { mutableStateMapOf<String, String>() }
+
+    suspend fun nap() {
+        infoJson = withContext(Dispatchers.IO) { onLoadInfo() }
+    }
+    LaunchedEffect(username) { nap() }
+
+    val info = remember(infoJson) {
+        try { if (infoJson.isBlank()) null else org.json.JSONObject(infoJson) } catch (_: Exception) { null }
+    }
+    val goc = remember(info) {
+        val m = mutableMapOf<String, Pair<Int, Int>>()
+        val arr = info?.optJSONArray("stats")
+        for (i in 0 until (arr?.length() ?: 0)) {
+            val st = arr!!.optJSONObject(i) ?: continue
+            m[st.optString("key")] = st.optInt("goc") to st.optInt("tong")
+        }
+        m
+    }
+    val tuCache = info?.optBoolean("cache") == true
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Point: $username") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp)
+                .verticalScroll(rememberScrollState())) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Chỉ số", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                    Text("Gốc", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                    Text("Tổng", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                    Text("Cộng", Modifier.weight(1.4f), style = MaterialTheme.typography.labelMedium)
+                }
+                PointStats.forEach { (key, ten) ->
+                    val gt = goc[key]
+                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(ten, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        Text(gt?.first?.toString() ?: "?", Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall)
+                        Text(gt?.second?.toString() ?: "?", Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(
+                            value = adds[key] ?: "0",
+                            onValueChange = { adds[key] = it.filter { c -> c.isDigit() } },
+                            singleLine = true,
+                            modifier = Modifier.weight(1.4f),
+                            textStyle = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                val left = info?.opt("left")?.toString()?.takeIf { it != "null" } ?: "?"
+                Text("Điểm dư: $left", fontWeight = FontWeight.Bold)
+                // Acc TAT -> so doc tu cache (chi de XEM). Noi RO keo user bam cong mai khong an.
+                Text(
+                    if (info == null) "(acc chưa chạy và chưa có số đã lưu)"
+                    else if (tuCache) "(acc đang TẮT — số đã lưu, bật acc mới cộng được)"
+                    else "(số đọc trực tiếp từ acc đang chạy)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { scope.launch { nap() } }) { Text("Đọc lại") }
+                    TextButton(onClick = {
+                        scope.launch {
+                            val cho = mutableListOf<String>()
+                            var loi: String? = null
+                            withContext(Dispatchers.IO) {
+                                for ((key, ten) in PointStats) {
+                                    val add = (adds[key] ?: "0").toIntOrNull() ?: 0
+                                    if (add <= 0) continue
+                                    when (onAddPoint(key, add)) {
+                                        "queued" -> { cho.add("$ten +$add"); adds[key] = "0" }
+                                        "True" -> adds[key] = "0"
+                                        else -> { loi = "Không cộng được $add vào $ten"; break }
+                                    }
+                                }
+                            }
+                            if (loi != null) {
+                                android.widget.Toast.makeText(context,
+                                    "$loi — acc phải đang chạy và còn đủ điểm dư",
+                                    android.widget.Toast.LENGTH_LONG).show()
+                            } else if (cho.isNotEmpty()) {
+                                android.widget.Toast.makeText(context,
+                                    "Đang trong trận — đã xếp hàng, đánh xong bot tự cộng: " +
+                                        cho.joinToString(", "),
+                                    android.widget.Toast.LENGTH_LONG).show()
+                            }
+                            nap()
+                        }
+                    }) { Text("Cộng ngay") }
+                }
+
+                HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                Text("Tự cộng Điểm (duyệt từ trên xuống)", fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("Point để dành:", Modifier.weight(1.4f),
+                        style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = reserve,
+                        onValueChange = { reserve = it.filter { c -> c.isDigit() } },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        textStyle = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text("(luôn giữ lại; dư hơn số này mới cộng cho các dòng dưới)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                rules.forEachIndexed { idx, r ->
+                    var mo by remember(idx) { mutableStateOf(false) }
+                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            TextButton(onClick = { mo = true }) {
+                                Text(PointStats.firstOrNull { it.first == r.stat }?.second ?: r.stat)
+                            }
+                            DropdownMenu(expanded = mo, onDismissRequest = { mo = false }) {
+                                PointStats.forEach { (k, t) ->
+                                    DropdownMenuItem(text = { Text(t) }, onClick = {
+                                        rules[idx] = r.copy(stat = k); mo = false
+                                    })
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = r.target.toString(),
+                            onValueChange = { v ->
+                                rules[idx] = r.copy(target = v.filter { it.isDigit() }.toIntOrNull() ?: 0)
+                            },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            textStyle = MaterialTheme.typography.bodySmall,
+                        )
+                        IconButton(onClick = { rules.removeAt(idx) }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Xóa dòng",
+                                tint = StatusError, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+                TextButton(onClick = { rules.add(PointRule("int", 0)) }) { Text("+ Thêm dòng") }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(buildPointJson(reserve.toIntOrNull() ?: 999,
+                    rules.filter { it.target > 0 }))
+            }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
     )
 }
 

@@ -132,4 +132,7 @@ data class Account(
     val furnace: FurnaceConfig = FurnaceConfig(),
     val vantieu: VantieuConfig = VantieuConfig(),
     val enabled: Boolean = true,
+    // Bang TU CONG DIEM TIEM NANG (JSON): {"reserve": int, "rules":[{"stat","target"}]}.
+    // Dat CUOI cung de cac cho dung tham so VI TRI (PartyStore) khong phai sua.
+    val pointJson: String = "",
 )

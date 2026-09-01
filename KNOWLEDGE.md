@@ -2614,6 +2614,98 @@ lệch đó vào giờ máy → khỏi hỏi lại liên tục.
   HP/SP và tự uống thuốc (tốn item); Ba Đậu là buff hồi đầy **miễn phí** sau mỗi trận. `MachineBox`
   chỉ có `EMachineBoxStats.StartTime` = số giây đã chạy phiên này, **không** mang hạn dùng.
 
+## 7q. NÂNG SKILL NHÂN VẬT (skill point) — `C:028-001`
+
+Tra crack client 01/09. **Chưa cài vào bot**, đây là ghi chú giao thức.
+
+### Gói gửi lên — opcode `28` (`0x1c`), KHÔNG phải `0x08`
+```
+C:028-001 <玩家技能升級>   <<+技能ID(2) +技能等級(1)>>            -- NHAN VAT
+C:028-002 <武將技能升級>   +武將索引(1) <<+技能ID(2) +技能等級(1)>> -- PET
+C:028-005 <二轉寄能升級>   (2 chuyển / thiên châu — xem dưới)
+```
+
+**Bẫy 1 — sai opcode.** Bảng chỉ số dùng `0x08`, nhưng nâng skill là **`0x1c`**. `Send(8, 13)`
+trong `UISkillTree.CheckPlayerData` chỉ là **xin lại dữ liệu** khi client thấy tổng điểm bất
+thường, KHÔNG phải lệnh nâng. `Send(8, 12)` là chọn hệ 3 chuyển.
+
+**Bẫy 2 — gửi CẤP ĐÍCH, không phải số cấp cộng thêm.** Ngược với `C:008-001` (tăng điểm tiềm năng
+gửi *số điểm cộng thêm*). `UISkillTree.SendSkill`:
+```lua
+table.insert(addSkills, { skillId, this.GetSkillLv(i, k) });   -- GetSkillLv = cap HIEN TAI + cap CONG THEM
+...
+for k, v in pairs(addSkills) do
+  sendBuffer:WriteUInt16(v[1]);   -- skillId
+  sendBuffer:WriteByte(v[2]);     -- CAP DICH
+end
+Network.Send(28, 1, sendBuffer);
+```
+
+**Bẫy 3 — một gói gửi NHIỀU skill.** Thân gói là danh sách `[id(2)][lv(1)]` lặp lại, không có
+trường đếm ở đầu (server đọc tới hết gói). Khác `C:008-001` (mỗi ô một gói riêng).
+
+### Điểm skill còn lại
+`EAttribute.SkillPoint = 37` (`Controller/RoleController.lua:47`) — bot đã thu mọi id vào
+`char_attrs` qua `0x08 sub0100`, nên đọc `char_attrs[37]`.
+
+Client hiển thị `totalSkillPoint - useSkillPoint`, tức **trừ dần theo số cấp đang cộng dở trên
+UI**; server mới là nơi chốt.
+
+### Gói server trả về
+```
+S:008-013 <設定主角技能> +元素(1) +技能點數(2) +技能數量(1) +<<技能ID(2) +等級(1)>>
+```
+opcode `0x08` sub `13` (`0x0d`) → `Role.ReceivePlayerSkillData`. Mang **cả điểm còn lại lẫn danh
+sách skill + cấp**, nên đối chiếu gói này là biết lệnh có ăn.
+
+`S:020-023 <獲得技能點數訊息> +點數(1)` chỉ là thông báo "vừa được +N điểm", **không** mang tổng.
+
+### Ràng buộc / lưu ý
+- **2 chuyển hoặc có dùng thiên châu (天珠) thì phải đi `C:028-005`**, không dùng `028-001`:
+  `if table.Count(addBalls) > 0 or isTurn2 then ... Send(28, 5) else ... Send(28, 1) end`.
+  Bố cục `028-005`: `+độ dài(4) <<+thiên châu(1)>> +độ dài(4) <<+id(2) +lv(1)>> +độ dài(4)
+  <<+index(1) +id(2)>>` — có 3 trường đếm `UInt32`, khác hẳn `028-001`.
+- Không có skill nào cộng thì client chặn ngay (`ShowCenterMessage(20571)`), không gửi gói rỗng.
+- Reset điểm skill: `UISell.Launch(17)` = phải mua item, không có lệnh reset trực tiếp.
+- Bot đã có `auto_upgrade_pet_skills()` cho PET (chạy trong việc vặt lúc login). Phần NHÂN VẬT
+  thì chưa — và nó dùng gói khác (`028-001`, không có `武將索引`).
+
+### GIÁ và ĐIỀU KIỆN — client kiểm TRƯỚC khi cho cộng (`UISkillTree` ~1084-1150)
+**1 cấp KHÔNG phải 1 điểm.** Giá lấy từ gamedata của từng skill:
+```lua
+-- HOC LAN DAU (cap 0 -> 1)
+needPoint = skillData.learnPoint;
+if Between(skillData.element, 1, 4) and skillData.element ~= currentElement then
+  needPoint = needPoint * 2;        -- HOC SKILL KHAC HE -> GAP DOI diem
+end
+-- CAC CAP SAU
+needPoint = skillData.levelUpPoint;
+```
+
+**Trần cấp**: `skillData.maxLv` (`if skillLv + addLv == skillData.maxLv then` — hết đường cộng).
+
+**Skill tiên quyết**: mỗi skill có danh sách `preSkillId`; nếu **mọi** skill tiên quyết đều đang
+cấp 0 thì client chặn (`checkCount > 0 and checkCount == failCount`). Tức chỉ cần **một** cái đã
+học là qua — không phải tất cả.
+
+### Bot ĐÃ CÓ gì trong `skills_data.json` (541 skill)
+```json
+"0x2710": {"name": "Đấu Vật", "cost": 0, "cat": 1, "splash": 1,
+           "needLv": 1, "learnPt": 0, "lvUpPt": 1, "maxLv": 1}
+```
+| Client cần | Trường trong `skills_data.json` |
+|---|---|
+| `skillData.learnPoint` | `learnPt` ✓ |
+| `skillData.levelUpPoint` | `lvUpPt` ✓ |
+| `skillData.maxLv` | `maxLv` ✓ |
+| cấp nhân vật tối thiểu | `needLv` ✓ |
+| `skillData.element` (nhân đôi điểm khi khác hệ) | **THIẾU** |
+| `preSkillId` (skill tiên quyết) | **THIẾU** |
+
+=> Muốn auto nâng skill char thì phải bổ sung `element` + `preSkillId` vào `skills_data.json`
+(sinh lại từ `gamedata_Skill.dat` bằng `tools/crack_*`), hoặc chấp nhận hai giới hạn: không tính
+được luật "khác hệ ×2 điểm" và không tự biết skill tiên quyết.
+
 ## 8. GAME MECHANICS
 
 | Mechanic | Mô tả |

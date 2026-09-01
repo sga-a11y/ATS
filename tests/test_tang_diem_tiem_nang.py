@@ -341,5 +341,74 @@ class TestGUIPointDialog(unittest.TestCase):
         self.assertIn('_pt = _s.get("point")', s)
 
 
+class TestAPKCoDayDu(unittest.TestCase):
+    """APK phai co DU nhu PC (luat "APK giong het PC"): cau noi + nut Point + dialog + luu config.
+
+    Core Python duoc `tools/sync_apk_python.py` chep sang tu dong, nhung UI Kotlin thi khong -
+    thieu no thi engine chay ma `ACCOUNT_POINT` rong -> mac dinh "de danh 999" -> khong cong gi.
+    """
+
+    def _kt(self, ten):
+        with io.open(os.path.join(ROOT, "android", "app", "src", "main", "java", "com", "tsbot",
+                                  "android", ten), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_service_co_cau_noi(self):
+        s = self._kt("BotForegroundService.kt")
+        # `*_notify_items` di qua helper chung `notifyRows(fn, pidx)` nen ten ham la THAM SO,
+        # khong nam trong `callAttr("...")` - neo theo ten ham Python xuat hien o dau cung duoc.
+        for fn in ("point_info", "add_point", "apply_point_config",
+                   "diem_du_notify_items", "diem_du_notify_skip"):
+            self.assertIn('"%s"' % fn, s, "thieu cau noi %s" % fn)
+
+    def test_day_cau_hinh_point_luc_START(self):
+        """Ben PC `ACCOUNT_POINT` doc tu accounts.json; ben APK phai bom qua duong nay."""
+        s = self._kt("BotForegroundService.kt")
+        i = s.find('py.callAttr("start_party", pidx)')
+        self.assertGreater(i, 0)
+        self.assertIn('apply_point_config', s[max(0, i - 1200):i],
+                      "khong day cau hinh truoc khi start -> bot khong cong diem nao")
+
+    def test_luu_vao_parties_json(self):
+        s = self._kt("PartyStore.kt")
+        self.assertIn('a.optString("point", "")', s, "khong doc lai -> mat config sau restart")
+        self.assertIn('ao.put("point", a.pointJson)', s)
+        self.assertIn("val pointJson: String", self._kt("Account.kt"))
+
+    def test_co_nut_Point_va_dialog(self):
+        s = self._kt("MainActivity.kt")
+        self.assertIn('Text("Point", maxLines = 1)', s)
+        self.assertIn("fun PointSettingsDialog(", s)
+        self.assertIn("editingPointAccount", s)
+
+    def test_dialog_hien_CA_GOC_LAN_TONG(self):
+        s = self._kt("MainActivity.kt")
+        i = s.find("fun PointSettingsDialog(")
+        than = s[i:i + 9000]
+        self.assertIn('Text("Gốc"', than)
+        self.assertIn('Text("Tổng"', than)
+        self.assertIn("Điểm dư:", than)
+
+    def test_dialog_co_bang_rule_them_xoa(self):
+        s = self._kt("MainActivity.kt")
+        i = s.find("fun PointSettingsDialog(")
+        than = s[i:i + 9000]
+        self.assertIn("Point để dành:", than)
+        self.assertIn("+ Thêm dòng", than)
+        self.assertIn("rules.removeAt(idx)", than)
+
+    def test_cong_giua_tran_bao_DA_XEP_HANG(self):
+        s = self._kt("MainActivity.kt")
+        i = s.find("fun PointSettingsDialog(")
+        than = s[i:i + 9000]
+        self.assertIn('"queued"', than, "khong phan biet -> bao loi trong khi da xep hang")
+        self.assertIn("đã xếp hàng", than)
+
+    def test_man_Chu_y_co_du_diem(self):
+        s = self._kt("MainActivity.kt")
+        self.assertIn("diemDuNotifyItems", s)
+        self.assertIn('it0["kind"] == "diem_du"', s)
+
+
 if __name__ == "__main__":
     unittest.main()
