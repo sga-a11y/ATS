@@ -1704,9 +1704,14 @@ class BotGUI(tk.Tk):
 
     def _refresh(self):
         # cap nhat map ten nhan vat -> username (de loc log theo acc/party)
+        # Neo theo `_label` (NHAN LOG that su in ra dau dong) chu KHONG phai `char_name`: hai acc
+        # khac server co the trung ten nhan vat, luc do `_label` la 'ten~username' con `char_name`
+        # van trung -> map char_name 1-1 se cho acc login sau DE acc truoc, va loc log cua party
+        # nay hut ca dong cua party kia (user 01/09: "party 48 dung o quang truong ma cu bao
+        # battle" - dong [dtmot] BATTLE la cua party 40 server dong_trac).
         for u, c in list(ctrl.account_clients.items()):
-            if c is not None and c.char_name:
-                self._char2user[c.char_name] = u
+            if c is not None and getattr(c, "_label", ""):
+                self._char2user[c._label] = u
         group_run = {}    # gidx -> so acc dang chay
         group_login = {}  # gidx -> so acc DANG LOGIN (con 1 acc login -> cham nhom VANG)
         group_total = {}  # gidx -> tong so acc

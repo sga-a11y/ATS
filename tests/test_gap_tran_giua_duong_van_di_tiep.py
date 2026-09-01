@@ -74,7 +74,9 @@ class TestGapTranGiuaDuong(unittest.TestCase):
         cho het tran truoc - `exit_di_gioi` truoc day gui thang, ma do la doan replay chuoi buoc
         THAT tu capture: goi bi nuot ma `self.pos` van nhay -> lech chuoi, di mai khong toi cong."""
         for m in re.finditer(r"^(\s*)self\.move_to\(", self.src, re.M):
-            truoc = self.src[max(0, m.start() - 700):m.start()]
+            # 1200 (thay 700): vong chay quanh DG kiem tran o DAU vong lap roi moi bam toa do ve
+            # o di duoc, nen `in_combat` cach loi `move_to` hon 700 ky tu.
+            truoc = self.src[max(0, m.start() - 1200):m.start()]
             self.assertTrue(
                 ("in_combat(" in truoc) or ("_wait_combat_clear(" in truoc),
                 "move_to o offset %d khong cho het tran truoc" % m.start())

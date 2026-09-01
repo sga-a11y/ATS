@@ -2787,6 +2787,43 @@ che cuu san co (`_force_supervisor_reconnect` / bump `reform_gen`), KHONG nhet c
 - [ ] Test với 100 accounts
 - [ ] Implement daily tasks (sau combat)
 
+## 7r. MAIL — opcode 83 (`0x53`): nhận quà rồi XOÁ, nhưng chỉ xoá mail đã nhận xong
+
+Nguồn: `_lua_dec/Common/protocal.lua:13127-13170` + `_lua_dec/UI/UIMail.lua` +
+`_lua_dec/Logic/Social.lua`. Batch format đã verify bằng capture nhận/xoá 17 mail.
+
+| Gói | Ý nghĩa |
+|---|---|
+| C2S `53 01 00 [count 4B][mailid 4B]*count` | `C:083-001 <領取附件>` — nhận đính kèm |
+| C2S `53 02 00 [count 4B][mailid 4B]*count` | `C:083-002 <刪除信件>` — xoá thư |
+| C2S `53 03 00 [count 4B][mailid 4B]*count` | `C:083-003 <已讀信件>` — đánh dấu đã đọc |
+| S2C `53 01 00` | `S:083-001 <新增信件>` — **danh sách mail** (server push lúc login) |
+| S2C `53 02 00 [count 4B][mailid 4B]*count` | `S:083-002 <領取信件>` — **XÁC NHẬN đã nhận quà mail nào** |
+| S2C `53 03 00` | `S:083-003 <刪除信件>` — xác nhận đã xoá |
+
+**Bản ghi trong `S:083-001`**:
+```
++信件ID(4) +時間(8 OLE) +狀態(1) +L(2) +內容(L) +附件數量(1) <<+附件種類(1) +dữ liệu>>
+狀態: 0 = chưa đọc, 1 = đã đọc, 2 = ĐÃ NHẬN QUÀ   (EMailState.Unread/Read/Take)
+附件種類: 1 = vật phẩm (ThingData), 2 = võ tướng (NpcInfo)
+```
+> Byte ngay sau tiêu đề là **`附件數量` (số đính kèm)**, KHÔNG phải "cat" như code cũ đặt tên.
+> Chính con số này quyết định mail có quà hay không.
+
+### Client TÁCH BẠCH nhận và xoá — đừng gộp
+
+```lua
+UIMail.OnClick_TakeAll()      -- 083-001: CHỈ mail  state < Take  VÀ  #contents > 0
+UIMail.OnClick_RemoveEmpty()  -- 083-002: CHỈ mail  state == Take  HOẶC (state == Read và #contents <= 0)
+```
+`state` chỉ lên `Take` khi **server trả `S:083-002`** (`protocal.lua:13147` → `Social.TakeMail`).
+Nên client **không bao giờ xoá mail còn quà chưa nhận được**.
+
+> **Lỗi thật (2026-09-01)**: bot gửi `53 01` cho TẤT CẢ mail rồi `53 02` cho TẤT CẢ ngay sau đó,
+> không đợi xác nhận. **Túi đầy → server từ chối cho nhận → bot vẫn xoá → MẤT QUÀ.**
+> Sửa: chỉ xoá mail có trong `S:083-002`, mail rỗng thì `53 03` (đã đọc) trước rồi mới xoá; mail
+> còn quà mà không nhận được thì GIỮ LẠI + cảnh báo (dọn túi rồi login lại là nhận).
+
 ## 7e-RE. ROUTE QUA BIỂN (thuyền) — ĐANG DỞ (tạm dừng 2026-07-24)
 
 Route smart (world_nav) đi qua map biển, vd **12061 (Ng.Thành) → 18001 (Kiến Nghiệp)**:

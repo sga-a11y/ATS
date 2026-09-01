@@ -1492,11 +1492,16 @@ fun AccountRow(
                 // vong lap khi thu gon log (roi khoi if(expanded)) hoac doi acc/charname.
                 val logText by produceState(
                     initialValue = "Đang tải log...",
-                    expanded, account.username, status.charName, privacyMode, privacyOrdinals,
+                    expanded, account.username, status.logLabel.ifBlank { status.charName },
+                    privacyMode, privacyOrdinals,
                 ) {
                     while (true) {
                         value = withContext(Dispatchers.IO) {
-                            maskAccountLog(onGetLog(), account.username, status.charName, privacyMode, privacyOrdinals)
+                            // Mask theo NHAN LOG (co the la "ten~username" khi trung ten voi acc
+                            // khac), khong theo charName tran - trung ten la mask nham acc khac.
+                            maskAccountLog(onGetLog(), account.username,
+                                status.logLabel.ifBlank { status.charName },
+                                privacyMode, privacyOrdinals)
                         }
                         delay(2000)
                     }

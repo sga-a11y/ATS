@@ -783,6 +783,20 @@ def _register_party_int(party_idx, entity, value):
     with _PARTY_LOCK:
         _PARTY_INT.setdefault(party_idx, {})[bytes(entity)] = value
 
+# ten nhan vat -> {username: client}. Nhan log dung TEN NHAN VAT cho de doc, nhung ten nhan vat
+# KHONG duy nhat: hai server khac nhau hoan toan co the co char trung ten.
+# Da xay ra (01/09/2026): party 40 (dt801-805, server dong_trac, dang danh Di Gioi) va party 48
+# (dt901-905, server dieu_thuyen, mode city) co char TRUNG TEN het: dtmot/dthai/dtba/dtbon/dtnam.
+# GUI map `_char2user[char] = user` la 1-1 nen acc login SAU de len acc truoc -> loc log theo
+# party 48 hut ca dong "[dtmot] BATTLE SEND ..." cua party 40 (user: "party 48 dung o quang
+# truong ma cu bao battle"). Trung ten thi CA HAI acc deu duoc them duoi "~username".
+_NHAN_CHU = {}
+_NHAN_LOCK = threading.Lock()
+
+
+def _nhan_log(username, char_name, trung):
+    return "%s~%s" % (char_name, username) if trung else char_name
+
 # entity(bytes) -> ten nhan vat (chia se giua cac thread acc trong process). Moi acc tu dang ky
 # entity+ten cua chinh no -> leader tra cuu ten member khi log (set quan su, moi...).
 _PARTY_NAMES = {}
@@ -1935,7 +1949,8 @@ class GameClient:
         self._connect_time = None    # thoi diem connect phien nay
         self._online_base = 0.0      # giay online TICH LUY hom nay (load tu file, truoc phien nay)
         self.claimed_gifts = set()   # cac moc qua online da nhan hom nay (load tu file)
-        self._mail_ids = []          # mail_id thu thap tu S2C 0x53 (de nhan + xoa)
+        self._mail_ids = []          # [(mailid 4B, state, so dinh kem)] tu S:083-001
+        self._mail_taken = set()     # mailid server XAC NHAN da nhan qua (S:083-002)
         self._event14_items = []     # itemid event "qua 14 ngay" tu S2C 0x7c sub=01 (de nhan)
         self._event14_ok = 0         # so phan nhan THANH CONG (S2C 0x7c sub=02 byte ok=01)
         self._event14_acks = []      # raw ack S2C 0x7c sub=02 (debug)
@@ -3586,11 +3601,14 @@ class GameClient:
                 self.state.note_enemy_entities(pkt, config.NPC_NAMES)
             except Exception:
                 pass
-        elif opcode == 0x53:                      # mail: S2C sub=01 = LIST mail (push luc login)
-            # [01 00][count 4B] + count*record. Record: [mailid 4B][time 8B OLE][flag 1B][titlelen 2B]
-            # [title][cat 1B][01][itemid 4B][padding]. Truoc day doc pkt[9:13] tuong 1 mailid (thuc ra
-            # la COUNT) -> nhieu mail chi xu 1 (bug: nhan 1 mail). Gio parse CA list: cat = byte ngay
-            # sau title; tim record ke bang OLE-time hop le (~46000). Da verify voi capture 9 mail.
+        elif opcode == 0x53:                      # mail (S:083-xxx)
+            # S:083-001 <新增信件> +數量(4) <<+信件ID(4) +時間(8) +狀態(1) +L(2) +內容(L)
+            #                        +附件數量(1) <<+附件種類(1) +du lieu>> >>
+            #   狀態 0=chua doc, 1=da doc, 2=DA NHAN qua (EMailState.Unread/Read/Take)
+            # Truoc day doc pkt[9:13] tuong 1 mailid (thuc ra la COUNT) -> nhieu mail chi xu 1.
+            # Va byte sau title tung bi goi nham la "cat" - no la SO DINH KEM (附件數量), chinh la
+            # con so quyet dinh mail nay CO QUA hay khong. Tim record ke bang OLE-time hop le
+            # (~46000). Da verify voi capture 9 mail.
             if pkt[7:9] == b"\x01\x00" and len(pkt) >= 13:
                 body = pkt[9:]
                 cnt = int.from_bytes(body[0:4], "little")
@@ -3599,15 +3617,16 @@ class GameClient:
                     if off + 15 > len(body):
                         break
                     mid = body[off:off + 4]
+                    state = body[off + 12]                  # 狀態 (sau mailid 4 + time 8)
                     tlen = int.from_bytes(body[off + 13:off + 15], "little")
-                    catpos = off + 15 + tlen
-                    if catpos >= len(body):
+                    npos = off + 15 + tlen                  # 附件數量
+                    if npos >= len(body):
                         break
-                    cat = bytes([body[catpos], 0, 0, 0])   # cat 1B -> 4B (khop format claim 0x53)
-                    if (mid, cat) not in self._mail_ids:
-                        self._mail_ids.append((mid, cat))
-                    # record ke: sau [cat 1][01 1][itemid 4] la padding -> quet toi OLE-time hop le
-                    p, nxt = catpos + 6, None
+                    n_qua = body[npos]
+                    if not any(m[0] == mid for m in self._mail_ids):
+                        self._mail_ids.append((mid, int(state), int(n_qua)))
+                    # record ke: sau [so dinh kem 1][kind 1][itemid 4] la padding -> quet OLE-time
+                    p, nxt = npos + 6, None
                     while p + 12 <= len(body):
                         try:
                             o2 = struct.unpack("<d", body[p + 4:p + 12])[0]
@@ -3619,6 +3638,16 @@ class GameClient:
                     if nxt is None:
                         break
                     off = nxt
+            # S:083-002 <領取信件> +數量(4) <<+信件ID(4)>> = server XAC NHAN da nhan qua mail nao.
+            # Chi mail co trong day moi duoc xoa (client: state len EMailState.Take moi vao
+            # OnClick_RemoveEmpty). Tui DAY -> server khong tra mail do -> giu lai, khong mat qua.
+            elif pkt[7:9] == b"\x02\x00" and len(pkt) >= 13:
+                _n = int.from_bytes(pkt[9:13], "little")
+                for _i in range(min(_n, 200)):
+                    _o = 13 + _i * 4
+                    if _o + 4 > len(pkt):
+                        break
+                    self._mail_taken.add(pkt[_o:_o + 4])
         elif opcode == 0x7c:                      # event "qua 14 ngay" (panel claim item)
             self._on_activity_model(pkt)          # DOI THUONG su kien (S:124-000/001/002)
             # sub 01 = list phan qua: [01 00][count 4B LE] + count*[itemid 4B LE][qty 4B LE]
@@ -4965,15 +4994,26 @@ class GameClient:
         """Hoi info exp offline (type 0x1c). Neu co exp -> tu nhan (xu ly o _on_offline_exp)."""
         self.send(0x54, b"\x01\x00" + struct.pack("<H", exp_type))
 
+    MAIL_CHUA_DOC, MAIL_DA_DOC, MAIL_DA_NHAN = 0, 1, 2   # EMailState (Logic/Social.lua)
+
     @task_report("nhan mail", PHASE_LOGIN_CHORE)
     def claim_mail(self):
-        """Mail (opcode 0x53): voi MOI mail trong list -> doc + nhan qua + xoa.
-        (mailid, cat) doc tu S2C 0x53 sub=01 (server push luc login), KHONG hardcode.
-        Da xac nhan tu capture mail2/mail3.pcap:
-          doc:   53 03 00 [mailid 4B LE][cat 4B LE]
-          nhan:  53 01 00 [mailid 4B LE][cat 4B LE]   -> qua ve qua S2C 0x02/0x23
-          xoa:   53 02 00 [mailid 4B LE][cat 4B LE]
-        cat THAY DOI tung mail (3, 5,...) nen phai dung dung cat cua tung mail."""
+        """Mail (opcode 0x53): nhan qua roi CHI xoa mail da nhan xong - LAM Y CLIENT.
+
+        Goi (protocal.lua, batch - da verify capture nhan/xoa 17 mail):
+          nhan:  53 01 00 [count 4B][mailid 4B]*count   (C:083-001 <領取附件>)
+          xoa:   53 02 00 [count 4B][mailid 4B]*count   (C:083-002 <刪除信件>)
+          doc:   53 03 00 [count 4B][mailid 4B]*count   (C:083-003 <已讀信件>)
+        Server XAC NHAN nhan duoc mail nao qua `S:083-002` -> `self._mail_taken`.
+
+        Client (UI/UIMail.lua) tach bach hai viec, bot truoc day gop lam mot:
+          OnClick_TakeAll   -> chi mail `state < Take` VA `#contents > 0` (con qua chua nhan)
+          OnClick_RemoveEmpty -> chi mail `state == Take` HOAC (`state == Read` va KHONG co qua)
+        Tuc client KHONG BAO GIO xoa mail con qua chua nhan duoc. Bot thi gui 53 01 cho TAT CA roi
+        53 02 cho TAT CA ngay sau do, khong doi xac nhan: tui DAY -> server tu choi cho nhan ->
+        van xoa -> MAT QUA (user 01/09: "neu nhan qua fail do tui do full thi sau do m van xoa mail
+        lam mat qua").
+        """
         # KHONG xoa _mail_ids o dau (server push luc login TRUOC khi ham nay chay).
         # CHO server PUSH HET mail: cac goi 0x53 sub01 (moi mail 1 goi) den RAI RAC luc login -> neu
         # gom NGAY thi chi bat duoc mail dau (bug: nhieu mail chi nhan 1). Doi toi khi _mail_ids NGUNG
@@ -4988,17 +5028,37 @@ class GameClient:
             time.sleep(0.3)
         mails = list(self._mail_ids)
         self._mail_ids = []                      # consume sau khi gom
+        self._mail_taken = set()
         if not mails:
             return
-        # BATCH (verify capture nhan/xoa 17 mail): server nhan format [count 4B][mailid 4B x count],
-        # KHONG can cat, KHONG per-mail. 53 01 00 = nhan qua TAT CA; 53 02 00 = xoa TAT CA. (Code cu
-        # gui 53 03/01/02 [mailid][cat] tung cai -> SAI format -> mail khong bi xoa, login lai van con.)
-        ids = [mid for mid, _cat in mails]      # mailid 4B LE
-        n = len(ids)
-        payload = struct.pack("<I", n) + b"".join(ids)
-        self.send(0x53, b"\x01\x00" + payload); time.sleep(0.6)   # nhan qua TAT CA mail
-        self.send(0x53, b"\x02\x00" + payload); time.sleep(0.6)   # xoa TAT CA mail
-        log.info("[%s] Mail: da nhan qua + xoa %d mail", self._label, n)
+
+        def _gui(sub, ids):
+            self.send(0x53, sub + struct.pack("<I", len(ids)) + b"".join(ids))
+            time.sleep(0.6)
+
+        # 1. NHAN: chi mail CON QUA chua nhan (y OnClick_TakeAll).
+        can_nhan = [mid for mid, st, nq in mails if nq > 0 and st < self.MAIL_DA_NHAN]
+        if can_nhan:
+            _gui(b"\x01\x00", can_nhan)
+        # 2. DANH DAU DA DOC mail rong: client chi xoa mail rong khi no da o trang thai Read.
+        chua_doc_rong = [mid for mid, st, nq in mails
+                         if nq <= 0 and st < self.MAIL_DA_DOC]
+        if chua_doc_rong:
+            _gui(b"\x03\x00", chua_doc_rong)
+        # 3. XOA: mail SERVER DA XAC NHAN nhan xong, + mail rong (y OnClick_RemoveEmpty).
+        #    Mail con qua ma khong co trong `_mail_taken` = nhan KHONG duoc (tui day) -> GIU LAI.
+        can_xoa = [mid for mid, st, nq in mails
+                   if nq <= 0 or st >= self.MAIL_DA_NHAN or mid in self._mail_taken]
+        con_qua = [mid for mid, st, nq in mails
+                   if nq > 0 and st < self.MAIL_DA_NHAN and mid not in self._mail_taken]
+        if can_xoa:
+            _gui(b"\x02\x00", can_xoa)
+        if con_qua:
+            log.warning("[%s] Mail: %d/%d mail nhan duoc, %d mail CON QUA chua nhan duoc "
+                        "-> KHONG xoa (nhieu kha nang TUI DAY, don tui roi login lai la nhan)",
+                        self._label, len(mails) - len(con_qua), len(mails), len(con_qua))
+        log.info("[%s] Mail: nhan %d, xoa %d, giu lai %d (tong %d)",
+                 self._label, len(can_nhan), len(can_xoa), len(con_qua), len(mails))
 
     # ===== SLOT TUI DO (dung luong tui + mua them slot) =====
     # capacity = 50 (goc) + (Bag_1[103]+Bag_2[106]+Bag_3[124]) * 5.  Bag_x = RoleCount (0x55, da track).
@@ -9700,8 +9760,7 @@ class GameClient:
         except Exception:
             return
         if nm:
-            self.char_name = nm
-            self._label = nm
+            self._dat_nhan_log(nm)
             log.info("[%s] Ten nhan vat = '%s'", self._username, nm)
 
     def digioi_minutes_live(self) -> float:
@@ -9799,6 +9858,25 @@ class GameClient:
         if not (0 <= name_len <= 80 and name_len % 2 == 0 and end + 2 <= len(body)):
             return None
         return int.from_bytes(body[end:end + 2], "little")
+
+    def _dat_nhan_log(self, nm):
+        """Dat `char_name` + nhan log. Ten nhan vat TRUNG voi acc khac -> CA HAI them "~username".
+
+        Xem chu thich `_NHAN_CHU` o dau file: nhan log la thu duy nhat phan biet dong log cua acc
+        nay voi acc khac, ma ten nhan vat thi khong duy nhat giua cac server.
+        """
+        self.char_name = nm
+        u = self._username or ""
+        with _NHAN_LOCK:
+            chu = _NHAN_CHU.setdefault(nm, {})
+            chu[u] = self
+            ds = list(chu.items())
+        trung = len(ds) > 1
+        for _u, _c in ds:
+            _c._label = _nhan_log(_u, nm, trung)
+        if trung:
+            log.info("[%s] ten nhan vat '%s' TRUNG voi acc khac (%s) -> nhan log = '%s' cho khoi lan",
+                     u, nm, ", ".join(sorted(x for x, _ in ds if x != u)), self._label)
 
     def _name_from_03_body(self, body: bytes):
         def _try(off, require_zero_prefix: bool = False):
@@ -9916,8 +9994,7 @@ class GameClient:
             return
         nm = self._name_from_03_body(body)
         if nm:
-            self.char_name = nm
-            self._label = nm
+            self._dat_nhan_log(nm)
             self._remember_entity_name(self.self_entity, nm, "0x03-self", nearby=True)
             _register_party_name(self.self_entity, nm)
             log.info("[%s] Ten nhan vat = '%s' (tu 0x03)", self._username, nm)
@@ -9990,8 +10067,7 @@ class GameClient:
                 self._remember_entity_name(entity, name, "0x27/0200")
                 # Neu la entity CUA MINH -> dung lam ten nhan vat trong log
                 if self.self_entity and entity == self.self_entity and self.char_name != name:
-                    self.char_name = name
-                    self._label = name
+                    self._dat_nhan_log(name)
                     _register_party_name(self.self_entity, name)   # de leader tra ten member
                     log.info("[%s] Ten nhan vat = '%s'", self._username, name)
                 log.debug("[%s] guild member: %s -> '%s'", self._label, entity.hex()[:12], name)
@@ -11884,35 +11960,87 @@ class GameClient:
         """Da ra khoi Di Gioi chua (map_id da khac Di Gioi)."""
         return self.current_map is not None and self.current_map != config.DIGIOI_MAP_ID
 
+    DIGIOI_CONG_RA = (270, 210)      # cong thoat Di Gioi (tu capture exit_new.pcap)
+
     def exit_di_gioi(self, step_wait: float = 2.0):
-        """Di Gioi KHONG co lenh thoat: phai DI BO tung buoc nho toi CONG (270,210).
-        Replay DUNG chuoi buoc THAT tu capture (cac buoc ~50-110px, da chung minh hop le)
-        + cho step_wait giay moi buoc cho nhan vat di toi noi. Toi cong -> map tu doi.
-        Kiem tra thoat bang map_id THAT (khong dua so kenh)."""
-        log.info("[%s] Thoat Di Gioi: di bo tung buoc toi cong (270,210)...", self._label)
-        # chuoi buoc THAT tu exit_new.pcap (x,y)
-        steps = [(738, 648), (682, 609), (625, 569), (570, 530),
-                 (462, 411), (417, 360), (390, 330)]
-        for _ in range(3):   # lap lai vai vong neu chua ra
-            for x, y in steps:
-                # DANG TRAN THI KHONG MOVE - client cung the (`MoveController:Update` va
-                # `SendRolePosition` deu `return` ngay khi `FightField.isInBattle`). Day la doan
-                # replay chuoi buoc THAT tu capture: gui giua tran thi server nuot, ma `self.pos`
-                # van nhay theo -> lech het chuoi, di mai khong toi cong.
-                self._wait_combat_clear(idle=2.0, cap=120.0)
-                self.move_to(x, y)
-                time.sleep(step_wait)
-            self.send(0x14, bytes.fromhex("04000100")); time.sleep(0.8)
-            self._wait_combat_clear(idle=2.0, cap=120.0)
-            self.move_to(270, 210);                     time.sleep(step_wait)
+        """Di Gioi KHONG co lenh thoat: phai DI BO toi CONG (270,210). Toi cong -> map tu doi.
+        Kiem tra thoat bang map_id THAT (khong dua so kenh).
+
+        DUONG DI: uu tien SMART PATH (`navigate_to`, doc Ground.mmg - map 49942 CO du lieu) - no
+        tu tim duong tu CHO DANG DUNG, chia doan 100px va cho `SMART_PATH_STEP_WAIT` (0.55s) moi
+        buoc.
+        Chuoi 7 buoc CO DINH replay tu capture chi con la DU PHONG (khong co Ground.mmg / smart
+        path that bai): no xuat phat tu (738,648) nen dung o cho khac la di lung tung, va
+        `step_wait` 2.0s/buoc = 14 giay chi de di 1 doan ngan (user 01/09: "dang nhich 1 ty roi
+        dung yen 1 luc roi nhich 1 ty").
+        """
+        _cx, _cy = self.DIGIOI_CONG_RA
+        # BAT FLEE SUOT DUONG RA: dang tren duong THOAT thi dung lai danh tung bay quai la vo
+        # nghia - moi tran ~30s, DG quai day dac. Truoc day ham nay khong he dat `flee_mode`, chi
+        # `_wait_combat_clear` (= dung yen DANH cho xong) nen bot vua di vua danh (user 01/09:
+        # "chon che do ve thanh tap trung -> login vao dang trong DG -> di chuyen ra ngoai thi no
+        # phai o che do flee chu, sao no van danh").
+        # `navigate_to(flee=True)` cung dat co nay, nhung phai dat o DAY de phu ca nhanh du phong
+        # va cac khoang giua cac vong lap.
+        self.flee_mode = True
+        _lan = 0
+        _t0 = time.time()
+        # KHONG BO CUOC sau vai vong (user chot 01/09: "phai di ra bang duoc"). Ket lai trong DG
+        # la ket VINH VIEN: DG co gio, day quai, va khong luong nao khac keo acc ra ho.
+        # Chi dung khi: DA RA, hoac acc bi STOP / rot ket noi.
+        while self.running:
+            _lan += 1
+            _smart = False
+            try:
+                _smart = bool(self.navigate_to(_cx, _cy, flee=True))
+            except Exception as e:
+                log.debug("[%s] Thoat Di Gioi: smart path loi (dung chuoi buoc cu): %s",
+                          self._label, e)
+            if _smart:
+                log.info("[%s] Thoat Di Gioi: da toi cong (%d,%d) bang smart path (lan %d)",
+                         self._label, _cx, _cy, _lan)
+            else:
+                log.info("[%s] Thoat Di Gioi: smart path khong toi -> di bo chuoi buoc capture "
+                         "(lan %d)", self._label, _lan)
+                self._di_bo_chuoi_buoc_ra_cong(step_wait)
             self.send(0x14, bytes.fromhex("08000100")); time.sleep(0.8)
             self.send(0x0c, bytes.fromhex("0100"));     time.sleep(0.5)
             self.send(0x14, bytes.fromhex("0600"));     time.sleep(1.5)
             if self._left_di_gioi():
-                log.info("[%s] Da THOAT Di Gioi -> map %s", self._label, self.current_map)
+                log.info("[%s] Da THOAT Di Gioi -> map %s (sau %d lan, %.0fs)",
+                         self._label, self.current_map, _lan, time.time() - _t0)
                 return True
-        log.warning("[%s] Van chua thoat duoc Di Gioi (map %s)", self._label, self.current_map)
+            # CHUA RA: pos dang nho co the sai (dead-reckoning lech / spawn ngoai vung di duoc) ->
+            # bam ve o di duoc roi thu lai, thay vi lap y het mot cach vo vong.
+            _bam = self._bam_o_di_duoc(self.pos or (_cx, _cy), (_cx, _cy))
+            if _bam and tuple(_bam) != tuple(self.pos or ()):
+                log.info("[%s] Thoat Di Gioi: pos %s ngoai vung di duoc -> bam ve %s roi thu lai",
+                         self._label, self.pos, tuple(_bam))
+                self.pos = (int(_bam[0]), int(_bam[1]))
+            if _lan % 5 == 0:
+                log.warning("[%s] Thoat Di Gioi: da thu %d lan trong %.0fs ma CHUA RA (map=%s, "
+                            "pos=%s) - van thu tiep, khong bo cuoc",
+                            self._label, _lan, time.time() - _t0, self.current_map, self.pos)
+            time.sleep(1.0)
+        log.warning("[%s] Thoat Di Gioi: DUNG vi acc da stop/rot (map %s)",
+                    self._label, self.current_map)
         return False
+
+    def _di_bo_chuoi_buoc_ra_cong(self, step_wait: float = 2.0):
+        """DU PHONG: replay chuoi buoc THAT tu capture (exit_new.pcap). Chi dung khi smart path
+        khong dung duoc - chuoi nay xuat phat tu (738,648) nen dung cho khac la di lung tung."""
+        steps = [(738, 648), (682, 609), (625, 569), (570, 530),
+                 (462, 411), (417, 360), (390, 330)]
+        for x, y in steps:
+            # DANG TRAN THI KHONG MOVE - client cung the (`MoveController:Update` va
+            # `SendRolePosition` deu `return` ngay khi `FightField.isInBattle`): gui giua tran thi
+            # server nuot ma `self.pos` van nhay theo -> lech het chuoi, di mai khong toi cong.
+            self._wait_combat_clear(idle=2.0, cap=120.0)
+            self.move_to(x, y)
+            time.sleep(step_wait)
+        self.send(0x14, bytes.fromhex("04000100")); time.sleep(0.8)
+        self._wait_combat_clear(idle=2.0, cap=120.0)
+        self.move_to(*self.DIGIOI_CONG_RA);         time.sleep(step_wait)
 
     def start_run_around(self, stay_in_di_gioi=True):
         """Bat auto run-around: chay vong quanh DIEM DANG DUNG (anchor = vi tri hien tai)
@@ -11924,6 +12052,21 @@ class GameClient:
 
     def stop_run_around(self):
         self._running_route = False
+
+    def _bam_o_di_duoc(self, diem, tu_diem):
+        """Bam `diem` ve O DI DUOC gan nhat theo Ground.mmg (den duoc tu `tu_diem`).
+
+        None khi khong co du lieu dia hinh cho map hien tai -> caller giu nguyen diem cu (hanh vi
+        nhu truoc, khong lam te hon).
+        """
+        try:
+            st = _ground_store()
+            if st is None or self.current_map is None:
+                return None
+            return st.nearest_walkable_world(self.current_map, tuple(diem), tuple(tu_diem))
+        except Exception as e:
+            log.debug("[%s] bam o di duoc loi (bo qua): %s", self._label, e)
+            return None
 
     def _run_around_loop(self, stay_in_di_gioi):
         if not getattr(config, "RUN_AROUND_OFFSETS", []):
@@ -11939,6 +12082,12 @@ class GameClient:
                       or getattr(config, "RUN_FALLBACK_ANCHOR", (870, 740)))
         else:
             anchor = self.pos or getattr(config, "RUN_FALLBACK_ANCHOR", (870, 740))
+        # BAM ANCHOR VE O DI DUOC (Ground.mmg). `_di_gioi_anchor` chi duoc dat trong
+        # `enter_di_gioi()`; acc RELOGIN khi DA o trong DG thi khong ai dat -> roi ve `self.pos`,
+        # ma pos sau relogin lay tu `0x03` self-spawn CO THE nam ngoai vung di duoc (do duoc:
+        # co diem lech toi 970 don vi so voi o di duoc gan nhat). Anchor sai -> ca 8 diem chay
+        # vong deu sai theo (user 01/09: "acc o DG va dung o ngoai vung co the di").
+        anchor = self._bam_o_di_duoc(anchor, anchor) or anchor
         ax, ay = anchor
         log.info("[%s] Run-around quanh (%d,%d)", self._label, ax, ay)
         i = 0
@@ -11956,7 +12105,10 @@ class GameClient:
                 continue
             offsets = getattr(config, "RUN_AROUND_OFFSETS", []) or [(0, 0)]   # doc lai moi vong (tune live)
             dx, dy = offsets[i % len(offsets)]
-            self.move_to(ax + dx, ay + dy)
+            # BAM TUNG DIEM ve o di duoc: anchor dung giua bai khong bao dam ca 8 diem quanh no
+            # deu di duoc (bai sat tuong/ria). `move_to` gui thang, khong he kiem Ground.mmg.
+            _dich = self._bam_o_di_duoc((ax + dx, ay + dy), (ax, ay)) or (ax + dx, ay + dy)
+            self.move_to(*_dich)
             # cho char di toi diem; neu GIUA CHUNG vao combat -> KHONG tang i (lan sau gui lai diem nay,
             # tranh "bo diem/di tat"). Chi sang diem ke khi di tron 1 buoc khong bi gian doan.
             wait = getattr(config, "RUN_STEP_WAIT", 0.8)
@@ -12038,6 +12190,20 @@ class GameClient:
         NHANH (~1 phut) roi chuyen sang di bo, thay vi ket 150s/lan (user: 'chi co tele 1p thoi')."""
         city_id = int(city_id)
         flag = int(flag)
+        # RA KHOI DI GIOI TRUOC MOI THU KHAC.
+        #
+        # Hai nhanh `return False` ngay ben duoi ("khong phai thanh teleport" / "thanh CHUA MO")
+        # bo cuoc TRUOC khi toi buoc ra DG -> acc KET LAI TRONG DI GIOI vinh vien: DG co gio, day
+        # quai, va ke ca doi thanh khac cung khong ai keo no ra.
+        # Log 01/09 party 49 (gclm*): xong DG luc 09:41:04 ->
+        #   "go_to_town: thanh 12061 CHUA MO tele -> bo qua ngay (khong spam)"
+        #   "KHONG co bot-leader -> dung yen tai safe (kenh 4)"
+        # roi ca 5 acc dung im o (870,740) TRONG map 49942 tu do (user 01/09: "sao mai no ko chiu
+        # di ra ngoai DG"). Ra khoi DG la viec PHAI LAM bat ke ve duoc thanh nao hay khong.
+        if self.in_di_gioi():
+            log.info("[%s] go_to_town: dang o Di Gioi -> RA KHOI DG truoc (bat ke ve duoc thanh "
+                     "%s hay khong)", self._label, city_id)
+            self.exit_di_gioi()
         if not getattr(config, "is_teleport_city", lambda _city: True)(city_id):
             log.warning("[%s] go_to_town: %s KHONG phai thanh teleport (co the la map train) -> bo qua",
                         self._label, city_id)
@@ -12049,11 +12215,7 @@ class GameClient:
                         self._label, city_id)
             return False
         log.info("[%s] Ve thanh %d (lap lai neu con battle chan teleport)...", self._label, city_id)
-        # Dang o DI GIOI -> teleport (0x44) bi tu choi. PHAI di bo ra cong thoat truoc.
-        if self.in_di_gioi():
-            log.info("[%s] Dang o Di Gioi -> di bo ra cong thoat truoc khi teleport ve thanh...",
-                     self._label)
-            self.exit_di_gioi()
+        # (Buoc "ra khoi Di Gioi" DA chay o DAU HAM - phai truoc ca cac nhanh `return False`.)
         # Dang o TRONG MAP EVENT (thap 2K...) -> teleport cung bi CHAN, y het Di Gioi. Phai DI BO
         # ra bang exit_event truoc. Thieu chot nay thi bot spam teleport toi het deadline:
         # log that party 2 (27/08 11:40): het 2K, chuyen pha train, ca 5 acc dang o map 12932
