@@ -46,9 +46,13 @@ class TestBanGiaoDGSangTrain(unittest.TestCase):
     def test_PB_hong_van_chuyen_sang_TRAIN(self):
         """Nhanh pho ban that bai PHAI set relogin_train, khong duoc `return False` tran."""
         i = self.than.index("_run_auto_team_dungeons_if_needed")
-        sau = self.than[i:i + 1200]
+        # Tu 02/09 nhanh PB hong KHONG `return` ngay nua (phai lam not `do_daily_dungeon()` = o 1
+        # nam duoi), nen `relogin_train` duoc set o CUOI ham - kiem den het ham thay vi mot cua so.
+        sau = self.than[i:]
         self.assertIn('_dt["relogin_train"] = True', sau,
                       "PB hong ma khong set relogin_train -> leader_gone -> ca party chet")
+        self.assertLess(sau.index('_dt["relogin_train"] = True'), sau.index("return True"),
+                        "return truoc khi set co -> supervisor khong chay lai pha train")
 
     def test_khong_con_return_False_tran_o_nhanh_PB(self):
         i = self.than.index("_run_auto_team_dungeons_if_needed")
@@ -105,7 +109,10 @@ class TestMoiCHO_PB_hong_deu_khong_giet_party(unittest.TestCase):
             #   2. nhanh ban giao DG->train: set relogin_train roi return True (supervisor bat lai)
             self.assertTrue(
                 "_pb_that_bai_co_phai_dung_han" in ket
-                or '_dt["relogin_train"] = True' in doan.split("return False")[0],
+                or '_dt["relogin_train"] = True' in doan.split("return False")[0]
+                # Nhanh chi LOG roi chay tiep (khong `return`) cung an toan: khong giet thread,
+                # va viec con lai (o 1 + claim) van chay truoc khi ban giao sang train.
+                or "VAN chuyen sang pha TRAIN" in doan,
                 "co caller PB con giet thread thang tay: " + doan[:300])
 
     def test_guard_chi_dung_khi_STOP_hoac_client_chet(self):

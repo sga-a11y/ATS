@@ -198,7 +198,7 @@ class TestGUI(unittest.TestCase):
 
     def test_nut_Chu_y_doi_mau_CAM(self):
         """Cung mau voi nut 'Check AGI' luc lech (#f59e0b)."""
-        i = self.src.find("_gap = bool(ctrl.ba_dau_notify_items(pidx))")
+        i = self.src.find("_gap = self._party_notify_gap(pidx)")
         self.assertGreater(i, 0, "nut Chu y khong doi mau -> khong noi bat duoc")
         khoi = self.src[i:i + 700]
         self.assertIn('bg="#f59e0b"', khoi)
@@ -237,7 +237,12 @@ class TestAPKCoCanhBao(unittest.TestCase):
     def test_nut_Chu_y_doi_mau_CAM(self):
         """`StatusConnecting` = 0xFFF59E0B - DUNG mau cam voi nut Check AGI ben PC (#f59e0b)."""
         s = self._kt("MainActivity.kt")
-        self.assertIn('notifyItems.any { it["kind"] == "ba_dau" }', s)
+        # Loai CAN LAM NGAY -> nut cam. Ban APK chua co muc "tui gan day" nen chi 2 loai.
+        # Loai CAN LAM NGAY -> nut cam (user chot 02/09: Ba Dau / tui gan day / chua co quan doan)
+        i = s.find("val gapNotify")
+        self.assertGreater(i, 0)
+        for _k in ('"ba_dau"', '"legion"', '"bag"'):
+            self.assertIn(_k, s[i:i + 220])
         i = s.find("val gapNotify")
         self.assertIn("StatusConnecting", s[i:i + 600])
         self.assertIn("val StatusConnecting = Color(0xFFF59E0B)", self._kt("Theme.kt"))

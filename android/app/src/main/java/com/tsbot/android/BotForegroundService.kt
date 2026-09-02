@@ -272,6 +272,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.diGioiPick,
                 // LOAN DAU "chi danh 1 tran". THEM O CUOI CUNG (goi theo VI TRI).
                 party.loanDauMotTran,
+                // TU MO RONG TUI DO. THEM O CUOI CUNG (goi theo VI TRI).
+                party.autoBagExpand, party.bagExpandGold,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,
@@ -471,6 +473,14 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
 
     fun baDauNotifySkip(username: String): Boolean =
         try { rpd().callAttr("ba_dau_notify_skip", username)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
+    /** Acc con it slot tui trong - [{user, kind:'bag', used, cap, free, maxed}].
+     *  Luat o `bag_notify_items` (dung chung voi GUI PC). */
+    fun bagNotifyItems(pidx: Int): List<Map<String, String>> = notifyRows("bag_notify_items", pidx)
+
+    fun bagNotifySkip(username: String): Boolean =
+        try { rpd().callAttr("bag_notify_skip", username)?.toBoolean() ?: false }
         catch (_: Exception) { false }
 
     /** Doc mot ham `*_notify_items(pidx)` ben Python -> list map string. */

@@ -806,6 +806,10 @@ if _aj is not None:
                 "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),
                 "do_van_tieu": bool(_party.get("do_van_tieu", True)),
                 "auto_sell_noi_dat": bool(_party.get("auto_sell_noi_dat", True)),
+                # TU MO RONG TUI DO: mua slot toi khi gia lan KE TIEP vuot nguong (so vang user
+                # dien). Mac dinh TAT - mua slot ton nguyen bao/vang cua user.
+                "auto_bag_expand": bool(_party.get("auto_bag_expand", False)),
+                "bag_expand_gold": int(_party.get("bag_expand_gold", 0) or 0),
                 "auto_buy_shop": _auto_buy_shop,
                 "shop_items": _shop_items,
                 "buy_ho_phu": bool(_shop_items.get("ho_phu", False)),

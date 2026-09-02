@@ -555,11 +555,12 @@ fun TsBotApp(
                         onFurnaceNotify = {
                             // pidx suy tu vi tri party trong list (giong startPartyIn)
                             val _pi = parties.indexOf(party)
-                            // THU TU giong GUI PC: BA DAU -> QUAN DOAN -> DU DIEM -> LO.
-                            // Ba Dau len dau vi no la viec CO HAN GIO (het la mat quyen loi hoi
-                            // day HP/SP), con lai luc nao lam cung duoc.
+                            // THU TU giong GUI PC: TUI -> BA DAU -> QUAN DOAN -> DU DIEM -> LO.
+                            // Tui len dau vi tui day lam HONG viec khac (nhan qua mail that bai,
+                            // khong nhat duoc do roi); Ba Dau ke do vi CO HAN GIO.
                             if (_pi >= 0)
-                                (service?.baDauNotifyItems(_pi) ?: emptyList()) +
+                                (service?.bagNotifyItems(_pi) ?: emptyList()) +
+                                    (service?.baDauNotifyItems(_pi) ?: emptyList()) +
                                     (service?.legionNotifyItems(_pi) ?: emptyList()) +
                                     (service?.diemDuNotifyItems(_pi) ?: emptyList()) +
                                     (service?.furnaceNotifyItems(_pi) ?: emptyList())
@@ -568,6 +569,7 @@ fun TsBotApp(
                         onFurnaceBuy = { u, tid -> service?.furnaceNotifyBuy(u, tid) ?: false },
                         onFurnaceSkip = { u, tid -> service?.furnaceNotifySkip(u, tid) ?: false },
                         onLegionSkip = { u -> service?.legionNotifySkip(u) ?: false },
+                        onBagSkip = { u -> service?.bagNotifySkip(u) ?: false },
                         onBaDauSkip = { u -> service?.baDauNotifySkip(u) ?: false },
                         onDiemDuSkip = { u -> service?.diemDuNotifySkip(u) ?: false },
                         onCurrentChannel = {
@@ -800,6 +802,8 @@ fun TsBotApp(
             initialDiGioiLevel = partyBeingEdited.diGioiLevel,
             initialDiGioiPick = partyBeingEdited.diGioiPick,
             initialLoanDauMotTran = partyBeingEdited.loanDauMotTran,
+            initialAutoBagExpand = partyBeingEdited.autoBagExpand,
+            initialBagExpandGold = partyBeingEdited.bagExpandGold,
             onApplyDiGioiLevel = { idx ->
                 service?.setDiGioiLevel(partyBeingEdited.accounts.map { it.username }, idx)
             },
@@ -1104,6 +1108,7 @@ fun PartyCard(
     onFurnaceBuy: (String, Int) -> Boolean = { _, _ -> false },
     onFurnaceSkip: (String, Int) -> Boolean = { _, _ -> false },
     onLegionSkip: (String) -> Boolean = { _ -> false },
+    onBagSkip: (String) -> Boolean = { _ -> false },
     onBaDauSkip: (String) -> Boolean = { _ -> false },
     onDiemDuSkip: (String) -> Boolean = { _ -> false },
     onCurrentChannel: () -> Int?,
@@ -1264,9 +1269,11 @@ fun PartyCard(
                             fontWeight = if (agiWarning) FontWeight.Bold else FontWeight.Medium)
                     }
                     if (notifyCount > 0) {
-                        // CAM = co viec CAN CHU Y NGAY (hien tai: Ba Dau sap het han) - cung mau
-                        // voi nut "Check AGI" luc lech, de nhin luot qua la thay. Con lai vang nhat.
-                        val gapNotify = notifyItems.any { it["kind"] == "ba_dau" }
+                        // CAM = co viec CAN LAM NGAY (user chot 02/09: Ba Dau sap het han / tui
+                        // gan day / chua co quan doan) - cung mau voi nut "Check AGI" luc lech.
+                        // Con lai (du diem, lo) giu vang nhat.
+                        val gapNotify =
+                            notifyItems.any { it["kind"] in setOf("ba_dau", "legion", "bag") }
                         OutlinedButton(
                             onClick = { showNotifyDialog = true },
                             modifier = Modifier.weight(1f),
@@ -1311,6 +1318,7 @@ fun PartyCard(
                     onBuy = { u, tid -> onFurnaceBuy(u, tid) },
                     onSkip = { u, tid -> onFurnaceSkip(u, tid) },
                     onLegionSkip = { u -> onLegionSkip(u) },
+                    onBagSkip = { u -> onBagSkip(u) },
                     onBaDauSkip = { u -> onBaDauSkip(u) },
                     onDiemDuSkip = { u -> onDiemDuSkip(u) },
                     onRefresh = {
@@ -1739,6 +1747,8 @@ fun AddPartyDialog(
     initialDiGioiLevel: Int = 2,
     initialDiGioiPick: String = "",
     initialLoanDauMotTran: Boolean = false,
+    initialAutoBagExpand: Boolean = false,
+    initialBagExpandGold: Int = 0,
     onApplyAdvancedToAll: ((Party) -> Int)? = null,
     onApplyDiGioiLevel: ((Int) -> Unit)? = null,
 ) {
@@ -1752,6 +1762,8 @@ fun AddPartyDialog(
     var selectedCity by remember { mutableStateOf(initialCityKey) }
     // LOAN DAU: chi vao danh MOT tran roi thoat event. Mac dinh TAT.
     var loanDauMotTran by remember { mutableStateOf(initialLoanDauMotTran) }
+    var autoBagExpand by remember { mutableStateOf(initialAutoBagExpand) }
+    var bagExpandGoldText by remember { mutableStateOf(initialBagExpandGold.toString()) }
     var digioiSolo by remember { mutableStateOf(initialDigioiSolo) }
     var noLeader by remember { mutableStateOf(initialNoLeader) }
     var leaderWhitelistText by remember { mutableStateOf(initialLeaderWhitelist.joinToString("\n")) }
@@ -1875,6 +1887,8 @@ fun AddPartyDialog(
         diGioiLevel = diGioiLevel,
         diGioiPick = diGioiPick,
         loanDauMotTran = loanDauMotTran,
+        autoBagExpand = autoBagExpand,
+        bagExpandGold = bagExpandGoldText.toIntOrNull() ?: 0,
     )
 
     AlertDialog(
@@ -2482,6 +2496,8 @@ fun AddPartyDialog(
                             diGioiLevel = diGioiLevel,
                             diGioiPick = diGioiPick,
                             loanDauMotTran = loanDauMotTran,
+                            autoBagExpand = autoBagExpand,
+                            bagExpandGold = bagExpandGoldText.toIntOrNull() ?: 0,
                         ))
                         if (!saved) nameError = "Tên party đã tồn tại"
                     }
@@ -2502,6 +2518,26 @@ fun AddPartyDialog(
                 Column {
                     Text("Các việc bot làm khi bật \"Tự dọn túi đồ\":")
                     Spacer(Modifier.height(8.dp))
+                    // DAU TIEN, TRUOC "Tu ban Noi dat" (user chot 02/09): mua slot tui toi khi
+                    // gia lan KE TIEP vuot so vang dien o day.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoBagExpand, onCheckedChange = { autoBagExpand = it })
+                        Text("Tự mở rộng túi đồ đến")
+                        OutlinedTextField(
+                            value = bagExpandGoldText,
+                            onValueChange = { bagExpandGoldText = it.filter { c -> c.isDigit() } },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(120.dp).padding(horizontal = 6.dp),
+                        )
+                        Text("vàng")
+                    }
+                    Text(
+                        "(mua slot túi tới khi giá lần kế tiếp VƯỢT số này; điền 250 thì mua xong " +
+                            "lần giá 250, lần sau cần 260 là dừng)",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 48.dp),
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoSellNoiDat, onCheckedChange = { autoSellNoiDat = it })
                         Text("Tự bán Nồi đất")
@@ -3848,6 +3884,7 @@ fun FurnaceNotifyDialog(
     onBuy: (String, Int) -> Boolean,
     onSkip: (String, Int) -> Boolean,
     onLegionSkip: (String) -> Boolean = { _ -> false },
+    onBagSkip: (String) -> Boolean = { _ -> false },
     onBaDauSkip: (String) -> Boolean = { _ -> false },
     onDiemDuSkip: (String) -> Boolean = { _ -> false },
     onRefresh: () -> Unit,
@@ -3893,6 +3930,32 @@ fun FurnaceNotifyDialog(
                                     TextButton(onClick = {
                                         scope.launch {
                                             withContext(Dispatchers.IO) { onDiemDuSkip(u) }
+                                            onRefresh()
+                                        }
+                                    }) { Text("Bỏ qua") }
+                                }
+                                HorizontalDivider()
+                            }
+                            return@items
+                        }
+                        if (it0["kind"] == "bag") {
+                            val _free = it0["free"] ?: "?"
+                            val _used = it0["used"] ?: "?"
+                            val _cap = it0["cap"] ?: "?"
+                            val _maxed = (it0["maxed"] ?: "").lowercase() == "true"
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Text(
+                                    if (_maxed)
+                                        "$u túi đồ $_used/$_cap, còn $_free slot trống " +
+                                            "(đã tối đa slot, không mua thêm được)"
+                                    else "$u túi đồ sắp đầy $_used/$_cap (còn $_free slot trống)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Row(horizontalArrangement = Arrangement.End,
+                                    modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) { onBagSkip(u) }
                                             onRefresh()
                                         }
                                     }) { Text("Bỏ qua") }

@@ -100,6 +100,9 @@ data class Party(
     val diGioiPick: String = "",
     // LOAN DAU: chi vao danh MOT tran roi ra khoi map event + tat acc. Mac dinh TAT.
     val loanDauMotTran: Boolean = false,
+    // TU MO RONG TUI DO: mua slot toi khi gia lan KE TIEP vuot `bagExpandGold`. Mac dinh TAT.
+    val autoBagExpand: Boolean = false,
+    val bagExpandGold: Int = 0,
     val accounts: List<Account> = emptyList(),
 )
 

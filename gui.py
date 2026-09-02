@@ -1100,7 +1100,6 @@ class BotGUI(tk.Tk):
         self.party_trees = {}       # pidx -> Treeview
         self.party_agi_buttons = {} # pidx -> nut Check AGI/canh bao do lech
         self.party_notify_buttons = {}  # pidx -> nut "Chu y" (an neu party khong co thong bao)
-        self._bag_notify_dismissed = set()  # username da bam "Bo qua" thong bao tui day (an phien nay)
         self._city_notify_dismissed = set()  # (username, city_id) da bam "Bo qua" thong bao chua mo thanh
         self.party_subframes = {}   # pidx -> sub-tab frame (cham trang thai party qua sub_nb.tab)
         self.group_nb = {}          # gidx -> sub-Notebook (chua cac party tab)
@@ -1405,35 +1404,19 @@ class BotGUI(tk.Tk):
 
     # ---- refresh status ----
     # ---- THONG BAO PARTY (hien tai: lo; sau nay them tui day / het thuoc...) ----
-    # Slot tui con it hon nguong nay -> canh bao trong "Chu y". User chot 01/09 nang tu 5 len 10:
-    # tui gan day thi nhieu viec HONG AM THAM truoc khi tui day han - vd nhan qua mail that bai
-    # (xem `claim_mail`), nhat do rot trong tran, mua do o lo.
-    BAG_CANH_BAO_SLOT_TRONG = 10
-
     def _party_bag_notify(self, pidx):
-        """List (username, {_bag}) cho acc con < BAG_CANH_BAO_SLOT_TRONG slot trong (chua bam
-        "Bo qua"). Tui LEN DAU."""
+        """List (username, {_bag}) cho acc con it slot tui trong. Tui LEN DAU.
+
+        LUAT nam trong `ctrl.bag_notify_items` (dung chung PC/APK) de hai ban khong lech - truoc
+        day luat chi o day nen ban APK KHONG he co muc canh bao tui.
+        """
         out = []
         try:
-            accs = ctrl.party_accounts(pidx)
-        except Exception:
-            return out
-        for (u, _p, _l, _pk) in accs:
-            if u in self._bag_notify_dismissed:
-                continue
-            c = ctrl.account_clients.get(u)
-            if c is None or not getattr(c, "running", False):
-                continue
-            try:
-                if not getattr(c, "bag_slots", None):   # chua co snapshot tui -> chua tinh duoc
-                    continue
-                free = c.bag_free_slots()
-                if free >= self.BAG_CANH_BAO_SLOT_TRONG:
-                    continue
-                out.append((u, {"_bag": True, "used": c.bag_used_slots(),
-                                "cap": c.bag_capacity(), "free": free, "maxed": c.bag_slot_maxed()}))
-            except Exception:
-                continue
+            for it in ctrl.bag_notify_items(pidx):
+                out.append((it["user"], {"_bag": True, "used": it["used"], "cap": it["cap"],
+                                         "free": it["free"], "maxed": it["maxed"]}))
+        except Exception as e:
+            log.debug("doc canh bao tui loi: %s", e)
         return out
 
     def _party_city_notify(self, pidx):
@@ -1515,6 +1498,20 @@ class BotGUI(tk.Tk):
 
     def _party_notify_count(self, pidx):
         return len(self._party_notify_items(pidx))
+
+    # Loai chu y CAN LAM NGAY -> nut "Chu y" chuyen CAM (user chot 02/09: "ba dau yeu, tui do gan
+    # day va chua co quan doan"). Ba cai nay deu dang lam HONG viec chu khong phai "lam luc nao
+    # cung duoc": Ba Dau HET HAN la mat quyen loi hoi day HP/SP; tui gan day thi nhan qua mail /
+    # nhat do roi / mua do lo deu that bai; khong co quan doan thi mat qua quan doan hang ngay +
+    # khong danh duoc boss quan doan.
+    NOTIFY_CAM = ("_ba_dau", "_bag", "_legion")
+
+    def _party_notify_gap(self, pidx):
+        """Party co chu y thuoc loai CAN LAM NGAY khong?"""
+        for _u, it in self._party_notify_items(pidx):
+            if any(it.get(k) for k in self.NOTIFY_CAM):
+                return True
+        return False
 
     def _furnace_notify_line(self, username, it):
         _u = self._mask_user(username)
@@ -1631,7 +1628,7 @@ class BotGUI(tk.Tk):
             if it.get("_bag"):
                 used, cap, maxed = it["used"], it["cap"], it["maxed"]
                 def _skip_bag():
-                    self._bag_notify_dismissed.add(u); rowf.destroy()
+                    ctrl.bag_notify_skip(u); rowf.destroy()
                 _skips.append((rowf, _skip_bag))
                 ttk.Button(rowf, text="Bỏ qua", width=7,
                            command=_skip_bag).pack(side="right", padx=2)
@@ -1803,9 +1800,10 @@ class BotGUI(tk.Tk):
             if nbtn is not None:
                 _ncnt = self._party_notify_count(pidx)
                 if _ncnt > 0:
-                    # CAM = co viec CAN CHU Y NGAY (hien tai: Ba Dau sap het han) - cung mau voi
-                    # nut "Check AGI" luc lech, de nhin luot qua la thay. Con lai giu vang nhat.
-                    _gap = bool(ctrl.ba_dau_notify_items(pidx))
+                    # CAM = co viec CAN LAM NGAY (Ba Dau sap het han / tui gan day / chua co quan
+                    # doan) - cung mau voi nut "Check AGI" luc lech, de nhin luot qua la thay.
+                    # Con lai (thanh chua mo, du diem, lo) giu vang nhat.
+                    _gap = self._party_notify_gap(pidx)
                     nbtn.configure(text=f"⚠ Chú ý ({_ncnt})")
                     if _gap:
                         nbtn.configure(bg="#f59e0b", fg="#3b2500", activebackground="#d97706")
@@ -3955,6 +3953,11 @@ class PartyConfigFrame(ttk.Frame):
         # "Tu don tui do" = cong tong cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
         # Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
         self.auto_bag_clean_var = tk.BooleanVar(value=bool(self._preset.get("auto_bag_clean", True)))
+        # TU MO RONG TUI DO (mua slot) - mac dinh TAT vi ton nguyen bao/vang cua user.
+        self.auto_bag_expand_var = tk.BooleanVar(
+            value=bool(self._preset.get("auto_bag_expand", False)))
+        self.bag_expand_gold_var = tk.StringVar(
+            value=str(self._preset.get("bag_expand_gold", 0) or 0))
         # 2 co cua HOP MAY (0x41): server keo ve thanh khi chet. Mac dinh BAT = giong client that.
         self.death_return_town_var = tk.BooleanVar(
             value=bool(self._preset.get("death_return_town", True)))
@@ -5294,8 +5297,18 @@ class PartyConfigFrame(ttk.Frame):
         win.resizable(False, False)
         frm = ttk.Frame(win, padding=12); frm.pack(fill="both", expand=True)
         ttk.Label(frm, text='Các việc bot làm khi bật "Tự dọn túi đồ":').pack(anchor="w")
-        ttk.Checkbutton(frm, text="Tự bán Nồi đất (ở Nhà buôn Ng.Thành)",
-                        variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(8, 0))
+        # DAU TIEN, TRUOC "Tu ban Noi dat" (user chot 02/09).
+        _mr = ttk.Frame(frm); _mr.pack(anchor="w", fill="x", pady=(8, 0))
+        ttk.Checkbutton(_mr, text="Tự mở rộng túi đồ đến",
+                        variable=self.auto_bag_expand_var).pack(side="left")
+        ttk.Spinbox(_mr, from_=0, to=99999999, width=10, increment=10,
+                    textvariable=self.bag_expand_gold_var).pack(side="left", padx=4)
+        ttk.Label(_mr, text="vàng").pack(side="left")
+        ttk.Label(frm, foreground="#888", wraplength=420, justify="left",
+                  text="(mua slot túi tới khi giá lần kế tiếp VƯỢT số này; điền 250 thì mua xong "
+                       "lần giá 250, lần sau cần 260 là dừng)").pack(anchor="w", padx=(24, 0))
+        ttk.Checkbutton(frm, text="Tự bán Nồi đất",
+                        variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(frm, text="Tự vứt item rác (Ngọc Hư)",
                         variable=self.auto_discard_junk_var).pack(anchor="w", pady=(4, 0))
         _mt = ttk.Frame(frm); _mt.pack(anchor="w", fill="x", pady=(4, 0))
@@ -5644,6 +5657,8 @@ class PartyConfigFrame(ttk.Frame):
             "death_return_town": bool(self.death_return_town_var.get()),
             "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
             "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
+            "auto_bag_expand": bool(self.auto_bag_expand_var.get()),
+            "bag_expand_gold": _parse_int(self.bag_expand_gold_var.get(), 0),
             "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
             "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
             "scroll_modes": dict(self.scroll_modes),
@@ -6044,6 +6059,8 @@ class PartyConfigFrame(ttk.Frame):
                 "death_return_town": bool(self.death_return_town_var.get()),
                 "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
                 "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
+                "auto_bag_expand": bool(self.auto_bag_expand_var.get()),
+                "bag_expand_gold": _parse_int(self.bag_expand_gold_var.get(), 0),
                 "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
                 "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
                 "scroll_modes": dict(self.scroll_modes),

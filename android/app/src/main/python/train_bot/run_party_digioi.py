@@ -1316,6 +1316,7 @@ def _pstate(pidx):
                               "o5_broke": False,         # team dungeon VO do co dis giua chung -> CA party relogin thoat instance
                               "o5_need_redo": False,     # team dungeon VO -> reconnect xong lam LAI daily (team dungeon)
                               "team_dungeon_done_by": {},     # level -> {username -> remaining}; auto team dungeon theo 0x18 mission step
+                              "char_level_by": {},            # username -> cap nhan vat (bao khi vao PB doi)
                               "team_dungeon_state": {},       # level -> "idle"|"running"|"done"
                               "team_dungeon_broke": {},       # level -> co dis/fail can relogin thoat instance
                               "team_dungeon_tries": {},       # level -> so lan da thu (1 dau + 1 retry)
@@ -1882,6 +1883,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.claim_legion_gift()   # nhan qua quan doan hang ngay
             c.claim_friend_gifts()  # tang qua tat ca ban + nhan qua ban tang (hang ngay)
             c.decompose_junk_scrolls()  # phan giai cuon goi pet RAC (junk_scrolls.json) -> Vo Tuong Phien
+            # TU MO RONG TUI DO: mua slot toi khi gia lan KE TIEP vuot nguong user dien. Dat TRUOC
+            # cac viec don tui (ban Noi Dat / vut rac) de tui rong san, va truoc `use_items` de co
+            # cho nhan do. Mac dinh TAT.
+            if pcfg.get("auto_bag_expand") and int(pcfg.get("bag_expand_gold", 0) or 0) > 0:
+                try:
+                    c.tu_mo_rong_tui(int(pcfg.get("bag_expand_gold", 0) or 0))
+                except Exception as e:
+                    log.warning("[%s] loi tu mo rong tui do (bo qua): %s", label, e)
             # TU CONG DIEM TIEM NANG cua NHAN VAT (bang rule rieng tung acc). Chi chay MOT LAN
             # luc login, cung cho voi cac viec vat khac.
             _tu_cong_diem(c, username, label)
@@ -2191,10 +2200,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # roster chi 1/4 member -> ham nay `return False` -> _dt["relogin_train"] khong
                     # duoc set -> reconnectable=False -> st["leader_gone"].set() -> member thay
                     # leader chet that -> THOAT THEO -> CA PARTY CHET, phai bat tay lai.
+                    # ... va KHONG duoc `return` o day: `do_daily_dungeon()` (o 1) nam ngay duoi.
+                    # BUG THAT (party 19 quan_vu, 02/09): PB lv80 hong vi ca party moi lv68 ->
+                    # `return` -> o 1 KHONG BAO GIO duoc lam. Pha train cung khong va lai duoc
+                    # (`_do_startup_daily` chi goi `claim_daily_quests`, khong goi
+                    # `do_daily_dungeon`) -> cuoi ngay 6 acc dung o `o xong=[2..9]`, thieu dung o 1.
                     log.warning("[%s] (%s) pho ban to doi khong xong -> VAN chuyen sang pha TRAIN "
-                                "(khong bo party)", label, role)
-                    _dt["relogin_train"] = True
-                    return True
+                                "(khong bo party), van lam not nhiem vu ngay", label, role)
             if do_daily:
                 try:
                     c.do_daily_dungeon()
@@ -4288,6 +4300,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c.close(); return
         event_party_mode = _is_party_event(mode, has_leader, ev)
         event_solo_kind = _event_solo_battle_kind(mode, ev)
+        # QUYET DINH "THUA -> THOAT" CHI CO GIA TRI TRONG LAN LOGIN DO (user chot 02/09):
+        # "chi muon 2 lan thua thi out o lan login do thoi, login lai thi danh lai cho den khi thua
+        # 2 tran lien tiep".
+        #
+        # `go_claim` va `event_battle_done` song trong `_party_state[pidx]` = state theo TIEN TRINH,
+        # khong phai theo lan login. `go_claim` truoc day KHONG duoc xoa o BAT KY dau (kiem het file):
+        # set mot lan la moi acc login sau do doc thay -> "40NPC xong -> di doi thuong + thoat" ->
+        # LOG VAO XONG OUT LUON, khong danh tran nao. `event_battle_done` co duoc xoa nhung chi o
+        # nhanh reconnect va con bi gac sau `event_battle_active`, ma `_on_npc40_loss` da ha co do
+        # xuong False truoc roi -> thuc te cung khong bao gio xoa sau khi thua.
+        #
+        # `is_reconnect` = server da giua chung -> GIU nguyen quyet dinh cua party (dung de mot acc
+        # rot roi vao lai lam ca party danh tiep trong khi 4 dua kia da bo cuoc).
+        if event_party_mode and not is_reconnect:
+            if st["go_claim"].is_set() or st["event_battle_done"].is_set():
+                log.info("[%s] (%s) EVENT: phien login MOI -> xoa co 'da thua/da xong' cua phien "
+                         "truoc, danh lai tu dau", label, role)
+            st["go_claim"].clear()
+            st["event_battle_done"].clear()
         # Event solo VAN danh -> KHONG duoc roi vao nhanh "dung yen cho tay".
         event_stand_mode = event_mode and not event_party_mode and not event_solo_kind
         # EVENT PARTY (40NPC): kenh/instance cua MAP EVENT (vd 10991) DOC LAP voi kenh thanh -> sync
@@ -6417,6 +6448,20 @@ def _prepare_team_dungeon_redo_after_reconnect(st, username, label, pidx, stoppe
     return True
 
 
+def _thieu_level(st, members, level):
+    """[(username, cap)] cac acc CHUA du cap vao PB lv`level`. PB lvN yeu cau nhan vat cap >= N.
+
+    Acc chua doc duoc cap (chua co goi 0x05) thi KHONG tinh la thieu - tha cho thu con hon bo oan.
+
+    Vi sao can: server khong cho acc duoi cap READY trong phong PB. Bot khong biet dieu do nen cu
+    tao phong roi cho 40s, "lv80 member ready 0/4 -> HUY phong, relogin ca party", lap lai moi chu
+    ky. Nang hon: `_finish_digioi_train_if_time_over` thay PB hong la `return` NGAY, bo luon
+    `do_daily_dungeon()` (o 1) nam ngay duoi -> cuoi ngay 6 acc party 19 thieu o 1 (02/09).
+    """
+    lvs = dict(st.get("char_level_by") or {})
+    return [(m, lvs[m]) for m in members if m in lvs and int(lvs[m]) < int(level)]
+
+
 def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_fn, level):
     level = int(level)
     if not c.wait_team_dungeon_status(timeout=6.0):
@@ -6428,6 +6473,10 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
     with st["lock"]:
         reports = st.setdefault("team_dungeon_done_by", {}).setdefault(level, {})
         reports[username] = remaining
+        # BAO CAP NHAN VAT de leader biet ca party co du level vao PB nay khong (xem `_thieu_level`).
+        _lv = getattr(c, "char_level", None)
+        if _lv:
+            st.setdefault("char_level_by", {})[username] = int(_lv)
     has_leader = config.PARTY_LEADER_ACC.get(pidx) is not None
     if not has_leader:
         return True
@@ -6556,6 +6605,16 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
     if level not in (20, 50, 80, 110):
         log.warning("[%s] (LEADER) phó bản đội lv%d: đã biết trạng thái lượt nhưng chưa có script "
                     "đường đi/trận an toàn -> bỏ qua", label, level)
+        with st["lock"]:
+            st.setdefault("team_dungeon_state", {})[level] = "done"
+        return True
+    # CHUA DU CAP -> bo qua PB nay luon, dung tao phong. Server khong cho acc duoi cap ready nen
+    # co co gang cung chi ra "member ready 0/4 sau 40s -> HUY phong, relogin ca party" moi chu ky.
+    with st["lock"]:
+        _thieu = _thieu_level(st, members, level)
+    if _thieu:
+        log.info("[%s] (LEADER) phó bản đội lv%d: BỎ QUA - %d acc chưa đủ cấp (%s)", label, level,
+                 len(_thieu), ", ".join("%s lv%d" % (m, lv) for m, lv in _thieu))
         with st["lock"]:
             st.setdefault("team_dungeon_state", {})[level] = "done"
         return True
@@ -7069,7 +7128,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         death_return_town=True, pet_death_return_town=True,
                         event_exchange_sig="",
                         train_pick="", mob_min=0, mob_max=0, mob_elements="",
-                        di_gioi_pick="", loandau_mot_tran=False):
+                        di_gioi_pick="", loandau_mot_tran=False,
+                        auto_bag_expand=False, bag_expand_gold=0):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -7103,6 +7163,8 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "team_dungeons": config.normalize_team_dungeons(team_dungeons),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
         "loandau_mot_tran": bool(loandau_mot_tran),
+        "auto_bag_expand": bool(auto_bag_expand),
+        "bag_expand_gold": int(bag_expand_gold or 0),
         "use_phuc_than": bool(use_phuc_than), "use_digioi_ho_phu": bool(use_digioi_ho_phu),
         "fight_legion_boss": bool(fight_legion_boss),
         "do_van_tieu": bool(do_van_tieu),
@@ -7263,7 +7325,9 @@ def start_party(pidx, stagger=1.5, skip_running=False):
         return _start_party_accounts(pidx, accounts, generation, stagger, skip_running)
     for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
               "stop_leader_done", "route_party_ready", "route_done", "rally_ready",
-              "path_done"):
+              "path_done",
+              # EVENT: "da thua/da xong" chi tinh trong mot phien -> phien moi phai danh lai.
+              "go_claim", "event_battle_done"):
         st[k].clear()
     st["mob_spot"] = None
     st["rally_point"] = None
@@ -8060,6 +8124,52 @@ def legion_notify_items(pidx):
             continue
         out.append({"user": u, "kind": "legion"})
     return out
+
+
+# username da bam "Bo qua" thong bao tui gan day (an trong phien nay)
+bag_notify_dismissed = set()
+# Slot tui con it hon nguong nay -> canh bao. User chot 01/09 nang tu 5 len 10: tui gan day thi
+# nhieu viec HONG AM THAM truoc khi day han - nhan qua mail that bai (xem `claim_mail`), khong
+# nhat duoc do roi trong tran, khong mua duoc do o lo.
+BAG_CANH_BAO_SLOT_TRONG = 10
+
+
+def bag_notify_items(pidx):
+    """[{user, kind:'bag', used, cap, free, maxed}] - acc con DUOI 10 slot tui trong.
+
+    Dung chung PC/APK. Truoc day luat nay chi nam trong `gui.py` nen ban APK KHONG he co muc canh
+    bao tui - dung cai bay "chep tay o dau la lech o do" trong CLAUDE.md.
+    """
+    out = []
+    try:
+        accs = party_accounts(pidx)
+    except Exception:
+        return out
+    for tpl in accs:
+        u = tpl[0] if isinstance(tpl, (tuple, list)) else tpl
+        if u in bag_notify_dismissed:
+            continue
+        c = account_clients.get(u)
+        if c is None or not getattr(c, "running", False):
+            continue
+        try:
+            if not getattr(c, "bag_slots", None):   # chua co snapshot tui -> chua tinh duoc
+                continue
+            free = c.bag_free_slots()
+            if free >= BAG_CANH_BAO_SLOT_TRONG:
+                continue
+            out.append({"user": u, "kind": "bag", "used": c.bag_used_slots(),
+                        "cap": c.bag_capacity(), "free": free, "maxed": c.bag_slot_maxed()})
+        except Exception:
+            continue
+    return out
+
+
+def bag_notify_skip(username):
+    """Bo qua thong bao tui cua 1 acc (an trong phien nay)."""
+    if username:
+        bag_notify_dismissed.add(username)
+    return True
 
 
 def legion_notify_skip(username):

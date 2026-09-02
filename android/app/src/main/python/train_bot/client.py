@@ -2406,8 +2406,28 @@ class GameClient:
 
         Xac nhan tren CA 2 capture thuyen (thuyen_thanhchau + thuyen_thanhchau2): MOI lan
         s2c `0x14 08 2a` deu co dung chuoi `0x0c 01` -> `0x14 06` ngay truoc, va move dau tien
-        chi den SAU do 0.1-0.5s. Client that KHONG he gui 0x41 (rearm) o cac cho nay."""
+        chi den SAU do 0.1-0.5s. Client that KHONG he gui 0x41 (rearm) o cac cho nay.
+
+        PHAI CHO HET TRAN HAN: `0x14 06` la `C:020-006 <事件下一步>` (buoc tiep SU KIEN). Gui luc
+        server con dang giai tran -> `S:000-000` ly do **47** `戰鬥未結束事件先結束` ("su kien ket
+        thuc khi tran chua xong") -> DUT KET NOI.
+        Log 02/09 12:05:10 (party 3, 4 acc cung mot giay) va 11:54:28: 5/5 lan dinh ma 47 deu co
+        `scene_resume` chay ngay truoc do. Cho goi o `_theo_leader_sua_pos` DA CO guard
+        `not in_combat()` ma van dinh: goi NHAN cuoi cung la `0x14 08` (END tran), 23ms sau la goi
+        ngat - tuc bot thay `in_battle=False` roi gui NGAY, con server thi chua giai xong.
+        => guard phai nam TRONG day (phu ca 4 duong goi) va phai cho HET CA GRACE ket tran.
+        """
         self._need_scene_resume = False
+        _han = time.time() + 20.0
+        while self.running and time.time() < _han:
+            if not self.in_combat(idle_secs=1.0) and not self._in_battle_end_grace():
+                break
+            time.sleep(0.3)
+        else:
+            if self.running:
+                log.warning("[%s] scene_resume: cho het tran qua 20s -> BO gui `0x14 06` "
+                            "(gui luc dang giai tran = server ngat ma 47)", self._label)
+            return
         try:
             self.send(0x0c, b"\x01\x00"); time.sleep(settle)
             self.send(0x14, b"\x06\x00"); time.sleep(settle)
@@ -2733,9 +2753,26 @@ class GameClient:
         self._npc40_prompt_pending = False
         self._npc40_prompt_pending_at = 0.0
         self._npc40_stop.clear()
+
+        def _chay():
+            """run_loop chay trong thread nen tri tra ve BI VUT DI -> moi loi ra `False` (di toi NPC
+            loi, mo tran dau timeout, vao tran tiep timeout) truoc day lam thread chet AM THAM:
+            `on_loss()` khong ai goi -> member khong biet ma tan hang -> ca party dung yen mai (P42
+            02/09). Boc o day de MOI duong that bai deu bao party mot lan."""
+            ok = False
+            try:
+                ok = npc40.run_loop(self, tuple(point), self._npc40_stop, on_loss, before_repeat)
+            except Exception as exc:
+                log.exception("[%s] 40NPC: vong lap loi: %s", self._label, exc)
+            if not ok and self.running and not self._npc40_stop.is_set():
+                log.warning("[%s] 40NPC: vong lap ket thuc that bai -> bao party ngung", self._label)
+                try:
+                    on_loss()
+                except Exception as exc:
+                    log.warning("[%s] 40NPC: loi khi bao party ngung: %s", self._label, exc)
+
         self._npc40_thread = threading.Thread(
-            target=npc40.run_loop,
-            args=(self, tuple(point), self._npc40_stop, on_loss, before_repeat),
+            target=_chay,
             daemon=True,
             name="npc40-%s" % (self._label or self._username),
         )
@@ -5770,6 +5807,43 @@ class GameClient:
         while self._bag_slot_buy_seq == seq and time.time() - t0 < wait and self.running:
             time.sleep(0.1)
         return self._bag_slot_buy_seq > seq and self._bag_slot_buy_result == 1
+
+    # Mua slot tui LIEN TUC toi khi gia lan KE TIEP vuot nguong. Cap cung de mot cau hinh sai
+    # (vd de nguong khong lo) khong lam bot mua tron doi.
+    BAG_EXPAND_MAX_LAN = 30
+
+    def tu_mo_rong_tui(self, gioi_han: int) -> int:
+        """Mua slot tui toi khi GIA LAN KE TIEP > `gioi_han`. Tra so slot da mua.
+
+        User chot 02/09: "neu tick thi tu mo rong tui do den khi vang yeu cau lon hon so duoc dien,
+        vi du dien 250 thi mua den khi mua xong lan 250 (lan tiep theo can 260 thi dung)".
+        Tuc so dien la NGUONG BAO GOM: gia == gioi_han thi VAN MUA, gia > gioi_han moi dung.
+        """
+        gioi_han = int(gioi_han or 0)
+        if gioi_han <= 0:
+            return 0
+        da_mua = 0
+        for _ in range(self.BAG_EXPAND_MAX_LAN):
+            if not self.running or self.bag_slot_maxed():
+                break
+            gia = self.query_bag_slot_price()
+            if not gia:
+                log.info("[%s] Mo rong tui: khong hoi duoc gia -> dung", self._label)
+                break
+            _tien = int(gia[0])
+            if _tien > gioi_han:
+                log.info("[%s] Mo rong tui: lan sau can %d > nguong %d -> DUNG (da mua %d slot, "
+                         "tui %d o)", self._label, _tien, gioi_han, da_mua, self.bag_capacity())
+                break
+            if not self.buy_bag_slot():
+                log.warning("[%s] Mo rong tui: mua that bai (het tien / da toi da) -> dung",
+                            self._label)
+                break
+            da_mua += 1
+            log.info("[%s] Mo rong tui: da mua slot thu %d (ton %d, tui %d o)",
+                     self._label, da_mua, _tien, self.bag_capacity())
+            time.sleep(0.4)
+        return da_mua
 
     def _on_offline_exp(self, pkt: bytes):
         """S2C 0x54.

@@ -1,13 +1,15 @@
 {
   "_note": "Item TU DONG SU DUNG luc login. KEY = TID (template id hex, KHONG phai slot; TID chung moi acc). 2 FORMAT value: (1) chi ten '0x..':'Ten' -> dung HET ca stack, tung cai 1 (item chi cho 1/lenh, vd Tang O). (2) co so luong '0x..':{'name':'Ten','qty':25} -> dung TOI DA 25 cai/login (co>25 dung 25 de lai du; co<25 dung het). Them item = sua file nay + khoi dong lai. Lay TID tu log_bag ('slot N: tid=0x.... x count'). LUU Y: KHONG cho thuoc hoi HP/SP hay do gia tri.",
   "items": {
+    "0x7999": "Vé Ô Truy",
+    "0x799d": "Vé Đích Lô",
+    "0x7a21": "Bong Bóng Phiếu",
     "0xff79": "Tăng Ô Túi",
     "0xff7a": "Tăng Ô Túi Đeo",
     "0xff7b": "Tăng Ô Tiền Trang",
     "0xff7c": "Tăng Ô Tiền Trang",
     "0xff88": "Phiếu Rút Thẻ",
     "0xb297": "Quà Thái Văn Cơ",
-    "0x799d": "Vé Đích Lô",
     "0xff87": "Phiếu Rút Võ Tướng",
     "0xb243": "Quà Loạn Đấu",
     "0xb22c": {"name": "Túi Tọa Kỵ Đan","qty": 100},
