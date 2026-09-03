@@ -1064,7 +1064,18 @@ def _load_gamedata_items() -> dict:
                                     "restrict": int(v.get("restrict", 0) or 0),
                                     # ft = fitType = VI TRI MAC (1 mu, 2 ao, 3 vu khi...). Can de
                                     # suy mon DANG mac o vi tri do khi THAY DO - xem _on_equip_done.
-                                    "ft": int(v.get("ft", 0) or 0)}
+                                    "ft": int(v.get("ft", 0) or 0),
+                                    # BON TRUONG DUOI DAY BAT BUOC PHAI CO. Loader nay chep tay
+                                    # tung truong, nen quen mot cai la o dung KHONG BAO GIO thay no
+                                    # (get -> None -> 0) ma KHONG he bao loi.
+                                    #   fc  = so manh khi phan giai (0 = khong phan giai duoc)
+                                    #   mat = material, lv = level, kd = kind -> UIArmy.ArmyFilter
+                                    # Da xay ra that (03/09): thieu ca 4 -> tu mo hop trang bi coi
+                                    # MOI mon la "khong phan giai, khong donate duoc" va VUT SACH.
+                                    "fc": int(v.get("fc", 0) or 0),
+                                    "mat": int(v.get("mat", 0) or 0),
+                                    "lv": int(v.get("lv", 0) or 0),
+                                    "kd": int(v.get("kd", 0) or 0)}
     return _gamedata_items
 
 
