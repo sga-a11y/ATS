@@ -1927,8 +1927,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     if _kq.get("bo_qua"):
                         log.info("[%s] Ruong trang bi: bo qua (%s)", label, _kq["bo_qua"])
                     elif _kq.get("mo"):
-                        log.info("[%s] Ruong trang bi: mo %d, phan giai %d, donate %d",
-                                 label, _kq["mo"], _kq["phan_giai"], _kq["donate"])
+                        log.info("[%s] Ruong trang bi: mo %d, phan giai %d, donate %d, vut %d",
+                                 label, _kq["mo"], _kq["phan_giai"], _kq["donate"],
+                                 _kq.get("vut", 0))
                 except Exception as e:
                     log.warning("[%s] loi tu mo ruong trang bi: %s", label, e)
             # THA DO THOI TRANG vao Bo Suu Tam (gon tui + diem). DAT TRUOC use_login_items vi tha CHAC

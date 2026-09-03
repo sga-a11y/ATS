@@ -52,6 +52,37 @@ HOP_TINH = {
 }
 
 
+# DONATE QUAN DOAN duoc hay khong - sao y `UIArmy.ArmyFilter` (bo loc tui khi chon do de dong
+# gop). KHONG doan: mon truot bo loc nay thi client khong cho chon, bot gui la server bo qua IM
+# LANG (user gap that 03/09: mo hop xong "donate" ma do van nam trong tui, tui day ngay).
+#   if itemData.kind == 53 then return true end
+#   if itemData.level == 0 then return false end
+#   if isVender/isDeliver/isLock then return false end
+#   if Contains(Id, <danh sach cam cung>) then return false end
+#   if not Contains(material, 1..8, 10..22, 24..36) then return false end
+#   if Contains(kind, 20, 21, 22) then return false end
+MAT_OK = set(range(1, 9)) | set(range(10, 23)) | set(range(24, 37))   # BO 9 va 23
+KIND_CAM = {20, 21, 22}
+ID_CAM = {10505, 19209, 20209, 21609, 22909, 20747, 20748, 20749, 26209, 26210, 26211, 26212,
+          26213, 26214, 26215, 26216, 26217, 26218, 26219, 16000, 21610, 19210, 22910, 20210,
+          11046}
+
+
+def donate_duoc(tid: int, rec: dict) -> bool:
+    """rec = ban ghi trong items_gamedata.json (can `mat`, `lv`, `kd`)."""
+    if int(rec.get("kd") or 0) == 53:
+        return True
+    if int(rec.get("lv") or 0) == 0:
+        return False
+    if tid in ID_CAM:
+        return False
+    if int(rec.get("mat") or 0) not in MAT_OK:
+        return False
+    if int(rec.get("kd") or 0) in KIND_CAM:
+        return False
+    return True
+
+
 def doc_bliss(path=DAT):
     """{bagId: [(itemId, count, pr, kind)]} theo dung thu tu file."""
     with open(path, "rb") as fh:
@@ -96,7 +127,11 @@ def main():
                 r = rec(item_id)
                 ds.append({"id": item_id, "name": (r.get("name") or "").strip(),
                            "sl": cnt, "pr": round(pr * 100.0 / tong, 2),
-                           "fc": int(r.get("fc") or 0), "ft": int(r.get("ft") or 0)})
+                           "fc": int(r.get("fc") or 0), "ft": int(r.get("ft") or 0),
+                           # dn = DONATE quan doan duoc khong (theo UIArmy.ArmyFilter).
+                           # fc == 0 va dn == False = MON KET: khong phan giai, khong donate
+                           # -> bot VUT BO (user chot 03/09), khong thi no nam li lam day tui.
+                           "dn": donate_duoc(item_id, r)})
             out["boxes"]["0x%04x" % tid] = {
                 "name": ten,
                 "luot": luot,
@@ -109,12 +144,17 @@ def main():
         fh.write("\n")
 
     print("=> %s: %d hop" % (os.path.basename(OUT), len(out["boxes"])))
-    print("%-24s %-7s %-5s %-5s %s" % ("hop", "luot", "o can", "mon", "phan giai duoc"))
+    print("%-24s %-7s %-5s %-5s %-9s %-9s %s"
+          % ("hop", "luot", "o can", "mon", "phan giai", "donate", "KET (vut bo)"))
     for k, v in out["boxes"].items():
         pg = [i for i in v["items"] if i["fc"] > 0]
-        print("%-24s %-7s %-5d %-5d %d (%.0f%%)"
+        dn = [i for i in v["items"] if i["dn"]]
+        ket = [i for i in v["items"] if not i["fc"] and not i["dn"]]
+        print("%-24s %-7s %-5d %-5d %-9s %-9s %s"
               % (v["name"], v["luot"], v["kindCount"], len(v["items"]),
-                 len(pg), sum(i["pr"] for i in pg)))
+                 "%d (%.0f%%)" % (len(pg), sum(i["pr"] for i in pg)),
+                 "%d (%.0f%%)" % (len(dn), sum(i["pr"] for i in dn)),
+                 "%d (%.0f%%)" % (len(ket), sum(i["pr"] for i in ket))))
     return 0
 
 

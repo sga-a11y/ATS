@@ -5325,21 +5325,17 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Checkbutton(_mt, text="Tự đóng góp nguyên liệu cho quân đoàn",
                         variable=self.auto_donate_materials_var).pack(side="left")
         ttk.Button(_mt, text="List", command=self._open_material_list).pack(side="left", padx=(8, 0))
-        _sc = ttk.Frame(frm); _sc.pack(anchor="w", fill="x", pady=(4, 0))
-        ttk.Checkbutton(_sc, text="Tự phân giải cuộn võ tướng rác",
-                        variable=self.auto_decompose_scrolls_var).pack(side="left")
-        ttk.Button(_sc, text="List", command=self._open_scroll_list).pack(side="left", padx=(8, 0))
-        # RUONG TRANG BI: dat SAU donate nguyen lieu vi tinh nang nay chay NGAY SAU buoc donate
-        # quan doan (user chot 03/09) - de tan dung ket qua "co donate duoc hay khong": do khong
-        # phan giai duoc chi con duong donate, khong donate duoc thi mo ra cung vo ich.
+        # RUONG TRANG BI: dat NGAY SAU donate nguyen lieu (user chot 03/09) - dung thu tu bot chay
+        # that: tinh nang nay chay ngay sau buoc donate quan doan de tan dung ket qua "co donate
+        # duoc hay khong". Doan giai thich dai da chuyen VAO dialog "List ruong" cho gon.
         _bx = ttk.Frame(frm); _bx.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_bx, text="Tự dọn rương trang bị và Phó bản",
                         variable=self.auto_open_boxes_var).pack(side="left")
         ttk.Button(_bx, text="List rương", command=self._open_box_list).pack(side="left", padx=(8, 0))
-        ttk.Label(frm, foreground="#888", wraplength=420, justify="left",
-                  text="(mở rương → đồ phân giải được thì phân giải lấy mảnh, đồ không phân giải "
-                       "được thì đóng góp quân đoàn. CHỈ chạy khi có quân đoàn và đã vào >24h; "
-                       "chỉ đụng đồ vừa mở ra, đồ có sẵn trong túi giữ nguyên)").pack(anchor="w", padx=(24, 0))
+        _sc = ttk.Frame(frm); _sc.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_sc, text="Tự phân giải cuộn võ tướng rác",
+                        variable=self.auto_decompose_scrolls_var).pack(side="left")
+        ttk.Button(_sc, text="List", command=self._open_scroll_list).pack(side="left", padx=(8, 0))
         ttk.Label(frm, foreground="#a00", wraplength=420, justify="left",
                   text="Lưu ý: phân giải là MẤT HẲN cuộn. Mặc định cuộn của tướng có vũ khí "
                        "chuyên dụng được giữ lại, còn lại phân giải — nên soát List trước khi bật."
@@ -5359,6 +5355,17 @@ class PartyConfigFrame(ttk.Frame):
             return
         win = tk.Toplevel(self); win.title("Rương trang bị"); win.transient(self); win.grab_set()
         frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
+        # Giai thich de o DAY (khong de ngoai bang "Don dep tui do" - user chot 03/09: de ngoai
+        # do dai, nhin roi).
+        ttk.Label(frm, foreground="#888", wraplength=460, justify="left",
+                  text="Mở rương → đồ phân giải được thì phân giải lấy mảnh, đồ không phân giải "
+                       "được thì đóng góp quân đoàn.\n"
+                       "CHỈ chạy khi có quân đoàn và đã vào >24h (chưa đủ 24h thì game không cho "
+                       "đóng góp, mở ra chỉ làm đầy túi).\n"
+                       "Đồ không phân giải cũng không đóng góp được (sách: Hoài Nam Tử, Tam Lược…) "
+                       "thì VỨT BỎ — xem cột \"vứt bỏ\" của từng rương.\n"
+                       "Chỉ đụng đồ VỪA mở ra — đồ có sẵn trong túi giữ nguyên."
+                  ).pack(anchor="w", pady=(0, 6))
         ttk.Label(frm, text="Tick rương nào thì bot tự mở rương đó:").pack(anchor="w")
         # state: tid_hex -> bool. Mac dinh CHUA tick cai nao (user tu chon).
         state = {k: bool(self.box_modes.get(k)) for k in data}
@@ -5370,13 +5377,18 @@ class PartyConfigFrame(ttk.Frame):
                 continue
             ttk.Label(frm, text=nhan, foreground="#0a4a9a").pack(anchor="w", pady=(8, 2))
             for k, v in sorted(_nhom, key=lambda kv: kv[1].get("name") or ""):
-                _pg = [i for i in (v.get("items") or []) if int(i.get("fc") or 0) > 0]
+                _ds = v.get("items") or []
+                _pg = [i for i in _ds if int(i.get("fc") or 0) > 0]
+                # KET = khong phan giai + khong donate duoc (vd sach: Hoai Nam Tu, Tam Luoc...)
+                # -> bot VUT BO. Hien ra de user biet ruong nao mo se mat mot phan do.
+                _ket = [i for i in _ds if not int(i.get("fc") or 0) and not i.get("dn")]
                 _ti = sum(float(i.get("pr") or 0) for i in _pg)
+                _tk = sum(float(i.get("pr") or 0) for i in _ket)
                 _vars[k] = tk.BooleanVar(value=state.get(k, False))
                 ttk.Checkbutton(
                     frm, variable=_vars[k],
-                    text="%s  —  %d món, phân giải được %d (%.0f%%)"
-                         % (v.get("name") or k, len(v.get("items") or []), len(_pg), _ti),
+                    text="%s  —  %d món · phân giải %d (%.0f%%) · vứt bỏ %d (%.0f%%)"
+                         % (v.get("name") or k, len(_ds), len(_pg), _ti, len(_ket), _tk),
                 ).pack(anchor="w", padx=(16, 0))
 
         def _luu():
