@@ -101,5 +101,44 @@ class TestFileThuc(unittest.TestCase):
             self.assertLess(bo_tran / tong, 0.01, "bo qua nhieu tran (%d/%d)" % (bo_tran, tong))
 
 
+class TestLocQuai(unittest.TestCase):
+    """User chot 28/08: "so quai thi cung loai nhung quai < 1%".
+
+    `mobs` = so lan GAP tung loai quai o diem. Quai lac vao vai lan (di tuan tu vung khac, quai
+    su kien) van duoc ghi -> chon map theo "level quai / so quai / he" bi lech theo con KHONG
+    PHAI dan cua diem do.
+    """
+
+    def test_bo_quai_duoi_1_phan_tram(self):
+        spot = {"mobs": {"100": 990, "200": 5, "300": 5}}
+        n, lan, bo = LOC.loc_mobs(spot)
+        self.assertEqual(n, 2)
+        self.assertEqual(lan, 10)
+        self.assertEqual(spot["mobs"], {"100": 990})
+
+    def test_giu_quai_tu_1_phan_tram_tro_len(self):
+        spot = {"mobs": {"100": 99, "200": 1}}      # 1/100 = 1.0% -> GIU
+        self.assertEqual(LOC.loc_mobs(spot)[0], 0)
+        self.assertEqual(spot["mobs"], {"100": 99, "200": 1})
+
+    def test_KHONG_bo_het_khi_moi_con_deu_be(self):
+        """Diem moi ghi vai lan -> con nao cung <1% neu chia deu; bo het la mat sach du lieu."""
+        spot = {"mobs": {"100": 1, "200": 1, "300": 1}}
+        LOC.loc_mobs(spot)
+        self.assertTrue(spot["mobs"], "khong duoc bo HET quai cua diem")
+        self.assertIn("100", spot["mobs"])
+
+    def test_khong_co_mobs_thi_khong_sao(self):
+        spot = {"patterns": {"3x1": 10}}
+        self.assertEqual(LOC.loc_mobs(spot), (0, 0, []))
+
+    def test_KHONG_dung_vao_total_va_patterns(self):
+        """`total` la so TRAN - khong lien quan so lan gap quai."""
+        spot = {"total": 500, "patterns": {"3x1": 500}, "mobs": {"100": 990, "200": 5}}
+        LOC.loc_mobs(spot)
+        self.assertEqual(spot["total"], 500)
+        self.assertEqual(spot["patterns"], {"3x1": 500})
+
+
 if __name__ == "__main__":
     unittest.main()

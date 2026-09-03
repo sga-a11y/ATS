@@ -76,7 +76,14 @@ def _set_tab_fields(rec, src):
                       ("sa", "specialAbility"),
                       # q = quality (0 trang 1 luc 2 lam 3 tim 4 do). Luat CUONG HOA tra
                       # theo (fitType, a1k, quality) - thieu q la khong tinh duoc.
-                      ("q", "quality")):
+                      ("q", "quality"),
+                      # mat/lv = material + level: DUNG DE BIET MON DO CO DONATE QUAN DOAN DUOC
+                      # KHONG. UIArmy.ArmyFilter (bo loc tui khi chon do de dong gop) doi:
+                      #   material thuoc 1..36 (BO 9 va 23) VA level > 0 VA kind khong thuoc 20/21/22
+                      # Sach/binh phap (material=37, kind=9) TRUOT bo loc -> vua khong phan giai
+                      # duoc (fc=0) vua khong donate duoc = MON KET, mo ra la nam li trong tui
+                      # (user bao 03/09: "Hoai Nam Tu khong phan giai duoc... ma no cung ko donate dc").
+                      ("mat", "material"), ("lv", "level")):
         v = src.get(field) or 0
         if v:
             rec[key] = int(v)

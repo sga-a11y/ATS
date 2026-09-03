@@ -1474,13 +1474,14 @@ class BotGUI(tk.Tk):
         return out
 
     def _party_notify_items(self, pidx):
-        """List (username, item): TUI -> THANH chua mo -> BA DAU -> QUAN DOAN -> DU DIEM -> LO.
+        """List (username, item): TUI -> BA DAU -> QUAN DOAN -> DU DIEM -> LO.
 
         BA DAU dat TRUOC quan doan (user chot 01/09): no la viec CO HAN GIO (het la mat quyen loi
         hoi day HP/SP), con quan doan/du diem thi luc nao lam cung duoc.
         """
+        # THANH CHUA MO: BO khoi Chu y (user chot 28/08) - bot GIO LUON TU MO thanh, canh bao chi
+        # con lam ret danh sach. `_party_city_notify` giu lai vi con dung cho cho khac/de bat lai.
         out = (list(self._party_bag_notify(pidx))
-               + list(self._party_city_notify(pidx))
                + [(it["user"], {"_ba_dau": True, "luc": it["luc"]})
                   for it in ctrl.ba_dau_notify_items(pidx)]
                + list(self._party_legion_notify(pidx))
@@ -1519,17 +1520,19 @@ class BotGUI(tk.Tk):
         # ITEM LA = id KHONG co trong furnace_pool.json (game update them item moi). Engine da danh
         # dau "new" tu lau nhung UI chua dung -> nhin y het item thuong. Phai neu ro de user chu y.
         _new = " ⚠ ITEM LẠ (ngoài danh sách đã biết)" if it.get("new") else ""
+        # Cung mot tab dung cho ca 2 lo -> phai noi RO lo nao (gia hoang kim gap doi).
+        _lo = " HOÀNG KIM" if it.get("gold") else " thường"
         if tab == "trang_bi":
             # Ten DAI kem chi so (giong hien thi trong list) - chi co ten thi khong quyet dinh
             # duoc co dang mua hay khong.
             _tid = it.get("id")
             if _tid:
                 nm = PartyConfigFrame._equip_display("0x%04x" % int(_tid), nm)
-            return f'{_u} soi lò trang bị thường có "{nm}" - trong túi đang có {it.get("bag", 0)} món{_new}'
+            return f'{_u} soi lò trang bị{_lo} có "{nm}" - trong túi đang có {it.get("bag", 0)} món{_new}'
         if tab == "vo_tuong":
-            return f'{_u} soi lò võ tướng thường có "{nm}"{_new}'
+            return f'{_u} soi lò võ tướng{_lo} có "{nm}"{_new}'
         if tab == "chuyen_sinh":
-            return f'{_u} soi lò chuyển sinh thường có "{nm}"{_new}'
+            return f'{_u} soi lò chuyển sinh{_lo} có "{nm}"{_new}'
         return f'{_u}: lò có "{nm}"{_new}'
 
     def _furnace_buy_for(self, username, it):
@@ -3972,6 +3975,11 @@ class PartyConfigFrame(ttk.Frame):
         self.auto_decompose_scrolls_var = tk.BooleanVar(
             value=bool(self._preset.get("auto_decompose_scrolls", False)))
         self.scroll_modes = dict(self._preset.get("scroll_modes") or {})
+        # RUONG TRANG BI (tu mo hop -> phan giai / donate QD). Mac dinh TAT: no DONATE va
+        # PHAN GIAI do that, bat nham la mat do.
+        self.auto_open_boxes_var = tk.BooleanVar(
+            value=bool(self._preset.get("auto_open_boxes", False)))
+        self.box_modes = dict(self._preset.get("box_modes") or {})   # {tid_hex: True} - ruong DA TICK
         self.auto_donate_materials_var = tk.BooleanVar(
             value=bool(self._preset.get("auto_donate_materials", True)))   # mac dinh BAT
         self.material_modes = dict(self._preset.get("material_modes") or {})   # {tid:'keep'} - nguyen lieu GIU
@@ -4220,9 +4228,11 @@ class PartyConfigFrame(ttk.Frame):
         return PartyConfigFrame._furnace_default_notify_cache
 
     _furnace_pool_cache = None
-    FURNACE_TABS = [("vo_tuong", "Vo Tuong", "Võ Tướng thường"),
-                    ("trang_bi", "Trang Bi", "Trang Bị thường"),
-                    ("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh thường")]
+    # Ten tab BO chu "thuong": tu 03/09 moi tab dung cho CA lo thuong lan lo HOANG KIM
+    # (chung pool item - xem bot/client.py FURNACE_TAB_KIND_GOLD).
+    FURNACE_TABS = [("vo_tuong", "Vo Tuong", "Võ Tướng"),
+                    ("trang_bi", "Trang Bi", "Trang Bị"),
+                    ("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh")]
 
     def _load_furnace_pool(self):
         """{pool_tab_name: {tid_hex: ten}} tu furnace_pool.json."""
@@ -5315,6 +5325,13 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Checkbutton(_mt, text="Tự đóng góp nguyên liệu cho quân đoàn",
                         variable=self.auto_donate_materials_var).pack(side="left")
         ttk.Button(_mt, text="List", command=self._open_material_list).pack(side="left", padx=(8, 0))
+        # RUONG TRANG BI: dat NGAY SAU donate nguyen lieu (user chot 03/09) - dung thu tu bot chay
+        # that: tinh nang nay chay ngay sau buoc donate quan doan de tan dung ket qua "co donate
+        # duoc hay khong". Doan giai thich dai da chuyen VAO dialog "List ruong" cho gon.
+        _bx = ttk.Frame(frm); _bx.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_bx, text="Tự dọn rương trang bị và Phó bản",
+                        variable=self.auto_open_boxes_var).pack(side="left")
+        ttk.Button(_bx, text="List rương", command=self._open_box_list).pack(side="left", padx=(8, 0))
         _sc = ttk.Frame(frm); _sc.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_sc, text="Tự phân giải cuộn võ tướng rác",
                         variable=self.auto_decompose_scrolls_var).pack(side="left")
@@ -5324,6 +5341,67 @@ class PartyConfigFrame(ttk.Frame):
                        "chuyên dụng được giữ lại, còn lại phân giải — nên soát List trước khi bật."
                   ).pack(anchor="w", pady=(8, 0))
         ttk.Button(frm, text="Đóng", command=win.destroy).pack(anchor="e", pady=(12, 0))
+
+    def _open_box_list(self):
+        """List RUONG/TUI trang bi: tick ruong nao thi bot mo ruong do.
+
+        Nguon bliss_bag.json (tools/crack_bliss_bag.py doc Data/BlissBag_C.dat). Hien luon so mon
+        PHAN GIAI DUOC (fc>0) de user biet ruong nao dang mo: ruong 0% phan giai la mo ra chi de
+        donate, ruong tinh/cao thi 100% ra manh.
+        """
+        data = (_load_json("bliss_bag.json") or {}).get("boxes") or {}
+        if not data:
+            messagebox.showwarning("List rương", "Không đọc được bliss_bag.json")
+            return
+        win = tk.Toplevel(self); win.title("Rương trang bị"); win.transient(self); win.grab_set()
+        frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
+        # Giai thich de o DAY (khong de ngoai bang "Don dep tui do" - user chot 03/09: de ngoai
+        # do dai, nhin roi).
+        ttk.Label(frm, foreground="#888", wraplength=460, justify="left",
+                  text="Mở rương → đồ phân giải được thì phân giải lấy mảnh, đồ không phân giải "
+                       "được thì đóng góp quân đoàn.\n"
+                       "CHỈ chạy khi có quân đoàn và đã vào >24h (chưa đủ 24h thì game không cho "
+                       "đóng góp, mở ra chỉ làm đầy túi).\n"
+                       "Đồ không phân giải cũng không đóng góp được (sách: Hoài Nam Tử, Tam Lược…) "
+                       "thì VỨT BỎ — xem cột \"vứt bỏ\" của từng rương.\n"
+                       "Chỉ đụng đồ VỪA mở ra — đồ có sẵn trong túi giữ nguyên."
+                  ).pack(anchor="w", pady=(0, 6))
+        ttk.Label(frm, text="Tick rương nào thì bot tự mở rương đó:").pack(anchor="w")
+        # state: tid_hex -> bool. Mac dinh CHUA tick cai nao (user tu chon).
+        state = {k: bool(self.box_modes.get(k)) for k in data}
+        _vars = {}
+        # Luot "thuong" truoc roi "tinh" - dung thu tu bot xu ly.
+        for luot, nhan in (("thuong", "Rương/túi thường"), ("tinh", "Túi tinh / cao")):
+            _nhom = [(k, v) for k, v in data.items() if (v.get("luot") or "thuong") == luot]
+            if not _nhom:
+                continue
+            ttk.Label(frm, text=nhan, foreground="#0a4a9a").pack(anchor="w", pady=(8, 2))
+            for k, v in sorted(_nhom, key=lambda kv: kv[1].get("name") or ""):
+                _ds = v.get("items") or []
+                _pg = [i for i in _ds if int(i.get("fc") or 0) > 0]
+                # KET = khong phan giai + khong donate duoc (vd sach: Hoai Nam Tu, Tam Luoc...)
+                # -> bot VUT BO. Hien ra de user biet ruong nao mo se mat mot phan do.
+                _ket = [i for i in _ds if not int(i.get("fc") or 0) and not i.get("dn")]
+                _ti = sum(float(i.get("pr") or 0) for i in _pg)
+                _tk = sum(float(i.get("pr") or 0) for i in _ket)
+                _vars[k] = tk.BooleanVar(value=state.get(k, False))
+                ttk.Checkbutton(
+                    frm, variable=_vars[k],
+                    text="%s  —  %d món · phân giải %d (%.0f%%) · vứt bỏ %d (%.0f%%)"
+                         % (v.get("name") or k, len(_ds), len(_pg), _ti, len(_ket), _tk),
+                ).pack(anchor="w", padx=(16, 0))
+
+        def _luu():
+            self.box_modes = {k: True for k, var in _vars.items() if var.get()}
+            win.destroy()
+
+        bar = ttk.Frame(frm); bar.pack(fill="x", pady=(12, 0))
+        ttk.Button(bar, text="Lưu", command=_luu).pack(side="right")
+        ttk.Button(bar, text="Huỷ", command=win.destroy).pack(side="right", padx=(0, 6))
+        ttk.Button(bar, text="Bỏ tick hết",
+                   command=lambda: [v.set(False) for v in _vars.values()]).pack(side="left")
+        ttk.Button(bar, text="Tick hết",
+                   command=lambda: [v.set(True) for v in _vars.values()]).pack(side="left", padx=(6, 0))
 
     def _open_scroll_list(self):
         """List TAT CA cuon goi vo tuong: double-click doi GIU LAI <-> PHAN GIAI.
@@ -5662,6 +5740,8 @@ class PartyConfigFrame(ttk.Frame):
             "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
             "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
             "scroll_modes": dict(self.scroll_modes),
+            "auto_open_boxes": bool(self.auto_open_boxes_var.get()),
+            "box_modes": dict(self.box_modes),
             "auto_donate_materials": bool(self.auto_donate_materials_var.get()),
             "material_modes": dict(self.material_modes),
             "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
@@ -5703,6 +5783,8 @@ class PartyConfigFrame(ttk.Frame):
         self.auto_discard_junk_var.set(bool(data.get("auto_discard_junk", True)))
         self.auto_decompose_scrolls_var.set(bool(data.get("auto_decompose_scrolls", False)))
         self.scroll_modes = dict(data.get("scroll_modes") or {})
+        self.auto_open_boxes_var.set(bool(data.get("auto_open_boxes", False)))
+        self.box_modes = dict(data.get("box_modes") or {})
         # 2 dong duoi TUNG BI THIEU: co trong _advanced_settings_data nhung khong apply nguoc ->
         # "Ap dung cho cac party khac" khong mang theo cau hinh nguyen lieu quan doan.
         self.auto_donate_materials_var.set(bool(data.get("auto_donate_materials", True)))
@@ -6064,6 +6146,8 @@ class PartyConfigFrame(ttk.Frame):
                 "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
                 "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
                 "scroll_modes": dict(self.scroll_modes),
+                "auto_open_boxes": bool(self.auto_open_boxes_var.get()),
+                "box_modes": dict(self.box_modes),
                 "auto_donate_materials": bool(self.auto_donate_materials_var.get()),
                 "material_modes": dict(self.material_modes),
                 "auto_buy_shop": bool(self.auto_buy_shop_var.get()),

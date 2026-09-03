@@ -3208,9 +3208,11 @@ fun AddAccountDialog(
 
 // tab furnace: key config -> (pool name trong furnace_pool.json, nhan hien thi)
 val FURNACE_TABS = listOf(
-    Triple("vo_tuong", "Vo Tuong", "Võ Tướng thường"),
-    Triple("trang_bi", "Trang Bi", "Trang Bị thường"),
-    Triple("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh thường"),
+    // Ten tab BO chu "thuong": tu 03/09 moi tab dung cho CA lo thuong lan lo HOANG KIM
+    // (chung pool item - xem bot/client.py FURNACE_TAB_KIND_GOLD).
+    Triple("vo_tuong", "Vo Tuong", "Võ Tướng"),
+    Triple("trang_bi", "Trang Bi", "Trang Bị"),
+    Triple("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh"),
 )
 
 @Composable
@@ -3863,16 +3865,18 @@ private fun furnaceNotifyLine(context: android.content.Context, it: Map<String, 
     // ITEM LA = id khong co trong furnace_pool.json (game update them item moi) - engine danh dau
     // "new"; phai neu ro chu khong de nhin y het item thuong.
     val nw = if (it["new"]?.lowercase() in listOf("true", "1")) " ⚠ ITEM LẠ (ngoài danh sách đã biết)" else ""
+    // Cung mot tab dung cho ca 2 lo -> phai noi RO lo nao (gia hoang kim gap doi).
+    val lo = if (it["gold"]?.lowercase() in listOf("true", "1")) " HOÀNG KIM" else " thường"
     return when (tab) {
         "trang_bi" -> {
             val tid = it["id"]?.toIntOrNull()
             if (tid != null) {
                 nm = equipDisplay(loadEquipStats(context)[String.format("0x%04x", tid)], nm)
             }
-            "$u soi lò trang bị thường có \"$nm\" - trong túi đang có ${it["bag"] ?: 0} món$nw"
+            "$u soi lò trang bị$lo có \"$nm\" - trong túi đang có ${it["bag"] ?: 0} món$nw"
         }
-        "vo_tuong" -> "$u soi lò võ tướng thường có \"$nm\"$nw"
-        "chuyen_sinh" -> "$u soi lò chuyển sinh thường có \"$nm\"$nw"
+        "vo_tuong" -> "$u soi lò võ tướng$lo có \"$nm\"$nw"
+        "chuyen_sinh" -> "$u soi lò chuyển sinh$lo có \"$nm\"$nw"
         else -> "$u: lò có \"$nm\"$nw"
     }
 }
@@ -4095,21 +4099,29 @@ fun FurnacePickerDialog(
                             Text(disp(tid, name), modifier = Modifier.weight(1f),
                                 maxLines = if (isEquip) 2 else 1,
                                 style = MaterialTheme.typography.bodySmall)
-                            listOf("" to "Bỏ qua", "auto" to "Tự mua", "notify" to "Thông báo").forEach { (mv, lbl) ->
-                                val sel = m == mv
-                                TextButton(onClick = {
-                                    if (mv.isEmpty()) {
+                            // MOT nut XOAY VONG thay vi 3 nut canh nhau: 3 nut chiem gan nua be
+                            // ngang man hinh dien thoai -> ten item bi cat mat (user bao 28/08).
+                            // Bam lan luot: Bo qua -> Tu mua -> Thong bao -> Bo qua ...
+                            val lbl = when (m) { "auto" -> "Tự mua"; "notify" -> "Thông báo"; else -> "Bỏ qua" }
+                            TextButton(onClick = {
+                                when (m) {
+                                    "auto" -> modes[tid] = "notify"
+                                    "notify" -> {
                                         // Item MAC DINH thong bao: phai luu "skip" moi tat duoc,
                                         // xoa key la lan sau lai ve mac dinh notify.
                                         if (dfltNotify.contains(tid)) modes[tid] = "skip"
                                         else modes.remove(tid)
-                                    } else modes[tid] = mv
-                                }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
-                                    Text(lbl, style = MaterialTheme.typography.labelSmall,
-                                        color = if (sel) MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
+                                    }
+                                    else -> modes[tid] = "auto"
                                 }
+                            }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                                Text(lbl, style = MaterialTheme.typography.labelSmall,
+                                    color = when (m) {
+                                        "auto" -> MaterialTheme.colorScheme.primary
+                                        "notify" -> MaterialTheme.colorScheme.tertiary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    fontWeight = if (m.isEmpty()) FontWeight.Normal else FontWeight.Bold)
                             }
                         }
                     }

@@ -46,7 +46,7 @@ DATA_JSON = ["servers.json", "cities.json", "train_maps.json", "train_routes.jso
              "vantieu_requests.json", "vantieu_dispatch_bonus.json", "skills_db.json", "junk_scrolls.json", "achievements.json", "mark_bitids.json", "pet_scrolls.json", "skills_data.json",
              "items_gamedata.json", "donate_items.json", "donate_materials.json", "mineral_npcs.json", "jiugongge.json", "use_items.json", "events.json", "login_awards.json",
              "train_block_stats.json", "world_nav.json", "pet_stats.json", "dangerous_npcs.json",
-             "scene_names.json", "collect_style.json", "furnace_pool.json",
+             "scene_names.json", "collect_style.json", "furnace_pool.json", "bliss_bag.json",
              "furnace_default_notify.json", "equip_stats.json",
              "npc_table.json", "mounts_grow.json", "warp_points.json",
              "exchange.json", "eq_affix.json",

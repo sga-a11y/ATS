@@ -1064,7 +1064,18 @@ def _load_gamedata_items() -> dict:
                                     "restrict": int(v.get("restrict", 0) or 0),
                                     # ft = fitType = VI TRI MAC (1 mu, 2 ao, 3 vu khi...). Can de
                                     # suy mon DANG mac o vi tri do khi THAY DO - xem _on_equip_done.
-                                    "ft": int(v.get("ft", 0) or 0)}
+                                    "ft": int(v.get("ft", 0) or 0),
+                                    # BON TRUONG DUOI DAY BAT BUOC PHAI CO. Loader nay chep tay
+                                    # tung truong, nen quen mot cai la o dung KHONG BAO GIO thay no
+                                    # (get -> None -> 0) ma KHONG he bao loi.
+                                    #   fc  = so manh khi phan giai (0 = khong phan giai duoc)
+                                    #   mat = material, lv = level, kd = kind -> UIArmy.ArmyFilter
+                                    # Da xay ra that (03/09): thieu ca 4 -> tu mo hop trang bi coi
+                                    # MOI mon la "khong phan giai, khong donate duoc" va VUT SACH.
+                                    "fc": int(v.get("fc", 0) or 0),
+                                    "mat": int(v.get("mat", 0) or 0),
+                                    "lv": int(v.get("lv", 0) or 0),
+                                    "kd": int(v.get("kd", 0) or 0)}
     return _gamedata_items
 
 
@@ -1282,6 +1293,28 @@ def _load_furnace_pool_ids() -> set:
                 except Exception:
                     pass
     return _furnace_pool_ids
+
+_bliss_boxes = None
+def _load_bliss_boxes() -> dict:
+    """{tid_int: {name, luot, kindCount, items:[{id, fc, ...}]}} tu bliss_bag.json.
+
+    Sinh boi tools/crack_bliss_bag.py tu Data/BlissBag_C.dat. `fc` (furnaceCount) > 0 = PHAN GIAI
+    duoc (ra manh trang bi); == 0 -> chi con duong DONATE quan doan.
+    """
+    global _bliss_boxes
+    if _bliss_boxes is not None:
+        return _bliss_boxes
+    _bliss_boxes = {}
+    data = _load_json_data_file("bliss_bag.json")
+    for k, v in ((data or {}).get("boxes") or {}).items():
+        try:
+            tid = int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k)
+        except Exception:
+            continue
+        if isinstance(v, dict):
+            _bliss_boxes[tid] = v
+    return _bliss_boxes
+
 
 _npc_names = None
 def _load_npc_names() -> dict:
@@ -2100,6 +2133,9 @@ class GameClient:
         self.legion_boss_count = 0   # so lan DA danh boss QD hom nay (S2C 0x55 id 0x2a cur)
         self.legion_boss_max = 3     # gioi han/ngay (0x55 id 0x2a max = 3)
         self.legion_boss_next = 0.0  # gio danh tiep duoc (cooldown, S2C 0x27 76 OLE)
+        # Gio duoc THU DONATE lai. Server bao "chua du 24h trong quan doan" (S:039-015 ma 32) ->
+        # hoan 12h. Client khong co cach nao biet truoc, chi gui roi doc ma loi.
+        self.legion_donate_next = 0.0
         # CO QUAN DOAN hay khong. MAC DINH False (KHONG phai None) - BUG THAT xac nhan qua capture
         # THAT SU: acc KHONG co quan doan thi server KHONG BAO GIO gui goi 0x27 sub=02 (guild info)
         # ca - KHAC voi gia dinh ban dau la "gui goi voi guild_len=0". Neu de mac dinh None se KET
@@ -4000,6 +4036,13 @@ class GameClient:
                     self.legion_boss_next = self._ole_to_dt(struct.unpack("<d", pkt[9:17])[0]).timestamp()
                 except Exception:
                     pass
+            # S:039-015 <軍團訊息> +訊息種類(1). Ma 32 = "加入軍團未滿24小時，無法捐獻"
+            # (TextData 21215: "Gia nhap quan doan chua du 24 tieng, khong the quyen gop").
+            # Client KHONG tu biet da du 24h hay chua - khong co truong thoi gian gia nhap o dau
+            # ca, chi co cach GUI ROI DOC MA LOI. Bat o day de HOAN tinh nang mo hop (donate la
+            # buoc bat buoc cua no) thay vi thu lai lien tuc.
+            if pkt[7:9] == b"\x0f\x00" and len(pkt) >= 10:
+                self._on_legion_msg(pkt[9])
             self._on_player_info(pkt)
         elif opcode == 0x69:                      # chua self_entity
             if self.self_entity is None and len(pkt) >= 17:
@@ -9406,6 +9449,26 @@ class GameClient:
                                   "bought": self._furnace_bought(kind, j)})
                 tabs[kind] = items
             self.furnace_shop = {"base_rate": base_rate, "active_rate": active_rate, "tabs": tabs}
+            # LO HOANG KIM (kind 3 GoldNpc / 4 GoldEquip / 6 GoldTurnItem): truoc day server tra
+            # 8 slot id=0 (chua mo) nen bot bo qua hoan toan. Game update 03/09 MO lo hoang kim ->
+            # LIET KE 1 LAN khi thay tab gold co item that, de biet list co khac lo thuong khong
+            # (pool lo do SERVER gui moi lan soi, client KHONG co bang tinh de tra truoc).
+            try:
+                _gold = {k: [it for it in v if it.get("id")] for k, v in tabs.items()
+                         if k in (3, 4, 6)}
+                _gold = {k: v for k, v in _gold.items() if v}
+                if _gold and not getattr(self, "_da_log_lo_hoang_kim", False):
+                    self._da_log_lo_hoang_kim = True
+                    _db = _load_gamedata_items()
+                    for _k, _items in sorted(_gold.items()):
+                        _ten = {3: "GoldNpc(vo tuong)", 4: "GoldEquip(trang bi)",
+                                6: "GoldTurnItem(chuyen sinh)"}.get(_k, str(_k))
+                        log.info("[%s] LO HOANG KIM tab %s (kind=%d): %s", self._label, _ten, _k,
+                                 [("%s x%d" % ((_db.get(it["id"]) or {}).get("name")
+                                               or ("0x%04x" % it["id"]), it["quant"]))
+                                  for it in _items])
+            except Exception as e:
+                log.debug("[%s] loi liet ke lo hoang kim (bo qua): %s", self._label, e)
             # KHONG log liet ke 6 tab x 8 slot (~56 dong/lan soi lo, ken log vo ich - yeu cau
             # user). Item dang quan tam da co log rieng o process_furnace (THONG BAO / AUTO MUA).
             # Muon xem lai toan bo thi doc self.furnace_shop.
@@ -9414,6 +9477,12 @@ class GameClient:
 
     # ten tab config (per-acc) -> kind trong shop packet (ESelect: 1/2/5 lo thuong)
     FURNACE_TAB_KIND = {"vo_tuong": 1, "trang_bi": 2, "chuyen_sinh": 5}
+    # LO HOANG KIM (game mo 03/09) DUNG CHUNG POOL ITEM voi lo thuong: FurnaceSlot_C.dat chi co
+    # 3 nhom (415 Vo Tuong / 713 Trang Bi / 777 Chuyen Sinh) va tab gold lay tu dung 3 nhom do.
+    # -> KHONG lam 3 tab config moi (user chot 03/09), moi tab phu CA HAI lo. Khac biet giua 2 lo
+    # nam o bang xac suat pham (FurnaceSelect_C.dat: gold co 8 muc, sample toi 10, don ve pham cao)
+    # va GIA (UI_UIFurnace.lua nhan them goldStoreRate = x2) - khong lien quan danh sach item.
+    FURNACE_TAB_KIND_GOLD = {"vo_tuong": 3, "trang_bi": 4, "chuyen_sinh": 6}
 
     def _nho_dac_ky(self, npc_id):
         """Ghi nho vo tuong nay DA HOC dac ky (song qua viec cat vao nha tro / tat acc)."""
@@ -9477,6 +9546,21 @@ class GameClient:
             time.sleep(0.1)
         return self._fashion_deposit_seq != seq0
 
+    def _cho_tui_cap_nhat(self, tid: int, cu: int, wait: float = 2.0) -> bool:
+        """Cho so luong `tid` trong tui LON HON `cu` (server gui 0x17 sub08 sau khi mua).
+
+        Tra False neu het `wait` ma chua thay - caller van di tiep (co `_mua_luot` chan
+        mua trung), chi la cac luat bam bag_counts se doc so cu.
+        """
+        t0 = time.time()
+        while time.time() - t0 < wait and self.running:
+            if self.bag_counts.get(int(tid), 0) > int(cu):
+                return True
+            time.sleep(0.1)
+        log.info("[%s] LO: cho tui cap nhat 0x%04x qua %.1fs khong thay -> di tiep",
+                 self._label, int(tid), wait)
+        return False
+
     def process_furnace(self, cfg: dict):
         """SOI LO + xu ly theo config per-acc cfg = {tab: {"on": bool, "items": {tid_int: "auto"/"notify"}}}.
         tab in vo_tuong/trang_bi/chuyen_sinh. Item trong shop khop list:
@@ -9489,7 +9573,24 @@ class GameClient:
         pool_ids = _load_furnace_pool_ids()
         tabs = self.furnace_shop.get("tabs", {})
         notify = []
-        for tab_name, kind in self.FURNACE_TAB_KIND.items():
+        # DA MUA trong CHINH luot soi nay (tid). CAN vi buy_furnace_item() chi cho ack
+        # S:089-002, KHONG cho goi cap nhat tui (0x17 sub08) -> sang tab hoang kim ngay sau
+        # do thi bag_counts VAN la 0, luat "da co >=1 trong tui thi thoi" khong chan duoc
+        # -> mua lai dung mon vua mua, ma gia hoang kim GAP DOI (user hoi 03/09: "1 Kim toa
+        # co ca o lo thuong va lo hoang kim thi lan do co bi tu mua ca 2 khong").
+        _mua_luot = set()
+        # Moi tab config duyet CA lo thuong LAN lo hoang kim (chung pool item, xem
+        # FURNACE_TAB_KIND_GOLD). `nhom` = kind lo thuong, dung cho cac luat mua theo loai; `kind`
+        # la kind THAT cua goi, phai giu nguyen de gui lenh mua va tra co "da mua".
+        _cap = []
+        for _t, _k in self.FURNACE_TAB_KIND.items():
+            _kg = self.FURNACE_TAB_KIND_GOLD.get(_t)
+            _cap.append((_t, _k, _k))                      # lo thuong
+            if _kg is not None:
+                _cap.append((_t, _k, _kg))                 # lo hoang kim, CUNG config tab
+        for tab_name, nhom, kind in _cap:
+            _gold = kind != nhom
+            _ten_tab = tab_name + " HOANG KIM" if _gold else tab_name
             tcfg = (cfg or {}).get(tab_name) or {}
             if not tcfg.get("on", True):   # mac dinh TICK: thieu config tab = coi nhu BAT
                 continue
@@ -9518,7 +9619,7 @@ class GameClient:
                         continue
                 nm = (gd.get(it["id"]) or {}).get("name") or "0x%04x" % it["id"]
                 if it.get("bought"):
-                    log.info("[%s] LO: %s (%s) DA MUA -> bo qua", self._label, nm, tab_name)
+                    log.info("[%s] LO: %s (%s) DA MUA -> bo qua", self._label, nm, _ten_tab)
                     continue
                 if mode == "auto":
                     # Luat tu mua theo TAB (bag_counts = so luong trong TUI, KHONG tinh do da mac):
@@ -9529,43 +9630,57 @@ class GameClient:
                     #  - Chuyen sinh (kind5): Tuong Tinh -> mua khong gioi han; K.Toa / Me -> da co (>=1)
                     #    trong tui thi THOI.
                     _bag = self.bag_counts.get(it["id"], 0)
+                    if it["id"] in _mua_luot:
+                        log.info("[%s] LO: %s (%s) VUA MUA o lo kia trong luot nay -> KHONG mua lai",
+                                 self._label, nm, _ten_tab)
+                        continue
                     _skip = False
-                    if kind == 2 and _bag >= 1:
+                    if nhom == 2 and _bag >= 1:
                         _skip = True
-                    elif kind == 5:
+                    elif nhom == 5:
                         _nm = nm.strip()
                         _limited = ("Tỏa" in _nm) or _nm.endswith("Mê")   # Kim Toa / Me = gioi han 1
                         if _limited and _bag >= 1:
                             _skip = True
                     if _skip:
                         log.info("[%s] LO: %s (%s) da co %d trong tui -> KHONG tu mua",
-                                 self._label, nm, tab_name, _bag)
+                                 self._label, nm, _ten_tab, _bag)
                         continue
                     # Vo dung voi acc nay (da reborn / da hoc dac ky) -> mua ve chi TON SLOT TUI.
-                    _thua = self._lo_da_du_khoi_mua(it["id"]) if kind == 5 else None
+                    _thua = self._lo_da_du_khoi_mua(it["id"]) if nhom == 5 else None
                     if _thua:
                         log.info("[%s] LO: %s (%s) %s -> KHONG tu mua (mua ve chi ton slot tui)",
-                                 self._label, nm, tab_name, _thua)
+                                 self._label, nm, _ten_tab, _thua)
                         continue
                     log.info("[%s] LO: AUTO MUA %s (%s slot%d, tui=%d)",
-                             self._label, nm, tab_name, it["index"], _bag)
+                             self._label, nm, _ten_tab, it["index"], _bag)
+                    _bag_truoc = self.bag_counts.get(it["id"], 0)
                     ok = self.buy_furnace_item(kind, it["index"], it["id"])
+                    if ok:
+                        _mua_luot.add(it["id"])
+                        # CHO TUI LEN DUNG truoc khi xet lo con lai: buy_furnace_item chi cho
+                        # ack S:089-002, con so luong trong tui do goi RIENG (0x17 sub08) gui
+                        # sau. Khong cho thi moi luat bam bag_counts (trang bi, K.Toa/Me) deu
+                        # doc so CU. `_mua_luot` van giu lam luoi thu hai neu goi tui khong toi.
+                        self._cho_tui_cap_nhat(it["id"], _bag_truoc)
                     if not ok:
                         log.warning("[%s] LO: mua %s KHONG co phan hoi (thieu chips?)", self._label, nm)
                 else:   # notify
                     _bag = self.bag_counts.get(it["id"], 0)
+                    if it["id"] in _mua_luot:
+                        continue          # vua tu mua o lo kia -> khong bao trung
                     # Me / Kim toa: chi can 1 cai -> DA CO trong tui (>=1) thi KHONG thong bao nua
                     # (du de "Thong bao"), vi co them cung vo ich.
-                    if kind == 5:
+                    if nhom == 5:
                         _nm2 = nm.strip()
                         if (("Tỏa" in _nm2) or _nm2.endswith("Mê")) and _bag >= 1:
                             continue
                     _new = pool_ids and it["id"] not in pool_ids
                     log.info("[%s] LO: CO %s (%s)%s - can BAO user quyet dinh mua",
-                             self._label, nm, tab_name, " [ITEM LA ngoai pool]" if _new else "")
+                             self._label, nm, _ten_tab, " [ITEM LA ngoai pool]" if _new else "")
                     notify.append({"tab": tab_name, "kind": kind, "slot": it["index"],
                                    "id": it["id"], "name": nm, "quant": it["quant"],
-                                   "bag": _bag, "new": bool(_new)})
+                                   "bag": _bag, "new": bool(_new), "gold": _gold})
         return notify
 
     def decompose_slot(self, slot: int, wait: float = 1.2) -> bool:
@@ -9720,6 +9835,223 @@ class GameClient:
         if total:
             log.info("[%s] Phan giai cuon rac: tong %d cuon -> nhan xu", self._label, total)
 
+    def _cho_tui_doi(self, truoc: dict, wait: float = 2.0):
+        """Cho tui THAY DOI so voi snapshot `truoc` -> tra list slot MOI xuat hien.
+
+        Mo hop = dung item; do roi ra vao O TRONG qua goi RIENG (0x17 sub08) gui SAU ack dung
+        item. Khong cho thi khong biet mon nao vua roi ra -> khong the phan giai/donate dung mon.
+        """
+        t0 = time.time()
+        while time.time() - t0 < wait and self.running:
+            moi = [s for s in self.bag_slots if s not in truoc]
+            if moi:
+                return moi
+            time.sleep(0.1)
+        return [s for s in self.bag_slots if s not in truoc]
+
+    def tu_mo_hop_trang_bi(self, chon=None, wait_item: float = 2.0) -> dict:
+        """MO HOP/TUI TRANG BI trong tui roi phan giai / donate do roi ra.
+
+        `chon` = {tid_hex: True} - ruong user DA TICK o "List ruong". MAC DINH KHONG TICK CAI NAO
+        (user chot 03/09) -> khong tick gi thi KHONG mo gi, khong tu y dung vao do cua user.
+
+        Tra {'mo': n, 'phan_giai': n, 'donate': n, 'bo_qua': ly_do}.
+
+        Luat (user chot 03/09):
+          - CHI chay khi CO quan doan va da vao >24h (donate la buoc bat buoc, do khong phan giai
+            duoc chi con duong donate).
+          - Mo toi da min(ca stack, so o trong) - va phai con >= kindCount o trong (client chan
+            mo khi thieu cho: Logic_Item.lua ItemUse_48).
+          - Duyet HAI LUOT: tui THUONG truoc, tui TINH/CAO sau (khong mo de quy).
+          - CHI dung vao mon VUA ROI RA trong luot do. Do co san trong tui GIU NGUYEN: cac mon
+            trong hop deu la trang bi thuong cua game (cung roi khi train / mua o lo / user de
+            danh) - khong phan biet duoc nen dung vao la mat do cua user.
+        """
+        kq = {"mo": 0, "phan_giai": 0, "donate": 0, "vut": 0, "bo_qua": ""}
+        boxes = _load_bliss_boxes()
+        if not boxes:
+            kq["bo_qua"] = "khong co bliss_bag.json"
+            return kq
+        # Loc theo danh sach user tick. Khong tick gi = KHONG LAM GI (khong coi la "mo het").
+        _tick = set()
+        for k, v in (chon or {}).items():
+            if not v:
+                continue
+            try:
+                _tick.add(int(k, 16) if isinstance(k, str) and k.lower().startswith("0x") else int(k))
+            except Exception:
+                pass
+        if not _tick:
+            kq["bo_qua"] = "chua tick ruong nao trong List ruong"
+            return kq
+        if self.has_legion is False:
+            kq["bo_qua"] = "khong co quan doan"
+            return kq
+        if not self.co_the_donate_quan_doan():
+            _con = int(float(getattr(self, "legion_donate_next", 0)) - time.time())
+            kq["bo_qua"] = "chua du 24h trong quan doan (thu lai sau %d phut)" % max(0, _con // 60)
+            return kq
+        # fc theo TID de biet mon roi ra co phan giai duoc khong (nguon: items_gamedata.json,
+        # cung nguon voi bang trong bliss_bag.json).
+        gd = _load_gamedata_items()
+        for luot in ("thuong", "tinh"):
+            for tid, info in boxes.items():
+                if tid not in _tick:
+                    continue
+                if (info.get("luot") or "thuong") != luot:
+                    continue
+                can = max(1, int(info.get("kindCount") or 1))
+                while self.running:
+                    slot = next((s for s, (t, c) in list(self.bag_slots.items())
+                                 if t == tid and c > 0), None)
+                    if slot is None:
+                        break
+                    trong = self.bag_capacity() - self.bag_used_slots()
+                    if trong < can:
+                        kq["bo_qua"] = "tui day (con %d o, hop can %d)" % (trong, can)
+                        log.info("[%s] MO HOP: tui day (con %d o) -> dung", self._label, trong)
+                        return kq
+                    # Mo toi da: het stack, nhung khong qua so o trong (moi lan mo an 1 o).
+                    n = max(1, min(int(self.bag_slots[slot][1]), trong // can))
+                    truoc = dict(self.bag_slots)
+                    log.info("[%s] MO HOP: %s x%d (o trong %d)",
+                             self._label, info.get("name") or ("0x%04x" % tid), n, trong)
+                    if not self.use_slot(slot, qty=n):
+                        break
+                    kq["mo"] += n
+                    moi = self._cho_tui_doi(truoc, wait=wait_item)
+                    if not moi:
+                        log.info("[%s] MO HOP: khong thay do roi ra -> dung", self._label)
+                        break
+                    self._xu_ly_do_vua_mo(moi, gd, kq)
+        return kq
+
+    def _xu_ly_do_vua_mo(self, slots, gd, kq):
+        """Phan giai / donate / VUT mon vua roi ra. `slots` = o VUA xuat hien sau khi mo hop.
+
+        Thu tu: fc>0 -> PHAN GIAI (ra manh) | donate duoc -> DONATE | KHONG CA HAI -> VUT BO
+        (user chot 03/09: "do nao ko phan giai ko donate duoc thi m vut bo luon"). Vi du mon ket:
+        Hoai Nam Tu / Tam Luoc / Kim Quy Kinh - sach (kind=9, material=37): fc=0 nen khong phan
+        giai, material 37 nam ngoai dai 1..36 cua ArmyFilter nen cung khong donate.
+        """
+        donate = []
+        for s in slots:
+            rec = self.bag_slots.get(s)
+            if not rec:
+                continue
+            tid = rec[0]
+            r = gd.get(tid) or {}
+            nm = (r.get("name") or "0x%04x" % tid).strip()
+            if int(r.get("fc") or 0) > 0:
+                log.info("[%s] MO HOP: %s -> PHAN GIAI (%s manh)", self._label, nm, r.get("fc"))
+                try:
+                    if self.decompose_slot(s):
+                        kq["phan_giai"] += 1
+                except Exception as e:
+                    log.warning("[%s] MO HOP: loi phan giai %s: %s", self._label, nm, e)
+            elif self._donate_quan_doan_duoc(tid, r):
+                log.info("[%s] MO HOP: %s -> DONATE quan doan (khong phan giai duoc)",
+                         self._label, nm)
+                donate.append(s)
+            else:
+                log.info("[%s] MO HOP: %s -> VUT BO (khong phan giai, khong donate duoc)",
+                         self._label, nm)
+                try:
+                    if self.discard_item(s, rec[1]):
+                        self.bag_slots.pop(s, None)
+                        kq["vut"] = kq.get("vut", 0) + 1
+                except Exception as e:
+                    log.warning("[%s] MO HOP: loi vut %s: %s", self._label, nm, e)
+        if donate:
+            try:
+                # Mot lenh nhieu slot (goi cho phep <<slot>>), do dung nguyen giay lat sau.
+                if self.donate_legion_equip(donate):
+                    kq["donate"] += len(donate)
+                    for s in donate:
+                        self.bag_slots.pop(s, None)
+            except Exception as e:
+                log.warning("[%s] MO HOP: loi donate trang bi: %s", self._label, e)
+
+    # DONATE QUAN DOAN duoc khong - sao y UIArmy.ArmyFilter (bo loc tui khi chon do de dong gop).
+    # Mon truot bo loc nay thi CLIENT khong cho chon -> bot gui la server bo qua IM LANG.
+    _DONATE_MAT_OK = set(range(1, 9)) | set(range(10, 23)) | set(range(24, 37))   # BO 9 va 23
+    _DONATE_KIND_CAM = {20, 21, 22}
+    _DONATE_ID_CAM = {10505, 19209, 20209, 21609, 22909, 20747, 20748, 20749, 26209, 26210, 26211,
+                      26212, 26213, 26214, 26215, 26216, 26217, 26218, 26219, 16000, 21610, 19210,
+                      22910, 20210, 11046}
+
+    def _donate_quan_doan_duoc(self, tid: int, rec: dict) -> bool:
+        """rec = ban ghi items_gamedata.json (can `mat` material, `lv` level, `kd` kind)."""
+        try:
+            if int(rec.get("kd") or 0) == 53:
+                return True
+            if int(rec.get("lv") or 0) == 0:
+                return False
+            if int(tid) in self._DONATE_ID_CAM:
+                return False
+            if int(rec.get("mat") or 0) not in self._DONATE_MAT_OK:
+                return False
+            if int(rec.get("kd") or 0) in self._DONATE_KIND_CAM:
+                return False
+        except Exception:
+            return False
+        return True
+
+    # ===== TU MO HOP/TUI TRANG BI (user chot 03/09) =====
+    # Mo hop -> ra trang bi -> PHAN GIAI duoc thi phan giai lay manh trang bi; KHONG phan giai
+    # duoc thi DONATE quan doan. KHONG co nhanh ban shop (user bo).
+    #
+    # DIEU KIEN: phai CO quan doan VA da vao > 24h. Client KHONG tu biet du 24h chua (khong co
+    # truong thoi gian gia nhap o bat ky dau) - chi co cach gui roi doc ma loi: S:039-015 ma 32
+    # = "Gia nhap quan doan chua du 24 tieng, khong the quyen gop" -> hoan 12h roi thu lai.
+    LEGION_DONATE_RETRY = 12 * 3600
+
+    def _on_legion_msg(self, ma: int):
+        """S:039-015 <軍團訊息> +訊息種類(1). Chi quan tam ma 32 = chua du 24h -> khong donate duoc."""
+        try:
+            ma = int(ma)
+        except Exception:
+            return
+        if ma != 32:
+            return
+        self.legion_donate_next = time.time() + self.LEGION_DONATE_RETRY
+        log.info("[%s] QUAN DOAN: gia nhap chua du 24h -> chua donate duoc, hoan %d gio",
+                 self._label, self.LEGION_DONATE_RETRY // 3600)
+
+    def co_the_donate_quan_doan(self) -> bool:
+        """CO quan doan VA khong con trong thoi gian hoan (vua bi tu choi vi chua du 24h)."""
+        if self.has_legion is False:
+            return False
+        nxt = float(getattr(self, "legion_donate_next", 0.0) or 0.0)
+        return (not nxt) or time.time() >= nxt
+
+    def donate_legion_equip(self, slots, wait: float = 0.8) -> bool:
+        """DONATE TRANG BI cho quan doan - DUNG CHUNG goi voi nguyen lieu:
+        C:039-015 <捐獻資源> = 0x27 sub 0x0f + [tien i32 = 0] + <<slot 1B>>.
+
+        SUA 03/09: truoc do dung C:039-053 (0x27 sub 0x35) LA SAI. Goi do ten <存入武器> = "gui vu
+        khi vao kho quan doan" (kho quan bi), khong phai quyen gop -> server bo qua im lang, do
+        van nam trong tui, tui day ngay (log that 18:55: mo 21 hop, "DONATE" 21 mon, ngay sau do
+        "tui day (con 0 o)").
+        Client dung DUNG MOT nut "Dong gop" cho ca nguyen lieu lan trang bi: UIArmy chi mo UIBag
+        voi MOT bo loc `ArmyFilter`, va trang bi CO qua duoc bo loc do (material 1..36).
+        """
+        ds = []
+        for s in slots or ():
+            try:
+                s = int(s)
+            except Exception:
+                continue
+            if 0 < s < 256:
+                ds.append(s)
+        if not ds:
+            return False
+        self.send(0x7c, b"\x04\x00")            # mo panel quan doan (giong donate_legion)
+        time.sleep(0.4)
+        self.send(0x27, b"\x0f\x00\x00\x00\x00\x00" + bytes(ds))
+        time.sleep(wait)
+        return True
+
     def donate_legion(self, wait: float = 0.5):
         """DONATE nguyen lieu RAC cho quan doan (don tui - van tieu ra nhieu rac). C2S 0x27:
           0f 00 00 00 00 00 [slot 1B]   (giong use-item: tham chieu SLOT, KHONG phai tid).
@@ -9767,10 +10099,15 @@ class GameClient:
             time.sleep(remain)
         items = _load_gamedata_items()
         total = 0
+        # GOM CA LOT VAO MOT LENH - dung nhu client that: C:039-015 <捐獻資源> = [tien i32] +
+        # <<slot 1B>> (UIArmy.OnClick_DonateResource duyet UIBag.GetSelect() roi WriteByte TUNG
+        # slot da chon vao CUNG mot sendBuffer). Truoc day bot gui tung slot mot, moi lenh nghi
+        # `wait` - van tieu ra nhieu rac nen co acc donate ca chuc slot = mat vai giay moi lan login.
+        _slots = []
         for slot, tid, cnt in targets:
             if not self.running:
                 break
-            self.send(0x27, b"\x0f\x00\x00\x00\x00\x00" + bytes([slot & 0xFF]))
+            _slots.append(slot & 0xFF)
             self.bag_slots.pop(slot, None)   # donate ca stack -> slot rong (S2C 0x17 se update lai)
             total += cnt
             _nm = ((mats.get(tid) or {}).get("name")
@@ -9779,10 +10116,12 @@ class GameClient:
                    or donate_names.get(hex(tid), ""))
             log.info("[%s] donate quan doan slot=%d tid=0x%04x x%d ('%s')",
                      self._label, slot, tid, cnt, _nm)
+        if _slots:
+            self.send(0x27, b"\x0f\x00\x00\x00\x00\x00" + bytes(_slots))
             time.sleep(wait)
         if total:
-            log.info("[%s] Donate quan doan: tong %d nguyen lieu rac (%d slot) -> don tui",
-                     self._label, total, len(targets))
+            log.info("[%s] Donate quan doan: tong %d nguyen lieu rac (%d slot, 1 lenh) -> don tui",
+                     self._label, total, len(_slots))
 
     @staticmethod
     def _decode_vantieu_req(kind: int, effect1: int, effect2: int):
@@ -13630,6 +13969,20 @@ class GameClient:
                 time.sleep(0.5)
                 self.scene_resume()   # 0x0c 0100 + 0x14 0600: bat buoc sau doi scene moi di duoc
 
+    def _ve_thanh_sau_mua_hpsp(self):
+        """Mua HP/SP xong -> teleport ve Trac Quan. Map NPC khong co duong ve tu dong."""
+        if not self.running:
+            return
+        if self.current_map == self.TRAC_QUAN_CITY:
+            return
+        try:
+            self._wait_combat_clear(idle=1.0, cap=60.0)   # teleport giua tran -> server KICK
+            log.info("[%s] Mua HP/SP xong (dang o map %s) -> ve Trac Quan",
+                     self._label, self.current_map)
+            self.go_to_town(self.TRAC_QUAN_CITY, 0)
+        except Exception as e:
+            log.warning("[%s] Mua HP/SP: loi ve Trac Quan sau khi mua: %s", self._label, e)
+
     def buy_hp_sp(self, buy_hp: bool, hp_qty: int, hp_thresh: int,
                   buy_sp: bool, sp_qty: int, sp_thresh: int):
         """Login (sau khi load tui): neu du tru HP/SP thap hon nguong -> di Trac Quan mua bo sung.
@@ -13657,19 +14010,29 @@ class GameClient:
         if not self.go_to_town(self.TRAC_QUAN_CITY, 0):
             log.warning("[%s] Mua HP/SP: khong ve duoc Trac Quan -> bo qua", self._label)
             return False
-        self._run_trac_hpsp_route()
-        if not self._wait_combat_clear(idle=1.0, cap=60.0):
-            return False
-        # Mo dialog NPC -> vao shop (chuoi boc tu capture).
-        self.send(0x20, b"\x02\x00\x08"); time.sleep(0.6)
-        self.send(0x14, b"\x01\x00\x0c\x00"); time.sleep(0.5)
-        self.send(0x14, b"\x09\x00\x1e"); time.sleep(0.5)
-        self.send(0x14, b"\x06\x00"); time.sleep(0.5)
-        if need_hp:
-            self._buy_shop_slot(self.HP_SHOP_SLOT, hp_qty, self.HPSP_ITEM_PRICE, "Vien Hanh Khi +62HP")
-        if need_sp:
-            self._buy_shop_slot(self.SP_SHOP_SLOT, sp_qty, self.HPSP_ITEM_PRICE, "Thien Kim Du +62SP")
-        self.send(0x14, b"\x06\x00")   # dong dialog
+        try:
+            self._run_trac_hpsp_route()
+            if not self._wait_combat_clear(idle=1.0, cap=60.0):
+                return False
+            # Mo dialog NPC -> vao shop (chuoi boc tu capture).
+            self.send(0x20, b"\x02\x00\x08"); time.sleep(0.6)
+            self.send(0x14, b"\x01\x00\x0c\x00"); time.sleep(0.5)
+            self.send(0x14, b"\x09\x00\x1e"); time.sleep(0.5)
+            self.send(0x14, b"\x06\x00"); time.sleep(0.5)
+            if need_hp:
+                self._buy_shop_slot(self.HP_SHOP_SLOT, hp_qty, self.HPSP_ITEM_PRICE,
+                                    "Vien Hanh Khi +62HP")
+            if need_sp:
+                self._buy_shop_slot(self.SP_SHOP_SLOT, sp_qty, self.HPSP_ITEM_PRICE,
+                                    "Thien Kim Du +62SP")
+            self.send(0x14, b"\x06\x00")   # dong dialog
+        finally:
+            # PHAI RA KHOI MAP NPC. Route di qua 2 cong nen ket thuc o map "Loi Dai Huong Dung",
+            # KHONG phai 12001. Truoc day ham nay ket thuc tai cho -> acc dung im o cho NPC:
+            # luong train phia sau bam `login_map` (doc luc login, van la map train) nen tuong minh
+            # dang o dung bai, khong ai keo ve (user bao 28/08: "no dung ket o Loi dai Huong dung").
+            # Loi giua chung cung phai ve -> dat trong `finally`.
+            self._ve_thanh_sau_mua_hpsp()
         # Mua xong: doc lai du tru. Van thap hon nguong (het xu) -> tra True.
         thp2, tsp2 = self.hp_sp_reserve()
         still_low = (need_hp and thp2 < int(hp_thresh)) or (need_sp and tsp2 < int(sp_thresh))

@@ -1916,6 +1916,22 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 log.warning("[%s] loi soi/mua lo: %s", label, e)
             if pcfg.get("auto_donate_materials", True):
                 c.donate_legion()       # donate nguyen lieu cho quan doan (list edit duoc, mac dinh het) -> don tui
+            # RUONG TRANG BI: mo -> phan giai duoc thi phan giai, khong thi donate quan doan.
+            # DAT NGAY SAU donate nguyen lieu (user chot 03/09) de tan dung ket qua "co donate
+            # duoc hay khong": do khong phan giai duoc chi con duong donate, ma donate can da vao
+            # quan doan >24h (server tra S:039-015 ma 32 neu chua du) -> chua donate duoc thi mo
+            # ruong ra cung vo ich, con lam day tui.
+            if pcfg.get("auto_open_boxes", False):
+                try:
+                    _kq = c.tu_mo_hop_trang_bi(chon=pcfg.get("box_modes") or {})
+                    if _kq.get("bo_qua"):
+                        log.info("[%s] Ruong trang bi: bo qua (%s)", label, _kq["bo_qua"])
+                    elif _kq.get("mo"):
+                        log.info("[%s] Ruong trang bi: mo %d, phan giai %d, donate %d, vut %d",
+                                 label, _kq["mo"], _kq["phan_giai"], _kq["donate"],
+                                 _kq.get("vut", 0))
+                except Exception as e:
+                    log.warning("[%s] loi tu mo ruong trang bi: %s", label, e)
             # THA DO THOI TRANG vao Bo Suu Tam (gon tui + diem). DAT TRUOC use_login_items vi tha CHAC
             # CHAN free slot, con use_item doi khi de item MOI ra lam day tui (theo yeu cau user).
             try: c.deposit_fashion_to_collection()
@@ -1972,6 +1988,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         int(pcfg.get("sp_thresh", 500000)),
                     )
                 except Exception as e: log.warning("[%s] loi mua HP/SP: %s", label, e)
+                # Chuyen mua HP/SP DOI MAP (Trac Quan -> map NPC -> ve lai Trac Quan). `login_map`
+                # doc luc login van la map cu -> cac nhanh duoi bam theo no se tuong acc dang o bai
+                # train va KHONG keo ve (user bao 28/08: "no dung ket o Loi dai Huong dung").
+                if c.current_map is not None and c.current_map != login_map:
+                    log.info("[%s] sau mua HP/SP: map %s -> %s, cap nhat lai login_map",
+                             label, login_map, c.current_map)
+                    login_map = c.current_map
             # BOSS QUAN DOAN ngay sau van tieu: danh solo neu con luot (server count 0x55/0x2a) + het
             # cooldown. KHONG lien quan daily quest (tick hay ko van danh). Luc login char SOLO (chua
             # lap party) -> danh duoc. Trong phien: keepalive trigger REFORM khi con luot (xem duoi).
