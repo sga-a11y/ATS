@@ -13630,6 +13630,20 @@ class GameClient:
                 time.sleep(0.5)
                 self.scene_resume()   # 0x0c 0100 + 0x14 0600: bat buoc sau doi scene moi di duoc
 
+    def _ve_thanh_sau_mua_hpsp(self):
+        """Mua HP/SP xong -> teleport ve Trac Quan. Map NPC khong co duong ve tu dong."""
+        if not self.running:
+            return
+        if self.current_map == self.TRAC_QUAN_CITY:
+            return
+        try:
+            self._wait_combat_clear(idle=1.0, cap=60.0)   # teleport giua tran -> server KICK
+            log.info("[%s] Mua HP/SP xong (dang o map %s) -> ve Trac Quan",
+                     self._label, self.current_map)
+            self.go_to_town(self.TRAC_QUAN_CITY, 0)
+        except Exception as e:
+            log.warning("[%s] Mua HP/SP: loi ve Trac Quan sau khi mua: %s", self._label, e)
+
     def buy_hp_sp(self, buy_hp: bool, hp_qty: int, hp_thresh: int,
                   buy_sp: bool, sp_qty: int, sp_thresh: int):
         """Login (sau khi load tui): neu du tru HP/SP thap hon nguong -> di Trac Quan mua bo sung.
@@ -13657,19 +13671,29 @@ class GameClient:
         if not self.go_to_town(self.TRAC_QUAN_CITY, 0):
             log.warning("[%s] Mua HP/SP: khong ve duoc Trac Quan -> bo qua", self._label)
             return False
-        self._run_trac_hpsp_route()
-        if not self._wait_combat_clear(idle=1.0, cap=60.0):
-            return False
-        # Mo dialog NPC -> vao shop (chuoi boc tu capture).
-        self.send(0x20, b"\x02\x00\x08"); time.sleep(0.6)
-        self.send(0x14, b"\x01\x00\x0c\x00"); time.sleep(0.5)
-        self.send(0x14, b"\x09\x00\x1e"); time.sleep(0.5)
-        self.send(0x14, b"\x06\x00"); time.sleep(0.5)
-        if need_hp:
-            self._buy_shop_slot(self.HP_SHOP_SLOT, hp_qty, self.HPSP_ITEM_PRICE, "Vien Hanh Khi +62HP")
-        if need_sp:
-            self._buy_shop_slot(self.SP_SHOP_SLOT, sp_qty, self.HPSP_ITEM_PRICE, "Thien Kim Du +62SP")
-        self.send(0x14, b"\x06\x00")   # dong dialog
+        try:
+            self._run_trac_hpsp_route()
+            if not self._wait_combat_clear(idle=1.0, cap=60.0):
+                return False
+            # Mo dialog NPC -> vao shop (chuoi boc tu capture).
+            self.send(0x20, b"\x02\x00\x08"); time.sleep(0.6)
+            self.send(0x14, b"\x01\x00\x0c\x00"); time.sleep(0.5)
+            self.send(0x14, b"\x09\x00\x1e"); time.sleep(0.5)
+            self.send(0x14, b"\x06\x00"); time.sleep(0.5)
+            if need_hp:
+                self._buy_shop_slot(self.HP_SHOP_SLOT, hp_qty, self.HPSP_ITEM_PRICE,
+                                    "Vien Hanh Khi +62HP")
+            if need_sp:
+                self._buy_shop_slot(self.SP_SHOP_SLOT, sp_qty, self.HPSP_ITEM_PRICE,
+                                    "Thien Kim Du +62SP")
+            self.send(0x14, b"\x06\x00")   # dong dialog
+        finally:
+            # PHAI RA KHOI MAP NPC. Route di qua 2 cong nen ket thuc o map "Loi Dai Huong Dung",
+            # KHONG phai 12001. Truoc day ham nay ket thuc tai cho -> acc dung im o cho NPC:
+            # luong train phia sau bam `login_map` (doc luc login, van la map train) nen tuong minh
+            # dang o dung bai, khong ai keo ve (user bao 28/08: "no dung ket o Loi dai Huong dung").
+            # Loi giua chung cung phai ve -> dat trong `finally`.
+            self._ve_thanh_sau_mua_hpsp()
         # Mua xong: doc lai du tru. Van thap hon nguong (het xu) -> tra True.
         thp2, tsp2 = self.hp_sp_reserve()
         still_low = (need_hp and thp2 < int(hp_thresh)) or (need_sp and tsp2 < int(sp_thresh))

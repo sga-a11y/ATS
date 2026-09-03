@@ -4095,21 +4095,29 @@ fun FurnacePickerDialog(
                             Text(disp(tid, name), modifier = Modifier.weight(1f),
                                 maxLines = if (isEquip) 2 else 1,
                                 style = MaterialTheme.typography.bodySmall)
-                            listOf("" to "Bỏ qua", "auto" to "Tự mua", "notify" to "Thông báo").forEach { (mv, lbl) ->
-                                val sel = m == mv
-                                TextButton(onClick = {
-                                    if (mv.isEmpty()) {
+                            // MOT nut XOAY VONG thay vi 3 nut canh nhau: 3 nut chiem gan nua be
+                            // ngang man hinh dien thoai -> ten item bi cat mat (user bao 28/08).
+                            // Bam lan luot: Bo qua -> Tu mua -> Thong bao -> Bo qua ...
+                            val lbl = when (m) { "auto" -> "Tự mua"; "notify" -> "Thông báo"; else -> "Bỏ qua" }
+                            TextButton(onClick = {
+                                when (m) {
+                                    "auto" -> modes[tid] = "notify"
+                                    "notify" -> {
                                         // Item MAC DINH thong bao: phai luu "skip" moi tat duoc,
                                         // xoa key la lan sau lai ve mac dinh notify.
                                         if (dfltNotify.contains(tid)) modes[tid] = "skip"
                                         else modes.remove(tid)
-                                    } else modes[tid] = mv
-                                }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
-                                    Text(lbl, style = MaterialTheme.typography.labelSmall,
-                                        color = if (sel) MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
+                                    }
+                                    else -> modes[tid] = "auto"
                                 }
+                            }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                                Text(lbl, style = MaterialTheme.typography.labelSmall,
+                                    color = when (m) {
+                                        "auto" -> MaterialTheme.colorScheme.primary
+                                        "notify" -> MaterialTheme.colorScheme.tertiary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    fontWeight = if (m.isEmpty()) FontWeight.Normal else FontWeight.Bold)
                             }
                         }
                     }

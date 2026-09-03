@@ -1972,6 +1972,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         int(pcfg.get("sp_thresh", 500000)),
                     )
                 except Exception as e: log.warning("[%s] loi mua HP/SP: %s", label, e)
+                # Chuyen mua HP/SP DOI MAP (Trac Quan -> map NPC -> ve lai Trac Quan). `login_map`
+                # doc luc login van la map cu -> cac nhanh duoi bam theo no se tuong acc dang o bai
+                # train va KHONG keo ve (user bao 28/08: "no dung ket o Loi dai Huong dung").
+                if c.current_map is not None and c.current_map != login_map:
+                    log.info("[%s] sau mua HP/SP: map %s -> %s, cap nhat lai login_map",
+                             label, login_map, c.current_map)
+                    login_map = c.current_map
             # BOSS QUAN DOAN ngay sau van tieu: danh solo neu con luot (server count 0x55/0x2a) + het
             # cooldown. KHONG lien quan daily quest (tick hay ko van danh). Luc login char SOLO (chua
             # lap party) -> danh duoc. Trong phien: keepalive trigger REFORM khi con luot (xem duoi).
