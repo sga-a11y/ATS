@@ -9406,6 +9406,26 @@ class GameClient:
                                   "bought": self._furnace_bought(kind, j)})
                 tabs[kind] = items
             self.furnace_shop = {"base_rate": base_rate, "active_rate": active_rate, "tabs": tabs}
+            # LO HOANG KIM (kind 3 GoldNpc / 4 GoldEquip / 6 GoldTurnItem): truoc day server tra
+            # 8 slot id=0 (chua mo) nen bot bo qua hoan toan. Game update 03/09 MO lo hoang kim ->
+            # LIET KE 1 LAN khi thay tab gold co item that, de biet list co khac lo thuong khong
+            # (pool lo do SERVER gui moi lan soi, client KHONG co bang tinh de tra truoc).
+            try:
+                _gold = {k: [it for it in v if it.get("id")] for k, v in tabs.items()
+                         if k in (3, 4, 6)}
+                _gold = {k: v for k, v in _gold.items() if v}
+                if _gold and not getattr(self, "_da_log_lo_hoang_kim", False):
+                    self._da_log_lo_hoang_kim = True
+                    _db = _load_gamedata_items()
+                    for _k, _items in sorted(_gold.items()):
+                        _ten = {3: "GoldNpc(vo tuong)", 4: "GoldEquip(trang bi)",
+                                6: "GoldTurnItem(chuyen sinh)"}.get(_k, str(_k))
+                        log.info("[%s] LO HOANG KIM tab %s (kind=%d): %s", self._label, _ten, _k,
+                                 [("%s x%d" % ((_db.get(it["id"]) or {}).get("name")
+                                               or ("0x%04x" % it["id"]), it["quant"]))
+                                  for it in _items])
+            except Exception as e:
+                log.debug("[%s] loi liet ke lo hoang kim (bo qua): %s", self._label, e)
             # KHONG log liet ke 6 tab x 8 slot (~56 dong/lan soi lo, ken log vo ich - yeu cau
             # user). Item dang quan tam da co log rieng o process_furnace (THONG BAO / AUTO MUA).
             # Muon xem lai toan bo thi doc self.furnace_shop.
@@ -9414,6 +9434,12 @@ class GameClient:
 
     # ten tab config (per-acc) -> kind trong shop packet (ESelect: 1/2/5 lo thuong)
     FURNACE_TAB_KIND = {"vo_tuong": 1, "trang_bi": 2, "chuyen_sinh": 5}
+    # LO HOANG KIM (game mo 03/09) DUNG CHUNG POOL ITEM voi lo thuong: FurnaceSlot_C.dat chi co
+    # 3 nhom (415 Vo Tuong / 713 Trang Bi / 777 Chuyen Sinh) va tab gold lay tu dung 3 nhom do.
+    # -> KHONG lam 3 tab config moi (user chot 03/09), moi tab phu CA HAI lo. Khac biet giua 2 lo
+    # nam o bang xac suat pham (FurnaceSelect_C.dat: gold co 8 muc, sample toi 10, don ve pham cao)
+    # va GIA (UI_UIFurnace.lua nhan them goldStoreRate = x2) - khong lien quan danh sach item.
+    FURNACE_TAB_KIND_GOLD = {"vo_tuong": 3, "trang_bi": 4, "chuyen_sinh": 6}
 
     def _nho_dac_ky(self, npc_id):
         """Ghi nho vo tuong nay DA HOC dac ky (song qua viec cat vao nha tro / tat acc)."""
@@ -9477,6 +9503,21 @@ class GameClient:
             time.sleep(0.1)
         return self._fashion_deposit_seq != seq0
 
+    def _cho_tui_cap_nhat(self, tid: int, cu: int, wait: float = 2.0) -> bool:
+        """Cho so luong `tid` trong tui LON HON `cu` (server gui 0x17 sub08 sau khi mua).
+
+        Tra False neu het `wait` ma chua thay - caller van di tiep (co `_mua_luot` chan
+        mua trung), chi la cac luat bam bag_counts se doc so cu.
+        """
+        t0 = time.time()
+        while time.time() - t0 < wait and self.running:
+            if self.bag_counts.get(int(tid), 0) > int(cu):
+                return True
+            time.sleep(0.1)
+        log.info("[%s] LO: cho tui cap nhat 0x%04x qua %.1fs khong thay -> di tiep",
+                 self._label, int(tid), wait)
+        return False
+
     def process_furnace(self, cfg: dict):
         """SOI LO + xu ly theo config per-acc cfg = {tab: {"on": bool, "items": {tid_int: "auto"/"notify"}}}.
         tab in vo_tuong/trang_bi/chuyen_sinh. Item trong shop khop list:
@@ -9489,7 +9530,24 @@ class GameClient:
         pool_ids = _load_furnace_pool_ids()
         tabs = self.furnace_shop.get("tabs", {})
         notify = []
-        for tab_name, kind in self.FURNACE_TAB_KIND.items():
+        # DA MUA trong CHINH luot soi nay (tid). CAN vi buy_furnace_item() chi cho ack
+        # S:089-002, KHONG cho goi cap nhat tui (0x17 sub08) -> sang tab hoang kim ngay sau
+        # do thi bag_counts VAN la 0, luat "da co >=1 trong tui thi thoi" khong chan duoc
+        # -> mua lai dung mon vua mua, ma gia hoang kim GAP DOI (user hoi 03/09: "1 Kim toa
+        # co ca o lo thuong va lo hoang kim thi lan do co bi tu mua ca 2 khong").
+        _mua_luot = set()
+        # Moi tab config duyet CA lo thuong LAN lo hoang kim (chung pool item, xem
+        # FURNACE_TAB_KIND_GOLD). `nhom` = kind lo thuong, dung cho cac luat mua theo loai; `kind`
+        # la kind THAT cua goi, phai giu nguyen de gui lenh mua va tra co "da mua".
+        _cap = []
+        for _t, _k in self.FURNACE_TAB_KIND.items():
+            _kg = self.FURNACE_TAB_KIND_GOLD.get(_t)
+            _cap.append((_t, _k, _k))                      # lo thuong
+            if _kg is not None:
+                _cap.append((_t, _k, _kg))                 # lo hoang kim, CUNG config tab
+        for tab_name, nhom, kind in _cap:
+            _gold = kind != nhom
+            _ten_tab = tab_name + " HOANG KIM" if _gold else tab_name
             tcfg = (cfg or {}).get(tab_name) or {}
             if not tcfg.get("on", True):   # mac dinh TICK: thieu config tab = coi nhu BAT
                 continue
@@ -9518,7 +9576,7 @@ class GameClient:
                         continue
                 nm = (gd.get(it["id"]) or {}).get("name") or "0x%04x" % it["id"]
                 if it.get("bought"):
-                    log.info("[%s] LO: %s (%s) DA MUA -> bo qua", self._label, nm, tab_name)
+                    log.info("[%s] LO: %s (%s) DA MUA -> bo qua", self._label, nm, _ten_tab)
                     continue
                 if mode == "auto":
                     # Luat tu mua theo TAB (bag_counts = so luong trong TUI, KHONG tinh do da mac):
@@ -9529,43 +9587,57 @@ class GameClient:
                     #  - Chuyen sinh (kind5): Tuong Tinh -> mua khong gioi han; K.Toa / Me -> da co (>=1)
                     #    trong tui thi THOI.
                     _bag = self.bag_counts.get(it["id"], 0)
+                    if it["id"] in _mua_luot:
+                        log.info("[%s] LO: %s (%s) VUA MUA o lo kia trong luot nay -> KHONG mua lai",
+                                 self._label, nm, _ten_tab)
+                        continue
                     _skip = False
-                    if kind == 2 and _bag >= 1:
+                    if nhom == 2 and _bag >= 1:
                         _skip = True
-                    elif kind == 5:
+                    elif nhom == 5:
                         _nm = nm.strip()
                         _limited = ("Tỏa" in _nm) or _nm.endswith("Mê")   # Kim Toa / Me = gioi han 1
                         if _limited and _bag >= 1:
                             _skip = True
                     if _skip:
                         log.info("[%s] LO: %s (%s) da co %d trong tui -> KHONG tu mua",
-                                 self._label, nm, tab_name, _bag)
+                                 self._label, nm, _ten_tab, _bag)
                         continue
                     # Vo dung voi acc nay (da reborn / da hoc dac ky) -> mua ve chi TON SLOT TUI.
-                    _thua = self._lo_da_du_khoi_mua(it["id"]) if kind == 5 else None
+                    _thua = self._lo_da_du_khoi_mua(it["id"]) if nhom == 5 else None
                     if _thua:
                         log.info("[%s] LO: %s (%s) %s -> KHONG tu mua (mua ve chi ton slot tui)",
-                                 self._label, nm, tab_name, _thua)
+                                 self._label, nm, _ten_tab, _thua)
                         continue
                     log.info("[%s] LO: AUTO MUA %s (%s slot%d, tui=%d)",
-                             self._label, nm, tab_name, it["index"], _bag)
+                             self._label, nm, _ten_tab, it["index"], _bag)
+                    _bag_truoc = self.bag_counts.get(it["id"], 0)
                     ok = self.buy_furnace_item(kind, it["index"], it["id"])
+                    if ok:
+                        _mua_luot.add(it["id"])
+                        # CHO TUI LEN DUNG truoc khi xet lo con lai: buy_furnace_item chi cho
+                        # ack S:089-002, con so luong trong tui do goi RIENG (0x17 sub08) gui
+                        # sau. Khong cho thi moi luat bam bag_counts (trang bi, K.Toa/Me) deu
+                        # doc so CU. `_mua_luot` van giu lam luoi thu hai neu goi tui khong toi.
+                        self._cho_tui_cap_nhat(it["id"], _bag_truoc)
                     if not ok:
                         log.warning("[%s] LO: mua %s KHONG co phan hoi (thieu chips?)", self._label, nm)
                 else:   # notify
                     _bag = self.bag_counts.get(it["id"], 0)
+                    if it["id"] in _mua_luot:
+                        continue          # vua tu mua o lo kia -> khong bao trung
                     # Me / Kim toa: chi can 1 cai -> DA CO trong tui (>=1) thi KHONG thong bao nua
                     # (du de "Thong bao"), vi co them cung vo ich.
-                    if kind == 5:
+                    if nhom == 5:
                         _nm2 = nm.strip()
                         if (("Tỏa" in _nm2) or _nm2.endswith("Mê")) and _bag >= 1:
                             continue
                     _new = pool_ids and it["id"] not in pool_ids
                     log.info("[%s] LO: CO %s (%s)%s - can BAO user quyet dinh mua",
-                             self._label, nm, tab_name, " [ITEM LA ngoai pool]" if _new else "")
+                             self._label, nm, _ten_tab, " [ITEM LA ngoai pool]" if _new else "")
                     notify.append({"tab": tab_name, "kind": kind, "slot": it["index"],
                                    "id": it["id"], "name": nm, "quant": it["quant"],
-                                   "bag": _bag, "new": bool(_new)})
+                                   "bag": _bag, "new": bool(_new), "gold": _gold})
         return notify
 
     def decompose_slot(self, slot: int, wait: float = 1.2) -> bool:

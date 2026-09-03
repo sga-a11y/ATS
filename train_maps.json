@@ -7321,6 +7321,102 @@
         ]
       ],
       "group": "Giang Đông"
+    },
+    "26852": {
+      "name": "Trúc lâm Chu Nhai2 94-95",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26851": {
+      "name": "Trúc lâm Chu Nhai1 90-91",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26872": {
+      "name": "Trại Cửu Chân2 92-93",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26821": {
+      "name": "Trại Nam Hải1 90-91",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26862": {
+      "name": "Rừng mưa Long Biên2 86-88",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26861": {
+      "name": "Rừng mưa Long Biên1 82-84",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26812": {
+      "name": "Đầm lầy Long Xuyên2 86-88",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26811": {
+      "name": "Đầm lầy Long Xuyên1 82-83",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26892": {
+      "name": "Rừng Quảng Tín2 78-80",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26891": {
+      "name": "Rừng Quảng Tín1 75-76",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26841": {
+      "name": "Rừng Hoài An1 73-74",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26831": {
+      "name": "Đầm lầy Cao Lượng 71-72",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26802": {
+      "name": "Rừng mưa Trung Túc2 70-71",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26801": {
+      "name": "Rừng mưa Trung Túc1 64-65",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26881": {
+      "name": "Rừng mưa Y Châu 65-66",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
+    },
+    "26816": {
+      "name": "Rừng mưa Quỳnh Sơn 60-62",
+      "safe": [],
+      "mobs": [],
+      "group": "Y Châu"
     }
   }
 }

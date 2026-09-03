@@ -3208,9 +3208,11 @@ fun AddAccountDialog(
 
 // tab furnace: key config -> (pool name trong furnace_pool.json, nhan hien thi)
 val FURNACE_TABS = listOf(
-    Triple("vo_tuong", "Vo Tuong", "Võ Tướng thường"),
-    Triple("trang_bi", "Trang Bi", "Trang Bị thường"),
-    Triple("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh thường"),
+    // Ten tab BO chu "thuong": tu 03/09 moi tab dung cho CA lo thuong lan lo HOANG KIM
+    // (chung pool item - xem bot/client.py FURNACE_TAB_KIND_GOLD).
+    Triple("vo_tuong", "Vo Tuong", "Võ Tướng"),
+    Triple("trang_bi", "Trang Bi", "Trang Bị"),
+    Triple("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh"),
 )
 
 @Composable
@@ -3863,16 +3865,18 @@ private fun furnaceNotifyLine(context: android.content.Context, it: Map<String, 
     // ITEM LA = id khong co trong furnace_pool.json (game update them item moi) - engine danh dau
     // "new"; phai neu ro chu khong de nhin y het item thuong.
     val nw = if (it["new"]?.lowercase() in listOf("true", "1")) " ⚠ ITEM LẠ (ngoài danh sách đã biết)" else ""
+    // Cung mot tab dung cho ca 2 lo -> phai noi RO lo nao (gia hoang kim gap doi).
+    val lo = if (it["gold"]?.lowercase() in listOf("true", "1")) " HOÀNG KIM" else " thường"
     return when (tab) {
         "trang_bi" -> {
             val tid = it["id"]?.toIntOrNull()
             if (tid != null) {
                 nm = equipDisplay(loadEquipStats(context)[String.format("0x%04x", tid)], nm)
             }
-            "$u soi lò trang bị thường có \"$nm\" - trong túi đang có ${it["bag"] ?: 0} món$nw"
+            "$u soi lò trang bị$lo có \"$nm\" - trong túi đang có ${it["bag"] ?: 0} món$nw"
         }
-        "vo_tuong" -> "$u soi lò võ tướng thường có \"$nm\"$nw"
-        "chuyen_sinh" -> "$u soi lò chuyển sinh thường có \"$nm\"$nw"
+        "vo_tuong" -> "$u soi lò võ tướng$lo có \"$nm\"$nw"
+        "chuyen_sinh" -> "$u soi lò chuyển sinh$lo có \"$nm\"$nw"
         else -> "$u: lò có \"$nm\"$nw"
     }
 }

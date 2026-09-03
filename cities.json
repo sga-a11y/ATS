@@ -115,6 +115,18 @@
    "city_id": 23011,
    "flag": 18,
    "hex": "59e3"
+  },
+  "phien_ngu": {
+   "name": "Phiên Ngu",
+   "city_id": 26001,
+   "flag": 19,
+   "hex": "6591"
+  },
+  "y_chau": {
+   "name": "Y Châu",
+   "city_id": 26011,
+   "flag": 20,
+   "hex": "659b"
   }
  },
  "special_maps": {

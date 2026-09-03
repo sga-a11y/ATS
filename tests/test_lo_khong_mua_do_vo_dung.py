@@ -192,7 +192,9 @@ class TestApVaoProcessFurnace(unittest.TestCase):
     def test_chi_ap_cho_tab_chuyen_sinh(self):
         i = self.src.find("_thua = self._lo_da_du_khoi_mua(")
         self.assertGreater(i, 0, "chua ap luat vao process_furnace")
-        self.assertIn("if kind == 5 else None", self.src[i:i + 120])
+        # `nhom` = kind lo THUONG tuong ung; lo hoang kim gui kind 6 nhung van thuoc nhom 5
+        # (chung pool) -> luat phai bam `nhom`, xem tests/test_lo_hoang_kim.py.
+        self.assertIn("if nhom == 5 else None", self.src[i:i + 120])
 
     def test_nam_trong_nhanh_AUTO(self):
         """User chi noi ve muc 'tu mua'; nhanh thong bao giu nguyen de khong nuot canh bao."""

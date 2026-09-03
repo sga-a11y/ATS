@@ -1474,13 +1474,14 @@ class BotGUI(tk.Tk):
         return out
 
     def _party_notify_items(self, pidx):
-        """List (username, item): TUI -> THANH chua mo -> BA DAU -> QUAN DOAN -> DU DIEM -> LO.
+        """List (username, item): TUI -> BA DAU -> QUAN DOAN -> DU DIEM -> LO.
 
         BA DAU dat TRUOC quan doan (user chot 01/09): no la viec CO HAN GIO (het la mat quyen loi
         hoi day HP/SP), con quan doan/du diem thi luc nao lam cung duoc.
         """
+        # THANH CHUA MO: BO khoi Chu y (user chot 28/08) - bot GIO LUON TU MO thanh, canh bao chi
+        # con lam ret danh sach. `_party_city_notify` giu lai vi con dung cho cho khac/de bat lai.
         out = (list(self._party_bag_notify(pidx))
-               + list(self._party_city_notify(pidx))
                + [(it["user"], {"_ba_dau": True, "luc": it["luc"]})
                   for it in ctrl.ba_dau_notify_items(pidx)]
                + list(self._party_legion_notify(pidx))
@@ -1519,17 +1520,19 @@ class BotGUI(tk.Tk):
         # ITEM LA = id KHONG co trong furnace_pool.json (game update them item moi). Engine da danh
         # dau "new" tu lau nhung UI chua dung -> nhin y het item thuong. Phai neu ro de user chu y.
         _new = " ⚠ ITEM LẠ (ngoài danh sách đã biết)" if it.get("new") else ""
+        # Cung mot tab dung cho ca 2 lo -> phai noi RO lo nao (gia hoang kim gap doi).
+        _lo = " HOÀNG KIM" if it.get("gold") else " thường"
         if tab == "trang_bi":
             # Ten DAI kem chi so (giong hien thi trong list) - chi co ten thi khong quyet dinh
             # duoc co dang mua hay khong.
             _tid = it.get("id")
             if _tid:
                 nm = PartyConfigFrame._equip_display("0x%04x" % int(_tid), nm)
-            return f'{_u} soi lò trang bị thường có "{nm}" - trong túi đang có {it.get("bag", 0)} món{_new}'
+            return f'{_u} soi lò trang bị{_lo} có "{nm}" - trong túi đang có {it.get("bag", 0)} món{_new}'
         if tab == "vo_tuong":
-            return f'{_u} soi lò võ tướng thường có "{nm}"{_new}'
+            return f'{_u} soi lò võ tướng{_lo} có "{nm}"{_new}'
         if tab == "chuyen_sinh":
-            return f'{_u} soi lò chuyển sinh thường có "{nm}"{_new}'
+            return f'{_u} soi lò chuyển sinh{_lo} có "{nm}"{_new}'
         return f'{_u}: lò có "{nm}"{_new}'
 
     def _furnace_buy_for(self, username, it):
@@ -4220,9 +4223,11 @@ class PartyConfigFrame(ttk.Frame):
         return PartyConfigFrame._furnace_default_notify_cache
 
     _furnace_pool_cache = None
-    FURNACE_TABS = [("vo_tuong", "Vo Tuong", "Võ Tướng thường"),
-                    ("trang_bi", "Trang Bi", "Trang Bị thường"),
-                    ("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh thường")]
+    # Ten tab BO chu "thuong": tu 03/09 moi tab dung cho CA lo thuong lan lo HOANG KIM
+    # (chung pool item - xem bot/client.py FURNACE_TAB_KIND_GOLD).
+    FURNACE_TABS = [("vo_tuong", "Vo Tuong", "Võ Tướng"),
+                    ("trang_bi", "Trang Bi", "Trang Bị"),
+                    ("chuyen_sinh", "Chuyen Sinh", "Chuyển Sinh")]
 
     def _load_furnace_pool(self):
         """{pool_tab_name: {tid_hex: ten}} tu furnace_pool.json."""
