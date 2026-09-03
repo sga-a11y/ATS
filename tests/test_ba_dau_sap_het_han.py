@@ -198,7 +198,8 @@ class TestGUI(unittest.TestCase):
 
     def test_nut_Chu_y_doi_mau_CAM(self):
         """Cung mau voi nut 'Check AGI' luc lech (#f59e0b)."""
-        i = self.src.find("_gap = self._party_notify_gap(pidx)")
+        # 04/09: `_gap` gio lay tu `_gap_notify` da tinh o tren (dung chung voi cham party/nhom).
+        i = self.src.find("_gap = _gap_notify")
         self.assertGreater(i, 0, "nut Chu y khong doi mau -> khong noi bat duoc")
         khoi = self.src[i:i + 700]
         self.assertIn('bg="#f59e0b"', khoi)

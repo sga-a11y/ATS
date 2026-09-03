@@ -103,10 +103,35 @@ class TestNutChuYMauCam(unittest.TestCase):
             self.assertIn(k, khoi)
 
     def test_PC_nut_doc_theo_ham_chung(self):
-        self.assertIn("_gap = self._party_notify_gap(pidx)", _gui())
+        # 04/09: gia tri nay gio tinh MOT LAN o tren (dung chung voi cham party/nhom), nut chi
+        # dung lai - nen kiem NGUON tinh chu khong kiem dong gan cho rieng nut nua.
+        self.assertIn("_gap_notify = self._party_notify_gap(pidx)", _gui())
 
     def test_PC_khong_con_chi_xet_ba_dau(self):
         self.assertNotIn("_gap = bool(ctrl.ba_dau_notify_items(pidx))", _gui())
+
+    def test_PC_cham_PARTY_va_cham_NHOM_cung_doi_CAM(self):
+        """User chot 04/09: "co chu y mau cam ma cho P9 va nhom 1 van mau xanh, luc nay phai mau
+        cam chu". Truoc do CHI cai nut "Chu y" doi mau, con cham tab party/nhom van xanh -> nhin
+        tab khong biet party nao dang co viec, phai bam vao tung party moi thay.
+        """
+        g = _gui()
+        self.assertIn("_gap_notify = self._party_notify_gap(pidx)", g)
+        self.assertIn("_cam = _lech_agi or (_gap_notify and _du_acc)", g,
+                      "cham party phai xet ca chu y CAM, khong chi lech AGI")
+        self.assertIn("self._dot_agi if _cam else", g, "cham PARTY phai dung _cam")
+        self.assertIn("gidx in cam_groups", g, "cham NHOM phai dung chung nguon voi cham party")
+        i = g.find("if _cam:")
+        self.assertGreater(i, 0)
+        self.assertIn("cam_groups.add(gidx)", g[i:i + 120],
+                      "party CAM phai keo theo nhom CAM")
+
+    def test_PC_KHONG_goi_party_notify_gap_hai_lan(self):
+        """`_party_notify_gap` duyet toan bo acc cua party; refresh chay lien tuc nen goi 2 lan
+        moi vong la phi. Nut "Chu y" phai dung LAI bien da tinh cho cham."""
+        g = _gui()
+        self.assertEqual(g.count("self._party_notify_gap(pidx)"), 1)
+        self.assertIn("_gap = _gap_notify", g)
 
     def test_APK_du_ba_loai(self):
         s = _kt("MainActivity.kt")

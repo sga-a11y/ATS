@@ -1723,7 +1723,8 @@ class BotGUI(tk.Tk):
         group_run = {}    # gidx -> so acc dang chay
         group_login = {}  # gidx -> so acc DANG LOGIN (con 1 acc login -> cham nhom VANG)
         group_total = {}  # gidx -> tong so acc
-        agi_warn_groups = set()   # gidx co IT NHAT 1 party lech AGI -> cham nhom cung CAM
+        cam_groups = set()   # gidx co IT NHAT 1 party CAM (lech AGI hoac co chu y can lam ngay)
+                             # -> cham nhom cung CAM
         for pidx, tree in self.party_trees.items():
             any_running = False
             p_total = 0; p_run = 0; p_login = 0   # dem acc cua party de quyet dinh mau cham
@@ -1777,10 +1778,16 @@ class BotGUI(tk.Tk):
             #  - luc thieu acc thi so AGI cung KHONG day du (report chi gop acc dang chay) nen
             #    do lech doc duoc chua chac dung -> bao cam luc do la bao bua.
             _lech_agi = bool(agi_report.get("warning")) and _du_acc
-            if _lech_agi:
-                agi_warn_groups.add(gidx)
+            # Chu y loai CAN LAM NGAY (Ba Dau / tui gan day / chua co quan doan) cung phai lam
+            # CHAM party + CHAM NHOM chuyen CAM, khong chi rieng cai nut (user chot 04/09: "co
+            # chu y mau cam ma cho P9 va nhom 1 van mau xanh, luc nay phai mau cam chu").
+            # Nut "Chu y" o duoi dung LAI bien nay - dung goi `_party_notify_gap` hai lan.
+            _gap_notify = self._party_notify_gap(pidx)
+            _cam = _lech_agi or (_gap_notify and _du_acc)
+            if _cam:
+                cam_groups.add(gidx)
             p_dot = (self._dot_off if p_run == 0 else
-                     (self._dot_agi if _lech_agi else
+                     (self._dot_agi if _cam else
                       (self._dot_on if _du_acc else self._dot_warn)))
             if sub is not None and subf is not None:
                 try:
@@ -1806,7 +1813,7 @@ class BotGUI(tk.Tk):
                     # CAM = co viec CAN LAM NGAY (Ba Dau sap het han / tui gan day / chua co quan
                     # doan) - cung mau voi nut "Check AGI" luc lech, de nhin luot qua la thay.
                     # Con lai (thanh chua mo, du diem, lo) giu vang nhat.
-                    _gap = self._party_notify_gap(pidx)
+                    _gap = _gap_notify      # da tinh o tren (dung chung voi cham party/nhom)
                     nbtn.configure(text=f"⚠ Chú ý ({_ncnt})")
                     if _gap:
                         nbtn.configure(bg="#f59e0b", fg="#3b2500", activebackground="#d97706")
@@ -1816,14 +1823,14 @@ class BotGUI(tk.Tk):
                         nbtn.pack(side="left", padx=2)
                 elif nbtn.winfo_ismapped():
                     nbtn.pack_forget()
-        # cham trang thai TUNG GROUP TAB: xanh = du | CAM = du nhung co party lech AGI |
-        #                                 vang = mot phan | xam = tat
+        # cham trang thai TUNG GROUP TAB: xanh = du | CAM = du nhung co party lech AGI HOAC
+        #                                 co chu y can lam ngay | vang = mot phan | xam = tat
         for gidx, gframe in self.group_frames.items():
             gr = group_run.get(gidx, 0); gt = group_total.get(gidx, 0)
             gl = group_login.get(gidx, 0)
             _g_du = gr >= gt and gt > 0 and gl == 0
             g_dot = (self._dot_off if gr == 0 else
-                     (self._dot_agi if (_g_du and gidx in agi_warn_groups) else
+                     (self._dot_agi if (_g_du and gidx in cam_groups) else
                       (self._dot_on if _g_du else self._dot_warn)))
             try:
                 self.nb.tab(gframe, image=g_dot)
@@ -2386,6 +2393,9 @@ class SkillDialog(tk.Toplevel):
         # o so tu nhay ve CAP HIEN TAI + 1 (user chot 01/09).
         for _tv in self.trees.values():
             _tv.bind("<<TreeviewSelect>>", self._doi_skill_chon, add="+")
+            # Double-click = them thang vao bang tu nang o duoi (user chot 04/09) - khoi phai
+            # chon roi voi tay bam nut. Skill DA MAX thi khong them (them vao cung khong lam gi).
+            _tv.bind("<Double-1>", self._them_tu_cay_dbl, add="+")
         self.nb.bind("<<NotebookTabChanged>>", self._doi_skill_chon, add="+")
         ttk.Button(br, text="Thêm vào bảng dưới", command=self._them_tu_cay).pack(side="left", padx=6)
         ttk.Button(br, text="Đọc lại", command=self._nap).pack(side="left")
@@ -2560,6 +2570,12 @@ class SkillDialog(tk.Toplevel):
             messagebox.showwarning("Nâng skill", "Cấp phải là số.", parent=self); return
         if cap <= 0:
             return
+        # `to=` cua Spinbox chi chan mui ten, go tay van vuot duoc -> kep ve maxLv.
+        _mx = int(((getattr(config, "SKILL_INFO", {}) or {}).get(int(sid)) or {})
+                  .get("maxLv") or 0)
+        if _mx and cap > _mx:
+            cap = _mx
+            self.var_cap_tay.set(str(cap))
         try:
             kq = ctrl.nang_skill_ngay(self.username, sid, cap)
         except Exception as e:
@@ -2576,12 +2592,49 @@ class SkillDialog(tk.Toplevel):
         _ly_do = kq[1] if isinstance(kq, tuple) else "không nâng được"
         messagebox.showwarning("Nâng skill", "%s: %s" % (self._ten(sid), _ly_do), parent=self)
 
+    def _da_max(self, sid) -> bool:
+        """Skill da o cap toi da chua (them vao bang tu nang cung khong lam gi)."""
+        max_lv = int(((getattr(config, "SKILL_INFO", {}) or {}).get(int(sid)) or {})
+                     .get("maxLv") or 0)
+        return bool(max_lv) and int(self.cap.get(int(sid), 0)) >= max_lv
+
     def _them_tu_cay(self):
         sid = self._skill_dang_chon()
         if sid is None:
             return
+        if self._da_max(sid):
+            messagebox.showinfo("Skill", "'%s' đã max cấp." % self._ten(sid), parent=self)
+            return
         info = (getattr(config, "SKILL_INFO", {}) or {}).get(sid) or {}
         self._them_dong(sid, int(info.get("maxLv") or 1))
+
+    def _them_tu_cay_dbl(self, _e=None):
+        """Double-click vao skill trong cay -> them vao bang tu nang o duoi.
+
+        Skill DA MAX thi im lang bo qua: double-click de xem/mo rong nhanh cay la thao tac binh
+        thuong, bat popup moi lan cham vao skill da max thi phien. Nut "Them vao bang duoi" van
+        bao ro vi do la thao tac co chu dich.
+        """
+        sid = self._skill_dang_chon(im_lang=True)
+        if sid is None or self._da_max(sid):
+            return
+        # Da co trong bang roi thi thoi. Double-click cung la thao tac mo/dong nhanh node cay nen
+        # rat de bam nhieu lan - them trung se lam day bang (bang chi hien 5 dong, con lai phai
+        # cuon) va day rule that xuong duoi.
+        if sid in self._sid_trong_bang():
+            return
+        info = (getattr(config, "SKILL_INFO", {}) or {}).get(sid) or {}
+        self._them_dong(sid, int(info.get("maxLv") or 1))
+
+    def _sid_trong_bang(self):
+        """Tap skill_id dang co trong bang tu nang."""
+        ra = set()
+        for rec in list(self.rules):
+            try:
+                ra.add(int(rec["ids"][rec["nhan"].index(rec["skill"].get())]))
+            except Exception:
+                pass
+        return ra
 
     def _them_dong(self, sid=None, cap=1):
         row = ttk.Frame(self.rules_fr); row.pack(fill="x", pady=1)
@@ -2610,6 +2663,39 @@ class SkillDialog(tk.Toplevel):
         var_cap = tk.StringVar(value=str(cap))
         _sp = ttk.Spinbox(row, from_=1, to=10, width=5, textvariable=var_cap)
         _sp.pack(side="left")
+        # Tran = maxLv CUA CHINH SKILL DANG CHON (1/5/6/8/10 tuy skill), khong phai 10 cung.
+        # `to=` cua Spinbox chi chan mui ten, GO TAY van vao duoc -> phai kep lai. Engine
+        # (`client._skill_co_the_nang`) van cat ve maxLv nen so qua tran khong gay hai, nhung bang
+        # hien "den cap 110" trong khi thuc te chi len 10 la NOI DOI voi user (user chot 04/09:
+        # "cat deo dau, t van dien lv 110 vao dc kia").
+        _lbl_max = ttk.Label(row, text="", foreground="#888")
+        _lbl_max.pack(side="left", padx=(3, 0))
+
+        def _kep_cap(*_a):
+            try:
+                _sid = ids[nhan.index(var.get())]
+            except Exception:
+                return
+            _mx = int(((getattr(config, "SKILL_INFO", {}) or {}).get(int(_sid)) or {})
+                      .get("maxLv") or 0)
+            if not _mx:
+                return
+            try:
+                _sp.configure(to=_mx)
+            except Exception:
+                pass
+            _lbl_max.configure(text="/%d" % _mx)
+            _cur = (var_cap.get() or "").strip()
+            if not _cur:
+                return
+            try:
+                _n = int(_cur)
+            except ValueError:
+                var_cap.set(str(_mx)); return
+            if _n > _mx:
+                var_cap.set(str(_mx))
+            elif _n < 1:
+                var_cap.set("1")
         # Lan chuot tren hai o nay -> CUON BANG (bang co the dai hon 5 dong), KHONG doi gia tri.
         for _w in (_cb, _sp, row):
             _chan_cuon_doi_gia_tri(
@@ -2626,10 +2712,12 @@ class SkillDialog(tk.Toplevel):
         rec["done"] = lbl_done
 
         def _kiem_done(*_a):
+            _kep_cap()
             self._cap_nhat_done(rec)
         var.trace_add("write", _kiem_done)
         var_cap.trace_add("write", _kiem_done)
         self.rules.append(rec)
+        _kep_cap()
         self._cap_nhat_done(rec)
         self.after(10, self._rules_fit)
 
@@ -2664,6 +2752,13 @@ class SkillDialog(tk.Toplevel):
                 cap = int(rec["cap"].get() or 0)
             except Exception:
                 continue
+            # CHOT CHAN CUOI: kep ve maxLv cua chinh skill do. O nhap da tu kep khi go, day chi
+            # de phong rule cu luu tu truoc (hoac sua tay accounts.json) mang so qua tran - ghi
+            # 110 vao file trong khi bot chi nang toi 10 la so lieu noi doi.
+            _mx = int(((getattr(config, "SKILL_INFO", {}) or {}).get(int(sid)) or {})
+                      .get("maxLv") or 0)
+            if _mx and cap > _mx:
+                cap = _mx
             if cap > 0:
                 rules.append([int(sid), cap])
         cfg = {"reserve": reserve, "rules": rules}

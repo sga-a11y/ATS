@@ -9862,7 +9862,11 @@ class GameClient:
             duoc chi con duong donate).
           - Mo toi da min(ca stack, so o trong) - va phai con >= kindCount o trong (client chan
             mo khi thieu cho: Logic_Item.lua ItemUse_48).
-          - Duyet HAI LUOT: tui THUONG truoc, tui TINH/CAO sau (khong mo de quy).
+          - MOT LAN DUY NHAT moi luot login (user chot 04/09): mo dung MOT me roi xu ly MOT luot
+            roi dung han, KHONG vet can stack va KHONG sang loai ruong khac. "Mot me" = het stack
+            ruong do HOAC day tui, cai nao toi truoc. Con du de lan login sau.
+          - Duyet HAI LUOT: tui THUONG truoc, tui TINH/CAO sau (khong mo de quy). Loai nao het
+            hang thi xet loai ke tiep - me dau tien mo duoc la dung.
           - CHI dung vao mon VUA ROI RA trong luot do. Do co san trong tui GIU NGUYEN: cac mon
             trong hop deu la trang bi thuong cua game (cung roi khi train / mua o lo / user de
             danh) - khong phan biet duoc nen dung vao la mat do cua user.
@@ -9901,29 +9905,38 @@ class GameClient:
                 if (info.get("luot") or "thuong") != luot:
                     continue
                 can = max(1, int(info.get("kindCount") or 1))
-                while self.running:
-                    slot = next((s for s, (t, c) in list(self.bag_slots.items())
-                                 if t == tid and c > 0), None)
-                    if slot is None:
-                        break
-                    trong = self.bag_capacity() - self.bag_used_slots()
-                    if trong < can:
-                        kq["bo_qua"] = "tui day (con %d o, hop can %d)" % (trong, can)
-                        log.info("[%s] MO HOP: tui day (con %d o) -> dung", self._label, trong)
-                        return kq
-                    # Mo toi da: het stack, nhung khong qua so o trong (moi lan mo an 1 o).
-                    n = max(1, min(int(self.bag_slots[slot][1]), trong // can))
-                    truoc = dict(self.bag_slots)
-                    log.info("[%s] MO HOP: %s x%d (o trong %d)",
-                             self._label, info.get("name") or ("0x%04x" % tid), n, trong)
-                    if not self.use_slot(slot, qty=n):
-                        break
-                    kq["mo"] += n
-                    moi = self._cho_tui_doi(truoc, wait=wait_item)
-                    if not moi:
-                        log.info("[%s] MO HOP: khong thay do roi ra -> dung", self._label)
-                        break
-                    self._xu_ly_do_vua_mo(moi, gd, kq)
+                if not self.running:
+                    return kq
+                slot = next((s for s, (t, c) in list(self.bag_slots.items())
+                             if t == tid and c > 0), None)
+                if slot is None:
+                    continue        # loai ruong nay het hang -> xet loai ke tiep
+                trong = self.bag_capacity() - self.bag_used_slots()
+                if trong < can:
+                    kq["bo_qua"] = "tui day (con %d o, hop can %d)" % (trong, can)
+                    log.info("[%s] MO HOP: tui day (con %d o) -> dung", self._label, trong)
+                    return kq
+                # Mo toi da: het stack, nhung khong qua so o trong (moi lan mo an 1 o).
+                n = max(1, min(int(self.bag_slots[slot][1]), trong // can))
+                truoc = dict(self.bag_slots)
+                log.info("[%s] MO HOP: %s x%d (o trong %d)",
+                         self._label, info.get("name") or ("0x%04x" % tid), n, trong)
+                if not self.use_slot(slot, qty=n):
+                    return kq
+                kq["mo"] += n
+                moi = self._cho_tui_doi(truoc, wait=wait_item)
+                if not moi:
+                    log.info("[%s] MO HOP: khong thay do roi ra -> dung", self._label)
+                    return kq
+                self._xu_ly_do_vua_mo(moi, gd, kq)
+                # MOT LAN DUY NHAT cho ca luot login (user chot 04/09: "luc login ko can mo den
+                # het ruong, chi can mo 1 lan, phan giai/donate/vut bo 1 lan la dc roi";
+                # "mo 1 lan la het stack ruong do hoac full tui do"). Mot me = min(ca stack,
+                # so o trong) - da tinh o `n` ngay tren. Con du thi de lan login sau.
+                #
+                # Truoc day vong `while` vet CAN stack roi moi sang loai ke tiep -> login bi keo
+                # dai (log 00:13: mo x39 xong lai mo tiep x19 cua cung mot loai).
+                return kq
         return kq
 
     def _xu_ly_do_vua_mo(self, slots, gd, kq):

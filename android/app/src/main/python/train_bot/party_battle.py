@@ -12,9 +12,26 @@ _registry = {}
 _registry_lock = threading.Lock()
 
 
+def _nhan_party(party_idx):
+    """So party HIEN TRONG LOG - phai khop GUI (dem tu 1).
+
+    `party_idx` la 0-based (`config.ACCOUNT_PARTY` dung `enumerate(PARTIES)`) nhung GUI dem party
+    tu 1, va cac dong log khac trong `run_party_digioi` da in `pidx + 1`. Truoc day file nay in
+    thang `party_idx` -> trong CUNG mot file log co hai kieu danh so lech nhau 1, doc log la dinh
+    bay ngay: tat party 28 tren GUI ma van thay `[P28 BATTLE ...]` chay (thuc ra la party 29).
+    Da dinh that (user 03/09: "p28 tat roi ma sao van co log").
+
+    Client chay SOLO thi `party_idx` la tuple `("solo", id(client))` -> khong cong duoc, giu nguyen.
+    """
+    if isinstance(party_idx, int) and not isinstance(party_idx, bool):
+        return party_idx + 1
+    return party_idx
+
+
 class PartyBattleCoordinator:
     def __init__(self, party_idx):
         self.party_idx = party_idx
+        self.nhan_party = _nhan_party(party_idx)   # so hien trong log (khop GUI, dem tu 1)
         self._lock = threading.RLock()
         self.generation = 0
         self.turn = 0
@@ -138,7 +155,7 @@ class PartyBattleCoordinator:
             return False
         if key not in self._warned_conflicts:
             self._warned_conflicts.add(key)
-            log.warning("[P%s BATTLE] conflicting copies for %s", self.party_idx, key)
+            log.warning("[P%s BATTLE] conflicting copies for %s", self.nhan_party, key)
         if len(variants[event]) > len(variants[current]):
             self._events[key] = event
         return False
@@ -166,9 +183,9 @@ class PartyBattleCoordinator:
 
     def _log_common(self, event):
         if event.turn:
-            prefix = f"[P{self.party_idx} BATTLE g={event.generation} t={event.turn}]"
+            prefix = f"[P{self.nhan_party} BATTLE g={event.generation} t={event.turn}]"
         else:
-            prefix = f"[P{self.party_idx} BATTLE g={event.generation}]"
+            prefix = f"[P{self.nhan_party} BATTLE g={event.generation}]"
         if event.kind == "start":
             log.info("%s START", prefix)
         elif event.kind == "turn_start":

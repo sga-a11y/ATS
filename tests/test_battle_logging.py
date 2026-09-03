@@ -6,6 +6,8 @@ from bot.party_battle import PartyBattleCoordinator
 
 class TestBattleLogging(unittest.TestCase):
     def test_five_broadcast_copies_emit_one_common_line(self):
+        # party_idx 0-based -> nhan trong log la 20 (khop so party tren GUI, xem
+        # tests/test_nhan_party_trong_log_khop_gui.py).
         coordinator = PartyBattleCoordinator(19)
         start = BattleEvent("start", 2, 0, payload=(105, 1))
         turn = BattleEvent("turn_start", 2, 1)
@@ -17,8 +19,8 @@ class TestBattleLogging(unittest.TestCase):
                 coordinator.observe(account, turn)
 
         lines = "\n".join(captured.output)
-        self.assertEqual(lines.count("[P19 BATTLE g=2] START"), 1)
-        self.assertEqual(lines.count("[P19 BATTLE g=2 t=1] TURN START"), 1)
+        self.assertEqual(lines.count("[P20 BATTLE g=2] START"), 1)
+        self.assertEqual(lines.count("[P20 BATTLE g=2 t=1] TURN START"), 1)
 
     def test_action_log_contains_source_target_skill_and_hp_delta(self):
         coordinator = PartyBattleCoordinator(6)
@@ -39,7 +41,7 @@ class TestBattleLogging(unittest.TestCase):
             coordinator.observe("b", action)
 
         line = "\n".join(captured.output)
-        self.assertIn("[P6 BATTLE g=1 t=1]", line)
+        self.assertIn("[P7 BATTLE g=1 t=1]", line)   # party_idx 6 -> party 7 tren GUI
         self.assertIn("(3,2) skill=11014 -> (0,1)", line)
         self.assertIn("HP -428 => 1676", line)
 

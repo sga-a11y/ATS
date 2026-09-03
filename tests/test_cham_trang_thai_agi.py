@@ -32,9 +32,11 @@ class TestChamTrangThaiAgi(unittest.TestCase):
         self.assertNotEqual("#f0c000", "#f59e0b")
 
     def test_ap_cho_ca_party_va_nhom(self):
+        # Doi ten tu `agi_warn_groups` -> `cam_groups` (04/09): set nay gio gom CA hai nguon lam
+        # cham CAM (lech AGI va chu y can lam ngay), khong con rieng AGI nua.
         s = _src()
-        self.assertIn("agi_warn_groups", s, "nhom phai biet co party nao lech khong")
-        self.assertIn("gidx in agi_warn_groups", s, "cham NHOM phai xet toi")
+        self.assertIn("cam_groups", s, "nhom phai biet co party nao CAM khong")
+        self.assertIn("gidx in cam_groups", s, "cham NHOM phai xet toi")
 
     def test_cam_chi_thay_cho_xanh(self):
         """CAM khong duoc de len vang/xam.
@@ -45,8 +47,10 @@ class TestChamTrangThaiAgi(unittest.TestCase):
         s = _src()
         self.assertIn("_lech_agi = bool(agi_report.get(\"warning\")) and _du_acc", s,
                       "phai co dieu kien _du_acc")
-        self.assertIn("self._dot_agi if (_g_du and gidx in agi_warn_groups)", s,
+        self.assertIn("self._dot_agi if (_g_du and gidx in cam_groups)", s,
                       "cham nhom cung phai doi _g_du")
+        self.assertIn("_cam = _lech_agi or (_gap_notify and _du_acc)", s,
+                      "chu y can lam ngay cung phai doi _du_acc moi duoc len CAM")
 
     def test_doc_agi_report_TRUOC_khi_dung_cham(self):
         """agi_report phai tinh truoc dong dung p_dot, khong thi dung bien chua co."""

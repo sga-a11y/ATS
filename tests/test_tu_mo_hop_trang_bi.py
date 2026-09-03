@@ -118,6 +118,32 @@ class TestLuatMo(unittest.TestCase):
         self.assertIn("if trong < can:", t)
         self.assertIn("tui day", t)
 
+    def test_MOT_ME_DUY_NHAT_moi_luot_login(self):
+        """User chot 04/09: "luc login ko can mo den het ruong, chi can mo 1 lan, phan giai/donate/
+        vut bo 1 lan la dc roi" + "mo 1 lan la het stack ruong do hoac full tui do".
+
+        => Mo MOT me (n = min(ca stack, o trong)) -> xu ly MOT luot -> DUNG HAN. Truoc day vong
+        `while` vet CAN stack roi moi sang loai ke tiep, lam login bi keo dai (log 00:13:
+        mo x39 xong lai mo tiep x19 cua CUNG mot loai ruong).
+        """
+        t = _than("tu_mo_hop_trang_bi")
+        self.assertNotIn("while self.running:", t,
+                         "van con vong vet can stack -> mo den het ruong")
+        i = t.find("self._xu_ly_do_vua_mo(moi")
+        self.assertGreater(i, 0)
+        sau = t[i:]
+        self.assertIn("return kq", sau, "xu ly xong khong dung han -> van mo tiep")
+        self.assertNotIn("continue", sau.split("return kq")[0],
+                         "xu ly xong ma con `continue` -> chay tiep loai ruong khac")
+
+    def test_loai_ruong_HET_HANG_thi_xet_loai_ke_tiep(self):
+        """Dung han la sau khi DA MO duoc mot me. Loai chua co hang thi phai xet loai sau,
+        khong thi tick nhieu loai ma loai dau het hang la khong mo gi ca."""
+        t = _than("tu_mo_hop_trang_bi")
+        i = t.find("if slot is None:")
+        self.assertGreater(i, 0)
+        self.assertIn("continue", t[i:i + 120])
+
     def test_hai_luot_thuong_truoc_tinh_sau(self):
         t = _than("tu_mo_hop_trang_bi")
         self.assertIn('for luot in ("thuong", "tinh"):', t)
