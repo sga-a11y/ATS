@@ -3005,3 +3005,40 @@ ngay khi phát hiện map đổi.
   router tu coi la leg thuyen va validate `boat=True`; trong khi path di bo `(430,50) -> (430,2500)`
   hop le. Them force-walk sea gate `(23521,23000,2)` trong build va execute.
 - 40NPC: khong duoc coi rieng S2C `0x41 0a0001` la het tran. No chi ARM cua so cho prompt; chi xac nhan khi co `0x14 0100...0300` trong 5 giay. Hai capture nguoi that co hai goi lien ke, nhung log live co the chen `0x14 08002a` o giua; phai bo qua goi trung gian va tiep tuc cho page choice. Bam choice ngay tai `08002a` bi server kick.
+
+
+## 7t. TIEN TRANG (BANK) — cat do vao ngan hang: `C:030-002`
+
+**Opcode 30 = 0x1e.** Doc thang `Common_protocal.lua` + `UI_UIBank.lua`, khong doan:
+
+| Goi | Nghia | Bo cuc bot gui |
+|---|---|---|
+| `C:030-001` | Tien trang LAY do | `0x1e` sub `0100` + `<<idx(1) + sl(4)>>` |
+| `C:030-002` | Tien trang CAT do | `0x1e` sub `0200` + `<<slot(1) + sl(4 LE i32)>>` |
+| `C:030-008` | DONG tien trang | `0x1e` sub `0800` |
+| `S:029-006` | server MO tien trang | (khong can gui gi) |
+| `S:030-007` | thao tac THAT BAI | +ma(1): **3 = cat that bai, 13 = tien trang DAY** |
+
+**`索引` la SLOT TUI DO** (`bagIndex` cua `EThings.Bag`), giong `use_slot` — KHONG phai index
+trong danh sach kho. Xac nhan o `UIBank.UpdateBankUI`: `bagIndex` di thang tu `UI.Open(UIBag, ...)`
+vao `SendMsg`.
+
+**`restrict & 32` = mon CAM gui ngan hang** — `UIBank.SendMsg` chan tai cho va bao TextData 30068.
+Bot phai loc y het, gui la thao tac khong hop le.
+
+**Kho thu hai dung CHUNG bo cuc:** `C:102-001/002 <寶庫領/存物品>` (Storage) chi khac `mainKind`
+102 thay vi 30. Cung file `UIBank.lua`, chon bang `currentTag`.
+
+### NPC Chu tien trang (Trac Quan)
+- Scene **12263**, chi co DUNG MOT NPC: `Eve_NpcData.id = 1`, `npcId = 16004`, pos `(430,240)`.
+  Cho dung noi chuyen user chot la `(390,310)`.
+- **`0x20 sub0200 + <id>` dung `Eve_NpcData.id` (so thu tu NPC TRONG SCENE), KHONG phai `npcId`
+  toan cuc.** Nham cho nay thi server coi la vi pham. (`sell_noi_dat` gui `0x20 02 00 08` cung la
+  id trong scene.)
+- Surface 1 co 3 muc -> `0x14 sub0900 + ma`: **30 = Tien bac, 31 = Vat pham day du (CAT DO),
+  32 = kho dau gia**.
+- `world_nav` co canh `12001 -> 12263` qua **cong 11**, mot leg — dung
+  `follow_smart_scene_route`, khong can route hardcode.
+
+> Tool moi `tools/crack_eve_npc.py --scene N` do bang NPC cua scene (id / npcId / toa do) tu
+> `Eve.emg`, de khoi phai capture chi de biet mot con so.

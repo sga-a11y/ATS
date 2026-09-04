@@ -268,6 +268,7 @@ _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831
                   "auto_world_boss": True,
                   "auto_team_dungeon": True, "team_dungeons": _team_dungeons_json(DEFAULT_TEAM_DUNGEONS),
                   "auto_sell_noi_dat": True, "auto_bag_clean": True,
+                  "auto_cat_do": False, "cat_do_items": {},
                   "death_return_town": True, "pet_death_return_town": True,
                   "auto_discard_junk": True, "auto_decompose_scrolls": False,
                   "auto_donate_materials": True,
@@ -4093,6 +4094,8 @@ class PartyConfigFrame(ttk.Frame):
         # Tu ban Noi Dat: mac dinh CO tick. Chi co tac dung khi bot tele trung gian ve Ng.Thanh
         # trong mode train/city; tat -> bo qua hoan toan.
         self.auto_sell_noi_dat_var = tk.BooleanVar(value=bool(self._preset.get("auto_sell_noi_dat", True)))
+        self.auto_cat_do_var = tk.BooleanVar(value=bool(self._preset.get("auto_cat_do", False)))
+        self.cat_do_items = dict(self._preset.get("cat_do_items") or {})
         # "Tu don tui do" = cong tong cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
         # Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
         self.auto_bag_clean_var = tk.BooleanVar(value=bool(self._preset.get("auto_bag_clean", True)))
@@ -5459,6 +5462,14 @@ class PartyConfigFrame(ttk.Frame):
                        "lần giá 250, lần sau cần 260 là dừng)").pack(anchor="w", padx=(24, 0))
         ttk.Checkbutton(frm, text="Tự bán Nồi đất",
                         variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(4, 0))
+        # TU CAT DO: dat NGAY SAU ban Noi dat (user chot 04/09). Hai viec di chung mot cho boc
+        # 50-50 truoc khi tele ve thanh route: bốc trúng Ng.Thành thì bán Nồi đất, bốc trúng
+        # Trác Quận thì đi cất đồ.
+        _ct = ttk.Frame(frm); _ct.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_ct, text="Tự cất đồ vào Tiền trang (Trác Quận)",
+                        variable=self.auto_cat_do_var).pack(side="left")
+        ttk.Button(_ct, text="List cất", command=self._open_cat_do_list).pack(side="left",
+                                                                             padx=(8, 0))
         ttk.Checkbutton(frm, text="Tự vứt item rác (Ngọc Hư)",
                         variable=self.auto_discard_junk_var).pack(anchor="w", pady=(4, 0))
         _mt = ttk.Frame(frm); _mt.pack(anchor="w", fill="x", pady=(4, 0))
@@ -5631,6 +5642,74 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Label(bar, text="★ = mặc định giữ (tướng có vũ khí chuyên dụng / bản đặc biệt)").pack(side="left")
         ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="right")
         ttk.Button(bar, text="Lưu", command=_save).pack(side="right", padx=(0, 8))
+
+    def _open_cat_do_list(self):
+        """List mon bot se CAT vao tien trang. Nguon = toan bo items_gamedata (26k mon) nen phai
+        TIM THEO TEN, khong the do het ra mot luoi. Mon DA TICK luon hien tren dau du co tim hay
+        khong - khong thi user tick xong khong biet minh da chon nhung gi."""
+        db = _load_json("items_gamedata.json") or {}
+        ten = {}
+        for k, v in db.items():
+            try:
+                tid = int(k, 16) if str(k).lower().startswith("0x") else int(k)
+            except Exception:
+                continue
+            nm = (v or {}).get("name")
+            if nm:
+                ten["0x%04x" % tid] = nm
+        win = tk.Toplevel(self); win.title("List cất - Tiền trang")
+        win.transient(self); win.grab_set()
+        frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
+        ttk.Label(frm, wraplength=560, justify="left", foreground="#555",
+                  text="Bốc trúng Trác Quận trước khi về thành route thì bot đi NPC Chủ tiền "
+                       "trang cất những món tick ở đây (bốc trúng Nghiệp Thành thì vẫn bán Nồi "
+                       "đất như cũ). Món có số lượng thì cất cả stack. Món game cấm gửi ngân "
+                       "hàng sẽ tự bỏ qua.").pack(anchor="w", pady=(0, 8))
+        top = ttk.Frame(frm); top.pack(fill="x")
+        ttk.Label(top, text="Double-click để tick / bỏ tick. Tìm tên:").pack(side="left")
+        q_var = tk.StringVar()
+        ttk.Entry(top, textvariable=q_var, width=26).pack(side="left", padx=(4, 0))
+        mid = ttk.Frame(frm); mid.pack(fill="both", expand=True)
+        tv = ttk.Treeview(mid, columns=("st",), show="tree headings", height=18)
+        tv.heading("#0", text="Vật phẩm"); tv.heading("st", text="Cất")
+        tv.column("#0", width=380); tv.column("st", width=90, anchor="center")
+        sb = ttk.Scrollbar(mid, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        tv.pack(side="left", fill="both", expand=True, pady=(8, 0))
+        sb.pack(side="right", fill="y", pady=(8, 0))
+        state = {k: True for k, v in (self.cat_do_items or {}).items() if v}
+
+        def _fill():
+            q = q_var.get().strip().lower()
+            tv.delete(*tv.get_children())
+            # DA TICK truoc, roi den ket qua tim. Khong tim gi thi CHI hien cac mon da tick.
+            keys = [k for k in state if k in ten]
+            if q:
+                keys += [k for k, nm in ten.items() if k not in state and q in nm.lower()]
+            for k in keys[:400]:
+                tv.insert("", "end", iid=k, text="%s  (%s)" % (ten[k], k),
+                          values=("✔" if state.get(k) else "",))
+
+        def _toggle(_e=None):
+            k = tv.focus()
+            if not k:
+                return
+            if state.pop(k, None) is None:
+                state[k] = True
+            tv.item(k, values=("✔" if state.get(k) else "",))
+
+        def _save():
+            self.cat_do_items = dict(state)
+            win.destroy()
+
+        tv.bind("<Double-1>", _toggle)
+        q_var.trace_add("write", lambda *_a: _fill())
+        _fill()
+        bar = ttk.Frame(frm); bar.pack(fill="x", pady=(10, 0))
+        ttk.Button(bar, text="Lưu", command=_save).pack(side="left")
+        ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="left", padx=(8, 0))
+        ttk.Button(bar, text="Bỏ tick hết",
+                   command=lambda: (state.clear(), _fill())).pack(side="right")
 
     def _open_material_list(self):
         """List TAT CA nguyen lieu donate duoc: double-click doi DONATE <-> GIU LAI.
@@ -5872,6 +5951,8 @@ class PartyConfigFrame(ttk.Frame):
             "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
             "fight_legion_boss": bool(self.fight_boss_var.get()),
             "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+            "auto_cat_do": bool(self.auto_cat_do_var.get()),
+            "cat_do_items": dict(self.cat_do_items or {}),
             "death_return_town": bool(self.death_return_town_var.get()),
             "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
             "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
@@ -5917,6 +5998,8 @@ class PartyConfigFrame(ttk.Frame):
         self.use_digioi_ho_phu_var.set(bool(data.get("use_digioi_ho_phu", False)))
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
         self.auto_sell_noi_dat_var.set(bool(data.get("auto_sell_noi_dat", True)))
+        self.auto_cat_do_var.set(bool(data.get("auto_cat_do", False)))
+        self.cat_do_items = dict(data.get("cat_do_items") or {})
         self.death_return_town_var.set(bool(data.get("death_return_town", True)))
         self.pet_death_return_town_var.set(bool(data.get("pet_death_return_town", True)))
         self.auto_bag_clean_var.set(bool(data.get("auto_bag_clean", True)))
@@ -6274,6 +6357,8 @@ class PartyConfigFrame(ttk.Frame):
                 "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
                 "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+                "auto_cat_do": bool(self.auto_cat_do_var.get()),
+                "cat_do_items": dict(self.cat_do_items or {}),
                 "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
                 "event_exchange_items": list(self.event_exchange_items),
                 # Chu ky su kien LUC TICK -> lan sau su kien doi thi tu biet ma xoa tick.

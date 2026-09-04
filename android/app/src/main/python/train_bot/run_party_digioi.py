@@ -2049,6 +2049,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         is_digioi = (mode == "digioi")
         dt_dg_finished = False   # mode digioi_train: vua HET GIO DG -> cho party roi sang train
         c.auto_sell_noi_dat = bool(pcfg.get("auto_sell_noi_dat", True) and mode in ("train", "city"))
+        # TU CAT DO tien trang: chay cung cho voi ban Noi Dat (pre_route_town_hop boc 50-50) nen
+        # rang buoc mode y het - khong thi mode khac cung lo di cat giua chung.
+        c.auto_cat_do = bool(pcfg.get("auto_cat_do", False) and mode in ("train", "city"))
+        c.cat_do_items = dict(pcfg.get("cat_do_items") or {})
         # "Tu don tui do" (Cai dat nang cao): cong tong + 2 muc con moi. Phan giai cuon MAC DINH
         # TAT vi phan giai la mat han - user phai tu tick sau khi soat list.
         # Mode event dung chung pet voi quest/PB -> vai "mac dinh" cua no la quest.
