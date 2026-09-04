@@ -2024,9 +2024,9 @@ def them_vao_list_cat_do(tid, client=None):
     """
     key = "0x%04x" % int(tid)
     ds = ctrl.load_cat_do_items()
-    if ds.get(key):
+    if ds.get(key) == ctrl.CAT_DO_CAT:
         return False, "đã có trong list"
-    ds[key] = True
+    ds[key] = ctrl.CAT_DO_CAT
     if not ctrl.save_cat_do_items(ds):
         return False, "không ghi được cat_do_items.json"
     if client is not None:      # bot doc thang file moi lan chay, day chi de chac an
@@ -5735,9 +5735,13 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Button(bar, text="Lưu", command=_save).pack(side="right", padx=(0, 8))
 
     def _open_cat_do_list(self):
-        """List mon bot se CAT vao tien trang. Nguon = toan bo items_gamedata (26k mon) nen phai
-        TIM THEO TEN, khong the do het ra mot luoi. Mon DA TICK luon hien tren dau du co tim hay
-        khong - khong thi user tick xong khong biet minh da chon nhung gi."""
+        """List mon bot xu ly o tien trang. BA trang thai (user chot 04/09):
+              tick     -> CẤT VÀO tiền trang
+              bỏ tick  -> LẤY RA khỏi tiền trang
+              xoá dòng -> bot không đụng tới món đó nữa
+        Nguon = toan bo items_gamedata (26k mon) nen phai TIM THEO TEN. Mon da co trong list luon
+        hien tren dau du co dang tim hay khong - khong thi user chon xong khong biet minh co gi.
+        """
         db = _load_json("items_gamedata.json") or {}
         ten = {}
         for k, v in db.items():
@@ -5752,37 +5756,46 @@ class PartyConfigFrame(ttk.Frame):
         win.transient(self); win.grab_set()
         frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
         top = ttk.Frame(frm); top.pack(fill="x")
-        ttk.Label(top, text="Double-click để tick / bỏ tick. Tìm tên:").pack(side="left")
+        ttk.Label(top, text="Double-click để đổi Cất ↔ Lấy ra. Tìm tên:").pack(side="left")
         q_var = tk.StringVar()
         ttk.Entry(top, textvariable=q_var, width=26).pack(side="left", padx=(4, 0))
         mid = ttk.Frame(frm); mid.pack(fill="both", expand=True)
         tv = ttk.Treeview(mid, columns=("st",), show="tree headings", height=18)
-        tv.heading("#0", text="Vật phẩm"); tv.heading("st", text="Cất")
-        tv.column("#0", width=380); tv.column("st", width=90, anchor="center")
+        tv.heading("#0", text="Vật phẩm"); tv.heading("st", text="Bot làm gì")
+        tv.column("#0", width=360); tv.column("st", width=110, anchor="center")
         sb = ttk.Scrollbar(mid, orient="vertical", command=tv.yview)
         tv.configure(yscrollcommand=sb.set)
         tv.pack(side="left", fill="both", expand=True, pady=(8, 0))
         sb.pack(side="right", fill="y", pady=(8, 0))
         state = dict(ctrl.load_cat_do_items())
+        _NHAN = {ctrl.CAT_DO_CAT: "Cất vào", ctrl.CAT_DO_LAY: "Lấy ra"}
 
         def _fill():
             q = q_var.get().strip().lower()
             tv.delete(*tv.get_children())
-            # DA TICK truoc, roi den ket qua tim. Khong tim gi thi CHI hien cac mon da tick.
+            # Mon DA CO trong list truoc, roi den ket qua tim. Khong tim gi thi CHI hien list.
             keys = [k for k in state if k in ten]
             if q:
                 keys += [k for k, nm in ten.items() if k not in state and q in nm.lower()]
             for k in keys[:400]:
                 tv.insert("", "end", iid=k, text="%s  (%s)" % (ten[k], k),
-                          values=("✔" if state.get(k) else "",))
+                          values=(_NHAN.get(state.get(k), ""),))
 
         def _toggle(_e=None):
+            """Double-click: chua co -> Cất vào -> Lấy ra -> Cất vào ... (xoa han thi dung nut)."""
             k = tv.focus()
             if not k:
                 return
-            if state.pop(k, None) is None:
-                state[k] = True
-            tv.item(k, values=("✔" if state.get(k) else "",))
+            state[k] = ctrl.CAT_DO_LAY if state.get(k) == ctrl.CAT_DO_CAT else ctrl.CAT_DO_CAT
+            tv.item(k, values=(_NHAN.get(state.get(k), ""),))
+
+        def _xoa_dong():
+            """Bo han mon khoi list -> bot khong dung toi nua (khac han voi "lay ra")."""
+            k = tv.focus()
+            if not k:
+                return
+            state.pop(k, None)
+            _fill()
 
         def _save():
             ctrl.save_cat_do_items(state)
@@ -5792,10 +5805,11 @@ class PartyConfigFrame(ttk.Frame):
         q_var.trace_add("write", lambda *_a: _fill())
         _fill()
         bar = ttk.Frame(frm); bar.pack(fill="x", pady=(10, 0))
-        ttk.Button(bar, text="Lưu", command=_save).pack(side="left")
-        ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text="Bỏ tick hết",
-                   command=lambda: (state.clear(), _fill())).pack(side="right")
+        ttk.Button(bar, text="Xoá dòng", command=_xoa_dong).pack(side="left")
+        ttk.Label(bar, foreground="#888",
+                  text="(xoá = bot thôi đụng tới món đó)").pack(side="left", padx=(8, 0))
+        ttk.Button(bar, text="Huỷ", command=win.destroy).pack(side="right")
+        ttk.Button(bar, text="Lưu", command=_save).pack(side="right", padx=(0, 8))
 
     def _open_material_list(self):
         """List TAT CA nguyen lieu donate duoc: double-click doi DONATE <-> GIU LAI.

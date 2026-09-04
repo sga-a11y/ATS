@@ -25,7 +25,7 @@ from bot.train_maps_store import save_learned_regions
 from bot.login import login
 from bot.client import (ATTR_KEY_TO_CODE, ATTR_CODE_TO_TEN, ATTR_KINDS,
                         save_point_cache, load_point_cache,
-                        load_cat_do_items, save_cat_do_items,
+                        load_cat_do_items, save_cat_do_items, CAT_DO_CAT, CAT_DO_LAY,
                         save_skill_char_cache, load_skill_char_cache,
                         GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined, mark_joined,
@@ -7926,8 +7926,24 @@ def save_cat_do_items_str(items_str):
     "TypeError: 't' object is not iterable") - moi cho khac trong BotForegroundService cung noi
     chuoi y het.
     """
-    ds = {x.strip().lower(): True for x in str(items_str or "").split("\n") if x.strip()}
+    ds = {}
+    for dong in str(items_str or "").split("\n"):
+        dong = dong.strip().lower()
+        if not dong:
+            continue
+        # Dang "tid=cat" / "tid=lay". Dang CU chi co "tid" tron -> hieu la "cat".
+        k, _sep, v = dong.partition("=")
+        ds[k.strip()] = v.strip() or CAT_DO_CAT
     return bool(save_cat_do_items(ds))
+
+
+def load_cat_do_items_str():
+    r"""ANDROID: doc list cat -> chuoi cac dong "tid=cat" / "tid=lay", noi bang "\n".
+
+    Chaquopy tra dict/list khong on dinh qua callAttr (xem save_cat_do_items_str) nen quy ve
+    chuoi y het moi cho khac.
+    """
+    return "\n".join("%s=%s" % (k, v) for k, v in sorted(load_cat_do_items().items()))
 
 
 def apply_point_config(username, point_config):

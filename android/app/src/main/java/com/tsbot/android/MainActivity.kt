@@ -982,8 +982,8 @@ fun TsBotApp(
                 // List cat DUNG CHUNG moi acc -> ghi thang qua Python, khong qua PartyStore.
                 val key = "0x%04x".format(tid)
                 val ds = BotForegroundService.loadCatDoItems()
-                if (key in ds) false
-                else BotForegroundService.saveCatDoItems(ds + key)
+                if (ds[key] == "cat") false
+                else BotForegroundService.saveCatDoItems(ds + (key to "cat"))
             },
             onDismiss = { editingBagAccount = null },
         )
@@ -3845,24 +3845,26 @@ fun CatDoListDialog(
 ) {
     val context = LocalContext.current
     val ten = remember { loadItemNames(context) }
+    // BA trang thai (user chot 04/09): tick = CAT VAO | bo tick = LAY RA | xoa dong = bot thoi
+    // dung toi mon do. "Bo tick" KHAC "xoa" - do la ly do khong dung Set<String>.
     val state = remember {
-        mutableStateMapOf<String, Boolean>().apply {
-            BotForegroundService.loadCatDoItems().forEach { put(it, true) }
-        }
+        mutableStateMapOf<String, String>().apply { putAll(BotForegroundService.loadCatDoItems()) }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("List cất (${state.size})") },
+        title = { Text("List tiền trang (${state.size})") },
         text = {
             Column {
                 Text(
-                    "Danh sách này DÙNG CHUNG cho mọi acc. Bỏ tick để bot thôi cất món đó.",
+                    "Dùng chung cho mọi acc. Tick = CẤT VÀO tiền trang, bỏ tick = LẤY RA. " +
+                        "Xoá dòng = bot thôi đụng tới món đó.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(6.dp))
                 val keys = state.keys.toList().sorted()
                 if (keys.isEmpty()) {
-                    Text("(chưa có món nào)", style = MaterialTheme.typography.bodySmall)
+                    Text("(chưa có món nào — thêm từ Túi đồ)",
+                         style = MaterialTheme.typography.bodySmall)
                 }
                 LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
                     items(keys.size) { i ->
@@ -3871,10 +3873,15 @@ fun CatDoListDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         ) {
-                            Checkbox(checked = state[k] == true, onCheckedChange = { on ->
-                                if (on) state[k] = true else state[k] = false
+                            Checkbox(checked = state[k] == "cat", onCheckedChange = { on ->
+                                state[k] = if (on) "cat" else "lay"
                             })
                             Text(ten[k] ?: k, modifier = Modifier.weight(1f))
+                            Text(
+                                if (state[k] == "cat") "Cất vào" else "Lấy ra",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            TextButton(onClick = { state.remove(k) }) { Text("✕") }
                         }
                     }
                 }
@@ -3882,11 +3889,11 @@ fun CatDoListDialog(
         },
         confirmButton = {
             Button(onClick = {
-                BotForegroundService.saveCatDoItems(state.filterValues { it }.keys.toList())
+                BotForegroundService.saveCatDoItems(state.toMap())
                 onDismiss()
             }) { Text("Lưu") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Huỷ") } },
     )
 }
 

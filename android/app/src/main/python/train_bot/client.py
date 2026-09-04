@@ -1420,10 +1420,13 @@ def _save_gift_state(label: str, online_sec: float, claimed: set, today=None):
 # ban sao rieng. File nay bot TU SINH (nhu checkin_state.json) nen KHONG can khai bao trong
 # SHARED_ASSETS / DATA_JSON.
 _CAT_DO_FILE = "cat_do_items.json"
+CAT_DO_CAT = "cat"      # tick    -> CAT vao tien trang
+CAT_DO_LAY = "lay"      # bo tick -> LAY RA khoi tien trang
+# Mon KHONG co trong list = bot khong dung toi (user da xoa dong di).
 # Mac dinh khi file chua ton tai. Ca hai deu `restrict & 32 == 0` -> game cho gui ngan hang.
 CAT_DO_MAC_DINH = {
-    "0xb3e2": True,     # Don Thang Hoa
-    "0xb49f": True,     # Tien Don Nang Luong
+    "0xb3e2": CAT_DO_CAT,     # Don Thang Hoa
+    "0xb49f": CAT_DO_CAT,     # Tien Don Nang Luong
 }
 
 
@@ -1435,11 +1438,29 @@ def _cat_do_path():
         return _CAT_DO_FILE
 
 
+def _chuan_hoa_cat_do(ds) -> dict:
+    """{tid_hex: "cat"|"lay"}. Nhan ca dang CU {tid: true/false} de doc lai file da luu.
+
+    Dang cu chi co hai trang thai (co trong list = cat, khong co = ke). Gio co BA: cat / lay /
+    khong co trong list -> `true` cu doc thanh "cat", `false` cu (neu co) doc thanh "lay".
+    """
+    out = {}
+    for k, v in (ds or {}).items():
+        k = str(k).lower()
+        if v is True:
+            out[k] = CAT_DO_CAT
+        elif v is False:
+            out[k] = CAT_DO_LAY
+        elif str(v) in (CAT_DO_CAT, CAT_DO_LAY):
+            out[k] = str(v)
+    return out
+
+
 def load_cat_do_items() -> dict:
-    """{tid_hex: True} - list mon tu cat vao tien trang, DUNG CHUNG moi acc.
+    """{tid_hex: "cat"|"lay"} - DUNG CHUNG moi acc.
 
     Chua co file -> tra MAC DINH. File co roi thi ton trong NGUYEN VAN, ke ca khi rong:
-    user bo tick het la co y, nhoi lai mac dinh thi ho bo bao nhieu lan cung khong duoc.
+    user xoa het la co y, nhoi lai mac dinh thi ho xoa bao nhieu lan cung khong duoc.
     """
     p = _cat_do_path()
     if not os.path.exists(p):
@@ -1449,15 +1470,13 @@ def load_cat_do_items() -> dict:
             d = json.load(fh)
     except Exception:
         return dict(CAT_DO_MAC_DINH)
-    ds = d.get("items") if isinstance(d, dict) else None
-    return {str(k).lower(): True for k, v in (ds or {}).items() if v}
+    return _chuan_hoa_cat_do(d.get("items") if isinstance(d, dict) else None)
 
 
 def save_cat_do_items(items) -> bool:
     try:
         with open(_cat_do_path(), "w", encoding="utf-8") as fh:
-            json.dump({"items": {str(k).lower(): True for k, v in (items or {}).items() if v}},
-                      fh, ensure_ascii=False, indent=2)
+            json.dump({"items": _chuan_hoa_cat_do(items)}, fh, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
         log.warning("khong ghi duoc %s: %s", _CAT_DO_FILE, e)
@@ -2216,6 +2235,7 @@ class GameClient:
         # ban vao khoang khong - te nhat la server ngat "su kien vi pham". Xem cat_do_tien_trang.
         self.event_dang_mo = False
         self.bank_open = False
+        self.bank_slots = {}        # {idx trong kho: (tid, count)} - doc tu S:030-001/004/005
         # "Tu don tui do" (Cai dat nang cao) = CONG TONG cua 3 muc con ben duoi; tat -> ca 3 ngung.
         self.auto_bag_clean = True
         self.auto_discard_junk = True        # vut item rac (Ngoc Hu) - mac dinh BAT
@@ -4096,6 +4116,20 @@ class GameClient:
             # trang san sang; gui lenh cat truoc moc nay la ban vao khoang khong.
             if pkt[7:9] == b"\x01\x00":
                 self.bank_open = True
+                self._doc_kho_tien_trang(pkt[9:])
+            elif pkt[7:9] == b"\x04\x00":         # S:030-004: them/cap nhat MOT o
+                self._doc_kho_tien_trang(pkt[9:])
+            elif pkt[7:9] == b"\x05\x00" and len(pkt) >= 14:
+                # S:030-005 <錢莊1減少物品> +索引(1) +減少數量(4)
+                _i = pkt[9]
+                _n = struct.unpack_from("<I", pkt, 10)[0]
+                _cu = (self.bank_slots or {}).get(_i)
+                if _cu:
+                    _con = int(_cu[1]) - int(_n)
+                    if _con > 0:
+                        self.bank_slots[_i] = (_cu[0], _con)
+                    else:
+                        self.bank_slots.pop(_i, None)
             # S:030-007 <錢莊操作失敗> +失敗結果(1): 3 = cat that bai, 13 = tien trang DAY.
             # Khong bat thi bot cu ban tiep ca chuc mon vao mot cai kho da day.
             if pkt[7:9] == b"\x07\x00" and len(pkt) >= 10:
@@ -14009,6 +14043,26 @@ class GameClient:
             log.warning("[%s] loi ban nguyen lieu quan doan (bo qua): %s", self._label, e)
         return sold
 
+    # Mot ban ghi trong kho tien trang. Do tu capture 04/09 (S:030-001 dai 180B cho 5 o, 72B cho
+    # 2 o -> 36B/ban ghi): `[idx 1B][itemId u16][count u32][29B con lai]`.
+    # (protocal.lua ghi `+物品資料(18)` - so do KHONG khop ban dang chay, dung so do tu capture.)
+    BANK_REC = 36
+
+    def _doc_kho_tien_trang(self, data: bytes):
+        """S:030-001 (ca kho) / S:030-004 (mot o) -> self.bank_slots {idx: (tid, count)}.
+
+        Can de LAY DO RA: `C:030-001` an INDEX TRONG KHO, khong phai slot tui do.
+        """
+        if self.bank_slots is None:
+            self.bank_slots = {}
+        for off in range(0, len(data) - self.BANK_REC + 1, self.BANK_REC):
+            idx = data[off]
+            tid, cnt = struct.unpack_from("<HI", data, off + 1)
+            if tid and cnt:
+                self.bank_slots[idx] = (tid, cnt)
+            else:
+                self.bank_slots.pop(idx, None)
+
     def _on_bank_fail(self, ma: int):
         """S:030-007 <錢莊操作失敗> +失敗結果(1). 3 = cat that bai, 13 = tien trang DAY."""
         self.bank_fail = int(ma)
@@ -14028,7 +14082,7 @@ class GameClient:
                 tid, cnt = int(val[0]), int(val[1])
             except Exception:
                 continue
-            if cnt <= 0 or not chon.get("0x%04x" % tid):
+            if cnt <= 0 or chon.get("0x%04x" % tid) != CAT_DO_CAT:
                 continue
             rec = gd.get(tid) or {}
             if int(rec.get("restrict", 0) or 0) & self.BANK_RESTRICT_CAM:
@@ -14047,9 +14101,9 @@ class GameClient:
 
         Tra {'cat': so mon, 'so_luong': tong so luong, 'bo_qua': ly do}.
         """
-        kq = {"cat": 0, "so_luong": 0, "bo_qua": ""}
+        kq = {"cat": 0, "so_luong": 0, "lay": 0, "lay_so_luong": 0, "bo_qua": ""}
         # List DUNG CHUNG moi acc (cat_do_items.json). `chon` chi de test truyen tay.
-        chon = {str(k).lower(): v for k, v in (chon or load_cat_do_items()).items() if v}
+        chon = _chuan_hoa_cat_do(chon or load_cat_do_items())
         if not chon:
             kq["bo_qua"] = "chua tick mon nao trong List cat do"
             return kq
@@ -14057,15 +14111,19 @@ class GameClient:
             kq["bo_qua"] = "khong o Trac Quan (dang o %s)" % self.current_map
             return kq
         can = self._cat_do_slots(chon)
-        if not can:
+        # Con phai xet chieu NGUOC LAI: co mon danh dau "lay ra" thi VAN di, du trong tui khong
+        # co gi de cat. Kho co gi thi chi biet sau khi mo, nen khong the loc truoc o day.
+        _co_lay = any(v == CAT_DO_LAY for v in chon.values())
+        if not can and not _co_lay:
             kq["bo_qua"] = "khong co mon nao trong list o tui"
             return kq
         if not self._wait_combat_clear(idle=1.0, cap=60.0):
             kq["bo_qua"] = "con ket tran"
             return kq
 
-        log.info("[%s] Tien trang: co %d mon can cat -> di NPC Chu tien trang (map %d)",
-                 self._label, len(can), self.TIEN_TRANG_MAP)
+        log.info("[%s] Tien trang: %d mon can cat%s -> di NPC Chu tien trang (map %d)",
+                 self._label, len(can), ", co mon can lay ra" if _co_lay else "",
+                 self.TIEN_TRANG_MAP)
         if not self.follow_smart_scene_route(self.TRAC_QUAN_CITY, self.TIEN_TRANG_MAP,
                                              safe=self.TIEN_TRANG_POS):
             kq["bo_qua"] = "khong di duoc toi map tien trang"
@@ -14123,14 +14181,41 @@ class GameClient:
             _nm = (_load_gamedata_items().get(tid) or {}).get("name") or ("0x%04x" % tid)
             log.info("[%s] Tien trang: cat %s x%d (o #%d)", self._label, _nm, qty, slot)
             time.sleep(0.45)
+        # DA MO KHO ROI thi lam luon chieu NGUOC LAI trong cung chuyen di: mon user danh dau
+        # "lay ra" ma dang nam trong kho -> rut ve tui. Khong tach chuyen rieng.
+        self._lay_do_tien_trang(chon, kq)
         # Dong kho ROI dong su kien (`0x1e sub0800` -> `0x14 sub0600`) - ca hai capture 04/09
         # deu co cap nay. Chi sau do moi duoc tele. Xem _dong_su_kien_tien_trang.
         self._dong_su_kien_tien_trang()
         self._ve_trac_quan_sau_cat_do()
-        log.info("[%s] Tien trang: da cat %d mon (%d cai)%s",
-                 self._label, kq["cat"], kq["so_luong"],
+        log.info("[%s] Tien trang: da cat %d mon (%d cai), lay ra %d mon (%d cai)%s",
+                 self._label, kq["cat"], kq["so_luong"], kq["lay"], kq["lay_so_luong"],
                  " - %s" % kq["bo_qua"] if kq["bo_qua"] else "")
         return kq
+
+    def _lay_do_tien_trang(self, chon: dict, kq: dict):
+        """Rut cac mon danh dau "lay" tu kho ve tui. PHAI goi khi kho DANG MO.
+
+        `C:030-001 <錢莊領物品> <<+索引(1) +數量(4)>>` an INDEX TRONG KHO (doc tu S:030-001),
+        KHONG phai slot tui do - nham cai nay la rut nham mon.
+        """
+        gd = _load_gamedata_items()
+        for idx, val in sorted((self.bank_slots or {}).items()):
+            if not self.running or self.bank_fail is not None:
+                break
+            tid, cnt = int(val[0]), int(val[1])
+            if chon.get("0x%04x" % tid) != "lay":
+                continue
+            trong = self.bag_capacity() - self.bag_used_slots()
+            if trong <= 0:
+                log.info("[%s] Tien trang: tui day -> khong lay them", self._label)
+                break
+            self.send(0x1E, b"\x01\x00" + bytes([idx & 0xFF]) + struct.pack("<I", cnt))
+            kq["lay"] += 1
+            kq["lay_so_luong"] += cnt
+            _nm = (gd.get(tid) or {}).get("name") or ("0x%04x" % tid)
+            log.info("[%s] Tien trang: LAY RA %s x%d (kho #%d)", self._label, _nm, cnt, idx)
+            time.sleep(0.45)
 
     def _dong_su_kien_tien_trang(self):
         """Bao server DA DONG tien trang truoc khi lam bat cu viec gi khac.

@@ -57,6 +57,8 @@ class _Gia(C.GameClient):
         self.bank_fail = None
         self.event_dang_mo = False
         self.bank_open = False
+        self.bank_slots = {}
+        self.role_counts = {}       # bag_capacity() that doc bang nay
         self.pos = (0, 0)
         self.di_toi = []
 
@@ -110,7 +112,7 @@ class TestCatDo(unittest.TestCase):
         self.assertEqual(self.c.sent, [], "chua tick ma da gui goi")
 
     def test_goi_cat_dung_bo_cuc(self):
-        kq = self.c.cat_do_tien_trang({"0x7d2b": True})
+        kq = self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         self.assertEqual(kq["cat"], 1)
         self.assertEqual(kq["so_luong"], 40, "phai cat CA STACK")
         cat = [p for op, p in self.c.sent if op == 0x1E and p[:2] == b"\x02\x00"]
@@ -125,7 +127,7 @@ class TestCatDo(unittest.TestCase):
         va gui `0x20 02 00 01` (id NPC vao day) - sai: capture cho thay payload luon la 08, y
         het sell_noi_dat, con id NPC di trong goi 0x14.
         """
-        self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         self.assertIn((0x14, b"\x01\x00" + struct.pack("<H", 1)), self.c.sent)
         self.assertIn((0x20, b"\x02\x00\x08"), self.c.sent)
 
@@ -133,7 +135,7 @@ class TestCatDo(unittest.TestCase):
         """captures/tien_trang_cat_do_20260904.pcap:
         0x20 sub0200 08 -> 0x14 sub0100 [id u16] -> (su kien mo) -> 0x14 sub0600 -> kho mo.
         """
-        self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         self.assertIn((0x20, b"\x02\x00\x08"), self.c.sent)
         self.assertIn((0x14, b"\x01\x00" + struct.pack("<H", 1)), self.c.sent)
         self.assertIn((0x14, b"\x06\x00"), self.c.sent)
@@ -143,13 +145,13 @@ class TestCatDo(unittest.TestCase):
 
         NPC tien trang khong co menu -> gui `C:020-009 <事件選擇>` la thao tac khong ton tai.
         """
-        self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         subs = [p[:2] for op, p in self.c.sent if op == 0x14]
         self.assertNotIn(b"\x09\x00", subs)
 
     def test_NPC_khong_mo_thoai_thi_DUNG_LAI(self):
         self.c.tu_mo_su_kien = False
-        kq = self.c.cat_do_tien_trang({"0x7d2b": True})
+        kq = self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         self.assertEqual(kq["bo_qua"], "NPC khong mo thoai")
         self.assertEqual(kq["cat"], 0)
         self.assertNotIn(0x1E, [op for op, _p in self.c.sent], "chua mo kho ma da ban lenh cat")
@@ -157,7 +159,7 @@ class TestCatDo(unittest.TestCase):
     def test_kho_khong_mo_thi_DUNG_LAI(self):
         """Thoai chay nhung `S:030-001` khong ve -> cat luc nay la ban vao khoang khong."""
         self.c.tu_mo_kho = False
-        kq = self.c.cat_do_tien_trang({"0x7d2b": True})
+        kq = self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         self.assertEqual(kq["bo_qua"], "tien trang khong mo")
         self.assertEqual(kq["cat"], 0)
 
@@ -168,7 +170,7 @@ class TestCatDo(unittest.TestCase):
         `0x14 sub0600` dong su kien TRUOC khi go_to_town.
         """
         self.c.tu_mo_kho = False
-        self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         _ops = self.c.sent
         self.assertIn((0x14, b"\x06\x00"), _ops, "khong dong su kien truoc khi roi di")
         _i_dong = _ops.index((0x14, b"\x06\x00"))
@@ -181,23 +183,23 @@ class TestCatDo(unittest.TestCase):
         Dang mo tien trang thi SERVER coi la DANG BAN: khong moi party duoc, khong nhan loi moi.
         Bot chay party ma quen buoc nay thi acc do ket ngoai party mai, ca party dung cho.
         """
-        self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         goi = [x for x in self.c.sent if x[0] != "TELE"]      # bo moc tele cua client gia
         self.assertEqual(goi[-2:], [(0x1E, b"\x08\x00"), (0x14, b"\x06\x00")])
 
     def test_di_dung_map_va_toa_do(self):
-        self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         self.assertEqual(self.c.di_toi, [(12001, 12263, (390, 310))])
         self.assertEqual(self.c.pos, (390, 310))
 
     def test_ve_lai_trac_quan(self):
-        self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         self.assertEqual(self.c.current_map, C.GameClient.TRAC_QUAN_CITY,
                          "khong ve thanh thi buoc tele ke tiep xuat phat sai cho")
 
     def test_khong_o_trac_quan_thi_bo_qua(self):
         self.c.current_map = 12061
-        kq = self.c.cat_do_tien_trang({"0x7d2b": True})
+        kq = self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         self.assertEqual(kq["cat"], 0)
         self.assertEqual(self.c.sent, [])
 
@@ -211,9 +213,63 @@ class TestCatDo(unittest.TestCase):
             if op == 0x1E and payload[:2] == b"\x02\x00":
                 self.c.bank_fail = 13       # server bao day ngay sau mon dau
         self.c.send = send
-        kq = self.c.cat_do_tien_trang({"0x7d2b": True})
+        kq = self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
         self.assertEqual(kq["cat"], 1, "phai dung ngay sau mon dau")
         self.assertEqual(kq["bo_qua"], "tien trang day")
+
+
+class TestLayDoRa(unittest.TestCase):
+    """Bo tick = LAY RA khoi tien trang (user chot 04/09). Cung mot chuyen di voi cat."""
+
+    def setUp(self):
+        self.c = _Gia()
+        self.c.bag_slots = {5: [0x7D2B, 40]}
+        # Kho: doc that tu captures/tien_trang_lay_do_20260904.pcap
+        self.c.bank_slots = {3: (0xB3E2, 1), 4: (0xB49F, 7), 5: (0xB4A1, 6)}
+
+    def test_goi_lay_dung_bo_cuc(self):
+        """`C:030-001 <錢莊領物品>` = 0x1e sub0100 + [idx trong KHO][so luong u32]."""
+        kq = self.c.cat_do_tien_trang({"0xb49f": C.CAT_DO_LAY})
+        lay = [p for op, p in self.c.sent if op == 0x1E and p[:2] == b"\x01\x00"]
+        self.assertEqual(len(lay), 1)
+        self.assertEqual(lay[0], b"\x01\x00" + bytes([4]) + struct.pack("<I", 7))
+        self.assertEqual((kq["lay"], kq["lay_so_luong"]), (1, 7))
+
+    def test_an_INDEX_KHO_khong_phai_slot_tui(self):
+        """Nham cai nay la rut NHAM mon: idx 4 la vi tri trong kho, khong lien quan slot tui."""
+        self.c.cat_do_tien_trang({"0xb4a1": C.CAT_DO_LAY})
+        lay = [p for op, p in self.c.sent if op == 0x1E and p[:2] == b"\x01\x00"]
+        self.assertEqual(lay[0][2], 5, "phai la idx trong kho cua 0xb4a1")
+
+    def test_mon_khong_trong_list_thi_KHONG_dung_toi(self):
+        """Xoa dong = bot thoi dung toi. Kho co 3 mon nhung list chi ke mot."""
+        self.c.cat_do_tien_trang({"0xb49f": C.CAT_DO_LAY})
+        lay = [p for op, p in self.c.sent if op == 0x1E and p[:2] == b"\x01\x00"]
+        self.assertEqual(len(lay), 1, "rut ca mon khong co trong list")
+
+    def test_mon_danh_dau_CAT_thi_khong_bi_rut_ra(self):
+        self.c.cat_do_tien_trang({"0xb49f": C.CAT_DO_CAT})
+        lay = [p for op, p in self.c.sent if op == 0x1E and p[:2] == b"\x01\x00"]
+        self.assertEqual(lay, [])
+
+    def test_tui_day_thi_khong_rut_them(self):
+        self.c.bag_slots = {i: [0x1000 + i, 1] for i in range(200)}   # cap = 200 -> day
+        kq = self.c.cat_do_tien_trang({"0xb49f": C.CAT_DO_LAY})
+        self.assertEqual(kq["lay"], 0)
+
+    def test_doc_kho_tu_capture_that(self):
+        c = _Gia()
+        import binascii
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "captures", "tien_trang_lay_do_20260904.pcap"), "rb"):
+            pass    # chi de chac file capture con trong repo
+        # 2 ban ghi dau cua S:030-001 that (36B/ban ghi: idx + tid u16 + count u32 + 29B)
+        d = binascii.unhexlify(
+            "01" + "c57e" + "01000000" + "00" * 29 +
+            "02" + "efb5" + "01000000" + "00" * 29)
+        c.bank_slots = {}
+        c._doc_kho_tien_trang(d)
+        self.assertEqual(c.bank_slots, {1: (0x7EC5, 1), 2: (0xB5EF, 1)})
 
 
 class TestLocRestrict(unittest.TestCase):
@@ -224,9 +280,9 @@ class TestLocRestrict(unittest.TestCase):
         goc = C._load_gamedata_items()
         goc[0x1234] = {"name": "mon cam", "restrict": 32}
         try:
-            self.assertEqual(c._cat_do_slots({"0x1234": True}), [])
+            self.assertEqual(c._cat_do_slots({"0x1234": C.CAT_DO_CAT}), [])
             goc[0x1234]["restrict"] = 0
-            self.assertEqual(c._cat_do_slots({"0x1234": True}), [(3, 0x1234, 5)])
+            self.assertEqual(c._cat_do_slots({"0x1234": C.CAT_DO_CAT}), [(3, 0x1234, 5)])
         finally:
             goc.pop(0x1234, None)
 
@@ -264,8 +320,15 @@ class TestListChung(unittest.TestCase):
                              "%s (%s) bi game cam gui ngan hang" % (k, rec.get("name")))
 
     def test_ghi_roi_doc_lai(self):
-        self.assertTrue(C.save_cat_do_items({"0x522b": True}))
-        self.assertEqual(C.load_cat_do_items(), {"0x522b": True})
+        self.assertTrue(C.save_cat_do_items({"0x522b": C.CAT_DO_LAY}))
+        self.assertEqual(C.load_cat_do_items(), {"0x522b": C.CAT_DO_LAY})
+
+    def test_doc_duoc_FILE_DANG_CU(self):
+        """File da luu truoc do dung {tid: true}. Doc phai ra "cat", khong duoc mat mon."""
+        with open(C._cat_do_path(), "w", encoding="utf-8") as fh:
+            fh.write('{"items": {"0xb3e2": true, "0x522b": false}}')
+        self.assertEqual(C.load_cat_do_items(),
+                         {"0xb3e2": C.CAT_DO_CAT, "0x522b": C.CAT_DO_LAY})
 
     def test_file_rong_thi_ton_trong(self):
         """Bo tick het la CO Y - khong duoc nhoi lai mac dinh."""
@@ -279,7 +342,7 @@ class TestListChung(unittest.TestCase):
 
     def test_bot_doc_thang_file_chung(self):
         """cat_do_tien_trang khong truyen `chon` thi phai tu doc file chung."""
-        C.save_cat_do_items({"0x7d2b": True})
+        C.save_cat_do_items({"0x7d2b": C.CAT_DO_CAT})
         c = _Gia()
         c.bag_slots = {5: [0x7D2B, 3]}
         kq = c.cat_do_tien_trang()

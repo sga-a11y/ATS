@@ -79,10 +79,12 @@ class TestCauNoiSangPython(unittest.TestCase):
         src = _doc("run_party_digioi.py")
         self.assertIn("def save_cat_do_items_str(", src)
         kt = _kt("BotForegroundService.kt")
-        self.assertIn('callAttr("save_cat_do_items_str"', kt)
+        # Neo theo Y NGHIA: co goi ham do va co noi chuoi. KHONG neo theo mot dong lien mach -
+        # xuong dong cho vua 100 cot la bai test dut du hanh vi khong doi.
+        self.assertIn('"save_cat_do_items_str"', kt)
         self.assertIn("joinToString(", kt)
-        self.assertNotRegex(kt, r'callAttr\("save_cat_do_items_str",\s*items\)',
-                            "truyen thang List<String> se vo o ban release (R8)")
+        self.assertNotRegex(kt, r'callAttr\(\s*"save_cat_do_items_str",\s*items\s*\)',
+                            "truyen thang List/Map se vo o ban release (R8)")
 
     def test_list_cat_KHONG_luu_theo_party(self):
         """List cat la MOT file chung - lo luu them vao PartyStore la hai nguon lech nhau.

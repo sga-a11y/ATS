@@ -175,19 +175,31 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         private fun rpdStatic(): PyObject =
             Python.getInstance().getModule("train_bot.run_party_digioi")
 
-        /** LIST CAT vao tien trang - MOT file chung (`cat_do_items.json`) cho moi acc, do Python
-         *  quan ly. KHONG copy sang PartyStore: chep tay la se lech (bai hoc Servers.kt). */
-        fun loadCatDoItems(): List<String> = try {
-            rpdStatic().callAttr("load_cat_do_items").asMap().keys.map { it.toString().lowercase() }
+        /** LIST tien trang - MOT file chung (`cat_do_items.json`) cho moi acc, do Python quan ly.
+         *  KHONG copy sang PartyStore: chep tay la se lech (bai hoc Servers.kt).
+         *  -> {tid_hex: "cat"|"lay"}: cat = CAT VAO, lay = LAY RA. Khong co trong map = bot khong
+         *  dung toi mon do. */
+        fun loadCatDoItems(): Map<String, String> = try {
+            rpdStatic().callAttr("load_cat_do_items_str").toString()
+                .split("\n").filter { it.isNotBlank() }
+                .associate { dong ->
+                    val (k, v) = dong.split("=", limit = 2).let {
+                        it[0].trim().lowercase() to (it.getOrNull(1)?.trim() ?: "cat")
+                    }
+                    k to v
+                }
         } catch (e: Exception) {
             android.util.Log.w("aTSBot", "load_cat_do_items loi: ${e.message}")
-            emptyList()
+            emptyMap()
         }
 
-        fun saveCatDoItems(items: List<String>): Boolean = try {
-            // Chaquopy KHONG convert dung List<String> qua callAttr (R8 rut gon ten lop ->
+        fun saveCatDoItems(items: Map<String, String>): Boolean = try {
+            // Chaquopy KHONG convert dung List/Map qua callAttr (R8 rut gon ten lop ->
             // "'t' object is not iterable"). Noi bang xuong dong nhu moi cho khac trong file nay.
-            rpdStatic().callAttr("save_cat_do_items_str", items.joinToString("\n")).toBoolean()
+            rpdStatic().callAttr(
+                "save_cat_do_items_str",
+                items.entries.joinToString("\n") { "${it.key}=${it.value}" },
+            ).toBoolean()
         } catch (e: Exception) {
             android.util.Log.w("aTSBot", "save_cat_do_items loi: ${e.message}")
             false
