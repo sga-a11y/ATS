@@ -69,6 +69,39 @@ HO_PHU_CHECK_SEC = 180   # Di Gioi Ho Phu: check moi 3 phut (login + dinh ky)
 PHUC_THAN_CHECK_SEC = 300
 
 
+def _map_cau_hinh(raw, gia_tri_bool=False):
+    """Map cau hinh tu APK: nhan CHUOI "k=v" moi dong (hoac dict, cho ban PC/test).
+
+    APK **KHONG duoc truyen thang Map/List** qua Chaquopy: ban release bi R8 rut gon ten lop nen
+    Python nhan mot object Java, khong phai dict. Hai kieu hong, ca hai deu da xay ra that:
+      - `dict(raw)`            -> `TypeError: 'w' object is not iterable` (CRASH, loi APK 04/09;
+                                  truoc do la `'t' object` o APK 1.1.202608181827).
+      - `isinstance(raw, dict)` -> False -> tra {} IM LANG, tick cua user bi bo qua khong bao gi.
+    Nen moi cho truyen map/list qua Chaquopy phai NOI CHUOI o Kotlin (giong `leaders`,
+    `eventExchangeItems`, `mobElements`, `save_cat_do_items_str`) va parse lai o day.
+
+    `gia_tri_bool=True`: gia tri "1"/"true" -> True, con lai False (dung cho `box_modes` -
+    `tu_mo_hop_trang_bi` doc gia tri kieu bool; de nguyen chuoi thi "false" cung THANH TRUTHY).
+    """
+    if isinstance(raw, dict):
+        out = dict(raw)
+    elif isinstance(raw, str):
+        out = {}
+        for dong in raw.splitlines():
+            dong = dong.strip()
+            if not dong or "=" not in dong:
+                continue
+            k, v = dong.split("=", 1)
+            out[k.strip()] = v.strip()
+    else:
+        return {}
+    if gia_tri_bool:
+        out = {k: (str(v).strip().lower() in ("1", "true", "yes", "on") if not isinstance(v, bool)
+                   else v)
+               for k, v in out.items()}
+    return out
+
+
 def _scroll_modes_map(raw):
     """{"0xc946": "drop"} (config) -> {51526: "drop"} (client). Chi chua muc user DA DOI khac
     mac dinh (mac dinh: cuon cua tuong co vkcd = keep, con lai = drop) nen cuon moi cua game tu
@@ -7196,7 +7229,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "digioi_mode": digioi_mode, "event_key": event_key or "",
         "loandau_mot_tran": bool(loandau_mot_tran),
         "auto_open_boxes": bool(auto_open_boxes),
-        "box_modes": dict(box_modes or {}),
+        "box_modes": _map_cau_hinh(box_modes, gia_tri_bool=True),
         "auto_cat_do": bool(auto_cat_do),
         "auto_bag_expand": bool(auto_bag_expand),
         "bag_expand_gold": int(bag_expand_gold or 0),
@@ -7209,9 +7242,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "auto_bag_clean": bool(auto_bag_clean),
         "auto_discard_junk": bool(auto_discard_junk),
         "auto_decompose_scrolls": bool(auto_decompose_scrolls),
-        "scroll_modes": scroll_modes or {},
+        "scroll_modes": _map_cau_hinh(scroll_modes),
         "auto_donate_materials": bool(auto_donate_materials),
-        "material_modes": material_modes or {},
+        "material_modes": _map_cau_hinh(material_modes),
         "auto_event_exchange": bool(auto_event_exchange),
         "event_exchange_sig": str(event_exchange_sig or ""),
         # APK truyen CHUOI noi bang "\n" (xem BotForegroundService.kt); PC truyen list.

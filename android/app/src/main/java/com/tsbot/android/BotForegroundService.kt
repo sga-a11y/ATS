@@ -288,8 +288,16 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.autoWorldBoss,
                 // THEM O CUOI signature Python (setup_party_runtime) - goi THEO VI TRI
                 party.autoBagClean, party.autoDiscardJunk,
-                party.autoDecomposeScrolls, party.scrollModes,
-                party.autoDonateMaterials, party.materialModes,
+                // Map -> CHUOI "k=v" moi dong. KHONG truyen thang Map: ban release bi R8 rut gon
+                // ten lop -> Python nhan object Java, `isinstance(raw, dict)` la False nen
+                // `_scroll_modes_map` tra {} IM LANG (tick giu/bo cuon + nguyen lieu cua user bi
+                // bo qua ma khong bao gi). Xem `_map_cau_hinh` ben Python.
+                party.autoDecomposeScrolls, party.scrollModes.entries.joinToString("\n") {
+                    "${it.key}=${it.value}"
+                },
+                party.autoDonateMaterials, party.materialModes.entries.joinToString("\n") {
+                    "${it.key}=${it.value}"
+                },
                 // Danh sach -> CHUOI noi bang "\n", giong `leaders` o tren. KHONG truyen
                 // thang List<String>: ban release bi R8 rut gon ten lop -> Chaquopy bao
                 // "TypeError: 't' object is not iterable" (loi APK 1.1.202608181827).
@@ -312,7 +320,13 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 // TU MO RUONG TRANG BI + TU CAT DO TIEN TRANG. THEM O CUOI CUNG (goi theo VI TRI).
                 // List cat KHONG truyen o day: no la MOT file chung (cat_do_items.json) ma
                 // Python tu doc, khong phai config theo party.
-                party.autoOpenBoxes, party.boxModes, party.autoCatDo,
+                // `boxModes` cung phai NOI CHUOI (xem chu thich scrollModes o tren). Truyen thang
+                // Map thi Python `dict(box_modes)` no thanh
+                // "TypeError: 'w' object is not iterable" -> MOI acc bao "Loi" ngay luc Chay
+                // (loi APK 1.1.202609040107). Gia tri bool -> "1"/"0".
+                party.autoOpenBoxes,
+                party.boxModes.entries.joinToString("\n") { "${it.key}=${if (it.value) 1 else 0}" },
+                party.autoCatDo,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,
