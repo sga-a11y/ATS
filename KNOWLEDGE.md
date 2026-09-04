@@ -3029,16 +3029,42 @@ Bot phai loc y het, gui la thao tac khong hop le.
 **Kho thu hai dung CHUNG bo cuc:** `C:102-001/002 <寶庫領/存物品>` (Storage) chi khac `mainKind`
 102 thay vi 30. Cung file `UIBank.lua`, chon bang `currentTag`.
 
-### NPC Chu tien trang (Trac Quan)
+### NPC Chu tien trang (Trac Quan) — CHUOI DAY DU (capture that 04/09)
+
+> `captures/tien_trang_cat_do_20260904.pcap` (cat vao) + `tien_trang_lay_do_20260904.pcap`
+> (lay ra). Hai capture cho CUNG mot chuoi mo/dong.
+
 - Scene **12263**, chi co DUNG MOT NPC: `Eve_NpcData.id = 1`, `npcId = 16004`, pos `(430,240)`.
-  Cho dung noi chuyen user chot la `(390,310)`.
-- **`0x20 sub0200 + <id>` dung `Eve_NpcData.id` (so thu tu NPC TRONG SCENE), KHONG phai `npcId`
-  toan cuc.** Nham cho nay thi server coi la vi pham. (`sell_noi_dat` gui `0x20 02 00 08` cung la
-  id trong scene.)
-- Surface 1 co 3 muc -> `0x14 sub0900 + ma`: **30 = Tien bac, 31 = Vat pham day du (CAT DO),
-  32 = kho dau gia**.
-- `world_nav` co canh `12001 -> 12263` qua **cong 11**, mot leg — dung
-  `follow_smart_scene_route`, khong can route hardcode.
+  Cho dung noi chuyen: `(390,310)`. `world_nav` co canh `12001 -> 12263` qua **cong 11** (mot
+  leg) — dung `follow_smart_scene_route`, khong can route hardcode.
+
+| # | Goi | Nghia |
+|---|---|---|
+| 1 | C2S `0x20 sub0200 08` | payload LUON la `08`, y het `sell_noi_dat` — **khong phai id NPC** |
+| 2 | C2S `0x14 sub0100 [id u16]` | `C:020 <事件觸發>` voi `triggerKind = EEventTrigger.ClickNpc = 1`; `id` = `Eve_NpcData.id` (= 1) |
+| 3 | S2C `0x14 sub0100 ...` | su kien MO |
+| 4 | C2S `0x14 sub0600` | `C:020-006 <事件下一步>` |
+| 5 | S2C `0x1e sub0100 ...` | **kho DA MO** (danh sach) — moc duy nhat de biet san sang |
+| 6 | C2S `0x1e sub0200 [slot 1B][sl 4B]` | CAT (slot = o TUI DO) |
+| 6' | C2S `0x1e sub0100 [idx 1B][sl 4B]` | LAY RA (idx = vi tri TRONG KHO, khong phai slot tui); server ack `S:030-005` = `0x1e sub0500 [idx][sl 4B]` |
+| 7 | C2S `0x1e sub0800` | dong kho |
+| 8 | C2S `0x14 sub0600` | **dong SU KIEN** — thieu la ket |
+
+**Hai cai bay da tra gia that o day:**
+
+1. **KHONG co lenh chon muc.** Tien trang noi chuyen la mo UI luon; chi NPC Nha buon (ban Noi
+   dat) moi co them buoc chon mua/ban (`0x14 sub0900 + ma`). Ban dau doc `surface` cua scene ra
+   3 muc (30 Tien bac / 31 Vat pham / 32 kho dau gia) roi tuong phai gui ma 31 — **surface la
+   MENU TUONG TAC (`EEventTrigger.ClickSurface = 9`), thu khac han**. Gui `C:020-009` khi khong
+   co menu nao mo -> server **NGAT NGAY**: `su kien vi pham (ma 5)`, rot acc tp605 luc 14:57:46.
+2. **Buoc 8 la bat buoc.** Dang mo tien trang thi **SERVER coi la DANG BAN**: khong moi party
+   duoc, khong nhan loi moi, cac thao tac khac deu truot. Phia client cung dang trong su kien
+   (`EventManager.IsRunning()` = True) nen chan moi trigger tiep theo — click NPC khac, vao cong.
+   Voi bot chay party thi day la loi CHET NGUOI: acc cat do xong ma quen bao dong se ket ngoai
+   party mai, ca party dung cho no.
+
+> Bai hoc chung: `0x14` la mainKind 20 (`C:020` su kien), **`0x20` la opcode 32 (bieu cam)**.
+> Doc bang opcode trong protocal phai doi he co so, dung nhin `C:020` roi go `0x20`.
 
 > Tool moi `tools/crack_eve_npc.py --scene N` do bang NPC cua scene (id / npcId / toa do) tu
 > `Eve.emg`, de khoi phai capture chi de biet mot con so.

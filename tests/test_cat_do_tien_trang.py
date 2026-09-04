@@ -44,6 +44,10 @@ def _doc(p):
 class _Gia(C.GameClient):
     """Client gia: ghi lai goi gui ra thay vi mo socket."""
 
+    # Gia lap server: co mo thoai NPC / co mo kho khong (de test ca hai nhanh hong).
+    tu_mo_su_kien = True
+    tu_mo_kho = True
+
     def __init__(self):
         self.sent = []
         self.running = True
@@ -51,11 +55,19 @@ class _Gia(C.GameClient):
         self.bag_slots = {}
         self.current_map = C.GameClient.TRAC_QUAN_CITY
         self.bank_fail = None
+        self.event_dang_mo = False
+        self.bank_open = False
         self.pos = (0, 0)
         self.di_toi = []
 
     def send(self, op, payload=b""):
         self.sent.append((op, bytes(payload)))
+        # Server that (theo capture): ClickNpc -> S:020-001 (su kien mo);
+        # <事件下一步> -> S:030-001 (kho mo).
+        if op == 0x14 and payload[:2] == b"\x01\x00" and self.tu_mo_su_kien:
+            self.event_dang_mo = True
+        elif op == 0x14 and payload[:2] == b"\x06\x00" and self.tu_mo_kho:
+            self.bank_open = True
 
     def _wait_combat_clear(self, idle=1.0, cap=60.0):
         return True
@@ -70,6 +82,9 @@ class _Gia(C.GameClient):
         return True
 
     def go_to_town(self, city, flag=0, **kw):
+        # Ghi mot MOC vao chinh chuoi goi de test kiem duoc THU TU: dong su kien phai xay ra
+        # TRUOC khi tele (tele luc dang ban la chet).
+        self.sent.append(("TELE", city))
         self.current_map = city
         return True
 
@@ -78,7 +93,9 @@ class TestHangSo(unittest.TestCase):
     def test_dung_scene_npc_va_ma_muc(self):
         self.assertEqual(C.GameClient.TIEN_TRANG_MAP, 12263)
         self.assertEqual(C.GameClient.TIEN_TRANG_NPC, 1)      # Eve_NpcData.id, KHONG phai npcId
-        self.assertEqual(C.GameClient.TIEN_TRANG_MUC, 31)     # "Vat pham day du"
+        # KHONG con hang so "ma chon muc": capture that cho thay NPC nay chi mot nhanh, client
+        # gui `0x14 sub0600` (<事件下一步>) chu khong he gui lenh chon muc nao.
+        self.assertFalse(hasattr(C.GameClient, "TIEN_TRANG_MUC"))
         self.assertEqual(C.GameClient.BANK_RESTRICT_CAM, 32)
 
 
@@ -101,14 +118,72 @@ class TestCatDo(unittest.TestCase):
         # sub(2) + slot(1) + so luong(4 LE)
         self.assertEqual(cat[0], b"\x02\x00" + bytes([5]) + struct.pack("<i", 40))
 
-    def test_mo_thoai_npc_roi_chon_muc_31(self):
-        self.c.cat_do_tien_trang({"0x7d2b": True})
-        self.assertIn((0x20, b"\x02\x00" + bytes([1])), self.c.sent)
-        self.assertIn((0x14, b"\x09\x00" + bytes([31])), self.c.sent)
+    def test_mo_thoai_npc_bang_ClickNpc(self):
+        """`C:020 <事件觸發>` voi triggerKind = EEventTrigger.ClickNpc = 1.
 
-    def test_dong_tien_trang_sau_khi_cat(self):
+        mainKind 20 la 0x14 -> `0x14 sub0100 + [id u16]`. Ban dau em tuong 0x20 la lenh mo NPC
+        va gui `0x20 02 00 01` (id NPC vao day) - sai: capture cho thay payload luon la 08, y
+        het sell_noi_dat, con id NPC di trong goi 0x14.
+        """
         self.c.cat_do_tien_trang({"0x7d2b": True})
-        self.assertEqual(self.c.sent[-1], (0x1E, b"\x08\x00"))
+        self.assertIn((0x14, b"\x01\x00" + struct.pack("<H", 1)), self.c.sent)
+        self.assertIn((0x20, b"\x02\x00\x08"), self.c.sent)
+
+    def test_chuoi_mo_dung_capture_that(self):
+        """captures/tien_trang_cat_do_20260904.pcap:
+        0x20 sub0200 08 -> 0x14 sub0100 [id u16] -> (su kien mo) -> 0x14 sub0600 -> kho mo.
+        """
+        self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.assertIn((0x20, b"\x02\x00\x08"), self.c.sent)
+        self.assertIn((0x14, b"\x01\x00" + struct.pack("<H", 1)), self.c.sent)
+        self.assertIn((0x14, b"\x06\x00"), self.c.sent)
+
+    def test_KHONG_BAO_GIO_gui_lenh_chon_muc(self):
+        """Chinh goi nay lam ROT ACC tp605 (server: "su kien vi pham" ma 5).
+
+        NPC tien trang khong co menu -> gui `C:020-009 <事件選擇>` la thao tac khong ton tai.
+        """
+        self.c.cat_do_tien_trang({"0x7d2b": True})
+        subs = [p[:2] for op, p in self.c.sent if op == 0x14]
+        self.assertNotIn(b"\x09\x00", subs)
+
+    def test_NPC_khong_mo_thoai_thi_DUNG_LAI(self):
+        self.c.tu_mo_su_kien = False
+        kq = self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.assertEqual(kq["bo_qua"], "NPC khong mo thoai")
+        self.assertEqual(kq["cat"], 0)
+        self.assertNotIn(0x1E, [op for op, _p in self.c.sent], "chua mo kho ma da ban lenh cat")
+
+    def test_kho_khong_mo_thi_DUNG_LAI(self):
+        """Thoai chay nhung `S:030-001` khong ve -> cat luc nay la ban vao khoang khong."""
+        self.c.tu_mo_kho = False
+        kq = self.c.cat_do_tien_trang({"0x7d2b": True})
+        self.assertEqual(kq["bo_qua"], "tien trang khong mo")
+        self.assertEqual(kq["cat"], 0)
+
+    def test_nhanh_HONG_cung_phai_dong_su_kien_TRUOC_khi_tele(self):
+        """User chot 04/09: "dang ban ma cho tele luon thi cung chet".
+
+        Nhanh hong giua chung (su kien mo nhung kho khong mo) van dang BAN -> phai gui
+        `0x14 sub0600` dong su kien TRUOC khi go_to_town.
+        """
+        self.c.tu_mo_kho = False
+        self.c.cat_do_tien_trang({"0x7d2b": True})
+        _ops = self.c.sent
+        self.assertIn((0x14, b"\x06\x00"), _ops, "khong dong su kien truoc khi roi di")
+        _i_dong = _ops.index((0x14, b"\x06\x00"))
+        _i_tele = next(i for i, x in enumerate(_ops) if x[0] == "TELE")
+        self.assertLess(_i_dong, _i_tele, "TELE khi con dang ban (chua dong su kien) = chet")
+
+    def test_dong_kho_ROI_dong_ca_SU_KIEN(self):
+        """Ca hai capture 04/09: `0x1e sub0800` roi NGAY `0x14 sub0600`.
+
+        Dang mo tien trang thi SERVER coi la DANG BAN: khong moi party duoc, khong nhan loi moi.
+        Bot chay party ma quen buoc nay thi acc do ket ngoai party mai, ca party dung cho.
+        """
+        self.c.cat_do_tien_trang({"0x7d2b": True})
+        goi = [x for x in self.c.sent if x[0] != "TELE"]      # bo moc tele cua client gia
+        self.assertEqual(goi[-2:], [(0x1E, b"\x08\x00"), (0x14, b"\x06\x00")])
 
     def test_di_dung_map_va_toa_do(self):
         self.c.cat_do_tien_trang({"0x7d2b": True})
