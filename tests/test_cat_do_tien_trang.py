@@ -20,6 +20,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from bot import client as C
 
 
+def _import_gui():
+    """Import gui an toan trong test.
+
+    `gui` import `run_party_digioi`, module do doc `int(sys.argv[1])` ngay o muc module (so phut
+    chay). Duoi unittest thi argv[1] la 'discover'/ten test -> ValueError ngay luc import.
+    """
+    _cu = sys.argv
+    sys.argv = [_cu[0]]
+    try:
+        import gui
+        return gui
+    finally:
+        sys.argv = _cu
+
+
 def _doc(p):
     with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), p),
               encoding="utf-8") as fh:
@@ -164,10 +179,88 @@ class TestListMacDinh(unittest.TestCase):
 
     def test_ton_trong_lua_chon_cua_user(self):
         """Co khoa roi thi giu nguyen van, KE CA RONG - bo tick het la co y."""
-        import gui
+        gui = _import_gui()
         self.assertEqual(gui._cat_do_mac_dinh({}), dict(C.GameClient.CAT_DO_MAC_DINH))
         self.assertEqual(gui._cat_do_mac_dinh({"cat_do_items": {}}), {})
         self.assertEqual(gui._cat_do_mac_dinh({"cat_do_items": {"0x1": True}}), {"0x1": True})
+
+
+class TestThemTuTuiDo(unittest.TestCase):
+    """Luong user chot 04/09: THEM mon vao list tu TUI DO, BO thi vao "List cất".
+
+    Ly do: dialog List cat chi TIM theo ten -> mon la thi go mai khong ra, bo tick nham la coi
+    nhu mat ("t lo bo tick cai la gio ko co cach nao de tick lai").
+    """
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        gui = _import_gui()
+        self.gui = gui
+        self._cu = gui.ACCOUNTS_JSON
+        self.d = tempfile.mkdtemp()
+        gui.ACCOUNTS_JSON = os.path.join(self.d, "accounts.json")
+        prof = {"active": "A", "profiles": {
+            "A": {"parties": [{"accounts": [{"u": "u1"}]}]},
+            "B": {"parties": [{"accounts": [{"u": "u1"}], "cat_do_items": {}}]},
+        }}
+        gui._save_profiles(prof)
+        self._shutil = shutil
+
+    def tearDown(self):
+        self.gui.ACCOUNTS_JSON = self._cu
+        self._shutil.rmtree(self.d, ignore_errors=True)
+
+    def _doc(self, ten):
+        return (self.gui._load_profiles()["profiles"][ten]["parties"][0].get("cat_do_items"))
+
+    def test_them_moi_va_giu_mac_dinh(self):
+        ok, ten = self.gui.them_vao_list_cat_do("u1", 0x522B)
+        self.assertTrue(ok)
+        self.assertEqual(ten, "A")
+        ds = self._doc("A")
+        self.assertTrue(ds.get("0x522b"))
+        # Party chua tung co khoa -> dang chay theo MAC DINH; ghi ra phai giu lai, khong thi
+        # bam mot nut la mat hai mon mac dinh.
+        for k in C.GameClient.CAT_DO_MAC_DINH:
+            self.assertTrue(ds.get(k), "ghi xong lam mat mon mac dinh %s" % k)
+
+    def test_khong_them_trung(self):
+        self.gui.them_vao_list_cat_do("u1", 0x522B)
+        ok, tin = self.gui.them_vao_list_cat_do("u1", 0x522B)
+        self.assertFalse(ok)
+        self.assertIn("đã có", tin)
+
+    def test_ghi_vao_cau_hinh_DANG_ACTIVE(self):
+        """Acc nam o ca hai cau hinh -> phai ghi vao cai dang chay."""
+        prof = self.gui._load_profiles()
+        prof["active"] = "B"
+        self.gui._save_profiles(prof)
+        ok, ten = self.gui.them_vao_list_cat_do("u1", 0x522B)
+        self.assertTrue(ok)
+        self.assertEqual(ten, "B", "ghi vao cau hinh khong chay = bam nut khong co tac dung")
+        self.assertIsNone(self._doc("A"))
+
+    def test_acc_la_thi_bao_ro(self):
+        ok, tin = self.gui.them_vao_list_cat_do("khong-co-acc-nay", 0x522B)
+        self.assertFalse(ok)
+        self.assertIn("không tìm thấy", tin)
+
+    def test_ap_live_cho_acc_dang_chay(self):
+        class _C:
+            cat_do_items = {}
+        c = _C()
+        self.gui.them_vao_list_cat_do("u1", 0x522B, client=c)
+        self.assertTrue(c.cat_do_items.get("0x522b"), "phai ap ngay, khong bat user restart")
+
+    def test_tui_do_co_nut(self):
+        src = _doc("gui.py")
+        self.assertIn('"Tự cất vào tiền trang"', src)
+        self.assertIn("_them_cat_do", src)
+        # Mon game cam gui ngan hang thi KHONG duoc hien nut (them vao cung vo ich).
+        m = re.search(r'acts\.append\(\("Tự cất vào tiền trang".*?\)\)', src, re.S)
+        self.assertIsNotNone(m)
+        self.assertIn("_cam", src[max(0, m.start() - 400):m.start()])
 
 
 class TestNoiDayDu(unittest.TestCase):
@@ -197,7 +290,7 @@ class TestNoiDayDu(unittest.TestCase):
         self.assertIn("_open_cat_do_list", src)
         # Tick phai nam GIUA "Tu ban Noi dat" va "Tu vut item rac" (user chot vi tri).
         i_noi = src.index('text="Tự bán Nồi đất"')
-        i_cat = src.index('text="Tự cất đồ vào Tiền trang (Trác Quận)"')
+        i_cat = src.index('text="Tự cất đồ vào Tiền trang"')
         i_rac = src.index('text="Tự vứt item rác (Ngọc Hư)"')
         self.assertLess(i_noi, i_cat)
         self.assertLess(i_cat, i_rac)

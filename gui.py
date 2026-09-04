@@ -311,6 +311,45 @@ def _load_profiles():
                          "Cấu hình 2": {"channel": ch, "parties": [copy.deepcopy(_DEFAULT_PARTY)]}}}
 
 
+def them_vao_list_cat_do(username, tid, client=None):
+    """Them mot item vao "List cất" (tien trang) cua party chua `username`, GHI THANG accounts.json.
+
+    Vi sao can: dialog List cat chi TIM theo ten, nen mon nao user chua biet ten chinh xac thi rat
+    kho them (user 04/09: "lo bo tick cai la gio ko co cach nao de tick lai"). Luong dung la:
+    THEM tu tui do (nhin thay mon that trong tay), BO thi vao List cat.
+
+    Tra (True, ten_party) neu them moi | (False, ly_do) neu da co / khong tim thay acc.
+    """
+    key = "0x%04x" % int(tid)
+    prof = _load_profiles()
+    # Cung mot acc co the nam o NHIEU cau hinh. Phai xet cau hinh DANG ACTIVE truoc, khong thi
+    # ghi vao cau hinh khong chay -> user bam nut may cung khong thay tac dung.
+    _ps = prof.get("profiles") or {}
+    _ten_ds = sorted(_ps, key=lambda t: t != prof.get("active"))
+    for ten in _ten_ds:
+        cfg = _ps[ten] or {}
+        for p in (cfg.get("parties") or ()):
+            if not any(str((a or {}).get("u")) == str(username) for a in (p.get("accounts") or ())):
+                continue
+            ds = p.get("cat_do_items")
+            if not isinstance(ds, dict):
+                # Party chua tung co khoa nay -> dang chay theo list MAC DINH. Phai VIET RA mac
+                # dinh truoc roi moi them, khong thi ghi xong la mat hai mon mac dinh.
+                ds = _cat_do_mac_dinh(p)
+            if ds.get(key):
+                return False, "đã có trong list"
+            ds[key] = True
+            p["cat_do_items"] = ds
+            _save_profiles(prof)
+            if client is not None:      # ap NGAY cho acc dang chay, khong doi restart
+                try:
+                    client.cat_do_items = dict(ds)
+                except Exception:
+                    pass
+            return True, ten
+    return False, "không tìm thấy acc trong cấu hình nào"
+
+
 def _save_profiles(prof):
     """Ghi {active, profiles} vao accounts.json (bot tu rut profile active qua config._load_accounts_json)."""
     with open(ACCOUNTS_JSON, "w", encoding="utf-8") as f:
@@ -3799,6 +3838,16 @@ class BagDialog(tk.Toplevel):
         if self.c.is_fashion_item(tid):
             acts.append(("Thả vào sưu tầm", lambda: self.c.deposit_fashion_slot(slot)))
         acts.append(("Bỏ", lambda: self.c.discard_item(slot, cnt)))
+        # THEM vao "List cất" (tien trang). Day la duong DUY NHAT de them mon moi: dialog List cat
+        # chi TIM theo ten nen mon la rat kho go dung. Bo khoi list thi vao List cat.
+        # Mon game cam gui ngan hang (restrict & 32) thi khong hien nut - them vao cung vo ich.
+        _cam = 0
+        try:
+            _cam = int(d.get("restrict", 0) or 0) & 32
+        except Exception:
+            pass
+        if slot >= 0 and not _cam:
+            acts.append(("Tự cất vào tiền trang", lambda: self._them_cat_do(tid), True))
         for _a in acts:
             text, fn = _a[0], _a[1]
             _mo_hop_thoai = len(_a) > 2 and _a[2]   # True = chi mo hop thoai, KHONG boc _run
@@ -3809,6 +3858,25 @@ class BagDialog(tk.Toplevel):
         if not _equip and not _doi and not _BAG.can_use(d.get("bs")):
             ttk.Label(self.act_fr, text="(không dùng trực tiếp được)",
                       foreground="#888").pack(side="left", padx=(8, 0))
+
+    def _them_cat_do(self, tid):
+        """Nut "Tự cất vào tiền trang": them mon dang chon vao List cat cua party chua acc nay."""
+        try:
+            ok, tin = them_vao_list_cat_do(self.username, tid, client=self.c)
+        except Exception as e:
+            messagebox.showerror("Tự cất vào tiền trang", "Lỗi: %s" % e, parent=self)
+            return
+        nm = (self._item(tid) or {}).get("name") or ("0x%04x" % tid)
+        if ok:
+            messagebox.showinfo(
+                "Tự cất vào tiền trang",
+                "Đã thêm \"%s\" vào List cất (%s).\n\n"
+                "Bot sẽ cất khi bốc trúng Trác Quận, nếu tick \"Tự cất đồ vào Tiền trang\" "
+                "đang bật.\nMuốn bỏ khỏi list thì vào nút \"List cất\"." % (nm, tin),
+                parent=self)
+        else:
+            messagebox.showwarning("Tự cất vào tiền trang",
+                                   "\"%s\": %s." % (nm, tin), parent=self)
 
     @staticmethod
     def _exchange_rows(tid):
@@ -5483,7 +5551,7 @@ class PartyConfigFrame(ttk.Frame):
         # 50-50 truoc khi tele ve thanh route: bốc trúng Ng.Thành thì bán Nồi đất, bốc trúng
         # Trác Quận thì đi cất đồ.
         _ct = ttk.Frame(frm); _ct.pack(anchor="w", fill="x", pady=(4, 0))
-        ttk.Checkbutton(_ct, text="Tự cất đồ vào Tiền trang (Trác Quận)",
+        ttk.Checkbutton(_ct, text="Tự cất đồ vào Tiền trang",
                         variable=self.auto_cat_do_var).pack(side="left")
         ttk.Button(_ct, text="List cất", command=self._open_cat_do_list).pack(side="left",
                                                                              padx=(8, 0))
@@ -5677,11 +5745,6 @@ class PartyConfigFrame(ttk.Frame):
         win = tk.Toplevel(self); win.title("List cất - Tiền trang")
         win.transient(self); win.grab_set()
         frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
-        ttk.Label(frm, wraplength=560, justify="left", foreground="#555",
-                  text="Bốc trúng Trác Quận trước khi về thành route thì bot đi NPC Chủ tiền "
-                       "trang cất những món tick ở đây (bốc trúng Nghiệp Thành thì vẫn bán Nồi "
-                       "đất như cũ). Món có số lượng thì cất cả stack. Món game cấm gửi ngân "
-                       "hàng sẽ tự bỏ qua.").pack(anchor="w", pady=(0, 8))
         top = ttk.Frame(frm); top.pack(fill="x")
         ttk.Label(top, text="Double-click để tick / bỏ tick. Tìm tên:").pack(side="left")
         q_var = tk.StringVar()
