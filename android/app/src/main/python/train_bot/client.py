@@ -1075,7 +1075,12 @@ def _load_gamedata_items() -> dict:
                                     "fc": int(v.get("fc", 0) or 0),
                                     "mat": int(v.get("mat", 0) or 0),
                                     "lv": int(v.get("lv", 0) or 0),
-                                    "kd": int(v.get("kd", 0) or 0)}
+                                    "kd": int(v.get("kd", 0) or 0),
+                                    # st = truong 排序 cua Item_C.dat. Client sap tui do VA tien
+                                    # trang bang `Item.Sort` = (sort ASC, Id ASC). Thieu no thi
+                                    # moi mon deu 999 -> thu tu hien ra khac han trong game.
+                                    "st": int(v.get("st", 999) or 999),
+                                    "q": int(v.get("q", 0) or 0)}
     return _gamedata_items
 
 

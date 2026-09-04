@@ -41,6 +41,11 @@ def _doc(p):
         return fh.read()
 
 
+def _kt_main():
+    return _doc(os.path.join("android", "app", "src", "main", "java", "com", "tsbot", "android",
+                             "MainActivity.kt"))
+
+
 class _Gia(C.GameClient):
     """Client gia: ghi lai goi gui ra thay vi mo socket."""
 
@@ -391,6 +396,41 @@ class TestThemTuTuiDo(unittest.TestCase):
         m = re.search(r'acts\.append\(\("Tự cất vào tiền trang".*?\)\)', src, re.S)
         self.assertIsNotNone(m)
         self.assertIn("_cam", src[max(0, m.start() - 400):m.start()])
+
+
+class TestThuTuHienThi(unittest.TestCase):
+    """List cat/lay phai sap y THU TU TIEN TRANG trong game (user chot 04/09).
+
+    Tra client: `Item.GetBankByCategory` (Logic_Item.lua) goi CHINH `Item.Sort` giong tui do:
+        a.sort < b.sort, bang thi a.Id < b.Id
+    `sort` = truong 排序 cua Item_C.dat = "st" trong items_gamedata.json.
+    Sap theo ma hex hay theo ten deu KHAC voi thu tu user nhin thay trong game - va sai kieu nay
+    KHONG lam bot loi, chi lam user do mat, nen phai co test.
+    """
+
+    def test_gui_sap_theo_st_roi_den_id(self):
+        src = _doc("gui.py")
+        i = src.index("def _open_cat_do_list")
+        than = src[i:src.index("\n    def ", i + 10)]
+        self.assertIn("_thu_tu", than, "khong co ham sap xep rieng")
+        self.assertRegex(than, r"_st\.get\(k, 999\)\s*,\s*int\(k, 16\)",
+                         "phai sap theo (st, id) - dung Item.Sort cua client")
+        self.assertRegex(than, r"keys = sorted\(", "danh sach chinh phai duoc sap")
+
+    def test_apk_sap_theo_st_roi_den_id(self):
+        src = _kt_main()
+        self.assertIn("fun loadItemSort(", src)
+        m = re.search(r"val keys = state\.keys\.sortedWith\((.*?)\)\n", src, re.S)
+        self.assertIsNotNone(m, "APK khong sap danh sach")
+        self.assertIn("sortMap[it]", m.group(1))
+        self.assertIn("toIntOrNull(16)", m.group(1), "khoa phu phai la ID so, khong phai chuoi hex")
+
+    def test_st_co_that_trong_du_lieu(self):
+        """Sap theo `st` ma du lieu khong co truong do thi moi mon deu 999 -> vo nghia."""
+        gd = C._load_gamedata_items()
+        # Hai mon mac dinh + mot mon trang bi thuong
+        for tid in (0xB3E2, 0xB49F, 0x52DD):
+            self.assertIn("st", gd.get(tid) or {}, "0x%04x thieu truong st" % tid)
 
 
 class TestNoiDayDu(unittest.TestCase):

@@ -3845,6 +3845,7 @@ fun CatDoListDialog(
 ) {
     val context = LocalContext.current
     val ten = remember { loadItemNames(context) }
+    val sortMap = remember { loadItemSort(context) }
     // BA trang thai (user chot 04/09): tick = CAT VAO | bo tick = LAY RA | xoa dong = bot thoi
     // dung toi mon do. "Bo tick" KHAC "xoa" - do la ly do khong dung Set<String>.
     val state = remember {
@@ -3861,7 +3862,10 @@ fun CatDoListDialog(
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(6.dp))
-                val keys = state.keys.toList().sorted()
+                // Sap y THU TU TIEN TRANG trong game: (sort ASC, Id ASC) - xem loadItemSort.
+                val keys = state.keys.sortedWith(
+                    compareBy({ sortMap[it] ?: 999 }, { it.removePrefix("0x").toIntOrNull(16) ?: 0 })
+                )
                 if (keys.isEmpty()) {
                     Text("(chưa có món nào — thêm từ Túi đồ)",
                          style = MaterialTheme.typography.bodySmall)
@@ -3916,6 +3920,28 @@ fun loadItemNames(context: android.content.Context): Map<String, String> {
         }
     }
     return _itemNameCache ?: emptyMap()
+}
+
+private var _itemSortCache: Map<String, Int>? = null
+
+/** {tid_hex: sort} - truong 排序 cua Item_C.dat ("st" trong items_gamedata.json).
+ *
+ *  Tien trang sap XEP y het tui do: `Item.GetBankByCategory` goi CHINH `Item.Sort`, tuc
+ *  (sort ASC, Id ASC). Sap theo ma hex hay theo ten deu KHAC voi thu tu user nhin thay trong
+ *  game. */
+fun loadItemSort(context: android.content.Context): Map<String, Int> {
+    if (_itemSortCache == null) {
+        _itemSortCache = try {
+            val bytes = context.assets.open("train_bot_data/items_gamedata.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8))
+            val out = HashMap<String, Int>()
+            for (k in root.keys()) out[k.lowercase()] = root.optJSONObject(k)?.optInt("st", 999) ?: 999
+            out
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+    return _itemSortCache ?: emptyMap()
 }
 
 @Composable

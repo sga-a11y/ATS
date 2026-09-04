@@ -24,6 +24,17 @@ Cách làm đúng:
 - Ghi xong file text thì **kiểm ngay**: `python -c "print(b'\x00' in open('F','rb').read())"`
   (hoặc `grep -c "" F` — ra `Binary file ... matches` là hỏng).
 
+### ⚠️ BẪY: `_load_gamedata_items()` CHÉP TAY từng trường — thiếu trường là hỏng ÂM THẦM
+Loader không đọc thẳng JSON mà dựng dict mới với một danh sách trường viết tay. Trường nào quên
+khai báo thì `rec.get("x")` trả `None` → `0`, **không lỗi, không log**. Đã cắn **hai lần trong
+cùng ngày 2026-09-04**:
+- thiếu `fc/mat/lv/kd` → tự mở rương coi MỌI món là "không phân giải, không donate được" và
+  **vứt sạch** hàng trăm trang bị;
+- thiếu `st` → túi đồ/tiền trang bản APK sắp xếp với `st` toàn 999, tức sai hẳn thứ tự game.
+
+Thêm trường mới vào `items_gamedata.json` thì **phải khai báo trong loader**, và
+`tests/test_gamedata_loader_giu_du_truong.py` giữ danh sách trường bắt buộc — cập nhật cả nó.
+
 ### Nguồn stat trong battle (hay nhầm — nhớ kỹ)
 - **`0x0b` party-broadcast (>100B, lúc spawn)** = full-stat MỌI member: block
   `[b1][slot][HPmax 4B][SPmax 4B][HPcur 4B][SPcur 4B]` (b1=3 char / 2 pet). **NGUỒN DUY NHẤT có pet

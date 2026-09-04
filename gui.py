@@ -5744,6 +5744,7 @@ class PartyConfigFrame(ttk.Frame):
         """
         db = _load_json("items_gamedata.json") or {}
         ten = {}
+        _st = {}
         for k, v in db.items():
             try:
                 tid = int(k, 16) if str(k).lower().startswith("0x") else int(k)
@@ -5751,7 +5752,18 @@ class PartyConfigFrame(ttk.Frame):
                 continue
             nm = (v or {}).get("name")
             if nm:
-                ten["0x%04x" % tid] = nm
+                _key = "0x%04x" % tid
+                ten[_key] = nm
+                # `st` = truong 排序 cua Item_C.dat. Tien trang sap y het tui do:
+                # `Item.GetBankByCategory` goi CHINH `Item.Sort` = (sort ASC, Id ASC).
+                _st[_key] = int((v or {}).get("st", 999) or 999)
+
+        def _thu_tu(k):
+            """Thu tu GIONG TIEN TRANG trong game (Item.Sort), khong phai theo ma hex."""
+            try:
+                return (_st.get(k, 999), int(k, 16))
+            except Exception:
+                return (999, 0)
         win = tk.Toplevel(self); win.title("List cất - Tiền trang")
         win.transient(self); win.grab_set()
         frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
@@ -5773,10 +5785,12 @@ class PartyConfigFrame(ttk.Frame):
         def _fill():
             q = q_var.get().strip().lower()
             tv.delete(*tv.get_children())
-            # Mon DA CO trong list truoc, roi den ket qua tim. Khong tim gi thi CHI hien list.
-            keys = [k for k in state if k in ten]
+            # Mon DA CO trong list truoc (sap y THU TU TIEN TRANG), roi den ket qua tim.
+            # Khong tim gi thi CHI hien list.
+            keys = sorted((k for k in state if k in ten), key=_thu_tu)
             if q:
-                keys += [k for k, nm in ten.items() if k not in state and q in nm.lower()]
+                keys += sorted((k for k, nm in ten.items()
+                                if k not in state and q in nm.lower()), key=_thu_tu)
             for k in keys[:400]:
                 tv.insert("", "end", iid=k, text="%s  (%s)" % (ten[k], k),
                           values=(_NHAN.get(state.get(k), ""),))
