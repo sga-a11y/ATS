@@ -9835,18 +9835,31 @@ class GameClient:
         if total:
             log.info("[%s] Phan giai cuon rac: tong %d cuon -> nhan xu", self._label, total)
 
-    def _cho_tui_doi(self, truoc: dict, wait: float = 2.0):
+    def _cho_tui_doi(self, truoc: dict, wait: float = 2.0, it_nhat: int = 1):
         """Cho tui THAY DOI so voi snapshot `truoc` -> tra list slot MOI xuat hien.
 
         Mo hop = dung item; do roi ra vao O TRONG qua goi RIENG (0x17 sub08) gui SAU ack dung
         item. Khong cho thi khong biet mon nao vua roi ra -> khong the phan giai/donate dung mon.
+
+        BO SOT DO (user bao 04/09) - ban cu `if moi: return moi` tra ve NGAY khi thay o dau tien.
+        Mo 21 hop mot me thi server ban 21 goi 0x17 sub08 RAI RAC; goi dau den sau ~0.1s la ham
+        thoat voi DUNG 1 o -> 20 mon con lai khong ai xu ly, nam li trong tui. Gio phai:
+          - doi du `it_nhat` o (= so hop vua mo, moi hop it nhat 1 mon),
+          - VA lang `_YEN` giay khong them o moi (goi den theo dot, khong deu),
+          - het `wait` thi tra ve nhung gi co (khong treo mai).
         """
+        _YEN = 0.4                     # khoang lang du de ket luan server ban xong dot goi
         t0 = time.time()
+        lan_cuoi = t0
+        n_cu = 0
         while time.time() - t0 < wait and self.running:
             moi = [s for s in self.bag_slots if s not in truoc]
-            if moi:
+            if len(moi) > n_cu:        # con o moi chay ve -> reset dong ho lang
+                n_cu = len(moi)
+                lan_cuoi = time.time()
+            elif n_cu >= it_nhat and time.time() - lan_cuoi >= _YEN:
                 return moi
-            time.sleep(0.1)
+            time.sleep(0.05)
         return [s for s in self.bag_slots if s not in truoc]
 
     def tu_mo_hop_trang_bi(self, chon=None, wait_item: float = 2.0) -> dict:
@@ -9924,7 +9937,9 @@ class GameClient:
                 if not self.use_slot(slot, qty=n):
                     return kq
                 kq["mo"] += n
-                moi = self._cho_tui_doi(truoc, wait=wait_item)
+                # Cho DU n mon (mo n hop thi it nhat n o moi), va han cho phai gian theo n:
+                # 21 hop ma van cho 2s la chac chan cat mat duoi.
+                moi = self._cho_tui_doi(truoc, wait=max(wait_item, 1.0 + 0.15 * n), it_nhat=n)
                 if not moi:
                     log.info("[%s] MO HOP: khong thay do roi ra -> dung", self._label)
                     return kq

@@ -1981,6 +1981,19 @@ def _load_json(name):
         return {}
 
 
+# CACHE JSON cho TUI DO. items_gamedata.json (3.7MB) + items_desc.json (2.1MB) mat ~0.35s de
+# parse, va truoc day doc LAI moi lan user mo tui. Cache o day, nhung BagDialog._close xoa sach
+# khi khong con cua so tui do nao - giu dung y do cu: bot chay chuc party khong gong 5.8MB nay.
+_BAG_DB_CACHE = {}
+
+
+def _bag_db(name):
+    d = _BAG_DB_CACHE.get(name)
+    if d is None:
+        d = _BAG_DB_CACHE[name] = _load_json(name)
+    return d
+
+
 _BAG_ICON = {}          # id(root) -> PhotoImage (PHAI giu tham chieu, xem chu thich duoi)
 
 
@@ -2809,12 +2822,18 @@ class BagDialog(tk.Toplevel):
         # Tab "Tat ca" ve toan bo 120-170 o -> ve lai moi lan refresh la nang.
         self._tab = _BAG.EQUIP
         self._sel_slot = None
-        self._items_db = _load_json("items_gamedata.json")
+        # Kho o luoi dung lai giua cac lan refresh: _cells[i] = (frame, lbl_ten, lbl_sl, lbl_o),
+        # _cell_slot[i] = slot mà ô đó ĐANG hiển thị (binding chuột đọc từ đây - xem _cell).
+        self._cells = []
+        self._cell_slot = []
+        self._items_db = _bag_db("items_gamedata.json")
         # Mo ta item de RIENG file (2MB) va chi doc o day - dialog nay chi ton tai khi user mo tui
         # do, nen bot chay chuc party khong ai phai gong them 2MB nay trong RAM.
-        self._desc_db = _load_json("items_desc.json")
+        # _bag_db = _load_json CO CACHE, cache bi xoa khi dong cai tui do CUOI CUNG (xem _close)
+        # -> mo lien tiep khong phai doc lai 5.8MB (0.35s), ma dong roi van tra RAM nhu truoc.
+        self._desc_db = _bag_db("items_desc.json")
         # Bang DONG PHU (洗rèn): affix1/2/3 trong ThingData la ID tra bang nay, khong phai cap.
-        _eq = _load_json("eq_affix.json") or {}
+        _eq = _bag_db("eq_affix.json") or {}
         self._affix_db = _eq.get("affix") or {}
         # CUONG HOA (升階): _rf_db = luat khop theo (fitType, a1k, quality) -> class_1/class_2;
         # _val_db = bang tri so cua tung class theo cap cuong hoa.
@@ -2963,6 +2982,13 @@ class BagDialog(tk.Toplevel):
         try: self._canvas.unbind_all("<MouseWheel>")
         except Exception: pass
         self.destroy()
+        # Tra lai 5.8MB cache JSON khi KHONG con cua so tui do nao mo (co the mo nhieu acc mot luc).
+        try:
+            if not any(isinstance(w, BagDialog) and w.winfo_exists()
+                       for w in self.master.winfo_toplevel().winfo_children()):
+                _BAG_DB_CACHE.clear()
+        except Exception:
+            pass
 
     # ---- du lieu ----
     def _pet_list(self):
@@ -3600,13 +3626,16 @@ class BagDialog(tk.Toplevel):
 
     def refresh(self):
         self._refresh_equip_stats()    # thay do / len cap -> 2 hang tren phai theo kip luoi tui
-        for w in self.grid_fr.winfo_children():
-            w.destroy()
         _giu = self._sel_slot          # ve lai TU DONG thi khong duoc lam mat lua chon cua user
         rows = self._rows()
+        # TAI DUNG o luoi thay vi destroy + tao lai. Moi o la 4 widget Tk, tui day ~175 o = 700
+        # widget: dung lai het moi lan refresh ton ~0.3s va refresh chay moi lan doi tab / doi
+        # target / bot bao tui thay doi. Gio chi doi chu + mau, o thua thi grid_remove (an nhung
+        # GIU widget) de lan sau khoi dung lai.
         for i, (slot, tid, cnt, d) in enumerate(rows):
-            r, col = divmod(i, self.COLS)
-            self._cell(self.grid_fr, r, col, slot, tid, cnt, d)
+            self._cell(i, slot, tid, cnt, d)
+        for i in range(len(rows), len(self._cells)):
+            self._cells[i][0].grid_remove()
         if _giu is not None and (_giu < 0 or _giu in self.c.bag_slots):
             self._select(_giu)
         else:
@@ -3622,27 +3651,43 @@ class BagDialog(tk.Toplevel):
         if maxed:
             self.btn_buy.state(["disabled"])
 
-    def _cell(self, parent, r, col, slot, tid, cnt, d):
+    def _cell(self, i, slot, tid, cnt, d):
+        """Ve o thu `i` cua luoi. Tao widget lan dau, cac lan sau chi DOI NOI DUNG.
+
+        Slot cua o KHONG nam trong lambda (no doi moi lan refresh) ma trong `self._cell_slot[i]`,
+        nen binding chuot gan MOT LAN luc tao la du.
+        """
         name = d.get("name") or ("item %d" % tid)
         bg = self._BAG_Q.get(int(d.get("quality") or 0), "#f0f0f0")
-        # O tui do: RONG 2/3 va CAO 1/2 so voi ban cu 88x88 (yeu cau user) -> 59x44.
-        # Toa do ben trong phai co THEO TI LE, khong thi chu tran ra ngoai o.
-        W, H = self.CELL_W, self.CELL_H
-        _day = 12                      # chieu cao hang duoi (so luong + so slot)
-        f = tk.Frame(parent, width=W, height=H, bd=1, relief="solid", bg=bg)
+        while len(self._cells) <= i:
+            # O tui do: RONG 2/3 va CAO 1/2 so voi ban cu 88x88 (yeu cau user) -> 59x44.
+            # Toa do ben trong phai co THEO TI LE, khong thi chu tran ra ngoai o.
+            W, H = self.CELL_W, self.CELL_H
+            _day = 12                  # chieu cao hang duoi (so luong + so slot)
+            f = tk.Frame(self.grid_fr, width=W, height=H, bd=1, relief="solid")
+            f.grid_propagate(False)
+            # CHUA CO ICON: gameplay icon nam trong atlas Unity (jmg01.jmg) + anh xa iconId->o nam
+            # trong libil2cpp.so, chua dich nguoc duoc. Tam dung ten rut gon + mau theo pham chat.
+            l_ten = tk.Label(f, wraplength=W - 6, justify="center", font=("Segoe UI", 7))
+            l_ten.place(x=2, y=1, width=W - 4, height=H - _day - 3)
+            l_sl = tk.Label(f, font=("Segoe UI", 7, "bold"), fg="#004080")
+            l_sl.place(x=2, y=H - _day - 1, width=W // 2, height=_day)
+            l_o = tk.Label(f, font=("Segoe UI", 6), fg="#888")
+            l_o.place(x=W // 2 + 2, y=H - _day - 1, width=W // 2 - 4, height=_day)
+            _i = len(self._cells)
+            for w in (f, l_ten, l_sl, l_o):
+                w.bind("<Button-1>", lambda _e, k=_i: self._select(self._cell_slot[k]))
+            self._cells.append((f, l_ten, l_sl, l_o))
+            self._cell_slot.append(None)
+        f, l_ten, l_sl, l_o = self._cells[i]
+        self._cell_slot[i] = slot
+        for w in (f, l_ten, l_sl, l_o):
+            w.configure(bg=bg)
+        l_ten.configure(text=name[:22])
+        l_sl.configure(text=("x%d" % cnt) if cnt > 1 else "")
+        l_o.configure(text="#%d" % slot)
+        r, col = divmod(i, self.COLS)
         f.grid(row=r, column=col, padx=2, pady=2)
-        f.grid_propagate(False)
-        # CHUA CO ICON: gameplay icon nam trong atlas Unity (jmg01.jmg) + anh xa iconId->o nam trong
-        # libil2cpp.so, chua dich nguoc duoc. Tam dung ten rut gon + mau theo pham chat.
-        tk.Label(f, text=name[:22], bg=bg, wraplength=W - 6, justify="center",
-                 font=("Segoe UI", 7)).place(x=2, y=1, width=W - 4, height=H - _day - 3)
-        tk.Label(f, text=("x%d" % cnt) if cnt > 1 else "", bg=bg,
-                 font=("Segoe UI", 7, "bold"), fg="#004080").place(
-                     x=2, y=H - _day - 1, width=W // 2, height=_day)
-        tk.Label(f, text="#%d" % slot, bg=bg, font=("Segoe UI", 6),
-                 fg="#888").place(x=W // 2 + 2, y=H - _day - 1, width=W // 2 - 4, height=_day)
-        for w in (f,) + tuple(f.winfo_children()):
-            w.bind("<Button-1>", lambda _e, s=slot: self._select(s))
 
     def _select(self, slot):
         self._sel_slot = slot
