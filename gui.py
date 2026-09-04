@@ -2014,20 +2014,27 @@ _BASE = _app_dir()   # dev=project root | frozen=thu muc canh .exe (JSON config 
 
 
 
-def _cat_do_mac_dinh(cfg):
-    """List cat vao tien trang cua mot party.
+def them_vao_list_cat_do(tid, client=None):
+    """Them mot item vao list cat (tien trang) - MOT file CHUNG cho moi acc/party.
 
-    Cau hinh CHUA TUNG co khoa `cat_do_items` -> dung list mac dinh (Don Thang Hoa /
-    Tien Don Nang Luong). Da co khoa roi thi ton trong NGUYEN VAN, ke ca khi RONG - user
-    bo tick het la co y, nhoi lai mac dinh thi ho bo tick bao nhieu lan cung khong duoc.
+    Vi sao co nut nay: dialog "List cất" chi TIM theo ten, ten trong game rat de go sai dau nen
+    mon bo tick nham coi nhu mat (user 04/09). Luong dung: THEM tu tui do, BO thi vao List cất.
+
+    Tra (True, "") neu them moi | (False, ly_do) neu da co / ghi loi.
     """
-    if "cat_do_items" not in (cfg or {}):
+    key = "0x%04x" % int(tid)
+    ds = ctrl.load_cat_do_items()
+    if ds.get(key):
+        return False, "đã có trong list"
+    ds[key] = True
+    if not ctrl.save_cat_do_items(ds):
+        return False, "không ghi được cat_do_items.json"
+    if client is not None:      # bot doc thang file moi lan chay, day chi de chac an
         try:
-            from bot.client import GameClient
-            return dict(GameClient.CAT_DO_MAC_DINH)
+            client.cat_do_items = dict(ds)
         except Exception:
-            return {}
-    return dict((cfg or {}).get("cat_do_items") or {})
+            pass
+    return True, ""
 
 
 def _load_json(name):
@@ -3862,7 +3869,7 @@ class BagDialog(tk.Toplevel):
     def _them_cat_do(self, tid):
         """Nut "Tự cất vào tiền trang": them mon dang chon vao List cat cua party chua acc nay."""
         try:
-            ok, tin = them_vao_list_cat_do(self.username, tid, client=self.c)
+            ok, tin = them_vao_list_cat_do(tid, client=self.c)
         except Exception as e:
             messagebox.showerror("Tự cất vào tiền trang", "Lỗi: %s" % e, parent=self)
             return
@@ -4180,7 +4187,6 @@ class PartyConfigFrame(ttk.Frame):
         # trong mode train/city; tat -> bo qua hoan toan.
         self.auto_sell_noi_dat_var = tk.BooleanVar(value=bool(self._preset.get("auto_sell_noi_dat", True)))
         self.auto_cat_do_var = tk.BooleanVar(value=bool(self._preset.get("auto_cat_do", False)))
-        self.cat_do_items = _cat_do_mac_dinh(self._preset)
         # "Tu don tui do" = cong tong cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
         # Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
         self.auto_bag_clean_var = tk.BooleanVar(value=bool(self._preset.get("auto_bag_clean", True)))
@@ -5757,7 +5763,7 @@ class PartyConfigFrame(ttk.Frame):
         tv.configure(yscrollcommand=sb.set)
         tv.pack(side="left", fill="both", expand=True, pady=(8, 0))
         sb.pack(side="right", fill="y", pady=(8, 0))
-        state = {k: True for k, v in (self.cat_do_items or {}).items() if v}
+        state = dict(ctrl.load_cat_do_items())
 
         def _fill():
             q = q_var.get().strip().lower()
@@ -5779,7 +5785,7 @@ class PartyConfigFrame(ttk.Frame):
             tv.item(k, values=("✔" if state.get(k) else "",))
 
         def _save():
-            self.cat_do_items = dict(state)
+            ctrl.save_cat_do_items(state)
             win.destroy()
 
         tv.bind("<Double-1>", _toggle)
@@ -6032,7 +6038,6 @@ class PartyConfigFrame(ttk.Frame):
             "fight_legion_boss": bool(self.fight_boss_var.get()),
             "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
             "auto_cat_do": bool(self.auto_cat_do_var.get()),
-            "cat_do_items": dict(self.cat_do_items or {}),
             "death_return_town": bool(self.death_return_town_var.get()),
             "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
             "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
@@ -6079,7 +6084,6 @@ class PartyConfigFrame(ttk.Frame):
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
         self.auto_sell_noi_dat_var.set(bool(data.get("auto_sell_noi_dat", True)))
         self.auto_cat_do_var.set(bool(data.get("auto_cat_do", False)))
-        self.cat_do_items = _cat_do_mac_dinh(data)
         self.death_return_town_var.set(bool(data.get("death_return_town", True)))
         self.pet_death_return_town_var.set(bool(data.get("pet_death_return_town", True)))
         self.auto_bag_clean_var.set(bool(data.get("auto_bag_clean", True)))
@@ -6438,7 +6442,6 @@ class PartyConfigFrame(ttk.Frame):
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
                 "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
                 "auto_cat_do": bool(self.auto_cat_do_var.get()),
-                "cat_do_items": dict(self.cat_do_items or {}),
                 "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
                 "event_exchange_items": list(self.event_exchange_items),
                 # Chu ky su kien LUC TICK -> lan sau su kien doi thi tu biet ma xoa tick.

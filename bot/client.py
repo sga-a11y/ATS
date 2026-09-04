@@ -1414,6 +1414,56 @@ def _save_gift_state(label: str, online_sec: float, claimed: set, today=None):
             pass
 
 
+# ---- LIST CAT VAO TIEN TRANG: MOT file CHUNG cho moi acc/party ----
+# User chot 04/09: "lam 1 list chung cho tat ca cac bot thoi, the cho nhe bot". Truoc do list
+# luu trong TUNG party cua accounts.json -> sua mot mon phai sua N cho, va moi party mang mot
+# ban sao rieng. File nay bot TU SINH (nhu checkin_state.json) nen KHONG can khai bao trong
+# SHARED_ASSETS / DATA_JSON.
+_CAT_DO_FILE = "cat_do_items.json"
+# Mac dinh khi file chua ton tai. Ca hai deu `restrict & 32 == 0` -> game cho gui ngan hang.
+CAT_DO_MAC_DINH = {
+    "0xb3e2": True,     # Don Thang Hoa
+    "0xb49f": True,     # Tien Don Nang Luong
+}
+
+
+def _cat_do_path():
+    try:
+        from ._appdir import app_dir
+        return os.path.join(app_dir(), _CAT_DO_FILE)
+    except Exception:
+        return _CAT_DO_FILE
+
+
+def load_cat_do_items() -> dict:
+    """{tid_hex: True} - list mon tu cat vao tien trang, DUNG CHUNG moi acc.
+
+    Chua co file -> tra MAC DINH. File co roi thi ton trong NGUYEN VAN, ke ca khi rong:
+    user bo tick het la co y, nhoi lai mac dinh thi ho bo bao nhieu lan cung khong duoc.
+    """
+    p = _cat_do_path()
+    if not os.path.exists(p):
+        return dict(CAT_DO_MAC_DINH)
+    try:
+        with open(p, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except Exception:
+        return dict(CAT_DO_MAC_DINH)
+    ds = d.get("items") if isinstance(d, dict) else None
+    return {str(k).lower(): True for k, v in (ds or {}).items() if v}
+
+
+def save_cat_do_items(items) -> bool:
+    try:
+        with open(_cat_do_path(), "w", encoding="utf-8") as fh:
+            json.dump({"items": {str(k).lower(): True for k, v in (items or {}).items() if v}},
+                      fh, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        log.warning("khong ghi duoc %s: %s", _CAT_DO_FILE, e)
+        return False
+
+
 # ---- State DIEM DANH (so lan da diem danh) ----
 _CHECKIN_FILE = "checkin_state.json"
 
@@ -2161,7 +2211,6 @@ class GameClient:
         # TU CAT DO vao tien trang: MAC DINH TAT + list rong (giong tick mo ruong trang bi) -
         # cat do la thao tac mot chieu, khong tu y lam khi user chua chon mon nao.
         self.auto_cat_do = False
-        self.cat_do_items = {}
         self.bank_fail = None
         # "Tu don tui do" (Cai dat nang cao) = CONG TONG cua 3 muc con ben duoi; tat -> ca 3 ngung.
         self.auto_bag_clean = True
@@ -13762,13 +13811,6 @@ class GameClient:
     #                         ma 30 "Tien bac" | ma 31 "Vat pham day du" | ma 32 "kho dau gia".
     #                         Muc CAT DO la ma 31.
     # Duong di: world_nav co canh 12001 -> 12263 qua cong 11 (1 leg, khong phai di vong).
-    # List CAT MAC DINH (user chot 04/09, "tam thoi"). Chi la GIA TRI KHOI TAO cho acc CHUA TUNG
-    # co cau hinh: user bo tick roi thi ton trong, khong nhoi lai (xem _cat_do_mac_dinh o gui.py).
-    # Ca hai deu `restrict & 32 == 0` -> game cho gui ngan hang (159&32=0, 140&32=0).
-    CAT_DO_MAC_DINH = {
-        "0xb3e2": True,     # Don Thang Hoa
-        "0xb49f": True,     # Tien Don Nang Luong
-    }
     TIEN_TRANG_MAP = 12263
     TIEN_TRANG_POS = (390, 310)     # cho dung noi chuyen (user chi)
     TIEN_TRANG_NPC = 1              # Eve_NpcData.id trong scene - KHONG phai npcId toan cuc
@@ -13974,7 +14016,8 @@ class GameClient:
         Tra {'cat': so mon, 'so_luong': tong so luong, 'bo_qua': ly do}.
         """
         kq = {"cat": 0, "so_luong": 0, "bo_qua": ""}
-        chon = {str(k).lower(): v for k, v in (chon or {}).items() if v}
+        # List DUNG CHUNG moi acc (cat_do_items.json). `chon` chi de test truyen tay.
+        chon = {str(k).lower(): v for k, v in (chon or load_cat_do_items()).items() if v}
         if not chon:
             kq["bo_qua"] = "chua tick mon nao trong List cat do"
             return kq
@@ -14224,7 +14267,7 @@ class GameClient:
             # Boc trung TRAC QUAN -> di cat do vao tien trang (user chot 04/09). Boc trung
             # Ng.Thanh thi van ban Noi Dat nhu cu - moi thanh mot viec, khong lam ca hai.
             if ok and city == self.TRAC_QUAN_CITY and getattr(self, "auto_cat_do", False):
-                self.cat_do_tien_trang(getattr(self, "cat_do_items", None))
+                self.cat_do_tien_trang()
         except Exception as e:
             log.warning("[%s] pre-route: loi tele trung gian (bo qua, di tiep): %s", self._label, e)
 

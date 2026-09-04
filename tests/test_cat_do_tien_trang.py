@@ -156,37 +156,63 @@ class TestLocRestrict(unittest.TestCase):
             goc.pop(0x1234, None)
 
 
-class TestListMacDinh(unittest.TestCase):
-    """User chot 04/09: "tam thoi cho 2 item nay vao list cat"."""
+class TestListChung(unittest.TestCase):
+    """User chot 04/09: "lam 1 list chung cho tat ca cac bot thoi, the cho nhe bot".
 
-    def test_hai_mon_mac_dinh(self):
-        self.assertEqual(set(C.GameClient.CAT_DO_MAC_DINH), {"0xb3e2", "0xb49f"})
+    List nam o MOT file `cat_do_items.json` (bot tu sinh, nhu checkin_state.json), KHONG con
+    nhan ban trong tung party cua accounts.json.
+    """
 
-    def test_hai_mon_that_su_cat_duoc(self):
+    def setUp(self):
+        import shutil
+        import tempfile
+        self.d = tempfile.mkdtemp()
+        self._cu = C._cat_do_path
+        C._cat_do_path = lambda: os.path.join(self.d, "cat_do_items.json")
+        self._shutil = shutil
+
+    def tearDown(self):
+        C._cat_do_path = self._cu
+        self._shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_chua_co_file_thi_dung_mac_dinh(self):
+        self.assertEqual(C.load_cat_do_items(), dict(C.CAT_DO_MAC_DINH))
+
+    def test_hai_mon_mac_dinh_that_su_cat_duoc(self):
         """Mac dinh ma trung mon `restrict & 32` thi bot se bo qua -> list vo nghia."""
+        self.assertEqual(set(C.CAT_DO_MAC_DINH), {"0xb3e2", "0xb49f"})
         gd = C._load_gamedata_items()
-        for k in C.GameClient.CAT_DO_MAC_DINH:
+        for k in C.CAT_DO_MAC_DINH:
             rec = gd.get(int(k, 16)) or {}
             self.assertTrue(rec.get("name"), "%s khong co trong items_gamedata" % k)
             self.assertFalse(int(rec.get("restrict", 0) or 0) & C.GameClient.BANK_RESTRICT_CAM,
                              "%s (%s) bi game cam gui ngan hang" % (k, rec.get("name")))
 
-    def test_config_nap_duoc_mac_dinh(self):
-        """Bay da dinh 04/09: import GameClient o MUC MODULE trong config.py thi vong import lam
-        no tra ve RONG am tham - mac dinh chet ma khong ai bao."""
-        from bot import config as _cfg
-        self.assertEqual(_cfg._cat_do_mac_dinh(), dict(C.GameClient.CAT_DO_MAC_DINH))
+    def test_ghi_roi_doc_lai(self):
+        self.assertTrue(C.save_cat_do_items({"0x522b": True}))
+        self.assertEqual(C.load_cat_do_items(), {"0x522b": True})
 
-    def test_ton_trong_lua_chon_cua_user(self):
-        """Co khoa roi thi giu nguyen van, KE CA RONG - bo tick het la co y."""
-        gui = _import_gui()
-        self.assertEqual(gui._cat_do_mac_dinh({}), dict(C.GameClient.CAT_DO_MAC_DINH))
-        self.assertEqual(gui._cat_do_mac_dinh({"cat_do_items": {}}), {})
-        self.assertEqual(gui._cat_do_mac_dinh({"cat_do_items": {"0x1": True}}), {"0x1": True})
+    def test_file_rong_thi_ton_trong(self):
+        """Bo tick het la CO Y - khong duoc nhoi lai mac dinh."""
+        C.save_cat_do_items({})
+        self.assertEqual(C.load_cat_do_items(), {})
+
+    def test_khong_con_luu_trong_party(self):
+        """Khoa cu `cat_do_items` phai bien khoi config/runner/gui - khong thi hai nguon lech nhau."""
+        for f in (os.path.join("bot", "config.py"), "run_party_digioi.py"):
+            self.assertNotIn('"cat_do_items"', _doc(f), "%s van luu list theo party" % f)
+
+    def test_bot_doc_thang_file_chung(self):
+        """cat_do_tien_trang khong truyen `chon` thi phai tu doc file chung."""
+        C.save_cat_do_items({"0x7d2b": True})
+        c = _Gia()
+        c.bag_slots = {5: [0x7D2B, 3]}
+        kq = c.cat_do_tien_trang()
+        self.assertEqual(kq["cat"], 1)
 
 
 class TestThemTuTuiDo(unittest.TestCase):
-    """Luong user chot 04/09: THEM mon vao list tu TUI DO, BO thi vao "List cất".
+    """THEM mon vao list tu TUI DO, BO thi vao "List cất" (user chot 04/09).
 
     Ly do: dialog List cat chi TIM theo ten -> mon la thi go mai khong ra, bo tick nham la coi
     nhu mat ("t lo bo tick cai la gio ko co cach nao de tick lai").
@@ -195,63 +221,29 @@ class TestThemTuTuiDo(unittest.TestCase):
     def setUp(self):
         import shutil
         import tempfile
-        gui = _import_gui()
-        self.gui = gui
-        self._cu = gui.ACCOUNTS_JSON
+        self.gui = _import_gui()
         self.d = tempfile.mkdtemp()
-        gui.ACCOUNTS_JSON = os.path.join(self.d, "accounts.json")
-        prof = {"active": "A", "profiles": {
-            "A": {"parties": [{"accounts": [{"u": "u1"}]}]},
-            "B": {"parties": [{"accounts": [{"u": "u1"}], "cat_do_items": {}}]},
-        }}
-        gui._save_profiles(prof)
+        self._cu = C._cat_do_path
+        C._cat_do_path = lambda: os.path.join(self.d, "cat_do_items.json")
         self._shutil = shutil
 
     def tearDown(self):
-        self.gui.ACCOUNTS_JSON = self._cu
+        C._cat_do_path = self._cu
         self._shutil.rmtree(self.d, ignore_errors=True)
 
-    def _doc(self, ten):
-        return (self.gui._load_profiles()["profiles"][ten]["parties"][0].get("cat_do_items"))
-
     def test_them_moi_va_giu_mac_dinh(self):
-        ok, ten = self.gui.them_vao_list_cat_do("u1", 0x522B)
-        self.assertTrue(ok)
-        self.assertEqual(ten, "A")
-        ds = self._doc("A")
+        ok, tin = self.gui.them_vao_list_cat_do(0x522B)
+        self.assertTrue(ok, tin)
+        ds = C.load_cat_do_items()
         self.assertTrue(ds.get("0x522b"))
-        # Party chua tung co khoa -> dang chay theo MAC DINH; ghi ra phai giu lai, khong thi
-        # bam mot nut la mat hai mon mac dinh.
-        for k in C.GameClient.CAT_DO_MAC_DINH:
-            self.assertTrue(ds.get(k), "ghi xong lam mat mon mac dinh %s" % k)
+        for k in C.CAT_DO_MAC_DINH:
+            self.assertTrue(ds.get(k), "them mot mon lam mat mon mac dinh %s" % k)
 
     def test_khong_them_trung(self):
-        self.gui.them_vao_list_cat_do("u1", 0x522B)
-        ok, tin = self.gui.them_vao_list_cat_do("u1", 0x522B)
+        self.gui.them_vao_list_cat_do(0x522B)
+        ok, tin = self.gui.them_vao_list_cat_do(0x522B)
         self.assertFalse(ok)
         self.assertIn("đã có", tin)
-
-    def test_ghi_vao_cau_hinh_DANG_ACTIVE(self):
-        """Acc nam o ca hai cau hinh -> phai ghi vao cai dang chay."""
-        prof = self.gui._load_profiles()
-        prof["active"] = "B"
-        self.gui._save_profiles(prof)
-        ok, ten = self.gui.them_vao_list_cat_do("u1", 0x522B)
-        self.assertTrue(ok)
-        self.assertEqual(ten, "B", "ghi vao cau hinh khong chay = bam nut khong co tac dung")
-        self.assertIsNone(self._doc("A"))
-
-    def test_acc_la_thi_bao_ro(self):
-        ok, tin = self.gui.them_vao_list_cat_do("khong-co-acc-nay", 0x522B)
-        self.assertFalse(ok)
-        self.assertIn("không tìm thấy", tin)
-
-    def test_ap_live_cho_acc_dang_chay(self):
-        class _C:
-            cat_do_items = {}
-        c = _C()
-        self.gui.them_vao_list_cat_do("u1", 0x522B, client=c)
-        self.assertTrue(c.cat_do_items.get("0x522b"), "phai ap ngay, khong bat user restart")
 
     def test_tui_do_co_nut(self):
         src = _doc("gui.py")
@@ -269,12 +261,10 @@ class TestNoiDayDu(unittest.TestCase):
     def test_config_doc_hai_khoa(self):
         src = _doc(os.path.join("bot", "config.py"))
         self.assertIn("auto_cat_do", src)
-        self.assertIn("cat_do_items", src)
 
     def test_runner_gan_vao_client(self):
         src = _doc("run_party_digioi.py")
         self.assertRegex(src, r"c\.auto_cat_do\s*=")
-        self.assertRegex(src, r"c\.cat_do_items\s*=")
 
     def test_moc_o_pre_route_town_hop(self):
         """Phai goi trong pre_route_town_hop, nhanh Trac Quan."""

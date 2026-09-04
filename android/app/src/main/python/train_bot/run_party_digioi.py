@@ -25,6 +25,7 @@ from .train_maps_store import save_learned_regions
 from .login import login
 from .client import (ATTR_KEY_TO_CODE, ATTR_CODE_TO_TEN, ATTR_KINDS,
                         save_point_cache, load_point_cache,
+                        load_cat_do_items, save_cat_do_items,
                         save_skill_char_cache, load_skill_char_cache,
                         GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined, mark_joined,
@@ -2052,7 +2053,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # TU CAT DO tien trang: chay cung cho voi ban Noi Dat (pre_route_town_hop boc 50-50) nen
         # rang buoc mode y het - khong thi mode khac cung lo di cat giua chung.
         c.auto_cat_do = bool(pcfg.get("auto_cat_do", False) and mode in ("train", "city"))
-        c.cat_do_items = dict(pcfg.get("cat_do_items") or {})
         # "Tu don tui do" (Cai dat nang cao): cong tong + 2 muc con moi. Phan giai cuon MAC DINH
         # TAT vi phan giai la mat han - user phai tu tick sau khi soat list.
         # Mode event dung chung pet voi quest/PB -> vai "mac dinh" cua no la quest.

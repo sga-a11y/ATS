@@ -3042,3 +3042,13 @@ Bot phai loc y het, gui la thao tac khong hop le.
 
 > Tool moi `tools/crack_eve_npc.py --scene N` do bang NPC cua scene (id / npcId / toa do) tu
 > `Eve.emg`, de khoi phai capture chi de biet mot con so.
+
+### List cat = MOT file chung
+`cat_do_items.json` (bot tu sinh canh exe, **khong** khai bao trong `SHARED_ASSETS`/`DATA_JSON`)
+dung chung cho MOI acc/party — user chot 04/09. Truoc do list nam trong tung party cua
+`accounts.json`: sua mot mon phai sua N cho va moi party mang mot ban sao. Tick bat/tat
+(`auto_cat_do`) VAN theo party.
+
+Chua co file -> dung `CAT_DO_MAC_DINH`. Co file roi thi ton trong nguyen van **ke ca khi rong**
+(bo tick het la co y). Them mon: nut trong **tui do** (dialog List chi tim theo ten, mon la go
+mai khong ra). Bo mon: nut **List cất**.
