@@ -662,6 +662,19 @@ ACCOUNT_BATTLE = {}        # username -> {"char": {...}, "pet": {...}} custom ba
 # username -> {"reserve": int, "rules": [{"stat": "int|atk|def|hpx|spx|agi", "target": int}]}
 # Bang TU CONG DIEM TIEM NANG (xem KNOWLEDGE.md muc 7o). Acc khong co = khong tu cong gi.
 ACCOUNT_POINT = {}
+
+
+def _cat_do_mac_dinh():
+    """List cat vao tien trang mac dinh, lay tu GameClient.CAT_DO_MAC_DINH (MOT nguon duy nhat).
+
+    PHAI nap luoi trong ham: `bot.client` import chinh `bot.config`, nen import o muc module thi
+    luc config dang nap client CHUA nap xong -> tra ve rong am tham (da dinh 04/09).
+    """
+    try:
+        from bot.client import GameClient
+        return dict(GameClient.CAT_DO_MAC_DINH)
+    except Exception:
+        return {}
 # username -> {"reserve": int, "rules": [[skill_id, cap_dich], ...]}
 # Bang TU NANG SKILL NHAN VAT (xem KNOWLEDGE.md muc 7q). Acc khong co = khong tu nang gi.
 ACCOUNT_SKILL = {}
@@ -809,7 +822,10 @@ if _aj is not None:
                 # TU CAT DO vao tien trang (Trac Quan). MAC DINH TAT + list rong: chi cat mon
                 # user da tick trong "List cất".
                 "auto_cat_do": bool(_party.get("auto_cat_do", False)),
-                "cat_do_items": dict(_party.get("cat_do_items") or {}),
+                # Chua tung co khoa nay -> list MAC DINH; co roi thi ton trong nguyen van (ke ca
+                # rong: user bo tick het la co y).
+                "cat_do_items": (dict(_party["cat_do_items"] or {}) if "cat_do_items" in _party
+                                 else _cat_do_mac_dinh()),
                 # TU MO RONG TUI DO: mua slot toi khi gia lan KE TIEP vuot nguong (so vang user
                 # dien). Mac dinh TAT - mua slot ton nguyen bao/vang cua user.
                 "auto_bag_expand": bool(_party.get("auto_bag_expand", False)),

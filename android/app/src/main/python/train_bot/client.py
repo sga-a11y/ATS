@@ -13762,6 +13762,13 @@ class GameClient:
     #                         ma 30 "Tien bac" | ma 31 "Vat pham day du" | ma 32 "kho dau gia".
     #                         Muc CAT DO la ma 31.
     # Duong di: world_nav co canh 12001 -> 12263 qua cong 11 (1 leg, khong phai di vong).
+    # List CAT MAC DINH (user chot 04/09, "tam thoi"). Chi la GIA TRI KHOI TAO cho acc CHUA TUNG
+    # co cau hinh: user bo tick roi thi ton trong, khong nhoi lai (xem _cat_do_mac_dinh o gui.py).
+    # Ca hai deu `restrict & 32 == 0` -> game cho gui ngan hang (159&32=0, 140&32=0).
+    CAT_DO_MAC_DINH = {
+        "0xb3e2": True,     # Don Thang Hoa
+        "0xb49f": True,     # Tien Don Nang Luong
+    }
     TIEN_TRANG_MAP = 12263
     TIEN_TRANG_POS = (390, 310)     # cho dung noi chuyen (user chi)
     TIEN_TRANG_NPC = 1              # Eve_NpcData.id trong scene - KHONG phai npcId toan cuc

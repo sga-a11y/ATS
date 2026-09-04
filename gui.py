@@ -268,7 +268,7 @@ _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831
                   "auto_world_boss": True,
                   "auto_team_dungeon": True, "team_dungeons": _team_dungeons_json(DEFAULT_TEAM_DUNGEONS),
                   "auto_sell_noi_dat": True, "auto_bag_clean": True,
-                  "auto_cat_do": False, "cat_do_items": {},
+                  "auto_cat_do": False,
                   "death_return_town": True, "pet_death_return_town": True,
                   "auto_discard_junk": True, "auto_decompose_scrolls": False,
                   "auto_donate_materials": True,
@@ -1972,6 +1972,23 @@ class BotGUI(tk.Tk):
 
 # ---------------- Config dialog (per-party, dropdown) ----------------
 _BASE = _app_dir()   # dev=project root | frozen=thu muc canh .exe (JSON config sua duoc)
+
+
+
+def _cat_do_mac_dinh(cfg):
+    """List cat vao tien trang cua mot party.
+
+    Cau hinh CHUA TUNG co khoa `cat_do_items` -> dung list mac dinh (Don Thang Hoa /
+    Tien Don Nang Luong). Da co khoa roi thi ton trong NGUYEN VAN, ke ca khi RONG - user
+    bo tick het la co y, nhoi lai mac dinh thi ho bo tick bao nhieu lan cung khong duoc.
+    """
+    if "cat_do_items" not in (cfg or {}):
+        try:
+            from bot.client import GameClient
+            return dict(GameClient.CAT_DO_MAC_DINH)
+        except Exception:
+            return {}
+    return dict((cfg or {}).get("cat_do_items") or {})
 
 
 def _load_json(name):
@@ -4095,7 +4112,7 @@ class PartyConfigFrame(ttk.Frame):
         # trong mode train/city; tat -> bo qua hoan toan.
         self.auto_sell_noi_dat_var = tk.BooleanVar(value=bool(self._preset.get("auto_sell_noi_dat", True)))
         self.auto_cat_do_var = tk.BooleanVar(value=bool(self._preset.get("auto_cat_do", False)))
-        self.cat_do_items = dict(self._preset.get("cat_do_items") or {})
+        self.cat_do_items = _cat_do_mac_dinh(self._preset)
         # "Tu don tui do" = cong tong cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
         # Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
         self.auto_bag_clean_var = tk.BooleanVar(value=bool(self._preset.get("auto_bag_clean", True)))
@@ -5999,7 +6016,7 @@ class PartyConfigFrame(ttk.Frame):
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
         self.auto_sell_noi_dat_var.set(bool(data.get("auto_sell_noi_dat", True)))
         self.auto_cat_do_var.set(bool(data.get("auto_cat_do", False)))
-        self.cat_do_items = dict(data.get("cat_do_items") or {})
+        self.cat_do_items = _cat_do_mac_dinh(data)
         self.death_return_town_var.set(bool(data.get("death_return_town", True)))
         self.pet_death_return_town_var.set(bool(data.get("pet_death_return_town", True)))
         self.auto_bag_clean_var.set(bool(data.get("auto_bag_clean", True)))

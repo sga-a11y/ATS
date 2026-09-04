@@ -141,6 +141,35 @@ class TestLocRestrict(unittest.TestCase):
             goc.pop(0x1234, None)
 
 
+class TestListMacDinh(unittest.TestCase):
+    """User chot 04/09: "tam thoi cho 2 item nay vao list cat"."""
+
+    def test_hai_mon_mac_dinh(self):
+        self.assertEqual(set(C.GameClient.CAT_DO_MAC_DINH), {"0xb3e2", "0xb49f"})
+
+    def test_hai_mon_that_su_cat_duoc(self):
+        """Mac dinh ma trung mon `restrict & 32` thi bot se bo qua -> list vo nghia."""
+        gd = C._load_gamedata_items()
+        for k in C.GameClient.CAT_DO_MAC_DINH:
+            rec = gd.get(int(k, 16)) or {}
+            self.assertTrue(rec.get("name"), "%s khong co trong items_gamedata" % k)
+            self.assertFalse(int(rec.get("restrict", 0) or 0) & C.GameClient.BANK_RESTRICT_CAM,
+                             "%s (%s) bi game cam gui ngan hang" % (k, rec.get("name")))
+
+    def test_config_nap_duoc_mac_dinh(self):
+        """Bay da dinh 04/09: import GameClient o MUC MODULE trong config.py thi vong import lam
+        no tra ve RONG am tham - mac dinh chet ma khong ai bao."""
+        from bot import config as _cfg
+        self.assertEqual(_cfg._cat_do_mac_dinh(), dict(C.GameClient.CAT_DO_MAC_DINH))
+
+    def test_ton_trong_lua_chon_cua_user(self):
+        """Co khoa roi thi giu nguyen van, KE CA RONG - bo tick het la co y."""
+        import gui
+        self.assertEqual(gui._cat_do_mac_dinh({}), dict(C.GameClient.CAT_DO_MAC_DINH))
+        self.assertEqual(gui._cat_do_mac_dinh({"cat_do_items": {}}), {})
+        self.assertEqual(gui._cat_do_mac_dinh({"cat_do_items": {"0x1": True}}), {"0x1": True})
+
+
 class TestNoiDayDu(unittest.TestCase):
     """Tinh nang chi song khi noi du CA BA chang: config -> client -> cho boc 50-50."""
 
