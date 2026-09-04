@@ -13867,6 +13867,9 @@ class GameClient:
     NOI_DAT_TID = 0x7D2B
     NOI_DAT_SELL_CITY = 12061
     NOI_DAT_SELL_THRESHOLD = 100
+    # Han gio cho CA chuyen di NPC Nha buon. Ham chay trong `pre_route_town_hop` nen ca party
+    # dung cho - viec phu nay khong duoc treo party qua lau.
+    NOI_DAT_HAN_GIO = 150
     NOI_DAT_NPC_ROUTE_PRE = ((322, 802), (393, 759), (410, 750), (410, 750))
     NOI_DAT_NPC_ROUTE_POST = ((606, 698), (685, 676), (764, 654), (844, 631), (850, 630), (850, 630))
 
@@ -13875,6 +13878,10 @@ class GameClient:
         if not self.running:
             return
         if not self._wait_combat_clear(idle=1.0, cap=45.0):
+            # Het 45s ma van "dang trong tran" -> ghi ro. Truoc day im lang, nen log chi thay
+            # dong "di NPC Nha buon" roi khong co gi nua, khong biet ket o dau.
+            log.warning("[%s] Ban Noi Dat: cho het tran qua 45s tai buoc (%d,%d)",
+                        self._label, x, y)
             return
         self.send(0x06, b"\x01\x00\x07" + struct.pack("<HH", int(x), int(y)))
         self.pos = (int(x), int(y))
@@ -13975,11 +13982,23 @@ class GameClient:
             return False
 
         log.info("[%s] Ban Noi Dat: co %d cai -> di NPC Nha buon Ng.Thanh", self._label, total_have)
-        for x, y in self.NOI_DAT_NPC_ROUTE_PRE:
+        # HAN GIO cho ca chuyen di. `_move_noi_dat_npc_step` cho het tran toi 45s MOI BUOC, 10
+        # buoc la 7.5 phut - ma ham nay chay trong `pre_route_town_hop` nen CA PARTY dung cho.
+        # Ban Noi Dat la viec phu, khong dang treo party: qua han thi bo, di tiep.
+        _han = time.time() + self.NOI_DAT_HAN_GIO
+        for i, (x, y) in enumerate(self.NOI_DAT_NPC_ROUTE_PRE):
+            if time.time() > _han:
+                log.warning("[%s] Ban Noi Dat: qua %ds chua toi NPC (buoc %d) -> BO, di tiep",
+                            self._label, self.NOI_DAT_HAN_GIO, i)
+                return False
             self._move_noi_dat_npc_step(x, y)
         self.send(0x14, b"\x08\x00\x0a\x00")
         time.sleep(0.5)
-        for x, y in self.NOI_DAT_NPC_ROUTE_POST:
+        for i, (x, y) in enumerate(self.NOI_DAT_NPC_ROUTE_POST):
+            if time.time() > _han:
+                log.warning("[%s] Ban Noi Dat: qua %ds chua toi NPC (buoc post %d) -> BO, di tiep",
+                            self._label, self.NOI_DAT_HAN_GIO, i)
+                return False
             self._move_noi_dat_npc_step(x, y)
         if not self._wait_combat_clear(idle=1.0, cap=60.0):
             return False
