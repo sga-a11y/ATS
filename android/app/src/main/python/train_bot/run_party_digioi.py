@@ -8196,6 +8196,86 @@ bag_notify_dismissed = set()
 BAG_CANH_BAO_SLOT_TRONG = 10
 
 
+def bag_info(username):
+    """TUI DO cua 1 acc cho UI (APK). {} = acc chua chay.
+
+    KHAC bang Point/Skill: tui do KHONG cache duoc - no la snapshot SONG trong client, doc file
+    ra thi vua sai vua nguy hiem (bam "phan giai" theo so cu la mat nham do). Acc tat thi tra {}.
+
+    Moi o kem san cac co CHO PHEP (use/equip/dis/fashion) tinh bang `bot.bag_tabs` - dung luat
+    cua client. De Kotlin tu suy tu items_gamedata la se lech, vi luat that nam o bag_tabs
+    (vd `can_use` doc btnState NGUOC voi truc giac - xem chu thich trong file do).
+    """
+    c = account_clients.get(username)
+    if c is None:
+        return {}
+    from . import bag_tabs as _bt
+    from .client import _load_gamedata_items
+    gd = _load_gamedata_items()
+    o = []
+    for slot, val in sorted((getattr(c, "bag_slots", None) or {}).items()):
+        try:
+            tid, cnt = int(val[0]), int(val[1])
+        except Exception:
+            continue
+        if cnt <= 0:
+            continue
+        d = gd.get(tid) or {}
+        o.append({
+            "slot": int(slot), "id": tid, "cnt": cnt,
+            "name": d.get("name") or ("0x%04x" % tid),
+            "q": int(d.get("q", 0) or 0),
+            "st": int(d.get("st", 999) or 999),
+            "ft": int(d.get("ft", 0) or 0),
+            "kd": int(d.get("kd", 0) or 0),
+            "tab": [t for t, _ten in _bt.TAB_NAMES
+                    if _bt.matches_tab(t, d.get("ft"), d.get("kd"))],
+            "use": bool(_bt.can_use(d.get("bs"))),
+            "equip": bool(_bt.can_equip(d.get("ft"), d.get("kd"))),
+            "dis": bool(_bt.can_dismantle(d.get("fc"))),
+            "fashion": bool(c.is_fashion_item(tid)),
+            # Mon game CAM gui ngan hang -> khong cho them vao list cat (them cung vo ich).
+            "bank": not (int(d.get("restrict", 0) or 0) & c.BANK_RESTRICT_CAM),
+        })
+    return {
+        "cap": c.bag_capacity(), "used": c.bag_used_slots(),
+        "maxed": bool(c.bag_slot_maxed()), "slots": o,
+    }
+
+
+# Lenh tui do UI duoc phep goi. Khoa -> (ten hien thi, ham chay).
+# Danh sach TRANG (allowlist) co chu y: UI khong duoc goi bua bat ky method nao cua client.
+_BAG_LENH = {
+    "use": ("Dùng", lambda c, s, a: c.use_slot(s, target=a)),
+    "equip": ("Trang bị", lambda c, s, a: c.use_slot(s, target=a)),
+    "decompose": ("Phân giải", lambda c, s, a: c.decompose_slot(s)),
+    "discard": ("Bỏ", lambda c, s, a: c.discard_item(s, a or 1)),
+    "fashion": ("Thả vào sưu tầm", lambda c, s, a: c.deposit_fashion_slot(s)),
+}
+
+
+def bag_cmd(username, action, slot, arg=0):
+    """Chay mot lenh tui do tu UI. -> "True" | "queued" | "False: ly do".
+
+    DANG TRONG TRAN thi XEP HANG (`queue_bag_cmd`) y het lenh cong diem / nang skill: client that
+    chan thao tac tui do khi dang danh, gui bua la server nuot im lang.
+    """
+    c = account_clients.get(username)
+    if c is None:
+        return "False: acc chưa chạy"
+    lenh = _BAG_LENH.get(str(action or ""))
+    if lenh is None:
+        return "False: lệnh không hợp lệ"
+    ten, fn = lenh
+    s, a = int(slot), int(arg or 0)
+    try:
+        if c.queue_bag_cmd("%s (ô #%d)" % (ten, s), lambda: fn(c, s, a)):
+            return "queued"
+        return "True" if fn(c, s, a) else "False: server không nhận"
+    except Exception as e:
+        return "False: %s" % e
+
+
 def bag_notify_items(pidx):
     """[{user, kind:'bag', used, cap, free, maxed}] - acc con DUOI 10 slot tui trong.
 

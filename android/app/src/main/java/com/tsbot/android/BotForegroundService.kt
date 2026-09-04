@@ -515,6 +515,24 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         } catch (_: Exception) { "False" }
     }
 
+    /** TUI DO: {cap, used, maxed, slots:[...]}. "" = acc chua chay.
+     *  KHONG cache duoc (snapshot song trong client) - acc tat thi khong co gi de hien. */
+    fun bagInfoJson(username: String): String {
+        return try {
+            val py = com.chaquo.python.Python.getInstance()
+            val json = py.getModule("json")
+            val info = rpd().callAttr("bag_info", username) ?: return ""
+            if (info.asMap().isEmpty()) "" else json.callAttr("dumps", info).toString()
+        } catch (_: Exception) { "" }
+    }
+
+    /** Lenh tui do. -> "True" | "queued" (dang trong tran, da xep hang) | "False: ly do". */
+    fun bagCmd(username: String, action: String, slot: Int, arg: Int = 0): String {
+        return try {
+            rpd().callAttr("bag_cmd", username, action, slot, arg)?.toString() ?: "False"
+        } catch (e: Exception) { "False: ${e.message}" }
+    }
+
     fun applySkillConfig(username: String, skillJson: String): Boolean =
         try { rpd().callAttr("apply_skill_config_json", username, skillJson)?.toBoolean() ?: false }
         catch (_: Exception) { false }

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -271,6 +272,7 @@ fun TsBotApp(
     var editingSkillAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     var editingPointAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     var editingSkillTreeAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    var editingBagAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     // Tab party dang chon (moi party = 1 tab, giong ban PC)
     var selectedTab by remember { mutableStateOf(0) }
     var privacyMode by rememberSaveable { mutableStateOf(PRIVACY_MASK) }
@@ -527,6 +529,7 @@ fun TsBotApp(
                         onEditSkill = { account -> editingSkillAccount = party.name to account },
                         onEditPoint = { account -> editingPointAccount = party.name to account },
                         onEditSkillTree = { account -> editingSkillTreeAccount = party.name to account },
+                        onOpenBag = { account -> editingBagAccount = party.name to account },
                         onEnabledChange = { account, enabled ->
                             partyStore.updateAccountInParty(
                                 party.name,
@@ -966,6 +969,26 @@ fun TsBotApp(
         )
     }
 
+    val bagAccount = editingBagAccount
+    if (bagAccount != null) {
+        val account = bagAccount.second
+        BagDialog(
+            username = account.username,
+            onLoadInfo = { service?.bagInfoJson(account.username) ?: "" },
+            onCmd = { act, slot, arg ->
+                service?.bagCmd(account.username, act, slot, arg) ?: "False"
+            },
+            onAddCatDo = { tid ->
+                // List cat DUNG CHUNG moi acc -> ghi thang qua Python, khong qua PartyStore.
+                val key = "0x%04x".format(tid)
+                val ds = BotForegroundService.loadCatDoItems()
+                if (key in ds) false
+                else BotForegroundService.saveCatDoItems(ds + key)
+            },
+            onDismiss = { editingBagAccount = null },
+        )
+    }
+
     val skillTreeAccount = editingSkillTreeAccount
     if (skillTreeAccount != null) {
         val (partyName, account) = skillTreeAccount
@@ -1115,6 +1138,7 @@ fun PartyCard(
     onEditSkill: (Account) -> Unit,
     onEditPoint: (Account) -> Unit = {},
     onEditSkillTree: (Account) -> Unit = {},
+    onOpenBag: (Account) -> Unit = {},
     onEnabledChange: (Account, Boolean) -> Unit,
     onRemoveAccount: (String) -> Unit,
     onRemoveParty: () -> Unit,
@@ -1380,6 +1404,7 @@ fun PartyCard(
                         onEditSkill = { onEditSkill(account) },
                         onEditPoint = { onEditPoint(account) },
                         onEditSkillTree = { onEditSkillTree(account) },
+                        onOpenBag = { onOpenBag(account) },
                         onEnabledChange = { enabled -> onEnabledChange(account, enabled) },
                         onDelete = { onRemoveAccount(account.username) },
                         expanded = expandedLogUser == account.username,
@@ -1408,6 +1433,7 @@ fun AccountRow(
     onEditSkill: () -> Unit,
     onEditPoint: () -> Unit,
     onEditSkillTree: () -> Unit = {},
+    onOpenBag: () -> Unit = {},
     onEnabledChange: (Boolean) -> Unit,
     onDelete: () -> Unit,
     expanded: Boolean = false,
@@ -1498,6 +1524,9 @@ fun AccountRow(
                 }
                 TextButton(onClick = onEditSkillTree) {
                     Text("Skill", maxLines = 1)
+                }
+                TextButton(onClick = onOpenBag) {
+                    Text("Túi", maxLines = 1)
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = StatusError, modifier = Modifier.size(18.dp))
@@ -4439,6 +4468,228 @@ private fun buildPointJson(reserve: Int, rules: List<PointRule>): String {
  *     duyet TU TREN XUONG. Rule chot theo diem GOC.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+/** Mot o tui do (Python `bag_info` da tinh san cac co CHO PHEP theo luat client). */
+data class BagSlot(
+    val slot: Int,
+    val id: Int,
+    val cnt: Int,
+    val name: String,
+    val q: Int,
+    val st: Int,
+    val tabs: List<Int>,
+    val canUse: Boolean,
+    val canEquip: Boolean,
+    val canDismantle: Boolean,
+    val canFashion: Boolean,
+    val canBank: Boolean,
+)
+
+/** 4 tab tui do, GIONG client game (bot/bag_tabs.py::TAB_NAMES). */
+val BagTabs = listOf(1 to "Tất cả", 2 to "Trang bị", 3 to "Vật phẩm", 4 to "Nguyên liệu")
+
+/** Mau nen theo pham chat - cung bang mau voi ban PC (BagDialog._BAG_Q). */
+fun bagQualityColor(q: Int): androidx.compose.ui.graphics.Color = when (q) {
+    1 -> androidx.compose.ui.graphics.Color(0xFFE8F4E8)
+    2 -> androidx.compose.ui.graphics.Color(0xFFE0ECFF)
+    3 -> androidx.compose.ui.graphics.Color(0xFFF3E8FF)
+    4 -> androidx.compose.ui.graphics.Color(0xFFFFF0D8)
+    else -> androidx.compose.ui.graphics.Color(0xFFF0F0F0)
+}
+
+fun parseBagInfo(json: String): Triple<Int, Int, List<BagSlot>> {
+    if (json.isBlank()) return Triple(0, 0, emptyList())
+    return try {
+        val o = JSONObject(json)
+        val arr = o.optJSONArray("slots")
+        val out = ArrayList<BagSlot>()
+        for (i in 0 until (arr?.length() ?: 0)) {
+            val s = arr!!.getJSONObject(i)
+            val ta = s.optJSONArray("tab")
+            val tabs = ArrayList<Int>()
+            for (j in 0 until (ta?.length() ?: 0)) tabs.add(ta!!.optInt(j))
+            out.add(BagSlot(
+                slot = s.optInt("slot"), id = s.optInt("id"), cnt = s.optInt("cnt"),
+                name = s.optString("name", ""), q = s.optInt("q", 0),
+                st = s.optInt("st", 999), tabs = tabs,
+                canUse = s.optBoolean("use", false), canEquip = s.optBoolean("equip", false),
+                canDismantle = s.optBoolean("dis", false),
+                canFashion = s.optBoolean("fashion", false),
+                canBank = s.optBoolean("bank", false),
+            ))
+        }
+        Triple(o.optInt("used"), o.optInt("cap"), out)
+    } catch (_: Exception) {
+        Triple(0, 0, emptyList())
+    }
+}
+
+/** TUI DO cua mot acc. Mirror gui.py::BagDialog (rut gon cho man hinh dien thoai).
+ *
+ *  Tui do la snapshot SONG trong client - acc TAT thi khong co gi de hien (khong cache duoc:
+ *  hien so cu roi bam "phan giai" la mat nham do).
+ *  Sap xep GIONG CLIENT: theo `st` (truong 排序 cua Item_C.dat) roi den id - khong phai theo so o.
+ */
+@Composable
+fun BagDialog(
+    username: String,
+    onLoadInfo: () -> String,
+    onCmd: (String, Int, Int) -> String,
+    onAddCatDo: (Int) -> Boolean,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var infoJson by remember { mutableStateOf("") }
+    var tab by remember { mutableStateOf(0) }
+    var chon by remember { mutableStateOf<BagSlot?>(null) }
+    var thongBao by remember { mutableStateOf("") }
+    var dangTai by remember { mutableStateOf(true) }
+
+    suspend fun nap() {
+        dangTai = true
+        infoJson = withContext(Dispatchers.IO) { onLoadInfo() }
+        dangTai = false
+    }
+    LaunchedEffect(username) { nap() }
+
+    val (used, cap, slots) = remember(infoJson) { parseBagInfo(infoJson) }
+    val tabId = BagTabs[tab].first
+    val rows = remember(tabId, slots) {
+        slots.filter { tabId == 1 || tabId in it.tabs }.sortedWith(compareBy({ it.st }, { it.id }))
+    }
+    // O dang chon co the da BIEN MAT sau khi phan giai/bo -> khong duoc giu lai bang nut cu.
+    val selected = chon?.let { c -> rows.firstOrNull { it.slot == c.slot && it.id == c.id } }
+
+    fun chay(action: String, arg: Int = 0) {
+        val s = selected ?: return
+        scope.launch {
+            val kq = withContext(Dispatchers.IO) { onCmd(action, s.slot, arg) }
+            thongBao = when {
+                kq == "queued" -> "Đang trong trận — đã xếp hàng, hết trận bot tự gửi."
+                kq.startsWith("True") -> "Xong."
+                else -> kq.removePrefix("False: ")
+            }
+            nap()
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Túi đồ: $username") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
+                if (infoJson.isBlank()) {
+                    Text(if (dangTai) "Đang đọc..." else "Acc chưa chạy — túi đồ chỉ xem được khi bot đang chạy.")
+                } else {
+                    Text("$used/$cap ô  ·  tab này: ${rows.size}", fontWeight = FontWeight.Bold)
+                    ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
+                        BagTabs.forEachIndexed { i, t ->
+                            Tab(selected = tab == i, onClick = { tab = i; chon = null },
+                                text = { Text(t.second) })
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                        if (rows.isEmpty()) Text("(trống)", style = MaterialTheme.typography.bodySmall)
+                        rows.forEach { it2 ->
+                            val dangChon = selected?.slot == it2.slot
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                                    .background(if (dangChon)
+                                        androidx.compose.ui.graphics.Color(0xFFCFE3FF)
+                                        else bagQualityColor(it2.q))
+                                    .clickable { chon = it2; thongBao = "" }
+                                    .padding(horizontal = 6.dp, vertical = 5.dp),
+                            ) {
+                                Text(it2.name, Modifier.weight(1f),
+                                     style = MaterialTheme.typography.bodySmall)
+                                if (it2.cnt > 1) {
+                                    Text("x${it2.cnt}", Modifier.padding(end = 8.dp),
+                                         style = MaterialTheme.typography.bodySmall,
+                                         fontWeight = FontWeight.Bold)
+                                }
+                                Text("#${it2.slot}", style = MaterialTheme.typography.bodySmall,
+                                     color = androidx.compose.ui.graphics.Color(0xFF888888))
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                    if (selected != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("${selected.name}  ·  x${selected.cnt}  ·  id 0x%04x".format(selected.id),
+                             style = MaterialTheme.typography.bodySmall)
+                        FlowRowNutTuiDo(
+                            s = selected,
+                            onUse = { chay("use") },
+                            onEquip = { chay("equip") },
+                            onDismantle = { chay("decompose") },
+                            onFashion = { chay("fashion") },
+                            onDiscard = { chay("discard", selected.cnt) },
+                            onBank = {
+                                thongBao = if (onAddCatDo(selected.id))
+                                    "Đã thêm \"${selected.name}\" vào List cất (dùng chung mọi acc)."
+                                else "\"${selected.name}\" đã có trong List cất."
+                            },
+                        )
+                    }
+                    if (thongBao.isNotEmpty()) {
+                        Text(thongBao, style = MaterialTheme.typography.bodySmall,
+                             color = androidx.compose.ui.graphics.Color(0xFF007700))
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
+        dismissButton = {
+            TextButton(onClick = { scope.launch { nap() } }) { Text("Đọc lại") }
+        },
+    )
+}
+
+/** Hang nut cho o dang chon. Nut nao hien la theo LUAT CLIENT (Python da tinh san trong
+ *  `bag_info`): do mac duoc thi chi hien "Trang bị", KHONG hien "Dùng" - hai lenh khac han nhau
+ *  (0x17 sub0b deo len nguoi / sub0f tieu hao), gui nham la sai lenh. */
+@Composable
+private fun FlowRowNutTuiDo(
+    s: BagSlot,
+    onUse: () -> Unit,
+    onEquip: () -> Unit,
+    onDismantle: () -> Unit,
+    onFashion: () -> Unit,
+    onDiscard: () -> Unit,
+    onBank: () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically) {
+        if (s.canEquip) {
+            OutlinedButton(onClick = onEquip, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Trang bị", style = MaterialTheme.typography.bodySmall)
+            }
+        } else if (s.canUse) {
+            OutlinedButton(onClick = onUse, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Sử dụng", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (s.canDismantle) {
+            OutlinedButton(onClick = onDismantle, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Phân giải", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (s.canFashion) {
+            OutlinedButton(onClick = onFashion, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Sưu tầm", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (s.canBank) {
+            OutlinedButton(onClick = onBank, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Tự cất vào tiền trang", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        OutlinedButton(onClick = onDiscard) {
+            Text("Bỏ", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
 /** Mot skill trong skills_data.json (chi cac truong cay skill can). */
 data class SkillNode(
     val id: Int,
