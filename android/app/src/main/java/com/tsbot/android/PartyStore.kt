@@ -58,6 +58,7 @@ class PartyStore(private val context: Context) {
                     vantieuFromJson(a.optJSONObject("vantieu")),
                     a.optBoolean("enabled", true),
                     a.optString("point", ""),
+                    a.optString("skill", ""),
                 )
             }
             val shopItems = o.optJSONObject("shop_items")
@@ -107,6 +108,11 @@ class PartyStore(private val context: Context) {
                 scrollModes = o.optJSONObject("scroll_modes")?.let { m ->
                     m.keys().asSequence().mapNotNull { k -> m.optString(k, "").takeIf { it.isNotEmpty() }?.let { k to it } }.toMap()
                 } ?: emptyMap(),
+                autoOpenBoxes = o.optBoolean("auto_open_boxes", false),
+                boxModes = o.optJSONObject("box_modes")?.let { m ->
+                    m.keys().asSequence().mapNotNull { k -> k.takeIf { m.optBoolean(k, false) }?.let { it to true } }.toMap()
+                } ?: emptyMap(),
+                autoCatDo = o.optBoolean("auto_cat_do", false),
                 autoDonateMaterials = o.optBoolean("auto_donate_materials", true),
                 materialModes = o.optJSONObject("material_modes")?.let { m ->
                     m.keys().asSequence().mapNotNull { k -> m.optString(k, "").takeIf { it.isNotEmpty() }?.let { k to it } }.toMap()
@@ -185,6 +191,9 @@ class PartyStore(private val context: Context) {
             o.put("auto_discard_junk", p.autoDiscardJunk)
             o.put("auto_decompose_scrolls", p.autoDecomposeScrolls)
             o.put("scroll_modes", JSONObject().apply { p.scrollModes.forEach { (k, v) -> put(k, v) } })
+            o.put("auto_open_boxes", p.autoOpenBoxes)
+            o.put("box_modes", JSONObject().apply { p.boxModes.forEach { (k, v) -> put(k, v) } })
+            o.put("auto_cat_do", p.autoCatDo)
             o.put("auto_donate_materials", p.autoDonateMaterials)
             o.put("material_modes", JSONObject().apply { p.materialModes.forEach { (k, v) -> put(k, v) } })
             o.put("auto_event_exchange", p.autoEventExchange)
@@ -215,6 +224,7 @@ class PartyStore(private val context: Context) {
                 ao.put("enabled", a.enabled)
                 if (a.battleJson.isNotBlank()) ao.put("battle", a.battleJson)
                 if (a.pointJson.isNotBlank()) ao.put("point", a.pointJson)
+                if (a.skillJson.isNotBlank()) ao.put("skill", a.skillJson)
                 if (!a.heal.isDefault()) ao.put("heal", a.heal.toJsonObject())
                 if (!a.furnace.isEmpty()) ao.put("furnace", a.furnace.toJsonObject())
                 if (!a.vantieu.isDefault()) ao.put("vantieu", a.vantieu.toJsonObject())

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -270,6 +271,8 @@ fun TsBotApp(
     var confirmDeleteParty by remember { mutableStateOf<String?>(null) }
     var editingSkillAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     var editingPointAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    var editingSkillTreeAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    var editingBagAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     // Tab party dang chon (moi party = 1 tab, giong ban PC)
     var selectedTab by remember { mutableStateOf(0) }
     var privacyMode by rememberSaveable { mutableStateOf(PRIVACY_MASK) }
@@ -525,6 +528,8 @@ fun TsBotApp(
                         onEditHeal = { account -> editingHealAccount = party.name to account },
                         onEditSkill = { account -> editingSkillAccount = party.name to account },
                         onEditPoint = { account -> editingPointAccount = party.name to account },
+                        onEditSkillTree = { account -> editingSkillTreeAccount = party.name to account },
+                        onOpenBag = { account -> editingBagAccount = party.name to account },
                         onEnabledChange = { account, enabled ->
                             partyStore.updateAccountInParty(
                                 party.name,
@@ -784,6 +789,9 @@ fun TsBotApp(
             initialAutoDiscardJunk = partyBeingEdited.autoDiscardJunk,
             initialAutoDecomposeScrolls = partyBeingEdited.autoDecomposeScrolls,
             initialScrollModes = partyBeingEdited.scrollModes,
+            initialAutoOpenBoxes = partyBeingEdited.autoOpenBoxes,
+            initialBoxModes = partyBeingEdited.boxModes,
+            initialAutoCatDo = partyBeingEdited.autoCatDo,
             initialAutoDonateMaterials = partyBeingEdited.autoDonateMaterials,
             initialMaterialModes = partyBeingEdited.materialModes,
             initialAutoEventExchange = partyBeingEdited.autoEventExchange,
@@ -961,6 +969,45 @@ fun TsBotApp(
         )
     }
 
+    val bagAccount = editingBagAccount
+    if (bagAccount != null) {
+        val account = bagAccount.second
+        BagDialog(
+            username = account.username,
+            onLoadInfo = { service?.bagInfoJson(account.username) ?: "" },
+            onCmd = { act, slot, arg ->
+                service?.bagCmd(account.username, act, slot, arg) ?: "False"
+            },
+            onAddCatDo = { tid ->
+                // List cat DUNG CHUNG moi acc -> ghi thang qua Python, khong qua PartyStore.
+                val key = "0x%04x".format(tid)
+                val ds = BotForegroundService.loadCatDoItems()
+                if (ds[key] == "cat") false
+                else BotForegroundService.saveCatDoItems(ds + (key to "cat"))
+            },
+            onDismiss = { editingBagAccount = null },
+        )
+    }
+
+    val skillTreeAccount = editingSkillTreeAccount
+    if (skillTreeAccount != null) {
+        val (partyName, account) = skillTreeAccount
+        SkillTreeDialog(
+            username = account.username,
+            initialSkillJson = account.skillJson,
+            onLoadInfo = { service?.skillCharInfoJson(account.username) ?: "" },
+            onUpgrade = { sid, cap -> service?.upgradeSkill(account.username, sid, cap) ?: "False" },
+            onDismiss = { editingSkillTreeAccount = null },
+            onSave = { json ->
+                partyStore.updateAccountInParty(
+                    partyName, account.username, account.copy(skillJson = json))
+                service?.applySkillConfig(account.username, json)
+                refresh()
+                editingSkillTreeAccount = null
+            },
+        )
+    }
+
     val skillAccount = editingSkillAccount
     if (skillAccount != null) {
         val (partyName, account) = skillAccount
@@ -1090,6 +1137,8 @@ fun PartyCard(
     onEditHeal: (Account) -> Unit,
     onEditSkill: (Account) -> Unit,
     onEditPoint: (Account) -> Unit = {},
+    onEditSkillTree: (Account) -> Unit = {},
+    onOpenBag: (Account) -> Unit = {},
     onEnabledChange: (Account, Boolean) -> Unit,
     onRemoveAccount: (String) -> Unit,
     onRemoveParty: () -> Unit,
@@ -1354,6 +1403,8 @@ fun PartyCard(
                         onEditHeal = { onEditHeal(account) },
                         onEditSkill = { onEditSkill(account) },
                         onEditPoint = { onEditPoint(account) },
+                        onEditSkillTree = { onEditSkillTree(account) },
+                        onOpenBag = { onOpenBag(account) },
                         onEnabledChange = { enabled -> onEnabledChange(account, enabled) },
                         onDelete = { onRemoveAccount(account.username) },
                         expanded = expandedLogUser == account.username,
@@ -1381,6 +1432,8 @@ fun AccountRow(
     onEditHeal: () -> Unit,
     onEditSkill: () -> Unit,
     onEditPoint: () -> Unit,
+    onEditSkillTree: () -> Unit = {},
+    onOpenBag: () -> Unit = {},
     onEnabledChange: (Boolean) -> Unit,
     onDelete: () -> Unit,
     expanded: Boolean = false,
@@ -1468,6 +1521,12 @@ fun AccountRow(
                 }
                 TextButton(onClick = onEditPoint) {
                     Text("Point", maxLines = 1)
+                }
+                TextButton(onClick = onEditSkillTree) {
+                    Text("Skill", maxLines = 1)
+                }
+                TextButton(onClick = onOpenBag) {
+                    Text("Túi", maxLines = 1)
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = StatusError, modifier = Modifier.size(18.dp))
@@ -1729,6 +1788,9 @@ fun AddPartyDialog(
     initialAutoDiscardJunk: Boolean = true,
     initialAutoDecomposeScrolls: Boolean = false,
     initialScrollModes: Map<String, String> = emptyMap(),
+    initialAutoOpenBoxes: Boolean = false,
+    initialBoxModes: Map<String, Boolean> = emptyMap(),
+    initialAutoCatDo: Boolean = false,
     initialAutoDonateMaterials: Boolean = true,
     initialMaterialModes: Map<String, String> = emptyMap(),
     initialAutoEventExchange: Boolean = false,
@@ -1805,6 +1867,11 @@ fun AddPartyDialog(
     var autoDiscardJunk by remember { mutableStateOf(initialAutoDiscardJunk) }
     var autoDecomposeScrolls by remember { mutableStateOf(initialAutoDecomposeScrolls) }
     var scrollModes by remember { mutableStateOf(initialScrollModes) }
+    var autoOpenBoxes by remember { mutableStateOf(initialAutoOpenBoxes) }
+    var boxModes by remember { mutableStateOf(initialBoxModes) }
+    var showBoxList by remember { mutableStateOf(false) }
+    var autoCatDo by remember { mutableStateOf(initialAutoCatDo) }
+    var showCatDoList by remember { mutableStateOf(false) }
     var autoDonateMaterials by remember { mutableStateOf(initialAutoDonateMaterials) }
     var materialModes by remember { mutableStateOf(initialMaterialModes) }
     var showMaterialList by remember { mutableStateOf(false) }
@@ -1871,6 +1938,9 @@ fun AddPartyDialog(
         autoDiscardJunk = autoDiscardJunk,
         autoDecomposeScrolls = autoDecomposeScrolls,
         scrollModes = scrollModes,
+        autoOpenBoxes = autoOpenBoxes,
+        boxModes = boxModes,
+        autoCatDo = autoCatDo,
         autoDonateMaterials = autoDonateMaterials,
         materialModes = materialModes,
         autoBuyShop = autoBuyShop,
@@ -2476,6 +2546,9 @@ fun AddPartyDialog(
                             autoDiscardJunk = autoDiscardJunk,
                             autoDecomposeScrolls = autoDecomposeScrolls,
                             scrollModes = scrollModes,
+                            autoOpenBoxes = autoOpenBoxes,
+                            boxModes = boxModes,
+                            autoCatDo = autoCatDo,
                             autoDonateMaterials = autoDonateMaterials,
                             materialModes = materialModes,
                             autoEventExchange = autoEventExchange,
@@ -2542,6 +2615,17 @@ fun AddPartyDialog(
                         Checkbox(checked = autoSellNoiDat, onCheckedChange = { autoSellNoiDat = it })
                         Text("Tự bán Nồi đất")
                     }
+                    // TU CAT DO: nam GIUA "Tu ban Noi dat" va "Tu vut item rac" - GIONG BAN PC.
+                    // Hai viec di chung mot cho boc 50-50 truoc khi tele ve thanh route: trung
+                    // Ng.Thanh thi ban Noi dat, trung Trac Quan thi di cat do.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoCatDo, onCheckedChange = { autoCatDo = it })
+                        Text("Tự cất đồ vào Tiền trang")
+                        OutlinedButton(
+                            onClick = { showCatDoList = true },
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) { Text("List cất") }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoDiscardJunk, onCheckedChange = { autoDiscardJunk = it })
                         Text("Tự vứt item rác (Ngọc Hư)")
@@ -2553,6 +2637,16 @@ fun AddPartyDialog(
                             onClick = { showMaterialList = true },
                             modifier = Modifier.padding(start = 8.dp),
                         ) { Text("List") }
+                    }
+                    // RUONG TRANG BI: NGAY SAU donate nguyen lieu - dung thu tu bot chay, va de
+                    // tan dung viec da o quan doan (mon khong phan giai duoc thi donate).
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoOpenBoxes, onCheckedChange = { autoOpenBoxes = it })
+                        Text("Tự dọn rương trang bị và Phó bản")
+                        OutlinedButton(
+                            onClick = { showBoxList = true },
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) { Text("List rương") }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoDecomposeScrolls, onCheckedChange = { autoDecomposeScrolls = it })
@@ -2575,6 +2669,18 @@ fun AddPartyDialog(
                 TextButton(onClick = { showBagClean = false }) { Text("Đóng") }
             },
         )
+    }
+
+    if (showBoxList) {
+        BoxListDialog(
+            picked = boxModes,
+            onDismiss = { showBoxList = false },
+            onSave = { boxModes = it; showBoxList = false },
+        )
+    }
+
+    if (showCatDoList) {
+        CatDoListDialog(onDismiss = { showCatDoList = false })
     }
 
     if (showScrollList) {
@@ -3638,6 +3744,206 @@ fun loadDonateMaterials(context: android.content.Context): List<DonateMaterial> 
     return _donateMaterialsCache ?: emptyList()
 }
 
+/** Mot ruong trong bliss_bag.json + thong ke ket qua mo (tinh san tu fc/dn cua tung mon). */
+data class BlissBox(
+    val tid: String,
+    val name: String,
+    val luot: String,
+    val n: Int,
+    val phanGiai: Int,
+    val donate: Int,
+    val vut: Int,
+) {
+    fun label(): String = "$name  —  $n món · phân giải $phanGiai · donate $donate · vứt $vut"
+}
+
+private var _blissBoxCache: List<BlissBox>? = null
+
+/** Doc bliss_bag.json tu assets. `fc > 0` = phan giai duoc, `dn` = qua duoc UIArmy.ArmyFilter
+ *  (donate quan doan); khong ca hai thi bot VUT BO - so nay hien ra de user biet truoc. */
+fun loadBlissBoxes(context: android.content.Context): List<BlissBox> {
+    if (_blissBoxCache == null) {
+        _blissBoxCache = try {
+            val bytes = context.assets.open("train_bot_data/bliss_bag.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8)).getJSONObject("boxes")
+            val out = ArrayList<BlissBox>()
+            for (tid in root.keys()) {
+                val o = root.getJSONObject(tid)
+                val items = o.optJSONArray("items")
+                var pg = 0; var dn = 0; var vut = 0
+                for (i in 0 until (items?.length() ?: 0)) {
+                    val it = items!!.getJSONObject(i)
+                    when {
+                        it.optInt("fc", 0) > 0 -> pg++
+                        it.optBoolean("dn", false) -> dn++
+                        else -> vut++
+                    }
+                }
+                out.add(BlissBox(tid, o.optString("name", tid), o.optString("luot", "thuong"),
+                                 pg + dn + vut, pg, dn, vut))
+            }
+            out
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    return _blissBoxCache ?: emptyList()
+}
+
+@Composable
+fun BoxListDialog(
+    picked: Map<String, Boolean>,
+    onDismiss: () -> Unit,
+    onSave: (Map<String, Boolean>) -> Unit,
+) {
+    val context = LocalContext.current
+    val all = remember { loadBlissBoxes(context) }
+    val state = remember { mutableStateMapOf<String, Boolean>().apply { picked.forEach { (k, v) -> if (v) put(k, true) } } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("List rương (${all.size})") },
+        text = {
+            Column {
+                Text(
+                    "Bot mở rương đã tick rồi PHÂN GIẢI lấy mảnh; món không phân giải được thì " +
+                        "ĐÓNG GÓP quân đoàn; không được cả hai thì VỨT BỎ. Chỉ chạy khi acc có " +
+                        "quân đoàn và đã vào >24h. Chỉ đụng vào món VỪA MỞ RA.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(6.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(all.size) { i ->
+                        val b = all[i]
+                        val on = state[b.tid] == true
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { if (on) state.remove(b.tid) else state[b.tid] = true }
+                                .padding(vertical = 4.dp),
+                        ) {
+                            Checkbox(checked = on, onCheckedChange = {
+                                if (on) state.remove(b.tid) else state[b.tid] = true
+                            })
+                            Text(b.label(), style = MaterialTheme.typography.bodySmall,
+                                 modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { onSave(state.toMap()) }) { Text("Lưu") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
+    )
+}
+
+/** LIST CAT vao tien trang. KHAC moi list khac o day: no la MOT FILE CHUNG cho moi acc
+ *  (`cat_do_items.json` do Python quan ly), khong phai config theo party -> doc/ghi qua Python
+ *  chu khong qua PartyStore. Them mon moi thi lam o TUI DO (ban PC); o day chi BO bot. */
+@Composable
+fun CatDoListDialog(
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val ten = remember { loadItemNames(context) }
+    val sortMap = remember { loadItemSort(context) }
+    // BA trang thai (user chot 04/09): tick = CAT VAO | bo tick = LAY RA | xoa dong = bot thoi
+    // dung toi mon do. "Bo tick" KHAC "xoa" - do la ly do khong dung Set<String>.
+    val state = remember {
+        mutableStateMapOf<String, String>().apply { putAll(BotForegroundService.loadCatDoItems()) }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("List tiền trang (${state.size})") },
+        text = {
+            Column {
+                Text(
+                    "Dùng chung cho mọi acc. Tick = CẤT VÀO tiền trang, bỏ tick = LẤY RA. " +
+                        "Xoá dòng = bot thôi đụng tới món đó.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(6.dp))
+                // Sap y THU TU TIEN TRANG trong game: (sort ASC, Id ASC) - xem loadItemSort.
+                val keys = state.keys.sortedWith(
+                    compareBy({ sortMap[it] ?: 999 }, { it.removePrefix("0x").toIntOrNull(16) ?: 0 })
+                )
+                if (keys.isEmpty()) {
+                    Text("(chưa có món nào — thêm từ Túi đồ)",
+                         style = MaterialTheme.typography.bodySmall)
+                }
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(keys.size) { i ->
+                        val k = keys[i]
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        ) {
+                            Checkbox(checked = state[k] == "cat", onCheckedChange = { on ->
+                                state[k] = if (on) "cat" else "lay"
+                            })
+                            Text(ten[k] ?: k, modifier = Modifier.weight(1f))
+                            Text(
+                                if (state[k] == "cat") "Cất vào" else "Lấy ra",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            TextButton(onClick = { state.remove(k) }) { Text("✕") }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                BotForegroundService.saveCatDoItems(state.toMap())
+                onDismiss()
+            }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Huỷ") } },
+    )
+}
+
+private var _itemNameCache: Map<String, String>? = null
+
+/** {tid_hex: ten} tu items_gamedata.json (assets). Chi de HIEN TEN trong List cất. */
+fun loadItemNames(context: android.content.Context): Map<String, String> {
+    if (_itemNameCache == null) {
+        _itemNameCache = try {
+            val bytes = context.assets.open("train_bot_data/items_gamedata.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8))
+            val out = HashMap<String, String>()
+            for (k in root.keys()) {
+                val nm = root.optJSONObject(k)?.optString("name", "") ?: ""
+                if (nm.isNotEmpty()) out[k.lowercase()] = nm
+            }
+            out
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+    return _itemNameCache ?: emptyMap()
+}
+
+private var _itemSortCache: Map<String, Int>? = null
+
+/** {tid_hex: sort} - truong 排序 cua Item_C.dat ("st" trong items_gamedata.json).
+ *
+ *  Tien trang sap XEP y het tui do: `Item.GetBankByCategory` goi CHINH `Item.Sort`, tuc
+ *  (sort ASC, Id ASC). Sap theo ma hex hay theo ten deu KHAC voi thu tu user nhin thay trong
+ *  game. */
+fun loadItemSort(context: android.content.Context): Map<String, Int> {
+    if (_itemSortCache == null) {
+        _itemSortCache = try {
+            val bytes = context.assets.open("train_bot_data/items_gamedata.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8))
+            val out = HashMap<String, Int>()
+            for (k in root.keys()) out[k.lowercase()] = root.optJSONObject(k)?.optInt("st", 999) ?: 999
+            out
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+    return _itemSortCache ?: emptyMap()
+}
+
 @Composable
 fun EventExchangeDialog(
     picked: List<String>,
@@ -4195,6 +4501,505 @@ private fun buildPointJson(reserve: Int, rules: List<PointRule>): String {
  *     duyet TU TREN XUONG. Rule chot theo diem GOC.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+/** Mot o tui do (Python `bag_info` da tinh san cac co CHO PHEP theo luat client). */
+data class BagSlot(
+    val slot: Int,
+    val id: Int,
+    val cnt: Int,
+    val name: String,
+    val q: Int,
+    val st: Int,
+    val tabs: List<Int>,
+    val canUse: Boolean,
+    val canEquip: Boolean,
+    val canDismantle: Boolean,
+    val canFashion: Boolean,
+    val canBank: Boolean,
+)
+
+/** 4 tab tui do, GIONG client game (bot/bag_tabs.py::TAB_NAMES). */
+val BagTabs = listOf(1 to "Tất cả", 2 to "Trang bị", 3 to "Vật phẩm", 4 to "Nguyên liệu")
+
+/** Mau nen theo pham chat - cung bang mau voi ban PC (BagDialog._BAG_Q). */
+fun bagQualityColor(q: Int): androidx.compose.ui.graphics.Color = when (q) {
+    1 -> androidx.compose.ui.graphics.Color(0xFFE8F4E8)
+    2 -> androidx.compose.ui.graphics.Color(0xFFE0ECFF)
+    3 -> androidx.compose.ui.graphics.Color(0xFFF3E8FF)
+    4 -> androidx.compose.ui.graphics.Color(0xFFFFF0D8)
+    else -> androidx.compose.ui.graphics.Color(0xFFF0F0F0)
+}
+
+fun parseBagInfo(json: String): Triple<Int, Int, List<BagSlot>> {
+    if (json.isBlank()) return Triple(0, 0, emptyList())
+    return try {
+        val o = JSONObject(json)
+        val arr = o.optJSONArray("slots")
+        val out = ArrayList<BagSlot>()
+        for (i in 0 until (arr?.length() ?: 0)) {
+            val s = arr!!.getJSONObject(i)
+            val ta = s.optJSONArray("tab")
+            val tabs = ArrayList<Int>()
+            for (j in 0 until (ta?.length() ?: 0)) tabs.add(ta!!.optInt(j))
+            out.add(BagSlot(
+                slot = s.optInt("slot"), id = s.optInt("id"), cnt = s.optInt("cnt"),
+                name = s.optString("name", ""), q = s.optInt("q", 0),
+                st = s.optInt("st", 999), tabs = tabs,
+                canUse = s.optBoolean("use", false), canEquip = s.optBoolean("equip", false),
+                canDismantle = s.optBoolean("dis", false),
+                canFashion = s.optBoolean("fashion", false),
+                canBank = s.optBoolean("bank", false),
+            ))
+        }
+        Triple(o.optInt("used"), o.optInt("cap"), out)
+    } catch (_: Exception) {
+        Triple(0, 0, emptyList())
+    }
+}
+
+/** TUI DO cua mot acc. Mirror gui.py::BagDialog (rut gon cho man hinh dien thoai).
+ *
+ *  Tui do la snapshot SONG trong client - acc TAT thi khong co gi de hien (khong cache duoc:
+ *  hien so cu roi bam "phan giai" la mat nham do).
+ *  Sap xep GIONG CLIENT: theo `st` (truong 排序 cua Item_C.dat) roi den id - khong phai theo so o.
+ */
+@Composable
+fun BagDialog(
+    username: String,
+    onLoadInfo: () -> String,
+    onCmd: (String, Int, Int) -> String,
+    onAddCatDo: (Int) -> Boolean,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var infoJson by remember { mutableStateOf("") }
+    var tab by remember { mutableStateOf(0) }
+    var chon by remember { mutableStateOf<BagSlot?>(null) }
+    var thongBao by remember { mutableStateOf("") }
+    var dangTai by remember { mutableStateOf(true) }
+
+    suspend fun nap() {
+        dangTai = true
+        infoJson = withContext(Dispatchers.IO) { onLoadInfo() }
+        dangTai = false
+    }
+    LaunchedEffect(username) { nap() }
+
+    val (used, cap, slots) = remember(infoJson) { parseBagInfo(infoJson) }
+    val tabId = BagTabs[tab].first
+    val rows = remember(tabId, slots) {
+        slots.filter { tabId == 1 || tabId in it.tabs }.sortedWith(compareBy({ it.st }, { it.id }))
+    }
+    // O dang chon co the da BIEN MAT sau khi phan giai/bo -> khong duoc giu lai bang nut cu.
+    val selected = chon?.let { c -> rows.firstOrNull { it.slot == c.slot && it.id == c.id } }
+
+    fun chay(action: String, arg: Int = 0) {
+        val s = selected ?: return
+        scope.launch {
+            val kq = withContext(Dispatchers.IO) { onCmd(action, s.slot, arg) }
+            thongBao = when {
+                kq == "queued" -> "Đang trong trận — đã xếp hàng, hết trận bot tự gửi."
+                kq.startsWith("True") -> "Xong."
+                else -> kq.removePrefix("False: ")
+            }
+            nap()
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Túi đồ: $username") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
+                if (infoJson.isBlank()) {
+                    Text(if (dangTai) "Đang đọc..." else "Acc chưa chạy — túi đồ chỉ xem được khi bot đang chạy.")
+                } else {
+                    Text("$used/$cap ô  ·  tab này: ${rows.size}", fontWeight = FontWeight.Bold)
+                    ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
+                        BagTabs.forEachIndexed { i, t ->
+                            Tab(selected = tab == i, onClick = { tab = i; chon = null },
+                                text = { Text(t.second) })
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                        if (rows.isEmpty()) Text("(trống)", style = MaterialTheme.typography.bodySmall)
+                        rows.forEach { it2 ->
+                            val dangChon = selected?.slot == it2.slot
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                                    .background(if (dangChon)
+                                        androidx.compose.ui.graphics.Color(0xFFCFE3FF)
+                                        else bagQualityColor(it2.q))
+                                    .clickable { chon = it2; thongBao = "" }
+                                    .padding(horizontal = 6.dp, vertical = 5.dp),
+                            ) {
+                                Text(it2.name, Modifier.weight(1f),
+                                     style = MaterialTheme.typography.bodySmall)
+                                if (it2.cnt > 1) {
+                                    Text("x${it2.cnt}", Modifier.padding(end = 8.dp),
+                                         style = MaterialTheme.typography.bodySmall,
+                                         fontWeight = FontWeight.Bold)
+                                }
+                                Text("#${it2.slot}", style = MaterialTheme.typography.bodySmall,
+                                     color = androidx.compose.ui.graphics.Color(0xFF888888))
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                    if (selected != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("${selected.name}  ·  x${selected.cnt}  ·  id 0x%04x".format(selected.id),
+                             style = MaterialTheme.typography.bodySmall)
+                        FlowRowNutTuiDo(
+                            s = selected,
+                            onUse = { chay("use") },
+                            onEquip = { chay("equip") },
+                            onDismantle = { chay("decompose") },
+                            onFashion = { chay("fashion") },
+                            onDiscard = { chay("discard", selected.cnt) },
+                            onBank = {
+                                thongBao = if (onAddCatDo(selected.id))
+                                    "Đã thêm \"${selected.name}\" vào List cất (dùng chung mọi acc)."
+                                else "\"${selected.name}\" đã có trong List cất."
+                            },
+                        )
+                    }
+                    if (thongBao.isNotEmpty()) {
+                        Text(thongBao, style = MaterialTheme.typography.bodySmall,
+                             color = androidx.compose.ui.graphics.Color(0xFF007700))
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
+        dismissButton = {
+            TextButton(onClick = { scope.launch { nap() } }) { Text("Đọc lại") }
+        },
+    )
+}
+
+/** Hang nut cho o dang chon. Nut nao hien la theo LUAT CLIENT (Python da tinh san trong
+ *  `bag_info`): do mac duoc thi chi hien "Trang bị", KHONG hien "Dùng" - hai lenh khac han nhau
+ *  (0x17 sub0b deo len nguoi / sub0f tieu hao), gui nham la sai lenh. */
+@Composable
+private fun FlowRowNutTuiDo(
+    s: BagSlot,
+    onUse: () -> Unit,
+    onEquip: () -> Unit,
+    onDismantle: () -> Unit,
+    onFashion: () -> Unit,
+    onDiscard: () -> Unit,
+    onBank: () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically) {
+        if (s.canEquip) {
+            OutlinedButton(onClick = onEquip, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Trang bị", style = MaterialTheme.typography.bodySmall)
+            }
+        } else if (s.canUse) {
+            OutlinedButton(onClick = onUse, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Sử dụng", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (s.canDismantle) {
+            OutlinedButton(onClick = onDismantle, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Phân giải", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (s.canFashion) {
+            OutlinedButton(onClick = onFashion, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Sưu tầm", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (s.canBank) {
+            OutlinedButton(onClick = onBank, modifier = Modifier.padding(end = 4.dp)) {
+                Text("Tự cất vào tiền trang", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        OutlinedButton(onClick = onDiscard) {
+            Text("Bỏ", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** Mot skill trong skills_data.json (chi cac truong cay skill can). */
+data class SkillNode(
+    val id: Int,
+    val name: String,
+    val tree: String,
+    val pre: Int,
+    val learnPt: Int,
+    val lvUpPt: Int,
+    val maxLv: Int,
+    val element: Int,
+)
+
+private var _skillTreeCache: List<SkillNode>? = null
+
+/** Doc skills_data.json tu assets -> cay skill. Cung nguon voi ban PC (config.SKILL_INFO). */
+fun loadSkillTree(context: android.content.Context): List<SkillNode> {
+    if (_skillTreeCache == null) {
+        _skillTreeCache = try {
+            val bytes = context.assets.open("train_bot_data/skills_data.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8)).getJSONObject("skills")
+            val out = ArrayList<SkillNode>()
+            for (k in root.keys()) {
+                val o = root.getJSONObject(k)
+                val tree = o.optString("tree", "")
+                if (tree.isEmpty() || tree == "null") continue
+                out.add(SkillNode(
+                    id = k.removePrefix("0x").toInt(16),
+                    name = o.optString("name", k),
+                    tree = tree,
+                    pre = o.optInt("pre", 0),
+                    learnPt = o.optInt("learnPt", 0),
+                    lvUpPt = o.optInt("lvUpPt", 1),
+                    maxLv = o.optInt("maxLv", 0),
+                    element = o.optInt("element", 0),
+                ))
+            }
+            out
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    return _skillTreeCache ?: emptyList()
+}
+
+/** Tab cay skill: (khoa trong skills_data, nhan, he). Mirror SkillDialog.TABS ban PC.
+ *  KHONG co "LightDark": game CHUA MO cay do. */
+val SkillTabs = listOf(
+    Triple("Earth", "Địa", 1),
+    Triple("Water", "Thủy", 2),
+    Triple("Fire", "Hỏa", 3),
+    Triple("Wind", "Phong", 4),
+    Triple("Mind", "Tâm", 5),
+    Triple("Turn1", "Chuyển sinh", 0),
+)
+
+/** Tab TAM chi hien skill DA HOC: no co 104 skill sinh hoat ma acc chi dung vai cai. */
+val SkillTabsChiHienDaHoc = setOf("Mind")
+
+/** Mot dong bang tu nang: skill + cap muon dat. */
+data class SkillRule(val id: Int, val target: Int)
+
+fun parseSkillRules(json: String): Pair<Int, List<SkillRule>> {
+    if (json.isBlank()) return 999 to emptyList()
+    return try {
+        val o = JSONObject(json)
+        val arr = o.optJSONArray("rules")
+        val out = ArrayList<SkillRule>()
+        for (i in 0 until (arr?.length() ?: 0)) {
+            // Ban PC luu [skill_id, cap] - MANG 2 phan tu, khong phai object.
+            val r = arr!!.optJSONArray(i) ?: continue
+            out.add(SkillRule(r.optInt(0), r.optInt(1)))
+        }
+        o.optInt("reserve", 999) to out
+    } catch (_: Exception) {
+        999 to emptyList()
+    }
+}
+
+fun skillRulesJson(reserve: Int, rules: List<SkillRule>): String = JSONObject().apply {
+    put("reserve", reserve)
+    put("rules", JSONArray().apply {
+        rules.filter { it.id > 0 && it.target > 0 }.forEach {
+            put(JSONArray().apply { put(it.id); put(it.target) })
+        }
+    })
+}.toString()
+
+/** CAY SKILL NHAN VAT + bang tu nang. Mirror gui.py::SkillDialog.
+ *
+ *  Cay hien theo tab he, moi dong ghi cap hien tai / tran va gia HOC (learnPt, GAP DOI neu skill
+ *  khac he cua char) hoac gia NANG (lvUpPt) - dung luat cua client. Bam mot dong = them thang vao
+ *  bang tu nang o duoi (ban PC la double-click).
+ */
+@Composable
+fun SkillTreeDialog(
+    username: String,
+    initialSkillJson: String,
+    onLoadInfo: () -> String,
+    onUpgrade: (Int, Int) -> String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val all = remember { loadSkillTree(context) }
+    val (initReserve, initRules) = remember(initialSkillJson) { parseSkillRules(initialSkillJson) }
+    var reserve by remember { mutableStateOf(initReserve.toString()) }
+    val rules = remember { mutableStateListOf<SkillRule>().apply { addAll(initRules) } }
+    var infoJson by remember { mutableStateOf("") }
+    var tab by remember { mutableStateOf(0) }
+    var thongBao by remember { mutableStateOf("") }
+
+    suspend fun nap() { infoJson = withContext(Dispatchers.IO) { onLoadInfo() } }
+    LaunchedEffect(username) { nap() }
+
+    val info = remember(infoJson) {
+        try { if (infoJson.isBlank()) null else JSONObject(infoJson) } catch (_: Exception) { null }
+    }
+    // {skill_id: cap dang co}
+    val cap = remember(info) {
+        val m = HashMap<Int, Int>()
+        val lv = info?.optJSONObject("lv")
+        if (lv != null) for (k in lv.keys()) m[k.removePrefix("0x").toInt(16)] = lv.optInt(k, 0)
+        m
+    }
+    val elChar = info?.optInt("element", 0) ?: 0
+    val tuCache = info?.optBoolean("cache") == true
+
+    // Mo dung tab HE CUA CHAR (chi lan dau; sau do ton trong tab user dang xem).
+    LaunchedEffect(elChar) {
+        if (elChar in 1..4) {
+            val i = SkillTabs.indexOfFirst { it.third == elChar }
+            if (i >= 0) tab = i
+        }
+    }
+
+    val tabKey = SkillTabs[tab].first
+    // Xep theo CAY: skill con nam ngay duoi skill tien quyet, thut vao mot muc.
+    val rows = remember(tabKey, cap, all) {
+        val ds = all.filter { it.tree == tabKey }
+            .filter { tabKey !in SkillTabsChiHienDaHoc || (cap[it.id] ?: 0) > 0 }
+        val coTrongTab = ds.map { it.id }.toSet()
+        val con = HashMap<Int, MutableList<SkillNode>>()
+        ds.forEach { con.getOrPut(if (it.pre in coTrongTab) it.pre else 0) { mutableListOf() }.add(it) }
+        val out = ArrayList<Pair<SkillNode, Int>>()
+        fun di(cha: Int, sau: Int) {
+            con[cha]?.sortedBy { it.id }?.forEach { out.add(it to sau); di(it.id, sau + 1) }
+        }
+        di(0, 0)
+        out
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Skill: $username") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
+                .verticalScroll(rememberScrollState())) {
+                val left = info?.opt("left")?.toString()?.takeIf { it != "null" } ?: "?"
+                Text("Điểm skill: $left", fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        info == null -> "(acc chưa chạy và chưa có số đã lưu)"
+                        tuCache -> "(acc đang TẮT — số đã lưu, bật acc mới nâng được)"
+                        else -> "(số đọc trực tiếp từ acc đang chạy)"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
+                    SkillTabs.forEachIndexed { i, t ->
+                        Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t.second) })
+                    }
+                }
+                Text("Bấm một skill để thêm vào bảng tự nâng ở dưới.",
+                     style = MaterialTheme.typography.bodySmall)
+                Column(modifier = Modifier.heightIn(max = 200.dp)
+                    .verticalScroll(rememberScrollState())) {
+                    if (rows.isEmpty()) Text("(trống)", style = MaterialTheme.typography.bodySmall)
+                    rows.forEach { row ->
+                        val sk = row.first
+                        val c = cap[sk.id] ?: 0
+                        // Gia HOC gap doi neu skill khac he cua char (luat cua client).
+                        val giaHoc = if (sk.element in 1..4 && elChar in 1..4 && sk.element != elChar)
+                            sk.learnPt * 2 else sk.learnPt
+                        val moTa = if (c > 0) "nâng ${sk.lvUpPt} điểm/cấp" else "học $giaHoc điểm"
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable {
+                                    if (c < sk.maxLv && rules.none { it.id == sk.id }) {
+                                        rules.add(SkillRule(sk.id, minOf(c + 1, sk.maxLv)))
+                                    }
+                                }
+                                .padding(start = (row.second * 14).dp, top = 3.dp, bottom = 3.dp),
+                        ) {
+                            Text(sk.name, Modifier.weight(1f),
+                                 style = MaterialTheme.typography.bodySmall)
+                            Text("$c/${sk.maxLv}", Modifier.width(52.dp),
+                                 style = MaterialTheme.typography.bodySmall)
+                            Text(moTa, Modifier.width(112.dp),
+                                 style = MaterialTheme.typography.bodySmall)
+                            TextButton(
+                                enabled = !tuCache && c < sk.maxLv,
+                                onClick = {
+                                    scope.launch {
+                                        val kq = withContext(Dispatchers.IO) {
+                                            onUpgrade(sk.id, minOf(c + 1, sk.maxLv))
+                                        }
+                                        thongBao = when {
+                                            kq == "queued" ->
+                                                "Đang trong trận — đã xếp hàng, hết trận bot tự gửi."
+                                            kq.startsWith("True") -> "Đã gửi lệnh nâng ${sk.name}."
+                                            else -> "Không nâng được: $kq"
+                                        }
+                                        nap()
+                                    }
+                                },
+                            ) { Text("Nâng", style = MaterialTheme.typography.bodySmall) }
+                        }
+                    }
+                }
+                if (thongBao.isNotEmpty()) {
+                    Text(thongBao, style = MaterialTheme.typography.bodySmall,
+                         color = androidx.compose.ui.graphics.Color(0xFF007700))
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Tự nâng Skill (duyệt từ trên xuống)", fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Skill point để dành:", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = reserve,
+                        onValueChange = { v -> reserve = v.filter { it.isDigit() } },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.width(110.dp).padding(start = 6.dp),
+                    )
+                }
+                Text("(luôn giữ lại; dư hơn số này mới nâng cho các dòng dưới)",
+                     style = MaterialTheme.typography.bodySmall)
+                rules.forEachIndexed { i, r ->
+                    val sk = all.firstOrNull { it.id == r.id }
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                        Text(sk?.name ?: "0x%04x".format(r.id), Modifier.weight(1f),
+                             style = MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(
+                            value = r.target.toString(),
+                            onValueChange = { t ->
+                                rules[i] = r.copy(
+                                    target = t.filter { it.isDigit() }.toIntOrNull() ?: 0)
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(84.dp),
+                        )
+                        val xong = sk != null && (cap[r.id] ?: 0) >= r.target && r.target > 0
+                        Text(if (xong) "Done" else "", Modifier.width(46.dp),
+                             style = MaterialTheme.typography.bodySmall,
+                             color = androidx.compose.ui.graphics.Color(0xFF007700))
+                        TextButton(onClick = { rules.removeAt(i) }) { Text("✕") }
+                    }
+                }
+                if (rules.isEmpty()) {
+                    Text("(chưa có dòng nào — bấm một skill ở cây trên để thêm)",
+                         style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(skillRulesJson(reserve.toIntOrNull() ?: 999, rules.toList()))
+            }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
+    )
+}
+
 @Composable
 fun PointSettingsDialog(
     username: String,

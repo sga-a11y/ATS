@@ -806,6 +806,9 @@ if _aj is not None:
                 "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),
                 "do_van_tieu": bool(_party.get("do_van_tieu", True)),
                 "auto_sell_noi_dat": bool(_party.get("auto_sell_noi_dat", True)),
+                # TU CAT DO vao tien trang (Trac Quan). MAC DINH TAT + list rong: chi cat mon
+                # user da tick trong "List cất".
+                "auto_cat_do": bool(_party.get("auto_cat_do", False)),
                 # TU MO RONG TUI DO: mua slot toi khi gia lan KE TIEP vuot nguong (so vang user
                 # dien). Mac dinh TAT - mua slot ton nguyen bao/vang cua user.
                 "auto_bag_expand": bool(_party.get("auto_bag_expand", False)),

@@ -67,6 +67,14 @@ data class Party(
     val autoDecomposeScrolls: Boolean = false,
     // tid_hex -> "keep"/"drop", CHI chua muc user doi khac mac dinh (vkcd = keep)
     val scrollModes: Map<String, String> = emptyMap(),
+    // TU MO RUONG TRANG BI (mac dinh TAT, list RONG): mo hop -> phan giai / donate quan doan /
+    // vut mon ket. Chay NGAY SAU donate nguyen lieu de tan dung viec da o quan doan.
+    val autoOpenBoxes: Boolean = false,
+    // tid_hex -> true, ruong user DA TICK trong "List rương"
+    val boxModes: Map<String, Boolean> = emptyMap(),
+    // TU CAT DO vao tien trang (mac dinh TAT). Danh sach mon cat KHONG nam o day: no la MOT
+    // file chung cho moi acc, do Python quan ly - xem bot/client.py::load_cat_do_items.
+    val autoCatDo: Boolean = false,
     // Tu dong gop nguyen lieu cho quan doan (mac dinh BAT). List edit duoc: mac dinh donate HET.
     val autoDonateMaterials: Boolean = true,
     // tid_hex -> "keep", CHI chua nguyen lieu user danh dau GIU (mac dinh donate)
@@ -123,6 +131,9 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     autoDiscardJunk = source.autoDiscardJunk,
     autoDecomposeScrolls = source.autoDecomposeScrolls,
     scrollModes = source.scrollModes,
+    autoOpenBoxes = source.autoOpenBoxes,
+    boxModes = source.boxModes,
+    autoCatDo = source.autoCatDo,
     autoDonateMaterials = source.autoDonateMaterials,
     materialModes = source.materialModes,
     autoEventExchange = source.autoEventExchange,

@@ -40,13 +40,17 @@ class TestVeThanhSauKhiMua(unittest.TestCase):
         self.assertIn("if self.current_map == self.TRAC_QUAN_CITY:", than)
 
     def test_goi_trong_FINALLY(self):
-        """Loi giua chung (route dut, shop khong mo) cung phai ve - khong thi van ket o map NPC."""
+        """Loi giua chung (route dut, shop khong mo) cung phai ve - khong thi van ket o map NPC.
+
+        Neo theo KHOI `finally` THAT (tu `finally:` toi het than ham) chu khong cat cung 1200 ky
+        tu: them vai dong chu thich vao khoi do la bai test dut du hanh vi khong doi.
+        """
         s = _doc("bot", "client.py")
         i = s.find("def buy_hp_sp(")
-        than = s[i:i + 3200]
+        than = s[i:s.find("\n    def ", i + 10)]
         j = than.find("finally:")
         self.assertGreater(j, 0, "phai co finally")
-        self.assertIn("self._ve_thanh_sau_mua_hpsp()", than[j:j + 1200])
+        self.assertIn("self._ve_thanh_sau_mua_hpsp()", than[j:])
 
     def test_route_di_qua_CONG_nen_ket_o_map_khac(self):
         """Neu route sau nay khong con qua cong nua thi luat tren thua - test giu cho biet."""

@@ -171,6 +171,41 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
 
     private fun rpd(): PyObject = Python.getInstance().getModule("train_bot.run_party_digioi")
 
+    companion object {
+        private fun rpdStatic(): PyObject =
+            Python.getInstance().getModule("train_bot.run_party_digioi")
+
+        /** LIST tien trang - MOT file chung (`cat_do_items.json`) cho moi acc, do Python quan ly.
+         *  KHONG copy sang PartyStore: chep tay la se lech (bai hoc Servers.kt).
+         *  -> {tid_hex: "cat"|"lay"}: cat = CAT VAO, lay = LAY RA. Khong co trong map = bot khong
+         *  dung toi mon do. */
+        fun loadCatDoItems(): Map<String, String> = try {
+            rpdStatic().callAttr("load_cat_do_items_str").toString()
+                .split("\n").filter { it.isNotBlank() }
+                .associate { dong ->
+                    val (k, v) = dong.split("=", limit = 2).let {
+                        it[0].trim().lowercase() to (it.getOrNull(1)?.trim() ?: "cat")
+                    }
+                    k to v
+                }
+        } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "load_cat_do_items loi: ${e.message}")
+            emptyMap()
+        }
+
+        fun saveCatDoItems(items: Map<String, String>): Boolean = try {
+            // Chaquopy KHONG convert dung List/Map qua callAttr (R8 rut gon ten lop ->
+            // "'t' object is not iterable"). Noi bang xuong dong nhu moi cho khac trong file nay.
+            rpdStatic().callAttr(
+                "save_cat_do_items_str",
+                items.entries.joinToString("\n") { "${it.key}=${it.value}" },
+            ).toBoolean()
+        } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "save_cat_do_items loi: ${e.message}")
+            false
+        }
+    }
+
     // --- map RunMode (UI) -> config mode/param cua ban PC ---
     private data class ModeCfg(
         val mode: String, val startCity: Int, val cityFlag: Int, val mobIndex: Int,
@@ -274,6 +309,10 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.loanDauMotTran,
                 // TU MO RONG TUI DO. THEM O CUOI CUNG (goi theo VI TRI).
                 party.autoBagExpand, party.bagExpandGold,
+                // TU MO RUONG TRANG BI + TU CAT DO TIEN TRANG. THEM O CUOI CUNG (goi theo VI TRI).
+                // List cat KHONG truyen o day: no la MOT file chung (cat_do_items.json) ma
+                // Python tu doc, khong phai config theo party.
+                party.autoOpenBoxes, party.boxModes, party.autoCatDo,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,
@@ -283,6 +322,15 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                     try { py.callAttr("apply_point_config", acc.username, acc.pointJson) }
                     catch (e: Exception) {
                         android.util.Log.w("aTSBot", "apply_point_config loi: ${e.message}")
+                    }
+                }
+                // BANG TU NANG SKILL: cung duong nhu point - ben PC doc tu accounts.json qua
+                // config.ACCOUNT_SKILL, ben APK phai bom vao day. Thieu doan nay thi bang co luu
+                // nhung bot KHONG BAO GIO nang skill, va khong co log nao bao.
+                if (acc.skillJson.isNotBlank()) {
+                    try { py.callAttr("apply_skill_config_json", acc.username, acc.skillJson) }
+                    catch (e: Exception) {
+                        android.util.Log.w("aTSBot", "apply_skill_config loi: ${e.message}")
                     }
                 }
             }
@@ -459,6 +507,46 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
 
     fun applyPointConfig(username: String, pointJson: String): Boolean =
         try { rpd().callAttr("apply_point_config", username, pointJson)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
+    /** CAY SKILL nhan vat: {element, left, lv:{tid_hex: cap}, char_level, cache?, ts?}.
+     *  Acc DANG CHAY -> so live; acc TAT -> so da luu (van xem duoc cay, nhung khong nang duoc). */
+    fun skillCharInfoJson(username: String): String {
+        return try {
+            val py = com.chaquo.python.Python.getInstance()
+            val json = py.getModule("json")
+            val info = rpd().callAttr("skill_char_info", username) ?: return ""
+            if (info.asMap().isEmpty()) "" else json.callAttr("dumps", info).toString()
+        } catch (_: Exception) { "" }
+    }
+
+    /** Hoc/nang TAY. -> "queued" = dang trong tran, da xep hang (het tran bot tu gui). */
+    fun upgradeSkill(username: String, skillId: Int, capDich: Int): String {
+        return try {
+            rpd().callAttr("nang_skill_ngay", username, skillId, capDich)?.toString() ?: "False"
+        } catch (_: Exception) { "False" }
+    }
+
+    /** TUI DO: {cap, used, maxed, slots:[...]}. "" = acc chua chay.
+     *  KHONG cache duoc (snapshot song trong client) - acc tat thi khong co gi de hien. */
+    fun bagInfoJson(username: String): String {
+        return try {
+            val py = com.chaquo.python.Python.getInstance()
+            val json = py.getModule("json")
+            val info = rpd().callAttr("bag_info", username) ?: return ""
+            if (info.asMap().isEmpty()) "" else json.callAttr("dumps", info).toString()
+        } catch (_: Exception) { "" }
+    }
+
+    /** Lenh tui do. -> "True" | "queued" (dang trong tran, da xep hang) | "False: ly do". */
+    fun bagCmd(username: String, action: String, slot: Int, arg: Int = 0): String {
+        return try {
+            rpd().callAttr("bag_cmd", username, action, slot, arg)?.toString() ?: "False"
+        } catch (e: Exception) { "False: ${e.message}" }
+    }
+
+    fun applySkillConfig(username: String, skillJson: String): Boolean =
+        try { rpd().callAttr("apply_skill_config_json", username, skillJson)?.toBoolean() ?: false }
         catch (_: Exception) { false }
 
     /** Acc con du diem sau khi duyet het bang rule - [{user, kind:'diem_du', diem}]. */

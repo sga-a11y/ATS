@@ -22,7 +22,7 @@ class TestGamedataLoaderGiuDuTruong(unittest.TestCase):
 
     def test_co_du_truong_quyet_dinh(self):
         """Moi ban ghi phai co day du truong bot doc, khong duoc thieu im lang."""
-        can = ("name", "fc", "mat", "lv", "kd", "ft", "hp", "sp", "battle", "restrict")
+        can = ("name", "fc", "mat", "lv", "kd", "ft", "hp", "sp", "battle", "restrict", "st", "q")
         rec = self.gd[0x52dd]  # Cam Quan Oan
         for k in can:
             self.assertIn(k, rec, "loader mat truong %r -> bot doc ra 0 ma khong bao loi" % k)

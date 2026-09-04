@@ -1075,7 +1075,12 @@ def _load_gamedata_items() -> dict:
                                     "fc": int(v.get("fc", 0) or 0),
                                     "mat": int(v.get("mat", 0) or 0),
                                     "lv": int(v.get("lv", 0) or 0),
-                                    "kd": int(v.get("kd", 0) or 0)}
+                                    "kd": int(v.get("kd", 0) or 0),
+                                    # st = truong 排序 cua Item_C.dat. Client sap tui do VA tien
+                                    # trang bang `Item.Sort` = (sort ASC, Id ASC). Thieu no thi
+                                    # moi mon deu 999 -> thu tu hien ra khac han trong game.
+                                    "st": int(v.get("st", 999) or 999),
+                                    "q": int(v.get("q", 0) or 0)}
     return _gamedata_items
 
 
@@ -1412,6 +1417,75 @@ def _save_gift_state(label: str, online_sec: float, claimed: set, today=None):
                 json.dump(data, f)
         except Exception:
             pass
+
+
+# ---- LIST CAT VAO TIEN TRANG: MOT file CHUNG cho moi acc/party ----
+# User chot 04/09: "lam 1 list chung cho tat ca cac bot thoi, the cho nhe bot". Truoc do list
+# luu trong TUNG party cua accounts.json -> sua mot mon phai sua N cho, va moi party mang mot
+# ban sao rieng. File nay bot TU SINH (nhu checkin_state.json) nen KHONG can khai bao trong
+# SHARED_ASSETS / DATA_JSON.
+_CAT_DO_FILE = "cat_do_items.json"
+CAT_DO_CAT = "cat"      # tick    -> CAT vao tien trang
+CAT_DO_LAY = "lay"      # bo tick -> LAY RA khoi tien trang
+# Mon KHONG co trong list = bot khong dung toi (user da xoa dong di).
+# Mac dinh khi file chua ton tai. Ca hai deu `restrict & 32 == 0` -> game cho gui ngan hang.
+CAT_DO_MAC_DINH = {
+    "0xb3e2": CAT_DO_CAT,     # Don Thang Hoa
+    "0xb49f": CAT_DO_CAT,     # Tien Don Nang Luong
+}
+
+
+def _cat_do_path():
+    try:
+        from ._appdir import app_dir
+        return os.path.join(app_dir(), _CAT_DO_FILE)
+    except Exception:
+        return _CAT_DO_FILE
+
+
+def _chuan_hoa_cat_do(ds) -> dict:
+    """{tid_hex: "cat"|"lay"}. Nhan ca dang CU {tid: true/false} de doc lai file da luu.
+
+    Dang cu chi co hai trang thai (co trong list = cat, khong co = ke). Gio co BA: cat / lay /
+    khong co trong list -> `true` cu doc thanh "cat", `false` cu (neu co) doc thanh "lay".
+    """
+    out = {}
+    for k, v in (ds or {}).items():
+        k = str(k).lower()
+        if v is True:
+            out[k] = CAT_DO_CAT
+        elif v is False:
+            out[k] = CAT_DO_LAY
+        elif str(v) in (CAT_DO_CAT, CAT_DO_LAY):
+            out[k] = str(v)
+    return out
+
+
+def load_cat_do_items() -> dict:
+    """{tid_hex: "cat"|"lay"} - DUNG CHUNG moi acc.
+
+    Chua co file -> tra MAC DINH. File co roi thi ton trong NGUYEN VAN, ke ca khi rong:
+    user xoa het la co y, nhoi lai mac dinh thi ho xoa bao nhieu lan cung khong duoc.
+    """
+    p = _cat_do_path()
+    if not os.path.exists(p):
+        return dict(CAT_DO_MAC_DINH)
+    try:
+        with open(p, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except Exception:
+        return dict(CAT_DO_MAC_DINH)
+    return _chuan_hoa_cat_do(d.get("items") if isinstance(d, dict) else None)
+
+
+def save_cat_do_items(items) -> bool:
+    try:
+        with open(_cat_do_path(), "w", encoding="utf-8") as fh:
+            json.dump({"items": _chuan_hoa_cat_do(items)}, fh, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        log.warning("khong ghi duoc %s: %s", _CAT_DO_FILE, e)
+        return False
 
 
 # ---- State DIEM DANH (so lan da diem danh) ----
@@ -2158,6 +2232,15 @@ class GameClient:
         # Setting party "Tu ban Noi Dat" (mac dinh BAT). run_party_digioi.py chi bat setting nay
         # cho mode train/city, va pre-route chi thuc hien khi random tele ve Ng.Thanh.
         self.auto_sell_noi_dat = True
+        # TU CAT DO vao tien trang: MAC DINH TAT + list rong (giong tick mo ruong trang bi) -
+        # cat do la thao tac mot chieu, khong tu y lam khi user chua chon mon nao.
+        self.auto_cat_do = False
+        self.bank_fail = None
+        # Su kien NPC dang mo hay khong, va tien trang da mo chua. Gui lenh khi CHUA mo la
+        # ban vao khoang khong - te nhat la server ngat "su kien vi pham". Xem cat_do_tien_trang.
+        self.event_dang_mo = False
+        self.bank_open = False
+        self.bank_slots = {}        # {idx trong kho: (tid, count)} - doc tu S:030-001/004/005
         # "Tu don tui do" (Cai dat nang cao) = CONG TONG cua 3 muc con ben duoi; tat -> ca 3 ngung.
         self.auto_bag_clean = True
         self.auto_discard_junk = True        # vut item rac (Ngoc Hu) - mac dinh BAT
@@ -3314,6 +3397,12 @@ class GameClient:
         # `S:020-001..006 <一般事件>` deu la buoc su kien -> dua CA 6 sub vao, ham tu loc resultType.
         if opcode == 0x14 and len(pkt) >= 9 and pkt[8] == 0 and 1 <= pkt[7] <= 6:
             self._on_route_dialog(pkt)
+            # SU KIEN DANG MO. Chi khi co co nay moi duoc gui `C:020-009 <事件選擇>` (0x14 sub09).
+            # Gui khi KHONG co su kien nao mo = server NGAT NGAY "su kien vi pham" (ma 5) - da lam
+            # rot acc tp605 luc 14:57:46 ngay 04/09.
+            self.event_dang_mo = True
+        elif opcode == 0x14 and len(pkt) >= 9 and pkt[7:9] == b"\x08\x00":
+            self.event_dang_mo = False      # S:020-008 <事件結束>: su kien da dong
         self._observe_mob_packet(opcode, pkt)
         self._track_battle_packet(opcode, pkt)
         # Pho ban to doi: theo doi thoai NPC de biet canh da HET that su chua (_adv_dialog_until_idle)
@@ -4027,6 +4116,29 @@ class GameClient:
             self._on_gift(pkt)
         elif opcode == 0x28:                      # skill bar char/pet
             self._on_skill_bar(pkt)
+        elif opcode == 0x1E:                      # TIEN TRANG (錢莊)
+            # S:030-001 <錢莊1物品> = danh sach kho -> KHO DA MO. Day la moc DUY NHAT bao tien
+            # trang san sang; gui lenh cat truoc moc nay la ban vao khoang khong.
+            if pkt[7:9] == b"\x01\x00":
+                self.bank_open = True
+                self._doc_kho_tien_trang(pkt[9:])
+            elif pkt[7:9] == b"\x04\x00":         # S:030-004: them/cap nhat MOT o
+                self._doc_kho_tien_trang(pkt[9:])
+            elif pkt[7:9] == b"\x05\x00" and len(pkt) >= 14:
+                # S:030-005 <錢莊1減少物品> +索引(1) +減少數量(4)
+                _i = pkt[9]
+                _n = struct.unpack_from("<I", pkt, 10)[0]
+                _cu = (self.bank_slots or {}).get(_i)
+                if _cu:
+                    _con = int(_cu[1]) - int(_n)
+                    if _con > 0:
+                        self.bank_slots[_i] = (_cu[0], _con)
+                    else:
+                        self.bank_slots.pop(_i, None)
+            # S:030-007 <錢莊操作失敗> +失敗結果(1): 3 = cat that bai, 13 = tien trang DAY.
+            # Khong bat thi bot cu ban tiep ca chuc mon vao mot cai kho da day.
+            if pkt[7:9] == b"\x07\x00" and len(pkt) >= 10:
+                self._on_bank_fail(pkt[9])
         elif opcode == 0x27:                      # player info / guild / BOSS QUAN DOAN
             # BOSS QD: 0x27 76 [OLE 8B] = gio danh tiep duoc (cooldown) - CHI day khi DA danh.
             # (LUU Y: 0x27 70 [entity][01] la FLAG hang so, KHONG phai count. COUNT X/3 doc tu bang
@@ -9835,18 +9947,31 @@ class GameClient:
         if total:
             log.info("[%s] Phan giai cuon rac: tong %d cuon -> nhan xu", self._label, total)
 
-    def _cho_tui_doi(self, truoc: dict, wait: float = 2.0):
+    def _cho_tui_doi(self, truoc: dict, wait: float = 2.0, it_nhat: int = 1):
         """Cho tui THAY DOI so voi snapshot `truoc` -> tra list slot MOI xuat hien.
 
         Mo hop = dung item; do roi ra vao O TRONG qua goi RIENG (0x17 sub08) gui SAU ack dung
         item. Khong cho thi khong biet mon nao vua roi ra -> khong the phan giai/donate dung mon.
+
+        BO SOT DO (user bao 04/09) - ban cu `if moi: return moi` tra ve NGAY khi thay o dau tien.
+        Mo 21 hop mot me thi server ban 21 goi 0x17 sub08 RAI RAC; goi dau den sau ~0.1s la ham
+        thoat voi DUNG 1 o -> 20 mon con lai khong ai xu ly, nam li trong tui. Gio phai:
+          - doi du `it_nhat` o (= so hop vua mo, moi hop it nhat 1 mon),
+          - VA lang `_YEN` giay khong them o moi (goi den theo dot, khong deu),
+          - het `wait` thi tra ve nhung gi co (khong treo mai).
         """
+        _YEN = 0.4                     # khoang lang du de ket luan server ban xong dot goi
         t0 = time.time()
+        lan_cuoi = t0
+        n_cu = 0
         while time.time() - t0 < wait and self.running:
             moi = [s for s in self.bag_slots if s not in truoc]
-            if moi:
+            if len(moi) > n_cu:        # con o moi chay ve -> reset dong ho lang
+                n_cu = len(moi)
+                lan_cuoi = time.time()
+            elif n_cu >= it_nhat and time.time() - lan_cuoi >= _YEN:
                 return moi
-            time.sleep(0.1)
+            time.sleep(0.05)
         return [s for s in self.bag_slots if s not in truoc]
 
     def tu_mo_hop_trang_bi(self, chon=None, wait_item: float = 2.0) -> dict:
@@ -9924,7 +10049,9 @@ class GameClient:
                 if not self.use_slot(slot, qty=n):
                     return kq
                 kq["mo"] += n
-                moi = self._cho_tui_doi(truoc, wait=wait_item)
+                # Cho DU n mon (mo n hop thi it nhat n o moi), va han cho phai gian theo n:
+                # 21 hop ma van cho 2s la chac chan cat mat duoi.
+                moi = self._cho_tui_doi(truoc, wait=max(wait_item, 1.0 + 0.15 * n), it_nhat=n)
                 if not moi:
                     log.info("[%s] MO HOP: khong thay do roi ra -> dung", self._label)
                     return kq
@@ -13726,9 +13853,28 @@ class GameClient:
                     self._label, idx, x, y, self.current_map)
         return False
 
+    # ===== TU CAT DO VAO TIEN TRANG (錢莊) - user chot 04/09 =====
+    # Tra tu crack client, KHONG doan:
+    #   Common_protocal.lua : C:030-002 <錢莊存物品> <<+索引(1) +數量(4)>>  -> 0x1e sub0200
+    #                         C:030-008 <關閉錢莊>                          -> 0x1e sub0800
+    #                         S:030-007 <錢莊操作失敗> +失敗結果(1) [3 = cat that bai, 13 = DAY]
+    #   UI_UIBank.lua       : `索引` la `bagIndex` cua EThings.Bag = SLOT TUI DO (giong use_slot),
+    #                         va mon co `restrict & 32` thi CLIENT CHAN khong cho cat.
+    #   Eve.emg scene 12263 : NPC id=1 (npcId 16004) @ (430,240); surface 1 co 3 muc ->
+    #                         ma 30 "Tien bac" | ma 31 "Vat pham day du" | ma 32 "kho dau gia".
+    #                         Muc CAT DO la ma 31.
+    # Duong di: world_nav co canh 12001 -> 12263 qua cong 11 (1 leg, khong phai di vong).
+    TIEN_TRANG_MAP = 12263
+    TIEN_TRANG_POS = (390, 310)     # cho dung noi chuyen (user chi)
+    TIEN_TRANG_NPC = 1              # Eve_NpcData.id trong scene - KHONG phai npcId toan cuc
+    BANK_RESTRICT_CAM = 32          # restrict & 32 = mon KHONG duoc cat (client tu chan)
+
     NOI_DAT_TID = 0x7D2B
     NOI_DAT_SELL_CITY = 12061
     NOI_DAT_SELL_THRESHOLD = 100
+    # Han gio cho CA chuyen di NPC Nha buon. Ham chay trong `pre_route_town_hop` nen ca party
+    # dung cho - viec phu nay khong duoc treo party qua lau.
+    NOI_DAT_HAN_GIO = 150
     NOI_DAT_NPC_ROUTE_PRE = ((322, 802), (393, 759), (410, 750), (410, 750))
     NOI_DAT_NPC_ROUTE_POST = ((606, 698), (685, 676), (764, 654), (844, 631), (850, 630), (850, 630))
 
@@ -13737,6 +13883,10 @@ class GameClient:
         if not self.running:
             return
         if not self._wait_combat_clear(idle=1.0, cap=45.0):
+            # Het 45s ma van "dang trong tran" -> ghi ro. Truoc day im lang, nen log chi thay
+            # dong "di NPC Nha buon" roi khong co gi nua, khong biet ket o dau.
+            log.warning("[%s] Ban Noi Dat: cho het tran qua 45s tai buoc (%d,%d)",
+                        self._label, x, y)
             return
         self.send(0x06, b"\x01\x00\x07" + struct.pack("<HH", int(x), int(y)))
         self.pos = (int(x), int(y))
@@ -13837,11 +13987,23 @@ class GameClient:
             return False
 
         log.info("[%s] Ban Noi Dat: co %d cai -> di NPC Nha buon Ng.Thanh", self._label, total_have)
-        for x, y in self.NOI_DAT_NPC_ROUTE_PRE:
+        # HAN GIO cho ca chuyen di. `_move_noi_dat_npc_step` cho het tran toi 45s MOI BUOC, 10
+        # buoc la 7.5 phut - ma ham nay chay trong `pre_route_town_hop` nen CA PARTY dung cho.
+        # Ban Noi Dat la viec phu, khong dang treo party: qua han thi bo, di tiep.
+        _han = time.time() + self.NOI_DAT_HAN_GIO
+        for i, (x, y) in enumerate(self.NOI_DAT_NPC_ROUTE_PRE):
+            if time.time() > _han:
+                log.warning("[%s] Ban Noi Dat: qua %ds chua toi NPC (buoc %d) -> BO, di tiep",
+                            self._label, self.NOI_DAT_HAN_GIO, i)
+                return False
             self._move_noi_dat_npc_step(x, y)
         self.send(0x14, b"\x08\x00\x0a\x00")
         time.sleep(0.5)
-        for x, y in self.NOI_DAT_NPC_ROUTE_POST:
+        for i, (x, y) in enumerate(self.NOI_DAT_NPC_ROUTE_POST):
+            if time.time() > _han:
+                log.warning("[%s] Ban Noi Dat: qua %ds chua toi NPC (buoc post %d) -> BO, di tiep",
+                            self._label, self.NOI_DAT_HAN_GIO, i)
+                return False
             self._move_noi_dat_npc_step(x, y)
         if not self._wait_combat_clear(idle=1.0, cap=60.0):
             return False
@@ -13852,6 +14014,28 @@ class GameClient:
         self.send(0x14, b"\x09\x00\x1f"); time.sleep(0.5)
         self.send(0x14, b"\x06\x00"); time.sleep(0.5)
 
+        # Tu day tro di DIALOG DANG MO -> moi duong thoat deu phai dong no. Dang mo shop/thoai
+        # thi server coi la DANG BAN: khong moi/nhan party duoc va TELEPORT la chet (user chot
+        # 04/09). Truoc day chi dong o cuoi duong thanh cong; loi giua vong ban la thoat ham ma
+        # dialog van mo.
+        sold = 0
+        try:
+            sold = self._ban_noi_dat_vong(max_qty)
+        finally:
+            try:
+                self.send(0x14, b"\x06\x00")
+            except Exception:
+                pass
+        log.info("[%s] Ban Noi Dat: da ban %d/%d cai (toi da %d)",
+                 self._label, sold, total_have, max_qty)
+        return sold > 0
+
+    def _ban_noi_dat_vong(self, max_qty: int) -> int:
+        """Vong ban Noi Dat + ban kem nguyen lieu quan doan. Tra so cai da ban.
+
+        PHAI goi TRONG luc dialog Nha buon dang mo, va nguoi goi (`sell_noi_dat`) chiu trach
+        nhiem dong dialog trong `finally`.
+        """
         sold = 0
         remaining = max(0, int(max_qty))
         for slot, cnt in self._noi_dat_slots():
@@ -13881,10 +14065,212 @@ class GameClient:
             self._sell_donate_materials()
         except Exception as e:
             log.warning("[%s] loi ban nguyen lieu quan doan (bo qua): %s", self._label, e)
-        self.send(0x14, b"\x06\x00")
-        log.info("[%s] Ban Noi Dat: da ban %d/%d cai (toi da %d)",
-                 self._label, sold, total_have, max_qty)
-        return sold > 0
+        return sold
+
+    # Mot ban ghi trong kho tien trang. Do tu capture 04/09 (S:030-001 dai 180B cho 5 o, 72B cho
+    # 2 o -> 36B/ban ghi): `[idx 1B][itemId u16][count u32][29B con lai]`.
+    # (protocal.lua ghi `+物品資料(18)` - so do KHONG khop ban dang chay, dung so do tu capture.)
+    BANK_REC = 36
+
+    def _doc_kho_tien_trang(self, data: bytes):
+        """S:030-001 (ca kho) / S:030-004 (mot o) -> self.bank_slots {idx: (tid, count)}.
+
+        Can de LAY DO RA: `C:030-001` an INDEX TRONG KHO, khong phai slot tui do.
+        """
+        if self.bank_slots is None:
+            self.bank_slots = {}
+        for off in range(0, len(data) - self.BANK_REC + 1, self.BANK_REC):
+            idx = data[off]
+            tid, cnt = struct.unpack_from("<HI", data, off + 1)
+            if tid and cnt:
+                self.bank_slots[idx] = (tid, cnt)
+            else:
+                self.bank_slots.pop(idx, None)
+
+    def _on_bank_fail(self, ma: int):
+        """S:030-007 <錢莊操作失敗> +失敗結果(1). 3 = cat that bai, 13 = tien trang DAY."""
+        self.bank_fail = int(ma)
+        log.warning("[%s] Tien trang: server bao LOI ma %d%s", self._label, ma,
+                    " (tien trang DAY)" if int(ma) == 13 else "")
+
+    def _cat_do_slots(self, chon):
+        """[(slot, tid, qty)] cac mon TRONG LIST user tick va CAT DUOC.
+
+        `chon` = {tid_hex: True}. Mon co `restrict & 32` bi client chan -> bot cung khong gui
+        (gui la server coi la thao tac khong hop le).
+        """
+        gd = _load_gamedata_items()
+        out = []
+        for slot, val in sorted(list(getattr(self, "bag_slots", {}).items())):
+            try:
+                tid, cnt = int(val[0]), int(val[1])
+            except Exception:
+                continue
+            if cnt <= 0 or chon.get("0x%04x" % tid) != CAT_DO_CAT:
+                continue
+            rec = gd.get(tid) or {}
+            if int(rec.get("restrict", 0) or 0) & self.BANK_RESTRICT_CAM:
+                log.info("[%s] Tien trang: %s KHONG duoc cat (restrict) -> bo qua",
+                         self._label, rec.get("name") or ("0x%04x" % tid))
+                continue
+            out.append((slot, tid, cnt))
+        return out
+
+    def cat_do_tien_trang(self, chon=None) -> dict:
+        """Di NPC Chu tien trang o Trac Quan roi CAT do trong list vao tien trang.
+
+        Goi tu `pre_route_town_hop` khi boc trung Trac Quan (boc trung Ng.Thanh thi van ban Noi
+        Dat nhu cu). `chon` = {tid_hex: True} - list user tick, KHONG tick gi thi khong lam gi.
+        Cat CA STACK cua tung mon (user chot: "nhung do co so luong thi cat max stack trong tui").
+
+        Tra {'cat': so mon, 'so_luong': tong so luong, 'bo_qua': ly do}.
+        """
+        kq = {"cat": 0, "so_luong": 0, "lay": 0, "lay_so_luong": 0, "bo_qua": ""}
+        # List DUNG CHUNG moi acc (cat_do_items.json). `chon` chi de test truyen tay.
+        chon = _chuan_hoa_cat_do(chon or load_cat_do_items())
+        if not chon:
+            kq["bo_qua"] = "chua tick mon nao trong List cat do"
+            return kq
+        if self.current_map != self.TRAC_QUAN_CITY:
+            kq["bo_qua"] = "khong o Trac Quan (dang o %s)" % self.current_map
+            return kq
+        can = self._cat_do_slots(chon)
+        # Con phai xet chieu NGUOC LAI: co mon danh dau "lay ra" thi VAN di, du trong tui khong
+        # co gi de cat. Kho co gi thi chi biet sau khi mo, nen khong the loc truoc o day.
+        _co_lay = any(v == CAT_DO_LAY for v in chon.values())
+        if not can and not _co_lay:
+            kq["bo_qua"] = "khong co mon nao trong list o tui"
+            return kq
+        if not self._wait_combat_clear(idle=1.0, cap=60.0):
+            kq["bo_qua"] = "con ket tran"
+            return kq
+
+        log.info("[%s] Tien trang: %d mon can cat%s -> di NPC Chu tien trang (map %d)",
+                 self._label, len(can), ", co mon can lay ra" if _co_lay else "",
+                 self.TIEN_TRANG_MAP)
+        if not self.follow_smart_scene_route(self.TRAC_QUAN_CITY, self.TIEN_TRANG_MAP,
+                                             safe=self.TIEN_TRANG_POS):
+            kq["bo_qua"] = "khong di duoc toi map tien trang"
+            return kq
+        self.navigate_to(*self.TIEN_TRANG_POS, flee=True)
+
+        # MO TIEN TRANG - chuoi CHOT TU CAPTURE THAT (captures/tien_trang_cat_do_20260904.pcap):
+        #   C2S 0x20 sub0200 08     (hang so, y het sell_noi_dat - KHONG phai id NPC)
+        #   C2S 0x14 sub0100 [id u16]   = `C:020 <事件觸發>` triggerKind ClickNpc=1
+        #   S2C 0x14 sub0100 ...        = su kien mo
+        #   C2S 0x14 sub0600            = `C:020-006 <事件下一步>`
+        #   S2C 0x1e sub0100 ...        = TIEN TRANG DA MO (danh sach kho)
+        # KHONG co lenh chon muc nao ca: NPC nay chi mot nhanh. Ban dau em gui
+        # `0x14 sub0900 + 31` (ma "muc 2" doc tu surface) - surface la MENU TUONG TAC, thu khac
+        # han. Gui no khi khong co menu nao mo -> server NGAT "su kien vi pham" (ma 5), lam rot
+        # acc tp605 luc 14:57:46 ngay 04/09.
+        self.bank_fail = None
+        self.event_dang_mo = False
+        self.bank_open = False
+        self.send(0x20, b"\x02\x00\x08"); time.sleep(0.3)
+        self.send(0x14, b"\x01\x00" + struct.pack("<H", self.TIEN_TRANG_NPC))
+        _han = time.time() + 5.0
+        while self.running and time.time() < _han and not self.event_dang_mo:
+            time.sleep(0.1)
+        if not self.event_dang_mo:
+            log.warning("[%s] Tien trang: NPC khong mo thoai -> BO QUA (khong gui tiep)",
+                        self._label)
+            kq["bo_qua"] = "NPC khong mo thoai"
+            self._dong_su_kien_tien_trang()     # dang ban ma tele la CHET
+            self._ve_trac_quan_sau_cat_do()
+            return kq
+        self.send(0x14, b"\x06\x00")        # <事件下一步>
+        _han = time.time() + 5.0
+        while self.running and time.time() < _han and not self.bank_open:
+            time.sleep(0.1)
+        if not self.bank_open:
+            log.warning("[%s] Tien trang: thoai xong nhung kho KHONG mo -> BO QUA", self._label)
+            kq["bo_qua"] = "tien trang khong mo"
+            self._dong_su_kien_tien_trang()     # su kien DA mo -> phai dong roi moi tele
+            self._ve_trac_quan_sau_cat_do()
+            return kq
+
+        # Doc lai tui NGAY TRUOC khi gui: duong di co the da lam doi slot (nhat do roi, tran...).
+        for slot, tid, qty in self._cat_do_slots(chon):
+            if not self.running:
+                break
+            if self.bank_fail is not None:
+                log.warning("[%s] Tien trang: dung vi server bao loi (ma %s)",
+                            self._label, self.bank_fail)
+                kq["bo_qua"] = "tien trang day" if self.bank_fail == 13 else "server bao loi"
+                break
+            self.send(0x1E, b"\x02\x00" + bytes([slot & 0xFF]) + struct.pack("<i", int(qty)))
+            kq["cat"] += 1
+            kq["so_luong"] += int(qty)
+            _nm = (_load_gamedata_items().get(tid) or {}).get("name") or ("0x%04x" % tid)
+            log.info("[%s] Tien trang: cat %s x%d (o #%d)", self._label, _nm, qty, slot)
+            time.sleep(0.45)
+        # DA MO KHO ROI thi lam luon chieu NGUOC LAI trong cung chuyen di: mon user danh dau
+        # "lay ra" ma dang nam trong kho -> rut ve tui. Khong tach chuyen rieng.
+        self._lay_do_tien_trang(chon, kq)
+        # Dong kho ROI dong su kien (`0x1e sub0800` -> `0x14 sub0600`) - ca hai capture 04/09
+        # deu co cap nay. Chi sau do moi duoc tele. Xem _dong_su_kien_tien_trang.
+        self._dong_su_kien_tien_trang()
+        self._ve_trac_quan_sau_cat_do()
+        log.info("[%s] Tien trang: da cat %d mon (%d cai), lay ra %d mon (%d cai)%s",
+                 self._label, kq["cat"], kq["so_luong"], kq["lay"], kq["lay_so_luong"],
+                 " - %s" % kq["bo_qua"] if kq["bo_qua"] else "")
+        return kq
+
+    def _lay_do_tien_trang(self, chon: dict, kq: dict):
+        """Rut cac mon danh dau "lay" tu kho ve tui. PHAI goi khi kho DANG MO.
+
+        `C:030-001 <錢莊領物品> <<+索引(1) +數量(4)>>` an INDEX TRONG KHO (doc tu S:030-001),
+        KHONG phai slot tui do - nham cai nay la rut nham mon.
+        """
+        gd = _load_gamedata_items()
+        for idx, val in sorted((self.bank_slots or {}).items()):
+            if not self.running or self.bank_fail is not None:
+                break
+            tid, cnt = int(val[0]), int(val[1])
+            if chon.get("0x%04x" % tid) != "lay":
+                continue
+            trong = self.bag_capacity() - self.bag_used_slots()
+            if trong <= 0:
+                log.info("[%s] Tien trang: tui day -> khong lay them", self._label)
+                break
+            self.send(0x1E, b"\x01\x00" + bytes([idx & 0xFF]) + struct.pack("<I", cnt))
+            kq["lay"] += 1
+            kq["lay_so_luong"] += cnt
+            _nm = (gd.get(tid) or {}).get("name") or ("0x%04x" % tid)
+            log.info("[%s] Tien trang: LAY RA %s x%d (kho #%d)", self._label, _nm, cnt, idx)
+            time.sleep(0.45)
+
+    def _dong_su_kien_tien_trang(self):
+        """Bao server DA DONG tien trang truoc khi lam bat cu viec gi khac.
+
+        Dang mo tien trang = SERVER coi la DANG BAN: khong moi/nhan party duoc, va TELEPORT luc
+        nay la CHET (user chot 04/09). Moi duong thoat cua cat_do_tien_trang deu phai di qua day,
+        ke ca cac nhanh hong giua chung.
+        """
+        if not getattr(self, "event_dang_mo", False) and not getattr(self, "bank_open", False):
+            return
+        try:
+            if self.bank_open:
+                self.send(0x1E, b"\x08\x00")     # C:030-008 dong kho
+                time.sleep(0.3)
+            self.send(0x14, b"\x06\x00")         # <事件下一步> -> ket thuc su kien
+            time.sleep(0.4)
+        except Exception as e:
+            log.warning("[%s] Tien trang: loi khi dong su kien: %s", self._label, e)
+        self.bank_open = False
+        self.event_dang_mo = False
+
+    def _ve_trac_quan_sau_cat_do(self):
+        """Cat xong -> tele ve Trac Quan. Map tien trang khong co duong ve tu dong, khong ve thi
+        buoc tele thanh route ke tiep xuat phat sai cho (bai hoc tu vu ket o Loi Dai Huong Dung).
+        """
+        if not self.running or self.current_map == self.TRAC_QUAN_CITY:
+            return
+        try:
+            self.go_to_town(self.TRAC_QUAN_CITY, 0)
+        except Exception as e:
+            log.warning("[%s] Tien trang: loi tele ve Trac Quan (bo qua): %s", self._label, e)
 
     # ---------- MUA HP/SP tu dong (Vien Hanh Khi +62HP / Thien Kim Du +62SP) ----------
     # NPC "Loi Dai Huong Dung" o Trac Quan (12001). Route + goi mua boc tu capture
@@ -14038,8 +14424,16 @@ class GameClient:
             if need_sp:
                 self._buy_shop_slot(self.SP_SHOP_SLOT, sp_qty, self.HPSP_ITEM_PRICE,
                                     "Thien Kim Du +62SP")
-            self.send(0x14, b"\x06\x00")   # dong dialog
         finally:
+            # DONG DIALOG TRUOC, roi moi tele. Dang mo shop/thoai = server coi la DANG BAN:
+            # teleport luc do la CHET, va cung khong moi/nhan party duoc (user chot 04/09).
+            # Truoc day dong `0x14 sub0600` nam TRONG `try` nen loi giua chung -> nhay thang
+            # xuong `finally` va TELE trong khi shop van dang mo.
+            try:
+                self.send(0x14, b"\x06\x00")
+                time.sleep(0.4)
+            except Exception:
+                pass
             # PHAI RA KHOI MAP NPC. Route di qua 2 cong nen ket thuc o map "Loi Dai Huong Dung",
             # KHONG phai 12001. Truoc day ham nay ket thuc tai cho -> acc dung im o cho NPC:
             # luong train phia sau bam `login_map` (doc luc login, van la map train) nen tuong minh
@@ -14071,6 +14465,10 @@ class GameClient:
             ok = self.go_to_town(city, flag)
             if ok and city == self.NOI_DAT_SELL_CITY and getattr(self, "auto_sell_noi_dat", True):
                 self.sell_noi_dat()
+            # Boc trung TRAC QUAN -> di cat do vao tien trang (user chot 04/09). Boc trung
+            # Ng.Thanh thi van ban Noi Dat nhu cu - moi thanh mot viec, khong lam ca hai.
+            if ok and city == self.TRAC_QUAN_CITY and getattr(self, "auto_cat_do", False):
+                self.cat_do_tien_trang()
         except Exception as e:
             log.warning("[%s] pre-route: loi tele trung gian (bo qua, di tiep): %s", self._label, e)
 

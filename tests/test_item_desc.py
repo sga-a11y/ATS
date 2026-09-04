@@ -68,7 +68,12 @@ class TestGuiHienMoTa(unittest.TestCase):
         self.src = _doc("gui.py")
 
     def test_doc_file_rieng(self):
-        self.assertIn('_load_json("items_desc.json")', self.src)
+        """Mo ta phai nap tu items_desc.json RIENG, khong gop vao items_gamedata.json.
+
+        Neo theo Y NGHIA (co doc file do khong), khong theo TEN HAM nap: ham da tung doi tu
+        _load_json -> _bag_db (them cache) va bai test cu dut du hanh vi khong he doi.
+        """
+        self.assertRegex(self.src, r'_(?:load_json|bag_db)\("items_desc\.json"\)')
 
     def test_co_label_mo_ta_rieng_khong_dinh_vao_dong_id(self):
         self.assertIn("self.lbl_desc", self.src)

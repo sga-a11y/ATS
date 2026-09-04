@@ -268,6 +268,7 @@ _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831
                   "auto_world_boss": True,
                   "auto_team_dungeon": True, "team_dungeons": _team_dungeons_json(DEFAULT_TEAM_DUNGEONS),
                   "auto_sell_noi_dat": True, "auto_bag_clean": True,
+                  "auto_cat_do": False,
                   "death_return_town": True, "pet_death_return_town": True,
                   "auto_discard_junk": True, "auto_decompose_scrolls": False,
                   "auto_donate_materials": True,
@@ -308,6 +309,45 @@ def _load_profiles():
     return {"active": "Cấu hình 1",
             "profiles": {"Cấu hình 1": d,
                          "Cấu hình 2": {"channel": ch, "parties": [copy.deepcopy(_DEFAULT_PARTY)]}}}
+
+
+def them_vao_list_cat_do(username, tid, client=None):
+    """Them mot item vao "List cất" (tien trang) cua party chua `username`, GHI THANG accounts.json.
+
+    Vi sao can: dialog List cat chi TIM theo ten, nen mon nao user chua biet ten chinh xac thi rat
+    kho them (user 04/09: "lo bo tick cai la gio ko co cach nao de tick lai"). Luong dung la:
+    THEM tu tui do (nhin thay mon that trong tay), BO thi vao List cat.
+
+    Tra (True, ten_party) neu them moi | (False, ly_do) neu da co / khong tim thay acc.
+    """
+    key = "0x%04x" % int(tid)
+    prof = _load_profiles()
+    # Cung mot acc co the nam o NHIEU cau hinh. Phai xet cau hinh DANG ACTIVE truoc, khong thi
+    # ghi vao cau hinh khong chay -> user bam nut may cung khong thay tac dung.
+    _ps = prof.get("profiles") or {}
+    _ten_ds = sorted(_ps, key=lambda t: t != prof.get("active"))
+    for ten in _ten_ds:
+        cfg = _ps[ten] or {}
+        for p in (cfg.get("parties") or ()):
+            if not any(str((a or {}).get("u")) == str(username) for a in (p.get("accounts") or ())):
+                continue
+            ds = p.get("cat_do_items")
+            if not isinstance(ds, dict):
+                # Party chua tung co khoa nay -> dang chay theo list MAC DINH. Phai VIET RA mac
+                # dinh truoc roi moi them, khong thi ghi xong la mat hai mon mac dinh.
+                ds = _cat_do_mac_dinh(p)
+            if ds.get(key):
+                return False, "đã có trong list"
+            ds[key] = True
+            p["cat_do_items"] = ds
+            _save_profiles(prof)
+            if client is not None:      # ap NGAY cho acc dang chay, khong doi restart
+                try:
+                    client.cat_do_items = dict(ds)
+                except Exception:
+                    pass
+            return True, ten
+    return False, "không tìm thấy acc trong cấu hình nào"
 
 
 def _save_profiles(prof):
@@ -1973,12 +2013,49 @@ class BotGUI(tk.Tk):
 _BASE = _app_dir()   # dev=project root | frozen=thu muc canh .exe (JSON config sua duoc)
 
 
+
+def them_vao_list_cat_do(tid, client=None):
+    """Them mot item vao list cat (tien trang) - MOT file CHUNG cho moi acc/party.
+
+    Vi sao co nut nay: dialog "List cất" chi TIM theo ten, ten trong game rat de go sai dau nen
+    mon bo tick nham coi nhu mat (user 04/09). Luong dung: THEM tu tui do, BO thi vao List cất.
+
+    Tra (True, "") neu them moi | (False, ly_do) neu da co / ghi loi.
+    """
+    key = "0x%04x" % int(tid)
+    ds = ctrl.load_cat_do_items()
+    if ds.get(key) == ctrl.CAT_DO_CAT:
+        return False, "đã có trong list"
+    ds[key] = ctrl.CAT_DO_CAT
+    if not ctrl.save_cat_do_items(ds):
+        return False, "không ghi được cat_do_items.json"
+    if client is not None:      # bot doc thang file moi lan chay, day chi de chac an
+        try:
+            client.cat_do_items = dict(ds)
+        except Exception:
+            pass
+    return True, ""
+
+
 def _load_json(name):
     try:
         with open(os.path.join(_BASE, name), encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
+
+
+# CACHE JSON cho TUI DO. items_gamedata.json (3.7MB) + items_desc.json (2.1MB) mat ~0.35s de
+# parse, va truoc day doc LAI moi lan user mo tui. Cache o day, nhung BagDialog._close xoa sach
+# khi khong con cua so tui do nao - giu dung y do cu: bot chay chuc party khong gong 5.8MB nay.
+_BAG_DB_CACHE = {}
+
+
+def _bag_db(name):
+    d = _BAG_DB_CACHE.get(name)
+    if d is None:
+        d = _BAG_DB_CACHE[name] = _load_json(name)
+    return d
 
 
 _BAG_ICON = {}          # id(root) -> PhotoImage (PHAI giu tham chieu, xem chu thich duoi)
@@ -2809,12 +2886,18 @@ class BagDialog(tk.Toplevel):
         # Tab "Tat ca" ve toan bo 120-170 o -> ve lai moi lan refresh la nang.
         self._tab = _BAG.EQUIP
         self._sel_slot = None
-        self._items_db = _load_json("items_gamedata.json")
+        # Kho o luoi dung lai giua cac lan refresh: _cells[i] = (frame, lbl_ten, lbl_sl, lbl_o),
+        # _cell_slot[i] = slot mà ô đó ĐANG hiển thị (binding chuột đọc từ đây - xem _cell).
+        self._cells = []
+        self._cell_slot = []
+        self._items_db = _bag_db("items_gamedata.json")
         # Mo ta item de RIENG file (2MB) va chi doc o day - dialog nay chi ton tai khi user mo tui
         # do, nen bot chay chuc party khong ai phai gong them 2MB nay trong RAM.
-        self._desc_db = _load_json("items_desc.json")
+        # _bag_db = _load_json CO CACHE, cache bi xoa khi dong cai tui do CUOI CUNG (xem _close)
+        # -> mo lien tiep khong phai doc lai 5.8MB (0.35s), ma dong roi van tra RAM nhu truoc.
+        self._desc_db = _bag_db("items_desc.json")
         # Bang DONG PHU (洗rèn): affix1/2/3 trong ThingData la ID tra bang nay, khong phai cap.
-        _eq = _load_json("eq_affix.json") or {}
+        _eq = _bag_db("eq_affix.json") or {}
         self._affix_db = _eq.get("affix") or {}
         # CUONG HOA (升階): _rf_db = luat khop theo (fitType, a1k, quality) -> class_1/class_2;
         # _val_db = bang tri so cua tung class theo cap cuong hoa.
@@ -2963,6 +3046,13 @@ class BagDialog(tk.Toplevel):
         try: self._canvas.unbind_all("<MouseWheel>")
         except Exception: pass
         self.destroy()
+        # Tra lai 5.8MB cache JSON khi KHONG con cua so tui do nao mo (co the mo nhieu acc mot luc).
+        try:
+            if not any(isinstance(w, BagDialog) and w.winfo_exists()
+                       for w in self.master.winfo_toplevel().winfo_children()):
+                _BAG_DB_CACHE.clear()
+        except Exception:
+            pass
 
     # ---- du lieu ----
     def _pet_list(self):
@@ -3600,13 +3690,16 @@ class BagDialog(tk.Toplevel):
 
     def refresh(self):
         self._refresh_equip_stats()    # thay do / len cap -> 2 hang tren phai theo kip luoi tui
-        for w in self.grid_fr.winfo_children():
-            w.destroy()
         _giu = self._sel_slot          # ve lai TU DONG thi khong duoc lam mat lua chon cua user
         rows = self._rows()
+        # TAI DUNG o luoi thay vi destroy + tao lai. Moi o la 4 widget Tk, tui day ~175 o = 700
+        # widget: dung lai het moi lan refresh ton ~0.3s va refresh chay moi lan doi tab / doi
+        # target / bot bao tui thay doi. Gio chi doi chu + mau, o thua thi grid_remove (an nhung
+        # GIU widget) de lan sau khoi dung lai.
         for i, (slot, tid, cnt, d) in enumerate(rows):
-            r, col = divmod(i, self.COLS)
-            self._cell(self.grid_fr, r, col, slot, tid, cnt, d)
+            self._cell(i, slot, tid, cnt, d)
+        for i in range(len(rows), len(self._cells)):
+            self._cells[i][0].grid_remove()
         if _giu is not None and (_giu < 0 or _giu in self.c.bag_slots):
             self._select(_giu)
         else:
@@ -3622,27 +3715,43 @@ class BagDialog(tk.Toplevel):
         if maxed:
             self.btn_buy.state(["disabled"])
 
-    def _cell(self, parent, r, col, slot, tid, cnt, d):
+    def _cell(self, i, slot, tid, cnt, d):
+        """Ve o thu `i` cua luoi. Tao widget lan dau, cac lan sau chi DOI NOI DUNG.
+
+        Slot cua o KHONG nam trong lambda (no doi moi lan refresh) ma trong `self._cell_slot[i]`,
+        nen binding chuot gan MOT LAN luc tao la du.
+        """
         name = d.get("name") or ("item %d" % tid)
         bg = self._BAG_Q.get(int(d.get("quality") or 0), "#f0f0f0")
-        # O tui do: RONG 2/3 va CAO 1/2 so voi ban cu 88x88 (yeu cau user) -> 59x44.
-        # Toa do ben trong phai co THEO TI LE, khong thi chu tran ra ngoai o.
-        W, H = self.CELL_W, self.CELL_H
-        _day = 12                      # chieu cao hang duoi (so luong + so slot)
-        f = tk.Frame(parent, width=W, height=H, bd=1, relief="solid", bg=bg)
+        while len(self._cells) <= i:
+            # O tui do: RONG 2/3 va CAO 1/2 so voi ban cu 88x88 (yeu cau user) -> 59x44.
+            # Toa do ben trong phai co THEO TI LE, khong thi chu tran ra ngoai o.
+            W, H = self.CELL_W, self.CELL_H
+            _day = 12                  # chieu cao hang duoi (so luong + so slot)
+            f = tk.Frame(self.grid_fr, width=W, height=H, bd=1, relief="solid")
+            f.grid_propagate(False)
+            # CHUA CO ICON: gameplay icon nam trong atlas Unity (jmg01.jmg) + anh xa iconId->o nam
+            # trong libil2cpp.so, chua dich nguoc duoc. Tam dung ten rut gon + mau theo pham chat.
+            l_ten = tk.Label(f, wraplength=W - 6, justify="center", font=("Segoe UI", 7))
+            l_ten.place(x=2, y=1, width=W - 4, height=H - _day - 3)
+            l_sl = tk.Label(f, font=("Segoe UI", 7, "bold"), fg="#004080")
+            l_sl.place(x=2, y=H - _day - 1, width=W // 2, height=_day)
+            l_o = tk.Label(f, font=("Segoe UI", 6), fg="#888")
+            l_o.place(x=W // 2 + 2, y=H - _day - 1, width=W // 2 - 4, height=_day)
+            _i = len(self._cells)
+            for w in (f, l_ten, l_sl, l_o):
+                w.bind("<Button-1>", lambda _e, k=_i: self._select(self._cell_slot[k]))
+            self._cells.append((f, l_ten, l_sl, l_o))
+            self._cell_slot.append(None)
+        f, l_ten, l_sl, l_o = self._cells[i]
+        self._cell_slot[i] = slot
+        for w in (f, l_ten, l_sl, l_o):
+            w.configure(bg=bg)
+        l_ten.configure(text=name[:22])
+        l_sl.configure(text=("x%d" % cnt) if cnt > 1 else "")
+        l_o.configure(text="#%d" % slot)
+        r, col = divmod(i, self.COLS)
         f.grid(row=r, column=col, padx=2, pady=2)
-        f.grid_propagate(False)
-        # CHUA CO ICON: gameplay icon nam trong atlas Unity (jmg01.jmg) + anh xa iconId->o nam trong
-        # libil2cpp.so, chua dich nguoc duoc. Tam dung ten rut gon + mau theo pham chat.
-        tk.Label(f, text=name[:22], bg=bg, wraplength=W - 6, justify="center",
-                 font=("Segoe UI", 7)).place(x=2, y=1, width=W - 4, height=H - _day - 3)
-        tk.Label(f, text=("x%d" % cnt) if cnt > 1 else "", bg=bg,
-                 font=("Segoe UI", 7, "bold"), fg="#004080").place(
-                     x=2, y=H - _day - 1, width=W // 2, height=_day)
-        tk.Label(f, text="#%d" % slot, bg=bg, font=("Segoe UI", 6),
-                 fg="#888").place(x=W // 2 + 2, y=H - _day - 1, width=W // 2 - 4, height=_day)
-        for w in (f,) + tuple(f.winfo_children()):
-            w.bind("<Button-1>", lambda _e, s=slot: self._select(s))
 
     def _select(self, slot):
         self._sel_slot = slot
@@ -3736,6 +3845,16 @@ class BagDialog(tk.Toplevel):
         if self.c.is_fashion_item(tid):
             acts.append(("Thả vào sưu tầm", lambda: self.c.deposit_fashion_slot(slot)))
         acts.append(("Bỏ", lambda: self.c.discard_item(slot, cnt)))
+        # THEM vao "List cất" (tien trang). Day la duong DUY NHAT de them mon moi: dialog List cat
+        # chi TIM theo ten nen mon la rat kho go dung. Bo khoi list thi vao List cat.
+        # Mon game cam gui ngan hang (restrict & 32) thi khong hien nut - them vao cung vo ich.
+        _cam = 0
+        try:
+            _cam = int(d.get("restrict", 0) or 0) & 32
+        except Exception:
+            pass
+        if slot >= 0 and not _cam:
+            acts.append(("Tự cất vào tiền trang", lambda: self._them_cat_do(tid), True))
         for _a in acts:
             text, fn = _a[0], _a[1]
             _mo_hop_thoai = len(_a) > 2 and _a[2]   # True = chi mo hop thoai, KHONG boc _run
@@ -3746,6 +3865,25 @@ class BagDialog(tk.Toplevel):
         if not _equip and not _doi and not _BAG.can_use(d.get("bs")):
             ttk.Label(self.act_fr, text="(không dùng trực tiếp được)",
                       foreground="#888").pack(side="left", padx=(8, 0))
+
+    def _them_cat_do(self, tid):
+        """Nut "Tự cất vào tiền trang": them mon dang chon vao List cat cua party chua acc nay."""
+        try:
+            ok, tin = them_vao_list_cat_do(tid, client=self.c)
+        except Exception as e:
+            messagebox.showerror("Tự cất vào tiền trang", "Lỗi: %s" % e, parent=self)
+            return
+        nm = (self._item(tid) or {}).get("name") or ("0x%04x" % tid)
+        if ok:
+            messagebox.showinfo(
+                "Tự cất vào tiền trang",
+                "Đã thêm \"%s\" vào List cất (%s).\n\n"
+                "Bot sẽ cất khi bốc trúng Trác Quận, nếu tick \"Tự cất đồ vào Tiền trang\" "
+                "đang bật.\nMuốn bỏ khỏi list thì vào nút \"List cất\"." % (nm, tin),
+                parent=self)
+        else:
+            messagebox.showwarning("Tự cất vào tiền trang",
+                                   "\"%s\": %s." % (nm, tin), parent=self)
 
     @staticmethod
     def _exchange_rows(tid):
@@ -4048,6 +4186,7 @@ class PartyConfigFrame(ttk.Frame):
         # Tu ban Noi Dat: mac dinh CO tick. Chi co tac dung khi bot tele trung gian ve Ng.Thanh
         # trong mode train/city; tat -> bo qua hoan toan.
         self.auto_sell_noi_dat_var = tk.BooleanVar(value=bool(self._preset.get("auto_sell_noi_dat", True)))
+        self.auto_cat_do_var = tk.BooleanVar(value=bool(self._preset.get("auto_cat_do", False)))
         # "Tu don tui do" = cong tong cua 3 muc con (Noi Dat / item rac / cuon vo tuong rac).
         # Phan giai cuon mac dinh TAT: phan giai la MAT HAN cuon, user phai tu soat list truoc.
         self.auto_bag_clean_var = tk.BooleanVar(value=bool(self._preset.get("auto_bag_clean", True)))
@@ -5414,6 +5553,14 @@ class PartyConfigFrame(ttk.Frame):
                        "lần giá 250, lần sau cần 260 là dừng)").pack(anchor="w", padx=(24, 0))
         ttk.Checkbutton(frm, text="Tự bán Nồi đất",
                         variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(4, 0))
+        # TU CAT DO: dat NGAY SAU ban Noi dat (user chot 04/09). Hai viec di chung mot cho boc
+        # 50-50 truoc khi tele ve thanh route: bốc trúng Ng.Thành thì bán Nồi đất, bốc trúng
+        # Trác Quận thì đi cất đồ.
+        _ct = ttk.Frame(frm); _ct.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_ct, text="Tự cất đồ vào Tiền trang",
+                        variable=self.auto_cat_do_var).pack(side="left")
+        ttk.Button(_ct, text="List cất", command=self._open_cat_do_list).pack(side="left",
+                                                                             padx=(8, 0))
         ttk.Checkbutton(frm, text="Tự vứt item rác (Ngọc Hư)",
                         variable=self.auto_discard_junk_var).pack(anchor="w", pady=(4, 0))
         _mt = ttk.Frame(frm); _mt.pack(anchor="w", fill="x", pady=(4, 0))
@@ -5585,6 +5732,97 @@ class PartyConfigFrame(ttk.Frame):
         _fill()
         ttk.Label(bar, text="★ = mặc định giữ (tướng có vũ khí chuyên dụng / bản đặc biệt)").pack(side="left")
         ttk.Button(bar, text="Hủy", command=win.destroy).pack(side="right")
+        ttk.Button(bar, text="Lưu", command=_save).pack(side="right", padx=(0, 8))
+
+    def _open_cat_do_list(self):
+        """List mon bot xu ly o tien trang. BA trang thai (user chot 04/09):
+              tick     -> CẤT VÀO tiền trang
+              bỏ tick  -> LẤY RA khỏi tiền trang
+              xoá dòng -> bot không đụng tới món đó nữa
+        Nguon = toan bo items_gamedata (26k mon) nen phai TIM THEO TEN. Mon da co trong list luon
+        hien tren dau du co dang tim hay khong - khong thi user chon xong khong biet minh co gi.
+        """
+        db = _load_json("items_gamedata.json") or {}
+        ten = {}
+        _st = {}
+        for k, v in db.items():
+            try:
+                tid = int(k, 16) if str(k).lower().startswith("0x") else int(k)
+            except Exception:
+                continue
+            nm = (v or {}).get("name")
+            if nm:
+                _key = "0x%04x" % tid
+                ten[_key] = nm
+                # `st` = truong 排序 cua Item_C.dat. Tien trang sap y het tui do:
+                # `Item.GetBankByCategory` goi CHINH `Item.Sort` = (sort ASC, Id ASC).
+                _st[_key] = int((v or {}).get("st", 999) or 999)
+
+        def _thu_tu(k):
+            """Thu tu GIONG TIEN TRANG trong game (Item.Sort), khong phai theo ma hex."""
+            try:
+                return (_st.get(k, 999), int(k, 16))
+            except Exception:
+                return (999, 0)
+        win = tk.Toplevel(self); win.title("List cất - Tiền trang")
+        win.transient(self); win.grab_set()
+        frm = ttk.Frame(win, padding=10); frm.pack(fill="both", expand=True)
+        top = ttk.Frame(frm); top.pack(fill="x")
+        ttk.Label(top, text="Double-click để đổi Cất ↔ Lấy ra. Tìm tên:").pack(side="left")
+        q_var = tk.StringVar()
+        ttk.Entry(top, textvariable=q_var, width=26).pack(side="left", padx=(4, 0))
+        mid = ttk.Frame(frm); mid.pack(fill="both", expand=True)
+        tv = ttk.Treeview(mid, columns=("st",), show="tree headings", height=18)
+        tv.heading("#0", text="Vật phẩm"); tv.heading("st", text="Bot làm gì")
+        tv.column("#0", width=360); tv.column("st", width=110, anchor="center")
+        sb = ttk.Scrollbar(mid, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        tv.pack(side="left", fill="both", expand=True, pady=(8, 0))
+        sb.pack(side="right", fill="y", pady=(8, 0))
+        state = dict(ctrl.load_cat_do_items())
+        _NHAN = {ctrl.CAT_DO_CAT: "Cất vào", ctrl.CAT_DO_LAY: "Lấy ra"}
+
+        def _fill():
+            q = q_var.get().strip().lower()
+            tv.delete(*tv.get_children())
+            # Mon DA CO trong list truoc (sap y THU TU TIEN TRANG), roi den ket qua tim.
+            # Khong tim gi thi CHI hien list.
+            keys = sorted((k for k in state if k in ten), key=_thu_tu)
+            if q:
+                keys += sorted((k for k, nm in ten.items()
+                                if k not in state and q in nm.lower()), key=_thu_tu)
+            for k in keys[:400]:
+                tv.insert("", "end", iid=k, text="%s  (%s)" % (ten[k], k),
+                          values=(_NHAN.get(state.get(k), ""),))
+
+        def _toggle(_e=None):
+            """Double-click: chua co -> Cất vào -> Lấy ra -> Cất vào ... (xoa han thi dung nut)."""
+            k = tv.focus()
+            if not k:
+                return
+            state[k] = ctrl.CAT_DO_LAY if state.get(k) == ctrl.CAT_DO_CAT else ctrl.CAT_DO_CAT
+            tv.item(k, values=(_NHAN.get(state.get(k), ""),))
+
+        def _xoa_dong():
+            """Bo han mon khoi list -> bot khong dung toi nua (khac han voi "lay ra")."""
+            k = tv.focus()
+            if not k:
+                return
+            state.pop(k, None)
+            _fill()
+
+        def _save():
+            ctrl.save_cat_do_items(state)
+            win.destroy()
+
+        tv.bind("<Double-1>", _toggle)
+        q_var.trace_add("write", lambda *_a: _fill())
+        _fill()
+        bar = ttk.Frame(frm); bar.pack(fill="x", pady=(10, 0))
+        ttk.Button(bar, text="Xoá dòng", command=_xoa_dong).pack(side="left")
+        ttk.Label(bar, foreground="#888",
+                  text="(xoá = bot thôi đụng tới món đó)").pack(side="left", padx=(8, 0))
+        ttk.Button(bar, text="Huỷ", command=win.destroy).pack(side="right")
         ttk.Button(bar, text="Lưu", command=_save).pack(side="right", padx=(0, 8))
 
     def _open_material_list(self):
@@ -5827,6 +6065,7 @@ class PartyConfigFrame(ttk.Frame):
             "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
             "fight_legion_boss": bool(self.fight_boss_var.get()),
             "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+            "auto_cat_do": bool(self.auto_cat_do_var.get()),
             "death_return_town": bool(self.death_return_town_var.get()),
             "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
             "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
@@ -5872,6 +6111,7 @@ class PartyConfigFrame(ttk.Frame):
         self.use_digioi_ho_phu_var.set(bool(data.get("use_digioi_ho_phu", False)))
         self.fight_boss_var.set(bool(data.get("fight_legion_boss", True)))
         self.auto_sell_noi_dat_var.set(bool(data.get("auto_sell_noi_dat", True)))
+        self.auto_cat_do_var.set(bool(data.get("auto_cat_do", False)))
         self.death_return_town_var.set(bool(data.get("death_return_town", True)))
         self.pet_death_return_town_var.set(bool(data.get("pet_death_return_town", True)))
         self.auto_bag_clean_var.set(bool(data.get("auto_bag_clean", True)))
@@ -6229,6 +6469,7 @@ class PartyConfigFrame(ttk.Frame):
                 "use_digioi_ho_phu": bool(self.use_digioi_ho_phu_var.get()),
                 "fight_legion_boss": bool(self.fight_boss_var.get()),
                 "auto_sell_noi_dat": bool(self.auto_sell_noi_dat_var.get()),
+                "auto_cat_do": bool(self.auto_cat_do_var.get()),
                 "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
                 "event_exchange_items": list(self.event_exchange_items),
                 # Chu ky su kien LUC TICK -> lan sau su kien doi thi tu biet ma xoa tick.

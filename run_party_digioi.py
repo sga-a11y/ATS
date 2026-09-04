@@ -25,6 +25,7 @@ from bot.train_maps_store import save_learned_regions
 from bot.login import login
 from bot.client import (ATTR_KEY_TO_CODE, ATTR_CODE_TO_TEN, ATTR_KINDS,
                         save_point_cache, load_point_cache,
+                        load_cat_do_items, save_cat_do_items, CAT_DO_CAT, CAT_DO_LAY,
                         save_skill_char_cache, load_skill_char_cache,
                         GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined, mark_joined,
@@ -2049,6 +2050,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         is_digioi = (mode == "digioi")
         dt_dg_finished = False   # mode digioi_train: vua HET GIO DG -> cho party roi sang train
         c.auto_sell_noi_dat = bool(pcfg.get("auto_sell_noi_dat", True) and mode in ("train", "city"))
+        # TU CAT DO tien trang: chay cung cho voi ban Noi Dat (pre_route_town_hop boc 50-50) nen
+        # rang buoc mode y het - khong thi mode khac cung lo di cat giua chung.
+        c.auto_cat_do = bool(pcfg.get("auto_cat_do", False) and mode in ("train", "city"))
         # "Tu don tui do" (Cai dat nang cao): cong tong + 2 muc con moi. Phan giai cuon MAC DINH
         # TAT vi phan giai la mat han - user phai tu tick sau khi soat list.
         # Mode event dung chung pet voi quest/PB -> vai "mac dinh" cua no la quest.
@@ -7152,7 +7156,12 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         event_exchange_sig="",
                         train_pick="", mob_min=0, mob_max=0, mob_elements="",
                         di_gioi_pick="", loandau_mot_tran=False,
-                        auto_bag_expand=False, bag_expand_gold=0):
+                        auto_bag_expand=False, bag_expand_gold=0,
+                        # TU MO RUONG TRANG BI + TU CAT DO TIEN TRANG. THEM O CUOI CUNG
+                        # (Kotlin goi THEO VI TRI - chen vao giua la lech het tham so phia sau).
+                        # `cat_do_items` KHONG co o day: list cat la MOT file chung
+                        # (cat_do_items.json), khong phai config theo party.
+                        auto_open_boxes=False, box_modes=None, auto_cat_do=False):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -7186,6 +7195,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "team_dungeons": config.normalize_team_dungeons(team_dungeons),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
         "loandau_mot_tran": bool(loandau_mot_tran),
+        "auto_open_boxes": bool(auto_open_boxes),
+        "box_modes": dict(box_modes or {}),
+        "auto_cat_do": bool(auto_cat_do),
         "auto_bag_expand": bool(auto_bag_expand),
         "bag_expand_gold": int(bag_expand_gold or 0),
         "use_phuc_than": bool(use_phuc_than), "use_digioi_ho_phu": bool(use_digioi_ho_phu),
@@ -7907,6 +7919,33 @@ def diem_du_notify_items(pidx):
     return out
 
 
+def save_cat_do_items_str(items_str):
+    r"""ANDROID: luu list cat vao tien trang. Nhan CHUOI noi bang "\n", KHONG phai List<String>.
+
+    Chaquopy khong convert dung List<String> qua callAttr (ban release bi R8 rut gon ten lop ->
+    "TypeError: 't' object is not iterable") - moi cho khac trong BotForegroundService cung noi
+    chuoi y het.
+    """
+    ds = {}
+    for dong in str(items_str or "").split("\n"):
+        dong = dong.strip().lower()
+        if not dong:
+            continue
+        # Dang "tid=cat" / "tid=lay". Dang CU chi co "tid" tron -> hieu la "cat".
+        k, _sep, v = dong.partition("=")
+        ds[k.strip()] = v.strip() or CAT_DO_CAT
+    return bool(save_cat_do_items(ds))
+
+
+def load_cat_do_items_str():
+    r"""ANDROID: doc list cat -> chuoi cac dong "tid=cat" / "tid=lay", noi bang "\n".
+
+    Chaquopy tra dict/list khong on dinh qua callAttr (xem save_cat_do_items_str) nen quy ve
+    chuoi y het moi cho khac.
+    """
+    return "\n".join("%s=%s" % (k, v) for k, v in sorted(load_cat_do_items().items()))
+
+
 def apply_point_config(username, point_config):
     """GUI/APK luu bang tu cong diem -> ap NGAY cho acc dang chay (khong doi restart)."""
     if isinstance(point_config, str):
@@ -8016,6 +8055,22 @@ def nang_skill_ngay(username, skill_id, cap_dich):
     except Exception as e:
         return False, str(e)
     return (True if da else (False, ly_do or "không nâng được"))
+
+
+def apply_skill_config_json(username, cfg_json):
+    """ANDROID: nhu apply_skill_config nhung nhan CHUOI JSON.
+
+    Ban PC truyen thang dict; Kotlin chi truyen duoc chuoi (giong apply_point_config, ham do tu
+    json.loads o dau). Tach ham rieng de KHONG doi kieu tham so cua apply_skill_config - no la
+    code DUNG CHUNG voi PC.
+    """
+    cfg = cfg_json
+    if isinstance(cfg, str):
+        try:
+            cfg = json.loads(cfg) if cfg else {}
+        except Exception:
+            cfg = {}
+    return apply_skill_config(username, cfg if isinstance(cfg, dict) else {})
 
 
 def apply_skill_config(username, cfg):
@@ -8155,6 +8210,86 @@ bag_notify_dismissed = set()
 # nhieu viec HONG AM THAM truoc khi day han - nhan qua mail that bai (xem `claim_mail`), khong
 # nhat duoc do roi trong tran, khong mua duoc do o lo.
 BAG_CANH_BAO_SLOT_TRONG = 10
+
+
+def bag_info(username):
+    """TUI DO cua 1 acc cho UI (APK). {} = acc chua chay.
+
+    KHAC bang Point/Skill: tui do KHONG cache duoc - no la snapshot SONG trong client, doc file
+    ra thi vua sai vua nguy hiem (bam "phan giai" theo so cu la mat nham do). Acc tat thi tra {}.
+
+    Moi o kem san cac co CHO PHEP (use/equip/dis/fashion) tinh bang `bot.bag_tabs` - dung luat
+    cua client. De Kotlin tu suy tu items_gamedata la se lech, vi luat that nam o bag_tabs
+    (vd `can_use` doc btnState NGUOC voi truc giac - xem chu thich trong file do).
+    """
+    c = account_clients.get(username)
+    if c is None:
+        return {}
+    from bot import bag_tabs as _bt
+    from bot.client import _load_gamedata_items
+    gd = _load_gamedata_items()
+    o = []
+    for slot, val in sorted((getattr(c, "bag_slots", None) or {}).items()):
+        try:
+            tid, cnt = int(val[0]), int(val[1])
+        except Exception:
+            continue
+        if cnt <= 0:
+            continue
+        d = gd.get(tid) or {}
+        o.append({
+            "slot": int(slot), "id": tid, "cnt": cnt,
+            "name": d.get("name") or ("0x%04x" % tid),
+            "q": int(d.get("q", 0) or 0),
+            "st": int(d.get("st", 999) or 999),
+            "ft": int(d.get("ft", 0) or 0),
+            "kd": int(d.get("kd", 0) or 0),
+            "tab": [t for t, _ten in _bt.TAB_NAMES
+                    if _bt.matches_tab(t, d.get("ft"), d.get("kd"))],
+            "use": bool(_bt.can_use(d.get("bs"))),
+            "equip": bool(_bt.can_equip(d.get("ft"), d.get("kd"))),
+            "dis": bool(_bt.can_dismantle(d.get("fc"))),
+            "fashion": bool(c.is_fashion_item(tid)),
+            # Mon game CAM gui ngan hang -> khong cho them vao list cat (them cung vo ich).
+            "bank": not (int(d.get("restrict", 0) or 0) & c.BANK_RESTRICT_CAM),
+        })
+    return {
+        "cap": c.bag_capacity(), "used": c.bag_used_slots(),
+        "maxed": bool(c.bag_slot_maxed()), "slots": o,
+    }
+
+
+# Lenh tui do UI duoc phep goi. Khoa -> (ten hien thi, ham chay).
+# Danh sach TRANG (allowlist) co chu y: UI khong duoc goi bua bat ky method nao cua client.
+_BAG_LENH = {
+    "use": ("Dùng", lambda c, s, a: c.use_slot(s, target=a)),
+    "equip": ("Trang bị", lambda c, s, a: c.use_slot(s, target=a)),
+    "decompose": ("Phân giải", lambda c, s, a: c.decompose_slot(s)),
+    "discard": ("Bỏ", lambda c, s, a: c.discard_item(s, a or 1)),
+    "fashion": ("Thả vào sưu tầm", lambda c, s, a: c.deposit_fashion_slot(s)),
+}
+
+
+def bag_cmd(username, action, slot, arg=0):
+    """Chay mot lenh tui do tu UI. -> "True" | "queued" | "False: ly do".
+
+    DANG TRONG TRAN thi XEP HANG (`queue_bag_cmd`) y het lenh cong diem / nang skill: client that
+    chan thao tac tui do khi dang danh, gui bua la server nuot im lang.
+    """
+    c = account_clients.get(username)
+    if c is None:
+        return "False: acc chưa chạy"
+    lenh = _BAG_LENH.get(str(action or ""))
+    if lenh is None:
+        return "False: lệnh không hợp lệ"
+    ten, fn = lenh
+    s, a = int(slot), int(arg or 0)
+    try:
+        if c.queue_bag_cmd("%s (ô #%d)" % (ten, s), lambda: fn(c, s, a)):
+            return "queued"
+        return "True" if fn(c, s, a) else "False: server không nhận"
+    except Exception as e:
+        return "False: %s" % e
 
 
 def bag_notify_items(pidx):
