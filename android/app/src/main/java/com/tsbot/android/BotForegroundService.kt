@@ -171,6 +171,29 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
 
     private fun rpd(): PyObject = Python.getInstance().getModule("train_bot.run_party_digioi")
 
+    companion object {
+        private fun rpdStatic(): PyObject =
+            Python.getInstance().getModule("train_bot.run_party_digioi")
+
+        /** LIST CAT vao tien trang - MOT file chung (`cat_do_items.json`) cho moi acc, do Python
+         *  quan ly. KHONG copy sang PartyStore: chep tay la se lech (bai hoc Servers.kt). */
+        fun loadCatDoItems(): List<String> = try {
+            rpdStatic().callAttr("load_cat_do_items").asMap().keys.map { it.toString().lowercase() }
+        } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "load_cat_do_items loi: ${e.message}")
+            emptyList()
+        }
+
+        fun saveCatDoItems(items: List<String>): Boolean = try {
+            // Chaquopy KHONG convert dung List<String> qua callAttr (R8 rut gon ten lop ->
+            // "'t' object is not iterable"). Noi bang xuong dong nhu moi cho khac trong file nay.
+            rpdStatic().callAttr("save_cat_do_items_str", items.joinToString("\n")).toBoolean()
+        } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "save_cat_do_items loi: ${e.message}")
+            false
+        }
+    }
+
     // --- map RunMode (UI) -> config mode/param cua ban PC ---
     private data class ModeCfg(
         val mode: String, val startCity: Int, val cityFlag: Int, val mobIndex: Int,
@@ -274,6 +297,10 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.loanDauMotTran,
                 // TU MO RONG TUI DO. THEM O CUOI CUNG (goi theo VI TRI).
                 party.autoBagExpand, party.bagExpandGold,
+                // TU MO RUONG TRANG BI + TU CAT DO TIEN TRANG. THEM O CUOI CUNG (goi theo VI TRI).
+                // List cat KHONG truyen o day: no la MOT file chung (cat_do_items.json) ma
+                // Python tu doc, khong phai config theo party.
+                party.autoOpenBoxes, party.boxModes, party.autoCatDo,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,

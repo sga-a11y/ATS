@@ -107,6 +107,11 @@ class PartyStore(private val context: Context) {
                 scrollModes = o.optJSONObject("scroll_modes")?.let { m ->
                     m.keys().asSequence().mapNotNull { k -> m.optString(k, "").takeIf { it.isNotEmpty() }?.let { k to it } }.toMap()
                 } ?: emptyMap(),
+                autoOpenBoxes = o.optBoolean("auto_open_boxes", false),
+                boxModes = o.optJSONObject("box_modes")?.let { m ->
+                    m.keys().asSequence().mapNotNull { k -> k.takeIf { m.optBoolean(k, false) }?.let { it to true } }.toMap()
+                } ?: emptyMap(),
+                autoCatDo = o.optBoolean("auto_cat_do", false),
                 autoDonateMaterials = o.optBoolean("auto_donate_materials", true),
                 materialModes = o.optJSONObject("material_modes")?.let { m ->
                     m.keys().asSequence().mapNotNull { k -> m.optString(k, "").takeIf { it.isNotEmpty() }?.let { k to it } }.toMap()
@@ -185,6 +190,9 @@ class PartyStore(private val context: Context) {
             o.put("auto_discard_junk", p.autoDiscardJunk)
             o.put("auto_decompose_scrolls", p.autoDecomposeScrolls)
             o.put("scroll_modes", JSONObject().apply { p.scrollModes.forEach { (k, v) -> put(k, v) } })
+            o.put("auto_open_boxes", p.autoOpenBoxes)
+            o.put("box_modes", JSONObject().apply { p.boxModes.forEach { (k, v) -> put(k, v) } })
+            o.put("auto_cat_do", p.autoCatDo)
             o.put("auto_donate_materials", p.autoDonateMaterials)
             o.put("material_modes", JSONObject().apply { p.materialModes.forEach { (k, v) -> put(k, v) } })
             o.put("auto_event_exchange", p.autoEventExchange)

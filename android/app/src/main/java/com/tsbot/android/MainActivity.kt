@@ -784,6 +784,9 @@ fun TsBotApp(
             initialAutoDiscardJunk = partyBeingEdited.autoDiscardJunk,
             initialAutoDecomposeScrolls = partyBeingEdited.autoDecomposeScrolls,
             initialScrollModes = partyBeingEdited.scrollModes,
+            initialAutoOpenBoxes = partyBeingEdited.autoOpenBoxes,
+            initialBoxModes = partyBeingEdited.boxModes,
+            initialAutoCatDo = partyBeingEdited.autoCatDo,
             initialAutoDonateMaterials = partyBeingEdited.autoDonateMaterials,
             initialMaterialModes = partyBeingEdited.materialModes,
             initialAutoEventExchange = partyBeingEdited.autoEventExchange,
@@ -1729,6 +1732,9 @@ fun AddPartyDialog(
     initialAutoDiscardJunk: Boolean = true,
     initialAutoDecomposeScrolls: Boolean = false,
     initialScrollModes: Map<String, String> = emptyMap(),
+    initialAutoOpenBoxes: Boolean = false,
+    initialBoxModes: Map<String, Boolean> = emptyMap(),
+    initialAutoCatDo: Boolean = false,
     initialAutoDonateMaterials: Boolean = true,
     initialMaterialModes: Map<String, String> = emptyMap(),
     initialAutoEventExchange: Boolean = false,
@@ -1805,6 +1811,11 @@ fun AddPartyDialog(
     var autoDiscardJunk by remember { mutableStateOf(initialAutoDiscardJunk) }
     var autoDecomposeScrolls by remember { mutableStateOf(initialAutoDecomposeScrolls) }
     var scrollModes by remember { mutableStateOf(initialScrollModes) }
+    var autoOpenBoxes by remember { mutableStateOf(initialAutoOpenBoxes) }
+    var boxModes by remember { mutableStateOf(initialBoxModes) }
+    var showBoxList by remember { mutableStateOf(false) }
+    var autoCatDo by remember { mutableStateOf(initialAutoCatDo) }
+    var showCatDoList by remember { mutableStateOf(false) }
     var autoDonateMaterials by remember { mutableStateOf(initialAutoDonateMaterials) }
     var materialModes by remember { mutableStateOf(initialMaterialModes) }
     var showMaterialList by remember { mutableStateOf(false) }
@@ -1871,6 +1882,9 @@ fun AddPartyDialog(
         autoDiscardJunk = autoDiscardJunk,
         autoDecomposeScrolls = autoDecomposeScrolls,
         scrollModes = scrollModes,
+        autoOpenBoxes = autoOpenBoxes,
+        boxModes = boxModes,
+        autoCatDo = autoCatDo,
         autoDonateMaterials = autoDonateMaterials,
         materialModes = materialModes,
         autoBuyShop = autoBuyShop,
@@ -2476,6 +2490,9 @@ fun AddPartyDialog(
                             autoDiscardJunk = autoDiscardJunk,
                             autoDecomposeScrolls = autoDecomposeScrolls,
                             scrollModes = scrollModes,
+                            autoOpenBoxes = autoOpenBoxes,
+                            boxModes = boxModes,
+                            autoCatDo = autoCatDo,
                             autoDonateMaterials = autoDonateMaterials,
                             materialModes = materialModes,
                             autoEventExchange = autoEventExchange,
@@ -2542,6 +2559,17 @@ fun AddPartyDialog(
                         Checkbox(checked = autoSellNoiDat, onCheckedChange = { autoSellNoiDat = it })
                         Text("Tự bán Nồi đất")
                     }
+                    // TU CAT DO: nam GIUA "Tu ban Noi dat" va "Tu vut item rac" - GIONG BAN PC.
+                    // Hai viec di chung mot cho boc 50-50 truoc khi tele ve thanh route: trung
+                    // Ng.Thanh thi ban Noi dat, trung Trac Quan thi di cat do.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoCatDo, onCheckedChange = { autoCatDo = it })
+                        Text("Tự cất đồ vào Tiền trang")
+                        OutlinedButton(
+                            onClick = { showCatDoList = true },
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) { Text("List cất") }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoDiscardJunk, onCheckedChange = { autoDiscardJunk = it })
                         Text("Tự vứt item rác (Ngọc Hư)")
@@ -2553,6 +2581,16 @@ fun AddPartyDialog(
                             onClick = { showMaterialList = true },
                             modifier = Modifier.padding(start = 8.dp),
                         ) { Text("List") }
+                    }
+                    // RUONG TRANG BI: NGAY SAU donate nguyen lieu - dung thu tu bot chay, va de
+                    // tan dung viec da o quan doan (mon khong phan giai duoc thi donate).
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoOpenBoxes, onCheckedChange = { autoOpenBoxes = it })
+                        Text("Tự dọn rương trang bị và Phó bản")
+                        OutlinedButton(
+                            onClick = { showBoxList = true },
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) { Text("List rương") }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoDecomposeScrolls, onCheckedChange = { autoDecomposeScrolls = it })
@@ -2575,6 +2613,18 @@ fun AddPartyDialog(
                 TextButton(onClick = { showBagClean = false }) { Text("Đóng") }
             },
         )
+    }
+
+    if (showBoxList) {
+        BoxListDialog(
+            picked = boxModes,
+            onDismiss = { showBoxList = false },
+            onSave = { boxModes = it; showBoxList = false },
+        )
+    }
+
+    if (showCatDoList) {
+        CatDoListDialog(onDismiss = { showCatDoList = false })
     }
 
     if (showScrollList) {
@@ -3636,6 +3686,173 @@ fun loadDonateMaterials(context: android.content.Context): List<DonateMaterial> 
         }
     }
     return _donateMaterialsCache ?: emptyList()
+}
+
+/** Mot ruong trong bliss_bag.json + thong ke ket qua mo (tinh san tu fc/dn cua tung mon). */
+data class BlissBox(
+    val tid: String,
+    val name: String,
+    val luot: String,
+    val n: Int,
+    val phanGiai: Int,
+    val donate: Int,
+    val vut: Int,
+) {
+    fun label(): String = "$name  —  $n món · phân giải $phanGiai · donate $donate · vứt $vut"
+}
+
+private var _blissBoxCache: List<BlissBox>? = null
+
+/** Doc bliss_bag.json tu assets. `fc > 0` = phan giai duoc, `dn` = qua duoc UIArmy.ArmyFilter
+ *  (donate quan doan); khong ca hai thi bot VUT BO - so nay hien ra de user biet truoc. */
+fun loadBlissBoxes(context: android.content.Context): List<BlissBox> {
+    if (_blissBoxCache == null) {
+        _blissBoxCache = try {
+            val bytes = context.assets.open("train_bot_data/bliss_bag.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8)).getJSONObject("boxes")
+            val out = ArrayList<BlissBox>()
+            for (tid in root.keys()) {
+                val o = root.getJSONObject(tid)
+                val items = o.optJSONArray("items")
+                var pg = 0; var dn = 0; var vut = 0
+                for (i in 0 until (items?.length() ?: 0)) {
+                    val it = items!!.getJSONObject(i)
+                    when {
+                        it.optInt("fc", 0) > 0 -> pg++
+                        it.optBoolean("dn", false) -> dn++
+                        else -> vut++
+                    }
+                }
+                out.add(BlissBox(tid, o.optString("name", tid), o.optString("luot", "thuong"),
+                                 pg + dn + vut, pg, dn, vut))
+            }
+            out
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    return _blissBoxCache ?: emptyList()
+}
+
+@Composable
+fun BoxListDialog(
+    picked: Map<String, Boolean>,
+    onDismiss: () -> Unit,
+    onSave: (Map<String, Boolean>) -> Unit,
+) {
+    val context = LocalContext.current
+    val all = remember { loadBlissBoxes(context) }
+    val state = remember { mutableStateMapOf<String, Boolean>().apply { picked.forEach { (k, v) -> if (v) put(k, true) } } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("List rương (${all.size})") },
+        text = {
+            Column {
+                Text(
+                    "Bot mở rương đã tick rồi PHÂN GIẢI lấy mảnh; món không phân giải được thì " +
+                        "ĐÓNG GÓP quân đoàn; không được cả hai thì VỨT BỎ. Chỉ chạy khi acc có " +
+                        "quân đoàn và đã vào >24h. Chỉ đụng vào món VỪA MỞ RA.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(6.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(all.size) { i ->
+                        val b = all[i]
+                        val on = state[b.tid] == true
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { if (on) state.remove(b.tid) else state[b.tid] = true }
+                                .padding(vertical = 4.dp),
+                        ) {
+                            Checkbox(checked = on, onCheckedChange = {
+                                if (on) state.remove(b.tid) else state[b.tid] = true
+                            })
+                            Text(b.label(), style = MaterialTheme.typography.bodySmall,
+                                 modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { onSave(state.toMap()) }) { Text("Lưu") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
+    )
+}
+
+/** LIST CAT vao tien trang. KHAC moi list khac o day: no la MOT FILE CHUNG cho moi acc
+ *  (`cat_do_items.json` do Python quan ly), khong phai config theo party -> doc/ghi qua Python
+ *  chu khong qua PartyStore. Them mon moi thi lam o TUI DO (ban PC); o day chi BO bot. */
+@Composable
+fun CatDoListDialog(
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val ten = remember { loadItemNames(context) }
+    val state = remember {
+        mutableStateMapOf<String, Boolean>().apply {
+            BotForegroundService.loadCatDoItems().forEach { put(it, true) }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("List cất (${state.size})") },
+        text = {
+            Column {
+                Text(
+                    "Danh sách này DÙNG CHUNG cho mọi acc. Bỏ tick để bot thôi cất món đó.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(6.dp))
+                val keys = state.keys.toList().sorted()
+                if (keys.isEmpty()) {
+                    Text("(chưa có món nào)", style = MaterialTheme.typography.bodySmall)
+                }
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(keys.size) { i ->
+                        val k = keys[i]
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        ) {
+                            Checkbox(checked = state[k] == true, onCheckedChange = { on ->
+                                if (on) state[k] = true else state[k] = false
+                            })
+                            Text(ten[k] ?: k, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                BotForegroundService.saveCatDoItems(state.filterValues { it }.keys.toList())
+                onDismiss()
+            }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
+    )
+}
+
+private var _itemNameCache: Map<String, String>? = null
+
+/** {tid_hex: ten} tu items_gamedata.json (assets). Chi de HIEN TEN trong List cất. */
+fun loadItemNames(context: android.content.Context): Map<String, String> {
+    if (_itemNameCache == null) {
+        _itemNameCache = try {
+            val bytes = context.assets.open("train_bot_data/items_gamedata.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8))
+            val out = HashMap<String, String>()
+            for (k in root.keys()) {
+                val nm = root.optJSONObject(k)?.optString("name", "") ?: ""
+                if (nm.isNotEmpty()) out[k.lowercase()] = nm
+            }
+            out
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+    return _itemNameCache ?: emptyMap()
 }
 
 @Composable

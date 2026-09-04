@@ -7156,7 +7156,12 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         event_exchange_sig="",
                         train_pick="", mob_min=0, mob_max=0, mob_elements="",
                         di_gioi_pick="", loandau_mot_tran=False,
-                        auto_bag_expand=False, bag_expand_gold=0):
+                        auto_bag_expand=False, bag_expand_gold=0,
+                        # TU MO RUONG TRANG BI + TU CAT DO TIEN TRANG. THEM O CUOI CUNG
+                        # (Kotlin goi THEO VI TRI - chen vao giua la lech het tham so phia sau).
+                        # `cat_do_items` KHONG co o day: list cat la MOT file chung
+                        # (cat_do_items.json), khong phai config theo party.
+                        auto_open_boxes=False, box_modes=None, auto_cat_do=False):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -7190,6 +7195,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "team_dungeons": config.normalize_team_dungeons(team_dungeons),
         "digioi_mode": digioi_mode, "event_key": event_key or "",
         "loandau_mot_tran": bool(loandau_mot_tran),
+        "auto_open_boxes": bool(auto_open_boxes),
+        "box_modes": dict(box_modes or {}),
+        "auto_cat_do": bool(auto_cat_do),
         "auto_bag_expand": bool(auto_bag_expand),
         "bag_expand_gold": int(bag_expand_gold or 0),
         "use_phuc_than": bool(use_phuc_than), "use_digioi_ho_phu": bool(use_digioi_ho_phu),
@@ -7909,6 +7917,17 @@ def diem_du_notify_items(pidx):
         if n > 0:
             out.append({"user": u, "kind": "diem_du", "diem": str(n)})
     return out
+
+
+def save_cat_do_items_str(items_str):
+    r"""ANDROID: luu list cat vao tien trang. Nhan CHUOI noi bang "\n", KHONG phai List<String>.
+
+    Chaquopy khong convert dung List<String> qua callAttr (ban release bi R8 rut gon ten lop ->
+    "TypeError: 't' object is not iterable") - moi cho khac trong BotForegroundService cung noi
+    chuoi y het.
+    """
+    ds = {x.strip().lower(): True for x in str(items_str or "").split("\n") if x.strip()}
+    return bool(save_cat_do_items(ds))
 
 
 def apply_point_config(username, point_config):
