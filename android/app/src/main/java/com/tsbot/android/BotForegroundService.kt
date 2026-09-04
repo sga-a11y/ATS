@@ -312,6 +312,15 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                         android.util.Log.w("aTSBot", "apply_point_config loi: ${e.message}")
                     }
                 }
+                // BANG TU NANG SKILL: cung duong nhu point - ben PC doc tu accounts.json qua
+                // config.ACCOUNT_SKILL, ben APK phai bom vao day. Thieu doan nay thi bang co luu
+                // nhung bot KHONG BAO GIO nang skill, va khong co log nao bao.
+                if (acc.skillJson.isNotBlank()) {
+                    try { py.callAttr("apply_skill_config_json", acc.username, acc.skillJson) }
+                    catch (e: Exception) {
+                        android.util.Log.w("aTSBot", "apply_skill_config loi: ${e.message}")
+                    }
+                }
             }
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)
@@ -486,6 +495,28 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
 
     fun applyPointConfig(username: String, pointJson: String): Boolean =
         try { rpd().callAttr("apply_point_config", username, pointJson)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
+    /** CAY SKILL nhan vat: {element, left, lv:{tid_hex: cap}, char_level, cache?, ts?}.
+     *  Acc DANG CHAY -> so live; acc TAT -> so da luu (van xem duoc cay, nhung khong nang duoc). */
+    fun skillCharInfoJson(username: String): String {
+        return try {
+            val py = com.chaquo.python.Python.getInstance()
+            val json = py.getModule("json")
+            val info = rpd().callAttr("skill_char_info", username) ?: return ""
+            if (info.asMap().isEmpty()) "" else json.callAttr("dumps", info).toString()
+        } catch (_: Exception) { "" }
+    }
+
+    /** Hoc/nang TAY. -> "queued" = dang trong tran, da xep hang (het tran bot tu gui). */
+    fun upgradeSkill(username: String, skillId: Int, capDich: Int): String {
+        return try {
+            rpd().callAttr("nang_skill_ngay", username, skillId, capDich)?.toString() ?: "False"
+        } catch (_: Exception) { "False" }
+    }
+
+    fun applySkillConfig(username: String, skillJson: String): Boolean =
+        try { rpd().callAttr("apply_skill_config_json", username, skillJson)?.toBoolean() ?: false }
         catch (_: Exception) { false }
 
     /** Acc con du diem sau khi duyet het bang rule - [{user, kind:'diem_du', diem}]. */

@@ -8041,6 +8041,22 @@ def nang_skill_ngay(username, skill_id, cap_dich):
     return (True if da else (False, ly_do or "không nâng được"))
 
 
+def apply_skill_config_json(username, cfg_json):
+    """ANDROID: nhu apply_skill_config nhung nhan CHUOI JSON.
+
+    Ban PC truyen thang dict; Kotlin chi truyen duoc chuoi (giong apply_point_config, ham do tu
+    json.loads o dau). Tach ham rieng de KHONG doi kieu tham so cua apply_skill_config - no la
+    code DUNG CHUNG voi PC.
+    """
+    cfg = cfg_json
+    if isinstance(cfg, str):
+        try:
+            cfg = json.loads(cfg) if cfg else {}
+        except Exception:
+            cfg = {}
+    return apply_skill_config(username, cfg if isinstance(cfg, dict) else {})
+
+
 def apply_skill_config(username, cfg):
     """GUI luu bang tu nang skill -> ap NGAY vao config dang chay (khong phai restart acc)."""
     if not username:

@@ -270,6 +270,7 @@ fun TsBotApp(
     var confirmDeleteParty by remember { mutableStateOf<String?>(null) }
     var editingSkillAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     var editingPointAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    var editingSkillTreeAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     // Tab party dang chon (moi party = 1 tab, giong ban PC)
     var selectedTab by remember { mutableStateOf(0) }
     var privacyMode by rememberSaveable { mutableStateOf(PRIVACY_MASK) }
@@ -525,6 +526,7 @@ fun TsBotApp(
                         onEditHeal = { account -> editingHealAccount = party.name to account },
                         onEditSkill = { account -> editingSkillAccount = party.name to account },
                         onEditPoint = { account -> editingPointAccount = party.name to account },
+                        onEditSkillTree = { account -> editingSkillTreeAccount = party.name to account },
                         onEnabledChange = { account, enabled ->
                             partyStore.updateAccountInParty(
                                 party.name,
@@ -964,6 +966,25 @@ fun TsBotApp(
         )
     }
 
+    val skillTreeAccount = editingSkillTreeAccount
+    if (skillTreeAccount != null) {
+        val (partyName, account) = skillTreeAccount
+        SkillTreeDialog(
+            username = account.username,
+            initialSkillJson = account.skillJson,
+            onLoadInfo = { service?.skillCharInfoJson(account.username) ?: "" },
+            onUpgrade = { sid, cap -> service?.upgradeSkill(account.username, sid, cap) ?: "False" },
+            onDismiss = { editingSkillTreeAccount = null },
+            onSave = { json ->
+                partyStore.updateAccountInParty(
+                    partyName, account.username, account.copy(skillJson = json))
+                service?.applySkillConfig(account.username, json)
+                refresh()
+                editingSkillTreeAccount = null
+            },
+        )
+    }
+
     val skillAccount = editingSkillAccount
     if (skillAccount != null) {
         val (partyName, account) = skillAccount
@@ -1093,6 +1114,7 @@ fun PartyCard(
     onEditHeal: (Account) -> Unit,
     onEditSkill: (Account) -> Unit,
     onEditPoint: (Account) -> Unit = {},
+    onEditSkillTree: (Account) -> Unit = {},
     onEnabledChange: (Account, Boolean) -> Unit,
     onRemoveAccount: (String) -> Unit,
     onRemoveParty: () -> Unit,
@@ -1357,6 +1379,7 @@ fun PartyCard(
                         onEditHeal = { onEditHeal(account) },
                         onEditSkill = { onEditSkill(account) },
                         onEditPoint = { onEditPoint(account) },
+                        onEditSkillTree = { onEditSkillTree(account) },
                         onEnabledChange = { enabled -> onEnabledChange(account, enabled) },
                         onDelete = { onRemoveAccount(account.username) },
                         expanded = expandedLogUser == account.username,
@@ -1384,6 +1407,7 @@ fun AccountRow(
     onEditHeal: () -> Unit,
     onEditSkill: () -> Unit,
     onEditPoint: () -> Unit,
+    onEditSkillTree: () -> Unit = {},
     onEnabledChange: (Boolean) -> Unit,
     onDelete: () -> Unit,
     expanded: Boolean = false,
@@ -1471,6 +1495,9 @@ fun AccountRow(
                 }
                 TextButton(onClick = onEditPoint) {
                     Text("Point", maxLines = 1)
+                }
+                TextButton(onClick = onEditSkillTree) {
+                    Text("Skill", maxLines = 1)
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = StatusError, modifier = Modifier.size(18.dp))
@@ -4412,6 +4439,283 @@ private fun buildPointJson(reserve: Int, rules: List<PointRule>): String {
  *     duyet TU TREN XUONG. Rule chot theo diem GOC.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+/** Mot skill trong skills_data.json (chi cac truong cay skill can). */
+data class SkillNode(
+    val id: Int,
+    val name: String,
+    val tree: String,
+    val pre: Int,
+    val learnPt: Int,
+    val lvUpPt: Int,
+    val maxLv: Int,
+    val element: Int,
+)
+
+private var _skillTreeCache: List<SkillNode>? = null
+
+/** Doc skills_data.json tu assets -> cay skill. Cung nguon voi ban PC (config.SKILL_INFO). */
+fun loadSkillTree(context: android.content.Context): List<SkillNode> {
+    if (_skillTreeCache == null) {
+        _skillTreeCache = try {
+            val bytes = context.assets.open("train_bot_data/skills_data.json").readBytes()
+            val root = JSONObject(String(bytes, Charsets.UTF_8)).getJSONObject("skills")
+            val out = ArrayList<SkillNode>()
+            for (k in root.keys()) {
+                val o = root.getJSONObject(k)
+                val tree = o.optString("tree", "")
+                if (tree.isEmpty() || tree == "null") continue
+                out.add(SkillNode(
+                    id = k.removePrefix("0x").toInt(16),
+                    name = o.optString("name", k),
+                    tree = tree,
+                    pre = o.optInt("pre", 0),
+                    learnPt = o.optInt("learnPt", 0),
+                    lvUpPt = o.optInt("lvUpPt", 1),
+                    maxLv = o.optInt("maxLv", 0),
+                    element = o.optInt("element", 0),
+                ))
+            }
+            out
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    return _skillTreeCache ?: emptyList()
+}
+
+/** Tab cay skill: (khoa trong skills_data, nhan, he). Mirror SkillDialog.TABS ban PC.
+ *  KHONG co "LightDark": game CHUA MO cay do. */
+val SkillTabs = listOf(
+    Triple("Earth", "Địa", 1),
+    Triple("Water", "Thủy", 2),
+    Triple("Fire", "Hỏa", 3),
+    Triple("Wind", "Phong", 4),
+    Triple("Mind", "Tâm", 5),
+    Triple("Turn1", "Chuyển sinh", 0),
+)
+
+/** Tab TAM chi hien skill DA HOC: no co 104 skill sinh hoat ma acc chi dung vai cai. */
+val SkillTabsChiHienDaHoc = setOf("Mind")
+
+/** Mot dong bang tu nang: skill + cap muon dat. */
+data class SkillRule(val id: Int, val target: Int)
+
+fun parseSkillRules(json: String): Pair<Int, List<SkillRule>> {
+    if (json.isBlank()) return 999 to emptyList()
+    return try {
+        val o = JSONObject(json)
+        val arr = o.optJSONArray("rules")
+        val out = ArrayList<SkillRule>()
+        for (i in 0 until (arr?.length() ?: 0)) {
+            // Ban PC luu [skill_id, cap] - MANG 2 phan tu, khong phai object.
+            val r = arr!!.optJSONArray(i) ?: continue
+            out.add(SkillRule(r.optInt(0), r.optInt(1)))
+        }
+        o.optInt("reserve", 999) to out
+    } catch (_: Exception) {
+        999 to emptyList()
+    }
+}
+
+fun skillRulesJson(reserve: Int, rules: List<SkillRule>): String = JSONObject().apply {
+    put("reserve", reserve)
+    put("rules", JSONArray().apply {
+        rules.filter { it.id > 0 && it.target > 0 }.forEach {
+            put(JSONArray().apply { put(it.id); put(it.target) })
+        }
+    })
+}.toString()
+
+/** CAY SKILL NHAN VAT + bang tu nang. Mirror gui.py::SkillDialog.
+ *
+ *  Cay hien theo tab he, moi dong ghi cap hien tai / tran va gia HOC (learnPt, GAP DOI neu skill
+ *  khac he cua char) hoac gia NANG (lvUpPt) - dung luat cua client. Bam mot dong = them thang vao
+ *  bang tu nang o duoi (ban PC la double-click).
+ */
+@Composable
+fun SkillTreeDialog(
+    username: String,
+    initialSkillJson: String,
+    onLoadInfo: () -> String,
+    onUpgrade: (Int, Int) -> String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val all = remember { loadSkillTree(context) }
+    val (initReserve, initRules) = remember(initialSkillJson) { parseSkillRules(initialSkillJson) }
+    var reserve by remember { mutableStateOf(initReserve.toString()) }
+    val rules = remember { mutableStateListOf<SkillRule>().apply { addAll(initRules) } }
+    var infoJson by remember { mutableStateOf("") }
+    var tab by remember { mutableStateOf(0) }
+    var thongBao by remember { mutableStateOf("") }
+
+    suspend fun nap() { infoJson = withContext(Dispatchers.IO) { onLoadInfo() } }
+    LaunchedEffect(username) { nap() }
+
+    val info = remember(infoJson) {
+        try { if (infoJson.isBlank()) null else JSONObject(infoJson) } catch (_: Exception) { null }
+    }
+    // {skill_id: cap dang co}
+    val cap = remember(info) {
+        val m = HashMap<Int, Int>()
+        val lv = info?.optJSONObject("lv")
+        if (lv != null) for (k in lv.keys()) m[k.removePrefix("0x").toInt(16)] = lv.optInt(k, 0)
+        m
+    }
+    val elChar = info?.optInt("element", 0) ?: 0
+    val tuCache = info?.optBoolean("cache") == true
+
+    // Mo dung tab HE CUA CHAR (chi lan dau; sau do ton trong tab user dang xem).
+    LaunchedEffect(elChar) {
+        if (elChar in 1..4) {
+            val i = SkillTabs.indexOfFirst { it.third == elChar }
+            if (i >= 0) tab = i
+        }
+    }
+
+    val tabKey = SkillTabs[tab].first
+    // Xep theo CAY: skill con nam ngay duoi skill tien quyet, thut vao mot muc.
+    val rows = remember(tabKey, cap, all) {
+        val ds = all.filter { it.tree == tabKey }
+            .filter { tabKey !in SkillTabsChiHienDaHoc || (cap[it.id] ?: 0) > 0 }
+        val coTrongTab = ds.map { it.id }.toSet()
+        val con = HashMap<Int, MutableList<SkillNode>>()
+        ds.forEach { con.getOrPut(if (it.pre in coTrongTab) it.pre else 0) { mutableListOf() }.add(it) }
+        val out = ArrayList<Pair<SkillNode, Int>>()
+        fun di(cha: Int, sau: Int) {
+            con[cha]?.sortedBy { it.id }?.forEach { out.add(it to sau); di(it.id, sau + 1) }
+        }
+        di(0, 0)
+        out
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Skill: $username") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
+                .verticalScroll(rememberScrollState())) {
+                val left = info?.opt("left")?.toString()?.takeIf { it != "null" } ?: "?"
+                Text("Điểm skill: $left", fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        info == null -> "(acc chưa chạy và chưa có số đã lưu)"
+                        tuCache -> "(acc đang TẮT — số đã lưu, bật acc mới nâng được)"
+                        else -> "(số đọc trực tiếp từ acc đang chạy)"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
+                    SkillTabs.forEachIndexed { i, t ->
+                        Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t.second) })
+                    }
+                }
+                Text("Bấm một skill để thêm vào bảng tự nâng ở dưới.",
+                     style = MaterialTheme.typography.bodySmall)
+                Column(modifier = Modifier.heightIn(max = 200.dp)
+                    .verticalScroll(rememberScrollState())) {
+                    if (rows.isEmpty()) Text("(trống)", style = MaterialTheme.typography.bodySmall)
+                    rows.forEach { row ->
+                        val sk = row.first
+                        val c = cap[sk.id] ?: 0
+                        // Gia HOC gap doi neu skill khac he cua char (luat cua client).
+                        val giaHoc = if (sk.element in 1..4 && elChar in 1..4 && sk.element != elChar)
+                            sk.learnPt * 2 else sk.learnPt
+                        val moTa = if (c > 0) "nâng ${sk.lvUpPt} điểm/cấp" else "học $giaHoc điểm"
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable {
+                                    if (c < sk.maxLv && rules.none { it.id == sk.id }) {
+                                        rules.add(SkillRule(sk.id, minOf(c + 1, sk.maxLv)))
+                                    }
+                                }
+                                .padding(start = (row.second * 14).dp, top = 3.dp, bottom = 3.dp),
+                        ) {
+                            Text(sk.name, Modifier.weight(1f),
+                                 style = MaterialTheme.typography.bodySmall)
+                            Text("$c/${sk.maxLv}", Modifier.width(52.dp),
+                                 style = MaterialTheme.typography.bodySmall)
+                            Text(moTa, Modifier.width(112.dp),
+                                 style = MaterialTheme.typography.bodySmall)
+                            TextButton(
+                                enabled = !tuCache && c < sk.maxLv,
+                                onClick = {
+                                    scope.launch {
+                                        val kq = withContext(Dispatchers.IO) {
+                                            onUpgrade(sk.id, minOf(c + 1, sk.maxLv))
+                                        }
+                                        thongBao = when {
+                                            kq == "queued" ->
+                                                "Đang trong trận — đã xếp hàng, hết trận bot tự gửi."
+                                            kq.startsWith("True") -> "Đã gửi lệnh nâng ${sk.name}."
+                                            else -> "Không nâng được: $kq"
+                                        }
+                                        nap()
+                                    }
+                                },
+                            ) { Text("Nâng", style = MaterialTheme.typography.bodySmall) }
+                        }
+                    }
+                }
+                if (thongBao.isNotEmpty()) {
+                    Text(thongBao, style = MaterialTheme.typography.bodySmall,
+                         color = androidx.compose.ui.graphics.Color(0xFF007700))
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Tự nâng Skill (duyệt từ trên xuống)", fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Skill point để dành:", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = reserve,
+                        onValueChange = { v -> reserve = v.filter { it.isDigit() } },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.width(110.dp).padding(start = 6.dp),
+                    )
+                }
+                Text("(luôn giữ lại; dư hơn số này mới nâng cho các dòng dưới)",
+                     style = MaterialTheme.typography.bodySmall)
+                rules.forEachIndexed { i, r ->
+                    val sk = all.firstOrNull { it.id == r.id }
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                        Text(sk?.name ?: "0x%04x".format(r.id), Modifier.weight(1f),
+                             style = MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(
+                            value = r.target.toString(),
+                            onValueChange = { t ->
+                                rules[i] = r.copy(
+                                    target = t.filter { it.isDigit() }.toIntOrNull() ?: 0)
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(84.dp),
+                        )
+                        val xong = sk != null && (cap[r.id] ?: 0) >= r.target && r.target > 0
+                        Text(if (xong) "Done" else "", Modifier.width(46.dp),
+                             style = MaterialTheme.typography.bodySmall,
+                             color = androidx.compose.ui.graphics.Color(0xFF007700))
+                        TextButton(onClick = { rules.removeAt(i) }) { Text("✕") }
+                    }
+                }
+                if (rules.isEmpty()) {
+                    Text("(chưa có dòng nào — bấm một skill ở cây trên để thêm)",
+                         style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(skillRulesJson(reserve.toIntOrNull() ?: 999, rules.toList()))
+            }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } },
+    )
+}
+
 @Composable
 fun PointSettingsDialog(
     username: String,

@@ -135,4 +135,7 @@ data class Account(
     // Bang TU CONG DIEM TIEM NANG (JSON): {"reserve": int, "rules":[{"stat","target"}]}.
     // Dat CUOI cung de cac cho dung tham so VI TRI (PartyStore) khong phai sua.
     val pointJson: String = "",
+    // Bang TU NANG SKILL (JSON): {"reserve": int, "rules":[[skill_id, cap_dich], ...]}.
+    // Dat CUOI cung, cung ly do voi pointJson (PartyStore dung tham so VI TRI).
+    val skillJson: String = "",
 )
