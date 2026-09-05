@@ -88,7 +88,9 @@ class TestPickBestChannelDungCongThucMoi(unittest.TestCase):
         """Kenh 39 dang 20/20 nhung 5 cho do LA CUA PARTY -> van vao duoc."""
         self.me.channels = {39: (20, 20), 5: (19, 20)}
         r = self.me.pick_best_channel(need=5, exclude=(1,))
-        self.assertEqual(r, 39, "kenh party dang o bi loai -> RETRY vo han")
+        # 0 = "giu nguyen kenh dang o" (ca party da chung kenh 39) -> cung nghia voi 39.
+        self.assertIn(r, (0, 39), "kenh party dang o bi loai -> RETRY vo han")
+        self.assertEqual(self.doi, [], "ca party da cung kenh 39 -> khong duoc doi kenh")
 
     def test_khong_kenh_nao_du_thi_GOM_VE_KENH_LEADER(self):
         """Van hon la RETRY vo han: leader dang dung trong kenh do nen chac chan co cho."""

@@ -481,6 +481,72 @@ class TestPhaDIGIOI_KHONG_DUOC_GOM(_Nen):
         self.assertIn("het gio", ly_do)
 
 
+class TestMotLuongChoCaBOT(unittest.TestCase):
+    """BUG THAT 06/09 (party 53): party chay 16 phut MA KHONG CO AI DIEU PHOI.
+
+        01:53:44 [party 53] DIEU PHOI gen 6: ...        <- dong cuoi cung
+        01:54:54 -> 01:56:46 [vumhai] chua moi 4 member ... 'lech kenh live 1!=4' (64 lan)
+        (khong mot nhip DIEU PHOI nao trong khi acc van chay binh thuong)
+
+    Goc: dieu phoi nam trong `_party_watcher` - MOI PARTY MOT LUONG. Watcher TU THOAT khi party
+    khong con acc chay, ma `start_party` chi dung watcher moi o nhanh PHIEN MOI (`_fresh`);
+    nhanh `not _fresh` THOAT SOM truoc do. Watcher chet mot lan + user start lai luc con acc
+    chay = party do vinh vien khong co dieu phoi.
+
+    Nay: MOT luong cho ca bot, quet moi party, khong bao gio thoat, va tu hoi sinh.
+    """
+
+    def _src(self):
+        import io as _io
+        return _io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8").read()
+
+    def test_dieu_phoi_KHONG_con_nam_trong_party_watcher(self):
+        s = self._src()
+        i = s.find("def _party_watcher(")
+        than = s[i:s.find("\ndef ", i + 10)]
+        self.assertNotIn("_dieu_phoi_quyet", than,
+                         "dieu phoi van gan vao watcher/party -> watcher chet la mat dieu phoi")
+
+    def test_vong_dieu_phoi_KHONG_BAO_GIO_thoat(self):
+        s = self._src()
+        i = s.find("def _dieu_phoi_loop(")
+        self.assertGreater(i, 0, "khong co vong dieu phoi chung")
+        than = s[i:s.find("\ndef ", i + 10)]
+        self.assertIn("while True:", than)
+        for dong in than.splitlines():
+            self.assertNotEqual(dong.strip(), "return", "vong dieu phoi co duong thoat")
+
+    def test_loi_mot_party_khong_giet_ca_vong(self):
+        s = self._src()
+        i = s.find("def _dieu_phoi_loop(")
+        than = s[i:s.find("\ndef ", i + 10)]
+        j = than.find("for pidx in range(")
+        self.assertGreater(j, 0)
+        self.assertIn("except Exception", than[j:], "loi 1 party lam chet dieu phoi ca bot")
+
+    def test_start_party_LUON_bao_dam_dieu_phoi(self):
+        """Phai goi TRUOC nhanh `not _fresh` - do la nhanh thoat som da gay ra bug."""
+        s = self._src()
+        i = s.find("def start_party(")
+        than = s[i:s.find("\ndef ", i + 10)]
+        j, k = than.find("bao_dam_dieu_phoi()"), than.find("if not _fresh:")
+        self.assertGreater(j, 0, "start_party khong bao dam dieu phoi")
+        self.assertLess(j, k, "goi SAU nhanh thoat som -> van co party khong co dieu phoi")
+
+    def test_start_account_le_cung_bao_dam(self):
+        s = self._src()
+        i = s.find("def start_account(")
+        self.assertIn("bao_dam_dieu_phoi()", s[i:i + 1200])
+
+    def test_goi_nhieu_lan_chi_co_MOT_luong(self):
+        R.bao_dam_dieu_phoi()
+        t1 = R._DIEU_PHOI_THREAD
+        R.bao_dam_dieu_phoi()
+        self.assertIs(R._DIEU_PHOI_THREAD, t1, "moi lan goi lai de mot luong -> ngap luong")
+        self.assertTrue(t1.is_alive())
+        self.assertTrue(t1.daemon, "khong daemon -> tat bot khong thoat duoc")
+
+
 if __name__ == "__main__":
     unittest.main()
 

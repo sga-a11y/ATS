@@ -2252,6 +2252,9 @@ class GameClient:
         self._cat_hong = set()
         # tid cac mon LAY RA hong trong phien (tui day + mon chua co stack san trong tui).
         self._lay_hong = set()
+        # Ket qua lan moi party gan nhat, cho DIEU PHOI doc (xem invite_members):
+        # {"luc", "lech_kenh": [entity], "lech_map": [entity], "tong"} hoac None.
+        self._moi_bo_qua = None
         # Su kien NPC dang mo hay khong, va tien trang da mo chua. Gui lenh khi CHUA mo la
         # ban vao khoang khong - te nhat la server ngat "su kien vi pham". Xem cat_do_tien_trang.
         self.event_dang_mo = False
@@ -11412,6 +11415,23 @@ class GameClient:
           0    = chi 1 kenh (khong co list / chi co kenh mac dinh) -> ca party DA cung kenh, GIU NGUYEN.
           None = co nhieu kenh NHUNG khong kenh nao du cho ca party -> caller nen RETRY (cho kenh trong).
           int  = da chuyen sang kenh it nguoi MA con du cho ca party."""
+        # ==== DANG ON THI DUNG DUNG VAO ====
+        # Ca party (con song, CUNG MAP) da chung mot kenh -> GIU NGUYEN. Truoc day khong he co
+        # nhanh nay: ba nhanh "giu nguyen" ben duoi deu la truong hop HONG (khong lay duoc list /
+        # het kenh de tach / khong kenh nao du cho), khong co nhanh nao cho "dang tot".
+        # Hau qua that (party 53, 06/09):
+        #     02:09:01 sync kenh/map OK: 5/5 acc o map 12001        (ca 5 o kenh 4)
+        #     02:09:08 -> LENH THU CONG ('route', ...) -> goi lai do_channel_sync
+        #     02:09:12 Kenh it nguoi MA DU CHO ca party (5): kenh 2 -> chuyen sang
+        #     02:09:22 sync kenh: 3/5 da sang kenh 2, CHUA sang: {qv813: 4, qv816: 4}
+        # Kenh 4 "dong" chinh vi party minh dang dung trong do -> picker thay kenh 2 "vang hon"
+        # roi doi ca party sang, lam vo party.
+        # KHONG kiem "kenh do con du cho": party dang dung trong do roi, cho la chuyen da roi.
+        _chung = self._kenh_chung_cua_party()
+        if _chung:
+            log.info("[%s] Ca party DA cung kenh %d -> GIU NGUYEN (khong doi kenh vo ich)",
+                     self._label, _chung)
+            return 0
         for i in range(tries):
             if not self.running:
                 return None
@@ -11482,6 +11502,35 @@ class GameClient:
         log.warning("[%s] Da thu %d kenh du cho (%s) nhung khong doi duoc -> RETRY",
                     self._label, len(tried), sorted(tried))
         return None
+
+    def kenh_cua_party(self):
+        """{kenh -> so acc} cua party NAY, chi tinh acc con song va CUNG MAP voi minh.
+
+        Doc thang `_PARTY_CLIENTS` (client cung tien trinh) - KHONG can acc nao bao cao.
+        """
+        ra = {}
+        try:
+            with _PARTY_LOCK:
+                peers = list((_PARTY_CLIENTS.get(self.party_idx) or {}).values())
+            for p in peers:
+                if not getattr(p, "running", False):
+                    continue
+                if getattr(p, "current_map", None) != self.current_map:
+                    continue          # so kenh chi co nghia trong CUNG mot map
+                cur = getattr(p, "current_channel", None)
+                if cur:
+                    ra[int(cur)] = ra.get(int(cur), 0) + 1
+        except Exception:
+            return {}
+        return ra
+
+    def _kenh_chung_cua_party(self):
+        """Kenh MA CA PARTY dang o, None neu lech hoac chua ro. Phai co it nhat 2 acc."""
+        d = self.kenh_cua_party()
+        if len(d) != 1:
+            return None
+        ch, n = next(iter(d.items()))
+        return ch if n >= 2 else None
 
     def _so_acc_party_o_kenh(self, ch):
         """So acc CUA CHINH PARTY dang o kenh `ch` (cung map). Chung da chiem cho san nen khi tinh
@@ -11627,6 +11676,16 @@ class GameClient:
                 ents.append(e)
             else:
                 skipped.append((e, reason))
+        # GHI LAI ket qua cho DIEU PHOI doc, KHONG chi in ra.
+        #
+        # Day la doi chieu TUNG CAP (minh vs tung member) nen biet CHINH XAC bao nhieu dua lech
+        # va la ai - thu ma dieu phoi khong suy ra duoc tu tap gia tri kenh.
+        # Party 53 (06/09): leader in dung dong nay 64 lan trong 16 phut ma khong ai lam gi -
+        # "bot biet ma khong xu ly". Gio ghi lai de dieu phoi doc va ra lenh dong bo.
+        _lech_kenh = [e for e, r in skipped if r.startswith("lech kenh live")]
+        _lech_map = [e for e, r in skipped if r.startswith("lech map live")]
+        self._moi_bo_qua = {"luc": time.time(), "lech_kenh": _lech_kenh, "lech_map": _lech_map,
+                            "tong": len(skipped)} if skipped else None
         if skipped:
             now = time.time()
             last = float(getattr(self, "_last_invite_member_skip_log", 0.0) or 0.0)

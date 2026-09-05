@@ -86,6 +86,20 @@ Vì không còn chờ chéo — chỉ có một chỗ quyết, và chỗ đó kh
 - **`moi`** — đã cùng map + cùng kênh nhưng chưa đủ người trong đội.
 - **`lam`** — đủ rồi, vào việc.
 
+### Kênh đích là TRẠNG THÁI, không phải cái bắt tay từng vòng
+
+`_dieu_phoi_chot_kenh()` đọc thẳng `current_channel` của từng client, chốt **kênh đông người
+nhất** (ít phải di chuyển nhất) vào `st["kenh_dich"]`. Trong keepalive mỗi acc tự so kênh mình
+với `kenh_dich`, lệch thì tự `switch_channel`. Không chờ ai báo cáo, không có "vòng" để lỡ.
+
+Bỏ qua khi: party khác map, có acc chưa rõ kênh, hoặc đang chạy vòng bắt tay `channel_ready`
+(hai cơ chế cùng ra lệnh đổi kênh một lúc là đánh nhau) — lúc đó `kenh_dich` bị xoá.
+
+Song song, `pick_best_channel` có nhánh chặn đầu tiên: **cả party còn sống cùng map đã chung một
+kênh → `return 0` (giữ nguyên)**, không thèm hỏi danh sách kênh. Trước đây picker thấy kênh mình
+đang đứng "đông" — đông chính vì party mình — rồi lùa cả party sang kênh khác, và acc nào vừa
+xong vòng đồng bộ trước đó thì không bao giờ biết đích đã đổi (lỗi party 53, 02:09 ngày 06/09).
+
 ## 3. Những quyết định đã chuyển đi
 
 | Quyết định | Trước | Nay |
