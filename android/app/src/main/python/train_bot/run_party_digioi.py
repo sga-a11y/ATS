@@ -7748,8 +7748,11 @@ ROUTE_PLAN_TIEP_QUAN_SEC = 20.0
 
 # `viec` = ca party dang phai lam gi. Luong acc doc cai nay thay vi tu suy.
 VIEC_LAM = "lam"      # ai vao viec nay: danh/train/DG binh thuong
-VIEC_GOM = "gom"      # dang lech map/kenh -> gom ve cung cho
+VIEC_GOM = "gom"      # dang lech map/kenh -> GOM VE THANH roi keo lai (chi ngoai DG)
 VIEC_MOI = "moi"      # da cung map+kenh -> leader gui loi moi, member nhan
+# TRONG DI GIOI: lech kenh thi phai DONG BO TAI CHO (giai tan + sync kenh + moi lai), TUYET DOI
+# khong "gom ve thanh" - tu DG ra thanh la phai DI BO RA CONG, tuc loi ca party ra khoi DG.
+VIEC_DONG_BO = "dong_bo"
 
 
 def _ke_hoach(st):
@@ -7880,7 +7883,24 @@ def _dieu_phoi_quyet(pidx, st, song, lech_tu):
         lech_tu = None
     lech_lau = lech_tu is not None and time.time() - lech_tu > KE_HOACH_LECH_MAP_SEC
 
-    if lech_lau:
+    # TRONG DI GIOI: van phai xu ly khi lech, nhung bang DONG BO TAI CHO chu KHONG gom ve thanh.
+    #
+    # Tu DG ra thanh la phai DI BO RA CONG (49942 -> 12003 -> 12002 -> 12001), tuc loi ca party
+    # ra khoi DG. Da xay ra that (party 2, 06/09):
+    #     00:53:27 REFORM gen -> 1 - dieu phoi: party o 3 MAP khac nhau -> gom ve cung map/kenh
+    #     00:59:28 [gamo] reform: sga002/3/4/6 KET 240s khong ve duoc Truong Sa (map=49942)
+    #     01:00:12 [gamo] smart path map 49942: (870,740) -> (270,210)   <- cong thoat DG
+    #     01:00:29 [gamo] qua cong idx=1 -> map 12003
+    # Cach dung la `resync_gen`: giai tan party + sync lai kenh + moi lai, TAT CA TRONG DG.
+    # Member da phan ung san voi co nay (`is_digioi and not digioi_solo`), va leader thi cu 20s
+    # lai tu sync khi party thieu nguoi (`_should_resync_incomplete_digioi_party`) - dieu phoi
+    # chi can BAM NUT do khi party lech qua lau ma khong ai bam.
+    if pha == "digioi":
+        viec = VIEC_DONG_BO if lech_lau else VIEC_LAM
+        if lech_lau and not ly_do:
+            ly_do = ("party trong DG lech kenh %s" % sorted(kenhs) if len(kenhs) > 1
+                     else "party trong DG o %d MAP khac nhau %s" % (len(maps), sorted(maps)))
+    elif lech_lau:
         viec = VIEC_GOM
         if not ly_do:
             ly_do = ("party dang o %d MAP khac nhau %s" % (len(maps), sorted(maps))
@@ -7925,7 +7945,8 @@ def _dieu_phoi_thi_hanh(pidx, st, kh, doi):
       1. Chi bump khi da lech LIEN TUC qua han (`lech_lau` ben `_dieu_phoi_quyet`).
       2. NGUOI KHAC vua bump / minh vua bump -> IM. Dang co mot dot gom chay roi, de no chay xong.
     """
-    if not doi or kh.get("viec") != VIEC_GOM:
+    _viec = kh.get("viec")
+    if not doi or _viec not in (VIEC_GOM, VIEC_DONG_BO):
         return
     with st["lock"]:
         gen = int(st.get("reform_gen", 0))
@@ -7936,7 +7957,16 @@ def _dieu_phoi_thi_hanh(pidx, st, kh, doi):
             return
         if time.time() - luc < KE_HOACH_GOM_COOLDOWN:
             return
-        _bump_reform(st, "dieu phoi: %s -> gom ve cung map/kenh" % (kh.get("ly_do") or "lech"))
+        if _viec == VIEC_DONG_BO:
+            # TRONG DG: bam `resync_gen` - member roi party + sync kenh lai NGAY TAI CHO, leader
+            # thay party tut nguoi thi trong 20s tu sync + moi lai. KHONG dung `reform_gen`:
+            # cai do la "gom ve thanh", tu DG la phai di bo ra cong.
+            st["resync_gen"] += 1
+            log.info("[party %d] DIEU PHOI: %s -> DONG BO TAI CHO (resync_gen -> %d), "
+                     "KHONG gom ve thanh", pidx + 1, kh.get("ly_do") or "lech",
+                     st["resync_gen"])
+        else:
+            _bump_reform(st, "dieu phoi: %s -> gom ve cung map/kenh" % (kh.get("ly_do") or "lech"))
         st["dieu_phoi_gom_luc"] = time.time()
         st["dieu_phoi_gom_gen"] = int(st.get("reform_gen", 0))
 

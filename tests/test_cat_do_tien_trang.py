@@ -58,6 +58,7 @@ class _Gia(C.GameClient):
         self.running = True
         self._label = "test"
         self.bag_slots = {}
+        self._cat_hong = set()      # mon cat hong trong phien (xem cat_do_tien_trang)
         self.current_map = C.GameClient.TRAC_QUAN_CITY
         self.bank_fail = None
         self.event_dang_mo = False
@@ -219,8 +220,14 @@ class TestCatDo(unittest.TestCase):
                 self.c.bank_fail = 13       # server bao day ngay sau mon dau
         self.c.send = send
         kq = self.c.cat_do_tien_trang({"0x7d2b": C.CAT_DO_CAT})
-        self.assertEqual(kq["cat"], 1, "phai dung ngay sau mon dau")
-        self.assertEqual(kq["bo_qua"], "tien trang day")
+        # DOI Y NGHIA 06/09 (user chot): kho day KHONG con dung ca lo. Kho day van cat duoc mon
+        # DA CO STACK san, chi mon MOI moi hong -> moi mon thu DUNG MOT LAN, hong thi bo qua
+        # mon do va thu mon sau. Mon hong duoc nho lai de lan sau khong quay lai NPC vi no nua
+        # (truoc day mon hong con trong tui -> tele ve Trac Quan la lai di -> dung li o tien
+        # trang, user bao 06/09).
+        self.assertEqual(kq["cat"], 0, "mon hong ma van tinh la da cat")
+        self.assertIn("cat khong duoc", kq["bo_qua"])
+        self.assertIn(0x7D2B, self.c._cat_hong, "khong nho mon hong -> lan sau lai di tien trang")
 
 
 class TestLayDoRa(unittest.TestCase):

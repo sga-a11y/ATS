@@ -2245,6 +2245,13 @@ class GameClient:
         # cat do la thao tac mot chieu, khong tu y lam khi user chua chon mon nao.
         self.auto_cat_do = False
         self.bank_fail = None
+        # tid cac mon CAT HONG trong phien nay (kho day + mon CHUA co stack san). Nho lai
+        # de khong quay lai NPC tien trang vi chinh may mon do nua - do la ly do bot dung
+        # li o tien trang (user bao 06/09). Nho THEO PHIEN: relogin la quen, vi luc do kho
+        # co the da duoc don trong.
+        self._cat_hong = set()
+        # tid cac mon LAY RA hong trong phien (tui day + mon chua co stack san trong tui).
+        self._lay_hong = set()
         # Su kien NPC dang mo hay khong, va tien trang da mo chua. Gui lenh khi CHUA mo la
         # ban vao khoang khong - te nhat la server ngat "su kien vi pham". Xem cat_do_tien_trang.
         self.event_dang_mo = False
@@ -14202,7 +14209,13 @@ class GameClient:
                 self.bank_slots.pop(idx, None)
 
     def _on_bank_fail(self, ma: int):
-        """S:030-007 <錢莊操作失敗> +失敗結果(1). 3 = cat that bai, 13 = tien trang DAY."""
+        """S:030-007 <錢莊操作失敗> +失敗結果(1).
+
+        MA 3 = TUI DO DAY (khi LAY RA), MA 13 = tien trang DAY (khi CAT VAO).
+        Chu thich trong protocal.lua ghi `3.存入錢莊失敗` (cat that bai) la SAI:
+        chinh handler cua client hien `string.Get(80359)` = 物品欄已滿 = "tui do da day".
+        Client CHI hien mot dong chu roi thoi - khong thu lai gi ca.
+        """
         self.bank_fail = int(ma)
         log.warning("[%s] Tien trang: server bao LOI ma %d%s", self._label, ma,
                     " (tien trang DAY)" if int(ma) == 13 else "")
@@ -14226,6 +14239,11 @@ class GameClient:
             if int(rec.get("restrict", 0) or 0) & self.BANK_RESTRICT_CAM:
                 log.info("[%s] Tien trang: %s KHONG duoc cat (restrict) -> bo qua",
                          self._label, rec.get("name") or ("0x%04x" % tid))
+                continue
+            # DA THU CAT VA HONG trong phien nay -> khong thu lai. Thieu cho nay thi mon do
+            # van nam trong tui, lan tele ve Trac Quan sau lai thay "co mon can cat" -> lai di
+            # NPC -> lai hong: bot di di lai lai o tien trang khong dut.
+            if tid in getattr(self, "_cat_hong", ()):
                 continue
             out.append((slot, tid, cnt))
         return out
@@ -14255,6 +14273,19 @@ class GameClient:
         if not can and not _co_lay:
             kq["bo_qua"] = "khong co mon nao trong list o tui"
             return kq
+        # TUI DAY + khong co gi de cat -> chuyen di CHAC CHAN vo ich: khong cat duoc (khong co
+        # mon), lay ra cung khong duoc (het o). `_co_lay` chi nhin DANH SACH USER TICK chu khong
+        # nhin thuc te, nen thieu chot nay la moi lan qua Trac Quan deu vao tien trang - mot
+        # trong hai ly do bot "dung li o tien trang" (user bao 06/09).
+        if not can:
+            try:
+                if self.bag_capacity() - self.bag_used_slots() <= 0:
+                    log.info("[%s] Tien trang: tui DAY va khong co gi de cat -> khong di NPC",
+                             self._label)
+                    kq["bo_qua"] = "tui day, khong co gi de cat"
+                    return kq
+            except Exception:
+                pass
         if not self._wait_combat_clear(idle=1.0, cap=60.0):
             kq["bo_qua"] = "con ket tran"
             return kq
@@ -14305,22 +14336,41 @@ class GameClient:
             return kq
 
         # Doc lai tui NGAY TRUOC khi gui: duong di co the da lam doi slot (nhat do roi, tran...).
+        # MOI MON THU DUNG MOT LAN, hong thi BO QUA MON DO va di tiep (user chot 06/09).
+        # Kho DAY van cat duoc mon DA CO STACK san trong kho - chi mon MOI moi hong. Ban cu
+        # `break` ca lo ngay o mon hong dau tien -> vut luon phan van cat duoc.
+        #
+        # `bank_fail` do luong nhan goi set BAT DONG BO. Xoa co TRUOC moi lan gui roi doc SAU
+        # 0.45s ngu san co: co xuat hien trong khoang do = mon vua gui hong. Server tra loi
+        # cham hon 0.45s thi bi do oan cho mon KE TIEP - chap nhan, gia chi la mat 1 mon trong
+        # phien (mon do vao `_cat_hong`), doi lai khong phai ngu lau gap doi moi mon.
+        _hong = []
         for slot, tid, qty in self._cat_do_slots(chon):
             if not self.running:
                 break
-            if self.bank_fail is not None:
-                log.warning("[%s] Tien trang: dung vi server bao loi (ma %s)",
-                            self._label, self.bank_fail)
-                kq["bo_qua"] = "tien trang day" if self.bank_fail == 13 else "server bao loi"
-                break
+            self.bank_fail = None
             self.send(0x1E, b"\x02\x00" + bytes([slot & 0xFF]) + struct.pack("<i", int(qty)))
+            time.sleep(0.45)
+            _nm = (_load_gamedata_items().get(tid) or {}).get("name") or ("0x%04x" % tid)
+            if self.bank_fail is not None:
+                self._cat_hong.add(tid)
+                _hong.append(_nm)
+                log.info("[%s] Tien trang: cat %s HONG (ma %s%s) -> bo qua mon nay, thu mon sau",
+                         self._label, _nm, self.bank_fail,
+                         ", tien trang DAY" if self.bank_fail == 13 else "")
+                continue
             kq["cat"] += 1
             kq["so_luong"] += int(qty)
-            _nm = (_load_gamedata_items().get(tid) or {}).get("name") or ("0x%04x" % tid)
             log.info("[%s] Tien trang: cat %s x%d (o #%d)", self._label, _nm, qty, slot)
-            time.sleep(0.45)
+        if _hong:
+            kq["bo_qua"] = "%d mon cat khong duoc (%s)" % (len(_hong), ", ".join(_hong[:3]))
         # DA MO KHO ROI thi lam luon chieu NGUOC LAI trong cung chuyen di: mon user danh dau
         # "lay ra" ma dang nam trong kho -> rut ve tui. Khong tach chuyen rieng.
+        #
+        # XOA `bank_fail` TRUOC: vong lay do cung doc co nay de dung. Tu 06/09 vong cat KHONG
+        # con `break` o mon hong nua nen co co the con SOT tu mon cat cuoi cung -> khong xoa la
+        # bo luon ca chieu lay ra, du kho day chang lien quan gi den viec RUT do ve tui.
+        self.bank_fail = None
         self._lay_do_tien_trang(chon, kq)
         # Dong kho ROI dong su kien (`0x1e sub0800` -> `0x14 sub0600`) - ca hai capture 04/09
         # deu co cap nay. Chi sau do moi duoc tele. Xem _dong_su_kien_tien_trang.
@@ -14338,22 +14388,32 @@ class GameClient:
         KHONG phai slot tui do - nham cai nay la rut nham mon.
         """
         gd = _load_gamedata_items()
+        # DOI XUNG voi vong CAT (user chot 06/09): moi mon thu DUNG MOT LAN, hong thi BO QUA mon
+        # do va thu mon sau. Tui day van nhan duoc mon DA CO STACK san trong tui (khong can o
+        # moi), chi mon MOI moi hong - server tra ma 3 = 物品欄已滿.
+        # Ban cu `break` ca lo o mon hong dau tien -> vut luon phan lay duoc; va mon hong khong
+        # duoc nho lai -> lan sau ve Trac Quan lai di NPC vi chinh no.
         for idx, val in sorted((self.bank_slots or {}).items()):
-            if not self.running or self.bank_fail is not None:
+            if not self.running:
                 break
             tid, cnt = int(val[0]), int(val[1])
             if chon.get("0x%04x" % tid) != "lay":
                 continue
-            trong = self.bag_capacity() - self.bag_used_slots()
-            if trong <= 0:
-                log.info("[%s] Tien trang: tui day -> khong lay them", self._label)
-                break
+            if tid in getattr(self, "_lay_hong", ()):
+                continue
+            self.bank_fail = None
             self.send(0x1E, b"\x01\x00" + bytes([idx & 0xFF]) + struct.pack("<I", cnt))
+            time.sleep(0.45)
+            _nm = (gd.get(tid) or {}).get("name") or ("0x%04x" % tid)
+            if self.bank_fail is not None:
+                self._lay_hong.add(tid)
+                log.info("[%s] Tien trang: LAY %s HONG (ma %s%s) -> bo qua mon nay, thu mon sau",
+                         self._label, _nm, self.bank_fail,
+                         ", tui do DAY" if self.bank_fail == 3 else "")
+                continue
             kq["lay"] += 1
             kq["lay_so_luong"] += cnt
-            _nm = (gd.get(tid) or {}).get("name") or ("0x%04x" % tid)
             log.info("[%s] Tien trang: LAY RA %s x%d (kho #%d)", self._label, _nm, cnt, idx)
-            time.sleep(0.45)
 
     def _dong_su_kien_tien_trang(self):
         """Bao server DA DONG tien trang truoc khi lam bat cu viec gi khac.

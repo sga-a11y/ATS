@@ -156,6 +156,15 @@ class TestDoiPhaKhongCanLeader(_Nen):
 
 
 class TestPhatHienLechVaRaLENH(_Nen):
+    """Chay o PHA TRAIN - do moi la cho viec gom co nghia. Pha DG cam gom han
+    (xem TestPhaDIGIOI_KHONG_DUOC_GOM: acc nam rai trong/ngoai instance la binh thuong)."""
+
+    def setUp(self):
+        super().setUp()
+        st = R._pstate(self.PARTY)
+        with st["lock"]:
+            st["dt_phase"] = "train"
+
     def test_lech_map_chua_du_lau_thi_chua_gom(self):
         self._dat(a1=_C(12003, 1, 5), a2=_C(12001, 1, 5), a3=_C(12001, 1, 5))
         kh, _l, lech_tu = self._quyet(lech_tu=None)
@@ -411,6 +420,65 @@ class TestKhongDeVIET_LUAT_CHET(unittest.TestCase):
         self.assertEqual(chet, [],
                          "watcher doc khoa %s ma KHONG CHO NAO ghi -> luat dung khoa do khong bao "
                          "gio chay" % chet)
+
+
+class TestPhaDIGIOI_KHONG_DUOC_GOM(_Nen):
+    """BUG THAT 06/09 00:52 (party 1 va 2): "leader dang trong DG tu nhien di ra ngoai".
+
+        DIEU PHOI gen 3: pha=digioi ... viec=gom - party dang o 2 MAP khac nhau [21836, 49942]
+        REFORM gen -> 1 (dieu phoi: ... -> gom ve cung map/kenh)
+
+    49942 = map Di Gioi. DG la INSTANCE: acc nam rai trong/ngoai la CHUYEN BINH THUONG (dua
+    dang vao, dua het gio bi day ra). Coi do la lech map roi gom = keo ca party VE THANH, tuc
+    LOI LEADER RA KHOI DG giua chung. Luong DG da co cach gom rieng.
+    """
+
+    def test_lech_map_trong_pha_DG_thi_DONG_BO_chu_khong_gom(self):
+        self._dat(a1=_C(DG, 1, 30), a2=_C(21836, 1, 30), a3=_C(21836, 1, 30))
+        kh, _l, _ = self._quyet(lech_tu=time.time() - 9999)
+        self.assertEqual(kh["pha"], "digioi")
+        self.assertEqual(kh["viec"], R.VIEC_DONG_BO, "gom trong DG = loi leader ra khoi DG")
+
+    def test_lech_kenh_trong_pha_DG_cung_DONG_BO(self):
+        """Bon dua o cung DG ma khac kenh thi khong thay nhau, khong lap party duoc - PHAI xu ly,
+        khong duoc de nguyen (user chot 06/09: 'the bon no lam tro gi trong DG a')."""
+        self._dat(a1=_C(DG, 1, 30), a2=_C(DG, 5, 30), a3=_C(DG, 9, 30))
+        kh, ly_do, _ = self._quyet(lech_tu=time.time() - 9999)
+        self.assertEqual(kh["viec"], R.VIEC_DONG_BO)
+        self.assertIn("kenh", ly_do)
+
+    def test_DONG_BO_bam_resync_gen_KHONG_bam_reform_gen(self):
+        """`reform_gen` = gom ve THANH; tu DG ra thanh la phai di bo ra cong -> loi ca party ra.
+        `resync_gen` = giai tan + sync kenh + moi lai NGAY TAI CHO."""
+        st = R._pstate(self.PARTY)
+        g_reform, g_resync = st["reform_gen"], st["resync_gen"]
+        R._dieu_phoi_thi_hanh(self.PARTY, st,
+                              {"viec": R.VIEC_DONG_BO, "ly_do": "test"}, True)
+        self.assertEqual(st["reform_gen"], g_reform, "bam reform_gen = keo ca party ra khoi DG")
+        self.assertGreater(st["resync_gen"], g_resync, "khong bam gi -> party dung ngay trong DG")
+
+    def test_chua_lech_du_lau_trong_DG_thi_de_yen(self):
+        self._dat(a1=_C(DG, 1, 30), a2=_C(DG, 5, 30), a3=_C(DG, 9, 30))
+        kh, _l, _ = self._quyet(lech_tu=None)
+        self.assertEqual(kh["viec"], R.VIEC_LAM)
+
+    def test_pha_TRAIN_thi_VAN_gom_binh_thuong(self):
+        """Chi cam trong DG - sang train thi lech map van phai gom."""
+        st = R._pstate(self.PARTY)
+        with st["lock"]:
+            st["dt_phase"] = "train"
+        self._dat(a1=_C(12003, 1, 5), a2=_C(12001, 1, 5), a3=_C(12001, 1, 5))
+        kh, _l, _ = self._quyet(lech_tu=time.time() - R.KE_HOACH_LECH_MAP_SEC - 1)
+        self.assertEqual(kh["pha"], "train")
+        self.assertEqual(kh["viec"], R.VIEC_GOM)
+
+    def test_VAN_doi_pha_duoc_trong_DG(self):
+        """Cam gom KHONG duoc lam mat viec chinh cua dieu phoi o pha nay: doi pha khi het gio."""
+        self._dat(a1=_C(DG, 1, R.DIGIOI_LIMIT), a2=_C(12003, 1, R.DIGIOI_LIMIT),
+                  a3=_C(12001, 1, R.DIGIOI_LIMIT))
+        kh, ly_do, _ = self._quyet(lech_tu=time.time() - 9999)
+        self.assertEqual(kh["pha"], "train")
+        self.assertIn("het gio", ly_do)
 
 
 if __name__ == "__main__":
