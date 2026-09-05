@@ -1,7 +1,6 @@
 # Loạn đấu lôi đài (亂鬥擂台) — thiết kế
 
-> Trạng thái: **đã chốt thiết kế, CHƯA code.** Đang chờ capture tối thứ 3 để lấy nốt 4 thứ
-> không đọc được từ client (mục "Còn thiếu").
+> Trạng thái: **đã code, đang chạy.** Thứ 3 chạy từ 25/08/2026; thứ 7 thêm 05/09/2026 (mục 2b).
 
 ## 1. Định danh trong client
 
@@ -36,12 +35,116 @@ Map tên "Lôi đài đấu trận": `49993-49995`, `54501-54505`, `54901-54905`
 
 ## 2. Hành vi đã chốt với user
 
-- **Giờ:** thứ 3 hàng tuần, 20:00–22:00 (cùng khung 40NPC).
+- **Giờ:** **thứ 3 20:00–22:00**, **thứ 5 20:00–22:00**, **thứ 7 20:30–22:30** (mục 2b). Không đâm 40NPC (thứ 2/4/6).
 - **Solo:** mỗi acc chạy độc lập. **Không** lập party, **không** `do_channel_sync`, không barrier.
 - **Làm tới đâu:** đánh hết lượt rồi đi đổi thưởng, xong thoát.
 - **Quest mode:** bật. Không phải code thêm — `run_party_digioi.py:1713` đã có
   `force_quest_mode = (mode == "event")` và không phụ thuộc leader.
 - **HP dùng cho xếp thứ tự bảo vệ:** giữ **HP tuyệt đối** (user chốt), không đổi sang %.
+
+## 2b. Thứ 7 là một SẢNH KHÁC — không phải thứ 3 đổi giờ
+
+Nguồn: `captures/loandau_t7_20260905.pcap` (thứ 7 05/09/2026, 20:36, 322s, 2 trận).
+Đã ghép luồng TCP theo seq trước khi dò `c0 91` — **0 byte không giải được**.
+
+| | Thứ 3 | Thứ 7 |
+|---|---|---|
+| khung giờ | 20:00–22:00 | **20:30–22:30** |
+| chọn event `0x4d` | `03000300` (id 3) | **`03005a00` (id 90)** |
+| map | 10991 "Lôi đài tỉ võ" | **54901** |
+| điểm NPC | (910, 290) | **≈ (1630, 430)** |
+| option NPC | `0x14 0100 **03** 00` | **`0x14 0100 01 00`** |
+| chờ ghép trận | 336.6s / 0.6s | 1.3s |
+
+Map 54901 nằm trong dải `54901-54905` "Lôi đài đấu trận" — mục 1 đã tách rõ dải này khác
+`10991` của thứ 3. Nhiều khả năng là biến thể `NewChaosVS = 27` (無界亂鬥賽).
+
+**Chuỗi đăng ký giống hệt về hình** — chỉ khác đúng byte option:
+
+```
+C2S 0x20 020008              mở NPC
+C2S 0x14 0100 01 00          option 01        <- t3 là 03
+S2C 0x14 0100...3930         page 1
+C2S 0x14 0600                advance
+S2C 0x14 0100...0500         page 2 (t3 kết 0200, t7 kết 0500)
+C2S 0x14 09001e              CHỌN CÓ
+C2S 0x14 0600  x3            advance
+S2C 0x14 0d00
+S2C 0x14 08 2a               ĐĂNG KÝ XONG
+```
+
+Page 2 kết `0500` thay vì `0200` **không phá `dang_ky()`**: hàm chỉ dùng `is_choice_page` để
+quyết có advance một lần hay không, mà page 1 kết `3930` (không phải choice) ở **cả hai ngày**
+→ vẫn advance 1 lần rồi `09001e`.
+
+### Thứ 5 — 團P "loạn đấu đội", nhưng vẫn đăng ký SOLO
+
+Nguồn: `captures/loandau_doi_20260903.pcap` + `..._dangky_tran1_20260903.pcap`
+(03/09/2026 = thứ 5). **Một luồng TCP, một IP** → cùng server, *không* phải vô giới.
+
+Khác thứ 3 đúng **hai byte**:
+
+| | Thứ 3 | Thứ 5 |
+|---|---|---|
+| chọn event `0x4d` | `03000300` (id 3) | **`03000200` (id 2)** |
+| option NPC | `0x14 0100 **03** 00` | **`0x14 0100 04 00`** |
+| map / spawn | 10991 / (370,680) | **giống hệt** |
+| điểm NPC | (910, 290) | **giống hệt** |
+
+Option `04` khớp bảng triggerID mục 1: **`4 = 團P`**. Đường đi bộ trong cả hai capture đều kết
+thúc ở `(910,290)` rồi mới `0x20 020008`, nên NPC là **cùng một NPC** với thứ 3 và 40NPC.
+
+Tên gọi là "loạn đấu **đội**" nhưng **user chốt 05/09: vẫn đăng ký SOLO, không lập party.**
+Chuỗi đăng ký giống thứ 3 y nguyên (`09001e` rồi advance).
+
+### Khai báo: `lich` trong `events.json`
+
+Chỉ khai thứ nào **khác** giá trị gốc; thứ 3 dùng luôn giá trị gốc của entry nên không lặp lại.
+
+```json
+"lich": [
+  {"thu": 1, "tu": "20:00", "den": "22:00"},
+  {"thu": 5, "tu": "20:30", "den": "22:30",
+   "select": "03005a00", "dest_map": 54901,
+   "party_battle": {"point": [1630, 430], "npc_option": "01000100"}}
+]
+```
+
+`loandau.bien_the_hom_nay(ev, now)` trả **bản sao** đã đè tham số hôm nay;
+`config.event_hom_nay(key)` là cửa duy nhất `run_party_digioi` lấy `ev`, nên mọi đường xuôi
+(teleport, `select`, điểm NPC) tự đúng theo ngày. Event không khai `lich` thì không bị đụng tới.
+
+Vì hai ngày lệch nửa tiếng, `in_event_window` phải so **cả phút** — `20 <= now.hour < 22`
+không biểu diễn được 20:30.
+
+### ⚠️ Hai giả định CHƯA kiểm
+
+- **Điểm NPC (1630, 430)** là toạ độ dừng cuối khi user đi bộ trong capture, **không** đọc từ
+  gamedata. Chạy thật mà không mở được NPC thì đây là chỗ chỉnh đầu tiên.
+- **`select` id 90** không có trong `EActivity` (`ActivityInfo.lua` không có id 90). Nó là chỉ
+  số trong danh sách dịch chuyển server gửi. Thứ 3 dùng id 3 ổn định nhiều tuần nên id 90 khả
+  năng cũng ổn định — nhưng đây là **suy đoán**, chưa kiểm.
+
+### Ra khỏi sân vô giới: KHÔNG cần chạy ra NPC — cứ tắt acc
+
+User chốt 05/09 sau khi chạy thật: sân vô giới nằm trên **máy khác**, mà login lần sau **luôn vào
+máy gốc** → tắt game là ra khỏi map event luôn.
+
+Khác hẳn thứ 3 (map 10991 **cùng máy**): ở đó không ra thì lần sau bot khởi động từ map event
+chứ không phải từ thành, nên vẫn phải `exit_event`.
+
+Capture có cho thấy client nói chuyện NPC (`0x14 04000100` → `08000100` → `09001e` → `0600`
+→ `S:001-021`), và bot từng làm theo. Đã **bỏ** — nó chỉ thêm một chỗ có thể hỏng (dialog trên
+map lạ, giữa lúc member còn đánh dở) mà không được gì.
+
+### Đoạn mở NPC lần 2 trong capture KHÔNG phải đăng ký lại
+
+Ở `t=305.44` có `0x14 0100 **02** 00` rồi `S2C 0x14 0900` → `0600` → `08 2a`. User xác nhận
+05/09: **đó là đi hồi HP**, không phải đăng ký trận sau. Bot vẫn hồi HP/SP bằng **item**
+(`before_repeat` → `heal_full` giữa 2 trận) như cũ — không cài đường NPC này.
+
+Lưu ý kèm theo: `08 2a` hoá ra là mã **đóng phiên dialog** nói chung, không riêng "đã đăng ký".
+Bot chỉ đọc nó ngay sau khi gửi chuỗi đăng ký nên không nhận nhầm.
 
 ## 3. Lỗ hổng phải vá trong code hiện tại
 

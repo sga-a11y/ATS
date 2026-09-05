@@ -14,6 +14,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -178,6 +180,10 @@ fun partyStatusColor(party: Party, statusMap: Map<String, AccountStatus>): Color
         else -> StatusStopped
     }
 }
+
+// Trung thanh pet duoi nguong nay -> canh bao CAM o Check AGI (user chot 05/09).
+// PHAI KHOP `TRUNG_THANH_CANH_BAO` ben run_party_digioi.py - co test chan hai ben lech nhau.
+const val TRUNG_THANH_CANH_BAO = 40
 
 private const val PRIVACY_FULL = 0
 private const val PRIVACY_MASK = 1
@@ -1177,6 +1183,13 @@ fun PartyCard(
     val agiSpread = if (agiValues.isEmpty()) null else
         agiValues.maxOrNull()!! - agiValues.minOrNull()!!
     val agiWarning = agiSpread != null && agiSpread > 10
+    // Trung thanh pet dang dung < 40 -> cung to CAM. Dem RIENG voi do lech AGI: so trong
+    // ngoac cua nut la DO LECH, gop lam mot thi user nhin so lai tuong dang lech AGI.
+    val ttThap = party.accounts.count { acc ->
+        val st = statusMap[acc.username]
+        !st?.petName.isNullOrBlank() && (st?.petFaith ?: 100) < TRUNG_THANH_CANH_BAO
+    }
+    val agiCanhBao = agiWarning || ttThap > 0
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1309,13 +1322,18 @@ fun PartyCard(
                         modifier = Modifier.weight(1f),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = if (agiWarning) Color(0xFFFFB74D) else Color.Transparent,
-                            contentColor = if (agiWarning) Color(0xFF3E2723) else MaterialTheme.colorScheme.primary,
+                            containerColor = if (agiCanhBao) Color(0xFFFFB74D) else Color.Transparent,
+                            contentColor = if (agiCanhBao) Color(0xFF3E2723) else MaterialTheme.colorScheme.primary,
                         ),
                     ) {
-                        Text(if (agiWarning) "⚠ AGI (lệch $agiSpread)" else "⚡ Check AGI",
+                        Text(
+                            if (!agiCanhBao) "⚡ Check AGI"
+                            else listOfNotNull(
+                                if (agiWarning) "lệch $agiSpread" else null,
+                                if (ttThap > 0) "TT $ttThap" else null,
+                            ).joinToString(", ", prefix = "⚠ AGI (", postfix = ")"),
                             maxLines = 1, style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (agiWarning) FontWeight.Bold else FontWeight.Medium)
+                            fontWeight = if (agiCanhBao) FontWeight.Bold else FontWeight.Medium)
                     }
                     if (notifyCount > 0) {
                         // CAM = co viec CAN LAM NGAY (user chot 02/09: Ba Dau sap het han / tui
@@ -1419,6 +1437,7 @@ fun PartyCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AccountRow(
     account: Account,
@@ -1496,10 +1515,15 @@ fun AccountRow(
                 }
             }
             Spacer(Modifier.height(6.dp))
-            Row(
+            // FlowRow: man HEP thi TU XUONG DONG. Truoc day la `Row` thuong -> hang nut
+            // (Chay | sua | hoi HP/SP | Battle | Point | Skill | Tui | xoa) dai hon be ngang may
+            // -> `Skill`, `Tui` VA CA NUT XOA bi cat mat ngoai mep, user tuong ban APK chua co
+            // man Tui do / Cay skill (bao 05/09: "sao ban apk van chua co tui do va skill").
+            // KHONG dung `horizontalScroll`: van giau nut, user khong biet ma vuot.
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.Center,
             ) {
                 // Tach hang nut xuong duoi de ten acc/char khong bi bop khi co them HP/SP + Skill.
                 if (running) {
@@ -5544,8 +5568,16 @@ fun PartyAgiDialog(
                     }
                     Text(displayName, fontWeight = FontWeight.Bold)
                     Text("AGI char: ${status?.charAgi ?: "—"}")
-                    Text(if (status?.petName.isNullOrBlank()) "Pet đang dùng: —" else
-                        "Pet đang dùng: ${status?.petName}  ·  AGI ${status?.petAgi ?: "—"}")
+                    val tt = if (status?.petName.isNullOrBlank()) null else status?.petFaith
+                    val ttThapDong = tt != null && tt < TRUNG_THANH_CANH_BAO
+                    Text(
+                        if (status?.petName.isNullOrBlank()) "Pet đang dùng: —" else
+                            "Pet đang dùng: ${status?.petName}  ·  AGI ${status?.petAgi ?: "—"}" +
+                                "  ·  Trung thành ${tt ?: "—"}",
+                        // To CAM ca dong khi trung thanh thap - nhin phat la thay CON NAO.
+                        color = if (ttThapDong) Color(0xFFF59E0B) else Color.Unspecified,
+                        fontWeight = if (ttThapDong) FontWeight.Bold else FontWeight.Normal,
+                    )
                     Spacer(Modifier.height(10.dp))
                 }
             }

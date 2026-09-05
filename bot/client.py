@@ -15,7 +15,8 @@ from .battle_tracker import BattleTracker
 from .party_battle import get_party_battle
 
 
-from .auth import build_auth_packet
+from .auth import (build_auth_packet, build_unbounded_auth_packet,
+                   parse_bao_chuyen_vo_gioi, parse_ket_qua_login, parse_connect_code)
 from .state import BattleState, Unit
 
 log = logging.getLogger("bot")
@@ -1973,6 +1974,14 @@ class GameClient:
         self._mount_collection_count = 0
         self.char_level = None       # cap nhan vat - tu S2C 0x05 (payload offset 21 = pkt[28])
         self.pet_level = None        # cap pet dang dung - tu S2C 0x0f sub=08
+        # EVENT LIEN SERVER (vo gioi): lenh chuyen may tu S:001-020, va co dang o may do.
+        self._vo_gioi = None
+        self._vo_gioi_ve = False
+        self._vg_acc = None       # cap acc/pwd server phat luc login, DUNG cho auth vo gioi
+        self._vg_pwd = None
+        self._connect_code = 0    # S:001-013 <登入送完所有資訊> +連線序號(4)
+        self.tren_vo_gioi = False
+        self._host_goc = None
         self.active_pet_slot = None  # SLOT TUI (1..4) cua pet dang xuat chien - tu 0x0f (marker)
         self.pet_name = None         # ten pet dang dung - tu S2C 0x0f sub=08
         self._cached_pet_list_pkt = None  # cache 0x0f de re-process khi 0x13 den sau
@@ -2673,6 +2682,87 @@ class GameClient:
         log.info("[%s] RELOGIN xong, pos=%s map=%s", self._label, self.pos, self.current_map)
         return True
 
+    def chuyen_server_vo_gioi(self, cho=25.0):
+        """Doi sang SERVER VO GIOI ma server vua chi (S:001-020) roi auth lai o do.
+
+        Event LIEN SERVER (loan dau THU 7) gom nguoi cua nhieu server vao MOT may rieng, nen
+        khong the "tele" toi map 54901 - phai NOI SANG MAY KHAC. Client that lam dung the:
+        capture 05/09 co 2 IP (103.190.202.46 -> 103.190.202.65), doi may xong moi vao map.
+
+        Tra True neu da auth duoc o may moi. That bai thi de nguyen `server_closed` cho supervisor
+        login lai may CU - mat mot buoi event, khong mat acc.
+        """
+        bc = getattr(self, "_vo_gioi", None)
+        if not bc:
+            return False
+        ent = getattr(self, "self_entity", None)
+        if not ent or len(bytes(ent)) != 8:
+            log.warning("[%s] chuyen vo gioi: chua biet entity cua char -> bo", self._label)
+            return False
+        # PHAI dung cap acc/pwd SERVER PHAT (S:001-002), khong phai user_id/access_token cua bot -
+        # do la ly do lan chay 05/09 21:57 bi tu choi. Chua co thi khong di, di la mat ca party.
+        if not self._vg_acc or not self._vg_pwd:
+            log.warning("[%s] chuyen vo gioi: chua nhan duoc acc/pwd tu S:001-002 -> bo",
+                        self._label)
+            return False
+        goi = build_unbounded_auth_packet(self._vg_acc, self._vg_pwd, bytes(ent),
+                                          bc["server_id"], bc["sn"],
+                                          connect_code=self._connect_code)
+        log.info("[%s] CHUYEN SANG SERVER VO GIOI %s:%s ...", self._label, bc["host"], bc["port"])
+        self._host_goc = getattr(self, "_host_goc", None) or self.host
+        self._deliberate_close = True      # ta tu dong socket cu -> KHONG phai server rot
+        try:
+            if self.sock:
+                self.sock.close()
+        except OSError:
+            pass
+        self.running = False
+        time.sleep(0.8)
+        self.pos = None
+        self.current_map = None
+        self._pet_login_logged = None
+        def _hong(vi_sao):
+            """MOI duong that bai deu phai qua day. Diem SONG CON: tra `self.host` ve MAY GOC.
+
+            Bug that 05/09 21:57 (party 11 "vang game"): ban dau gan `self.host = <ip vo gioi>`
+            roi khi auth hong thi supervisor login lai bang `self.host` - tuc lai dam vao chinh
+            may vua tu choi -> vong lap chet, acc khong bao gio ve duoc may cu.
+            """
+            log.warning("[%s] chuyen vo gioi THAT BAI (%s) -> ve may goc %s",
+                        self._label, vi_sao, self._host_goc)
+            self.host = self._host_goc
+            self.tren_vo_gioi = False
+            self._vo_gioi = None
+            self.server_closed = True     # supervisor login lai MAY GOC
+            self._deliberate_close = False
+            return False
+
+        try:
+            self.sock = _open_game_socket(bc["host"], int(bc["port"]) or config.GAME_PORT)
+            self.sock.sendall(goi)
+        except OSError as e:
+            return _hong("ket noi %s:%s: %s" % (bc["host"], bc["port"], e))
+        self.host = bc["host"]
+        self.tren_vo_gioi = True
+        self.server_closed = False
+        self._deliberate_close = False
+        self.running = True
+        threading.Thread(target=self._recv_loop, args=(self.sock,), daemon=True).start()
+        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        # `_login_setup` gui hang loat goi; server tu choi auth la socket dong -> OSError.
+        # Khong boc thi loi bay ra giua go_to_event, `self.host` ket lai o IP vo gioi.
+        try:
+            self._login_setup()
+        except Exception as e:
+            return _hong("loi khoi tao sau auth: %s" % e)
+        t0 = time.time()                  # cho 0x03 self-spawn cua may moi
+        while time.time() - t0 < cho and self.pos is None and self.running:
+            time.sleep(0.2)
+        if self.pos is None:
+            return _hong("auth xong nhung %.0fs KHONG thay spawn (nghi server tu choi)" % cho)
+        log.info("[%s] VO GIOI: vao duoc (pos=%s map=%s)", self._label, self.pos, self.current_map)
+        return True
+
     def close(self):
         if (not self.running) and (not self._deliberate_close) and (not self.server_closed):
             # Client da chet truoc khi code goi close(); day la mat ket noi/runtime drop,
@@ -2845,7 +2935,7 @@ class GameClient:
         log.info("[%s] Loan dau: minh o (%d,%d) -> phe ta hang %s, dich hang %s",
                  self._label, row, col, self.state.ally_rows, self.state.enemy_rows)
 
-    def start_loandau_loop(self, point, before_repeat=None, mot_tran=False):
+    def start_loandau_loop(self, point, before_repeat=None, mot_tran=False, ev=None):
         if self._loandau_started:
             return False
         self._loandau_started = True
@@ -2853,7 +2943,7 @@ class GameClient:
         self._loandau_thread = threading.Thread(
             target=loandau.run_loop,
             args=(self, tuple(point), self._loandau_stop, before_repeat),
-            kwargs={"mot_tran": bool(mot_tran)},
+            kwargs={"mot_tran": bool(mot_tran), "ev": ev},
             daemon=True,
             name="loandau-%s" % (self._label or self._username),
         )
@@ -3900,6 +3990,30 @@ class GameClient:
             self._nho_gio_server(pkt[22:30])
         if opcode == 0x01 and len(pkt) >= 17 and pkt[7:9] == b"\x10\x00":
             self._nho_gio_server(pkt[9:17])
+        # S:001-002 <登入結果>: server phat lai CAP acc/pwd rieng ("<user_id>@vtc" + ve 10 ky tu).
+        # Do MOI la thu server vo gioi doi, KHONG phai user_id/access_token bot dung de login.
+        if opcode == 0x01 and pkt[7:9] == b"\x02\x00":
+            _kq = parse_ket_qua_login(pkt[7:])
+            if _kq:
+                self._vg_acc, self._vg_pwd = _kq
+        # S:001-013 <登入送完所有資訊> +連線序號(4) - goi auth vo gioi mang lai so nay.
+        if opcode == 0x01 and pkt[7:9] == b"\x0d\x00":
+            _cc = parse_connect_code(pkt[7:])
+            if _cc is not None:
+                self._connect_code = _cc
+        # S:001-020 <通知連無界伺服器> = server bao "event LIEN SERVER, sang may khac ma choi".
+        # Loan dau THU 7 la loai nay (map 54901 nam o IP khac). Bo qua goi nay = dung im o map
+        # cu mai mai - log 05/09 21:20 party 11: cho 20s roi bao CHUA TOI, ca buoi 0 tran.
+        if opcode == 0x01 and pkt[7:9] == b"\x14\x00":
+            _bc = parse_bao_chuyen_vo_gioi(pkt[7:])
+            if _bc:
+                self._vo_gioi = _bc
+                log.info("[%s] SERVER BAO CHUYEN (vo gioi): %s:%s serverId=%s SN=%s",
+                         self._label, _bc["host"], _bc["port"], _bc["server_id"], _bc["sn"])
+        # S:001-021 <通知連回原SERVER> GSID(2) = het event lien server, ve may cu.
+        if opcode == 0x01 and pkt[7:9] == b"\x15\x00":
+            log.info("[%s] SERVER BAO VE MAY CU (het event lien server)", self._label)
+            self._vo_gioi_ve = True
         if opcode == 0x01 and len(pkt) >= 17 and pkt[7:9] == b"\x01\x00":
             _ra = bytes(pkt[9:17])
             _m = (self.entity_meta or {}).get(_ra)
@@ -14681,6 +14795,7 @@ class GameClient:
         staging = int(ev.get("staging_map", 0))
         dest = int(ev.get("dest_map", 0))
         label = ev.get("label", "?")
+        self._vo_gioi = None      # xoa lenh chuyen server cu, chi nhan cai cua lan chon nay
         log.info("[%s] go_to_event '%s' -> staging %s, dest %s", self._label, label, staging, dest)
         self.flee_mode = True
         # (0) VAO EVENT PHAI KHONG CO PARTY -> roi party truoc (neu dang dinh party tu truoc thi tele
@@ -14700,6 +14815,22 @@ class GameClient:
         while staging and self.current_map != staging and time.time() - t0 < 20:
             if not self.running: return False
             time.sleep(1)
+        # KHONG CO staging (`staging_map: 0`) = `0x4d [select]` tele THANG toi map event. Van
+        # phai CHO - truoc day khong cho gi, chi ngu 1.0s roi ket luan ngay -> server tele mat
+        # ~2.4s (do tren capture t7: gui 19.50, toi map 21.86) nen LUC NAO CUNG bao "CHUA TOI".
+        # Hau qua that 05/09 21:15: 4 acc party 11 khong toi map event ma VAN mo NPC event tren
+        # map train -> server da het ma 5 "su kien vi pham".
+        if not staging and dest:
+            t0 = time.time()
+            while self.current_map != dest and time.time() - t0 < 20:
+                if not self.running: return False
+                # EVENT LIEN SERVER: server tra S:001-020 bao "sang may khac". Khong doi may thi
+                # KHONG BAO GIO toi map duoc - map do khong nam tren may nay.
+                if getattr(self, "_vo_gioi", None):
+                    if not self.chuyen_server_vo_gioi():
+                        return False
+                    t0 = time.time()      # tinh lai gio cho tren may moi
+                time.sleep(0.5)
         # (2) di toi cong roi qua cong -> map event.
         # DUONG DI: TIM DUONG THONG MINH (navigate_to -> Ground.mmg), KHONG chep cung tung buoc
         # `move` nhu truoc (di 1 ti roi dung cho rat lau moi di tiep - _route_move cho het tran +

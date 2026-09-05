@@ -1895,6 +1895,33 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   `1=Huynh, 2=Nguy, 3=Thuc, 4=Ngo, 5=Du`; byte hệ tại `+50`:
   `1=Dia, 2=Thuy, 3=Hoa, 4=Phong`.
 
+### Đời chuyển sinh của pet = `turn` (ip+58), KHÔNG phải `canBeCatch` (ip+22)
+
+Bản ghi `Npc_C.dat` (offset tính từ vị trí `id`): `ip+22` = `canBeCatch` (`抓捕否`) ·
+`ip+50/52/54` = 3 skill · `ip+56` = specialSkill · **`ip+58` = `turn` (`判斷有無轉生限制`) = đời
+chuyển sinh** · `ip+70` = rideOffset.
+
+`tools/crack_pets.py` **từng lấy `ip+22` làm đời chuyển sinh** → hậu tố `rb0/rb1/rb2` trong tên pet
+**sai nghĩa suốt**: có hay không có `rb0` chỉ nói lên con đó bắt được hay không. Sửa 05/09/2026.
+
+Cách phân biệt (đo trên chính `Npc_C.dat`, 8360 bản ghi):
+
+| Trường | Giá trị gặp | Kết luận |
+|---|---|---|
+| `ip+22` | `{0: 3149, 1: 5211}` | chỉ 2 giá trị → **không thể** là 3 đời |
+| `ip+58` | `{0: 5800, 1: 1075, 2: 1485}` | đủ 3 đời |
+
+Đối chiếu độc lập với dải id lấy từ **dữ liệu item chuyển sinh** (`client._load_chuyen_sinh_map`,
+nguồn khác hẳn `Npc_C.dat`): `0xA0xx` (41xxx) = rb1 → `turn=1` ở **cả 572/572** bản ghi ·
+`0xB0xx` (45xxx) = rb2 → `turn=2` ở 595/596 · `0x27xx` (10xxx) = rb0 → `turn=0` ở 735/773.
+
+Quy ước đặt tên (user chốt 05/09, giữ nguyên như trước): `turn 0` → `"tên rb0"` ·
+`turn 1` → `"tên"` (**không** hậu tố) · `turn 2` → `"tên rb2"`.
+
+Sinh lại `pets.json` đổi **2740/5128 tên**, nhưng **skills và hệ/doanh không đổi dòng nào** — an
+toàn vì tên pet chỉ dùng để HIỂN THỊ: `pet_hedoanh.json` join theo **tên gốc** (trước khi gắn hậu
+tố) còn logic lò chuyển sinh so theo **npc id**, không theo tên.
+
 ## 7o. HỢP VẬT PHẨM (ô7 bingo) — item nào hợp được?
 
 - **Điều kiện nằm ở `restrict` của item** (`ItemData.lua:346` `--[30] 限制`), là **BITMASK**:

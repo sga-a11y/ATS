@@ -206,8 +206,10 @@ class TestGUI(unittest.TestCase):
         self.assertIn('bg="#fff3cd"', khoi, "het canh bao phai tra ve mau vang nhat")
 
     def test_mau_CAM_giong_nut_check_AGI(self):
-        i_agi = self.src.find('text=f"⚠ Check AGI ({agi_report[\'spread\']})"')
-        self.assertGreater(i_agi, 0)
+        # 05/09: chu nut doi dang (them "TT n" cho canh bao trung thanh pet) nen khong neo theo
+        # chuoi cu nua - neo theo CHO doi mau.
+        i_agi = self.src.find('agi_btn.configure(text="⚠ Check AGI')
+        self.assertGreater(i_agi, 0, "nut Check AGI khong con nhanh canh bao")
         self.assertIn('bg="#f59e0b"', self.src[i_agi:i_agi + 300])
 
 

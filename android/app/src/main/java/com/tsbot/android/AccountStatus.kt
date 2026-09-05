@@ -17,6 +17,8 @@ data class AccountStatus(
     val petName: String = "",
     val petLevel: Int? = null,
     val petAgi: Int? = null,
+    // Trung thanh pet DANG DUNG (0..100). < 40 -> canh bao CAM o Check AGI (user chot 05/09).
+    val petFaith: Int? = null,
     val partyAvgLevel: Int? = null,
     val mapId: Int? = null,
     val channel: Int? = null,

@@ -215,6 +215,26 @@ def _load_events(path=None):
         pass
     return out
 EVENTS = _load_events()
+
+
+def event_hom_nay(key, now=None):
+    """Entry events.json cua `key`, DA AP tham so cua HOM NAY.
+
+    Cung mot event co the doi tham so theo THU. Loan dau la ca dau tien: thu 3 danh o map
+    10991 (select 03000300, option NPC 03), thu 7 o map 54901 (select 03005a00, option 01) -
+    hai SANH KHAC NHAU chu khong phai doi moi khung gio (do tren
+    `captures/loandau_t7_20260905.pcap`). Khai bao nam o `lich` trong chinh entry do.
+
+    Event khong co `lich` -> tra nguyen entry, khong doi gi.
+    """
+    ev = (EVENTS or {}).get(key or "")
+    if not ev or not ev.get("lich"):
+        return ev
+    try:
+        from . import loandau
+        return loandau.bien_the_hom_nay(ev, now)
+    except Exception:
+        return ev
 def _load_mob_paths(path=None):
     """Doc mob_paths.json -> {map_id:int -> {(sx,sy):tuple -> [(x,y),...]}}.
     Duong di bo TRONG map toi diem quai XA (capture) - bot replay thay navigate thang."""

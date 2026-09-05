@@ -122,12 +122,43 @@
     "point": [
      910,
      290
-    ]
+    ],
+    "npc_option": "01000300"
    },
-   "_note": "Loan dau loi dai (亂鬥擂台), THU 3 20-22h. CUNG map + CUNG NPC voi 40NPC, khac dung 2 byte: select 0300 (40NPC 0400) va option dialog 03 (40NPC 05). SOLO - moi acc tu chay, khong party/sync kenh. Xem documents/LOAN_DAU.md.",
+   "_note": "Loan dau loi dai. THU 3 20:00-22:00 (map 10991, option NPC 03 = 亂鬥), THU 5 20:00-22:00 (map 10991, option NPC 04 = 團P 'loan dau doi' - VAN dang ky SOLO, khong lap party), THU 7 20:30-22:30 (map 54901 tren SERVER VO GIOI, option NPC 01). Xem `lich` va documents/LOAN_DAU.md.",
    "exit": {
     "out_map": 12003
-   }
+   },
+   "lich": [
+    {
+     "thu": 1,
+     "tu": "20:00",
+     "den": "22:00"
+    },
+    {
+     "thu": 3,
+     "tu": "20:00",
+     "den": "22:00",
+     "select": "03000200",
+     "party_battle": {
+      "npc_option": "01000400"
+     }
+    },
+    {
+     "thu": 5,
+     "tu": "20:30",
+     "den": "22:30",
+     "select": "03005a00",
+     "dest_map": 54901,
+     "party_battle": {
+      "point": [
+       1630,
+       430
+      ],
+      "npc_option": "01000100"
+     }
+    }
+   ]
   }
  }
 }

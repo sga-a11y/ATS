@@ -107,8 +107,26 @@ class TestVongRetry60s(unittest.TestCase):
         self.src = s
 
     def test_lan_dau_gan_theo_ket_qua(self):
-        self.assertIn("training_started = bool(_start_training())", self.src)
+        """`training_started` phai lay TU KET QUA `_start_training()`, khong duoc gan True mu.
+
+        05/09: gia tri do gio di qua `_danh_dau_training(st, ...)` de ghi them
+        `st["training_started"]` cho watcher (khoa do truoc day KHONG AI GHI nen luat "party
+        thieu nguoi qua lau" chua tung chay). Ham do tra lai chinh bool duoc truyen vao nen y
+        nghia khong doi -> neo theo Y NGHIA, khong neo theo dang chu cu.
+        """
+        self.assertRegex(
+            self.src,
+            r"training_started = (?:bool\(_start_training\(\)\)"
+            r"|_danh_dau_training\(st, bool\(_start_training\(\)\)\))",
+            "training_started khong con lay tu ket qua _start_training()")
         self.assertNotIn("_start_training(); training_started = True", self.src)
+
+    def test_danh_dau_training_tra_lai_dung_bool(self):
+        """Neu helper nuot gia tri (tra None) thi leader khong bao gio coi la da train."""
+        than = _doc("run_party_digioi.py")
+        i = than.find("def _danh_dau_training(")
+        self.assertGreater(i, 0)
+        self.assertIn("return ok", than[i:than.find("\ndef ", i + 10)])
 
     def test_bam_vi_tri_chu_khong_bam_training_started(self):
         i_pos = self.than.find("_xa_diem_quai(c.pos")

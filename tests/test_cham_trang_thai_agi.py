@@ -69,7 +69,11 @@ class TestNguongAgiKhongDoi(unittest.TestCase):
         p = os.path.join(os.path.dirname(GUI), "run_party_digioi.py")
         with _io.open(p, encoding="utf-8") as fh:
             s = fh.read()
-        self.assertIn('"warning": spread is not None and spread > 10', s)
+        # Neo theo Y NGHIA, khong theo dang chu: 05/09 tach ra bien `lech_agi` de them canh bao
+        # trung thanh pet, nhung NGUONG >10 phai giu nguyen.
+        self.assertIn("spread is not None and spread > 10", s)
+        self.assertIn('"warning": lech_agi', s,
+                      "`warning` phai VAN chi la lech AGI, khong gop canh bao khac vao")
 
 
 if __name__ == "__main__":

@@ -24,6 +24,9 @@ OP_BATTLE = 0x0b
 OP_VS_WIN = 0x25            # S:037-001 <團p勝場數> +玩家ID(8) +勝場數(2)
 
 OPEN_EVENT = b"\x02\x00\x08"
+# Option NPC MAC DINH = thu 3 (triggerID 3 = 亂鬥). THU 7 dung option KHAC (01) - xem `lich`
+# trong events.json va `bien_the_hom_nay`. Doi tham so thay vi hang so cung: capture t7
+# (05/09/2026) cho thay moi thu 7 mot bo tham so rieng.
 OPEN_NPC = b"\x01\x00\x03\x00"
 ADVANCE = b"\x06\x00"
 CHOOSE_YES = b"\x09\x00\x1e"
@@ -43,10 +46,96 @@ WAIT_BATTLE_SEC = 900.0
 MAX_ADVANCE = 8
 
 
-def in_event_window(now=None):
-    """Loan dau mo: THU 3 (weekday 1), 20:00 <= gio < 22:00."""
+# Lich MAC DINH khi events.json khong khai `lich` (giu hanh vi cu: chi thu 3).
+LICH_MAC_DINH = [{"thu": 1, "tu": "20:00", "den": "22:00"}]
+
+
+def _gio_phut(s, mac_dinh):
+    """"20:30" -> (20, 30). Sai dinh dang -> tra `mac_dinh` (khong lam do ca vong chay)."""
+    try:
+        g, p = str(s).split(":")
+        return int(g), int(p)
+    except Exception:
+        return mac_dinh
+
+
+def _buoi_hom_nay(ev=None, now=None):
+    """Muc `lich` khop HOM NAY (theo THU), None neu hom nay khong co loan dau.
+
+    KHONG loc theo gio - chi loc theo THU. Cho `in_event_window` lo phan gio.
+    """
     now = now or datetime.datetime.now()
-    return now.weekday() == 1 and 20 <= now.hour < 22
+    lich = ((ev or {}).get("lich") or LICH_MAC_DINH)
+    for buoi in lich:
+        try:
+            if int(buoi.get("thu")) == now.weekday():
+                return buoi
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def in_event_window(now=None, ev=None):
+    """Loan dau dang mo khong. Lich doc tu `ev["lich"]` (events.json).
+
+    THU 3 va THU 7 KHAC KHUNG GIO (t3 20:00-22:00, t7 20:30-22:30) nen phai so ca PHUT -
+    `20 <= now.hour < 22` nhu ban cu khong bieu dien duoc 20:30.
+    """
+    now = now or datetime.datetime.now()
+    buoi = _buoi_hom_nay(ev, now)
+    if not buoi:
+        return False
+    dau = _gio_phut(buoi.get("tu"), (20, 0))
+    cuoi = _gio_phut(buoi.get("den"), (22, 0))
+    return dau <= (now.hour, now.minute) < cuoi
+
+
+def bien_the_hom_nay(ev, now=None):
+    """Ban SAO cua `ev` da AP tham so cua buoi HOM NAY (select / dest_map / party_battle...).
+
+    VI SAO CAN: cung mot "Loan dau" nhung thu 3 va thu 7 la HAI SANH KHAC NHAU. Do tren
+    `captures/loandau_t7_20260905.pcap` (ghep luong TCP theo seq, 0 byte sot):
+
+        |                | THU 3            | THU 7                |
+        | chon event 0x4d| 03000300 (id 3)  | 03005a00 (id 90)     |
+        | map            | 10991            | 54901                |
+        | diem NPC       | (910, 290)       | (1630, 430)          |
+        | option NPC     | 0x14 0100 03 00  | 0x14 0100 01 00      |
+
+    Map 54901 nam trong dai 54901-54905 "Loi dai dau tran" - KHAC dai 10991 "Loi dai ti vo"
+    cua thu 3 (xem documents/LOAN_DAU.md muc 1). Luong dang ky thi GIONG HET ve hinh.
+
+    Muc `lich` chi can khai thu nao KHAC mac dinh; khong khai thi dung gia tri goc cua ev
+    (thu 3 vi vay khong phai lap lai gi).
+    """
+    if not ev:
+        return ev
+    buoi = _buoi_hom_nay(ev, now)
+    if not buoi:
+        return dict(ev)
+    ra = dict(ev)
+    for k, v in buoi.items():
+        if k in ("thu", "tu", "den"):
+            continue
+        if k == "party_battle":
+            pb = dict(ra.get("party_battle") or {})
+            pb.update(v or {})
+            ra["party_battle"] = pb
+        else:
+            ra[k] = v
+    return ra
+
+
+def npc_option(ev=None):
+    """Goi `0x14` mo muc loan dau o NPC. Doc `party_battle.npc_option` cua bien the hom nay."""
+    pb = ((ev or {}).get("party_battle") or {})
+    hex_str = pb.get("npc_option")
+    if hex_str:
+        try:
+            return bytes.fromhex(str(hex_str))
+        except ValueError:
+            log.warning("Loan dau: npc_option '%s' khong phai hex -> dung mac dinh", hex_str)
+    return OPEN_NPC
 
 
 # ---------- nhan dang goi (ham thuan, de test) ----------
@@ -145,13 +234,19 @@ def _cho(client, stop_event, sleep_fn, dieu_kien, han_giay, buoc=0.2):
     return dieu_kien()
 
 
-def dang_ky(client, stop_event, sleep_fn, poll_interval=0.4, max_advance=MAX_ADVANCE):
-    """Mo NPC -> chon loan dau -> chon CO -> advance toi khi nhan `08 2a`. True = da dang ky."""
+def dang_ky(client, stop_event, sleep_fn, poll_interval=0.4, max_advance=MAX_ADVANCE, ev=None):
+    """Mo NPC -> chon loan dau -> chon CO -> advance toi khi nhan `08 2a`. True = da dang ky.
+
+    `ev` (event dict cua HOM NAY) quyet dinh byte option NPC: thu 3 la 03, thu 7 la 01.
+    Chuoi con lai GIONG HET nhau o ca hai ngay (do tren capture t7 05/09):
+        0x20 020008 -> 0x14 0100xx00 -> page ...3930 -> 0600 -> page (choice) -> 09001e
+        -> 0600 x3 -> 0x14 0d00 -> 0x14 08 2a
+    """
     moc = client._loandau_registered_seq
     client._loandau_dialog = ""
     client.send(OP_EVENT, OPEN_EVENT)
     sleep_fn(0.6)
-    client.send(OP_DIALOG, OPEN_NPC)
+    client.send(OP_DIALOG, npc_option(ev))
     sleep_fn(0.8)
     if not is_choice_page(getattr(client, "_loandau_dialog", "")):
         client.send(OP_DIALOG, ADVANCE)
@@ -175,8 +270,8 @@ def dang_ky(client, stop_event, sleep_fn, poll_interval=0.4, max_advance=MAX_ADV
 
 
 def run_loop(client, point, stop_event, before_repeat=None, sleep_fn=time.sleep,
-             poll_interval=0.4, wait_battle_sec=WAIT_BATTLE_SEC, window_fn=in_event_window,
-             mot_tran=False):
+             poll_interval=0.4, wait_battle_sec=WAIT_BATTLE_SEC, window_fn=None,
+             mot_tran=False, ev=None):
     """Vong loan dau cua MOT acc. Tra ve khi het gio / bi stop / rot.
 
     `before_repeat` goi giua 2 tran (hoi HP/SP) - dung o day la AN TOAN vi dialog da dong
@@ -187,6 +282,23 @@ def run_loop(client, point, stop_event, before_repeat=None, sleep_fn=time.sleep,
     `run_party_digioi` ra khoi map event roi TAT ACC.
     """
     lbl = getattr(client, "_label", "?")
+    # Khung gio doc theo `ev` (lich thu 3 / thu 7 khac nhau). Caller truyen window_fn rieng thi
+    # ton trong (test dung duong do).
+    if window_fn is None:
+        def window_fn():
+            return in_event_window(ev=ev)
+    # ===== CHOT SINH TU: KHONG DUNG MAP EVENT thi TUYET DOI khong mo NPC event =====
+    # Mo NPC su kien khi dang dung o map THUONG -> server da het ma 5 "su kien vi pham"
+    # (S:000-000 code 05). Da mat 4 acc party 11 luc 05/09 21:15: `go_to_event` bao
+    # "map=23882 (dich 54901) -> CHUA TOI" nhung KHONG AI DOC ket qua do, vong nay van chay,
+    # di toi (1630,430) TREN MAP TRAIN roi mo NPC -> ca 4 bi da trong 3 giay.
+    # Bo mot buoi event con hon mat acc.
+    _dich = int((ev or {}).get("dest_map") or 0)
+    if _dich and int(getattr(client, "current_map", 0) or 0) != _dich:
+        log.error("[%s] Loan dau: DANG O MAP %s, KHONG phai map event %s -> KHONG mo NPC "
+                  "(mo o map thuong = server da ma 5 'su kien vi pham')",
+                  lbl, getattr(client, "current_map", None), _dich)
+        return False
     if not client.navigate_to(int(point[0]), int(point[1]), flee=False):
         return False
     if not _active(client, stop_event):
@@ -203,7 +315,7 @@ def run_loop(client, point, stop_event, before_repeat=None, sleep_fn=time.sleep,
 
     while _active(client, stop_event) and window_fn():
         moc_tran = client._loandau_create_seq
-        if not dang_ky(client, stop_event, sleep_fn, poll_interval):
+        if not dang_ky(client, stop_event, sleep_fn, poll_interval, ev=ev):
             log.warning("[%s] Loan dau: dang ky that bai/timeout", lbl)
             return False
         log.info("[%s] Loan dau: da dang ky, cho ghep tran (thang=%d)",

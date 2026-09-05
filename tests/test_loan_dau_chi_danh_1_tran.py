@@ -56,7 +56,8 @@ def _chay(mot_tran, so_tran_toi_da=4):
     bot = _Bot()
     goi = {"n": 0}
 
-    def _dang_ky(client, stop_event, sleep_fn, poll_interval):
+    def _dang_ky(client, stop_event, sleep_fn, poll_interval, ev=None):
+        # `ev` = bien the theo THU (t3/t7) - stub phai nhan de khong vo khi run_loop truyen.
         client._loandau_create_seq += 1      # da ghep tran -> vao tran
         client.so_tran += 1
         goi["n"] += 1

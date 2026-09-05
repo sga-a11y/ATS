@@ -269,10 +269,12 @@ class TestSoKenhKhiMoiParty(unittest.TestCase):
         """`S:001-001 <玩家離線> +玩家ID(8)` la ve con lai cua cap voi `0x03 PlayerAppear`.
         Khong xu ly thi "da thay" khong bao gio bi huy -> bot tuong ho con dung canh minh mai."""
         s = _doc()
-        i = s.find('if opcode == 0x01 and len(pkt) >= 17')
+        # Neo tu CHINH nhanh S:001-001, khong neo theo "cach nhanh 0x10 bao nhieu ky tu": giua
+        # chung con cac nhanh 0x01 khac (S:001-020/021 chuyen server vo gioi, them 05/09) day no
+        # ra xa, cua so co dinh se dut oan trong khi code van dung.
+        i = s.find('if opcode == 0x01 and len(pkt) >= 17 and pkt[7:9] == b"\\x01\\x00":')
         self.assertGreater(i, 0, "khong xu ly S:001-001")
         khoi = s[i:i + 500]
-        self.assertIn('pkt[7:9] == b"\\x01\\x00"', khoi)
         self.assertIn('_m["appear_at"] = 0.0', khoi)
 
     def test_nguoi_khac_doi_scene_thi_HUY_co_da_thay(self):

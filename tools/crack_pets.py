@@ -25,7 +25,7 @@ def parse_pets_seq(path):
     """Doc TUAN TU theo dung NpcData.New (Data/NpcData.lua:236) - CHINH XAC, thay cho quet chu ky.
 
     Ban ghi: [nameLen u16][name utf-16le][kind 1][id u16] + 78 byte CO DINH (het o +80 sau id).
-    Cac offset tinh tu vi tri id (ip): ip+22 canBeCatch (dung lam "doi reborn" nhu ban cu),
+    Cac offset tinh tu vi tri id (ip): ip+22 canBeCatch (KHONG dung - xem ghi chu 05/09),
     ip+50/52/54 skills, ip+56 specialSkill, ip+58 turn (DOI CHUYEN SINH that, xem duoi),
     ip+70 rideOffset raw (~1000 -> moc tu kiem chung).
 
@@ -42,10 +42,9 @@ def parse_pets_seq(path):
     HOAC ten do co it nhat mot ban `turn > 0`. Ket qua: +436 muc 1-skill va +126 muc 0-skill
     (deu la vo tuong), van loai 2032 quai 1-skill.
 
-    CANH BAO: `rb` duoi day doc ip+22 - do la `canBeCatch` (--[10] 抓捕否) chu KHONG phai doi
-    chuyen sinh (da kiem: ip+22 chi nhan 0/1, trong khi doi chuyen sinh phai co ca gia tri 2).
-    Tuc hau to "rb0/rb1" trong ten pet lau nay SAI NGHIA. Chua sua vi doi offset lam DOI TEN
-    2306/4566 pet -> anh huong moi cho doi chieu theo ten; phai tach thanh viec rieng.
+    DA SUA 05/09: `rb` gio doc ip+58 (`turn` = doi chuyen sinh THAT), KHONG con doc ip+22
+    (`canBeCatch` --[10] 抓捕否, chi nhan 0/1 nen khong the la 3 doi). Truoc do hau to
+    "rb0/rb1/rb2" SAI NGHIA suot - xem chu thich tai cho gan `pets[pid] = ...` ben duoi.
     """
     import struct
     d = open(path, "rb").read()
@@ -80,12 +79,24 @@ def parse_pets_seq(path):
     co_chuyen_sinh = {nm for _p, nm, _s, _r, _c, turn in ban_ghi if turn > 0}
 
     pets = {}
-    for pid, name, sk, raw, canbecatch, _turn in ban_ghi:
+    for pid, name, sk, raw, _canbecatch, turn in ban_ghi:
         if not pid or not all(SK_LO <= v <= SK_HI or v == 0 for v in raw):
             continue
         if len(sk) < 2 and name not in co_chuyen_sinh:
             continue
-        pets[pid] = {"name": name, "skills": sk, "rb": canbecatch}
+        # DOI CHUYEN SINH = `turn` (ip+58), KHONG phai `canBeCatch` (ip+22).
+        # SUA 05/09 (user hoi "sao con Luc Ton ko co chu rb0"): ban cu lay ip+22 lam "doi reborn"
+        # - do la `canBeCatch` (抓捕否), chi nhan 0/1 nen KHONG THE la doi chuyen sinh (phai co ca
+        # gia tri 2). Hau to rb0/rb1/rb2 vi vay SAI NGHIA suot: co hay khong co "rb0" chi noi len
+        # con do bat duoc hay khong.
+        # Bang chung `turn` moi dung (do tren chinh Npc_C.dat, 8360 ban ghi):
+        #   ip+22 -> chi {0: 3149, 1: 5211}          (2 gia tri -> khong the la 3 doi)
+        #   ip+58 -> {0: 5800, 1: 1075, 2: 1485}     (du 3 doi)
+        # va khop dai id da biet tu du lieu chuyen sinh (xem client.py `_load_chuyen_sinh_map`):
+        #   0xA0xx (41xxx) = rb1 -> turn=1 o CA 572/572 ban ghi
+        #   0xB0xx (45xxx) = rb2 -> turn=2 o 595/596
+        #   0x27xx (10xxx) = rb0 -> turn=0 o 735/773
+        pets[pid] = {"name": name, "skills": sk, "rb": turn}
     return pets
 
 
@@ -115,7 +126,9 @@ def parse_pets(path):
                             name = None
                         if name and all(0x20 <= ord(c) < 0x2200 for c in name) \
                                 and any(c.isalpha() for c in name):
-                            # idx22 (so voi id) = DOI REBORN: 0=base, 1=reborn(rb1), 2=rb2
+                            # HAM NAY main() KHONG DUNG (da thay bang parse_pets_seq). Neu
+                            # dung lai thi PHAI doi sang ip+58 (`turn`) nhu parse_pets_seq -
+                            # i+22 la `canBeCatch`, khong phai doi chuyen sinh.
                             pets[pid] = {"name": name, "skills": sk, "rb": d[i + 22]}
                             break
         i += 1
@@ -123,8 +136,9 @@ def parse_pets(path):
 
 
 def _form_name(base, rb):
-    """Nhan theo DOI REBORN (idx22 trong record): 0=base -> 'ten rb0'; 1=reborn -> 'ten' (khong
-    hau to, = rb1); 2 -> 'ten rb2'. (Data chi tach chac base vs reborn; rb1/rb2 it phan biet.)"""
+    """Nhan theo DOI CHUYEN SINH (`turn`, ip+58): 0=base -> 'ten rb0'; 1 -> 'ten' (KHONG hau
+    to); 2 -> 'ten rb2'. Quy uoc nay do user chot 05/09, giu y nguyen nhu cu - lan sua 05/09 chi
+    doi NGUON doc (ip+22 -> ip+58), khong doi cach dat ten."""
     if rb == 1:
         return base
     return "%s rb%d" % (base, rb)
@@ -154,9 +168,10 @@ def main():
             rec["he"], rec["doanh"] = hd.get("he", ""), hd.get("doanh", "")
         out["0x%04x" % pid] = rec
     data = {
-        "_note": "AUTO-SINH tu tools/crack_pets.py (Npc_C.dat). pet_id hex -> name (nhan DOI tu idx22: "
-                 "rb0=base, ten=reborn/rb1, rb2), skills (FULL), he/doanh (join pet_hedoanh.json theo "
-                 "ten goc). boss/combo tu suy o combat tu skills_data.json.",
+        "_note": "AUTO-SINH tu tools/crack_pets.py (Npc_C.dat). pet_id hex -> name (hau to theo DOI "
+                 "CHUYEN SINH doc tu `turn` ip+58: rb0=base, KHONG hau to=rb1, rb2). Truoc 05/09 "
+                 "doc nham ip+22 (canBeCatch) nen hau to sai nghia. skills (FULL), he/doanh (join "
+                 "pet_hedoanh.json theo ten goc). boss/combo tu suy o combat tu skills_data.json.",
         "pets": out,
     }
     with open(OUT, "w", encoding="utf-8") as f:

@@ -1390,13 +1390,21 @@ class BotGUI(tk.Tk):
             color = "#b45309" if report["warning"] else "#166534"
         tk.Label(win, text=summary, fg=color, font=("", 10, "bold"),
                  anchor="w").pack(fill="x", padx=10, pady=(10, 6))
-        columns = (("char", "Nhân vật", 150), ("char_agi", "AGI char", 75),
-                   ("pet", "Pet đang dùng", 150), ("pet_agi", "AGI pet", 75))
+        # Be rong vua DU cho tieu de + noi dung dai nhat, khong de thua. Tong 455 < 520 (be ngang
+        # cua so) nen Treeview tu gian deu ra cho vua, KHONG con cot nao bi cat.
+        # (Truoc khi them cot Trung thanh: tong 450/520 nen con du; them 85 nua thanh 535 -> cot
+        #  cuoi bi cat, dung cai user thay 05/09.)
+        columns = (("char", "Nhân vật", 105), ("char_agi", "AGI char", 70),
+                   ("pet", "Pet đang dùng", 135), ("pet_agi", "AGI pet", 65),
+                   ("pet_faith", "Trung thành", 80))
         tree = ttk.Treeview(win, columns=tuple(key for key, _title, _width in columns),
                             show="headings", height=8)
         for key, title, width in columns:
             tree.heading(key, text=title)
             tree.column(key, width=width, anchor="center")
+        # To CAM ca dong khi trung thanh < 40 - cung mau nut "Check AGI" luc lech, de nhin phat
+        # la thay CON NAO chu khong phai doc so tung dong.
+        tree.tag_configure("tt_thap", background="#fde68a", foreground="#7c2d12")
         for row in rows:
             char = row.get("char") or row.get("username") or "-"
             if char and char != "-" and char != row.get("username"):
@@ -1405,10 +1413,14 @@ class BotGUI(tk.Tk):
                 char = self._mask_user(char)
             else:
                 char = self._mask_char(char)
+            _tt = row.get("pet_faith")
+            _thap = isinstance(_tt, int) and _tt < ctrl.TRUNG_THANH_CANH_BAO
             tree.insert("", "end", values=(char,
                         row["char_agi"] if row["char_agi"] is not None else "—",
                         row["pet"] or "—",
-                        row["pet_agi"] if row["pet_agi"] is not None else "—"))
+                        row["pet_agi"] if row["pet_agi"] is not None else "—",
+                        _tt if isinstance(_tt, int) else "—"),
+                        tags=("tt_thap",) if _thap else ())
         tree.pack(fill="both", expand=True, padx=10, pady=(0, 8))
         ttk.Button(win, text="Đóng", command=win.destroy).pack(pady=(0, 10))
 
@@ -1839,8 +1851,16 @@ class BotGUI(tk.Tk):
             group_total[gidx] = group_total.get(gidx, 0) + p_total
             agi_btn = self.party_agi_buttons.get(pidx)
             if agi_btn is not None:
-                if agi_report["warning"]:
-                    agi_btn.configure(text=f"⚠ Check AGI ({agi_report['spread']})",
+                # Hai loai canh bao RIENG: so trong ngoac la DO LECH AGI, "TT n" la so pet
+                # trung thanh thap. Gop lam mot thi user nhin so lai tuong dang lech AGI.
+                _tt_n = len(agi_report.get("faith_thap") or ())
+                if agi_report.get("canh_bao"):
+                    _phan = []
+                    if agi_report["warning"]:
+                        _phan.append(str(agi_report["spread"]))
+                    if _tt_n:
+                        _phan.append(f"TT {_tt_n}")
+                    agi_btn.configure(text="⚠ Check AGI (%s)" % ", ".join(_phan),
                                       bg="#f59e0b", fg="#3b2500", activebackground="#d97706")
                 else:
                     agi_btn.configure(text="⚡ Check AGI", bg="#e9ecef", fg="#111111",

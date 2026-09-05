@@ -65,25 +65,143 @@ class TestNhanDangGoi(unittest.TestCase):
         self.assertIsNone(loandau.parse_vs_win(0x25, _goi(*WIN_CUA_TA), None))
 
 
+def _ev():
+    """Entry loan_dau THAT tu events.json - test phai bat duoc loi sai trong chinh file du lieu."""
+    from bot import config
+    ev = (getattr(config, "EVENTS", {}) or {}).get("loan_dau")
+    assert ev, "events.json khong con entry loan_dau"
+    return ev
+
+
 class TestKhungGio(unittest.TestCase):
+    """Thang 8/2026: 24=T2, 25=T3, 26=T4, 27=T5, 28=T6, 29=T7, 30=CN."""
+
     def test_thu_3_20h_den_22h(self):
-        # 25/08/2026 la THU 3.
-        self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 25, 20, 0)))
-        self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 25, 21, 59)))
-        self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 25, 19, 59)))
-        self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 25, 22, 0)))
+        for h, m in ((20, 0), (21, 59)):
+            self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 25, h, m), _ev()))
+        for h, m in ((19, 59), (22, 0)):
+            self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 25, h, m), _ev()))
+
+    def test_thu_7_20h30_den_22h30(self):
+        """User chot 05/09: T7 LECH NUA TIENG so voi T3 -> phai so ca PHUT, `now.hour` khong du."""
+        for h, m in ((20, 30), (22, 29)):
+            self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 29, h, m), _ev()),
+                            "T7 %02d:%02d phai mo" % (h, m))
+        for h, m in ((20, 0), (20, 29), (22, 30), (23, 0)):
+            self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 29, h, m), _ev()),
+                             "T7 %02d:%02d phai dong" % (h, m))
+
+    def test_thu_5_20h_den_22h(self):
+        """Loan dau DOI (團P). Cung map/NPC voi T3, chi khac select + option NPC."""
+        for h, m in ((20, 0), (21, 59)):
+            self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 27, h, m), _ev()))
+        for h, m in ((19, 59), (22, 0)):
+            self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 27, h, m), _ev()))
 
     def test_ngay_khac_thi_dong(self):
-        for ngay in (24, 26, 27, 28, 29, 30):    # thu 2, 4, 5, 6, 7, CN
-            self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, ngay, 21, 0)),
-                             "ngay %d khong phai thu 3 ma van mo" % ngay)
+        for ngay in (24, 26, 28, 30):    # thu 2, 4, 6, CN (T3=25, T5=27, T7=29 deu mo)
+            self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, ngay, 21, 0), _ev()),
+                             "ngay %d khong phai T3/T5/T7 ma van mo" % ngay)
+
+    def test_khong_co_lich_thi_giu_hanh_vi_cu(self):
+        """ev=None / event khong khai `lich` -> chi THU 3, y nhu truoc 05/09."""
+        self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 25, 21, 0)))
+        self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 29, 21, 0)))
 
     def test_KHONG_trung_khung_40NPC(self):
         """40NPC la thu 2/4/6 - hai event khong duoc dam nhau."""
         from bot import npc40
         for ngay in range(24, 31):
-            t = datetime.datetime(2026, 8, ngay, 21, 0)
-            self.assertFalse(loandau.in_event_window(t) and npc40.in_event_window(t))
+            for h, m in ((20, 15), (21, 0), (22, 15)):
+                t = datetime.datetime(2026, 8, ngay, h, m)
+                self.assertFalse(loandau.in_event_window(t, _ev()) and npc40.in_event_window(t))
+
+
+class TestBienTheTheoThu(unittest.TestCase):
+    """T3 va T7 la HAI SANH KHAC NHAU, khong phai cung mot sanh doi gio.
+
+    Do tren `captures/loandau_t7_20260905.pcap` (ghep luong TCP theo seq, 0 byte sot):
+        chon event 0x4d : T3 `03000300` (id 3)   | T7 `03005a00` (id 90)
+        map             : T3 10991               | T7 54901
+        diem NPC        : T3 (910, 290)          | T7 (1630, 430)
+        option NPC      : T3 `0x14 0100 03 00`   | T7 `0x14 0100 01 00`
+    """
+
+    T3 = datetime.datetime(2026, 8, 25, 21, 0)
+    T7 = datetime.datetime(2026, 8, 29, 21, 0)
+
+    def test_thu_3_giu_nguyen_gia_tri_goc(self):
+        b = loandau.bien_the_hom_nay(_ev(), self.T3)
+        self.assertEqual(b["select"], "03000300")
+        self.assertEqual(b["dest_map"], 10991)
+        self.assertEqual(list(b["party_battle"]["point"]), [910, 290])
+        self.assertEqual(loandau.npc_option(b), b"\x01\x00\x03\x00")
+
+    T5 = datetime.datetime(2026, 8, 27, 21, 0)
+
+    def test_thu_5_chi_doi_select_va_option(self):
+        """Do tren `captures/loandau_doi_20260903.pcap` (03/09/2026 = THU 5, 1 luong TCP -> CUNG
+        server, khong phai vo gioi):
+            C2S 0x4d 03000200          <- id 2 (T3 la 3)
+            S2C 0x4d 030000ef2a7201a802 -> map 10991, spawn (370,680)  = Y HET T3
+            di bo toi (910,290) roi C2S 0x14 01000400   <- option 04 = 團P (T3 la 03)
+        """
+        b = loandau.bien_the_hom_nay(_ev(), self.T5)
+        self.assertEqual(b["select"], "03000200")
+        self.assertEqual(loandau.npc_option(b), b"\x01\x00\x04\x00")
+        # map va diem NPC GIU NGUYEN cua T3 - khong duoc khai lai trong `lich`
+        self.assertEqual(b["dest_map"], 10991)
+        self.assertEqual(list(b["party_battle"]["point"]), [910, 290])
+
+    def test_thu_5_KHONG_phai_lien_server(self):
+        """Capture chi co 1 IP -> khong co buoc chuyen may. Khai nham la bot cho vo ich."""
+        b = loandau.bien_the_hom_nay(_ev(), self.T5)
+        self.assertNotIn("vo_gioi", str(b))
+
+    def test_ba_ngay_KHAC_NHAU_tung_doi_mot(self):
+        """Trung select hay trung option = vao nham event."""
+        bs = [loandau.bien_the_hom_nay(_ev(), t) for t in (self.T3, self.T5, self.T7)]
+        self.assertEqual(len({b["select"] for b in bs}), 3, "trung `select` giua cac ngay")
+        self.assertEqual(len({loandau.npc_option(b) for b in bs}), 3, "trung option NPC")
+
+    def test_thu_7_doi_du_bon_tham_so(self):
+        b = loandau.bien_the_hom_nay(_ev(), self.T7)
+        self.assertEqual(b["select"], "03005a00")
+        self.assertEqual(b["dest_map"], 54901)
+        self.assertEqual(list(b["party_battle"]["point"]), [1630, 430])
+        self.assertEqual(loandau.npc_option(b), b"\x01\x00\x01\x00")
+
+    def test_van_la_CUNG_MOT_MODE(self):
+        """User chot: 'ko lam them mode moi'. Kind phai giu nguyen o CA BA ngay.
+        Rieng T5 la 團P ('loan dau doi') nhung user chot 05/09: VAN dang ky SOLO, khong lap party."""
+        for t in (self.T3, self.T5, self.T7):
+            b = loandau.bien_the_hom_nay(_ev(), t)
+            self.assertEqual(b["party_battle"]["kind"], "chaos_vs")
+            self.assertEqual(b["exit"]["out_map"], 12003)
+
+    def test_khong_de_be_ev_goc(self):
+        """Tra ban SAO - de lo ghi de len EVENTS thi acc sau doc nham tham so ngay khac."""
+        goc = _ev()
+        loandau.bien_the_hom_nay(goc, self.T7)["dest_map"] = 999
+        self.assertEqual(_ev()["dest_map"], 10991)
+        self.assertEqual(list(_ev()["party_battle"]["point"]), [910, 290])
+
+    def test_ngay_khong_co_loan_dau_thi_tra_ban_sao_nguyen(self):
+        b = loandau.bien_the_hom_nay(_ev(), datetime.datetime(2026, 8, 26, 21, 0))
+        self.assertEqual(b["dest_map"], 10991)
+
+    def test_config_event_hom_nay_ap_dung_bien_the(self):
+        """Duong THAT ma run_party_digioi dung."""
+        from bot import config
+        self.assertEqual(config.event_hom_nay("loan_dau", self.T7)["dest_map"], 54901)
+        self.assertEqual(config.event_hom_nay("loan_dau", self.T3)["dest_map"], 10991)
+
+    def test_event_khong_co_lich_thi_khong_dung_toi(self):
+        from bot import config
+        for k, v in (getattr(config, "EVENTS", {}) or {}).items():
+            if not v.get("lich"):
+                self.assertIs(config.event_hom_nay(k, self.T7), v,
+                              "event '%s' khong co lich ma van bi thay doi" % k)
 
 
 class _FakeClient:
@@ -275,3 +393,94 @@ class TestKhaiBaoAPK(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOptionNPCTheoNgay(unittest.TestCase):
+    """`dang_ky` phai gui option cua HOM NAY, khong duoc hard-code 03 nhu ban cu."""
+
+    def _gui_khi_dang_ky(self, ev):
+        c = _FakeClient()
+        loandau.dang_ky(c, threading.Event(), lambda _s: None, poll_interval=0.0, ev=ev)
+        return list(c.gui)
+
+    def test_thu_7_gui_option_01(self):
+        b = loandau.bien_the_hom_nay(_ev(), datetime.datetime(2026, 8, 29, 21, 0))
+        self.assertIn((loandau.OP_DIALOG, "01000100"), self._gui_khi_dang_ky(b))
+
+    def test_thu_3_gui_option_03(self):
+        b = loandau.bien_the_hom_nay(_ev(), datetime.datetime(2026, 8, 25, 21, 0))
+        self.assertIn((loandau.OP_DIALOG, "01000300"), self._gui_khi_dang_ky(b))
+
+    def test_khong_truyen_ev_thi_dung_mac_dinh_03(self):
+        self.assertIn((loandau.OP_DIALOG, "01000300"), self._gui_khi_dang_ky(None))
+
+    def test_option_hong_thi_lui_ve_mac_dinh_chu_khong_no(self):
+        self.assertEqual(loandau.npc_option({"party_battle": {"npc_option": "zzz"}}),
+                         loandau.OPEN_NPC)
+
+    def test_chuoi_dang_ky_GIONG_NHAU_o_ca_hai_ngay(self):
+        """Capture t7 xac nhan: sau option, chuoi con lai y het t3 (advance -> 09001e -> ...)."""
+        t3 = [x for x in self._gui_khi_dang_ky(
+            loandau.bien_the_hom_nay(_ev(), datetime.datetime(2026, 8, 25, 21, 0)))]
+        t7 = [x for x in self._gui_khi_dang_ky(
+            loandau.bien_the_hom_nay(_ev(), datetime.datetime(2026, 8, 29, 21, 0)))]
+        bo_option = lambda ds: [x for x in ds if x[1] not in ("01000300", "01000100")]
+        self.assertEqual(bo_option(t3), bo_option(t7))
+
+
+class TestKhongMoNPCKhiSaiMap(unittest.TestCase):
+    """SỰ CỐ 05/09 21:15 - MAT 4 ACC party 11 trong 3 giay.
+
+        21:14:56 go_to_event 'Loan dau' xong: map=23882 (dich 54901) -> CHUA TOI
+        21:14:58 (LEADER) LOAN DAU: toi (1630, 430) va bat dau vong dang ky/danh
+        21:15:19 >>gui  0x20 020008          <- mo NPC su kien TREN MAP TRAIN
+        21:15:19 >>gui  0x14 01000100
+        21:15:21 <<nhan 0x00 ...0500         <- S:000-000 ma 5 "su kien vi pham" = DA
+        21:15:21 SERVER NGAT KET NOI: su kien vi pham (ma 5)
+
+    Hai lo hong cong lai: `go_to_event` khong CHO server tele xong (chi ngu 1.0s, ma capture do
+    2.36s) nen luon bao CHUA TOI; va ket qua do bi VUT DI, khong ai doc.
+
+    Bo mot buoi event con hon mat acc.
+    """
+
+    class _C:
+        def __init__(self, map_id):
+            self.running = True
+            self._label = "test"
+            self.current_map = map_id
+            self.da_navigate = False
+
+        def navigate_to(self, *a, **k):
+            self.da_navigate = True
+            return True
+
+    def test_sai_map_thi_KHONG_navigate_KHONG_mo_NPC(self):
+        c = self._C(23882)                       # map train, khong phai map event
+        ev = loandau.bien_the_hom_nay(_ev(), datetime.datetime(2026, 8, 29, 21, 0))
+        self.assertFalse(loandau.run_loop(c, (1630, 430), threading.Event(), ev=ev,
+                                          sleep_fn=lambda _s: None))
+        self.assertFalse(c.da_navigate, "da di toi diem NPC tren map thuong -> se bi da ma 5")
+
+    def test_dung_map_thi_van_chay(self):
+        c = self._C(54901)
+        ev = loandau.bien_the_hom_nay(_ev(), datetime.datetime(2026, 8, 29, 21, 0))
+        c.running = False                        # dung ngay sau navigate, chi can kiem da di
+        loandau.run_loop(c, (1630, 430), threading.Event(), ev=ev, sleep_fn=lambda _s: None)
+        self.assertTrue(c.da_navigate)
+
+    def test_go_to_event_CO_cho_khi_khong_co_staging(self):
+        """`staging_map: 0` = tele THANG toi map event -> phai cho, khong ket luan sau 1 giay."""
+        import io as _io, os as _os
+        src = _io.open(_os.path.join(ROOT, "bot", "client.py"), encoding="utf-8").read()
+        i = src.find("def go_to_event(")
+        than = src[i:src.find("\n    def ", i + 10)]
+        self.assertIn("if not staging and dest:", than,
+                      "khong co staging thi KHONG cho gi -> luon bao CHUA TOI")
+        self.assertIn("while self.current_map != dest", than)
+
+    def test_caller_PHAI_doc_ket_qua_go_to_event(self):
+        import io as _io, os as _os
+        src = _io.open(_os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8").read()
+        self.assertIn("if not c.go_to_event(ev):", src,
+                      "vut ket qua go_to_event -> tele hong van mo NPC -> bi da ma 5")
