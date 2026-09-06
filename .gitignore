@@ -103,4 +103,6 @@ _lua_*.lua
 _luadump/
 party.log*
 account_skills_cache.json
+# file tam cua _ghi_json_an_toan (ghi nguyen tu)
+account_skills_cache.json.tam*
 event_exchange_sig.txt

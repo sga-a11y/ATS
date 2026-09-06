@@ -2950,7 +2950,10 @@ legs `12061→12000→11000→15000→18801→18803→18000→18001`. Map **1100
 2. **Boat build/execute model** (`smart_route._scene_candidate_route` + `client.execute_smart_route`):
    sea leg = leg có gate is_sea. `first_sea`/`last_sea`. **Board thuyền ở leg `first_sea-1` (bến)**,
    sail legs `first_sea..last_sea`. Tương thích ngược: bien ngay đầu route (first_sea=1) = y hệt logic cũ
-   (board i==0). Builder validate leg biển với `boat=True` (không thì build fail chặng biển → route None).
+   (board i==0).
+   > ⚠️ **Vế "Builder validate leg biển với `boat=True`" ĐÃ BỎ ngày 06/09 — nó SAI.** Xem mục
+   > "Tìm đường KHÔNG phân biệt bờ/biển" bên dưới. `first_sea`/`last_sea` giờ **chỉ** để quyết định
+   > lúc nào LÊN THUYỀN (`0x7c`) và chuỗi gói qua cổng, **không** còn dính tới tìm đường.
 3. **rearm 0x41** (`client.rearm_ready`): sau cổng ĐẤT phục kích, char 'chưa ready' → move bị nuốt →
    gửi lại 0x41 để đi được (bài học team dungeon lv20). **SKIP ở leg thuyền** (board/sail) — 0x41 có thể
    ảnh hưởng thuyền.
@@ -3105,3 +3108,70 @@ dung chung cho MOI acc/party — user chot 04/09. Truoc do list nam trong tung p
 Chua co file -> dung `CAT_DO_MAC_DINH`. Co file roi thi ton trong nguyen van **ke ca khi rong**
 (bo tick het la co y). Them mon: nut trong **tui do** (dialog List chi tim theo ten, mon la go
 mai khong ra). Bo mon: nut **List cất**.
+
+
+## Tìm đường KHÔNG phân biệt bờ/biển (06/09/2026) — bot từng tự bịa ra `boat=True`
+
+**Client dùng MỘT lưới duy nhất.** `_lua_dec/Logic/Map/MapManager.lua:231`:
+
+```lua
+function MapManager.IsObstacle(blockX, blockY)
+  ...
+  return bit.band(blocks[blockX][blockY], 1) == 1 or bit.band(blocks[blockX][blockY], 4) == 4;
+end
+```
+
+Chướng ngại = **bit1 | bit4**. `_lua_dec/Logic/FindWay.lua` (377 dòng, toàn bộ hàm tìm đường của
+client) **chỉ gọi `IsObstacle`** — trong file đó không có một chữ `sea`/`boat`/`water`/`船` nào.
+
+**Bit2 = biển, và nó KHÔNG phải chướng ngại.** `MapManager.IsSea` chỉ được gọi ở 3 chỗ, không chỗ
+nào dính tới tìm đường:
+
+| Nơi gọi | Dùng làm gì |
+|---|---|
+| `RoleController.lua:3692`, `Role.lua:318` | `SetOnTheSea()` — đổi hình nhân vật sang dáng đi thuyền, xếp lại đội hình pet theo sau |
+| `UIAction.lua:92` | chặn làm động tác trên biển (`--海上不可做動作`) |
+
+Tức là **đứng lên ô biển thì TỰ THÀNH "đang trên thuyền"** — hệ quả của việc đứng ở đó, không phải
+điều kiện để đi tới đó.
+
+**Bot từng bịa thêm `boat=True` = "chỉ đi được trên nước"** (`pathfind._blocked`), tức **đảo ngược**
+luật: đứng trên đất thì coi như bị chặn. Và nó gán cờ đó cho **cả chặng** chỉ vì **cổng đích** nằm
+dưới nước.
+
+### Hậu quả thật (p43/p44/p45, sáng 06/09 — 3 leader quay vòng cả tiếng)
+
+Route `18021 → 26816`, chặng 1 là `18000 → 26000` qua cổng 36 ở (2860,3170) — cổng dưới nước, nên
+cả chặng bị gán `boat=True`. Nhưng chỗ **cập bến** ở 18000 là **(2790,1070) — ĐẤT**:
+
+| gọi | kết quả |
+|---|---|
+| `find_world_path(18000, (2790,1070), (2860,3170), boat=True)` | **None** (chặn ngay ô xuất phát) |
+| `find_world_path(18000, (2790,1070), (2860,3170))` | 9 điểm: 6 điểm đất rồi 3 điểm biển |
+
+`None` → `navigate_to` mất smart path → rơi vào **nhánh đi mù, mà nhánh đó không chia đoạn** → bắn
+thẳng `move_to(2860,3170)` = **nhảy 2100 đơn vị trong một lệnh**:
+
+```
+10:48:40.568 >>gui 0x06 0100 01 2c0b 620c    = move_to(2860, 3170)
+10:48:40.671 <<nhan 0x00 ...0e00             = SERVER NGAT KET NOI: di chuyen QUA XA (ma 14)
+```
+
+→ rớt → relogin dính chặn tốc độ đăng nhập (**mã 90**) → nghỉ 30/60/90/120s → vào lại → đi đúng
+đường đó → rớt tiếp. `chdumot` 56 vòng. **58/58 lần mã 14 trong cả log đều đứng ngay sau dòng
+`qua cong idx=1 -> map 18000`.**
+
+Dấu vết của việc vá tay thay vì sửa luật: `_FORCE_WALK_SEA_GATES = {(23521, 23000, 2)}` — đúng một
+cổng được miễn trừ.
+
+### Đã sửa
+
+1. `pathfind._blocked` — **bỏ hẳn nhánh `boat`**, chỉ còn `bit1|bit4` y client. Tham số `boat` gỡ
+   khỏi toàn bộ `pathfind.py`, `smart_route.py`, `navigate_to`.
+2. `_FORCE_WALK_SEA_GATES` trong `smart_route.py` — xoá (không còn lý do tồn tại). Bản trong
+   `client.py` **giữ**: nó quyết định có LÊN THUYỀN hay không, việc đó vẫn có thật.
+3. `navigate_to` — **chặn cuối**: không có smart path mà biết `self.pos` thì **vẫn chia đoạn** theo
+   `SMART_PATH_SEGMENT`. Lỗi tìm đường chỉ được phép làm bot "đi sai", **không được phép làm rớt game**.
+
+> Quy tắc rút ra: luật đi lại của bot phải **soi client rồi chép**, đừng suy diễn từ tên bit. Bit tên
+> là "sea" không có nghĩa nó là chướng ngại — trong client nó chỉ đổi hình nhân vật.

@@ -981,6 +981,7 @@ fun TsBotApp(
         BagDialog(
             username = account.username,
             onLoadInfo = { service?.bagInfoJson(account.username) ?: "" },
+            onLoadKho = { service?.bankInfoJson(account.username) ?: "" },
             onCmd = { act, slot, arg ->
                 service?.bagCmd(account.username, act, slot, arg) ?: "False"
             },
@@ -4541,8 +4542,12 @@ data class BagSlot(
     val canBank: Boolean,
 )
 
-/** 4 tab tui do, GIONG client game (bot/bag_tabs.py::TAB_NAMES). */
-val BagTabs = listOf(1 to "Tất cả", 2 to "Trang bị", 3 to "Vật phẩm", 4 to "Nguyên liệu")
+/** 4 tab tui do, GIONG client game (bot/bag_tabs.py::TAB_NAMES) + tab TIEN TRANG.
+ *  Tien trang KHONG nam trong TAB_NAMES ben Python: bang do la luat phan loai ITEM cua client,
+ *  con kho la mot cai tui khac. Mirror gui.py::TAB_TIEN_TRANG. */
+const val TAB_TIEN_TRANG = 5
+val BagTabs = listOf(1 to "Tất cả", 2 to "Trang bị", 3 to "Vật phẩm", 4 to "Nguyên liệu",
+                     TAB_TIEN_TRANG to "Tiền trang")
 
 /** Mau nen theo pham chat - cung bang mau voi ban PC (BagDialog._BAG_Q). */
 fun bagQualityColor(q: Int): androidx.compose.ui.graphics.Color = when (q) {
@@ -4553,8 +4558,12 @@ fun bagQualityColor(q: Int): androidx.compose.ui.graphics.Color = when (q) {
     else -> androidx.compose.ui.graphics.Color(0xFFF0F0F0)
 }
 
-fun parseBagInfo(json: String): Triple<Int, Int, List<BagSlot>> {
-    if (json.isBlank()) return Triple(0, 0, emptyList())
+/** used, cap, slots, live (false = ban CACHE, acc dang tat -> CHI XEM), ts (moc anh chup). */
+data class BagInfo(val used: Int, val cap: Int, val slots: List<BagSlot>,
+                   val live: Boolean, val ts: Long)
+
+fun parseBagInfo(json: String): BagInfo {
+    if (json.isBlank()) return BagInfo(0, 0, emptyList(), false, 0L)
     return try {
         val o = JSONObject(json)
         val arr = o.optJSONArray("slots")
@@ -4574,28 +4583,45 @@ fun parseBagInfo(json: String): Triple<Int, Int, List<BagSlot>> {
                 canBank = s.optBoolean("bank", false),
             ))
         }
-        Triple(o.optInt("used"), o.optInt("cap"), out)
+        BagInfo(o.optInt("used"), o.optInt("cap"), out,
+                o.optBoolean("live", true), o.optLong("ts", 0L))
     } catch (_: Exception) {
-        Triple(0, 0, emptyList())
+        BagInfo(0, 0, emptyList(), false, 0L)
     }
+}
+
+/** "10:26 hôm nay" / "03/09 10:26" - mirror gui.py::_moc_ngan. */
+fun mocNgan(ts: Long): String {
+    if (ts <= 0L) return "chưa có"
+    val t = java.util.Calendar.getInstance().apply { timeInMillis = ts * 1000L }
+    val hn = java.util.Calendar.getInstance()
+    val cungNgay = t.get(java.util.Calendar.YEAR) == hn.get(java.util.Calendar.YEAR) &&
+        t.get(java.util.Calendar.DAY_OF_YEAR) == hn.get(java.util.Calendar.DAY_OF_YEAR)
+    val f = if (cungNgay) "HH:mm 'hôm nay'" else "dd/MM HH:mm"
+    return java.text.SimpleDateFormat(f, java.util.Locale.getDefault()).format(t.time)
 }
 
 /** TUI DO cua mot acc. Mirror gui.py::BagDialog (rut gon cho man hinh dien thoai).
  *
- *  Tui do la snapshot SONG trong client - acc TAT thi khong co gi de hien (khong cache duoc:
- *  hien so cu roi bam "phan giai" la mat nham do).
+ *  Acc TAT thi hien ban CACHE (`live` = false): CHI XEM, chi con nut "Cất" (no ghi accounts.json,
+ *  khong gui goi nao len server). Cac nut con lai PHAI khoa - bam "phan giai" theo so cu la mat
+ *  nham do, dung ly do ma truoc day tui do tu choi cache han.
+ *  Tab "Tien trang" luon la cache cua lan bot MO KHO gan nhat (server khong bao gio tu gui kho);
+ *  acc chua tung mo kho thi coi nhu khong co gi.
  *  Sap xep GIONG CLIENT: theo `st` (truong 排序 cua Item_C.dat) roi den id - khong phai theo so o.
  */
 @Composable
 fun BagDialog(
     username: String,
     onLoadInfo: () -> String,
+    onLoadKho: () -> String,
     onCmd: (String, Int, Int) -> String,
     onAddCatDo: (Int) -> Boolean,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var infoJson by remember { mutableStateOf("") }
+    var khoJson by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(0) }
     var chon by remember { mutableStateOf<BagSlot?>(null) }
     var thongBao by remember { mutableStateOf("") }
@@ -4604,14 +4630,19 @@ fun BagDialog(
     suspend fun nap() {
         dangTai = true
         infoJson = withContext(Dispatchers.IO) { onLoadInfo() }
+        khoJson = withContext(Dispatchers.IO) { onLoadKho() }
         dangTai = false
     }
     LaunchedEffect(username) { nap() }
 
-    val (used, cap, slots) = remember(infoJson) { parseBagInfo(infoJson) }
+    val info = remember(infoJson) { parseBagInfo(infoJson) }
+    val khoInfo = remember(khoJson) { parseBagInfo(khoJson) }
     val tabId = BagTabs[tab].first
-    val rows = remember(tabId, slots) {
-        slots.filter { tabId == 1 || tabId in it.tabs }.sortedWith(compareBy({ it.st }, { it.id }))
+    val trongKho = tabId == TAB_TIEN_TRANG
+    val rows = remember(tabId, info, khoInfo) {
+        val src = if (trongKho) khoInfo.slots else info.slots
+        src.filter { trongKho || tabId == 1 || tabId in it.tabs }
+           .sortedWith(compareBy({ it.st }, { it.id }))
     }
     // O dang chon co the da BIEN MAT sau khi phan giai/bo -> khong duoc giu lai bang nut cu.
     val selected = chon?.let { c -> rows.firstOrNull { it.slot == c.slot && it.id == c.id } }
@@ -4634,10 +4665,24 @@ fun BagDialog(
         title = { Text("Túi đồ: $username") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
-                if (infoJson.isBlank()) {
-                    Text(if (dangTai) "Đang đọc..." else "Acc chưa chạy — túi đồ chỉ xem được khi bot đang chạy.")
+                if (infoJson.isBlank() && khoJson.isBlank()) {
+                    Text(if (dangTai) "Đang đọc..."
+                         else "Acc chưa chạy và chưa có ảnh chụp túi đồ nào — bật acc lên một lần rồi mở lại.")
                 } else {
-                    Text("$used/$cap ô  ·  tab này: ${rows.size}", fontWeight = FontWeight.Bold)
+                    if (trongKho) {
+                        Text("Tiền trang: ${rows.size} món" +
+                             (if (khoInfo.ts > 0L) "  ·  ảnh chụp ${mocNgan(khoInfo.ts)}"
+                              else "  ·  bot chưa mở kho lần nào"),
+                             fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("${info.used}/${info.cap} ô  ·  tab này: ${rows.size}",
+                             fontWeight = FontWeight.Bold)
+                    }
+                    if (!info.live) {
+                        Text("acc TẮT — ảnh chụp ${mocNgan(info.ts)}, chỉ xem",
+                             style = MaterialTheme.typography.bodySmall,
+                             color = androidx.compose.ui.graphics.Color(0xFFB45309))
+                    }
                     ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
                         BagTabs.forEachIndexed { i, t ->
                             Tab(selected = tab == i, onClick = { tab = i; chon = null },
@@ -4676,6 +4721,9 @@ fun BagDialog(
                              style = MaterialTheme.typography.bodySmall)
                         FlowRowNutTuiDo(
                             s = selected,
+                            // Kho chi xem; acc tat thi chi con nut "Cat".
+                            chiXem = trongKho,
+                            live = info.live,
                             onUse = { chay("use") },
                             onEquip = { chay("equip") },
                             onDismantle = { chay("decompose") },
@@ -4708,6 +4756,8 @@ fun BagDialog(
 @Composable
 private fun FlowRowNutTuiDo(
     s: BagSlot,
+    chiXem: Boolean,
+    live: Boolean,
     onUse: () -> Unit,
     onEquip: () -> Unit,
     onDismantle: () -> Unit,
@@ -4717,6 +4767,23 @@ private fun FlowRowNutTuiDo(
 ) {
     Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically) {
+        if (chiXem) {
+            Text("(đồ trong tiền trang — chỉ xem)",
+                 style = MaterialTheme.typography.bodySmall,
+                 color = androidx.compose.ui.graphics.Color(0xFF888888))
+            return@Row
+        }
+        if (!live) {
+            if (s.canBank) {
+                OutlinedButton(onClick = onBank, modifier = Modifier.padding(end = 4.dp)) {
+                    Text("Cất", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Text("acc đang tắt — bật acc lên để dùng/mặc/phân giải",
+                 style = MaterialTheme.typography.bodySmall,
+                 color = androidx.compose.ui.graphics.Color(0xFF888888))
+            return@Row
+        }
         if (s.canEquip) {
             OutlinedButton(onClick = onEquip, modifier = Modifier.padding(end = 4.dp)) {
                 Text("Trang bị", style = MaterialTheme.typography.bodySmall)

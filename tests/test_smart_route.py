@@ -1,5 +1,6 @@
 import os
 import tempfile
+import math
 import unittest
 
 from bot.pathfind import GroundMapStore
@@ -104,7 +105,12 @@ class TestSmartWorldRouter(unittest.TestCase):
             [leg["target_scene"] for leg in route["legs"][:4]],
             [18000, 15000, 18000, 21000],
         )
-        self.assertEqual(route["legs"][0]["target_arrival"], [3190, 1270])
+        # Diem cap ben du doan o 18000. KHONG neo cung con so: truoc day boat=True snap no ve mot
+        # o BIEN [3190,1270] (cach cho cap ben THAT ~250 don vi); bo che do boat thi no snap ve o
+        # dat sat thuc te. Log that 06/09: cap ben o (2790,1070).
+        _ben = route["legs"][0]["target_arrival"]
+        self.assertLess(math.hypot(_ben[0] - 2790, _ben[1] - 1070), 150,
+                        "diem cap ben du doan lech xa cho cap ben THAT: %s" % (_ben,))
         self.assertTrue(route["legs"][1]["paths"])
 
     def test_builds_40npc_exit_from_current_position(self):

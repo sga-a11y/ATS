@@ -92,8 +92,24 @@ Vì không còn chờ chéo — chỉ có một chỗ quyết, và chỗ đó kh
 nhất** (ít phải di chuyển nhất) vào `st["kenh_dich"]`. Trong keepalive mỗi acc tự so kênh mình
 với `kenh_dich`, lệch thì tự `switch_channel`. Không chờ ai báo cáo, không có "vòng" để lỡ.
 
-Bỏ qua khi: party khác map, có acc chưa rõ kênh, hoặc đang chạy vòng bắt tay `channel_ready`
-(hai cơ chế cùng ra lệnh đổi kênh một lúc là đánh nhau) — lúc đó `kenh_dich` bị xoá.
+Bỏ qua khi: party khác map, hoặc có acc chưa rõ kênh. **Không nhường vòng bắt tay** — điều phối
+là người quyết, `do_channel_sync` chỉ còn là cánh tay thi hành.
+
+Kênh đầy thì vào **sổ đen** `st["kenh_day"]` (`bao_kenh_day`, hạn `KENH_DAY_HAN_SEC = 120s` rồi tự
+rụng vì người ra vào liên tục). Điều phối bỏ qua kênh trong sổ đen, lấy kênh đông nhì; mọi kênh
+party đang đứng đều đầy thì `_kenh_trong_cho_ca_party` lấy kênh trống đủ chỗ cho **cả** party từ
+`c.channels`. Về chung một kênh thì sổ đen xoá sạch.
+
+**Vòng đồng bộ hỏng thì phải ĐÓNG CỬA** (`_dong_vong_sync`: xoá `channel_ready` / `channel` /
+`channel_failed`). Không đóng thì cờ kẹt SET vĩnh viễn và acc nào còn bám vào lệnh đã chết thì
+treo mãi. Không acc nào được "đỗ lại chờ ai pick lại" nữa: vào kênh không được, hoặc sang kênh rồi
+mà sai map → ghi sổ / thoát ngay, điều phối lo tiếp.
+
+> **Bug thật P3 (06/09, kẹt 1 tiếng)**: cả party rớt rồi login lại, leader chốt kênh 15; 3 member
+> sang OK rồi `break`, `batbat` gặp `result=4` (kênh vừa đầy) → "báo leader pick lại" rồi đỗ lại.
+> Leader thoát vòng sync mà không xoá `channel_ready`, `_bump_reform` thì vô dụng
+> (`reform: khong co smart/legacy route -> bo qua` × 28) → leader lặp `CHO du member san sang
+> (3/4)` từ 02:38 đến 03:34.
 
 Song song, `pick_best_channel` có nhánh chặn đầu tiên: **cả party còn sống cùng map đã chung một
 kênh → `return 0` (giữ nguyên)**, không thèm hỏi danh sách kênh. Trước đây picker thấy kênh mình

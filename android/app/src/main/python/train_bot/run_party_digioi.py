@@ -798,6 +798,22 @@ def _prepare_reform_channel_sync(st):
         st["channel"] = None
 
 
+def _dong_vong_sync(st):
+    """DONG CUA mot vong dong bo kenh da hong.
+
+    Bat buoc goi o MOI duong thoat that bai cua `do_channel_sync`. Khong dong thi `channel_ready`
+    ket o trang thai SET vinh vien, va moi acc dang cho/dang do trong vong deo cung mot lenh da
+    chet. Bug that P3 (06/09, ket 1 tieng): batbat vao kenh 15 that bai luc 02:38:31, leader
+    thoat vong sync luc 02:38:32 ma khong xoa co -> batbat do lai den 03:34 van chua ra, leader
+    lap "CHO du member san sang (3/4)" 28 lan.
+    """
+    with st["lock"]:
+        st["channel_ready"].clear()
+        st["channel"] = None
+        st["channel_failed"].clear()
+        st["channel_failed_reason"] = ""
+
+
 def _event_battle_kind(mode, has_leader, ev):
     """Kieu danh cua event CO LAP PARTY: 'npc_repeat' (40NPC) | 'floor_crawl' (2K) | None."""
     battle = (ev or {}).get("party_battle") or {}
@@ -1495,6 +1511,7 @@ def _pstate(pidx):
                               # thanh dich da ra lenh DI MAP (mode city, thanh chua mo tele) - de
                               # khong acc nao ra lenh lai lien tuc. Xem `_ra_lenh_di_bo_ve_thanh`.
                               "route_ve_thanh_dest": None,
+                              "kenh_day": {},        # {kenh: luc bao DAY} - dieu phoi tranh chot lai
                               "kenh_hong": None,     # kenh ma ca party "cung so" ma khong thay nhau -> picker phai TRANH
                               # Kenh USER TU CHON bang lenh tay: picker KHONG duoc tu chon kenh khac
                               # nua. Bo ghim khi chinh kenh do hong (`kenh_hong`) hoac user ra lenh
@@ -2979,11 +2996,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         # lap duoc party (bug that: leader loop "cho acc bao cao map (1/5)" o map
                         # 10991, moi vong doi 1 kenh: 2 -> 6 -> ...). Bump reform_gen ap dung cho MOI
                         # mode: khong reform duoc thi cung phai thoat vong nay de tang len vong moi.
-                        with st["lock"]:
-                            _bump_reform(st)
-                        log.warning("[%s] (%s) sync kenh/map FAIL %d lan (member ket sai map) -> "
-                                    "BUMP reform_gen, ca party ve thanh regroup",
-                                    label, role, _sync_fail)
+                        #
+                        # 06/09 - BO `_bump_reform` o day: reform khong sua duoc gi (P3: leader
+                        # lap "reform: khong co smart/legacy route -> bo qua" 28 lan trong 1 tieng),
+                        # va DIEU PHOI moi la nguoi chot kenh/map. Viec DUY NHAT phai lam khi vong
+                        # sync hong la DONG CUA no lai: xoa `channel_ready`/`channel` de khong con
+                        # ai bam vao lenh da chet.
+                        _dong_vong_sync(st)
+                        log.warning("[%s] (%s) sync kenh/map FAIL %d lan -> DONG vong sync, de DIEU "
+                                    "PHOI chot lai", label, role, _sync_fail)
                         return False
                     break
             else:
@@ -3052,41 +3073,30 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                             log.info("[%s] (member) da chuyen sang kenh chung = %s, map=%s",
                                      label, ch, c.current_map)
                             break
-                        while (c.running and not _stopped() and st["channel_ready"].is_set()
-                               and st.get("channel") == ch):
-                            # Member report map FAIL (bi day ra 12003) -> ket o day cho picker doi kenh.
-                            # PHAI check het gio DG: neu khong -> ket im o Quang Truong, party cho vo han
-                            # (bug that: dv607@12003 remain=0 van khong bao xong DG).
-                            if _finish_digioi_train_if_time_over("sync kenh DG (member ch-wait)"):
-                                return True
-                            time.sleep(0.5)
-                        continue
+                        # Doi kenh OK nhung SAI MAP (bi day ra 12003) -> THOAT ngay, khong do lai
+                        # cho picker. Dieu phoi thay minh lech map la ra lenh gom/dong bo o nhip
+                        # sau; do lai o day chi lam ca party cho mot dua khong ai go.
+                        log.warning("[%s] (member) sang kenh %s roi nhung SAI MAP (%s) -> de DIEU "
+                                    "PHOI xu ly", label, ch, c.current_map)
+                        return False
                     _prepare_channel_switch()
                     if c.switch_channel(ch, wait=4.0, retries=1):
                         if _report_channel_map(sync_gen, expected_map):
                             log.info("[%s] (member) da chuyen sang kenh chung = %s sau khi roi party cu, map=%s",
                                      label, ch, c.current_map)
                             break
-                        while (c.running and not _stopped() and st["channel_ready"].is_set()
-                               and st.get("channel") == ch):
-                            # Member report map FAIL (bi day ra 12003) -> ket o day cho picker doi kenh.
-                            # PHAI check het gio DG: neu khong -> ket im o Quang Truong, party cho vo han
-                            # (bug that: dv607@12003 remain=0 van khong bao xong DG).
-                            if _finish_digioi_train_if_time_over("sync kenh DG (member ch-wait)"):
-                                return True
-                            time.sleep(0.5)
-                        continue
-                    reason = "result=%s" % getattr(c, "_chan_switch_result", None)
-                    with st["lock"]:
-                        st["channel_failed_reason"] = "%s %s" % (label, reason)
-                        st["channel_failed"].set()
-                    log.warning("[%s] (member) khong doi duoc sang kenh chung %s (%s) -> bao leader pick lai",
-                                label, ch, reason)
-                    while (c.running and not _stopped() and st["channel_ready"].is_set()
-                           and st.get("channel") == ch):
-                        if _finish_digioi_train_if_time_over("sync kenh DG (member ch-wait2)"):
-                            return True
-                        time.sleep(0.5)
+                        log.warning("[%s] (member) sang kenh %s roi nhung SAI MAP (%s) -> de DIEU "
+                                    "PHOI xu ly", label, ch, c.current_map)
+                        return False
+                    # Vao kenh khong duoc: GHI SO DEN roi THOAT ngay - dieu phoi se chot kenh khac
+                    # o nhip sau. TUYET DOI khong do lai cho leader "pick lai": leader co the dang
+                    # ket o vong cho member, va cho no ready la chinh minh (P3 06/09, ket 1 tieng).
+                    _kq = getattr(c, "_chan_switch_result", None)
+                    log.warning("[%s] (member) khong doi duoc sang kenh chung %s (result=%s) -> "
+                                "de DIEU PHOI chot kenh khac", label, ch, _kq)
+                    if _kq == 4:
+                        bao_kenh_day(st, ch, label)
+                    return False
                 time.sleep(2)
 
         def _do_reform(to_spot=True):
@@ -5999,14 +6009,18 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # dong bo truoc do van bat duoc lenh moi. Day dung la cho party 53 vo (06/09):
             # vumba/vumsau lam xong vong dich=kenh4 roi ROI vong, picker doi dich sang kenh 2 sau
             # do, hai dua khong bao gio biet -> "3/5 da sang kenh 2, CHUA sang: {qv813:4, qv816:4}".
-            # KHONG dam vao khi dang co vong bat tay chay (dieu phoi tu xoa kenh_dich luc do).
+            # KHONG con cong `channel_ready`: dieu phoi la nguoi quyet, khong nhuong vong bat tay.
+            # Vao khong duoc (kenh day) thi GHI SO DEN roi di lam viec khac - khong do lai cho ai
+            # "pick lai" (P3 06/09: batbat do lai 1 tieng vi leader ket o vong cho member).
             _kd = st.get("kenh_dich")
-            if (_kd and not c.in_combat() and not st["channel_ready"].is_set()
+            if (_kd and not c.in_combat()
                     and int(getattr(c, "current_channel", 0) or 0) != int(_kd)):
                 log.info("[%s] (%s) DIEU PHOI chot kenh %s, minh dang o %s -> tu chuyen",
                          label, role, _kd, getattr(c, "current_channel", None))
                 try:
-                    c.switch_channel(int(_kd), wait=4.0, retries=1)
+                    if not c.switch_channel(int(_kd), wait=4.0, retries=1):
+                        if getattr(c, "_chan_switch_result", None) == 4:
+                            bao_kenh_day(st, _kd, label)
                 except Exception as e:
                     log.warning("[%s] loi tu chuyen sang kenh dich %s: %s", label, _kd, e)
             # Hoi mau MOI MODE (train/digioi/city/stand...) - chi can ngoai combat.
@@ -8094,13 +8108,14 @@ def _dieu_phoi_chot_kenh(pidx, st, song):
     CHON KENH NAO: kenh dang co NHIEU acc nhat (it phai di chuyen nhat). Khong hoi danh sach
     kenh - khong can, va hoi thi lai roi vao bay "kenh minh dang o trong co ve dong".
 
-    KHONG dam vao khi vong bat tay cu dang chay (`channel_ready` dang set) - de hai co che khong
-    danh nhau. Dieu phoi chi lam phan ma khong ai lam: luc KHONG AI bam nut.
+    CHON KENH NAO: kenh dang co NHIEU acc nhat (it phai di chuyen nhat) - va cung la kenh CHAC
+    CHAN CON CHO cho nhung dua da dung trong do. Neu co acc bao kenh do DAY (result=4) thi kenh
+    do vao so den `st["kenh_day"]`, dieu phoi bo qua no va chon kenh dong nhi, roi den kenh
+    trong nhat theo danh sach kenh acc nao do vua nhan duoc.
+
+    DIEU PHOI LA NGUOI QUYET, khong nhuong ai: khong con nhanh "co vong bat tay chay thi thoi".
+    Vong bat tay cu (`do_channel_sync`) gio chi con la CANH TAY thi hanh, khong tu chot kenh.
     """
-    if st.get("channel_ready") is not None and st["channel_ready"].is_set():
-        with st["lock"]:
-            st["kenh_dich"] = None
-        return None
     dem = {}
     map_chung = None
     for _u, c in song:
@@ -8116,8 +8131,13 @@ def _dieu_phoi_chot_kenh(pidx, st, song):
     if len(dem) <= 1:
         with st["lock"]:
             st["kenh_dich"] = None           # dang chung kenh -> khong co viec gi
+            st["kenh_day"] = {}             # het lech thi xoa so den, lan sau xet lai tu dau
         return None
-    dich = sorted(dem.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+    hong = _kenh_day_con_han(st)
+    xep = [ch for ch, _n in sorted(dem.items(), key=lambda kv: (-kv[1], kv[0])) if ch not in hong]
+    dich = xep[0] if xep else _kenh_trong_cho_ca_party(pidx, st, song, hong)
+    if not dich:
+        return None                          # moi kenh party dang dung deu day -> cho nhip sau
     with st["lock"]:
         cu = st.get("kenh_dich")
         st["kenh_dich"] = dich
@@ -8126,6 +8146,63 @@ def _dieu_phoi_chot_kenh(pidx, st, song):
                  "(dong nguoi nhat, it phai di chuyen nhat)", pidx + 1, dict(sorted(dem.items())),
                  dich)
     return dich
+
+
+KENH_DAY_HAN_SEC = 120.0   # kenh bao DAY thi treo so den bay lau roi cho thu lai (nguoi ra vao)
+
+
+def bao_kenh_day(st, ch, nhan=""):
+    """Acc vao kenh DAY (result=4) -> ghi so den de DIEU PHOI khoi chot lai kenh do.
+
+    Day la thong tin, KHONG phai bao cao xin lenh: acc ghi xong thi di lam viec khac ngay,
+    khong dung cho ai tra loi. (P3 06/09: batbat vao kenh 15 that bai roi DO LAI cho leader
+    "pick lai" - leader thi dang ket o vong cho member -> ca party dung 1 tieng.)
+    """
+    if not ch:
+        return
+    with st["lock"]:
+        so = dict(st.get("kenh_day") or {})
+        so[int(ch)] = time.time()
+        st["kenh_day"] = so
+        if st.get("kenh_dich") and int(st["kenh_dich"]) == int(ch):
+            st["kenh_dich"] = None           # dich vua chot da hong -> nhip sau chot lai
+    log.warning("[%s] kenh %s DAY -> vao so den %.0fs, DIEU PHOI se chot kenh khac",
+                nhan or "?", ch, KENH_DAY_HAN_SEC)
+
+
+def _kenh_day_con_han(st):
+    """Set kenh dang trong so den (da qua han thi tu rung ra)."""
+    bay = time.time()
+    with st["lock"]:
+        so = {int(ch): t for ch, t in (st.get("kenh_day") or {}).items()
+              if bay - float(t) < KENH_DAY_HAN_SEC}
+        st["kenh_day"] = so
+    return set(so)
+
+
+def _kenh_trong_cho_ca_party(pidx, st, song, hong):
+    """Moi kenh party dang dung deu trong so den -> tim kenh MOI du cho CA party.
+
+    Dung danh sach kenh acc nao do vua nhan duoc (`c.channels` = {ch: (dang, toi_da)}).
+    Khong hoi lai server o day: dieu phoi chay moi 2 giay, hoi moi nhip la spam.
+    """
+    can = len(song)
+    tot = None
+    for _u, c in song:
+        for ch, cap in (getattr(c, "channels", None) or {}).items():
+            try:
+                dang, toi_da = int(cap[0]), int(cap[1])
+            except Exception:
+                continue
+            if int(ch) in hong or toi_da - dang < can:
+                continue
+            if tot is None or dang < tot[1]:
+                tot = (int(ch), dang)
+    if tot:
+        log.info("[party %d] DIEU PHOI: moi kenh party dang dung deu DAY %s -> doi ca party sang "
+                 "kenh trong %d (%d cho dang dung)", pidx + 1, sorted(hong), tot[0], tot[1])
+        return tot[0]
+    return None
 
 
 def _dieu_phoi_chot_map(pidx, st):
@@ -8970,23 +9047,64 @@ BAG_CANH_BAO_SLOT_TRONG = 10
 
 
 def bag_info(username):
-    """TUI DO cua 1 acc cho UI (APK). {} = acc chua chay.
+    """TUI DO cua 1 acc cho UI (APK). {} = chua co du lieu nao (chua chay VA chua tung cache).
 
-    KHAC bang Point/Skill: tui do KHONG cache duoc - no la snapshot SONG trong client, doc file
-    ra thi vua sai vua nguy hiem (bam "phan giai" theo so cu la mat nham do). Acc tat thi tra {}.
+    Acc TAT thi tra ban CACHE kem `"live": False` (user 06/09: "tui do la de xem lai khi
+    offline"). Ban cache la CHI XEM: UI PHAI khoa moi nut khi `live` False - bam "phan giai"
+    theo so cu la mat nham do. Do dung la ly do truoc day ham nay tu choi cache han; gio cache
+    nhung tra kem co `live` de cho goi biet duong khoa nut.
 
     Moi o kem san cac co CHO PHEP (use/equip/dis/fashion) tinh bang `bot.bag_tabs` - dung luat
     cua client. De Kotlin tu suy tu items_gamedata la se lech, vi luat that nam o bag_tabs
     (vd `can_use` doc btnState NGUOC voi truc giac - xem chu thich trong file do).
     """
     c = account_clients.get(username)
-    if c is None:
-        return {}
     from . import bag_tabs as _bt
-    from .client import _load_gamedata_items
+    from .client import _load_gamedata_items, load_bag_cache
+    if c is None:
+        _tui, _ts = load_bag_cache(username)
+        if not _tui:
+            return {}
+        _slots = {int(s): v for s, v in (_tui.get("slots") or {}).items()}
+        return dict(_bag_info_slots(_slots, None), live=False, ts=int(_ts),
+                    cap=int(_tui.get("cap") or 0), used=int(_tui.get("used") or len(_slots)),
+                    maxed=False)
+    return dict(_bag_info_slots({int(s): v for s, v in (getattr(c, "bag_slots", None) or {}).items()}, c),
+                live=True, ts=int(time.time()),
+                cap=c.bag_capacity(), used=c.bag_used_slots(), maxed=bool(c.bag_slot_maxed()))
+
+
+def bank_info(username):
+    """TIEN TRANG cua 1 acc cho UI. LUON tu cache, ke ca khi acc dang chay.
+
+    Server KHONG BAO GIO tu gui kho: bot chi thay no dung luc di NPC Trac Quan mo kho. Nen day
+    la anh chup cua LAN MO KHO GAN NHAT, va acc chua tung mo kho thi coi nhu KHONG CO GI (user
+    chot 06/09 - khong lam nut "doc lai kho" vi ton mot chuyen di).
+
+    Kho LUON chi xem: khong co lenh nao cua UI tac dong vao no.
+    """
+    from .client import load_bank_cache
+    c = account_clients.get(username)
+    kho, ts = load_bank_cache(username)
+    slots = {int(i): v for i, v in ((kho or {}).get("slots") or {}).items()}
+    if c is not None and getattr(c, "bank_slots", None):
+        slots = {int(i): v for i, v in c.bank_slots.items()}   # dang mo kho -> ban SONG moi hon
+        ts = int(time.time())
+    if not slots and not ts:
+        return {}          # chua tung mo kho -> coi nhu khong co gi (giong bag_info khi chua cache)
+    return dict(_bag_info_slots(slots, None), live=False, ts=int(ts or 0),
+                used=len(slots), cap=0, maxed=False)
+
+
+def _bag_info_slots(slots, c):
+    """Dung `{"slots": [...]}` cho ca tui do lan tien trang. `c=None` = ban CHI XEM (acc tat /
+    kho) -> cac co can client song (`fashion`, `bank`) de False, UI khoa nut theo `live`."""
+    from . import bag_tabs as _bt
+    from .client import _load_gamedata_items, GameClient
+    _BANK_RESTRICT_CAM = GameClient.BANK_RESTRICT_CAM
     gd = _load_gamedata_items()
     o = []
-    for slot, val in sorted((getattr(c, "bag_slots", None) or {}).items()):
+    for slot, val in sorted((slots or {}).items()):
         try:
             tid, cnt = int(val[0]), int(val[1])
         except Exception:
@@ -9006,14 +9124,13 @@ def bag_info(username):
             "use": bool(_bt.can_use(d.get("bs"))),
             "equip": bool(_bt.can_equip(d.get("ft"), d.get("kd"))),
             "dis": bool(_bt.can_dismantle(d.get("fc"))),
-            "fashion": bool(c.is_fashion_item(tid)),
+            "fashion": bool(c.is_fashion_item(tid)) if c is not None else False,
             # Mon game CAM gui ngan hang -> khong cho them vao list cat (them cung vo ich).
-            "bank": not (int(d.get("restrict", 0) or 0) & c.BANK_RESTRICT_CAM),
+            # Day la co DUY NHAT con dung o ban cache: nut "Tu cat vao Tien trang" ghi thang
+            # accounts.json, khong can client song (user chot 06/09).
+            "bank": not (int(d.get("restrict", 0) or 0) & _BANK_RESTRICT_CAM),
         })
-    return {
-        "cap": c.bag_capacity(), "used": c.bag_used_slots(),
-        "maxed": bool(c.bag_slot_maxed()), "slots": o,
-    }
+    return {"slots": o}
 
 
 # Lenh tui do UI duoc phep goi. Khoa -> (ten hien thi, ham chay).

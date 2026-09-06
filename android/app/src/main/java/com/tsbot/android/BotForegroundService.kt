@@ -542,13 +542,24 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         } catch (_: Exception) { "False" }
     }
 
-    /** TUI DO: {cap, used, maxed, slots:[...]}. "" = acc chua chay.
-     *  KHONG cache duoc (snapshot song trong client) - acc tat thi khong co gi de hien. */
+    /** TUI DO: {cap, used, maxed, live, ts, slots:[...]}. "" = chua co du lieu nao.
+     *  Acc TAT -> ban CACHE kem live=false: UI PHAI khoa nut (tru "Cat"). */
     fun bagInfoJson(username: String): String {
         return try {
             val py = com.chaquo.python.Python.getInstance()
             val json = py.getModule("json")
             val info = rpd().callAttr("bag_info", username) ?: return ""
+            if (info.asMap().isEmpty()) "" else json.callAttr("dumps", info).toString()
+        } catch (_: Exception) { "" }
+    }
+
+    /** TIEN TRANG: {slots:[...], ts, chua_mo}. LUON tu cache - server khong bao gio tu gui kho,
+     *  bot chi thay no dung luc di NPC Trac Quan mo kho. "" = chua tung mo kho lan nao. */
+    fun bankInfoJson(username: String): String {
+        return try {
+            val py = com.chaquo.python.Python.getInstance()
+            val json = py.getModule("json")
+            val info = rpd().callAttr("bank_info", username) ?: return ""
             if (info.asMap().isEmpty()) "" else json.callAttr("dumps", info).toString()
         } catch (_: Exception) { "" }
     }

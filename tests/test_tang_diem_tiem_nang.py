@@ -210,6 +210,21 @@ class TestCacheBangDiem(unittest.TestCase):
     ko cong diem duoc thoi"). Dung chung file `account_skills_cache.json` y het cach cache pet nha
     tro (`save_inn_cache`) - file do da co san duong nap o ca PC lan APK."""
 
+    def setUp(self):
+        # KHONG dung file cache THAT cua may: bot dang chay ghi de no vai lan mot giay (do 06/09,
+        # 90 acc), ban ghi cua test bi xoa giua chung -> ba bai nay do bat thuong ma khong lien
+        # quan gi den code. Test phai chay tren file rieng.
+        import tempfile, bot.client as _C
+        self._d = tempfile.mkdtemp()
+        self._goc = _C._skill_cache_path
+        _C._skill_cache_path = lambda: os.path.join(self._d, "c.json")
+        _C._skill_cache_sig.clear()
+
+    def tearDown(self):
+        import bot.client as _C
+        _C._skill_cache_path = self._goc
+        _C._skill_cache_sig.clear()
+
     def test_ghi_va_doc_lai_duoc(self):
         from bot.client import save_point_cache, load_point_cache
         diem = {"left": 64, "stats": [{"key": "agi", "ten": "AGI", "ma": 30,

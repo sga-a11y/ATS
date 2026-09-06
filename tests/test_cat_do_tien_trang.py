@@ -111,6 +111,16 @@ class TestCatDo(unittest.TestCase):
     def setUp(self):
         self.c = _Gia()
         self.c.bag_slots = {5: [0x7D2B, 40], 9: [0x6A01, 7]}
+        # `cat_do_tien_trang(chon)` co `chon or load_cat_do_items()` -> truyen {} la NO DOC FILE
+        # THAT `cat_do_items.json` cua may dang chay. Bai "chua tick gi" tung XANH chi vi file do
+        # tinh co khong co mon nao danh dau "lay"; user tick 2 mon sang "lay" ngay 06/09 la bai do
+        # (va CHI bai do) tu nhien do - khong lien quan gi den code. Test khong duoc phu thuoc vao
+        # file cau hinh song cua user.
+        self._load_goc = C.load_cat_do_items
+        C.load_cat_do_items = lambda: {}
+
+    def tearDown(self):
+        C.load_cat_do_items = self._load_goc
 
     def test_khong_tick_gi_thi_khong_lam_gi(self):
         kq = self.c.cat_do_tien_trang({})

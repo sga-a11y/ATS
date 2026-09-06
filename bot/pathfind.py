@@ -37,17 +37,33 @@ def _value(grid, width, height, x, y):
     return grid[(x - 1) * height + (y - 1)]
 
 
-def _blocked(grid, width, height, x, y, boat=False):
+def _blocked(grid, width, height, x, y):
+    """O (x,y) co bi CHAN khong - Y HET client, khong hon khong kem.
+
+    `_lua_dec/Logic/Map/MapManager.lua:231`:
+        return bit.band(blocks[x][y], 1) == 1 or bit.band(blocks[x][y], 4) == 4;
+
+    BIT2 = BIEN, VA NO KHONG PHAI CHUONG NGAI. Ca `FindWay.lua` (toan bo ham tim duong cua
+    client, 377 dong) chi goi `IsObstacle` - trong do khong co mot chu sea/boat/water nao.
+    `MapManager.IsSea` chi duoc goi o 3 cho, khong cho nao dinh toi tim duong:
+      - RoleController:3692 / Role.lua:318 -> `SetOnTheSea()` doi hinh nhan vat sang dang thuyen
+      - UIAction.lua:92 -> chan lam dong tac tren bien (`--海上不可做動作`)
+    Tuc: DUNG len o bien thi TU THANH "dang tren thuyen"; do la HE QUA cua viec dung o do, khong
+    phai dieu kien de di toi do. Client di chung mot luoi, bo voi bien nhu nhau.
+
+    Truoc day bot co them che do `boat=True` = "chi di duoc tren nuoc" - HOAN TOAN BIA, va no DAO
+    NGUOC luat (dung tren dat thi coi nhu bi chan). Chang 18000->26000 bat dau o cho cap ben TREN
+    DAT nen tra None ngay tu o xuat phat -> navigate_to mat smart path -> di mu -> lenh move dau
+    tien nhay 2100 don vi -> `di chuyen QUA XA (ma 14)` -> dut ket noi. Ba leader p43/p44/p45 quay
+    vong nhu the ca tieng sang 06/09 (58/58 lan ma 14 deu ngay sau `qua cong idx=1 -> map 18000`).
+    """
     value = _value(grid, width, height, x, y)
     if value is None:
         return True
-    if boat:
-        # THUYEN: chi di duoc tren NUOC (bit2). Dat (val 0) va tuong = chan.
-        return value & 2 != 2
     return value & 1 == 1 or value & 4 == 4
 
 
-def is_line_clear(grid, width, height, start, target, boat=False):
+def is_line_clear(grid, width, height, start, target):
     """Port MapManager.IsLineWay: kiem tra ca ceil/floor sat hai mep duong."""
     sx, sy = start
     tx, ty = target
@@ -55,31 +71,31 @@ def is_line_clear(grid, width, height, start, target, boat=False):
     vy = -1 if sy >= ty else 1
     dx, dy = abs(sx - tx), abs(sy - ty)
     if dx == 0 and dy == 0:
-        return not _blocked(grid, width, height, sx, sy, boat)
+        return not _blocked(grid, width, height, sx, sy)
     slope = dy / (dx + 0.01) if dx >= dy else dx / (dy + 0.01)
     if dx >= dy:
         for i in range(1, dx + 1):
             x = sx + i * vx
             for y in (sy + math.ceil(i * slope * vy), sy + math.floor(i * slope * vy)):
-                if _blocked(grid, width, height, x, y, boat):
+                if _blocked(grid, width, height, x, y):
                     return False
     else:
         for i in range(1, dy + 1):
             y = sy + i * vy
             for x in (sx + math.ceil(i * slope * vx), sx + math.floor(i * slope * vx)):
-                if _blocked(grid, width, height, x, y, boat):
+                if _blocked(grid, width, height, x, y):
                     return False
     return True
 
 
-def _empty_target(grid, width, height, target, max_radius=30, boat=False):
+def _empty_target(grid, width, height, target, max_radius=30):
     x, y = target
-    if not _blocked(grid, width, height, x, y, boat):
+    if not _blocked(grid, width, height, x, y):
         return target
     # Thu tu giong MapManager.GetNearEmpty: tren, duoi, trai, phai, bon goc.
     for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0),
                    (-1, -1), (-1, 1), (1, -1), (1, 1)):
-        if not _blocked(grid, width, height, x + dx, y + dy, boat):
+        if not _blocked(grid, width, height, x + dx, y + dy):
             return x + dx, y + dy
     # Cong o BIEN map (vd ben thuyen 15000 door2 @[2440,20]) co center nam tren tuong/mep,
     # 8 o ke deu chan -> vong ra xa hon (spiral) tim o dung-duoc gan nhat. Khong co -> None.
@@ -91,7 +107,7 @@ def _empty_target(grid, width, height, target, max_radius=30, boat=False):
                 if max(abs(dx), abs(dy)) != r:   # chi quet VIEN cua vong r
                     continue
                 nx, ny = x + dx, y + dy
-                if _blocked(grid, width, height, nx, ny, boat):
+                if _blocked(grid, width, height, nx, ny):
                     continue
                 d = dx * dx + dy * dy
                 if best_d is None or d < best_d or (d == best_d and (ny, nx) < (best[1], best[0])):
@@ -101,7 +117,7 @@ def _empty_target(grid, width, height, target, max_radius=30, boat=False):
     return None
 
 
-def _smooth(grid, width, height, path, boat=False):
+def _smooth(grid, width, height, path):
     if len(path) < 3:
         return path
     result = [path[0]]
@@ -109,23 +125,23 @@ def _smooth(grid, width, height, path, boat=False):
     while current < len(path) - 1:
         farthest = current + 1
         for candidate in range(current + 2, len(path)):
-            if is_line_clear(grid, width, height, path[current], path[candidate], boat):
+            if is_line_clear(grid, width, height, path[current], path[candidate]):
                 farthest = candidate
         result.append(path[farthest])
         current = farthest
     return result
 
 
-def find_local_path(grid, width, height, start, target, smooth=True, boat=False):
-    """A* noi-map tren block 1-based, 4 huong. boat=True: chi di tren NUOC (thuyen)."""
-    if _blocked(grid, width, height, *start, boat):
+def find_local_path(grid, width, height, start, target, smooth=True):
+    """A* noi-map tren block 1-based, 4 huong. Mot luoi duy nhat, y het client (xem _blocked)."""
+    if _blocked(grid, width, height, *start):
         return None
-    target = _empty_target(grid, width, height, target, boat=boat)
+    target = _empty_target(grid, width, height, target)
     if target is None:
         return None
     if start == target:
         return [start]
-    if is_line_clear(grid, width, height, start, target, boat):
+    if is_line_clear(grid, width, height, start, target):
         return [start, target]
 
     frontier = [(math.dist(start, target), 0, start)]
@@ -143,7 +159,7 @@ def find_local_path(grid, width, height, start, target, smooth=True, boat=False)
             best_d, best = cd, current
         x, y = current
         for nxt in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
-            if _blocked(grid, width, height, *nxt, boat):
+            if _blocked(grid, width, height, *nxt):
                 continue
             new_cost = cost_so_far[current] + 1
             if nxt not in cost_so_far or new_cost < cost_so_far[nxt]:
@@ -166,7 +182,7 @@ def find_local_path(grid, width, height, start, target, smooth=True, boat=False)
         path.append(current)
         current = came_from[current]
     path.reverse()
-    return _smooth(grid, width, height, path, boat) if smooth else path
+    return _smooth(grid, width, height, path) if smooth else path
 
 
 class GroundMapStore:
@@ -239,13 +255,13 @@ class GroundMapStore:
         left, top = self._world_origin(m)
         return block[0] * 20 - 10 + left, block[1] * 20 - 10 + top
 
-    def reachable_blocks(self, map_id, start, boat=False):
+    def reachable_blocks(self, map_id, start):
         m = self.get(map_id)
         if m is None:
             return set()
         block = self.world_to_block(map_id, start)
         block = _empty_target(
-            m["grid"], m["grid_w"], m["grid_h"], block, boat=boat
+            m["grid"], m["grid_w"], m["grid_h"], block
         )
         if block is None:
             return set()
@@ -255,7 +271,7 @@ class GroundMapStore:
             x, y = queue.popleft()
             for nxt in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
                 if nxt in found or _blocked(
-                    m["grid"], m["grid_w"], m["grid_h"], *nxt, boat
+                    m["grid"], m["grid_w"], m["grid_h"], *nxt
                 ):
                     continue
                 found.add(nxt)
@@ -291,8 +307,8 @@ class GroundMapStore:
             ordered.extend(self.block_to_world(map_id, selected[key]) for key in keys)
         return ordered
 
-    def nearest_walkable_world(self, map_id, point, reachable_from, boat=False):
-        component = self.reachable_blocks(map_id, reachable_from, boat=boat)
+    def nearest_walkable_world(self, map_id, point, reachable_from):
+        component = self.reachable_blocks(map_id, reachable_from)
         if not component:
             return None
         target = self.world_to_block(map_id, point)
@@ -355,27 +371,27 @@ class GroundMapStore:
             return None
         return f"{zlib.crc32(self.data[offset:offset + size]) & 0xffffffff:08x}"
 
-    def find_world_path(self, map_id, start, target, boat=False):
+    def find_world_path(self, map_id, start, target):
         m = self.get(map_id)
         if m is None:
             return None
         to_block = lambda p: self.world_to_block(map_id, p)
         start_block = to_block(start)
-        if _blocked(m["grid"], m["grid_w"], m["grid_h"], *start_block, boat):
+        if _blocked(m["grid"], m["grid_w"], m["grid_h"], *start_block):
             # Start bi grid danh dau 'blocked' -> player DANG dung o do that (grid collision KHONG
-            # khop passability that: vd o BIEN map, hoac boat start lech vao bo) -> snap ve o di-duoc
+            # khop passability that: vd o BIEN map) -> snap ve o di-duoc
             # gan nhat de co diem bat dau. Thieu buoc nay -> find_local_path None -> route fail
             # (bug that: map 12061 pos (470,1210) block (24,61) bi coi blocked -> ket route, reform vo han).
-            snapped = _empty_target(m["grid"], m["grid_w"], m["grid_h"], start_block, boat=boat)
+            snapped = _empty_target(m["grid"], m["grid_w"], m["grid_h"], start_block)
             if snapped is not None:
                 start_block = snapped
         blocks = find_local_path(m["grid"], m["grid_w"], m["grid_h"],
-                                 start_block, to_block(target), boat=boat)
+                                 start_block, to_block(target))
         if blocks is None:
             return None
         result = [self.block_to_world(map_id, block) for block in blocks]
         target_block = to_block(target)
         if blocks and blocks[-1] == target_block and not _blocked(
-                m["grid"], m["grid_w"], m["grid_h"], *target_block, boat):
+                m["grid"], m["grid_w"], m["grid_h"], *target_block):
             result[-1] = tuple(target)
         return result

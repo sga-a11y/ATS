@@ -457,9 +457,11 @@ def execute_smart_route(client, route, abort=None, flee=True):
                             "phat tu %s", client._label, _i, client.current_map, leg["scene"])
                 client._smart_route_failure = "unexpected_scene"
                 return False
-            # Tren thuyen (sail tren nuoc) o cac leg BIEN [first_sea..last_sea]; ngoai do di bo dat lien.
+            # TIM DUONG khong phan biet bo/bien - y het client (xem pathfind._blocked). `sailing`
+            # chi con de bao _enter_gate biet minh DANG tren thuyen (anh huong chuoi goi qua cong),
+            # KHONG dung de tim duong nua.
             sailing = needs_boat and first_sea <= _i <= last_sea
-            client.navigate_to(*leg["gate_center"], abort=abort, flee=flee, boat=sailing)
+            client.navigate_to(*leg["gate_center"], abort=abort, flee=flee)
             if not client.running or (abort and abort()):
                 client._smart_route_failure = "aborted"
                 return False
@@ -1605,6 +1607,31 @@ _skill_cache_lock = threading.Lock()
 _skill_cache_sig = {}
 
 
+def _ghi_json_an_toan(path, data):
+    """Ghi JSON KIEU NGUYEN TU: ghi ra file tam roi `os.replace` de len.
+
+    `open(path,"w")` CAT TRANG file truoc roi moi ghi -> giua hai buoc do, moi ai doc file deu
+    thay ban CUT DO DANG. Do bang tay 06/09 luc bot dang chay 90 acc: `account_skills_cache.json`
+    nhay 8KB -> 80KB -> 56KB trong vai giay; GUI doc trung luc do la `json.load` nem loi va coi
+    nhu "chua co cache". Sap nguon (hoac tat may) dung luc do thi MAT SACH ca file.
+    `os.replace` la thao tac nguyen tu tren cung o dia: doc gia thay ban CU hoac ban MOI, khong
+    bao gio thay ban do dang.
+    """
+    import json, os
+    tam = "%s.tam%d" % (path, os.getpid())
+    try:
+        with open(tam, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False)
+        os.replace(tam, path)
+        return True
+    except Exception:
+        try:
+            os.remove(tam)
+        except Exception:
+            pass
+        raise
+
+
 def _skill_cache_path():
     # import TUONG DOI nhu _learned_file_path/_load_json_data_file: ban APK khong co package "bot"
     # (cong chan trong tools/sync_apk_python.py bat import tuyet doi 'bot.*').
@@ -1641,8 +1668,7 @@ def save_skill_cache(username, data):
         if isinstance(cu, dict) and cu.get("inn"):
             allc[username]["inn"] = cu["inn"]
         try:
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(allc, fh, ensure_ascii=False)
+            _ghi_json_an_toan(path, allc)
         except Exception as e:
             log.debug("ghi cache skill loi: %s", e)
             return False
@@ -1680,8 +1706,7 @@ def save_inn_cache(username, inn):
         entry["inn_ts"] = int(time.time())
         allc[username] = entry
         try:
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(allc, fh, ensure_ascii=False)
+            _ghi_json_an_toan(path, allc)
         except Exception as e:
             log.debug("ghi cache pet nha tro loi: %s", e)
             return False
@@ -1722,8 +1747,7 @@ def save_point_cache(username, diem):
         entry["point_ts"] = int(time.time())
         allc[username] = entry
         try:
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(allc, fh, ensure_ascii=False)
+            _ghi_json_an_toan(path, allc)
         except Exception as e:
             log.debug("ghi cache bang diem loi: %s", e)
             return False
@@ -1781,8 +1805,7 @@ def save_skill_char_cache(username, du_lieu) -> bool:
         entry["skill_char_ts"] = int(time.time())
         allc[username] = entry
         try:
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(allc, fh, ensure_ascii=False)
+            _ghi_json_an_toan(path, allc)
         except Exception as e:
             log.debug("ghi cache skill nhan vat loi: %s", e)
             return False
@@ -1809,6 +1832,117 @@ def load_skill_char_cache(username):
         return None, 0
     d = entry.get("skill_char")
     return (d if isinstance(d, dict) else None), int(entry.get("skill_char_ts") or 0)
+
+
+def _cache_ghi(username, khoa, du_lieu, moc_ts=True) -> bool:
+    """Ghi MOT khoa vao entry cua acc trong account_skills_cache.json, giu nguyen cac khoa khac.
+
+    Gop lai tu 4 ham `save_*_cache` viet tay giong het nhau. Chi ghi khi noi dung DOI (so chu ky)
+    - cac cho goi deu la duong nong (moi goi tui do la mot lan goi).
+    """
+    import json, os
+    username = str(username or "").strip()
+    if not username or du_lieu is None:
+        return False
+    try:
+        sig = json.dumps(du_lieu, sort_keys=True, ensure_ascii=False)
+    except Exception:
+        return False
+    with _skill_cache_lock:
+        if _skill_cache_sig.get(khoa + ":" + username) == sig:
+            return False
+        path = _skill_cache_path()
+        allc = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    allc = json.load(fh) or {}
+            except Exception:
+                allc = {}
+        entry = allc.get(username)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry[khoa] = du_lieu
+        if moc_ts:
+            entry[khoa + "_ts"] = int(time.time())
+        allc[username] = entry
+        try:
+            _ghi_json_an_toan(path, allc)
+        except Exception as e:
+            log.debug("ghi cache %s loi: %s", khoa, e)
+            return False
+        _skill_cache_sig[khoa + ":" + username] = sig
+        return True
+
+
+def _cache_doc(username, khoa):
+    """(du_lieu, ts) cua MOT khoa; (None, 0) neu chua co."""
+    import json, os
+    username = str(username or "").strip()
+    if not username:
+        return None, 0
+    path = _skill_cache_path()
+    if not os.path.exists(path):
+        return None, 0
+    try:
+        with open(path, encoding="utf-8") as fh:
+            allc = json.load(fh) or {}
+    except Exception:
+        return None, 0
+    entry = allc.get(username)
+    if not isinstance(entry, dict):
+        return None, 0
+    return entry.get(khoa), int(entry.get(khoa + "_ts") or 0)
+
+
+# ---- CACHE TUI DO + TIEN TRANG -----------------------------------------------------------
+# TUI DO: de XEM LAI khi acc da TAT (user 06/09). Ban cache la CHI XEM - moi nut (dung / trang bi
+# / phan giai / bo) phai tat, vi bam theo so cu la mat nham do. Do la ly do truoc day bag_info()
+# tu choi cache han; gio cache nhung khoa nut lai, khong bo canh bao do.
+#
+# TIEN TRANG: de NHO trong kho dang co gi (user 06/09, de mo rong soi lo check ca do trong kho).
+# LUU Y QUAN TRONG: server KHONG BAO GIO tu gui kho. Bot chi biet dung luc no di NPC Trac Quan mo
+# kho (`S:030-001` ca kho luc mo, `S:030-004` tung o khi cat/lay). Dong kho la het - login lai
+# khong co goi nao mang kho ve. Nen cache kho chi moi bang LAN MO KHO GAN NHAT, va acc chua tung
+# mo kho thi COI NHU KHONG CO GI (user chot: khong lam nut "doc lai kho" - ton mot chuyen di).
+def save_bag_cache(username, tui) -> bool:
+    """`tui` = {"slots": {slot: [tid, cnt]}, "cap": int, "used": int}."""
+    return _cache_ghi(username, "bag", tui)
+
+
+def load_bag_cache(username):
+    """(tui, ts) - `tui["slots"]` khoa la CHU (JSON), doi lai int o cho dung."""
+    d, ts = _cache_doc(username, "bag")
+    return (d if isinstance(d, dict) else None), ts
+
+
+def save_bank_cache(username, kho) -> bool:
+    """`kho` = {"slots": {idx: [tid, cnt]}}."""
+    return _cache_ghi(username, "bank", kho)
+
+
+def load_bank_cache(username):
+    d, ts = _cache_doc(username, "bank")
+    return (d if isinstance(d, dict) else None), ts
+
+
+def bank_counts_cache(username) -> dict:
+    """{tid: tong so luong} trong TIEN TRANG theo cache - CUNG HINH DANG voi `c.bag_counts`.
+
+    De soi lo (va bat ky luat "da co chua") cong them nguon thu hai ma khong phai boc lai goi.
+    Acc CHUA TUNG mo kho -> {} = COI NHU KHONG CO GI trong kho (user chot 06/09). Khong co nut
+    "doc lai kho": mo kho ton mot chuyen di Trac Quan, khong bo cong.
+    """
+    kho, _ts = load_bank_cache(username)
+    dem = {}
+    for _idx, val in ((kho or {}).get("slots") or {}).items():
+        try:
+            tid, cnt = int(val[0]), int(val[1])
+        except Exception:
+            continue
+        if tid and cnt > 0:
+            dem[tid] = dem.get(tid, 0) + cnt
+    return dem
 
 
 def load_dac_ky_cache(username) -> set:
@@ -1864,8 +1998,7 @@ def save_dac_ky_cache(username, npc_ids) -> bool:
         entry["dac_ky"] = sorted(cu | moi)
         allc[username] = entry
         try:
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(allc, fh, ensure_ascii=False)
+            _ghi_json_an_toan(path, allc)
         except Exception as e:
             log.debug("ghi cache dac ky loi: %s", e)
             return False
@@ -2785,6 +2918,7 @@ class GameClient:
         self.stop_floor_crawl()   # 2K: bao dung vong leo thap (thieu -> thread con bam tiep,
                                   # co the gui 0x14 06 len socket dang dong)
         self.finish_mob_packet_capture()
+        self._ghi_cache_tui()    # chot lai tui do lan cuoi truoc khi tat (xem _ghi_cache_tui)
         if self.sock:
             self.sock.close()
 
@@ -3881,6 +4015,7 @@ class GameClient:
                 for it, c in self.bag_slots.values():
                     self.bag_counts[it] = self.bag_counts.get(it, 0) + c
                 self._bag_time = time.time()   # moc nhan snapshot tui (cho log_bag_delayed adaptive)
+                self._ghi_cache_tui()   # snapshot DAY (login) - mot trong hai moc ghi cache
         # NHAN/DROP ITEM 1 SLOT: S2C 0x17 sub=0800 (023-008 <bag set item> [slot 1B][item data][showMsg]).
         # Server chi gui SLOT thay doi (khong phai ca tui). Layout id/count giong record snapshot:
         #   [slot][item_id 2B LE][count 4B LE]. CHI log TEN item khi count TANG (nhan duoc) - dung
@@ -4259,6 +4394,7 @@ class GameClient:
                         self.bank_slots[_i] = (_cu[0], _con)
                     else:
                         self.bank_slots.pop(_i, None)
+                    self._ghi_cache_kho()
             # S:030-007 <錢莊操作失敗> +失敗結果(1): 3 = cat that bai, 13 = tien trang DAY.
             # Khong bat thi bot cu ban tiep ca chuc mon vao mot cai kho da day.
             if pkt[7:9] == b"\x07\x00" and len(pkt) >= 10:
@@ -5791,6 +5927,50 @@ class GameClient:
 
     def bag_free_slots(self) -> int:
         return max(0, self.bag_capacity() - len(self.bag_slots))
+
+    def _ghi_cache_tui(self):
+        """Luu tui do ra cache de XEM LAI khi acc tat. CHI ghi o HAI MOC: lúc LOGIN (snapshot day
+        `0x17 sub05`) va luc DONG acc (`close`).
+
+        KHONG ghi trong luc chay (user chot 06/09: "trong luc chay thi chi dung cache tien trang,
+        cache tui do ghi lien tuc cung thua"). Ban cache nay chi de XEM khi acc DA TAT, ma luc do
+        thi ban ghi lan cuoi moi la ban dung - cac ban ghi giua chung khong ai doc toi.
+
+        Vi sao quan trong: du da tiet che 120s, 246 acc van thanh ~20 luot ghi/phut, MOI luot ghi
+        LAI CA FILE. Cache tui chiem 91.5% file (596/651 KB) -> file phinh gap 10 lan va lien tuc o
+        trang thai ghi do dang. Do 06/09: 6/12 lan doc file trung luc dang ghi -> `json.load` hong.
+        """
+        try:
+            return save_bag_cache(self._username, {
+                "slots": {str(int(s)): [int(v[0]), int(v[1])]
+                          for s, v in (self.bag_slots or {}).items() if v and int(v[1]) > 0},
+                "cap": self.bag_capacity(), "used": self.bag_used_slots(),
+                # Luu ca DO DANG MAC + PET MANG THEO: khong co thi ban offline mat hang 6 o trang
+                # bi va mat cac nut chon pet, nhin khac han luc acc chay - user tuong hong.
+                "equip_fit": {str(int(f)): int(t) for f, t in (self.equip_by_fit or {}).items()},
+                "pet_equip_fit": {str(int(w)): {str(int(f)): int(t) for f, t in (m or {}).items()}
+                                  for w, m in (self.pet_equip_by_fit or {}).items()},
+                "pets": [[i, (r[1] if isinstance(r, (tuple, list)) and len(r) > 1 else "")]
+                         for i, r in enumerate(
+                             list(getattr(self.state, "carried_pets", None) or ())[:4], 1)],
+                "pet_slot": int(getattr(self, "active_pet_slot", 0) or 0),
+            })
+        except Exception as e:
+            log.debug("[%s] ghi cache tui do loi (bo qua): %s", self._label, e)
+            return False
+
+
+    def _ghi_cache_kho(self):
+        """Luu tien trang ra cache. Goi moi khi `bank_slots` doi - kho chi mo luc di cat do nen
+        so lan ghi rat it, khong can tiet che."""
+        try:
+            return save_bank_cache(self._username, {
+                "slots": {str(int(i)): [int(v[0]), int(v[1])]
+                          for i, v in (self.bank_slots or {}).items() if v and int(v[1]) > 0},
+            })
+        except Exception as e:
+            log.debug("[%s] ghi cache tien trang loi (bo qua): %s", self._label, e)
+            return False
 
     # --- BO DO (outfit): luu san mot bo, khi can doi CA BO mot lan ---
     # Luu theo ID MON, khong theo o tui: o tui doi lien tuc (ban do, nhat do, sap xep) nen luu o
@@ -12994,7 +13174,7 @@ class GameClient:
             return False
 
     def navigate_to(self, x: int, y: int, moves_needed: int = None, step: float = 1.5,
-                    max_iter: int = 80, flee: bool = True, abort=None, boat: bool = False):
+                    max_iter: int = 80, flee: bool = True, abort=None):
         """Di chuyen toi (x,y) tren map thuong; dinh battle giua duong -> flee=True thi BO CHAY,
         flee=False thi DANH (party da du -> keo ra spot phai danh bat chap, khong flee).
         game DI TUNG BUOC (move_to chi tien 1 doan ngan moi lan) -> diem XA can NHIEU buoc.
@@ -13054,7 +13234,7 @@ class GameClient:
         using_smart_path = False
         store = _ground_store() if self.pos and self.current_map is not None else None
         if store is not None:
-            smart = store.find_world_path(self.current_map, self.pos, (x, y), boat=boat)
+            smart = store.find_world_path(self.current_map, self.pos, (x, y))
             if smart:
                 using_smart_path = True
                 segment = max(20.0, float(getattr(config, "SMART_PATH_SEGMENT", 100)))
@@ -13066,6 +13246,20 @@ class GameClient:
                 step = min(step, float(getattr(config, "SMART_PATH_STEP_WAIT", step)))
                 log.info("[%s] smart path map %s: %s -> (%d,%d), %d waypoint, %d move-point",
                          self._label, self.current_map, self.pos, x, y, len(smart) - 1, len(targets))
+        # CHAN CUOI: khong smart path (khong co Ground.mmg / khong tim ra duong) thi VAN phai chia
+        # doan neu biet minh dang o dau. Truoc day nhanh di mu ban THANG mot lenh toi dich - dich
+        # xa la mot lenh nhay ca nghin don vi -> `di chuyen QUA XA (ma 14)` -> DUT KET NOI, roi
+        # relogin dinh chan toc do dang nhap (ma 90) -> ca party dung cho leader hang tieng.
+        # (P43/P44/P45 sang 06/09: 58 lan ma 14, lan nao cung la mot lenh move nhay ~2100 don vi
+        #  ngay sau khi cap ben map 18000.)
+        # Loi tim duong thi cung chi duoc phep "di sai", KHONG duoc phep lam rot game.
+        if not using_smart_path and self.pos:
+            _seg = max(20.0, float(getattr(config, "SMART_PATH_SEGMENT", 100)))
+            if math.hypot(x - self.pos[0], y - self.pos[1]) > _seg:
+                targets = _split_segment(self.pos, (x, y), _seg)
+                log.info("[%s] khong co smart path map %s: %s -> (%d,%d) -> chia %d buoc "
+                         "(khong ban mot lenh nhay xa = ma 14)",
+                         self._label, self.current_map, self.pos, x, y, len(targets))
         self.flee_mode = flee
         moves = attempts = 0
         previous = self.pos
@@ -14266,6 +14460,9 @@ class GameClient:
                 self.bank_slots[idx] = (tid, cnt)
             else:
                 self.bank_slots.pop(idx, None)
+        # Server KHONG BAO GIO tu gui kho - day la LAN DUY NHAT bot nhin thay no. Ghi cache ngay
+        # de con XEM LAI (va cho soi lo doi chieu) khi acc da tat.
+        self._ghi_cache_kho()
 
     def _on_bank_fail(self, ma: int):
         """S:030-007 <錢莊操作失敗> +失敗結果(1).

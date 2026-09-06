@@ -119,13 +119,51 @@ class TestKenhDichLaTRANG_THAI(unittest.TestCase):
         song = self._song(a1=_C(channel=None), a2=_C(channel=2), a3=_C(channel=2))
         self.assertIsNone(R._dieu_phoi_chot_kenh(self.PARTY, st, song))
 
-    def test_KHONG_dam_vao_vong_bat_tay_dang_chay(self):
-        """Hai co che cung ra lenh doi kenh mot luc la danh nhau."""
+    def test_KHONG_nhuong_vong_bat_tay(self):
+        """Dieu phoi la nguoi quyet - vong sync cu chi la canh tay thi hanh, khong duoc chan."""
         st = R._pstate(self.PARTY)
         st["channel_ready"].set()
         song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
-        self.assertIsNone(R._dieu_phoi_chot_kenh(self.PARTY, st, song))
-        self.assertIsNone(st["kenh_dich"], "phai xoa kenh dich khi vong bat tay tiep quan")
+        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, st, song), 2)
+
+    def test_kenh_bao_DAY_thi_KHONG_chot_lai(self):
+        """P3 06/09: kenh 15 day, batbat vao khong duoc -> chot lai 15 la bat no dam dau mai."""
+        st = R._pstate(self.PARTY)
+        song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
+        R.bao_kenh_day(st, 2, "a1")
+        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, st, song), 4,
+                         "kenh dong nhat da DAY -> phai lay kenh dong nhi")
+
+    def test_moi_kenh_deu_day_thi_tim_kenh_MOI_du_cho_ca_party(self):
+        st = R._pstate(self.PARTY)
+        song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
+        for _u, c in song:
+            c.channels = {2: (20, 20), 4: (20, 20), 7: (19, 20), 9: (5, 20)}
+        R.bao_kenh_day(st, 2, "a1")
+        R.bao_kenh_day(st, 4, "a2")
+        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, st, song), 9,
+                         "kenh 7 chi con 1 cho (can 3) -> phai chon kenh 9")
+
+    def test_bao_day_thi_XOA_kenh_dich_dang_hong(self):
+        st = R._pstate(self.PARTY)
+        st["kenh_dich"] = 15
+        R.bao_kenh_day(st, 15, "batbat")
+        self.assertIsNone(st["kenh_dich"])
+
+    def test_so_den_HET_HAN_thi_thu_lai(self):
+        """Nguoi ra vao lien tuc - cam vinh vien mot kenh la tu bo phi."""
+        st = R._pstate(self.PARTY)
+        song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
+        R.bao_kenh_day(st, 2, "a1")
+        st["kenh_day"][2] -= R.KENH_DAY_HAN_SEC + 1
+        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, st, song), 2)
+
+    def test_ve_chung_kenh_thi_XOA_SACH_so_den(self):
+        st = R._pstate(self.PARTY)
+        R.bao_kenh_day(st, 2, "a1")
+        song = self._song(a1=_C(channel=4), a2=_C(channel=4), a3=_C(channel=4))
+        R._dieu_phoi_chot_kenh(self.PARTY, st, song)
+        self.assertEqual(st["kenh_day"], {})
 
     def test_KHONG_cho_ai_bao_cao(self):
         """Doc THANG client, khong dung `channel_map_reports` hay `channel_ready` lam dau vao."""
@@ -151,10 +189,17 @@ class TestAccTuSoiVaoKenhDich(unittest.TestCase):
         khoi = self.src[i:i + 400]
         self.assertIn("not c.in_combat()", khoi, "doi kenh giua tran")
 
-    def test_khong_dam_vao_vong_bat_tay(self):
+    def test_KHONG_bi_vong_bat_tay_chan(self):
         i = self.src.find('_kd = st.get("kenh_dich")')
         khoi = self.src[i:i + 400]
-        self.assertIn('not st["channel_ready"].is_set()', khoi)
+        self.assertNotIn('channel_ready', khoi,
+                         "cong channel_ready = nhuong quyet dinh cho vong bat tay")
+
+    def test_vao_kenh_DAY_thi_ghi_so_den_roi_DI_LUON(self):
+        i = self.src.find('_kd = st.get("kenh_dich")')
+        khoi = self.src[i:i + 800]
+        self.assertIn("bao_kenh_day", khoi)
+        self.assertNotIn("while", khoi, "do lai cho leader pick lai = bug P3")
 
     def test_APK_giong_PC(self):
         apk = _doc("android", "app", "src", "main", "python", "train_bot", "run_party_digioi.py")

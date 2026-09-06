@@ -2869,6 +2869,74 @@ class SkillDialog(tk.Toplevel):
         self.destroy()
 
 
+# Tab thu 5 cua tui do. KHONG them vao `_BAG.TAB_NAMES`: bang do la luat PHAN LOAI ITEM cua
+# client (matches_tab), tien trang khong phai mot loai item ma la mot cai KHO khac.
+TAB_TIEN_TRANG = 5
+
+
+def _moc_ngan(ts):
+    """'14:07 hôm nay' / '03/09 14:07' / 'chưa có' - de user biet anh chup cu bao lau."""
+    import datetime
+    if not ts:
+        return "chưa có"
+    t = datetime.datetime.fromtimestamp(int(ts))
+    hn = datetime.date.today()
+    return t.strftime("%H:%M hôm nay") if t.date() == hn else t.strftime("%d/%m %H:%M")
+
+
+class _TuiCache:
+    """Client GIA, chi doc, dung cho tui do khi acc DA TAT.
+
+    Vi sao lam shim thay vi rai `if self._live` khap BagDialog: dialog goi `self.c.<...>` o vai
+    chuc cho: quen mot cho la AttributeError giua chung -> dialog mo ra khong co luoi nao (da tung
+    xay ra, xem chu thich `__init__` nem AttributeError). Shim tra du lieu tinh, va MOI ham GUI
+    LENH deu khong ton tai o day nen co lo goi la loi to ngay tai cho, khong am tham gui sai.
+    """
+    OUTFIT_FITS = ()
+    BANK_RESTRICT_CAM = 32
+
+    def __init__(self, tui):
+        tui = tui or {}
+        self.bag_slots = {int(s): list(v) for s, v in (tui.get("slots") or {}).items()}
+        self.bag_items = {}
+        self.bag_counts = {}
+        for tid, cnt in self.bag_slots.values():
+            self.bag_counts[int(tid)] = self.bag_counts.get(int(tid), 0) + int(cnt)
+        self._cap = int(tui.get("cap") or 0)
+        self.equip_by_fit = {int(f): int(t) for f, t in (tui.get("equip_fit") or {}).items()}
+        self.pet_equip_by_fit = {int(w): {int(f): int(t) for f, t in (m or {}).items()}
+                                 for w, m in (tui.get("pet_equip_fit") or {}).items()}
+        self.equipped_items = [{"id": t} for t in self.equip_by_fit.values()]
+        self.active_pet_slot = int(tui.get("pet_slot") or 0) or None
+        self.state = type("_S", (), {"carried_pets": [(0, nm) for _i, nm in (tui.get("pets") or [])]})()
+
+    # Chi so nhan vat/pet KHONG cache (chung doi theo cap/trang bi, luu ra la de lech). Tra rong
+    # -> dong chi so trong dialog tu bo qua, dung dung "khong biet thi khong doan".
+    def char_stat_full(self, *a, **k):
+        return {}
+
+    def pet_stats(self, *a, **k):
+        return {}
+
+    def bag_capacity(self):
+        return self._cap or len(self.bag_slots)
+
+    def bag_used_slots(self):
+        return len(self.bag_slots)
+
+    def bag_slot_maxed(self):
+        return True          # khong mua duoc slot khi acc tat -> nut Mua slot tu khoa
+
+    def is_fashion_item(self, tid):
+        return False
+
+    def _bag_slot_best(self, tid):
+        for slot, (t, _c) in sorted(self.bag_slots.items()):
+            if int(t) == int(tid):
+                return slot
+        return None
+
+
 class BagDialog(tk.Toplevel):
     """TUI DO cua 1 acc - dung 4 tab nhu game (xem bot/bag_tabs.py, sao logic client).
 
@@ -2891,17 +2959,38 @@ class BagDialog(tk.Toplevel):
 
     def __init__(self, master, username, client):
         super().__init__(master)
-        self.title("Túi đồ - %s" % username)
+        self.title("Túi đồ - %s" % username)   # acc tat -> ghi them moc anh chup, xem duoi
         # Rong = vua LUOI 10 cot voi o moi (59+4 = 63/o -> 630) + thanh cuon + le, va van du cho
         # hang nut o tren (4 tab + so luong + nut Mua slot). Ban cu 980 la tinh theo o 88 -> sau khi
         # thu o con 59 thi du ~350px trong ben phai.
         # CAO giu nguyen 620: o thap di mot nua nen hien duoc GAP DOI so hang trong cung chieu cao.
         # +100px so voi 620 cu: hang 6 o trang bi (~75) + dong chi so (~25) nam TREN luoi tui,
         # khong noi ra thi luoi bi bop con vai hang.
-        self.geometry("%dx720" % ((self.CELL_W + 4) * self.COLS + 60))
+        # Rong = MAX(luoi 10 cot, hang nut o tren). Them tab "Tien trang" (tab thu 5) la hang tren
+        # dai ra ~85px -> nut "Mua slot (240 vang)" bi day ra ngoai va CUT MAT (user bao 06/09,
+        # chi con thay "Mua :"). Do lai bang Tk: 5 tab = 475, so o = 138, nut mua = 114, le = 32
+        # -> can 759. Lay 780 cho du cho chu gia dai hon ("Mua slot (1200 vang)").
+        self.geometry("%dx720" % max((self.CELL_W + 4) * self.COLS + 60, 820))
         self.transient(master); self.grab_set()
         self.username = username
+        # acc TAT -> client = None: doc ban cache, CHI XEM. Chi con MOT nut duoc phep la "Tu cat
+        # vao tien trang" (no ghi thang accounts.json, khong can client song) - user chot 06/09.
+        from bot.client import load_bag_cache, load_bank_cache
+        self._live = client is not None
+        self._cache_ts = 0
+        if not self._live:
+            _tui, self._cache_ts = load_bag_cache(username)
+            client = _TuiCache(_tui)
         self.c = client
+        if not self._live:
+            # Moc anh chup de o TIEU DE: hang nut o tren da chat (5 tab + so o + nut Mua slot),
+            # nhet them chu vao do la cat mat nut Mua slot (bug 06/09). Tieu de thi rong rai va
+            # luon nhin thay.
+            self.title("Túi đồ - %s  (ảnh chụp %s — acc tắt, chỉ xem)"
+                       % (username, _moc_ngan(self._cache_ts)))
+        # Tien trang: LUON tu cache (server khong bao gio tu gui kho - chi thay luc bot mo kho).
+        _kho, self._kho_ts = load_bank_cache(username)
+        self._kho = {int(i): list(v) for i, v in ((_kho or {}).get("slots") or {}).items()}
         # Mo tui do la vao thang tab TRANG BI (user chot 26/08: "do nhoc bot, do nhieu item").
         # Tab "Tat ca" ve toan bo 120-170 o -> ve lai moi lan refresh la nang.
         self._tab = _BAG.EQUIP
@@ -2930,7 +3019,14 @@ class BagDialog(tk.Toplevel):
         # Truoc day danh dau bang state(["disabled"]) -> chu xam nhu bi khoa, user tuong tab do
         # KHONG BAM DUOC (bao 26/08: "t cu nghi la disable co").
         self._tab_var = tk.IntVar(value=self._tab)
-        for tab, name in _BAG.TAB_NAMES:
+        # PACK BEN PHAI TRUOC: Tk chia cho theo THU TU pack, dua nao pack sau thi thieu cho la bi
+        # cat. Truoc day tab pack truoc nen nut "Mua slot" - thu duy nhat KHONG the doan bang mat -
+        # la thu bi cat mat. Gio hang tab chiu thiet neu het cho (van doc duoc vi chu ngan).
+        self.btn_buy = ttk.Button(top, text="Mua slot", command=self._buy_slot)
+        self.btn_buy.pack(side="right")
+        self.lbl_live = ttk.Label(top, text="", foreground="#888")
+        self.lbl_live.pack(side="right", padx=(0, 8))
+        for tab, name in list(_BAG.TAB_NAMES) + [(TAB_TIEN_TRANG, "Tiền trang")]:
             b = tk.Radiobutton(top, text=name, width=11, variable=self._tab_var, value=tab,
                                indicatoron=0, relief="raised", bd=1, padx=4, pady=3,
                                selectcolor="#cfe3ff",          # nen tab dang chon
@@ -2939,10 +3035,6 @@ class BagDialog(tk.Toplevel):
             self._tab_btns[tab] = b
         self.lbl_count = ttk.Label(top, text="", font=("Segoe UI", 10, "bold"))
         self.lbl_count.pack(side="left", padx=(16, 0))
-        self.btn_buy = ttk.Button(top, text="Mua slot", command=self._buy_slot)
-        self.btn_buy.pack(side="right")
-        self.lbl_live = ttk.Label(top, text="", foreground="#888")
-        self.lbl_live.pack(side="right", padx=(0, 8))
 
         # DOI TUONG: "Su dung" va "Trang bi" deu co khai niem NGUOI NHAN (followIndex/武將索引):
         #   dung item  C:023-015 [slot][qty][followIndex][useType]  - CUNG goi, khac followIndex
@@ -3680,6 +3772,15 @@ class BagDialog(tk.Toplevel):
         Item khong co trong gamedata -> khong co "st" -> day xuong cuoi (999) thay vi len dau.
         """
         out = []
+        # TAB TIEN TRANG: kho la mot cai TUI KHAC, khong loc theo loai item (kho khong co tab),
+        # va khong bao gio ghep them do dang mac vao.
+        if self._tab == TAB_TIEN_TRANG:
+            for idx, rec in sorted(self._kho.items()):
+                tid, cnt = int(rec[0]), int(rec[1])
+                if cnt > 0:
+                    out.append((idx, tid, cnt, self._item(tid)))
+            out.sort(key=lambda r: (r[3].get("st", 999), r[1], r[0]))
+            return out
         for slot, rec in sorted(self.c.bag_slots.items()):
             tid, cnt = rec[0], rec[1]
             if not cnt:
@@ -3725,9 +3826,19 @@ class BagDialog(tk.Toplevel):
         else:
             self._sel_slot = None
             self._show_actions(None)
-        used, cap = self.c.bag_used_slots(), self.c.bag_capacity()
-        extra = "" if self._tab == _BAG.ALL else "  (tab này: %d)" % len(rows)
-        self.lbl_count.configure(text="%d/%d%s" % (used, cap, extra))
+        if self._tab == TAB_TIEN_TRANG:
+            self.lbl_count.configure(
+                text="Tiền trang: %d món%s" % (len(rows), self._moc_kho()), foreground="#b45309")
+        else:
+            used, cap = self.c.bag_used_slots(), self.c.bag_capacity()
+            extra = "" if self._tab == _BAG.ALL else "  (tab này: %d)" % len(rows)
+            # Nhan "acc TAT" de o DONG DEM chu khong o `lbl_live`: lbl_live nam ben phai, tranh cho
+            # voi nut "Mua slot" -> nut bi cat. Dong dem ben trai con thua cho.
+            self.lbl_count.configure(
+                text="%d/%d%s%s" % (used, cap, extra,
+                                    "" if self._live else "  ·  chỉ xem"),
+                foreground="#b45309" if not self._live else "")
+
         maxed = False
         try: maxed = self.c.bag_slot_maxed()
         except Exception: pass
@@ -3815,12 +3926,39 @@ class BagDialog(tk.Toplevel):
         self.lbl_desc.configure(text=("%s\n%s" % (_ct, _mt) if (_ct and _mt) else (_ct or _mt)))
         self._show_actions((slot, tid, cnt, d))
 
+    def _moc_kho(self):
+        # NGAN GON: dong dem chi con ~180px sau khi hang tren co 5 tab (xem geometry).
+        if not self._kho_ts:
+            return "  ·  chưa mở kho"
+        return "  ·  %s" % _moc_ngan(self._kho_ts)
+
     def _show_actions(self, sel):
         for w in self.act_fr.winfo_children():
             w.destroy()
         if not sel:
             return
         slot, tid, cnt, d = sel
+        # TIEN TRANG: chi xem. Khong co lenh nao cua UI tac dong vao kho, va mon trong kho khong
+        # nam trong tui nen "tu cat" cung vo nghia.
+        if self._tab == TAB_TIEN_TRANG:
+            ttk.Label(self.act_fr, text="(đồ trong tiền trang — chỉ xem)",
+                      foreground="#888").pack(side="left")
+            return
+        # ACC TAT: ban cache chi de XEM. Bam "phan giai"/"bo" theo so cu la mat nham do - do la ly
+        # do truoc day tui do tu choi cache han. Rieng "Tu cat vao tien trang" van cho: no chi ghi
+        # accounts.json, khong gui goi nao len server (user chot 06/09).
+        if not self._live:
+            _cam_ct = 0
+            try:
+                _cam_ct = int(d.get("restrict", 0) or 0) & 32
+            except Exception:
+                pass
+            if slot >= 0 and not _cam_ct:
+                ttk.Button(self.act_fr, text="Tự cất vào tiền trang", width=22,
+                           command=lambda: self._them_cat_do(tid)).pack(side="left", padx=(0, 6))
+            ttk.Label(self.act_fr, text="acc đang tắt — bật acc lên để dùng/mặc/phân giải",
+                      foreground="#888").pack(side="left")
+            return
         acts = []
         # DO MAC DUOC thi CHI hien "Trang bi", KHONG hien "Su dung": hai lenh KHAC HAN nhau
         # (0x17 sub0b = deo len nguoi / sub0f = tieu hao), gui nham la sai lenh.
@@ -4048,6 +4186,8 @@ class BagDialog(tk.Toplevel):
 
     # ---- mua slot (dung lai luong cua thong bao tui day) ----
     def _price_async(self):
+        if not self._live:
+            return          # acc tat: khong hoi gia duoc, va cung khong mua duoc -> khoi lap thread
         def _work():
             try: pr = self.c.query_bag_slot_price()
             except Exception: pr = None
@@ -4803,18 +4943,23 @@ class PartyConfigFrame(ttk.Frame):
     def _open_bag_dialog(self, row):
         """Tui do cua 1 acc: 4 tab giong game, 10 item/hang, bam item -> cac nut hanh dong.
 
-        CAN acc DANG CHAY: du lieu tui la snapshot song trong client (bag_slots), khong luu ra file.
+        Acc DANG CHAY thi doc snapshot song trong client (bag_slots). Acc TAT thi mo ban CACHE
+        (chi xem, chi con nut "Tu cat vao tien trang") - user 06/09: "tui do la de xem lai khi
+        offline". Tab "Tien trang" luon la cache cua lan bot mo kho gan nhat.
         """
         uname = row["u"].get().strip()
         if not uname:
             messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
         c = ctrl.account_clients.get(uname)
         if c is None or not getattr(c, "bag_slots", None):
-            messagebox.showinfo(
-                "Túi đồ",
-                "Acc '%s' chưa chạy (hoặc chưa nhận được túi đồ).\n"
-                "Bật acc lên rồi mở lại." % uname, parent=self)
-            return
+            from bot.client import load_bag_cache, load_bank_cache
+            if not (load_bag_cache(uname)[0] or load_bank_cache(uname)[0]):
+                messagebox.showinfo(
+                    "Túi đồ",
+                    "Acc '%s' chưa chạy và chưa có ảnh chụp túi đồ nào.\n"
+                    "Bật acc lên một lần rồi mở lại." % uname, parent=self)
+                return
+            c = None      # -> BagDialog tu nap cache, che do CHI XEM
         BagDialog(self, uname, c)
 
     def _open_point_dialog(self, row):

@@ -23,13 +23,6 @@ _ONE_WAY_TARGET_ARRIVALS = {
     (13428, 13000, 2): (2070, 890),
 }
 
-# Gate center nam tren o sea trong Ground.mmg nhung thuc te la cong script/di bo.
-_FORCE_WALK_SEA_GATES = {
-    # Linh Lang -> Truong Sa: map 23521 xuong 23000, path di bo hop le; ep boat=True se fail build.
-    (23521, 23000, 2),
-}
-
-
 def _route_key(dest_map, safe):
     if safe is None:
         return f"{int(dest_map)}:arrival"
@@ -98,14 +91,6 @@ class SmartWorldRouter:
 
     def _cache_fingerprint(self):
         return f"{self.nav.fingerprint}:{_ROUTE_CACHE_VERSION}"
-
-    @staticmethod
-    def _force_walk_sea(edge):
-        return (
-            int(edge["scene"]),
-            int(edge["target_scene"]),
-            int(edge["door"]),
-        ) in _FORCE_WALK_SEA_GATES
 
     def nearest_city(self, dest_map, exclude_city=None, allowed=None):
         """Thanh gan `dest_map` nhat (theo so cong roi den quang duong THAT).
@@ -282,26 +267,16 @@ class SmartWorldRouter:
         current = start
         total_distance = 0.0
         route_legs = []
-        # BOAT: leg co cong o NUOC (is_sea) -> leg bien. Build phai validate leg bien voi boat=True
-        # (di bo khong bang qua nuoc -> find_world_path None -> route bi loai oan). Dong bo Y HET
-        # execute_smart_route: sail cac leg [first_sea..last_sea].
-        first_sea = -1
-        last_sea = -1
-        for j, e in enumerate(legs):
-            gate = self.nav.get_gate(e["scene"], e["door"])
-            if (gate is not None and not self._force_walk_sea(e)
-                    and self.ground.is_sea_world(e["scene"], tuple(gate["center"]))):
-                if first_sea < 0:
-                    first_sea = j
-                last_sea = j
+        # KHONG con phan biet leg bien / leg bo khi TIM DUONG: client dung mot luoi duy nhat,
+        # o bien khong phai chuong ngai (xem pathfind._blocked). Truoc day build validate leg bien
+        # voi boat=True nen chang NUA BO NUA BIEN (cap ben tren dat, cong o duoi nuoc) bi loai oan.
         for index, edge in enumerate(legs):
             gate = self.nav.get_gate(edge["scene"], edge["door"])
             if gate is None:
                 return None
             gate_center = tuple(gate["center"])
-            sailing = first_sea >= 0 and first_sea <= index <= last_sea
             if current is not None:
-                path = self.ground.find_world_path(edge["scene"], current, gate_center, boat=sailing)
+                path = self.ground.find_world_path(edge["scene"], current, gate_center)
                 if path is None:
                     return None
                 total_distance += _path_distance(path)
@@ -316,11 +291,10 @@ class SmartWorldRouter:
                 # TIEP luon -> lay thang tam cong ke tiep (o di duoc gan do) lam diem roi. RUNTIME
                 # navigate_to van pathfind tu pos THAT nen khong sai.
                 if next_gate is not None:
-                    boat_next = first_sea <= index + 1 <= last_sea
                     anchor = tuple(next_gate["center"])
                     ref = next_start if next_start is not None else anchor
                     walk = self.ground.nearest_walkable_world(
-                        edge["target_scene"], ref, anchor, boat=boat_next
+                        edge["target_scene"], ref, anchor
                     )
                     if walk is not None:
                         next_start = walk
