@@ -593,6 +593,39 @@ def _is_party_member(party_idx, entity):
 # party_idx -> set(self_entity cua cac member da join). Tin cay hon doc roster broadcast.
 _PARTY_JOINED = {}
 
+# PHA PHO BAN TO DOI cua tung party: party_idx -> True/False. MOT CHO GHI (dieu phoi), moi acc DOC.
+#
+# Truoc day moi acc tu om `self._phoban_until = time.time() + 600` luc accept loi moi PB, roi
+# `go_to_town()` BAIL khi co con han. PB vo giua chung thi khong ai ha co: leader ha cua rieng no,
+# member nao da roi vong cho `o5_state` thi giu du 10 phut. Ca that 07/09 - 651 dong
+# "dang vao pho ban -> ngung teleport": p53 leader thoat PB luc 02:40:33 ma qv813/814/815 con spam
+# toi 02:45:41 roi bi relogin hang loat; p51 (mh212) ket y het.
+#
+# User chot 07/09: "clear voi giu cai lon gi nua, bot dieu phoi het di". Dung: ca party chay trong
+# MOT tien trinh, dieu phoi BIET pha PB dang chay hay khong - khong can timer tu het han, khong can
+# di ha co tung acc, va khong acc nao phai cho acc khac bao cao (L2).
+_PARTY_PB_PHA = {}
+
+
+def dat_pha_pho_ban(party_idx, dang_chay):
+    """DIEU PHOI bat/tat pha pho ban to doi cua ca party. Chi dieu phoi duoc goi (L1)."""
+    if party_idx is None:
+        return
+    with _PARTY_LOCK:
+        if dang_chay:
+            _PARTY_PB_PHA[party_idx] = True
+        else:
+            _PARTY_PB_PHA.pop(party_idx, None)
+
+
+def dang_pha_pho_ban(party_idx):
+    """Party nay co dang trong pha pho ban to doi khong (moi acc deu doc duoc, khong ai phai hoi)."""
+    if party_idx is None:
+        return False
+    with _PARTY_LOCK:
+        return bool(_PARTY_PB_PHA.get(party_idx))
+
+
 def mark_joined(party_idx, entity):
     """Ghi nhan 1 member DA vao party. Cong khai (khong con `_`) vi coordinator can sua so dem khi
     ROSTER SERVER noi member da o trong doi ma so nho noi la chua - su that thuoc ve server."""
@@ -2138,7 +2171,6 @@ class GameClient:
         self.disconnect_cause = 0    # ma ly do tu S:000-000 (0 = server khong noi ly do)
         self.disconnect_reason = ""  # dien giai ma tren (DISCONNECT_CAUSE)
         self._deliberate_close = False  # True khi CHINH TA dong socket (close/relogin) -> OSError ko phai rot
-        self._phoban_until = 0.0     # < time.time() = dang vao pho ban (theo+danh, khong teleport ve)
         self._gate_transit = False   # True khi dang gui chuoi 0x14 qua cong -> combat KHONG gui 0x32
         self._in_scene_gate = False  # True khi dang qua cong scene-walk -> in_combat() KHONG ha in_battle
         self._gate_choice_pending = False  # server dang CHO CHON trong su kien cong (resultType 6)
@@ -5278,9 +5310,8 @@ class GameClient:
             # Ep giong het LEADER de nhat quan cho MOI truong hop nhan pho ban.
             self.state.quest_mode = True
             log.info("[%s] Nhan moi PHO BAN tu '%s' -> da DONG Y", self._label, name or "?")
-            # Da nhan pho ban -> THEO + DANH (khong flee, khong teleport ve thanh nua trong 10p):
-            # go_to_town se BAIL khi thay co (tranh xung dot 'city mode keo ve' vs 'pho ban keo vao').
-            self._phoban_until = time.time() + 600
+            # Da nhan pho ban -> THEO + DANH: pha PB do DIEU PHOI bat/tat cho ca party
+            # (`dat_pha_pho_ban`), acc khong tu om timer 600s nua - xem `_PARTY_PB_PHA`.
             self.flee_mode = False
             # Tu an CHUAN BI sau 2.5s (cho load scene pho ban)
             threading.Timer(2.5, self._dungeon_ready).start()
@@ -12558,7 +12589,6 @@ class GameClient:
         finally:
             self.state.quest_mode = False
             self._team_dungeon_until = 0.0
-            self._phoban_until = 0.0
 
     def _do_team_dungeon_lv50_inner(self, ready_wait: float = 9.0) -> bool:
         if not self._create_team_dungeon_room(0x000E, 50, ready_wait):
@@ -12694,7 +12724,6 @@ class GameClient:
         finally:
             self.state.quest_mode = False
             self._team_dungeon_until = 0.0
-            self._phoban_until = 0.0
 
     def _do_team_dungeon_lv80_inner(self, ready_wait: float = 9.0) -> bool:
         if not self._create_team_dungeon_room(0x000F, 80, ready_wait):
@@ -12994,7 +13023,6 @@ class GameClient:
             self._active_team_dungeon_level = None
             self.state.quest_mode = False
             self._team_dungeon_until = 0.0
-            self._phoban_until = 0.0
 
     def _do_team_dungeon_lv110_inner(self, ready_wait: float = 9.0) -> bool:
         self.dungeon_complete = False
@@ -13052,7 +13080,6 @@ class GameClient:
             # (vd lan truoc dungeon bi rot giua chung do loi khong luong truoc).
             self.state.quest_mode = False
             self._team_dungeon_until = 0.0
-            self._phoban_until = 0.0
 
     def _do_team_dungeon_lv20_inner(self, n_battles: int = 4, ready_wait: float = 9.0) -> bool:
         ents = [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
@@ -13875,13 +13902,13 @@ class GameClient:
                 return False
             # DANG VAO PHO BAN (vua nhan loi moi) -> NGUNG teleport ve thanh, de bot THEO + DANH
             # pho ban (tranh spam teleport + flee do xung dot voi 'city mode keo ve thanh').
-            if time.time() < getattr(self, "_phoban_until", 0):
+            if dang_pha_pho_ban(self.party_idx):
                 log.info("[%s] go_to_town: dang vao pho ban -> ngung teleport (theo + danh pho ban)",
                          self._label)
                 self.flee_mode = False
                 return False
             # DANG O TRONG PHO BAN TO DOI: server CHAN teleport -> gui bao nhieu lan cung vo ich.
-            # Nhanh `_phoban_until` o tren chi phu luc VUA NHAN LOI MOI, khong phu luc DA O TRONG.
+            # Pha PB o tren chi phu luc VUA NHAN LOI MOI/dang di vao, khong phu luc DA O TRONG.
             # Bug that (party 5, 01:08-01:09): 4 acc trong map PB 62012 spam "Teleport -> city 12061"
             # MOI GIAY, ca log 1388 lan, cho toi khi het deadline moi bao "Chua ve duoc thanh".
             # Phai danh PB xong (hoac bi day ra) roi moi ve thanh duoc -> tra False cho caller lo.

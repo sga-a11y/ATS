@@ -492,7 +492,6 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game = _new_game()
         game.state = BattleState()
         game._team_dungeon_until = 10.0
-        game._phoban_until = 10.0
 
         with mock.patch.object(game, "_do_team_dungeon_lv110_inner", return_value=False):
             self.assertFalse(game.do_team_dungeon_lv110())
@@ -500,7 +499,8 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertIsNone(game._active_team_dungeon_level)
         self.assertFalse(game.state.quest_mode)
         self.assertEqual(game._team_dungeon_until, 0.0)
-        self.assertEqual(game._phoban_until, 0.0)
+        # `_phoban_until` da bo (07/09): pha PB gio do DIEU PHOI giu cho CA party -
+        # xem tests/test_pho_ban_vo_ha_co_ca_party.py.
 
     def test_stage_runs_captured_actions_then_waits_for_explicit_end(self):
         game = _new_game()

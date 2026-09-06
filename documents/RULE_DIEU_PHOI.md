@@ -73,8 +73,49 @@ chỉ được phát sinh trong luồng điều phối. Luồng acc **thi hành*
 > Vi phạm thật: `_on_crawl_done` tự bấm `event_exit_now` → leader rớt mạng ở tầng 5 thành "2K đã
 > xong" → kéo cả 5 acc đi bộ ngược 8 tầng rồi tắt game (p12, 13:50).
 
+> Vi phạm thật (07/09, giết hai party trong một đêm): `resync_gen` có **bốn** chỗ bump, ba trong
+> số đó là **leader tự quyết** — và chỉ chỗ của điều phối mới có cooldown + chốt *"người khác vừa
+> bump thì im"*. Leader bắn thẳng, không chốt gì, nên nó đập chính cái party đang gom dở:
+>
+> ```
+> p9   02:33:30  PARTY: c0edf0a0 vao doi -> roster 3 nguoi
+>      02:33:30  PARTY: loi moi -> DONG Y (lubbay)
+>      02:33:50  (LEADER) Di Gioi moi 24s chua du party (2/4) -> giai tan + sync lai kenh
+>      02:33:55..57  3 member  Roi/giai tan party cu
+> p11  02:10:32  PARTY-JOINED: 3 -> 0 (nguoi ghi=LEADER)
+>      02:10:32  PARTY: loi moi -> DONG Y (luumuoi)      <- member đang vào NGAY lúc đó
+>      02:10:33  (LEADER) sync kenh/map OK: 5/5 acc o map 49942
+>      02:13..02:21  "chua du member (1/4) -> MOI LAI" mỗi phút    <- 11 PHÚT chết
+> ```
+>
+> Leader còn đếm **trễ hơn roster server** (`2/4` trong khi roster đã 3 người) nên nó đập cả party
+> thật sự đang đủ dần. Đã bỏ: leader chỉ mời tiếp, điều phối quyết có đồng bộ hay không.
+
 **Kiểm:** một cờ quyết định chỉ được `set()` ở **đúng một** chỗ, và chỗ đó phải nằm trong hàm của
-điều phối.
+điều phối. `tests/test_leader_khong_tu_dap_party.py` đếm số chỗ bump `resync_gen` — phải bằng 1.
+
+### L1b — Cấm cờ TỰ HẾT HẠN thay cho trạng thái thật
+
+Không đặt `x_until = now + N` rồi coi hết hạn là "xong". Trạng thái cấp party phải là **một ô, một
+chỗ ghi (điều phối), mọi acc đọc**. Timer per-acc luôn lệch với sự thật, và khi việc kết thúc sớm
+thì phải đi hạ cờ từng acc — sót một acc là nó kẹt tới hết hạn.
+
+> Vi phạm thật (07/09, p51 + p53): mỗi acc tự ôm `_phoban_until = now + 600` lúc accept lời mời
+> phó bản; `go_to_town()` bail khi cờ còn hạn. Phó bản vỡ vì thiếu người thì leader hạ cờ của
+> riêng nó, member nào đã rời vòng chờ `o5_state` thì ôm đủ 10 phút:
+>
+> ```
+> 02:40:32 [vumhai] (LEADER) roster phong pho ban chi 3/4 member sau 8.3s -> HUY danh
+> 02:40:33 [vumhai] -> da ra khoi pho ban (map 62002 -> 12001)
+> 02:40:39..02:45:41  qv813/qv814/qv815 spam "dang vao pho ban -> ngung teleport"
+> 02:45:46  RECONNECT: relogin HANG LOAT (ca party bi ep)
+> ```
+>
+> Cả log **651 dòng** như vậy. Đã thay bằng `_PARTY_PB_PHA[pidx]`: điều phối `dat_pha_pho_ban()`
+> bật khi vào pha, tắt trong `finally` — xong/thiếu người/dis/ngoại lệ đều một đường ra.
+
+**Kiểm:** grep `_until = time.time() +` ở trạng thái cấp party. Có là sai, trừ khi nó là *hạn chót
+kỹ thuật* (deadline chờ server trả lời), không phải *trạng thái của party*.
 
 ### L2 — Đọc thẳng, cấm báo cáo
 
@@ -229,10 +270,14 @@ Không trả lời được câu nào thì **chưa được viết**.
 | Kết luận "xong/thua/thôi" trong khi đang thiếu người | **L0** |
 | Lệnh làm tan đội mà không có bước lập lại | **L0**, L5 |
 | Ghi cờ "nợ"/"đã báo" trong khi đọc thẳng client là ra | L2 |
+| Leader tự `leave_party()` / xoá danh sách đã-join giữa vòng mời | L1, **L0** |
+| `x_until = now + N` làm trạng thái cấp party | L1b |
+| Việc kết thúc mà phải đi hạ cờ từng acc | L1b, L2 |
 
 ## Được ép bằng test
 
-`tests/test_rule_dieu_phoi.py` bắt các vi phạm kiểm được bằng máy. Test đỏ ở đó nghĩa là **luật bị
+`tests/test_rule_dieu_phoi.py` bắt các vi phạm kiểm được bằng máy; `test_leader_khong_tu_dap_party.py`
+(L1) và `test_pho_ban_vo_ha_co_ca_party.py` (L1b) neo hai ca ở trên. Test đỏ ở đó nghĩa là **luật bị
 phá**, không phải "test cũ neo sai" — sửa code, đừng sửa test.
 
 Phần còn lại (L3, L4, L5, L7, L11, L12) phải tự soi khi review, dùng bảng "Cấm" ở trên.

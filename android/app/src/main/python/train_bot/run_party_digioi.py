@@ -30,7 +30,7 @@ from .client import (ATTR_KEY_TO_CODE, ATTR_CODE_TO_TEN, ATTR_KINDS,
                         GameClient, check_duplicate_accounts, joined_member_count, is_joined,
                         is_strategist, reset_party_joined, unmark_joined, mark_joined,
                         set_account_activity, get_account_activity, get_account_task,
-                        in_instance_map,
+                        in_instance_map, dat_pha_pho_ban, dang_pha_pho_ban,
                         DISCONNECT_RATE_LIMIT, TEAM_DUNGEON_MAPS)
 
 _lvl = logging.DEBUG if os.environ.get("DEBUG") else logging.INFO
@@ -4012,8 +4012,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if _tinh == "lech_kenh":
                 log.warning("[%s] (%s) %s: ca party DA o map train %s nhung LECH KENH -> chi sync "
                             "kenh tai cho, KHONG ve thanh", label, role, ly_do or "dong bo", sc)
-                with st["lock"]:
-                    st["resync_gen"] += 1
+                # KHONG bump `resync_gen` o day: day la acc TU QUYET bat ca party roi doi. Ca lech
+                # kenh nay DIEU PHOI da phu (`VIEC_DONG_BO` -> `resync_gen` o `_dieu_phoi_gom`),
+                # va no co cooldown + chot "nguoi khac vua bump thi im".
                 if not do_channel_sync():
                     # Sync kenh CHUA XONG (co acc chua sang duoc, vd kenh vua day) -> KHONG duoc
                     # moi party: moi luc dang lech kenh la loi moi khong toi noi, party mai khong
@@ -4790,6 +4791,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # MOI toi khi DU PARTY join (khong gioi han 6 lan): member da san sang, invite se toi.
                 _t0 = time.time()
                 _resync_t0 = time.time()
+                _resync_log_luc = 0.0   # chan spam log "moi ... chua du party" moi vong
                 while not _dg_solo_bail and joined_member_count(pidx) < st["n_members"]:
                     if _stopped(): st["stop_leader_done"].set(); c.close(); return
                     if not c.running: c.close(); return
@@ -4836,25 +4838,28 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         break
                     _joined_now = joined_member_count(pidx)
                     _invite_elapsed = time.time() - _resync_t0
+                    # LEADER KHONG TU QUYET GIAI TAN PARTY - xem `_phat_lenh_dong_bo`.
+                    # Truoc day o day leader tu `leave_party()` + `reset_party_joined()` +
+                    # `resync_gen += 1` khi moi 20s chua du. No dap chinh cai party dang gom dof:
+                    #   p9  02:33:30  PARTY: c0edf0a0 vao doi -> roster 3 nguoi
+                    #       02:33:30  PARTY: loi moi -> DONG Y (lubbay)
+                    #       02:33:50  (LEADER) moi 24s chua du party (2/4) -> giai tan
+                    #       02:33:55..57  3 member Roi/giai tan party cu
+                    #   p11 02:10:32  PARTY-JOINED: 3 -> 0 (nguoi ghi=LEADER)
+                    #       02:10:33  (LEADER) sync kenh/map OK: 5/5 acc o map 49942
+                    #       02:10:33..34  4 member roi party -> 11 phut moi gom lai duoc
+                    # Leader con dem TRE hon roster server ("2/4" trong khi roster da 3 nguoi) nen
+                    # no dap ca party that su dang du dan. Gio chi DIEU PHOI duoc phat lenh dong
+                    # bo - no co cooldown va chot "nguoi khac vua bump thi im", leader thi ban
+                    # thang khong chot gi.
                     if _should_resync_incomplete_digioi_party(
                             is_digioi, digioi_solo, _joined_now,
                             st["n_members"], _invite_elapsed):
-                        log.warning("[%s] (LEADER) Di Gioi moi %.0fs chua du party (%d/%d) -> "
-                                    "giai tan + sync lai kenh + moi lai", label,
-                                    _invite_elapsed, _joined_now, st["n_members"])
-                        c.flee_mode = True
-                        c.leave_party(); reset_party_joined(pidx)
-                        st["invited"].clear()
-                        # BAO MEMBER TRUOC roi moi sync. Truoc day do_channel_sync() dung TRUOC
-                        # resync_gen += 1: leader dung cho member bao cao map trong khi member
-                        # (dang o keepalive) CHUA HE biet co vong sync moi -> khong ai bao ->
-                        # TIMEOUT 60s (1/5) -> lap vo tan (bug that 17:25-17:31).
-                        with st["lock"]:
-                            st["resync_gen"] += 1
-                        do_channel_sync()
-                        st["invited"].set()
-                        _resync_t0 = time.time(); _t0 = time.time()
-                        continue
+                        if time.time() - _resync_log_luc > 30.0:
+                            _resync_log_luc = time.time()
+                            log.info("[%s] (LEADER) Di Gioi moi %.0fs chua du party (%d/%d) -> "
+                                     "MOI TIEP, de dieu phoi quyet co dong bo hay khong",
+                                     label, _invite_elapsed, _joined_now, st["n_members"])
                     if _should_reform_incomplete_party(
                             train_on_map, _joined_now, st["n_members"], _invite_elapsed):
                         # Ca party dang dung san o bai train -> xu ly tai cho, khong ve thanh.
@@ -4878,21 +4883,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         )
                         _resync_t0 = time.time(); _t0 = time.time()
                         continue
-                    # MOI 60s van chua du party -> member co the da troi sang kenh khac (invite khong
-                    # toi) -> GIAI TAN party + SYNC KENH lai (keo ca party ve cung kenh) + MOI lai.
-                    # Member trong keepalive theo doi resync_gen -> cung roi party + sync kenh theo.
+                    # MOI 60s van chua du party: KHONG tu giai tan nua (giong nhanh Di Gioi o tren).
+                    # Member troi kenh la viec cua DIEU PHOI - no thay lech kenh thi phat lenh dong
+                    # bo, va no co cooldown de khong dap party dang gom do.
                     if event_party_mode and time.time() - _resync_t0 > 60:
-                        log.warning("[%s] (LEADER) moi 60s chua du party (%d/%d) -> GIAI TAN + sync "
-                                    "kenh + moi lai", label, joined_member_count(pidx), st["n_members"])
-                        c.leave_party(); reset_party_joined(pidx)
-                        st["invited"].clear()
-                        # BAO MEMBER TRUOC roi moi sync (xem chu thich nhanh Di Gioi): dat
-                        # resync_gen SAU do_channel_sync la leader cho mot minh, khong ai bao cao.
-                        with st["lock"]: st["resync_gen"] += 1   # bao member cung roi party + sync kenh
-                        do_channel_sync()               # picker: chon kenh lai + set channel_ready
-                        st["invited"].set()
-                        _resync_t0 = time.time(); _t0 = time.time()
-                        continue
+                        if time.time() - _resync_log_luc > 30.0:
+                            _resync_log_luc = time.time()
+                            log.info("[%s] (LEADER) moi 60s chua du party (%d/%d) -> MOI TIEP, de "
+                                     "dieu phoi quyet co dong bo hay khong",
+                                     label, joined_member_count(pidx), st["n_members"])
                     _invite_party_participants(c, train_on_map, gap=1.0)
                     st["invited"].set()
                     time.sleep(4)
@@ -5998,10 +5997,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 #   14:18:59 member: KHONG o party nao
                 # Sau do leader ket trong vong leo thap, moi phut in "chua du member (0/4)" ma
                 # khong lap lai duoc doi -> danh mot minh 3 phut/tran -> ket o cong -> ra khoi thap.
-                if (is_joined(pidx, c.self_entity)
-                        and joined_member_count(pidx) >= st["n_members"]):
-                    log.info("[%s] (member) co RE-SYNC nhung party DA DU %d/%d -> BO QUA "
-                             "(roi party luc nay la tu pha cai vua lap)",
+                # Dieu kien CU con vet "party DA DU" - qua hep. p9/p11 (07/09) chet vi party moi
+                # 3-4/5: chua du nen guard truot, ma 3 dua DA VAO bi loi ra theo -> gom lai tu dau
+                # (p11 mat 11 phut). Muc dich cua resync la cuu ca "leader moi mai khong ai vao";
+                # voi dua DA VAO thi lenh do vo nghia, roi ra la tu pha - du hay chua du cung vay.
+                # Dua CHUA vao moi la doi tuong that: no roi party ma + sync kenh roi cho moi lai.
+                if is_joined(pidx, c.self_entity):
+                    log.info("[%s] (member) co RE-SYNC nhung MINH DA O TRONG PARTY (%d/%d) -> BO "
+                             "QUA (roi party luc nay la tu pha cai vua lap)",
                              label, joined_member_count(pidx), st["n_members"])
                     continue
                 log.info("[%s] (member) leader RE-SYNC party -> roi party + sync kenh lai", label)
@@ -6793,12 +6796,12 @@ def party_accounts(pidx):
 
 
 def _clear_o5_client_flags(c):
+    """Ha co RIENG cua mot acc (dang o trong instance / quest_mode). Pha PB cua CA PARTY thi khong
+    nam o day nua - no do dieu phoi giu (`dat_pha_pho_ban`, xem `bot/client._PARTY_PB_PHA`)."""
     active = (
-        time.time() < getattr(c, "_phoban_until", 0.0)
-        or time.time() < getattr(c, "_team_dungeon_until", 0.0)
+        time.time() < getattr(c, "_team_dungeon_until", 0.0)
         or getattr(c.state, "quest_mode", False)
     )
-    c._phoban_until = 0.0
     c._team_dungeon_until = 0.0
     c.state.quest_mode = False
     return active
@@ -7336,11 +7339,8 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                                 "khong relogin", label)
                     try: c.leave_team_dungeon()
                     except Exception: pass
-                # Leader da xong (thanh cong hay fail deu vay) -> HA NGAY _phoban_until (thay vi
-                # cho het 600s co dinh dat luc accept moi pho ban). Khong ha som -> go_to_town() cua
-                # member van BAIL ("dang vao pho ban -> ngung teleport") ngay sau khi flow rieng
-                # (sync kenh + lap party) goi toi, roi rot vao nhanh "map mismatch -> lam dungeon
-                # roi THOAT" sai cho (member tuong minh dang o pho ban solo o1).
+                # Leader da xong (thanh cong hay fail deu vay) -> pha PB da duoc dieu phoi TAT o
+                # `finally`; day chi ha not co RIENG cua acc nay (quest_mode/instance).
                 _clear_o5_client_flags(c)
                 return
             if not c.in_combat():   # xong 1 tran team dungeon (member auto-danh) -> hoi HP/SP
@@ -7372,6 +7372,10 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
         with st["lock"]:
             st["o5_state"] = "running"   # member biet ma CHO, khong chay tiep
             st["o5_broke"] = False       # reset moi lan danh (co set True o finally neu co dis)
+        # DIEU PHOI bat pha PB cho CA party: trong pha nay khong acc nao teleport ve thanh.
+        # Truoc day moi acc tu om timer 600s luc accept loi moi -> PB vo thi khong ai ha, member
+        # spam "dang vao pho ban -> ngung teleport" hang phut (p51/p53 07/09, 651 dong log).
+        dat_pha_pho_ban(pidx, True)
         _dg0 = st["disc_gen"]            # CASE 3: theo doi co dong doi ROT trong luc danh khong
         try:
             ok = c.do_team_dungeon_lv20()
@@ -7397,6 +7401,12 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 try: c.leave_team_dungeon()
                 except Exception: pass
         finally:
+            # PHA PB KET THUC (xong / thieu nguoi / co dis deu vay) -> tat cho CA party trong MOT
+            # lenh. Khong con canh "leader ha co cua rieng no, member om timer 600s toi het han":
+            # ca that 07/09, 651 dong "dang vao pho ban -> ngung teleport" - p53 leader thoat PB
+            # luc 02:40:33 ma qv813/814/815 con spam toi 02:45:41 roi bi relogin hang loat;
+            # p51 (mh212) ket y het.
+            dat_pha_pho_ban(pidx, False)
             _clear_o5_client_flags(c)
             with st["lock"]:
                 # VO do co dis (chinh leader rot = not c.running, HOAC co member rot = disc_gen/

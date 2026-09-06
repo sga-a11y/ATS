@@ -52,6 +52,10 @@ def _nhanh_resync(src):
 
 
 class TestBoQuaKhiPartyDaDu(unittest.TestCase):
+    """Dieu kien ban dau la "party DA DU moi bo qua" - QUA HEP, xem
+    tests/test_leader_khong_tu_dap_party.py: p9/p11 (07/09) party moi 3-4/5 nen guard truot, ba dua
+    DA VAO bi loi ra theo. Gio chi can `is_joined` (bao trum ca p15 duoi day)."""
+
     def setUp(self):
         self.than = _nhanh_resync(_doc("run_party_digioi.py"))
 
@@ -61,11 +65,10 @@ class TestBoQuaKhiPartyDaDu(unittest.TestCase):
         truoc = self.than[:i]
         self.assertIn("is_joined(pidx, c.self_entity)", truoc,
                       "roi party ma khong xet minh dang o doi nao")
-        self.assertIn("joined_member_count(pidx) >= st[\"n_members\"]", truoc,
-                      "roi party ma khong xet doi da du nguoi chua")
 
-    def test_du_nguoi_thi_CONTINUE_chu_khong_roi(self):
-        i = self.than.find("joined_member_count(pidx) >= st[\"n_members\"]")
+    def test_da_o_trong_party_thi_CONTINUE_chu_khong_roi(self):
+        i = self.than.find("if is_joined(pidx, c.self_entity):")
+        self.assertGreater(i, 0)
         khoi = self.than[i:i + 700]
         self.assertIn("continue", khoi)
         self.assertNotIn("leave_party", khoi[:khoi.find("continue")])
