@@ -146,3 +146,36 @@ Sáu bước thoại không cần code thêm — `_fight_one` đã có `_DIALOG_
 **Còn thiếu**: cổng lên 12935 (door + toạ độ) — phải capture đoạn *thắng xong → cổng hiện → lên
 tầng 12* rồi bổ sung `world_nav.json`. Code đã hỏi lại `_up_gate` sau khi đánh xong nên bổ sung
 dữ liệu là chạy được ngay, không phải sửa code.
+
+
+## Đổi kênh trong tháp = tan đội. Ra lệnh thì phải lập lại đội
+
+Server **cấm đổi kênh khi đang trong đội**: `C:007-000` trả `result=3` *"DANG TO DOI thi khong doi
+khu duoc"*. Nên muốn đổi kênh là **phải rời đội trước** — đó là luật của game, member làm đúng.
+
+Sai nằm ở **người ra lệnh**. Party 5 (06/09) — user: *"p5 leader đi 1 mình"*:
+
+```
+16:34:04  4 member: Doi kenh 2 THAT BAI: khong co khu do de doi (result=2)
+16:34:14  4 member: Doi kenh 2 THAT BAI: DANG TO DOI thi khong doi khu duoc (result=3)
+16:34:14  4 member: -> roi party roi thu lai
+16:34:15  4 member: Doi kenh OK -> 2            ← đổi được, nhưng ĐÃ RA KHỎI ĐỘI
+16:34:26  leader:   Doi kenh OK -> 2
+16:34:53  leader:   qua cong idx=2 -> map 12929  ← đội đã tan, không ai bị kéo theo
+16:35:38  leader:   tang 6 chi danh duoc 0/3 tran
+16:36:01  DIEU PHOI: gom - party dang o 2 MAP khac nhau [12928, 12929]   ← lệnh rơi vào hư không
+```
+
+Lệnh gom lúc 16:36:01 vô dụng vì leader đang kẹt trong luồng `run_floor_crawl`, mà luồng đó
+**không đọc kế hoạch**.
+
+### Hai chỗ đã vá
+
+**1. Điều phối nợ thì phải trả.** Chốt `kenh_dich` → đặt `st["kenh_no_lap_party"]`. Khi cả party
+đã về chung kênh mà đội không còn đủ → `_bump_reform("doi kenh xong -> lap lai party")`. Ra lệnh
+đổi kênh là ra lệnh hai bước, không được bỏ dở bước hai.
+
+**2. Không được lên tầng một mình.** `run_floor_crawl` nhận callback `du_party()`, gọi **ngay
+trước `_enter_gate`** (sau khi đã đánh xong tầng): chưa đủ thì mời lại tại chỗ trong
+`DU_PARTY_TRUOC_CONG_SEC = 60s`; hết hạn vẫn chưa đủ thì **thôi leo** (`break`) để điều phối xử lý.
+Qua cổng một mình là hỏng cả vòng — member bị bỏ lại tầng dưới, leader leo tiếp và đánh không nổi.

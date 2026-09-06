@@ -2132,6 +2132,7 @@ class GameClient:
         self._chan_switch_event = threading.Event()
         self._chan_switch_target = None
         self._chan_switch_result = None
+        self._chan_switch_luc = 0.0     # luc nhan ma tren (dieu phoi doc de biet con moi khong)
         self._channel_scene_generation = 0
         self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
         self.disconnect_cause = 0    # ma ly do tu S:000-000 (0 = server khong noi ly do)
@@ -11581,6 +11582,10 @@ class GameClient:
         result = pkt[9]
         target = self._chan_switch_target
         self._chan_switch_result = result
+        # MOC de DIEU PHOI biet ma nay con MOI hay da cu. Dieu phoi doc THANG ba truong nay
+        # (`_chan_switch_result`, `_chan_switch_target`, `_chan_switch_luc`) cua tung client thay
+        # vi bat acc "bao cao" len - ca 5 acc nam trong MOT tien trinh, khong co gi phai bao.
+        self._chan_switch_luc = time.time()
         if result == 0:
             if target:
                 self._note_current_channel(target, "0x07 ack")
@@ -15250,7 +15255,8 @@ class GameClient:
             log.warning("[%s] gom doi: KHONG di bo duoc %s -> %s", self._label, cur, dest)
         return ok
 
-    def start_floor_crawl(self, ev, on_done=None, heal_party=None, lost_check=None) -> bool:
+    def start_floor_crawl(self, ev, on_done=None, heal_party=None, lost_check=None,
+                          du_party=None) -> bool:
         """Bat dau leo thap (event kieu floor_crawl, vd Nhi Kieu). Chay thread rieng nhu npc40."""
         if getattr(self, "_floor_crawl_started", False):
             return False
@@ -15259,7 +15265,8 @@ class GameClient:
         self._floor_crawl_stop = threading.Event()
         self._floor_crawl_thread = threading.Thread(
             target=floor_crawl.run_floor_crawl,
-            args=(self, ev, self._floor_crawl_stop, on_done, heal_party, lost_check),
+            args=(self, ev, self._floor_crawl_stop, on_done, heal_party, lost_check,
+                  du_party),
             daemon=True,
             name="floorcrawl-%s" % (self._label or self._username),
         )

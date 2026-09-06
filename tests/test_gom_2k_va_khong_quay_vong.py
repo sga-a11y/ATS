@@ -154,6 +154,12 @@ class TestTangGom2K(unittest.TestCase):
         song = [("a1", _C(12925)), ("a2", _C(12003))]
         self.assertEqual(R._tang_gom_2k(self.PARTY, song), 12922)
 
+    def test_KHONG_AI_trong_thap_thi_tra_None(self):
+        """Cho goi dung ket qua nay de biet "party co dang trong thap khong" (chan lenh doi kenh).
+        Tra `dest_map` khi ca party dang o thanh = chan nham doi kenh o moi noi."""
+        song = [("a1", _C(12001)), ("a2", _C(12001))]
+        self.assertIsNone(R._tang_gom_2k(self.PARTY, song))
+
     def test_event_khac_thi_khong_dinh_toi(self):
         R.config.event_hom_nay = lambda key, now=None: {"dest_map": 10991}
         self.assertIsNone(R._tang_gom_2k(self.PARTY, [("a1", _C(10991))]))

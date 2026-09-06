@@ -1539,7 +1539,6 @@ def _pstate(pidx):
                               # thanh dich da ra lenh DI MAP (mode city, thanh chua mo tele) - de
                               # khong acc nao ra lenh lai lien tuc. Xem `_ra_lenh_di_bo_ve_thanh`.
                               "route_ve_thanh_dest": None,
-                              "kenh_day": {},        # {kenh: luc bao DAY} - dieu phoi tranh chot lai
                               "kenh_dich_luc": 0.0,  # luc chot kenh dich (giu KENH_DICH_KIEN_NHAN_SEC)
                               "kenh_hong": None,     # kenh ma ca party "cung so" ma khong thay nhau -> picker phai TRANH
                               # Kenh USER TU CHON bang lenh tay: picker KHONG duoc tu chon kenh khac
@@ -3121,12 +3120,10 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # Vao kenh khong duoc: GHI SO DEN roi THOAT ngay - dieu phoi se chot kenh khac
                     # o nhip sau. TUYET DOI khong do lai cho leader "pick lai": leader co the dang
                     # ket o vong cho member, va cho no ready la chinh minh (P3 06/09, ket 1 tieng).
-                    _kq = getattr(c, "_chan_switch_result", None)
                     log.warning("[%s] (member) khong doi duoc sang kenh chung %s (result=%s) -> "
-                                "de DIEU PHOI chot kenh khac", label, ch, _kq)
-                    if _kq == 4:
-                        bao_kenh_day(st, ch, label)
-                    return False
+                                "de DIEU PHOI chot kenh khac", label, ch,
+                                getattr(c, "_chan_switch_result", None))
+                    return False      # dieu phoi DOC THANG `_chan_switch_result`, khoi bao cao
                 time.sleep(2)
 
         def _do_reform(to_spot=True):
@@ -4972,9 +4969,43 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         st["event_battle_active"] = True
                     c.flee_mode = False
                     _set_party_quest_mode(pidx, True, label)
+                    def _du_party_2k():
+                        """Truoc khi LEN TANG: party con du khong? Chua du thi MOI LAI ngay tai
+                        cho, khong du trong han thi THOI leo (de dieu phoi xu ly).
+
+                        Party tan giua chung la chuyen BINH THUONG trong thap: server CAM doi kenh
+                        khi dang trong doi (`result=3`), nen muon doi kenh la PHAI roi doi truoc.
+                        Party 5 (06/09):
+                            16:34:14  4 member: Doi kenh 2 THAT BAI: DANG TO DOI (result=3)
+                            16:34:14  4 member: -> roi party roi thu lai
+                            16:34:15  4 member: Doi kenh OK -> 2      <- da ra khoi doi
+                            16:34:53  leader:   qua cong idx=2 -> map 12929   <- DI MOT MINH
+                            16:35:38  leader:   tang 6 chi danh duoc 0/3 tran
+                        Ra lenh doi kenh ma khong lap lai doi la loi cua NGUOI RA LENH.
+                        """
+                        if joined_member_count(pidx) >= st["n_members"]:
+                            return True
+                        log.warning("[%s] (LEADER) 2K: party chi con %d/%d truoc khi len tang -> "
+                                    "MOI LAI truoc khi di", label,
+                                    joined_member_count(pidx), st["n_members"])
+                        _t0 = time.time()
+                        while (c.running and not _stopped()
+                               and time.time() - _t0 < DU_PARTY_TRUOC_CONG_SEC):
+                            if joined_member_count(pidx) >= st["n_members"]:
+                                log.info("[%s] (LEADER) 2K: da du %d/%d -> len tang tiep", label,
+                                         joined_member_count(pidx), st["n_members"])
+                                return True
+                            try:
+                                _invite_party_participants(c, True, gap=1.0)
+                            except Exception:
+                                pass
+                            time.sleep(2)
+                        return joined_member_count(pidx) >= st["n_members"]
+
                     if c.start_floor_crawl(
                             ev, _on_crawl_done, _heal_party_2k,
-                            lambda: _party_left_tower(pidx, ev) or _party_chet_het(pidx)):
+                            lambda: _party_left_tower(pidx, ev) or _party_chet_het(pidx),
+                            _du_party_2k):
                         log.info("[%s] (LEADER) 2K: du party -> bat dau leo thap tu map %s",
                                  label, c.current_map)
                 elif event_party_mode:
@@ -5133,7 +5164,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
 
         # --- Giu song ---
         out_cnt = 0
-        _lan_bam_kenh_leader = 0.0   # 40NPC: lan cuoi member bam theo kenh leader (rate-limit 10s)
         _dg_gp_out_since = None   # moc bat dau ket NGOAI DG lien tuc (ep het gio neu keo dai)
         last_remove = time.time()
         last_retry = time.time()
@@ -5864,19 +5894,23 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # doi") nen khong con cho nao doc kenh nua -> leader dot 60s
             # "sync kenh: 1/5 acc da sang kenh 34, con lai CHUA sang: {...: 39}" roi timeout, mat
             # ca ván 40NPC.
-            if event_party_mode and has_leader and not is_leader:
-                try:
-                    _ch_chon = st.get("channel")
-                    if (_ch_chon and time.time() - _lan_bam_kenh_leader > 10
-                            and c.current_channel != int(_ch_chon)
-                            and not c.in_combat(idle_secs=2.0)):
-                        _lan_bam_kenh_leader = time.time()
-                        log.warning("[%s] (member) 40NPC: leader chon kenh %s, minh dang o %s "
-                                    "-> BAM SANG kenh leader chon", label, _ch_chon,
-                                    c.current_channel)
-                        c.switch_channel(int(_ch_chon))
-                except Exception as e:
-                    log.debug("[%s] (member) bam kenh leader loi (bo qua): %s", label, e)
+            # BO nhanh "member tu bam kenh leader chon" (`st["channel"]`).
+            #
+            # Do la CO CHE THU HAI cung ra lenh doi kenh, chay song song voi `kenh_dich` cua dieu
+            # phoi -> vi pham L1 (chi MOT cho duoc quyet). Hai cai cung ra lenh thi khong ai chiu
+            # trach nhiem hau qua, va hau qua o day la TAN DOI: server cam doi kenh khi dang trong
+            # doi (`result=3`) nen doi kenh = phai roi doi truoc.
+            #
+            # Log that party 5 (06/09, 17:16:26) - leader dang qua cong len tang:
+            #   [thbay] (member) 40NPC: leader chon kenh 2, minh dang o 1 -> BAM SANG kenh leader
+            #   [thbay] Doi kenh 2 THAT BAI: DANG TO DOI thi khong doi khu duoc (result=3)
+            #   [thbay] -> roi party roi thu lai
+            #   [thbay] Roi/giai tan party cu
+            # Ca 4 member roi doi cung luc -> leader leo tiep 12929 -> 12931 -> 12932 -> 12934 MOT
+            # MINH. Dung cai da giet party 5 luc 16:34, chi khac duong vao.
+            #
+            # Gio CHI dieu phoi chot kenh (`st["kenh_dich"]`), va no chiu trach nhiem lap lai doi
+            # sau khi doi xong (L5). Vong keepalive ben duoi da tu soi `kenh_dich`.
             # 2 co "chet ve thanh" cua HOP MAY doi theo PHA: BAT khi train, TAT khi PB/quest/event
             # (chet giua PB ma bi keo ve thanh = vo luot PB, ca party phai lam lai). Ham nay chi
             # GUI KHI THUC SU DOI va khong gui giua tran -> goi moi nhip cho re.
@@ -6080,9 +6114,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 log.info("[%s] (%s) DIEU PHOI chot kenh %s, minh dang o %s -> tu chuyen",
                          label, role, _kd, getattr(c, "current_channel", None))
                 try:
-                    if not c.switch_channel(int(_kd), wait=4.0, retries=1):
-                        if getattr(c, "_chan_switch_result", None) == 4:
-                            bao_kenh_day(st, _kd, label)
+                    # Hong thi thoi - dieu phoi DOC THANG `_chan_switch_result`/`_chan_switch_target`
+                    # cua client nay o nhip sau. Khong bao cao gi len.
+                    c.switch_channel(int(_kd), wait=4.0, retries=1)
                 except Exception as e:
                     log.warning("[%s] loi tu chuyen sang kenh dich %s: %s", label, _kd, e)
             # Hoi mau MOI MODE (train/digioi/city/stand...) - chi can ngoai combat.
@@ -8109,7 +8143,14 @@ def _tang_gom_2k(pidx, song):
             trong.append(m)
         else:
             ngoai += 1
-    if not trong or ngoai:
+    if not trong:
+        # KHONG AI trong thap -> khong co viec "gom tang" nao ca (ca party dang o thanh, dang di
+        # toi, hoac da ra xong). Tra None, dung tra `dest_map`: cho goi dung ket qua nay de biet
+        # "co dang trong thap khong", tra so la chan nham moi thu o moi noi.
+        return None
+    if ngoai:
+        # Co dua trong thap, co dua ngoai -> ve CUA VAO: dua ngoai tele vao binh thuong, dua trong
+        # thap di bo xuong day.
         return int((ev or {}).get("dest_map") or 0) or None
     return min(trong)
 
@@ -8268,10 +8309,9 @@ def _dieu_phoi_chot_kenh(pidx, st, song):
     CHON KENH NAO: kenh dang co NHIEU acc nhat (it phai di chuyen nhat). Khong hoi danh sach
     kenh - khong can, va hoi thi lai roi vao bay "kenh minh dang o trong co ve dong".
 
-    CHON KENH NAO: kenh dang co NHIEU acc nhat (it phai di chuyen nhat) - va cung la kenh CHAC
-    CHAN CON CHO cho nhung dua da dung trong do. Neu co acc bao kenh do DAY (result=4) thi kenh
-    do vao so den `st["kenh_day"]`, dieu phoi bo qua no va chon kenh dong nhi, roi den kenh
-    trong nhat theo danh sach kenh acc nao do vua nhan duoc.
+    CHON KENH NAO: kenh dang co NHIEU acc nhat (it phai di chuyen nhat). Roi DOC THANG ket qua
+    doi kenh cua tung client (`_doc_ket_qua_doi_kenh`) de biet kenh nao vua bao DAY ma tranh, va
+    de biet co phai lap lai party sau khi doi xong khong. Khong acc nao phai bao cao gi.
 
     DIEU PHOI LA NGUOI QUYET, khong nhuong ai: khong con nhanh "co vong bat tay chay thi thoi".
     Vong bat tay cu (`do_channel_sync`) gio chi con la CANH TAY thi hanh, khong tu chot kenh.
@@ -8292,9 +8332,41 @@ def _dieu_phoi_chot_kenh(pidx, st, song):
         with st["lock"]:
             st["kenh_dich"] = None           # dang chung kenh -> khong co viec gi
             st["kenh_dich_luc"] = 0.0
-            st["kenh_day"] = {}             # het lech thi xoa so den, lan sau xet lai tu dau
+        # DA CHUNG KENH MA DOI KHONG CON DU -> LAP LAI PARTY.
+        # Server CAM doi kenh khi dang trong doi (`result=3`) nen member buoc phai ROI DOI moi doi
+        # duoc kenh - do la luat game, member lam dung. Ra lenh doi kenh ma khong lam not phan hai
+        # la loi cua NGUOI RA LENH: party 5 (06/09) tan doi luc 16:34:14 vi lenh doi kenh, roi
+        # leader qua cong len tang MOT MINH luc 16:34:53.
+        # KHONG dung co "no": doc THANG roster that (`joined_member_count`) la biet, va biet ca
+        # khi doi tan vi ly do khac.
+        _du = len(song) - 1
+        if _du > 0 and joined_member_count(pidx) < _du:
+            log.info("[party %d] DIEU PHOI: ca party da chung kenh %s nhung doi chi con %d/%d "
+                     "-> LAP LAI PARTY", pidx + 1, next(iter(dem), "?"),
+                     joined_member_count(pidx), _du)
+            with st["lock"]:
+                _bump_reform(st, "chung kenh roi ma doi khong du -> lap lai party")
         return None
-    hong = _kenh_day_con_han(st)
+    # TRONG THAP 2K THI KHONG RA LENH DOI KENH (L11). "Kenh" o day la instanceId cua tang, khong
+    # phai kenh the gioi: server tra `result=2` <khong co khu do> hoac `result=3` <dang to doi>.
+    # Muon cung instance thi phai DI CUNG NHAU QUA CONG, khong phai doi kenh. Ra lenh doi kenh o
+    # day chi lam TAN DOI roi leader di mot minh (party 5, 06/09, hai lan: 16:34 va 17:16).
+    if _tang_gom_2k(pidx, song) is not None:
+        with st["lock"]:
+            st["kenh_dich"] = None
+            st["kenh_dich_luc"] = 0.0
+        return None
+    hong, _ma3, _ma2 = _doc_ket_qua_doi_kenh(song)
+    if _ma2:
+        # `result=2` <沒有該分區> = dang trong INSTANCE cua event (thap 2K): khong co khai niem
+        # "khu" de doi. Ra lenh doi kenh o day la ra lenh SAI LOAI - muon cung instance thi phai
+        # DI CUNG NHAU QUA CONG. Party 5 (06/09) dinh dung cho nay luc 16:34:04.
+        with st["lock"]:
+            st["kenh_dich"] = None
+            st["kenh_dich_luc"] = 0.0
+        log.info("[party %d] DIEU PHOI: server bao KHONG CO KHU do (ma 2) -> dang trong instance "
+                 "event, doi kenh vo nghia -> khong ra lenh doi kenh nua", pidx + 1)
+        return None
     # DA CHOT ROI THI GIU - de nguoi ta THI HANH XONG cai lenh vua ra.
     #
     # Ham nay chay MOI 2 GIAY. Chot lai tu dau moi nhip = acc vua bat dau chuyen sang kenh A thi
@@ -8331,37 +8403,48 @@ def _dieu_phoi_chot_kenh(pidx, st, song):
 # dang danh/dang di duong phai cho xong viec moi chuyen duoc -> cho rong rai.
 KENH_DICH_KIEN_NHAN_SEC = 45.0
 
-KENH_DAY_HAN_SEC = 120.0   # kenh bao DAY thi treo so den bay lau roi cho thu lai (nguoi ra vao)
+# Truoc khi len tang 2K: cho bay lau de moi lai cho du party. Doi kenh xong -> member phai
+# accept loi moi; 4 dua thi vai giay. Cho rong rai vi ho co the dang doi kenh do.
+DU_PARTY_TRUOC_CONG_SEC = 60.0
+
+# Ma doi kenh cu hon the thi coi nhu da lac hau (nguoi ra vao lien tuc, kenh day roi lai trong).
+KENH_MA_CON_MOI_SEC = 120.0
 
 
-def bao_kenh_day(st, ch, nhan=""):
-    """Acc vao kenh DAY (result=4) -> ghi so den de DIEU PHOI khoi chot lai kenh do.
+def _doc_ket_qua_doi_kenh(song):
+    """DOC THANG ket qua doi kenh cua tung client - KHONG bat acc nao bao cao.
 
-    Day la thong tin, KHONG phai bao cao xin lenh: acc ghi xong thi di lam viec khac ngay,
-    khong dung cho ai tra loi. (P3 06/09: batbat vao kenh 15 that bai roi DO LAI cho leader
-    "pick lai" - leader thi dang ket o vong cho member -> ca party dung 1 tieng.)
+    Ca 5 acc nam trong MOT tien trinh, moi client tu giu `_chan_switch_result` (ma server tra),
+    `_chan_switch_target` (nham kenh nao) va `_chan_switch_luc` (luc nao). Dieu phoi chi viec doc.
+
+    Ban dau toi bat acc goi `bao_kenh_day()` de bao len - vi pham dung luat user chot 06/09:
+    "bot la nguoi dieu phoi, deo phai cho dua nao bao cao". Bot BIET HET, khong co gi phai bao.
+
+    Ma server (`client._on_channel_switch_result`): 0 OK · 1 trung khu dang o ·
+    2 KHONG CO KHU DO · 3 DANG TO DOI · 4 KENH DAY.
+
+    -> (kenh_day, co_ma3, co_ma2)
+       kenh_day = cac kenh vua bao DAY (ma con moi) -> dung chot vao do nua
+       co_ma3   = co acc bi chan vi dang to doi -> doi kenh se lam TAN DOI, xong phai lap lai
+       co_ma2   = server bao khong co khu do -> dang trong INSTANCE event, doi kenh vo nghia
     """
-    if not ch:
-        return
-    with st["lock"]:
-        so = dict(st.get("kenh_day") or {})
-        so[int(ch)] = time.time()
-        st["kenh_day"] = so
-        if st.get("kenh_dich") and int(st["kenh_dich"]) == int(ch):
-            st["kenh_dich"] = None           # dich vua chot da hong -> nhip sau chot lai
-            st["kenh_dich_luc"] = 0.0
-    log.warning("[%s] kenh %s DAY -> vao so den %.0fs, DIEU PHOI se chot kenh khac",
-                nhan or "?", ch, KENH_DAY_HAN_SEC)
-
-
-def _kenh_day_con_han(st):
-    """Set kenh dang trong so den (da qua han thi tu rung ra)."""
     bay = time.time()
-    with st["lock"]:
-        so = {int(ch): t for ch, t in (st.get("kenh_day") or {}).items()
-              if bay - float(t) < KENH_DAY_HAN_SEC}
-        st["kenh_day"] = so
-    return set(so)
+    day, ma3, ma2 = set(), False, False
+    for _u, c in song:
+        r = getattr(c, "_chan_switch_result", None)
+        if r is None:
+            continue
+        if bay - float(getattr(c, "_chan_switch_luc", 0.0) or 0.0) > KENH_MA_CON_MOI_SEC:
+            continue                      # ma cu roi (nguoi ra vao lien tuc) -> bo qua
+        if r == 4:
+            t = getattr(c, "_chan_switch_target", None)
+            if t:
+                day.add(int(t))
+        elif r == 3:
+            ma3 = True
+        elif r == 2:
+            ma2 = True
+    return day, ma3, ma2
 
 
 def _kenh_trong_cho_ca_party(pidx, st, song, hong):

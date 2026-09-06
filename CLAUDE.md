@@ -1,5 +1,21 @@
 # Hướng dẫn cho Claude khi làm bot TS Online (repo này)
 
+## TRƯỚC khi động vào bất cứ thứ gì có NHIỀU ACC phối hợp → ĐỌC `documents/RULE_DIEU_PHOI.md`
+
+13 luật cho việc **ra lệnh và thi hành lệnh ở cấp party**, áp cho MỌI tính năng (Địa Giới, train,
+2K, 40NPC, loạn đấu, phó bản, cất đồ...). Mỗi luật kèm ca hỏng thật đã sinh ra nó.
+`tests/test_rule_dieu_phoi.py` ép phần kiểm được bằng máy — **test đỏ ở đó nghĩa là luật bị phá,
+sửa code chứ đừng sửa test**.
+
+Gốc: **bot điều phối, không acc nào ra lệnh, không acc nào chờ acc khác báo cáo.** Cả party chạy
+trong MỘT tiến trình nên `account_clients[u]` đã có sẵn mọi thứ — không có gì phải hỏi hay chờ.
+
+**LUẬT TỐI THƯỢNG (L0), đứng trên tất cả:** *đủ party rồi làm gì thì làm; party hỏng thì phải gom
+lại BẰNG ĐƯỢC.* Thiếu dù một người thì việc chính dừng hết — không đánh, không qua cổng, không vào
+phó bản, không đăng ký event. Không có đường "thôi kệ làm tiếp với người còn lại", cũng không có
+đường "gom mãi không được thì bỏ". Cách này hỏng thì đổi cách khác. Chỉ ba lý do được ngừng gom:
+hết giờ khách quan · user Stop · acc đã tắt hẳn.
+
 ## TRƯỚC khi reverse-engineer / mò cấu trúc packet → ĐỌC `KNOWLEDGE.md`
 Nhiều gói đã được ghi chú sẵn (opcode, offset, stat code) trong `KNOWLEDGE.md`. **Bắt buộc grep/đọc
 `KNOWLEDGE.md` (bảng opcode + mục "STATS PACKETS" + "BATTLE FLOW") TRƯỚC** khi thêm debug log hay đoán

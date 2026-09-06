@@ -55,8 +55,11 @@ class TestKhongConDoLaiChoAiPickLai(unittest.TestCase):
         self.assertNotIn('st["channel_failed"].set()', sau,
                          "bao cao roi ngoi cho = cho dua khac bam nut")
 
-    def test_ghi_so_den_kenh_day(self):
-        self.assertIn("bao_kenh_day", self.khoi)
+    def test_KHONG_bao_cao_len_nua(self):
+        """Dieu phoi DOC THANG `_chan_switch_result` cua client - user chot 06/09:
+        "bot la nguoi dieu phoi, deo phai cho dua nao bao cao"."""
+        self.assertNotIn("bao_kenh_day", self.khoi)
+        self.assertIn("_chan_switch_result", self.khoi)
 
     def test_sang_kenh_OK_nhung_SAI_MAP_cung_thoat_ngay(self):
         i = self.src.find('log.warning("[%s] (member) sang kenh %s roi nhung SAI MAP')
@@ -102,7 +105,7 @@ class TestVongSyncHongPhaiDONG_CUA(unittest.TestCase):
 class TestAPKGiongPC(unittest.TestCase):
     def test_apk_co_du(self):
         apk = _doc("android", "app", "src", "main", "python", "train_bot", "run_party_digioi.py")
-        for k in ("def _dong_vong_sync(", "def bao_kenh_day(", "def _kenh_day_con_han("):
+        for k in ("def _dong_vong_sync(", "def _doc_ket_qua_doi_kenh("):
             self.assertIn(k, apk)
 
 

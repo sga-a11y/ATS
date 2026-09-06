@@ -218,7 +218,8 @@ def _fix_pos_after_gate(client, prev_scene, stop_event):
                         "lam moc (tranh di mu 30 lenh)", client._label, back)
 
 
-def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_check=None):
+def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_check=None,
+                    du_party=None):
     """Leo tu tang hien tai len `top_map`. Chay thread rieng (giong npc40.run_loop).
 
     MEMBER KHONG chay ham nay: trong party, member tu dong di theo leader va khong tu di chuyen
@@ -310,6 +311,16 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_
                     ly_do = "het_duong"
                     break
                 nxt, door, center = up
+            # PHAI DU PARTY MOI DUOC LEN TANG. Qua cong mot minh = hong ca vong: member bi bo
+            # lai tang duoi, leader leo tiep va danh khong noi (party 5 06/09: leader qua cong luc
+            # 16:34:53, tang 6 "chi danh duoc 0/3 tran").
+            # Party tan giua chung la chuyen BINH THUONG o day: server CAM doi kenh khi dang trong
+            # doi (result=3), nen muon doi kenh thi PHAI roi doi truoc. Ra lenh doi kenh ma khong
+            # lap lai doi la loi cua nguoi RA LENH, khong phai cua member.
+            if du_party is not None and not du_party():
+                log.warning("[%s] 2K: %s chua du party -> KHONG len tang mot minh",
+                            label, _floor_label(ev, scene))
+                break
             _walk_to(client, center, stop_event)   # di toi CONG (toa do tu world_nav)
             # Qua cong len tang: cung dang `0x14 0800 [idx]`, dung _enter_gate de cho map doi that.
             client._in_scene_gate = True
