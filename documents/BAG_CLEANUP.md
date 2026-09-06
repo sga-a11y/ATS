@@ -116,3 +116,51 @@ ra khi user tự sửa tay.
 
 Điểm nối khác nhau giữa 2 bản (cùng thời điểm "ấn Lưu"): PC nối trong nút Lưu của chính 2 dialog
 con; APK so 2 bản config ở chỗ lưu ngoài (lưu party / lưu account) để khỏi đổi chữ ký 3 dialog.
+
+
+## Mở rương: dọn HẾT đồ thuộc rương đã tick, trừ đồ KHOÁ (06/09/2026)
+
+User chốt: *"tick mở rương nào thì những item trong rương đó có trong túi đồ cũng xử lý luôn, tuy
+nhiên đồ nào ở trạng thái khoá thì ko xử lý, để user muốn giữ item nào thì phải khoá nó lại"*.
+
+### Vì sao đổi
+
+Bản trước **chỉ đụng vào món VỪA RƠI RA** trong mẻ đó (user chốt 03/09, sợ dùng nhầm đồ của user).
+Nhưng chỉ cần **một mẻ hụt là món đó nằm lại vĩnh viễn** — không vòng nào quay lại dọn. Mà mẻ hụt
+có thật, đo trên log cả ngày 06/09:
+
+- **23 lần** `MO HOP: khong thay do roi ra -> dung` — chờ `1.0 + 0.15×n` = 2.5s cho 10 hộp, server
+  trả chậm hơn (có ca 19 giây) → bỏ luôn cả mẻ.
+- **Mở 4.889 hộp, chỉ xử lý 4.610 món → hụt 279/ngày.**
+
+Cộng dồn: **5.407 món rác từ rương** còn nằm trong túi của **177 acc** (~30 món/acc), trong đó có
+cả món `fc=50` phân giải được — `Viêm Hoàng Oản` 141×, `Kích Diệu Nhật` 133×, `Hằng Huy Bào` 132×.
+
+### Cách làm
+
+Mở xong → chờ đồ về túi → **quét cả túi** một lần: lấy món có id thuộc danh sách `items` của
+**các rương ĐÃ TICK** (không phải cả 304 id trong `bliss_bag.json`), rồi phân giải → donate → vứt.
+
+**Không còn bước "xử lý riêng món vừa rơi ra"** (user: *"còn cái bước xử lý món vừa rơi làm gì
+nữa, quét cả túi đồ luôn cho gọn"*). Quét cả túi đã bao trọn món vừa rơi, mà lại **không phụ thuộc
+vào việc đoán đúng slot nào mới** — chờ hụt thì lần login sau quét lại là dọn được, không tích tụ
+vĩnh viễn nữa.
+
+### Cờ KHOÁ
+
+`isLock` = **byte +29 của ThingData** (xem `KNOWLEDGE.md`, và `Logic/Item.lua:95`
+`self.isLock = data:ReadBoolean()`). Bot đã parse sẵn thành `bag_items[slot]["lock"]`.
+
+Client chặn khoá ở **mọi** đường, bot làm y hệt:
+
+| Client | Chặn gì |
+|---|---|
+| `Item.DropItem` / `Item.DropEquip` | vứt |
+| `UICompound` (9 chỗ) | phân giải / ghép |
+| `UIFurnace:408` | lò |
+| `UIArmy.ArmyFilter:2647` | donate quân đoàn |
+
+Bản sao `ArmyFilter` của bot (`_donate_quan_doan_duoc`) **thiếu đúng dòng `isLock`** — đã bổ sung.
+
+**Đọc không được ThingData → coi là KHOÁ.** Thiếu tin thì đừng đụng vào đồ của user
+([RULE_DIEU_PHOI.md](RULE_DIEU_PHOI.md) L13: *"không biết" không phải "không sao"*).

@@ -286,7 +286,9 @@ object ApkUpdater {
         return conn
     }
 
-    private fun isNewerVersion(remoteVersion: String, currentVersion: String): Boolean {
+    // internal (khong con private): BotForegroundService dung de BO QUA bundle cu hon APK -
+    // bundle duoc cam vao sys.path[0] nen no LUON thang module trong APK, ke ca khi da lac hau.
+    internal fun isNewerVersion(remoteVersion: String, currentVersion: String): Boolean {
         if (remoteVersion.isBlank()) return false
         val current = currentVersion.trim()
         if (current.isBlank() || current.endsWith(".dev")) return true

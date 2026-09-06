@@ -129,7 +129,9 @@ class TestLuatMo(unittest.TestCase):
         t = _than("tu_mo_hop_trang_bi")
         self.assertNotIn("while self.running:", t,
                          "van con vong vet can stack -> mo den het ruong")
-        i = t.find("self._xu_ly_do_vua_mo(moi")
+        # rfind: lan don CUOI (sau khi mo). Lan don DAU chay TRUOC vong mo - xem
+        # tests/test_mo_ruong_don_het_do.TestDonTruocKhiMo.
+        i = t.rfind("self._don_do_ruong_con_sot(")
         self.assertGreater(i, 0)
         sau = t[i:]
         self.assertIn("return kq", sau, "xu ly xong khong dung han -> van mo tiep")
@@ -148,30 +150,35 @@ class TestLuatMo(unittest.TestCase):
         t = _than("tu_mo_hop_trang_bi")
         self.assertIn('for luot in ("thuong", "tinh"):', t)
 
-    def test_CHI_dung_vao_mon_vua_roi_ra(self):
-        """Do co san trong tui phai giu nguyen: mon trong hop deu la trang bi thuong cua game,
-        cung roi khi train / mua o lo / user de danh -> dung vao la mat do cua user."""
+    def test_QUET_CA_TUI_theo_ruong_da_tick(self):
+        """DOI 06/09 (user): "tick mo ruong nao thi nhung item trong ruong do co trong tui do cung
+        xu ly luon, tuy nhien do nao o trang thai khoa thi ko xu ly".
+
+        Ban cu chi dung vao mon VUA ROI RA -> mot me hut la mon do nam lai VINH VIEN. Do ca ngay
+        06/09: mo 4.889 hop, xu ly 4.610 -> hut 279/ngay; cong don 5.407 mon rac trong tui 177 acc.
+        Do an toan gio la CO KHOA, khong phai "khong dung vao gi ca"."""
         t = _than("tu_mo_hop_trang_bi")
-        self.assertIn("truoc = dict(self.bag_slots)", t)
-        self.assertIn("moi = self._cho_tui_doi(truoc", t)
-        self.assertIn("self._xu_ly_do_vua_mo(moi", t)
-        # KHONG duoc quet ca tui theo danh sach item cua hop
-        self.assertNotIn("for s, (t, c) in list(self.bag_slots.items()) if t in", t)
+        self.assertIn("_don_do_ruong_con_sot(", t)
+        self.assertNotIn("_xu_ly_do_ruong(moi", t, "buoc xu ly rieng mon vua roi la thua")
+
+    def test_do_KHOA_thi_giu_nguyen(self):
+        t = _than("_xu_ly_do_ruong")
+        self.assertIn("_item_bi_khoa(s)", t)
 
 
 class TestXuLyDoRoiRa(unittest.TestCase):
     def test_fc_lon_hon_0_thi_phan_giai(self):
-        t = _than("_xu_ly_do_vua_mo")
+        t = _than("_xu_ly_do_ruong")
         self.assertIn('if int(r.get("fc") or 0) > 0:', t)
         self.assertIn("self.decompose_slot(s)", t)
 
     def test_con_lai_thi_donate(self):
-        t = _than("_xu_ly_do_vua_mo")
+        t = _than("_xu_ly_do_ruong")
         self.assertIn("self.donate_legion_equip(donate)", t)
 
     def test_KHONG_con_nhanh_ban_shop(self):
         """User bo hoan toan nhanh tu ban (03/09)."""
-        t = _than("_xu_ly_do_vua_mo")
+        t = _than("_xu_ly_do_ruong")
         for cam in ("sell_noi_dat", "sell_", "NOI_DAT_SELL_CITY"):
             self.assertNotIn(cam, t)
 
@@ -267,12 +274,12 @@ class TestVutMonKet(unittest.TestCase):
     """
 
     def test_co_nhanh_vut(self):
-        t = _than("_xu_ly_do_vua_mo")
+        t = _than("_xu_ly_do_ruong")
         self.assertIn("self.discard_item(s, rec[1])", t)
         self.assertIn("VUT BO", t)
 
     def test_thu_tu_phan_giai_donate_roi_moi_vut(self):
-        t = _than("_xu_ly_do_vua_mo")
+        t = _than("_xu_ly_do_ruong")
         i_pg = t.find("self.decompose_slot(s)")
         i_dn = t.find("elif self._donate_quan_doan_duoc(")
         i_vut = t.find("self.discard_item(")

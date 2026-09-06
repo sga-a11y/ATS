@@ -74,6 +74,22 @@ class BotForegroundService : Service() {
     private fun installPythonBundlePath(excludePidx: Int? = null) {
         val bundlePath = ApkUpdater.pythonBundlePath(this)
         if (!File(bundlePath, "train_bot/run_party_digioi.py").isFile) return
+        // BUNDLE CU HON APK THI KHONG DUOC DUNG.
+        //
+        // `sys.path.insert(0, bundlePath)` lam module trong bundle LUON THANG module trong APK -
+        // ke ca khi bundle CU HON. User cai APK moi ma tren may con bundle cu thi APK moi VAN chay
+        // code cu, va khong co dau hieu gi ngoai loi giua chung.
+        //
+        // Bug that (06/09): APK v1.1.202609061736 (da co `config.event_hom_nay`) van bao
+        //     LOI: module 'train_bot.config' has no attribute 'event_hom_nay'
+        // vi bundle cu tren may de len. Moi acc mode event dung im, relogin lien tuc -> ma 19.
+        val bundleVer = try { ApkUpdater.installedBundleVersion(this) } catch (_: Exception) { "" }
+        if (bundleVer.isBlank() || !ApkUpdater.isNewerVersion(bundleVer, BuildConfig.VERSION_NAME)) {
+            android.util.Log.i("aTSBot",
+                "core bundle v$bundleVer KHONG moi hon APK v${BuildConfig.VERSION_NAME} -> " +
+                "dung code trong APK (bo qua bundle)")
+            return
+        }
         try {
             // CORE UPDATE FIX: chi insert sys.path[0] la CHUA DU. 2 truong hop van chay code CU:
             //  1) UI (MainActivity) da import train_bot.config tu assets APK TRUOC khi service cam

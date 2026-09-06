@@ -182,12 +182,61 @@ class TestL6_LenhPhaiDinh(unittest.TestCase):
         self.assertGreaterEqual(R.KENH_DICH_KIEN_NHAN_SEC, 30,
                                 "han qua ngan -> doi y giua chung, ca party quay dau (L6)")
 
+    def test_tang_gom_cung_phai_dinh(self):
+        """Dich gom TANG cung tinh lai moi nhip thi tut theo buoc chan member dang di xuong.
+        Party 8 (06/09): 12932 -> 12931 -> 12922, tut toi day thap."""
+        src = _doc("run_party_digioi.py")
+        i = src.find('kh["tang_gom"]')
+        self.assertGreater(i, 0)
+        self.assertIn("_chot_tang_gom(", src[i:i + 120],
+                      "goi thang `_tang_gom_2k` moi nhip = khong dinh (L6)")
+        j = src.find("def _chot_tang_gom(")
+        self.assertGreater(j, 0)
+        than = src[j:src.find(chr(10) + "def ", j + 10)]
+        self.assertIn("TANG_GOM_KIEN_NHAN_SEC", than)
+        self.assertIn("tang_gom_luc", than)
+
     def test_giu_dich_cu_khi_chua_qua_han(self):
         src = _doc("run_party_digioi.py")
         i = src.find("def _dieu_phoi_chot_kenh(")
         than = src[i:src.find(chr(10) + "def ", i + 10)]
         self.assertIn("KENH_DICH_KIEN_NHAN_SEC", than)
         self.assertIn("kenh_dich_luc", than)
+
+
+class TestL7_LenhPhaiCoHan(unittest.TestCase):
+    """MOI `_bump_reform` la ABORT moi acc dang di duong. Bump moi nhip = tu huy viec minh vua sai.
+
+    Ham dieu phoi chay MOI 2 GIAY, nen bat ky `_bump_reform` nao trong do PHAI co cooldown.
+    Log that (06/09, 18:00-23:08) - user: "rat nhieu party ket o thanh ma khong di danh":
+        p28  REFORM gen -> 8541 (bump tai :8419) - chung kenh roi ma doi khong du -> lap lai party
+        p39  REFORM gen -> 8614 ...
+        p23  REFORM gen -> 8035 ...
+    Tam NGHIN lan bump trong 5 tieng -> khong acc nao di duoc buoc nao.
+    """
+
+    def test_moi_bump_trong_ham_dieu_phoi_deu_co_COOLDOWN(self):
+        import re
+        src = _doc("run_party_digioi.py")
+        thieu = []
+        for m in re.finditer(r"_bump_reform[(]", src):
+            i = m.start()
+            truoc = src[:i]
+            j = truoc.rfind(chr(10) + "def ")
+            ten = truoc[j + 5:truoc.find("(", j)]
+            if not (ten.startswith("_dieu_phoi") or ten.startswith("_chot")):
+                continue
+            khoi = truoc[-900:]
+            if not any(k in khoi for k in ("COOLDOWN", "_luc")):
+                thieu.append("%s (dong %d)" % (ten, src.count(chr(10), 0, i) + 1))
+        self.assertEqual(thieu, [], "bump khong cooldown -> abort lien tuc, party ket o thanh (L7)")
+
+    def test_lap_lai_party_co_han_du_dai(self):
+        from unittest import mock
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        self.assertGreaterEqual(R.LAP_LAI_PARTY_COOLDOWN, 60,
+                                "mot vong gom + moi lai mat vai chuc giay (L7)")
 
 
 class TestL8_LenhHongPhaiDongCua(unittest.TestCase):

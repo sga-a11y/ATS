@@ -143,6 +143,16 @@ cổng chặn bắt FALLBACK phải phủ đủ key.
 > **Quy tắc rút ra**: dữ liệu dùng chung PC/APK thì bản Kotlin phải **ĐỌC file JSON**, không được
 > chép lại thành hằng số. Chép tay ở đâu là ở đó sẽ lệch, chỉ là sớm hay muộn.
 
+### APK: bundle CŨ HƠN APK thì bị BỎ QUA (sửa 06/09)
+`installPythonBundlePath` cắm bundle vào `sys.path.insert(0, ...)` nên module trong bundle **luôn
+thắng** module trong APK — kể cả khi bundle đã lạc hậu. Cài APK mới mà máy còn bundle cũ thì APK
+mới **vẫn chạy code cũ**, không dấu hiệu gì ngoài lỗi giữa chừng.
+
+Đã xảy ra: APK **v1.1.202609061736** (đã có `config.event_hom_nay`, đã qua cổng chặn thứ 7) vẫn báo
+`LOI: module 'train_bot.config' has no attribute 'event_hom_nay'` → mọi acc mode event đứng im,
+relogin liên tục, dính mã 19. Giờ so `installedBundleVersion` với `BuildConfig.VERSION_NAME`,
+không mới hơn thì bỏ qua bundle và ghi log rõ đang chạy bản nào.
+
 ### APK: cập nhật core phải DỪNG HẾT party trước
 Dọn `sys.modules` chỉ chạy khi không acc nào đang chạy. Update core lúc đang chạy → vẫn chạy code
 cũ, log sẽ báo `CORE MOI v... nhung dang co acc CHAY -> VAN chay code cu v...`. Dấu hiệu core đã

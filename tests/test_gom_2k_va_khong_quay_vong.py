@@ -175,6 +175,73 @@ class TestTangGom2K(unittest.TestCase):
         self.assertNotIn("event_start_map", ma)
 
 
+class TestTangGomPhaiDINH(unittest.TestCase):
+    """L6: chot roi thi GIU. Tinh lai moi nhip = dich tut theo buoc chan member dang di xuong.
+
+    Party 8 (06/09) - user: "bot dang lam gi ma moi dua 1 noi":
+        17:47:08 gom [12932, 12934] -> dich 12932
+        17:47:19 gom [12931, 12934] -> dich 12931   (member vua xuong 12931)
+        17:51:05 gom [12922, 12934] -> dich 12922   (tut toi DAY thap, mat het tang da leo)
+    """
+
+    PARTY = 0
+
+    def setUp(self):
+        self._pc = getattr(R.config, "PARTY_CONFIG", {})
+        R.config.PARTY_CONFIG = {self.PARTY: {"mode": "event", "event_key": "2k"}}
+        self._ehn = R.config.event_hom_nay
+        R.config.event_hom_nay = lambda key, now=None: EV_2K if key == "2k" else None
+        self._itr = R._inside_floor_crawl_tower
+        R._inside_floor_crawl_tower = lambda ev, m: 12922 <= int(m) <= 12938
+        R._party_state.pop(self.PARTY, None)
+        self.st = R._pstate(self.PARTY)
+
+    def tearDown(self):
+        R.config.PARTY_CONFIG = self._pc
+        R.config.event_hom_nay = self._ehn
+        R._inside_floor_crawl_tower = self._itr
+        R._party_state.pop(self.PARTY, None)
+
+    def test_member_di_xuong_thi_dich_KHONG_tut_theo(self):
+        song = [("a1", _C(12934)), ("a2", _C(12932)), ("a3", _C(12932))]
+        self.assertEqual(R._chot_tang_gom(self.PARTY, self.st, song), 12932)
+        song[1][1].current_map = 12931          # a2 dang tren duong xuong
+        song[2][1].current_map = 12931
+        self.assertEqual(R._chot_tang_gom(self.PARTY, self.st, song), 12932,
+                         "dich tut theo buoc chan -> ca doi tut toi day thap")
+
+    def test_qua_HAN_thi_chot_lai(self):
+        song = [("a1", _C(12934)), ("a2", _C(12932))]
+        R._chot_tang_gom(self.PARTY, self.st, song)
+        self.st["tang_gom_luc"] -= R.TANG_GOM_KIEN_NHAN_SEC + 1
+        song[1][1].current_map = 12931
+        self.assertEqual(R._chot_tang_gom(self.PARTY, self.st, song), 12931)
+
+    def test_gom_XONG_thi_xoa_dich(self):
+        song = [("a1", _C(12934)), ("a2", _C(12932))]
+        R._chot_tang_gom(self.PARTY, self.st, song)
+        song[0][1].current_map = 12932          # ca doi da ve cung tang
+        self.assertIsNone(R._chot_tang_gom(self.PARTY, self.st, song))
+        self.assertIsNone(self.st["tang_gom"])
+
+    def test_ra_khoi_thap_thi_xoa_dich(self):
+        song = [("a1", _C(12934)), ("a2", _C(12932))]
+        R._chot_tang_gom(self.PARTY, self.st, song)
+        for _u, c in song:
+            c.current_map = 12001               # ca doi da ra ngoai
+        self.assertIsNone(R._chot_tang_gom(self.PARTY, self.st, song))
+        self.assertEqual(self.st["tang_gom_luc"], 0.0)
+
+    def test_kien_nhan_du_dai_cho_di_bo_vai_tang(self):
+        self.assertGreaterEqual(R.TANG_GOM_KIEN_NHAN_SEC, 120)
+
+    def test_ke_hoach_dung_ban_DA_CHOT(self):
+        src = _doc("run_party_digioi.py")
+        i = src.find('kh["tang_gom"]')
+        self.assertIn("_chot_tang_gom(", src[i:i + 120],
+                      "goi thang `_tang_gom_2k` moi nhip = tinh lai = tut dich (L6)")
+
+
 class TestThiHanhGom(unittest.TestCase):
     def setUp(self):
         self._pc = getattr(R.config, "PARTY_CONFIG", {})
@@ -205,6 +272,41 @@ class TestThiHanhGom(unittest.TestCase):
         R._thi_hanh_gom(c, R._pstate(0), "x", "LEADER", {"ly_do": "lech map"},
                         lambda: goi.append(1))
         self.assertEqual(goi, [1])
+
+
+class TestMOI_ACC_deu_thi_hanh_gom_tang(unittest.TestCase):
+    """Lenh gom tang phai toi MOI ACC, khong rieng leader.
+
+    Party 8 (06/09, 17:55) - user: "ca lu co di chuyen ty nao deo dau":
+        lbumot (LEADER) map=12928            <- da tut xuong TANG 5, dang leo nguoc len MOT MINH
+        lubhai/lubba/lubbon/lubnam map=12934  <- dung im tang 11, pos=(650,430)
+    `_thi_hanh_gom` chi duoc goi trong vong MOI cua leader -> member khong co cho nao thi hanh
+    -> cang gom cang lech.
+    """
+
+    def setUp(self):
+        self.src = _doc("run_party_digioi.py")
+
+    def test_keepalive_co_nhanh_tu_di_ve_tang_gom(self):
+        i = self.src.find('_tg = (_ke_hoach(st) or {}).get("tang_gom")')
+        self.assertGreater(i, 0, "member khong co cho thi hanh lenh gom tang")
+        khoi = self.src[i:i + 1200]
+        self.assertIn("regroup_to_event_start(", khoi)
+
+    def test_nhanh_do_KHONG_phan_biet_leader(self):
+        """Leader va member deu la acc thi hanh - khong duoc mien ai."""
+        i = self.src.find('_tg = (_ke_hoach(st) or {}).get("tang_gom")')
+        khoi = self.src[i:i + 1200]
+        self.assertNotIn("is_leader", khoi)
+
+    def test_da_o_dung_tang_thi_khong_di(self):
+        i = self.src.find('_tg = (_ke_hoach(st) or {}).get("tang_gom")')
+        khoi = self.src[i:i + 400]
+        self.assertIn('!= int(_tg)', khoi)
+
+    def test_khong_di_giua_tran(self):
+        i = self.src.find('_tg = (_ke_hoach(st) or {}).get("tang_gom")')
+        self.assertIn("not c.in_combat()", self.src[i:i + 300])
 
 
 class TestNhanhChetDaBiXoa(unittest.TestCase):

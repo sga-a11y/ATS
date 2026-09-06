@@ -10327,9 +10327,12 @@ class GameClient:
             ruong do HOAC day tui, cai nao toi truoc. Con du de lan login sau.
           - Duyet HAI LUOT: tui THUONG truoc, tui TINH/CAO sau (khong mo de quy). Loai nao het
             hang thi xet loai ke tiep - me dau tien mo duoc la dung.
-          - CHI dung vao mon VUA ROI RA trong luot do. Do co san trong tui GIU NGUYEN: cac mon
-            trong hop deu la trang bi thuong cua game (cung roi khi train / mua o lo / user de
-            danh) - khong phan biet duoc nen dung vao la mat do cua user.
+          - Mo xong thi QUET CA TUI (`_don_do_ruong_con_sot`): moi mon thuoc ruong DA TICK deu
+            duoc xu ly, khong rieng mon vua roi ra (user chot 06/09). Khong con buoc "xu ly rieng
+            mon vua roi" - quet ca tui da bao tron no, ma lai khong phu thuoc vao viec doan dung
+            slot nao moi.
+          - Mon dang KHOA thi GIU NGUYEN. Do la duong de user giu lai mon minh muon
+            (user: "de user muon giu item nao thi phai khoa no lai").
         """
         kq = {"mo": 0, "phan_giai": 0, "donate": 0, "vut": 0, "bo_qua": ""}
         boxes = _load_bliss_boxes()
@@ -10358,6 +10361,13 @@ class GameClient:
         # fc theo TID de biet mon roi ra co phan giai duoc khong (nguon: items_gamedata.json,
         # cung nguon voi bang trong bliss_bag.json).
         gd = _load_gamedata_items()
+        # DON RAC TRUOC KHI MO. Rac tu cac lan mo TRUOC da nam san trong tui, va don truoc thi:
+        #  - tui day van don duoc (nhanh "tui day" ben duoi `return` som -> khong don thi rac ket
+        #    vinh vien dung luc CAN don nhat),
+        #  - don xong co cho de mo me moi.
+        # Quet theo TAT CA ruong da tick, khong rieng loai sap mo: moi login chi mo MOT loai
+        # (user chot 04/09) nen rac tich tu tu nhieu loai khac nhau.
+        self._don_do_ruong_con_sot(_tick, boxes, gd, kq)
         for luot in ("thuong", "tinh"):
             for tid, info in boxes.items():
                 if tid not in _tick:
@@ -10384,13 +10394,12 @@ class GameClient:
                 if not self.use_slot(slot, qty=n):
                     return kq
                 kq["mo"] += n
-                # Cho DU n mon (mo n hop thi it nhat n o moi), va han cho phai gian theo n:
-                # 21 hop ma van cho 2s la chac chan cat mat duoi.
-                moi = self._cho_tui_doi(truoc, wait=max(wait_item, 1.0 + 0.15 * n), it_nhat=n)
-                if not moi:
-                    log.info("[%s] MO HOP: khong thay do roi ra -> dung", self._label)
-                    return kq
-                self._xu_ly_do_vua_mo(moi, gd, kq)
+                # CHO do ve tui roi QUET CA TUI - khong con buoc "xu ly rieng mon vua roi ra".
+                # Quet ca tui da bao tron mon vua roi, ma lai khong phu thuoc vao viec doan dung
+                # slot nao moi: cho hut thi lan login sau quet lai la don duoc, khong tich tu nua.
+                # (Ban cu: cho 2.5s cho 10 hop, khong thay o moi la BO CA ME - 23 lan/ngay, va mon
+                #  do nam lai VINH VIEN vi khong vong nao quay lai.)
+                self._cho_tui_doi(truoc, wait=max(wait_item, 1.0 + 0.15 * n), it_nhat=n)
                 # MOT LAN DUY NHAT cho ca luot login (user chot 04/09: "luc login ko can mo den
                 # het ruong, chi can mo 1 lan, phan giai/donate/vut bo 1 lan la dc roi";
                 # "mo 1 lan la het stack ruong do hoac full tui do"). Mot me = min(ca stack,
@@ -10398,11 +10407,67 @@ class GameClient:
                 #
                 # Truoc day vong `while` vet CAN stack roi moi sang loai ke tiep -> login bi keo
                 # dai (log 00:13: mo x39 xong lai mo tiep x19 cua cung mot loai).
+                self._don_do_ruong_con_sot(_tick, boxes, gd, kq)
                 return kq
+        self._don_do_ruong_con_sot(_tick, boxes, gd, kq)
         return kq
 
-    def _xu_ly_do_vua_mo(self, slots, gd, kq):
-        """Phan giai / donate / VUT mon vua roi ra. `slots` = o VUA xuat hien sau khi mo hop.
+    def _don_do_ruong_con_sot(self, tick, boxes, gd, kq):
+        """Quet CA TUI, don not do thuoc cac ruong DA TICK - TRU do dang KHOA.
+
+        User chot 06/09: "tick mo ruong nao thi nhung item trong ruong do co trong tui do cung xu
+        ly luon, tuy nhien do nao o trang thai khoa thi ko xu ly, de user muon giu item nao thi
+        phai khoa no lai".
+
+        VI SAO CAN: truoc day CHI dung vao mon VUA ROI RA trong me do. Chi can MOT me hut la mon
+        do nam lai VINH VIEN - khong vong nao quay lai don. Ma me hut co that:
+          - 23 lan `MO HOP: khong thay do roi ra -> dung` (cho 2.5s, server tra cham hon)
+          - do ca ngay 06/09: mo 4.889 hop, chi xu ly 4.610 mon -> hut 279/ngay
+        Cong don: 5.407 mon rac tu ruong con nam trong tui cua 177 acc (~30 mon/acc), trong do co
+        ca mon `fc=50` phan giai duoc.
+
+        CHI dung vao id cua ruong DA TICK - khong phai ca 304 id trong bliss_bag.json. Mon dang
+        KHOA thi giu nguyen: do la duong de user giu lai mon minh muon.
+        """
+        ids = set()
+        for tid, info in (boxes or {}).items():
+            if tid not in tick:
+                continue
+            for it in (info.get("items") or []):
+                try:
+                    ids.add(int(it["id"]))
+                except Exception:
+                    pass
+        if not ids:
+            return
+        sot = [s for s, (t, c) in list(self.bag_slots.items()) if int(t) in ids and c > 0]
+        if not sot:
+            return
+        log.info("[%s] MO HOP: con %d mon thuoc ruong da tick trong tui -> don not",
+                 self._label, len(sot))
+        self._xu_ly_do_ruong(sot, gd, kq)
+
+    def _item_bi_khoa(self, slot) -> bool:
+        """O `slot` co dang KHOA khong. Doc tu ThingData da parse san (`bag_items[slot]["lock"]`,
+        byte +29 - xem KNOWLEDGE.md muc ThingData va `Logic/Item.lua:95`).
+
+        User chot 06/09: "do nao o trang thai khoa thi ko xu ly, de user muon giu item nao thi
+        phai khoa no lai". Client cung lam the o MOI duong: `Item.DropItem`/`DropEquip` (vut),
+        `UICompound` (phan giai/ghep), `UIFurnace` (lo), `UIArmy.ArmyFilter` (donate).
+
+        KHONG doc duoc ThingData -> coi la KHOA (an toan hon: thieu tin thi dung dung vao do cua
+        user, xem RULE_DIEU_PHOI L13 "khong biet" khac "khong sao").
+        """
+        try:
+            info = (self.bag_items or {}).get(slot)
+        except Exception:
+            return True
+        if not info:
+            return True
+        return bool(info.get("lock"))
+
+    def _xu_ly_do_ruong(self, slots, gd, kq):
+        """Phan giai / donate / VUT cac o trong `slots` (do thuoc ruong da tick).
 
         Thu tu: fc>0 -> PHAN GIAI (ra manh) | donate duoc -> DONATE | KHONG CA HAI -> VUT BO
         (user chot 03/09: "do nao ko phan giai ko donate duoc thi m vut bo luon"). Vi du mon ket:
@@ -10417,6 +10482,10 @@ class GameClient:
             tid = rec[0]
             r = gd.get(tid) or {}
             nm = (r.get("name") or "0x%04x" % tid).strip()
+            if self._item_bi_khoa(s):
+                log.info("[%s] MO HOP: %s dang KHOA -> giu nguyen", self._label, nm)
+                kq["khoa"] = kq.get("khoa", 0) + 1
+                continue
             if int(r.get("fc") or 0) > 0:
                 log.info("[%s] MO HOP: %s -> PHAN GIAI (%s manh)", self._label, nm, r.get("fc"))
                 try:
@@ -10424,7 +10493,7 @@ class GameClient:
                         kq["phan_giai"] += 1
                 except Exception as e:
                     log.warning("[%s] MO HOP: loi phan giai %s: %s", self._label, nm, e)
-            elif self._donate_quan_doan_duoc(tid, r):
+            elif self._donate_quan_doan_duoc(tid, r, s):
                 log.info("[%s] MO HOP: %s -> DONATE quan doan (khong phan giai duoc)",
                          self._label, nm)
                 donate.append(s)
@@ -10455,8 +10524,14 @@ class GameClient:
                       26212, 26213, 26214, 26215, 26216, 26217, 26218, 26219, 16000, 21610, 19210,
                       22910, 20210, 11046}
 
-    def _donate_quan_doan_duoc(self, tid: int, rec: dict) -> bool:
-        """rec = ban ghi items_gamedata.json (can `mat` material, `lv` level, `kd` kind)."""
+    def _donate_quan_doan_duoc(self, tid: int, rec: dict, slot=None) -> bool:
+        """rec = ban ghi items_gamedata.json (can `mat` material, `lv` level, `kd` kind).
+
+        `slot` (neu co) de kiem KHOA: `UIArmy.ArmyFilter:2647` co `if itemSave.isLock then
+        return false end` - ban sao chep cua bot truoc day THIEU dung dong nay.
+        """
+        if slot is not None and self._item_bi_khoa(slot):
+            return False
         try:
             if int(rec.get("kd") or 0) == 53:
                 return True
@@ -13819,6 +13894,23 @@ class GameClient:
             log.warning("[%s] teleport: %s KHONG phai thanh teleport -> khong gui lenh",
                         self._label, city_id)
             return False
+        # TELE LUON PHAI THOAT TO DOI TRUOC. Client game chan thang o `UITeleport.CheckTeleport()`
+        # (`_lua_dec/UI/UITeleport.lua:673`) - dang to doi thi KHONG gui goi nao ca:
+        #     if not Team.IsAlone(Role.playerId) then ShowCenterMessage(...); return true; end
+        # Bot truoc day gui MU: server im lang bo qua -> vong `go_to_town` ban lai moi 2s toi het
+        # deadline. Log 07/09 [dieumot]: 00:04:21 co roi doi truoc -> tele an sau 4s/2 goi;
+        # 00:05:05 dang trong doi -> 19 goi trong 40s moi di. Ca log 4758 goi teleport, phan lon
+        # la ban lai, va day chinh la nguon spam sinh `ma 13 (gui goi qua nhanh)`.
+        # Roi doi o DAY chu khong o `go_to_town`: moi duong tele deu di qua ham nay nen khong sot.
+        # Party thieu nguoi thi dieu phoi gom lai - dung L0, va no van lam vay tu truoc
+        # (documents/RULE_DIEU_PHOI.md).
+        if self.party_members:
+            log.info("[%s] Teleport: dang o to doi (%d member) -> ROI DOI truoc (client chan tele "
+                     "khi con doi)", self._label, len(self.party_members))
+            try:
+                self.leave_party()
+            except Exception as e:
+                log.warning("[%s] Teleport: roi doi loi: %s", self._label, e)
         payload = b"\x01\x00" + struct.pack("<H", city_id) + bytes([flag])
         # DANH DAU: lan doi map sap toi la DO BOT RA LENH -> KHONG can scene_resume, va gui
         # `0x14 06` o duong nay thi SERVER DONG KET NOI (xem _need_scene_resume).

@@ -131,6 +131,16 @@ Không lệnh nào được lặp vô hạn. Quá hạn thì **đổi cách làm
 > Vi phạm thật: leader lặp `CHO du member san sang (3/4)` 28 lần trong 1 tiếng, mỗi lần
 > `_bump_reform` rồi `reform: khong co smart/legacy route -> bo qua` (p3, 02:38–03:34).
 
+**Mọi `_bump_reform` trong hàm điều phối PHẢI có cooldown.** Hàm điều phối chạy mỗi 2 giây, mà mỗi
+`_bump_reform` là **abort mọi acc đang đi đường** (`_ab()`). Bump liên tục = tự huỷ chính việc mình
+vừa sai.
+
+> Vi phạm thật, và là code tôi viết sáng 06/09 rồi quên đặt hạn — đúng cái luật này:
+> `p28 REFORM gen -> 8541`, `p39 -> 8614`, `p23 -> 8035` — **tám nghìn lần bump trong 5 tiếng**,
+> user: *"rất nhiều party kẹt ở thành mà không đi đánh"*.
+> `tests/test_rule_dieu_phoi.py` giờ quét mọi `_bump_reform` trong hàm `_dieu_phoi*` / `_chot*`
+> và bắt buộc phải có cooldown gần đó.
+
 ### L8 — Lệnh hỏng phải ĐÓNG CỬA
 
 Mọi đường thoát thất bại đều phải dọn cờ của lệnh đó. Cờ kẹt `set()` = acc còn bám vào lệnh đã

@@ -203,3 +203,33 @@ Leader vẫn là **cái tay**, không phải cái đầu. Game bắt buộc lead
 
 `tests/test_chot_map_dg_doi_du_acc.py`: chờ đủ acc, không timeout, Stop thoát được, ép đồng bộ
 unwind được, thiếu acc thì **không chốt bừa**.
+
+## 7. Teleport LUÔN phải thoát tổ đội trước
+
+Client game chặn thẳng ở `UITeleport.CheckTeleport()` (`_lua_dec/UI/UITeleport.lua:673`) — đang
+trong tổ đội thì **không gửi gói nào cả**:
+
+```lua
+if Role.player.war ~= EWar.None then ... return true; end      -- đang đánh
+if SceneManager.sceneId == 10701 then ... return true; end     -- scene cấm
+if not Team.IsAlone(Role.playerId) then ... return true; end   -- ĐANG TỔ ĐỘI
+```
+
+Gói bot gửi vốn đã **đúng** (`C:068-001 <使用晶石天行異能> +場景ID(2) +NO(1)`), cái thiếu là điều
+kiện thứ ba. Gửi mù thì server im lặng bỏ qua, còn vòng `go_to_town` cứ bắn lại mỗi 2s tới hết
+deadline — đó chính là một nguồn spam sinh `mã 13 (gửi gói quá nhanh)`.
+
+Ca thật 07/09 `[dieumot]`, cùng acc cùng thành, chỉ khác đã rời đội hay chưa:
+
+| Giờ | Việc | Kết quả |
+|---|---|---|
+| 00:04:21 | `Roi/giai tan party cu` → tele | **4 giây, 2 gói** |
+| 00:05:05 | còn trong đội → tele | **40 giây, 19 gói** |
+
+Cả log hôm đó: **4758 gói teleport**, phần lớn là bắn lại.
+
+**Rời đội đặt trong `teleport()`, KHÔNG phải `go_to_town()`.** Có nhiều đường gọi tele
+(`pre_route_town_hop`, route train, NPC40, mua HP/SP…); đặt ở hàm cuối cùng thì không sót đường
+nào. Mất người thì điều phối gom lại — đúng **L0**, và nó vốn đã làm vậy (04:21 rời → 05:52 gom).
+
+Neo bằng `tests/test_tele_phai_roi_doi_truoc.py`.
