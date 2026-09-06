@@ -124,6 +124,20 @@ def _fight_one(client, idx: int, stop_event, heal_party=None, lost_check=None):
     return "lost" if defeated else "won"
 
 
+def _battle_idx(ev, scene: int):
+    """Cac idx de KICH TRAN o tang nay. Mac dinh 3..8; tang nao khac thi khai o events.json.
+
+    Tang CHOT (12934/12939/12943/12949/12954 - chi co cong xuong trong world_nav, cong len chi
+    hien SAU KHI THANG) dung idx khac han. Capture 06/09 tang 11 (12934):
+        move -> (650,430)   roi   C2S 0x14 0800 02    <- idx 2, NGOAI khoang 3..8
+    Nen bot quet 3..8 la khong bam trung diem nao -> dung im. Khong mo rong khoang mac dinh xuong
+    2 duoc: o tang thuong idx 2 THUONG LA CONG (vd 12933 door=2) -> bam vao la qua cong som.
+    """
+    m = (ev.get("party_battle") or {}).get("battle_idx") or {}
+    v = m.get(str(int(scene)))
+    return [int(x) for x in v] if v else list(_BATTLE_IDX_RANGE)
+
+
 def _battle_points(ev, scene: int):
     """[(x,y)] cac diem DANH QUAI cua tang, doc tu events.json (khong hardcode).
 
@@ -226,23 +240,35 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_
     #    vua ep bi XOA ngay sau tran DAU TIEN.
     client._team_dungeon_until = time.time() + _DUNGEON_WINDOW
     lost = False
+    # LY DO ket thuc vong leo - PHAI noi dung su that. `finally` chay o MOI duong thoat, nen neu
+    # chi bao "xong/thua" thi KET O CONG va ROT MANG cung thanh "xong": ca party bi keo ra khoi
+    # thap roi tat game giua chung (party 12 va party 15, 06/09).
+    #   "xong" = da toi `top_map`        -> 2K het that
+    #   "thua" = thua tran               -> 2K het that
+    #   "ket"  = ket o cong / danh thieu tran -> CHUA het, dieu phoi xu ly (gom, moi lai)
+    #   "het_duong" = da danh HET tang ma khong co cong len -> khong con gi lam o day nua. KHONG
+    #                 duoc dung im an va (party 1/2 06/09 dung yen o (650,430) sau khi danh xong).
+    #   "dut"  = client chet giua chung  -> CHUA het, relogin roi leo tiep
+    ly_do = "ket"
     try:
         while _active(client, stop_event):
             scene = int(client.current_map or 0)
             if scene >= top:
                 log.info("[%s] 2K: da toi tang cao nhat %s -> XONG", label, scene)
+                ly_do = "xong"
                 break
             client._team_dungeon_until = time.time() + _DUNGEON_WINDOW   # gia han moi tang
+            # LAY cong len TRUOC de biet idx nao la cong (khoi bam nham), nhung KHONG duoc thoat
+            # o day: TANG CHOT chua co cong len trong world_nav vi cong chi HIEN SAU KHI THANG
+            # (user xac nhan 06/09). Ban cu `break` ngay -> bot len tang 11 roi DUNG IM, khong
+            # danh mot tran nao (party 1 va party 11, 06/09: "len dinh thap thi ko thay danh
+            # tiep"). Phai DANH HET TANG roi moi ket luan.
             up = _up_gate(scene)
-            if up is None:
-                log.warning("[%s] 2K: %s KHONG co cong len trong world_nav -> DUNG o day. "
-                            "Nghi la tang chot (cong len chi hien sau khi don sach tang). "
-                            "Gui log nay de bo sung du lieu.", label, _floor_label(ev, scene))
-                break
-            nxt, door, center = up
+            nxt, door, center = up if up else (None, None, None)
             points = _battle_points(ev, scene)
-            log.info("[%s] 2K: %s -> len %s (cong door=%s tai %s), %d diem danh quai",
-                     label, _floor_label(ev, scene), nxt, door, center, len(points))
+            log.info("[%s] 2K: %s -> len %s (cong door=%s tai %s), %d diem danh quai, idx %s",
+                     label, _floor_label(ev, scene), nxt, door, center, len(points),
+                     _battle_idx(ev, scene))
             # Duyet idx tang dan, BO idx cua cong. Truoc moi lan danh: DI TOI diem tuong ung.
             # `k` = chi so DIEM, tang theo TUNG LAN THU chu KHONG theo so tran THANG. Truoc day
             # dung points[fought] (chi tang khi thang): login lai giua tang, con 1 da chet -> khong
@@ -250,7 +276,7 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_
             # KHONG BAO GIO duoc danh (log that tang 8 - 12931).
             fought = 0
             k = 0
-            for idx in _BATTLE_IDX_RANGE:
+            for idx in _battle_idx(ev, scene):
                 if not _active(client, stop_event) or k >= len(points):
                     break
                 if idx == door:
@@ -262,6 +288,7 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_
                     log.warning("[%s] 2K: PARTY THUA o %s (idx=%d) -> KET THUC 2K",
                                 label, _floor_label(ev, scene), idx)
                     lost = True
+                    ly_do = "thua"
                     break
                 if res == "won":
                     fought += 1
@@ -270,6 +297,19 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_
             if fought < len(points):
                 log.warning("[%s] 2K: %s chi danh duoc %d/%d tran -> van thu qua cong",
                             label, _floor_label(ev, scene), fought, len(points))
+            # DANH XONG ma van khong co cong len -> gio moi duoc ket luan. Cong cua tang chot chi
+            # hien sau khi thang, nen hoi lai world_nav mot lan nua (du lieu tinh, nhung neu sau
+            # nay bo sung thi chay duoc ngay).
+            if up is None:
+                up = _up_gate(scene)
+                if up is None:
+                    log.warning("[%s] 2K: %s da danh %d/%d tran ma VAN khong co cong len trong "
+                                "world_nav -> HET DUONG. Capture doan 'thang xong -> cong hien' "
+                                "roi bo sung world_nav.json de leo tiep.",
+                                label, _floor_label(ev, scene), fought, len(points))
+                    ly_do = "het_duong"
+                    break
+                nxt, door, center = up
             _walk_to(client, center, stop_event)   # di toi CONG (toa do tu world_nav)
             # Qua cong len tang: cung dang `0x14 0800 [idx]`, dung _enter_gate de cho map doi that.
             client._in_scene_gate = True
@@ -278,7 +318,7 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_
             finally:
                 client._in_scene_gate = False
             if not ok:
-                log.warning("[%s] 2K: ket o cong %s (door=%s) -> dung leo",
+                log.warning("[%s] 2K: KET o cong %s (door=%s) -> dung leo (CHUA xong thap)",
                             label, _floor_label(ev, scene), door)
                 break
             log.info("[%s] 2K: da len %s", label, _floor_label(ev, client.current_map))
@@ -286,8 +326,10 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_
     finally:
         client.state.quest_mode = False   # KHONG de ket dinh sang cac tran train sau nay
         client._team_dungeon_until = 0.0
+        if not client.running:
+            ly_do = "dut"                 # client chet -> moi ly do khac deu vo nghia
         if on_done is not None:
             try:
-                on_done(lost)
+                on_done(lost, ly_do)
             except Exception:
                 pass

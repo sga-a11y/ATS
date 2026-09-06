@@ -174,6 +174,69 @@ class TestKenhDichLaTRANG_THAI(unittest.TestCase):
         self.assertIn('getattr(c, "current_channel", None)', than)
 
 
+class TestChotRoiThiGIU(unittest.TestCase):
+    """Ham chot chay MOI 2 GIAY. Chot lai tu dau moi nhip = acc vua bat dau chuyen sang kenh A
+    thi phan bo doi -> chot kenh B -> ca lu quay dau -> lai doi... Party 3 (06/09) mat 4 phut:
+        15:38:28 {1: 1, 2: 1}       -> CHOT 1
+        15:38:38 {1: 1, 2: 2}       -> CHOT 2      (doi y sau 10 giay)
+        15:41:27 {1: 2, 2: 2, 4: 1} -> CHOT 1
+        15:41:39 {1: 3, 2: 1, 4: 1} -> CHOT 2
+    """
+
+    PARTY = 0
+    ACCS = ("a1", "a2", "a3")
+
+    def setUp(self):
+        self._pa = R.party_accounts
+        R.party_accounts = lambda pidx: [(u, "p", False, False) for u in self.ACCS]
+        self._cl = dict(R.account_clients)
+        R.account_clients.clear()
+        R._party_state.pop(self.PARTY, None)
+        self.st = R._pstate(self.PARTY)
+
+    def tearDown(self):
+        R.party_accounts = self._pa
+        R.account_clients.clear(); R.account_clients.update(self._cl)
+        R._party_state.pop(self.PARTY, None)
+
+    def _song(self, **kw):
+        for u, c in kw.items():
+            R.account_clients[u] = c
+        return [(u, R.account_clients[u]) for u in self.ACCS if u in R.account_clients]
+
+    def test_phan_bo_doi_giua_chung_thi_VAN_GIU_dich_cu(self):
+        song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))
+        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 1)
+        # a1 dang tren duong sang 2 (hoac ai do vua vao 2) -> phan bo nghieng ve 2
+        R.account_clients["a1"].current_channel = 2
+        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 1,
+                         "doi y giua chung -> ca party quay dau, thrash 4 phut")
+
+    def test_qua_HAN_ma_chua_xong_thi_moi_chot_lai(self):
+        song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))
+        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        self.st["kenh_dich_luc"] -= R.KENH_DICH_KIEN_NHAN_SEC + 1
+        R.account_clients["a1"].current_channel = 2
+        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 2)
+
+    def test_dich_vao_SO_DEN_thi_chot_lai_NGAY(self):
+        song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))
+        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R.bao_kenh_day(self.st, 1, "a3")
+        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 2)
+
+    def test_ve_chung_kenh_thi_xoa_ca_moc(self):
+        song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))
+        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R.account_clients["a3"].current_channel = 1
+        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        self.assertIsNone(self.st["kenh_dich"])
+        self.assertEqual(self.st["kenh_dich_luc"], 0.0)
+
+    def test_kien_nhan_du_dai_cho_acc_dang_danh(self):
+        self.assertGreaterEqual(R.KENH_DICH_KIEN_NHAN_SEC, 30)
+
+
 class TestAccTuSoiVaoKenhDich(unittest.TestCase):
     def setUp(self):
         self.src = _doc("run_party_digioi.py")

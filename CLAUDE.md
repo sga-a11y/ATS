@@ -93,6 +93,15 @@ khi lệnh con lỗi. Nên các lỗi dưới đây KHÔNG thể lọt ra bản 
 | `asset APK chua khai bao trong SHARED_ASSETS` | File assets chỉ được chép tay | Thêm vào `SHARED_ASSETS` |
 | `Servers.kt FALLBACK thieu server` | Thêm server vào `servers.json` mà quên `Servers.kt` | Thêm vào `FALLBACK` trong `Servers.kt` |
 | `asset APK chua khai bao trong DATA_JSON cua build_product.py` | File có trong `SHARED_ASSETS` (APK có) nhưng bản **exe** không đóng gói | Thêm vào `DATA_JSON` trong `build_product.py` |
+| `ban APK cua config.py THIEU ham ma code dung chung goi` | Thêm hàm vào `bot/config.py` mà quên bản APK | Chép tay sang `android/.../train_bot/config.py` |
+
+**Tái phạm lần 4 (2026-09-06)** — cổng thứ 7 sinh ra từ đây. `config.py` nằm trong `PC_ONLY`
+(bản APK đọc asset, cấu trúc khác hẳn) nên sync **không** chép nó — tức nó là một chỗ chép tay nữa.
+Thêm `event_hom_nay()` vào `bot/config.py` cho lịch loạn đấu T5/T7 mà quên bản APK: **build xanh,
+test xanh, APK cài được**, rồi mọi acc mode event trên điện thoại đều
+`LOI: module 'train_bot.config' has no attribute 'event_hom_nay'` → đứng im ở map event →
+supervisor relogin liên tục → hai phiên chồng nhau → `DANG NHAP TRUNG LAP (ma 19)`.
+Lệch kiểu này **không** làm build hỏng, nó nổ **giữa lúc chạy trên máy user**.
 
 **Tái phạm lần 3 (2026-08-24)** — cổng thứ 6 sinh ra từ đây. Thêm `npc_table.json` vào
 `SHARED_ASSETS` (APK) nhưng quên `DATA_JSON` (exe) → bản exe không có file → bảng thống kê hiện

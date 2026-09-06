@@ -100,6 +100,20 @@ rụng vì người ra vào liên tục). Điều phối bỏ qua kênh trong s�
 party đang đứng đều đầy thì `_kenh_trong_cho_ca_party` lấy kênh trống đủ chỗ cho **cả** party từ
 `c.channels`. Về chung một kênh thì sổ đen xoá sạch.
 
+**Chốt rồi thì GIỮ** (`KENH_DICH_KIEN_NHAN_SEC = 45s`). Hàm chốt chạy mỗi 2 giây; chốt lại từ đầu
+mỗi nhịp thì acc vừa bắt đầu chuyển sang kênh A là phân bố đổi → chốt kênh B → cả lũ quay đầu →
+lại đổi. Đúng kiểu thrash đã chữa cho `gom`/`reform` bằng grace + cooldown, mà hàm chốt kênh lại
+thiếu. Đích chỉ được đổi khi kênh đó **vào sổ đen**, hoặc **quá hạn** mà vẫn chưa gom xong.
+
+> **Bug thật P3 (06/09), mất 4 phút mới đồng bộ xong** — và trong 4 phút đó không mời party được
+> vì lời mời không qua được kênh khác:
+> ```
+> 15:38:28 {1:1, 2:1}       -> CHỐT 1
+> 15:38:38 {1:1, 2:2}       -> CHỐT 2      (đổi ý sau 10 giây)
+> 15:41:27 {1:2, 2:2, 4:1}  -> CHỐT 1
+> 15:41:39 {1:3, 2:1, 4:1}  -> CHỐT 2
+> ```
+
 **Vòng đồng bộ hỏng thì phải ĐÓNG CỬA** (`_dong_vong_sync`: xoá `channel_ready` / `channel` /
 `channel_failed`). Không đóng thì cờ kẹt SET vĩnh viễn và acc nào còn bám vào lệnh đã chết thì
 treo mãi. Không acc nào được "đỗ lại chờ ai pick lại" nữa: vào kênh không được, hoặc sang kênh rồi

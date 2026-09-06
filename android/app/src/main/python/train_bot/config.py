@@ -265,6 +265,31 @@ def _load_events(path=None):
         _log_asset_error("events.json", error)
         return {}
 EVENTS = _load_events()
+
+
+def event_hom_nay(key, now=None):
+    """Entry events.json cua `key`, DA AP tham so cua HOM NAY.
+
+    BAN SAO CUA `bot/config.py` - `config.py` la file RIENG cua APK (PC_ONLY trong
+    tools/sync_apk_python.py) vi no doc asset thay vi doc file, nen cai gi them ben PC deu phai
+    CHEP TAY sang day. Quen la ban APK nem `AttributeError` GIUA LUC CHAY, khong phai luc build:
+        13:46:10 [quanhai] LOI: module 'train_bot.config' has no attribute 'event_hom_nay'
+    -> acc vao mode event roi dung im, relogin lien tuc, dinh "DANG NHAP TRUNG LAP (ma 19)".
+    Da co cong chan trong sync_apk_python.py de khong tai pham.
+
+    Cung mot event co the doi tham so theo THU (loan dau: thu 3 map 10991, thu 7 map 54901).
+    Event khong co `lich` -> tra nguyen entry.
+    """
+    ev = (EVENTS or {}).get(key or "")
+    if not ev or not ev.get("lich"):
+        return ev
+    try:
+        from . import loandau
+        return loandau.bien_the_hom_nay(ev, now)
+    except Exception:
+        return ev
+
+
 def _load_mob_paths(path=None):
     """Doc mob_paths.json -> {map_id:int -> {(sx,sy):tuple -> [(x,y),...]}}.
     Duong di bo TRONG map toi diem quai XA (capture) - bot replay thay navigate thang."""

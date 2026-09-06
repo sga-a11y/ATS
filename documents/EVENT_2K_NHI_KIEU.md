@@ -65,3 +65,84 @@ luật lặp), và nếu tiện thì cả lúc kết thúc/thoát ra. Đặt tê
 
 > Theo lệ repo: **giữ pcap tới khi tính năng hết bug**; xác nhận điều mới thì cập nhật
 > `KNOWLEDGE.md`.
+
+
+## Lệch tầng → gom về TẦNG THẤP NHẤT cả đội đang ở
+
+**Bot ra lệnh, cả party theo** — không acc nào tự tính lấy. Điều phối chốt một tầng đích vào kế
+hoạch (`ke_hoach["tang_gom"]`, hàm `_tang_gom_2k`), mọi acc đọc cùng con số đó rồi đi bộ xuống.
+
+- Cả đội còn trong tháp → `min(map)`: đứa ở tầng thấp khỏi phải đi, đứa trên đi bộ xuống.
+- Có acc đang ở **ngoài** tháp → về cửa vào `dest_map` (12922): acc ngoài tele vào bình thường,
+  acc trong tháp đi bộ xuống đấy.
+
+Đọc thẳng `current_map` của từng client, **không** đọc `st["event_start_map"]` (bảng đó chỉ được
+điền lúc login) — nhờ vậy bắt được cả lệch tầng **giữa chừng**.
+
+Trong map event **không teleport được**, nên gom = đi bộ theo cổng
+(`client.regroup_to_event_start(ev, dest=<tầng>)`).
+
+### Ba lỗi đã sửa (06/09/2026)
+
+**1. Nhánh gom về tầng thấp nhất từng CHẾT.** Commit `032f42a` (09/08) thêm `_2k_regroup_target`
+nhưng đặt nó ở nhánh `elif` **thứ hai** với điều kiện y hệt nhánh ngay trên
+(`elif _inside_floor_crawl_tower(ev, c.current_map):` × 2). Python chỉ vào nhánh khớp đầu tiên →
+nhánh mới không chạy lần nào; nhánh cũ tụt thẳng về **đáy tháp 12922**, mất hết tầng đã leo.
+`client.regroup_to_event_start` cũng bị định nghĩa hai lần y như vậy. Đã xoá bản chết ở cả hai chỗ.
+
+**2. Lệnh GOM trong tháp không ai thi hành được.** Điều phối bảo GOM → leader gọi `_do_reform()` =
+đi route **về thành**, mà trong tháp không có route nào → in `reform: khong co smart/legacy route ->
+bo qua` rồi trả về ngay. Giờ qua `_thi_hanh_gom()`: có `tang_gom` thì **đi bộ xuống tầng**, ngoài
+event mới reform như cũ.
+
+**3. Leader quay vòng trần 8.000 vòng/giây.** `_do_reform()` trả về tức thì rồi `continue` **không
+ngủ**. Party 5 (06/09): `thsau` **422.627 dòng log**, 201.495 lần lặp, cao điểm **7.985 dòng trong
+một giây**. Vòng đó ăn GIL nên **bỏ đói luôn luồng điều phối** — kế hoạch đóng băng ở `viec=gom`
+suốt 5 phút dù cả party đã chung kênh từ 13:15:37; vòng nóng tự nuôi chính nó. Đã thêm
+`time.sleep(KE_HOACH_NHIP)` sau khi thi hành lệnh.
+
+Kèm theo: **cùng map mà lệch kênh → `VIEC_DONG_BO`**, không phải `VIEC_GOM`, và không đòi leader
+phải "báo cáo" (`_lech_kenh_that`) trước. Party 5 có cả 5 acc ở map 12922 mà vẫn bị ra lệnh gom về
+thành — giữa tháp 2K thì vô nghĩa.
+
+
+## Tầng CHỐT — cổng lên chỉ hiện sau khi THẮNG
+
+`world_nav.json` chỉ có cổng **xuống** cho **12934 / 12939 / 12943 / 12949 / 12954**. Đó không
+phải thiếu dữ liệu: user xác nhận 06/09 — *"đánh chưa thắng được nên thế, khi nào đánh thắng mới
+xuất hiện cổng"*. Lúc crack dữ liệu scene thì tầng chưa dọn nên cổng chưa tồn tại.
+
+**Vòng leo tháp vì thế phải ĐÁNH HẾT TẦNG rồi mới kết luận.** Bản cũ kiểm cổng lên *trước*, không
+thấy là `break` ngay → lên tầng 11 rồi **đứng im, không đánh trận nào** (party 1 và party 11,
+06/09: *"lên đỉnh tháp thì ko thấy đánh tiếp"*).
+
+### Tầng 11 (12934 "Đỉnh Tháp") khác tầng thường hai chỗ
+
+Bóc từ `captures/2k_tang11_20260906.pcap`:
+
+```
+10.80  C2S 0x14 0800 02        qua cổng idx 2 (từ 12933)
+10.91  S2C 0x0c map=12934 pos=(630,890)          ← chỗ cập bến
+12.76  C2S 0x0c 0100 → 13.70 C2S 0x14 0600 → S2C 0x14 08 2a    (scene_resume, đúng như mọi tầng)
+14.97..16.26  C2S 0x06 move → (639,670) (644,575) (647,480) (650,430)
+16.70  C2S 0x14 0800 02        ← KÍCH TRẬN bằng idx 2
+16.94  S2C 0x14 0100 …         thoại mở
+17.00..19.77  C2S 0x14 0600 ×6 ↔ S2C 0x14 0100 ×6
+19.91  S2C 0x14 0900           thoại xong
+20.53  C2S 0x5b 0200 ×12       xếp đội hình
+23.93  C2S 0x32 0100           ĐÁNH
+```
+
+| | Tầng thường | Tầng 11 (12934) |
+|---|---|---|
+| điểm đánh | `[510,1190] [290,730] [510,330]` | **`[650,430]`** (một điểm) |
+| idx kích trận | 3..8 | **2** |
+
+`battle_idx` trong `events.json` khai idx riêng cho tầng chốt. **Không** mở rộng khoảng mặc định
+xuống 2: ở tầng thường idx 2 thường **là cổng** (12933 door=2) → bấm vào là qua cổng sớm.
+
+Sáu bước thoại không cần code thêm — `_fight_one` đã có `_DIALOG_CAP = 15`.
+
+**Còn thiếu**: cổng lên 12935 (door + toạ độ) — phải capture đoạn *thắng xong → cổng hiện → lên
+tầng 12* rồi bổ sung `world_nav.json`. Code đã hỏi lại `_up_gate` sau khi đánh xong nên bổ sung
+dữ liệu là chạy được ngay, không phải sửa code.

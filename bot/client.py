@@ -2226,6 +2226,8 @@ class GameClient:
         # SO PHUC THAN CON LAI (godMission trong client): tu S2C 0x18 sub0800
         # <設定衰神福神> [roleId i64][kind u16][count i32]. None = server chua gui.
         self.god_mission = None
+        # "Tran nay minh da chet chua" - xoa moi khi vao tran moi (0x34). Xem _chot_minh_chet.
+        self.chet_tran_nay = False
         # True = CO SU KIEN can xu ly Phuc Than NGAY (buff tut < PHUC_THAN_LOW hoac ngoc HONG),
         # khong phai cho het chu ky. Handler goi tin chi BAT co (chay o thread doc goi, khong duoc
         # gui/sleep o day); vong lap trong run_party_digioi TIEU THU khi khong con trong tran.
@@ -2921,6 +2923,33 @@ class GameClient:
         self._ghi_cache_tui()    # chot lai tui do lan cuoi truoc khi tat (xem _ghi_cache_tui)
         if self.sock:
             self.sock.close()
+
+    def _chot_minh_chet(self, opcode):
+        """CHOT "tran nay MINH da chet chua" - doc HP cua CHINH minh, chot LIEN TUC trong tran.
+
+        DUNG CACH CLIENT LAM. Server KHONG gui goi "thang/thua" nao: `S:011-000 <結束戰鬥>` chi
+        mang `roleId + npcIndex` va `FightManager.FightOver` chi `SetWar(EWar.None)`. Client biet
+        chet bang HP (`FightField.lua:1034`):
+            if me.roleController:GetAttribute(EAttribute.Hp) <= 0 then me:SetBeh(EFightBeh.Dead)
+
+        VI SAO KHONG DUNG `npc40.party_defeated(state.allies)`: `allies` la danh sach DONG DOI,
+        chi day du khi co `0x0b` party-broadcast, va bi `clear()` moi `0x34`. Rong thi
+        `bool(known) and alive == 0` tra **False** = "khong thua". Log that party 1 (06/09) tang
+        11: `2K: xong tran idx=2, party song 0/0` trong khi ca party vua chet sach.
+        `state.char` thi la CHINH MINH - luon co, cap nhat moi luot tu `0x33`/`0x35`.
+
+        Chot LIEN TUC vi sau tran server hoi/hoi sinh -> doc luc do la mat dau vet.
+        """
+        if opcode == protocol.OP_BATTLE_START:
+            self.chet_tran_nay = False      # tran MOI -> xoa dau cua tran truoc
+            return
+        # `getattr(self, "state")`: ham nay nam tren duong NONG (_dispatch, moi goi) nen khong
+        # duoc nem gi. Test dung `GameClient.__new__(GameClient)` (khong chay __init__) de kiem
+        # tung handler -> chua co `state`.
+        st = getattr(self, "state", None)
+        u = getattr(st, "char", None) if st is not None else None
+        if u is not None and getattr(u, "hp_max", 0) > 0 and getattr(u, "hp", 1) <= 0:
+            self.chet_tran_nay = True
 
     def _observe_npc40_packet(self, opcode, pkt):
         if not getattr(self, "_npc40_started", False):
@@ -3621,6 +3650,7 @@ class GameClient:
 
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        self._chot_minh_chet(opcode)
         self._observe_team_dungeon_packet(opcode, pkt)
         self._observe_npc40_packet(opcode, pkt)
         self._observe_loandau_packet(opcode, pkt)
@@ -15191,30 +15221,6 @@ class GameClient:
             if gate and gate.get("center"):
                 return int(edge["door"]), tuple(gate["center"])
         return None
-
-    def regroup_to_event_start(self, ev) -> bool:
-        """DI BO xuong map tap trung cua event (dest_map, vd 2K = 12922 Thong Dao).
-
-        Trong map 2K KHONG teleport duoc (xem `exit._note` trong events.json) va chon lai event
-        (0x4d) tu tang sau cung khong chac keo ve duoc -> cach DUY NHAT chac chan la di bo xuong
-        theo cong, dung tim duong thong minh (world_nav co du cong xuong: 12931 -> 12003 qua 11
-        cong). Dung khi party bi LECH TANG -> gom lai o dest_map roi leo lai tu day.
-        """
-        dest = int((ev or {}).get("dest_map") or 0)
-        cur = int(self.current_map or 0)
-        if not dest:
-            return False
-        if cur == dest:
-            return True
-        log.info("[%s] gom doi: di bo %s -> %s (khong teleport duoc trong map event)",
-                 self._label, cur, dest)
-        self.flee_mode = True   # dang di gom doi -> ne tran, khong dung lai danh
-        if not self.refresh_server_position(cur):
-            return False
-        ok = self.follow_smart_scene_route(cur, dest, flee=True, refresh_position=False)
-        if not ok:
-            log.warning("[%s] gom doi: KHONG di bo duoc %s -> %s", self._label, cur, dest)
-        return ok
 
     def regroup_to_event_start(self, ev, dest: int = None) -> bool:
         """DI BO xuong map tap trung cua event. `dest` = tang gom (mac dinh dest_map = 12922).

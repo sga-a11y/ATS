@@ -146,6 +146,40 @@ def _check_synced():
         raise SystemExit("SYNC DUNG: copy xong van LECH: %s" % ", ".join(bad))
 
 
+def _check_config_api():
+    """CONG 7: ban APK cua `config` phai co DU moi ham ma code DUNG CHUNG goi qua `config.<ten>`.
+
+    `config.py` la PC_ONLY (APK doc asset, cau truc khac han) nen no la mot cho CHEP TAY nua -
+    dung cai bay "chep tay o dau la lech o do" trong CLAUDE.md. Va lech o day KHONG lam build
+    hong: no nem AttributeError GIUA LUC CHAY, tren may user.
+
+    Da xay ra that (06/09): them `event_hom_nay()` vao `bot/config.py` cho lich loan dau T5/T7,
+    quen ban APK -> moi acc mode event tren APK deu bao
+        LOI: module 'train_bot.config' has no attribute 'event_hom_nay'
+    roi dung im, relogin lien tuc, dinh "DANG NHAP TRUNG LAP (ma 19)".
+    """
+    import re
+    goi = set()
+    nguon = [os.path.join(ROOT, "bot", f) for f in SHARED + OPTIONAL]
+    nguon.append(os.path.join(ROOT, "run_party_digioi.py"))
+    for f in nguon:
+        if not os.path.exists(f):
+            continue
+        with open(f, encoding="utf-8") as fh:
+            # `(?<![A-Za-z0-9_])` = phai la CHINH module `config`, khong phai `furnace_config.get`
+            goi |= set(re.findall(
+                r"(?<![A-Za-z0-9_])config[.]([a-z_][a-z0-9_]*)[ ]*[(]", fh.read()))
+    with open(os.path.join(APK, "config.py"), encoding="utf-8") as fh:
+        apk_src = fh.read()
+    co = set(re.findall(r"^def ([a-z_][a-z0-9_]*)", apk_src, re.M))
+    thieu = sorted(n for n in goi - co if not n.startswith("_"))
+    if thieu:
+        raise SystemExit(
+            "SYNC DUNG: ban APK cua config.py THIEU ham ma code dung chung goi: %s\n"
+            "  -> chep tay sang android/app/src/main/python/train_bot/config.py "
+            "(file nay la PC_ONLY, sync khong tu chep)" % ", ".join(thieu))
+
+
 def main():
     _check_no_drift()
     for f in SHARED:
@@ -173,4 +207,5 @@ if __name__ == "__main__":
     _check_no_abs_bot_import()
     _check_assets_covered()
     _check_servers_fallback()
+    _check_config_api()
     print("OK: PC va APK giong het nhau (%d file shared)" % len(SHARED))

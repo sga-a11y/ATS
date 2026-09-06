@@ -188,11 +188,24 @@ class TestPhatHienLechVaRaLENH(_Nen):
         self.assertNotEqual(kh["viec"], R.VIEC_GOM, "lech kenh ma gom NGAY = thrash")
         self.assertIsNotNone(lech_tu, "phai bat dau tinh gio lech kenh")
 
-    def test_lech_kenh_lien_tuc_qua_han_thi_moi_gom(self):
+    def test_lech_kenh_qua_han_thi_DONG_BO_TAI_CHO_chu_khong_gom(self):
+        """CUNG map ma lech kenh -> doi kenh la xong; keo ca party ve thanh chi ton mot vong di
+        duong, va o cho khong co route (trong thap 2K) thi lenh gom KHONG AI THI HANH DUOC.
+
+        Party 5 (06/09): ca 5 acc o map 12922, kenh [1,5] -> ra lenh GOM -> `_do_reform` in
+        "khong co smart/legacy route -> bo qua" roi tra ve ngay -> leader quay 201.495 vong.
+        """
         self._dat(a1=_C(12001, 1, 5), a2=_C(12001, 2, 5), a3=_C(12001, 2, 5))
         kh, ly_do, _ = self._quyet(lech_tu=time.time() - R.KE_HOACH_LECH_MAP_SEC - 1)
-        self.assertEqual(kh["viec"], R.VIEC_GOM)
+        self.assertEqual(kh["viec"], R.VIEC_DONG_BO)
         self.assertIn("kenh", ly_do)
+
+    def test_lech_MAP_qua_han_thi_moi_GOM(self):
+        """Gom ve cung cho chi dung khi lech MAP."""
+        self._dat(a1=_C(12001, 1, 5), a2=_C(12061, 1, 5), a3=_C(12061, 1, 5))
+        kh, ly_do, _ = self._quyet(lech_tu=time.time() - R.KE_HOACH_LECH_MAP_SEC - 1)
+        self.assertEqual(kh["viec"], R.VIEC_GOM)
+        self.assertIn("MAP khac nhau", ly_do)
 
     def test_an_han_du_dai_cho_mot_chuyen_teleport_gom(self):
         """Gom = ve thanh trung gian roi ve thanh tap ket, tung acc lech nhip vai chuc giay."""
