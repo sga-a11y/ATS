@@ -1002,6 +1002,33 @@ Byte SUB quyết định hành động. Tất cả reference **self entity** (ta
 
 **Lưu ý:** Trong party 2 người, target ngầm định. Party 3+ người cần test thêm để biết field chỉ định member cụ thể.
 
+## 7b-DG. VÀO DỊ GIỚI (opcode 0x61) — server TRẢ MÃ LÝ DO, đừng đoán
+
+```
+C2S 0x61 01 00 01              mở/load zone Dị Giới   (C:097-001 <進入限時副本> +副本ID(1))
+C2S 0x61 02 00 [idx]           xác nhận vào + chọn cấp quái (idx 1..15)
+S2C 0x61 01 00 [kết quả 1B]    S:097-001 <進入結果>
+```
+
+| Mã | Nghĩa | Bot xử |
+|---|---|---|
+| 0 | 成功 | vào được |
+| 1 | 等級不足 cấp không đủ | **dừng hẳn** |
+| 2 | 時間已滿 hết giờ hôm nay | **dừng hẳn** — mã DUY NHẤT được kết luận "hết giờ" |
+| 3 | 戰鬥中 đang đánh | tạm thời, thử lại |
+| 4 | 事件中 đang trong sự kiện | tạm thời, thử lại |
+| 5 | 組隊中 **đang tổ đội** | rời đội rồi thử lại |
+| 6 | 已在該場景 đã ở trong DG | coi như xong |
+
+Client chặn trước khi gửi (`_lua_dec/UI/UITeleport.lua:501`, `OnClick_LimitFightArea`): đang đánh ·
+**đang tổ đội** · `Role.CanControl()`. Cùng luật `Team.IsAlone` với teleport ở §7c.
+
+> **Bài học 07/09:** bot không đọc `S:097-001`, bắn 12 lần rồi tự đoán `nhieu kha nang HET GIO DI
+> GIOI hom nay`. Log party 17 tự tố ngay dòng trên: `SOAT LAI thay CON 120 phut DG (server: da
+> dung 0/120)` — còn nguyên 120/120, thật ra là mã 5 (đang tổ đội). Đoán sai → đánh dấu "xong DG"
+> → cả party kẹt chéo, leader ép relogin cả party. **Server có gói báo lý do thì đọc gói, đừng suy
+> từ triệu chứng.**
+
 ## 7c. TELEPORT VỀ THÀNH (opcode 0x44)
 
 ```

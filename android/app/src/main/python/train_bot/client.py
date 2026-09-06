@@ -2162,6 +2162,8 @@ class GameClient:
         # member toi cho leader DUNG MOT LAN o `AddMember` (Team.lua:176), khong bam lien tuc.
         self._cho_bam_leader = False
         self.party_members = []      # list entity cac member theo thu tu (= slot B2)
+        self._dg_enter_result = None      # ma S:097-001 <進入結果> lan vao DG gan nhat
+        self._dg_enter_result_luc = 0.0
         # Ban do entity -> ID DOI TRUONG cua MOI party thay duoc quanh map (S:013-006 phat theo
         # map, mang nhieu party mot luc) = ban sao cua `Team.members` ben client Lua. Dung de
         # biet MINH dang ket trong party NAO (roi cho dung) va nguoi kia da o party chua.
@@ -3778,6 +3780,31 @@ class GameClient:
             self._cached_pet_list_pkt = pkt
             self._on_pet_list(pkt)
         # Collection style/card dung chung cho char + pet. Moi update deu tinh lai max cua pet active.
+        # KET QUA VAO DI GIOI: S:097-001 <進入結果> +結果(1) (`protocal.lua:14111`).
+        # Server NOI THANG ly do tu choi, khong phai doan:
+        #   0 成功 | 1 等級不足 | 2 時間已滿 | 3 戰鬥中 | 4 事件中 | 5 組隊中 | 6 已在該場景
+        # Truoc day bot KHONG doc goi nay (grep `opcode == 0x61` ra rong) nen ban 12 lan roi tu ket
+        # luan "nhieu kha nang HET GIO DI GIOI hom nay". Log 07/09 [chutam] to cao ngay dong tren:
+        #   00:37:20  SOAT LAI thay CON 120 phut DG (server: da dung 0/120)
+        #   00:38:31  VAO DI GIOI THAT BAI sau 12 lan -> nhieu kha nang HET GIO DI GIOI hom nay
+        # Con nguyen 120/120 phut - that ra no la `(member)`, tuc ma 5 DANG TO DOI.
+        elif opcode == 0x61 and len(pkt) >= 10 and pkt[7:9] == b"\x01\x00":
+            self._dg_enter_result = pkt[9]
+            self._dg_enter_result_luc = time.time()
+            _ly_do = {
+                0: "OK",
+                1: "CAP KHONG DU",
+                2: "HET GIO DI GIOI hom nay",
+                3: "DANG CHIEN DAU",
+                4: "DANG TRONG SU KIEN",
+                5: "DANG TO DOI",
+                6: "DA O TRONG DI GIOI",
+            }.get(self._dg_enter_result, "ma la")
+            if self._dg_enter_result == 0:
+                log.info("[%s] Vao Di Gioi: server DONG Y (S:097-001 ma 0)", self._label)
+            else:
+                log.warning("[%s] Vao Di Gioi BI TU CHOI: %s (S:097-001 ma %d)",
+                            self._label, _ly_do, self._dg_enter_result)
         elif opcode == 0x5f and len(pkt) >= 10 and pkt[7:9] == b"\x04\x00":
             count = pkt[9]
             self._collect_style_flags = {i + 1: pkt[10 + i] for i in range(count)
@@ -13734,6 +13761,21 @@ class GameClient:
     def enter_di_gioi(self):
         """Vao map Di Gioi (map train chinh): 0x61 010001 -> 0x61 02 00 [level_idx].
         level_idx = self.di_gioi_level (mac dinh 2 = cap 25). LUU Y: KHONG vao duoc khi dang trong party."""
+        # PHAI THOAT TO DOI TRUOC - y het `teleport()`. Client chan thang o
+        # `UITeleport.OnClick_LimitFightArea` (`_lua_dec/UI/UITeleport.lua:501`), khong gui goi nao:
+        #     if not Team.IsAlone(Role.playerId) then ShowCenterMessage(...); return true; end
+        # va neu van gui thi server tra `S:097-001` ma 5 <組隊中>. Cai comment "KHONG vao duoc khi
+        # dang trong party" o tren da co tu lau ma khong ai lam - hau qua la ca party 17 (07/09)
+        # ket cheo: chutam tuong minh "xong DG" nen dung cho, leader bat ca party ve Tuong Duong,
+        # 3 acc con lai dang danh trong DG va con 1h20m -> leader EP RELOGIN ca party.
+        self._dg_enter_result = None
+        if self.party_members:
+            log.info("[%s] Vao Di Gioi: dang o to doi (%d member) -> ROI DOI truoc (client chan "
+                     "vao DG khi con doi)", self._label, len(self.party_members))
+            try:
+                self.leave_party()
+            except Exception as e:
+                log.warning("[%s] Vao Di Gioi: roi doi loi: %s", self._label, e)
         self.send(0x61, bytes.fromhex("010001"))   # mo/load zone Di Gioi
         log.info("[%s] Vao Di Gioi: gui 0x61 010001", self._label)
         time.sleep(1.5)                              # cho server load zone
@@ -13766,9 +13808,22 @@ class GameClient:
             if self.in_di_gioi():
                 log.info("[%s] da VAO DI GIOI (map=%s)", self._label, self.current_map)
                 return True
-        log.warning("[%s] VAO DI GIOI THAT BAI sau %d lan (map=%s, combat=%s) "
-                    "-> nhieu kha nang HET GIO DI GIOI hom nay",
-                    self._label, tries, self.current_map, self.in_combat())
+            # Server DA NOI ly do (S:097-001) -> khong ban lai mu nua.
+            #   1 cap khong du  -> acc nay khong bao gio vao duoc, ban lai la vo ich
+            #   2 het gio       -> het that, va la lan DUY NHAT duoc phep ket luan the
+            # Cac ma con lai (3 dang danh / 4 dang su kien / 5 dang to doi) la TAM THOI -> thu lai;
+            # rieng ma 5 thi `enter_di_gioi()` da roi doi nen lan sau se qua.
+            if self._dg_enter_result in (1, 2):
+                log.warning("[%s] VAO DI GIOI DUNG HAN: %s (S:097-001 ma %d)", self._label,
+                            "CAP KHONG DU" if self._dg_enter_result == 1 else "HET GIO hom nay",
+                            self._dg_enter_result)
+                return False
+        # KHONG doan "het gio" nua: server co goi bao ly do, doan bua thi tren dat acc con nguyen
+        # 120/120 phut ma bi danh dau la xong DG (ca that 07/09 [chutam] - xem `S:097-001` o
+        # `_dispatch`). Khong nhan duoc goi nao thi noi that la khong biet.
+        log.warning("[%s] VAO DI GIOI THAT BAI sau %d lan (map=%s, combat=%s, S:097-001=%s)",
+                    self._label, tries, self.current_map, self.in_combat(),
+                    self._dg_enter_result if self._dg_enter_result is not None else "khong nhan duoc")
         return False
 
     def go_to_town(self, city_id: int, flag: int = 0, tries: int = 30, wait: float = 2.0,

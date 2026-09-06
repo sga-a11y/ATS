@@ -233,3 +233,33 @@ Cả log hôm đó: **4758 gói teleport**, phần lớn là bắn lại.
 nào. Mất người thì điều phối gom lại — đúng **L0**, và nó vốn đã làm vậy (04:21 rời → 05:52 gom).
 
 Neo bằng `tests/test_tele_phai_roi_doi_truoc.py`.
+
+## 8. Vào Dị Giới cũng phải thoát tổ đội — và server có nói lý do
+
+Cùng luật `Team.IsAlone` với §7. Client chặn ở `UITeleport.OnClick_LimitFightArea`
+(`_lua_dec/UI/UITeleport.lua:501`); nếu vẫn gửi thì server trả `S:097-001 <進入結果>` với mã rõ
+ràng (bảng đầy đủ ở `KNOWLEDGE.md` §7b-DG): **5 = đang tổ đội**, **2 = hết giờ hôm nay**.
+
+Bot trước đây **không đọc gói này** — bắn 12 lần rồi đoán `nhieu kha nang HET GIO DI GIOI hom nay`.
+Ca thật 07/09 party 17, hai dòng liền nhau tự tố:
+
+```
+00:37:20 [chutam] SOAT LAI thay CON 120 phut DG (server: da dung 0/120)
+00:38:31 [chutam] VAO DI GIOI THAT BAI sau 12 lan -> nhieu kha nang HET GIO DI GIOI hom nay
+```
+
+Đoán sai → đánh dấu "xong DG" → cả party kẹt chéo, ba lệnh chọi nhau:
+
+```
+01:04:05 [chutam] xong DG, DUNG YEN cho party (1/5)
+01:04:00 [chusau] (LEADER) CHO ca party ve Tương Dương (1/5)
+01:03:29 [chusau] (LEADER) chu708 KET 91s khong ve duoc Tương Dương -> EP RELOGIN de cuu party
+01:04:19 [chubay] Di Gioi con lai: 1h20m (da o 39 phut)
+```
+
+**Luật rút ra:** server có gói báo lý do thì **đọc gói**, đừng suy từ triệu chứng. Suy sai ở đây
+không dừng lại ở một acc — nó thành trạng thái "xong DG" giả, kéo cả party vào thế kẹt.
+
+Chỉ mã **1** (cấp không đủ) và **2** (hết giờ) mới được dừng hẳn; 3/4/5 là tạm thời, phải thử lại.
+
+Neo bằng `tests/test_vao_di_gioi_giong_client.py`.
