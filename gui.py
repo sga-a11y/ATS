@@ -5517,7 +5517,11 @@ class PartyConfigFrame(ttk.Frame):
         _tab_pids[:] = _resolve_tab_pids()
 
         def _pet_tab_title(pid):
+            # Ten tab lay tu PET_NAMES (khong qua `carried_pets`) nen phai TU ghep cap, cap doc
+            # tu `pet_levels` cua client. Acc TAT -> khong co -> hien ten tran, khong bia so.
+            from bot.client import ten_pet_kem_lv
             nm = getattr(config, "PET_NAMES", {}).get(pid) or "Pet"
+            nm = ten_pet_kem_lv(nm, (getattr(c, "pet_levels", None) or {}).get(pid))
             return f"{nm} (0x{pid:04x})"
 
         def _build_role_row(parent, pid):

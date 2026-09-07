@@ -1709,6 +1709,21 @@ def save_skill_cache(username, data):
         return True
 
 
+def ten_pet_kem_lv(ten, lv):
+    """Nhan pet hien cho user: `Ten_lv` (vd `Quan Vu_111`). User chot 07/09 - de soat pet nao chua
+    nuoi o nha tro / battle / tui do ma khong phai mo tung con ra xem.
+
+    Cap khong hop le (0, None, > 200) -> tra ten tran, KHONG bia so."""
+    ten = (ten or "").strip()
+    try:
+        lv = int(lv or 0)
+    except Exception:
+        return ten
+    if not ten or not (1 <= lv <= 200):
+        return ten
+    return "%s_%d" % (ten, lv)
+
+
 def save_inn_cache(username, inn):
     """Ghi cache PET NHA TRO cua 1 acc (de dialog van tieu sua duoc khi acc DA TAT).
 
@@ -2140,6 +2155,7 @@ class GameClient:
         self._mount_collection_count = 0
         self.char_level = None       # cap nhan vat - tu S2C 0x05 (payload offset 21 = pkt[28])
         self.pet_level = None        # cap pet dang dung - tu S2C 0x0f sub=08
+        self.pet_levels = {}         # pid -> cap CUA TUNG con mang theo (0x0f, byte +7)
         # EVENT LIEN SERVER (vo gioi): lenh chuyen may tu S:001-020, va co dang o may do.
         self._vo_gioi = None
         self._vo_gioi_ve = False
@@ -2155,6 +2171,7 @@ class GameClient:
         self._last_guild_pkt = None   # cache goi 0x27 (guild) de resolve ten neu toi truoc 0x69
         self.flee_mode = False        # True = dang di chuyen -> vao battle thi BO CHAY (khong danh)
         self.dungeon_complete = False  # True khi nhan goi hoan thanh dungeon (S2C 0x14 sub 0x64)
+        self._pb_ket_thuc_luc = 0.0    # luc nhan S:047-012 <副本結束> (pho ban TO DOI ket thuc)
         self.submit_delay = 0.5      # delay truoc khi gui combat
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
@@ -4596,6 +4613,7 @@ class GameClient:
         start, chosen, first = 3, None, None
         _dbg = []   # DEBUG: (marker, pid) tung record de doi chieu voi vi tri THAT trong game
         self.state.carried_pets = []   # [(pid, ten)] pet MANG THEO - GUI tab skill per-pet doc
+        self.pet_levels = {}           # pid -> cap; dung lai moi lan doc (pet mang theo co the doi)
         self._pet_skill_rows = []   # AUTO NANG SKILL PET: (slot,pid,petLv,skillPoint,[skillLv*3])
         for _ in range(n):
             if start + 33 > len(b):
@@ -4606,8 +4624,14 @@ class GameClient:
             pid = int.from_bytes(b[start + 1:start + 3], "little")
             _dbg.append((marker, pid))
             if pid:
+                # Cap doc THANG tu record (byte +7, giong `_pet_skill_rows`). Ghep vao TEN ngay tai
+                # nguon: tui do, tab battle, cache luc acc tat... deu doc `carried_pets` nen chi can
+                # mot cho la du - ten pet o day chi dung de HIEN, khong cho nao lay lam khoa (moi
+                # cho deu so khop bang `pid`).
+                _lv = b[start + 7]
+                self.pet_levels[pid] = _lv
                 self.state.carried_pets.append(
-                    (pid, getattr(config, "PET_NAMES", {}).get(pid, "")))
+                    (pid, ten_pet_kem_lv(getattr(config, "PET_NAMES", {}).get(pid, ""), _lv)))
             # Ban ghi login CUA TUNG PET (khong rieng con xuat chien). pet_login_stats.parse_record
             # von la ham TONG QUAT - nhan offset bat ky - nhung truoc day chi duoc goi cho con
             # active, nen bot khong biet HP/SP/AGI cua 3 con con lai. Luu het o day de UI (tui do)
@@ -5283,6 +5307,31 @@ class GameClient:
             return
         body = pkt[7:]
         sub = int.from_bytes(body[0:2], "little")
+        # PHO BAN KET THUC: `S:047-012 <副本結束> +結果(1) +副本編號(2) +數量(1) <<+獎勵ID(2) +數量(4)>>`
+        #
+        # Server KHONG day ai ra ca - no chi GUI KET QUA cho tung client. Client mo bang ket qua va
+        # chinh cai NUT DONG bang do moi la lenh roi (`Logic/Dungeon.lua:783`):
+        #     UI.Open(UIResult, ..., reward, Dungeon.LeaveSinglePlayDungeon, result == 0);
+        #     function Dungeon.LeaveSinglePlayDungeon()      -- Dungeon.lua:243
+        #       sendBuffer:WriteInt64(Role.playerId); Network.Send(13, 4, sendBuffer);
+        #     end
+        # Tuc MOI acc phai TU roi sau khi nhan goi nay.
+        #
+        # Bot truoc day chi doc `sub == 0x0f` (loi moi) nen member KHONG HE BIET pho ban da xong ->
+        # nam lai trong map instance. Ca that 07/09 p42: leader bao XONG luc 10:35:48, den 10:40:39
+        # member van `go_to_town: DANG TRONG pho ban to doi (map=62012) -> khong teleport`.
+        if sub == 0x0c and len(body) >= 5:
+            _kq = body[2]
+            _did = int.from_bytes(body[3:5], "little")
+            self.dungeon_complete = True
+            self._pb_ket_thuc_luc = time.time()
+            log.info("[%s] PHO BAN KET THUC (S:047-012 ket qua=%d, pho ban 0x%04x) -> tu roi nhu "
+                     "client (C:013-004)", self._label, _kq, _did)
+            try:
+                self.leave_single_dungeon()
+            except Exception as e:
+                log.warning("[%s] roi pho ban sau khi ket thuc loi: %s", self._label, e)
+            return
         if sub == 0x0f and self.auto_accept_party and len(body) >= 17:
             invite_id = body[2:6]
             nl = body[16]
@@ -10845,6 +10894,11 @@ class GameClient:
         while pos + 14 <= len(b):
             index = b[pos]
             npc_id = struct.unpack_from("<H", b, pos + 1)[0]
+            # `protocal.lua:6798` S:031-006 <客棧武將資料>:
+            #   +客棧索引(1) +NPCID(2) +等級(1) +HP(4) +L(1) +名字(L) +武將狀態(1)
+            # -> cap nam ngay sau NPCID. (Vi tri cua L thi bot do thuc nghiem ra +12, lech 4 byte so
+            # voi mo ta tren; GIU NGUYEN cai da chay dung, chi lay them cap o +3.)
+            npc_lv = b[pos + 3]
             ln = b[pos + 12]
             npos = pos + 13
             if npos + ln + 1 > len(b):
@@ -10863,7 +10917,12 @@ class GameClient:
             # KHONG loai ban ghi theo NOI DUNG ten. Parser cu doi ten "toan ky tu in duoc", sai
             # mot cai la do lui `pos += 1` -> lech het phan sau (acc quanmot mat 2 con dau).
             if 1 <= index <= 30 and name:
-                moi[index] = name
+                # TEN LAY THEO `pid` tu PET_NAMES (pets.json) - DUNG NGUON voi tui do va tab battle
+                # (`gui._pet_list` / `_pet_tab_title`). Truoc day cho nay dung TEN SERVER GUI trong
+                # goi, nen cung mot con pet ma nha tro hien mot kieu, tui do/battle hien kieu khac.
+                # Ten server chi con la du phong khi pets.json chua co con do.
+                _ten = getattr(config, "PET_NAMES", {}).get(npc_id) or name
+                moi[index] = ten_pet_kem_lv(_ten, npc_lv)
                 ids[index] = npc_id
         roster.update(moi)
         if moi:

@@ -1002,6 +1002,34 @@ Byte SUB quyết định hành động. Tất cả reference **self entity** (ta
 
 **Lưu ý:** Trong party 2 người, target ngầm định. Party 3+ người cần test thêm để biết field chỉ định member cụ thể.
 
+## 7b-PB. PHÓ BẢN TỔ ĐỘI KẾT THÚC (opcode 0x2f sub 0x0c) — server KHÔNG đẩy ai ra
+
+```
+S2C 0x2f 0c 00 [kết quả 1B][phó bản 2B][số thưởng 1B] + n*([id 2B][số lượng 4B])
+  = S:047-012 <副本結束>
+```
+
+`protocolTable[47][12] -> Dungeon.ReciveDungeonResult` (`_lua_dec/Logic/Dungeon.lua:759`). Gói này
+**chỉ mang kết quả + phần thưởng**. Chính cái nút đóng bảng kết quả mới là lệnh rời:
+
+```lua
+UI.Open(UIResult, Role.player, title, "", "", reward, Dungeon.LeaveSinglePlayDungeon, result == 0);
+
+function Dungeon.LeaveSinglePlayDungeon()      -- Dungeon.lua:243
+  sendBuffer:WriteInt64(Role.playerId);
+  Network.Send(13, 4, sendBuffer);             -- C:013-004
+end
+```
+
+**Mỗi client phải TỰ rời.** Không có chuyện "leader bấm hoàn thành là cả party bị đẩy ra".
+
+> **Bài học 07/09 (p42):** `_on_dungeon()` chỉ xử lý `sub == 0x0f` (lời mời) nên member không hề
+> biết phó bản đã xong → nằm lại map instance, `go_to_town` thì bail vì "đang trong phó bản tổ
+> đội". Leader báo XONG lúc 10:35:48, đến 10:40:39 member vẫn ở map 62012.
+>
+> Và khi phó bản **vỡ** thì server *không* gửi gói này — lúc đó phải có lệnh kéo cả party ra
+> (`C:047-010`, xem `_thoat_pb_ca_party`), đừng chờ ai tự biết.
+
 ## 7b-DG. VÀO DỊ GIỚI (opcode 0x61) — server TRẢ MÃ LÝ DO, đừng đoán
 
 ```

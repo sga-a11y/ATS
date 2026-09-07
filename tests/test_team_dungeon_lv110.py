@@ -272,7 +272,11 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         coordinator.account_forced_reconnect.discard("leader")
         coordinator.account_forced_reconnect_reason.pop("leader", None)
 
-    def test_coordinator_waits_for_whole_party_before_redoing_broken_dungeon(self):
+    def test_coordinator_don_lai_ngay_KHONG_cho_ai_relogin(self):
+        """Truoc day day la BARRIER diem danh: acc nao chua toi thi ca lu ngoi cho, moi 30s in
+        "cho ca party relogin sau PB vo (1/5)". Vi pham L2 (bat acc bao cao) + L9 (Event cho acc
+        khac) - va da khoa cung p42 (07/09): leader cho member relogin, member ket trong map
+        62012 khong ra duoc vi reform bi chan. Gio don lai NGAY, party lech thi dieu phoi gom."""
         with mock.patch.object(sys, "argv", [sys.argv[0]]):
             import run_party_digioi as coordinator
 
@@ -282,8 +286,6 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             "team_dungeon_state": {80: "done"},
             "team_dungeon_broke": {80: True},
             "team_dungeon_need_redo": True,
-            "team_dungeon_recover_seen": {"leader"},
-            "team_dungeon_recover_ready": threading.Event(),
         }
 
         with mock.patch.object(coordinator, "party_accounts", return_value=[("leader",), ("member",)]):
@@ -295,7 +297,32 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         self.assertEqual(state["team_dungeon_state"], {})
         self.assertEqual(state["team_dungeon_broke"], {})
         self.assertFalse(state["team_dungeon_need_redo"])
-        self.assertTrue(state["team_dungeon_recover_ready"].is_set())
+
+    def test_don_lai_chi_MOT_lan(self):
+        """Acc thu hai goi toi thi khong duoc don/log lai - va nhat la khong duoc xoa
+        `team_dungeon_state` da chay lai."""
+        with mock.patch.object(sys, "argv", [sys.argv[0]]):
+            import run_party_digioi as coordinator
+
+        state = {"lock": threading.Lock(), "team_dungeon_need_redo": False,
+                 "team_dungeon_state": {80: "done"}}
+        self.assertTrue(coordinator._prepare_team_dungeon_redo_after_reconnect(
+            state, "member", "member", 0, lambda: False))
+        self.assertEqual(state["team_dungeon_state"], {80: "done"}, "don lai lan hai")
+
+    def test_khong_con_barrier_diem_danh(self):
+        import io as _io, os as _os
+        p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                          "run_party_digioi.py")
+        with _io.open(p, encoding="utf-8") as fh:
+            src = fh.read()
+        for m in ("team_dungeon_recover_seen", "team_dungeon_recover_ready", "_pb_vo_diem_danh"):
+            self.assertNotIn(m, src, m)
+        # dong LOG cua barrier (chu thich / trich log lich su van duoc phep nhac ten)
+        for d in src.splitlines():
+            if "log." not in d:
+                continue
+            self.assertNotIn("auto phó bản đội: chờ", d, d.strip())
 
     def test_dispatch_calls_pb110(self):
         game = _new_game()

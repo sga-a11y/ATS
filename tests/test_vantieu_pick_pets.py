@@ -27,7 +27,22 @@ def make_client(roster=None, ids=None, pick=(), enable=True):
 
 
 ROSTER = {1: "Cửu Sởi", 2: "Giản Ung", 3: "Châu Tĩnh", 4: "Đỗ Viễn"}
+# Nhan HIEN CHO USER tu 07/09: `Ten_lv`. Cap doc tu +3 cua ban ghi (`S:031-006 ... +等級(1)` ngay
+# sau NPCID) - bon so duoi day la CAP THAT trong goi mau, nen day cung la moc kiem offset.
+# Ten lay theo `pid` tu PET_NAMES (pets.json) - CUNG NGUON voi tui do / tab battle, nen co ca hau
+# to chuyen sinh `rb0`. Truoc 07/09 cho nay dung ten SERVER gui trong goi ("Cửu Sởi") -> cung mot
+# con pet ma nha tro hien mot kieu, tui do/battle hien kieu khac (user: "sao ten pet trong nha tro
+# ko co chu rb0").
+ROSTER_NHAN = {1: "Cửu Sởi rb0_40", 2: "Giản Ung rb0_41",
+               3: "Châu Tĩnh rb0_32", 4: "Đỗ Viễn rb0_35"}
 IDS = {1: 0x3710, 2: 0x2f07, 3: 0x3712, 4: 0x272d}
+
+
+def _ten_tran(nhan):
+    """Bo hau to cap. Tu 07/09 roster nha tro luu `Ten_lv` (user chot: hien cap o nha tro/battle/
+    tui do) - cac moc duoi day neo TEN nen phai cat phan cap ra.
+    Gia tri that cua goi mau nay: "Cuu Soi_40" (cap 40 doc tu +3, dung ta `S:031-006`)."""
+    return nhan.rsplit("_", 1)[0] if "_" in nhan else nhan
 
 
 class TestVantieuCandidates(unittest.TestCase):
@@ -78,19 +93,24 @@ class TestVantieuRosterParser(unittest.TestCase):
         c = make_client()
         c._on_vantieu_roster(b"\x00" * 7 + self.GOI)
 
-        self.assertEqual(c.vantieu_roster, ROSTER)
+        self.assertEqual(c.vantieu_roster, ROSTER_NHAN)
         self.assertEqual(c.vantieu_roster_ids, IDS)
 
     def test_pet_id_doi_chieu_KHOP_bang_ten_npc(self):
         """Moc tu kiem chung: pet id boc ra phai tra dung TEN trong npc_names.json. Neu offset
-        lech thi khong the khop ca 4/4 duoc."""
+        lech thi khong the khop ca 4/4 duoc.
+
+        Nhan HIEN cho user thi lay tu PET_NAMES (co hau to chuyen sinh `rb0`) - cung nguon voi tui
+        do / tab battle. Nen doi chieu voi npc_names phai bo hau to do ra."""
+        from bot import config
         names = json.loads((ROOT / "npc_names.json").read_text(encoding="utf-8"))
         names = names.get("names", names)
         c = make_client()
         c._on_vantieu_roster(b"\x00" * 7 + self.GOI)
 
         for idx, pid in c.vantieu_roster_ids.items():
-            self.assertEqual(names.get("0x%04x" % pid), c.vantieu_roster[idx],
+            self.assertEqual(names.get("0x%04x" % pid),
+                             (config.PET_NAMES.get(pid) or "").rsplit(" rb", 1)[0],
                              "pet id 0x%04x khong khop ten" % pid)
 
     def test_goi_CAP_NHAT_1_con_KHONG_duoc_xoa_cac_con_khac(self):
@@ -109,13 +129,13 @@ class TestVantieuRosterParser(unittest.TestCase):
         #    (merge giu san 4 con, nen chi assert "van du 4" thi parse hong cung PASS).
         c2 = make_client()
         c2._on_vantieu_roster(goi_1_con)
-        self.assertEqual(c2.vantieu_roster, {2: "Giản Ung"})
+        self.assertEqual(c2.vantieu_roster, {2: ROSTER_NHAN[2]})
 
         # 2) Goi 1 con den SAU list day du: chi ghi de o do, KHONG xoa cac con khac
         c._on_vantieu_roster(goi_1_con)
         self.assertEqual(len(c.vantieu_roster), 4, "goi cap nhat 1 con da xoa mat cac con khac")
-        self.assertEqual(c.vantieu_roster[1], "Cửu Sởi")
-        self.assertEqual(c.vantieu_roster[4], "Đỗ Viễn")
+        self.assertEqual(c.vantieu_roster[1], ROSTER_NHAN[1])
+        self.assertEqual(c.vantieu_roster[4], ROSTER_NHAN[4])
         self.assertEqual(c.vantieu_roster_ids[2], 0x2f07)
 
     def _ban_ghi(self):
@@ -134,8 +154,8 @@ class TestVantieuRosterParser(unittest.TestCase):
         c = make_client()
         c._on_vantieu_roster(b"\x00" * 7 + self.GOI)
 
-        self.assertEqual(c.vantieu_roster[1], "Cửu Sởi")     # khong phai "Cửu Sở"
-        self.assertEqual(c.vantieu_roster[3], "Châu Tĩnh")   # khong phai "Châu Tĩn"
+        self.assertEqual(c.vantieu_roster[1], ROSTER_NHAN[1])     # khong phai "Cửu Sở"
+        self.assertEqual(c.vantieu_roster[3], ROSTER_NHAN[3])   # khong phai "Châu Tĩn"
 
 
 if __name__ == "__main__":

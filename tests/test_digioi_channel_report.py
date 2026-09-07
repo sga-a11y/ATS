@@ -14,35 +14,53 @@ class TestDigioiChannelReport(unittest.TestCase):
         return {
             "lock": threading.Lock(),
             "channel_sync_gen": 8,
-            "channel_map_reports": {"leader": (True, 49942)},
             "channel_failed": threading.Event(),
             "channel_failed_reason": "",
         }
 
-    def test_late_member_retry_reports_into_current_sync_generation(self):
-        self.assertTrue(
-            hasattr(coordinator, "_record_channel_map_report"),
-            "member retry must be able to report after leaving startup channel sync",
-        )
+    def test_dung_map_thi_KHONG_dat_co_hong(self):
+        """`channel_map_reports` da bo (07/09): bang bao cao vi pham L2 - leader doc thang
+        `account_clients[u].current_map` + `kenh_that()` la biet het. Ham chi con MOT viec: acc
+        thay minh SAI MAP thi dat co hong, vi do la thu leader khong tu thay duoc."""
+        self.assertFalse(hasattr(coordinator, "_record_channel_map_report"),
+                         "bang bao cao map van con -> L2")
         state = self.make_state()
 
-        ok = coordinator._record_channel_map_report(
+        ok = coordinator._ghi_sync_that_bai(
             state, "member", 49942, sync_gen=8, expected_map=49942
         )
 
         self.assertTrue(ok)
-        self.assertEqual(state["channel_map_reports"]["member"], (True, 49942))
+        self.assertFalse(state["channel_failed"].is_set())
 
-    def test_stale_retry_cannot_write_into_a_new_sync_generation(self):
-        self.assertTrue(hasattr(coordinator, "_record_channel_map_report"))
+    def test_SAI_map_thi_dat_co_hong(self):
         state = self.make_state()
 
-        ok = coordinator._record_channel_map_report(
-            state, "member", 49942, sync_gen=7, expected_map=49942
+        ok = coordinator._ghi_sync_that_bai(
+            state, "member", 12001, sync_gen=8, expected_map=49942
         )
 
         self.assertFalse(ok)
-        self.assertNotIn("member", state["channel_map_reports"])
+        self.assertTrue(state["channel_failed"].is_set())
+        self.assertIn("12001", state["channel_failed_reason"])
+
+    def test_gen_cu_KHONG_dat_duoc_co_hong_cua_vong_moi(self):
+        """Acc retry cham mot nhip khong duoc pha vong sync dang chay."""
+        state = self.make_state()
+
+        ok = coordinator._ghi_sync_that_bai(
+            state, "member", 12001, sync_gen=7, expected_map=49942
+        )
+
+        self.assertFalse(ok)
+        self.assertFalse(state["channel_failed"].is_set())
+
+    def test_khong_con_doi_acc_bao_cao(self):
+        source = (Path(__file__).parents[1] / "run_party_digioi.py").read_text(encoding="utf-8")
+        self.assertNotIn('st["channel_map_reports"]', source)
+        for d in source.splitlines():
+            if "log." in d:
+                self.assertNotIn("cho acc bao cao map", d, d.strip())
 
     def test_reform_leader_clears_stale_channel_ready_before_arrival_barrier(self):
         self.assertTrue(hasattr(coordinator, "_prepare_reform_channel_sync"))

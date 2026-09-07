@@ -125,6 +125,32 @@ bảng `*_reports`, `Event` chờ, barrier đếm người.
 > Vi phạm thật: chính tôi thêm `bao_kenh_day()` để acc báo "kênh này đầy" — trong khi
 > `c._chan_switch_result` đã có sẵn mã server trả về. Bắt báo cáo là tự làm mù mình.
 
+> Vi phạm thật (07/09): `channel_map_reports` — acc phải "khai" map/kênh sau khi đổi kênh, leader
+> đếm đủ người mới đi tiếp. Acc nào bận việc khác thì không khai → leader đếm thiếu → `TIMEOUT 60s`
+> → reform → lặp lại. Party 18 (23:36–23:43) đốt 6 phút với `cho acc bao cao map (1/5)` trong khi
+> 4 member **đã ở đúng map từ đầu** — thông tin leader thấy được ngay bằng
+> `account_clients[u].current_map`. Đã bỏ bảng; hàm cũ chỉ còn giữ một việc là **đặt cờ hỏng khi
+> acc thấy chính nó sai map** — thứ duy nhất leader không tự thấy được.
+
+### L2b — Việc chung thì ra MỘT LỆNH cho cả party, đừng để mỗi acc tự lo
+
+Khi cả party cùng phải làm một việc (ra khỏi instance, hạ cờ, đổi kênh, về thành), điều phối phát
+**một lệnh chạm tới mọi client**. Mỗi acc "tự lo phần mình" nghe thì hợp lý, nhưng acc nào đang kẹt
+ở nhánh khác sẽ không bao giờ tới lượt tự lo.
+
+> Vi phạm thật (07/09, p42 — user: *"leader ở ngoài còn member vẫn trong PB kìa"*): phó bản **vỡ**
+> thì server không gửi `S:047-012` nên không acc nào tự biết đường ra, mà leader chỉ gọi
+> `_exit_pb_or_reconnect` cho **chính nó**. Leader về thành, member nằm nguyên map 62012, và
+> `go_to_town` của họ thì bail vì *"đang trong phó bản tổ đội"*:
+>
+> ```
+> 10:40:39 [luubhai] go_to_town: DANG TRONG pho ban to doi (map=62012) -> khong teleport
+> 10:40:39 [luubhai] (member) reform: CHUA ve duoc Hội Kê (map=62012) -> nghi 10s thu lai
+> ```
+>
+> Đã thêm `_thoat_pb_ca_party(pidx)`: điều phối kéo **mọi acc còn trong instance** ra bằng
+> `C:047-010`, gắn vào cả ba đường vỡ. Cùng họ với `dat_pha_pho_ban` (L1b).
+
 ### L3 — Lệnh phải có MỤC TIÊU ĐO ĐƯỢC
 
 Mỗi lệnh phải phát biểu được bằng một câu kiểm được từ trạng thái thật:
@@ -270,6 +296,8 @@ Không trả lời được câu nào thì **chưa được viết**.
 | Kết luận "xong/thua/thôi" trong khi đang thiếu người | **L0** |
 | Lệnh làm tan đội mà không có bước lập lại | **L0**, L5 |
 | Ghi cờ "nợ"/"đã báo" trong khi đọc thẳng client là ra | L2 |
+| Bảng `*_reports` / `*_done_by` để đếm đủ người | L2 |
+| Việc chung mà chỉ acc gọi hàm tự lo cho mình | L2b |
 | Leader tự `leave_party()` / xoá danh sách đã-join giữa vòng mời | L1, **L0** |
 | `x_until = now + N` làm trạng thái cấp party | L1b |
 | Việc kết thúc mà phải đi hạ cờ từng acc | L1b, L2 |

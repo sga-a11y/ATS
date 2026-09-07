@@ -445,8 +445,6 @@ def request_party_resync(pidx, reason="ép đồng bộ", cooldown=0.0, hard=Fal
         if cooldown and now - st.get("last_resync_ts", 0.0) < cooldown:
             return None
         st["last_resync_ts"] = now
-        st.setdefault("team_dungeon_recover_seen", set()).clear()
-        st.setdefault("team_dungeon_recover_ready", threading.Event()).clear()
         st["team_dungeon_need_redo"] = False
         _soft = int(st.get("resync_soft_count", 0))
         if not hard and _soft >= RESYNC_SOFT_TRIES:
@@ -799,17 +797,25 @@ def _party_map_barrier(st, username, self_ok, expected, stopped):
         return all(st["map_results"].values())
 
 
-def _record_channel_map_report(st, username, current_map, sync_gen, expected_map, label=None):
-    """Ghi map vao dung generation sync, ke ca member da thoat startup sync va dang retry."""
+def _ghi_sync_that_bai(st, username, current_map, sync_gen, expected_map, label=None):
+    """Acc thay MINH sai map sau khi doi kenh -> bao HONG vong sync (khong phai "bao cao map").
+
+    Ban cu con ghi ca `channel_map_reports[username] = (ok, map)` de leader DEM du nguoi. Do la
+    bang bao cao - vi pham L2: ca party chay chung MOT tien trinh, leader doc thang
+    `account_clients[u].current_map` va `kenh_that()` la biet het, khong can ai khai bao. Va bat
+    khai bao thi acc nao ban viec khac se khong khai -> leader dem thieu -> TIMEOUT 60s -> reform
+    -> lap lai (log that party 18, 23:36-23:43: leader dot 6 phut voi "cho acc bao cao map (1/5)"
+    trong khi 4 member da o dung map tu dau).
+
+    Chi con giu MOT viec: dat co HONG, vi do la thu leader khong the tu thay (map dung ma van hong
+    thi khong co dau hieu ngoai le)."""
     map_ok = expected_map is None or current_map == expected_map
     with st["lock"]:
         if st.get("channel_sync_gen") != sync_gen:
             return False
-        st["channel_map_reports"][username] = (bool(map_ok), current_map)
         if not map_ok:
-            who = label or username
             st["channel_failed_reason"] = "%s map=%s, can=%s" % (
-                who, current_map, expected_map,
+                label or username, current_map, expected_map,
             )
             st["channel_failed"].set()
     return map_ok
@@ -1487,7 +1493,6 @@ def _pstate(pidx):
                               "channel_failed_reason": "",
                               "channel_expected_map": None,
                               "channel_sync_gen": 0,
-                              "channel_map_reports": {},
                               "invited": threading.Event(),
                               "lock": threading.Lock(),
                               "ready_members": set(),   # member da vao DG + dung kenh leader
@@ -1506,8 +1511,6 @@ def _pstate(pidx):
                               "team_dungeon_tries": {},       # level -> so lan da thu (1 dau + 1 retry)
                               "team_dungeon_skip_all": False, # bo qua PB con lai CUA LUOT NAY (doc 1 lan roi xoa)
                               "team_dungeon_need_redo": False,
-                              "team_dungeon_recover_seen": set(),
-                              "team_dungeon_recover_ready": threading.Event(),
                               "leader_ok": threading.Event(),   # leader DUNG map train -> tiep tuc
                               "leader_bad": threading.Event(),  # leader SAI map -> huy ca party
                               "leader_gone": threading.Event(),  # leader da THOAT -> member ngung retry vao party
@@ -1771,7 +1774,6 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
                     st[key].clear()
                 st["channel"] = None
                 st["channel_expected_map"] = None
-                st["channel_map_reports"] = {}
                 st["mob_spot"] = None
                 st["rally_point"] = None
                 st["mob_path"] = None
@@ -1791,8 +1793,6 @@ def _dt_wait_all_digioi_done(pidx, username, label, stopped_fn):
                 st["team_dungeon_tries"] = {}
                 st["team_dungeon_skip_all"] = False
                 st["team_dungeon_need_redo"] = False
-                st["team_dungeon_recover_seen"].clear()
-                st["team_dungeon_recover_ready"].clear()
                 st["ready_members"].clear()
                 st["started_train"] = 0
                 st["dungeon_done"] = 0
@@ -2791,7 +2791,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (%s) sync kenh: loi roi party cu: %s", label, role, e)
 
             def _report_channel_map(sync_gen, expected_map):
-                ok = _record_channel_map_report(
+                ok = _ghi_sync_that_bai(
                     st, username, c.current_map, sync_gen, expected_map, label=label,
                 )
                 if not ok:
@@ -2808,18 +2808,15 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # -> KHONG cho vo han (deadlock "1/5"): het 60s coi nhu vong sync fail, thoat ra
                     # de leader moi/reform lai (member se dong bo o vong sau) thay vi treo mai.
                     if time.time() - _t0 > 60:
-                        with st["lock"]:
-                            _n = len(dict(st.get("channel_map_reports") or {}))
-                        log.warning("[%s] (%s) sync kenh/map TIMEOUT 60s (%d/%d) -> thoat, moi/reform lai",
-                                    label, role, _n, expected)
+                        log.warning("[%s] (%s) sync kenh/map TIMEOUT 60s -> thoat, moi/reform lai",
+                                    label, role)
                         return False
                     with st["lock"]:
                         if st.get("channel_sync_gen") != sync_gen:
                             return False
                         fail = st["channel_failed"].is_set()
                         reason = st.get("channel_failed_reason") or "co acc khong ve dung map/kenh"
-                        reports = dict(st.get("channel_map_reports") or {})
-                        done = len(reports) + len(st["reconnecting"]) >= expected
+                        reports = {}   # DUNG BANG BAO CAO NUA - dung het bang doc thang ben duoi
                     # DOC THANG map cua tung acc thay vi CHO "bao cao": ca party chay chung MOT
                     # tien trinh, leader nam san account_clients[u].current_map. Bat member phai tu
                     # khai la thua VA de ket: member ban viec khac (dang train) thi khong chay doan
@@ -2884,18 +2881,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     label, role, reason)
                         return False
                     if done:
-                        bad = {u: mp for u, (ok, mp) in reports.items() if not ok}
-                        if bad:
-                            log.warning("[%s] (%s) sync kenh/map FAIL, acc sai map: %s",
-                                        label, role, bad)
-                            return False
                         log.info("[%s] (%s) sync kenh/map OK: %d/%d acc o map %s",
                                  label, role, len(reports), expected, expected_map)
                         return True
                     if time.time() - _last > 15:
                         _last = time.time()
-                        log.info("[%s] (%s) cho acc bao cao map sau sync kenh (%d/%d, map yeu cau=%s)...",
-                                 label, role, len(reports), expected, expected_map)
+                        log.info("[%s] (%s) sync kenh/map: %d/%d acc da toi (map yeu cau=%s, "
+                                 "live=%s)...", label, role, len(reports), expected, expected_map,
+                                 {_u: (_m, _live_ch.get(_u)) for _u, _m in _live.items()})
                     time.sleep(1)
                 return False
 
@@ -2930,7 +2923,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         st["channel_failed_reason"] = ""
                         st["channel"] = None
                         st["channel_expected_map"] = expected_map
-                        st["channel_map_reports"] = {}
                         st["channel_sync_gen"] = int(st.get("channel_sync_gen", 0)) + 1
                         sync_gen = st["channel_sync_gen"]
                     # CO nick TAY trong whitelist -> TUYET DOI khong doi kenh: doi la bo roi ho
@@ -6592,12 +6584,11 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     with st["lock"]:
                                         sync_gen = st.get("channel_sync_gen", 0)
                                         expected_map = st.get("channel_expected_map")
-                                    if _record_channel_map_report(
+                                    if _ghi_sync_that_bai(
                                             st, username, c.current_map, sync_gen,
                                             expected_map, label=label):
-                                        log.info("[%s] (member) retry kenh %d -> da bao cao map=%s "
-                                                 "cho sync gen=%s", label, ch,
-                                                 c.current_map, sync_gen)
+                                        log.info("[%s] (member) retry kenh %d -> map=%s (sync "
+                                                 "gen=%s)", label, ch, c.current_map, sync_gen)
                                 time.sleep(1); c.combat_ready()
                                 if not ok:
                                     log.warning("[%s] (member) retry chuyen kenh %d THAT BAI", label, ch)
@@ -6824,6 +6815,34 @@ def _force_supervisor_reconnect(username, c, reason):
     return False
 
 
+def _thoat_pb_ca_party(pidx, ly_do):
+    """KEO CA PARTY ra khoi instance pho ban - MOT lenh, dieu phoi lam, khong ai phai tu lo.
+
+    PB VO thi server KHONG gui goi ket thuc (`S:047-012`), nen khong acc nao tu biet ma ra. Truoc
+    day moi leader tu goi `_exit_pb_or_reconnect` cho CHINH NO -> leader dung ngoai thanh, member
+    con nguyen trong map 62xxx, va `go_to_town` cua ho thi BAIL vi dang trong pho ban to doi
+    (user 07/09: "leader o ngoai con member van trong PB kia").
+
+    Ca party chay trong MOT tien trinh nen keo het ra la viec lam duoc ngay (L2: khong ai phai cho
+    ai bao cao). Acc nao khong con o instance thi bo qua - `leave_team_dungeon` da tu kiem."""
+    ra = 0
+    for _t in party_accounts(pidx):
+        _c = account_clients.get(_t[0])
+        if _c is None or not getattr(_c, "running", False):
+            continue
+        if not in_instance_map(int(getattr(_c, "current_map", 0) or 0)):
+            continue
+        try:
+            if _c.leave_team_dungeon():
+                ra += 1
+        except Exception as e:
+            log.debug("[%s] thoat PB (%s) loi: %s", _t[0], ly_do, e)
+    if ra:
+        log.info("[party %d] DIEU PHOI: %s -> keo %d acc ra khoi pho ban (C:047-010)",
+                 pidx + 1, ly_do, ra)
+    return ra
+
+
 def _exit_pb_or_reconnect(username, c, reason):
     """RA KHOI instance pho ban roi bao "da xu ly" (tra False y het _force_supervisor_reconnect).
 
@@ -6841,19 +6860,6 @@ def _exit_pb_or_reconnect(username, c, reason):
             log.info("[%s] %s -> KHONG relogin (%s)", username,
                      "da thoat PB bang C:047-010" if _trong_pb else "von da o NGOAI pho ban",
                      reason)
-            # DIEM DANH du KHONG relogin: acc nao THAT SU phai relogin dang cho barrier
-            # "cho ca party relogin sau PB vo" - khong diem danh thi no cho 5/5 VINH VIEN.
-            # (party 3, 31/08 09:31: batbat rot ket noi -> relogin -> ket "1/5" lap lai moi 30s,
-            #  4 acc kia da "von da o NGOAI pho ban -> KHONG relogin" va di lam viec khac.)
-            try:
-                _pidx = getattr(c, "party_idx", None)
-                if _pidx is not None:
-                    _st = _pstate(_pidx)
-                    _mem = [t[0] for t in party_accounts(_pidx)]
-                    if _mem:
-                        _pb_vo_diem_danh(_st, username, _mem)
-            except Exception as e:
-                log.debug("[%s] diem danh PB vo loi (bo qua): %s", username, e)
             return False
     except Exception as e:
         log.warning("[%s] loi thoat PB (%s) -> quay ve relogin: %s", username, reason, e)
@@ -6883,71 +6889,51 @@ def _mark_team_dungeon_broken(st, level):
         tries[level] = tries.get(level, 0) + 1
         if tries[level] >= TEAM_DUNGEON_MAX_TRIES:
             st["team_dungeon_skip_all"] = True
-        st.setdefault("team_dungeon_recover_seen", set()).clear()
-        st.setdefault("team_dungeon_recover_ready", threading.Event()).clear()
     st.setdefault("team_dungeon_broke", {})[level] = True
     st["team_dungeon_need_redo"] = True
     st.setdefault("team_dungeon_state", {})[level] = "done"
 
 
-def _pb_vo_diem_danh(st, username, members):
-    """Ghi ten vao danh sach "da xu ly xong vu PB vo". True = da du CA PARTY (mo barrier).
+def _pb_vo_don_lai(st, pidx, label):
+    """PB vo -> DON LAI de chay lai, KHONG cho ai relogin ca.
 
-    PHAI goi ca cho acc KHONG relogin: `_exit_pb_or_reconnect` thoat instance bang C:047-010 roi
-    tra False (khong relogin) -> truoc day acc do KHONG BAO GIO diem danh, nen acc that su phai
-    relogin ngoi cho 5/5 vinh vien.
-    Party 3 (31/08 09:31): batbat rot ket noi -> relogin -> "cho ca party relogin sau PB vo (1/5)"
-    lap lai moi 30s, trong khi 4 acc kia da "von da o NGOAI pho ban -> KHONG relogin" va di lam
-    viec khac -> DON HAN.
-    """
-    ev = st.setdefault("team_dungeon_recover_ready", threading.Event())
+    Ban cu la mot BARRIER diem danh: moi acc `seen.add(username)`, ai toi cuoi thi `Event.set()`,
+    nhung acc nao chua toi thi ngoi trong `while not ev.is_set(): sleep(1)` va cu 30s in
+    "cho ca party relogin sau PB vo (1/5)...". Do la vi pham thang L2 (bat acc bao cao) va L9
+    (Event cho acc khac) - `documents/RULE_DIEU_PHOI.md`.
+
+    Ca that 07/09 p42: PB lv50 XONG luc 10:35:48, leader rot ngay sau -> bot cham "PB vo" ->
+        10:39:15..10:40:16 [luubmot] auto phó bản đội: chờ cả party relogin sau PB vỡ (1/5)...
+        10:40:39 [luubhai]  go_to_town: DANG TRONG pho ban to doi (map=62012) -> khong teleport
+        10:40:39 [luubhai]  (member) reform: CHUA ve duoc Hội Kê (map=62012) -> nghi 10s thu lai
+    Leader cho member relogin; member khong relogin ma di reform, ma reform bi chan vi con trong
+    phong. Hai ben cho nhau, khong ai ra.
+
+    Gio KHONG cho: don lai trang thai (mot lan, idempotent duoi lock) roi ai lam viec nay di. Party
+    lech nhau la viec cua dieu phoi - no da co `reform_gen`/`VIEC_GOM` de gom, va no DOC THANG
+    `account_clients[u]` chu khong doi ai diem danh."""
     with st["lock"]:
-        seen = st.setdefault("team_dungeon_recover_seen", set())
-        seen.add(username)
-        if len(seen) < len(members):
-            return False
+        if not st.get("team_dungeon_need_redo"):
+            return True   # acc khac da don roi -> khong don hai lan, khong log hai lan
         _skip_all = bool(st.get("team_dungeon_skip_all"))
         st["team_dungeon_done_by"] = {}
         st["team_dungeon_broke"] = {}
         st["team_dungeon_need_redo"] = False
         if not _skip_all:
             st["team_dungeon_state"] = {}   # xoa -> chay lai tu dau (lan RETRY duy nhat)
-        seen.clear()
-    ev.set()
+    if _skip_all:
+        log.warning("[%s] auto phó bản đội: RETRY vẫn KHÔNG qua -> BỎ QUA các phó bản đội còn "
+                    "lại của lượt này, chuyển sang việc tiếp theo", label)
+    else:
+        log.info("[%s] auto phó bản đội: PB vỡ -> dọn lại, chạy lại từ đầu (lần retry duy nhất). "
+                 "KHÔNG chờ ai relogin - điều phối lo gom party.", label)
     return True
 
 
 def _prepare_team_dungeon_redo_after_reconnect(st, username, label, pidx, stopped_fn):
-    members = [t[0] for t in party_accounts(pidx)]
-    if not members:
-        return True
-    ev = st.setdefault("team_dungeon_recover_ready", threading.Event())
-    ready_now = _pb_vo_diem_danh(st, username, members)
-    if ready_now:
-        if st.get("team_dungeon_skip_all"):
-            # Het luot thu (1 dau + 1 retry) -> KHONG xoa team_dungeon_state, va co skip_all se
-            # chan not cac PB con lai CUA LUOT NAY (doc mot lan roi tu xoa).
-            log.warning("[%s] auto phó bản đội: RETRY vẫn KHÔNG qua -> BỎ QUA các phó bản đội còn "
-                        "lại của lượt này, chuyển sang việc tiếp theo", label)
-        else:
-            log.info("[%s] auto phó bản đội: cả party đã relogin sau PB vỡ -> chạy lại từ đầu "
-                     "(lần retry duy nhất)", label)
-        return True
-    last_log = 0.0
-    _wd0 = time.time()
-    while not ev.is_set():
-        if stopped_fn():
-            return False
-        _barrier_watchdog(st, pidx, _wd0, "relogin-PB-vo")
-        _resync_ck(st, username)   # ep dong bo -> raise ResyncSignal (thoat barrier, relogin bam leader)
-        if time.time() - last_log > 30:
-            with st["lock"]:
-                n_seen = len(st.setdefault("team_dungeon_recover_seen", set()))
-            log.info("[%s] auto phó bản đội: chờ cả party relogin sau PB vỡ (%d/%d)...",
-                     label, n_seen, len(members))
-            last_log = time.time()
-        time.sleep(1)
-    return True
+    if stopped_fn():
+        return False
+    return _pb_vo_don_lai(st, pidx, label)
 
 
 def _thieu_level(st, members, level):
@@ -7062,12 +7048,15 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
             _need_redo = bool(st.get("team_dungeon_need_redo"))
             _recon = bool(st["reconnecting"])
         if _recon or _need_redo:
-            log.warning("[%s] (LEADER) dong doi rot/PB vo khi cho report lv%d -> relogin vao hang "
-                        "recover de ca party danh lai", label, level)
+            log.warning("[%s] (LEADER) đồng đội rớt / PB vỡ khi chờ report lv%d -> kéo CẢ PARTY "
+                        "ra khỏi phó bản rồi đánh lại", label, level)
             with st["lock"]:
                 _mark_team_dungeon_broken(st, level)
                 _bump_reform(st)
             _clear_o5_client_flags(c)
+            # KEO CA PARTY ra truoc: PB vo thi khong co goi ket thuc nen khong ai tu biet duong ra.
+            # Truoc day leader chi thoat cho CHINH NO -> leader dung ngoai, member ket trong 62xxx.
+            _thoat_pb_ca_party(pidx, "PB lv%d vỡ" % level)
             return _exit_pb_or_reconnect(
                 username, c, "phó bản đội vỡ (leader đồng bộ lại để đánh lại)"
             )
@@ -7163,7 +7152,16 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
             with st["lock"]:
                 broken = ((not ok) or (not c.running)
                           or st["disc_gen"] > dg0 or bool(st["reconnecting"]))
-                if broken:
+                # PB DA DANH XONG (`ok`) thi ROT SAU DO khong phai la "vo". Van coi la `broken` de
+                # thoat instance / relogin, nhung KHONG dem la mot lan thu that bai va KHONG bat
+                # lam lai - server da tinh luot roi, danh lai la vo ich.
+                # Ca that 07/09 p42, ba dong lien nhau:
+                #   10:35:48 [luubmot] (LEADER) === PHO BAN TO DOI LV50 XONG -> roi pho ban ===
+                #   10:35:50 [luu401]  RECONNECT: server rot -> login lai sau 5s (lan 1)
+                #   10:35:58 [luubmot] SERVER NGAT KET NOI: DANG NHAP TRUNG LAP (ma 19)
+                # -> bot danh dau PB vo, ca party vao LAI phong 62012, con leader thi dung
+                # "cho ca party relogin sau PB vo (1/5)" - hai ben cho nhau, 5 phut khong ra.
+                if broken and not ok:
                     _mark_team_dungeon_broken(st, level)
                 st.setdefault("team_dungeon_state", {})[level] = "done"
                 # CHI DANH DAU, KHONG bump ngay. Bump o day = bump sau MOI level (20/50/80) ->
@@ -7173,6 +7171,9 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                 # Reform chi CAN 1 LAN sau khi xong HET cac PB, vi luc do moi that su quay lai train.
                 st["td_need_reform"] = True
         if broken:
+            # KEO CA PARTY ra khoi instance TRUOC. PB vo thi server khong gui `S:047-012` nen khong
+            # acc nao tu biet duong ra; leader chi lo minh thi member ket lai trong 62xxx.
+            _thoat_pb_ca_party(pidx, "PB lv%d vỡ" % level)
             return _exit_pb_or_reconnect(
                 username, c, "phó bản đội vỡ" if active else "phó bản đội fail"
             )
@@ -7408,12 +7409,18 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
             # p51 (mh212) ket y het.
             dat_pha_pho_ban(pidx, False)
             _clear_o5_client_flags(c)
+            if not ok:
+                # PB lv20 KHONG xong -> khong co goi ket thuc -> keo ca party ra bang lenh.
+                # (Xong binh thuong thi moi acc tu ra khi nhan `S:047-012`, xem client._on_dungeon.)
+                _thoat_pb_ca_party(pidx, "PB lv20 vỡ")
             with st["lock"]:
                 # VO do co dis (chinh leader rot = not c.running, HOAC co member rot = disc_gen/
                 # reconnecting): bao member -> CA party relogin thoat instance (trong dungeon KHONG
                 # teleport ra duoc -> truoc day member spam go_to_town vo tan, xem log party xGAx).
-                if ((not c.running) or st["disc_gen"] > _dg0 or st["reconnecting"]
-                        or getattr(c, "_td_incomplete", False)):
+                # `ok` = PB lv20 da danh xong -> rot sau do KHONG phai "chua xong", khong lam lai
+                # (xem chu thich cung y o nhanh lv50/80/110 ben tren, ca that p42 07/09).
+                if (not ok) and ((not c.running) or st["disc_gen"] > _dg0 or st["reconnecting"]
+                                 or getattr(c, "_td_incomplete", False)):
                     st["o5_broke"] = True
                     st["o5_need_redo"] = True   # team dungeon CHUA xong -> reconnect xong lam LAI
                 st["o5_state"] = "done"   # bao member (thanh cong hay fail deu THA member ra)
@@ -7864,8 +7871,6 @@ def start_party(pidx, stagger=1.5, skip_running=False):
         st["team_dungeon_state"] = {}
         st["team_dungeon_broke"] = {}
         st["team_dungeon_need_redo"] = False
-        st["team_dungeon_recover_seen"].clear()
-        st["team_dungeon_recover_ready"].clear()
         st["map_results"] = {}       # reset barrier map cho lan chay nay
         st["event_start_map"] = {}   # reset quyet dinh resume 2K
         st["presync_maps"] = {}      # reset bao cao map truoc sync kenh
