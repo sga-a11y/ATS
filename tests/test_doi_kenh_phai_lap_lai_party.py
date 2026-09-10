@@ -50,6 +50,8 @@ class _C:
         self._chan_switch_result = None
         self._chan_switch_target = None
         self._chan_switch_luc = 0.0
+        # ROSTER SERVER (`0x0d`) - dieu phoi dem doi bang day (L2d), khong bang so nho cua bot
+        self.party_members = [b"x" * 8] * 2
 
 
 class TestDieuPhoiNoLapLaiParty(unittest.TestCase):
@@ -64,12 +66,17 @@ class TestDieuPhoiNoLapLaiParty(unittest.TestCase):
         R._party_state.pop(self.PARTY, None)
         self.st = R._pstate(self.PARTY)
         self._jmc = R.joined_member_count
+        # CO LAP config: party 0 tren may user la mode event 40NPC, va ngoai gio event thi dieu
+        # phoi KHONG con viec gi (`_party_40npc_ngoai_gio`) -> test do/xanh theo dong ho that.
+        self._pcfg = dict(getattr(R.config, "PARTY_CONFIG", {}))
+        R.config.PARTY_CONFIG = {self.PARTY: {"mode": "train"}}
 
     def tearDown(self):
         R.party_accounts = self._pa
         R.joined_member_count = self._jmc
         R.account_clients.clear(); R.account_clients.update(self._cl)
         R._party_state.pop(self.PARTY, None)
+        R.config.PARTY_CONFIG = self._pcfg
 
     def _song(self, **kw):
         for u, c in kw.items():
@@ -77,16 +84,18 @@ class TestDieuPhoiNoLapLaiParty(unittest.TestCase):
         return [(u, R.account_clients[u]) for u in self.ACCS if u in R.account_clients]
 
     def test_chung_kenh_ma_doi_TAN_thi_ra_lenh_lap_lai(self):
-        """Doc THANG roster that, khong dung co "no" nao ca."""
+        """Doc THANG roster SERVER (`c.party_members`), khong dung co "no" nao ca."""
         song = self._song(a1=_C(1), a2=_C(1), a3=_C(1))
-        R.joined_member_count = lambda pidx: 0          # doi da tan (de doi kenh)
+        for _u, c in song:
+            c.party_members = []                        # doi da tan (de doi kenh)
         gen = self.st["reform_gen"]
         R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
         self.assertGreater(self.st["reform_gen"], gen, "chung kenh ma doi tan van khong lap lai")
 
     def test_doi_con_DU_thi_khong_lam_gi_them(self):
         song = self._song(a1=_C(1), a2=_C(1), a3=_C(1))
-        R.joined_member_count = lambda pidx: 2          # van du (3 acc -> 2 member)
+        for _u, c in song:
+            c.party_members = [b"x" * 8] * 2            # van du (3 acc -> roster 2)
         gen = self.st["reform_gen"]
         R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
         self.assertEqual(self.st["reform_gen"], gen)
@@ -96,7 +105,8 @@ class TestDieuPhoiNoLapLaiParty(unittest.TestCase):
         self.assertNotIn("kenh_no_lap_party", src, "co 'no' = suy dien; roster doc thang duoc")
         i = src.find('"-> LAP LAI PARTY", pidx + 1')
         self.assertGreater(i, 0, "khong con cho ra lenh lap lai party")
-        self.assertIn("joined_member_count(pidx)", src[i - 500:i + 300])
+        self.assertIn("_thieu_doi(pidx, song)", src[i - 700:i + 300],
+                      "phai dem doi bang ROSTER SERVER, khong bang so nho cua bot (L2d)")
 
 
 class TestKhongLenTangMotMinh(unittest.TestCase):

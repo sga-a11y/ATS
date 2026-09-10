@@ -80,8 +80,27 @@ class TestBanGiaoDGSangTrain(unittest.TestCase):
 
     def test_nhanh_back_to_dg_van_giu_relogin_train(self):
         """Con gio DG -> quay lai DG: cung phai relogin, khong duoc coi la leader chet."""
-        i = self.than.index("back_to_dg")
-        self.assertIn('_dt["relogin_train"] = True', self.than[i:i + 600])
+        i = self.than.index('_wait_res in ("back_to_dg"')
+        j = self.than.index("return False", i)
+        self.assertIn('_dt["relogin_train"] = True', self.than[i:j])
+
+    def test_nhanh_LENH_MOI_cung_giu_ket_noi(self):
+        """Dieu phoi bump `reform_gen` trong luc cho = THOI CHO DE NGHE LENH, khong phai bi Stop.
+
+        Ban cu vong cho tra `False` cho ca hai, ma `False` = bi Stop -> caller khong set
+        `relogin_train` -> `_ket_thuc_pha_dg()` goi `c.close()` -> ACC CHET HAN.
+
+        Ca that 09/09 (user: "danh DG xong thay nhieu acc tat vay") - 6 party di y het duong nay:
+            06:02:15 [party 2] REFORM gen -> 5 - ep dong bo (nhe): watcher: party thieu nguoi qua lau
+            06:02:16 [gamo]  dieu phoi ra lenh moi khi dang cho ca party xong DG -> thoi cho
+            06:02:22 >>> PARTY 2 DA THOAT HET vi: het gio Di Gioi trong luc sync kenh DG
+        `sga001` im tu 06:02:21 den het log (hon 4 tieng). Chinh cai watcher CUU party lai giet no.
+        """
+        self.assertIn('"lenh_moi"', self.than,
+                      "vong cho van tra False khi co lenh moi -> bi hieu la Stop -> dong ket noi")
+        i = self.than.index('_wait_res in ("back_to_dg"')
+        self.assertIn('"lenh_moi"', self.than[i:i + 120],
+                      "caller khong nhan dien 'lenh_moi' -> van dong ket noi")
 
 
 class TestMoiCHO_PB_hong_deu_khong_giet_party(unittest.TestCase):

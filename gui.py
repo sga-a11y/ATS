@@ -335,7 +335,11 @@ def them_vao_list_cat_do(username, tid, client=None):
             if not isinstance(ds, dict):
                 # Party chua tung co khoa nay -> dang chay theo list MAC DINH. Phai VIET RA mac
                 # dinh truoc roi moi them, khong thi ghi xong la mat hai mon mac dinh.
-                ds = _cat_do_mac_dinh(p)
+                # `_cat_do_mac_dinh` KHONG TON TAI - goi den day la NameError, tuc them mon vao
+                # list cat do cua party chua co khoa `cat_do_items` la HONG. Danh sach mac dinh
+                # nam o `bot.client.CAT_DO_MAC_DINH`.
+                from bot.client import CAT_DO_MAC_DINH
+                ds = dict(CAT_DO_MAC_DINH)
             if ds.get(key):
                 return False, "đã có trong list"
             ds[key] = True
@@ -356,13 +360,40 @@ def _save_profiles(prof):
         json.dump(prof, f, ensure_ascii=False, indent=2)
 
 # ---------------- Log -> queue (de GUI hien) ----------------
-_log_queue = queue.Queue()
+# CO TRAN. Queue khong gioi han thi luc log doi len (do 10/09: dinh 1183 dong/giay, trong khi GUI
+# rut duoc ~1000/giay) no phinh mai, an RAM va bat GUI dien lai mot dong log da lac hau tu lau.
+#
+# Cua so 4000 dong khop voi `log_buffer` (deque maxlen=4000) - GUI khong hien duoc nhieu hon the.
+_LOG_QUEUE_TRAN = 4000
+# Party KHONG hien thi thi bao lau moi tinh lai bao cao AGI (chi de to mau cham canh bao).
+_AGI_CACHE_SEC = 15.0
+_log_queue = queue.Queue(maxsize=_LOG_QUEUE_TRAN)
+_log_bo_qua = 0          # so dong da roi vi queue day (GUI in mot dong tong ket, khong im lang)
 
 
 class _QueueHandler(logging.Handler):
+    """Day log sang GUI. DAY THI BO DONG CU NHAT, khong bao gio chan luong ghi log.
+
+    `emit` chay tren CHINH luong dang danh/di duong. Dung `Queue` khong tran (hoac `put` co cho)
+    la mot luc nao do GUI cham se ghi nguoc lai thanh do tre cho ca 256 acc.
+    """
+
     def emit(self, record):
+        global _log_bo_qua
         try:
-            _log_queue.put_nowait(self.format(record))
+            msg = self.format(record)
+        except Exception:
+            return
+        try:
+            _log_queue.put_nowait(msg)
+        except queue.Full:
+            # Bo dong CU NHAT roi nhet dong moi: nguoi dung quan tam cai vua xay ra.
+            try:
+                _log_queue.get_nowait()
+                _log_bo_qua += 1
+                _log_queue.put_nowait(msg)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -628,6 +659,8 @@ class BotGUI(tk.Tk):
         self.cities = [(v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()]
         # --- log filter state ---
         self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
+        self._agi_cache = {}        # pidx -> (luc, report) cho party khong hien thi
+        self._refresh_after = None  # handle timer refresh (mot chuoi duy nhat)
         self.log_filter = None         # None = tat ca; hoac set(username) duoc hien
         self._char2user = {}           # ten nhan vat -> username (cap nhat khi acc resolve)
         self._all_usernames = set(u for pidx in range(len(config.PARTIES))
@@ -758,9 +791,13 @@ class BotGUI(tk.Tk):
             try:
                 updater.download_and_swap(url, on_prog)   # ham nay tu thoat app khi xong
             except Exception as e:
+                # `e` bi XOA khoi scope ngay khi ra khoi `except` (luat Python 3), ma lambda chi
+                # chay SAU do tren main thread -> NameError, user khong bao gio thay hop bao loi
+                # cap nhat. Chot lai thanh chuoi ngay tai day.
+                _loi = str(e)
                 self.after(0, lambda: (top.destroy(),
                                        self._show_update_error("Lỗi cập nhật",
-                                            f"Không tải được bản mới:\n{e}\n\nTải thủ công giúp.")))
+                                            f"Không tải được bản mới:\n{_loi}\n\nTải thủ công giúp.")))
         threading.Thread(target=dl, daemon=True).start()
 
     def _open_donate(self):
@@ -988,11 +1025,16 @@ class BotGUI(tk.Tk):
         win.transient(self); win.grab_set()
         ttk.Label(win, text="Chọn kênh — cả party sẽ HỦY PARTY + chuyển kênh rồi tiếp tục chạy như trong setting:",
                   padding=8).pack(anchor="w")
-        items = sorted(chans.items(), key=lambda kv: kv[1][0])   # it nguoi nhat truoc
+        # cur/cap co the la None: kenh acc DANG DUNG ma server khong liet ke (client that cung tu
+        # them vao danh sach, xem `_on_channel_list`) -> khong biet so nguoi. Xep xuong cuoi va
+        # hien "?" chu dung so sanh None voi int (TypeError lam vo ca popup).
+        items = sorted(chans.items(),
+                       key=lambda kv: (kv[1][0] is None, kv[1][0] if kv[1][0] is not None else 0))
         lb = tk.Listbox(win, width=34, height=min(14, max(3, len(items))), font=("Consolas", 10))
         lb.pack(fill="both", expand=True, padx=8)
         for ch, (cur, cap) in items:
-            lb.insert("end", f"Kênh {ch:>3}   —   {cur}/{cap} người")
+            _so = "?/?" if cur is None or cap is None else f"{cur}/{cap}"
+            lb.insert("end", f"Kênh {ch:>3}   —   {_so} người")
         def _go():
             sel = lb.curselection()
             if sel:
@@ -1293,10 +1335,13 @@ class BotGUI(tk.Tk):
         self._rerender_log()
 
     def _rerender_log(self):
+        # Mot lan `insert` cho ca 4000 dong, khong phai 4000 lan. Doi tab/loc party goi ham nay,
+        # va no chay tren main thread - moi `insert` bat Tk tinh lai layout.
         self.log_txt.delete("1.0", "end")
-        for line, label in self.log_buffer:
-            if self._line_visible(label):
-                self.log_txt.insert("end", self._mask_log_line(line, label) + "\n")
+        khoi = [self._mask_log_line(line, label) for line, label in self.log_buffer
+                if self._line_visible(label)]
+        if khoi:
+            self.log_txt.insert("end", "\n".join(khoi) + "\n")
         self.log_txt.see("end")
 
     def _log_show_all(self):
@@ -1321,6 +1366,16 @@ class BotGUI(tk.Tk):
                     self._filter_party(members[i])
             except Exception:
                 pass
+        # Bang cua tab vua mo dung du lieu tu lan cuoi no duoc hien -> dung lai NGAY, dung bat cho
+        # het nhip (xem `_party_dang_xem`). Huy timer dang cho truoc, khong thi thanh hai chuoi.
+        try:
+            _cu = getattr(self, "_refresh_after", None)
+            if _cu is not None:
+                self.after_cancel(_cu)
+                self._refresh_after = None
+            self._refresh()
+        except Exception:
+            pass
 
     def _on_acc_select(self, pidx):
         tree = self.party_trees.get(pidx)
@@ -1538,7 +1593,10 @@ class BotGUI(tk.Tk):
                   for it in ctrl.ba_dau_notify_items(pidx)]
                + list(self._party_legion_notify(pidx))
                + [(it["user"], {"_diem_du": True, "diem": it["diem"]})
-                  for it in ctrl.diem_du_notify_items(pidx)])
+                  for it in ctrl.diem_du_notify_items(pidx)]
+               + [(it["user"], {"_safe_danh": True, "map": it["map"], "safe": it["safe"],
+                                "so_tran": it["so_tran"]})
+                  for it in ctrl.safe_canh_bao_items(pidx)])
         try:
             accs = ctrl.party_accounts(pidx)
         except Exception:
@@ -1557,7 +1615,7 @@ class BotGUI(tk.Tk):
     # cung duoc": Ba Dau HET HAN la mat quyen loi hoi day HP/SP; tui gan day thi nhan qua mail /
     # nhat do roi / mua do lo deu that bai; khong co quan doan thi mat qua quan doan hang ngay +
     # khong danh duoc boss quan doan.
-    NOTIFY_CAM = ("_ba_dau", "_bag", "_legion")
+    NOTIFY_CAM = ("_ba_dau", "_bag", "_legion", "_safe_danh")
 
     def _party_notify_gap(self, pidx):
         """Party co chu y thuoc loai CAN LAM NGAY khong?"""
@@ -1649,6 +1707,29 @@ class BotGUI(tk.Tk):
                           text="%s còn dư %s điểm chưa dùng — bảng tự cộng đã duyệt hết mà "
                                "vẫn thừa (mở nút Point để thêm dòng)"
                                % (self._mask_user(u), it["diem"])
+                          ).pack(side="left", fill="x", expand=True)
+                return
+            # --- SAFE BI QUAI DANH ---
+            # Diem safe la cho DUNG NGHI giua cac tran. Dung do ma tran noi tran = diem safe hoc
+            # SAI. Bot CHI BAO, khong tu doi safe / tu quet lai map (user chot 07/09: "t deo tin
+            # may scan lai la on") - user tu sua toa do trong train_maps.json.
+            if it.get("_safe_danh"):
+                def _skip_safe(_u=u, _r=rowf):
+                    ctrl.safe_canh_bao_bo_qua(_u); _r.destroy()
+                _skips.append((rowf, _skip_safe))
+                ttk.Button(rowf, text="Bỏ qua", width=7,
+                           command=_skip_safe).pack(side="right", padx=2)
+                _ten_map = ""
+                try:
+                    _ten_map = " (%s)" % config.scene_name(int(it["map"]))
+                except Exception:
+                    pass
+                ttk.Label(rowf, wraplength=380, justify="left", foreground="#b45309",
+                          font=(None, 9, "bold"),
+                          text="%s: ĐIỂM SAFE BỊ QUÁI ĐÁNH — %d trận ngay tại %s của map %s%s. "
+                               "Điểm safe này có thể học sai, kiểm lại toạ độ giúp."
+                               % (self._mask_user(u), it["so_tran"], tuple(it["safe"]),
+                                  it["map"], _ten_map)
                           ).pack(side="left", fill="x", expand=True)
                 return
             # --- KHONG CO QUAN DOAN ---
@@ -1777,14 +1858,31 @@ class BotGUI(tk.Tk):
         group_total = {}  # gidx -> tong so acc
         cam_groups = set()   # gidx co IT NHAT 1 party CAM (lech AGI hoac co chu y can lam ngay)
                              # -> cham nhom cung CAM
+        # CHI DUNG BANG CHO PARTY DANG XEM. `account_status()` la ham nang (doc client, tinh level
+        # trung binh party, doc pet...) va truoc day chay cho CA 256 acc MOI GIAY - ke ca party nam
+        # trong tab khong ai mo. Party khong hien thi van phai dem acc chay/login de to cham nhom,
+        # nhung viec do chi can `is_account_running` - re hon nhieu lan.
+        #
+        # Do bang py-spy tren tien trinh that (10/09, user: "van not responding"): 15/15 mau
+        # MainThread deu ket trong `account_status` goi tu `_refresh`.
+        _dang_xem = self._party_dang_xem()
         for pidx, tree in self.party_trees.items():
+            _hien = (pidx in _dang_xem)
             any_running = False
             p_total = 0; p_run = 0; p_login = 0   # dem acc cua party de quyet dinh mau cham
+            if not _hien:
+                for (u, _p, _il, _ip) in ctrl.party_accounts(pidx):
+                    if not tree.exists(u):
+                        continue
+                    p_total += 1
+                    if ctrl.is_account_running(u):
+                        p_run += 1
+                        any_running = True
             # Di Gioi SOLO: khong co khai niem leader/member/quan su that (moi acc chay doc lap) ->
             # hien "solo" cho de hieu, tranh hieu lam la co lap party/phu thuoc leader.
             pcfg_gui = config.PARTY_CONFIG.get(pidx, {})
             is_digioi_solo = (pcfg_gui.get("mode") == "digioi" and pcfg_gui.get("digioi_mode") == "solo")
-            for (u, p, is_leader, is_picker) in ctrl.party_accounts(pidx):
+            for (u, p, is_leader, is_picker) in (ctrl.party_accounts(pidx) if _hien else ()):
                 if not tree.exists(u):
                     continue
                 p_total += 1
@@ -1821,7 +1919,18 @@ class BotGUI(tk.Tk):
             gidx = self.group_of.get(pidx)
             subf = self.party_subframes.get(pidx)
             sub = self.group_nb.get(gidx)
-            agi_report = ctrl.party_agi_report(pidx)
+            # AGI gan nhu khong doi (chi doi khi cong diem tiem nang / doi pet), ma ham nay goi
+            # `account_status` cho TUNG acc cua party -> them 256 luot moi giay. Party dang xem
+            # tinh moi nhip; party khac dung lai ket qua cu trong `_AGI_CACHE_SEC`.
+            #
+            # Day la cache HIEN THI (mau cham canh bao), khong phai trang thai party - khong dinh
+            # L1b. Sai lech toi da la cham party doi mau cham hon vai giay.
+            _kh = self._agi_cache.get(pidx)
+            if _hien or _kh is None or (time.time() - _kh[0]) > _AGI_CACHE_SEC:
+                agi_report = ctrl.party_agi_report(pidx)
+                self._agi_cache[pidx] = (time.time(), agi_report)
+            else:
+                agi_report = _kh[1]
             # XANH chi khi DU acc chay VA KHONG con ai dang login (yeu cau user: "chi xanh
             # khi tat ca deu da login xong"). Con acc dang login -> VANG.
             _du_acc = p_run >= p_total and p_total > 0 and p_login == 0
@@ -1896,11 +2005,22 @@ class BotGUI(tk.Tk):
                 self.nb.tab(gframe, image=g_dot)
             except Exception:
                 pass
-        self.after(1500, self._refresh)
+        # MOT chuoi timer duy nhat. Giu handle de cho nao muon refresh NGAY (doi tab) co the huy
+        # cai dang cho roi goi thang - khong thi moi lan doi tab la them mot chuoi `after` chay
+        # song song, tan suat nhan len va main thread cang ket.
+        self._refresh_after = self.after(1500, self._refresh)
 
     def _drain_log(self):
+        # RUT NHANH HON TOC DO SINH. Do 10/09: trung binh ~307 dong/giay, dinh 1183. Muc cu (300
+        # dong moi 300ms = 1000/giay) khong theo kip luc dinh -> queue don lai -> GUI hien log lac
+        # hau, va main thread cua Tk cang bi keo dai (user: "sao bot chay hay bi no responding").
+        #
+        # Chen vao widget theo TUNG KHOI thay vi tung dong: moi `insert` la mot lan Tk tinh lai
+        # layout; 900 lan/giay tren main thread la dung cho no ket.
+        global _log_bo_qua
         n = 0
-        while n < 300:
+        khoi = []
+        while n < 900:
             try:
                 line = _log_queue.get_nowait()
             except queue.Empty:
@@ -1909,9 +2029,14 @@ class BotGUI(tk.Tk):
             label = m.group(1) if m else None
             self.log_buffer.append((line, label))
             if self._line_visible(label):
-                self.log_txt.insert("end", self._mask_log_line(line, label) + "\n")
+                khoi.append(self._mask_log_line(line, label))
             n += 1
-        if n:
+        if _log_bo_qua:
+            khoi.append(">>> (bo qua %d dong log vi may dang qua tai)" % _log_bo_qua)
+            _log_bo_qua = 0
+        if khoi:
+            self.log_txt.insert("end", "\n".join(khoi) + "\n")
+        if n or khoi:
             cnt = int(self.log_txt.index("end-1c").split(".")[0])
             if cnt > 2000:
                 self.log_txt.delete("1.0", f"{cnt - 2000}.0")
@@ -1919,6 +2044,20 @@ class BotGUI(tk.Tk):
         self.after(300, self._drain_log)
 
     # ---- config editor ----
+    def _party_dang_xem(self):
+        """Cac pidx ma nguoi dung DANG NHIN THAY (bang cua tab dang mo).
+
+        Bang cua party khong hien thi thi khong ai doc - dung tra gia `account_status()` cho no moi
+        giay. Tra `set()` rong khi chua doc duoc tab (luc khoi tao) -> vong refresh chi lam phan
+        nhe, khong ai mat gi.
+        """
+        try:
+            gidx = self.nb.index(self.nb.select())
+        except Exception:
+            return set()
+        ra = {self._group_cur_party(gidx)}
+        return {p for p in ra if p is not None}
+
     def _group_cur_party(self, gidx):
         """pidx cua party DANG CHON trong group gidx (fallback party dau)."""
         sub = self.group_nb.get(gidx)
@@ -3605,6 +3744,17 @@ class BagDialog(tk.Toplevel):
                 phan.append("HP %s/%s" % (ps.get("hp"), ps["hp_max"]))
             if ps.get("sp_max"):
                 phan.append("SP %s/%s" % (ps.get("sp"), ps["sp_max"]))
+            # TRUNG THANH: bot doc san tu goi pet list (`client.pet_faith`, byte +27 cua ban ghi
+            # 0x0f). User chot 07/09: hien luon o day de khoi phai mo cho khac xem.
+            _tt = None
+            try:
+                _pid = int((getattr(c.state, "carried_pets", None) or [])[int(who) - 1][0])
+                _tt = (getattr(c, "pet_faith", None) or {}).get(_pid)
+            except Exception:
+                _tt = None
+            if _tt is not None:
+                phan.append("Trung thành %s%s" % (
+                    _tt, " ⚠" if int(_tt) < getattr(ctrl, "TRUNG_THANH_CANH_BAO", 40) else ""))
             if int(who) == _active:
                 phan.append("★ đang xuất chiến")
             return "Chỉ số:   " + "   •   ".join(phan)
@@ -4296,6 +4446,25 @@ class PartyConfigFrame(ttk.Frame):
         self.events = [(k, v.get("label", k)) for k, v in (getattr(config, "EVENTS", {}) or {}).items()
                        if not v.get("hidden")]
         self.event_var = tk.StringVar(); self.event_cb = None
+
+        def _event_key_pho_bien():
+            """Event ma CAC PARTY KHAC dang dung nhieu nhat - mac dinh cho party moi.
+
+            Lay bua `self.events[0]` thi party moi im lang thanh event dau danh sach. Ca that
+            09/09: party 53 thanh `nhi_kieu` (2K) trong khi 52 party kia deu `npc_40`.
+            """
+            dem = {}
+            for _p, _c in (getattr(config, "PARTY_CONFIG", {}) or {}).items():
+                if (_c or {}).get("mode") != "event":
+                    continue
+                _k = (_c or {}).get("event_key")
+                if _k:
+                    dem[_k] = dem.get(_k, 0) + 1
+            if not dem:
+                return None
+            return max(sorted(dem), key=lambda k: dem[k])
+
+        self._event_key_pho_bien = _event_key_pho_bien
         # LOAN DAU: chi vao danh MOT tran roi ra khoi map event + tat acc. Mac dinh TAT.
         self.loandau_mot_tran_var = tk.BooleanVar(
             value=bool(self._preset.get("loandau_mot_tran", False)))
@@ -4355,6 +4524,12 @@ class PartyConfigFrame(ttk.Frame):
             value=bool(self._preset.get("auto_bag_expand", False)))
         self.bag_expand_gold_var = tk.StringVar(
             value=str(self._preset.get("bag_expand_gold", 0) or 0))
+        # TU MO RONG TIEN TRANG - mac dinh TAT (giong tick tui do: mo o ton vang cua user).
+        # Chi lam duoc luc kho DANG MO nen bot lam ngay trong luot di cat do.
+        self.auto_bank_expand_var = tk.BooleanVar(
+            value=bool(self._preset.get("auto_bank_expand", False)))
+        self.bank_expand_gold_var = tk.StringVar(
+            value=str(self._preset.get("bank_expand_gold", 0) or 0))
         # 2 co cua HOP MAY (0x41): server keo ve thanh khi chet. Mac dinh BAT = giong client that.
         self.death_return_town_var = tk.BooleanVar(
             value=bool(self._preset.get("death_return_town", True)))
@@ -5720,6 +5895,17 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Label(frm, foreground="#888", wraplength=420, justify="left",
                   text="(mua slot túi tới khi giá lần kế tiếp VƯỢT số này; điền 250 thì mua xong "
                        "lần giá 250, lần sau cần 260 là dừng)").pack(anchor="w", padx=(24, 0))
+        # TIEN TRANG: ngay DUOI tick tui do (user chot 10/09).
+        _mrb = ttk.Frame(frm); _mrb.pack(anchor="w", fill="x", pady=(4, 0))
+        ttk.Checkbutton(_mrb, text="Tự mở rộng tiền trang đến",
+                        variable=self.auto_bank_expand_var).pack(side="left")
+        ttk.Spinbox(_mrb, from_=0, to=99999999, width=10, increment=10,
+                    textvariable=self.bank_expand_gold_var).pack(side="left", padx=4)
+        ttk.Label(_mrb, text="vàng").pack(side="left")
+        ttk.Label(frm, foreground="#888", wraplength=420, justify="left",
+                  text="(mở ô tiền trang tới khi giá lần kế tiếp VƯỢT số này. Chỉ mở được lúc "
+                       "tiền trang đang mở, nên bot làm ngay khi đi cất đồ)").pack(anchor="w",
+                                                                                  padx=(24, 0))
         ttk.Checkbutton(frm, text="Tự bán Nồi đất",
                         variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(4, 0))
         # TU CAT DO: dat NGAY SAU ban Noi dat (user chot 04/09). Hai viec di chung mot cho boc
@@ -6240,6 +6426,8 @@ class PartyConfigFrame(ttk.Frame):
             "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
             "auto_bag_expand": bool(self.auto_bag_expand_var.get()),
             "bag_expand_gold": _parse_int(self.bag_expand_gold_var.get(), 0),
+            "auto_bank_expand": bool(self.auto_bank_expand_var.get()),
+            "bank_expand_gold": _parse_int(self.bank_expand_gold_var.get(), 0),
             "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
             "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
             "scroll_modes": dict(self.scroll_modes),
@@ -6434,9 +6622,18 @@ class PartyConfigFrame(ttk.Frame):
             self.event_cb = ttk.Combobox(self.dyn, textvariable=self.event_var, state="readonly",
                                           width=32, values=labels)
             self.event_cb.pack(side="left")
-            # chon lai event da luu (theo event_key), mac dinh cai dau tien
+            # Chon lai event da luu (theo event_key). CHUA CO / KHONG KHOP thi lay event ma CAC
+            # PARTY KHAC dang dung nhieu nhat - KHONG lay bua cai dau danh sach.
+            #
+            # Ca that 09/09 party 53 (user: "nhi kieu cai lon me may, mode 40npc ma"): party moi
+            # them, bat mode event, chua dong vao o Event -> combobox hien cai dau (`nhi_kieu`) ->
+            # bam Luu la ghi luon `event_key='nhi_kieu'`, trong khi 52 party kia deu `npc_40`.
+            # Bot roi di vao map 2K, cong dong nen thu vao 276 lan trong 80 phut.
             cur = self._preset.get("event_key")
-            idx = next((i for i, (k, _l) in enumerate(self.events) if k == cur), 0)
+            idx = next((i for i, (k, _l) in enumerate(self.events) if k == cur), None)
+            if idx is None:
+                _pho_bien = self._event_key_pho_bien()
+                idx = next((i for i, (k, _l) in enumerate(self.events) if k == _pho_bien), 0)
             if labels:
                 self.event_var.set(labels[idx])
             # Tick NGAY BEN PHAI o chon event; chi co nghia voi Loan dau nen tu bat/tat theo event.
@@ -6648,6 +6845,8 @@ class PartyConfigFrame(ttk.Frame):
                 "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
                 "auto_bag_expand": bool(self.auto_bag_expand_var.get()),
                 "bag_expand_gold": _parse_int(self.bag_expand_gold_var.get(), 0),
+                "auto_bank_expand": bool(self.auto_bank_expand_var.get()),
+                "bank_expand_gold": _parse_int(self.bank_expand_gold_var.get(), 0),
                 "auto_discard_junk": bool(self.auto_discard_junk_var.get()),
                 "auto_decompose_scrolls": bool(self.auto_decompose_scrolls_var.get()),
                 "scroll_modes": dict(self.scroll_modes),

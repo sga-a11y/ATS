@@ -106,17 +106,28 @@ class TestMa3ThiDungQuetKenh(unittest.TestCase):
         khoi = than[i_ma3:i_ma3 + 800]
         self.assertIn("return None", khoi,
                       "tra 0 la 'ca party da cung kenh' - sai han y nghia, party se khong dong bo")
-    def test_bao_CA_PARTY_roi_party_chu_khong_de_leader_tu_xoay(self):
+    def test_DIEU_PHOI_ra_lenh_ca_party_roi_doi_chu_khong_phai_acc(self):
         """Party la cua CA LU: con acc nao trong doi thi server van coi leader la dang to doi.
-        Leader tu roi roi thu lai khong go duoc - phai bao ca party cung roi + dong bo kenh."""
+        Leader tu roi roi thu lai khong go duoc - phai bao ca party cung roi + dong bo kenh.
+
+        Tu 07/09 lenh do la CUA DIEU PHOI, khong phai cua acc gap ma 3 (L1 - user: "bo het may cai
+        acc quyet dinh hay de xuat di, dieu phoi bot phai nhan ra va ra lenh"). Dieu phoi doc THANG
+        `_chan_switch_result` cua tung client (`_doc_ket_qua_doi_kenh`) nen no thay ma 3 khong kem
+        gi acc."""
         with open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
             s = fh.read()
         i = s.find('if r is None and getattr(c, "_chan_switch_result", None) == 3:')
         self.assertGreater(i, 0, "picker khong he phan biet ma 3 -> cho vong sau mai")
         khoi = s[i:i + 1200]
-        self.assertIn("_bump_reform(st)", khoi,
-                      "khong bao ca party thi chi minh leader roi - server van chan")
+        self.assertNotIn("_bump_reform(", khoi, "acc van tu ra lenh cap party")
         self.assertIn("return False", khoi, "phai thoat vong sync de di theo reform gen moi")
+
+        # DIEU PHOI phai co nhanh xu ma 3 - bo acc bump ma khong lam not day la de lo han
+        j = s.find("if _ma3:")
+        self.assertGreater(j, 0, "dieu phoi khong xu ma 3 -> khong ai go duoc the ket")
+        khoi_dp = s[j:j + 1400]
+        self.assertIn("_bump_reform(", khoi_dp)
+        self.assertIn("LAP_LAI_PARTY_COOLDOWN", khoi_dp, "khong co cooldown -> bao reform")
         i_thuong = s.find("if r is None:   # co kenh nhung khong kenh nao du cho ca party")
         self.assertGreater(i_thuong, i, "nhanh ma 3 phai kiem TRUOC nhanh 'cho kenh trong'")
 

@@ -90,6 +90,8 @@ class PartyStore(private val context: Context) {
                 loanDauMotTran = o.optBoolean("loandau_mot_tran", false),
                 autoBagExpand = o.optBoolean("auto_bag_expand", false),
                 bagExpandGold = o.optInt("bag_expand_gold", 0),
+                autoBankExpand = o.optBoolean("auto_bank_expand", false),
+                bankExpandGold = o.optInt("bank_expand_gold", 0),
                 mobMin = o.optInt("mob_min", 3),
                 mobMax = o.optInt("mob_max", 4),
                 mobElements = o.optJSONArray("mob_elements")?.let { arr ->
@@ -177,6 +179,8 @@ class PartyStore(private val context: Context) {
             o.put("loandau_mot_tran", p.loanDauMotTran)
             o.put("auto_bag_expand", p.autoBagExpand)
             o.put("bag_expand_gold", p.bagExpandGold)
+            o.put("auto_bank_expand", p.autoBankExpand)
+            o.put("bank_expand_gold", p.bankExpandGold)
             o.put("mob_min", p.mobMin)
             o.put("mob_max", p.mobMax)
             o.put("mob_elements", JSONArray().also { a -> p.mobElements.forEach { a.put(it) } })

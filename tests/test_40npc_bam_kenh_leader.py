@@ -102,6 +102,32 @@ class TestDieuPhoiXuLyCaGoc(unittest.TestCase):
         self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 39,
                          "keo 4 member sang kenh leader = di chuyen nhieu hon va co the het cho")
 
+    def test_leader_thi_hanh_lenh_kenh_TRONG_VONG_MOI(self):
+        """Vong moi party chay lien tuc nen leader KHONG quay lai keepalive - noi duy nhat doc
+        `kenh_dich`. Ket qua: member sang kenh dich het, leader dung nguyen kenh cu, roi chinh no
+        bao "chua moi N member vi chua xac nhan live dung map/kenh".
+
+        Log 07/09 party 1 (user: "t thay leader luon o 1 kenh con member o kenh khac"):
+            20:39:21 [chihao] (member) DIEU PHOI chot kenh 45, minh dang o 5 -> tu chuyen
+            20:42:33 [xGAx] (LEADER) chua moi 2 member vi chua xac nhan live dung map/kenh:
+                     ['38d0d2f8:lech kenh live 45!=6', '0c1dd3f8:lech kenh live 45!=6']
+        """
+        s = _src()
+        i_vong = s.find('while not _dg_solo_bail and joined_member_count(pidx)')
+        self.assertGreater(i_vong, 0, "khong con vong MOI party cua leader")
+        i = s.find('(LEADER) dang moi... joined=%d/%d', i_vong)
+        self.assertGreater(i, i_vong)
+        khoi = s[i_vong:i]      # THAN cua vong moi, khong doan theo so ky tu
+        self.assertIn("_nhip_moi_party(", khoi,
+                      "leader khong doc lenh kenh trong vong moi -> dung yen mot kenh")
+        # `_nhip_moi_party` lam dung thu tu: nghe lenh kenh -> kiem lenh GOM -> moi
+        s2 = _src()
+        i2 = s2.find("def _nhip_moi_party(")
+        than = s2[i2:i2 + 2200]
+        self.assertLess(than.find("_nghe_lenh_kenh()"),
+                        than.find("_invite_party_participants("),
+                        "phai sang kenh dich TRUOC khi moi, khong thi moi vao hu khong")
+
     def test_leader_cung_phai_theo_lenh(self):
         """Leader khong duoc mien - no cung chi la mot acc thi hanh."""
         s = _src()
@@ -114,8 +140,11 @@ class TestDieuPhoiXuLyCaGoc(unittest.TestCase):
 class TestVanChanDoiKenhGiuaTran(unittest.TestCase):
     def test_khong_doi_kenh_khi_dang_danh(self):
         s = _src()
-        i = s.find('_kd = st.get("kenh_dich")')
-        self.assertIn("not c.in_combat()", s[i:i + 400])
+        i = s.find("def _nghe_lenh_kenh():")
+        self.assertGreater(i, 0)
+        than = s[i:i + 3200]
+        self.assertIn("_kenh_doi_duoc_ngay(c, st)", than,
+                      "doi kenh giua tran -> server nuot/kick")
 
 
 if __name__ == "__main__":

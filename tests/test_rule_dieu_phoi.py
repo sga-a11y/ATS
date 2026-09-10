@@ -71,7 +71,9 @@ class TestL0_LuatToiThuong(unittest.TestCase):
         src = _doc("run_party_digioi.py")
         i = src.find('"-> LAP LAI PARTY", pidx + 1')
         self.assertGreater(i, 0, "doi kenh xong ma khong lap lai doi (L0 ve 2, L5)")
-        self.assertIn("joined_member_count(pidx)", src[i - 500:i + 300])
+        self.assertIn("_thieu_doi(pidx, song)", src[i - 700:i + 300],
+                      "phai dem doi bang ROSTER SERVER (`c.party_members`), khong bang so nho "
+                      "cua bot - so nho om stale, party tan ma no van bao du (L2d)")
 
     def test_thieu_nguoi_KHONG_duoc_ket_luan_la_XONG(self):
         """`ket`/`dut` = chua het -> khong duoc bat co thoat. Chi `xong`/`thua`/`het_duong`."""

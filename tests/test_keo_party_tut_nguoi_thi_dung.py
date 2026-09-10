@@ -58,15 +58,22 @@ class TestAbortTheoSoMember(unittest.TestCase):
         self.assertGreater(i, 0)
         self.assertIn("_keo_thieu[:] = []", self.than[i:i + 200])
 
-    def test_bump_reform_de_con_duong_gom_lai(self):
-        """Dung keo ma khong bao ai thi leader dung giua duong, khong ai gom lai."""
-        self.assertIn("_bump_reform(st,", self.than)
+    def test_acc_KHONG_tu_ra_lenh_gom(self):
+        """Acc dung keo la viec CUA NO (tu dung viec minh dang lam) - hop le. Nhung ra lenh gom cho
+        CA PARTY thi khong: do la viec cua dieu phoi (L1).
 
-    def test_bump_DUNG_MOT_LAN(self):
-        """_ab() bi goi moi buoc di - bump moi lan = reform_gen chay loan."""
-        i = self.than.find("_bump_reform(st,")
-        self.assertGreater(i, 0)
-        self.assertIn("len(_keo_thieu) < 2", self.than[max(0, i - 300):i])
+        User chot 07/09: "bo het may cai acc quyet dinh hay de xuat di, dieu phoi bot phai nhan ra
+        va ra lenh". Truoc do 21/23 loi goi `_bump_reform` nam trong luong acc - tuc cai goi la
+        "dieu phoi" chi chiem 2/23 quyet dinh cap party, va do la nguon bao reform (8000+ bump
+        trong 5 tieng, 06/09).
+
+        Party tut nguoi thi dieu phoi thay ngay qua ROSTER SERVER (`_thieu_doi`) -> VIEC_MOI ->
+        lap lai party. Khong can acc bao."""
+        self.assertNotIn("_bump_reform(", self.than)
+
+    def test_van_DUNG_KEO_khi_tut_nguoi(self):
+        """Bo bump nhung khong duoc bo luon viec dung keo - keo tiep voi party thieu la pham L0."""
+        self.assertIn("party TUT con %d/%d giua duong keo", self.than)
 
     def test_CHI_ap_dung_khi_da_bat_dau_keo_voi_party_DU(self):
         """Vong CHO du member (truoc khi keo) cung goi _ab() - bat o do la thoat ngay lap tuc."""

@@ -105,6 +105,21 @@ class TestKhongCoCachHoiViTri(unittest.TestCase):
 
 
 class TestThuTuLenhDoiKenh(unittest.TestCase):
+    def _khoi_picker(self):
+        """Khoi `if/elif/else` quyet dinh picker lay kenh nao.
+
+        Neo theo NHANH LENH chu khong theo so ky tu truoc `pick_best_channel`: cua so co dinh
+        truot ngay khi them mot nhanh (08/09: them nhanh "dieu phoi da chot -> theo" thi hai dong
+        `_ghim` bi day ra khoi cua so 1200 ky tu, test do trong khi hanh vi khong doi).
+        """
+        i = self.src.find('_tru = set(st.get("kenh_hong_set")')
+        if i < 0:
+            i = self.src.find('_ghim = st.get("kenh_ghim")')
+        self.assertGreater(i, 0, "khong tim thay dau khoi chon kenh cua picker")
+        j = self.src.find("r = c.pick_best_channel(", i)
+        self.assertGreater(j, i)
+        return self.src[i:j]
+
     def setUp(self):
         with open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
             s = fh.read()
@@ -178,18 +193,18 @@ class TestThuTuLenhDoiKenh(unittest.TestCase):
         self.assertIn('st["kenh_ghim"] = int(ch) if ch else None', self.src[i:i + 900],
                       "lenh tay khong ghim kenh -> picker tu doi lai")
 
-        j = self.src.find("r = c.pick_best_channel(")
-        self.assertGreater(j, 0)
-        khoi = self.src[max(0, j - 1200):j]
+        khoi = self._khoi_picker()
         self.assertIn('_ghim = st.get("kenh_ghim")', khoi, "picker khong doc kenh ghim")
         self.assertIn("if _ghim:", khoi)
         self.assertIn("c.switch_channel(int(_ghim))", khoi,
                       "co ghim thi phai dung dung kenh do, khong goi pick_best_channel")
+        # GHIM DUNG TREN CA LENH DIEU PHOI: user chi dinh tay thi khong ai duoc doi y.
+        self.assertLess(khoi.find("if _ghim:"), khoi.find('_kd0 = st.get("kenh_dich")'),
+                        "lenh dieu phoi xet truoc ghim tay -> ghim tay bi phu dinh")
 
     def test_kenh_ghim_HONG_thi_BO_ghim(self):
         """Ghim ma kenh do hong (ca party cung so ma khong thay nhau) thi ghim mai = ket cung."""
-        j = self.src.find("r = c.pick_best_channel(")
-        khoi = self.src[max(0, j - 1200):j]
+        khoi = self._khoi_picker()
         self.assertIn("int(_ghim) in _tru", khoi, "khong kiem kenh ghim co bi danh dau hong")
         self.assertIn('st["kenh_ghim"] = None', khoi, "kenh ghim hong ma khong bo ghim")
 

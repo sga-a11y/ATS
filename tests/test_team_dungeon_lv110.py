@@ -198,7 +198,6 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         )
         state = {
             "lock": threading.Lock(),
-            "team_dungeon_done_by": {110: {"member": 1}},
             "team_dungeon_state": {},
             "team_dungeon_broke": {},
             "reconnecting": set(),
@@ -211,6 +210,15 @@ class TestTeamDungeon110Execution(unittest.TestCase):
 
         coordinator.account_sync_epoch["leader"] = 0
         self.addCleanup(coordinator.account_sync_epoch.pop, "leader", None)
+        # Tu 07/09 leader DOC THANG luot cua tung client (`team_dungeon_remaining`), khong doi
+        # member "report" vao bang cap party.
+        _mem = SimpleNamespace(running=True, char_level=120,
+                               team_dungeon_remaining=mock.Mock(return_value=1))
+        coordinator.account_clients["leader"] = game
+        coordinator.account_clients["member"] = _mem
+        game.char_level = 120
+        self.addCleanup(coordinator.account_clients.pop, "leader", None)
+        self.addCleanup(coordinator.account_clients.pop, "member", None)
         with (
             mock.patch.object(coordinator, "party_accounts", return_value=[("leader",), ("member",)]),
             mock.patch.object(coordinator.config, "PARTY_LEADER_ACC", {0: "leader"}),
@@ -240,12 +248,9 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         )
         state = {
             "lock": threading.Lock(),
-            "team_dungeon_done_by": {80: {"member": 1}},
             "team_dungeon_state": {},
             "team_dungeon_broke": {},
             "team_dungeon_need_redo": False,
-            "team_dungeon_recover_seen": set(),
-            "team_dungeon_recover_ready": threading.Event(),
             "reconnecting": set(),
             "disc_gen": 0,
             # run_account() ghi account_sync_epoch[user] = st["sync_epoch"] TRUOC moi vong cho;
@@ -256,6 +261,13 @@ class TestTeamDungeon110Execution(unittest.TestCase):
 
         coordinator.account_sync_epoch["leader"] = 0
         self.addCleanup(coordinator.account_sync_epoch.pop, "leader", None)
+        _mem = SimpleNamespace(running=True, char_level=120,
+                               team_dungeon_remaining=mock.Mock(return_value=1))
+        coordinator.account_clients["leader"] = game
+        coordinator.account_clients["member"] = _mem
+        game.char_level = 120
+        self.addCleanup(coordinator.account_clients.pop, "leader", None)
+        self.addCleanup(coordinator.account_clients.pop, "member", None)
         with (
             mock.patch.object(coordinator, "party_accounts", return_value=[("leader",), ("member",)]),
             mock.patch.object(coordinator.config, "PARTY_LEADER_ACC", {0: "leader"}),
@@ -282,7 +294,6 @@ class TestTeamDungeon110Execution(unittest.TestCase):
 
         state = {
             "lock": threading.Lock(),
-            "team_dungeon_done_by": {80: {"leader": 1, "member": 1}},
             "team_dungeon_state": {80: "done"},
             "team_dungeon_broke": {80: True},
             "team_dungeon_need_redo": True,
@@ -293,7 +304,6 @@ class TestTeamDungeon110Execution(unittest.TestCase):
                 state, "member", "member", 0, lambda: False
             ))
 
-        self.assertEqual(state["team_dungeon_done_by"], {})
         self.assertEqual(state["team_dungeon_state"], {})
         self.assertEqual(state["team_dungeon_broke"], {})
         self.assertFalse(state["team_dungeon_need_redo"])

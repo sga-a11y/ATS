@@ -480,7 +480,19 @@ class TestKhongMoNPCKhiSaiMap(unittest.TestCase):
         self.assertIn("while self.current_map != dest", than)
 
     def test_caller_PHAI_doc_ket_qua_go_to_event(self):
+        """Va khong duoc DI TIEP khi vao khong duoc: phai THU LAI.
+
+        Ban dau chi `log.error` roi chay thang xuong vong event - acc dung o MAP TRAIN suot ca
+        ván: khong mo NPC (dung, vi mo o map thuong la bi da ma 5) nhung cung khong danh duoc gi.
+        Ca that 08/09 (user: "co acc ko tele vao event"): 44 acc dinh."""
         import io as _io, os as _os
-        src = _io.open(_os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8").read()
-        self.assertIn("if not c.go_to_event(ev):", src,
+        with _io.open(_os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        self.assertIn("if c.go_to_event(ev):", src,
                       "vut ket qua go_to_event -> tele hong van mo NPC -> bi da ma 5")
+        i = src.find("if c.go_to_event(ev):")
+        # Neo theo NHANH (den het khoi thu lai), khong theo cua so ky tu co dinh - comment dai them
+        # la test truot ma khong lien quan gi den hanh vi.
+        khoi = src[max(0, i - 900):src.find("except Exception as e:", i)]
+        self.assertIn("thu lai", khoi, "vao khong duoc ma khong thu lai -> mat ca van")
+        self.assertIn("KHONG vao duoc map event", khoi)

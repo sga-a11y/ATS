@@ -93,11 +93,17 @@ class TestKenhDichLaTRANG_THAI(unittest.TestCase):
         self._cl = dict(R.account_clients)
         R.account_clients.clear()
         R._party_state.pop(self.PARTY, None)
+        # CO LAP khoi config THAT: `PARTY_CONFIG` doc tu `bot/config.py` cua may dang chay, nen
+        # party 0 o may user dang la mode event 'loan_dau' -> dieu phoi bo qua lenh kenh (loan dau
+        # la solo) va test nay do ma khong lien quan gi den cai no kiem.
+        self._pcfg = getattr(R.config, "PARTY_CONFIG", {})
+        R.config.PARTY_CONFIG = {}
 
     def tearDown(self):
         R.party_accounts = self._pa
         R.account_clients.clear(); R.account_clients.update(self._cl)
         R._party_state.pop(self.PARTY, None)
+        R.config.PARTY_CONFIG = self._pcfg
 
     def _song(self, **kw):
         for u, c in kw.items():
@@ -198,12 +204,18 @@ class TestChotRoiThiGIU(unittest.TestCase):
         self._cl = dict(R.account_clients)
         R.account_clients.clear()
         R._party_state.pop(self.PARTY, None)
+        # CO LAP khoi config THAT: `PARTY_CONFIG` doc tu `bot/config.py` cua may dang chay, nen
+        # party 0 o may user dang la mode event 'loan_dau' -> dieu phoi bo qua lenh kenh (loan dau
+        # la solo) va test nay do ma khong lien quan gi den cai no kiem.
+        self._pcfg = getattr(R.config, "PARTY_CONFIG", {})
+        R.config.PARTY_CONFIG = {}
         self.st = R._pstate(self.PARTY)
 
     def tearDown(self):
         R.party_accounts = self._pa
         R.account_clients.clear(); R.account_clients.update(self._cl)
         R._party_state.pop(self.PARTY, None)
+        R.config.PARTY_CONFIG = self._pcfg
 
     def _song(self, **kw):
         for u, c in kw.items():
@@ -254,9 +266,10 @@ class TestAccTuSoiVaoKenhDich(unittest.TestCase):
         self.assertIn("switch_channel", khoi)
 
     def test_khong_chuyen_khi_dang_danh(self):
-        i = self.src.find('_kd = st.get("kenh_dich")')
-        khoi = self.src[i:i + 400]
-        self.assertIn("not c.in_combat()", khoi, "doi kenh giua tran")
+        i = self.src.find("def _nghe_lenh_kenh():")
+        self.assertGreater(i, 0)
+        self.assertIn("_kenh_doi_duoc_ngay(c, st)", self.src[i:i + 3200],
+                      "doi kenh giua tran")
 
     def test_KHONG_bi_vong_bat_tay_chan(self):
         i = self.src.find('_kd = st.get("kenh_dich")')

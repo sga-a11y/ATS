@@ -343,6 +343,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.autoOpenBoxes,
                 party.boxModes.entries.joinToString("\n") { "${it.key}=${if (it.value) 1 else 0}" },
                 party.autoCatDo,
+                // TU MO RONG TIEN TRANG. THEM O CUOI CUNG (goi theo VI TRI).
+                party.autoBankExpand, party.bankExpandGold,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,

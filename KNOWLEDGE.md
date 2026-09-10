@@ -285,6 +285,30 @@ Cách chữa: `GameClient._theo_leader_sua_pos()` — member trong party lệch 
 vị trí leader làm của mình** (client leader nằm cùng tiến trình, đọc thẳng). Gọi ở đầu
 `navigate_to` và ở hai chỗ kiểm "đã ra rally chưa".
 
+**Nguồn thứ năm (đã nối, 09/09): `S:006-001` của acc KHÁC.** Server không echo move của chính
+mình, nhưng **có** báo vị trí mình cho các acc khác cùng scene. Cả party nằm chung một tiến trình
+nên ghép lại là biết vị trí thật: `_dispatch` đọc `S:006-001`, tìm client cùng `self_entity` +
+cùng map trong `_PARTY_CLIENTS`, ghi `pos` và **bump `_position_generation`** của client đó — tức
+nó cũng là một nguồn xác nhận hợp lệ cho `navigate_to` ("đã tới safe point chưa"). Phó bản tổ đội
+luôn có đủ đội cùng scene nên nguồn này luôn có.
+
+### ⚠️ Bot gửi toạ độ ĐÍCH, client thật gửi VỊ TRÍ HIỆN TẠI → mã 14
+`MoveController.SendRolePosition()` gửi `Role.player.position` — vị trí **hiện tại** sau khi đã
+cộng từng bước `moveDist = deltaTime * speed` (`MoveController.lua:194` và `:234`). Client **không
+bao giờ** gửi thẳng toạ độ đích. Bot thì gửi đích, nên đoạn càng dài thì cú nhảy càng xa, và server
+trả `S:000-000` mã 14 `<移動距離過遠>` → **đứt kết nối**.
+
+Ca thật 10/09 (party 1, phó bản tổ đội lv80 map 62012): không tìm được smart path → nhánh fallback
+`replay waypoint capture` bắn **một** lệnh `0x06` tới toạ độ trong file capture, trong khi bot đang
+đứng ở chỗ khác hẳn → mã 14 → leader rớt → cả 4 member `THOAT PHO BAN TO DOI`, mất lượt. Chính
+docstring của hàm đó đã ghi *"waypoint capture là đường của NGƯỜI THẬT xuất phát từ vị trí của HỌ"*
+mà vẫn replay mù từ chỗ khác.
+
+Chữa: `_route_move` đi qua `_move_chia_doan()` — xa hơn `ROUTE_BUOC_TOI_DA` (120) thì **chia thành
+nhiều lệnh ngắn dọc đường thẳng**, dừng ngay khi dính trận (lệnh move bị server nuốt) hoặc acc tắt.
+Ngưỡng 120 lấy theo thang đo đã chạy được: smart path chia đoạn 1060 đơn vị thành 11 move-point
+(~96/bước) và đường đó chưa dính mã 14 lần nào.
+
 `toa_do_that()` thường trả `None` khi đi lại bình thường — **`None` = chưa xác nhận được, KHÔNG
 phải "chưa tới"**; coi nhầm là treo cả luồng.
 
@@ -1713,6 +1737,38 @@ S2C 0x57 ket qua: [02 00][01][status]
 - type=04: **QUA 14 NGAY user moi** (day 1..14, nhan het thi dung). client.claim_14day_gift().
 - Code chung: client._claim_daily_gift(kind, gtype, max_day, name, finite). State checkin_state.json
   key "label:kind".
+
+## 7h-bis. MUA Ô TÚI / Ô TIỀN TRANG (opcode 0x54 — `UISell`, phân biệt bằng `sellId`)
+
+`0x54` **không chỉ** là exp offline. Nó còn là kênh chung của `UISell` — mọi thứ "trả tiền để mở
+khoá" đều đi qua đây, phân biệt bằng **`sellId`**:
+
+```
+C2S hỏi giá:  0x54 [01 00][sellId 2B]              (Network.Send(84, 1, ...))
+S2C báo giá:  0x54 [01 00][sellId 2B][kind 1B][money 4B LE]
+C2S mua:      0x54 [02 00][02][sellId 2B]          (Network.Send(84, 2, ...))
+S2C kết quả:  0x54 [02 00][sellId 2B][result 1B]   (1 = OK)
+```
+
+| `sellId` | Là gì | Nguồn trong crack client |
+|---|---|---|
+| 3 | mở ô **TÚI ĐỒ** | `UI/UIBag.lua:259` → `UISell.Launch(3)` |
+| 1 | mở ô **TIỀN TRANG** | `UI/UIBank.lua:335` → tab `Bank` → `UISell.Launch(1)` |
+| 56 | mở ô tab **Storage** (kho khác) | `UI/UIBank.lua:337` — **bot không dùng** |
+
+Số ô đã mở nằm ở `ERoleCount` (`Logic/RoleCount.lua`): **`Bank_1 = 101`** (錢莊開啟格數1) song song
+với **`Bag_1 = 103`** (背包開啟格數1). Đọc `role_counts[id] = (value, max)`; `value >= max` là hết
+mở được.
+
+> ⚠️ **Handler phải lọc `sellId`.** `_on_bag_slot` ban đầu nhận **mọi** gói `0x54` sub01/sub02 rồi
+> ghi vào `_bag_slot_price` — chỉ đúng khi bot có duy nhất một loại (túi). Thêm tiền trang là hai
+> loại dùng chung một ô nhớ: giá cái này đè lên cái kia, bot mua nhầm hoặc so nhầm ngưỡng. Giờ mỗi
+> loại có ô riêng (`_bag_slot_*` / `_bank_slot_*`), `sellId` lạ thì bỏ qua.
+
+> **Mở ô tiền trang chỉ làm được khi tiền trang ĐANG MỞ** — nút nằm trong chính `UIBank`
+> (`OnClick_Unlock`), không bấm được từ ngoài. Nên bot làm ngay trong lượt đi cất đồ
+> (`cat_do_tien_trang`, sau khi `bank_open` xác nhận), không gộp chung với chỗ mở rộng túi (chạy
+> lúc login).
 
 ## 7h. EXP OFFLINE (opcode 0x54)
 

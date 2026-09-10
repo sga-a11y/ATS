@@ -60,7 +60,7 @@ class TestCoRallyGen(unittest.TestCase):
         for i in vt:
             khoi = re.sub(r"#.*", "", s[i:i + 900])
             self.assertIn("_ra_rally_gom_lai(", khoi)
-            self.assertIn('st["rally_done"][username] = rally_gen_handled', khoi,
+            self.assertIn('c._rally_gen_da_lam = int(rally_gen_handled)', khoi,
                           "thi hanh xong ma khong bao cao thi leader van phai doan")
         # Vong chinh chay cho CA leader lan member -> phai co chot not is_leader
         khoi_chinh = re.sub(r"#.*", "", s[vt[-1] - 200:vt[-1] + 200])
@@ -83,14 +83,19 @@ class TestCoRallyGen(unittest.TestCase):
 class TestBaoCaoDaThiHanh(unittest.TestCase):
     """"Ca lu deu phai di" chi kiem chung duoc khi tung dua BAO CAO da thi hanh."""
 
-    def test_state_co_rally_done(self):
-        self.assertIn('"rally_done": {},', _src())
+    def test_KHONG_con_bang_cap_party(self):
+        """Tu 07/09 dau vet nam tren CHINH CLIENT (`_rally_gen_da_lam`), khong con bang khai bao
+        cap party (user: "bot la nguoi dieu khien acc, thi co cai gi ma ko biet duoc?")."""
+        code = chr(10).join(d for d in _src().splitlines()
+                            if d.strip() and not d.strip().startswith("#"))
+        self.assertNotIn('st["rally_done"]', code)
+        self.assertNotIn('"rally_done": {},', code)
 
     def test_leader_doi_du_bao_cao_cua_dung_vong_nay(self):
         s = _src()
         i = s.find("def _vi_sao_chua_san_sang(")
         than = re.sub(r"#.*", "", s[i:s.find("def _cho_ca_party_ve_rally(", i)])
-        self.assertIn('st.get("rally_done", {}).get(ten_acc, -1)', than)
+        self.assertIn('int(getattr(cli, "_rally_gen_da_lam", -1))', than)
         self.assertIn("_da < int(gen)", than, "khong so voi gen hien tai = an bao cao cua vong CU")
 
     def test_gen_chup_MOT_LAN_truoc_vong_cho(self):
@@ -182,7 +187,7 @@ class TestKiemChungDaRaSafe(unittest.TestCase):
         i = s.find("def _ra_rally_gom_lai(")
         than = s[i:s.find("\n        RALLY_BAN_KINH", i)]
         self.assertIn("def _bao_da_ra():", than)
-        self.assertIn('st["rally_done"][username] = int(st["rally_gen"])', than)
+        self.assertIn('c._rally_gen_da_lam = int(st["rally_gen"])', than)
         # phai goi o CA HAI cho tra True
         self.assertEqual(than.count("_bao_da_ra()"), 4, "thieu cho goi bao cao (dinh nghia + 3 goi)")
 

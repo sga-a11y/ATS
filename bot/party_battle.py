@@ -196,12 +196,20 @@ class PartyBattleCoordinator:
             log.info("%s %s skill=%d -> %s: %s", prefix, self._pos(event.source),
                      event.skill_id, self._pos(event.position), self._format_action(event.payload))
         elif event.kind == "status":
+            # DEBUG, khong phai INFO. Do tren party.log 10/09: rieng dong nay chiem 156.112/300.000
+            # dong = 52% TOAN BO log; cong `spawn`/`ack`/`exit` nua la ~63%. Deu la trace trong
+            # tran, khong ai doc khi may chay binh thuong.
+            #
+            # Log khong mien phi: moi dong di qua format -> file -> `_log_queue` -> widget Text cua
+            # GUI, tren mot tien trinh Python da bao hoa GIL (256 acc, ~880 thread, CPU 1.0s moi
+            # giay thuc). Main thread cua Tk phai xep hang voi tat ca -> user thay "Not Responding"
+            # (user 10/09: "sao bot chay hay bi no responding the").
             status_kind = event.payload[0] if event.payload else 0
-            log.info("%s STATUS %s kind=%d skill=%d", prefix, self._pos(event.position),
-                     status_kind, event.skill_id)
+            log.debug("%s STATUS %s kind=%d skill=%d", prefix, self._pos(event.position),
+                      status_kind, event.skill_id)
         elif event.kind in ("spawn", "exit", "flyout", "move", "transform", "ack"):
-            log.info("%s %s %s", prefix, event.kind.upper(),
-                     self._pos(event.position or event.source))
+            log.debug("%s %s %s", prefix, event.kind.upper(),
+                      self._pos(event.position or event.source))
 
     @staticmethod
     def _pos(position):

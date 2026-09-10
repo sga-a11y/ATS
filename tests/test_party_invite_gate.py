@@ -31,19 +31,37 @@ class TestPartyInviteGate(unittest.TestCase):
         game.running = True
         return game
 
-    def test_normal_party_invite_waits_until_client_is_ready(self):
+    def test_loi_moi_NGUOI_LA_thi_van_hoan_toi_khi_san_sang(self):
+        """Nguoi ngoai party moi -> hoan lai nhu cu (khong bo dang lam de vao doi nguoi la)."""
         game = self.make_client()
-        leader = b"\x22" * 8
-        _register_party_entity(19, leader)
+        nguoi_la = b"\x33" * 8                 # KHONG dang ky vao party 19
 
         with mock.patch.object(game, "send") as send:
-            game._on_party(_party_invite(leader))
+            game._on_party(_party_invite(nguoi_la))
             send.assert_not_called()
 
             setter = getattr(game, "set_party_invite_ready", lambda _ready: None)
             setter(True)
 
-        send.assert_called_once_with(0x0D, b"\x08\x00\x01" + leader)
+        send.assert_called_once_with(0x0D, b"\x08\x00\x01" + nguoi_la)
+
+    def test_loi_moi_tu_acc_CUNG_PARTY_thi_ACCEPT_NGAY(self):
+        """L0: thieu doi thi KHONG CON viec vat nao quan trong hon.
+
+        `party_invite_ready` chi bat o vai nhanh cu the; acc bi ABORT giua chung thi ket False
+        VINH VIEN va hoan MOI loi moi. Cua cuu (L0) nam o vong keepalive, ma acc dang ket o vong
+        khac thi khong chay toi do.
+
+        Ca that 08/09 party 17 (user: "p17 bi lam sao"): 40 phut, cung map cung kenh 1, party chia
+        doi - 3 acc mot nhom, 2 acc dung ngoai lap "Chua san sang vao party -> GIU loi moi ... se
+        accept sau viec vat" moi 6 giay, trong khi KHONG he lam viec vat nao."""
+        game = self.make_client()
+        leader = b"\x22" * 8
+        _register_party_entity(19, leader)      # leader cua CHINH party minh
+
+        with mock.patch.object(game, "send") as send:
+            game._on_party(_party_invite(leader))
+            send.assert_called_once_with(0x0D, b"\x08\x00\x01" + leader)
 
     def test_dungeon_invite_still_works_while_normal_party_is_not_ready(self):
         game = self.make_client()

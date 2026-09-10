@@ -48,7 +48,12 @@ class TestKenhPartyKhongVaoDuoc(unittest.TestCase):
         self.assertIn('st["channel"] = None', khoi, "khong bo kenh -> vong sau lai chot dung kenh do")
         self.assertIn('st["channel_ready"].clear()', khoi,
                       "khong clear -> member doc lai dung kenh hong cu")
-        self.assertIn("_bump_reform(st)", khoi, "khong bao ai dong bo lai thi khong ai chon kenh moi")
+        # Tu 07/09 acc KHONG ra lenh cap party (L1). Xoa co kenh la don trang thai cua chinh no -
+        # hop le; con "bao ca party dong bo lai" thi la viec cua dieu phoi: no thay lech kenh qua
+        # `_doc_ket_qua_doi_kenh` / `kenhs` va tu ra lenh.
+        self.assertNotIn("_bump_reform(", khoi, "acc van tu ra lenh cap party")
+        self.assertIn('st["channel"] = None', khoi, "khong bo kenh hong thi vong sau lai vao lai")
+        self.assertIn('st["channel_ready"].clear()', khoi)
 
     def test_loi_KHAC_thi_van_khong_chan_moi_party(self):
         """Timeout / loi tam thoi thi cu moi tiep, khong duoc dap kenh dang dung."""

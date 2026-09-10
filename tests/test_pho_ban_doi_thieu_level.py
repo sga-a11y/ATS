@@ -41,9 +41,27 @@ def _src():
         return fh.read()
 
 
+class _C:
+    def __init__(self, lv):
+        self.char_level = lv
+        self.running = True
+
+
 class TestThieuLevel(unittest.TestCase):
+    """Tu 07/09 doc THANG `c.char_level` - khong acc nao "bao cap" nua (user: "bot tu thay cac acc
+    dang o dau, acc noi lam cai lon gi nua" / "bo het may vu acc bao cao di")."""
+
+    def setUp(self):
+        self._cl = dict(rpd.account_clients)
+        rpd.account_clients.clear()
+
+    def tearDown(self):
+        rpd.account_clients.clear(); rpd.account_clients.update(self._cl)
+
     def _st(self, **lv):
-        return {"char_level_by": dict(lv)}
+        for u, v in lv.items():
+            rpd.account_clients[u] = _C(v)
+        return {}
 
     def test_duoi_cap_thi_bao_thieu(self):
         st = self._st(a=68, b=68)
@@ -74,23 +92,25 @@ class TestThieuLevel(unittest.TestCase):
         self.assertTrue(rpd._thieu_level(st, ["a", "b"], 110))
 
 
-class TestBaoCapNhanVat(unittest.TestCase):
-    def test_state_co_cho_luu(self):
-        self.assertIn('"char_level_by": {},', _src())
+class TestKhongConBaoCap(unittest.TestCase):
+    """Bang `char_level_by` da bo han - cap doc thang tu client."""
 
-    def test_moi_acc_bao_cap_luc_vao_PB(self):
-        src = _src()
-        i = src.find("reports[username] = remaining")
-        self.assertGreater(i, 0)
-        khoi = src[i:i + 400]
-        self.assertIn('getattr(c, "char_level", None)', khoi)
-        self.assertIn('st.setdefault("char_level_by", {})[username]', khoi)
+    def test_bo_han_bang_bao_cap(self):
+        code = chr(10).join(d for d in _src().splitlines()
+                            if d.strip() and not d.strip().startswith("#"))
+        self.assertNotIn("char_level_by", code)
 
-    def test_cap_0_hoac_None_thi_KHONG_ghi(self):
-        """Ghi 0 vao thi moi PB deu bi coi la thieu cap -> bo sach."""
-        src = _src()
-        i = src.find('_lv = getattr(c, "char_level", None)')
-        self.assertIn("if _lv:", src[i:i + 160])
+    def test_thieu_level_doc_tu_client(self):
+        s = _src()
+        i = s.find("def _thieu_level(")
+        than = s[i:s.find(chr(10) + "def ", i + 10)]
+        self.assertIn("account_clients.get(", than)
+        self.assertIn('getattr(c, "char_level", None)', than)
+
+    def test_chua_doc_duoc_cap_thi_KHONG_tinh_la_thieu(self):
+        """Tha cho thu con hon bo oan - acc chua co goi 0x05 thi chua biet cap."""
+        rpd.account_clients.pop("x", None)
+        self.assertEqual(rpd._thieu_level({}, ["x"], 80), [])
 
 
 class TestLeaderBoQuaTierThieuCap(unittest.TestCase):
@@ -128,7 +148,7 @@ class TestPBHongKhongLamMatO1(unittest.TestCase):
 
     def test_PB_hong_KHONG_return_som(self):
         i_hong = self.than.find("pho ban to doi khong xong")
-        i_daily = self.than.find("c.do_daily_dungeon()")
+        i_daily = self.than.find("c.do_daily_dungeon(")
         self.assertGreater(i_hong, 0)
         self.assertGreater(i_daily, 0)
         giua = re.sub(r"#.*", "", self.than[i_hong:i_daily])
@@ -137,11 +157,11 @@ class TestPBHongKhongLamMatO1(unittest.TestCase):
 
     def test_VAN_chuyen_pha_train(self):
         """Bo `return` som khong duoc lam mat viec chuyen pha."""
-        i_daily = self.than.find("c.do_daily_dungeon()")
+        i_daily = self.than.find("c.do_daily_dungeon(")
         self.assertIn('_dt["relogin_train"] = True', self.than[i_daily:i_daily + 1200])
 
     def test_VAN_claim_nhiem_vu_ngay(self):
-        i_daily = self.than.find("c.do_daily_dungeon()")
+        i_daily = self.than.find("c.do_daily_dungeon(")
         self.assertIn("c.claim_daily_quests(heavy=True)", self.than[i_daily:i_daily + 500])
 
 

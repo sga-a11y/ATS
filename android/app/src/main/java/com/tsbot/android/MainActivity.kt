@@ -818,6 +818,8 @@ fun TsBotApp(
             initialLoanDauMotTran = partyBeingEdited.loanDauMotTran,
             initialAutoBagExpand = partyBeingEdited.autoBagExpand,
             initialBagExpandGold = partyBeingEdited.bagExpandGold,
+            initialAutoBankExpand = partyBeingEdited.autoBankExpand,
+            initialBankExpandGold = partyBeingEdited.bankExpandGold,
             onApplyDiGioiLevel = { idx ->
                 service?.setDiGioiLevel(partyBeingEdited.accounts.map { it.username }, idx)
             },
@@ -1836,6 +1838,8 @@ fun AddPartyDialog(
     initialLoanDauMotTran: Boolean = false,
     initialAutoBagExpand: Boolean = false,
     initialBagExpandGold: Int = 0,
+    initialAutoBankExpand: Boolean = false,
+    initialBankExpandGold: Int = 0,
     onApplyAdvancedToAll: ((Party) -> Int)? = null,
     onApplyDiGioiLevel: ((Int) -> Unit)? = null,
 ) {
@@ -1851,6 +1855,9 @@ fun AddPartyDialog(
     var loanDauMotTran by remember { mutableStateOf(initialLoanDauMotTran) }
     var autoBagExpand by remember { mutableStateOf(initialAutoBagExpand) }
     var bagExpandGoldText by remember { mutableStateOf(initialBagExpandGold.toString()) }
+    // TU MO RONG TIEN TRANG - mac dinh TAT, giong tick tui do.
+    var autoBankExpand by remember { mutableStateOf(initialAutoBankExpand) }
+    var bankExpandGoldText by remember { mutableStateOf(initialBankExpandGold.toString()) }
     var digioiSolo by remember { mutableStateOf(initialDigioiSolo) }
     var noLeader by remember { mutableStateOf(initialNoLeader) }
     var leaderWhitelistText by remember { mutableStateOf(initialLeaderWhitelist.joinToString("\n")) }
@@ -1984,6 +1991,8 @@ fun AddPartyDialog(
         loanDauMotTran = loanDauMotTran,
         autoBagExpand = autoBagExpand,
         bagExpandGold = bagExpandGoldText.toIntOrNull() ?: 0,
+        autoBankExpand = autoBankExpand,
+        bankExpandGold = bankExpandGoldText.toIntOrNull() ?: 0,
     )
 
     AlertDialog(
@@ -2596,6 +2605,8 @@ fun AddPartyDialog(
                             loanDauMotTran = loanDauMotTran,
                             autoBagExpand = autoBagExpand,
                             bagExpandGold = bagExpandGoldText.toIntOrNull() ?: 0,
+                            autoBankExpand = autoBankExpand,
+                            bankExpandGold = bankExpandGoldText.toIntOrNull() ?: 0,
                         ))
                         if (!saved) nameError = "Tên party đã tồn tại"
                     }
@@ -2633,6 +2644,26 @@ fun AddPartyDialog(
                     Text(
                         "(mua slot túi tới khi giá lần kế tiếp VƯỢT số này; điền 250 thì mua xong " +
                             "lần giá 250, lần sau cần 260 là dừng)",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 48.dp),
+                    )
+                    // TIEN TRANG: ngay DUOI tick tui do (user chot 10/09). Chi mo duoc luc kho
+                    // dang mo (nut nam trong UIBank) nen bot lam trong luot di cat do.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoBankExpand, onCheckedChange = { autoBankExpand = it })
+                        Text("Tự mở rộng tiền trang đến")
+                        OutlinedTextField(
+                            value = bankExpandGoldText,
+                            onValueChange = { bankExpandGoldText = it.filter { c -> c.isDigit() } },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(120.dp).padding(horizontal = 6.dp),
+                        )
+                        Text("vàng")
+                    }
+                    Text(
+                        "(mở ô tiền trang tới khi giá lần kế tiếp VƯỢT số này. Chỉ mở được lúc " +
+                            "tiền trang đang mở, nên bot làm ngay khi đi cất đồ)",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(start = 48.dp),
                     )

@@ -48,12 +48,40 @@ class TestPhanLoaiTaiCho(unittest.TestCase):
         self.assertEqual(rp._party_train_tai_cho([700], [1], 0), "lech_map")
 
 
+def _than_tai_cho(s, bo_docstring=False, bo_comment=False):
+    """Than DAY DU cua `_party_tai_cho_xu_ly` - neo theo HAM, khong theo cua so ky tu co dinh.
+
+    Cac test duoi tung cat `s[i:i + 5600]`. Them mot khoi comment vao ham la truot het, va truot
+    kieu do bao "code sai" trong khi hanh vi khong doi gi - dung cai bay ghi o L3i.
+
+    `bo_comment=True` khi test kiem MA CHAY (vd "khong duoc goi `_do_reform` o day"): nhac ten ham
+    trong ghi chu de giai thich la chuyen binh thuong, khong phai vi pham.
+    """
+    i = s.find("def _party_tai_cho_xu_ly(")
+    assert i > 0
+    # Ham ket thuc khi THUT LE GIAM, khong phai khi gap `def` ke tiep: giua than con nhieu ham long
+    # nhau, va sau than con code khac truoc `def` mức 8 tiep theo (lay theo `def` ra 100k ky tu).
+    dong = s[i:].split("\n")
+    het = len(dong)
+    for k, d in enumerate(dong[1:], start=1):
+        if d.strip() and not d.startswith(" " * 12):
+            het = k
+            break
+    than = "\n".join(dong[:het])
+    if bo_docstring:
+        _q = '"' * 3
+        k = than.find(_q, than.find(_q) + 3)
+        than = than[k + 3:] if k > 0 else than
+    if bo_comment:
+        than = re.sub(r"#.*", "", than)
+    return than
+
+
 class TestApVaoLuong(unittest.TestCase):
     def test_co_ham_xu_ly_tai_cho(self):
         s = _src()
         self.assertIn("def _party_tai_cho_xu_ly(", s)
-        i = s.find("def _party_tai_cho_xu_ly(")
-        than = s[s.find('"""', s.find('"""', i) + 3) + 3:i + 5600]   # bo docstring
+        than = _than_tai_cho(s, bo_docstring=True, bo_comment=True)
         self.assertIn("do_channel_sync()", than, "lech kenh -> sync kenh tai cho")
         self.assertNotIn("_do_reform", than, "xu ly tai cho KHONG duoc ve thanh")
 
@@ -70,8 +98,7 @@ class TestApVaoLuong(unittest.TestCase):
         ket thuc bang combat_ready()+flee_mode=False; nhanh tai cho quen thi bot dung dung diem
         quai ma cu bo chay, khong danh con nao."""
         s = _src()
-        i = s.find("def _party_tai_cho_xu_ly(")
-        doan = s[i:i + 5600]
+        doan = _than_tai_cho(s)
         self.assertIn("_bat_danh_neu_du_party()", doan)
 
     def test_CHUA_DU_PARTY_thi_KHONG_danh(self):
@@ -92,8 +119,7 @@ class TestApVaoLuong(unittest.TestCase):
     def test_sync_kenh_CHUA_XONG_thi_KHONG_moi_party(self):
         """Moi party luc con lech kenh = loi moi khong toi noi, party mai khong du."""
         s = _src()
-        i = s.find("def _party_tai_cho_xu_ly(")
-        doan = s[i:i + 8300]
+        doan = _than_tai_cho(s)
         self.assertIn("if not do_channel_sync():", doan)
         j = doan.find("if not do_channel_sync():")
         nhanh = doan[j:doan.find("else:", j)]
@@ -102,8 +128,8 @@ class TestApVaoLuong(unittest.TestCase):
 
     def test_leader_moi_lai_NGAY_khong_doi_60s(self):
         s = _src()
-        i = s.find("def _party_tai_cho_xu_ly(")
-        self.assertIn("_invite_party_participants(c, train_on_map, gap=1.0)", s[i:i + 6200])
+        self.assertIn("_invite_party_participants(c, train_on_map, gap=1.0)",
+                      _than_tai_cho(s))
 
     def test_RA_SAFE_truoc_khi_doi_kenh(self):
         """User 27/08: "phai chay ra diem an toan roi moi switch chu".
@@ -164,7 +190,9 @@ class TestApVaoLuong(unittest.TestCase):
         s = _src()
         i = s.find('if kind == "channel":')
         doan = s[i:i + 9600]
-        self.assertIn("if _res in (2, 4):", doan)
+        # `-1` = server IM LANG (timeout het luot) - them 09/09: cung la "khong vao duoc", thu
+        # lai cung the. Xem test_khong_gui_doi_kenh_chong_nhau.py.
+        self.assertIn("if _res in (2, 4, -1):", doan)
         self.assertIn("de sync kenh chon", doan)
 
     def test_ra_safe_goi_TRUOC_switch_channel(self):
@@ -203,7 +231,12 @@ class TestApVaoLuong(unittest.TestCase):
         self.assertGreater(i, 0)
         doan = s[i:i + 2200]
         self.assertIn("_invite_party_participants(c, train_on_map, gap=1.0)", doan, "phai moi lai")
-        self.assertIn("_bump_reform(st", doan, "moi mai khong duoc thi gom bang reform")
+        # ACC KHONG RA LENH GOM (L1): truoc day cho nay `_bump_reform(st...)` - acc tu quyet gom.
+        # Gio acc chi MOI LAI, con "co gom hay khong" la viec cua dieu phoi (no doc thang map/kenh
+        # cua ca party moi 2 giay). Xem documents/RULE_DIEU_PHOI.md muc L1.
+        self.assertIn("ACC KHONG RA LENH GOM (L1)", doan,
+                      "acc tu bump reform = quay lai canh acc tu quyet")
+        self.assertNotIn("_bump_reform(st", doan)
         self.assertIn("c.flee_mode = True", doan, "khong danh le trong luc gom")
         self.assertIn("_thieu_since", doan)
         # KHONG duoc "rut ve safe roi ha co train" - gom la viec chinh, khong phai di dau ca
@@ -269,7 +302,7 @@ class TestApVaoLuong(unittest.TestCase):
     def test_van_ve_thanh_khi_dang_gom_nhau_o_thanh(self):
         """reform_arrived co entry = co nguoi DANG DUNG CHO o thanh -> ve gop that, khong bo roi ho."""
         s = _src()
-        i = s.find("_gather_wait_me = bool(_gather)")
+        i = s.find("_gather_wait_me = bool(_gather_dich)")
         doan = s[i:i + 3200]
         self.assertIn("not _gather_wait_me", doan)
 

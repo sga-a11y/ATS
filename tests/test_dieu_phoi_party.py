@@ -44,11 +44,15 @@ def _src():
 class _C:
     """Client gia: dieu phoi CHI duoc doc nhung truong nay."""
 
-    def __init__(self, map_id=None, channel=None, dg_phut=0.0, running=True):
+    def __init__(self, map_id=None, channel=None, dg_phut=0.0, running=True, roster=None):
         self.current_map = map_id
         self.current_channel = channel
         self._dg = dg_phut
         self.running = running
+        # ROSTER SERVER (`0x0d`). Tu 07/09 dieu phoi dem doi bang day - `joined_member_count` la bo
+        # dem trong cua bot va no om STALE (party 1: bot tuong du doi trong khi leader lap lai
+        # "KHONG o party nao (roster server + local deu rong)" suot 44 phut).
+        self.party_members = [b"x" * 8] * (2 if roster is None else roster)
 
     def digioi_minutes_live(self):
         return self._dg
@@ -155,6 +159,37 @@ class TestDoiPhaKhongCanLeader(_Nen):
         self.assertIn('st.get("dt_phase") == "train"', khoi)
 
 
+class TestDuPartyThiKHONG_the_lech_kenh(_Nen):
+    """DU PARTY = DA CUNG INSTANCE. Server khong cho o chung doi ma khac phan khu (`S:007-002`
+    ma 3 <組隊不可換分區> la mat kia cua cung mot luat). Nen roster DU la bang chung manh hon
+    `current_channel` - so BOT TU NHO, va no sai duoc (sot lai qua reconnect, ack cu; user kiem
+    chung 30/08: bot hien ca 5 nick kenh 12, vao game xem la 12/12/12/2/1).
+
+    User 07/09: "vi sao du pt roi ma van co lenh doi kenh de pt lai"."""
+
+    def test_roster_DU_thi_bo_qua_lech_kenh(self):
+        self._dat(a1=_C(12001, 1, 5, roster=2), a2=_C(12001, 2, 5, roster=2),
+                  a3=_C(12001, 2, 5, roster=2))
+        kh, _ly, _ = self._quyet(lech_tu=time.time() - R.KE_HOACH_LECH_MAP_SEC - 1)
+        self.assertNotEqual(kh["viec"], R.VIEC_DONG_BO, "van ra lenh doi kenh khi party da du")
+        self.assertNotEqual(kh["viec"], R.VIEC_GOM)
+
+    def test_roster_THIEU_thi_van_xu_ly_lech_kenh(self):
+        self._dat(a1=_C(12001, 1, 5, roster=0), a2=_C(12001, 2, 5, roster=0),
+                  a3=_C(12001, 2, 5, roster=0))
+        kh, _ly, _ = self._quyet(lech_tu=time.time() - R.KE_HOACH_LECH_MAP_SEC - 1)
+        self.assertIn(kh["viec"], (R.VIEC_DONG_BO, R.VIEC_GOM))
+
+    def test_lech_MAP_thi_VAN_xu_ly_du_party_du(self):
+        """Lech MAP la su that DOC THANG duoc (`current_map` do server gui moi lan doi scene),
+        khong phai suy tu so nho -> du party du van phai xu ly."""
+        self._dat(a1=_C(12001, 1, 5, roster=2), a2=_C(12001, 1, 5, roster=2),
+                  a3=_C(21836, 1, 5, roster=2))
+        kh, _ly, _ = self._quyet(lech_tu=time.time() - R.KE_HOACH_LECH_MAP_SEC - 1)
+        self.assertIn(kh["viec"], (R.VIEC_GOM, R.VIEC_DONG_BO),
+                      "lech map ma bo qua -> party nam hai noi mai")
+
+
 class TestPhatHienLechVaRaLENH(_Nen):
     """Chay o PHA TRAIN - do moi la cho viec gom co nghia. Pha DG cam gom han
     (xem TestPhaDIGIOI_KHONG_DUOC_GOM: acc nam rai trong/ngoai instance la binh thuong)."""
@@ -183,7 +218,9 @@ class TestPhatHienLechVaRaLENH(_Nen):
         Ma trong luc gom thi acc dang teleport chuyen tiep - lech kenh/map la BINH THUONG.
         Ket qua party 17 (05/09 18:49-18:51): ra lenh gom moi vai giay, moi lenh abort moi acc
         dang di duong -> leader ket o thanh, member dung giua bai cho quai danh."""
-        self._dat(a1=_C(12001, 1, 5), a2=_C(12001, 2, 5), a3=_C(12001, 2, 5))
+        # roster 0: party CHUA lap -> luc do lech kenh moi la that (du party = da cung instance)
+        self._dat(a1=_C(12001, 1, 5, roster=0), a2=_C(12001, 2, 5, roster=0),
+                  a3=_C(12001, 2, 5, roster=0))
         kh, _l, lech_tu = self._quyet(lech_tu=None)
         self.assertNotEqual(kh["viec"], R.VIEC_GOM, "lech kenh ma gom NGAY = thrash")
         self.assertIsNotNone(lech_tu, "phai bat dau tinh gio lech kenh")
@@ -195,7 +232,8 @@ class TestPhatHienLechVaRaLENH(_Nen):
         Party 5 (06/09): ca 5 acc o map 12922, kenh [1,5] -> ra lenh GOM -> `_do_reform` in
         "khong co smart/legacy route -> bo qua" roi tra ve ngay -> leader quay 201.495 vong.
         """
-        self._dat(a1=_C(12001, 1, 5), a2=_C(12001, 2, 5), a3=_C(12001, 2, 5))
+        self._dat(a1=_C(12001, 1, 5, roster=0), a2=_C(12001, 2, 5, roster=0),
+                  a3=_C(12001, 2, 5, roster=0))
         kh, ly_do, _ = self._quyet(lech_tu=time.time() - R.KE_HOACH_LECH_MAP_SEC - 1)
         self.assertEqual(kh["viec"], R.VIEC_DONG_BO)
         self.assertIn("kenh", ly_do)
@@ -213,10 +251,22 @@ class TestPhatHienLechVaRaLENH(_Nen):
                                 "an han qua ngan -> ra lenh gom giua luc dang gom")
 
     def test_cung_cho_nhung_thieu_nguoi_thi_MOI(self):
-        self._dat(a1=_C(12001, 1, 5), a2=_C(12001, 1, 5), a3=_C(12001, 1, 5))
+        """Thieu = ROSTER SERVER cua acc nao do chua du, khong phai bo dem trong cua bot."""
+        self._dat(a1=_C(12001, 1, 5, roster=0), a2=_C(12001, 1, 5, roster=0),
+                  a3=_C(12001, 1, 5, roster=0))
         self._joined = 0
         kh, _l, _ = self._quyet()
         self.assertEqual(kh["viec"], R.VIEC_MOI)
+
+    def test_bo_dem_TRONG_noi_du_ma_roster_RONG_thi_van_MOI(self):
+        """Ca that party 1 (07/09): `_PARTY_JOINED` con stale -> bot tuong du doi -> VIEC_LAM ->
+        dieu phoi im 44 phut, trong khi server noi khong ai o trong doi ca."""
+        self._dat(a1=_C(12001, 1, 5, roster=0), a2=_C(12001, 1, 5, roster=0),
+                  a3=_C(12001, 1, 5, roster=0))
+        self._joined = len(self.ACCS) - 1        # bo dem trong: "da du"
+        kh, ly_do, _ = self._quyet()
+        self.assertEqual(kh["viec"], R.VIEC_MOI, "van tin bo dem trong cua bot")
+        self.assertIn("DOI chua du", ly_do)
 
     def test_du_ca_party_thi_LAM(self):
         self._dat(a1=_C(12001, 1, 5), a2=_C(12001, 1, 5), a3=_C(12001, 1, 5))
@@ -224,9 +274,27 @@ class TestPhatHienLechVaRaLENH(_Nen):
         self.assertEqual(kh["viec"], R.VIEC_LAM)
 
     def test_het_lech_thi_XOA_dong_ho_lech(self):
+        """Het lech phai GIU duoc `HET_LECH_CHAC_SEC` thi dong ho moi duoc go.
+
+        Truoc day chi can MOT nhip thay cung map la reset ve 0 -> party lech NGAT QUANG khong bao
+        gio chay du han, tuc khong bao gio duoc gom (party 1, 09/09: ba phut cho mot viec dieu phoi
+        da biet tu giay dau). Nhung dong ho treo lai KHONG duoc bien thanh lenh - xem
+        `test_het_lech_thi_KHONG_ra_lenh_du_dong_ho_con_treo`.
+        """
         self._dat(a1=_C(12001, 1, 5), a2=_C(12001, 1, 5), a3=_C(12001, 1, 5))
         _kh, _l, lech_tu = self._quyet(lech_tu=time.time() - 100)
+        self.assertIsNotNone(lech_tu, "moi het lech mot nhip da xoa -> lech ngat quang mat tuoi")
+        _st = R._pstate(self.PARTY)
+        _st["het_lech_tu"] = time.time() - R.HET_LECH_CHAC_SEC - 1   # da het lech DU LAU
+        _kh, _l, lech_tu = self._quyet(lech_tu=lech_tu)
         self.assertIsNone(lech_tu)
+
+    def test_het_lech_thi_KHONG_ra_lenh_du_dong_ho_con_treo(self):
+        """Dong ho con treo (chua go) ma party da lanh -> tuyet doi khong duoc ra lenh dong bo."""
+        self._dat(a1=_C(12001, 1, 5), a2=_C(12001, 1, 5), a3=_C(12001, 1, 5))
+        kh, _l, _ = self._quyet(lech_tu=time.time() - 100)
+        self.assertNotEqual(kh["viec"], R.VIEC_DONG_BO)
+        self.assertNotEqual(kh["viec"], R.VIEC_GOM)
 
 
 class TestBienQuyetDinhThanhHanhDONG(_Nen):
@@ -455,7 +523,8 @@ class TestPhaDIGIOI_KHONG_DUOC_GOM(_Nen):
     def test_lech_kenh_trong_pha_DG_cung_DONG_BO(self):
         """Bon dua o cung DG ma khac kenh thi khong thay nhau, khong lap party duoc - PHAI xu ly,
         khong duoc de nguyen (user chot 06/09: 'the bon no lam tro gi trong DG a')."""
-        self._dat(a1=_C(DG, 1, 30), a2=_C(DG, 5, 30), a3=_C(DG, 9, 30))
+        self._dat(a1=_C(DG, 1, 30, roster=0), a2=_C(DG, 5, 30, roster=0),
+                  a3=_C(DG, 9, 30, roster=0))
         kh, ly_do, _ = self._quyet(lech_tu=time.time() - 9999)
         self.assertEqual(kh["viec"], R.VIEC_DONG_BO)
         self.assertIn("kenh", ly_do)

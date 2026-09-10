@@ -833,6 +833,10 @@ if _aj is not None:
                 # dien). Mac dinh TAT - mua slot ton nguyen bao/vang cua user.
                 "auto_bag_expand": bool(_party.get("auto_bag_expand", False)),
                 "bag_expand_gold": int(_party.get("bag_expand_gold", 0) or 0),
+                # TU MO RONG TIEN TRANG: chi lam duoc luc kho DANG MO (nut nam trong UIBank), nen
+                # bot lam ngay trong luot di cat do. Mac dinh TAT.
+                "auto_bank_expand": bool(_party.get("auto_bank_expand", False)),
+                "bank_expand_gold": int(_party.get("bank_expand_gold", 0) or 0),
                 "auto_buy_shop": _auto_buy_shop,
                 "shop_items": _shop_items,
                 "buy_ho_phu": bool(_shop_items.get("ho_phu", False)),

@@ -14,14 +14,66 @@ def in_event_window(now=None):
     return now.weekday() in (0, 2, 4) and 20 <= now.hour < 22
 
 
+# Cho bay lau cho server giai xong tran truoc khi gui goi dialog/event. Tran 40NPC noi duoi nhau
+# nen khe giua hai tran hep; cho qua ngan la gui lot vao trong tran (ma 47), cho qua dai thi lo
+# nhip mo tran ke tiep.
+CHO_TRAN_XONG_SEC = 8.0
+
+
+def _tran_dang_chay(client):
+    """Server VAN DANG trong tran -> cam gui goi dialog/event.
+
+    `state.in_battle` len o `0x35`/`0x34`, ha o `0x14 sub0700` END that; grace phu them khoang
+    server con dang giai tran sau END.
+    """
+    try:
+        if getattr(client.state, "in_battle", False):
+            return True
+    except Exception:
+        pass
+    try:
+        return bool(client._in_battle_end_grace())
+    except Exception:
+        return False
+
+
+def _gui_dialog_an_toan(client, body, sleep_fn, cho=None):
+    """Gui MOT goi dialog, nhung phai cho tran giai xong truoc - va BO neu tran moi da bat dau.
+
+    Tra True = da gui · False = tran dang chay, KHONG gui.
+
+    Goi dialog roi vao giua tran = `S:000-000` ma 47 `<戰鬥未結束事件先結束>` -> DUT KET NOI.
+    Chuoi 40NPC la CAC TRAN LIEN TIEP: server tu mo tran ke tiep, nen khoang giua hai tran rat hep
+    va gui mu ba goi cach nhau 0.5 giay la chac chan co lan roi vao trong tran.
+
+    Ca that 09/09 (user: "40npc, ko dc party nao danh luon") - 92 lan ma 47 trong 18 phut event,
+    va goi ap dao quanh luc rot la `0x14 0600` (55 lan). Doc gui-cuoi/nhan-cuoi cua `ttsau`:
+        21:44:17.241 <<nhan 0x35 ...      <- LUOT CUA TRAN MOI, tran da bat dau lai
+        21:44:17.269 >>gui  0x14 0600     <- van dang ban not chuoi dialog cua tran TRUOC
+        21:44:17     SERVER NGAT KET NOI: ma la 47
+    Party tan theo leader, gom lai, danh mot tran, lai rot - suot ca event.
+    """
+    het = time.time() + max(0.0, CHO_TRAN_XONG_SEC if cho is None else cho)
+    while _tran_dang_chay(client) and time.time() < het:
+        sleep_fn(0.3)
+    if _tran_dang_chay(client):
+        log.info("[%s] 40NPC: tran VAN dang chay -> BO goi dialog (tranh ma 47)",
+                 getattr(client, "_label", "?"))
+        return False
+    client.send(OP_DIALOG, body)
+    sleep_fn(0.5)
+    return True
+
+
 def _end_npc_dialog(client, sleep_fn):
-    """Thoat dialog NPC 40 sach se (chon KHONG + 2 advance) truoc khi roi di doi thuong."""
-    client.send(OP_DIALOG, CHOOSE_NO)
-    sleep_fn(0.5)
-    client.send(OP_DIALOG, ADVANCE)
-    sleep_fn(0.5)
-    client.send(OP_DIALOG, ADVANCE)
-    sleep_fn(0.5)
+    """Thoat dialog NPC 40 sach se (chon KHONG + 2 advance) truoc khi roi di doi thuong.
+
+    Ba goi deu phai qua `_gui_dialog_an_toan`: tran ke tiep co the bat dau GIUA chuoi nay.
+    """
+    for _body in (CHOOSE_NO, ADVANCE, ADVANCE):
+        if not _gui_dialog_an_toan(client, _body, sleep_fn):
+            return False
+    return True
 
 OP_DIALOG = 0x14
 OP_EVENT = 0x20
@@ -49,6 +101,42 @@ def party_defeated(units):
     known = [u for u in units.values() if getattr(u, "hp_max", 0) > 0]
     alive = sum(1 for u in known if getattr(u, "hp", 0) > 0)
     return bool(known) and alive == 0, alive, len(known)
+
+
+def party_song_that(client):
+    """DEM NGUOI SONG CUA CA PARTY - doc thang tung client, khong qua `state.allies` cua leader.
+
+    `state.allies` cua mot client chi mang unit ma CHINH NO thay trong tran cua no, nen so in ra
+    luon la `alive=1/1` du party co 5 acc + pet. So do vo nghia voi moi thu doc no: cau log user
+    nhin ("party alive=1/1" -> tuong khong ai danh), va ca cho ket luan thua.
+
+    Ca that 09/09 (user: "40npc, ko dc party nao danh luon"): CA 77 tran deu in `alive=1/1`, trong
+    khi cung luc do ca nam acc deu `Nhan item: Thắng Lệnh 1` - tuc party danh VA THANG binh thuong.
+    Con so nay lam ca chuyen chan doan di sai huong.
+
+    Tra `(defeated, alive, total)` giong `party_defeated`. Khong doc duoc party (test, acc le) thi
+    tra `None` de goi y quay ve duong cu.
+    """
+    pidx = getattr(client, "party_idx", None)
+    if pidx is None:
+        return None
+    try:
+        peers = list((client.party_peers() or ()))
+    except Exception:
+        return None
+    if not peers:
+        return None
+    alive = 0
+    for c in peers:
+        if c is None or not getattr(c, "running", False):
+            continue
+        try:
+            _hp, _max = c.state.char.hp, c.state.char.hp_max
+            if not _max or float(_hp) > 0:
+                alive += 1    # chua doc duoc HP_max -> chua biet, KHONG ket luan chet
+        except Exception:
+            alive += 1        # khong doc duoc HP -> coi la con song, khong ket luan thua oan
+    return (alive == 0), alive, len(peers)
 
 
 def _active(client, stop_event):
@@ -112,6 +200,11 @@ def _advance_to_battle(client, previous, stop_event, sleep_fn, poll_interval, ma
             return False
         if client._battle_start_seq > previous:
             return True
+        # `_battle_start_seq` len o `0x34`, con `state.in_battle` len som hon o `0x35` (luot dau).
+        # Chi nhin seq thi con mot khe hep gui ADVANCE lot vao tran vua spawn -> ma 47.
+        if _tran_dang_chay(client):
+            log.info("[%s] 40NPC: tran da bat dau (0x35) -> dung advance", getattr(client, "_label", "?"))
+            return True
         client.send(OP_DIALOG, ADVANCE)
         # Poll SAT (0.1s) sau moi advance -> DUNG NGAY khi tran bat dau (0x34 -> _battle_start_seq++).
         # KHONG ngu ca poll_interval roi moi check: tran sau chi can 1 advance, ngu lau se gui THEM 1
@@ -129,17 +222,33 @@ def _advance_to_battle(client, previous, stop_event, sleep_fn, poll_interval, ma
 
 
 def _open_event_battle(client, previous, stop_event, sleep_fn, poll_interval, max_advances):
-    """Mo NPC va vao battle tu trang thai ngoai dialog (fresh hoac dang giua event)."""
+    """Mo NPC va vao battle tu trang thai ngoai dialog (fresh hoac dang giua event).
+
+    MOI goi o day deu la goi event/dialog -> roi vao giua tran la ma 47, DUT KET NOI (xem
+    `_gui_dialog_an_toan`). Tran ke tiep co the da tu bat dau trong luc con dang mo dialog, nen
+    phai kiem lai TRUOC TUNG GOI chu khong chi mot lan luc vao.
+    """
     client._npc40_last_dialog = ""
+    het = time.time() + CHO_TRAN_XONG_SEC
+    while _tran_dang_chay(client) and time.time() < het:
+        sleep_fn(0.3)
+    if _tran_dang_chay(client):
+        # Tran da chay roi = viec can lam (vao tran) DA XONG - khong phai loi.
+        log.info("[%s] 40NPC: tran ke tiep DA bat dau san -> khong mo NPC nua",
+                 getattr(client, "_label", "?"))
+        return True
     client.send(OP_EVENT, OPEN_EVENT)
     sleep_fn(0.6)
-    client.send(OP_DIALOG, OPEN_NPC)
-    sleep_fn(0.8)
+    if not _gui_dialog_an_toan(client, OPEN_NPC, sleep_fn):
+        return True
+    sleep_fn(0.3)
     dialog = getattr(client, "_npc40_last_dialog", "") or ""
     if not (dialog.endswith("0200") or dialog.endswith("0300")):
-        client.send(OP_DIALOG, ADVANCE)
-        sleep_fn(0.8)
-    client.send(OP_DIALOG, CHOOSE_YES)
+        if not _gui_dialog_an_toan(client, ADVANCE, sleep_fn):
+            return True
+        sleep_fn(0.3)
+    if not _gui_dialog_an_toan(client, CHOOSE_YES, sleep_fn):
+        return True
     return _advance_to_battle(
         client, previous, stop_event, sleep_fn, poll_interval, max_advances,
     )

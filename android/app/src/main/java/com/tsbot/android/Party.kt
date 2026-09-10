@@ -111,6 +111,10 @@ data class Party(
     // TU MO RONG TUI DO: mua slot toi khi gia lan KE TIEP vuot `bagExpandGold`. Mac dinh TAT.
     val autoBagExpand: Boolean = false,
     val bagExpandGold: Int = 0,
+    // TU MO RONG TIEN TRANG: mo o toi khi gia lan KE TIEP vuot `bankExpandGold`. Mac dinh TAT.
+    // Chi lam duoc luc tien trang DANG MO nen bot lam ngay trong luot di cat do.
+    val autoBankExpand: Boolean = false,
+    val bankExpandGold: Int = 0,
     val accounts: List<Account> = emptyList(),
 )
 

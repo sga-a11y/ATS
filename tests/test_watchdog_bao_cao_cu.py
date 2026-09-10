@@ -129,8 +129,15 @@ class TestChayWatcherTHAT(unittest.TestCase):
         st["reconnecting"] = set()
         dung = threading.Event()
 
+        _vong = [0]
+
         def _sleep(_s):
-            if dung.is_set():
+            # `time.sleep` gia (khong ngu that) -> vong `while True` cua watcher quay HET TOC LUC.
+            # Truoc day chi dua vao `dung` sau 3 giay: mot lan chay test de ra hang chuc nghin dong
+            # log (07/09: 13.282 dong `[party 78] WATCH: CA PARTY DEU DANG CHO` - party khong ton
+            # tai, acc0/acc1/acc2 la ten gia cua chinh test nay).
+            _vong[0] += 1
+            if dung.is_set() or _vong[0] > 40:
                 raise SystemExit
         with mock.patch.object(R, "party_accounts",
                                return_value=[(u, "", "", "") for u in accs]),              mock.patch.object(R, "is_account_running", return_value=True),              mock.patch.object(R, "get_account_task", side_effect=_task),              mock.patch.object(R, "request_party_resync",

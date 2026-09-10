@@ -27,13 +27,16 @@ class TestPartyMustBeFull(unittest.TestCase):
         self.assertIn("_joined_now = joined_member_count(pidx)", SRC)
 
     def test_thieu_member_thi_ROI_VAO_vong_cho_chu_khong_bo_qua(self):
-        """Nhanh thieu nguoi phai di tiep vao vong `while len(ready_members) < n_members`."""
+        """Nhanh thieu nguoi phai di tiep vao vong cho du member san sang.
+
+        Tu 07/09 dem bang `_dem_san_sang(pidx)` - doc THANG `_san_sang_party` tren tung client,
+        khong con bang `ready_members` cap party (bang do om stale qua cac lan relogin)."""
         i = SRC.index('if via_route and _joined_now >= st["n_members"]:')
         khoi = SRC[i:i + 2000]
         # sau nhanh du nguoi phai co `else:` roi toi vong cho
         self.assertIn("else:", khoi)
         vi_tri_else = khoi.index("else:")
-        vi_tri_vong = khoi.index('while len(st["ready_members"]) < st["n_members"]:')
+        vi_tri_vong = khoi.index('while _dem_san_sang(pidx) < st["n_members"]:')
         self.assertLess(vi_tri_else, vi_tri_vong,
                         "nhanh thieu nguoi KHONG roi vao vong cho -> van train thieu")
         # va phai canh bao ro

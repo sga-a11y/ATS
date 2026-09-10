@@ -63,11 +63,24 @@ class TestKenhThat(unittest.TestCase):
         self.assertIn("switch_channel", than, "phai chi ra nguon dang tin duy nhat")
 
 
+def _than_switch(s):
+    """Than DAY DU cua duong doi kenh: `switch_channel` (cua khoa) + `_switch_channel_locked`.
+
+    10/09 tach lam hai ham de ep "mot lenh mot luc" - neo theo cua so ky tu co dinh la truot
+    ngay, va truot kieu do bao "code sai" trong khi code khong doi gi.
+    """
+    i = s.find("def switch_channel(")
+    assert i > 0
+    k = s.find("def _switch_channel_locked(", i)
+    assert k > i
+    j = s.find(chr(10) + "    def ", k + 10)
+    return s[i:j]
+
+
 class TestSwitchChannelKhongBoQua(unittest.TestCase):
     def test_KHONG_con_duong_tat_theo_gia_tri_nho_san(self):
         s = _doc()
-        i = s.find("def switch_channel(")
-        than = s[i:i + 2200]
+        than = _than_switch(s)
         self.assertNotIn("if self.current_channel == channel:", than,
                          "bo qua theo so nho san = bo dung lan doi kenh that su can")
         self.assertNotIn("Da o san kenh", than)
@@ -75,12 +88,29 @@ class TestSwitchChannelKhongBoQua(unittest.TestCase):
     def test_van_gui_0x07_khi_tuong_da_o_dung_kenh(self):
         """Dang o san kenh do -> server tra result=1, `_on_channel_switch_result` coi la OK."""
         s = _doc()
-        i = s.find("def switch_channel(")
-        than = s[i:i + 2200]
+        than = _than_switch(s)
         i_gui = than.find('self.send(0x07, b"\\x02\\x00"')
         self.assertGreater(i_gui, 0)
         i_for = than.find("for attempt in range(")
         self.assertLess(i_for, i_gui, "phai vao thang vong gui, khong chan truoc")
+
+    def test_PHAI_ROI_DOI_truoc_khi_doi_kenh(self):
+        """Client game chan thang, KHONG gui goi nao (`_lua_dec/UI/UIServerArea.lua:97`):
+
+            function UIServerArea.OnClick_Area(uiEvent)
+              if not Team.IsAlone(Role.playerId) then ShowCenterMessage(...); return; end
+              Network.Send(7, 2, sendBuffer);   -- C:007-002 <切換分區>
+
+        Cung mot luat `Team.IsAlone` voi `teleport()` va `enter_di_gioi()` - hai cho do sua 07/09,
+        rieng cho nay bo sot. Hau qua (40NPC 07/09): acc doi kenh mai khong duoc, dieu phoi cu chot
+        lai kenh dich, leader "chua moi N member vi chua xac nhan live dung map/kenh"."""
+        s = _doc()
+        than = _than_switch(s)
+        i_roi = than.find("self.leave_party()")
+        self.assertGreater(i_roi, 0, "doi kenh ma khong roi doi -> server tra ma 3")
+        i_for = than.find("for attempt in range(")
+        self.assertLess(i_roi, i_for, "phai roi doi TRUOC vong gui")
+        self.assertIn("UIServerArea.lua", than, "thieu vien dan crack client")
 
     def test_ma_1_la_TU_CHOI_vi_TRUNG_khu_dang_o(self):
         """`S:007-002 ket qua 1 = 不可換到同一區` - THONG BAO LOI cua client, khong phai
@@ -96,11 +126,10 @@ class TestSwitchChannelKhongBoQua(unittest.TestCase):
         ket trong party -> khong doi duoc kenh -> khac kenh leader -> khong nhan duoc loi moi ->
         van ket. Truoc day bot `return False` IM LANG nen ca vong nay vo hinh trong log."""
         s = _doc()
-        i = s.find("def switch_channel(")
-        than = s[i:i + 4200]
+        than = _than_switch(s)
         i3 = than.find("if result == 3:")
         self.assertGreater(i3, 0)
-        khoi = than[i3:i3 + 900]
+        khoi = than[i3:than.find(chr(10) + "            if result ==", i3 + 5)]
         self.assertIn("DANG TO DOI (ma 3)", khoi, "phai LOG ro, khong duoc im lang")
         self.assertIn("self.leave_party(server_bao_dang_o_party=True)", khoi,
                       "khong bat co thi guard 'roster rong' chan luon -> quet kenh vo han "
@@ -215,8 +244,17 @@ class TestKhongThayThiLamGi(unittest.TestCase):
         """User chot 30/08: "quan trong la bon no phai da o diem an toan, chu dung o diem quai
         thi van loi". `_party_tai_cho_xu_ly` bao ca party ra rally + CHO xac nhan roi moi lam tiep."""
         s = self._src()
+        # Neo theo HAM (thut le giam), khong theo cua so ky tu: them mot khoi comment vao ham la
+        # cua so truot khoi cho can kiem, va bao "code sai" du hanh vi khong doi (L3i).
         i = s.find("def _party_tai_cho_xu_ly(")
-        than = re.sub(r"#.*", "", s[i:i + 5200])
+        self.assertGreater(i, 0)
+        _dong = s[i:].split("\n")
+        _het = len(_dong)
+        for _k, _d in enumerate(_dong[1:], start=1):
+            if _d.strip() and not _d.startswith(" " * 12):
+                _het = _k
+                break
+        than = re.sub(r"#.*", "", "\n".join(_dong[:_het]))
         i_rally = than.find("_cho_ca_party_ve_rally(")
         i_sync = than.find("do_channel_sync()")
         self.assertGreater(i_rally, 0)
