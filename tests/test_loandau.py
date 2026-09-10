@@ -103,10 +103,20 @@ class TestKhungGio(unittest.TestCase):
             self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, ngay, 21, 0), _ev()),
                              "ngay %d khong phai T3/T5/T7 ma van mo" % ngay)
 
-    def test_khong_co_lich_thi_giu_hanh_vi_cu(self):
-        """ev=None / event khong khai `lich` -> chi THU 3, y nhu truoc 05/09."""
-        self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 25, 21, 0)))
-        self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 29, 21, 0)))
+    def test_khong_co_lich_thi_DU_PHONG_VAN_DU_BA_NGAY(self):
+        """ev=None / event khong khai `lich` -> roi ve `LICH_MAC_DINH`.
+
+        Truoc 10/09 du phong CHI co thu 3, nen `events.json` hong / asset APK loi mot lan la mat
+        han loan dau thu 5 va thu 7 - mat AM THAM, khong dong log nao (bai hoc "Servers.kt FALLBACK
+        thieu server" trong CLAUDE.md). User 10/09: "mien sao du loan dau thu 3 thu 5 thu 7".
+        """
+        self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 25, 21, 0)))   # T3
+        self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 27, 21, 0)))   # T5
+        self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 29, 21, 0)))   # T7
+        # T7 la 20:30-22:30 nen 20:15 CHUA mo - du phong phai giu dung khung gio tung ngay.
+        self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 29, 20, 15)))
+        # Ngay khong co loan dau thi van phai dong.
+        self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 26, 21, 0)))  # T4
 
     def test_KHONG_trung_khung_40NPC(self):
         """40NPC la thu 2/4/6 - hai event khong duoc dam nhau."""

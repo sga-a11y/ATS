@@ -412,6 +412,20 @@ def _setup_log_capture():
 
 _MAP_NAMES: dict = {}
 
+def _o_kenh(s):
+    """O `Kenh` cua bang acc. Them `?` khi so kenh KHONG duoc server xac nhan.
+
+    Game khong co lenh hoi "toi dang o kenh nao" (KNOWLEDGE.md muc 7), nen so nay la gia tri server
+    day den lan cuoi. Mot lenh doi kenh TIMEOUT / bi tu choi la no thanh so nho lai - van hien nhu
+    that, va da lam user tin nham ("p24 dang o kenh 5 het, co lech kenh deo dau" - 11/09, trong khi
+    bang hien 1/2/5 lan lon). `?` = bot dang khong chac, khong phai bot khong biet gi.
+    """
+    ch = s.get("channel")
+    if not ch:
+        return "-"
+    return str(ch) if s.get("channel_chac", True) else "%s?" % ch
+
+
 def _map_name(mid):
     if mid is None:
         return "-"
@@ -1910,7 +1924,7 @@ class BotGUI(tk.Tk):
                        ("qs" if (s["running"] and s.get("strategist")) else
                         ("on" if s["running"] else "off")))
                 tree.item(u, values=(self._mask_user(u), self._char_cell(s), role, run, _map_name(s["map"]),
-                                     s["channel"] if s["channel"] else "-",
+                                     _o_kenh(s),
                                      "✔" if s["in_party"] else "-", dg,
                                      "⚔" if s["combat"] else "-"),
                           tags=(tag,))
@@ -5902,10 +5916,6 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Spinbox(_mrb, from_=0, to=99999999, width=10, increment=10,
                     textvariable=self.bank_expand_gold_var).pack(side="left", padx=4)
         ttk.Label(_mrb, text="vàng").pack(side="left")
-        ttk.Label(frm, foreground="#888", wraplength=420, justify="left",
-                  text="(mở ô tiền trang tới khi giá lần kế tiếp VƯỢT số này. Chỉ mở được lúc "
-                       "tiền trang đang mở, nên bot làm ngay khi đi cất đồ)").pack(anchor="w",
-                                                                                  padx=(24, 0))
         ttk.Checkbutton(frm, text="Tự bán Nồi đất",
                         variable=self.auto_sell_noi_dat_var).pack(anchor="w", pady=(4, 0))
         # TU CAT DO: dat NGAY SAU ban Noi dat (user chot 04/09). Hai viec di chung mot cho boc

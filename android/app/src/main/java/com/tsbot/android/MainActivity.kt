@@ -2661,12 +2661,6 @@ fun AddPartyDialog(
                         )
                         Text("vàng")
                     }
-                    Text(
-                        "(mở ô tiền trang tới khi giá lần kế tiếp VƯỢT số này. Chỉ mở được lúc " +
-                            "tiền trang đang mở, nên bot làm ngay khi đi cất đồ)",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(start = 48.dp),
-                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoSellNoiDat, onCheckedChange = { autoSellNoiDat = it })
                         Text("Tự bán Nồi đất")

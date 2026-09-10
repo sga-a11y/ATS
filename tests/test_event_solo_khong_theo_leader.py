@@ -63,8 +63,10 @@ class TestKhongTheoLeaderKhiSolo(unittest.TestCase):
 
 class TestLoanDauVanLaSOLO(unittest.TestCase):
     def test_chaos_vs_nam_trong_danh_sach_event_solo(self):
+        # Neo vao CHO DINH NGHIA (`_SOLO_BATTLE_EVENTS = `), khong phai cho DUNG: hang so nay gio
+        # con duoc doc trong `_mode_can_lap_doi`, va cho do dung truoc trong file.
         s = _src()
-        i = s.find("_SOLO_BATTLE_EVENTS")
+        i = s.find("_SOLO_BATTLE_EVENTS = ")
         self.assertGreater(i, 0)
         self.assertIn("chaos_vs", s[i:i + 120])
 

@@ -2266,6 +2266,9 @@ class GameClient:
         self._battle_entered = False # da gui 0x41 "vao tran" chua
         self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
         self.current_channel = None  # kenh dang o (doc tu S2C scene/ack; None = chua biet/mac dinh)
+        # True = lenh doi kenh gan nhat HONG (timeout / bi tu choi) nen `current_channel` chi con la
+        # so nho lai, khong dung de ket luan "party lech kenh" duoc (xem `kenh_dang_chac`).
+        self.kenh_dang_nghi_ngo = False
         self.current_channel_at = 0.0  # luc doc duoc (cu qua thi phai hoi lai - xem kenh_that)
         self._chan_event = threading.Event()
         self._chan_switch_event = threading.Event()
@@ -2317,6 +2320,8 @@ class GameClient:
         self.entity_names = {}       # entity(bytes) -> set(str) - TAT CA strings tim duoc tu 0x03/0x27
         self.entity_meta = {}        # entity(bytes) -> last seen scene/channel; dung loc nguoi dung canh minh
         self._running_route = False   # dang chay auto run-around
+        self._luot_da_gui = None      # (gen, turn, luc) - luot gan nhat DA gui lenh danh (moi acc)
+        self._luot_cham_da_bao = None # (gen, turn) da bao "LUOT CHAM" roi -> khong bao lai
         self._di_gioi_anchor = None   # TAM run-around DG = diem tele VAO Di Gioi (co dinh). Sau
         #   disconnect -> relogin, self.pos co the bi 0x03 keo ve rìa map -> run-around anchor theo
         #   pos se chay xuyen tuong. DG dung anchor CO DINH nay thay vi self.pos.
@@ -5702,6 +5707,49 @@ class GameClient:
     def _battle_account_id(self):
         return self.user_id
 
+    # Mot luot danh binh thuong xong trong 1-3 giay (do tren party 2, 11/09: g=6 va g=7 deu ~1s).
+    # Qua nguong nay la co gi do KHONG BINH THUONG -> phai ghi ra ngay ai da gui lenh, ai chua.
+    LUOT_CHAM_SEC = 25.0
+
+    def _soi_luot_cham(self):
+        """Luot keo qua lau -> GHI RA ai da gui lenh danh, ai chua. Mot dong cho moi luot.
+
+        Bot phai TU BIET va TU GHI ly do khi no dung im - khong de nguoi doc phai di doan.
+
+        Ca that hai lan cung mot cau hoi cua user:
+          * 01/09 party 22: tran keo 12 phut, chi thay leader gui lenh ("m xem bot co gui lenh
+            danh ko") - khong tra loi duoc.
+          * 11/09 party 2: luot 99 giay (01:48:36 gui lenh -> 01:50:15 server moi tra don danh, va
+            tra ve `skill=10000` danh thuong thay cho `12003` da chon = dau hieu server het gio cho
+            lenh roi tu danh) - van khong tra loi duoc.
+        Ca hai lan deu mu vi `_log_battle_verbose` an log SEND/ACK cua member. Dong nay khong phu
+        thuoc vao do: no doc thang moc `_luot_da_gui` cua tung client cung tien trinh (L2).
+        """
+        try:
+            _bt = getattr(self, "battle_tracker", None)
+            gen, turn = int(getattr(_bt, "generation", 0) or 0), int(getattr(_bt, "turn", 0) or 0)
+            if not gen:
+                return
+            _troi = time.time() - float(self.last_turn_time or 0)
+            if _troi < self.LUOT_CHAM_SEC:
+                return
+            if getattr(self, "_luot_cham_da_bao", None) == (gen, turn):
+                return                       # moi luot chi bao MOT lan, khong spam
+            self._luot_cham_da_bao = (gen, turn)
+            _roi, _chua = [], []
+            for p in self.party_peers():
+                _m = getattr(p, "_luot_da_gui", None)
+                if _m and _m[0] == gen and _m[1] == turn:
+                    _roi.append("%s(%.0fs truoc)" % (p._label, time.time() - _m[2]))
+                else:
+                    _chua.append("%s[luot cuoi gui=%s]" % (
+                        p._label, "%s/t%s" % (_m[0], _m[1]) if _m else "chua bao gio"))
+            log.warning("[%s] LUOT CHAM: g=%d t=%d da %.0fs chua xong | DA gui lenh: %s | CHUA "
+                        "gui: %s", self._label, gen, turn, _troi,
+                        ", ".join(_roi) or "KHONG AI", ", ".join(_chua) or "-")
+        except Exception as e:
+            log.debug("[%s] soi luot cham loi (bo qua): %s", self._label, e)
+
     def _log_battle_verbose(self):
         """Log battle (SEND/ACK/Decision) CHI in o LEADER cho gon (party 5 acc x ~10 unit = rat nhieu
         dong). Member an di. Khong co leader (solo) -> van in.
@@ -6058,6 +6106,12 @@ class GameClient:
                    + struct.pack("<H", d.skill)
                    + tail)
         self.send(protocol.OP_COMBAT, payload)
+        # MOC "DA GUI LENH DANH" - ghi o MOI acc, ke ca acc bi an log (xem `_log_battle_verbose`:
+        # SEND/ACK chi in o leader). Khong co moc nay thi khong the tra loi cau hoi don gian nhat
+        # khi mot luot keo dai: "may dua kia CO gui lenh danh khong" - la cau user hoi 01/09 (party
+        # 22, tran 12 phut) va hoi lai 11/09 (party 2, luot 99 giay). Ca hai lan deu khong tra loi
+        # duoc vi log member bi an, ma an log thi khong con dau vet nao khac.
+        self._luot_da_gui = (int(tracker.generation or 0), int(tracker.turn or 0), time.time())
         if tracker.generation and self._log_battle_verbose():
             log.info(
                 "[%s] BATTLE SEND g=%d t=%d source=%s skill=%d target=%s",
@@ -11822,6 +11876,8 @@ class GameClient:
         old = self.current_channel
         self.current_channel = channel
         self.current_channel_at = time.time()
+        # SERVER vua xac nhan -> so kenh lai la bang chung (xem `kenh_dang_chac`).
+        self.kenh_dang_nghi_ngo = False
         self._channel_scene_generation += 1
         if old != channel:
             log.info("[%s] Kenh hien tai = %s (tu %s)", self._label, channel, source)
@@ -12214,11 +12270,32 @@ class GameClient:
         if self._chan_switch_result is None:
             self._chan_switch_result = -1          # -1 = TIMEOUT, khong phai ma cua server
             self._chan_switch_luc = time.time()
-        log.warning("[%s] Doi kenh %d THAT BAI han toan sau %d luot: %s", self._label, channel,
-                    max(1, int(retries)),
+        # LENH DOI KENH HONG -> SO KENH DANG NHO KHONG CON LA BANG CHUNG.
+        #
+        # `current_channel` la SO NHO SAN, khong phai so that (KNOWLEDGE.md muc 7, user kiem chung
+        # 30/08: bot hien ca 5 nick party 3 o kenh 12, vao game xem la 12/12/12/2/1). Game KHONG CO
+        # lenh hoi "toi dang o kenh nao" - nguon duy nhat la ack cua chinh `0x07 0200`.
+        # Nen mot lenh doi kenh TIMEOUT / bi tu choi de lai dung tinh trang toi nhat: bot khong con
+        # biet minh o dau, ma van om so cu nhu that.
+        # Dieu phoi lay dung so cu do de ket luan "party lech kenh" roi ra lenh xe doi:
+        #   00:21:26 [party 24] party lech kenh {1: 1, 2: 4} -> CHOT kenh dich = 5
+        # trong khi ca party dang o CUNG kenh (user 11/09: "p24 dang o kenh 5 het, co lech kenh deo
+        # dau"). Danh dau NGHI NGO de dieu phoi biet so nay khong dung de ket luan duoc.
+        self.kenh_dang_nghi_ngo = True
+        log.warning("[%s] Doi kenh %d THAT BAI han toan sau %d luot: %s -> so kenh dang nho (%s) "
+                    "khong con la bang chung", self._label, channel, max(1, int(retries)),
                     "server IM LANG (timeout)" if self._chan_switch_result == -1
-                    else "S:007-002 ma %s" % self._chan_switch_result)
+                    else "S:007-002 ma %s" % self._chan_switch_result,
+                    getattr(self, "current_channel", None))
         return False
+
+    def kenh_dang_chac(self) -> bool:
+        """So kenh hien tai co phai do SERVER xac nhan khong (khong phai so nho lai tu truoc).
+
+        Chac = lan cuoi cham vao kenh la mot ack that (`S:007-002` ma 0/1, `0x03`, `0x0c`), va tu
+        do den gio khong co lenh doi kenh nao hong."""
+        return bool(getattr(self, "current_channel", None)) and not getattr(
+            self, "kenh_dang_nghi_ngo", False)
 
     def _on_channel_switch_result(self, pkt: bytes):
         """S2C 0x07 switch result: [02 00][result].
@@ -12920,8 +12997,19 @@ class GameClient:
                 log.debug("[%s] roi party: loi doi chieu roster acc khac: %s", self._label, e)
         if not _chu:
             self.party_members = []
+            # IN KEM ENTITY CUA CHINH MINH. Leader in ra danh sach entity no GUI LOI MOI TOI
+            # (`moi N member theo entity [...]`), nhung khong o dau in entity cua tung acc, nen
+            # khong the doi chieu "leader moi ai" voi "minh la ai" - tuc ca dong triu chung
+            # "cung map, cung kenh, moi mai khong vao" khong the truy tiep duoc bang log.
+            # Ca that p15, 11/09 (user: "p15 van ko gom dc pt"): ca 5 acc cung map 49942, cung
+            # kenh 11 (ack server), cung toa do (770,830); leader moi 2 entity moi phut ma
+            # `roster server=2` khong nhuc nhich, con hai member cu lap dong nay.
             log.info("[%s] KHONG o party nao (roster server + local deu rong) -> KHONG gui "
-                     "013-004 (gui mu la server ngung gui loi moi toi minh)", self._label)
+                     "013-004 (gui mu la server ngung gui loi moi toi minh) [minh=%s map=%s "
+                     "kenh=%s%s]", self._label,
+                     (self.self_entity or b"").hex()[:8] or "?",
+                     getattr(self, "current_map", None), getattr(self, "current_channel", None),
+                     "" if self.kenh_dang_chac() else " (kenh CHUA chac)")
             return
         _chu = bytes(_chu)
         self.send(protocol.OP_PLAYER_STATE, b"\x04\x00" + _chu)
@@ -14407,8 +14495,10 @@ class GameClient:
                 # dang danh -> TAM DUNG di chuyen, GIU nguyen diem dang di.
                 # nguong 2.0s (thay 4.0) -> het tran resume nhanh hon; van an toan vi co logic
                 # "khong tang i khi bi gian doan" + move giua tran bi server bo qua.
+                self._soi_luot_cham()
                 time.sleep(0.3)
                 continue
+            self._luot_cham_da_bao = None
             offsets = getattr(config, "RUN_AROUND_OFFSETS", []) or [(0, 0)]   # doc lai moi vong (tune live)
             dx, dy = offsets[i % len(offsets)]
             # BAM TUNG DIEM ve o di duoc: anchor dung giua bai khong bao dam ca 8 diem quanh no

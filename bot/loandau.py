@@ -47,7 +47,21 @@ MAX_ADVANCE = 8
 
 
 # Lich MAC DINH khi events.json khong khai `lich` (giu hanh vi cu: chi thu 3).
-LICH_MAC_DINH = [{"thu": 1, "tu": "20:00", "den": "22:00"}]
+# LICH DU PHONG khi `events.json` khong doc duoc (asset APK loi, file hong...). PHAI DU CA BA
+# NGAY, khong chi thu 3: fallback thieu ngay thi mat han loan dau ngay do ma KHONG BAO GI CA -
+# dung bai hoc "Servers.kt FALLBACK thieu server" trong CLAUDE.md (PC 17 server, APK 16, khong ai
+# biet cho toi khi user hoi).
+#
+# `thu` = `datetime.weekday()`: 0=T2, 1=T3, 2=T4, 3=T5, 4=T6, 5=T7, 6=CN.
+# Nhin so de tuong thieu ngay - `thu: 3` LA THU NAM, `thu: 5` LA THU BAY.
+#
+# Tham so rieng tung ngay (select / dest_map / npc_option) van lay tu `events.json`; o day chi
+# giu THU + KHUNG GIO de con biet "hom nay co loan dau khong".
+LICH_MAC_DINH = [
+    {"thu": 1, "tu": "20:00", "den": "22:00"},   # THU BA  - loi dai ti vo (map 10991)
+    {"thu": 3, "tu": "20:00", "den": "22:00"},   # THU NAM - 團P, cung map/NPC voi thu 3
+    {"thu": 5, "tu": "20:30", "den": "22:30"},   # THU BAY - loi dai dau tran (map 54901)
+]
 
 
 def _gio_phut(s, mac_dinh):

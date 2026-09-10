@@ -101,14 +101,30 @@ Chuỗi đăng ký giống thứ 3 y nguyên (`09001e` rồi advance).
 
 Chỉ khai thứ nào **khác** giá trị gốc; thứ 3 dùng luôn giá trị gốc của entry nên không lặp lại.
 
+⚠️ **`thu` là `datetime.weekday()`**: `0=T2, 1=T3, 2=T4, 3=T5, 4=T6, 5=T7, 6=CN`. Nhìn con số rất
+dễ tưởng thiếu ngày — **`thu: 3` là thứ 5**, **`thu: 5` là thứ 7**.
+
 ```json
 "lich": [
   {"thu": 1, "tu": "20:00", "den": "22:00"},
+
+  {"thu": 3, "tu": "20:00", "den": "22:00",
+   "select": "03000200",
+   "party_battle": {"npc_option": "01000400"}},
+
   {"thu": 5, "tu": "20:30", "den": "22:30",
    "select": "03005a00", "dest_map": 54901,
    "party_battle": {"point": [1630, 430], "npc_option": "01000100"}}
 ]
 ```
+
+Thứ 5 **không khai `dest_map` / `point`** vì dùng chung map 10991 và NPC (910,290) với thứ 3 — chỉ
+khác đúng hai byte (`select` và `npc_option`), xem bảng ở mục trên.
+
+`bot/loandau.py: LICH_MAC_DINH` giữ **cả ba ngày** làm lịch dự phòng khi `events.json` không đọc
+được. Fallback thiếu ngày thì mất hẳn loạn đấu ngày đó mà không báo gì — đúng bài học
+*"Servers.kt FALLBACK thiếu server"* trong `CLAUDE.md`.
+`tests/test_loandau_du_ba_ngay.py` khoá cả hai nguồn.
 
 `loandau.bien_the_hom_nay(ev, now)` trả **bản sao** đã đè tham số hôm nay;
 `config.event_hom_nay(key)` là cửa duy nhất `run_party_digioi` lấy `ev`, nên mọi đường xuôi

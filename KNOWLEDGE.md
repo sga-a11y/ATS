@@ -194,6 +194,28 @@ Hai chỗ hỏng vì tin nó:
 > Đây là lời giải cho triệu chứng đã đuổi nhiều ngày: *"cùng map, cùng kênh, mời mãi không vào,
 > server im lặng"*. Không phải server im lặng — **họ không hề cùng kênh**.
 
+**7b. Lệnh đổi kênh HỎNG thì `current_channel` thành số chết — và chiều ngược lại cũng hại
+(11/09).** Note trên đã có từ 30/08 mà code vẫn lấy số nhớ ra kết luận, nên lỗi lặp lại theo hướng
+ngược: bot tưởng party **lệch** kênh trong khi cả party **cùng** một kênh. Party 24:
+
+```
+00:20:01 [daimot]  Doi kenh 2 TIMEOUT sau 4.0s -> THAT BAI han toan: server IM LANG
+00:20:06 [daimuoi] Doi kenh 4 THAT BAI: khu da day nguoi (result=4)
+00:20:17 [daibay]  Doi kenh 7 THAT BAI han toan: S:007-002 ma 4
+00:21:26 [party 24] party lech kenh {1: 1, 2: 4} -> CHOT kenh dich = 5     <- toàn số ảo
+```
+
+Mỗi dòng `THAT BAI` để lại một số kênh chết cứng trong bộ nhớ bot. Điều phối đọc đúng đống số đó,
+kết luận "lệch kênh" và ra lệnh đổi kênh — mà đổi kênh **bắt buộc rời đội trước**, nên party 5 đứa
+đang đủ bị xé ra; 10 lệnh trong 72 giây, sau đó đứng chết 40 phút. User kiểm chứng tận mắt: *"p24
+đang ở kênh 5 hết, có lệch kênh đéo đâu"*.
+
+> Quy tắc: số kênh chỉ dùng để **kết luận** khi lần chạm cuối vào nó là một ack thật (`S:007-002`
+> mã 0/1, `0x03`, `0x0c`). Lệnh đổi kênh hỏng → `Client.kenh_dang_chac()` trả `False` → điều phối
+> **bỏ acc đó khỏi phép đếm lệch** (bỏ qua = không ra lệnh = an toàn), và GUI hiện `5?` thay vì `5`.
+> Bỏ khỏi phép đếm **không phải** coi nó "đang ở kênh khác" — cái đó chính là bẫy 30/08 làm treo
+> toàn bộ đồng bộ kênh.
+
 **KHÔNG CÓ LỆNH HỎI "tôi đang ở kênh nào"** — đã tra client, đừng đi tìm lại:
 - Kênh của client = `SceneManager.instanceId`, chỉ đổi khi **có đổi scene**:
   `S:012-000 <玩家更換場景> … +區號(2)` → `RoleController:ChangeScene` → `SceneManager.ChangeScene`.

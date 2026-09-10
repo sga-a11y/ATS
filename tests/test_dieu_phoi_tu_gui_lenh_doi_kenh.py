@@ -159,7 +159,7 @@ class TestNoiVaoVongDieuPhoi(unittest.TestCase):
 
     def test_vong_dieu_phoi_co_goi_thi_hanh(self):
         """Chot xong ma khong goi thi hanh = quay lai dung cai bang thong bao."""
-        i = self.src.find("_dieu_phoi_chot_kenh(pidx, st, song)")
+        i = self.src.find("_dieu_phoi_chot_kenh(pidx, st, song")
         self.assertGreater(i, 0)
         self.assertIn("_dieu_phoi_thi_hanh_kenh(", self.src[i:i + 400])
 
