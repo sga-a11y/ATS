@@ -62,8 +62,9 @@ class TestMemberKhongCho(unittest.TestCase):
 
     def test_KHONG_con_ham_cho_leader_keo(self):
         """Ham do la mot cho acc tu quyet - bo han, khong phai chinh han cho dai hon."""
-        self.assertNotIn("_cho_leader_keo", self.src)
-        self.assertNotIn("CHO_LEADER_KEO_SEC", self.src)
+        ma = _ma(self.src)          # soi MA CHAY - ten ham van duoc nhac trong ghi chu ca hong
+        self.assertNotIn("_cho_leader_keo", ma)
+        self.assertNotIn("CHO_LEADER_KEO_SEC", ma)
 
     def test_nhanh_member_KHONG_cho_co_nao(self):
         i = self.than.find("MEMBER KHONG CHO, KHONG BAO CAO")

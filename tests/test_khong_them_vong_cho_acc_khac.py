@@ -107,9 +107,15 @@ class TestKhongCoVongChoAccKhacMaDiec(unittest.TestCase):
                                   "\n  ".join(xau))
 
     def test_ham_cho_leader_keo_KHONG_duoc_quay_lai(self):
-        """Ham do da bi xoa 10/09. Them lai la lap lai dung ca party 1 / party 50."""
-        self.assertNotIn("_cho_leader_keo", self.src)
-        self.assertNotIn("CHO_LEADER_KEO_SEC", self.src)
+        """Ham do da bi xoa 10/09. Them lai la lap lai dung ca party 1 / party 50.
+
+        Soi MA CHAY, khong soi ghi chu: ten ham nay duoc nhac lai trong comment cua nhung cho khac
+        nhu mot ca hong mau (vd nhanh member cho leader lap duong, sua 11/09) - do la ghi chu CO
+        ICH, khong phai ham song lai.
+        """
+        ma = _ma_khong_ghi_chu(self.src)
+        self.assertNotIn("_cho_leader_keo", ma)
+        self.assertNotIn("CHO_LEADER_KEO_SEC", ma)
 
     def test_member_khong_doc_co_route_cua_leader(self):
         """`route_party_ready` / `route_done` chi con leader GHI, khong ai NAM CHO."""

@@ -21,7 +21,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = (ROOT / "run_party_digioi.py").read_text(encoding="utf-8")
 
 _START = '                        if st["leader_gone"].is_set() or st["leader_bad"].is_set():'
-_END = "                        _do_reform(to_spot=False)"
+# Moc cuoi khoi: dong ngay sau vong xu ly `leader_gone/bad`. Truoc day neo vao
+# `_do_reform(to_spot=False)` - dong do da bi XOA 11/09 (member khong tu goi reform nua), va vi no
+# con xuat hien o cho khac trong file nen `index()` van tim thay -> khoi trich ra dai qua, sai thut
+# le. Neo vao mot dong DUY NHAT trong ca file thay vi mot dong de trung.
+_END = "                        # MEMBER KHONG LAM GI O DAY"
 _i = SRC.index(_START)
 BLOCK = textwrap.dedent(SRC[_i:SRC.index(_END, _i)])
 # co `return` -> phai boc trong ham moi exec duoc

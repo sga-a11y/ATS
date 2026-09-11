@@ -468,6 +468,10 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
             mapId = gInt("map"),
             channel = gInt("channel"),
             message = "",
+            // Python luon gui `channel_chac`; thieu key (bundle cu) -> coi nhu chac, y nhu ban PC.
+            channelChac = try {
+                d.callAttr("get", "channel_chac")?.toBoolean() ?: true
+            } catch (_: Exception) { true },
         )
     }
 

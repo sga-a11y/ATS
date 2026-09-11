@@ -23,4 +23,9 @@ data class AccountStatus(
     val mapId: Int? = null,
     val channel: Int? = null,
     val message: String = "",
+    // false = so kenh tren KHONG duoc server xac nhan (lenh doi kenh gan nhat hong) -> UI them `?`.
+    // Game khong co lenh hoi "toi dang o kenh nao" (KNOWLEDGE.md muc 7), nen `channel` la gia tri
+    // server day den lan cuoi va no SAI duoc. Ban PC hien `5?`; day la ban sao cho APK.
+    // THAM SO MOI DAT CUOI: Kotlin goi constructor theo VI TRI o vai cho.
+    val channelChac: Boolean = true,
 )

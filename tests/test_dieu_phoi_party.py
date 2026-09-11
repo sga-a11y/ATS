@@ -333,9 +333,18 @@ class TestBienQuyetDinhThanhHanhDONG(_Nen):
         R._dieu_phoi_thi_hanh(self.PARTY, st, kh, True)
         g1 = st["reform_gen"]
         with st["lock"]:
+            # Lui CA HAI moc: `dieu_phoi_gom_luc` (cooldown gom) va `reform_bump_luc` (khoang lang
+            # giua hai lenh reform). Day la mo phong "da troi qua 180 giay", ma 180s thi ca hai han
+            # deu het - khong lui mot cai la dang do mot tinh huong KHONG CO THAT.
             st["dieu_phoi_gom_luc"] = time.time() - R.KE_HOACH_GOM_COOLDOWN - 1
+            st["reform_bump_luc"] = time.time() - R.KE_HOACH_GOM_COOLDOWN - 1
         R._dieu_phoi_thi_hanh(self.PARTY, st, kh, True)
         self.assertGreater(st["reform_gen"], g1, "lech mai ma khong bao gio gom lai cung hong")
+
+    def test_khoang_lang_bump_NGAN_HON_cooldown_gom(self):
+        """Hai han phai xep long nhau: het cooldown gom (180s) thi khoang lang bump (30s) da het tu
+        lau. Neu nguoc lai, lenh gom hop le se bi chinh khoang lang chan -> party lech vinh vien."""
+        self.assertLess(R.REFORM_BUMP_CACH_TOI_THIEU_SEC, R.KE_HOACH_GOM_COOLDOWN)
 
     def test_cooldown_du_dai_cho_mot_dot_gom_chay_xong(self):
         self.assertGreaterEqual(R.KE_HOACH_GOM_COOLDOWN, 120)
@@ -634,16 +643,33 @@ if __name__ == "__main__":
 
 
 class TestMemberKhongChoLeaderLapDuong(unittest.TestCase):
-    """Member KHONG CAN biet duong di - vao party la bi leader keo theo.
+    """Member KHONG cho vo han, va cung KHONG tu di. Het han thi RA, de dieu phoi quyet.
 
-    Bang chung ngay trong code cu: sau khi cho leader lap route xong, member lam
-        smart_route2 = plan.get("route") if is_leader else None
-    tuc NEM LUON cai route vua cho. Thu duy nhat no can la `city`/`flag` (ca party phai gom cung
-    mot thanh thi leader moi moi duoc - server chan invite khac map).
+    Cho nay da qua BA doi thiet ke, hai lan dau deu sai mot nua:
 
-    Vay ma truoc 05/09 chi leader duoc chot, member cho VO HAN. Log party 10 (05/09 18:22-18:23):
-    leader bi `ABORT di duong reform: reform_gen 1 -> 5` roi di lam dungeon + sync kenh, khong he
-    cong bo cho gen moi -> 3 member spam "cho leader lap duong toi map 21812" khong dut.
+      1. (truoc 05/09) Member cho leader VO HAN. Log party 10 (05/09 18:22-18:23): leader bi
+         `ABORT di duong reform: reform_gen 1 -> 5` roi di lam dungeon + sync kenh, khong he cong
+         bo cho gen moi -> 3 member spam "cho leader lap duong toi map 21812" khong dut.
+
+      2. (05/09 -> 11/09) Het `ROUTE_PLAN_TIEP_QUAN_SEC` thi member TU CHOT thanh tap ket
+         (`_chot_thanh_tap_ket(False)`) roi di lay. Bo duoc cho-vo-han, nhung buoc DAU TIEN cua
+         flow "di train" la `pre_route_town_hop()` = VE THANH. Nen het han = quay dau ve thanh,
+         dung luc leader dang keo ca doi ra bai. Party 3, 11/09:
+             09:04:02 [laochin] (member) cho leader lap duong toi map 21841 (tu lap sau 20s)
+             09:04:34 [nanam] (LEADER) reform: 4/4 member join lai -> KEO qua cong ra train map
+             09:04:53 [nanam] qua cong idx=1 -> map 21002        <- leader DANG keo
+             09:04:55 [batbat]  pre-route: tele trung gian ve thanh 12001 truoc
+             09:04:55 [hoathap] pre-route: tele trung gian ve thanh 12061 truoc
+         Party DU 4/4, chi la leader cong bo route cham 14 giay so voi han 20s.
+         (user: "ca pt dang chay ra map train thi bon member tele ve thanh" -> "lai la acc tu
+         quyet, code ngu vai lon")
+
+      3. (dung) Het han thi member RA khoi `_do_reform`, khong cho tiep va cung khong tu di dau.
+         Leader hong THAT thi DIEU PHOI thay: no doc map ca party moi 2 giay va co san phep bat
+         party dung hinh (`_acc_dung_hinh`). Mot cho quyet.
+
+    Bai hoc giong het `_cho_leader_keo` (xoa 10/09): han dai hay ngan khong phai van de - van de
+    la ACC TU QUYET khi het han.
     """
 
     def _than_reform(self):
@@ -653,17 +679,29 @@ class TestMemberKhongChoLeaderLapDuong(unittest.TestCase):
         return src, src[i:i + 5000]
 
     def test_member_KHONG_cho_vo_han(self):
+        """Vong cho phai co HAN. Neo theo MA (`if ... > ROUTE_PLAN_TIEP_QUAN_SEC:` dung truoc dong
+        log cho) chu khong theo cua so ky tu - them mot doan ghi chu la truot (L3i)."""
         src, _ = self._than_reform()
-        i = src.find("cho leader lap duong toi map")
-        self.assertGreater(i, 0)
-        khoi = src[max(0, i - 900):i]
-        self.assertIn("ROUTE_PLAN_TIEP_QUAN_SEC", khoi,
-                      "member van cho leader vo han -> party 10 lap lai")
+        i_han = src.find("ROUTE_PLAN_TIEP_QUAN_SEC:")
+        # Dong LOG THAT, khong phai dong trich log nam trong ghi chu ca hong ben tren.
+        i_log = src.find('reform: cho leader lap duong toi map %s')
+        self.assertGreater(i_han, 0, "member van cho leader vo han -> party 10 lap lai")
+        self.assertGreater(i_log, 0)
+        self.assertLess(i_han, i_log, "cua het han phai dung TRUOC vong cho")
 
-    def test_member_tu_chot_duoc_thanh_tap_ket(self):
+    def test_member_KHONG_tu_chot_thanh_tap_ket(self):
+        """Doi thiet ke 2 -> 3: `_chot_thanh_tap_ket(False)` (ban member) phai bien mat han."""
         src, _ = self._than_reform()
-        self.assertIn("_chot_thanh_tap_ket(False)", src,
-                      "member khong co duong tu chot -> van phu thuoc leader")
+        self.assertNotIn("_chot_thanh_tap_ket(False)", src,
+                         "member tu chot thanh tap ket -> tu ve thanh giua luc leader dang keo")
+
+    def test_het_han_thi_member_RA(self):
+        src, _ = self._than_reform()
+        i = src.find("ROUTE_PLAN_TIEP_QUAN_SEC:")
+        self.assertGreater(i, 0)
+        khoi = src[i:i + 700]
+        self.assertIn("return", khoi, "het han ma khong ra -> lai cho tiep")
+        self.assertIn("de dieu phoi quyet", khoi, "phai ghi ro ai la nguoi quyet thay")
 
     def test_member_cong_bo_thi_KHONG_kem_route(self):
         """Duong di phu thuoc thanh DA MO cua tung acc - duong cua member leader di khong duoc."""

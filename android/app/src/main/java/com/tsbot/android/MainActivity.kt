@@ -1503,7 +1503,11 @@ fun AccountRow(
                         )
                     }
                     if (status.mapId != null || status.channel != null) {
-                        val channelLabel = status.channel?.toString() ?: "—"
+                        // `?` = bot dang KHONG CHAC so kenh nay (lenh doi kenh gan nhat hong).
+                        // Giong het ban PC - xem `_o_kenh` trong gui.py.
+                        val channelLabel = status.channel?.let {
+                            if (status.channelChac) "$it" else "$it?"
+                        } ?: "—"
                         Text(
                             "Map: $mapLabel  •  Kênh: $channelLabel",
                             style = MaterialTheme.typography.labelMedium,

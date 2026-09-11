@@ -30,6 +30,12 @@ class FakeClient:
     running = True
     current_map = 14001
     pos = (770, 610)
+    # Acc gia nay khong thuoc party nao -> khong co dieu phoi, khong cho lenh ai (xem
+    # `_chan_tu_di_route`: `party_idx is None` thi di binh thuong). Muon lay dung hanh vi that
+    # thay vi cheo mot stub rieng nen muon thang method cua GameClient.
+    party_idx = None
+    _username = "test"
+    _chan_tu_di_route = GameClient._chan_tu_di_route
 
     def __init__(self, fail_gate=None, wrong_scene=False):
         self.calls = []
