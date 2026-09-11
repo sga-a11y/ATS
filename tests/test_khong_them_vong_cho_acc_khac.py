@@ -44,6 +44,11 @@ DOC_ACC_KHAC = (
     "route_done",                # co leader bat
     'st["reconnecting"]',        # acc khac dang login lai
     "channel_ready",             # picker bat
+    # Co do LUONG LEADER bat. Vong doc chung ma khong nghe lenh dieu phoi thi DIEC: ttmuoi (party 7,
+    # 11/09) nam trong vong "SAI MAP - cho leader keo" tu 10:31:36 den 11:59 - MOT TIENG RUOI - va
+    # khong nghe thay lenh gom luc 11:58:26. Vong do lot luoi test nay dung vi hai co nay thieu o day.
+    "leader_gone",
+    "leader_bad",
 )
 
 # Loi ra hop le: khong phu thuoc acc kia.

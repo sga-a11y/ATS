@@ -253,7 +253,11 @@ class TestApVaoLuong(unittest.TestCase):
         s = _src()
         i = s.find('if nj < st["n_members"]:')
         self.assertGreater(i, 0, "mat chot 'chua du member thi khong ra train'")
-        doan = re.sub(r"#.*", "", s[i:i + 7000])   # chu thich hay nhac lai chinh cau lenh
+        # Cat toi HET nhanh (neo bang ma), khong lay `+7000` ky tu: them mot doan ghi chu la
+        # `_start_training(` truot ra ngoai khung va test do vi ly do khong lien quan (11/09).
+        _het = s.find("                elif not is_joined(pidx, c.self_entity):", i)
+        self.assertGreater(_het, i, "khong tim thay cuoi nhanh")
+        doan = re.sub(r"#.*", "", s[i:_het])   # chu thich hay nhac lai chinh cau lenh
         self.assertNotIn("if nj >= 1 and not training_started:", s)
         # Chi ra train o nhanh `elif` cua chot tren = da du n_members.
         self.assertIn("_start_training(", doan)

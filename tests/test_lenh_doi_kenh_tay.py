@@ -130,7 +130,7 @@ class TestThuTuLenhDoiKenh(unittest.TestCase):
 
     def test_LEADER_giai_tan_party_TRUOC_khi_ca_lu_chuyen(self):
         i_tan = self.than.find("c.leave_party(); reset_party_joined(pidx)")
-        i_doi = self.than.find("ok = c.switch_channel(ch)")
+        i_doi = self.than.find("ok = c.switch_channel(ch,")
         self.assertGreater(i_tan, 0, "khong giai tan -> member con tu di theo leader")
         self.assertLess(i_tan, i_doi)
         self.assertIn("if is_leader:", self.than, "chi LEADER moi giai tan")
@@ -196,7 +196,7 @@ class TestThuTuLenhDoiKenh(unittest.TestCase):
         khoi = self._khoi_picker()
         self.assertIn('_ghim = st.get("kenh_ghim")', khoi, "picker khong doc kenh ghim")
         self.assertIn("if _ghim:", khoi)
-        self.assertIn("c.switch_channel(int(_ghim))", khoi,
+        self.assertIn("c.switch_channel(int(_ghim),", khoi,
                       "co ghim thi phai dung dung kenh do, khong goi pick_best_channel")
         # GHIM DUNG TREN CA LENH DIEU PHOI: user chi dinh tay thi khong ai duoc doi y.
         self.assertLess(khoi.find("if _ghim:"), khoi.find('_kd0 = st.get("kenh_dich")'),
@@ -234,10 +234,10 @@ class TestThuTuLenhDoiKenh(unittest.TestCase):
         i = self.than.find('if not _ra_safe_truoc_khi_doi_kenh("lenh doi kenh tay"):')
         self.assertGreater(i, 0, "van doi kenh du chua toi safe")
         self.assertIn("continue", self.than[i:i + 200])
-        self.assertLess(i, self.than.find("ok = c.switch_channel(ch)"))
+        self.assertLess(i, self.than.find("ok = c.switch_channel(ch,"))
 
     def test_DOI_XONG_phai_CHECK_LAI_da_o_safe_chua(self):
-        i = self.than.find("ok = c.switch_channel(ch)")
+        i = self.than.find("ok = c.switch_channel(ch,")
         khoi = self.than[i:i + 900]
         self.assertIn('_ra_safe_truoc_khi_doi_kenh("sau khi doi kenh', khoi,
                       "doi kenh giu nguyen toa do; kenh moi cho do co the day quai")

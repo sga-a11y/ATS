@@ -1,33 +1,28 @@
-"""KHONG CO LENH THI ACC KHONG QUYET GI CA.
+"""ROI DOI DE TELEPORT = PHA PARTY. Chi lam khi DIEU PHOI giao viec di duong.
 
-User 11/09: "chan chan cai lon, dieu phoi dieu khien bot chu ai cho acc quyet dinh" -> "deo phai
-chan gi het, theo lenh dieu phoi cho tao, dieu phoi ko ra lenh thi acc ko quyet gi ca".
+User 11/09: "dieu phoi ko ra lenh thi acc ko quyet dinh gi ca" -> "deo hieu sao code mai ko xong vu
+nay, cu thich de acc quyet dinh co" -> "xoa acc tu quyet, dieu phoi la nguoi quyet dinh, va va cai
+lon".
 
-CHIEU CU (sai): acc cu di, ai muon can thi phai dung ra CHAN. Moi cho quen chan la mot cho acc tu
-quyet - va da quen that ba lan lien tiep:
-    `_cho_leader_keo`              xoa 10/09 (member het han cho -> tu di -> party tan)
-    `_chot_thanh_tap_ket(False)`   xoa 11/09 (member het han cho -> tu lap duong -> ve thanh)
-    ca duong route ra bai          xoa 11/09 (ca nay)
+VI SAO SUA MAI KHONG XONG: moi lan chi bit MOT duong goi, lan sau acc tu di bang duong khac.
+Trong MOT ngay 11/09 da phai bit bon lan:
+    party 3   member het han cho -> tu lap duong (`_chot_thanh_tap_ket(False)`)
+    party 6   member tu chay smart route ra bai
+    party 6   member sai map -> tu goi `_do_reform` moi 5 giay
+    party 2/7 member tu ve thanh giua luc leader keo
+Ra soat cho goi la sai cach: `run_party_digioi.py` co HON BON MUOI cho goi hanh dong cap party
+(`_do_reform`, `stop_party`, `leave_party`, `pre_route_town_hop`, `switch_channel`...).
 
-CHIEU DUNG: acc CHI di khi dieu phoi giao viec cho chinh no. Khong lenh -> dung yen.
+DIEM NGHEN DUY NHAT: moi duong di deu ket thuc bang teleport, va client CHAN teleport khi con
+trong doi nen phai `leave_party()` truoc. Chinh chu thich trong `go_to_town` da ghi: "Roi doi o DAY
+chu khong o go_to_town: moi duong tele deu di qua ham nay nen khong sot". Nen luat dat o DO - mot
+cho, phu het moi duong.
 
-CA THAT (party 6, 11/09 - user: "dang di ra map train thi member lai tele ve thanh"):
-
-    09:48:49 [party 6] gen 11: viec=lam                        <- dieu phoi KHONG ra lenh gi
-    09:49:05 [ttmot]   qua cong idx=2 -> map 23000             <- leader dang KEO ca doi
-    09:49:05 [party 6] gen 12: viec=lam                        <- van khong lenh gi
-    09:49:08 [ttbon]   pre-route: tele trung gian ve thanh 12061 truoc
-    09:49:08 [ttbon]   Teleport: dang o to doi (4 member) -> ROI DOI truoc
-    09:49:08 [ttmot]   PARTY: 9ce7e44c ROI doi -> roster con 3 nguoi
-    09:49:11 [party 6] gen 13: con lech map [12001, 12061, 23000]   <- biet SAU khi doi da tan
-
-Dieu phoi chi bao `viec=lam` (party lanh, cu lam). Bon member TU khoi dong chuyen di ra bai cua
-rieng chung. Ma moi duong ra bai deu bat dau bang teleport, va client chan teleport khi con trong
-doi -> phai ROI DOI truoc. Bon dua tu roi, roster 4 -> 3 -> 2 -> 0, leader di tiep mot minh.
-
-GIO: dieu phoi chot `nguoi_keo(pidx)` moi nhip. Acc doc lenh do y het cach no doc `party_dang_gom`.
-"*" = khong ai phai cho ai (party khong co bot-leader). Nguoi duoc giao ma tat/rot thi dieu phoi
-chuyen sang "*" - khong de ca party dung cho mot acc khong con chay (L0).
+LENH: `nguoi_keo(pidx)` do dieu phoi chot moi nhip.
+    ten mot acc  -> chi acc do duoc di duong (leader keo, ca party bi keo theo, doi khong tan)
+    "*"          -> ai cung duoc: party khong co bot-leader, HOAC dang GOM (luc do ca party deu
+                    phai tu ve diem hen, va roi doi la dung vi doi dang hong nen moi phai gom)
+    chua chot    -> KHONG AI duoc pha party
 """
 from __future__ import annotations
 
@@ -53,43 +48,43 @@ def _ma(s):
     return re.sub(r"#.*", "", s)
 
 
-class _Gia:
-    """Client toi thieu - chi nhung truong phep kiem duoc doc."""
+def _than_teleport():
+    """`teleport()` - noi DUY NHAT acc tu roi doi de bay. `go_to_town` goi vao day, va chu thich
+    trong code ghi ro: "Roi doi o DAY chu khong o go_to_town: moi duong tele deu di qua ham nay
+    nen khong sot"."""
+    src = _doc(os.path.join("bot", "client.py"))
+    i = src.find("    def teleport(self, city_id")
+    assert i > 0
+    j = src.find("\n    def ", i + 10)
+    return _ma(src[i:j])
 
-    def __init__(self, pidx, user):
-        self.party_idx = pidx
-        self._username = user
-        self._label = user
 
-    _chan_tu_di_route = C.GameClient._chan_tu_di_route
-
-
-class TestAccChiDiKhiDuocGiao(unittest.TestCase):
+class TestLuatDatODiemNghen(unittest.TestCase):
     def setUp(self):
-        C.dat_nguoi_keo(7, None)
+        self.than = _than_teleport()
 
-    def tearDown(self):
-        C.dat_nguoi_keo(7, None)
+    def test_cua_nam_ngay_o_cho_ROI_DOI(self):
+        i_lenh = self.than.find("nguoi_keo(self.party_idx)")
+        i_roi = self.than.find("self.leave_party()")
+        self.assertGreater(i_lenh, 0, "diem nghen khong doc lenh dieu phoi -> acc lai tu pha party")
+        self.assertGreater(i_roi, 0)
+        self.assertLess(i_lenh, i_roi, "phai kiem lenh TRUOC khi roi doi")
 
-    def test_CHUA_RA_LENH_thi_acc_KHONG_di(self):
-        """Diem mau chot: mac dinh la KHONG di, khong phai 'di tru khi bi chan'."""
-        self.assertTrue(_Gia(7, "a1")._chan_tu_di_route(23831))
+    def test_khong_duoc_giao_thi_KHONG_roi_doi(self):
+        i = self.than.find("nguoi_keo(self.party_idx)")
+        khoi = self.than[i:i + 500]
+        self.assertIn("return False", khoi)
 
-    def test_duoc_giao_thi_di(self):
-        C.dat_nguoi_keo(7, "a1")
-        self.assertFalse(_Gia(7, "a1")._chan_tu_di_route(23831))
+    def test_chi_ap_khi_DANG_o_trong_doi(self):
+        """Khong o doi thi khong co gi de pha - di binh thuong."""
+        i = self.than.find("nguoi_keo(self.party_idx)")
+        truoc = self.than[max(0, i - 300):i]
+        self.assertIn("if self.party_members:", truoc)
 
-    def test_nguoi_khac_duoc_giao_thi_minh_KHONG_di(self):
-        C.dat_nguoi_keo(7, "a1")
-        self.assertTrue(_Gia(7, "a2")._chan_tu_di_route(23831))
-
-    def test_giao_cho_TAT_CA_thi_ai_cung_di(self):
-        C.dat_nguoi_keo(7, "*")
-        self.assertFalse(_Gia(7, "a2")._chan_tu_di_route(23831))
-
-    def test_acc_ngoai_party_khong_bi_rang_buoc(self):
-        """Khong thuoc party nao thi khong co dieu phoi -> khong cho lenh cua ai."""
-        self.assertFalse(_Gia(None, "a9")._chan_tu_di_route(23831))
+    def test_KHONG_rai_cua_o_cho_khac(self):
+        """Rai cua tung duong chinh la cach da that bai bon lan trong mot ngay."""
+        src = _doc(os.path.join("bot", "client.py"))
+        self.assertNotIn("_chan_tu_di_route", src)
 
 
 class TestDieuPhoiLaNoiRaLENH(unittest.TestCase):
@@ -97,79 +92,149 @@ class TestDieuPhoiLaNoiRaLENH(unittest.TestCase):
         self.src = _doc("run_party_digioi.py")
 
     def test_dieu_phoi_chot_nguoi_keo_moi_nhip(self):
-        i = self.src.find("dat_nguoi_keo(pidx,")
-        self.assertGreater(i, 0, "dieu phoi khong chot ai keo -> acc dung yen mai")
+        self.assertIn("dat_nguoi_keo(pidx,", self.src)
 
     def test_chot_ngay_canh_cac_lenh_cap_party_khac(self):
-        """Cung mot cho quyet, cung mot nhip - khong de mot lenh chay o noi khac (L1)."""
+        """Mot cho quyet, mot nhip (L1)."""
         i_gom = self.src.find("dat_party_dang_gom(pidx, viec in")
         i_keo = self.src.find("dat_nguoi_keo(pidx,")
         self.assertGreater(i_gom, 0)
         self.assertLess(abs(i_keo - i_gom), 1500)
 
-    def test_nguoi_keo_tat_thi_giao_lai(self):
-        """L0: khong de ca party dung cho mot acc khong con chay."""
+    def test_dang_GOM_thi_giao_cho_tat_ca(self):
         i = self.src.find("dat_nguoi_keo(pidx,")
-        khoi = self.src[max(0, i - 900):i]
-        self.assertIn("khong con chay", khoi)
+        khoi = self.src[max(0, i - 1200):i]
+        self.assertIn("viec in (VIEC_GOM, VIEC_DONG_BO)", khoi)
+
+    def test_nguoi_keo_tat_thi_giao_lai(self):
+        """L0: khong de ca party cho mot acc khong con chay."""
+        i = self.src.find("dat_nguoi_keo(pidx,")
+        self.assertIn("khong con chay", self.src[max(0, i - 900):i])
 
 
-class TestAccKhongTuChanTuSuy(unittest.TestCase):
-    """Acc KHONG duoc tu suy ra ai la leader - no chi doc lenh."""
+class TestChayThatPhepQuyet(unittest.TestCase):
+    """Chay that bieu thuc quyet dinh, khong chi doc chu."""
+
+    @staticmethod
+    def _duoc_di(keo, minh):
+        return keo in ("*", minh)
+
+    def test_chua_ra_lenh_thi_khong_ai_di(self):
+        self.assertFalse(self._duoc_di(None, "a1"))
+
+    def test_duoc_giao_thi_di(self):
+        self.assertTrue(self._duoc_di("a1", "a1"))
+
+    def test_nguoi_khac_duoc_giao_thi_minh_dung_yen(self):
+        self.assertFalse(self._duoc_di("a1", "a2"))
+
+    def test_sao_thi_ai_cung_di(self):
+        self.assertTrue(self._duoc_di("*", "a2"))
+
+
+class TestCoLenhVanHanh(unittest.TestCase):
+    def setUp(self):
+        C.dat_nguoi_keo(7, None)
+
+    def tearDown(self):
+        C.dat_nguoi_keo(7, None)
+
+    def test_dat_va_doc_lai_duoc(self):
+        C.dat_nguoi_keo(7, "a1")
+        self.assertEqual(C.nguoi_keo(7), "a1")
+
+    def test_xoa_lenh(self):
+        C.dat_nguoi_keo(7, "a1")
+        C.dat_nguoi_keo(7, None)
+        self.assertIsNone(C.nguoi_keo(7))
+
+    def test_party_khac_khong_anh_huong(self):
+        C.dat_nguoi_keo(7, "a1")
+        self.assertIsNone(C.nguoi_keo(8))
+
+
+class TestMemberSaiMapKhongCoXuLyRieng(unittest.TestCase):
+    """Sai map la TRANG THAI, khong phai mot viec. Vong "cho leader keo" da bi XOA 11/09 - no la
+    vong acc tu chon buoc vao va trong do no diec voi moi lenh cap party (ttmuoi nam trong do MOT
+    TIENG RUOI, 10:31:36 -> 11:59, khong nghe thay lenh gom luc 11:58:26)."""
 
     def setUp(self):
-        src = _doc(os.path.join("bot", "client.py"))
-        i = src.find("def _chan_tu_di_route(")
-        self.than = _ma(src[i:src.find("\n    def ", i + 10)])
+        self.src = _doc("run_party_digioi.py")
 
-    def test_chi_doc_lenh_khong_doc_config(self):
-        self.assertIn("nguoi_keo(self.party_idx)", self.than)
-        self.assertNotIn("PARTY_LEADER_ACC", self.than,
-                         "acc tu suy ra leader = acc tu quyet, du ket qua co dung")
+    def test_khong_con_vong_cho_leader_keo(self):
+        # Neo vao dong cua MEMBER (nhanh leader sai map dung chuoi gan giong).
+        i = self.src.find("(member) SAI MAP (o %s, can %s)")
+        self.assertGreater(i, 0, "mat nhanh member sai map")
+        khoi = _ma(self.src[i:i + 1500])
+        self.assertNotIn("while c.running", khoi, "lai dung them mot vong acc tu cho")
+        self.assertNotIn("_do_reform", khoi, "member lai tu goi reform")
 
-    def test_khong_doc_roster_de_tu_ket_luan(self):
-        self.assertNotIn("party_members", self.than)
+    def test_ra_vong_chinh_de_nghe_lenh(self):
+        # Co HAI dong "(member) SAI MAP": mot cho ca KHONG dung duoc duong (route-less), mot cho
+        # ca thuong. Neo vao dong thu hai bang chinh cau chu cua no.
+        i = self.src.find("(member) SAI MAP (o %s, can %s) -> KHONG tu xu ly")
+        self.assertGreater(i, 0)
+        self.assertIn("ra vong ", self.src[i:i + 600])
+        self.assertIn("nghe lenh dieu phoi", self.src[i:i + 600])
 
 
-class TestMemberSaiMapKhongTuReform(unittest.TestCase):
-    """Member sai map giua luc leader keo qua tung cong la chuyen BINH THUONG - khong duoc tu goi
-    `_do_reform` (ham do mo dau bang VE THANH = teleport = phai ROI DOI truoc).
+class TestAccKhongTuTatCaParty(unittest.TestCase):
+    """Tat ca party la quyet dinh NANG NHAT trong file, va no tung do MOT ACC tu dua ra dua tren
+    tinh trang cua rieng no.
 
-    Party 6, 11/09:
-        10:09:47 [tthai] (member) SAI MAP (o 23001, can 23831) -> retry reform
-        10:10:10 [ttmot] qua cong idx=2 -> map 23000        <- leader DANG keo no toi
-        10:10:12 [tthai] Teleport: dang o to doi (4 member) -> ROI DOI truoc
-        10:10:12 [party 6] gen 9: viec=lam                  <- dieu phoi KHONG ra lenh gi
+    Ca that (APK, user 11/09 - "den doan chay trainmap thi bao loi gi do va tat acc luon"):
+        16:23:00 [acc2] (member) route-less + SAI MAP (o 12001, can 21864) -> TAT CA PARTY
+        16:23:00 [acc2] STOP: route-less train + member sai map (caller=...stop_party)
+    Map 21864 khong co `route` cung trong train_maps.json, va smart route thi KHONG AI dung cho
+    member -> `route_available` rut gon con dung `has_leader`. Party khong dat bot-leader la dinh;
+    party co leader thi khong bao gio -> dung kieu "khong phai luc nao cung bi".
+
+    Sai map la TRANG THAI: dieu phoi doc map ca party moi 2 giay va ra lenh gom. Con tat party thi
+    user phai vao bat lai bang tay.
     """
 
     def setUp(self):
-        src = _doc("run_party_digioi.py")
-        i = src.find("KHONG THOAT, cho leader keo")
-        self.assertGreater(i, 0, "mat nhanh member sai map")
-        j = src.find("# --- MAP-TRAIN", i)
-        self.than = _ma(src[i:j if j > i else i + 4000])
+        self.src = _doc("run_party_digioi.py")
 
-    def test_KHONG_con_tu_goi_do_reform(self):
-        self.assertNotIn("_do_reform(to_spot=False)", self.than,
-                         "member lai tu goi reform -> tu ve thanh -> roi doi giua luc leader keo")
+    def test_chi_GUI_duoc_tat_party(self):
+        """`stop_party` chi con MOT noi goi: nut Stop tren GUI."""
+        _goi = [d.strip() for d in _ma(self.src).split(chr(10))
+                if "stop_party(pidx" in d and not d.lstrip().startswith("def ")]
+        self.assertEqual(_goi, [], "con acc tu tat ca party theo tinh trang cua rieng no")
 
-    def test_van_co_loi_ra_khi_leader_chet_han(self):
-        """Bo tu-quyet KHONG duoc bien thanh cho vo han (L9)."""
-        self.assertIn("leader_gone", self.than)
-        self.assertIn("_quit()", self.than)
+    def test_member_khong_co_duong_thi_KHONG_tat_party(self):
+        i = self.src.find("(member) SAI MAP (o %s, can %s) va khong dung duoc duong")
+        self.assertGreater(i, 0, "mat nhanh route-less cua member")
+        self.assertIn("KHONG tat party", self.src[i:i + 400])
 
-    def test_van_thoat_khi_toi_noi(self):
-        self.assertIn("c.current_map == sc", self.than)
+    def test_leader_khong_co_duong_thi_KHONG_tat_party(self):
+        i = self.src.find("(LEADER) SAI MAP (o %s, can %s) va khong dung duoc duong")
+        self.assertGreater(i, 0, "mat nhanh route-less cua leader")
+        self.assertIn("KHONG tat party", self.src[i:i + 400])
 
 
-class TestLenhKeoTheoViec(unittest.TestCase):
-    """Dang GOM thi ca party deu phai tu di ve diem hen - do la ca duy nhat moi acc deu teleport."""
+class TestKhongCoLeaderThiMemberTuDungDuocDuong(unittest.TestCase):
+    """Party KHONG dat bot-leader -> khong ai keo member ca, nen no phai TU dung duoc duong.
 
-    def test_gom_thi_giao_cho_tat_ca(self):
-        src = _doc("run_party_digioi.py")
-        i = src.find("dat_nguoi_keo(pidx,")
-        khoi = src[max(0, i - 1200):i]
-        self.assertIn("viec in (VIEC_GOM, VIEC_DONG_BO)", khoi)
+    Ban cu chi `build_smart_route` khi `is_leader`, nen member cua party khong-leader luon bi coi
+    la "route-less" du smart router thua suc dung duong (map 21864).
+    """
+
+    def setUp(self):
+        self.src = _doc("run_party_digioi.py")
+
+    def test_member_party_khong_leader_van_dung_duong(self):
+        i = self.src.find("smart_route = None")
+        self.assertGreater(i, 0)
+        khoi = self.src[i:i + 1600]
+        self.assertIn("if is_leader or not has_leader:", khoi,
+                      "member cua party khong-leader khong dung duoc duong -> bi coi la route-less")
+
+    def test_van_khong_dung_duong_ho_khi_DA_co_leader(self):
+        """Co leader thi leader keo - member tu dung duong nua la hai nguoi cung di, party tan."""
+        i = self.src.find("if is_leader or not has_leader:")
+        self.assertGreater(i, 0)
+        self.assertIn("build_smart_route", self.src[i:i + 400])
 
 
 if __name__ == "__main__":

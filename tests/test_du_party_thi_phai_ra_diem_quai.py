@@ -100,9 +100,18 @@ class TestStartTrainingTraKetQua(unittest.TestCase):
 class TestVongRetry60s(unittest.TestCase):
     def setUp(self):
         s = _doc("run_party_digioi.py")
-        i = s.find("DU PARTY roi ma KHONG DANH")
+        # NEO THEO MA, khong theo chu thich: ban cu neo vao dong comment "DU PARTY roi ma KHONG
+        # DANH" - don lai ghi chu mot lan la ca 7 test do vi mot ly do khong lien quan (11/09).
+        # NEO HAI DAU BANG MA, khong dung cua so ky tu: ban cu neo vao mot dong CHU THICH roi lay
+        # `+4200` ky tu. Don lai ghi chu / them mot doan comment la ca loat test do vi ly do khong
+        # lien quan gi den hanh vi (da dinh hai lan trong ngay 11/09).
+        i = s.find("                        if c.in_combat():\n"
+                   "                            try:\n"
+                   "                                c._wait_combat_clear(idle=2.0, cap=60.0)")
         self.assertGreater(i, 0, "khong tim thay nhanh 'du party ma khong danh'")
-        self.khoi = s[i:i + 4200]
+        j = s.find("                elif not is_joined(pidx, c.self_entity):", i)
+        self.assertGreater(j, i, "khong tim thay cuoi nhanh")
+        self.khoi = s[i:j]
         self.than = re.sub(r"#.*", "", self.khoi)   # chu thich hay lap lai chinh cau lenh
         self.src = s
 

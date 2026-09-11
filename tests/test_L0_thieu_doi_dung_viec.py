@@ -59,9 +59,15 @@ class TestLenhCoNguoiThiHanh(unittest.TestCase):
 class TestDungViecKhiThieuDoi(unittest.TestCase):
     def setUp(self):
         s = _src()
-        i = s.find("L0: DIEU PHOI ra lenh")
+        # NEO THEO MA, khong theo cua so ky tu: khoi L0 bat dau o dong doc `viec` va ket thuc
+        # ngay truoc phan hoi mau. Ban cu lay `s[i-1400 : i+3400]` quanh dong log - them mot doan
+        # ghi chu la cua so truot sang nhanh KHAC (nhanh "member sai map" co `stop_party`), va test
+        # bao do vi mot ly do khong lien quan gi den L0 (11/09).
+        i = s.find('            _viec_now = (_ke_hoach(st) or {}).get("viec")')
         self.assertGreater(i, 0, "chua thi hanh L0")
-        self.khoi = s[max(0, i - 1400):i + 3400]   # comment dai - phai lay du toi phan code
+        j = s.find("            # Hoi mau MOI MODE", i)
+        self.assertGreater(j, i)
+        self.khoi = s[i:j]
 
     def test_bat_flee_mode(self):
         self.assertIn("c.flee_mode = True", self.khoi)

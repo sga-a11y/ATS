@@ -121,7 +121,7 @@ class TestMotLenhMotLuc(unittest.TestCase):
         self.assertNotIn("_chan_switch_result", khoi)
 
     def test_nha_khoa_trong_finally(self):
-        i = self.cli.find("return self._switch_channel_locked(channel, wait, retries)")
+        i = self.cli.find("return self._switch_channel_locked(channel, wait, retries")
         self.assertGreater(i, 0)
         self.assertIn("finally:", self.cli[i:i + 200])
         self.assertIn("self._chan_switch_lock.release()", self.cli[i:i + 200])

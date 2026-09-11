@@ -56,6 +56,10 @@ class _Gia:
     """Ban sao toi thieu cua GameClient cho ham teleport()."""
 
     _label = "gia"
+    # Acc gia KHONG thuoc party nao -> khong co dieu phoi de xin lenh -> tele binh thuong.
+    # (Luat "chi di khi dieu phoi giao" co test rieng: test_khong_lenh_thi_acc_khong_di.)
+    party_idx = None
+    _username = "gia"
 
     def __init__(self, members):
         self.party_members = list(members)

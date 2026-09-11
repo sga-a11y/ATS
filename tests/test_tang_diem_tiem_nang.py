@@ -88,10 +88,24 @@ class TestBangRule(unittest.TestCase):
         return c, da, thua
 
     def test_GIU_LAI_so_de_danh(self):
-        c, da, _t = self._chay(35, {30: 0},
-                               {"reserve": 30, "rules": [{"stat": "agi", "target": 42}]})
+        """De danh giu cho CAC DONG PHIA SAU chua toi luot -> phai co dong phia sau that.
+
+        11/09 user chot: rieng dong AGI, khi DEN LUOT no thi bo qua so de danh (khong con dong nao
+        phai giu cho nua). Nen bang kiem o day dung INT lam dong dich - bang chi co mot dong AGI se
+        mo khoa ngay, xem `test_dong_AGI_mo_khoa_de_danh` va
+        tests/test_diem_de_danh_bo_qua_o_dong_agi.py.
+        """
+        c, da, _t = self._chay(35, {27: 0},
+                               {"reserve": 30, "rules": [{"stat": "int", "target": 42}]})
         self.assertEqual(da, 5, "chi duoc tieu phan VUOT qua so de danh")
         self.assertEqual(c.attr_point_left(), 30)
+
+    def test_dong_AGI_mo_khoa_de_danh(self):
+        """Den luot AGI thi bo qua de danh (user 11/09). Bang mot dong = toi luot ngay."""
+        c, da, _t = self._chay(35, {30: 0},
+                               {"reserve": 30, "rules": [{"stat": "agi", "target": 42}]})
+        self.assertEqual(da, 35, "den dong AGI thi duoc tieu ca phan de danh")
+        self.assertEqual(c.attr_point_left(), 0)
 
     def test_du_KHONG_qua_so_de_danh_thi_khong_cong_gi(self):
         c, da, thua = self._chay(30, {30: 0},
@@ -123,8 +137,10 @@ class TestBangRule(unittest.TestCase):
         self.assertEqual(c.char_diem_goc()[27], 0, "het diem ma van cong dong sau")
 
     def test_duyet_HET_bang_ma_con_DU_thi_bao_lai(self):
-        cfg = {"reserve": 10, "rules": [{"stat": "agi", "target": 5}]}
-        _c, da, thua = self._chay(100, {30: 0}, cfg)
+        # Dung INT (khong phai AGI) de phep do "con du bao nhieu" khong dinh luat mo khoa cua
+        # dong AGI - xem `test_dong_AGI_mo_khoa_de_danh`.
+        cfg = {"reserve": 10, "rules": [{"stat": "int", "target": 5}]}
+        _c, da, thua = self._chay(100, {27: 0}, cfg)
         self.assertEqual(da, 5)
         self.assertEqual(thua, 85, "khong bao so du -> user khong biet ma them dong")
 

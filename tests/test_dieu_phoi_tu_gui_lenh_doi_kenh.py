@@ -59,7 +59,7 @@ class _C:
     def _in_battle_end_grace(self):
         return self._grace
 
-    def switch_channel(self, ch, wait=None, retries=None):
+    def switch_channel(self, ch, wait=None, retries=None, theo_lenh=False):
         self.da_gui.append(int(ch))
         self.current_channel = int(ch)
         self._chan_switch_result = 0

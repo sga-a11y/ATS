@@ -12189,7 +12189,8 @@ class GameClient:
             log.info("[%s] 0x27 parsed %d guild members (entity_names cap nhat)", self._label, parsed)
 
     # ---- lenh tien ich ----
-    def switch_channel(self, channel: int, wait: float = 6.0, retries: int = 2) -> bool:
+    def switch_channel(self, channel: int, wait: float = 6.0, retries: int = 2,
+                       theo_lenh: bool = False) -> bool:
         """Chuyen sang sub-channel va cho server tra ket qua.
         Client game xu ly S2C 0x07/0200: result=0 OK; 1=cung kenh; 2=khong co kenh;
         3=dang trong party; 4=kenh day. Bot KHONG tu set current_channel truoc khi server xac nhan."""
@@ -12243,13 +12244,31 @@ class GameClient:
                      self._label, channel)
             return False
         try:
-            return self._switch_channel_locked(channel, wait, retries)
+            return self._switch_channel_locked(channel, wait, retries, theo_lenh)
         finally:
             self._chan_switch_lock.release()
 
-    def _switch_channel_locked(self, channel: int, wait: float, retries: int) -> bool:
+    def _switch_channel_locked(self, channel: int, wait: float, retries: int,
+                               theo_lenh: bool = False) -> bool:
         self._doi_kenh_tu = time.time()
         if self.party_members:
+            # DIEM NGHEN THU HAI (cung ho voi `teleport`): doi kenh cung phai ROI DOI truoc, tuc
+            # cung la mot hanh dong PHA PARTY. Chi lam khi:
+            #   `theo_lenh=True`  - chinh dieu phoi goi (`_dieu_phoi_thi_hanh_kenh`), hoac
+            #   `nguoi_keo`       - dieu phoi giao viec di duong cho minh / cho tat ca ("*", vd
+            #                       dang GOM hoac party khong co bot-leader).
+            # Khong thi acc dang tu pha party dang lanh de doi kenh theo y no.
+            if not theo_lenh and self.party_idx is not None:
+                try:
+                    _keo = nguoi_keo(self.party_idx)
+                except Exception:
+                    _keo = "*"
+                if _keo not in ("*", self._username):
+                    log.info("[%s] Doi kenh %s: KHONG roi doi (%d member) - khong phai lenh cua "
+                             "dieu phoi (viec di duong dang giao cho %s)",
+                             self._label, channel, len(self.party_members),
+                             ("'%s'" % _keo) if _keo else "CHUA AI")
+                    return False
             log.info("[%s] Doi kenh: dang o to doi (%d member) -> ROI DOI truoc (client chan "
                      "doi kenh khi con doi)", self._label, len(self.party_members))
             try:
@@ -14791,6 +14810,26 @@ class GameClient:
         # Party thieu nguoi thi dieu phoi gom lai - dung L0, va no van lam vay tu truoc
         # (documents/RULE_DIEU_PHOI.md).
         if self.party_members:
+            # DIEM NGHEN DUY NHAT. Roi doi de teleport la hanh dong PHA PARTY, va moi duong di deu
+            # qua day (chu thich tren: "moi duong tele deu di qua ham nay nen khong sot"). Nen luat
+            # "dieu phoi quyet, acc khong tu quyet" dat o DAY - mot cho - thay vi ra soat 40+ cho
+            # goi teleport rai rac trong run_party_digioi.
+            #
+            # Suot 11/09 da phai sua di sua lai tung ca vi khong dat o day: member tu lap duong
+            # (party 3), member tu di route (party 6), member tu goi reform vi sai map (party 6),
+            # member tu ve thanh giua luc leader keo (party 2/7). Moi lan bit mot cho la lan sau
+            # no chay ra o cho khac. User: "deo hieu sao code mai ko xong vu nay, cu thich de acc
+            # quyet dinh co".
+            #
+            # `nguoi_keo` la lenh cua dieu phoi (xem `dat_nguoi_keo`): ten mot acc = chi acc do
+            # duoc di; "*" = ai cung duoc (party khong co bot-leader, hoac dang GOM - luc do ca
+            # party deu phai tu ve diem hen). Khong co lenh -> KHONG AI duoc pha party.
+            _keo = nguoi_keo(self.party_idx) if self.party_idx is not None else "*"
+            if _keo not in ("*", self._username):
+                log.info("[%s] Teleport toi thanh %s: KHONG roi doi (%d member) - dieu phoi giao "
+                         "viec di duong cho %s", self._label, city_id, len(self.party_members),
+                         ("'%s'" % _keo) if _keo else "CHUA AI (chua ra lenh)")
+                return False
             log.info("[%s] Teleport: dang o to doi (%d member) -> ROI DOI truoc (client chan tele "
                      "khi con doi)", self._label, len(self.party_members))
             try:
@@ -15999,37 +16038,6 @@ class GameClient:
         except Exception as e:
             log.warning("[%s] pre-route: loi tele trung gian (bo qua, di tiep): %s", self._label, e)
 
-    def _chan_tu_di_route(self, dest_map):
-        """True = KHONG di. Acc CHI di khi DIEU PHOI giao viec keo cho chinh no.
-
-        KHONG CO LENH THI ACC KHONG QUYET GI CA. Day la chieu ngugc voi ban cu: truoc day acc cu
-        di, ai muon can thi phai dung ra chan. Mot cho quen chan la mot cho acc tu quyet - va da
-        quen that: `_cho_leader_keo` (xoa 10/09), `_chot_thanh_tap_ket(False)` (xoa 11/09), va lan
-        nay la ca duong route ra bai.
-
-        Vi sao viec nay phai do MOT acc lam: moi duong di ra bai train deu bat dau bang teleport,
-        ma client chan teleport khi con trong doi -> acc phai ROI DOI truoc. Hai acc cung "di ra
-        bai" la party tan ngay, du ca hai deu dang lam dung viec cua mode.
-        Ca that party 6, 11/09 (user: "dang di ra map train thi member lai tele ve thanh"):
-            09:49:05 [ttmot]  qua cong idx=2 -> map 23000            <- leader dang KEO
-            09:49:08 [ttbon]  pre-route: tele trung gian ve thanh 12061 truoc
-            09:49:08 [ttbon]  Teleport: dang o to doi (4 member) -> ROI DOI truoc
-            09:49:08 [ttmot]  PARTY: 9ce7e44c ROI doi -> roster con 3 nguoi
-        Luc do dieu phoi dang bao `viec=lam` (party lanh, khong lenh gi) - tuc day khong phai lenh
-        cua no, ma la bon member tu di.
-        """
-        if self.party_idx is None:
-            return False                           # khong thuoc party nao -> khong co dieu phoi
-        try:
-            _keo = nguoi_keo(self.party_idx)
-        except Exception:
-            return False
-        if _keo == "*" or _keo == self._username:
-            return False                           # dieu phoi giao cho minh (hoac cho tat ca)
-        log.info("[%s] KHONG di route toi map %s: dieu phoi giao viec keo cho %s",
-                 self._label, dest_map, ("'%s'" % _keo) if _keo else "CHUA AI (chua ra lenh)")
-        return True
-
     def follow_route(self, route, step_wait: float = 0.5) -> bool:
         """Replay route tu THANH toi train map. route = {from_city, city_flag, dest_map, steps}.
         steps: {"move":[x,y]} = di 1 buoc | {"gate":idx,"x","y"} = toi cong roi gui 0x14.
@@ -16037,8 +16045,6 @@ class GameClient:
         dest = int(route.get("dest_map", 0))
         city = int(route.get("from_city", 0))
         flag = int(route.get("city_flag", 0))
-        if self._chan_tu_di_route(dest):
-            return False
         log.info("[%s] follow_route -> map %s (qua thanh %s flag %s)", self._label, dest, city, flag)
         self.flee_mode = True
         if city:
@@ -16177,10 +16183,6 @@ class GameClient:
         dest_map = int(dest_map)
         safe = None if safe is None else (int(safe[0]), int(safe[1]))
         if not self.running or (abort and abort()):
-            return False
-        # DA O DUNG MAP thi chi di bo trong map - KHONG teleport, khong pha doi -> cho qua.
-        # Chi chan khi phai DOI MAP (tuc phai teleport, tuc phai roi doi).
-        if self.current_map != dest_map and self._chan_tu_di_route(dest_map):
             return False
         if self.current_map == dest_map:
             if safe is not None:
