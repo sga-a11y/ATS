@@ -88,7 +88,11 @@ class TestLogNoiRoChuaQuet(unittest.TestCase):
     def test_khong_in_diem_0(self):
         with open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
             s = fh.read()
-        i = s.find("TU CHON MAP ->")
+        # NEO TREN DONG LOG THAT, khong tren chuoi "TU CHON MAP ->" tran lan: chuoi do con nam
+        # trong docstring/comment ke lai log cu, va cua so ky tu se cat trung vao do (bay "neo theo
+        # cua so ky tu truot" trong CLAUDE.md - da can 13/09 khi them `_map_train_dich`).
+        i = s.find('log.info(">>> PARTY %s: TU CHON MAP ->')
+        self.assertGreater(i, 0, "mat dong log 'PARTY n: TU CHON MAP ->'")
         khoi = s[i:i + 700]
         self.assertIn("CHUA QUET", khoi, "idx=-1 in ra 'diem 0' -> doc log tuong co bai so 0")
 

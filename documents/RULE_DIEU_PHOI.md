@@ -725,15 +725,39 @@ ra vòng chính mà nghe lệnh, không tự lập vòng reform.
 > Vòng thứ ba xoá cùng đợt: `while _dem_san_sang(pidx) < st["n_members"]` — leader tự định nghĩa
 > "đủ sẵn sàng", tự chờ, **và tự gọi `_do_reform` trong lúc chờ**, tức tự chọn luôn thời điểm gom.
 
-> Vi phạm thật — cùng party 48, cùng triệu chứng *"ko lập pt"*, cách nhau 5 ngày:
+### L16 — Ra lệnh thì phải RÚT LỆNH khi lệnh đã đạt mục đích
+
+Mỗi lệnh có một **mục đích đo được**. Mục đích đạt rồi thì lệnh chết — và **bên ra lệnh phải thu nó
+về**. Lệnh chết mà còn nằm đó sẽ được thi hành thêm một lần nữa, và lần đó phá đúng cái kết quả mà
+lần đầu vừa tạo ra.
+
+Rút lệnh là việc của **điều phối**, không phải của acc. Để acc tự kết luận *"mình vừa làm xong cái
+mà lệnh muốn"* là mở lại cửa acc tự quyết (L1) — acc phải đoán ý lệnh, mà đoán sai là nuốt lệnh
+thật (L14). Acc chỉ **đọc** con số điều phối ghi.
+
+Rút phải đúng chỗ: chỉ khi **toàn bộ** điều kiện sinh ra lệnh đã hết. Lệnh reform chỉ được rút ở
+nhánh *đủ đội + cùng map + cùng kênh*; còn lệch map, lệch kênh hay thiếu người thì lệnh **vẫn còn
+hiệu lực**, đụng vào là nuốt lệnh đang cần.
+
+> Vi phạm thật — party 1, 13/09 (user: *"gom đủ pt, 1 lúc sau lại hủy pt rồi pt lại"*):
 >
-> - 08/09: `while True` barrier daily → `CHO ca party xong daily (2/5)` lặp 4 phút trong khi điều
->   phối liên tục kêu thiếu đội.
-> - 13/09: nhánh leader sai map còn `while c.running: _do_reform; sleep(5)` → dt901 (LEADER) kẹt
->   trong đó, **5 giây một lần teleport → `leave_party()`**, in `KHONG o party nao ...` không dứt
->   từ 10:42:05 đến hết log. Điều phối ra lệnh `LAP LAI PARTY` đều đặn, không ai thi hành. Trước đó
->   party này đứng `THIEU NGUOI (1/4)` từ 07:56 đến 10:30 — hơn hai tiếng rưỡi, watcher ép đồng bộ
->   hàng chục lần hoàn toàn vô ích, cùng một nguyên nhân.
+> ```
+> 23:19:02  REFORM gen -> 2  - chung kenh roi ma doi khong du -> lap lai party
+> 23:19:33  [thbay] (LEADER) moi 4 member theo entity ...
+> 23:19:44  PARTY: 0c1dd3f8 vao doi -> roster 4 nguoi
+> 23:19:49  [thbay] (LEADER) DU PARTY (4/4 member join)        <- MỤC ĐÍCH ĐẠT
+> 23:19:50  [thbay] (LEADER) reform pending -> BO QUA keo ra spot, de keepalive REFORM
+> 23:19:55  [thbay] (LEADER) -> REFORM party (gen 2)           <- PHÁ party vừa lập
+> ```
+>
+> Leader làm **đúng** lệnh: loạt mời 23:19:33 chính là nội dung của gen 2. Nhưng việc mời đó chạy
+> trong vòng mời của leader, không chạm `reform_gen_handled` (chỉ vòng chính ghi), nên quay về vòng
+> chính nó vẫn thấy `reform_gen 2 > handled 1` → làm lại từ đầu → lặp vĩnh viễn.
+>
+> Cách sửa SAI (đã cân nhắc rồi bỏ): cho vòng mời của leader tự ghi mốc đã-xử-lý. Đó là acc tự
+> tuyên bố lệnh đã xong. Cách đúng: điều phối thấy đủ đội thì ghi `reform_gen_thoa`, acc chỉ đọc.
+
+Neo bằng `tests/test_rut_lenh_reform_khi_du_doi.py`.
 
 ## Trước khi viết code: năm câu phải trả lời
 
@@ -764,6 +788,8 @@ Không trả lời được câu nào thì **chưa được viết**.
 | Đi bước không quay lại được mà không kiểm đủ party | **L0** |
 | Kết luận "xong/thua/thôi" trong khi đang thiếu người | **L0** |
 | Lệnh làm tan đội mà không có bước lập lại | **L0**, L5 |
+| Lệnh không có đường RÚT khi mục đích đã đạt | L16 |
+| Acc tự ghi mốc "lệnh này coi như xong" | L16, L1, L14 |
 | Ghi cờ "nợ"/"đã báo" trong khi đọc thẳng client là ra | L2 |
 | Bảng `*_reports` / `*_done_by` để đếm đủ người | L2 |
 | Việc chung mà chỉ acc gọi hàm tự lo cho mình | L2b |
@@ -779,7 +805,8 @@ Không trả lời được câu nào thì **chưa được viết**.
 ## Được ép bằng test
 
 `tests/test_rule_dieu_phoi.py` bắt các vi phạm kiểm được bằng máy; `test_leader_khong_tu_dap_party.py`
-(L1) và `test_pho_ban_vo_ha_co_ca_party.py` (L1b) neo hai ca ở trên. Test đỏ ở đó nghĩa là **luật bị
+(L1), `test_pho_ban_vo_ha_co_ca_party.py` (L1b) và `test_rut_lenh_reform_khi_du_doi.py` (L16) neo
+các ca ở trên. Test đỏ ở đó nghĩa là **luật bị
 phá**, không phải "test cũ neo sai" — sửa code, đừng sửa test.
 
 Phần còn lại (L3, L4, L5, L7, L11, L12) phải tự soi khi review, dùng bảng "Cấm" ở trên.

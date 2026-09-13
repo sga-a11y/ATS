@@ -89,13 +89,27 @@ class TestAiPhaiCho(_Nen):
         R.account_clients["a1"] = _C(150)
         self.assertEqual(R._acc_thieu_level(self.PARTY), ["a2", "a3"])
 
-    def test_co_char_level_nhung_CHUA_xac_nhan_pet_van_la_thieu(self):
-        """Pet level cao hon char rat nhieu (log 05/09: char ~154 / pet ~188). Chot khi moi co
-        char la trung binh tut hang chuc level."""
+    def test_CHUA_xac_nhan_pet_thi_KHONG_cho_nua(self):
+        """User 14/09: "chon bai train thi dua vao lv nhung con hien tai thoi, dua nao thieu pet
+        thi ke me no di".
+
+        Truoc day cho ca `active_pet_confirmed` (pet level cao hon char vai chuc nen chot som se
+        tut hang bai). Cai gia qua dat: chua chot duoc bai -> `auto_train` rong -> dieu phoi khong
+        biet map train dich -> khong biet thanh tap ket -> ca party lap party bua o Trac Quan roi
+        teleport lam tan doi (party 29, 14/09: 27 phut khong chot duoc bai).
+        """
         for u in self.ACCS:
             R.account_clients[u] = _C(150)
         R.account_clients["a2"] = _C(150, pet_confirmed=False)
-        self.assertEqual(R._acc_thieu_level(self.PARTY), ["a2"])
+        self.assertEqual(R._acc_thieu_level(self.PARTY), [])
+
+    def test_thieu_pet_VAN_gop_char_level(self):
+        """Khong loai acc khoi phep tinh - user 14/09: "van tinh char cua acc do chu"."""
+        for u in self.ACCS:
+            R.account_clients[u] = _C(150)
+        R.account_clients["a2"] = _C(177, pet_confirmed=False)
+        self.assertIn(177, R._party_levels(self.PARTY),
+                      "acc thieu pet bi loai khoi phep tinh level party")
 
     def test_xac_nhan_pet_roi_ma_khong_tha_pet_la_HOP_LE(self):
         """active_pet_confirmed=True + khong co pet = acc khong tha pet -> khong cho nua."""
