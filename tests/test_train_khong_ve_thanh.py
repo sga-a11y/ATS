@@ -234,8 +234,11 @@ class TestApVaoLuong(unittest.TestCase):
         # ACC KHONG RA LENH GOM (L1): truoc day cho nay `_bump_reform(st...)` - acc tu quyet gom.
         # Gio acc chi MOI LAI, con "co gom hay khong" la viec cua dieu phoi (no doc thang map/kenh
         # cua ca party moi 2 giay). Xem documents/RULE_DIEU_PHOI.md muc L1.
-        self.assertIn("ACC KHONG RA LENH GOM (L1)", doan,
-                      "acc tu bump reform = quay lai canh acc tu quyet")
+        #
+        # 13/09: dong log cu ghi "-> GOM LAI" trong khi acc KHONG gom -> doc log tuong dang co
+        # lenh gom chay (user: "t thay van co dong lenh gom lai ma"). Gio log noi dung viec that.
+        self.assertIn("MOI LAI", doan, "log phai noi dung viec acc that su lam")
+        self.assertIn("DIEU PHOI ra lenh gom", doan, "phai chi ro ai moi la nguoi gom")
         self.assertNotIn("_bump_reform(st", doan)
         self.assertIn("c.flee_mode = True", doan, "khong danh le trong luc gom")
         self.assertIn("_thieu_since", doan)

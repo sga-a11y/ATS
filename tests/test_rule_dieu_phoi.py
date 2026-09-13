@@ -311,11 +311,17 @@ class TestL13_KhongBietKhacKhongSao(unittest.TestCase):
         self.assertIn('getattr(st, "char", None)', than)
 
     def test_chot_kenh_khong_quyet_khi_chua_ro(self):
-        """Co acc chua ro map/kenh -> KHONG duoc quyet voi."""
+        """Co acc chua ro map/kenh -> KHONG duoc quyet voi, VA phai noi ra vi sao.
+
+        13/09: cua nay truoc day `return None` im lang, nen party 9 ket 7 phut ma log chi thay
+        dieu phoi lap lai "van 'dong_bo' ... CHO them Ns" - xem
+        `test_chua_biet_map_thi_chua_den_luot_kenh.py`.
+        """
         src = _doc("run_party_digioi.py")
         i = src.find("def _dieu_phoi_chot_kenh(")
         than = src[i:src.find(chr(10) + "def ", i + 10)]
-        self.assertIn("chua ro het -> khong quyet voi", than)
+        self.assertIn("if m is None or not ch:", than, "khong con chan khi chua ro map/kenh")
+        self.assertIn("chua chot duoc kenh dich", than, "chan im lang -> khong truy duoc")
 
 
 class TestTaiLieuTonTai(unittest.TestCase):

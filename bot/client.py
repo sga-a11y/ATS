@@ -613,10 +613,11 @@ def _register_party_client(party_idx, entity, client):
                  ", ".join(e.hex()[:8] for e in _cu))
 
 def _is_party_member(party_idx, entity):
+    # DOC KHONG KHOA - xem `is_joined`. `in` tren set khong duyet o muc Python nen an toan duoi
+    # GIL ke ca khi luong khac dang `add`.
     if party_idx is None:
         return False
-    with _PARTY_LOCK:
-        return bytes(entity) in _PARTY_ENTITIES.get(party_idx, set())
+    return bytes(entity) in _PARTY_ENTITIES.get(party_idx, set())
 
 # Member da ACCEPT loi moi tu party-mate (tin hieu chia se de LEADER biet party da thanh).
 # party_idx -> set(self_entity cua cac member da join). Tin cay hon doc roster broadcast.
@@ -683,11 +684,15 @@ def dat_party_dang_gom(party_idx, dang_gom):
 
 
 def party_dang_gom(party_idx):
-    """Party nay co dang gom/thieu doi khong - moi acc deu doc duoc, khong ai phai hoi."""
+    """Party nay co dang gom/thieu doi khong - moi acc deu doc duoc, khong ai phai hoi.
+
+    DOC KHONG KHOA - xem `is_joined`. Duong ghi chi THAY THE ca gia tri (set/pop mot key), khong
+    sua tai cho, nen `.get()` duoi GIL luon tra ve mot trong hai gia tri hoan chinh. Gianh
+    `_PARTY_LOCK` de doc mot o dict la vo ich, ma no la dung cai da lam MainThread ket cung.
+    """
     if party_idx is None:
         return False
-    with _PARTY_LOCK:
-        return bool(_PARTY_GOM.get(party_idx))
+    return bool(_PARTY_GOM.get(party_idx))
 
 
 def dat_nguoi_keo(party_idx, username):
@@ -706,19 +711,25 @@ def dat_nguoi_keo(party_idx, username):
 
 
 def nguoi_keo(party_idx):
-    """Acc nao dang duoc DIEU PHOI giao viec keo party di duong (None = khong ai)."""
+    """Acc nao dang duoc DIEU PHOI giao viec keo party di duong (None = khong ai).
+
+    DOC KHONG KHOA - xem `is_joined`. Ham nay nam tren DUONG NONG: `teleport()` va
+    `_switch_channel_locked()` goi no, tuc ca 250 acc deu di qua day lien tuc. Khoa o mot cho nhu
+    the la tu tao ra mot hang doi cho ca he (user 13/09: "click doi party thay do rat lau" ->
+    "con bi not responding luon").
+    """
     if party_idx is None:
         return None
-    with _PARTY_LOCK:
-        return _PARTY_NGUOI_KEO.get(party_idx)
+    return _PARTY_NGUOI_KEO.get(party_idx)
 
 
 def dang_pha_pho_ban(party_idx):
-    """Party nay co dang trong pha pho ban to doi khong (moi acc deu doc duoc, khong ai phai hoi)."""
+    """Party nay co dang trong pha pho ban to doi khong (moi acc deu doc duoc, khong ai phai hoi).
+
+    DOC KHONG KHOA - xem `is_joined`."""
     if party_idx is None:
         return False
-    with _PARTY_LOCK:
-        return bool(_PARTY_PB_PHA.get(party_idx))
+    return bool(_PARTY_PB_PHA.get(party_idx))
 
 
 def mark_joined(party_idx, entity):
@@ -748,8 +759,8 @@ def _mark_dungeon_ready(party_idx, entity):
         _DUNGEON_READY.setdefault(party_idx, set()).add(bytes(entity))
 
 def dungeon_ready_count(party_idx):
-    with _PARTY_LOCK:
-        return len(_DUNGEON_READY.get(party_idx, set()))
+    # DOC KHONG KHOA - xem `is_joined`. `len()` khong duyet o muc Python.
+    return len(_DUNGEON_READY.get(party_idx, set()))
 
 def reset_dungeon_ready(party_idx):
     with _PARTY_LOCK:
@@ -894,8 +905,8 @@ def _recent_battle_end(party_idx, within=3.0, map_id=None, need=1, since=None):
 _PARTY_STRATEGIST = {}
 
 def strategist_of(party_idx):
-    with _PARTY_LOCK:
-        return _PARTY_STRATEGIST.get(party_idx)
+    # DOC KHONG KHOA - xem `is_strategist`.
+    return _PARTY_STRATEGIST.get(party_idx)
 
 def is_strategist(party_idx, entity):
     # DOC KHONG KHOA: `_PARTY_STRATEGIST` la dict {party_idx: bytes}, moi lan set la THAY THE ca
@@ -972,10 +983,12 @@ def name_for_entity(entity):
     return None
 
 def best_int_member(party_idx, candidates):
-    """Tra entity co INT cao nhat trong 'candidates' (list entity). None neu khong biet INT."""
-    with _PARTY_LOCK:
-        ints = _PARTY_INT.get(party_idx, {})
-    known = [(e, ints[e]) for e in candidates if e in ints]
+    """Tra entity co INT cao nhat trong 'candidates' (list entity). None neu khong biet INT.
+
+    DOC KHONG KHOA - xem `is_joined`. Duyet theo `candidates` (list cua nguoi goi), khong duyet
+    dict chia se, nen luong khac ghi INT giua chung cung khong lam hong vong nay."""
+    ints = _PARTY_INT.get(party_idx, {})
+    known = [(e, ints.get(e)) for e in candidates if ints.get(e) is not None]
     if not known:
         return None
     return max(known, key=lambda x: x[1])[0]
@@ -14753,12 +14766,33 @@ class GameClient:
                 #
                 # `leave_team_dungeon()` la dung lenh cua client (`C:047-010 <離開組隊>`), giu
                 # nguyen ket noi. No tu bo qua khi khong o trong instance nen goi o day la an toan.
-                log.warning("[%s] go_to_town: DANG TRONG instance (map=%s) -> THOAT PHO BAN roi "
-                            "ve thanh", self._label, self.current_map)
+                # HAI LOAI INSTANCE, HAI LENH THOAT KHAC NHAU - va bot BIET minh dang o loai nao:
+                #   PB TO DOI (`TEAM_DUNGEON_MAPS`) -> `C:047-010` (nut "Thoat" cua UI to doi)
+                #   PB DON / instance khac          -> `C:013-004` mang ID CUA CHINH MINH
+                #                                      (`Dungeon.LeaveSinglePlayDungeon`)
+                # Gui sai loai thi server im lang, acc o lai instance mai mai.
+                #
+                # Ca that party 9, 13/09 (user: "P9 bi ket o map khieu chien Dau dau"):
+                #   14:09:06 [lbo007] go_to_town: DANG TRONG instance (map=62001) -> THOAT PHO BAN
+                #   14:09:06 [lbo007] THOAT PHO BAN TO DOI (C:047-010) - khong relogin
+                #   14:09:12 [lbo007] -> gui C:047-010 roi ma 6s chua ra khoi map 62001
+                #   ... lap lien tuc, BA acc cung ket, ca party cho o 21001 ...
+                # 62001 KHONG nam trong `TEAM_DUNGEON_MAPS` {62002, 62011, 62012, 62013} - no la
+                # PB DON. `leave_single_dungeon()` da co san va duong dungeon binh thuong van dung
+                # dung no; rieng `go_to_town` (duong dieu phoi keo ve gom, them 10/09) thi tu dau
+                # chi biet moi lenh to doi.
+                _la_to_doi = int(self.current_map or 0) in TEAM_DUNGEON_MAPS
+                log.warning("[%s] go_to_town: DANG TRONG instance (map=%s, %s) -> THOAT roi ve "
+                            "thanh", self._label, self.current_map,
+                            "PB TO DOI" if _la_to_doi else "PB DON")
                 self.flee_mode = False
                 try:
-                    if self.leave_team_dungeon():
-                        continue        # da ra duoc -> vong sau teleport ve thanh binh thuong
+                    if _la_to_doi:
+                        if self.leave_team_dungeon():
+                            continue    # da ra duoc -> vong sau teleport ve thanh binh thuong
+                    elif self.leave_single_dungeon():
+                        time.sleep(1.0)
+                        continue
                 except Exception as e:
                     log.warning("[%s] go_to_town: loi thoat pho ban: %s", self._label, e)
                 return False

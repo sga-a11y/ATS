@@ -1,10 +1,4 @@
-"""BARRIER daily: chi cho nhung acc THUC SU phai di qua no, va con SONG.
-
-`dailies_done` la so acc TU KHAI (moi acc qua barrier thi +1). Hai loai acc khong bao gio khai:
-  - acc BO QUA barrier: `is_digioi` / `is_reconnect` / mode event (xem dieu kien `if` bao quanh),
-  - acc DA TAT.
-Ma `expected = len(party_accounts(pidx))` van dem ca hai -> leader cho mot con so KHONG BAO GIO
-DAT DUOC, va no cho VO HAN (vong `while True`).
+"""BARRIER login-dailies DA BI XOA HAN (13/09) - leader khong cho ca party xong daily nua.
 
 Ca that 08/09 party 48 (user: "dm may, bon no ko lap pt, may check cai lon gi the"):
 
@@ -13,14 +7,23 @@ Ca that 08/09 party 48 (user: "dm may, bon no ko lap pt, may check cai lon gi th
     06:53:37 [dtmot] (LEADER) CHO ca party xong daily (2/5, reconnecting=0)...
     06:52:51 [party 48] ... viec=moi - DOI chua du (dt901=4 dt902=0 dt903=0 dt904=4 dt905=0)
 
-Ca 5 acc deu dang chay binh thuong, con so dung im o 2/5 suot 4 phut trong khi dieu phoi lien tuc
-keu thieu doi. Cung dem do co 92 acc bi TAT nham (xem `test_khong_doan_het_gio_dg.py`), cang lam
-`expected` khong the dat.
+Ca 5 acc deu dang chay binh thuong. Dieu phoi ra lenh moi party; leader dang cho mot con so cua
+rieng no (`dailies_done >= min(expected, _con_cho)`) nen khong nghe.
+
+Hai lan sua truoc deu chi VA quanh con so do - lan dau sua cach dem (bo acc da tat, bo acc khong
+di qua barrier), lan sau chuyen viec dem sang cho dieu phoi. Ca hai giu nguyen cai sai goc: LEADER
+VAN DUNG YEN CHO, va trong luc cho no diec voi lenh cap party.
+
+User 13/09: "van cho acc tu quyet ma ko theo dieu phoi, m code ngu that su day".
+
+GIO: khong cho gi ca. Member dang lam daily o map/kenh khac chinh la LECH MAP / LECH KENH - dung
+thu ma dieu phoi doc moi 2 giay va ra lenh gom theo chuoi gom map -> gom kenh -> moi.
 """
 from __future__ import annotations
 
 import io
 import os
+import re
 import sys
 import unittest
 
@@ -33,57 +36,41 @@ def _src():
         return fh.read()
 
 
-class TestDieuKienThoatBarrier(unittest.TestCase):
+def _ma(s):
+    s = re.sub(r'"""[\s\S]*?"""', "", s)
+    return re.sub(r"#.*", "", s)
+
+
+class TestBarrierDaXoa(unittest.TestCase):
     def setUp(self):
-        s = _src()
-        i = s.find('st["dailies_done"] += 1')
+        self.ma = _ma(_src())
+
+    def test_khong_con_vong_cho(self):
+        self.assertNotIn("CHO ca party xong daily", self.ma)
+
+    def test_khong_con_dieu_kien_thoat_tu_dat(self):
+        self.assertNotIn("min(expected,", self.ma,
+                         "leader lai tu dat nguong 'du bao nhieu nguoi thi toi di'")
+
+    def test_khong_con_co_danh_dau_de_dem(self):
+        """`_bo_qua_barrier_daily` chi ton tai de leader dem xem phai cho may nguoi."""
+        self.assertNotIn("_bo_qua_barrier_daily", self.ma)
+
+
+class TestVanDemSoAccXongDaily(unittest.TestCase):
+    """`dailies_done` giu lai lam SO LIEU (in ra log), khong con la dieu kien cho."""
+
+    def setUp(self):
+        self.src = _src()
+
+    def test_van_cong_khi_xong_daily(self):
+        self.assertIn('st["dailies_done"] += 1', _ma(self.src))
+
+    def test_khong_ai_CHO_theo_con_so_nay(self):
+        i = self.src.find('st["dailies_done"] += 1')
         self.assertGreater(i, 0)
-        # moc ket thuc phai la DONG LOG that, khong phai chu trong comment (comment o giua khoi
-        # cung chua chuoi nay -> cat nham, khoi con lai khong co phan dieu kien)
-        j = s.find('log.info("[%s] (%s) CHO ca party xong daily', i)
-        self.assertGreater(j, i)
-        self.khoi = s[i:j]
-
-    def test_KHONG_cho_acc_da_TAT(self):
-        self.assertIn('getattr(_c3, "running", False)', self.khoi,
-                      "dem ca acc da tat -> cho mot con so khong the dat")
-
-    def test_KHONG_cho_acc_bo_qua_barrier(self):
-        """Acc `is_digioi`/`is_reconnect`/event khong di qua barrier nen khong bao gio +1."""
-        self.assertIn('_bo_qua_barrier_daily', self.khoi,
-                      "dem ca acc khong di qua barrier -> cho vinh vien")
-
-    def test_van_khong_vuot_qua_so_acc_cau_hinh(self):
-        """`min(expected, ...)` - khong duoc noi long thanh 'ai toi truoc thi di' (L0)."""
-        self.assertIn("min(expected,", self.khoi)
-
-    def test_van_cong_reconnecting(self):
-        """Acc dang reconnect se catch up qua reform - dem vao de khoi deadlock (hanh vi cu)."""
-        self.assertIn('len(st["reconnecting"])', self.khoi)
-
-
-class TestDanhDauBoQua(unittest.TestCase):
-    def test_co_danh_dau_trên_client(self):
-        s = _src()
-        i = s.find("c._bo_qua_barrier_daily = ")
-        self.assertGreater(i, 0, "khong danh dau -> leader khong biet phai cho may nguoi")
-        khoi = s[i:i + 200]
-        for m in ("is_digioi", "is_reconnect", 'mode == "event"'):
-            self.assertIn(m, khoi, m)
-
-    def test_danh_dau_TRUOC_khi_vao_barrier(self):
-        s = _src()
-        i = s.find("c._bo_qua_barrier_daily = ")
-        j = s.find('st["dailies_done"] += 1', i)
-        self.assertGreater(j, i, "danh dau sau khi vao barrier -> vong dau tien van dem sai")
-
-    def test_dung_CUNG_dieu_kien_voi_nhanh_bo_qua(self):
-        """Danh dau lech voi dieu kien that = leader cho nham nguoi."""
-        s = _src()
-        i = s.find("c._bo_qua_barrier_daily = ")
-        j = s.find("if not is_digioi and not is_reconnect and mode != \"event\":", i)
-        self.assertGreater(j, i, "nhanh bo qua khong nam ngay sau cho danh dau")
-        self.assertLess(j - i, 400)
+        khoi = _ma(self.src[i:i + 800])
+        self.assertNotIn("while", khoi, "lai cho theo `dailies_done`")
 
 
 if __name__ == "__main__":

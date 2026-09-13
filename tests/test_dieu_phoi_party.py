@@ -308,11 +308,18 @@ class TestBienQuyetDinhThanhHanhDONG(_Nen):
         self.assertGreater(st["reform_gen"], g0, "ra lenh gom ma khong bump = khong ai dung day")
 
     def test_khong_doi_ke_hoach_thi_KHONG_bump_lien_tuc(self):
-        """Bump moi nhip 2s la ca party bi giat lai mai, khong bao gio lam xong viec gi."""
+        """Bump moi nhip 2s la ca party bi giat lai mai, khong bao gio lam xong viec gi.
+
+        13/09: thu chan viec do bang `if not doi: return` la SAI - lenh gom chi song dung mot
+        nhip, trung cooldown la mat vinh vien (party 35, xem
+        `test_lenh_gom_khong_bi_nuot_boi_cooldown.py`). Nguoi giu nhip la COOLDOWN.
+        """
         st = R._pstate(self.PARTY)
+        R._dieu_phoi_thi_hanh(self.PARTY, st, {"viec": R.VIEC_GOM, "ly_do": "test"}, True)
         g0 = st["reform_gen"]
-        R._dieu_phoi_thi_hanh(self.PARTY, st, {"viec": R.VIEC_GOM, "ly_do": "test"}, False)
-        self.assertEqual(st["reform_gen"], g0)
+        for _ in range(5):      # nam nhip lien tiep, ke hoach khong doi
+            R._dieu_phoi_thi_hanh(self.PARTY, st, {"viec": R.VIEC_GOM, "ly_do": "test"}, False)
+        self.assertEqual(st["reform_gen"], g0, "ra lenh gom dam len dot gom dang chay")
 
     def test_KHONG_ra_lenh_gom_don_dap(self):
         """Moi lenh gom ABORT moi acc dang di duong. Ra don dap = huy chinh viec vua ra lenh.

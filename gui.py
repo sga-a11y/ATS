@@ -674,6 +674,7 @@ class BotGUI(tk.Tk):
         # --- log filter state ---
         self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
         self._agi_cache = {}        # pidx -> (luc, report) cho party khong hien thi
+        self._notify_cache = {}     # pidx -> items, dung MOT lan roi giu (xem `_refresh`)
         self._refresh_after = None  # handle timer refresh (mot chuoi duy nhat)
         self.log_filter = None         # None = tat ca; hoac set(username) duoc hien
         self._char2user = {}           # ten nhan vat -> username (cap nhat khi acc resolve)
@@ -1956,8 +1957,22 @@ class BotGUI(tk.Tk):
             # Chu y loai CAN LAM NGAY (Ba Dau / tui gan day / chua co quan doan) cung phai lam
             # CHAM party + CHAM NHOM chuyen CAM, khong chi rieng cai nut (user chot 04/09: "co
             # chu y mau cam ma cho P9 va nhom 1 van mau xanh, luc nay phai mau cam chu").
-            # Nut "Chu y" o duoi dung LAI bien nay - dung goi `_party_notify_gap` hai lan.
-            _gap_notify = self._party_notify_gap(pidx)
+            # DANH SACH CHU Y: dung MOT LAN cho ca cham party lan nut "Chu y", va CACHE y nhu AGI.
+            #
+            # Truoc day `_refresh` goi `_party_notify_gap(pidx)` roi `_party_notify_count(pidx)` -
+            # hai ham do deu dung lai TOAN BO danh sach tu nam nguon (tui / Ba Dau / quan doan /
+            # du diem / safe canh bao) cho tung acc. Voi 50 party thi la 100 luot dung danh sach
+            # MOI GIAY, tren chinh main thread cua Tk, cho ca nhung party khong ai mo.
+            # User 13/09: "click doi party thay do rat lau moi load ra" -> "con bi not responding
+            # luon". Doi tab con goi `_refresh()` ngay lap tuc nen cai do roi dung vao luc click.
+            # DUNG MOT LAN cho moi party roi GIU LUON (user 13/09: "cai chu y, m chi can dung len
+            # 1 lan luc log in la dc roi, cai day dau co thay doi nhieu trong luc chay dau, khoi
+            # can load lai"). Vong refresh KHONG dung lai nua.
+            # Bam nut "Chu y" van dung tuoi - do la mot lan, khong phai vong lap.
+            if pidx not in self._notify_cache:
+                self._notify_cache[pidx] = self._party_notify_items(pidx)
+            _notify_items = self._notify_cache[pidx]
+            _gap_notify = any(it.get(k) for _nu, it in _notify_items for k in self.NOTIFY_CAM)
             _cam = _lech_agi or (_gap_notify and _du_acc)
             if _cam:
                 cam_groups.add(gidx)
@@ -1991,7 +2006,7 @@ class BotGUI(tk.Tk):
             # Nut "Chu y": hien khi party CO thong bao (item lo mode notify), an neu khong.
             nbtn = self.party_notify_buttons.get(pidx)
             if nbtn is not None:
-                _ncnt = self._party_notify_count(pidx)
+                _ncnt = len(_notify_items)     # dung LAI danh sach vua dung o tren
                 if _ncnt > 0:
                     # CAM = co viec CAN LAM NGAY (Ba Dau sap het han / tui gan day / chua co quan
                     # doan) - cung mau voi nut "Check AGI" luc lech, de nhin luot qua la thay.

@@ -46,14 +46,15 @@ def _than_run_account():
 # Vong CHO CAP PARTY: acc dung im doi acc khac. Day la nhung cho no o lau nhat.
 VONG_CHO = (
     'while joined_member_count(pidx) < st["n_members"]:',
-    'while _dem_san_sang(pidx) < st["n_members"]:',
     'while not _dg_solo_bail and joined_member_count(pidx) < st["n_members"]:',
     "while joined_member_count(pidx) < expected - 1:",
     'while not st["invited"].is_set():',
     'while st["reconnecting"] and c.running and not _stopped():',
-    "CHO VO HAN: du party moi sync kenh",
     "CHO VO HAN cho ca party xong dungeon",
 )
+# DA XOA 13/09 (khong con vong de ma nghe lenh - xem `test_vong_cho_thoat_khi_co_lenh.py`):
+#   'while _dem_san_sang(pidx) < st["n_members"]:'   leader tu cho member "san sang"
+#   barrier login-dailies                            leader tu cho ca party xong daily
 
 
 class TestMoiVongChoDeuNgheLenh(unittest.TestCase):

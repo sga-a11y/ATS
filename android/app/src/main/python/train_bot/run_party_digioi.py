@@ -1211,7 +1211,6 @@ def _leader_tu_kiem_kenh(c, st, label=""):
                 with st["lock"]:
                     st["channel"] = None
                     st["channel_ready"].clear()
-                    pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
             else:
                 # KHONG chan viec moi party: doi kenh hong la chuyen rieng, con moi thi cu moi.
                 log.warning("[%s] (LEADER) tu kiem kenh: chua ve duoc kenh party %s (nho san %s) "
@@ -1485,6 +1484,171 @@ def _pick_start_city(pidx, dest_city):
     log.info(">>> PARTY %s: thanh xuat phat = %s (id %s, %d cong toi %s; ca party deu da mo)",
              pidx + 1, ten, cid, len(got.get("route", {}).get("legs", ())), dest_city)
     return cid
+
+
+def _ai_lech_instance(pidx, song, grace=30.0):
+    """AI dang o KHAC INSTANCE voi phan con lai - do bang BANG CHUNG THAY NHAU, khong bang so kenh.
+
+    So kenh la so NHO va sai duoc (KNOWLEDGE.md muc 7: game KHONG CO lenh hoi "toi dang o kenh
+    nao"). Con `0x03 PlayerAppear` thi chi server moi gui, va chi gui cho nguoi CUNG SCENE + CUNG
+    INSTANCE - nen "co thay nhau khong" la cau tra loi CHAC CHAN.
+    User 13/09: "biet duoc nhung nguoi xung quanh minh thi biet duoc co cung kenh hay ko".
+
+    HOI MOI ACC, khong chi leader: `_party_khong_thay_nhau` cu chi nhin tu mat leader, nen khi
+    CHINH LEADER la dua lech thi khong ai phat hien (user: "thuc ra cai party 1 la leader deo phai
+    o kenh 6, no sai chu ko phai member sai").
+
+    Cach lam: trong so acc DANG CUNG MAP, noi hai acc lai neu MOT trong hai thay dua kia -> duoc
+    cac NHOM cung instance. Nhom dong nhat la instance dung; ai ngoai nhom do la lech, KE CA
+    LEADER. Hoa nhau (2-2) thi khong ket luan - tra rong.
+
+    `grace`: vua toi map thi chua kip nhan `0x03` cua nhau, doi mot lat roi hay ket luan.
+    """
+    _ds = [(u, c) for u, c in song if getattr(c, "current_map", None)]
+    if len(_ds) < 3:
+        return []                      # 2 nguoi thi khong co "da so" de dua vao
+    _dem_map = {}
+    for _u, c in _ds:
+        _dem_map.setdefault(int(c.current_map), []).append((_u, c))
+    _tren = max(_dem_map.values(), key=len)
+    if len(_tren) < 3:
+        return []                      # dang lech map -> nhanh khac lo, khong ket luan o day
+    _luc = {}
+    for _u, c in _tren:
+        _t = getattr(c, "_thay_nhau_tu", None)
+        if _t is None:
+            _t = c._thay_nhau_tu = {}
+        _luc[_u] = _t
+
+    def _thay(a, b):
+        """acc `a` co dang THAY `b` khong (rong = thay)."""
+        _ent = getattr(b[1], "self_entity", None)
+        if not _ent:
+            return True                # chua biet entity -> khong ket luan xau
+        try:
+            return not a[1].da_thay_tan_mat(_ent)
+        except Exception:
+            return True
+
+    # Nhom cac acc THAY NHAU (hai chieu deu tinh: mot ben thay la du de ket luan cung instance).
+    _nhom = {u: u for u, _c in _tren}
+
+    def _goc(u):
+        while _nhom[u] != u:
+            _nhom[u] = _nhom[_nhom[u]]
+            u = _nhom[u]
+        return u
+
+    for i, a in enumerate(_tren):
+        for b in _tren[i + 1:]:
+            if _thay(a, b) or _thay(b, a):
+                _nhom[_goc(a[0])] = _goc(b[0])
+    _cum = {}
+    for u, _c in _tren:
+        _cum.setdefault(_goc(u), []).append(u)
+    _to_nhat = max(_cum.values(), key=len)
+    if len(_to_nhat) * 2 <= len(_tren):
+        return []                      # khong co da so ro rang -> khong ket luan (L13)
+    _ngoai = sorted(u for u, _c in _tren if u not in _to_nhat)
+    if not _ngoai:
+        return []
+    # GRACE: chi ket luan khi tinh trang nay KEO DAI - vua toi map thi chua kip nhan 0x03.
+    _bay = time.time()
+    _ra = []
+    for u in _ngoai:
+        _t0 = _luc[u].setdefault("tu", _bay)
+        if _bay - _t0 >= grace:
+            _ra.append(u)
+    for u, _c in _tren:
+        if u not in _ngoai:
+            _luc[u].pop("tu", None)
+    return _ra
+
+
+def _co_ai_dang_o_map(pidx, map_id, tru=None):
+    """Party co ai DANG DUNG o `map_id` khong (bo qua chinh `tru`). Doc thang client, khong ai bao.
+
+    Dung de phan biet "MINH bi van ra khoi bai" voi "CA PARTY dang di duong toi bai":
+      - con nguoi o bai ma minh khong o do -> minh vang that,
+      - khong ai o bai ca -> ca lu dang tren duong, chuyen binh thuong.
+    """
+    try:
+        _m = int(map_id or 0)
+    except (TypeError, ValueError):
+        return False
+    if not _m:
+        return False
+    for _u, _p, _l, _k in party_accounts(pidx):
+        if tru is not None and _u == tru:
+            continue
+        _c = account_clients.get(_u)
+        if _c is None or not getattr(_c, "running", False):
+            continue
+        if int(getattr(_c, "current_map", 0) or 0) == _m:
+            return True
+    return False
+
+
+def _thanh_tap_ket_dich(pidx, st):
+    """THANH TAP KET DICH cua party = thanh xuat phat gan map train nhat ma CA PARTY deu da mo.
+
+    `None` = chua biet (chua co map train dich, hoac khong thanh nao ca party mo di toi duoc) ->
+    nguoi goi KHONG duoc suy ra dieu gi, cu de viec chay binh thuong.
+
+    Cache theo map train: `_pick_start_city` goi router (`nearest_smart_city`), ma vong dieu phoi
+    chay moi 2 giay cho MOI party.
+    """
+    _train = st.get("train_map_dich")
+    if not _train:
+        return None
+    try:
+        _train = int(_train)
+    except (TypeError, ValueError):
+        return None
+    _cu = st.get("thanh_tap_ket_cache")
+    if _cu and _cu[0] == _train:
+        return _cu[1]
+    try:
+        _tp = _pick_start_city(pidx, _train)
+    except Exception as e:
+        log.debug("[party %d] chot thanh tap ket loi: %s", pidx + 1, e)
+        _tp = None
+    st["thanh_tap_ket_cache"] = (_train, _tp)
+    return _tp
+
+
+def _o_thanh_di_qua(pidx, st, noi):
+    """`noi` co phai THANH DI NGANG QUA (khong phai diem tap ket) khong?
+
+    Lap party o thanh trung gian la vo ich: buoc ngay sau la TELEPORT di thanh tap ket, ma
+    teleport bat buoc `leave_party()` -> party vua lap lai tan.
+
+    Ca that party 4, 13/09 (user: "p4, bon no lap pt o Trac quan lam lon gi the"):
+        13:32:44 [party 4] dong_bo - cung map nhung LECH KENH [1,4,10,11]   (dang o 12001)
+        13:32:47 [party 4] moi -> CHOT kenh dich = 13
+        13:36:01 [party 4] dong_bo - cung map nhung LECH KENH [1,7,10,11]   (van 12001)
+        13:36:16 [party 4] LAP LAI PARTY (brubb46677=0 sga008=0 ... sga012=0)
+    Roster dung im o 0 suot. Trac Quan la thanh ma `pre_route_town_hop` nem acc qua (random 50-50
+    Trac Quan / Nghiep Thanh) tren duong ve thanh xuat phat - CHO DI NGANG, khong phai cho tu.
+
+    KHONG duoc coi Trac Quan / Nghiep Thanh la "trung gian" theo ID: chinh chung co the LA thanh
+    tap ket cua party khac (user dan do 13/09). So voi DICH THAT, khong so voi danh sach cung.
+
+    True chi khi CHAC CHAN: `noi` la thanh teleport, da biet dich, va `noi` khac ca dich lan map
+    train. Moi truong hop con lai tra False - tha lap party thua con hon khong bao gio lap.
+    """
+    try:
+        if not noi or not config.is_teleport_city(int(noi)):
+            return False            # dang o bai train / phy ban / map thuong -> khong phai thanh
+    except Exception:
+        return False
+    _dich = _thanh_tap_ket_dich(pidx, st)
+    if not _dich:
+        return False                # chua biet dich -> khong ket luan (L13)
+    _train = st.get("train_map_dich")
+    if _train and int(noi) == int(_train):
+        return False                # dang o chinh map train -> lap party ngay tai bai la dung
+    return int(noi) != int(_dich)
 
 
 def _nhip_cho_kenh(st):
@@ -1869,10 +2033,9 @@ def _pstate(pidx):
                               # keepalive va tu chuyen - KHONG bat tay, khong bao cao, nen acc
                               # da lam xong van bat duoc lenh moi. Xem _dieu_phoi_chot_kenh.
                               "kenh_dich": None,
-                              # Lan cuoi DIEU PHOI ra lenh gom + reform_gen luc do. Dung de khong
-                              # ra lenh gom don dap (moi lenh abort moi acc dang di duong).
+                              # Lan cuoi DIEU PHOI ra lenh gom. Dung de khong ra lenh gom don dap
+                              # (moi lenh abort moi acc dang di duong).
                               "dieu_phoi_gom_luc": 0.0,
-                              "dieu_phoi_gom_gen": -1,
                               # Party da bat dau train chua - luat watcher "thieu nguoi qua lau"
                               # doc khoa nay. TRUOC 05/09 KHONG AI GHI no (chi doc o dung 1 cho)
                               # nen luat do CHUA TUNG CHAY LAN NAO: 0 lan trong ca ngay log.
@@ -2754,7 +2917,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 # KE HOACH DANG HIEU LUC noi truoc ca `kenh_dich`/`gom_dich`: dieu phoi vua chot
                 # "gom" hay "dong bo" thi viec rieng dung ngay, khong doi den luc co dich cu the.
                 _kh = _ke_hoach(st) or {}
-                if _kh.get("viec") in (VIEC_GOM, VIEC_DONG_BO):
+                # CUNG MOT DINH NGHIA "dang co lenh" voi `dat_party_dang_gom` o vong dieu phoi
+                # (VIEC_GOM, VIEC_MOI, VIEC_DONG_BO). Hai cua lech nhau la co viec vat lot qua.
+                #
+                # Ca that party 1, 13/09 (user: "p1, co 2 dua ko chiu tap trung ve tuong duong"):
+                #   12:58:06 [party 1] gen 25: viec=moi - DOI chua du
+                #   12:58:11 [thbon]   Mua ve dungeon -> OK        <- VAO LUOT MOI
+                #   12:58:15 [thbon]   Da vao dungeon -> danh boss
+                #   12:58:20 [thbay]   Dungeon: khong vao luot moi - dieu phoi dang ra lenh gom
+                # thbay bi chan (luc do da sang 'gom'), thbon thi khong vi luc no hoi, lenh moi la
+                # 'moi'. Ca party phai cho no danh not mot man boss nua moi ve duoc diem hen.
+                # PB TO DOI thi hoan dung tu dau - vi no doc `party_dang_gom`, ben do CO VIEC_MOI.
+                #
+                # Vao pho ban don = `leave_party()` + sang map rieng, tuc VUA pha doi VUA lam lech
+                # map - dung hai thu lenh 'moi' dang co gang sua.
+                if _kh.get("viec") in (VIEC_GOM, VIEC_MOI, VIEC_DONG_BO):
                     return "dieu phoi dang ra lenh %s (%s)" % (_kh.get("viec"),
                                                                _kh.get("ly_do") or "")
                 _kd = st.get("kenh_dich")
@@ -3193,55 +3370,24 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         log.warning("[%s] (%s) RECONNECT map train %s khong phai thanh teleport -> khong teleport thang",
                                     label, role, sc)
 
-        # BARRIER login-dailies (mode KHAC digioi): CHO CA PARTY xong daily quest (world boss cham
-        # + teleport ve Trac Quan) TRUOC khi sync kenh + lap party. Tranh leader sync kenh/moi khi
-        # member dang lam daily -> member sai kenh / leader train 1 minh. (digioi: heavy hoan toi
-        # cuoi DG nen khong can.)
-        # DANH DAU acc CO di qua barrier hay khong, de leader biet phai cho MAY NGUOI. Khong danh
-        # dau thi leader cho ca nhung acc khong bao gio toi day (party 48, 08/09: "CHO ca party
-        # xong daily (2/5)" lap suot 4 phut trong khi ca 5 acc deu dang chay binh thuong).
-        c._bo_qua_barrier_daily = bool(is_digioi or is_reconnect or mode == "event")
-        if not is_digioi and not is_reconnect and mode != "event":   # event: doc lap, khong cho barrier party
+        # XOA (13/09) BARRIER login-dailies. No la mot vong acc TU CHO: leader tu dat dieu kien
+        # "ca party xong daily thi toi moi lap party" (`dailies_done >= min(expected, _con_cho)`)
+        # roi tu cho vo han cho du dieu kien do.
+        #
+        # Ca that party 48, 08/09 (user: "bon no ko lap pt"):
+        #   06:52:36 [dtmot] (LEADER) CHO ca party xong daily (2/5, reconnecting=0)...
+        #   06:53:37 [dtmot] (LEADER) CHO ca party xong daily (2/5, reconnecting=0)...
+        #   06:52:51 [party 48] viec=moi - DOI chua du (dt901=4 dt902=0 dt903=0 dt904=4 dt905=0)
+        # Dieu phoi ra lenh moi party; leader dang cho mot con so cua rieng no, khong nghe.
+        #
+        # KHONG THAY BANG DIEU KIEN KHAC (da thu 13/09: cho dieu phoi dem ho roi leader van cho -
+        # van la mot vong cho, chi doi nguoi dem). Cai phai bo la HANH DONG TU CHO.
+        #
+        # Member dang lam daily o map/kenh khac chinh la LECH MAP / LECH KENH - dung thu ma dieu
+        # phoi doc moi 2 giay va ra lenh gom. Khong can ai canh truoc ca.
+        if not is_digioi and not is_reconnect and mode != "event":
             with st["lock"]:
                 st["dailies_done"] += 1
-            expected = len(party_accounts(pidx))
-            _t0 = time.time()
-            while True:   # CHO VO HAN: du party moi sync kenh + lap party. Member dang reconnect ->
-                _nghe_lenh_kenh()   # lenh dieu phoi phai nghe duoc o MOI vong cho
-                # cong vao (se catch up qua reform); van hoan toan -> ca party dung cho o day.
-                if _stopped() or not c.running:
-                    break
-                # CHI CHO NHUNG ACC DANG SONG. `dailies_done` la so acc TU KHAI - acc bi tat, chua
-                # login xong, hay ket o buoc khac thi khong bao gio khai, va leader cho VO HAN.
-                #
-                # Ca that 08/09 party 48 (user: "bon no ko lap pt") - leader dtmot lap cung mot
-                # dong suot 4 phut trong khi dieu phoi lien tuc keu thieu doi:
-                #   06:52:36 [dtmot] (LEADER) CHO ca party xong daily (2/5, reconnecting=0)...
-                #   06:53:37 [dtmot] (LEADER) CHO ca party xong daily (2/5, reconnecting=0)...
-                #   06:52:51 [party 48] ... viec=moi - DOI chua du (dt901=4 dt902=0 dt903=0 dt904=4
-                #                                                   dt905=0)
-                # Cung dem do 92 acc bi TAT nham vi "khong vao duoc DG (het gio?)", nen `expected`
-                # dem ca acc da chet -> con so do khong bao gio dat duoc.
-                # Dem acc THUC SU con phai cho: bo acc da tat, va bo acc KHONG DI QUA barrier nay
-                # (`is_digioi` / `is_reconnect` / mode event - xem dieu kien `if` o tren). Acc bo
-                # qua barrier khong bao gio tang `dailies_done`, nen dem ca no la cho mot con so
-                # KHONG BAO GIO DAT DUOC.
-                _con_cho = 0
-                for _u3, _p3, _l3, _k3 in party_accounts(pidx):
-                    _c3 = account_clients.get(_u3)
-                    if (_c3 is not None and getattr(_c3, "running", False)
-                            and not getattr(_c3, "_bo_qua_barrier_daily", False)):
-                        _con_cho += 1
-                with st["lock"]:
-                    if st["dailies_done"] + len(st["reconnecting"]) >= min(expected, _con_cho):
-                        break
-                if time.time() - _t0 > 30:
-                    log.info("[%s] (%s) CHO ca party xong daily (%d/%d, reconnecting=%d)...",
-                             label, role, st["dailies_done"], expected, len(st["reconnecting"]))
-                    _t0 = time.time()
-                time.sleep(1)
-            log.info("[%s] (%s) xong daily login (%d/%d acc) -> sync kenh + lap party",
-                     label, role, st["dailies_done"], expected)
             with st["lock"]:
                 _o5_done = st.get("o5_state") == "done"
             if _o5_done and _clear_o5_client_flags(c):
@@ -3573,9 +3719,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         # Log 31/08 party 7 (14:45-14:55): leader ttsau tu xoay mot minh -> 67 luot
                         # ma 3, quet het kenh 2,3,4,... trong 10 phut ma khong thoat.
                         log.warning("[%s] (%s) doi kenh bi chan vi DANG TO DOI (ma 3) -> bao CA "
-                                    "PARTY roi party roi dong bo lai", label, role)
-                        with st["lock"]:
-                            pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
+                                    "PARTY -> de DIEU PHOI ra lenh gom", label, role)
                         return False
                     if r is None:   # co kenh nhung khong kenh nao du cho ca party -> CHO kenh trong
                         # KIEN TRI, KHONG dồn: user chot 01/09 "DG deo can don, cu random 10-15s
@@ -3793,8 +3937,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     return ""
                 if len(_keo_thieu) < 2:      # chi bump MOT lan cho ca chuyen keo
                     _keo_thieu.append(1)
-                    with st["lock"]:
-                        pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                 return "party TUT con %d/%d giua duong keo -> dung keo, gom lai" % (
                     _nj, st["n_members"])
 
@@ -4177,8 +4319,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # 22000!=14001, treo 7 phut+). Sau 120s chua du -> BUMP reform_gen -> ca party
                     # (ke ca dua ket) reform lai tu thanh (dua ket se duoc teleport ve thanh gom).
                     if time.time() - _inv_t0 > 120:
-                        with st["lock"]:
-                            pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                         log.warning("[%s] (LEADER) reform: 120s chua du party (%d/%d) - co member ket "
                                     "sai map -> BUMP reform_gen, gom lai tu dau",
                                     label, joined_member_count(pidx), st["n_members"])
@@ -4222,10 +4362,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         # nhung truoc day dong log nay VUT DI -> khong ai biet vi sao dung giua
                         # duong (that: 16:39 di 4/7 cong roi dung o 18801, khong mot dong ly do).
                         log.warning("[%s] (LEADER) keo di bo Nghiep->%s that bai (map=%s, ly do=%s) "
-                                    "-> reform lai", label, fc, c.current_map,
+                                    "-> de DIEU PHOI ra lenh gom", label, fc, c.current_map,
                                     getattr(c, "_smart_route_failure", None) or "khong ro")
-                        with st["lock"]:
-                            pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                         c._reform_via_nghiep = False
                         c.flee_mode = True
                         st["route_done"].set()
@@ -4278,9 +4416,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         st["route_done"].set()
                         return
                     log.warning("[%s] (LEADER) reform xong NHUNG dang o SAI MAP (%s != %s) -> "
-                                "yeu cau REFORM lai ngay, khong cho watchdog", label, c.current_map, sc)
-                    with st["lock"]:
-                        pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
+                                "de DIEU PHOI ra lenh gom", label, c.current_map, sc)
                     c.flee_mode = True
                     st["route_done"].set()   # tha member (keepalive se reform lai tu dau)
                     return
@@ -4663,15 +4799,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 try: c.close()
                 except Exception: pass
                 if c in _clients: _clients.remove(c)
-            # Sai map train -> KHONG train, nhung VAN lam not viec hang ngay (check-in da xong
-            # o tren; con solo dungeon) roi moi quit.
-            def _daily_then_quit():
-                if do_daily:
-                    try:
-                        c.do_daily_dungeon(cho_phep=_dieu_phoi_dang_ra_lenh)
-                    except Exception as e:
-                        log.warning("[%s] loi daily dungeon (sai map, bo qua): %s", label, e)
-                _quit()
+            # (XOA 13/09 `_daily_then_quit`: sai map khong con la ly do de acc tu thoat - ca hai
+            # nhanh leader/member deu ra vong chinh cho dieu phoi quyet, nen khong ai goi no nua.)
             # PARTY-LEVEL: chi can 1 acc sai map -> CA PARTY (ke ca dua DANG O BAI) ve thanh don nhau,
             # lap party du, KEO ca party toi train map + ra safe gan quai (member tu theo). Dung
             # CHUNG _do_reform(to_spot=False) voi nhanh "dang chay lech map" (keepalive) - truoc day
@@ -4754,33 +4883,32 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     label, c.current_map, sc)
                         _reason("leader sai map (o %s, can %s), khong co duong -> dieu phoi quyet"
                                 % (c.current_map, sc))
-                    # LEADER sai map + CO route -> KHONG HUY PARTY. LAP reform toi khi len train map
-                    # (dung tinh than "cho vo han, du party moi train" - giong nhanh member ben duoi).
-                    # Truoc day: _daily_then_quit() -> huy ca party -> 5 nick relogin -> route lai ket
-                    # dung cong do (vd cong ket aggro) -> huy... = chinh la canh "party 3 cu vang khi
-                    # login". Gio giu party, reform lai; moi lan reform tu lam daily/boss o thanh (xem
-                    # _do_reform) nen khong mat viec hang ngay. KHONG set leader_bad (leader dang co,
-                    # chua hong) -> member CHO tiep thay vi thoat.
-                    _reason("leader sai map (o %s, can %s) - route -> LAP REFORM (khong huy party)"
+                    # LEADER SAI MAP -> KHONG CO XU LY RIENG. Ra thang vong chinh, y het nhanh
+                    # member ben duoi.
+                    #
+                    # XOA (13/09) vong `while c.running: _resync_ck + _do_reform + sleep(5)`. No la
+                    # ban sao cuoi cung cua "acc tu quyet" ma nhanh member da bi xoa 11/09: acc tu
+                    # chon buoc vao mot vong rieng, va trong do no DIEC voi moi lenh dieu phoi.
+                    #
+                    # Ca that party 48, 13/09 (user: "Party 48 ko thay lap pt"):
+                    #   10:41:11 [party 48] viec=moi - DOI chua du (dt901=0 ... dt905=0)
+                    #   10:41:11 [party 48] DIEU PHOI: ... -> LAP LAI PARTY
+                    #   10:42:05 [dt901] Da ve thanh 18021
+                    #   10:42:05..10:47:51 [dt901] KHONG o party nao ... KHONG gui 013-004
+                    #                              (5 giay MOT DONG, khong dut)
+                    # dt901 la LEADER. No ket trong vong nay, cu 5 giay `_do_reform` mot lan -> moi
+                    # lan teleport lai `leave_party()` -> khong bao gio chay toi doan GUI LOI MOI.
+                    # Dieu phoi ra lenh moi party deu dan; khong ai thi hanh -> "ko thay lap pt".
+                    # Truoc do party 48 da o trang thai THIEU NGUOI (1/4) tu 07:56 den 10:30, watcher
+                    # ep dong bo hang chuc lan vo ich - cung vi ly do nay.
+                    #
+                    # GIO: sai map la mot TRANG THAI, khong phai mot viec. Dieu phoi doc map ca party
+                    # moi 2 giay va tu ra lenh gom; vong chinh thi hanh. KHONG set leader_bad (leader
+                    # van song), va VAN set `leader_ok` ben duoi -> member khong treo cho.
+                    _reason("leader sai map (o %s, can %s) -> ra vong chinh, dieu phoi quyet"
                             % (c.current_map, sc))
-                    log.warning("[%s] (LEADER) SAI MAP (o %s, can train map %s) - KHONG HUY PARTY, "
-                                "lap reform toi khi len train map...", label, c.current_map, sc)
-                    while c.running and not _stopped():
-                        _resync_ck(st, username)   # ep dong bo -> relogin bam leader
-                        _do_reform(to_spot=False)
-                        c._san_sang_party = False
-                        if c.current_map == sc:
-                            self_map_ok = True; login_map = sc; via_route = True
-                            log.info("[%s] (LEADER) da len train map %s qua reform (lap)", label, sc)
-                            break
-                        time.sleep(5)   # chua len duoc -> nghi ngan roi reform lai (khong spam)
-                    if not self_map_ok:
-                        # thoat vong = stop / mat ket noi (KHONG phai "sai map bo cuoc")
-                        if not _stopped() and not c.running and not getattr(c, "server_closed", False):
-                            c.server_closed = True
-                            log.warning("[%s] (LEADER) MAT KET NOI trong luc reform toi train map "
-                                        "-> supervisor reconnect, member CHO", label)
-                        _quit(); return
+                    log.warning("[%s] (LEADER) SAI MAP (o %s, can %s) -> KHONG tu xu ly, ra vong "
+                                "chinh de nghe lenh dieu phoi", label, c.current_map, sc)
                 st["leader_ok"].set()   # leader ok -> member duoc tiep tuc
             else:
                 if not self_map_ok and not c.running:
@@ -4937,10 +5065,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # Bi dungeon DUMP ra sanh (12000)/thanh -> KHONG bo roi, KHONG bat no chay le 1
                     # minh ve. Bump reform_gen -> CA PARTY se reform (ve thanh DON no) o keepalive
                     # ben duoi. Van +dungeon_done de barrier dungeon khong treo cho member nay.
-                    log.warning("[%s] (%s) sau dungeon BI DUMP ra %s -> yeu cau CA PARTY reform (ve thanh don)",
+                    log.warning("[%s] (%s) sau dungeon BI DUMP ra %s -> de DIEU PHOI ra lenh gom",
                                 label, role, c.current_map)
                     with st["lock"]:
-                        pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                         st["dungeon_done"] += 1
                 else:
                     # VE RALLY (safe GAN mob spot leader chon), KHONG phai safe[0] co dinh: truoc day
@@ -5443,101 +5570,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     log.warning("[%s] (LEADER) toi train map theo party NHUNG chi con %d/%d member "
                                 "(rung doc duong) -> KHONG train thieu, cho + moi lai cho du",
                                 label, _joined_now, st["n_members"])
-                # PHAI DU PARTY MOI LAM (yeu cau user): leader CHO TAT CA member san sang (da vao DG /
-                # ve diem tap ket) roi moi + train. KHONG tru n_members. Rieng DG+Train: neu leader
-                # het gio DG ngay trong luc cho/moi party thi thoat vong cho, danh dau xong DG va cho
-                # ca party cung xong DG roi moi sang phase train.
-                _t0 = time.time()
-                _ready_t0 = time.time()    # chong VONG TRON leader<->member (xem ghi chu duoi)
-                _rw_split_t0 = None        # tu luc thay party LECH MAP (None = dang cung map)
+                # XOA (13/09) vong `while _dem_san_sang(pidx) < st["n_members"]`.
+                #
+                # No la vong acc tu quyet NANG NHAT con lai: leader tu dat dieu kien "du member san
+                # sang thi toi moi moi", tu cho den khi dieu kien do du, VA trong luc cho con TU RA
+                # LENH GOM (`_do_reform(to_spot=False)` moi khi qua `READY_WAIT_REFORM_SEC` hoac
+                # thay party lech map qua `READY_WAIT_SPLIT_SEC`). Tuc mot acc vua tu dinh nghia
+                # trang thai dung, vua tu chon thoi diem gom - dung hai viec cua dieu phoi.
+                #
+                # Da thu 13/09 cach "de nguyen vong nhung gan cua thoat khi co lenh": van sai, vi
+                # cai phai bo la HANH DONG TU CHO, khong phai do dai cua no.
+                #
+                # GIO: leader MOI luon. Member chua ve kip thi khong vao doi -> dieu phoi thay
+                # thieu doi / lech map / lech kenh va ra lenh gom theo dung chuoi
+                # (gom map -> gom kenh -> moi). Do la co che dung chung cho moi tinh nang, khong
+                # phai mot ban sao rieng cua nhanh train.
                 _dg_solo_bail = False
-                while _dem_san_sang(pidx) < st["n_members"]:
-                    _nghe_lenh_kenh()   # lenh dieu phoi phai nghe duoc o MOI vong cho
-                    if _stopped(): st["stop_leader_done"].set(); c.close(); return
-                    if not c.running: c.close(); return
-                    if _finish_digioi_train_if_time_over("cho member san sang"):
-                        return
-                    # RACE: giveup xay ra GIUA luc cho member (1 member vua het gio DG) -> KHONG cho
-                    # vo han nua, chuyen sang chay DG SOLO den het gio cua minh (nhu nhanh giveup tren).
-                    if _dg_gather_giveup():
-                        if c.has_hp_and_sp_items():
-                            c.flee_mode = False; c.combat_ready(); c.start_run_around()
-                        else:
-                            c.flee_mode = True
-                        log.info("[%s] (LEADER) DG+Train: co acc het gio DG luc cho member -> chay DG "
-                                 "SOLO den het gio (bo lap party)", label)
-                        _dg_solo_bail = True
-                        break
-                    if time.time() - _t0 > 30:
-                        log.info("[%s] (LEADER) CHO du member san sang (%d/%d)...",
-                                 label, _dem_san_sang(pidx), st["n_members"])
-                        _t0 = time.time()
-                    # VONG TRON leader <-> member (log that P24, 09:50-09:53 va cu the mai):
-                    #   member: "reform: cho leader lap duong toi map 21872"   (cho route)
-                    #   leader: "CHO du member san sang (3/4)"                 (cho ready)
-                    # ma member CHI vao ready_members SAU KHI toi duoc train map - viec can chinh
-                    # cai route leader dang khong cong bo (leader da sang pha 'wait'). Khong ai
-                    # nhuc nhich, va CA HAI vong deu khong co loi thoat cho ca nay.
-                    # NGUYEN TAC (user): cu O KHAC MAP NHAU la GOM VE cung map + cung kenh truoc,
-                    # KHONG can biet map nao dung/sai. Leader THAY map cua tung acc (chung mot tien
-                    # trinh) nen khong phai cho het gio moi biet.
-                    #
-                    # KHONG break ra ngoai: break = di moi party khi CON THIEU nguoi (pha rule "du
-                    # party moi lam"). Thay vao do TU CHAY REFORM ngay tai day roi cho tiep - reform
-                    # moi la thu THUC SU gom ca party ve cung thanh + cung kenh.
-                    #
-                    # Bump reform_gen TRUOC khi reform: cac acc dang di duong tu dung lai qua
-                    # abort=_ab cua navigate_to/follow_path/follow_smart_route (da co san) -> dung
-                    # hanh dong cu roi moi lam hanh dong moi, khong keo le giua chung.
-                    _rw_maps = set()
-                    for _ru, _rp, _rl, _rk in party_accounts(pidx):
-                        _ruc = account_clients.get(_ru)
-                        if _ruc is not None and getattr(_ruc, "running", False):
-                            _rm = getattr(_ruc, "current_map", None)
-                            if _rm is not None:
-                                _rw_maps.add(_rm)
-                    # LUU Y: ca party cung o trong PB thi len(_rw_maps) == 1 -> KHONG kich hoat,
-                    # nen PB dang chay binh thuong khong bao gio bi dung vao. Chi no khi CO DUA
-                    # TRONG PB DUA NGOAI = dung trang thai hong can don.
-                    # Da quyet dinh dong bo lai thi phai LOI HET RA KHOI PB (user), khong de lung lo:
-                    # thoat bang C:047-010 (giu ket noi), KHONG relogin.
-                    _rw_lech = len(_rw_maps) > 1
-                    if _rw_lech and _rw_split_t0 is None:
-                        _rw_split_t0 = time.time()
-                        log.warning("[%s] (LEADER) party dang o %d MAP KHAC NHAU %s -> se gom ve cung "
-                                    "map/kenh", label, len(_rw_maps), sorted(_rw_maps))
-                    elif not _rw_lech:
-                        _rw_split_t0 = None
-                    _qua_han = time.time() - _ready_t0 > READY_WAIT_REFORM_SEC
-                    _lech_lau = _rw_split_t0 is not None and time.time() - _rw_split_t0 > READY_WAIT_SPLIT_SEC
-                    if _lech_lau or _qua_han:
-                        _ready_t0 = time.time()
-                        _rw_split_t0 = None
-                        # CA PARTY DA DUNG SAN O MAP TRAIN -> KHONG ve thanh nua (user 27/08):
-                        # cung kenh thi cu cho/moi tai cho, lech kenh thi sync kenh tai cho.
-                        if train_on_map and _party_tai_cho_xu_ly("cho member san sang"):
-                            time.sleep(2)
-                            continue
-                        # LOI HET ACC CON KET TRONG PB RA TRUOC: trong PB khong teleport/ve thanh
-                        # duoc, de nguyen thi reform khong bao gio gom duoc no.
-                        for _ru, _rp, _rl, _rk in party_accounts(pidx):
-                            _ruc = account_clients.get(_ru)
-                            if _ruc is None or not getattr(_ruc, "running", False):
-                                continue
-                            if getattr(_ruc, "current_map", None) not in TEAM_DUNGEON_MAPS:
-                                continue
-                            log.warning("[%s] (LEADER) %s con ket trong PHO BAN -> thoat PB truoc khi gom",
-                                        label, _ru)
-                            try:
-                                _ruc.leave_team_dungeon()
-                            except Exception as _e:
-                                log.warning("[%s] loi thoat PB ho %s: %s", label, _ru, _e)
-                        with st["lock"]:
-                            pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
-                        _do_reform(to_spot=False)
-                    time.sleep(2)
-                log.info("[%s] (LEADER) DU %d/%d member san sang -> MOI (theo entity)",
-                         label, _dem_san_sang(pidx), st["n_members"])
+                if _stopped(): st["stop_leader_done"].set(); c.close(); return
+                if not c.running: c.close(); return
+                log.info("[%s] (LEADER) %d/%d member san sang -> MOI (theo entity), thieu thi de "
+                         "dieu phoi gom", label, _dem_san_sang(pidx), st["n_members"])
                 # MOI toi khi DU PARTY join (khong gioi han 6 lan): member da san sang, invite se toi.
                 _t0 = time.time()
                 _resync_t0 = time.time()
@@ -5621,7 +5673,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     _joined_now, st["n_members"])
                         st["invited"].set()   # tha member khoi startup de cung nhan reform_gen
                         with st["lock"]:
-                            pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                             _startup_gen = st["reform_gen"]
                         c.flee_mode = True
                         try:
@@ -5837,10 +5888,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     # cho watchdog, de phan ung tuc thi.
                     if c.current_map != sc:
                         log.warning("[%s] (LEADER) toi diem quai NHUNG dang o SAI MAP (%s != %s, co the bi "
-                                    "tran chien xen giua day di) -> yeu cau REFORM ngay, khong cho watchdog",
+                                    "tran chien xen giua day di) -> de DIEU PHOI ra lenh gom",
                                     label, c.current_map, sc)
-                        with st["lock"]:
-                            pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                         c.flee_mode = True
                         return False
                     _set_train_block_stats_spot(spot, enabled=True)
@@ -5959,7 +6008,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         _dg_gp_out_since = None   # moc bat dau ket NGOAI DG lien tuc (ep het gio neu keo dai)
         last_remove = time.time()
         last_retry = time.time()
-        _last_regroup = 0.0   # rate-limit gom lai khi member lech map/kenh
+        # (XOA 13/09 `_last_regroup`: rate-limit cho viec LEADER tu ra lenh gom - viec do da
+        #  chuyen han cho dieu phoi, chi con lai cai dong hoen ri nay.)
         _thieu_since = 0.0    # tu luc nao party THIEU nguoi (0 = dang du) - de gom lai khi mat party
         _last_gom = 0.0       # rate-limit moi lai khi mat party giua train
         last_dg = 0.0
@@ -5999,16 +6049,21 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         #    `c.current_map == sc` dung -> `reform_gen_handled = 2` = NUOT lenh gom gen 2. Chung
         #    nhan lenh "dung viec chinh" (nhanh L0) nhung khong bao gio chay `_do_reform` de di gom.
         #    Leader va mot member di ve thanh, ba dua con lai dung im -> khong bao gio tap trung.
-        _kh_luc_vao = _ke_hoach(st) or {}
-        _dang_co_lenh_gom = _kh_luc_vao.get("viec") in (VIEC_GOM, VIEC_DONG_BO)
+        #
+        # XOA (13/09) quyen NUOT LENH cua acc. Ban cu: `if c.current_map == sc` thi nhay
+        # `reform_gen_handled` len thang `st["reform_gen"]` - tuc acc tu ket luan "toi dang dung
+        # dung map, vay may lenh dang treo kia khong con y nghia" va vut sach chung. Do la acc tu
+        # quyet LENH NAO NGHE, LENH NAO NUOT - nang hon moi thu khac, vi no vo hieu hoa chinh
+        # duong ra lenh.
+        #
+        # Vet va mai khong het cung vi the: ca party 7 duoi day duoc va bang `_dang_co_lenh_gom`
+        # (chi chua mot truong hop), roi lenh o dang khac lai bi nuot tiep.
+        #
+        # GIO: chi nuot dung nhung gen CHINH ACC NAY DA THI HANH trong startup (`_do_reform`
+        # xong thi ghi lai `startup_reform_gen_handled`). Con lai deu la lenh chua ai lam - phai
+        # thi hanh, khong duoc suy luan tu trang thai rieng cua minh.
         with st["lock"]:
-            reform_gen_handled = (max(startup_reform_gen_handled, st["reform_gen"])
-                                  if (c.current_map == sc and not _dang_co_lenh_gom)
-                                  else startup_reform_gen_handled)
-        if _dang_co_lenh_gom:
-            log.info("[%s] (%s) vao vong chinh luc dieu phoi dang ra lenh '%s' -> KHONG nuot lenh "
-                     "(reform_gen=%s, se thi hanh ngay)", label, role,
-                     _kh_luc_vao.get("viec"), st["reform_gen"])
+            reform_gen_handled = startup_reform_gen_handled
         with st["lock"]:
             cmd_gen_handled = st["cmd_gen"]   # lenh thu cong (GUI) da xu ly
             _pending_cmd = st.get("cmd")
@@ -6084,8 +6139,6 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 #    quay tit. (Nguong dung chung voi vong "cho member san sang".)
                 if time.time() - t0 > READY_WAIT_REFORM_SEC:
                     t0 = time.time()
-                    with st["lock"]:
-                        pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                     return False
                 time.sleep(4)
             return True
@@ -6289,11 +6342,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 log.info("[%s] manual route: dieu phoi doi huong -> bo moi", label)
                                 return
                             if time.time() - _mr_t0 > READY_WAIT_REFORM_SEC:
-                                log.warning("[%s] manual route: %ds chua du party (%d/%d) -> gom lai",
+                                log.warning("[%s] manual route: %ds chua du party (%d/%d) -> de DIEU PHOI ra lenh gom",
                                             label, int(READY_WAIT_REFORM_SEC),
                                             joined_member_count(pidx) + 1, expected)
-                                with st["lock"]:
-                                    pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                                 return
                             try:
                                 c.invite_members(gap=1.0)
@@ -7137,14 +7188,33 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # thanh). KHONG tu ve lai le loi (party da vo) -> YEU CAU CA PARTY REFORM: acc nao tu
             # thay minh van map thi bump reform_gen -> ca party ve thanh, leader giai tan + lap lai
             # + keo ra bai. grace 60s sau reform de khong trigger lien tuc khi dang o thanh (!=sc).
+            # CHI LA "BI VAN" KHI CON NGUOI DANG O BAI. Khong ai o bai = ca party dang DI DUONG
+            # toi do (leader keo qua cong), va luc do khac map train la chuyen binh thuong.
+            #
+            # Ca that party 4, 13/09 (user: "dang di ra bai train ma sao cu co log dieu phoi ra
+            # lenh gom the"):
+            #   14:27:26 [tmo]  da toi diem (20,460) sau 12 lenh move
+            #   14:27:26 [tmo]  _enter_gate idx=8 @(20,460): lan thu 1 (t=0s, map van 21003)
+            #   14:27:27 [tha]  (member) BI VAN khoi train map (dang o 21003, vd chet)
+            #   14:27:27 [bat]  (member) BI VAN khoi train map (dang o 21003, vd chet)
+            #   14:27:28 [lin]  (member) BI VAN khoi train map (dang o 21003, vd chet)
+            #   14:27:31 [bub]  (member) BI VAN khoi train map (dang o 21003, vd chet)
+            # Ca nam dua deu o 21003 - dung sau leader cho no mo cong. Khong ai van ca, ma dong nao
+            # cung keu "bi van" va nhac toi lenh gom -> doc log tuong dieu phoi dang gom lien tuc.
             if (train_on_map and c.current_map is not None and c.current_map != sc
+                    and _co_ai_dang_o_map(pidx, sc, tru=username)
                     and time.time() - last_reform > 60):
                 displaced_cnt += 1
                 if displaced_cnt >= 2:   # 2 lan lien tiep (~10s) khac map train -> chac chan displaced
                     displaced_cnt = 0
-                    with st["lock"]:
-                        pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
-                    log.warning("[%s] (%s) BI VAN khoi train map (dang o %s, vd chet) -> yeu cau CA PARTY reform (gen %d)",
+                    # KHONG yeu cau gi ca - acc khong ra lenh cap party (L1). Dong log cu ghi
+                    # "yeu cau CA PARTY reform (gen N)" trong khi than no chi la `pass`: no NOI DOI,
+                    # va vi ca 5 acc cung in nen doc log tuong dang co lenh gom chay.
+                    # User 13/09: "t thay van co dong lenh gom lai ma" - chinh la dong nay.
+                    # Bi van khoi train map la mot TRANG THAI: dieu phoi doc map ca party moi 2
+                    # giay, thay lech thi ra lenh gom.
+                    log.warning("[%s] (%s) BI VAN khoi train map (dang o %s, vd chet) -> de DIEU "
+                                "PHOI ra lenh gom (reform_gen hien tai %d)",
                                 label, role, c.current_map, st["reform_gen"])
             else:
                 displaced_cnt = 0
@@ -7328,19 +7398,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         c.flee_mode = True          # khong danh le trong luc dang gom
                         if is_leader and time.time() - _last_gom > 10:
                             _last_gom = time.time()
-                            log.warning("[%s] (LEADER) MAT PARTY giua chung (%d/%d) -> GOM LAI "
-                                        "(moi lai; thieu qua lau thi reform/sync kenh)",
+                            # MOI LAI thi duoc (moi khong pha party, va leader la nguoi duy nhat
+                            # moi duoc). Nhung dung goi do la "GOM LAI": gom la lenh cap party cua
+                            # dieu phoi, con nhanh 60s ben duoi tung la cho leader tu ra lenh gom -
+                            # gio chi con `pass`, tuc dong log cu hua mot viec khong ai lam.
+                            log.warning("[%s] (LEADER) MAT PARTY giua chung (%d/%d) -> MOI LAI "
+                                        "(con lech map/kenh thi DIEU PHOI ra lenh gom)",
                                         label, joined_member_count(pidx), st["n_members"])
                             try:
                                 _invite_party_participants(c, train_on_map, gap=1.0)
                             except Exception as e:
                                 log.warning("[%s] (LEADER) loi moi lai khi mat party: %s", label, e)
-                            # Moi mai khong duoc (60s) = co dua lech map/kenh -> gom bang reform.
-                            if (time.time() - _thieu_since > 60
-                                    and time.time() - _last_regroup > 120):
-                                _last_regroup = time.time()
-                                with st["lock"]:
-                                    pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
             # --- RETRY KENH + RE-MOI moi 60s (ca DG lan map-train) ---
             # Kenh it nguoi nhat co the KHONG du cho ca party -> co dua ket lai kenh cu.
             # Leader cu train; dua chua join thi 1p chuyen lai kenh chung 1 lan; leader 1p moi lai.
@@ -7354,14 +7422,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         # 4 member o Truong Sa, cu 60s "MOI LAI" mai khong duoc).
                         _lech = _party_members_off_place(c, pidx)
                         if _lech:
+                            # Dong nay tung hua "GOM LAI party truoc" roi chi `pass` - leader khong
+                            # gom (dung: L1), nhung log thi noi la co. Ca that party 35, 13/09:
+                            #   12:26:35 (LEADER) chua du member (2/4) NHUNG dv608 o map 56103
+                            #            (leader 56001) -> KHONG moi mu, GOM LAI party truoc
+                            #   12:27:35 / 12:28:38 / 12:29:38  y het, khong ai di dau
+                            # Luc do dieu phoi DA nuot mat lenh gom (xem `_dieu_phoi_thi_hanh`), nen
+                            # khong con ai gom that - ma doc log lai tuong dang gom.
                             log.warning("[%s] (LEADER) chua du member (%d/%d) NHUNG %s -> KHONG moi "
-                                        "mu, GOM LAI party truoc",
+                                        "mu, CHO DIEU PHOI ra lenh gom",
                                         label, nj, st["n_members"],
                                         "; ".join(_lech))
-                            if time.time() - _last_regroup > 120:
-                                _last_regroup = time.time()
-                                with st["lock"]:
-                                    pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                         elif _party_khong_thay_nhau(c, pidx):
                             # CUNG map + CUNG kenh (theo so) ma leader CHUA HE thay ho quanh minh
                             # -> thuc te KHAC INSTANCE, hai con so kia noi doi. Loi moi khong the
@@ -7825,8 +7896,9 @@ def _exit_pb_or_reconnect(username, c, reason):
     return _force_supervisor_reconnect(username, c, reason)
 
 
-READY_WAIT_SPLIT_SEC = 15    # party o KHAC MAP nhau qua lau -> leader tu reform de gom ve
-READY_WAIT_REFORM_SEC = 120  # leader cho member "san sang" qua lau -> reform de cong bo route
+# (XOA 13/09 `READY_WAIT_SPLIT_SEC`: nguong de LEADER tu quyet luc nao gom party lech map. Lech
+#  map la viec cua dieu phoi - no doc map ca party moi 2 giay va ra lenh gom.)
+READY_WAIT_REFORM_SEC = 120  # moi mai khong du party -> bo luot moi nay, de dieu phoi quyet tiep
 TEAM_DUNGEON_MAX_TRIES = 2   # 1 lan dau + 1 lan RETRY. Qua so nay -> BO QUA HET cac PB.
 
 
@@ -7948,7 +8020,6 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                             label, level)
                 with st["lock"]:
                     _mark_team_dungeon_broken(st, level)
-                    pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
                 _clear_o5_client_flags(c)
                 return _exit_pb_or_reconnect(
                     username, c, "phó bản đội vỡ do đồng đội rớt"
@@ -7965,6 +8036,24 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                 log.warning("[%s] (member) phó bản đội lv%d: leader chuyển sang REFORM "
                             "(reform_gen %d->%d) -> bỏ chờ, về thành cùng party",
                             label, level, _pb_g0, _pb_gnow)
+                return True
+            # LENH DANG CO HIEU LUC cung phai bo cho - khong chi lenh MOI HON luc minh vao vong.
+            #
+            # So `reform_gen` voi moc luc vao vong la acc tu chon "lenh nao nghe": lenh ra TRUOC do
+            # vai giay va VAN dang chay thi bi coi la lenh cu.
+            #
+            # Ca that party 24, 13/09 (user: "thang daihai cu dung o trac quan, ko tap trung ve
+            # cung team"):
+            #   13:19:21 [daihai] (member) pho ban to doi: HOAN - dieu phoi dang ra lenh 'gom'
+            #                     (party dang o 3 MAP khac nhau [12001, 21011, 21852])
+            #   13:20:19 [daihai] (member) PB lv50: leader chuyen sang REFORM (1->2) -> bo cho
+            #   13:20:19 [daihai] (member) cho leader xu ly pho ban doi lv80...
+            #   13:21:19 / 13:22:20  y het nhau, khong dut
+            # Sang lv80 no vao vong MOI voi moc gen = 2 - dung bang chinh lenh gom dang chay. Tu do
+            # lenh do vinh vien la "cu", nen no dung o Trac Quan cho mot viec khong ai lam.
+            if party_dang_gom(pidx):
+                log.warning("[%s] (member) phó bản đội lv%d: DIEU PHOI đang ra lệnh cấp party "
+                            "-> bỏ chờ leader, về cùng party", label, level)
                 return True
             with st["lock"]:
                 state = st.setdefault("team_dungeon_state", {}).get(level, "idle")
@@ -8010,7 +8099,6 @@ def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_f
                         "ra khỏi phó bản rồi đánh lại", label, level)
             with st["lock"]:
                 _mark_team_dungeon_broken(st, level)
-                pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
             _clear_o5_client_flags(c)
             # KEO CA PARTY ra truoc: PB vo thi khong co goi ket thuc nen khong ai tu biet duong ra.
             # Truoc day leader chi thoat cho CHINH NO -> leader dung ngoai, member ket trong 62xxx.
@@ -8240,8 +8328,7 @@ def _run_auto_team_dungeons_if_needed(c, st, username, label, pidx, is_leader, s
     # phai lap lai party train - nhung chi can lap lai khi THUC SU quay ve train, khong phai sau
     # tung level (xem ghi chu o _handle_auto_team_dungeon).
     with st["lock"]:
-        if st.pop("td_need_reform", False):
-            pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
+        st.pop("td_need_reform", False)   # don co; lap lai party la viec cua dieu phoi (L1)
     return True
 
 
@@ -8436,7 +8523,6 @@ def _handle_o5_team(c, st, username, label, pidx, is_leader, stopped_fn, o5_done
                 # lai -> truoc day member out het, leader chay ra bai TRAIN MOT MINH (khong reform).
                 # Bump reform_gen -> co che reform co san (_do_reform, dung cho cac truong hop
                 # "bi dump khoi dungeon" khac) se tu dong keo ca party tap hop + lap lai.
-                pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
     else:
         with st["lock"]:
             st["o5_state"] = "done"      # khong danh -> tha member ngay
@@ -8512,10 +8598,8 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
             st["reconnecting"].add(username)
             if not forced:
                 st["disc_gen"] += 1
-            if train_reform:
-                # Mot gen chung bat buoc ca survivors LAN acc vua login lai cung ve thanh,
-                # sync kenh va lap party. Khong phu thuoc marker reconnect con ton tai bao lau.
-                pass   # ACC KHONG RA LENH GOM (L1) - dieu phoi tu nhan ra
+            # (`train_reform` tinh o tren nhung KHONG con ai dung: acc mat ket noi roi login lai
+            #  khong tu ra lenh cho ca party ve thanh nua - dieu phoi thay lech map/kenh va gom.)
             if event_reset:
                 st["invited"].clear()
                 st["event_battle_done"].clear()
@@ -8933,6 +9017,11 @@ def start_party(pidx, stagger=1.5, skip_running=False):
 EV_VAO_HONG_TOI_DA = 3
 
 KE_HOACH_NHIP = 2.0        # nhip dieu phoi (giay). Nhanh hon watcher cu (20s) vi no ra LENH.
+# Do dac 13/09 (250 acc / 50 party): quet mot vong ton 16ms, tuc 0.33ms moi party. Nen hai nguong
+# duoi day KHONG phai de canh so party - chung de bat luc luong dieu phoi BI DOI CPU (GIL) hoac
+# co party keo dai vong quet. Tre bao nhieu giay = ca bot mu bay nhieu giay.
+DIEU_PHOI_TRE_CANH_BAO_SEC = 3.0   # nhip cach nhau qua (2s + 3s) -> khong con la dao dong binh thuong
+DIEU_PHOI_QUET_LAU_SEC = 1.0       # 1 vong quet > 1s = gap 60 lan muc do dac duoc
 # Party lech map/kenh LIEN TUC bao lau thi moi ra lenh GOM. Phai du dai de bao het MOT chuyen
 # teleport gom (ve thanh trung gian -> thanh tap ket, tung acc lech nhip vai chuc giay): trong
 # luc do lech map la BINH THUONG, ra lenh gom luc do la huy chinh viec dang lam.
@@ -9308,10 +9397,13 @@ def _dieu_phoi_quyet(pidx, st, song, lech_tu):
 
     # ---- MAP/KENH dich + co dang lech khong ----
     maps = {}
+    _chua_biet_map = []
     for u, c in song:
         m = getattr(c, "current_map", None)
         if m is not None:
             maps.setdefault(int(m), []).append(u)
+        else:
+            _chua_biet_map.append(u)
     lech = len(maps) > 1
     # CHI DEM KENH DO SERVER XAC NHAN. So kenh cua acc vua co lenh doi kenh HONG la so NHO LAI,
     # khong phai bang chung - lay no ra ket luan "lech kenh" la ra lenh xe doi dua tren so ao.
@@ -9467,10 +9559,80 @@ def _dieu_phoi_quyet(pidx, st, song, lech_tu):
         viec = VIEC_LAM
         if not ly_do:
             ly_do = "con lech map %s -> chua lap party, cho gom xong" % sorted(maps)
-    elif song and _thieu_doi(pidx, song):
-        viec = VIEC_MOI
+    elif song and _chua_biet_map:
+        # CHUA BIET MAP CUA MOT NGUOI THI CHUA XONG BAC MAP - chua duoc xuong bac kenh.
+        # Phep dem `maps` o tren BO QUA acc chua biet map, nen 4 dua cung map + 1 dua chua biet bi
+        # ket luan la "cung map" -> tut xuong bac kenh -> `_dieu_phoi_chot_kenh` moi phat hien
+        # thieu du lieu va `return None` IM LANG -> khong bao gio chot duoc kenh dich.
+        #
+        # Ca that party 9 (va party 4), 13/09 (user: "p4 p9 lai bi cai loi lech kenh ma deo gom
+        # kenh lai"):
+        #   14:46:38 [party 9] gen 8: viec=dong_bo - cung map nhung LECH KENH [1, 2]   <- kenh=None
+        #   14:47:41 / 14:48:42 / ... / 14:53:48  lap 7 phut, KHONG mot dong `Chuyen kenh ->` nao
+        # Trong thap 2K, acc bi keo sang scene moi thi `current_map` rong mot luc
+        # ("request scene khong co self-spawn", "pos=None map=..."), du de dinh cho nay.
+        #
+        # Phai CUNG MAP roi moi den luot kenh (user: "phai biet cung map roi moi den doan dong bo
+        # kenh chu"). Chua biet != khong sao (L13).
+        viec = VIEC_LAM
         if not ly_do:
-            ly_do = "cung map/kenh nhung DOI chua du (%s)" % _tinh_hinh_doi(song)
+            ly_do = ("chua doc duoc map cua %s -> chua xong bac gom map, chua den luot kenh"
+                     % (sorted(_chua_biet_map),))
+    elif song and _thieu_doi(pidx, song) and _ai_lech_instance(pidx, song):
+        # CUNG MAP + CUNG SO KENH MA KHONG THAY NHAU = KHAC INSTANCE. So kenh la so NHO va sai
+        # duoc (KNOWLEDGE.md muc 7); con "ai dang dung quanh minh" (`0x03 PlayerAppear`) la bang
+        # chung that - server chi gui cho nguoi CUNG SCENE + CUNG INSTANCE.
+        # User 13/09: "biet duoc nhung nguoi xung quanh minh thi biet duoc co cung kenh hay ko,
+        # co cai lon gi ma ko chac".
+        #
+        # Ca that party 1, 13/09 (user: "vi sao no ko lap duoc pt, no dung the nay gio") - 10 phut:
+        #   14:24:40..14:32:46 [party 1] LAP LAI PARTY (chihao188=0 ... sga017=0)  <- roster dung 0
+        #   14:32:56 [thbay] (LEADER) moi 2 nguoi ma SERVER CHUA HE cho thay ho quanh minh:
+        #                    ['7c5dd8f8:chua co 0x03', '0c1dd3f8:chua co 0x03']
+        # Ca party cung map 21833, cung toa do (3020..3040, 1000..1020), entity moi ĐÚNG het. Dieu
+        # phoi thi thay "cung kenh 6" nen ra lenh MOI mai - loi moi khong the toi noi.
+        _lech = _ai_lech_instance(pidx, song)
+        viec = VIEC_DONG_BO
+        if not ly_do:
+            ly_do = ("cung map nhung %s KHONG THAY duoc dong doi (khac instance du cung so kenh) "
+                     "-> dong bo kenh truoc khi moi (%s)" % (_lech, _tinh_hinh_doi(song)))
+    elif song and len(kenhs) > 1 and _thieu_doi(pidx, song):
+        # CUNG MAP ROI NHUNG CON LECH KENH -> GOM KENH TRUOC, chua den luot moi party.
+        #
+        # Thu tu user chot: "lech map thi dong bo map truoc, lech kenh thi dong bo kenh, du thi
+        # lap party". Bac nay truoc day thieu: cung map + thieu doi la roi thang xuong `VIEC_MOI`,
+        # nen dieu phoi vua bao "moi party" vua chot kenh dich - hai lenh da nhau, vi moi party thi
+        # phai o trong doi con doi kenh thi phai ROI doi. Va moi nguoi khac kenh la vo ich: server
+        # khong chuyen loi moi qua kenh.
+        # Ca that party 7, 11/09 (user: "lech map thi phai dong bo map truoc chu, sao lai di dong
+        # bo kenh"):
+        #   18:01:43 gen 7: viec=moi - cung map/kenh nhung DOI chua du (tat ca = 0)
+        #   18:01:43 DIEU PHOI: party lech kenh {1: 3, 2: 2} -> CHOT kenh dich = 1
+        #   18:01:45 DIEU PHOI: party lech kenh {1: 3, 2: 2} -> CHOT kenh dich = 8
+        # Cau ly do "cung map/kenh" con noi doi: kenh dang lech {1: 3, 2: 2}.
+        #
+        # KHONG doi `lech_lau`: lech kenh o day khong phai "thoang qua" - no chan dung viec dang
+        # lam (moi party), nen phai xu ngay. An han cua `lech_lau` la de tranh ra lenh GOM (keo ca
+        # party ve thanh) oan, con dong bo kenh tai cho thi khong ton gi.
+        viec = VIEC_DONG_BO
+        if not ly_do:
+            ly_do = "cung map nhung LECH KENH %s -> gom kenh truoc khi moi (%s)" % (
+                sorted(kenhs), _tinh_hinh_doi(song))
+    elif song and _thieu_doi(pidx, song):
+        # CHI LAP PARTY O THANH TAP KET HOAC MAP TRAIN (user chot 13/09). Thanh di ngang qua thi
+        # chua toi luot moi: lap xong la phai teleport di tiep, ma teleport bat buoc roi doi ->
+        # party vua lap lai tan, va ca chuoi quay lai tu dau.
+        _noi = next(iter(maps)) if len(maps) == 1 else None
+        if _noi is not None and _o_thanh_di_qua(pidx, st, _noi):
+            viec = VIEC_GOM
+            if not ly_do:
+                ly_do = ("dang o thanh DI NGANG QUA %s, chua toi thanh tap ket %s -> di tiep roi "
+                         "moi lap party (%s)" % (_noi, _thanh_tap_ket_dich(pidx, st),
+                                                 _tinh_hinh_doi(song)))
+        else:
+            viec = VIEC_MOI
+            if not ly_do:
+                ly_do = "cung map/kenh nhung DOI chua du (%s)" % _tinh_hinh_doi(song)
     else:
         # DU DOI, CUNG MAP+KENH -> den luot hai buoc cuoi cua chuoi di train.
         viec, _ly_train = _viec_di_train(pidx, st, song, pha)
@@ -9744,16 +9906,33 @@ def _dieu_phoi_thi_hanh(pidx, st, kh, doi):
       2. NGUOI KHAC vua bump / minh vua bump -> IM. Dang co mot dot gom chay roi, de no chay xong.
     """
     _viec = kh.get("viec")
-    if not doi or _viec not in (VIEC_GOM, VIEC_DONG_BO):
+    # KHONG doi ke hoach phai VUA DOI (`doi`). Lenh gom truoc day chi duoc phat dung CAI NHIP ke
+    # hoach doi; nhip do ma trung cooldown thi lenh MAT LUON, va vi ke hoach khong doi nua nen
+    # khong bao gio thu lai - dieu phoi van "thay lech map" ma khong con duong ra lenh.
+    #
+    # Ca that party 35, 13/09 (user: "party 35 thay lech map ma ko gom map lai duoc"):
+    #   12:22:47 ra lenh gom               -> dieu_phoi_gom_luc = 12:22:47
+    #   12:23:26 gen 7: viec=gom           -> trong cooldown 180s -> return IM LANG
+    #   (tu do ke hoach van la 'gom' nhung khong con DOI -> khong ai phat lenh nua)
+    #   12:26:35 [dvsau] (LEADER) chua du member (2/4) NHUNG dv608 o map 56103 (leader 56001)
+    #            -> KHONG moi mu, GOM LAI party truoc      <- lap y het moi 60s, khong ai di dau
+    # Gio: con lech thi NHIP NAO CUNG XET, cooldown lo viec khong ra lenh day nhau.
+    if _viec not in (VIEC_GOM, VIEC_DONG_BO):
         return
     with st["lock"]:
-        gen = int(st.get("reform_gen", 0))
         luc = float(st.get("dieu_phoi_gom_luc", 0.0) or 0.0)
-        gen_cu = int(st.get("dieu_phoi_gom_gen", -1))
-        # reform_gen doi ma khong phai do minh -> co dot gom cua acc khac dang chay.
-        if gen != gen_cu and luc and time.time() - luc < KE_HOACH_GOM_COOLDOWN:
-            return
-        if time.time() - luc < KE_HOACH_GOM_COOLDOWN:
+        # Mot dot gom dang chay (cua minh hay cua acc khac deu the) -> de no chay xong. Moi lenh
+        # gom ABORT moi acc dang di duong, ra lien tuc = ca party khong di xong buoc nao (p17).
+        _con = KE_HOACH_GOM_COOLDOWN - (time.time() - luc)
+        if luc and _con > 0:
+            # IM LANG la cach lenh gom bien mat khong dau vet (party 35). Log co cua chong spam:
+            # vong chay moi 2s, khong the in moi nhip.
+            if doi or time.time() - float(st.get("gom_cho_log_luc", 0.0) or 0.0) > 60.0:
+                st["gom_cho_log_luc"] = time.time()
+                log.info("[party %d] DIEU PHOI: van '%s' (%s) nhung dot gom truoc moi ra %.0fs "
+                         "-> CHO them %.0fs roi ra lenh lai (khong dap lenh dang chay)",
+                         pidx + 1, _viec, kh.get("ly_do") or "lech",
+                         KE_HOACH_GOM_COOLDOWN - _con, _con)
             return
         if _viec == VIEC_DONG_BO:
             # TRONG DG: bam `resync_gen` - member roi party + sync kenh lai NGAY TAI CHO, leader
@@ -9767,7 +9946,6 @@ def _dieu_phoi_thi_hanh(pidx, st, kh, doi):
             _bump_reform(st, "dieu phoi: %s -> gom ve cung map/kenh" % (kh.get("ly_do") or "lech"),
                          uu_tien=True)
         st["dieu_phoi_gom_luc"] = time.time()
-        st["dieu_phoi_gom_gen"] = int(st.get("reform_gen", 0))
 
 
 _DIEU_PHOI_THREAD = None
@@ -9809,8 +9987,25 @@ def _dieu_phoi_loop():
     Loi cua mot party khong duoc lam chet ca vong - boc try/except tung party.
     """
     lech_tu = {}
+    _lan_truoc = 0.0
+    _bao_tre_luc = 0.0
     while True:
         time.sleep(KE_HOACH_NHIP)
+        # DONG HO NHIP. Dieu phoi la luong DUY NHAT ra lenh cho ca bot, nen no bi tre = ca bot mu
+        # trong tung ay giay. Do dac 13/09 (250 acc, 50 party): ban than viec quet chi ton 16ms
+        # (0.33ms/party) - so party khong bao gio la van de. Cai lam no tre la GIL: 250 luong acc
+        # ban CPU thi luong nay phai xep hang, quet mot vong co the mat toi 6 giay.
+        # Tung xay ra that (L10, p5 13:15-13:20): mot vong nong cua acc `continue` khong ngu ->
+        # 8.000 vong/giay -> bo doi luong dieu phoi -> ke hoach dong bang 5 phut.
+        _dau = time.time()
+        if _lan_truoc:
+            _tre = _dau - _lan_truoc - KE_HOACH_NHIP
+            if _tre > DIEU_PHOI_TRE_CANH_BAO_SEC and _dau - _bao_tre_luc > 60.0:
+                _bao_tre_luc = _dau
+                log.warning(">>> DIEU PHOI TRE NHIP: vong truoc cach %.1fs (nhip %.1fs, tre %.1fs)"
+                            " - luong dieu phoi dang bi doi CPU (GIL). Ca bot khong nhan lenh moi"
+                            " trong tung ay giay.", _dau - _lan_truoc, KE_HOACH_NHIP, _tre)
+        _lan_truoc = _dau
         try:
             so_party = len(getattr(config, "PARTIES", []) or [])
         except Exception:
@@ -9832,6 +10027,13 @@ def _dieu_phoi_loop():
                 _dieu_phoi_chot_map(pidx, st)
             except Exception as e:
                 log.warning("[party %d] DIEU PHOI loi (bo qua nhip nay): %s", pidx + 1, e)
+        # Quet lau bat thuong -> KHONG phai do so party (0.33ms/party), ma do co party nao do
+        # dang keo vong nay. In ra de con truy, thay vi doan.
+        _lau = time.time() - _dau
+        if _lau > DIEU_PHOI_QUET_LAU_SEC and time.time() - _bao_tre_luc > 60.0:
+            _bao_tre_luc = time.time()
+            log.warning(">>> DIEU PHOI: quet %d party mat %.1fs (binh thuong ~%.0fms) - co party "
+                        "dang keo vong dieu phoi", so_party, _lau, so_party * 0.4)
 
 
 # Dieu phoi gui lai lenh doi kenh cho CUNG mot acc sau bay lau. `switch_channel` tu no da co
@@ -9867,6 +10069,33 @@ def _kenh_doi_duoc_ngay(c, st):
     except Exception:
         pass
     return True
+
+
+def _vi_sao_chua_doi_kenh(c, st):
+    """Cua nao trong `_kenh_doi_duoc_ngay` dang chan - de log noi duoc LY DO, khong im lang.
+
+    Giu DUNG THU TU voi `_kenh_doi_duoc_ngay`: lech nhau la log chi sai cho.
+    """
+    if c is None or not getattr(c, "running", False):
+        return "acc da tat"
+    try:
+        if st is not None and st.get("event_battle_active"):
+            return "CA PARTY dang danh event (doi kenh giua event -> ma 47 -> dut ket noi)"
+    except Exception:
+        pass
+    try:
+        if getattr(c.state, "in_battle", False):
+            return "dang TRONG TRAN"
+        if c._in_battle_end_grace():
+            return "vua ket tran (grace) - cho server giai tran xong"
+    except Exception:
+        pass
+    try:
+        if c.in_combat():
+            return "con dinh combat (idle ngan)"
+    except Exception:
+        pass
+    return "khong ro"
 
 
 def _dp_gui_doi_kenh(c, dich):
@@ -9914,6 +10143,28 @@ def _dieu_phoi_thi_hanh_kenh(pidx, st, song, dich):
     """
     if not dich:
         return 0
+    # CON LECH MAP THI CHUA TOI LUOT KENH. Kenh la thu THEO TUNG MAP: kenh 2 co o map nay nhung
+    # khong co o map kia, nen gui lenh doi kenh cho acc dang o map khac la chac chan hong.
+    #
+    # Cua "dang gom map -> chua chot kenh" o `_dieu_phoi_chot_kenh` chi chan viec CHOT DICH MOI;
+    # no tra ve dich CU, va cho nay van dem dich cu do gui cho MOI acc.
+    #
+    # Ca that 13/09, `thbay` dang o Nghiep Thanh (12061) trong khi party o 21001 (user: "cai do la
+    # no chot kenh ngu, khac map ma di chot lenh"):
+    #   12:55:35 [thbay] Ban Noi Dat: co 271 cai -> di NPC Nha buon Ng.Thanh
+    #   12:55:38 [thbay] Doi kenh 2 THAT BAI: khong co khu do de doi (result=2)
+    #   12:55:51 [thbay] Doi kenh 2 THAT BAI: khong co khu do de doi (result=2)
+    #   ... lap deu moi 12 giay suot ca chuyen di ...
+    # Map 12061 khong he co kenh 2. Lenh hong ma khong dong cua (L8), va no bam theo acc suot
+    # luc no dang lam viec khac.
+    _maps = {int(getattr(c, "current_map", 0) or 0) for _u, c in song
+             if getattr(c, "current_map", None)}
+    if len(_maps) > 1:
+        if time.time() - float(st.get("kenh_cho_map_log", 0.0) or 0.0) > 60.0:
+            st["kenh_cho_map_log"] = time.time()
+            log.info("[party %d] DIEU PHOI: chua gui lenh kenh - party con o %d MAP khac nhau %s "
+                     "(kenh co y nghia theo tung map)", pidx + 1, len(_maps), sorted(_maps))
+        return 0
     bay = time.time()
     n = 0
     for _u, c in song:
@@ -9925,6 +10176,16 @@ def _dieu_phoi_thi_hanh_kenh(pidx, st, song, dich):
             if bay - float(getattr(c, "_dp_gui_kenh_luc", 0.0) or 0.0) < DIEU_PHOI_GUI_LAI_KENH_SEC:
                 continue
             if not _kenh_doi_duoc_ngay(c, st):
+                # IM LANG O DAY = lenh dong bo kenh "ra" ma khong ai nhan, va log chi thay dieu
+                # phoi lap lai "van 'dong_bo' ... CHO them Ns" - khong the biet vi sao khong ai di.
+                # Ca that party 9, 13/09 (user: "p4 p9 lai bi cai loi lech kenh ma deo gom kenh
+                # lai"): 14:46:38 -> 14:53:48, BAY PHUT, khong mot dong `Chuyen kenh ->` nao cua
+                # ca nam acc.
+                _cho = "%s_kenh_cho" % _u
+                if bay - float(st.get(_cho, 0.0) or 0.0) > 60.0:
+                    st[_cho] = bay
+                    log.info("[party %d] DIEU PHOI: CHUA gui lenh doi kenh %s cho %s - %s",
+                             pidx + 1, dich, getattr(c, "_label", _u), _vi_sao_chua_doi_kenh(c, st))
                 continue
             c._dp_gui_kenh_luc = bay
             c._dp_gui_kenh_dang_chay = True
@@ -9968,6 +10229,19 @@ def _dieu_phoi_chot_kenh(pidx, st, song, kh=None):
     #   21:09:30 [party 21] ca party da chung kenh 1 nhung DOI chua du
     #                       (dieu906=4 dieu907=1 dieu908=2 dieu909=3 dieu910=4) -> LAP LAI PARTY
     #   21:11:31 ... 21:13:31 ... 21:15:31 ... 21:17:32   (moi 2 phut, dung bang cooldown)
+    # DANG GOM MAP -> CHUA DEN LUOT KENH. Thu tu user chot: map truoc, kenh sau, roi moi lap doi.
+    #
+    # Ham nay co san phep "khac map thi so kenh vo nghia" (`return None` trong vong dem ben duoi),
+    # nhung do la phep do cua RIENG no tren mot anh chup `song` khac - con `kh` la ket luan cua
+    # dieu phoi trong CUNG nhip. Hai anh chup lech nhau vai tram ms la du de no chot kenh giua luc
+    # ca party dang duoc keo ve mot map (party 7, 11/09).
+    # Con `kenh_dich` cu thi GIU NGUYEN, khong xoa: gom map xong ma van lech kenh thi dung lai no.
+    if kh is not None and (kh.get("viec") == VIEC_GOM or (kh.get("map") and len(
+            {int(getattr(c, "current_map", 0) or 0) for _u, c in song
+             if getattr(c, "current_map", None)}) > 1)):
+        log.debug("[party %d] chot kenh: dang gom MAP (viec=%s) -> chua den luot kenh",
+                  pidx + 1, kh.get("viec"))
+        return st.get("kenh_dich")
     if not _mode_can_lap_doi(pidx):
         with st["lock"]:
             if st.get("kenh_dich"):
@@ -9992,10 +10266,22 @@ def _dieu_phoi_chot_kenh(pidx, st, song, kh=None):
         m = getattr(c, "current_map", None)
         ch = getattr(c, "current_channel", None)
         if m is None or not ch:
-            return None                      # chua ro het -> khong quyet voi
+            # IM LANG O DAY la cach party 9 ket 7 phut: dieu phoi ket luan 'dong_bo' moi nhip
+            # nhung khong bao gio chot duoc dich, nen khong co lenh nao duoc gui.
+            # (Bac map o `_dieu_phoi_quyet` gio da giu lai truong hop nay, day chi la luoi do.)
+            if time.time() - float(st.get("chot_kenh_thieu_log", 0.0) or 0.0) > 60.0:
+                st["chot_kenh_thieu_log"] = time.time()
+                log.info("[party %d] DIEU PHOI: chua chot duoc kenh dich - %s chua biet %s",
+                         pidx + 1, getattr(c, "_label", _u),
+                         "map" if m is None else "kenh")
+            return None
         if map_chung is None:
             map_chung = int(m)
         elif int(m) != map_chung:
+            if time.time() - float(st.get("chot_kenh_thieu_log", 0.0) or 0.0) > 60.0:
+                st["chot_kenh_thieu_log"] = time.time()
+                log.info("[party %d] DIEU PHOI: chua chot kenh dich - con lech map (%s o %s, "
+                         "nguoi khac o %s)", pidx + 1, getattr(c, "_label", _u), m, map_chung)
             return None                      # khac map thi so kenh vo nghia
         dem[int(ch)] = dem.get(int(ch), 0) + 1
     if len(dem) <= 1:

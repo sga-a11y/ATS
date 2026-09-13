@@ -627,6 +627,23 @@ Thi hành xong một lệnh thì **ngủ một nhịp điều phối** rồi m�
 > vòng/giây, 201.495 lần**, ăn hết GIL nên **bỏ đói luôn luồng điều phối** — kế hoạch đóng băng ở
 > `viec=gom` suốt 5 phút dù party đã chung kênh. Vòng nóng tự nuôi chính nó (p5, 13:15–13:20).
 
+**Đo đạc 13/09 (250 acc / 50 party)** — điều phối tự nó rất nhẹ, cái giết nó là GIL:
+
+| | một vòng quét |
+|---|---|
+| điều phối chạy một mình | **16 ms** (0,33 ms/party) |
+| 250 acc chờ socket là chính | 15 ms |
+| 250 acc bận vừa | 61 ms |
+| 250 acc bận nhiều | **2,3 s** — trễ hơn nhịp 2 s |
+| 250 acc bận liên tục | **4,7 s** (đỉnh 6,3 s) |
+
+Suy ra: **số party không bao giờ là vấn đề** (500 party vẫn chưa tới 200 ms), và **tách mỗi party
+một luồng điều phối không giúp gì** — chỉ thêm luồng vào đúng cái hàng đang tắc, lại phá L1 (một
+chỗ quyết). Việc phải làm là giữ vòng của acc luôn có nhịp ngủ.
+
+Luồng điều phối giờ tự bấm giờ: trễ quá `DIEU_PHOI_TRE_CANH_BAO_SEC` thì log cảnh báo (bị đói
+CPU), quét lâu quá `DIEU_PHOI_QUET_LAU_SEC` thì log riêng (có party kéo dài vòng quét).
+
 ### L11 — Lệnh phải ĐÚNG LOẠI với ngữ cảnh
 
 Cùng một mục tiêu, mỗi ngữ cảnh có cách làm khác nhau. Ra lệnh sai loại thì không ai thi hành được.
@@ -661,6 +678,62 @@ Thiếu dữ liệu phải trả về *không biết* và xử lý như *không 
 > Sửa đúng: đọc HP của **chính từng acc** (`state.char`) — luôn có, không phụ thuộc gói `0x0b`.
 
 ---
+
+### L14 — Acc KHÔNG được chọn lệnh nào nghe, lệnh nào nuốt
+
+Acc chỉ được bỏ qua đúng những lệnh **chính nó đã thi hành xong**. Trạng thái riêng của acc ("tôi
+đang đứng đúng map rồi") **không phải căn cứ** để kết luận một lệnh cấp party hết ý nghĩa — điều
+phối nhìn cả party, acc chỉ nhìn thấy mình.
+
+> Vi phạm thật (p7, 11/09): vào vòng chính, `reform_gen_handled = max(startup, reform_gen) if
+> c.current_map == sc` → ba member vừa được leader kéo tới đúng train map liền **vứt sạch lệnh gom
+> gen 2**. Chúng nhận nhánh L0 *"DỪNG việc chính"* rồi đứng im hai phút, trong khi hai đứa kia đi
+> về thành một mình.
+>
+> Bản vá đầu (thêm `not _dang_co_lenh_gom`) chỉ cứu đúng một trường hợp — mọi dạng lệnh khác vẫn bị
+> nuốt. Xoá hẳn quyền suy luận mới hết (13/09).
+
+### L15 — Acc KHÔNG có vòng tự chờ cấp party
+
+Acc không được tự đặt ra một điều kiện ("đủ người sẵn sàng", "cả party xong daily") rồi đứng đợi
+điều kiện đó. Chờ **trong lúc thi hành một lệnh** thì được (đang gom thì đợi mọi người tới điểm
+hẹn, có hạn) — chờ **trước khi chịu làm việc** thì không.
+
+Hai cách sửa dưới đây đều SAI, đã thử cả hai trong ngày 13/09:
+
+1. giữ vòng chờ, gắn thêm cửa thoát khi `reform_gen` đổi;
+2. giữ vòng chờ, chuyển việc **đếm** sang cho điều phối.
+
+Cả hai vẫn để acc đứng yên chờ, chỉ đổi người đặt điều kiện. **Thứ phải bỏ là hành động tự chờ.**
+
+Thiếu người / lệch map / lệch kênh là thứ điều phối đọc mỗi 2 giây và ra lệnh theo chuỗi
+*gom map → gom kênh → mời → đi train → ra điểm quái*. Không acc nào cần canh trước.
+
+Hệ quả: **sai map là một TRẠNG THÁI, không phải một việc** — với leader y hệt member. Acc sai map
+ra vòng chính mà nghe lệnh, không tự lập vòng reform.
+
+> Vi phạm thật — cùng party 48, cùng triệu chứng *"ko lập pt"*, cách nhau 5 ngày:
+>
+> - 08/09: barrier `while True` → `CHO ca party xong daily (2/5)` lặp 4 phút trong khi điều phối
+>   liên tục kêu thiếu đội.
+> - 13/09: nhánh leader sai map còn `while c.running: _do_reform; sleep(5)` → dt901 (LEADER) kẹt
+>   trong đó, **5 giây một lần teleport → `leave_party()`**, in `KHONG o party nao ...` không dứt
+>   từ 10:42:05 đến hết log. Điều phối ra lệnh `LAP LAI PARTY` đều đặn, không ai thi hành. Trước đó
+>   party này đứng `THIEU NGUOI (1/4)` từ 07:56 đến 10:30 — hơn hai tiếng rưỡi, watcher ép đồng bộ
+>   hàng chục lần hoàn toàn vô ích, cùng một nguyên nhân.
+>
+> Vòng thứ ba xoá cùng đợt: `while _dem_san_sang(pidx) < st["n_members"]` — leader tự định nghĩa
+> "đủ sẵn sàng", tự chờ, **và tự gọi `_do_reform` trong lúc chờ**, tức tự chọn luôn thời điểm gom.
+
+> Vi phạm thật — cùng party 48, cùng triệu chứng *"ko lập pt"*, cách nhau 5 ngày:
+>
+> - 08/09: `while True` barrier daily → `CHO ca party xong daily (2/5)` lặp 4 phút trong khi điều
+>   phối liên tục kêu thiếu đội.
+> - 13/09: nhánh leader sai map còn `while c.running: _do_reform; sleep(5)` → dt901 (LEADER) kẹt
+>   trong đó, **5 giây một lần teleport → `leave_party()`**, in `KHONG o party nao ...` không dứt
+>   từ 10:42:05 đến hết log. Điều phối ra lệnh `LAP LAI PARTY` đều đặn, không ai thi hành. Trước đó
+>   party này đứng `THIEU NGUOI (1/4)` từ 07:56 đến 10:30 — hơn hai tiếng rưỡi, watcher ép đồng bộ
+>   hàng chục lần hoàn toàn vô ích, cùng một nguyên nhân.
 
 ## Trước khi viết code: năm câu phải trả lời
 

@@ -166,9 +166,16 @@ class TestGiuDichKhiDangBayGiuaKenh(unittest.TestCase):
         song = self._song([5, 5, 7, 7, 7])
         self.assertIsNotNone(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song))
 
-    def test_chua_co_dich_thi_tra_None_chu_khong_no(self):
+    def test_chua_co_dich_thi_VAN_PHAI_CHOT(self):
+        """Guard "dang bay giua hai kenh -> giu nguyen dich" chi co nghia khi DA CO dich.
+
+        Chua co ma van thoat thi khong bao gio chot noi dich DAU TIEN -> khong mot lenh doi kenh
+        nao duoc gui. Ca that party 2, 13/09 (user: "p2 van ko dong bo kenh"): sga001-004 kenh 1,
+        sga006 kenh 2, cung map 12932 - khong mot dong `CHOT kenh dich` nao trong ca chuc phut.
+        """
         song = self._song([5, 5, 7, 7, 7], dang_doi=(2,))
-        self.assertIsNone(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song))
+        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 7,
+                         "chua co dich ma van thoat -> party lech kenh vinh vien")
 
 
 class TestMoiKetQuaDoiKenhDeuDuocXU_LY(unittest.TestCase):

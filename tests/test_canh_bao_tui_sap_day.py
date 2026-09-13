@@ -103,9 +103,10 @@ class TestNutChuYMauCam(unittest.TestCase):
             self.assertIn(k, khoi)
 
     def test_PC_nut_doc_theo_ham_chung(self):
-        # 04/09: gia tri nay gio tinh MOT LAN o tren (dung chung voi cham party/nhom), nut chi
-        # dung lai - nen kiem NGUON tinh chu khong kiem dong gan cho rieng nut nua.
-        self.assertIn("_gap_notify = self._party_notify_gap(pidx)", _gui())
+        # 04/09: gia tri nay tinh MOT LAN o tren (dung chung voi cham party/nhom), nut chi dung
+        # lai. 13/09: tinh THANG tu danh sach chu y da dung san (co cache) thay vi goi lai
+        # `_party_notify_gap` - xem `test_PC_dung_danh_sach_chu_y_MOT_LAN`.
+        self.assertIn("_gap_notify = any(it.get(k) for _nu, it in _notify_items", _gui())
 
     def test_PC_khong_con_chi_xet_ba_dau(self):
         self.assertNotIn("_gap = bool(ctrl.ba_dau_notify_items(pidx))", _gui())
@@ -116,7 +117,7 @@ class TestNutChuYMauCam(unittest.TestCase):
         tab khong biet party nao dang co viec, phai bam vao tung party moi thay.
         """
         g = _gui()
-        self.assertIn("_gap_notify = self._party_notify_gap(pidx)", g)
+        self.assertIn("_gap_notify = any(it.get(k) for _nu, it in _notify_items", g)
         self.assertIn("_cam = _lech_agi or (_gap_notify and _du_acc)", g,
                       "cham party phai xet ca chu y CAM, khong chi lech AGI")
         self.assertIn("self._dot_agi if _cam else", g, "cham PARTY phai dung _cam")
@@ -126,12 +127,32 @@ class TestNutChuYMauCam(unittest.TestCase):
         self.assertIn("cam_groups.add(gidx)", g[i:i + 120],
                       "party CAM phai keo theo nhom CAM")
 
-    def test_PC_KHONG_goi_party_notify_gap_hai_lan(self):
-        """`_party_notify_gap` duyet toan bo acc cua party; refresh chay lien tuc nen goi 2 lan
-        moi vong la phi. Nut "Chu y" phai dung LAI bien da tinh cho cham."""
+    def test_PC_dung_danh_sach_chu_y_MOT_LAN(self):
+        """Danh sach chu y dung tu NAM nguon (tui / Ba Dau / quan doan / du diem / safe) cho tung
+        acc. `_refresh` chay MOI GIAY va duyet MOI party, nen dung no hai lan (mot cho cham party,
+        mot cho nut "Chu y") la 100 luot/giay voi 50 party - ngay tren main thread cua Tk.
+
+        User 13/09: "click doi party thay do rat lau moi load ra" -> "con bi not responding luon"
+        (doi tab goi thang `_refresh()` nen cai gia do roi dung vao luc click).
+        """
         g = _gui()
-        self.assertEqual(g.count("self._party_notify_gap(pidx)"), 1)
+        self.assertEqual(g.count("self._party_notify_gap(pidx)"), 0,
+                         "lai dung danh sach chu y them mot lan nua")
+        self.assertEqual(g.count("self._party_notify_count(pidx)"), 0)
+        self.assertEqual(g.count("self._notify_cache[pidx] = self._party_notify_items(pidx)"), 1)
+        self.assertIn("_ncnt = len(_notify_items)", g, "nut phai dung LAI danh sach da dung")
         self.assertIn("_gap = _gap_notify", g)
+
+    def test_PC_dung_MOT_LAN_roi_giu_luon(self):
+        """User 13/09: "cai chu y, m chi can dung len 1 lan luc log in la dc roi, cai day dau co
+        thay doi nhieu trong luc chay dau, khoi can load lai"."""
+        g = _gui()
+        i = g.find("if pidx not in self._notify_cache:")
+        self.assertGreater(i, 0, "van dung lai danh sach chu y trong vong refresh")
+        khoi = g[i:i + 300]
+        self.assertIn("self._notify_cache[pidx] = self._party_notify_items(pidx)", khoi)
+        self.assertNotIn("_AGI_CACHE_SEC", khoi, "khong con dung lai theo dong ho")
+        self.assertNotIn("time.time()", khoi)
 
     def test_APK_du_ba_loai(self):
         s = _kt("MainActivity.kt")

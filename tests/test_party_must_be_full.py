@@ -26,21 +26,24 @@ class TestPartyMustBeFull(unittest.TestCase):
         self.assertIn('if via_route and _joined_now >= st["n_members"]:', SRC)
         self.assertIn("_joined_now = joined_member_count(pidx)", SRC)
 
-    def test_thieu_member_thi_ROI_VAO_vong_cho_chu_khong_bo_qua(self):
-        """Nhanh thieu nguoi phai di tiep vao vong cho du member san sang.
+    def test_thieu_member_thi_DI_MOI_LAI_chu_khong_bo_qua(self):
+        """Nhanh thieu nguoi phai di tiep xuong doan MOI, khong duoc coi nhu da du.
 
-        Tu 07/09 dem bang `_dem_san_sang(pidx)` - doc THANG `_san_sang_party` tren tung client,
-        khong con bang `ready_members` cap party (bang do om stale qua cac lan relogin)."""
+        Truoc 13/09 nhanh nay roi vao vong `while _dem_san_sang(pidx) < st["n_members"]` - leader
+        tu dat dieu kien "du san sang" roi tu cho, va tu goi `_do_reform` trong luc cho. Da xoa
+        (xem `test_vong_cho_thoat_khi_co_lenh.py`): gio leader moi luon, con thieu nguoi / lech
+        map / lech kenh la viec dieu phoi ra lenh."""
         i = SRC.index('if via_route and _joined_now >= st["n_members"]:')
-        khoi = SRC[i:i + 2000]
-        # sau nhanh du nguoi phai co `else:` roi toi vong cho
+        khoi = SRC[i:i + 2500]
         self.assertIn("else:", khoi)
         vi_tri_else = khoi.index("else:")
-        vi_tri_vong = khoi.index('while _dem_san_sang(pidx) < st["n_members"]:')
-        self.assertLess(vi_tri_else, vi_tri_vong,
-                        "nhanh thieu nguoi KHONG roi vao vong cho -> van train thieu")
-        # va phai canh bao ro
+        vi_tri_moi = khoi.index("member san sang -> MOI (theo entity)")
+        self.assertLess(vi_tri_else, vi_tri_moi,
+                        "nhanh thieu nguoi KHONG di moi lai -> van train thieu")
         self.assertIn("KHONG train thieu, cho + moi lai cho du", khoi)
+
+    def test_thieu_nguoi_KHONG_con_vong_tu_cho(self):
+        self.assertNotIn('while _dem_san_sang(pidx) < st["n_members"]:', SRC)
 
     def test_relogin_hang_loat_duoc_GIAN_CACH(self):
         """5 acc cung wait=1 -> server chan toc do. Phai xep hang theo vi tri trong party."""

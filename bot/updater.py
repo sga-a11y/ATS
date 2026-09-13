@@ -35,11 +35,6 @@ EXTRA_ZIP_URLS = [u.strip() for u in (GOOGLE_DRIVE_ZIP_URL,) if u.strip()]
 # server/map moi (nam trong JSON) moi den duoc user cu. Release chua aTSBot.zip = noi dung folder.
 _FALLBACK_ZIP_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot.zip"
 _FALLBACK_BUNDLE_URL = "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/aTSBot-bundle.zip"
-_DEFAULT_MAP_GROUP = "Chưa phân nhóm"
-
-
-def _is_default_map_group(value) -> bool:
-    return str(value or "").strip() in ("", _DEFAULT_MAP_GROUP)
 
 
 def running_exe() -> str:
@@ -366,41 +361,19 @@ def _as_url_list(urls):
 
 
 def _merge_user_config(live_dir: str, stage_dir: str):
-    """GIU config user khi update (option A - user-wins union). Cac file map user tu them/sua
-    (train_maps.json, train_routes.json) neu bi ghi de se MAT config -> gop: map/route nao user
-    DA CO thi giu ban user; chi THEM key MOI tu ban update. Ghi ket qua vao file STAGING (xcopy
-    se copy ban da gop -> khong mat config, van nhan map/route moi cua dev).
-    Loi merge (thieu file / json hong) -> bo qua, giu nguyen ban staging (khong lam hong update)."""
-    for fname, subkey in (("train_maps.json", "maps"), ("train_routes.json", "routes")):
-        live_p = os.path.join(live_dir, fname)
-        stage_p = os.path.join(stage_dir, fname)
-        if not (os.path.exists(live_p) and os.path.exists(stage_p)):
-            continue
-        try:
-            with open(live_p, encoding="utf-8") as f:
-                live = json.load(f)
-            with open(stage_p, encoding="utf-8") as f:
-                stage = json.load(f)
-            live_sub = live.get(subkey)
-            stage_sub = stage.get(subkey)
-            if not isinstance(live_sub, dict) or not isinstance(stage_sub, dict):
-                continue
-            merged = dict(stage_sub)   # ban update lam nen (co key MOI cua dev)
-            merged.update(live_sub)    # USER WINS: key trung -> lay ban user; key user-only giu lai
-            # NHOM (chi train_maps): map user DA phan nhom -> giu nhom user; map user CHUA phan nhom
-            # (khong co 'group') ma ban tai ve DA co nhom -> lay nhom ban tai ve.
-            if subkey == "maps":
-                for k, u in live_sub.items():
-                    s = stage_sub.get(k)
-                    if (isinstance(u, dict) and isinstance(s, dict)
-                            and _is_default_map_group(u.get("group")) and s.get("group")):
-                        e = dict(merged.get(k, u)); e["group"] = s["group"]; merged[k] = e
-            stage[subkey] = merged
-            with open(stage_p, "w", encoding="utf-8") as f:
-                json.dump(stage, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+    """DU LIEU MAP LA CUA DEV - ban tai ve LUON DE len ban cua user (user 13/09: "luon tai file
+    moi ve de file cu cua user").
 
+    Truoc day `train_maps.json` / `train_routes.json` gop kieu user-wins: key nao may user DA CO
+    thi giu ban user, chi them key MOI. Hai file nay lai chinh la noi dev sua safe / diem quai /
+    route sau khi boc lai pcap -> may user da tung chay map do thi VINH VIEN ket ban cu, va bug
+    duong di da sua o dev khong bao gio den duoc user. Nen gio KHONG gop nua: de nguyen ban
+    staging cho xcopy ghi de.
+
+    (`train_block_stats.json` von khong nam trong ham nay - no da bi ghi de binh thuong.)
+
+    Con lai o day: `dangerous_npcs.json` - danh sach NPC nguy hiem user TU them tay, khong phai
+    du lieu boc tu game -> van gop (union), khong de mat."""
     live_p = os.path.join(live_dir, "dangerous_npcs.json")
     stage_p = os.path.join(stage_dir, "dangerous_npcs.json")
     if os.path.exists(live_p) and os.path.exists(stage_p):
@@ -473,8 +446,8 @@ def download_and_swap(url: str, on_progress=None):
     with zipfile.ZipFile(zip_path) as z:
         z.extractall(stage)
 
-    # 2b) GIU config user (train_maps/train_routes user tu them/sua) - gop vao ban staging TRUOC khi
-    # xcopy ghi de. Khong co buoc nay -> user config map bi ban tai ve de mat (option A user-wins).
+    # 2b) Gop DANH SACH NPC NGUY HIEM user tu them tay vao ban staging. Du lieu map/route thi
+    # KHONG gop - ban tai ve de thang len ban cu (xem `_merge_user_config`).
     _merge_user_config(d, stage)
 
     # 3) bat: TASKKILL exe (bootstrap onefile khong tu chet bang os._exit -> giu khoa file) -> xcopy
