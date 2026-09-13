@@ -87,7 +87,10 @@ class TestAiPhaiCho(_Nen):
 
     def test_thieu_acc_chua_login(self):
         R.account_clients["a1"] = _C(150)
-        self.assertEqual(R._acc_thieu_level(self.PARTY), ["a2", "a3"])
+        # Moi muc kem LY DO (acc nay thieu gi) - xem `test_noi_ro_vi_sao_chua_chot_bai.py`.
+        _t = R._acc_thieu_level(self.PARTY)
+        self.assertEqual([x.split("(")[0] for x in _t], ["a2", "a3"])
+        self.assertTrue(all("(" in x for x in _t), "khong noi ro thieu gi: %s" % _t)
 
     def test_CHUA_xac_nhan_pet_thi_KHONG_cho_nua(self):
         """User 14/09: "chon bai train thi dua vao lv nhung con hien tai thoi, dua nao thieu pet

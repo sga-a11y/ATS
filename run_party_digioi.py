@@ -1387,6 +1387,9 @@ def _acc_cho_level(pidx):
 def _acc_thieu_level(pidx):
     """Acc chua san sang gop level = CHUA CO CHAR LEVEL. Pet KHONG tinh.
 
+    Tra list mo ta `"<acc>(<thieu gi>)"` - khong phai ten tron. Ca ba cho goi deu chi dem va LOG,
+    ma "thieu" ma khong noi thieu gi thi doc log van phai doan tiep.
+
     User 14/09: "chon bai train thi dua vao lv nhung con hien tai thoi, dua nao thieu pet thi ke
     me no di".
 
@@ -1408,12 +1411,49 @@ def _acc_thieu_level(pidx):
         if c is None:
             lv = (account_last.get(username) or {}).get("char_level")
             if not (isinstance(lv, int) and lv > 0):
-                thieu.append(username)
+                thieu.append("%s(chua login, khong co ban luu)" % username)
             continue
         lv = getattr(c, "char_level", None)
         if not (isinstance(lv, int) and lv > 0):
-            thieu.append(username)
+            thieu.append("%s(char_level=%r)" % (username, lv))
     return thieu
+
+
+# Chan chot bai lau hon bay nhieu giay thi PHAI NOI RA (moi 60s mot dong).
+CHOT_BAI_BI_CHAN_BAO_SEC = 60.0
+
+
+def _bao_chan_chot(pidx, st, viec, thieu):
+    """Noi ro VI SAO chua chot duoc cap quai DG / map train, thay vi `return None` cam lang.
+
+    Hai ham chot deu tra None im lang khi thieu level. Chung chay MOI 2 GIAY, nen mot lan chan keo
+    dai la hang tram lan tra None ma KHONG DE LAI MOT DONG NAO - den luc di truy thi chi con nuoc
+    doan.
+
+    Ca that party 29, 14/09 (user: "p29 thay lap party o trac quan"): party start 23:55:36, mai
+    00:23:07 moi co dong `TU CHON MAP` - 27 phut, khoang 810 lan tra None trong im lang. Suot do
+    `auto_train` rong -> dieu phoi khong biet map train dich -> khong biet thanh tap ket -> ca
+    party lap party o Trac Quan (12001) roi teleport lam tan doi, quay vong. Truy nguoc khong ra
+    vi khong co du lieu: pet da xac nhan du ca 5 acc tu 23:55:41, khong exception, khong reconnect.
+
+    Chi LOG, khong doi hanh vi.
+    """
+    if not thieu:
+        st.pop("chot_chan_tu", None)
+        st.pop("chot_chan_log", None)
+        return
+    _tu = float(st.get("chot_chan_tu", 0.0) or 0.0)
+    if not _tu:
+        st["chot_chan_tu"] = _tu = time.time()
+    _lau = time.time() - _tu
+    if _lau < CHOT_BAI_BI_CHAN_BAO_SEC:
+        return
+    if time.time() - float(st.get("chot_chan_log", 0.0) or 0.0) < CHOT_BAI_BI_CHAN_BAO_SEC:
+        return
+    st["chot_chan_log"] = time.time()
+    log.warning("[party %d] DIEU PHOI: CHUA CHOT DUOC %s sau %.0fs - dang cho level cua %d acc: %s"
+                " (ca party dung cho: khong biet map train dich thi khong biet thanh tap ket)",
+                pidx + 1, viec, _lau, len(thieu), ", ".join(sorted(thieu)))
 
 
 def _cho_du_level_party(pidx, username, stopped, viec):
@@ -1879,6 +1919,7 @@ def _auto_dg_level(pidx, pick_mode, username=None, stopped=None):
     #  chung: `PARTY 1: TU CHON CAP QUAI DG -> cap 150 (level party [167, 197])` - party 5 acc
     #  ma chi co 2 so. Chot 1 lan/phien nen sai la sai den luc restart bot.)
     _thieu = _acc_thieu_level(pidx)
+    _bao_chan_chot(pidx, st, "CAP QUAI DG", _thieu)
     if _thieu:
         return None
     # CHO NGOAI lock: giu lock ma ngu 1s/vong la treo moi thu khac cham vao party state.
@@ -1932,7 +1973,9 @@ def _auto_train_target(pidx, pcfg, username=None, stopped=None):
         if cur:
             return cur
     # CHUA DU LEVEL CA PARTY -> KHONG CHOT (xem _auto_dg_level).
-    if _acc_thieu_level(pidx):
+    _thieu = _acc_thieu_level(pidx)
+    _bao_chan_chot(pidx, st, "MAP TRAIN", _thieu)
+    if _thieu:
         return None
     # CHO NGOAI lock (xem _auto_dg_level).
     if username is not None and stopped is not None:

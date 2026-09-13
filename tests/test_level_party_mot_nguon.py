@@ -83,7 +83,8 @@ class TestPetKhongChanChotBai(_Nen):
         for u in self.ACCS:
             R.account_clients[u] = _C(150, pet_level=178)
         R.account_clients["z3"] = _C(None)
-        self.assertEqual(R._acc_thieu_level(self.PARTY), ["z3"])
+        _t = R._acc_thieu_level(self.PARTY)
+        self.assertEqual([x.split("(")[0] for x in _t], ["z3"])
 
 
 class TestKhongLoaiAccKhoiPhepTinh(_Nen):
