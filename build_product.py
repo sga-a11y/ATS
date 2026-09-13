@@ -520,6 +520,36 @@ def _gh_post(url, token, data=None, ctype="application/json"):
         return json.loads(r.read().decode("utf-8"))
 
 
+def _gh_get(url, token):
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
+               "User-Agent": "atsbot-build"}
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _gh_delete(url, token):
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
+               "User-Agent": "atsbot-build"}
+    req = urllib.request.Request(url, headers=headers, method="DELETE")
+    urllib.request.urlopen(req, timeout=120).read()
+
+
+def _release_theo_tag(token, tag):
+    """Release cua `tag` neu DA CO tren GitHub, None neu chua.
+
+    GitHub co the tra 5xx SAU KHI da tao release (lan sau goi lai thi 422 <tag da ton tai>) - luc
+    do release CO THAT nhung RONG, khong asset nao. Bo cuoc o day = user thay ban moi tren trang
+    release ma khong tai duoc gi.
+    Da xay ra hai lan lien (13/09, v1.1.202609131542 va v1.1.202609131614).
+    """
+    try:
+        return _gh_get("https://api.github.com/repos/%s/releases/tags/%s" % (RELEASE_REPO, tag),
+                       token)
+    except Exception:
+        return None
+
+
 def upload_release():
     """Tao GitHub release (tag = version) + upload aTSBot.exe + version.json. Token lay tu
     git credential (tai dung token dang push). Loi -> in huong dan up thu cong, KHONG fail build."""
@@ -546,9 +576,17 @@ def upload_release():
             break
         except Exception as e:
             _loi = e
+            # DA CO release cho tag nay chua? GitHub tra 5xx SAU KHI tao xong la chuyen thuong -
+            # luc do release ton tai nhung RONG. Lay no ra ma upload tiep, dung tao lai.
+            _da_co = _release_theo_tag(token, tag)
+            if _da_co is not None:
+                print("   release %s DA CO san tren GitHub (loi truoc do la gia) -> upload tiep"
+                      % tag)
+                rel = _da_co
+                break
             _ma = getattr(e, "code", None)
             if _ma is not None and 400 <= int(_ma) < 500:
-                break                      # tag trung / khong quyen -> retry cung the
+                break                      # khong quyen / du lieu sai -> retry cung the
             print("!! Tao release loi (lan %d/4): %s -> thu lai sau %ds" % (_lan + 1, e, 5 * (_lan + 1)))
             time.sleep(5 * (_lan + 1))
     if rel is None:
@@ -559,6 +597,9 @@ def upload_release():
               % (tag, ROOT, ROOT, DIST, DIST, ROOT, RELEASE_REPO))
         raise SystemExit("build DUNG: release chua len, user se khong thay ban moi")
     rid = rel["id"]
+    # Asset TRUNG TEN tu lan build hong truoc -> GitHub tra 422. Xoa cai cu roi up lai, khong thi
+    # release ket o trang thai nua voi mai.
+    _cu = {a.get("name"): a.get("id") for a in (rel.get("assets") or [])}
     _hong = []
     for path in (os.path.join(ROOT, NAME + ".zip"), os.path.join(ROOT, BUNDLE_RELEASE_NAME),
                  os.path.join(DIST, NAME + ".exe"),
@@ -566,6 +607,13 @@ def upload_release():
         if not os.path.exists(path):
             continue
         name = os.path.basename(path)
+        if name in _cu:
+            try:
+                _gh_delete("https://api.github.com/repos/%s/releases/assets/%s"
+                           % (RELEASE_REPO, _cu[name]), token)
+                print("   xoa asset cu %s (build truoc up do dang)" % name)
+            except Exception as e:
+                print("!! Xoa asset cu %s loi: %s" % (name, e))
         up = ("https://uploads.github.com/repos/%s/releases/%d/assets?name=%s"
               % (RELEASE_REPO, rid, name))
         _ok = False
