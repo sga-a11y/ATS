@@ -5529,7 +5529,27 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # KHONG lap party/sync kenh (bo qua het nhanh leader/member ben duoi). Auto-accept moi tay
             # xu ly o client (0x2f). training_started=False -> keepalive KHONG danh chu dong.
             c.flee_mode = False
-            log.info("[%s] (%s) EVENT -> dung yen tai map event, cho moi tay (auto-accept)", label, role)
+            # NOI RO VI SAO dung yen, khong thi nhin log tuong bot treo. Hay gap nhat: event CO
+            # danh theo party (`party_battle.kind`) nhung party CHUA DAT LEADER -> `_is_party_event`
+            # tra False -> roi vao day va cho nguoi mo i tay.
+            #
+            # Ca that APK, 13/09 (user: "ban apk ko thay di danh"): quanmot dung o map 12922
+            # (thap Nhi Kieu) 8 phut, `pos=None ... combat=False` moi 5 giay. `event_hom_nay
+            # ('nhi_kieu')` co du `kind='floor_crawl'`, chi thieu moi leader.
+            _kind_ev = ((ev or {}).get("party_battle") or {}).get("kind")
+            if _kind_ev and not has_leader:
+                # `PARTY_LEADER_ACC[pidx]` = acc o SLOT DAU cua party; khong co = party dat
+                # "Khong co chu PT" (APK: `noLeader`, PC: `no_leader_var`). In ro ca hai de khong
+                # phai mo cau hinh ra doi chieu.
+                log.warning("[%s] (%s) EVENT '%s' CO danh theo party (kind=%s) nhung party %d "
+                            "KHONG CO LEADER (leader=%r, acc slot dau=%r) -> dung yen cho moi tay."
+                            " Bo tick 'Khong co chu PT' de bot tu lap party va danh.",
+                            label, role, (ev or {}).get("name") or pcfg.get("event_key") or "?",
+                            _kind_ev, pidx + 1, config.PARTY_LEADER_ACC.get(pidx),
+                            next((u for u, _p, _l, _k in party_accounts(pidx)), None))
+            else:
+                log.info("[%s] (%s) EVENT -> dung yen tai map event, cho moi tay (auto-accept)",
+                         label, role)
         elif digioi_solo:
             # Di Gioi SOLO cho mang toi 4 pet ra tran CUNG LUC (khac han 1 pet binh thuong) - moi
             # con 1 atype rieng (0,1,3,4), can nhanh combat rieng (combat.decide_multipet, xem

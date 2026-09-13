@@ -255,7 +255,15 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
             if (party.digioiSolo) "solo" else "party",
             if (party.digioiSolo) false else !party.noLeader,
         )
-        RunModes.EVENT -> ModeCfg("event", 0, 0, -1, party.cityKey, "party", false)
+        // hasLeader PHAI doc `party.noLeader` nhu TRAIN/DIGIOI - truoc day hardcode `false`, nen
+        // MOI party chay event tren APK deu bi coi la KHONG CO LEADER du user khong tick gi.
+        // `_is_party_event()` ben Python doi `has_leader` -> tra None -> acc roi vao
+        // `event_stand_mode` = dung yen cho nguoi moi tay, khong bao gio tu lap party de danh.
+        // Ca that 13/09 (user: "ban apk ko thay di danh" -> "quanmot la leader, ma ngu vay"):
+        //   16:30:10 [quanmot] (member) EVENT -> dung yen tai map event, cho moi tay (auto-accept)
+        //   16:30:15..16:38:21 (member) pos=None map=12922 combat=False   <- 8 phut, moi 5 giay
+        // Ban PC khong dinh vi `gui.py` doc dung `no_leader_var`.
+        RunModes.EVENT -> ModeCfg("event", 0, 0, -1, party.cityKey, "party", !party.noLeader)
         else -> ModeCfg("stand", 0, 0, -1, "", "party", false)
     }
 
