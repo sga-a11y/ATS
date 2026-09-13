@@ -10428,15 +10428,22 @@ def _dieu_phoi_chot_kenh(pidx, st, song, kh=None):
     #   20:38:14 [haba] Loan dau: cho ghep tran qua 900s khong vao -> dung
     # Ba dong do cach nhau 15 phut - mat tron mot luot loan dau.
     # (Guard LOAN DAU da chuyen len DAU HAM - phai chan TRUOC ca nhanh "lap lai party", xem o do.)
-    # TRONG THAP 2K THI KHONG RA LENH DOI KENH (L11). "Kenh" o day la instanceId cua tang, khong
-    # phai kenh the gioi: server tra `result=2` <khong co khu do> hoac `result=3` <dang to doi>.
-    # Muon cung instance thi phai DI CUNG NHAU QUA CONG, khong phai doi kenh. Ra lenh doi kenh o
-    # day chi lam TAN DOI roi leader di mot minh (party 5, 06/09, hai lan: 16:34 va 17:16).
-    if _tang_gom_2k(pidx, song) is not None:
-        with st["lock"]:
-            st["kenh_dich"] = None
-            st["kenh_dich_luc"] = 0.0
-        return None
+    # (XOA 13/09 cua "TRONG THAP 2K THI KHONG RA LENH DOI KENH".)
+    #
+    # Cua do xoa luon `kenh_dich` va tra None cho MOI truong hop dang o trong thap. Nhung toi day
+    # thi `len(dem) > 1` roi - tuc party DANG LECH KENH that. Xoa dich luc do = ben quyet bao
+    # "dong bo kenh" con ben nay bao "khong co dich", lenh ra ma khong ai thi hanh duoc (L1: mot
+    # party mot ket luan).
+    #
+    # Ca that party 52, 13/09 (user: "biet khac kenh roi ma van deo xu ly duoc"):
+    #   15:41:04 [party 52] gen 3: pha=event map=12922 viec=dong_bo - cung map nhung LECH KENH
+    #                       [1, 2] -> gom kenh truoc khi moi
+    #   15:42:07 / 15:43:07 / 15:44:09 / 15:45:11 / 15:46:11 / 15:47:12  lap mai, khong mot dong
+    #   `CHOT kenh dich` nao.
+    #
+    # LUAT CHUNG, KHONG CO NGOAI LE (user 13/09: "logic co ban o moi noi: lech map thi dong bo
+    # map, lech kenh thi dong bo kenh, roi den lap party"). Con "cung kenh roi ma khac TANG" thi
+    # da duoc lo o nhanh `len(dem) <= 1` ben tren (gom tang), khong dinh gi toi day.
     # DU PARTY ROI -> KHONG DUNG VAO KENH NUA (user chot 07/09: "du pt va di danh roi van di doi
     # kenh tiep, m co can code ngu the ko").
     #

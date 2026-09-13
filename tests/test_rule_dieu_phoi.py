@@ -86,15 +86,37 @@ class TestL0_LuatToiThuong(unittest.TestCase):
         j = than.find('kq in ("ket", "dut")')
         self.assertIn("return", than[j:j + 200])
 
-    def test_trong_thap_2K_KHONG_ra_lenh_doi_kenh(self):
-        """"Kenh" trong thap la instanceId cua tang - doi kenh la lenh SAI LOAI, chi lam tan doi.
-        Muon cung instance thi phai DI CUNG NHAU QUA CONG (L11)."""
+    def test_DU_PARTY_roi_thi_KHONG_dung_vao_kenh(self):
+        """Ca party 5 (06/09, 16:34 va 17:16): ra lenh doi kenh lam TAN DOI, leader di mot minh.
+
+        Doi kenh bat buoc ROI DOI, nen ra lenh do luc party DANG DU la tu tay pha doi. Cai chan
+        dung la "DU PARTY thi khong dung vao kenh", KHONG phai "dang o trong thap thi thoi".
+
+        13/09: cua cu `if _tang_gom_2k(...) is not None: kenh_dich = None; return None` chan MOI
+        truong hop trong thap, ke ca khi party DANG THIEU va DANG LECH KENH that - luc do ben
+        quyet bao "dong bo kenh" con ben nay xoa dich, lenh ra ma khong ai thi hanh duoc (party
+        52: `viec=dong_bo` lap tu 15:41 den 15:47, khong mot dong `CHOT kenh dich`).
+        Luat chung khong co ngoai le (user: "lech map thi dong bo map, lech kenh thi dong bo kenh,
+        roi den lap party"). Con "cung kenh ma khac TANG" da duoc lo o nhanh `len(dem) <= 1`.
+        """
         src = _doc("run_party_digioi.py")
         i = src.find("def _dieu_phoi_chot_kenh(")
         than = src[i:src.find(chr(10) + "def ", i + 10)]
-        j = than.find("_tang_gom_2k(pidx, song)")
-        self.assertGreater(j, 0, "khong chan lenh doi kenh trong thap 2K (L0, L11)")
-        self.assertIn("return None", than[j:j + 300])
+        j = than.find("DU PARTY ROI -> KHONG DUNG VAO KENH NUA")
+        self.assertGreater(j, 0, "mat cua chan doi kenh khi da du party (ca party 5, 06/09)")
+        self.assertIn('_co_party = any(len(getattr(_c, "party_members"', than,
+                      "khong con doc roster that de biet party da du")
+        # Doi DA DU thi het viec -> xoa dich. Con party DO DANG dang doi kenh thi GIU dich.
+        k = than.find("if _co_party and _thieu_doi(pidx, song) and _dang_doi_kenh(song)")
+        self.assertGreater(k, j, "mat nhanh phan biet 'doi du' voi 'dang thi hanh lenh doi kenh'")
+
+    def test_gom_TANG_2k_van_con(self):
+        """Cung kenh ma khac tang -> gom ve tang thap nhat ca doi dang o (khong dinh toi kenh)."""
+        src = _doc("run_party_digioi.py")
+        self.assertIn("def _tang_gom_2k(", src)
+        i = src.find('if viec == VIEC_GOM and pha == "event":')
+        self.assertGreater(i, 0, "mat cho gan tang gom vao ke hoach")
+        self.assertIn("_chot_tang_gom(", src[i:i + 200])
 
     def test_tai_lieu_co_L0(self):
         s = _doc(os.path.join("documents", "RULE_DIEU_PHOI.md"))

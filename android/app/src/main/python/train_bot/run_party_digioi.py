@@ -1565,6 +1565,24 @@ def _ai_lech_instance(pidx, song, grace=30.0):
     return _ra
 
 
+def _thieu_acc_song(pidx, song):
+    """Party CHUA du acc login xong chua? (acc da TAT han thi khong tinh - no khong bao gio ve).
+
+    Phep dem map/kenh cua dieu phoi chi nhin acc DANG SONG, nen khi moi 2/5 dua login xong thi
+    "cung map/kenh" la ket luan tren mot mau khong day du - dua chua login co the o kenh khac han.
+    Chua biet != khong sao (L13).
+    """
+    try:
+        _cau_hinh = party_accounts(pidx)
+    except Exception:
+        return False
+    if not _cau_hinh:
+        return False
+    # Acc da tat han (user Stop / khong con thread) thi KHONG cho: cho no la cho vinh vien.
+    _con_kha_nang = [u for u, _p, _l, _k in _cau_hinh if is_account_running(u)]
+    return len(song) < len(_con_kha_nang)
+
+
 def _co_ai_dang_o_map(pidx, map_id, tru=None):
     """Party co ai DANG DUNG o `map_id` khong (bo qua chinh `tru`). Doc thang client, khong ai bao.
 
@@ -9559,6 +9577,21 @@ def _dieu_phoi_quyet(pidx, st, song, lech_tu):
         viec = VIEC_LAM
         if not ly_do:
             ly_do = "con lech map %s -> chua lap party, cho gom xong" % sorted(maps)
+    elif song and _thieu_acc_song(pidx, song):
+        # CHUA DU ACC LOGIN XONG -> CHUA duoc ket luan "cung map/kenh". Phep dem chi nhin acc DANG
+        # SONG, nen 2 dua vao truoc cung kenh 1 bi ket luan la "ca party cung kenh" -> ra lenh MOI,
+        # trong khi ba dua con lai chua login xong va co the o kenh khac han.
+        #
+        # Ca that party 2, 13/09 (user: "dung luat thi cung kenh roi moi den doan moi pt, o day
+        # khac ma van den doan moi pt la the lon nao"):
+        #   15:18:19 [party 2] gen 1: viec=moi - cung map/kenh nhung DOI chua du (sga001=0 sga002=0)
+        #   15:18:19 [party 2] -> LAP LAI PARTY
+        #   15:18:25 [party 2] gen 2: viec=dong_bo - cung map nhung LECH KENH [1, 2]
+        # Sau giay sau, ca nam dua login xong thi lo ra lech kenh - loi moi truoc do la vo ich.
+        viec = VIEC_LAM
+        if not ly_do:
+            ly_do = ("moi %d/%d acc login xong -> chua ket luan map/kenh, cho du roi moi quyet"
+                     % (len(song), len(party_accounts(pidx))))
     elif song and _chua_biet_map:
         # CHUA BIET MAP CUA MOT NGUOI THI CHUA XONG BAC MAP - chua duoc xuong bac kenh.
         # Phep dem `maps` o tren BO QUA acc chua biet map, nen 4 dua cung map + 1 dua chua biet bi
@@ -10370,8 +10403,21 @@ def _dieu_phoi_chot_kenh(pidx, st, song, kh=None):
         # User: "neu thay co dua ko ve duoc kenh do kenh day -> chon lai kenh di".
         if _cu and int(_cu) not in _doc_ket_qua_doi_kenh(song)[0]:
             return int(_cu)
-        if not _cu:
-            return None
+        # CHUA CO DICH thi KHONG CO GI DE GIU - phai chot, khong duoc thoat.
+        #
+        # Guard nay sinh ra de "dang co acc bay giua hai kenh -> giu nguyen dich, khong tinh lai".
+        # No chi co nghia khi DA CO dich. Chua co ma van thoat thi khong bao gio chot noi dich DAU
+        # TIEN, tuc khong mot lenh doi kenh nao duoc gui - party lech kenh vinh vien.
+        #
+        # Ca that party 2, 13/09 (user: "p2 van ko dong bo kenh"):
+        #   15:18:25 [party 2] gen 2: pha=event map=12932 kenh=None viec=dong_bo
+        #                      - cung map nhung LECH KENH [1, 2] -> gom kenh truoc khi moi
+        #   15:19:27 / 15:20:28 / 15:21:58 ... van 'dong_bo' ... CHO them Ns
+        # sga001-004 o kenh 1, sga006 o kenh 2, CUNG map 12932, cung toa do (510,330). Khong mot
+        # dong `CHOT kenh dich` nao, cung khong mot dong `Chuyen kenh ->` nao.
+        #
+        # So kenh cua acc dang bay co the la rac, nhung chot mot dich con hon treo: dich co han
+        # (`kenh_dich_luc`) va duoc chot lai khi qua han hoac khi kenh do bao DAY.
     # LOAN DAU THI KHONG RA LENH DOI KENH. Loan dau la SOLO - khong lap party, khong can cung
     # kenh - nen viec gom kenh o day khong duoc gi ma MAT TAT CA: cho xep hang ghep tran nam o
     # kenh acc DA DANG KY, doi kenh la mat cho, roi acc dung cho toi het gio ma khong mot tran nao.
@@ -10382,15 +10428,22 @@ def _dieu_phoi_chot_kenh(pidx, st, song, kh=None):
     #   20:38:14 [haba] Loan dau: cho ghep tran qua 900s khong vao -> dung
     # Ba dong do cach nhau 15 phut - mat tron mot luot loan dau.
     # (Guard LOAN DAU da chuyen len DAU HAM - phai chan TRUOC ca nhanh "lap lai party", xem o do.)
-    # TRONG THAP 2K THI KHONG RA LENH DOI KENH (L11). "Kenh" o day la instanceId cua tang, khong
-    # phai kenh the gioi: server tra `result=2` <khong co khu do> hoac `result=3` <dang to doi>.
-    # Muon cung instance thi phai DI CUNG NHAU QUA CONG, khong phai doi kenh. Ra lenh doi kenh o
-    # day chi lam TAN DOI roi leader di mot minh (party 5, 06/09, hai lan: 16:34 va 17:16).
-    if _tang_gom_2k(pidx, song) is not None:
-        with st["lock"]:
-            st["kenh_dich"] = None
-            st["kenh_dich_luc"] = 0.0
-        return None
+    # (XOA 13/09 cua "TRONG THAP 2K THI KHONG RA LENH DOI KENH".)
+    #
+    # Cua do xoa luon `kenh_dich` va tra None cho MOI truong hop dang o trong thap. Nhung toi day
+    # thi `len(dem) > 1` roi - tuc party DANG LECH KENH that. Xoa dich luc do = ben quyet bao
+    # "dong bo kenh" con ben nay bao "khong co dich", lenh ra ma khong ai thi hanh duoc (L1: mot
+    # party mot ket luan).
+    #
+    # Ca that party 52, 13/09 (user: "biet khac kenh roi ma van deo xu ly duoc"):
+    #   15:41:04 [party 52] gen 3: pha=event map=12922 viec=dong_bo - cung map nhung LECH KENH
+    #                       [1, 2] -> gom kenh truoc khi moi
+    #   15:42:07 / 15:43:07 / 15:44:09 / 15:45:11 / 15:46:11 / 15:47:12  lap mai, khong mot dong
+    #   `CHOT kenh dich` nao.
+    #
+    # LUAT CHUNG, KHONG CO NGOAI LE (user 13/09: "logic co ban o moi noi: lech map thi dong bo
+    # map, lech kenh thi dong bo kenh, roi den lap party"). Con "cung kenh roi ma khac TANG" thi
+    # da duoc lo o nhanh `len(dem) <= 1` ben tren (gom tang), khong dinh gi toi day.
     # DU PARTY ROI -> KHONG DUNG VAO KENH NUA (user chot 07/09: "du pt va di danh roi van di doi
     # kenh tiep, m co can code ngu the ko").
     #

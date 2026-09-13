@@ -14,6 +14,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 import hashlib
 
@@ -530,14 +531,35 @@ def upload_release():
         return
     vj = json.load(open(os.path.join(DIST, "version.json"), encoding="utf-8"))
     tag = "v" + vj["version"]
-    try:
-        rel = _gh_post("https://api.github.com/repos/%s/releases" % RELEASE_REPO, token,
-                       json.dumps({"tag_name": tag, "name": tag,
-                                   "body": vj.get("notes", "")}).encode("utf-8"))
-    except Exception as e:
-        print("!! Tao release loi (tag trung? khong quyen?): %s" % e)
-        return
+    # RETRY: GitHub tra 5xx la loi PHIA HO va thuong chi vai giay. Bo cuoc ngay lan dau = build
+    # xong het ma release khong len, user khong co ban moi de tai.
+    # Da xay ra that (13/09, build v1.1.202609131542):
+    #   !! Tao release loi (tag trung? khong quyen?): HTTP Error 500: Internal Server Error
+    #   === XONG. ===   [exited with code 0]      <- bao thanh cong trong khi chua up duoc gi
+    rel = None
+    _loi = None
+    for _lan in range(4):
+        try:
+            rel = _gh_post("https://api.github.com/repos/%s/releases" % RELEASE_REPO, token,
+                           json.dumps({"tag_name": tag, "name": tag,
+                                       "body": vj.get("notes", "")}).encode("utf-8"))
+            break
+        except Exception as e:
+            _loi = e
+            _ma = getattr(e, "code", None)
+            if _ma is not None and 400 <= int(_ma) < 500:
+                break                      # tag trung / khong quyen -> retry cung the
+            print("!! Tao release loi (lan %d/4): %s -> thu lai sau %ds" % (_lan + 1, e, 5 * (_lan + 1)))
+            time.sleep(5 * (_lan + 1))
+    if rel is None:
+        print("!! KHONG TAO DUOC RELEASE: %s" % _loi)
+        print("   APK/exe DA BUILD XONG o may nay, chi la chua len GitHub. Up thu cong:")
+        print("   gh release create %s %s\\aTSBot.zip %s\\aTSBot-bundle.zip %s\\aTSBot.exe "
+              "%s\\version.json %s\\aTSBot.apk -R %s"
+              % (tag, ROOT, ROOT, DIST, DIST, ROOT, RELEASE_REPO))
+        raise SystemExit("build DUNG: release chua len, user se khong thay ban moi")
     rid = rel["id"]
+    _hong = []
     for path in (os.path.join(ROOT, NAME + ".zip"), os.path.join(ROOT, BUNDLE_RELEASE_NAME),
                  os.path.join(DIST, NAME + ".exe"),
                  os.path.join(DIST, "version.json"), os.path.join(ROOT, APK_RELEASE_NAME)):
@@ -546,11 +568,21 @@ def upload_release():
         name = os.path.basename(path)
         up = ("https://uploads.github.com/repos/%s/releases/%d/assets?name=%s"
               % (RELEASE_REPO, rid, name))
-        try:
-            _gh_post(up, token, open(path, "rb").read(), ctype="application/octet-stream")
-            print("   uploaded %s" % name)
-        except Exception as e:
-            print("!! Upload %s loi: %s" % (name, e))
+        _ok = False
+        for _lan in range(3):
+            try:
+                _gh_post(up, token, open(path, "rb").read(), ctype="application/octet-stream")
+                print("   uploaded %s" % name)
+                _ok = True
+                break
+            except Exception as e:
+                print("!! Upload %s loi (lan %d/3): %s" % (name, _lan + 1, e))
+                time.sleep(5 * (_lan + 1))
+        if not _ok:
+            _hong.append(name)
+    if _hong:
+        # Thieu file tren release = user tai ve ban RACH (vd co exe ma khong co APK).
+        raise SystemExit("build DUNG: upload thieu %s len release %s" % (_hong, tag))
     print("=== Release %s da len https://github.com/%s/releases/latest ===" % (tag, RELEASE_REPO))
 
 
