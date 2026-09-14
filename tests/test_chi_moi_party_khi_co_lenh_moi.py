@@ -47,9 +47,16 @@ class TestChiMoiKhiCoLenhMOI(unittest.TestCase):
     def setUp(self):
         self.than = _than()
 
-    def test_co_cua_chan_theo_VIEC_MOI(self):
-        self.assertIn("_viec != VIEC_MOI", self.than,
-                      "moi van la mac dinh -> moi lenh khong phai 'gom' deu lot xuong moi party")
+    def test_co_cua_chan_theo_LENH_DANG_KEO_DI(self):
+        """Chi `gom` / `dong_bo` la "chua toi luot lap party" - hai lenh do dang keo acc di cho
+        khac, moi luc do vo ich va dam vao chinh lenh.
+
+        KHONG chan `lam`: no nghia "khong con gi phai xu ly o cap party -> cu lam viec cua minh",
+        ma lap party CHINH LA viec cua leader. Ca that party 47/51, 14/09 (mode Di Gioi - dieu phoi
+        ra `lam`): leader bi chan 13 phut, roster 0/4, 5 acc dung im o 49942.
+        """
+        self.assertIn("_viec in (VIEC_DONG_BO,)", self.than,
+                      "cua chan sai loai lenh -> hoac lot het, hoac chan ca 'lam'")
 
     def test_cua_chan_dung_TRUOC_khi_gui_loi_moi(self):
         _cua = self.than.find("_viec != VIEC_MOI")
@@ -64,8 +71,17 @@ class TestChiMoiKhiCoLenhMOI(unittest.TestCase):
 
     def test_CHUA_CO_LENH_thi_van_moi(self):
         """Dieu phoi chua chay lan nao -> khong ai ra lenh, khong duoc dung im cho mai."""
-        self.assertIn("if _kh is not None and _viec != VIEC_MOI:", self.than,
+        self.assertIn("if _kh is not None and _viec in (VIEC_DONG_BO,):", self.than,
                       "chua co ke hoach ma cung chan -> party khong bao gio hinh thanh")
+
+    def test_lenh_LAM_thi_VAN_duoc_moi(self):
+        """`lam` = party on, cu lam viec cua minh - ma lap party la viec cua leader."""
+        i = self.than.find("if _kh is not None and _viec in (")
+        self.assertGreater(i, 0)
+        _dk = self.than[i:self.than.find(":", i)]
+        self.assertNotIn("VIEC_LAM", _dk, "chan ca 'lam' -> party Di Gioi khong bao gio lap duoc")
+        self.assertNotIn("VIEC_DI_TRAIN", _dk)
+        self.assertNotIn("VIEC_RA_QUAI", _dk)
 
     def test_van_nghe_lenh_kenh_TRUOC(self):
         _nghe = self.than.find("_nghe_lenh_kenh()")

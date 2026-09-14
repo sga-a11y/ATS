@@ -87,10 +87,27 @@ class TestStartTrainingTraKetQua(unittest.TestCase):
         self.assertIn("return False", self.than[i:i + 400])
 
     def test_ep_ra_spot_bo_qua_chot_reform(self):
-        i = self.than.find('if st["reform_gen"] > _rg_base')
-        self.assertGreater(i, 0)
+        i = self.than.find("if _reform_cho_xu(st, _rg_base)")
+        self.assertGreater(i, 0, "mat chot reform truoc khi keo ra spot")
         self.assertIn("not ep_ra_spot", self.than[i:i + 120],
                       "khong bo duoc chot -> retry bail lai mai mai, leader ket o safe")
+
+    def test_chot_reform_KHONG_tinh_lenh_DA_RUT(self):
+        """Lenh dieu phoi DA RUT (L16) thi khong con la ly do de bo viec.
+
+        Ca that party 4, 14/09 (user: "lap pt xong deo di train"):
+            16:34:46 [party 4] RUT lenh reform gen 1 - da du doi, cung map [21001] kenh [2]
+            16:34:46 [party 4] gen 15: viec=di_train -> DI TRAIN map 21833
+            16:38:51 [thmo] (LEADER) lenh 'di_train' -> SET QS + ra train
+            16:38:51 [thmo] (LEADER) reform pending (acc bi dump dungeon) -> BO QUA keo ra spot
+            16:38:56.. pos=(770, 610) map=21001 combat=False     <- dung im
+        """
+        self.assertFalse(R._reform_cho_xu({"reform_gen": 1, "reform_gen_thoa": 1}, 0),
+                         "lenh da rut van bi tinh la 'pending' -> leader bo viec")
+        self.assertTrue(R._reform_cho_xu({"reform_gen": 2, "reform_gen_thoa": 1}, 0),
+                        "lenh MOI (chua rut) phai van duoc tinh")
+        self.assertFalse(R._reform_cho_xu({"reform_gen": 3, "reform_gen_thoa": 0}, 3),
+                         "gen khong doi so voi moc -> khong co lenh moi")
 
     def test_ket_thuc_tra_True(self):
         self.assertTrue(self.than.rstrip().endswith("return True"),

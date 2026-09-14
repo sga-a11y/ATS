@@ -157,7 +157,7 @@ class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
         for _t in ("CHO_VIEC_LE_TOI_DA_SEC", "VIEC_LE_TOI_DA_SEC", "cho_viec_le_tu"):
             self.assertNotIn(_t, self.src, "han cho song lai: %s" % _t)
 
-    def test_ham_con_lai_CHI_DE_IN_LOG(self):
+    def test_ham_viec_vat_KHONG_dung_de_NGUNG_RA_LENH(self):
         i = self.src.find("def _ai_dang_lam_viec_le(")
         self.assertGreater(i, 0)
         than = self.src[i:self.src.find("\ndef ", i + 10)]
@@ -166,11 +166,17 @@ class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
         # chi duoc GOI tu dung mot cho (dong log trang thai); dong con lai la `def`
         _goi = [ln.strip() for ln in self.src.splitlines()
                 if "_ai_dang_lam_viec_le(song)" in ln and not ln.lstrip().startswith("def ")]
-        # HAI cho, va KHONG cho nao duoc dung de NGUNG RA LENH:
-        #   `_le = set(...)` -> danh dau `*` tren dong TRANG THAI
-        #   `_ban = ...`     -> KHONG bump reform (van ra lenh moi binh thuong)
-        self.assertEqual(len(_goi), 2, "so cho goi doi -> co the co cho dung no de ngung ra lenh")
-        for _dau in ("_le = set(", "_ban = "):
+        # BA cho, va KHONG cho nao duoc dung de NGUNG RA LENH:
+        #   `_le = set(...)`          -> danh dau `*` tren dong TRANG THAI
+        #   `_ban = ...`              -> KHONG bump reform (van ra lenh moi binh thuong)
+        #   `_ban_viec_vat = set(...)`-> khong tinh acc do vao phep do LECH MAP / LECH KENH
+        #
+        # Cai thu ba KHONG phai "cho": viec vat PHAI o map khac (ban Noi Dat o Nghiep Thanh, cat
+        # tien trang, boss the gioi - user 14/09), nen dem no vao `maps` la party LUC NAO cung
+        # "lech map". Lenh van chay binh thuong tren so acc con lai; acc kia GIU loi moi, xong
+        # viec thi nhan.
+        self.assertEqual(len(_goi), 3, "so cho goi doi -> co the co cho dung no de ngung ra lenh")
+        for _dau in ("_le = set(", "_ban = ", "_ban_viec_vat = set("):
             self.assertTrue(any(_dau in g for g in _goi), "%s: %s" % (_dau, _goi))
 
     def test_chuoi_bac_dung_thu_tu_user_chot(self):

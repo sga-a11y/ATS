@@ -5,7 +5,6 @@ _argv = sys.argv
 try:
     sys.argv = ["run_party_digioi.py"]
     import run_party_digioi as coordinator
-    from run_party_digioi import _travel_to_train_map
 finally:
     sys.argv = _argv
 
@@ -95,37 +94,6 @@ class TestTrainRoutingPolicy(unittest.TestCase):
         pcfg = {"mode": "digioi_train", "start_city_id": 20801}
         self.assertFalse(coordinator._party_is_in_train_phase(pcfg, {"dt_phase": "digioi"}))
         self.assertTrue(coordinator._party_is_in_train_phase(pcfg, {"dt_phase": "train"}))
-
-    def test_smart_route_runs_before_legacy_route(self):
-        client = RecordingClient(smart_result=True, legacy_result=True)
-        self.assertTrue(
-            _travel_to_train_map(
-                client, 14821, (1230, 470), {"steps": []}
-            )
-        )
-        self.assertEqual(client.calls, ["smart"])
-
-    def test_legacy_route_is_temporary_fallback(self):
-        client = RecordingClient(smart_result=False, legacy_result=True)
-        self.assertTrue(
-            _travel_to_train_map(
-                client, 14821, (1230, 470), {"steps": []}
-            )
-        )
-        self.assertEqual(client.calls, ["smart", "legacy"])
-
-    def test_missing_both_routes_stops_without_direct_teleport(self):
-        client = RecordingClient(smart_result=False)
-        self.assertFalse(
-            _travel_to_train_map(client, 14821, (1230, 470), None)
-        )
-        self.assertNotIn("go_to_town:14821", client.calls)
-
-    def test_missing_safe_still_attempts_smart_route(self):
-        client = RecordingClient(smart_result=True)
-
-        self.assertTrue(_travel_to_train_map(client, 20801, None, None))
-        self.assertEqual(client.calls, ["smart"])
 
     def test_member_waits_for_leader_route_when_safe_is_unknown(self):
         self.assertTrue(
