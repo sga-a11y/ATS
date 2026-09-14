@@ -33,7 +33,11 @@ from __future__ import annotations
 import io
 import os
 import sys
+import threading
 import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from bot import client as C          # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -65,6 +69,7 @@ class _Gia:
         self.da_gui = []
         self.pos = (0, 0)
         self._dg_enter_result = None
+        self._dg_enter_event = threading.Event()
 
     def leave_party(self):
         self.da_roi_doi += 1
@@ -126,7 +131,49 @@ class TestDocMaCuaServer(unittest.TestCase):
     def test_chi_ma_1_va_2_moi_dung_han(self):
         """3/4/5 la tam thoi - dung han o day la bo phi luot DG con nguyen gio."""
         t = _than("enter_di_gioi_safe")
-        self.assertIn("_dg_enter_result in (1, 2)", t)
+        self.assertIn("if ma in (1, 2):", t)
+        self.assertIn("ma = self._dg_enter_result", t)
+
+
+class TestKhongBanDON(unittest.TestCase):
+    """CHO server tra loi roi moi ban lai - khong ngu mot nhip roi ban bat ke da dap chua.
+
+    Ca that 15/09: bo cua hoan viec vat lam 40 acc cay pho ban don dung luc 65 acc dang vao DG.
+    Server cham lai (do duoc: [trumuoi] gui 00:31:40, server DONG Y 00:32:06 - tre 26 GIAY), ma
+    vong cu chi ngu 3s roi ban tiep -> moi acc ban 24 goi thay vi 1, cang ban server cang cham:
+        dot 10:14-10:18 (server ranh) : 68 acc, 349 goi,  1 acc that bai
+        dot 00:29-00:32 (server tai)  : 65 acc, 629 goi, 26 acc that bai
+    Ca party.log truoc do chi 2 lan `VAO DI GIOI THAT BAI`; rieng 6 phut do la 264 lan. Cac dong
+    `DA O TRONG DI GIOI (ma 6)` (762 lan) chinh la tieng vong cua chinh nhung goi thua do.
+    """
+
+    def test_co_CHO_goi_tra_loi(self):
+        t = _than("enter_di_gioi_safe")
+        self.assertIn("self._dg_enter_event.wait(", t,
+                      "van ban lai mu, khong cho S:097-001")
+
+    def test_server_im_thi_GIAN_RA_chu_khong_ban_tiep(self):
+        t = _than("enter_di_gioi_safe")
+        i = t.find("_dg_enter_event.wait(")
+        self.assertGreater(i, 0)
+        khoi = t[i:i + 700]
+        self.assertIn("DG_GIAN_KHI_IM_SEC", khoi, "server im ma van ban ngay -> lam nghen nang hon")
+        self.assertIn("continue", khoi)
+
+    def test_han_cho_du_dai_cho_luc_server_tai(self):
+        """Do that: tre toi 26 giay. Han cho phai DAI hon moc do, khong thi lai ban thua."""
+        self.assertGreaterEqual(C.GameClient.DG_CHO_TRA_LOI_SEC, 26.0)
+        self.assertGreater(C.GameClient.DG_GIAN_KHI_IM_SEC, 0)
+
+    def test_xoa_co_truoc_khi_gui(self):
+        """Con co cu thi `wait()` ve ngay, doc phai ma cua lan truoc."""
+        t = _than("enter_di_gioi")
+        self.assertIn("self._dg_enter_event.clear()", t)
+
+    def test_ma_6_coi_nhu_vao_duoc(self):
+        """`DA O TRONG DI GIOI` nghia la DA VAO - ban lai nua la vo nghia."""
+        t = _than("enter_di_gioi_safe")
+        self.assertIn("if ma in (0, 6):", t)
 
 
 if __name__ == "__main__":

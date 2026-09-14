@@ -2378,6 +2378,7 @@ class GameClient:
         self.party_members = []      # list entity cac member theo thu tu (= slot B2)
         self._dg_enter_result = None      # ma S:097-001 <進入結果> lan vao DG gan nhat
         self._dg_enter_result_luc = 0.0
+        self._dg_enter_event = threading.Event()   # server da tra loi S:097-001 chua
         # Ban do entity -> ID DOI TRUONG cua MOI party thay duoc quanh map (S:013-006 phat theo
         # map, mang nhieu party mot luc) = ban sao cua `Team.members` ben client Lua. Dung de
         # biet MINH dang ket trong party NAO (roi cho dung) va nguoi kia da o party chua.
@@ -4098,6 +4099,7 @@ class GameClient:
         elif opcode == 0x61 and len(pkt) >= 10 and pkt[7:9] == b"\x01\x00":
             self._dg_enter_result = pkt[9]
             self._dg_enter_result_luc = time.time()
+            self._dg_enter_event.set()      # danh thuc `enter_di_gioi_safe` - no CHO goi nay
             _ly_do = {
                 0: "OK",
                 1: "CAP KHONG DU",
@@ -14744,6 +14746,7 @@ class GameClient:
         # ket cheo: chutam tuong minh "xong DG" nen dung cho, leader bat ca party ve Tuong Duong,
         # 3 acc con lai dang danh trong DG va con 1h20m -> leader EP RELOGIN ca party.
         self._dg_enter_result = None
+        self._dg_enter_event.clear()
         if self.party_members:
             log.info("[%s] Vao Di Gioi: dang o to doi (%d member) -> ROI DOI truoc (client chan "
                      "vao DG khi con doi)", self._label, len(self.party_members))
@@ -14762,11 +14765,26 @@ class GameClient:
         log.info("[%s] Vao Di Gioi: gui 0x61 02 00 %02x (cap %d), spawn pos=%s",
                  self._label, idx, self.DI_GIOI_LEVELS[idx - 1], self.pos)
 
+    # Cho server tra loi S:097-001 truoc khi ban lai. Luc 250 acc cung login, server tra loi cham
+    # toi ~25s (do that 15/09: [trumuoi] gui luc 00:31:40, server DONG Y luc 00:32:06).
+    DG_CHO_TRA_LOI_SEC = 30.0
+    DG_GIAN_KHI_IM_SEC = 15.0      # server im hoan toan -> gian ra, KHONG ban day
+
     def enter_di_gioi_safe(self, tries: int = 12, wait: float = 3.0) -> bool:
-        """Vao DI GIOI co retry, ne 2 case fail:
+        """Vao DI GIOI: gui 0x61 roi CHO `S:097-001` tra loi, khong ban lai mu.
+
+        Ne 2 case fail truoc khi gui:
           - current_map=None  -> CHUA vao world xong (login chua xong) -> cho.
-          - in_combat()       -> dang KET BATTLE (login ngay bai quai) -> cho het tran (battle chan vao DG).
-        Gui 0x61 khi san sang, lap lai cho toi khi in_di_gioi()=True."""
+          - in_combat()       -> dang KET BATTLE (login ngay bai quai) -> cho het tran.
+
+        VI SAO PHAI CHO (sua 15/09): ban cu ngu `wait` giay roi ban tiep bat ke server da dap chua
+        -> moi acc ban 24 goi thay vi 1. Binh thuong server ranh nen khong ai thay; hom 15/09 bo
+        cua hoan viec vat lam 40 acc cay pho ban don dung luc 65 acc dang vao DG, server cham lai
+        va khuyet tat nay TU KHUECH DAI: cang cham cang ban, cang ban cang cham.
+            dot 10:14-10:18 (server ranh) : 68 acc, 349 goi,  1 acc that bai
+            dot 00:29-00:32 (server tai)  : 65 acc, 629 goi, 26 acc that bai
+        Ca party.log truoc do chi 2 lan `VAO DI GIOI THAT BAI`; rieng 6 phut do la 264 lan.
+        """
         for i in range(tries):
             if not self.running:        # bi STOP (GUI/close) -> thoat ngay
                 return False
@@ -14778,21 +14796,38 @@ class GameClient:
             if self.in_combat():
                 log.info("[%s] dang ket battle -> cho het tran roi vao DG... (%d)", self._label, i + 1)
                 time.sleep(wait); continue
-            self.enter_di_gioi()
-            time.sleep(wait)
-            if self.in_di_gioi():
-                log.info("[%s] da VAO DI GIOI (map=%s)", self._label, self.current_map)
-                return True
-            # Server DA NOI ly do (S:097-001) -> khong ban lai mu nua.
+            self.enter_di_gioi()        # ham nay da `_dg_enter_event.clear()` truoc khi gui
+            if not self._dg_enter_event.wait(self.DG_CHO_TRA_LOI_SEC):
+                # Server IM - khong ket luan gi (co the dang nghen). Gian ra roi thu lai, TUYET DOI
+                # khong ban them trong luc cho: chinh viec ban them lam server nghen nang hon.
+                log.warning("[%s] Vao Di Gioi: server CHUA tra loi sau %.0fs -> gian %.0fs roi thu "
+                            "lai (%d/%d)", self._label, self.DG_CHO_TRA_LOI_SEC,
+                            self.DG_GIAN_KHI_IM_SEC, i + 1, tries)
+                time.sleep(self.DG_GIAN_KHI_IM_SEC)
+                continue
+            # Server DA NOI ly do (S:097-001) -> xu ly dung theo ma, khong ban lai mu.
+            ma = self._dg_enter_result
+            if ma in (0, 6):
+                # 0 = dong y, 6 = da o trong DG roi. Ca hai deu chi con cho server doi map.
+                for _ in range(int(wait * 4)):
+                    if self.in_di_gioi():
+                        log.info("[%s] da VAO DI GIOI (map=%s)", self._label, self.current_map)
+                        return True
+                    if not self.running:
+                        return False
+                    time.sleep(0.5)
+                log.info("[%s] Vao Di Gioi: server bao OK (ma %d) nhung map chua doi -> cho tiep",
+                         self._label, ma)
+                continue
             #   1 cap khong du  -> acc nay khong bao gio vao duoc, ban lai la vo ich
             #   2 het gio       -> het that, va la lan DUY NHAT duoc phep ket luan the
-            # Cac ma con lai (3 dang danh / 4 dang su kien / 5 dang to doi) la TAM THOI -> thu lai;
-            # rieng ma 5 thi `enter_di_gioi()` da roi doi nen lan sau se qua.
-            if self._dg_enter_result in (1, 2):
+            if ma in (1, 2):
                 log.warning("[%s] VAO DI GIOI DUNG HAN: %s (S:097-001 ma %d)", self._label,
-                            "CAP KHONG DU" if self._dg_enter_result == 1 else "HET GIO hom nay",
-                            self._dg_enter_result)
+                            "CAP KHONG DU" if ma == 1 else "HET GIO hom nay", ma)
                 return False
+            # Con lai (3 dang danh / 4 dang su kien / 5 dang to doi) la TAM THOI -> cho roi thu lai;
+            # rieng ma 5 thi `enter_di_gioi()` da roi doi nen lan sau se qua.
+            time.sleep(wait)
         # KHONG doan "het gio" nua: server co goi bao ly do, doan bua thi tren dat acc con nguyen
         # 120/120 phut ma bi danh dau la xong DG (ca that 07/09 [chutam] - xem `S:097-001` o
         # `_dispatch`). Khong nhan duoc goi nao thi noi that la khong biet.
