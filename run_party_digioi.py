@@ -4664,6 +4664,27 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                     c.follow_smart_route(
                         sc, route_safe, abort=_ab, flee=not _full
                     )
+                elif not route2:
+                    # KHONG CO ROUTE NAO CA - va do la BINH THUONG voi mode khong-train.
+                    #
+                    # `route2 = TRAIN_ROUTES.get(sc)`; mode event (40NPC / 2K / loan dau) thi `sc`
+                    # la map event, khong co trong `TRAIN_ROUTES` -> None. Ban cu nhay thang xuong
+                    # `route2.get("steps", [])` -> `'NoneType' object has no attribute 'get'`, va
+                    # loi do bi `except Exception` nuot thanh mot dong "loi reform (bo qua)".
+                    #
+                    # Ca that party 6 / 7 / 23, 14/09 (user: "danh xong 40NPC no ve Nghiep thanh
+                    # lam gi the"):
+                    #   21:19:09 [ttsau] (LEADER) reform: 4/4 member join lai -> KEO qua cong ra
+                    #                    train map            <- mode EVENT ma di duong train
+                    #   21:19:10 [ttsau] loi reform (bo qua): 'NoneType' object has no attribute 'get'
+                    #   21:20:12 [ttbay] PARTY: ... ROI doi -> roster con 3 -> 2 ...
+                    # Reform chet giua chung nen party vua gom xong lai tan, ca lu dung o Nghiep
+                    # Thanh (12061 - thanh gom) thay vi quay lai map event.
+                    #
+                    # Gom ve cung thanh la XONG viec cua reform o mode nay: khong co bai train de
+                    # keo toi. Phan "di dau tiep" do dieu phoi ra lenh o vong sau.
+                    log.info("[%s] (%s) reform: da gom ve cung thanh, mode=%s khong co route train "
+                             "-> DUNG o day, dieu phoi ra lenh tiep", label, role, mode)
                 else:
                     # Legacy fallback: member trong party tu theo leader qua tung cong.
                     for stp in route2.get("steps", []):
@@ -5607,7 +5628,16 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             #
             # 12003 la map DOI THUONG: acc da o dung cho can den roi, chi thieu moi viec ngung di
             # vao map event.
-            if _is_npc_repeat_party_event(mode, has_leader, ev) and not c.in_40npc_window():
+            # HET GIO EVENT -> THOAT, khong phu thuoc CO LEADER hay khong.
+            #
+            # `_is_npc_repeat_party_event` goi `_event_battle_kind(mode, has_leader, ev)`, ma ham
+            # do tra None khi KHONG CO LEADER -> party "khong co chu PT" (acc dung yen cho nguoi
+            # that moi) thi cua nay khong bao gio chay: het gio van dung im mai mai.
+            #
+            # Ngoai gio thi CHANG CON GI DE LAM, co leader hay khong cung the. Doc thang `ev` de
+            # biet day co phai event 40NPC.
+            _kind_raw = ((ev or {}).get("party_battle") or {}).get("kind")
+            if mode == "event" and _kind_raw == "npc_repeat" and not c.in_40npc_window():
                 log.info("[%s] (%s) 40NPC NGOAI GIO event -> huy party + di doi thuong + thoat game",
                          label, role)
                 try: c.leave_party()
@@ -9952,6 +9982,34 @@ def _dieu_phoi_quyet(pidx, st, song, lech_tu):
     if _party_40npc_ngoai_gio(pidx, pcfg):
         return ({"pha": "event", "map": None, "kenh": None, "viec": VIEC_LAM},
                 "40NPC ngoai gio -> moi acc tu di doi thuong roi thoat (khong gom, khong sync kenh)",
+                None)
+    # EVENT DA XONG -> KHONG CON VIEC GI O CAP PARTY. Moi acc di doi thuong roi THOAT.
+    #
+    # User 14/09: "event thi danh xong out, train deo gi o day".
+    #
+    # `go_claim` / `_npc40_done` = het gio hoac thua 2 tran -> `_ket_thuc` da bao party ngung danh.
+    # Tu day chi con mot viec SOLO: toi NPC map 12003 doi qua roi thoat game. Dieu phoi ma van ra
+    # lenh gom/moi thi acc bi keo vao vong reform va KHONG BAO GIO quay lai duoc nhanh doc co do.
+    #
+    # Ca that party 6 va 7, 14/09 (user: "danh xong 40NPC no ve Nghiep thanh lam gi the"):
+    #   21:12:36 [ttsau] 40NPC: thua sach (khong co prompt) -> THOAT LUON       <- `_npc40_done`
+    #   21:18:59 [party 7] REFORM gen -> 6 - chung kenh roi ma doi khong du     <- dieu phoi gom
+    #   21:19:09 [ttsau] (LEADER) reform: 4/4 member join lai -> KEO qua cong ra train map
+    #   21:19:10 [ttsau] loi reform (bo qua): 'NoneType' object has no attribute 'get'
+    #   21:20:12 [ttbay] PARTY: ... ROI doi -> roster con 3 -> 2 ...
+    # Ca lu quay vong o Nghiep Thanh (12061 - thanh gom) thay vi di doi thuong.
+    # Doi chieu party 22 cung luc, KHONG bi dieu phoi chen vao:
+    #   21:15:46 [gclmot] (LEADER) 40NPC xong -> di doi thuong + thoat game
+    #   21:16:52 [gclmot] doi thuong 40NPC: da doi qua chien dau o NPC map 12003
+    #   21:17:39 >>> PARTY 22 DA THOAT HET
+    try:
+        _xong_event = bool(st.get("go_claim") and st["go_claim"].is_set()) or any(
+            getattr(c, "_npc40_done", False) for _u, c in song)
+    except Exception:
+        _xong_event = False
+    if _xong_event:
+        return ({"pha": "event", "map": None, "kenh": None, "viec": VIEC_LAM},
+                "event DA XONG -> moi acc di doi thuong roi thoat (khong gom, khong moi party)",
                 None)
 
     # ---- PHA: DG hay train ----

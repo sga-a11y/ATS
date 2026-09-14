@@ -674,7 +674,7 @@ class BotGUI(tk.Tk):
         # --- log filter state ---
         self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
         self._agi_cache = {}        # pidx -> (luc, report) cho party khong hien thi
-        self._notify_cache = {}     # pidx -> (login_gen, items); dung lai moi lan co acc login
+        self._notify_cache = {}     # pidx -> (login_gen, items, luc_dung); xem cho doc o `_refresh`
         self._refresh_after = None  # handle timer refresh (mot chuoi duy nhat)
         self.log_filter = None         # None = tat ca; hoac set(username) duoc hien
         self._char2user = {}           # ten nhan vat -> username (cap nhat khi acc resolve)
@@ -1630,6 +1630,11 @@ class BotGUI(tk.Tk):
     # cung duoc": Ba Dau HET HAN la mat quyen loi hoi day HP/SP; tui gan day thi nhan qua mail /
     # nhat do roi / mua do lo deu that bai; khong co quan doan thi mat qua quan doan hang ngay +
     # khong danh duoc boss quan doan.
+    # CHI ap khi Chu y DANG RONG: thu lai moi bay nhieu giay. Co Chu y roi thi khong dung lai
+    # nua (danh sach khong doi may trong luc chay). Khong phai moi giay (GUI treo - user
+    # 13/09), cung khong phai mot lan roi thoi (moi nguon den SAU luc login -> rong vinh vien).
+    NOTIFY_LAM_MOI_SEC = 60.0
+
     NOTIFY_CAM = ("_ba_dau", "_bag", "_legion", "_safe_danh")
 
     def _party_notify_gap(self, pidx):
@@ -1977,14 +1982,35 @@ class BotGUI(tk.Tk):
             # nguon (tui / Ba Dau / quan doan / du diem / lo) deu rong -> cache = [] va khong cho
             # nao xoa -> "Chu y" trong VINH VIEN (user 14/09: "cai chu y bi lam sao ma ko thay xuat
             # hien nua").
+            # KHOA = (login_gen, moc thoi gian). Phai co CA HAI.
+            #
+            # `login_gen` tang luc acc VAO WORLD, nhung MOI NGUON cua Chu y deu den SAU do:
+            #     dong 2833  st["login_gen"] += 1        <- dung cache o day
+            #     dong 2960  _kiem_han_ba_dau(...)       <- Ba Dau ghi o day, 127 dong sau
+            #     tui do     `log_bag_delayed` tre toi 8 giay
+            #     quan doan / lo / du diem: trong login chores, vai phut sau
+            # Nen dung cache dung luc do la dung khi MOI NGUON CON RONG, roi giu vinh vien.
+            #
+            # Party nao tinh co co acc reconnect muon thi `login_gen` tang lai -> dung lai -> luc
+            # do du lieu da ve -> CO Chu y. Party chay em khong ai rot thi RONG MAI. Dung la cai
+            # user thay 14/09: "co pt co pt ko".
+            #
+            # Cach chua: DANG RONG thi thu lai moi 60 giay; CO Chu y roi thi giu luon (user
+            # 14/09: "lam deo gi ma phai dung lai nhieu the, neu chua co chu y thi moi can dung
+            # lai chu"). Party co Chu y = dung DUNG MOT LAN; party khong co = 1 lan/60s, van re
+            # hon ban goc (100 luot/giay voi 50 party) khoang 6000 lan.
             _lg = 0
             try:
                 _lg = int((ctrl._pstate(pidx) or {}).get("login_gen", 0) or 0)
             except Exception:
                 pass
+            # CHI THU LAI KHI DANG RONG. Co Chu y roi thi thoi - danh sach do khong doi may trong
+            # luc chay (user 13/09), va dung lai la viec nang nhat cua vong refresh.
+            _bay = time.time()
             _cache = self._notify_cache.get(pidx)
-            if _cache is None or _cache[0] != _lg:
-                _cache = (_lg, self._party_notify_items(pidx))
+            if (_cache is None or _cache[0] != _lg
+                    or (not _cache[1] and _bay - _cache[2] > self.NOTIFY_LAM_MOI_SEC)):
+                _cache = (_lg, self._party_notify_items(pidx), _bay)
                 self._notify_cache[pidx] = _cache
             _notify_items = _cache[1]
             _gap_notify = any(it.get(k) for _nu, it in _notify_items for k in self.NOTIFY_CAM)

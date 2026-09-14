@@ -79,6 +79,40 @@ class TestGuiDocLoginGen(unittest.TestCase):
         khoi = self.src[i:i + 400]
         self.assertIn("_cache[0] != _lg", khoi, "khong so login_gen -> giu cache cu mai")
 
+    def test_CO_TTL_vi_nguon_den_SAU_login(self):
+        """`login_gen` tang luc acc VAO WORLD, nhung moi nguon Chu y den sau do:
+
+            dong 2833  st["login_gen"] += 1        <- dung cache o day
+            dong 2960  _kiem_han_ba_dau(...)       <- Ba Dau ghi o day
+            tui do     `log_bag_delayed` tre toi 8 giay
+            quan doan / lo / du diem: trong login chores, vai phut sau
+
+        Dung cache dung luc do la dung khi MOI NGUON CON RONG roi giu vinh vien. Party nao tinh co
+        co acc reconnect muon thi dung lai -> CO Chu y; party chay em thi RONG MAI.
+        User 14/09: "t thay co pt co pt ko".
+        """
+        from gui import BotGUI
+        self.assertGreater(getattr(BotGUI, "NOTIFY_LAM_MOI_SEC", 0), 0,
+                           "khong co TTL -> Chu y rong vinh vien voi party khong ai reconnect")
+        i = self.src.find("_cache = self._notify_cache.get(pidx)")
+        khoi = self.src[i:i + 400]
+        self.assertIn("NOTIFY_LAM_MOI_SEC", khoi)
+
+    def test_TTL_du_THUA_de_khong_treo_GUI(self):
+        """Muc dich ban dau (user 13/09: "khoi can load lai") van phai giu: truoc do la 100 luot
+        dung danh sach MOI GIAY voi 50 party -> GUI "not responding" khi doi tab."""
+        from gui import BotGUI
+        self.assertGreaterEqual(BotGUI.NOTIFY_LAM_MOI_SEC, 30.0,
+                                "lam moi qua day -> lai treo GUI nhu truoc 13/09")
+
+    def test_CO_Chu_y_roi_thi_KHONG_dung_lai(self):
+        """User 14/09: "lam deo gi ma phai dung lai nhieu the, neu chua co chu y thi moi can dung
+        lai chu". Danh sach Chu y khong doi may trong luc chay."""
+        i = self.src.find("_cache = self._notify_cache.get(pidx)")
+        khoi = self.src[i:i + 500]
+        self.assertIn("not _cache[1] and", khoi,
+                      "dung lai ca khi DA CO Chu y -> ton cong vo ich moi 60 giay")
+
     def test_khong_con_duong_giu_vinh_vien(self):
         self.assertNotIn("if pidx not in self._notify_cache:", self.src,
                          "con duong dung mot lan roi giu vinh vien")
@@ -87,13 +121,34 @@ class TestGuiDocLoginGen(unittest.TestCase):
 class TestHanhVi(unittest.TestCase):
     """Mo phong dung phep so cua GUI."""
 
-    @staticmethod
-    def _lay(cache, pidx, login_gen, dung):
+    TTL = 60.0
+
+    @classmethod
+    def _lay(cls, cache, pidx, login_gen, dung, bay=0.0):
+        """Mo phong DUNG phep so cua GUI (xem `_refresh`)."""
         _c = cache.get(pidx)
-        if _c is None or _c[0] != login_gen:
-            _c = (login_gen, dung())
+        if (_c is None or _c[0] != login_gen
+                or (not _c[1] and bay - _c[2] > cls.TTL)):
+            _c = (login_gen, dung(), bay)
             cache[pidx] = _c
         return _c[1]
+
+    def test_dang_RONG_thi_thu_lai_sau_TTL(self):
+        """Nguon Chu y den SAU luc login - rong thi phai thu lai, khong giu vinh vien."""
+        cache, dem = {}, []
+        self._lay(cache, 0, 1, lambda: dem.append(1) or [], bay=0.0)
+        self._lay(cache, 0, 1, lambda: dem.append(1) or [], bay=10.0)     # chua den han
+        self.assertEqual(len(dem), 1)
+        self._lay(cache, 0, 1, lambda: dem.append(1) or ["tui gan day"], bay=61.0)
+        self.assertEqual(len(dem), 2)
+        self.assertEqual(cache[0][1], ["tui gan day"])
+
+    def test_DA_CO_Chu_y_thi_giu_luon(self):
+        cache, dem = {}, []
+        self._lay(cache, 0, 1, lambda: dem.append(1) or ["ba dau"], bay=0.0)
+        for _t in (61.0, 200.0, 9999.0):
+            self._lay(cache, 0, 1, lambda: dem.append(1) or ["ba dau"], bay=_t)
+        self.assertEqual(len(dem), 1, "da co Chu y ma van dung lai -> ton cong vo ich")
 
     def test_lan_dau_GUI_chua_ai_login_thi_rong_nhung_KHONG_giu(self):
         cache, dem = {}, []
