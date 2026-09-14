@@ -190,7 +190,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game = SimpleNamespace(
             running=True,
             state=SimpleNamespace(quest_mode=False),
-            wait_team_dungeon_status=mock.Mock(return_value=True),
+            wait_mission_steps=mock.Mock(return_value=True),
             team_dungeon_remaining=mock.Mock(return_value=1),
             do_team_dungeon=mock.Mock(return_value=True),
             _phoban_until=0.0,
@@ -239,7 +239,7 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         game = SimpleNamespace(
             running=True,
             state=SimpleNamespace(quest_mode=False),
-            wait_team_dungeon_status=mock.Mock(return_value=True),
+            wait_mission_steps=mock.Mock(return_value=True),
             team_dungeon_remaining=mock.Mock(return_value=1),
             do_team_dungeon=mock.Mock(return_value=False),
             close=mock.Mock(side_effect=lambda: setattr(game, "running", False)),

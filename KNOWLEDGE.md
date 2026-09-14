@@ -958,6 +958,56 @@ Nguồn: `.codex_mumu_probe/lua_decrypted_all/` (Common_protocal.lua, Logic_Role
   và **cả 4 PB tổ đội đều `skipFlag=0x0000`** → phải đánh thật. (Mã lỗi `S:047-005`: 0 OK, 2 sai level,
   3 đang trong phòng, 4 hết lượt, 5 không được tổ đội, 8 đang đánh, 9 không có cờ quét.)
 
+### PHÓ BẢN ĐƠN (solo, ô 1 bingo) — CÒN LƯỢT FREE / CÒN LƯỢT MUA
+Bóc `Dungeon_C.dat` 15/09 (`adb pull .../files/Data/Dungeon_C.dat`, layout `Data/DungeonData.lua`,
+8 bản ghi × 42B = 340B khớp tuyệt đối). **Không sinh JSON** — 8 dòng hằng số, nhét thẳng vào code.
+
+| id | kind | ppl | level | scene | dayilyFlag | dayilyCount | skipFlag |
+|---|---|---|---|---|---|---|---|
+| 1 | 1 | 5 | 20~450 | 62002 | 0x302e | 1 | 0 |
+| **2** | 2 | 1 | **15~80** | 62001 | **0x3030** | 1 | 0 |
+| **3** | 2 | 1 | **81~150** | 62001 | **0x3030** | 1 | 0 |
+| **4** | 2 | 1 | **151~200** | 62001 | **0x3030** | 1 | 0 |
+| **5** | 2 | 1 | **201~450** | 62001 | **0x3030** | 1 | 0 |
+| 14 | 1 | 5 | 50~450 | 62011 | 0x30a6 | 1 | 0 |
+| 15 | 1 | 5 | 80~450 | 62012 | 0x30aa | 1 | 0 |
+| 16 | 1 | 5 | 110~450 | 62013 | 0x30ae | 1 | 0 |
+
+- **`_dungeon_tier()` trong client.py thực chất trả `dungeonId`**, không phải "tier". Nó dừng ở 4
+  (`lv>=151`) nhưng dải id 4 **hết ở lv 200** — từ **201 trở lên phải là id 5**. Chưa cháy vì acc
+  cao nhất đang lv 193 (đo log 15/09).
+- **Free mỗi ngày chỉ 1 lượt**, và **cả 4 id PB đơn dùng CHUNG `dayilyFlag = 0x3030`**. Ô 1 bingo
+  đòi 2 lượt ⇒ **lượt thứ hai BẮT BUỘC mua** — không phải lỗi.
+- **Còn free hay không thì BIẾT TRƯỚC, không phải thử-rồi-lỗi.** Công thức client
+  (`UI/UIDungeon.lua:911-920`, `Logic/Dungeon.lua:161-167`):
+  `conLai = dayilyCount - MarkManager.missions[dayilyFlag].step + VIP(EVIPPermission.Dungeon)`;
+  `conLai > 0` mới hiện nút Vào, `== 0` thì chỉ còn nút Mua. `.step` chính là
+  **`self.team_dungeon_steps`** bot đã parse sẵn ở `_on_mission_steps` (`S2C 0x18 sub 0x06`).
+- **`skipFlag = 0` ở CẢ 8 dòng** → không phó bản nào quét được (xác nhận lại mục PB tổ đội trên).
+
+**Mua lượt = `sellId 13`, KHÔNG có trần lượt.** `Dungeon.SendResetCount(dungeonId)` →
+`UISell.Launch(13, cb, dungeonId)` → `C:084-001 [sellId 2B][dungeonId 2B]`. `UISell_C.dat`
+(70×16B) cho `sellId=13`: **`rolecountId = 0`** ⇒ client không hiện dòng "đã mua x/y"
+(`UISell.lua:120` chỉ chạy khi `rolecountId > 0`) ⇒ **chặn duy nhất là TIỀN**. Khớp
+`Dungeon.ReciveResetCount` có nhánh `result == 2` → `logError("No Count Limit")`.
+
+`S:084-001 [sellId 2B][kind 1B]` — server nói rõ phải trả bằng gì, **đừng đoán**:
+
+| kind | nghĩa | client gửi tiếp |
+|---|---|---|
+| 0 | thất bại | đọc `[mã lỗi 1B][số 4B]`, hiện lý do, DỪNG |
+| 255 | trả bằng **vật phẩm** | `C:084-002` kiểu **1** + bagIndex |
+| 254 | **MIỄN PHÍ** | `C:084-002` kiểu **2** |
+| 1/2/3 | trả bằng tiền | đọc `money 4B` (1/2/3 = loại tiền), rồi kiểu **2** |
+
+Kết quả `S:084-002 [sellId][result]`, `result == 0` = hỏng (kèm mã lỗi + số).
+`S:047-0xx ReciveResetCount`: 0 thành công · 1 không có phó bản · 2 `No Count Limit` ·
+3 `Not Reach Count Limit`.
+
+> Bot hiện **bỏ qua `kind`**, luôn gửi nhánh "trả tiền" (`0x54 02 00 02 0d 00 <id> 00`) và không
+> đọc `step` → phải thử vào, ăn lỗi rồi mới suy ra "chắc hết free": 24 dòng
+> `vao FREE that bai` trong 10 phút (log 15/09).
+
 ### GIỜ DỊ GIỚI (đọc đúng như client)
 - Nguồn dữ liệu: **`LimitTimeDungeon_C.dat`** (1 mục): `scene=49942` (map Dị Giới),
   **`limitIndex=0x1b`**, **`limitTime=120` phút**, `missionId=13137`.

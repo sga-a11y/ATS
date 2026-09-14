@@ -330,6 +330,13 @@ TEAM_DUNGEONS = {
     80: {"id": 0x000F, "daily_flag": 0x30AA, "daily_count": 1},
     110: {"id": 0x0010, "daily_flag": 0x30AE, "daily_count": 1},
 }
+# PHO BAN DON (solo, o 1 bingo) - boc Dungeon_C.dat 15/09 (8 ban ghi x 42B = 340B, khop tuyet doi).
+# Bon ban ghi kind=2/maxPlayer=1/scene=62001, KHAC NHAU chi o dai level -> `id` chinh la cai
+# `_dungeon_tier()` van tra ve. CA BON dung CHUNG mot `daily_flag` va moi ngay chi 1 luot free;
+# o 1 bingo doi 2 luot nen luot thu hai BUOC phai mua (khong phai loi). Xem KNOWLEDGE.md.
+SOLO_DUNGEON_IDS = ((80, 2), (150, 3), (200, 4), (450, 5))   # (level toi da, dungeonId)
+SOLO_DUNGEON_DAILY_FLAG = 0x3030
+SOLO_DUNGEON_DAILY_COUNT = 1
 ONLINE_GIFT_KIND = 0x03
 ONLINE_GIFT_ROLECOUNT = 10
 WORLD_BOSS_MISSION_ID = 12207
@@ -2503,8 +2510,8 @@ class GameClient:
         self._online_gift_pending_ts = 0.0
         self._online_gift_next_log = None
         self._online_gift_last_log = 0.0
-        self.team_dungeon_steps = {}  # mission_id -> step, tu S2C 0x18; dung de tinh luot pho ban doi
-        self.team_dungeon_status_loaded = False
+        self.mission_steps = {}  # mission_id -> step, tu S2C 0x18; dung de tinh luot pho ban doi
+        self.mission_steps_loaded = False
         # (KHONG con `_team_dungeon_until`: "dang trong PB to doi" doc MAP THAT qua
         #  `in_team_dungeon()`. Moc `now + 20 phut` khong phai trang thai - xem ham do.)
         self._active_team_dungeon_level = None
@@ -3757,7 +3764,7 @@ class GameClient:
 
     def _sync_world_boss_from_mission_steps(self, source: str = ""):
         # Client game hien thi World Boss 0/5 tu MarkManager.GetMission(12207).step.
-        cur = int(self.team_dungeon_steps.get(WORLD_BOSS_MISSION_ID, 0) or 0)
+        cur = int(self.mission_steps.get(WORLD_BOSS_MISSION_ID, 0) or 0)
         cur = max(0, min(WORLD_BOSS_MAX_ATTEMPTS, cur))
         self._set_world_boss_progress(cur, WORLD_BOSS_MAX_ATTEMPTS, source or "mission-step")
 
@@ -7323,13 +7330,13 @@ class GameClient:
         while self.running and time.time() < deadline:
             if self._world_boss_progress_loaded and self._world_boss_progress_ts >= started - 0.1:
                 return self.world_boss_count, self.world_boss_max
-            if self.team_dungeon_status_loaded:
+            if self.mission_steps_loaded:
                 self._sync_world_boss_from_mission_steps("mission-step cached")
                 return self.world_boss_count, self.world_boss_max
             time.sleep(0.2)
         if self._world_boss_progress_loaded:
             return self.world_boss_count, self.world_boss_max
-        if self.team_dungeon_status_loaded:
+        if self.mission_steps_loaded:
             self._sync_world_boss_from_mission_steps("mission-step cached")
             return self.world_boss_count, self.world_boss_max
         return None
@@ -7691,8 +7698,8 @@ class GameClient:
                         step = min(WORLD_BOSS_MAX_ATTEMPTS, step)
                     steps[mid] = step
                     off += 4
-                self.team_dungeon_steps = steps
-                self.team_dungeon_status_loaded = True
+                self.mission_steps = steps
+                self.mission_steps_loaded = True
                 self._sync_world_boss_from_mission_steps("S24-6")
             elif sub == 0x07 and len(body) >= 4:
                 # S:024-007 INIT co nhiem vu: [count u16] << [byteIndex u16][gia tri 1B] >>
@@ -7740,44 +7747,58 @@ class GameClient:
             elif sub in (0x01, 0x02) and len(body) >= 5:
                 mid = int.from_bytes(body[2:4], "little")
                 step = body[4]
-                old = int(self.team_dungeon_steps.get(mid, 0))
+                old = int(self.mission_steps.get(mid, 0))
                 if sub == 0x01:
                     new = min(255, old + step)
                     if mid == WORLD_BOSS_MISSION_ID:
                         new = min(WORLD_BOSS_MAX_ATTEMPTS, new)
-                    self.team_dungeon_steps[mid] = new
+                    self.mission_steps[mid] = new
                 else:
                     new = max(0, old - step)
                     if new:
-                        self.team_dungeon_steps[mid] = new
+                        self.mission_steps[mid] = new
                     else:
-                        self.team_dungeon_steps.pop(mid, None)
-                self.team_dungeon_status_loaded = True
+                        self.mission_steps.pop(mid, None)
+                self.mission_steps_loaded = True
                 if mid == WORLD_BOSS_MISSION_ID:
                     self._sync_world_boss_from_mission_steps(f"S24-{sub}")
             elif sub == 0x04 and len(body) >= 4:
                 mid = int.from_bytes(body[2:4], "little")
-                self.team_dungeon_steps.pop(mid, None)
-                self.team_dungeon_status_loaded = True
+                self.mission_steps.pop(mid, None)
+                self.mission_steps_loaded = True
                 if mid == WORLD_BOSS_MISSION_ID:
                     self._sync_world_boss_from_mission_steps("S24-4")
         except Exception as e:
             log.debug("[%s] bo qua loi parse 0x18 mission-step: %s", self._label, e)
 
-    def wait_team_dungeon_status(self, timeout: float = 6.0) -> bool:
+    def wait_mission_steps(self, timeout: float = 6.0) -> bool:
         deadline = time.time() + max(0.0, timeout)
-        while self.running and not self.team_dungeon_status_loaded and time.time() < deadline:
+        while self.running and not self.mission_steps_loaded and time.time() < deadline:
             time.sleep(0.2)
-        return bool(self.team_dungeon_status_loaded)
+        return bool(self.mission_steps_loaded)
 
     def team_dungeon_remaining(self, level: int):
         info = TEAM_DUNGEONS.get(int(level))
         if not info:
             return None
-        if not self.team_dungeon_status_loaded:
+        if not self.mission_steps_loaded:
             return None
-        used = int(self.team_dungeon_steps.get(info["daily_flag"], 0))
+        used = int(self.mission_steps.get(info["daily_flag"], 0))
         return max(0, int(info["daily_count"]) - used)
+
+    def solo_dungeon_remaining(self):
+        """Con MAY LUOT FREE pho ban don. None = chua co bang mission-step (chua ket luan duoc).
+
+        Dung dung cong thuc client (`UI/UIDungeon.lua:911-920`):
+            conLai = dayilyCount - MarkManager.missions[dayilyFlag].step + VIP(Dungeon)
+        Client an han nut VAO khi `conLai == 0` va chi hien nut MUA - tuc no BIET TRUOC, khong thu
+        roi doan nhu bot van lam (24 dong `vao FREE that bai` trong 10 phut, log 15/09).
+        Bo qua phan VIP: bot khong nap VIP nen coi nhu 0 - lech ve phia AN TOAN (mua ve thay vi
+        tuong con free)."""
+        if not self.mission_steps_loaded:
+            return None
+        used = int(self.mission_steps.get(SOLO_DUNGEON_DAILY_FLAG, 0))
+        return max(0, SOLO_DUNGEON_DAILY_COUNT - used)
 
     def _query_quests(self):
         """Mo panel nhiem vu (C2S 0x5b 02 00 09...) -> server tra o nao DA HOAN THANH
@@ -8506,16 +8527,17 @@ class GameClient:
                      self._label, len(to_send), self._gift_recv, len(to_recv))
 
     def _dungeon_tier(self) -> int:
-        """TIER pho ban solo theo LEVEL char (server khoa tier thap voi char cao):
-          level <= 80   -> tier 2 (nhu cu)
-          level 81..150 -> tier 3 (capture nick cao: 0x2f 02000300 / 0x14 08000200 / 0x54 ..0d000300)
-          level >=151   -> tier 4 (suy luan theo pattern tier, cho acc 151+)."""
+        """`dungeonId` cua pho ban DON theo LEVEL char (server khoa ban ghi sai dai level).
+
+        Khong phai "tier" - day la cot `id` trong Dungeon_C.dat; ten cu giu lai vi nhieu cho goi.
+        Dai level lay thang tu file (15~80 / 81~150 / 151~200 / 201~450), truoc day code dung o 4
+        nen acc tu **lv 201** tro len se gui NHAM id (ban ghi 4 het o lv 200). Chua chay vi acc cao
+        nhat moi lv 193 (do log 15/09), nhung dang bo toi."""
         lv = getattr(self, "char_level", 0) or 0
-        if lv <= 80:
-            return 2
-        if lv <= 150:
-            return 3
-        return 4
+        for _max_lv, _id in SOLO_DUNGEON_IDS:
+            if lv <= _max_lv:
+                return _id
+        return SOLO_DUNGEON_IDS[-1][1]
 
     def _run_one_dungeon(self, max_sec: int) -> bool:
         """Chay 1 luot dungeon: query -> vao -> danh boss -> nhan thuong -> ra. True neu vao duoc."""
@@ -8620,13 +8642,60 @@ class GameClient:
             self.flee_mode = True    # ra khoi dungeon -> bat lai flee (con phai ve safe/lap party)
         return True
 
+    # S:084-001 <回傳介消資料> [sellId 2B][kind 1B] - SERVER NOI RO phai tra bang gi, dung doan.
+    UISELL_FAIL = 0        # + ly do (1B)
+    UISELL_FREE = 254      # dung MIEN PHI  (UISell.lua nhanh `免費使用`)
+    UISELL_ITEM = 255      # + itemId (2B) + so luong (1B)
+    UISELL_MONEY = {1: "nguyen bao", 2: "nguyen bao khoa", 3: "dong tien"}   # + so luong (4B)
+
     def buy_dungeon_ticket(self, wait: float = 2.5):
-        """MUA ve dungeon bang vang. C2S 0x54 0100... (mo) -> 0x54 0200020d000200 (MUA).
-        S2C 0x54 02000d00[01] -> byte cuoi 01 = MUA THANH CONG. Tra ve True/False."""
+        """MUA luot pho ban don (UISell sellId=13 = `Dungeon.SendResetCount`).
+
+        C:084-001 [sellId=13][dungeonId] -> DOC `kind` trong S:084-001 roi moi gui C:084-002:
+        kieu **1** (tra bang vat pham, kem bagIndex) hay kieu **2** (mien phi / tra bang tien).
+        Truoc day bot bo qua `kind` va luon gui kieu 2 - sai loai lenh ma khong ai biet.
+        `sellId=13` co `rolecountId=0` trong UISell_C.dat => **khong co tran luot mua**, chan duy
+        nhat la TIEN (khop nhanh `result == 2` -> `No Count Limit` trong `Dungeon.ReciveResetCount`).
+        Xem KNOWLEDGE.md muc "PHO BAN DON"."""
         tier = self._dungeon_tier()
-        self.send(0x54, b"\x01\x00\x0d\x00" + bytes([tier]) + b"\x00"); time.sleep(0.5)   # mo giao dien mua (theo tier)
+        self._dg_query = None
+        self.send(0x54, b"\x01\x00\x0d\x00" + bytes([tier]) + b"\x00")     # hoi gia (theo dungeonId)
+        q = None
+        for _ in range(int(wait / 0.2)):
+            r = self._dg_query
+            if r is not None and len(r) >= 5 and r[0:2] == b"\x01\x00":
+                q = r
+                break
+            time.sleep(0.2)
+        _kieu = 2          # mac dinh: mien phi / tra bang tien
+        _duoi = b""        # kieu 1 con phai kem bagIndex
+        if q is None:
+            log.info("[%s] Mua luot dungeon: khong nhan duoc gia -> gui nhu cu (kieu 2)", self._label)
+        else:
+            kind = q[4]
+            if kind == self.UISELL_FAIL:
+                log.info("[%s] Mua luot dungeon: KHONG DUNG DUOC (ly do %s) -> dung", self._label,
+                         q[5] if len(q) >= 6 else "?")
+                return False
+            if kind == self.UISELL_FREE:
+                log.info("[%s] Mua luot dungeon: server bao MIEN PHI", self._label)
+            elif kind == self.UISELL_ITEM:
+                _tid = int.from_bytes(q[5:7], "little") if len(q) >= 7 else 0
+                _slot = next((s for s, (t, c) in self.bag_slots.items() if t == _tid and c > 0), None)
+                if _slot is None:
+                    log.info("[%s] Mua luot dungeon: can vat pham %d nhung KHONG CO trong tui -> dung",
+                             self._label, _tid)
+                    return False
+                _kieu, _duoi = 1, bytes([_slot])
+                log.info("[%s] Mua luot dungeon: tra bang vat pham %d (o tui %d)",
+                         self._label, _tid, _slot)
+            else:
+                _gia = int.from_bytes(q[5:9], "little") if len(q) >= 9 else 0
+                log.info("[%s] Mua luot dungeon: gia %d %s", self._label, _gia,
+                         self.UISELL_MONEY.get(kind, "tien la (kind=%d)" % kind))
         self._dg_query = None                                          # cho doi tra loi MUA
-        self.send(0x54, b"\x02\x00\x02\x0d\x00" + bytes([tier]) + b"\x00")               # MUA (ton vang, theo tier)
+        # C:084-002 = [sub 02 00][tong loai 1B: 1=vat pham 2=diem][sellId 2B][bagIndex neu loai 1][arg 2B]
+        self.send(0x54, b"\x02\x00" + bytes([_kieu]) + b"\x0d\x00" + _duoi + bytes([tier]) + b"\x00")
         for _ in range(int(wait / 0.2)):
             r = self._dg_query
             if r is not None and len(r) >= 5 and r[0:2] == b"\x02\x00":
@@ -8675,6 +8744,14 @@ class GameClient:
         self.leave_party(); time.sleep(1.5)   # thoat party (solo moi vao duoc dungeon)
         done_runs = 0      # so luot VAO THANH CONG phien nay (cap = runs_target -> khoi mua vo han)
         bought = False     # da chuyen sang MUA ve chua (free da het)
+        # BIET TRUOC con free hay khong (client lam y het: an nut VAO khi het luot, chi hien nut MUA).
+        # Khong biet -> giu nguyen duong cu (thu FREE truoc, loi thi mua).
+        self.wait_mission_steps(timeout=6.0)
+        _free = self.solo_dungeon_remaining()
+        if _free is not None:
+            bought = (_free <= 0)
+            log.info("[%s] Dungeon: con %d luot FREE (flag 0x%04x) -> %s", self._label, _free,
+                     SOLO_DUNGEON_DAILY_FLAG, "MUA ve ngay" if bought else "vao FREE")
         while self.running and done_runs < runs_target:
             if cho_phep is not None:
                 try:

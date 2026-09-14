@@ -154,10 +154,20 @@ class TestViecRiengKhongDuocDE_RA_LECH_MAP(unittest.TestCase):
         with io.open(os.path.join(ROOT, "bot", "client.py"), encoding="utf-8") as fh:
             self.cli = fh.read()
 
-    def test_moi_cho_goi_dungeon_deu_hoi_dieu_phoi(self):
-        self.assertNotIn("c.do_daily_dungeon()", self.src,
-                         "con mot cho goi tran -> acc do van vao pho ban giua luc party dang gom")
-        self.assertGreater(self.src.count("c.do_daily_dungeon(cho_phep=_dieu_phoi_dang_ra_lenh)"), 0)
+    def test_dungeon_KHONG_con_hoi_dieu_phoi(self):
+        """User chot 14/09: bo cua hoan - PB don cu HOAN thi mat luot CA NGAY.
+
+        Cua nay dat dung vao thoi diem luon dang gom (PB don chi chay o login chores, ma luc moi
+        login thi ca party dung 250 cho khac nhau). Do tren log 14/09: 3224 lan `Dungeon: HOAN`,
+        o 1 (PB don) chi 14/152 acc sang duoc; sau restart 251 acc luc 22:31:46 co 109 acc bi HOAN
+        va chi 2 acc danh duoc.
+
+        Khong de ra lech map nua vi `do_daily_dungeon` bao pha `PHASE_LOGIN_CHORE`: dieu phoi loai
+        acc dang viec vat khoi phep do lech map/kenh va GIU loi moi party lai den khi xong viec.
+        """
+        self.assertNotIn("c.do_daily_dungeon(cho_phep=", self.src,
+                         "cua hoan song lai -> PB don lai mat luot ca ngay")
+        self.assertGreater(self.src.count("c.do_daily_dungeon()"), 0)
 
     def test_dungeon_chan_TRUOC_khi_mua_ve(self):
         i = self.cli.find("def do_daily_dungeon(")

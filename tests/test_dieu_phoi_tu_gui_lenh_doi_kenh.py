@@ -185,18 +185,41 @@ class TestLenhDieuPhoiThiHanhTuyetDoi(unittest.TestCase):
         with io.open(os.path.join(ROOT, "bot", "client.py"), encoding="utf-8") as fh:
             self.cli = fh.read()
 
-    def test_boss_the_gioi_HOAN_khi_dieu_phoi_dang_ra_lenh(self):
+    def test_boss_the_gioi_KHONG_con_hoan_theo_lenh(self):
+        """User chot 14/09 (huong 3): bo cua hoan cho boss the gioi / PB don.
+
+        Cua hoan cu dat dung vao THOI DIEM LUON DANG GOM - hai viec nay chi chay o login chores,
+        ma luc moi login thi 250 acc dung o 250 cho khac nhau -> dieu phoi ra lenh gom -> HOAN ->
+        va vi chi chay MOT LAN, mat luot CA NGAY. Restart bao nhieu lan cung the.
+
+        Do tren log 14/09, sau restart 251 acc luc 22:31:46:
+            PB don : 109 acc bi HOAN |  2 acc danh duoc luot
+            WB     : 162 acc bi HOAN | 51 acc vao danh
+        Ca ngay: 2739 lan `Boss the gioi: HOAN`, 3224 lan `Dungeon: HOAN`; o 1 (PB don) chi
+        14/152 acc sang duoc -> 96% acc khong xong nhiem vu ngay.
+
+        An toan hon truoc vi hai viec nay bao pha `PHASE_LOGIN_CHORE`: dieu phoi KHONG tinh acc
+        dang viec vat vao phep do lech map/kenh, va loi moi party duoc GIU lai den khi xong viec.
+        """
         i = self.src.find("def _maybe_auto_world_boss(reason: str):")
         self.assertGreater(i, 0)
-        khoi = self.src[i:i + 800]
-        self.assertIn("_dieu_phoi_dang_ra_lenh()", khoi,
-                      "khong hoi dieu phoi truoc khi lao vao vong boss = lenh khong tuyet doi")
+        khoi = self.src[i:i + 2000]
+        self.assertNotIn("_cam = _dieu_phoi_dang_ra_lenh()", khoi,
+                         "cua hoan song lai -> boss the gioi lai mat luot ca ngay")
+        self.assertIn("c.do_world_boss_all()", khoi)
 
-    def test_boss_the_gioi_DUNG_GIUA_CHUNG_duoc(self):
-        """Hoan luc bat dau la chua du: vong danh toi 20 luot, lenh toi giua chung thi phai bo."""
-        i = self.src.find("c.do_world_boss_all(")
-        self.assertGreater(i, 0)
-        self.assertIn("cho_phep=", self.src[i:i + 120])
+    def test_PB_don_KHONG_con_hoan_theo_lenh(self):
+        self.assertNotIn("c.do_daily_dungeon(cho_phep=", self.src,
+                         "cua hoan song lai -> PB don lai mat luot ca ngay")
+        self.assertIn("c.do_daily_dungeon()", self.src)
+
+    def test_dieu_phoi_KHONG_QUAY_RAY_acc_dang_lam(self):
+        """User 14/09: "khi dang danh PB don va daily quest thi dieu phoi tam thoi ko quay ray"."""
+        i = self.src.find("ACC DANG LAM VIEC VAT -> KHONG QUAY RAY")
+        self.assertGreater(i, 0, "dieu phoi van gui lenh doi kenh cho acc dang danh PB don")
+        khoi = self.src[i:i + 1200]
+        self.assertIn("_ban = set(_ai_dang_lam_viec_le(song))", khoi)
+        self.assertIn("if _u in _ban:", khoi)
 
     def test_client_co_cua_de_dung_giua_chung(self):
         i = self.cli.find("def do_world_boss_all(")

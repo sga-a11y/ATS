@@ -166,16 +166,20 @@ class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
         # chi duoc GOI tu dung mot cho (dong log trang thai); dong con lai la `def`
         _goi = [ln.strip() for ln in self.src.splitlines()
                 if "_ai_dang_lam_viec_le(song)" in ln and not ln.lstrip().startswith("def ")]
-        # BA cho, va KHONG cho nao duoc dung de NGUNG RA LENH:
+        # BON cho, va KHONG cho nao duoc dung de NGUNG RA LENH:
         #   `_le = set(...)`          -> danh dau `*` tren dong TRANG THAI
         #   `_ban = ...`              -> KHONG bump reform (van ra lenh moi binh thuong)
         #   `_ban_viec_vat = set(...)`-> khong tinh acc do vao phep do LECH MAP / LECH KENH
+        #   `_ban = set(...)` (thi hanh kenh) -> KHONG gui lenh doi kenh cho acc dang viec vat
+        #
+        # Cai thu tu la ve cua user 14/09: "khi dang danh PB don va daily quest thi dieu phoi tam
+        # thoi ko quay ray". No chi bo qua acc do trong MOT luot gui lenh, khong dung lenh lai.
         #
         # Cai thu ba KHONG phai "cho": viec vat PHAI o map khac (ban Noi Dat o Nghiep Thanh, cat
         # tien trang, boss the gioi - user 14/09), nen dem no vao `maps` la party LUC NAO cung
         # "lech map". Lenh van chay binh thuong tren so acc con lai; acc kia GIU loi moi, xong
         # viec thi nhan.
-        self.assertEqual(len(_goi), 3, "so cho goi doi -> co the co cho dung no de ngung ra lenh")
+        self.assertEqual(len(_goi), 4, "so cho goi doi -> co the co cho dung no de ngung ra lenh")
         for _dau in ("_le = set(", "_ban = ", "_ban_viec_vat = set("):
             self.assertTrue(any(_dau in g for g in _goi), "%s: %s" % (_dau, _goi))
 

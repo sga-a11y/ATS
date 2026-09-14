@@ -3241,12 +3241,25 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         def _maybe_auto_world_boss(reason: str):
             try:
                 if auto_world_boss:
-                    _cam = _dieu_phoi_dang_ra_lenh()
-                    if _cam:
-                        log.info("[%s] Boss the gioi: HOAN (%s) - %s", label, reason, _cam)
-                        return
+                    # KHONG HOAN THEO LENH DIEU PHOI NUA (user chot 14/09).
+                    #
+                    # Cua hoan cu (`_dieu_phoi_dang_ra_lenh`) dat dung vao THOI DIEM LUON DANG GOM:
+                    # viec nay chi chay o login chores, ma luc moi login thi 250 acc dung o 250 cho
+                    # khac nhau -> dieu phoi ra lenh gom -> HOAN -> va vi chi chay MOT LAN, mat luot
+                    # CA NGAY. Restart bao nhieu lan cung the.
+                    #
+                    # Do tren log 14/09, sau khi restart 251 acc luc 22:31:46:
+                    #   PB don : 109 acc bi HOAN |  2 acc danh duoc luot
+                    #   WB     : 162 acc bi HOAN | 51 acc vao danh
+                    # Ca ngay: 2739 lan `Boss the gioi: HOAN`, 3224 lan `Dungeon: HOAN`;
+                    # o 1 (PB don) chi 14/152 acc sang duoc -> 96% acc khong xong nhiem vu ngay.
+                    #
+                    # GIO AN TOAN HON TRUOC: hai viec nay bao pha `PHASE_LOGIN_CHORE`, ma dieu phoi
+                    # da KHONG con tinh acc dang viec vat vao phep do lech map/kenh, con loi moi
+                    # party thi duoc GIU lai den khi xong viec. Nen acc di danh khong lam party
+                    # "hong" nhu truoc.
                     log.info("[%s] Boss the gioi: auto danh het luot (%s)", label, reason)
-                    c.do_world_boss_all(cho_phep=_dieu_phoi_dang_ra_lenh)
+                    c.do_world_boss_all()
             except Exception as e:
                 log.warning("[%s] loi auto world boss (%s): %s", label, reason, e)
             finally:
@@ -3373,7 +3386,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 "(khong bo party), van lam not nhiem vu ngay", label, role)
             if do_daily:
                 try:
-                    c.do_daily_dungeon(cho_phep=_dieu_phoi_dang_ra_lenh)
+                    c.do_daily_dungeon()
                 except Exception as e:
                     log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
                 try:
@@ -5376,7 +5389,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 with st["lock"]:
                     st["started_train"] += 1
                 try:
-                    c.do_daily_dungeon(cho_phep=_dieu_phoi_dang_ra_lenh)
+                    c.do_daily_dungeon()
                 except Exception as e:
                     log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
                 for _ in range(15):
@@ -5460,7 +5473,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                         if c in _clients: _clients.remove(c)
                         return
                 if do_daily:
-                    try: c.do_daily_dungeon(cho_phep=_dieu_phoi_dang_ra_lenh)
+                    try: c.do_daily_dungeon()
                     except Exception as e:
                         log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
                 # khong vao DG -> lam FULL nhiem vu (nhe + boss) tai cho roi dong
@@ -5736,7 +5749,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             # roi MOI ve thanh -> dam bao dung dung thanh tap trung du co bi dump.
             if do_daily:
                 try:
-                    c.do_daily_dungeon(cho_phep=_dieu_phoi_dang_ra_lenh)
+                    c.do_daily_dungeon()
                 except Exception as e:
                     log.warning("[%s] loi daily dungeon (bo qua): %s", label, e)
             if mode == "city":
@@ -8106,7 +8119,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                 _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
                                                                   is_leader, _stopped, pcfg)
                         if do_daily and not dt_mode:
-                            try: c.do_daily_dungeon(cho_phep=_dieu_phoi_dang_ra_lenh)
+                            try: c.do_daily_dungeon()
                             except Exception as e:
                                 log.warning("[%s] loi daily dungeon sau DG: %s", label, e)
                         dt_dg_finished = dt_mode
@@ -8153,7 +8166,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                     _run_auto_team_dungeons_if_needed(c, st, username, label, pidx,
                                                                       is_leader, _stopped, pcfg)
                             if do_daily and not dt_mode:
-                                c.do_daily_dungeon(cho_phep=_dieu_phoi_dang_ra_lenh)
+                                c.do_daily_dungeon()
                                 # XONG DG -> nhiem vu NANG (boss o2 + claim not hang/cot + tong ket).
                                 # o1 dungeon vua danh o tren; o5 team dungeon chua co.
                                 try: c.claim_daily_quests(heavy=True)
@@ -8431,7 +8444,7 @@ def _thieu_level(st, members, level):
 
 def _handle_auto_team_dungeon(c, st, username, label, pidx, is_leader, stopped_fn, level):
     level = int(level)
-    if not c.wait_team_dungeon_status(timeout=6.0):
+    if not c.wait_mission_steps(timeout=6.0):
         remaining = None
         log.warning("[%s] (%s) phó bản đội lv%d: chưa có status 0x18 -> bỏ qua level này",
                     label, "LEADER" if is_leader else "member", level)
@@ -10858,9 +10871,18 @@ def _dieu_phoi_thi_hanh_kenh(pidx, st, song, dich):
                      "(kenh co y nghia theo tung map)", pidx + 1, len(_maps), sorted(_maps))
         return 0
     bay = time.time()
+    # ACC DANG LAM VIEC VAT -> KHONG QUAY RAY (user chot 14/09: "khi dang danh PB don va daily
+    # quest thi dieu phoi tam thoi ko quay ray").
+    #
+    # PB don / boss the gioi nam HAN trong client, moi tran 70-80 giay. Gui lenh doi kenh vao giua
+    # do thi hoac acc diec (dang trong vong tran), hoac no bo do -> mat luot ma van khong sang o 1.
+    # Xong viec thi `account_task.__exit__` nha ra, luc do dieu phoi gui lai binh thuong.
+    _ban = set(_ai_dang_lam_viec_le(song))
     n = 0
     for _u, c in song:
         try:
+            if _u in _ban:
+                continue
             if int(getattr(c, "current_channel", 0) or 0) == int(dich):
                 continue
             if getattr(c, "_dp_gui_kenh_dang_chay", False):
