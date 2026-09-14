@@ -127,113 +127,73 @@ class TestAiPhaiCho(_Nen):
         self.assertEqual(R._acc_thieu_level(self.PARTY), [])
 
 
-class TestVongCho(_Nen):
-    def test_du_level_thi_di_tiep_ngay(self):
-        for u in self.ACCS:
-            R.account_clients[u] = _C(150)
-        self.assertTrue(R._cho_du_level_party(self.PARTY, "a1", lambda: False, "test"))
+class TestAccKHONG_TU_CHOT(_Nen):
+    """Acc CHI DOC ket qua dieu phoi da chot - khong tu chot, khong vong cho.
 
-    def test_Stop_thi_thoat_vong_cho(self):
-        R.account_clients["a1"] = _C(150)          # thieu a2, a3 -> se cho mai
-        self.assertFalse(R._cho_du_level_party(self.PARTY, "a1", lambda: True, "test"))
+    Ba lop test cu o day (`TestVongCho`, `TestChotDungSauKhiCho`, `TestChoNgoaiLock`) neo ham
+    `_cho_du_level_party` - VONG CHO VO HAN ma acc roi vao khi tu goi `_auto_dg_level(pidx, pick,
+    username, _stopped)`. Vong do khong doc lenh dieu phoi va chi log mot dong moi 30 giay: acc nam
+    trong do thi DIEC, dieu phoi ra lenh gom deu deu ma khong ai nghe.
 
-    def test_ep_dong_bo_van_unwind_duoc(self):
-        """Cho vo han ma khong co duong ra cho lenh ep dong bo = treo that."""
-        R.account_clients["a1"] = _C(150)
+    Da xoa han ca vong cho lan hai duong acc tu chot. Gio:
+        DIEU PHOI  -> `_auto_dg_level(pidx, pick)` / `_auto_train_target(pidx, pcfg)` moi 2 giay
+        ACC        -> `_doc_cap_dg(pidx)` / `_doc_bai_train(pidx)` - CHI DOC, khong cho gi
+    """
+
+    def test_khong_con_vong_cho_vo_han(self):
+        self.assertFalse(hasattr(R, "_cho_du_level_party"),
+                         "vong cho vo han song lai -> acc lai diec lenh dieu phoi")
+
+    def test_acc_chi_DOC_cap_quai_DG(self):
         st = R._pstate(self.PARTY)
-        st["sync_epoch"] = 7
-        R.account_sync_epoch["a1"] = 6             # lech -> _resync_ck raise
-        with self.assertRaises(R.ResyncSignal):
-            R._cho_du_level_party(self.PARTY, "a1", lambda: False, "test")
+        self.assertIsNone(R._doc_cap_dg(self.PARTY))
+        st["auto_dg_level"] = 7
+        self.assertEqual(R._doc_cap_dg(self.PARTY), 7)
 
-    def test_cho_that_roi_moi_di_khi_acc_cuoi_login_xong(self):
-        """Vong cho phai NHAY khi acc con thieu login xong, khong phai chi doc 1 lan."""
-        R.account_clients["a1"] = _C(150)
-        R.account_clients["a2"] = _C(151)
+    def test_acc_chi_DOC_bai_train(self):
+        st = R._pstate(self.PARTY)
+        self.assertIsNone(R._doc_bai_train(self.PARTY))
+        st["auto_train"] = (21841, -1)
+        self.assertEqual(R._doc_bai_train(self.PARTY), (21841, -1))
 
-        def _login_muon():
-            R.account_clients["a3"] = _C(149)
+    def test_ham_chot_KHONG_con_nhan_username(self):
+        """Con tham so username la con duong acc tu chot + roi vao vong cho."""
+        import inspect
+        for _f in (R._auto_dg_level, R._auto_train_target):
+            _tham = list(inspect.signature(_f).parameters)
+            self.assertNotIn("username", _tham, _f.__name__)
+            self.assertNotIn("stopped", _tham, _f.__name__)
 
-        threading.Timer(1.5, _login_muon).start()
-        self.assertTrue(R._cho_du_level_party(self.PARTY, "a1", lambda: False, "test"))
-        self.assertEqual(R._acc_thieu_level(self.PARTY), [])
+    def test_KHONG_acc_nao_goi_ham_chot(self):
+        import io as _io, os as _os
+        p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                          "run_party_digioi.py")
+        with _io.open(p, encoding="utf-8") as fh:
+            src = fh.read()
+        # Soi LOI GOI THAT bang AST (chu thich/docstring co ke lai dang goi cu).
+        import ast
+        _xau = []
+        for node in ast.walk(ast.parse(src)):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            if node.func.id not in ("_auto_dg_level", "_auto_train_target"):
+                continue
+            # Chi DIEU PHOI duoc goi, va goi bang DUNG hai tham so (khong username/stopped).
+            if len(node.args) > 2 or node.keywords:
+                _xau.append((node.func.id, node.lineno))
+        self.assertEqual(_xau, [], "acc van tu chot (goi kem username/stopped): %s" % _xau)
 
-
-class TestChotDungSauKhiCho(_Nen):
-    def test_dg_chot_bang_level_CA_PARTY(self):
-        R.account_clients["a1"] = _C(150)
-        R.account_clients["a2"] = _C(151)
-        R.account_clients["a3"] = _C(152)
-        idx = R._auto_dg_level(self.PARTY, "avg-30", "a1", lambda: False)
-        self.assertIsNotNone(idx)
-        # chot 1 lan roi giu: goi lai ra dung ket qua cu
-        self.assertEqual(R._auto_dg_level(self.PARTY, "avg-30", "a1", lambda: False), idx)
-
-    def test_bi_Stop_giua_luc_cho_thi_KHONG_chot_bua(self):
-        """Thoat vi Stop ma van chot bang du lieu thieu = van dinh dung bug cu."""
-        R.account_clients["a1"] = _C(150)
-        self.assertIsNone(R._auto_dg_level(self.PARTY, "avg-30", "a1", lambda: True))
-        self.assertIsNone(R._pstate(self.PARTY).get("auto_dg_level"))
-
-    def test_dieu_phoi_goi_khong_username_thi_KHONG_CHOT_khi_thieu_acc(self):
-        """DIEU PHOI goi kieu nay (khong username/stopped) moi 2 giay - no KHONG duoc cho, nhung
-        cung KHONG duoc chot bua bang 1 acc. Chua du thi tra None, du thi chot ngay nhip sau."""
-        R.account_clients["a1"] = _C(150)
-        self.assertIsNone(R._auto_dg_level(self.PARTY, "avg-30"),
-                          "chot bang 1/3 acc = dung bug da lam party 1 va 19 di sai cap")
-        self.assertIsNone(R._pstate(self.PARTY).get("auto_dg_level"))
-        R.account_clients["a2"] = _C(151)
-        R.account_clients["a3"] = _C(152)
-        self.assertIsNotNone(R._auto_dg_level(self.PARTY, "avg-30"))
-
-    def test_dieu_phoi_tu_chot_khong_qua_luong_acc_nao(self):
-        """`_dieu_phoi_chot_map` la duong chot chinh: bot quyet, khong luong acc nao quyet."""
-        import bot.config as _cfg
-        cu = dict(getattr(_cfg, "PARTY_CONFIG", {}))
-        _cfg.PARTY_CONFIG = {self.PARTY: {"mode": "digioi_train", "di_gioi_pick": "avg-30"}}
+    def test_van_chot_dung_khi_du_level(self):
+        for u in self.ACCS:
+            R.account_clients[u] = _C(150, pet_level=178)
+        _cfg = R.config
+        cu = getattr(_cfg, "PARTY_CONFIG", {})
         try:
-            for u, lv in zip(self.ACCS, (150, 151, 152)):
-                R.account_clients[u] = _C(lv)
-            R._dieu_phoi_chot_map(self.PARTY, R._pstate(self.PARTY))
+            _cfg.PARTY_CONFIG = {self.PARTY: {"di_gioi_pick": "avg-30"}}
+            R._auto_dg_level(self.PARTY, "avg-30")
             self.assertIsNotNone(R._pstate(self.PARTY).get("auto_dg_level"))
         finally:
             _cfg.PARTY_CONFIG = cu
-
-
-class TestChoNgoaiLock(unittest.TestCase):
-    """Cho 1s/vong MA VAN giu st['lock'] la treo moi thu khac cham vao party state."""
-
-    def _than(self, ten):
-        import io
-        p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                         "run_party_digioi.py")
-        with io.open(p, encoding="utf-8") as fh:
-            src = fh.read()
-        i = src.find("def %s(" % ten)
-        assert i > 0, ten
-        return src[i:src.find("\ndef ", i + 10)]
-
-    def test_cho_nam_ngoai_with_lock(self):
-        for ten in ("_auto_dg_level", "_auto_train_target"):
-            than = self._than(ten)
-            i = than.find("_cho_du_level_party(")
-            self.assertGreater(i, 0, "%s chua goi vong cho" % ten)
-            truoc = than[:i]
-            # Phai co mot `with st["lock"]:` DONG LAI truoc do (khoi doc cache), va lenh cho
-            # nam o cot thut dau ham (4 space) chu khong nam trong khoi with (8 space).
-            self.assertIn("\n        if not _cho_du_level_party(", than,
-                          "%s: lenh cho khong o muc thut dau ham -> nghi nam trong with lock"
-                          % ten)
-            self.assertNotIn("with st[\"lock\"]:", truoc.rsplit("\n    if username", 1)[-1])
-
-    def test_doc_lai_cache_sau_khi_cho(self):
-        """Cho xong phai kiem lai: acc khac co the da chot trong luc minh ngu."""
-        for ten, khoa in (("_auto_dg_level", "auto_dg_level"), ("_auto_train_target", "auto_train")):
-            than = self._than(ten)
-            sau = than[than.find("_cho_du_level_party("):]
-            self.assertIn('st.get("%s")' % khoa, sau,
-                          "%s: khong doc lai cache sau khi cho -> 2 acc cung chot, ghi de nhau"
-                          % ten)
 
 
 if __name__ == "__main__":

@@ -117,7 +117,9 @@ class TestDatDungCho(unittest.TestCase):
         """Cac guard nay tung sinh ra tu ca hong that (pho ban to doi / Di Gioi / instance) -
         bo di la spam tele quay lai."""
         g = _than("go_to_town")
-        for m in ("_team_dungeon_until", "in_di_gioi()", "in_instance_map("):
+        # `in_team_dungeon()` doc MAP THAT; truoc day cho nay hoi dong ho (`_team_dungeon_until`
+        # = now + 20 phut) nen acc dung o thanh van tu nhan "dang o PB" - party 44, 14/09.
+        for m in ("in_team_dungeon()", "in_di_gioi()", "in_instance_map("):
             self.assertIn(m, g, m)
 
 

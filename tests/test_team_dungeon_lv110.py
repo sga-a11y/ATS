@@ -528,14 +528,17 @@ class TestTeamDungeon110Execution(unittest.TestCase):
     def test_wrapper_always_clears_pb110_mode(self):
         game = _new_game()
         game.state = BattleState()
-        game._team_dungeon_until = 10.0
 
         with mock.patch.object(game, "_do_team_dungeon_lv110_inner", return_value=False):
             self.assertFalse(game.do_team_dungeon_lv110())
 
         self.assertIsNone(game._active_team_dungeon_level)
         self.assertFalse(game.state.quest_mode)
-        self.assertEqual(game._team_dungeon_until, 0.0)
+        # `_team_dungeon_until` da bo (14/09): "dang trong PB to doi" doc MAP THAT qua
+        # `in_team_dungeon()`. Moc `now + 20 phut` khong phai trang thai - member tu accept loi moi
+        # khong co cho nao ha moc nen ket 18 phut o thanh (party 44). Xem ham do.
+        self.assertFalse(hasattr(game, "_team_dungeon_until"),
+                         "moc thoi gian song lai -> se lai bao 'dang o PB' khi dang dung o thanh")
         # `_phoban_until` da bo (07/09): pha PB gio do DIEU PHOI giu cho CA party -
         # xem tests/test_pho_ban_vo_ha_co_ca_party.py.
 

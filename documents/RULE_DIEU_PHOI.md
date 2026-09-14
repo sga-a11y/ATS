@@ -759,6 +759,63 @@ hiệu lực**, đụng vào là nuốt lệnh đang cần.
 
 Neo bằng `tests/test_rut_lenh_reform_khi_du_doi.py`.
 
+### L17 — Việc gì làm HỎNG ĐỘI thì phải CÓ LỆNH mới được làm
+
+Bốn bước *lệch map → đồng bộ map · lệch kênh → đồng bộ kênh · cùng map+kênh → lập party · đủ party
+→ đi train* đã đúng trong `_dieu_phoi_quyet` từ lâu. Lỗi không nằm ở đó. Nó nằm ở **hai tầng kẹp
+quanh** nó:
+
+**Đầu vào sai** — logic đúng nhưng đọc phải con số sai. Mỗi câu hỏi trạng thái phải có **một nguồn
+duy nhất**, và nguồn đó phải là chỗ được điền **sớm nhất và đầy đủ nhất**:
+
+| Câu hỏi | Nguồn đúng | Từng đọc nhầm |
+|---|---|---|
+| map train là gì | `_map_train_dich()` | `train_map_dich` (chỉ điền khi leader đã tới nơi) |
+| đội đủ chưa | roster của **leader** | bản sao nghèo nhất của member |
+| đang ở PB tổ đội | `current_map` | đồng hồ `now + 20 phút` |
+| level party | `_party_level_rows()` | chờ pet xác nhận |
+
+**Đầu ra không ai buộc phải nghe** — điều phối ra lệnh đúng, acc vẫn tự làm. Nguyên tắc:
+
+> Hành động nào làm **thay đổi đội hình** (rời đội, mời, teleport, vào instance) chỉ được làm khi
+> **có lệnh tương ứng**. Không có lệnh thì đứng yên. Mặc định là KHÔNG LÀM, chặn không phải ngoại lệ.
+
+Viết `if viec == X: thôi` là sai chiều — nó chỉ biết một lệnh, thêm lệnh mới vào chuỗi là lọt thêm
+một đường. Phải viết `if viec != <lệnh cho việc này>: thôi`.
+
+Ngoại lệ duy nhất: việc **bắt buộc rời đội theo luật game** (boss Quân Đoàn / phó bản đơn là
+instance solo, đổi kênh bị server chặn khi còn trong đội). Những việc đó vẫn phải **hoãn** khi điều
+phối đang ra lệnh khác, và điều phối phải **biết** để không kết luận "đội hỏng" — đọc báo cáo pha
+(`_ai_dang_lam_viec_le`), không phải acc xin phép.
+
+> Đo trên log thật 14/09 (3,5 giờ, 78 party) trước khi sửa:
+>
+> | | |
+> |---|---|
+> | lệnh `LAP LAI PARTY` phát ra | 549 — trong đó **130 (24%) lúc leader đã thấy đủ roster** |
+> | leader `Roi/giai tan party cu` | 759 |
+> | acc tự rời đội đi boss Quân Đoàn | 104 |
+> | một đứa rớt → leader giải tán cả party | 94 |
+> | `MAT PARTY giua chung` | 1903 (hệ quả của những cái trên) |
+>
+> Ba tuần sửa lòng vòng là vì mỗi lần chỉ vá một đường trong số này; party sau lại chạm vào đường
+> chưa vá.
+
+Neo bằng `tests/test_ra_soat_acc_khong_tu_quyet.py`.
+
+### Một dòng trạng thái cho mỗi lần lệnh đổi
+
+`_log_trang_thai()` in kèm mỗi lần kế hoạch đổi:
+
+```
+[party N] TRANG THAI: <acc>@<map>/k<kênh><cờ> ... | roster leader=x/y | reform g=A thoa=B
+          cờ:  ! = đang đánh   * = đang làm việc lẻ   (L) = leader
+```
+
+Trước đó phải ghép 4–5 lệnh grep mới dựng lại được một cảnh, nên mỗi lần truy lỗi mất hàng chục
+phút và dễ kết luận nhầm. Các con số in ra **đúng là những con số điều phối vừa dùng để quyết** —
+đọc log là đọc lại được quyết định.
+
 ## Trước khi viết code: năm câu phải trả lời
 
 Thêm bất kỳ hành vi phối hợp nào, trả lời hết năm câu này rồi mới gõ:
@@ -789,6 +846,9 @@ Không trả lời được câu nào thì **chưa được viết**.
 | Kết luận "xong/thua/thôi" trong khi đang thiếu người | **L0** |
 | Lệnh làm tan đội mà không có bước lập lại | **L0**, L5 |
 | Lệnh không có đường RÚT khi mục đích đã đạt | L16 |
+| `if viec == X: thôi` (chặn là ngoại lệ, mời/đi là mặc định) | L17 |
+| Rời đội / mời / teleport mà không kèm lệnh tương ứng | L17, **L0** |
+| Đọc trạng thái từ đồng hồ thay vì từ nguồn thật | L17, L1b |
 | Acc tự ghi mốc "lệnh này coi như xong" | L16, L1, L14 |
 | Ghi cờ "nợ"/"đã báo" trong khi đọc thẳng client là ra | L2 |
 | Bảng `*_reports` / `*_done_by` để đếm đủ người | L2 |
@@ -805,8 +865,8 @@ Không trả lời được câu nào thì **chưa được viết**.
 ## Được ép bằng test
 
 `tests/test_rule_dieu_phoi.py` bắt các vi phạm kiểm được bằng máy; `test_leader_khong_tu_dap_party.py`
-(L1), `test_pho_ban_vo_ha_co_ca_party.py` (L1b) và `test_rut_lenh_reform_khi_du_doi.py` (L16) neo
-các ca ở trên. Test đỏ ở đó nghĩa là **luật bị
+(L1), `test_pho_ban_vo_ha_co_ca_party.py` (L1b) và `test_rut_lenh_reform_khi_du_doi.py` (L16) va
+`test_ra_soat_acc_khong_tu_quyet.py` (L17) neo các ca ở trên. Test đỏ ở đó nghĩa là **luật bị
 phá**, không phải "test cũ neo sai" — sửa code, đừng sửa test.
 
 Phần còn lại (L3, L4, L5, L7, L11, L12) phải tự soi khi review, dùng bảng "Cấm" ở trên.

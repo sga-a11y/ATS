@@ -674,7 +674,7 @@ class BotGUI(tk.Tk):
         # --- log filter state ---
         self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
         self._agi_cache = {}        # pidx -> (luc, report) cho party khong hien thi
-        self._notify_cache = {}     # pidx -> items, dung MOT lan roi giu (xem `_refresh`)
+        self._notify_cache = {}     # pidx -> (login_gen, items); dung lai moi lan co acc login
         self._refresh_after = None  # handle timer refresh (mot chuoi duy nhat)
         self.log_filter = None         # None = tat ca; hoac set(username) duoc hien
         self._char2user = {}           # ten nhan vat -> username (cap nhat khi acc resolve)
@@ -1969,9 +1969,24 @@ class BotGUI(tk.Tk):
             # 1 lan luc log in la dc roi, cai day dau co thay doi nhieu trong luc chay dau, khoi
             # can load lai"). Vong refresh KHONG dung lai nua.
             # Bam nut "Chu y" van dung tuoi - do la mot lan, khong phai vong lap.
-            if pidx not in self._notify_cache:
-                self._notify_cache[pidx] = self._party_notify_items(pidx)
-            _notify_items = self._notify_cache[pidx]
+            # KHOA CACHE THEO `login_gen` - so nay TANG MOI LAN co acc vao world (login dau HAY
+            # reconnect sau khi rot; xem cho tang no ben run_party_digioi).
+            #
+            # Truoc day cache dung MOT lan roi giu vinh vien. Lan `_refresh` dau chay 1 GIAY sau
+            # khi mo GUI (`self.after(1000, self._refresh)`) - luc do CHUA ACC NAO LOGIN nen ca nam
+            # nguon (tui / Ba Dau / quan doan / du diem / lo) deu rong -> cache = [] va khong cho
+            # nao xoa -> "Chu y" trong VINH VIEN (user 14/09: "cai chu y bi lam sao ma ko thay xuat
+            # hien nua").
+            _lg = 0
+            try:
+                _lg = int((ctrl._pstate(pidx) or {}).get("login_gen", 0) or 0)
+            except Exception:
+                pass
+            _cache = self._notify_cache.get(pidx)
+            if _cache is None or _cache[0] != _lg:
+                _cache = (_lg, self._party_notify_items(pidx))
+                self._notify_cache[pidx] = _cache
+            _notify_items = _cache[1]
             _gap_notify = any(it.get(k) for _nu, it in _notify_items for k in self.NOTIFY_CAM)
             _cam = _lech_agi or (_gap_notify and _du_acc)
             if _cam:

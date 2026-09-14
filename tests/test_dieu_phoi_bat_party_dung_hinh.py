@@ -259,9 +259,35 @@ class TestDoiDuTheoROSTER_SERVER(unittest.TestCase):
         song = [("a", _C(roster=0)), ("b", _C(roster=0))]
         self.assertTrue(R._thieu_doi(0, song))
 
-    def test_MOT_acc_roster_rong_cung_la_thieu(self):
-        song = [("a", _C(roster=2)), ("b", _C(roster=2)), ("c", _C(roster=0))]
-        self.assertTrue(R._thieu_doi(0, song))
+    def test_doc_roster_cua_LEADER_chu_khong_phai_ban_sao_ngheo_nhat(self):
+        """Leader la NGUOI MOI - roster cua no chinh la roster cua doi.
+
+        User 14/09: "p1, party xong deo ra cho quai". Roster dung im o (chihao188=2 sga008=4
+        sga018=4 sga019=3 sga020=1) suot 33 giay: leader (sga008) thay DU 4, member thi khong bao
+        gio co ban sao day du. Ban cu doi MOI acc thay du -> doi DA DU van bi doc thanh thieu ->
+        `viec=moi` -> cua "chua ra bai" chan leader -> ca party dung im giua bai train.
+        """
+        _cu = dict(R.config.PARTY_LEADER_ACC)
+        try:
+            R.config.PARTY_LEADER_ACC[0] = "a"
+            song = [("a", _C(roster=2)), ("b", _C(roster=2)), ("c", _C(roster=0))]
+            self.assertFalse(R._thieu_doi(0, song), "leader thay du ma van bao thieu")
+            song = [("a", _C(roster=1)), ("b", _C(roster=2)), ("c", _C(roster=2))]
+            self.assertTrue(R._thieu_doi(0, song), "leader thay thieu ma bao du")
+        finally:
+            R.config.PARTY_LEADER_ACC.clear(); R.config.PARTY_LEADER_ACC.update(_cu)
+
+    def test_leader_khong_chay_thi_lay_ban_sao_DAY_DU_NHAT(self):
+        """Khong doan bua khi thieu leader; doi tan that thi moi ban sao deu tut nen van bat duoc."""
+        _cu = dict(R.config.PARTY_LEADER_ACC)
+        try:
+            R.config.PARTY_LEADER_ACC[0] = "khong-co-trong-song"
+            self.assertFalse(R._thieu_doi(0, [("a", _C(roster=2)), ("b", _C(roster=0)),
+                                              ("c", _C(roster=0))]))
+            self.assertTrue(R._thieu_doi(0, [("a", _C(roster=1)), ("b", _C(roster=0)),
+                                             ("c", _C(roster=0))]))
+        finally:
+            R.config.PARTY_LEADER_ACC.clear(); R.config.PARTY_LEADER_ACC.update(_cu)
 
     def test_du_roster_thi_KHONG_thieu(self):
         song = [("a", _C(roster=2)), ("b", _C(roster=2)), ("c", _C(roster=2))]

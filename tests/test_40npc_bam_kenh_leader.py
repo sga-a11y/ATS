@@ -123,9 +123,16 @@ class TestDieuPhoiXuLyCaGoc(unittest.TestCase):
         # `_nhip_moi_party` lam dung thu tu: nghe lenh kenh -> kiem lenh GOM -> moi
         s2 = _src()
         i2 = s2.find("def _nhip_moi_party(")
-        than = s2[i2:i2 + 2200]
-        self.assertLess(than.find("_nghe_lenh_kenh()"),
-                        than.find("_invite_party_participants("),
+        self.assertGreater(i2, 0, "mat _nhip_moi_party")
+        # NEO TREN CA THAN HAM, khong cat theo so ky tu: them mot doan chu thich la moc truot ra
+        # ngoai cua so (bay trong CLAUDE.md - da can 14/09 khi sua cua "chi moi khi co lenh MOI").
+        _j = s2.find("\n    def ", i2 + 10)
+        than = s2[i2:_j if _j > 0 else len(s2)]
+        _nghe = than.find("_nghe_lenh_kenh()")
+        _moi = than.find("_invite_party_participants(")
+        self.assertGreater(_nghe, 0, "mat buoc nghe lenh kenh")
+        self.assertGreater(_moi, 0, "mat buoc gui loi moi")
+        self.assertLess(_nghe, _moi,
                         "phai sang kenh dich TRUOC khi moi, khong thi moi vao hu khong")
 
     def test_leader_cung_phai_theo_lenh(self):

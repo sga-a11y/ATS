@@ -139,19 +139,32 @@ class TestNutChuYMauCam(unittest.TestCase):
         self.assertEqual(g.count("self._party_notify_gap(pidx)"), 0,
                          "lai dung danh sach chu y them mot lan nua")
         self.assertEqual(g.count("self._party_notify_count(pidx)"), 0)
-        self.assertEqual(g.count("self._notify_cache[pidx] = self._party_notify_items(pidx)"), 1)
+        # Trong VONG REFRESH chi duoc dung danh sach o dung mot cho (cho cache). Cac ham tien ich
+        # (`_party_notify_count` / `_party_notify_gap`) va nut "Chu y" van dung tuoi - do la mot
+        # lan bam, khong phai vong lap moi giay.
+        i = g.find("    def _refresh(self):")
+        self.assertGreater(i, 0, "mat _refresh")
+        than = g[i:g.find("\n    def ", i + 20)]
+        self.assertEqual(than.count("self._party_notify_items(pidx)"), 1,
+                         "vong refresh dung danh sach chu y nhieu hon mot lan")
         self.assertIn("_ncnt = len(_notify_items)", g, "nut phai dung LAI danh sach da dung")
         self.assertIn("_gap = _gap_notify", g)
 
-    def test_PC_dung_MOT_LAN_roi_giu_luon(self):
+    def test_PC_dung_MOT_LAN_MOI_LAN_LOGIN(self):
         """User 13/09: "cai chu y, m chi can dung len 1 lan luc log in la dc roi, cai day dau co
-        thay doi nhieu trong luc chay dau, khoi can load lai"."""
+        thay doi nhieu trong luc chay dau, khoi can load lai".
+
+        User 14/09 (sau khi Chu y trong vinh vien): "cu acc login xong la cache lai 1 lan,
+        reconnect khi dis cung cache lai, don gian la login vi bat ky ly do gi cung cache lai".
+        Khoa cache = `login_gen` - xem tests/test_chu_y_dung_lai_moi_lan_login.py.
+        """
         g = _gui()
-        i = g.find("if pidx not in self._notify_cache:")
-        self.assertGreater(i, 0, "van dung lai danh sach chu y trong vong refresh")
+        i = g.find("_cache = self._notify_cache.get(pidx)")
+        self.assertGreater(i, 0, "van dung lai danh sach chu y moi vong refresh")
         khoi = g[i:i + 300]
-        self.assertIn("self._notify_cache[pidx] = self._party_notify_items(pidx)", khoi)
-        self.assertNotIn("_AGI_CACHE_SEC", khoi, "khong con dung lai theo dong ho")
+        self.assertIn("_cache[0] != _lg", khoi, "khong khoa theo login_gen")
+        self.assertIn("self._party_notify_items(pidx)", khoi)
+        self.assertNotIn("_AGI_CACHE_SEC", khoi, "khong duoc dung lai theo dong ho")
         self.assertNotIn("time.time()", khoi)
 
     def test_APK_du_ba_loai(self):

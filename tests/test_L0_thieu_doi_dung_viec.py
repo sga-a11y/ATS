@@ -139,7 +139,10 @@ class TestLenhDieuPhoiLaTUYET_DOI(unittest.TestCase):
         s = _src()
         i = s.find("_viec_now = (_ke_hoach(st) or {}).get(\"viec\")")
         self.assertGreater(i, 0, "khong doc lenh dieu phoi truoc khi tu quyet danh")
-        self.khoi = s[i:i + 1200]
+        # NEO TOI HET NHANH L0, khong cat theo so ky tu: them mot doan chu thich la moc truot ra
+        # ngoai cua so (bay trong CLAUDE.md - da can 14/09).
+        j = s.find("L0: dieu phoi het lenh gom", i)
+        self.khoi = s[i:j if j > i else i + 1200]
 
     def test_chan_ca_BA_lenh_gom(self):
         for m in ("VIEC_MOI", "VIEC_GOM", "VIEC_DONG_BO"):

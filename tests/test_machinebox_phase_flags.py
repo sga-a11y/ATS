@@ -19,14 +19,13 @@ class _State:
         self.in_battle = battle
 
 
-def make_client(tick_char=True, tick_pet=True, td_until=0.0, cur_map=14823,
+def make_client(tick_char=True, tick_pet=True, cur_map=14823,
                 quest=False, battle=False):
     c = GameClient.__new__(GameClient)
     c._label = "chumuoi"
     c.running = True
     c.death_return_town = tick_char
     c.pet_death_return_town = tick_pet
-    c._team_dungeon_until = td_until
     c.current_map = cur_map
     c.state = _State(quest, battle)
     c.sent = []
@@ -40,9 +39,10 @@ class TestMachineboxPhaseFlags(unittest.TestCase):
         self.assertEqual((pl[6], pl[7]), (1, 1))
 
     def test_PB_quest_event_thi_TAT(self):
-        # 3 cach nhan biet dang o PB/quest/event
-        for ten, kw in (("con han _team_dungeon_until", {"td_until": time.time() + 300}),
-                        ("dung tren map PB", {"cur_map": 62011}),
+        # 2 cach nhan biet dang o PB/quest/event.
+        # (Truoc day co cach thu ba: moc thoi gian `_team_dungeon_until`. Da bo - moc `now + 20
+        #  phut` khong phai trang thai, xem `GameClient.in_team_dungeon`.)
+        for ten, kw in (("dung tren map PB", {"cur_map": 62011}),
                         ("quest_mode (gom ca event)", {"quest": True})):
             pl = make_client(**kw).machinebox_payload()
             self.assertEqual((pl[6], pl[7]), (0, 0), "sai o ca: %s" % ten)
@@ -59,7 +59,7 @@ class TestMachineboxPhaseFlags(unittest.TestCase):
         self.assertFalse(c.sync_machinebox_flags())    # khong doi -> KHONG gui
         self.assertEqual(len(c.sent), 1)
 
-        c._team_dungeon_until = time.time() + 300      # vao PB -> doi -> gui
+        c.current_map = 62011                          # vao map PB -> doi -> gui
         self.assertTrue(c.sync_machinebox_flags())
         self.assertEqual(len(c.sent), 2)
         self.assertEqual(c.sent[-1][0], 0x41)

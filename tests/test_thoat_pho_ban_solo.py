@@ -107,7 +107,9 @@ class TestKhongTeleportTrongInstance(unittest.TestCase):
         self.assertIn("return False", khoi)
 
     def test_van_giu_cac_chot_cu(self):
-        self.assertIn("_team_dungeon_until", self.than)
+        self.assertIn("self.in_team_dungeon()", self.than)
+        self.assertNotIn("_team_dungeon_until", self.than,
+                         "moc thoi gian song lai -> bao 'dang o PB' khi dang dung o thanh")
         self.assertIn("self.in_di_gioi()", self.than)
 
 
