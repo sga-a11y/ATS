@@ -1891,6 +1891,9 @@ fun AddPartyDialog(
     val allElems = remember { allElementIds() }
     val isPickMode = trainMapKey.startsWith(PICK_PREFIX)
     var trainMapExpanded by remember { mutableStateOf(false) }
+    // O "Map train" co dang giu focus khong - de phan biet "VUA NHAN focus"
+    // voi "dang co focus ma layout doi" (xem `onFocusChanged` cua o do).
+    var trainMapFocused by remember { mutableStateOf(false) }
     var collapsedTrainMapGroups by remember { mutableStateOf(emptySet<String>()) }
     var usePhucThan by remember { mutableStateOf(initialUsePhucThan) }
     var useDigioiHoPhu by remember { mutableStateOf(initialUseDigioiHoPhu) }
@@ -2349,7 +2352,20 @@ fun AddPartyDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .onFocusChanged { focusState ->
-                                    if (focusState.isFocused && !trainMapExpanded) {
+                                    // CHI mo khi VUA NHAN focus, khong phai "dang co focus".
+                                    //
+                                    // Dropdown khai `PopupProperties(focusable = false)` nen o nay
+                                    // VAN GIU focus sau khi chon map xong. Moi lan layout doi (vd
+                                    // bam o text khac -> ban phim hien) thi `onFocusChanged` BAN
+                                    // LAI voi `isFocused = true`, ma luc do `expanded` da la false
+                                    // -> dieu kien cu khop -> BANG CHON MAP HIEN LEN LAN NUA.
+                                    //
+                                    // User 14/09: "doi mode train -> click o chon map -> chon map
+                                    // xong roi click o go text khac thi thay bang chon map hien
+                                    // len lan nua".
+                                    val vuaNhanFocus = focusState.isFocused && !trainMapFocused
+                                    trainMapFocused = focusState.isFocused
+                                    if (vuaNhanFocus && !trainMapExpanded) {
                                         trainMapText = selectedTrainMapTextValue()
                                         trainMapExpanded = true
                                     }
@@ -2428,7 +2444,7 @@ fun AddPartyDialog(
                                 },
                                 title = { Text("Hệ quái muốn đánh") },
                                 text = {
-                                    Column {
+                                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                                         Text("Tick hết hoặc không tick gì = đánh tất cả các hệ.")
                                         elementList().forEach { (eid, name) ->
                                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2628,7 +2644,7 @@ fun AddPartyDialog(
             onDismissRequest = { showBagClean = false },
             title = { Text("Dọn dẹp túi đồ") },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text("Các việc bot làm khi bật \"Tự dọn túi đồ\":")
                     Spacer(Modifier.height(8.dp))
                     // DAU TIEN, TRUOC "Tu ban Noi dat" (user chot 02/09): mua slot tui toi khi
@@ -2766,7 +2782,7 @@ fun AddPartyDialog(
             onDismissRequest = { showShopList = false },
             title = { Text("List shop") },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text("Chọn vật phẩm shop bot sẽ tự mua:")
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2800,7 +2816,7 @@ fun AddPartyDialog(
             onDismissRequest = { showTeamDungeonList = false },
             title = { Text("List phó bản") },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text("Chọn phó bản đội bot sẽ tự đi:")
                     Spacer(Modifier.height(8.dp))
                     TeamDungeonLevels.forEach { level ->
@@ -5354,7 +5370,7 @@ fun SkillSettingsDialog(
             onDismissRequest = { editDangerousNpc = false },
             title = { Text("NPC nguy hiểm") },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text("Mỗi dòng là một tên NPC, thứ tự trên trước.")
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
