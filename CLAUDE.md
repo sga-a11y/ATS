@@ -1,5 +1,24 @@
 # Hướng dẫn cho Claude khi làm bot TS Online (repo này)
 
+## MỐC "BẢN CHẠY ỔN" — chỗ quay về khi sửa hỏng
+
+```
+git tag : on-20260914-1802      (commit f6eedb1)
+quay về : git checkout on-20260914-1802
+```
+
+Đo trên log thật 14/09 lúc 19:21: **43/43 party đang chạy đều đang đánh** (15 phút cuối, không
+party nào im) · 2998 test OK · APK sync 25 file giống hệt PC · release `v1.1.202609141802`.
+
+Sửa gì mà bot xấu đi thì `git diff on-20260914-1802` là ra ngay mình đã đụng vào đâu.
+
+> **Cách đo lại "bao nhiêu party đang đánh" cho đúng** — đã đếm sai hai lần trong ngày 14/09:
+> - Mẫu số là party **ĐANG BẬT** (có log gần đây), KHÔNG phải `len(config.PARTIES)` — user tắt
+>   bớt party là chuyện thường. Lấy nhầm thì vẽ ra cả chục party "hỏng" không tồn tại.
+> - Map label→party phải theo **username**, không theo tên nhân vật: có tên trùng nhau giữa các
+>   party (`dtmot`, `dthai`, `dtba`...), lúc đó label là `ten~username` và map theo tên sẽ bị
+>   party sau ghi đè → báo nhầm party đang đánh thành "không đánh".
+
 ## TRƯỚC khi động vào bất cứ thứ gì có NHIỀU ACC phối hợp → ĐỌC `documents/RULE_DIEU_PHOI.md`
 
 13 luật cho việc **ra lệnh và thi hành lệnh ở cấp party**, áp cho MỌI tính năng (Địa Giới, train,
