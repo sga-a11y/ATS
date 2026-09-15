@@ -19,6 +19,7 @@ from . import mob_spots
 from . import train_pick
 from . import loandau
 from . import npc40
+from . import party_engine
 from . import train_pick as train_pick_mod   # alias: trong setup_party_runtime co tham so ten train_pick
 from .mob_scanner import MobScanSession, compute_regions, scan_full_map
 from .scene_fight import get_scene_fight_seed
@@ -71,6 +72,29 @@ _clients = []
 _threads = []   # thread tung acc - de biet khi nao TAT CA da thoat
 DIGIOI_LIMIT = 120   # so phut Di Gioi/ngay (de tinh "con lai")
 HO_PHU_CHECK_SEC = 180   # Di Gioi Ho Phu: check moi 3 phut (login + dinh ky)
+
+# ------------------------------------------------------------------ ENGINE PARTY MOI (chay THU)
+# Party co so thu tu >= con so nay dung ENGINE MOI (1 luong quyet dinh/party, bot/party_engine.py);
+# party con lai giu nguyen engine cu. Dat 0 = TAT HAN engine moi, toan bo ve engine cu ngay - duong
+# lui trong mot giay, khong phai sua code rai rac.
+#
+# User chot 15/09: "party >40 la theo co che moi". Dang chay THU tu so LON xuong (54, 53...) roi
+# ha dan toi 41 - engine moi chua tung chay that, bat ca 14 party (62 acc) ngay dem dau la hong
+# mot dem mat ca 62 acc mot ngay nhiem vu. Xem documents/ENGINE_PARTY_MOI.md muc 7.
+PARTY_ENGINE_MOI_TU = 0     # 0 = tat; 53 = chay thu 2 party; 41 = du pham vi user chot
+_party_engines = {}         # pidx -> PartyEngine (chi party dung engine moi)
+_party_engines_lock = threading.Lock()
+
+
+def dung_engine_moi(pidx) -> bool:
+    """Party nay co dung engine moi khong. MOT cho duy nhat tra loi cau hoi do."""
+    try:
+        nguong = int(getattr(config, "PARTY_ENGINE_MOI_TU", PARTY_ENGINE_MOI_TU) or 0)
+    except Exception:
+        nguong = 0
+    if nguong <= 0:
+        return False
+    return int(pidx) + 1 >= nguong
 # Phuc Than: chay theo SU KIEN (buff tut < 5 / ngoc hong -> client.phuc_than_pending). So nay chi
 # la LUOI AN TOAN khi server khong gui goi - truoc day la 1800 (30 phut) va la duong CHINH nen
 # phan ung rat cham (ngoc hong phut thu 1 -> mat he so EXP toi 29 phut).
@@ -2838,6 +2862,17 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             config.record_leader_name(pidx, c.char_name)
         login_map = c.current_map         # map LUC LOGIN (doc som, it bi pollution) - dung de check train
         log.info("[%s] (%s) vao world.", label, role)
+        # === CUA RE SANG ENGINE MOI (documents/ENGINE_PARTY_MOI.md) ==========================
+        # Dat DUNG o day, sau khi login/vao world xong va TRUOC moi kich ban: phan login co qua
+        # nhieu chi tiet song con (chan toc do dang nhap ma 90, error_code=1, co chet-ve-thanh,
+        # van tieu per-acc) - chep lai sang engine moi thi chac chan lech dan. Mot diem re, khong
+        # di chuyen mot dong nao cua engine cu.
+        #
+        # Party KHONG thuoc engine moi thi dong nay khong lam gi ca (`dung_engine_moi` tra False).
+        if dung_engine_moi(pidx):
+            _dang_ky_engine_moi(username, c, pidx, is_leader, label, _stopped)
+            return
+        # =====================================================================================
         log.info("[%s] >>> MAP HIEN TAI = %s <<<  (dung ID nay de setup START_CITY_ID/TRAIN)",
                  label, login_map)
         # Doc party config SOM de biet mode/map ngay sau login. Neu dang login o map train thi
@@ -10657,6 +10692,146 @@ _DIEU_PHOI_THREAD = None
 _DIEU_PHOI_LOCK = threading.Lock()
 
 
+# ------------------------------------------------------------------ ENGINE MOI: dang ky acc
+def _pb_doi_levels_engine_moi(pidx):
+    """Cac level PB to doi user BAT cho party nay, theo dung thu tu engine cu chay.
+
+    Doc `_team_dungeon_flags` + `TEAM_DUNGEON_LEVELS` - dung nguon engine cu van dung, khong che
+    ra danh sach rieng (lech mot cai la party engine moi danh thieu/thua pho ban ma khong ai biet).
+    """
+    _pcfg = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
+    if not _pcfg.get("auto_team_dungeon", True):
+        return ()
+    try:
+        _flags = _team_dungeon_flags(_pcfg)
+    except Exception:
+        return ()
+    return tuple(int(lv) for lv in getattr(config, "TEAM_DUNGEON_LEVELS", (20, 50, 80))
+                 if _flags.get(int(lv), False))
+
+
+def _chuan_bi_bai_train(c, st, pidx, label):
+    """LEADER chot MAP TRAIN + TAM BAI QUAI cho engine moi. Goi lai dung ham engine cu van dung.
+
+    `_dieu_phoi_chot_map` la ham THUAN DU LIEU (khong can ai di dau ca) nen goi duoc ngay tu giay
+    dau. `_resolve_train_mob_centers` thi can client dang o dung map train.
+
+    Chay o vong giu song cua leader (khong phai trong nhip engine): no CO THE CHAN vai giay, ma
+    nhip quyet dinh thi tuyet doi khong duoc chan.
+    """
+    _dieu_phoi_chot_map(pidx, st)           # -> st["auto_train"] (map train) / st["auto_dg_level"]
+    if st.get("mob_spot"):
+        return                              # da co bai roi
+    sc = _map_train_dich(pidx, st)
+    if not sc or int(getattr(c, "current_map", 0) or 0) != int(sc):
+        return                              # chua toi map train -> chua doc duoc tam quai
+    tm = getattr(config, "TRAIN_MAPS", {}).get(int(sc))
+    if not tm:
+        return
+    mobs = _resolve_train_mob_centers(c, int(sc), tm)
+    if not mobs:
+        return
+    _mi = int((getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}).get("mob_index", -1))
+    spot = random.choice(mobs) if _mi < 0 else (mobs[_mi] if 0 <= _mi < len(mobs) else mobs[0])
+    with st["lock"]:
+        st["mob_spot"] = spot
+        st["train_map_dich"] = int(sc)
+    log.info("[%s] ENGINE: chot bai train map %s tam quai %s", label, sc, spot)
+
+
+def _ghi_pha_engine_moi(pidx, pha):
+    _st = _pstate(pidx)
+    with _st["lock"]:
+        _st["dt_phase"] = "train" if pha == party_engine.PHA_TRAIN else "digioi"
+
+
+def _pha_engine_moi(pidx, st):
+    """PHA hien tai cua party cho engine moi: con gio Di Gioi -> PHA_DG, het -> PHA_TRAIN.
+
+    Doc `dt_phase` cua state party (nguon engine cu van dung) chu khong tu nho mot con so rieng -
+    hai nguon su that ve cung mot thu la benh da giet party 11.
+    """
+    _mode = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}).get("mode", "")
+    if _mode not in ("digioi", "digioi_train"):
+        return party_engine.PHA_TRAIN
+    if _mode == "digioi":
+        return party_engine.PHA_DG
+    return (party_engine.PHA_DG if st.get("dt_phase", "digioi") != "train"
+            else party_engine.PHA_TRAIN)
+
+
+def _dang_ky_engine_moi(username, c, pidx, is_leader, label, stopped_fn):
+    """Acc da login xong -> giao han cho `PartyEngine` cua party, roi NGOI LAM WORKER.
+
+    Khac engine cu o dung mot cho, va do la ca diem: acc KHONG con kich ban rieng. No khong tu
+    quyet dinh di dau, cung khong con vong cho nao de ma diec lenh - moi viec do engine giao, va
+    lenh moi CAT NGANG viec dang lam (`abort=`) chu khong cho acc "nghe thay".
+
+    Ham nay chan toi khi acc bi dung/rot: supervisor (`_run_account_supervised`) dang o tren, thoat
+    ra la no relogin - giu nguyen duong cuu acc cua engine cu (L0).
+    """
+    st = _pstate(pidx)
+    with _party_engines_lock:
+        eng = _party_engines.get(pidx)
+        if eng is None:
+            eng = party_engine.PartyEngine(
+                pidx,
+                lambda _p=pidx: [(u, cl, u == config.PARTY_LEADER_ACC.get(_p))
+                                 for u, cl in _clients_cua_party(_p)],
+                can_bao_nhieu=int(st.get("n_members") or 0),
+                log=log,
+                bao_gui=lambda u, mo_ta, pha: set_account_activity(u, mo_ta, phase=pha),
+                gio_dg_toi_da=DIGIOI_LIMIT,
+                # Tam bai quai va PHA doc THANG tu state party (`mob_spot` / `dt_phase`) - dung
+                # nguon engine cu van dung, khong de ra nguon-su-that thu hai.
+                doc_spot=lambda _p=pidx: _pstate(_p).get("mob_spot"),
+                pb_doi_levels=_pb_doi_levels_engine_moi(pidx),
+                # Ghi NGUOC `dt_phase` ra state party: engine moi la nguoi DUY NHAT doi pha cho
+                # party nay (hai cho doi pha cua engine cu deu bi cua chan 1+2 khoa lai).
+                ghi_pha=lambda _pha, _p=pidx: _ghi_pha_engine_moi(_p, _pha),
+            )
+            _party_engines[pidx] = eng
+            log.warning("[party %d] ENGINE MOI: khoi dong (1 luong quyet dinh/party)", pidx + 1)
+        eng.can_bao_nhieu = int(st.get("n_members") or 0)
+        eng.map_dich = _map_train_dich(pidx, st)
+        eng.pha = _pha_engine_moi(pidx, st)
+    eng.start()
+    log.info("[%s] (%s) ENGINE MOI: da giao cho engine party %d", label, "LEADER" if is_leader
+             else "member", pidx + 1)
+    # Ngoi giu luong: acc song thi client song. Thoat ra = supervisor relogin.
+    while c.running and not stopped_fn():
+        # PHA doi giua chung (het gio DG -> train): cap nhat de nhip sau ra lenh dung.
+        try:
+            eng.pha = _pha_engine_moi(pidx, st)
+            eng.can_bao_nhieu = int(st.get("n_members") or 0)
+            eng.map_dich = _map_train_dich(pidx, st)
+            eng.pb_doi_levels = _pb_doi_levels_engine_moi(pidx)
+        except Exception:
+            pass
+        # CHUAN BI: chot MAP TRAIN + BAI QUAI. Hai so nay do `_dieu_phoi_chot_map` va `run_account`
+        # ghi - ma ca hai deu KHONG chay voi party engine moi (cua chan 1 va 2). Thieu chung thi
+        # party gom du xong se DUNG IM o thanh: khong biet di map nao, khong biet ra bai nao.
+        # Cung ho voi lo `dt_phase` - mot cai nua da lot luoi neu khong ra soat.
+        if is_leader:
+            try:
+                _chuan_bi_bai_train(c, st, pidx, label)
+            except Exception as e:
+                log.warning("[%s] ENGINE: loi chot map/bai train (bo qua): %s", label, e)
+        time.sleep(1.0)
+    log.info("[%s] ENGINE MOI: acc dung/rot -> tra quyen cho supervisor", label)
+
+
+def _clients_cua_party(pidx):
+    """[(username, client)] cua party - CHI acc dang co client song. Doc thang `account_clients`
+    (cung tien trinh), khong doi ai bao cao (L2)."""
+    ra = []
+    for u, _p, _lead, _pick in party_accounts(pidx):
+        cl = account_clients.get(u)
+        if cl is not None:
+            ra.append((u, cl))
+    return ra
+
+
 def bao_dam_dieu_phoi():
     """Dam bao co DUNG MOT luong dieu phoi cho CA BOT. Goi bao nhieu lan cung khong sao.
 
@@ -10717,6 +10892,12 @@ def _dieu_phoi_loop():
             so_party = 0
         for pidx in range(so_party):
             try:
+                # CUA CHAN SO 1 (documents/ENGINE_PARTY_MOI.md muc 4): party dung ENGINE MOI thi
+                # dieu phoi cu KHONG duoc dung vao. Hai nguon cung ra lenh cho mot party chinh la
+                # cai benh dang chua - leader nghe nguon nay, member nghe nguon kia.
+                if dung_engine_moi(pidx):
+                    lech_tu.pop(pidx, None)
+                    continue
                 song = _acc_song(pidx)
                 if not song:
                     lech_tu.pop(pidx, None)
@@ -11715,6 +11896,14 @@ WATCH_THIEU_NGUOI_SEC = 300
 
 def _party_watcher(pidx):
     """Luong quan sat 1 party. Chi DOC trang thai, khong tham gia vao luong lam viec."""
+    # CUA CHAN (documents/ENGINE_PARTY_MOI.md muc 4): party engine moi khong co watcher cu.
+    # Watcher khong chi doc - no EP DONG BO (bump `reform_gen` -> ResyncSignal -> relogin ca party).
+    # Engine moi khong doc `reform_gen`, nen cu de watcher chay thi no chi con moi viec la thinh
+    # thoang ep relogin mot party dang chay binh thuong.
+    if dung_engine_moi(pidx):
+        log.info("[party %d] ENGINE MOI: khong dung watcher cu (engine tu theo doi moi nhip)",
+                 pidx + 1)
+        return
     st = _pstate(pidx)
     mismatch_t0 = None
     allwait_t0 = None

@@ -1,0 +1,166 @@
+# ENGINE PARTY MỚI — 1 luồng quyết định / party (chạy song song với engine cũ)
+
+> Trạng thái: **ĐÃ DỰNG XONG KHUNG, đang TẮT** (`PARTY_ENGINE_MOI_TU = 0`).
+> Bật bằng cách đặt hằng đó > 0; chưa bật thì party 41+ vẫn chạy engine cũ y như trước.
+> Phạm vi thử: **party số 41 trở đi** (14 party, 62 acc — 12 `digioi_train` + 2 `digioi`).
+> Party 1–40 giữ nguyên engine cũ, không đụng một dòng nào.
+
+## 1. Vì sao làm
+
+Không phải vì hiệu năng. Đo trong repo này: 1 quyết định đánh = **0,014ms** (p99 0,024ms),
+5 acc = 0,1ms trên ngân sách `submit_delay` 500ms. Thread không phải nút thắt.
+
+Lý do là **lệnh không tới được acc**. Trong `run_account` (5.690 dòng):
+
+| | số |
+|---|---|
+| vòng lặp | 57 |
+| vòng CHỜ (có `sleep`/`wait`) | 39 |
+| vòng chờ **không có hạn** (kẹt được mãi) | **21** |
+| trong đó **điếc với `reform_gen`** | **14** |
+
+Mỗi vòng chờ phải *tự nhớ* nghe 4 loại lệnh (kênh · `reform_gen` · `rally_gen` · `cmd_gen`)
+⇒ 21 × 4 = 84 ô phải nhớ, hiện lấp được ~11. Mỗi lỗi user báo là **một ô trống**, vá xong còn 70 ô.
+
+**Ca đẻ ra tài liệu này — party 11, 15/09** (`luumuoi` treo 64 phút, party kẹt 22 phút):
+
+```
+11:24:17 [luumuoi] Dungeon: con 1 luot FREE (flag 0x3030) -> vao FREE
+11:25:22 [luumuoi] (member) ca party xong dungeon          <- IM TUYỆT ĐỐI từ đây, 0 dòng/64 phút
+12:27:51 [luusau]  (LEADER) -> REFORM party (gen 30)        <- leader làm đúng, lần thứ 8 liên tiếp
+12:27:51 [luusau]  reform: dieu phoi bao GOM -> thoi moi    <- không mời vì member lệch map (L17)
+12:27:51 [party 11] REFORM gen -> 30 ... [23011, 23851] -> gom ve cung map/kenh
+```
+
+`do_daily_dungeon()` phải `leave_party()` (PB đơn bắt buộc solo) → party vỡ → `luumuoi` rơi vào
+vòng chờ lời mời `while not st["invited"].is_set()` — vòng này nghe lệnh **kênh** và **`rally_gen`**,
+**không nghe `reform_gen`**, mà lệnh gom map lại đi bằng `reform_gen`. Ba bên đều "đúng luật" nên
+kẹt vĩnh viễn: điều phối ra lệnh đều đặn 3 phút/lần, leader về thành chờ, member điếc ở bãi.
+
+**Gốc không phải "mỗi acc một thread". Gốc là: mỗi acc tự quyết định lúc nào thì nghe lệnh.**
+
+## 2. Nguyên tắc
+
+Giữ nguyên **L0–L17** trong [RULE_DIEU_PHOI.md](RULE_DIEU_PHOI.md). Engine mới KHÔNG nới luật nào —
+nó chỉ làm cho việc *nghe lệnh* không còn phụ thuộc vào acc đang đứng ở đoạn code nào.
+
+- Điều phối quyết, acc thi hành (L1). Không đổi.
+- Đủ party rồi làm gì thì làm; party hỏng thì gom bằng được (L0). Không đổi.
+
+## 3. Kiến trúc: 1 luồng quyết định + N luồng thi hành
+
+```
+        ┌──────────────── PartyEngine (1 thread / party, nhịp 1s) ─────────────────┐
+        │  đọc trạng thái thật của 5 client  →  quyet_dinh()  →  giao việc          │
+        │  KHÔNG có vòng chờ nào ở đây: mỗi nhịp chạy hết rồi trả về                │
+        └───────┬─────────────┬─────────────┬─────────────┬─────────────┬──────────┘
+                │             │             │             │             │
+            Worker acc1   Worker acc2   Worker acc3   Worker acc4   Worker acc5
+            (1 thread mỗi acc: chạy việc CHẶN, có thể bị HỦY giữa chừng)
+                │             │             │             │             │
+            GameClient    GameClient    GameClient    GameClient    GameClient
+            (bot/client.py — GIỮ NGUYÊN, không sửa một dòng)
+```
+
+**Vì sao không phải "1 thread làm tất"**: một acc mất gói sẽ làm đứng cả party, và một exception
+giết luôn 5 acc. Tách thi hành ra worker thì giữ được cách ly lỗi của engine cũ, mà quyết định
+vẫn tập trung.
+
+### Luồng quyết định (`PartyEngine.nhip()`)
+- Hàm **thuần**: `(trạng thái 5 client, state party) -> danh sách việc`. Không I/O, không `sleep`.
+- Vì không chặn, **mọi lệnh đều được xử lý ở nhịp kế tiếp** — trễ tối đa 1 giây. Không tồn tại
+  khái niệm "vòng chờ điếc".
+- Thứ tự quyết định giữ đúng chuỗi user chốt từ đầu:
+  `lệch map → đồng bộ map · lệch kênh → đồng bộ kênh · cùng map cùng kênh → lập party · đủ party → đi train`
+
+### Luồng thi hành (`AccWorker`)
+- Hàng đợi **1 việc tại một thời điểm**; việc mới thay việc cũ.
+- Mọi việc phải nhận được cờ hủy. `client.py` đã có sẵn đường này: `navigate_to(..., abort=...)`,
+  `follow_smart_route(..., abort=...)`, `enter_di_gioi_safe` kiểm `self.running`.
+- Việc = gọi thẳng hàm có sẵn trong `GameClient` (`do_daily_dungeon`, `do_world_boss_all`,
+  `enter_di_gioi_safe`, `navigate_to`, `switch_channel`…). **Không viết lại thao tác game.**
+
+## 4. Bốn cửa chặn bắt buộc (thiếu là hai engine đánh nhau)
+
+| # | Cửa | Vì sao |
+|---|---|---|
+| 1 | `_dieu_phoi_quyet` **bỏ qua** party engine mới | hai nguồn ra lệnh cho cùng một party = đúng cái bệnh đang chữa |
+| 2 | `run_account` **không chạy** cho acc thuộc party mới | tránh hai luồng cùng điều khiển một client |
+| 3 | State **riêng**, không đụng `_party_state` của engine cũ | tránh đua ngầm giữa hai cơ chế |
+| 4 | **APK giữ engine cũ** | Android chạy chung file này; chỉ chuyển sau khi PC chứng minh |
+
+GUI đọc `_party_state` để vẽ bảng theo dõi / "chú ý" / nút Stop ⇒ engine mới phải **xuất bản**
+cùng dữ liệu đó ở dạng chỉ-đọc, nếu không user mù 14 party.
+
+## 5. Chọn engine
+
+Hằng số một chỗ:
+
+```python
+PARTY_ENGINE_MOI_TU = 41     # party số 41 trở đi dùng engine mới (0 = tắt hẳn)
+```
+
+Đặt `0` là toàn bộ về engine cũ ngay — đường lui trong một giây, không phải sửa code rải rác.
+
+## 6. Tiêu chí thắng thua (định TRƯỚC, không cãi bằng cảm giác)
+
+Đo trên `party.log`, so **party 1–40 (cũ)** với **41–54 (mới)**, cùng khung giờ:
+
+| đo | ghi chú |
+|---|---|
+| % thời gian party đủ 4/4 | chỉ số chính |
+| số lần `MAT PARTY` / giờ | |
+| số lần lệch map kéo dài > 3 phút | |
+| **số acc im > 5 phút** | chính là bệnh party 11 |
+| lượt PB đơn / WB / Dị Giới hoàn thành / acc | không được kém đi |
+
+**Lưu ý khi đọc số**: 14 party mẫu nằm ở **14 server khác nhau** (dong_trac, luu_bi, ton_quyen…),
+tải mỗi server một khác ⇒ so theo tỉ lệ, đừng so số tuyệt đối.
+
+**Hạn**: sau 2 tuần engine mới không thắng rõ ⇒ bỏ, quay về hoàn thiện engine cũ. Không nuôi
+hai engine vô thời hạn — mọi lỗi sẽ phải sửa hai lần.
+
+## 7. Thứ tự làm
+
+1. ~~Khung `PartyEngine` + `AccWorker` + 4 cửa chặn + xuất bản state cho GUI~~ — **XONG**
+2. ~~Test nhịp quyết định + test chặn engine cũ không đụng party mới~~ — **XONG** (71 test riêng,
+   gồm bài diễn tập lại đúng ca party 11: `tests/test_engine_moi_khong_ket_nhu_party11.py`)
+3. Chạy **2 party** trước (`PARTY_ENGINE_MOI_TU = 53`), đọc log 1 ngày. ← **đang ở đây**
+4. Ổn thì hạ ngưỡng dần: 53 → 49 → 45 → **41**.
+5. So bảng tiêu chí ở mục 6 rồi mới quyết định có mở rộng xuống party 1–40 hay không.
+
+### Engine mới hiện làm được gì
+
+| việc | trạng thái |
+|---|---|
+| việc vặt sau login (PB đơn, boss TG, boss quân đoàn, vận tiêu, nhiệm vụ ngày, dọn túi) | có |
+| vào Dị Giới + đếm giờ theo **đồng hồ server** + đổi pha DG → train | có |
+| đồng bộ map (về map đông người nhất, hoà thì theo leader / điểm tập kết đã chốt) | có |
+| đồng bộ kênh | có |
+| lập party (leader mời, member chỉ mở cửa nhận) | có |
+| ra bãi quái rồi mới đánh | có |
+| **phó bản tổ đội (lv20/50/80/110)** | có |
+| mode event (40NPC, loạn đấu) | chưa cần — 14 party mẫu không có mode này |
+
+**Phó bản tổ đội đi đường lập đội RIÊNG, không dùng party thường** (user 15/09: *"đường lập pt PB
+nó khác với lập pt đi train"*). Theo `KNOWLEDGE.md`:
+
+| | party thường | phòng PB |
+|---|---|---|
+| mời | `0x0d/0900` | `Dungeon.SendInvite` → `0x2f/0800` |
+| member phải làm gì | mở gate `set_party_invite_ready` | **không gì cả** — `_on_dungeon` tự accept `0x2f/0f00` → join room `0x2f/0300` → ready `0x2f/0b00` |
+| điều kiện | cùng map + cùng kênh | *"KHÔNG bắt buộc check gắn như party thường vì server/client cho mời theo roleId đã biết"* |
+
+Nên trong nhịp quyết định, PB tổ đội đứng **trước cả chuỗi gom** — không đợi cùng map, cùng kênh
+hay đủ party thường. Bắt gom đủ 4/4 rồi mới cho đánh PB là tự đặt thêm điều kiện game không đòi,
+và mỗi phút gom là một phút có thể mất lượt PB.
+
+Level còn lượt đọc từ **đồng hồ server** (`team_dungeon_remaining` ← `mission_steps[daily_flag]` ←
+`0x18 sub 0x06`), không tự đếm — acc có thể đã đánh ở máy khác/phiên trước.
+
+## 8. Điều KHÔNG làm
+
+- Không sửa `bot/client.py` (3030 test đang phủ nó).
+- Không sửa engine cũ trong lúc dựng engine mới, trừ 4 cửa chặn.
+- Không chuyển APK cho tới khi có số liệu.
+- Không xoá `run_account` — nó là bản đối chứng, và là đường lui.

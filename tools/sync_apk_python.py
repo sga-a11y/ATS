@@ -24,7 +24,12 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           # tham (party_battle.py lech 48 dong: fix "khong nuot lenh danh" khong len APK).
           # 5 file con lai dang trung khop nhung khong duoc sync = bom hen gio.
           "party_battle.py", "battle_tracker.py", "pathfind.py", "scan_image.py",
-          "smart_route.py", "world_nav.py"]
+          "smart_route.py", "world_nav.py",
+          # Engine party MOI (1 luong quyet dinh/party). PHAI chep sang APK du dang chay THU tren
+          # PC: `run_party_digioi.py` (file dung chung) co `from . import party_engine` ngay dau
+          # file - thieu file la APK CRASH LUC IMPORT, khong phai "chay engine cu binh thuong".
+          # Engine van TAT tren APK vi `PARTY_ENGINE_MOI_TU = 0`.
+          "party_engine.py"]
 
 # File CHI CO o ban PC - phai liet ke TUONG MINH. Moi file .py trong bot/ khong nam trong
 # SHARED cung khong nam o day se lam sync BAO LOI, khong cho build tiep (xem _check_no_drift).
