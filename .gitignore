@@ -111,3 +111,6 @@ party_test.log
 # Server BOT TU PHAT HIEN tu CDN (bot/servers_cdn.py ghi ra) - du lieu runtime cua tung may,
 # khong phai bang khai bao. Bang khai bao chinh thuc van la servers.json + Servers.kt.
 servers_cdn.json
+
+# Ban luu truoc khi don nhieu (tools/don_nhieu_train_block.py) - cua tung may
+train_block_stats.json.bak

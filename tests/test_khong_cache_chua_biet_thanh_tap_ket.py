@@ -52,3 +52,32 @@ class TestKhongDongBangChuaBiet(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMotNguonThanhTapKet(unittest.TestCase):
+    """DIEM GOM ma engine dang keo party ve THANG TUYET DOI trong `_thanh_tap_ket_dich`.
+
+    Do la thanh MA CA PARTY DANG DUOC KEO VE, va la thanh cua CHINH ROUTE se di.
+    `_pick_start_city` tinh theo tieu chi KHAC ("thanh gan bai nhat ma CA PARTY deu da mo") nen ra
+    thanh khac - the la hai ben danh nhau: mot ben keo party ve thanh A, ben kia
+    (`_o_thanh_di_qua`) bao "A chi la thanh di ngang, chua toi B" va cam lap party o A.
+
+    Ca that 17/09 party 44+45 (user: "p44 p45 thay van dung o Tho xuan"):
+        19:28:49 REFORM gen -> 6 - dang o thanh DI NGANG QUA 15021, chua toi thanh tap ket 18021
+    Engine keo ca party ve 15021 (thanh cua route), con `_o_thanh_di_qua` doi 18021 - khong ai dua
+    party toi 18021 ca, nen no dung im o Tho Xuan.
+    """
+
+    def setUp(self):
+        self.than = _than("_thanh_tap_ket_dich")
+
+    def test_uu_tien_diem_gom_engine_dang_keo_ve(self):
+        self.assertIn('st.get("diem_gom_hien_tai")', self.than,
+                      "khong doc diem gom dang dung -> hai nguon danh nhau")
+        i_rp = self.than.index('st.get("diem_gom_hien_tai")')
+        i_pick = self.than.index("_pick_start_city(")
+        self.assertLess(i_rp, i_pick, "route_plan phai duoc xet TRUOC _pick_start_city")
+
+    def test_van_giu_duong_du_phong(self):
+        """Chua co `route_plan` (party vua len) thi van phai tinh duoc bang `_pick_start_city`."""
+        self.assertIn("_pick_start_city(", self.than)

@@ -43,11 +43,12 @@ class TestChonEngine(unittest.TestCase):
 
     def test_nguong_hien_tai_dung_pham_vi_user_chot(self):
         """User chot 15/09: "party >40 la theo co che moi" -> 41.
+        Mo rong 17/09 (user: "doi lai la party >30 se theo co che moi") -> 31.
 
-        So nay la CONG TAC SONG: doi no la doi engine cua 14 party (62 acc) that. Neo lai de khong
-        ai vo tinh day no xuong party 1-40 (hoac len, lam mat hieu luc ca dot chay thu)."""
-        self.assertIn(R.PARTY_ENGINE_MOI_TU, (0, 41, 45, 49, 53),
-                      "nguong la (0=tat, 53=thu 2 party, 49/45=ha dan, 41=du pham vi user chot)")
+        So nay la CONG TAC SONG: doi no la doi engine cua hang chuc party that. Neo lai de khong ai
+        vo tinh day no xuong nua (hoac len, lam mat hieu luc pham vi user chot)."""
+        self.assertIn(R.PARTY_ENGINE_MOI_TU, (0, 31, 41, 45, 49, 51, 53),
+                      "nguong la (0=tat, 53=thu 2 party, 49/45/41/31=ha dan, 51=pham vi user chot)")
 
     def test_so_0_la_tat_han(self):
         R.config.PARTY_ENGINE_MOI_TU = 0
@@ -59,6 +60,22 @@ class TestChonEngine(unittest.TestCase):
         R.config.PARTY_CONFIG = {i: {"mode": "digioi_train"} for i in range(60)}
         self.assertFalse(R.dung_engine_moi(39), "party 40 phai giu engine cu")
         self.assertTrue(R.dung_engine_moi(40), "party 41 phai la engine moi")
+        self.assertTrue(R.dung_engine_moi(53))
+
+    def test_nguong_51_dung_pham_vi_user_chot(self):
+        """User 17/09 (chieu): "doi party theo co che moi la tu party >50"."""
+        R.config.PARTY_ENGINE_MOI_TU = 51
+        R.config.PARTY_CONFIG = {i: {"mode": "digioi_train"} for i in range(60)}
+        self.assertFalse(R.dung_engine_moi(49), "party 50 phai giu engine cu")
+        self.assertTrue(R.dung_engine_moi(50), "party 51 phai la engine moi")
+        self.assertTrue(R.dung_engine_moi(53))
+
+    def test_nguong_31_dung_pham_vi_user_chot_17_09(self):
+        """User 17/09 (sang): "doi lai la party >30 se theo co che moi"."""
+        R.config.PARTY_ENGINE_MOI_TU = 31
+        R.config.PARTY_CONFIG = {i: {"mode": "digioi_train"} for i in range(60)}
+        self.assertFalse(R.dung_engine_moi(29), "party 30 phai giu engine cu")
+        self.assertTrue(R.dung_engine_moi(30), "party 31 phai la engine moi")
         self.assertTrue(R.dung_engine_moi(53))
 
     def test_chay_thu_2_party_truoc(self):

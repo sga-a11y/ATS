@@ -1,9 +1,9 @@
 # ENGINE PARTY MỚI — 1 luồng quyết định / party (chạy song song với engine cũ)
 
-> Trạng thái: **ĐÃ DỰNG XONG KHUNG, đang TẮT** (`PARTY_ENGINE_MOI_TU = 0`).
-> Bật bằng cách đặt hằng đó > 0; chưa bật thì party 41+ vẫn chạy engine cũ y như trước.
-> Phạm vi thử: **party số 41 trở đi** (14 party, 62 acc — 12 `digioi_train` + 2 `digioi`).
-> Party 1–40 giữ nguyên engine cũ, không đụng một dòng nào.
+> Trạng thái: **ĐANG CHẠY THẬT** — `PARTY_ENGINE_MOI_TU = 51` (user chốt 17/09 chiều:
+> *"đổi party theo cơ chế mới là từ party >50"*; sáng cùng ngày từng mở xuống 31 rồi thu lại).
+> Phạm vi: **party số 51 trở đi** — 6/56 party. Party 1–50 giữ nguyên engine cũ.
+> Đặt hằng đó `= 0` là toàn bộ về engine cũ ngay, đường lui trong một giây.
 
 ## 1. Vì sao làm
 
@@ -97,14 +97,14 @@ cùng dữ liệu đó ở dạng chỉ-đọc, nếu không user mù 14 party.
 Hằng số một chỗ:
 
 ```python
-PARTY_ENGINE_MOI_TU = 41     # party số 41 trở đi dùng engine mới (0 = tắt hẳn)
+PARTY_ENGINE_MOI_TU = 31     # party số 31 trở đi dùng engine mới (0 = tắt hẳn)
 ```
 
 Đặt `0` là toàn bộ về engine cũ ngay — đường lui trong một giây, không phải sửa code rải rác.
 
 ## 6. Tiêu chí thắng thua (định TRƯỚC, không cãi bằng cảm giác)
 
-Đo trên `party.log`, so **party 1–40 (cũ)** với **41–54 (mới)**, cùng khung giờ:
+Đo trên `party.log`, so **party 1–50 (cũ)** với **51–56 (mới)**, cùng khung giờ:
 
 | đo | ghi chú |
 |---|---|
@@ -125,9 +125,28 @@ hai engine vô thời hạn — mọi lỗi sẽ phải sửa hai lần.
 1. ~~Khung `PartyEngine` + `AccWorker` + 4 cửa chặn + xuất bản state cho GUI~~ — **XONG**
 2. ~~Test nhịp quyết định + test chặn engine cũ không đụng party mới~~ — **XONG** (71 test riêng,
    gồm bài diễn tập lại đúng ca party 11: `tests/test_engine_moi_khong_ket_nhu_party11.py`)
-3. Chạy **2 party** trước (`PARTY_ENGINE_MOI_TU = 53`), đọc log 1 ngày. ← **đang ở đây**
-4. Ổn thì hạ ngưỡng dần: 53 → 49 → 45 → **41**.
-5. So bảng tiêu chí ở mục 6 rồi mới quyết định có mở rộng xuống party 1–40 hay không.
+3. ~~Chạy **2 party** trước (`PARTY_ENGINE_MOI_TU = 53`), đọc log 1 ngày~~ — **XONG**
+4. ~~Hạ ngưỡng dần: 53 → 49 → 45 → **41**~~ — **XONG** (16/09)
+5. ~~Mở rộng xuống **31**~~ (17/09 sáng) → **THU LẠI 51** cùng ngày ← **đang ở đây**, 6/56 party
+   Lý do thu lại: engine mới còn đang sửa theo log thật từng ngày; để ít party thì mỗi lần hỏng
+   thiệt hại ít.
+6. So bảng tiêu chí ở mục 6 rồi mới quyết định có mở rộng xuống party thấp hơn hay không.
+
+**Một ngày sửa theo log thật (17/09)** — mọi lỗi đều cùng một họ: engine ra lệnh **cấp party**
+nhưng chưa tính tới việc acc **đang dở một việc dài** (đi đường, đánh nhau), hoặc tự nghĩ ra
+phép tính thay vì gọi lại hàm flow cũ đã có:
+
+| ca thật | gốc |
+|---|---|
+| p43 tele qua lại thành ↔ bãi | `gom`/`dong_bo` là **trạng thái**, lệnh thật đi bằng `reform_gen`/`resync_gen` |
+| p44/p45 mỗi đứa một thành | dùng `_pick_start_city` thay vì `chot_thanh_tap_ket` (thành của chính route) |
+| p44/p45 kẹt sau khi đi mở thành | `_o_thanh_di_qua` hỏi nguồn khác → thống nhất `diem_gom_hien_tai` |
+| p42 không ra bãi | đủ đội rồi vẫn ép người kéo về điểm gom → vòng vô tận |
+| p56 vừa đánh vừa đòi tele | không giao việc di chuyển cho acc **đang trong trận** |
+| p51 leader lộn về thành | đang giữa đường thì **đi bộ tiếp**, không `follow_smart_route` lại từ thành |
+| 60 acc mất nhiệm vụ ngày | engine mới không chạy khối "việc hàng ngày" → thêm `VIEC_DAILY` |
+| PB tổ đội hoãn 98% số lần | bỏ cửa hoãn còn sót (boss/PB đơn đã bỏ từ 14/09) |
+| p45 không đánh PB đội | nhánh PB đội nằm **sau** `dp_viec` nên không bao giờ chạy tới |
 
 ### Engine mới hiện làm được gì
 

@@ -34,6 +34,7 @@ class _Cli:
         self._vat = vat
         self._no = no
         self._pe_xong_chore = True     # mac dinh: da lam xong viec vat (ca rieng se dat False)
+        self._pe_xong_daily = True     # mac dinh: da lam xong nhiem vu ngay (o1 + claim 9 o)
         self._co_thuoc = True
         self._co_route = True
         self._tele_hong = False

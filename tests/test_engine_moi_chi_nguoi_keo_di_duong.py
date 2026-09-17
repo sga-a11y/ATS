@@ -54,8 +54,11 @@ class TestChiNguoiKeoDuocDiDuong(unittest.TestCase):
         (reform -> `go_to_town(route_plan["city"])`), roi leader moi keo ca doi qua cong.
 
         Ca that 17/09 p45 09:26:55 - leader DA toi Tho Xuan (15021, thanh cua route) ma bon member
-        van dung Hoi Ke (18021), roster 0/4 mai."""
-        accs = [_a("l", la_leader=True, so_member=4, map_id=15021),
+        van dung Hoi Ke (18021), roster 0/4 mai (nen `so_member=0` o day).
+
+        DU DOI thi nguoc lai: member DI THEO leader qua cong, khong ve thanh - xem
+        `TestMemberDiTheoLeaderKhongVeThanh`."""
+        accs = [_a("l", la_leader=True, so_member=0, map_id=15021),
                 _a("m1", map_id=18021), _a("m2", map_id=18021)]
         v = E.quyet_dinh(_anh(accs, keo="l", thanh=15021))
         self.assertEqual(v["l"], E.VIEC_VE_MAP)
@@ -115,6 +118,34 @@ class TestNguoiKeoCungPhaiVeDiemGom(unittest.TestCase):
         v = E.quyet_dinh(_anh(accs, keo="l", thanh=18021))
         self.assertEqual(v["l"], E.VIEC_VE_MAP)
         self.assertEqual(v["m1"], E.VIEC_NGHI)
+
+
+class TestMemberDiTheoLeaderKhongVeThanh(unittest.TestCase):
+    """DU DOI roi thi member DI THEO LEADER (game keo qua cong) -> DUNG YEN.
+
+    Bat no ve thanh luc nay la cat ngang chuyen di: ca party dang tren duong ra bai, member thi
+    teleport nguoc ve thanh - ma teleport con ROI DOI.
+
+    Ca that 17/09 party 56 (user: "sao vua danh vua doi tele ve thanh la sao"):
+        19:43:43 gen 20: du doi, cung map/kenh -> DI TRAIN map 11801 (con o [11539])  roster 4/4
+        19:43:54 ENGINE: tik907..tik910 -> ve_thanh    <- dang di giua duong
+        19:43:58 gen 21: ... (con o [11532])           <- van dang di
+    """
+
+    def test_dang_di_giua_duong_thi_member_DUNG_YEN(self):
+        accs = [_a("l", la_leader=True, so_member=4, map_id=11532),
+                _a("m1", map_id=11532), _a("m2", map_id=11532)]
+        v = E.quyet_dinh(_anh(accs, keo="l", thanh=11011))
+        self.assertEqual(v["l"], E.VIEC_VE_MAP)
+        for u in ("m1", "m2"):
+            self.assertEqual(v[u], E.VIEC_NGHI,
+                             "member bi keo ve thanh giua chuyen di -> teleport + ROI DOI")
+
+    def test_CHUA_DU_DOI_thi_van_ve_diem_gom(self):
+        accs = [_a("l", la_leader=True, so_member=0, map_id=11011),
+                _a("m1", map_id=11532)]
+        v = E.quyet_dinh(_anh(accs, keo="l", thanh=11011))
+        self.assertEqual(v["m1"], E.VIEC_VE_THANH)
 
 
 if __name__ == "__main__":

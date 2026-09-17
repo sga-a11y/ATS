@@ -44,6 +44,7 @@ class _CliGia:
         self.party_members = list(range(members))
         self.flee_mode = True
         self._pe_xong_chore = True
+        self._pe_xong_daily = True     # da lam nhiem vu ngay (bai nay thu chuoi GOM, khong thu daily)
         self._di_lau = di_lau
         self.da_di = []
 
