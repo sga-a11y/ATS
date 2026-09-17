@@ -88,11 +88,26 @@ class TestNguoiKeoCungPhaiVeDiemGom(unittest.TestCase):
     """
 
     def test_leader_chua_ve_diem_gom_thi_VE_THANH(self):
-        accs = [_a("l", la_leader=True, so_member=4, map_id=15021),
+        """CHUA DU DOI (so_member=0) ma leader lac khoi diem gom -> phai ve."""
+        accs = [_a("l", la_leader=True, so_member=0, map_id=15021),
                 _a("m1", map_id=18021), _a("m2", map_id=18021)]
         v = E.quyet_dinh(_anh(accs, keo="l", thanh=18021))
         self.assertEqual(v["l"], E.VIEC_VE_THANH, "leader bo party lai, chay ra bai mot minh")
-        self.assertEqual(v["m1"], E.VIEC_NGHI, "member da o diem gom -> cho leader keo")
+
+    def test_DU_DOI_roi_thi_nguoi_keo_duoc_DI_du_da_roi_diem_gom(self):
+        """Du roi thi nguoi keo PHAI duoc di, va no di la roi diem gom. Ep ve luc do thanh vong
+        "du doi -> di -> bi keo ve -> du doi -> ..." va party KHONG BAO GIO ra toi bai.
+
+        Ca that 17/09 party 42 (user: "di ve thanh tap trung dung roi, nhung sau do ko di ra bai
+        train"):
+            18:46:31 gen 38: du doi, cung map/kenh -> DI TRAIN map 26811 (con o [23000])
+            18:46:33 gen 39: con lech map [23000, 23001]   <- leader vua di, bi keo ve
+            18:46:34 gen 40: cung map/kenh nhung DOI chua du
+        """
+        accs = [_a("l", la_leader=True, so_member=2, map_id=23001),
+                _a("m1", map_id=23000), _a("m2", map_id=23000)]
+        v = E.quyet_dinh(_anh(accs, keo="l", thanh=23000))
+        self.assertEqual(v["l"], E.VIEC_VE_MAP, "keo leader ve diem gom -> khong bao gio ra bai")
 
     def test_ve_du_roi_thi_nguoi_keo_moi_DI(self):
         accs = [_a("l", la_leader=True, so_member=4, map_id=18021),

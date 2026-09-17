@@ -469,14 +469,25 @@ def quyet_dinh(anh: AnhParty):
     if anh.dp_viec:
         _v = DICH_VIEC.get(anh.dp_viec)
         if _v is not None:
+            _du_doi = (anh.can_bao_nhieu <= 0
+                       or anh.roster_leader() >= anh.can_bao_nhieu)
             for a in song:
                 if a.username in ket:
                     continue           # acc dang lam viec vat - de no lam not
                 if _v == VIEC_LAP_PARTY and not a.la_leader:
                     ket[a.username] = VIEC_LAP_PARTY     # member mo cua nhan (xem `thi_hanh`)
-                elif (_v == VIEC_VE_MAP and anh.thanh_dich
+                elif (_v == VIEC_VE_MAP and anh.thanh_dich and not _du_doi
                       and a.map_id != int(anh.thanh_dich)):
-                    # CHUA VE TOI DIEM GOM -> VE DA, KE CA NGUOI KEO.
+                    # CHUA DU DOI ma con lac khoi diem gom -> VE DA, KE CA NGUOI KEO.
+                    #
+                    # `_du_doi` LA CUA BAT BUOC: du roi thi nguoi keo PHAI duoc di, va no di la
+                    # roi diem gom - ep ve luc do thi thanh vong "du doi -> di -> bi keo ve -> du
+                    # doi -> ..." va party KHONG BAO GIO ra toi bai.
+                    # Ca that 17/09 party 42 (user: "di ve thanh tap trung dung roi, nhung sau do
+                    # ko di ra bai train"):
+                    #   18:46:31 gen 38: du doi, cung map/kenh -> DI TRAIN map 26811 (o [23000])
+                    #   18:46:33 gen 39: con lech map [23000, 23001]   <- leader vua di, bi keo ve
+                    #   18:46:34 gen 40: cung map/kenh nhung DOI chua du
                     #
                     # Flow cu bat MOI acc ve `_target_city` truoc roi moi di tiep:
                     #     _target_city = _gc if _nghiep_fallback_active() else fc
