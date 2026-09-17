@@ -134,6 +134,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Servers.init(applicationContext)   // danh sach server doc tu assets/servers.json
+        // TU PHAT HIEN SERVER MOI tu CDN tai nguyen cua game (thread nen, khong chan mo app).
+        // CDN co server moi TRUOC CA KHI server game mo lai, nen bot biet ngay ngay dau.
+        Servers.refreshFromCdn(applicationContext)
         Events.init(applicationContext)    // danh sach event doc tu assets/events.json
 
         setContent {
@@ -2044,6 +2047,8 @@ fun AddPartyDialog(
                         expanded = expanded,
                         onDismissRequest = { expanded = false },
                     ) {
+                        // doc `tick` de danh sach VE LAI khi vua phat hien server moi tu CDN
+                        @Suppress("UNUSED_EXPRESSION") Servers.tick.intValue
                         Servers.ALL.forEach { (key, info) ->
                             DropdownMenuItem(
                                 text = { Text(info.label) },

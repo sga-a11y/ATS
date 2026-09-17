@@ -137,6 +137,30 @@ class TestNoiVaoChoKhoiDong(unittest.TestCase):
         self.assertIn("servers_cdn.json", s)
         self.assertIn("filesDir", s)
 
+    def test_APK_hoi_CDN_NGAY_khi_mo_app(self):
+        """`BotForegroundService` chi start Python khi user bam Start. Cho toi luc do thi lan dau
+        mo app KHONG BAO GIO thay server moi - phai Start mot lan roi MO LAI app
+        (user 17/09: "ban apk ko tu update server moi")."""
+        kt = self._doc("android", "app", "src", "main", "java", "com", "tsbot", "android",
+                       "Servers.kt")
+        self.assertIn("refreshFromCdn", kt, "APK khong chu dong hoi CDN")
+        self.assertIn("Python.isStarted()", kt, "khong tu khoi dong Python -> khong goi duoc")
+        self.assertIn("servers_cdn", kt, "phai dung CHUNG logic voi ban PC, khong viet lai Kotlin")
+        act = self._doc("android", "app", "src", "main", "java", "com", "tsbot", "android",
+                        "MainActivity.kt")
+        self.assertIn("Servers.refreshFromCdn(", act, "mo app khong goi -> khong bao gio chay")
+
+    def test_APK_ve_lai_dropdown_khi_co_server_moi(self):
+        """`Servers.ALL` la property thuong - tu no khong lam Compose recompose."""
+        kt = self._doc("android", "app", "src", "main", "java", "com", "tsbot", "android",
+                       "Servers.kt")
+        self.assertIn("mutableIntStateOf", kt)
+        act = self._doc("android", "app", "src", "main", "java", "com", "tsbot", "android",
+                        "MainActivity.kt")
+        i = act.index("Servers.ALL.forEach")
+        self.assertIn("Servers.tick.intValue", act[max(0, i - 300):i],
+                      "dropdown khong doc tick -> server moi chi hien o lan mo app sau")
+
     def test_khai_bao_trong_SHARED(self):
         """File .py moi trong bot/ ma quen khai la sync BAO LOI (xem CLAUDE.md)."""
         self.assertIn('"servers_cdn.py"', self._doc("tools", "sync_apk_python.py"))

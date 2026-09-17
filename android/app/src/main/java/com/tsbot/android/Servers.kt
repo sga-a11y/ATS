@@ -17,6 +17,11 @@ object Servers {
 
     private var loaded: Map<String, Info>? = null
 
+    /** Tang moi khi danh sach doi (vd vua phat hien server moi tu CDN).
+     *  Composable nao dung `ALL` doc bien nay de duoc ve lai - `ALL` la property thuong, tu no
+     *  khong lam Compose recompose. */
+    val tick = androidx.compose.runtime.mutableIntStateOf(0)
+
     /** Goi som (MainActivity.onCreate / BotForegroundService.onCreate) de nap tu assets. */
     fun init(context: android.content.Context) {
         if (loaded != null) return
@@ -52,6 +57,37 @@ object Servers {
     }
 
     val ALL: Map<String, Info> get() = loaded ?: FALLBACK
+
+    /**
+     * HOI CDN TAI NGUYEN CUA GAME xem co SERVER MOI khong, roi nap lai danh sach.
+     *
+     * Chay o THREAD NEN va tu khoi dong Python neu can: `BotForegroundService` chi start Python
+     * khi user bam Start, nen neu cho toi luc do thi lan dau mo app KHONG BAO GIO thay server moi
+     * - phai Start mot lan roi MO LAI app (user 17/09: "ban apk ko tu update server moi").
+     *
+     * Dung CHUNG logic voi ban PC (`bot/servers_cdn.py`) chu khong viet lai bang Kotlin: chep tay
+     * la lech, dung bai hoc `Servers.kt` FALLBACK va `SHARED_ASSETS` trong CLAUDE.md.
+     */
+    fun refreshFromCdn(context: android.content.Context, onDone: (() -> Unit)? = null) {
+        Thread {
+            try {
+                if (!com.chaquo.python.Python.isStarted()) {
+                    com.chaquo.python.Python.start(
+                        com.chaquo.python.android.AndroidPlatform(context.applicationContext))
+                }
+                val py = com.chaquo.python.Python.getInstance()
+                val cfg = py.getModule("train_bot.config")
+                py.getModule("train_bot.servers_cdn")
+                    .callAttr("cap_nhat", cfg.get("SERVERS"), context.filesDir.absolutePath)
+                loaded = null          // nap lai de lay ca overlay vua ghi
+                init(context)
+                tick.intValue += 1
+                onDone?.invoke()
+            } catch (e: Exception) {
+                // khong co mang / Python chua san sang -> van chay voi danh sach dang co
+            }
+        }.apply { isDaemon = true }.start()
+    }
 
     private val FALLBACK: Map<String, Info> = linkedMapOf(
         "trieu_van" to Info("Triệu Vân", "103.82.28.98", 1),
