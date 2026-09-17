@@ -219,8 +219,19 @@ class TestDIEU_PHOI_quyet_khong_phai_ACC(unittest.TestCase):
                       "phep quyet phai nam trong dieu phoi")
 
     def test_khong_de_ra_co_moi_cho_acc_doc(self):
-        self.assertEqual(self.src.count("_o_thanh_di_qua("), 2,
-                         "chi dinh nghia + goi mot lan trong dieu phoi")
+        """Phep quyet chi duoc goi tu DIEU PHOI (ca hai engine), khong de ra co cho acc doc.
+
+        3 cho: dinh nghia + goi trong `_dieu_phoi_quyet` (engine cu) + callback `hoi_thanh` cho
+        ENGINE MOI. Engine moi hoi THANG ham nay thay vi tu viet lai phep thu - chinh la de khong
+        co phep thu thu hai cho cung mot cau hoi.
+        """
+        self.assertEqual(self.src.count("_o_thanh_di_qua("), 3,
+                         "chi dinh nghia + dieu phoi cu + callback engine moi")
+
+    def test_engine_moi_HOI_chu_khong_tu_viet_lai(self):
+        i = self.src.find("hoi_thanh=")
+        self.assertGreater(i, 0, "engine moi khong hoi -> coi moi thanh la diem tap ket")
+        self.assertIn("_o_thanh_di_qua(", self.src[i:i + 200])
 
 
 if __name__ == "__main__":

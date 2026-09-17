@@ -107,3 +107,7 @@ account_skills_cache.json
 account_skills_cache.json.tam*
 event_exchange_sig.txt
 party_test.log
+
+# Server BOT TU PHAT HIEN tu CDN (bot/servers_cdn.py ghi ra) - du lieu runtime cua tung may,
+# khong phai bang khai bao. Bang khai bao chinh thuc van la servers.json + Servers.kt.
+servers_cdn.json

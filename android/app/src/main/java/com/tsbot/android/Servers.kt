@@ -28,6 +28,23 @@ object Servers {
                 val o = root.getJSONObject(key)
                 out[key] = Info(o.getString("label"), o.getString("ip"), o.getInt("id"))
             }
+            // SERVER MOI do BOT TU PHAT HIEN tu CDN tai nguyen cua game (bot/servers_cdn.py ghi
+            // ra `servers_cdn.json` trong filesDir). Assets la read-only nen server moi khong the
+            // nam trong `servers.json` cua APK da cai - phai doc them o day, khong thi UI Android
+            // KHONG hien server moi du python da biet.
+            try {
+                val f = java.io.File(context.filesDir, "servers_cdn.json")
+                if (f.exists()) {
+                    val extra = JSONObject(f.readText(Charsets.UTF_8)).getJSONObject("servers")
+                    for (key in extra.keys()) {
+                        if (out.containsKey(key)) continue
+                        val o = extra.getJSONObject(key)
+                        out[key] = Info(o.getString("label"), o.getString("ip"), o.getInt("id"))
+                    }
+                }
+            } catch (e: Exception) {
+                // khong doc duoc overlay -> van chay voi danh sach trong assets
+            }
             out.takeIf { it.isNotEmpty() }
         } catch (e: Exception) {
             null

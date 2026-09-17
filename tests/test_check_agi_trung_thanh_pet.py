@@ -149,7 +149,7 @@ class TestGuiPC(unittest.TestCase):
         self.assertNotIn("trung thành <", self.than)
 
     def test_nut_ghi_RO_tung_loai(self):
-        i = self.src.find('agi_btn.configure(text="⚠ Check AGI')
+        i = self.src.find('self._cfg(agi_btn, text="⚠ Check AGI')
         self.assertGreater(i, 0, "nut khong con phan biet hai loai canh bao")
         khoi = self.src[max(0, i - 700):i + 200]
         self.assertIn('agi_report.get("canh_bao")', khoi)

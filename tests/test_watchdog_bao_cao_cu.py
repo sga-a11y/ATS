@@ -104,6 +104,31 @@ class TestChayWatcherTHAT(unittest.TestCase):
     """Khong chi quet ma: cho _party_watcher CHAY THAT roi xem no co ep dong bo khong."""
 
     PIDX = 77
+    # Party 78 nam trong pham vi ENGINE MOI (`PARTY_ENGINE_MOI_TU`), ma engine moi khong dung
+    # watcher cu -> phai TAT engine trong bai nay, khong thi watcher thoat ngay va bai do do khong
+    # con do duoc gi. (Bai nay noi ve WATCHER, khong noi ve engine.)
+    _ENGINE_CU = 0
+
+    @staticmethod
+    def _R():
+        import sys
+        from unittest import mock
+        with mock.patch.object(sys, "argv", [sys.argv[0]]):
+            import run_party_digioi as R
+        return R
+
+    def setUp(self):
+        R = self._R()
+        self._eng_cu = getattr(R.config, "PARTY_ENGINE_MOI_TU", None)
+        R.config.PARTY_ENGINE_MOI_TU = 0
+
+    def tearDown(self):
+        R = self._R()
+        if self._eng_cu is None:
+            if hasattr(R.config, "PARTY_ENGINE_MOI_TU"):
+                delattr(R.config, "PARTY_ENGINE_MOI_TU")
+        else:
+            R.config.PARTY_ENGINE_MOI_TU = self._eng_cu
 
     def _chay(self, tuoi, so_acc=3, giay_cho=200):
         """tuoi = tuoi bao cao (giay). Tra ve so lan request_party_resync duoc goi."""

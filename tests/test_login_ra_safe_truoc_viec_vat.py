@@ -54,13 +54,27 @@ class TestRaSafeTruocViecVat(unittest.TestCase):
                       "di ra safe ma dung lai danh tung bay quai = vo nghia")
 
     def test_CHAY_TRUOC_login_chores(self):
-        """Thu tu la ca van de: ra safe phai xong TRUOC khi goi bat ky viec vat nao."""
+        """Thu tu la ca van de: ra safe phai xong TRUOC khi goi bat ky viec vat nao.
+
+        Khoi viec vat da duoc TACH ra thanh `lam_login_chores` (de engine moi dung chung - truoc
+        do no nam han trong `run_account` nen engine moi mat sach, ke ca ba nguon cua bang
+        "Chu y"). Nen do thu tu phai so voi CHO GOI ham do, khong so voi vi tri cua tung viec
+        trong file nua."""
         i_safe = self.src.find("_login_safe_done = True")
+        self.assertGreater(i_safe, 0)
+        j = self.src.find("login_map = lam_login_chores(")
+        self.assertGreater(j, 0, "mat cho goi khoi viec vat")
+        self.assertLess(i_safe, j, "viec vat chay TRUOC buoc ra safe")
+
+    def test_viec_vat_van_du_muc(self):
+        """Tach ham KHONG duoc lam rot muc nao - day la ba nguon cua bang "Chu y" tren GUI."""
+        i = self.src.find("def lam_login_chores(")
+        self.assertGreater(i, 0)
+        than = self.src[i:self.src.find(chr(10) + "def ", i + 10)]
         for viec in ("c.claim_achievements()", "c.claim_checkin()", "c.claim_mail()",
-                     "c.claim_friend_gifts()"):
-            j = self.src.find(viec)
-            self.assertGreater(j, 0, "khong tim thay %s" % viec)
-            self.assertLess(i_safe, j, "%s chay TRUOC buoc ra safe" % viec)
+                     "c.claim_friend_gifts()", "_tu_cong_diem(", "_kiem_han_ba_dau(",
+                     "c.process_furnace("):
+            self.assertIn(viec, than, "tach ham lam ROT %s" % viec)
 
     def test_loi_khi_ra_safe_KHONG_chan_login(self):
         self.assertIn("except Exception as e:", self.than)

@@ -208,7 +208,7 @@ class TestGUI(unittest.TestCase):
     def test_mau_CAM_giong_nut_check_AGI(self):
         # 05/09: chu nut doi dang (them "TT n" cho canh bao trung thanh pet) nen khong neo theo
         # chuoi cu nua - neo theo CHO doi mau.
-        i_agi = self.src.find('agi_btn.configure(text="⚠ Check AGI')
+        i_agi = self.src.find('self._cfg(agi_btn, text="⚠ Check AGI')
         self.assertGreater(i_agi, 0, "nut Check AGI khong con nhanh canh bao")
         self.assertIn('bg="#f59e0b"', self.src[i_agi:i_agi + 300])
 

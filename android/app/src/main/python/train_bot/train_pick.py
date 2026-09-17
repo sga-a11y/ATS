@@ -374,6 +374,18 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
         if r and not is_soul_map(_name):
             lo = r[0] if lo is None else min(lo, r[0])
     if lo is not None:
+        # UU TIEN 1 y nhu vong ha level o tren: map CHUA QUET quai thi den do QUET TRUOC.
+        # Thieu nhanh nay thi khi chinh MAP THAP NHAT cua game la map chua quet, ham tra None va
+        # party dung im vinh vien - trong khi luat "thap hon map thap nhat -> lay map thap nhat"
+        # van dang dung.
+        # Ca that 16/09 party 46 (user: "p46 ko tim duoc map train"): level party
+        # [32,32,33,33,43,44,44,44,63,119], map thap nhat la 11802 "Rung Dong Quan2 24-25" (lv24)
+        # voi mobs = 0 -> `_profs(24)` rong -> None, lap lai moi giay suot buoi.
+        _chua_quet_lo = _maps_chua_quet(maps, lo)
+        if _chua_quet_lo:
+            return rng.choice(_chua_quet_lo), -1, lo, _ly_do(
+                "muon lv%d THAP HON map thap nhat cua game (lv%d), ma map do CHUA QUET quai "
+                "-> den quet truoc" % (want, lo))
         ds = _profs(lo)
         if ds:
             map_id, idx = _it_tran_nhat(ds)

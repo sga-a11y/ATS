@@ -29,7 +29,10 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           # PC: `run_party_digioi.py` (file dung chung) co `from . import party_engine` ngay dau
           # file - thieu file la APK CRASH LUC IMPORT, khong phai "chay engine cu binh thuong".
           # Engine van TAT tren APK vi `PARTY_ENGINE_MOI_TU = 0`.
-          "party_engine.py"]
+          "party_engine.py",
+          # TU PHAT HIEN SERVER MOI tu CDN tai nguyen cua game. `config.py` cua CA HAI ban goi
+          # `servers_cdn.doc_overlay()` luc nap SERVERS - thieu file la APK crash luc import.
+          "servers_cdn.py"]
 
 # File CHI CO o ban PC - phai liet ke TUONG MINH. Moi file .py trong bot/ khong nam trong
 # SHARED cung khong nam o day se lam sync BAO LOI, khong cho build tiep (xem _check_no_drift).

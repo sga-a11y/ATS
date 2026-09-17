@@ -708,6 +708,23 @@ def _load_servers():
     except Exception:
         return {}
 SERVERS = _load_servers()
+
+
+def _nap_servers_cdn():
+    """NHAP server BOT DA TU PHAT HIEN o lan chay truoc (`servers_cdn.json`).
+
+    Doc file, KHONG hoi mang - khoi dong khong duoc phu thuoc mang. Viec hoi CDN chay o thread nen
+    (`servers_cdn.cap_nhat_nen`, goi tu GUI/luong khoi dong).
+    """
+    try:
+        from . import servers_cdn
+        for k, v in (servers_cdn.doc_overlay(_base_dir()) or {}).items():
+            SERVERS.setdefault(k, v)
+    except Exception:
+        pass
+
+
+_nap_servers_cdn()
 def _server_ip(name):
     s = SERVERS.get(name); return s.get("ip") if s else None
 def _server_id(name):

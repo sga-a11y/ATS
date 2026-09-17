@@ -53,11 +53,14 @@ class TestChamTrangThaiAgi(unittest.TestCase):
                       "chu y can lam ngay cung phai doi _du_acc moi duoc len CAM")
 
     def test_doc_agi_report_TRUOC_khi_dung_cham(self):
-        """agi_report phai tinh truoc dong dung p_dot, khong thi dung bien chua co."""
+        """agi_report phai co truoc dong dung p_dot, khong thi dung bien chua co.
+
+        `party_agi_report` gio chay o THREAD NEN (`_agi_worker`) - main thread chi DOC cache, vi
+        ham do qua cham khi 700 thread tranh GIL (py-spy: 3/5 mau MainThread ket trong no)."""
         s = _src()
-        i_rep = s.find("agi_report = ctrl.party_agi_report(pidx)")
+        i_rep = s.find("agi_report = _kh[1] if _kh else {}")
         i_dot = s.find("p_dot = (self._dot_off")
-        self.assertGreater(i_rep, 0)
+        self.assertGreater(i_rep, 0, "main thread khong con lay agi_report tu cache")
         self.assertGreater(i_dot, 0)
         self.assertLess(i_rep, i_dot)
 

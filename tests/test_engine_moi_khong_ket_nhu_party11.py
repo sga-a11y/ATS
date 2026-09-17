@@ -59,6 +59,9 @@ class _CliGia:
     def digioi_minutes_live(self):
         return 120                      # het gio DG -> pha train
 
+    def build_smart_route(self, dest_map, safe):
+        return [("go", dest_map)]        # engine moi BUILD ROUTE truoc khi di (y flow cu)
+
     def follow_smart_route(self, dest_map, safe, abort=None, flee=True):
         t0 = time.time()
         while time.time() - t0 < self._di_lau:      # di duong lau
@@ -92,6 +95,13 @@ def _engine(clients, can=3, spot=(100, 100)):
     return E.PartyEngine(10, _doc, can_bao_nhieu=can, doc_spot=lambda: spot)
 
 
+def _start_worker(eng):
+    """Ban CHAY THAT: thread cua chinh acc goi `chay_o_day()` (khong de ra thread moi - do that
+    15/09: 799 thread, 798 cai tranh GIL, GUI treo). Test khong co thread do nen tu tao."""
+    for w in eng.workers.values():
+        w.start()
+
+
 def _cho(dieu_kien, giay=6.0):
     het = time.time() + giay
     while time.time() < het:
@@ -110,6 +120,7 @@ class TestKhongLapLaiCaParty11(unittest.TestCase):
         luumuoi = _CliGia(map_id=BAI)                 # dua lac
         eng = _engine([("luusau", luusau), ("luutam", luutam), ("luumuoi", luumuoi)])
         eng.start()
+        _start_worker(eng)
         try:
             self.assertTrue(
                 _cho(lambda: luumuoi.current_map == THANH),
@@ -120,21 +131,27 @@ class TestKhongLapLaiCaParty11(unittest.TestCase):
     def test_acc_DANG_DI_DUONG_van_nhan_duoc_lenh_moi(self):
         """Day la dung cho engine cu chet. `luumuoi` dang ket trong mot viec dai; lenh moi (doi
         dich) phai CAT NGANG viec do, khong cho no "nghe thay"."""
-        luusau = _CliGia(map_id=THANH, members=2)
-        luumuoi = _CliGia(map_id=BAI, di_lau=30.0)     # di duong 30 giay
-        eng = _engine([("luusau", luusau), ("luumuoi", luumuoi)], can=1)
-        eng.start()
+        # Thu THANG tren worker: engine thi giu nguyen viec cho acc dang ban (dung y muon), nen
+        # de no chay cung se ghi de lenh test giao vao.
+        cli = _CliGia(map_id=BAI, di_lau=30.0)         # di duong 30 giay
+        vet = []
+
+        def _lam(c, viec, con_lam):
+            vet.append(viec)
+            E.thi_hanh(c, viec, con_lam, dich=THANH if viec == E.VIEC_VE_MAP else 1)
+
+        w = E.AccWorker("luumuoi", cli, _lam)
+        w.start()
         try:
-            w = eng._workers["luumuoi"]
-            self.assertTrue(_cho(lambda: w.viec_hien_tai() == E.VIEC_VE_MAP),
-                            "engine khong giao viec gom")
+            w.giao(E.VIEC_VE_MAP)
+            self.assertTrue(_cho(lambda: vet == [E.VIEC_VE_MAP]), "worker khong bat dau di")
             t0 = time.time()
             w.giao(E.VIEC_DOI_KENH)                    # lenh moi toi giua chung
-            self.assertTrue(_cho(lambda: w.viec_hien_tai() == E.VIEC_DOI_KENH, giay=5.0),
+            self.assertTrue(_cho(lambda: E.VIEC_DOI_KENH in vet, giay=5.0),
                             "viec dai KHONG nha ra -> y het benh da giet party 11")
             self.assertLess(time.time() - t0, 5.0, "lenh moi phai toi trong vai giay, khong 22 phut")
         finally:
-            eng.stop()
+            w.stop()
 
     def test_acc_VUA_XONG_PB_DON_khong_bi_bo_roi(self):
         """`do_daily_dungeon` phai `leave_party()` -> roster ve 0. Engine phai lap lai party chu
@@ -143,6 +160,7 @@ class TestKhongLapLaiCaParty11(unittest.TestCase):
         luumuoi = _CliGia(map_id=BAI, members=0)
         eng = _engine([("luusau", luusau), ("luumuoi", luumuoi)], can=2)
         eng.start()
+        _start_worker(eng)
         try:
             self.assertTrue(
                 _cho(lambda: eng.viec_hien_tai.get("luumuoi") == E.VIEC_LAP_PARTY),
@@ -239,8 +257,9 @@ class TestAccRotRoiRelogin(unittest.TestCase):
         cl = [("luusau", _CliGia(map_id=THANH, members=2)), ("luumuoi", _CliGia(map_id=BAI))]
         eng = _engine(cl, can=1)
         eng.start()
+        _start_worker(eng)
         try:
-            w = eng._workers["luumuoi"]
+            w = eng.workers["luumuoi"]
             cu = w.client
             moi = _CliGia(map_id=BAI)              # relogin -> client hoan toan khac
             cl[1] = ("luumuoi", moi)
@@ -255,10 +274,11 @@ class TestAccRotRoiRelogin(unittest.TestCase):
         cl = [("luusau", _CliGia(members=2)), ("luumuoi", _CliGia())]
         eng = _engine(cl, can=1)
         eng.start()
+        _start_worker(eng)
         try:
             eng.start()
             eng.start()
-            self.assertEqual(len(eng._workers), 2)
+            self.assertEqual(len(eng.workers), 2)
         finally:
             eng.stop()
 
@@ -267,8 +287,9 @@ class TestAccRotRoiRelogin(unittest.TestCase):
         cl = [("luusau", _CliGia(map_id=THANH, members=2)), ("luumuoi", _CliGia(map_id=BAI))]
         eng = _engine(cl, can=1)
         eng.start()
+        _start_worker(eng)
         try:
-            w = eng._workers["luumuoi"]
+            w = eng.workers["luumuoi"]
             w.giao(E.VIEC_VE_MAP)
             _cho(lambda: w.viec_hien_tai() == E.VIEC_VE_MAP)
             cl[1] = ("luumuoi", _CliGia(map_id=BAI))
@@ -277,6 +298,60 @@ class TestAccRotRoiRelogin(unittest.TestCase):
                             "van chay tiep viec cua client da chet")
         finally:
             eng.stop()
+
+
+class TestModeDiGioiThuanKhongDoiPha(unittest.TestCase):
+    """Mode `digioi` THUAN khong co pha train: het gio DG la het viec.
+
+    Doi pha bat ke mode -> nhip sau `_cap_nhat` dat lai pha DG (vi mode do LUON la DG) -> doi lai
+    -> VONG LAP SPAM LOG moi giay. Do that 16/09: party 46 va 54 in
+    `HET GIO Di Gioi -> doi pha TRAIN` moi giay, khong dung.
+    """
+
+    def _eng(self, co_pha_train):
+        class _C(_CliGia):
+            def digioi_minutes_live(self):
+                return 120          # het gio
+
+        eng = _engine([("luusau", _C(members=2))], can=1)
+        eng.pha = E.PHA_DG
+        eng.co_pha_train = co_pha_train
+        eng._ghi_pha = lambda _p: None
+        return eng
+
+    def test_mode_digioi_thuan_KHONG_doi_pha(self):
+        eng = self._eng(co_pha_train=False)
+        for _ in range(5):
+            eng.nhip()
+        self.assertEqual(eng.pha, E.PHA_DG, "doi pha -> nhip sau dat lai DG -> spam vo han")
+
+    def test_mode_digioi_train_VAN_doi_pha(self):
+        eng = self._eng(co_pha_train=True)
+        eng.nhip()
+        self.assertEqual(eng.pha, E.PHA_TRAIN)
+
+    def test_khong_log_lap_lai_moi_nhip(self):
+        """Doi pha MOT LAN thi thoi - log moi giay la dau hieu vong lap."""
+        dem = [0]
+
+        class _Log:
+            @staticmethod
+            def warning(*a, **k):
+                dem[0] += 1
+
+            @staticmethod
+            def info(*a, **k):
+                pass
+
+            @staticmethod
+            def exception(*a, **k):
+                pass
+
+        eng = self._eng(co_pha_train=True)
+        eng._log = _Log
+        for _ in range(6):
+            eng.nhip()
+        self.assertLessEqual(dem[0], 1, "log doi pha %d lan -> dang quay vong" % dem[0])
 
 
 class TestPhaDiGioiTrenEngine(unittest.TestCase):

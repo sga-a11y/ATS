@@ -367,6 +367,9 @@ def _save_profiles(prof):
 _LOG_QUEUE_TRAN = 4000
 # Party KHONG hien thi thi bao lau moi tinh lai bao cao AGI (chi de to mau cham canh bao).
 _AGI_CACHE_SEC = 15.0
+# Party DANG XEM: van phai co cache, chi la ngan hon. Truoc day tinh moi nhip 1 giay -> main
+# thread Tk ket trong `account_status` (do py-spy 15/09, 6/6 mau) -> GUI treo.
+_AGI_XEM_SEC = 5.0
 _log_queue = queue.Queue(maxsize=_LOG_QUEUE_TRAN)
 _log_bo_qua = 0          # so dong da roi vi queue day (GUI in mot dong tong ket, khong im lang)
 
@@ -685,10 +688,55 @@ class BotGUI(tk.Tk):
         self._build_tabs()
         self._build_log()
         self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self._agi_can = set()        # party can tinh lai AGI (thread nen doc)
+        self._agi_stop = False
+        threading.Thread(target=self._agi_worker, name="gui-agi", daemon=True).start()
         self.after(1000, self._refresh)
         self.after(300, self._drain_log)
         self.after(1500, self._check_update)   # tu kiem tra ban moi (chi khi chay ban build)
+        self._tim_server_moi()                 # tu phat hien server moi tu CDN (thread nen)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _tim_server_moi(self):
+        """Hoi CDN tai nguyen cua game xem co SERVER MOI chua khai trong `servers.json` khong.
+
+        CDN CO SERVER MOI TRUOC CA KHI SERVER GAME MO LAI (user 17/09: "dang bao tri de mo server
+        moi, server chua mo lai nhung client thay update roi") - nen bot biet ngay ngay dau, khong
+        phai cho ai do sua tay danh sach.
+
+        Chay o THREAD NEN: khoi dong GUI khong duoc cho mang. Xong thi ve lai cac dropdown chon
+        server tren MAIN THREAD (tkinter khong an toan da luong).
+        """
+        def _xong(them):
+            if not them:
+                return
+            try:
+                self.after(0, lambda: self._bao_server_moi(them))
+            except Exception:
+                pass
+        try:
+            from bot import servers_cdn
+            servers_cdn.cap_nhat_nen(config.SERVERS, config._base_dir(), xong=_xong)
+        except Exception as e:
+            log.debug("khong hoi duoc server moi tu CDN: %s", e)
+
+    def _bao_server_moi(self, them):
+        """MAIN THREAD: ve lai danh sach server + bao cho user biet."""
+        for k, v in them.items():
+            log.warning("SERVER MOI: %s (id %s, %s) - da them vao danh sach chon",
+                        v.get("label"), v.get("id"), v.get("ip"))
+        # Danh sach server duoc doc luc MO dialog cau hinh party (`config.SERVERS`), nen khong can
+        # ve lai gi o day - lan mo sau la co. Chi bao cho user biet.
+        try:
+            _dong = "\n".join("  • %s  (id %s, %s)" % (v.get("label"), v.get("id"), v.get("ip"))
+                              for v in them.values())
+            messagebox.showinfo(
+                "Server mới",
+                "Phát hiện %d server mới từ máy chủ tài nguyên của game:\n\n%s\n\n"
+                "Đã thêm vào danh sách chọn server (mở Cấu hình party để chọn)."
+                % (len(them), _dong))
+        except Exception as e:
+            log.debug("bao server moi loi: %s", e)
 
     # ---- tu dong cap nhat ----
     def _check_update(self, manual=False):
@@ -1863,6 +1911,55 @@ class BotGUI(tk.Tk):
 
         ttk.Button(_bar, text="Bỏ qua tất cả", command=_skip_all).pack(side="left", padx=4)
 
+    def _cfg(self, w, **kw):
+        """`configure` CHI KHI GIA TRI DOI.
+
+        `_refresh` chay moi giay cho CA 54 party; moi `configure` la mot lenh Tk tren main thread.
+        Do py-spy (PID 9472): 2/5 mau MainThread ket o `pack_configure` / `_configure` trong
+        `_refresh`. Gan nhu moi nhip khong co gi doi, nen phan lon so lenh do la vo ich.
+        """
+        if w is None:
+            return
+        _cu = getattr(w, "_cfg_cu", None)
+        if _cu is None:
+            _cu = {}
+            try:
+                w._cfg_cu = _cu
+            except Exception:
+                w.configure(**kw)
+                return
+        _moi = {k: v for k, v in kw.items() if _cu.get(k) != v}
+        if not _moi:
+            return
+        w.configure(**_moi)
+        _cu.update(_moi)
+
+    def _agi_worker(self):
+        """Tinh `party_agi_report` o THREAD NEN - main thread Tk chi doc cache.
+
+        `account_status` doc client, tinh level trung binh party, doc pet... Cache theo thoi gian
+        van KHONG DU: ban than no qua cham khi 700 thread tranh GIL, nen chi can chay MOT LAN tren
+        main thread la GUI khung lai.
+        Do py-spy tren tien trinh that (PID 9472, 698 thread): 3/5 mau MainThread ket o
+        `account_status` <- `party_agi_report` <- `_refresh`, du da co cache 5 giay.
+        (Lan truoc, 10/09, cung py-spy va cung cho nay: 15/15 mau.)
+
+        AGI gan nhu khong doi (chi doi khi cong diem tiem nang / doi pet) nen cham vai giay khong
+        mat gi - day la cache HIEN THI (mau cham canh bao), khong phai trang thai party.
+        """
+        while not self._agi_stop:
+            try:
+                _can = list(self._agi_can)
+                self._agi_can.clear()
+                for _p in _can:
+                    _kh = self._agi_cache.get(_p)
+                    if _kh and (time.time() - _kh[0]) <= _AGI_XEM_SEC:
+                        continue          # vua tinh xong -> khoi tinh lai
+                    self._agi_cache[_p] = (time.time(), ctrl.party_agi_report(_p))
+            except Exception:
+                pass                      # loi tinh cham canh bao KHONG duoc giet thread
+            time.sleep(1.0)
+
     def _refresh(self):
         # cap nhat map ten nhan vat -> username (de loc log theo acc/party)
         # Neo theo `_label` (NHAN LOG that su in ra dau dong) chu KHONG phai `char_name`: hai acc
@@ -1945,12 +2042,26 @@ class BotGUI(tk.Tk):
             #
             # Day la cache HIEN THI (mau cham canh bao), khong phai trang thai party - khong dinh
             # L1b. Sai lech toi da la cham party doi mau cham hon vai giay.
+            # PARTY DANG XEM CUNG PHAI CO CACHE (sua 15/09).
+            #
+            # `if _hien` cu = tinh MOI NHIP 1 giay cho party dang xem, ma `party_agi_report` goi
+            # `account_status` cho TUNG acc - ham nang, chay tren MAIN THREAD Tk.
+            # Do bang py-spy tren tien trinh that (PID 9148, 799 thread): 6/6 mau MainThread deu
+            # ket trong `account_status` <- `party_agi_report` <- `_refresh`. Voi 798 thread ngoi
+            # tranh GIL thi ham do bo, GUI "not responding".
+            #
+            # AGI gan nhu khong doi (chi doi khi cong diem tiem nang / doi pet) nen cham vai giay
+            # khong mat gi - van la cache HIEN THI (mau cham canh bao), khong phai trang thai party.
+            # MAIN THREAD CHI DOC CACHE. Viec tinh do THREAD NEN lam (`_agi_worker`).
+            #
+            # Cache theo thoi gian van KHONG DU: ban than `party_agi_report` qua cham khi 700 thread
+            # tranh GIL, nen chi can no chay MOT LAN tren main thread la GUI khung lai.
+            # Do py-spy tren tien trinh that (PID 9472, 698 thread): 3/5 mau MainThread ket o
+            # `account_status` <- `party_agi_report` <- `_refresh`, du da co cache 5s.
             _kh = self._agi_cache.get(pidx)
-            if _hien or _kh is None or (time.time() - _kh[0]) > _AGI_CACHE_SEC:
-                agi_report = ctrl.party_agi_report(pidx)
-                self._agi_cache[pidx] = (time.time(), agi_report)
-            else:
-                agi_report = _kh[1]
+            agi_report = _kh[1] if _kh else {}
+            if _hien or _kh is None:
+                self._agi_can.add(pidx)      # bao thread nen tinh lai
             # XANH chi khi DU acc chay VA KHONG con ai dang login (yeu cau user: "chi xanh
             # khi tat ca deu da login xong"). Con acc dang login -> VANG.
             _du_acc = p_run >= p_total and p_total > 0 and p_login == 0
@@ -2039,10 +2150,10 @@ class BotGUI(tk.Tk):
                         _phan.append(str(agi_report["spread"]))
                     if _tt_n:
                         _phan.append(f"TT {_tt_n}")
-                    agi_btn.configure(text="⚠ Check AGI (%s)" % ", ".join(_phan),
+                    self._cfg(agi_btn, text="⚠ Check AGI (%s)" % ", ".join(_phan),
                                       bg="#f59e0b", fg="#3b2500", activebackground="#d97706")
                 else:
-                    agi_btn.configure(text="⚡ Check AGI", bg="#e9ecef", fg="#111111",
+                    self._cfg(agi_btn, text="⚡ Check AGI", bg="#e9ecef", fg="#111111",
                                       activebackground="#d9dde1")
             # Nut "Chu y": hien khi party CO thong bao (item lo mode notify), an neu khong.
             nbtn = self.party_notify_buttons.get(pidx)
@@ -2053,11 +2164,11 @@ class BotGUI(tk.Tk):
                     # doan) - cung mau voi nut "Check AGI" luc lech, de nhin luot qua la thay.
                     # Con lai (thanh chua mo, du diem, lo) giu vang nhat.
                     _gap = _gap_notify      # da tinh o tren (dung chung voi cham party/nhom)
-                    nbtn.configure(text=f"⚠ Chú ý ({_ncnt})")
+                    self._cfg(nbtn, text=f"⚠ Chú ý ({_ncnt})")
                     if _gap:
-                        nbtn.configure(bg="#f59e0b", fg="#3b2500", activebackground="#d97706")
+                        self._cfg(nbtn, bg="#f59e0b", fg="#3b2500", activebackground="#d97706")
                     else:
-                        nbtn.configure(bg="#fff3cd", fg="#8a6d00", activebackground="#ffe69c")
+                        self._cfg(nbtn, bg="#fff3cd", fg="#8a6d00", activebackground="#ffe69c")
                     if not nbtn.winfo_ismapped():
                         nbtn.pack(side="left", padx=2)
                 elif nbtn.winfo_ismapped():
@@ -2220,8 +2331,23 @@ class BotGUI(tk.Tk):
         # acc dang chay ma config doi (hoac bi xoa khoi config) -> STOP
         changed = [u for u in list(ctrl.account_clients)
                    if ctrl.is_account_running(u) and old.get(u) != new.get(u)]
-        for u in changed:
-            ctrl.stop_account(u, reason="GUI reload config: account/party setting changed")
+        # STOP CHAY O THREAD NEN - main thread chi ve lai giao dien.
+        #
+        # `stop_account` -> `client.close()` -> `_ghi_cache_tui`/`save_bag_cache` -> `_cache_ghi`,
+        # ma `_cache_ghi` DOC + GHI LAI CA FILE `account_skills_cache.json` (876 KB, 265 acc) cho
+        # MOI acc, duoi `_skill_cache_lock` dung chung voi ~700 thread acc dang chay. Nhan tuan tu
+        # tren main thread la GUI dung hinh toi khi xong.
+        # py-spy (17/09, PID 1544) - ca 3/3 mau MainThread deu o:
+        #   _save -> reload_config -> stop_account -> close -> _ghi_cache_tui -> save_bag_cache
+        #   -> _cache_ghi (bot/client.py:2052)
+        # Cung cach da chua treo lan truoc: day viec nang sang thread nen (`_agi_worker`).
+        if changed:
+            threading.Thread(
+                target=lambda _ds=list(changed): [
+                    ctrl.stop_account(
+                        _u, reason="GUI reload config: account/party setting changed")
+                    for _u in _ds],
+                name="gui-stop-reload", daemon=True).start()
         self._all_usernames = set(u for pidx in range(len(config.PARTIES))
                                   for (u, *_ ) in ctrl.party_accounts(pidx))
         self._build_ordinal()
@@ -7453,7 +7579,11 @@ class ConfigDialog(tk.Toplevel):
         self.train_maps = [(int(k), v.get("name", k), v.get("mobs", []), (v.get("group") or _DEFAULT_GROUP)) for k, v in tm_raw.items()]
         ct_raw = _load_json("cities.json").get("cities", {})
         self.cities = [(v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()]
-        sv_raw = _load_json("servers.json").get("servers", {})
+        # DOC `config.SERVERS`, KHONG doc thang `servers.json`: `config` da nhap them SERVER MOI
+        # do bot tu phat hien tu CDN (`bot/servers_cdn.py` -> `servers_cdn.json`). Doc thang file
+        # thi server moi co trong bot ma KHONG BAO GIO hien ra de chon
+        # (user 17/09: "t chay ban dev ko thay tu phat hien sv moi").
+        sv_raw = dict(getattr(config, "SERVERS", None) or {}) or _load_json("servers.json").get("servers", {})
         self.servers = [(k, v.get("label", k)) for k, v in sv_raw.items()] or [("trieu_van", "Triệu Vân")]
 
         top = ttk.Frame(self, padding=6); top.pack(fill="x")

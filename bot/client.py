@@ -1790,6 +1790,90 @@ def _save_legion_boss_next(label: str, next_ts: float):
 # di qua vong lap do (da dinh 1 lan - cache khong bao gio duoc ghi). _on_pet_list chay luc login
 # VA moi lan doi pet (handler 0x13 goi lai) nen la cho chac chan nhat.
 _skill_cache_lock = threading.Lock()
+# NOI DUNG FILE CACHE GIU TRONG RAM - chi doc dia DUNG MOT LAN.
+#
+# Sau duong ghi (`save_skill_cache`, `save_inn_cache`, `save_point_cache`,
+# `save_skill_char_cache`, `_cache_ghi`, `save_dac_ky_cache`) deu tung mo + `json.load` LAI CA FILE
+# ngay trong `_skill_cache_lock`, roi `_ghi_json_an_toan` LAI CA FILE cung trong khoa do. File la
+# MOT file chung cho moi acc: 876 KB / 265 acc (do thuc te 17/09) -> 43 ms giu khoa moi lan ghi
+# (load 24 + dumps 19), voi ~700 thread acc dang chay thi hang doi khong bao gio voi.
+#
+# Ca that 17/09 (user: "sao bi not responding roi" - chi stop MOT party) - py-spy PID 1544:
+#       1 thread   GIU khoa, dang `json.load` (save_skill_cache)
+#     101 thread   xep hang cho khoa (70 o `_cache_ghi` + 31 o `save_skill_cache`)
+# MainThread lot vao hang do la GUI dung hinh, bat ke user stop 1 acc hay 100.
+_skill_cache_all = None
+_skill_cache_all_path = None    # ban RAM dang la cua FILE NAO
+_skill_cache_ban = threading.Event()     # RAM da doi, chua ghi xuong dia
+_skill_cache_flusher = None
+
+
+def _cache_all():
+    """Noi dung file cache (dict). CHI doc dia lan dau; nhung lan sau lay trong RAM.
+
+    Nho luon ban RAM dang la cua FILE NAO: `_skill_cache_path()` doi (app_dir doi, hoac bai test
+    tro sang file tam) thi phai NAP LAI - khong thi tra du lieu cua file CU cho file MOI.
+    """
+    global _skill_cache_all, _skill_cache_all_path
+    import json, os
+    _p = _skill_cache_path()
+    if _skill_cache_all is None or _skill_cache_all_path != _p:
+        _skill_cache_all = {}
+        _skill_cache_all_path = _p
+        if os.path.exists(_p):
+            try:
+                with open(_p, encoding="utf-8") as fh:
+                    _skill_cache_all = json.load(fh) or {}
+            except Exception:
+                _skill_cache_all = {}
+    return _skill_cache_all
+
+
+def _cache_flush(force=False):
+    """Ghi noi dung cache trong RAM xuong dia. Serialize NGOAI `_skill_cache_lock`.
+
+    Trong khoa chi chup mot ban sao nong (dict(...)) - vai chuc microsecond - roi nha khoa ra moi
+    `json.dumps` (19 ms cho 876 KB) va ghi file.
+    """
+    if not force and not _skill_cache_ban.is_set():
+        return
+    with _skill_cache_lock:
+        if _skill_cache_all is None:
+            return
+        _ban = dict(_skill_cache_all)
+        # Ghi dung FILE MA BAN RAM NAY LA CUA - `_skill_cache_path()` co the da doi giua chung.
+        _duong = _skill_cache_all_path or _skill_cache_path()
+        _skill_cache_ban.clear()
+    try:
+        _ghi_json_an_toan(_duong, _ban)
+    except Exception as e:
+        log.debug("ghi cache xuong dia loi: %s", e)
+        _skill_cache_ban.set()          # that bai -> de lan sau ghi lai
+
+
+def _cache_hen_ghi():
+    """Danh dau RAM da doi + bat may ghi nen (mot thread duy nhat cho ca tien trinh).
+
+    PHAI goi trong `_skill_cache_lock`.
+    """
+    global _skill_cache_flusher
+    _skill_cache_ban.set()
+    if _skill_cache_flusher is not None:
+        return
+    def _vong():
+        while True:
+            time.sleep(3.0)
+            try:
+                _cache_flush()
+            except Exception:
+                pass
+    _skill_cache_flusher = threading.Thread(target=_vong, name="cache-flush", daemon=True)
+    _skill_cache_flusher.start()
+    try:
+        import atexit
+        atexit.register(lambda: _cache_flush(force=True))
+    except Exception:
+        pass
 _skill_cache_sig = {}
 
 
@@ -1839,25 +1923,14 @@ def save_skill_cache(username, data):
     with _skill_cache_lock:
         if _skill_cache_sig.get(username) == sig:
             return False
-        path = _skill_cache_path()
-        allc = {}
-        if os.path.exists(path):
-            try:
-                with open(path, encoding="utf-8") as fh:
-                    allc = json.load(fh) or {}
-            except Exception:
-                allc = {}
+        allc = _cache_all()
         # GIU khoa "inn" (list pet nha tro, do save_inn_cache ghi): ham nay THAY nguyen entry nen
         # khong giu thi moi lan cache skill se xoa mat list pet -> dialog van tieu trong khi acc tat.
         cu = allc.get(username) or {}
         allc[username] = dict(data, ts=int(time.time()))
         if isinstance(cu, dict) and cu.get("inn"):
             allc[username]["inn"] = cu["inn"]
-        try:
-            _ghi_json_an_toan(path, allc)
-        except Exception as e:
-            log.debug("ghi cache skill loi: %s", e)
-            return False
+        _cache_hen_ghi()      # ghi xuong dia o thread nen (xem `_cache_flush`)
         _skill_cache_sig[username] = sig
         return True
 
@@ -1892,25 +1965,14 @@ def save_inn_cache(username, inn):
     with _skill_cache_lock:
         if _skill_cache_sig.get("inn:" + username) == sig:
             return False
-        path = _skill_cache_path()
-        allc = {}
-        if os.path.exists(path):
-            try:
-                with open(path, encoding="utf-8") as fh:
-                    allc = json.load(fh) or {}
-            except Exception:
-                allc = {}
+        allc = _cache_all()
         entry = allc.get(username)
         if not isinstance(entry, dict):
             entry = {}
         entry["inn"] = inn
         entry["inn_ts"] = int(time.time())
         allc[username] = entry
-        try:
-            _ghi_json_an_toan(path, allc)
-        except Exception as e:
-            log.debug("ghi cache pet nha tro loi: %s", e)
-            return False
+        _cache_hen_ghi()      # ghi xuong dia o thread nen (xem `_cache_flush`)
         _skill_cache_sig["inn:" + username] = sig
         return True
 
@@ -1933,25 +1995,14 @@ def save_point_cache(username, diem):
     with _skill_cache_lock:
         if _skill_cache_sig.get("point:" + username) == sig:
             return False
-        path = _skill_cache_path()
-        allc = {}
-        if os.path.exists(path):
-            try:
-                with open(path, encoding="utf-8") as fh:
-                    allc = json.load(fh) or {}
-            except Exception:
-                allc = {}
+        allc = _cache_all()
         entry = allc.get(username)
         if not isinstance(entry, dict):
             entry = {}
         entry["point"] = diem
         entry["point_ts"] = int(time.time())
         allc[username] = entry
-        try:
-            _ghi_json_an_toan(path, allc)
-        except Exception as e:
-            log.debug("ghi cache bang diem loi: %s", e)
-            return False
+        _cache_hen_ghi()      # ghi xuong dia o thread nen (xem `_cache_flush`)
         _skill_cache_sig["point:" + username] = sig
         return True
 
@@ -1962,14 +2013,9 @@ def load_point_cache(username):
     username = str(username or "").strip()
     if not username:
         return None, 0
-    path = _skill_cache_path()
-    if not os.path.exists(path):
-        return None, 0
-    try:
-        with open(path, encoding="utf-8") as fh:
-            allc = json.load(fh) or {}
-    except Exception:
-        return None, 0
+    # DOC TU RAM (xem `_cache_all`). KHONG lay khoa - co y: `load_dac_ky_cache` duoc goi
+    # TU TRONG `_skill_cache_lock` (`save_dac_ky_cache`), ma khoa do khong reentrant.
+    allc = _cache_all()
     entry = allc.get(username)
     if not isinstance(entry, dict):
         return None, 0
@@ -1991,25 +2037,14 @@ def save_skill_char_cache(username, du_lieu) -> bool:
     with _skill_cache_lock:
         if _skill_cache_sig.get("skill_char:" + username) == sig:
             return False
-        path = _skill_cache_path()
-        allc = {}
-        if os.path.exists(path):
-            try:
-                with open(path, encoding="utf-8") as fh:
-                    allc = json.load(fh) or {}
-            except Exception:
-                allc = {}
+        allc = _cache_all()
         entry = allc.get(username)
         if not isinstance(entry, dict):
             entry = {}
         entry["skill_char"] = du_lieu
         entry["skill_char_ts"] = int(time.time())
         allc[username] = entry
-        try:
-            _ghi_json_an_toan(path, allc)
-        except Exception as e:
-            log.debug("ghi cache skill nhan vat loi: %s", e)
-            return False
+        _cache_hen_ghi()      # ghi xuong dia o thread nen (xem `_cache_flush`)
         _skill_cache_sig["skill_char:" + username] = sig
         return True
 
@@ -2020,14 +2055,9 @@ def load_skill_char_cache(username):
     username = str(username or "").strip()
     if not username:
         return None, 0
-    path = _skill_cache_path()
-    if not os.path.exists(path):
-        return None, 0
-    try:
-        with open(path, encoding="utf-8") as fh:
-            allc = json.load(fh) or {}
-    except Exception:
-        return None, 0
+    # DOC TU RAM (xem `_cache_all`). KHONG lay khoa - co y: `load_dac_ky_cache` duoc goi
+    # TU TRONG `_skill_cache_lock` (`save_dac_ky_cache`), ma khoa do khong reentrant.
+    allc = _cache_all()
     entry = allc.get(username)
     if not isinstance(entry, dict):
         return None, 0
@@ -2052,14 +2082,7 @@ def _cache_ghi(username, khoa, du_lieu, moc_ts=True) -> bool:
     with _skill_cache_lock:
         if _skill_cache_sig.get(khoa + ":" + username) == sig:
             return False
-        path = _skill_cache_path()
-        allc = {}
-        if os.path.exists(path):
-            try:
-                with open(path, encoding="utf-8") as fh:
-                    allc = json.load(fh) or {}
-            except Exception:
-                allc = {}
+        allc = _cache_all()
         entry = allc.get(username)
         if not isinstance(entry, dict):
             entry = {}
@@ -2067,11 +2090,7 @@ def _cache_ghi(username, khoa, du_lieu, moc_ts=True) -> bool:
         if moc_ts:
             entry[khoa + "_ts"] = int(time.time())
         allc[username] = entry
-        try:
-            _ghi_json_an_toan(path, allc)
-        except Exception as e:
-            log.debug("ghi cache %s loi: %s", khoa, e)
-            return False
+        _cache_hen_ghi()      # ghi xuong dia o thread nen (xem `_cache_flush`)
         _skill_cache_sig[khoa + ":" + username] = sig
         return True
 
@@ -2082,14 +2101,9 @@ def _cache_doc(username, khoa):
     username = str(username or "").strip()
     if not username:
         return None, 0
-    path = _skill_cache_path()
-    if not os.path.exists(path):
-        return None, 0
-    try:
-        with open(path, encoding="utf-8") as fh:
-            allc = json.load(fh) or {}
-    except Exception:
-        return None, 0
+    # DOC TU RAM (xem `_cache_all`). KHONG lay khoa - co y: `load_dac_ky_cache` duoc goi
+    # TU TRONG `_skill_cache_lock` (`save_dac_ky_cache`), ma khoa do khong reentrant.
+    allc = _cache_all()
     entry = allc.get(username)
     if not isinstance(entry, dict):
         return None, 0
@@ -2158,14 +2172,9 @@ def load_dac_ky_cache(username) -> set:
     username = str(username or "").strip()
     if not username:
         return set()
-    path = _skill_cache_path()
-    if not os.path.exists(path):
-        return set()
-    try:
-        with open(path, encoding="utf-8") as fh:
-            allc = json.load(fh) or {}
-    except Exception:
-        return set()
+    # DOC TU RAM (xem `_cache_all`). KHONG lay khoa - co y: `load_dac_ky_cache` duoc goi
+    # TU TRONG `_skill_cache_lock` (`save_dac_ky_cache`), ma khoa do khong reentrant.
+    allc = _cache_all()
     entry = allc.get(username)
     if not isinstance(entry, dict):
         return set()
@@ -2185,24 +2194,13 @@ def save_dac_ky_cache(username, npc_ids) -> bool:
         cu = load_dac_ky_cache(username)
         if moi <= cu:
             return False
-        path = _skill_cache_path()
-        allc = {}
-        if os.path.exists(path):
-            try:
-                with open(path, encoding="utf-8") as fh:
-                    allc = json.load(fh) or {}
-            except Exception:
-                allc = {}
+        allc = _cache_all()
         entry = allc.get(username)
         if not isinstance(entry, dict):
             entry = {}
         entry["dac_ky"] = sorted(cu | moi)
         allc[username] = entry
-        try:
-            _ghi_json_an_toan(path, allc)
-        except Exception as e:
-            log.debug("ghi cache dac ky loi: %s", e)
-            return False
+        _cache_hen_ghi()      # ghi xuong dia o thread nen (xem `_cache_flush`)
         return True
 
 

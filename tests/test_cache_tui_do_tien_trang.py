@@ -148,6 +148,10 @@ class TestGhiNguyenTu(_Base):
     def test_file_cu_con_nguyen_khi_ghi_hong(self):
         import json
         CL.save_bag_cache("zz", {"slots": {"1": [1, 1]}})
+        # Ghi xuong dia gio chay o THREAD NEN (`_cache_flush` moi 3s) de khong giu
+        # `_skill_cache_lock` trong luc `json.dumps` 876 KB - xem
+        # tests/test_cache_khong_parse_lai_ca_file.py. Ep ghi ngay de co file ma kiem.
+        CL._cache_flush(force=True)
         p = CL._skill_cache_path()
         cu = io.open(p, encoding="utf-8").read()
         with mock.patch("json.dump", side_effect=OSError("het cho")):

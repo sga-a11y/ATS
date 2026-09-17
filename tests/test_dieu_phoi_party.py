@@ -681,9 +681,12 @@ class TestMemberKhongChoLeaderLapDuong(unittest.TestCase):
 
     def _than_reform(self):
         src = _src()
-        i = src.find("def _chot_thanh_tap_ket(")
+        # `_chot_thanh_tap_ket` da tach ra cap module thanh `chot_thanh_tap_ket` (17/09) de
+        # ENGINE MOI dung CHUNG mot ham - khong con ban thu hai de ma lech. Closure cu chi con goi
+        # lai no.
+        i = src.find("def chot_thanh_tap_ket(")
         self.assertGreater(i, 0, "chua tach viec chot thanh tap ket ra khoi dac quyen leader")
-        return src, src[i:i + 5000]
+        return src, src[i:src.find(chr(10) + "def ", i + 10)]
 
     def test_member_KHONG_cho_vo_han(self):
         """Vong cho phai co HAN. Neo theo MA (`if ... > ROUTE_PLAN_TIEP_QUAN_SEC:` dung truoc dong
@@ -719,7 +722,8 @@ class TestMemberKhongChoLeaderLapDuong(unittest.TestCase):
         """Moi acc tu tinh -> party toe ra hai thanh, leader dung A member dung B, moi mai khong
         ai vao doi. Phai khoa theo gen: ai cong bo truoc thi thang."""
         _src_, than = self._than_reform()
-        self.assertIn('_cu.get("gen") == _g0', than)
+        # `_g0` doi thanh tham so `gen` khi tach ra cap module (17/09).
+        self.assertIn('_cu.get("gen") == gen', than)
         self.assertIn('st["lock"]', than)
 
     def test_leader_khong_di_duong_dan_toi_thanh_KHAC(self):
