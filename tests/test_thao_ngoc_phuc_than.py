@@ -104,14 +104,41 @@ class TestModeEventTatHan(unittest.TestCase):
     def test_dat_co_TRUOC_cua_re_engine_moi(self):
         """Dat sau cua re thi party engine moi khong bao gio duoc gan -> van dung Phuc Than."""
         s = _doc("run_party_digioi.py")
-        i_co = s.find('c.phuc_than_tat = (_early_mode == "event")')
+        i_co = s.find("c.phuc_than_tat = (")
         i_re = s.find("if dung_engine_moi(pidx):")
         self.assertGreater(i_co, 0, "mat cho dat co")
         self.assertLess(i_co, i_re, "dat SAU cua re -> engine moi diec")
 
+    def test_dat_co_o_cho_chay_cho_MOI_ACC(self):
+        """TUNG dat trong `lam_login_chores` - ham do CHI chay khi acc con viec vat login. Acc da
+        xong chore thi co van False -> `use_phuc_than_items` DEO LAI ngoc vua thao.
+        Ca that ttba 21/09: 20:28 thao (server xac nhan `Da coi do: vi tri 6`), 21:03 lai thao
+        DUNG con ngoc do -> tuc da bi deo lai o giua."""
+        s = _doc("run_party_digioi.py")
+        # Than cua `lam_login_chores` KHONG duoc chua cho dat co (so vi tri thi vo nghia: ham do
+        # dinh nghia truoc `run_account` trong file).
+        i_chore = s.find("def lam_login_chores(")
+        self.assertGreater(i_chore, 0)
+        than_chore = s[i_chore:s.find("\ndef ", i_chore + 10)]
+        self.assertNotIn("c.phuc_than_tat = (", than_chore,
+                         "dat co trong `lam_login_chores` -> acc da xong chore la sot")
+        # Phai nam trong `run_account`, GIUA "vao world" va cua re engine moi - doan do chay cho
+        # MOI acc MOI lan login. (Cua so 800 ky tu khong du: khoi comment giai thich dai hon the.)
+        i_co = s.find("c.phuc_than_tat = (")
+        i_world = s.find('log.info("[%s] (%s) vao world."')
+        i_re = s.find("if dung_engine_moi(pidx):")
+        self.assertGreater(i_world, 0)
+        self.assertLess(i_world, i_co, "dat TRUOC khi vao world -> chua co du lieu do dang mac")
+        self.assertLess(i_co, i_re)
+
+    def test_CHI_MOT_cho_dat_co(self):
+        s = _doc("run_party_digioi.py")
+        self.assertEqual(s.count("c.phuc_than_tat = ("), 1,
+                         "hai cho dat co -> mot cho sua, cho kia quen")
+
     def test_mode_event_thi_THAO_ngoc_luon(self):
         s = _doc("run_party_digioi.py")
-        i = s.find("c.phuc_than_tat = ")
+        i = s.find("c.phuc_than_tat = (")
         self.assertIn("thao_ngoc_phuc_than(", s[i:i + 500])
 
     def test_use_phuc_than_items_TU_CHAN(self):

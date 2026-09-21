@@ -665,6 +665,27 @@ def _quyet_dinh_goc(anh: AnhParty):
     #    party vao PB vinh vien;
     #  - hoan PB / day dua lech map di gom: mat luot PB, ma "di PB doi thi co can gom map deo dau".)
     if anh.pb_doi_level is not None and len(con_lai) == len(song):
+        # (b2) TAT CA VE THANH TRUOC, khong mo phong khi dang dung o BAI QUAI (user chot 21/09).
+        #
+        # Dung o bai quai thi acc con bi keo tran giua chung: accept loi moi / bam CHUAN BI khong
+        # an, ma leader thi van dem "ready" (bot tu bao) roi START -> server chi cong nhan 2/4.
+        # Ca that party 17, 21/09 - leader mo phong luc ca party con o map train va LECH KENH:
+        #   06:04:07 TRANG THAI: chusau@12001/k4(L) chubay@12001/k3 ... | roster leader=0/4
+        #   06:04:09 (LEADER) === PHO BAN TO DOI LV20: tao + moi 4 member ===
+        #
+        # VE THANH TAP KET (thanh cua route, user chon 21/09) - danh xong quay lai bai train gan,
+        # khong phai di lai tu thanh trung gian. Dung DUNG `VIEC_VE_THANH` san co, khong tu viet
+        # duong di moi.
+        _thanh = anh.thanh_dich
+        if _thanh:
+            _chua_ve = [a for a in con_lai
+                        if a.map_id is not None and int(a.map_id) != int(_thanh)]
+            if _chua_ve:
+                for a in _chua_ve:
+                    ket[a.username] = VIEC_VE_THANH
+                for a in con_lai:
+                    ket.setdefault(a.username, VIEC_NGHI)   # toi noi roi thi DUNG YEN cho ca lu
+                return ket
         for a in con_lai:
             ket[a.username] = VIEC_PB_DOI if a.la_leader else VIEC_PB_DOI_THEO
         return ket

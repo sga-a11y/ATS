@@ -305,3 +305,41 @@ def format_mobs(mobs: dict, limit: int = 8, short: bool = False) -> str:
     if short:
         return ", ".join(k for k, _v in rows[:limit])
     return ", ".join(f"{k}: {v}" for k, v in rows[:limit])
+
+
+def spot_infos(map_id, mobs) -> list:
+    """Chuoi phu cho tung diem quai trong dropdown: ' | 3-5 | Thủy 110, Địa 112'.
+
+    DUNG CHUNG PC + APK. Von la `_spot_infos` trong `gui.py` (PC_ONLY) nen ban APK khong goi duoc
+    -> dropdown "Quái" ben APK chi hien "Điểm 1 (x, y)", mat so quai va he quai.
+    User 21/09: "ban apk luc chon diem quai ko thay hien so quai va he quai nhu ban PC".
+
+    APK KHONG GHI file nay (chi PC ghi), nhung van doc duoc: `_load_unlocked` co duong doc tu
+    `assets/train_bot_data/train_block_stats.json` - va file do DA duoc khai trong ca
+    `SHARED_ASSETS` lan `DATA_JSON`.
+
+    Nap `load_stats()` MOT lan cho ca map (`get_spot_summary` nap lai ca file moi lan goi).
+    Diem chua co so lieu -> chuoi rong, dropdown hien nhu cu.
+    """
+    out = ["" for _ in mobs]
+    if map_id is None:
+        return out
+    try:
+        spots = (load_stats().get("maps", {})
+                 .get(str(int(map_id)), {}).get("spots", {}))
+    except Exception:
+        return out
+    if not spots:
+        return out
+    for i, xy in enumerate(mobs):
+        try:
+            s = spots.get(spot_key(xy)) or {}
+            parts = [p for p in (
+                format_mob_range(s.get("patterns", {})),
+                format_mobs(s.get("mobs", {}), limit=4, short=True),
+            ) if p]
+            if parts:
+                out[i] = " | " + " | ".join(parts)
+        except Exception:
+            pass
+    return out

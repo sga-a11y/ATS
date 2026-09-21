@@ -147,6 +147,96 @@ dịch: `DP_GOM→NGHI`, `DP_DONG_BO→NGHI`, `DP_MOI→LAP_PARTY`, `DP_DI_TRAIN
 2. Hoãn PB khi điều phối đang chốt `gom` → mất lượt PB. *"đi PB đội thì có cần gom map đéo đâu"*.
 3. Đẩy đứa lệch map xuống nhánh gom → vẫn là lấy gom làm điều kiện của PB.
 
+## Phó bản tổ đội — FLOW ĐẦY ĐỦ (user chốt 21/09)
+
+```
+1. Check party CÓ CẦN làm PB không — CẢ PARTY đều chưa làm thì mới làm
+2. TẤT CẢ tele về THÀNH TẬP KẾT (thành của route) — không đứng ở map quái
+3. Lập room PB
+4. Mời WHITELIST trước, rồi mới mời party theo config
+5. ĐỦ MEMBER THEO LIST PARTY thì START
+6. Trong quá trình đi mà có đứa văng → THOÁT HẾT PB, làm lại từ đầu
+```
+
+Nguyên văn user: *"check party có cần làm PB hay ko, phải cả party đều chưa làm thì mới làm PB đó,
+tất cả phải tele về thành, ko đứng ở map quái, lập room PB và mời white list trước rồi mới mời
+party theo config đủ member theo list party thì start, trong quá trình đi mà có đứa văng thì thoát
+hết PB làm lại từ đầu"*.
+
+### Bước 1 — cả party đều chưa làm
+
+| Ràng buộc | Loại | Ghi chú |
+|---|---|---|
+| Đọc lượt của **từng member**, không chỉ leader | `[LOG]` | p41 20/09 *"p41, đi PB khi có 1 đứa bên ngoài"*: leader còn lượt nhưng một member hết → nó không vào được → phòng thiếu người, huỷ rồi tạo lại, quay vòng |
+| Lượt đọc từ **mission-step của server** (`0x18/06`), cấm tự đếm | `[CAPTURE]` | acc có thể đã đánh ở máy khác / phiên trước |
+| Chưa có mission-step → **chưa kết luận**, không phải "hết lượt" | `[LOG]` | engine cũ từng đánh dấu nhầm acc còn nguyên lượt là "đã xong" vì đoán bừa |
+| Chưa đủ cấp → bỏ qua level đó | `[SUY ĐOÁN]` | server không cho ready, tạo phòng cũng chỉ ra "ready 0/4" |
+
+### Bước 2 — tất cả về thành trước
+
+| Ràng buộc | Loại | Ghi chú |
+|---|---|---|
+| Không mở phòng khi còn đứng **bãi quái** | `[LOG]` | đứng bãi thì bị kéo trận giữa chừng: accept lời mời / bấm chuẩn bị không ăn, mà leader vẫn đếm "ready" rồi START |
+| Về **thành tập kết của route** | user chốt | đánh xong quay lại bãi gần, không phải đi lại từ thành trung gian |
+| Dùng đúng `VIEC_VE_THANH` sẵn có | — | không viết đường đi mới |
+
+`[LOG]` party 17, 21/09 — mở phòng khi party **rỗng** và **lệch kênh**:
+```
+06:04:07 TRANG THAI: chusau@12001/k4(L) chubay@12001/k3 ... | roster leader=0/4
+06:04:09 (LEADER) === PHO BAN TO DOI LV20: tao + moi 4 member ===
+```
+
+### Bước 3–4 — lập phòng, mời whitelist trước
+
+| Ràng buộc | Loại | Ghi chú |
+|---|---|---|
+| Lời mời phòng đi theo **roleId**, không cần cùng map/kênh | `[CAPTURE]` | `0x2f/0800 [entity 8B]`; member nhận `0x2f/0f00` → join `0x2f/0300` → ready `0x2f/0b00` |
+| **Whitelist mời TRƯỚC**, bot member mời sau | `[LOG]` | whitelist là người thật, không có auto-ready — mời trước để họ kịp vào phòng và bấm chuẩn bị |
+| `befriend_nearby()` không phải việc phụ | `[LOG]` | lời mời phòng đi theo roleId từ friend-list; bỏ thì có lúc không mời được ai |
+
+### Bước 5 — đủ member theo config mới START
+
+**Đây là chỗ đã hỏng lâu nhất.** `ready n/4` mà bot in ra là **bot tự báo**: member accept xong bật
+`Timer(2.5s)` rồi tự đánh dấu ready, **không đợi server xác nhận đã vào phòng**. Accept fail âm
+thầm (member lệch kênh) thì vẫn báo ready.
+
+`[LOG]` party 17 — lặp từ 06:04 tới 00:03 hôm sau:
+```
+00:03:43 (LEADER) member ready 4/4 sau 2.0s -> START
+00:03:56 (LEADER) roster phong pho ban chi 2/4 member -> THIEU nguoi, HUY danh de gom lai
+```
+
+**Client biết chính xác ai trong phòng** — `[CAPTURE]` từ `_lua_dec/Logic/Dungeon.lua` +
+`Common/protocal.lua`, client giữ `dungeonNowRoomPlayers` và cập nhật bằng ba gói:
+
+| Gói | Sub | Nội dung | Handler client |
+|---|---|---|---|
+| `S:047-003` | `0x2f/03` | `+kết quả(1) +phòng(4) +`**`số người(1)`**` +` danh sách `<<RoleID(8) … đã ready(1)>>` | `ReciveJoinRoom` |
+| `S:047-013` | `0x2f/0d` | `+RoleID(8) +L(1) +tên(L) …` | `RecivePlayerJoinRoom` |
+| `S:047-010` | `0x2f/0a` | `+RoleID(8)` | `RecivePlayerLeave` |
+| `S:047-011` | `0x2f/0b` | `+RoleID(8) +đã ready(1)` | `RecivePlayerPrePare` |
+
+| Ràng buộc | Loại | Ghi chú |
+|---|---|---|
+| START chỉ khi **server công nhận đủ** `số member + 1` | user chốt | "đủ member theo config party là được" |
+| Chưa đọc được gói phòng → **giữ hành vi cũ**, không kẹt cứng | `[SUY ĐOÁN]` | bản cũ / gói lạ không được làm party đứng im vĩnh viễn |
+| **START rồi thì không mời thêm được ai** | user chốt | nên mọi cửa kiểm phải đứng **trước** `0x2f/0c00` |
+| Cửa phải có ở **cả hai** hàm (lv20 và lv50/80/110) | — | mỗi level một hàm riêng, thiếu một cái là thủng |
+
+### Bước 6 — có đứa văng thì thoát hết, làm lại
+
+| Ràng buộc | Loại | Ghi chú |
+|---|---|---|
+| Áp **từ lúc mở phòng đến khi đánh xong** | user chốt | cả lúc chờ trong phòng lẫn đang đánh |
+| PB vỡ thì server **KHÔNG** gửi gói kết thúc (`S:047-012`) | `[LOG]` | nên không acc nào tự biết đường ra |
+| Phải kéo **cả party** ra bằng `C:047-010` | `[LOG]` | p42 07/09: leader thoát cho riêng nó → leader đứng ngoài, member kẹt trong map 62xxx, `go_to_town` của họ bail vì "đang trong phó bản tổ đội" |
+| Chỉ kéo khi **có acc đang làm PB** | `[SUY ĐOÁN]` | không thì mỗi lần một acc relogin là cả party bị lôi ra oan |
+
+**Cấm** (đã thử, sai — xem comment tại chỗ trong `party_engine.quyet_dinh`):
+1. Giữ phiên PB bằng `any(viec_dang_lam == pb_doi_theo)` → cờ tự nuôi chính nó, khoá cứng party.
+2. Hoãn PB khi đang phải gom map → mất lượt PB. *"đi PB đội thì có cần gom map đéo đâu"*.
+3. Đẩy đứa lệch map xuống nhánh gom → vẫn là lấy gom làm điều kiện của PB.
+
 ## Gom về thành (`VIEC_VE_THANH`)
 
 **Gom = teleport về thành tập kết**, không phải đi bộ qua cổng (`:1114`).

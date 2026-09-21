@@ -113,11 +113,15 @@ class TestTuRoiKhiNhanGoiKetThuc(unittest.TestCase):
 class TestVienDanClient(unittest.TestCase):
     def test_co_ghi_ro_nguon(self):
         s = _src()
-        i = s.find("if sub == 0x0c and len(body) >= 5:")
+        # Neo theo THAN HAM `_on_dungeon`, khong cat cung n ky tu truoc `sub == 0x0c`: them mot
+        # handler vao truoc do la cua so truot va bai test do trong khi ghi chu van con nguyen
+        # (21/09: them ba handler doc so nguoi trong phong).
+        i = s.find("    def _on_dungeon(self")
         self.assertGreater(i, 0)
-        khoi = s[max(0, i - 1400):i]
+        than = s[i:s.find("\n    def ", i + 10)]
+        self.assertIn("if sub == 0x0c and len(body) >= 5:", than)
         for m in ("S:047-012", "LeaveSinglePlayDungeon", "Dungeon.lua"):
-            self.assertIn(m, khoi, m)
+            self.assertIn(m, than, m)
 
     def test_dung_dung_lenh_cua_client(self):
         """Client dong bang ket qua -> `Network.Send(13, 4, playerId)` = C:013-004 =

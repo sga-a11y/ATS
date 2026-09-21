@@ -563,8 +563,15 @@ fun TsBotApp(
                         onSendRouteMaps = { source, dest -> service?.sendRouteMaps(party.accounts.map { it.username }, source, dest) },
                         onSendGiftcode = { code -> service?.sendGiftcode(party.accounts.map { it.username }, code) },
                         onGetChannels = {
-                            party.accounts.firstOrNull { service?.isRunning(it.username) == true }
-                                ?.let { service?.getChannels(it.username) } ?: emptyList()
+                            // pidx suy tu vi tri party trong list (giong startPartyIn /
+                            // onFurnaceNotify), va truyen THANG cho `getChannels` - GIONG BAN PC
+                            // (`gui.py`: `ctrl.get_channel_list(pidx)`).
+                            // Truoc day tim mot acc dang chay roi truyen USERNAME, ma ben service
+                            // lai tra `userPidx[username]` - map cuc bo chi co khi chinh app nay
+                            // start party trong phien do -> mo lai app la rong -> luon bao
+                            // "Khong tai duoc danh sach kenh" (user 21/09).
+                            val _pi = parties.indexOf(party)
+                            if (_pi >= 0) (service?.getChannels(_pi) ?: emptyList()) else emptyList()
                         },
                         onFurnaceNotify = {
                             // pidx suy tu vi tri party trong list (giong startPartyIn)
@@ -1774,9 +1781,23 @@ fun trainMobOptions(mapKey: String): List<Pair<Int, String>> {
     val info = maps.callAttr("get", mapId) ?: return listOf(-1 to "Bot tự chọn")
     val mobs = info.callAttr("get", "mobs") ?: return listOf(-1 to "Bot tự chọn")
     val list = mutableListOf(-1 to "Bot tự chọn")
+    // SO QUAI + HE QUAI cua tung diem - GOI DUNG HAM CUA BAN PC (`train_block_stats.spot_infos`,
+    // von la `_spot_infos` trong `gui.py`). Khong tu ghep chuoi ben Kotlin: hai ban se lech dinh
+    // dang ngay lan sua dau tien.
+    // APK KHONG GHI `train_block_stats.json` nhung VAN DOC duoc - `_load_unlocked` co duong doc
+    // tu `assets/train_bot_data/`. User 21/09: "ban apk ko ghi file train block nhung van phai
+    // up qua de dung va hien thi chu".
+    val infos: List<String> = try {
+        com.chaquo.python.Python.getInstance().getModule("train_bot.train_block_stats")
+            .callAttr("spot_infos", mapId, mobs)
+            .asList().map { it.toString() }
+    } catch (e: Exception) {
+        android.util.Log.w("aTSBot", "spot_infos(map=$mapId) loi: ${e.message}", e)
+        emptyList()
+    }
     mobs.asList().forEachIndexed { i, pt ->
         val coords = pt.asList()
-        list.add(i to "Điểm ${i + 1} (${coords[0]}, ${coords[1]})")
+        list.add(i to "Điểm ${i + 1} (${coords[0]}, ${coords[1]})" + (infos.getOrNull(i) ?: ""))
     }
     return list
 }

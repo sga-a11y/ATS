@@ -839,8 +839,53 @@ def reset_dungeon_ready(party_idx):
 TEAM_DUNGEON_WHITELIST_READY_GRACE = 10.0
 
 
-def _team_dungeon_can_start(ready_count, needed, elapsed, whitelist_count):
+# SO NGUOI THAT TRONG PHONG PHO BAN (party_idx -> set roleId 8B), do SERVER bao.
+#
+# `_DUNGEON_READY` o tren la BOT TU BAO: member accept xong bat `Timer(2.5s)` roi tu danh dau
+# "ready", KHONG doi server xac nhan da vao phong. Accept co the fail am tham server-side (member
+# lech kenh...) -> leader thay ready du roi START, con server chi cong nhan 2/4.
+# Ca that party 17, 21/09 - lap lai suot tu 06:04 den 00:03 hom sau:
+#     00:03:43 (LEADER) member ready 4/4 sau 2.0s -> START
+#     00:03:56 (LEADER) roster phong pho ban chi 2/4 member -> THIEU nguoi, HUY danh de gom lai
+# User: "chua du pt sao da start PB, start roi thi moi nguoi khac the deo nao dc nua" va
+# "client hoan toan biet ro member nao da vao room, member nao da ready, du de biet du member chua
+#  truoc khi start, m tra lai crack client di".
+#
+# CRACK CLIENT (`_lua_dec/Logic/Dungeon.lua` + `_lua_dec/Common/protocal.lua`) - client giu danh
+# sach `dungeonNowRoomPlayers`, cap nhat bang BA goi:
+#   S:047-003 (0x2f/03) <加入房間結果> +ket qua(1) +phong(4) +SO NGUOI(1) roi lap tung nguoi
+#                                     <<+RoleID(8) +L(1) +ten(L) ... +da ready(1)>>  -> ReciveJoinRoom
+#   S:047-013 (0x2f/0d) <通知某人加入房間> +RoleID(8) +L(1) +ten(L) ...  -> RecivePlayerJoinRoom
+#   S:047-010 (0x2f/0a) <通知某人離開房間> +RoleID(8) ...                -> RecivePlayerLeave
+# Tuc SERVER bao ro ai vao/ai ra. Dem theo day la SO THAT, khong phai bot tu doan.
+_DUNGEON_ROOM = {}
+
+
+def dungeon_room_count(party_idx):
+    """So nguoi SERVER cong nhan dang o trong phong (ke ca leader). 0 = chua biet."""
+    # DOC KHONG KHOA - xem `is_joined`. `len()` khong duyet o muc Python.
+    return len(_DUNGEON_ROOM.get(party_idx, set()))
+
+
+def reset_dungeon_room(party_idx, self_entity=None):
+    """Tao phong moi -> dem lai tu dau. Leader tu tinh la MOT nguoi (no la chu phong)."""
+    if party_idx is None:
+        return
+    with _PARTY_LOCK:
+        _DUNGEON_ROOM[party_idx] = {bytes(self_entity)} if self_entity else set()
+
+
+def _team_dungeon_can_start(ready_count, needed, elapsed, whitelist_count, room_count=None):
+    """`needed` = so MEMBER (khong ke leader) theo config party.
+
+    `room_count` = so nguoi SERVER cong nhan trong phong (ke ca leader). None = chua co du lieu
+    (ban cu / khong doc duoc goi) -> giu nguyen hanh vi cu de khong ket cung.
+    """
     if ready_count < needed:
+        return False
+    # DU MEMBER THEO CONFIG PARTY moi duoc START (user chot 21/09). Bot tu bao ready thi khong
+    # tinh - phai la so cua server.
+    if room_count is not None and room_count < needed + 1:
         return False
     return not whitelist_count or elapsed >= TEAM_DUNGEON_WHITELIST_READY_GRACE
 
@@ -5748,6 +5793,37 @@ class GameClient:
         # Bot truoc day chi doc `sub == 0x0f` (loi moi) nen member KHONG HE BIET pho ban da xong ->
         # nam lai trong map instance. Ca that 07/09 p42: leader bao XONG luc 10:35:48, den 10:40:39
         # member van `go_to_town: DANG TRONG pho ban to doi (map=62012) -> khong teleport`.
+        # AI DANG TRONG PHONG - doc THANG tu server, khong de bot tu doan (xem `_DUNGEON_ROOM`).
+        # Ba goi nay lay tu crack client (`Dungeon.RecivePlayerJoinRoom` / `RecivePlayerLeave` /
+        # `ReciveJoinRoom`), dung cai client that dung de ve danh sach `dungeonNowRoomPlayers`.
+        if sub == 0x0d and len(body) >= 10:
+            # S:047-013 <通知某人加入房間> +RoleID(8) +L(1) +ten(L) ...
+            _rid = bytes(body[2:10])
+            with _PARTY_LOCK:
+                _DUNGEON_ROOM.setdefault(self.party_idx, set()).add(_rid)
+            log.info("[%s] Phong PB: co nguoi VAO (S:047-013) -> trong phong %d nguoi",
+                     self._label, len(_DUNGEON_ROOM.get(self.party_idx, ())))
+        elif sub == 0x0a and len(body) >= 10:
+            # S:047-010 <通知某人離開房間> +RoleID(8)
+            _rid = bytes(body[2:10])
+            with _PARTY_LOCK:
+                _DUNGEON_ROOM.get(self.party_idx, set()).discard(_rid)
+            log.info("[%s] Phong PB: co nguoi RA (S:047-010) -> trong phong %d nguoi",
+                     self._label, len(_DUNGEON_ROOM.get(self.party_idx, ())))
+        elif sub == 0x03 and len(body) >= 9:
+            # S:047-003 <加入房間結果> +ket qua(1) +phong(4) +SO NGUOI(1) + danh sach...
+            # Chi lay SO NGUOI (byte thu 7): danh sach phia sau dai thay doi (ten/trang bi/tuoc
+            # hieu), boc sai mot truong la lech het - ma cai can chi la CON SO.
+            _kq, _n = body[2], body[7]
+            if _kq == 0 and 0 < _n <= 8:
+                # Chua biet ID tung nguoi -> dung chinh minh + (n-1) o gia de `len()` ra dung so.
+                with _PARTY_LOCK:
+                    _o = {bytes(self.self_entity or b"\x00" * 8)}
+                    while len(_o) < _n:
+                        _o.add(b"?room%03d" % len(_o))
+                    _DUNGEON_ROOM[self.party_idx] = _o
+                log.info("[%s] Phong PB: vao phong OK (S:047-003) -> trong phong %d nguoi",
+                         self._label, _n)
         if sub == 0x0c and len(body) >= 5:
             _kq = body[2]
             _did = int.from_bytes(body[3:5], "little")
@@ -13706,12 +13782,14 @@ class GameClient:
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
         self.send(0x2f, b"\x02\x00" + struct.pack("<H", int(dungeon_id)) + b"\x01"); time.sleep(1.0)
         reset_dungeon_ready(self.party_idx)
+        reset_dungeon_room(self.party_idx, self.self_entity)
         whitelist_count = self._invite_team_dungeon_participants(ents, gap=1.0)
         ready_wait_max = max(ready_wait, 40.0)
         t0 = time.time()
         while (not _team_dungeon_can_start(
                 dungeon_ready_count(self.party_idx), len(ents), time.time() - t0,
-                whitelist_count) and time.time() - t0 < ready_wait_max):
+                whitelist_count, dungeon_room_count(self.party_idx))
+                and time.time() - t0 < ready_wait_max):
             if not self.running:
                 return False
             time.sleep(0.5)
@@ -13719,6 +13797,15 @@ class GameClient:
         if nrdy < len(ents):
             log.warning("[%s] (LEADER) lv%d member ready %d/%d sau %.1fs -> HUY phong, relogin ca party",
                         self._label, level_label, nrdy, len(ents), time.time() - t0)
+            return False
+        # CUA CUOI: het gio cho ma SERVER chua cong nhan du nguoi -> KHONG START.
+        # `ready` la bot tu bao; `room` moi la so that (S:047-003/013/010). Start roi thi khong
+        # moi them duoc ai nua (user 21/09).
+        _room = dungeon_room_count(self.party_idx)
+        if _room and _room < len(ents) + 1:
+            log.warning("[%s] (LEADER) lv%d SERVER moi cong nhan %d/%d nguoi trong phong sau %.1fs "
+                        "-> KHONG start, HUY de gom lai", self._label, level_label,
+                        _room, len(ents) + 1, time.time() - t0)
             return False
         log.info("[%s] (LEADER) lv%d member ready %d/%d sau %.1fs (whitelist=%d, grace=%ds) -> START",
                  self._label, level_label, nrdy, len(ents), time.time() - t0,
@@ -14241,6 +14328,7 @@ class GameClient:
         self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)
         # 2. Moi tung member theo ENTITY (0x2f 0800 [entity 8B]) - KHAC party-invite 0x0d 07
         reset_dungeon_ready(self.party_idx)   # xoa tin hieu ready cu (lan pho ban truoc) tranh nham
+        reset_dungeon_room(self.party_idx, self.self_entity)   # dem nguoi THAT trong phong tu dau
         whitelist_count = self._invite_team_dungeon_participants(ents, gap=1.0)
         # 3. Cho member auto-accept + auto-ready THAT SU (POLL dungeon_ready_count, KHONG doan gio
         # co dinh). _handle_o5_team CHI goi ham nay khi CA PARTY da bao "chua xong o5" (xem
@@ -14255,12 +14343,21 @@ class GameClient:
         t0 = time.time()
         while (not _team_dungeon_can_start(
                 dungeon_ready_count(self.party_idx), len(ents), time.time() - t0,
-                whitelist_count) and time.time() - t0 < ready_wait_max):
+                whitelist_count, dungeon_room_count(self.party_idx))
+                and time.time() - t0 < ready_wait_max):
             if not self.running:
                 self.state.quest_mode = False
                 return False
             time.sleep(0.5)
         nrdy = dungeon_ready_count(self.party_idx)
+        _room = dungeon_room_count(self.party_idx)
+        if _room and _room < len(ents) + 1:
+            # Xem ghi chu cua cua nay o `_create_team_dungeon_room`.
+            log.warning("[%s] (LEADER) lv20 SERVER moi cong nhan %d/%d nguoi trong phong sau %.1fs "
+                        "-> KHONG start, HUY de gom lai", self._label, _room, len(ents) + 1,
+                        time.time() - t0)
+            self.state.quest_mode = False
+            return False
         if nrdy < len(ents):
             log.warning("[%s] (LEADER) member ready %d/%d sau %.1fs -> HUY phong, relogin ca party",
                         self._label, nrdy, len(ents), time.time() - t0)

@@ -2950,14 +2950,11 @@ def lam_login_chores(c, username, label, role, pcfg, mode="", login_map=None):
     # EXP nay, dung la phi item).
     # DUNG _early_mode: bien `mode` mai ~1300 moi gan (SAU cho nay) -> dung `mode` o day
     # la UnboundLocalError, thread run_account CHET va CA PARTY thoat (bug that 00:48).
-    # MODE EVENT: TAT HAN Phuc Than - tick hay khong cung khong dung, va dang deo thi THAO RA
-    # (user chot 21/09). Dat co tren CLIENT vi doan nay chay TRUOC cua re sang engine moi, nen
-    # phu duoc CA HAI engine bang mot cho.
-    c.phuc_than_tat = (_early_mode == "event")
-    if c.phuc_than_tat:
-        try: c.thao_ngoc_phuc_than("mode event - khong dung Phuc Than")
-        except Exception as e: log.warning("[%s] loi thao ngoc phuc than: %s", label, e)
-    if pcfg.get("use_phuc_than") and not c.phuc_than_tat:
+    # (Co `phuc_than_tat` dat trong `run_account` ngay sau "vao world" - cho do chay cho MOI acc
+    #  MOI lan login. TUNG dat o day, nhung ham nay chi chay khi acc con viec vat login: acc da
+    #  xong chore thi co van False -> `use_phuc_than_items` DEO LAI ngoc vua thao. Xem ca that
+    #  ttba 21/09 ghi o cho dat co.)
+    if pcfg.get("use_phuc_than") and not getattr(c, "phuc_than_tat", False):
         try: c.use_phuc_than_items()
         except Exception as e: log.warning("[%s] loi dung phuc than luc login: %s", label, e)
         next_phuc_than = time.time() + PHUC_THAN_CHECK_SEC
@@ -3297,6 +3294,26 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             config.record_leader_name(pidx, c.char_name)
         login_map = c.current_map         # map LUC LOGIN (doc som, it bi pollution) - dung de check train
         log.info("[%s] (%s) vao world.", label, role)
+        # MODE EVENT: TAT HAN Phuc Than (user chot 21/09) - tick hay khong cung khong dung, dang
+        # deo thi THAO RA.
+        #
+        # DAT O DAY chu khong phai trong `lam_login_chores`: ham do CHI chay khi acc con viec vat
+        # login. Acc da xong chore thi co van `False` -> `use_phuc_than_items` chay binh thuong ->
+        # DEO LAI ngoc ngay sau khi vua thao.
+        # Ca that 21/09 (ttba, party 6 - mode event suot):
+        #   20:28:15 Phuc Than: DA THAO ... | 20:28:15 Da coi do: vi tri 6   <- server xac nhan
+        #   (20:36 login lai, khong phai thao - dung, luc do chua deo)
+        #   21:03:37 DA THAO lai chinh con ngoc do                            <- da bi deo lai
+        # User: "no thao ra roi ma lan chay sau van thao tuc la no van con tren nguoi".
+        #
+        # Cho nay chay cho MOI acc, MOI lan login, va VAN o truoc cua re engine moi ben duoi.
+        try:
+            c.phuc_than_tat = ((getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {})
+                               or {}).get("mode") == "event"
+            if c.phuc_than_tat:
+                c.thao_ngoc_phuc_than("mode event - khong dung Phuc Than")
+        except Exception as e:
+            log.warning("[%s] loi tat/thao Phuc Than: %s", label, e)
         # === CUA RE SANG ENGINE MOI (documents/ENGINE_PARTY_MOI.md) ==========================
         # Dat DUNG o day, sau khi login/vao world xong va TRUOC moi kich ban: phan login co qua
         # nhieu chi tiet song con (chan toc do dang nhap ma 90, error_code=1, co chet-ve-thanh,
@@ -11537,6 +11554,42 @@ def _nhip_acc_engine_moi(c, pidx):
         log.warning("[%s] ENGINE: loi boss QD: %s", getattr(c, "_label", "?"), e)
 
 
+def _pb_vo_thi_keo_ca_party_ra(pidx):
+    """PB TO DOI dang chay ma co acc ROT -> keo CA PARTY ra khoi pho ban, lam lai tu dau.
+
+    User chot 21/09: "trong qua trinh di ma co dua vang thi thoat het PB lam lai tu dau", ap tu
+    luc MO PHONG den khi danh xong.
+
+    Engine CU co duong nay (`st["reconnecting"]` / `team_dungeon_need_redo` -> `_thoat_pb_ca_party`);
+    engine MOI truoc day KHONG goi `_thoat_pb_ca_party` lan nao - ma gio moi party deu chay engine
+    moi. PB vo thi server KHONG gui goi ket thuc (`S:047-012`) nen khong acc nao tu biet duong ra:
+    leader dung ngoai thanh con member ket trong map 62xxx, va `go_to_town` cua ho BAIL vi "dang
+    trong pho ban to doi" (ca that 07/09 p42).
+
+    Chi keo khi CO acc dang lam PB - khong thi moi lan mot acc relogin la ca party bi loi ra oan.
+    """
+    eng = _party_engines.get(pidx)
+    if eng is None:
+        return
+    try:
+        _viec = dict(getattr(eng, "viec_hien_tai", {}) or {})
+    except Exception:
+        return
+    _dang_pb = [u for u, v in _viec.items()
+                if v in (party_engine.VIEC_PB_DOI, party_engine.VIEC_PB_DOI_THEO)]
+    if not _dang_pb:
+        return
+    _chet = [u for u, _p, _l, _k in party_accounts(pidx) if not is_account_running(u)]
+    if not _chet:
+        return
+    log.warning("[party %d] PB TO DOI: co acc ROT (%s) trong luc dang lam PB -> keo CA PARTY ra, "
+                "lam lai tu dau", pidx + 1, ", ".join(_chet[:3]))
+    try:
+        _thoat_pb_ca_party(pidx, "co acc rot giua PB (engine moi)")
+    except Exception as e:
+        log.warning("[party %d] PB TO DOI: loi keo ca party ra: %s", pidx + 1, e)
+
+
 def _dieu_phoi_quyet_engine_moi(pidx):
     """QUYET DINH CAP PARTY cho engine moi - TU QUYET trong luong cua chinh party nay.
 
@@ -11558,6 +11611,7 @@ def _dieu_phoi_quyet_engine_moi(pidx):
     # ENGINE MOI TU QUYET - KHONG goi `_dieu_phoi_quyet` (do la duong cua ENGINE CU).
     # User 21/09: "xoa dieu phoi ko dung o engine moi thoi, engine cu van dung".
     # Ba buoc y het, nhung chay THANG trong luong cua party nay:
+    _pb_vo_thi_keo_ca_party_ra(pidx)
     anh = _chup_anh_cap_party(pidx, st, song, _ENGINE_LECH_TU.get(pidx))
     viec, ly_do, hu = party_engine.quyet_dinh_cap_party(anh)
     _thi_hanh_hieu_ung(pidx, st, song, hu, viec, anh)

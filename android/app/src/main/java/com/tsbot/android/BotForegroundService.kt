@@ -696,9 +696,16 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         pidxSet(usernames).forEach { try { rpd().callAttr("redeem_giftcode_party", it, code) } catch (_: Exception) {} }
     }
 
-    /** Query danh sach kenh (BLOCKING - goi tu background). Tra [channel, so_nguoi, suc_chua]. */
-    fun getChannels(username: String): List<Triple<Int, Int, Int>> {
-        val pidx = userPidx[username] ?: return emptyList()
+    /** Query danh sach kenh (BLOCKING - goi tu background). Tra [channel, so_nguoi, suc_chua].
+     *
+     * Nhan PIDX, GIONG HET ban PC (`gui.py`: `ctrl.get_channel_list(pidx)`). Truoc day nhan
+     * `username` roi tra `userPidx[username]` - map CUC BO cua Kotlin, chi duoc dien khi chinh
+     * service nay goi `start_party` trong phien do. Bot da chay tu truoc roi mo lai app (hoac
+     * service bi tao lai) -> map RONG -> tra rong NGAY, khong he goi sang Python -> UI bao
+     * "Khong tai duoc danh sach kenh" du kenh van co.
+     * Lech nguon su that: `isRunning` hoi Python, con ham nay doc map Kotlin.
+     */
+    fun getChannels(pidx: Int): List<Triple<Int, Int, Int>> {
         return try {
             // get_channel_list tra DICT {ch: (cur, cap)}
             val res = rpd().callAttr("get_channel_list", pidx) ?: return emptyList()
@@ -707,6 +714,9 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 Triple(k.toInt(), pair[0].toInt(), pair[1].toInt())
             }.sortedBy { it.first }
         } catch (e: Exception) {
+            // GHI LAI: nuot im thi UI chi bao "khong tai duoc danh sach kenh" ma khong ai biet
+            // vi sao - da ton mot vong do tim ngay 21/09.
+            android.util.Log.w("aTSBot", "getChannels(p${pidx + 1}) loi: ${e.message}", e)
             emptyList()
         }
     }

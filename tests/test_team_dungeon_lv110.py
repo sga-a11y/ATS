@@ -458,6 +458,11 @@ class TestTeamDungeon110Execution(unittest.TestCase):
         try:
             with (
                 mock.patch.object(client_module, "dungeon_ready_count", return_value=1),
+                # SO NGUOI THAT TRONG PHONG (server bao, S:047-003/013). Test nay chi kiem THU TU
+                # moi nen gia lap "da du" - cong "du nguoi moi START" co test rieng
+                # (tests/test_pb_du_nguoi_moi_start.py). Thieu cai nay thi cua do chan va ham tra
+                # False, test do OAN.
+                mock.patch.object(client_module, "dungeon_room_count", return_value=2),
                 mock.patch.object(client_module.time, "sleep", return_value=None),
                 mock.patch.object(client_module.time, "time", side_effect=fake_time),
             ):

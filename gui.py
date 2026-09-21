@@ -2637,32 +2637,15 @@ def _pick_key(label):
 def _spot_infos(map_id, mobs):
     """Chuoi phu cho tung diem quai trong dropdown: ' | 3-5 | Thủy 110, Địa 112'.
 
-    Nap train_block_stats.json MOT lan cho ca map (get_spot_summary nap lai ca file moi lan goi).
-    Diem chua co so lieu -> chuoi rong, dropdown hien nhu cu.
+    THAN HAM da chuyen sang `bot/train_block_stats.spot_infos` (file DUNG CHUNG) de ban APK goi
+    duoc: `gui.py` la PC_ONLY nen truoc day dropdown "Quái" ben APK chi hien "Điểm 1 (x, y)",
+    mat so quai va he quai (user 21/09). Giu ten cu o day de khong phai sua cac cho goi.
     """
-    out = ["" for _ in mobs]
-    if map_id is None:
-        return out
     try:
         from bot import train_block_stats
-        spots = (train_block_stats.load_stats().get("maps", {})
-                 .get(str(int(map_id)), {}).get("spots", {}))
+        return train_block_stats.spot_infos(map_id, mobs)
     except Exception:
-        return out
-    if not spots:
-        return out
-    for i, xy in enumerate(mobs):
-        try:
-            s = spots.get(train_block_stats.spot_key(xy)) or {}
-            parts = [p for p in (
-                train_block_stats.format_mob_range(s.get("patterns", {})),
-                train_block_stats.format_mobs(s.get("mobs", {}), limit=4, short=True),
-            ) if p]
-            if parts:
-                out[i] = " | " + " | ".join(parts)
-        except Exception:
-            pass
-    return out
+        return ["" for _ in mobs]
 
 
 MODE_OPTIONS = [
