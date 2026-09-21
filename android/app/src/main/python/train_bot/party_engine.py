@@ -780,9 +780,16 @@ def _quyet_dinh_goc(anh: AnhParty):
                     #   19:43:43 gen 20: du doi -> DI TRAIN map 11801 (con o [11539])  roster 4/4
                     #   19:43:54 ENGINE: tik907..tik910 -> ve_thanh   <- dang di giua duong
                     #   19:43:58 gen 21: ... (con o [11532])          <- van dang di
+                    # CHUA CHOT DUOC THANH DICH -> NGHI, khong giao `ve_thanh`. Lenh ve thanh ma
+                    # khong co thanh nao la LENH RONG (L3: lenh phai co MUC TIEU DO DUOC):
+                    # `thi_hanh` gap `dich=None` la `return False` NGAY -> engine giao lai moi
+                    # giay, mai mai.
+                    # Ca that 21/09 party 5: 've_thanh' giao lai 4320 lan lien tiep (04:02 ->
+                    # 05:15, hon MOT TIENG) trong khi party lech map [21011, 21881], roster 0/4.
+                    # Party 3 cung the (3780 lan).
                     ket[a.username] = (VIEC_NGHI
-                                       if (_du_doi or (anh.thanh_dich
-                                                       and a.map_id == int(anh.thanh_dich)))
+                                       if (_du_doi or not anh.thanh_dich
+                                           or a.map_id == int(anh.thanh_dich))
                                        else VIEC_VE_THANH)
                 else:
                     ket[a.username] = _v

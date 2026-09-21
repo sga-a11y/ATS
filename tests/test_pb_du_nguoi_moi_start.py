@@ -37,14 +37,20 @@ def _doc(*p):
 
 
 class TestCuaStart(unittest.TestCase):
-    """`needed` = so MEMBER (khong ke leader) -> phong phai co `needed + 1` nguoi."""
+    """`needed` va `room_count` DEU la so MEMBER, KHONG ke leader.
+
+    `S:047-013` chi bao NGUOI KHAC vao phong (crack client: `if player.id ~= Role.playerId`), nen
+    leader khong bao gio nam trong so dem. Em tung so voi `needed + 1` -> vinh vien thieu 1 ->
+    chan oan MOI party (p9 21/09: "SERVER moi cong nhan 1/5" du 4 member da accept + CHUAN BI).
+    """
 
     def test_du_ready_nhung_phong_THIEU_thi_KHONG_start(self):
         self.assertFalse(C._team_dungeon_can_start(4, 4, 99.0, 0, room_count=3),
                          "dung ca that p17: ready 4/4 ma server chi cong nhan 2-3 -> khong duoc start")
 
     def test_du_ready_VA_du_phong_thi_start(self):
-        self.assertTrue(C._team_dungeon_can_start(4, 4, 99.0, 0, room_count=5))
+        self.assertTrue(C._team_dungeon_can_start(4, 4, 99.0, 0, room_count=4),
+                        "4 member vao du roi ma van chan -> chan oan, party khong bao gio danh PB")
 
     def test_CHUA_BIET_so_phong_thi_giu_hanh_vi_CU(self):
         """None = ban cu / chua doc duoc goi -> khong duoc ket cung, van cho start nhu truoc."""
@@ -62,25 +68,28 @@ class TestDemNguoiThat(unittest.TestCase):
     def setUp(self):
         C._DUNGEON_ROOM.clear()
 
-    def test_tao_phong_thi_LEADER_tu_tinh_la_mot(self):
-        C.reset_dungeon_room(7, b"\x01" * 8)
-        self.assertEqual(C.dungeon_room_count(7), 1, "leader la chu phong, phai dem chinh no")
+    def test_tao_phong_thi_dem_ve_KHONG(self):
+        """KHONG tinh leader: `S:047-013` chi bao NGUOI KHAC vao phong (crack client:
+        `if player.id ~= Role.playerId`). Tinh ca leader roi so voi `needed + 1` la lech mot
+        nguoi -> chan oan MOI party (p9 21/09: "1/5" du 4 member da accept + CHUAN BI)."""
+        C.reset_dungeon_room(7)
+        self.assertEqual(C.dungeon_room_count(7), 0)
 
     def test_chua_biet_thi_ZERO(self):
         self.assertEqual(C.dungeon_room_count(99), 0)
 
     def test_moi_nguoi_VAO_thi_tang(self):
-        C.reset_dungeon_room(7, b"\x01" * 8)
+        C.reset_dungeon_room(7)
         with C._PARTY_LOCK:
             C._DUNGEON_ROOM[7].add(b"\x02" * 8)
-        self.assertEqual(C.dungeon_room_count(7), 2)
+        self.assertEqual(C.dungeon_room_count(7), 1)
 
     def test_cung_mot_nguoi_vao_HAI_LAN_khong_dem_doi(self):
-        C.reset_dungeon_room(7, b"\x01" * 8)
+        C.reset_dungeon_room(7)
         with C._PARTY_LOCK:
             C._DUNGEON_ROOM[7].add(b"\x02" * 8)
             C._DUNGEON_ROOM[7].add(b"\x02" * 8)
-        self.assertEqual(C.dungeon_room_count(7), 2, "dem theo RoleID nen goi lap lai khong sai so")
+        self.assertEqual(C.dungeon_room_count(7), 1, "dem theo RoleID nen goi lap lai khong sai so")
 
 
 class TestDocGoiCuaServer(unittest.TestCase):
@@ -99,9 +108,15 @@ class TestDocGoiCuaServer(unittest.TestCase):
         self.assertIn("sub == 0x0a", self.than)
         self.assertIn("S:047-010", self.than)
 
-    def test_doc_047_003_ket_qua_vao_phong(self):
-        self.assertIn("sub == 0x03", self.than)
+    def test_047_003_CHI_GHI_LOG_khong_dem(self):
+        """So o goi nay tinh CA MINH, con `S:047-013` chi bao nguoi khac - tron hai nguon la
+        lech mot nguoi."""
         self.assertIn("S:047-003", self.than)
+        i = self.than.find("sub == 0x03")
+        # Bo CHU THICH roi moi kiem: chinh cau giai thich co nhac `_DUNGEON_ROOM`.
+        _khoi = "\n".join(d for d in self.than[i:i + 900].split("\n")
+                          if not d.strip().startswith("#"))
+        self.assertNotIn("_DUNGEON_ROOM", _khoi)
 
     def test_RoleID_lay_dung_8_BYTE_sau_sub(self):
         """`+RoleID(8)` ngay sau 2 byte sub -> body[2:10]."""
@@ -116,16 +131,16 @@ class TestKhongStartKhiHetGio(unittest.TestCase):
         self.src = _doc("bot", "client.py")
 
     def test_ca_hai_duong_deu_co_cua(self):
-        self.assertEqual(self.src.count("SERVER moi cong nhan %d/%d nguoi trong phong"), 2,
+        self.assertEqual(self.src.count("SERVER moi cong nhan %d/%d member vao phong"), 2,
                          "lv20 va lv50/80/110 la hai ham rieng - thieu mot cai la thung")
 
     def test_cua_dat_TRUOC_lenh_START(self):
-        i = self.src.find("SERVER moi cong nhan %d/%d nguoi trong phong")
+        i = self.src.find("SERVER moi cong nhan %d/%d member vao phong")
         j = self.src.find('self.send(0x2f, b"\\x0c\\x00")', i)
         self.assertGreater(j, i, "cua dat SAU khi da start thi vo nghia")
 
     def test_dem_lai_tu_dau_moi_lan_tao_phong(self):
-        self.assertEqual(self.src.count("reset_dungeon_room(self.party_idx, self.self_entity)"), 2,
+        self.assertEqual(self.src.count("reset_dungeon_room(self.party_idx)"), 2,
                          "khong reset -> nguoi cua lan tao phong TRUOC van con trong so dem")
 
 

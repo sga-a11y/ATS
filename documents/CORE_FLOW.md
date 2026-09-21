@@ -123,31 +123,22 @@ dịch: `DP_GOM→NGHI`, `DP_DONG_BO→NGHI`, `DP_MOI→LAP_PARTY`, `DP_DI_TRAIN
 **Cấm**: chép lại logic mời vào engine mới — bản chép đầu tiên quên cả whitelist lẫn kiểm kênh
 (`:1269`).
 
-## Phó bản tổ đội (`VIEC_PB_DOI` / `VIEC_PB_DOI_THEO`)
+## Phó bản tổ đội (`VIEC_PB_DOI` / `VIEC_PB_DOI_THEO`) — FLOW ĐẦY ĐỦ
 
 **Đường đi hoàn toàn riêng, không dùng cửa party thường.**
 
-- Leader: `do_team_dungeon(level)` → `do_team_dungeon_lv20/50/80/110`. Tạo phòng
-  `0x2f sub0100` (`client.py:13640`) → mời từng member `0x2f/0800 [entity]` → chờ ready →
-  start `0x2f/0c00`.
-- Member: **chỉ bật hai cờ** `auto_accept_party = True` + `flee_mode = True` (`:1341`), không gửi
-  gói nào. `_on_dungeon` tự accept (`0x2f/0300`) + tự ready (`0x2f/0b00`).
+- Leader: `do_team_dungeon(level)` → `do_team_dungeon_lv20/50/80/110`. Tạo phòng `0x2f/0100` →
+  mời từng member `0x2f/0800 [entity]` → chờ đủ người → start `0x2f/0c00`.
+- Member: **chỉ bật hai cờ** `auto_accept_party = True` + `flee_mode = True`, không gửi gói nào.
+  `_on_dungeon` tự accept (`0x2f/0300`) + tự ready (`0x2f/0b00`).
 
-| Ràng buộc | Loại | Ghi chú |
+| Ràng buộc chung | Loại | Ghi chú |
 |---|---|---|
-| Mời phòng đi theo **roleId**, **KHÔNG cần cùng map/cùng kênh** | `[CAPTURE]` | comment `:632`, `:1338` |
-| Member **không** gọi `set_party_invite_ready` ở đây | `[LOG]` | `:1339` — mở nhầm cửa, lời mời party thường lọt vào giữa lúc chờ phòng |
-| Phải đủ người **rảnh** mới mở phòng | **BOT TỰ ĐẶT** | `[LOG]` p41 20/09: ready 4/4 là **bot tự báo**, roster server chỉ 2/4 → huỷ, quay vòng |
+| Mời phòng đi theo **roleId**, **KHÔNG cần cùng map/cùng kênh** | `[CAPTURE]` | |
+| Member **không** gọi `set_party_invite_ready` ở đây | `[LOG]` | mở nhầm cửa, lời mời party thường lọt vào giữa lúc chờ phòng |
 | Check PB **sau** nhiệm vụ ngày | **BOT TỰ ĐẶT** | user chốt 20/09 |
-| Chạy 10–20 phút là bình thường, **không đặt hạn chờ** | `[LOG]` | `:1330` — watchdog 180s cũ từng kéo cả 4 member ra relogin **giữa phó bản** |
-| `befriend_nearby()` không phải việc phụ | `[LOG]` | `:1058` — lời mời phòng đi theo roleId từ friend-list; bỏ thì có lúc không mời được ai |
-
-**Cấm** (ba cách đã thử ngày 21/09, sai cả ba — `:663`):
-1. Giữ phiên PB bằng `any(viec_dang_lam == pb_doi_theo)` → cờ tự nuôi chính nó, khoá cứng party.
-2. Hoãn PB khi điều phối đang chốt `gom` → mất lượt PB. *"đi PB đội thì có cần gom map đéo đâu"*.
-3. Đẩy đứa lệch map xuống nhánh gom → vẫn là lấy gom làm điều kiện của PB.
-
-## Phó bản tổ đội — FLOW ĐẦY ĐỦ (user chốt 21/09)
+| Chạy 10–20 phút là bình thường, **không đặt hạn chờ** | `[LOG]` | watchdog 180s cũ từng kéo cả 4 member ra relogin **giữa phó bản** |
+| `befriend_nearby()` không phải việc phụ | `[LOG]` | lời mời phòng đi theo roleId từ friend-list; bỏ thì có lúc không mời được ai |
 
 ```
 1. Check party CÓ CẦN làm PB không — CẢ PARTY đều chưa làm thì mới làm
@@ -218,10 +209,13 @@ thầm (member lệch kênh) thì vẫn báo ready.
 
 | Ràng buộc | Loại | Ghi chú |
 |---|---|---|
-| START chỉ khi **server công nhận đủ** `số member + 1` | user chốt | "đủ member theo config party là được" |
+| START chỉ khi **server công nhận đủ số MEMBER** | user chốt | "đủ member theo config party là được" |
+| Đếm **KHÔNG kể leader** | `[CAPTURE]` | `S:047-013` chỉ báo **người khác** vào phòng — crack client: `if player.id ~= Role.playerId then table.insert(...)`. So với `số member + 1` là **vĩnh viễn thiếu 1** → chặn oan mọi party. `[LOG]` p9 21/09: `SERVER moi cong nhan 1/5` trong khi 4 member đều đã accept và bấm chuẩn bị |
+| `S:047-003` **chỉ ghi log**, không đem đếm | `[CAPTURE]` | số ở gói đó tính **cả mình**, trộn với `047-013` là lệch một người. Gói này cũng là của **người vào** phòng; leader tạo phòng thì nhận `S:047-002` |
 | Chưa đọc được gói phòng → **giữ hành vi cũ**, không kẹt cứng | `[SUY ĐOÁN]` | bản cũ / gói lạ không được làm party đứng im vĩnh viễn |
 | **START rồi thì không mời thêm được ai** | user chốt | nên mọi cửa kiểm phải đứng **trước** `0x2f/0c00` |
 | Cửa phải có ở **cả hai** hàm (lv20 và lv50/80/110) | — | mỗi level một hàm riêng, thiếu một cái là thủng |
+| Phải đủ người **rảnh** mới mở phòng | **BOT TỰ ĐẶT** | `[LOG]` p41 20/09 |
 
 ### Bước 6 — có đứa văng thì thoát hết, làm lại
 
@@ -250,6 +244,12 @@ Thứ tự: `pre_route_town_hop()` nếu đích **không phải** Trác Quận/N
 | Điều kiện pre-route xét theo **ĐÍCH**, không xét đang đứng đâu | `[LOG]` | engine cũ `_do_reform`: `if _target_city == fc` |
 | Đủ đội rồi thì **người kéo được đi**, không ép về | `[LOG]` | p42 17/09 *"đi về thành tập trung đúng rồi, nhưng sau đó ko đi ra bãi train"* |
 | Đang đánh thì không tele | `[LOG]` | p56 17/09 *"sao vừa đánh vừa đòi tele về thành là sao"*; teleport giữa trận = server kick |
+| **Chưa chốt được thành đích thì ĐỪNG giao `ve_thanh`** | `[LOG]` | L3 — lệnh phải có mục tiêu đo được. Không có đích thì `thi_hanh` trả `False` ngay → engine giao lại **mỗi giây, mãi mãi**. p5 21/09: `ve_thanh` giao lại **4320 lần liên tiếp** (04:02→05:15, hơn một tiếng), p3 3780 lần. Không có đích → `VIEC_NGHI` |
+
+> **Dấu hiệu nhận ra loại lỗi này trong log:** dòng
+> `ENGINE: '<viec>' giao lai N lan lien tiep ... viec chay xong ngay ma khong doi duoc gi`.
+> N lớn = việc trả về ngay lập tức mà không làm được gì — gần như luôn là **lệnh rỗng**: thiếu
+> đích, thiếu dữ liệu, hoặc điều kiện không bao giờ đạt. Grep nó trước khi đi tìm chỗ khác.
 
 ## Đi map train (`VIEC_VE_MAP`)
 
