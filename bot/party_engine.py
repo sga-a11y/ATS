@@ -143,12 +143,13 @@ class AnhAcc:
     """
 
     __slots__ = ("username", "la_leader", "song", "map_id", "kenh", "dang_danh",
-                 "so_member", "viec_dang_lam", "xong_chore", "xong_daily", "trong_dg",
+                 "so_member", "viec_dang_lam", "xong_chore", "xong_daily", "trong_dg", "trong_pb",
                  "con_gio_dg", "dang_ban", "trong_event", "lenh_tay_da_lam")
 
     def __init__(self, username, la_leader=False, song=True, map_id=None, kenh=None,
                  dang_danh=False, so_member=0, viec_dang_lam=VIEC_NGHI,
-                 xong_chore=True, xong_daily=True, trong_dg=False, con_gio_dg=False,
+                 xong_chore=True, xong_daily=True, trong_dg=False, trong_pb=False,
+                 con_gio_dg=False,
                  dang_ban=False,
                  trong_event=False, lenh_tay_da_lam=0):
         self.username = username
@@ -162,6 +163,7 @@ class AnhAcc:
         self.xong_chore = bool(xong_chore)      # da lam xong viec vat sau login chua
         self.xong_daily = bool(xong_daily)      # da lam NHIEM VU NGAY chua (PB don o1 + claim 9 o)
         self.trong_dg = bool(trong_dg)          # dang o trong map Di Gioi
+        self.trong_pb = bool(trong_pb)          # dang o trong map PHO BAN TO DOI (instance)
         self.con_gio_dg = bool(con_gio_dg)      # server bao con phut Di Gioi hom nay
         self.dang_ban = bool(dang_ban)          # worker dang chay mot viec CHUA XONG
         self.trong_event = bool(trong_event)    # dang o TRONG map event
@@ -676,8 +678,15 @@ def _quyet_dinh_goc(anh: AnhParty):
         # VE THANH TAP KET (thanh cua route, user chon 21/09) - danh xong quay lai bai train gan,
         # khong phai di lai tu thanh trung gian. Dung DUNG `VIEC_VE_THANH` san co, khong tu viet
         # duong di moi.
+        # DANG O TRONG INSTANCE PHO BAN thi TUYET DOI khong ep ve thanh: `go_to_town` tu chan
+        # ("DANG TRONG pho ban to doi -> khong teleport") nen lenh do KHONG LAM GI, chi de lai
+        # moi acc 3-4 dong `pre-route: tele trung gian...` moi nhip.
+        # Ca that 21/09 party 1 (user: "no co them 1 dong log doi tele kia"):
+        #   05:31:26 [nasau] pre-route: tele trung gian ve thanh 12061 truoc
+        #   05:31:26 [nasau] go_to_town: DANG TRONG pho ban to doi (map=62012) -> khong teleport
+        # Buoc "ve thanh truoc" chi de danh cho luc CHUA vao phong.
         _thanh = anh.thanh_dich
-        if _thanh:
+        if _thanh and not any(a.trong_pb for a in con_lai):
             _chua_ve = [a for a in con_lai
                         if a.map_id is not None and int(a.map_id) != int(_thanh)]
             if _chua_ve:
@@ -1756,6 +1765,9 @@ class PartyEngine:
                     xong_daily=bool(getattr(c, "_pe_xong_daily", False)),
                     dang_ban=bool(_w.dang_ban()) if _w is not None else False,
                     trong_dg=bool(song and _goi(c, "in_di_gioi", False)),
+                    # DANG DUNG TRONG map pho ban to doi - doc MAP THAT (`in_team_dungeon`),
+                    # khong doan theo dong ho.
+                    trong_pb=bool(song and _goi(c, "in_team_dungeon", False)),
                     # Gen lenh tay acc nay DA thi hanh xong (callback thi hanh tu ghi len client).
                     lenh_tay_da_lam=int(getattr(c, "_pe_lenh_tay_gen", 0) or 0),
                     trong_event=bool(song and self.map_event
