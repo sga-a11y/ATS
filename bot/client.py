@@ -11228,6 +11228,10 @@ class GameClient:
             time.sleep(0.05)
         return [s for s in self.bag_slots if s not in truoc]
 
+    # So ME mo ruong toi da moi luot login. Truoc 21/09 la 1 ("so loi nen chi mo 1 lan"); user
+    # chot 21/09: "gio chay ngon roi, cho moi lan login check mo 5 lan".
+    MO_RUONG_MOI_LOGIN = 5
+
     def tu_mo_hop_trang_bi(self, chon=None, wait_item: float = 2.0) -> dict:
         """MO HOP/TUI TRANG BI trong tui roi phan giai / donate do roi ra.
 
@@ -11287,48 +11291,59 @@ class GameClient:
         # Quet theo TAT CA ruong da tick, khong rieng loai sap mo: moi login chi mo MOT loai
         # (user chot 04/09) nen rac tich tu tu nhieu loai khac nhau.
         self._don_do_ruong_con_sot(_tick, boxes, gd, kq)
-        for luot in ("thuong", "tinh"):
-            for tid, info in boxes.items():
-                if tid not in _tick:
-                    continue
-                if (info.get("luot") or "thuong") != luot:
-                    continue
-                can = max(1, int(info.get("kindCount") or 1))
-                if not self.running:
-                    return kq
-                slot = next((s for s, (t, c) in list(self.bag_slots.items())
-                             if t == tid and c > 0), None)
-                if slot is None:
-                    continue        # loai ruong nay het hang -> xet loai ke tiep
-                trong = self.bag_capacity() - self.bag_used_slots()
-                if trong < can:
-                    kq["bo_qua"] = "tui day (con %d o, hop can %d)" % (trong, can)
-                    log.info("[%s] MO HOP: tui day (con %d o) -> dung", self._label, trong)
-                    return kq
-                # Mo toi da: het stack, nhung khong qua so o trong (moi lan mo an 1 o).
-                n = max(1, min(int(self.bag_slots[slot][1]), trong // can))
-                truoc = dict(self.bag_slots)
-                log.info("[%s] MO HOP: %s x%d (o trong %d)",
-                         self._label, info.get("name") or ("0x%04x" % tid), n, trong)
-                if not self.use_slot(slot, qty=n):
-                    return kq
-                kq["mo"] += n
-                # CHO do ve tui roi QUET CA TUI - khong con buoc "xu ly rieng mon vua roi ra".
-                # Quet ca tui da bao tron mon vua roi, ma lai khong phu thuoc vao viec doan dung
-                # slot nao moi: cho hut thi lan login sau quet lai la don duoc, khong tich tu nua.
-                # (Ban cu: cho 2.5s cho 10 hop, khong thay o moi la BO CA ME - 23 lan/ngay, va mon
-                #  do nam lai VINH VIEN vi khong vong nao quay lai.)
-                self._cho_tui_doi(truoc, wait=max(wait_item, 1.0 + 0.15 * n), it_nhat=n)
-                # MOT LAN DUY NHAT cho ca luot login (user chot 04/09: "luc login ko can mo den
-                # het ruong, chi can mo 1 lan, phan giai/donate/vut bo 1 lan la dc roi";
-                # "mo 1 lan la het stack ruong do hoac full tui do"). Mot me = min(ca stack,
-                # so o trong) - da tinh o `n` ngay tren. Con du thi de lan login sau.
-                #
-                # Truoc day vong `while` vet CAN stack roi moi sang loai ke tiep -> login bi keo
-                # dai (log 00:13: mo x39 xong lai mo tiep x19 cua cung mot loai).
-                self._don_do_ruong_con_sot(_tick, boxes, gd, kq)
-                return kq
-        self._don_do_ruong_con_sot(_tick, boxes, gd, kq)
+        # MOI LUOT LOGIN MO TOI DA 5 ME (user chot 21/09: "truoc so loi nen chi mo 1 lan, ma
+        # gio chay ngon roi, cho moi lan login check mo 5 lan"). Truoc day MOT me roi dung han.
+        # Mot "me" = het stack ruong do HOAC day tui, cai nao toi truoc - van giu nguyen.
+        # Dung som khi khong con ruong nao mo duoc (khoi quay khong).
+        for _me in range(self.MO_RUONG_MOI_LOGIN):
+            _xong_me = False
+            for luot in ("thuong", "tinh"):
+                for tid, info in boxes.items():
+                    if tid not in _tick:
+                        continue
+                    if (info.get("luot") or "thuong") != luot:
+                        continue
+                    can = max(1, int(info.get("kindCount") or 1))
+                    if not self.running:
+                        return kq
+                    slot = next((s for s, (t, c) in list(self.bag_slots.items())
+                                 if t == tid and c > 0), None)
+                    if slot is None:
+                        continue        # loai ruong nay het hang -> xet loai ke tiep
+                    trong = self.bag_capacity() - self.bag_used_slots()
+                    if trong < can:
+                        kq["bo_qua"] = "tui day (con %d o, hop can %d)" % (trong, can)
+                        log.info("[%s] MO HOP: tui day (con %d o) -> dung", self._label, trong)
+                        return kq
+                    # Mo toi da: het stack, nhung khong qua so o trong (moi lan mo an 1 o).
+                    n = max(1, min(int(self.bag_slots[slot][1]), trong // can))
+                    truoc = dict(self.bag_slots)
+                    log.info("[%s] MO HOP: %s x%d (o trong %d)",
+                             self._label, info.get("name") or ("0x%04x" % tid), n, trong)
+                    if not self.use_slot(slot, qty=n):
+                        return kq
+                    kq["mo"] += n
+                    # CHO do ve tui roi QUET CA TUI - khong con buoc "xu ly rieng mon vua roi ra".
+                    # Quet ca tui da bao tron mon vua roi, ma lai khong phu thuoc vao viec doan dung
+                    # slot nao moi: cho hut thi lan login sau quet lai la don duoc, khong tich tu nua.
+                    # (Ban cu: cho 2.5s cho 10 hop, khong thay o moi la BO CA ME - 23 lan/ngay, va mon
+                    #  do nam lai VINH VIEN vi khong vong nao quay lai.)
+                    self._cho_tui_doi(truoc, wait=max(wait_item, 1.0 + 0.15 * n), it_nhat=n)
+                    # MOT LAN DUY NHAT cho ca luot login (user chot 04/09: "luc login ko can mo den
+                    # het ruong, chi can mo 1 lan, phan giai/donate/vut bo 1 lan la dc roi";
+                    # "mo 1 lan la het stack ruong do hoac full tui do"). Mot me = min(ca stack,
+                    # so o trong) - da tinh o `n` ngay tren. Con du thi de lan login sau.
+                    #
+                    # Truoc day vong `while` vet CAN stack roi moi sang loai ke tiep -> login bi keo
+                    # dai (log 00:13: mo x39 xong lai mo tiep x19 cua cung mot loai).
+                    self._don_do_ruong_con_sot(_tick, boxes, gd, kq)
+                    _xong_me = True
+                    break
+                if _xong_me:
+                    break
+            self._don_do_ruong_con_sot(_tick, boxes, gd, kq)
+            if not _xong_me:
+                break      # khong con ruong nao mo duoc -> thoi, khong quay them me
         return kq
 
     def _don_do_ruong_con_sot(self, tick, boxes, gd, kq):
