@@ -78,7 +78,7 @@ class TestClientDanhDauKenhNghiNgo(unittest.TestCase):
 class TestDieuPhoiBoQuaKenhMoHo(unittest.TestCase):
     def setUp(self):
         self.src = _doc("run_party_digioi.py")
-        i = self.src.find("def _dieu_phoi_quyet(")
+        i = self.src.find("def _chup_anh_cap_party(")
         self.assertGreater(i, 0)
         dong = self.src[i:].split("\n")
         het = len(dong)
@@ -90,7 +90,7 @@ class TestDieuPhoiBoQuaKenhMoHo(unittest.TestCase):
 
     def test_phep_dem_kenh_co_loc_theo_do_chac(self):
         ma = _ma(self.than)
-        i = ma.find("kenhs = set()")
+        i = ma.find("kenhs, _kenh_mo_ho = set(), []")
         self.assertGreater(i, 0)
         khoi = ma[i:i + 900]
         self.assertIn("kenh_dang_chac()", khoi)

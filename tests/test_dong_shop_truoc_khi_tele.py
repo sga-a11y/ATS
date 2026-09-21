@@ -39,8 +39,9 @@ class _Gia(C.GameClient):
     def _wait_combat_clear(self, idle=1.0, cap=60.0):
         return True
 
-    def _move_noi_dat_npc_step(self, x, y, wait=0.55):
-        pass
+    def navigate_to(self, x, y, **k):
+        self.pos = (int(x), int(y))
+        return True
 
     def _sell_donate_materials(self):
         pass

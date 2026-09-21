@@ -1038,6 +1038,52 @@ Kết quả `S:084-002 [sellId][result]`, `result == 0` = hỏng (kèm mã lỗi
   ngay trong chuyến bán Nồi Đất (`_sell_donate_materials`, dùng chung list đóng góp: mục "Đóng góp"
   → bán, mục "Giữ lại" → giữ). Chỉ bán khi đã xác nhận chắc chắn không có quân đoàn.
 
+### BOSS QUÂN ĐOÀN — bảng damage: server gửi TỔNG, client KHÔNG cộng dồn (xác nhận 21/09)
+
+Bóc từ client (`_lua_dec/Common/protocal.lua`, `Logic/Organization.lua`, `UI/UIArmy.lua`).
+Opcode `0x27` = nhóm 39.
+
+| Gói | sub (hex) | Payload | Nghĩa |
+|---|---|---|---|
+| `S:039-115 <更新軍團BOSS>` | 115 (`0x73`) | BOSS lv (2) + **BOSS 傷害量 (4)** | tổng damage của **cả quân đoàn** lên boss |
+| `S:039-116 <更新團員BOSS傷害量>` | 116 (`0x74`) | roleId (8) + **傷害量 (4)** | **tổng damage tích luỹ của MỘT thành viên** |
+| `S:039-117 <軍團BOSS戰資訊>` | 117 (`0x75`) | **本次傷害 (4)** + 回合數 (1) | damage **lần đánh hiện tại** + số hồi — chỉ hiện trong màn chiến đấu (`UIFight`) |
+| `S:039-118 <軍團BOSS戰冷卻時間>` | 118 (`0x76`) | 下次可打時間 (8, OLE date) | cooldown — **bot đã dùng** (`legion_boss_next`) |
+
+**Trả lời thẳng: server gửi TỔNG, không gửi từng lần rồi bắt client cộng.**
+
+```lua
+function Organization.SetMemberBossInfo(roleId, damage)
+  this.members[roleId].bossDamage = damage;   -- GÁN ĐÈ, không phải +=
+```
+
+Client chỉ đọc để hiển thị, **không tích luỹ**:
+- `UIArmy.lua:2525` in thẳng `playerInfo.bossDamage` (định dạng dấu phẩy).
+- `UIArmy.lua:1243-1253` `table.sort` giảm dần theo `bossDamage`, hoà thì so `roleId` → đó là thứ
+  tự bảng xếp hạng.
+- Máu boss cũng suy ra, không đếm riêng: `bossHp = max(bossMaxHp - Organization.bossDamage, 0)`
+  (`UIArmy.lua:1224`) — tức `039-115` mang **tổng dồn của quân đoàn**, không phải delta.
+
+**Đừng lẫn `039-116` với `039-117`**: `117` là *本次傷害* (damage của chính lần đánh đang diễn ra,
+dùng cho HUD trận), `116` mới là con số lên bảng xếp hạng. Cộng dồn `117` để dựng bảng là sai —
+server đã chốt sẵn tổng ở `116`.
+
+Reset: `Organization.lua:611/620/676` đặt `bossDamage = 0` cho cả quân đoàn lẫn từng member khi
+rời/giải tán quân đoàn — không phải reset theo ngày.
+
+**Bảng damage có sẵn ngay lúc login**, không cần mở panel: `S:039-002 <軍團資料>` đọc từng member
+bằng `PlayerInfo.New(roleId, data, readOrgData=true)`, và khối `readOrgData` kết thúc bằng
+`self.bossDamage = data:ReadUInt32()` (`Data/PlayerInfo.lua:39`). Thứ tự khối đó:
+`online(1) · score(4) · weekScore(4) · dutyFlags[n](1 mỗi cái) · bossDamage(4)`.
+**Không có gói C2S nào để xin bảng này** (`grep "Network.Send(39"` trong `UIArmy.lua` chỉ có
+chế tạo/điểm danh/vào boss) → server **tự đẩy** `039-115`/`039-116` khi có thay đổi.
+
+**Server KHÔNG gửi "số lần đánh" của người khác** — `RoleCount.OrgBoss` (`0x55` id `0x2a`) chỉ là
+lượt của **chính acc mình**. Muốn biết số lần + damage từng lần của member khác thì phải **tự tính
+delta**: giữ bảng `{roleId: tổng}` rồi mỗi lần nhận `039-116` lấy `tổng_mới − tổng_cũ` = damage
+lần đó, và đếm mỗi lần tăng là một lần đánh. Cảnh báo: acc bỏ lỡ gói (offline/rớt mạng) thì hai
+lần đánh gộp thành một delta — muốn chắc thì phải có ít nhất một acc trong quân đoàn online liên tục.
+
 ### ĐÓNG GÓP QUÂN ĐOÀN (crack UI_UIArmy.lua / Logic_Organization.lua / Logic_City.lua)
 **Client KHÔNG lấy list từ server — TỰ LỌC BAG tại chỗ.** Có 3 loại đóng góp (2 opcode):
 

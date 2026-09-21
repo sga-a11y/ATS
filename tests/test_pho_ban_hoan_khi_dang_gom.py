@@ -88,7 +88,7 @@ class TestPhoBanDocLenhDieuPhoi(unittest.TestCase):
     def test_co_party_dang_gom_VAN_con_cho_viec_vat(self):
         """Bo cua o PB to doi KHONG co nghia xoa ca co: cat do / ban Noi Dat van phai hoan khi gom
         (chung keo acc sang map KHAC mot minh, khac han PB to doi keo CA party vao instance)."""
-        self.assertIn("dat_party_dang_gom(pidx, viec in", self.src)
+        self.assertIn("dat_party_dang_gom(pidx, hu.dang_gom)", self.src)
         self.assertIn("party_dang_gom(", self.src)
 
 
@@ -97,13 +97,16 @@ class TestCoGomVanDuocDatDung(unittest.TestCase):
     cung bat - neu khong thi PB khong bao gio chay duoc."""
 
     def test_co_bat_theo_viec_cap_party(self):
-        src = _src()
-        i = src.find("dat_party_dang_gom(pidx, viec in")
-        self.assertGreater(i, 0)
-        dong = src[i:i + 200]
-        for _v in ("VIEC_GOM", "VIEC_MOI", "VIEC_DONG_BO"):
+        """Luat gio o `party_engine.quyet_dinh_cap_party`: `hu.dang_gom` chi bat khi dieu phoi
+        THUC SU dang dieu party (gom / moi / dong bo)."""
+        with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+            pe = fh.read()
+        i = pe.find("hu.dang_gom = viec in")
+        self.assertGreater(i, 0, "mat cho bat co 'party dang gom'")
+        dong = pe[i:i + 200]
+        for _v in ("DP_GOM", "DP_MOI", "DP_DONG_BO"):
             self.assertIn(_v, dong)
-        self.assertNotIn("VIEC_LAM", dong, "VIEC_LAM ma bat co thi PB/viec vat khong bao gio chay")
+        self.assertNotIn("DP_LAM", dong, "DP_LAM ma bat co thi PB/viec vat khong bao gio chay")
 
 
 if __name__ == "__main__":

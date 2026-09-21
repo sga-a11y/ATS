@@ -35,6 +35,86 @@ _WALK_BUDGET = 120.0              # ngan sach di 1 chang (log that: 45s/30 lenh 
                                   # -> 45s la sat nut, bi cat giua duong)
 
 
+def tinh_buoc(ev, scene: int, k: int):
+    """BUOC KE TIEP cua leader tai tang `scene` khi da danh xong `k` diem. Ham THUAN (chi doc
+    world_nav + events.json), de engine party goi moi nhip ma quyet dinh.
+
+    LUON tra tuple 4 phan tu (nguoi goi giai nen mot lan, khong phai goi lai ham de lay phan du):
+        ("danh", idx, (x, y), None)      - di toi diem roi bam idx de kich tran
+        ("len_tang", nxt, door, center)  - danh het diem roi: di toi cong va qua tang tren
+        ("xong", None, None, None)       - leader dang o TANG CAO NHAT roi
+        ("het_duong", None, None, None)  - danh het ma world_nav khong co cong len
+
+    Day la CUNG MOT chuoi buoc ma `run_floor_crawl` chay trong vong `while` cua no - tach ra de
+    engine moi giao TUNG BUOC (1 thread quyet dinh ca party), thay vi de mot thread rieng cam lai.
+    Trong thap chi LEADER di chuyen, member dinh party tu theo - nen chuoi nay chi cua mot acc.
+    """
+    top = int((ev.get("party_battle") or {}).get("top_map") or 0)
+    scene = int(scene or 0)
+    if top and scene >= top:
+        return ("xong", None, None, None)
+    up = _up_gate(scene)
+    door = up[1] if up else None
+    idxs = [i for i in _battle_idx(ev, scene) if i != door]
+    points = _battle_points(ev, scene)
+    # `k` = chi so DIEM, tang theo TUNG LAN THU chu KHONG theo so tran THANG (xem chu thich trong
+    # `run_floor_crawl`): login lai giua tang, con 1 da chet -> khong vao tran -> neu dem theo
+    # tran thang thi moi idx deu quay lai DIEM 1, con nao con song o diem 2/3 khong bao gio duoc
+    # danh (log that tang 8 - 12931).
+    n = min(len(idxs), len(points))
+    if int(k) < n:
+        return ("danh", idxs[int(k)], points[int(k)], None)
+    # DANH XONG ma van khong co cong len -> gio moi duoc ket luan. Cong cua TANG CHOT chi hien
+    # SAU KHI THANG (user xac nhan 06/09), nen phai hoi lai world_nav mot lan nua o day chu khong
+    # duoc ket luan tu dau tang.
+    if up is None:
+        up = _up_gate(scene)
+    if up is None:
+        return ("het_duong", None, None, None)
+    return ("len_tang", up[0], up[1], up[2])
+
+
+def danh_mot_diem(client, ev, scene: int, idx: int, point, stop_event,
+                  heal_party=None, lost_check=None):
+    """MOT buoc 'danh': di toi diem roi kich tran. Tra "won" | "lost" | None (diem het quai)."""
+    client._team_dungeon_until = time.time() + _DUNGEON_WINDOW   # gia han moi buoc
+    _walk_to(client, point, stop_event)
+    return _fight_one(client, idx, stop_event, heal_party, lost_check)
+
+
+def qua_cong_len_tang(client, nxt: int, door: int, center, stop_event, du_party=None) -> bool:
+    """MOT buoc 'len tang': di toi cong roi qua. Tra True neu da len duoc tang tren.
+
+    L0 ve 1 - PHAI DU PARTY MOI DUOC LEN TANG. Qua cong mot minh la hong ca vong: member bi bo
+    lai tang duoi, leader leo tiep va danh khong noi (party 5 06/09: leader qua cong luc 16:34:53,
+    tang 6 "chi danh duoc 0/3 tran"). Nguoi goi da xet du party roi thi cua nay chi la lop thu
+    hai, nhung qua cong la buoc KHONG QUAY LAI DUOC nen no phai nam ngay truoc cong.
+
+    `du_party` o day CHI HOI MOT PHAT roi thoi (doc anh chup), khong nam cho nhu ban trong
+    `run_floor_crawl`.
+    """
+    prev = int(client.current_map or 0)
+    # Gia han `_team_dungeon_until` cho GIONG `run_floor_crawl` - no dat o DAU MOI TANG, truoc ca
+    # vong danh. Ban tach buoc chi dat trong `danh_mot_diem`, nen tang nao khong ra tran nao thi
+    # khong ai dat. Day CHI la giu cho giong flow cu, KHONG phai nguyen nhan cong khong mo.
+    client._team_dungeon_until = time.time() + _DUNGEON_WINDOW
+    if du_party is not None and not du_party():
+        log.warning("[%s] 2K: thieu nguoi ngay truoc cong -> HOAN qua cong", client._label)
+        return False
+    _walk_to(client, center, stop_event)
+    # Qua cong len tang: cung dang `0x14 0800 [idx]`, dung `_enter_gate` de cho map doi that.
+    client._in_scene_gate = True
+    try:
+        ok = client._enter_gate(center[0], center[1], door, expected_map=nxt)
+    finally:
+        client._in_scene_gate = False
+    if not ok:
+        return False
+    log.info("[%s] 2K: da len map %s", client._label, client.current_map)
+    _fix_pos_after_gate(client, prev, stop_event)   # co pos -> smart path, khong thi di mu
+    return True
+
+
 def _nav():
     from .client import _smart_world_router
 
@@ -80,6 +160,12 @@ def _fight_one(client, idx: int, stop_event, heal_party=None, lost_check=None):
     prev_evt = getattr(client, "_last_dialog_evt", 0.0)   # CHOT MOC TRUOC khi gui. Khong so voi
     t_send = time.time()                                  # time.time() luc gui: Windows ~15ms/tick
                                                           # -> 2 lenh lien nhau co the ra CUNG so.
+    # GHI LAI TUNG LAN BAM. Truoc day ca ham nay im lang tuyet doi khi server khong tra loi, nen
+    # 20/09 ca 40 party khong danh duoc tran nao ma log KHONG NOI GI - phai di doi chieu capture
+    # moi biet bot gui dung gao goi. Mot dong o day la du de lan sau nhin phat ra ngay.
+    log.info("[%s] 2K: bam idx=%d tai pos=%s map=%s kenh=%s", client._label, idx,
+             getattr(client, "pos", None), getattr(client, "current_map", None),
+             getattr(client, "current_channel", None))
     client.send(0x14, b"\x08\x00" + bytes([idx & 0xFF]) + b"\x00")
     # Diem nay con quai khong? Con -> server MO THOAI (0x14 0100/1000/0d00 -> _last_dialog_evt).
     # Het quai (da danh truoc do, vd login lai giua tang) -> khong co thoai -> bo qua NGAY, thay vi
@@ -89,6 +175,11 @@ def _fight_one(client, idx: int, stop_event, heal_party=None, lost_check=None):
             break
         time.sleep(0.3)
     else:
+        # PHAI GHI LAI - truoc day bo qua IM LANG nen khi ca 40 party deu khong danh duoc tran
+        # nao thi log khong he noi vi sao (20/09: 0 tran ca ngay, phai lan nguoc tu do tre cua
+        # goi cong moi ra). Mot dong o day la du de biet "server khong mo thoai" thay vi doan.
+        log.info("[%s] 2K: idx=%d khong mo thoai sau %.0fs -> coi nhu diem da het quai",
+                 client._label, idx, _DIALOG_OPEN_WAIT)
         return None
     if not client._dialog_until_battle(cap_n=_DIALOG_CAP, gap=0.7):
         # Khong vao tran -> idx nay khong phai diem danh quai. Don thoai lo mo roi bo qua.
@@ -234,9 +325,11 @@ def run_floor_crawl(client, ev, stop_event, on_done=None, heal_party=None, lost_
     # EP quest_mode suot ca thap (giong pho ban to doi): KHONG de auto-latch quyet dinh - latch
     # chi bat khi quai > 6 luc vao tran (state.py), tran 2K it quai hon la mat skill toan man.
     client.state.quest_mode = True
-    # _team_dungeon_until = cua so "dang chay kich ban dungeon". BAT BUOC cho 2K vi:
-    #  - recv-loop CHI cap nhat _last_dialog_evt trong cua so nay -> thieu thi
-    #    _adv_dialog_until_idle() khong biet thoai da het chua.
+    # _team_dungeon_until = cua so "dang chay kich ban dungeon". Con lai MOT tac dung:
+    #  - 0x14 sub0700 goi reset_enemies(reset_quest=not _in_team_dungeon) (xem duoi).
+    # KHONG con giu `_last_dialog_evt` nua: tu 14/09 `in_team_dungeon()` doc MAP chu khong doc
+    # moc thoi gian nay, nen trong thap 2K no luon False. Viec theo doi thoai trong thap gio do
+    # `in_floor_crawl_map()` o recv-loop lo (client.py) - sua 20/09, truoc do ca ngay 0 tran 2K.
     #  - 0x14 sub0700 goi reset_enemies(reset_quest=not _in_team_dungeon) -> thieu thi quest_mode
     #    vua ep bi XOA ngay sau tran DAU TIEN.
     client._team_dungeon_until = time.time() + _DUNGEON_WINDOW

@@ -179,3 +179,188 @@ Lệnh gom lúc 16:36:01 vô dụng vì leader đang kẹt trong luồng `run_fl
 trước `_enter_gate`** (sau khi đã đánh xong tầng): chưa đủ thì mời lại tại chỗ trong
 `DU_PARTY_TRUOC_CONG_SEC = 60s`; hết hạn vẫn chưa đủ thì **thôi leo** (`break`) để điều phối xử lý.
 Qua cổng một mình là hỏng cả vòng — member bị bỏ lại tầng dưới, leader leo tiếp và đánh không nổi.
+
+---
+
+## 20/09/2026 — 2K chuyển hẳn sang ENGINE PARTY MỚI (mọi party)
+
+Ngày 20/09 **không party nào vào được Nhị Kiều**. Log thật, cả loạt acc của mọi party cùng giây
+14:15:33:
+
+```
+[tkbon]   DIEU PHOI chot tang gom Thong Dao (12922), minh dang o 12001 -> di bo xuong
+[tkbon]   gom doi: di bo 12001 -> 12922 (map event khong teleport duoc)
+[dieutam] scene route: khong tim thay duong 12061 -> 12922
+[dieutam] gom doi: KHONG di bo duoc 12061 -> 12922
+```
+
+Gốc: acc còn **ở thành** mà bị giao "đi bộ vào map event". Không có đường bộ từ thành vào cụm map
+event, nên lệnh thất bại → điều phối chốt GOM lại → lặp vô tận.
+
+User: *"event 2k thì tất cả đều chạy engine mới, engine cũ lỗi thế thì chạy làm đéo gì"*.
+
+### Quy tắc mới
+
+`floor_crawl` chạy **engine mới cho MỌI party**, không xét ngưỡng `PARTY_ENGINE_MOI_TU`
+(`EVENT_KIND_ENGINE_MOI_MOI_PARTY`). Các loại event khác vẫn theo ngưỡng như cũ.
+
+### Ba điều engine mới phải biết về 2K
+
+| | |
+|---|---|
+| **Map event là CẢ DẢI TẦNG** | `dest_map..top_map`, không phải một map. Chỉ kể `dest_map` thì leo lên tầng 2 là engine tưởng acc "ra khỏi event" → giao `vao_event` → `go_to_event` → kéo cả đội về 12921, **mất sạch tầng đã leo**. Sân chờ 12921 **không** kể vào dải: acc ở đó vẫn phải `go_to_event` đi tiếp vào 12922. |
+| **Trong tháp KHÔNG teleport được** | `ve_thanh` / `resync` / `ve_map` đều đi bằng teleport → là lệnh **rỗng**. Engine cũ quay 201.495 vòng vì điều này (party 5, 06/09). Engine mới chặn hẳn mọi việc di chuyển khi `tang_gom` đang bật. |
+| **Lệch tầng chỉ có một đường: ĐI BỘ** | `VIEC_FC_GOM` → `regroup_to_event_start(ev, dest=tang_gom)`. Tầng gom do `_tang_gom_2k` của engine cũ chốt — **tầng thấp nhất cả đội đang ở**, không phải đáy tháp (tụt về đáy là mất sạch tầng đã leo). Chỉ khi còn đứa **ngoài** tháp nó mới trả `dest_map` = 12922 (cửa vào, chỗ ngoài tele vào được). |
+
+### ⚠️ BẪY: `go_to_event` có `leave_party()` ngay dòng đầu
+
+Vào event phải **không có party** (dính party từ trước thì tele lỗi), nên `go_to_event` rời party
+trước. Gọi nó ở đường **gom** = đập tan party vừa lập.
+
+Đã xảy ra thật trong chính ngày 20/09: bản vá đầu tiên cho acc ngoài tháp gọi `go_to_event` để
+"tele vào" → user: *"sao party xong leader bị văng thế"*. Đường gom chỉ được dùng
+`regroup_to_event_start`. `tests/test_engine_moi_2k.py` giữ cả hai bẫy này.
+
+### Vòng leo tháp dùng CHUNG một hàm
+
+`chay_leo_thap_2k()` tách từ `_start_training` ra cấp module (y cách `chot_thanh_tap_ket` đã tách
+từ `_do_reform`). Cả engine cũ lẫn engine mới **gọi lại chính hàm đó** — không ai chép lần hai.
+Hai bản vòng leo tháp song song thì sẽ lệch nhau, chỉ là sớm hay muộn.
+
+### ⚠️ BẪY: hai callback của engine mới vốn viết cho 40NPC
+
+Mở cửa cho 2K mà để nguyên chúng thì **cả party chạy về Quảng Trường rồi thoát game** dù 2K chưa
+đánh phút nào (đã xảy ra thật 20/09 — user: *"làm lồn gì mà bọn nó chạy về quảng trường rồi out hết"*):
+
+| Callback | Bản 40NPC | 2K phải là |
+|---|---|---|
+| `_event_xong_engine_moi` | `not in_40npc_window()` — khung giờ **của 40NPC** | `st["event_exit_now"]` — điều phối là người duy nhất chốt "2K hết", và nó phân biệt `thua/xong/het_duong` = hết thật với `ket/dut` = chưa hết |
+| `_doi_thuong_engine_moi` | `claim_40npc_reward()` → về Trác Quận → NPC 12003 | 2K **không có NPC đổi thưởng**: `exit_event(ev)` ra khỏi tháp rồi thoát game |
+
+2K (`nhi_kieu`) để `lich: null` — **không có khung giờ**. Hỏi khung giờ của event khác là ngoài
+khung đó nó trả "xong" ngay lập tức.
+
+### Công tắc an toàn vẫn nguyên
+
+`PARTY_ENGINE_MOI_TU = 0` (hoặc config hỏng) vẫn **tắt hẳn** engine mới cho mọi party, kể cả 2K.
+2K chỉ được miễn phần xét **số party**, không được miễn công tắc tắt.
+
+---
+
+## 20/09/2026 (chiều) — bỏ thread `floorcrawl-*`, engine giao TỪNG BƯỚC
+
+User: *"vòng leo tháp thì có cái lồn gì đâu, đi theo party chỉ leader di chuyển, bọn kia tự đi
+theo rồi, có gì mà 1 thread ko điều khiển hết được"*.
+
+Đúng vậy — đọc lại `run_floor_crawl` thì cả vòng chỉ là chuỗi bước **của riêng leader**; member
+không xuất hiện một dòng nào (chúng dính party nên tự theo).
+
+### Vì sao phải bỏ
+
+`start_floor_crawl` **đẻ thread riêng rồi trả về ngay**. Engine mới nhịp 1 giây thấy "việc xong
+trong một nhịp" nên giao lại liên tục, mỗi lần lại gửi gói gia hạn quest-mode cho **cả party**:
+
+```
+15:29:45 -> 15:30:15  ENGINE: taot006 -> danh_event      ← 30 lần liên tiếp, mỗi giây
+15:29:58 ENGINE: 'danh_event' giao lai 40 lan lien tiep cho taot006 - viec chay xong ngay
+15:30:16 [taot006] RECONNECT: server rot -> login lai sau 5s (lan 1)
+15:30:16 [party 7] DIEU PHOI: nguoi keo 'taot006' khong con chay -> tam giao cho tat ca
+```
+
+Leader rớt → 4 member quay vòng `lap_party` mãi. User: *"party xong rồi, đéo thấy đi đánh, 1 lúc
+sau leader dis"*. Engine cũ không dính vì nó gọi `_start_training` **đúng một lần**.
+
+### Cách làm mới
+
+`floor_crawl.tinh_buoc(ev, scene, k)` — **hàm thuần**, luôn trả tuple 4 phần tử:
+
+| Trả về | Engine giao |
+|---|---|
+| `("danh", idx, point, None)` | `VIEC_2K_DANH` cho **leader**, member `nghi` |
+| `("len_tang", nxt, door, center)` | `VIEC_2K_LEN_TANG` cho **leader**, member `nghi` |
+| `("xong" / "het_duong", …)` | ghi `2k_ket_qua` để `_dieu_phoi_chot_2k_xong` chốt như cũ |
+
+Tiến độ `{"scene", "k"}` nằm ở **state party** (không ở client) — leader rớt, acc khác lên thay
+vẫn đọc tiếp được. `k` đếm theo **từng lần thử**, không theo trận thắng (điểm đã hết quái vẫn
+phải tính là đã đi qua, nếu không thì quay lại điểm 1 mãi — log thật tầng 8/12931).
+
+Bước nhỏ **gọi lại `floor_crawl`** (`danh_mot_diem`, `qua_cong_len_tang`) — không chép logic đánh
+hay qua cổng sang chỗ khác.
+
+### Ba thứ bỏ được
+
+1. thread `floorcrawl-*` — engine không còn cảnh bấm nút rồi mất lái
+2. callback `du_party()` **nằm chờ 60 giây** — thay bằng engine đọc ảnh chụp trước khi giao
+   `VIEC_2K_LEN_TANG`, đúng luật "không acc nào chờ acc khác"
+3. cửa chặn `_floor_crawl_started` — không còn vòng nào để gọi trùng
+
+### L0 vẫn có cửa NGAY TRƯỚC CỔNG
+
+Qua cổng là bước **không quay lại được**, nên ngoài việc engine chỉ giao khi ảnh chụp thấy đủ đội,
+`qua_cong_len_tang` còn **hỏi lại một phát** ngay trước `_enter_gate` (đi bộ tới cổng có thể mất
+cả phút, mà đội tan giữa chừng là chuyện bình thường trong tháp — đổi kênh phải rời đội trước).
+Hỏi một phát rồi thôi, **không nằm chờ**. `tests/test_rule_dieu_phoi.py` neo cả hai đường.
+
+> **Engine cũ giữ nguyên**: `chay_leo_thap_2k` + `run_floor_crawl` còn đủ, party chạy engine cũ
+> (ngưỡng = 0) vẫn leo tháp như trước.
+
+---
+
+## 20/09/2026 — GỐC THẬT: recv-loop không nghe thoại trong tháp (hồi quy từ 14/09)
+
+Cả ngày 20/09 **không một acc nào đánh được trận 2K nào, không ai lên được tầng nào** — ở **cả
+engine cũ lẫn engine mới**. Đổi engine không cứu được gì vì lỗi nằm trong `client.py`.
+
+```
+16:47:25 [ttmmot] 2K: bam idx=3 tai pos=(987, 439) map=12922 kenh=1
+16:47:28 [ttmmot] 2K: idx=3 khong mo thoai sau 3s -> coi nhu diem da het quai
+```
+
+Đối chiếu capture MuMu cùng ngày, người thật bấm **đúng gói đó** thì server trả lời sau 0.06s:
+
+```
+0.83 C2S 0x14 08 00 03                    ← bấm điểm
+0.89 S2C 0x14 0100 0000 0001 0003 03 …    ← thoại mở
+0.93 C2S 0x14 0600  (×4)                  ← đẩy thoại
+2.36 S2C 0x34 0100                        ← BATTLE START
+```
+
+Tức bot **gửi đúng**, nhưng **không nghe thấy** server trả lời.
+
+### Chuỗi nhân quả
+
+`_fight_one` biết "thoại đã mở" qua `client._last_dialog_evt`. Recv-loop chỉ cập nhật mốc đó khi
+`in_team_dungeon()`. Ngày **14/09**, `in_team_dungeon()` đổi từ *đọc `_team_dungeon_until`* sang
+*đọc `current_map in TEAM_DUNGEON_MAPS`* — sửa đúng một bug thật (party 44 tự nhận đang ở PB khi
+đã về thành). Nhưng `TEAM_DUNGEON_MAPS` chỉ có **4 map phó bản 62xxx**, không có map 2K nào.
+
+Trong khi đó 2K dựa vào **chính cái mốc thời gian ấy**: `run_floor_crawl` vẫn đặt
+`_team_dungeon_until` kèm chú thích *"BẮT BUỘC cho 2K vì recv-loop CHỈ cập nhật `_last_dialog_evt`
+trong cửa sổ này"*. Từ 14/09 **không ai đọc mốc ấy nữa** → trong tháp `_last_dialog_evt` đóng băng
+→ mọi điểm đều bị kết luận "hết quái" → bỏ qua sạch → cổng không bao giờ mở.
+
+### Sửa
+
+`in_floor_crawl_map(map_id)` (cache theo `map_id`, vì nằm trong recv-loop) — map thuộc dải
+`dest_map..top_map` của event `floor_crawl` cũng được theo dõi thoại:
+
+```python
+if opcode == 0x14 and (self.in_team_dungeon()
+                       or in_floor_crawl_map(getattr(self, "current_map", 0))):
+```
+
+`tests/test_thoai_trong_thap_2k.py` neo lại, kèm kiểm `TEAM_DUNGEON_MAPS` không bị đụng.
+
+> **Bài học**: khi một hàm đổi từ *mốc thời gian* sang *đọc trạng thái thật*, phải rà những chỗ
+> **dựa vào tác dụng phụ của mốc cũ**. Ở đây chú thích trong `floor_crawl.py` đã nói rõ nó phụ
+> thuộc, mà vẫn lọt — vì chú thích nằm ở file khác với chỗ sửa.
+
+### Mấy hướng đã loại trừ (ghi lại để khỏi đi lại)
+
+| Nghi ngờ | Bác bỏ bằng |
+|---|---|
+| Bot gửi sai gói / sai idx | Capture: bot gửi `08 00 03 00`, y hệt client thật |
+| Thiếu gói "ready for battle" | Capture: không có gói chuẩn bị nào trước khi bấm |
+| Server trả lời chậm, timeout 3s quá ngắn | Capture: server trả lời sau **0.06s** |
+| Chưa đăng ký sự kiện (`0x4d`) do relogin sẵn trong map | Đang ở trong map event thì tới điểm là đánh được |
+| `_team_dungeon_until` chưa đặt lúc bấm cổng | Có đặt; và cổng chỉ là hậu quả của việc không đánh được |

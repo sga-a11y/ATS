@@ -58,6 +58,16 @@ class TestL0_LuatToiThuong(unittest.TestCase):
         j = fc.find("chua du party -> KHONG len tang mot minh")
         self.assertGreater(j, 0)
         self.assertIn("break", fc[j:j + 200], "thieu nguoi ma van di tiep (L0 ve 1)")
+        # DUONG CUA ENGINE MOI (`qua_cong_len_tang` - leo thap theo tung buoc, khong thread rieng)
+        # cung phai co cua do, va cung ngay TRUOC cong: engine chi giao viec khi anh chup thay du
+        # doi, nhung tu luc chup den luc di bo toi cong co the mat ca phut.
+        k = fc.find("def qua_cong_len_tang(")
+        self.assertGreater(k, 0)
+        than = fc[k:fc.find("\ndef ", k + 10)]
+        self.assertLess(than.find("du_party()"), than.find("_enter_gate("),
+                        "engine moi qua cong ma khong kiem du party (L0 ve 1)")
+        self.assertIn("return False", than[than.find("du_party()"):][:300],
+                      "thieu nguoi ma van di tiep (L0 ve 1)")
 
     def test_ve2_thieu_nguoi_thi_MOI_LAI_chu_khong_bo(self):
         src = _doc("run_party_digioi.py")
@@ -114,7 +124,7 @@ class TestL0_LuatToiThuong(unittest.TestCase):
         """Cung kenh ma khac tang -> gom ve tang thap nhat ca doi dang o (khong dinh toi kenh)."""
         src = _doc("run_party_digioi.py")
         self.assertIn("def _tang_gom_2k(", src)
-        i = src.find('if viec == VIEC_GOM and pha == "event":')
+        i = src.find("if hu.chot_tang_gom:")
         self.assertGreater(i, 0, "mat cho gan tang gom vao ke hoach")
         self.assertIn("_chot_tang_gom(", src[i:i + 200])
 

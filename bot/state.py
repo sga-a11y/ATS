@@ -117,10 +117,24 @@ class BattleState:
         self.enemy_gen = 0
         self.last_atk_gen_char = -1
         self.last_atk_gen_pet = -1
-        # DI GIOI SOLO: toi da 4 pet ra tran CUNG LUC, moi con 1 atype RIENG (0,1,3,4 - atype 2 la
+        # DI GIOI SOLO: toi 4 pet ra tran CUNG LUC, moi con 1 atype RIENG (0,1,3,4 - atype 2 la
         # cua CHAR). KHAC han truong hop binh thuong (1 pet, dung state.pet + skills_pet chung voi
         # char). solo_multipet=True -> client.py dung nhanh combat rieng (combat.decide_multipet).
+        #
+        # SUY TU DOI HINH TRONG TRAN, khong doc config (`suy_solo_multipet`). Truoc day cho nay chi
+        # duoc bat o MOT dong trong `run_party_digioi` khi user chon `digioi_mode == "solo"`, nen:
+        #   - party cau hinh CHI CO 1 ACC di Di Gioi (van la mode "party") -> khong bat -> KHONG
+        #     con pet nao danh (bi loc `my_atype`) va chi hoi mau duoc 1 con (user bao 21/09);
+        #   - ENGINE MOI khong bao gio chay toi dong do (no `return` ngay sau login) -> hong hoan
+        #     toan.
+        # User: "ro rang la luc start tran m biet duoc danh sach doi hinh ben minh, thi biet duoc
+        # bao nhieu pet xuat chien roi chu".
         self.solo_multipet = False
+        # TRAN nay co dong doi khong (KHAC "co trong party khong"): boss QD / boss the gioi / Di
+        # Gioi solo deu la instance rieng tung acc du party van con nguyen. None = CHUA BIET (chua
+        # thay du lieu doi hinh) -> nguoi doc phai coi nhu "cu coi la tran party", vi doan nham
+        # huong solo la mat dieu phoi that.
+        self.tran_mot_minh = None
         self.multi_pet = {}          # atype (0,1,3,4) -> Unit (HP/SP tung pet, tu update_0x33)
         self.multi_pet_skills = {}   # atype -> [skill id] (tu pets.json, xem client._on_pet_list)
         self.last_atk_gen_multipet = {}   # atype -> enemy_gen da danh (tranh danh lap khi 0x33 cu)
@@ -227,6 +241,43 @@ class BattleState:
         cu = (self.enemy_rows, self.ally_rows, self.char_row)
         self.enemy_rows, self.ally_rows, self.char_row = moi
         return cu != moi
+
+    def hang_pet_ta(self):
+        """Hang cua PET phe ta = hang phe ta con lai ngoai hang char (loan dau lat phe thi doi)."""
+        return next((r for r in self.ally_rows if r != self.char_row), 0x02)
+
+    def suy_solo_multipet(self, them=()):
+        """Suy `solo_multipet` tu DOI HINH PHE TA, thay cho viec doc config.
+
+        Luat: phe ta chi co DUNG MOT char -> moi pet trong phe deu la CUA MINH -> dieu khien va
+        hoi mau cho TAT CA (1 den 4 con, khong co dinh 4 - user chot 21/09).
+
+        Vi sao phai la "mot char" chu khong phai "nhieu pet": party nhieu nguoi thi `0x35` mang ca
+        pet cua NGUOI KHAC (server gui mot goi rieng cho tung unit), gui lenh cho pet nguoi khac =
+        server coi la sua goi chien dau (ma 42) va DA HAN acc - da dinh that ngay 01/09. Vi vay
+        thay tu 2 char tro len la TAT ngay, khong chan chu.
+
+        `them` = cac khoa (hang, cot) vua doc duoc trong goi hien tai nhung chua kip ghi vao
+        `allies` - gop vao de ket luan dung ngay goi dau, khong tre mot luot.
+
+        CHUA DU DU LIEU (chua thay char nao) -> GIU NGUYEN, khong doan. `allies` bi `clear()` moi
+        `0x34` (tran moi) nen neu ha co o day thi moi dau tran deu tu tat mot nhip.
+        """
+        khoa = set(self.allies.keys()) | set(them)
+        so_char = sum(1 for (b1, _b2) in khoa if b1 == self.char_row)
+        if so_char <= 0:
+            return self.solo_multipet
+        so_pet = sum(1 for (b1, _b2) in khoa if b1 == self.hang_pet_ta())
+        # `tran_mot_minh` = TRAN NAY khong co dong doi nao, du ngoai doi van dang trong party.
+        # Dung cho ca bo DIEU PHOI TRAN (`client._battle_coordinator`): boss Quan Doan / boss the
+        # gioi la instance RIENG cua tung acc, gom chung mot coordinator theo `party_idx` thi moi
+        # acc mot `generation/turn` -> `active_key` chi khop DUNG MOT acc -> nhung acc con lai bi
+        # `reserve()` tu choi ca tran (hoi mau / CC / bao ve deu khong dat cho duoc).
+        # User 21/09 (p20): "bon no dang danh bos QD ma bao party-battle lech phien cai lon gi the,
+        # danh boss thi solo ma".
+        self.tran_mot_minh = (so_char == 1)
+        self.solo_multipet = (so_char == 1 and so_pet >= 1)
+        return self.solo_multipet
 
     def reset_battle(self):
         self.mobs = []
@@ -339,9 +390,13 @@ class BattleState:
         # thuc te: b2 trong 0x33 CHINH LA atype dung de gui 0x32, KHONG can quy doi them). Cap nhat
         # RIENG cho tung atype, KHONG dua vao self_slot (self_slot chi ung voi pet DUY NHAT truong
         # hop binh thuong, sai hoan toan khi co 4 pet).
+        # Suy TRUOC khi nap `multi_pet` ben duoi: ket luan o day thi ngay goi 0x33 DAU TIEN da nap
+        # du HP/SP tung pet, khong phai doi goi sau.
+        self.suy_solo_multipet(k for k, d in groups.items()
+                               if T_HP_CUR in d or T_HP_MAX in d or T_SP_CUR in d)
         if self.solo_multipet:
             for (b1, b2), d in groups.items():
-                if b1 == next((r for r in self.ally_rows if r != self.char_row), 0x02):
+                if b1 == self.hang_pet_ta():
                     u = self.multi_pet.get(b2)
                     if u is None:
                         u = Unit(f"pet_at{b2}")
@@ -565,17 +620,24 @@ class BattleState:
                         u.slot = sl
                         self.ally_hpmax[(bb, sl)] = mh
                         self.ally_spmax[(bb, sl)] = ms   # BEN qua cac tran (allies bi clear)
-                        # Di Gioi SOLO co toi da 4 pet cung luc. 0x33 khong co SP_max, nen nap
-                        # SP_max/HP tu 0x0b vao multi_pet de hoi item ngoai tran cho tung con.
-                        if self.solo_multipet and bb == 2 and sl in (0, 1, 3, 4):
-                            mp = self.multi_pet.get(sl)
-                            if mp is None:
-                                mp = Unit(f"pet_at{sl}")
-                                self.multi_pet[sl] = mp
-                            mp.hp, mp.hp_max, mp.sp, mp.sp_max = ch, mh, cs, ms
                         j += 18
                         continue
                 j += 1
+            # Suy SAU khi quet xong ca goi: doi hinh chi day du o cuoi vong. Doc co NGAY TRONG
+            # vong (nhu truoc day) thi block pet dau tien duoc xet luc con chua biet minh di mot
+            # minh -> nap thieu con dau.
+            if self.suy_solo_multipet():
+                # Di Gioi SOLO: 1 den 4 pet cung luc. 0x33 khong co SP_max, nen nap SP_max/HP tu
+                # 0x0b vao multi_pet de hoi item ngoai tran cho TUNG con.
+                _hp_ta = self.hang_pet_ta()
+                for (bb, sl), u in self.allies.items():
+                    if bb != _hp_ta or u.hp_max <= 0:
+                        continue
+                    mp = self.multi_pet.get(sl)
+                    if mp is None:
+                        mp = Unit(f"pet_at{sl}")
+                        self.multi_pet[sl] = mp
+                    mp.hp, mp.hp_max, mp.sp, mp.sp_max = u.hp, u.hp_max, u.sp, u.sp_max
         slot = self.self_slot
         if slot is None:
             return

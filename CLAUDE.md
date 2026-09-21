@@ -1,5 +1,25 @@
 # Hướng dẫn cho Claude khi làm bot TS Online (repo này)
 
+## ⛔ TRƯỚC khi viết hoặc sửa BẤT KỲ FLOW nào → ĐỌC `documents/CORE_FLOW.md`
+
+File đó là **của user**. Claude **không được sửa** nếu user chưa cho phép **trong chính lượt đó** —
+`tests/test_core_flow_khoa.py` giữ vân tay file và sẽ đỏ ngay nếu bị sửa lén.
+
+Ba luật cốt lõi của nó, nhắc lại ở đây vì chúng bị phá nhiều nhất:
+
+1. **Bug từ vận hành → mở `party.log` TRƯỚC, trích được dòng log rồi mới sửa.** Không tìm được
+   dòng thì nói "chưa tìm được", **không** suy từ code rồi sửa. Code cho biết chuyện gì *có thể*
+   xảy ra; log cho biết chuyện gì *đã* xảy ra.
+2. **Phân biệt "SERVER ĐÒI" với "BOT TỰ ĐẶT".** Nhầm hai cái này là gốc của ca 21/09 (tưởng "cùng
+   map mới mời được vào đội" là luật game, trong khi đó là điều kiện bot tự thêm).
+3. **Sửa hẹp nhất có thể.** Đổi hành vi dùng chung thì phải có cờ phạm vi
+   (vd `invite_members(bo_qua_map=...)`), không sửa thẳng điều kiện gốc — nới toàn cục để chữa
+   một ca là cách làm hỏng cả những thứ đang chạy đúng.
+
+> Ca sinh ra file: party 20 ngày 21/09, một acc đứng ngoài đội 4 phút. Claude sửa **4 lần sai cả 4**
+> trước khi mở log — trong khi câu trả lời nằm sẵn ở một dòng:
+> `(LEADER) moi 3 member theo entity (live dung map/kenh)`.
+
 ## MỐC "BẢN CHẠY ỔN" — chỗ quay về khi sửa hỏng
 
 ```

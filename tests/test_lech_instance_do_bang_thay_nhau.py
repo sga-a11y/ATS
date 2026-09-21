@@ -156,19 +156,23 @@ class TestMotBenThayLaDu(_Nen):
 
 class TestDieuPhoiRaLenhDONG_BO(unittest.TestCase):
     def setUp(self):
-        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+        # LUAT cap party da chuyen vao `bot/party_engine.py` (21/09), phan thi hanh van o
+        # `run_party_digioi.py` -> doc CA HAI, luat truoc.
+        with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
             self.src = fh.read()
+        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            self.src += fh.read()
 
     def test_bac_nay_nam_TRUOC_bac_moi(self):
-        i_ins = self.src.find("_ai_lech_instance(pidx, song):")
-        i_moi = self.src.find("elif song and _thieu_doi(pidx, song):")
+        i_ins = self.src.find("anh.ai_lech_instance:")
+        i_moi = self.src.find("elif not anh.du_doi:")
         self.assertGreater(i_ins, 0, "mat bac khac-instance")
         self.assertGreater(i_moi, 0)
         self.assertLess(i_ins, i_moi, "phai xu khac-instance TRUOC khi ra lenh moi")
 
     def test_ra_lenh_dong_bo_kenh(self):
-        i = self.src.find("_ai_lech_instance(pidx, song):")
-        self.assertIn("VIEC_DONG_BO", self.src[i:i + 1600])
+        i = self.src.find("anh.ai_lech_instance:")
+        self.assertIn("DP_DONG_BO", self.src[i:i + 1600])
 
     def test_KHONG_bat_acc_bao_cao(self):
         """Doc thang client trong luong dieu phoi (L2), khong co bang bao cao nao."""

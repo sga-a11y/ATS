@@ -298,7 +298,7 @@ class TestDoiDuTheoROSTER_SERVER(unittest.TestCase):
 
     def test_KHONG_dung_bo_dem_trong_cua_bot(self):
         s = _src()
-        i = s.find("elif song and _thieu_doi(pidx, song):")
+        i = s.find("_du_doi = not _thieu_doi(pidx, song)")
         self.assertGreater(i, 0, "dieu phoi van dem doi bang joined_member_count")
         self.assertIn("party_members", _src()[s.find("def _thieu_doi("):][:1200])
 

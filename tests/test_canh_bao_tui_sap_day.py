@@ -188,7 +188,7 @@ class TestDongHienThi(unittest.TestCase):
     def test_ca_hai_truong_hop_deu_bao_slot_trong(self):
         """maxed (khong mua them slot duoc) va chua maxed."""
         i = self.src.find("used, cap, maxed = ")
-        khoi = self.src[i:i + 2600]
+        khoi = self.src[i:i + 3400]   # noi ra sau khi them nhanh "dang o Di Gioi" (21/09)
         self.assertEqual(khoi.count('it["free"]'), 2)
 
     def test_free_co_trong_du_lieu_thong_bao(self):

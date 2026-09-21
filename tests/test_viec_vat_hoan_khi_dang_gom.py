@@ -69,11 +69,12 @@ class TestChiDieuPhoiGhi(unittest.TestCase):
 
     def test_cho_do_nam_trong_dieu_phoi(self):
         s = _src("run_party_digioi.py")
-        i = s.find("dat_party_dang_gom(pidx,")
-        self.assertGreater(i, 0)
-        self.assertIn("def _dieu_phoi_quyet(", s[:i].rsplit("def ", 1)[0] + "def _dieu_phoi_quyet(")
+        i = s.find("dat_party_dang_gom(pidx, hu.dang_gom)")
+        self.assertGreater(i, 0, "mat cho dat co party dang gom")
+        # Cho do gio nam trong `_thi_hanh_hieu_ung` - noi thi hanh quyet dinh cua engine.
+        self.assertIn("def _thi_hanh_hieu_ung(", s[:i])
         khoi = s[max(0, i - 600):i]
-        self.assertIn("viec", khoi)
+        self.assertIn("hu.", khoi)
 
     def test_client_KHONG_tu_bat(self):
         s = _src("bot/client.py")
@@ -83,10 +84,13 @@ class TestChiDieuPhoiGhi(unittest.TestCase):
     def test_bat_cho_ca_ba_lenh_gom(self):
         """GOM (ve cung map) · MOI (thieu doi) · DONG BO (lech kenh tai cho) - ca ba deu la luc
         party phai o mot cho."""
-        s = _src("run_party_digioi.py")
-        i = s.find("dat_party_dang_gom(pidx,")
-        dong = s[i:i + 120]
-        for m in ("VIEC_GOM", "VIEC_MOI", "VIEC_DONG_BO"):
+        # Luat gio o `party_engine.quyet_dinh_cap_party` (`hu.dang_gom`); `run_party_digioi` chi
+        # THI HANH (`dat_party_dang_gom(pidx, hu.dang_gom)`).
+        pe = _src("bot/party_engine.py")
+        i = pe.find("hu.dang_gom = viec in")
+        self.assertGreater(i, 0, "mat cho bat co party dang gom")
+        dong = pe[i:i + 120]
+        for m in ("DP_GOM", "DP_MOI", "DP_DONG_BO"):
             self.assertIn(m, dong, m)
 
 

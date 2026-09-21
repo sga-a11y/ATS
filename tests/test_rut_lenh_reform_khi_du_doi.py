@@ -46,31 +46,42 @@ def _src():
         return fh.read()
 
 
+def _src_engine():
+    """LUAT cap party da chuyen vao engine (21/09) - `party_engine.quyet_dinh_cap_party`."""
+    with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+        return fh.read()
+
+
 class TestChiRutONhanhDUDOI(unittest.TestCase):
     """Rut nham luc con lech map/kenh/thieu nguoi = nuot lenh dang can."""
 
     def setUp(self):
         self.src = _src()
-        i = self.src.find("def _dieu_phoi_quyet(")
-        self.assertGreater(i, 0, "mat _dieu_phoi_quyet")
-        j = self.src.find("\ndef ", i + 10)
-        self.than = self.src[i:j]
+        pe = _src_engine()
+        i = pe.find("def quyet_dinh_cap_party(")
+        self.assertGreater(i, 0, "mat quyet_dinh_cap_party")
+        self.than = pe[i:]
+        # Phan THI HANH (ghi `reform_gen_thoa` that su) van o `run_party_digioi`.
+        k = self.src.find("def _thi_hanh_hieu_ung(")
+        self.assertGreater(k, 0, "mat _thi_hanh_hieu_ung")
+        self.thi_hanh = self.src[k:self.src.find("\ndef ", k + 10)]
 
     def test_co_ghi_reform_gen_thoa(self):
-        self.assertIn('st["reform_gen_thoa"] = _rg', self.than,
+        self.assertIn("hu.rut_reform = True", self.than,
                       "dieu phoi khong rut lenh reform -> lenh chet van duoc thi hanh lai")
+        self.assertIn('st["reform_gen_thoa"] = _rg', self.thi_hanh)
 
     def test_rut_nam_trong_nhanh_DU_DOI(self):
         """Phai nam SAU `else:` cuoi chuoi bac - tuc du doi + cung map + cung kenh."""
-        _else = self.than.find("        # DU DOI, CUNG MAP+KENH -> den luot hai buoc cuoi")
+        _else = self.than.find("# DU DOI, CUNG MAP+KENH -> hai buoc cuoi")
         self.assertGreater(_else, 0, "mat nhanh else 'DU DOI, CUNG MAP+KENH'")
-        _rut = self.than.find('st["reform_gen_thoa"] = _rg')
+        _rut = self.than.find("hu.rut_reform = True")
         self.assertGreater(_rut, _else,
                            "rut lenh NGOAI nhanh du doi -> nuot ca lenh gom/dong bo dang can")
 
     def test_chi_rut_DUNG_MOT_LAN(self):
         """Rut o hai cho = chac chan co cho rut nham nhanh chua xong viec."""
-        self.assertEqual(self.than.count('st["reform_gen_thoa"] = '), 1,
+        self.assertEqual(self.than.count("hu.rut_reform = True"), 1,
                          "co nhieu hon mot cho rut lenh reform trong dieu phoi")
 
     def test_moi_bac_chan_cua_CHUOI_deu_dung_truoc_cho_rut(self):
@@ -79,7 +90,7 @@ class TestChiRutONhanhDUDOI(unittest.TestCase):
         (Cac cho gan `viec = VIEC_GOM` SAU do la phep khac - dam chan o thanh / dung hinh - va
         chung tu bump gen MOI, khong bi moc rut che.)
         """
-        _rut = self.than.find('st["reform_gen_thoa"] = _rg')
+        _rut = self.than.find("hu.rut_reform = True")
         self.assertGreater(_rut, 0)
         for _bac in ('ly_do = "cung map/kenh nhung DOI chua du',
                      "gom kenh truoc khi moi",
@@ -105,7 +116,9 @@ class TestAccCHIDOC(unittest.TestCase):
 
     def test_acc_khong_tu_GHI_reform_gen_thoa(self):
         """Chi dieu phoi duoc ghi. Acc ghi = acc tu quyet lenh nao con song."""
-        i = self.src.find("def _dieu_phoi_quyet(")
+        # Cho DUY NHAT duoc ghi gio la `_thi_hanh_hieu_ung` (thi hanh `HieuUng` ma
+        # `party_engine.quyet_dinh_cap_party` tra ve).
+        i = self.src.find("def _thi_hanh_hieu_ung(")
         j = self.src.find("\ndef ", i + 10)
         ngoai = self.src[:i] + self.src[j:]
         self.assertNotIn('st["reform_gen_thoa"] =', ngoai,

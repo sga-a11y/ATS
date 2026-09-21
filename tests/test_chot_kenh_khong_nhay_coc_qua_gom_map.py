@@ -43,6 +43,17 @@ sys.path.insert(0, ROOT)
 def _src():
     with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
         return fh.read()
+def _src_pe():
+    """LUAT cap party da chuyen vao engine (21/09) - `party_engine.quyet_dinh_cap_party`."""
+    with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _than_luat():
+    """Than ham QUYET DINH cap party (noi giu 19 nhanh)."""
+    pe = _src_pe()
+    i = pe.find("def quyet_dinh_cap_party(")
+    return pe[i:] if i >= 0 else ""
 
 
 def _than(src, dau):
@@ -100,7 +111,7 @@ class TestThuTuGomVanGiuNguyen(unittest.TestCase):
     """Thu tu user chot: lech map -> gom map; cung map ma lech kenh -> gom kenh; du thi train."""
 
     def setUp(self):
-        self.than = _than(_src(), "def _dieu_phoi_quyet(")
+        self.than = _than_luat()
 
     def test_lech_map_thi_KHONG_lap_party(self):
         i = self.than.find("con lech map %s -> chua lap party")
@@ -108,12 +119,12 @@ class TestThuTuGomVanGiuNguyen(unittest.TestCase):
 
     def test_cung_map_ma_lech_kenh_thi_DONG_BO_TAI_CHO(self):
         """Lech kenh khong keo ca party ve thanh - doi kenh la xong."""
-        self.assertIn("viec = VIEC_DONG_BO if len(maps) <= 1 else VIEC_GOM", _ma(self.than))
+        self.assertIn("viec = DP_DONG_BO if len(maps) <= 1 else DP_GOM", _ma(self.than))
 
     def test_chi_khi_cung_map_cung_kenh_moi_ra_VIEC_MOI(self):
         ma = _ma(self.than)
-        i_lech = ma.find("elif song and len(maps) > 1:")
-        i_moi = ma.find("elif song and _thieu_doi(pidx, song):")
+        i_lech = ma.find("elif len(maps) > 1:")
+        i_moi = ma.find("elif not anh.du_doi:")
         self.assertGreater(i_lech, 0)
         self.assertGreater(i_moi, i_lech,
                            "nhanh lap party phai dung SAU nhanh lech map, khong thi no gianh truoc")

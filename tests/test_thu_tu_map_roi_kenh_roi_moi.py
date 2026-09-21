@@ -129,13 +129,17 @@ class TestThuTuTrongMa(unittest.TestCase):
     """Neo thu tu ngay trong chuoi `if/elif` - doi cho la doi luat."""
 
     def setUp(self):
-        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+        # LUAT cap party da chuyen vao `bot/party_engine.py` (21/09), phan thi hanh van o
+        # `run_party_digioi.py` -> doc CA HAI, luat truoc.
+        with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
             self.src = fh.read()
+        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            self.src += fh.read()
 
     def test_bac_map_dung_truoc_bac_kenh_truoc_bac_moi(self):
-        i_map = self.src.find("elif song and len(maps) > 1:")
-        i_kenh = self.src.find("elif song and len(kenhs) > 1 and _thieu_doi(pidx, song):")
-        i_moi = self.src.find("elif song and _thieu_doi(pidx, song):")
+        i_map = self.src.find("elif len(maps) > 1:")
+        i_kenh = self.src.find("elif len(kenhs) > 1 and not anh.du_doi:")
+        i_moi = self.src.find("elif not anh.du_doi:")
         self.assertGreater(i_map, 0, "mat bac gom map")
         self.assertGreater(i_kenh, 0, "mat bac gom kenh truoc khi moi")
         self.assertGreater(i_moi, 0, "mat bac moi party")

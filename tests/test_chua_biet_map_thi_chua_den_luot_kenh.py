@@ -124,8 +124,12 @@ class TestChuaBietMapThiDungODoc(_Nen):
 
 class TestChotKenhKhongCON_IM_LANG(unittest.TestCase):
     def setUp(self):
-        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+        # LUAT cap party da chuyen vao `bot/party_engine.py` (21/09), phan thi hanh van o
+        # `run_party_digioi.py` -> doc CA HAI, luat truoc.
+        with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
             self.src = fh.read()
+        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            self.src += fh.read()
         i = self.src.find("def _dieu_phoi_chot_kenh(")
         self.assertGreater(i, 0)
         j = self.src.find("\ndef ", i + 10)
@@ -146,18 +150,22 @@ class TestGocLoi(unittest.TestCase):
     """Neo chinh cho da lot ba lan: phep dem map phai GIU LAI acc chua biet map."""
 
     def setUp(self):
-        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+        # LUAT cap party da chuyen vao `bot/party_engine.py` (21/09), phan thi hanh van o
+        # `run_party_digioi.py` -> doc CA HAI, luat truoc.
+        with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
             self.src = fh.read()
+        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            self.src += fh.read()
 
     def test_co_giu_danh_sach_chua_biet_map(self):
-        i = self.src.find("maps = {}")
+        i = self.src.find("maps, _chua_biet_map = {}, []")
         self.assertGreater(i, 0)
         self.assertIn("_chua_biet_map", self.src[i:i + 400],
                       "bo qua acc chua biet map -> lai ket luan 'cung map' bang mot phep dem thieu")
 
     def test_bac_nay_dung_TRUOC_bac_kenh(self):
-        i_chua = self.src.find("elif song and _chua_biet_map:")
-        i_kenh = self.src.find("elif song and len(kenhs) > 1 and _thieu_doi(pidx, song):")
+        i_chua = self.src.find("elif anh.chua_biet_map:")
+        i_kenh = self.src.find("elif len(kenhs) > 1 and not anh.du_doi:")
         self.assertGreater(i_chua, 0)
         self.assertGreater(i_kenh, 0)
         self.assertLess(i_chua, i_kenh)

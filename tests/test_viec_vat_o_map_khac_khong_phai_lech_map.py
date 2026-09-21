@@ -119,17 +119,17 @@ class TestNeoTrenNguon(unittest.TestCase):
     def setUp(self):
         with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
             src = fh.read()
-        i = src.find("def _dieu_phoi_quyet(")
+        i = src.find("def _chup_anh_cap_party(")
         self.than = src[i:src.find("\ndef ", i + 10)]
 
     def test_loai_acc_viec_vat_khoi_maps(self):
         self.assertIn("_ban_viec_vat = set(_ai_dang_lam_viec_le(song))", self.than)
-        i = self.than.find("maps = {}")
+        i = self.than.find("maps, _chua_biet_map = {}, []")
         self.assertGreater(i, 0)
         self.assertIn("if u in _ban_viec_vat:", self.than[i:i + 400])
 
     def test_loai_ca_khoi_kenhs(self):
-        i = self.than.find("kenhs = set()")
+        i = self.than.find("kenhs, _kenh_mo_ho = set(), []")
         self.assertGreater(i, 0)
         self.assertIn("if _u in _ban_viec_vat:", self.than[i:i + 400])
 

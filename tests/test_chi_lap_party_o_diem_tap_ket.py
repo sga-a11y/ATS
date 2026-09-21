@@ -213,10 +213,10 @@ class TestDIEU_PHOI_quyet_khong_phai_ACC(unittest.TestCase):
             self.src = fh.read()
 
     def test_goi_trong_vong_dieu_phoi(self):
-        i = self.src.find("def _dieu_phoi_quyet(")
+        i = self.src.find("def _chup_anh_cap_party(")
         j = self.src.find("\ndef ", i + 10)
         self.assertIn("_o_thanh_di_qua(pidx, st, _noi)", self.src[i:j],
-                      "phep quyet phai nam trong dieu phoi")
+                      "phep quyet phai nam trong buoc CHUP ANH cua dieu phoi")
 
     def test_khong_de_ra_co_moi_cho_acc_doc(self):
         """Phep quyet chi duoc goi tu DIEU PHOI (ca hai engine), khong de ra co cho acc doc.
@@ -236,3 +236,34 @@ class TestDIEU_PHOI_quyet_khong_phai_ACC(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKhongLapPartyOMapLA(_Nen):
+    """Ca that 21/09 party 21 (user: "login vao thi ca party dang o trai pham thanh 3, bai train
+    la dam lay tang khau 4 -> sao no ko tele ve thanh gan nhat roi di ma no lap party tu trai
+    pham thanh 3 roi keo den bai train").
+
+    21814 (Trai Pham Thanh) KHONG phai thanh teleport, nen cua cu - doi `is_teleport_city` moi
+    chan - tra False = "lap party duoc". Ma tu 21814 sang 21844 bat buoc TELEPORT, teleport thi
+    phai `leave_party()` -> party vua lap lai tan, `ve_map` giao lai 160 lan lien tiep.
+
+    Cau hoi dung la "cho nay co duoc phep lap party khong": chi thanh TAP KET hoac MAP TRAIN.
+    """
+
+    def test_map_thuong_KHAC_dich_thi_PHAI_gom_truoc(self):
+        self.assertTrue(R._o_thanh_di_qua(self.PARTY, self.st, 21814),
+                        "lap party o bai train khac -> teleport sang bai dich la party tan")
+
+    def test_INSTANCE_thi_KHONG_chan(self):
+        """Pho ban / Di Gioi / thap 2K: acc dang LAM VIEC trong do va khong teleport ra duoc -
+        ra lenh gom luc nay la keo acc ra khoi pho ban giua chung."""
+        self.assertFalse(R._o_thanh_di_qua(self.PARTY, self.st, 62011))
+
+    def test_van_KHONG_chan_khi_chua_biet_dich(self):
+        """L13: chua biet != khong sao. Tha lap party thua con hon khong bao gio lap."""
+        _cu = R._thanh_tap_ket_dich
+        R._thanh_tap_ket_dich = lambda *_a, **_k: None
+        try:
+            self.assertFalse(R._o_thanh_di_qua(self.PARTY, self.st, 21814))
+        finally:
+            R._thanh_tap_ket_dich = _cu

@@ -1,8 +1,8 @@
 # ENGINE PARTY MỚI — 1 luồng quyết định / party (chạy song song với engine cũ)
 
-> Trạng thái: **ĐANG CHẠY THẬT** — `PARTY_ENGINE_MOI_TU = 51` (user chốt 17/09 chiều:
-> *"đổi party theo cơ chế mới là từ party >50"*; sáng cùng ngày từng mở xuống 31 rồi thu lại).
-> Phạm vi: **party số 51 trở đi** — 6/56 party. Party 1–50 giữ nguyên engine cũ.
+> Trạng thái: **ĐANG CHẠY THẬT** — `PARTY_ENGINE_MOI_TU = 21` (user chốt 20/09:
+> *"sửa lại party >20 theo engine mới"*).
+> Phạm vi: **party số 21 trở đi** — 36/56 party. Party 1–20 giữ nguyên engine cũ.
 > Đặt hằng đó `= 0` là toàn bộ về engine cũ ngay, đường lui trong một giây.
 
 ## 1. Vì sao làm
@@ -104,7 +104,7 @@ PARTY_ENGINE_MOI_TU = 31     # party số 31 trở đi dùng engine mới (0 = t
 
 ## 6. Tiêu chí thắng thua (định TRƯỚC, không cãi bằng cảm giác)
 
-Đo trên `party.log`, so **party 1–50 (cũ)** với **51–56 (mới)**, cùng khung giờ:
+Đo trên `party.log`, so **party 1–20 (cũ)** với **21–56 (mới)**, cùng khung giờ:
 
 | đo | ghi chú |
 |---|---|
@@ -127,10 +127,11 @@ hai engine vô thời hạn — mọi lỗi sẽ phải sửa hai lần.
    gồm bài diễn tập lại đúng ca party 11: `tests/test_engine_moi_khong_ket_nhu_party11.py`)
 3. ~~Chạy **2 party** trước (`PARTY_ENGINE_MOI_TU = 53`), đọc log 1 ngày~~ — **XONG**
 4. ~~Hạ ngưỡng dần: 53 → 49 → 45 → **41**~~ — **XONG** (16/09)
-5. ~~Mở rộng xuống **31**~~ (17/09 sáng) → **THU LẠI 51** cùng ngày ← **đang ở đây**, 6/56 party
-   Lý do thu lại: engine mới còn đang sửa theo log thật từng ngày; để ít party thì mỗi lần hỏng
-   thiệt hại ít.
-6. So bảng tiêu chí ở mục 6 rồi mới quyết định có mở rộng xuống party thấp hơn hay không.
+5. Đường đi của ngưỡng: 53 → 41 → 31 (17/09 sáng) → 51 (17/09 chiều, thu lại) → **21**
+   (20/09) ← **đang ở đây**, 36/56 party.
+   Mỗi lần mở rộng đều sau một đợt sửa theo log thật; để hẹp thì mỗi lần hỏng ít thiệt hại,
+   để rộng thì bắt lỗi nhanh hơn.
+6. So bảng tiêu chí ở mục 6 rồi mới quyết định có mở rộng xuống party 1–20 hay không.
 
 **Một ngày sửa theo log thật (17/09)** — mọi lỗi đều cùng một họ: engine ra lệnh **cấp party**
 nhưng chưa tính tới việc acc **đang dở một việc dài** (đi đường, đánh nhau), hoặc tự nghĩ ra
@@ -183,3 +184,63 @@ Level còn lượt đọc từ **đồng hồ server** (`team_dungeon_remaining`
 - Không sửa engine cũ trong lúc dựng engine mới, trừ 4 cửa chặn.
 - Không chuyển APK cho tới khi có số liệu.
 - Không xoá `run_account` — nó là bản đối chứng, và là đường lui.
+
+---
+
+## 21/09/2026 — Bước 1: luật cấp party đã chuyển vào ENGINE
+
+User: *"chuyển về cùng 1 thread thì để cái điều phối làm lồn gì nữa, thread biết hết tất cả thông
+tin rồi thì nó phải nắm vai trò điều phối luôn"* và *"về lâu dài tao sẽ xóa engine cũ và điều phối"*.
+
+### Trước
+
+Quyết định nằm ở **ba nơi**, nơi thứ ba engine mới không bao giờ chạy:
+
+| Nơi | Ai chạy |
+|---|---|
+| `party_engine.quyet_dinh()` | engine mới |
+| `_dieu_phoi_quyet()` — 210 dòng, 19 nhánh | cả hai |
+| rải rác trong `run_account()` — 5471 dòng | **chỉ engine cũ** |
+
+Đó là nguồn của cả loạt lỗi "flow cũ có mà engine mới không có" (p41 PB thiếu người, p43 kẹt kênh,
+p55 lập party khi thiếu acc…). Đếm được **31 quyết định cấp party** còn kẹt trong `run_account`.
+
+### Sau
+
+`party_engine.quyet_dinh_cap_party(anh) -> (viec, ly_do, HieuUng)` — **hàm thuần**, giữ nguyên
+19 nhánh và toàn bộ chú thích ca hỏng thật. `_dieu_phoi_quyet` giờ chỉ còn ba việc, **không còn
+luật nào**:
+
+```
+1. CHUP ANH   `_chup_anh_cap_party`  - đọc client/state
+2. HOI ENGINE `quyet_dinh_cap_party` - hàm thuần
+3. THI HANH   `_thi_hanh_hieu_ung`   - làm những thay đổi trạng thái mà quyết định kéo theo
+```
+
+`HieuUng` mang mọi tác dụng phụ ra ngoài: `doi_pha_train`, `reset_joined`, `kenh_hong`,
+`rut_reform`, `dang_gom`, `nguoi_keo`, `chot_tang_gom`, `chot_2k_xong`, `xoa_nhip_acc`, và ba mốc
+thời gian (`lech_tu`, `het_lech_tu`, `o_thanh_tu`). Hàm quyết định **không đọc đồng hồ** — giờ
+truyền vào qua `anh.bay_gio`.
+
+### Việc chuyển làm lộ một luật suýt mất
+
+Test `test_DG_party_du_va_cung_kenh_thi_khong_resync` bắt được: bản chuyển đầu tiên **đánh rơi**
+cửa *"trong DG, party ĐỦ + cùng kênh thì đứng hình không được resync"*. `resync_gen` chỉ làm được
+một việc — bắt mọi member `leave_party()` rồi mời lại — nên với party đang lành đó là **đập đội**.
+Chính nó làm leader *"mời 2198s chưa đủ party (2/4)"* đêm 10→11/09. Đã khôi phục.
+
+> Đây là lý do 34 test neo-source đỏ khi chuyển **không được sửa cho xanh lấy lệ**: một trong số
+> đó là luật thật bị mất.
+
+### Ba mươi tư test neo-source đã dời neo
+
+Chúng neo luật bằng cách đọc `run_party_digioi.py`. Luật dời thì neo dời theo — đọc
+`bot/party_engine.py`, và tên việc cấp party đổi `VIEC_*` → `DP_*`. **Không nới lỏng phép kiểm
+nào**: các phép so thứ tự nhánh, đếm số chỗ ghi, kiểm "chỉ một nơi được quyết" đều giữ nguyên ý.
+
+### Còn lại của lộ trình
+
+2. Kéo **31 quyết định** còn kẹt trong `run_account` vào `quyet_dinh_cap_party`
+3. Chuyển `_dieu_phoi_chot_kenh` (241 dòng) vào engine; xoá `_dieu_phoi_loop`
+
+Xong bước 3 là xoá được điều phối, engine cũ chỉ còn là code thi hành.

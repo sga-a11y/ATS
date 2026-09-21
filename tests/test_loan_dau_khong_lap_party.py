@@ -287,7 +287,7 @@ class TestMotNGUON_SU_THAT(unittest.TestCase):
         self.assertEqual(self.src.count("def _mode_can_lap_doi("), 1)
 
     def test_ca_HAI_duong_ra_lenh_deu_hoi_ham_do(self):
-        for _ham in ("def _dieu_phoi_quyet(", "def _dieu_phoi_chot_kenh("):
+        for _ham in ("def _chup_anh_cap_party(", "def _dieu_phoi_chot_kenh("):
             i = self.src.find(_ham)
             self.assertGreater(i, 0, _ham)
             j = self.src.find("\ndef ", i + 10)

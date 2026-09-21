@@ -195,6 +195,10 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             do_team_dungeon=mock.Mock(return_value=True),
             _phoban_until=0.0,
             _team_dungeon_until=0.0,
+            # `_handle_auto_team_dungeon` TU CHO HET TRAN truoc khi mo phong (p21, 21/09: leader
+            # mo phong giua tran -> khong vao duoc -> "roster phong chi 0/4" -> HUY + relogin).
+            in_combat=mock.Mock(return_value=False),
+            _wait_combat_clear=mock.Mock(return_value=True),
         )
         state = {
             "lock": threading.Lock(),
@@ -245,6 +249,10 @@ class TestTeamDungeon110Execution(unittest.TestCase):
             close=mock.Mock(side_effect=lambda: setattr(game, "running", False)),
             _phoban_until=0.0,
             _team_dungeon_until=0.0,
+            # `_handle_auto_team_dungeon` TU CHO HET TRAN truoc khi mo phong (p21, 21/09: leader
+            # mo phong giua tran -> khong vao duoc -> "roster phong chi 0/4" -> HUY + relogin).
+            in_combat=mock.Mock(return_value=False),
+            _wait_combat_clear=mock.Mock(return_value=True),
         )
         state = {
             "lock": threading.Lock(),

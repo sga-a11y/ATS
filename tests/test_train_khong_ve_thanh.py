@@ -146,7 +146,9 @@ class TestApVaoLuong(unittest.TestCase):
         self.assertIn("_ra_rally_gom_lai(", than)
         self.assertIn('st.get("rally_point")', than)
         # Ca 2 duong doi kenh deu phai goi: lenh tay tu GUI va sync kenh trong luong
-        self.assertIn('_ra_safe_truoc_khi_doi_kenh("lenh doi kenh tay")', s)
+        # Ca 2 duong doi kenh deu phai ra safe: lenh tay tu GUI va sync kenh trong luong.
+        # Lenh tay gio di qua ham chung, closure duoc truyen vao lam callback `ra_safe`.
+        self.assertIn("ra_safe=_ra_safe_truoc_khi_doi_kenh", s)
         self.assertIn('_ra_safe_truoc_khi_doi_kenh("sync kenh")', s)
 
     def test_KHONG_doi_kenh_giua_tran(self):
@@ -155,7 +157,9 @@ class TestApVaoLuong(unittest.TestCase):
         Train thi party danh lien tuc -> gan nhu luon roi vao canh do.
         """
         s = _src()
-        i = s.find('if kind == "channel":')
+        # 21/09: khoi xu ly da tach thanh ham chung `doi_kenh_theo_lenh_tay` (engine moi
+        # dung lai). Neo theo TEN HAM - `if kind == "channel":` gio chi con la cho GOI.
+        i = s.find("def doi_kenh_theo_lenh_tay(")
         doan = s[i:i + 8600]
         self.assertIn("c._wait_combat_clear(idle=2.0, cap=120.0)", doan)
         self.assertIn("VAN dang trong tran -> chua doi kenh", doan)
@@ -166,11 +170,13 @@ class TestApVaoLuong(unittest.TestCase):
 
     def test_doi_kenh_that_bai_thi_KHONG_bao_thanh_cong(self):
         s = _src()
-        i = s.find('if kind == "channel":')
+        # 21/09: khoi xu ly da tach thanh ham chung `doi_kenh_theo_lenh_tay` (engine moi
+        # dung lai). Neo theo TEN HAM - `if kind == "channel":` gio chi con la cho GOI.
+        i = s.find("def doi_kenh_theo_lenh_tay(")
         doan = s[i:i + 10400]
         self.assertIn("GIU kenh cu", doan)
         # st["channel"] chi duoc ghi khi ok
-        k = doan.find('st["channel"] = int(ch)')
+        k = doan.find('st["channel"] = ch')
         self.assertGreater(k, 0)
         self.assertIn("if ok:", doan[max(0, k - 120):k])
 
@@ -178,9 +184,13 @@ class TestApVaoLuong(unittest.TestCase):
         """User 27/08: "roi sau do the nao, bot do luon a". Bo sau vai lan = lenh cua user bi nuot
         im, vi dang train thi tran noi tiep tran nen vai lan dau chac chan roi vao giua tran."""
         s = _src()
-        i = s.find('if kind == "channel":')
+        # 21/09: khoi xu ly da tach thanh ham chung `doi_kenh_theo_lenh_tay` (engine moi
+        # dung lai). Neo theo TEN HAM - `if kind == "channel":` gio chi con la cho GOI.
+        i = s.find("def doi_kenh_theo_lenh_tay(")
         doan = s[i:i + 9600]
-        self.assertIn("_han = time.time() + 300", doan, "kien tri toi 5 phut")
+        # Han mac dinh 300s, gio la tham so `han_giay` cua ham chung (van 300).
+        self.assertIn("han_giay=300.0", doan, "kien tri toi 5 phut")
+        self.assertIn("_han = time.time() + float(han_giay)", doan)
         self.assertIn("while time.time() < _han:", doan)
         # user bam lenh KHAC thi bo lenh cu, khong giu cho
         self.assertIn('st.get("cmd_gen", 0) != cmd_gen_handled', doan)
@@ -188,7 +198,9 @@ class TestApVaoLuong(unittest.TestCase):
     def test_kenh_day_hoac_khong_ton_tai_thi_BO_SOM(self):
         """result 2/4: thu lai cung the -> de vong sync kenh chon kenh khac cho CA PARTY."""
         s = _src()
-        i = s.find('if kind == "channel":')
+        # 21/09: khoi xu ly da tach thanh ham chung `doi_kenh_theo_lenh_tay` (engine moi
+        # dung lai). Neo theo TEN HAM - `if kind == "channel":` gio chi con la cho GOI.
+        i = s.find("def doi_kenh_theo_lenh_tay(")
         doan = s[i:i + 9600]
         # `-1` = server IM LANG (timeout het luot) - them 09/09: cung la "khong vao duoc", thu
         # lai cung the. Xem test_khong_gui_doi_kenh_chong_nhau.py.
@@ -197,7 +209,9 @@ class TestApVaoLuong(unittest.TestCase):
 
     def test_ra_safe_goi_TRUOC_switch_channel(self):
         s = _src()
-        i = s.find('if kind == "channel":')
+        # 21/09: khoi xu ly da tach thanh ham chung `doi_kenh_theo_lenh_tay` (engine moi
+        # dung lai). Neo theo TEN HAM - `if kind == "channel":` gio chi con la cho GOI.
+        i = s.find("def doi_kenh_theo_lenh_tay(")
         doan = s[i:i + 8600]
         self.assertLess(doan.find("_ra_safe_truoc_khi_doi_kenh"), doan.find("c.switch_channel("),
                         "phai ra safe TRUOC khi doi kenh")

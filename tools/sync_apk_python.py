@@ -28,7 +28,8 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           # Engine party MOI (1 luong quyet dinh/party). PHAI chep sang APK du dang chay THU tren
           # PC: `run_party_digioi.py` (file dung chung) co `from . import party_engine` ngay dau
           # file - thieu file la APK CRASH LUC IMPORT, khong phai "chay engine cu binh thuong".
-          # Engine van TAT tren APK vi `PARTY_ENGINE_MOI_TU = 0`.
+          # 21/09: `PARTY_ENGINE_MOI_TU = 1` -> engine moi chay cho MOI PARTY tren CA HAI ban
+          # (truoc do comment nay ghi "van TAT tren APK vi = 0" - da lac hau tu luc nguong len 53).
           "party_engine.py",
           # TU PHAT HIEN SERVER MOI tu CDN tai nguyen cua game. `config.py` cua CA HAI ban goi
           # `servers_cdn.doc_overlay()` luc nap SERVERS - thieu file la APK crash luc import.

@@ -50,6 +50,17 @@ sys.path.insert(0, ROOT)
 def _src():
     with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
         return fh.read()
+def _src_pe():
+    """LUAT cap party da chuyen vao engine (21/09) - `party_engine.quyet_dinh_cap_party`."""
+    with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _than_luat():
+    """Than ham QUYET DINH cap party (noi giu 19 nhanh)."""
+    pe = _src_pe()
+    i = pe.find("def quyet_dinh_cap_party(")
+    return pe[i:] if i >= 0 else ""
 
 
 def _than(src, dau):
@@ -119,15 +130,20 @@ class TestKhongResyncPartyDangLanh(unittest.TestCase):
     kenh thi do la dap doi dang lanh, khong phai chua treo."""
 
     def setUp(self):
-        self.than = _than(_src(), "def _dieu_phoi_quyet(")
+        self.than = _than_luat()
 
     def test_DG_party_du_va_cung_kenh_thi_khong_resync(self):
+        """Phep "acc dung hinh" gio do ANH CHUP mang sang (`anh.acc_dung_hinh`); luat chi doc no.
+        Trong DG thi ra `dong_bo`, ngoai DG thi `gom` - va party DU + cung kenh khong bi dap."""
         ma = _ma(self.than)
-        i = ma.find("_acc_dung_hinh(st, song, KE_HOACH_DUNG_HINH_SEC)")
-        self.assertGreater(i, 0)
-        khoi = ma[i:i + 900]
-        self.assertIn("_thieu_doi(pidx, song)", khoi)
-        self.assertIn("len(kenhs) <= 1", khoi)
+        # Cua BO QUA dau hieu dung hinh khi party DU + cung kenh - dat TRUOC cho ra lenh.
+        i = ma.find("if _dung_hinh and pha == PHA_DG and anh.du_doi and len(kenhs) <= 1:")
+        self.assertGreater(i, 0, "mat cua 'party DU + cung kenh thi khong resync'")
+        self.assertIn("_dung_hinh = []", ma[i:i + 200])
+        j = ma.find("if viec == DP_LAM and _dung_hinh:")
+        self.assertGreater(j, i, "cua bo qua phai dung TRUOC cho ra lenh")
+        self.assertIn("DP_DONG_BO", ma[j:j + 400],
+                      "trong DG phai dong bo tai cho, khong gom ve thanh")
 
     def test_van_giu_phat_hien_dung_hinh(self):
         """Chi bo CACH CHUA sai, khong bo phep do - party ket that van phai bat duoc."""

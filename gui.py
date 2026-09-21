@@ -1858,6 +1858,16 @@ class BotGUI(tk.Tk):
                     import threading as _t2
                     def _price():
                         c = ctrl.account_clients.get(u)
+                        # TRONG DI GIOI/INSTANCE thi server KHONG tra gia -> noi thang ra, dung
+                        # hien "(?)" (user 21/09: "cho mua slot hinh nhu bi loi"). Moi acc bao
+                        # "khong hoi duoc gia" hom do deu dang o map 49942 (Di Gioi).
+                        try: _o_dg = bool(c and c.in_di_gioi())
+                        except Exception: _o_dg = False
+                        if _o_dg:
+                            _txt = "Đang ở Dị Giới\n(ra ngoài mới mua được)"
+                            self.after(0, lambda: buybtn.winfo_exists()
+                                       and buybtn.configure(text=_txt, state="disabled"))
+                            return
                         try: pr = c and c.query_bag_slot_price()
                         except Exception: pr = None
                         _txt = f"Mua slot\n{pr[0]} vàng" if pr else "Mua slot\n(?)"
@@ -2451,6 +2461,160 @@ def _bag_icon(widget):
     _px(3, 6, 12, 8, NAP)                   # nap tui
     _px(7, 9, 8, 11, VIEN)                  # khoa
     _BAG_ICON[key] = img
+    return img
+
+
+# ---------------------------------------------------------------- ICON LOAI ITEM (tui do)
+#
+# User 21/09: "mo tui do thay tat ca cac item chi co ten lam tim item muon tim cung kho qua, t
+# muon them 1 icon the hien loai item vao do o goc cho de phan biet ... muon tim loai nao thi t
+# tim khu nao co nhieu icon loai do roi t moi nhin ten, se tim nhanh hon".
+#
+# KHONG DUNG EMOJI: font mac dinh cua Tk tren Windows khong co -> hien O VUONG (user bao 25/08,
+# chinh vi vay `_bag_icon` phia tren cung ve tay). Moi icon ve bang pixel 12x12.
+#
+# Icon GOC cua game thi khong lay duoc: no nam trong atlas Unity (jmg01.jmg) + anh xa iconId->o
+# nam trong libil2cpp.so, chua dich nguoc duoc (xem chu thich trong `_cell`).
+#
+# Canh 14px (ban dau 12): 12x12 khong du cho ta hinh - Ho uyen/Giay/Ngoc ve ra
+# deu thanh khoi vuong, user 21/09: "ko giong ty nao" / "cha giong giay".
+#
+# NHAN DANG LOAI - deu tu du lieu game, KHONG doan theo ten:
+#   thuoc  hp>0 hoac sp>0                     (622 item) - user: "HP va SP chi can chung 1 icon"
+#   cuon   co trong pet_scrolls.json          (448 item)
+#   ngua   kd == 49                           ( 28 item) - item HOI TRUNG THANH cho pet.
+#          Khop tron ven: ca 28 muc kd=49 deu co thuoc tinh `a1k/a2k == 64` (= 忠誠, tra o
+#          `_lua_dec/Data/ItemData.lua:479`), va khong muc nao co attr do ma lot ra ngoai kd=49.
+#   eq1..6 ft == 1..6 (Mu/Ao/Vu khi/Ho uyen/Giay/Dac biet) - `EItemFitType` cua client
+#          (`_lua_dec/Data/ItemData.lua:1`), cung bang voi `_EQUIP_SLOTS` ben duoi.
+# Item khong thuoc loai nao -> KHONG co icon, de o trong. Vung co icon noi bat han len, dung
+# dung y cua user.
+_LOAI_ICON = {}         # (id(root), loai) -> PhotoImage (PHAI giu tham chieu - xem `_bag_icon`)
+
+# Mau chu dao cua tung loai. Sau 12x12 pixel thi HINH kho ta chi tiet, MAU moi la thu nhin
+# loang qua da tach duoc - nen moi loai mot tong rieng han.
+_LOAI_MAU = {
+    "thuoc": ("#8b1a1a", "#e24a4a", "#f7b9b9"),   # lo thuoc do
+    "cuon":  ("#7a5a1e", "#d9b25a", "#f2e3bd"),   # cuon giay vang
+    "ngua":  ("#3a5a2a", "#7fb069", "#d6e8c8"),   # ngua xanh la (giong anh user gui)
+    "eq1":   ("#4a4a52", "#9aa0a8", "#dfe3e8"),   # mu - xam bac
+    "eq2":   ("#5a2f22", "#a8604a", "#e0bcae"),   # ao - nau do
+    "eq3":   ("#3c4450", "#c0c8d4", "#f0f4fa"),   # vu khi - thep sang
+    "eq4":   ("#6b4a12", "#c79a3a", "#f0dca8"),   # ho uyen - vang dong
+    "eq5":   ("#1e3350", "#4568a0", "#b9c9e0"),  # giay - xanh dam
+    "eq6":   ("#8a6a10", "#3fae9a", "#f2d97a"),   # ngoc Phu Than - vien VANG, ruot XANH NGOC
+}
+
+
+def _px(img, x1, y1, x2, y2, color):
+    """To khoi chu nhat DAC (ke ca vien) va bo trong suot cho vung do."""
+    img.put(color, to=(x1, y1, x2 + 1, y2 + 1))
+    for yy in range(y1, y2 + 1):
+        for xx in range(x1, x2 + 1):
+            img.transparency_set(xx, yy, False)
+
+
+def _icon_loai(widget, loai):
+    """Icon 14x14 cua `loai`. None neu loai khong co icon."""
+    if not loai:
+        return None
+    root = widget.winfo_toplevel()
+    key = (id(root), loai)
+    img = _LOAI_ICON.get(key)
+    if img is not None:
+        return img
+    S = 14
+    img = tk.PhotoImage(master=root, width=S, height=S)
+    for y in range(S):
+        for x in range(S):
+            img.transparency_set(x, y, True)
+    VIEN, THAN, SANG = _LOAI_MAU.get(loai, ("#555", "#999", "#ddd"))
+
+    if loai == "thuoc":
+        # Lo thuoc: nut tren + than tron, co vet sang ben trai.
+        _px(img, 6, 0, 7, 2, VIEN)          # nut lo
+        _px(img, 4, 3, 9, 4, VIEN)          # co lo
+        _px(img, 2, 5, 11, 13, VIEN)        # vien than
+        _px(img, 3, 6, 10, 12, THAN)        # than
+        _px(img, 4, 7, 4, 11, SANG)         # vet sang
+    elif loai == "cuon":
+        # CUON NAM NGANG, hai dau la NAP TRUC tron sang - dung nhu anh user gui (hai cuon xanh/do
+        # nam ngang, dau cuon lo ra hai ben). Ban cu ve cuon DUNG nen user bao "ko giong".
+        _px(img, 0, 3, 2, 10, VIEN)         # nap truc trai
+        _px(img, 1, 4, 1, 9, SANG)
+        _px(img, 11, 3, 13, 10, VIEN)       # nap truc phai
+        _px(img, 12, 4, 12, 9, SANG)
+        _px(img, 3, 4, 10, 9, VIEN)         # vien than cuon
+        _px(img, 3, 5, 10, 8, THAN)         # mat giay
+        _px(img, 4, 6, 9, 6, SANG)          # hai net chu
+        _px(img, 4, 7, 7, 7, SANG)
+    elif loai == "ngua":
+        # NGUA DUNG nhin nghieng (anh user gui la CA CON ngua, khong phai dau) - de nhan ra hon
+        # han: dau + co cheo + than ngang + bon chan + duoi.
+        _px(img, 9, 0, 12, 3, VIEN)         # dau
+        _px(img, 10, 1, 11, 2, THAN)
+        _px(img, 12, 2, 13, 3, VIEN)        # mom
+        _px(img, 10, 1, 10, 1, SANG)        # mat
+        _px(img, 7, 1, 9, 2, VIEN)          # tai + bom
+        _px(img, 6, 3, 10, 5, VIEN)         # co cheo
+        _px(img, 7, 4, 9, 5, THAN)
+        _px(img, 1, 5, 10, 9, VIEN)         # vien than
+        _px(img, 2, 6, 9, 8, THAN)          # than
+        _px(img, 0, 5, 1, 7, VIEN)          # duoi
+        _px(img, 2, 9, 3, 13, VIEN)         # chan truoc-trai
+        _px(img, 5, 9, 6, 13, VIEN)         # chan truoc-phai
+        _px(img, 8, 9, 9, 13, VIEN)         # chan sau
+    elif loai == "eq1":                      # MU - vom + VANH RONG (user: "cho vanh mu rong them")
+        _px(img, 4, 2, 9, 3, VIEN)          # chop
+        _px(img, 3, 4, 10, 8, VIEN)         # vien vom
+        _px(img, 4, 5, 9, 7, THAN)          # vom
+        _px(img, 5, 5, 6, 5, SANG)
+        _px(img, 0, 9, 13, 11, VIEN)        # VANH: rong het be ngang, day 3px
+        _px(img, 1, 10, 12, 10, THAN)
+    elif loai == "eq2":                      # AO - than ao + hai tay
+        _px(img, 1, 3, 3, 7, VIEN)          # tay trai
+        _px(img, 10, 3, 12, 7, VIEN)        # tay phai
+        _px(img, 4, 2, 9, 12, VIEN)         # vien than
+        _px(img, 5, 3, 8, 11, THAN)         # than
+        _px(img, 6, 2, 7, 3, SANG)          # co ao
+    elif loai == "eq3":                      # VU KHI - kiem cheo (user: OK -> giu nguyen bo cuc)
+        _px(img, 0, 11, 2, 13, VIEN)        # chuoi (goc duoi-trai)
+        _px(img, 1, 8, 5, 10, VIEN)         # chan kiem
+        for i in range(10):                 # luoi cheo, day 2px
+            _px(img, 2 + i, 10 - i, 3 + i, 11 - i, THAN)
+        _px(img, 11, 0, 13, 2, SANG)        # mui kiem
+    elif loai == "eq4":                      # HO UYEN - ONG TAY deo co tay, co hai dai khoa
+        # Ban cu ve cai vong tron -> user: "ko giong ty nao". Ho uyen trong game la mieng bao
+        # cang tay: hinh thang dung, co hai dai ngang va dinh tan o vien.
+        _px(img, 3, 1, 10, 12, VIEN)        # vien ngoai
+        _px(img, 4, 2, 9, 11, THAN)         # mat trong
+        _px(img, 2, 3, 11, 4, VIEN)         # dai khoa tren
+        _px(img, 2, 8, 11, 9, VIEN)         # dai khoa duoi
+        _px(img, 5, 3, 6, 4, SANG)          # dinh tan
+        _px(img, 5, 8, 6, 9, SANG)
+        _px(img, 4, 6, 5, 6, SANG)
+    elif loai == "eq5":                      # GIAY - bong giay nhin NGHIENG, mui cong len
+        # Ban cu nhin nhu cai hop -> user: "cha giong giay". Ve lai: co giay o phai, mui giay
+        # vuot dai sang trai, de day rieng mot mau.
+        _px(img, 8, 1, 12, 7, VIEN)         # co giay (o phai), cao han len
+        _px(img, 9, 2, 11, 6, THAN)
+        _px(img, 9, 2, 9, 4, SANG)          # vet sang tren co
+        _px(img, 4, 6, 12, 9, VIEN)         # vien than giay
+        _px(img, 4, 7, 11, 8, THAN)         # mat than
+        _px(img, 1, 8, 4, 9, VIEN)          # MUI giay nhon, nho han ra trai va THAP hon co
+        _px(img, 2, 8, 3, 8, THAN)
+        _px(img, 1, 10, 12, 11, VIEN)       # DE mong (2px), khong day nhu cai hop
+    elif loai == "eq6":                      # NGOC PHU THAN - the chu nhat bo goc, vien VANG day
+        # Anh user gui: mieng ngoc nam ngang, VIEN VANG DAY bo goc, ruot XANH, giua co hoa van
+        # vang. Ban cu to kin ca khoi -> nhin ra o vuong dac, user: "cha giong ngoc phu than".
+        _px(img, 2, 3, 11, 10, VIEN)        # vien vang day
+        _px(img, 1, 5, 12, 8, VIEN)         # bo goc: noi rong o giua
+        _px(img, 3, 4, 10, 9, THAN)         # ruot xanh ngoc
+        _px(img, 2, 6, 11, 7, THAN)
+        _px(img, 5, 5, 8, 6, SANG)          # hoa van vang o giua
+        _px(img, 6, 7, 7, 8, SANG)
+        _px(img, 3, 4, 4, 4, SANG)          # loe sang goc tren-trai
+    _LOAI_ICON[key] = img
     return img
 
 
@@ -3397,7 +3561,19 @@ class BagDialog(tk.Toplevel):
             cell.grid(row=0, column=_c, padx=3, pady=2, sticky="nsew")
             cell.grid_propagate(False)
             self.equip_fr.grid_columnconfigure(_c, weight=1)
-            tk.Label(cell, text=_ten, font=("", 7), fg="#666").pack(anchor="w", padx=3)
+            # ICON LOAI ngay canh ten o - CUNG hinh voi icon trong luoi tui do, de nhin mot cai
+            # la doi chieu duoc "mon dang mac o o nay" voi "cac mon cung loai trong tui"
+            # (user 21/09: "may trang bi o cac slot dang mac cung can icon tuong ung de de nhan
+            # biet item cung loai"). Icon gan theo O chu khong theo mon dang mac, nen o TRONG van
+            # co icon - do la luc can nhin nhat.
+            _hang = tk.Frame(cell)
+            _hang.pack(anchor="w", fill="x", padx=3)
+            _ic = _icon_loai(_hang, "eq%d" % int(_fit))
+            if _ic is not None:
+                _l_ic = tk.Label(_hang, image=_ic, bd=0)
+                _l_ic.pack(side="left", padx=(0, 3))
+                _l_ic.bind("<Button-1>", lambda _e, f=_fit: self._select_equip(f))
+            tk.Label(_hang, text=_ten, font=("", 7), fg="#666").pack(side="left")
             lb = tk.Label(cell, text="—", font=("", 8), wraplength=98, justify="left",
                           anchor="nw", fg="#888")
             lb.pack(fill="both", expand=True, padx=3)
@@ -4101,6 +4277,44 @@ class BagDialog(tk.Toplevel):
     def _item(self, tid):
         return self._items_db.get("0x%04x" % int(tid)) or self._items_db.get(str(int(tid))) or {}
 
+    def _loai_item(self, tid, d):
+        """LOAI cua item -> key icon (xem `_icon_loai`). None = khong co icon.
+
+        Nhan dang tu DU LIEU GAME, khong doan theo ten (ten tieng Viet co dau, viet tat, va co ca
+        ky tu rac tu .dat - do ten la sai som muon).
+
+        Thu tu xet co y: TRANG BI truoc, vi mot mon trang bi cung co the co `hp`/`sp` (vd ao cong
+        HP) - luc do no van la trang bi, khong phai thuoc.
+        """
+        try:
+            ft = int(d.get("ft") or 0)
+            if 1 <= ft <= 6:
+                return "eq%d" % ft
+            if int(d.get("kd") or 0) == 49:
+                return "ngua"          # item HOI TRUNG THANH cho pet (28 mon, khop tron ven)
+            if int(tid) in self._tid_cuon_pet():
+                return "cuon"
+            if int(d.get("hp") or 0) > 0 or int(d.get("sp") or 0) > 0:
+                return "thuoc"
+        except (TypeError, ValueError):
+            return None
+        return None
+
+    def _tid_cuon_pet(self):
+        """Tap tid cuon goi pet (`pet_scrolls.json`). Dung mot lan roi nho - ham nay bi goi cho
+        TUNG O tui do moi lan ve lai."""
+        ra = getattr(self, "_cuon_pet_cache", None)
+        if ra is None:
+            ra = set()
+            try:
+                for k in (_bag_db("pet_scrolls.json") or {}):
+                    if isinstance(k, str) and k.startswith("0x"):
+                        ra.add(int(k, 16))
+            except Exception:
+                pass
+            self._cuon_pet_cache = ra
+        return ra
+
     def _desc(self, tid):
         """Mo ta/tac dung cua item (truong 說明 trong Item_C.dat). "" neu khong co."""
         return (self._desc_db.get("0x%04x" % int(tid))
@@ -4205,25 +4419,35 @@ class BagDialog(tk.Toplevel):
             # Toa do ben trong phai co THEO TI LE, khong thi chu tran ra ngoai o.
             W, H = self.CELL_W, self.CELL_H
             _day = 12                  # chieu cao hang duoi (so luong + so slot)
+            _IC = 14                   # canh icon loai (xem `_icon_loai`)
             f = tk.Frame(self.grid_fr, width=W, height=H, bd=1, relief="solid")
             f.grid_propagate(False)
             # CHUA CO ICON: gameplay icon nam trong atlas Unity (jmg01.jmg) + anh xa iconId->o nam
             # trong libil2cpp.so, chua dich nguoc duoc. Tam dung ten rut gon + mau theo pham chat.
-            l_ten = tk.Label(f, wraplength=W - 6, justify="center", font=("Segoe UI", 7))
-            l_ten.place(x=2, y=1, width=W - 4, height=H - _day - 3)
+            # ICON LOAI o goc TREN-TRAI (12x12). Ten thut vao 13px de khong bi icon de len.
+            # O chi 59x44 va da kin chu, nen icon phai lay cho cua ten - doi lai la nhin luot
+            # ca luoi la ra ngay cum nao la thuoc / cuon / trang bi (user 21/09).
+            l_icon = tk.Label(f, bd=0)
+            l_icon.place(x=1, y=1, width=_IC, height=_IC)
+            l_ten = tk.Label(f, wraplength=W - 6 - _IC, justify="center", font=("Segoe UI", 7))
+            l_ten.place(x=2 + _IC, y=1, width=W - 4 - _IC, height=H - _day - 3)
             l_sl = tk.Label(f, font=("Segoe UI", 7, "bold"), fg="#004080")
             l_sl.place(x=2, y=H - _day - 1, width=W // 2, height=_day)
             l_o = tk.Label(f, font=("Segoe UI", 6), fg="#888")
             l_o.place(x=W // 2 + 2, y=H - _day - 1, width=W // 2 - 4, height=_day)
             _i = len(self._cells)
-            for w in (f, l_ten, l_sl, l_o):
+            for w in (f, l_icon, l_ten, l_sl, l_o):
                 w.bind("<Button-1>", lambda _e, k=_i: self._select(self._cell_slot[k]))
-            self._cells.append((f, l_ten, l_sl, l_o))
+            self._cells.append((f, l_icon, l_ten, l_sl, l_o))
             self._cell_slot.append(None)
-        f, l_ten, l_sl, l_o = self._cells[i]
+        f, l_icon, l_ten, l_sl, l_o = self._cells[i]
         self._cell_slot[i] = slot
-        for w in (f, l_ten, l_sl, l_o):
+        for w in (f, l_icon, l_ten, l_sl, l_o):
             w.configure(bg=bg)
+        # `image=""` (khong phai None) moi xoa duoc anh cu - o nay dung lai cho item khac moi lan
+        # refresh, giu anh cu la icon SAI cho mon moi.
+        _ic = _icon_loai(l_icon, self._loai_item(tid, d))
+        l_icon.configure(image=_ic if _ic is not None else "")
         l_ten.configure(text=name[:22])
         l_sl.configure(text=("x%d" % cnt) if cnt > 1 else "")
         l_o.configure(text="#%d" % slot)

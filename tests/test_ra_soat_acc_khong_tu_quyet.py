@@ -43,8 +43,12 @@ with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
 
 
 def _src():
+    """LUAT cap party da chuyen vao `bot/party_engine.py` (21/09), phan thi hanh van o
+    `run_party_digioi.py` -> doc CA HAI, luat truoc."""
+    with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+        ra = fh.read()
     with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
-        return fh.read()
+        return ra + fh.read()
 
 
 class TestBossQDPhaiCoLenh(unittest.TestCase):
@@ -114,8 +118,12 @@ class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
 
     def test_bat_co_chi_khi_acc_DANG_RANH(self):
         """Go co ket False, nhung khong duoc mo khi acc dang GIUA mot viec vat."""
-        self.assertIn("and not c.dang_lam_viec_vat()", self.src)
-        self.assertEqual(self.src.count("c.dang_lam_viec_vat()"), 2,
+        # Phep nay thuoc ve `run_party_digioi` (co moi party), khong phai luat cap party -> doc
+        # rieng file do, khong dung `_src()` (gio la CA HAI file).
+        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            _rp = fh.read()
+        self.assertIn("and not c.dang_lam_viec_vat()", _rp)
+        self.assertEqual(_rp.count("c.dang_lam_viec_vat()"), 2,
                          "con duong ep bat co vo dieu kien")
 
     def test_dang_lam_viec_vat_doc_PHA_khong_doc_co(self):
@@ -185,11 +193,11 @@ class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
 
     def test_chuoi_bac_dung_thu_tu_user_chot(self):
         """lech map -> dong bo map -> lech kenh -> dong bo kenh -> lap pt -> di train."""
-        _thu_tu = ["elif song and len(maps) > 1:",
-                   "elif song and _chua_biet_map:",
-                   "elif song and _thieu_doi(pidx, song) and _ai_lech_instance(pidx, song):",
-                   "elif song and len(kenhs) > 1 and _thieu_doi(pidx, song):",
-                   "elif song and _thieu_doi(pidx, song):"]
+        _thu_tu = ["elif len(maps) > 1:",
+                   "elif anh.chua_biet_map:",
+                   "elif not anh.du_doi and anh.ai_lech_instance:",
+                   "elif len(kenhs) > 1 and not anh.du_doi:",
+                   "elif not anh.du_doi:"]
         _vt = []
         for _b in _thu_tu:
             j = self.src.find(_b)

@@ -116,8 +116,8 @@ class TestCungMapThiDONG_BO_ChuKhongGom(unittest.TestCase):
     def test_KHONG_doi_leader_bao_cao_moi_chiu_dong_bo(self):
         """Truoc day phai co `_lech_kenh_that` (bao cao doi chieu tung cap cua leader) moi vao
         nhanh DONG_BO; leader ban viec khac la roi thang xuong GOM."""
-        src = _doc("run_party_digioi.py")
-        i = src.find("viec = VIEC_DONG_BO if")
+        src = _doc(os.path.join("bot", "party_engine.py"))
+        i = src.find("viec = DP_DONG_BO if")
         self.assertGreater(i, 0)
         dong = src[i:src.find("\n", i)]
         self.assertNotIn("_lech_kenh_that", dong)

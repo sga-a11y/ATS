@@ -55,10 +55,30 @@ def _la_thanh(m):
 class TestGiuaDuongThiDiTiep(unittest.TestCase):
     def test_o_map_giua_duong_thi_DI_BO_TIEP(self):
         c = _Cli(18000)                     # 18000 = map thuong, dang tren duong toi bai
+        c._pe_dang_di_route = True          # DA xuat phat tu thanh route (co do `ve_map` bat len)
         E.thi_hanh(c, E.VIEC_VE_MAP, lambda: True, dich=18822, la_thanh=_la_thanh)
         self.assertIn(("scene_route", 18000, 18822), c.da_goi)
         self.assertNotIn(("smart_route", 18822), c.da_goi,
                          "quay ve thanh di lai -> teleport -> ROI DOI -> party vo")
+
+    def test_VUA_LOGIN_o_map_la_thi_TELEPORT_chu_khong_di_bo(self):
+        """Ca that 21/09 party 21: login tai 21814 (Trai Pham Thanh), bai train 21844 (Dam lay
+        Tang Khau) - ca hai deu KHONG phai thanh. Di bo thang sang la keo ca party loi bo qua ca
+        vung map; flow cu teleport ve thanh TRUNG GIAN (Trac Quan/Ng.Thanh) roi thanh TAP KET.
+        User: "sao no ko tele ve thanh gan nhat roi di ma no lap party tu trai pham thanh 3 roi
+        keo den bai train"."""
+        c = _Cli(21814)                     # vua login, CHUA xuat phat -> khong co co
+        E.thi_hanh(c, E.VIEC_VE_MAP, lambda: True, dich=21844, la_thanh=_la_thanh)
+        self.assertNotIn(("scene_route", 21814, 21844), c.da_goi,
+                         "di bo thang tu map la -> loi bo qua ca vung map")
+        self.assertIn(("smart_route", 21844), c.da_goi,
+                      "phai di duong route (co `pre_route_town_hop` -> thanh trung gian)")
+
+    def test_di_xong_thi_HA_co(self):
+        """Khong ha thi lan sau vua login da tuong dang giua chuyen -> lai di bo thang."""
+        c = _Cli(18001)
+        E.thi_hanh(c, E.VIEC_VE_MAP, lambda: True, dich=18822, la_thanh=_la_thanh)
+        self.assertFalse(getattr(c, "_pe_dang_di_route", False))
 
     def test_o_THANH_thi_van_di_duong_binh_thuong(self):
         c = _Cli(18001)                     # dang o thanh -> route tu thanh la dung

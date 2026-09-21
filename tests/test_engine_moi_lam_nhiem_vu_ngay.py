@@ -32,8 +32,10 @@ def _a(u, **kw):
     return E.AnhAcc(u, **kw)
 
 
-def _anh(accs, pha=E.PHA_TRAIN, **kw):
-    return E.AnhParty(50, accs, can_bao_nhieu=len(accs) - 1, co_spot=True, pha=pha, **kw)
+def _anh(accs, pha=E.PHA_TRAIN, thanh_dich=None, **kw):
+    a = E.AnhParty(50, accs, can_bao_nhieu=len(accs) - 1, co_spot=True, pha=pha, **kw)
+    a.thanh_dich = thanh_dich
+    return a
 
 
 class TestGiaoViecNhiemVuNgay(unittest.TestCase):
@@ -262,5 +264,220 @@ class TestPB_DOI_phai_dat_TRUOC_dp_viec(unittest.TestCase):
         p = os.path.join(ROOT, "bot", "party_engine.py")
         with _io.open(p, encoding="utf-8") as fh:
             s = fh.read()
-        self.assertLess(s.index("if anh.pb_doi_level is not None:"), s.index("if anh.dp_viec:"),
+        self.assertLess(s.index("if anh.pb_doi_level is not None"), s.index("if anh.dp_viec:"),
                         "PB to doi dat sau dp_viec -> khong bao gio chay toi")
+
+
+class TestPB_DOI_phai_DU_CA_PARTY(unittest.TestCase):
+    """CA PARTY phai CON LUOT + DU CAP moi vao PB to doi - y bon cua cua flow cu
+    (`_handle_auto_team_dungeon`): doc luot TUNG member, thieu status cua ai do thi BO QUA, va chi
+    chay khi `len(need) == len(members)`.
+
+    Truoc day engine moi chi doc luot cua MOI LEADER -> leader tao phong roi moi, nhung member da
+    het luot / chua du cap thi khong vao duoc => phong thieu nguoi, leader huy roi tao lai.
+
+    Ca that 20/09 party 41 (user: "p41, di PB khi co 1 dua ben ngoai"):
+        11:24:49 [dtsau] (LEADER) roster phong pho ban chi 3/4 member sau 8.0s -> THIEU nguoi
+        11:25:10 [dtsau] (LEADER) roster phong pho ban chi 1/4 member sau 8.0s -> THIEU nguoi
+        11:25:27 ENGINE: 'pb_doi_theo' giao lai 80 lan lien tiep cho dt807
+    """
+
+    class _Cli:
+        def __init__(self, con=1, loaded=True):
+            self.running = True
+            self._label = "x"
+            self._con = con
+            self.mission_steps_loaded = loaded
+
+        def team_dungeon_remaining(self, lv):
+            return self._con
+
+    def _eng(self, clients, du_cap=True):
+        return E.PartyEngine(
+            40, lambda: [("u%d" % i, c, i == 0) for i, c in enumerate(clients)],
+            pb_doi_levels=(20,), hoi_du_cap=lambda _lv: du_cap)
+
+    def test_ca_party_con_luot_thi_CHAY(self):
+        eng = self._eng([self._Cli(), self._Cli(), self._Cli()])
+        self.assertEqual(eng._pb_doi_level(), 20)
+
+    def test_MOT_dua_het_luot_thi_THOI(self):
+        eng = self._eng([self._Cli(), self._Cli(con=0), self._Cli()])
+        self.assertIsNone(eng._pb_doi_level(), "vao PB voi mot dua ben ngoai")
+
+    def test_MOT_dua_chua_co_status_thi_CHUA_KET_LUAN(self):
+        eng = self._eng([self._Cli(), self._Cli(loaded=False)])
+        self.assertIsNone(eng._pb_doi_level())
+
+    def test_chua_DU_CAP_thi_THOI(self):
+        """Server khong cho acc duoi cap ready - co tao phong cung chi ra "ready 0/4"."""
+        eng = self._eng([self._Cli(), self._Cli()], du_cap=False)
+        self.assertIsNone(eng._pb_doi_level())
+
+
+class TestPB_DOI_check_SAU_daily(unittest.TestCase):
+    """User chot 20/09: "check PB doi sau daily quest" - ve THU TU KIEM TRA trong mot nhip.
+
+    Nhanh PB to doi phai dung SAU nhanh nhiem vu ngay (0b2), KHONG phai "doi ca party xong daily
+    moi duoc vao PB".
+
+    CHI SUA ENGINE MOI - `run_account` giu nguyen thu tu cu.
+    """
+
+    def test_nhanh_daily_dung_TRUOC_nhanh_PB_trong_ma_nguon(self):
+        import io as _io
+        p = os.path.join(ROOT, "bot", "party_engine.py")
+        with _io.open(p, encoding="utf-8") as fh:
+            s = fh.read()
+        self.assertLess(s.index("ket[a.username] = VIEC_DAILY"),
+                        s.index("if anh.pb_doi_level is not None"),
+                        "check PB to doi dung TRUOC check nhiem vu ngay")
+
+    def test_con_dua_DANG_LAM_VIEC_LE_thi_CHUA_mo_phong(self):
+        """Dua dang lam viec le KHONG nhan `pb_doi_theo`, ma leader van moi du 4 -> server chi
+        cong nhan nhung dua vao duoc, leader do roster thay thieu roi HUY, tao lai.
+
+        Ca that 20/09 party 41 (user: "van thay 3 dua trong PB, 2 dua ben ngoai"):
+            11:43:23 dtsau@62013(L) dtbay@62013 dt9ch@62013 | dttam@22000* dtmuoi@22000*
+            11:45:54 (LEADER) lv110 member ready 4/4 -> START      <- bot TU bao ready
+            11:46:06 (LEADER) roster phong pho ban chi 2/4 -> THIEU nguoi, HUY danh de gom lai
+        """
+        accs = [_a("l", la_leader=True, so_member=2),
+                _a("m1"), _a("m2", xong_daily=False)]
+        anh = _anh(accs)
+        anh.pb_doi_level = 20
+        v = E.quyet_dinh(anh)
+        self.assertNotIn(E.VIEC_PB_DOI, v.values(), "mo phong PB khi con dua dang ban viec le")
+        self.assertEqual(v["m2"], E.VIEC_DAILY, "cat ngang viec le cua no")
+
+    def test_du_nguoi_RANH_thi_mo_phong(self):
+        accs = [_a("l", la_leader=True, so_member=2), _a("m1"), _a("m2")]
+        anh = _anh(accs)
+        anh.pb_doi_level = 20
+        v = E.quyet_dinh(anh)
+        self.assertEqual(v["l"], E.VIEC_PB_DOI)
+        self.assertEqual(v["m1"], E.VIEC_PB_DOI_THEO)
+
+    def test_KHONG_dung_toi_engine_cu(self):
+        """`run_account` giu nguyen thu tu cu cua no."""
+        import io as _io
+        p = os.path.join(ROOT, "run_party_digioi.py")
+        with _io.open(p, encoding="utf-8") as fh:
+            s = fh.read()
+        i = s.index("def run_account(")
+        than = s[i:s.index(chr(10) + "def ", i + 10)]
+        self.assertNotIn("xong_daily", than, "da dung vao thu tu cua engine cu")
+
+
+class TestCHUA_DU_ACC_LOGIN_thi_KHONG_lap_party(unittest.TestCase):
+    """Acc DANG LOGIN phai tinh la THIEU - chua duoc ket luan "ca party cung map/kenh".
+
+    Phep dem map/kenh chi nhin acc DANG SONG, nen khi mot dua chua vao world thi ket luan do dua
+    tren mau khong day du: dua chua login co the o kenh khac han. Lap doi luc nay la lap thieu
+    nguoi, roi dua kia vao lai phai gom lai tu dau.
+
+    Flow cu co san `_thieu_acc_song`:
+        `_con_kha_nang` = acc con THREAD song (`is_account_running`) - acc dang login VAN duoc tinh
+        `song`          = acc da co client va vao world
+        thieu <=> len(song) < len(_con_kha_nang)
+    va no da lo ca "acc TAT han thi khong cho" (cho mot acc da tat la cho vinh vien).
+    Engine moi HOI LAI ham do, khong tu dem.
+
+    Ca that 20/09 party 55 (user: "ca party chua cung map cung kenh ma da lap party"):
+        12:31:20 ENGINE: tik901/903/904/905 -> lap_party    <- tik902 CHUA vao world
+        12:33:17 [tik902] chua vao world - SERVER CHAN TOC DO DANG NHAP (lan 1)
+    """
+
+    def test_thieu_acc_thi_DUNG_YEN(self):
+        accs = [_a("l", la_leader=True, so_member=0), _a("m1"), _a("m2")]
+        anh = _anh(accs)
+        anh.thieu_acc_song = True
+        v = E.quyet_dinh(anh)
+        self.assertNotIn(E.VIEC_LAP_PARTY, v.values(), "lap doi khi con dua chua vao world")
+
+    def test_du_acc_roi_thi_lap_binh_thuong(self):
+        accs = [_a("l", la_leader=True, so_member=0), _a("m1"), _a("m2")]
+        v = E.quyet_dinh(_anh(accs))
+        self.assertEqual(v["l"], E.VIEC_LAP_PARTY)
+
+    def test_ENGINE_TU_BIET_khong_hoi_ai(self):
+        """Mot luong nam ca party thi phai TU BIET du acc hay chua - khong hoi qua callback.
+
+        `_clients_cua_party` tra ca acc CHUA co client (dang login) va bo acc DA TAT HAN, nen
+        engine chi can nhin anh chup la biet.
+        """
+        import io as _io
+        p = os.path.join(ROOT, "run_party_digioi.py")
+        with _io.open(p, encoding="utf-8") as fh:
+            s = fh.read()
+        i = s.index("def _clients_cua_party(")
+        than = s[i:s.index(chr(10) + "def ", i + 10)]
+        self.assertIn("is_account_running(u)", than, "khong tra acc dang login -> engine mu")
+        self.assertIn("ra.append((u, None))", than)
+        self.assertNotIn("hoi_thieu_acc", s, "van di hoi thay vi tu biet")
+
+    def test_acc_DA_TAT_HAN_thi_khong_cho(self):
+        """Cho mot acc da tat la cho vinh vien - `_clients_cua_party` phai bo no ra."""
+        import io as _io
+        p = os.path.join(ROOT, "run_party_digioi.py")
+        with _io.open(p, encoding="utf-8") as fh:
+            s = fh.read()
+        i = s.index("def _clients_cua_party(")
+        than = s[i:s.index(chr(10) + "def ", i + 10)]
+        self.assertIn("elif is_account_running(u):", than,
+                      "acc da tat van duoc tra ve -> party khong bao gio du")
+
+
+class TestGOM_giao_lai_cho_toi_khi_TOI_NOI(unittest.TestCase):
+    """Acc chua ve toi diem gom thi con phai ve - engine giao LAI moi nhip.
+
+    Flow cu lap NGAY TRONG hanh dong (`_do_reform`: `while not _ab() and c.current_map !=
+    _target_city: ... time.sleep(10)`), vi ben do `reform_gen` bump MOT NHAT roi cooldown 180s.
+    Engine moi khong co vong do - no giao viec moi nhip - nen phai giao LAI, khong thi acc nao
+    tele fail (dang danh / thanh chua mo / server chan) se dung im toi 3 phut sau.
+
+    Ca that 20/09 party 42 (user: "leader o trac quan, member o truong sa"):
+        13:05:14 gen 20: viec=gom - ca party dam chan o THANH 12001 1095s   <- 18 phut
+        13:05:14 ENGINE: dieu phoi bump reform_gen -> ca party thi hanh
+        13:05:26 ENGINE: luu401..luu405 -> nghi   <- leader van 12001, member 23001
+
+    KHONG quay vong nhu p43 16/09: `giao()` chi HUY viec khi viec DOI, ma day van la `ve_thanh`
+    voi CUNG mot dich (`chot_thanh_tap_ket` co cache). Cai gay ra p43 la dich NHAY lien tuc.
+    """
+
+    def test_acc_lac_khoi_diem_gom_thi_VE_THANH(self):
+        accs = [_a("l", la_leader=True, so_member=0, map_id=12001),
+                _a("m1", map_id=23001), _a("m2", map_id=23001)]
+        anh = _anh(accs, thanh_dich=23001)
+        anh.dp_viec = E.DP_GOM
+        v = E.quyet_dinh(anh)
+        self.assertEqual(v["l"], E.VIEC_VE_THANH, "leader ket o thanh khac, khong ai nhac lai")
+
+    def test_dua_DA_VE_thi_de_yen(self):
+        """Bat tele lai la tu pha: teleport bat buoc `leave_party()`."""
+        accs = [_a("l", la_leader=True, so_member=0, map_id=12001),
+                _a("m1", map_id=23001)]
+        anh = _anh(accs, thanh_dich=23001)
+        anh.dp_viec = E.DP_GOM
+        self.assertNotEqual(E.quyet_dinh(anh).get("m1"), E.VIEC_VE_THANH)
+
+    def test_CA_PARTY_da_ve_thi_thoi(self):
+        accs = [_a("l", la_leader=True, so_member=0, map_id=23001),
+                _a("m1", map_id=23001)]
+        anh = _anh(accs, thanh_dich=23001)
+        anh.dp_viec = E.DP_GOM
+        self.assertNotIn(E.VIEC_VE_THANH, E.quyet_dinh(anh).values())
+
+    def test_da_o_dich_thi_thi_hanh_KHONG_tele_lai(self):
+        class _Cli:
+            running = True
+            _label = "x"
+            current_map = 23001
+            goi = 0
+
+            def go_to_town(self, city, flag):
+                type(self).goi += 1
+                return True
+
+        self.assertTrue(E.thi_hanh(_Cli(), E.VIEC_VE_THANH, lambda: True, dich=(23001, 4)))
+        self.assertEqual(_Cli.goi, 0, "tele lai khi da dung o dich = tu pha party")

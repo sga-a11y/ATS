@@ -95,16 +95,20 @@ class TestDieuPhoiLaNoiRaLENH(unittest.TestCase):
         self.assertIn("dat_nguoi_keo(pidx,", self.src)
 
     def test_chot_ngay_canh_cac_lenh_cap_party_khac(self):
-        """Mot cho quyet, mot nhip (L1)."""
-        i_gom = self.src.find("dat_party_dang_gom(pidx, viec in")
+        """Mot cho quyet, mot nhip (L1). Ca hai gio nam trong `_thi_hanh_hieu_ung`."""
+        i_gom = self.src.find("dat_party_dang_gom(pidx, hu.dang_gom)")
         i_keo = self.src.find("dat_nguoi_keo(pidx,")
         self.assertGreater(i_gom, 0)
         self.assertLess(abs(i_keo - i_gom), 1500)
 
     def test_dang_GOM_thi_giao_cho_tat_ca(self):
-        i = self.src.find("dat_nguoi_keo(pidx,")
-        khoi = self.src[max(0, i - 1200):i]
-        self.assertIn("viec in (VIEC_GOM, VIEC_DONG_BO)", khoi)
+        """Luat gio o `party_engine.quyet_dinh_cap_party`: dang GOM/DONG_BO -> `nguoi_keo = "*"`
+        (ca party tu ve diem hen), con lai thi CHI leader duoc di."""
+        with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+            pe = fh.read()
+        i = pe.find("if viec in (DP_GOM, DP_DONG_BO):")
+        self.assertGreater(i, 0, "mat luat 'dang gom thi ai cung duoc di'")
+        self.assertIn('hu.nguoi_keo = "*"', pe[i:i + 300])
 
     def test_nguoi_keo_tat_thi_giao_lai(self):
         """L0: khong de ca party cho mot acc khong con chay."""

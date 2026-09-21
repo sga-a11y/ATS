@@ -37,8 +37,12 @@ sys.path.insert(0, ROOT)
 
 
 def _src():
+    """LUAT cap party da chuyen vao `bot/party_engine.py` (21/09), phan thi hanh van o
+    `run_party_digioi.py` -> doc CA HAI, luat truoc."""
+    with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+        ra = fh.read()
     with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
-        return fh.read()
+        return ra + fh.read()
 
 
 def _ma(s):
@@ -97,9 +101,9 @@ class TestChuoiLenhVanDuBac(unittest.TestCase):
         self.src = _src()
 
     def test_du_bon_bac(self):
-        i_map = self.src.find("elif song and len(maps) > 1:")
-        i_kenh = self.src.find("elif song and len(kenhs) > 1 and _thieu_doi(pidx, song):")
-        i_moi = self.src.find("elif song and _thieu_doi(pidx, song):")
+        i_map = self.src.find("elif len(maps) > 1:")
+        i_kenh = self.src.find("elif len(kenhs) > 1 and not anh.du_doi:")
+        i_moi = self.src.find("elif not anh.du_doi:")
         for _t, _i in (("gom map", i_map), ("gom kenh", i_kenh), ("moi", i_moi)):
             self.assertGreater(_i, 0, "mat bac " + _t)
         self.assertLess(i_map, i_kenh)
@@ -107,9 +111,8 @@ class TestChuoiLenhVanDuBac(unittest.TestCase):
 
     def test_khong_chen_dieu_kien_phu_truoc_bac_moi(self):
         """Chen them dieu kien vao bac MOI = dung lai cai vong cho duoi dang khac."""
-        i = self.src.find("elif song and _thieu_doi(pidx, song):")
-        self.assertEqual(self.src[i:i + 40].strip(),
-                         "elif song and _thieu_doi(pidx, song):")
+        i = self.src.find("elif not anh.du_doi:")
+        self.assertEqual(self.src[i:].split("\n")[0].strip(), "elif not anh.du_doi:")
 
 
 if __name__ == "__main__":

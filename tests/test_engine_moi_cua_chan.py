@@ -44,11 +44,26 @@ class TestChonEngine(unittest.TestCase):
     def test_nguong_hien_tai_dung_pham_vi_user_chot(self):
         """User chot 15/09: "party >40 la theo co che moi" -> 41.
         Mo rong 17/09 (user: "doi lai la party >30 se theo co che moi") -> 31.
+        Mo rong 20/09 -> 21. Mo rong 21/09 (user: "sua lai engine moi dung cho toan bo") -> 1.
 
         So nay la CONG TAC SONG: doi no la doi engine cua hang chuc party that. Neo lai de khong ai
         vo tinh day no xuong nua (hoac len, lam mat hieu luc pham vi user chot)."""
-        self.assertIn(R.PARTY_ENGINE_MOI_TU, (0, 31, 41, 45, 49, 51, 53),
-                      "nguong la (0=tat, 53=thu 2 party, 49/45/41/31=ha dan, 51=pham vi user chot)")
+        self.assertIn(R.PARTY_ENGINE_MOI_TU, (0, 1, 21, 31, 41, 45, 49, 51, 53),
+                      "nguong la (0=tat, 53=thu 2 party, 51/49/45/41/31/21=cac moc da qua, "
+                      "1=moi party, pham vi user chot 21/09)")
+
+    def test_nguong_1_la_MOI_PARTY(self):
+        """Nhung VAN gac theo mode: `1` bo nguong SO PARTY, khong bo `MODE_ENGINE_MOI`."""
+        R.config.PARTY_ENGINE_MOI_TU = 1
+        _cu = dict(getattr(R.config, "PARTY_CONFIG", {}) or {})
+        try:
+            R.config.PARTY_CONFIG = {i: {"mode": "digioi"} for i in range(60)}
+            self.assertTrue(all(R.dung_engine_moi(i) for i in range(60)))
+            R.config.PARTY_CONFIG = {i: {"mode": "train"} for i in range(60)}
+            self.assertFalse(any(R.dung_engine_moi(i) for i in range(60)),
+                             "mode train chua co nhanh trong engine moi -> phai ve engine cu")
+        finally:
+            R.config.PARTY_CONFIG = _cu
 
     def test_so_0_la_tat_han(self):
         R.config.PARTY_ENGINE_MOI_TU = 0
@@ -60,6 +75,14 @@ class TestChonEngine(unittest.TestCase):
         R.config.PARTY_CONFIG = {i: {"mode": "digioi_train"} for i in range(60)}
         self.assertFalse(R.dung_engine_moi(39), "party 40 phai giu engine cu")
         self.assertTrue(R.dung_engine_moi(40), "party 41 phai la engine moi")
+        self.assertTrue(R.dung_engine_moi(53))
+
+    def test_nguong_21_dung_pham_vi_user_chot(self):
+        """User 20/09: "sua lai party >20 theo engine moi"."""
+        R.config.PARTY_ENGINE_MOI_TU = 21
+        R.config.PARTY_CONFIG = {i: {"mode": "digioi_train"} for i in range(60)}
+        self.assertFalse(R.dung_engine_moi(19), "party 20 phai giu engine cu")
+        self.assertTrue(R.dung_engine_moi(20), "party 21 phai la engine moi")
         self.assertTrue(R.dung_engine_moi(53))
 
     def test_nguong_51_dung_pham_vi_user_chot(self):
@@ -331,9 +354,13 @@ class TestPBToDoiKHONG_CHO_AI_BAO_CAO(unittest.TestCase):
         eng = _src("bot", "party_engine.py")
         i = eng.find("def _pb_doi_level(self)")
         self.assertGreater(i, 0)
-        than = eng[i:i + 1600]
+        # Soi CA THAN HAM, khong cat theo so ky tu: them mot khoi ghi chu la cua so co dinh lai
+        # day mat phan can kiem.
+        than = eng[i:eng.index(chr(10) + "    def ", i + 10)]
         self.assertIn("team_dungeon_remaining", than)
         self.assertIn("mission_steps_loaded", than, "chua co bang mission-step ma da ket luan")
+        self.assertIn("_doc_clients()", than,
+                      "chi doc luot cua leader -> vao PB khi member da het luot / chua du cap")
 
 
 class TestStopVE_SAFE_TRUOC_y_flow_cu(unittest.TestCase):
@@ -396,8 +423,11 @@ class TestHoiThangHamCu_KhongTuVietPhepThu(unittest.TestCase):
     def test_engine_hoi_qua_callback(self):
         s = _src("bot", "party_engine.py")
         self.assertIn("self.hoi_thanh", s)
+        # Lay TRON than `chup` thay vi cat theo so ky tu - than no dai dan moi lan engine biet
+        # them mot thu (21/09: them `lenh_tay_gen`), cat cung la test do oan.
         i = s.find("def chup(self)")
-        self.assertIn("hoi_thanh", s[i:i + 3000], "chup anh khong hoi -> luon coi la thanh tap ket")
+        than = s[i:s.find("\n    def ", i + 10)]
+        self.assertIn("hoi_thanh", than, "chup anh khong hoi -> luon coi la thanh tap ket")
 
     def test_noi_vao_dung_ham_cu(self):
         s = _src("run_party_digioi.py")
@@ -446,20 +476,33 @@ class TestDungDU_PHEP_THU_CUA_ENGINE_CU(unittest.TestCase):
     def test_engine_hoi_cua_nay_MOI_NHIP(self):
         eng = _src("bot", "party_engine.py")
         i = eng.find("def chup(self)")
-        self.assertIn("hoi_cho", eng[i:i + 5000], "khong hoi -> ra lenh giua luc party xao tron")
+        self.assertGreater(i, 0, "mat `chup`")
+        # Cat theo THAN HAM, khong theo so ky tu co dinh: them vai dong vao `chup` la cua so cu
+        # (5000 ky tu) day `hoi_cho` ra ngoai va bai test do ma khong luat nao bi pha (21/09).
+        than = eng[i:eng.find("\n    def ", i + 10)]
+        self.assertIn("hoi_cho", than, "khong hoi -> ra lenh giua luc party xao tron")
 
-    def test_QUYET_DINH_lay_tu_dieu_phoi_cu(self):
-        """Engine moi KHONG tu nghi ra chuoi lenh: chuoi that co 11 nhanh + 15 phep thu, ban tu
-        viet chi co 4 bac -> moi nhanh thieu la mot loi user phai di tim ho."""
+    def test_QUYET_DINH_dung_CHUNG_mot_bo_luat_voi_engine_cu(self):
+        """Engine moi KHONG tu nghi ra chuoi lenh rieng: chuoi that co 19 nhanh + 15 phep thu,
+        ban tu viet chi co 4 bac -> moi nhanh thieu la mot loi user phai di tim ho.
+
+        Tu 21/09 luat nam trong ENGINE (`party_engine.quyet_dinh_cap_party`) va CA HAI engine goi
+        cung mot ham do - user: "xoa dieu phoi ko dung o engine moi thoi, engine cu van dung".
+        Engine moi khong di qua `_dieu_phoi_quyet` nua, nhung van KHONG co ban luat thu hai.
+        """
         eng = _src("bot", "party_engine.py")
-        i = eng.find("def chup(self)")
-        self.assertIn("hoi_dieu_phoi", eng[i:i + 5000], "khong hoi dieu phoi -> lai tu bia chuoi lenh")
+        self.assertIn("def quyet_dinh_cap_party(", eng, "mat bo luat cap party trong engine")
         self.assertIn("DICH_VIEC", eng, "khong co bang dich viec cap party -> viec thi hanh")
         src = _src("run_party_digioi.py")
         i2 = src.find("def _dieu_phoi_quyet_engine_moi(")
-        self.assertGreater(i2, 0, "khong co cau noi toi `_dieu_phoi_quyet`")
+        self.assertGreater(i2, 0, "mat duong quyet dinh cua engine moi")
         than = src[i2:src.find(chr(10) + "def ", i2 + 10)]
-        self.assertIn("_dieu_phoi_quyet(", than, "tu viet lai thay vi goi ham cu")
+        self.assertIn("party_engine.quyet_dinh_cap_party(", than, "tu viet lai thay vi dung chung")
+        _ma = chr(10).join(l for l in than.split(chr(10)) if not l.strip().startswith("#"))
+        self.assertNotIn("_dieu_phoi_quyet(", _ma,
+                         "engine moi van di qua dieu phoi cu -> xoa dieu phoi la gay engine moi")
+        # Engine CU van phai giu duong cua no.
+        self.assertIn("def _dieu_phoi_quyet(", src)
 
 
 class TestFLAG_THANH_lay_tu_bang_config(unittest.TestCase):

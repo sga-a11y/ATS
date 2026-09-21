@@ -72,9 +72,13 @@ class TestNgheLenhDangChay(_Nen):
     def test_dung_CHUNG_co_voi_cac_cho_khac(self):
         """Moi cho mot dinh nghia 'dang co lenh' la som muon lech nhau."""
         self.assertIn("party_dang_gom", self.src)
-        i = self.src.find("dat_party_dang_gom(pidx, viec in")
+        i = self.src.find("dat_party_dang_gom(pidx, hu.dang_gom)")
         self.assertGreater(i, 0)
-        self.assertIn("VIEC_GOM, VIEC_MOI, VIEC_DONG_BO", self.src[i:i + 120])
+        with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+            pe = fh.read()
+        j = pe.find("hu.dang_gom = viec in")
+        self.assertGreater(j, 0)
+        self.assertIn("DP_GOM, DP_MOI, DP_DONG_BO", pe[j:j + 120])
 
 
 class TestCoDungChungVanHanh(unittest.TestCase):

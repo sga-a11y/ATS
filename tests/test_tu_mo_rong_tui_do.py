@@ -23,7 +23,9 @@ from bot.client import GameClient        # noqa: E402
 
 class _Bot:
     tu_mo_rong_tui = GameClient.tu_mo_rong_tui
+    in_di_gioi = GameClient.in_di_gioi        # ham TU KIEM "dang o Di Gioi" (21/09)
     BAG_EXPAND_MAX_LAN = GameClient.BAG_EXPAND_MAX_LAN
+    current_map = 12001                       # o THANH - cho mua duoc
 
     def __init__(self, gia_list, maxed_sau=None, mua_loi_o=None):
         self._label = "t"

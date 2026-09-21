@@ -201,11 +201,23 @@ DISCONNECT_RATE_LIMIT = 90     # ma 90: login lai ngay lap tuc chi lam server ch
 # Cho them toi da bao lau cho moc KET TRAN THAT (`0x14 sub0700`) truoc khi cho caller di chuyen.
 # Xem `_wait_combat_clear`: di khi server con dang giai tran = `di chuyen QUA XA (ma 14)`.
 WAIT_END_THAT_SEC = 8.0
+# Luot danh gan nhat cach day BAO LAU thi con coi la "vua danh" (xem `_wait_combat_clear`).
+# Xa hon nguong nay thi chac chan khong con tran nao dang duoc server giai quyet -> khong co gi
+# de cho, va cho la an khong 8 giay/buoc di.
+CHO_END_NEU_VUA_DANH_SEC = 30.0
 
 # 4 map PHO BAN TO DOI (instance). Da kiem chung deu co trong Ground.mmg (xem _td_walk).
 # Dung de biet acc DANG O TRONG pho ban: trong do khong teleport/ve thanh duoc, va "ca party
 # cung cho nhau" la BINH THUONG (member cho leader danh) chu khong phai deadlock.
 TEAM_DUNGEON_MAPS = frozenset({62002, 62011, 62012, 62013})   # 4 PB bot co danh (lv20/50/80/110)
+
+# HAI THANH TRUNG GIAN cua `pre_route_town_hop`: bay thang tu map ve thanh route hay loi ngay
+# doan tele, qua mot thanh trung gian truoc thi on dinh (user bao tu lau).
+# De o cap module vi NOI GOI cung can biet: ve chinh mot trong hai thanh nay thi KHONG hop nua
+# (engine cu: `_do_reform` chi hop khi dich la THANH TAP KET, con ve thanh gom du phong -
+# Nghiep Thanh - thi di thang).
+PRE_ROUTE_CITIES = ((12001, 0), (12061, 2))   # (Trac Quan, flag) / (Nghiep Thanh, flag)
+PRE_ROUTE_CITY_IDS = frozenset(c for c, _f in PRE_ROUTE_CITIES)
 
 # CA DAI 62xxx la khong gian PHO BAN/INSTANCE (20 map: Thao Phat Thien Su, Dai Chien Lu Bo, San Kho
 # Bau, Bach Chien...). Da kiem: KHONG map 62xxx nao la map train hay thanh.
@@ -213,6 +225,38 @@ TEAM_DUNGEON_MAPS = frozenset({62002, 62011, 62012, 62013})   # 4 PB bot co danh
 # lay 4 map kia de tra loi cau nay thi acc lac vao instance KHAC se bi tra "dang o ngoai" -> caller
 # bo luon duong relogin du phong -> KET TRONG PHO BAN VINH VIEN.
 _INSTANCE_MAP_LO, _INSTANCE_MAP_HI = 62000, 63000
+
+
+_THAP_SU_KIEN_CACHE = {}
+
+
+def in_floor_crawl_map(map_id) -> bool:
+    """Map nay co nam trong THAP cua mot event floor_crawl (2K: 12922..12959) khong?
+
+    Dung trong recv-loop nen phai RE: `event_dang_dung_trong()` duyet ca `config.EVENTS` moi lan,
+    con day chi tra cuu mot dict da dung san theo map_id.
+    """
+    try:
+        m = int(map_id or 0)
+    except (TypeError, ValueError):
+        return False
+    if not m:
+        return False
+    got = _THAP_SU_KIEN_CACHE.get(m)
+    if got is None:
+        got = False
+        for ev in (getattr(config, "EVENTS", {}) or {}).values():
+            if not isinstance(ev, dict):
+                continue
+            pb = ev.get("party_battle") or {}
+            if pb.get("kind") != "floor_crawl":
+                continue
+            dest, top = int(ev.get("dest_map") or 0), int(pb.get("top_map") or 0)
+            if dest and top and dest <= m <= top:
+                got = True
+                break
+        _THAP_SU_KIEN_CACHE[m] = got
+    return got
 
 
 def in_instance_map(map_id) -> bool:
@@ -2240,6 +2284,12 @@ def _pet_role(role):
     def deco(fn):
         @functools.wraps(fn)
         def wrap(self, *a, **k):
+            _truoc = getattr(self, "_pet_vai_hien_tai", None)
+            # NHO VAI DANG CAN: `switch_pet` bi tu choi khi dang trong tran (client cam), ma o
+            # day gan nhu LUON trong tran - hoat dong (PB/boss/quest) chay xen giua cac tran.
+            # Moc duy nhat chac chan NGOAI tran la luc nhan goi ket tran, va luc do khong ai biet
+            # dang can vai nao -> nho o day de `_doi_pet_sau_tran` dung.
+            self._pet_vai_hien_tai = role
             try:
                 self.ensure_pet_role(role)
             except Exception as e:
@@ -2247,6 +2297,7 @@ def _pet_role(role):
             try:
                 return fn(self, *a, **k)
             finally:
+                self._pet_vai_hien_tai = _truoc
                 try:
                     self.ensure_pet_role(getattr(self, "default_pet_role", "train"))
                 except Exception as e:
@@ -2456,6 +2507,10 @@ class GameClient:
         # khong phai cho het chu ky. Handler goi tin chi BAT co (chay o thread doc goi, khong duoc
         # gui/sleep o day); vong lap trong run_party_digioi TIEU THU khi khong con trong tran.
         self.phuc_than_pending = False
+        # True = TAT HAN Phuc Than cho acc nay (mode `event`): tick hay khong cung khong dung, va
+        # dang deo ngoc thi thao ra. Dat trong `run_party_digioi` luc login (truoc cua re engine
+        # moi) nen phu ca hai engine. Xem `use_phuc_than_items` / `thao_ngoc_phuc_than`.
+        self.phuc_than_tat = False
         self._active_pet_login = None
         self._pet_login_logged = None   # chu ky dong log PET login gan nhat
         self._collect_style_flags = {}
@@ -3980,7 +4035,20 @@ class GameClient:
         self._track_battle_packet(opcode, pkt)
         # Pho ban to doi: theo doi thoai NPC de biet canh da HET that su chua (_adv_dialog_until_idle)
         # va tin hieu ket tran that (mot so canh boss tu dong xu ly, khong bao gio bat in_battle=True).
-        if self.in_team_dungeon() and opcode == 0x14:
+        # `in_team_dungeon()` CHI phu 4 map pho ban (62xxx). Thap 2K (12922..12959) cung la kich
+        # ban thoai y het, nen phai ke vao day - khong thi `_last_dialog_evt` KHONG BAO GIO duoc
+        # cap nhat trong thap, va `_fight_one` ngoi cho thoai mo vo ich roi ket luan "diem da het
+        # quai" -> BO QUA SACH MOI DIEM -> khong danh duoc tran nao, cong khong bao gio mo.
+        #
+        # Hoi quy tu 14/09: hom do `in_team_dungeon()` doi tu "doc `_team_dungeon_until`" sang
+        # "doc `current_map` in TEAM_DUNGEON_MAPS" (sua bug party 44 tu nhan dang o PB khi da ve
+        # thanh). Doi la dung, nhung 2K dung nho chinh cai moc thoi gian do - `run_floor_crawl`
+        # van dat `_team_dungeon_until` va ghi ro "BAT BUOC cho 2K vi recv-loop CHI cap nhat
+        # _last_dialog_evt trong cua so nay". Tu do khong ai doc moc ay nua.
+        # Ca that 20/09 (user: "event nhi kieu tuan truoc co loi deo dau"): ca ngay 0 tran 2K,
+        # 0 lan len tang, o CA hai engine - vi day la loi nam trong client, chung cho ca hai.
+        if opcode == 0x14 and (self.in_team_dungeon()
+                               or in_floor_crawl_map(getattr(self, "current_map", 0))):
             # CHI cac sub THAT SU lien quan thoai (0100=ack dong thoai, 1000=cutscene loop,
             # 0d00=mo canh) moi duoc coi la "con dang thoai" -> reset dong ho im lang. Cac sub
             # khac (0800 noise, 2c00...) lap lai lien tuc nhung khong lien quan.
@@ -4012,6 +4080,7 @@ class GameClient:
             self.state.reset_enemies(reset_quest=not _in_team_dungeon)
             self.state.in_battle = False
             self._heal_after_battle()   # hoi HP/SP NGAY khi ket tran (khong doi tick keepalive)
+            self._doi_pet_sau_tran()    # moc DUY NHAT chac chan ngoai tran de doi pet duoc
             self._flush_bag_queue()     # lenh tui do user bam giua tran -> gui bay gio
         # KET TRAN khi BO CHAY: flee KHONG sinh 0x14 sub0700 (man THANG) ma chuoi 0x14 0c00 -> 0900 ->
         # 0800 (xac nhan capture flee.pcap). -> cung ha in_battle de go_to_town teleport duoc sau flee.
@@ -4059,6 +4128,7 @@ class GameClient:
                 _in_team_dungeon = self.in_team_dungeon()
                 self.state.reset_enemies(reset_quest=not _in_team_dungeon)
                 self._heal_after_battle()   # hoi HP/SP NGAY khi ket tran (khong doi tick keepalive)
+            self._doi_pet_sau_tran()    # moc DUY NHAT chac chan ngoai tran de doi pet duoc
         # Lo (熔爐, opcode 0x59) co NHIEU sub: sub01=shop data (soi lo), sub02=ket qua mua,
         # sub03=phan giai cuon -> Vo Tuong Phien (chips). Truoc day MOI 0x59 deu tang _decompose_seq;
         # gio tach sub01 (soi lo) ra parse rieng, con lai (sub03 phan giai + sub khac) GIU NGUYEN.
@@ -5715,6 +5785,9 @@ class GameClient:
             # Ep giong het LEADER de nhat quan cho MOI truong hop nhan pho ban.
             self.state.quest_mode = True
             log.info("[%s] Nhan moi PHO BAN tu '%s' -> da DONG Y", self._label, name or "?")
+            # NGOC PHUC THAN: MEMBER thao o day - no khong di qua `do_team_dungeon` (leader goi),
+            # nen thieu cho nay thi ca party thao con moi member van deo vao pho ban.
+            self.thao_ngoc_phuc_than("nhan moi vao pho ban to doi")
             # Da nhan pho ban -> THEO + DANH: pha PB do DIEU PHOI bat/tat cho ca party
             # (`dat_pha_pho_ban`), acc khong tu om timer 600s nua - xem `_PARTY_PB_PHA`.
             self.flee_mode = False
@@ -5800,7 +5873,20 @@ class GameClient:
             self._arm_decision()
 
     def _battle_coordinator(self):
-        party_key = self.party_idx if self.party_idx is not None else ("solo", id(self))
+        # Gom theo TRAN, khong theo cau hinh party. Boss Quan Doan (`0x27 7700` -> `0x14 08000100`)
+        # va boss the gioi la instance RIENG cua tung acc: gom chung mot coordinator theo
+        # `party_idx` thi moi acc mot `generation/turn`, `active_key` chi khop DUNG MOT acc ->
+        # nhung acc con lai lech phien ca tran. `mark_sent` co `account_id` trong khoa nen lenh
+        # DANH van di duoc (log "VAN GUI"), nhung `reserve()` gac bang `active_key` dung chung nen
+        # bon kia bi tu choi dat cho MOI hanh dong khong phai sat thuong (hoi mau / CC / bao ve).
+        # User 21/09 (p20): "danh boss thi solo ma".
+        #
+        # `tran_mot_minh is None` = CHUA BIET doi hinh -> giu khoa party (doan nham huong solo la
+        # mat dieu phoi that o luot dau tran party).
+        _mot_minh = getattr(self.state, "tran_mot_minh", None) is True
+        party_key = (self.party_idx
+                     if (self.party_idx is not None and not _mot_minh)
+                     else ("solo", id(self)))
         if party_key != self._battle_party_key:
             self._battle_party_key = party_key
             self._battle_party_coordinator = get_party_battle(party_key)
@@ -5944,6 +6030,7 @@ class GameClient:
                 self.state.reset_enemies(reset_quest=not in_team_dungeon)
                 self.state.in_battle = False
                 self._heal_after_battle()
+                self._doi_pet_sau_tran()
         return tuple(zip(events, accepted))
 
     def _prepare_tracker_turn(self):
@@ -6820,7 +6907,16 @@ class GameClient:
         t0 = time.time()
         while self._bag_slot_price_seq == seq and time.time() - t0 < wait and self.running:
             time.sleep(0.1)
-        return self._bag_slot_price if self._bag_slot_price_seq > seq else None
+        if self._bag_slot_price_seq > seq:
+            return self._bag_slot_price
+        # PHAI GHI LAI. Truoc day tra None im lang, nen GUI chi hien "Mua slot (?)" ma khong ai
+        # biet vi sao: server khong tra, hay acc dang ban, hay goi bi nuot. Dung cai bay da ngon
+        # ca ngay 20/09 o 2K (`_fight_one` im lang khi khong co thoai).
+        log.info("[%s] Mua slot tui: KHONG nhan duoc gia sau %.1fs (running=%s, in_combat=%s, "
+                 "map=%s) -> GUI hien '(?)'", self._label, time.time() - t0, self.running,
+                 self.in_combat() if hasattr(self, "in_combat") else "?",
+                 getattr(self, "current_map", None))
+        return None
 
     def buy_bag_slot(self, wait: float = 2.0) -> bool:
         """Mua 1 slot tui (0x54 sub02 sellId=3). Tra True neu result=1 (thanh cong)."""
@@ -6906,6 +7002,19 @@ class GameClient:
         """
         gioi_han = int(gioi_han or 0)
         if gioi_han <= 0:
+            return 0
+        # CHI MUA DUOC O NGOAI, khong mua duoc trong Di Gioi / instance: server khong tra gia
+        # (0x54 sub01) khi acc dang trong do.
+        #
+        # Flow cu goi ham nay trong `lam_login_chores` - tuc NGAY SAU LOGIN, luc acc con o thanh -
+        # nen khong bao gio cham chuyen nay. Engine moi giao `VIEC_LOGIN_CHORE` theo nhip, co the
+        # roi dung luc acc da vao Di Gioi. Ca that 21/09: MOI acc bao "khong hoi duoc gia" deu
+        # dang o map 49942 (Di Gioi) - vumuoi thu lai 3 lan cach nhau 20s, lan nao cung truot;
+        # GUI bam tay luc do cung ra "Mua slot (?)" (user: "trong chu y thi cho mua slot bi loi").
+        # Ham TU KIEM lay, khong tin nguoi goi - giong cua `in_combat()` cua `_handle_auto_team_dungeon`.
+        if self.in_di_gioi() or in_instance_map(getattr(self, "current_map", 0)):
+            log.info("[%s] Mo rong tui: dang o Di Gioi/instance (map=%s) -> de lan sau, khong mua "
+                     "duoc o day", self._label, getattr(self, "current_map", None))
             return 0
         da_mua = 0
         for _ in range(self.BAG_EXPAND_MAX_LAN):
@@ -7420,6 +7529,10 @@ class GameClient:
         -> bo qua. Xong thi teleport ve Trac Quan (12001) cho khoi ket map boss. Goi khi o2 chua xong."""
         if not self._world_boss_event_open():
             return False
+        # NGOC PHUC THAN: thao TRUOC khi danh (user chot 21/09). Ngoc chi de an EXP train, deo no
+        # vao boss/PB la phi luot ben ngoc. CHI thao ra tui, KHONG vut/ban - `use_phuc_than_items`
+        # se tu deo lai o chu ky sau.
+        self.thao_ngoc_phuc_than("truoc khi danh boss the gioi")
         orig = self.current_map
         self.flee_mode = True                 # sach tran truoc khi gui goi teleport (tranh kick)
         for _ in range(20):
@@ -7536,6 +7649,9 @@ class GameClient:
             return self.legion_boss_next      # con cooldown (server bao hoac da luu) -> check lai dung luc do
         # --- thu danh 1 luot ---
         self._wait_combat_clear()
+        # NGOC PHUC THAN: thao TRUOC khi danh (user chot 21/09). Dat SAU cac cua "con cooldown /
+        # het luot / tat setting" o tren - thao roi moi phat hien khong danh duoc la mat cong.
+        self.thao_ngoc_phuc_than("truoc khi danh boss Quan Doan")
         self.heal_full()
         self.state.boss_mode = True
         self.flee_mode = False
@@ -8741,6 +8857,9 @@ class GameClient:
         if 1 in self._quest_cells:
             log.info("[%s] Dungeon: o1 (solo 2 lan) DA XONG theo server -> bo qua", self._label)
             return
+        # NGOC PHUC THAN: thao TRUOC khi danh (user chot 21/09). Dat SAU cua "o1 da xong" - thao
+        # roi moi phat hien khong can danh la mat cong deo lai.
+        self.thao_ngoc_phuc_than("truoc khi danh PB don")
         self.leave_party(); time.sleep(1.5)   # thoat party (solo moi vao duoc dungeon)
         done_runs = 0      # so luot VAO THANH CONG phien nay (cap = runs_target -> khoi mua vo han)
         bought = False     # da chuyen sang MUA ve chua (free da het)
@@ -9147,6 +9266,29 @@ class GameClient:
                 return tid
         return 0
 
+    # Ngoc Phuc Than deo o VI TRI 6 (dac biet) cua CHAR - khong deo cho pet duoc (xem `_on_equip_damage`).
+    PHUC_THAN_FIT_POS = 6
+
+    def thao_ngoc_phuc_than(self, ly_do: str = "") -> bool:
+        """COI ngoc Phuc Than dang deo ra tui. True = da coi (hoac von khong deo).
+
+        User chot 21/09, hai duong:
+          * mode `event`: KHONG dung Phuc Than, tick hay khong cung vay -> dang deo thi thao ra;
+          * mode khac: TRUOC khi danh boss the gioi / boss Quan Doan / PB don / PB doi thi thao.
+
+        KHONG tu deo lai o day (user chon): vong `use_phuc_than_items` san co se tu deo lai o chu
+        ky sau khi thay buff tut - them mot duong deo lai rieng chi tao them cho de deo nham luc
+        con dang trong instance.
+        """
+        tid = self._equipped_phuc_than_tid()
+        if not tid:
+            return True
+        ok = self.unequip_item(self.PHUC_THAN_FIT_POS)
+        log.info("[%s] Phuc Than: %s ngoc 0x%04x (vi tri %d)%s", self._label,
+                 "DA THAO" if ok else "KHONG thao duoc", tid, self.PHUC_THAN_FIT_POS,
+                 (" - %s" % ly_do) if ly_do else "")
+        return ok
+
     def use_login_items(self):
         """Login: tu dung item co tid nam trong config.USE_LOGIN_ITEMS (template -> dung mọi acc),
         tuong tu decompose_junk_scrolls/donate_legion. 2 kieu (theo config, xem use_items.json):
@@ -9457,6 +9599,13 @@ class GameClient:
         use_items.json - CHI khi party bat cong tac "Su dung Phuc Than" (xem run_party_digioi.py,
         goi ham nay moi X phut thay vi 1 lan). Tach rieng khoi use_login_items() vi nhom item nay
         can dinh ky check lai (vd nhat/mua them giua chung), khong phai loai dung 1 lan roi thoi."""
+        # MODE EVENT: TAT HAN - tick hay khong cung khong dung (user chot 21/09). Cua nay dat o
+        # DAY, khong phai o tung noi goi: co ba duong goi ham nay (login, vong keepalive engine
+        # cu, `_duy_tri` cua engine moi) - chan o tung duong la som muon sot mot cai.
+        if getattr(self, "phuc_than_tat", False):
+            self.phuc_than_pending = False
+            self.thao_ngoc_phuc_than("mode event - khong dung Phuc Than")
+            return
         cfg = {tid: v for tid, v in (getattr(config, "USE_LOGIN_ITEMS", {}) or {}).items()
                if v.get("phuc_than")}
         # ITEM TIEU HAO (Phuc Than / Dai Phuc Than): client goc chi dung khi buff HET
@@ -10317,8 +10466,14 @@ class GameClient:
                 and getattr(self.state, "active_pet_confirmed", False)):
             return True
         # DANG TRAN = ly do TAM THOI (het tran la doi duoc) -> KHONG tinh vao so lan thu.
+        #
+        # LOG MUC DEBUG, khong phai info: day la trang thai BINH THUONG (acc train/PB gan nhu luon
+        # trong tran), khong phai su kien. De muc info thi no chiem ca file log: do ngay 21/09 co
+        # 169.507 dong nay / 908 lan doi duoc thanh cong (ti le 187:1), va user phai hoi hai lan
+        # ("thay bao dang trong tran hoan doi pet" / "party 49 dang di PB, sao thay hien cai nay
+        # nhieu the"). Viec doi pet THAT SU duoc lam o `_doi_pet_sau_tran` - dung moc ket tran.
         if getattr(self.state, "in_battle", False):
-            log.info("[%s] doi pet: DANG TRONG TRAN -> hoan", self._label)
+            log.debug("[%s] doi pet: DANG TRONG TRAN -> hoan", self._label)
             return False
         if self._pet_switch_gave_up(pid):
             return False
@@ -10466,6 +10621,42 @@ class GameClient:
                 self._heal_after_battle_active = False
         self._heal_after_battle_thread = threading.Thread(target=_run, daemon=True)
         self._heal_after_battle_thread.start()
+
+    def _doi_pet_sau_tran(self):
+        """DOI PET dung luc VUA KET TRAN - moc duy nhat chac chan `in_battle` da ha.
+
+        Vi sao phai co: `switch_pet` bi client cam khi dang trong tran, ma moi loi goi
+        `ensure_pet_role` deu den tu `@_pet_role` (chay truoc/sau moi hoat dong) - va hoat dong
+        thi xen GIUA cac tran, tuc gan nhu luon trung luc dang danh. Ket qua do ngay 21/09:
+        169.507 lan "DANG TRONG TRAN -> hoan" / 908 lan doi duoc; rieng ba acc `vutam`, `luubmot`,
+        `tkba` la 20.021 / 18.006 / 14.780 lan hoan ma KHONG doi duoc lan nao - tuc danh ca ngay
+        bang pet SAI (user: "thay bao dang trong tran hoan doi pet, nhung qua tran thi cung ko
+        doi" / "party 49 dang di PB, sao thay hien cai nay nhieu the").
+
+        Doc log 06:55:43 -> 06:55:53 cua `vutam` thay ro: sau khi tran ket thuc thi con vai nhip
+        goi vao (co `in_battle` chua kip ha), roi tu 06:55:47 den 06:55:52 acc RANH THAT ma khong
+        ai goi nua, den 06:55:53 vao tran moi. Tuc vong goi day dac dung luc dang danh va im dung
+        luc rang - nguoc hoan toan.
+
+        KHONG dung `_heal_after_battle`: ham do `return` ngay khi `quest_mode`/`boss_mode`, tuc
+        trong PB/quest/boss khong bao gio chay - ma do chinh la luc dang can doi pet nhat.
+        """
+        _vai = getattr(self, "_pet_vai_hien_tai", None) or getattr(self, "default_pet_role", "train")
+        if not _vai or getattr(self, "_doi_pet_sau_tran_active", False):
+            return
+        self._doi_pet_sau_tran_active = True
+
+        def _run():
+            try:
+                time.sleep(0.6)      # cho man tong ket/0x33 cuoi xong (giong `_heal_after_battle`)
+                if self.running and not self.state.in_battle:
+                    self.ensure_pet_role(_vai)
+            except Exception as e:
+                log.debug("[%s] doi pet sau tran loi (bo qua): %s", self._label, e)
+            finally:
+                self._doi_pet_sau_tran_active = False
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def heal_npc40_between_battles(self):
         """Hoi FULL HP/SP sau tran (event danh theo party: 40NPC, 2K).
@@ -12829,8 +13020,11 @@ class GameClient:
             return "lan cuoi thay o map %s (minh dang %s)" % (sc, self.current_map)
         return ""
 
-    def _bot_member_is_on_current_scene(self, entity: bytes):
-        """Doc map/kenh live tu chinh client bot member, khong dua vao PlayerAppear cache."""
+    def _bot_member_is_on_current_scene(self, entity: bytes, bo_qua_map: bool = False):
+        """Doc map/kenh live tu chinh client bot member, khong dua vao PlayerAppear cache.
+
+        `bo_qua_map=True`: CHI dung khi doi lap ra de di PHO BAN TO DOI (xem `invite_members`).
+        """
         if not entity:
             return False, "entity rong"
         eb = bytes(entity)
@@ -12840,12 +13034,24 @@ class GameClient:
             return False, "chua co client live"
         if not getattr(peer, "running", False):
             return False, "client member khong chay"
-        my_map = self.current_map
-        peer_map = getattr(peer, "current_map", None)
-        if my_map is None or peer_map is None:
-            return False, "chua biet map live"
-        if int(peer_map) != int(my_map):
-            return False, f"lech map live {peer_map}!={my_map}"
+        # CUNG MAP: van bat buoc cho party THUONG (phai tap trung roi moi keo nhau di train), CHI
+        # BO khi doi nay lap ra de di PHO BAN TO DOI.
+        #
+        # PB khong can cung map that: loi moi vao doi (`0x0d sub07`) di theo entity, va loi moi
+        # phong (`0x2f/0800`) cung the - server khong doi hai ben dung mot map.
+        # Ca that party 20, 21/09 (user gui anh cot "Trong PT": 4 tick xanh, dua o Trac Quan gach
+        # ngang):
+        #   17:11:44 (LEADER) moi 3 member theo entity (live dung map/kenh): [...]   <- chi 3
+        #   17:12:41 (LEADER) member ready 0/4 sau 40.2s -> HUY phong, relogin ca party
+        # User: "day la pt PB, no ko moi dua khac map la may code ngu" va chot pham vi:
+        # "chi moi PB la duoc moi member o map khac, dung ngu toi muc cac cai khac cung bo check".
+        if not bo_qua_map:
+            my_map = self.current_map
+            peer_map = getattr(peer, "current_map", None)
+            if my_map is None or peer_map is None:
+                return False, "chua biet map live"
+            if int(peer_map) != int(my_map):
+                return False, f"lech map live {peer_map}!={my_map}"
         # KENH: phai HOI LAI SERVER ca hai ben (`kenh_that`), khong so hai so nho san.
         #
         # Truoc day cho nay KHONG he kiem kenh - chu thich cu bao "cung map live la DU" vi tung
@@ -12865,9 +13071,24 @@ class GameClient:
             return False, f"lech kenh live {peer_ch}!={my_ch}"
         return True, ""
 
+    def _lap_doi_de_di_pho_ban(self) -> bool:
+        """Doi nay dang duoc lap ra de di PHO BAN TO DOI? -> duoc moi ca member o MAP KHAC.
+
+        Hai nguon, doc THANG (L2), khong nuoi co rieng:
+          - `dang_pha_pho_ban(party_idx)`: engine CU bat quanh `do_team_dungeon_lv20` (o5 daily);
+          - `_pe_pb_doi_level`: engine MOI dat theo `anh.pb_doi_level` (level PB con luot). Engine
+            moi KHONG goi `dat_pha_pho_ban`, nen thieu nguon nay la party engine moi van hong.
+        """
+        if dang_pha_pho_ban(self.party_idx):
+            return True
+        return getattr(self, "_pe_pb_doi_level", None) is not None
+
     def invite_members(self, gap: float = 1.0):
         """Leader moi TAT CA entity member cung party (tru minh) bang 0x0d sub=07.
-        Chi moi bot member co client live cung map/kenh, de dam bao ca party da tap trung dung."""
+        Chi moi bot member co client live cung map/kenh, de dam bao ca party da tap trung dung -
+        TRU khi doi dang lap de di pho ban to doi (luc do khong doi cung map, xem
+        `_lap_doi_de_di_pho_ban`)."""
+        _bo_map = self._lap_doi_de_di_pho_ban()
         all_ents = [bytes(e) for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
         current_party = {bytes(e) for e in (self.party_members or []) if e}
         if self.party_leader:
@@ -12877,7 +13098,7 @@ class GameClient:
         for e in all_ents:
             if e in current_party:
                 continue
-            ok, reason = self._bot_member_is_on_current_scene(e)
+            ok, reason = self._bot_member_is_on_current_scene(e, bo_qua_map=_bo_map)
             if ok:
                 ents.append(e)
             else:
@@ -13407,6 +13628,10 @@ class GameClient:
     @_pet_role("quest")
     def do_team_dungeon(self, level: int) -> bool:
         level = int(level)
+        # NGOC PHUC THAN: thao TRUOC khi danh (user chot 21/09). Dat o CUA VAO CHUNG de phu het
+        # lv20/50/80/110 - moi level mot ham rieng, dat trong tung ham la som muon sot mot cai.
+        # Day la duong cua LEADER; MEMBER thao o `_on_dungeon` luc nhan loi moi phong.
+        self.thao_ngoc_phuc_than("truoc khi danh PB to doi lv%d" % level)
         if level == 20:
             return self.do_team_dungeon_lv20()
         if level == 50:
@@ -15072,7 +15297,22 @@ class GameClient:
         # ghi ro y dinh la "ap dung o day (dung 1 cho) de moi noi goi ham nay deu duoc bao ve" ->
         # duong train thuong khong duoc bao ve: bam doi kenh luc dang train la ca party rung
         # (log 30/08 21:45 va 22:15, moi lan 4 acc bay cung mot giay).
-        if self.running and self._genuine_end_seen < time.time() - 2.0:
+        #
+        # CHI CHO KHI VUA DANH. Phep thu cu chi hoi "da thay moc ket tran gan day chua" - ma acc
+        # DANG O THANH (ban Noi Dat / cat tien trang / mua HP-SP) thi moc do la tu lan train cuoi,
+        # ca chuc phut truoc, nen dieu kien LUON DUNG -> MOI BUOC di deu cho tron 8 giay.
+        #
+        # Ca that 21/09 party 21 (user: "bot o Nghiep thanh di ban noi dat di chuyen rat cham,
+        # vao game thi thay no di 1 buoc roi dung yen tam 10-15s roi moi di chuyen tiep, doan rat
+        # ngan ma mat rat nhieu thoi gian"): `_move_noi_dat_npc_step` goi ham nay MOI BUOC, va
+        # duong di NPC Nha buon co hang chuc buoc.
+        #
+        # Y dinh goc cua chot nay la "vua danh xong thi cho server giai quyet net tran roi hay
+        # move" (`di chuyen QUA XA (ma 14)`). Vay dieu kien phai la VUA CO LUOT DANH - `in_battle`
+        # da ha roi nen phai doc `last_turn_time`. Lau roi khong danh thi khong co tran nao de ma
+        # cho. (`last_turn_time = 0.0` luc chua danh tran nao -> cung khong cho.)
+        _vua_danh = (time.time() - float(self.last_turn_time or 0.0)) < CHO_END_NEU_VUA_DANH_SEC
+        if self.running and _vua_danh and self._genuine_end_seen < time.time() - 2.0:
             for _ in range(int(WAIT_END_THAT_SEC / 0.5)):
                 if not self.running or self._genuine_end_seen >= time.time() - 2.0:
                     break
@@ -15556,22 +15796,15 @@ class GameClient:
     # Han gio cho CA chuyen di NPC Nha buon. Ham chay trong `pre_route_town_hop` nen ca party
     # dung cho - viec phu nay khong duoc treo party qua lau.
     NOI_DAT_HAN_GIO = 150
-    NOI_DAT_NPC_ROUTE_PRE = ((322, 802), (393, 759), (410, 750), (410, 750))
-    NOI_DAT_NPC_ROUTE_POST = ((606, 698), (685, 676), (764, 654), (844, 631), (850, 630), (850, 630))
-
-    def _move_noi_dat_npc_step(self, x: int, y: int, wait: float = 0.55):
-        """Replay move den NPC Nha buon o Ng.Thanh theo capture MuMu/PC (flag 0x07)."""
-        if not self.running:
-            return
-        if not self._wait_combat_clear(idle=1.0, cap=45.0):
-            # Het 45s ma van "dang trong tran" -> ghi ro. Truoc day im lang, nen log chi thay
-            # dong "di NPC Nha buon" roi khong co gi nua, khong biet ket o dau.
-            log.warning("[%s] Ban Noi Dat: cho het tran qua 45s tai buoc (%d,%d)",
-                        self._label, x, y)
-            return
-        self.send(0x06, b"\x01\x00\x07" + struct.pack("<HH", int(x), int(y)))
-        self.pos = (int(x), int(y))
-        time.sleep(wait)
+    # Hai MOC that su can toi. Ban cu replay 10 buoc co dinh boc tu capture
+    # ((322,802)...(410,750) | (606,698)...(850,630)); cac diem giua chi la buoc di duong,
+    # `navigate_to` tu tinh lay nen khong can giu nua.
+    NOI_DAT_CONG_POS = (410, 750)   # cho dung duoi cong thanh (cong 10 trong Eve.emg)
+    NOI_DAT_NPC_POS = (850, 630)    # cho dung noi chuyen voi NPC Nha buon
+    # CONG 10 nay KHONG doi map: toa do truoc/sau no lien mach (410,750) -> (606,698), va
+    # `sell_noi_dat` khong he co buoc quay ve nhu `buy_hp_sp` - ca duong di nam GON trong 12061.
+    # (Vi vay `DoorGroupData.dat` khong khai canh nao cho no - khong co gi de khai.)
+    # User 21/09: "cai nay co phai la cong khong nhi, no chay thang chu co chuyen map dau".
 
     def _noi_dat_slots(self):
         found = []
@@ -15668,24 +15901,27 @@ class GameClient:
             return False
 
         log.info("[%s] Ban Noi Dat: co %d cai -> di NPC Nha buon Ng.Thanh", self._label, total_have)
-        # HAN GIO cho ca chuyen di. `_move_noi_dat_npc_step` cho het tran toi 45s MOI BUOC, 10
-        # buoc la 7.5 phut - ma ham nay chay trong `pre_route_town_hop` nen CA PARTY dung cho.
+        # HAN GIO cho ca chuyen di: ham nay chay trong `pre_route_town_hop` nen CA PARTY dung cho.
         # Ban Noi Dat la viec phu, khong dang treo party: qua han thi bo, di tiep.
+        # DI BANG `navigate_to` (tu tim duong tren Ground.mmg), khong replay tung buoc nua - cho
+        # dong bo voi `cat_do_tien_trang` / `_run_trac_hpsp_route` (user 21/09: "m cu doi thanh
+        # smart route nhu di Tien trang cho dong bo"). Ca duong nam trong CUNG map 12061 nen khong
+        # can `follow_smart_scene_route` (do la phan di GIUA cac map).
+        # Van giu goi mo cong o giua: day la chuoi da xac minh tu capture that, va no re.
         _han = time.time() + self.NOI_DAT_HAN_GIO
-        for i, (x, y) in enumerate(self.NOI_DAT_NPC_ROUTE_PRE):
-            if time.time() > _han:
-                log.warning("[%s] Ban Noi Dat: qua %ds chua toi NPC (buoc %d) -> BO, di tiep",
-                            self._label, self.NOI_DAT_HAN_GIO, i)
-                return False
-            self._move_noi_dat_npc_step(x, y)
+        _abort = lambda: time.time() > _han
+        self.navigate_to(*self.NOI_DAT_CONG_POS, flee=True, abort=_abort)
+        if _abort():
+            log.warning("[%s] Ban Noi Dat: qua %ds chua toi cong -> BO, di tiep",
+                        self._label, self.NOI_DAT_HAN_GIO)
+            return False
         self.send(0x14, b"\x08\x00\x0a\x00")
         time.sleep(0.5)
-        for i, (x, y) in enumerate(self.NOI_DAT_NPC_ROUTE_POST):
-            if time.time() > _han:
-                log.warning("[%s] Ban Noi Dat: qua %ds chua toi NPC (buoc post %d) -> BO, di tiep",
-                            self._label, self.NOI_DAT_HAN_GIO, i)
-                return False
-            self._move_noi_dat_npc_step(x, y)
+        self.navigate_to(*self.NOI_DAT_NPC_POS, flee=True, abort=_abort)
+        if _abort():
+            log.warning("[%s] Ban Noi Dat: qua %ds chua toi NPC -> BO, di tiep",
+                        self._label, self.NOI_DAT_HAN_GIO)
+            return False
         if not self._wait_combat_clear(idle=1.0, cap=60.0):
             return False
 
@@ -16029,7 +16265,14 @@ class GameClient:
     HPSP_ITEM_PRICE = 20       # xu / 1 cai (ca HP lan SP)
     HP_SHOP_SLOT = 1           # Vien Hanh Khi +62HP
     SP_SHOP_SLOT = 2           # Thien Kim Du +62SP
+    # Map NPC ban HP/SP = "Loi Dai Huong Dung" (12992). Duong di theo bang tim duong cua game
+    # (`world_nav.json`): 12001 --cong 1--> 63000 --cong 5--> 12992, dung hai cong ma route replay
+    # duoi day di qua ("08000100" / "08000500") -> smart route ra DUNG duong do.
+    HPSP_NPC_MAP = 12992
+    HPSP_NPC_POS = (1010, 510)   # cho dung noi chuyen voi NPC (buoc cuoi cua route replay)
     # Route Trac Quan spawn -> NPC (chi move + gate; scene_resume tu goi sau moi gate).
+    # GIU LAM DUONG DU PHONG: smart route can `world_nav.json` + `Ground.mmg`, thieu file hoac
+    # khong tim ra duong thi van con duong nay (da xac minh tu capture that).
     TRAC_HPSP_ROUTE = [
         ("move", 3, 141, 1637), ("move", 3, 90, 1670), ("move", 3, 90, 1670),
         ("gate", "08000100"),
@@ -16099,7 +16342,25 @@ class GameClient:
         return bought
 
     def _run_trac_hpsp_route(self):
-        """Replay route Trac Quan spawn -> NPC Loi Dai Huong Dung (theo capture)."""
+        """Trac Quan -> NPC Loi Dai Huong Dung. Uu tien SMART ROUTE, replay chi la du phong.
+
+        User 21/09: "cai nay phai dung di chuyen thong minh de tang toc di chuyen roi dung ko" -
+        cho dong bo voi `cat_do_tien_trang` (da dung smart route tu lau). Replay di CO DINH ~35
+        buoc theo capture, moi buoc mot lenh move + sleep, khong biet duong tat va khong sua duoc
+        neu bi day lech vi tri; smart route tinh duong that tu vi tri THAT.
+        """
+        if self.follow_smart_scene_route(self.TRAC_QUAN_CITY, self.HPSP_NPC_MAP,
+                                         safe=self.HPSP_NPC_POS):
+            self.navigate_to(*self.HPSP_NPC_POS, flee=True)
+            return
+        log.warning("[%s] Mua HP/SP: smart route %d -> %d khong duoc -> chay route replay",
+                    self._label, self.TRAC_QUAN_CITY, self.HPSP_NPC_MAP)
+        if self.current_map != self.TRAC_QUAN_CITY:
+            # Smart route co the da di duoc NUA DUONG roi moi ket -> replay bat dau tu spawn
+            # Trac Quan, chay tu map khac la sai toa do ngay buoc dau ("di chuyen QUA XA").
+            log.warning("[%s] Mua HP/SP: dang o map %s, khong chay duoc route replay",
+                        self._label, self.current_map)
+            return
         for step in self.TRAC_HPSP_ROUTE:
             if not self.running:
                 return
@@ -16205,7 +16466,7 @@ class GameClient:
         # CHI chon thanh DA MO. Chua mo Nghiep Thanh -> dung Trac Quan (acc moi LUON co san).
         # Truoc day boc 50-50 mu -> acc chua mo Nghiep Thanh spam "Teleport -> city 12061" hang
         # chuc lan khong bao gio toi (log 15:27).
-        _ung_vien = [(12001, 0), (12061, 2)]
+        _ung_vien = list(PRE_ROUTE_CITIES)
         _mo = [cf for cf in _ung_vien if self.city_unlocked(cf[0]) is not False]
         city, flag = random.choice(_mo or [(12001, 0)])
         log.info("[%s] pre-route: tele trung gian ve thanh %s truoc (%d thanh da mo)",
