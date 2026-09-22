@@ -2563,6 +2563,13 @@ class GameClient:
         # dang deo ngoc thi thao ra. Dat trong `run_party_digioi` luc login (truoc cua re engine
         # moi) nen phu ca hai engine. Xem `use_phuc_than_items` / `thao_ngoc_phuc_than`.
         self.phuc_than_tat = False
+        # Ket qua `S:047-002 <創建房間結果>` cua lan tao phong PB gan nhat (None = chua co).
+        self._pb_tao_phong_kq = None
+        self._pb_tao_phong_luc = 0.0
+        # DANG O TRONG PHONG PB (lobby) - tuong duong `Dungeon.isInRoom` cua client. KHAC HAN
+        # "dang o trong MAP pho ban": co nay bat ngay khi `S:047-002`/`S:047-003` tra 0, luc do
+        # nhan vat van dung ngoai thanh. Chi doi theo goi SERVER, khong suy tu map.
+        self._pb_trong_phong = False
         self._active_pet_login = None
         self._pet_login_logged = None   # chu ky dong log PET login gan nhat
         self._collect_style_flags = {}
@@ -2769,6 +2776,10 @@ class GameClient:
                                         .get(getattr(self, "_username", None), {}) or {})
         self._daily_date = _gift_day()
         self._connect_time = time.time()
+        # PHIEN MOI -> chua o phong PB nao. Giu co cu qua relogin thi `leave_team_dungeon` gui
+        # `C:047-010` giua thanh - dung cai da lam RUNG ca 4 acc (log 17:56).
+        self._pb_trong_phong = False
+        self._pb_tao_phong_kq = None
         # Qua online dung state server (0x55 RoleCount id=10 + 0x51 BitFlag), khong dem local nua.
         self._online_base = 0.0
         self.claimed_gifts = set()
@@ -3118,26 +3129,53 @@ class GameClient:
         # Chan o DAY (mot cho) vi co 6 noi goi ham nay.
         # Dung in_instance_map (ca dai 62xxx) chu KHONG dung TEAM_DUNGEON_MAPS (4 map): o trong
         # instance KHAC ma tra "da o ngoai" thi caller bo duong relogin du phong -> ket vinh vien.
-        if not in_instance_map(_map0):
-            log.info("[%s] khong o trong pho ban to doi (map=%s) -> KHONG gui C:047-010",
-                     self._label, _map0)
+        #
+        # NHUNG "O TRONG PHONG" KHAC "O TRONG MAP PHO BAN" (sua 22/09). Client bat `isInRoom` ngay
+        # khi `S:047-002`/`S:047-003` tra 0 - luc do nguoi choi VAN DANG DUNG NGOAI THANH, chua
+        # doi map. Doan phong bang `current_map` thi ca giai doan lobby bi doc thanh "da o ngoai":
+        # lenh don phong khong bao gio duoc gui, phong cu ton mai, va lan tao phong sau server tra
+        # `S:047-002` ma 3 <已在副本房間中> -> moi member vao phong khong ton tai -> 0/4 -> lap.
+        #
+        # Ca that 22/09 party 50 (user: "lap pt roi dung o Ng Thanh"), lap tu 22:37:
+        #   22:38:46 [dakmot] khong o trong pho ban to doi (map=12061) -> KHONG gui C:047-010
+        #   22:38:46 [dakmot] (LEADER) don 5 acc ra khoi phong PB CU truoc khi tao phong moi
+        # Dong thu hai noi "da don 5 acc" trong khi dong thu nhat vua tu choi gui goi - tuc buoc
+        # don phong (them 22/09 cho party 23) CHUA BAO GIO chay that.
+        #
+        # `_pb_trong_phong` KHONG phai suy doan: no chi bat khi SERVER tra ket qua 0, va tat khi
+        # server bao minh ra (`S:047-010`) / pho ban ket thuc (`S:047-012`) / mat ket noi. Nen cua
+        # chan goc van nguyen ven y nghia - khong o trong phong VA khong o trong map thi van
+        # TUYET DOI khong gui.
+        if not in_instance_map(_map0) and not getattr(self, "_pb_trong_phong", False):
+            log.info("[%s] khong o trong pho ban to doi (map=%s, chua vao phong) -> KHONG gui "
+                     "C:047-010", self._label, _map0)
             return True     # coi nhu da o ngoai - dung muc dich cua caller
-        log.info("[%s] THOAT PHO BAN TO DOI (C:047-010) - khong relogin", self._label)
+        _chi_lobby = not in_instance_map(_map0)
+        log.info("[%s] THOAT PHO BAN TO DOI (C:047-010) - khong relogin%s",
+                 self._label, " (dang o PHONG, chua vao map)" if _chi_lobby else "")
         try:
             self.send(0x2f, b"\x0a\x00")
         except OSError:
             return False
         # cho server day ra khoi instance (doi map). Khong doi map cung KHONG relogin bu o day:
         # caller tu quyet dinh, tranh am tham quay lai dung cach cu.
+        #
+        # RA KHOI PHONG LOBBY THI MAP KHONG DOI (22/09): dang dung o thanh, chi `isInRoom` tat.
+        # Cho doi map o ca nay la cho het `wait` roi bao that bai OAN - va caller (`_don` trong
+        # `_create_team_dungeon_room`) se tuong chua don duoc phong.
         _t0 = time.time()
         while self.running and time.time() - _t0 < wait:
-            if self.current_map != _map0:
+            if _chi_lobby:
+                if not getattr(self, "_pb_trong_phong", False):
+                    log.info("[%s] -> da ra khoi PHONG pho ban (S:047-010)", self._label)
+                    return True
+            elif self.current_map != _map0:
                 log.info("[%s] -> da ra khoi pho ban (map %s -> %s)",
                          self._label, _map0, self.current_map)
                 return True
             time.sleep(0.3)
-        log.warning("[%s] -> gui C:047-010 roi ma %.0fs chua ra khoi map %s",
-                    self._label, wait, _map0)
+        log.warning("[%s] -> gui C:047-010 roi ma %.0fs chua ra khoi %s",
+                    self._label, wait, "PHONG" if _chi_lobby else "map %s" % _map0)
         return False
 
     def relogin(self):
@@ -5815,8 +5853,43 @@ class GameClient:
             _rid = bytes(body[2:10])
             with _PARTY_LOCK:
                 _DUNGEON_ROOM.get(self.party_idx, set()).discard(_rid)
+            _minh = getattr(self, "self_entity", None)
+            if _minh and _rid.startswith(bytes(_minh)[:6]):
+                self._pb_trong_phong = False   # NGUOI RA LA MINH
             log.info("[%s] Phong PB: co nguoi RA (S:047-010) -> trong phong %d nguoi",
                      self._label, len(_DUNGEON_ROOM.get(self.party_idx, ())))
+        elif sub == 0x02 and len(body) >= 3:
+            # S:047-002 <創建房間結果> +結果(1) +長度(1) +密碼(?) - KET QUA TAO PHONG, ve cho
+            # LEADER (`Dungeon.ReciveCreateDungeon`, _lua_dec/Logic/Dungeon.lua:460).
+            #
+            # Truoc 22/09 bot KHONG DOC goi nay: no ban `0x2f 0100` + `0x2f 0200`, `sleep(1.0)`,
+            # roi MOI LUON. Tao phong hong thi moi vao mot phong KHONG TON TAI -> khong ai vao
+            # duoc -> cho du 40 giay -> `SERVER moi cong nhan 0/4` -> huy -> lam lai, vinh vien.
+            #
+            # Ca that 22/09 party 50 (user: "lap pt roi dung o Ng Thanh"), 22:37 -> 22:39+:
+            #   22:37:59 (LEADER) === PHO BAN TO DOI LV110: tao + moi 4 member ===
+            #   22:38:01 (LEADER) phong PB: moi 4 member theo entity:
+            #            ['a65d1be6:dakhai:12061/k1', 'a95d1be6:daknam:12061/k1', ...]
+            #   22:38:45 (LEADER) lv110 member ready 0/4 sau 40.1s -> HUY phong, relogin ca party
+            # Entity DUNG HET (dung map, dung kenh, client con song, da thay tan mat), va phia
+            # member KHONG MOT DONG nao - tuc goi moi chua he toi noi. Party 21 (19:56) y het.
+            _kq = body[2]
+            _ten_loi = {0: "OK", 1: "khong co ma pho ban nay (無此副本編號)",
+                        2: "KHONG DU CAP (等級不符)", 3: "DANG O TRONG PHONG PB ROI (已在副本房間中)",
+                        4: "HET LUOT (次數用盡)", 5: "KHONG DUOC TO DOI (不可組隊)",
+                        6: "phong DAY (人數已滿)", 7: "het cho (暫無可用空間)"}
+            self._pb_tao_phong_kq = _kq
+            self._pb_tao_phong_luc = time.time()
+            if _kq == 0:
+                # O TRONG PHONG ROI - du van dang dung ngoai thanh. Client bat `isInRoom = true`
+                # ngay o day (`Dungeon.ReciveCreateDungeon`), chua he doi map.
+                self._pb_trong_phong = True
+                log.info("[%s] (LEADER) Phong PB: TAO PHONG OK (S:047-002)", self._label)
+            else:
+                self._pb_trong_phong = False   # client goi `ClearRoomData()` khi ma != 0
+                log.warning("[%s] (LEADER) Phong PB: TAO PHONG HONG (S:047-002 ket qua=%d: %s)"
+                            " -> moi member luc nay la moi vao phong KHONG TON TAI",
+                            self._label, _kq, _ten_loi.get(_kq, "?"))
         elif sub == 0x03 and len(body) >= 9:
             # S:047-003 <加入房間結果> +ket qua(1) +phong(4) +SO NGUOI(1) + danh sach...
             #
@@ -5825,12 +5898,23 @@ class GameClient:
             # NGUOI VAO phong (member), leader tao phong thi nhan `S:047-002`.
             _kq, _n = body[2], body[7]
             if _kq == 0:
+                self._pb_trong_phong = True   # member DA o trong phong (van dang ngoai thanh)
                 log.info("[%s] Phong PB: vao phong OK (S:047-003) -> phong dang co %d nguoi",
                          self._label, _n)
+            else:
+                # GHI CA KHI HONG. Truoc day chi log khi `_kq == 0` -> member gui accept, bot tu
+                # in "da DONG Y" (do chi la moc DA GUI), con server tu choi thi IM LANG HOAN TOAN.
+                # Leader dem 0/4 ma khong ai biet vi sao.
+                # Ca that 22/09 party 23 (user: "member accept that hay ko"): 11:24-11:26 ca 4
+                # member in "da DONG Y" + "da an CHUAN BI", leader van `SERVER moi cong nhan 0/4`,
+                # va KHONG MOT DONG nao noi server tra loi gi.
+                log.warning("[%s] Phong PB: vao phong HONG (S:047-003 ket qua=%d) - lenh accept "
+                            "da gui nhung server TU CHOI", self._label, _kq)
         if sub == 0x0c and len(body) >= 5:
             _kq = body[2]
             _did = int.from_bytes(body[3:5], "little")
             self.dungeon_complete = True
+            self._pb_trong_phong = False       # pho ban xong -> khong con o trong phong
             self._pb_ket_thuc_luc = time.time()
             log.info("[%s] PHO BAN KET THUC (S:047-012 ket qua=%d, pho ban 0x%04x) -> tu roi nhu "
                      "client (C:013-004)", self._label, _kq, _did)
@@ -13426,6 +13510,50 @@ class GameClient:
         khi whitelist vua moi vao phong.
         """
         whitelist_count = self.invite_whitelist_team_dungeon(gap=gap)
+        # GUI MU - `0x2f 0800` KHONG co goi tra loi nao. Entity sai thi goi roi vao hu khong, leader
+        # dung cho du 40 giay roi bao `SERVER moi cong nhan 0/4`, va khong the biet vi sao.
+        #
+        # Ca that 22/09 party 21 (19:56 -> 20:02, bay vong y het nhau):
+        #   19:57:07 (LEADER) === PHO BAN TO DOI LV20: tao + moi 4 member ===
+        #   19:57:53 (LEADER) lv20 SERVER moi cong nhan 0/4 member vao phong sau 40.2s
+        # Suot 44 giay moi vong, KHONG MOT DONG nao cua bon member - ma member nhan duoc loi moi
+        # thi LUON in "Nhan moi PHO BAN ... da DONG Y" (`_on_dungeon` sub 0x0f). Tuc goi moi chua
+        # he toi noi. Khong doan them duoc gi nua vi khong co so lieu nao duoc in ra.
+        #
+        # Nen in DOI CHIEU ngay truoc khi gui: entity dinh moi co con la entity LIVE cua acc do
+        # khong, no con song khong, dang o dau. Ca party chung mot tien trinh nen doc thang client
+        # (L2) - khong hoi ai, khong cho ai bao cao.
+        _soi = []
+        _live = dict(_PARTY_CLIENTS.get(self.party_idx) or {})
+        for entity in bot_entities:
+            _e = bytes(entity)
+            _c = _live.get(_e)
+            if _c is None:
+                # Khong co client nao dang mang entity nay -> entity CHET (acc da relogin va mang
+                # entity khac, hoac so entity chua duoc don).
+                _ten = next((getattr(cc, "_label", "?") for cc in _live.values()
+                             if bytes(getattr(cc, "self_entity", b"") or b"") == _e), None)
+                _soi.append("%s:KHONG CO CLIENT nao mang entity nay%s"
+                            % (_e.hex()[:8], "" if _ten is None else " (~%s)" % _ten))
+                continue
+            _tt = []
+            if not getattr(_c, "running", False):
+                _tt.append("acc DA TAT")
+            _en_live = bytes(getattr(_c, "self_entity", b"") or b"")
+            if _en_live and _en_live != _e:
+                _tt.append("entity LIVE khac: %s" % _en_live.hex()[:8])
+            try:
+                _vs = self.da_thay_tan_mat(_e)
+            except Exception:
+                _vs = ""
+            if _vs:
+                _tt.append(_vs)
+            _soi.append("%s:%s:%s/k%s%s"
+                        % (_e.hex()[:8], getattr(_c, "_label", "?"),
+                           getattr(_c, "current_map", None), getattr(_c, "current_channel", None),
+                           "" if not _tt else " <- " + "; ".join(_tt)))
+        log.info("[%s] (LEADER) phong PB: moi %d member theo entity: %s",
+                 self._label, len(bot_entities), _soi)
         for entity in bot_entities:
             self.send(0x2f, b"\x08\x00" + bytes(entity))
             time.sleep(gap)
@@ -13757,6 +13885,37 @@ class GameClient:
         self._td_incomplete = True   # run_party_digioi doc co nay -> ca party relogin gom lai, danh lai
         return False
 
+    def _cho_tao_phong_pb(self, level_label, wait: float = 3.0) -> bool:
+        """CHO `S:047-002` roi hay moi member. Tra False = phong KHONG tao duoc -> dung moi.
+
+        Moi member vao mot phong chua ton tai la dot 40 giay moi vong, khong mot dau hieu nao
+        trong log ngoai `SERVER moi cong nhan 0/4` (party 50 va 21, 22/09 - xem `_on_dungeon`
+        sub 0x02). Bang ma loi lay tu client that: `_lua_dec/Logic/Dungeon.lua:463`.
+
+        SERVER IM LANG -> CU MOI NHU CU (tra True). Khong bien mot phep do moi thanh cua chan:
+        cho nay truoc gio chay duoc, va "khong tra loi" da tung bi hieu nham thanh "hong" mot lan
+        roi (KNOWLEDGE.md muc 7: treo toan bo dong bo kenh ngay 30/08).
+        """
+        _het = time.time() + wait
+        while time.time() < _het:
+            if not self.running:
+                return False
+            if getattr(self, "_pb_tao_phong_kq", None) is not None:
+                break
+            time.sleep(0.1)
+        _kq = getattr(self, "_pb_tao_phong_kq", None)
+        if _kq is None:
+            log.info("[%s] (LEADER) lv%s: server chua tra ket qua tao phong sau %.1fs -> van moi "
+                     "member nhu cu", self._label, level_label, wait)
+            return True
+        if _kq != 0:
+            # Da log chi tiet ma loi o `_on_dungeon`. O day chi noi VI SAO BO VONG NAY.
+            log.warning("[%s] (LEADER) lv%s: KHONG tao duoc phong (ket qua=%d) -> BO luot nay, "
+                        "khong moi member (moi vao phong khong ton tai = dot 40s moi vong)",
+                        self._label, level_label, _kq)
+            return False
+        return True
+
     def _create_team_dungeon_room(self, dungeon_id: int, level_label: int, ready_wait: float = 9.0) -> bool:
         # CHI dem member co client CON SONG. _PARTY_ENTITIES chi duoc THEM VAO, khong bao gio xoa:
         # acc tung chay trong phien nay (roi bi Stop / go khoi party / rot han) van de lai entity
@@ -13779,11 +13938,33 @@ class GameClient:
         log.info("[%s] (LEADER) === PHO BAN TO DOI LV%d: tao + moi %d member ===",
                  self._label, level_label, len(ents))
         self._td_incomplete = False   # co "phong thieu nguoi sau START" (xem _team_dungeon_roster_ok)
+        # DON PHONG CU TRUOC. Khong start duoc (thieu nguoi) thi ham nay `return False` va vong
+        # ngoai goi lai sau ~45s - nhung PHONG CU van con, va ca party van ket trong do: member
+        # dang o trong mot phong thi KHONG join duoc phong moi, server tu choi IM LANG.
+        # Ca that 22/09 party 23: 10:03 con vao phong duoc (4 nguoi), tu 11:24 tro di lap lai
+        # `SERVER moi cong nhan 0/4 member vao phong` moi 45 giay - ca 4 member deu in "da DONG Y"
+        # + "da an CHUAN BI" ma khong mot goi `S:047-003` nao ve.
+        # `leave_team_dungeon` tu kiem "dang o trong phong khong" nen goi thua cung vo hai.
+        _don = 0
+        for _e, _c in list((_PARTY_CLIENTS.get(self.party_idx) or {}).items()):
+            if not getattr(_c, "running", False):
+                continue
+            try:
+                if _c.leave_team_dungeon(wait=2.0):
+                    _don += 1
+            except Exception:
+                pass
+        if _don:
+            log.info("[%s] (LEADER) don %d acc ra khoi phong PB CU truoc khi tao phong moi",
+                     self._label, _don)
         get_party_battle(self.party_idx).reset_session()
         self.flee_mode = False
         self.state.quest_mode = True
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
-        self.send(0x2f, b"\x02\x00" + struct.pack("<H", int(dungeon_id)) + b"\x01"); time.sleep(1.0)
+        self._pb_tao_phong_kq = None
+        self.send(0x2f, b"\x02\x00" + struct.pack("<H", int(dungeon_id)) + b"\x01")
+        if not self._cho_tao_phong_pb(level_label):
+            return False
         reset_dungeon_ready(self.party_idx)
         reset_dungeon_room(self.party_idx)
         whitelist_count = self._invite_team_dungeon_participants(ents, gap=1.0)
@@ -14326,9 +14507,13 @@ class GameClient:
         # nhu binh thuong (state.py update_0x33), vi so quai co the it hon o mot so tran/level ->
         # muon danh theo quest_mode CO DINH cho toi khi xong het dungeon (hoac fail/thoat giua chung).
         self.state.quest_mode = True
-        # 1. Tao pho ban to doi
+        # 1. Tao pho ban to doi - CHO `S:047-002` roi hay moi (xem `_cho_tao_phong_pb`)
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
-        self.send(0x2f, bytes.fromhex("0200010001")); time.sleep(1.0)
+        self._pb_tao_phong_kq = None
+        self.send(0x2f, bytes.fromhex("0200010001"))
+        if not self._cho_tao_phong_pb(20):
+            self.state.quest_mode = False
+            return False
         # 2. Moi tung member theo ENTITY (0x2f 0800 [entity 8B]) - KHAC party-invite 0x0d 07
         reset_dungeon_ready(self.party_idx)   # xoa tin hieu ready cu (lan pho ban truoc) tranh nham
         reset_dungeon_room(self.party_idx)    # dem MEMBER that vao phong, tu dau

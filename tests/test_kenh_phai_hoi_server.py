@@ -261,16 +261,21 @@ class TestKhongThayThiLamGi(unittest.TestCase):
         self.assertGreater(i_sync, 0)
         self.assertLess(i_rally, i_sync, "doi kenh TRUOC khi ca party ra safe = van hong")
 
-    def test_picker_TRANH_kenh_hong(self):
-        """Chon lai dung cai kenh vua khong thay nhau thi lam lai cung the."""
-        s = self._src()
-        self.assertIn('"kenh_hong": None,', s)
-        self.assertIn('_hong = st.get("kenh_hong")', s)
-        self.assertIn("exclude=tuple(sorted(_tru))", s)
+    def test_KHONG_CON_khai_niem_kenh_hong(self):
+        """User chot 22/09: instance voi kenh la MOT -> khong co "kenh hong".
 
-    def test_sang_kenh_khac_thi_XOA_co_kenh_hong(self):
+        Ban cu: "cung so kenh ma khong thay nhau" -> danh dau kenh do HONG -> picker tranh no ->
+        ca party keo nhau sang kenh khac hin. Do la chua trieu chung, va no lam party 3 chay
+        long vong 19 phut (22/09). So den chi duoc chua kenh SERVER TU CHOI (ma 2 = khong co khu,
+        ma 4 = day) - xem `documents/CORE_FLOW.md` muc "Su that ve game".
+        """
         s = self._src()
-        self.assertIn('st["kenh_hong"] = None', s, "giu mai se can dan het kenh de chon")
+        self.assertNotIn("kenh_hong", s, "kenh khong hong - dung dung lai co nay")
+
+    def test_picker_van_TRU_kenh_1(self):
+        """Bo `kenh_hong` khong duoc lam mat duong tru kenh cua picker."""
+        s = self._src()
+        self.assertIn("exclude=tuple(sorted(_tru))", s)
 
 
 class TestSoKenhKhiMoiParty(unittest.TestCase):

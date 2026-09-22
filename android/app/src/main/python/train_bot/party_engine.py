@@ -1700,6 +1700,7 @@ class PartyEngine:
                  doc_gen=None, doc_keo=None, doc_fc_di_bo=None, la_thanh=None,
                  hoi_du_cap=None, nhip_acc=None,
                  chay_pb_doi=None, ho_phu=None, doc_cap_dg=None, chore_fn=None,
+                 doc_kenh_dich=None,
                  daily_fn=None,
                  ve_safe_khi_stop=None, hoi_thanh=None, hoi_cho=None, doc_safe=None,
                  hoi_dieu_phoi=None, doc_thanh=None, kenh_doi_duoc=None, xe_dich=None,
@@ -1732,7 +1733,8 @@ class PartyEngine:
         self.hoi_thanh = hoi_thanh       # (map_id) -> bool : `_o_thanh_di_qua` cua engine cu
         self.hoi_cho = hoi_cho           # () -> str : ly do chua nen ra lenh ("" = ra duoc)
         self.hoi_dieu_phoi = hoi_dieu_phoi   # () -> (viec, map, kenh, ly_do) : `_dieu_phoi_quyet`
-        self._dp_kenh = None             # kenh dich do dieu phoi cu chot
+        self._dp_kenh = None             # kenh PARTY DANG O (kh["kenh"]) - KHONG phai kenh dich
+        self._doc_kenh_dich = doc_kenh_dich   # () -> kenh DICH da chot (`st["kenh_dich"]`)
         self._doc_gen = doc_gen          # () -> (reform_gen, resync_gen) : hai gen cua dieu phoi
         self._doc_keo = doc_keo          # () -> username | "*" : ai duoc di duong (`dat_nguoi_keo`)
         self._doc_fc_di_bo = doc_fc_di_bo  # () -> city_id | None : thanh cua route PHAI DI BO toi
@@ -2238,6 +2240,26 @@ class PartyEngine:
             return None
 
     def _kenh_dich_hien_tai(self):
+        """KENH DICH de `VIEC_RESYNC` chuyen toi.
+
+        Uu tien `st["kenh_dich"]` - cai `_dieu_phoi_chot_kenh` VUA CHOT. `self._dp_kenh` chi la
+        `kh["kenh"]`, tuc KENH PARTY DANG DUNG, KHONG phai kenh dich:
+        Ca that 22/09 party 3 (user: "danh boss the gioi xong no dung o Trac quan lam lon gi the"):
+            13:12:00 DIEU PHOI: ... KHONG THAY duoc dong doi (khac instance du cung so kenh)
+                     -> danh dau kenh 9 la HONG va chot kenh KHAC
+            13:12:00 ENGINE: sga010..sieugaaa -> resync
+        Ca party dang o kenh 9, kenh 9 vua bi danh dau HONG, ma `resync` lai nham ve... kenh 9
+        (`kh["kenh"]` = 9). Doi sang chinh cho dang dung = KHONG LAM GI -> `switch_channel` im,
+        dieu phoi thay van lech -> bump lai moi 3 phut. Party 3 ket o Trac Quan tu 12:56 den 13:15.
+        `k[0]` (kenh dang o) cung the - chi la buoc cuoi cung khi khong con nguon nao.
+        """
+        if self._doc_kenh_dich is not None:
+            try:
+                _d = self._doc_kenh_dich()
+                if _d:
+                    return int(_d)
+            except Exception:
+                pass
         if self._dp_kenh:
             return self._dp_kenh        # kenh DIEU PHOI CU da chot (`pick_best_channel`)
         k = self.chup().kenhs()
@@ -2261,14 +2283,13 @@ class PartyEngine:
 class HieuUng(object):
     """Nhung thay doi trang thai ma quyet dinh nay keo theo. Ham quyet dinh KHONG tu lam."""
 
-    __slots__ = ("doi_pha_train", "reset_joined", "kenh_hong", "rut_reform", "dang_gom",
+    __slots__ = ("doi_pha_train", "reset_joined", "rut_reform", "dang_gom",
                  "nguoi_keo", "chot_tang_gom", "chot_2k_xong", "xoa_nhip_acc", "o_thanh_tu",
                  "lech_tu", "het_lech_tu")
 
     def __init__(self):
         self.doi_pha_train = False   # mode digioi_train: ca party het gio DG -> sang pha train
         self.reset_joined = False    # leader rot -> so nho khong duoc giu nguoi cua doi da tan
-        self.kenh_hong = None        # kenh "cung so ma khong thay nhau" -> picker phai TRANH
         self.rut_reform = False      # da du doi + cung map/kenh -> rut lenh reform da dat muc dich
         self.dang_gom = False        # bao acc biet party dang gom -> hoan viec vat
         self.nguoi_keo = "*"         # ai duoc di duong (xem `dat_nguoi_keo`)
@@ -2414,23 +2435,34 @@ def quyet_dinh_cap_party(anh):
         if not ly_do:
             ly_do = ("chua doc duoc map cua %s -> chua xong bac gom map, chua den luot kenh"
                      % (sorted(anh.chua_biet_map),))
-    elif not anh.du_doi and anh.ai_lech_instance:
+    elif not anh.du_doi and anh.ai_lech_instance and not anh.o_thanh_di_qua:
         # CUNG MAP + CUNG SO KENH MA KHONG THAY NHAU = KHAC INSTANCE. "Ai dang dung quanh minh"
         # (`0x03 PlayerAppear`) la bang chung that - server chi gui cho nguoi CUNG SCENE + CUNG
         # INSTANCE (user 13/09: "biet duoc nhung nguoi xung quanh minh thi biet duoc co cung kenh
         # hay ko, co cai lon gi ma ko chac").
         #
-        # DANH DAU KENH HIEN TAI LA HONG. Khong co buoc nay thi `dong_bo` la lenh RONG: ca party DA
-        # cung so kenh roi nen khong co gi de dong bo, nhip sau van khong thay nhau -> lap vo tan.
-        # Ca that 21/09 party 43 - DUNG MOT TIENG o Tuong Duong (08:05:15 -> 09:05:03, 82 lan),
-        # user: "p43 dung o Tuong duong bao lau roi ... 1 thread dieu khien ca pt roi ma van de
-        # ngu the".
+        # KHONG duoc ket luan "khac instance" va KHONG duoc danh dau kenh nao la HONG (user chot
+        # 22/09: "instance voi kenh la 1" -> `documents/CORE_FLOW.md` muc "Su that ve game").
+        # Kenh khong hong; chi co hai kha nang, va ca hai deu duoc lo o cho khac:
+        #   a) party LECH KENH THAT, lenh doi kenh chua gui duoc (acc dang trong tran) ->
+        #      `_dieu_phoi_chot_kenh` GIA HAN dich thay vi chot kenh moi;
+        #   b) so kenh bot dang nho SAI (`kenh_dang_chac()==False`) -> `_dieu_phoi_thi_hanh_kenh`
+        #      cu gui `0x07` du so nho trung dich, server tra ma 0/1 moi la su that.
+        # Ban cu doi sang mot kenh KHAC hin: no "thoat" duoc vong lap bang cach keo ca party di
+        # noi khac, nhung do la chua trieu chung - ca that 22/09 party 3 duoi day la kenh chot
+        # 10 -> chan -> 9 -> chan -> ket luan "kenh 9 HONG" -> doi tiep, 19 phut khong di dau.
+        #
+        # TRU THANH DI NGANG QUA (`o_thanh_di_qua`): o do party CHUA CAN LAP, va dang nao cung sap
+        # teleport di thanh tap ket - "khong thay nhau" khong noi len gi, ma sua cung vo nghia:
+        # doi kenh xong van dung nguyen cho, nhip sau lai "khong thay nhau", lai doi tiep.
+        # Ca that 22/09 party 3 (user: "dang o trac quan chot kenh cai lon gi the"): ca party o
+        # 12001 sau khi danh boss the gioi, 12:56 -> 13:15 lap lai "danh dau kenh 9 la HONG va
+        # chot kenh KHAC" moi 3 phut ma khong di dau ca.
         viec = DP_DONG_BO
-        hu.kenh_hong = anh.kenh_hien_tai or (sorted(kenhs)[0] if kenhs else None)
         if not ly_do:
-            ly_do = ("cung map nhung %s KHONG THAY duoc dong doi (khac instance du cung so kenh) "
-                     "-> danh dau kenh %s la HONG va chot kenh KHAC (%s)"
-                     % (anh.ai_lech_instance, hu.kenh_hong, anh.tinh_hinh_doi))
+            ly_do = ("cung map nhung %s KHONG THAY duoc dong doi -> so kenh dang nho KHONG dung "
+                     "voi thuc te, dong bo lai kenh %s (%s)"
+                     % (anh.ai_lech_instance, anh.kenh_hien_tai, anh.tinh_hinh_doi))
     elif len(kenhs) > 1 and not anh.du_doi:
         # CUNG MAP ROI NHUNG CON LECH KENH -> GOM KENH TRUOC, chua den luot moi party: moi nguoi
         # khac kenh la vo ich vi server khong chuyen loi moi qua kenh (party 7, 11/09).

@@ -164,15 +164,25 @@ class TestDieuPhoiRaLenhDONG_BO(unittest.TestCase):
             self.src += fh.read()
 
     def test_bac_nay_nam_TRUOC_bac_moi(self):
-        i_ins = self.src.find("anh.ai_lech_instance:")
+        i_ins = self.src.find("anh.ai_lech_instance")
         i_moi = self.src.find("elif not anh.du_doi:")
         self.assertGreater(i_ins, 0, "mat bac khac-instance")
         self.assertGreater(i_moi, 0)
         self.assertLess(i_ins, i_moi, "phai xu khac-instance TRUOC khi ra lenh moi")
 
     def test_ra_lenh_dong_bo_kenh(self):
-        i = self.src.find("anh.ai_lech_instance:")
-        self.assertIn("DP_DONG_BO", self.src[i:i + 1600])
+        # NEO THEO THAN NHANH, khong theo cua so ky tu co dinh: them mot doan comment la cua so
+        # truot ra ngoai va test do ma luat khong he bi pha (da dinh hai lan: 21/09 va 22/09).
+        i = self.src.find("anh.ai_lech_instance")
+        self.assertGreater(i, 0, "mat bac khong-thay-nhau")
+        j = self.src.find("\n    elif ", i)
+        self.assertIn("DP_DONG_BO", self.src[i:j])
+
+    def test_KHONG_danh_dau_kenh_HONG(self):
+        """User chot 22/09: instance voi kenh la MOT -> kenh khong "hong", dung danh dau."""
+        i = self.src.find("anh.ai_lech_instance")
+        than = self.src[i:self.src.find("\n    elif ", i)]
+        self.assertNotIn("kenh_hong", than, "kenh khong hong - dung dung lai co nay")
 
     def test_KHONG_bat_acc_bao_cao(self):
         """Doc thang client trong luong dieu phoi (L2), khong co bang bao cao nao."""

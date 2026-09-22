@@ -77,6 +77,61 @@ Muốn nâng `[SUY ĐOÁN]` lên `[LOG]`/`[CAPTURE]`: phải có bằng chứng,
 > `run_party_digioi.py`. Flow nào chưa có ở đây thì Claude **phải đọc code và log trước khi đụng**,
 > và nên bổ sung vào file này (sau khi xin phép user).
 
+## Sự thật về game — KHÔNG được bịa lại
+
+User chốt 22/09. Hai điều này đã bị Claude suy sai và đẻ ra cả một nhánh xử lý vô nghĩa:
+
+| Sự thật | Loại |
+|---|---|
+| **INSTANCE VÀ KÊNH LÀ MỘT.** Không có chuyện "cùng kênh nhưng khác instance" | user chốt |
+| **Boss thế giới đánh NGAY TẠI Trác Quận (12001)**, không phải map riêng | user chốt |
+| **Bot LUÔN BIẾT acc nào trong party còn lượt PB hay không** — đừng nghi "chắc hết lượt" | user chốt |
+
+**Hệ quả của rule 3:** lượt PB tổ đội đọc từ **mission-step server gửi** (`0x18 sub 0x06`), qua
+`team_dungeon_remaining(lv)`. `_pb_doi_level()` chỉ chọn level mà **cả party** còn lượt, và trả
+`None` khi chưa có bảng mission-step (chưa kết luận, **không** phải "hết lượt"). Nên khi PB hỏng,
+**"hết lượt" là giả thuyết phải loại đầu tiên**, không phải giả thuyết đầu tiên nghĩ tới. Đi tìm
+mã lỗi server thật (`S:047-002`, xem mục Phó bản tổ đội) thay vì đoán.
+
+**Hệ quả của rule 1:** "cùng số kênh mà không thấy nhau" **không được** kết luận là khác instance.
+Chỉ có hai khả năng, và phải phân biệt được trước khi làm gì:
+
+| Khả năng | Dấu hiệu trong log | Phản ứng đúng |
+|---|---|---|
+| a) Party **lệch kênh thật**, lệnh đổi kênh chưa tới nơi | có dòng `CHUA gui lenh doi kenh N cho <acc> - dang TRONG TRAN` / acc đang bận | **gia hạn kênh đích, chờ acc rảnh rồi gửi lại**. Không chốt kênh mới |
+| b) **Số kênh bot nhớ sai** | `kenh_dang_chac()` = False, log in dấu `!`: `12001/k9!` | cứ gửi `0x07` tới kênh đích **dù số nhớ đang trùng đích** — server trả mã 0/1 mới là sự thật |
+
+**CẤM** phản ứng "đánh dấu kênh N là HỎNG rồi chốt kênh KHÁC" (gỡ 22/09). Kênh không hỏng; hỏng là
+ở chỗ lệnh chưa gửi được, hoặc bot chưa biết mình đang ở đâu. Sổ đen kênh chỉ được chứa kênh
+**server từ chối**: `S:007-002` mã 2 (`無指定區可換`) và mã 4 (`人數已滿`).
+
+**Bot BIẾT được kênh thật, chỉ là không hỏi được.** `[CAPTURE]` — `KNOWLEDGE.md` mục 7: không có
+lệnh hỏi "tôi đang ở kênh nào" (`S:007-001 <分區列表>` chỉ liệt kê kênh + số người). Nhưng server
+**đẩy** số kênh về ở ba chỗ, bot đều bắt: `0x0c` = `S:012-000 <玩家更換場景> +區號(2)` (**mỗi lần đổi
+scene**), ack `0x07` mã 0/1, và `0x03 PlayerAppear`. Nên số kênh chỉ có thể lạc hậu trong đúng một
+khe: sau một lệnh đổi kênh timeout/thất bại và trước lần đổi scene kế tiếp.
+
+`[LOG]` party 3, 22/09 — ca (a), bot chẩn thành "khác instance" rồi loay hoay 19 phút:
+```
+12:53:51 [party 3] ENGINE MOI: khoi dong                     <- bot vừa start lại, pha=train
+12:54:07 [xGAx]    Boss the gioi - auto danh het luot         <- đánh world boss TẠI 12001
+12:54:13 [party 3] gen 16: dang o thanh DI NGANG QUA 12001, chua toi thanh tap ket 21011
+12:54:14 [party 3] cung map nhung LECH KENH [1, 7, 10] -> CHOT kenh dich = 10
+12:54:14 [party 3] CHUA gui lenh doi kenh 10 cho laochin - dang TRONG TRAN
+12:54:14 [party 3] CHUA gui lenh doi kenh 10 cho xGAx    - dang TRONG TRAN
+12:54:59 [party 3] kenh dich 10 qua 45s van chua gom xong -> chot lai -> CHOT kenh dich = 9
+12:54:59 [party 3] CHUA gui lenh doi kenh 9 cho thmo/thha - dang TRONG TRAN
+12:56:10 [party 3] ... KHONG THAY duoc dong doi -> danh dau kenh 9 la HONG va chot kenh KHAC
+13:15:22 [party 3] van 'dong_bo' (... y hệt ...)
+```
+
+Ba cái sai chồng lên nhau: (1) đang ở **thành đi ngang qua** thì chưa cần chốt kênh, cứ đi tiếp;
+(2) lệnh bị chặn vì `TRONG TRAN` mà bot vẫn tính giờ rồi chốt lại kênh khác; (3) kết luận "khác
+instance" trong khi party lệch kênh **thật**.
+
+**Hệ quả của rule 2:** đứng ở Trác Quận sau world boss là **đúng chỗ**, không phải "lạc". Đừng
+coi đó là party hỏng cần sửa.
+
 ## Khung chung — thứ tự quyết định
 
 `quyet_dinh` (`party_engine.py:337`) = `_quyet_dinh_goc` (`:382`) + **hai bộ lọc hậu kỳ**:
@@ -184,6 +239,29 @@ hết PB làm lại từ đầu"*.
 | Lời mời phòng đi theo **roleId**, không cần cùng map/kênh | `[CAPTURE]` | `0x2f/0800 [entity 8B]`; member nhận `0x2f/0f00` → join `0x2f/0300` → ready `0x2f/0b00` |
 | **Whitelist mời TRƯỚC**, bot member mời sau | `[LOG]` | whitelist là người thật, không có auto-ready — mời trước để họ kịp vào phòng và bấm chuẩn bị |
 | `befriend_nearby()` không phải việc phụ | `[LOG]` | lời mời phòng đi theo roleId từ friend-list; bỏ thì có lúc không mời được ai |
+| **CHỜ `S:047-002` rồi mới mời**, mã ≠ 0 thì bỏ lượt ngay | `[CAPTURE]` | `Dungeon.ReciveCreateDungeon`; mã ≠ 0 ⇒ client `ClearRoomData()` ⇒ **phòng không tồn tại**. Mời vào phòng không có = đốt 40s mỗi vòng, mãi mãi |
+| Server **im lặng** (không trả `S:047-002`) → **vẫn mời như cũ** | `[LOG]` | coi "không trả lời" là "hỏng" từng treo cả đồng bộ kênh (30/08, `KNOWLEDGE.md` mục 7) |
+| **Ở trong PHÒNG ≠ ở trong MAP phó bản** | `[CAPTURE]` | client bật `isInRoom` ngay khi `S:047-002`/`S:047-003` trả 0 — lúc đó vẫn đứng ngoài thành, chưa đổi map |
+
+Bảng 8 mã của `S:047-002 <創建房間結果>` nằm ở `KNOWLEDGE.md`. Ba mã hay gặp: **3** `已在副本房間中`
+(đang ở trong phòng rồi) · **4** `次數用盡` (hết lượt) · **5** `不可組隊` (không được tổ đội).
+
+`[LOG]` party 50, 22/09 — lv110, lặp từ 22:37, entity mời **đúng hết**:
+```
+22:38:01 (LEADER) phong PB: moi 4 member theo entity:
+         ['a65d1be6:dakhai:12061/k1', 'a95d1be6:daknam:12061/k1', ...]
+22:38:45 (LEADER) lv110 member ready 0/4 sau 40.1s -> HUY phong, relogin ca party
+```
+Đúng map, đúng kênh, client sống, đã thấy tận mắt — mà phía member **không một dòng nào**. Gói mời
+chẳng đi đâu cả, vì phòng chưa hề được tạo. Party 21 (19:56) y hệt.
+
+Cùng log đó lộ thêm một cái tự mâu thuẫn — bot đoán "có đang ở trong phó bản không" **bằng map**:
+```
+22:38:46 [dakmot] khong o trong pho ban to doi (map=12061) -> KHONG gui C:047-010
+22:38:46 [dakmot] (LEADER) don 5 acc ra khoi phong PB CU truoc khi tao phong moi
+```
+Dòng dưới khoe "đã dọn 5 acc" trong khi dòng trên vừa từ chối gửi gói — tức bước dọn phòng **chưa
+bao giờ chạy thật**, phòng cũ tồn mãi, và lần tạo sau ăn mã 3.
 
 ### Bước 5 — đủ member theo config mới START
 
@@ -381,6 +459,9 @@ Chỉ **member**. Thứ tự: cửa chặn "đã ở trong party thì thôi" →
 | Phải rời đội **trước** khi đổi kênh | `[CAPTURE]` | server cấm đổi kênh khi còn trong đội, trả `result=3` |
 | Đã ở trong party rồi thì **bỏ qua resync** | `[LOG]` | p15 06/09: 4 member đọc cờ chậm 4 giây → rời party **vừa lập** → leader đánh một mình, kẹt ở cổng |
 | Party đủ + cùng kênh thì resync **vô nghĩa** | `[LOG]` | `:2412` — nó chỉ làm được một việc: đập party đang lành. Đêm 10→11/09 leader *"mời 2198s chưa đủ party (2/4)"* |
+| Acc đang `TRONG TRAN` thì lệnh đổi kênh **chưa gửi được** → **gia hạn** kênh đích, KHÔNG chốt kênh khác | `[LOG]` | party 3 22/09: chốt 10 → chặn → 45s sau chốt 9 → chặn → kết luận "kênh hỏng" → đổi tiếp, 19 phút không đi đâu |
+| Số kênh **không chắc** (`kenh_dang_chac()` = False) thì **đừng bỏ qua** lệnh dù số nhớ trùng đích | `[CAPTURE]` | `KNOWLEDGE.md` mục 7: *"`switch_channel` KHÔNG được bỏ qua theo giá trị nhớ sẵn"* |
+| **Không có "kênh hỏng"** — sổ đen chỉ chứa kênh server từ chối (mã 2 / mã 4) | user chốt | 22/09, xem mục "Sự thật về game" |
 
 ---
 

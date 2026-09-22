@@ -1027,6 +1027,32 @@ Kết quả `S:084-002 [sellId][result]`, `result == 0` = hỏng (kèm mã lỗi
 `S:047-0xx ReciveResetCount`: 0 thành công · 1 không có phó bản · 2 `No Count Limit` ·
 3 `Not Reach Count Limit`.
 
+### `S:047-002 <創建房間結果>` — KẾT QUẢ TẠO PHÒNG PB TỔ ĐỘI (leader nhận)
+
+`+結果(1) +長度(1) +密碼(?)` → `Dungeon.ReciveCreateDungeon` (`_lua_dec/Logic/Dungeon.lua:460`).
+Bảng mã lấy nguyên từ comment trong client (`:463`):
+
+| mã | 中文 | nghĩa |
+|---|---|---|
+| 0 | 成功 | tạo phòng OK (`isInRoom = true`) |
+| 1 | 無此副本編號 | không có mã phó bản này |
+| 2 | 等級不符 | không đủ cấp |
+| 3 | 已在副本房間中 | đang ở trong phòng PB rồi |
+| 4 | 次數用盡 | hết lượt |
+| 5 | 不可組隊 | không được tổ đội |
+| 6 | 人數已滿 | phòng đầy |
+| 7 | 暫無可用空間 | hết chỗ |
+
+Mã ≠ 0 thì client gọi `ClearRoomData()` — **phòng KHÔNG tồn tại**.
+
+> **Bot bỏ qua gói này tới 22/09**: bắn `0x2f 0100` + `0x2f 0200`, `sleep(1.0)`, rồi mời member
+> luôn. Tạo hỏng ⇒ mời vào phòng không tồn tại ⇒ chờ đủ 40s ⇒ `SERVER moi cong nhan 0/4` ⇒ huỷ
+> ⇒ làm lại, vĩnh viễn. Party 50 (22:37→22:39+, lv110) và party 21 (19:56→20:02+, lv20) đều thế:
+> entity mời **đúng hết** (đúng map, đúng kênh, client sống, đã thấy tận mắt) mà phía member
+> **không một dòng nào** — vì gói mời chẳng đi đâu cả.
+>
+> `S:047-003 <加入房間結果>` là của **người VÀO** phòng (member), đừng lẫn với `002` của leader.
+
 > Bot hiện **bỏ qua `kind`**, luôn gửi nhánh "trả tiền" (`0x54 02 00 02 0d 00 <id> 00`) và không
 > đọc `step` → phải thử vào, ăn lỗi rồi mới suy ra "chắc hết free": 24 dòng
 > `vao FREE that bai` trong 10 phút (log 15/09).

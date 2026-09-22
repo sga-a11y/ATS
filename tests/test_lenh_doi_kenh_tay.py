@@ -204,11 +204,16 @@ class TestThuTuLenhDoiKenh(unittest.TestCase):
         self.assertLess(khoi.find("if _ghim:"), khoi.find('_kd0 = st.get("kenh_dich")'),
                         "lenh dieu phoi xet truoc ghim tay -> ghim tay bi phu dinh")
 
-    def test_kenh_ghim_HONG_thi_BO_ghim(self):
-        """Ghim ma kenh do hong (ca party cung so ma khong thay nhau) thi ghim mai = ket cung."""
+    def test_KHONG_tu_bo_ghim_vi_cho_la_kenh_HONG(self):
+        """Ghim la LENH TAY cua user - chi user moi duoc go.
+
+        Ban cu bo ghim khi kenh do bi danh dau "HONG" (ca party cung so ma khong thay nhau).
+        User chot 22/09: instance voi kenh la MOT, khong co kenh hong - nen co do da bi xoa, va
+        cung khong duoc de duong nao khac tu phu dinh lenh tay cua user.
+        """
         khoi = self._khoi_picker()
-        self.assertIn("int(_ghim) in _tru", khoi, "khong kiem kenh ghim co bi danh dau hong")
-        self.assertIn('st["kenh_ghim"] = None', khoi, "kenh ghim hong ma khong bo ghim")
+        self.assertNotIn("kenh_hong", khoi, "kenh khong hong - dung dung lai co nay")
+        self.assertNotIn('st["kenh_ghim"] = None', khoi, "picker tu go ghim tay cua user")
 
     def test_KHONG_giai_tan_o_doan_CHUNG_truoc_khoi_doi_kenh(self):
         """Doan chung cua `_do_manual_cmd` giai tan party NGAY khi vua nhan lenh - truoc ca khi ra

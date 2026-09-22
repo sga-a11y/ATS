@@ -763,11 +763,31 @@ class TestENGINE_MOI_PHAI_CHOT_KENH_DICH(unittest.TestCase):
         self.assertIn("_dieu_phoi_chot_map(", self.than)
 
     def test_chay_NOT_chuoi_cua_vong_dieu_phoi_cu(self):
-        """Vong quet cu goi BON ham nua ngay sau `_dieu_phoi_quyet`. `_dieu_phoi_thi_hanh` moi la
-        cho bien `gom`/`dong_bo` thanh hanh dong that (bump reform), va `_dieu_phoi_thi_hanh_kenh`
-        moi la nguoi GUI lenh doi kenh."""
-        for _f in ("_ghi_ke_hoach(", "_dieu_phoi_thi_hanh(", "_dieu_phoi_thi_hanh_kenh("):
+        """Vong quet cu goi may ham nua ngay sau `_dieu_phoi_quyet`. Engine moi phai chay nhung
+        ham CHOT THONG TIN (ke hoach, kenh dich, map dich) va ham GUI LENH DOI KENH."""
+        for _f in ("_ghi_ke_hoach(", "_dieu_phoi_thi_hanh_kenh(", "_dieu_phoi_chot_map("):
             self.assertIn(_f, self.than, "engine moi bo mat %s cua vong dieu phoi cu" % _f)
+
+    def test_KHONG_bam_co_cho_LUONG_ACC(self):
+        """`_dieu_phoi_thi_hanh` chi lam MOT viec: bam co cho luong acc (`reform_gen` cho `gom`,
+        `resync_gen` cho `dong_bo`). Engine moi da TU thi hanh ca hai (`VIEC_VE_THANH`,
+        `VIEC_RESYNC` trong `party_engine.thi_hanh`) - bam them co nghia la MOT ACC CO HAI NGUOI
+        LAI, va `_do_reform` trong `run_account` chay vong di duong rieng.
+
+        User chot 22/09: "1 thread dieu khien logic thi no phai thuc thi, cha nhe no con phai ra
+        lenh cho chinh no lam a".
+
+        Ca that 22/09 party 1 - du doi 4/4, cung map 56802, cung kenh 1, dang train:
+            21:35:35 REFORM gen -> 4 ... -> gom ve cung map/kenh
+            21:35:36 RUT lenh reform gen 4 - da du doi, cung map [56802] kenh [1]
+            21:35:36 [nasau] Teleport toi thanh 12061: KHONG roi doi (4 member) - dieu phoi giao
+                             viec di duong cho 'sga005'        <- lap moi 2 giay, mai mai
+            21:35:35 [party 1] 5/5 acc DUNG HINH qua 240s
+        Engine ra co roi mot giay sau tu rut, nhung `_do_reform` da vao vong. Rut xong viec thanh
+        `lam` -> `nguoi_keo = leader` -> bon con lai dam vao cua chan teleport trong `go_to_town`.
+        """
+        self.assertNotIn("_dieu_phoi_thi_hanh(", self.than,
+                         "engine moi bam co cho luong acc -> hai nguoi lai mot acc")
 
     def test_KHONG_co_nguon_thu_hai_gui_lenh_kenh(self):
         """`dong_bo` khong duoc dich thanh viec thi hanh: dieu phoi da tu gui lenh doi kenh."""

@@ -195,7 +195,7 @@ class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
         """lech map -> dong bo map -> lech kenh -> dong bo kenh -> lap pt -> di train."""
         _thu_tu = ["elif len(maps) > 1:",
                    "elif anh.chua_biet_map:",
-                   "elif not anh.du_doi and anh.ai_lech_instance:",
+                   "elif not anh.du_doi and anh.ai_lech_instance",
                    "elif len(kenhs) > 1 and not anh.du_doi:",
                    "elif not anh.du_doi:"]
         _vt = []

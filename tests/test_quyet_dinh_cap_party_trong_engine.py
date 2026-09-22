@@ -111,25 +111,40 @@ class TestThuTuNhanh(unittest.TestCase):
         self.assertEqual(viec, PE.DP_DI_TRAIN)
 
 
-class TestKhacInstanceThiDanhDauKenhHONG(unittest.TestCase):
-    """Ca that 21/09 party 43 - DUNG MOT TIENG o Tuong Duong (82 lan). `dong_bo` ma khong danh dau
-    kenh hong thi la lenh RONG: ca party DA cung so kenh roi."""
+class TestKhongThayNhauThiDONG_BO_chu_KHONG_danh_dau_kenh_HONG(unittest.TestCase):
+    """KHONG CO "KENH HONG" - user chot 22/09: "instance voi kenh la 1".
+
+    Ban cu: khong thay nhau -> ket luan "khac instance" -> danh dau kenh dang dung la HONG ->
+    chot mot kenh KHAC hin. No "thoat" vong lap bang cach keo ca party di noi khac, chu khong
+    chua gi - va chinh no lam party 3 chay long vong 19 phut ngay 22/09 (xem
+    `documents/CORE_FLOW.md` muc "Su that ve game").
+
+    Hai nguyen nhan that, deu duoc lo o `run_party_digioi.py` chu khong phai o day:
+      a) lenh doi kenh CHUA GUI DUOC (acc dang trong tran) -> `_dieu_phoi_chot_kenh` GIA HAN dich;
+      b) so kenh bot nho khong con dung -> `_dieu_phoi_thi_hanh_kenh` van gui `0x07` du so nho
+         trung dich, khi `kenh_dang_chac()` la False.
+    """
 
     def test_ra_lenh_dong_bo(self):
         viec, _l, _hu = PE.quyet_dinh_cap_party(
             _anh(du_doi=False, ai_lech_instance=["tq402"]))
         self.assertEqual(viec, PE.DP_DONG_BO)
 
-    def test_danh_dau_kenh_hien_tai_la_HONG(self):
-        _v, ly_do, hu = PE.quyet_dinh_cap_party(
+    def test_KHONG_con_hieu_ung_kenh_hong(self):
+        self.assertFalse(hasattr(PE.HieuUng(), "kenh_hong"),
+                         "kenh khong hong - dung dung lai co nay")
+
+    def test_ly_do_KHONG_duoc_noi_kenh_HONG(self):
+        _v, ly_do, _hu = PE.quyet_dinh_cap_party(
             _anh(du_doi=False, ai_lech_instance=["tq402"], kenh_hien_tai=10))
-        self.assertEqual(hu.kenh_hong, 10)
-        self.assertIn("HONG", ly_do)
+        # "la HONG" chu khong phai "HONG" tran: chu KHONG cung chua HONG.
+        self.assertNotIn("la HONG", ly_do, "dung bao kenh hong - no khong hong")
+        self.assertNotIn("instance", ly_do, "instance va kenh la MOT, dung bia ra 'khac instance'")
 
     def test_DU_DOI_thi_khong_dinh_toi_nhanh_nay(self):
         """Roster DU la bang chung ca party cung mot cho - khong duoc dua vao so kenh de pha."""
-        _v, _l, hu = PE.quyet_dinh_cap_party(_anh(du_doi=True, ai_lech_instance=["tq402"]))
-        self.assertIsNone(hu.kenh_hong)
+        viec, _l, _hu = PE.quyet_dinh_cap_party(_anh(du_doi=True, ai_lech_instance=["tq402"]))
+        self.assertNotEqual(viec, PE.DP_DONG_BO)
 
 
 class TestDungHinhVaDamChanOThanh(unittest.TestCase):
@@ -217,7 +232,7 @@ class TestHamPhaiTHUAN(unittest.TestCase):
 
     def test_moi_thay_doi_trang_thai_deu_di_ra_bang_HieuUng(self):
         hu = PE.HieuUng()
-        for truong in ("doi_pha_train", "reset_joined", "kenh_hong", "rut_reform", "dang_gom",
+        for truong in ("doi_pha_train", "reset_joined", "rut_reform", "dang_gom",
                        "nguoi_keo", "chot_tang_gom", "chot_2k_xong", "xoa_nhip_acc"):
             self.assertTrue(hasattr(hu, truong), "thieu hieu ung %r" % truong)
 
