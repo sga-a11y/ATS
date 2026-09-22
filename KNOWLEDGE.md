@@ -86,7 +86,7 @@ Response: access_token, account_id
 | 0x03 | Entity join map |
 | 0x07 | Entity stat update |
 | 0x08 | Damage result |
-| 0x0b | **Full stats** (HP/SP max+cur) |
+| 0x0b | **Full stats** (HP/SP max+cur) — xem lưu ý "opcode 11 có NHIỀU sub" bên dưới |
 | 0x0c | **Mob info** tại battle start |
 | 0x0d | Player state |
 | 0x0f | Entity full info |
@@ -103,6 +103,29 @@ Response: access_token, account_id
 | 0x4f | Entity registration small |
 | 0x55 | **Unit ready** (1 per char/pet) |
 | 0x6e | Entity info |
+
+### ⚠️ Opcode 11 (`0x0b`) có NHIỀU sub — bot chỉ đoán bằng độ dài gói
+
+Bot gọi `0x0b` là "Full stats" và **không đọc sub**: nó lọc bằng `len(pkt) > 100`. Nhưng
+`protocolTable[11]` của client có ít nhất 12 loại:
+
+| Gói | Sub | Nội dung | Bot dùng chưa |
+|---|---|---|---|
+| `S:011-000 <結束戰鬥>` | 0 | `+ID(8) +NPCIndex(2)` — **KẾT TRẬN THẬT** của một người → `FightManager.FightOver` | **KHÔNG** (gói ~19 byte, rơi khỏi bộ lọc `len > 100`) |
+| `S:011-001 <角色離開戰鬥>` | 1 | `+行(1) +列(1)` | không |
+| `S:011-004 <場景玩家戰鬥類型>` | 4 | ai đang ở trạng thái chiến đấu nào | không |
+| `S:011-005 <參戰角色資訊>` | 5 | thông tin nhân vật tham chiến — **đây mới là "full stat" bot đang đọc** | có |
+| `S:011-250 <現行戰鬥現況>` | 250 | tình hình trận hiện tại | có (mốc VÀO trận của loạn đấu) |
+
+**Mốc kết trận bot đang dùng (`0x14 sub0700`) KHÔNG phải kết trận** — đó là
+`S:020-007 <事件換場景>` → `EventManager.ReceiveChangeSceneEvent()` (`isChangingScene = true`),
+tức **bắt đầu đổi cảnh**. Ở train nó tình cờ tới đúng lúc hết trận nên dùng được; trong phó bản
+thì **không** (xem mục PB lv80: *"capture có vài `0x14 sub0700` trong đoạn chuyển cảnh trước
+battle thật"*).
+
+> Soi 22/09: chưa chứng minh được việc bỏ `S:011-000` gây hại ở đâu, nên **chưa đổi mốc** — đó là
+> lõi combat của mọi mode. Ghi lại đây để lần sau ai nghi mốc kết trận thì có sẵn đường, khỏi mò
+> lại crack client.
 
 ### ⚠️ PARTY THƯỜNG `0x0d` — ba chỗ bot từng làm SAI so với client (sửa 2026-08-27)
 

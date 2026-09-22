@@ -125,6 +125,10 @@ PHA_TRAIN = "train"      # het gio DG -> ra map thuong gom party + train
 # train lien tuc; con `buy_hp_sp` thi da TU kiem nguong du tru truoc khi di.
 BUY_HPSP_MOI_SEC = 7200.0
 
+# DI GIOI HO PHU: check moi 3 phut trong luc DANG O TRONG DG (y `HO_PHU_CHECK_SEC` cua flow cu).
+# `client.use_di_gioi_ho_phu` TU kiem "con < 15 phut moi dung" nen day chi la nhip hoi.
+HO_PHU_CHECK_SEC = 180.0
+
 # HAI THANH TRUNG GIAN cua `client.pre_route_town_hop` (Trac Quan / Nghiep Thanh). Ve CHINH mot
 # trong hai thanh nay thi khong hop nua - do la them mot lan tele vo ich.
 # Chep so o day vi `party_engine` CO Y khong import `client` (engine phai thuan, test duoc thang).
@@ -1443,7 +1447,7 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
                 client.stop_run_around()
         except Exception:
             pass
-        _duy_tri(client, log=log)
+        _duy_tri(client, log=log, ho_phu=ho_phu)
         return True
 
     if viec == VIEC_THOAT:
@@ -1501,14 +1505,36 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
     return True
 
 
-def _duy_tri(client, log=None):
-    """Viec DINH KY trong luc train: Phuc Than + mua HP/SP khi du tru tut duoi nguong.
+def _duy_tri(client, log=None, ho_phu=None):
+    """Viec DINH KY trong luc train: Phuc Than + mua HP/SP + Di Gioi Ho Phu.
 
     Engine cu lam hai viec nay trong vong keepalive: `use_phuc_than_items` khi `phuc_than_pending`,
     va `buy_hp_sp` MOI 2 TIENG (`next_buy_hpsp`) khi user bat tick. Bo thi acc train mai voi buff
     da tut va het thuoc hoi - khong bao gio bao loi, chi kem dan.
     """
     _cfg = getattr(client, "_pe_pcfg", None) or {}
+    # DI GIOI HO PHU - moi 3 phut, Y FLOW CU (`run_account` vong keepalive):
+    #     if is_digioi and pcfg["use_digioi_ho_phu"] and time.time() >= next_ho_phu:
+    #         if not c.in_combat(): _maybe_use_di_gioi_ho_phu("3p")
+    #
+    # Engine moi truoc day CHI goi ho phu trong `VIEC_DI_GIOI` - tuc luc acc dang DI VAO Di Gioi.
+    # Vao roi thi engine giao `VIEC_TRAIN` (chay long vong) nen khong con goi nua, trong khi ho phu
+    # lai dung la thu can dung LUC DANG O TRONG DG va con < 15 phut.
+    # Hau qua: chi dung duoc SAU KHI acc da bi day ra khoi DG - mat han tac dung keo dai gio.
+    # Ca that 22/09 (user: "engine moi hinh nhu ko tu dung Di gioi ho phu"):
+    #     02:41:17 [dtbay] Kenh hien tai = 2 ... map 12003      <- da o Quang Truong, ngoai DG
+    #     02:41:18 [dtbay] ENGINE: Di Gioi Ho Phu - con 3 phut (<15), da gui lenh dung
+    if (_cfg.get("use_digioi_ho_phu") and ho_phu is not None
+            and _goi(client, "in_di_gioi", False)):
+        _han = float(getattr(client, "_pe_next_ho_phu", 0.0) or 0.0)
+        if time.time() >= _han and not _goi(client, "in_combat", False):
+            client._pe_next_ho_phu = time.time() + HO_PHU_CHECK_SEC
+            try:
+                ho_phu(client)
+            except Exception as e:
+                if log is not None:
+                    log.warning("[%s] ENGINE: Ho Phu (dinh ky) loi (bo qua): %s",
+                                getattr(client, "_label", "?"), e)
     if _cfg.get("use_phuc_than") and getattr(client, "phuc_than_pending", False):
         try:
             client.use_phuc_than_items()
