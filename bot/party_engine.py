@@ -125,9 +125,8 @@ PHA_TRAIN = "train"      # het gio DG -> ra map thuong gom party + train
 # train lien tuc; con `buy_hp_sp` thi da TU kiem nguong du tru truoc khi di.
 BUY_HPSP_MOI_SEC = 7200.0
 
-# DI GIOI HO PHU: check moi 3 phut trong luc DANG O TRONG DG (y `HO_PHU_CHECK_SEC` cua flow cu).
-# `client.use_di_gioi_ho_phu` TU kiem "con < 15 phut moi dung" nen day chi la nhip hoi.
-HO_PHU_CHECK_SEC = 180.0
+# DI GIOI HO PHU: `client.use_di_gioi_ho_phu` TU kiem "con < 15 phut moi dung".
+HO_PHU_TID = 0xff8c      # Di Gioi Ho Phu - dem trong `bag_counts` de biet con hay het
 
 # HAI THANH TRUNG GIAN cua `client.pre_route_town_hop` (Trac Quan / Nghiep Thanh). Ve CHINH mot
 # trong hai thanh nay thi khong hop nua - do la them mot lan tele vo ich.
@@ -148,12 +147,13 @@ class AnhAcc:
 
     __slots__ = ("username", "la_leader", "song", "map_id", "kenh", "dang_danh",
                  "so_member", "viec_dang_lam", "xong_chore", "xong_daily", "trong_dg", "trong_pb",
+                 "con_ho_phu",
                  "con_gio_dg", "dang_ban", "trong_event", "lenh_tay_da_lam")
 
     def __init__(self, username, la_leader=False, song=True, map_id=None, kenh=None,
                  dang_danh=False, so_member=0, viec_dang_lam=VIEC_NGHI,
                  xong_chore=True, xong_daily=True, trong_dg=False, trong_pb=False,
-                 con_gio_dg=False,
+                 con_gio_dg=False, con_ho_phu=False,
                  dang_ban=False,
                  trong_event=False, lenh_tay_da_lam=0):
         self.username = username
@@ -168,6 +168,9 @@ class AnhAcc:
         self.xong_daily = bool(xong_daily)      # da lam NHIEM VU NGAY chua (PB don o1 + claim 9 o)
         self.trong_dg = bool(trong_dg)          # dang o trong map Di Gioi
         self.trong_pb = bool(trong_pb)          # dang o trong map PHO BAN TO DOI (instance)
+        # CON DI GIOI HO PHU (0xff8c) trong tui khong. Het gio DG ma con ho phu thi CHUA het viec
+        # o Di Gioi - dung ho phu de vao tiep (user chot 22/09).
+        self.con_ho_phu = bool(con_ho_phu)
         self.con_gio_dg = bool(con_gio_dg)      # server bao con phut Di Gioi hom nay
         self.dang_ban = bool(dang_ban)          # worker dang chay mot viec CHUA XONG
         self.trong_event = bool(trong_event)    # dang o TRONG map event
@@ -577,15 +580,36 @@ def _quyet_dinh_goc(anh: AnhParty):
         # hoi acc dang o trong hay ngoai map DG. Ban dau engine moi chi xet acc CHUA VAO, nen acc
         # dang o trong DG ma het gio thi van duoc cho danh tiep: mode `digioi` thuan KHONG BAO GIO
         # tat acc (user 16/09: "p46 p54, mode Di gioi -> het tiem di gioi roi ma deo tat acc").
-        _het_gio = [a for a in con_lai if not a.con_gio_dg]
+        # HET GIO ma CON HO PHU -> van con viec o DG: dung ho phu roi vao tiep. Xep chung voi
+        # nhom "con gio" ben duoi, vi duong vao DG (`VIEC_DI_GIOI`) chinh la cho goi ho phu.
+        #
+        # Thieu cho nay thi giu pha DG (khi con ho phu) tro thanh CAI BAY: acc het gio nhan
+        # `VIEC_NGHI` -> DUNG IM tai cho, ma cho do la BAI QUAI; va vi khong duoc giao
+        # `VIEC_DI_GIOI` nen cung KHONG AI goi ho phu -> ket vinh vien.
+        # Ca that 22/09 party 1 (user: "van dung o bai cho quai danh"):
+        #   09:00:36 pha=digioi  nanam@56802(L) ... tuyet@12003
+        #   09:08:57 ENGINE: sga008 -> nghi
+        _het_gio = [a for a in con_lai if not a.con_gio_dg and not a.con_ho_phu]
         for a in _het_gio:
             # Mode `digioi` THUAN: xong DG la THOAT GAME, dung engine cu van lam.
             # Mode `digioi_train`: dung yen cho ca party doi pha sang train.
             ket[a.username] = VIEC_NGHI if anh.co_pha_train else VIEC_THOAT
-        _con_gio = [a for a in con_lai if a.con_gio_dg]
+        _con_gio = [a for a in con_lai if a.con_gio_dg or a.con_ho_phu]
         for a in _con_gio:
-            if not a.trong_dg:
-                ket[a.username] = VIEC_DI_GIOI
+            if a.trong_dg:
+                continue
+            # DANG O BAI QUAI -> VE THANH TRUOC, dung dung do (user chot 22/09: "dang pha DG neu
+            # log vao thi ve thanh cho t, dung dung bai quai nua").
+            # Login lai giua bai train la bi keo tran ngay -> moi thu phia sau deu ket: vao DG thi
+            # `enter_di_gioi` bi tran chan, ho phu thi `_ho_phu_engine_moi` bo qua vi `in_combat()`.
+            # Ca that 22/09 party 1: `nasau`/`baybay` o map 49942 (DG) dung duoc ho phu luc con
+            # 1-2 phut, con `nanam` login o 56802 (bai train) thi BATTLE SEND lien tuc, khong dung
+            # duoc gi.
+            if (anh.thanh_dich and a.map_id is not None
+                    and int(a.map_id) != int(anh.thanh_dich)):
+                ket[a.username] = VIEC_VE_THANH
+                continue
+            ket[a.username] = VIEC_DI_GIOI
         _trong = [a for a in _con_gio if a.trong_dg]
         if _trong:
             # DU PARTY ROI MOI CHAY LONG VONG (L0, user chot 16/09: "DG van phai du pt moi chay
@@ -602,7 +626,9 @@ def _quyet_dinh_goc(anh: AnhParty):
             # Y engine cu (`_start_training`, dong 6368-6375): "Co acc KHAC het gio DG -> party
             # khong gom duoc nua -> KHONG chay long vong danh 1 minh (de chet vi khong co party
             # hoi mau). DUNG YEN burn time trong DG den khi het gio cua chinh minh."
-            _co_dua_het_gio = any(not a.con_gio_dg for a in con_lai)
+            # "Het gio" o day cung phai xet ho phu, y nhu `_het_gio` o tren: dua con ho phu thi
+            # con vao DG tiep duoc, khong phai ly do de ca party dung im.
+            _co_dua_het_gio = any(not a.con_gio_dg and not a.con_ho_phu for a in con_lai)
             for a in _trong:
                 if _co_dua_het_gio:
                     ket[a.username] = VIEC_NGHI
@@ -1447,7 +1473,7 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
                 client.stop_run_around()
         except Exception:
             pass
-        _duy_tri(client, log=log, ho_phu=ho_phu)
+        _duy_tri(client, log=log)
         return True
 
     if viec == VIEC_THOAT:
@@ -1505,36 +1531,14 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
     return True
 
 
-def _duy_tri(client, log=None, ho_phu=None):
-    """Viec DINH KY trong luc train: Phuc Than + mua HP/SP + Di Gioi Ho Phu.
+def _duy_tri(client, log=None):
+    """Viec DINH KY trong luc train: Phuc Than + mua HP/SP khi du tru tut duoi nguong.
 
     Engine cu lam hai viec nay trong vong keepalive: `use_phuc_than_items` khi `phuc_than_pending`,
     va `buy_hp_sp` MOI 2 TIENG (`next_buy_hpsp`) khi user bat tick. Bo thi acc train mai voi buff
     da tut va het thuoc hoi - khong bao gio bao loi, chi kem dan.
     """
     _cfg = getattr(client, "_pe_pcfg", None) or {}
-    # DI GIOI HO PHU - moi 3 phut, Y FLOW CU (`run_account` vong keepalive):
-    #     if is_digioi and pcfg["use_digioi_ho_phu"] and time.time() >= next_ho_phu:
-    #         if not c.in_combat(): _maybe_use_di_gioi_ho_phu("3p")
-    #
-    # Engine moi truoc day CHI goi ho phu trong `VIEC_DI_GIOI` - tuc luc acc dang DI VAO Di Gioi.
-    # Vao roi thi engine giao `VIEC_TRAIN` (chay long vong) nen khong con goi nua, trong khi ho phu
-    # lai dung la thu can dung LUC DANG O TRONG DG va con < 15 phut.
-    # Hau qua: chi dung duoc SAU KHI acc da bi day ra khoi DG - mat han tac dung keo dai gio.
-    # Ca that 22/09 (user: "engine moi hinh nhu ko tu dung Di gioi ho phu"):
-    #     02:41:17 [dtbay] Kenh hien tai = 2 ... map 12003      <- da o Quang Truong, ngoai DG
-    #     02:41:18 [dtbay] ENGINE: Di Gioi Ho Phu - con 3 phut (<15), da gui lenh dung
-    if (_cfg.get("use_digioi_ho_phu") and ho_phu is not None
-            and _goi(client, "in_di_gioi", False)):
-        _han = float(getattr(client, "_pe_next_ho_phu", 0.0) or 0.0)
-        if time.time() >= _han and not _goi(client, "in_combat", False):
-            client._pe_next_ho_phu = time.time() + HO_PHU_CHECK_SEC
-            try:
-                ho_phu(client)
-            except Exception as e:
-                if log is not None:
-                    log.warning("[%s] ENGINE: Ho Phu (dinh ky) loi (bo qua): %s",
-                                getattr(client, "_label", "?"), e)
     if _cfg.get("use_phuc_than") and getattr(client, "phuc_than_pending", False):
         try:
             client.use_phuc_than_items()
@@ -1804,6 +1808,9 @@ class PartyEngine:
                     # 120/120 phut la "xong DG" vi doan bua (ca that 07/09 [chutam]).
                     con_gio_dg=bool(song and _goi(c, "digioi_minutes_live", 0)
                                     < self.gio_dg_toi_da),
+                    # Doc THANG tui (`bag_counts`), khong nho so rieng.
+                    con_ho_phu=bool(song and int((getattr(c, "bag_counts", None)
+                                                  or {}).get(HO_PHU_TID, 0) or 0) > 0),
                 ))
             except Exception:
                 accs.append(AnhAcc(username, la_leader=la_leader, song=False))
@@ -2097,6 +2104,12 @@ class PartyEngine:
             return
         if any(a.con_gio_dg or a.trong_dg for a in dem):
             return                        # con nguoi con gio / dang trong DG -> chua doi
+        # HET GIO ma VAN CON DI GIOI HO PHU -> CHUA het viec o Di Gioi: dung ho phu de vao tiep.
+        # User chot 22/09: "phai la pha DG ket thuc khi het time VA ko con DG phu".
+        # Giu pha DG thi `VIEC_DI_GIOI` con duoc giao -> nhanh do goi `ho_phu(client)` -> server
+        # nap lai gio -> vao tiep. Doi pha sang train o day la vut so ho phu con lai.
+        if any(a.con_ho_phu for a in dem):
+            return
         self.pha = PHA_TRAIN
         if self._ghi_pha is not None:
             try:

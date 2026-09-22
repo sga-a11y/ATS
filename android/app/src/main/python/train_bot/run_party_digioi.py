@@ -10264,7 +10264,13 @@ def _chup_anh_cap_party(pidx, st, song, lech_tu):
         can_lap_doi=_mode_can_lap_doi(pidx),
         ngoai_gio_40npc=_party_40npc_ngoai_gio(pidx, pcfg),
         event_xong=_xong_event,
-        ca_party_het_gio_dg=bool(song and not [u for u, c in song if not _het_gio_dg(c)]),
+        # HET GIO ma VAN CON DI GIOI HO PHU (0xff8c) trong tui thi CHUA phai "het gio Di Gioi":
+        # dung ho phu de vao tiep. User chot 22/09: "phai la pha DG ket thuc khi het time VA ko
+        # con DG phu". Doc THANG tui (`bag_counts`), khong nho so rieng.
+        ca_party_het_gio_dg=bool(song and not [
+            u for u, c in song
+            if not _het_gio_dg(c)
+            or int((getattr(c, "bag_counts", None) or {}).get(0xff8c, 0) or 0) > 0]),
         maps=maps, kenhs=kenhs, chua_biet_map=_chua_biet_map,
         lech_kenh_that=_lech_kenh_that, mot_minh=_mot_minh,
         du_doi=_du_doi,

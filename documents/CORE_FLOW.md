@@ -288,6 +288,9 @@ Gói: `0x61 010001` rồi `0x61 02 00 [idx]` (`client.py:14910`, `:14914`). `[CA
 | Đủ party rồi mới chạy lòng vòng | `[LOG]` | user 16/09 *"DG vẫn phải đủ pt mới chạy lòng vòng chứ"* |
 | Có acc khác hết giờ DG → **đứng yên**, không đánh một mình | `[LOG]` | `:594` — không có party hồi máu thì chết |
 | Mode `digioi` thuần hết giờ → **thoát game** | `[LOG]` | p46/p54 16/09 *"hết tiệm dị giới rồi mà đéo tắt acc"* |
+| **Pha DG kết thúc khi hết time VÀ không còn Dị Giới Hộ Phù** | user chốt 22/09 | còn hộ phù thì chưa hết việc ở DG — giữ pha DG để `VIEC_DI_GIOI` gọi hộ phù rồi vào tiếp |
+| Hết giờ **mà còn hộ phù** → vẫn giao `VIEC_DI_GIOI`, **không** cho `nghi` | `[LOG]` | p1 22/09 *"vẫn đứng ở bãi cho quái đánh"* — cho `nghi` là đứng im tại bãi quái, và không ai gọi hộ phù nữa → kẹt vĩnh viễn |
+| Đang pha DG, chưa vào DG mà **đứng bãi quái → về thành trước** | `[LOG]` | user 22/09 *"đang pha DG nếu log vào thì về thành cho t, đừng đứng bãi quái nữa"*. Đứng bãi là bị kéo trận ngay → `enter_di_gioi` bị trận chặn, hộ phù bị `in_combat()` loại. p1: `nasau`/`baybay` ở map 49942 dùng được hộ phù, `nanam` ở 56802 thì `BATTLE SEND` liên tục, không một dòng hộ phù |
 
 ## Event (`VIEC_VAO_EVENT`, `VIEC_FC_GOM`)
 
