@@ -17020,6 +17020,28 @@ class GameClient:
                 self.pre_route_town_hop()
                 if not self.go_to_town(route["city"], route["flag"]):
                     return False
+            elif not self.party_members:
+                # DA O DUNG THANH XUAT PHAT -> VAN TELE LAI de RESET VI TRI ve diem spawn chuan.
+                #
+                # Ban cu bo qua han khuc nay: dang dung o thanh do thi di bo THANG tu toa do hien
+                # tai. Ma toa do hien tai co the la mot O KHONG DI DUOC - luc do acc ket vinh vien,
+                # lap party xong van khong nhuc nhich.
+                #
+                # User 23/09: "login lai ma dang dung o thanh gan bai train thi dung yen do cho lap
+                # pt dung ko, nhung t thay nhieu khi bot bi loi ngu gi do nen truoc do no chay ra
+                # diem ko di chuyen duoc cua map do, nen lap party xong van ko di chuyen duoc"
+                # -> "lam cai pre tele la dc roi".
+                #
+                # Teleport ve CHINH thanh dang dung dua nhan vat ve toa do spawn -> thoat o ket ma
+                # khong can biet o nao chan (walkability nam trong Ground.mmg, bot chua co index
+                # per-map).
+                #
+                # CHI KHI CHUA CO DOI: `go_to_town` phai `leave_party()` truoc (server cam tele khi
+                # con trong doi), nen tele luc dang keo nhau ra bai la TU TAY xe party. Vua login
+                # thi roster rong - dung luc can, va khong pha gi.
+                if not self.go_to_town(route["city"], route["flag"]):
+                    log.info("[%s] smart route: tele lai %s de reset vi tri KHONG duoc -> di bo tu "
+                             "cho dang dung", self._label, route["city"])
 
             deadline = time.time() + 20.0
             while (self.running and time.time() < deadline

@@ -226,9 +226,40 @@ def _mobs_in_pattern(pattern: str) -> int:
     return total
 
 
+# LOC NHIEU khi tinh khoang so quai.
+#
+# Ban cu khong loc gi ("the tran nao da ghi la tinh"), nen MOT tran ca biet keo dan ca khoang.
+# Do tren file that 23/09: 75/980 diem hien SAI khoang. Nang nhat:
+#     map 23811 diem 670,1690 | 15862 tran | hien "2-5" | that ra LUON la 4
+#         nhieu: 5x1 x3, 3x1 x1, 2x1 x1   (tren 15862 tran)
+#     map 56811 diem 990,610  | 49878 tran | hien "2-4" | that ra 2-3   (nhieu: 4x1 x2)
+#
+# KHONG XOA khoi file: du lieu tho la su that, va the tran hiem sau nay gom du thi TU DUOC TINH
+# lai. Chi loc luc TINH KHOANG de hien.
+NHIEU_TY_LE = 0.01       # the tran chiem < 1% tong so tran cua diem -> coi la nhieu
+NHIEU_TOI_THIEU = 50     # duoi nguong nay thi MAU CON IT, chua du de biet cai gi la nhieu -> giu het
+
+
+def loc_nhieu_patterns(patterns: dict) -> dict:
+    """Bo the tran ca biet. Mau it thi GIU NGUYEN, va luon giu lai the tran dong nhat."""
+    pats = {p: c for p, c in (patterns or {}).items() if _mobs_in_pattern(p) > 0}
+    if not pats:
+        return {}
+    tong = sum(pats.values())
+    if tong < NHIEU_TOI_THIEU:
+        return pats
+    nguong = tong * NHIEU_TY_LE
+    giu = {p: c for p, c in pats.items() if c >= nguong}
+    # An toan: loc manh tay den muc khong con gi thi tra ve the tran dong nhat.
+    if not giu:
+        p = max(pats, key=lambda k: pats[k])
+        return {p: pats[p]}
+    return giu
+
+
 def spot_mob_range(patterns: dict):
-    """(min, max) SO CON quai 1 tran. Khong loc gi - the tran nao da ghi la tinh."""
-    nums = [n for n in (_mobs_in_pattern(p) for p in (patterns or {})) if n > 0]
+    """(min, max) SO CON quai 1 tran, DA LOC the tran ca biet (xem `loc_nhieu_patterns`)."""
+    nums = [_mobs_in_pattern(p) for p in loc_nhieu_patterns(patterns)]
     if not nums:
         return None
     return min(nums), max(nums)
