@@ -86,12 +86,39 @@ User chốt 22/09. Hai điều này đã bị Claude suy sai và đẻ ra cả m
 | **INSTANCE VÀ KÊNH LÀ MỘT.** Không có chuyện "cùng kênh nhưng khác instance" | user chốt |
 | **Boss thế giới đánh NGAY TẠI Trác Quận (12001)**, không phải map riêng | user chốt |
 | **Bot LUÔN BIẾT acc nào trong party còn lượt PB hay không** — đừng nghi "chắc hết lượt" | user chốt |
+| **SERVER LUÔN TRẢ VỀ SỐ MEMBER trong party** — cấm tự đếm theo trí nhớ | user chốt |
 
 **Hệ quả của rule 3:** lượt PB tổ đội đọc từ **mission-step server gửi** (`0x18 sub 0x06`), qua
 `team_dungeon_remaining(lv)`. `_pb_doi_level()` chỉ chọn level mà **cả party** còn lượt, và trả
 `None` khi chưa có bảng mission-step (chưa kết luận, **không** phải "hết lượt"). Nên khi PB hỏng,
 **"hết lượt" là giả thuyết phải loại đầu tiên**, không phải giả thuyết đầu tiên nghĩ tới. Đi tìm
 mã lỗi server thật (`S:047-002`, xem mục Phó bản tổ đội) thay vì đoán.
+
+**Hệ quả của rule 4:** `S:013-006 <隊伍資料> <<+隊長玩家ID(8) +隊員數量(1) <<+玩家ID(8)>>>>` — server
+gửi thẳng đội trưởng, **số lượng** member và danh sách ID. `_on_party` nạp vào
+`client.party_members` (đã lọc đúng party của mình; **không gồm leader**). Cả party chạy trong MỘT
+tiến trình nên `joined_member_count()` / `is_joined()` đọc **thẳng `party_members` của leader** —
+một nguồn sự thật duy nhất, không ai phải báo cáo ai (L2).
+
+**CẤM dựng sổ đếm song song.** Không `mark_joined` / `unmark_joined` / `reset_party_joined` — ba
+hàm đó nay là no-op và chỉ còn tồn tại vì có ~40 chỗ gọi cũ.
+
+`[LOG]` gỡ ngày 23/09. Sổ cũ (`_PARTY_JOINED`) được bơm từ 3 chỗ, xoá từ 5 chỗ, rồi lại bị roster
+ghi đè. Vì cả 5 acc đều nhận `0x0d sub06` và cùng ghi vào **một dict chung**, chúng ghi đè lẫn
+nhau (party 15, 27/08 — kẹt 13 phút, 446 lượt mời hỏng), nên phải dựng thêm `_PARTY_JOINED_SRC` +
+luật *"chỉ leader được ghi trong 30 giây"* để phân xử: **cả một bộ máy trọng tài cho một con số
+server đã đưa sẵn.**
+
+Và nó đẻ ra bug thật — nhánh "party ma" cho **leader `mark_joined` chính mình** (đội trưởng đang
+kẹt chính là nó), trong khi bên đồng bộ **cố tình loại leader** ra:
+```
+06:03:45..06:05:04 [daisau] PARTY-JOINED: 5 -> 4 (nguoi ghi=c2b317e6, LEADER)
+                   | ['d7b317e6','dfb317e6','f2b317e6','fbb317e6']     <- lặp mỗi 2-5 giây
+05:58:56 [party 25] ENGINE: 'lap_party' giao lai 20 lan lien tiep cho daim09
+TRANG THAI: roster leader=0/4 -> 2/4 -> 1/4, không bao giờ đứng yên ở 4/4
+```
+Số "đã join" dao động 4↔5 nên phép đo "đủ đội" chập chờn, engine giao lại `lap_party` mãi, và
+**leader không bao giờ sang được bước chạy lòng vòng** (party 25, 23/09; party 1 hôm 22/09 y hệt).
 
 **Hệ quả của rule 1:** "cùng số kênh mà không thấy nhau" **không được** kết luận là khác instance.
 Chỉ có hai khả năng, và phải phân biệt được trước khi làm gì:
@@ -198,16 +225,51 @@ dịch: `DP_GOM→NGHI`, `DP_DONG_BO→NGHI`, `DP_MOI→LAP_PARTY`, `DP_DI_TRAIN
 ```
 1. Check party CÓ CẦN làm PB không — CẢ PARTY đều chưa làm thì mới làm
 2. TẤT CẢ tele về THÀNH TẬP KẾT (thành của route) — không đứng ở map quái
-3. Lập room PB
-4. Mời WHITELIST trước, rồi mới mời party theo config
-5. ĐỦ MEMBER THEO LIST PARTY thì START
-6. Trong quá trình đi mà có đứa văng → THOÁT HẾT PB, làm lại từ đầu
+3. THOÁT HẾT party / PB hiện tại  ← user chốt 23/09
+4. Leader LẬP ROOM PB
+5. Mời WHITELIST trước, rồi mới mời party theo config
+6. ĐỦ MEMBER THEO LIST PARTY thì START
+7. Trong quá trình đi mà có đứa văng → THOÁT HẾT PB, làm lại từ đầu
 ```
 
 Nguyên văn user: *"check party có cần làm PB hay ko, phải cả party đều chưa làm thì mới làm PB đó,
 tất cả phải tele về thành, ko đứng ở map quái, lập room PB và mời white list trước rồi mới mời
 party theo config đủ member theo list party thì start, trong quá trình đi mà có đứa văng thì thoát
-hết PB làm lại từ đầu"*.
+hết PB làm lại từ đầu"* · bước 3 thêm 23/09: *"thoát hết party/PB hiện tại → leader lập pt → …"*.
+
+### Bước 3 — THOÁT HẾT party/PB hiện tại
+
+**SERVER ĐÒI.** Hai thứ khác nhau, phải dọn **cả hai**:
+
+| Dọn gì | Gói | Không dọn thì |
+|---|---|---|
+| **PHÒNG PB** cũ | `C:047-010` | member đang ở trong một phòng thì không join được phòng mới — server từ chối **im lặng** (party 23, 22/09) |
+| **TỔ ĐỘI** | `C:013-004` | server trả `S:047-002` mã **5** `不可組隊` — **không tạo được phòng** |
+
+Mã 5 cùng luật với đổi kênh (`S:007-002` mã 3 `組隊不可換分區`) và với vào nhà (`HouseManager` mã 10
+dùng chung thông báo `10316`): **đang ở trong tổ đội thì không làm được.**
+
+`[LOG]` party 45, 23/09 — bản 22/09 chỉ dọn PHÒNG, không dọn TỔ ĐỘI, nên lặp 1 lần/giây hàng giờ:
+```
+12:19:01 [party 45] roster leader=3/4                  <- ĐANG ở tổ đội
+12:19:01 [chdumot] TAO PHONG HONG (S:047-002 ket qua=5: 不可組隊)
+```
+Đối chứng cùng phút — party 43 vừa ra khỏi phó bản nên tổ đội **tan theo**, không chủ động rời:
+```
+12:20:03 [tonqhai]  -> da ra khoi pho ban (map 62013 -> 12061)
+12:20:03 [party 43] roster leader=0/4                  <- KHÔNG ở tổ đội nào
+12:20:04 [tonqmot]  Phong PB: TAO PHONG OK
+```
+
+Hai cái bẫy đã dính, đừng lặp lại:
+- **Đừng đếm theo giá trị trả về của `leave_team_dungeon`** — nó trả `True` cả ở nhánh *"coi như đã
+  ở ngoài"* (không gửi gói nào). Bản 22/09 in `don 5 acc ra khoi phong PB CU` **ngay dưới** 5 dòng
+  `KHONG gui C:047-010`: con số đó là số ảo.
+- **Đừng suy "đang ở trong phòng" từ `current_map`** — `isInRoom` bật ngay khi `S:047-002`/`S:047-003`
+  trả 0, lúc đó nhân vật vẫn đứng ngoài thành, chưa đổi map.
+
+Rời tổ đội xong phải **chờ roster về rỗng** rồi mới gửi `0x2f 0200`; gửi ngay thì server chưa xử
+xong và vẫn ra mã 5.
 
 ### Bước 1 — cả party đều chưa làm
 
@@ -232,7 +294,7 @@ hết PB làm lại từ đầu"*.
 06:04:09 (LEADER) === PHO BAN TO DOI LV20: tao + moi 4 member ===
 ```
 
-### Bước 3–4 — lập phòng, mời whitelist trước
+### Bước 4–5 — lập phòng, mời whitelist trước
 
 | Ràng buộc | Loại | Ghi chú |
 |---|---|---|
@@ -263,7 +325,7 @@ Cùng log đó lộ thêm một cái tự mâu thuẫn — bot đoán "có đang
 Dòng dưới khoe "đã dọn 5 acc" trong khi dòng trên vừa từ chối gửi gói — tức bước dọn phòng **chưa
 bao giờ chạy thật**, phòng cũ tồn mãi, và lần tạo sau ăn mã 3.
 
-### Bước 5 — đủ member theo config mới START
+### Bước 6 — đủ member theo config mới START
 
 **Đây là chỗ đã hỏng lâu nhất.** `ready n/4` mà bot in ra là **bot tự báo**: member accept xong bật
 `Timer(2.5s)` rồi tự đánh dấu ready, **không đợi server xác nhận đã vào phòng**. Accept fail âm
@@ -295,7 +357,7 @@ thầm (member lệch kênh) thì vẫn báo ready.
 | Cửa phải có ở **cả hai** hàm (lv20 và lv50/80/110) | — | mỗi level một hàm riêng, thiếu một cái là thủng |
 | Phải đủ người **rảnh** mới mở phòng | **BOT TỰ ĐẶT** | `[LOG]` p41 20/09 |
 
-### Bước 6 — có đứa văng thì thoát hết, làm lại
+### Bước 7 — có đứa văng thì thoát hết, làm lại
 
 | Ràng buộc | Loại | Ghi chú |
 |---|---|---|

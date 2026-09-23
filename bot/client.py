@@ -673,8 +673,6 @@ def _register_party_client(party_idx, entity, client):
         for e in _cu:
             _map.pop(e, None)
             _PARTY_ENTITIES.get(party_idx, set()).discard(e)
-            _PARTY_JOINED.get(party_idx, set()).discard(e)
-            _dong_bo_joined_ro(party_idx)
         _map[entity] = client
     if _cu:
         log.info("[%s] entity moi %s -> bo %d entity CU (%s) khoi danh sach party",
@@ -688,22 +686,65 @@ def _is_party_member(party_idx, entity):
         return False
     return bytes(entity) in _PARTY_ENTITIES.get(party_idx, set())
 
-# Member da ACCEPT loi moi tu party-mate (tin hieu chia se de LEADER biet party da thanh).
-# party_idx -> set(self_entity cua cac member da join). Tin cay hon doc roster broadcast.
-_PARTY_JOINED = {}
-# BAN CHUP CHI-DOC cua `_PARTY_JOINED`: party_idx -> frozenset. Duong doc (`is_joined`,
-# `joined_member_count`) dung ban nay va KHONG can `_PARTY_LOCK` - xem `is_joined` de biet vi sao.
-# Moi lan doi `_PARTY_JOINED` phai goi `_dong_bo_joined_ro(party_idx)` NGAY, trong cung khoi khoa.
-_PARTY_JOINED_RO = {}
+# ===================== AI DA VAO PARTY: HOI SERVER, KHONG TU NHO (23/09) =====================
+#
+# `S:013-006 <隊伍資料> <<+隊長玩家ID(8) +隊員數量(1) <<+玩家ID(8)>>>>` - SERVER GUI THANG doi
+# truong, SO LUONG member va danh sach ID. `_on_party` da nap vao `client.party_members`, va chinh
+# comment o do viet "ROSTER SERVER LA SU THAT". Khong co gi phai dem theo tri nho.
+#
+# Ban cu giu mot so rieng (`_PARTY_JOINED`) duoc bom tu `mark_joined` o 3 cho va `unmark_joined` o
+# 5 cho, roi lai bi roster server ghi de. Vi ca 5 acc deu nhan `0x0d sub06` va cung ghi vao MOT
+# dict chung, chung ghi de lan nhau (party 15, 27/08) - nen con phai dung them `_PARTY_JOINED_SRC`
+# + luat "chi leader duoc ghi trong 30 giay" de phan xu. Ca mot bo may trong tai cho mot con so
+# server da dua san.
+#
+# Va no de ra bug that: nhanh "PARTY MA" cho LEADER `mark_joined` CHINH MINH (doi truong dang ket
+# chinh la no), trong khi `_sync_party_joined` CO TINH loai leader ra ("Leader KHONG tinh la
+# member") -> them (5) -> gat ra (4) -> lap vo tan, so dem chap chon nen "du doi" khi dung khi sai.
+# Ca that 23/09 party 25 (user: "party Di gioi du nguoi roi nhung leader ko chay long vong"):
+#     06:03:45..06:05:04 [daisau] PARTY-JOINED: 5 -> 4 (nguoi ghi=c2b317e6, LEADER)
+#                        | ['d7b317e6','dfb317e6','f2b317e6','fbb317e6']   <- lap moi 2-5 giay
+#     05:58:56 [party 25] ENGINE: 'lap_party' giao lai 20 lan lien tiep cho daim09
+# Leader ket o buoc lap party, khong bao gio sang duoc buoc chay long vong. Party 1 (22/09,
+# `nanam`) cung dong lap nay.
+#
+# GIO: mot nguon su that duy nhat = `party_members` cua LEADER. Ca party chung mot tien trinh nen
+# doc thang client cua leader (L2), khong ai phai bao cao ai.
 
 
-def _dong_bo_joined_ro(party_idx):
-    """Cap nhat ban chup chi-doc. GOI TRONG `_PARTY_LOCK`, ngay sau moi lan sua `_PARTY_JOINED`."""
-    cur = _PARTY_JOINED.get(party_idx)
-    if cur is None:
-        _PARTY_JOINED_RO.pop(party_idx, None)
-    else:
-        _PARTY_JOINED_RO[party_idx] = frozenset(cur)
+def _leader_client(party_idx):
+    """Client cua LEADER party nay, tim theo USERNAME (khoa on dinh qua cac lan login).
+
+    Entity doi moi lan login nen khong dung lam khoa - do la cai da lam `_PARTY_ENTITIES` giu
+    entity chet (xem `_register_party_client`).
+    """
+    if party_idx is None:
+        return None
+    try:
+        _u = (getattr(config, "PARTY_LEADER_ACC", None) or {}).get(party_idx)
+    except Exception:
+        return None
+    if not _u:
+        return None
+    for _c in list((_PARTY_CLIENTS.get(party_idx) or {}).values()):
+        if getattr(_c, "_username", None) == _u:
+            return _c
+    return None
+
+
+def _roster_server(party_idx):
+    """Roster SERVER cua party nay: tuple entity cac MEMBER (KHONG gom leader).
+
+    `party_members` cua leader = truong `members` cua `S:013-006`, da loc dung party cua minh
+    (`_on_party`: "CHI nhan roster CUA PARTY MINH"). Leader nam rieng o `party_leader`.
+    """
+    _c = _leader_client(party_idx)
+    if _c is None:
+        return ()
+    try:
+        return tuple(bytes(e) for e in (getattr(_c, "party_members", None) or ()) if e)
+    except Exception:
+        return ()
 
 # PHA PHO BAN TO DOI cua tung party: party_idx -> True/False. MOT CHO GHI (dieu phoi), moi acc DOC.
 #
@@ -802,17 +843,17 @@ def dang_pha_pho_ban(party_idx):
 
 
 def mark_joined(party_idx, entity):
-    """Ghi nhan 1 member DA vao party. Cong khai (khong con `_`) vi coordinator can sua so dem khi
-    ROSTER SERVER noi member da o trong doi ma so nho noi la chua - su that thuoc ve server."""
-    if party_idx is None or not entity:
-        return
-    with _PARTY_LOCK:
-        _PARTY_JOINED.setdefault(party_idx, set()).add(bytes(entity))
-        _dong_bo_joined_ro(party_idx)
+    """KHONG LAM GI NUA (23/09). Giu chu ky vi co ~40 cho goi trong `run_party_digioi`.
+
+    Truoc day ghi vao so nho `_PARTY_JOINED`. Gio nguon la ROSTER SERVER (`_roster_server`), nen
+    "ghi nhan da join" la vo nghia: server da noi roi. Xem khoi comment o dau file.
+    """
+    return
+
 
 def joined_member_count(party_idx):
-    # Doc ban chup - khong gianh khoa voi ca tram luong dang ghi (xem `is_joined`).
-    return len(_PARTY_JOINED_RO.get(party_idx, ()))
+    """SO MEMBER da vao party, theo ROSTER SERVER cua leader (khong tinh leader)."""
+    return len(_roster_server(party_idx))
 
 # PHO BAN TO DOI: member da gui "CHUAN BI" (0x2f 0b00) that su - KHAC voi _PARTY_JOINED (party
 # THUONG). Leader truoc day chi CHO CO DINH ready_wait giay roi START bat ke - neu member dang ban
@@ -897,72 +938,19 @@ def _team_dungeon_can_start(ready_count, needed, elapsed, whitelist_count, room_
     return not whitelist_count or elapsed >= TEAM_DUNGEON_WHITELIST_READY_GRACE
 
 def reset_party_joined(party_idx):
-    """Xoa danh sach member da join (khi leader GIAI TAN party de relogin) -> leader tinh lai tu
-    dau, vong retry 60s se MOI LAI cho du member. Member se mark_joined lai khi accept loi moi moi."""
-    if party_idx is None:
-        return
-    with _PARTY_LOCK:
-        _PARTY_JOINED.pop(party_idx, None)
-        _dong_bo_joined_ro(party_idx)
-        # Xoa luon quyen ghi: giai tan xong thi roster CU cua member khong duoc coi la nguon nua,
-        # va leader phai duoc ghi lai tu dau.
-        _PARTY_JOINED_SRC.pop(party_idx, None)
+    """KHONG LAM GI NUA (23/09) - xem `mark_joined`.
 
-# Ai vua ghi _PARTY_JOINED: party_idx -> (entity nguoi ghi, co phai LEADER khong, luc ghi)
-_PARTY_JOINED_SRC = {}
-# Trong khoang nay ke tu lan LEADER ghi gan nhat, MEMBER khong duoc ghi de (xem _sync_party_joined).
-PARTY_JOINED_LEADER_UU_TIEN = 30.0
-
-
-def _sync_party_joined(party_idx, leader, members, nguoi_ghi=None, label=""):
-    """Dat _PARTY_JOINED theo ROSTER SERVER (0x0d sub06). Leader KHONG tinh la member.
-
-    CHI LEADER DUOC GHI (khi leader cua party dang chay trong tien trinh nay).
-
-    `0x0d sub06` phat cho MOI client trong party, ma ca 5 acc dung CHUNG mot dict global -> truoc
-    day ai nhan roster sau cung thi GHI DE SACH. Mot member nhan roster tam thoi 1 nguoi (dung
-    luc leader vua giai tan / dang lap lai) la xoa sach so dem ma leader vua dung dung -> leader
-    dem thieu -> giai tan -> lap lai -> quay vong vo tan.
-    Log that party 15 (27/08 08:48-09:00, 13 phut): 08:48:18 member bao "da vao party" ma
-    08:48:35 leader van dem THIEU roi giai tan; sau do 446 luot moi, 3/4 member khong con nhan
-    duoc goi moi nao.
-
-    Neu KHONG co leader nao ghi trong `PARTY_JOINED_LEADER_UU_TIEN` giay (vd leader dang relogin,
-    hoac party do NGUOI THAT lam chu) thi member duoc ghi - khong thi so dem dung yen mai.
+    "Quen member cu de leader tinh lai tu dau" chi co nghia voi mot so TU NHO. Roster server
+    khong can quen: leader `leave_party()` thi server giai tan doi va `S:013-006` ke tiep da rong.
     """
-    if party_idx is None:
-        return
-    lead = bytes(leader) if leader else None
-    la_leader = bool(nguoi_ghi and lead and bytes(nguoi_ghi) == lead)
-    now = {bytes(m) for m in (members or []) if m and (lead is None or bytes(m) != lead)}
-    with _PARTY_LOCK:
-        src = _PARTY_JOINED_SRC.get(party_idx)
-        if not la_leader and src and src[1] and time.time() - src[2] <= PARTY_JOINED_LEADER_UU_TIEN:
-            _bo = _PARTY_JOINED_SRC.get(("bo_qua_log", party_idx), 0.0)
-            if time.time() - _bo >= 15:      # roster phat lien tuc -> chan spam log
-                _PARTY_JOINED_SRC[("bo_qua_log", party_idx)] = time.time()
-                log.info("[%s] PARTY-JOINED: BO QUA roster cua member (%d nguoi) - leader dang "
-                         "giu quyen ghi, so dem hien tai=%d",
-                         label or "?", len(now), len(_PARTY_JOINED.get(party_idx, ())))
-            return
-        cur = _PARTY_JOINED.get(party_idx)
-        _PARTY_JOINED_SRC[party_idx] = (bytes(nguoi_ghi or b""), la_leader, time.time())
-        if cur == now:
-            return
-        _PARTY_JOINED[party_idx] = now
-        _dong_bo_joined_ro(party_idx)
-        log.info("[%s] PARTY-JOINED: %d -> %d (nguoi ghi=%s%s) | %s",
-                 label or "?", len(cur or ()), len(now),
-                 (bytes(nguoi_ghi).hex()[:8] if nguoi_ghi else "?"),
-                 ", LEADER" if la_leader else "", sorted(e.hex()[:8] for e in now))
+    return
 
 
 def is_joined(party_idx, entity):
-    """Member nay da accept vao party chua (self_entity co trong _PARTY_JOINED).
+    """Member nay da o trong party chua - theo ROSTER SERVER cua leader (`S:013-006`).
 
-    DOC KHONG KHOA. `_PARTY_JOINED_RO` la ban chup BAT BIEN (`frozenset`), duoc thay the - khong
-    sua tai cho - moi lan duong ghi doi `_PARTY_JOINED`. Doc mot tham chieu roi `in` tren frozenset
-    la an toan duoi GIL, va khong dung den `_PARTY_LOCK`.
+    DOC KHONG KHOA. `_roster_server` chi chup `list(...)` cac client cua party do (toi da 5) roi
+    doc `party_members` - khong gianh `_PARTY_LOCK` voi ai.
 
     VI SAO PHAI BO KHOA (do bang py-spy tren tien trinh that 10/09, 256 acc / ~520 thread, user:
     "sao bot chay hay bi no responding the" -> "van not responding"): 15/15 mau, MainThread deu
@@ -972,20 +960,24 @@ def is_joined(party_idx, entity):
     dang ghi (`dat_party_dang_gom`, `name_for_entity`, `mark_joined`...). Hai ham nay khong tinh gi
     ca - chung CHO KHOA. Cung mot dump: thread `dieu-phoi` ket o `dat_party_dang_gom`, thread acc
     ket o `name_for_entity` - ca he xep hang tren mot khoa.
+
+    (23/09) Nguon doi tu so nho sang ROSTER SERVER. Duong doc van KHONG lay `_PARTY_LOCK`:
+    `_roster_server` chi chup `list(...)` cua dict client (toi da 5 phan tu cua party do) roi doc
+    `party_members` - khong gianh khoa voi ai.
     """
     if party_idx is None or not entity:
         return False
-    return bytes(entity) in _PARTY_JOINED_RO.get(party_idx, frozenset())
+    return bytes(entity) in _roster_server(party_idx)
+
 
 def unmark_joined(party_idx, entity):
-    """Go 1 member khoi danh sach da-join khi acc do THOAT/MAT KET NOI. Thieu buoc nay:
-    _PARTY_JOINED giu entity cu qua lan reconnect -> leader moi vua moi da thay "du 4/4 join"
-    (dem stale) -> bo qua cho accept that -> leader danh 1 minh ca phien (bug thuc te DG 09:18)."""
-    if party_idx is None or not entity:
-        return
-    with _PARTY_LOCK:
-        _PARTY_JOINED.get(party_idx, set()).discard(bytes(entity))
-        _dong_bo_joined_ro(party_idx)
+    """KHONG LAM GI NUA (23/09) - xem `mark_joined`.
+
+    Ham nay sinh ra de chua benh cua so nho: `_PARTY_JOINED` giu entity CU qua lan reconnect ->
+    leader vua moi da thay "du 4/4" (dem stale) -> bo qua cho accept that -> danh mot minh ca
+    phien (DG 09:18). Roster server khong co benh do: acc rot la server tu bo no khoi `S:013-006`.
+    """
+    return
 
 # Pho ban to doi: goi ket tran THAT (0x14 sub0800, in_battle_TRUOC=True) chi gui rieng cho
 # MEMBER, LEADER khong bao gio nhan duoc (xac nhan tu nhieu log capture). LEADER cung KHONG
@@ -5630,8 +5622,6 @@ class GameClient:
                     self.party_members = list(self.party_members or []) + [_ai]
                 log.info("[%s] PARTY: %s vao doi (leader=%s) -> roster %d nguoi", self._label,
                          _ai.hex()[:8], _lead.hex()[:8], len(self.party_members or []))
-                _sync_party_joined(self.party_idx, _lead, self.party_members,
-                                   nguoi_ghi=self.self_entity, label=self._label)
                 if _ai == self.self_entity and _ai != _lead:
                     # CHINH MINH vua vao doi -> client teleport minh toi cho leader NGAY LUC NAY
                     # (`Team.lua:176` trong `AddMember`: `Role.players[roleId]:Teleport(
@@ -5726,12 +5716,9 @@ class GameClient:
                     return
                 self.party_leader = leader
                 self.party_members = members
-                # ROSTER SERVER LA SU THAT (giong client: S:013-006 -> Team.AddMember). Dong bo
-                # _PARTY_JOINED theo roster thay vi cho member tu ghi so luc accept loi moi:
-                # party co san tu truoc / reform xoa so -> so rong ma party trong game van con
-                # -> leader dem "0/4" roi MOI LAI vo han (log 18:13 party 6).
-                _sync_party_joined(self.party_idx, leader, members,
-                                   nguoi_ghi=self.self_entity, label=self._label)
+                # ROSTER SERVER LA SU THAT (giong client: S:013-006 -> Team.AddMember) - va tu
+                # 23/09 no la NGUON DUY NHAT: `joined_member_count`/`is_joined` doc thang
+                # `party_members` cua leader, khong con so nho nao de dong bo.
                 # CHI log khi roster THAY DOI (0x0d sub06 phat lien tuc -> truoc day spam moi goi).
                 _roster_sig = (leader, tuple(members))
                 _roster_changed = _roster_sig != getattr(self, "_last_roster_sig", None)
@@ -5874,10 +5861,15 @@ class GameClient:
             # Entity DUNG HET (dung map, dung kenh, client con song, da thay tan mat), va phia
             # member KHONG MOT DONG nao - tuc goi moi chua he toi noi. Party 21 (19:56) y het.
             _kq = body[2]
+            # Bang lay tu `Dungeon.ReciveCreateDungeon` (_lua_dec/Logic/Dungeon.lua:486-514) - nhanh
+            # `if result == N` THAT. Comment o `:463` cua chinh client chi liet ke toi 7 va ghi SAI
+            # ma 7; ban 22/09 cua bot chep nham theo comment do.
             _ten_loi = {0: "OK", 1: "khong co ma pho ban nay (無此副本編號)",
                         2: "KHONG DU CAP (等級不符)", 3: "DANG O TRONG PHONG PB ROI (已在副本房間中)",
-                        4: "HET LUOT (次數用盡)", 5: "KHONG DUOC TO DOI (不可組隊)",
-                        6: "phong DAY (人數已滿)", 7: "het cho (暫無可用空間)"}
+                        4: "HET LUOT (次數用盡)",
+                        5: "TO DOI KHONG HOP LE - party do dang (不可組隊)",
+                        6: "phong DAY (人數已滿)", 7: "phong khong ton tai (該房間不存在)",
+                        8: "DANG TRONG TRAN (戰鬥中)", 9: "ma dau dang dung (魔豆正在使用中)"}
             self._pb_tao_phong_kq = _kq
             self._pb_tao_phong_luc = time.time()
             if _kq == 0:
@@ -5887,9 +5879,15 @@ class GameClient:
                 log.info("[%s] (LEADER) Phong PB: TAO PHONG OK (S:047-002)", self._label)
             else:
                 self._pb_trong_phong = False   # client goi `ClearRoomData()` khi ma != 0
+                # IN CA ROSTER: ma 5 <不可組隊> la "dang o to doi", nen so nguoi trong doi luc do
+                # la manh moi dau tien can nhin. Ban 22/09 khong in -> phai di doi chieu tay voi
+                # dong `TRANG THAI` cua dieu phoi (in ~1s/lan, lech pha) moi suy ra duoc.
                 log.warning("[%s] (LEADER) Phong PB: TAO PHONG HONG (S:047-002 ket qua=%d: %s)"
-                            " -> moi member luc nay la moi vao phong KHONG TON TAI",
-                            self._label, _kq, _ten_loi.get(_kq, "?"))
+                            " - dang o to doi %d nguoi (leader=%s) -> BO luot, khong moi member",
+                            self._label, _kq, _ten_loi.get(_kq, "?"),
+                            len(getattr(self, "party_members", None) or ()),
+                            (bytes(self.party_leader).hex()[:8] if getattr(self, "party_leader", None)
+                             else "-"))
         elif sub == 0x03 and len(body) >= 9:
             # S:047-003 <加入房間結果> +ket qua(1) +phong(4) +SO NGUOI(1) + danh sach...
             #
@@ -13745,7 +13743,7 @@ class GameClient:
     def set_party_strategist(self):
         """Leader set quan su -> SP regen cho party. CHON member da JOIN co INT CAO NHAT
         (INT cao = hoi SP tot hon khi lam quan su). Chua biet INT thi lay member dau tien."""
-        joined = [e for e in _PARTY_JOINED.get(self.party_idx, set()) if e != self.self_entity]
+        joined = [e for e in _roster_server(self.party_idx) if e != self.self_entity]
         ents = joined or [e for e in _PARTY_ENTITIES.get(self.party_idx, set()) if e != self.self_entity]
         if not ents:
             log.warning("[%s] (LEADER) khong co member de set quan su", self._label)
@@ -13885,6 +13883,66 @@ class GameClient:
         self._td_incomplete = True   # run_party_digioi doc co nay -> ca party relogin gom lai, danh lai
         return False
 
+    def _don_truoc_khi_tao_phong(self, wait_doi: float = 4.0):
+        """THOAT HET party/PB hien tai TRUOC khi lap phong moi (user chot 23/09).
+
+        HAI THU KHAC NHAU, phai don CA HAI:
+          - PHONG PB cu (`C:047-010`): member dang o trong mot phong thi KHONG join duoc phong
+            moi, server tu choi IM LANG (party 23, 22/09);
+          - TO DOI (`C:013-004`): dang o trong to doi thi server KHONG CHO TAO PHONG - tra
+            `S:047-002` ma 5 `不可組隊`. Cung luat voi doi kenh (`S:007-002` ma 3 `組隊不可換分區`)
+            va voi vao nha (`HouseManager` ma 10 dung chung thong bao 10316).
+
+        Ban 22/09 chi don PHONG, khong don TO DOI -> party thuong con nguyen -> moi lan tao phong
+        deu an ma 5. Ca that 23/09 party 45 (user: "party 45 co dua ko vao phong PB"), lap 1
+        lan/giay suot nhieu gio:
+            12:19:01 [party 45] roster leader=3/4                   <- DANG o to doi
+            12:19:01 [chdumot] TAO PHONG HONG (S:047-002 ket qua=5: 不可組隊)
+        Doi chung cung phut, party 43 - vua ra khoi pho ban nen to doi TAN THEO:
+            12:20:03 [tonqhai]  -> da ra khoi pho ban (map 62013 -> 12061)
+            12:20:03 [party 43] roster leader=0/4                   <- KHONG o to doi nao
+            12:20:04 [tonqmot]  Phong PB: TAO PHONG OK
+        Party 43 khong chu dong roi - no MAY. Gio lam cho chu dong.
+
+        KHONG dem theo gia tri tra ve cua `leave_team_dungeon`: ham do tra True CA O NHANH
+        "coi nhu da o ngoai" (khong gui goi nao), nen dong log "don N acc" cua ban 22/09 la SO AO -
+        no in "don 5 acc" ngay duoi 5 dong "KHONG gui C:047-010".
+        """
+        _cs = [_c for _c in list((_PARTY_CLIENTS.get(self.party_idx) or {}).values())
+               if getattr(_c, "running", False)]
+        # 1. RA KHOI PHONG PB CU
+        for _c in _cs:
+            try:
+                _c.leave_team_dungeon(wait=2.0)
+            except Exception:
+                pass
+        # 2. GIAI TAN TO DOI. Doi truong roi la SERVER GIAI TAN CA DOI, nen goi cho leader la du -
+        # nhung van goi cho tat ca vi co the con acc ket trong party MA cua nguoi khac.
+        _co_doi = [_c for _c in _cs if (getattr(_c, "party_members", None)
+                                        or getattr(_c, "party_leader", None))]
+        if not _co_doi:
+            return
+        log.info("[%s] (LEADER) THOAT TO DOI truoc khi lap phong PB (%d acc dang o doi) - server "
+                 "tra ma 5 <不可組隊> neu con to doi", self._label, len(_co_doi))
+        for _c in _co_doi:
+            try:
+                _c.leave_party()
+            except Exception as e:
+                log.debug("[%s] roi doi truoc khi lap phong PB loi: %s",
+                          getattr(_c, "_label", "?"), e)
+        # CHO SERVER XAC NHAN roster rong roi hay tao phong. Gui `0x2f 0200` ngay sau `C:013-004`
+        # thi server con chua xu xong -> van ma 5, va nhip sau lai lam lai tu dau.
+        _het = time.time() + wait_doi
+        while time.time() < _het:
+            if not self.running:
+                return
+            if not any((getattr(_c, "party_members", None) or getattr(_c, "party_leader", None))
+                       for _c in _cs):
+                return
+            time.sleep(0.2)
+        log.info("[%s] (LEADER) %.1fs sau lenh thoat to doi van con acc bao dang o doi -> tao "
+                 "phong luon, server se noi", self._label, wait_doi)
+
     def _cho_tao_phong_pb(self, level_label, wait: float = 3.0) -> bool:
         """CHO `S:047-002` roi hay moi member. Tra False = phong KHONG tao duoc -> dung moi.
 
@@ -13945,18 +14003,7 @@ class GameClient:
         # `SERVER moi cong nhan 0/4 member vao phong` moi 45 giay - ca 4 member deu in "da DONG Y"
         # + "da an CHUAN BI" ma khong mot goi `S:047-003` nao ve.
         # `leave_team_dungeon` tu kiem "dang o trong phong khong" nen goi thua cung vo hai.
-        _don = 0
-        for _e, _c in list((_PARTY_CLIENTS.get(self.party_idx) or {}).items()):
-            if not getattr(_c, "running", False):
-                continue
-            try:
-                if _c.leave_team_dungeon(wait=2.0):
-                    _don += 1
-            except Exception:
-                pass
-        if _don:
-            log.info("[%s] (LEADER) don %d acc ra khoi phong PB CU truoc khi tao phong moi",
-                     self._label, _don)
+        self._don_truoc_khi_tao_phong()
         get_party_battle(self.party_idx).reset_session()
         self.flee_mode = False
         self.state.quest_mode = True
@@ -14507,7 +14554,9 @@ class GameClient:
         # nhu binh thuong (state.py update_0x33), vi so quai co the it hon o mot so tran/level ->
         # muon danh theo quest_mode CO DINH cho toi khi xong het dungeon (hoac fail/thoat giua chung).
         self.state.quest_mode = True
-        # 1. Tao pho ban to doi - CHO `S:047-002` roi hay moi (xem `_cho_tao_phong_pb`)
+        # 1. THOAT HET party/PB hien tai, roi tao phong - CHO `S:047-002` roi hay moi
+        #    (xem `_don_truoc_khi_tao_phong` va `_cho_tao_phong_pb`)
+        self._don_truoc_khi_tao_phong()
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)
         self._pb_tao_phong_kq = None
         self.send(0x2f, bytes.fromhex("0200010001"))

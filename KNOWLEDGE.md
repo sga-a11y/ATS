@@ -1039,11 +1039,30 @@ Bảng mã lấy nguyên từ comment trong client (`:463`):
 | 2 | 等級不符 | không đủ cấp |
 | 3 | 已在副本房間中 | đang ở trong phòng PB rồi |
 | 4 | 次數用盡 | hết lượt |
-| 5 | 不可組隊 | không được tổ đội |
+| 5 | 不可組隊 | **tổ đội không hợp lệ để vào phó bản** — xem đo đạc bên dưới |
 | 6 | 人數已滿 | phòng đầy |
-| 7 | 暫無可用空間 | hết chỗ |
+| 7 | 該房間不存在 | phòng không tồn tại |
+| 8 | 戰鬥中 | đang trong trận |
+| 9 | 魔豆正在使用中 | ma đậu đang dùng |
 
 Mã ≠ 0 thì client gọi `ClearRoomData()` — **phòng KHÔNG tồn tại**.
+
+> Bảng này lấy từ `Dungeon.ReciveCreateDungeon` (`_lua_dec/Logic/Dungeon.lua:486-514`), tức nhánh
+> `if result == N` thật. **Đừng lấy từ comment ở `:463`** — comment đó chỉ liệt kê tới 7 và ghi
+> sai mã 7 là `暫無可用空間`; đã chép nhầm vào đây ngày 22/09.
+
+**Mã 5 = PARTY DỞ DANG, không phải "đang ở tổ đội".** Đo trên log 23/09 (14.6k sự kiện tạo phòng,
+đối chiếu với `roster leader=N/4` của chính party đó ngay trước đó):
+
+| roster leader | OK | mã 5 |
+|---|---|---|
+| **4** (đủ đội) | **68** | **0** |
+| 3 (thiếu 1) | 1 | **12916** |
+| 1 | 0 | 389 |
+| 0 (chưa có đội) | 459 | 624 |
+
+Đủ đội thì **chưa từng** dính mã 5. Thiếu một người thì 12916/12917 lần hỏng. Chưa có đội thì lẫn
+lộn (roster chụp mỗi ~1s còn vòng PB lặp mỗi 1–2s nên có lệch pha).
 
 > **Bot bỏ qua gói này tới 22/09**: bắn `0x2f 0100` + `0x2f 0200`, `sleep(1.0)`, rồi mời member
 > luôn. Tạo hỏng ⇒ mời vào phòng không tồn tại ⇒ chờ đủ 40s ⇒ `SERVER moi cong nhan 0/4` ⇒ huỷ

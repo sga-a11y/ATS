@@ -40,7 +40,7 @@ class TestBoEntityCu(unittest.TestCase):
     PIDX = 9911
 
     def setUp(self):
-        for d in (CL._PARTY_ENTITIES, CL._PARTY_CLIENTS, CL._PARTY_JOINED):
+        for d in (CL._PARTY_ENTITIES, CL._PARTY_CLIENTS):
             d.pop(self.PIDX, None)
 
     tearDown = setUp
@@ -74,15 +74,18 @@ class TestBoEntityCu(unittest.TestCase):
         self.assertNotIn(b"B" * 8, ents)
         self.assertIn(b"C" * 8, ents)
 
-    def test_bo_ca_trong_so_dem_da_join(self):
-        """Giu entity cu trong `_PARTY_JOINED` = bot tuong doi con du (L2d)."""
+    def test_so_dem_KHONG_CON_giu_entity_chet(self):
+        """(23/09) So dem "da join" khong con la so nho nua - no doc THANG roster server cua
+        leader (`joined_member_count` -> `_roster_server`). Nen benh "giu entity chet qua lan
+        relogin -> bao 'du doi' oan" (L2d) khong con duong nao xay ra: acc rot la server tu bo
+        no khoi `S:013-006`.
+
+        Van kiem o day de neu sau nay ai do dung lai mot so nho, test se do."""
         c = _C("sga007")
         self._dk("sga007", b"CU" * 4, c)
-        CL.mark_joined(self.PIDX, b"CU" * 4)
-        self.assertEqual(CL.joined_member_count(self.PIDX), 1)
-        self._dk("sga007", b"MOI" + b"x" * 5, c)
+        CL.mark_joined(self.PIDX, b"CU" * 4)      # no-op
         self.assertEqual(CL.joined_member_count(self.PIDX), 0,
-                         "so dem van giu entity chet -> bao 'du doi' oan")
+                         "van con duong tu bom so dem ngoai roster server")
 
     def test_dang_ky_lai_CUNG_entity_thi_khong_bo_gi(self):
         c = _C("sga007")

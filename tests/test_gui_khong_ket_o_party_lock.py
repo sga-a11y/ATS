@@ -27,6 +27,7 @@ import os
 import re
 import sys
 import threading
+from unittest import mock
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -66,54 +67,68 @@ class TestDuongDocKhongKhoa(unittest.TestCase):
     def test_joined_member_count_khong_giu_PARTY_LOCK(self):
         self.assertNotIn("_PARTY_LOCK", self._than("joined_member_count"))
 
-    def test_is_joined_doc_ban_chup_BAT_BIEN(self):
-        """Doc thang `_PARTY_JOINED` (set dang bi sua) co the no giua chung."""
-        self.assertIn("_PARTY_JOINED_RO", self._than("is_joined"))
+    def test_is_joined_doc_ROSTER_SERVER(self):
+        """(23/09) Khong con ban chup vi khong con so nho: nguon la `party_members` cua leader."""
+        self.assertIn("_roster_server(", self._than("is_joined"))
 
-    def test_MOI_duong_ghi_deu_dong_bo_ban_chup(self):
-        """Sot mot duong ghi = ban chup lech that -> bot ket luan sai so nguoi da join."""
-        so_ghi = (self.src.count("_PARTY_JOINED[party_idx] =")
-                  + self.src.count("_PARTY_JOINED.setdefault(party_idx, set()).add")
-                  + self.src.count("_PARTY_JOINED.pop(party_idx, None)")
-                  + self.src.count("_PARTY_JOINED.get(party_idx, set()).discard"))
-        so_dong_bo = self.src.count("_dong_bo_joined_ro(party_idx)")
-        self.assertGreaterEqual(so_dong_bo, so_ghi,
-                                "co duong ghi `_PARTY_JOINED` ma khong cap nhat ban chup")
+    def test_roster_server_cung_KHONG_giu_PARTY_LOCK(self):
+        """Nguon moi nam tren duong doc nong (GUI goi cho 256 acc moi giay) - no ma lay khoa thi
+        ca cai benh 'not responding' quay lai nguyen ven."""
+        self.assertNotIn("_PARTY_LOCK", self._than("_roster_server"))
+        self.assertNotIn("_PARTY_LOCK", self._than("_leader_client"))
+
+    def test_KHONG_CON_so_nho_nao(self):
+        """Mot nguon su that: roster server. Co bien so nho tro lai la co hai nguon.
+
+        Kiem BIEN THAT (`hasattr`) chu khong grep chu: comment trong `client.py` co nhac ten cu
+        de giai thich vi sao da bo - do la tai lieu, khong phai code."""
+        for _ten in ("_PARTY_JOINED", "_PARTY_JOINED_RO", "_PARTY_JOINED_SRC",
+                     "_dong_bo_joined_ro", "_sync_party_joined"):
+            self.assertFalse(hasattr(C, _ten), "con sot %s - mot nguon su that thu hai" % _ten)
 
 
-class TestBanChupChayThat(unittest.TestCase):
+class TestDuongDocChayThat(unittest.TestCase):
     """Chay that tren API that, khong chi doc chu."""
 
     PIDX = 9911
 
+    class _C:
+        def __init__(self, user, members):
+            self._username = user
+            self._label = user
+            self.party_members = list(members)
+            self.running = True
+            self.self_entity = b"L" * 8
+
     def setUp(self):
         self.e1, self.e2 = b"\x01" * 8, b"\x02" * 8
-        C.reset_party_joined(self.PIDX)
+        self._cli = dict(C._PARTY_CLIENTS)
+        self._c = self._C("lead01", [self.e1, self.e2])
+        C._PARTY_CLIENTS[self.PIDX] = {self._c.self_entity: self._c}
+        self._p = mock.patch.object(C.config, "PARTY_LEADER_ACC",
+                                    {self.PIDX: "lead01"}, create=True)
+        self._p.start()
 
     def tearDown(self):
-        C.reset_party_joined(self.PIDX)
+        self._p.stop()
+        C._PARTY_CLIENTS.clear()
+        C._PARTY_CLIENTS.update(self._cli)
 
-    def test_mark_roi_doc_lai_dung(self):
-        self.assertFalse(C.is_joined(self.PIDX, self.e1))
-        C.mark_joined(self.PIDX, self.e1)
+    def test_doc_dung_theo_roster(self):
         self.assertTrue(C.is_joined(self.PIDX, self.e1))
-        self.assertEqual(C.joined_member_count(self.PIDX), 1)
-
-    def test_unmark_thi_mat(self):
-        C.mark_joined(self.PIDX, self.e1)
-        C.unmark_joined(self.PIDX, self.e1)
-        self.assertFalse(C.is_joined(self.PIDX, self.e1))
-        self.assertEqual(C.joined_member_count(self.PIDX), 0)
-
-    def test_reset_thi_sach(self):
-        C.mark_joined(self.PIDX, self.e1)
-        C.mark_joined(self.PIDX, self.e2)
         self.assertEqual(C.joined_member_count(self.PIDX), 2)
-        C.reset_party_joined(self.PIDX)
-        self.assertEqual(C.joined_member_count(self.PIDX), 0)
+
+    def test_roster_doi_thi_so_doi_ngay(self):
+        self._c.party_members = [self.e1]
+        self.assertEqual(C.joined_member_count(self.PIDX), 1)
+        self.assertFalse(C.is_joined(self.PIDX, self.e2))
 
     def test_doc_song_song_voi_ghi_khong_no(self):
-        """Duong doc khong khoa -> phai chiu duoc viec ghi lien tuc ben canh."""
+        """Duong doc khong khoa -> phai chiu duoc viec roster bi thay lien tuc ben canh.
+
+        `_on_party` gan `self.party_members = members` (THAY ca list, khong sua tai cho) nen doc
+        mot tham chieu roi duyet la an toan duoi GIL. Test nay giu dung tinh chat do.
+        """
         dung = threading.Event()
         loi = []
 
@@ -121,14 +136,7 @@ class TestBanChupChayThat(unittest.TestCase):
             i = 0
             while not dung.is_set():
                 i += 1
-                e = bytes([i % 251]) * 8
-                try:
-                    C.mark_joined(self.PIDX, e)
-                    C.unmark_joined(self.PIDX, e)
-                except Exception as ex:      # pragma: no cover
-                    loi.append(ex)
-                    return
-
+                self._c.party_members = [bytes([i % 251]) * 8] * (i % 5)
         def _doc():
             for _ in range(4000):
                 try:

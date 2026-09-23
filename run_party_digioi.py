@@ -11525,11 +11525,23 @@ def _nhip_acc_engine_moi(c, pidx):
             _chu = None
         _la_minh = bytes(_ket) == bytes(c.self_entity) if c.self_entity else False
         _la_leader_minh = bool(_chu) and bytes(_ket) == bytes(_chu)
+        # DUNG O PARTY CUA CHINH LEADER MINH -> KHONG LAM GI. Truoc 23/09 cho nay `mark_joined`
+        # de "sua so dem noi bo", ma so dem do gio khong con: `joined_member_count` doc THANG
+        # roster server cua leader (`bot/client.py`, khoi "AI DA VAO PARTY").
+        #
+        # Chinh cai `mark_joined` do de ra bug: ham nay chay cho MOI acc, nen voi LEADER thi "doi
+        # truong dang ket" luon la NO -> no tu danh dau chinh minh -> so len 5, roi roster server
+        # gat leader ra -> 4, lap vo tan. So chap chon nen "du doi" khi dung khi sai, engine giao
+        # lai `lap_party` mai, va LEADER KHONG BAO GIO sang duoc buoc chay long vong.
+        # Ca that 23/09 party 25 (user: "party Di gioi du nguoi roi nhung leader ko chay long vong"):
+        #   06:03:45..06:05:04 [daisau] PARTY-JOINED: 5 -> 4 (nguoi ghi=c2b317e6, LEADER)
+        #                      | ['d7b317e6','dfb317e6','f2b317e6','fbb317e6']   <- lap moi 2-5s
+        #   05:58:56 [party 25] ENGINE: 'lap_party' giao lai 20 lan lien tiep cho daim09
+        #
+        # VAN GIU LUAT GOC: party cua chinh leader minh thi TUYET DOI khong roi (party 7, 31/08 -
+        # ca 4 member tu da minh ra khoi doi vua vao, roi leader moi lai, vong vo tan).
         if _la_leader_minh:
-            try:
-                mark_joined(pidx, c.self_entity)
-            except Exception:
-                pass
+            pass
         elif not _la_minh:
             log.warning("[%s] ENGINE: roster SERVER noi minh dang o party cua %s -> ROI PARTY DO "
                         "truoc khi cho moi lai", getattr(c, "_label", "?"),

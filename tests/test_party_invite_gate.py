@@ -18,11 +18,9 @@ def _dungeon_invite(invite_id=b"\x01\x00\x00\x00", leader=b"\x22" * 8, name=""):
 class TestPartyInviteGate(unittest.TestCase):
     def setUp(self):
         client_module._PARTY_ENTITIES.clear()
-        client_module._PARTY_JOINED.clear()
 
     def tearDown(self):
         client_module._PARTY_ENTITIES.clear()
-        client_module._PARTY_JOINED.clear()
 
     def make_client(self):
         game = GameClient("user", "token")
