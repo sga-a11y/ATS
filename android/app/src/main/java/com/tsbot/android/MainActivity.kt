@@ -1815,9 +1815,17 @@ fun trainMobOptions(mapKey: String): List<Pair<Int, String>> {
         android.util.Log.w("aTSBot", "spot_infos(map=$mapId) loi: ${e.message}", e)
         emptyList()
     }
+    // TOA DO DE CUOI - Y HET BAN PC (`gui.py`):
+    //     f"Điểm {i + 1}{info[i]} | {tuple(xy)}"
+    //     # Toa do de CUOI: 'Điểm 1 | 2-3 | Thủy 111, Địa 112 | (1210, 550)' - phan hay doc
+    //     # nam truoc.
+    // Ban APK truoc day de toa do NGAY SAU so diem, day so quai/he quai ra sau - tuc phan hay doc
+    // nhat bi day di xa nhat. User 23/09: "cai chon diem quai thi ban PC day toa do sang sau cung,
+    // m sua lai ban apk cung lam giong the nhe".
     mobs.asList().forEachIndexed { i, pt ->
         val coords = pt.asList()
-        list.add(i to "Điểm ${i + 1} (${coords[0]}, ${coords[1]})" + (infos.getOrNull(i) ?: ""))
+        list.add(i to "Điểm ${i + 1}" + (infos.getOrNull(i) ?: "") +
+                 " | (${coords[0]}, ${coords[1]})")
     }
     return list
 }

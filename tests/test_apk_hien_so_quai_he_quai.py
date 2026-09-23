@@ -78,7 +78,12 @@ class TestKotlinGoiHamPython(unittest.TestCase):
                        "MainActivity.kt")
         i = self.kt.find("fun trainMobOptions(")
         self.assertGreater(i, 0, "mat ham dung dropdown diem quai")
-        self.khoi = self.kt[i:i + 1800]
+        # CAT THEO THAN HAM, khong theo cua so ky tu co dinh: them mot doan comment la cua so
+        # truot ra ngoai va test do ma luat khong he bi pha (da dinh nhieu lan).
+        j = self.kt.find("\nfun ", i + 10)
+        if j < 0:
+            j = self.kt.find("\nprivate fun ", i + 10)
+        self.khoi = self.kt[i:j if j > i else len(self.kt)]
 
     def test_goi_spot_infos(self):
         self.assertIn('callAttr("spot_infos"', self.khoi)
@@ -89,9 +94,20 @@ class TestKotlinGoiHamPython(unittest.TestCase):
             self.assertNotIn(tu, _ma, "ghep chuoi rieng ben Kotlin -> lech voi ban PC")
 
     def test_thieu_so_lieu_thi_VAN_hien_diem(self):
-        """`spot_infos` loi/thieu -> nhan van phai co 'Điểm N (x, y)', khong duoc mat dropdown."""
+        """`spot_infos` loi/thieu -> nhan van phai co so diem + toa do, khong duoc mat dropdown."""
         self.assertIn('infos.getOrNull(i) ?: ""', self.khoi)
-        self.assertIn('"Điểm ${i + 1} (${coords[0]}, ${coords[1]})"', self.khoi)
+        self.assertIn('"Điểm ${i + 1}"', self.khoi)
+        self.assertIn('" | (${coords[0]}, ${coords[1]})"', self.khoi)
+
+    def test_TOA_DO_DE_CUOI_giong_ban_PC(self):
+        """Ban PC (`gui.py`): f"Điểm {i + 1}{info[i]} | {tuple(xy)}" - toa do CUOI, vi phan hay doc
+        (so quai / he quai) phai nam truoc. User 23/09: "ban PC day toa do sang sau cung, m sua lai
+        ban apk cung lam giong the nhe"."""
+        _ma = "\n".join(d for d in self.khoi.split("\n") if not d.strip().startswith("//"))
+        i_info = _ma.find("infos.getOrNull(i)")
+        i_toado = _ma.find("${coords[0]}")
+        self.assertGreater(i_info, 0)
+        self.assertGreater(i_toado, i_info, "toa do van nam TRUOC so quai/he quai")
 
 
 if __name__ == "__main__":
