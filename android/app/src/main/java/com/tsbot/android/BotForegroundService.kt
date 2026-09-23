@@ -705,14 +705,26 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
      * "Khong tai duoc danh sach kenh" du kenh van co.
      * Lech nguon su that: `isRunning` hoi Python, con ham nay doc map Kotlin.
      */
-    fun getChannels(pidx: Int): List<Triple<Int, Int, Int>> {
+    fun getChannels(pidx: Int): List<Triple<Int, Int?, Int?>> {
         return try {
             // get_channel_list tra DICT {ch: (cur, cap)}
+            //
+            // `cur`/`cap` CO THE LA None - Y HET BAN PC (`gui.py::_show_channel_popup`):
+            //     "cur/cap co the la None: kenh acc DANG DUNG ma server khong liet ke (client that
+            //      cung tu them vao danh sach) -> khong biet so nguoi. Xep xuong cuoi va hien '?'"
+            // Server khong liet ke kenh minh dang dung (thuong vi no DAY), nen `_on_channel_list`
+            // tu them `chans[ch_now] = (None, None)` - y het client that (`UIServerArea.instances`,
+            // khong kem current/maxPlayers). Tuc bang GAN NHU LUON co mot cap None.
+            //
+            // Ban cu goi thang `pair[0].toInt()` -> None nem -> roi vao `catch` -> `emptyList()`
+            // -> UI bao "Khong lay duoc danh sach kenh". MOT kenh None la MAT SACH CA BANG.
+            // User 23/09: "click doi kenh thi thay bao ko lay duoc danh sach kenh, du dang co rat
+            // nhieu kenh".
             val res = rpd().callAttr("get_channel_list", pidx) ?: return emptyList()
             res.asMap().map { (k, v) ->
                 val pair = v.asList()
-                Triple(k.toInt(), pair[0].toInt(), pair[1].toInt())
-            }.sortedBy { it.first }
+                Triple(k.toInt(), pair.getOrNull(0)?.toInt(), pair.getOrNull(1)?.toInt())
+            }.sortedWith(compareBy({ it.second == null }, { it.second ?: 0 }))
         } catch (e: Exception) {
             // GHI LAI: nuot im thi UI chi bao "khong tai duoc danh sach kenh" ma khong ai biet
             // vi sao - da ton mot vong do tim ngay 21/09.

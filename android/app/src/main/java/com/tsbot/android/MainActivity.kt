@@ -99,7 +99,6 @@ import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.window.PopupProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import org.json.JSONArray
@@ -1170,7 +1169,7 @@ fun PartyCard(
     onSendCity: (Int, Int) -> Unit,
     onSendRouteMaps: (Int, Int) -> Unit,
     onSendGiftcode: (String) -> Unit,
-    onGetChannels: () -> List<Triple<Int, Int, Int>>,
+    onGetChannels: () -> List<Triple<Int, Int?, Int?>>,
     // SOI LO - thong bao "Chu y": lay danh sach / mua / bo qua (goi xuong Python qua service)
     onFurnaceNotify: () -> List<Map<String, String>> = { emptyList() },
     onFurnaceBuy: (String, Int) -> Boolean = { _, _ -> false },
@@ -2348,13 +2347,13 @@ fun AddPartyDialog(
                         trainMapExpanded = false
                     }
 
-                    fun closeTrainMapDropdown(snapToFirst: Boolean = false) {
-                        if (snapToFirst && trainMapText.text.isNotBlank()) {
-                            filterTrainMapOptions(mapOptions, trainMapText.text).firstOrNull()?.let { (key, mapName, _) ->
-                                pickTrainMap(key, mapName)
-                                return
-                            }
-                        }
+                    // DONG LIST = GIU NGUYEN MAP DANG CHON, khong tu chon ho.
+                    //
+                    // Ban cu co `snapToFirst`: dong list thi tu chon map DAU TIEN khop voi chu
+                    // dang co trong o. Ma chu do chinh la TEN MAP DANG CHON -> loc ra chinh no ->
+                    // chon lai chinh no -> KHONG MOT DAU HIEU GI. Duong am tham nay lam hien tuong
+                    // "bam vao list ma khong thay gi xay ra" khong the doc duoc tu ngoai (23/09).
+                    fun closeTrainMapDropdown() {
                         trainMapText = selectedTrainMapTextValue()
                         trainMapExpanded = false
                     }
@@ -2365,7 +2364,27 @@ fun AddPartyDialog(
                         }
                     }
 
-                    Box {
+                    // DUNG `ExposedDropdownMenuBox` + `.menuAnchor()` - Y HET o "Quai" va o chon
+                    // thanh ngay duoi (hai o do chay tot).
+                    //
+                    // Ban cu la `Box` tran + `PopupProperties(focusable = false)`. Popup mang co
+                    // `FLAG_NOT_FOCUSABLE` va ve DE LEN vung ban phim, nen khi IME gianh lai
+                    // pointer giua chung thi gesture bi CANCEL: scroll da bat dau tu truoc van
+                    // chay tiep, con tap (phai CHO UP moi tinh) bi huy -> `onClick` KHONG BAO GIO
+                    // chay -> list khong dong, map khong doi.
+                    //
+                    // User 23/09: "no xuat hien ca keyboard va list map de len keyboard, list map
+                    // vuot len vuot xuong van dc nhung click thi ko co gi xay ra, list map van con
+                    // do". Bon dau hieu do khop tron ven.
+                    //
+                    // `ExposedDropdownMenuBox` neo qua `.menuAnchor()` va TU GIOI HAN chieu cao
+                    // menu theo cho trong phia tren ban phim -> list khong con de len keyboard.
+                    // VAN GO TIM MAP DUOC (khong dat `readOnly`) - o "Quai" thi readOnly vi no
+                    // khong co o loc.
+                    ExposedDropdownMenuBox(
+                        expanded = trainMapExpanded,
+                        onExpandedChange = { trainMapExpanded = it },
+                    ) {
                         OutlinedTextField(
                             value = trainMapText,
                             onValueChange = {
@@ -2377,14 +2396,15 @@ fun AddPartyDialog(
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trainMapExpanded) },
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .menuAnchor()
                                 .onFocusChanged { focusState ->
                                     // CHI mo khi VUA NHAN focus, khong phai "dang co focus".
                                     //
-                                    // Dropdown khai `PopupProperties(focusable = false)` nen o nay
-                                    // VAN GIU focus sau khi chon map xong. Moi lan layout doi (vd
-                                    // bam o text khac -> ban phim hien) thi `onFocusChanged` BAN
-                                    // LAI voi `isFocused = true`, ma luc do `expanded` da la false
-                                    // -> dieu kien cu khop -> BANG CHON MAP HIEN LEN LAN NUA.
+                                    // O nay VAN GIU focus sau khi chon map xong (menu dong nhung
+                                    // con tro khong roi o text). Moi lan layout doi (vd bam o text
+                                    // khac -> ban phim hien) thi `onFocusChanged` BAN LAI voi
+                                    // `isFocused = true`, ma luc do `expanded` da la false ->
+                                    // dieu kien cu khop -> BANG CHON MAP HIEN LEN LAN NUA.
                                     //
                                     // User 14/09: "doi mode train -> click o chon map -> chon map
                                     // xong roi click o go text khac thi thay bang chon map hien
@@ -2399,8 +2419,7 @@ fun AddPartyDialog(
                         )
                         DropdownMenu(
                             expanded = trainMapExpanded,
-                            onDismissRequest = { closeTrainMapDropdown(snapToFirst = true) },
-                            properties = PopupProperties(focusable = false),
+                            onDismissRequest = { closeTrainMapDropdown() },
                         ) {
                             val selectedAll = trainMapText.selection.start == 0 &&
                                 trainMapText.selection.end == trainMapText.text.length &&
@@ -5508,12 +5527,12 @@ fun SkillSettingsDialog(
 @Composable
 fun ChannelDialog(
     onDismiss: () -> Unit,
-    onGetChannels: () -> List<Triple<Int, Int, Int>>,
+    onGetChannels: () -> List<Triple<Int, Int?, Int?>>,
     onPick: (Int) -> Unit,
     onAuto: () -> Unit,
 ) {
     var loading by remember { mutableStateOf(true) }
-    var channels by remember { mutableStateOf<List<Triple<Int, Int, Int>>>(emptyList()) }
+    var channels by remember { mutableStateOf<List<Triple<Int, Int?, Int?>>>(emptyList()) }
     LaunchedEffect(Unit) {
         channels = withContext(Dispatchers.IO) { onGetChannels() }
         loading = false
@@ -5533,7 +5552,12 @@ fun ChannelDialog(
                             TextButton(
                                 onClick = { onPick(ch) },
                                 modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Kênh $ch   —   $cur/$cap người") }
+                            ) {
+                                // "?/?" khi server khong liet ke kenh nay - Y HET ban PC
+                                // (`gui.py::_show_channel_popup`).
+                                val _so = if (cur == null || cap == null) "?/?" else "$cur/$cap"
+                                Text("Kênh $ch   —   $_so người")
+                            }
                         }
                     }
                 }
