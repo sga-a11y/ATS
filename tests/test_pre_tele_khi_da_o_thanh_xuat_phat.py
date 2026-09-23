@@ -55,9 +55,14 @@ class TestTeleLaiKhiDaODungThanh(unittest.TestCase):
                       "khong co nhanh xu ly 'dang dung o chinh thanh xuat phat'")
 
     def test_nhanh_do_VAN_TELE(self):
+        # CAT THEO THAN NHANH, khong theo cua so ky tu co dinh: them comment la cua so truot ra
+        # ngoai va test do ma luat khong he bi pha (da dinh nhieu lan).
         i = self.than.find("elif not self.party_members:")
         self.assertGreater(i, 0)
-        khuc = self.than[i:i + 1400]
+        j = self.than.find("deadline = time.time()", i)
+        khuc = self.than[i:j if j > i else len(self.than)]
+        self.assertIn("self.pre_route_town_hop()", khuc,
+                      "tele THANG vao chinh thanh dang dung -> map khong doi -> go_to_town quay 150s")
         self.assertIn("self.go_to_town(route[\"city\"], route[\"flag\"])", khuc,
                       "khong tele lai -> khong reset duoc vi tri, acc ket o o khong di duoc")
 

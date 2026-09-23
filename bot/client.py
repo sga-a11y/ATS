@@ -15422,6 +15422,24 @@ class GameClient:
         # `maps`: party HONG (moi dua mot noi) va party DANG BAY theo dung lenh cua chinh no.
         # Xem `_dang_chuyen_map` ben run_party_digioi.
         self.chuyen_map_luc = time.time()
+        # DA O DUNG THANH DO -> XONG, KHONG GUI GI.
+        #
+        # Ham nay xac nhan thanh cong bang "MAP DA DOI" va lap toi khi doi (`tries=30, wait=2.0`
+        # cong `battle_grace=90`). Tele ve CHINH thanh dang dung thi map KHONG BAO GIO doi -> no
+        # quay du ~150 GIAY roi moi tra False, va suot thoi gian do acc dung im.
+        #
+        # Khong phai gia dinh: do tren log 23/09 (12:19 -> 22:37) - `pre_route_town_hop` boc ngau
+        # nhien Trac Quan/Ng.Thanh ma KHONG loai thanh dang dung, ket qua 102/4081 lan boc trung
+        # chinh thanh acc vua tele toi. Moi lan la mot lan ket 150 giay giua duong di train.
+        # User 23/09: "no ko chiu di train ma cu dung o thanh".
+        #
+        # Cua nay dat o DAY (mot cho) vi co ~40 duong goi `go_to_town`; bit tung duong la som muon
+        # sot mot cho.
+        if int(getattr(self, "current_map", 0) or 0) == city_id:
+            log.info("[%s] go_to_town: DA o thanh %s roi -> khong tele lai (tele vao chinh cho "
+                     "dang dung thi map khong doi, ham nay se quay 150s roi bao that bai)",
+                     self._label, city_id)
+            return True
         # RA KHOI DI GIOI TRUOC MOI THU KHAC.
         #
         # Hai nhanh `return False` ngay ben duoi ("khong phai thanh teleport" / "thanh CHUA MO")
@@ -16817,9 +16835,20 @@ class GameClient:
         # chuc lan khong bao gio toi (log 15:27).
         _ung_vien = list(PRE_ROUTE_CITIES)
         _mo = [cf for cf in _ung_vien if self.city_unlocked(cf[0]) is not False]
+        # LOAI THANH DANG DUNG: dang o Trac Quan thi bay sang Ng.Thanh, dang o Ng.Thanh thi ve
+        # Trac Quan (user chot 23/09). Tele vao chinh cho dang dung thi map KHONG DOI, ma
+        # `go_to_town` xac nhan thanh cong bang "map da doi" -> no quay ~150 GIAY roi bao that bai,
+        # va suot thoi gian do acc dung im giua duong di train.
+        #
+        # Do tren log 23/09 (12:19 -> 22:37): 102/4081 lan `pre_route_town_hop` boc TRUNG chinh
+        # thanh acc vua tele toi. User: "no ko chiu di train ma cu dung o thanh".
+        _dang_o = int(getattr(self, "current_map", 0) or 0)
+        _khac = [cf for cf in _mo if cf[0] != _dang_o]
+        if _khac:
+            _mo = _khac
         city, flag = random.choice(_mo or [(12001, 0)])
-        log.info("[%s] pre-route: tele trung gian ve thanh %s truoc (%d thanh da mo)",
-                 self._label, city, len(_mo))
+        log.info("[%s] pre-route: tele trung gian ve thanh %s truoc (dang o %s, %d thanh da mo)",
+                 self._label, city, _dang_o or "?", len(_mo))
         try:
             ok = self.go_to_town(city, flag)
             # DANG GOM PARTY thi BO QUA viec vat. Cat tien trang / ban Noi Dat deu keo acc sang map
@@ -17039,6 +17068,12 @@ class GameClient:
                 # CHI KHI CHUA CO DOI: `go_to_town` phai `leave_party()` truoc (server cam tele khi
                 # con trong doi), nen tele luc dang keo nhau ra bai la TU TAY xe party. Vua login
                 # thi roster rong - dung luc can, va khong pha gi.
+                # PHAI DI VONG QUA THANH TRUNG GIAN. Tele thang ve chinh thanh dang dung thi map
+                # KHONG DOI -> `go_to_town` quay 150s roi bao that bai (do la CAI SAI cua chinh ban
+                # v1.1.202609232054 sang nay, da bi user bat: "no ko chiu di train ma cu dung o thanh").
+                # `pre_route_town_hop` gio LOAI thanh dang dung, nen no bay sang thanh KIA - map
+                # doi that, roi `go_to_town` keo ve. Hai lan doi map = vi tri duoc reset ve spawn.
+                self.pre_route_town_hop()
                 if not self.go_to_town(route["city"], route["flag"]):
                     log.info("[%s] smart route: tele lai %s de reset vi tri KHONG duoc -> di bo tu "
                              "cho dang dung", self._label, route["city"])

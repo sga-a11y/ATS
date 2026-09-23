@@ -3406,6 +3406,32 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                 _login_safe_done = True
             except Exception as e:
                 log.warning("[%s] loi ve safe ngay sau login (bo qua): %s", label, e)
+        elif login_map and not c.in_di_gioi():
+            # LOGIN O THANH -> PRE TELE NGAY, truoc khi lam gi khac (user chot 23/09).
+            #
+            # Vi sao: vi tri luc login la cho acc DUNG LAN TRUOC, va cho do co the la mot O KHONG
+            # DI DUOC (bot chay nham vao day tu phien truoc). Dung im o do thi LAP PARTY XONG VAN
+            # KHONG DI DUOC - user: "truoc do no chay ra diem ko di chuyen duoc cua map do, nen lap
+            # party xong van ko di chuyen duoc" -> "lam cai pre tele la dc roi".
+            #
+            # Phai lam O DAY, KHONG phai luc bat dau di route: party lap ngay tai thanh dang dung
+            # nen duong route co the chua he duoc goi toi. User 23/09: "party 11 login vao deo co
+            # pre tele, no dung o Giang Lang va lap pt luon".
+            #
+            # `pre_route_town_hop` bay sang thanh TRUNG GIAN KHAC (no loai thanh dang dung), nen
+            # map DOI THAT -> vi tri duoc reset ve diem spawn. Tele thang vao chinh cho dang dung
+            # thi map khong doi va `go_to_town` quay 150s vo ich.
+            #
+            # KHONG dung vao nhanh tren: login o MAP TRAIN thi van DI BO ra safe nhu cu (user dan
+            # 23/09: "login vao ma o bai train thi chay ra safe chu ko tele, van giu flow cu nay
+            # day chu, dung bao m xoa luon").
+            try:
+                log.info("[%s] (%s) login o thanh %s -> PRE TELE de reset vi tri (tranh dung o o "
+                         "khong di duoc tu phien truoc)", label, role, login_map)
+                c.pre_route_town_hop()
+                login_map = c.current_map
+            except Exception as e:
+                log.warning("[%s] pre tele sau login loi (bo qua): %s", label, e)
         c.log_bag_delayed()   # In tui khi snapshot ve + on dinh (adaptive, toi da 8s) -> dinh danh item
         next_vantieu = None
         next_phuc_than = 0.0   # 0.0 -> kiem tra NGAY lan dau (khong cho 30p roi moi dung lan dau)
