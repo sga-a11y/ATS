@@ -9526,6 +9526,34 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
     config.ACCOUNTS = [a for party in config.PARTIES for a in party if a and a[0]]
     config.ACCOUNT_PARTY = {a[0]: i for i, party in enumerate(config.PARTIES)
                             for a in party if a and a[0]}
+    # IN RA CAC TICK VUA NHAN - CHI APK di qua ham nay (ban PC doc thang `config.py`), nen day la
+    # cua so DUY NHAT de biet dien thoai that su gui gi.
+    #
+    # Truoc 23/09 ham nay nhan xong ghi thang vao `PARTY_CONFIG` roi thoi, khong mot dong log.
+    # User bao "khong tick danh boss QD ma no van danh" / "khong tick mua HP SP ma van di mua" ma
+    # KHONG CACH NAO biet tick do co toi Python khong - phia Kotlin goi THEO VI TRI 58 doi so, phia
+    # Python co 58 tham so, doi chieu tung cap thi khop, nhung "khop tren giay" khong phai bang
+    # chung ve gia tri THAT luc chay.
+    #
+    # APK co man hinh log trong app nen user doc duoc dong nay ma khong can logcat.
+    log.info(">>> PARTY %s SETUP: mode=%s | boss_QD=%s boss_TG=%s PB_doi=%s daily=%s van_tieu=%s "
+             "| mua_HP=%s(%s/%s) mua_SP=%s(%s/%s) | phuc_than=%s ho_phu_DG=%s "
+             "| doi_qua_event=%s(%d mon) mo_ruong=%s cat_do=%s ban_noi_dat=%s "
+             "| don_tui=%s vut_rac=%s phan_giai_cuon=%s donate=%s | mua_shop=%s thien_chau=%s "
+             "bao_hop=%s | mo_tui=%s mo_tien_trang=%s | chet_ve_thanh=%s pet_chet_ve_thanh=%s",
+             pidx + 1, mode,
+             bool(fight_legion_boss), bool(auto_world_boss), bool(auto_team_dungeon),
+             bool(do_daily), bool(do_van_tieu),
+             bool(buy_hp), hp_qty, hp_thresh, bool(buy_sp), sp_qty, sp_thresh,
+             bool(use_phuc_than), bool(use_digioi_ho_phu),
+             bool(auto_event_exchange),
+             len(config.PARTY_CONFIG[pidx].get("event_exchange_items") or ()),
+             bool(auto_open_boxes), bool(auto_cat_do), bool(auto_sell_noi_dat),
+             bool(auto_bag_clean), bool(auto_discard_junk), bool(auto_decompose_scrolls),
+             bool(auto_donate_materials),
+             auto_buy_shop, bool(buy_thien_chau), bool(buy_bao_hop),
+             bool(auto_bag_expand), bool(auto_bank_expand),
+             bool(death_return_town), bool(pet_death_return_town))
 
 
 def party_idx_of(username):

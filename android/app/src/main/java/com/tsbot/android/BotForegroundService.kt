@@ -666,34 +666,61 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         }
     }
 
-    // --- lenh LIVE (doi kenh / teleport thanh / giftcode) - map username -> pidx ---
-    private fun pidxSet(usernames: List<String>): List<Int> =
-        usernames.mapNotNull { userPidx[it] }.distinct()
-
-    fun sendChannel(usernames: List<String>, ch: Int) {
-        pidxSet(usernames).forEach { try { rpd().callAttr("party_switch_channel", it, ch) } catch (_: Exception) {} }
+    // --- lenh LIVE (doi kenh / teleport thanh / giftcode / ...) ---
+    //
+    // NHAN PIDX, GIONG HET BAN PC. `gui.py` biet `pidx` va goi thang
+    // `ctrl.party_switch_channel(pidx, ch)`; ben APK truoc day nhan LIST USERNAME roi tra nguoc
+    // `userPidx[username]` - map CUC BO cua Kotlin, CHI duoc dien khi CHINH service nay goi
+    // `start_party` trong phien do (dong `activeAccounts.forEach { userPidx[it.username] = pidx }`),
+    // va bi XOA SACH khi stop party.
+    //
+    // Bot da chay tu truoc roi mo lai app, hoac service bi Android tao lai -> map RONG ->
+    // `pidxSet` tra RONG -> `forEach` khong chay lan nao -> LENH KHONG HE SANG TOI PYTHON, va
+    // khong mot dau vet nao trong log.
+    //
+    // Ca that 23/09 (user: "apk ket chu pc co ket dau"): bam doi kenh tay tren APK -> lenh khong
+    // toi noi. Bon acc van doi duoc kenh la nho DUONG TU DONG (dieu phoi dong bo kenh), con dua
+    // dang ket tran thi duong tu dong chi CHO chu khong keo ra safe -> nam lai cho quai danh.
+    // Ben PC lenh tay toi noi nen no kien tri 300s + keo ra diem an toan, dua ket cung di duoc.
+    //
+    // DAY LA LAN THU HAI cua cung mot con benh: `getChannels` da duoc sua ngay 22/09 (xem chu
+    // thich cua no), nhung hom do CHI sua mot ham va bo sot CA SAU ham duoi day.
+    fun sendChannel(pidx: Int, ch: Int) {
+        try { rpd().callAttr("party_switch_channel", pidx, ch) } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "sendChannel(p${pidx + 1}) loi: ${e.message}", e)
+        }
     }
 
-    fun sendChannelAuto(usernames: List<String>) {
-        // -1 = tu chon kenh (run_party_digioi.party_switch_channel: ch<=0 -> pick_best)
-        pidxSet(usernames).forEach { try { rpd().callAttr("party_switch_channel", it, 0) } catch (_: Exception) {} }
+    fun sendChannelAuto(pidx: Int) {
+        // 0 = tu chon kenh (run_party_digioi.party_switch_channel: ch<=0 -> pick_best)
+        try { rpd().callAttr("party_switch_channel", pidx, 0) } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "sendChannelAuto(p${pidx + 1}) loi: ${e.message}", e)
+        }
     }
 
-    fun sendCity(usernames: List<String>, cityId: Int, flag: Int) {
-        pidxSet(usernames).forEach { try { rpd().callAttr("party_teleport_city", it, cityId, flag) } catch (_: Exception) {} }
+    fun sendCity(pidx: Int, cityId: Int, flag: Int) {
+        try { rpd().callAttr("party_teleport_city", pidx, cityId, flag) } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "sendCity(p${pidx + 1}) loi: ${e.message}", e)
+        }
     }
 
     // Doi cap quai Di Gioi LIVE cho party (idx 1..15) - goi party_set_di_gioi_level (gui 0x61 02 00 idx).
-    fun setDiGioiLevel(usernames: List<String>, idx: Int) {
-        pidxSet(usernames).forEach { try { rpd().callAttr("party_set_di_gioi_level", it, idx) } catch (_: Exception) {} }
+    fun setDiGioiLevel(pidx: Int, idx: Int) {
+        try { rpd().callAttr("party_set_di_gioi_level", pidx, idx) } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "setDiGioiLevel(p${pidx + 1}) loi: ${e.message}", e)
+        }
     }
 
-    fun sendRouteMaps(usernames: List<String>, sourceMap: Int, destMap: Int) {
-        pidxSet(usernames).forEach { try { rpd().callAttr("party_route_maps", it, sourceMap, destMap) } catch (_: Exception) {} }
+    fun sendRouteMaps(pidx: Int, sourceMap: Int, destMap: Int) {
+        try { rpd().callAttr("party_route_maps", pidx, sourceMap, destMap) } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "sendRouteMaps(p${pidx + 1}) loi: ${e.message}", e)
+        }
     }
 
-    fun sendGiftcode(usernames: List<String>, code: String) {
-        pidxSet(usernames).forEach { try { rpd().callAttr("redeem_giftcode_party", it, code) } catch (_: Exception) {} }
+    fun sendGiftcode(pidx: Int, code: String) {
+        try { rpd().callAttr("redeem_giftcode_party", pidx, code) } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "sendGiftcode(p${pidx + 1}) loi: ${e.message}", e)
+        }
     }
 
     /** Query danh sach kenh (BLOCKING - goi tu background). Tra [channel, so_nguoi, suc_chua].

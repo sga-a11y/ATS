@@ -16,8 +16,13 @@ class TestAndroidTrainMapCollapsible(unittest.TestCase):
         # chi ve khi KHONG collapsed.
         self.assertRegex(UI, r"val collapsed = .*g in collapsedTrainMapGroups")
         self.assertIn("if (!collapsed) {", UI)
-        # bam vao nhom phai TOGGLE chu khong dong menu
-        self.assertRegex(UI, r"onClick = \{ toggleTrainMapGroup\(g\) \}")
+        # Bam vao nhom phai TOGGLE chu khong dong danh sach.
+        #
+        # NEO THEO Y NGHIA, khong theo dang chu: 23/09 danh sach map bo POPUP, ve INLINE trong than
+        # dialog (`MucChonMap` thay `DropdownMenuItem`) vi popup neo vao anchor trong
+        # `Column(verticalScroll)` bi lech khi ban phim mo - xem
+        # `tests/test_android_chon_map_train_bam_duoc.py`. Luat "bam nhom = toggle" khong doi.
+        self.assertRegex(UI, r"toggleTrainMapGroup\(g\)")
         self.assertNotIn("DropdownMenuItem(enabled = false, onClick = {},\n                                        text = { Text(\"📁 $g\") })", UI)
 
 

@@ -9,8 +9,12 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -556,11 +560,15 @@ fun TsBotApp(
                         onStop = { username -> service?.stopAccount(username) },
                         onStartParty = { startPartyIn(party) },
                         onStopParty = { party.accounts.forEach { service?.stopAccount(it.username) } },
-                        onSendChannel = { ch -> service?.sendChannel(party.accounts.map { it.username }, ch) },
-                        onSendChannelAuto = { service?.sendChannelAuto(party.accounts.map { it.username }) },
-                        onSendCity = { id, flag -> service?.sendCity(party.accounts.map { it.username }, id, flag) },
-                        onSendRouteMaps = { source, dest -> service?.sendRouteMaps(party.accounts.map { it.username }, source, dest) },
-                        onSendGiftcode = { code -> service?.sendGiftcode(party.accounts.map { it.username }, code) },
+                        // LENH LIVE NHAN PIDX - giong ban PC (`gui.py` goi thang
+                        // `ctrl.party_switch_channel(pidx, ch)`). Truyen username roi de service
+                        // tra nguoc `userPidx` la map CUC BO, rong sau khi mo lai app -> lenh
+                        // khong he sang toi Python (xem chu thich o `BotForegroundService`).
+                        onSendChannel = { ch -> parties.indexOf(party).let { if (it >= 0) service?.sendChannel(it, ch) } },
+                        onSendChannelAuto = { parties.indexOf(party).let { if (it >= 0) service?.sendChannelAuto(it) } },
+                        onSendCity = { id, flag -> parties.indexOf(party).let { if (it >= 0) service?.sendCity(it, id, flag) } },
+                        onSendRouteMaps = { source, dest -> parties.indexOf(party).let { if (it >= 0) service?.sendRouteMaps(it, source, dest) } },
+                        onSendGiftcode = { code -> parties.indexOf(party).let { if (it >= 0) service?.sendGiftcode(it, code) } },
                         onGetChannels = {
                             // pidx suy tu vi tri party trong list (giong startPartyIn /
                             // onFurnaceNotify), va truyen THANG cho `getChannels` - GIONG BAN PC
@@ -830,7 +838,7 @@ fun TsBotApp(
             initialAutoBankExpand = partyBeingEdited.autoBankExpand,
             initialBankExpandGold = partyBeingEdited.bankExpandGold,
             onApplyDiGioiLevel = { idx ->
-                service?.setDiGioiLevel(partyBeingEdited.accounts.map { it.username }, idx)
+                parties.indexOf(partyBeingEdited).let { if (it >= 0) service?.setDiGioiLevel(it, idx) }
             },
             onDismiss = { editingParty = null },
             onSave = { edited ->
@@ -1760,6 +1768,23 @@ fun trainMapGroupOrder(opts: List<Triple<String, String, String>>): List<String>
     return order.toList()
 }
 
+/** Mot muc trong danh sach chon map (render INLINE, khong nam trong menu popup).
+ *
+ * Thay cho `DropdownMenuItem` - ham do danh cho noi dung ben trong mot menu. Danh sach map gio ve
+ * thang trong than dialog (xem khoi "Map train" trong `AddPartyDialog`), nen dung mot Row bam
+ * duoc voi padding giong muc menu de nhin y het nhu cu.
+ */
+@Composable
+fun MucChonMap(nhan: String, onClick: () -> Unit) {
+    Text(
+        nhan,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    )
+}
+
 fun filterTrainMapOptions(
     opts: List<Triple<String, String, String>>,
     query: String,
@@ -1807,7 +1832,7 @@ private fun parseLeaderWhitelist(text: String): List<String> =
         .filter { it.isNotEmpty() }
         .distinctBy { it.lowercase() }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AddPartyDialog(
     onDismiss: () -> Unit,
@@ -2023,6 +2048,23 @@ fun AddPartyDialog(
         bagExpandGold = bagExpandGoldText.toIntOrNull() ?: 0,
         autoBankExpand = autoBankExpand,
         bankExpandGold = bankExpandGoldText.toIntOrNull() ?: 0,
+        // BA TRUONG EVENT - TRUOC 23/09 BI SOT O DAY.
+        //
+        // `currentParty()` la nguon cho nut "Ap dung cho tat ca party". Sot truong nao thi truong
+        // do lay GIA TRI MAC DINH cua data class, va `copyAdvancedSettingsFrom` chep cai mac dinh
+        // do sang MOI party khac. `autoEventExchange` mac dinh `false`, `eventExchangeItems` mac
+        // dinh rong -> bam "ap dung cho tat ca" la XOA SACH tick + danh sach qua cua ca lu.
+        //
+        // User 23/09: "tick tu doi qua event -> chon ap dung cho tat ca cac party thi thay cac
+        // party bi mat tick doi qua qua event du truoc do co tick roi".
+        //
+        // Sot duoc vi co HAI cho dung Party song song: `currentParty()` va mot khoi `Party(...)`
+        // rieng trong nut Luu. Khoi nut Luu co du ba truong nay, nen LUU thi khong sao - chi
+        // "ap dung cho tat ca" mat. Gio nut Luu goi THANG `currentParty()`, chi con MOT cho.
+        autoEventExchange = autoEventExchange,
+        eventExchangeItems = eventExchangeItems,
+        // Chu ky su kien: chi ghi khi THUC SU co mon duoc chon.
+        eventExchangeSig = if (eventExchangeItems.isEmpty()) "" else PartyStore.eventSigNow(),
     )
 
     AlertDialog(
@@ -2364,27 +2406,41 @@ fun AddPartyDialog(
                         }
                     }
 
-                    // DUNG `ExposedDropdownMenuBox` + `.menuAnchor()` - Y HET o "Quai" va o chon
-                    // thanh ngay duoi (hai o do chay tot).
+                    // LIST MAP RENDER **INLINE**, KHONG DUNG POPUP (sua 23/09).
                     //
-                    // Ban cu la `Box` tran + `PopupProperties(focusable = false)`. Popup mang co
-                    // `FLAG_NOT_FOCUSABLE` va ve DE LEN vung ban phim, nen khi IME gianh lai
-                    // pointer giua chung thi gesture bi CANCEL: scroll da bat dau tu truoc van
-                    // chay tiep, con tap (phai CHO UP moi tinh) bi huy -> `onClick` KHONG BAO GIO
-                    // chay -> list khong dong, map khong doi.
+                    // GOC BENH: o nay nam trong `Column(verticalScroll)` cua AlertDialog (them
+                    // ngay 14/09, commit "dialog keo xuong duoc"), va no la o DUY NHAT trong dialog
+                    // co BAN PHIM (sau o kia deu `readOnly`). Ban phim mo -> dialog co lai ->
+                    // Column cuon -> ANCHOR DICH, ma popup thi da dat xong -> nguoi dung nhin thay
+                    // list mot cho con vung cham o cho khac.
                     //
-                    // User 23/09: "no xuat hien ca keyboard va list map de len keyboard, list map
-                    // vuot len vuot xuong van dc nhung click thi ko co gi xay ra, list map van con
-                    // do". Bon dau hieu do khop tron ven.
+                    // Chinh commit 14/09 da ghi lai trieu chung nay cho dropdown "Quai":
+                    //     "khien cac field cuoi (vd dropdown 'Quai') bi che/lech vi tri popup - da
+                    //      xac nhan qua test thuc te tren emulator (chon Quai 'khong thay hien thi
+                    //      gi ca' vi popup tinh vi tri theo anchor da bi day ra ngoai)"
                     //
-                    // `ExposedDropdownMenuBox` neo qua `.menuAnchor()` va TU GIOI HAN chieu cao
-                    // menu theo cho trong phia tren ban phim -> list khong con de len keyboard.
-                    // VAN GO TIM MAP DUOC (khong dat `readOnly`) - o "Quai" thi readOnly vi no
-                    // khong co o loc.
-                    ExposedDropdownMenuBox(
-                        expanded = trainMapExpanded,
-                        onExpandedChange = { trainMapExpanded = it },
-                    ) {
+                    // DA THU HAI CACH, DEU LA POPUP, DEU HONG - dung lam lai:
+                    //   1. `Box` + `PopupProperties(focusable = false)`: popup ve DE LEN ban phim,
+                    //      IME gianh pointer -> tap bi CANCEL. User 23/09: "list map vuot len vuot
+                    //      xuong van dc nhung click thi ko co gi xay ra, list map van con do".
+                    //   2. `ExposedDropdownMenuBox` + `.menuAnchor()`: EDMB them mot lop bat su
+                    //      kien de nhan tap-ngoai; voi TextField KHONG readOnly no danh nhau voi
+                    //      IME va KET LAI. User: "tat list di thi ko tuong tac dc UI nao khac nua".
+                    // Con popup la con lech. Nen bo han popup cho RIENG o nay; sau o `readOnly`
+                    // khac giu nguyen `ExposedDropdownMenuBox` vi chung khong co ban phim.
+                    //
+                    // BO CUC (user chot 23/09): mo list -> keo o text len SAT MEP TREN de vua go
+                    // vua nhin duoc chu, phan con lai tu do xuong toi ban phim danh het cho list.
+                    // User: "them cai tu scroll len de cai o text sat phia tren man hinh de go text
+                    // thi van du thay dang go gi ma list map cung nhin duoc nhieu hon".
+                    // `bringIntoViewRequester` dat tren CA KHOI (o text + list) nen keo vao view la
+                    // ca khoi vao -> o text len gan dinh.
+                    //
+                    // KHONG cho ban phim de len list: phan bi de la phan BAM KHONG DUOC - dung cai
+                    // benh dang chua. `imePadding()` cho list dung ngay TREN ban phim, va list tu
+                    // cuon nen dai bao nhieu cung voi toi duoc.
+                    val mapBringIntoView = remember { BringIntoViewRequester() }
+                    Column(modifier = Modifier.fillMaxWidth().bringIntoViewRequester(mapBringIntoView)) {
                         OutlinedTextField(
                             value = trainMapText,
                             onValueChange = {
@@ -2396,11 +2452,10 @@ fun AddPartyDialog(
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trainMapExpanded) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .menuAnchor()
                                 .onFocusChanged { focusState ->
                                     // CHI mo khi VUA NHAN focus, khong phai "dang co focus".
                                     //
-                                    // O nay VAN GIU focus sau khi chon map xong (menu dong nhung
+                                    // O nay VAN GIU focus sau khi chon map xong (list dong nhung
                                     // con tro khong roi o text). Moi lan layout doi (vd bam o text
                                     // khac -> ban phim hien) thi `onFocusChanged` BAN LAI voi
                                     // `isFocused = true`, ma luc do `expanded` da la false ->
@@ -2417,43 +2472,53 @@ fun AddPartyDialog(
                                     }
                                 },
                         )
-                        DropdownMenu(
-                            expanded = trainMapExpanded,
-                            onDismissRequest = { closeTrainMapDropdown() },
-                        ) {
-                            val selectedAll = trainMapText.selection.start == 0 &&
-                                trainMapText.selection.end == trainMapText.text.length &&
-                                trainMapText.text == selectedTrainMapName()
-                            val trainMapQuery = if (selectedAll) "" else trainMapText.text
-                            val shownMapOptions = filterTrainMapOptions(mapOptions, trainMapQuery)
-                            val searchingMap = trainMapQuery.trim().isNotEmpty()
-                            val groups = trainMapGroupOrder(shownMapOptions)
-                            // Chua gom nhom (chi co 'Chua phan nhom') -> hien PHANG nhu cu, khong header thua.
-                            val flat = groups.size <= 1 && groups.firstOrNull() == "Chưa phân nhóm"
-                            if (shownMapOptions.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("Không tìm thấy map") },
-                                    onClick = {},
-                                    enabled = false,
-                                )
-                            } else if (flat) {
-                                shownMapOptions.forEach { (key, mapName, _) ->
-                                    DropdownMenuItem(text = { Text(mapName) }, onClick = {
-                                        pickTrainMap(key, mapName)
-                                    })
-                                }
-                            } else {
-                                groups.forEach { g ->
-                                    val collapsed = !searchingMap && g in collapsedTrainMapGroups
-                                    DropdownMenuItem(
-                                        onClick = { toggleTrainMapGroup(g) },
-                                        text = { Text(if (collapsed) "▶ 📁 $g" else "▼ 📂 $g") },
-                                    )
-                                    if (!collapsed) {
-                                        shownMapOptions.filter { it.third == g }.forEach { (key, mapName, _) ->
-                                            DropdownMenuItem(text = { Text("    $mapName") }, onClick = {
-                                                pickTrainMap(key, mapName)
-                                            })
+                        if (trainMapExpanded) {
+                            // Keo ca khoi vao view MOI LAN mo -> o text len sat tren, list duoc
+                            // toan bo cho con lai.
+                            LaunchedEffect(trainMapExpanded) {
+                                mapBringIntoView.bringIntoView()
+                            }
+                            Surface(
+                                tonalElevation = 3.dp,
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 420.dp)
+                                        .imePadding()
+                                        .verticalScroll(rememberScrollState()),
+                                ) {
+                                    val selectedAll = trainMapText.selection.start == 0 &&
+                                        trainMapText.selection.end == trainMapText.text.length &&
+                                        trainMapText.text == selectedTrainMapName()
+                                    val trainMapQuery = if (selectedAll) "" else trainMapText.text
+                                    val shownMapOptions = filterTrainMapOptions(mapOptions, trainMapQuery)
+                                    val searchingMap = trainMapQuery.trim().isNotEmpty()
+                                    val groups = trainMapGroupOrder(shownMapOptions)
+                                    // Chua gom nhom (chi co 'Chua phan nhom') -> hien PHANG nhu cu.
+                                    val flat = groups.size <= 1 && groups.firstOrNull() == "Chưa phân nhóm"
+                                    if (shownMapOptions.isEmpty()) {
+                                        Text(
+                                            "Không tìm thấy map",
+                                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    } else if (flat) {
+                                        shownMapOptions.forEach { (key, mapName, _) ->
+                                            MucChonMap(mapName) { pickTrainMap(key, mapName) }
+                                        }
+                                    } else {
+                                        groups.forEach { g ->
+                                            val collapsed = !searchingMap && g in collapsedTrainMapGroups
+                                            MucChonMap(if (collapsed) "▶ 📁 $g" else "▼ 📂 $g") {
+                                                toggleTrainMapGroup(g)
+                                            }
+                                            if (!collapsed) {
+                                                shownMapOptions.filter { it.third == g }.forEach { (key, mapName, _) ->
+                                                    MucChonMap("    $mapName") { pickTrainMap(key, mapName) }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -2615,64 +2680,12 @@ fun AddPartyDialog(
                     if (name.isBlank()) {
                         nameError = "Vui lòng nhập tên party"
                     } else {
-                        val saved = onSave(Party(
-                            name = name.trim(),
-                            serverKey = selectedKey,
-                            runMode = selectedMode,
-                            cityKey = selectedCity,
-                            digioiSolo = digioiSolo,
-                            noLeader = noLeader,
-                            leaderWhitelist = parseLeaderWhitelist(leaderWhitelistText),
-                            doDaily = doDaily,
-                            claimOfflineExp = claimOfflineExp,
-                            autoWorldBoss = autoWorldBoss,
-                            autoTeamDungeon = autoTeamDungeon,
-                            teamDungeons = teamDungeons,
-                            trainMapKey = if (isPickMode) "" else trainMapKey,
-                            trainMobIndex = if (isPickMode) -1 else trainMobIndex,
-                            trainPick = if (isPickMode) trainMapKey.removePrefix(PICK_PREFIX) else "",
-                            mobMin = mobMin.toIntOrNull()?.coerceIn(1, 6) ?: 3,
-                            mobMax = mobMax.toIntOrNull()?.coerceIn(1, 6) ?: 4,
-                            mobElements = (if (mobElements.isEmpty()) allElems.toSet() else mobElements).sorted(),
-                            usePhucThan = usePhucThan,
-                            useDigioiHoPhu = useDigioiHoPhu,
-                            fightLegionBoss = fightLegionBoss,
-                            doVanTieu = doVanTieu,
-                            autoSellNoiDat = autoSellNoiDat,
-                            deathReturnTown = deathReturnTown,
-                            petDeathReturnTown = petDeathReturnTown,
-                            autoBagClean = autoBagClean,
-                            autoDiscardJunk = autoDiscardJunk,
-                            autoDecomposeScrolls = autoDecomposeScrolls,
-                            scrollModes = scrollModes,
-                            autoOpenBoxes = autoOpenBoxes,
-                            boxModes = boxModes,
-                            autoCatDo = autoCatDo,
-                            autoDonateMaterials = autoDonateMaterials,
-                            materialModes = materialModes,
-                            autoEventExchange = autoEventExchange,
-                            eventExchangeItems = eventExchangeItems,
-                            eventExchangeSig = if (eventExchangeItems.isEmpty()) ""
-                                               else PartyStore.eventSigNow(),
-                            autoBuyShop = autoBuyShop,
-                            buyHoPhu = buyHoPhu,
-                            buyThienChau = buyThienChau,
-                            buyBaoHop = buyBaoHop,
-                            baoHopXuThreshold = baoHopXuText.toIntOrNull() ?: 10000000,
-                            buyHp = buyHp,
-                            hpQty = hpQtyText.toIntOrNull() ?: 9999,
-                            hpThresh = hpThreshText.toIntOrNull() ?: 500000,
-                            buySp = buySp,
-                            spQty = spQtyText.toIntOrNull() ?: 9999,
-                            spThresh = spThreshText.toIntOrNull() ?: 500000,
-                            diGioiLevel = diGioiLevel,
-                            diGioiPick = diGioiPick,
-                            loanDauMotTran = loanDauMotTran,
-                            autoBagExpand = autoBagExpand,
-                            bagExpandGold = bagExpandGoldText.toIntOrNull() ?: 0,
-                            autoBankExpand = autoBankExpand,
-                            bankExpandGold = bankExpandGoldText.toIntOrNull() ?: 0,
-                        ))
+                        // MOT CHO DUNG `Party` DUY NHAT (gop 23/09). Truoc day day la mot khoi
+                        // `Party(...)` RIENG, chep tay song song voi `currentParty()` - va no da
+                        // lech: khoi nay co ba truong event, `currentParty()` thi SOT, nen nut
+                        // "Ap dung cho tat ca party" xoa sach tick doi qua event cua ca lu.
+                        // Chep tay o dau la o do se lech, chi la som hay muon.
+                        val saved = onSave(currentParty().copy(name = name.trim()))
                         if (!saved) nameError = "Tên party đã tồn tại"
                     }
                 },

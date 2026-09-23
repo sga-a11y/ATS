@@ -1,28 +1,43 @@
 # -*- coding: utf-8 -*-
-"""APK - o "Map train": bang chon phai BAM DUOC khi ban phim dang mo.
+"""APK - o "Map train": danh sach map phai BAM DUOC khi ban phim dang mo.
 
-Ban cu dung `Box` tran + `PopupProperties(focusable = false)`. Popup mang co `FLAG_NOT_FOCUSABLE`
-va VE DE LEN vung ban phim, nen khi IME gianh lai pointer giua chung thi gesture bi CANCEL:
-  - scroll DA BAT DAU tu truoc  -> van chay tiep
-  - tap (phai CHO UP moi tinh)  -> bi huy -> `onClick` KHONG BAO GIO chay
-Ket qua: vuot duoc ma bam khong duoc, va list khong dong vi `pickTrainMap` chua he chay.
+### Goc benh
 
-User 23/09: *"no xuat hien ca keyboard va list map de len keyboard, list map vuot len vuot xuong
-van dc nhung click thi ko co gi xay ra, list map van con do"*.
+O nay nam trong `Column(verticalScroll)` cua AlertDialog - `verticalScroll` do them ngay 14/09
+(commit `fd4a4a8` "dialog keo xuong duoc"). Va no la o DUY NHAT trong dialog CO BAN PHIM (sau o
+dropdown con lai deu `readOnly`).
 
-DOI CHUNG NGAY TRONG CUNG FILE: o "Quai" va o chon thanh - cung man hinh, cung kieu dropdown -
-dung `ExposedDropdownMenuBox` + `.menuAnchor()` va chay tot. `ExposedDropdownMenuBox` neo qua
-`menuAnchor` va TU GIOI HAN chieu cao menu theo cho trong phia tren ban phim, nen list khong con
-de len keyboard.
+Ban phim mo -> dialog co lai -> Column cuon -> ANCHOR DICH, ma popup thi da dat xong -> nguoi dung
+nhin thay list mot cho con vung cham o cho khac.
 
-O "Map train" VAN PHAI GO TIM DUOC (co `filterTrainMapOptions`) nen KHONG dat `readOnly` - khac o
-"Quai" (readOnly vi khong co o loc).
+Chinh commit 14/09 da ghi lai trieu chung do cho dropdown "Quai":
+    "khien cac field cuoi (vd dropdown 'Quai') bi che/lech vi tri popup - da xac nhan qua test
+     thuc te tren emulator (chon Quai 'khong thay hien thi gi ca' vi popup tinh vi tri theo anchor
+     da bi day ra ngoai)"
+
+### Hai cach DA THU va DEU HONG - dung lam lai
+
+| Cach | Hong the nao | User bao |
+|---|---|---|
+| `Box` + `PopupProperties(focusable = false)` | popup ve DE LEN ban phim, IME gianh pointer -> tap bi CANCEL (scroll da bat dau thi van chay) | "list map vuot len vuot xuong van dc nhung click thi ko co gi xay ra, list map van con do" |
+| `ExposedDropdownMenuBox` + `.menuAnchor()` | EDMB them lop bat su kien de nhan tap-ngoai; voi TextField KHONG readOnly no danh nhau voi IME va KET LAI | "tat list di thi ko tuong tac dc UI nao khac nua" |
+
+CON POPUP LA CON LECH -> bo han popup cho RIENG o nay, render list INLINE trong than dialog.
+Sau o `readOnly` khac GIU NGUYEN `ExposedDropdownMenuBox` (chung khong co ban phim, dang chay tot).
+
+### Bo cuc (user chot 23/09)
+
+"them cai tu scroll len de cai o text sat phia tren man hinh de go text thi van du thay dang go gi
+ma list map cung nhin duoc nhieu hon" -> `bringIntoViewRequester` dat tren CA KHOI (o text + list),
+keo vao view la ca khoi vao -> o text len gan dinh, phan con lai danh cho list.
+
+KHONG cho ban phim de len list: phan bi de la phan BAM KHONG DUOC - dung cai benh dang chua.
+`imePadding()` cho list dung ngay TREN ban phim, list tu cuon nen dai bao nhieu cung voi toi duoc.
 """
 from __future__ import annotations
 
 import io
 import os
-import re
 import sys
 import unittest
 
@@ -38,96 +53,120 @@ def _src():
         return fh.read()
 
 
-def _khoi_map_train(s):
+def _khoi_map_train(s, chi_code=False):
     """Khoi dung o "Map train" - tu cho tinh `mapOptions` toi truoc o "Quai"."""
     i = s.find("val mapOptions = trainMapOptions()")
     assert i > 0, "mat khoi chon map train"
     j = s.find("if (isPickMode) {", i)
     assert j > i
-    return s[i:j]
+    khoi = s[i:j]
+    if not chi_code:
+        return khoi
+    # CHI DONG CODE: chu thich co nhac hai cach CU de chan lam lai - do la tai lieu.
+    return "\n".join(l for l in khoi.splitlines() if not l.strip().startswith("//"))
 
 
-def _dong_that(s):
-    """Cac dong KHONG phai comment - de phan biet 'con dung' voi 'con nhac trong chu thich'."""
-    return [l for l in s.splitlines() if not l.strip().startswith("//")]
-
-
-class TestONeoBangExposedDropdown(unittest.TestCase):
+class TestKhongConPopup(unittest.TestCase):
     def setUp(self):
-        self.src = _src()
-        self.khoi = _khoi_map_train(self.src)
+        self.code = _khoi_map_train(_src(), chi_code=True)
 
-    def test_dung_ExposedDropdownMenuBox(self):
-        self.assertIn("ExposedDropdownMenuBox(", self.khoi,
-                      "o map train khong neo bang ExposedDropdownMenuBox -> popup de len ban phim")
+    def test_KHONG_dung_ExposedDropdownMenuBox(self):
+        self.assertNotIn("ExposedDropdownMenuBox(", self.code,
+                         "EDMB + TextField khong readOnly -> lop bat su kien ket lai, liet ca UI")
 
-    def test_co_menuAnchor(self):
-        self.assertIn(".menuAnchor()", self.khoi,
-                      "thieu menuAnchor thi ExposedDropdownMenuBox khong biet neo vao dau")
+    def test_KHONG_dung_DropdownMenu(self):
+        self.assertNotIn("DropdownMenu(", self.code, "con popup la con lech anchor")
 
-    def test_KHONG_con_focusable_false(self):
-        _that = "\n".join(_dong_that(self.khoi))
-        self.assertNotIn("PopupProperties(", _that,
-                         "focusable=false lam popup de len ban phim -> tap bi CANCEL")
+    def test_KHONG_dung_PopupProperties(self):
+        self.assertNotIn("PopupProperties(", self.code)
 
-    def test_VAN_GO_TIM_duoc(self):
-        """Khong duoc tien tay dat `readOnly = true` nhu o "Quai" - o nay co o loc."""
-        self.assertIn("filterTrainMapOptions(", self.khoi, "mat duong loc map")
-        _i = self.khoi.find("label = { Text(\"Map train\") }")
-        self.assertGreater(_i, 0)
-        _truoc = self.khoi[:_i]
-        self.assertNotIn("readOnly = true", _truoc, "dat readOnly thi khong go tim map duoc nua")
+    def test_list_render_INLINE(self):
+        self.assertIn("if (trainMapExpanded) {", self.code, "list khong con ve trong than dialog")
+        self.assertIn("MucChonMap(", self.code, "muc chon map phai la Row bam duoc, khong phai menu item")
+
+
+class TestBoCucTheoUser(unittest.TestCase):
+    def setUp(self):
+        self.code = _khoi_map_train(_src(), chi_code=True)
+
+    def test_keo_o_text_len_sat_tren(self):
+        self.assertIn("BringIntoViewRequester()", self.code)
+        self.assertIn("bringIntoView()", self.code)
+
+    def test_keo_CA_KHOI_chu_khong_chi_o_text(self):
+        """Neo tren ca khoi (o text + list) thi keo vao view moi day o text len gan dinh."""
+        i_neo = self.code.find(".bringIntoViewRequester(")
+        i_field = self.code.find("value = trainMapText,")
+        self.assertGreater(i_neo, 0)
+        self.assertGreater(i_field, 0)
+        self.assertLess(i_neo, i_field, "neo dat sau o text -> chi keo vua du thay o text")
+
+    def test_ban_phim_KHONG_de_len_list(self):
+        """Phan bi ban phim de la phan BAM KHONG DUOC - dung cai benh dang chua."""
+        self.assertIn(".imePadding()", self.code, "list khong tranh ban phim")
+
+    def test_list_co_gioi_han_chieu_cao_va_TU_CUON(self):
+        """Nam trong Column(verticalScroll) nen phai chan chieu cao, va phai cuon rieng de khong
+        mat map nao."""
+        self.assertIn("heightIn(max =", self.code)
+        self.assertIn("verticalScroll(rememberScrollState())", self.code)
 
 
 class TestDongListThiGIU_NGUYEN(unittest.TestCase):
     """`snapToFirst` cu: dong list thi tu chon map DAU TIEN khop voi chu dang co trong o. Ma chu do
     chinh la TEN MAP DANG CHON -> loc ra chinh no -> chon lai chinh no -> KHONG MOT DAU HIEU GI.
-
-    Duong am tham nay lam hien tuong "bam vao list ma khong thay gi xay ra" khong the doc duoc tu
-    ngoai: nhin nhu bam hong, thuc ra la menu tu dong roi tu chon lai cai cu."""
+    Duong am tham nay lam hien tuong "bam vao list ma khong thay gi xay ra" khong the doc duoc."""
 
     def setUp(self):
-        self.khoi = _khoi_map_train(_src())
+        self.code = _khoi_map_train(_src(), chi_code=True)
 
     def test_KHONG_con_snapToFirst(self):
-        """Soi DONG CODE THAT, khong grep ca comment: chu thich co nhac ten cu de giai thich vi
-        sao da bo - do la tai lieu, khong phai code."""
-        _that = "\n".join(_dong_that(self.khoi))
-        self.assertNotIn("snapToFirst", _that, "van con duong tu chon ho map dau danh sach")
+        self.assertNotIn("snapToFirst", self.code, "van con duong tu chon ho map dau danh sach")
 
     def test_dong_list_chi_tra_ve_map_dang_chon(self):
-        i = self.khoi.find("fun closeTrainMapDropdown(")
+        i = self.code.find("fun closeTrainMapDropdown(")
         self.assertGreater(i, 0)
-        than = self.khoi[i:self.khoi.find("\n                    ", i + 40)]
+        than = self.code[i:i + 400]
         self.assertIn("selectedTrainMapTextValue()", than)
         self.assertNotIn("pickTrainMap(", than, "dong list ma van tu chon map")
 
 
-class TestGiongHaiODangCHAY_TOT(unittest.TestCase):
-    """O "Quai" va o chon thanh la BAN DOI CHUNG - chung chay tot. Neu sau nay ai do doi chung
-    sang kieu khac thi test nay do, vi luc do doi chung khong con."""
+class TestVANGIU_tinh_nang_cu(unittest.TestCase):
+    """Bo popup khong duoc lam mat thu gi."""
+
+    def setUp(self):
+        self.code = _khoi_map_train(_src(), chi_code=True)
+
+    def test_van_go_tim_map_duoc(self):
+        self.assertIn("filterTrainMapOptions(", self.code)
+        self.assertIn("trainMapExpanded = true", self.code, "go chu ma khong mo list")
+
+    def test_van_co_nhom_gap_mo(self):
+        self.assertIn("toggleTrainMapGroup(", self.code)
+        self.assertIn("collapsedTrainMapGroups", self.code)
+
+    def test_van_bao_khi_khong_tim_thay(self):
+        self.assertIn("Không tìm thấy map", self.code)
+
+
+class TestSauODANG_CHAY_TOT_giu_nguyen(unittest.TestCase):
+    """Sau o dropdown con lai deu `readOnly` nen khong co ban phim -> popup khong lech. Dung doi
+    chung: neu sau nay ai do bo `readOnly` o mot trong so do, no se dinh dung benh nay."""
 
     def setUp(self):
         self.src = _src()
 
-    def test_o_quai_van_dung_ExposedDropdownMenuBox(self):
+    def test_o_quai_van_dung_ExposedDropdownMenuBox_va_readOnly(self):
         i = self.src.find("val mobOptions = trainMobOptions(trainMapKey)")
         self.assertGreater(i, 0, "mat o chon diem quai")
         than = self.src[i:i + 1200]
         self.assertIn("ExposedDropdownMenuBox(", than)
-        self.assertIn(".menuAnchor()", than)
+        self.assertIn("readOnly = true", than, "bo readOnly la o nay dinh benh cua o Map train")
 
-    def test_khong_con_o_nao_dung_focusable_false(self):
-        """Mot cho dung lai la mot cho se hong y het."""
-        _that = _dong_that(self.src)
-        _xau = [l for l in _that if "focusable = false" in l]
+    def test_KHONG_o_nao_dung_focusable_false(self):
+        _that = [l for l in self.src.splitlines() if not l.strip().startswith("//")]
+        _xau = [l.strip() for l in _that if "focusable = false" in l]
         self.assertEqual(_xau, [], "con dropdown khai focusable=false: %s" % _xau)
-
-    def test_import_thua_da_don(self):
-        _that = "\n".join(_dong_that(self.src))
-        if "PopupProperties(" not in _that:
-            self.assertNotIn("import androidx.compose.ui.window.PopupProperties", _that,
-                             "import thua -> canh bao bien dich")
 
 
 if __name__ == "__main__":
