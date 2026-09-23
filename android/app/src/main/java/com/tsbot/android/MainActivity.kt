@@ -2366,21 +2366,34 @@ fun AddPartyDialog(
                     // cua dialog va la o DUY NHAT co ban phim, nen moi popup/list inline deu danh
                     // nhau voi cai scroll do va voi IME.
                     //
-                    // `readOnly = true` + `clickable`: giong sau o dropdown con lai trong dialog
-                    // (chung deu readOnly va deu chay tot). O TIM MAP nam TRONG dialog moi.
-                    OutlinedTextField(
-                        value = selectedTrainMapName(),
-                        onValueChange = {},
-                        readOnly = true,
-                        singleLine = true,
-                        label = { Text("Map train") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = trainMapExpanded)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { trainMapExpanded = true },
-                    )
+                    // BAT CLICK BANG LOP PHU, KHONG gan `.clickable` len TextField.
+                    //
+                    // `readOnly = true` KHAC `enabled = false`: o VAN nuot touch (no nhan click de
+                    // dat con tro), nen `.clickable` gan tren modifier cua `OutlinedTextField`
+                    // KHONG BAO GIO CHAY. Sau o dropdown con lai khong dinh vi chung de
+                    // `ExposedDropdownMenuBox` xu ly click ho.
+                    // User 23/09: "click map deo hien ra list map nua luon".
+                    //
+                    // Box phu `matchParentSize()` nam SAU trong `Box` nen ve TREN -> no nhan touch
+                    // truoc, khong phu thuoc vao viec TextField co nuot hay khong.
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = selectedTrainMapName(),
+                            onValueChange = {},
+                            readOnly = true,
+                            singleLine = true,
+                            label = { Text("Map train") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = trainMapExpanded)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { trainMapExpanded = true },
+                        )
+                    }
                     if (trainMapExpanded) {
                         TrainMapDialog(
                             mapOptions = mapOptions,

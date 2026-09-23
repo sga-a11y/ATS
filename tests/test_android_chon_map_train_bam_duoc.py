@@ -103,6 +103,16 @@ class TestKhongTaDanhSachTaiCho(unittest.TestCase):
         self.assertIn("readOnly = true", self.code, "o khong readOnly -> ban phim bat len lai")
         self.assertIn(".clickable {", self.code, "bam vao o khong mo duoc dialog")
 
+    def test_click_bat_bang_LOP_PHU_khong_gan_len_TextField(self):
+        """`readOnly = true` KHAC `enabled = false`: o VAN nuot touch (nhan click de dat con tro),
+        nen `.clickable` gan tren modifier cua `OutlinedTextField` KHONG BAO GIO CHAY.
+        User 23/09: "click map deo hien ra list map nua luon"."""
+        self.assertIn(".matchParentSize()", self.code, "khong co lop phu bat click")
+        i_field = self.code.find("value = selectedTrainMapName(),")
+        i_phu = self.code.find(".matchParentSize()")
+        self.assertGreater(i_field, 0)
+        self.assertGreater(i_phu, i_field, "lop phu phai nam SAU TextField moi ve len tren")
+
     def test_mo_DIALOG_RIENG(self):
         self.assertIn("TrainMapDialog(", self.code)
 
