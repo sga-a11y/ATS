@@ -114,13 +114,13 @@ class TestKenhDichLaTRANG_THAI(unittest.TestCase):
         """It phai di chuyen nhat. Party 53: 2 dua o kenh 4, 3 dua o kenh 2 -> chot 2."""
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, st, song), 2)
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, st, song), 2)
         self.assertEqual(st["kenh_dich"], 2)
 
     def test_dang_chung_kenh_thi_KHONG_chot_gi(self):
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(channel=4), a2=_C(channel=4), a3=_C(channel=4))
-        self.assertIsNone(R._dieu_phoi_chot_kenh(self.PARTY, st, song))
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, st, song))
         self.assertIsNone(st["kenh_dich"])
 
     def test_khac_map_thi_KHONG_quyet(self):
@@ -128,19 +128,19 @@ class TestKenhDichLaTRANG_THAI(unittest.TestCase):
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(map_id=12001, channel=4), a2=_C(map_id=49942, channel=2),
                           a3=_C(map_id=49942, channel=2))
-        self.assertIsNone(R._dieu_phoi_chot_kenh(self.PARTY, st, song))
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, st, song))
 
     def test_chua_ro_kenh_thi_KHONG_quyet(self):
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(channel=None), a2=_C(channel=2), a3=_C(channel=2))
-        self.assertIsNone(R._dieu_phoi_chot_kenh(self.PARTY, st, song))
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, st, song))
 
     def test_KHONG_nhuong_vong_bat_tay(self):
         """Dieu phoi la nguoi quyet - vong sync cu chi la canh tay thi hanh, khong duoc chan."""
         st = R._pstate(self.PARTY)
         st["channel_ready"].set()
         song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, st, song), 2)
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, st, song), 2)
 
     def test_kenh_bao_DAY_thi_KHONG_chot_lai(self):
         """P3 06/09: kenh 15 day, batbat vao khong duoc -> chot lai 15 la bat no dam dau mai.
@@ -148,7 +148,7 @@ class TestKenhDichLaTRANG_THAI(unittest.TestCase):
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
         R.account_clients["a1"].ma_doi_kenh(4, 2)     # a1 vua vao kenh 2 khong duoc: DAY
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, st, song), 4,
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, st, song), 4,
                          "kenh dong nhat da DAY -> phai lay kenh dong nhi")
 
     def test_moi_kenh_deu_day_thi_tim_kenh_MOI_du_cho_ca_party(self):
@@ -158,7 +158,7 @@ class TestKenhDichLaTRANG_THAI(unittest.TestCase):
             c.channels = {2: (20, 20), 4: (20, 20), 7: (19, 20), 9: (5, 20)}
         R.account_clients["a1"].ma_doi_kenh(4, 2)
         R.account_clients["a2"].ma_doi_kenh(4, 4)
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, st, song), 9,
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, st, song), 9,
                          "kenh 7 chi con 1 cho (can 3) -> phai chon kenh 9")
 
     def test_ma_CU_thi_khong_tinh_nua(self):
@@ -167,20 +167,20 @@ class TestKenhDichLaTRANG_THAI(unittest.TestCase):
         song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
         R.account_clients["a1"].ma_doi_kenh(4, 2)
         R.account_clients["a1"]._chan_switch_luc -= R.KENH_MA_CON_MOI_SEC + 1
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, st, song), 2)
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, st, song), 2)
 
     def test_ma2_thi_THOI_ra_lenh_doi_kenh(self):
         """`result=2` <khong co khu do> = dang trong instance event -> doi kenh vo nghia."""
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
         R.account_clients["a1"].ma_doi_kenh(2, 2)
-        self.assertIsNone(R._dieu_phoi_chot_kenh(self.PARTY, st, song))
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, st, song))
         self.assertIsNone(st["kenh_dich"])
 
     def test_KHONG_cho_ai_bao_cao(self):
         """Doc THANG client, khong dung `channel_map_reports` hay `channel_ready` lam dau vao."""
         src = _doc("run_party_digioi.py")
-        i = src.find("def _dieu_phoi_chot_kenh(")
+        i = src.find("def _engine_chot_kenh(")
         than = src[i:src.find("\ndef ", i + 10)]
         self.assertNotIn("channel_map_reports", than)
         self.assertIn('getattr(c, "current_channel", None)', than)
@@ -224,30 +224,30 @@ class TestChotRoiThiGIU(unittest.TestCase):
 
     def test_phan_bo_doi_giua_chung_thi_VAN_GIU_dich_cu(self):
         song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 1)
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 1)
         # a1 dang tren duong sang 2 (hoac ai do vua vao 2) -> phan bo nghieng ve 2
         R.account_clients["a1"].current_channel = 2
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 1,
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 1,
                          "doi y giua chung -> ca party quay dau, thrash 4 phut")
 
     def test_qua_HAN_ma_chua_xong_thi_moi_chot_lai(self):
         song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         self.st["kenh_dich_luc"] -= R.KENH_DICH_KIEN_NHAN_SEC + 1
         R.account_clients["a1"].current_channel = 2
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 2)
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 2)
 
     def test_dich_bao_DAY_thi_chot_lai_NGAY(self):
         song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         R.account_clients["a3"].ma_doi_kenh(4, 1)    # a3 vao kenh 1 khong duoc: DAY
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 2)
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 2)
 
     def test_ve_chung_kenh_thi_xoa_ca_moc(self):
         song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         R.account_clients["a3"].current_channel = 1
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         self.assertIsNone(self.st["kenh_dich"])
         self.assertEqual(self.st["kenh_dich_luc"], 0.0)
 
@@ -266,10 +266,19 @@ class TestAccTuSoiVaoKenhDich(unittest.TestCase):
         self.assertIn("switch_channel", khoi)
 
     def test_khong_chuyen_khi_dang_danh(self):
-        i = self.src.find("def _nghe_lenh_kenh():")
-        self.assertGreater(i, 0)
-        self.assertIn("_kenh_doi_duoc_ngay(c, st)", self.src[i:i + 3200],
-                      "doi kenh giua tran")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = NS()
+        engine = E.PartyEngine(0, lambda: [("a", client, True)], doc_kenh_dich=lambda: 2)
+        anh = snapshot([account(dang_danh=True)])
+        self.assertEqual(engine._giao_kenh_dich(anh, {"a": E.VIEC_LAP_PARTY}),
+                         {"a": E.VIEC_NGHI})
 
     def test_KHONG_bi_vong_bat_tay_chan(self):
         i = self.src.find('_kd = st.get("kenh_dich")')
@@ -285,7 +294,7 @@ class TestAccTuSoiVaoKenhDich(unittest.TestCase):
 
     def test_APK_giong_PC(self):
         apk = _doc("android", "app", "src", "main", "python", "train_bot", "run_party_digioi.py")
-        self.assertIn("def _dieu_phoi_chot_kenh(", apk)
+        self.assertIn("def _engine_chot_kenh(", apk)
 
 
 if __name__ == "__main__":

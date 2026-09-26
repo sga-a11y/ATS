@@ -36,35 +36,6 @@ def _doc(*p):
         return fh.read()
 
 
-class TestKhongConDoLaiChoAiPickLai(unittest.TestCase):
-    def setUp(self):
-        self.src = _doc("run_party_digioi.py")
-        i = self.src.find("khong doi duoc sang kenh chung")
-        self.assertGreater(i, 0)
-        self.khoi = self.src[i - 400:i + 600]
-
-    def test_vao_kenh_khong_duoc_thi_THOAT_ngay(self):
-        self.assertIn("return False", self.khoi[self.khoi.find("khong doi duoc"):])
-
-    def test_KHONG_do_lai_trong_while(self):
-        sau = self.khoi[self.khoi.find("khong doi duoc"):]
-        self.assertNotIn("while", sau, "do lai = dung nguyen bug P3")
-
-    def test_KHONG_con_bao_cao_channel_failed(self):
-        sau = self.khoi[self.khoi.find("khong doi duoc") - 300:]
-        self.assertNotIn('st["channel_failed"].set()', sau,
-                         "bao cao roi ngoi cho = cho dua khac bam nut")
-
-    def test_KHONG_bao_cao_len_nua(self):
-        """Dieu phoi DOC THANG `_chan_switch_result` cua client - user chot 06/09:
-        "bot la nguoi dieu phoi, deo phai cho dua nao bao cao"."""
-        self.assertNotIn("bao_kenh_day", self.khoi)
-        self.assertIn("_chan_switch_result", self.khoi)
-
-    def test_sang_kenh_OK_nhung_SAI_MAP_cung_thoat_ngay(self):
-        i = self.src.find('log.warning("[%s] (member) sang kenh %s roi nhung SAI MAP')
-        self.assertGreater(i, 0, "van con nhanh do lai khi sai map")
-        self.assertIn("return False", self.src[i:i + 300])
 
 
 class TestVongSyncHongPhaiDONG_CUA(unittest.TestCase):
@@ -80,12 +51,20 @@ class TestVongSyncHongPhaiDONG_CUA(unittest.TestCase):
             self.assertIn(k, than)
 
     def test_nhanh_FAIL_goi_dong_vong_sync_VA_bo_bump_reform(self):
-        i = self.src.find("sync kenh/map FAIL %d lan")
-        self.assertGreater(i, 0)
-        khoi = self.src[i - 900:i + 200]
-        self.assertIn("_dong_vong_sync(st)", khoi)
-        self.assertNotIn("_bump_reform(st)", khoi,
-                         "reform khong sua duoc gi - P3 lap 'khong co smart/legacy route' 28 lan")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        client = mock.Mock(current_channel=1)
+        client.kenh_dang_chac.return_value = True
+        client.switch_channel.return_value = False
+        self.assertFalse(E.thi_hanh(client, E.VIEC_DOI_KENH, lambda: True, dich=2))
+        client.switch_channel.assert_called_once()
+        client.go_to_town.assert_not_called()
+        client.close.assert_not_called()
 
     def test_dong_vong_sync_GO_acc_dang_ket(self):
         """Kiem hanh vi that: co dang SET, goi xong phai TAT."""

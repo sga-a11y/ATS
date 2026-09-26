@@ -126,28 +126,34 @@ class TestSoNhoDaBIEN_MAT(_Nen):
 
 
 class TestNhanhPartyMa(unittest.TestCase):
-    """Nhanh "PARTY MA" van phai giu luat goc, chi bo cai `mark_joined`."""
-
-    def setUp(self):
-        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
-            s = fh.read()
-        i = s.find("_la_leader_minh = ")
-        self.assertGreater(i, 0, "mat nhanh PARTY MA")
-        self.khoi = s[i:i + 3000]
+    """Only the controller selects foreign-party leave; own leader remains valid."""
 
     def test_KHONG_con_mark_joined(self):
-        i_elif = self.khoi.find("elif not _la_minh:")
-        self.assertGreater(i_elif, 0)
-        self.assertNotIn("mark_joined(", self.khoi[:i_elif],
-                         "leader van tu danh dau chinh minh")
+        import ast
+        from unittest import mock
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        import inspect
+        tree = ast.parse(inspect.getsource(R._engine_routine_decisions))
+        calls = [n.func.id for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+        self.assertNotIn("mark_joined", calls)
 
     def test_VAN_GIU_luat_khong_roi_party_cua_leader_minh(self):
-        """Party 7, 31/08: ca 4 member tu da minh ra khoi doi vua vao -> vong vo tan."""
-        self.assertIn("elif not _la_minh:", self.khoi,
-                      "mat cua 'chi roi khi la party cua NGUOI KHAC'")
-        i_roi = self.khoi.find("c.leave_party()")
-        self.assertGreater(i_roi, self.khoi.find("elif not _la_minh:"),
-                           "duong roi party khong con nam sau cua chan")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from tests.party_engine_scenarios import account, snapshot
+        member = mock.Mock(self_entity=b"member")
+        member._doi_truong_dang_ket.return_value = b"leader"
+        with mock.patch.dict(R._party_state, {}, clear=True), \
+                mock.patch.dict(R.config.PARTY_LEADER_ACC, {0: "a"}, clear=True), \
+                mock.patch.dict(R.account_clients, {"a": NS(self_entity=b"leader"), "b": member}, clear=True), \
+                mock.patch.object(R, "_map_train_dich", return_value=None):
+            self.assertEqual(R._engine_routine_decisions(0, snapshot([account("b")]),
+                             {"b": "lap_party"}, {"fight_legion_boss": False}), {"b": "lap_party"})
+        member.leave_party.assert_not_called()
 
 
 if __name__ == "__main__":

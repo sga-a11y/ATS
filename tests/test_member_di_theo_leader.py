@@ -144,13 +144,21 @@ class TestApVaoLuong(unittest.TestCase):
         self.assertLess(i_sua, i_path, "sua SAU khi tinh duong thi vo nghia")
 
     def test_kiem_da_ra_rally_cung_sua_pos(self):
-        s = self._doc("run_party_digioi.py")
-        for ten in ("def _da_toi():", "def _vi_sao_chua_san_sang("):
-            i = s.find(ten)
-            self.assertGreater(i, 0, ten)
-            khoi = re.sub(r"#.*", "", s[i:i + 3400])
-            self.assertIn("_theo_leader_sua_pos()", khoi,
-                          "%s van doc pos cu -> ket luan 'da ra diem tap ket' oan" % ten)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        client = NS(pos=(20, 30))
+        client._theo_leader_sua_pos = lambda: setattr(client, "pos", (1000, 1000))
+        with mock.patch.dict(R._party_state, {}, clear=True), \
+                mock.patch.dict(R.account_clients, {"a": client}, clear=True), \
+                mock.patch.object(R, "_map_train_dich", return_value=100), \
+                mock.patch.object(R, "_safe_map_dich_engine_moi", return_value=[(20, 30)]):
+            result = R._engine_rally_decisions(0, snapshot([account()]), {"a": "lap_party"})
+        self.assertEqual(result, {"a": "ve_safe"})
 
     def test_KHONG_con_khang_dinh_server_echo_pos(self):
         """Da do: 184 goi gui / 0 goi nhan ve cua chinh minh."""

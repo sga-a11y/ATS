@@ -75,17 +75,19 @@ class TestDigioiChannelReport(unittest.TestCase):
         self.assertIsNone(state["channel"])
 
     def test_each_account_refreshes_current_channel_before_sync_picker_runs(self):
-        source = (Path(__file__).parents[1] / "run_party_digioi.py").read_text(
-            encoding="utf-8"
-        )
-        sync_start = source.index("        def do_channel_sync():")
-        sync_end = source.index("\n        def _do_reform", sync_start)
-        sync_source = source[sync_start:sync_end]
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
 
-        refresh_at = sync_source.index("c.refresh_current_channel(")
-        pick_at = sync_source.index("c.pick_best_channel(")
-
-        self.assertLess(refresh_at, pick_at)
+        engine = E.PartyEngine(0, lambda: [("a", NS(), True)], doc_kenh_dich=lambda: None)
+        anh = snapshot([account(kenh_chac=False, so_member=0)])
+        self.assertEqual(engine._giao_kenh_dich(anh, {"a": E.VIEC_LAP_PARTY}), {"a": E.VIEC_DOI_KENH})
+        anh.accs[0].kenh_chac = True
+        self.assertEqual(engine._giao_kenh_dich(anh, {"a": E.VIEC_LAP_PARTY}), {"a": E.VIEC_LAP_PARTY})
 
 
 if __name__ == "__main__":

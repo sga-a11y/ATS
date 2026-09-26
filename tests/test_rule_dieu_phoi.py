@@ -88,7 +88,7 @@ class TestL0_LuatToiThuong(unittest.TestCase):
     def test_thieu_nguoi_KHONG_duoc_ket_luan_la_XONG(self):
         """`ket`/`dut` = chua het -> khong duoc bat co thoat. Chi `xong`/`thua`/`het_duong`."""
         src = _doc("run_party_digioi.py")
-        i = src.find("def _dieu_phoi_chot_2k_xong(")
+        i = src.find("def _engine_chot_2k_xong(")
         self.assertGreater(i, 0)
         than = src[i:src.find(chr(10) + "def ", i + 10)]
         self.assertIn('kq in ("ket", "dut")', than,
@@ -110,7 +110,7 @@ class TestL0_LuatToiThuong(unittest.TestCase):
         roi den lap party"). Con "cung kenh ma khac TANG" da duoc lo o nhanh `len(dem) <= 1`.
         """
         src = _doc("run_party_digioi.py")
-        i = src.find("def _dieu_phoi_chot_kenh(")
+        i = src.find("def _engine_chot_kenh(")
         than = src[i:src.find(chr(10) + "def ", i + 10)]
         j = than.find("DU PARTY ROI -> KHONG DUNG VAO KENH NUA")
         self.assertGreater(j, 0, "mat cua chan doi kenh khi da du party (ca party 5, 06/09)")
@@ -175,7 +175,7 @@ class TestL1_ChiMotChoDuocQuyet(unittest.TestCase):
             truoc = src[:i]
             j = truoc.rfind("\ndef ")
             ten = truoc[j + 5:truoc.find("(", j)]
-            self.assertTrue(ten.startswith("_dieu_phoi"),
+            self.assertTrue(ten.startswith("_engine"),
                             "`%s` set trong `%s()` - phai la ham cua dieu phoi (L1)" % (co, ten))
 
 
@@ -200,7 +200,7 @@ class TestL2_DocThangCamBaoCao(unittest.TestCase):
 
     def test_chot_kenh_khong_doc_bang_bao_cao(self):
         src = _doc("run_party_digioi.py")
-        i = src.find("def _dieu_phoi_chot_kenh(")
+        i = src.find("def _engine_chot_kenh(")
         than = src[i:src.find(chr(10) + "def ", i + 10)]
         self.assertNotIn("channel_map_reports", than)
         self.assertNotIn("bao_kenh", than)
@@ -217,22 +217,22 @@ class TestL6_LenhPhaiDinh(unittest.TestCase):
                                 "han qua ngan -> doi y giua chung, ca party quay dau (L6)")
 
     def test_tang_gom_cung_phai_dinh(self):
-        """Dich gom TANG cung tinh lai moi nhip thi tut theo buoc chan member dang di xuong.
-        Party 8 (06/09): 12932 -> 12931 -> 12922, tut toi day thap."""
-        src = _doc("run_party_digioi.py")
-        i = src.find('kh["tang_gom"]')
-        self.assertGreater(i, 0)
-        self.assertIn("_chot_tang_gom(", src[i:i + 120],
-                      "goi thang `_tang_gom_2k` moi nhip = khong dinh (L6)")
-        j = src.find("def _chot_tang_gom(")
-        self.assertGreater(j, 0)
-        than = src[j:src.find(chr(10) + "def ", j + 10)]
-        self.assertIn("TANG_GOM_KIEN_NHAN_SEC", than)
-        self.assertIn("tang_gom_luc", than)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        source = inspect.getsource(R._engine_ap_dung_party)
+        self.assertIn('_chot_tang_gom(', source)
+        helper = inspect.getsource(R._chot_tang_gom)
+        self.assertIn("TANG_GOM_KIEN_NHAN_SEC", helper)
+        self.assertIn("tang_gom_luc", helper)
 
     def test_giu_dich_cu_khi_chua_qua_han(self):
         src = _doc("run_party_digioi.py")
-        i = src.find("def _dieu_phoi_chot_kenh(")
+        i = src.find("def _engine_chot_kenh(")
         than = src[i:src.find(chr(10) + "def ", i + 10)]
         self.assertIn("KENH_DICH_KIEN_NHAN_SEC", than)
         self.assertIn("kenh_dich_luc", than)
@@ -258,7 +258,7 @@ class TestL7_LenhPhaiCoHan(unittest.TestCase):
             truoc = src[:i]
             j = truoc.rfind(chr(10) + "def ")
             ten = truoc[j + 5:truoc.find("(", j)]
-            if not (ten.startswith("_dieu_phoi") or ten.startswith("_chot")):
+            if not (ten.startswith("_engine") or ten.startswith("_chot")):
                 continue
             khoi = truoc[-900:]
             if not any(k in khoi for k in ("COOLDOWN", "_luc")):
@@ -284,42 +284,69 @@ class TestL8_LenhHongPhaiDongCua(unittest.TestCase):
             self.assertIn(k, than)
 
     def test_duong_that_bai_cua_sync_deu_dong_cua(self):
-        src = _doc("run_party_digioi.py")
-        i = src.find("sync kenh/map FAIL %d lan")
-        self.assertGreater(i, 0)
-        self.assertIn("_dong_vong_sync(st)", src[i - 900:i + 200])
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        client = mock.Mock(current_channel=1)
+        client.kenh_dang_chac.return_value = True
+        client.switch_channel.return_value = False
+        self.assertFalse(E.thi_hanh(client, E.VIEC_DOI_KENH, lambda: True, dich=2))
+        client.switch_channel.assert_called_once()
+        client.go_to_town.assert_not_called()
+        client.close.assert_not_called()
 
 
 class TestL9_KhongDoLaiChoAccKhac(unittest.TestCase):
     """Thi hanh hong thi ghi nhan roi DI TIEP, khong dung cho dua khac bam nut."""
 
     def test_doi_kenh_hong_thi_thoat_ngay(self):
-        src = _doc("run_party_digioi.py")
-        i = src.find("khong doi duoc sang kenh chung")
-        self.assertGreater(i, 0)
-        sau = src[i:i + 700]
-        self.assertNotIn("while", sau, "do lai cho acc khac = L9")
-        self.assertIn("return False", sau)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        client = mock.Mock(current_channel=1)
+        client.kenh_dang_chac.return_value = True
+        client.switch_channel.return_value = False
+        self.assertFalse(E.thi_hanh(client, E.VIEC_DOI_KENH, lambda: True, dich=2))
+        client.switch_channel.assert_called_once()
+        client.go_to_town.assert_not_called()
+        client.close.assert_not_called()
 
     def test_sai_map_sau_khi_doi_kenh_cung_thoat_ngay(self):
-        src = _doc("run_party_digioi.py")
-        i = src.find('log.warning("[%s] (member) sang kenh %s roi nhung SAI MAP')
-        self.assertGreater(i, 0)
-        self.assertIn("return False", src[i:i + 300])
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        engine = E.PartyEngine(0, lambda: [("a", NS(), True), ("b", NS(), False)], doc_kenh_dich=lambda: 2)
+        anh = snapshot([account(), account("b", map_id=200)])
+        requested = {"a": E.VIEC_VE_MAP, "b": E.VIEC_VE_MAP}
+        self.assertEqual(engine._giao_kenh_dich(anh, requested), requested)
 
 
 class TestL10_VongThiHanhPhaiCoNhip(unittest.TestCase):
     """Thi hanh xong mot lenh thi NGU mot nhip. `continue` tran = vong nong 8.000 vong/giay."""
 
     def test_thi_hanh_GOM_xong_co_ngu(self):
-        src = _doc("run_party_digioi.py")
-        i = src.find("dieu phoi bao GOM (%s) -> thoi moi, gom lai")
-        self.assertGreater(i, 0)
-        khoi = src[i:i + 2200]
-        ngu = khoi.find("time.sleep(KE_HOACH_NHIP)")
-        tiep = khoi.find(chr(10) + " " * 24 + "continue")
-        self.assertGreater(ngu, 0, "khong ngu -> vong nong, bo doi luon luong dieu phoi (L10)")
-        self.assertGreater(tiep, ngu, "ngu phai nam TRUOC continue (L10)")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        source = inspect.getsource(E.AccWorker._vong)
+        self.assertIn("wait(", source)
+        self.assertNotIn("_dieu_phoi", source)
 
 
 class TestL13_KhongBietKhacKhongSao(unittest.TestCase):
@@ -350,7 +377,7 @@ class TestL13_KhongBietKhacKhongSao(unittest.TestCase):
         `test_chua_biet_map_thi_chua_den_luot_kenh.py`.
         """
         src = _doc("run_party_digioi.py")
-        i = src.find("def _dieu_phoi_chot_kenh(")
+        i = src.find("def _engine_chot_kenh(")
         than = src[i:src.find(chr(10) + "def ", i + 10)]
         self.assertIn("if m is None or not ch:", than, "khong con chan khi chua ro map/kenh")
         self.assertIn("chua chot duoc kenh dich", than, "chan im lang -> khong truy duoc")

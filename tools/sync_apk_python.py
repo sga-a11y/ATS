@@ -30,7 +30,7 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           # file - thieu file la APK CRASH LUC IMPORT, khong phai "chay engine cu binh thuong".
           # 21/09: `PARTY_ENGINE_MOI_TU = 1` -> engine moi chay cho MOI PARTY tren CA HAI ban
           # (truoc do comment nay ghi "van TAT tren APK vi = 0" - da lac hau tu luc nguong len 53).
-          "party_engine.py",
+          "party_engine.py", "party_modes.py", "party_route.py",
           # TU PHAT HIEN SERVER MOI tu CDN tai nguyen cua game. `config.py` cua CA HAI ban goi
           # `servers_cdn.doc_overlay()` luc nap SERVERS - thieu file la APK crash luc import.
           "servers_cdn.py"]

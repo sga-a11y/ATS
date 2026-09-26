@@ -11,7 +11,7 @@ nua ko" - dung. Log:
     19:53:15 [ttnne] (member) manual: da doi kenh -> 2              <- 27 giay sau moi thoi
 
 HAI duong cung doi kenh cho CUNG MOT ACC, khong ai biet ai:
-  - luong QUYET DINH cua engine moi (1 nhip/giay) -> `_dieu_phoi_thi_hanh_kenh`;
+  - luong QUYET DINH cua engine moi (1 nhip/giay) -> `_engine_gui_lenh_kenh`;
   - WORKER cua tung acc -> `doi_kenh_theo_lenh_tay` (chay dai, toi 5 phut).
 
 (Luu y: `_dieu_phoi_loop` KHONG lien quan - no bi chan ngay cua dau voi party engine moi. Dong
@@ -26,6 +26,8 @@ import io
 import os
 import sys
 import unittest
+
+from tests.test_dieu_phoi_tu_gui_lenh_doi_kenh import channel_decision
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -90,17 +92,15 @@ class TestMotAccMotLenhDangBay(unittest.TestCase):
         self.assertIn("c._lenh_tay_kenh_dang_chay = False", than[i:])
 
     def test_duong_TU_DONG_ton_trong_co(self):
-        than = _than(self.src, "def _dieu_phoi_thi_hanh_kenh(")
-        self.assertTrue(than)
-        self.assertIn('getattr(c, "_lenh_tay_kenh_dang_chay", False)', than,
-                      "duong tu dong van gui chong len lenh tay")
+        actions, clients = channel_decision({"a": 2}, 16, manual={"a"})
+        self.assertEqual(actions, {"a": "nghi"})
+        self.assertEqual(clients["a"].calls, [])
 
-    def test_co_KHONG_tu_het_han(self):
-        """L1b: cam co TU HET HAN thay cho trang thai that."""
-        than = _than(self.src, "def _dieu_phoi_thi_hanh_kenh(")
-        i = than.find("_lenh_tay_kenh_dang_chay")
-        dong = than[than.rfind("\n", 0, i) + 1:than.find("\n", i)]
-        self.assertNotIn("time.time()", dong, "lay dong ho de suy 'dang chay' -> co tu het han")
+    def test_sau_khi_lenh_tay_ha_co_duong_tu_dong_tiep_tuc(self):
+        blocked, _ = channel_decision({"a": 2}, 16, manual={"a"})
+        resumed, _ = channel_decision({"a": 2}, 16)
+        self.assertEqual(blocked, {"a": "nghi"})
+        self.assertEqual(resumed, {"a": "doi_kenh"})
 
 
 if __name__ == "__main__":

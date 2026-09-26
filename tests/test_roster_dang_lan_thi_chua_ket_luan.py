@@ -102,7 +102,7 @@ class TestGanVaoDuongRA_LENH(unittest.TestCase):
     def setUp(self):
         with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
             self.src = fh.read()
-        i = self.src.find("def _dieu_phoi_chot_kenh(")
+        i = self.src.find("def _engine_chot_kenh(")
         self.assertGreater(i, 0)
         self.than = self.src[i:self.src.find("\ndef ", i + 10)]
 
@@ -118,10 +118,13 @@ class TestGanVaoDuongRA_LENH(unittest.TestCase):
 
     def test_khong_dong_vao_acc(self):
         """User chot: sua o dieu phoi, khong them cua kiem ben acc."""
-        self.assertNotIn("_roster_dang_lan", self.src[:self.src.find("def _dieu_phoi_quyet(")]
-                         .replace(self.src[self.src.find("def _roster_dang_lan("):
-                                           self.src.find("def _thieu_doi(")], ""),
-                         "co cho khac (luong acc) goi _roster_dang_lan")
+        i = self.src.find("def _engine_chot_kenh(")
+        body = self.src[i:self.src.find("\ndef ", i + 10)]
+        self.assertIn("_roster_dang_lan(st, song)", body)
+        with open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+            engine_src = fh.read()
+        self.assertFalse("_roster_dang_lan(" in engine_src,
+                         "worker tu doc roster dang lan thay vi engine chot")
 
 
 if __name__ == "__main__":

@@ -111,11 +111,18 @@ class TestKhongConCoAccTuKhai(unittest.TestCase):
                       "dung truthy thi None cung thanh 'xong' -> ca party bo di train oan")
 
     def test_gather_giveup_cung_doc_thang(self):
-        i = self.src.find("def _dg_gather_giveup():")
-        self.assertGreater(i, 0)
-        khoi = self.src[i:i + 1200]
-        self.assertIn("_acc_het_gio_dg(", khoi)
-        self.assertIn("is True", khoi)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        client = NS(running=True, _dg_enter_result=2)
+        self.assertIs(R._acc_het_gio_dg(client), True)
+        client._dg_enter_result = None
+        client._last_digioi_ts = 0
+        self.assertIsNone(R._acc_het_gio_dg(client))
 
 
 class TestReloginBoDongHoCu(unittest.TestCase):

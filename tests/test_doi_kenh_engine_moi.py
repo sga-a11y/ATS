@@ -9,7 +9,7 @@ giao viec, nhung viec khong lam gi:
     18:58:22 [party 1] ENGINE: sga005..tuyetdo -> train      <- 2 giay sau ve train
 
 Nhanh `channel` cua `_lenh_tay_engine_moi` chi `return _lam_xong()` voi ly do "dieu phoi lo bang
-`kenh_dich`". Nhung `_dieu_phoi_chot_kenh` nam trong `_dieu_phoi_loop`, ma vong do BO QUA party
+`kenh_dich`". Nhung `_engine_chot_kenh` nam trong `_dieu_phoi_loop`, ma vong do BO QUA party
 dung engine moi (cua chan so 1) -> khong ai lo ca.
 
 Khong ai thay cho toi khi `PARTY_ENGINE_MOI_TU` ha xuong 1 (21/09): luc do MOI party chay engine
@@ -55,7 +55,7 @@ class TestKhongConNuotLenh(unittest.TestCase):
                       "van danh dau 'da xong' ma khong doi kenh")
 
     def test_KHONG_do_cho_dieu_phoi_cu(self):
-        """`_dieu_phoi_chot_kenh` khong bao gio chay cho party engine moi."""
+        """`_engine_chot_kenh` khong bao gio chay cho party engine moi."""
         _lenh = "\n".join(d for d in self.khoi.split("\n") if not d.strip().startswith("#"))
         i = _lenh.find('if kind == "channel":')
         j = _lenh.find("doi_kenh_theo_lenh_tay(")
@@ -75,7 +75,9 @@ class TestDungChungMotHAM(unittest.TestCase):
 
     def test_ENGINE_CU_cung_goi_ham_do(self):
         than = _than(self.src, "def run_account(")
-        self.assertIn("doi_kenh_theo_lenh_tay(", than, "engine cu giu ban chep rieng -> se lech")
+        self.assertIn("_dang_ky_engine_moi(", than)
+        self.assertNotIn("doi_kenh_theo_lenh_tay(", than)
+        self.assertNotIn("def _do_manual_cmd", than)
 
     def test_chi_MOT_ban_xu_ly_lenh_doi_kenh_TAY(self):
         """Dem theo `kenh_ghim` - dau hieu RIENG cua duong LENH TAY (vong sync kenh khong ghim).

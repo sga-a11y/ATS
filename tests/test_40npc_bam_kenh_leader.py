@@ -99,59 +99,55 @@ class TestDieuPhoiXuLyCaGoc(unittest.TestCase):
 
     def test_chot_ve_kenh_DONG_NGUOI_NHAT_chu_khong_theo_leader(self):
         song = self._song()
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 39,
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 39,
                          "keo 4 member sang kenh leader = di chuyen nhieu hon va co the het cho")
 
     def test_leader_thi_hanh_lenh_kenh_TRONG_VONG_MOI(self):
-        """Vong moi party chay lien tuc nen leader KHONG quay lai keepalive - noi duy nhat doc
-        `kenh_dich`. Ket qua: member sang kenh dich het, leader dung nguyen kenh cu, roi chinh no
-        bao "chua moi N member vi chua xac nhan live dung map/kenh".
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
 
-        Log 07/09 party 1 (user: "t thay leader luon o 1 kenh con member o kenh khac"):
-            20:39:21 [chihao] (member) DIEU PHOI chot kenh 45, minh dang o 5 -> tu chuyen
-            20:42:33 [xGAx] (LEADER) chua moi 2 member vi chua xac nhan live dung map/kenh:
-                     ['38d0d2f8:lech kenh live 45!=6', '0c1dd3f8:lech kenh live 45!=6']
-        """
-        s = _src()
-        i_vong = s.find('while not _dg_solo_bail and joined_member_count(pidx)')
-        self.assertGreater(i_vong, 0, "khong con vong MOI party cua leader")
-        i = s.find('(LEADER) dang moi... joined=%d/%d', i_vong)
-        self.assertGreater(i, i_vong)
-        khoi = s[i_vong:i]      # THAN cua vong moi, khong doan theo so ky tu
-        self.assertIn("_nhip_moi_party(", khoi,
-                      "leader khong doc lenh kenh trong vong moi -> dung yen mot kenh")
-        # `_nhip_moi_party` lam dung thu tu: nghe lenh kenh -> kiem lenh GOM -> moi
-        s2 = _src()
-        i2 = s2.find("def _nhip_moi_party(")
-        self.assertGreater(i2, 0, "mat _nhip_moi_party")
-        # NEO TREN CA THAN HAM, khong cat theo so ky tu: them mot doan chu thich la moc truot ra
-        # ngoai cua so (bay trong CLAUDE.md - da can 14/09 khi sua cua "chi moi khi co lenh MOI").
-        _j = s2.find("\n    def ", i2 + 10)
-        than = s2[i2:_j if _j > 0 else len(s2)]
-        _nghe = than.find("_nghe_lenh_kenh()")
-        _moi = than.find("_invite_party_participants(")
-        self.assertGreater(_nghe, 0, "mat buoc nghe lenh kenh")
-        self.assertGreater(_moi, 0, "mat buoc gui loi moi")
-        self.assertLess(_nghe, _moi,
-                        "phai sang kenh dich TRUOC khi moi, khong thi moi vao hu khong")
+        client = NS()
+        engine = E.PartyEngine(0, lambda: [("a", client, True)], doc_kenh_dich=lambda: 2)
+        anh = snapshot([account(dang_danh=False)])
+        self.assertEqual(engine._giao_kenh_dich(anh, {"a": E.VIEC_LAP_PARTY}),
+                         {"a": E.VIEC_DOI_KENH})
 
     def test_leader_cung_phai_theo_lenh(self):
-        """Leader khong duoc mien - no cung chi la mot acc thi hanh."""
-        s = _src()
-        i = s.find('_kd = st.get("kenh_dich")')
-        self.assertGreater(i, 0)
-        khoi = s[i:i + 700]
-        self.assertNotIn("is_leader", khoi, "leader duoc mien = lai co hai luat")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = NS()
+        engine = E.PartyEngine(0, lambda: [("a", client, True)], doc_kenh_dich=lambda: 2)
+        anh = snapshot([account(dang_danh=False)])
+        self.assertEqual(engine._giao_kenh_dich(anh, {"a": E.VIEC_LAP_PARTY}),
+                         {"a": E.VIEC_DOI_KENH})
 
 
 class TestVanChanDoiKenhGiuaTran(unittest.TestCase):
     def test_khong_doi_kenh_khi_dang_danh(self):
-        s = _src()
-        i = s.find("def _nghe_lenh_kenh():")
-        self.assertGreater(i, 0)
-        than = s[i:i + 3200]
-        self.assertIn("_kenh_doi_duoc_ngay(c, st)", than,
-                      "doi kenh giua tran -> server nuot/kick")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = NS()
+        engine = E.PartyEngine(0, lambda: [("a", client, True)], doc_kenh_dich=lambda: 2)
+        anh = snapshot([account(dang_danh=True)])
+        self.assertEqual(engine._giao_kenh_dich(anh, {"a": E.VIEC_LAP_PARTY}),
+                         {"a": E.VIEC_NGHI})
 
 
 if __name__ == "__main__":

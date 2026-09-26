@@ -26,6 +26,8 @@ Ba phut cho mot viec dieu phoi DA BIET tu giay dau tien.
 """
 from __future__ import annotations
 
+from tests.party_controller_helpers import quyet_party
+
 import os
 import sys
 import time
@@ -79,7 +81,7 @@ class _Nen(unittest.TestCase):
             R.account_clients[u] = c
 
     def _quyet(self, lech_tu=None):
-        return R._dieu_phoi_quyet(self.PARTY, R._pstate(self.PARTY),
+        return quyet_party(R, self.PARTY, R._pstate(self.PARTY),
                                   R._acc_song(self.PARTY), lech_tu)
 
 
@@ -154,7 +156,7 @@ class TestViecRiengKhongDuocDE_RA_LECH_MAP(unittest.TestCase):
         with io.open(os.path.join(ROOT, "bot", "client.py"), encoding="utf-8") as fh:
             self.cli = fh.read()
 
-    def test_dungeon_KHONG_con_hoi_dieu_phoi(self):
+    def test_dungeon_KHONG_con_quyet_party(self):
         """User chot 14/09: bo cua hoan - PB don cu HOAN thi mat luot CA NGAY.
 
         Cua nay dat dung vao thoi diem luon dang gom (PB don chi chay o login chores, ma luc moi
@@ -188,12 +190,16 @@ class TestViecRiengKhongDuocDE_RA_LECH_MAP(unittest.TestCase):
         self.assertNotIn("return", khoi.split("cho_phep()")[-1].split("break")[0])
 
     def test_ke_hoach_GOM_la_du_de_hoan_viec_rieng(self):
-        """Khong doi den luc co `kenh_dich`/`gom_dich` cu the moi hoan - ke hoach noi truoc."""
-        i = self.src.find("def _dieu_phoi_dang_ra_lenh():")
-        self.assertGreater(i, 0)
-        khoi = self.src[i:i + 1400]
-        self.assertIn("VIEC_GOM", khoi)
-        self.assertIn("VIEC_DONG_BO", khoi)
+        """Regrouping reaches free accounts while an ongoing solo task finishes."""
+        from bot import party_engine as PE
+        accs = [PE.AnhAcc("leader", la_leader=True, map_id=12001, kenh=1,
+                           so_member=1, viec_dang_lam=PE.VIEC_DAILY),
+                PE.AnhAcc("member", map_id=21001, kenh=1, so_member=1)]
+        anh = PE.AnhParty(0, accs, can_bao_nhieu=1, map_dich=21001,
+                          dp_viec=PE.DP_GOM, thanh_dich=12001)
+        jobs = PE.quyet_dinh(anh)
+        self.assertNotIn("leader", jobs, "ongoing daily task was interrupted")
+        self.assertEqual(jobs["member"], PE.VIEC_VE_THANH)
 
 
 if __name__ == "__main__":

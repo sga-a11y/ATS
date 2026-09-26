@@ -305,10 +305,16 @@ class TestNoiVaoBot(unittest.TestCase):
         return re.sub(r"#.*", "", m.group(2))    # bo chu thich, tranh bay "khop trong comment"
 
     def test_event_solo_KHONG_bi_coi_la_dung_yen(self):
-        than = self._than(self.rp, "_event_solo_battle_kind")
-        self.assertIn("chaos_vs", than)
-        self.assertIn("event_solo_kind", self.rp)
-        self.assertRegex(self.rp, r"event_stand_mode\s*=.*not event_solo_kind")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        self.assertEqual(R.party_modes.decide_mode("event", {"a": "nghi"}, [account()],
+                         event_kind="chaos_vs", event_map=100), {"a": "solo_event_run"})
 
     def test_chaos_vs_KHONG_lot_vao_duong_lap_party(self):
         """Nhet chaos_vs vao _event_battle_kind se keo theo sync kenh + barrier cua 40NPC/2K."""
@@ -316,38 +322,49 @@ class TestNoiVaoBot(unittest.TestCase):
         self.assertNotIn("chaos_vs", than)
 
     def test_KHONG_sync_kenh_cho_event_solo(self):
-        """`do_channel_sync` la BARRIER: leader doi du ca party, member cho `channel_ready`.
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
 
-        Loan dau danh solo nen cho nhau khong duoc gi - acc xong truoc van phai dung im cho acc
-        dang login, mat luot dang ky (user bao 25/08: 5 acc login xong 21:33:03 ma toi 21:33:14
-        moi di duoc).
-        """
-        import re
-        m = re.search(r"\n(\s*)if not _is_party_event\(mode, has_leader, ev\)(.*?)\n\s*do_channel_sync\(\)",
-                      self.rp, re.S)
-        self.assertIsNotNone(m, "khong tim thay cho goi do_channel_sync cho event")
-        self.assertIn("_event_solo_battle_kind", m.group(2),
-                      "event solo van bi keo vao sync kenh -> cho nhau vo ich")
+        self.assertEqual(R.party_modes.decide_mode("event", {"a": "doi_kenh"}, [account()],
+                         event_kind="chaos_vs", event_map=100), {"a": "solo_event_run"})
 
     def test_het_gio_thi_RA_KHOI_MAP_roi_moi_tat(self):
-        """Server tu trao thuong nen khong co buoc doi thuong, nhung PHAI ra khoi map event:
-        de nguyen trong 10991 thi lan login sau bot khoi dong tu map event chu khong tu thanh."""
-        self.assertIn("def _loandau_ra_khoi_map", self.rp)
-        than = self._than(self.rp, "_loandau_ra_khoi_map")
-        self.assertIn("exit_event", than)
-        self.assertIn("dest_map", than, "phai kiem dang o map event moi thoat, khong lam bua")
-        # Dem CHO GOI, bo dong `def` (dong do cung chua y het chuoi nay).
-        goi = [ln for ln in self.rp.splitlines()
-               if "_loandau_ra_khoi_map(c, ev, label)" in ln and not ln.lstrip().startswith("def ")]
-        self.assertEqual(len(goi), 2,
-                         "phai goi ca o nhanh HET GIO lan nhanh NGOAI GIO, dang co %d" % len(goi))
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        calls = []
+        self.assertTrue(R.party_modes.execute_mode_action("solo_event_exit", NS(),
+            leave_solo_event=lambda *a: calls.append("leave"), stop=lambda *a: calls.append("stop")))
+        self.assertEqual(calls, ["leave", "stop"])
 
     def test_KHONG_con_nhac_doi_thuong(self):
         self.assertNotIn("LOAN DAU: buoc DOI THUONG chua lam", self.rp)
 
     def test_co_khoi_dong_vong_loan_dau(self):
-        self.assertIn("start_loandau_loop", self.rp)
-        self.assertIn("def start_loandau_loop", self.cl)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = NS(_loandau_done=True)
+        with mock.patch.object(R.loandau, "run_loop") as run, mock.patch.object(R.threading, "Thread") as thread:
+            self.assertTrue(R._engine_run_chaos(client, (1, 2), lambda: False, None, True, {}))
+        run.assert_called_once()
+        thread.assert_not_called()
+        self.assertFalse(client._loandau_started)
 
     def test_close_phai_dung_vong(self):
         """Thieu -> thread con gui 0x14 06 len socket dang dong."""
@@ -359,10 +376,24 @@ class TestNoiVaoBot(unittest.TestCase):
         self.assertIn("_observe_loandau_packet", than)
 
     def test_hoi_mau_chi_goi_khi_KHONG_trong_tran(self):
-        m = re.search(r"def _before_loandau_repeat\(\):(.*?)\n\n", self.rp, re.S)
-        self.assertIsNotNone(m)
-        than = re.sub(r"#.*", "", m.group(1))
-        self.assertIn("not c.state.in_battle", than)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = mock.Mock(running=True, state=NS(in_battle=True))
+        with mock.patch.object(R, "_event_cua_party", return_value={}), \
+                mock.patch.object(R.party_modes, "execute_mode_action") as execute:
+            R._engine_mode_action(0, client, "solo_event_run", lambda: True)
+        callback = execute.call_args.kwargs["before_repeat"]
+        callback()
+        client.heal_npc40_between_battles.assert_not_called()
+        client.state.in_battle = False
+        callback()
+        client.heal_npc40_between_battles.assert_called_once()
 
 
 class TestDuLieuEvent(unittest.TestCase):
@@ -490,19 +521,16 @@ class TestKhongMoNPCKhiSaiMap(unittest.TestCase):
         self.assertIn("while self.current_map != dest", than)
 
     def test_caller_PHAI_doc_ket_qua_go_to_event(self):
-        """Va khong duoc DI TIEP khi vao khong duoc: phai THU LAI.
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
 
-        Ban dau chi `log.error` roi chay thang xuong vong event - acc dung o MAP TRAIN suot ca
-        ván: khong mo NPC (dung, vi mo o map thuong la bi da ma 5) nhung cung khong danh duoc gi.
-        Ca that 08/09 (user: "co acc ko tele vao event"): 44 acc dinh."""
-        import io as _io, os as _os
-        with _io.open(_os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
-            src = fh.read()
-        self.assertIn("if c.go_to_event(ev):", src,
-                      "vut ket qua go_to_event -> tele hong van mo NPC -> bi da ma 5")
-        i = src.find("if c.go_to_event(ev):")
-        # Neo theo NHANH (den het khoi thu lai), khong theo cua so ky tu co dinh - comment dai them
-        # la test truot ma khong lien quan gi den hanh vi.
-        khoi = src[max(0, i - 900):src.find("except Exception as e:", i)]
-        self.assertIn("thu lai", khoi, "vao khong duoc ma khong thu lai -> mat ca van")
-        self.assertIn("KHONG vao duoc map event", khoi)
+        client = mock.Mock(current_map=10)
+        client.go_to_event.return_value = False
+        self.assertFalse(R.party_modes.execute_mode_action("solo_event_enter", client, event={"dest_map": 100}))
+        self.assertEqual(R.party_modes.decide_mode("event", {"a": "nghi"}, [account(map_id=10)],
+                         event_kind="chaos_vs", event_map=100), {"a": "solo_event_enter"})

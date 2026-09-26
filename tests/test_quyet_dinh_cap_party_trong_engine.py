@@ -120,8 +120,8 @@ class TestKhongThayNhauThiDONG_BO_chu_KHONG_danh_dau_kenh_HONG(unittest.TestCase
     `documents/CORE_FLOW.md` muc "Su that ve game").
 
     Hai nguyen nhan that, deu duoc lo o `run_party_digioi.py` chu khong phai o day:
-      a) lenh doi kenh CHUA GUI DUOC (acc dang trong tran) -> `_dieu_phoi_chot_kenh` GIA HAN dich;
-      b) so kenh bot nho khong con dung -> `_dieu_phoi_thi_hanh_kenh` van gui `0x07` du so nho
+      a) lenh doi kenh CHUA GUI DUOC (acc dang trong tran) -> `_engine_chot_kenh` GIA HAN dich;
+      b) so kenh bot nho khong con dung -> `_engine_gui_lenh_kenh` van gui `0x07` du so nho
          trung dich, khi `kenh_dang_chac()` la False.
     """
 
@@ -247,41 +247,24 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestEngineMoiTuQuyet_KhongGoiDieuPhoi(unittest.TestCase):
-    """User 21/09: "xoa dieu phoi ko dung o engine moi thoi, engine cu van dung".
-
-    Engine moi chay THANG ba buoc trong luong cua chinh party:
-        `_chup_anh_cap_party` -> `quyet_dinh_cap_party` (THUAN) -> `_thi_hanh_hieu_ung`
-    Engine CU van di duong cu (`_dieu_phoi_quyet`), va ca hai dung CHUNG mot bo luat nen khong co
-    ban thu hai de ma lech.
-    """
+class TestEngineTuQuyet(unittest.TestCase):
+    """The one party engine owns reading, deciding, and applying effects."""
 
     def setUp(self):
-        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+        with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
             self.src = fh.read()
-        i = self.src.find("def _dieu_phoi_quyet_engine_moi(")
+        i = self.src.find("def nhip(self)")
         self.assertGreater(i, 0)
-        self.than = self.src[i:self.src.find("\ndef ", i + 10)]
+        self.body = self.src[i:self.src.find("\n    def ", i + 10)]
 
-    def test_KHONG_goi_dieu_phoi_cua_engine_cu(self):
-        ma = "\n".join(l for l in self.than.split("\n") if not l.strip().startswith("#"))
-        self.assertNotIn("_dieu_phoi_quyet(", ma,
-                         "engine moi van di qua dieu phoi cu -> xoa dieu phoi la gay engine moi")
+    def test_moi_nhip_doc_quyet_va_ap_dung(self):
+        for step in ("self._doc_party()", "quyet_dinh_cap_party(anh_cap)",
+                     "self._ap_dung_party(anh_cap"):
+            self.assertIn(step, self.body)
 
-    def test_tu_chay_ba_buoc(self):
-        for buoc in ("_chup_anh_cap_party(", "party_engine.quyet_dinh_cap_party(",
-                     "_thi_hanh_hieu_ung("):
-            self.assertIn(buoc, self.than, "thieu buoc %r" % buoc)
-
-    def test_ENGINE_CU_van_giu_duong_cu(self):
-        """Khong duoc vi don engine moi ma cat duong cua engine cu."""
-        self.assertIn("def _dieu_phoi_quyet(", self.src)
-        i = self.src.find("def _dieu_phoi_loop()")
-        self.assertGreater(i, 0, "mat vong dieu phoi cua engine cu")
-        self.assertIn("_dieu_phoi_quyet(pidx, st, song", self.src[i:i + 3000],
-                      "vong dieu phoi cu khong con goi quyet dinh")
-
-    def test_HAI_duong_dung_CHUNG_mot_bo_luat(self):
-        """Hai ban luat = som muon lech nhau - do chinh la benh dang chua."""
-        self.assertEqual(self.src.count("party_engine.quyet_dinh_cap_party("), 2,
-                         "phai dung dung 2 cho goi (engine cu + engine moi), cung mot ham")
+    def test_loi_doc_party_khong_tu_chuyen_nguon_quyet_dinh(self):
+        self.assertIn('raise ValueError("ENGINE: doc_party khong co anh chup")', self.body)
+        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            runner = fh.read()
+        self.assertFalse("def _dieu_phoi_quyet(" in runner)
+        self.assertFalse("def _dieu_phoi_loop(" in runner)

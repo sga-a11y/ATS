@@ -186,52 +186,58 @@ class TestThuTuLenhDoiKenh(unittest.TestCase):
                       "khong xoa moc cu -> lenh sau member qua cua ngay")
 
     def test_GHIM_kenh_user_chon_picker_khong_duoc_tu_doi(self):
-        """Doi kenh xong, pha sync kenh chay tiep va TU CHON "kenh it nguoi nhat" -> keo ca party
-        sang kenh khac, phu dinh lenh tay.
-
-        Log 31/08 (party 16): user chon kenh 1, 09:57:24 `Doi kenh OK -> 1`, roi 09:58:22
-        `Kenh it nguoi MA DU CHO ca party (5): kenh 2 (15/20) -> chuyen sang` -> ca lu ve kenh 2.
-        """
-        self.assertIn('st["kenh_ghim"] = ch or None', self.than,
-                      "lenh tay khong ghim kenh -> picker tu doi lai")
-
-        khoi = self._khoi_picker()
-        self.assertIn('_ghim = st.get("kenh_ghim")', khoi, "picker khong doc kenh ghim")
-        self.assertIn("if _ghim:", khoi)
-        self.assertIn("c.switch_channel(int(_ghim),", khoi,
-                      "co ghim thi phai dung dung kenh do, khong goi pick_best_channel")
-        # GHIM DUNG TREN CA LENH DIEU PHOI: user chi dinh tay thi khong ai duoc doi y.
-        self.assertLess(khoi.find("if _ghim:"), khoi.find('_kd0 = st.get("kenh_dich")'),
-                        "lenh dieu phoi xet truoc ghim tay -> ghim tay bi phu dinh")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        from tests.test_chon_kenh_it_nguoi_du_cho import _C
+        with mock.patch.dict(R._party_state, {}, clear=True), \
+                mock.patch.object(R, "_mode_can_lap_doi", return_value=True), \
+                mock.patch.object(R, "_party_40npc_ngoai_gio", return_value=False):
+            st = R._pstate(0)
+            st["kenh_ghim"] = 3
+            c = _C(1, {2: (0, 20), 3: (20, 20)})
+            c._chan_switch_target = 3
+            c._chan_switch_result = 4
+            self.assertEqual(R._engine_chot_kenh(0, st, [("a", c)]), 3)
+            self.assertEqual(st["kenh_ghim"], 3)
 
     def test_KHONG_tu_bo_ghim_vi_cho_la_kenh_HONG(self):
-        """Ghim la LENH TAY cua user - chi user moi duoc go.
-
-        Ban cu bo ghim khi kenh do bi danh dau "HONG" (ca party cung so ma khong thay nhau).
-        User chot 22/09: instance voi kenh la MOT, khong co kenh hong - nen co do da bi xoa, va
-        cung khong duoc de duong nao khac tu phu dinh lenh tay cua user.
-        """
-        khoi = self._khoi_picker()
-        self.assertNotIn("kenh_hong", khoi, "kenh khong hong - dung dung lai co nay")
-        self.assertNotIn('st["kenh_ghim"] = None', khoi, "picker tu go ghim tay cua user")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        from tests.test_chon_kenh_it_nguoi_du_cho import _C
+        with mock.patch.dict(R._party_state, {}, clear=True), \
+                mock.patch.object(R, "_mode_can_lap_doi", return_value=True), \
+                mock.patch.object(R, "_party_40npc_ngoai_gio", return_value=False):
+            st = R._pstate(0)
+            st["kenh_ghim"] = 3
+            c = _C(1, {2: (0, 20), 3: (20, 20)})
+            c._chan_switch_target = 3
+            c._chan_switch_result = 4
+            self.assertEqual(R._engine_chot_kenh(0, st, [("a", c)]), 3)
+            self.assertEqual(st["kenh_ghim"], 3)
 
     def test_KHONG_giai_tan_o_doan_CHUNG_truoc_khoi_doi_kenh(self):
-        """Doan chung cua `_do_manual_cmd` giai tan party NGAY khi vua nhan lenh - truoc ca khi ra
-        safe - nen thu tu rieng cua lenh doi kenh thanh vo nghia.
-
-        Log 31/08 09:56:12 (party 19): `-> LENH THU CONG ('channel', 1)` roi NGAY dong sau la
-        `Roi/giai tan party cu`, mai 09:56:13 moi toi khoi doi kenh va bao "VAN dang trong tran".
-        """
-        i = self.src.find("def _do_manual_cmd(cmd):")
-        j = self.src.find('if kind == "channel":', i)
-        self.assertTrue(0 < i < j)
-        chung = re.sub(r"#.*", "", self.src[i:j])
-        i_tan = chung.find("c.leave_party(); reset_party_joined(pidx)")
-        self.assertGreater(i_tan, 0, "mat doan huy party cho lenh route/town")
-        self.assertIn('kind != "channel" and (is_leader', chung,
-                      "lenh doi kenh van bi giai tan o doan chung")
-        self.assertIn('if kind != "channel":\n                c.flee_mode = True', chung,
-                      "lenh doi kenh van bi bat bo chay o doan chung (party con DU)")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        source = inspect.getsource(R._lenh_tay_engine_moi)
+        branch = source.index('if kind == "channel":')
+        self.assertNotIn("c.leave_party()", source[:branch])
+        self.assertNotIn("c.flee_mode = True", source[:branch])
+        self.assertIn("doi_kenh_theo_lenh_tay(", source[branch:])
 
     def test_XOA_co_truoc_moi_lenh(self):
         """Khong xoa thi lenh sau member di luon theo co cua lenh truoc."""
@@ -254,21 +260,38 @@ class TestThuTuLenhDoiKenh(unittest.TestCase):
         self.assertIn("c._wait_combat_clear(idle=2.0, cap=120.0)", self.than)
 
     def test_CHUA_giai_tan_party_thi_KHONG_BO_CHAY(self):
-        """User chot 30/08: "ko can bo chay, da giai tan pt dau ma phai bo chay" - du party thi
-        viec gi phai chay, dinh quai cu danh cho xong."""
-        self.assertNotIn("c.flee_mode = True", self.than,
-                         "party con du ma van bat bo chay")
-        i = self.src.find("def _ra_safe_truoc_khi_doi_kenh(")
-        than = re.sub(r"#.*", "", self.src[i:self.src.find("\n        def do_channel_sync", i)])
-        self.assertIn("bo_chay=not _con_party", than)
-        self.assertIn('_con_party = bool(getattr(c, "party_members", None))', than)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        client = mock.Mock(current_map=100, pos=(1000, 1000), party_members=[1])
+        client.navigate_to.side_effect = lambda *a, **k: setattr(client, "pos", (20, 30))
+        with mock.patch.dict(R._party_state, {}, clear=True), \
+                mock.patch.object(R, "_map_train_dich", return_value=100), \
+                mock.patch.object(R, "_safe_map_dich_engine_moi", return_value=[(20, 30)]):
+            self.assertTrue(R._ra_safe_engine_moi(client, 0))
+        self.assertEqual(client.navigate_to.call_args.kwargs["flee"], False)
+        client.leave_party.assert_not_called()
 
     def test_ham_ra_rally_nhan_co_bo_chay(self):
-        i = self.src.find("def _ra_rally_gom_lai(")
-        than = re.sub(r"#.*", "", self.src[i:self.src.find("\n        def _acc_da", i)])
-        self.assertIn("def _ra_rally_gom_lai(ly_do=\"\", bo_chay=True):", than)
-        self.assertIn("if bo_chay:", than, "van bat flee vo dieu kien")
-        self.assertIn("flee=bo_chay", than, "navigate_to van flee vo dieu kien")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        client = mock.Mock(current_map=100, pos=(1000, 1000), party_members=[])
+        client.navigate_to.side_effect = lambda *a, **k: setattr(client, "pos", (20, 30))
+        with mock.patch.dict(R._party_state, {}, clear=True), \
+                mock.patch.object(R, "_map_train_dich", return_value=100), \
+                mock.patch.object(R, "_safe_map_dich_engine_moi", return_value=[(20, 30)]):
+            self.assertTrue(R._ra_safe_engine_moi(client, 0))
+        self.assertEqual(client.navigate_to.call_args.kwargs["flee"], True)
+        client.leave_party.assert_not_called()
 
     def test_cho_MOC_KET_TRAN_THAT_chu_khong_chi_idle(self):
         """`in_combat()` co duong suy luan theo idle/SAFETY - ra khoi no khong co nghia tran da
@@ -287,13 +310,19 @@ class TestThuTuLenhDoiKenh(unittest.TestCase):
                          "van khoa chot cho sau dieu kien pho ban to doi")
 
     def test_ra_safe_phai_XAC_NHAN_da_toi(self):
-        """`navigate_to` tran khong xac nhan gi - phai di qua `_ra_rally_gom_lai` (doc lai toa do,
-        thu lai 3 lan) va TRA KET QUA."""
-        i = self.src.find("def _ra_safe_truoc_khi_doi_kenh(")
-        than = re.sub(r"#.*", "", self.src[i:self.src.find("\n        def do_channel_sync", i)])
-        self.assertIn("_ra_rally_gom_lai(", than)
-        self.assertNotIn("c.navigate_to(", than, "navigate_to tran = khong biet da toi hay chua")
-        self.assertIn("return _ok", than)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        client = mock.Mock(current_map=100, pos=(1000, 1000), party_members=[])
+        with mock.patch.dict(R._party_state, {}, clear=True), \
+                mock.patch.object(R, "_map_train_dich", return_value=100), \
+                mock.patch.object(R, "_safe_map_dich_engine_moi", return_value=[(20, 30)]):
+            self.assertFalse(R._ra_safe_engine_moi(client, 0))
+        client.navigate_to.assert_called_once()
 
 
 if __name__ == "__main__":

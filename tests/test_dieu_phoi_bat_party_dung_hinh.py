@@ -21,6 +21,8 @@ Sua hai dau:
 """
 from __future__ import annotations
 
+from tests.party_controller_helpers import quyet_party
+
 import io
 import os
 import sys
@@ -152,7 +154,7 @@ class TestRaLenhKhiDungHinh(unittest.TestCase):
 
     def test_vua_dung_thi_CHUA_ra_lenh(self):
         song = self._song()
-        kh, _ly, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        kh, _ly, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertEqual(kh["viec"], R.VIEC_LAM, "vua doc lan dau da keu ket")
 
     def _lui_dong_ho(self, *accs):
@@ -162,28 +164,28 @@ class TestRaLenhKhiDungHinh(unittest.TestCase):
 
     def test_dung_qua_han_thi_RA_LENH_GOM(self):
         song = self._song()
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
         self._lui_dong_ho()
-        kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertEqual(kh["viec"], R.VIEC_GOM)
         self.assertIn("DUNG HINH", ly_do)
 
     def test_co_nhuc_nhich_thi_dong_ho_chay_lai(self):
         song = self._song()
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
         self._lui_dong_ho()
         for _u, c in song:                                # ca party deu di chuyen
             c.pos = (900, 900)
-        kh, _ly, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        kh, _ly, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertEqual(kh["viec"], R.VIEC_LAM)
 
     def test_ra_lenh_roi_thi_tinh_lai_tu_dau(self):
         """Khong duoc ban lenh gom moi nhip sau khi da qua han mot lan."""
         song = self._song()
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
         self._lui_dong_ho()
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
-        kh, _ly, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
+        kh, _ly, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertEqual(kh["viec"], R.VIEC_LAM, "ban lenh gom lien tuc -> bao reform")
 
 
@@ -216,34 +218,34 @@ class TestDamChanODuoiThanh(unittest.TestCase):
 
     def test_dam_chan_o_thanh_qua_lau_thi_RA_LENH(self):
         song = self._song(23001)          # Truong Sa
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
         self.st["o_thanh_tu"] = time.time() - R.KE_HOACH_DUNG_HINH_SEC - 5
-        kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertEqual(kh["viec"], R.VIEC_GOM)
         self.assertIn("THANH", ly_do)
 
     def test_o_BAI_TRAIN_thi_khong_dinh(self):
         song = self._song(23872)
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
         self.st["o_thanh_tu"] = time.time() - R.KE_HOACH_DUNG_HINH_SEC - 5
-        kh, _ly, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        kh, _ly, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertNotIn("THANH", str(_ly or ""))
 
     def test_roi_thanh_thi_dong_ho_XOA(self):
         song = self._song(23001)
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
         for _u, c in song:
             c.current_map = 23872
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
         self.assertFalse(self.st.get("o_thanh_tu"))
 
     def test_MOT_acc_ra_khoi_thanh_la_chua_tinh(self):
         """Con acc dang di duong thi party van dang lam viec - chua phai dam chan."""
         song = self._song(23001)
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
         self.st["o_thanh_tu"] = time.time() - R.KE_HOACH_DUNG_HINH_SEC - 5
         R.account_clients["a"].current_map = 23872
-        kh, _ly, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        kh, _ly, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertNotIn("THANH", str(_ly or ""))
 
 
@@ -346,7 +348,7 @@ class TestLeaderDisLaMatDoi(unittest.TestCase):
         for u in ("b", "c"):
             R.account_clients[u] = _C(map_id=23872, roster=2)   # roster con giu so CU
         song = [(u, R.account_clients[u]) for u in ("b", "c")]
-        kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertEqual(kh["viec"], R.VIEC_MOI)
         self.assertIn("LEADER", ly_do)
 
@@ -357,7 +359,7 @@ class TestLeaderDisLaMatDoi(unittest.TestCase):
             R.account_clients[u].self_entity = u.encode()
             R.mark_joined(self.PARTY, u.encode())
         song = [(u, R.account_clients[u]) for u in ("b", "c")]
-        R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        quyet_party(R, self.PARTY, self.st, song, None)
         self.assertEqual(R.joined_member_count(self.PARTY), 0)
 
 
@@ -373,10 +375,14 @@ class TestBoVongChoLeader(unittest.TestCase):
             self.assertNotIn('while not (st["leader_ok"]', d, d.strip())
 
     def test_VAN_theo_lenh_huy_cua_leader(self):
-        """`leader_bad` la lenh HUY that (leader sai map / mat ket noi) - bo di la ca party train
-        voi mot leader hong."""
-        s = _src()
-        self.assertIn('if st["leader_bad"].is_set():', s)
+        """A missing leader keeps the party from starting its main work."""
+        from bot import party_engine as PE
+        accs = [PE.AnhAcc("leader", la_leader=True, song=False),
+                PE.AnhAcc("member", map_id=21001, kenh=1, so_member=0)]
+        anh = PE.AnhParty(0, accs, can_bao_nhieu=1, map_dich=21001,
+                          dp_viec=PE.DP_MOI)
+        jobs = PE.quyet_dinh(anh)
+        self.assertNotIn(PE.VIEC_TRAIN, jobs.values())
 
 
 if __name__ == "__main__":

@@ -44,34 +44,6 @@ class TestSoTranThuaKhongBiCache(unittest.TestCase):
                          "coordinator khong duoc giu so tran thua giua cac lan login")
 
 
-class TestPhienLoginMoiThiXoaCo(unittest.TestCase):
-    def setUp(self):
-        self.src = _rpd()
-        i = self.src.find("event_solo_kind = _event_solo_battle_kind(mode, ev)")
-        self.assertGreater(i, 0)
-        self.than = self.src[i:i + 1800]
-
-    def test_xoa_ca_HAI_co(self):
-        self.assertIn('st["go_claim"].clear()', self.than)
-        self.assertIn('st["event_battle_done"].clear()', self.than)
-
-    def test_chi_xoa_khi_KHONG_phai_reconnect(self):
-        """Mot acc rot giua chung roi vao lai KHONG duoc lam ca party danh tiep khi 4 dua kia da bo."""
-        i = self.than.find("if event_party_mode and not is_reconnect:")
-        self.assertGreater(i, 0, "thieu dieu kien -> reconnect cung reset, party danh mai khong thoat")
-        self.assertLess(i, self.than.find('st["go_claim"].clear()'))
-
-    def test_xoa_TRUOC_khi_doc(self):
-        """Xoa sau cho doc thi acc van out ngay o lan login moi."""
-        i_xoa = self.src.find('st["go_claim"].clear()')
-        i_doc = self.src.find('if st["go_claim"].is_set():')
-        self.assertGreater(i_xoa, 0)
-        self.assertGreater(i_doc, 0)
-        self.assertLess(i_xoa, i_doc, "doc co truoc khi xoa -> log vao xong out luon")
-
-    def test_go_claim_KHONG_con_la_co_mot_chieu(self):
-        """Bug goc: `go_claim` chi co `.set()`, khong he co `.clear()` o dau."""
-        self.assertIn('st["go_claim"].clear()', self.src)
 
 
 class TestStartPartyCungXoa(unittest.TestCase):
@@ -88,10 +60,18 @@ class TestVanThoatDuocKhiThuaThat(unittest.TestCase):
     """Xoa co khong duoc lam hong duong thoat binh thuong."""
 
     def test_van_con_duong_set_go_claim(self):
-        src = _rpd()
-        i = src.find('getattr(c, "_npc40_done", False)')
-        self.assertGreater(i, 0)
-        self.assertIn('st["go_claim"].set()', src[i:i + 200])
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        with mock.patch.dict(R._party_state, {}, clear=True), \
+                mock.patch.object(R, "_event_cua_party", return_value={"party_battle": {"kind": "npc_repeat"}}):
+            R._pstate(0)["go_claim"].set()
+            self.assertTrue(R._event_xong_engine_moi(0))
 
     def test_thoat_co_y_thi_KHONG_relogin(self):
         """Thoat vi thua 2 tran khong duoc tinh la 'rot' -> khong duoc tu login lai roi danh tiep."""

@@ -38,56 +38,8 @@ def _src():
         return fh.read()
 
 
-class TestThuTuChanTruoc(unittest.TestCase):
-    def setUp(self):
-        self.src = _src()
-        self.i_vao = self.src.find("if c.go_to_event(ev):")
-        self.assertGreater(self.i_vao, 0)
-
-    def test_cua_40NPC_ngoai_gio_dung_TRUOC_go_to_event(self):
-        i = self.src.find("40NPC NGOAI GIO event -> huy party")
-        self.assertGreater(i, 0)
-        self.assertLess(i, self.i_vao,
-                        "cua ngoai gio nam duoi -> acc van di het duong vao map event (3372 dong)")
-
-    def test_cua_LOAN_DAU_ngoai_gio_dung_TRUOC_go_to_event(self):
-        i = self.src.find("LOAN DAU ngoai gio event -> ra khoi map")
-        self.assertGreater(i, 0)
-        self.assertLess(i, self.i_vao)
-
-    def test_cua_ngoai_gio_THOAT_GAME_chu_khong_chay_tiep(self):
-        for _moc in ("40NPC NGOAI GIO event -> huy party", "LOAN DAU ngoai gio event -> ra khoi map"):
-            i = self.src.find(_moc)
-            khoi = self.src[i:i + 900]
-            self.assertIn("c.close(); return", khoi, _moc)
 
 
-class TestTranThuLai(unittest.TestCase):
-    """Event KHONG khai bao lich (2K) - luoi do cuoi cung de khong lap vo han."""
-
-    def setUp(self):
-        self.src = _src()
-
-    def test_co_tran_va_tran_nho(self):
-        self.assertTrue(hasattr(R, "EV_VAO_HONG_TOI_DA"))
-        self.assertLessEqual(R.EV_VAO_HONG_TOI_DA, 5,
-                             "tran cao qua thi van dot hang chuc phut moi dung")
-
-    def test_vao_duoc_thi_XOA_bo_dem(self):
-        """Truc trac thoang qua giua gio event khong duoc cong don thanh 'bo cuoc'."""
-        i = self.src.find("if _vao_ok:")
-        self.assertGreater(i, 0)
-        self.assertIn("c._ev_vao_hong = 0", self.src[i:i + 200])
-
-    def test_qua_tran_thi_THOAT_GAME(self):
-        i = self.src.find("if c._ev_vao_hong >= EV_VAO_HONG_TOI_DA:")
-        self.assertGreater(i, 0)
-        self.assertIn("c.close(); return", self.src[i:i + 800])
-
-    def test_bo_dem_nam_tren_CLIENT_khong_phai_bien_vong(self):
-        """Vong ngoai goi lai ham -> bien cuc bo reset moi lan, dem khong bao gio len."""
-        i = self.src.find("c._ev_vao_hong = int(getattr(c, \"_ev_vao_hong\", 0) or 0) + 1")
-        self.assertGreater(i, 0)
 
 
 class TestGuiKhongTuGanEventDauDanhSach(unittest.TestCase):

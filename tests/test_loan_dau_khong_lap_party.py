@@ -10,7 +10,7 @@ Party 21 = mode `event` + `event_key=loan_dau`, dang giua gio loan dau thu 5:
 
 Loan dau khong bao gio "du doi": moi acc TU dang ky, TU danh; con so roster la rac (moi acc thay
 mot kieu: 4/1/2/3/4). Bump reform lien tuc giua luc dang cho ghep tran = abort acc dang doi, mat
-luot - dung ca da ghi trong `_dieu_phoi_chot_kenh`:
+luot - dung ca da ghi trong `_engine_chot_kenh`:
     20:23:14 [haba] Loan dau: da dang ky, cho ghep tran (thang=0)   <- dang ky o KENH 4
     20:23:19 [haba] Doi kenh OK -> 2                                <- dieu phoi keo sang kenh 2
     20:38:14 [haba] Loan dau: cho ghep tran qua 900s khong vao -> dung
@@ -19,6 +19,8 @@ NGUYEN NHAN: guard loan dau CO SAN nhung nam o CUOI ham, sau ca nhanh "chung ken
 -> LAP LAI PARTY". Cua chan dat SAU dung cai viec no phai chan (L3h).
 """
 from __future__ import annotations
+
+from tests.party_controller_helpers import quyet_party
 
 import io
 import os
@@ -124,14 +126,14 @@ class TestKhongRaLenhCapParty(_Nen):
         st = R._pstate(self.PARTY)
         gen = st["reform_gen"]
         song = self._song(a1=_C(1), a2=_C(1), a3=_C(1))     # cung kenh, doi rong
-        R._dieu_phoi_chot_kenh(self.PARTY, st, song)
+        R._engine_chot_kenh(self.PARTY, st, song)
         self.assertEqual(st["reform_gen"], gen,
                          "bump reform giua luc dang cho ghep tran = abort acc, mat luot")
 
     def test_KHONG_chot_kenh_dich_du_LECH_KENH(self):
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(1), a2=_C(4), a3=_C(9))
-        self.assertIsNone(R._dieu_phoi_chot_kenh(self.PARTY, st, song))
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, st, song))
         self.assertIsNone(st.get("kenh_dich"))
 
     def test_BO_kenh_dich_con_treo(self):
@@ -140,7 +142,7 @@ class TestKhongRaLenhCapParty(_Nen):
         with st["lock"]:
             st["kenh_dich"] = 7
         song = self._song(a1=_C(1), a2=_C(4), a3=_C(9))
-        R._dieu_phoi_chot_kenh(self.PARTY, st, song)
+        R._engine_chot_kenh(self.PARTY, st, song)
         self.assertIsNone(st.get("kenh_dich"))
 
     def test_party_TRAIN_van_lap_lai_party_binh_thuong(self):
@@ -149,14 +151,14 @@ class TestKhongRaLenhCapParty(_Nen):
         st = R._pstate(self.PARTY)
         gen = st["reform_gen"]
         song = self._song(a1=_C(1), a2=_C(1), a3=_C(1))
-        R._dieu_phoi_chot_kenh(self.PARTY, st, song)
+        R._engine_chot_kenh(self.PARTY, st, song)
         self.assertGreater(st["reform_gen"], gen, "party train ma khong lap lai doi")
 
 
 class TestKeHoachKhongRaLenhCapParty(_Nen):
     """`_dieu_phoi_quyet` moi la CHO SINH RA `viec=moi` / `gom` / `dong_bo`.
 
-    Lan sua dau toi chi chan o `_dieu_phoi_chot_kenh` -> party 24 van ra du ba lenh do:
+    Lan sua dau toi chi chan o `_engine_chot_kenh` -> party 24 van ra du ba lenh do:
         21:29:49 gen 2:  viec=moi     - cung map/kenh nhung DOI chua du (daim01=0 daim02=0 ...)
         21:12:23 gen 12: viec=gom     - party dang o 2 MAP khac nhau [10991, 12003]
         21:12:27 gen 13: viec=dong_bo - party lech kenh [1, 2]
@@ -164,7 +166,7 @@ class TestKeHoachKhongRaLenhCapParty(_Nen):
 
     def _quyet(self, lech_tu=None, **kw):
         song = self._song(**kw)
-        return R._dieu_phoi_quyet(self.PARTY, R._pstate(self.PARTY), song, lech_tu)
+        return quyet_party(R, self.PARTY, R._pstate(self.PARTY), song, lech_tu)
 
     def test_doi_RONG_van_KHONG_ra_lenh_MOI(self):
         kh, ly_do, _ = self._quyet(a1=_C(1), a2=_C(1), a3=_C(1))
@@ -233,49 +235,38 @@ class TestSoMemberCanCho(unittest.TestCase):
             R.party_accounts = _pa
 
 
-class TestPhiaThiHanhDocDUNGLenh(unittest.TestCase):
-    """Lenh dieu phoi la TUYET DOI - phia thi hanh phai doc DUNG, khong tu suy.
+class TestPhiaThiHanhDocDungLenh(unittest.TestCase):
+    """Solo chaos mode never enters the ordinary party invitation worker."""
 
-    User 10/09: "lenh cua dieu phoi la tuyet doi nen deo duoc chan, no ra lenh sai thi phai sua cho
-    no ra lenh dung". O ca party 19 lenh KHONG sai (`viec=lam`) - phia doc sai: vong moi party chi
-    xet MOT lenh (`VIEC_GOM`), moi lenh khac deu bi hieu thanh "cu moi".
-    """
-
-    def setUp(self):
+    def test_snapshot_doc_mode_can_lap_doi(self):
         with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
-            self.src = fh.read()
-        i = self.src.find("def _moi_theo_dieu_phoi(")
-        self.assertGreater(i, 0)
-        j = self.src.find("\n        def ", i + 10)
-        self.than = self.src[i:j if j > i else len(self.src)]
+            src = fh.read()
+        i = src.find("def _chup_anh_cap_party(")
+        body = src[i:src.find("\ndef ", i + 10)]
+        self.assertIn("can_lap_doi=_mode_can_lap_doi(pidx)", body)
 
-    def test_loan_dau_tat_vong_moi_TU_GOC_bang_n_members(self):
-        """Khong chan o vong moi (chan la chan oan ca party thuong - xem party 1, 10/09).
+    def test_chaos_mode_co_worker_rieng(self):
+        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        i = src.find("def _engine_mode_action(")
+        body = src[i:src.find("\ndef ", i + 10)]
+        self.assertIn("run_chaos=_engine_run_chaos", body)
+        self.assertIn("party_modes.execute_mode_action(", body)
 
-        Mode khong co viec lap doi thi `n_members = 0`, nen `while joined < n_members` khong chay
-        lan nao. Tat tu goc, khong phai chan tung cho.
-        """
-        i = self.src.find('st["n_members"] = ')
-        self.assertGreater(i, 0)
-        self.assertIn("_mode_can_lap_doi(pidx)", self.src[i:i + 300])
+    def test_ham_moi_chi_thi_hanh(self):
+        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        i = src.find("def _invite_party_participants(")
+        body = src[i:src.find("\ndef ", i + 10)]
+        self.assertFalse("_mode_can_lap_doi(" in body)
 
-    def test_van_giu_duong_thoi_moi_khi_bao_GOM(self):
-        self.assertIn('_kh.get("viec") == VIEC_GOM', self.than)
-
-    def test_ham_moi_KHONG_tu_quyet(self):
-        """`_invite_party_participants` chi THI HANH - quyet dinh la cua dieu phoi."""
-        i = self.src.find("def _invite_party_participants(")
-        j = self.src.find("\ndef ", i + 10)
-        than = self.src[i:j]
-        self.assertNotIn("_mode_can_lap_doi", than,
-                         "ham thi hanh ma tu quyet = them mot cho co the lech voi dieu phoi")
 
 
 class TestMotNGUON_SU_THAT(unittest.TestCase):
     """"Mode nay co can lap doi khong" phai la MOT ham, khong phai guard rai rac tung cho.
 
     User 10/09: "ko phai chan, ma dieu phoi phai biet mode nay deo can lap pt". Guard rai rac thi
-    moi cho la mot dip quen - va da quen that (chan `_dieu_phoi_chot_kenh` roi bo sot
+    moi cho la mot dip quen - va da quen that (chan `_engine_chot_kenh` roi bo sot
     `_dieu_phoi_quyet`).
     """
 
@@ -287,7 +278,7 @@ class TestMotNGUON_SU_THAT(unittest.TestCase):
         self.assertEqual(self.src.count("def _mode_can_lap_doi("), 1)
 
     def test_ca_HAI_duong_ra_lenh_deu_hoi_ham_do(self):
-        for _ham in ("def _chup_anh_cap_party(", "def _dieu_phoi_chot_kenh("):
+        for _ham in ("def _chup_anh_cap_party(", "def _engine_chot_kenh("):
             i = self.src.find(_ham)
             self.assertGreater(i, 0, _ham)
             j = self.src.find("\ndef ", i + 10)
@@ -300,7 +291,7 @@ class TestThuTuGuard(unittest.TestCase):
     def setUp(self):
         with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
             self.src = fh.read()
-        i = self.src.find("def _dieu_phoi_chot_kenh(")
+        i = self.src.find("def _engine_chot_kenh(")
         self.assertGreater(i, 0)
         j = self.src.find("\ndef ", i + 10)
         self.than = self.src[i:j]

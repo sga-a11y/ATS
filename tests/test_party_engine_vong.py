@@ -672,7 +672,8 @@ class TestEngineTU_THOAT_khi_party_dung_han(unittest.TestCase):
             for _u, c in cl:
                 c.running = False           # user bam Stop tat ca
             eng._th.join(timeout=4.0)
-            self.assertFalse(eng._th.is_alive(), "party da dung han ma thread nhip van quay")
+            self.assertFalse(eng._th is not None and eng._th.is_alive(),
+                             "party da dung han ma thread nhip van quay")
         finally:
             eng.stop()
 

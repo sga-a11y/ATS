@@ -1,9 +1,22 @@
-# ENGINE PARTY MỚI — 1 luồng quyết định / party (chạy song song với engine cũ)
+# Engine party — một luồng quyết định cho mỗi party
 
-> Trạng thái: **ĐANG CHẠY THẬT** — `PARTY_ENGINE_MOI_TU = 21` (user chốt 20/09:
-> *"sửa lại party >20 theo engine mới"*).
-> Phạm vi: **party số 21 trở đi** — 36/56 party. Party 1–20 giữ nguyên engine cũ.
-> Đặt hằng đó `= 0` là toàn bộ về engine cũ ngay, đường lui trong một giây.
+## Trạng thái mã sau yêu cầu ngày 24/09/2026
+
+Tất cả party dùng `PartyEngine`. Đã bỏ vòng điều phối toàn cục, watcher party,
+luồng gửi lệnh kênh riêng và kịch bản quyết định trong `run_account`.
+Không còn cơ chế đổi ngưỡng để quay về engine cũ.
+
+Mỗi nhịp engine đọc trạng thái, chạy luật cấp party, cập nhật kết quả và giao
+thao tác cho các worker. Worker dùng lại luồng account đang có để thực hiện
+thao tác game có thể chặn; không tự lập kế hoạch cho party. Các chế độ train,
+Di Giới, event, city, stand và lệnh đi map thủ công đi qua cùng engine.
+
+Mã Python PC/APK đã đồng bộ. Việc kiểm tra mã và unit test không đồng nghĩa
+đã build hay xác minh trên tài khoản game thật. Kế hoạch và phạm vi kiểm tra:
+[Single party controller](../docs/superpowers/plans/2026-09-24-single-party-controller.md).
+
+Phần dưới ghi lại thiết kế ban đầu và các tình huống lịch sử. Những mô tả
+chạy song song hoặc fallback engine cũ trong lịch sử không còn áp dụng.
 
 ## 1. Vì sao làm
 

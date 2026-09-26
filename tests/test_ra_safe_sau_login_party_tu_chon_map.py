@@ -77,38 +77,6 @@ class TestEarlyScLayDuocBaiDieuPhoiChot(unittest.TestCase):
         self.assertIsNone(R._map_train_dich(self.PARTY, R._pstate(self.PARTY)))
 
 
-class TestKhoiRaSafeDungSoBaiThat(unittest.TestCase):
-    """Neo tren nguon: `_early_sc` phai duoc va bang `_map_train_dich` TRUOC khi tinh `_early_tm`."""
-
-    def setUp(self):
-        self.src = _src()
-
-    def _khoi_early(self):
-        i = self.src.find("_early_sc = pcfg.get(\"start_city_id\"")
-        self.assertGreater(i, 0, "mat cho gan _early_sc")
-        j = self.src.find("_early_train_safes = []", i)
-        self.assertGreater(j, i, "mat cho dung _early_sc")
-        return self.src[i:j]
-
-    def test_early_sc_duoc_va_bang_map_train_dich(self):
-        khoi = self._khoi_early()
-        self.assertIn("_map_train_dich(pidx", khoi,
-                      "`_early_sc` con doc thang config -> party 'Tu chon map' bo qua khoi ra-safe")
-
-    def test_va_phai_dat_TRUOC_khi_tra_TRAIN_MAPS(self):
-        khoi = self._khoi_early()
-        _va = khoi.find("_map_train_dich(pidx")
-        _tra = khoi.find("config.TRAIN_MAPS.get(_early_sc)")
-        self.assertGreater(_tra, 0, "mat cho tra TRAIN_MAPS")
-        self.assertLess(_va, _tra, "va _early_sc SAU khi da tra TRAIN_MAPS = vo nghia")
-
-    def test_khoi_ra_safe_van_con(self):
-        self.assertIn("ve safe %s truoc login chores", self.src)
-
-    def test_dieu_kien_ra_safe_van_la_DANG_DUNG_TREN_MAP_TRAIN(self):
-        """Khong duoc doi thanh `mode == train`: mode DG+Train pha DG cung dung tren bai quai."""
-        self.assertIn("if _early_tm is not None and login_map == _early_sc and _early_train_safes:",
-                      self.src)
 
 
 if __name__ == "__main__":

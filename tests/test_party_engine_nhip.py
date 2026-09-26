@@ -419,7 +419,7 @@ class TestDUNG_QUYET_DINH_CUA_DIEU_PHOI_CU(unittest.TestCase):
         self.assertNotEqual(v.get("l"), E.VIEC_RESYNC)
 
     def test_DONG_BO_thi_engine_KHONG_giao_viec(self):
-        """Nguoi gui lenh doi kenh la `_dieu_phoi_thi_hanh_kenh` cua dieu phoi (no tu gui cho tung
+        """Nguoi gui lenh doi kenh la `_engine_gui_lenh_kenh` cua dieu phoi (no tu gui cho tung
         acc lech). Engine moi gui nua la HAI nguon ra lenh cho mot party."""
         v = self._v(E.DP_DONG_BO)
         self.assertTrue(all(x == E.VIEC_NGHI for x in v.values()), v)
@@ -500,7 +500,7 @@ class TestMODE_EVENT_lam_y_FLOW_CU(unittest.TestCase):
         anh = _anh(accs, can=2, pha=E.PHA_EVENT)
         anh.dp_viec = E.DP_DONG_BO
         v = E.quyet_dinh(anh)
-        # `dong_bo` -> engine KHONG giao viec: `_dieu_phoi_thi_hanh_kenh` cua dieu phoi tu gui lenh
+        # `dong_bo` -> engine KHONG giao viec: `_engine_gui_lenh_kenh` cua dieu phoi tu gui lenh
         # doi kenh cho tung acc lech. Cai phai giu la: KHONG moi party khi con lech kenh.
         self.assertNotIn(E.VIEC_LAP_PARTY, v.values(), "moi party khi con lech kenh -> khong ai join")
 

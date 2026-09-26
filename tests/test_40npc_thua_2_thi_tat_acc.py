@@ -79,12 +79,20 @@ class TestThua2ThiTatAcc(unittest.TestCase):
             self.assertIn(ly_do, than)
 
     def test_coordinator_VAN_tat_acc(self):
-        s = _rpd()
-        i = s.find('st["go_claim"].is_set():')
-        self.assertGreater(i, 0)
-        khoi = s[i:i + 1400]
-        self.assertIn("claim_40npc_reward(ev)", khoi, "phai doi thuong truoc khi tat")
-        self.assertIn("c.close(); break", khoi, "khong tat acc -> van dung yen nhu cu")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = mock.Mock(_npc40_bo_thuong=True, _username="a")
+        with mock.patch.object(R, "_event_cua_party", return_value={"party_battle": {}}), \
+                mock.patch.object(R, "stop_account") as stop:
+            R._doi_thuong_engine_moi(client, 0)
+        client.claim_40npc_reward.assert_not_called()
+        stop.assert_called_once()
 
 
 if __name__ == "__main__":

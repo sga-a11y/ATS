@@ -62,7 +62,7 @@ class TestChiDieuPhoiDuocChot(unittest.TestCase):
     def test_ROT_MANG_thi_KHONG_thoat(self):
         self.st["2k_ket_qua"] = "dut"
         song = [("a1", _C(running=False)), ("a2", _C(running=True))]
-        R._dieu_phoi_chot_2k_xong(self.PARTY, self.st, song)
+        R._engine_chot_2k_xong(self.PARTY, self.st, song)
         self.assertFalse(self.st["event_exit_now"].is_set(),
                          "rot mang ma bat co thoat = ca party bi keo ra giua chung (party 12)")
 
@@ -71,28 +71,28 @@ class TestChiDieuPhoiDuocChot(unittest.TestCase):
         `2K: ket o cong tang 9 (door=2) -> dung leo` -> ban truoc goi do la "xong" -> ca doi ra
         khoi thap + tat game. Ket o cong = CHUA het, phai gom + moi lai roi thu tiep."""
         self.st["2k_ket_qua"] = "ket"
-        R._dieu_phoi_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
+        R._engine_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
         self.assertFalse(self.st["event_exit_now"].is_set())
 
     def test_THUA_thi_thoat(self):
         self.st["2k_ket_qua"] = "thua"
-        R._dieu_phoi_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
+        R._engine_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
         self.assertTrue(self.st["event_exit_now"].is_set())
 
     def test_XONG_thi_thoat(self):
         self.st["2k_ket_qua"] = "xong"
-        R._dieu_phoi_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
+        R._engine_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
         self.assertTrue(self.st["event_exit_now"].is_set())
 
     def test_chua_co_ket_qua_thi_khong_lam_gi(self):
-        R._dieu_phoi_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
+        R._engine_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
         self.assertFalse(self.st["event_exit_now"].is_set())
 
-    def test_dieu_phoi_goi_ham_nay_o_pha_event(self):
+    def test_engine_ap_dung_hieu_ung_chot_xong(self):
         src = _doc("run_party_digioi.py")
-        i = src.find("def _dieu_phoi_quyet(")
+        i = src.find("def _engine_ap_dung_party(")
         than = src[i:src.find("\ndef ", i + 10)]
-        self.assertIn("_dieu_phoi_chot_2k_xong(", than)
+        self.assertIn("_engine_chot_2k_xong(", than)
 
 
 class TestLuongLeaderChiBaoSuThat(unittest.TestCase):
@@ -123,8 +123,8 @@ class TestLuongLeaderChiBaoSuThat(unittest.TestCase):
         n = self.src.count('st["event_exit_now"].set()')
         self.assertEqual(n, 1, "co nhieu noi bat co thoat -> lai co acc tu quyet")
         i = self.src.find('st["event_exit_now"].set()')
-        self.assertIn("_dieu_phoi_chot_2k_xong", self.src[:i][-1500:],
-                      "noi bat co thoat phai nam trong ham cua dieu phoi")
+        self.assertIn("_engine_chot_2k_xong", self.src[:i][-1500:],
+                      "noi bat co thoat phai nam trong ham ap dung cua engine")
 
 
 class TestVongLeoBaoDungLyDo(unittest.TestCase):
@@ -160,7 +160,7 @@ class TestVongLeoBaoDungLyDo(unittest.TestCase):
 class TestAPKGiongPC(unittest.TestCase):
     def test_apk_co_du(self):
         apk = _doc("android", "app", "src", "main", "python", "train_bot", "run_party_digioi.py")
-        self.assertIn("def _dieu_phoi_chot_2k_xong(", apk)
+        self.assertIn("def _engine_chot_2k_xong(", apk)
         self.assertIn("on_done(lost, ly_do)",
                       _doc("android", "app", "src", "main", "python", "train_bot",
                            "floor_crawl.py"))

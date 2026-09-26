@@ -2424,9 +2424,8 @@ class GameClient:
         self._first_turn = True      # luot dau tran -> atype=2, sau -> atype=3
         self._battle_entered = False # da gui 0x41 "vao tran" chua
         self.channels = {}           # {so_kenh: (so_nguoi, suc_chua)} - tu S2C 0x07 list
-        self.current_channel = None  # kenh dang o (doc tu S2C scene/ack; None = chua biet/mac dinh)
-        # True = lenh doi kenh gan nhat HONG (timeout / bi tu choi) nen `current_channel` chi con la
-        # so nho lai, khong dung de ket luan "party lech kenh" duoc (xem `kenh_dang_chac`).
+        self.current_channel = None  # instanceId doc tu S2C scene; khong suy ra tu kenh yeu cau
+        # True khi dang doi scene, timeout hoac bang chung thay nhau mau thuan voi so kenh.
         self.kenh_dang_nghi_ngo = False
         self.current_channel_at = 0.0  # luc doc duoc (cu qua thi phai hoi lai - xem kenh_that)
         self._chan_event = threading.Event()
@@ -2442,6 +2441,7 @@ class GameClient:
         self._ds_kenh_nhan_luc = 0.0    # luc NHAN duoc `S:007-001` (bang `channels` moi tu day)
         self._ds_kenh_map = 0           # MAP luc nhan bang do - moi map mot danh sach kenh khac
         self._channel_scene_generation = 0
+        self._channel_scene_event = threading.Event()
         self.server_closed = False   # True khi server CHU DONG dong ket noi (rot/bao tri/kick)
         self.disconnect_cause = 0    # ma ly do tu S:000-000 (0 = server khong noi ly do)
         self.disconnect_reason = ""  # dien giai ma tren (DISCONNECT_CAUSE)
@@ -2615,6 +2615,10 @@ class GameClient:
         self._online_gift_pending_ts = 0.0
         self._online_gift_next_log = None
         self._online_gift_last_log = 0.0
+        # Moc qua online bi SERVER TU CHOI -> hoan toi luc nao (moc phut -> timestamp). Khong co
+        # bang nay thi ma 4 (TUI DAY) bi xin lai vo han -> do acc (party 28, 24/09).
+        self._online_gift_hoan = {}
+        self._tui_day_can_don = False     # server bao tui day -> duong don tui phai lam ngay
         self.mission_steps = {}  # mission_id -> step, tu S2C 0x18; dung de tinh luot pho ban doi
         self.mission_steps_loaded = False
         # (KHONG con `_team_dungeon_until`: "dang trong PB to doi" doc MAP THAT qua
@@ -6080,7 +6084,18 @@ class GameClient:
             gen, turn = int(getattr(_bt, "generation", 0) or 0), int(getattr(_bt, "turn", 0) or 0)
             if not gen:
                 return
-            _troi = time.time() - float(self.last_turn_time or 0)
+            # CHUA CO MOC LUOT -> CHUA KET LUAN DUOC GI.
+            #
+            # `last_turn_time` con None/0 (tran vua mo, `t=0`) thi `time.time() - 0` ra ~1.79 TY
+            # giay -> luon vuot nguong -> in canh bao "LUOT CHAM ... KHONG AI gui lenh" ngay o
+            # turn 0, dung luc chua ai gui la BINH THUONG. Bao dong gia, va no che mat dong log
+            # that khi tran ket that.
+            # Ca that 24/09 party 1 (user: "vao DG thay dung yen mai"):
+            #   06:33:01 [nasau] LUOT CHAM: g=1 t=0 da 1790206382s chua xong | DA gui lenh: KHONG AI
+            _moc = float(self.last_turn_time or 0)
+            if _moc <= 0:
+                return
+            _troi = time.time() - _moc
             if _troi < self.LUOT_CHAM_SEC:
                 return
             if getattr(self, "_luot_cham_da_bao", None) == (gen, turn):
@@ -7300,6 +7315,19 @@ class GameClient:
         online_min = online_sec / 60.0
         for m in milestones:
             if m in claimed:
+                continue
+            # MOC BI SERVER TU CHOI -> HOAN, khong xin lai ngay.
+            #
+            # Ban cu chi coi status 0/2 la "xong" (xem `_on_gift`), nen moi ma khac - nhat la
+            # **4 = 背包已滿 (TUI DAY)** - khong duoc danh dau, moc do vinh vien "chua nhan", vong
+            # sau lai xin. Ket qua: acc DO HAN, khong lam gi khac duoc.
+            # Ca that 24/09 party 28 (user: "nhan qua ngu lam do acc vo han"): trong MOT gio,
+            # `hoangtbay` 35356 dong log va `hoangthai` 35836 dong, toan bo la
+            #     "Nhan qua online moc 20 phut" / "Qua online: moc 20 phut status=4"
+            # ban lai lien tuc trong cung mot giay. Hai acc do khong bao gio tham gia party ->
+            # party 28 thieu nguoi.
+            _hoan = (getattr(self, "_online_gift_hoan", None) or {}).get(int(m), 0.0)
+            if _hoan and time.time() < _hoan:
                 continue
             if online_sec >= m * 60:
                 self._online_gift_pending = m
@@ -12247,7 +12275,29 @@ class GameClient:
                     elif status == 2:
                         msg = f"moc {pending} phut server bao DA NHAN"
                     else:
-                        msg = f"moc {pending} phut status={status}"
+                        # BANG MA THAT cua `S:087-002 <福利領獎結果>` (protocal.lua:13392):
+                        #   0 成功 · 1 種類錯誤 · 2 已領取 · 3 條件未達成 · 4 背包已滿
+                        #   5 時間錯誤 · 6 目前不是活動時間 · 7 獎勵錯誤
+                        # Ban cu chi biet 0/2 va in tro "status=N", nen ma 4 (TUI DAY) bi xu nhu
+                        # "chua nhan" -> xin lai VO HAN. 24/09 party 28: 35k dong/gio cho mot moc.
+                        _ten = {1: "SAI LOAI (種類錯誤)", 3: "CHUA DU DIEU KIEN (條件未達成)",
+                                4: "TUI DAY (背包已滿)", 5: "SAI THOI GIAN (時間錯誤)",
+                                6: "NGOAI GIO SU KIEN (目前不是活動時間)",
+                                7: "LOI PHAN THUONG (獎勵錯誤)"}.get(status, "status=%d" % status)
+                        msg = f"moc {pending} phut BI TU CHOI: {_ten}"
+                        # HOAN moc nay lai. Khong hoan thi vong sau xin lai ngay -> do acc.
+                        #   ma 3 (chua du gio online) -> thu lai som, no se tu du;
+                        #   ma 4 (tui day) -> cho lau hon, de con kip don tui;
+                        #   con lai (1/5/6/7) -> loi cung, hoan RAT lau (coi nhu bo trong phien).
+                        _cho = 60.0 if status == 3 else (300.0 if status == 4 else 3600.0)
+                        if getattr(self, "_online_gift_hoan", None) is None:
+                            self._online_gift_hoan = {}
+                        self._online_gift_hoan[int(pending)] = time.time() + _cho
+                        msg += " -> hoan %.0fs" % _cho
+                        if status == 4:
+                            # TUI DAY la viec PHAI DON, khong phai bo qua. Ha co de duong don tui
+                            # (`auto_bag_clean` / cat do / ban Noi Dat) lam ngay luot toi.
+                            self._tui_day_can_don = True
                     log.info("[%s] Qua online: %s", self._label, msg)
                 else:
                     log.info("[%s] Qua online: status=%d (khong co moc pending)", self._label, status)
@@ -12419,6 +12469,7 @@ class GameClient:
         # SERVER vua xac nhan -> so kenh lai la bang chung (xem `kenh_dang_chac`).
         self.kenh_dang_nghi_ngo = False
         self._channel_scene_generation += 1
+        self._channel_scene_event.set()
         if old != channel:
             log.info("[%s] Kenh hien tai = %s (tu %s)", self._label, channel, source)
 
@@ -12433,8 +12484,8 @@ class GameClient:
         `hoi lai kenh: server KHONG tra loi` -> leader thay `{'sga002': None, ...}` = CHUA sang
         -> party khong bao gio dong bo duoc).
 
-        Nguon dang tin DUY NHAT cho kenh la vong `switch_channel` (`0x07 0200` -> ack co ket qua).
-        Nen `switch_channel` KHONG duoc bo qua theo gia tri nho san - xem ghi chu trong do.
+        Kenh lay tu scene `0x03`/`0x0c`. `switch_channel` cho scene sau ACK, khong tu gan dich.
+        Khi can dong bo lai, `switch_channel` gui lenh that va doi chieu voi scene.
         """
         cur = getattr(self, "current_channel", None)
         return int(cur) if cur else None
@@ -12704,24 +12755,15 @@ class GameClient:
                        theo_lenh: bool = False) -> bool:
         """Chuyen sang sub-channel va cho server tra ket qua.
         Client game xu ly S2C 0x07/0200: result=0 OK; 1=cung kenh; 2=khong co kenh;
-        3=dang trong party; 4=kenh day. Bot KHONG tu set current_channel truoc khi server xac nhan."""
+        3=dang trong party; 4=kenh day. Bot chi cap nhat current_channel tu goi scene, khong tu ACK."""
         try:
             channel = int(channel)
         except Exception:
             return False
         if channel <= 0:
             return True
-        # HOI LAI SERVER truoc khi ket luan "da o san kenh N". Tin so nho san la co the bo qua
-        # lan doi kenh THAT SU can (xem `kenh_that`): bot tuong ca party cung kenh trong khi
-        # thuc te moi nick mot kenh -> loi moi party khong bao gio toi noi, khong mot ma loi nao.
-        # KHONG bo qua theo gia tri nho san. `current_channel` la so bot tu nho va no SAI duoc
-        # (sot lai qua reconnect, hoac ack cu). Bo qua theo no = bo dung lan doi kenh THAT SU can:
-        # ca party moi nguoi mot kenh ma bot bao cung kenh -> loi moi party khong bao gio toi noi,
-        # khong mot ma tu choi nao (user kiem chung 30/08: bot hien ca 5 nick party 3 kenh 12,
-        # vao game xem la 12/12/12/2/1).
-        # Gui that thi RE ma CHAC: dang o san kenh do -> server tra result=1 (<cung kenh>) va
-        # `_on_channel_switch_result` van coi la thanh cong. Day cung la CACH DUY NHAT xac minh
-        # duoc kenh, vi khong co lenh nao hoi "toi dang o kenh nao" (xem `kenh_that`).
+        # Khong bo qua lenh theo so kenh cu khi caller yeu cau dong bo lai.
+        # ACK chi bao ket qua lenh; instanceId phai den tu goi scene nhu client Lua.
         # PHAI THOAT TO DOI TRUOC - client game chan thang, KHONG gui goi nao
         # (`_lua_dec/UI/UIServerArea.lua:97`, `OnClick_Area`):
         #     if not Team.IsAlone(Role.playerId) then ShowCenterMessage(...); return; end
@@ -12788,24 +12830,48 @@ class GameClient:
                 log.warning("[%s] Doi kenh: roi doi loi: %s", self._label, e)
         for attempt in range(1, max(1, int(retries)) + 1):
             self._chan_switch_event.clear()
+            self._channel_scene_event.clear()
+            scene_generation = self._channel_scene_generation
+            scene_map = self.current_map
+            was_uncertain = self.kenh_dang_nghi_ngo
+            self.kenh_dang_nghi_ngo = True
+            deadline = time.monotonic() + max(0.1, float(wait))
             self._chan_switch_target = channel
             self._chan_switch_result = None
             log.info("[%s] Chuyen kenh -> %d (cho server xac nhan, lan %d/%d)",
                      self._label, channel, attempt, max(1, int(retries)))
             self.send(0x07, b"\x02\x00" + struct.pack("<H", channel))
             if not self._chan_switch_event.wait(max(0.1, float(wait))):
-                # CO SERVER IM LANG khi dich TRUNG kenh dang o (khong gui ca ma 1
-                # `不可換到同一區`). Log 30/08 21:09 sga001: dang o kenh 3, doi sang 3 -> TIMEOUT
-                # ca 2 luot, moi 30s ton 12s vo ich. Nho san dang la kenh do -> coi nhu dung kenh.
-                if self.current_channel and int(self.current_channel) == channel:
-                    log.info("[%s] Doi kenh %d: server IM LANG (dich trung kenh dang o) "
-                             "-> coi nhu da o kenh %d", self._label, channel, channel)
-                    return True
                 log.warning("[%s] Doi kenh %d TIMEOUT sau %.1fs", self._label, channel, wait)
                 continue
             result = self._chan_switch_result
-            if result in (0, 1):
-                return True
+            if result in (2, 3, 4) and self._channel_scene_generation == scene_generation:
+                self.kenh_dang_nghi_ngo = was_uncertain
+            if result == 0:
+                # Client Lua chi dong UI khi nhan ACK. Kenh that den tu ChangeScene.
+                while True:
+                    self._channel_scene_event.clear()
+                    if (self._channel_scene_generation != scene_generation
+                            and self.current_map == scene_map
+                            and self.current_channel == channel):
+                        return True
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    self._channel_scene_event.wait(remaining)
+                log.warning("[%s] Doi kenh %d: ACK OK nhung chua co scene xac nhan dich "
+                            "(map=%s, kenh=%s)", self._label, channel,
+                            self.current_map, self.current_channel)
+                continue
+            if result == 1:
+                # Ma 'cung khu' chi doi chieu so da doc tu scene, khong tao so kenh moi.
+                if (self._channel_scene_generation > 0 and self.current_map == scene_map
+                        and self.current_channel == channel):
+                    self.kenh_dang_nghi_ngo = False
+                    return True
+                log.warning("[%s] Doi kenh %d: ma 1 mau thuan voi scene kenh %s",
+                            self._label, channel, self.current_channel)
+                continue
             if result == 3:
                 # `S:007-002 結果 3: 組隊不可換分區` = DANG TO DOI THI KHONG DOI KENH DUOC.
                 # Day la VONG LUAN QUAN da lam party khong bao gio du: ket trong mot party (ke ca
@@ -12829,20 +12895,13 @@ class GameClient:
         if self._chan_switch_result is None:
             self._chan_switch_result = -1          # -1 = TIMEOUT, khong phai ma cua server
             self._chan_switch_luc = time.time()
-        # LENH DOI KENH HONG -> SO KENH DANG NHO KHONG CON LA BANG CHUNG.
-        #
-        # `current_channel` la SO NHO SAN, khong phai so that (KNOWLEDGE.md muc 7, user kiem chung
-        # 30/08: bot hien ca 5 nick party 3 o kenh 12, vao game xem la 12/12/12/2/1). Game KHONG CO
-        # lenh hoi "toi dang o kenh nao" - nguon duy nhat la ack cua chinh `0x07 0200`.
-        # Nen mot lenh doi kenh TIMEOUT / bi tu choi de lai dung tinh trang toi nhat: bot khong con
-        # biet minh o dau, ma van om so cu nhu that.
-        # Dieu phoi lay dung so cu do de ket luan "party lech kenh" roi ra lenh xe doi:
-        #   00:21:26 [party 24] party lech kenh {1: 1, 2: 4} -> CHOT kenh dich = 5
-        # trong khi ca party dang o CUNG kenh (user 11/09: "p24 dang o kenh 5 het, co lech kenh deo
-        # dau"). Danh dau NGHI NGO de dieu phoi biet so nay khong dung de ket luan duoc.
-        self.kenh_dang_nghi_ngo = True
-        log.warning("[%s] Doi kenh %d THAT BAI han toan sau %d luot: %s -> so kenh dang nho (%s) "
-                    "khong con la bang chung", self._label, channel, max(1, int(retries)),
+        # Timeout/ACK thieu scene khong xac nhan dich. Scene moi van la bang chung,
+        # con tu choi ro rang (2/3/4) khong lam mat kenh da biet truoc khi gui.
+        if (self._channel_scene_generation == scene_generation
+                and self._chan_switch_result not in (2, 3, 4)):
+            self.kenh_dang_nghi_ngo = True
+        log.warning("[%s] Doi kenh %d CHUA XAC NHAN sau %d luot: %s; scene kenh=%s",
+                    self._label, channel, max(1, int(retries)),
                     "server IM LANG (timeout)" if self._chan_switch_result == -1
                     else "S:007-002 ma %s" % self._chan_switch_result,
                     getattr(self, "current_channel", None))
@@ -12851,8 +12910,8 @@ class GameClient:
     def kenh_dang_chac(self) -> bool:
         """So kenh hien tai co phai do SERVER xac nhan khong (khong phai so nho lai tu truoc).
 
-        Chac = lan cuoi cham vao kenh la mot ack that (`S:007-002` ma 0/1, `0x03`, `0x0c`), va tu
-        do den gio khong co lenh doi kenh nao hong."""
+        Kenh lay tu `0x03`/`0x0c`; ACK doi kenh khong duoc ghi de gia tri nay.
+        Trong khi doi scene hoac sau timeout, so cu chua du de ket luan."""
         return bool(getattr(self, "current_channel", None)) and not getattr(
             self, "kenh_dang_nghi_ngo", False)
 
@@ -12867,15 +12926,12 @@ class GameClient:
         # vi bat acc "bao cao" len - ca 5 acc nam trong MOT tien trinh, khong co gi phai bao.
         self._chan_switch_luc = time.time()
         if result == 0:
-            if target:
-                self._note_current_channel(target, "0x07 ack")
-            log.info("[%s] Doi kenh OK -> %s", self._label, target or "?")
+            log.info("[%s] ACK doi kenh dich %s: OK; kenh thuc te cho goi scene",
+                     self._label, target or "?")
         elif result == 1:
             # `不可換到同一區`: server TU CHOI vi dich trung khu dang o -> suy ra dang o khu do.
             # Day la thong bao LOI cua client, khong phai "server xac nhan da doi xong".
-            if target:
-                self._note_current_channel(target, "0x07 ma1 (trung khu dang o)")
-            log.info("[%s] Doi kenh: server bao TRUNG khu dang o -> dang o kenh %s",
+            log.info("[%s] Doi kenh: server bao TRUNG khu dang o (dich yeu cau %s)",
                      self._label, target or "?")
         else:
             log.warning("[%s] Doi kenh %s THAT BAI: %s (result=%d)",

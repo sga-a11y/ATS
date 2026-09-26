@@ -1,4 +1,5 @@
 import time
+import threading
 import unittest
 from unittest import mock
 
@@ -26,7 +27,7 @@ class TestChannelSwitch(unittest.TestCase):
         game.running = True
         return game
 
-    def test_switch_channel_waits_for_success_ack(self):
+    def test_switch_channel_waits_for_ack_and_scene(self):
         game = self.make_client()
         # Kenh hien tai da TUOI -> `kenh_that()` khong phai hoi lai server (khong sinh goi 0x0c),
         # de assert duoi day van do dung MOT goi 0x07 nhu truoc.
@@ -34,7 +35,10 @@ class TestChannelSwitch(unittest.TestCase):
         game.current_channel_at = time.time()
 
         with mock.patch.object(game, "send") as send:
-            send.side_effect = lambda _op, _payload: game._on_channel_switch_result(_switch_result(0))
+            def receive(_op, _payload):
+                game._on_channel_switch_result(_switch_result(0))
+                game._note_current_channel(50, "0x0c")
+            send.side_effect = receive
             self.assertTrue(game.switch_channel(50, wait=1.0, retries=1))
 
         send.assert_called_once_with(0x07, b"\x02\x00\x32\x00")
@@ -52,12 +56,101 @@ class TestChannelSwitch(unittest.TestCase):
 
     def test_switch_channel_same_channel_ack_is_success(self):
         game = self.make_client()
+        game._note_current_channel(50, "0x0c")
 
         with mock.patch.object(game, "send") as send:
             send.side_effect = lambda _op, _payload: game._on_channel_switch_result(_switch_result(1))
             self.assertTrue(game.switch_channel(50, wait=1.0, retries=1))
 
         self.assertEqual(game.current_channel, 50)
+
+    def test_ack_alone_does_not_invent_current_channel(self):
+        game = self.make_client()
+        game._note_current_channel(12, "0x0c")
+        with mock.patch.object(game, "send", side_effect=lambda *_:
+                               game._on_channel_switch_result(_switch_result(0))):
+            self.assertFalse(game.switch_channel(50, wait=0.01, retries=1))
+        self.assertEqual(game.current_channel, 12)
+        self.assertFalse(game.kenh_dang_chac())
+
+    def test_scene_before_ack_is_not_overwritten_by_requested_target(self):
+        game = self.make_client()
+        def receive(*_):
+            game._note_current_channel(19, "0x0c")
+            game._on_channel_switch_result(_switch_result(0))
+        with mock.patch.object(game, "send", side_effect=receive):
+            self.assertFalse(game.switch_channel(50, wait=0.01, retries=1))
+        self.assertEqual(game.current_channel, 19)
+        self.assertTrue(game.kenh_dang_chac())
+
+    def test_matching_scene_before_ack_succeeds(self):
+        game = self.make_client()
+        def receive(*_):
+            game._note_current_channel(50, "0x0c")
+            game._on_channel_switch_result(_switch_result(0))
+        with mock.patch.object(game, "send", side_effect=receive):
+            self.assertTrue(game.switch_channel(50, wait=0.01, retries=1))
+
+    def test_same_channel_result_cannot_replace_different_scene_channel(self):
+        game = self.make_client()
+        game._note_current_channel(12, "0x0c")
+        with mock.patch.object(game, "send", side_effect=lambda *_:
+                               game._on_channel_switch_result(_switch_result(1))):
+            self.assertFalse(game.switch_channel(50, wait=0.01, retries=1))
+        self.assertEqual(game.current_channel, 12)
+
+    def test_timeout_is_not_success_even_when_cached_channel_matches(self):
+        game = self.make_client()
+        game._note_current_channel(50, "0x0c")
+        with mock.patch.object(game, "send"):
+            self.assertFalse(game.switch_channel(50, wait=0.01, retries=1))
+        self.assertFalse(game.kenh_dang_chac())
+
+    def test_rejection_keeps_confirmed_scene_channel_certain(self):
+        game = self.make_client()
+        game._note_current_channel(12, "0x0c")
+        with mock.patch.object(game, "send", side_effect=lambda *_:
+                               game._on_channel_switch_result(_switch_result(4))):
+            self.assertFalse(game.switch_channel(50, wait=0.01, retries=1))
+        self.assertTrue(game.kenh_dang_chac())
+
+    def test_late_ack_does_not_change_scene_channel_or_generation(self):
+        game = self.make_client()
+        game._chan_switch_target = 50
+        game._note_current_channel(19, "0x0c")
+        generation = game._channel_scene_generation
+        game._on_channel_switch_result(_switch_result(0))
+        self.assertEqual(game.current_channel, 19)
+        self.assertEqual(game._channel_scene_generation, generation)
+
+    def test_waits_for_scene_arriving_after_ack(self):
+        game = self.make_client()
+        game._note_current_channel(12, "0x0c")
+        scene = threading.Timer(0.03, game._note_current_channel, args=(50, "0x0c"))
+        def receive(*_):
+            game._on_channel_switch_result(_switch_result(0))
+            self.assertEqual(game.current_channel, 12)
+            self.assertFalse(game.kenh_dang_chac())
+            scene.start()
+        try:
+            with mock.patch.object(game, "send", side_effect=receive):
+                self.assertTrue(game.switch_channel(50, wait=0.5, retries=1))
+        finally:
+            scene.cancel()
+            if scene.ident is not None:
+                scene.join()
+
+    def test_matching_channel_in_different_map_does_not_complete_request(self):
+        game = self.make_client()
+        game.current_map = 49942
+        def receive(*_):
+            game.current_map = 12001
+            game._note_current_channel(50, "0x0c")
+            game._on_channel_switch_result(_switch_result(0))
+        with mock.patch.object(game, "send", side_effect=receive):
+            self.assertFalse(game.switch_channel(50, wait=0.01, retries=1))
+        self.assertEqual(game.current_channel, 50)
+        self.assertTrue(game.kenh_dang_chac())
 
     def test_switch_channel_timeout_keeps_old_channel(self):
         game = self.make_client()

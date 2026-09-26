@@ -75,23 +75,6 @@ class TestKhongConVongTuCho(unittest.TestCase):
         self.assertNotIn("READY_WAIT_SPLIT_SEC", self.ma)
 
 
-class TestLeaderMoiLuon(unittest.TestCase):
-    def setUp(self):
-        self.src = _src()
-
-    def test_moi_ngay_khong_cho_du_san_sang(self):
-        i = self.src.find("member san sang -> MOI (theo entity)")
-        self.assertGreater(i, 0, "mat moc leader di moi party")
-        self.assertIn("dieu phoi gom", self.src[i:i + 300],
-                      "khong ghi ro thieu nguoi thi ai lo")
-
-    def test_khong_tu_reform_trong_luc_moi(self):
-        """Doan tu luc vao nhanh leader den luc goi moi: khong duoc tu ra lenh gom."""
-        i = self.src.find("(LEADER) toi train map theo party NHUNG chi con")
-        j = self.src.find("member san sang -> MOI (theo entity)", i)
-        self.assertGreater(j, i)
-        self.assertNotIn("_do_reform", _ma(self.src[i:j]),
-                         "leader lai tu ra lenh gom truoc khi moi")
 
 
 class TestChuoiLenhVanDuBac(unittest.TestCase):

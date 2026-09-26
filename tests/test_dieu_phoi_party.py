@@ -32,6 +32,7 @@ with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
     import run_party_digioi as R
 
 from bot import config
+from tests.party_controller_helpers import quyet_party
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -90,7 +91,7 @@ class _Nen(unittest.TestCase):
 
     def _quyet(self, lech_tu=None):
         st = R._pstate(self.PARTY)
-        return R._dieu_phoi_quyet(self.PARTY, st, R._acc_song(self.PARTY), lech_tu)
+        return quyet_party(R, self.PARTY, st, R._acc_song(self.PARTY), lech_tu)
 
 
 DG = None      # gan trong setUpModule
@@ -297,64 +298,25 @@ class TestPhatHienLechVaRaLENH(_Nen):
         self.assertNotEqual(kh["viec"], R.VIEC_GOM)
 
 
-class TestBienQuyetDinhThanhHanhDONG(_Nen):
-    """Party 19 chet vi leader BIET member lech map (in 488 lan) ma khong ai bien cai biet do
-    thanh hanh dong. Ke hoach ma khong thi hanh thi vo nghia."""
+class TestQuyetDinhDuocApDung(_Nen):
+    """Decision effects are applied by the party engine adapter."""
 
-    def test_lenh_GOM_thi_bump_reform_gen(self):
+    def test_doi_pha_duoc_ghi_vao_state_party(self):
+        self._dat(a1=_C(DG, 1, R.DIGIOI_LIMIT), a2=_C(DG, 1, R.DIGIOI_LIMIT),
+                  a3=_C(DG, 1, R.DIGIOI_LIMIT))
+        kh, _ly, _lech = self._quyet()
+        self.assertEqual(kh["pha"], "train")
+        self.assertEqual(R._pstate(self.PARTY)["dt_phase"], "train")
+
+    def test_lenh_gom_khong_bam_reform_gen_cho_account_script_cu(self):
         st = R._pstate(self.PARTY)
-        g0 = st["reform_gen"]
-        R._dieu_phoi_thi_hanh(self.PARTY, st, {"viec": R.VIEC_GOM, "ly_do": "test"}, True)
-        self.assertGreater(st["reform_gen"], g0, "ra lenh gom ma khong bump = khong ai dung day")
+        st["dt_phase"] = "train"
+        self._dat(a1=_C(12003, 1, 5), a2=_C(12001, 1, 5), a3=_C(12001, 1, 5))
+        before = st["reform_gen"]
+        kh, _ly, _lech = self._quyet(lech_tu=time.time() - R.KE_HOACH_LECH_MAP_SEC - 1)
+        self.assertEqual(kh["viec"], R.VIEC_GOM)
+        self.assertEqual(st["reform_gen"], before)
 
-    def test_khong_doi_ke_hoach_thi_KHONG_bump_lien_tuc(self):
-        """Bump moi nhip 2s la ca party bi giat lai mai, khong bao gio lam xong viec gi.
-
-        13/09: thu chan viec do bang `if not doi: return` la SAI - lenh gom chi song dung mot
-        nhip, trung cooldown la mat vinh vien (party 35, xem
-        `test_lenh_gom_khong_bi_nuot_boi_cooldown.py`). Nguoi giu nhip la COOLDOWN.
-        """
-        st = R._pstate(self.PARTY)
-        R._dieu_phoi_thi_hanh(self.PARTY, st, {"viec": R.VIEC_GOM, "ly_do": "test"}, True)
-        g0 = st["reform_gen"]
-        for _ in range(5):      # nam nhip lien tiep, ke hoach khong doi
-            R._dieu_phoi_thi_hanh(self.PARTY, st, {"viec": R.VIEC_GOM, "ly_do": "test"}, False)
-        self.assertEqual(st["reform_gen"], g0, "ra lenh gom dam len dot gom dang chay")
-
-    def test_KHONG_ra_lenh_gom_don_dap(self):
-        """Moi lenh gom ABORT moi acc dang di duong. Ra don dap = huy chinh viec vua ra lenh.
-        Party 17 (05/09): gom luc 18:49:32, 18:49:36, 18:50:50, 18:50:56 -> leader bi
-        'ABORT di duong reform' 4 lan trong 90 giay, ca party khong di xong buoc nao."""
-        st = R._pstate(self.PARTY)
-        kh = {"viec": R.VIEC_GOM, "ly_do": "test"}
-        R._dieu_phoi_thi_hanh(self.PARTY, st, kh, True)
-        g1 = st["reform_gen"]
-        self.assertGreater(g1, 0, "lan dau phai bump")
-        for _ in range(5):
-            R._dieu_phoi_thi_hanh(self.PARTY, st, kh, True)
-        self.assertEqual(st["reform_gen"], g1, "bump don dap -> ca party bi giat lai lien tuc")
-
-    def test_het_cooldown_thi_duoc_gom_lai(self):
-        st = R._pstate(self.PARTY)
-        kh = {"viec": R.VIEC_GOM, "ly_do": "test"}
-        R._dieu_phoi_thi_hanh(self.PARTY, st, kh, True)
-        g1 = st["reform_gen"]
-        with st["lock"]:
-            # Lui CA HAI moc: `dieu_phoi_gom_luc` (cooldown gom) va `reform_bump_luc` (khoang lang
-            # giua hai lenh reform). Day la mo phong "da troi qua 180 giay", ma 180s thi ca hai han
-            # deu het - khong lui mot cai la dang do mot tinh huong KHONG CO THAT.
-            st["dieu_phoi_gom_luc"] = time.time() - R.KE_HOACH_GOM_COOLDOWN - 1
-            st["reform_bump_luc"] = time.time() - R.KE_HOACH_GOM_COOLDOWN - 1
-        R._dieu_phoi_thi_hanh(self.PARTY, st, kh, True)
-        self.assertGreater(st["reform_gen"], g1, "lech mai ma khong bao gio gom lai cung hong")
-
-    def test_khoang_lang_bump_NGAN_HON_cooldown_gom(self):
-        """Hai han phai xep long nhau: het cooldown gom (180s) thi khoang lang bump (30s) da het tu
-        lau. Neu nguoc lai, lenh gom hop le se bi chinh khoang lang chan -> party lech vinh vien."""
-        self.assertLess(R.REFORM_BUMP_CACH_TOI_THIEU_SEC, R.KE_HOACH_GOM_COOLDOWN)
-
-    def test_cooldown_du_dai_cho_mot_dot_gom_chay_xong(self):
-        self.assertGreaterEqual(R.KE_HOACH_GOM_COOLDOWN, 120)
 
 
 class TestGhiKeHoach(_Nen):
@@ -394,129 +356,42 @@ class TestAccDaTatKhongKeoCaPartyChet(_Nen):
         self.assertEqual([u for u, _c in R._acc_song(self.PARTY)], ["a1"])
 
 
-class TestKhongConVongMoiTRAN(unittest.TestCase):
-    """Neo cau truc: vong nao cho 'du party' ma khong co duong ra la mot party 19 dang cho."""
+class TestKhongConVongChoPartyTran(unittest.TestCase):
+    """The controller tick decides again after every completed worker action."""
 
-    # Duong ra hop le o CAP PARTY (khong tinh `_stopped()` / `c.running`: hai cai do chi la
-    # "bot tat" chu khong pha duoc the ket).
-    LOI_RA = ("_resync_ck",              # ep dong bo (GUI/watchdog)
-              "_ab()",                   # abort theo reform_gen
-              "reform_gen",              # tu gom lai
-              "_finish_digioi_train_if_time_over",   # het gio DG -> bao ca party
-              "_dg_gather_giveup",       # acc khac het gio DG
-              "_should_resync_incomplete_digioi_party")
-
-    def _than_vong(self, src, sau):
-        """Than vong lap = tu sau dong `while` toi khi thut le tro ve <= muc cua `while`."""
-        dong = src[sau:].split("\n")
-        thut0 = None
-        ra = []
-        for d in dong:
-            if not d.strip():
-                ra.append(d)
-                continue
-            t = len(d) - len(d.lstrip())
-            if thut0 is None:
-                thut0 = t
-            elif t < thut0:
-                break
-            ra.append(d)
-        return "\n".join(ra)
-
-    def test_moi_vong_cho_du_party_deu_co_loi_ra(self):
-        src = _src()
-        thieu = []
-        for m in re.finditer(r"while [^\n]*joined_member_count\([^\n]*:\n", src):
-            than = self._than_vong(src, m.end())
-            if not any(k in than for k in self.LOI_RA):
-                thieu.append(src[:m.start()].count("\n") + 1)
-        self.assertEqual(thieu, [],
-                         "vong cho du party o dong %s khong co loi ra nao ngoai Stop/mat ket noi "
-                         "-> dung the ket da giet party 19 trong 2h42" % thieu)
-
-    def test_vong_moi_cua_leader_hoi_lai_dieu_phoi(self):
-        src = _src()
-        i = src.find("def _moi_theo_dieu_phoi(")
-        self.assertGreater(i, 0, "chua co ham moi party theo dieu phoi")
-        than = src[i:src.find("\n        def ", i + 10)]
-        for can in ("_resync_ck", "VIEC_GOM", "_finish_digioi_train_if_time_over",
-                    "_dg_gather_giveup", "reform_gen"):
-            self.assertIn(can, than, "vong moi thieu kiem tra: %s" % can)
-
-    def test_khong_con_vong_moi_tran_cu(self):
-        self.assertNotIn("CHO VO HAN: du party moi danh", _src(),
-                         "van con vong moi tran kieu cu")
+    def test_nhip_engine_khong_cho_roster_trong_vong_lap(self):
+        import ast
+        from bot import party_engine as PE
+        with io.open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "PartyEngine")
+        tick = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "nhip")
+        self.assertFalse(any(isinstance(n, ast.While) for n in ast.walk(tick)))
+        self.assertTrue(hasattr(PE.PartyEngine, "nhip"))
 
 
-class TestLenhGOMKhongDuocTATACC(unittest.TestCase):
-    """BUG THAT 05/09 18:09 (party 10) - do chinh lan sua nay gay ra:
 
-        18:09:06 [luumot] (LEADER) DU 4/4 member san sang -> MOI (theo entity)
-        18:09:06 [luumot] (LEADER) dieu phoi bao GOM (party lech kenh [1, 2]) -> thoi moi party DG
-        (het log - leader tat han, ca party dung)
+class TestLenhGOMKhongTatAcc(unittest.TestCase):
+    """A regroup action is a worker task, not an account exit."""
 
-    Nhanh moi party DG nam THANG trong than `run_account`, nen `return` o do = KET THUC
-    run_account = TAT LUON ACC. Cac dong `return` ngay canh no deu di kem `c.close()` (Stop /
-    mat ket noi) hoac co nhanh relogin rieng (`_finish_digioi_train_if_time_over` dat
-    `_dt["relogin_train"]`). Nhanh dieu phoi thi khong co gi nhu the -> luong chet luon.
-
-    Lenh GOM la lenh LAM VIEC KHAC, khong phai lenh tat acc.
-    """
-
-    def _khoi_gom_trong_vong_moi_DG(self):
-        src = _src()
-        i = src.find("MOI (theo entity)")
-        self.assertGreater(i, 0, "khong tim thay vong moi party DG")
-        j = src.find("dieu phoi bao GOM", i)
-        self.assertGreater(j, 0, "vong moi party DG khong hoi dieu phoi")
-        return src[j:j + 900]
-
-    def test_lenh_GOM_o_vong_moi_DG_phai_continue_chu_khong_return(self):
-        khoi = self._khoi_gom_trong_vong_moi_DG()
-        truoc_continue = khoi[:khoi.find("continue")] if "continue" in khoi else khoi
-        self.assertIn("continue", khoi, "nhanh GOM khong `continue` -> roi khoi vong")
-        self.assertNotIn("\n                        return", truoc_continue,
-                         "nhanh GOM `return` = ket thuc run_account = TAT ACC (bug party 10)")
-
-    def test_lenh_GOM_phai_that_su_di_gom(self):
-        """Thoi moi ma khong gom thi chi la doi cho ket, khong sua duoc gi."""
-        self.assertIn("_do_reform()", self._khoi_gom_trong_vong_moi_DG())
-
-    def test_cac_nhanh_GOM_khac_nam_trong_closure_nen_return_vo_hai(self):
-        """Hai cho con lai (`_do_reform`, `_moi_theo_dieu_phoi`) la ham long - `return` chi thoat
-        ham do. Neo lai de ai do bung chung ra than run_account thi test do."""
-        src = _src()
-        for ten in ("def _do_reform(", "def _moi_theo_dieu_phoi("):
-            i = src.find(ten)
-            self.assertGreater(i, 0, ten)
-            self.assertTrue(src[max(0, i - 9):i].endswith(" " * 8),
-                            "%s khong con la ham long -> `return` ben trong se tat acc" % ten)
+    def test_gom_giao_viec_ve_thanh_cho_acc_lech(self):
+        from bot import party_engine as PE
+        accs = [PE.AnhAcc("leader", la_leader=True, map_id=12001, kenh=1, so_member=1),
+                PE.AnhAcc("member", map_id=21001, kenh=1, so_member=1)]
+        anh = PE.AnhParty(0, accs, can_bao_nhieu=1, thanh_dich=12001,
+                          dp_viec=PE.DP_GOM)
+        jobs = PE.quyet_dinh(anh)
+        self.assertEqual(jobs["member"], PE.VIEC_VE_THANH)
+        self.assertNotEqual(jobs.get("leader"), PE.VIEC_THOAT)
 
 
-class TestKhongDeVIET_LUAT_CHET(unittest.TestCase):
-    """`st["training_started"]` tung duoc DOC ma khong ai GHI -> luat watcher chet am tham,
-    khong ai biet. Neo lai de khong tai dien."""
 
-    def test_training_started_co_nguoi_ghi(self):
-        src = _src()
-        self.assertIn('st["training_started"] = True', src,
-                      "khoa nay lai chi co nguoi doc, luat watcher se chet am tham")
+class TestKhongDeLuatChoChet(unittest.TestCase):
+    """Party decisions use client snapshots without a waiting-report watchdog."""
 
-    def test_moi_khoa_watcher_doc_deu_co_cho_ghi(self):
-        src = _src()
-        i = src.find("def _party_watcher(")
-        than = src[i:src.find("\ndef ", i + 10)]
-        doc = set(re.findall(r'st\.get\("([a-z_]+)"', than)) | \
-            set(re.findall(r'st\["([a-z_]+)"\]', than))
-        # `lock` la doi tuong dung truc tiep, khong phai co trang thai
-        doc.discard("lock")
-        chet = []
-        for k in sorted(doc):
-            if not re.search(r'(st\["%s"\]\s*=|"%s":)' % (k, k), src):
-                chet.append(k)
-        self.assertEqual(chet, [],
-                         "watcher doc khoa %s ma KHONG CHO NAO ghi -> luat dung khoa do khong bao "
-                         "gio chay" % chet)
+    def test_khong_con_party_watcher(self):
+        self.assertFalse("def _party_watcher(" in _src())
+
 
 
 class TestPhaDIGIOI_KHONG_DUOC_GOM(_Nen):
@@ -545,15 +420,16 @@ class TestPhaDIGIOI_KHONG_DUOC_GOM(_Nen):
         self.assertEqual(kh["viec"], R.VIEC_DONG_BO)
         self.assertIn("kenh", ly_do)
 
-    def test_DONG_BO_bam_resync_gen_KHONG_bam_reform_gen(self):
-        """`reform_gen` = gom ve THANH; tu DG ra thanh la phai di bo ra cong -> loi ca party ra.
-        `resync_gen` = giai tan + sync kenh + moi lai NGAY TAI CHO."""
+    def test_DONG_BO_khong_bam_co_cho_account_script_cu(self):
+        """The engine owns synchronization; old account-script flags must stay untouched."""
         st = R._pstate(self.PARTY)
         g_reform, g_resync = st["reform_gen"], st["resync_gen"]
-        R._dieu_phoi_thi_hanh(self.PARTY, st,
-                              {"viec": R.VIEC_DONG_BO, "ly_do": "test"}, True)
-        self.assertEqual(st["reform_gen"], g_reform, "bam reform_gen = keo ca party ra khoi DG")
-        self.assertGreater(st["resync_gen"], g_resync, "khong bam gi -> party dung ngay trong DG")
+        self._dat(a1=_C(DG, 1, 30, roster=0), a2=_C(DG, 5, 30, roster=0),
+                  a3=_C(DG, 9, 30, roster=0))
+        kh, _ly, _ = self._quyet(lech_tu=time.time() - 9999)
+        self.assertEqual(kh["viec"], R.VIEC_DONG_BO)
+        self.assertEqual(st["reform_gen"], g_reform)
+        self.assertEqual(st["resync_gen"], g_resync)
 
     def test_chua_lech_du_lau_trong_DG_thi_de_yen(self):
         self._dat(a1=_C(DG, 1, 30), a2=_C(DG, 5, 30), a3=_C(DG, 9, 30))
@@ -579,160 +455,44 @@ class TestPhaDIGIOI_KHONG_DUOC_GOM(_Nen):
         self.assertIn("het gio", ly_do)
 
 
-class TestMotLuongChoCaBOT(unittest.TestCase):
-    """BUG THAT 06/09 (party 53): party chay 16 phut MA KHONG CO AI DIEU PHOI.
+class TestMotLuongChoMoiParty(unittest.TestCase):
+    """Runner registers the party engine after login and starts no global coordinator."""
 
-        01:53:44 [party 53] DIEU PHOI gen 6: ...        <- dong cuoi cung
-        01:54:54 -> 01:56:46 [vumhai] chua moi 4 member ... 'lech kenh live 1!=4' (64 lan)
-        (khong mot nhip DIEU PHOI nao trong khi acc van chay binh thuong)
+    def test_khong_con_vong_dieu_phoi_chung(self):
+        src = _src()
+        self.assertFalse("def _dieu_phoi_loop(" in src)
+        self.assertFalse("bao_dam_dieu_phoi(" in src)
 
-    Goc: dieu phoi nam trong `_party_watcher` - MOI PARTY MOT LUONG. Watcher TU THOAT khi party
-    khong con acc chay, ma `start_party` chi dung watcher moi o nhanh PHIEN MOI (`_fresh`);
-    nhanh `not _fresh` THOAT SOM truoc do. Watcher chet mot lan + user start lai luc con acc
-    chay = party do vinh vien khong co dieu phoi.
+    def test_runner_dang_ky_engine_sau_login(self):
+        src = _src()
+        self.assertIn("_dang_ky_engine_moi(username, c, pidx", src)
+        self.assertIn("doc_party=lambda _p=pidx: _engine_doc_party(_p)", src)
+        self.assertIn("ap_dung_party=lambda _anh, _v, _ly, _hu", src)
 
-    Nay: MOT luong cho ca bot, quet moi party, khong bao gio thoat, va tu hoi sinh.
-    """
-
-    def _src(self):
-        import io as _io
-        return _io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8").read()
-
-    def test_dieu_phoi_KHONG_con_nam_trong_party_watcher(self):
-        s = self._src()
-        i = s.find("def _party_watcher(")
-        than = s[i:s.find("\ndef ", i + 10)]
-        self.assertNotIn("_dieu_phoi_quyet", than,
-                         "dieu phoi van gan vao watcher/party -> watcher chet la mat dieu phoi")
-
-    def test_vong_dieu_phoi_KHONG_BAO_GIO_thoat(self):
-        s = self._src()
-        i = s.find("def _dieu_phoi_loop(")
-        self.assertGreater(i, 0, "khong co vong dieu phoi chung")
-        than = s[i:s.find("\ndef ", i + 10)]
-        self.assertIn("while True:", than)
-        for dong in than.splitlines():
-            self.assertNotEqual(dong.strip(), "return", "vong dieu phoi co duong thoat")
-
-    def test_loi_mot_party_khong_giet_ca_vong(self):
-        s = self._src()
-        i = s.find("def _dieu_phoi_loop(")
-        than = s[i:s.find("\ndef ", i + 10)]
-        j = than.find("for pidx in range(")
-        self.assertGreater(j, 0)
-        self.assertIn("except Exception", than[j:], "loi 1 party lam chet dieu phoi ca bot")
-
-    def test_start_party_LUON_bao_dam_dieu_phoi(self):
-        """Phai goi TRUOC nhanh `not _fresh` - do la nhanh thoat som da gay ra bug."""
-        s = self._src()
-        i = s.find("def start_party(")
-        than = s[i:s.find("\ndef ", i + 10)]
-        j, k = than.find("bao_dam_dieu_phoi()"), than.find("if not _fresh:")
-        self.assertGreater(j, 0, "start_party khong bao dam dieu phoi")
-        self.assertLess(j, k, "goi SAU nhanh thoat som -> van co party khong co dieu phoi")
-
-    def test_start_account_le_cung_bao_dam(self):
-        s = self._src()
-        i = s.find("def start_account(")
-        self.assertIn("bao_dam_dieu_phoi()", s[i:i + 1200])
-
-    def test_goi_nhieu_lan_chi_co_MOT_luong(self):
-        R.bao_dam_dieu_phoi()
-        t1 = R._DIEU_PHOI_THREAD
-        R.bao_dam_dieu_phoi()
-        self.assertIs(R._DIEU_PHOI_THREAD, t1, "moi lan goi lai de mot luong -> ngap luong")
-        self.assertTrue(t1.is_alive())
-        self.assertTrue(t1.daemon, "khong daemon -> tat bot khong thoat duoc")
 
 
 if __name__ == "__main__":
     unittest.main()
 
 
-class TestMemberKhongChoLeaderLapDuong(unittest.TestCase):
-    """Member KHONG cho vo han, va cung KHONG tu di. Het han thi RA, de dieu phoi quyet.
+class TestMemberKhongTuLapDuong(unittest.TestCase):
+    """When a full party travels, one leader pulls and members wait for new ticks."""
 
-    Cho nay da qua BA doi thiet ke, hai lan dau deu sai mot nua:
+    def test_chi_nguoi_keo_nhan_lenh_di_map(self):
+        from bot import party_engine as PE
+        accs = [PE.AnhAcc("leader", la_leader=True, map_id=12001, kenh=1, so_member=1),
+                PE.AnhAcc("member", map_id=12001, kenh=1, so_member=1)]
+        anh = PE.AnhParty(0, accs, can_bao_nhieu=1, map_dich=21001,
+                          dp_viec=PE.DP_DI_TRAIN, nguoi_keo="leader")
+        jobs = PE.quyet_dinh(anh)
+        self.assertEqual(jobs["leader"], PE.VIEC_VE_MAP)
+        self.assertEqual(jobs["member"], PE.VIEC_NGHI)
 
-      1. (truoc 05/09) Member cho leader VO HAN. Log party 10 (05/09 18:22-18:23): leader bi
-         `ABORT di duong reform: reform_gen 1 -> 5` roi di lam dungeon + sync kenh, khong he cong
-         bo cho gen moi -> 3 member spam "cho leader lap duong toi map 21812" khong dut.
-
-      2. (05/09 -> 11/09) Het `ROUTE_PLAN_TIEP_QUAN_SEC` thi member TU CHOT thanh tap ket
-         (`_chot_thanh_tap_ket(False)`) roi di lay. Bo duoc cho-vo-han, nhung buoc DAU TIEN cua
-         flow "di train" la `pre_route_town_hop()` = VE THANH. Nen het han = quay dau ve thanh,
-         dung luc leader dang keo ca doi ra bai. Party 3, 11/09:
-             09:04:02 [laochin] (member) cho leader lap duong toi map 21841 (tu lap sau 20s)
-             09:04:34 [nanam] (LEADER) reform: 4/4 member join lai -> KEO qua cong ra train map
-             09:04:53 [nanam] qua cong idx=1 -> map 21002        <- leader DANG keo
-             09:04:55 [batbat]  pre-route: tele trung gian ve thanh 12001 truoc
-             09:04:55 [hoathap] pre-route: tele trung gian ve thanh 12061 truoc
-         Party DU 4/4, chi la leader cong bo route cham 14 giay so voi han 20s.
-         (user: "ca pt dang chay ra map train thi bon member tele ve thanh" -> "lai la acc tu
-         quyet, code ngu vai lon")
-
-      3. (dung) Het han thi member RA khoi `_do_reform`, khong cho tiep va cung khong tu di dau.
-         Leader hong THAT thi DIEU PHOI thay: no doc map ca party moi 2 giay va co san phep bat
-         party dung hinh (`_acc_dung_hinh`). Mot cho quyet.
-
-    Bai hoc giong het `_cho_leader_keo` (xoa 10/09): han dai hay ngan khong phai van de - van de
-    la ACC TU QUYET khi het han.
-    """
-
-    def _than_reform(self):
-        src = _src()
-        # `_chot_thanh_tap_ket` da tach ra cap module thanh `chot_thanh_tap_ket` (17/09) de
-        # ENGINE MOI dung CHUNG mot ham - khong con ban thu hai de ma lech. Closure cu chi con goi
-        # lai no.
-        i = src.find("def chot_thanh_tap_ket(")
-        self.assertGreater(i, 0, "chua tach viec chot thanh tap ket ra khoi dac quyen leader")
-        return src, src[i:src.find(chr(10) + "def ", i + 10)]
-
-    def test_member_KHONG_cho_vo_han(self):
-        """Vong cho phai co HAN. Neo theo MA (`if ... > ROUTE_PLAN_TIEP_QUAN_SEC:` dung truoc dong
-        log cho) chu khong theo cua so ky tu - them mot doan ghi chu la truot (L3i)."""
-        src, _ = self._than_reform()
-        i_han = src.find("ROUTE_PLAN_TIEP_QUAN_SEC:")
-        # Dong LOG THAT, khong phai dong trich log nam trong ghi chu ca hong ben tren.
-        i_log = src.find('reform: cho leader lap duong toi map %s')
-        self.assertGreater(i_han, 0, "member van cho leader vo han -> party 10 lap lai")
-        self.assertGreater(i_log, 0)
-        self.assertLess(i_han, i_log, "cua het han phai dung TRUOC vong cho")
-
-    def test_member_KHONG_tu_chot_thanh_tap_ket(self):
-        """Doi thiet ke 2 -> 3: `_chot_thanh_tap_ket(False)` (ban member) phai bien mat han."""
-        src, _ = self._than_reform()
-        self.assertNotIn("_chot_thanh_tap_ket(False)", src,
-                         "member tu chot thanh tap ket -> tu ve thanh giua luc leader dang keo")
-
-    def test_het_han_thi_member_RA(self):
-        src, _ = self._than_reform()
-        i = src.find("ROUTE_PLAN_TIEP_QUAN_SEC:")
-        self.assertGreater(i, 0)
-        khoi = src[i:i + 700]
-        self.assertIn("return", khoi, "het han ma khong ra -> lai cho tiep")
-        self.assertIn("de dieu phoi quyet", khoi, "phai ghi ro ai la nguoi quyet thay")
-
-    def test_member_cong_bo_thi_KHONG_kem_route(self):
-        """Duong di phu thuoc thanh DA MO cua tung acc - duong cua member leader di khong duoc."""
-        _src_, than = self._than_reform()
-        self.assertIn('"route": _sr if vi_la_leader else None', than)
-
-    def test_van_chi_co_MOT_ban_chot_cho_ca_party(self):
-        """Moi acc tu tinh -> party toe ra hai thanh, leader dung A member dung B, moi mai khong
-        ai vao doi. Phai khoa theo gen: ai cong bo truoc thi thang."""
-        _src_, than = self._than_reform()
-        # `_g0` doi thanh tham so `gen` khi tach ra cap module (17/09).
-        self.assertIn('_cu.get("gen") == gen', than)
-        self.assertIn('st["lock"]', than)
-
-    def test_leader_khong_di_duong_dan_toi_thanh_KHAC(self):
-        """Neu acc khac chot thanh X ma leader lai di route toi Y thi leader mot noi party mot noi."""
-        _src_, than = self._than_reform()
-        self.assertIn('int(_sr.get("city", 0)) == int(_cu.get("city", 0))', than)
-
-    def test_nguong_tiep_quan_du_cho_leader_lam_truoc(self):
-        self.assertGreaterEqual(R.ROUTE_PLAN_TIEP_QUAN_SEC, 10,
-                                "qua ngan -> member cuop quyen chot cua leader lien tuc")
-        self.assertLessEqual(R.ROUTE_PLAN_TIEP_QUAN_SEC, 60,
-                             "qua dai -> ca party dung cho nhu party 10")
+    def test_member_khong_tu_chot_thanh_khi_cho(self):
+        from bot import party_engine as PE
+        accs = [PE.AnhAcc("leader", la_leader=True, map_id=12001, kenh=1, so_member=1),
+                PE.AnhAcc("member", map_id=12001, kenh=1, so_member=1)]
+        anh = PE.AnhParty(0, accs, can_bao_nhieu=1, map_dich=21001,
+                          dp_viec=PE.DP_DI_TRAIN, nguoi_keo="leader")
+        for _ in range(3):
+            self.assertEqual(PE.quyet_dinh(anh)["member"], PE.VIEC_NGHI)

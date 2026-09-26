@@ -5,9 +5,8 @@ trong".
 
 CHUOI NHAN QUA (do tren party.log 10/09, party 2):
 
-  1. Tu 09/09 co HAI duong cung ra lenh doi kenh cho mot acc: dieu phoi tu gui
-     (`_dieu_phoi_thi_hanh_kenh`, them de sua ca party 3 bi diec) va duong acc tu nghe
-     (`_nghe_lenh_kenh`). Khong khoa -> hai lenh chong nhau:
+  1. Truoc khi hop nhat controller, hai duong gui lenh doi kenh cho mot acc
+     khong khoa -> hai lenh chong nhau:
         00:09:05 [gamo] Doi kenh 3 TIMEOUT sau 4.0s      <- duong dieu phoi
         00:09:06 [gamo] Doi kenh 3 TIMEOUT sau 6.0s      <- duong acc tu nghe
      Server tra MOT ket qua, luong con lai TIMEOUT.
@@ -81,7 +80,8 @@ class TestBoQuaPhanDOAN_KhiHetUngVien(unittest.TestCase):
     def setUp(self):
         self._pa = R.party_accounts
         R.party_accounts = lambda pidx: [(u, "p", u == "a1", u == "a1") for u in self.ACCS]
-        self._src = io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8").read()
+        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
+            self._src = fh.read()
 
     def tearDown(self):
         R.party_accounts = self._pa

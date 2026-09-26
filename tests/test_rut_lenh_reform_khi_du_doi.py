@@ -107,12 +107,18 @@ class TestAccCHIDOC(unittest.TestCase):
         self.src = _src()
 
     def test_vong_chinh_doc_reform_gen_thoa_TRUOC_khi_thi_hanh(self):
-        i = self.src.find('if st["reform_gen"] > reform_gen_handled or _gather_wait_me:')
-        self.assertGreater(i, 0, "mat nhanh thi hanh reform o vong chinh")
-        truoc = self.src[max(0, i - 900):i]
-        self.assertIn('_rg_thoa = int(st.get("reform_gen_thoa", 0) or 0)', truoc,
-                      "acc thi hanh reform ma khong doc lenh da rut")
-        self.assertIn("if _rg_thoa > reform_gen_handled:", truoc)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        with mock.patch.dict(R._party_state, {}, clear=True):
+            st = R._pstate(0)
+            st["reform_gen"] = 3
+            st["reform_gen_thoa"] = 3
+            self.assertFalse(R._reform_cho_xu(st, 0))
 
     def test_acc_khong_tu_GHI_reform_gen_thoa(self):
         """Chi dieu phoi duoc ghi. Acc ghi = acc tu quyet lenh nao con song."""

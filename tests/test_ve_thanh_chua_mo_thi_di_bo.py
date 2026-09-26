@@ -129,8 +129,21 @@ class TestDungLaiCoCheDaCo(unittest.TestCase):
                          "tu di bo = moi acc tu tra loi cong hoi thoai -> ket ca lu o cau Gioi kieu")
 
     def test_ca_hai_cho_mode_city_deu_goi(self):
-        """Mot cho luc login chores, mot cho o vong chinh - bo sot cho nao la cho do van ket."""
-        self.assertEqual(self.src.count("_ve_thanh_tap_trung(c, pidx, label, sc, city_flag)"), 2)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = NS()
+        with mock.patch.dict(R.config.PARTY_CONFIG, {0: {"mode": "city", "start_city_id": 100, "city_flag": 3}}, clear=True), \
+                mock.patch.object(R, "_event_cua_party", return_value={}), \
+                mock.patch.object(R, "_ve_thanh_tap_trung", return_value=True) as move:
+            self.assertTrue(R._engine_mode_action(0, client, "city", lambda: True))
+        self.assertEqual(move.call_args.args[0:2], (client, 0))
+        self.assertEqual(move.call_args.args[3:], (100, 3))
 
     def test_khong_con_goi_go_to_town_tron_trong_mode_city(self):
         self.assertNotIn('if c.go_to_town(sc, city_flag) and c.current_map == getattr(', self.src)

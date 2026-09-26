@@ -26,7 +26,7 @@ roi nhay kenh (server cam doi kenh khi con trong doi), nen party 5 dua DANG DU b
 
 Roi no dung chet 40 phut, va "5/5 acc DUNG HINH qua 240s" chi la HAU QUA cuoi chuoi.
 
-NGUYEN NHAN: cua o `_dieu_phoi_chot_kenh` gop HAI ca can hai hanh dong khac han vao lam mot:
+NGUYEN NHAN: cua o `_engine_chot_kenh` gop HAI ca can hai hanh dong khac han vao lam mot:
 
     doi DA DU      -> het viec that       -> XOA `kenh_dich`   (dung)
     dang doi kenh  -> lenh dang THI HANH  -> XOA `kenh_dich`   (SAI)
@@ -83,7 +83,7 @@ def _ma(s):
 
 class TestDangDoiKenhThiGiuDich(unittest.TestCase):
     def setUp(self):
-        self.than = _than(_src(), "def _dieu_phoi_chot_kenh(")
+        self.than = _than(_src(), "def _engine_chot_kenh(")
         self.ma = _ma(self.than)
 
     def test_co_nhanh_GIU_dich_khi_dang_thi_hanh(self):

@@ -112,22 +112,6 @@ class TestKhongThemBangMoi(unittest.TestCase):
         self.assertEqual(xau, [], "acc tu ghi ten vao set cap party:" + chr(10) + chr(10).join(xau))
 
 
-class TestDauVetNamTrenClient(unittest.TestCase):
-    """Thay the phai la dau vet tren CHINH CLIENT + co cho DOC THANG."""
-
-    def test_co_ghi_va_co_doc(self):
-        code = _code()
-        for attr in ("_rally_gen_da_lam", "_dg_da_xong", "_san_sang_party", "_o5_da_xong"):
-            self.assertIn(attr, code, "thieu dau vet thay the cho bang cu: " + attr)
-            self.assertIn("getattr(", code)
-
-    def test_doc_qua_account_clients(self):
-        code = _code()
-        for attr in ("_rally_gen_da_lam", "_dg_da_xong", "_san_sang_party", "_o5_da_xong"):
-            i = code.find(attr)
-            self.assertGreater(i, 0, attr)
-        # moi thay the deu phai co it nhat mot cho doc qua account_clients / client object
-        self.assertIn("account_clients.get(", code)
 
 
 if __name__ == "__main__":

@@ -105,7 +105,7 @@ class TestModeEventTatHan(unittest.TestCase):
         """Dat sau cua re thi party engine moi khong bao gio duoc gan -> van dung Phuc Than."""
         s = _doc("run_party_digioi.py")
         i_co = s.find("c.phuc_than_tat = (")
-        i_re = s.find("if dung_engine_moi(pidx):")
+        i_re = s.find("_dang_ky_engine_moi(username, c,")
         self.assertGreater(i_co, 0, "mat cho dat co")
         self.assertLess(i_co, i_re, "dat SAU cua re -> engine moi diec")
 
@@ -126,7 +126,7 @@ class TestModeEventTatHan(unittest.TestCase):
         # MOI acc MOI lan login. (Cua so 800 ky tu khong du: khoi comment giai thich dai hon the.)
         i_co = s.find("c.phuc_than_tat = (")
         i_world = s.find('log.info("[%s] (%s) vao world."')
-        i_re = s.find("if dung_engine_moi(pidx):")
+        i_re = s.find("_dang_ky_engine_moi(username, c,")
         self.assertGreater(i_world, 0)
         self.assertLess(i_world, i_co, "dat TRUOC khi vao world -> chua co du lieu do dang mac")
         self.assertLess(i_co, i_re)

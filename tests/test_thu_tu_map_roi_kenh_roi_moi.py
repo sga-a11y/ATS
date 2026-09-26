@@ -22,6 +22,8 @@ oan khi acc dang teleport. Con dong bo kenh TAI CHO thi khong ton gi, ma de lech
 """
 from __future__ import annotations
 
+from tests.party_controller_helpers import quyet_party
+
 import io
 import os
 import sys
@@ -79,7 +81,7 @@ class _Nen(unittest.TestCase):
         for u, c in clients.items():
             R.account_clients[u] = c
         st = R._pstate(self.PARTY)
-        kh, ly_do, _ = R._dieu_phoi_quyet(self.PARTY, st, R._acc_song(self.PARTY), lech_tu)
+        kh, ly_do, _ = quyet_party(R, self.PARTY, st, R._acc_song(self.PARTY), lech_tu)
         return kh, ly_do
 
 
@@ -115,12 +117,12 @@ class TestBacMapTruocBacKenh(_Nen):
         self.assertNotEqual(kh["viec"], R.VIEC_DONG_BO, ly_do)
 
     def test_chot_kenh_KHONG_chay_khi_dang_gom_map(self):
-        """`_dieu_phoi_chot_kenh` phai nghe ket luan cua dieu phoi trong CUNG nhip."""
+        """`_engine_chot_kenh` phai nghe ket luan cua dieu phoi trong CUNG nhip."""
         for u, c in {"b1": _C(12001, 1), "b2": _C(12061, 2), "b3": _C(12001, 1)}.items():
             R.account_clients[u] = c
         st = R._pstate(self.PARTY)
         st["kenh_dich"] = 9
-        _dich = R._dieu_phoi_chot_kenh(self.PARTY, st, R._acc_song(self.PARTY),
+        _dich = R._engine_chot_kenh(self.PARTY, st, R._acc_song(self.PARTY),
                                        {"viec": R.VIEC_GOM, "map": 12001})
         self.assertEqual(_dich, 9, "dang gom map ma van di chot kenh moi")
 

@@ -64,13 +64,33 @@ class TestVanDemSoAccXongDaily(unittest.TestCase):
         self.src = _src()
 
     def test_van_cong_khi_xong_daily(self):
-        self.assertIn('st["dailies_done"] += 1', _ma(self.src))
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = NS(_pe_xong_daily=False)
+        calls = []
+        self.assertTrue(E.lam_nhiem_vu_ngay(client, daily_fn=lambda c: calls.append(c)))
+        self.assertEqual(calls, [client])
+        self.assertTrue(client._pe_xong_daily)
 
     def test_khong_ai_CHO_theo_con_so_nay(self):
-        i = self.src.find('st["dailies_done"] += 1')
-        self.assertGreater(i, 0)
-        khoi = _ma(self.src[i:i + 800])
-        self.assertNotIn("while", khoi, "lai cho theo `dailies_done`")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        anh = snapshot([account(xong_daily=False), account("b", xong_daily=True)])
+        result = E.quyet_dinh(anh)
+        self.assertEqual(result["a"], E.VIEC_DAILY)
+        self.assertNotEqual(result["b"], E.VIEC_DAILY)
 
 
 if __name__ == "__main__":

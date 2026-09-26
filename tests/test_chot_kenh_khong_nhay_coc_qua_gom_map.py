@@ -4,7 +4,7 @@ User 10/09: "khac map ma dieu phoi ngu toi ko nhan ra" -> "logic thi cuc ky don 
 check map truoc, lech map thi gom map, sau do check kenh, lech kenh thi gom kenh, du pt thi di
 train".
 
-Logic do CO SAN va DUNG trong `_dieu_phoi_quyet`. Cai hong la ben canh no: `_dieu_phoi_chot_kenh`
+Logic do CO SAN va DUNG trong `_dieu_phoi_quyet`. Cai hong la ben canh no: `_engine_chot_kenh`
 chup `song` MOT LAN NUA va TU di kiem map lai. Hai anh chup cach nhau vai tram ms -> hai ket luan
 trai nguoc trong cung mot nhip.
 
@@ -77,20 +77,20 @@ def _ma(s):
 class TestChotKenhNhanKeHoach(unittest.TestCase):
     def setUp(self):
         self.src = _src()
-        self.than = _than(self.src, "def _dieu_phoi_chot_kenh(")
+        self.than = _than(self.src, "def _engine_chot_kenh(")
 
     def test_ham_nhan_ke_hoach_vua_quyet(self):
         """Khong tu suy ra tinh hinh - nhan thang ket luan cua `_dieu_phoi_quyet`."""
         self.assertRegex(self.than.split("\n")[0],
-                         r"def _dieu_phoi_chot_kenh\(pidx, st, song, kh")
+                         r"def _engine_chot_kenh\(pidx, st, song, kh")
 
     def test_noi_goi_truyen_ke_hoach_CUNG_NHIP(self):
-        """`kh` phai la ke hoach vua quyet o dong tren, khong phai doc lai tu `st`."""
+        """The effect adapter passes this tick's decision to channel selection."""
         ma = _ma(self.src)
-        i = ma.find("kh, ly_do, lech_tu[pidx] = _dieu_phoi_quyet(")
+        i = ma.find("def _engine_ap_dung_party(")
         self.assertGreater(i, 0)
-        khoi = ma[i:i + 900]
-        self.assertIn("_dieu_phoi_chot_kenh(pidx, st, song, kh)", khoi)
+        khoi = ma[i:ma.find("\ndef ", i + 10)]
+        self.assertIn("_engine_chot_kenh(pidx, st, song, kh)", khoi)
 
     def test_chi_LAP_LAI_PARTY_khi_viec_la_MOI(self):
         """Cua chan phai dung TRUOC `_bump_reform` - bump la lenh khong hoan tac duoc."""

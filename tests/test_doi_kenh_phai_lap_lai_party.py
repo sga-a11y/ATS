@@ -89,7 +89,7 @@ class TestDieuPhoiNoLapLaiParty(unittest.TestCase):
         for _u, c in song:
             c.party_members = []                        # doi da tan (de doi kenh)
         gen = self.st["reform_gen"]
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         self.assertGreater(self.st["reform_gen"], gen, "chung kenh ma doi tan van khong lap lai")
 
     def test_doi_con_DU_thi_khong_lam_gi_them(self):
@@ -97,7 +97,7 @@ class TestDieuPhoiNoLapLaiParty(unittest.TestCase):
         for _u, c in song:
             c.party_members = [b"x" * 8] * 2            # van du (3 acc -> roster 2)
         gen = self.st["reform_gen"]
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         self.assertEqual(self.st["reform_gen"], gen)
 
     def test_KHONG_dung_co_no_ma_DOC_THANG_roster(self):

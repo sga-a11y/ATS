@@ -23,6 +23,8 @@ Cho la cai da lam ca party ket o thanh sang nay (204 lan) - khong lam lai.
 """
 from __future__ import annotations
 
+from tests.party_controller_helpers import quyet_party
+
 import io
 import os
 import sys
@@ -77,7 +79,7 @@ class TestKhongTinhLechMap(_Nen):
         self._dat_viec_vat("u3", "u4")
         song = [("u0", _C(21001)), ("u1", _C(21001)), ("u2", _C(21001)),
                 ("u3", _C(12061)), ("u4", _C(12061))]
-        kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertNotEqual(kh["viec"], R.VIEC_GOM,
                             "van ra lenh gom vi acc di lam viec vat: %s" % ly_do)
 
@@ -92,7 +94,7 @@ class TestKhongTinhLechMap(_Nen):
                 ("u3", _C(12061)), ("u4", _C(12061))]
         _lt = None
         for _ in range(2):
-            kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, _lt)
+            kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, song, _lt)
         self.assertIn("lech map", ly_do.lower(), ly_do)
 
     def test_viec_vat_thi_KHONG_nhac_lech_map(self):
@@ -102,7 +104,7 @@ class TestKhongTinhLechMap(_Nen):
                 ("u3", _C(12061)), ("u4", _C(12061))]
         _lt = None
         for _ in range(2):
-            kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, _lt)
+            kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, song, _lt)
         self.assertNotIn("MAP khac nhau", ly_do, ly_do)
 
     def test_khong_tinh_ca_LECH_KENH(self):
@@ -110,7 +112,7 @@ class TestKhongTinhLechMap(_Nen):
         self._dat_viec_vat("u4")
         song = [("u0", _C(21001, 2)), ("u1", _C(21001, 2)), ("u2", _C(21001, 2)),
                 ("u3", _C(21001, 2)), ("u4", _C(12061, 9))]
-        kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, song, None)
+        kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, song, None)
         self.assertNotEqual(kh["viec"], R.VIEC_DONG_BO,
                             "dem kenh cua acc dang o map khac: %s" % ly_do)
 

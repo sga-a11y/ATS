@@ -93,26 +93,6 @@ class TestDiDuongThiKHONG_phai_bi_van(_Nen):
         self.assertFalse(R._co_ai_dang_o_map(self.PARTY, 0, tru="a1"))
 
 
-class TestNeoTrongMa(unittest.TestCase):
-    def setUp(self):
-        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
-            self.src = fh.read()
-
-    def test_dieu_kien_displaced_co_hoi_ca_party(self):
-        i = self.src.find("displaced_cnt += 1")
-        self.assertGreater(i, 0)
-        khoi = self.src[max(0, i - 900):i]
-        self.assertIn("_co_ai_dang_o_map(pidx, sc, tru=username)", khoi,
-                      "chi hoi 'minh co o bai khong' -> di duong cung keu bi van")
-
-    def test_van_giu_grace_60s(self):
-        i = self.src.find("displaced_cnt += 1")
-        khoi = self.src[max(0, i - 900):i]
-        self.assertIn("last_reform > 60", khoi)
-
-    def test_van_can_hai_lan_lien_tiep(self):
-        i = self.src.find("displaced_cnt += 1")
-        self.assertIn("displaced_cnt >= 2", self.src[i:i + 200])
 
 
 if __name__ == "__main__":

@@ -157,29 +157,6 @@ class TestCoLenhVanHanh(unittest.TestCase):
         self.assertIsNone(C.nguoi_keo(8))
 
 
-class TestMemberSaiMapKhongCoXuLyRieng(unittest.TestCase):
-    """Sai map la TRANG THAI, khong phai mot viec. Vong "cho leader keo" da bi XOA 11/09 - no la
-    vong acc tu chon buoc vao va trong do no diec voi moi lenh cap party (ttmuoi nam trong do MOT
-    TIENG RUOI, 10:31:36 -> 11:59, khong nghe thay lenh gom luc 11:58:26)."""
-
-    def setUp(self):
-        self.src = _doc("run_party_digioi.py")
-
-    def test_khong_con_vong_cho_leader_keo(self):
-        # Neo vao dong cua MEMBER (nhanh leader sai map dung chuoi gan giong).
-        i = self.src.find("(member) SAI MAP (o %s, can %s)")
-        self.assertGreater(i, 0, "mat nhanh member sai map")
-        khoi = _ma(self.src[i:i + 1500])
-        self.assertNotIn("while c.running", khoi, "lai dung them mot vong acc tu cho")
-        self.assertNotIn("_do_reform", khoi, "member lai tu goi reform")
-
-    def test_ra_vong_chinh_de_nghe_lenh(self):
-        # Co HAI dong "(member) SAI MAP": mot cho ca KHONG dung duoc duong (route-less), mot cho
-        # ca thuong. Neo vao dong thu hai bang chinh cau chu cua no.
-        i = self.src.find("(member) SAI MAP (o %s, can %s) -> KHONG tu xu ly")
-        self.assertGreater(i, 0)
-        self.assertIn("ra vong ", self.src[i:i + 600])
-        self.assertIn("nghe lenh dieu phoi", self.src[i:i + 600])
 
 
 class TestAccKhongTuTatCaParty(unittest.TestCase):
@@ -207,38 +184,36 @@ class TestAccKhongTuTatCaParty(unittest.TestCase):
         self.assertEqual(_goi, [], "con acc tu tat ca party theo tinh trang cua rieng no")
 
     def test_member_khong_co_duong_thi_KHONG_tat_party(self):
-        i = self.src.find("(member) SAI MAP (o %s, can %s) va khong dung duoc duong")
-        self.assertGreater(i, 0, "mat nhanh route-less cua member")
-        self.assertIn("KHONG tat party", self.src[i:i + 400])
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = mock.Mock(current_map=100, _pe_la_leader=False)
+        client.build_smart_route.return_value = None
+        self.assertFalse(E.thi_hanh(client, E.VIEC_VE_MAP, lambda: True, dich=200))
+        client.close.assert_not_called()
+        client.go_to_town.assert_not_called()
 
     def test_leader_khong_co_duong_thi_KHONG_tat_party(self):
-        i = self.src.find("(LEADER) SAI MAP (o %s, can %s) va khong dung duoc duong")
-        self.assertGreater(i, 0, "mat nhanh route-less cua leader")
-        self.assertIn("KHONG tat party", self.src[i:i + 400])
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        client = mock.Mock(current_map=100, _pe_la_leader=True)
+        client.build_smart_route.return_value = None
+        self.assertFalse(E.thi_hanh(client, E.VIEC_VE_MAP, lambda: True, dich=200))
+        client.close.assert_not_called()
+        client.follow_smart_route.assert_not_called()
 
 
-class TestKhongCoLeaderThiMemberTuDungDuocDuong(unittest.TestCase):
-    """Party KHONG dat bot-leader -> khong ai keo member ca, nen no phai TU dung duoc duong.
-
-    Ban cu chi `build_smart_route` khi `is_leader`, nen member cua party khong-leader luon bi coi
-    la "route-less" du smart router thua suc dung duong (map 21864).
-    """
-
-    def setUp(self):
-        self.src = _doc("run_party_digioi.py")
-
-    def test_member_party_khong_leader_van_dung_duong(self):
-        i = self.src.find("smart_route = None")
-        self.assertGreater(i, 0)
-        khoi = self.src[i:i + 1600]
-        self.assertIn("if is_leader or not has_leader:", khoi,
-                      "member cua party khong-leader khong dung duoc duong -> bi coi la route-less")
-
-    def test_van_khong_dung_duong_ho_khi_DA_co_leader(self):
-        """Co leader thi leader keo - member tu dung duong nua la hai nguoi cung di, party tan."""
-        i = self.src.find("if is_leader or not has_leader:")
-        self.assertGreater(i, 0)
-        self.assertIn("build_smart_route", self.src[i:i + 400])
 
 
 if __name__ == "__main__":

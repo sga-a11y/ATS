@@ -34,6 +34,8 @@ import os
 import re
 import sys
 import unittest
+from unittest import mock
+from bot.client import GameClient
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -58,10 +60,12 @@ class TestClientDanhDauKenhNghiNgo(unittest.TestCase):
         self.assertIn("def kenh_dang_chac(", self.src)
 
     def test_doi_kenh_that_bai_thi_danh_dau_nghi_ngo(self):
-        i = self.ma.find("THAT BAI han toan sau")
-        self.assertGreater(i, 0)
-        khoi = self.ma[max(0, i - 800):i + 200]
-        self.assertIn("kenh_dang_nghi_ngo = True", khoi)
+        client = GameClient("test", "token")
+        client._note_current_channel(12, "0x0c")
+        with mock.patch.object(client, "send"):
+            self.assertFalse(client.switch_channel(19, wait=0.01, retries=1))
+        self.assertEqual(client.current_channel, 12)
+        self.assertFalse(client.kenh_dang_chac())
 
     def test_server_xac_nhan_thi_XOA_nghi_ngo(self):
         """Khong xoa thi mot lan hong la acc do mu kenh vinh vien."""
@@ -72,7 +76,12 @@ class TestClientDanhDauKenhNghiNgo(unittest.TestCase):
 
     def test_van_giu_log_that_bai(self):
         """Log nay la thu duy nhat noi cho nguoi doc biet lenh da ket thuc (user 08/09)."""
-        self.assertIn("Doi kenh %d THAT BAI han toan sau %d luot", self.src)
+        client = GameClient("test", "token")
+        client._note_current_channel(12, "0x0c")
+        with mock.patch.object(client, "send"), self.assertLogs("bot", level="WARNING") as logs:
+            self.assertFalse(client.switch_channel(19, wait=0.01, retries=1))
+        self.assertTrue(any("CHUA XAC NHAN" in line and "timeout" in line
+                            and "scene kenh=12" in line for line in logs.output))
 
 
 class TestDieuPhoiBoQuaKenhMoHo(unittest.TestCase):

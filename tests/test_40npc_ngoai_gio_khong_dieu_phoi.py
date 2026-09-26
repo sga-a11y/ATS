@@ -20,6 +20,8 @@ ra khoi viec no dang lam, va dinh ma 4 (kenh day) nen lap lai mai.
 """
 from __future__ import annotations
 
+from tests.party_controller_helpers import quyet_party
+
 import os
 import sys
 import unittest
@@ -100,7 +102,7 @@ class TestNgoaiGioThiThoiDieuPhoi(_Nen):
         """10991 = map event, 12003 = map doi thuong. Lech giua hai cai do la DUNG y do."""
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(10991), a2=_C(12003), a3=_C(12003))
-        kh, ly_do, _ = R._dieu_phoi_quyet(self.PARTY, st, song,
+        kh, ly_do, _ = quyet_party(R, self.PARTY, st, song,
                                           lech_tu=1.0)     # lech tu rat lau
         self.assertEqual(kh["viec"], R.VIEC_LAM, ly_do)
         self.assertIn("doi thuong", ly_do)
@@ -108,7 +110,7 @@ class TestNgoaiGioThiThoiDieuPhoi(_Nen):
     def test_lech_kenh_KHONG_chot_kenh_dich(self):
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(12003, 1), a2=_C(12003, 3), a3=_C(12003, 4))
-        self.assertIsNone(R._dieu_phoi_chot_kenh(self.PARTY, st, song))
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, st, song))
         self.assertIsNone(st.get("kenh_dich"))
 
     def test_BO_kenh_dich_con_treo_tu_trong_gio(self):
@@ -117,7 +119,7 @@ class TestNgoaiGioThiThoiDieuPhoi(_Nen):
         with st["lock"]:
             st["kenh_dich"] = 14
         song = self._song(a1=_C(12003, 1), a2=_C(12003, 3), a3=_C(12003, 4))
-        R._dieu_phoi_chot_kenh(self.PARTY, st, song)
+        R._engine_chot_kenh(self.PARTY, st, song)
         self.assertIsNone(st.get("kenh_dich"))
 
     def test_doi_rong_cung_KHONG_ra_lenh_lap_lai(self):
@@ -125,7 +127,7 @@ class TestNgoaiGioThiThoiDieuPhoi(_Nen):
         st = R._pstate(self.PARTY)
         gen = st["reform_gen"]
         song = self._song(a1=_C(12003, 1), a2=_C(12003, 1), a3=_C(12003, 1))
-        R._dieu_phoi_chot_kenh(self.PARTY, st, song)
+        R._engine_chot_kenh(self.PARTY, st, song)
         self.assertEqual(st["reform_gen"], gen)
 
 
@@ -147,20 +149,20 @@ class TestTRONG_GIO_thi_GIU_NGUYEN(_Nen):
     def test_trong_gio_VAN_chot_kenh_dich(self):
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(10991, 1), a2=_C(10991, 3), a3=_C(10991, 3))
-        self.assertIsNotNone(R._dieu_phoi_chot_kenh(self.PARTY, st, song),
+        self.assertIsNotNone(R._engine_chot_kenh(self.PARTY, st, song),
                              "xoa mat duong dong bo kenh trong gio event")
 
     def test_trong_gio_VAN_ra_lenh_gom_khi_lech_map(self):
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(10991), a2=_C(12003), a3=_C(12003))
-        kh, ly_do, _ = R._dieu_phoi_quyet(self.PARTY, st, song, lech_tu=1.0)
+        kh, ly_do, _ = quyet_party(R, self.PARTY, st, song, lech_tu=1.0)
         self.assertEqual(kh["viec"], R.VIEC_GOM, ly_do)
 
     def test_trong_gio_VAN_lap_lai_party_khi_doi_tan(self):
         st = R._pstate(self.PARTY)
         gen = st["reform_gen"]
         song = self._song(a1=_C(10991, 1), a2=_C(10991, 1), a3=_C(10991, 1))
-        R._dieu_phoi_chot_kenh(self.PARTY, st, song)
+        R._engine_chot_kenh(self.PARTY, st, song)
         self.assertGreater(st["reform_gen"], gen, "xoa mat duong lap lai party trong gio event")
 
 

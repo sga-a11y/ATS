@@ -108,8 +108,19 @@ class TestNoiDayDuTuGUI(unittest.TestCase):
         self.assertIn('"loandau_mot_tran": bool(_party.get("loandau_mot_tran", False))', self.cfg)
 
     def test_runner_truyen_xuong_vong_loan_dau(self):
-        self.assertIn('_mot_tran = bool(pcfg.get("loandau_mot_tran"))', self.rpd)
-        self.assertIn("mot_tran=_mot_tran", self.rpd)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        with mock.patch.dict(R.config.PARTY_CONFIG, {0: {"loandau_mot_tran": True}}, clear=True), \
+                mock.patch.object(R, "_event_cua_party", return_value={}), \
+                mock.patch.object(R.party_modes, "execute_mode_action") as execute:
+            R._engine_mode_action(0, NS(), "solo_event_run", lambda: True)
+        self.assertTrue(execute.call_args.kwargs["one_battle"])
 
     def test_gui_luu_khi_bam_OK(self):
         self.assertIn('data["loandau_mot_tran"] = bool(self.loandau_mot_tran_var.get())', self.gui)

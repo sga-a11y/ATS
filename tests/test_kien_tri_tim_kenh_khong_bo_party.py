@@ -51,61 +51,8 @@ class TestNhipTim(unittest.TestCase):
         self.assertIn('"kenh_nhip": 0.0', _src())
 
 
-class TestPickerKienTri(unittest.TestCase):
-    def setUp(self):
-        s = _src()
-        i = s.find("if r is None:   # co kenh nhung khong kenh nao du cho ca party")
-        self.assertGreater(i, 0)
-        self.khoi = s[i:i + 1400]
-
-    def test_KHONG_con_cho_cung_60s(self):
-        self.assertNotIn("time.sleep(60)", self.khoi)
-
-    def test_thu_lai_moi_10_15s_NGAU_NHIEN(self):
-        """Co dinh 60s thi cham; co dinh bat ky con lam moi party hoi lai cung nhip roi cung nhay
-        vao dung mot kenh vua trong ra."""
-        self.assertIn("random.uniform(10.0, 15.0)", self.khoi)
-
-    def test_van_giu_3s_trong_30s_dau(self):
-        self.assertIn("3.0 if time.time() - t0 <= 30", self.khoi)
-
-    def test_bao_NHIP_TIM_moi_vong_cho(self):
-        self.assertIn("_nhip_cho_kenh(st)", self.khoi)
-
-    def test_KHONG_gom_ca_party_ve_kenh_leader(self):
-        """User chot: don cung khong du cho, chi lam ca lu chen vao mot kenh dang day."""
-        self.assertNotIn("current_channel", self.khoi)
-
-    def test_picker_bao_nhip_moi_vong_lap_sync(self):
-        s = _src()
-        i = s.find("_nhip_cho_kenh(st)   # con song va con dang tim kenh")
-        self.assertGreater(i, 0, "picker khong bao nhip o dau vong lap -> member cat oan")
 
 
-class TestMemberChoTheoNhip(unittest.TestCase):
-    def setUp(self):
-        s = _src()
-        i = s.find("CHO_KENH_CAP = 90.0")
-        self.assertGreater(i, 0)
-        self.khoi = s[i:i + 3000]
-
-    def test_han_do_theo_NHIP_TIM_khong_theo_dong_ho(self):
-        self.assertIn('float(st.get("kenh_nhip") or 0.0)', self.khoi)
-        self.assertIn("time.time() - max(_t_cho_kenh, _nhip) > CHO_KENH_CAP", self.khoi)
-
-    def test_ca_HAI_cho_cat_deu_dung_nhip(self):
-        """Co hai cho member bo cho (vong ngoai + vong `channel_ready.wait`); bo sot mot cho la
-        van cat oan nhu cu."""
-        self.assertEqual(self.khoi.count("if _het_kien_nhan():"), 2)
-        self.assertNotIn("time.time() - _t_cho_kenh > CHO_KENH_CAP", self.khoi)
-
-    def test_VAN_con_han_khi_picker_chet_han(self):
-        """Bo han hoan toan = quay lai bug party 14 (member treo 11 phut cho picker da chet)."""
-        self.assertIn("CHO_KENH_CAP = 90.0", self.khoi)
-        self.assertIn("return False", self.khoi)
-
-    def test_van_thoat_duoc_khi_HET_GIO_DG(self):
-        self.assertIn("_finish_digioi_train_if_time_over", self.khoi)
 
 
 class TestMoPhongHanhVi(unittest.TestCase):

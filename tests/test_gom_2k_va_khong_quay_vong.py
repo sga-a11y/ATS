@@ -23,6 +23,8 @@ mat het tang da leo.
 """
 from __future__ import annotations
 
+from tests.party_controller_helpers import quyet_party
+
 import io
 import os
 import sys
@@ -60,24 +62,19 @@ EV_2K = {"dest_map": 12922, "party_battle": {"kind": "floor_crawl"},
 
 
 class TestKhongQuayVongTran(unittest.TestCase):
-    def test_thi_hanh_GOM_xong_phai_NGU_mot_nhip(self):
-        src = _doc("run_party_digioi.py")
-        i = src.find('dieu phoi bao GOM (%s) -> thoi moi, gom lai')
-        self.assertGreater(i, 0)
-        khoi = src[i:i + 2200]
-        ngu = khoi.find("time.sleep(KE_HOACH_NHIP)")
-        self.assertGreater(ngu, 0, "khong ngu -> quay 8.000 vong/giay (party 5, 06/09)")
-        # `continue` cua MA (canh le 24 dau cach), khong phai chu trong chu thich.
-        tiep = khoi.find(chr(10) + " " * 24 + "continue")
-        self.assertGreater(tiep, ngu, "ngu phai nam TRUOC continue")
+    def test_worker_ngu_sau_viec_tra_ve_ngay(self):
+        src = _doc("bot", "party_engine.py")
+        i = src.find("class AccWorker:")
+        j = src.find("class PartyEngine:", i)
+        body = src[i:j]
+        self.assertIn("NHIP_WORKER_SEC", body)
+        self.assertIn("self._huy.wait(_con)", body)
 
-    def test_khong_goi_thang_do_reform_nua(self):
-        """`_do_reform` o map event la lenh RONG -> phai qua `_thi_hanh_gom` de con biet duong
-        di bo xuong tang."""
-        src = _doc("run_party_digioi.py")
-        i = src.find('dieu phoi bao GOM (%s) -> thoi moi, gom lai')
-        khoi = src[i:i + 900]
-        self.assertIn("_thi_hanh_gom(", khoi)
+    def test_engine_giao_gom_tang_bang_worker(self):
+        src = _doc("bot", "party_engine.py")
+        self.assertIn("VIEC_FC_GOM", src)
+        self.assertIn("regroup_to_event_start", src)
+
 
 
 class TestCungMapThiDONG_BO_ChuKhongGom(unittest.TestCase):
@@ -104,7 +101,7 @@ class TestCungMapThiDONG_BO_ChuKhongGom(unittest.TestCase):
         for u, c in clients.items():
             R.account_clients[u] = c
             song.append((u, c))
-        return R._dieu_phoi_quyet(self.PARTY, st, song, lech_tu)
+        return quyet_party(R, self.PARTY, st, song, lech_tu)
 
     def test_cung_map_lech_kenh_thi_DONG_BO(self):
         """Party 5: ca 5 acc o 12922, kenh [1,5] -> gom ve thanh la vo nghia."""
@@ -237,8 +234,9 @@ class TestTangGomPhaiDINH(unittest.TestCase):
 
     def test_ke_hoach_dung_ban_DA_CHOT(self):
         src = _doc("run_party_digioi.py")
-        i = src.find('kh["tang_gom"]')
-        self.assertIn("_chot_tang_gom(", src[i:i + 120],
+        i = src.find("def _engine_ap_dung_party(")
+        body = src[i:src.find("\ndef ", i + 10)]
+        self.assertIn('kh["tang_gom"] = _chot_tang_gom(', body,
                       "goi thang `_tang_gom_2k` moi nhip = tinh lai = tut dich (L6)")
 
 
@@ -274,52 +272,52 @@ class TestThiHanhGom(unittest.TestCase):
         self.assertEqual(goi, [1])
 
 
-class TestMOI_ACC_deu_thi_hanh_gom_tang(unittest.TestCase):
-    """Lenh gom tang phai toi MOI ACC, khong rieng leader.
+class TestMoiAccNhanViecGomTang(unittest.TestCase):
+    def _jobs(self, leader_fighting=False):
+        from bot import party_engine as PE
+        accs = [PE.AnhAcc("leader", la_leader=True, map_id=12925, kenh=1,
+                           so_member=2, trong_event=True, dang_danh=leader_fighting),
+                PE.AnhAcc("member1", map_id=12924, kenh=1, so_member=2,
+                           trong_event=True),
+                PE.AnhAcc("member2", map_id=12925, kenh=1, so_member=2,
+                           trong_event=True)]
+        anh = PE.AnhParty(0, accs, can_bao_nhieu=2, pha=PE.PHA_EVENT,
+                          tang_gom=12924)
+        return PE.quyet_dinh(anh)
 
-    Party 8 (06/09, 17:55) - user: "ca lu co di chuyen ty nao deo dau":
-        lbumot (LEADER) map=12928            <- da tut xuong TANG 5, dang leo nguoc len MOT MINH
-        lubhai/lubba/lubbon/lubnam map=12934  <- dung im tang 11, pos=(650,430)
-    `_thi_hanh_gom` chi duoc goi trong vong MOI cua leader -> member khong co cho nao thi hanh
-    -> cang gom cang lech.
-    """
+    def test_leader_va_member_lech_tang_deu_duoc_giao_gom(self):
+        from bot import party_engine as PE
+        jobs = self._jobs()
+        self.assertEqual(jobs["leader"], PE.VIEC_FC_GOM)
+        self.assertEqual(jobs["member2"], PE.VIEC_FC_GOM)
 
-    def setUp(self):
-        self.src = _doc("run_party_digioi.py")
-
-    def test_keepalive_co_nhanh_tu_di_ve_tang_gom(self):
-        i = self.src.find('_tg = (_ke_hoach(st) or {}).get("tang_gom")')
-        self.assertGreater(i, 0, "member khong co cho thi hanh lenh gom tang")
-        khoi = self.src[i:i + 1200]
-        self.assertIn("regroup_to_event_start(", khoi)
-
-    def test_nhanh_do_KHONG_phan_biet_leader(self):
-        """Leader va member deu la acc thi hanh - khong duoc mien ai."""
-        i = self.src.find('_tg = (_ke_hoach(st) or {}).get("tang_gom")')
-        khoi = self.src[i:i + 1200]
-        self.assertNotIn("is_leader", khoi)
-
-    def test_da_o_dung_tang_thi_khong_di(self):
-        i = self.src.find('_tg = (_ke_hoach(st) or {}).get("tang_gom")')
-        khoi = self.src[i:i + 400]
-        self.assertIn('!= int(_tg)', khoi)
+    def test_dung_tang_thi_nghi(self):
+        from bot import party_engine as PE
+        self.assertEqual(self._jobs()["member1"], PE.VIEC_NGHI)
 
     def test_khong_di_giua_tran(self):
-        i = self.src.find('_tg = (_ke_hoach(st) or {}).get("tang_gom")')
-        self.assertIn("not c.in_combat()", self.src[i:i + 300])
+        from bot import party_engine as PE
+        self.assertEqual(self._jobs(leader_fighting=True)["leader"], PE.VIEC_NGHI)
+
 
 
 class TestNhanhChetDaBiXoa(unittest.TestCase):
     def test_chi_con_MOT_nhanh_lech_tang(self):
-        """Hai `elif` dieu kien y het nhau -> nhanh duoi (co `_2k_regroup_target`) khong bao gio
-        chay. Ton tai am tham tu 09/08."""
-        src = _doc("run_party_digioi.py")
-        self.assertEqual(src.count("elif _inside_floor_crawl_tower(ev, c.current_map):"), 1)
+        """One engine decision assigns the regroup task to every off-floor account."""
+        from bot import party_engine as PE
+        accs = [PE.AnhAcc("leader", la_leader=True, map_id=12925, kenh=1,
+                           so_member=1, trong_event=True),
+                PE.AnhAcc("member", map_id=12924, kenh=1, so_member=1,
+                           trong_event=True)]
+        jobs = PE.quyet_dinh(PE.AnhParty(0, accs, can_bao_nhieu=1,
+                                         pha=PE.PHA_EVENT, tang_gom=12924))
+        self.assertEqual(jobs["leader"], PE.VIEC_FC_GOM)
+        self.assertEqual(jobs["member"], PE.VIEC_NGHI)
 
     def test_nhanh_con_lai_gom_ve_TANG_THAP_NHAT(self):
         src = _doc("run_party_digioi.py")
-        i = src.find("elif _inside_floor_crawl_tower(ev, c.current_map):")
-        self.assertIn("_2k_regroup_target", src[i:i + 900])
+        self.assertIn("def _chot_tang_gom(", src)
+        self.assertIn('kh["tang_gom"] = _chot_tang_gom(', src)
 
     def test_client_chi_con_MOT_regroup_to_event_start(self):
         self.assertEqual(_doc("bot", "client.py").count("def regroup_to_event_start("), 1)

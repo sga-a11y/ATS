@@ -26,6 +26,8 @@ Acc khong duoc hoi, khong co co moi nao cho acc doc.
 """
 from __future__ import annotations
 
+from tests.party_controller_helpers import quyet_party
+
 import io
 import os
 import sys
@@ -190,7 +192,7 @@ class TestDieuPhoiRaLenhDung(unittest.TestCase):
             R.account_clients[u] = self._C(map_id, 1)
         st = R._pstate(self.PARTY)
         st["train_map_dich"] = MAP_TRAIN
-        kh, ly_do, _ = R._dieu_phoi_quyet(self.PARTY, st, R._acc_song(self.PARTY), None)
+        kh, ly_do, _ = quyet_party(R, self.PARTY, st, R._acc_song(self.PARTY), None)
         return kh, ly_do
 
     def test_o_TRAC_QUAN_thi_KHONG_moi(self):

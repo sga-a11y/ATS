@@ -51,27 +51,6 @@ def _src():
         return ra + fh.read()
 
 
-class TestBossQDPhaiCoLenh(unittest.TestCase):
-    """Boss Quan Doan la instance SOLO -> bat buoc roi party. Nhung KHI NAO di thi phai theo lenh."""
-
-    def setUp(self):
-        self.src = _src()
-
-    def test_chi_di_khi_dieu_phoi_bao_LAM(self):
-        i = self.src.find("boss QD den luot nhung dieu phoi dang ra lenh")
-        self.assertGreater(i, 0, "acc van tu di boss QD bat ke dieu phoi ra lenh gi")
-        truoc = self.src[max(0, i - 600):i]
-        self.assertIn("_viec_bq not in (None, VIEC_LAM)", truoc)
-
-    def test_cua_dat_TRUOC_khi_roi_party(self):
-        _cua = self.src.find("_viec_bq = (_ke_hoach(st) or {}).get(\"viec\")")
-        _roi = self.src.find("# Boss QD la instance SOLO -> roi party truoc khi vao.")
-        self.assertGreater(_cua, 0, "mat cua chan boss QD")
-        self.assertGreater(_roi, 0, "mat cho roi party cua boss QD")
-        self.assertLess(_cua, _roi, "cua chan dat SAU khi da roi party -> vo nghia")
-
-    def test_khong_spam_log_khi_hoan(self):
-        self.assertIn("boss_qd_cho_log", self.src)
 
 
 class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
@@ -117,14 +96,15 @@ class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
                       "xong viec vat khong nha loi moi da giu -> ket vinh vien")
 
     def test_bat_co_chi_khi_acc_DANG_RANH(self):
-        """Go co ket False, nhung khong duoc mo khi acc dang GIUA mot viec vat."""
-        # Phep nay thuoc ve `run_party_digioi` (co moi party), khong phai luat cap party -> doc
-        # rieng file do, khong dung `_src()` (gio la CA HAI file).
-        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
-            _rp = fh.read()
-        self.assertIn("and not c.dang_lam_viec_vat()", _rp)
-        self.assertEqual(_rp.count("c.dang_lam_viec_vat()"), 2,
-                         "con duong ep bat co vo dieu kien")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        anh = snapshot([account(dang_ban=True, viec_dang_lam=E.VIEC_VIEC_VAT)])
+        self.assertNotEqual(E.quyet_dinh(anh).get("a"), E.VIEC_TRAIN)
 
     def test_dang_lam_viec_vat_doc_PHA_khong_doc_co(self):
         with io.open(os.path.join(ROOT, "bot", "client.py"), encoding="utf-8") as fh:
@@ -166,30 +146,18 @@ class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
             self.assertNotIn(_t, self.src, "han cho song lai: %s" % _t)
 
     def test_ham_viec_vat_KHONG_dung_de_NGUNG_RA_LENH(self):
-        i = self.src.find("def _ai_dang_lam_viec_le(")
-        self.assertGreater(i, 0)
-        than = self.src[i:self.src.find("\ndef ", i + 10)]
-        self.assertIn("get_account_task(", than)
-        self.assertNotIn("time.time()", than, "ham in log ma lai co dong ho -> no dang quyet dinh gi do")
-        # chi duoc GOI tu dung mot cho (dong log trang thai); dong con lai la `def`
-        _goi = [ln.strip() for ln in self.src.splitlines()
-                if "_ai_dang_lam_viec_le(song)" in ln and not ln.lstrip().startswith("def ")]
-        # BON cho, va KHONG cho nao duoc dung de NGUNG RA LENH:
-        #   `_le = set(...)`          -> danh dau `*` tren dong TRANG THAI
-        #   `_ban = ...`              -> KHONG bump reform (van ra lenh moi binh thuong)
-        #   `_ban_viec_vat = set(...)`-> khong tinh acc do vao phep do LECH MAP / LECH KENH
-        #   `_ban = set(...)` (thi hanh kenh) -> KHONG gui lenh doi kenh cho acc dang viec vat
-        #
-        # Cai thu tu la ve cua user 14/09: "khi dang danh PB don va daily quest thi dieu phoi tam
-        # thoi ko quay ray". No chi bo qua acc do trong MOT luot gui lenh, khong dung lenh lai.
-        #
-        # Cai thu ba KHONG phai "cho": viec vat PHAI o map khac (ban Noi Dat o Nghiep Thanh, cat
-        # tien trang, boss the gioi - user 14/09), nen dem no vao `maps` la party LUC NAO cung
-        # "lech map". Lenh van chay binh thuong tren so acc con lai; acc kia GIU loi moi, xong
-        # viec thi nhan.
-        self.assertEqual(len(_goi), 4, "so cho goi doi -> co the co cho dung no de ngung ra lenh")
-        for _dau in ("_le = set(", "_ban = ", "_ban_viec_vat = set("):
-            self.assertTrue(any(_dau in g for g in _goi), "%s: %s" % (_dau, _goi))
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        anh = snapshot([account(), account("b", dang_ban=True, viec_dang_lam=E.VIEC_DAILY, xong_daily=False)])
+        result = E.quyet_dinh(anh)
+        self.assertIn("a", result)
+        self.assertEqual(result["b"], E.VIEC_DAILY)
+        self.assertNotEqual(result["a"], E.VIEC_DAILY)
 
     def test_chuoi_bac_dung_thu_tu_user_chot(self):
         """lech map -> dong bo map -> lech kenh -> dong bo kenh -> lap pt -> di train."""
@@ -206,19 +174,6 @@ class TestDieuPhoiKHONG_CHO_ai(unittest.TestCase):
         self.assertEqual(_vt, sorted(_vt), "chuoi bac dieu phoi sai thu tu")
 
 
-class TestMotDuaRotKhongPhaCaDoi(unittest.TestCase):
-    def setUp(self):
-        self.src = _src()
-
-    def test_chi_giai_tan_khi_party_DA_HONG(self):
-        i = self.src.find("KHONG GIAI TAN PARTY chi vi MOT dua rot")
-        self.assertGreater(i, 0, "mot dua rot van pha ca doi dang lanh")
-        khoi = self.src[i:i + 1400]
-        self.assertIn('if is_leader and not getattr(c, "party_members", None):', khoi)
-
-    def test_van_con_duong_cho_reconnect(self):
-        """Bo giai tan khong duoc lam mat vong cho dong doi ve."""
-        self.assertIn('while st["reconnecting"] and c.running and not _stopped():', self.src)
 
 
 class TestDoiDuChuaDocROSTER_LEADER(unittest.TestCase):

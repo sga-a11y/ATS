@@ -145,17 +145,6 @@ class TestNhanRaNguoiDangOPartyKhac(unittest.TestCase):
         self.assertIsNone(c.dang_o_party_khac(NGUOI))
 
 
-class TestMemberTuGo(unittest.TestCase):
-    def test_retry_doc_roster_server_chu_khong_chi_local(self):
-        with open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
-            s = fh.read()
-        i = s.find("elif not is_joined(pidx, c.self_entity):")
-        self.assertGreater(i, 0)
-        khoi = s[i:i + 4600]
-        self.assertIn("_doi_truong_dang_ket()", khoi,
-                      "chi tin party_members local -> ket ma van tuong minh dang ranh")
-        i_ket = khoi.find("_ket_party_la or not getattr(c,")
-        self.assertGreater(i_ket, 0, "roster server phai MO them duong go, khong bi local chan")
 
 
 if __name__ == "__main__":

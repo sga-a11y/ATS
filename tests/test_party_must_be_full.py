@@ -22,25 +22,28 @@ SRC = (ROOT / "run_party_digioi.py").read_text(encoding="utf-8")
 
 class TestPartyMustBeFull(unittest.TestCase):
     def test_via_route_van_phai_DEM_LAI_member(self):
-        """Di theo party toi train map van phai kiem tra roster, khong duoc tin suong."""
-        self.assertIn('if via_route and _joined_now >= st["n_members"]:', SRC)
-        self.assertIn("_joined_now = joined_member_count(pidx)", SRC)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        anh = snapshot([account(so_member=1), account("b", so_member=1)])
+        self.assertEqual(E.quyet_dinh(anh)["a"], E.VIEC_RA_SPOT)
 
     def test_thieu_member_thi_DI_MOI_LAI_chu_khong_bo_qua(self):
-        """Nhanh thieu nguoi phai di tiep xuong doan MOI, khong duoc coi nhu da du.
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
 
-        Truoc 13/09 nhanh nay roi vao vong `while _dem_san_sang(pidx) < st["n_members"]` - leader
-        tu dat dieu kien "du san sang" roi tu cho, va tu goi `_do_reform` trong luc cho. Da xoa
-        (xem `test_vong_cho_thoat_khi_co_lenh.py`): gio leader moi luon, con thieu nguoi / lech
-        map / lech kenh la viec dieu phoi ra lenh."""
-        i = SRC.index('if via_route and _joined_now >= st["n_members"]:')
-        khoi = SRC[i:i + 2500]
-        self.assertIn("else:", khoi)
-        vi_tri_else = khoi.index("else:")
-        vi_tri_moi = khoi.index("member san sang -> MOI (theo entity)")
-        self.assertLess(vi_tri_else, vi_tri_moi,
-                        "nhanh thieu nguoi KHONG di moi lai -> van train thieu")
-        self.assertIn("KHONG train thieu, cho + moi lai cho du", khoi)
+        anh = snapshot([account(so_member=0), account("b", so_member=0)])
+        self.assertEqual(E.quyet_dinh(anh)["a"], E.VIEC_LAP_PARTY)
 
     def test_thieu_nguoi_KHONG_con_vong_tu_cho(self):
         self.assertNotIn('while _dem_san_sang(pidx) < st["n_members"]:', SRC)

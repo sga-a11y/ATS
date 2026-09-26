@@ -150,7 +150,7 @@ class TestHetDuongKhongDungIm(unittest.TestCase):
 
     def test_het_duong_thi_THOAT(self):
         self.st["2k_ket_qua"] = "het_duong"
-        R._dieu_phoi_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
+        R._engine_chot_2k_xong(self.PARTY, self.st, [("a1", _C())])
         self.assertTrue(self.st["event_exit_now"].is_set(),
                         "danh het tang, khong co cong len ma van dung im = an va")
 
@@ -159,7 +159,7 @@ class TestHetDuongKhongDungIm(unittest.TestCase):
             R._party_state.pop(self.PARTY, None)
             st = R._pstate(self.PARTY)
             st["2k_ket_qua"] = kq
-            R._dieu_phoi_chot_2k_xong(self.PARTY, st, [("a1", _C())])
+            R._engine_chot_2k_xong(self.PARTY, st, [("a1", _C())])
             self.assertFalse(st["event_exit_now"].is_set(), kq)
 
     def test_floor_crawl_dat_ly_do_het_duong(self):

@@ -81,14 +81,14 @@ class TestGiuDichKhiDangBayGiuaKenh(unittest.TestCase):
         song = self._song([5, 5, 7, 7, 7], dang_doi=(2,))
         self.st["kenh_dich"] = 5
         self.st["kenh_dich_luc"] = time.time()
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 5)
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 5)
 
     def test_dang_doi_thi_KHONG_xoa_dich(self):
         """Xoa ve None = mat luon han kien nhan -> nhip sau chot lai tu dau."""
         song = self._song([5, 5, 7, 7, 7], dang_doi=(2,))
         self.st["kenh_dich"] = 5
         self.st["kenh_dich_luc"] = time.time()
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         self.assertEqual(self.st["kenh_dich"], 5)
 
     def test_acc_CHUA_RO_kenh_thi_khong_ket_luan_chung_kenh(self):
@@ -99,7 +99,7 @@ class TestGiuDichKhiDangBayGiuaKenh(unittest.TestCase):
         R.account_clients[self.ACCS[4]].current_channel = None    # dang bay giua hai kenh
         self.st["kenh_dich"] = 7
         self.st["kenh_dich_luc"] = time.time()
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         self.assertEqual(self.st["kenh_dich"], 7)
 
     def test_kenh_dich_bi_bao_DAY_thi_PHAI_chot_lai(self):
@@ -120,7 +120,7 @@ class TestGiuDichKhiDangBayGiuaKenh(unittest.TestCase):
             _c._chan_switch_result = 4
             _c._chan_switch_target = 27
             _c._chan_switch_luc = time.time()
-        self.assertNotEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 27,
+        self.assertNotEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 27,
                             "van giu kenh da DAY -> hai acc retry mai, party khong bao gio gom du")
 
     def test_ma_4_thi_HOI_LAI_danh_sach_kenh_ngay(self):
@@ -134,7 +134,7 @@ class TestGiuDichKhiDangBayGiuaKenh(unittest.TestCase):
         _c._chan_switch_result = 4
         _c._chan_switch_target = 27
         _c._chan_switch_luc = time.time()
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         self.assertEqual(sum(_c.hoi for _u, _c in song), 1,
                          "khong hoi lai danh sach kenh -> chot lai bang so cu, lai dam vao kenh day")
 
@@ -142,7 +142,7 @@ class TestGiuDichKhiDangBayGiuaKenh(unittest.TestCase):
         """Hoi lai moi nhip = spam `0x07 0100` -> nguy co ma 13. Chi ep hoi khi co ma 4."""
         song = self._song([27, 27, 27, 5, 5])
         self.st["ds_kenh_luc"] = time.time()
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         self.assertEqual(sum(_c.hoi for _u, _c in song), 0)
 
     def test_DA_CHUNG_KENH_thi_XOA_DICH_du_dang_co_acc_doi_kenh(self):
@@ -158,13 +158,13 @@ class TestGiuDichKhiDangBayGiuaKenh(unittest.TestCase):
         song = self._song([1, 1, 1, 1, 1], dang_doi=(0, 1, 2, 3, 4))
         self.st["kenh_dich"] = 27
         self.st["kenh_dich_luc"] = time.time()
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, song)
+        R._engine_chot_kenh(self.PARTY, self.st, song)
         self.assertIsNone(self.st["kenh_dich"],
                           "ca party da chung kenh ma van bam kenh dich cu")
 
     def test_khong_ai_dang_doi_thi_VAN_chot_binh_thuong(self):
         song = self._song([5, 5, 7, 7, 7])
-        self.assertIsNotNone(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song))
+        self.assertIsNotNone(R._engine_chot_kenh(self.PARTY, self.st, song))
 
     def test_chua_co_dich_thi_VAN_PHAI_CHOT(self):
         """Guard "dang bay giua hai kenh -> giu nguyen dich" chi co nghia khi DA CO dich.
@@ -174,7 +174,7 @@ class TestGiuDichKhiDangBayGiuaKenh(unittest.TestCase):
         sga006 kenh 2, cung map 12932 - khong mot dong `CHOT kenh dich` nao trong ca chuc phut.
         """
         song = self._song([5, 5, 7, 7, 7], dang_doi=(2,))
-        self.assertEqual(R._dieu_phoi_chot_kenh(self.PARTY, self.st, song), 7,
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 7,
                          "chua co dich ma van thoat -> party lech kenh vinh vien")
 
 
@@ -248,7 +248,7 @@ class TestThuTuGuard(unittest.TestCase):
     def test_guard_dat_SAU_nhanh_da_chung_kenh(self):
         with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
             s = fh.read()
-        i0 = s.find("def _dieu_phoi_chot_kenh(")
+        i0 = s.find("def _engine_chot_kenh(")
         self.assertGreater(i0, 0)
         i_guard = s.find("if song and _dang_doi_kenh(song):", i0)
         i_xoa = s.find('st["kenh_dich"] = None', i0)

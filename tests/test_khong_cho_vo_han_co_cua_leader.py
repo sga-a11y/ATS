@@ -52,34 +52,6 @@ def _ma(s):
     return re.sub(r"#.*", "", s)
 
 
-class TestMemberKhongCho(unittest.TestCase):
-    def setUp(self):
-        self.src = _src()
-        i = self.src.find("def _do_reform(to_spot=True):")
-        self.assertGreater(i, 0)
-        j = self.src.find("\n        def ", i + 10)
-        self.than = self.src[i:j if j > i else len(self.src)]
-
-    def test_KHONG_con_ham_cho_leader_keo(self):
-        """Ham do la mot cho acc tu quyet - bo han, khong phai chinh han cho dai hon."""
-        ma = _ma(self.src)          # soi MA CHAY - ten ham van duoc nhac trong ghi chu ca hong
-        self.assertNotIn("_cho_leader_keo", ma)
-        self.assertNotIn("CHO_LEADER_KEO_SEC", ma)
-
-    def test_nhanh_member_KHONG_cho_co_nao(self):
-        i = self.than.find("MEMBER KHONG CHO, KHONG BAO CAO")
-        self.assertGreater(i, 0, "mat nhanh member trong _do_reform")
-        khoi = _ma(self.than[i:i + 2500])
-        for _co in ("route_party_ready", "route_done"):
-            self.assertNotIn(_co, khoi, "member van doc co cua leader")
-        self.assertNotIn("while", khoi, "member van co vong cho")
-        self.assertNotIn("time.sleep", khoi, "member van ngoi doi")
-
-    def test_nhanh_member_RA_LUON(self):
-        """Ra khoi `_do_reform` = khong tu ve thanh, khong tu di route."""
-        i = self.than.find("MEMBER KHONG CHO, KHONG BAO CAO")
-        khoi = _ma(self.than[i:i + 2500])
-        self.assertIn("return", khoi)
 
 
 class TestKhongConBarrierChoVoHan(unittest.TestCase):
@@ -99,38 +71,19 @@ class TestKhongConBarrierChoVoHan(unittest.TestCase):
                             "barrier `%s` cho vo han ma khong co loi thoat nao" % ten)
 
     def test_barrier_moi_loi_thoat_khi_leader_tat(self):
-        i = self.src.find('while not st["invited"].is_set():')
-        self.assertGreater(i, 0)
-        self.assertIn("LEADER khong con chay", self.src[i:i + 1500])
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        anh = snapshot([account(song=False), account("b")], thieu_acc_song=True)
+        result = E.quyet_dinh(anh)
+        self.assertNotEqual(result.get("b"), E.VIEC_TRAIN)
+        self.assertNotIn('while not st["invited"].is_set():', inspect.getsource(R.run_account))
 
 
-class TestPhiaThiHanhDocLenhDieuPhoi(unittest.TestCase):
-    """Thay cho vong cho: moi viec cap party deu bat nguon tu LENH cua dieu phoi."""
-
-    def setUp(self):
-        self.src = _src()
-
-    def test_moi_party_THOI_khi_dieu_phoi_bao_GOM(self):
-        """Chi `VIEC_GOM` moi la lenh doi huong.
-
-        `VIEC_LAM` KHONG phai "cam moi" - no chi noi "khong co viec cap party phai lam", ma party
-        chua du thi van phai moi. Toi tung xet `viec != VIEC_MOI` o day (10/09) va no giet party 1
-        ngay trong dem: ke hoach dao dong moi 2 giay (`lam` -> `moi` -> `lam` -> `gom`), leader vao
-        vong moi luc dang `lam` la thoi ngay -> khong bao gio moi duoc; bon member dung o thanh
-        21011 con leader di route mot minh.
-        """
-        i = self.src.find("def _moi_theo_dieu_phoi(")
-        self.assertGreater(i, 0)
-        j = self.src.find("\n        def ", i + 10)
-        than = self.src[i:j]
-        self.assertIn('_kh.get("viec") == VIEC_GOM', than)
-        self.assertNotIn('_kh.get("viec") != VIEC_MOI', than,
-                         "dieu kien nay chan oan: ke hoach dao dong nen leader khong kip moi")
-
-    def test_dieu_phoi_biet_mode_nao_khong_can_doi(self):
-        self.assertIn("def _mode_can_lap_doi(", self.src)
-        i = self.src.find('st["n_members"] = ')
-        self.assertIn("_mode_can_lap_doi(pidx)", self.src[i:i + 300])
 
 
 if __name__ == "__main__":

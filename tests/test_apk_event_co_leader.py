@@ -106,12 +106,34 @@ class TestPhiaPythonDoiHasLeader(unittest.TestCase):
         self.assertIn('mode == "event" and has_leader and kind in', self.src[i:j])
 
     def test_khong_co_leader_thi_roi_vao_dung_yen(self):
-        self.assertIn("event_stand_mode = event_mode and not event_party_mode", self.src)
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+
+        self.assertEqual(R.party_modes.decide_mode("event", {"a": "vao_event"}, [account()],
+                         event_kind="npc_repeat", has_leader=False), {"a": "nghi"})
 
     def test_dung_yen_phai_NOI_RO_ly_do(self):
-        """Khong noi ly do thi nhin log tuong bot treo (mat ca buoi truy)."""
-        i = self.src.find("KHONG CO LEADER (leader=%r, acc slot dau=%r)")
-        self.assertGreater(i, 0, "log dung yen khong chi ra thieu leader")
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        import sys, inspect
+        with mock.patch.object(sys, "argv", ["run_party_digioi.py"]):
+            import run_party_digioi as R
+        from bot import party_engine as E
+        from tests.party_engine_scenarios import account, snapshot
+        with mock.patch.dict(R._party_state, {}, clear=True), \
+                mock.patch.dict(R.config.PARTY_CONFIG, {0: {"mode": "event"}}, clear=True), \
+                mock.patch.dict(R.config.PARTY_LEADER_ACC, {}, clear=True), \
+                mock.patch.object(R, "_event_cua_party", return_value={"party_battle": {"kind": "npc_repeat"}}), \
+                mock.patch.object(R.log, "warning") as warning:
+            for _ in range(2):
+                self.assertEqual(R._engine_mode_decisions(0, snapshot(), {"a": "vao_event"}), {"a": "nghi"})
+        warning.assert_called_once()
+        self.assertIn("KHONG CO LEADER", warning.call_args.args[0])
 
 
 if __name__ == "__main__":

@@ -139,30 +139,6 @@ class TestLeaderBoQuaTierThieuCap(unittest.TestCase):
         self.assertIn("lv%d", khoi)
 
 
-class TestPBHongKhongLamMatO1(unittest.TestCase):
-    def setUp(self):
-        self.src = _src()
-        i = self.src.find("_maybe_auto_world_boss(\"sau DG, truoc pho ban doi\")")
-        self.assertGreater(i, 0)
-        self.than = self.src[i:i + 3000]
-
-    def test_PB_hong_KHONG_return_som(self):
-        i_hong = self.than.find("pho ban to doi khong xong")
-        i_daily = self.than.find("c.do_daily_dungeon(")
-        self.assertGreater(i_hong, 0)
-        self.assertGreater(i_daily, 0)
-        giua = re.sub(r"#.*", "", self.than[i_hong:i_daily])
-        self.assertNotIn("return", giua,
-                         "PB doi hong van chan o 1 (phó bản solo) nhu bug 02/09")
-
-    def test_VAN_chuyen_pha_train(self):
-        """Bo `return` som khong duoc lam mat viec chuyen pha."""
-        i_daily = self.than.find("c.do_daily_dungeon(")
-        self.assertIn('_dt["relogin_train"] = True', self.than[i_daily:i_daily + 1200])
-
-    def test_VAN_claim_nhiem_vu_ngay(self):
-        i_daily = self.than.find("c.do_daily_dungeon(")
-        self.assertIn("c.claim_daily_quests(heavy=True)", self.than[i_daily:i_daily + 500])
 
 
 if __name__ == "__main__":

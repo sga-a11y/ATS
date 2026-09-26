@@ -265,8 +265,11 @@ class TestAccRotRoiRelogin(unittest.TestCase):
             moi = _CliGia(map_id=BAI)              # relogin -> client hoan toan khac
             cl[1] = ("luumuoi", moi)
             eng.start()                            # dang ky lai (supervisor goi lai sau relogin)
-            self.assertIs(w.client, moi, "worker con om client CU DA CHET -> acc im vinh vien")
-            self.assertIsNot(w.client, cu)
+            new_worker = eng.workers["luumuoi"]
+            self.assertIsNot(new_worker, w, "worker cu con dieu khien socket da dong")
+            self.assertIs(new_worker.client, moi)
+            self.assertIs(w.client, cu)
+            self.assertTrue(w._dung.is_set(), "worker cu chua duoc dung")
         finally:
             eng.stop()
 

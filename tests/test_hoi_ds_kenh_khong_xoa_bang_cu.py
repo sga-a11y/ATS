@@ -139,7 +139,7 @@ class TestNhanhItNguoiNhatChayDuocKhiCoBang(unittest.TestCase):
         R.joined_member_count = lambda pidx: 0
         self.addCleanup(lambda: setattr(R, "joined_member_count", self._jmc))
         st = R._pstate(self.PARTY)
-        dich = R._dieu_phoi_chot_kenh(self.PARTY, st, song)
+        dich = R._engine_chot_kenh(self.PARTY, st, song)
         self.assertEqual(dich, 30, "co bang ma van chot theo kenh dong member = sai luat user")
 
     class _C:

@@ -15,7 +15,7 @@ toi goc: phep dem BO QUA acc chua biet map.
     lech = len(maps) > 1
 
 4 dua cung map + 1 dua chua biet map -> `len(maps) == 1` -> "cung map" -> tut xuong bac kenh ->
-`_dieu_phoi_chot_kenh` moi phat hien thieu du lieu va `return None` IM LANG -> khong bao gio chot
+`_engine_chot_kenh` moi phat hien thieu du lieu va `return None` IM LANG -> khong bao gio chot
 duoc kenh dich -> khong mot lenh doi kenh nao duoc gui.
 
 CA THAT (party 9; party 4 y het):
@@ -32,6 +32,8 @@ de dinh cho nay.
 Test cu (`test_thu_tu_map_roi_kenh_roi_moi.py`) chi neo THU TU ba nhanh nen van xanh.
 """
 from __future__ import annotations
+
+from tests.party_controller_helpers import quyet_party
 
 import io
 import os
@@ -91,7 +93,7 @@ class _Nen(unittest.TestCase):
         for u, c in zip(self.ACCS, cs):
             R.account_clients[u] = c
         st = R._pstate(self.PARTY)
-        kh, ly_do, _ = R._dieu_phoi_quyet(self.PARTY, st, R._acc_song(self.PARTY), None)
+        kh, ly_do, _ = quyet_party(R, self.PARTY, st, R._acc_song(self.PARTY), None)
         return kh, ly_do
 
 
@@ -130,7 +132,7 @@ class TestChotKenhKhongCON_IM_LANG(unittest.TestCase):
             self.src = fh.read()
         with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
             self.src += fh.read()
-        i = self.src.find("def _dieu_phoi_chot_kenh(")
+        i = self.src.find("def _engine_chot_kenh(")
         self.assertGreater(i, 0)
         j = self.src.find("\ndef ", i + 10)
         self.than = self.src[i:j]

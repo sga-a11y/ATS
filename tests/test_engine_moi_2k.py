@@ -49,55 +49,34 @@ def _acc(u, map_id, leader=False, trong=True):
 
 
 class TestMoiPartyDeuDungEngineMoi(unittest.TestCase):
-    """User 20/09: "event 2k thi tat ca deu chay engine moi" - KHONG xet nguong party."""
+    """2K and 40NPC use the same per-party controller at every party index."""
 
     def setUp(self):
         self._pc = getattr(R.config, "PARTY_CONFIG", {})
         self._evs = getattr(R.config, "EVENTS", {})
-        self._ng = getattr(R.config, "PARTY_ENGINE_MOI_TU", None)
         R.config.EVENTS = {"2k": EV_2K, "npc40": {"party_battle": {"kind": "npc_repeat"}}}
-        # NGUONG CAO CO Y: cai can chung minh o day la "2K KHONG xet nguong, con event khac THI
-        # CO". Neu de nguong THAT thi bai test tu vo nghia ngay khi user mo rong pham vi - da xay
-        # ra 21/09 khi nguong ha xuong 1 (moi party): luc do party 1 mode 40NPC cung True, va bai
-        # `test_event_khac_van_theo_NGUONG` do ma KHONG he co luat nao bi pha.
-        R.config.PARTY_ENGINE_MOI_TU = 41
 
     def tearDown(self):
         R.config.PARTY_CONFIG = self._pc
         R.config.EVENTS = self._evs
-        if self._ng is None:
-            if hasattr(R.config, "PARTY_ENGINE_MOI_TU"):
-                delattr(R.config, "PARTY_ENGINE_MOI_TU")
-        else:
-            R.config.PARTY_ENGINE_MOI_TU = self._ng
 
     def test_party_so_NHO_van_dung_engine_moi(self):
-        """Party 1 nam DUOI nguong (41) ma van phai True - do la ca biet le cua 2K."""
         R.config.PARTY_CONFIG = {0: {"mode": "event", "event_key": "2k"}}
         self.assertTrue(R.dung_engine_moi(0), "party 1 mode 2K phai dung engine moi")
 
-    def test_nguong_0_van_TAT_HAN_ke_ca_2K(self):
-        """`PARTY_ENGINE_MOI_TU = 0` la cong tac an toan cuoi cung de quay ve engine cu khi engine
-        moi hong - khong duoc co ngoai le nao, ke ca 2K."""
-        _cu = getattr(R.config, "PARTY_ENGINE_MOI_TU", None)
+    def test_khong_con_cong_tac_quay_ve_engine_cu(self):
         R.config.PARTY_CONFIG = {0: {"mode": "event", "event_key": "2k"}}
-        R.config.PARTY_ENGINE_MOI_TU = 0
-        try:
-            self.assertFalse(R.dung_engine_moi(0))
-        finally:
-            if _cu is None:
-                delattr(R.config, "PARTY_ENGINE_MOI_TU")
-            else:
-                R.config.PARTY_ENGINE_MOI_TU = _cu
+        with mock.patch.object(R.config, "PARTY_ENGINE_MOI_TU", 0, create=True):
+            self.assertTrue(R.dung_engine_moi(0))
 
-    def test_event_khac_van_theo_NGUONG(self):
-        """Khong duoc vi 2K ma mo toang cho moi event - 40NPC van theo nguong nhu cu."""
+    def test_event_40npc_cung_dung_engine(self):
         R.config.PARTY_CONFIG = {0: {"mode": "event", "event_key": "npc40"}}
-        self.assertFalse(R.dung_engine_moi(0))
+        self.assertTrue(R.dung_engine_moi(0))
 
     def test_floor_crawl_nam_trong_danh_sach_kind(self):
-        self.assertIn("floor_crawl", R.EVENT_KIND_ENGINE_MOI)
-        self.assertIn("floor_crawl", R.EVENT_KIND_ENGINE_MOI_MOI_PARTY)
+        R.config.PARTY_CONFIG = {0: {"mode": "event", "event_key": "2k"}}
+        self.assertTrue(R.dung_engine_moi(0))
+        self.assertTrue(hasattr(PE, "VIEC_FC_GOM"))
 
 
 class TestMapEventLaCA_DAI_TANG(unittest.TestCase):

@@ -27,6 +27,8 @@ Loi thu hai trong cung chuoi: `route2.get("steps", [])` khong duoc bao ve. Mode 
 """
 from __future__ import annotations
 
+from tests.party_controller_helpers import quyet_party
+
 import io
 import os
 import sys
@@ -79,42 +81,42 @@ class _Nen(unittest.TestCase):
 
 class TestEventXongThiKhongGom(_Nen):
     def test_leader_bao_xong_thi_dieu_phoi_IM(self):
-        kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, self._song({0}), None)
+        kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, self._song({0}), None)
         self.assertEqual(kh["viec"], R.VIEC_LAM, ly_do)
         self.assertIn("DA XONG", ly_do)
 
     def test_go_claim_set_thi_dieu_phoi_IM(self):
         self.st["go_claim"].set()
-        kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, self._song(), None)
+        kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, self._song(), None)
         self.assertEqual(kh["viec"], R.VIEC_LAM, ly_do)
         self.assertIn("DA XONG", ly_do)
 
     def test_CHUA_xong_thi_van_dieu_phoi_binh_thuong(self):
         """Khong duoc im khi event con dang chay - luc do party van phai du."""
-        kh, ly_do, _lt = R._dieu_phoi_quyet(self.PARTY, self.st, self._song(), None)
+        kh, ly_do, _lt = quyet_party(R, self.PARTY, self.st, self._song(), None)
         self.assertNotIn("DA XONG", ly_do)
 
 
-class TestKhongNoKhiKhongCoRouteTrain(unittest.TestCase):
-    """`route2` = None voi mode event - phai co nhanh rieng, khong duoc goi `.get` tren None."""
+class TestKhongCanRouteTrainChoEvent(unittest.TestCase):
+    """Event work is assigned directly even when there is no train route."""
 
-    def setUp(self):
-        with io.open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8") as fh:
-            self.src = fh.read()
+    def test_chua_vao_event_thi_giao_vao_event(self):
+        from bot import party_engine as PE
+        accs = [PE.AnhAcc("leader", la_leader=True, map_id=12061, kenh=1),
+                PE.AnhAcc("member", map_id=12061, kenh=1)]
+        anh = PE.AnhParty(0, accs, can_bao_nhieu=1, pha=PE.PHA_EVENT, map_dich=None)
+        self.assertEqual(PE.quyet_dinh(anh),
+                         {"leader": PE.VIEC_VAO_EVENT, "member": PE.VIEC_VAO_EVENT})
 
-    def test_co_nhanh_khong_co_route(self):
-        i = self.src.find('for stp in route2.get("steps", []):')
-        self.assertGreater(i, 0, "mat duong legacy route")
-        truoc = self.src[max(0, i - 1800):i]
-        self.assertIn("elif not route2:", truoc,
-                      "`route2` None (mode event) -> NoneType, loi bi except nuot")
+    def test_event_xong_thi_doi_thuong_khong_di_train(self):
+        from bot import party_engine as PE
+        accs = [PE.AnhAcc("leader", la_leader=True, map_id=12061, kenh=1),
+                PE.AnhAcc("member", map_id=12061, kenh=1)]
+        anh = PE.AnhParty(0, accs, can_bao_nhieu=1, pha=PE.PHA_EVENT,
+                          map_dich=None, event_xong=True)
+        jobs = PE.quyet_dinh(anh)
+        self.assertEqual(set(jobs.values()), {PE.VIEC_DOI_THUONG})
 
-    def test_nhanh_do_KHONG_di_train(self):
-        i = self.src.find("elif not route2:")
-        self.assertGreater(i, 0)
-        khoi = self.src[i:i + 2200]
-        self.assertIn("khong co route train", khoi)
-        self.assertNotIn("follow_smart_route(", khoi)
 
 
 if __name__ == "__main__":

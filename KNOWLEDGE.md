@@ -202,6 +202,16 @@ quân sư của các party **quanh map** (loop `<<>>`, giống `S:013-006`), và
 bằng `if this.members[roleId] == nil then return end` — client bỏ qua nếu chưa biết người đó là
 thành viên. Đừng dùng gói này để suy ra tình trạng party của mình (đã suýt kết luận sai 30/08).
 
+**Đính chính luồng kênh theo Lua client (26/09):** `UIServerArea.OnClick_Area` chỉ gửi
+`C:007-002`; `protocolTable[7][2]` chỉ hiện lỗi hoặc đóng UI, **không gán kênh hiện tại**.
+`protocolTable[12][0]` đọc `instanceId` từ server rồi gọi `RoleController:ChangeScene` →
+`SceneManager.ChangeScene`, nơi gán `SceneManager.instanceId`. Spawn `0x03` cũng mang instanceId.
+Bot phải giữ riêng kết quả yêu cầu và kênh scene: ACK 0 không được gán kênh đích hay tăng
+scene generation; thành công cần scene mới đúng map/kênh. Mã 1 chỉ xác nhận lại số đã đọc
+trong scene nếu khớp đích, không tạo số mới. Timeout không phải thành công, kể cả số cũ
+trùng đích. Mã từ chối 2/3/4 giữ bằng chứng scene cũ; scene mới không bị ACK cũ ghi đè.
+Các ghi chú lịch sử bên dưới coi ACK là nguồn kênh đã được thay thế bởi quy tắc này.
+
 **7. `current_channel` là số NHỚ SẴN và nó SAI ĐƯỢC — đừng coi ack `0x07` là bằng chứng
 (30/08).** Ack `0x07 result=0` chỉ nói *server đã nhận lệnh*; giá trị sau đó nằm trong biến nhớ và
 có thể lệch thực tế (sót lại qua reconnect, hoặc server không thực sự chuyển). Kiểm chứng tận mắt:

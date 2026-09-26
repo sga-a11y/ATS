@@ -58,7 +58,7 @@ class TestLechMapThiXoaDich(unittest.TestCase):
     def test_lech_map_thi_XOA_dich_cu(self):
         self.st["kenh_dich"] = 5
         self.st["kenh_dich_luc"] = 123.0
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, self._song(12061, 21001), None)
+        R._engine_chot_kenh(self.PARTY, self.st, self._song(12061, 21001), None)
         self.assertIsNone(self.st.get("kenh_dich"),
                           "giu dich cu -> acc tu chuyen sang kenh cua map CU (result=2)")
         self.assertFalse(self.st.get("kenh_dich_luc"))
@@ -66,13 +66,13 @@ class TestLechMapThiXoaDich(unittest.TestCase):
     def test_lech_map_thi_TRA_VE_None(self):
         """Tra ve dich cu la caller lai di gui lenh kenh do."""
         self.st["kenh_dich"] = 5
-        _ra = R._dieu_phoi_chot_kenh(self.PARTY, self.st, self._song(12061, 21001), None)
+        _ra = R._engine_chot_kenh(self.PARTY, self.st, self._song(12061, 21001), None)
         self.assertIsNone(_ra)
 
     def test_CUNG_map_thi_khong_dong_vao_dich(self):
         """Cung map roi thi day la viec cua bac chot kenh binh thuong, khong duoc xoa oan."""
         self.st["kenh_dich"] = 5
-        R._dieu_phoi_chot_kenh(self.PARTY, self.st, self._song(21001, 21001), None)
+        R._engine_chot_kenh(self.PARTY, self.st, self._song(21001, 21001), None)
         # khong khang dinh gia tri cuoi (bac chot kenh co the doi no) - chi can KHONG di qua
         # nhanh "lech map".
         self.assertNotIn("da o 2 MAP", "")
