@@ -127,8 +127,18 @@ class TestKhongThayNhauThiDONG_BO_chu_KHONG_danh_dau_kenh_HONG(unittest.TestCase
 
     def test_ra_lenh_dong_bo(self):
         viec, _l, _hu = PE.quyet_dinh_cap_party(
-            _anh(du_doi=False, ai_lech_instance=["tq402"]))
+            _anh(du_doi=False, ai_lech_instance=["tq402"], kenh_chac_ca_party=False))
         self.assertEqual(viec, PE.DP_DONG_BO)
+
+    def test_CUNG_KENH_va_CHAC_KENH_thi_bo_qua_dong_bo_di_lap_party(self):
+        """Party 1, 28/09: ca 5 @21011/k1, roster 0/4, 2 acc "khong thay" (chi la tam nhin) ->
+        `dong_bo` -> ca party nghi 75+ phut o Giang Lang. User: "da biet cung 1 kenh roi ...
+        bo qua buoc dong bo kenh"."""
+        viec, _l, _hu = PE.quyet_dinh_cap_party(
+            _anh(du_doi=False, maps={21011: ["a1", "a2", "a3", "a4", "a5"]}, kenhs={1},
+                 ai_lech_instance=["sga008", "tuyetdo"], kenh_chac_ca_party=True))
+        self.assertNotEqual(viec, PE.DP_DONG_BO)
+        self.assertEqual(viec, PE.DP_MOI)
 
     def test_KHONG_con_hieu_ung_kenh_hong(self):
         self.assertFalse(hasattr(PE.HieuUng(), "kenh_hong"),

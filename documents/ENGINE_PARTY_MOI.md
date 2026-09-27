@@ -290,3 +290,17 @@ nào**: các phép so thứ tự nhánh, đếm số chỗ ghi, kiểm "chỉ m�
 3. Chuyển `_dieu_phoi_chot_kenh` (241 dòng) vào engine; xoá `_dieu_phoi_loop`
 
 Xong bước 3 là xoá được điều phối, engine cũ chỉ còn là code thi hành.
+
+### "Không thấy đồng đội" mà cùng kênh + chắc kênh → bỏ qua `dong_bo` (28/09)
+
+`quyet_dinh_cap_party`, nhánh `ai_lech_instance`: chỉ ra `dong_bo` khi còn lý do nghi số kênh
+(lệch kênh, hoặc có acc `kenh_dang_chac()==False`). Cả party **cùng một kênh và đều chắc kênh**
+(`AnhCapParty.kenh_chac_ca_party`) thì bỏ qua nhánh này, xuống thẳng bước lập party (`moi`).
+
+Lý do: "thấy nhau" đo bằng `0x03` / `S:001-001` là **tầm nhìn** (theo khoảng cách), không phải
+kênh — đứng xa nhau trong thành là mất nhau dù cùng kênh; lời mời tổ đội không cần tầm nhìn.
+Instance và kênh là một (CORE_FLOW) → không có gì để đồng bộ.
+
+Ca thật party 1, 28/09: cả 5 `@21011/k1`, roster `0/4`, `sga008`/`tuyetdo` "không thấy" →
+`dong_bo` → mọi acc `nghi`, `_giao_kenh_dich` không có đích, chốt kênh không bump reform vì
+việc ≠ `moi` → đứng im ở Giang Lăng 75+ phút, không một dòng log.

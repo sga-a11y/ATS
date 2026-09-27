@@ -5096,6 +5096,7 @@ def _chup_anh_cap_party(pidx, st, song, lech_tu):
         dang_doi_kenh=bool(song and _dang_doi_kenh(song)),
         thieu_acc_song=bool(song and _thieu_acc_song(pidx, song)),
         ai_lech_instance=(_ai_lech_instance(pidx, song) if song and not _du_doi else []),
+        kenh_chac_ca_party=bool(song) and all(_kenh_chac(c) for _u, c in song),
         o_thanh_di_qua=_o_thanh_di_ngang,
         thanh_tap_ket=_thanh_tap_ket_dich(pidx, st),
         ca_party_o_thanh=_o_thanh,
