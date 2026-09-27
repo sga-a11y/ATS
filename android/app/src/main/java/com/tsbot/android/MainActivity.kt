@@ -587,6 +587,7 @@ fun TsBotApp(
                                     (service?.baDauNotifyItems(_pi) ?: emptyList()) +
                                     (service?.legionNotifyItems(_pi) ?: emptyList()) +
                                     (service?.diemDuNotifyItems(_pi) ?: emptyList()) +
+                                    (service?.petRoiChucNotifyItems(_pi) ?: emptyList()) +
                                     (service?.furnaceNotifyItems(_pi) ?: emptyList())
                             else emptyList()
                         },
@@ -598,6 +599,7 @@ fun TsBotApp(
                         onBagSlotBuy = { u -> service?.bagSlotBuy(u) ?: false },
                         onBaDauSkip = { u -> service?.baDauNotifySkip(u) ?: false },
                         onDiemDuSkip = { u -> service?.diemDuNotifySkip(u) ?: false },
+                        onPetRoiChucSkip = { u, pid -> service?.petRoiChucNotifySkip(u, pid) ?: false },
                         onCurrentChannel = {
                             party.accounts.firstOrNull { service?.isRunning(it.username) == true }
                                 ?.let { service?.currentChannel(it.username) }
@@ -1186,6 +1188,7 @@ fun PartyCard(
     onBagSlotBuy: (String) -> Boolean = { _ -> false },
     onBaDauSkip: (String) -> Boolean = { _ -> false },
     onDiemDuSkip: (String) -> Boolean = { _ -> false },
+    onPetRoiChucSkip: (String, String) -> Boolean = { _, _ -> false },
     onCurrentChannel: () -> Int?,
     onGetLog: (String) -> String = { "" },
 ) {
@@ -1410,6 +1413,7 @@ fun PartyCard(
                     onBagSlotBuy = { u -> onBagSlotBuy(u) },
                     onBaDauSkip = { u -> onBaDauSkip(u) },
                     onDiemDuSkip = { u -> onDiemDuSkip(u) },
+                    onPetRoiChucSkip = { u, pid -> onPetRoiChucSkip(u, pid) },
                     onRefresh = {
                         val n = onFurnaceNotify(); notifyItems = n; notifyCount = n.size
                     },
@@ -4219,6 +4223,7 @@ fun FurnaceNotifyDialog(
     onBagSlotBuy: (String) -> Boolean = { _ -> false },
     onBaDauSkip: (String) -> Boolean = { _ -> false },
     onDiemDuSkip: (String) -> Boolean = { _ -> false },
+    onPetRoiChucSkip: (String, String) -> Boolean = { _, _ -> false },
     onRefresh: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -4244,6 +4249,27 @@ fun FurnaceNotifyDialog(
                                     TextButton(onClick = {
                                         scope.launch {
                                             withContext(Dispatchers.IO) { onBaDauSkip(u) }
+                                            onRefresh()
+                                        }
+                                    }) { Text("Bỏ qua") }
+                                }
+                                HorizontalDivider()
+                            }
+                            return@items
+                        }
+                        // Pet ROI CHUC (het trung thanh) - mirror gui.py `_pet_roi_chuc`.
+                        if (it0["kind"] == "pet_roi_chuc") {
+                            val _pid = it0["pid"] ?: ""
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Text("acc $u pet ${it0["ten"]} đã bị Rời chức ko xuất chiến được",
+                                     style = MaterialTheme.typography.bodySmall,
+                                     fontWeight = FontWeight.Bold,
+                                     color = StatusConnecting)
+                                Row(horizontalArrangement = Arrangement.End,
+                                    modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) { onPetRoiChucSkip(u, _pid) }
                                             onRefresh()
                                         }
                                     }) { Text("Bỏ qua") }

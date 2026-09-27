@@ -124,7 +124,7 @@ class TestParseDungCount(unittest.TestCase):
         c.current_channel = 27
         GameClient._on_channel_list(c, _goi([(1, 5, 20)]))
         self.assertEqual(R._bang_kenh([("a", c)]), {1: (5, 15)})
-        self.assertIsNone(R._kenh_trong_cho_ca_party(0, {}, [("a", c)] * 30, set()))
+        self.assertIsNone(R._kenh_trong_cho_ca_party(0, {}, [("a", c)] * 30))
 
     def test_so_kenh_LON_van_doc_het(self):
         """`0 < ch < 1000` cua ban cu la phong doan - kenh so lon deu bi vut."""

@@ -1511,8 +1511,13 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
         # ca party dung im giua Di Gioi, `combat=False` mai.
         # Do that 16/09 party 41: `dtmot` (LEADER) + `dthai` dung yen o map 49942, party 4/4,
         # pos khong doi suot hang phut (user: "p41 dung o quang truong").
+        #
+        # CHI LEADER chay - y engine cu (nhanh `(LEADER)`: "DG: chay long vong tim quai"). Member
+        # tu di theo leader; member ma cung gui 0x06 thi gianh quyen di voi co che di theo, `pos`
+        # lac tam rieng. Do that 27/09: ca 5 acc log `Run-around quanh`, `l***in` chay quanh
+        # (970,630) trong khi 4 acc kia (1070,730).
         try:
-            if client.in_di_gioi():
+            if client.in_di_gioi() and getattr(client, "_pe_la_leader", False):
                 client.start_run_around()
             else:
                 client.stop_run_around()

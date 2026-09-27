@@ -36,42 +36,28 @@ def _src():
         return fh.read()
 
 
-class TestTimKenhKhacTruocKhiDungCho(unittest.TestCase):
-    def setUp(self):
+class TestKhongConNhanhMoiKenhDeuDay(unittest.TestCase):
+    """(27/09) Bo han so den. Ca party 34 o tren sinh ra tu chinh so den: hai kenh bi cam vi
+    TIMEOUT (-1) nen "moi kenh party dang dung deu day". Khong con so den thi khong con tinh trang
+    do: kenh luon chon tu danh sach `S:007-001`, server bao day sau danh sach thi hoi lai."""
+
+    def test_khong_con_nhanh_moi_kenh_deu_day(self):
+        self.assertNotIn("MOI kenh party dang dung deu DAY", _src())
+
+    def test_ma_4_moi_thi_HOI_LAI_danh_sach(self):
         s = _src()
-        i = s.find("MOI kenh party dang dung deu DAY")
+        i = s.find("if _day_moi:")
         self.assertGreater(i, 0)
-        # lay ca doan TRUOC do (than nhanh `if`) lan sau do
-        j = s.rfind("if cu and dem and all(", 0, i)
-        self.assertGreater(j, 0)
-        self.khoi = s[j:i + 1500]
-
-    def test_co_goi_ham_tim_kenh_con_cho(self):
-        self.assertIn("_kenh_trong_cho_ca_party(", self.khoi,
-                      "khong hoi ham BIET kenh nao con cho = dung im cho vo han")
-
-    def test_lam_moi_danh_sach_kenh_truoc_khi_tim(self):
-        """`c.channels` cu thi tim ra kenh da day tu doi nao."""
-        self.assertIn("_lam_moi_ds_kenh(", self.khoi)
-        self.assertLess(self.khoi.find("_lam_moi_ds_kenh("),
-                        self.khoi.find("_kenh_trong_cho_ca_party("))
-
-    def test_tim_duoc_thi_CHOT_kenh_do(self):
-        self.assertIn('st["kenh_dich"] = int(_kenh_moi)', self.khoi)
-
-    def test_KHONG_tim_duoc_moi_dung_cho(self):
-        """Giu nguyen luat cu cua user khi that su het cho - chi doi DIEU KIEN de vao do."""
-        i = self.khoi.find("KHONG kenh nao")
-        self.assertGreater(i, 0, "mat duong 'that su het cho thi cho'")
-        self.assertIn("return int(cu)", self.khoi[i:])
+        self.assertIn("_lam_moi_ds_kenh(", s[i:i + 800])
 
 
 class TestHamTimKenhVanDungPhamVi(unittest.TestCase):
-    def test_loai_kenh_trong_so_den_va_phai_DU_CHO_ca_party(self):
+    def test_phai_DU_CHO_ca_party_va_khong_nhan_so_den(self):
         s = _src()
-        i = s.find("def _kenh_trong_cho_ca_party(")
+        i = s.find("def _kenh_trong_cho_ca_party(pidx, st, song):")
+        self.assertGreater(i, 0)
         than = s[i:s.find("\ndef ", i + 10)]
-        self.assertIn("in hong", than)
+        self.assertNotRegex(than, r"\bhong\b")
         self.assertIn("toi_da - dang < can", than)
 
 

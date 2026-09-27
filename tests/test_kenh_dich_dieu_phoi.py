@@ -142,22 +142,24 @@ class TestKenhDichLaTRANG_THAI(unittest.TestCase):
         song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
         self.assertEqual(R._engine_chot_kenh(self.PARTY, st, song), 2)
 
-    def test_kenh_bao_DAY_thi_KHONG_chot_lai(self):
+    def test_kenh_bao_DAY_thi_hoi_lai_danh_sach_truoc_khi_chot(self):
         """P3 06/09: kenh 15 day, batbat vao khong duoc -> chot lai 15 la bat no dam dau mai.
-        Dieu phoi DOC THANG `_chan_switch_result` cua client, khong cho acc bao cao."""
+        (27/09, bo so den) Ma 4 moi hon danh sach = danh sach CU -> chua chot, hoi lai da."""
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
         R.account_clients["a1"].ma_doi_kenh(4, 2)     # a1 vua vao kenh 2 khong duoc: DAY
-        self.assertEqual(R._engine_chot_kenh(self.PARTY, st, song), 4,
-                         "kenh dong nhat da DAY -> phai lay kenh dong nhi")
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, st, song))
 
     def test_moi_kenh_deu_day_thi_tim_kenh_MOI_du_cho_ca_party(self):
         st = R._pstate(self.PARTY)
         song = self._song(a1=_C(channel=4), a2=_C(channel=2), a3=_C(channel=2))
-        for _u, c in song:
-            c.channels = {2: (20, 20), 4: (20, 20), 7: (19, 20), 9: (5, 20)}
         R.account_clients["a1"].ma_doi_kenh(4, 2)
         R.account_clients["a2"].ma_doi_kenh(4, 4)
+        import time as _t
+        for _u, c in song:                           # danh sach MOI ve sau hai ma 4 -> tin no
+            c.channels = {2: (20, 20), 4: (20, 20), 7: (19, 20), 9: (5, 20)}
+            c._ds_kenh_nhan_luc = _t.time() + 1
+            c._ds_kenh_map = c.current_map
         self.assertEqual(R._engine_chot_kenh(self.PARTY, st, song), 9,
                          "kenh 7 chi con 1 cho (can 3) -> phai chon kenh 9")
 
@@ -237,11 +239,12 @@ class TestChotRoiThiGIU(unittest.TestCase):
         R.account_clients["a1"].current_channel = 2
         self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 2)
 
-    def test_dich_bao_DAY_thi_chot_lai_NGAY(self):
+    def test_dich_bao_DAY_thi_bo_dich_NGAY_va_hoi_lai_danh_sach(self):
         song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))
         R._engine_chot_kenh(self.PARTY, self.st, song)
         R.account_clients["a3"].ma_doi_kenh(4, 1)    # a3 vao kenh 1 khong duoc: DAY
-        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 2)
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, self.st, song))
+        self.assertIsNone(self.st["kenh_dich"])
 
     def test_ve_chung_kenh_thi_xoa_ca_moc(self):
         song = self._song(a1=_C(channel=1), a2=_C(channel=1), a3=_C(channel=2))

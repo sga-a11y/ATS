@@ -435,7 +435,38 @@ bằng chứng.
 > Đây là hồi tố của chính L3b: thêm đường điều phối tự gửi để chữa ca party 3 bị điếc, nhưng đường
 > cũ vẫn chạy song song. **Thêm một đường ra lệnh thì phải hợp nhất, không phải cộng thêm.**
 
+**Bổ sung 27/09 — "một lệnh đang bay" tính đến khi CÓ KẾT QUẢ, không phải đến khi hết giờ chờ.**
+User chốt: *"gửi lệnh đổi kênh thì phải chờ kết quả server trả về chứ"*. `S:007-002` chỉ mang **một
+byte mã, không có số kênh**, nên nếu còn lệnh cũ chưa được trả lời mà đã gửi lệnh mới thì trả lời
+trễ của lệnh cũ sẽ bị **dán nhãn lệnh mới**. Khoá chống gửi chồng mà chỉ giữ trong 4s chờ thì chưa đủ.
+
+> Ca thật 27/09 party 1 Dị Giới (user: *"báo chuyển kênh 64 thất bại, server đầy, nhưng kênh đó chỉ
+> 8/20 người"*):
+> ```
+> 16:41:38 [nanam] Chuyen kenh -> 64 (cho server xac nhan, lan 1/1)
+> 16:41:42 [nanam] Doi kenh 64 TIMEOUT sau 4.0s
+> 16:41:42 [nanam] Doi kenh 64 THAT BAI: khu da day nguoi (result=4)   <- trả lời TRỄ của lệnh 69
+> ```
+> Đo trên log cùng ngày: **5005** lần gửi lệnh mới khi lệnh trước chưa có trả lời; **1088/2159** lần
+> "ACK OK" xong scene lại vào kênh **khác** kênh vừa xin. Trả lời p90 = **4s**, đúng bằng ngưỡng cũ.
+
+Giờ: `client._chan_switch_cho` giữ lệnh đã gửi mà chưa có kết quả. Chưa có kết quả thì **không gửi
+lệnh mới** (`DOI_KENH_CHO_KQ_SEC = 15s` chờ, `DOI_KENH_TREO_MAX_SEC = 60s` mới coi là mất; phiên mới
+`connect()` thì xoá). Kết quả tới trễ vẫn gán **đúng kênh của lệnh cũ**.
+Test: `tests/test_doi_kenh_cho_ket_qua_khong_so_den.py`.
+
 ### L3l — Phân biệt "server nói" với "bot đoán", đừng để cái đoán tước mất lựa chọn
+
+> **ĐÃ THAY 27/09 — BỎ HẲN SỔ ĐEN KÊNH.** User chốt: *"ko cần sổ đen, mỗi lần chọn kênh luôn chọn
+> kênh ít người nhất rồi, nếu làm đúng thì chả bao giờ có chuyện chọn kênh đầy hay kênh ko tồn
+> tại"*. Sổ đen dưới đây sinh ra từ chính các mã bị gán nhầm (L3k bổ sung 27/09). Nó làm party 1 lật
+> đích **71 lần**, trong đó **46 lần chỉ vì timeout**. Luật hiện hành:
+> - Danh sách kênh `S:007-001` là sự thật duy nhất: luôn chọn kênh **ít người nhất mà đủ chỗ cả team**.
+> - Timeout **không** tác động gì lên việc chọn kênh, cũng không làm mất đích đang giữ.
+> - Mã 4 tới **sau** lần nhận danh sách mới nhất = danh sách đã cũ → bỏ đích (nếu đúng kênh đó), hỏi
+>   lại danh sách, chờ nó về rồi mới chọn. **Không** cấm kênh nào cả.
+>
+> Phần dưới giữ lại làm lịch sử.
 
 Mã 2 `<沒有該分區>` và mã 4 `<分區人數已滿>` là **server nói rõ**. `-1` là bot tự đặt khi hết lượt
 chờ mà server im lặng — đó là **không biết**, không phải "kênh đầy".

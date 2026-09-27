@@ -156,8 +156,10 @@ class TestLuatChotKenh(unittest.TestCase):
         song = self._song([5, 5, 12], {5: (19, 20), 12: (19, 20), 9: (19, 20)})
         self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 5)
 
-    def test_kenh_DAY_khong_duoc_chon_du_it_nguoi(self):
+    def test_kenh_DAY_sau_danh_sach_thi_khong_chon_bang_danh_sach_cu(self):
         song = self._song([5, 5, 12], {5: (19, 20), 12: (18, 20), 9: (0, 20)})
+        for _u, c in song:
+            c._ds_kenh_nhan_luc = time.time() - 5
         R.account_clients["a"]._chan_switch_result = 4
         R.account_clients["a"]._chan_switch_target = 9
         R.account_clients["a"]._chan_switch_luc = time.time()

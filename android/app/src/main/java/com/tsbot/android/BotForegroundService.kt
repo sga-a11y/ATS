@@ -612,6 +612,14 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         try { rpd().callAttr("diem_du_notify_skip", username)?.toBoolean() ?: false }
         catch (_: Exception) { false }
 
+    /** Pet ROI CHUC (het trung thanh) - [{user, kind:'pet_roi_chuc', id, pid, ten}]. */
+    fun petRoiChucNotifyItems(pidx: Int): List<Map<String, String>> =
+        notifyRows("pet_roi_chuc_notify_items", pidx)
+
+    fun petRoiChucNotifySkip(username: String, pid: String): Boolean =
+        try { rpd().callAttr("pet_roi_chuc_notify_skip", username, pid)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
     /** Ba Dau sap het han (con duoi 1 ngay) - [{user, kind:'ba_dau', luc}]. Xem KNOWLEDGE.md 7p. */
     fun baDauNotifyItems(pidx: Int): List<Map<String, String>> = notifyRows("ba_dau_notify_items", pidx)
 

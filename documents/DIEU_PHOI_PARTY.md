@@ -95,15 +95,16 @@ với `kenh_dich`, lệch thì tự `switch_channel`. Không chờ ai báo cáo,
 Bỏ qua khi: party khác map, hoặc có acc chưa rõ kênh. **Không nhường vòng bắt tay** — điều phối
 là người quyết, `do_channel_sync` chỉ còn là cánh tay thi hành.
 
-Kênh đầy thì vào **sổ đen** `st["kenh_day"]` (`bao_kenh_day`, hạn `KENH_DAY_HAN_SEC = 120s` rồi tự
-rụng vì người ra vào liên tục). Điều phối bỏ qua kênh trong sổ đen, lấy kênh đông nhì; mọi kênh
-party đang đứng đều đầy thì `_kenh_trong_cho_ca_party` lấy kênh trống đủ chỗ cho **cả** party từ
-`c.channels`. Về chung một kênh thì sổ đen xoá sạch.
+**Không có sổ đen kênh (bỏ 27/09).** Luôn chọn từ danh sách `S:007-001`: kênh **ít người nhất mà
+đủ chỗ cả team**; không kênh nào đủ chỗ thì lấy kênh đang có nhiều member nhất. Server báo đầy
+(mã 4) **sau** lần nhận danh sách mới nhất thì danh sách đã cũ → hỏi lại rồi mới chọn. Timeout
+không tính là gì cả. Xem `RULE_DIEU_PHOI.md` L3k (bổ sung 27/09) và L3l.
 
 **Chốt rồi thì GIỮ** (`KENH_DICH_KIEN_NHAN_SEC = 45s`). Hàm chốt chạy mỗi 2 giây; chốt lại từ đầu
 mỗi nhịp thì acc vừa bắt đầu chuyển sang kênh A là phân bố đổi → chốt kênh B → cả lũ quay đầu →
 lại đổi. Đúng kiểu thrash đã chữa cho `gom`/`reform` bằng grace + cooldown, mà hàm chốt kênh lại
-thiếu. Đích chỉ được đổi khi kênh đó **vào sổ đen**, hoặc **quá hạn** mà vẫn chưa gom xong.
+thiếu. Đích chỉ được đổi khi server báo **kênh đó đầy sau danh sách mới nhất**, hoặc **quá hạn** mà
+vẫn chưa gom xong. Timeout không làm mất đích.
 
 > **Bug thật P3 (06/09), mất 4 phút mới đồng bộ xong** — và trong 4 phút đó không mời party được
 > vì lời mời không qua được kênh khác:

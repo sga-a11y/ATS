@@ -484,6 +484,19 @@ Gói: `0x61 010001` rồi `0x61 02 00 [idx]` (`client.py:14910`, `:14914`). `[CA
 |---|---|---|
 | **CẤM** `go_to_event` khi party đã lập | `[LOG]` | nó `leave_party()` ngay dòng đầu → đập tan party. User 20/09 *"sao party xong leader bị văng thế"* |
 | Trong tháp **không teleport được** | `[CAPTURE]` | engine cũ 06/09 quay 201.495 vòng vì ra lệnh teleport trong tháp |
+| **Trong MỌI map event không teleport được** (map chờ 12921, tầng 12922…12959, map 40NPC/loạn đấu) — muốn tele thì phải **ĐI BỘ ra ngoài event trước** (`exit_event` → `out_map`), ra được rồi mới tele | user chốt 27/09 | `events.json` `exit._note`; chốt ở `go_to_town` → `_di_bo_ra_khoi_map_event()` |
+| Đi bộ ra **hỏng** mà vẫn còn trong map event → **KHÔNG được gửi teleport**, trả `False` cho engine thử lại | `[LOG]` | APK 27/09 17:03, xem dưới |
+| Qua cổng event (`_event_gate`) phải **GIỮ toạ độ đi kèm gói đổi map**, như `_enter_gate` | `[LOG]` | xoá đi thì `exit_event` không có pos để tìm đường ra |
+
+`[LOG]` APK 27/09 — mode DG + train, login đang ở map event, bot chuyển pha thì spam teleport:
+```
+17:03:02 qua cong event idx=2 -> map 12922 (cutscene xong)        <- _event_gate xoá pos
+17:03:31 Dang o map event 'Nhị Kiều' (map 12922) -> teleport bi CHAN, di bo ra truoc
+17:03:33 request scene khong co self-spawn va khong co pos hop le   <- exit_event bỏ cuộc
+17:03:33 Teleport -> city 12001 (flag 0)                            <- vẫn tele, mỗi 2s, 150s
+```
+Đối chứng cùng log, 16:35 ở tầng 12934: có pos (`RESYNC pos tu 0x0d sub04 = (650,430)`) →
+`exit_event` đi bộ ra 12003 bình thường. Khác nhau đúng một thứ: có toạ độ hay không.
 | Tầng gom = **tầng thấp nhất cả đội đang ở** | `[LOG]` | user 20/09 *"trước có tìm tầng ở giữa để tập trung, m lại bỏ cái đó đi rồi à"* |
 
 ## Ngọc Phúc Thần — khi nào THÁO

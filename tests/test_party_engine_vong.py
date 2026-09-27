@@ -423,9 +423,19 @@ class TestTrongDiGioiPhaiCHAY_TIM_QUAI(unittest.TestCase):
 
     def test_trong_DG_thi_chay_long_vong(self):
         c = _Cli(map_id=49942)
+        c._pe_la_leader = True
         E.thi_hanh(c, E.VIEC_TRAIN, lambda: True)
         self.assertIn(("start_run_around",), c.da_goi,
                       "dung im giua Di Gioi cho quai tu toi")
+
+    def test_trong_DG_MEMBER_KHONG_tu_chay_long_vong(self):
+        """Member di theo leader. Do that 27/09: ca 5 acc log `Run-around quanh`, 1 member chay
+        quanh tam rieng (970,630) lech khoi party (1070,730)."""
+        c = _Cli(map_id=49942)
+        c._pe_la_leader = False
+        E.thi_hanh(c, E.VIEC_TRAIN, lambda: True)
+        self.assertNotIn(("start_run_around",), c.da_goi)
+        self.assertIn(("stop_run_around",), c.da_goi)
 
     def test_o_map_train_thi_DUNG_chay_long_vong(self):
         """Map thuong co tam bai quai co dinh - chay long vong o do la roi khoi bai."""

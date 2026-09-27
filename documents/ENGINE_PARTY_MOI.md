@@ -200,6 +200,7 @@ phép tính thay vì gọi lại hàm flow cũ đã có:
 |---|---|
 | việc vặt sau login (PB đơn, boss TG, boss quân đoàn, vận tiêu, nhiệm vụ ngày, dọn túi) | có |
 | vào Dị Giới + đếm giờ theo **đồng hồ server** + đổi pha DG → train | có |
+| trong Dị Giới chạy lòng vòng tìm quái — **chỉ LEADER** chạy, member đi theo (y engine cũ) | có |
 | đồng bộ map (về map đông người nhất, hoà thì theo leader / điểm tập kết đã chốt) | có |
 | đồng bộ kênh | có |
 | lập party (leader mời, member chỉ mở cửa nhận) | có |

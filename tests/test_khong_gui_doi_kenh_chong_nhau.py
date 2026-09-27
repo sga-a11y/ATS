@@ -21,8 +21,8 @@ CHUOI NHAN QUA (do tren party.log 10/09, party 2):
 
 Hai sua, hai tang khac nhau:
   - `switch_channel` co khoa: lenh thu hai bi BO, va KHONG ghi ket qua gi (khong tao `-1` gia).
-  - So den phan biet CHAC (server noi: ma 2/4) voi DOAN (chi timeout). Het ung vien thi bo phan
-    doan ra roi tim lai.
+  - (27/09) BO HAN so den: timeout khong con tac dung gi len viec chon kenh, ma 4 chi bat hoi lai
+    danh sach kenh. Xem `tests/test_doi_kenh_cho_ket_qua_khong_so_den.py`.
 """
 from __future__ import annotations
 
@@ -49,31 +49,30 @@ class _C:
         self._chan_switch_luc = time.time() if luc is None else luc
 
 
-class TestSoDenPhanBietChacVaDoan(unittest.TestCase):
-    def test_ma_4_la_CHAC(self):
-        hong, _m3, _m2 = R._doc_ket_qua_doi_kenh([("u", _C(kq=4, target=8))])
-        self.assertEqual(set(hong), {8})
-        self.assertEqual(hong.chac(), {8}, "server noi ro kenh day -> chac")
-        self.assertEqual(hong.doan, set())
+class TestKetQuaDoiKenhKhongConSoDen(unittest.TestCase):
+    """BO SO DEN 27/09 (user: "ko can so den, moi lan chon kenh luon chon kenh it nguoi nhat").
+    Chi con: ma 4 toi SAU danh sach kenh moi nhat = danh sach CU -> phai hoi lai."""
 
-    def test_ma_2_la_CHAC(self):
-        hong, _m3, _m2 = R._doc_ket_qua_doi_kenh([("u", _C(kq=2, target=27))])
-        self.assertEqual(hong.chac(), {27})
+    def test_ma_4_moi_hon_danh_sach(self):
+        day, _m3, _m2 = R._doc_ket_qua_doi_kenh([("u", _C(kq=4, target=8))])
+        self.assertEqual(day, {8})
 
-    def test_TIMEOUT_chi_la_DOAN(self):
-        hong, _m3, _m2 = R._doc_ket_qua_doi_kenh([("u", _C(kq=-1, target=3))])
-        self.assertEqual(set(hong), {3}, "van vao so den - khong vao thi lai dam dau mai")
-        self.assertEqual(hong.doan, {3})
-        self.assertEqual(hong.chac(), set(), "timeout KHONG phai bang chung kenh day")
+    def test_ma_4_cu_hon_danh_sach_thi_tin_danh_sach(self):
+        c = _C(kq=4, target=8, luc=time.time() - 5)
+        c._ds_kenh_nhan_luc = time.time()
+        day, _m3, _m2 = R._doc_ket_qua_doi_kenh([("u", c)])
+        self.assertEqual(day, set())
 
-    def test_cung_kenh_vua_timeout_vua_ma_4_thi_la_CHAC(self):
-        """Mot acc timeout, acc khac nhan ma 4 -> co bang chung that."""
-        hong, _m3, _m2 = R._doc_ket_qua_doi_kenh(
-            [("a", _C(kq=-1, target=8)), ("b", _C(kq=4, target=8))])
-        self.assertEqual(hong.chac(), {8})
+    def test_ma_2_chi_bat_co(self):
+        day, _m3, m2 = R._doc_ket_qua_doi_kenh([("u", _C(kq=2, target=27))])
+        self.assertEqual((day, m2), (set(), True))
+
+    def test_TIMEOUT_khong_phai_bang_chung_gi(self):
+        day, _m3, _m2 = R._doc_ket_qua_doi_kenh([("u", _C(kq=-1, target=3))])
+        self.assertEqual(day, set(), "timeout KHONG phai bang chung kenh day")
 
 
-class TestBoQuaPhanDOAN_KhiHetUngVien(unittest.TestCase):
+class TestNhanhA_KhongLocSoDen(unittest.TestCase):
     PARTY = 0
     ACCS = ("a1", "a2", "a3")
 
@@ -86,13 +85,10 @@ class TestBoQuaPhanDOAN_KhiHetUngVien(unittest.TestCase):
     def tearDown(self):
         R.party_accounts = self._pa
 
-    def test_nhanh_a_thu_lai_khi_so_den_chi_toan_DOAN(self):
+    def test_nhanh_a_chi_xet_con_cho(self):
         i = self._src.find("_ung = [(dang, ch) for ch, (dang, con) in _bang.items()")
         self.assertGreater(i, 0)
-        khoi = self._src[i:i + 1200]
-        self.assertIn('getattr(hong, "doan", None)', khoi,
-                      "het ung vien ma khong xet lai phan doan -> chot bua vao kenh dang DAY")
-        self.assertIn("hong.chac()", khoi)
+        self.assertNotRegex(self._src[i:i + 200], r"\bhong\b")
 
     def test_van_NOI_RO_vi_sao_khong_co_ung_vien(self):
         """Nhin log cu khong the phan biet: 57 kenh deu day that / so den nuot / doc sai suc chua."""

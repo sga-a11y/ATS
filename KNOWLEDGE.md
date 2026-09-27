@@ -275,6 +275,12 @@ thông báo **LỖI** (`ShowCenterMessage`):
 | 3 | `組隊不可換分區` | **ĐANG TỔ ĐỘI thì KHÔNG đổi khu được** |
 | 4 | `人數已滿` | khu đã đầy |
 
+> **Gói này KHÔNG mang số kênh (xác nhận 27/09)** — chỉ có đúng một byte mã. Kết quả thuộc về lệnh
+> nào thì bot phải tự biết, nên **mỗi acc chỉ được có một lệnh đổi kênh chưa có kết quả**. Đo
+> 27/09 (46 party chạy cùng lúc): trả lời p50 = 1s, **p90 = 4s**, p99 = 5s, **tối đa 73s**. Bot cũ
+> chờ 4s rồi gửi lệnh mới nên trả lời trễ bị gán nhầm kênh: báo "kênh 64 đầy" trong khi 64 chỉ
+> 8/20 người. Xem `RULE_DIEU_PHOI.md` L3k (bổ sung 27/09).
+
 > **Mã 3 là vòng luẩn quẩn đã làm party không bao giờ đủ:** kẹt trong một party (kể cả party ma)
 > → không đổi được kênh → nằm khác kênh với leader → server không gửi lời mời tới → không vào được
 > party mới → vẫn kẹt. Bot cũ `return False` **im lặng** ở đây nên cả vòng này vô hình trong log.
@@ -1987,7 +1993,12 @@ S2C 0x1a sau do:    +exp vao nhan vat (vd 0x12c = 300 exp)
 - **Crack client xac nhan (UITeam.OnClick_FollowNpcState + protocolTable[19])**:
   - `C:019-001 <跟隨武將出戰> +NPCID(2)` = doi pet; `C:019-002 <出戰武將收回>` = thu pet ve.
   - `S:019-001` / `S:019-004` deu goi `Role.SetFightNpc(npcId)` -> day la XAC NHAN doi xong.
-    `S:019-006` = pet chet `<<[followIndex 1B][isDead 1B]>>`, `S:019-007` = pet ha da.
+    `S:019-006` = pet chet `<<[followIndex 1B][isDead 1B]>>`.
+  - `S:019-007 <跟隨武將下野>` = pet **ROI CHUC** (het trung thanh) `<<[followIndex 1B][isRetire 1B]>>`.
+    Bot: goi `0x13` sub `07 00`, body tu `pkt[9:]`. `followIndex` = MARKER record trong goi `0x0f`
+    (protocal.lua:2202 doc `[followIndex][npcId]` dau record). Pet roi chuc thi client chan xuat
+    chien (msg 71312) -> bot `switch_pet` bo qua con do trong phien login (`pets_roi_chuc`) va bao o
+    man Chu y. CHUA DO: server co gui goi nay ngay LUC LOGIN khong (log `PET ROI CHUC` se cho biet).
   - Client chan gui lenh khi: `isDead` (msg 60032), `data.isRetire` (71312), `beenRide` (50073 -
     vo tuong dang bi CUOI lam ngua, khac he thu cuoi), va dang danh
     (`Role.player.war ~= EWar.None and not FightField.IsCanControl()`).

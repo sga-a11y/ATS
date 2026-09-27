@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -84,6 +85,70 @@ class TestNoiVaoGoToTown(unittest.TestCase):
         i_tele = than.find("while time.time() < deadline")
         self.assertGreater(i_ra, 0, "khong di bo ra -> spam teleport trong map event")
         self.assertLess(i_ra, i_tele, "phai di bo ra TRUOC vong teleport")
+
+
+class TestDiBoRaHongThiKhongTeleport(unittest.TestCase):
+    """Log APK 27/09 17:03 (map 12922, sau go_to_event Nhi Kieu): exit_event hong vi mat pos ->
+    `go_to_town` van vao vong teleport -> "Teleport -> city 12001" MOI 2 GIAY suot 150s."""
+
+    def _client(self, map_id):
+        c = GameClient("user", "token")
+        c.running = True
+        c.current_map = map_id
+        c._floor_crawl_started = False
+        c.goi_da_gui = []
+        c.send = lambda op, body=b"": c.goi_da_gui.append(op)
+        c.in_di_gioi = lambda: False
+        c.city_unlocked = lambda _cid: True
+        return c
+
+    def test_di_bo_ra_hong_thi_KHONG_gui_teleport(self):
+        c = self._client(12922)
+        c.exit_event = lambda ev: False
+        with mock.patch("time.sleep"):
+            self.assertFalse(c.go_to_town(12001, 0, tries=2, wait=0.01, battle_grace=0.0))
+        self.assertEqual(c.goi_da_gui, [], "trong map event teleport bi chan -> gui la spam")
+
+    def test_di_bo_ra_duoc_thi_teleport_binh_thuong(self):
+        c = self._client(12922)
+
+        def _ra(_ev):
+            c.current_map = 12003
+            return True
+        c.exit_event = _ra
+        with mock.patch("time.sleep"):
+            c.go_to_town(12001, 0, tries=1, wait=0.01, battle_grace=0.0)
+        self.assertTrue(c.goi_da_gui, "da ra ngoai event -> phai teleport")
+
+
+class TestCongEventGiuToaDo(unittest.TestCase):
+    """Goi doi map (0x0c) mang toa do moi. `_event_gate` xoa khong dieu kien -> vao map event xong
+    pos=None -> exit_event khong co pos de tim duong ra."""
+
+    def _qua_cong(self, co_toa_do):
+        c = GameClient("user", "token")
+        c.running = True
+        c.current_map = 12921
+        c.pos = (350, 330)
+        c._wait_combat_clear = lambda idle=3.0: True
+        c.move_to = lambda x, y: None
+
+        def _send(op, body=b""):
+            if op == 0x14 and body[:2] == b"\x08\x00":
+                c.current_map = 12922
+                if co_toa_do:
+                    c.pos = (811, 431)
+                    c._pos_valid_for_map = 12922
+        c.send = _send
+        with mock.patch("time.sleep"):
+            self.assertTrue(c._event_gate(350, 330, 2, 12922))
+        return c.pos
+
+    def test_goi_doi_map_co_toa_do_thi_GIU(self):
+        self.assertEqual(self._qua_cong(True), (811, 431))
+
+    def test_khong_co_toa_do_moi_thi_xoa_toa_do_map_cu(self):
+        self.assertIsNone(self._qua_cong(False))
 
 
 if __name__ == "__main__":

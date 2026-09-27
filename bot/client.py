@@ -368,6 +368,12 @@ CHANNEL_SWITCH_ERRORS = {
     3: "DANG TO DOI thi khong doi khu duoc",
     4: "khu da day nguoi",
 }
+# GUI LENH DOI KENH THI PHAI CHO KET QUA (user chot 27/09). `S:007-002` chi co MOT byte ma, KHONG co
+# so kenh -> tra loi chi gan dung lenh khi moi luc chi co MOT lenh dang bay. Ban cu cho 4s roi gui
+# lenh moi: log 27/09 do duoc 5005 lan gui chong, tra loi p90 = 4s (dung nguong cu), max 73s; tra
+# loi TRE cua kenh day that bi dan nhan kenh moi ("kenh 64 day" trong khi 64 chi 8/20).
+DOI_KENH_CHO_KQ_SEC = 15.0     # cho ket qua toi da bay lau (phu ~99.8% tra loi do duoc)
+DOI_KENH_TREO_MAX_SEC = 60.0   # lenh chua co ket qua qua han nay moi coi la mat (server im lang han)
 TEAM_DUNGEONS = {
     20: {"id": 0x0001, "daily_flag": 0x302E, "daily_count": 1},
     50: {"id": 0x000E, "daily_flag": 0x30A6, "daily_count": 1},
@@ -2437,6 +2443,7 @@ class GameClient:
         self._chan_switch_target = None
         self._chan_switch_result = None
         self._chan_switch_luc = 0.0     # luc nhan ma tren (dieu phoi doc de biet con moi khong)
+        self._chan_switch_cho = None    # (kenh, luc gui) cua lenh DA GUI ma CHUA co ket qua
         self._ds_kenh_hoi_luc = 0.0     # luc GUI yeu cau danh sach kenh
         self._ds_kenh_nhan_luc = 0.0    # luc NHAN duoc `S:007-001` (bang `channels` moi tu day)
         self._ds_kenh_map = 0           # MAP luc nhan bang do - moi map mot danh sach kenh khac
@@ -2668,6 +2675,10 @@ class GameClient:
         # run_party_digioi dat "quest" cho mode event (event dung chung pet voi quest/PB).
         self.default_pet_role = "train"
         self._pet_switch_fail = {}   # pet_id -> so lan doi HUT (xem PET_SWITCH_MAX_TRY)
+        # PET ROI CHUC (S:019-007, het trung thanh) -> KHONG xuat chien duoc. Nam tren client nen
+        # login lai la tinh lai tu dau (user chot 27/09). Xem `_on_pet_retire`.
+        self.pet_retired = set()     # {marker} da bi Roi chuc trong phien login nay
+        self._pet_marker_pid = {}    # marker (followIndex 1..4, tu 0x0f) -> pet_id
         self._o5_team_fn = None      # hook (set boi run_party_digioi): xu ly o5 pho ban to doi - BUOC CUOI
                                      #   claim_daily_quests. Nhan o5_done (bool). Leader phoi hop ca party.
         self.friend_entities = []    # entity 8B cua ban be (S2C 0x0e 05 push luc login)
@@ -2776,6 +2787,8 @@ class GameClient:
         # `C:047-010` giua thanh - dung cai da lam RUNG ca 4 acc (log 17:56).
         self._pb_trong_phong = False
         self._pb_tao_phong_kq = None
+        # PHIEN MOI -> lenh doi kenh cua phien cu khong bao gio co ket qua nua, dung cho no.
+        self._chan_switch_cho = None
         # Qua online dung state server (0x55 RoleCount id=10 + 0x51 BitFlag), khong dem local nua.
         self._online_base = 0.0
         self.claimed_gifts = set()
@@ -4869,6 +4882,8 @@ class GameClient:
                     self._event14_bagfull = True
         elif opcode == protocol.OP_ACTIONS and not self.battle_tracker.generation:  # 0x35 legacy
             self._on_actions(pkt)
+        elif opcode == 0x13 and len(pkt) >= 9 and pkt[7:9] == b"\x07\x00":
+            self._on_pet_retire(pkt[9:])
         elif opcode == 0x13 and len(pkt) >= 11 and pkt[7:9] in (b"\x04\x00", b"\x01\x00"):
             # pet dang dung: [04 00] luc login, [01 00] khi doi pet. id = 2B LE
             pid = int.from_bytes(pkt[9:11], "little")
@@ -5071,6 +5086,7 @@ class GameClient:
         _dbg = []   # DEBUG: (marker, pid) tung record de doi chieu voi vi tri THAT trong game
         self.state.carried_pets = []   # [(pid, ten)] pet MANG THEO - GUI tab skill per-pet doc
         self.pet_levels = {}           # pid -> cap; dung lai moi lan doc (pet mang theo co the doi)
+        self._pet_marker_pid = {}      # marker -> pid; dung lai moi lan doc (user doi cho pet)
         self._pet_skill_rows = []   # AUTO NANG SKILL PET: (slot,pid,petLv,skillPoint,[skillLv*3])
         for _ in range(n):
             if start + 33 > len(b):
@@ -5081,6 +5097,7 @@ class GameClient:
             pid = int.from_bytes(b[start + 1:start + 3], "little")
             _dbg.append((marker, pid))
             if pid:
+                self._pet_marker_pid[marker] = pid
                 # Cap doc THANG tu record (byte +7, giong `_pet_skill_rows`). Ghep vao TEN ngay tai
                 # nguon: tui do, tab battle, cache luc acc tat... deu doc `carried_pets` nen chi can
                 # mot cho la du - ten pet o day chi dung de HIEN, khong cho nao lay lam khoa (moi
@@ -10669,7 +10686,9 @@ class GameClient:
             return False
         if self._pet_switch_gave_up(pid):
             return False
-        carried = {p for p, _nm in (getattr(self.state, "carried_pets", []) or [])}
+        if pid in self.pets_roi_chuc():
+            return False     # Roi chuc = server chac chan tu choi (client game cung chan, msg 71312)
+        carried ={p for p, _nm in (getattr(self.state, "carried_pets", []) or [])}
         if carried and pid not in carried:
             log.warning("[%s] doi pet: 0x%04x KHONG co trong tui pet -> bo qua", self._label, pid)
             self._pet_switch_failed(pid, "khong co trong tui pet")
@@ -10697,6 +10716,34 @@ class GameClient:
                     "ha da/dang cuoi?) -> giu pet cu", self._label, pid)
         self._pet_switch_failed(pid, "server khong xac nhan")
         return False
+
+    def _on_pet_retire(self, body: bytes):
+        """S:019-007 <跟隨武將下野> <<+索引(1) +是否(1)>> - pet ROI CHUC (het trung thanh).
+
+        Client game chan bam xuat chien khi `data.isRetire` (UITeam.lua:563, msg 71312) -> bot cung
+        thoi doi sang con do, CHI trong phien login nay (user chot 27/09: "login lai thi tinh lai
+        tu dau"). `索引` = followIndex = marker record trong goi 0x0f (protocal.lua:2202).
+        """
+        # Luu theo MARKER (khong phai pet id): goi nay co the toi TRUOC goi 0x0f -> luc do chua biet
+        # marker la con nao. Quy ra pet id luc dung (`pets_roi_chuc`).
+        for i in range(0, len(body) - 1, 2):
+            marker, roi = body[i], bool(body[i + 1])
+            pid = self._pet_marker_pid.get(marker)
+            if roi:
+                if marker not in self.pet_retired:
+                    log.warning("[%s] PET ROI CHUC: marker=%d pet=%s ('%s') trung thanh=%s -> KHONG "
+                                "xuat chien duoc, thoi doi sang con nay toi khi login lai",
+                                self._label, marker, ("0x%04x" % pid) if pid else "?",
+                                getattr(config, "PET_NAMES", {}).get(pid, "?"),
+                                (getattr(self, "pet_faith", None) or {}).get(pid))
+                self.pet_retired.add(marker)
+            else:
+                self.pet_retired.discard(marker)
+
+    def pets_roi_chuc(self) -> list:
+        """[pet_id] dang Roi chuc (phien login nay) - chi con da biet id tu goi 0x0f."""
+        _map = getattr(self, "_pet_marker_pid", None) or {}
+        return [_map[m] for m in sorted(getattr(self, "pet_retired", None) or ()) if _map.get(m)]
 
     def _pet_switch_gave_up(self, pid: int) -> bool:
         """Da thu du PET_SWITCH_MAX_TRY lan ma khong doi duoc -> thoi, giu pet hien tai."""
@@ -12806,6 +12853,8 @@ class GameClient:
 
     def _switch_channel_locked(self, channel: int, wait: float, retries: int,
                                theo_lenh: bool = False) -> bool:
+        if self._lenh_kenh_dang_bay(channel):
+            return False
         self._doi_kenh_tu = time.time()
         if self.party_members:
             # DIEM NGHEN THU HAI (cung ho voi `teleport`): doi kenh cung phai ROI DOI truoc, tuc
@@ -12832,21 +12881,26 @@ class GameClient:
             except Exception as e:
                 log.warning("[%s] Doi kenh: roi doi loi: %s", self._label, e)
         for attempt in range(1, max(1, int(retries)) + 1):
+            if attempt > 1 and self._lenh_kenh_dang_bay(channel):
+                break
             self._chan_switch_event.clear()
             self._channel_scene_event.clear()
             scene_generation = self._channel_scene_generation
             scene_map = self.current_map
             was_uncertain = self.kenh_dang_nghi_ngo
             self.kenh_dang_nghi_ngo = True
-            deadline = time.monotonic() + max(0.1, float(wait))
             self._chan_switch_target = channel
             self._chan_switch_result = None
+            self._chan_switch_cho = (channel, time.time())
             log.info("[%s] Chuyen kenh -> %d (cho server xac nhan, lan %d/%d)",
                      self._label, channel, attempt, max(1, int(retries)))
             self.send(0x07, b"\x02\x00" + struct.pack("<H", channel))
-            if not self._chan_switch_event.wait(max(0.1, float(wait))):
-                log.warning("[%s] Doi kenh %d TIMEOUT sau %.1fs", self._label, channel, wait)
+            if not self._chan_switch_event.wait(DOI_KENH_CHO_KQ_SEC):
+                log.warning("[%s] Doi kenh %d: server CHUA tra ket qua sau %.0fs -> lenh van tinh "
+                            "la DANG BAY, khong gui chong", self._label, channel, DOI_KENH_CHO_KQ_SEC)
                 continue
+            # `wait` gio chi la han cho GOI SCENE sau ACK 0 - ket qua thi luon cho toi khi co.
+            deadline = time.monotonic() + max(0.1, float(wait))
             result = self._chan_switch_result
             if result in (2, 3, 4) and self._channel_scene_generation == scene_generation:
                 self.kenh_dang_nghi_ngo = was_uncertain
@@ -12910,6 +12964,21 @@ class GameClient:
                     getattr(self, "current_channel", None))
         return False
 
+    def _lenh_kenh_dang_bay(self, channel) -> bool:
+        """Con lenh doi kenh DA GUI ma CHUA co ket qua (va chua qua han) -> KHONG gui chong."""
+        cho = self._chan_switch_cho
+        if not cho:
+            return False
+        tuoi = time.time() - cho[1]
+        if tuoi >= DOI_KENH_TREO_MAX_SEC:
+            log.warning("[%s] Lenh doi kenh %s gui %.0fs truoc van CHUA co ket qua -> coi nhu mat, "
+                        "cho gui lenh moi", self._label, cho[0], tuoi)
+            self._chan_switch_cho = None
+            return False
+        log.info("[%s] Doi kenh %s: lenh doi kenh %s gui %.0fs truoc CHUA co ket qua -> cho, khong "
+                 "gui chong", self._label, channel, cho[0], tuoi)
+        return True
+
     def kenh_dang_chac(self) -> bool:
         """So kenh hien tai co phai do SERVER xac nhan khong (khong phai so nho lai tu truoc).
 
@@ -12922,6 +12991,15 @@ class GameClient:
         """S2C 0x07 switch result: [02 00][result].
         result=0 OK; 1 same channel; 2 no area; 3 team cannot switch; 4 full."""
         result = pkt[9]
+        # Moi luc chi mot lenh dang bay (`_lenh_kenh_dang_bay`) nen ket qua nay chac chan la cua lenh
+        # `_chan_switch_cho`. Toi sau khi nguoi gui da thoi cho = tra loi TRE: van gan DUNG kenh do.
+        cho = self._chan_switch_cho
+        if cho:
+            self._chan_switch_target = cho[0]
+            self._chan_switch_cho = None
+            if time.time() - cho[1] > DOI_KENH_CHO_KQ_SEC:
+                log.info("[%s] Ket qua doi kenh %s toi TRE %.0fs sau khi gui", self._label, cho[0],
+                         time.time() - cho[1])
         target = self._chan_switch_target
         self._chan_switch_result = result
         # MOC de DIEU PHOI biet ma nay con MOI hay da cu. Dieu phoi doc THANG ba truong nay
@@ -15556,7 +15634,14 @@ class GameClient:
         # log that party 2 (27/08 11:40): het 2K, chuyen pha train, ca 5 acc dang o map 12932
         # -> "PARTY co acc sai map -> ve thanh don nhau" -> "Teleport -> city 12001" MOI 2 GIAY,
         # khong bao gio ra duoc.
-        self._di_bo_ra_khoi_map_event()
+        # DI BO RA HONG ma VAN o map event -> DUNG, KHONG gui teleport. Server chan teleport trong
+        # map event, gui bao nhieu cung vo ich (log APK 27/09 17:03: exit_event hong vi mat pos ->
+        # "Teleport -> city 12001" MOI 2 GIAY suot 150s). Tra False de caller/engine thu lai sau.
+        if not self._di_bo_ra_khoi_map_event() and self.event_dang_dung_trong() is not None:
+            log.warning("[%s] go_to_town: VAN o map event (map=%s), di bo ra chua duoc -> KHONG "
+                        "teleport (trong map event teleport bi chan)", self._label, self.current_map)
+            self.flee_mode = False
+            return False
         ok = 0
         deadline = time.time() + tries * wait + battle_grace   # +battle_grace du cho thoat battle
         while time.time() < deadline:
@@ -17448,7 +17533,13 @@ class GameClient:
                     arrived_at = i
                     self.send(0x0c, b"\x01\x00"); time.sleep(0.4)   # xin roster sau khi doi map
                 if i - arrived_at >= 3:   # da toi + FLUSH them 3 transit -> cutscene het han
-                    self.pos = None
+                    # GIU toa do di kem chinh lan doi map nay (goi 0x0c mang position) - y het
+                    # `_enter_gate`. Truoc day xoa KHONG DIEU KIEN -> vao map event xong pos=None ->
+                    # can teleport thi `exit_event` khong co pos de tim duong, bo cuoc; `go_to_town`
+                    # lai spam teleport 150s trong map event (log APK 27/09 17:03, map 12922:
+                    # "request scene khong co self-spawn va khong co pos hop le").
+                    if getattr(self, "_pos_valid_for_map", None) != self.current_map:
+                        self.pos = None
                     log.info("[%s] qua cong event idx=%d -> map %s (cutscene xong)",
                              self._label, idx, self.current_map)
                     return True

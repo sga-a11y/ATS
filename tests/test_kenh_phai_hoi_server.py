@@ -228,10 +228,13 @@ class TestKhongThayThiLamGi(unittest.TestCase):
                 mock.patch.object(R, "_party_40npc_ngoai_gio", return_value=False):
             st = R._pstate(0)
             c = _C(1, {1: (0, 20), 2: (5, 20)})
+            b = _C(2)
+            c._ds_kenh_nhan_luc = b._ds_kenh_nhan_luc = time.time() - 5
             c._chan_switch_target = 1
             c._chan_switch_result = 4
             c._chan_switch_luc = time.time()
-            self.assertEqual(R._engine_chot_kenh(0, st, [("a", c), ("b", _C(2))]), 2)
+            # (27/09 bo so den) danh sach cu hon ma 4 -> khong chot kenh 1, hoi lai danh sach
+            self.assertNotEqual(R._engine_chot_kenh(0, st, [("a", c), ("b", b)]), 1)
 
 
 class TestSoKenhKhiMoiParty(unittest.TestCase):

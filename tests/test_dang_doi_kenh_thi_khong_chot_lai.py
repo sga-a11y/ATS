@@ -196,15 +196,17 @@ class TestMoiKetQuaDoiKenhDeuDuocXU_LY(unittest.TestCase):
         c._chan_switch_luc = time.time()
         return c
 
-    def test_ma_4_va_TIMEOUT_deu_vao_so_den(self):
+    def test_ma_4_bao_danh_sach_cu_con_TIMEOUT_thi_khong(self):
+        """Bo so den 27/09: timeout khong phai bang chung gi (party 1: 46/71 lan lat dich vi no)."""
         day4, _, _ = R._doc_ket_qua_doi_kenh([("a", self._c(4))])
         dayT, _, _ = R._doc_ket_qua_doi_kenh([("a", self._c(-1))])
         self.assertEqual(day4, {27})
-        self.assertEqual(dayT, {27}, "timeout bi bo qua -> dieu phoi giu dich mot kenh vao khong duoc")
+        self.assertEqual(dayT, set())
 
-    def test_ma_2_vao_so_den_va_bat_co(self):
+    def test_ma_2_bat_co(self):
+        """Kenh khong ton tai thi khong co trong danh sach `S:007-001` -> khong bao gio duoc chon."""
         day, _ma3, ma2 = R._doc_ket_qua_doi_kenh([("a", self._c(2))])
-        self.assertEqual(day, {27}, "ma 2 chi bat co chung, so kenh khong ai ghi -> chot lai dung no")
+        self.assertEqual(day, set())
         self.assertTrue(ma2)
 
     def test_ma_3_bat_co_rieng(self):

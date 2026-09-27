@@ -1659,7 +1659,9 @@ class BotGUI(tk.Tk):
                   for it in ctrl.diem_du_notify_items(pidx)]
                + [(it["user"], {"_safe_danh": True, "map": it["map"], "safe": it["safe"],
                                 "so_tran": it["so_tran"]})
-                  for it in ctrl.safe_canh_bao_items(pidx)])
+                  for it in ctrl.safe_canh_bao_items(pidx)]
+               + [(it["user"], {"_pet_roi_chuc": True, "pid": it["pid"], "ten": it["ten"]})
+                  for it in ctrl.pet_roi_chuc_notify_items(pidx)])
         try:
             accs = ctrl.party_accounts(pidx)
         except Exception:
@@ -1683,7 +1685,7 @@ class BotGUI(tk.Tk):
     # 13/09), cung khong phai mot lan roi thoi (moi nguon den SAU luc login -> rong vinh vien).
     NOTIFY_LAM_MOI_SEC = 60.0
 
-    NOTIFY_CAM = ("_ba_dau", "_bag", "_legion", "_safe_danh")
+    NOTIFY_CAM = ("_ba_dau", "_bag", "_legion", "_safe_danh", "_pet_roi_chuc")
 
     def _party_notify_gap(self, pidx):
         """Party co chu y thuoc loai CAN LAM NGAY khong?"""
@@ -1798,6 +1800,20 @@ class BotGUI(tk.Tk):
                                "Điểm safe này có thể học sai, kiểm lại toạ độ giúp."
                                % (self._mask_user(u), it["so_tran"], tuple(it["safe"]),
                                   it["map"], _ten_map)
+                          ).pack(side="left", fill="x", expand=True)
+                return
+            # --- PET ROI CHUC (het trung thanh) -> khong xuat chien duoc ---
+            # Bot da THOI doi sang con nay trong phien login (login lai tinh lai tu dau).
+            if it.get("_pet_roi_chuc"):
+                def _skip_roi_chuc(_u=u, _p=it["pid"], _r=rowf):
+                    ctrl.pet_roi_chuc_notify_skip(_u, _p); _r.destroy()
+                _skips.append((rowf, _skip_roi_chuc))
+                ttk.Button(rowf, text="Bỏ qua", width=7,
+                           command=_skip_roi_chuc).pack(side="right", padx=2)
+                ttk.Label(rowf, wraplength=380, justify="left", foreground="#b45309",
+                          font=(None, 9, "bold"),
+                          text="acc %s pet %s đã bị Rời chức ko xuất chiến được"
+                               % (self._mask_user(u), it["ten"])
                           ).pack(side="left", fill="x", expand=True)
                 return
             # --- KHONG CO QUAN DOAN ---
