@@ -1871,8 +1871,11 @@ class PartyEngine:
                     con_gio_dg=bool(song and _goi(c, "digioi_minutes_live", 0)
                                     < self.gio_dg_toi_da),
                     # Doc THANG tui (`bag_counts`), khong nho so rieng.
+                    # Party TAT dung Ho Phu thi phu trong tui khong keo dai duoc DG -> khong tinh,
+                    # neu khong se giu pha DG mai (ca that 27-28/09 party 51).
                     con_ho_phu=bool(song and int((getattr(c, "bag_counts", None)
-                                                  or {}).get(HO_PHU_TID, 0) or 0) > 0),
+                                                  or {}).get(HO_PHU_TID, 0) or 0) > 0
+                                    and (self.pcfg or {}).get("use_digioi_ho_phu")),
                 ))
             except Exception:
                 accs.append(AnhAcc(username, la_leader=la_leader, song=False))
@@ -2456,7 +2459,8 @@ class AnhCapParty(object):
                  "can_lap_doi", "ngoai_gio_40npc", "event_xong", "ca_party_het_gio_dg",
                  "maps", "kenhs", "chua_biet_map", "lech_kenh_that", "mot_minh",
                  "du_doi", "leader_dang_rot", "dang_doi_kenh", "thieu_acc_song",
-                 "ai_lech_instance", "o_thanh_di_qua", "thanh_tap_ket", "ca_party_o_thanh",
+                 "ai_lech_instance", "kenh_chac_ca_party", "o_thanh_di_qua", "thanh_tap_ket",
+                 "ca_party_o_thanh",
                  "acc_dung_hinh", "viec_di_train", "ly_do_di_train", "tinh_hinh_doi",
                  # Cau ly do lech do `_ly_do_lech` dung san (no can `maps`/`kenhs`/`mot_minh`
                  # va cach dien dat da chot tu lau) - anh chup mang sang, ham quyet dinh khong
@@ -2580,7 +2584,17 @@ def quyet_dinh_cap_party(anh):
         if not ly_do:
             ly_do = ("chua doc duoc map cua %s -> chua xong bac gom map, chua den luot kenh"
                      % (sorted(anh.chua_biet_map),))
-    elif not anh.du_doi and anh.ai_lech_instance and not anh.o_thanh_di_qua:
+    elif not anh.du_doi and anh.ai_lech_instance and not anh.o_thanh_di_qua and not (
+            len(kenhs) == 1 and anh.kenh_chac_ca_party):
+        # CUNG MOT KENH + CA PARTY DEU CHAC SO KENH -> DA DONG BO ROI, BO QUA NHANH NAY, xuong
+        # thang buoc lap party. "Khong thay nhau" chi la TAM NHIN (`0x03`/`S:001-001` ban theo
+        # khoang cach) - dung xa nhau trong thanh to la mat nhau du cung kenh; loi moi to doi thi
+        # khong can tam nhin. Instance va kenh la MOT (CORE_FLOW) -> khong co gi de dong bo.
+        # Ca that 28/09 party 1 (user: "da biet cung 1 kenh roi ... bo qua buoc dong bo kenh"):
+        #   00:14:34 viec=dong_bo - cung map nhung ['sga008', 'tuyetdo'] KHONG THAY duoc dong doi
+        #            TRANG THAI: ca 5 @21011/k1 | roster leader=0/4
+        # `dong_bo` -> ca party `nghi`, `_giao_kenh_dich` khong co dich de gui, chot kenh khong
+        # bump reform vi viec != moi -> dung im o Giang Lang 75+ phut.
         # CUNG MAP + CUNG SO KENH MA KHONG THAY NHAU = KHAC INSTANCE. "Ai dang dung quanh minh"
         # (`0x03 PlayerAppear`) la bang chung that - server chi gui cho nguoi CUNG SCENE + CUNG
         # INSTANCE (user 13/09: "biet duoc nhung nguoi xung quanh minh thi biet duoc co cung kenh

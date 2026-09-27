@@ -1871,8 +1871,11 @@ class PartyEngine:
                     con_gio_dg=bool(song and _goi(c, "digioi_minutes_live", 0)
                                     < self.gio_dg_toi_da),
                     # Doc THANG tui (`bag_counts`), khong nho so rieng.
+                    # Party TAT dung Ho Phu thi phu trong tui khong keo dai duoc DG -> khong tinh,
+                    # neu khong se giu pha DG mai (ca that 27-28/09 party 51).
                     con_ho_phu=bool(song and int((getattr(c, "bag_counts", None)
-                                                  or {}).get(HO_PHU_TID, 0) or 0) > 0),
+                                                  or {}).get(HO_PHU_TID, 0) or 0) > 0
+                                    and (self.pcfg or {}).get("use_digioi_ho_phu")),
                 ))
             except Exception:
                 accs.append(AnhAcc(username, la_leader=la_leader, song=False))

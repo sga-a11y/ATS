@@ -15504,6 +15504,7 @@ class GameClient:
     # toi ~25s (do that 15/09: [trumuoi] gui luc 00:31:40, server DONG Y luc 00:32:06).
     DG_CHO_TRA_LOI_SEC = 30.0
     DG_GIAN_KHI_IM_SEC = 15.0      # server im hoan toan -> gian ra, KHONG ban day
+    DIGIOI_HET_GIO_PHUT = 120      # `limitTime` DG (LimitTimeDungeon_C.dat, KNOWLEDGE.md)
 
     def enter_di_gioi_safe(self, tries: int = 12, wait: float = 3.0) -> bool:
         """Vao DI GIOI: gui 0x61 roi CHO `S:097-001` tra loi, khong ban lai mu.
@@ -15557,6 +15558,12 @@ class GameClient:
             #   1 cap khong du  -> acc nay khong bao gio vao duoc, ban lai la vo ich
             #   2 het gio       -> het that, va la lan DUY NHAT duoc phep ket luan the
             if ma in (1, 2):
+                if ma == 2:
+                    # SERVER da chot het gio -> ghi vao dong ho de dieu phoi thay `con_gio_dg=False`
+                    # (ca that 27-28/09 party 51: bi tu choi ma 2 7506 lan ma van bi giao vao DG).
+                    self.digioi_minutes = max(int(getattr(self, "digioi_minutes", 0) or 0),
+                                              self.DIGIOI_HET_GIO_PHUT)
+                    self._last_digioi_ts = time.time()
                 log.warning("[%s] VAO DI GIOI DUNG HAN: %s (S:097-001 ma %d)", self._label,
                             "CAP KHONG DU" if ma == 1 else "HET GIO hom nay", ma)
                 return False
