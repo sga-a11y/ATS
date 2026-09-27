@@ -3,6 +3,7 @@
 The party engine calls ``decide_route`` on its own thread. Travel happens on
 the existing account workers; this module creates no threads or barriers.
 """
+from __future__ import annotations   # APK = Python 3.8: `float | None` no TypeError luc import
 
 import time
 from typing import NamedTuple
