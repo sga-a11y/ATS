@@ -30,6 +30,22 @@ Mã Python PC/APK đã đồng bộ. Việc kiểm tra mã và unit test không 
   bộ ra (`exit_event`) rồi tắt acc, nên bị chặn là sai. Party 7/11/13 (27/09) thua boss Đỉnh Tháp
   12934 (10/10 ô phe mình HP 0) rồi đứng yên. Party 27 thì chỉ acc đã văng ra ngoài được thoát.
   Lỗi có từ 18/09 (`85ec4e8`). Test: `Test2KThuaThiRaKhoiThap` trong `tests/test_engine_moi_2k.py`.
+- **Event không có leader bot** ("Bot đứng yên, chờ nhận lời mời từ ..."): làm y engine cũ —
+  chưa ở map event thì `vao_event`, đã ở map event thì `lap_party` (acc không phải leader chỉ mở
+  cửa nhận lời mời của người trong whitelist), event xong vẫn `doi_thuong`. Trước đó engine đổi
+  mọi việc thành `nghi` nên party 7 (27/09) đứng ở 12003, không vào event
+  (`party_modes._event_cho_moi`). Đã vào đội người thật thì `nghi` (đứng yên theo họ).
+- **Đội trưởng trong whitelist KHÔNG phải "party lạ"**: `_engine_routine_decisions` trước chỉ coi
+  chính mình + leader bot là hợp lệ, không có leader bot thì mọi đội trưởng đều "lạ". Party 7
+  (27/09): 4 acc nhận lời mời người thật 15:57:24, lên tầng 12923, roster server về 15:57:39 →
+  15:57:40 cả 4 bị giao `roi_party_la` (lặp mỗi giây). Engine cũ không có bước này. Giờ hỏi
+  `client.doi_truong_hop_le()`: mình / leader bot / người mình đã nhận lời mời / tên trong
+  `leaders_for` — cùng luật với `_accept_party_invite`. Test: `TestDoiTruongWhitelistKhongPhaiPartyLa`
+  trong `tests/test_apk_event_co_leader.py`.
+- **Mode event luôn đánh quest mode**: `_cap_nhat_tuy_chon_client` đặt lại
+  `state.force_quest_mode` và `default_pet_role = "quest"` như `run_account` cũ lúc login.
+  Thiếu hai cờ này thì party không có leader bot đánh event bằng combo train, và pet bị trả về
+  vai train. Test: `tests/test_event_quest_mode_engine.py`.
 
 Phần dưới ghi lại thiết kế ban đầu và các tình huống lịch sử. Những mô tả
 chạy song song hoặc fallback engine cũ trong lịch sử không còn áp dụng.

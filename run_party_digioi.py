@@ -6492,7 +6492,8 @@ def _engine_mode_decisions(pidx, anh, decisions):
     kind = ((ev or {}).get("party_battle") or {}).get("kind")
     no_leader = mode == "event" and kind != "chaos_vs" and not config.PARTY_LEADER_ACC.get(pidx)
     if no_leader and not st.get("engine_no_leader_log"):
-        log.warning("[party %d] ENGINE: event KHONG CO LEADER -> dung yen, cho cau hinh leader", pidx + 1)
+        log.info("[party %d] ENGINE: event KHONG CO LEADER BOT -> vao map event, dung yen cho "
+                 "nguoi trong whitelist moi", pidx + 1)
     st["engine_no_leader_log"] = no_leader
     done = {u for u, c in _clients_cua_party(pidx)
             if c is not None and getattr(c, "_loandau_done", False)} if kind == "chaos_vs" else ()
@@ -6555,9 +6556,11 @@ def _engine_routine_decisions(pidx, anh, decisions, pcfg):
         if account.dang_danh or getattr(account, "dang_ban", False):
             continue
         if action == "lap_party":
+            # "Party la" = doi truong KHONG phai minh / leader bot / nguoi trong WHITELIST. Truoc
+            # day chi xet minh + leader bot -> party khong leader bot (nguoi that moi) bi coi la
+            # la, ca doi roi ngay khi roster ve (27/09 party 7). Engine cu khong co buoc nay.
             captain = client._doi_truong_dang_ket()
-            own = getattr(client, "self_entity", None)
-            if captain and captain not in (own, leader_entity):
+            if captain and not client.doi_truong_hop_le(captain, leader_entity):
                 result[user] = "roi_party_la"
                 continue
         if (action in ("nghi", "train")
@@ -6724,6 +6727,17 @@ def _cap_nhat_tuy_chon_client(c, pcfg):
     c.auto_sell_noi_dat = bool(pcfg.get("auto_sell_noi_dat", True) and mode in ("train", "city"))
     c.auto_cat_do = bool(pcfg.get("auto_cat_do", False) and mode in ("train", "city"))
     c.bank_expand_gold = int(pcfg.get("bank_expand_gold", 0) or 0) if pcfg.get("auto_bank_expand", False) else 0
+    # Mode EVENT LUON danh quest_mode + pet vai quest, CO LEADER BOT HAY KHONG - y engine cu
+    # (`run_account` luc login). Commit 26/09 bo `run_account` ma quen hai co nay: party khong co
+    # leader bot (nguoi that moi) danh event bang combo TRAIN, va pet bi tra ve vai train sau moi
+    # viec co doi vai (`default_pet_role` mac dinh "train").
+    _ev = mode == "event"
+    _st = getattr(c, "state", None)
+    if _st is not None:
+        _st.force_quest_mode = _ev
+        if _ev and not _st.quest_mode:
+            _st.quest_mode = True
+    c.default_pet_role = "quest" if _ev else "train"
 
 
 def _cap_nhat_engine(eng, pidx):
@@ -8828,6 +8842,35 @@ def bag_notify_skip(username):
     if username:
         bag_notify_dismissed.add(username)
     return True
+
+
+def bag_slot_price(username):
+    """Gia mua slot tui cho nut "Mua slot" o dong tui sap day (UI APK; PC lam y het trong gui.py).
+    -> "dg" (dang o Di Gioi, server khong tra gia) | "<so vang>" | "" (khong hoi duoc)."""
+    c = account_clients.get(username)
+    if c is None or not getattr(c, "running", False):
+        return ""
+    try:
+        if c.in_di_gioi():
+            return "dg"
+    except Exception:
+        pass
+    try:
+        pr = c.query_bag_slot_price()
+    except Exception:
+        pr = None
+    return str(pr[0]) if pr else ""
+
+
+def bag_slot_buy(username):
+    """Mua 1 slot tui (+5 o) cho acc. True neu server bao thanh cong."""
+    c = account_clients.get(username)
+    if c is None or not getattr(c, "running", False):
+        return False
+    try:
+        return bool(c.buy_bag_slot())
+    except Exception:
+        return False
 
 
 def legion_notify_skip(username):

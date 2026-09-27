@@ -99,6 +99,7 @@ class ControllerRegressions(unittest.TestCase):
     def test_foreign_party_is_left_only_by_a_selected_worker(self):
         client = mock.Mock(self_entity=b"member", party_members=[])
         client._doi_truong_dang_ket.return_value = b"stranger"
+        client.doi_truong_hop_le.return_value = False     # khong phai leader bot / whitelist
         R.account_clients.update(a=NS(self_entity=b"leader"), b=client)
         snapshot = E.AnhParty(0, [self.account("b")])
         with mock.patch.object(R, "_map_train_dich", return_value=None):

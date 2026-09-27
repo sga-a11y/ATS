@@ -18,7 +18,7 @@ def decide_mode(mode, decisions, accs, *, target_map=None, event_kind=None,
     """
     result = dict(decisions)
     if mode == "event" and event_kind != "chaos_vs" and not has_leader:
-        return {u: action if action in _PRIORITY else "nghi" for u, action in result.items()}
+        return _event_cho_moi(result, accs)
     if mode not in ("city", "stand", "cleanbag") and not (
             mode == "event" and event_kind == "chaos_vs"):
         return result
@@ -59,6 +59,41 @@ def decide_mode(mode, decisions, accs, *, target_map=None, event_kind=None,
             result[user] = "solo_event_enter"
         else:
             result[user] = "solo_event_run"
+    return result
+
+
+# Event xong / het gio / stop: phai di duoc ke ca khi khong co leader bot (y engine cu).
+_EVENT_THOAT = frozenset(("doi_thuong", "thoat"))
+
+
+def _event_cho_moi(decisions, accs):
+    """Event KHONG CO LEADER BOT ("Bot dung yen, cho nhan loi moi tu ...") - y engine cu:
+    vao map event roi DUNG YEN cho nguoi that trong whitelist moi.
+
+    - viec uu tien / event xong -> giu nguyen
+    - chua o map event          -> `vao_event`
+    - da vao doi                -> `nghi`: dung yen theo nguoi moi
+    - da o map event            -> `lap_party`: acc khong phai leader chi MO CUA nhan loi moi
+                                   (`set_party_invite_ready`), khong moi ai, khong roi doi.
+    Truoc day moi viec deu thanh `nghi`: party 7 (27/09) dung o 12003 khong vao event, va du co
+    vao thi loi moi cua nguoi that bi GIU vi khong ai mo cua.
+    """
+    by_user = {a.username: a for a in accs}
+    result = {}
+    for user, action in decisions.items():
+        account = by_user.get(user)
+        if action in _PRIORITY or action in _EVENT_THOAT or account is None or not account.song:
+            result[user] = action
+        elif account.dang_danh:
+            result[user] = "nghi"
+        elif not getattr(account, "trong_event", False):
+            result[user] = "vao_event"
+        elif getattr(account, "so_member", 0):
+            # DA VAO DOI (nguoi that moi) -> DUNG YEN theo ho, y engine cu. Khong giao `lap_party`
+            # nua: acc dang trong doi khong co gi de "mo cua".
+            result[user] = "nghi"
+        else:
+            result[user] = "lap_party"
     return result
 
 

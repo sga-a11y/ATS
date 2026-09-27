@@ -627,6 +627,15 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         try { rpd().callAttr("bag_notify_skip", username)?.toBoolean() ?: false }
         catch (_: Exception) { false }
 
+    /** Gia mua slot tui: "dg" (dang o Di Gioi) | "<vang>" | "" (khong hoi duoc). Chan ~2s. */
+    fun bagSlotPrice(username: String): String =
+        try { rpd().callAttr("bag_slot_price", username)?.toString() ?: "" }
+        catch (_: Exception) { "" }
+
+    fun bagSlotBuy(username: String): Boolean =
+        try { rpd().callAttr("bag_slot_buy", username)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
     /** Doc mot ham `*_notify_items(pidx)` ben Python -> list map string. */
     private fun notifyRows(fn: String, pidx: Int): List<Map<String, String>> {
         return try {

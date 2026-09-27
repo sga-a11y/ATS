@@ -114,8 +114,22 @@ class TestPhiaPythonDoiHasLeader(unittest.TestCase):
         from bot import party_engine as E
         from tests.party_engine_scenarios import account, snapshot
 
+        # Y ENGINE CU: khong leader bot -> VAO map event roi DUNG YEN, mo cua nhan loi moi
+        # (`lap_party` voi acc khong phai leader = chi `set_party_invite_ready`). Truoc day ra
+        # `nghi` -> party 7 (27/09) dung o 12003 khong vao event.
         self.assertEqual(R.party_modes.decide_mode("event", {"a": "vao_event"}, [account()],
-                         event_kind="npc_repeat", has_leader=False), {"a": "nghi"})
+                         event_kind="npc_repeat", has_leader=False), {"a": "vao_event"})
+        self.assertEqual(R.party_modes.decide_mode("event", {"a": "nghi"},
+                         [account(trong_event=True, so_member=0)], event_kind="floor_crawl",
+                         has_leader=False), {"a": "lap_party"})
+        # DA VAO DOI nguoi that -> dung yen theo ho, khong `lap_party` nua (27/09 party 7).
+        self.assertEqual(R.party_modes.decide_mode("event", {"a": "nghi"},
+                         [account(trong_event=True, so_member=4)], event_kind="floor_crawl",
+                         has_leader=False), {"a": "nghi"})
+        # Viec uu tien va event XONG van giu nguyen
+        self.assertEqual(R.party_modes.decide_mode("event", {"a": "daily", "b": "doi_thuong"},
+                         [account(), account("b", trong_event=True)], event_kind="floor_crawl",
+                         has_leader=False), {"a": "daily", "b": "doi_thuong"})
 
     def test_dung_yen_phai_NOI_RO_ly_do(self):
         from types import SimpleNamespace as NS
@@ -129,11 +143,65 @@ class TestPhiaPythonDoiHasLeader(unittest.TestCase):
                 mock.patch.dict(R.config.PARTY_CONFIG, {0: {"mode": "event"}}, clear=True), \
                 mock.patch.dict(R.config.PARTY_LEADER_ACC, {}, clear=True), \
                 mock.patch.object(R, "_event_cua_party", return_value={"party_battle": {"kind": "npc_repeat"}}), \
-                mock.patch.object(R.log, "warning") as warning:
+                mock.patch.object(R.log, "info") as info:
             for _ in range(2):
-                self.assertEqual(R._engine_mode_decisions(0, snapshot(), {"a": "vao_event"}), {"a": "nghi"})
-        warning.assert_called_once()
-        self.assertIn("KHONG CO LEADER", warning.call_args.args[0])
+                self.assertEqual(R._engine_mode_decisions(0, snapshot(), {"a": "vao_event"}),
+                                 {"a": "vao_event"})
+        _dong = [c for c in info.call_args_list if "KHONG CO LEADER" in str(c.args[0])]
+        self.assertEqual(len(_dong), 1)
+
+
+
+class TestDoiTruongWhitelistKhongPhaiPartyLa(unittest.TestCase):
+    """27/09 party 7: 4 acc vao doi cua nguoi trong WHITELIST, len tang 12923 -> roster ve ->
+    engine giao `roi_party_la` ca 4 vi doi truong "khong phai leader bot"."""
+
+    def _cli(self, **kw):
+        from types import SimpleNamespace as NS
+        base = dict(self_entity=b"\x01" * 8, party_idx=0, entity_names={},
+                    _nguoi_moi_da_nhan=None)
+        base.update(kw)
+        return NS(**base)
+
+    def _hop_le(self, c, cap, leader=None):
+        from bot.client import GameClient
+        return GameClient.doi_truong_hop_le(c, cap, leader)
+
+    def test_doi_truong_trong_whitelist_hop_le(self):
+        from unittest import mock
+        from bot import config
+        nguoi = b"\xe3\xf4\xe4\x4c" + b"\x00" * 4
+        c = self._cli(entity_names={nguoi: {"NguoiThat"}})
+        with mock.patch.object(config, "leaders_for", lambda p: ["nguoithat"], create=True):
+            self.assertTrue(self._hop_le(c, nguoi))
+
+    def test_nguoi_minh_da_nhan_loi_moi_hop_le_ke_ca_chua_biet_ten(self):
+        from unittest import mock
+        from bot import config
+        nguoi = b"	" * 8
+        c = self._cli(_nguoi_moi_da_nhan=nguoi)
+        with mock.patch.object(config, "leaders_for", lambda p: [], create=True):
+            self.assertTrue(self._hop_le(c, nguoi))
+
+    def test_nguoi_ngoai_whitelist_van_la_party_la(self):
+        from unittest import mock
+        from bot import config
+        la = b"\x07" * 8
+        c = self._cli(entity_names={la: {"ThangLa"}})
+        with mock.patch.object(config, "leaders_for", lambda p: ["nguoithat"], create=True):
+            self.assertFalse(self._hop_le(c, la))
+            self.assertTrue(self._hop_le(c, la, la))      # la leader bot -> hop le
+
+    def test_engine_hoi_whitelist_truoc_khi_roi_party(self):
+        for p in ("run_party_digioi.py",
+                  os.path.join("android", "app", "src", "main", "python", "train_bot",
+                               "run_party_digioi.py")):
+            with io.open(os.path.join(ROOT, p), encoding="utf-8") as fh:
+                src = fh.read()
+            i = src.find("def _engine_routine_decisions(")
+            khoi = src[i:src.find("\ndef ", i + 10)]
+            self.assertIn("doi_truong_hop_le(captain", khoi, p)
+            self.assertNotIn("captain not in (own, leader_entity)", khoi, p)
 
 
 if __name__ == "__main__":

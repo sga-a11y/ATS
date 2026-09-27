@@ -5771,6 +5771,9 @@ class GameClient:
         # (roster 0x0d sub06) - user keo vao tran TRUOC khi roster ve -> guard vo hieu -> bot BO CHAY
         # -> server kick khoi party -> user moi lai -> lap vo tan "cu battle la flee".
         self.flee_mode = False
+        # Nho NGUOI MINH DA NHAN LOI MOI: da qua loc whitelist o tren nen party cua ho khong phai
+        # "party la" (`doi_truong_hop_le`), ke ca khi chua biet ten (chua co 0x27).
+        self._nguoi_moi_da_nhan = entity
         log.info("[%s] Nhan loi moi party -> da gui ACCEPT (tat flee_mode, danh cung nguoi moi)", self._label)
         return True
 
@@ -13766,6 +13769,32 @@ class GameClient:
         if time.time() - float(getattr(self, "team_of_at", 0.0) or 0.0) > self.TEAM_OF_MAX_AGE:
             return None
         return team_of.get(bytes(ent))
+
+    def doi_truong_hop_le(self, captain, leader_entity=None) -> bool:
+        """Doi truong `captain` KHONG phai "party la": chinh minh, leader bot, nguoi minh da nhan
+        loi moi, hoac nhan vat co ten trong WHITELIST (`leaders_for`) - cung mot luat voi
+        `_accept_party_invite`.
+
+        Ca that 27/09 party 7 (khong leader bot, cho nguoi that moi): 4 acc vao doi cua nguoi
+        trong whitelist, leader len tang 12923 -> roster server ve -> engine thay doi truong "khong
+        phai leader bot" -> giao `roi_party_la` ca 4 acc, 1 giay sau khi roster ve.
+        """
+        if not captain:
+            return True
+        captain = bytes(captain)
+        own = getattr(self, "self_entity", None)
+        if own and captain == bytes(own):
+            return True
+        if leader_entity and captain == bytes(leader_entity):
+            return True
+        nguoi_moi = getattr(self, "_nguoi_moi_da_nhan", None)
+        if nguoi_moi and captain == bytes(nguoi_moi):
+            return True
+        leaders = (config.leaders_for(self.party_idx)
+                   if hasattr(config, "leaders_for") else getattr(config, "PARTY_LEADERS", []))
+        wanted = {str(x).strip().casefold() for x in (leaders or []) if str(x).strip()}
+        known = getattr(self, "entity_names", {}).get(captain, set())
+        return any(str(n).strip().casefold() in wanted for n in known)
 
     def dang_o_party_khac(self, entity: bytes):
         """Entity kia dang o party cua NGUOI KHAC (khong phai party minh) -> ID doi truong do.

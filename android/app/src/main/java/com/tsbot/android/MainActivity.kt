@@ -594,6 +594,8 @@ fun TsBotApp(
                         onFurnaceSkip = { u, tid -> service?.furnaceNotifySkip(u, tid) ?: false },
                         onLegionSkip = { u -> service?.legionNotifySkip(u) ?: false },
                         onBagSkip = { u -> service?.bagNotifySkip(u) ?: false },
+                        onBagSlotPrice = { u -> service?.bagSlotPrice(u) ?: "" },
+                        onBagSlotBuy = { u -> service?.bagSlotBuy(u) ?: false },
                         onBaDauSkip = { u -> service?.baDauNotifySkip(u) ?: false },
                         onDiemDuSkip = { u -> service?.diemDuNotifySkip(u) ?: false },
                         onCurrentChannel = {
@@ -1180,6 +1182,8 @@ fun PartyCard(
     onFurnaceSkip: (String, Int) -> Boolean = { _, _ -> false },
     onLegionSkip: (String) -> Boolean = { _ -> false },
     onBagSkip: (String) -> Boolean = { _ -> false },
+    onBagSlotPrice: (String) -> String = { _ -> "" },
+    onBagSlotBuy: (String) -> Boolean = { _ -> false },
     onBaDauSkip: (String) -> Boolean = { _ -> false },
     onDiemDuSkip: (String) -> Boolean = { _ -> false },
     onCurrentChannel: () -> Int?,
@@ -1402,6 +1406,8 @@ fun PartyCard(
                     onSkip = { u, tid -> onFurnaceSkip(u, tid) },
                     onLegionSkip = { u -> onLegionSkip(u) },
                     onBagSkip = { u -> onBagSkip(u) },
+                    onBagSlotPrice = { u -> onBagSlotPrice(u) },
+                    onBagSlotBuy = { u -> onBagSlotBuy(u) },
                     onBaDauSkip = { u -> onBaDauSkip(u) },
                     onDiemDuSkip = { u -> onDiemDuSkip(u) },
                     onRefresh = {
@@ -4209,6 +4215,8 @@ fun FurnaceNotifyDialog(
     onSkip: (String, Int) -> Boolean,
     onLegionSkip: (String) -> Boolean = { _ -> false },
     onBagSkip: (String) -> Boolean = { _ -> false },
+    onBagSlotPrice: (String) -> String = { _ -> "" },
+    onBagSlotBuy: (String) -> Boolean = { _ -> false },
     onBaDauSkip: (String) -> Boolean = { _ -> false },
     onDiemDuSkip: (String) -> Boolean = { _ -> false },
     onRefresh: () -> Unit,
@@ -4275,6 +4283,13 @@ fun FurnaceNotifyDialog(
                                     else "$u túi đồ sắp đầy $_used/$_cap (còn $_free slot trống)",
                                     style = MaterialTheme.typography.bodySmall,
                                 )
+                                // Nut "Mua slot" kem gia - mirror gui.py: hoi gia ngam khi mo; o Di
+                                // Gioi server khong tra gia -> noi thang ra, khoa nut.
+                                var _gia by remember(u) { mutableStateOf<String?>(null) }
+                                var _dangMua by remember(u) { mutableStateOf(false) }
+                                if (!_maxed) LaunchedEffect(u) {
+                                    _gia = withContext(Dispatchers.IO) { onBagSlotPrice(u) }
+                                }
                                 Row(horizontalArrangement = Arrangement.End,
                                     modifier = Modifier.fillMaxWidth()) {
                                     TextButton(onClick = {
@@ -4283,6 +4298,31 @@ fun FurnaceNotifyDialog(
                                             onRefresh()
                                         }
                                     }) { Text("Bỏ qua") }
+                                    if (!_maxed) {
+                                        TextButton(
+                                            enabled = !_dangMua && _gia != "dg",
+                                            onClick = {
+                                                _dangMua = true
+                                                scope.launch {
+                                                    val ok = withContext(Dispatchers.IO) { onBagSlotBuy(u) }
+                                                    _dangMua = false
+                                                    if (ok) _gia = withContext(Dispatchers.IO) { onBagSlotPrice(u) }
+                                                    onRefresh()
+                                                    android.widget.Toast.makeText(context,
+                                                        if (ok) "Đã mua thêm slot túi"
+                                                        else "Mua slot không thành công (acc tắt / hết vàng / đã tối đa)",
+                                                        android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                        ) {
+                                            Text(when (val g = _gia) {
+                                                null -> "Mua slot (đang xem giá...)"
+                                                "dg" -> "Đang ở Dị Giới (ra ngoài mới mua được)"
+                                                "" -> "Mua slot (?)"
+                                                else -> "Mua slot ($g vàng)"
+                                            })
+                                        }
+                                    }
                                 }
                                 HorizontalDivider()
                             }
