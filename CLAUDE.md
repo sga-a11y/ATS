@@ -15,6 +15,20 @@ Ba luật cốt lõi của nó, nhắc lại ở đây vì chúng bị phá nhi�
 3. **Sửa hẹp nhất có thể.** Đổi hành vi dùng chung thì phải có cờ phạm vi
    (vd `invite_members(bo_qua_map=...)`), không sửa thẳng điều kiện gốc — nới toàn cục để chữa
    một ca là cách làm hỏng cả những thứ đang chạy đúng.
+4. **NĂM LUẬT CHỐNG BỊA (user chốt 24/09)** — chi tiết + bằng chứng ở `documents/CORE_FLOW.md`:
+   - **B1 Chưa ĐẾM thì không nói nguyên nhân.** Vài dòng log là *ví dụ*, không phải bằng chứng.
+     Chưa đếm thì chỉ được nói "nghi X, đo bằng cách Y".
+   - **B2 Mỗi kết luận phải có ĐỐI CHỨNG**: ca hỏng vs ca chạy được khác nhau ở **đúng một** thứ.
+   - **B3 Luật game chỉ lấy từ `_lua_dec` / `KNOWLEDGE.md`** — cấm suy từ code bot rồi phát biểu
+     như luật.
+   - **B4 Chưa chốt nguyên nhân thì KHÔNG SỬA.** Sai một lần thì dừng và đo lại, không thử giả
+     thuyết thứ hai bằng cách sửa code lần nữa.
+   - **B5 Nói rõ mức chắc chắn trong TỪNG câu**: `đo được` / `nghi` / `chưa biết`.
+
+   > Ngày sinh ra: 24/09, Claude bịa sai **bảy lần liên tiếp** trong một ngày, và ô "Map train" bị
+   > sửa **bốn lần** — lần nào cũng làm hỏng thêm một kiểu. Mỗi lần chịu đếm thì sự thật đều khác
+   > hẳn cái đoán: `102/4081` · `75/980` · `68 OK vs 12916 mã 5` · `658 OK` (cái cuối chặn đúng lúc
+   > Claude định bịa ra một luật game không tồn tại).
 
 > Ca sinh ra file: party 20 ngày 21/09, một acc đứng ngoài đội 4 phút. Claude sửa **4 lần sai cả 4**
 > trước khi mở log — trong khi câu trả lời nằm sẵn ở một dòng:

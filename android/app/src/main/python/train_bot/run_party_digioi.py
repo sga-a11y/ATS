@@ -5609,7 +5609,7 @@ def _tang_gom_engine_moi(pidx):
         return None
 
 
-def _fc_gom_engine_moi(c, pidx):
+def _fc_gom_engine_moi(c, pidx, con_lam=None):
     """2K LECH TANG: DI BO ve tang gom - `regroup_to_event_start` cua engine cu.
 
     Trong map event KHONG teleport duoc nen day la duong DUY NHAT de xe nhau trong thap.
@@ -5620,7 +5620,8 @@ def _fc_gom_engine_moi(c, pidx):
         return False
     if int(getattr(c, "current_map", 0) or 0) == int(_tg):
         return True
-    return bool(c.regroup_to_event_start(ev, dest=int(_tg)))
+    _abort = (lambda: not con_lam()) if con_lam is not None else None
+    return bool(c.regroup_to_event_start(ev, dest=int(_tg), abort=_abort))
 
 
 def _fc_tien_do(st, scene):
@@ -6732,6 +6733,13 @@ def _cap_nhat_engine(eng, pidx):
     (b) tranh de ra thread rieng - do that 15/09 tren may user: 799 thread, 798 cai ngoi tranh
     GIL, main thread Tk doi -> GUI "not responding".
     """
+    # PARTY DA BI BO KHOI CAU HINH (GUI Stop / nap lai config it party hon) -> DUNG ENGINE, dung
+    # chay tiep nhip. Truoc day nhip van chay va `party_accounts(pidx)` no `IndexError` moi nhip
+    # (log 26/09 18:41:12, party 21: 20 traceback "nhip loi -> bo qua" lien tiep luc STOP).
+    if not (0 <= pidx < len(getattr(config, "PARTIES", ()) or ())):
+        log.info("[party %d] ENGINE: party khong con trong cau hinh -> dung engine", pidx + 1)
+        eng.stop()
+        return
     st = _pstate(pidx)
     eng.pha = _pha_engine_moi(pidx, st)
     eng.can_bao_nhieu = int(st.get("n_members") or 0)
@@ -6960,7 +6968,7 @@ def _dang_ky_engine_moi(username, c, pidx, is_leader, label, stopped_fn, is_reco
                 doi_thuong=lambda _cli, _p=pidx: _doi_thuong_engine_moi(_cli, _p),
                 map_event=_map_event_engine_moi(pidx),
                 hoi_event_xong=lambda _p=pidx: _event_xong_engine_moi(_p),
-                fc_gom=lambda _cli, _p=pidx: _fc_gom_engine_moi(_cli, _p),
+                fc_gom=lambda _cli, _cl=None, _p=pidx: _fc_gom_engine_moi(_cli, _p, _cl),
                 doc_tang_gom=lambda _p=pidx: _tang_gom_engine_moi(_p),
                 doc_fc_buoc=lambda _p=pidx: _fc_buoc_engine_moi(_p),
                 fc_buoc_fn=lambda _cli, _lt, _p=pidx: _fc_lam_buoc_engine_moi(_cli, _p, _lt),

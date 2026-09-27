@@ -69,6 +69,48 @@ Muốn nâng `[SUY ĐOÁN]` lên `[LOG]`/`[CAPTURE]`: phải có bằng chứng,
    Chặn chính Claude lặp lại sau vài tuần.
 4. **Test neo bằng dòng log thật**, không neo bằng suy luận.
 
+### Năm luật CHỐNG BỊA — user chốt 24/09
+
+User, sau một ngày Claude bịa sai bảy lần liên tiếp: *"giờ làm sao để mày ko bịa ra những cái tào
+lao"*. Năm luật dưới đây là câu trả lời, và chúng **kiểm được** — user có chỗ chỉ mặt khi Claude lách.
+
+| # | Luật |
+|---|---|
+| **B1** | **Chưa ĐẾM thì không được nói nguyên nhân.** Một hai dòng log chỉ là *ví dụ*, không phải bằng chứng. Chưa đếm thì chỉ được nói *"nghi X, đo bằng cách Y"*. |
+| **B2** | **Mỗi kết luận phải có ĐỐI CHỨNG**: ca hỏng và ca chạy được khác nhau ở **đúng một** thứ. Không chỉ ra được thứ đó thì chưa phải nguyên nhân. |
+| **B3** | **Luật game chỉ lấy từ `_lua_dec` hoặc `KNOWLEDGE.md`.** Suy từ code bot, từ hành vi quan sát, hay từ cảm giác thì **cấm phát biểu như luật**. |
+| **B4** | **Chưa chốt nguyên nhân thì KHÔNG SỬA.** Sai một lần thì dừng, đo lại; không thử giả thuyết thứ hai bằng cách sửa code lần nữa. |
+| **B5** | **Nói rõ mức chắc chắn trong TỪNG câu**: `đo được` / `nghi` / `chưa biết`. Không trộn ba thứ vào một đoạn rồi để user tự đoán câu nào là thật. |
+
+**Vì sao cần B1 dù đã có luật 1:** luật 1 chỉ bắt *mở log*, nên Claude lách được bằng cách đọc vài
+dòng rồi suy diễn nhân quả. Cả ngày 24/09, **mỗi lần chịu đếm thì sự thật đều KHÁC hẳn cái đoán**:
+
+| Phép đếm | Kết quả | Cái Claude đã đoán |
+|---|---|---|
+| `pre_route_town_hop` bốc trúng thành đang đứng | **102/4081** | "không đáng kể" |
+| điểm train hiện sai khoảng số quái | **75/980** | "vài chỗ" |
+| tạo phòng PB khi roster đủ vs thiếu | **68 OK / 0 mã 5** vs **1 OK / 12916 mã 5** | "party dở dang" (sai) |
+| đổi kênh **trong** Dị Giới | **658 OK** / 2188 fail / 1648 timeout | "server không cho đổi kênh trong DG" (sai) |
+
+Riêng dòng cuối: Claude đã định kết luận "trong DG không đổi kênh được" — phép đếm chặn lại đúng
+lúc. Không đếm là bịa thêm một luật game không tồn tại.
+
+`[LOG]` bảy cái bịa trong ngày 24/09, để nhận ra mẫu:
+
+| Claude nói | Thực tế | Thứ bác được nó |
+|---|---|---|
+| pre-tele là nguyên nhân chung | chỉ đúng ca hẹp | user: *"t chạy 12 party thấy vẫn bình thường"* |
+| entity chết nên không mời được vào phòng PB | entity **đúng hết** | chính dòng log đối chiếu vừa thêm |
+| mã 5 do "party dở dang" | do **có đội hay không** | phép đếm 68/0 vs 1/12916 |
+| có "ba đường" gửi lệnh đổi kênh | chỉ **một** | đọc tiếp code |
+| party 1 lệch kênh nên chưa lập được party | **đã lập**, 4 member | user bác + `Party roster: 4 member` |
+| "trong DG kênh khác ý nghĩa" | **phá luật user đã chốt 22/09**: instance và kênh là MỘT | user bác |
+| `readOnly` thì gắn `.clickable` là bấm được | readOnly **vẫn nuốt touch** | user: *"click map đéo hiện ra list"* (lần thứ 4 ở cùng một ô) |
+
+Mẫu chung: **đọc vài dòng log → kết luận nhân quả → trình bày giả thuyết bằng giọng khẳng định.**
+Và khi sai thì sửa code theo giả thuyết mới thay vì dừng lại đo (vi phạm B4) — ô "Map train" ngày
+23-24/09 bị sửa **bốn lần**, lần nào cũng làm hỏng thêm một kiểu.
+
 ---
 
 # Các flow

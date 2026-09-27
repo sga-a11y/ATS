@@ -131,6 +131,22 @@ class TestLechTangThiDIBO(unittest.TestCase):
                              "trong thap ma van ra lenh di chuyen bang teleport")
 
 
+class Test2KThuaThiRaKhoiThap(unittest.TestCase):
+    """Party 7/11/13, 27/09: thua boss Dinh Thap (12934) -> `2K THUA -> CA DOI ra khoi thap roi
+    thoat game`, nhung ca doi DUNG YEN: `doi_thuong` bi cua "trong thap khong teleport" doi thanh
+    `nghi`. Voi 2K `doi_thuong` la DI BO ra (`exit_event`) nen phai duoc giao trong thap."""
+
+    def test_event_xong_trong_thap_thi_doi_thuong_ca_doi(self):
+        accs = [_acc("a%d" % i, 12934, leader=(i == 1)) for i in range(1, 6)]
+        ket = PE.quyet_dinh(_anh(accs, tang_gom=12934, event_xong=True))
+        self.assertEqual(set(ket.values()), {PE.VIEC_DOI_THUONG}, ket)
+
+    def test_ca_party_27_mot_acc_da_vang_ra_ngoai(self):
+        accs = [_acc("a1", 12933, leader=True), _acc("a2", 12933), _acc("a3", 12921, trong=False)]
+        ket = PE.quyet_dinh(_anh(accs, tang_gom=12922, event_xong=True))
+        self.assertEqual(set(ket.values()), {PE.VIEC_DOI_THUONG}, ket)
+
+
 class TestEngineGiaoTungBuocChoLeader(unittest.TestCase):
     """Trong thap chi LEADER di chuyen, member dinh party tu theo -> engine chi giao viec cho
     leader, member `nghi`."""
@@ -176,7 +192,7 @@ class TestKhongDungGoToEventDeGom(unittest.TestCase):
         i = src.find("if viec == VIEC_FC_GOM:")
         self.assertGreater(i, 0)
         khoi = src[i:i + 700]
-        self.assertIn("fc_gom(client)", khoi)
+        self.assertIn("fc_gom(client, con_lam)", khoi)
         self.assertNotIn("vao_event(", khoi)
 
     def test_callback_fc_gom_goi_regroup_to_event_start(self):

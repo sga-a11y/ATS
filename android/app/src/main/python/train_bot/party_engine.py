@@ -321,8 +321,12 @@ def _duoc_di_duong(anh, a):
 
 # Viec di bang TELEPORT - trong map event khong teleport duoc nen o trong thap 2K chung la lenh
 # RONG (xem nhanh `tang_gom` trong `quyet_dinh`). KHAC voi cua "dang danh" ngay ben duoi.
+#
+# KHONG co `VIEC_DOI_THUONG`: voi 2K no la `exit_event` = DI BO ra khoi thap roi tat acc, khong
+# teleport. Tung nam trong day -> trong thap bi doi thanh `nghi`, party danh THUA o Dinh Thap
+# dung yen mai (party 7/11/13, 27/09: "2K THUA -> CA DOI ra khoi thap" roi khong ai di).
 VIEC_DI_CHUYEN = (VIEC_VE_MAP, VIEC_VE_THANH, VIEC_DOI_KENH, VIEC_RA_SPOT, VIEC_RESYNC,
-                  VIEC_VAO_EVENT, VIEC_DI_GIOI, VIEC_DOI_THUONG)
+                  VIEC_VAO_EVENT, VIEC_DI_GIOI)
 
 # ================= DANG TRONG TRAN: ALLOWLIST, khong phai blocklist =================
 #
@@ -1546,7 +1550,9 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
         # "sao party xong leader bi vang the").
         if fc_gom is None:
             return False
-        return bool(fc_gom(client))
+        # PHAI truyen `con_lam`: thieu duong huy thi member di tiep ve tang gom cu du engine da
+        # doi viec -> bi kick ma 14 (party 5, 27/09 - xem tests/test_fc_gom_huy_duoc.py).
+        return bool(fc_gom(client, con_lam))
     if viec == VIEC_LENH_TAY:
         # LENH TAY cua GUI (teleport thanh / di map). Goi lai duong THI HANH cua engine cu qua
         # callback - khong tu viet lai chuoi "cho het tran -> roi party -> teleport".
@@ -1800,7 +1806,7 @@ class PartyEngine:
         self._doi_thuong = doi_thuong    # (client) -> bool : huy party + claim + thoat game
         self.map_event = tuple(map_event or ())    # map cua event (staging/dest) - de biet "da vao"
         self.hoi_event_xong = hoi_event_xong       # () -> bool : ngoai gio / da thua / da xong
-        self._fc_gom = fc_gom            # (client) -> bool : `regroup_to_event_start` ve tang gom
+        self._fc_gom = fc_gom            # (client, con_lam) -> bool : `regroup_to_event_start` ve tang gom
         self._doc_tang_gom = doc_tang_gom  # () -> map_id | None : `_tang_gom_2k` cua engine cu
         self._fc_buoc_fn = fc_buoc_fn      # (client, len_tang: bool) -> bool : lam MOT buoc leo thap
         self._doc_fc_buoc = doc_fc_buoc    # () -> "danh" | "len_tang" | None : buoc ke tiep
@@ -1942,6 +1948,8 @@ class PartyEngine:
     def nhip(self):
         if self._cap_nhat is not None:
             self._cap_nhat(self)
+            if self._dung.is_set():      # `cap_nhat` vua dung engine (party bi bo khoi cau hinh)
+                return
         cap_viec = cap_ly_do = None
         cap_map = cap_kenh = None
         if self._doc_party is not None:

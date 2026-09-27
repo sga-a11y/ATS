@@ -17276,7 +17276,7 @@ class GameClient:
                 return int(edge["door"]), tuple(gate["center"])
         return None
 
-    def regroup_to_event_start(self, ev, dest: int = None) -> bool:
+    def regroup_to_event_start(self, ev, dest: int = None, abort=None) -> bool:
         """DI BO xuong map tap trung cua event. `dest` = tang gom (mac dinh dest_map = 12922).
 
         Trong map event KHONG teleport duoc (xem `exit._note` trong events.json), va chon lai
@@ -17287,6 +17287,7 @@ class GameClient:
         Dung khi party BI LECH TANG -> gom nhau o TANG THAP NHAT ma ca doi toi duoc (xem
         _2k_regroup_target trong run_party_digioi) roi leo lai tu day. Thap nhat co the la
         12922 - luc do acc dang o NGOAI event tele vao binh thuong.
+        `abort()` True = nguoi ra lenh da doi y -> nha ra ngay, khong di not (engine party).
         """
         dest = int(dest or (ev or {}).get("dest_map") or 0)
         cur = int(self.current_map or 0)
@@ -17294,13 +17295,18 @@ class GameClient:
             return False
         if cur == dest:
             return True
+        if abort and abort():
+            return False
         log.info("[%s] gom doi: di bo %s -> %s (map event khong teleport duoc)",
                  self._label, cur, dest)
         self.flee_mode = True   # dang di gom doi -> ne tran, khong dung lai danh
         if not self.refresh_server_position(cur):
             return False
-        ok = self.follow_smart_scene_route(cur, dest, flee=True, refresh_position=False)
-        if not ok:
+        ok = self.follow_smart_scene_route(cur, dest, abort=abort, flee=True,
+                                           refresh_position=False)
+        if not ok and abort and abort():
+            log.info("[%s] gom doi: HUY di bo %s -> %s (co lenh moi)", self._label, cur, dest)
+        elif not ok:
             log.warning("[%s] gom doi: KHONG di bo duoc %s -> %s", self._label, cur, dest)
         return ok
 

@@ -15,6 +15,22 @@ Mã Python PC/APK đã đồng bộ. Việc kiểm tra mã và unit test không 
 đã build hay xác minh trên tài khoản game thật. Kế hoạch và phạm vi kiểm tra:
 [Single party controller](../docs/superpowers/plans/2026-09-24-single-party-controller.md).
 
+### Sửa sau chạy thật 27/09
+
+- **Mọi việc chặn phải huỷ được.** `fc_gom` (2K lệch tầng → đi bộ về tầng gom) trước đây gọi
+  `regroup_to_event_start` mà không có `abort`. Party 5: engine ra `fc_gom` lúc 11:10:34, một giây
+  sau cả đội đã chung tầng và engine giao `nghi`, nhưng 3 member vẫn đi bộ về 12922 suốt 2 phút
+  (bị kéo lên 12924 vẫn plan lại đường), rồi bị kick mã 14, party vỡ và kẹt `lap_party`. Giờ
+  engine truyền `con_lam` → `abort` xuống tận `follow_smart_scene_route`.
+- **Party bị bỏ khỏi cấu hình thì engine tự dừng** (`_cap_nhat_engine`), không chạy tiếp nhịp
+  rồi văng `IndexError` ở `party_accounts` (party 21, STOP 26/09 18:41: 20 traceback).
+- Test: `tests/test_fc_gom_huy_duoc.py`.
+- **2K thua/xong thì cả đội ra khỏi tháp.** `VIEC_DOI_THUONG` từng nằm trong `VIEC_DI_CHUYEN`
+  (danh sách việc đi bằng teleport, trong tháp bị đổi thành `nghi`). Với 2K, `doi_thuong` là đi
+  bộ ra (`exit_event`) rồi tắt acc, nên bị chặn là sai. Party 7/11/13 (27/09) thua boss Đỉnh Tháp
+  12934 (10/10 ô phe mình HP 0) rồi đứng yên. Party 27 thì chỉ acc đã văng ra ngoài được thoát.
+  Lỗi có từ 18/09 (`85ec4e8`). Test: `Test2KThuaThiRaKhoiThap` trong `tests/test_engine_moi_2k.py`.
+
 Phần dưới ghi lại thiết kế ban đầu và các tình huống lịch sử. Những mô tả
 chạy song song hoặc fallback engine cũ trong lịch sử không còn áp dụng.
 
