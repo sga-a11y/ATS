@@ -1168,6 +1168,13 @@ delta**: giữ bảng `{roleId: tổng}` rồi mỗi lần nhận `039-116` lấ
 lần đó, và đếm mỗi lần tăng là một lần đánh. Cảnh báo: acc bỏ lỡ gói (offline/rớt mạng) thì hai
 lần đánh gộp thành một delta — muốn chắc thì phải có ít nhất một acc trong quân đoàn online liên tục.
 
+**Layout member trong `039-002` — ĐÃ KIỂM trên 5 capture / 4 QĐ (28/09), đọc hết đúng tới byte cuối:**
+`roleId(8) · L(1)+tên(L, UTF-16LE) · lv/element/turn3/turn/career(5) · sex/head(2) · colorTints(8)
+· online(1) · score(4) · weekScore(4) · dutyFlags(5, cố định) · bossDamage(4)`. Số record =
+`1 + phó đoàn + thành viên`. `039-116` body = `74 00 · roleId(8) · tổng(4)`. Đã implement:
+`bot/legion_damage.py`, spec `documents/LEGION_DAMAGE.md`. **Chưa đo:** acc không đánh có nhận
+`039-116` của member khác không → grep log `dame boss: nhan 039-116` / `dame boss: ... +`.
+
 ### ĐÓNG GÓP QUÂN ĐOÀN (crack UI_UIArmy.lua / Logic_Organization.lua / Logic_City.lua)
 **Client KHÔNG lấy list từ server — TỰ LỌC BAG tại chỗ.** Có 3 loại đóng góp (2 opcode):
 

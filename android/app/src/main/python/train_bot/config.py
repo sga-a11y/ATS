@@ -684,6 +684,8 @@ ACCOUNT_HEAL = {
 # Phong thu (17001) moi luot battle o MOI mode; False/thieu -> danh binh thuong.
 ACCOUNT_CHAR_DEFEND = {}   # username -> bool
 ACCOUNT_BATTLE = {}        # username -> {"char": {...}, "pet": {...}} custom battle settings
+# username -> True: THEO DOI DAME BOSS QUAN DOAN. APK bom qua apply_legion_dmg (Kotlin).
+ACCOUNT_LEGION_DMG = {}
 
 # Unit IDs
 UNIT_CHAR = 3

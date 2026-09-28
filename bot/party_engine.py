@@ -83,7 +83,7 @@ BAN_THI_CHO = (VIEC_VE_MAP, VIEC_VE_THANH, VIEC_DOI_KENH, VIEC_LAP_PARTY, VIEC_R
                 VIEC_2K_DANH, VIEC_2K_LEN_TANG, VIEC_LENH_TAY,
                 "city", "solo_event_enter", "solo_event_run", "solo_event_exit",
                 "route_gather", "route_source", "route_dest", "route_finish",
-                "roi_party_la", "boss_quan_doan", "quet_bai_train", "ve_safe")
+                "roi_party_la", "boss_quan_doan", "quet_bai_train", "ve_safe", "ve_safe_cho")
 
 # ---------------------------------------------------------------- viec CAP PARTY cua engine cu
 #
@@ -2177,7 +2177,7 @@ class PartyEngine:
     def _lam_viec(self, client, viec, con_lam):
         if viec in ("city", "solo_event_enter", "solo_event_run", "solo_event_exit",
                     "route_gather", "route_source", "route_dest", "route_finish",
-                    "roi_party_la", "boss_quan_doan", "quet_bai_train", "ve_safe"):
+                    "roi_party_la", "boss_quan_doan", "quet_bai_train", "ve_safe", "ve_safe_cho"):
             if self._mode_action_fn is None:
                 raise RuntimeError("ENGINE: thieu mode_action_fn cho %s" % viec)
             return self._mode_action_fn(client, viec, con_lam)

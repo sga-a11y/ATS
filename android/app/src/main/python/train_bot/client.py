@@ -11,6 +11,7 @@ import os
 
 from . import config, protocol, combat, pathfind, npc40, loandau, pet_login_stats, team_dungeon_lv110
 from . import event_exchange as _evx
+from . import legion_damage
 from .battle_tracker import BattleTracker
 from .party_battle import get_party_battle
 
@@ -4994,6 +4995,8 @@ class GameClient:
             # buoc bat buoc cua no) thay vi thu lai lien tuc.
             if pkt[7:9] == b"\x0f\x00" and len(pkt) >= 10:
                 self._on_legion_msg(pkt[9])
+            if pkt[7:9] in (b"\x02\x00", b"\x73\x00", b"\x74\x00"):
+                self._on_legion_damage(pkt)
             self._on_player_info(pkt)
         elif opcode == 0x69:                      # chua self_entity
             if self.self_entity is None and len(pkt) >= 17:
@@ -12464,6 +12467,52 @@ class GameClient:
                 log.info("[%s] Pet skills (bar 0x28): %s", self._label,
                          [hex(s) for s in sorted(skills)])
 
+    # ---- DAME BOSS QUAN DOAN (documents/LEGION_DAMAGE.md) ----
+    def legion_dmg_catchup(self):
+        """User vua TICK theo doi dame QD luc acc dang chay -> nap bu bang QD giu tu luc login."""
+        pk = getattr(self, "_legion_org_last", None)
+        if pk is not None:
+            self._on_legion_damage(pk, stale=True)
+
+    def _on_legion_damage(self, pkt: bytes, stale: bool = False):
+        """S:039-002 (bang QD luc login) / S:039-116 (member vua danh). Chi ghi khi acc co tick."""
+        if pkt[7] == 0x02 and not stale:
+            # GIU LUON (ke ca chua tick): bang QD chi gui 1 lan luc login. Bug that 28/09: tick
+            # luc acc dang chay -> mat bang -> ca QD hien `role:<id>`, khong ten.
+            self._legion_org_last = pkt
+        if not (getattr(config, "ACCOUNT_LEGION_DMG", None) or {}).get(self._username):
+            return
+        if not self.org_id:
+            if pkt[7] == 0x02:
+                self._legion_org_pkt = pkt
+            return
+        try:
+            if pkt[7] == 0x02:
+                ev = legion_damage.on_org_data(self._username, self.org_id, pkt[7:], stale=stale)
+                off = [e for e in ev if e.get("delta")]
+                log.info("[%s] QD %s dame boss: doc bang QD, %d member tang luc offline",
+                         self._label, self.org_id, len(off))
+            elif pkt[7] == 0x73:
+                r = legion_damage.on_boss_info(self._username, self.org_id, pkt[7:])
+                if r:
+                    log.info("[%s] QD %s dame boss: %s HA boss Lv%s", self._label, self.org_id,
+                             r[1].get("name") or r[1]["rid"], r[0])
+            else:
+                e = legion_damage.on_member_boss(self._username, self.org_id, pkt[7:])
+                rid = pkt[9:17].hex()
+                if e is None:
+                    log.info("[%s] QD %s dame boss: nhan 039-116 role=%s (da ghi/khong doi)",
+                             self._label, self.org_id, rid)
+                elif e.get("reset"):
+                    log.info("[%s] QD %s dame boss: %s RESET tong=%s", self._label, self.org_id,
+                             e.get("name") or rid, e["total"])
+                else:
+                    log.info("[%s] QD %s dame boss: %s +%s Lv%s (tong %s, lan %s)", self._label,
+                             self.org_id, e.get("name") or rid, format(e["delta"], ","),
+                             e.get("lv") or "?", format(e["total"], ","), e["hits"])
+        except Exception as ex:
+            log.warning("[%s] ghi dame boss QD loi: %s", self._label, ex)
+
     # ---- parse player info (0x27) ----
     def _resolve_self_name(self, pkt: bytes):
         """Doc TEN NHAN VAT cua minh tu goi guild 0x27: tim self_entity roi name ngay sau
@@ -15889,6 +15938,10 @@ class GameClient:
         self._no_legion_confirmed = (org == 0)
         log.info("[%s] Quan doan: orgId=%d -> %s (0x05 sub03, giong client)",
                  self._label, org, "CO quan doan" if org else "KHONG co quan doan")
+        _pk = getattr(self, "_legion_org_pkt", None)
+        if org and _pk is not None:   # bang QD (039-002) toi TRUOC orgId -> xu ly bu
+            self._legion_org_pkt = None
+            self._on_legion_damage(_pk)
 
     def _td_party_gone(self, where: str = "") -> bool:
         """CO dong doi ROT giua pho ban to doi? (coordinator cam callback _td_party_broken).

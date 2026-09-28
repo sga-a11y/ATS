@@ -3512,6 +3512,122 @@ class SkillDialog(tk.Toplevel):
         self.destroy()
 
 
+_THU = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+
+
+def _gio_vn(ts):
+    """ts -> 'T6 20:10' theo gio VN (cung moc voi tuan cua legion_damage)."""
+    if not ts:
+        return ""
+    t = time.gmtime(int(ts) + 7 * 3600)
+    return "%s %02d:%02d %02d/%02d" % (_THU[t.tm_wday], t.tm_hour, t.tm_min, t.tm_mday, t.tm_mon)
+
+
+class LegionDmgDialog(tk.Toplevel):
+    """Bang dame boss QD. Du lieu CHUNG theo QD (legion_damage.json), acc tat van xem duoc."""
+
+    def __init__(self, master, username, row):
+        super().__init__(master)
+        self.username, self.row = username, row
+        self.title("Dame boss QĐ: %s" % username)
+        self.transient(master.winfo_toplevel())
+        self.geometry("620x440")
+        settings = row.setdefault("settings", {})
+        self.var_on = tk.BooleanVar(value=bool(settings.get("legion_dmg")))
+        top = ttk.Frame(self); top.pack(fill="x", padx=8, pady=6)
+        ttk.Checkbutton(top, text="Theo dõi dame boss QĐ", variable=self.var_on,
+                        command=self._toggle).pack(side="left")
+        self.lbl = ttk.Label(top, text=""); self.lbl.pack(side="right")
+        tabs = ttk.Frame(self); tabs.pack(fill="x", padx=8)
+        self.week_idx = 0
+        self.btn_w = []
+        for i, t in enumerate(("Tuần này", "Tuần trước")):
+            b = ttk.Button(tabs, text=t, command=lambda i=i: self._show(i))
+            b.pack(side="left"); self.btn_w.append(b)
+        ttk.Button(tabs, text="↻", width=3, command=self._reload).pack(side="right")
+        cols = ("rank", "name", "total", "hits", "last")
+        self.tv = ttk.Treeview(self, columns=cols, show="headings", height=14)
+        for c, t, w, a in (("rank", "#", 36, "center"), ("name", "Tên", 170, "w"),
+                           ("total", "Tổng dame", 120, "e"), ("hits", "Số lần", 60, "center"),
+                           ("last", "Lần cuối", 150, "center")):
+            self.tv.heading(c, text=t); self.tv.column(c, width=w, anchor=a)
+        self.tv.pack(fill="both", expand=True, padx=8, pady=6)
+        bot = ttk.Frame(self); bot.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(bot, text="Chi tiết", command=self._detail).pack(side="left")
+        ttk.Label(bot, text="(chọn 1 thành viên rồi bấm, hoặc double-click)").pack(side="left", padx=6)
+        self.tv.bind("<Double-1>", lambda _e: self._detail())
+        self._reload()
+
+    def _toggle(self):
+        on = bool(self.var_on.get())
+        settings = self.row.setdefault("settings", {})
+        if on:
+            settings["legion_dmg"] = True
+        else:
+            settings.pop("legion_dmg", None)
+        try:
+            ctrl.apply_legion_dmg(self.username, on)
+        except Exception as e:
+            log.warning("[%s] apply theo doi dame QD loi: %s", self.username, e)
+
+    def _reload(self):
+        try:
+            self.data = ctrl.legion_dmg_info(self.username) or {}
+        except Exception as e:
+            log.warning("[%s] doc dame boss QD loi: %s", self.username, e)
+            self.data = {}
+        self._show(self.week_idx)
+
+    def _show(self, idx):
+        self.week_idx = idx
+        d = self.data or {}
+        weeks = d.get("weeks") or []
+        if not weeks:
+            self.lbl.configure(text="Chưa có dữ liệu")
+        else:
+            self.lbl.configure(text="QĐ %s · cập nhật %s" % (d.get("name") or d.get("org_id"),
+                                                            _gio_vn(d.get("updated"))))
+        for i, b in enumerate(self.btn_w):
+            b.state(["pressed"] if i == idx else ["!pressed"])
+        self.tv.delete(*self.tv.get_children())
+        ms = weeks[idx]["members"] if idx < len(weeks) else []
+        for k, m in enumerate(ms, 1):
+            self.tv.insert("", "end", iid=m["rid"], values=(
+                k, m.get("name") or "role:" + m["rid"], format(int(m.get("total", 0)), ","),
+                m.get("hits", 0), _gio_vn(m.get("last"))))
+
+    def _detail(self):
+        sel = self.tv.selection()
+        if not sel:
+            return
+        rid = sel[0]
+        win = tk.Toplevel(self); win.transient(self); win.geometry("600x440")
+        txt = tk.Text(win, wrap="word"); txt.pack(fill="both", expand=True)
+        name = rid
+        for w, head in zip(self.data.get("weeks") or [], ("Tuần này", "Tuần trước")):
+            m = next((x for x in w["members"] if x["rid"] == rid), None)
+            if m and m.get("name"):
+                name = m["name"]
+            txt.insert("end", "== %s (từ %s) ==\n" % (head, w["week"]))
+            if not m or not m.get("log"):
+                txt.insert("end", "  (chưa ghi nhận)\n\n"); continue
+            txt.insert("end", "  Tổng %s · %s lần đánh\n" % (format(int(m["total"]), ","), m["hits"]))
+            for e in reversed(m["log"]):
+                if e.get("reset"):
+                    note = "server reset tổng"
+                    txt.insert("end", "  %s  %s\n" % (_gio_vn(e["ts"]), note)); continue
+                if e.get("off"):
+                    note = "  (lúc offline, không rõ số lần)"
+                elif e.get("lv"):
+                    note = " · Boss Lv%s%s" % (e["lv"], " (hạ boss)" if e.get("kill") else "")
+                else:
+                    note = ""
+                txt.insert("end", "  %s  +%s%s\n" % (_gio_vn(e["ts"]), format(int(e["dmg"]), ","), note))
+            txt.insert("end", "\n")
+        txt.configure(state="disabled")
+        win.title("Chi tiết: %s" % name)
+
+
 # Tab thu 5 cua tui do. KHONG them vao `_BAG.TAB_NAMES`: bang do la luat PHAN LOAI ITEM cua
 # client (matches_tab), tien trang khong phai mot loai item ma la mot cai KHO khac.
 TAB_TIEN_TRANG = 5
@@ -5202,6 +5318,9 @@ class PartyConfigFrame(ttk.Frame):
         # ten do da thuoc ve nut "Battle" (cau hinh skill danh trong tran).
         ttk.Button(fr, text="Skill", width=6,
                    command=lambda: self._open_char_skill_dialog(row)).pack(side="left")
+        # NGAY BEN PHAI nut Skill (user chot 28/09): theo doi dame boss quan doan.
+        ttk.Button(fr, text="QĐoàn", width=7,
+                   command=lambda: self._open_legion_dmg_dialog(row)).pack(side="left")
         ttk.Button(fr, text="✕", width=2, command=lambda: self._del_acc_row(row)).pack(side="left")
         self.acc_rows.append(row)
 
@@ -5724,6 +5843,14 @@ class PartyConfigFrame(ttk.Frame):
         if not uname:
             messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
         SkillDialog(self, uname, row)
+
+    def _open_legion_dmg_dialog(self, row):
+        """Popup DAME BOSS QUAN DOAN (documents/LEGION_DAMAGE.md): tick theo doi + bang xep hang
+        tuan nay / tuan truoc + [Chi tiet] lich su tung member."""
+        uname = row["u"].get().strip()
+        if not uname:
+            messagebox.showinfo("Thiếu acc", "Nhập username trước đã."); return
+        LegionDmgDialog(self, uname, row)
 
     def _open_skill_dialog(self, row):
         """Popup rule battle rieng tung acc: Dieu kien -> Skill/action -> Target."""

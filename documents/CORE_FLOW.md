@@ -228,6 +228,28 @@ dịch: `DP_GOM→NGHI`, `DP_DONG_BO→NGHI`, `DP_MOI→LAP_PARTY`, `DP_DI_TRAIN
 **Nhịp**: worker gọi việc đồng bộ; việc trả về ngay thì ngủ bù cho đủ `NHIP_WORKER_SEC = 1.0`
 (`:1611`). `VIEC_NGHI` không vào `thi_hanh`, chỉ `sleep(0.2)` (`:983`).
 
+## Chờ acc login — ra SAFE chờ, không đứng giữa bãi quái
+
+User chốt 28/09: *"đang chờ 1 đứa login mãi chưa xong thì cho bọn khác chạy về vị trí an toàn"*.
+
+```
+party thiếu acc sống (có acc đang login / relogin)
+  → đánh nốt trận đang dính
+  → CẢ PARTY chạy về CÙNG MỘT safe của MAP ĐANG ĐỨNG (safe gần leader nhất, giữ cố định suốt lượt chờ)
+  → tới nơi (≤ 80) thì đứng yên chờ
+  → acc kia vào xong → chu trình thường: lập party → ra spot → train
+```
+
+| Ràng buộc | Loại | Ghi chú |
+|---|---|---|
+| Đang chờ thì **không** được `train`/`nghi`/`ra_spot`/`lap_party` tại bãi quái | `[LOG]` | p1 28/09: sga006 login lỗi mạng >20 phút, dp ra `lam` → `train` cho 4 acc còn lại, đứng (1380,880) map 21863 bị quái đánh suốt |
+| Safe lấy theo **map đang đứng**, không theo map đích | `[LOG]` | map đích chưa chốt được — chính vì thiếu level của acc đang login; nhánh "về thành tập kết" cũ ra `nghi` tại chỗ |
+| Map không khai `safe` (thành, map đi ngang) → không đụng | `[SUY ĐOÁN]` | không có bầy quái để tránh |
+| Việc lẻ (`login_chore`, daily…) không bị đè | `[SUY ĐOÁN]` | acc đang làm việc riêng thì để nó làm nốt |
+
+Code: `_engine_cho_login_decisions` + action `ve_safe_cho` (`run_party_digioi.py`), áp sau
+`_engine_rally_decisions` trong `_engine_mode_decisions`. Test: `tests/test_cho_login_ra_safe.py`.
+
 ---
 
 ## Lập party (`VIEC_LAP_PARTY`)

@@ -6509,7 +6509,65 @@ def _engine_mode_decisions(pidx, anh, decisions):
         has_leader=bool(config.PARTY_LEADER_ACC.get(pidx)))
 
     result = _engine_routine_decisions(pidx, anh, result, pcfg)
-    return _engine_rally_decisions(pidx, anh, result)
+    result = _engine_rally_decisions(pidx, anh, result)
+    return _engine_cho_login_decisions(pidx, anh, result)
+
+
+# Viec "dung cho" ma de acc dung giua bai quai thi bi keo tran lien tuc.
+_VIEC_CHO_TAI_CHO = ("train", "nghi", "ra_spot", "lap_party")
+
+
+def _safe_cua_map(map_id):
+    """Safe khai trong `TRAIN_MAPS[map]` - map khong phai map train thi rong."""
+    try:
+        _m = int(map_id or 0)
+    except (TypeError, ValueError):
+        return []
+    return [tuple(int(v) for v in p) for p in
+            ((getattr(config, "TRAIN_MAPS", {}) or {}).get(_m, {}) or {}).get("safe", [])
+            if len(p) == 2]
+
+
+def _engine_cho_login_decisions(pidx, anh, decisions):
+    """CHO ACC LOGIN THI RA SAFE CHO, khong dung giua bai quai.
+
+    Ca that 28/09 party 1 (user: "dang cho 1 dua login mai chua xong thi cho bon khac chay ve vi
+    tri an toan duoc ko, cu dung cho quai cho quai bem nay gio"): sga006 login loi mang hon 20
+    phut; dieu phoi cu ra `lam` ("moi 3/5 acc login xong -> cho du roi moi quyet") -> engine dich
+    thanh `train` cho 4 acc con lai, dung o (1380,880) map train 21863 bi quai danh suot. Nhanh
+    `thieu_acc_song` cua `quyet_dinh` chi biet ve THANH TAP KET, ma thanh do chua chot duoc (thieu
+    level cua chinh acc dang login) -> `nghi` tai cho, van giua bai.
+
+    Safe lay theo MAP DANG DUNG (map dich chua chot duoc). Ca party ra CUNG MOT diem - chon theo
+    leader (member di theo leader), giu nguyen tu luc bat dau cho de khong nhay diem.
+    """
+    st = _pstate(pidx)
+    if not anh.thieu_acc_song:
+        st.pop("safe_cho_login", None)
+        return decisions
+    song = [a for a in anh.accs if a.song and a.map_id is not None]
+    if not song:
+        return decisions
+    lead = next((a for a in song if a.la_leader), song[0])
+    safes = _safe_cua_map(lead.map_id)
+    if not safes:
+        return decisions                # khong phai map train / khong khai safe -> khong co bay quai
+    point = st.get("safe_cho_login")
+    if not point or point[0] != int(lead.map_id):
+        lc = account_clients.get(lead.username)
+        point = (int(lead.map_id), _nearest_safe(getattr(lc, "pos", None), safes))
+        st["safe_cho_login"] = point
+        log.info("[party %d] ENGINE: cho acc login -> ca party ra safe %s map %d cho, khong dung"
+                 " giua bai quai", pidx + 1, point[1], point[0])
+    result = dict(decisions)
+    for a in song:
+        if a.map_id != point[0] or result.get(a.username) not in _VIEC_CHO_TAI_CHO:
+            continue
+        client = account_clients.get(a.username)
+        pos = getattr(client, "pos", None)
+        result[a.username] = ("nghi" if pos and math.dist(pos, point[1]) <= RALLY_BAN_KINH
+                              else "ve_safe_cho")
+    return result
 
 
 def _engine_rally_decisions(pidx, anh, decisions):
@@ -6662,6 +6720,22 @@ def _engine_mode_action(pidx, c, action, con_lam):
         return False
     if action == "ve_safe":
         return _ra_safe_engine_moi(c, pidx, "tap ket party", con_lam=con_lam)
+    if action == "ve_safe_cho":
+        point = _pstate(pidx).get("safe_cho_login")
+        if not point or int(getattr(c, "current_map", 0) or 0) != point[0]:
+            return False
+        label = getattr(c, "_label", "?")
+        c.flee_mode = False
+        if not c._wait_combat_clear(idle=2.0, cap=120.0) or not con_lam():
+            return False
+        c._theo_leader_sua_pos()
+        pos = getattr(c, "pos", None)
+        if pos and math.dist(pos, point[1]) <= RALLY_BAN_KINH:
+            return True
+        log.info("[%s] cho acc login: ra safe %s", label, point[1])
+        c.navigate_to(int(point[1][0]), int(point[1][1]), flee=True,
+                      abort=lambda: not con_lam())
+        return con_lam()
     if action == "roi_party_la":
         c.leave_party()
         return True
@@ -8448,6 +8522,40 @@ def apply_skill_config_json(username, cfg_json):
         except Exception:
             cfg = {}
     return apply_skill_config(username, cfg if isinstance(cfg, dict) else {})
+
+
+def apply_legion_dmg(username, on):
+    """Tick "Theo doi dame boss QD" (GUI/APK) -> ap NGAY cho acc dang chay."""
+    if not isinstance(getattr(config, "ACCOUNT_LEGION_DMG", None), dict):
+        config.ACCOUNT_LEGION_DMG = {}
+    if on:
+        config.ACCOUNT_LEGION_DMG[username] = True
+        c = account_clients.get(username)
+        if c is not None:
+            try:
+                c.legion_dmg_catchup()
+            except Exception as e:
+                log.debug("[%s] nap bu bang QD loi: %s", username, e)
+    else:
+        config.ACCOUNT_LEGION_DMG.pop(username, None)
+    log.info("[%s] theo doi dame boss QD: %s", username, "BAT" if on else "TAT")
+    return True
+
+
+def legion_dmg_info(username):
+    """Bang dame boss QD cho UI. Acc dang chay -> theo orgId live; acc tat -> theo QD da ghi."""
+    from . import legion_damage
+    c = account_clients.get(username)
+    return legion_damage.info(username, getattr(c, "org_id", None) if c is not None else None)
+
+
+def legion_dmg_info_json(username):
+    """ANDROID: Kotlin chi nhan duoc chuoi."""
+    try:
+        return json.dumps(legion_dmg_info(username), ensure_ascii=False)
+    except Exception as e:
+        log.debug("[%s] legion_dmg_info loi: %s", username, e)
+        return ""
 
 
 def apply_skill_config(username, cfg):

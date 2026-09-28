@@ -138,4 +138,6 @@ data class Account(
     // Bang TU NANG SKILL (JSON): {"reserve": int, "rules":[[skill_id, cap_dich], ...]}.
     // Dat CUOI cung, cung ly do voi pointJson (PartyStore dung tham so VI TRI).
     val skillJson: String = "",
+    // THEO DOI DAME BOSS QUAN DOAN (documents/LEGION_DAMAGE.md), mac dinh tat. Dat CUOI cung.
+    val legionDmg: Boolean = false,
 )

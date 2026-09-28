@@ -685,6 +685,9 @@ ACCOUNT_POINT = {}
 # username -> {"reserve": int, "rules": [[skill_id, cap_dich], ...]}
 # Bang TU NANG SKILL NHAN VAT (xem KNOWLEDGE.md muc 7q). Acc khong co = khong tu nang gi.
 ACCOUNT_SKILL = {}
+# username -> True: THEO DOI DAME BOSS QUAN DOAN (settings.legion_dmg, mac dinh tat).
+# Xem documents/LEGION_DAMAGE.md.
+ACCOUNT_LEGION_DMG = {}
 
 # Unit IDs
 UNIT_CHAR = 3
@@ -803,6 +806,8 @@ if _aj is not None:
                     _sk = _s.get("skill")
                     if isinstance(_sk, dict):
                         ACCOUNT_SKILL[_u] = _sk
+                    if _s.get("legion_dmg"):
+                        ACCOUNT_LEGION_DMG[_u] = True
         # accounts.json TON TAI -> LUON dung no (ke ca RONG) => ban product accounts.json rong thi
         # KHONG hien party mac dinh cua config (tranh lo/nham acc).
         PARTIES = _ps

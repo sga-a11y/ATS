@@ -373,6 +373,13 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                         android.util.Log.w("aTSBot", "apply_skill_config loi: ${e.message}")
                     }
                 }
+                // THEO DOI DAME BOSS QD: ben PC doc tu accounts.json (config.ACCOUNT_LEGION_DMG).
+                if (acc.legionDmg) {
+                    try { py.callAttr("apply_legion_dmg", acc.username, true) }
+                    catch (e: Exception) {
+                        android.util.Log.w("aTSBot", "apply_legion_dmg loi: ${e.message}")
+                    }
+                }
             }
             if (generation != startGeneration) return
             py.callAttr("start_party", pidx)
@@ -604,6 +611,15 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
     fun applySkillConfig(username: String, skillJson: String): Boolean =
         try { rpd().callAttr("apply_skill_config_json", username, skillJson)?.toBoolean() ?: false }
         catch (_: Exception) { false }
+
+    fun applyLegionDmg(username: String, on: Boolean): Boolean =
+        try { rpd().callAttr("apply_legion_dmg", username, on)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
+    /** Bang dame boss QD (chung theo QD, acc tat van xem duoc). Xem documents/LEGION_DAMAGE.md. */
+    fun legionDmgInfoJson(username: String): String =
+        try { rpd().callAttr("legion_dmg_info_json", username)?.toString() ?: "" }
+        catch (_: Exception) { "" }
 
     /** Acc con du diem sau khi duyet het bang rule - [{user, kind:'diem_du', diem}]. */
     fun diemDuNotifyItems(pidx: Int): List<Map<String, String>> = notifyRows("diem_du_notify_items", pidx)

@@ -59,6 +59,7 @@ class PartyStore(private val context: Context) {
                     a.optBoolean("enabled", true),
                     a.optString("point", ""),
                     a.optString("skill", ""),
+                    a.optBoolean("legion_dmg", false),
                 )
             }
             val shopItems = o.optJSONObject("shop_items")
@@ -229,6 +230,7 @@ class PartyStore(private val context: Context) {
                 if (a.battleJson.isNotBlank()) ao.put("battle", a.battleJson)
                 if (a.pointJson.isNotBlank()) ao.put("point", a.pointJson)
                 if (a.skillJson.isNotBlank()) ao.put("skill", a.skillJson)
+                if (a.legionDmg) ao.put("legion_dmg", true)
                 if (!a.heal.isDefault()) ao.put("heal", a.heal.toJsonObject())
                 if (!a.furnace.isEmpty()) ao.put("furnace", a.furnace.toJsonObject())
                 if (!a.vantieu.isDefault()) ao.put("vantieu", a.vantieu.toJsonObject())
