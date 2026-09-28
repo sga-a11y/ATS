@@ -9,7 +9,7 @@ User chot 21/09:
   * "thao ra thoi day nhe, dung co tien tay vut bo"
 
 Ngoc chi de an he so EXP luc train; deo vao boss/PB la dot ben ngoc khong duoc gi.
-KHONG tu deo lai (user chon): vong `use_phuc_than_items` san co se tu deo lai o chu ky sau.
+Thao xong dat co `phuc_than_deo_lai` -> ve vong train deo lai ngay (user 28/09).
 """
 from __future__ import annotations
 
@@ -50,6 +50,7 @@ class _Cli:
 
     thao_ngoc_phuc_than = C.GameClient.thao_ngoc_phuc_than
     _equipped_phuc_than_tid = C.GameClient._equipped_phuc_than_tid
+    _gem_record = C.GameClient._gem_record
     PHUC_THAN_FIT_POS = C.GameClient.PHUC_THAN_FIT_POS
 
 

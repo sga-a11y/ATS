@@ -33,7 +33,9 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           "party_engine.py", "party_modes.py", "party_route.py",
           # TU PHAT HIEN SERVER MOI tu CDN tai nguyen cua game. `config.py` cua CA HAI ban goi
           # `servers_cdn.doc_overlay()` luc nap SERVERS - thieu file la APK crash luc import.
-          "servers_cdn.py"]
+          "servers_cdn.py",
+          # DIEU KHIEN TU XA qua tin nhan rieng (client.py + run_party_digioi.py deu import).
+          "remote_cmd.py"]
 
 # File CHI CO o ban PC - phai liet ke TUONG MINH. Moi file .py trong bot/ khong nam trong
 # SHARED cung khong nam o day se lam sync BAO LOI, khong cho build tiep (xem _check_no_drift).

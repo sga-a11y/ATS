@@ -843,6 +843,15 @@ Pattern entries: `03 02 [type] [4-byte LE]`
       `damage >= Damaged` -> doi chieu `damagedItemId` -> `C:023-013` VUT -> `SendUseEquip` deo ngoc
       moi; con item tieu hao chi dung khi `godMission < 1`. Bot theo huong nay, nguong rong hon theo
       yeu cau user: dung khi `< 5`, toi da 10 cai/luot (TONG, uu tien Dai Phuc Than truoc).
+    - **O NGOC = `equip_by_fit[6]`, NGUON DUY NHAT (sua 28/09).** Game KHONG co goi "hoi lai do dang
+      mac" - client goc cung giu bang theo o, cap nhat bang goi XAC NHAN: snapshot login `sub0b00`,
+      mac xong `S:023-017`, coi xong `S:023-016`, hong `sub2300`, vut `C:023-013` (khong co ack ->
+      bot tu xoa o). `_gem_record` / `_equipped_phuc_than_tid` doc o 6; `equipped_items` chi giu do
+      ben. Ca hong truoc do: deo ngoc moi tu don tui TRUOC khi server xac nhan -> `_on_equip_done`
+      khong thay mon -> o 6 ket o Ngoc Hu -> lan thao sau xoa nham Ngoc Hu, bot tuong van deo ->
+      khong deo lai (Lbmba 28/09 train 12:39->13:34 khong ngoc, log lap `DA THAO` moi luot boss).
+    - Thao ngoc cho boss/PB dat co `phuc_than_deo_lai` -> `party_engine._duy_tri` (chi chay o vong
+      TRAIN) goi `use_phuc_than_items` deo lai NGAY, khong cho buff `< 5` (user 28/09).
     - **CHAY THEO SU KIEN, khong cho chu ky**: `0x18 sub0800` bao buff `< 5`, hoac `0x17
       sub1b00/sub2300` bao ngoc `damage >= 250` -> handler bat `client.phuc_than_pending`, vong lap
       run_account lam NGAY khi khong con trong tran. Vong dinh ky chi con la luoi an toan
@@ -3500,3 +3509,16 @@ cổng được miễn trừ.
 
 > Quy tắc rút ra: luật đi lại của bot phải **soi client rồi chép**, đừng suy diễn từ tên bit. Bit tên
 > là "sea" không có nghĩa nó là chướng ngại — trong client nó chỉ đổi hình nhân vật.
+
+## Mật thoại (tin nhắn riêng) — opcode 0x02 sub 03 (điều khiển từ xa)
+
+Từ crack (`Common/protocal.lua`, `Logic/Chat.lua`, `UI/UINewChat.lua`), **chưa đối chiếu pcap**:
+
+```
+S:002-003 <密頻訊息> roleId(8) titleId(2) L(1) name(L) L(1) msg(L, UTF-16LE) itemCnt(1).. npcCnt(1)..
+C:002-003 <密頻發話> roleId(8) L(1) name(L) L(1) msg(L, UTF-16LE) itemCnt(1)=0 npcCnt(1)=0
+```
+
+- Server gửi lại **bản sao tin mình vừa nhắn** cũng qua S:002-003 với roleId = chính mình → phải bỏ.
+- Client gửi roleId = 0 nếu người nhận không có trong scene → server tự tìm theo tên.
+- Tên giả định UTF-16LE (giống các chỗ đọc tên khác). Code: `bot/remote_cmd.py`. Xem `documents/DIEU_KHIEN_TU_XA.md`.

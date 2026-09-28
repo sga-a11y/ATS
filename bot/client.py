@@ -12,6 +12,7 @@ import os
 from . import config, protocol, combat, pathfind, npc40, loandau, pet_login_stats, team_dungeon_lv110
 from . import event_exchange as _evx
 from . import legion_damage
+from . import remote_cmd
 from .battle_tracker import BattleTracker
 from .party_battle import get_party_battle
 
@@ -2563,6 +2564,8 @@ class GameClient:
         # dang deo ngoc thi thao ra. Dat trong `run_party_digioi` luc login (truoc cua re engine
         # moi) nen phu ca hai engine. Xem `use_phuc_than_items` / `thao_ngoc_phuc_than`.
         self.phuc_than_tat = False
+        # True = vua THAO ngoc cho boss/PB -> quay ve train deo lai ngay (xem thao_ngoc_phuc_than).
+        self.phuc_than_deo_lai = False
         # Ket qua `S:047-002 <創建房間結果>` cua lan tao phong PB gan nhat (None = chua co).
         self._pb_tao_phong_kq = None
         self._pb_tao_phong_luc = 0.0
@@ -3115,6 +3118,33 @@ class GameClient:
                 # vao nhanh set server_closed. Thieu dong nay -> supervisor coi la "thoat binh thuong"
                 # -> member CHET IM (tat), khong reconnect (bug thha/sga012/chu703 chet sau khi join).
                 self.server_closed = True
+
+    def _on_whisper(self, pkt: bytes):
+        """Tin nhan rieng: nick trong whitelist gui `off <phut>p` -> ca party off (remote_cmd)."""
+        try:
+            sender_id, name, msg = remote_cmd.parse_whisper(pkt)
+        except Exception as e:
+            log.warning("[%s] TIN RIENG: khong doc duoc (%s) raw=%s", self._label, e, pkt.hex())
+            return
+        # log goi THO: protocol lay tu crack, chua doi chieu pcap
+        log.info("[%s] TIN RIENG tu '%s': %r (raw %s)", self._label, name, msg, pkt[9:].hex())
+        if (self.self_entity and sender_id == self.self_entity) or (name and name == self.char_name):
+            return      # ban sao tin CHINH MINH vua gui
+        minutes = remote_cmd.parse_off(msg)
+        if minutes is None:
+            return
+        wl = config.leaders_for(self.party_idx) if hasattr(config, "leaders_for") else []
+        if not remote_cmd.is_allowed(name, wl):
+            log.warning("[%s] DIEU KHIEN TU XA: '%s' KHONG nam trong whitelist -> bo qua lenh %r",
+                        self._label, name, msg)
+            return
+        log.info("[%s] DIEU KHIEN TU XA: '%s' ra lenh OFF %d phut", self._label, name, minutes)
+        if not remote_cmd.request_off(self, name, sender_id, minutes):
+            log.warning("[%s] DIEU KHIEN TU XA: chua co bo dieu phoi dang ky -> bo qua", self._label)
+
+    def send_whisper(self, target_id: bytes, target_name: str, text: str):
+        """C:002-003 <密頻發話>: nhan rieng cho nguoi choi."""
+        self.send(0x02, remote_cmd.build_whisper(target_id, target_name, text))
 
     def leave_team_dungeon(self, wait: float = 6.0) -> bool:
         """THOAT PHO BAN TO DOI bang dung lenh cua client: C:047-010 <離開組隊>.
@@ -4077,6 +4107,9 @@ class GameClient:
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
         self._chot_minh_chet(opcode)
+        # `S:002-003 <密頻訊息>`: tin nhan rieng -> lenh dieu khien tu xa (bot/remote_cmd.py).
+        if opcode == 0x02 and pkt[7:9] == b"\x03\x00":
+            self._on_whisper(pkt)
         # `S:006-001 <玩家移動> +玩家ID(8) +面朝向(1) +座標X(2) +座標Y(2)`
         #
         # Server KHONG echo nuoc di cua CHINH MINH (da do tren pcap: 244 lenh gui / 0 goi tra ve
@@ -9316,16 +9349,16 @@ class GameClient:
                 else:
                     done = 1 if self.use_slot(_slot, qty=1) else 0
                 total += done
+                # DEO NGOC: KHONG tu don tui / tu ghi do dang mac o day. Server xac nhan S:023-017
+                # -> `_on_equip_done` cap nhat CA tui LAN o ngoc (equip_by_fit[6]). Truoc day don
+                # tui truoc -> `_on_equip_done` khong thay mon -> o 6 KET o Ngoc Hu cu, lan THAO sau
+                # xoa nham Ngoc Hu, bot tuong van deo ngoc -> KHONG deo lai (Lbmba 28/09 train ca
+                # tieng khong ngoc).
                 rec = self.bag_slots.get(_slot)
-                if rec:
+                if rec and action != "equip":
                     rec[1] = max(0, rec[1] - done)
                     if rec[1] <= 0:
                         self.bag_slots.pop(_slot, None)
-                if done and action == "equip":
-                    old = [x for x in getattr(self, "equipped_items", [])
-                           if x.get("id") not in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID}]
-                    self.equipped_items = old + [{"id": tid, "pos": EQUIP_POS_SPEC,
-                                                  "damage": 0, "damaged_item_id": 0}]
                 _nm = (items.get(tid) or {}).get("name") or cfg[tid].get("name", "")
                 log.info("[%s] tu %s item (%s) slot=%d tid=0x%04x ('%s') %s",
                          self._label, "trang bi" if action == "equip" else "dung",
@@ -9395,7 +9428,24 @@ class GameClient:
                 self.equip_by_fit[fit] = it["id"]
 
     def _gem_record(self):
-        """Ban ghi do dang deo o O NGOC (vi tri 6). None = chua biet (chua nhan snapshot login)."""
+        """Ban ghi do dang deo o O NGOC (vi tri 6). None = o trong / chua biet.
+
+        NGUON DUNG = `equip_by_fit[6]` (bang THEO O, cap nhat theo goi XAC NHAN cua server: snapshot
+        login, mac xong S:023-017, coi xong S:023-016, hong S:023-035). `equipped_items` chi con
+        giu do ben/damagedItemId cua mon do. Game khong co goi "hoi lai do dang mac" - client goc
+        cung giu bang nay theo cac goi day ve."""
+        _by_fit = getattr(self, "equip_by_fit", None)
+        if _by_fit is not None and getattr(self, "equipped_items", None) is not None:
+            tid = _by_fit.get(EQUIP_POS_SPEC)
+            if not tid:
+                return None
+            for item in self.equipped_items:
+                if item.get("id") == tid:
+                    item["pos"] = EQUIP_POS_SPEC
+                    return item
+            rec = {"id": tid, "pos": EQUIP_POS_SPEC, "damage": 0, "damaged_item_id": 0}
+            self.equipped_items.append(rec)
+            return rec
         for item in getattr(self, "equipped_items", []):
             if item.get("pos") == EQUIP_POS_SPEC:
                 return item
@@ -9438,6 +9488,8 @@ class GameClient:
                   if x.get("pos") != EQUIP_POS_SPEC
                   and x.get("id") not in PHUC_THAN_GEM_TIDS | {BROKEN_PHUC_THAN_TID}]
         self.equipped_items = others + [rec]
+        if getattr(self, "equip_by_fit", None) is not None:
+            self.equip_by_fit[EQUIP_POS_SPEC] = rec["id"]
         _was = (_load_gamedata_items().get(rec["damaged_item_id"]) or {}).get("name", "?")
         log.info("[%s] NGOC HONG: o ngoc thanh 0x%04x (truoc la '%s') -> se vut + deo ngoc moi",
                  self._label, rec["id"], _was)
@@ -9450,6 +9502,8 @@ class GameClient:
         if not self.running:
             return False
         self.send(0x17, b"\x0d\x00" + bytes([pos & 0xFF]))
+        if getattr(self, "equip_by_fit", None) is not None:
+            self.equip_by_fit.pop(int(pos), None)
         return True
 
     def _drop_broken_gem(self) -> bool:
@@ -9472,10 +9526,9 @@ class GameClient:
         return True
 
     def _equipped_phuc_than_tid(self) -> int:
-        for item in getattr(self, "equipped_items", []):
-            tid = item.get("id", 0)
-            if tid in PHUC_THAN_GEM_TIDS and item.get("damage", 0) < 250:
-                return tid
+        rec = self._gem_record()
+        if rec and rec.get("id", 0) in PHUC_THAN_GEM_TIDS and rec.get("damage", 0) < 250:
+            return rec["id"]
         return 0
 
     # Ngoc Phuc Than deo o VI TRI 6 (dac biet) cua CHAR - khong deo cho pet duoc (xem `_on_equip_damage`).
@@ -9488,14 +9541,17 @@ class GameClient:
           * mode `event`: KHONG dung Phuc Than, tick hay khong cung vay -> dang deo thi thao ra;
           * mode khac: TRUOC khi danh boss the gioi / boss Quan Doan / PB don / PB doi thi thao.
 
-        KHONG tu deo lai o day (user chon): vong `use_phuc_than_items` san co se tu deo lai o chu
-        ky sau khi thay buff tut - them mot duong deo lai rieng chi tao them cho de deo nham luc
-        con dang trong instance.
+        KHONG tu deo lai o day (con dang trong instance): chi dat co `phuc_than_deo_lai`, vong TRAIN
+        (`party_engine._duy_tri`) thay co thi goi `use_phuc_than_items` deo lai ngay.
         """
         tid = self._equipped_phuc_than_tid()
         if not tid:
             return True
         ok = self.unequip_item(self.PHUC_THAN_FIT_POS)
+        if ok:
+            # Quay ve vong TRAIN la deo lai NGAY (`party_engine._duy_tri`) - khong cho buff tut < 5
+            # (user 28/09: "train ca tieng ko deo ngoc la bot ngu").
+            self.phuc_than_deo_lai = True
         log.info("[%s] Phuc Than: %s ngoc 0x%04x (vi tri %d)%s", self._label,
                  "DA THAO" if ok else "KHONG thao duoc", tid, self.PHUC_THAN_FIT_POS,
                  (" - %s" % ly_do) if ly_do else "")
@@ -9827,6 +9883,7 @@ class GameClient:
         # god_mission is None = server chua gui 0x18 sub0800 -> VAN dung (nhung van cap 10) de
         # khong mat tinh nang o server khong gui goi nay.
         self.phuc_than_pending = False   # da xu ly (ha co truoc khi lam, tranh lap vo han)
+        self.phuc_than_deo_lai = False
         _gm = self.god_mission
         if _gm is not None and _gm >= PHUC_THAN_LOW:
             log.info("[%s] Phuc Than con %d (>= %d) -> CHUA dung them item",
@@ -10525,7 +10582,7 @@ class GameClient:
             else:
                 self.equipped_items = [i for i in (getattr(self, "equipped_items", []) or [])
                                        if i.get("id") != cu]
-                self.equipped_items.append({"id": tid, "pos": 0, "damage": 0,
+                self.equipped_items.append({"id": tid, "pos": fit, "damage": 0,
                                             "damaged_item_id": 0})
         self._equip_seq += 1
         if not follow:

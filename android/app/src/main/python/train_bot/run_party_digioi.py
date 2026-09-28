@@ -23,6 +23,7 @@ from . import floor_crawl
 from . import party_engine
 from . import party_modes
 from . import party_route
+from . import remote_cmd
 from . import train_pick as train_pick_mod   # alias: trong setup_party_runtime co tham so ten train_pick
 from .mob_scanner import MobScanSession, compute_regions, scan_full_map
 from .scene_fight import get_scene_fight_seed
@@ -3186,6 +3187,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                                       "char_level": getattr(c, "char_level", None),
                                       "pet_name": c.pet_name_out(),
                                       "pet_level": getattr(c, "pet_level", None)}
+        # STOP -> DONG KET NOI THAT. `stop_account` hoan dong socket khi acc o bai train (cho ve
+        # safe); watchdog 25s chi dong neu thread CON SONG. Engine moi tra thread som (<25s) ->
+        # truoc 28/09 khong ai dong -> recv/heartbeat van chay, acc dung online o bai cho quai
+        # danh (124/145 acc lan Stop 15:31:50). Toi day leader da ve safe / member da cho xong.
+        if _stopped() and c is not None:
+            try: c.close()
+            except Exception: pass
         account_clients.pop(username, None)
         if not reconnectable:   # reconnect thi CHUA tong ket "party thoat het" (nick se login lai)
             try:
@@ -3252,6 +3260,36 @@ def _force_supervisor_reconnect(username, c, reason):
     except Exception:
         pass
     return False
+
+
+def _remote_off_party(c, sender_name, sender_id, minutes):
+    """DIEU KHIEN TU XA (bot/remote_cmd.py): nick whitelist nhan `off <phut>p` -> CA PARTY logout,
+    supervisor cho het han roi moi login lai (xem dau vong `_run_account_supervised`). Thieu 1 acc
+    thi party cung dung, nen off ca party chu khong off rieng acc nhan tin."""
+    pidx = c.party_idx
+    if pidx is None:
+        return
+    users = [u for u, _p, _l, _k in party_accounts(pidx)]
+    if all(remote_cmd.off_remaining(u) > 0 for u in users):
+        return      # dang off roi (lenh lap / 2 acc cung nhan) -> khong lam lai
+    until = time.time() + minutes * 60
+    remote_cmd.set_off(users, until)
+    hh = time.strftime("%H:%M", time.localtime(until))
+    try:
+        c.send_whisper(sender_id, sender_name, "OK off %dp, quay lai luc %s" % (minutes, hh))
+        time.sleep(1.0)     # cho tin xac nhan di het truoc khi dong socket
+    except Exception as e:
+        log.warning("[party %d] DIEU KHIEN TU XA: gui xac nhan loi: %s", pidx, e)
+    log.warning("[party %d] DIEU KHIEN TU XA: '%s' -> OFF CA PARTY %d phut (toi %s): %s",
+                pidx, sender_name, minutes, hh, users)
+    for u in users:
+        cli = account_clients.get(u)
+        if cli is not None:
+            _force_supervisor_reconnect(u, cli, "điều khiển từ xa: off %dp theo lệnh '%s' (tới %s)"
+                                        % (minutes, sender_name, hh))
+
+
+remote_cmd.set_off_handler(_remote_off_party)
 
 
 def _thoat_pb_ca_party(pidx, ly_do):
@@ -3967,6 +4005,23 @@ def _run_account_supervised(username, password, pidx, is_leader, is_picker=False
     attempt = 0
     first = True
     while True:
+        # DIEU KHIEN TU XA: party dang OFF (`off <phut>p`) -> CHO het han roi moi login. Dat o DAU
+        # vong nen phu ca lan login DAU (tool mo lai giua luc off) lan relogin. Gian theo vi tri acc
+        # (3s/acc) -> ca party khong login dong loat dinh ma 90.
+        _off = remote_cmd.off_remaining(username)
+        if _off > 0:
+            try:
+                _off += 3 * [u for u, _p, _l, _k in party_accounts(pidx)].index(username)
+            except ValueError:
+                pass
+            log.warning("[%s] DIEU KHIEN TU XA: dang OFF -> cho %d phut %d giay roi login lai",
+                        username, int(_off) // 60, int(_off) % 60)
+            _het = time.time() + _off
+            while time.time() < _het and not _st():
+                time.sleep(1)
+            if _st():
+                break
+            log.info("[%s] DIEU KHIEN TU XA: het han OFF -> login lai", username)
         account_reconnect[username] = False
         _tiep = account_continue.pop(username, None)
         try:
@@ -8150,6 +8205,7 @@ def stop_account(username, reason="GUI Stop acc"):
     ev = account_stops.get(username)
     if ev is not None:
         ev.set()
+    remote_cmd.clear_off(username)   # user tu tay Stop -> bo han off, lan Start sau chay ngay
     # CHAN CUNG relogin sau STOP: supervisor break neu _st() HOAC account_reconnect False. Set
     # False ngay (khong doi finally cua run_account) -> du acc dang giua chu ky login/daily, khi
     # run_account tra ve la supervisor thoat, KHONG relogin. Log ro de thay Python co nhan lenh.

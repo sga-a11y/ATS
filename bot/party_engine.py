@@ -1591,7 +1591,9 @@ def _duy_tri(client, log=None):
     da tut va het thuoc hoi - khong bao gio bao loi, chi kem dan.
     """
     _cfg = getattr(client, "_pe_pcfg", None) or {}
-    if _cfg.get("use_phuc_than") and getattr(client, "phuc_than_pending", False):
+    # `phuc_than_deo_lai`: vua THAO ngoc cho boss/PB -> ve train la deo lai ngay (user 28/09).
+    if _cfg.get("use_phuc_than") and (getattr(client, "phuc_than_pending", False)
+                                      or getattr(client, "phuc_than_deo_lai", False)):
         try:
             client.use_phuc_than_items()
         except Exception as e:
