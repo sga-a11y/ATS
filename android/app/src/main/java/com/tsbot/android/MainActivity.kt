@@ -295,6 +295,10 @@ fun TsBotApp(
     var updateBusyText by remember { mutableStateOf<String?>(null) }
     var updateMessage by remember { mutableStateOf<UpdateDialogMessage?>(null) }
     var pendingInstallApk by remember { mutableStateOf<File?>(null) }
+    var showUpdatePanel by remember { mutableStateOf(false) }
+    var autoUpdate by remember { mutableStateOf(ApkUpdater.isAutoUpdate(context)) }
+    var oldReleases by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+    var oldReleasesText by remember { mutableStateOf("") }
 
     fun manualUpdateMessage(title: String, body: String): UpdateDialogMessage =
         UpdateDialogMessage(
@@ -318,6 +322,17 @@ fun TsBotApp(
 
     fun checkApkUpdate(manual: Boolean) {
         if (updateBusyText != null) return
+        if (!ApkUpdater.isAutoUpdate(context)) {
+            currentCoreVersion = ApkUpdater.effectiveVersion(context)
+            if (manual) {
+                updateMessage = UpdateDialogMessage(
+                    "Update",
+                    "Đang TẮT tự động update (core v${ApkUpdater.realVersion(currentCoreVersion)}).\n" +
+                        "Tick 'Tự động update' để lên bản mới nhất.",
+                )
+            }
+            return
+        }
         scope.launch {
             if (manual) updateBusyText = "Đang kiểm tra bản mới..."
             try {
@@ -428,7 +443,8 @@ fun TsBotApp(
                         Text("aTSBot", fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            "v$currentCoreVersion",
+                            "v${ApkUpdater.realVersion(currentCoreVersion)}" +
+                                if (autoUpdate) "" else " (tắt update)",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -450,7 +466,7 @@ fun TsBotApp(
                 ),
                 actions = {
                     TextButton(
-                        onClick = { checkApkUpdate(manual = true) },
+                        onClick = { showUpdatePanel = true },
                         enabled = updateBusyText == null,
                     ) { Text("Check Update") }
                 },
@@ -671,6 +687,99 @@ fun TsBotApp(
             },
             dismissButton = {
                 TextButton(onClick = { pendingInstallApk = null }) { Text("Để sau") }
+            },
+        )
+    }
+
+    // Nut Check Update: dang dung v... + tick Tu dong update + Kiem tra ban moi + Chon ban cu
+    // (tai core bundle cua tag cu, ghim "9." - xem documents/CHAY_BAN_CU.md). Giong bang PC.
+    if (showUpdatePanel) {
+        val botRunning = runningCount > 0 || anyConnecting
+        AlertDialog(
+            onDismissRequest = { showUpdatePanel = false },
+            title = { Text("Cập nhật") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "APK v${BuildConfig.VERSION_NAME} · core v${ApkUpdater.realVersion(currentCoreVersion)}",
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = autoUpdate, onCheckedChange = { on ->
+                            ApkUpdater.setAutoUpdate(context, on)
+                            autoUpdate = on
+                            currentCoreVersion = ApkUpdater.effectiveVersion(context)
+                            if (on) {
+                                showUpdatePanel = false
+                                checkApkUpdate(manual = true)
+                            }
+                        })
+                        Text("Tự động update")
+                    }
+                    TextButton(
+                        enabled = oldReleases == null && updateBusyText == null,
+                        onClick = {
+                            oldReleasesText = "Đang tải danh sách phiên bản..."
+                            scope.launch {
+                                try {
+                                    oldReleases = withContext(Dispatchers.IO) { ApkUpdater.listReleases() }
+                                    oldReleasesText = "Chọn bản: tắt tự động update, tải core bản đó."
+                                } catch (e: Exception) {
+                                    oldReleasesText = "Không lấy được danh sách: ${e.message ?: e.javaClass.simpleName}"
+                                }
+                            }
+                        },
+                    ) { Text("Chọn bản cũ") }
+                    if (oldReleasesText.isNotEmpty()) {
+                        Text(oldReleasesText, style = MaterialTheme.typography.bodySmall)
+                    }
+                    val list = oldReleases
+                    if (list != null) {
+                        val cur = ApkUpdater.realVersion(currentCoreVersion)
+                        LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
+                            items(list) { (ver, day) ->
+                                Text(
+                                    "v$ver  ($day)" + if (ver == cur) "  ← đang dùng" else "",
+                                    modifier = Modifier.fillMaxWidth().clickable(enabled = updateBusyText == null) {
+                                        if (botRunning) {
+                                            oldReleasesText = "Đang có acc chạy. Dừng hết rồi mới đổi bản."
+                                            return@clickable
+                                        }
+                                        scope.launch {
+                                            updateBusyText = "Đang tải core v$ver..."
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    ApkUpdater.installOldBundle(context.applicationContext, ver)
+                                                }
+                                                autoUpdate = false
+                                                currentCoreVersion = ApkUpdater.effectiveVersion(context)
+                                                oldReleasesText = "Đã cài core v$ver. Bấm Start để chạy bản này."
+                                            } catch (e: Exception) {
+                                                oldReleasesText = "Lỗi: ${e.message ?: e.javaClass.simpleName}"
+                                            } finally {
+                                                updateBusyText = null
+                                            }
+                                        }
+                                    }.padding(vertical = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                    updateBusyText?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = updateBusyText == null,
+                    onClick = { showUpdatePanel = false; checkApkUpdate(manual = true) },
+                ) { Text("Kiểm tra bản mới") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showUpdatePanel = false
+                    oldReleases = null
+                    oldReleasesText = ""
+                }) { Text("Đóng") }
             },
         )
     }

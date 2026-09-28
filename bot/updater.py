@@ -397,11 +397,13 @@ def _merge_user_config(live_dir: str, stage_dir: str):
             pass
 
 
-def download_and_swap(url: str, on_progress=None):
+def download_and_swap(url: str, on_progress=None, pin_version: str = ""):
     """Tai aTSBot.zip (CA FOLDER: exe + JSON config) ve -> giai nen ra _update_stage -> viet
     _update.bat: cho app thoat -> xcopy stage GHI DE folder (exe + json moi) -> chay lai -> don.
     accounts.json KHONG co trong zip (build khong ship) -> KHONG bi ghi de -> giu cau hinh user.
-    on_progress(done, total) cap nhat thanh tien trinh (total=0 neu server ko bao Content-Length)."""
+    on_progress(done, total) cap nhat thanh tien trinh (total=0 neu server ko bao Content-Length).
+    pin_version != "" = dang cai BAN CU: ghim version.json cua ban do thanh '9.<ban>' (khong tu
+    update) + bat xoa bot_bundle (gui.py luon nap core trong do -> de len code ban cu)."""
     exe = running_exe()
     d = os.path.dirname(exe)
     exe_name = os.path.basename(exe)
@@ -449,6 +451,8 @@ def download_and_swap(url: str, on_progress=None):
     # 2b) Gop DANH SACH NPC NGUY HIEM user tu them tay vao ban staging. Du lieu map/route thi
     # KHONG gop - ban tai ve de thang len ban cu (xem `_merge_user_config`).
     _merge_user_config(d, stage)
+    if pin_version:
+        pin_version_file(os.path.join(stage, "version.json"), pin_version)
 
     # 3) bat: TASKKILL exe (bootstrap onefile khong tu chet bang os._exit -> giu khoa file) -> xcopy
     # stage GHI DE folder, RETRY toi khi het khoa -> chay lai. KHONG cho theo PID/ten process nua
@@ -462,8 +466,9 @@ def download_and_swap(url: str, on_progress=None):
             "@echo off\r\n"
             "chcp 65001 >nul\r\n"
             "timeout /t 2 /nobreak >nul\r\n"   # cho app kip dong cua so
-            + _kill +                          # kill exe -> nha khoa file (neu la ban build)
-            ":copy\r\n"
+            + _kill                            # kill exe -> nha khoa file (neu la ban build)
+            + ('if exist "bot_bundle" rmdir /s /q "bot_bundle"\r\n' if pin_version else "")
+            + ":copy\r\n"
             "timeout /t 1 /nobreak >nul\r\n"
             'xcopy /e /y /q /i "_update_stage\\*" "." >nul\r\n'
             'if errorlevel 1 goto copy\r\n'    # exe con khoa (chua kill xong) -> thu lai toi khi duoc
@@ -476,3 +481,121 @@ def download_and_swap(url: str, on_progress=None):
     subprocess.Popen(["cmd", "/c", bat], cwd=d,
                      creationflags=0x00000008 | 0x08000000, close_fds=True)
     os._exit(0)
+
+
+# ---- CHAY BAN CU (ghim phien ban) ----
+# User chon 1 ban cu -> tai zip dung tag do ra THU MUC RIENG (bot_bundle cua thu muc hien tai se
+# de code cu neu cai chung) -> ghi version.json local = "9." + ban that. So sanh update la so
+# CHUOI nen "9.1.1.x" > moi "1.1.x" tren server -> ban cu tu thay minh "moi nhat", KHONG tu update,
+# ma KHONG can sua gi trong code ban cu. Ban that van doc duoc: bo "9." o dau.
+PIN_PREFIX = "9."
+RELEASE_REPO = "sgagamee-oss/atsbot-release"
+# installed_app_version() (doc version.json canh exe) co tu 07/08/2026. Ban truoc do lay version
+# cung trong exe -> sua version.json khong khoa duoc -> khong cho chon.
+MIN_PIN_VERSION = "1.1.202608080000"
+PIN_NOTE_FILE = "DANG_DUNG_BAN_CU.txt"
+
+
+def is_pinned_version(version: str) -> bool:
+    return str(version or "").strip().startswith(PIN_PREFIX)
+
+
+def real_version(version: str) -> str:
+    """'9.1.1.202609141802' -> '1.1.202609141802'; ban thuong giu nguyen."""
+    v = str(version or "").strip()
+    return v[len(PIN_PREFIX):] if v.startswith(PIN_PREFIX) else v
+
+
+def pinned_version(version: str) -> str:
+    return PIN_PREFIX + real_version(version)
+
+
+def list_releases(limit: int = 30):
+    """[(version, ngay, notes)] cac ban co aTSBot.zip, moi nhat truoc, bo ban < MIN_PIN_VERSION."""
+    url = "https://api.github.com/repos/%s/releases?per_page=%d" % (RELEASE_REPO, int(limit))
+    req = urllib.request.Request(url, headers={"User-Agent": "atsbot-updater",
+                                               "Accept": "application/vnd.github+json"})
+    with _urlopen_with_ssl_fallback(req, timeout=20) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    out = []
+    for rel in data if isinstance(data, list) else []:
+        ver = str(rel.get("tag_name") or "").strip().lstrip("v")
+        if not ver or ver < MIN_PIN_VERSION or rel.get("draft"):
+            continue
+        if not any(a.get("name") == "aTSBot.zip" for a in rel.get("assets") or []):
+            continue
+        out.append((ver, str(rel.get("published_at") or "")[:10], str(rel.get("body") or "").strip()))
+    out.sort(key=lambda x: x[0], reverse=True)
+    return out
+
+
+def pin_version_file(path: str, version: str):
+    """Ghi de moi truong version trong version.json local thanh '9.<ban that>'."""
+    fake = pinned_version(version)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        data = {}
+    for key in ("version", "pc_app_version", "bundle_version", "apk_version"):
+        data[key] = fake
+    data["pinned_real_version"] = real_version(version)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def old_release_zip_url(version: str) -> str:
+    return "https://github.com/%s/releases/download/v%s/aTSBot.zip" % (RELEASE_REPO, real_version(version))
+
+
+def auto_update_enabled(version: str = "") -> bool:
+    return not is_pinned_version(version or installed_app_version(""))
+
+
+def set_auto_update(enabled: bool, root: str = ""):
+    """Tick 'Tu dong update' = version that; bo tick = '9.<ban that>'. Ghi CA version.json (app)
+    LAN bot_bundle/version.txt (core so theo file nay, khong theo version.json)."""
+    root = root or _app_root_dir()
+    vj = os.path.join(root, "version.json")
+    try:
+        with open(vj, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        data = {}
+    cur = str(data.get("pinned_real_version") or data.get("pc_app_version") or data.get("version") or "")
+    real = real_version(cur)
+    if not real:
+        raise RuntimeError("khong doc duoc version trong %s" % vj)
+    if enabled:
+        for key in ("version", "pc_app_version", "bundle_version", "apk_version"):
+            if key in data or key in ("version", "pc_app_version"):
+                data[key] = real
+        data.pop("pinned_real_version", None)
+        with open(vj, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    else:
+        pin_version_file(vj, real)
+    bv = os.path.join(root, "bot_bundle", "version.txt")
+    if os.path.isfile(bv):
+        with open(bv, encoding="utf-8") as f:
+            bundle_real = real_version(f.read().strip())
+        with open(bv, "w", encoding="utf-8") as f:
+            f.write(bundle_real if enabled else pinned_version(bundle_real))
+    note = os.path.join(root, PIN_NOTE_FILE)
+    if enabled:
+        try:
+            os.remove(note)
+        except Exception:
+            pass
+    else:
+        with open(note, "w", encoding="utf-8-sig") as f:
+            f.write(
+                "Bot dang TAT tu dong update (dung ban v%s).\n"
+                "Tieu de cua so co the hien v%s - bo '9.' o dau la ra ban that.\n\n"
+                "Bat lai: bam Check Update -> tick 'Tu dong update'.\n"
+                "Ban cu khong co bang do: xoa file version.json canh exe roi bam Check Update.\n"
+                % (real, pinned_version(real)))

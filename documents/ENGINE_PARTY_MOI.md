@@ -304,3 +304,12 @@ Instance và kênh là một (CORE_FLOW) → không có gì để đồng bộ.
 Ca thật party 1, 28/09: cả 5 `@21011/k1`, roster `0/4`, `sga008`/`tuyetdo` "không thấy" →
 `dong_bo` → mọi acc `nghi`, `_giao_kenh_dich` không có đích, chốt kênh không bump reform vì
 việc ≠ `moi` → đứng im ở Giang Lăng 75+ phút, không một dòng log.
+
+## Bấm "Lưu" setting khi đang chạy — nạp config nguyên khối (28/09)
+`reload_config` (gui.py) KHÔNG còn dùng `importlib.reload(config)`: reload chạy lại config.py ngay
+trên module đang dùng, giữa chừng `PARTIES` chỉ còn 1 party mẫu → `_cap_nhat_engine` tưởng party bị
+xoá → dừng engine → cả party thoát (ca thật 28/09: 37 party lúc 09:13:24, 35 party lúc 09:25:27,
+log `ENGINE: party khong con trong cau hinh -> dung engine`).
+Giờ `_nap_lai_config_nguyen_khoi()` chạy config vào module TẠM rồi chép sang một lượt. Party không đổi
+setting chạy tiếp; party đổi setting quan trọng (mode/map/server...) vẫn bị stop như cũ.
+Test: `tests/test_gui_nap_lai_config_nguyen_khoi.py`.

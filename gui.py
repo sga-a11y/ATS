@@ -144,6 +144,32 @@ from bot._appdir import app_dir as _app_dir   # thu muc goc (dev=project, frozen
 
 log = logging.getLogger("bot")   # -> hien o panel log GUI (qua _QueueHandler tren root)
 
+
+def _nap_lai_config_nguyen_khoi():
+    """Nap lai `bot.config` MA KHONG de lo trang thai dang do cho thread khac.
+
+    `importlib.reload(config)` chay lai file NGAY TREN module dang dung: tu `PARTIES = [<1 party
+    mau>]` (config.py dong 55) toi `PARTIES = _ps` (dong 808) moi engine doc config deu thay CHI 1
+    PARTY -> `_cap_nhat_engine` tuong party bi xoa -> dung engine -> ca party thoat.
+    Ca that 28/09: bam Luu setting (them 1 mon cat tui) -> 09:13:24 37 party, 09:25:27 35 party
+    log `ENGINE: party khong con trong cau hinh -> dung engine`.
+
+    Cach chua: chay config vao module TAM, xong het moi chep gia tri sang module that mot luot.
+    """
+    try:
+        spec = importlib.util.find_spec(config.__name__)
+        tmp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tmp)
+        moi = {k: v for k, v in vars(tmp).items()
+               if not (k.startswith("__") and k.endswith("__"))}
+        if "PARTIES" not in moi:
+            raise RuntimeError("module tam thieu PARTIES")
+    except Exception as e:
+        log.warning("Nap lai config vao module tam loi (%s) -> dung importlib.reload", e)
+        importlib.reload(config)
+        return
+    vars(config).update(moi)
+
 ACCOUNTS_JSON = os.path.join(_app_dir(), "accounts.json")
 DONATE_CHAT_URL = "https://zalo.me/g/qiy6aflscqbh6v4tivej"
 TEAM_DUNGEON_LEVELS = (20, 50, 80, 110)
@@ -661,7 +687,7 @@ class BotGUI(tk.Tk):
                 self._version = _updater.effective_version(_VER)
         except Exception:
             pass
-        self.title(f"TS Online Bot Manager v{self._version}")
+        self.title(self._title_text())
         self.geometry("1100x720")
         self.minsize(900, 560)
         self._setup_style()
@@ -752,6 +778,12 @@ class BotGUI(tk.Tk):
             if manual:
                 messagebox.showinfo("Update", "Ban dang chay source/dev nen khong tu update.", parent=self)
             return   # dev chay 'python gui.py' -> khong tu update
+        if updater.is_pinned_version(self._app_version):
+            if manual:
+                messagebox.showinfo("Update", "Đang TẮT tự động update (v%s).\nTick 'Tự động update' "
+                                    "để lên bản mới nhất." % updater.real_version(self._app_version),
+                                    parent=self)
+            return
         if manual:
             log.info("update: dang kiem tra thu cong...")
         def worker():
@@ -788,9 +820,122 @@ class BotGUI(tk.Tk):
                         parent=self))
         threading.Thread(target=worker, daemon=True).start()
 
+    def _title_text(self):
+        try:
+            from bot import updater
+            if updater.is_pinned_version(self._version):
+                return "TS Online Bot Manager v%s (đã tắt tự động update)" % (
+                    updater.real_version(self._version))
+        except Exception:
+            pass
+        return f"TS Online Bot Manager v{self._version}"
+
+    def _open_update_panel(self):
+        """Nut Check Update: bang 'dang dung v...' + tick Tu dong update + kiem tra ban moi + chon
+        ban cu. Bo tick = version.json thanh '9.<ban>' -> updater thay minh moi nhat, khong update."""
+        try:
+            from bot import updater
+        except Exception as e:
+            messagebox.showerror("Update", f"Khong load duoc updater:\n{e}", parent=self)
+            return
+        if not updater.is_frozen():
+            messagebox.showinfo("Update", "Ban dang chay source/dev nen khong tu update.", parent=self)
+            return
+        top = tk.Toplevel(self); top.title("Cập nhật")
+        top.transient(self); top.geometry("480x440")
+        box = ttk.Frame(top, padding=12); box.pack(fill="both", expand=True)
+        tk.Label(box, text="Bạn đang dùng v%s" % updater.real_version(self._version),
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        auto = tk.BooleanVar(value=updater.auto_update_enabled(self._app_version))
+
+        def on_tick():
+            try:
+                updater.set_auto_update(auto.get())
+            except Exception as e:
+                auto.set(not auto.get())
+                messagebox.showerror("Update", f"Không đổi được:\n{e}", parent=top)
+                return
+            self._app_version = updater.installed_app_version(self._app_version)
+            self._version = updater.effective_version(self._app_version)
+            self.title(self._title_text())
+            log.info("update: tu dong update = %s (v%s)", auto.get(), self._version)
+            if auto.get():
+                self._check_update(manual=True)
+        ttk.Checkbutton(box, text="Tự động update", variable=auto, command=on_tick).pack(anchor="w", pady=6)
+        bar = ttk.Frame(box); bar.pack(fill="x")
+        ttk.Button(bar, text="Kiểm tra bản mới", command=lambda: self._check_update(manual=True)).pack(side="left")
+        old_btn = ttk.Button(bar, text="Chọn bản cũ"); old_btn.pack(side="left", padx=6)
+        lb = tk.Listbox(box, height=12)
+        status = tk.Label(box, text="", justify="left", wraplength=450)
+        pick = ttk.Button(box, text="Tải bản này (tắt tự động update)")
+        vers = []
+
+        def loaded(items, err):
+            if not top.winfo_exists():
+                return
+            if err:
+                status.config(text=f"Không lấy được danh sách phiên bản: {err}")
+                return
+            cur = updater.real_version(self._app_version)
+            for ver, day, _notes in items:
+                vers.append(ver)
+                lb.insert("end", f"v{ver}   ({day})" + ("   ← đang dùng" if ver == cur else ""))
+            status.config(text="Chọn bản rồi bấm tải. Bot sẽ tắt, cài đè bản đó rồi tự mở lại.")
+            pick.config(state="normal")
+
+        def show_old():
+            old_btn.config(state="disabled")
+            lb.pack(fill="both", expand=True, pady=(10, 4))
+            status.pack(anchor="w")
+            pick.pack(anchor="e", pady=4)
+            pick.config(state="disabled")
+            status.config(text="Đang tải danh sách phiên bản...")
+
+            def fetch():
+                try:
+                    items, err = updater.list_releases(), None
+                except Exception as e:
+                    items, err = [], str(e)
+                self.after(0, lambda: loaded(items, err))
+            threading.Thread(target=fetch, daemon=True).start()
+        old_btn.config(command=show_old)
+
+        def install():
+            sel = lb.curselection()
+            if not sel:
+                return
+            ver = vers[sel[0]]
+            if bool(getattr(ctrl, "account_clients", {})):
+                messagebox.showwarning("Bản cũ", "Đang có acc chạy. Bấm Stop hết rồi mới đổi bản.",
+                                       parent=top)
+                return
+            if not messagebox.askyesno("Bản cũ", f"Tải v{ver} và TẮT tự động update?\n\n"
+                                       "Bot sẽ tắt, cài đè rồi tự mở lại. Tài khoản giữ nguyên.",
+                                       parent=top):
+                return
+            pick.config(state="disabled")
+            auto.set(False)
+
+            def prog(done, total):
+                if total:
+                    self.after(0, lambda: status.config(
+                        text=f"Đang tải: {done//1024//1024}/{total//1024//1024} MB"))
+
+            def work():
+                try:
+                    log.info("update: cai ban cu v%s (tat tu dong update)", ver)
+                    updater.download_and_swap(updater.old_release_zip_url(ver), prog, pin_version=ver)
+                except Exception as e:
+                    _loi = str(e)
+                    self.after(0, lambda: (pick.config(state="normal"),
+                                           auto.set(updater.auto_update_enabled(self._app_version)),
+                                           status.config(text=f"Lỗi: {_loi}")))
+            threading.Thread(target=work, daemon=True).start()
+        pick.config(command=install)
+
     def _restart_after_bundle_update(self, ver):
         self._version = str(ver)
-        self.title(f"TS Online Bot Manager v{self._version}")
+        self.title(self._title_text())
         if bool(getattr(ctrl, "account_clients", {})):
             messagebox.showinfo(
                 "Update",
@@ -981,7 +1126,7 @@ class BotGUI(tk.Tk):
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=8)
         ttk.Button(bar, text="🗑 Xóa log", command=self._clear_log).pack(side="left", padx=3)
         ttk.Button(bar, text="📋 Log: Tất cả", command=self._log_show_all).pack(side="left", padx=3)
-        ttk.Button(bar, text="Check Update", command=lambda: self._check_update(manual=True)).pack(side="left", padx=3)
+        ttk.Button(bar, text="Check Update", command=self._open_update_panel).pack(side="left", padx=3)
         ttk.Button(bar, text="Mỗi party 1 chế độ → ⚙ Cấu hình",
                    command=self._open_config).pack(side="right", padx=8)
         ttk.Button(bar, text="Donate", command=self._open_donate).pack(side="right", padx=3)
@@ -2352,7 +2497,7 @@ class BotGUI(tk.Tk):
                         pc.get("buy_sp"), pc.get("sp_qty"), pc.get("sp_thresh"))
             return s
         old = _sigs()
-        importlib.reload(config)   # doc lai accounts.json -> PARTIES/PARTY_CONFIG moi
+        _nap_lai_config_nguyen_khoi()   # doc lai accounts.json -> PARTIES/PARTY_CONFIG moi
         new = _sigs()
         # acc dang chay ma config doi (hoac bi xoa khoi config) -> STOP
         changed = [u for u in list(ctrl.account_clients)

@@ -107,7 +107,68 @@ object ApkUpdater {
         throw RuntimeException(errors.joinToString("; ").ifBlank { "Không có nguồn update nào" })
     }
 
+    // ---- TU DONG UPDATE / CHAY CORE CU (giong PC, xem documents/CHAY_BAN_CU.md) ----
+    // Version APK nam cung trong BuildConfig -> khong gia duoc -> tat update APK bang CO trong prefs.
+    // Core bundle thi ghim nhu PC: version.txt = "9.<ban that>" -> so chuoi luon moi hon moi ban
+    // server (khong tu update) VA moi hon VERSION_NAME (qua cua chan bundle cu o BotForegroundService).
+    const val PIN_PREFIX = "9."
+    private const val RELEASE_REPO = "sgagamee-oss/atsbot-release"
+    private const val PREFS = "updater"
+    private const val KEY_AUTO = "auto_update"
+    // Kotlin goi ~50 ham Python, ham moi them lien tuc -> core qua cu thi nhieu tinh nang hong.
+    // Bang PC: installed_app_version co tu 07/08.
+    private const val MIN_PIN_VERSION = "1.1.202608080000"
+
+    fun realVersion(version: String): String =
+        version.trim().let { if (it.startsWith(PIN_PREFIX)) it.substring(PIN_PREFIX.length) else it }
+
+    fun isAutoUpdate(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_AUTO, true)
+
+    fun setAutoUpdate(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_AUTO, enabled).apply()
+        val file = File(context.filesDir, "bot_bundle/version.txt")
+        if (enabled && file.isFile) {
+            // Tick lai: bo ghim de lan check sau thay ban moi hon.
+            file.writeText(realVersion(file.readText(Charsets.UTF_8)), Charsets.UTF_8)
+        }
+    }
+
+    fun listReleases(): List<Pair<String, String>> {
+        val conn = openConnection("https://api.github.com/repos/$RELEASE_REPO/releases?per_page=30")
+        val text = conn.inputStream.use { it.bufferedReader(Charsets.UTF_8).readText() }
+        val arr = JSONArray(text)
+        val out = mutableListOf<Pair<String, String>>()
+        for (i in 0 until arr.length()) {
+            val rel = arr.getJSONObject(i)
+            val ver = rel.optString("tag_name").trim().removePrefix("v")
+            if (ver.isBlank() || ver < MIN_PIN_VERSION || rel.optBoolean("draft")) continue
+            val assets = rel.optJSONArray("assets") ?: continue
+            val hasBundle = (0 until assets.length()).any {
+                assets.getJSONObject(it).optString("name") == "aTSBot-bundle.zip"
+            }
+            if (hasBundle) out += ver to rel.optString("published_at").take(10)
+        }
+        return out.sortedByDescending { it.first }
+    }
+
+    /** Tai core cua tag v<version> -> ghim "9.<version>" + tat tu dong update. Phai dung het acc truoc. */
+    fun installOldBundle(context: Context, version: String) {
+        val ver = realVersion(version)
+        val dir = File(context.cacheDir, "updates").apply { mkdirs() }
+        val target = File(dir, "aTSBot-bundle-old-$ver.zip")
+        try {
+            downloadToFile("https://github.com/$RELEASE_REPO/releases/download/v$ver/aTSBot-bundle.zip", target)
+            if (!looksLikeZip(target)) throw RuntimeException("File tải về không phải ZIP")
+            installBundleZip(context, target, PIN_PREFIX + ver)
+        } finally {
+            target.delete()
+        }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_AUTO, false).apply()
+    }
+
     fun updateBundleIfNeeded(context: Context): Boolean {
+        if (!isAutoUpdate(context)) return false
         val info = checkBundleUpdate(context) ?: return false
         downloadAndInstallBundle(context, info)
         return true
