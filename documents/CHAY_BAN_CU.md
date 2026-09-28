@@ -42,7 +42,7 @@ Không hạ được vỏ APK: Android chặn cài APK có versionCode thấp h�
 **Rủi ro vỏ mới + core cũ:** Kotlin gọi khoảng 50 hàm Python, và hàm mới được thêm liên tục (ví dụ `bag_slot_*` và `pet_roi_chuc_notify_skip` từ 27/09). Mọi chỗ gọi đều bọc `try`, nên core cũ thiếu hàm nào thì **chỉ tính năng đó** không chạy, bot không chết.
 
 ## Giới hạn
-- Danh sách chỉ gồm các bản `>= 1.1.202608080000`. `installed_app_version` có từ 07/08/2026, các bản cũ hơn không khóa được.
+- Danh sách chỉ gồm **100 bản gần nhất** (`RELEASE_LIMIT`, PC và APK; không lọc theo ngày để ngừng build vẫn còn bản chọn), và phải `>= 1.1.202608080000`. `installed_app_version` có từ 07/08/2026, các bản cũ hơn không khóa được.
 - Danh sách lấy từ GitHub API: không cần đăng nhập, giới hạn 60 lần/giờ mỗi IP. Lỗi thì hiện thông báo.
 
 ## Bước 2 (sau)

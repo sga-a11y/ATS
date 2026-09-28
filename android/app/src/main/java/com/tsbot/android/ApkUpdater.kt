@@ -134,8 +134,10 @@ object ApkUpdater {
         }
     }
 
+    // Danh sach chon ban cu: 100 ban gan nhat (giong PC RELEASE_LIMIT). Khong loc theo ngay: ngung
+    // build thi danh sach van con ban de chon.
     fun listReleases(): List<Pair<String, String>> {
-        val conn = openConnection("https://api.github.com/repos/$RELEASE_REPO/releases?per_page=30")
+        val conn = openConnection("https://api.github.com/repos/$RELEASE_REPO/releases?per_page=100")
         val text = conn.inputStream.use { it.bufferedReader(Charsets.UTF_8).readText() }
         val arr = JSONArray(text)
         val out = mutableListOf<Pair<String, String>>()

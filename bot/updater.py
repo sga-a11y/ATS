@@ -510,23 +510,29 @@ def pinned_version(version: str) -> str:
     return PIN_PREFIX + real_version(version)
 
 
-def list_releases(limit: int = 30):
-    """[(version, ngay, notes)] cac ban co aTSBot.zip, moi nhat truoc, bo ban < MIN_PIN_VERSION."""
-    url = "https://api.github.com/repos/%s/releases?per_page=%d" % (RELEASE_REPO, int(limit))
-    req = urllib.request.Request(url, headers={"User-Agent": "atsbot-updater",
-                                               "Accept": "application/vnd.github+json"})
-    with _urlopen_with_ssl_fallback(req, timeout=20) as r:
-        data = json.loads(r.read().decode("utf-8"))
+RELEASE_LIMIT = 100   # danh sach chon ban cu: 100 ban gan nhat (GitHub tra toi da 100/trang)
+
+
+def filter_releases(data, asset: str = "aTSBot.zip"):
+    """[(version, ngay, notes)] cac release co `asset`, ban >= MIN_PIN_VERSION, moi nhat truoc."""
     out = []
     for rel in data if isinstance(data, list) else []:
         ver = str(rel.get("tag_name") or "").strip().lstrip("v")
         if not ver or ver < MIN_PIN_VERSION or rel.get("draft"):
             continue
-        if not any(a.get("name") == "aTSBot.zip" for a in rel.get("assets") or []):
+        if not any(x.get("name") == asset for x in rel.get("assets") or []):
             continue
         out.append((ver, str(rel.get("published_at") or "")[:10], str(rel.get("body") or "").strip()))
     out.sort(key=lambda x: x[0], reverse=True)
     return out
+
+
+def list_releases():
+    url = "https://api.github.com/repos/%s/releases?per_page=%d" % (RELEASE_REPO, RELEASE_LIMIT)
+    req = urllib.request.Request(url, headers={"User-Agent": "atsbot-updater",
+                                               "Accept": "application/vnd.github+json"})
+    with _urlopen_with_ssl_fallback(req, timeout=20) as r:
+        return filter_releases(json.loads(r.read().decode("utf-8")))
 
 
 def pin_version_file(path: str, version: str):

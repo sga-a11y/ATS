@@ -64,8 +64,22 @@ class GhimVersionTest(unittest.TestCase):
         self.assertTrue(updater.auto_update_enabled("1.1.202608100000"))
         self.assertFalse(updater.auto_update_enabled("9.1.1.202608100000"))
 
+    def test_danh_sach_loc_ban_co_zip_va_du_moi(self):
+        zipa = [{"name": "aTSBot.zip"}]
+        data = [
+            {"tag_name": "v1.1.202608100031", "published_at": "2026-08-10T00:31:00Z", "assets": zipa},
+            {"tag_name": "v1.1.202609281050", "published_at": "2026-09-28T03:50:00Z", "assets": zipa},
+            {"tag_name": "v1.1.202609200000", "published_at": "2026-09-20T00:00:00Z", "assets": []},
+            {"tag_name": "v1.1.202607010000", "published_at": "2026-07-01T00:00:00Z", "assets": zipa},
+        ]
+        self.assertEqual([v for v, _d, _n in updater.filter_releases(data)],
+                         ["1.1.202609281050", "1.1.202608100031"])
 
-_KT = os.path.join(os.path.dirname(__file__), "..", "android", "app", "src", "main", "java", "com",
+    def test_apk_cung_lay_100_ban(self):
+        self.assertIn("per_page=%d" % updater.RELEASE_LIMIT, _doc_kt("ApkUpdater.kt"))
+
+
+_KT =os.path.join(os.path.dirname(__file__), "..", "android", "app", "src", "main", "java", "com",
                    "tsbot", "android")
 
 
