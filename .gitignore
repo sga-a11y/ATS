@@ -115,3 +115,4 @@ servers_cdn.json
 
 # Ban luu truoc khi don nhieu (tools/don_nhieu_train_block.py) - cua tung may
 train_block_stats.json.bak
+releases.json

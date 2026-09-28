@@ -527,7 +527,16 @@ def filter_releases(data, asset: str = "aTSBot.zip"):
     return out
 
 
+RELEASES_JSON_URL = "https://github.com/%s/releases/latest/download/releases.json" % RELEASE_REPO
+
+
 def list_releases():
+    """Doc releases.json (build_product.py sinh moi lan build, tai qua CDN - khong gioi han luot).
+    Loi (vd ban chua co file) moi lui ve api.github.com: khong token chi 60 luot/gio/IP."""
+    try:
+        return filter_releases(_fetch_version_json(RELEASES_JSON_URL, timeout=20))
+    except Exception:
+        pass
     url = "https://api.github.com/repos/%s/releases?per_page=%d" % (RELEASE_REPO, RELEASE_LIMIT)
     req = urllib.request.Request(url, headers={"User-Agent": "atsbot-updater",
                                                "Accept": "application/vnd.github+json"})

@@ -43,7 +43,10 @@ Không hạ được vỏ APK: Android chặn cài APK có versionCode thấp h�
 
 ## Giới hạn
 - Danh sách chỉ gồm **100 bản gần nhất** (`RELEASE_LIMIT`, PC và APK; không lọc theo ngày để ngừng build vẫn còn bản chọn), và phải `>= 1.1.202608080000`. `installed_app_version` có từ 07/08/2026, các bản cũ hơn không khóa được.
-- Danh sách lấy từ GitHub API: không cần đăng nhập, giới hạn 60 lần/giờ mỗi IP. Lỗi thì hiện thông báo.
+- Nguồn danh sách là **`releases.json`**:
+  - Mỗi lần build, `build_product.py::_write_releases_json` sinh file này từ API có token, rồi upload lên release. File có cùng cấu trúc JSON với GitHub API.
+  - App tải file qua `releases/latest/download/releases.json`, đi qua CDN nên không giới hạn lượt.
+  - Chỉ khi tải file lỗi mới lùi về `api.github.com`. Không token thì API chỉ cho **60 lượt/giờ mỗi IP**, và nhà mạng VN hay cho nhiều người dùng chung IP. User đã gặp `403 rate limit exceeded` ngày 28/09.
 
 ## Bước 2 (sau)
 Cho user vote bản ổn định/lỗi (Cloudflare Worker + KV) và hiện kết quả trong danh sách chọn bản.

@@ -313,3 +313,14 @@ log `ENGINE: party khong con trong cau hinh -> dung engine`).
 Giờ `_nap_lai_config_nguyen_khoi()` chạy config vào module TẠM rồi chép sang một lượt. Party không đổi
 setting chạy tiếp; party đổi setting quan trọng (mode/map/server...) vẫn bị stop như cũ.
 Test: `tests/test_gui_nap_lai_config_nguyen_khoi.py`.
+
+## Đổi kênh: dính trận trên đường ra safe không bị rút việc (28/09)
+Ca thật party 1: `sga008` được giao `doi_kenh` → tập kết thành `ve_safe` → đi qua bãi quái dính trận →
+`_giao_kenh_dich` hạ về `nghi` vì đang combat → `navigate_to` abort → trận xong lại giao `ve_safe`.
+Đo: 79/79 lần lật trùng một trận `BO CHAY`, 61 lần abort, acc không bao giờ tới safe → party lệch kênh mãi,
+không lập lại được party.
+Giờ acc **đang làm `ve_safe`** thì dính trận vẫn giữ `doi_kenh` (`_ra_safe_engine_moi` tự chờ hết trận
+rồi đi tiếp). Lệnh tay / lệnh tự động đang chạy vẫn hạ về `nghi` như cũ.
+Thêm log `ENGINE: <acc> lech kenh (a -> b) nhung CHUA giao doi_kenh: <ly do>` (khi lý do đổi, nhắc lại mỗi
+60s) để đo ca acc lệch kênh đứng im (nasau/tuyet cùng ngày, chưa chốt gốc).
+Test: `tests/test_dieu_phoi_tu_gui_lenh_doi_kenh.py::test_battle_while_walking_to_safe_keeps_channel_action`.

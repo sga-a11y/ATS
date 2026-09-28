@@ -1768,6 +1768,7 @@ class PartyEngine:
         self.can_bao_nhieu = int(can_bao_nhieu or 0)
         self.map_dich = map_dich
         self._log = log
+        self._ly_do_ha_kenh = {}         # username -> (ly do, luc log) : `_log_ha_kenh`
         self._bao_gui = bao_gui          # (username, mo_ta, pha) -> None : cho GUI thay
         self.pha = pha                   # PHA_DG / PHA_TRAIN (mode digioi_train doi pha giua chung)
         self.gio_dg_toi_da = int(gio_dg_toi_da or 120)
@@ -2070,17 +2071,53 @@ class PartyEngine:
                                            VIEC_DOI_KENH):
                 continue
             c = clients.get(a.username)
-            if (c is None or a.dang_danh or getattr(c, "_lenh_tay_kenh_dang_chay", False)
-                    or getattr(c, "_dp_gui_kenh_dang_chay", False)):
+            # DANG RA SAFE DE DOI KENH MA DINH TRAN GIUA DUONG -> GIU VIEC, dung ha ve `nghi`.
+            # `_ra_safe_engine_moi` tu cho het tran (`_wait_combat_clear`) roi di tiep; ha viec la
+            # `con_lam()` False -> `navigate_to: abort` -> acc dung lai giua bai quai, lai dinh tran,
+            # lai duoc giao `doi_kenh` -> vong lap khong thoat.
+            # Ca that 28/09 party 1: sga008 (batbat) lat ve_safe <-> nghi 79 lan tu 16:33, ca 79 lan
+            # trung mot tran BO CHAY, 61 lan navigate_to abort - dung im (690, 1720) khong ra toi safe.
+            _dang_ra_safe = a.viec_dang_lam == "ve_safe" and c is not None
+            _ly_do = None
+            if c is None:
+                _ly_do = "chua co client"
+            elif getattr(c, "_lenh_tay_kenh_dang_chay", False):
+                _ly_do = "dang chay lenh tay doi kenh"
+            elif getattr(c, "_dp_gui_kenh_dang_chay", False):
+                _ly_do = "dang chay lenh doi kenh tu dong"
+            elif a.dang_danh and not _dang_ra_safe:
+                _ly_do = "dang_danh"
+            if _ly_do:
+                self._log_ha_kenh(a.username, a.kenh, dich, _ly_do)
                 ra[a.username] = VIEC_NGHI
                 continue
             if a.kenh == int(dich) and a.kenh_chac:
                 continue
-            if self._kenh_doi_duoc is not None and not self._kenh_doi_duoc(c):
+            if (not _dang_ra_safe and self._kenh_doi_duoc is not None
+                    and not self._kenh_doi_duoc(c)):
+                self._log_ha_kenh(a.username, a.kenh, dich,
+                                  "chua doi kenh duoc ngay (tran/combat)")
                 ra[a.username] = VIEC_NGHI
                 continue
+            self._ly_do_ha_kenh.pop(a.username, None)
             ra[a.username] = VIEC_DOI_KENH
         return ra
+
+    def _log_ha_kenh(self, username, kenh, dich, ly_do):
+        """Ghi LY DO acc lech kenh bi ha ve `nghi` - log khi ly do DOI, va nhac lai moi 60s.
+
+        Sinh ra 28/09 party 1: nasau/tuyet lech kenh im lang tu 16:31 ma log chi co viec cuoi
+        (`nghi`), khong biet bi cua nao chan.
+        """
+        if self._log is None:
+            return
+        _now = time.time()
+        _cu = self._ly_do_ha_kenh.get(username)
+        if _cu and _cu[0] == ly_do and _now - _cu[1] < 60.0:
+            return
+        self._ly_do_ha_kenh[username] = (ly_do, _now)
+        self._log.info("[party %d] ENGINE: %s lech kenh (%s -> %s) nhung CHUA giao doi_kenh: %s",
+                       self.pidx + 1, username, kenh, dich, ly_do)
 
     # -- vong doi --
     def start(self):

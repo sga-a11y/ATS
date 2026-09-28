@@ -136,9 +136,16 @@ object ApkUpdater {
 
     // Danh sach chon ban cu: 100 ban gan nhat (giong PC RELEASE_LIMIT). Khong loc theo ngay: ngung
     // build thi danh sach van con ban de chon.
+    // Doc releases.json truoc (build_product.py sinh, tai qua CDN - khong gioi han luot); loi moi
+    // lui ve api.github.com (khong token chi 60 luot/gio/IP -> "403 rate limit exceeded").
     fun listReleases(): List<Pair<String, String>> {
-        val conn = openConnection("https://api.github.com/repos/$RELEASE_REPO/releases?per_page=100")
-        val text = conn.inputStream.use { it.bufferedReader(Charsets.UTF_8).readText() }
+        val text = try {
+            openConnection("https://github.com/$RELEASE_REPO/releases/latest/download/releases.json")
+                .inputStream.use { it.bufferedReader(Charsets.UTF_8).readText() }
+        } catch (_: Exception) {
+            openConnection("https://api.github.com/repos/$RELEASE_REPO/releases?per_page=100")
+                .inputStream.use { it.bufferedReader(Charsets.UTF_8).readText() }
+        }
         val arr = JSONArray(text)
         val out = mutableListOf<Pair<String, String>>()
         for (i in 0 until arr.length()) {

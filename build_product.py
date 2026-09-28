@@ -550,6 +550,38 @@ def _release_theo_tag(token, tag):
         return None
 
 
+RELEASES_JSON_NAME = "releases.json"
+
+
+def _write_releases_json(token, tag):
+    """Danh sach 100 ban gan nhat cho nut 'Chon ban cu' (bot/updater.py, ApkUpdater.kt).
+
+    App tai file nay qua releases/latest/download (CDN, KHONG gioi han luot) thay vi goi
+    api.github.com - API khong token chi 60 luot/gio/IP, nha mang VN dung chung IP nen user gap
+    '403 rate limit exceeded' (28/09). Cung cau truc JSON cua API -> code loc o app khong doi.
+    Loi thi chi bo qua file nay (app tu lui ve API), KHONG lam hong build."""
+    path = os.path.join(ROOT, RELEASES_JSON_NAME)
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    try:
+        data = _gh_get("https://api.github.com/repos/%s/releases?per_page=100" % RELEASE_REPO, token)
+    except Exception as e:
+        print("!! Khong lay duoc danh sach release -> bo qua %s: %s" % (RELEASES_JSON_NAME, e))
+        return
+    out = [{"tag_name": tag, "published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "assets": [{"name": NAME + ".zip"}, {"name": BUNDLE_RELEASE_NAME}]}]
+    for rel in data if isinstance(data, list) else []:
+        if rel.get("draft") or rel.get("tag_name") == tag:
+            continue
+        out.append({"tag_name": rel.get("tag_name"), "published_at": rel.get("published_at"),
+                    "assets": [{"name": a.get("name")} for a in rel.get("assets") or []]})
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(out[:100], f, ensure_ascii=False)
+    print("   %s: %d ban" % (RELEASES_JSON_NAME, len(out[:100])))
+
+
 def upload_release():
     """Tao GitHub release (tag = version) + upload aTSBot.exe + version.json. Token lay tu
     git credential (tai dung token dang push). Loi -> in huong dan up thu cong, KHONG fail build."""
@@ -597,13 +629,15 @@ def upload_release():
               % (tag, ROOT, ROOT, DIST, DIST, ROOT, RELEASE_REPO))
         raise SystemExit("build DUNG: release chua len, user se khong thay ban moi")
     rid = rel["id"]
+    _write_releases_json(token, tag)
     # Asset TRUNG TEN tu lan build hong truoc -> GitHub tra 422. Xoa cai cu roi up lai, khong thi
     # release ket o trang thai nua voi mai.
     _cu = {a.get("name"): a.get("id") for a in (rel.get("assets") or [])}
     _hong = []
     for path in (os.path.join(ROOT, NAME + ".zip"), os.path.join(ROOT, BUNDLE_RELEASE_NAME),
                  os.path.join(DIST, NAME + ".exe"),
-                 os.path.join(DIST, "version.json"), os.path.join(ROOT, APK_RELEASE_NAME)):
+                 os.path.join(DIST, "version.json"), os.path.join(ROOT, APK_RELEASE_NAME),
+                 os.path.join(ROOT, RELEASES_JSON_NAME)):
         if not os.path.exists(path):
             continue
         name = os.path.basename(path)

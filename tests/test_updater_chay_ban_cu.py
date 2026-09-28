@@ -75,6 +75,35 @@ class GhimVersionTest(unittest.TestCase):
         self.assertEqual([v for v, _d, _n in updater.filter_releases(data)],
                          ["1.1.202609281050", "1.1.202608100031"])
 
+    def test_build_sinh_releases_json_app_doc_duoc(self):
+        import sys
+        from unittest import mock
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+        import build_product
+        api = [
+            {"tag_name": "v1.1.202609281050", "published_at": "2026-09-28T03:50:00Z",
+             "assets": [{"name": "aTSBot.zip", "size": 1}, {"name": "aTSBot-bundle.zip"}]},
+            {"tag_name": "v1.1.202609281601", "published_at": "x", "assets": []},   # ban dang build
+            {"tag_name": "v1.1.202609200000", "published_at": "2026-09-20T00:00:00Z", "draft": True,
+             "assets": [{"name": "aTSBot.zip"}]},
+        ]
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(build_product, "ROOT", d), \
+                mock.patch.object(build_product, "_gh_get", return_value=api):
+            build_product._write_releases_json("tok", "v1.1.202609281601")
+            with open(os.path.join(d, build_product.RELEASES_JSON_NAME), encoding="utf-8") as f:
+                data = json.load(f)
+        self.assertEqual([v for v, _d, _n in updater.filter_releases(data)],
+                         ["1.1.202609281601", "1.1.202609281050"])
+        self.assertEqual([v for v, _d, _n in updater.filter_releases(data, "aTSBot-bundle.zip")],
+                         ["1.1.202609281601", "1.1.202609281050"])
+
+    def test_app_doc_releases_json_truoc_api(self):
+        self.assertTrue(updater.RELEASES_JSON_URL.endswith("/releases/latest/download/releases.json"))
+        kt = _doc_kt("ApkUpdater.kt")
+        self.assertLess(kt.index("releases/latest/download/releases.json"),
+                        kt.index("api.github.com/repos/$RELEASE_REPO/releases"))
+
     def test_apk_cung_lay_100_ban(self):
         self.assertIn("per_page=%d" % updater.RELEASE_LIMIT, _doc_kt("ApkUpdater.kt"))
 

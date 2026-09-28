@@ -27,7 +27,7 @@ class Client:
 
 def channel_decision(channels, target, *, maps=None, base=None, certain=None,
                      fighting=(), stopped=(), manual=(), active=(), allow=None,
-                     manual_generation=0):
+                     manual_generation=0, walking=()):
     """Run the real channel overlay on a controlled party snapshot."""
     maps = maps or {}
     base = base or {}
@@ -42,6 +42,7 @@ def channel_decision(channels, target, *, maps=None, base=None, certain=None,
         accounts.append(PE.AnhAcc(u, song=u not in stopped, map_id=maps.get(u, 100),
                                   kenh=channel, kenh_chac=certain.get(u, True),
                                   dang_danh=u in fighting,
+                                  viec_dang_lam="ve_safe" if u in walking else "nghi",
                                   lenh_tay_da_lam=0))
     snapshot = PE.AnhParty(0, accounts, lenh_tay_gen=manual_generation)
     engine = PE.PartyEngine(0, lambda: [(u, c, False) for u, c in clients.items()],
@@ -90,6 +91,17 @@ class TestChannelWorkerHandoff(unittest.TestCase):
                          {"a": "nghi"})
         self.assertEqual(channel_decision({"a": 2}, 16,
                                           allow=lambda _c: False)[0], {"a": "nghi"})
+
+    def test_battle_while_walking_to_safe_keeps_channel_action(self):
+        # 28/09 party 1: sga008 lat ve_safe <-> nghi 79 lan, moi lan dinh tran tren duong ra safe
+        # -> navigate_to abort -> khong bao gio toi safe, party lech kenh mai.
+        self.assertEqual(channel_decision({"a": 2}, 16, fighting={"a"}, walking={"a"})[0],
+                         {"a": "doi_kenh"})
+        self.assertEqual(channel_decision({"a": 2}, 16, allow=lambda _c: False,
+                                          walking={"a"})[0], {"a": "doi_kenh"})
+        # Lenh tay / lenh tu dong dang chay van giu mot chu
+        self.assertEqual(channel_decision({"a": 2}, 16, manual={"a"}, walking={"a"})[0],
+                         {"a": "nghi"})
 
 
 if __name__ == "__main__":
