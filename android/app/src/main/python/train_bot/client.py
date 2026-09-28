@@ -10860,6 +10860,40 @@ class GameClient:
                 p.hp = 1
             self._heal_unit(_pt, p, "pet", "hp_pet", "hp", force=force)
             self._heal_unit(_pt, p, "pet", "sp_pet", "sp", force=force)
+        self._heal_carried_pets(force=force)
+
+    def _heal_carried_pets(self, thr_override=None, force: bool = False):
+        """Hoi ca cac pet MANG THEO (khong xuat chien) - user bao 29/09: het tran chi hoi pet
+        xuat chien. Stat lay tu ban ghi pet-list luc login (pet_stats); sau khi hoi cong
+        optimistic vao Unit + ghi nguoc vao ban ghi de lan sau khong hoi lai."""
+        units = getattr(self, "_carried_pet_units", None)
+        if units is None:
+            units = self._carried_pet_units = {}
+        active = self.active_pet_slot or 1
+        # Ghi HP/SP pet dang xuat chien vao ban ghi cua no -> doi pet xuat chien xong, con cu
+        # (da mat mau trong tran) van duoc hoi dung so that thay vi so luc login.
+        _arec = (getattr(self, "pet_login_records", None) or {}).get(active)
+        if _arec is not None and self.state.pet.hp_max > 0:
+            _arec["hp"], _arec["sp"] = self.state.pet.hp, self.state.pet.sp
+        for marker in sorted((getattr(self, "pet_login_records", None) or {}).keys()):
+            if marker == active or not (1 <= marker <= 4):
+                continue
+            st = self.pet_stats(marker)
+            if not st or not st.get("hp_max"):
+                continue
+            rec = self.pet_login_records[marker]
+            u = units.get(marker)
+            if u is None or u.hp_max != st["hp_max"]:
+                u = units[marker] = Unit(f"pet{marker}")
+            u.hp_max, u.sp_max = st["hp_max"], st["sp_max"] or 0
+            u.hp = max(1, min(int(rec.get("hp") or 0), u.hp_max))
+            u.sp = max(0, min(int(rec.get("sp") or 0), u.sp_max))
+            label = f"pet{marker}(mang theo)"
+            self._heal_unit(marker, u, label, "hp_pet", "hp",
+                            thr_override=thr_override, force=force)
+            self._heal_unit(marker, u, label, "sp_pet", "sp",
+                            thr_override=thr_override, force=force)
+            rec["hp"], rec["sp"] = u.hp, u.sp
 
     def _sync_solo_multipet_from_allies(self):
         """Dong bo stat pet Di Gioi solo tu allies/ally_spmax neu 0x0b da nap vao do."""
@@ -10989,6 +11023,7 @@ class GameClient:
                 p.hp = 1   # pet chet da duoc server hoi sinh 1HP luc ket tran (0x33 cuoi stale)
             self._heal_unit(_pt, p, "pet", "hp_pet", "hp", thr_override=1.0, force=force)
             self._heal_unit(_pt, p, "pet", "sp_pet", "sp", thr_override=1.0, force=force)
+        self._heal_carried_pets(thr_override=1.0, force=force)
 
     def _heal_unit(self, target: int, unit, label: str, thr_key: str, kind: str, thr_override=None,
                    force: bool = False):

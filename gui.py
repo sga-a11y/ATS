@@ -2019,16 +2019,6 @@ class BotGUI(tk.Tk):
                     import threading as _t2
                     def _price():
                         c = ctrl.account_clients.get(u)
-                        # TRONG DI GIOI/INSTANCE thi server KHONG tra gia -> noi thang ra, dung
-                        # hien "(?)" (user 21/09: "cho mua slot hinh nhu bi loi"). Moi acc bao
-                        # "khong hoi duoc gia" hom do deu dang o map 49942 (Di Gioi).
-                        try: _o_dg = bool(c and c.in_di_gioi())
-                        except Exception: _o_dg = False
-                        if _o_dg:
-                            _txt = "Đang ở Dị Giới\n(ra ngoài mới mua được)"
-                            self.after(0, lambda: buybtn.winfo_exists()
-                                       and buybtn.configure(text=_txt, state="disabled"))
-                            return
                         try: pr = c and c.query_bag_slot_price()
                         except Exception: pr = None
                         _txt = f"Mua slot\n{pr[0]} vàng" if pr else "Mua slot\n(?)"

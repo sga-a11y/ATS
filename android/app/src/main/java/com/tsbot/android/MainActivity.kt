@@ -4461,7 +4461,7 @@ fun FurnaceNotifyDialog(
                                     }) { Text("Bỏ qua") }
                                     if (!_maxed) {
                                         TextButton(
-                                            enabled = !_dangMua && _gia != "dg",
+                                            enabled = !_dangMua,
                                             onClick = {
                                                 _dangMua = true
                                                 scope.launch {
@@ -4478,7 +4478,6 @@ fun FurnaceNotifyDialog(
                                         ) {
                                             Text(when (val g = _gia) {
                                                 null -> "Mua slot (đang xem giá...)"
-                                                "dg" -> "Đang ở Dị Giới (ra ngoài mới mua được)"
                                                 "" -> "Mua slot (?)"
                                                 else -> "Mua slot ($g vàng)"
                                             })

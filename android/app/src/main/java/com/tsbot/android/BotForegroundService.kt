@@ -651,7 +651,7 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         try { rpd().callAttr("bag_notify_skip", username)?.toBoolean() ?: false }
         catch (_: Exception) { false }
 
-    /** Gia mua slot tui: "dg" (dang o Di Gioi) | "<vang>" | "" (khong hoi duoc). Chan ~2s. */
+    /** Gia mua slot tui: "<vang>" | "" (khong hoi duoc). Chan ~2s. */
     fun bagSlotPrice(username: String): String =
         try { rpd().callAttr("bag_slot_price", username)?.toString() ?: "" }
         catch (_: Exception) { "" }

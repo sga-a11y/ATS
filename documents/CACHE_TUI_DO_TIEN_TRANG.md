@@ -110,8 +110,8 @@ dù có cũng không mua được.
 ### Nút "Mua slot" ở dòng "túi đồ sắp đầy" trong cửa sổ Chú ý (PC + APK)
 
 Dòng cảnh báo túi (`bag_notify_items`, còn < 10 ô trống) có nút **Mua slot (giá vàng)** cạnh
-"Bỏ qua" — trừ khi đã tối đa slot. Mở cửa sổ → hỏi giá ngầm; đang ở Dị Giới thì server không trả
-giá → nút ghi "Đang ở Dị Giới (ra ngoài mới mua được)" và bị khoá; không hỏi được thì "(?)".
+"Bỏ qua" — trừ khi đã tối đa slot. Mở cửa sổ → hỏi giá ngầm (ở đâu cũng hỏi, kể cả Dị Giới —
+28/09 bỏ giới hạn "trong DG không mua được" vì chưa từng được xác nhận); không hỏi được thì "(?)".
 
 - PC: `gui.py::_show_party_notify` gọi thẳng `c.query_bag_slot_price()` / `c.buy_bag_slot()`.
 - APK (thêm 27/09 — trước đó chỉ có "Bỏ qua"): `run_party_digioi.bag_slot_price` /

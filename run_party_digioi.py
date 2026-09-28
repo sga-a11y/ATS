@@ -8959,15 +8959,10 @@ def bag_notify_skip(username):
 
 def bag_slot_price(username):
     """Gia mua slot tui cho nut "Mua slot" o dong tui sap day (UI APK; PC lam y het trong gui.py).
-    -> "dg" (dang o Di Gioi, server khong tra gia) | "<so vang>" | "" (khong hoi duoc)."""
+    -> "<so vang>" | "" (khong hoi duoc)."""
     c = account_clients.get(username)
     if c is None or not getattr(c, "running", False):
         return ""
-    try:
-        if c.in_di_gioi():
-            return "dg"
-    except Exception:
-        pass
     try:
         pr = c.query_bag_slot_price()
     except Exception:
