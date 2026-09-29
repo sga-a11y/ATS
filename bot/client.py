@@ -1606,6 +1606,31 @@ def _load_bliss_boxes() -> dict:
     return _bliss_boxes
 
 
+_EXP_TEXT_ID = 40476   # string "%s nhan duoc %d exp" (protocal.lua 002-010, Breakthrough.lua)
+
+
+def _parse_exp_broadcast(pkt: bytes):
+    """S:002-010 [sub 0a00][showSwitch][kind 1][id i32][count]<<arg>>, arg: kind0 = [len i16][utf-16le],
+    kind2 = [i32] (string.GetServerText). Tra (ten, exp) neu la cau 40476, khong thi None."""
+    try:
+        if len(pkt) < 16 or pkt[10] != 1 or int.from_bytes(pkt[11:15], "little") != _EXP_TEXT_ID:
+            return None
+        n, o, args = pkt[15], 16, []
+        for _ in range(n):
+            k = pkt[o]
+            if k == 0:
+                ln = int.from_bytes(pkt[o + 1:o + 3], "little")
+                args.append(pkt[o + 3:o + 3 + ln].decode("utf-16-le", "replace"))
+                o += 3 + ln
+            else:
+                args.append(int.from_bytes(pkt[o + 1:o + 5], "little", signed=True))
+                o += 5
+        if len(args) >= 2 and isinstance(args[0], str) and isinstance(args[1], int):
+            return args[0], args[1]
+    except Exception:
+        pass
+    return None
+
 _npc_names = None
 def _load_npc_names() -> dict:
     """{ npc_id_int: ten } tu npc_names.json (dung log ten vo tuong thuong nhan cuoi tran)."""
@@ -2598,6 +2623,9 @@ class GameClient:
         # DOI THUONG SU KIEN (0x7c): server gui toan bo danh sach -> cache ra JSON cho GUI.
         self._activities = {}     # activityId -> {title, kind, open, missions[]}
         self.char_attrs = {}      # CHI SO GOC tu 0x08: EAttribute -> gia tri (dung cho thanh tuu)
+        # EXP moi tran (char + pet) tu S:002-010 cau 40476: ten -> exp cong don, in 1.5s sau goi cuoi.
+        self._exp_gain = {}        # ten -> exp cong don tu lan tong ket truoc
+        self._exp_flush_timer = None
         # S:008-013 <設定主角技能>: he nhan vat + diem skill con lai + CAP tung skill.
         self.char_element = None      # 1..4 = he; hoc skill KHAC he ton GAP DOI learnPt
         self.char_skill_point = None  # diem skill con lai (server chot)
@@ -4369,6 +4397,12 @@ class GameClient:
             # Ghi rieng, khong dung vao cac nhanh cu ben duoi.
             _v = int.from_bytes(pkt[11:15], "little", signed=True)
             self.char_attrs[pkt[9]] = -_v if pkt[10] == 2 else _v
+        # EXP nhan duoc (char + pet) = dong client in ra chat: server GUI SAN qua S:002-010 <廣播訊息>
+        # cau so 40476 ("%s nhan duoc %d exp"), tham so [ten][so exp]. Xac nhan pcap dienvi 21/07.
+        if opcode == 0x02 and pkt[7:9] == b"\x0a\x00":
+            _g = _parse_exp_broadcast(pkt)
+            if _g:
+                self._add_exp_gain(*_g)
         if opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
             self._char_int_base = int.from_bytes(pkt[11:13], "little")
             self._refresh_char_int()
@@ -14080,6 +14114,39 @@ class GameClient:
             if sent >= min_n and (time.time() - self._last_dialog_evt) > idle:
                 break
         return sent
+
+    def _add_exp_gain(self, key, n: int):
+        if n <= 0:
+            return
+        self._exp_gain[key] = self._exp_gain.get(key, 0) + n
+        # Moc in = goi exp CUOI cung + 1.5s, KHONG bam goi ket tran: tran party ket qua
+        # 0x0b/sub0800 chu hiem khi qua 0x14 sub0700 (log 29/09 party 1 khong co dong nao).
+        self._schedule_exp_summary()
+
+    def _schedule_exp_summary(self, delay: float = 1.5):
+        """Char va pet moi con 1 goi rieng -> doi goi cuoi roi in 1 dong."""
+        t = self._exp_flush_timer
+        if t is not None:
+            t.cancel()
+        t = threading.Timer(delay, self._log_exp_summary)
+        t.daemon = True
+        self._exp_flush_timer = t
+        t.start()
+
+    def _exp_summary_text(self):
+        """Gom theo TEN nhu server gui (char va tung pet), giu thu tu nhan."""
+        gain, self._exp_gain = self._exp_gain, {}
+        if not gain:
+            return None
+        return "EXP " + ", ".join("%s +%d" % (nm, n) for nm, n in gain.items())
+
+    def _log_exp_summary(self):
+        try:
+            txt = self._exp_summary_text()
+            if txt:
+                log.info("[%s] KET TRAN: %s", self._label, txt)
+        except Exception:
+            pass
 
     _REWARD_KIND = {2: "Vang", 3: "EXP tuong", 4: "Chien doanh", 6: "Skill", 7: "Diem thuoc tinh",
                     8: "Diem skill", 9: "Nguyen bao", 10: "Manh tuong", 11: "Manh skill"}

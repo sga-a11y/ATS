@@ -66,6 +66,12 @@ Nút **[QĐoàn]** ngay bên phải nút Skill. Bấm vào:
 #  Tên   Tổng dame   Số lần   Lần cuối        
 1  Abc   1,234,567     5      T6 20:10  [Chi tiết]
 ```
+- **Bố cục master–detail (user chốt 29/09)** thay cho cửa sổ Chi tiết riêng: danh sách member
+  bên trái (xếp hạng, cột # · Tên · Tổng · Lần — đóng vai "tab dọc"), chi tiết người đang chọn bên
+  phải, đổi ngay khi click / bấm ↑↓. Đổi tuần hay ↻ vẫn giữ người đang xem.
+- **APK chọn bố cục theo BỀ RỘNG THẬT** (`BoxWithConstraints`), không theo dọc/ngang:
+  ≥ 600dp → master–detail y như PC; hẹp → danh sách full màn, chạm 1 người → chi tiết có
+  `← Danh sách · ◀ k/n ▶`. Xoay máy: dialog + tuần + người đang xem giữ nguyên (`rememberSaveable`).
 - Xếp giảm dần theo tổng (giống game).
 - **[Chi tiết]**: lịch sử của member đó, 2 khối *Tuần này / Tuần trước*; mỗi dòng giờ + dame;
   dòng offline ghi "(lúc offline, không rõ số lần)".

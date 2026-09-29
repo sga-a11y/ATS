@@ -72,6 +72,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.produceState
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.mutableStateListOf
@@ -254,6 +255,8 @@ fun maskAccountLog(
     var out = logText.replace("[$username]", "[${maskUsername(username, mode, ordinals)}]")
     if (charName.isNotBlank()) {
         out = out.replace("[$charName]", "[${maskCharacterName(charName, username, mode, ordinals)}]")
+        // Dong `KET TRAN: EXP <ten char> +N, <ten pet> +M`: che ten CHAR (pet giu nguyen), giong ban PC.
+        out = out.replace("KET TRAN: EXP $charName +", "KET TRAN: EXP ${maskCharacterName(charName, username, mode, ordinals)} +")
     }
     return out
 }
@@ -279,7 +282,8 @@ fun TsBotApp(
     var confirmDeleteParty by remember { mutableStateOf<String?>(null) }
     var editingSkillAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     var editingPointAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
-    var editingLegionAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
+    // (party, username) - rememberSaveable (Pair<String,String> luu duoc) -> xoay may dialog van mo.
+    var editingLegionAccount by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
     var editingSkillTreeAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     var editingBagAccount by remember { mutableStateOf<Pair<String, Account>?>(null) }
     // Tab party dang chon (moi party = 1 tab, giong ban PC)
@@ -554,7 +558,7 @@ fun TsBotApp(
                         onEditSkill = { account -> editingSkillAccount = party.name to account },
                         onEditPoint = { account -> editingPointAccount = party.name to account },
                         onEditSkillTree = { account -> editingSkillTreeAccount = party.name to account },
-                        onOpenLegion = { account -> editingLegionAccount = party.name to account },
+                        onOpenLegion = { account -> editingLegionAccount = party.name to account.username },
                         onOpenBag = { account -> editingBagAccount = party.name to account },
                         onEnabledChange = { account, enabled ->
                             partyStore.updateAccountInParty(
@@ -1105,9 +1109,13 @@ fun TsBotApp(
         )
     }
 
-    val legionAccount = editingLegionAccount
-    if (legionAccount != null) {
-        val (partyName, account) = legionAccount
+    val legionKey = editingLegionAccount
+    val legionAcc = legionKey?.let { (pn, u) ->
+        parties.firstOrNull { it.name == pn }?.accounts?.firstOrNull { it.username == u }
+    }
+    if (legionKey != null && legionAcc != null) {
+        val partyName = legionKey.first
+        val account = legionAcc
         LegionDmgDialog(
             username = account.username,
             initialOn = account.legionDmg,
@@ -1116,7 +1124,6 @@ fun TsBotApp(
                 partyStore.updateAccountInParty(partyName, account.username, account.copy(legionDmg = on))
                 service?.applyLegionDmg(account.username, on)
                 refresh()
-                editingLegionAccount = partyName to account.copy(legionDmg = on)
             },
             onDismiss = { editingLegionAccount = null },
         )
@@ -5964,6 +5971,11 @@ private fun soDame(v: Long): String = "%,d".format(v)
 /**
  * DAME BOSS QUAN DOAN - ban Kotlin cua LegionDmgDialog ben PC (documents/LEGION_DAMAGE.md).
  * Ban ghi CHUNG theo QD nen acc tat van xem duoc. Tick = acc nay tham gia ghi.
+ *
+ * Bo cuc theo BE RONG THAT (user chot 29/09), khong theo "doc/ngang" (sai tren tablet/chia man):
+ *  - rong >= 600dp: master-detail y nhu PC - danh sach trai, chi tiet phai, cham ten la doi ngay.
+ *  - hep: danh sach full man; cham 1 nguoi -> chi tiet co ◀ nguoi truoc / nguoi sau ▶.
+ * `tab`/`chiTiet` la rememberSaveable -> xoay may van giu tuan + nguoi dang xem.
  */
 @Composable
 fun LegionDmgDialog(
@@ -5973,10 +5985,10 @@ fun LegionDmgDialog(
     onToggle: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var on by remember { mutableStateOf(initialOn) }
+    var on by rememberSaveable { mutableStateOf(initialOn) }
     var infoJson by remember { mutableStateOf("") }
-    var tab by remember { mutableStateOf(0) }
-    var chiTiet by remember { mutableStateOf<String?>(null) }
+    var tab by rememberSaveable { mutableStateOf(0) }
+    var chiTiet by rememberSaveable { mutableStateOf<String?>(null) }
     var lanNap by remember { mutableStateOf(0) }
     LaunchedEffect(username, lanNap) { infoJson = withContext(Dispatchers.IO) { onLoadInfo() } }
     val info = remember(infoJson) {
@@ -5988,85 +6000,159 @@ fun LegionDmgDialog(
         return (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
     }
     fun ten(m: JSONObject): String = m.optString("name").ifBlank { "role:" + m.optString("rid") }
+    fun tenRid(rid: String): String =
+        (0 until (weeks?.length() ?: 0)).firstNotNullOfOrNull { i ->
+            members(i).firstOrNull { it.optString("rid") == rid }?.let { ten(it) }
+        } ?: "role:$rid"
+    val ds = members(tab)
 
-    AlertDialog(
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("QĐoàn: $username") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
-                .verticalScroll(rememberScrollState())) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = on, onCheckedChange = { on = it; onToggle(it) })
-                    Text("Theo dõi dame boss QĐ")
-                }
-                Text(
-                    if (weeks == null || weeks.length() == 0) "Chưa có dữ liệu"
-                    else "QĐ ${info.optString("name").ifBlank { info.optString("org_id") }} · cập nhật ${gioVn(info.optLong("updated"))}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    listOf("Tuần này", "Tuần trước").forEachIndexed { i, t ->
-                        if (i == tab) FilledTonalButton(onClick = { tab = i }) { Text(t) }
-                        else TextButton(onClick = { tab = i }) { Text(t) }
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth(0.96f).fillMaxHeight(0.92f),
+        ) {
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.padding(12.dp)) {
+                val rong = maxWidth >= 600.dp
+                // Man rong luon co nguoi dang xem: chua chon thi lay nguoi dung dau
+                val ridXem = chiTiet ?: if (rong) ds.firstOrNull()?.optString("rid") else null
+                Column(Modifier.fillMaxSize()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("QĐoàn: $username", fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f))
+                        TextButton(onClick = onDismiss) { Text("Đóng") }
                     }
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { lanNap++ }) { Text("↻") }
-                }
-                val rid = chiTiet
-                if (rid == null) {
-                    Row(Modifier.fillMaxWidth()) {
-                        Text("#", Modifier.width(24.dp), style = MaterialTheme.typography.labelMedium)
-                        Text("Tên", Modifier.weight(1.4f), style = MaterialTheme.typography.labelMedium)
-                        Text("Tổng", Modifier.weight(1.2f), style = MaterialTheme.typography.labelMedium)
-                        Text("Lần", Modifier.weight(0.5f), style = MaterialTheme.typography.labelMedium)
-                        Spacer(Modifier.width(56.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = on, onCheckedChange = { on = it; onToggle(it); lanNap++ })
+                        Text("Theo dõi dame boss QĐ")
                     }
-                    members(tab).forEachIndexed { k, m ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("${k + 1}", Modifier.width(24.dp), style = MaterialTheme.typography.bodySmall)
-                            Column(Modifier.weight(1.4f)) {
-                                Text(ten(m), style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                                Text(gioVn(m.optLong("last")), style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text(soDame(m.optLong("total")), Modifier.weight(1.2f),
-                                style = MaterialTheme.typography.bodySmall)
-                            Text("${m.optInt("hits")}", Modifier.weight(0.5f),
-                                style = MaterialTheme.typography.bodySmall)
-                            TextButton(onClick = { chiTiet = m.optString("rid") },
-                                modifier = Modifier.width(56.dp)) { Text("Chi tiết", maxLines = 1) }
+                    Text(
+                        if (weeks == null || weeks.length() == 0) "Chưa có dữ liệu"
+                        else "QĐ ${info.optString("name").ifBlank { info.optString("org_id") }} · cập nhật ${gioVn(info.optLong("updated"))}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        listOf("Tuần này", "Tuần trước").forEachIndexed { i, t ->
+                            if (i == tab) FilledTonalButton(onClick = { tab = i }) { Text(t) }
+                            else TextButton(onClick = { tab = i }) { Text(t) }
                         }
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { lanNap++ }) { Text("↻") }
                     }
-                } else {
-                    TextButton(onClick = { chiTiet = null }) { Text("← Quay lại") }
-                    listOf("Tuần này", "Tuần trước").forEachIndexed { i, head ->
-                        val m = members(i).firstOrNull { it.optString("rid") == rid }
-                        if (i == 0) Text(m?.let { ten(it) } ?: "role:$rid", fontWeight = FontWeight.Bold)
-                        Text("$head (từ ${weeks?.optJSONObject(i)?.optString("week") ?: ""})",
-                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
-                        val log = m?.optJSONArray("log")
-                        if (m == null || log == null || log.length() == 0) {
-                            Text("  (chưa ghi nhận)", style = MaterialTheme.typography.bodySmall)
-                        } else {
-                            Text("  Tổng ${soDame(m.optLong("total"))} · ${m.optInt("hits")} lần đánh",
-                                style = MaterialTheme.typography.bodySmall)
-                            for (j in log.length() - 1 downTo 0) {
-                                val e = log.optJSONObject(j) ?: continue
-                                val dong = when {
-                                    e.optInt("reset") == 1 -> "server reset tổng"
-                                    e.optInt("off") == 1 -> "+${soDame(e.optLong("dmg"))} (lúc offline, không rõ số lần)"
-                                    e.optInt("lv") > 0 -> "+${soDame(e.optLong("dmg"))} · Boss Lv${e.optInt("lv")}" +
-                                        (if (e.optInt("kill") == 1) " (hạ boss)" else "")
-                                    else -> "+${soDame(e.optLong("dmg"))}"
-                                }
-                                Text("  ${gioVn(e.optLong("ts"))}  $dong", style = MaterialTheme.typography.bodySmall)
+                    if (rong) {
+                        Row(Modifier.fillMaxSize()) {
+                            LegionDsMember(ds, ridXem, ::ten, Modifier.weight(0.42f).fillMaxHeight()) {
+                                chiTiet = it
                             }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(0.58f).fillMaxHeight()
+                                .verticalScroll(rememberScrollState())) {
+                                if (ridXem != null) LegionChiTiet(weeks, ridXem, tenRid(ridXem), ::members)
+                            }
+                        }
+                    } else if (ridXem == null) {
+                        LegionDsMember(ds, null, ::ten, Modifier.fillMaxSize()) { chiTiet = it }
+                    } else {
+                        val k = ds.indexOfFirst { it.optString("rid") == ridXem }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { chiTiet = null }) { Text("← Danh sách") }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(enabled = k > 0,
+                                onClick = { chiTiet = ds[k - 1].optString("rid") }) { Text("◀") }
+                            Text(if (k >= 0) "${k + 1}/${ds.size}" else "—",
+                                style = MaterialTheme.typography.labelMedium)
+                            TextButton(enabled = k >= 0 && k < ds.size - 1,
+                                onClick = { chiTiet = ds[k + 1].optString("rid") }) { Text("▶") }
+                        }
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                            LegionChiTiet(weeks, ridXem, tenRid(ridXem), ::members)
                         }
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
-    )
+        }
+    }
+}
+
+/** Danh sach member xep hang - dong vai "tab doc": cham la chon, dong dang xem duoc to dam. */
+@Composable
+private fun LegionDsMember(
+    ds: List<JSONObject>,
+    ridChon: String?,
+    ten: (JSONObject) -> String,
+    modifier: Modifier,
+    onChon: (String) -> Unit,
+) {
+    LazyColumn(modifier) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Text("#", Modifier.width(28.dp), style = MaterialTheme.typography.labelMedium)
+                Text("Tên", Modifier.weight(1.4f), style = MaterialTheme.typography.labelMedium)
+                Text("Tổng", Modifier.weight(1.1f), style = MaterialTheme.typography.labelMedium)
+                Text("Lần", Modifier.width(36.dp), style = MaterialTheme.typography.labelMedium)
+            }
+            HorizontalDivider()
+        }
+        if (ds.isEmpty()) item { Text("(chưa ghi nhận)", style = MaterialTheme.typography.bodySmall) }
+        items(ds.size) { k ->
+            val m = ds[k]
+            val rid = m.optString("rid")
+            val chon = rid == ridChon
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(if (chon) MaterialTheme.colorScheme.secondaryContainer
+                                else androidx.compose.ui.graphics.Color.Transparent)
+                    .clickable { onChon(rid) }
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("${k + 1}", Modifier.width(24.dp), style = MaterialTheme.typography.bodySmall)
+                Text(ten(m), Modifier.weight(1.4f), maxLines = 1,
+                    fontWeight = if (chon) FontWeight.Bold else FontWeight.Normal,
+                    style = MaterialTheme.typography.bodySmall)
+                Text(soDame(m.optLong("total")), Modifier.weight(1.1f),
+                    style = MaterialTheme.typography.bodySmall)
+                Text("${m.optInt("hits")}", Modifier.width(36.dp),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+/** Lich su 1 member, ca Tuan nay + Tuan truoc (giong khung phai ban PC). */
+@Composable
+private fun LegionChiTiet(
+    weeks: org.json.JSONArray?,
+    rid: String,
+    tenHien: String,
+    members: (Int) -> List<JSONObject>,
+) {
+    Text(tenHien, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+    listOf("Tuần này", "Tuần trước").forEachIndexed { i, head ->
+        val m = members(i).firstOrNull { it.optString("rid") == rid }
+        Text("$head (từ ${weeks?.optJSONObject(i)?.optString("week") ?: ""})",
+            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+        val log = m?.optJSONArray("log")
+        if (m == null || log == null || log.length() == 0) {
+            Text("  (chưa ghi nhận)", style = MaterialTheme.typography.bodySmall)
+        } else {
+            Text("  Tổng ${soDame(m.optLong("total"))} · ${m.optInt("hits")} lần đánh",
+                style = MaterialTheme.typography.bodySmall)
+            for (j in log.length() - 1 downTo 0) {
+                val e = log.optJSONObject(j) ?: continue
+                val dong = when {
+                    e.optInt("reset") == 1 -> "server reset tổng"
+                    e.optInt("off") == 1 -> "+${soDame(e.optLong("dmg"))} (lúc offline, không rõ số lần)"
+                    e.optInt("lv") > 0 -> "+${soDame(e.optLong("dmg"))} · Boss Lv${e.optInt("lv")}" +
+                        (if (e.optInt("kill") == 1) " (hạ boss)" else "")
+                    else -> "+${soDame(e.optLong("dmg"))}"
+                }
+                Text("  ${gioVn(e.optLong("ts"))}  $dong", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
 }

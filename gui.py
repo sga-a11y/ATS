@@ -1198,7 +1198,16 @@ class BotGUI(tk.Tk):
         """Doi [label] dau dong log theo trang thai privacy (chi cho dong MOI luc hien)."""
         if getattr(self, "_privacy", 0) == 0 or not label:
             return line
-        return line.replace(f"[{label}]", f"[{self._mask_label(label)}]", 1)
+        line = line.replace(f"[{label}]", f"[{self._mask_label(label)}]", 1)
+        # Dong `KET TRAN: EXP <ten char> +N, <ten pet> +M`: che ten CHAR (pet giu nguyen nhu cot NV).
+        head, sep, tail = line.partition(" KET TRAN: EXP ")
+        if sep:
+            parts = []
+            for p in tail.split(", "):
+                nm, sp, n = p.rpartition(" +")
+                parts.append(self._mask_char(nm) + sp + n if sp and nm in self._char2user else p)
+            line = head + sep + ", ".join(parts)
+        return line
 
     def _char_cell(self, s):
         """Cot Nhan vat: 'tenNV_lvchar_tenPet_lvPet'. Privacy CHI che ten NV (lv + pet luon hien).
@@ -3514,14 +3523,19 @@ def _gio_vn(ts):
 
 
 class LegionDmgDialog(tk.Toplevel):
-    """Bang dame boss QD. Du lieu CHUNG theo QD (legion_damage.json), acc tat van xem duoc."""
+    """Bang dame boss QD. Du lieu CHUNG theo QD (legion_damage.json), acc tat van xem duoc.
+
+    Bo cuc master-detail (user chot 29/09): danh sach member ben TRAI (xep hang, dong vai "tab
+    doc"), chi tiet ben PHAI doi ngay khi chon / bam len-xuong - khong mo cua so rieng nua."""
 
     def __init__(self, master, username, row):
         super().__init__(master)
         self.username, self.row = username, row
         self.title("Dame boss QĐ: %s" % username)
         self.transient(master.winfo_toplevel())
-        self.geometry("620x440")
+        self.geometry("900x500")
+        self.data = {}
+        self.rid = None   # member dang xem - giu nguyen khi doi tuan / tai lai
         settings = row.setdefault("settings", {})
         self.var_on = tk.BooleanVar(value=bool(settings.get("legion_dmg")))
         top = ttk.Frame(self); top.pack(fill="x", padx=8, pady=6)
@@ -3535,18 +3549,29 @@ class LegionDmgDialog(tk.Toplevel):
             b = ttk.Button(tabs, text=t, command=lambda i=i: self._show(i))
             b.pack(side="left"); self.btn_w.append(b)
         ttk.Button(tabs, text="↻", width=3, command=self._reload).pack(side="right")
-        cols = ("rank", "name", "total", "hits", "last")
-        self.tv = ttk.Treeview(self, columns=cols, show="headings", height=14)
-        for c, t, w, a in (("rank", "#", 36, "center"), ("name", "Tên", 170, "w"),
-                           ("total", "Tổng dame", 120, "e"), ("hits", "Số lần", 60, "center"),
-                           ("last", "Lần cuối", 150, "center")):
+
+        pw = ttk.PanedWindow(self, orient="horizontal")
+        pw.pack(fill="both", expand=True, padx=8, pady=6)
+        left = ttk.Frame(pw)
+        cols = ("rank", "name", "total", "hits")
+        self.tv = ttk.Treeview(left, columns=cols, show="headings", selectmode="browse")
+        for c, t, w, a in (("rank", "#", 34, "center"), ("name", "Tên", 150, "w"),
+                           ("total", "Tổng dame", 100, "e"), ("hits", "Lần", 44, "center")):
             self.tv.heading(c, text=t); self.tv.column(c, width=w, anchor=a)
-        self.tv.pack(fill="both", expand=True, padx=8, pady=6)
-        bot = ttk.Frame(self); bot.pack(fill="x", padx=8, pady=(0, 8))
-        ttk.Button(bot, text="Chi tiết", command=self._detail).pack(side="left")
-        ttk.Label(bot, text="(chọn 1 thành viên rồi bấm, hoặc double-click)").pack(side="left", padx=6)
-        self.tv.bind("<Double-1>", lambda _e: self._detail())
+        sb = ttk.Scrollbar(left, orient="vertical", command=self.tv.yview)
+        self.tv.configure(yscrollcommand=sb.set)
+        self.tv.pack(side="left", fill="both", expand=True); sb.pack(side="right", fill="y")
+        pw.add(left, weight=0)
+        right = ttk.Frame(pw)
+        self.txt = tk.Text(right, wrap="word", width=50)
+        sb2 = ttk.Scrollbar(right, orient="vertical", command=self.txt.yview)
+        self.txt.configure(yscrollcommand=sb2.set, state="disabled")
+        self.txt.pack(side="left", fill="both", expand=True); sb2.pack(side="right", fill="y")
+        pw.add(right, weight=1)
+        # Chon bang chuot HOAC phim len/xuong deu vao day -> chi tiet doi ngay
+        self.tv.bind("<<TreeviewSelect>>", lambda _e: self._on_select())
         self._reload()
+        self.tv.focus_set()
 
     def _toggle(self):
         on = bool(self.var_on.get())
@@ -3559,6 +3584,7 @@ class LegionDmgDialog(tk.Toplevel):
             ctrl.apply_legion_dmg(self.username, on)
         except Exception as e:
             log.warning("[%s] apply theo doi dame QD loi: %s", self.username, e)
+        self.after(300, self._reload)   # tick giua chung -> bang QD vua nap bu, hien ten ngay
 
     def _reload(self):
         try:
@@ -3584,38 +3610,58 @@ class LegionDmgDialog(tk.Toplevel):
         for k, m in enumerate(ms, 1):
             self.tv.insert("", "end", iid=m["rid"], values=(
                 k, m.get("name") or "role:" + m["rid"], format(int(m.get("total", 0)), ","),
-                m.get("hits", 0), _gio_vn(m.get("last"))))
+                m.get("hits", 0)))
+        ids = self.tv.get_children()
+        if self.rid in ids:
+            sel = self.rid
+        else:
+            sel = ids[0] if ids else None
+        if sel:
+            self.tv.selection_set(sel); self.tv.focus(sel); self.tv.see(sel)
+        else:
+            self._render_detail()   # tuan trong: van giu nguoi dang xem (chi tiet co ca 2 tuan)
 
-    def _detail(self):
+    def _on_select(self):
         sel = self.tv.selection()
-        if not sel:
-            return
-        rid = sel[0]
-        win = tk.Toplevel(self); win.transient(self); win.geometry("600x440")
-        txt = tk.Text(win, wrap="word"); txt.pack(fill="both", expand=True)
-        name = rid
-        for w, head in zip(self.data.get("weeks") or [], ("Tuần này", "Tuần trước")):
-            m = next((x for x in w["members"] if x["rid"] == rid), None)
-            if m and m.get("name"):
-                name = m["name"]
-            txt.insert("end", "== %s (từ %s) ==\n" % (head, w["week"]))
-            if not m or not m.get("log"):
-                txt.insert("end", "  (chưa ghi nhận)\n\n"); continue
-            txt.insert("end", "  Tổng %s · %s lần đánh\n" % (format(int(m["total"]), ","), m["hits"]))
-            for e in reversed(m["log"]):
-                if e.get("reset"):
-                    note = "server reset tổng"
-                    txt.insert("end", "  %s  %s\n" % (_gio_vn(e["ts"]), note)); continue
-                if e.get("off"):
-                    note = "  (lúc offline, không rõ số lần)"
-                elif e.get("lv"):
-                    note = " · Boss Lv%s%s" % (e["lv"], " (hạ boss)" if e.get("kill") else "")
-                else:
-                    note = ""
-                txt.insert("end", "  %s  +%s%s\n" % (_gio_vn(e["ts"]), format(int(e["dmg"]), ","), note))
-            txt.insert("end", "\n")
+        if sel:
+            self.rid = sel[0]
+            self._render_detail()
+
+    def _render_detail(self):
+        txt = self.txt
+        txt.configure(state="normal")
+        txt.delete("1.0", "end")
+        rid = self.rid
+        if rid:
+            name = "role:" + rid
+            weeks = self.data.get("weeks") or []
+            for w in weeks:
+                m = next((x for x in w["members"] if x["rid"] == rid), None)
+                if m and m.get("name"):
+                    name = m["name"]; break
+            txt.insert("end", name + "\n\n", "ten")
+            for w, head in zip(weeks, ("Tuần này", "Tuần trước")):
+                m = next((x for x in w["members"] if x["rid"] == rid), None)
+                txt.insert("end", "== %s (từ %s) ==\n" % (head, w["week"]), "tuan")
+                if not m or not m.get("log"):
+                    txt.insert("end", "  (chưa ghi nhận)\n\n"); continue
+                txt.insert("end", "  Tổng %s · %s lần đánh\n" % (format(int(m["total"]), ","),
+                                                                m["hits"]))
+                for e in reversed(m["log"]):
+                    if e.get("reset"):
+                        txt.insert("end", "  %s  server reset tổng\n" % _gio_vn(e["ts"])); continue
+                    if e.get("off"):
+                        note = "  (lúc offline, không rõ số lần)"
+                    elif e.get("lv"):
+                        note = " · Boss Lv%s%s" % (e["lv"], " (hạ boss)" if e.get("kill") else "")
+                    else:
+                        note = ""
+                    txt.insert("end", "  %s  +%s%s\n" % (_gio_vn(e["ts"]),
+                                                        format(int(e["dmg"]), ","), note))
+                txt.insert("end", "\n")
+        txt.tag_configure("ten", font=("Segoe UI", 12, "bold"))
+        txt.tag_configure("tuan", font=("Segoe UI", 10, "bold"))
         txt.configure(state="disabled")
-        win.title("Chi tiết: %s" % name)
 
 
 # Tab thu 5 cua tui do. KHONG them vao `_BAG.TAB_NAMES`: bang do la luat PHAN LOAI ITEM cua

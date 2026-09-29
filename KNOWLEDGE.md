@@ -511,8 +511,15 @@ Hệ quả cho code hồi máu: sau trận cứ `heal_full(force=True)` là đ�
 > Đã phải giải thích nhiều lần → ghi lại ở đây. Đừng suy ra "thua thì char nằm ở HP=0".
 
 ### PHẦN THƯỞNG / EXP CUỐI TRẬN (crack Common_protocal.lua, 2026-08-11)
-- **EXP người chơi:** `S2C 0x14 sub 0x2a` (20-042) `[kind u8][...]`; kind=1 → `[exp i32 LE]`. Log:
-  `KET TRAN: +N EXP`.
+- ~~EXP người chơi = `0x14 sub 0x2a` (20-042)~~ **SAI**: 20-042 là `<事件訊息>`, chỉ hiện thông báo giữa
+  màn hình; log 29/09 có **0 dòng** `KET TRAN: +N EXP` → server không gửi nó sau trận thường.
+- **EXP nhận được mỗi trận (char + pet) — SERVER GỬI SẴN** (đo pcap `dienvi_server_20260721`, 25 gói):
+  `S:002-010 <廣播訊息>` = `0x02 sub 0x0a`: `[showSwitch][kind=1][textId i32 = 40476][count=2]`
+  `[0][len i16][tên UTF-16LE][2][exp i32]`. Mỗi char/pet 1 gói riêng, vd `dvinnam +6000`, pet `+2000`.
+  Client chỉ ghép chuỗi (`string.GetServerText`) rồi in chat. Bot: `_parse_exp_broadcast` →
+  `KET TRAN: EXP <tên> +N, <tên pet> +M` 1.5s sau gói cuối.
+  > Bài học 29/09: đã tự trừ tổng exp từ `008-001/002` và đoán `023-115` → **sai cả hai**
+  > (0/25 dòng có char). Muốn biết client in gì thì tìm gói server GỬI chuỗi, quét pcap là ra ngay.
 - **Thưởng hoàn thành (dungeon/nhiệm vụ):** `S2C 0x14 sub 0x64` (20-100 `<hoàn thành nhiệm vụ
   thưởng>`): `[missionId u16][count i32]` rồi `count ×` `[kind i32][id u16][quant i32]`.
   kind: **1=vật phẩm** (itemDatas[id]) **2=vàng 3=exp tướng 4=chiến doanh 5=võ tướng** (npcDatas[id])
