@@ -63,6 +63,19 @@ class TestPartyControllerRunner(unittest.TestCase):
             R._chuan_bi_bai_train(client, state, 0, "a")
         scan.assert_not_called()
 
+    def test_auto_pick_spot_is_used_not_rerandomized(self):
+        client = SimpleNamespace(current_map=100)
+        state = {"lock": R.threading.Lock(), "auto_train": (100, 2)}
+        mobs = [[1, 1], [2, 2], [3, 3]]
+        with mock.patch.object(R, "_engine_chot_map"), \
+                mock.patch.object(R, "_map_train_dich", return_value=100), \
+                mock.patch.dict(R.config.PARTY_CONFIG, {0: {"mob_index": -1}}, clear=True), \
+                mock.patch.dict(R.config.TRAIN_MAPS, {100: {"mobs": mobs}}, clear=True):
+            for _ in range(20):
+                state.pop("mob_spot", None)
+                R._chuan_bi_bai_train(client, state, 0, "a")
+                self.assertEqual(state["mob_spot"], (3, 3))
+
     def test_scan_action_observes_cancellation_on_existing_worker(self):
         client = SimpleNamespace(current_map=100)
         with mock.patch.object(R, "_map_train_dich", return_value=100), \

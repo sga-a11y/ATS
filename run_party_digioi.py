@@ -5388,6 +5388,12 @@ def _chuan_bi_bai_train(c, st, pidx, label):
     if not mobs:
         return
     _mi = int((getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}).get("mob_index", -1))
+    # TU CHON MAP: train_pick DA chot diem trong st["auto_train"] -> dung dung diem do. Thieu nhanh
+    # nay thi mob_index config = -1 -> random lai lan nua (29/09: party 3 chot diem 3 quai 132 ma
+    # di toi diem 2 quai 133, diem 3 khong co tran nao).
+    _auto = st.get("auto_train")
+    if _auto and int(_auto[0]) == int(sc) and 0 <= int(_auto[1]) < len(mobs):
+        _mi = int(_auto[1])
     spot = random.choice(mobs) if _mi < 0 else (mobs[_mi] if 0 <= _mi < len(mobs) else mobs[0])
     with st["lock"]:
         st["mob_spot"] = spot
@@ -6597,7 +6603,7 @@ def _engine_cho_login_decisions(pidx, anh, decisions):
     leader (member di theo leader), giu nguyen tu luc bat dau cho de khong nhay diem.
     """
     st = _pstate(pidx)
-    if not anh.thieu_acc_song:
+    if not getattr(anh, "thieu_acc_song", False):
         st.pop("safe_cho_login", None)
         return decisions
     song = [a for a in anh.accs if a.song and a.map_id is not None]

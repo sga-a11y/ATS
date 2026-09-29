@@ -4548,6 +4548,20 @@ class GameClient:
         # khong he biet, dung ngay den khi user phat hien. Bat lai va tu ARM lai (chi gui 0x41
         # start, KHONG ca _login_setup vi trong do co 0x7c/0x62 gay side-effect). Cach nhau it
         # nhat 30s de neu server co ly do dung that thi khong thanh vong gui lien tuc.
+        # S:065-010 <機關盒吃補品> +Kind(1) (protocal.lua:11611): SERVER RA LENH "an thuoc ngay".
+        # Client that goi MachineBox.Supply() -> gui DON het lenh dung item 1 luot, khong cho
+        # (MachineBox.lua:703). Truoc day bot bo qua goi nay, tu doan moc ket tran + sleep -> train
+        # nhanh vao tran moi giua chung, hoi dang do.
+        elif opcode == 0x41 and len(pkt) >= 9 and pkt[7:9] == b"\x0a\x00":
+            _kind = pkt[9] if len(pkt) >= 10 else -1
+            _end = float(getattr(self, "_genuine_end_seen", 0.0) or 0.0)
+            log.info("[%s] HOP MAY: S:065-010 an thuoc kind=%d in_battle=%s cach_ket_tran=%s",
+                     self._label, _kind, self.state.in_battle,
+                     ("%.2fs" % (time.time() - _end)) if _end else "?")
+            # 40NPC: goi nay ARM prompt "danh tiep"; chen 0x17 luc prompt mo -> server loi
+            # (KNOWLEDGE "Chuyen tran + hoi phuc"). Flow 40NPC tu hoi ngoai dialog.
+            if not getattr(self, "_npc40_started", False):
+                self._heal_after_battle(theo_hop_may=True)
         elif opcode == 0x41 and len(pkt) >= 9 and pkt[7:9] == b"\x02\x00":
             # ACK cua CHINH MINH: _login_setup co chu y gui 0x41 0200 roi moi BAT lai o cuoi chuoi.
             # Khong loc thi bot tu chen goi bat-lai vao GIUA chuoi login (xem ghi chu o _login_setup)
@@ -4657,7 +4671,15 @@ class GameClient:
                 self.bag_counts[item_id] = self.bag_counts.get(item_id, 0) - old_cnt + cnt
                 if cnt > old_cnt:   # thuc su NHAN them (khong phai dung item/giam)
                     nm = (_load_gamedata_items().get(item_id) or {}).get("name") or ("0x%04x" % item_id)
-                    log.info("[%s] Nhan item: %s", self._label, nm.strip())
+                    if item_id in PHUC_THAN_GEM_TIDS:
+                        # Ngoc ve tui GIUA phien (qua NV / doi qua) ma o ngoc trong hoac dang deo loai
+                        # kem hon -> ve train deo ngay. Truoc day chi co buff < 5 / ngoc hong moi goi
+                        # vong Phuc Than -> ngoc nam im trong tui (batbat/baybay/nasau 29/09).
+                        log.info("[%s] Nhan item: %s (o tui %d)", self._label, nm.strip(), slot)
+                        if phuc_than_hang(item_id) < phuc_than_hang(self._equipped_phuc_than_tid()):
+                            self.phuc_than_deo_lai = True
+                    else:
+                        log.info("[%s] Nhan item: %s", self._label, nm.strip())
         # BAN BE / qua hang ngay: S2C 0x0e
         #   sub 05 = list ban luc login: [05 00][count 2B] + N*[entity 8B][namelen 1B][name][trailer 35B]
         #   sub 0c = status qua:        [0c 00][count 1B] + N*[entity 8B][status 1B] (03=co qua nhan, 07=da nhan)
@@ -6266,7 +6288,13 @@ class GameClient:
         )
         self.state.sync_from_tracker()
         for event in events:
-            if event.kind == "turn_start":
+            if event.kind == "start":
+                # Tran moi -> cho phep check hoi lai. Nhanh 0x34 legacy (noi duy nhat clear truoc
+                # day) bi skip khi generation != 0, ma generation chi TANG -> sau tran dau tien co
+                # "HET thuoc" KHONG BAO GIO duoc xoa: log 29/09 vanba bao het 12:27 roi 1.5h khong
+                # hoi lan nao, chet ve thanh lien tuc.
+                self._no_item.clear()
+            elif event.kind == "turn_start":
                 self._prepare_tracker_turn()
                 # train_block_stats: battle tracker MOI thay nhanh 0x33 legacy -> ghi so block quai
                 # o day, 1 lan/tran (theo generation). Truoc day _record_train_block_stats CHI goi o
@@ -9380,6 +9408,8 @@ class GameClient:
                     continue
                 if action == "equip":
                     done = 1 if self.equip_item(_slot) else 0
+                    if done:
+                        self._kiem_deo_ngoc(tid, _slot)
                 else:
                     done = 1 if self.use_slot(_slot, qty=1) else 0
                 total += done
@@ -9558,6 +9588,33 @@ class GameClient:
                                if x is not rec]
         time.sleep(0.4)
         return True
+
+    PHUC_THAN_DEO_THU_LAI = 3   # that bai lien tiep toi da bay nhieu lan thi thoi, cho login lai
+
+    def _kiem_deo_ngoc(self, tid: int, slot: int, cho: float = 6.0):
+        """Gui lenh deo xong, CHO server xac nhan (S:023-017 -> o 6 = tid). Khong thay = lenh bi
+        nuot: log ro + bat co deo lai. Truoc day log "OK" chi nghia la GOI DA GUI (nanam 29/09 log OK
+        ma khong deo)."""
+        def _run():
+            t0 = time.time()
+            while self.running and time.time() - t0 < cho:
+                if self._equipped_phuc_than_tid() == tid:
+                    self._deo_ngoc_that_bai = 0
+                    return
+                time.sleep(0.3)
+            if not self.running:
+                return
+            n = int(getattr(self, "_deo_ngoc_that_bai", 0)) + 1
+            self._deo_ngoc_that_bai = n
+            thu_lai = n < self.PHUC_THAN_DEO_THU_LAI
+            if thu_lai:
+                self.phuc_than_deo_lai = True
+            _o = (self.bag_slots or {}).get(slot)
+            log.warning("[%s] DEO NGOC THAT BAI: gui deo o tui %d (0x%04x) ma %.0fs khong thay server "
+                        "xac nhan; bot dang nghi o %d = %s; lan %d -> %s", self._label, slot, tid, cho,
+                        slot, ("0x%04x" % _o[0]) if _o else "trong", n,
+                        "thu lai o vong train" if thu_lai else "THOI (cho login lai)")
+        threading.Thread(target=_run, daemon=True).start()
 
     def _equipped_phuc_than_tid(self) -> int:
         rec = self._gem_record()
@@ -10568,9 +10625,9 @@ class GameClient:
             self._recalc_char_equip_stats()
         else:
             self._cap_nhat_do_trong_ban_ghi_pet(follow, int(fit_pos), tid=None)
-        log.info("[%s] Da coi do: vi tri %s cua %s (%s)", self._label, fit_pos,
+        log.info("[%s] Da coi do: vi tri %s cua %s (%s) -> o tui %s", self._label, fit_pos,
                  "nhan vat" if not follow else "pet #%d" % follow,
-                 self._mount_item_name(cu) if cu else "?")
+                 self._mount_item_name(cu) if cu else "?", o_tui)
 
     def _on_equip_done(self, slot: int, follow: int = 0):
         """DA MAC XONG 1 mon. Dung chung cho ca NHAN VAT lan PET (2 goi khac nhau, xu ly y het):
@@ -10593,6 +10650,9 @@ class GameClient:
         slot = int(slot)
         follow = int(follow)
         rec = self.bag_slots.get(slot)
+        if not follow:
+            log.info("[%s] Da mac xong (server xac nhan): o tui %d = %s", self._label, slot,
+                     ("0x%04x" % rec[0]) if rec else "KHONG BIET (tui bot lech voi server)")
         if rec:
             tid = rec[0]
             self.bag_counts[tid] = max(0, self.bag_counts.get(tid, 0) - 1)
@@ -10868,7 +10928,7 @@ class GameClient:
             return False   # vai nay khong gan pet -> giu nguyen pet dang dung
         return self.switch_pet(pid)
 
-    def do_heal(self, force: bool = False):
+    def do_heal(self, force: bool = False, fast: bool = False):
         """Hoi mau NGOAI tran cho CHAR + pet, dung thuoc DA BIET (gamedata/khai).
         KHONG probe (gamedata da biet het thuoc). Hoi den NGUONG la dung.
         force=True: chi can in_battle=False la hoi (BO busy-window 4s cua in_combat) - dung cho
@@ -10879,9 +10939,9 @@ class GameClient:
             return
         c = self.state.char
         if c.hp_max > 0:
-            self._heal_unit(0, c, "char", "hp_char", "hp", force=force)
-            self._heal_unit(0, c, "char", "sp_char", "sp", force=force)
-        if self.state.solo_multipet and self._heal_solo_multipets(force=force):
+            self._heal_unit(0, c, "char", "hp_char", "hp", force=force, fast=fast)
+            self._heal_unit(0, c, "char", "sp_char", "sp", force=force, fast=fast)
+        if self.state.solo_multipet and self._heal_solo_multipets(force=force, fast=fast):
             return
         p = self.state.pet
         if p.hp_max > 0:
@@ -10892,18 +10952,18 @@ class GameClient:
             # pet.hp=0 tu 0x33 cuoi la STALE, van hoi binh thuong (coi nhu 1HP).
             if p.hp <= 0:
                 p.hp = 1
-            self._heal_unit(_pt, p, "pet", "hp_pet", "hp", force=force)
-            self._heal_unit(_pt, p, "pet", "sp_pet", "sp", force=force)
-        self._heal_carried_pets(force=force)
+            self._heal_unit(_pt, p, "pet", "hp_pet", "hp", force=force, fast=fast)
+            self._heal_unit(_pt, p, "pet", "sp_pet", "sp", force=force, fast=fast)
+        self._heal_carried_pets(force=force, fast=fast)
 
-    def _heal_carried_pets(self, thr_override=None, force: bool = False):
+    def _heal_carried_pets(self, thr_override=None, force: bool = False, fast: bool = False):
         """Hoi ca cac pet MANG THEO (khong xuat chien) - user bao 29/09: het tran chi hoi pet
         xuat chien. Stat lay tu ban ghi pet-list luc login (pet_stats); sau khi hoi cong
         optimistic vao Unit + ghi nguoc vao ban ghi de lan sau khong hoi lai."""
         units = getattr(self, "_carried_pet_units", None)
         if units is None:
             units = self._carried_pet_units = {}
-        active = self.active_pet_slot or 1
+        active = getattr(self, "active_pet_slot", None) or 1
         # Ghi HP/SP pet dang xuat chien vao ban ghi cua no -> doi pet xuat chien xong, con cu
         # (da mat mau trong tran) van duoc hoi dung so that thay vi so luc login.
         _arec = (getattr(self, "pet_login_records", None) or {}).get(active)
@@ -10924,9 +10984,9 @@ class GameClient:
             u.sp = max(0, min(int(rec.get("sp") or 0), u.sp_max))
             label = f"pet{marker}(mang theo)"
             self._heal_unit(marker, u, label, "hp_pet", "hp",
-                            thr_override=thr_override, force=force)
+                            thr_override=thr_override, force=force, fast=fast)
             self._heal_unit(marker, u, label, "sp_pet", "sp",
-                            thr_override=thr_override, force=force)
+                            thr_override=thr_override, force=force, fast=fast)
             rec["hp"], rec["sp"] = u.hp, u.sp
 
     def _sync_solo_multipet_from_allies(self):
@@ -10950,7 +11010,7 @@ class GameClient:
             if smax > 0:
                 u.sp_max = smax
 
-    def _heal_solo_multipets(self, thr_override=None, force: bool = False) -> bool:
+    def _heal_solo_multipets(self, thr_override=None, force: bool = False, fast: bool = False) -> bool:
         """Di Gioi solo: hoi HP/SP tung pet dang co stat, target item = marker pet (1..4)."""
         self._sync_solo_multipet_from_allies()
         seen = False
@@ -10964,15 +11024,16 @@ class GameClient:
                 unit.hp = 1
             label = f"pet{marker}"
             self._heal_unit(marker, unit, label, "hp_pet", "hp",
-                            thr_override=thr_override, force=force)
+                            thr_override=thr_override, force=force, fast=fast)
             self._heal_unit(marker, unit, label, "sp_pet", "sp",
-                            thr_override=thr_override, force=force)
+                            thr_override=thr_override, force=force, fast=fast)
         return seen
 
-    def _heal_after_battle(self):
+    def _heal_after_battle(self, theo_hop_may: bool = False):
         """Goi tu recv-loop NGAY khi nhan goi KET TRAN THAT (0x14 sub0700 / sub0800 tail xac nhan).
         Spawn thread rieng (KHONG block recv) doi grace ngan roi do_heal(force=True) - tranh truong
-        hop keepalive (tick 5s + busy-window 4s) khong bao gio bat kip khe ho giua 2 tran."""
+        hop keepalive (tick 5s + busy-window 4s) khong bao gio bat kip khe ho giua 2 tran.
+        theo_hop_may=True: SERVER da ra lenh S:065-010 -> hoi NGAY, gui don (fast), giong client."""
         if self.state.quest_mode or getattr(self.state, "boss_mode", False):
             return   # dungeon/boss flow tu quan ly heal (do_heal/heal_full rieng giua cac tran)
         if getattr(self, "_heal_after_battle_active", False):
@@ -10981,9 +11042,10 @@ class GameClient:
 
         def _run():
             try:
-                time.sleep(0.5)   # doi man tong ket/0x33 cuoi cap nhat HP xong (1.0 -> 0.5 theo yeu cau: hoi som hon)
+                if not theo_hop_may:
+                    time.sleep(0.5)   # doi man tong ket/0x33 cuoi cap nhat HP xong (1.0 -> 0.5 theo yeu cau: hoi som hon)
                 if self.running and not self.state.in_battle:
-                    self.do_heal(force=True)
+                    self.do_heal(force=True, fast=theo_hop_may)
             finally:
                 self._heal_after_battle_active = False
         self._heal_after_battle_thread = threading.Thread(target=_run, daemon=True)
@@ -11060,7 +11122,7 @@ class GameClient:
         self._heal_carried_pets(thr_override=1.0, force=force)
 
     def _heal_unit(self, target: int, unit, label: str, thr_key: str, kind: str, thr_override=None,
-                   force: bool = False):
+                   force: bool = False, fast: bool = False):
         """Hoi 1 con 1 stat bang thuoc DA BIET den nguong. char do qua 0x08 (chinh xac);
         pet ko do duoc -> uoc tinh theo heal (open-loop). Het thuoc nay -> tu chuyen thuoc khac.
         thr_override: ep nguong (vd 1.0 = FULL) - dung cho heal_full truoc boss.
@@ -11112,9 +11174,11 @@ class GameClient:
             _iname = (_load_gamedata_items().get(tid) or {}).get("name", "").strip()
             log.info("[%s] hoi %s slot=%d 0x%04x '%s' x%d (+%d/cai)%s target=%d",
                      self._label, label, slot, tid, _iname, qty, heal, kind.upper(), target)
-            if target == 0:
+            if target == 0 and not fast:
                 time.sleep(0.5)   # CHAR: cho 0x08 cap nhat chi so THAT -> vong sau kiem lai, bu neu nuot
             else:
+                # fast (lenh S:065-010 cua server): gui DON nhu MachineBox.Supply - CHAR cung cong
+                # optimistic, khong cho 0x08 (0x08 toi sau se ghi de bang so that).
                 # PET open-loop: HP/SP that KHONG cap nhat ngoai tran -> cong optimistic de vong sau
                 # biet da du (va keepalive sau KHONG hoi lai vo han; dau tran sau 0x33 cap nhat lai).
                 gain = qty * heal
@@ -11122,7 +11186,8 @@ class GameClient:
                     unit.hp = min(mx, unit.hp + gain)
                 else:
                     unit.sp = min(mx, unit.sp + gain)
-                time.sleep(0.2)
+                if not fast:
+                    time.sleep(0.2)
 
     def scan_furnace(self, wait: float = 3.0):
         """SOI LO thuong (熔爐): gui C:089-001 (0x59 sub01, khong payload) -> server tra S:089-001

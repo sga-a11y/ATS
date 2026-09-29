@@ -859,6 +859,12 @@ Pattern entries: `03 02 [type] [4-byte LE]`
       khong deo lai (Lbmba 28/09 train 12:39->13:34 khong ngoc, log lap `DA THAO` moi luot boss).
     - Thao ngoc cho boss/PB dat co `phuc_than_deo_lai` -> `party_engine._duy_tri` (chi chay o vong
       TRAIN) goi `use_phuc_than_items` deo lai NGAY, khong cho buff `< 5` (user 28/09).
+    - Ngoc ve tui GIUA phien (`S:023-008`, qua NV/doi qua) ma o ngoc trong/kem hon -> cung bat co
+      do (29/09: batbat/baybay/nasau ngoc hong tu dem, 12:10 nhan Ngoc Sieu, nam im trong tui).
+    - Log "tu trang bi ... OK" chi = GOI DA GUI. `_kiem_deo_ngoc` cho 6s xem o 6 co thanh ngoc do
+      (S:023-017) khong; khong -> `DEO NGOC THAT BAI` + thu lai (toi da 3 lan lien). Log kem so O TUI
+      o ca nhan item / coi do / mac xong de bat ca nanam 29/09 (gui deo o 31, server khong deo -
+      CHUA RO tui bot lech o buoc nao).
     - **CHAY THEO SU KIEN, khong cho chu ky**: `0x18 sub0800` bao buff `< 5`, hoac `0x17
       sub1b00/sub2300` bao ngoc `damage >= 250` -> handler bat `client.phuc_than_pending`, vong lap
       run_account lam NGAY khi khong con trong tran. Vong dinh ky chi con la luoi an toan
@@ -3023,6 +3029,13 @@ lệch đó vào giờ máy → khỏi hỏi lại liên tục.
 - Đây **KHÔNG phải** Hộp Máy (`MachineBox`, opcode `0x65`) mà bot đang dùng. Hộp Máy có ngưỡng
   HP/SP và tự uống thuốc (tốn item); Ba Đậu là buff hồi đầy **miễn phí** sau mỗi trận. `MachineBox`
   chỉ có `EMachineBoxStats.StartTime` = số giây đã chạy phiên này, **không** mang hạn dùng.
+- **Hộp Máy KHÔNG tự uống thuốc phía server.** Server gửi `S:065-010 <機關盒吃補品> +Kind(1)`
+  (`0x41 sub0a00`, `protocal.lua:11611`) = LỆNH "ăn thuốc ngay"; CLIENT uống trong
+  `MachineBox.Supply()` (`MachineBox.lua:703`): lọc item kind `Item_17/18`, attribute Hp/Sp
+  `value>100` (hồi = value-100), tính `ceil(need/heal)` rồi GỬI DỒN mọi lệnh dùng item 1 lượt,
+  không chờ. Viên hồi cả HP+SP được trừ chéo. Bot (29/09) bắt gói này → `_heal_after_battle(
+  theo_hop_may=True)` hồi ngay, không sleep (bỏ qua khi quest/boss/40NPC). Chưa đo: server có gửi
+  sau MỌI trận không — log `HOP MAY: S:065-010 an thuoc ... cach_ket_tran=` để đếm.
 
 ## 7q. NÂNG SKILL NHÂN VẬT (skill point) — `C:028-001`
 

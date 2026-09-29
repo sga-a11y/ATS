@@ -70,5 +70,27 @@ class TestONgoc(unittest.TestCase):
         self.assertEqual(c.bag_slots.get(9), [SIEU, 1])
 
 
+class TestNgocVeTuiGiuaPhien(unittest.TestCase):
+    """batbat/baybay/nasau 29/09: ngoc hong tu dem, login luc tui chua co ngoc, 12:10 moi nhan
+    Ngoc Sieu -> khong gi goi vong Phuc Than -> ngoc nam im trong tui."""
+
+    def test_o_ngoc_trong_nhan_ngoc_thi_bat_co(self):
+        c = _cli()
+        self.assertTrue(C.phuc_than_hang(SIEU) < C.phuc_than_hang(c._equipped_phuc_than_tid()))
+
+    def test_dang_deo_ngoc_tot_hon_thi_khong(self):
+        c = _cli()
+        c.equip_by_fit[6] = C.PHUC_THAN_GEM_ORDER[0]
+        self.assertFalse(C.phuc_than_hang(SIEU) < C.phuc_than_hang(c._equipped_phuc_than_tid()))
+
+    def test_code_nhan_item_co_bat_co(self):
+        src = open(os.path.join(ROOT, "bot", "client.py"), encoding="utf-8").read()
+        i = src.find("thuc su NHAN them (khong phai dung item/giam)")
+        self.assertGreater(i, 0)
+        than = src[i:i + 2500]
+        self.assertIn("PHUC_THAN_GEM_TIDS", than)
+        self.assertIn("self.phuc_than_deo_lai = True", than)
+
+
 if __name__ == "__main__":
     unittest.main()

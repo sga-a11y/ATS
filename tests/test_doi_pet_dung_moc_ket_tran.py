@@ -77,7 +77,7 @@ class TestGanVaoMocKetTran(unittest.TestCase):
     def test_KHONG_dat_trong_heal_after_battle(self):
         """`_heal_after_battle` `return` ngay khi quest_mode/boss_mode -> trong PB/quest/boss
         khong bao gio chay, ma do chinh la luc can doi pet nhat (ca party 49)."""
-        than = _than(self.src, "    def _heal_after_battle(self):")
+        than = _than(self.src, "    def _heal_after_battle(self, theo_hop_may: bool = False):")
         self.assertIn("quest_mode", than, "mat cua return som -> bai hoc nay het y nghia")
         self.assertNotIn("_doi_pet_sau_tran", than)
 

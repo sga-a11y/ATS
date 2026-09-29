@@ -2028,6 +2028,12 @@ class BotGUI(tk.Tk):
                     import threading as _t2
                     def _price():
                         c = ctrl.account_clients.get(u)
+                        try: _dg = bool(c and c.in_di_gioi())
+                        except Exception: _dg = False
+                        if _dg:
+                            self.after(0, lambda: buybtn.winfo_exists() and buybtn.configure(
+                                text="Mua slot\n(về thành)"))
+                            return
                         try: pr = c and c.query_bag_slot_price()
                         except Exception: pr = None
                         _txt = f"Mua slot\n{pr[0]} vàng" if pr else "Mua slot\n(?)"
