@@ -45,6 +45,11 @@ def decide_mode(mode, decisions, accs, *, target_map=None, event_kind=None,
         if mode == "city":
             if target_map is None or account.map_id is None:
                 result[user] = "nghi"
+            elif getattr(account, "so_member", 0):
+                # DANG TRONG DOI (nguoi moi keo di) -> DUNG YEN theo ho, KHONG loi ve thanh. Truoc
+                # day lech map la giao `city` -> teleport phai ROI DOI truoc -> bi keo di la thoat
+                # pt bay ve Tuong Duong (user 29/09, APK "dung yen Tuong Duong" = mode city).
+                result[user] = "nghi"
             elif int(account.map_id) != int(target_map):
                 result[user] = "city"
             else:

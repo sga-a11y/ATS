@@ -35,6 +35,9 @@ Mã Python PC/APK đã đồng bộ. Việc kiểm tra mã và unit test không 
   cửa nhận lời mời của người trong whitelist), event xong vẫn `doi_thuong`. Trước đó engine đổi
   mọi việc thành `nghi` nên party 7 (27/09) đứng ở 12003, không vào event
   (`party_modes._event_cho_moi`). Đã vào đội người thật thì `nghi` (đứng yên theo họ).
+- **Về thành đứng yên** (mode `city`, APK "Đứng yên (Tương Dương)"): lệch map thì `city` (tự về thành),
+  NHƯNG đang trong đội (`so_member > 0`, bị người mời kéo đi) thì `nghi` — theo đội, không rời đội bay về.
+  Rời đội/giải tán xong mới tự về thành lại (29/09).
 - **Đội trưởng trong whitelist KHÔNG phải "party lạ"**: `_engine_routine_decisions` trước chỉ coi
   chính mình + leader bot là hợp lệ, không có leader bot thì mọi đội trưởng đều "lạ". Party 7
   (27/09): 4 acc nhận lời mời người thật 15:57:24, lên tầng 12923, roster server về 15:57:39 →

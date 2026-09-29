@@ -29,6 +29,18 @@ class DecideModeTests(unittest.TestCase):
         arrived = decide_mode("city", {"a": "train"}, [acc("a", 50)], target_map=50)
         self.assertEqual(arrived, {"a": "nghi"})
 
+    def test_city_trong_doi_bi_keo_di_thi_dung_yen_khong_roi_doi(self):
+        # user 29/09: dung yen Tuong Duong, duoc moi vao doi roi bi keo ra khoi thanh -> truoc day
+        # giao `city` -> ROI DOI bay ve thanh. Dang trong doi thi phai theo nguoi moi.
+        keo_di = acc("a", 12)
+        keo_di.so_member = 4
+        self.assertEqual(decide_mode("city", {"a": "ve_map"}, [keo_di], target_map=50),
+                         {"a": "nghi"})
+        roi_doi = acc("a", 12)
+        roi_doi.so_member = 0
+        self.assertEqual(decide_mode("city", {"a": "ve_map"}, [roi_doi], target_map=50),
+                         {"a": "city"})
+
     def test_city_unknown_target_or_position_does_not_claim_arrival(self):
         self.assertEqual(decide_mode("city", {"a": "ve_map"}, [acc("a", None)],
                                      target_map=50), {"a": "nghi"})
