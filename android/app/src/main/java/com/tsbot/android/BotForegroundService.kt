@@ -232,7 +232,7 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
 
     private fun mapMode(party: Party): ModeCfg = when (party.runMode) {
         RunModes.STAND_STILL -> {   // ve thanh dung yen = PC "city"
-            val c = Cities.ALL[party.cityKey]
+            val c = Cities.CHOICES[party.cityKey]
             ModeCfg("city", c?.cityId ?: 0, c?.flag ?: 0, -1, "", "party", false)
         }
         RunModes.STAY_LOGIN -> ModeCfg("stand", 0, 0, -1, "", "party", false)   // login dung yen do

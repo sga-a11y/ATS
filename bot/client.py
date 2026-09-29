@@ -17,7 +17,8 @@ from .battle_tracker import BattleTracker
 from .party_battle import get_party_battle
 
 
-from .auth import (build_auth_packet, build_unbounded_auth_packet,
+from . import region as _region
+from .auth import (build_auth_packet, build_unbounded_auth_packet, build_accpwd_auth_packet,
                    parse_bao_chuyen_vo_gioi, parse_ket_qua_login, parse_connect_code)
 from .state import BattleState, Unit
 
@@ -1144,7 +1145,7 @@ MAIL_WINDOWS = [12, 16, 22]
 def mail_window_now():
     """Tra ve gio bat dau cua khung mail hien tai (12/16/22), hoac None neu ngoai khung."""
     import datetime
-    h = datetime.datetime.now().hour
+    h = _region.server_now().hour
     for ws in MAIL_WINDOWS:
         if ws <= h < ws + 2:
             return ws
@@ -1609,7 +1610,7 @@ def _load_bliss_boxes() -> dict:
 _EXP_TEXT_ID = 40476   # string "%s nhan duoc %d exp" (protocal.lua 002-010, Breakthrough.lua)
 
 
-def _parse_exp_broadcast(pkt: bytes):
+def _parse_exp_broadcast(pkt: bytes, enc=None):
     """S:002-010 [sub 0a00][showSwitch][kind 1][id i32][count]<<arg>>, arg: kind0 = [len i16][utf-16le],
     kind2 = [i32] (string.GetServerText). Tra (ten, exp) neu la cau 40476, khong thi None."""
     try:
@@ -1620,7 +1621,7 @@ def _parse_exp_broadcast(pkt: bytes):
             k = pkt[o]
             if k == 0:
                 ln = int.from_bytes(pkt[o + 1:o + 3], "little")
-                args.append(pkt[o + 3:o + 3 + ln].decode("utf-16-le", "replace"))
+                args.append(pkt[o + 3:o + 3 + ln].decode(enc or _region.get().encoding, "replace"))
                 o += 3 + ln
             else:
                 args.append(int.from_bytes(pkt[o + 1:o + 5], "little", signed=True))
@@ -2384,8 +2385,12 @@ def _pet_role(role):
 
 
 class GameClient:
-    def __init__(self, user_id: str, access_token: str, host: str = None, server_id: int = 1):
+    region = _region.get()   # mac dinh cap CLASS: test tao client bang __new__ (bo qua __init__)
+
+    def __init__(self, user_id: str, access_token: str, host: str = None, server_id: int = 1,
+                 region=None):
         self.user_id = user_id
+        self.region = region if isinstance(region, _region.Region) else _region.get(region)
         self.access_token = access_token
         self.host = host or config.GAME_HOST   # IP server (theo party); None -> mac dinh
         self.server_id = server_id             # ID server trong goi auth (1=Trieu Van, 2=Tao Thao)
@@ -2395,7 +2400,7 @@ class GameClient:
         self._recent_recvs = collections.deque(maxlen=40)  # (ts, op, hex) goi server gui - debug kick
         self.running = False
         self.state = BattleState()
-        self.battle_tracker = BattleTracker()
+        self.battle_tracker = BattleTracker(region=self.region)
         self.state.attach_tracker(self.battle_tracker)
         self._battle_party_key = None
         self._battle_party_coordinator = None
@@ -2834,7 +2839,7 @@ class GameClient:
         self._online_gift_last_log = 0.0
         self.sock = _open_game_socket(self.host, config.GAME_PORT)
         log.info("[%s] Da ket noi %s:%s", self._label, self.host, config.GAME_PORT)
-        self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
+        self.sock.sendall(self._auth_packet())
         log.info("[%s] Da gui auth (user_id=%s, server_id=%s)", self._label, self.user_id, self.server_id)
         self.running = True
         threading.Thread(target=self._recv_loop, args=(self.sock,), daemon=True).start()
@@ -3138,7 +3143,7 @@ class GameClient:
             self._recent_sends.append((time.time(), opcode, payload.hex()))
         try:
             with self._send_lock:
-                self.sock.sendall(protocol.encode(opcode, payload))
+                self.sock.sendall(protocol.encode(opcode, payload, self.region.xor_key))
         except OSError:
             self.running = False   # socket dong -> dung gui, dung moi vong lap
             if not self._deliberate_close:
@@ -3150,7 +3155,7 @@ class GameClient:
     def _on_whisper(self, pkt: bytes):
         """Tin nhan rieng: nick trong whitelist gui `off <phut>p` -> ca party off (remote_cmd)."""
         try:
-            sender_id, name, msg = remote_cmd.parse_whisper(pkt)
+            sender_id, name, msg = remote_cmd.parse_whisper(pkt, self.region)
         except Exception as e:
             log.warning("[%s] TIN RIENG: khong doc duoc (%s) raw=%s", self._label, e, pkt.hex())
             return
@@ -3172,7 +3177,7 @@ class GameClient:
 
     def send_whisper(self, target_id: bytes, target_name: str, text: str):
         """C:002-003 <密頻發話>: nhan rieng cho nguoi choi."""
-        self.send(0x02, remote_cmd.build_whisper(target_id, target_name, text))
+        self.send(0x02, remote_cmd.build_whisper(target_id, target_name, text, self.region))
 
     def leave_team_dungeon(self, wait: float = 6.0) -> bool:
         """THOAT PHO BAN TO DOI bang dung lenh cua client: C:047-010 <離開組隊>.
@@ -3284,7 +3289,7 @@ class GameClient:
         self._last_digioi_ts = 0.0
         try:
             self.sock = _open_game_socket(self.host, config.GAME_PORT)
-            self.sock.sendall(build_auth_packet(self.user_id, self.access_token, self.server_id))
+            self.sock.sendall(self._auth_packet())
         except OSError as e:
             log.warning("[%s] RELOGIN that bai (ket noi): %s", self._label, e)
             # Re-login noi bo that bai vi mang/server -> de supervisor login lai tu dau.
@@ -3330,7 +3335,7 @@ class GameClient:
             return False
         goi = build_unbounded_auth_packet(self._vg_acc, self._vg_pwd, bytes(ent),
                                           bc["server_id"], bc["sn"],
-                                          connect_code=self._connect_code)
+                                          connect_code=self._connect_code, region=self.region)
         log.info("[%s] CHUYEN SANG SERVER VO GIOI %s:%s ...", self._label, bc["host"], bc["port"])
         self._host_goc = getattr(self, "_host_goc", None) or self.host
         self._deliberate_close = True      # ta tu dong socket cu -> KHONG phai server rot
@@ -3913,7 +3918,7 @@ class GameClient:
             if self._last_recv_ts - getattr(self, "_hb_ts", 0.0) > 5.0:
                 self._hb_ts = self._last_recv_ts
                 task_heartbeat(self._username)
-            self.recv_buf += protocol.xor(data)
+            self.recv_buf += protocol.xor(data, self.region.xor_key)
             pkts, consumed = protocol.parse_stream(self.recv_buf)
             self.recv_buf = self.recv_buf[consumed:]
             for opcode, pkt in pkts:
@@ -4400,7 +4405,7 @@ class GameClient:
         # EXP nhan duoc (char + pet) = dong client in ra chat: server GUI SAN qua S:002-010 <廣播訊息>
         # cau so 40476 ("%s nhan duoc %d exp"), tham so [ten][so exp]. Xac nhan pcap dienvi 21/07.
         if opcode == 0x02 and pkt[7:9] == b"\x0a\x00":
-            _g = _parse_exp_broadcast(pkt)
+            _g = _parse_exp_broadcast(pkt, self.region.encoding)
             if _g:
                 self._add_exp_gain(*_g)
         if opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
@@ -4801,7 +4806,7 @@ class GameClient:
         # S:001-002 <登入結果>: server phat lai CAP acc/pwd rieng ("<user_id>@vtc" + ve 10 ky tu).
         # Do MOI la thu server vo gioi doi, KHONG phai user_id/access_token bot dung de login.
         if opcode == 0x01 and pkt[7:9] == b"\x02\x00":
-            _kq = parse_ket_qua_login(pkt[7:])
+            _kq = parse_ket_qua_login(pkt[7:], self.region)
             if _kq:
                 self._vg_acc, self._vg_pwd = _kq
         # S:001-013 <登入送完所有資訊> +連線序號(4) - goi auth vo gioi mang lai so nay.
@@ -4813,7 +4818,7 @@ class GameClient:
         # Loan dau THU 7 la loai nay (map 54901 nam o IP khac). Bo qua goi nay = dung im o map
         # cu mai mai - log 05/09 21:20 party 11: cho 20s roi bao CHUA TOI, ca buoi 0 tran.
         if opcode == 0x01 and pkt[7:9] == b"\x14\x00":
-            _bc = parse_bao_chuyen_vo_gioi(pkt[7:])
+            _bc = parse_bao_chuyen_vo_gioi(pkt[7:], self.region)
             if _bc:
                 self._vo_gioi = _bc
                 log.info("[%s] SERVER BAO CHUYEN (vo gioi): %s:%s serverId=%s SN=%s",
@@ -5335,7 +5340,7 @@ class GameClient:
             nl = b[chosen + 31]
             if 0 < nl <= 40 and chosen + 32 + nl <= len(b):
                 try:
-                    nm = b[chosen + 32:chosen + 32 + nl].decode("utf-16-le").strip("\x00")
+                    nm = b[chosen + 32:chosen + 32 + nl].decode(self.region.encoding).strip("\x00")
                     if nm:
                         self.pet_name = nm
                 except Exception:
@@ -5454,7 +5459,7 @@ class GameClient:
             key = name.casefold()
             if key in friend_names or key in sent_set:
                 continue
-            nb = name.encode("utf-16-le")
+            nb = name.encode(self.region.encoding)
             if not (0 < len(nb) <= 255):
                 continue
             self.send(0x0e, b"\x05\x00" + bytes([len(nb)]) + nb)   # C:014-005 <<[byteLen][name UTF16]>>
@@ -5660,7 +5665,7 @@ class GameClient:
             _kq = pkt[9]
             _nl = pkt[10]
             try:
-                _ten = pkt[11:11 + _nl].decode("utf-16-le", "replace")
+                _ten = pkt[11:11 + _nl].decode(self.region.encoding, "replace")
             except Exception:
                 _ten = "?"
             log.info("[%s] PARTY: loi moi -> %s (%s)", self._label,
@@ -6042,7 +6047,7 @@ class GameClient:
             nl = body[16]
             name = ""
             try:
-                name = body[17:17 + nl].decode("utf-16-le")
+                name = body[17:17 + nl].decode(self.region.encoding)
             except Exception:
                 pass
             leaders = (config.leaders_for(self.party_idx)
@@ -7658,7 +7663,7 @@ class GameClient:
         code = (code or "").strip()
         if not code:
             return False
-        cb = code.encode("utf-16-le")
+        cb = code.encode(self.region.encoding)
         if len(cb) > 255:
             log.warning("[%s] giftcode qua dai", self._label); return False
         self.send(0x57, b"\x02\x00\x05" + bytes([len(cb)]) + cb + b"\x01")
@@ -8258,7 +8263,11 @@ class GameClient:
     #  dung DUNG 725/725 byte, ra "Tam Quoc Do x100 + Dong x5000 -> The Luu Bi x1".)
     # EVENT DOI THEO THANG -> KHONG hardcode gi: doc duoc bao nhieu ghi bay nhieu ra cache JSON de
     # GUI hien danh sach cho user tick.
-    _EXCHANGE_CACHE = "event_exchange.json"
+    @property
+    def _EXCHANGE_CACHE(self):
+        # Moi ban TS su kien/qua KHAC nhau -> cache rieng (VTC giu ten cu event_exchange.json)
+        from .event_exchange import cache_name
+        return cache_name(self.region.id)
     # Ma ket qua doi qua su kien (S:124-003), lay NGUYEN VAN tu client Lua.
     _EXCHANGE_RESULT = {
         0: "thanh cong", 1: "khong co hoat dong nay", 2: "chua mo nhan thuong",
@@ -8319,7 +8328,7 @@ class GameClient:
                         break
                     cid = int.from_bytes(data[off:off + 2], "little"); off += 2
                     ln = data[off]; off += 1
-                    self._coin_names[cid] = data[off:off + ln].decode("utf-16-le", "replace").rstrip("\x00")
+                    self._coin_names[cid] = data[off:off + ln].decode(self.region.encoding, "replace").rstrip("\x00")
                     off += ln + 2
             elif sub == b"\x0b\x00" and len(data) >= 4:
                 # S:124-011 SO LUONG tien su kien CUA NGUOI CHOI: [count u32] + [coinId u16][quant u32]
@@ -8371,7 +8380,7 @@ class GameClient:
         def text():
             nonlocal off
             n = u8()
-            v = d[off:off + n].decode("utf-16-le", "replace").rstrip("\x00")
+            v = d[off:off + n].decode(self.region.encoding, "replace").rstrip("\x00")
             off += n
             return v
 
@@ -8403,7 +8412,7 @@ class GameClient:
         #   now < ketThuc-hien  VA  isOpen != 0  VA  (now >= batDau-hien HOAC now >= batDau)
         # Server VAN gui ca su kien DA HET HAN (client an di) -> khong loc thi cache day muc doi cu.
         import datetime as _dt
-        _now = _dt.datetime.now()
+        _now = self.region.server_now()
         _live = []
         for a in acts:
             t = a.get("time") or [0, 0, 0, 0]
@@ -8562,7 +8571,7 @@ class GameClient:
         # MO. Khac = su kien da doi -> KHONG doi gi ca, du mon do tinh co van con o su kien moi
         # (nguyen lieu da khac han - user phai chon lai). Chan ngay trong bot vi bot dang chay thi
         # khong ai mo GUI de bo tick.
-        _sig_now = _evx.cache_signature()
+        _sig_now = _evx.cache_signature(game=self.region.id)
         _sig_pick = getattr(self, "event_exchange_sig", "") or ""
         if _sig_now and _sig_pick != _sig_now:
             log.warning("[%s] Doi qua su kien: tick dang co thuoc SU KIEN KHAC -> KHONG doi. "
@@ -8903,7 +8912,7 @@ class GameClient:
                 ent = body[i:i + 8]
                 nl = body[i + 8]
                 try:
-                    name = body[i + 9:i + 9 + nl].decode("utf-16-le") if nl else ""
+                    name = body[i + 9:i + 9 + nl].decode(self.region.encoding) if nl else ""
                 except Exception:
                     name = ""
                 tr = body[i + 9 + nl:i + 9 + nl + 35]
@@ -12167,12 +12176,12 @@ class GameClient:
             # L la do dai VUNG ten, ten ket thuc \x00 BEN TRONG vung, phan du la RAC. Tim \x00\x00 o
             # vi tri CHAN: ten ket thuc 'i' (69 00) roi terminator 00 00 -> chuoi ...69 00 00 00,
             # bytes.find(b"\x00\x00") bat trung cap LECH -> cat mat ky tu cuoi.
-            cut = len(vung) - (len(vung) % 2)
+            cut = len(vung) - (len(vung) % self.region.char_bytes)
             for k in range(0, len(vung) - 1, 2):
                 if vung[k:k + 2] == b"\x00\x00":
                     cut = k
                     break
-            name = vung[:cut].decode("utf-16-le", "ignore")
+            name = vung[:cut].decode(self.region.encoding, "ignore")
             pos = npos + ln + 1              # +1 = byte trang thai; bo cuc CO DINH -> nhay thang
             # KHONG loai ban ghi theo NOI DUNG ten. Parser cu doi ten "toan ky tu in duoc", sai
             # mot cai la do lui `pos += 1` -> lech het phan sau (acc quanmot mat 2 con dau).
@@ -12244,6 +12253,12 @@ class GameClient:
             self._server_time_span = self._ole_to_dt(ole) - datetime.datetime.now()
         except Exception:
             return
+
+    def _auth_packet(self):
+        """Goi auth 0x01 theo kieu login cua ban. accpwd (TSM): user_id/access_token = acc/pass game."""
+        if self.region.login == "accpwd":
+            return build_accpwd_auth_packet(self.user_id, self.access_token, self.server_id, self.region)
+        return build_auth_packet(self.user_id, self.access_token, self.server_id, self.region)
 
     def gio_server(self):
         """Gio SERVER hien tai (datetime). None = chua nhan duoc.
@@ -12353,7 +12368,7 @@ class GameClient:
 
         pets = list(getattr(config, "VANTIEU_PETS", []) or [])
         _refresh_panel()
-        now = datetime.datetime.now()
+        now = self.region.server_now()
         # 1) NHAN qua slot da xong (now >= gio ket thuc)
         claimed = False
         claim_blocked_until = 0.0
@@ -12679,7 +12694,8 @@ class GameClient:
             return
         try:
             if pkt[7] == 0x02:
-                ev = legion_damage.on_org_data(self._username, self.org_id, pkt[7:], stale=stale)
+                ev = legion_damage.on_org_data(self._username, self.org_id, pkt[7:], stale=stale,
+                                             enc=self.region.encoding)
                 off = [e for e in ev if e.get("delta")]
                 log.info("[%s] QD %s dame boss: doc bang QD, %d member tang luc offline",
                          self._label, self.org_id, len(off))
@@ -12717,7 +12733,7 @@ class GameClient:
         if not (0 < nl <= 40) or k + 9 + nl > len(pkt):
             return
         try:
-            nm = pkt[k + 9:k + 9 + nl].decode('utf-16-le')
+            nm = pkt[k + 9:k + 9 + nl].decode(self.region.encoding)
         except Exception:
             return
         if nm:
@@ -12819,7 +12835,7 @@ class GameClient:
             return None
         name_len = body[46]
         end = 47 + name_len
-        if not (0 <= name_len <= 80 and name_len % 2 == 0 and end + 2 <= len(body)):
+        if not (0 <= name_len <= 80 and name_len % self.region.char_bytes == 0 and end + 2 <= len(body)):
             return None
         return int.from_bytes(body[end:end + 2], "little")
 
@@ -12847,12 +12863,12 @@ class GameClient:
             if off < 2 or off + 1 >= len(body):
                 return None
             nl = body[off]
-            if not (0 < nl <= 40) or nl % 2 or off + 1 + nl > len(body):
+            if not (0 < nl <= 40) or nl % self.region.char_bytes or off + 1 + nl > len(body):
                 return None
             if require_zero_prefix and body[off - 2:off] != b"\x00\x00":
                 return None
             try:
-                nm = body[off + 1:off + 1 + nl].decode("utf-16-le")
+                nm = body[off + 1:off + 1 + nl].decode(self.region.encoding)
             except Exception:
                 return None
             return nm if (nm and nm.isprintable()) else None
@@ -12933,7 +12949,7 @@ class GameClient:
             scene_id = int.from_bytes(body[21:23], "little")
             name_len = body[46]
             end = 47 + name_len
-            if 0 <= name_len <= 80 and name_len % 2 == 0 and end + 2 <= len(body):
+            if 0 <= name_len <= 80 and name_len % self.region.char_bytes == 0 and end + 2 <= len(body):
                 instance_id = int.from_bytes(body[end:end + 2], "little")
         except Exception:
             pass
@@ -12974,7 +12990,7 @@ class GameClient:
             if name_len <= 0 or name_len > 80 or end > len(pkt):
                 break
             try:
-                name = pkt[off + 13:end].decode("utf-16-le")
+                name = pkt[off + 13:end].decode(self.region.encoding)
             except Exception:
                 name = ""
             if name:
@@ -13024,7 +13040,7 @@ class GameClient:
             if name_len == 0 or off + 9 + name_len > len(payload):
                 break
             try:
-                name = payload[off + 9:off + 9 + name_len].decode('utf-16-le')
+                name = payload[off + 9:off + 9 + name_len].decode(self.region.encoding)
             except Exception:
                 name = ''
             if name:

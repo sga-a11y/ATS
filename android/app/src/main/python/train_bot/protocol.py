@@ -2,7 +2,7 @@
 
 Header: c0 91 [len_lo len_hi] 00 00 [opcode] [payload]
 - len = 2 byte LE = tong kich thuoc packet (ke ca header)
-- toan bo packet duoc XOR voi 0xAD truoc khi gui qua TCP
+- toan bo packet duoc XOR voi key cua ban (VTC 0xAD, xem region.py) truoc khi gui qua TCP
 """
 import struct
 from .config import XOR_KEY
@@ -10,9 +10,10 @@ from .config import XOR_KEY
 MAGIC = b"\xc0\x91"
 
 
-def xor(data: bytes) -> bytes:
-    """XOR 2 chieu (encode = decode)."""
-    return bytes(b ^ XOR_KEY for b in data)
+def xor(data: bytes, key: int = None) -> bytes:
+    """XOR 2 chieu (encode = decode). key = region.xor_key, None -> ban mac dinh."""
+    k = XOR_KEY if key is None else key
+    return bytes(b ^ k for b in data)
 
 
 def build_packet(opcode: int, payload: bytes) -> bytes:
@@ -25,9 +26,9 @@ def build_packet(opcode: int, payload: bytes) -> bytes:
     return MAGIC + struct.pack("<H", total) + b"\x00\x00" + bytes([opcode]) + payload
 
 
-def encode(opcode: int, payload: bytes) -> bytes:
+def encode(opcode: int, payload: bytes, key: int = None) -> bytes:
     """Tao packet va XOR san sang gui."""
-    return xor(build_packet(opcode, payload))
+    return xor(build_packet(opcode, payload), key)
 
 
 def parse_stream(decoded: bytes):

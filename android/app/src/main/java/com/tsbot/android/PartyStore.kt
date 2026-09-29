@@ -30,10 +30,11 @@ class PartyStore(private val context: Context) {
         /** Chu ky su kien doi thuong DANG MO (tap key qua cuoi). Rong = chua doc duoc.
          *  Dung CHUNG ham Python voi ban PC (bot/event_exchange.py: cache_signature) de khong
          *  lech. Khong can context nen de o companion -> UI goi PartyStore.eventSigNow(). */
-        fun eventSigNow(): String = try {
+        fun eventSigNow(game: String = "vtc"): String = try {
+            // game: moi ban TS cache su kien RIENG (event_exchange.cache_name)
             com.chaquo.python.Python.getInstance()
                 .getModule("train_bot.event_exchange")
-                .callAttr("cache_signature")
+                .callAttr("cache_signature", null, game)
                 .toString()
         } catch (e: Exception) {
             ""
@@ -43,7 +44,7 @@ class PartyStore(private val context: Context) {
     fun load(): List<Party> {
         if (!file.exists()) return emptyList()
         val arr = JSONArray(file.readText())
-        val curSig = eventSigNow()
+        val sigByGame = HashMap<String, String>()   // game -> chu ky (moi ban TS su kien rieng)
         val loaded = (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             val accArr = o.getJSONArray("accounts")
@@ -140,12 +141,14 @@ class PartyStore(private val context: Context) {
                 accounts = accounts,
             )
         }
-        if (curSig.isEmpty()) return loaded    // chua doc duoc su kien -> khong dung vao config
         // Chu ky luc user tick KHAC chu ky hien tai = su kien da doi -> xoa tick (ke ca khi mon
         // do van con o su kien moi: nguyen lieu da khac han, phai bat chon lai).
         // Config cu chua co truong sig -> khong biet thuoc event nao -> cung xoa 1 lan.
         val reset = loaded.map {
-            if ((it.autoEventExchange || it.eventExchangeItems.isNotEmpty()) &&
+            val g = Servers.ALL[it.serverKey]?.game ?: "vtc"
+            val curSig = sigByGame.getOrPut(g) { eventSigNow(g) }
+            // curSig rong = game nay chua doc duoc su kien -> khong dung vao config
+            if (curSig.isNotEmpty() && (it.autoEventExchange || it.eventExchangeItems.isNotEmpty()) &&
                 it.eventExchangeSig != curSig)
                 it.copy(autoEventExchange = false, eventExchangeItems = emptyList(),
                         eventExchangeSig = "")

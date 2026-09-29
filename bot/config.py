@@ -732,6 +732,8 @@ def _server_ip(name):
     s = SERVERS.get(name); return s.get("ip") if s else None
 def _server_id(name):
     s = SERVERS.get(name); return int(s.get("id", 1)) if s else 1
+def _server_game(name):
+    s = SERVERS.get(name); return (s or {}).get("game") or "vtc"
 def _load_accounts_json():
     import json, os
     f = os.path.join(_base_dir(), "accounts.json")
@@ -834,6 +836,8 @@ if _aj is not None:
                 "server": _srv,
                 "server_ip": _server_ip(_srv) or GAME_HOST,
                 "server_id": _server_id(_srv),
+                # BAN TS (region.py): lay theo SERVER (server TSM chi co o ban TSM) -> khong the lech.
+                "game": _server_game(_srv),
                 "do_daily": bool(_party.get("do_daily", _party.get("do_dungeon", True))),
                 "claim_offline_exp": bool(_party.get("claim_offline_exp", True)),
                 "auto_world_boss": bool(_party.get("auto_world_boss", True)),
@@ -873,6 +877,8 @@ if _aj is not None:
                 "sp_thresh": int(_party.get("sp_thresh", 500000)),
                 "di_gioi_level": int(_party.get("di_gioi_level", 2)),   # idx 1..15 cap quai DG (2=cap25)
             })
+            from . import region as _region
+            _region.chan_event_sai_game(PARTY_CONFIG[_i], EVENTS)
             PARTY_LEADERS_BY_IDX[_i] = list(_party.get("leaders", []) or [])
         if PARTY_CONFIG:
             START_CITY_ID = PARTY_CONFIG[0]["start_city_id"]

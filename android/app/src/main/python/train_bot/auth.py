@@ -10,21 +10,23 @@ len duoc tinh lai theo do dai chuoi thuc te.
 """
 import struct
 from .protocol import xor, OP_LOGIN
+from . import region as _region
 
 # 13 byte payload-prefix sau opcode (truoc chuoi credential)
 # 00 00 | 02 01 [SERVER_ID] 00 00 00 00 00 | 19 14 00
 # byte thu 5 (index 4) = SERVER ID: Trieu Van=1 (.98), Tao Thao=2 (.99). Sai -> KHONG vao world.
 
 
-def build_auth_packet(user_id: str, access_token: str, server_id: int = 1) -> bytes:
+def build_auth_packet(user_id: str, access_token: str, server_id: int = 1, region=None) -> bytes:
     """Tra ve packet auth da XOR, san sang gui. server_id theo server (xem servers.json)."""
     prefix = bytes([0x00, 0x00, 0x02, 0x01, server_id & 0xFF,
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x19, 0x14, 0x00])
-    cred = (user_id + "f" + access_token).encode("utf-16-le")
+    rg = region or _region.get()
+    cred = rg.encode_str(user_id + "f" + access_token)
     payload = prefix + cred
     total = 7 + len(payload)
     frame = b"\xc0\x91" + struct.pack("<H", total) + b"\x00\x00" + bytes([OP_LOGIN]) + payload
-    return xor(frame)
+    return xor(frame, rg.xor_key)
 
 
 # ===== VO GIOI (無界) - server RIENG cho event lien server =====
@@ -44,10 +46,11 @@ VERSION = 0x0102              # 2 byte `02 01` trong goi auth thuong
 
 
 def build_unbounded_auth_packet(user_id, access_token, role_id, server_id,
-                                sn, connect_code=0, version=VERSION):
+                                sn, connect_code=0, version=VERSION, region=None):
     """Goi auth toi SERVER VO GIOI. `role_id` = entity 8 byte cua char (Role.playerId)."""
-    acc = str(user_id).encode("utf-16-le")
-    pwd = str(access_token).encode("utf-16-le")
+    rg = region or _region.get()
+    acc = rg.encode_str(user_id)
+    pwd = rg.encode_str(access_token)
     if len(acc) > 255 or len(pwd) > 255:
         raise ValueError("chuoi qua dai cho do dai 1 byte (acc=%d pwd=%d)" % (len(acc), len(pwd)))
     if len(role_id) != 8:
@@ -63,10 +66,36 @@ def build_unbounded_auth_packet(user_id, access_token, role_id, server_id,
                + struct.pack("<I", int(sn) & 0xFFFFFFFF))
     total = 7 + len(payload)
     frame = b"\xc0\x91" + struct.pack("<H", total) + b"\x00\x00" + bytes([OP_LOGIN]) + payload
-    return xor(frame)
+    return xor(frame, rg.xor_key)
 
 
-def parse_ket_qua_login(body):
+
+# ===== LOGIN TAI KHOAN/MAT KHAU (ELogin.AccPwd = 1) - ban TSM (Dai Loan) =====
+# Capture captures/tsm_login_20260929.pcap, khop Logic/Network.lua `Network.OnConnect`:
+#   C:001-000 +ver(2)=0x0102 +serverId(2) +connectCode(4)=0 +kind(1)=1 +L(1)+acc +L(1)+pwd
+# Khong co HTTP SDK: acc/pwd game nhap vao gui thang toi server TCP.
+LOGIN_ACCPWD = 0x01
+
+
+def build_accpwd_auth_packet(account, password, server_id, region=None, version=VERSION):
+    rg = region or _region.get()
+    acc = rg.encode_str(account)
+    pwd = rg.encode_str(password)
+    if len(acc) > 255 or len(pwd) > 255:
+        raise ValueError("chuoi qua dai cho do dai 1 byte (acc=%d pwd=%d)" % (len(acc), len(pwd)))
+    payload = (b"\x00\x00"
+               + struct.pack("<H", version)
+               + struct.pack("<H", int(server_id) & 0xFFFF)
+               + struct.pack("<I", 0)
+               + bytes([LOGIN_ACCPWD])
+               + bytes([len(acc)]) + acc
+               + bytes([len(pwd)]) + pwd)
+    total = 7 + len(payload)
+    frame = b"\xc0\x91" + struct.pack("<H", total) + b"\x00\x00" + bytes([OP_LOGIN]) + payload
+    return xor(frame, rg.xor_key)
+
+
+def parse_ket_qua_login(body, region=None):
     """S:001-002 <登入結果> -> (account, password) DE DUNG CHO SERVER VO GIOI, None neu khong doc duoc.
 
     Day la manh con thieu khien lan chay 05/09 21:57 that bai: bot gui `user_id` (chuoi so) va
@@ -89,8 +118,8 @@ def parse_ket_qua_login(body):
     if not m or j + 1 + m > len(body):
         return None
     try:
-        return (body[i + 1:j].decode("utf-16-le"),
-                body[j + 1:j + 1 + m].decode("utf-16-le"))
+        return (_region.decode_str(body[i + 1:j], region=region),
+                _region.decode_str(body[j + 1:j + 1 + m], region=region))
     except UnicodeDecodeError:
         return None
 
@@ -107,7 +136,7 @@ def parse_connect_code(body):
     return struct.unpack_from("<I", body, 2)[0]
 
 
-def parse_bao_chuyen_vo_gioi(body):
+def parse_bao_chuyen_vo_gioi(body, region=None):
     """S:001-020 <通知連無界伺服器> ServerId(2)+L(1)+IP(L)+port(2)+SN(4).
 
     `body` = than goi SAU opcode (tinh ca 2 byte sub). Tra dict hoac None neu khong phai.
@@ -119,7 +148,7 @@ def parse_bao_chuyen_vo_gioi(body):
     if 5 + n + 6 > len(body):
         return None
     try:
-        host = body[5:5 + n].decode("utf-16-le")
+        host = _region.decode_str(body[5:5 + n], region=region)
     except UnicodeDecodeError:
         return None
     port, sn = struct.unpack_from("<HI", body, 5 + n)

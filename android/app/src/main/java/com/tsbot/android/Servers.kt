@@ -13,7 +13,8 @@ import org.json.JSONObject
  * co cong chan bat FALLBACK phai phu du key cua servers.json.
  */
 object Servers {
-    data class Info(val label: String, val ip: String, val serverId: Int)
+    /** game = ban TS (bot/region.py: "vtc" / "tsm"). servers.json khong co field = "vtc". */
+    data class Info(val label: String, val ip: String, val serverId: Int, val game: String = "vtc")
 
     private var loaded: Map<String, Info>? = null
 
@@ -31,7 +32,7 @@ object Servers {
             val out = LinkedHashMap<String, Info>()
             for (key in root.keys()) {
                 val o = root.getJSONObject(key)
-                out[key] = Info(o.getString("label"), o.getString("ip"), o.getInt("id"))
+                out[key] = Info(o.getString("label"), o.getString("ip"), o.getInt("id"), o.optString("game", "vtc"))
             }
             // SERVER MOI do BOT TU PHAT HIEN tu CDN tai nguyen cua game (bot/servers_cdn.py ghi
             // ra `servers_cdn.json` trong filesDir). Assets la read-only nen server moi khong the
@@ -44,7 +45,7 @@ object Servers {
                     for (key in extra.keys()) {
                         if (out.containsKey(key)) continue
                         val o = extra.getJSONObject(key)
-                        out[key] = Info(o.getString("label"), o.getString("ip"), o.getInt("id"))
+                        out[key] = Info(o.getString("label"), o.getString("ip"), o.getInt("id"), o.optString("game", "vtc"))
                     }
                 }
             } catch (e: Exception) {
@@ -108,6 +109,7 @@ object Servers {
         // id 16 = Bang Thong DA DONG (loi ky thuat) -> nhay thang 17, khong phai thieu sot
         "dien_vi" to Info("Điển Vi", "103.190.202.60", 17),
         "truong_lieu" to Info("Trương Liêu", "103.190.202.61", 18),
+        "tsm_21" to Info("TSM - Server 21", "34.81.22.35", 21, "tsm"),
         "dong_trac" to Info("Đồng Trác", "103.190.202.63", 19),
     )
 }

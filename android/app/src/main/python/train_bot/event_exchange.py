@@ -217,7 +217,13 @@ def plan_for(kind, item, missions, have_fn, got, want=1, why=None, only_mission=
     return merged
 
 
-def options_from_cache(path=None):
+def cache_name(game=None):
+    """File cache theo BAN TS: moi ban su kien/qua KHAC nhau -> khong duoc ghi de nhau.
+    VTC giu ten cu (khong mat cache dang co)."""
+    return "event_exchange.json" if (game or "vtc") == "vtc" else "event_exchange_%s.json" % game
+
+
+def options_from_cache(path=None, game=None):
     """Danh sach QUA CUOI cho GUI tick, doc tu cache do bot ghi luc dang nhap.
 
     Tra list chuoi "key\tnhan" (key = "kind:itemId"). Dung dinh dang chuoi de Chaquopy (APK)
@@ -225,12 +231,7 @@ def options_from_cache(path=None):
     """
     import json
     import os
-    if not path:
-        try:
-            from ._appdir import app_dir
-            path = os.path.join(app_dir(), "event_exchange.json")
-        except Exception:
-            path = "event_exchange.json"
+    path = _cache_path(path, game)
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -250,28 +251,28 @@ def options_from_cache(path=None):
     return out
 
 
-def _cache_path(path=None):
+def _cache_path(path=None, game=None):
     import os
     if path:
         return path
     try:
         from ._appdir import app_dir
-        return os.path.join(app_dir(), "event_exchange.json")
+        return os.path.join(app_dir(), cache_name(game))
     except Exception:
-        return "event_exchange.json"
+        return cache_name(game)
 
 
-def cache_signature(path=None):
+def cache_signature(path=None, game=None):
     """Chu ky cua su kien dang mo = tap KEY qua cuoi. Doi key = SU KIEN MOI.
 
     Khong dung mtime/hash ca file: bot ghi lai file khi tien do thay doi cung khong phai su kien
     moi. Chi khi DANH SACH QUA CUOI khac di moi coi la su kien moi.
     """
-    keys = sorted(line.split("\t", 1)[0] for line in options_from_cache(path))
+    keys = sorted(line.split("\t", 1)[0] for line in options_from_cache(path, game))
     return "|".join(keys)
 
 
-def is_new_event(path=None, sig_path=None):
+def is_new_event(path=None, sig_path=None, game=None):
     """True DUY NHAT 1 lan khi su kien vua doi (so voi chu ky da luu). Tu ghi lai chu ky moi.
 
     Chu ky luu o file rieng canh cache -> khong phai doi cau truc file config (PC lan APK dung
@@ -279,11 +280,13 @@ def is_new_event(path=None, sig_path=None):
     """
     import io as _io
     import os
-    cur = cache_signature(path)
+    cur = cache_signature(path, game)
     if not cur:                      # chua co cache (bot chua chay lan nao) -> khong doi gi
         return False
     if not sig_path:
-        sig_path = os.path.join(os.path.dirname(_cache_path(path)) or ".", "event_exchange_sig.txt")
+        # VTC: event_exchange_sig.txt (ten cu) | TSM: event_exchange_tsm_sig.txt
+        sig_path = os.path.join(os.path.dirname(_cache_path(path, game)) or ".",
+                                cache_name(game).replace(".json", "_sig.txt"))
     try:
         old = _io.open(sig_path, encoding="utf-8").read().strip()
     except Exception:

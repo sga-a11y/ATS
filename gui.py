@@ -25,11 +25,11 @@ def _os_path_exists_cache():
         return os.path.isfile("event_exchange.json")
 
 
-def _event_sig_now() -> str:
+def _event_sig_now(game=None) -> str:
     """Chu ky su kien doi thuong dang mo (tap key qua cuoi). Rong = chua doc duoc."""
     try:
         from bot import event_exchange as _evx
-        return _evx.cache_signature()
+        return _evx.cache_signature(game=game)
     except Exception:
         return ""
 
@@ -45,16 +45,23 @@ def _reset_event_ticks_if_new_event(prof):
     """
     try:
         from bot import event_exchange as _evx
-        _cur = _evx.cache_signature()
     except Exception:
         return
-    if not _cur:
-        return          # chua doc duoc su kien nao -> KHONG dung vao config cua user
+    _sig = {}           # game -> chu ky (moi ban TS su kien rieng, cache rieng)
     n = 0
     for _cfg in (prof.get("profiles") or {}).values():
         for p in (_cfg.get("parties") or ()):
             if not (p.get("auto_event_exchange") or p.get("event_exchange_items")):
                 continue
+            _g = _game_of_server(p.get("server"))
+            if _g not in _sig:
+                try:
+                    _sig[_g] = _evx.cache_signature(game=_g)
+                except Exception:
+                    _sig[_g] = ""
+            _cur = _sig[_g]
+            if not _cur:
+                continue    # game nay chua doc duoc su kien nao -> KHONG dung vao config cua user
             # Chu ky luc USER TICK. Khac chu ky hien tai = SU KIEN DA DOI -> xoa het tick.
             # Config cu chua co truong nay -> khong biet thuoc event nao -> cung xoa (1 lan).
             if p.get("event_exchange_sig") == _cur:
@@ -223,6 +230,12 @@ def _shop_items_json(value):
 # Cap quai Di Gioi: idx 1..15 (gói 0x61 02 00 idx) -> cap hien thi. Xem KNOWLEDGE.md.
 from bot import train_pick as _TP   # noqa: E402  (loi tu chon map/diem/cap quai theo level party)
 from bot import bag_tabs as _BAG    # noqa: E402  (phan loai 4 tab tui do - sao logic client)
+from bot import region as _region   # noqa: E402  (cac ban TS: VTC / TSM)
+
+
+def _game_of_server(key):
+    """Ban TS cua server (field `game` trong servers.json, khong co = vtc)."""
+    return ((getattr(config, "SERVERS", None) or {}).get(key) or {}).get("game") or _region.DEFAULT
 
 _DG_LEVELS = _TP.DG_LEVELS   # NGUON DUY NHAT o train_pick.py (runner + APK cung doc), khong chep tay
 
@@ -699,7 +712,7 @@ class BotGUI(tk.Tk):
         self._dot_agi = self._make_dot("#f59e0b")
         # list thanh (cho popup teleport khi bam header Map). Doc tu cities.json giong ConfigDialog.
         ct_raw = _load_json("cities.json").get("cities", {})
-        self.cities = [(v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()]
+        self.cities = sorted(((v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()), key=lambda c: c[1])
         # --- log filter state ---
         self.log_buffer = collections.deque(maxlen=4000)   # (line, label)
         self._agi_cache = {}        # pidx -> (luc, report) cho party khong hien thi
@@ -1285,20 +1298,28 @@ class BotGUI(tk.Tk):
                   padding=8).pack(anchor="w")
         mode = config.PARTY_CONFIG.get(pidx, {}).get("mode")
         allow_route = mode in ("city", "stand")
-        extra_rows = 1 if allow_route else 0
+        # mode city/stand: dau list = "Di bo AAA->BBB" roi "Nha Nam Tinh Quan" (khong phai thanh:
+        # ve Bac Hai roi keo party di bo len - `ctrl.party_go_nha_nam_tinh`), sau do moi toi thanh.
+        extra_rows = 2 if allow_route else 0
         lb = tk.Listbox(win, width=38, height=min(17, max(4, len(self.cities) + extra_rows)), font=("", 10))
         lb.pack(fill="both", expand=True, padx=8)
         if allow_route:
             lb.insert("end", "Đi bộ từ map AAA đến map BBB")
+            lb.insert("end", "Nhà Nam Tinh Quân")
         for (cid, f, n) in self.cities:
             lb.insert("end", n)
         def _go():
             sel = lb.curselection()
             if sel:
-                offset = 1 if allow_route else 0
+                offset = extra_rows
                 if allow_route and sel[0] == 0:
                     win.destroy()
                     self._popup_route_maps(pidx)
+                    return
+                if allow_route and sel[0] == 1:
+                    threading.Thread(target=ctrl.party_go_nha_nam_tinh,
+                                     args=(pidx,), daemon=True).start()
+                    win.destroy()
                     return
                 cid, f, n = self.cities[sel[0] - offset]
                 threading.Thread(target=ctrl.party_teleport_city,
@@ -5100,7 +5121,9 @@ class PartyConfigFrame(ttk.Frame):
                  on_apply_di_gioi_level=None, on_apply_heal_all=None, on_apply_furnace_all=None):
         super().__init__(master, padding=8)
         self.train_maps = train_maps   # list (map_id, name, mobs)
-        self.cities = cities           # list (city_id, flag, name)
+        # Nha Nam Tinh Quan (55002) KHONG phai thanh: bot ve Bac Hai roi keo party di bo len
+        # (`_ve_thanh_tap_trung`). Dat DAU danh sach, truoc Trac Quan.
+        self.cities = [(55002, 1, "Nhà Nam Tinh Quân")] + list(cities)   # list (city_id, flag, name)
         self.servers = servers         # list (key, label)
         self.on_apply_advanced_to_all = on_apply_advanced_to_all
         self.on_apply_di_gioi_level = on_apply_di_gioi_level
@@ -5108,13 +5131,23 @@ class PartyConfigFrame(ttk.Frame):
         self.on_apply_furnace_all = on_apply_furnace_all  # ap config lo cho MOI acc MOI party
         self._preset = party or {}
 
+        # GAME (ban TS: VTC / TSM - bot/region.py) dung TRUOC Server: doi game -> loc server + event.
+        # Game KHONG luu rieng: suy tu server (server TSM chi co o TSM) -> khong the lech nhau.
         srow = ttk.Frame(self); srow.pack(fill="x", pady=4)
-        ttk.Label(srow, text="Server:", width=10).pack(side="left")
-        self.server_var = tk.StringVar()
         cur_srv = self._preset.get("server", servers[0][0] if servers else "trieu_van")
+        self._games = [(k, k.upper()) for k in _region.REGIONS]          # [("vtc","VTC"),("tsm","TSM")]
+        ttk.Label(srow, text="Game:", width=10).pack(side="left")
+        self.game_var = tk.StringVar(value=dict(self._games).get(_game_of_server(cur_srv), "VTC"))
+        _gcb = ttk.Combobox(srow, textvariable=self.game_var, state="readonly", width=6,
+                            values=[lbl for _, lbl in self._games])
+        _gcb.pack(side="left")
+        ttk.Label(srow, text="Server:").pack(side="left", padx=(12, 4))
+        self.server_var = tk.StringVar()
         self.server_var.set(dict(servers).get(cur_srv, servers[0][1] if servers else cur_srv))
-        ttk.Combobox(srow, textvariable=self.server_var, state="readonly", width=22,
-                     values=[lbl for _, lbl in servers]).pack(side="left")
+        self.server_cb = ttk.Combobox(srow, textvariable=self.server_var, state="readonly", width=22)
+        self.server_cb.pack(side="left")
+        self._loc_server_theo_game()
+        _gcb.bind("<<ComboboxSelected>>", lambda _e: self._on_game_change())
         ttk.Button(srow, text="⚙ Cài đặt nâng cao",
                    command=self._open_advanced_settings).pack(side="right")
 
@@ -5165,8 +5198,8 @@ class PartyConfigFrame(ttk.Frame):
                           if saved_el else set(_TP.ALL_ELEMENTS)) or set(_TP.ALL_ELEMENTS)
         # EVENT: list (key, label) tu events.json -> picker khi mode=event. Bo qua event co
         # "hidden": true (an tam - chua lam xong; giu data, bo co de hien lai).
-        self.events = [(k, v.get("label", k)) for k, v in (getattr(config, "EVENTS", {}) or {}).items()
-                       if not v.get("hidden")]
+        # Chi event CO O GAME dang chon (`"games"` trong events.json; khong khai = chi VTC).
+        self.events = self._events_cua_game()
         self.event_var = tk.StringVar(); self.event_cb = None
 
         def _event_key_pho_bien():
@@ -7003,7 +7036,7 @@ class PartyConfigFrame(ttk.Frame):
         bot tu truy nguoc chuoi khi doi."""
         from bot import event_exchange as _evx
         rows = []
-        for line in _evx.options_from_cache():
+        for line in _evx.options_from_cache(game=self._game_key()):
             key, _, label = line.partition("\t")
             rows.append((key, label))
         if not rows and not _os_path_exists_cache():
@@ -7166,7 +7199,7 @@ class PartyConfigFrame(ttk.Frame):
             "material_modes": dict(self.material_modes),
             "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
             "event_exchange_items": list(self.event_exchange_items),
-            "event_exchange_sig": _event_sig_now() if self.event_exchange_items else "",
+            "event_exchange_sig": _event_sig_now(self._game_key()) if self.event_exchange_items else "",
             "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
             "shop_items": _shop_items_json({
                 "ho_phu": self.buy_ho_phu_var.get(),
@@ -7232,6 +7265,27 @@ class PartyConfigFrame(ttk.Frame):
         self.sp_qty_var.set(str(_parse_int(data.get("sp_qty", 9999), 9999)))
         self.sp_thresh_var.set(str(_parse_int(data.get("sp_thresh", 500000), 500000)))
         # KHONG dung di_gioi_level (setting rieng tung party, xem _advanced_settings_data)
+
+    def _game_key(self):
+        return next((k for k, lbl in self._games if lbl == self.game_var.get()), _region.DEFAULT)
+
+    def _loc_server_theo_game(self):
+        """Chi hien server cua game dang chon. Server dang chon khong thuoc game -> lay server dau."""
+        g = self._game_key()
+        labels = [lbl for k, lbl in self.servers if _game_of_server(k) == g]
+        self.server_cb["values"] = labels
+        if self.server_var.get() not in labels:
+            self.server_var.set(labels[0] if labels else "")
+
+    def _events_cua_game(self):
+        g = self._game_key()
+        return [(k, v.get("label", k)) for k, v in (getattr(config, "EVENTS", {}) or {}).items()
+                if not v.get("hidden") and _region.co_trong_game(v, g)]
+
+    def _on_game_change(self):
+        self._loc_server_theo_game()
+        self.events = self._events_cua_game()
+        self._render_dyn()                 # o Event (mode event) ve lai theo danh sach moi
 
     def _on_mode_change(self):
         # Khi DOI che do: tu set mac dinh "Khong co chu PT".
@@ -7568,7 +7622,7 @@ class PartyConfigFrame(ttk.Frame):
                 "auto_event_exchange": bool(self.auto_event_exchange_var.get()),
                 "event_exchange_items": list(self.event_exchange_items),
                 # Chu ky su kien LUC TICK -> lan sau su kien doi thi tu biet ma xoa tick.
-                "event_exchange_sig": _event_sig_now() if self.event_exchange_items else "",
+                "event_exchange_sig": _event_sig_now(self._game_key()) if self.event_exchange_items else "",
                 "death_return_town": bool(self.death_return_town_var.get()),
                 "pet_death_return_town": bool(self.pet_death_return_town_var.get()),
                 "auto_bag_clean": bool(self.auto_bag_clean_var.get()),
@@ -8115,7 +8169,7 @@ class ConfigDialog(tk.Toplevel):
         tm_raw = _load_json("train_maps.json").get("maps", {})
         self.train_maps = [(int(k), v.get("name", k), v.get("mobs", []), (v.get("group") or _DEFAULT_GROUP)) for k, v in tm_raw.items()]
         ct_raw = _load_json("cities.json").get("cities", {})
-        self.cities = [(v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()]
+        self.cities = sorted(((v["city_id"], v.get("flag", 0), v.get("name", k)) for k, v in ct_raw.items()), key=lambda c: c[1])
         # DOC `config.SERVERS`, KHONG doc thang `servers.json`: `config` da nhap them SERVER MOI
         # do bot tu phat hien tu CDN (`bot/servers_cdn.py` -> `servers_cdn.json`). Doc thang file
         # thi server moi co trong bot ma KHONG BAO GIO hien ra de chon

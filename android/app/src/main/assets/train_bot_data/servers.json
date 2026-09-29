@@ -91,7 +91,14 @@
    "label": "Đồng Trác",
    "ip": "103.190.202.63",
    "id": 19
+  },
+  "tsm_21": {
+   "label": "TSM - Server 21",
+   "ip": "34.81.22.35",
+   "id": 21,
+   "game": "tsm"
   }
  },
- "_note_ip_gap62": "IP nhay .61 (Truong Lieu) -> .63 (Dong Trac), KHONG dung .62. Boc tu capture MuMu 19/08/2026 (captures/dongtrac_server_20260819.pcap): goi auth C2S toi 103.190.202.63:6614 co server_id=19."
+ "_note_ip_gap62": "IP nhay .61 (Truong Lieu) -> .63 (Dong Trac), KHONG dung .62. Boc tu capture MuMu 19/08/2026 (captures/dongtrac_server_20260819.pcap): goi auth C2S toi 103.190.202.63:6614 co server_id=19.",
+ "_note_game": "game = ban TS (xem bot/region.py). Khong co field = \"vtc\". TSM login acc/pass thang TCP."
 }

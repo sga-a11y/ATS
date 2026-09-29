@@ -264,3 +264,19 @@ không dừng lại ở một acc — nó thành trạng thái "xong DG" giả, 
 Chỉ mã **1** (cấp không đủ) và **2** (hết giờ) mới được dừng hẳn; 3/4/5 là tạm thời, phải thử lại.
 
 Neo bằng `tests/test_vao_di_gioi_giong_client.py`.
+
+## 9. Đích "Nhà Nam Tinh Quân" (55002) — không phải thành, đi bộ từ Bắc Hải
+
+Chọn được ở: combobox Thành của **mode Về thành** (PC + APK), popup teleport khi bấm header Map
+(mode Về thành / Đứng yên). Thứ tự list: `Đi bộ từ map AAA đến map BBB` → **Nhà Nam Tinh Quân** →
+các thành theo **flag tăng dần** (Trác Quận 0, Bắc Hải 1, …).
+
+Flow (`_ra_lenh_di_nha_nam_tinh`, `run_party_digioi.py`):
+1. Cả party đã mở Bắc Hải → lệnh `DI MAP 11011 → 55002` (tele Bắc Hải, leader kéo, member follow).
+2. Có acc **chưa mở** Bắc Hải → `DI MAP <thành cả party đã mở, gần Bắc Hải nhất> → 11011` để mở
+   Bắc Hải trước; route xong (`_engine_route_decisions`, cờ `nha_nt_tiep`) tự nối chặng `11011 → 55002`.
+3. Có acc **chưa biết** (chưa nhận cờ nhiệm vụ) → chờ nhịp sau, không kết luận oan.
+- Mode Về thành: `start_city_id=55002` → `_ve_thanh_tap_trung` không tele mà gọi flow trên; bị đẩy
+  khỏi 55002 thì làm lại (điểm tập kết của party = chính 55002).
+- APK gửi 55002 qua `party_teleport_city` → Python chuyển sang `party_go_nha_nam_tinh`.
+- Test: `tests/test_nha_nam_tinh_quan.py`.

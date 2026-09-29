@@ -14,6 +14,7 @@ import os
 import struct
 import threading
 import time
+from . import region as _region
 
 _VN_OFFSET = 7 * 3600
 _WEEK = 7 * 86400
@@ -42,12 +43,12 @@ def week_key(ts: float) -> str:
     return time.strftime("%Y-%m-%d", time.gmtime(week_start(ts) + _VN_OFFSET))
 
 
-def _str(b: bytes, p: int):
+def _str(b: bytes, p: int, enc=None):
     n = b[p]
-    return b[p + 1:p + 1 + n].decode("utf-16-le", "replace"), p + 1 + n
+    return b[p + 1:p + 1 + n].decode(enc or _region.get().encoding, "replace"), p + 1 + n
 
 
-def parse_org_data(body: bytes):
+def parse_org_data(body: bytes, enc=None):
     """S:039-002 (body tinh tu sub). -> (ten QD, [(roleId hex, ten, tong dame)], bossCount)
     hoac None. bossCount = so boss DA HA (None neu doc duoi goi loi).
 
@@ -55,13 +56,13 @@ def parse_org_data(body: bytes):
     roleId(8) ten(L) lv/element/turn3/turn/career(5) sex/head(2) colorTints(8)
     online(1) score(4) weekScore(4) dutyFlags(5) bossDamage(4)."""
     try:
-        name, p = _str(body, 2)
+        name, p = _str(body, 2, enc)
         n = 1 + body[p] + body[p + 1]
         p += 2
         out = []
         for _ in range(n):
             rid = body[p:p + 8].hex()
-            nm, p = _str(body, p + 8)
+            nm, p = _str(body, p + 8, enc)
             p += 7 + 8 + 1 + 4 + 4 + 5
             dmg = struct.unpack_from("<I", body, p)[0]
             p += 4
@@ -70,7 +71,7 @@ def parse_org_data(body: bytes):
         return None
     try:
         # quy che(L) giai tan(8) thanh lap(8) dong minh(1) co(1) hoat dong tuan(4)/tich luy(4)
-        _decl, p = _str(body, p)
+        _decl, p = _str(body, p, enc)
         count = struct.unpack_from("<H", body, p + 26)[0]
     except (IndexError, struct.error):
         count = None
@@ -153,13 +154,13 @@ def _apply(d, org_id, rid, name, total, live, now, lv=None, allow_reset=True):
             "hits": m["hits"], "lv": lv if live else None}
 
 
-def on_org_data(username, org_id, body, now=None, stale=False):
+def on_org_data(username, org_id, body, now=None, stale=False, enc=None):
     """Goi 039-002 (acc vua vao game). -> list su kien.
 
     stale=True: bang giu tu luc login, nap bu khi user TICK luc acc dang chay (bang QD chi gui 1
     lan luc login). Van lay ten/cap boss; tong chi ghi neu LON HON, khong bao gio coi la reset."""
     now = time.time() if now is None else now
-    r = parse_org_data(body)
+    r = parse_org_data(body, enc)
     if r is None or not org_id:
         return []
     oname, members, count = r

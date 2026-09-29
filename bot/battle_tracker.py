@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import struct
+from . import region as _region
 
 log = logging.getLogger("bot")
 
@@ -80,8 +81,11 @@ class BattleSnapshot:
 
 
 class BattleTracker:
-    def __init__(self, local_role_id: bytes = b""):
+    def __init__(self, local_role_id: bytes = b"", region=None):
         self.local_role_id = bytes(local_role_id)
+        # Encoding ten unit theo BAN TS (VTC utf-16 / TSM big5). Sai encoding -> doc ngoai hinh
+        # nguoi choi hong -> tracker khong bao gio active (TSM 29/09: PB bi ngat ma 47).
+        self.encoding = (region or _region.get()).encoding
         self._end_warned = set()   # (generation, ly do) da log - xem _log_end_bo
         self.generation = 0
         self.turn = 0
@@ -179,7 +183,7 @@ class BattleTracker:
             return ()
         # _create THAY NGUYEN tran -> du lieu MOT PHAN o day la nguy hiem (goi cat cut se xoa
         # mat tran dang chay). Giu nghiem: hong thi KHONG dung gi ca.
-        units = self._parse_roles(data[3:], tag="create")
+        units = self._parse_roles(data[3:], tag="create", encoding=self.encoding)
         if units is None:
             return ()
         self.generation += 1
@@ -200,7 +204,7 @@ class BattleTracker:
     def _spawn(self, data: bytes):
         # _spawn chi THEM unit vao tran dang co -> lay duoc bao nhieu tot bay nhieu. Truoc day
         # hong 1 ban ghi la bo SACH danh sach (im lang) -> mat het roster quai.
-        units = self._parse_roles(data, tag="spawn", mot_phan=True)
+        units = self._parse_roles(data, tag="spawn", mot_phan=True, encoding=self.encoding)
         if not units:
             return ()
         for unit in units:
@@ -210,7 +214,7 @@ class BattleTracker:
         return tuple(self._spawn_event(unit) for unit in units)
 
     @classmethod
-    def _parse_roles(cls, data: bytes, tag: str = "", mot_phan: bool = False):
+    def _parse_roles(cls, data: bytes, tag: str = "", mot_phan: bool = False, encoding=None):
         """Doc danh sach nhan vat tham chien (S:011-005 / S:011-250).
 
         TRUOC DAY: gap bat ky loi nao la `return None` -> caller VUT BO TOAN BO danh sach, va
@@ -235,13 +239,13 @@ class BattleTracker:
             cursor = offset + ROLE_HEADER_SIZE
             name = ""
             if role_kind in PLAYER_ROLE_KINDS:
-                parsed = cls._parse_player_appearance(data, cursor)
+                parsed = cls._parse_player_appearance(data, cursor, encoding)
                 if parsed is None:
                     return cls._hong(tag, "doc ngoai hinh nguoi choi hong (role_kind=%d)"
                                      % role_kind, offset, data, units, mot_phan)
                 name, cursor = parsed
             elif role_kind in NAMED_NPC_ROLE_KINDS:
-                parsed = cls._parse_name(data, cursor)
+                parsed = cls._parse_name(data, cursor, encoding)
                 if parsed is None:
                     return cls._hong(tag, "doc ten NPC hong (role_kind=%d)" % role_kind,
                                      offset, data, units, mot_phan)
@@ -291,7 +295,7 @@ class BattleTracker:
                     offset, offset + 24, data[offset:offset + 24].hex())
 
     @staticmethod
-    def _parse_name(data: bytes, offset: int):
+    def _parse_name(data: bytes, offset: int, encoding=None):
         if offset >= len(data):
             return None
         size = data[offset]
@@ -299,14 +303,14 @@ class BattleTracker:
         if end > len(data):
             return None
         try:
-            name = data[offset + 1:end].decode("utf-16le")
+            name = data[offset + 1:end].decode(encoding or _region.get().encoding)
         except UnicodeDecodeError:
             return None
         return name, end
 
     @classmethod
-    def _parse_player_appearance(cls, data: bytes, offset: int):
-        parsed = cls._parse_name(data, offset)
+    def _parse_player_appearance(cls, data: bytes, offset: int, encoding=None):
+        parsed = cls._parse_name(data, offset, encoding)
         if parsed is None:
             return None
         name, cursor = parsed

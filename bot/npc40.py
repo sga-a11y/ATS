@@ -3,6 +3,7 @@
 import datetime
 import logging
 import time
+from . import region as _region
 
 
 log = logging.getLogger("bot")
@@ -10,7 +11,7 @@ log = logging.getLogger("bot")
 
 def in_event_window(now=None):
     """Event 40NPC mo: Thu 2 / Thu 4 / Thu 6 (weekday 0,2,4), 20:00 <= gio < 22:00."""
-    now = now or datetime.datetime.now()
+    now = now or _region.server_now()
     return now.weekday() in (0, 2, 4) and 20 <= now.hour < 22
 
 

@@ -1876,6 +1876,9 @@ fun dgPickOptions(): List<Pair<String, String>> =
 
 // (key, ten hien thi, nhom). Nhom = field 'group' trong train_maps.json (mac dinh 'Chua phan nhom').
 /** Tien to khoa cua 5 muc "bot tu chon map" trong dropdown Map. */
+/** Cac ban TS (bot/region.py REGIONS). */
+val GAMES = listOf("vtc", "tsm")
+
 const val PICK_PREFIX = "pick:"
 const val PICK_GROUP = "\u2605 Bot tự chọn map"
 
@@ -2055,6 +2058,8 @@ fun AddPartyDialog(
     var nameError by remember { mutableStateOf<String?>(null) }
     var expanded by remember { mutableStateOf(false) }
     var selectedKey by remember { mutableStateOf(initialServerKey) }
+    var gameExpanded by remember { mutableStateOf(false) }
+    var selectedGame by remember { mutableStateOf(Servers.ALL[initialServerKey]?.game ?: "vtc") }
     var modeExpanded by remember { mutableStateOf(false) }
     var selectedMode by remember { mutableStateOf(initialRunMode) }
     var cityExpanded by remember { mutableStateOf(false) }
@@ -2205,7 +2210,7 @@ fun AddPartyDialog(
         autoEventExchange = autoEventExchange,
         eventExchangeItems = eventExchangeItems,
         // Chu ky su kien: chi ghi khi THUC SU co mon duoc chon.
-        eventExchangeSig = if (eventExchangeItems.isEmpty()) "" else PartyStore.eventSigNow(),
+        eventExchangeSig = if (eventExchangeItems.isEmpty()) "" else PartyStore.eventSigNow(selectedGame),
     )
 
     AlertDialog(
@@ -2232,9 +2237,47 @@ fun AddPartyDialog(
                     },
                 )
                 Spacer(Modifier.height(8.dp))
+                // GAME (ban TS: VTC / TSM - bot/region.py) dung TRUOC Server, giong GUI PC.
+                // Khong luu rieng: suy tu server (server TSM chi co o TSM) -> khong the lech.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                ExposedDropdownMenuBox(
+                    expanded = gameExpanded,
+                    onExpandedChange = { gameExpanded = it },
+                    modifier = Modifier.weight(0.35f),
+                ) {
+                    OutlinedTextField(
+                        value = selectedGame.uppercase(),
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Game") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = gameExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    )
+                    DropdownMenu(
+                        expanded = gameExpanded,
+                        onDismissRequest = { gameExpanded = false },
+                    ) {
+                        GAMES.forEach { g ->
+                            DropdownMenuItem(
+                                text = { Text(g.uppercase()) },
+                                onClick = {
+                                    gameExpanded = false
+                                    if (g != selectedGame) {
+                                        selectedGame = g
+                                        // server dang chon khong thuoc game moi -> lay server dau cua game
+                                        Servers.ALL.entries.firstOrNull { it.value.game == g }
+                                            ?.let { selectedKey = it.key }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
                 ExposedDropdownMenuBox(
                     expanded = expanded,
                     onExpandedChange = { expanded = it },
+                    modifier = Modifier.weight(0.65f),
                 ) {
                     OutlinedTextField(
                         value = Servers.ALL[selectedKey]?.label ?: selectedKey,
@@ -2253,6 +2296,7 @@ fun AddPartyDialog(
                         // doc `tick` de danh sach VE LAI khi vua phat hien server moi tu CDN
                         @Suppress("UNUSED_EXPRESSION") Servers.tick.intValue
                         Servers.ALL.forEach { (key, info) ->
+                            if (info.game != selectedGame) return@forEach   // chi server cua game dang chon
                             DropdownMenuItem(
                                 text = { Text(info.label) },
                                 onClick = {
@@ -2262,6 +2306,7 @@ fun AddPartyDialog(
                             )
                         }
                     }
+                }
                 }
                 Spacer(Modifier.height(8.dp))
                 ExposedDropdownMenuBox(
@@ -2640,7 +2685,7 @@ fun AddPartyDialog(
                         onExpandedChange = { cityExpanded = it },
                     ) {
                         OutlinedTextField(
-                            value = Cities.ALL[selectedCity]?.label ?: selectedCity,
+                            value = Cities.CHOICES[selectedCity]?.label ?: selectedCity,
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Thành") },
@@ -2651,7 +2696,7 @@ fun AddPartyDialog(
                             expanded = cityExpanded,
                             onDismissRequest = { cityExpanded = false },
                         ) {
-                            Cities.ALL.forEach { (key, info) ->
+                            Cities.CHOICES.forEach { (key, info) ->
                                 DropdownMenuItem(
                                     text = { Text(info.label) },
                                     onClick = {
@@ -2683,7 +2728,7 @@ fun AddPartyDialog(
                             expanded = cityExpanded,
                             onDismissRequest = { cityExpanded = false },
                         ) {
-                            Events.ALL.forEach { (key, info) ->
+                            Events.ALL.filter { selectedGame in it.value.games }.forEach { (key, info) ->
                                 DropdownMenuItem(
                                     text = { Text(info.label) },
                                     onClick = {
@@ -2860,6 +2905,7 @@ fun AddPartyDialog(
     if (showEventExchange) {
         EventExchangeDialog(
             picked = eventExchangeItems,
+            game = selectedGame,
             onDismiss = { showEventExchange = false },
             onSave = { eventExchangeItems = it; showEventExchange = false },
         )
@@ -4113,6 +4159,7 @@ fun loadItemSort(context: android.content.Context): Map<String, Int> {
 @Composable
 fun EventExchangeDialog(
     picked: List<String>,
+    game: String = "vtc",
     onDismiss: () -> Unit,
     onSave: (List<String>) -> Unit,
 ) {
@@ -4122,7 +4169,7 @@ fun EventExchangeDialog(
         try {
             com.chaquo.python.Python.getInstance()
                 .getModule("train_bot.event_exchange")
-                .callAttr("options_from_cache")
+                .callAttr("options_from_cache", null, game)
                 .asList()
                 .mapNotNull { line ->
                     val t = line.toString().split("\t", limit = 2)
@@ -5831,12 +5878,15 @@ fun CityDialog(
                     Spacer(Modifier.height(10.dp))
                 }
                 LazyColumn(modifier = Modifier.height(320.dp)) {
-                    // Map di-bo dac biet (khong teleport duoc) o DAU danh sach - chi hien khi dang
-                    // chon Thanh cho o BBB.
-                    if (pickForDest) {
+                    // Map di-bo dac biet (khong teleport duoc) o DAU danh sach, truoc Trac Quan: chon
+                    // cho o BBB, hoac (mode ve thanh/dung yen) bam = ca party ve Bac Hai roi di bo len.
+                    if (pickForDest || allowRouteMaps) {
                         item {
                             TextButton(
-                                onClick = { destMap = "55002"; pickForDest = false },
+                                onClick = {
+                                    if (pickForDest) { destMap = "55002"; pickForDest = false }
+                                    else onPick(Cities.NHA_NAM_TINH)
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                             ) { Text("Nhà Nam Tinh Quân") }
                         }

@@ -17,7 +17,9 @@ import org.json.JSONObject
  * FALLBACK ben duoi CHI dung khi doc asset that bai (khong de UI trong).
  */
 object Events {
-    data class Info(val label: String, val motTranDuoc: Boolean = false)
+    /** games = ban TS co event nay (events.json "games"; khong khai = chi "vtc"). */
+    data class Info(val label: String, val motTranDuoc: Boolean = false,
+                    val games: List<String> = listOf("vtc"))
 
     private var loaded: Map<String, Info>? = null
 
@@ -32,7 +34,10 @@ object Events {
             for (key in evs.keys()) {
                 val o = evs.optJSONObject(key) ?: continue
                 val kind = o.optJSONObject("party_battle")?.optString("kind") ?: ""
-                out[key] = Info(o.optString("label", key), kind == "chaos_vs")
+                val ga = o.optJSONArray("games")
+                val games = if (ga == null || ga.length() == 0) listOf("vtc")
+                            else (0 until ga.length()).map { ga.getString(it) }
+                out[key] = Info(o.optString("label", key), kind == "chaos_vs", games)
             }
             out.takeIf { it.isNotEmpty() }
         } catch (e: Exception) {

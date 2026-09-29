@@ -18,6 +18,7 @@ import os
 import re
 import threading
 import time
+from . import region as _region
 
 OFF_MAX_PHUT = 600
 _OFF_RE = re.compile(r"^\s*off\s+(\d{1,4})\s*p\s*$", re.IGNORECASE)
@@ -38,30 +39,31 @@ def is_allowed(name, whitelist):
     return bool(ten) and any(ten == (w or "").strip().casefold() for w in (whitelist or []))
 
 
-def parse_whisper(pkt: bytes):
+def parse_whisper(pkt: bytes, region=None):
     """Goi S:002-003 day du (header 7 byte + sub 2 byte) -> (sender_id 8 byte, ten, noi dung)."""
+    enc = (region or _region.get()).encoding
     b = pkt[9:]
     sender_id = b[0:8]
     off = 8 + 2                       # bo roleId + titleId
     nl = b[off]
-    name = b[off + 1:off + 1 + nl].decode("utf-16-le", "replace").rstrip("\x00")
+    name = b[off + 1:off + 1 + nl].decode(enc, "replace").rstrip("\x00")
     off += 1 + nl
     ml = b[off]
     if off + 1 + ml > len(b):
         raise ValueError("goi mat thoai ngan hon do dai noi dung")
-    msg = b[off + 1:off + 1 + ml].decode("utf-16-le", "replace").rstrip("\x00")
+    msg = b[off + 1:off + 1 + ml].decode(enc, "replace").rstrip("\x00")
     return sender_id, name, msg
 
 
-def _l_str(s: str) -> bytes:
-    raw = s.encode("utf-16-le")[:254]
+def _l_str(s: str, region=None) -> bytes:
+    raw = s.encode((region or _region.get()).encoding)[:254]
     return bytes([len(raw)]) + raw
 
 
-def build_whisper(target_id: bytes, target_name: str, text: str) -> bytes:
+def build_whisper(target_id: bytes, target_name: str, text: str, region=None) -> bytes:
     """Payload opcode 0x02 cho C:002-003 (0 item, 0 npc dinh kem)."""
     tid = (target_id or b"")[:8].ljust(8, b"\x00")
-    return b"\x03\x00" + tid + _l_str(target_name) + _l_str(text) + b"\x00\x00"
+    return b"\x03\x00" + tid + _l_str(target_name, region) + _l_str(text, region) + b"\x00\x00"
 
 
 # ---- HAN OFF (luu file: tat/mo tool giua chung van cho du gio) ----

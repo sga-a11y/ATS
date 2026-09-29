@@ -19,6 +19,7 @@ from bot import mob_spots
 from bot import train_pick
 from bot import loandau
 from bot import npc40
+from bot import region as _region
 from bot import floor_crawl
 from bot import party_engine
 from bot import party_modes
@@ -1909,6 +1910,12 @@ def _ve_thanh_tap_trung(c, pidx, label, dest_city, dest_flag):
                 st["route_ve_thanh_dest"] = None
         return True
 
+    if dest_city == NHA_NAM_TINH_QUAN:
+        # KHONG PHAI THANH (khong teleport duoc): ve Bac Hai roi leader keo ca party di bo len.
+        if int(getattr(c, "current_map", 0) or 0) == dest_city:
+            return _toi_noi()
+        _ra_lenh_di_nha_nam_tinh(pidx, label)
+        return False
     try:
         if c.go_to_town(dest_city, int(dest_flag)):
             return _toi_noi()
@@ -1944,6 +1951,54 @@ def _ra_lenh_di_bo_ve_thanh(pidx, dest_city, label):
                 "KEO nhau di bo (khong di le)", label, dest_city, xuat_phat, _ten, dest_city)
     party_route_maps(pidx, xuat_phat, dest_city)
     return True
+
+
+# Nha Nam Tinh Quan: map di-bo dac biet, KHONG teleport duoc. Duong len = Bac Hai -> di bo.
+NHA_NAM_TINH_QUAN = 55002
+BAC_HAI = 11011
+
+
+def _ra_lenh_di_nha_nam_tinh(pidx, label="GUI"):
+    """Dat lenh cho CA PARTY len Nha Nam Tinh Quan (55002).
+
+    Ca party da mo Bac Hai -> DI MAP 11011 -> 55002 (tele Bac Hai, leader keo di bo).
+    Co acc CHUA MO Bac Hai -> keo ca lu di bo MO Bac Hai truoc (DI MAP <thanh da mo> -> 11011),
+    toi noi thi `_engine_route_decisions` tu noi tiep chang 11011 -> 55002 (co `nha_nt_tiep`).
+    Dat MOT LAN moi dich nhu `_ra_lenh_di_bo_ve_thanh` (dung chung `route_ve_thanh_dest`).
+    """
+    st = _pstate(pidx)
+    chua_mo, chua_biet = _party_city_unlocked(pidx, BAC_HAI)
+    if chua_biet:
+        return False            # chua nhan co nhiem vu -> nhip sau tinh lai, khong ket luan oan
+    with st["lock"]:
+        if st.get("route_ve_thanh_dest") == NHA_NAM_TINH_QUAN:
+            return False
+        st["route_ve_thanh_dest"] = NHA_NAM_TINH_QUAN
+    if not chua_mo:
+        log.info("[%s] Nha Nam Tinh Quan: ca party da mo Bac Hai -> DI MAP %s -> %s",
+                 label, BAC_HAI, NHA_NAM_TINH_QUAN)
+        party_route_maps(pidx, BAC_HAI, NHA_NAM_TINH_QUAN)
+        return True
+    xuat_phat = _pick_start_city(pidx, BAC_HAI)
+    if not xuat_phat:
+        log.warning("[%s] Nha Nam Tinh Quan: %s CHUA MO Bac Hai va KHONG thanh nao ca party da mo "
+                    "di toi Bac Hai duoc -> dung tai cho", label, chua_mo)
+        return False
+    log.warning("[%s] Nha Nam Tinh Quan: %s CHUA MO Bac Hai -> ca party di bo MO Bac Hai truoc "
+                "(DI MAP %s -> %s), toi noi di tiep len %s", label, chua_mo, xuat_phat, BAC_HAI,
+                NHA_NAM_TINH_QUAN)
+    party_route_maps(pidx, xuat_phat, BAC_HAI)
+    with st["lock"]:
+        st["nha_nt_tiep"] = True    # SAU party_route_maps (no khong dung toi co nay)
+    return True
+
+
+def party_go_nha_nam_tinh(pidx):
+    """GUI (popup teleport, mode city/stand): ca party len Nha Nam Tinh Quan."""
+    st = _pstate(pidx)
+    with st["lock"]:
+        st["route_ve_thanh_dest"] = None     # lenh tay -> luon ra lenh moi
+    _ra_lenh_di_nha_nam_tinh(pidx, "P%d GUI" % (int(pidx) + 1))
 
 
 def _thanh_dong_acc_nhat(pidx):
@@ -2488,6 +2543,7 @@ def _clear_stale_manual_route(st):
         st["cmd"] = None
         st["cmd_gen"] = next_gen
         st["manual_route_gen"] = next_gen
+        st["nha_nt_tiep"] = False
         st["manual_route_plan"] = None
         st["manual_route_source_results"] = {}
         st["manual_route_city_arrived"] = {}
@@ -2981,6 +3037,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
     server_ip = _pc0.get("server_ip") or config.GAME_HOST
     server_name = _pc0.get("server", "?")
     server_id = _pc0.get("server_id", 1)
+    _rg = _region.get(_pc0.get("game"))   # ban TS cua party (theo server) - region.py
     _login_failed = False   # True neu login/vao world that bai 6 lan -> supervisor van thu lai (backoff)
     _unexpected_error = False  # True neu dinh Exception bat ngo -> cho relogin (dung de acc chet han vi loi thoang qua)
     try:
@@ -3006,8 +3063,13 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             if _stopped():
                 log.info("[%s] STOP truoc khi login xong", label); return
             try:
-                cred = login(username, password)
-                c = GameClient(cred["user_id"], cred["access_token"], host=server_ip, server_id=server_id)
+                if _rg.login == "accpwd":
+                    # TSM: KHONG co HTTP SDK - acc/pass game gui thang trong goi auth TCP
+                    cred = {"user_id": username, "access_token": password}
+                else:
+                    cred = login(username, password)
+                c = GameClient(cred["user_id"], cred["access_token"], host=server_ip, server_id=server_id,
+                               region=_rg)
                 c._label = label; c._username = username
                 log.info("[%s] server=%s (%s) id=%s", label, server_name, server_ip, server_id)
                 c.party_idx = pidx
@@ -4265,6 +4327,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "mode": mode, "start_city_id": int(start_city_id), "mob_index": int(mob_index),
         "city_flag": int(city_flag), "server": "", "server_ip": server_ip,
         "server_id": int(server_id), "do_daily": bool(do_daily),
+        # APK chi truyen IP+id (goi THEO VI TRI) -> suy BAN TS tu SERVERS, khong doi signature.
+        "game": next((v.get("game") or "vtc" for v in (getattr(config, "SERVERS", {}) or {}).values()
+                      if v.get("ip") == server_ip and int(v.get("id", 0)) == int(server_id)), "vtc"),
         "claim_offline_exp": bool(claim_offline_exp),
         "auto_world_boss": bool(auto_world_boss),
         "auto_team_dungeon": bool(auto_team_dungeon),
@@ -4309,6 +4374,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "buy_hp": bool(buy_hp), "hp_qty": int(hp_qty), "hp_thresh": int(hp_thresh),
         "buy_sp": bool(buy_sp), "sp_qty": int(sp_qty), "sp_thresh": int(sp_thresh),
     }
+    _region.chan_event_sai_game(config.PARTY_CONFIG[pidx], getattr(config, "EVENTS", {}))
     _flat = str(accounts).split("\x01") if accounts else []
     accs = []
     if len(_flat) >= 5 and len(_flat) % 5 == 0:
@@ -6750,6 +6816,10 @@ def _engine_route_decisions(pidx, anh, cmd):
                 client._pe_lenh_tay_gen = anh.lenh_tay_gen
                 client._pe_la_leader = user == config.PARTY_LEADER_ACC.get(pidx)
         st["manual_route_done"].set()
+        if st.get("nha_nt_tiep") and int(plan.get("dest") or 0) == BAC_HAI:
+            # Vua keo ca party MO Bac Hai xong -> di tiep len Nha Nam Tinh Quan.
+            st["nha_nt_tiep"] = False
+            party_route_maps(pidx, BAC_HAI, NHA_NAM_TINH_QUAN)
         dat_nguoi_keo(pidx, config.PARTY_LEADER_ACC.get(pidx) or "*")
     elif result.phase in ("source", "dest"):
         dat_nguoi_keo(pidx, leader)
@@ -8155,6 +8225,10 @@ def party_switch_channel(pidx, channel):
 def party_teleport_city(pidx, city_id, flag=0):
     """GUI ra lenh: CA party pidx huy party + teleport ve THANH (city_id, flag) -> roi tiep tuc
     che do da setup (xu ly trong vong keepalive qua cmd_gen)."""
+    if int(city_id) == NHA_NAM_TINH_QUAN:
+        # APK gui Nha Nam Tinh Quan qua dung duong teleport thanh - khong tele duoc, di bo.
+        party_go_nha_nam_tinh(pidx)
+        return
     st = _pstate(pidx)
     with st["lock"]:
         st["cmd"] = ("city", int(city_id), int(flag))

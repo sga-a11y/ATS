@@ -35,7 +35,9 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           # `servers_cdn.doc_overlay()` luc nap SERVERS - thieu file la APK crash luc import.
           "servers_cdn.py",
           # DIEU KHIEN TU XA qua tin nhan rieng (client.py + run_party_digioi.py deu import).
-          "remote_cmd.py"]
+          "remote_cmd.py",
+          # CAC BAN TS (VTC/TSM...): key XOR, encoding chuoi, gio server. client.py/auth.py import.
+          "region.py"]
 
 # File CHI CO o ban PC - phai liet ke TUONG MINH. Moi file .py trong bot/ khong nam trong
 # SHARED cung khong nam o day se lam sync BAO LOI, khong cho build tiep (xem _check_no_drift).

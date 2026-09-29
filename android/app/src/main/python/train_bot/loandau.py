@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime
 import logging
 import time
+from . import region as _region
 
 
 log = logging.getLogger("bot")
@@ -78,7 +79,7 @@ def _buoi_hom_nay(ev=None, now=None):
 
     KHONG loc theo gio - chi loc theo THU. Cho `in_event_window` lo phan gio.
     """
-    now = now or datetime.datetime.now()
+    now = now or _region.server_now()
     lich = ((ev or {}).get("lich") or LICH_MAC_DINH)
     for buoi in lich:
         try:
@@ -95,7 +96,7 @@ def in_event_window(now=None, ev=None):
     THU 3 va THU 7 KHAC KHUNG GIO (t3 20:00-22:00, t7 20:30-22:30) nen phai so ca PHUT -
     `20 <= now.hour < 22` nhu ban cu khong bieu dien duoc 20:30.
     """
-    now = now or datetime.datetime.now()
+    now = now or _region.server_now()
     buoi = _buoi_hom_nay(ev, now)
     if not buoi:
         return False
