@@ -21,6 +21,7 @@ REGIONS = {
         "xor_key": 0xAD,
         "encoding": "utf-16-le",      # ByteBuffer.lua: DataManager.encoding_Unicode
         "utc_offset": 7,              # gio server = UTC+7
+        "cdn": "https://cdn-gz06.mobigame.vn/tsr/",   # ServerList.dat (bot/servers_cdn.py)
     },
     "tsm": {
         # Capture login 29/09 (captures/tsm_login_20260929.pcap): server 34.81.22.35:6614, serverId=21.
@@ -32,6 +33,8 @@ REGIONS = {
         "xor_key": 0xAD,              # giong VTC (capture: 6d3c = c091 ^ adad)
         "encoding": "big5",           # ByteBuffer.lua: DataManager.encoding_Big5
         "utc_offset": 8,
+        # Tu global-metadata.dat cua APK TSM; ServerList.dat cung dinh dang VTC (30/09: 21 server).
+        "cdn": "https://tsrtwftp.chinesegamer.net/tsr/",
     },
 }
 
@@ -46,6 +49,7 @@ class Region:
         self.xor_key = d["xor_key"]
         self.encoding = d["encoding"]
         self.utc_offset = d["utc_offset"]
+        self.cdn = d.get("cdn")
         # Do dai chuoi phai CHIA HET cho so nay. UTF-16 = 2; Big5 = 1 (chu ASCII 1 byte ->
         # ten "stmot" dai 5 - check `% 2` cu lam TSM khong doc duoc ten char).
         self.char_bytes = 2 if self.encoding.startswith("utf-16") else 1

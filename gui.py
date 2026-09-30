@@ -146,6 +146,7 @@ _bootstrap_bundle_path()
 _gui_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(1 if sys.path and os.path.basename(sys.path[0]) == "pc" else 0, _gui_dir)
 import run_party_digioi as ctrl          # module dieu khien (da refactor)
+from bot.idle_stats import fmt_time
 from bot import config
 from bot._appdir import app_dir as _app_dir   # thu muc goc (dev=project, frozen=canh .exe)
 
@@ -1476,9 +1477,12 @@ class BotGUI(tk.Tk):
         ttk.Separator(btns, orient="vertical").pack(side="left", fill="y", padx=6)
         ttk.Button(btns, text="🎟 Nhập giftcode",
                    command=lambda p=pidx: self._redeem_giftcode(p)).pack(side="left", padx=2)
+        tk.Button(btns, text="📊 Thống kê", relief="raised", padx=8,
+                  bg="#e9ecef", fg="#111111", activebackground="#d9dde1",
+                  command=lambda p=pidx: self._show_party_stats(p)).pack(side="left", padx=(12, 2))
         agi_btn = tk.Button(btns, text="⚡ Check AGI", relief="raised", padx=8,
                             command=lambda p=pidx: self._show_party_agi(p))
-        agi_btn.pack(side="left", padx=2)
+        agi_btn.pack(side="left", padx=(12, 2))
         self.party_agi_buttons[pidx] = agi_btn
         # Nut "Chu y": AN mac dinh (pack luc co thong bao). Party co nick can thong bao (vd item lo
         # de "Thong bao") -> hien nut; click -> dialog danh sach thong bao (mua ho / bo qua).
@@ -1664,6 +1668,9 @@ class BotGUI(tk.Tk):
                             f"Đang nhập '{code}' cho {len(running)} acc của Party {pidx + 1}.\n"
                             "Quà về qua mail → bot tự nhận. Xem log để biết kết quả.")
 
+    def _show_party_stats(self, pidx):
+        IdleStatsDialog(self, pidx)
+
     def _show_party_agi(self, pidx):
         report = ctrl.party_agi_report(pidx)
         win = tk.Toplevel(self)
@@ -1835,6 +1842,9 @@ class BotGUI(tk.Tk):
                + [(it["user"], {"_safe_danh": True, "map": it["map"], "safe": it["safe"],
                                 "so_tran": it["so_tran"]})
                   for it in ctrl.safe_canh_bao_items(pidx)]
+               + [(it["user"], {"_diem_quai_chet": True, "pidx": it["pidx"], "map": it["map"],
+                                "diem": it["diem"], "lan": it["lan"]})
+                  for it in ctrl.diem_quai_canh_bao_items(pidx)]
                + [(it["user"], {"_pet_roi_chuc": True, "pid": it["pid"], "ten": it["ten"]})
                   for it in ctrl.pet_roi_chuc_notify_items(pidx)])
         try:
@@ -1860,7 +1870,8 @@ class BotGUI(tk.Tk):
     # 13/09), cung khong phai mot lan roi thoi (moi nguon den SAU luc login -> rong vinh vien).
     NOTIFY_LAM_MOI_SEC = 60.0
 
-    NOTIFY_CAM = ("_ba_dau", "_bag", "_legion", "_safe_danh", "_pet_roi_chuc")
+    NOTIFY_CAM = ("_ba_dau", "_bag", "_legion", "_safe_danh", "_pet_roi_chuc",
+                  "_diem_quai_chet")
 
     def _party_notify_gap(self, pidx):
         """Party co chu y thuoc loai CAN LAM NGAY khong?"""
@@ -1958,6 +1969,27 @@ class BotGUI(tk.Tk):
             # Diem safe la cho DUNG NGHI giua cac tran. Dung do ma tran noi tran = diem safe hoc
             # SAI. Bot CHI BAO, khong tu doi safe / tu quet lai map (user chot 07/09: "t deo tin
             # may scan lai la on") - user tu sua toa do trong train_maps.json.
+            # Party dung tai diem quai 240s khong vao tran -> diem quai do co the khong co quai.
+            # Chi BAO (user chot 30/09), user tu vao game check roi sua train_maps.json.
+            if it.get("_diem_quai_chet"):
+                def _skip_dq(_p=it["pidx"], _r=rowf):
+                    ctrl.diem_quai_canh_bao_bo_qua(_p); _r.destroy()
+                _skips.append((rowf, _skip_dq))
+                ttk.Button(rowf, text="Bỏ qua", width=7,
+                           command=_skip_dq).pack(side="right", padx=2)
+                _ten_map = ""
+                try:
+                    _ten_map = " (%s)" % config.scene_name(int(it["map"]))
+                except Exception:
+                    pass
+                ttk.Label(rowf, wraplength=380, justify="left", foreground="#b45309",
+                          font=(None, 9, "bold"),
+                          text="ĐIỂM QUÁI KHÔNG CÓ TRẬN — party đứng %ds tại %s map %s%s mà "
+                               "không vào trận nào (đã kẹt %d lần). Kiểm lại điểm này giúp."
+                               % (ctrl.KE_HOACH_DUNG_HINH_SEC, tuple(it["diem"]), it["map"],
+                                  _ten_map, it["lan"])
+                          ).pack(side="left", fill="x", expand=True)
+                return
             if it.get("_safe_danh"):
                 def _skip_safe(_u=u, _r=rowf):
                     ctrl.safe_canh_bao_bo_qua(_u); _r.destroy()
@@ -3547,6 +3579,122 @@ def _gio_vn(ts):
         return ""
     t = time.gmtime(int(ts) + 7 * 3600)
     return "%s %02d:%02d %02d/%02d" % (_THU[t.tm_wday], t.tm_hour, t.tm_min, t.tm_mday, t.tm_mon)
+
+
+class IdleStatsDialog(tk.Toplevel):
+    """Thong ke treo may cua 1 party (bot/idle_stats.py - chep MachineBox.Statistics cua client).
+
+    Bo cuc giong LegionDmgDialog (user chot 29/09): moi acc 1 dong ben TRAI, chi tiet ben PHAI.
+    Tu cap nhat moi 2s khi con acc chay; Stop van xem duoc, tat app la mat."""
+
+    def __init__(self, master, pidx):
+        super().__init__(master)
+        self.pidx = pidx
+        self.app = master          # ten hien theo LUAT AN TEN cua app (_mask_char/_mask_user)
+        self.title("Thống kê treo máy - Party %d" % (pidx + 1))
+        self.transient(master.winfo_toplevel())
+        self.geometry("820x480")
+        self.rows = {}
+        self.user = None
+        top = ttk.Frame(self); top.pack(fill="x", padx=8, pady=6)
+        self.lbl = ttk.Label(top, text=""); self.lbl.pack(side="left")
+        ttk.Button(top, text="↻", width=3, command=self._reload).pack(side="right")
+        pw = ttk.PanedWindow(self, orient="horizontal")
+        pw.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        left = ttk.Frame(pw)
+        self.tv = ttk.Treeview(left, columns=("name",), show="headings", selectmode="browse")
+        self.tv.heading("name", text="Nhân vật"); self.tv.column("name", width=150, anchor="w")
+        self.tv.pack(fill="both", expand=True)
+        pw.add(left, weight=0)
+        right = ttk.Frame(pw)
+        self.txt = tk.Text(right, wrap="word", width=50, font=("Segoe UI", 10))
+        sb = ttk.Scrollbar(right, orient="vertical", command=self.txt.yview)
+        self.txt.configure(yscrollcommand=sb.set, state="disabled")
+        self.txt.pack(side="left", fill="both", expand=True); sb.pack(side="right", fill="y")
+        pw.add(right, weight=1)
+        self.tv.bind("<<TreeviewSelect>>", lambda _e: self._on_select())
+        self._reload()
+        self.tv.focus_set()
+        self._tick()
+
+    def _tick(self):
+        if not self.winfo_exists():
+            return
+        if any(snap["running"] for _n, snap in self.rows.values()):
+            self._reload()
+        self.after(2000, self._tick)
+
+    def _reload(self):
+        try:
+            data = ctrl.idle_stats_report(self.pidx)
+        except Exception as e:
+            log.warning("doc thong ke party %d loi: %s", self.pidx + 1, e)
+            data = []
+        self.rows = {u: (name, snap) for u, name, snap in data}
+        self.lbl.configure(text="Chưa có dữ liệu - hãy Start party" if not data else
+                           "%d acc · từ lúc Start party tới lúc Stop" % len(data))
+        ids = set(self.tv.get_children())
+        for u, (name, snap) in self.rows.items():
+            vals = (self._an(u, name),)
+            if u in ids:
+                self.tv.item(u, values=vals)
+            else:
+                self.tv.insert("", "end", iid=u, values=vals)
+        for u in ids - set(self.rows):
+            self.tv.delete(u)
+        kids = self.tv.get_children()
+        if self.user not in kids and kids:
+            self.tv.selection_set(kids[0]); self.tv.focus(kids[0])
+        else:
+            self._render_detail()
+
+    def _on_select(self):
+        sel = self.tv.selection()
+        if sel:
+            self.user = sel[0]
+            self._render_detail()
+
+    def _an(self, user, name):
+        """Ten char/username theo che do an ten dang bat (giong bang acc chinh)."""
+        a = self.app
+        if not hasattr(a, "_mask_char"):
+            return name
+        return a._mask_user(user) if name == user else a._mask_char(name)
+
+    def _render_detail(self):
+        txt = self.txt
+        y = txt.yview()[0]
+        txt.configure(state="normal")
+        txt.delete("1.0", "end")
+        r = self.rows.get(self.user)
+        if r:
+            name, s = r
+            txt.insert("end", self._an(self.user, name) + "\n", "ten")
+            txt.insert("end", ("Đang chạy" if s["running"] else "Đã dừng") + "\n\n")
+            for k, v in (("Thời gian", fmt_time(s["elapsed"])), ("Số lần login", s["logins"]),
+                         ("Số trận", s["fights"]),
+                         ("Số lần chết", "char %d · pet %d" % (s["deaths"].get("char", 0),
+                                                                s["deaths"].get("pet", 0)))):
+                txt.insert("end", "  %s: %s\n" % (k, v))
+            txt.insert("end", "\nEXP\n", "muc")
+            if not s["exp"]:
+                txt.insert("end", "  (chưa có)\n")
+            # Goi EXP chi mang TEN -> trung ten nhan vat la char, con lai la pet
+            for nm, n in s["exp"].items():
+                la_char = nm == name
+                txt.insert("end", "  [%s] %s: %s\n" % ("char" if la_char else "pet",
+                                                        self._an(self.user, nm) if la_char else nm,
+                                                        format(n, ",")))
+            for key, head in (("get_items", "Vật phẩm nhận được"), ("use_items", "Vật phẩm đã dùng")):
+                txt.insert("end", "\n%s\n" % head, "muc")
+                if not s[key]:
+                    txt.insert("end", "  (chưa có)\n")
+                for _id, nm, q in s[key]:
+                    txt.insert("end", "  %s x%s\n" % (nm, format(q, ",")))
+        txt.tag_configure("ten", font=("Segoe UI", 12, "bold"))
+        txt.tag_configure("muc", font=("Segoe UI", 10, "bold"))
+        txt.configure(state="disabled")
+        txt.yview_moveto(y)
 
 
 class LegionDmgDialog(tk.Toplevel):

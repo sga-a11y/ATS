@@ -11,6 +11,10 @@ Duong dan that (moi ra tu `global-metadata.dat` + logcat Unity luc app khoi dong
     https://cdn-gz06.mobigame.vn/tsr/ResourcePath_ANDROID.dat   -> {"ExeVer":..,"DataVer":"1.0.9"}
     https://cdn-gz06.mobigame.vn/tsr/<DataVer>/Android/ServerList.dat
 
+NHIEU BAN TS (region.py): moi ban co CDN rieng (`Region.cdn`), cung dinh dang file. VTC va TSM
+TRUNG id (ca hai deu 1..21) -> so id CHI trong cung `game`, khong thi server ban nay bi coi la "da co"
+vi ban kia. Server ban khac VTC dat khoa `<game>_<id>` (ten TSM la chu Han, bo dau ra rong).
+
 Ca hai deu la HTTP TINH, khong can token, va CDN CO SERVER MOI TRUOC CA KHI SERVER GAME MO LAI
 (user 17/09: "dang bao tri de mo server moi, server chua mo lai nhung client thay update roi").
 Nho vay bot biet server moi ngay ngay dau, khong phai cho ai do sua tay `servers.json`.
@@ -30,6 +34,8 @@ import re
 import threading
 import time
 import unicodedata
+
+from . import region as _region
 
 log = logging.getLogger("bot")
 
@@ -56,10 +62,18 @@ def _tai(url, timeout=CDN_TIMEOUT):
         return r.read().decode("utf-8", "replace")
 
 
-def data_ver():
+def _cdn(game=None):
+    return _region.get(game).cdn or CDN_GOC
+
+
+def _game_cua(v):
+    return (v or {}).get("game") or _region.DEFAULT
+
+
+def data_ver(game=None):
     """`DataVer` hien tai cua client (vd "1.0.9"). None = khong hoi duoc."""
     try:
-        d = json.loads(_tai(CDN_GOC + CDN_VERSION_FILE))
+        d = json.loads(_tai(_cdn(game) + CDN_VERSION_FILE))
     except Exception as e:
         log.debug("SERVER CDN: khong doc duoc %s: %s", CDN_VERSION_FILE, e)
         return None
@@ -69,17 +83,17 @@ def data_ver():
     return str(v) if v else None
 
 
-def tai_danh_sach(ver=None):
+def tai_danh_sach(ver=None, game=None):
     """[{"id", "name", "host", "port"}] tu CDN. `[]` = khong hoi duoc (KHONG phai "khong co server").
 
     Tra rong khi loi chu khong nem: mat mang / CDN doi duong dan KHONG duoc lam bot chet luc khoi
     dong - `servers.json` van du de chay.
     """
-    ver = ver or data_ver()
+    ver = ver or data_ver(game)
     if not ver:
         return []
     try:
-        raw = _tai("%s%s/Android/ServerList.dat" % (CDN_GOC, ver))
+        raw = _tai("%s%s/Android/ServerList.dat" % (_cdn(game), ver))
     except Exception as e:
         log.debug("SERVER CDN: khong doc duoc ServerList.dat (ver=%s): %s", ver, e)
         return []
@@ -140,14 +154,17 @@ def _ghi_overlay(thu_muc, servers):
     os.replace(_tam, _duong_overlay(thu_muc))
 
 
-def tim_server_moi(da_khai, tren_cdn):
+def tim_server_moi(da_khai, tren_cdn, game=None):
     """{khoa: {label, ip, id}} cho nhung server CDN co ma `da_khai` chua co.
 
     So theo **id**, khong theo ten: ten hien thi doi duoc (vd "Tiểu Kiều - New" roi bo chu New),
     con id la thu di trong goi auth.
     """
+    game = game or _region.DEFAULT
     _id_da_co = set()
     for v in (da_khai or {}).values():
+        if _game_cua(v) != game:
+            continue        # id trung giua cac ban -> chi so trong cung ban
         try:
             _id_da_co.add(int(v.get("id")))
         except Exception:
@@ -157,13 +174,18 @@ def tim_server_moi(da_khai, tren_cdn):
     for s in sorted(tren_cdn, key=lambda x: x["id"]):
         if s["id"] in _id_da_co:
             continue
-        k = khoa_noi_bo(s["name"] or ("server_%d" % s["id"]), _khoa_da_co)
+        if game == _region.DEFAULT:
+            k = khoa_noi_bo(s["name"] or ("server_%d" % s["id"]), _khoa_da_co)
+            moi[k] = {"label": s["name"], "ip": s["host"], "id": s["id"]}
+        else:
+            k = khoa_noi_bo("%s_%d" % (game, s["id"]), _khoa_da_co)
+            moi[k] = {"label": "%s - %s" % (game.upper(), s["name"] or s["id"]),
+                      "ip": s["host"], "id": s["id"], "game": game}
         _khoa_da_co.add(k)
-        moi[k] = {"label": s["name"], "ip": s["host"], "id": s["id"]}
     return moi
 
 
-def cap_nhat(servers, thu_muc, tai=None):
+def cap_nhat(servers, thu_muc, tai=None, game=None):
     """NHAP server moi vao `servers` (sua TAI CHO) + luu overlay. Tra {khoa: info} vua them.
 
     `servers` = `config.SERVERS`. `thu_muc` = noi ghi overlay (PC: canh exe; APK: thu muc du lieu
@@ -177,13 +199,13 @@ def cap_nhat(servers, thu_muc, tai=None):
             them[k] = v
     # 2. Hoi CDN xem co gi moi hon khong.
     try:
-        tren_cdn = (tai or tai_danh_sach)()
+        tren_cdn = tai() if tai else tai_danh_sach(game=game)
     except Exception as e:
         log.debug("SERVER CDN: loi hoi CDN: %s", e)
         tren_cdn = []
     if not tren_cdn:
         return them
-    moi = tim_server_moi(servers, tren_cdn)
+    moi = tim_server_moi(servers, tren_cdn, game)
     if not moi:
         return them
     for k, v in moi.items():
@@ -217,7 +239,12 @@ def cap_nhat_nen(servers, thu_muc, xong=None):
 
     def _vong():
         try:
-            them = cap_nhat(servers, thu_muc)
+            them = {}
+            for g in _region.REGIONS:       # moi ban hoi CDN rieng; ban nay loi khong chan ban kia
+                try:
+                    them.update(cap_nhat(servers, thu_muc, game=g))
+                except Exception as e:
+                    log.debug("SERVER CDN: loi cap nhat ban %s: %s", g, e)
         except Exception as e:
             log.debug("SERVER CDN: loi cap nhat nen: %s", e)
             them = {}

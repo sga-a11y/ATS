@@ -616,6 +616,11 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         try { rpd().callAttr("apply_legion_dmg", username, on)?.toBoolean() ?: false }
         catch (_: Exception) { false }
 
+    /** Thong ke treo may cua party (documents/THONG_KE_TREO_MAY.md). */
+    fun idleStatsJson(pidx: Int): String =
+        try { rpd().callAttr("idle_stats_report_json", pidx)?.toString() ?: "" }
+        catch (_: Exception) { "" }
+
     /** Bang dame boss QD (chung theo QD, acc tat van xem duoc). Xem documents/LEGION_DAMAGE.md. */
     fun legionDmgInfoJson(username: String): String =
         try { rpd().callAttr("legion_dmg_info_json", username)?.toString() ?: "" }

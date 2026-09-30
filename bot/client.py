@@ -2386,6 +2386,8 @@ def _pet_role(role):
 
 class GameClient:
     region = _region.get()   # mac dinh cap CLASS: test tao client bang __new__ (bo qua __init__)
+    idle_stats = None        # thong ke treo may (bot/idle_stats.py) - mac dinh CLASS nhu region
+    _idle_last_hp = None
 
     def __init__(self, user_id: str, access_token: str, host: str = None, server_id: int = 1,
                  region=None):
@@ -2630,6 +2632,9 @@ class GameClient:
         self.char_attrs = {}      # CHI SO GOC tu 0x08: EAttribute -> gia tri (dung cho thanh tuu)
         # EXP moi tran (char + pet) tu S:002-010 cau 40476: ten -> exp cong don, in 1.5s sau goi cuoi.
         self._exp_gain = {}        # ten -> exp cong don tu lan tong ket truoc
+        # THONG KE TREO MAY (bot/idle_stats.py). Runner gan vao - None = khong dem.
+        self.idle_stats = None
+        self._idle_last_hp = None  # {"char"/"pet": HP lan truoc} (bat moc >0 -> 0 = chet)
         self._exp_flush_timer = None
         # S:008-013 <設定主角技能>: he nhan vat + diem skill con lai + CAP tung skill.
         self.char_element = None      # 1..4 = he; hoc skill KHAC he ton GAP DOI learnPt
@@ -3810,6 +3815,26 @@ class GameClient:
             log.debug("[%s] bo qua loi mob observer op=0x%02x: %s",
                       self._label, opcode, exc)
 
+    def _idle_on_fight(self):
+        """MachineBox.Statistics(Fight): +1 moi tran (FightField.lua:457)."""
+        self._idle_last_hp = None
+        if self.idle_stats is not None:
+            self.idle_stats.add_fight()
+
+    def _idle_check_death(self):
+        """MachineBox.Statistics(Death): client CHI dem char minh bi danh chet
+        (FightRoleController.lua:1634). Bot dem ca PET dang ra tran (user chot 29/09).
+        Khong co goi 'chet' rieng -> bat moc HP tu >0 xuong 0 trong tran."""
+        last = self._idle_last_hp or {}
+        now = {}
+        for who, u in (("char", self.state.char), ("pet", self.state.pet)):
+            if not u.hp_max:
+                continue
+            now[who] = u.hp
+            if last.get(who, 0) > 0 and u.hp <= 0 and self.idle_stats is not None:
+                self.idle_stats.add_death(who)
+        self._idle_last_hp = now
+
     def _record_train_block_stats(self, enemy_slots):
         if not (self.train_block_stats_enabled and self.train_block_map_id and self.train_block_spot):
             return
@@ -4408,6 +4433,8 @@ class GameClient:
             _g = _parse_exp_broadcast(pkt, self.region.encoding)
             if _g:
                 self._add_exp_gain(*_g)
+                if self.idle_stats is not None:
+                    self.idle_stats.add_exp(*_g)
         if opcode == 0x08 and len(pkt) >= 13 and pkt[7:9] == b"\x01\x00" and pkt[9] == STAT_INT and pkt[10] == 0x01:
             self._char_int_base = int.from_bytes(pkt[11:13], "little")
             self._refresh_char_int()
@@ -4465,6 +4492,9 @@ class GameClient:
                 if n <= 0 or n > 10_000_000:
                     n = 1
             rec = self.bag_slots.get(slot)
+            if rec and self.idle_stats is not None:
+                _nm = (_load_gamedata_items().get(rec[0]) or {}).get("name") or ("0x%04x" % rec[0])
+                self.idle_stats.add_use_item(rec[0], _nm.strip(), min(n, rec[1]) or n)
             if rec:
                 rec[1] = max(0, rec[1] - n)
                 tid = rec[0]
@@ -4676,6 +4706,8 @@ class GameClient:
                 self.bag_counts[item_id] = self.bag_counts.get(item_id, 0) - old_cnt + cnt
                 if cnt > old_cnt:   # thuc su NHAN them (khong phai dung item/giam)
                     nm = (_load_gamedata_items().get(item_id) or {}).get("name") or ("0x%04x" % item_id)
+                    if self.idle_stats is not None:   # MachineBox: cong phan CHENH LECH
+                        self.idle_stats.add_get_item(item_id, nm.strip(), cnt - old_cnt)
                     if item_id in PHUC_THAN_GEM_TIDS:
                         # Ngoc ve tui GIUA phien (qua NV / doi qua) ma o ngoc trong hoac dang deo loai
                         # kem hon -> ve train deo ngay. Truoc day chi co buff < 5 / ngoc hong moi goi
@@ -4880,8 +4912,11 @@ class GameClient:
             start_enemy_slots = self.state.update_0x33(pkt)
             if start_enemy_slots:
                 self._record_train_block_stats(start_enemy_slots)
+                self._idle_on_fight()
+            self._idle_check_death()
         elif opcode == 0x32 and not self.battle_tracker.generation:  # legacy battle action
             self.state.update_0x32(pkt)
+            self._idle_check_death()
         elif opcode == protocol.OP_FULLSTAT:      # 0x0b
             if self.self_entity is None:
                 # chua biet self_entity -> buffer lai de xu khi co (tranh mat goi stat luc login)
@@ -6292,8 +6327,10 @@ class GameClient:
             for event in events
         )
         self.state.sync_from_tracker()
+        self._idle_check_death()
         for event in events:
             if event.kind == "start":
+                self._idle_on_fight()
                 # Tran moi -> cho phep check hoi lai. Nhanh 0x34 legacy (noi duy nhat clear truoc
                 # day) bi skip khi generation != 0, ma generation chi TANG -> sau tran dau tien co
                 # "HET thuoc" KHONG BAO GIO duoc xoa: log 29/09 vanba bao het 12:27 roi 1.5h khong
@@ -7967,17 +8004,27 @@ class GameClient:
         self.heal_full()
         self.state.boss_mode = True
         self.flee_mode = False
-        self.send(0x27, b"\x77\x00"); time.sleep(0.6)          # start boss QD (0x27 7700)
-        self.send(0x14, b"\x08\x00\x01\x00"); time.sleep(1.0)  # vao instance boss (gate idx 1)
         entered = False
-        t0 = time.time()
-        while time.time() - t0 < 10:          # cho VAO tran (10s)
-            if not self.running:
-                self.state.boss_mode = False
-                return self.legion_boss_next or now
-            if self.state.in_battle:
-                entered = True; break
-            time.sleep(0.3)
+        # Log 30/09: 4/5 ca FAIL (0/411 ca OK) nhan `0x14 sub0700` KET TRAN cua CHINH acc 1-3s SAU
+        # lenh vao boss -> acc con ket trong tran cu (in_battle bi ha som theo member khac) nen
+        # server nuot lenh. Thay moc do sau lenh -> cho 2s roi gui lai DUNG 1 lan, khong relogin/khoa 12h.
+        for _lan in range(2):
+            t_gui = time.time()
+            self.send(0x27, b"\x77\x00"); time.sleep(0.6)          # start boss QD (0x27 7700)
+            self.send(0x14, b"\x08\x00\x01\x00"); time.sleep(1.0)  # vao instance boss (gate idx 1)
+            t0 = time.time()
+            while time.time() - t0 < 10:          # cho VAO tran (10s)
+                if not self.running:
+                    self.state.boss_mode = False
+                    return self.legion_boss_next or now
+                if self.state.in_battle:
+                    entered = True; break
+                time.sleep(0.3)
+            if entered or _lan or float(getattr(self, "_genuine_end_seen", 0) or 0) < t_gui:
+                break
+            log.warning("[%s] Boss QD: tran cu vua ket SAU lenh vao boss -> lenh bi nuot, "
+                        "cho 2s gui lai", self._label)
+            time.sleep(2.0)
         if not entered:
             # server TU CHOI vao tran (thuong gap nhat: chua du 24h ke tu luc vao quan doan moi
             # duoc danh boss lan dau - KHONG lien quan gi toi dang o Di Gioi hay khong, xay ra

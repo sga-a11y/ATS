@@ -3542,3 +3542,11 @@ C:002-003 <密頻發話> roleId(8) L(1) name(L) L(1) msg(L, UTF-16LE) itemCnt(1)
 - Server gửi lại **bản sao tin mình vừa nhắn** cũng qua S:002-003 với roleId = chính mình → phải bỏ.
 - Client gửi roleId = 0 nếu người nhận không có trong scene → server tự tìm theo tên.
 - Tên giả định UTF-16LE (giống các chỗ đọc tên khác). Code: `bot/remote_cmd.py`. Xem `documents/DIEU_KHIEN_TU_XA.md`.
+
+### Pet 1 skill bị bộ lọc "quái" loại → `EXTRA_PET_IDS` (2026-09-30)
+`crack_pets.py` bỏ bản ghi <2 skill không có bản chuyển sinh (lọc quái). Pet nuôi được kiểu này
+(vd `0x564f` "Ngọc Thố Bảo Bảo", skill 12002, từ món K.Tỏa Ngọc Thố) bị loại → GUI hiện
+"Pet_N (0x564f)". Byte `kind` KHÔNG tách được (cùng kind 0x0d với quái sự kiện Bánh Trung Thu...).
+Cách xử lý: thêm id vào `EXTRA_PET_IDS` trong `tools/crack_pets.py` rồi chạy lại, chép `pets.json`
+sang `android/.../train_bot_data/`. Gặp "Pet_N (0x....)" thì check Npc_C.dat trước — thường KHÔNG
+phải do client cũ.

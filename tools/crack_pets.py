@@ -19,6 +19,9 @@ SKILL_OFF = (50, 52, 54)   # offset 3 skill so voi pet_id (giong nhau MOI sectio
 # chung -> neu chan o 0x33ff thi cac pet do KHONG match anchor -> BI SOT khoi pets.json -> user
 # "khong set duoc skill pet" (bug thuc te: Lu Bo nhieu ban reborn skill 0x55xx/0x59xx bi thieu).
 SK_LO, SK_HI = 0x2710, 0x7fff
+# Pet NUOI DUOC nhung bi bo loc "quai" loai (1 skill, khong co ban chuyen sinh) -> ep giu.
+# 0x564f "Ngoc Tho Bao Bao" (pet Trung Thu tu mon K.Toa Ngoc Tho): GUI tung hien "Pet_33 (0x564f)".
+EXTRA_PET_IDS = {0x564f}
 
 
 def parse_pets_seq(path):
@@ -82,7 +85,7 @@ def parse_pets_seq(path):
     for pid, name, sk, raw, _canbecatch, turn in ban_ghi:
         if not pid or not all(SK_LO <= v <= SK_HI or v == 0 for v in raw):
             continue
-        if len(sk) < 2 and name not in co_chuyen_sinh:
+        if len(sk) < 2 and name not in co_chuyen_sinh and pid not in EXTRA_PET_IDS:
             continue
         # DOI CHUYEN SINH = `turn` (ip+58), KHONG phai `canBeCatch` (ip+22).
         # SUA 05/09 (user hoi "sao con Luc Ton ko co chu rb0"): ban cu lay ip+22 lam "doi reborn"

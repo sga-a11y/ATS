@@ -280,3 +280,11 @@ Flow (`_ra_lenh_di_nha_nam_tinh`, `run_party_digioi.py`):
   khỏi 55002 thì làm lại (điểm tập kết của party = chính 55002).
 - APK gửi 55002 qua `party_teleport_city` → Python chuyển sang `party_go_nha_nam_tinh`.
 - Test: `tests/test_nha_nam_tinh_quan.py`.
+
+## Cảnh báo "Điểm quái không có trận" (30/09)
+
+- Luật đứng hình: acc không đổi map/vị trí/trận quá `KE_HOACH_DUNG_HINH_SEC` (240s) → điều phối ra lệnh GOM (về thành, lập lại đội, chạy lại).
+- Nếu lúc đó cả party đang ở **map train** và đứng **tại điểm quái** (`st["mob_spot"]`) → ghi cảnh báo `party_diem_quai_canh_bao[pidx]` (đếm số lần kẹt ở cùng điểm).
+- GUI: nút "⚠ Chú ý" chuyển **cam**, dòng "ĐIỂM QUÁI KHÔNG CÓ TRẬN — party đứng 240s tại (x, y) map … (đã kẹt N lần)" + nút Bỏ qua.
+- Chỉ BÁO, không tự xoá điểm / tự quét lại — user vào game check rồi sửa `train_maps.json`.
+- Ca gốc: party 7 + 9, map 23802 điểm (290,2390) sát cổng vào, không có quái; bộ chọn "điểm ít trận nhất" chọn lại mãi. Đã xoá điểm này.

@@ -103,7 +103,8 @@ class TestPartyControllerRunner(unittest.TestCase):
         with mock.patch.dict(R._party_state, {}, clear=True), \
                 mock.patch.dict(R.config.PARTY_CONFIG, {0: {"mode": "stand"}}, clear=True), \
                 mock.patch.dict(R.config.PARTY_LEADER_ACC, {0: "a"}, clear=True), \
-                mock.patch.dict(R.account_clients, {"a": ca, "b": cb}, clear=True):
+                mock.patch.dict(R.account_clients, {"a": ca, "b": cb}, clear=True), \
+                mock.patch.object(R, "_clients_cua_party", return_value=[("a", ca), ("b", cb)]):
             state = R._pstate(0)
             state.update(cmd=("route", 12001, 12061), cmd_gen=2, manual_route_gen=2,
                          manual_route_plan={"source": 12001, "dest": 12061, "city": 12001,

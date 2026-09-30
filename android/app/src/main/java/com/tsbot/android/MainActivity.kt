@@ -627,6 +627,7 @@ fun TsBotApp(
                                 ?.let { service?.currentChannel(it.username) }
                         },
                         onGetLog = { username -> service?.getAccountLog(username) ?: "" },
+                        onIdleStats = { service?.idleStatsJson(parties.indexOf(party)) ?: "" },
                     )
                 }
             }
@@ -1327,6 +1328,7 @@ fun PartyCard(
     onPetRoiChucSkip: (String, String) -> Boolean = { _, _ -> false },
     onCurrentChannel: () -> Int?,
     onGetLog: (String) -> String = { "" },
+    onIdleStats: () -> String = { "" },
 ) {
     val runningInParty = party.accounts.count { statusMap[it.username]?.state == RunState.RUNNING }
     val enabledInParty = party.accounts.count { it.enabled }
@@ -1434,6 +1436,7 @@ fun PartyCard(
             var showCityDialog by remember { mutableStateOf(false) }
             var showGiftcodeDialog by remember { mutableStateOf(false) }
             var showAgiDialog by remember { mutableStateOf(false) }
+            var showIdleStats by remember { mutableStateOf(false) }
             var showNotifyDialog by remember { mutableStateOf(false) }
             var notifyCount by remember { mutableStateOf(0) }
             var notifyItems by remember { mutableStateOf<List<Map<String, String>>>(emptyList()) }
@@ -1476,6 +1479,11 @@ fun PartyCard(
                 // Check AGI THU GON (weight) de nhuong cho nut "Chu y" cung hang. Nut Chu y chi
                 // hien khi CO thong bao (giong PC: an mac dinh, pack khi co).
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick = { showIdleStats = true },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
+                    ) { Text("📊 Thống kê", maxLines = 1, style = MaterialTheme.typography.labelLarge) }
+                    Spacer(Modifier.width(6.dp))
                     OutlinedButton(
                         onClick = { showAgiDialog = true },
                         modifier = Modifier.weight(1f),
@@ -1554,6 +1562,10 @@ fun PartyCard(
                         val n = onFurnaceNotify(); notifyItems = n; notifyCount = n.size
                     },
                 )
+            }
+            if (showIdleStats) {
+                IdleStatsDialog(onLoad = onIdleStats, onDismiss = { showIdleStats = false },
+                    anTen = { ten, u -> maskCharacterName(ten, u, privacyMode, privacyOrdinals) })
             }
             if (showAgiDialog) {
                 PartyAgiDialog(
@@ -6124,6 +6136,139 @@ fun LegionDmgDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+private fun fmtGio(sec: Long): String =
+    "%02d:%02d:%02d".format(sec / 3600, (sec % 3600) / 60, sec % 60)
+
+/** Thong ke treo may cua party - bo cuc giong LegionDmgDialog: DS acc trai, chi tiet phai
+ *  (man hep: DS -> cham vao xem chi tiet). Tu nap lai 2s. Xem documents/THONG_KE_TREO_MAY.md. */
+@Composable
+fun IdleStatsDialog(onLoad: () -> String, onDismiss: () -> Unit,
+                    anTen: (String, String) -> String = { ten, _ -> ten }) {
+    var json by remember { mutableStateOf("") }
+    var chon by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            json = withContext(Dispatchers.IO) { onLoad() }
+            delay(2000)
+        }
+    }
+    val ds = remember(json) {
+        try {
+            val arr = org.json.JSONArray(json.ifBlank { "[]" })
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+        } catch (_: Exception) { emptyList() }
+    }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth(0.96f).fillMaxHeight(0.92f),
+        ) {
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.padding(12.dp)) {
+                val rong = maxWidth >= 600.dp
+                val userXem = chon ?: if (rong) ds.firstOrNull()?.optString("user") else null
+                val acc = ds.firstOrNull { it.optString("user") == userXem }
+                Column(Modifier.fillMaxSize()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Thống kê treo máy", fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f))
+                        TextButton(onClick = onDismiss) { Text("Đóng") }
+                    }
+                    Text(if (ds.isEmpty()) "Chưa có dữ liệu - hãy Start party"
+                         else "${ds.size} acc · từ lúc Start party tới lúc Stop",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (rong) {
+                        Row(Modifier.fillMaxSize()) {
+                            IdleDsAcc(ds, userXem, anTen, Modifier.weight(0.42f).fillMaxHeight()) { chon = it }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(0.58f).fillMaxHeight()
+                                .verticalScroll(rememberScrollState())) {
+                                if (acc != null) IdleChiTiet(acc, anTen)
+                            }
+                        }
+                    } else if (acc == null) {
+                        IdleDsAcc(ds, null, anTen, Modifier.fillMaxSize()) { chon = it }
+                    } else {
+                        TextButton(onClick = { chon = null }) { Text("← Danh sách") }
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                            IdleChiTiet(acc, anTen)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdleDsAcc(ds: List<JSONObject>, userChon: String?, anTen: (String, String) -> String,
+                      modifier: Modifier,
+                      onChon: (String) -> Unit) {
+    LazyColumn(modifier) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Text("Nhân vật", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+            }
+            HorizontalDivider()
+        }
+        items(ds.size) { k ->
+            val a = ds[k]
+            val u = a.optString("user")
+            val sel = u == userChon
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(if (sel) MaterialTheme.colorScheme.secondaryContainer
+                                else androidx.compose.ui.graphics.Color.Transparent)
+                    .clickable { onChon(u) }
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+            ) {
+                Text(anTen(a.optString("char").ifBlank { u }, u), Modifier.weight(1f), maxLines = 1,
+                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdleChiTiet(a: JSONObject, anTen: (String, String) -> String) {
+    val nho = MaterialTheme.typography.bodySmall
+    val u = a.optString("user")
+    Text(anTen(a.optString("char").ifBlank { u }, u), fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleMedium)
+    Text(if (a.optBoolean("running")) "Đang chạy" else "Đã dừng", style = nho)
+    Spacer(Modifier.height(6.dp))
+    Text("Thời gian: ${fmtGio(a.optLong("elapsed"))}", style = nho)
+    Text("Số lần login: ${a.optInt("logins")}", style = nho)
+    Text("Số trận: ${a.optInt("fights")}", style = nho)
+    val chet = a.optJSONObject("deaths")
+    Text("Số lần chết: char ${chet?.optInt("char") ?: 0} · pet ${chet?.optInt("pet") ?: 0}", style = nho)
+    Text("EXP", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+    val exp = a.optJSONObject("exp")
+    val keys = exp?.keys()?.asSequence()?.toList() ?: emptyList()
+    if (keys.isEmpty()) Text("  (chưa có)", style = nho)
+    // Goi EXP chi mang TEN -> trung ten nhan vat la char, con lai la pet
+    val tenChar = a.optString("char")
+    keys.forEach {
+        val loai = if (it == tenChar) "char" else "pet"
+        val ten = if (it == tenChar) anTen(it, u) else it
+        Text("  [$loai] $ten: " + "%,d".format(exp!!.optLong(it)), style = nho)
+    }
+    listOf("get_items" to "Vật phẩm nhận được", "use_items" to "Vật phẩm đã dùng").forEach { (k, head) ->
+        Text(head, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+        val arr = a.optJSONArray(k)
+        if (arr == null || arr.length() == 0) Text("  (chưa có)", style = nho)
+        else for (i in 0 until arr.length()) {
+            val r = arr.optJSONArray(i) ?: continue
+            Text("  ${r.optString(1)} x" + "%,d".format(r.optLong(2)), style = nho)
         }
     }
 }

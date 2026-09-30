@@ -15,6 +15,7 @@ try:
 except Exception:
     pass
 from . import config
+from .idle_stats import IdleStats
 from . import mob_spots
 from . import train_pick
 from . import loandau
@@ -429,6 +430,38 @@ def _use_consumables(c):
 
 # ==== REGISTRY cho GUI dieu khien tung acc ====
 account_clients = {}   # username -> GameClient (doc trang thai live)
+# THONG KE TREO MAY theo acc (bot/idle_stats.py): Start party -> tao moi, Stop -> dung dong ho
+# nhung GIU de GUI xem. Chi trong RAM (user chot 29/09). Giu o day chu khong o client vi mat ket
+# noi/relogin la client MOI - so lieu phai chay xuyen suot ca phien.
+idle_stats = {}
+
+
+def _idle_stats_of(username):
+    s = idle_stats.get(username)
+    if s is None:
+        s = idle_stats[username] = IdleStats()
+    return s
+
+
+def idle_stats_report(pidx):
+    """[(username, char, snapshot)] cho dialog Thong ke cua party."""
+    out = []
+    for u, *_ in party_accounts(pidx):
+        s = idle_stats.get(u)
+        if s is None:
+            continue
+        out.append((u, account_status(u).get("char") or u, s.snapshot()))
+    return out
+
+
+def idle_stats_report_json(pidx):
+    """ANDROID: Kotlin chi nhan duoc chuoi."""
+    try:
+        return json.dumps([{"user": u, "char": n, **snap} for u, n, snap in idle_stats_report(pidx)],
+                          ensure_ascii=False)
+    except Exception as e:
+        log.debug("idle_stats_report party %d loi: %s", pidx, e)
+        return ""
 account_stops = {}     # username -> threading.Event (GUI yeu cau dung acc nay)
 account_threads = {}   # username -> Thread
 account_last = {}      # username -> {"map","char"} luc CUOI truoc khi thoat (de biet thoat o dau)
@@ -513,6 +546,43 @@ def safe_canh_bao_items(pidx):
 def safe_canh_bao_bo_qua(username):
     """User da xem/sua xong -> bo canh bao cua acc nay."""
     account_safe_canh_bao.pop(str(username or "").strip(), None)
+    return True
+
+
+# DIEM QUAI KHONG CO TRAN: pidx -> {map, diem, lan, luc}
+# Party ra diem quai, dung 240s khong vao tran nao -> dieu phoi ket luan DUNG HINH, gom ve thanh
+# roi lai chon dung diem do (bo chon lay "diem it tran nhat") -> lap vo han, khong ai biet.
+# Ca that 29-30/09 party 7 + 9, map 23802 diem (290,2390): diem sat cong vao, khong co quai, ket
+# tu 16:23 toi sang hom sau. User chot 30/09: CHI BAO len "Chu y" de user vao check, khong tu xoa.
+party_diem_quai_canh_bao = {}
+
+
+def _ghi_nhan_diem_quai_chet(pidx, map_id, diem):
+    if not map_id or not diem:
+        return
+    _key = (int(map_id), tuple(int(v) for v in tuple(diem)[:2]))
+    rec = party_diem_quai_canh_bao.get(pidx)
+    if rec is None or rec.get("key") != _key:
+        rec = {"key": _key, "map": _key[0], "diem": list(_key[1]), "lan": 0}
+        party_diem_quai_canh_bao[pidx] = rec
+    rec["lan"] += 1
+    rec["luc"] = time.time()
+    log.warning("[party %d] DIEM QUAI KHONG CO TRAN: dung %ds tai %s map %s khong vao tran nao "
+                "(lan %d) -> bao Chu y cho user kiem", pidx + 1, KE_HOACH_DUNG_HINH_SEC,
+                rec["diem"], rec["map"], rec["lan"])
+
+
+def diem_quai_canh_bao_items(pidx):
+    """[{user, map, diem, lan, luc}] cho UI (user = leader cua party de hien ten)."""
+    rec = party_diem_quai_canh_bao.get(pidx)
+    if not rec:
+        return []
+    return [{"user": config.PARTY_LEADER_ACC.get(pidx) or "", "pidx": pidx, "map": rec["map"],
+             "diem": rec["diem"], "lan": rec["lan"], "luc": rec["luc"]}]
+
+
+def diem_quai_canh_bao_bo_qua(pidx):
+    party_diem_quai_canh_bao.pop(pidx, None)
     return True
 account_stop_reasons = {}  # username -> ai/nhanh nao set stop_ev gan nhat
 account_reconnect = {}
@@ -3057,6 +3127,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             c._o5_team_fn = (lambda o5d, _c=c:
                              _handle_o5_team(_c, st, username, label, pidx, is_leader, _stopped, o5d))
             account_clients[username] = c
+            c.idle_stats = _idle_stats_of(username)
             ok = True
             log.info("[%s] CHUYEN PHA train - GIU NGUYEN ket noi (khong dang nhap lai)", label)
         while not ok and attempt < 6:
@@ -3150,6 +3221,9 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             return
         _clients.append(c)
         account_clients[username] = c     # GUI doc trang thai
+        c.idle_stats = _st = _idle_stats_of(username)
+        _st.resume()
+        _st.add_login()                   # moi lan vao world THAT (ke ca relogin/reconnect)
         st["reconnecting"].discard(username)  # (reconnect) da vao world lai -> khong con "dang rot"
         # MOC "CO ACC VUA VAO WORLD" cho GUI. Bang "Chu y" (tui / Ba Dau / quan doan / du diem /
         # lo) dung lai danh sach tu nam nguon cho tung acc, qua nang de chay moi giay tren main
@@ -3257,6 +3331,8 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
             try: c.close()
             except Exception: pass
         account_clients.pop(username, None)
+        if not reconnectable and username in idle_stats:
+            idle_stats[username].stop()
         if not reconnectable:   # reconnect thi CHUA tong ket "party thoat het" (nick se login lai)
             try:
                 _party_exit_summary(pidx, username)   # neu ca party da tat -> log 1 dong tong ket
@@ -4553,6 +4629,8 @@ def start_party(pidx, stagger=1.5, skip_running=False):
         _party_state.pop(pidx, None)
         reset_party_joined(pidx)
         for u, *_ in accounts:
+            idle_stats[u] = IdleStats()   # thong ke moi cho phien moi
+        for u, *_ in accounts:
             account_forced_reconnect.discard(u)
             account_forced_reconnect_reason.pop(u, None)
     st = _pstate(pidx)
@@ -5256,6 +5334,15 @@ def _thi_hanh_hieu_ung(pidx, st, song, hu, viec, anh):
                 log.info("[party %d] DIEU PHOI: RUT lenh reform gen %d - da du doi (%s), cung map "
                          "%s kenh %s -> khong thi hanh lai (lam lai la pha party vua lap)",
                          pidx + 1, _rg, anh.tinh_hinh_doi, sorted(anh.maps), sorted(anh.kenhs))
+    # Gom vi DUNG HINH ma ca party dang o map train, dung tai diem quai -> diem do khong co tran.
+    if hu.xoa_nhip_acc and anh.pha == "train" and song:
+        _dich = _map_train_dich(pidx, st)
+        _spot = st.get("mob_spot")
+        if (_dich and _spot
+                and all(int(getattr(c, "current_map", 0) or 0) == _dich for _u, c in song)
+                and not any(getattr(c, "pos", None) and _xa_diem_quai(c.pos, _spot)
+                            for _u, c in song)):
+            _ghi_nhan_diem_quai_chet(pidx, _dich, _spot)
     if hu.reset_joined:
         reset_party_joined(pidx)     # so nho khong duoc giu nguoi cua party da tan (L2d)
     dat_party_dang_gom(pidx, hu.dang_gom)
@@ -6791,9 +6878,21 @@ def _engine_route_decisions(pidx, anh, cmd):
                 "phase": "gather", "temporary_party": not config.PARTY_LEADER_ACC.get(pidx)}
         with st["lock"]:
             st["manual_route_plan"] = plan
-        log.info("[party %d] ENGINE: di map %s -> %s, tap ket %s", pidx + 1,
-                 source, dest, plan["city"])
+        log.info("[party %d] ENGINE: di map %s -> %s, tap ket %s, users=%s", pidx + 1,
+                 source, dest, plan["city"], users)
     leader = plan["leader"]
+    # Tinh lai MOI NHIP, khong chup 1 lan: acc dang relogin luc tao plan van la nguoi cua party.
+    # Ca that 29/09 party 57: plan tao 23:40:58, stsm05 relogin xong 23:41:02 -> plan chi 4 nguoi
+    # -> roster 3 member la "du" -> route_dest bo lai stsm05. Acc TAT HAN thi _clients_cua_party
+    # da bo ra nen khong cho vinh vien.
+    users_nay = [u for u, _c in _clients_cua_party(pidx)]
+    if leader not in users_nay:
+        users_nay.insert(0, leader)
+    if users_nay != plan["users"]:
+        log.info("[party %d] ENGINE: di map - doi danh sach users %s -> %s", pidx + 1,
+                 plan["users"], users_nay)
+        with st["lock"]:
+            plan["users"] = users_nay
     lead = next((a for a in anh.accs if a.username == leader and a.song), None)
     if plan["phase"] in ("gather", "sync_city", "sync_source"):
         _engine_chot_kenh(pidx, st, _acc_song(pidx),
