@@ -3132,6 +3132,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
                              _handle_o5_team(_c, st, username, label, pidx, is_leader, _stopped, o5d))
             account_clients[username] = c
             c.idle_stats = _idle_stats_of(username)
+            c.idle_stats.bind_client(c)
             ok = True
             log.info("[%s] CHUYEN PHA train - GIU NGUYEN ket noi (khong dang nhap lai)", label)
         while not ok and attempt < 6:
@@ -3226,6 +3227,7 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         _clients.append(c)
         account_clients[username] = c     # GUI doc trang thai
         c.idle_stats = _st = _idle_stats_of(username)
+        _st.bind_client(c)
         _st.resume()
         _st.add_login()                   # moi lan vao world THAT (ke ca relogin/reconnect)
         st["reconnecting"].discard(username)  # (reconnect) da vao world lai -> khong con "dang rot"
@@ -9035,6 +9037,28 @@ def bank_info(username):
                 used=len(slots), cap=0, maxed=False)
 
 
+def _loai_item(tid, d):
+    """LOAI item -> key icon. GIONG HET gui.py::BagDialog._loai_item (trang bi truoc, vi trang bi
+    cung co the co hp/sp). None = khong co icon."""
+    try:
+        from .client import _load_pet_scrolls
+    except ImportError:              # test stub client khong co ham nay -> coi nhu khong co cuon
+        _load_pet_scrolls = dict
+    try:
+        ft = int(d.get("ft") or 0)
+        if 1 <= ft <= 6:
+            return "eq%d" % ft
+        if int(d.get("kd") or 0) == 49:
+            return "ngua"
+        if int(tid) in _load_pet_scrolls():
+            return "cuon"
+        if int(d.get("hp") or 0) > 0 or int(d.get("sp") or 0) > 0:
+            return "thuoc"
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
 def _bag_info_slots(slots, c):
     """Dung `{"slots": [...]}` cho ca tui do lan tien trang. `c=None` = ban CHI XEM (acc tat /
     kho) -> cac co can client song (`fashion`, `bank`) de False, UI khoa nut theo `live`."""
@@ -9058,6 +9082,8 @@ def _bag_info_slots(slots, c):
             "st": int(d.get("st", 999) or 999),
             "ft": int(d.get("ft", 0) or 0),
             "kd": int(d.get("kd", 0) or 0),
+            # ICON LOAI (mirror gui.py::BagDialog._loai_item) - APK ve icon theo key nay.
+            "loai": _loai_item(tid, d) or "",
             "tab": [t for t, _ten in _bt.TAB_NAMES
                     if _bt.matches_tab(t, d.get("ft"), d.get("kd"))],
             "use": bool(_bt.can_use(d.get("bs"))),

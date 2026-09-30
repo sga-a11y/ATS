@@ -166,3 +166,11 @@ sửa cả chỗ kia. Loader `_load_gamedata_items` thêm `a1k/a1v/a2k/a2v` cho 
 
 **Xoay màn hình:** ngang → dialog gần full bề rộng, 2 cột (trái đồ đang mặc/bộ đồ, phải túi);
 dọc → xếp chồng, phần đồ tối đa ~45% chiều cao và tự cuộn để danh sách túi luôn còn chỗ.
+
+## Icon loại item (PC + APK, 30/09)
+Mỗi ô túi đồ có icon pixel 14x14 thể hiện loại, để nhìn lướt tìm nhanh. Nhận dạng từ dữ liệu game
+(không đoán theo tên), thứ tự xét: `ft` 1..6 → `eq1..eq6` (trang bị) · `kd==49` → `ngua` · có
+trong `pet_scrolls.json` → `cuon` · `hp/sp>0` → `thuoc`. Không thuộc loại nào → không icon.
+- PC: `gui.py::BagDialog._loai_item` + `_icon_loai`.
+- APK: `bag_info` trả thêm trường `loai` (`run_party_digioi.py::_loai_item`, cùng luật), Kotlin
+  `IconLoai` vẽ Canvas đúng toạ độ + màu của PC. Ô "Trang bị đang mặc" cũng có icon `eq<fit>`.

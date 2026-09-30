@@ -20,6 +20,14 @@ User chốt 29/09. Chép logic `MachineBox.Statistics` của client (`_lua_dec/L
 
 Khác client: EXP lấy từ gói thông báo chứ không từ gói thuộc tính.
 
+## Thêm 30/09 (user chốt)
+Thứ tự chi tiết: thông số chung → **Daily quest** → **PB tổ đội** → EXP → vật phẩm.
+- **Daily quest (x/9)**: ô bingo đã xong = `client._quest_cells` (server báo, không cache).
+  Ô dạng đếm (vd ô9 đánh 50 trận) chỉ biết xong/chưa.
+- **PB tổ đội**: LV20/50/80/110 theo `team_dungeon_remaining()` (0 = đã đánh ✅; `?` = chưa có mission-step).
+- Đọc qua `GameClient.daily_status()`; `IdleStats.bind_client()` giữ weakref, Stop thì giữ lần đọc cuối.
+- **EXP**: thêm số lần nhận + exp lần cuối: `[char] mamot: 38,070 (18 lần, lần cuối 555)`.
+
 ## UI (PC)
 Tab party → nút **📊 Thống kê** (trước Check AGI). Cửa sổ kiểu Soi dame boss: mỗi acc một dòng
 bên trái, chi tiết bên phải, tự cập nhật 2s khi còn acc chạy.

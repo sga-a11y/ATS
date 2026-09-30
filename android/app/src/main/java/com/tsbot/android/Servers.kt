@@ -79,7 +79,7 @@ object Servers {
                 val py = com.chaquo.python.Python.getInstance()
                 val cfg = py.getModule("train_bot.config")
                 py.getModule("train_bot.servers_cdn")
-                    .callAttr("cap_nhat", cfg.get("SERVERS"), context.filesDir.absolutePath)
+                    .callAttr("cap_nhat_moi_ban", cfg.get("SERVERS"), context.filesDir.absolutePath)
                 loaded = null          // nap lai de lay ca overlay vua ghi
                 init(context)
                 tick.intValue += 1

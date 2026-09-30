@@ -4810,6 +4810,7 @@ data class BagSlot(
     val ft: Int,
     val tabs: List<Int>,
     val canUse: Boolean,
+    val loai: String = "",
     val canEquip: Boolean,
     val canDismantle: Boolean,
     val canFashion: Boolean,
@@ -4830,6 +4831,73 @@ fun bagQualityColor(q: Int): androidx.compose.ui.graphics.Color = when (q) {
     3 -> androidx.compose.ui.graphics.Color(0xFFF3E8FF)
     4 -> androidx.compose.ui.graphics.Color(0xFFFFF0D8)
     else -> androidx.compose.ui.graphics.Color(0xFFF0F0F0)
+}
+
+/** Mau (VIEN, THAN, SANG) moi loai - GIONG gui.py::_LOAI_MAU. */
+private val LOAI_MAU: Map<String, Triple<Long, Long, Long>> = mapOf(
+    "thuoc" to Triple(0xFF8B1A1A, 0xFFE24A4A, 0xFFF7B9B9),
+    "cuon" to Triple(0xFF7A5A1E, 0xFFD9B25A, 0xFFF2E3BD),
+    "ngua" to Triple(0xFF3A5A2A, 0xFF7FB069, 0xFFD6E8C8),
+    "eq1" to Triple(0xFF4A4A52, 0xFF9AA0A8, 0xFFDFE3E8),
+    "eq2" to Triple(0xFF5A2F22, 0xFFA8604A, 0xFFE0BCAE),
+    "eq3" to Triple(0xFF3C4450, 0xFFC0C8D4, 0xFFF0F4FA),
+    "eq4" to Triple(0xFF6B4A12, 0xFFC79A3A, 0xFFF0DCA8),
+    "eq5" to Triple(0xFF1E3350, 0xFF4568A0, 0xFFB9C9E0),
+    "eq6" to Triple(0xFF8A6A10, 0xFF3FAE9A, 0xFFF2D97A),
+)
+
+/** Khoi pixel (x1,y1,x2,y2 GOM ca bien, mau 0=VIEN 1=THAN 2=SANG) - chep y het toa do trong
+ *  gui.py::_icon_loai (luoi 14x14) de hai ban nhin nhu nhau. */
+private val LOAI_HINH: Map<String, List<IntArray>> = run {
+    fun r(vararg v: Int) = v
+    val kiem = ArrayList<IntArray>().apply {
+        add(r(0, 11, 2, 13, 0)); add(r(1, 8, 5, 10, 0))
+        for (i in 0 until 10) add(r(2 + i, 10 - i, 3 + i, 11 - i, 1))
+        add(r(11, 0, 13, 2, 2))
+    }
+    mapOf(
+        "thuoc" to listOf(r(6, 0, 7, 2, 0), r(4, 3, 9, 4, 0), r(2, 5, 11, 13, 0),
+                          r(3, 6, 10, 12, 1), r(4, 7, 4, 11, 2)),
+        "cuon" to listOf(r(0, 3, 2, 10, 0), r(1, 4, 1, 9, 2), r(11, 3, 13, 10, 0),
+                         r(12, 4, 12, 9, 2), r(3, 4, 10, 9, 0), r(3, 5, 10, 8, 1),
+                         r(4, 6, 9, 6, 2), r(4, 7, 7, 7, 2)),
+        "ngua" to listOf(r(9, 0, 12, 3, 0), r(10, 1, 11, 2, 1), r(12, 2, 13, 3, 0),
+                         r(10, 1, 10, 1, 2), r(7, 1, 9, 2, 0), r(6, 3, 10, 5, 0),
+                         r(7, 4, 9, 5, 1), r(1, 5, 10, 9, 0), r(2, 6, 9, 8, 1),
+                         r(0, 5, 1, 7, 0), r(2, 9, 3, 13, 0), r(5, 9, 6, 13, 0),
+                         r(8, 9, 9, 13, 0)),
+        "eq1" to listOf(r(4, 2, 9, 3, 0), r(3, 4, 10, 8, 0), r(4, 5, 9, 7, 1),
+                        r(5, 5, 6, 5, 2), r(0, 9, 13, 11, 0), r(1, 10, 12, 10, 1)),
+        "eq2" to listOf(r(1, 3, 3, 7, 0), r(10, 3, 12, 7, 0), r(4, 2, 9, 12, 0),
+                        r(5, 3, 8, 11, 1), r(6, 2, 7, 3, 2)),
+        "eq3" to kiem,
+        "eq4" to listOf(r(3, 1, 10, 12, 0), r(4, 2, 9, 11, 1), r(2, 3, 11, 4, 0),
+                        r(2, 8, 11, 9, 0), r(5, 3, 6, 4, 2), r(5, 8, 6, 9, 2), r(4, 6, 5, 6, 2)),
+        "eq5" to listOf(r(8, 1, 12, 7, 0), r(9, 2, 11, 6, 1), r(9, 2, 9, 4, 2),
+                        r(4, 6, 12, 9, 0), r(4, 7, 11, 8, 1), r(1, 8, 4, 9, 0),
+                        r(2, 8, 3, 8, 1), r(1, 10, 12, 11, 0)),
+        "eq6" to listOf(r(2, 3, 11, 10, 0), r(1, 5, 12, 8, 0), r(3, 4, 10, 9, 1),
+                        r(2, 6, 11, 7, 1), r(5, 5, 8, 6, 2), r(6, 7, 7, 8, 2), r(3, 4, 4, 4, 2)),
+    )
+}
+
+/** Icon LOAI item o tui do - mirror gui.py::_icon_loai. Loai rong/la -> chiem cho trong (giu
+ *  ten thang hang), dung y PC: item khong thuoc loai nao thi o trong. */
+@Composable
+fun IconLoai(loai: String, modifier: Modifier = Modifier) {
+    val hinh = LOAI_HINH[loai]
+    val mau = LOAI_MAU[loai]
+    androidx.compose.foundation.Canvas(modifier.size(14.dp)) {
+        if (hinh == null || mau == null) return@Canvas
+        val px = size.width / 14f
+        val bang = listOf(mau.first, mau.second, mau.third)
+        for (k in hinh) {
+            drawRect(androidx.compose.ui.graphics.Color(bang[k[4]]),
+                     topLeft = androidx.compose.ui.geometry.Offset(k[0] * px, k[1] * px),
+                     size = androidx.compose.ui.geometry.Size((k[2] - k[0] + 1) * px,
+                                                               (k[3] - k[1] + 1) * px))
+        }
+    }
 }
 
 /** used, cap, slots, live (false = ban CACHE, acc dang tat -> CHI XEM), ts (moc anh chup). */
@@ -4855,6 +4923,7 @@ fun parseBagInfo(json: String): BagInfo {
                 canDismantle = s.optBoolean("dis", false),
                 canFashion = s.optBoolean("fashion", false),
                 canBank = s.optBoolean("bank", false),
+                loai = s.optString("loai", ""),
             ))
         }
         BagInfo(o.optInt("used"), o.optInt("cap"), out,
@@ -5057,8 +5126,12 @@ fun BagDialog(
                                     .clickable { chonFit = fit; chon = null; thongBao = "" }
                                     .padding(4.dp),
                             ) {
-                                Text(tenO, style = MaterialTheme.typography.labelSmall,
-                                     color = androidx.compose.ui.graphics.Color(0xFF888888))
+                                // Icon loai theo O (khong theo mon) - o trong van co icon (giong PC).
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconLoai("eq$fit", Modifier.padding(end = 3.dp))
+                                    Text(tenO, style = MaterialTheme.typography.labelSmall,
+                                         color = androidx.compose.ui.graphics.Color(0xFF888888))
+                                }
                                 Text(v?.second ?: "— trống —", maxLines = 2,
                                      style = MaterialTheme.typography.bodySmall,
                                      color = if (v == null)
@@ -5166,6 +5239,7 @@ fun BagDialog(
                                     .clickable { chon = it2; thongBao = "" }
                                     .padding(horizontal = 6.dp, vertical = 5.dp),
                             ) {
+                                IconLoai(it2.loai, Modifier.padding(end = 4.dp))
                                 Text(it2.name, Modifier.weight(1f),
                                      style = MaterialTheme.typography.bodySmall)
                                 if (it2.cnt > 1) {
@@ -6544,8 +6618,24 @@ private fun IdleChiTiet(a: JSONObject, anTen: (String, String) -> String) {
     Text("Số trận: ${a.optInt("fights")}", style = nho)
     val chet = a.optJSONObject("deaths")
     Text("Số lần chết: char ${chet?.optInt("char") ?: 0} · pet ${chet?.optInt("pet") ?: 0}", style = nho)
+    // Daily quest (9 o bingo) + PB to doi - doc tu client dang chay, Stop thi giu lan cuoi
+    val daily = a.optJSONObject("daily")
+    val cellsArr = daily?.optJSONArray("cells")
+    val xong = (0 until (cellsArr?.length() ?: 0)).map { cellsArr!!.optInt(it) }.toSet()
+    Text("Daily quest" + if (daily == null) "" else " (${xong.size}/9)",
+        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+    if (daily == null) Text("  (chưa có)", style = nho)
+    else Text("  " + (1..9).joinToString("  ") { "ô$it ${if (it in xong) "✅" else "❌"}" }, style = nho)
+    Text("PB tổ đội", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+    val team = daily?.optJSONObject("team")
+    if (team == null) Text("  (chưa có)", style = nho)
+    else Text("  " + team.keys().asSequence().toList().joinToString(" · ") {
+        "LV$it " + when { team.isNull(it) -> "?"; team.optBoolean(it) -> "✅"; else -> "❌" }
+    }, style = nho)
     Text("EXP", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
     val exp = a.optJSONObject("exp")
+    val expN = a.optJSONObject("exp_n")
+    val expLast = a.optJSONObject("exp_last")
     val keys = exp?.keys()?.asSequence()?.toList() ?: emptyList()
     if (keys.isEmpty()) Text("  (chưa có)", style = nho)
     // Goi EXP chi mang TEN -> trung ten nhan vat la char, con lai la pet
@@ -6553,7 +6643,9 @@ private fun IdleChiTiet(a: JSONObject, anTen: (String, String) -> String) {
     keys.forEach {
         val loai = if (it == tenChar) "char" else "pet"
         val ten = if (it == tenChar) anTen(it, u) else it
-        Text("  [$loai] $ten: " + "%,d".format(exp!!.optLong(it)), style = nho)
+        Text("  [$loai] $ten: " + "%,d".format(exp!!.optLong(it)) +
+            " (${expN?.optInt(it) ?: 0} lần, lần cuối " + "%,d".format(expLast?.optLong(it) ?: 0) + ")",
+            style = nho)
     }
     listOf("get_items" to "Vật phẩm nhận được", "use_items" to "Vật phẩm đã dùng").forEach { (k, head) ->
         Text(head, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))

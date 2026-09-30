@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
+import weakref
 
 ITEM_HONG = 23024   # 損壞的 - client bo qua khong dem (MachineBox.lua:1088)
 
@@ -18,6 +19,10 @@ class IdleStats:
         self.start_time = time.time()
         self.end_time = None
         self.exp = {}          # ten (char/pet) -> exp, giu thu tu nhan
+        self.exp_n = {}        # ten -> so lan nhan exp
+        self.exp_last = {}     # ten -> exp lan cuoi
+        self._client = None    # weakref GameClient dang chay -> doc daily quest / PB to doi
+        self._daily = None     # trang thai daily lan cuoi doc duoc (giu lai khi Stop)
         self.fights = 0
         self.deaths = {"char": 0, "pet": 0}   # client chi dem char; bot dem ca pet
         self.logins = 0
@@ -39,6 +44,23 @@ class IdleStats:
             return
         with self._lock:
             self.exp[name] = self.exp.get(name, 0) + n
+            self.exp_n[name] = self.exp_n.get(name, 0) + 1
+            self.exp_last[name] = n
+
+    def bind_client(self, client):
+        try:
+            self._client = weakref.ref(client)
+        except TypeError:          # object khong ho tro weakref (vd test) -> giu ref thuong
+            self._client = lambda: client
+
+    def _read_daily(self):
+        c = self._client() if self._client else None
+        if c is not None:
+            try:
+                self._daily = c.daily_status()
+            except Exception:
+                pass
+        return self._daily
 
     def add_fight(self):
         with self._lock:
@@ -73,11 +95,15 @@ class IdleStats:
             self._insert(self.use_items, item_id, name, quant)
 
     def snapshot(self) -> dict:
+        daily = self._read_daily()
         with self._lock:
             return {
                 "elapsed": self.elapsed(),
                 "running": self.end_time is None,
                 "exp": dict(self.exp),
+                "exp_n": dict(self.exp_n),
+                "exp_last": dict(self.exp_last),
+                "daily": daily,
                 "fights": self.fights,
                 "deaths": dict(self.deaths),
                 "logins": self.logins,

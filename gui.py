@@ -3676,15 +3676,26 @@ class IdleStatsDialog(tk.Toplevel):
                          ("Số lần chết", "char %d · pet %d" % (s["deaths"].get("char", 0),
                                                                 s["deaths"].get("pet", 0)))):
                 txt.insert("end", "  %s: %s\n" % (k, v))
+            # Daily quest (9 o bingo) + PB to doi - doc tu client dang chay, Stop thi giu lan cuoi
+            d = s.get("daily")
+            xong = set(d["cells"]) if d else set()
+            txt.insert("end", "\nDaily quest%s\n" % (" (%d/9)" % len(xong) if d else ""), "muc")
+            txt.insert("end", "  (chưa có)\n" if not d else
+                       "  " + "  ".join("ô%d %s" % (i, "✅" if i in xong else "❌")
+                                        for i in range(1, 10)) + "\n")
+            txt.insert("end", "\nPB tổ đội\n", "muc")
+            txt.insert("end", "  (chưa có)\n" if not d else
+                       "  " + " · ".join("LV%s %s" % (lv, "?" if ok is None else "✅" if ok else "❌")
+                                         for lv, ok in d["team"].items()) + "\n")
             txt.insert("end", "\nEXP\n", "muc")
             if not s["exp"]:
                 txt.insert("end", "  (chưa có)\n")
             # Goi EXP chi mang TEN -> trung ten nhan vat la char, con lai la pet
             for nm, n in s["exp"].items():
                 la_char = nm == name
-                txt.insert("end", "  [%s] %s: %s\n" % ("char" if la_char else "pet",
-                                                        self._an(self.user, nm) if la_char else nm,
-                                                        format(n, ",")))
+                txt.insert("end", "  [%s] %s: %s (%d lần, lần cuối %s)\n" % (
+                    "char" if la_char else "pet", self._an(self.user, nm) if la_char else nm,
+                    format(n, ","), s["exp_n"].get(nm, 0), format(s["exp_last"].get(nm, 0), ",")))
             for key, head in (("get_items", "Vật phẩm nhận được"), ("use_items", "Vật phẩm đã dùng")):
                 txt.insert("end", "\n%s\n" % head, "muc")
                 if not s[key]:

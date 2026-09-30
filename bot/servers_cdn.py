@@ -237,6 +237,18 @@ def cap_nhat(servers, thu_muc, tai=None, game=None):
     return them
 
 
+def cap_nhat_moi_ban(servers, thu_muc):
+    """`cap_nhat` cho MOI ban TS (VTC, TSM...). PC (`cap_nhat_nen`) va APK (`Servers.kt`) cung goi
+    ham nay - APK tung goi `cap_nhat` tran -> chi hoi VTC, server TSM giu label cu khong co ID (30/09)."""
+    them = {}
+    for g in _region.REGIONS:       # moi ban hoi CDN rieng; ban nay loi khong chan ban kia
+        try:
+            them.update(cap_nhat(servers, thu_muc, game=g))
+        except Exception as e:
+            log.debug("SERVER CDN: loi cap nhat ban %s: %s", g, e)
+    return them
+
+
 _da_hoi = False
 _khoa_hoi = threading.Lock()
 
@@ -254,12 +266,7 @@ def cap_nhat_nen(servers, thu_muc, xong=None):
 
     def _vong():
         try:
-            them = {}
-            for g in _region.REGIONS:       # moi ban hoi CDN rieng; ban nay loi khong chan ban kia
-                try:
-                    them.update(cap_nhat(servers, thu_muc, game=g))
-                except Exception as e:
-                    log.debug("SERVER CDN: loi cap nhat ban %s: %s", g, e)
+            them = cap_nhat_moi_ban(servers, thu_muc)
         except Exception as e:
             log.debug("SERVER CDN: loi cap nhat nen: %s", e)
             them = {}

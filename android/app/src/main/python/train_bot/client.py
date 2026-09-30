@@ -8258,6 +8258,13 @@ class GameClient:
             time.sleep(0.2)
         return bool(self.mission_steps_loaded)
 
+    def daily_status(self) -> dict:
+        """Cho Thong ke treo may: o bingo da xong (1-9) + PB to doi con luot hay het.
+        team: {level: True=da danh, False=chua, None=chua co mission-step}."""
+        return {"cells": sorted(c for c in self._quest_cells if 1 <= c <= 9),
+                "team": {lv: (None if (r := self.team_dungeon_remaining(lv)) is None else r == 0)
+                         for lv in sorted(TEAM_DUNGEONS)}}
+
     def team_dungeon_remaining(self, level: int):
         info = TEAM_DUNGEONS.get(int(level))
         if not info:
