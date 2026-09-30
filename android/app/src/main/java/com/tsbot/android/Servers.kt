@@ -109,7 +109,7 @@ object Servers {
         // id 16 = Bang Thong DA DONG (loi ky thuat) -> nhay thang 17, khong phai thieu sot
         "dien_vi" to Info("Điển Vi", "103.190.202.60", 17),
         "truong_lieu" to Info("Trương Liêu", "103.190.202.61", 18),
-        "tsm_21" to Info("TSM - Server 21", "34.81.22.35", 21, "tsm"),
+        "tsm_21" to Info("TSM-21-(三)益州(推薦)", "34.81.22.35", 21, "tsm"),
         "dong_trac" to Info("Đồng Trác", "103.190.202.63", 19),
     )
 }

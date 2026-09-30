@@ -145,3 +145,24 @@ bank_counts_cache(username)   # -> {tid: tổng}  — CÙNG hình dạng với c
 [Luật soi lò](SOI_LO.md) hiện đọc `bag_counts` ("trong túi đã có chưa"). Muốn tính cả kho thì cộng
 thêm nguồn này, không phải bóc lại gói. Nhớ: `{}` nghĩa là **không có gì trong kho** (theo quyết
 định ở mục 1), không phải "không biết".
+
+## APK: đồ đang mặc + bộ đồ (30/09/2026) — mirror `gui.py::BagDialog`
+
+Trước đây túi đồ APK chỉ có danh sách món, thiếu hẳn phần PC đã có. Giờ `BagDialog` (Kotlin) có:
+- Hàng **"Cho:"** Nhân vật / từng pet mang theo (★ = đang xuất chiến).
+- **6 ô trang bị đang mặc** (Vũ khí, Mũ, Áo, Hộ uyển, Giày, Đặc biệt) — bấm ô → "Cởi ra".
+- Hàng **Bộ:** "Đồ đang mặc" + các bộ đã lưu của ĐÚNG đối tượng đang chọn (file bộ đồ dùng chung PC).
+  Xem một bộ → Mặc bộ này / Lưu thay đổi / Xoá bộ (hỏi xác nhận); bấm món trong túi → "Đặt vào bộ"
+  (không mặc ngay). "Lưu thành bộ mới…" chụp đồ đang mặc hoặc chép bộ đang soạn.
+- Nút "Trang bị" gửi `equip_item` / `equip_pet_item` cho đối tượng đang chọn (trước gọi `use_slot`).
+
+Python: `run_party_digioi.bag_equip_info(username, who)` và `bag_outfit_cmd(...)` — lệnh mặc/cởi
+xếp hàng qua `queue_bag_cmd` khi đang trong trận. Acc tắt: vẫn xem được các bộ đã lưu, nhưng
+không có đồ đang mặc, nút Mặc/Cởi khoá.
+Dòng **chỉ số** (Cấp, INT/ATK/DEF/HPx/SPx/AGI, HP/SP, pet thêm Trung thành + ★) và dòng
+**"Nếu mặc bộ này: …"** (tính lại mỗi lần bộ đang soạn đổi, kể cả chưa lưu) dùng module chung
+`bot/outfit_stats.py` — port 1-1 `_stats_line`/`_dong_delta` của `gui.py`. Sửa luật ở một chỗ thì
+sửa cả chỗ kia. Loader `_load_gamedata_items` thêm `a1k/a1v/a2k/a2v` cho việc này.
+
+**Xoay màn hình:** ngang → dialog gần full bề rộng, 2 cột (trái đồ đang mặc/bộ đồ, phải túi);
+dọc → xếp chồng, phần đồ tối đa ~45% chiều cao và tự cuộn để danh sách túi luôn còn chỗ.

@@ -154,6 +154,11 @@ def _ghi_overlay(thu_muc, servers):
     os.replace(_tam, _duong_overlay(thu_muc))
 
 
+def nhan_ban_khac(game, s):
+    """Label server ban khac VTC: `TSM-21-<ten>` - ten TSM la chu Han, user tim theo SO (30/09)."""
+    return "%s-%d-%s" % (game.upper(), s["id"], s["name"] or "")
+
+
 def tim_server_moi(da_khai, tren_cdn, game=None):
     """{khoa: {label, ip, id}} cho nhung server CDN co ma `da_khai` chua co.
 
@@ -179,7 +184,7 @@ def tim_server_moi(da_khai, tren_cdn, game=None):
             moi[k] = {"label": s["name"], "ip": s["host"], "id": s["id"]}
         else:
             k = khoa_noi_bo("%s_%d" % (game, s["id"]), _khoa_da_co)
-            moi[k] = {"label": "%s - %s" % (game.upper(), s["name"] or s["id"]),
+            moi[k] = {"label": nhan_ban_khac(game, s),
                       "ip": s["host"], "id": s["id"], "game": game}
         _khoa_da_co.add(k)
     return moi
@@ -206,8 +211,18 @@ def cap_nhat(servers, thu_muc, tai=None, game=None):
     if not tren_cdn:
         return them
     moi = tim_server_moi(servers, tren_cdn, game)
-    if not moi:
+    # Overlay luu tu ban cu (label kieu cu / server doi ten) -> ve lai label theo CDN.
+    _doi = {}
+    if (game or _region.DEFAULT) != _region.DEFAULT:
+        _theo_id = {x["id"]: x for x in tren_cdn}
+        for k, v in doc_overlay(thu_muc).items():
+            x = _theo_id.get(v.get("id"))
+            if x and _game_cua(v) == game and v.get("label") != nhan_ban_khac(game, x):
+                v = dict(v, label=nhan_ban_khac(game, x))
+                servers[k] = _doi[k] = v
+    if not moi and not _doi:
         return them
+    moi.update(_doi)
     for k, v in moi.items():
         servers[k] = v
         them[k] = v

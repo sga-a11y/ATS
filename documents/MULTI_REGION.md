@@ -76,7 +76,7 @@ REGIONS["tsm"] = {login: "accpwd",   xor_key: 0xAD, encoding: "big5",      utc_o
 - [x] Tự lấy danh sách server TSM từ CDN (30/09): `Region.cdn` — TSM `https://tsrtwftp.chinesegamer.net/tsr/`
       (`ResourcePath_ANDROID.dat` → `DataVer` → `<ver>/Android/ServerList.dat`, cùng định dạng VTC).
       `servers_cdn.cap_nhat_nen` hỏi CDN **từng bản** mỗi lần khởi động; id VTC/TSM TRÙNG nhau nên chỉ so id
-      trong cùng `game`. Server TSM mới → khoá `tsm_<id>`, label `TSM - <tên Hán>`, `"game": "tsm"`;
+      trong cùng `game`. Server TSM mới → khoá `tsm_<id>`, label `TSM-<id>-<tên Hán>` (user tìm theo số), `"game": "tsm"`;
       chung file overlay `servers_cdn.json`.
 - [ ] Tách data theo bản (servers.json, train_maps, map_gates, npc_names...).
 - [ ] `features` bật/tắt tính năng theo bản.

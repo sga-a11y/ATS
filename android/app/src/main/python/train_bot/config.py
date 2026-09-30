@@ -798,6 +798,7 @@ if _aj is not None:
                 "use_phuc_than": bool(_party.get("use_phuc_than", False)),
                 "use_digioi_ho_phu": bool(_party.get("use_digioi_ho_phu", False)),
                 "fight_legion_boss": bool(_party.get("fight_legion_boss", True)),
+                "auto_pet_faith": bool(_party.get("auto_pet_faith", True)),
                 "do_van_tieu": bool(_party.get("do_van_tieu", True)),
                 "auto_sell_noi_dat": bool(_party.get("auto_sell_noi_dat", True)),
                 "auto_buy_shop": _auto_buy_shop,

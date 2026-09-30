@@ -1,0 +1,395 @@
+{
+ "_note": "AUTO-SINH khi bot nhan S:124-000 (doi thuong su kien). GUI doc file nay de hien danh sach cho user tick. Su kien doi -> tu cap nhat. CHI chua phan DUNG CHUNG (danh sach/gia/thuong/gioi han); so lan DA DOI la rieng tung acc nen khong ghi o day.",
+ "activities": {
+  "82": {
+   "title": "中秋節團圓活動",
+   "kind": 3,
+   "open": true,
+   "until": "2026-09-30 23:59",
+   "missions": [
+    {
+     "id": 82215,
+     "cond": 1,
+     "limit": 20,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 5
+      }
+     ],
+     "award": [
+      {
+       "item": 65341,
+       "kind": 2,
+       "name": "Quay Nội Thất",
+       "quant": 800
+      }
+     ]
+    },
+    {
+     "id": 82205,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 200
+      }
+     ],
+     "award": [
+      {
+       "item": 50610,
+       "kind": 2,
+       "name": "Thẻ Bánh Trung Thu",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82207,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 200
+      }
+     ],
+     "award": [
+      {
+       "item": 50598,
+       "kind": 2,
+       "name": "Thẻ Thiệp Tình Nhân",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82201,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 500
+      }
+     ],
+     "award": [
+      {
+       "item": 55905,
+       "kind": 2,
+       "name": "Thiên Thần Chúc Phúc",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82213,
+     "cond": 1,
+     "limit": 20,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 100
+      }
+     ],
+     "award": [
+      {
+       "item": 65469,
+       "kind": 2,
+       "name": "Bình EXP 300K",
+       "quant": 5
+      }
+     ]
+    },
+    {
+     "id": 82202,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 300
+      }
+     ],
+     "award": [
+      {
+       "item": 43593,
+       "kind": 2,
+       "name": "Phiếu chọn kỳ hồn thuộc tính phẩm tím (chỉ định)",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82206,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 200
+      }
+     ],
+     "award": [
+      {
+       "item": 50608,
+       "kind": 2,
+       "name": "Thẻ Hằng Nga",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82203,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 300
+      }
+     ],
+     "award": [
+      {
+       "item": 44238,
+       "kind": 2,
+       "name": "Vé chọn Bí Bảo Tím",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82208,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 200
+      }
+     ],
+     "award": [
+      {
+       "item": 50599,
+       "kind": 2,
+       "name": "Thẻ Cầu Ô Thước",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82212,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 100
+      }
+     ],
+     "award": [
+      {
+       "item": 47440,
+       "kind": 2,
+       "name": "K.Tỏa Ngọc Thố",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82211,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 100
+      }
+     ],
+     "award": [
+      {
+       "item": 51933,
+       "kind": 2,
+       "name": "Bí Cấp Ngọc Thố",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82216,
+     "cond": 1,
+     "limit": 50,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 5
+      }
+     ],
+     "award": [
+      {
+       "item": 46038,
+       "kind": 2,
+       "name": "Đại Phúc Thần",
+       "quant": 10
+      }
+     ]
+    },
+    {
+     "id": 82204,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 200
+      }
+     ],
+     "award": [
+      {
+       "item": 50609,
+       "kind": 2,
+       "name": "Thẻ Nguyệt Cung",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82214,
+     "cond": 1,
+     "limit": 10,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 10
+      }
+     ],
+     "award": [
+      {
+       "item": 29877,
+       "kind": 2,
+       "name": "Vàng Gacha Nuốt ",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82210,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 200
+      }
+     ],
+     "award": [
+      {
+       "item": 31214,
+       "kind": 2,
+       "name": "Vé Trăng Tròn",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 82209,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 180,
+       "kind": 1,
+       "name": "圓月",
+       "quant": 200
+      }
+     ],
+     "award": [
+      {
+       "item": 50600,
+       "kind": 2,
+       "name": "Thẻ Hoa Tình Yêu",
+       "quant": 1
+      }
+     ]
+    }
+   ]
+  },
+  "81": {
+   "title": "八週年登入活動",
+   "kind": 3,
+   "open": true,
+   "until": "2026-10-10 23:59",
+   "missions": [
+    {
+     "id": 81201,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 179,
+       "kind": 1,
+       "name": "吞食金幣",
+       "quant": 15
+      }
+     ],
+     "award": [
+      {
+       "item": 43709,
+       "kind": 2,
+       "name": "Phiếu chọn Ma Quan Vũ",
+       "quant": 1
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

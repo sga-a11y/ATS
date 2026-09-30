@@ -51,6 +51,8 @@ data class Party(
     // Danh boss QD (do_legion_boss). Mirror PC's fight_boss_var (gui.py). Mac dinh CO tick (giu
     // hanh vi cu - truoc gio luon danh).
     val fightLegionBoss: Boolean = true,
+    // Tu tang trung thanh pet <40 luc login (Thien Ly Ma +3 roi Danh Ma +1). Mac dinh BAT.
+    val autoPetFaith: Boolean = true,
     // Van tieu (do_van_tieu: nhan qua escort + gui pet). Mirror PC's van_tieu_var (gui.py).
     // Mac dinh CO tick (giu hanh vi cu - truoc gio luon lam).
     val doVanTieu: Boolean = true,
@@ -127,6 +129,7 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     usePhucThan = source.usePhucThan,
     useDigioiHoPhu = source.useDigioiHoPhu,
     fightLegionBoss = source.fightLegionBoss,
+    autoPetFaith = source.autoPetFaith,
     doVanTieu = source.doVanTieu,
     autoSellNoiDat = source.autoSellNoiDat,
     deathReturnTown = source.deathReturnTown,

@@ -29,3 +29,24 @@ gán con đó cho một vai (train/boss/quest/pb_don), nên cứ cố đổi san
 | `gui.py` `_party_notify_items` / `_add_row` | Hiện trên PC |
 | `BotForegroundService.kt` / `MainActivity.kt` | Hiện trên APK |
 | `tests/test_pet_roi_chuc.py` | Giữ hành vi |
+
+## Tự tăng trung thành pet (thêm 30/09)
+Phòng từ gốc: không để pet tụt tới mức Rời chức.
+
+- Setting party **"Tự tăng trung thành pet khi trung thành <40"** (Cài đặt nâng cao, dưới "Tự mua
+  shop"), key `auto_pet_faith`, **mặc định BẬT**. Có trên cả PC và APK.
+- **Chỉ chạy lúc login**, ngay sau `use_login_items()`. Áp cho **tất cả pet mang theo** (ô 1..4).
+- Pet trung thành **< 40** → dùng **Thiên Lý Mã `0xbf6b` (+3)** trước, hết thì **Danh Mã `0xbf69` (+1)**,
+  cho tới khi **> 40** (41). Pet **đúng 40 thì không dùng**. Không đụng tới item nào khác.
+- **Target = marker (ô) của chính pet đó**, đọc cùng bản ghi `0x0f` với pet_id + trung thành
+  (`_pet_marker_pid`), giống cách hồi pet. Không bao giờ hardcode ô 1.
+- Số trung thành sau khi dùng là bot **tự cộng** (+3/+1 mỗi cái): chưa biết server có gửi lại số mới
+  không, cần đối chiếu log `Trung thanh: pet o N (id ...) X -> Y` khi chạy thật.
+
+| Chỗ | Việc |
+|---|---|
+| `bot/client.py` `tang_trung_thanh_pet` | Tính số item, `use_slot(slot, target=marker, qty=n)` |
+| `run_party_digioi.py` `lam_login_chores` / `setup_party_runtime(auto_pet_faith=)` | Gọi lúc login / nhận setting APK (tham số CUỐI) |
+| `gui.py`, `bot/config.py` (+ bản APK) | Ô tick + key `auto_pet_faith` |
+| `Party.kt` / `PartyStore.kt` / `MainActivity.kt` / `BotForegroundService.kt` | Ô tick APK |
+| `tests/test_tang_trung_thanh_pet.py` | Giữ hành vi (đúng ô, thứ tự +3/+1, ngưỡng 40) |

@@ -1366,7 +1366,13 @@ def _load_gamedata_items() -> dict:
                                     # trang bang `Item.Sort` = (sort ASC, Id ASC). Thieu no thi
                                     # moi mon deu 999 -> thu tu hien ra khac han trong game.
                                     "st": int(v.get("st", 999) or 999),
-                                    "q": int(v.get("q", 0) or 0)}
+                                    "q": int(v.get("q", 0) or 0),
+                                    # a1k/a1v, a2k/a2v = chi so BAN MAU cua trang bi (tri lech 100).
+                                    # Can cho dong "Nếu mặc bộ này" o tui do APK (outfit_stats).
+                                    "a1k": int(v.get("a1k", 0) or 0),
+                                    "a1v": int(v.get("a1v", 0) or 0),
+                                    "a2k": int(v.get("a2k", 0) or 0),
+                                    "a2v": int(v.get("a2v", 0) or 0)}
     return _gamedata_items
 
 
@@ -9703,6 +9709,38 @@ class GameClient:
                  "DA THAO" if ok else "KHONG thao duoc", tid, self.PHUC_THAN_FIT_POS,
                  (" - %s" % ly_do) if ly_do else "")
         return ok
+
+    # Item tang TRUNG THANH vo tuong, thu tu dung: +3 truoc, het moi +1 (user chot 30/09).
+    PET_FAITH_ITEMS = ((0xbf6b, 3, "Thien Ly Ma"), (0xbf69, 1, "Danh Ma"))
+    PET_FAITH_NGUONG = 40      # < 40 moi dung; dung toi khi > 40 (41). Dung 40 thi KHONG dung.
+
+    def tang_trung_thanh_pet(self):
+        """Login: moi pet MANG THEO co trung thanh < 40 -> dung Thien Ly Ma (+3) roi Danh Ma (+1)
+        toi khi > 40. TARGET = marker (o 1..4) doc CUNG ban ghi 0x0f voi pet_id + faith
+        (`_pet_marker_pid`) - giong target hoi pet. KHONG hardcode 1 (bug cu: item bay vao pet 1)."""
+        faith = getattr(self, "pet_faith", None) or {}
+        for marker, pid in sorted((getattr(self, "_pet_marker_pid", None) or {}).items()):
+            f = faith.get(pid)
+            if not (1 <= marker <= 4) or f is None or f >= self.PET_FAITH_NGUONG:
+                continue
+            f0, da_dung = f, []
+            for tid, cong, ten in self.PET_FAITH_ITEMS:
+                while f <= self.PET_FAITH_NGUONG:
+                    slot = next((s for s, (t, c) in sorted(self.bag_slots.items())
+                                 if t == tid and c > 0), None)
+                    if slot is None:
+                        break
+                    co = self.bag_slots[slot][1]
+                    n = min(co, -(-(self.PET_FAITH_NGUONG + 1 - f) // cong))
+                    if not self.use_slot(slot, target=marker, qty=n):
+                        break
+                    self.bag_slots[slot] = (tid, co - n)
+                    f += n * cong
+                    da_dung.append("%s x%d" % (ten, n))
+                    time.sleep(0.5)
+            faith[pid] = f
+            log.info("[%s] Trung thanh: pet o %d (id %s) %d -> %d (%s)", self._label, marker, pid,
+                     f0, f, ", ".join(da_dung) or "HET item, khong dung duoc")
 
     def use_login_items(self):
         """Login: tu dung item co tid nam trong config.USE_LOGIN_ITEMS (template -> dung mọi acc),

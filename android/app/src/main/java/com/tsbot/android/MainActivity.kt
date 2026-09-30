@@ -10,10 +10,13 @@ import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -50,6 +53,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -920,6 +924,7 @@ fun TsBotApp(
             initialUsePhucThan = partyBeingEdited.usePhucThan,
             initialUseDigioiHoPhu = partyBeingEdited.useDigioiHoPhu,
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
+            initialAutoPetFaith = partyBeingEdited.autoPetFaith,
             initialDoVanTieu = partyBeingEdited.doVanTieu,
             initialAutoSellNoiDat = partyBeingEdited.autoSellNoiDat,
             initialDeathReturnTown = partyBeingEdited.deathReturnTown,
@@ -1139,6 +1144,11 @@ fun TsBotApp(
             onLoadKho = { service?.bankInfoJson(account.username) ?: "" },
             onCmd = { act, slot, arg ->
                 service?.bagCmd(account.username, act, slot, arg) ?: "False"
+            },
+            onLoadEquip = { who -> service?.bagEquipJson(account.username, who) ?: "" },
+            onOutfitDelta = { who, bo -> service?.bagOutfitDelta(account.username, who, bo) ?: "" },
+            onOutfitCmd = { who, act, ten, fit, bo ->
+                service?.bagOutfitCmd(account.username, who, act, ten, fit, bo) ?: "False"
             },
             onAddCatDo = { tid ->
                 // List cat DUNG CHUNG moi acc -> ghi thang qua Python, khong qua PartyStore.
@@ -2030,6 +2040,7 @@ fun AddPartyDialog(
     initialUsePhucThan: Boolean = false,
     initialUseDigioiHoPhu: Boolean = false,
     initialFightLegionBoss: Boolean = true,
+    initialAutoPetFaith: Boolean = true,
     initialDoVanTieu: Boolean = true,
     initialAutoSellNoiDat: Boolean = true,
     initialDeathReturnTown: Boolean = true,
@@ -2112,6 +2123,7 @@ fun AddPartyDialog(
     var usePhucThan by remember { mutableStateOf(initialUsePhucThan) }
     var useDigioiHoPhu by remember { mutableStateOf(initialUseDigioiHoPhu) }
     var fightLegionBoss by remember { mutableStateOf(initialFightLegionBoss) }
+    var autoPetFaith by remember { mutableStateOf(initialAutoPetFaith) }
     var doVanTieu by remember { mutableStateOf(initialDoVanTieu) }
     var autoSellNoiDat by remember { mutableStateOf(initialAutoSellNoiDat) }
     var deathReturnTown by remember { mutableStateOf(initialDeathReturnTown) }
@@ -2175,6 +2187,7 @@ fun AddPartyDialog(
         usePhucThan = usePhucThan,
         useDigioiHoPhu = useDigioiHoPhu,
         fightLegionBoss = fightLegionBoss,
+        autoPetFaith = autoPetFaith,
         doVanTieu = doVanTieu,
         autoSellNoiDat = autoSellNoiDat,
         deathReturnTown = deathReturnTown,
@@ -2255,13 +2268,14 @@ fun AddPartyDialog(
                 ExposedDropdownMenuBox(
                     expanded = gameExpanded,
                     onExpandedChange = { gameExpanded = it },
-                    modifier = Modifier.weight(0.35f),
+                    modifier = Modifier.weight(0.4f),
                 ) {
                     OutlinedTextField(
                         value = selectedGame.uppercase(),
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Game") },
+                        singleLine = true,
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = gameExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(),
                     )
@@ -2289,7 +2303,7 @@ fun AddPartyDialog(
                 ExposedDropdownMenuBox(
                     expanded = expanded,
                     onExpandedChange = { expanded = it },
-                    modifier = Modifier.weight(0.65f),
+                    modifier = Modifier.weight(0.6f),
                 ) {
                     OutlinedTextField(
                         value = Servers.ALL[selectedKey]?.label ?: selectedKey,
@@ -2486,6 +2500,10 @@ fun AddPartyDialog(
                                 onClick = { showShopList = true },
                                 modifier = Modifier.padding(start = 8.dp),
                             ) { Text("List shop") }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = autoPetFaith, onCheckedChange = { autoPetFaith = it })
+                            Text("Tự tăng trung thành pet khi trung thành <40")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = buyHp, onCheckedChange = { buyHp = it })
@@ -4789,6 +4807,7 @@ data class BagSlot(
     val name: String,
     val q: Int,
     val st: Int,
+    val ft: Int,
     val tabs: List<Int>,
     val canUse: Boolean,
     val canEquip: Boolean,
@@ -4831,7 +4850,7 @@ fun parseBagInfo(json: String): BagInfo {
             out.add(BagSlot(
                 slot = s.optInt("slot"), id = s.optInt("id"), cnt = s.optInt("cnt"),
                 name = s.optString("name", ""), q = s.optInt("q", 0),
-                st = s.optInt("st", 999), tabs = tabs,
+                st = s.optInt("st", 999), ft = s.optInt("ft", 0), tabs = tabs,
                 canUse = s.optBoolean("use", false), canEquip = s.optBoolean("equip", false),
                 canDismantle = s.optBoolean("dis", false),
                 canFashion = s.optBoolean("fashion", false),
@@ -4865,30 +4884,99 @@ fun mocNgan(ts: Long): String {
  *  acc chua tung mo kho thi coi nhu khong co gi.
  *  Sap xep GIONG CLIENT: theo `st` (truong 排序 cua Item_C.dat) roi den id - khong phai theo so o.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BagDialog(
     username: String,
     onLoadInfo: () -> String,
     onLoadKho: () -> String,
     onCmd: (String, Int, Int) -> String,
+    onLoadEquip: (Int) -> String,
+    onOutfitCmd: (Int, String, String, Int, String) -> String,
+    onOutfitDelta: (Int, String) -> String,
     onAddCatDo: (Int) -> Boolean,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var infoJson by remember { mutableStateOf("") }
     var khoJson by remember { mutableStateOf("") }
-    var tab by remember { mutableStateOf(0) }
+    var tab by remember { mutableStateOf(1) }      // mac dinh tab "Trang bị" - giong PC
     var chon by remember { mutableStateOf<BagSlot?>(null) }
     var thongBao by remember { mutableStateOf("") }
     var dangTai by remember { mutableStateOf(true) }
+    // DOI TUONG (0 nhan vat, 1..4 pet) + DO DANG MAC / BO DO - mirror gui.py::BagDialog.
+    var who by remember { mutableStateOf(0) }
+    var equipJson by remember { mutableStateOf("") }
+    // Bo dang SOAN: "" = dang xem "Đồ đang mặc". Sua bo KHONG mac ngay, phai bam "Mặc bộ này".
+    var boTen by remember { mutableStateOf("") }
+    val boSoan = remember { mutableStateMapOf<Int, Pair<Int, String>>() }
+    var chonFit by remember { mutableStateOf(0) }
+    var hoiTenBo by remember { mutableStateOf(false) }
+    var hoiXoaBo by remember { mutableStateOf(false) }
 
     suspend fun nap() {
         dangTai = true
         infoJson = withContext(Dispatchers.IO) { onLoadInfo() }
         khoJson = withContext(Dispatchers.IO) { onLoadKho() }
+        equipJson = withContext(Dispatchers.IO) { onLoadEquip(who) }
         dangTai = false
     }
-    LaunchedEffect(username) { nap() }
+    LaunchedEffect(username, who) { nap() }
+
+    val eq = remember(equipJson) {
+        try { if (equipJson.isBlank()) null else JSONObject(equipJson) } catch (_: Exception) { null }
+    }
+    fun fitMap(o: JSONObject?): Map<Int, Pair<Int, String>> {
+        val m = HashMap<Int, Pair<Int, String>>()
+        o?.keys()?.forEach { k ->
+            val a = o.optJSONArray(k) ?: return@forEach
+            k.toIntOrNull()?.let { m[it] = a.optInt(0) to a.optString(1) }
+        }
+        return m
+    }
+    val dangMac = remember(eq) { fitMap(eq?.optJSONObject("equip")) }
+    val dsBo = remember(eq) {
+        val o = eq?.optJSONObject("outfits")
+        (o?.keys()?.asSequence()?.toList() ?: emptyList()).sorted()
+    }
+    fun chonBo(ten: String) {
+        boTen = ten; chonFit = 0; boSoan.clear()
+        // Doc thang tu chuoi (khong qua `eq`): goi ngay sau nap() thi `eq` chua kip tinh lai.
+        val o = try { JSONObject(equipJson) } catch (_: Exception) { null }
+        if (ten.isNotEmpty()) boSoan.putAll(fitMap(o?.optJSONObject("outfits")?.optJSONObject(ten)))
+    }
+    // Bo vua bi xoa / doi doi tuong -> quay ve "Đồ đang mặc".
+    LaunchedEffect(dsBo) { if (boTen.isNotEmpty() && boTen !in dsBo) chonBo("") }
+    val dangSoan = boTen.isNotEmpty()
+    val oHien: Map<Int, Pair<Int, String>> = if (dangSoan) boSoan else dangMac
+
+    fun chayBo(action: String, ten: String = boTen, fit: Int = 0, bo: String = "") {
+        scope.launch {
+            val kq = withContext(Dispatchers.IO) { onOutfitCmd(who, action, ten, fit, bo) }
+            thongBao = when {
+                kq == "queued" -> "Đang trong trận — đã xếp hàng, hết trận bot tự gửi."
+                kq.startsWith("True") -> when (action) {
+                    "save", "save_new" -> "✔ Đã lưu bộ '$ten'"
+                    "delete" -> "✔ Đã xoá bộ '$ten'"
+                    else -> "Xong."
+                }
+                else -> kq.removePrefix("False: ")
+            }
+            if (action == "save_new" && kq.startsWith("True")) {
+                nap(); chonBo(ten)
+            } else nap()
+        }
+    }
+    fun boJson(): String = JSONObject().apply {
+        boSoan.forEach { (f, v) -> put(f.toString(), v.first) }
+    }.toString()
+    // "Nếu mặc bộ này: ..." - tinh lai moi khi bo dang soan doi (ke ca chua luu), giong PC.
+    var dongDelta by remember { mutableStateOf("") }
+    val boKey = boSoan.entries.sortedBy { it.key }.joinToString { "${it.key}:${it.value.first}" }
+    LaunchedEffect(boTen, boKey, who, equipJson) {
+        dongDelta = if (boTen.isEmpty()) ""
+                    else withContext(Dispatchers.IO) { onOutfitDelta(who, boJson()) }
+    }
 
     val info = remember(infoJson) { parseBagInfo(infoJson) }
     val khoInfo = remember(khoJson) { parseBagInfo(khoJson) }
@@ -4915,11 +5003,132 @@ fun BagDialog(
         }
     }
 
+    val ngangDlg = LocalConfiguration.current.orientation ==
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
     AlertDialog(
         onDismissRequest = onDismiss,
+        // Ngang: bo rong mac dinh cua AlertDialog (~560dp) qua hep cho 2 cot -> gian gan full.
+        modifier = if (ngangDlg) Modifier.fillMaxWidth(0.95f) else Modifier,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = !ngangDlg),
         title = { Text("Túi đồ: $username") },
         text = {
-            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
+            val cauHinh = LocalConfiguration.current
+            val ngang = cauHinh.orientation ==
+                android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val cao = cauHinh.screenHeightDp
+            val phanDo: @Composable ColumnScope.() -> Unit = {
+                // ---- DOI TUONG + DO DANG MAC + BO DO (mirror gui.py::BagDialog) ----
+                val targets = remember(eq) {
+                    val a = eq?.optJSONArray("targets")
+                    (0 until (a?.length() ?: 0)).mapNotNull { i ->
+                        a!!.optJSONArray(i)?.let { it.optInt(0) to it.optString(1) }
+                    }.ifEmpty { listOf(0 to "Nhân vật") }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("Cho:", style = MaterialTheme.typography.bodySmall,
+                         modifier = Modifier.padding(end = 4.dp))
+                    targets.forEach { (w, ten) ->
+                        FilterChip(selected = who == w,
+                                   onClick = { if (who != w) { who = w; chonBo(""); chon = null } },
+                                   label = { Text(ten, style = MaterialTheme.typography.bodySmall) },
+                                   modifier = Modifier.padding(end = 4.dp))
+                    }
+                }
+                Text(if (dangSoan) "Bộ '$boTen' — chưa mặc, bấm \"Mặc bộ này\""
+                     else "Trang bị đang mặc",
+                     style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                val oSlots = remember(eq) {
+                    val a = eq?.optJSONArray("slots")
+                    (0 until (a?.length() ?: 0)).mapNotNull { i ->
+                        a!!.optJSONArray(i)?.let { it.optInt(0) to it.optString(1) }
+                    }
+                }
+                oSlots.chunked(3).forEach { hang ->
+                    Row(Modifier.fillMaxWidth()) {
+                        hang.forEach { (fit, tenO) ->
+                            val v = oHien[fit]
+                            Column(
+                                Modifier.weight(1f).padding(2.dp)
+                                    .border(1.dp, if (chonFit == fit)
+                                        androidx.compose.ui.graphics.Color(0xFF3B82F6)
+                                        else androidx.compose.ui.graphics.Color(0xFF888888))
+                                    .clickable { chonFit = fit; chon = null; thongBao = "" }
+                                    .padding(4.dp),
+                            ) {
+                                Text(tenO, style = MaterialTheme.typography.labelSmall,
+                                     color = androidx.compose.ui.graphics.Color(0xFF888888))
+                                Text(v?.second ?: "— trống —", maxLines = 2,
+                                     style = MaterialTheme.typography.bodySmall,
+                                     color = if (v == null)
+                                         androidx.compose.ui.graphics.Color(0xFFAAAAAA)
+                                         else androidx.compose.ui.graphics.Color.Unspecified)
+                            }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("Bộ:", style = MaterialTheme.typography.bodySmall,
+                         modifier = Modifier.padding(end = 4.dp))
+                    FilterChip(selected = !dangSoan, onClick = { chonBo("") },
+                               label = { Text("Đồ đang mặc", style = MaterialTheme.typography.bodySmall) },
+                               modifier = Modifier.padding(end = 4.dp))
+                    dsBo.forEach { ten ->
+                        FilterChip(selected = boTen == ten, onClick = { chonBo(ten) },
+                                   label = { Text(ten, style = MaterialTheme.typography.bodySmall) },
+                                   modifier = Modifier.padding(end = 4.dp))
+                    }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    if (dangSoan) {
+                        OutlinedButton(onClick = { chayBo("wear") }, enabled = eq?.optBoolean("live") == true,
+                                       modifier = Modifier.padding(end = 4.dp)) {
+                            Text("Mặc bộ này", style = MaterialTheme.typography.bodySmall)
+                        }
+                        OutlinedButton(onClick = { chayBo("save", bo = boJson()) },
+                                       modifier = Modifier.padding(end = 4.dp)) {
+                            Text("Lưu thay đổi", style = MaterialTheme.typography.bodySmall)
+                        }
+                        OutlinedButton(onClick = { hoiXoaBo = true },
+                                       modifier = Modifier.padding(end = 4.dp)) {
+                            Text("Xoá bộ", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    OutlinedButton(onClick = { hoiTenBo = true }) {
+                        Text("Lưu thành bộ mới…", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                if (chonFit != 0) {
+                    val v = oHien[chonFit]
+                    val tenO = oSlots.firstOrNull { it.first == chonFit }?.second ?: "?"
+                    if (v == null) {
+                        Text("$tenO: đang trống.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Text("${if (dangSoan) "TRONG BỘ '$boTen'" else "ĐANG MẶC"} • $tenO • ${v.second}" +
+                             "  •  id 0x%04x".format(v.first),
+                             style = MaterialTheme.typography.bodySmall)
+                        if (dangSoan) {
+                            OutlinedButton(onClick = { boSoan.remove(chonFit) }) {
+                                Text("Bỏ khỏi bộ", style = MaterialTheme.typography.bodySmall)
+                            }
+                        } else if (eq?.optBoolean("live") == true) {
+                            OutlinedButton(onClick = { chayBo("unequip", fit = chonFit) }) {
+                                Text("Cởi ra", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+                eq?.optString("stats")?.takeIf { it.isNotEmpty() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+                if (dongDelta.isNotEmpty()) {
+                    Text(dongDelta, style = MaterialTheme.typography.bodySmall,
+                         color = androidx.compose.ui.graphics.Color(0xFF3B82F6))
+                }
+            }
+            val phanTui: @Composable ColumnScope.() -> Unit = {
                 if (infoJson.isBlank() && khoJson.isBlank()) {
                     Text(if (dangTai) "Đang đọc..."
                          else "Acc chưa chạy và chưa có ảnh chụp túi đồ nào — bật acc lên một lần rồi mở lại.")
@@ -4974,13 +5183,34 @@ fun BagDialog(
                         Spacer(Modifier.height(4.dp))
                         Text("${selected.name}  ·  x${selected.cnt}  ·  id 0x%04x".format(selected.id),
                              style = MaterialTheme.typography.bodySmall)
-                        FlowRowNutTuiDo(
+                        // DANG SOAN BO: bam item la DAT VAO BO, khong mac ngay (giong PC).
+                        if (dangSoan && !trongKho) {
+                            if (selected.canEquip && selected.ft in 1..6) {
+                                Row {
+                                    OutlinedButton(onClick = {
+                                        boSoan[selected.ft] = selected.id to selected.name
+                                        thongBao = "Đã đặt vào bộ '$boTen' — bấm \"Lưu thay đổi\" / \"Mặc bộ này\""
+                                    }, modifier = Modifier.padding(end = 4.dp)) {
+                                        Text("Đặt vào bộ '$boTen'", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    if (boSoan[selected.ft]?.first == selected.id) {
+                                        OutlinedButton(onClick = { boSoan.remove(selected.ft) }) {
+                                            Text("Bỏ khỏi bộ", style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text("(không phải đồ mặc được — không đặt vào bộ)",
+                                     style = MaterialTheme.typography.bodySmall,
+                                     color = androidx.compose.ui.graphics.Color(0xFF888888))
+                            }
+                        } else FlowRowNutTuiDo(
                             s = selected,
                             // Kho chi xem; acc tat thi chi con nut "Cat".
                             chiXem = trongKho,
                             live = info.live,
                             onUse = { chay("use") },
-                            onEquip = { chay("equip") },
+                            onEquip = { chay("equip", who) },
                             onDismantle = { chay("decompose") },
                             onFashion = { chay("fashion") },
                             onDiscard = { chay("discard", selected.cnt) },
@@ -4997,12 +5227,74 @@ fun BagDialog(
                     }
                 }
             }
+            // NGANG: 2 cot (trai do dang mac / bo do, phai tui) - man thap ~360dp, xep chong thi
+            // danh sach tui bi ep con 0. DOC: xep chong, phan do toi da ~45% chieu cao, tu cuon.
+            if (ngang) {
+                Row(Modifier.fillMaxWidth().heightIn(max = (cao - 120).coerceAtLeast(200).dp)) {
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())
+                               .padding(end = 8.dp)) { phanDo() }
+                    Column(Modifier.weight(1f)) { phanTui() }
+                }
+            } else {
+                Column(Modifier.fillMaxWidth()
+                           .heightIn(max = (cao - 180).coerceIn(300, 640).dp)) {
+                    Column(Modifier.fillMaxWidth().heightIn(max = (cao * 45 / 100).dp)
+                               .verticalScroll(rememberScrollState())) { phanDo() }
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    phanTui()
+                }
+            }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
         dismissButton = {
             TextButton(onClick = { scope.launch { nap() } }) { Text("Đọc lại") }
         },
     )
+    if (hoiTenBo) {
+        var ten by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { hoiTenBo = false },
+            title = { Text("Lưu thành bộ mới") },
+            text = {
+                Column {
+                    Text(if (dangSoan) "Chép từ bộ '$boTen'" else "Chụp đồ đang mặc",
+                         style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(value = ten, onValueChange = { ten = it },
+                                      label = { Text("Tên bộ đồ") }, singleLine = true)
+                    if (ten.trim() in dsBo) {
+                        Text("Đã có bộ này — lưu sẽ GHI ĐÈ.",
+                             style = MaterialTheme.typography.bodySmall,
+                             color = androidx.compose.ui.graphics.Color(0xFFB45309))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = ten.isNotBlank(), onClick = {
+                    hoiTenBo = false
+                    val t = ten.trim()
+                    if (dangSoan) chayBo("save", ten = t, bo = boJson()).also { boTen = t }
+                    else chayBo("save_new", ten = t)
+                }) { Text("Lưu") }
+            },
+            dismissButton = { TextButton(onClick = { hoiTenBo = false }) { Text("Huỷ") } },
+        )
+    }
+    if (hoiXoaBo) {
+        AlertDialog(
+            onDismissRequest = { hoiXoaBo = false },
+            title = { Text("Xoá bộ đồ") },
+            text = { Text("Xoá bộ '$boTen'?\nKhông lấy lại được.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    hoiXoaBo = false
+                    val t = boTen
+                    chonBo("")
+                    chayBo("delete", ten = t)
+                }) { Text("Xoá") }
+            },
+            dismissButton = { TextButton(onClick = { hoiXoaBo = false }) { Text("Huỷ") } },
+        )
+    }
 }
 
 /** Hang nut cho o dang chon. Nut nao hien la theo LUAT CLIENT (Python da tinh san trong
@@ -5264,12 +5556,13 @@ fun SkillTreeDialog(
                                 }
                                 .padding(start = (row.second * 14).dp, top = 3.dp, bottom = 3.dp),
                         ) {
-                            Text(sk.name, Modifier.weight(1f),
-                                 style = MaterialTheme.typography.bodySmall)
-                            Text("$c/${sk.maxLv}", Modifier.width(52.dp),
-                                 style = MaterialTheme.typography.bodySmall)
-                            Text(moTa, Modifier.width(112.dp),
-                                 style = MaterialTheme.typography.bodySmall)
+                            // Ten 1 dong rieng, cap + mo ta dong duoi: popup hep, cot co dinh lam ten bi ep doc.
+                            Column(Modifier.weight(1f)) {
+                                Text(sk.name, style = MaterialTheme.typography.bodySmall,
+                                     fontWeight = FontWeight.Bold)
+                                Text("$c/${sk.maxLv} · $moTa",
+                                     style = MaterialTheme.typography.bodySmall)
+                            }
                             TextButton(
                                 enabled = !tuCache && c < sk.maxLv,
                                 onClick = {

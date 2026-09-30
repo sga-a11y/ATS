@@ -102,6 +102,7 @@ class PartyStore(private val context: Context) {
                 usePhucThan = o.optBoolean("use_phuc_than", false),
                 useDigioiHoPhu = o.optBoolean("use_digioi_ho_phu", false),
                 fightLegionBoss = o.optBoolean("fight_legion_boss", true),
+                autoPetFaith = o.optBoolean("auto_pet_faith", true),
                 doVanTieu = o.optBoolean("do_van_tieu", true),
                 autoSellNoiDat = o.optBoolean("auto_sell_noi_dat", true),
                 deathReturnTown = o.optBoolean("death_return_town", true),
@@ -191,6 +192,7 @@ class PartyStore(private val context: Context) {
             o.put("use_phuc_than", p.usePhucThan)
             o.put("use_digioi_ho_phu", p.useDigioiHoPhu)
             o.put("fight_legion_boss", p.fightLegionBoss)
+            o.put("auto_pet_faith", p.autoPetFaith)
             o.put("do_van_tieu", p.doVanTieu)
             o.put("auto_sell_noi_dat", p.autoSellNoiDat)
             o.put("death_return_town", p.deathReturnTown)

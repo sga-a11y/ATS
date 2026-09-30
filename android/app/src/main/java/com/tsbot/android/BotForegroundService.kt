@@ -353,6 +353,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.autoCatDo,
                 // TU MO RONG TIEN TRANG. THEM O CUOI CUNG (goi theo VI TRI).
                 party.autoBankExpand, party.bankExpandGold,
+                // TU TANG TRUNG THANH PET <40. THEM O CUOI CUNG (goi theo VI TRI).
+                party.autoPetFaith,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,
@@ -605,6 +607,29 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
     fun bagCmd(username: String, action: String, slot: Int, arg: Int = 0): String {
         return try {
             rpd().callAttr("bag_cmd", username, action, slot, arg)?.toString() ?: "False"
+        } catch (e: Exception) { "False: ${e.message}" }
+    }
+
+    /** DO DANG MAC + BO DO cua doi tuong `who` (0 nhan vat, 1..4 pet). Mirror gui.py BagDialog. */
+    fun bagEquipJson(username: String, who: Int): String {
+        return try {
+            val json = com.chaquo.python.Python.getInstance().getModule("json")
+            val info = rpd().callAttr("bag_equip_info", username, who) ?: return ""
+            json.callAttr("dumps", info).toString()
+        } catch (_: Exception) { "" }
+    }
+
+    /** Dong "Nếu mặc bộ này: ..." cho bo dang soan ({fit: tid} JSON). */
+    fun bagOutfitDelta(username: String, who: Int, boJson: String): String =
+        try { rpd().callAttr("bag_outfit_delta", username, who, boJson)?.toString() ?: "" }
+        catch (_: Exception) { "" }
+
+    /** Lenh do dang mac / bo do: unequip, wear, save, save_new, delete. */
+    fun bagOutfitCmd(username: String, who: Int, action: String, ten: String, fit: Int,
+                     boJson: String): String {
+        return try {
+            rpd().callAttr("bag_outfit_cmd", username, who, action, ten, fit, boJson)
+                ?.toString() ?: "False"
         } catch (e: Exception) { "False: ${e.message}" }
     }
 

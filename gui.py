@@ -312,7 +312,7 @@ _DEFAULT_PARTY = {"server": "trieu_van", "mode": "train", "start_city_id": 12831
                   "death_return_town": True, "pet_death_return_town": True,
                   "auto_discard_junk": True, "auto_decompose_scrolls": False,
                   "auto_donate_materials": True,
-                  "auto_buy_shop": False,
+                  "auto_buy_shop": False, "auto_pet_faith": True,
                   "shop_items": _shop_items_json(DEFAULT_SHOP_ITEMS), "leaders": [],
                   "accounts": [{"u": "acc1", "p": "pass1", "on": True},
                                {"u": "acc2", "p": "pass2", "on": True},
@@ -2548,7 +2548,7 @@ class BotGUI(tk.Tk):
                         pc.get("auto_team_dungeon"), pc.get("team_dungeons"),
                         pc.get("use_phuc_than"), pc.get("use_digioi_ho_phu"),
                         pc.get("fight_legion_boss"), pc.get("do_van_tieu"), pc.get("auto_sell_noi_dat"),
-                        pc.get("auto_buy_shop"), pc.get("shop_items"),
+                        pc.get("auto_buy_shop"), pc.get("shop_items"), pc.get("auto_pet_faith"),
                         pc.get("buy_ho_phu"), pc.get("buy_thien_chau"),
                         pc.get("buy_bao_hop"), pc.get("bao_hop_xu_threshold"),
                         pc.get("buy_hp"), pc.get("hp_qty"), pc.get("hp_thresh"),
@@ -5462,6 +5462,7 @@ class PartyConfigFrame(ttk.Frame):
             "thien_chau": self._preset.get("buy_thien_chau", False),
             "bao_hop": self._preset.get("buy_bao_hop", False),
         })
+        self.auto_pet_faith_var = tk.BooleanVar(value=bool(self._preset.get("auto_pet_faith", True)))
         self.auto_buy_shop_var = tk.BooleanVar(
             value=bool(self._preset.get("auto_buy_shop", any(self.shop_items.values())))
         )
@@ -7294,6 +7295,8 @@ class PartyConfigFrame(ttk.Frame):
                         variable=self.auto_buy_shop_var).pack(side="left")
         ttk.Button(_shop, text="List shop",
                    command=self._open_shop_list).pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(frm, text="Tự tăng trung thành pet khi trung thành <40",
+                        variable=self.auto_pet_faith_var).pack(anchor="w", pady=(4, 0))
         # Tu mua HP/SP o Trac Quan (Loi Dai Huong Dung) khi du tru trong tui thap hon nguong.
         _hp = ttk.Frame(frm); _hp.pack(anchor="w", fill="x", pady=(4, 0))
         ttk.Checkbutton(_hp, text="Tự mua HP (Viên Hành Khí +62), số lượng",
@@ -7349,6 +7352,7 @@ class PartyConfigFrame(ttk.Frame):
             "event_exchange_items": list(self.event_exchange_items),
             "event_exchange_sig": _event_sig_now(self._game_key()) if self.event_exchange_items else "",
             "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
+            "auto_pet_faith": bool(self.auto_pet_faith_var.get()),
             "shop_items": _shop_items_json({
                 "ho_phu": self.buy_ho_phu_var.get(),
                 "thien_chau": self.buy_thien_chau_var.get(),
@@ -7401,6 +7405,7 @@ class PartyConfigFrame(ttk.Frame):
             "thien_chau": data.get("buy_thien_chau", False),
             "bao_hop": data.get("buy_bao_hop", False),
         })
+        self.auto_pet_faith_var.set(bool(data.get("auto_pet_faith", True)))
         self.auto_buy_shop_var.set(bool(data.get("auto_buy_shop", any(shop_items.values()))))
         self.buy_ho_phu_var.set(bool(shop_items.get("ho_phu", False)))
         self.buy_thien_chau_var.set(bool(shop_items.get("thien_chau", False)))
@@ -7786,6 +7791,7 @@ class PartyConfigFrame(ttk.Frame):
                 "auto_donate_materials": bool(self.auto_donate_materials_var.get()),
                 "material_modes": dict(self.material_modes),
                 "auto_buy_shop": bool(self.auto_buy_shop_var.get()),
+                "auto_pet_faith": bool(self.auto_pet_faith_var.get()),
                 "shop_items": _shop_items_json({
                     "ho_phu": self.buy_ho_phu_var.get(),
                     "thien_chau": self.buy_thien_chau_var.get(),

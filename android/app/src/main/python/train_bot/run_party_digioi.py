@@ -2999,6 +2999,10 @@ def lam_login_chores(c, username, label, role, pcfg, mode="", login_map=None):
     try: c.deposit_fashion_to_collection()
     except Exception as e: log.warning("[%s] loi tha do thoi trang: %s", label, e)
     c.use_login_items()         # tu dung item trong list (use_items.json) -> vd tui vat lieu su kien
+    # TRUNG THANH pet < 40 -> Thien Ly Ma (+3) roi Danh Ma (+1) toi > 40 (setting "auto_pet_faith").
+    if pcfg.get("auto_pet_faith", True):
+        try: c.tang_trung_thanh_pet()
+        except Exception as e: log.warning("[%s] loi tang trung thanh pet: %s", label, e)
     # THU CUOI: nang cap + boi duong bang 5 vien ky don. CHAY NGAY SAU use_login_items()
     # (yeu cau user) vi tui vat pham vua duoc mo ra o buoc tren co the CHINH LA nguon vien
     # ky don (vd "Tui Toa Ky Dan" 0xb22c). LUON BAT, khong co o tick trong setting.
@@ -4375,7 +4379,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         # (cat_do_items.json), khong phai config theo party.
                         auto_open_boxes=False, box_modes=None, auto_cat_do=False,
                         # TU MO RONG TIEN TRANG. THEM O CUOI CUNG (Kotlin goi THEO VI TRI).
-                        auto_bank_expand=False, bank_expand_gold=0):
+                        auto_bank_expand=False, bank_expand_gold=0,
+                        # TU TANG TRUNG THANH PET <40. THEM O CUOI CUNG (Kotlin goi THEO VI TRI).
+                        auto_pet_faith=True):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -4421,6 +4427,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "bank_expand_gold": int(bank_expand_gold or 0),
         "use_phuc_than": bool(use_phuc_than), "use_digioi_ho_phu": bool(use_digioi_ho_phu),
         "fight_legion_boss": bool(fight_legion_boss),
+        "auto_pet_faith": bool(auto_pet_faith),
         "do_van_tieu": bool(do_van_tieu),
         "auto_sell_noi_dat": bool(auto_sell_noi_dat),
         "death_return_town": bool(death_return_town),
@@ -9069,7 +9076,8 @@ def _bag_info_slots(slots, c):
 # Danh sach TRANG (allowlist) co chu y: UI khong duoc goi bua bat ky method nao cua client.
 _BAG_LENH = {
     "use": ("Dùng", lambda c, s, a: c.use_slot(s, target=a)),
-    "equip": ("Trang bị", lambda c, s, a: c.use_slot(s, target=a)),
+    # a = doi tuong: 0 nhan vat, 1..4 followIndex pet - GIONG gui.py (equip_item / equip_pet_item)
+    "equip": ("Trang bị", lambda c, s, a: c.equip_item(s) if not a else c.equip_pet_item(a, s)),
     "decompose": ("Phân giải", lambda c, s, a: c.decompose_slot(s)),
     "discard": ("Bỏ", lambda c, s, a: c.discard_item(s, a or 1)),
     "fashion": ("Thả vào sưu tầm", lambda c, s, a: c.deposit_fashion_slot(s)),
@@ -9094,6 +9102,122 @@ def bag_cmd(username, action, slot, arg=0):
         if c.queue_bag_cmd("%s (ô #%d)" % (ten, s), lambda: fn(c, s, a)):
             return "queued"
         return "True" if fn(c, s, a) else "False: server không nhận"
+    except Exception as e:
+        return "False: %s" % e
+
+
+# 6 o trang bi - CUNG thu tu voi gui.py::BagDialog._EQUIP_SLOTS.
+_EQUIP_SLOTS = ((3, "Vũ khí"), (1, "Mũ"), (2, "Áo"), (4, "Hộ uyển"), (5, "Giày"), (6, "Đặc biệt"))
+
+
+def _outfit_dt_key(who):
+    """Khoa doi tuong trong kho bo do - y het gui.py::BagDialog._dt_key."""
+    return "char" if not int(who or 0) else "pet%d" % int(who)
+
+
+def bag_equip_info(username, who=0):
+    """DO DANG MAC + BO DO cua MOT doi tuong cho UI APK. Mirror gui.py::BagDialog.
+
+    {live, targets: [[who, ten]], slots: [[fit, ten o]], equip: {fit: [tid, ten]},
+     outfits: {ten bo: {fit: [tid, ten]}}}
+    Acc TAT: khong co do dang mac (bot chi biet luc dang login) nhung VAN tra danh sach bo da luu.
+    """
+    from .client import _load_gamedata_items
+    gd = _load_gamedata_items()
+    who = int(who or 0)
+
+    def _ten(tid):
+        return (gd.get(int(tid)) or {}).get("name") or ("0x%04x" % int(tid))
+
+    c = account_clients.get(username)
+    targets = [[0, "Nhân vật"]]
+    equip = {}
+    if c is not None:
+        pets = list(getattr(getattr(c, "state", None), "carried_pets", None) or ())[:4]
+        cur = getattr(c, "active_pet_slot", None)
+        for i, rec in enumerate(pets, 1):
+            nm = (rec[1] if isinstance(rec, (tuple, list)) and len(rec) > 1 else None) or ("Pet %d" % i)
+            targets.append([i, nm + (" ★" if i == cur else "")])
+        m = (getattr(c, "equip_by_fit", None) or {}) if not who else \
+            ((getattr(c, "pet_equip_by_fit", None) or {}).get(who) or {})
+        equip = {str(int(f)): [int(t), _ten(t)] for f, t in m.items() if t}
+    outfits = {}
+    for ten, bo in sorted((load_outfits(username, _outfit_dt_key(who)) or {}).items()):
+        outfits[str(ten)] = {str(int(f)): [int(t), _ten(t)] for f, t in (bo or {}).items() if int(t or 0)}
+    stats = ""
+    if c is not None:
+        try:
+            from . import outfit_stats as _os
+            stats = _os.stats_line(c, who, TRUNG_THANH_CANH_BAO)
+        except Exception:
+            stats = ""
+    return {"live": c is not None, "who": who, "targets": targets, "stats": stats,
+            "slots": [[f, t] for f, t in _EQUIP_SLOTS], "equip": equip, "outfits": outfits}
+
+
+def bag_outfit_delta(username, who, bo_json):
+    """Dong "Nếu mặc bộ này: ..." cho bo DANG SOAN (co the chua luu). "" = acc tat/loi."""
+    c = account_clients.get(username)
+    if c is None:
+        return ""
+    try:
+        from . import outfit_stats as _os
+        bo = {int(k): int(v) for k, v in (json.loads(bo_json or "{}") or {}).items()}
+        return _os.dong_delta(c, int(who or 0), bo)
+    except Exception:
+        return ""
+
+
+def bag_outfit_cmd(username, who, action, ten="", fit=0, bo_json=""):
+    """Lenh DO DANG MAC / BO DO tu UI APK. -> "True" | "queued" | "False: ly do".
+
+    unequip (fit) · wear (ten) · save (ten, bo_json {fit: tid}) · delete (ten) · save_new (ten:
+    chup do dang mac). Sua bo KHONG mac ngay - phai "wear" (user chot 26/08, giong PC).
+    """
+    who, fit, ten = int(who or 0), int(fit or 0), str(ten or "").strip()
+    key = _outfit_dt_key(who)
+    c = account_clients.get(username)
+    try:
+        if action == "save":
+            bo = {int(k): int(v) for k, v in (json.loads(bo_json or "{}") or {}).items() if int(v or 0)}
+            if not ten:
+                return "False: thiếu tên bộ"
+            save_outfit(username, key, ten, bo)
+            return "True"
+        if action == "delete":
+            save_outfit(username, key, ten, None)
+            return "True"
+        if action == "save_new":
+            if c is None:
+                return "False: acc chưa chạy — không đọc được đồ đang mặc"
+            m = (getattr(c, "equip_by_fit", None) or {}) if not who else \
+                ((getattr(c, "pet_equip_by_fit", None) or {}).get(who) or {})
+            bo = {int(f): int(t) for f, t in m.items() if int(f) in c.OUTFIT_FITS and t}
+            if not bo:
+                return "False: chưa đọc được đồ đang mặc — thử lại sau khi login xong"
+            if not ten:
+                return "False: thiếu tên bộ"
+            save_outfit(username, key, ten, bo)
+            return "True"
+        if c is None:
+            return "False: acc chưa chạy"
+        if action == "unequip":
+            fn, nhan = (lambda: c.unequip_item(fit, follow=who)), "Cởi ra"
+        elif action == "wear":
+            bo = (load_outfits(username, key) or {}).get(ten)
+            if not bo:
+                return "False: không có bộ '%s'" % ten
+            _bo = {"char": dict(bo)} if not who else {"pets": {who: dict(bo)}}
+
+            def fn():
+                gui, thieu = c.apply_outfit(_bo)
+                return bool(gui) or not thieu
+            nhan = "Mặc bộ '%s'" % ten
+        else:
+            return "False: lệnh không hợp lệ"
+        if c.queue_bag_cmd(nhan, fn):
+            return "queued"
+        return "True" if fn() else "False: server không nhận"
     except Exception as e:
         return "False: %s" % e
 
