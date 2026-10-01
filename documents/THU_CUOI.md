@@ -68,3 +68,9 @@ gap xuống `0.12`. Đo lại cùng 60 viên: **33s → 9.1s**.
 
 Không bỏ hẳn gap được: đây vốn là **N lượt gói đi-về tuần tự**, mỗi viên phải được server xác nhận
 mới gửi tiếp (nếu không thì mất cơ chế chống chạy lố khi server từ chối).
+
+## Phiếu thú cưỡi tự dùng lúc login (01/10/2026)
+
+Các phiếu thú cưỡi nằm trong `use_items.json`, bot tự dùng hết cả chồng lúc login (mỗi lệnh 1 cái):
+`0x7a21` Bong Bóng Phiếu, `0x7a03` Heo Bay Phiếu, `0x79fd` Hươu Cao Cổ Phiếu, `0x7a0e` Xích Thố Trang Phiếu.
+Thêm phiếu mới thì chỉ cần thêm dòng vào `use_items.json` (PC + APK dùng chung).

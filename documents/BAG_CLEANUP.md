@@ -16,6 +16,11 @@ Cài đặt nâng cao
 Tắt công tổng → cả 3 mục con ngưng, không cần bỏ tick từng cái. Cấu hình **theo party**
 (nằm trong Cài đặt nâng cao nên có sẵn nút "Áp dụng cho các party khác").
 
+> Nút "Áp dụng cho các party khác" chép MỌI cài đặt nâng cao sang party khác, **trừ "Tự đổi quà
+> event"** (tick + danh sách quà + sig): phần này chỉ chép cho party **cùng nhà phát hành**
+> (VTC/TSM, theo server) vì khác nhà phát hành thì event khác nhau. PC: `_apply_advanced_to_all`
+> trong `gui.py`; APK: `Party.copyAdvancedSettingsFrom` (`sameGame`). Sửa 01/10/2026.
+
 ## Vì sao "phân giải cuộn" mặc định TẮT
 
 Phân giải là **mất hẳn** cuộn. Trước đây bot luôn phân giải theo `junk_scrolls.json` (51 cuộn,
@@ -87,6 +92,11 @@ này **đã bỏ**: nó bắt theo type nên sẽ phân giải cả cuộn user 
 | `gui.py` | `_open_bag_clean_detail`, `_open_scroll_list` |
 | `MainActivity.kt` | `ScrollListDialog`, `loadPetScrolls`, dialog "Dọn dẹp túi đồ" |
 | `Party.kt` / `PartyStore.kt` | 4 field mới + đọc/ghi JSON |
+
+**Layout APK (sửa 01/10/2026):** trên điện thoại một `Row` không đủ bề ngang. `Text` không có
+`weight` sẽ chiếm hết chỗ, làm ô số bị bóp còn một mẩu và nút List bị bóp về 0, tức biến mất. Quy
+ước: dòng có nút List thì `Text` phải có `Modifier.weight(1f)`. Ô số (mở rộng túi đồ/tiền trang,
+ngưỡng mua HP/SP) đặt ở hàng riêng, thụt lề dưới checkbox.
 
 ⚠️ `setup_party_runtime` được Kotlin gọi **theo vị trí** → tham số mới phải thêm ở **cuối**
 signature, chèn vào giữa sẽ làm lệch hết các tham số phía sau.

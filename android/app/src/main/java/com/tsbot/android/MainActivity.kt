@@ -1761,6 +1761,15 @@ fun AccountRow(
                 Spacer(Modifier.height(4.dp))
                 StatBar("SP", status.sp, status.spMax, SpColor)
             }
+            // Thanh HP/SP PET (giong ban PC: cot "Char | Pet")
+            if (status.petHp != null && status.petHpMax != null && status.petHpMax > 0) {
+                Spacer(Modifier.height(4.dp))
+                StatBar("P.HP", status.petHp, status.petHpMax, HpColor)
+            }
+            if (status.petSp != null && status.petSpMax != null && status.petSpMax > 0) {
+                Spacer(Modifier.height(4.dp))
+                StatBar("P.SP", status.petSp, status.petSpMax, SpColor)
+            }
             if (status.message.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -1863,10 +1872,10 @@ fun StatBar(label: String, cur: Int, max: Int, color: Color) {
     val frac = (cur.toFloat() / max.toFloat()).coerceIn(0f, 1f)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(24.dp))
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(32.dp))
         LinearProgressIndicator(
             progress = { frac },
-            color = color,
+            color = if (frac < 0.2f) StatLowColor else color,   // duoi 20% -> cam (giong PC)
             trackColor = MaterialTheme.colorScheme.surface,
             modifier = Modifier.weight(1f).height(8.dp).clip(RoundedCornerShape(4.dp)),
         )
@@ -2499,7 +2508,7 @@ fun AddPartyDialog(
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = autoBuyShop, onCheckedChange = { autoBuyShop = it })
-                            Text("Tự mua shop")
+                            Text("Tự mua shop", modifier = Modifier.weight(1f))
                             OutlinedButton(
                                 onClick = { showShopList = true },
                                 modifier = Modifier.padding(start = 8.dp),
@@ -2519,7 +2528,14 @@ fun AddPartyDialog(
                                 modifier = Modifier.width(84.dp).padding(start = 6.dp),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
-                            Text("  khi tổng HP có thể hồi từ item trong túi <", modifier = Modifier.padding(start = 6.dp))
+                        }
+                        // Tach 2 hang: mot hang ngang khong du cho tren dien thoai -> chu bi bop
+                        // xuong dong tung chu, o nguong bi day ra ngoai.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(start = 48.dp),
+                        ) {
+                            Text("khi tổng HP có thể hồi từ item trong túi <", modifier = Modifier.weight(1f))
                             OutlinedTextField(
                                 value = hpThreshText,
                                 onValueChange = { hpThreshText = it.filter { c -> c.isDigit() } },
@@ -2538,7 +2554,12 @@ fun AddPartyDialog(
                                 modifier = Modifier.width(84.dp).padding(start = 6.dp),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
-                            Text("  khi tổng SP có thể hồi từ item trong túi <", modifier = Modifier.padding(start = 6.dp))
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(start = 48.dp),
+                        ) {
+                            Text("khi tổng SP có thể hồi từ item trong túi <", modifier = Modifier.weight(1f))
                             OutlinedTextField(
                                 value = spThreshText,
                                 onValueChange = { spThreshText = it.filter { c -> c.isDigit() } },
@@ -2831,6 +2852,12 @@ fun AddPartyDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoBagExpand, onCheckedChange = { autoBagExpand = it })
                         Text("Tự mở rộng túi đồ đến")
+                    }
+                    // O so xuong hang rieng: chung hang voi chu thi bi bop, khong thay du so.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 42.dp),
+                    ) {
                         OutlinedTextField(
                             value = bagExpandGoldText,
                             onValueChange = { bagExpandGoldText = it.filter { c -> c.isDigit() } },
@@ -2851,6 +2878,11 @@ fun AddPartyDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoBankExpand, onCheckedChange = { autoBankExpand = it })
                         Text("Tự mở rộng tiền trang đến")
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 42.dp),
+                    ) {
                         OutlinedTextField(
                             value = bankExpandGoldText,
                             onValueChange = { bankExpandGoldText = it.filter { c -> c.isDigit() } },
@@ -2869,7 +2901,7 @@ fun AddPartyDialog(
                     // Ng.Thanh thi ban Noi dat, trung Trac Quan thi di cat do.
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoCatDo, onCheckedChange = { autoCatDo = it })
-                        Text("Tự cất đồ vào Tiền trang")
+                        Text("Tự cất đồ vào Tiền trang", modifier = Modifier.weight(1f))
                         OutlinedButton(
                             onClick = { showCatDoList = true },
                             modifier = Modifier.padding(start = 8.dp),
@@ -2881,7 +2913,7 @@ fun AddPartyDialog(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoDonateMaterials, onCheckedChange = { autoDonateMaterials = it })
-                        Text("Tự đóng góp nguyên liệu cho quân đoàn")
+                        Text("Tự đóng góp nguyên liệu cho quân đoàn", modifier = Modifier.weight(1f))
                         OutlinedButton(
                             onClick = { showMaterialList = true },
                             modifier = Modifier.padding(start = 8.dp),
@@ -2891,7 +2923,7 @@ fun AddPartyDialog(
                     // tan dung viec da o quan doan (mon khong phan giai duoc thi donate).
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoOpenBoxes, onCheckedChange = { autoOpenBoxes = it })
-                        Text("Tự dọn rương trang bị và Phó bản")
+                        Text("Tự dọn rương trang bị và Phó bản", modifier = Modifier.weight(1f))
                         OutlinedButton(
                             onClick = { showBoxList = true },
                             modifier = Modifier.padding(start = 8.dp),
@@ -2899,7 +2931,7 @@ fun AddPartyDialog(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoDecomposeScrolls, onCheckedChange = { autoDecomposeScrolls = it })
-                        Text("Tự phân giải cuộn võ tướng rác")
+                        Text("Tự phân giải cuộn võ tướng rác", modifier = Modifier.weight(1f))
                         OutlinedButton(
                             onClick = { showScrollList = true },
                             modifier = Modifier.padding(start = 8.dp),
@@ -4990,6 +5022,8 @@ fun BagDialog(
     var chonFit by remember { mutableStateOf(0) }
     var hoiTenBo by remember { mutableStateOf(false) }
     var hoiXoaBo by remember { mutableStateOf(false) }
+    // Man doc: phan do dang mac / bo do mo mac dinh, bam tieu de de thu gon -> tui do cao hon.
+    var moDo by remember { mutableStateOf(true) }
 
     suspend fun nap() {
         dangTai = true
@@ -5318,10 +5352,18 @@ fun BagDialog(
                     Column(Modifier.weight(1f)) { phanTui() }
                 }
             } else {
+                // Bo tran 640dp cu: man dai thi danh sach tui chi con ~5 dong. Phan do bam de thu gon.
                 Column(Modifier.fillMaxWidth()
-                           .heightIn(max = (cao - 180).coerceIn(300, 640).dp)) {
-                    Column(Modifier.fillMaxWidth().heightIn(max = (cao * 45 / 100).dp)
-                               .verticalScroll(rememberScrollState())) { phanDo() }
+                           .heightIn(max = (cao - 120).coerceAtLeast(300).dp)) {
+                    Text((if (moDo) "▾ " else "▸ ") + "Trang bị đang mặc / Bộ đồ",
+                         style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold,
+                         color = androidx.compose.ui.graphics.Color(0xFF3B82F6),
+                         modifier = Modifier.fillMaxWidth().clickable { moDo = !moDo }
+                             .padding(vertical = 4.dp))
+                    if (moDo) {
+                        Column(Modifier.fillMaxWidth().heightIn(max = (cao * 45 / 100).dp)
+                                   .verticalScroll(rememberScrollState())) { phanDo() }
+                    }
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
                     phanTui()
                 }

@@ -26,6 +26,7 @@ val StatusIdle = Color(0xFF475569)   // chua chay - xam dam
 
 val HpColor = Color(0xFF22C55E)   // thanh HP - xanh la
 val SpColor = Color(0xFF3B82F6)   // thanh SP - xanh duong
+val StatLowColor = Color(0xFFF59E0B)   // thanh HP/SP duoi 20% - cam
 
 private val TsColorScheme = darkColorScheme(
     primary = Emerald,

@@ -8,6 +8,10 @@ data class AccountStatus(
     val sp: Int? = null,
     val hpMax: Int? = null,
     val spMax: Int? = null,
+    val petHp: Int? = null,
+    val petSp: Int? = null,
+    val petHpMax: Int? = null,
+    val petSpMax: Int? = null,
     val charName: String = "",
     // NHAN LOG that su in ra dau dong log: bang charName, TRU khi trung ten voi acc
     // khac thi la "ten~username" (xem _NHAN_CHU trong bot/client.py).

@@ -131,7 +131,8 @@ class TestBaTruongEventCoMat(unittest.TestCase):
         i = self.party.find("fun Party.copyAdvancedSettingsFrom")
         than = self.party[i:self.party.find("\n)", i)]
         for f in ("autoEventExchange", "eventExchangeItems", "eventExchangeSig"):
-            self.assertIn("%s = source.%s" % (f, f), than)
+            # Chi chep khi CUNG nha phat hanh (VTC/TSM) - khac ban TS thi event khac nhau.
+            self.assertIn("%s = if (sameGame(source)) source.%s else %s" % (f, f, f), than)
 
 
 if __name__ == "__main__":

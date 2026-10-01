@@ -122,6 +122,10 @@ data class Party(
     val accounts: List<Account> = emptyList(),
 )
 
+fun Party.gameKey(): String = Servers.ALL[serverKey]?.game ?: "vtc"
+
+fun Party.sameGame(other: Party): Boolean = gameKey() == other.gameKey()
+
 fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     doDaily = source.doDaily,
     claimOfflineExp = source.claimOfflineExp,
@@ -145,9 +149,10 @@ fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     autoCatDo = source.autoCatDo,
     autoDonateMaterials = source.autoDonateMaterials,
     materialModes = source.materialModes,
-    autoEventExchange = source.autoEventExchange,
-    eventExchangeItems = source.eventExchangeItems,
-    eventExchangeSig = source.eventExchangeSig,
+    // Doi qua event chi ap cho party CUNG nha phat hanh (VTC/TSM): khac ban TS thi event khac nhau.
+    autoEventExchange = if (sameGame(source)) source.autoEventExchange else autoEventExchange,
+    eventExchangeItems = if (sameGame(source)) source.eventExchangeItems else eventExchangeItems,
+    eventExchangeSig = if (sameGame(source)) source.eventExchangeSig else eventExchangeSig,
     autoBuyShop = source.autoBuyShop,
     buyHoPhu = source.buyHoPhu,
     buyThienChau = source.buyThienChau,

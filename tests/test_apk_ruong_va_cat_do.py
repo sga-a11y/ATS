@@ -99,20 +99,20 @@ class TestCauNoiSangPython(unittest.TestCase):
 class TestGiaoDien(unittest.TestCase):
     def test_hai_tick_va_nut_list(self):
         src = _kt("MainActivity.kt")
-        self.assertIn('Text("Tự cất đồ vào Tiền trang")', src)
+        self.assertIn('Text("Tự cất đồ vào Tiền trang"', src)
         self.assertIn('Text("List cất")', src)
-        self.assertIn('Text("Tự dọn rương trang bị và Phó bản")', src)
+        self.assertIn('Text("Tự dọn rương trang bị và Phó bản"', src)
         self.assertIn('Text("List rương")', src)
 
     def test_thu_tu_giong_ban_PC(self):
         """Cat do nam GIUA ban Noi dat va vut item rac; ruong NGAY SAU donate nguyen lieu."""
         src = _kt("MainActivity.kt")
         i_noi = src.index('Text("Tự bán Nồi đất")')
-        i_cat = src.index('Text("Tự cất đồ vào Tiền trang")')
+        i_cat = src.index('Text("Tự cất đồ vào Tiền trang"')
         i_rac = src.index('Text("Tự vứt item rác (Ngọc Hư)")')
-        i_mat = src.index('Text("Tự đóng góp nguyên liệu cho quân đoàn")')
-        i_box = src.index('Text("Tự dọn rương trang bị và Phó bản")')
-        i_cuon = src.index('Text("Tự phân giải cuộn võ tướng rác")')
+        i_mat = src.index('Text("Tự đóng góp nguyên liệu cho quân đoàn"')
+        i_box = src.index('Text("Tự dọn rương trang bị và Phó bản"')
+        i_cuon = src.index('Text("Tự phân giải cuộn võ tướng rác"')
         self.assertLess(i_noi, i_cat)
         self.assertLess(i_cat, i_rac)
         self.assertLess(i_mat, i_box)

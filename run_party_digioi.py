@@ -9397,7 +9397,8 @@ def account_status(username):
                               "pet_level": getattr(c, "pet_level", None),
                               "pet_agi": getattr(c, "pet_agi", None),
                               "pet_faith": _trung_thanh_pet_dang_dung(c)}  # luu lai luc cuoi
-    _ch = getattr(getattr(c, "state", None), "char", None)   # hp/sp cho UI APK (PC GUI bo qua)
+    _ch = getattr(getattr(c, "state", None), "char", None)   # hp/sp char -> thanh HP/SP (PC + APK)
+    _pe = getattr(getattr(c, "state", None), "pet", None)    # hp/sp pet dang dung tran
     return {
         "running": running,
         "char": c.char_name or "",
@@ -9445,6 +9446,8 @@ def account_status(username):
                   else ("running" if running else "stopped")),
         "hp": getattr(_ch, "hp", None), "sp": getattr(_ch, "sp", None),
         "hp_max": getattr(_ch, "hp_max", None), "sp_max": getattr(_ch, "sp_max", None),
+        "pet_hp": getattr(_pe, "hp", None), "pet_sp": getattr(_pe, "sp", None),
+        "pet_hp_max": getattr(_pe, "hp_max", None), "pet_sp_max": getattr(_pe, "sp_max", None),
     }
 
 

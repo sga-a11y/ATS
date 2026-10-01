@@ -234,6 +234,9 @@ from bot import bag_tabs as _BAG    # noqa: E402  (phan loai 4 tab tui do - sao 
 from bot import region as _region   # noqa: E402  (cac ban TS: VTC / TSM)
 
 
+_EVENT_EXCHANGE_KEYS = ("auto_event_exchange", "event_exchange_items", "event_exchange_sig")
+
+
 def _game_of_server(key):
     """Ban TS cua server (field `game` trong servers.json, khong co = vtc)."""
     return ((getattr(config, "SERVERS", None) or {}).get(key) or {}).get("game") or _region.DEFAULT
@@ -1407,11 +1410,67 @@ class BotGUI(tk.Tk):
         self.party_trees = {}   # pidx -> Treeview
         self._populate_tabs()
 
-    _COLS = ("acc", "char", "role", "run", "map", "ch", "party", "dg", "combat")
-    _HEADS = {"acc": "Tài khoản", "char": "Nhân vật", "role": "Vai trò", "run": "Trạng thái",
+    _COLS = ("acc", "char", "hpsp", "role", "run", "map", "ch", "party", "dg", "combat")
+    _HEADS = {"acc": "Tài khoản", "char": "Nhân vật", "hpsp": "Char  HP/SP  |  Pet  HP/SP",
+              "role": "Vai trò", "run": "Trạng thái",
               "map": "Map", "ch": "Kênh", "party": "Trong PT", "dg": "DG còn", "combat": "Đánh"}
-    _WIDTHS = {"acc": 70, "char": 190, "role": 70, "run": 90, "map": 130, "ch": 50,
-               "party": 70, "dg": 70, "combat": 55}
+    _WIDTHS = {"acc": 70, "char": 190, "hpsp": 290, "role": 70, "run": 70, "map": 160, "ch": 50,
+               "party": 70, "dg": 55, "combat": 55}
+    # Thanh HP/SP (giong ban APK). Treeview KHONG gan duoc anh rieng tung cot -> dat 1 Canvas
+    # de len o cot "hpsp" moi dong (theo tree.bbox). Nua trai Char, nua phai Pet; moi nua 2 dong
+    # HP (tren) / SP (duoi), moi dong = thanh + "cur/max". Xem documents/UI_HP_SP_BAR.md.
+    _BAR_LOW = 0.2   # duoi 20% -> to cam
+    _BAR_FONT = ("Segoe UI", 7)
+
+    def _draw_stat_bars(self, cv, s):
+        vals = ((s.get("hp"), s.get("hp_max")), (s.get("sp"), s.get("sp_max")),
+                (s.get("pet_hp"), s.get("pet_hp_max")), (s.get("pet_sp"), s.get("pet_sp_max")))
+        w, h = cv.winfo_width(), cv.winfo_height()
+        key = (vals, w, h)
+        if getattr(cv, "_last", None) == key:
+            return
+        cv._last = key
+        cv.delete("all")
+        half, line_h, text_w = w // 2, (h - 2) // 2, 62
+        for i, (cur, mx) in enumerate(vals):
+            if cur is None or not mx:
+                continue
+            x0 = 3 if i < 2 else half + 3
+            y0 = 1 + (i % 2) * line_h
+            bar_w = half - text_w - 8
+            frac = max(0.0, min(1.0, cur / mx))
+            full = "#22c55e" if i % 2 == 0 else "#3b82f6"   # = HpColor/SpColor APK
+            cv.create_rectangle(x0, y0 + 2, x0 + bar_w, y0 + line_h - 2, fill="#d8d8d8", width=0)
+            if frac > 0:
+                cv.create_rectangle(x0, y0 + 2, x0 + round(bar_w * frac), y0 + line_h - 2,
+                                    fill="#f59e0b" if frac < self._BAR_LOW else full, width=0)
+            cv.create_text(x0 + bar_w + 4, y0 + line_h // 2, anchor="w", font=self._BAR_FONT,
+                           text=f"{cur}/{mx}", fill="#333")
+        cv.create_line(half, 2, half, h - 2, fill="#ccc")
+
+    def _place_stat_bars(self, pidx):
+        tree = self.party_trees.get(pidx)
+        bars = self.__dict__.setdefault("_party_bars", {}).get(pidx, {})
+        if tree is None:
+            return
+        for u, cv in bars.items():
+            box = tree.bbox(u, "hpsp") if tree.exists(u) else ""
+            if box:
+                x, y, w, h = box
+                cv.place(in_=tree, x=x + 1, y=y + 1, width=w - 2, height=h - 2)
+                if getattr(cv, "_status", None) is not None:
+                    self._draw_stat_bars(cv, cv._status)
+            else:
+                cv.place_forget()
+
+    def _make_stat_bar(self, pidx, tree, u):
+        cv = tk.Canvas(tree, highlightthickness=0, bd=0, bg="white")
+        cv._status = None
+        cv.bind("<Button-1>", lambda e: (tree.selection_set(u), tree.focus(u)))
+        cv.bind("<Double-1>", lambda e, p=pidx: self._start_acc_row(p, u))
+        cv.bind("<Configure>", lambda e: cv._status is not None and self._draw_stat_bars(cv, cv._status))
+        self.__dict__.setdefault("_party_bars", {}).setdefault(pidx, {})[u] = cv
+
     PARTIES_PER_GROUP = 10   # 1-10 party = 1 tab; 11-20 = 2 tab; ... 91-100 = 10 tab
 
     def _populate_tabs(self):
@@ -1490,7 +1549,9 @@ class BotGUI(tk.Tk):
                                bg="#fff3cd", fg="#8a6d00", activebackground="#ffe69c",
                                command=lambda p=pidx: self._show_party_notify(p))
         self.party_notify_buttons[pidx] = notify_btn   # chua pack -> an; _update_notify_buttons se hien
-        tree = ttk.Treeview(frame, columns=self._COLS, show="headings", height=max(len(accs), 3))
+        ttk.Style(self).configure("Party.Treeview", rowheight=28)   # rieng bang party (2 dong HP/SP)
+        tree = ttk.Treeview(frame, columns=self._COLS, show="headings", height=max(len(accs), 3),
+                            style="Party.Treeview")
         for col in self._COLS:
             if col in ("acc", "char"):   # BAM header de che/hien tai khoan + ten (3 trang thai)
                 tree.heading(col, text=self._priv_head(col), command=self._toggle_privacy)
@@ -1516,11 +1577,16 @@ class BotGUI(tk.Tk):
         tree.bind("<<TreeviewSelect>>", lambda e, p=pidx: self._on_acc_select(p))
         tree.bind("<Double-1>", lambda e, p=pidx: self._on_acc_dblclick(p, e))
         tree.pack(fill="x", expand=False)
+        self.__dict__.setdefault("_party_bars", {})[pidx] = {}
         for (u, p, is_leader, is_picker) in accs:
             role = "LEADER" if is_leader else ("picker" if is_picker else "member")
-            tree.insert("", "end", iid=u, values=(u, "", role, "Tắt", "-", "-", "-", "-", "-"),
+            tree.insert("", "end", iid=u, values=(u, "", "", role, "Tắt", "-", "-", "-", "-", "-"),
                         tags=("off",))
+            self._make_stat_bar(pidx, tree, u)
         self.party_trees[pidx] = tree
+        # Canvas HP/SP bam theo o: doi kich thuoc / keo cot / hien tab -> dat lai vi tri
+        for ev in ("<Configure>", "<ButtonRelease-1>", "<Map>"):
+            tree.bind(ev, lambda e, p=pidx: self.after_idle(self._place_stat_bars, p), add="+")
 
     def _on_party_tab(self, event):
         # doi sub-tab party -> loc log party do
@@ -1727,10 +1793,11 @@ class BotGUI(tk.Tk):
     def _on_acc_dblclick(self, pidx, event):
         # Double-click 1 dong acc -> start RIENG acc do (thay cho nut "Start acc chon" cu, tranh
         # user moi bam nham thay vi Start party).
-        tree = self.party_trees[pidx]
-        u = tree.identify_row(event.y)
-        if not u:
-            return
+        u = self.party_trees[pidx].identify_row(event.y)
+        if u:
+            self._start_acc_row(pidx, u)
+
+    def _start_acc_row(self, pidx, u):
         accs = {a: (p, lead, pick) for (a, p, lead, pick) in ctrl.party_accounts(pidx)}
         if u in accs:
             p, lead, pick = accs[u]
@@ -2255,11 +2322,16 @@ class BotGUI(tk.Tk):
                 tag = ("login" if _dang_login else
                        ("qs" if (s["running"] and s.get("strategist")) else
                         ("on" if s["running"] else "off")))
-                tree.item(u, values=(self._mask_user(u), self._char_cell(s), role, run, _map_name(s["map"]),
+                tree.item(u, values=(self._mask_user(u), self._char_cell(s), "", role, run, _map_name(s["map"]),
                                      _o_kenh(s),
                                      "✔" if s["in_party"] else "-", dg,
                                      "⚔" if s["combat"] else "-"),
                           tags=(tag,))
+                _cv = self.__dict__.get("_party_bars", {}).get(pidx, {}).get(u)
+                if _cv is not None:
+                    _cv._status = s
+            if _hien:
+                self._place_stat_bars(pidx)
             # cham trang thai TUNG PARTY (sub-tab trong group):
             #   xanh = DU acc chay | CAM = du acc nhung LECH AGI | vang = chay MOT PHAN | xam = tat
             gidx = self.group_of.get(pidx)
@@ -3968,8 +4040,8 @@ class BagDialog(tk.Toplevel):
     COLS = 10
     # Kich thuoc 1 o tui do. Ban dau 88x88; user yeu cau RONG con 2/3 va CAO con 1/2
     # -> 88*2/3 = 59, 88/2 = 44. Doi 2 so nay la _cell() tu co lai theo (toa do ben trong
-    # deu tinh tu W/H, khong hardcode).
-    CELL_W = 59
+    # deu tinh tu W/H, khong hardcode). Sau do user yeu cau ngang them 10% -> 59*1.1 = 65, roi them 10% nua -> 65*1.1 = 72.
+    CELL_W = 72
     CELL_H = 44
 
     def __init__(self, master, username, client):
@@ -8566,21 +8638,42 @@ class ConfigDialog(tk.Toplevel):
                 entry["preset"] = preset
         return total
 
+    @staticmethod
+    def _entry_game(entry):
+        """Nha phat hanh (VTC/TSM...) cua party: dang mo -> o Game; chua mo -> theo server preset."""
+        if entry["cfg"] is not None:
+            return entry["cfg"]._game_key()
+        return _game_of_server((entry["preset"] or {}).get("server"))
+
     def _apply_advanced_to_all(self, source_entry, data):
-        count = 0
+        # Doi qua event chi ap cho party CUNG nha phat hanh: khac ban TS thi event khac nhau.
+        src_game = self._entry_game(source_entry)
+        count = same = 0
         for entry in self.frames:
             if entry is source_entry:
                 continue
+            d = dict(data)
+            if self._entry_game(entry) == src_game:
+                same += 1
+            else:
+                cur = (entry["cfg"]._advanced_settings_data() if entry["cfg"] is not None
+                       else (entry["preset"] or {}))
+                for k in _EVENT_EXCHANGE_KEYS:
+                    if entry["cfg"] is not None or k in cur:
+                        d[k] = cur.get(k)
+                    else:
+                        d.pop(k, None)
             if entry["cfg"] is not None:
-                entry["cfg"].apply_advanced_settings(data)
+                entry["cfg"].apply_advanced_settings(d)
             else:
                 preset = dict(entry["preset"] or {})
-                preset.update(data)
+                preset.update(d)
                 entry["preset"] = preset
             count += 1
         if count:
             messagebox.showinfo("Đã áp dụng",
-                                f"Đã áp dụng cài đặt nâng cao cho {count} party khác.\n"
+                                f"Đã áp dụng cài đặt nâng cao cho {count} party khác "
+                                f"(đổi quà event chỉ áp cho {same} party cùng {src_game.upper()}).\n"
                                 "Bấm Lưu để ghi vào cấu hình.")
         else:
             messagebox.showinfo("Không có party khác", "Hiện chỉ có 1 party.")

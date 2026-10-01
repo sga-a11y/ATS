@@ -166,6 +166,9 @@ sửa cả chỗ kia. Loader `_load_gamedata_items` thêm `a1k/a1v/a2k/a2v` cho 
 
 **Xoay màn hình:** ngang → dialog gần full bề rộng, 2 cột (trái đồ đang mặc/bộ đồ, phải túi);
 dọc → xếp chồng, phần đồ tối đa ~45% chiều cao và tự cuộn để danh sách túi luôn còn chỗ.
+(01/10) Dọc: bỏ trần 640dp (dialog cao tới `màn − 120dp`), phần đồ có tiêu đề
+"▾ Trang bị đang mặc / Bộ đồ" — mặc định MỞ, bấm để thu gọn → danh sách túi chiếm gần cả dialog
+(trước chỉ thấy ~5 món).
 
 ## Icon loại item (PC + APK, 30/09)
 Mỗi ô túi đồ có icon pixel 14x14 thể hiện loại, để nhìn lướt tìm nhanh. Nhận dạng từ dữ liệu game
