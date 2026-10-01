@@ -20,6 +20,7 @@ REGIONS = {
         "login": "mobiplay",          # HTTP graph.mobiplay.vn -> access_token -> goi auth 0x01
         "xor_key": 0xAD,
         "encoding": "utf-16-le",      # ByteBuffer.lua: DataManager.encoding_Unicode
+        "str_len_bytes": 2,           # GetServerText kind0: [len i16][chuoi] (pcap dienvi 21/07)
         "utc_offset": 7,              # gio server = UTC+7
         "cdn": "https://cdn-gz06.mobigame.vn/tsr/",   # ServerList.dat (bot/servers_cdn.py)
     },
@@ -32,6 +33,8 @@ REGIONS = {
         "login": "accpwd",
         "xor_key": 0xAD,              # giong VTC (capture: 6d3c = c091 ^ adad)
         "encoding": "big5",           # ByteBuffer.lua: DataManager.encoding_Big5
+        # GetServerText kind0: [len u8][chuoi] - pcap tsm_login 29/09 `00 05 "stmot"` (cau EXP 40476)
+        "str_len_bytes": 1,
         "utc_offset": 8,
         # Tu global-metadata.dat cua APK TSM; ServerList.dat cung dinh dang VTC (30/09: 21 server).
         "cdn": "https://tsrtwftp.chinesegamer.net/tsr/",
@@ -53,6 +56,7 @@ class Region:
         # Do dai chuoi phai CHIA HET cho so nay. UTF-16 = 2; Big5 = 1 (chu ASCII 1 byte ->
         # ten "stmot" dai 5 - check `% 2` cu lam TSM khong doc duoc ten char).
         self.char_bytes = 2 if self.encoding.startswith("utf-16") else 1
+        self.str_len_bytes = d["str_len_bytes"]
 
     def encode_str(self, s: str) -> bytes:
         return str(s).encode(self.encoding)

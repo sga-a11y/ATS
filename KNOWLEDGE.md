@@ -518,6 +518,8 @@ Hệ quả cho code hồi máu: sau trận cứ `heal_full(force=True)` là đ�
   `[0][len i16][tên UTF-16LE][2][exp i32]`. Mỗi char/pet 1 gói riêng, vd `dvinnam +6000`, pet `+2000`.
   Client chỉ ghép chuỗi (`string.GetServerText`) rồi in chat. Bot: `_parse_exp_broadcast` →
   `KET TRAN: EXP <tên> +N, <tên pet> +M` 1.5s sau gói cuối.
+  **TSM (Big5)**: độ dài chuỗi kind0 chỉ **1 byte** (`00 05 "stmot"`, pcap tsm_login 29/09), VTC 2 byte →
+  `Region.str_len_bytes`. Trước 01/10 bot đọc 2 byte cố định → party TSM không có thống kê EXP.
   > Bài học 29/09: đã tự trừ tổng exp từ `008-001/002` và đoán `023-115` → **sai cả hai**
   > (0/25 dòng có char). Muốn biết client in gì thì tìm gói server GỬI chuỗi, quét pcap là ra ngay.
 - **Thưởng hoàn thành (dungeon/nhiệm vụ):** `S2C 0x14 sub 0x64` (20-100 `<hoàn thành nhiệm vụ

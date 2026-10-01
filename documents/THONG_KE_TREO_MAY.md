@@ -23,6 +23,8 @@ Khác client: EXP lấy từ gói thông báo chứ không từ gói thuộc tí
 ## Thêm 30/09 (user chốt)
 Thứ tự chi tiết: thông số chung → **Daily quest** → **PB tổ đội** → **Boss** → EXP → vật phẩm.
 - **Daily quest (x/9)**: ô bingo đã xong = `client._quest_cells` (server báo, không cache).
+  Dòng dưới: **quà 1…quà 7** ✔/✘ = line đã nhận thưởng = `client._claimed_lines` (key `claimed`
+  trong `daily_status()`; 1-6 hàng/cột, 7 = quà đủ 6 line).
   Ô dạng đếm (vd ô9 đánh 50 trận) chỉ biết xong/chưa.
 - **PB tổ đội**: LV20/50/80/110 theo `team_dungeon_remaining()` (0 = đã đánh ✅; `?` = chưa có mission-step).
 - **Boss** (thêm 01/10): `Boss QĐ: x/3 · Boss thế giới: x/3` - số server báo, không tự đếm.

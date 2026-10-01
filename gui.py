@@ -3694,6 +3694,12 @@ class IdleStatsDialog(tk.Toplevel):
                     txt.insert("end", " ô%d " % i)
                     dau(i in xong)
                     txt.insert("end", " ")
+                txt.insert("end", "\n ")
+                nhan = set(d.get("claimed") or ())
+                for i in range(1, 8):
+                    txt.insert("end", " quà %d " % i)
+                    dau(i in nhan)
+                    txt.insert("end", " ")
                 txt.insert("end", "\n")
             txt.insert("end", "\nPB tổ đội\n", "muc")
             if not d:

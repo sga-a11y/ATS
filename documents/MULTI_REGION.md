@@ -52,6 +52,8 @@ REGIONS["tsm"] = {login: "accpwd",   xor_key: 0xAD, encoding: "big5",      utc_o
       được tên char ASCII lẻ byte (`stmot` = 5 byte).
 
 ### Nguyên tắc (user chốt 29/09): KHÔNG làm hỏng VTC, sau còn thêm NHIỀU bản
+- [x] Độ dài tiền tố chuỗi GetServerText (kind0): `Region.str_len_bytes` — VTC i16, TSM u8. Sai cái này
+      làm câu EXP 40476 không đọc được → party TSM (party 57, 01/10) không có thống kê EXP.
 - Không `if game == "tsm"` trong code. Khác biệt = thuộc tính trong `REGIONS`, code hỏi `self.region`.
 - Không dùng `_region.get()` (mặc định) trong đường xử lý gói của client — truyền `self.region`.
 - Thêm bản mới = thêm 1 entry `REGIONS` + server `"game"` + event `"games"`, không sửa logic.

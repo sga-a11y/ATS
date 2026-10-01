@@ -6633,7 +6633,12 @@ private fun IdleChiTiet(a: JSONObject, anTen: (String, String) -> String) {
     Text("Daily quest" + if (daily == null) "" else " (${xong.size}/9)",
         fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
     if (daily == null) Text("  (chưa có)", style = nho)
-    else Text("  " + (1..9).joinToString("  ") { "ô$it ${if (it in xong) "✅" else "❌"}" }, style = nho)
+    else {
+        Text("  " + (1..9).joinToString("  ") { "ô$it ${if (it in xong) "✅" else "❌"}" }, style = nho)
+        val nhanArr = daily.optJSONArray("claimed")
+        val nhan = (0 until (nhanArr?.length() ?: 0)).map { nhanArr!!.optInt(it) }.toSet()
+        Text("  " + (1..7).joinToString("  ") { "quà $it ${if (it in nhan) "✅" else "❌"}" }, style = nho)
+    }
     Text("PB tổ đội", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
     val team = daily?.optJSONObject("team")
     if (team == null) Text("  (chưa có)", style = nho)

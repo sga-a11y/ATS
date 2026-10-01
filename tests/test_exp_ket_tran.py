@@ -1,6 +1,7 @@
 import unittest
 
 from bot import client as C
+from bot import region as R
 
 # 2 goi S2C 0x02 sub0a THAT (captures/dienvi_server_20260721.pcap), them header 7B phia truoc.
 _HDR = bytes.fromhex("c09100000000") + b"\x02"
@@ -24,6 +25,15 @@ class ExpKetTranTest(unittest.TestCase):
         nm, n = C._parse_exp_broadcast(PET)
         self.assertEqual(n, 2000)
         self.assertTrue(nm.startswith("Th"))
+
+    def test_tsm_len_1_byte_big5(self):
+        # captures/tsm_login_20260929.pcap: TSM ghi do dai ten 1 byte, chuoi Big5
+        tsm = R.get("tsm")
+        ch = _HDR + bytes.fromhex("0a0003011c9e000002000573746d6f740270170000")
+        pet = _HDR + bytes.fromhex("0a0003011c9e0000020006bdb2a4e5ae5602d0070000")
+        self.assertEqual(C._parse_exp_broadcast(ch, tsm), ("stmot", 6000))
+        nm, n = C._parse_exp_broadcast(pet, tsm)
+        self.assertEqual((len(nm), n), (3, 2000))
 
     def test_cau_khac_khong_phai_exp(self):
         khac = CHAR[:11] + (90230).to_bytes(4, "little") + CHAR[15:]

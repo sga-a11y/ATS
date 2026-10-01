@@ -333,8 +333,10 @@ def _set_thread_prio(level: int):
 # deo gi ca ma nhay thang sang item tieu hao (user phat hien 31/08).
 PHUC_THAN_GEM_ORDER = (0x5AAC, 0x5AAB, 0x5A2D, 0x59EF)
 PHUC_THAN_PROTECTION_PRIORITY = (
-    tuple((_tid, "equip") for _tid in PHUC_THAN_GEM_ORDER) + ((0xB5F4, "use"),)
+    tuple((_tid, "equip") for _tid in PHUC_THAN_GEM_ORDER) + ((0xB5F4, "use"), (0xB650, "use"))
 )
+# Tui mo ra ngoc (Tui Dai Phuc Than, Tui Phuc Than thuong): chi mo khi KHONG con ngoc nao.
+PHUC_THAN_BAG_TIDS = {_tid for _tid, _action in PHUC_THAN_PROTECTION_PRIORITY if _action == "use"}
 PHUC_THAN_GEM_TIDS = set(PHUC_THAN_GEM_ORDER)
 
 
@@ -1616,9 +1618,12 @@ def _load_bliss_boxes() -> dict:
 _EXP_TEXT_ID = 40476   # string "%s nhan duoc %d exp" (protocal.lua 002-010, Breakthrough.lua)
 
 
-def _parse_exp_broadcast(pkt: bytes, enc=None):
-    """S:002-010 [sub 0a00][showSwitch][kind 1][id i32][count]<<arg>>, arg: kind0 = [len i16][utf-16le],
-    kind2 = [i32] (string.GetServerText). Tra (ten, exp) neu la cau 40476, khong thi None."""
+def _parse_exp_broadcast(pkt: bytes, region=None):
+    """S:002-010 [sub 0a00][showSwitch][kind 1][id i32][count]<<arg>>, arg: kind0 = [len][chuoi],
+    kind2 = [i32] (string.GetServerText). Do rong `len` theo ban: VTC i16, TSM u8
+    (`Region.str_len_bytes`). Tra (ten, exp) neu la cau 40476, khong thi None."""
+    rg = region or _region.get()
+    lb = rg.str_len_bytes
     try:
         if len(pkt) < 16 or pkt[10] != 1 or int.from_bytes(pkt[11:15], "little") != _EXP_TEXT_ID:
             return None
@@ -1626,9 +1631,9 @@ def _parse_exp_broadcast(pkt: bytes, enc=None):
         for _ in range(n):
             k = pkt[o]
             if k == 0:
-                ln = int.from_bytes(pkt[o + 1:o + 3], "little")
-                args.append(pkt[o + 3:o + 3 + ln].decode(enc or _region.get().encoding, "replace"))
-                o += 3 + ln
+                ln = int.from_bytes(pkt[o + 1:o + 1 + lb], "little")
+                args.append(pkt[o + 1 + lb:o + 1 + lb + ln].decode(rg.encoding, "replace"))
+                o += 1 + lb + ln
             else:
                 args.append(int.from_bytes(pkt[o + 1:o + 5], "little", signed=True))
                 o += 5
@@ -4442,7 +4447,7 @@ class GameClient:
         # EXP nhan duoc (char + pet) = dong client in ra chat: server GUI SAN qua S:002-010 <廣播訊息>
         # cau so 40476 ("%s nhan duoc %d exp"), tham so [ten][so exp]. Xac nhan pcap dienvi 21/07.
         if opcode == 0x02 and pkt[7:9] == b"\x0a\x00":
-            _g = _parse_exp_broadcast(pkt, self.region.encoding)
+            _g = _parse_exp_broadcast(pkt, self.region)
             if _g:
                 self._add_exp_gain(*_g)
                 if self.idle_stats is not None:
@@ -8268,6 +8273,8 @@ class GameClient:
         """Cho Thong ke treo may: o bingo da xong (1-9) + PB to doi con luot hay het + luot boss.
         team: {level: True=da danh, False=chua, None=chua co mission-step}."""
         return {"cells": sorted(c for c in self._quest_cells if 1 <= c <= 9),
+                # qua (line bingo) da nhan 1-7: 1-6 = hang/cot, 7 = qua du 6 line
+                "claimed": sorted(L for L in self._claimed_lines if 1 <= L <= 7),
                 "team": {lv: (None if (r := self.team_dungeon_remaining(lv)) is None else r == 0)
                          for lv in sorted(TEAM_DUNGEONS)},
                 # boss: [da danh, toi da]; qd None = khong co QD, tg None = chua co mission-step
@@ -10104,7 +10111,12 @@ class GameClient:
         if _gm is not None and _gm >= PHUC_THAN_LOW:
             log.info("[%s] Phuc Than con %d (>= %d) -> CHUA dung them item",
                      self._label, _gm, PHUC_THAN_LOW)
-            cfg = {tid: v for tid, v in cfg.items() if tid in PHUC_THAN_GEM_TIDS}
+            # Buff con nhieu nhung ngoc co the da HONG/het -> van giu TUI (mo ra ngoc). Truoc day loc
+            # mat tui: daimuoi 01/10 train 20 phut khong ngoc (02:13 hong -> 02:33 moi mo tui), do
+            # 30 ca "hong ngoc + buff >= 5" trong ngay. Thu tu uu tien o _use_items_from_cfg tu
+            # chan mo tui khi dang deo ngoc tot.
+            cfg = {tid: v for tid, v in cfg.items()
+                   if tid in PHUC_THAN_GEM_TIDS or tid in PHUC_THAN_BAG_TIDS}
         else:
             # Cap PHUC_THAN_USE_MAX la TONG (khong phai moi loai). Uu tien loai CO GIA TRI CAO
             # truoc (Dai Phuc Than > Phuc Than) = dung it item hon cho cung so luot buff.

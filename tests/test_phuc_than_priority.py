@@ -9,6 +9,7 @@ from bot import config
 SUPER_GEM = 0x5AAB
 GREAT_GEM = 0x5A2D
 GREAT_BAG = 0xB5F4
+NORMAL_BAG = 0xB650  # Tui Phuc Than thuong - mo sau Tui Dai
 GREAT_BLESSING = 0xB3D6
 BLESSING = 0xB3D5
 BROKEN_GEM = 0x59F0
@@ -21,6 +22,7 @@ EXPECTED_PRIORITY = (
     (GREAT_GEM, "equip"),
     (TIEU_GEM, "equip"),
     (GREAT_BAG, "use"),
+    (NORMAL_BAG, "use"),
 )
 
 
@@ -81,6 +83,26 @@ class TestPhucThanPriority(unittest.TestCase):
         equip, used = self._run_items({4: (GREAT_BAG, 5)})
         self.assertEqual(equip, [])
         self.assertEqual(used, [(4, 1, 0)])
+
+    def test_normal_bag_used_only_after_great_bag(self):
+        equip, used = self._run_items({4: (GREAT_BAG, 1), 5: (NORMAL_BAG, 9)})
+        self.assertEqual(used, [(4, 1, 0)])
+        equip, used = self._run_items({5: (NORMAL_BAG, 9)})
+        self.assertEqual(used, [(5, 1, 0)])
+
+    def test_bag_kept_when_buff_high_but_gem_broken(self):
+        """Buff >= PHUC_THAN_LOW ma ngoc hong: van phai mo tui (ca daimuoi 01/10)."""
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.god_mission = 80
+        game.phuc_than_tat = False
+        game._label = "test"
+        seen = {}
+        game._use_items_from_cfg = lambda cfg, lbl: seen.update(cfg)
+        game.discard_junk_items = lambda: None
+        game.use_phuc_than_items()
+        self.assertIn(GREAT_BAG, seen)
+        self.assertIn(NORMAL_BAG, seen)
+        self.assertNotIn(BLESSING, seen)
 
     def test_no_protective_item_performs_no_action(self):
         equip, used = self._run_items({})
