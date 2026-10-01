@@ -97,9 +97,15 @@ _SOUL_PREFIX = re.compile(r"^\s*LH\s*-")
 def is_soul_map(name):
     """Map 'LH-...' = quai LINH HON, cuc khoe, phai reborn 2 lan moi danh duoc.
 
-    BOT TU CHON thi bo qua han. User chon TAY van vao binh thuong (khong chan o day).
+    BOT TU CHON: mac dinh bo qua, chi chon khi user tick 'Quai linh hon' (khi do CHI chon map LH).
+    User chon TAY van vao binh thuong (khong chan o day).
     """
     return bool(_SOUL_PREFIX.match(str(name or "")))
+
+
+def _map_ok(name, soul=False):
+    """Tick 'Quai linh hon' (soul=True) -> CHI map LH; khong tick -> CHI map thuong."""
+    return is_soul_map(name) == bool(soul)
 
 
 def desired_level(pick_mode, levels):
@@ -246,7 +252,7 @@ def spot_matches(prof, level, mob_min, mob_max, elements):
     return not vi_sao_loai(prof, level, mob_min, mob_max, elements)
 
 
-def _maps_chua_quet(maps, level):
+def _maps_chua_quet(maps, level, soul=False):
     """[map_id] cua map CO KHOANG LEVEL chua `level` nhung CHUA CO DIEM NAO (chua quet quai).
 
     Uu tien cao nhat khi chon map: co map chua quet thi den do quet truoc da - vua co them bai
@@ -255,7 +261,7 @@ def _maps_chua_quet(maps, level):
     """
     out = []
     for map_id, name, mobs in maps:
-        if is_soul_map(name) or (mobs or []):
+        if not _map_ok(name, soul) or (mobs or []):
             continue
         rng = map_level_range(name)
         if rng and rng[0] <= level <= rng[1]:
@@ -263,11 +269,11 @@ def _maps_chua_quet(maps, level):
     return out
 
 
-def _spots_of_maps(maps, level):
+def _spots_of_maps(maps, level, soul=False):
     """[(map_id, spot_index, spot_xy)] cua moi map co chua `level` trong khoang ten map."""
     out = []
     for map_id, name, mobs in maps:
-        if is_soul_map(name):
+        if not _map_ok(name, soul):
             continue
         rng = map_level_range(name)
         if not rng or not (rng[0] <= level <= rng[1]):
@@ -278,10 +284,11 @@ def _spots_of_maps(maps, level):
 
 
 def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DEFAULT_MOB_MAX,
-                    elements=None, stats=None, rng=None):
+                    elements=None, stats=None, rng=None, soul=False):
     """-> (map_id, spot_index, level_da_dung, ly_do) hoac None.
 
     maps = [(map_id, ten_map, [diem...])]. Ha dan level mong muon cho toi khi ra diem.
+    soul=True (tick 'Quai linh hon') -> CHI chon map LH-; mac dinh CHI chon map thuong.
     """
     want = desired_level(pick_mode, levels)
     if want is None:
@@ -293,7 +300,7 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
     def _profs(level):
         """[(map_id, idx, prof)] cua moi diem thuoc level do."""
         out = []
-        for map_id, idx, xy in _spots_of_maps(maps, level):
+        for map_id, idx, xy in _spots_of_maps(maps, level, soul):
             sd = (all_spots.get(str(map_id), {}).get("spots", {})
                   .get(train_block_stats.spot_key(xy)))
             out.append((map_id, idx, spot_profile(sd)))
@@ -317,7 +324,7 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
         # UU TIEN 1: map CHUA QUET (khong co diem nao). Den do quet truoc - vua them bai train,
         # vua la cach duy nhat map moi config vao duoc dung (khong chon = khong ai toi = khong
         # bao gio quet). Tra idx = -1 = "chua co diem", caller quet xong roi random 1 bai.
-        _chua_quet = _maps_chua_quet(maps, level)
+        _chua_quet = _maps_chua_quet(maps, level, soul)
         if _chua_quet:
             return rng.choice(_chua_quet), -1, level, _ly_do("map CHUA QUET quai -> den quet truoc")
         ds = _profs(level)
@@ -371,7 +378,7 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
     lo = None
     for _mid, _name, _mobs in maps:
         r = map_level_range(_name)
-        if r and not is_soul_map(_name):
+        if r and _map_ok(_name, soul):
             lo = r[0] if lo is None else min(lo, r[0])
     if lo is not None:
         # UU TIEN 1 y nhu vong ha level o tren: map CHUA QUET quai thi den do QUET TRUOC.
@@ -381,7 +388,7 @@ def pick_train_spot(pick_mode, levels, maps, mob_min=DEFAULT_MOB_MIN, mob_max=DE
         # Ca that 16/09 party 46 (user: "p46 ko tim duoc map train"): level party
         # [32,32,33,33,43,44,44,44,63,119], map thap nhat la 11802 "Rung Dong Quan2 24-25" (lv24)
         # voi mobs = 0 -> `_profs(24)` rong -> None, lap lai moi giay suot buoi.
-        _chua_quet_lo = _maps_chua_quet(maps, lo)
+        _chua_quet_lo = _maps_chua_quet(maps, lo, soul)
         if _chua_quet_lo:
             return rng.choice(_chua_quet_lo), -1, lo, _ly_do(
                 "muon lv%d THAP HON map thap nhat cua game (lv%d), ma map do CHUA QUET quai "

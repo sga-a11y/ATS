@@ -3680,13 +3680,39 @@ class IdleStatsDialog(tk.Toplevel):
             d = s.get("daily")
             xong = set(d["cells"]) if d else set()
             txt.insert("end", "\nDaily quest%s\n" % (" (%d/9)" % len(xong) if d else ""), "muc")
-            txt.insert("end", "  (chưa có)\n" if not d else
-                       "  " + "  ".join("ô%d %s" % (i, "✅" if i in xong else "❌")
-                                        for i in range(1, 10)) + "\n")
+            # Tk khong ve emoji mau -> ✔/✘ to xanh/do cho giong APK
+            def dau(ok):
+                if ok is None:
+                    txt.insert("end", "?")
+                else:
+                    txt.insert("end", "✔" if ok else "✘", "ok" if ok else "x")
+            if not d:
+                txt.insert("end", "  (chưa có)\n")
+            else:
+                txt.insert("end", " ")
+                for i in range(1, 10):
+                    txt.insert("end", " ô%d " % i)
+                    dau(i in xong)
+                    txt.insert("end", " ")
+                txt.insert("end", "\n")
             txt.insert("end", "\nPB tổ đội\n", "muc")
-            txt.insert("end", "  (chưa có)\n" if not d else
-                       "  " + " · ".join("LV%s %s" % (lv, "?" if ok is None else "✅" if ok else "❌")
-                                         for lv, ok in d["team"].items()) + "\n")
+            if not d:
+                txt.insert("end", "  (chưa có)\n")
+            else:
+                txt.insert("end", "  ")
+                for j, (lv, ok) in enumerate(d["team"].items()):
+                    txt.insert("end", "%sLV%s " % (" · " if j else "", lv))
+                    dau(ok)
+                txt.insert("end", "\n")
+            txt.insert("end", "\nBoss\n", "muc")
+            b = (d or {}).get("boss")
+            if not b:
+                txt.insert("end", "  (chưa có)\n")
+            else:
+                qd, tg = b["qd"], b["tg"]
+                txt.insert("end", "  Boss QĐ: %s · Boss thế giới: %s\n" % (
+                    "%d/%d" % tuple(qd) if qd else "không có QĐ",
+                    "%d/%d" % tuple(tg) if tg else "?"))
             txt.insert("end", "\nEXP\n", "muc")
             if not s["exp"]:
                 txt.insert("end", "  (chưa có)\n")
@@ -3704,6 +3730,8 @@ class IdleStatsDialog(tk.Toplevel):
                     txt.insert("end", "  %s x%s\n" % (nm, format(q, ",")))
         txt.tag_configure("ten", font=("Segoe UI", 12, "bold"))
         txt.tag_configure("muc", font=("Segoe UI", 10, "bold"))
+        txt.tag_configure("ok", foreground="#1e9e3e", font=("Segoe UI", 10, "bold"))
+        txt.tag_configure("x", foreground="#e0302a", font=("Segoe UI", 10, "bold"))
         txt.configure(state="disabled")
         txt.yview_moveto(y)
 
@@ -5355,6 +5383,8 @@ class PartyConfigFrame(ttk.Frame):
         saved_el = self._preset.get("mob_elements")
         self.mob_elems = ({int(e) for e in saved_el if int(e) in _TP.ALL_ELEMENTS}
                           if saved_el else set(_TP.ALL_ELEMENTS)) or set(_TP.ALL_ELEMENTS)
+        # Tick 'Quai linh hon': tu chon map CHI chon map LH-. Mac dinh khong tick = chi map thuong.
+        self.mob_soul = bool(self._preset.get("mob_soul"))
         # EVENT: list (key, label) tu events.json -> picker khi mode=event. Bo qua event co
         # "hidden": true (an tam - chua lam xong; giu data, bo co de hien lai).
         # Chi event CO O GAME dang chon (`"games"` trong events.json; khong khai = chi VTC).
@@ -7632,7 +7662,7 @@ class PartyConfigFrame(ttk.Frame):
 
     def _elem_btn_text(self):
         n = len(self.mob_elems)
-        return f"⬦ Hệ ({n}/{len(_TP.ALL_ELEMENTS)})"
+        return f"⬦ Hệ ({n}/{len(_TP.ALL_ELEMENTS)})" + (" LH" if self.mob_soul else "")
 
     def _open_elements(self):
         """Bang tick 8 he (7 he + Vo he). Tick het HOAC khong tick gi = danh tat ca."""
@@ -7648,9 +7678,13 @@ class PartyConfigFrame(ttk.Frame):
             vars_[eid] = v
             ttk.Checkbutton(grid, text=name, variable=v).grid(
                 row=i // 2, column=i % 2, sticky="w", padx=(0, 20))
+        soul_v = tk.BooleanVar(value=self.mob_soul)
+        ttk.Checkbutton(box, text="Quái linh hồn (chỉ chọn map LH, bỏ quái thường)",
+                        variable=soul_v).pack(anchor="w", pady=(8, 0))
 
         def save():
             self.mob_elems = {e for e, v in vars_.items() if v.get()} or set(_TP.ALL_ELEMENTS)
+            self.mob_soul = bool(soul_v.get())
             if self.elem_btn:
                 self.elem_btn.configure(text=self._elem_btn_text())
             top.destroy()
@@ -7773,6 +7807,7 @@ class PartyConfigFrame(ttk.Frame):
         data = {"server": srv, "mode": mode, "start_city_id": sc, "mob_index": mob_index,
                 "train_pick": train_pick, "mob_min": mob_min, "mob_max": mob_max,
                 "mob_elements": sorted(self.mob_elems or _TP.ALL_ELEMENTS),
+                "mob_soul": bool(self.mob_soul),
                 "city_flag": city_flag, "do_daily": bool(self.daily_var.get()),
                 "claim_offline_exp": bool(self.claim_offline_exp_var.get()),
                 "auto_world_boss": bool(self.auto_world_boss_var.get()),

@@ -163,6 +163,15 @@ class ControllerRegressions(unittest.TestCase):
         self.assertFalse(client.auto_sell_noi_dat)
         self.assertEqual(client.bank_expand_gold, 0)
 
+    def test_digioi_train_mode_enables_cat_do_and_noi_dat(self):
+        # Ca that 01/10: 58/58 party mode digioi_train, tick cat do nhung khong bao gio vao tien
+        # trang (378 lan ve Trac Quan, 0 dong "Tien trang") vi co bi ep False theo mode.
+        client = NS()
+        R._cap_nhat_tuy_chon_client(client, {"mode": "digioi_train", "auto_cat_do": True,
+                                            "auto_sell_noi_dat": True})
+        self.assertTrue(client.auto_cat_do)
+        self.assertTrue(client.auto_sell_noi_dat)
+
     def test_safe_battle_warning_counts_only_new_trusted_battles(self):
         client = mock.Mock(_username="a", current_map=100, _pos_valid_for_map=100,
                            pos=(20, 30), _pe_battle_before=False, state=NS(in_battle=False))

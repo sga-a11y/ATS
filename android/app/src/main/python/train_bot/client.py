@@ -2646,6 +2646,7 @@ class GameClient:
         self.char_element = None      # 1..4 = he; hoc skill KHAC he ton GAP DOI learnPt
         self.char_skill_point = None  # diem skill con lai (server chot)
         self.char_skill_lv = {}       # skill_id -> cap HIEN TAI (khong co = chua hoc)
+        self.char_turn3_element = 0   # he chuyen sinh 3 (0x05): 0 chua / 7 Quang / 8 Am
         # Chi so char doc tu goi 0x05 sub03 (Role.ReceivePlayerData). EAttribute -> gia tri.
         #   char_base  = so GOC (chua cong do) | char_equip = phan CONG TU TRANG BI
         self.char_base = {}
@@ -4342,12 +4343,17 @@ class GameClient:
             self._parse_org_id_0x05(pkt)   # QUAN DOAN: orgId==0 = khong co (giong client)
             self._parse_char_login_int(pkt)
             # CAP nhan vat: payload offset 21 = pkt[28] (khop capture: char lv 64). Hien o GUI.
-            if len(pkt) > 28 and 1 <= pkt[28] <= 200:
-                self.char_level = pkt[28]
+            _lv_raw = pkt[28] if len(pkt) > 28 and 1 <= pkt[28] <= 200 else None
             # SKILL DA HOC DAY DU: 0x05 co list [count 2B LE] + count*[skill 2B LE][level 1B].
             # (0x28 chi la skill BAR, thieu skill khong dat phim tat -> char danh chay). Parse o
             # day moi du. UNION (khong ghi de) de khong mat skill tu 0x28.
             self._parse_skill_list_0x05(pkt)
+            # Byte Lv chi la cap TRONG vong chuyen sinh. Client: Turn>=3 -> Lv + playerMaxLv(200)
+            # (RoleController.lua:4030). Thieu cai nay acc lv290 bi doc thanh 90 -> chon nham PB
+            # don -> server tra 等級不符 -> kick. Turn3 nhan biet qua he chuyen sinh 3 (7/8),
+            # doc trong _parse_skill_list_0x05 nen phai tinh SAU no.
+            if _lv_raw is not None:
+                self.char_level = _lv_raw + (200 if self.char_turn3_element in (7, 8) else 0)
         # PET dang dung: S2C 0x0f sub=0008 = danh sach pet mang theo, record DAU = pet active.
         elif opcode == 0x0f and pkt[7:9] == b"\x08\x00" and len(pkt) >= 49:
             self._cached_pet_list_pkt = pkt
@@ -8259,11 +8265,15 @@ class GameClient:
         return bool(self.mission_steps_loaded)
 
     def daily_status(self) -> dict:
-        """Cho Thong ke treo may: o bingo da xong (1-9) + PB to doi con luot hay het.
+        """Cho Thong ke treo may: o bingo da xong (1-9) + PB to doi con luot hay het + luot boss.
         team: {level: True=da danh, False=chua, None=chua co mission-step}."""
         return {"cells": sorted(c for c in self._quest_cells if 1 <= c <= 9),
                 "team": {lv: (None if (r := self.team_dungeon_remaining(lv)) is None else r == 0)
-                         for lv in sorted(TEAM_DUNGEONS)}}
+                         for lv in sorted(TEAM_DUNGEONS)},
+                # boss: [da danh, toi da]; qd None = khong co QD, tg None = chua co mission-step
+                "boss": {"qd": [self.legion_boss_count, self.legion_boss_max] if self.has_legion else None,
+                         "tg": None if self.world_boss_count is None
+                         else [self.world_boss_count, self.world_boss_max]}}
 
     def team_dungeon_remaining(self, level: int):
         info = TEAM_DUNGEONS.get(int(level))
@@ -9058,7 +9068,21 @@ class GameClient:
         tier = self._dungeon_tier()
         log.info("[%s] Dungeon tier: level=%s -> tier=%s", self._label, self.char_level, tier)
         self.send(0x2f, b"\x01\x00"); time.sleep(0.6)             # query pho ban
+        _t_tao = time.time()
         self.send(0x2f, b"\x02\x00" + bytes([tier]) + b"\x00\x00"); time.sleep(0.6)  # VAO dungeon (theo tier)
+        # Server TU CHOI (S:047-002 ket qua != 0, vd 2 = 等級不符) ma van gui `0x14 08` -> server
+        # kick (ma 10 "loi tra bang"). Ca that 01/10 party 58: Shebe/VnGo lv290/248 bi doc thanh
+        # 90/48 -> sai id -> kq=2 -> kick -> relogin don dap -> ma 90 -> party sap.
+        for _ in range(10):
+            if self._pb_tao_phong_luc >= _t_tao:
+                break
+            time.sleep(0.1)
+        if self._pb_tao_phong_luc >= _t_tao and self._pb_tao_phong_kq not in (None, 0):
+            log.warning("[%s] Dungeon: server TU CHOI vao (S:047-002 ket qua=%s, id=%s lv=%s) -> "
+                        "KHONG gui 0x14 08 (gui la bi kick)", self._label, self._pb_tao_phong_kq,
+                        tier, self.char_level)
+            self.state.boss_mode = False
+            return False
         self.send(0x14, b"\x08\x00" + bytes([tier - 1]) + b"\x00"); time.sleep(0.4)  # khoi dong tran boss (tier-1)
         self.send(0x0c, b"\x01\x00"); time.sleep(0.4)              # xin info tran
         self.send(0x14, b"\x06\x00")                               # confirm
@@ -12684,9 +12708,13 @@ class GameClient:
 
     def _parse_skill_list_0x05(self, pkt: bytes):
         """Trong goi char-info 0x05 co list skill DA HOC: [count 2B LE] + count*[skill 2B LE]
-        [level 1B]. (0x28 chi la skill BAR -> thieu skill khong dat phim tat.) Tim list bang
-        chu ky: 1 vi tri co count C nho (1..60) + dung C entry [id trong 0x2710..0x3fff][lv 1..99].
-        Lay run dau tien -> UNION vao skills_char (khong mat skill bar)."""
+        [level 1B]. (0x28 chi la skill BAR -> thieu skill khong dat phim tat.)
+        Uu tien doc DUNG bo cuc Lua (`_parse_skill_lists_0x05_exact`, co ca skill Quang/Am).
+        Bo cuc do lech -> du phong cach cu: tim list bang chu ky count C nho (1..60) + dung C
+        entry [id trong 0x2710..0x3fff][lv 1..99], lay run dau tien.
+        Ca hai deu UNION vao skills_char (khong mat skill bar)."""
+        if self._parse_skill_lists_0x05_exact(pkt):
+            return
         payload = pkt[7:]
         n = len(payload)
         for off in range(0, n - 3):
@@ -12718,6 +12746,51 @@ class GameClient:
                          [hex(s) for s in ids])
                 return
 
+    def _parse_skill_lists_0x05_exact(self, pkt: bytes) -> bool:
+        """S:005-003 theo DUNG `Role.ReceivePlayerData` (Logic/Role.lua): body (sau op) `+96`
+        count(2) + count*[id(2) lv(1)] | Turn3Element(1) Turn3Exp(8) 6*u16 | count2(2) +
+        count2*[id(2) lv(1)].  List 2 = skill CHUYEN SINH 3 (Quang 22xxx / Am 23xxx).
+        KHONG chia theo ban: char chua chuyen sinh 3 -> server gui Turn3Element=0 + list 2 rong
+        -> bot khong thay skill Quang/Am, y nhu client. Ban nao mo thi tu co (MULTI_REGION.md).
+        Tra False neu bo cuc lech (goi cut/khac sub) -> caller dung cach do cu."""
+        b = pkt[7:]
+        if b[:2] != b"\x03\x00" or len(b) < 98:
+            return False
+
+        def _list(off):
+            c = int.from_bytes(b[off:off + 2], "little")
+            if c > 200 or off + 2 + c * 3 > len(b):
+                return None, off
+            out = []
+            for k in range(c):
+                p = off + 2 + k * 3
+                sid, lv = int.from_bytes(b[p:p + 2], "little"), b[p + 2]
+                if not (0x2710 <= sid <= 0xffff and 1 <= lv <= 99):
+                    return None, off
+                out.append((sid, lv))
+            return out, off + 2 + c * 3
+
+        ds1, o = _list(96)
+        if ds1 is None or o + 21 + 2 > len(b) or b[o] not in (0, 7, 8):
+            return False
+        ds2, _ = _list(o + 21)
+        if ds2 is None:
+            return False
+        self.char_turn3_element = b[o]
+        lv_map = {}
+        for sid, lv in ds1 + ds2:
+            lv_map[sid] = lv
+            if sid not in self.state.skills_char:
+                self.state.skills_char.append(sid)
+        if not self.char_skill_lv:
+            self.char_skill_lv = dict(lv_map)
+        log.info("[%s] Char skills (0x05, %d): %s", self._label, len(ds1),
+                 [hex(s) for s, _ in ds1])
+        if ds2 or b[o]:
+            log.info("[%s] Chuyen sinh 3 he=%s (7 Quang/8 Am), skill: %s", self._label, b[o],
+                     [hex(s) for s, _ in ds2])
+        return True
+
     # ---- parse skill bar (0x28) ----
     def _on_skill_bar(self, pkt: bytes):
         """S2C 0x28: skill bar cua char/pet.
@@ -12729,6 +12802,7 @@ class GameClient:
         if len(pkt) < 12:
             return
         payload = pkt[7:]
+        _skill_info = getattr(config, "SKILL_INFO", {}) or {}
         i = 2  # bo prefix 01 00
         seen_char = False
         while i + 2 <= len(payload):
@@ -12744,7 +12818,8 @@ class GameClient:
                 i += 2
                 if sid == 0:
                     break  # terminator -> het skill cua unit nay
-                if not (0x2710 <= sid <= 0x3fff) or len(skills) > 40:
+                # Ngoai dai 1xxxx cu: nhan them skill CO TRONG skills_data (vd Quang/Am 22xxx/23xxx)
+                if not (0x2710 <= sid <= 0x3fff or sid in _skill_info) or len(skills) > 40:
                     ok = False
                     break  # canh rac
                 if sid not in skills:

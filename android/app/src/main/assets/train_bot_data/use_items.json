@@ -19,6 +19,7 @@
 	"0xb74c": {"name": "Phó Bản Cấp 110 II", "qty": 100},
     "0xb5b3": "Giải Khuyến khích Boss",
     "0xb5b4": "Giải Tích Điểm Boss",
+    "0xb5b5": "Giải Boss Quân Đoàn",
     "0xb590": {"name": "Thùng Dị Giới", "qty": 25},
     "0xb591": {"name": "Rương Hộ Phù Dị Giới", "qty": 25},
     "0xb3d6": {"name": "Đại Phúc Thần", "qty": 25, "phuc_than": true},

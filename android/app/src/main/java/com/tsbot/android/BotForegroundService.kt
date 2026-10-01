@@ -355,6 +355,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.autoBankExpand, party.bankExpandGold,
                 // TU TANG TRUNG THANH PET <40. THEM O CUOI CUNG (goi theo VI TRI).
                 party.autoPetFaith,
+                // TICK 'QUAI LINH HON'. THEM O CUOI CUNG (goi theo VI TRI).
+                party.mobSoul,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,

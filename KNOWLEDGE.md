@@ -986,6 +986,22 @@ Crack Lua client 2026-08-08 (`Common/protocal.lua`, `Logic/FightManager.lua`):
 | 11010 | Toàn Trị Liệu | heal AoE | 42 | all ally | Hồi HP toàn party, char only |
 | 12006 | ??? | ? | ? | ? | Pet skill, chưa khám phá |
 
+### SKILL QUANG/ÁM (chuyển sinh 3) — 2 danh sách skill trong `0x05 sub03` (01/10/2026)
+Nguồn: `Logic/Role.lua` `Role.ReceivePlayerData` + capture TSM `captures/tsm_quangam_20261001.pcap`
+(login char Quang) và `tsm_quangam_skill_20261001.pcap` (đánh skill).
+- Bố cục body (sau opcode, bắt đầu `03 00`): `+96` count(2) + count×[id(2) lv(1)] → **khối Turn3**:
+  `Turn3Element(1)` (0 chưa / **7 Quang** / **8 Ám**) `Turn3Exp(8)` `Int Atk Def Agi Hpx Spx` (6×u16)
+  → **count2(2) + count2×[id(2) lv(1)]** = skill chuyển sinh 3 (Quang 22xxx, Ám 23xxx).
+  Parse: `client._parse_skill_lists_0x05_exact` (đối chiếu 33 pcap VTC+TSM: list 1 khớp y parser cũ).
+- Client chỉ hiện tab LightDark khi `EAttribute.Turn >= 3` (`UISkillTree.lua:491`) — **không có cờ theo
+  bản**. Char chưa chuyển sinh 3 → server gửi `Turn3Element=0` + list 2 rỗng → bot không thấy skill.
+  VTC mở chuyển sinh 3 thì bot tự có, không sửa code.
+- Đánh skill Quang = **y hệt** skill thường: `0x32 kind 1` (vd `0100 0302 0002 ff55` = char dùng 22015).
+- `skills_data.json` đã có đủ 22xxx/23xxx (`element` 7/8, `tree: LightDark`).
+- Bẫy cũ: parser 0x05 heuristic + skill bar `0x28` chặn id `<= 0x3fff` → skill 22xxx (`0x55xx`) bị vứt;
+  bar `0x28` còn **vứt cả thanh skill char** khi có 1 skill Quang. Nay bar nhận thêm id có trong `SKILL_INFO`.
+- Chưa capture: học/nâng skill Quang (nghi `C:028-001` như tab thường — chưa kiểm).
+
 ### HỆ THỐNG HỌC/NÂNG SKILL (char + pet) — crack tu client Lua
 Nguồn: `.codex_mumu_probe/lua_decrypted_all/` (Common_protocal.lua, Logic_Role.lua, Data_SkillData.lua, UI_UISkillTree.lua).
 - **Skill_C.dat** (skills_data.json, crack_skills.py): mỗi skill có `needLv`(ip+17, level cần để học),
@@ -1037,6 +1053,11 @@ Bóc `Dungeon_C.dat` 15/09 (`adb pull .../files/Data/Dungeon_C.dat`, layout `Dat
 - **`_dungeon_tier()` trong client.py thực chất trả `dungeonId`**, không phải "tier". Nó dừng ở 4
   (`lv>=151`) nhưng dải id 4 **hết ở lv 200** — từ **201 trở lên phải là id 5**. Chưa cháy vì acc
   cao nhất đang lv 193 (đo log 15/09).
+- **LEVEL THẬT = byte Lv + 200 nếu đã chuyển sinh 3** (`RoleController:GetAttribute`, `:4030`:
+  `Turn >= 3 → Lv + Role.playerMaxLv`, `playerMaxLv = 200`). Byte `pkt[28]` của `0x05` chỉ là cấp
+  trong vòng. Ca 01/10 party 58: lv290/248 bị đọc thành 90/48 → gửi id 3/2 → `S:047-002 kq=2
+  等級不符` → bot vẫn gửi `0x14 08` → **kick mã 10**. Bot nhận biết turn3 qua `char_turn3_element ∈ {7,8}`
+  (chưa chọn hệ Quang/Ám thì =0 → vẫn thiếu 200, chưa đọc được trường `Turn` thật).
 - **Free mỗi ngày chỉ 1 lượt**, và **cả 4 id PB đơn dùng CHUNG `dayilyFlag = 0x3030`**. Ô 1 bingo
   đòi 2 lượt ⇒ **lượt thứ hai BẮT BUỘC mua** — không phải lỗi.
 - **Còn free hay không thì BIẾT TRƯỚC, không phải thử-rồi-lỗi.** Công thức client

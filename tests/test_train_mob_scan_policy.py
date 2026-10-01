@@ -164,9 +164,10 @@ class TestTrainMobScanPolicy(unittest.TestCase):
             train_map["safe"],
             centers,
         )
-        self.assertEqual(self.client.events[:3], ["begin", "switch", ("navigate", 3990, 2490)])
+        # Quet quai KHONG doi kenh: doi kenh bat roi doi -> party vo (party 58, 01/10).
+        self.assertEqual(self.client.events[:2], ["begin", ("navigate", 3990, 2490)])
         self.assertEqual(self.client.events[-1], "end")
-        self.assertEqual(self.client.switched, [2])
+        self.assertEqual(self.client.switched, [])
         self.assertTrue(sleeps)
         self.assertEqual(self.client.finished_capture, [True])
         save_cache.assert_not_called()

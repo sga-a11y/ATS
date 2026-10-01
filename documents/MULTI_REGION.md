@@ -79,4 +79,14 @@ REGIONS["tsm"] = {login: "accpwd",   xor_key: 0xAD, encoding: "big5",      utc_o
       trong cùng `game`. Server TSM mới → khoá `tsm_<id>`, label `TSM-<id>-<tên Hán>` (user tìm theo số), `"game": "tsm"`;
       chung file overlay `servers_cdn.json`.
 - [ ] Tách data theo bản (servers.json, train_maps, map_gates, npc_names...).
-- [ ] `features` bật/tắt tính năng theo bản.
+- [ ] `features` bật/tắt tính năng theo bản — CHỈ khi client không có tín hiệu từ server (xem dưới).
+
+### Tính năng bản này có, bản kia chưa mở (user chốt 01/10/2026)
+1. **Hỏi trước: client tự ẩn/hiện tính năng dựa vào dữ liệu nào của server?** Có → bot đọc đúng dữ
+   liệu đó, làm CHUNG mọi bản, bản nào mở thì bot tự nhận ra. Không `features` theo bản.
+2. **Mặc định ĐÓNG, chỉ NGHE, không THỬ.** Cấm gửi request "thử xem server nhận không": client đang
+   ẩn mà bot vẫn gửi = dấu hiệu bot rõ nhất, lỡ server nhận thì ra item chưa mở → ban nick.
+3. Client không có tín hiệu nào → mới khai cứng trong `REGIONS[...]["features"]` (sửa tay khi bản mở).
+
+Ví dụ đã làm: **skill Quang/Ám** (chuyển sinh 3, TSM có, VTC chưa) — server gửi `Turn3Element` +
+danh sách skill 2 trong `0x05 sub03`; char nào có thì bot dùng, không cờ theo bản (KNOWLEDGE mục 7).

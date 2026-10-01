@@ -271,9 +271,9 @@ def _stationary_train_mob_probe(client, map_id, train_map=None, stop=None, secon
     _lb = getattr(client, "_label", "")
     stations = []          # khai bao TRUOC try: doan ve anh o duoi con dung
     try:
-        channel = int(getattr(client, "current_channel", 0)
-                      or getattr(config, "CHANNEL", 1) or 1)
-        client.switch_channel(channel)
+        # KHONG doi kenh: quet quai dung kenh nao cung duoc. Doi kenh bat ROI DOI truoc -> party vo
+        # -> dieu phoi "doi chua du" -> reform -> ca party ve thanh, toi map lai quet lai -> lap vo
+        # han. Ca that 01/10 party 58 map 15824 (70 lan reform).
         # DUNG 1 CHO LA DU. Do lai tren capture map 20801: 30s dau tai MOT diem da thay DU
         # 16/16 bai quai (va 16/16 co safe). Di them 5 diem nua ton 5 phut ma con TE HON
         # (quan sat nhieu -> vung 'hazard' phinh -> kho tim safe, chi con 14/16).
@@ -2224,7 +2224,8 @@ def _auto_train_target(pidx, pcfg):
             pcfg.get("train_pick"), levels, maps,
             mob_min=int(pcfg.get("mob_min") or train_pick.DEFAULT_MOB_MIN),
             mob_max=int(pcfg.get("mob_max") or train_pick.DEFAULT_MOB_MAX),
-            elements=pcfg.get("mob_elements") or train_pick.ALL_ELEMENTS)
+            elements=pcfg.get("mob_elements") or train_pick.ALL_ELEMENTS,
+            soul=bool(pcfg.get("mob_soul")))
         if not got:
             log.warning(">>> PARTY %s: TU CHON MAP khong tim duoc diem nao (level party %s)",
                         pidx + 1, sorted(levels))
@@ -4383,7 +4384,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         # TU MO RONG TIEN TRANG. THEM O CUOI CUNG (Kotlin goi THEO VI TRI).
                         auto_bank_expand=False, bank_expand_gold=0,
                         # TU TANG TRUNG THANH PET <40. THEM O CUOI CUNG (Kotlin goi THEO VI TRI).
-                        auto_pet_faith=True):
+                        auto_pet_faith=True,
+                        # TICK 'QUAI LINH HON' (tu chon map chi chon map LH-). THEM O CUOI CUNG.
+                        mob_soul=False):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -4406,6 +4409,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "di_gioi_pick": str(di_gioi_pick or ""),
         "mob_min": int(mob_min or train_pick_mod.DEFAULT_MOB_MIN),
         "mob_max": int(mob_max or train_pick_mod.DEFAULT_MOB_MAX),
+        "mob_soul": bool(mob_soul),
         "mob_elements": ([int(x) for x in str(mob_elements).split(",") if x.strip().isdigit()]
                          or list(train_pick_mod.ALL_ELEMENTS)),
         "mode": mode, "start_city_id": int(start_city_id), "mob_index": int(mob_index),
@@ -7038,8 +7042,8 @@ def _cap_nhat_tuy_chon_client(c, pcfg):
     c.event_exchange_sig = pcfg.get("event_exchange_sig", "") or ""
     c.fight_legion_boss = pcfg.get("fight_legion_boss", True)
     c.di_gioi_level = int(pcfg.get("di_gioi_level", 2))
-    c.auto_sell_noi_dat = bool(pcfg.get("auto_sell_noi_dat", True) and mode in ("train", "city"))
-    c.auto_cat_do = bool(pcfg.get("auto_cat_do", False) and mode in ("train", "city"))
+    c.auto_sell_noi_dat = bool(pcfg.get("auto_sell_noi_dat", True) and mode in ("train", "digioi_train", "city"))
+    c.auto_cat_do = bool(pcfg.get("auto_cat_do", False) and mode in ("train", "digioi_train", "city"))
     c.bank_expand_gold = int(pcfg.get("bank_expand_gold", 0) or 0) if pcfg.get("auto_bank_expand", False) else 0
     # Mode EVENT LUON danh quest_mode + pet vai quest, CO LEADER BOT HAY KHONG - y engine cu
     # (`run_account` luc login). Commit 26/09 bo `run_account` ma quen hai co nay: party khong co

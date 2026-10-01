@@ -174,3 +174,9 @@ trong `pet_scrolls.json` → `cuon` · `hp/sp>0` → `thuoc`. Không thuộc lo�
 - PC: `gui.py::BagDialog._loai_item` + `_icon_loai`.
 - APK: `bag_info` trả thêm trường `loai` (`run_party_digioi.py::_loai_item`, cùng luật), Kotlin
   `IconLoai` vẽ Canvas đúng toạ độ + màu của PC. Ô "Trang bị đang mặc" cũng có icon `eq<fit>`.
+
+## Mode nào được tự cất đồ / bán Nồi Đất (sửa 01/10)
+Cờ `auto_cat_do` / `auto_sell_noi_dat` trên client chỉ bật với mode `train`, `digioi_train`, `city`
+(`_cap_nhat_tuy_chon_client`). Trước 01/10 thiếu `digioi_train` → party DG→Train tick cất đồ cũng
+không bao giờ vào tiền trang (log 01/10: 378 lần về Trác Quân, 0 dòng "Tien trang"), kéo theo
+mở rộng tiền trang (chỉ chạy lúc kho đang mở) và bán Nồi Đất cũng chết theo.

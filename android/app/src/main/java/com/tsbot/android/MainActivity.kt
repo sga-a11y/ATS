@@ -921,6 +921,7 @@ fun TsBotApp(
             initialMobMin = partyBeingEdited.mobMin,
             initialMobMax = partyBeingEdited.mobMax,
             initialMobElements = partyBeingEdited.mobElements,
+            initialMobSoul = partyBeingEdited.mobSoul,
             initialUsePhucThan = partyBeingEdited.usePhucThan,
             initialUseDigioiHoPhu = partyBeingEdited.useDigioiHoPhu,
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
@@ -2037,6 +2038,7 @@ fun AddPartyDialog(
     initialMobMin: Int = 3,
     initialMobMax: Int = 4,
     initialMobElements: List<Int> = listOf(0, 1, 2, 3, 4, 5, 7, 8),
+    initialMobSoul: Boolean = false,
     initialUsePhucThan: Boolean = false,
     initialUseDigioiHoPhu: Boolean = false,
     initialFightLegionBoss: Boolean = true,
@@ -2115,6 +2117,7 @@ fun AddPartyDialog(
     var mobMin by remember { mutableStateOf(initialMobMin.toString()) }
     var mobMax by remember { mutableStateOf(initialMobMax.toString()) }
     var mobElements by remember { mutableStateOf(initialMobElements.toSet()) }
+    var mobSoul by remember { mutableStateOf(initialMobSoul) }
     var showElementList by remember { mutableStateOf(false) }
     val allElems = remember { allElementIds() }
     val isPickMode = trainMapKey.startsWith(PICK_PREFIX)
@@ -2184,6 +2187,7 @@ fun AddPartyDialog(
         mobMin = mobMin.toIntOrNull()?.coerceIn(1, 6) ?: 3,
         mobMax = mobMax.toIntOrNull()?.coerceIn(1, 6) ?: 4,
         mobElements = (if (mobElements.isEmpty()) allElems.toSet() else mobElements).sorted(),
+        mobSoul = mobSoul,
         usePhucThan = usePhucThan,
         useDigioiHoPhu = useDigioiHoPhu,
         fightLegionBoss = fightLegionBoss,
@@ -2656,7 +2660,7 @@ fun AddPartyDialog(
                             )
                             Spacer(Modifier.width(8.dp))
                             OutlinedButton(onClick = { showElementList = true }) {
-                                Text("Hệ (" + mobElements.size + "/" + allElems.size + ")")
+                                Text("Hệ (" + mobElements.size + "/" + allElems.size + ")" + if (mobSoul) " LH" else "")
                             }
                         }
                         if (showElementList) {
@@ -2680,6 +2684,10 @@ fun AddPartyDialog(
                                                 )
                                                 Text(name)
                                             }
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Checkbox(checked = mobSoul, onCheckedChange = { mobSoul = it })
+                                            Text("Quái linh hồn (chỉ chọn map LH, bỏ quái thường)")
                                         }
                                     }
                                 },
@@ -6632,6 +6640,13 @@ private fun IdleChiTiet(a: JSONObject, anTen: (String, String) -> String) {
     else Text("  " + team.keys().asSequence().toList().joinToString(" · ") {
         "LV$it " + when { team.isNull(it) -> "?"; team.optBoolean(it) -> "✅"; else -> "❌" }
     }, style = nho)
+    Text("Boss", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+    val boss = daily?.optJSONObject("boss")
+    if (boss == null) Text("  (chưa có)", style = nho)
+    else {
+        fun luot(k: String, rong: String) = boss.optJSONArray(k)?.let { "${it.optInt(0)}/${it.optInt(1)}" } ?: rong
+        Text("  Boss QĐ: ${luot("qd", "không có QĐ")} · Boss thế giới: ${luot("tg", "?")}", style = nho)
+    }
     Text("EXP", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
     val exp = a.optJSONObject("exp")
     val expN = a.optJSONObject("exp_n")

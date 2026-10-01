@@ -41,6 +41,8 @@ data class Party(
     val mobMin: Int = 3,
     val mobMax: Int = 4,
     val mobElements: List<Int> = listOf(0, 1, 2, 3, 4, 5, 7, 8),
+    // Tick 'Quai linh hon': tu chon map CHI chon map LH-. Mac dinh false = chi map thuong. Mirror PC mob_soul.
+    val mobSoul: Boolean = false,
     // Su dung Phuc Than (item nhom "phuc_than" trong use_items.json, dung/trang bi dinh ky 30p/lan
     // - xem use_phuc_than_items() client.py). Mirror PC's use_phuc_than_var (gui.py). Mac dinh
     // KHONG tick (giong PC).
