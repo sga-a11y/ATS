@@ -137,11 +137,15 @@ class TestChayThatPhepQuyet(unittest.TestCase):
 
 
 class TestCoLenhVanHanh(unittest.TestCase):
+    # So `_PARTY_NGUOI_KEO` la TOAN CUC: test khac chay `_thi_hanh_hieu_ung` de lai "*" o party 8
+    # -> chay ca bo thi `nguoi_keo(8)` khong con None. Cat lai so rong cho rieng lop nay.
     def setUp(self):
-        C.dat_nguoi_keo(7, None)
+        self._so_cu = dict(C._PARTY_NGUOI_KEO)
+        C._PARTY_NGUOI_KEO.clear()
 
     def tearDown(self):
-        C.dat_nguoi_keo(7, None)
+        C._PARTY_NGUOI_KEO.clear()
+        C._PARTY_NGUOI_KEO.update(self._so_cu)
 
     def test_dat_va_doc_lai_duoc(self):
         C.dat_nguoi_keo(7, "a1")

@@ -2489,7 +2489,7 @@ fun AddPartyDialog(
                         // tick CHUNG o day de khong co 2 noi dieu khien cung mot thu.
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = autoBagClean, onCheckedChange = { autoBagClean = it })
-                            Text("Tự dọn túi đồ")
+                            Text("Tự dọn túi đồ", modifier = Modifier.weight(1f))
                             OutlinedButton(
                                 onClick = { showBagClean = true },
                                 modifier = Modifier.padding(start = 8.dp),
@@ -2500,7 +2500,7 @@ fun AddPartyDialog(
                         // Cai dat nang cao khong thay dau, tuong ban APK thieu tinh nang.
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = autoEventExchange, onCheckedChange = { autoEventExchange = it })
-                            Text("Tự đổi quà event")
+                            Text("Tự đổi quà event", modifier = Modifier.weight(1f))
                             OutlinedButton(
                                 onClick = { showEventExchange = true },
                                 modifier = Modifier.padding(start = 8.dp),
@@ -2941,7 +2941,7 @@ fun AddPartyDialog(
                     Text(
                         "Lưu ý: phân giải là MẤT HẲN cuộn. Mặc định giữ lại cuộn của tướng có vũ " +
                             "khí chuyên dụng, còn lại phân giải — nên soát List trước khi bật.",
-                        color = androidx.compose.ui.graphics.Color(0xFFAA0000),
+                        color = androidx.compose.ui.graphics.Color(0xFFFFB74D),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -3007,12 +3007,12 @@ fun AddPartyDialog(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = buyBaoHop, onCheckedChange = { buyBaoHop = it })
-                        Text("Triệu gọi bảo hộp khi xu >")
+                        Text("Triệu gọi bảo hộp khi xu >", modifier = Modifier.weight(1f))
                         OutlinedTextField(
                             value = baoHopXuText,
                             onValueChange = { baoHopXuText = it.filter { c -> c.isDigit() } },
                             singleLine = true,
-                            modifier = Modifier.width(140.dp).padding(start = 6.dp),
+                            modifier = Modifier.width(110.dp).padding(start = 6.dp),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         )
                     }
@@ -3974,8 +3974,8 @@ fun ScrollListDialog(
                             Text(sc.label(), modifier = Modifier.weight(1f))
                             Text(
                                 if (drop) "Phân giải" else "Giữ lại",
-                                color = if (drop) androidx.compose.ui.graphics.Color(0xFFAA0000)
-                                        else androidx.compose.ui.graphics.Color(0xFF007700),
+                                color = if (drop) androidx.compose.ui.graphics.Color(0xFFEF5350)
+                                        else androidx.compose.ui.graphics.Color(0xFF66BB6A),
                             )
                         }
                     }
@@ -4334,8 +4334,8 @@ fun MaterialListDialog(
                             Text(m.label(), modifier = Modifier.weight(1f))
                             Text(
                                 if (donate) "Đóng góp" else "Giữ lại",
-                                color = if (donate) androidx.compose.ui.graphics.Color(0xFFAA0000)
-                                        else androidx.compose.ui.graphics.Color(0xFF007700),
+                                color = if (donate) androidx.compose.ui.graphics.Color(0xFFEF5350)
+                                        else androidx.compose.ui.graphics.Color(0xFF66BB6A),
                             )
                         }
                     }

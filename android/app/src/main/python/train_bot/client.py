@@ -2752,6 +2752,8 @@ class GameClient:
         self.legion_boss_count = 0   # so lan DA danh boss QD hom nay (S2C 0x55 id 0x2a cur)
         self.legion_boss_max = 3     # gioi han/ngay (0x55 id 0x2a max = 3)
         self.legion_boss_next = 0.0  # gio danh tiep duoc (cooldown, S2C 0x27 76 OLE)
+        # Ma ket qua vao boss QD `S:039-119` (0x27 sub77) +ket qua(1), xem do_legion_boss.
+        self._legion_enter_result = None
         # Gio duoc THU DONATE lai. Server bao "chua du 24h trong quan doan" (S:039-015 ma 32) ->
         # hoan 12h. Client khong co cach nao biet truoc, chi gui roi doc ma loi.
         self.legion_donate_next = 0.0
@@ -5135,6 +5137,10 @@ class GameClient:
                     self.legion_boss_next = self._ole_to_dt(struct.unpack("<d", pkt[9:17])[0]).timestamp()
                 except Exception:
                     pass
+            # S:039-119 <軍團BOSS戰入場結果> +結果(1): 1 OK, 2 cooldown, 3 het luot, 4 co doi,
+            # 5 dang tran, 6 khong co boss, 7 vao QD chua du 24h. Bat ve cho do_legion_boss.
+            if pkt[7:9] == b"\x77\x00" and len(pkt) >= 10:
+                self._legion_enter_result = pkt[9]
             # S:039-015 <軍團訊息> +訊息種類(1). Ma 32 = "加入軍團未滿24小時，無法捐獻"
             # (TextData 21215: "Gia nhap quan doan chua du 24 tieng, khong the quyen gop").
             # Client KHONG tu biet da du 24h hay chua - khong co truong thoi gian gia nhap o dau
@@ -7982,6 +7988,39 @@ class GameClient:
         return (self.legion_boss_count < self.legion_boss_max
                 and (not self.legion_boss_next or time.time() >= self.legion_boss_next))
 
+    LEGION_BOSS_NO_BOSS_COOLDOWN = 3 * 3600   # ma 6 "khong co boss QD"
+
+    def _legion_boss_bi_tu_choi(self, ma: int, now: float):
+        """Server tu choi vao boss QD bang ma `S:039-119` (khac 1/4/5). KHONG relogin, KHONG gui
+        `0x14 08000100` (client that chi gui khi duoc ma 1). Tra gio check lai / None = het luot."""
+        if ma == 3:
+            self.legion_boss_count = self.legion_boss_max
+            log.info("[%s] Boss QD: server bao HET LUOT hom nay (ma 3) -> nghi", self._label)
+            return None
+        if ma == 2:
+            # Cooldown: server day kem `S:039-118` (0x27 76) -> legion_boss_next. Chua toi thi 1h.
+            t0 = time.time()
+            while self.legion_boss_next <= now and time.time() - t0 < 2.0:
+                time.sleep(0.1)
+            if self.legion_boss_next <= now:
+                self.legion_boss_next = now + 3600
+            log.info("[%s] Boss QD: server bao CON HOI (ma 2) -> luot sau luc %s", self._label,
+                     time.strftime("%H:%M", time.localtime(self.legion_boss_next)))
+            return self.legion_boss_next
+        if ma == 7:
+            # Vao QD chua du 24h. Client khong biet gio vao QD -> khoa 12h (user chot 02/10).
+            self.legion_boss_next = now + self.LEGION_BOSS_FAIL_COOLDOWN
+            ly_do = "vao QD chua du 24h (ma 7) -> khoa 12h"
+        elif ma == 6:
+            self.legion_boss_next = now + self.LEGION_BOSS_NO_BOSS_COOLDOWN
+            ly_do = "khong co boss QD (ma 6) -> thu lai sau 3h"
+        else:
+            self.legion_boss_next = now + self.LEGION_BOSS_NO_BOSS_COOLDOWN
+            ly_do = "ma la %d -> thu lai sau 3h" % ma
+        _save_legion_boss_next(self._label, self.legion_boss_next)   # luu ben - song qua relogin
+        log.warning("[%s] Boss QD: server tu choi: %s", self._label, ly_do)
+        return self.legion_boss_next
+
     @task_report("boss quan doan", PHASE_BOSS_QD)
     @_pet_role("boss")
     def do_legion_boss(self):
@@ -8023,12 +8062,38 @@ class GameClient:
         self.state.boss_mode = True
         self.flee_mode = False
         entered = False
-        # Log 30/09: 4/5 ca FAIL (0/411 ca OK) nhan `0x14 sub0700` KET TRAN cua CHINH acc 1-3s SAU
-        # lenh vao boss -> acc con ket trong tran cu (in_battle bi ha som theo member khac) nen
-        # server nuot lenh. Thay moc do sau lenh -> cho 2s roi gui lai DUNG 1 lan, khong relogin/khoa 12h.
-        for _lan in range(2):
+        ma = None
+        da_gui_lai_tran_cu = False
+        # Server tra `S:039-119` ma ket qua (capture ts_lgboss: C `27 77` -> S `27 77 01` -> roi
+        # client moi gui `14 08000100`). Ma 4/5 = chua vao duoc NGAY -> xu ly roi thu lai.
+        for _lan in range(4):
             t_gui = time.time()
-            self.send(0x27, b"\x77\x00"); time.sleep(0.6)          # start boss QD (0x27 7700)
+            self._legion_enter_result = None
+            self.send(0x27, b"\x77\x00")                            # start boss QD (0x27 7700)
+            while (getattr(self, "_legion_enter_result", None) is None and self.running
+                   and time.time() - t_gui < 3.0):
+                time.sleep(0.1)
+            if not self.running:
+                self.state.boss_mode = False
+                return self.legion_boss_next or now
+            ma = getattr(self, "_legion_enter_result", None)
+            if ma == 4:
+                # Co doi: server noi minh DANG o party -> roi doi roi thu lai.
+                log.warning("[%s] Boss QD: server bao DANG CO DOI (ma 4) -> roi doi roi thu lai",
+                            self._label)
+                self.leave_party(server_bao_dang_o_party=True)
+                time.sleep(1.5)
+                continue
+            if ma == 5:
+                # Dang trong tran: cho danh XONG tran roi moi thu lai.
+                log.warning("[%s] Boss QD: server bao DANG CHIEN DAU (ma 5) -> cho xong tran roi "
+                            "thu lai", self._label)
+                if not self._wait_combat_clear():
+                    break
+                continue
+            if ma is not None and ma != 1:
+                self.state.boss_mode = False
+                return self._legion_boss_bi_tu_choi(ma, now)
             self.send(0x14, b"\x08\x00\x01\x00"); time.sleep(1.0)  # vao instance boss (gate idx 1)
             t0 = time.time()
             while time.time() - t0 < 10:          # cho VAO tran (10s)
@@ -8038,15 +8103,28 @@ class GameClient:
                 if self.state.in_battle:
                     entered = True; break
                 time.sleep(0.3)
-            if entered or _lan or float(getattr(self, "_genuine_end_seen", 0) or 0) < t_gui:
+            if entered or ma is not None or da_gui_lai_tran_cu:
+                break
+            # KHONG nhan duoc ma ket qua -> duong cu. Log 30/09: 4/5 ca FAIL (0/411 ca OK) nhan
+            # `0x14 sub0700` KET TRAN cua CHINH acc 1-3s SAU lenh vao boss -> acc con ket trong tran
+            # cu nen server nuot lenh. Thay moc do -> cho xong tran roi gui lai DUNG 1 lan.
+            if float(getattr(self, "_genuine_end_seen", 0) or 0) < t_gui:
                 break
             log.warning("[%s] Boss QD: tran cu vua ket SAU lenh vao boss -> lenh bi nuot, "
-                        "cho 2s gui lai", self._label)
-            time.sleep(2.0)
+                        "cho xong tran roi gui lai", self._label)
+            da_gui_lai_tran_cu = True
+            self._wait_combat_clear()
+        if not entered and ma in (4, 5):
+            # Thu het luot van ma 4/5 -> KHONG relogin (server da noi ro ly do), thu lai sau 10 phut.
+            self.state.boss_mode = False
+            log.warning("[%s] Boss QD: van ma %d sau %d lan thu -> thu lai sau 10 phut",
+                        self._label, ma, _lan + 1)
+            self.legion_boss_next = now + 600
+            return self.legion_boss_next
         if not entered:
-            # server TU CHOI vao tran (thuong gap nhat: chua du 24h ke tu luc vao quan doan moi
-            # duoc danh boss lan dau - KHONG lien quan gi toi dang o Di Gioi hay khong, xay ra
-            # BAT KY vi tri nao). BUG THAT xac nhan qua thuc te NHIEU LAN: sau 1 lan thu that bai
+            # CHI con toi day khi KHONG nhan duoc ma `S:039-119` (co ma thi da xu ly o tren, vd
+            # ma 7 "chua du 24h" -> khoa 12h, KHONG relogin - truoc 02/10 ca nay cung roi vao day
+            # va relogin, user thay acc mat ket noi). BUG THAT xac nhan qua thuc te: sau 1 lan thu that bai
             # kieu nay, current_map cuc bo bi SAI VINH VIEN trong suot phien (KHONG tu sua duoc
             # du cho bao lau) -> cac lenh dua vao current_map sau do (vd enter_di_gioi_safe) deu
             # that bai lien tuc. Fix DUY NHAT hieu qua: RELOGIN (dong ket noi + dang nhap lai) ngay

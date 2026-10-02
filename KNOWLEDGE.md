@@ -1197,6 +1197,14 @@ Client chỉ đọc để hiển thị, **không tích luỹ**:
 dùng cho HUD trận), `116` mới là con số lên bảng xếp hạng. Cộng dồn `117` để dựng bảng là sai —
 server đã chốt sẵn tổng ở `116`.
 
+**VÀO BOSS QĐ — server TRẢ MÃ KẾT QUẢ (02/10):** `C:039-119` (`0x27 77 00`) → `S:039-119
+<軍團BOSS戰入場結果> +結果(1)` (`0x27 sub77`, mã ở `pkt[9]`): `1` thành công · `2` cooldown (kèm
+`S:039-118` `0x27 76` OLE) · `3` hết lượt · `4` đang có đội · `5` đang chiến đấu · `6` không có boss ·
+`7` **vào QĐ chưa đủ 24h**. Capture `ts_lgboss.pcap` (đo được): `C 27 77 00` → `S 27 77 00 01` →
+**rồi** client mới gửi `C 14 08 00 01 00`, tức chỉ gửi gate khi được mã 1. Trước 02/10 bot không đọc
+mã này: acc chưa đủ 24h vẫn gửi gate, rồi relogin (khách TSM thấy "mất kết nối"). Giờ: 4 → rời đội rồi
+thử lại · 5 → chờ xong trận rồi thử lại · 6 → 3h · 7 → khoá 12h, không relogin.
+
 Reset: `Organization.lua:611/620/676` đặt `bossDamage = 0` cho cả quân đoàn lẫn từng member khi
 rời/giải tán quân đoàn — không phải reset theo ngày.
 
