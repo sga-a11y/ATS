@@ -5383,7 +5383,8 @@ class PartyConfigFrame(ttk.Frame):
     """1 tab cau hinh 1 party: mode (dropdown) + map/quai/thanh (dropdown) + acc."""
     _PW_MASK = "******"   # placeholder pass da luu (giau pass that khi mo lai Settings)
     def __init__(self, master, party, train_maps, cities, servers, on_apply_advanced_to_all=None,
-                 on_apply_di_gioi_level=None, on_apply_heal_all=None, on_apply_furnace_all=None):
+                 on_apply_di_gioi_level=None, on_apply_heal_all=None, on_apply_furnace_all=None,
+                 on_apply_mode_all=None):
         super().__init__(master, padding=8)
         self.train_maps = train_maps   # list (map_id, name, mobs)
         # Nha Nam Tinh Quan (55002) KHONG phai thanh: bot ve Bac Hai roi keo party di bo len
@@ -5394,6 +5395,7 @@ class PartyConfigFrame(ttk.Frame):
         self.on_apply_di_gioi_level = on_apply_di_gioi_level
         self.on_apply_heal_all = on_apply_heal_all   # ap nguong hoi mau cho MOI acc MOI party
         self.on_apply_furnace_all = on_apply_furnace_all  # ap config lo cho MOI acc MOI party
+        self.on_apply_mode_all = on_apply_mode_all  # ap CHE DO cho moi party cung nha phat hanh
         self._preset = party or {}
 
         # GAME (ban TS: VTC / TSM - bot/region.py) dung TRUOC Server: doi game -> loc server + event.
@@ -5415,6 +5417,11 @@ class PartyConfigFrame(ttk.Frame):
         _gcb.bind("<<ComboboxSelected>>", lambda _e: self._on_game_change())
         ttk.Button(srow, text="⚙ Cài đặt nâng cao",
                    command=self._open_advanced_settings).pack(side="right")
+        # Dat o hang Server (con trong) chu khong o hang Che do: hang do da chat Kieu chay/Cap quai DG.
+        if on_apply_mode_all:
+            ttk.Button(srow, text="⇉ Áp chế độ cho mọi party",
+                       command=lambda: self.on_apply_mode_all(self.get_data())
+                       ).pack(side="right", padx=(0, 6))
 
         row = ttk.Frame(self); row.pack(fill="x", pady=4)
         ttk.Label(row, text="Chế độ:", width=10).pack(side="left")
@@ -7944,6 +7951,41 @@ class PartyConfigFrame(ttk.Frame):
         return data
 
 
+_TRAIN_LIKE_MODES = ("train", "digioi_train")
+
+
+def _doi_che_do_preset(preset, src):
+    """Preset party `preset` doi sang CHE DO cua `src` (get_data() party mau) - nut "Ap che do
+    cho moi party".
+
+    User chot (02/10): DG/Train CHI doi che do, cap quai DG + map train van RIENG tung party;
+    mode event thi dong bo ve CUNG event. Party chua tung co map (vd dang DG thuan, sc=49942)
+    ma chuyen sang train -> muon map cua party mau, khong de sc rac thanh map train.
+    """
+    d = dict(preset or {})
+    old, new = d.get("mode"), src.get("mode")
+    d["mode"] = new
+    if new == "digioi":
+        d["start_city_id"], d["city_flag"] = 49942, 0
+    elif new in _TRAIN_LIKE_MODES:
+        if old not in _TRAIN_LIKE_MODES:
+            for k in ("start_city_id", "mob_index", "train_pick", "mob_min", "mob_max",
+                      "mob_elements", "mob_soul"):
+                if k in src:
+                    d[k] = src[k]
+            d["city_flag"] = 0
+    elif new == "city":
+        if old != "city":
+            d["start_city_id"], d["city_flag"] = src.get("start_city_id", 0), src.get("city_flag", 0)
+    elif new == "event":
+        d["start_city_id"], d["city_flag"] = 0, 0
+        d["event_key"] = src.get("event_key", "")
+        d["loandau_mot_tran"] = bool(src.get("loandau_mot_tran", False))
+    else:
+        d["start_city_id"], d["city_flag"] = src.get("start_city_id", 0), src.get("city_flag", 0)
+    return d
+
+
 def _parse_int(s, default):
     """Doc so nguyen tu text field; rong/loi -> default (tranh crash khi user go chu)."""
     try:
@@ -8575,7 +8617,8 @@ class ConfigDialog(tk.Toplevel):
                                    on_apply_advanced_to_all=on_apply,
                                    on_apply_di_gioi_level=on_apply_dg,
                                    on_apply_heal_all=self._apply_heal_to_all,
-                                   on_apply_furnace_all=self._apply_furnace_to_all)
+                                   on_apply_furnace_all=self._apply_furnace_to_all,
+                                   on_apply_mode_all=lambda data, e=entry: self._apply_mode_to_all(e, data))
             cfg.pack(fill="both", expand=True)
             entry["cfg"] = cfg
         self._free_other_built_frames(entry)
@@ -8644,6 +8687,38 @@ class ConfigDialog(tk.Toplevel):
         if entry["cfg"] is not None:
             return entry["cfg"]._game_key()
         return _game_of_server((entry["preset"] or {}).get("server"))
+
+    def _apply_mode_to_all(self, source_entry, data):
+        """Nut 'Ap che do cho moi party': CHI party CUNG nha phat hanh (event/map moi ban TS khac
+        nhau). Chi party dang mo la frame song (xem _free_other_built_frames) -> cac party khac
+        deu la preset, sua thang preset la du."""
+        src_game = self._entry_game(source_entry)
+        targets = [e for e in self.frames
+                   if e is not source_entry and self._entry_game(e) == src_game]
+        if not targets:
+            messagebox.showinfo("Không có party khác",
+                                f"Không có party {src_game.upper()} nào khác.", parent=self)
+            return
+        mode_lbl = _MODE_LABEL.get(data.get("mode"), data.get("mode"))
+        extra = ""
+        if data.get("mode") == "event":
+            ev = (getattr(config, "EVENTS", {}) or {}).get(data.get("event_key")) or {}
+            extra = f" — event '{ev.get('label') or data.get('event_key')}'"
+        if not messagebox.askyesno(
+                "Áp chế độ cho mọi party",
+                f"Đổi {len(targets)} party {src_game.upper()} khác sang chế độ:\n"
+                f"'{mode_lbl}'{extra}?\n\n"
+                "Map train và cấp quái DG của từng party GIỮ NGUYÊN.", parent=self):
+            return
+        for e in targets:
+            if e["cfg"] is not None:          # phong ho: binh thuong chi party nguon con song
+                e["preset"] = e["cfg"].get_data()
+                e["cfg"].destroy()
+                e["cfg"] = None
+            e["preset"] = _doi_che_do_preset(e["preset"], data)
+        messagebox.showinfo("Đã áp dụng",
+                            f"Đã đổi chế độ cho {len(targets)} party {src_game.upper()}.\n"
+                            "Bấm Lưu để ghi vào cấu hình.", parent=self)
 
     def _apply_advanced_to_all(self, source_entry, data):
         # Doi qua event chi ap cho party CUNG nha phat hanh: khac ban TS thi event khac nhau.

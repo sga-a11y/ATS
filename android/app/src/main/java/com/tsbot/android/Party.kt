@@ -126,6 +126,27 @@ fun Party.gameKey(): String = Servers.ALL[serverKey]?.game ?: "vtc"
 
 fun Party.sameGame(other: Party): Boolean = gameKey() == other.gameKey()
 
+/** Nut "Ap che do cho moi party" (mirror PC `gui._doi_che_do_preset`). User chot 02/10:
+ *  DG/Train CHI doi che do - cap quai DG + map train van RIENG tung party; mode event thi dong bo
+ *  ve CUNG event. Party chua tung chon map train -> muon map cua party mau. */
+fun Party.copyModeFrom(source: Party): Party {
+    var p = copy(runMode = source.runMode)
+    when (source.runMode) {
+        RunModes.TRAIN, RunModes.DIGIOI_TRAIN ->
+            if (trainMapKey.isEmpty() && trainPick.isEmpty()) {
+                p = p.copy(
+                    trainMapKey = source.trainMapKey, trainMobIndex = source.trainMobIndex,
+                    trainPick = source.trainPick, mobMin = source.mobMin, mobMax = source.mobMax,
+                    mobElements = source.mobElements, mobSoul = source.mobSoul,
+                )
+            }
+        // EVENT dung chung field cityKey lam event key.
+        RunModes.EVENT -> p = p.copy(cityKey = source.cityKey, loanDauMotTran = source.loanDauMotTran)
+        RunModes.STAND_STILL -> if (runMode != RunModes.STAND_STILL) p = p.copy(cityKey = source.cityKey)
+    }
+    return p
+}
+
 fun Party.copyAdvancedSettingsFrom(source: Party): Party = copy(
     doDaily = source.doDaily,
     claimOfflineExp = source.claimOfflineExp,

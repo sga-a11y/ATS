@@ -999,6 +999,11 @@ fun TsBotApp(
                 refresh()
                 count
             },
+            onApplyModeToAll = { source ->
+                val count = partyStore.applyModeToSameGameParties(partyBeingEdited.name, source)
+                refresh()
+                count
+            },
         )
     }
 
@@ -2087,6 +2092,7 @@ fun AddPartyDialog(
     initialBankExpandGold: Int = 0,
     onApplyAdvancedToAll: ((Party) -> Int)? = null,
     onApplyDiGioiLevel: ((Int) -> Unit)? = null,
+    onApplyModeToAll: ((Party) -> Int)? = null,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var nameError by remember { mutableStateOf<String?>(null) }
@@ -2176,6 +2182,8 @@ fun AddPartyDialog(
     var showAdvanced by remember { mutableStateOf(false) }
     var showShopList by remember { mutableStateOf(false) }
     var advancedApplyMessage by remember { mutableStateOf("") }
+    var modeApplyMessage by remember { mutableStateOf("") }
+    var confirmModeApply by remember { mutableStateOf(false) }
 
     fun currentParty(): Party = Party(
         name = name.ifBlank { initialName.ifBlank { "Party" } },
@@ -2373,6 +2381,40 @@ fun AddPartyDialog(
                                 },
                             )
                         }
+                    }
+                }
+                // Ap CHE DO cho moi party CUNG nha phat hanh (mirror nut PC "⇉ Ap che do cho moi party").
+                if (onApplyModeToAll != null) {
+                    TextButton(onClick = { confirmModeApply = true }) {
+                        Text("⇉ Áp chế độ cho mọi party ${selectedGame.uppercase()}")
+                    }
+                    if (modeApplyMessage.isNotBlank()) {
+                        Text(modeApplyMessage, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (confirmModeApply) {
+                        AlertDialog(
+                            onDismissRequest = { confirmModeApply = false },
+                            title = { Text("Áp chế độ cho mọi party") },
+                            text = {
+                                Text("Đổi mọi party ${selectedGame.uppercase()} khác sang chế độ " +
+                                    "'${RunModes.ALL[selectedMode] ?: selectedMode}'" +
+                                    (if (selectedMode == RunModes.EVENT)
+                                        " — event '${Events.ALL[selectedCity]?.label ?: selectedCity}'" else "") +
+                                    "?\n\nMap train và cấp quái DG của từng party GIỮ NGUYÊN.")
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    confirmModeApply = false
+                                    val count = onApplyModeToAll(currentParty())
+                                    modeApplyMessage = if (count > 0) "Đã đổi chế độ cho $count party"
+                                        else "Không có party ${selectedGame.uppercase()} nào khác"
+                                }) { Text("Đổi") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { confirmModeApply = false }) { Text("Hủy") }
+                            },
+                        )
                     }
                 }
                 // Che do "SOLO (khong lap party)" CHI ap dung khi mode = Di Gioi - mirror

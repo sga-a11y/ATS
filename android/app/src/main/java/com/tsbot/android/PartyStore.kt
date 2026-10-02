@@ -290,6 +290,21 @@ class PartyStore(private val context: Context) {
         return count
     }
 
+    /** Doi CHE DO cho moi party CUNG nha phat hanh (VTC/TSM) voi party nguon. */
+    fun applyModeToSameGameParties(sourceName: String, source: Party): Int {
+        var count = 0
+        val updated = load().map { p ->
+            if (p.name == sourceName || !p.sameGame(source)) {
+                p
+            } else {
+                count += 1
+                p.copyModeFrom(source)
+            }
+        }
+        save(updated)
+        return count
+    }
+
     fun applyHealToAllAccounts(heal: HealSettings): Int {
         var count = 0
         val updated = load().map { party ->
