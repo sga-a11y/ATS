@@ -60,7 +60,7 @@ MAX_ADVANCE = 8
 # giu THU + KHUNG GIO de con biet "hom nay co loan dau khong".
 LICH_MAC_DINH = [
     {"thu": 1, "tu": "20:00", "den": "22:00"},   # THU BA  - loi dai ti vo (map 10991)
-    {"thu": 3, "tu": "20:00", "den": "22:00"},   # THU NAM - 團P, cung map/NPC voi thu 3
+    {"thu": 4, "tu": "14:30", "den": "16:30"},   # THU SAU chieu - 團P (truoc 02/10 la T5 20-22h)
     {"thu": 5, "tu": "20:30", "den": "22:30"},   # THU BAY - loi dai dau tran (map 54901)
 ]
 

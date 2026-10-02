@@ -1185,6 +1185,18 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
     lenh moi khong phai "doi acc nghe thay", ma la CAT NGANG viec dang lam.
     """
     _abort = lambda: not con_lam()
+    # KHONG PHAI `train` THI DUNG CHAY LONG VONG NGAY.
+    #
+    # `start_run_around()` chi duoc bat/tat trong nhanh `VIEC_TRAIN`, nen party vo giua DG thi
+    # engine giao `lap_party`/`nghi` nhung vong chay cu cua LEADER van tiep -> dung quai la vao
+    # tran MOT MINH (L0: du party roi moi lam gi thi lam).
+    # Ca that 02/10 party 1 (user: "thang leader danh 1 minh"): roster leader=0/4, engine giao
+    # `lap_party` 2300 lan, ma `nanam` Run-around tu 07:21 toi 08:39 -> 20 tran g=482..501 1 nguoi.
+    if viec != VIEC_TRAIN and getattr(client, "_running_route", False):
+        try:
+            client.stop_run_around()
+        except Exception:
+            pass
     if viec == VIEC_THOAT_PB:
         if _abort():
             return False

@@ -30,8 +30,10 @@ sys.path.insert(0, ROOT)
 from bot import loandau
 
 # weekday() cua ba ngay co loan dau
-T3, T5, T7 = 1, 3, 5
-TEN = {T3: "thu 3", T5: "thu 5", T7: "thu 7"}
+# Loan dau doi (團P) doi tu T5 20-22h sang T6 14:30-16:30 tu 02/10/2026 (VTC). Giu ten bien T5
+# cho do sua lan; gia tri la weekday cua THU 6.
+T3, T5, T7 = 1, 4, 5
+TEN = {T3: "thu 3", T5: "thu 6 (loan dau doi)", T7: "thu 7"}
 
 
 def _lich_events(duong):
@@ -97,14 +99,16 @@ class TestNhanDungNgay(unittest.TestCase):
             self.assertEqual(int(buoi["thu"]), _t)
 
     def test_ngay_KHONG_co_loan_dau_thi_None(self):
-        for _t in (0, 2, 4, 6):      # T2, T4, T6, CN
+        for _t in (0, 2, 3, 6):      # T2, T4, T5, CN
             self.assertIsNone(loandau._buoi_hom_nay(self.ev, self._ngay(_t, 21)))
             self.assertFalse(loandau.in_event_window(self._ngay(_t, 21), ev=self.ev))
 
     def test_trong_gio_va_ngoai_gio(self):
-        self.assertTrue(loandau.in_event_window(self._ngay(T5, 21), ev=self.ev))
-        self.assertFalse(loandau.in_event_window(self._ngay(T5, 19, 59), ev=self.ev))
-        self.assertFalse(loandau.in_event_window(self._ngay(T5, 22), ev=self.ev))
+        self.assertTrue(loandau.in_event_window(self._ngay(T5, 14, 30), ev=self.ev))
+        self.assertTrue(loandau.in_event_window(self._ngay(T5, 16, 29), ev=self.ev))
+        self.assertFalse(loandau.in_event_window(self._ngay(T5, 14, 29), ev=self.ev))
+        self.assertFalse(loandau.in_event_window(self._ngay(T5, 16, 30), ev=self.ev))
+        self.assertFalse(loandau.in_event_window(self._ngay(T5, 21), ev=self.ev))
 
     def test_THU_7_lech_nua_tieng(self):
         """T7 la 20:30-22:30 - `20 <= hour < 22` khong bieu dien duoc, phai so ca PHUT."""
@@ -135,8 +139,8 @@ class TestNhanDungNgay(unittest.TestCase):
 
     def test_du_phong_cung_nhan_ra_ba_ngay(self):
         """`ev` khong co `lich` -> roi ve LICH_MAC_DINH, van phai du ba ngay."""
-        for _t in (T3, T5, T7):
-            self.assertTrue(loandau.in_event_window(self._ngay(_t, 21), ev={"label": "x"}),
+        for _t, _h in ((T3, 21), (T5, 15), (T7, 21)):
+            self.assertTrue(loandau.in_event_window(self._ngay(_t, _h), ev={"label": "x"}),
                             "du phong bo mat %s" % TEN[_t])
 
 

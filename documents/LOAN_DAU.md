@@ -35,7 +35,7 @@ Map tên "Lôi đài đấu trận": `49993-49995`, `54501-54505`, `54901-54905`
 
 ## 2. Hành vi đã chốt với user
 
-- **Giờ:** **thứ 3 20:00–22:00**, **thứ 5 20:00–22:00**, **thứ 7 20:30–22:30** (mục 2b). Không đâm 40NPC (thứ 2/4/6).
+- **Giờ:** **thứ 3 20:00–22:00**, **thứ 6 14:30–16:30** (loạn đấu đội — trước 02/10/2026 là thứ 5 20:00–22:00), **thứ 7 20:30–22:30** (mục 2b). Không đâm 40NPC (thứ 2/4/6 tối 20–22h; thứ 6 loạn đấu là buổi chiều nên không trùng).
 - **Solo:** mỗi acc chạy độc lập. **Không** lập party, **không** `do_channel_sync`, không barrier.
 - **Làm tới đâu:** đánh hết lượt rồi đi đổi thưởng, xong thoát.
 - **Quest mode:** bật. Không phải code thêm — `run_party_digioi.py:1713` đã có
@@ -77,7 +77,10 @@ Page 2 kết `0500` thay vì `0200` **không phá `dang_ky()`**: hàm chỉ dùn
 quyết có advance một lần hay không, mà page 1 kết `3930` (không phải choice) ở **cả hai ngày**
 → vẫn advance 1 lần rồi `09001e`.
 
-### Thứ 5 — 團P "loạn đấu đội", nhưng vẫn đăng ký SOLO
+### Thứ 6 chiều (trước là thứ 5) — 團P "loạn đấu đội", nhưng vẫn đăng ký SOLO
+
+**Đổi lịch 02/10/2026 (VTC, user báo):** từ thứ 5 20:00–22:00 sang **thứ 6 14:30–16:30**.
+Tham số đăng ký (select/option/map/NPC) giữ nguyên như capture thứ 5 bên dưới.
 
 Nguồn: `captures/loandau_doi_20260903.pcap` + `..._dangky_tran1_20260903.pcap`
 (03/09/2026 = thứ 5). **Một luồng TCP, một IP** → cùng server, *không* phải vô giới.
@@ -102,13 +105,13 @@ Chuỗi đăng ký giống thứ 3 y nguyên (`09001e` rồi advance).
 Chỉ khai thứ nào **khác** giá trị gốc; thứ 3 dùng luôn giá trị gốc của entry nên không lặp lại.
 
 ⚠️ **`thu` là `datetime.weekday()`**: `0=T2, 1=T3, 2=T4, 3=T5, 4=T6, 5=T7, 6=CN`. Nhìn con số rất
-dễ tưởng thiếu ngày — **`thu: 3` là thứ 5**, **`thu: 5` là thứ 7**.
+dễ tưởng thiếu ngày — **`thu: 4` là thứ 6**, **`thu: 5` là thứ 7**.
 
 ```json
 "lich": [
   {"thu": 1, "tu": "20:00", "den": "22:00"},
 
-  {"thu": 3, "tu": "20:00", "den": "22:00",
+  {"thu": 4, "tu": "14:30", "den": "16:30",
    "select": "03000200",
    "party_battle": {"npc_option": "01000400"}},
 
@@ -118,7 +121,7 @@ dễ tưởng thiếu ngày — **`thu: 3` là thứ 5**, **`thu: 5` là thứ 7
 ]
 ```
 
-Thứ 5 **không khai `dest_map` / `point`** vì dùng chung map 10991 và NPC (910,290) với thứ 3 — chỉ
+Loạn đấu đội (thứ 6) **không khai `dest_map` / `point`** vì dùng chung map 10991 và NPC (910,290) với thứ 3 — chỉ
 khác đúng hai byte (`select` và `npc_option`), xem bảng ở mục trên.
 
 `bot/loandau.py: LICH_MAC_DINH` giữ **cả ba ngày** làm lịch dự phòng khi `events.json` không đọc

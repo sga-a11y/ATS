@@ -327,3 +327,13 @@ rồi đi tiếp). Lệnh tay / lệnh tự động đang chạy vẫn hạ về
 Thêm log `ENGINE: <acc> lech kenh (a -> b) nhung CHUA giao doi_kenh: <ly do>` (khi lý do đổi, nhắc lại mỗi
 60s) để đo ca acc lệch kênh đứng im (nasau/tuyet cùng ngày, chưa chốt gốc).
 Test: `tests/test_dieu_phoi_tu_gui_lenh_doi_kenh.py::test_battle_while_walking_to_safe_keeps_channel_action`.
+
+## Không phải `train` thì leader dừng chạy vòng (02/10)
+Ca thật party 1: party vỡ giữa Dị Giới (`roster leader=0/4`), engine giao `lap_party`/`nghi` đúng luật
+2300 lần, nhưng `nanam` (leader) vẫn `Run-around` từ 07:21 tới 08:39 → 20 trận g=482..501 chỉ 1 người.
+Gốc: `start_run_around()`/`stop_run_around()` chỉ được gọi trong nhánh `VIEC_TRAIN` của `thi_hanh`,
+nên vòng chạy cũ sống sót qua mọi việc khác.
+Giờ đầu `thi_hanh`: việc khác `VIEC_TRAIN` mà client đang chạy vòng (`_running_route`) → `stop_run_around()`.
+Đủ party, engine giao lại `train` → nhánh train tự bật lại vòng chạy.
+Chưa chốt: vì sao gom party trong DG thất bại >1 tiếng (leader báo server CHƯA HỀ thấy member quanh mình).
+Test: `tests/test_party_engine_vong.py::TestKhongPhaiTrainThiDungChayLongVong`.

@@ -91,17 +91,21 @@ class TestKhungGio(unittest.TestCase):
             self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 29, h, m), _ev()),
                              "T7 %02d:%02d phai dong" % (h, m))
 
-    def test_thu_5_20h_den_22h(self):
-        """Loan dau DOI (團P). Cung map/NPC voi T3, chi khac select + option NPC."""
-        for h, m in ((20, 0), (21, 59)):
-            self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 27, h, m), _ev()))
-        for h, m in ((19, 59), (22, 0)):
-            self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 27, h, m), _ev()))
+    def test_thu_6_14h30_den_16h30(self):
+        """Loan dau DOI (團P). Cung map/NPC voi T3, chi khac select + option NPC.
+        Doi tu T5 20-22h sang T6 14:30-16:30 tu 02/10/2026 (VTC, user bao)."""
+        for h, m in ((14, 30), (16, 29)):
+            self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 28, h, m), _ev()))
+        for h, m in ((14, 29), (16, 30), (21, 0)):
+            self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 28, h, m), _ev()))
+        # T5 khong con loan dau
+        self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 27, 21, 0), _ev()))
 
     def test_ngay_khac_thi_dong(self):
-        for ngay in (24, 26, 28, 30):    # thu 2, 4, 6, CN (T3=25, T5=27, T7=29 deu mo)
-            self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, ngay, 21, 0), _ev()),
-                             "ngay %d khong phai T3/T5/T7 ma van mo" % ngay)
+        for ngay in (24, 26, 27, 30):    # thu 2, 4, 5, CN (T3=25, T6=28 chieu, T7=29 deu mo)
+            for h in (15, 21):
+                self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, ngay, h, 0), _ev()),
+                                 "ngay %d khong phai T3/T6/T7 ma van mo" % ngay)
 
     def test_khong_co_lich_thi_DU_PHONG_VAN_DU_BA_NGAY(self):
         """ev=None / event khong khai `lich` -> roi ve `LICH_MAC_DINH`.
@@ -111,7 +115,7 @@ class TestKhungGio(unittest.TestCase):
         thieu server" trong CLAUDE.md). User 10/09: "mien sao du loan dau thu 3 thu 5 thu 7".
         """
         self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 25, 21, 0)))   # T3
-        self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 27, 21, 0)))   # T5
+        self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 28, 15, 0)))   # T6 chieu
         self.assertTrue(loandau.in_event_window(datetime.datetime(2026, 8, 29, 21, 0)))   # T7
         # T7 la 20:30-22:30 nen 20:15 CHUA mo - du phong phai giu dung khung gio tung ngay.
         self.assertFalse(loandau.in_event_window(datetime.datetime(2026, 8, 29, 20, 15)))
@@ -122,7 +126,7 @@ class TestKhungGio(unittest.TestCase):
         """40NPC la thu 2/4/6 - hai event khong duoc dam nhau."""
         from bot import npc40
         for ngay in range(24, 31):
-            for h, m in ((20, 15), (21, 0), (22, 15)):
+            for h, m in ((15, 0), (20, 15), (21, 0), (22, 15)):
                 t = datetime.datetime(2026, 8, ngay, h, m)
                 self.assertFalse(loandau.in_event_window(t, _ev()) and npc40.in_event_window(t))
 
@@ -147,7 +151,7 @@ class TestBienTheTheoThu(unittest.TestCase):
         self.assertEqual(list(b["party_battle"]["point"]), [910, 290])
         self.assertEqual(loandau.npc_option(b), b"\x01\x00\x03\x00")
 
-    T5 = datetime.datetime(2026, 8, 27, 21, 0)
+    T5 = datetime.datetime(2026, 8, 28, 15, 0)   # loan dau doi: T6 chieu (truoc 02/10 la T5)
 
     def test_thu_5_chi_doi_select_va_option(self):
         """Do tren `captures/loandau_doi_20260903.pcap` (03/09/2026 = THU 5, 1 luong TCP -> CUNG

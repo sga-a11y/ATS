@@ -1321,5 +1321,37 @@ class TestLenhMoiCAT_NGANG_viec_dang_lam(unittest.TestCase):
         self.assertFalse(thay["abort"](), "con_lam=True thi abort phai False")
 
 
+
+
+class TestKhongPhaiTrainThiDungChayLongVong(unittest.TestCase):
+    """Party vo giua DG -> engine giao `lap_party`/`nghi` thi LEADER phai DUNG chay long vong.
+
+    Ca that 02/10 party 1 (user: "thang leader danh 1 minh"): roster leader=0/4, engine giao
+    `lap_party` 2300 lan, ma `nanam` Run-around tu 07:21 toi 08:39 -> 20 tran chi 1 nguoi.
+    """
+
+    def _leader_dang_chay(self):
+        c = _Cli(map_id=49942)
+        c._pe_la_leader = True
+        c._running_route = True
+        return c
+
+    def test_lap_party_thi_dung_chay(self):
+        c = self._leader_dang_chay()
+        E.thi_hanh(c, E.VIEC_LAP_PARTY, lambda: True)
+        self.assertIn(("stop_run_around",), c.da_goi)
+
+    def test_nghi_thi_dung_chay(self):
+        c = self._leader_dang_chay()
+        E.thi_hanh(c, E.VIEC_NGHI, lambda: True)
+        self.assertIn(("stop_run_around",), c.da_goi)
+
+    def test_train_thi_van_chay(self):
+        c = self._leader_dang_chay()
+        E.thi_hanh(c, E.VIEC_TRAIN, lambda: True)
+        self.assertIn(("start_run_around",), c.da_goi)
+        self.assertNotIn(("stop_run_around",), c.da_goi)
+
+
 if __name__ == "__main__":
     unittest.main()
