@@ -25,7 +25,7 @@ sys.path.insert(0, ROOT)
 from bot import client as CL          # noqa: E402
 from bot.client import GameClient     # noqa: E402
 
-BA, SIEU, DAI, TIEU = 0x5AAC, 0x5AAB, 0x5A2D, 0x59EF
+BA, SIEU, DAI, TIEU, HO_VAN = 0x5AAC, 0x5AAB, 0x5A2D, 0x59EF, 0x5A9E
 TUI = 0xB5F4          # "Tui Dai Phuc Than" - item tieu hao, chi dung khi KHONG co ngoc nao
 
 
@@ -58,8 +58,8 @@ def _chay(bag, dang_deo=0, cfg_tids=None):
 
 class TestBangXepHang(unittest.TestCase):
     def test_du_4_loai(self):
-        self.assertEqual(CL.PHUC_THAN_GEM_ORDER, (BA, SIEU, DAI, TIEU))
-        self.assertEqual(CL.PHUC_THAN_GEM_TIDS, {BA, SIEU, DAI, TIEU})
+        self.assertEqual(CL.PHUC_THAN_GEM_ORDER, (BA, SIEU, DAI, TIEU, HO_VAN))
+        self.assertEqual(CL.PHUC_THAN_GEM_TIDS, {BA, SIEU, DAI, TIEU, HO_VAN})
 
     def test_thu_hang_tot_den_kem(self):
         self.assertLess(CL.phuc_than_hang(BA), CL.phuc_than_hang(SIEU))

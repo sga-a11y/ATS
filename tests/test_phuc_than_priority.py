@@ -15,12 +15,14 @@ BLESSING = 0xB3D5
 BROKEN_GEM = 0x59F0
 BA_GEM = 0x5AAC      # Ngoc Ba Phuc Than   x3
 TIEU_GEM = 0x59EF    # Ngoc Tieu Phuc Than x1,5
+HO_VAN_GEM = 0x5A9E  # Ngoc Phuc Ho Van x1,5
 # DU 4 LOAI ngoc, xep TOT -> KEM, item tieu hao o CUOI (xem test_ngoc_phuc_than_du_4_loai.py).
 EXPECTED_PRIORITY = (
     (BA_GEM, "equip"),
     (SUPER_GEM, "equip"),
     (GREAT_GEM, "equip"),
     (TIEU_GEM, "equip"),
+    (HO_VAN_GEM, "equip"),
     (GREAT_BAG, "use"),
     (NORMAL_BAG, "use"),
 )

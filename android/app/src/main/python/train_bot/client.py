@@ -329,9 +329,10 @@ def _set_thread_prio(level: int):
 #   0x5AAB Ngoc Sieu Phuc Than  x2,5
 #   0x5A2D Ngoc Dai Phuc Than   x2
 #   0x59EF Ngoc Tieu Phuc Than  x1,5
+#   0x5A9E Ngoc Phuc Ho Van     x1,5 (Dac biet)
 # Truoc day bot chi biet Sieu + Dai -> co Ba (xin nhat) van deo Sieu, va chi con Tieu thi khong
 # deo gi ca ma nhay thang sang item tieu hao (user phat hien 31/08).
-PHUC_THAN_GEM_ORDER = (0x5AAC, 0x5AAB, 0x5A2D, 0x59EF)
+PHUC_THAN_GEM_ORDER = (0x5AAC, 0x5AAB, 0x5A2D, 0x59EF, 0x5A9E)
 PHUC_THAN_PROTECTION_PRIORITY = (
     tuple((_tid, "equip") for _tid in PHUC_THAN_GEM_ORDER) + ((0xB5F4, "use"), (0xB650, "use"))
 )
