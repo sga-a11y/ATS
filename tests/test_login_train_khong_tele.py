@@ -55,11 +55,29 @@ class TestDailyKhongKeoRaKhoiBai(unittest.TestCase):
         s = _doc("bot", "client.py")
         i = s.find("def claim_daily_quests(")
         doan = s[i:i + 2500]
-        for nhe in ("self.claim_gacha_pet()", "self.claim_gacha_card()", "self.do_combine_item()"):
+        for nhe in ("self.do_combine_item()",):
             j = doan.find(nhe)
             self.assertGreater(j, 0)
             self.assertNotIn("if heavy", doan[max(0, j - 120):j],
                              "%s la viec NHE, khong duoc phu thuoc heavy" % nhe)
+
+    def test_gacha_o_viec_vat_login_truoc_van_tieu(self):
+        """User chot 03/10: gacha pet/card chay o viec vat login TRUOC van tieu, check shop
+        (RoleCount 0x11/0x12) + xu, KHONG con dua vao o bingo 6/4."""
+        s = _doc("bot", "client.py")
+        i = s.find("def claim_daily_quests(")
+        self.assertNotIn("self.claim_gacha", s[i:i + 2500])
+        r = _doc("run_party_digioi.py")
+        i = r.find("def lam_login_chores(")
+        doan = r[i:r.find("\ndef ", i + 10)]
+        g = doan.find("(c.claim_gacha_pet, c.claim_gacha_card)")
+        v = doan.find("next_vantieu = c.do_van_tieu()")
+        self.assertGreater(g, 0)
+        self.assertGreater(v, g)
+        for ham, sid in (("def claim_gacha_pet(", "GACHA_RC_PET"),
+                         ("def claim_gacha_card(", "GACHA_RC_CARD")):
+            j = s.find(ham)
+            self.assertIn("self._gacha_da_mua(self.%s)" % sid, s[j:j + 900])
 
 
 

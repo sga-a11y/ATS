@@ -90,6 +90,8 @@ class PartyStore(private val context: Context) {
                 trainPick = o.optString("train_pick", ""),
                 diGioiPick = o.optString("di_gioi_pick", ""),
                 loanDauMotTran = o.optBoolean("loandau_mot_tran", false),
+                questKey = o.optString("quest_key", "cs1_cu_thu"),
+                questLeader = o.optString("quest_leader", ""),
                 autoBagExpand = o.optBoolean("auto_bag_expand", false),
                 bagExpandGold = o.optInt("bag_expand_gold", 0),
                 autoBankExpand = o.optBoolean("auto_bank_expand", false),
@@ -183,6 +185,8 @@ class PartyStore(private val context: Context) {
             o.put("train_pick", p.trainPick)
             o.put("di_gioi_pick", p.diGioiPick)
             o.put("loandau_mot_tran", p.loanDauMotTran)
+            o.put("quest_key", p.questKey)
+            o.put("quest_leader", p.questLeader)
             o.put("auto_bag_expand", p.autoBagExpand)
             o.put("bag_expand_gold", p.bagExpandGold)
             o.put("auto_bank_expand", p.autoBankExpand)

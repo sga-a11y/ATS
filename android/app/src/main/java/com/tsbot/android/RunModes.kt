@@ -15,6 +15,9 @@ object RunModes {
     // DG TRUOC, het gio DG thi DUNG YEN cho CA PARTY xong -> chuyen sang TRAIN map da chon.
     const val DIGIOI_TRAIN = "digioi_train"
     const val EVENT = "event"
+    // LAM QUEST: chu party (user CHI DINH, khong mac dinh acc dau) lam chuoi quest, cac acc khac
+    // trong party ho tro. Xong -> chi dinh acc chua xong lam chu; ca party xong -> thoat game.
+    const val QUEST = "quest"
 
     val ALL: Map<String, String> = mapOf(
         STAND_STILL to "Đứng yên tại thành",
@@ -22,6 +25,7 @@ object RunModes {
         DIGIOI to "Dị Giới",
         TRAIN to "Train (map bản đồ)",
         DIGIOI_TRAIN to "Dị Giới + Train map",
-        EVENT to "Event (tele đứng đợi mời PT)",
+        EVENT to "Event",
+        QUEST to "Làm quest (chủ party làm, cả đội hỗ trợ)",
     )
 }

@@ -30,7 +30,7 @@ SHARED = ["client.py", "combat.py", "state.py", "protocol.py", "auth.py", "login
           # file - thieu file la APK CRASH LUC IMPORT, khong phai "chay engine cu binh thuong".
           # 21/09: `PARTY_ENGINE_MOI_TU = 1` -> engine moi chay cho MOI PARTY tren CA HAI ban
           # (truoc do comment nay ghi "van TAT tren APK vi = 0" - da lac hau tu luc nguong len 53).
-          "party_engine.py", "party_modes.py", "party_route.py",
+          "party_engine.py", "party_modes.py", "party_route.py", "quest_runner.py",
           # TU PHAT HIEN SERVER MOI tu CDN tai nguyen cua game. `config.py` cua CA HAI ban goi
           # `servers_cdn.doc_overlay()` luc nap SERVERS - thieu file la APK crash luc import.
           "servers_cdn.py",
@@ -49,7 +49,7 @@ PC_ONLY = ["config.py",        # APK doc tu asset, cau truc khac han
 # Asset UI cua APK doc TRUC TIEP tu assets/train_bot_data (khong qua bundle) -> phai sync tu
 # ban goc o repo root. Truoc day chi liet ke 5 file, 14 file con lai duoc chep TAY -> lech am
 # tham y het vu party_battle.py. _check_assets_covered() gio chan viec do.
-SHARED_ASSETS = ["achievements.json", "mark_bitids.json", "events.json", "npc_names.json", "use_items.json", "mounts_grow.json", "dangerous_npcs.json",
+SHARED_ASSETS = ["achievements.json", "mark_bitids.json", "quests.json", "events.json", "npc_names.json", "use_items.json", "mounts_grow.json", "dangerous_npcs.json",
                  "scene_names.json", "npc_table.json", "warp_points.json",
                  "cities.json", "collect_style.json", "donate_items.json", "donate_materials.json", "mineral_npcs.json", "jiugongge.json", "furnace_pool.json", "bliss_bag.json",
                  "exchange.json", "eq_affix.json",

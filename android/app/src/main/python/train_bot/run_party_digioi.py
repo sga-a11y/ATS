@@ -24,6 +24,7 @@ from . import region as _region
 from . import floor_crawl
 from . import party_engine
 from . import party_modes
+from . import quest_runner
 from . import party_route
 from . import remote_cmd
 from . import train_pick as train_pick_mod   # alias: trong setup_party_runtime co tham so ten train_pick
@@ -3031,6 +3032,11 @@ def lam_login_chores(c, username, label, role, pcfg, mode="", login_map=None):
     # Cai dat nang cao (mac dinh CO tick - giu hanh vi cu); tat -> khong lam + khong hen gio.
     # Cong tac van tieu nay o TUNG ACC (bang setting Hoi HP/SP), khong con o cap party ->
     # goi thang, chinh do_van_tieu() doc c.vantieu_enable roi tu quyet dinh.
+    # GACHA PET + CARD: TRUOC van tieu (user chot 03/10). Tu check shop (RoleCount 0x11/0x12) chua
+    # quay + du xu thi quay, khong con dua vao o bingo 6/4.
+    for _gacha in (c.claim_gacha_pet, c.claim_gacha_card):
+        try: _gacha()
+        except Exception as e: log.warning("[%s] loi gacha (bo qua): %s", label, e)
     next_vantieu = c.do_van_tieu()
     # MUA SHOP (Cai dat nang cao, mac dinh TAT): master auto_buy_shop + list shop.
     # Dua theo RoleCount server 0x55 neu biet counter; item chua ro counter thi server tu reject.
@@ -4386,7 +4392,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         # TU TANG TRUNG THANH PET <40. THEM O CUOI CUNG (Kotlin goi THEO VI TRI).
                         auto_pet_faith=True,
                         # TICK 'QUAI LINH HON' (tu chon map chi chon map LH-). THEM O CUOI CUNG.
-                        mob_soul=False):
+                        mob_soul=False,
+                        # MODE LAM QUEST: chuoi quest + chu party user chi dinh. THEM O CUOI CUNG.
+                        quest_key="", quest_leader=""):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -4462,6 +4470,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "di_gioi_level": int(di_gioi_level),
         "buy_hp": bool(buy_hp), "hp_qty": int(hp_qty), "hp_thresh": int(hp_thresh),
         "buy_sp": bool(buy_sp), "sp_qty": int(sp_qty), "sp_thresh": int(sp_thresh),
+        "quest_key": str(quest_key or ""), "quest_leader": str(quest_leader or ""),
     }
     _region.chan_event_sai_game(config.PARTY_CONFIG[pidx], getattr(config, "EVENTS", {}))
     _flat = str(accounts).split("\x01") if accounts else []
@@ -4614,14 +4623,51 @@ def _tim_server_moi_nen():
         log.debug("khong hoi duoc server moi tu CDN: %s", _e)
 
 
-def start_party(pidx, stagger=1.5, skip_running=False):
+def _ap_chu_party_quest(pidx, chu=None):
+    """MODE QUEST: dua acc user CHI DINH len slot 0 = chu party (user 03/10: "chi dinh leader chu
+    ko phai mac dinh acc dau tien").
+
+    Doi THU TU trong `config.PARTIES` + `PARTY_LEADER_ACC` thay vi them nhanh "ai la leader" moi:
+    ca bo may leader/member (moi doi, gom, dieu phoi) da doc slot 0 tu truoc, va acc nhan
+    `is_leader` luc START - nen doi chu party = chi dinh lai roi start lai party (`_quest_doi_chu`).
+    Thu tu GOC user dat giu o `pcfg["_quest_thu_tu"]` (de chon chu ke tiep dung thu tu danh sach);
+    KHONG ghi nguoc ra accounts.json - lan mo sau van la lua chon cua user.
+    """
+    pcfg = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx)
+    if not pcfg or pcfg.get("mode") != "quest" or pidx >= len(config.PARTIES):
+        return
+    party = [(u, p) for u, p in config.PARTIES[pidx] if u and u.strip()]
+    if not party:
+        return
+    users = [u for u, _p in party]
+    goc = [u for u in (pcfg.get("_quest_thu_tu") or []) if u in users]
+    goc += [u for u in users if u not in goc]
+    pcfg["_quest_thu_tu"] = goc
+    chu = chu or pcfg.get("quest_leader") or ""
+    if chu not in users:
+        if chu:
+            log.warning("[party %d] QUEST: chu party '%s' khong co trong party -> dung %s",
+                        pidx + 1, chu, goc[0])
+        chu = goc[0]
+    pw = dict(party)
+    config.PARTIES[pidx] = [(chu, pw[chu])] + [(u, pw[u]) for u in goc if u != chu]
+    config.PARTY_LEADER_ACC[pidx] = chu
+    config.LEADER_ACCOUNTS = set(config.PARTY_LEADER_ACC.values())
+    log.info("[party %d] QUEST '%s': chu party = %s (thu tu goc %s)", pidx + 1,
+             pcfg.get("quest_key", ""), chu, goc)
+
+
+def start_party(pidx, stagger=1.5, skip_running=False, quest_leader=None):
     """Khoi dong tat ca acc trong 1 party.
 
     skip_running=True (START TAT CA goi): acc DANG CHAY thi BO QUA, khong dung-roi-chay-lai.
     Mac dinh False cho nut "Start party" rieng: van restart de ap config moi (doi map/mode).
+    quest_leader: mode quest - chu party CHI DINH LAI luc xoay vong (`_quest_doi_chu`); None = lay
+    `quest_leader` user dat trong config.
     """
     generation = _start_cancel_generation
     started = 0
+    _ap_chu_party_quest(pidx, quest_leader)
     accounts = party_accounts(pidx)
     # TRUOC MOI THU: dam bao luong dieu phoi CHUNG con song. Dat o day (khong phai duoi nhanh
     # `if started`) vi nhanh `not _fresh` THOAT SOM - do la ly do party 53 chay khong co dieu
@@ -5963,6 +6009,16 @@ def _fc_lam_buoc_engine_moi(c, pidx, len_tang):
             #   16:07:44 [party 7] ENGINE: '2k_len_tang' giao lai 200 lan lien tiep cho taot006
             # Bam cong 200 lan/3 phut vua vo ich vua la duong dan toi ma 13 (gui goi qua nhanh).
             st["2k_cong_ket_den"] = time.time() + FC_KET_CONG_NGHI_SEC
+            # THANG THIEU ma ket cong -> diem bi coi "het quai" co the van con quai (rot mang ma 13
+            # giua luc bam, hoac chua toi diem). `k` giu nguyen thi `tinh_buoc` chi tra `len_tang`
+            # -> ket VINH VIEN (party 3 04/10: chi thang 1/3 o 12929, 43 vong KET suot 1h35).
+            # Dat lai `k` (giu `thang`) -> quay lai bam tung diem; diem het quai that chi mat 3s.
+            _quay_lai = _thang < int(td.get("k") or 0)
+            if _quay_lai:
+                td["k"] = 0
+        if _quay_lai:
+            log.warning("[%s] (LEADER) 2K: ket cong ma moi thang %d diem -> quay lai bam tung diem",
+                        label, _thang)
         return False
     if buoc != "danh":
         return False
@@ -6708,6 +6764,106 @@ def _duong_ra_spot_engine_moi(pidx):
     return (getattr(config, "MOB_PATHS", {}) or {}).get(int(sc), {}).get(tuple(spot))
 
 
+def _quest_dieu_phoi(pidx, pcfg):
+    """MODE QUEST - xoay vong chu party / thoat game (user chot 03/10).
+
+    Doc co DA XONG cua CA party (moi acc tu nhan co cua minh, cung tien trinh nen doc thang - L2):
+      - chu party con quest              -> lam tiep (False)
+      - chu xong het, con acc chua xong  -> CHI DINH acc dau tien (thu tu goc) lam chu, start lai
+      - ca party xong het                -> thoat game
+    Acc chua nhan co (dang login) = CHUA BIET, khong phai "chua xong" -> cho.
+    Tra True = party dang ket thuc/doi chu, engine dung yen.
+    """
+    st = _pstate(pidx)
+    if st.get("quest_ket_thuc"):
+        return True
+    ch = quest_runner.chuoi(pcfg.get("quest_key"))
+    if not ch:
+        if not st.get("quest_thieu_log"):
+            st["quest_thieu_log"] = True
+            log.warning("[party %d] QUEST: khong co chuoi quest '%s' -> dung yen", pidx + 1,
+                        pcfg.get("quest_key"))
+        return False
+    clients = dict(_clients_cua_party(pidx))
+    thu_tu = [u for u in (pcfg.get("_quest_thu_tu") or [u for u, *_ in party_accounts(pidx)])
+              if u in clients]
+    tt = {u: quest_runner.xong_het(clients.get(u), ch) for u in thu_tu}
+    chu = config.PARTY_LEADER_ACC.get(pidx)
+    hanh, ke = quest_runner.chon_chu_party(thu_tu, tt, chu)
+    if hanh in ("giu", "cho"):
+        return False
+    st["quest_ket_thuc"] = True
+    xong = [u for u in thu_tu if tt.get(u)]
+    if hanh == "doi":
+        log.info("[party %d] QUEST: %s xong het '%s' -> CHI DINH %s lam chu party "
+                 "(xong %d/%d acc: %s)", pidx + 1, chu, ch.get("label"), ke, len(xong),
+                 len(thu_tu), xong)
+        threading.Thread(target=_quest_doi_chu, args=(pidx, ke), daemon=True,
+                         name="quest-doi-chu-p%d" % (pidx + 1)).start()
+    else:
+        log.info("[party %d] QUEST: ca party xong het '%s' (%d acc) -> THOAT GAME", pidx + 1,
+                 ch.get("label"), len(thu_tu))
+        for u in thu_tu:
+            stop_account(u, reason="Quest: ca party xong %s" % ch.get("label"))
+    return True
+
+
+def _quest_thanh_tap_ket(pidx, pcfg):
+    """(thanh, flag) party mode quest gom ve = thanh TELE gan BUOC KE TIEP cua chu party nhat.
+
+    User 03/10: "moi quest gan 1 thanh khac nhau ... ko can cai chon thanh tap ket, quest nao thi bot
+    tu chon thanh gan nhat". Lay thanh xuat phat ma bo tim duong co san (`build_route`) chon cho map
+    cua buoc do. Tinh lai khi chu party sang buoc/quest khac; ket qua de o `st["quest_thanh"]` cho
+    viec `city`. None = chu party chua nhan co / khong con quest co kich ban -> party dung cho.
+    """
+    st = _pstate(pidx)
+    ch = quest_runner.chuoi(pcfg.get("quest_key"))
+    chu = config.PARTY_LEADER_ACC.get(pidx)
+    c = account_clients.get(chu) if chu else None
+    q, step, d = quest_runner.diem_ke_tiep(c, ch) if (c is not None and ch) else (None, None, None)
+    sig = (chu, q["id"] if q else None, step, d is not None)
+    if st.get("quest_thanh_sig") == sig:
+        return st.get("quest_thanh")
+    th = None
+    if d is not None:
+        try:
+            th = quest_runner.thanh_tap_ket(d["scene"], d["x"], d["y"])
+        except Exception:
+            log.exception("[party %d] QUEST: loi tim thanh tap ket", pidx + 1)
+            th = None
+    st["quest_thanh_sig"], st["quest_thanh"] = sig, th
+    if q is not None:
+        log.info("[party %d] QUEST: thanh tap ket = %s theo %s %s (map %s)", pidx + 1,
+                 ("%s flag %s" % th) if th else "KHONG TIM DUOC", q["name"],
+                 "nhan quest" if step is None else "buoc %s" % step,
+                 d["scene"] if d else "?")
+    return th
+
+
+def _quest_doi_chu(pidx, chu_moi, cho_toi_da=120.0):
+    """Dung ca party roi START LAI voi chu party moi.
+
+    Vai leader/member gan cho tung acc luc START (`run_account(is_leader)`, `_pe_la_leader`), nen
+    doi chu = di lai dung con duong user chi dinh tu dau - khong vá co leader tren acc dang chay.
+    """
+    users = [u for u, *_ in party_accounts(pidx)]
+    # Dung TUNG ACC (y nhanh thoat game / mode digioi `thoat_acc=stop_account`), khong goi
+    # `stop_party`: luat test_khong_lenh_thi_acc_khong_di - `stop_party` chi danh cho nut Stop GUI.
+    # Day la quyet dinh cua DIEU PHOI doc co ca party theo luat user chot, khong phai mot acc tu
+    # tat party theo tinh trang rieng.
+    for u in users:
+        stop_account(u, reason="Quest: doi chu party -> %s" % chu_moi)
+    het = time.time() + cho_toi_da
+    while time.time() < het and any(is_account_running(u) for u in users):
+        time.sleep(1.0)
+    con = [u for u in users if is_account_running(u)]
+    if con:
+        log.warning("[party %d] QUEST: %ds van con acc chua dung %s -> KHONG start lai (tranh 2 "
+                    "thread 1 acc), bam Start party de chay tiep", pidx + 1, int(cho_toi_da), con)
+        return
+    start_party(pidx, quest_leader=chu_moi)
+
+
 def _engine_mode_decisions(pidx, anh, decisions):
     st = _pstate(pidx)
     cmd = st.get("cmd")
@@ -6716,6 +6872,8 @@ def _engine_mode_decisions(pidx, anh, decisions):
         return _engine_route_decisions(pidx, anh, cmd)
     pcfg = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
     mode = pcfg.get("mode") or "stand"
+    if mode == "quest" and _quest_dieu_phoi(pidx, pcfg):
+        return {u: "nghi" for u in decisions}
     ev = _event_cua_party(pidx) if mode == "event" else {}
     kind = ((ev or {}).get("party_battle") or {}).get("kind")
     no_leader = mode == "event" and kind != "chaos_vs" and not config.PARTY_LEADER_ACC.get(pidx)
@@ -6727,9 +6885,14 @@ def _engine_mode_decisions(pidx, anh, decisions):
             if c is not None and getattr(c, "_loandau_done", False)} if kind == "chaos_vs" else ()
     pending = {a.username for a in anh.accs
                if anh.lenh_tay_gen and a.lenh_tay_da_lam < anh.lenh_tay_gen}
+    _dich_gom = int(pcfg.get("start_city_id") or 0) or None
+    if mode == "quest":
+        # Mode quest KHONG co o chon thanh: gom ve thanh gan buoc ke tiep cua chu party.
+        _th = _quest_thanh_tap_ket(pidx, pcfg)
+        _dich_gom = _th[0] if _th else None
     result = party_modes.decide_mode(
         mode, decisions, anh.accs,
-        target_map=int(pcfg.get("start_city_id") or 0) or None,
+        target_map=_dich_gom,
         event_kind=kind, event_map=(ev or {}).get("dest_map"),
         event_open=loandau.in_event_window(ev=ev) if kind == "chaos_vs" else True,
         event_done=done, manual_pending=pending,
@@ -6982,6 +7145,9 @@ def _engine_mode_action(pidx, c, action, con_lam):
     if action == "roi_party_la":
         c.leave_party()
         return True
+    if action == "quest":
+        _qcfg = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
+        return quest_runner.chay(c, _qcfg.get("quest_key"), abort=lambda: not con_lam(), log=log)
     if action == "boss_quan_doan":
         c.flee_mode = True
         try:
@@ -7016,9 +7182,12 @@ def _engine_mode_action(pidx, c, action, con_lam):
         if c.running and not c.state.in_battle:
             c.heal_npc40_between_battles()
 
+    _dich, _flag = int(pcfg.get("start_city_id") or 0) or None, int(pcfg.get("city_flag") or 0)
+    if pcfg.get("mode") == "quest":
+        _dich, _flag = _pstate(pidx).get("quest_thanh") or (None, 0)
     return party_modes.execute_mode_action(
-        action, c, target_map=int(pcfg.get("start_city_id") or 0) or None,
-        city_flag=int(pcfg.get("city_flag") or 0), event=_event_cua_party(pidx),
+        action, c, target_map=_dich,
+        city_flag=_flag, event=_event_cua_party(pidx),
         abort=lambda: not con_lam(),
         go_to_city=lambda cli, dest, flag: _ve_thanh_tap_trung(cli, pidx, label, dest, flag),
         run_chaos=_engine_run_chaos,

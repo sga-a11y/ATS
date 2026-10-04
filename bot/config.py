@@ -829,7 +829,9 @@ if _aj is not None:
                                 if _k not in ("accounts", "leaders")}
             # Cac dong duoi CHI de EP KIEU / doi ten / mac dinh - khong phai de "khai bao key".
             PARTY_CONFIG[_i].update({
-                "mode": _party.get("mode", "stand"),
+                # "cleanbag" (Don tui, placeholder) da bo 04/10/2026 -> config cu chay nhu "stand".
+                "mode": {"cleanbag": "stand"}.get(_party.get("mode", "stand"),
+                                                  _party.get("mode", "stand")),
                 "start_city_id": int(_party.get("start_city_id", 0)),
                 "mob_index": int(_party.get("mob_index", -1)),  # mac dinh -1 = Bot tu chon
                 "city_flag": int(_party.get("city_flag", 0)),

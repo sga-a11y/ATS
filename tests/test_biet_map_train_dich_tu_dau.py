@@ -85,7 +85,7 @@ class TestMapTrainDich(_Nen):
         self.assertEqual(R._map_train_dich(self.PARTY, _st(dt_phase="train")), MAP_TRAIN)
 
     def test_mode_khac_thi_khong_co_map_train(self):
-        for _m in ("digioi", "event", "city", "stand", "cleanbag"):
+        for _m in ("digioi", "event", "city", "stand"):
             self._cfg(mode=_m, start_city_id=MAP_TRAIN)
             self.assertIsNone(R._map_train_dich(self.PARTY, _st()), _m)
 

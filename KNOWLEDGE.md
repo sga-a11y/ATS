@@ -1566,6 +1566,17 @@ rồi `0x61 02 00 [idx]` (bot cũ gửi cố định `020002` = idx 2 = cấp 25
   Lenh mua van la C2S `0x42` format
   `0100 [shop] [tab] [page] [slot] [item_id 2B] [gia 2B] [qty 1B] 0000`.
   S2C `0x42 0300[item_id]01` chi la ACK mua thanh cong, KHONG phai daily counter.
+- **GACHA PET / CARD (shop 5 `Doro` 抽卡) - counter "da quay hom nay" (2026-10-03):**
+  client `Mall.IsCanBuy` chan khi `RoleCount.Get(sellData.flag) >= sellData.dayCount`
+  (`GoodsSaleData` trong `GS_C.dat`); sid chua co -> `RoleCount.Get` tra 0 = chua mua.
+  `gacha_cap.pcap` + `gacha2_cap.pcap` (khop nhau), ngay sau C2S `0x42`:
+  - Pet `0100050101015bb22823010000` -> `S2C 0x55 01000100000011000100000001000000` = sid `0x11` 1/1.
+  - Card `0100050101025cb22823010000` -> `S2C 0x55 01000100000012000100000001000000` = sid `0x12` 1/1.
+  Cac sid khac di kem (`0x044f`, `0xaf`, `0xdb`, `0xa6`, `0xb0`, `0xd9`, `0x0329`) co max
+  `0x7fffffff` = dem cong don, KHONG phai gioi han ngay.
+  CHUA XAC NHAN: login cua acc DA quay trong ngay co push san sid 0x11/0x12 hay khong (pcap login
+  hien co deu la acc chua quay). Bot: `claim_gacha_pet/card` check `role_counts` + xu, goi o viec
+  vat login TRUOC van tieu.
 - De AUTO vao Di Gioi: phai decrypt HTTPS 103.82.31.230 (dung mitmproxy + APK patched tsvtc-patched.apk de trust cert) -> lay URL+params -> replicate bang Python (bot da co lib HTTP cho login). TODO.
 - map_id Di Gioi: CHUA XAC DINH chac (gia tri 0xc316 o offset 28 cua 0x03 co the la toa do).
 
@@ -2170,6 +2181,7 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
 | Dùng item (heal HP/SP, túi sự kiện) — `use_slot` | `0x17` `0f 00 [slot 1B][qty 1B] 00*3 [target 1B] 00` | slot thô (1B) |
 |   ↳ target: 0=char; PET = **VỊ TRÍ PET trong đội mang theo (1-based, user tự xếp = marker gói 0x0f)** — XÁC NHẬN capture `captures/pet_heal_20260715.pcap` (Quan Vũ vị trí 3 → target=03; Thái Văn Cơ vị trí 1 → target=01; char → 00). Hardcode 1 từng gây bug hồi pet vô dụng khi pet không ở vị trí 1. Pet chết trong trận được server TỰ HỒI SINH 1HP lúc kết trận → state pet.hp=0 từ 0x33 cuối là stale, vẫn hồi item bình thường ngay sau trận. **Đừng gửi `00*4`: dư 1 byte sẽ làm lệch target; char target=0 vẫn có vẻ chạy nhưng pet không hồi đúng.** | — |
 |   ↳ Dị Giới SOLO có tối đa 4 pet cùng ra trận: stat trong battle dùng atype `0,1,3,4` nhưng `use_slot` vẫn target bằng marker pet `1,2,3,4` (`0→1`, `1→2`, `3→3`, `4→4`). Hồi ngoài trận phải quét `state.multi_pet` và hồi từng con có stat, không chỉ `active_pet_slot`. | — |
+|   ↳ Skill user set riêng từng pet (`battle.pets[str(pid)]`) trong Dị Giới SOLO phải tra theo **pid của atype đó** (`state.multi_pet_pid[atype]`, ghi ở `_on_pet_list`), KHÔNG theo `active_pet_id`. Lỗi cũ (user báo 03/10): mọi con đọc rule của pet xuất chiến → 3 con còn lại không bao giờ dùng skill đã set, chỉ đánh thường/combo. Test: `tests/test_solo_multipet_skill_rieng_tung_pet.py`. | — |
 |   ↳ **Kho capture bằng chứng: `captures/`** (được git giữ lại, ngoại lệ gitignore) — capture mới nào có giá trị lâu dài thì COPY vào đây với tên mô tả + ngày, KHÔNG bắt user capture lại. | — |
 | **Hợp vật phẩm** — `do_combine_item` | `0x17` `0e 00 [cid1 2B] 00 00 00 [cid2 2B] 00*8 01` | **cid = 0x0100 + slot** |
 | Túi Vật Liệu Sự Kiện — `use_event_bags` | (dùng `use_slot`) | slot thô |
@@ -2414,6 +2426,13 @@ tố) còn logic lò chuyển sinh so theo **npc id**, không theo tên.
     "Mask claimed line" bot đọc chính là mảng này — line L = `getFlag` (chỉ số bit) của award L
     trong bảng `JiugonggeInfo_C.dat` (file KHÔNG có trong repo → bot dò bằng marker
     `c0 ?? 03000000 [mask 2B] 01000000`, bit L+3, đã verify nhiều nick).
+  - **"Đã nhận" phải TÍNH LẠI từ BitFlag mỗi lần, KHÔNG gộp với cái cũ** (client:
+    `Jiugongge.UpdateState` gán `canGetAward` từ `BitFlag.Get(getFlag)`). Ca 03/10/2026: acc offline
+    lúc 0h, login sau nửa đêm → bot vẫn thấy cờ 1541..1547 (quà 1–7) bật; bot cũ gộp (`|=`) nên
+    giữ "đã nhận [1..7]" của hôm qua → **146 acc** 5/9 ô mà `claim them 0 line`; acc online lúc
+    0h thì 0/49 bị. Nghi server gửi bảng full cũ rồi mới tắt cờ bằng delta `0100` — **chưa đo gói
+    thô**; bot giờ log `Qua bingo da nhan (BitFlag): A -> B` khi đổi để đo lần sau. S:91-3 thành
+    công thì bot bật luôn cờ trong bảng (giống client `canGetAward = 2`) để không mất.
   - Client **TỰ TÍNH ô xong cục bộ** (`JiugonggeMissionData:IsComplete` ← `CheckCondition` trên
     RoleCount...), đạt thì chủ động gửi `C:91-2` từng ô để server ghi nhận; **S:91-2 =
     `[result 1B: 1 ok][gridId u16][index 1B]`** (nên `02 00 01 01 00 [ô]` = result=1, grid=1, ô).
@@ -3581,3 +3600,134 @@ C:002-003 <密頻發話> roleId(8) L(1) name(L) L(1) msg(L, UTF-16LE) itemCnt(1)
 Cách xử lý: thêm id vào `EXTRA_PET_IDS` trong `tools/crack_pets.py` rồi chạy lại, chép `pets.json`
 sang `android/.../train_bot_data/`. Gặp "Pet_N (0x....)" thì check Npc_C.dat trước — thường KHÔNG
 phải do client cũ.
+
+## NHIỆM VỤ (Mark) + TỪNG BƯỚC — crack 03/10/2026
+
+- Data: `Mark_C.dat` (3448 nhiệm vụ) + `MarkStep_C.dat` (4505 bước) + `MarkGroupData.dat` (areaId)
+  → `tools/crack_mark_steps.py` → `marks.json`. Parse khớp trọn cả 3 file. Pull từ MuMu (xem mục adb).
+- **Nhiệm vụ đi theo CẶP**: mã CHẴN = "Đánh dấu nhiệm vụ", chứa các bước (`steps`), là mission đang
+  làm trong gói `0x18 sub06` (mission → step hiện tại). Mã LẺ ngay sau = cờ ĐÃ XONG (`bitId`) + mô tả thật.
+- Mỗi bước: mô tả + tối đa 5 điều kiện `kind` (1 bắt NPC / 2 giết NPC / 3 gom item) kèm id, số lượng,
+  scene, tọa độ, rồi ĐIỂM HOÀN THÀNH `endScene (x,y)` + `endEvKind/endEvId`
+  (`ENavigationEvent`: 0 không, 1 NPC, 2 Cửa), cờ `teleport`, `checkTeam` (bắt buộc tổ đội).
+  Client dùng đúng mấy trường này cho nút tự dẫn đường (`MarkManager.Navigation`).
+- Chuyển sinh 1: quest `12316 Trước khi chuyển sinh` (4 bước, Tiên Giới 59453/59411):
+  B2 = "Hoàn thành nhiệm vụ Bát đại Cự Thú". Danh sách 8 quest KHÔNG có trong data; user chốt theo
+  tên trong game (03/10): mã bước / bitId đã xong =
+  10324/174 Thiên Độc Sơn Động (nhận ở Uyển Thành) · 10326/175 Phẫn Nộ Của Biển (làng Phùng Lai) ·
+  10328/176 Thú To Chạy Thoát (Động Bạch Sơn) · 10360/192 Thú Lớn Hỏa Diệm (nhà Bắc Tinh Quân) ·
+  10384/204 Hang Sâu Tuyết Động (thôn Vọng Bình) · 10528/280 Sâm Lan Thái Hồ (đại lộ Kiến Nghiệp) ·
+  10564/298 Lễ Tế Thần Nước Cao Lệ (Quế Lâu Bộ) · 10806/428 Khung Thương Loạn Vũ (trướng Ô Hoàn).
+  Bước có `endEvKind=0` (chỉ có tọa độ, không NPC/cửa) = sự kiện tự bật khi đi tới chỗ đó.
+- Gói chuyển sinh: server mở UI qua `S:036-011` (lần 2), `S:036-014` (lần 3), `S:044-002/003` (võ tướng);
+  client gửi `C:023-046` (lần 1: kiểu đầu 1B + màu 4B + màu 4B), `C:023-054` / `C:023-081` (+ nghề 1B).
+- Mã chọn đáp án hội thoại KHÔNG có trong data (server điều khiển `0x14 06/09`) → mỗi NPC phải capture.
+
+### Capture quest 10384 Hang Sâu Tuyết Động (`captures/cs1_10384_tuyetdong_20261003.pcap`, 03/10)
+
+Một client (chủ party, đội 5 người). Đo được:
+- **Không có `0x14 09` (chọn) nào** — cả quest chỉ `0x14 06`.
+- **Nhận quest**: Thôn Vọng Bình 19011, đứng (610,810), `0x20 020008` + `0x14 01 [npc=1 u16]` → 5 câu
+  thoại → S2C `0x18 0100 9028 01` (mission 10384 +1 bước = bước 1). Data client KHÔNG có điểm nhận.
+- Bước 1: Nhà gỗ Vọng Bình 19174 NPC 1 → `0x18 0100 9028 01` (bước 2). Bước 2: Động Liêu Đông 19506
+  (610,330) NPC 2 → thoại → resultType 0 + 5 (movie, client chờ ~9s rồi mới `0x14 06`) → `S:020-009`
+  vào trận BOSS (~77s) → server TỰ gửi thoại tiếp (không cần `0x14 06`) → `0x18 0100 9028 01` (bước 3).
+  Bước 3: về 19174 NPC 1 → `0x18 0400 9028` (xoá mission) + `0x18 05 ... cc00 01` (bật cờ bit 204 =
+  đúng bitId data) + `S:020-100` thưởng.
+- Đường đi khớp `world_nav.json` từng cửa (19001→19000 cửa 1 … 19505→19506 cửa 1).
+- Gặp quái dọc đường trong động: `S:020-012` (怪物碰撞) → `S:020-009` trận → `S:020-008` kết.
+- S2C `0x0c` (S:012-000): `[00 00][roleId 8][map u16][x u16][y u16]...` — gói gửi cho CẢ đội (5 roleId).
+
+**Luật `0x14 06` của client** (`EventManager.NextEvent` + `EventHandler`, `_lua_dec`): chỉ gửi khi cờ
+`conduct` bật VÀ không `session` / `interacting` / trong trận / đang loading. Gửi xong: conduct=False,
+session=True; mọi gói sự kiện S2C đến đặt session=False.
+- conduct=True: resultType 0/2/4; resultType 1 (thoại) sau khi bấm qua; resultType 5 (movie) sau khi
+  movie hết; `S:020-007` đổi scene (sau loading, kèm `0x0c 01` trước); `S:020-010/011/013/014/015/016/017`.
+- resultType 3 → session=True (chờ server). resultType 6 → interacting (chờ CHỌN `0x14 09`).
+- `S:020-012` → session=True. `S:020-009` → trong trận. `S:020-008` → hết sự kiện.
+- `S:020-022/023/100` chỉ là thông báo, KHÔNG bật conduct (cụm gói lúc trả quest chỉ 1 lần `0x14 06`).
+
+### Capture quest 10528 Sâm Lan Thái Hồ (`captures/cs1_10528_thaiho_20261003.pcap`, 03/10)
+
+- **Nhận quest**: Đại Lộ Kiến Nghiệp 18001, đứng (1310,250), NPC 4 → 4 câu → `0x18 0100 2029 01` (bước 1).
+- Bước 1: Quan Phủ K.Nghiệp 18301 NPC 4 (Trình Phổ) → thoại → **resultType 6 (CHỌN)** → client gửi
+  `0x14 09 1e` (**30 = mục 1**) rồi `0x14 06` → `0x18 0100 2029 01` (bước 2). Cùng lúc server +1 mission
+  10818 (`0x18 0100 422a 01`) — mission phụ tự bật, không ảnh hưởng.
+- Bước 2: Động Thái Hồ 18506 (~3653,395). **Trước khi nói chuyện, client chạm CỬA 3** tại (3651,365)
+  (`0x14 08 0300`) → S2C resultType 0, class 3 (NPC), parameter 1, paramStyle 4, value 2000 → `0x14 06`
+  → hết. Cửa 3 KHÔNG có trong `world_nav.json` (18506 chỉ có cửa 1, 2) = cửa sự kiện riêng của quest.
+  Nghi nó làm hiện NPC Hỏa Đức (chưa kiểm). Rồi NPC 1: movie (resultType 5, client chờ ~15s) → thoại →
+  **resultType 6 → `0x14 09 1e` (30)** → `S:020-009` trận BOSS (~52s) → thoại → `0x18 0100 2029 01` (bước 3).
+- Bước 3: cùng chỗ, NPC 2 → 3 câu → `0x18 0100 2029 01` (bước 4).
+- Bước 4: về 18301 NPC 4 → `0x18 0400 2029` + cờ bit `0x118 = 280` (= bitId data) + `S:020-100`.
+- Đi bộ qua vùng cửa không có sự kiện: client vẫn gửi `0x14 08 [cửa]`, server trả `S:020-008` kind
+  `0x23` (35) ngay — vô hại, bot không cần bắt chước.
+
+### Capture quest 10324 Thiên Độc Sơn Động (`captures/cs1_10324_thiendoc_20261003.pcap`, 03/10)
+
+- **Nhận quest**: Quán trọ Uyển Thành 13243, đứng (190,470), NPC 1 → 5 câu → `0x18 0100 5428 01`.
+- Bước 1: Đại lộ Uyển Thành 13022 NPC 2 (data (830,360); client bấm từ (744,369)) → bước 2.
+- **Bước data ghi `ev_kind = 0` (chỉ toạ độ) THẬT RA là chạm CỬA SỰ KIỆN ẨN ở đúng toạ độ đó**
+  (`0x14 08 [cửa]`), số cửa chỉ có trong capture:
+  - B2: 13513 (1490,290) **cửa 5** → thoại → bước 3 → movie → `S:020-007` ĐỔI SCENE giữa sự kiện
+    (sang 13518) → client `0x0c 01` + `0x14 06` → hết. (`world_nav` ghi cửa 5 là cổng 13513→13518.)
+  - B3: 13519 (1750,990) **cửa 2** → thoại → **CHỌN `0x14 09 1e` (30)** → bước 4.
+  - B4: 13519 (530,1110) **cửa 3** → movie → trận BOSS (~37s) → `S:020-016` ×3 (client `0x14 06`
+    sau mỗi cái) → thoại → bước 5 → **CÙNG sự kiện** xoá mission + cờ bit `0xae = 174` + thưởng
+    (B5 tự xong). Cửa 2/3 ở 13519 KHÔNG có trong `world_nav`.
+- Cửa 7 ở 13022 (sang Cửa động 13023): `S:020-007` tới sau ~8s, `S:020-008` sau ~26s; B1 `S:020-008`
+  trễ ~5s. **User xác nhận: đầu capture này server LAG** → các khoảng chờ đó KHÔNG phải luật game,
+  đừng dùng làm mốc thời gian.
+
+### Capture quest 10326 Phẫn Nộ Của Biển (`captures/cs1_10326_phannobien_20261003.pcap`, 03/10)
+
+- **Nhận quest**: Làng Phùng Lai 11021, đứng (970,350), NPC 4 → thoại → **CHỌN `0x14 09 1e` (30)** →
+  `0x18 0100 5628 01` (bước 1).
+- Bước 1: Bột Hải 58000 (2210,290) = **cửa ẩn 2** (data ghi ev_kind 0 tại (2207,282); `world_nav` 58000
+  chỉ có cửa 1) → thoại → trận BOSS (~35s) → server tự gửi thoại → bước 2 → thoại → `S:020-016` →
+  bước 3 → CÙNG sự kiện xoá mission + cờ bit `0xaf = 175` + thưởng (B2, B3 tự xong).
+- Đường: Thanh Châu 11000 → Làng Phùng Lai cửa 4; Thanh Châu → Bột Hải cửa 11 (có trong `world_nav`).
+
+### Capture quest 10328 Thú To Chạy Thoát (`captures/cs1_10328_thutochaythoat_20261003.pcap`, 03/10)
+
+- **Nhận quest bằng CỬA ẨN, không phải NPC**: Động Bạch Sơn 56501 (1170,1330) `0x14 08 0400` → thoại →
+  **CHỌN 30** → `0x18 0100 5828 01` (bước 1).
+- Bước 1: 56517 (430,370) **cửa ẩn 2** → thoại → movie → bước 2 → trận BOSS (~43s) → `S:020-016` ×5 →
+  thoại → bước 3 (B1 + B2 cùng một sự kiện).
+- Bước 3: 56501 (1230,1450) **cửa ẩn 5** → thoại → trận → thoại → bước 4 → CÙNG sự kiện xoá mission +
+  cờ bit `0xb0 = 176` + thưởng.
+- Cửa 4, 5 ở 56501 và cửa 2 ở 56517 KHÔNG có trong `world_nav`. B2/B4 riêng lẻ chưa capture (chỉ gặp
+  khi rớt giữa sự kiện).
+
+### Capture quest 10360 Thú Lớn Hỏa Diệm (`captures/cs1_10360_hoadiem_20261003.pcap`, 03/10)
+
+- **Nhận quest**: Nhà Bắc Tinh Quân 55003 (390,350) NPC 2 → thoại → **CHỌN 30** → bước 1 (`7828`).
+- B1: Hải động 57501 (490,990) cửa 6 (= data) → bước 2. B2: 57511 (610,950) cửa 2 → trận BOSS → bước 3.
+- B3: 57511 (370,230) cửa 3 → movie → thoại → user **CHỌN 31 (mục 2)** → trận BOSS → thoại →
+  `0x18 0100 7828 03` = **nhảy +3 bước (3 → 6)**, bỏ qua B4/B5 (nhánh "làm bộ hạ Bàn Cổ" của mục kia).
+- B6: Nhà Bắc Tinh Quân NPC 2 → xoá mission + cờ bit `0xc0 = 192` + thưởng. Capture bị cắt ngay sau
+  cụm thưởng (thiếu `0x14 06` cuối của client).
+- **Cổng 11 ở Thanh Châu 11000 ra 55000 HOẶC 58000 ngẫu nhiên** (capture: 4 lần 58000 rồi mới 55000).
+  `execute_smart_route` đã tự plan lại (tối đa `_MAX_ROUTE_REPLANS = 16`). Đường thay thế cố định:
+  Cao Câu Ly 56000 cửa 2 → 55000.
+
+### Capture quest 10564 Lễ Tế Thần Nước Cao Lệ (`captures/cs1_10564_letethannuoc_20261003.pcap`, 03/10)
+
+- **Nhận quest**: Nhà Quế Lâu Bộ 56101 (330,350) NPC 1 → thoại → **CHỌN 30** → bước 1 (`4429`).
+- B1: Sơn động Thần Vi 56528 (~2061,1096) NPC 1 (= data) → thoại → movie → bước 2 → trận BOSS (~46s)
+  → `S:020-016` → thoại → `0x18 0100 4429 02` = **nhảy +2 bước (2 → 4)** → `S:020-008` kind `0x29`.
+- B4: về 56101 NPC 1 (= data) → xoá mission + cờ bit `0x12a = 298` + thưởng.
+- Không có cửa ẩn. Đường: Quế Lâu Bộ 56001 cửa 5 → nhà 56101; 56000 cửa 5 → động 56521 → 56524 → 56528.
+
+### Capture quest 10806 Khung Thương Loạn Vũ (`captures/cs1_10806_khungthuong_20261003.pcap`, 03/10)
+
+- **Nhận quest**: Trướng Ô Hoàn 19176 (490,330) NPC 1 → 4 câu (không chọn) → bước 1 (`362a`).
+- B1: Đại trướng Thiền Vu 19175 NPC 1 (= data) → **CHỌN 30** → bước 2 (kèm mission phụ 10600 +1).
+- B2: Động Bạch Lang 19525 NPC 1 (= data) → movie → trận BOSS (~96s) → bước 3.
+- B3: 19175 NPC 1 → xoá mission + cờ bit `0x1ac = 428` + thưởng.
+- Đường: Cửa Thành T.Bình 19001 → Liêu Đông cửa 7 → Bộ lạc Ô Hoàn 19021 (cửa 2 trướng, cửa 3 đại
+  trướng); Liêu Đông cửa 12 → Động Bạch Lang 19521 → … → 19525.
+
+**ĐỦ 8/8 quest Bát đại Cự Thú có kịch bản** (03/10). Mẫu chung rút ra từ 8 capture: chỉ có `0x14 06`
+và `0x14 09 30/31`; bước data ghi `ev_kind 0` = cửa ẩn tại đúng toạ độ; server hay làm luôn nhiều bước
+trong một sự kiện (nhảy +2/+3).

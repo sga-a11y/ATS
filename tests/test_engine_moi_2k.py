@@ -486,3 +486,55 @@ class TestKhongMoPhongPB_GiuaTran(unittest.TestCase):
     def test_member_van_duoc_bat_co_san_sang(self):
         """`pb_doi_theo` chi bat co, khong gui gi -> khong can chan."""
         self.assertEqual(PE.quyet_dinh(self._anh_pb(False)).get("a2"), PE.VIEC_PB_DOI_THEO)
+
+
+class TestKetCongMaThangThieuThiQuayLaiDanh(unittest.TestCase):
+    """Kep cong ma THANG THIEU diem -> dat lai `k` de quay lai bam cac diem bi bo qua.
+
+    Ca that 04/10 party 3 (user: "event 2k m xem co phai party 3 dung yen ko di chuyen ko"):
+        11:23:49 [laochin] 2K: xong tran idx=3
+        11:24:00 [laochin] 2K: idx=4 khong mo thoai sau 3s -> coi nhu diem da het quai
+        11:24:08 [laochin] SERVER NGAT KET NOI: gui goi lien tuc qua nhanh (ma 13)
+        11:24:41 [laochin] (LEADER) 2K: Thang Thap (12929) chi thang 1/3 diem -> van thu qua cong
+        11:26:30 [laochin] (LEADER) 2K: KET o cong Thang Thap (12929)   <- 43 vong toi 12:59
+    `k` da = 3 nen `tinh_buoc` chi tra `len_tang`, khong bao gio quay lai idx 4/5.
+    Dem log 04/10: thang du -> qua cong 351 lan; thang thieu -> KET 737 lan, qua 78 lan.
+    """
+
+    def setUp(self):
+        self._pc = getattr(R.config, "PARTY_CONFIG", {})
+        self._evs = getattr(R.config, "EVENTS", {})
+        R.config.PARTY_CONFIG = {0: {"mode": "event", "event_key": "2k"}}
+        R.config.EVENTS = {"2k": EV_2K}
+        R._party_state.pop(0, None)
+
+    def tearDown(self):
+        R.config.PARTY_CONFIG = self._pc
+        R.config.EVENTS = self._evs
+        R._party_state.pop(0, None)
+
+    def _ket_cong(self, k, thang):
+        class _C:
+            _label = "leader"
+            _username = "u1"
+            current_map = 12929
+            flee_mode = False
+
+        st = R._pstate(0)
+        st["2k_tien_do"] = {"scene": 12929, "k": k, "thang": thang}
+        with mock.patch.object(R.floor_crawl, "tinh_buoc",
+                               return_value=("len_tang", 12930, 2, (790, 190))), \
+                mock.patch.object(R.floor_crawl, "qua_cong_len_tang", return_value=False), \
+                mock.patch.object(R, "_set_party_quest_mode"):
+            self.assertFalse(R._fc_lam_buoc_engine_moi(_C(), 0, True))
+        return st["2k_tien_do"]
+
+    def test_thang_thieu_thi_dat_lai_k_giu_thang(self):
+        td = self._ket_cong(3, 1)
+        self.assertEqual(td["k"], 0, "phai quay lai bam diem 1 -> danh not diem bi bo qua")
+        self.assertEqual(td["thang"], 1, "tran da thang van tinh, khong xoa")
+        self.assertEqual(td["scene"], 12929)
+
+    def test_thang_du_thi_KHONG_dat_lai(self):
+        """Thang du ma van ket = nguyen nhan khac -> danh lai cung vo ich, giu nguyen."""
+        self.assertEqual(self._ket_cong(3, 3)["k"], 3)

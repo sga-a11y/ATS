@@ -1518,7 +1518,7 @@ class BotGUI(tk.Tk):
         pmode = config.PARTY_CONFIG.get(pidx, {}).get("mode", "?")
         mlbl = {"digioi": "Dị Giới", "train": "Train map", "digioi_train": "DG + Train",
                 "city": "Về thành",
-                "stand": "Đứng yên", "event": "Event", "cleanbag": "Dọn túi"}.get(pmode, pmode)
+                "stand": "Đứng yên", "event": "Event", "quest": "Làm quest"}.get(pmode, pmode)
         frame = ttk.Frame(sub_nb, padding=4)
         sub_nb.add(frame, text=f"P{pidx + 1} · {mlbl} ({len(accs)})",
                    image=self._dot_off, compound="left")
@@ -2946,9 +2946,21 @@ MODE_OPTIONS = [
     ("city", "Tập trung về thành (đứng yên)"),
     ("stand", "Login đâu đứng yên đó"),
     ("event", "Event"),
-    ("cleanbag", "Dọn dẹp túi đồ (chưa làm)"),
+    ("quest", "Làm quest (chủ party làm, cả đội hỗ trợ)"),
 ]
 _MODE_LABEL = dict(MODE_OPTIONS)
+# Mode da bo -> mode thay the (config cu con luu). "cleanbag" bo 04/10/2026: chay y het "stand",
+# don tui that nam o tick "Tu don tui do" (Cai dat nang cao).
+_MODE_CU = {"cleanbag": "stand"}
+
+
+def _quest_chuoi_list():
+    """[(key, label)] chuoi quest trong quests.json (mode "Làm quest")."""
+    try:
+        from bot import quest_runner
+        return quest_runner.danh_sach_chuoi()
+    except Exception:
+        return []
 _LABEL_MODE = {v: k for k, v in MODE_OPTIONS}
 
 
@@ -5425,8 +5437,8 @@ class PartyConfigFrame(ttk.Frame):
 
         row = ttk.Frame(self); row.pack(fill="x", pady=4)
         ttk.Label(row, text="Chế độ:", width=10).pack(side="left")
-        self.mode_var = tk.StringVar(value=_MODE_LABEL.get(self._preset.get("mode", "digioi"),
-                                                           "Train Dị Giới"))
+        _m = self._preset.get("mode", "digioi")
+        self.mode_var = tk.StringVar(value=_MODE_LABEL.get(_MODE_CU.get(_m, _m), "Train Dị Giới"))
         cb = ttk.Combobox(row, textvariable=self.mode_var, state="readonly", width=34,
                           values=[lbl for _, lbl in MODE_OPTIONS])
         cb.pack(side="left"); cb.bind("<<ComboboxSelected>>", lambda e: self._on_mode_change())
@@ -5501,6 +5513,10 @@ class PartyConfigFrame(ttk.Frame):
         # (moi acc chay rieng le, khong lap party, khong dong bo kenh - dung khi acc khong can/khong
         # muon gop chung, vd khac nick khong lien quan nhau).
         self.digioi_solo_var = tk.BooleanVar(value=(self._preset.get("digioi_mode") == "solo"))
+        # MODE LAM QUEST: chuoi quest + chu party user CHI DINH (khong mac dinh acc dau danh sach).
+        self.quests = _quest_chuoi_list()
+        self.quest_var = tk.StringVar()
+        self.quest_leader_var = tk.StringVar(value=self._preset.get("quest_leader", ""))
 
         # Bot dung yen cho leader ngoai/tay moi: slot 0 = ("","") -> khong co bot-leader.
         accs = self._preset.get("accounts", [])
@@ -7579,6 +7595,15 @@ class PartyConfigFrame(ttk.Frame):
         Di Gioi SOLO: khong lap party that -> an ca checkbox lan whitelist cho gon."""
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
         hide = (mode == "digioi" and self.digioi_solo_var.get())
+        if mode == "quest":
+            # Mode quest LUON co chu party (user chi dinh o o "Chủ party") -> khong cho tick
+            # "khong co chu PT"; o "Mời thêm" van giu.
+            self.no_leader_var.set(False)
+            self.no_leader_cb.pack_forget()
+            self.wl_lbl.configure(text="Mời thêm:")
+            self.wl_lbl.pack(side="left", padx=(8, 0))
+            self.wl_entry.pack(side="left", fill="x", expand=True, padx=4)
+            return
         if hide:
             self.no_leader_cb.pack_forget()
             self.wl_lbl.pack_forget()
@@ -7678,6 +7703,8 @@ class PartyConfigFrame(ttk.Frame):
                 idx = next((i for i, (cid, _f, _n) in enumerate(self.cities) if cid == 12061), 0)
             if names:
                 self.city_var.set(names[idx])
+        elif mode == "quest":
+            self._render_quest()
         elif mode == "event":
             ttk.Label(self.dyn, text="Event:", width=10).pack(side="left")
             labels = [lbl for _k, lbl in self.events]
@@ -7724,8 +7751,6 @@ class PartyConfigFrame(ttk.Frame):
             ttk.Label(self.dyn, text="  (Dị Giới, START_CITY_ID=49942)").pack(side="left")
         elif mode == "stand":
             ttk.Label(self.dyn, text="→ Login ở đâu đứng yên đó (START_CITY_ID = 0)").pack(side="left")
-        else:
-            ttk.Label(self.dyn, text="→ Dọn dẹp túi đồ (chưa làm — placeholder)").pack(side="left")
 
     def _apply_dg_level_now(self):
         """Nut 'Ap dung ngay' cho Cap quai DG.
@@ -7830,6 +7855,33 @@ class PartyConfigFrame(ttk.Frame):
         self.train_maps[:] = [(int(k), v.get("name", k), v.get("mobs", []), (v.get("group") or _DEFAULT_GROUP)) for k, v in tm_raw.items()]
         self._render_dyn()
 
+    def _quest_users(self):
+        """Username cac dong acc DANG TICK - nguon cho o "Chủ party"."""
+        return [r["u"].get().strip() for r in self.acc_rows
+                if r["u"].get().strip() and r["on"].get()]
+
+    def _render_quest(self):
+        """Mode quest: Chuoi quest + Chu party.
+
+        KHONG co o chon thanh tap ket (user 03/10: moi quest gan mot thanh khac) - bot tu gom party
+        ve thanh gan buoc ke tiep cua chu party (`run_party_digioi._quest_thanh_tap_ket`)."""
+        ttk.Label(self.dyn, text="Quest:", width=10).pack(side="left")
+        labels = [lbl for _k, lbl in self.quests]
+        ttk.Combobox(self.dyn, textvariable=self.quest_var, state="readonly", width=30,
+                     values=labels).pack(side="left")
+        cur = self._preset.get("quest_key")
+        qi = next((i for i, (k, _l) in enumerate(self.quests) if k == cur), 0)
+        if labels:
+            self.quest_var.set(labels[qi])
+        ttk.Label(self.dyn, text="Chủ party:").pack(side="left", padx=(10, 0))
+        cb = ttk.Combobox(self.dyn, textvariable=self.quest_leader_var, state="readonly",
+                          width=16)
+        cb.configure(postcommand=lambda: cb.configure(values=self._quest_users()))
+        cb.pack(side="left")
+        users = self._quest_users()
+        if self.quest_leader_var.get() not in users:
+            self.quest_leader_var.set(users[0] if users else "")
+
     def get_data(self):
         mode = _LABEL_MODE.get(self.mode_var.get(), "digioi")
         sc, mob_index, city_flag = 0, 0, 0
@@ -7872,7 +7924,7 @@ class PartyConfigFrame(ttk.Frame):
             if r.get("settings"):
                 acc["settings"] = r["settings"]
             accs.append(acc)
-        if self.no_leader_var.get() and accs:
+        if self.no_leader_var.get() and accs and mode != "quest":
             accs = [{"u": "", "p": "", "on": True}] + accs   # slot 0 trong = KHONG co chu PT
         # server: label -> key
         srv = next((k for k, lbl in self.servers if lbl == self.server_var.get()),
@@ -7948,6 +8000,10 @@ class PartyConfigFrame(ttk.Frame):
         if mode == "event":
             data["event_key"] = event_key
             data["loandau_mot_tran"] = bool(self.loandau_mot_tran_var.get())
+        if mode == "quest":
+            data["quest_key"] = next((k for k, lbl in self.quests if lbl == self.quest_var.get()),
+                                     self.quests[0][0] if self.quests else "")
+            data["quest_leader"] = self.quest_leader_var.get().strip()
         return data
 
 
@@ -7981,6 +8037,11 @@ def _doi_che_do_preset(preset, src):
         d["start_city_id"], d["city_flag"] = 0, 0
         d["event_key"] = src.get("event_key", "")
         d["loandau_mot_tran"] = bool(src.get("loandau_mot_tran", False))
+    elif new == "quest":
+        # Chuoi quest dong bo theo party mau; CHU PARTY la acc rieng tung party nen KHONG chep -
+        # party chua chon thi bot lay acc dau danh sach. Thanh tap ket bot tu chon theo quest.
+        d["start_city_id"], d["city_flag"] = 0, 0
+        d["quest_key"] = src.get("quest_key", "")
     else:
         d["start_city_id"], d["city_flag"] = src.get("start_city_id", 0), src.get("city_flag", 0)
     return d

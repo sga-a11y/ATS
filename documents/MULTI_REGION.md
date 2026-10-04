@@ -73,6 +73,9 @@ REGIONS["tsm"] = {login: "accpwd",   xor_key: 0xAD, encoding: "big5",      utc_o
       = chỉ VTC. GUI/APK chỉ hiện event của game đang chọn. Bot chặn ở 1 chỗ
       (`region.chan_event_sai_game`): party mode event mà event không thuộc game → về `stand` + log.
       Lịch giờ event ghi theo **giờ server của bản đó** (`server_now()`).
+  - **2K (`nhi_kieu`) mở cho TSM từ 04/10/2026** (user: TSM cũng có 2K chủ nhật, giờ như VTC).
+    Data (select `03000100`, map 12921/12922–12959, toạ độ) lấy từ VTC, **chưa đối chiếu pcap
+    TSM** — lần chạy đầu kẹt thì đọc log + capture. 40 NPC / Loạn đấu vẫn chỉ VTC.
 - [x] **Đổi quà event theo game**: cache `event_exchange.json` (VTC, giữ tên cũ) /
       `event_exchange_tsm.json` (+ `_sig.txt` riêng). Tick đổi quà reset theo chữ ký của đúng game.
 - [x] Tự lấy danh sách server TSM từ CDN (30/09): `Region.cdn` — TSM `https://tsrtwftp.chinesegamer.net/tsr/`

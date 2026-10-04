@@ -1,5 +1,9 @@
 # EVENT NHỊ KIỀU (2K) — thiết kế auto đánh nhiều tầng
 
+> **04/10/2026 — mở cho bản TSM** (`"games": ["vtc", "tsm"]` trong `events.json`): TSM cũng có 2K
+> chủ nhật, giờ như VTC. Toàn bộ data bên dưới là của VTC, **chưa đối chiếu pcap TSM**. Xem
+> [MULTI_REGION.md](MULTI_REGION.md).
+
 Trạng thái: **đang chờ pcap** (chưa code). Event hiện bị ẩn từ 30/07 (`e8f015b`, lý do ghi
 "chưa làm xong" = thiếu đúng phần auto đánh mô tả dưới đây).
 
@@ -364,3 +368,31 @@ if opcode == 0x14 and (self.in_team_dungeon()
 | Server trả lời chậm, timeout 3s quá ngắn | Capture: server trả lời sau **0.06s** |
 | Chưa đăng ký sự kiện (`0x4d`) do relogin sẵn trong map | Đang ở trong map event thì tới điểm là đánh được |
 | `_team_dungeon_until` chưa đặt lúc bấm cổng | Có đặt; và cổng chỉ là hậu quả của việc không đánh được |
+
+---
+
+## 04/10/2026 — Kẹt cổng mà THẮNG THIẾU → quay lại bấm từng điểm
+
+Party 3 (leader `laochin`) kẹt cổng tầng 12929 từ 11:26 tới 12:59 — **43 vòng** "KET o cong":
+
+```
+11:23:49 [laochin] 2K: xong tran idx=3
+11:24:00 [laochin] 2K: idx=4 khong mo thoai sau 3s -> coi nhu diem da het quai
+11:24:08 [laochin] SERVER NGAT KET NOI: gui goi lien tuc qua nhanh (ma 13)   <- dang bam idx=5
+11:24:41 [laochin] (LEADER) 2K: Thang Tháp (12929) chi thang 1/3 diem -> van thu qua cong
+11:26:30 [laochin] (LEADER) 2K: KET o cong Thang Tháp (12929)
+```
+
+`k` đếm theo lần thử nên idx 4/5 bị tính "đã đi qua" dù **chưa đánh** (một cái không mở thoại, một
+cái rớt mạng mã 13 giữa lúc bấm). `k = 3` → `tinh_buoc` chỉ trả `len_tang` → kẹt vĩnh viễn.
+
+Đếm log 04/10 (cả ngày, mọi party): thắng đủ → qua cổng **351** lần; thắng thiếu → KET **737**
+lần, qua chỉ **78** lần (72 là thắng 0 = login lại giữa tầng đã clear). Cùng lúc 11:24 có 12 acc
+bị kick mã 13 → ~14 leader khác kẹt y hệt.
+
+**Sửa** (`_fc_lam_buoc_engine_moi`): KET ở cổng mà `thang < k` → đặt lại `k = 0` (**giữ** `thang`)
+→ nhịp sau engine giao lại `2k_danh` từ điểm 1. Điểm hết quái thật chỉ tốn 3s/điểm, còn điểm bị
+bỏ oan thì được đánh. Thắng đủ mà vẫn KET (`tonba`, `tksau`, `trusauu` 04/10) **không** đặt lại —
+nguyên nhân khác, **chưa biết**. Vẫn giữ luật `k` đếm theo lần thử (không quay lại điểm 1 mỗi
+trận). Cả `2k_danh` lẫn `2k_len_tang` đều chỉ được giao khi ảnh chụp đủ đội (L0).
+`tests/test_engine_moi_2k.py::TestKetCongMaThangThieuThiQuayLaiDanh` neo lại.

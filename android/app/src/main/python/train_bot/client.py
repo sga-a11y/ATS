@@ -2502,6 +2502,7 @@ class GameClient:
         self._gate_transit = False   # True khi dang gui chuoi 0x14 qua cong -> combat KHONG gui 0x32
         self._in_scene_gate = False  # True khi dang qua cong scene-walk -> in_combat() KHONG ha in_battle
         self._gate_choice_pending = False  # server dang CHO CHON trong su kien cong (resultType 6)
+        self._qev = None   # MODE QUEST: trang thai su kien dang chay (quest_kich_hoat/quest_hoi_thoai)
         self._gate_choice_try = 0          # da thu may ma trong GATE_CHOICE_CODES
         self._gate_event_logged = 0        # so buoc su kien da in trong lan qua cong nay
         self._gate_choice_sent_at = 0.0    # luc vua gui lua chon (chan 0x14 06 ngay sau)
@@ -3042,6 +3043,138 @@ class GameClient:
         self._gate_choice_pending = True
         log.info("[%s] CONG map %s: server CHO CHON (resultType 6) goi=%s -> se tra loi",
                  self._label, self.current_map, pkt[7:].hex())
+
+    # ------------------------------------------------------------------ MODE QUEST: su kien NPC
+    # Mo phong DUNG co cua client (`_lua_dec/Logic/Event/EventManager.lua` + `EventHandler.lua`,
+    # KNOWLEDGE.md muc capture quest 10384): `C:020-006` (0x14 06) CHI gui khi `conduct` bat va KHONG
+    # `session` / `interacting` / trong tran. Gui thua luc server khong cho = "su kien vi pham" ma 5
+    # -> ngat ket noi; gui luc dang giai tran = ma 47.
+    QEV_TALK_DELAY = 0.7     # thoai (resultType 1): client cho nguoi bam qua
+    # Movie (resultType 5): client cho movie chieu xong moi bat conduct. Capture do duoc ~9s (10384)
+    # va ~15s (10528). Bot khong chieu movie -> cho co dinh. CHUA BIET server co kiem thoi gian nay.
+    QEV_MOVIE_WAIT = 16.0
+    QEV_SCENE_WAIT = 1.0     # S:020-007 doi scene: client cho loading xong roi `0x0c 01` + `0x14 06`
+    _QEV_CONDUCT_SUBS = (10, 11, 13, 14, 15, 16, 17)   # S:020-0xx bat conduct (protocal.lua)
+
+    def _observe_quest_event(self, opcode, pkt):
+        """Luong recv: cap nhat co su kien khi DANG chay quest (`self._qev`)."""
+        q = getattr(self, "_qev", None)   # getattr: client dung bang __new__ (test) khong co
+        if q is None or opcode != 0x14 or len(pkt) < 9 or pkt[8] != 0:
+            return
+        sub = pkt[7]
+        now = time.time()
+        q["t_last"] = now
+        if 1 <= sub <= 6 and len(pkt) >= 18:
+            rtype, style = pkt[13], pkt[17]
+            q["session"] = False
+            q["vet"].append("r%d" % rtype)
+            if rtype in (0, 2, 4):
+                q["conduct"], q["ready"] = True, now
+            elif rtype == 1:
+                q["conduct"], q["ready"] = True, now + self.QEV_TALK_DELAY
+            elif rtype == 3:
+                q["session"] = True
+            elif rtype == 5:
+                q["conduct"], q["ready"] = True, now + self.QEV_MOVIE_WAIT
+            elif rtype == 6:
+                # style 0: conduct bat + cho chon; style 1 (doi truong): cho chon, KHONG bat conduct
+                q["interacting"] = True
+                q["conduct"] = style == 0
+                q["ready"] = now + self.QEV_TALK_DELAY
+        elif sub == 7:
+            q["session"], q["conduct"], q["doi_scene"] = False, True, True
+            q["ready"] = now + self.QEV_SCENE_WAIT
+            q["vet"].append("scene")
+        elif sub == 8:
+            q["het"] = True
+            q["kind"] = pkt[9] if len(pkt) > 9 else None
+            q["vet"].append("het")
+        elif sub == 9:
+            q["session"], q["tran"] = False, True
+            q["vet"].append("tran")
+        elif sub in self._QEV_CONDUCT_SUBS:
+            q["session"], q["conduct"] = False, True
+            q["ready"] = max(q.get("ready", 0.0), now + 0.2)
+        elif sub == 12:
+            q["session"] = True
+
+    def quest_kich_hoat(self, kieu: str, idx: int) -> None:
+        """Kich hoat su kien quest: kieu 'npc' (C:020-001 ClickNpc) hoac 'cua' (C:020-008 MeetDoor).
+
+        NPC: client that gui `0x20 020008` truoc `0x14 01 [npc u16]` (ca 2 capture quest).
+        TriggerEvent cua client dat session=True cho kieu 1..6 (NPC), KHONG cho cua (8).
+        """
+        self._qev = {"conduct": False, "session": kieu == "npc", "interacting": False,
+                     "tran": False, "het": False, "doi_scene": False, "ready": 0.0,
+                     "t_last": time.time(), "kind": None, "vet": []}
+        if kieu == "npc":
+            self.send(0x20, b"\x02\x00\x08")
+            time.sleep(0.3)
+            self.send(0x14, b"\x01\x00" + int(idx).to_bytes(2, "little"))
+        else:
+            self.send(0x14, b"\x08\x00" + int(idx).to_bytes(2, "little"))
+
+    def quest_hoi_thoai(self, chon=(), abort=None, im_lang: float = 60.0,
+                        toi_da: float = 600.0) -> str:
+        """Chay su kien vua kich hoat toi khi server bao HET (S:020-008).
+
+        chon: ma tra loi theo THU TU cho moi lan server dung cho chon (resultType 6) - lay tu
+        capture, KHONG doan (doan sai = ngat ket noi). Het ma ma server van hoi -> dung, tra
+        "can_chon".
+        Tra: "xong" | "can_chon" | "im_lang" (server im qua `im_lang` giay) | "dung" | "het_gio".
+        """
+        q = self._qev
+        if q is None:
+            return "dung"
+        chon = list(chon or ())
+        t0 = time.time()
+        try:
+            while True:
+                if not self.running or (abort is not None and abort()):
+                    return "dung"
+                now = time.time()
+                if q["het"]:
+                    return "xong"
+                if now - t0 > toi_da:
+                    return "het_gio"
+                if q["tran"] or self.state.in_battle:
+                    # Trong tran: KHONG gui gi (ma 47). Danh xong server TU gui buoc tiep.
+                    if self.in_combat(idle_secs=1.0) or self._in_battle_end_grace():
+                        q["t_last"] = now
+                        time.sleep(0.3)
+                        continue
+                    q["tran"] = False
+                if q["interacting"]:
+                    if not chon:
+                        log.warning("[%s] QUEST: server CHO CHON nhung kich ban khong con ma "
+                                    "(vet=%s) -> DUNG, khong doan", self._label, q["vet"][-12:])
+                        return "can_chon"
+                    if now < q["ready"]:
+                        time.sleep(0.1)
+                        continue
+                    code = int(chon.pop(0))
+                    log.info("[%s] QUEST: chon ma %d", self._label, code)
+                    # Dat co TRUOC khi gui: goi tra loi cua server co the toi (luong recv) truoc
+                    # khi dong duoi chay -> dat sau la ghi de co server vua bat.
+                    q["interacting"] = False
+                    q["ready"] = time.time() + 0.1
+                    self.send(0x14, b"\x09\x00" + bytes([code]))
+                    continue
+                if q["conduct"] and not q["session"] and now >= q["ready"]:
+                    if q["doi_scene"]:
+                        q["doi_scene"] = False
+                        self.send(0x0c, b"\x01\x00")
+                        time.sleep(0.6)
+                    q["conduct"], q["session"] = False, True   # TRUOC khi gui (nhu tren)
+                    self.send(0x14, b"\x06\x00")
+                    continue
+                if now - q["t_last"] > im_lang:
+                    log.warning("[%s] QUEST: server im %.0fs giua su kien (vet=%s)",
+                                self._label, now - q["t_last"], q["vet"][-12:])
+                    return "im_lang"
+                time.sleep(0.1)
+        finally:
+            self._qev = None
 
     def _send_gate_choice(self) -> bool:
         """Tra loi mot buoc CHON o cong. True = da gui.
@@ -4082,9 +4215,17 @@ class GameClient:
             # Ghi nhan CLAIM theo TUNG BANG (khong chi bang daily) - bang event dung chung co che.
             _gid = int.from_bytes(body[3:5], "little")
             if body[2] == 1 and 1 <= body[5] <= 7:
-                self._claimed_by_grid.setdefault(_gid, set()).add(body[5])
+                L = body[5]
+                self._claimed_by_grid.setdefault(_gid, set()).add(L)
+                # Ghi luon vao BitFlag (client: canGetAward = 2) -> lan tinh lai tu BitFlag sau
+                # khong xoa mat qua vua nhan khi server chua kip gui S:081-001.
                 if _gid == 1:
-                    self._claimed_lines.add(body[5])
+                    self._claimed_lines.add(L)
+                    self._bitflag_set(self._Q_LINE_FLAG[L], True)
+                else:
+                    aw = ((getattr(config, "JIUGONGGE", {}) or {}).get(_gid) or {}).get("awards") or []
+                    if L <= len(aw) and aw[L - 1].get("flag"):
+                        self._bitflag_set(aw[L - 1]["flag"], True)
 
     # getFlag cua 7 phan thuong BANG 1 (JiugonggeInfo_C.dat: awards[i].getFlag) - line L -> 1540+L.
     # Client: award "DA NHAN" <=> BitFlag.Get(getFlag) (Logic_Jiugongge.SetJiugonggeState:
@@ -4104,19 +4245,26 @@ class GameClient:
         if not self._bitflags_loaded:
             return
         got = {L for L, fid in self._Q_LINE_FLAG.items() if self._bitflag_get(fid)}
-        # HOP voi xac nhan giua phien (S:91-3 -> _claimed_lines) de khong mat thong tin vua claim.
-        self._claimed_lines |= got
-        self._claimed_by_grid.setdefault(1, set()).update(got)
+        # GAN LAI (khong HOP) giong Jiugongge.UpdateState: acc offline luc 0h login thi server gui
+        # bang BitFlag CU (7 qua da nhan) roi moi tat co -> HOP thi giu "da nhan" cua hom qua mai
+        # (03/10: 146 acc 5/9 o ma "da nhan truoc=[1..7]" -> khong claim). Xac nhan S:91-3 giua
+        # phien da duoc ghi thang vao BitFlag (_on_daily_quest_packet) nen khong mat.
+        if got != self._claimed_lines:
+            log.info("[%s] Qua bingo da nhan (BitFlag): %s -> %s",
+                     self._label, sorted(self._claimed_lines), sorted(got))
+        self._claimed_lines = got
+        self._claimed_by_grid[1] = set(got)
         self._claimed_loaded = True
         # CAC BANG KHAC (event...): co "da nhan" doc tu jiugongge.json (crack_jiugongge.py).
         for gid, info in (getattr(config, "JIUGONGGE", {}) or {}).items():
             if gid == 1:
                 continue
             aw = (info or {}).get("awards") or []
+            if not aw:
+                continue
             got2 = {L for L in range(1, 8)
                     if L <= len(aw) and self._bitflag_get(aw[L - 1].get("flag"))}
-            if got2:
-                self._claimed_by_grid.setdefault(gid, set()).update(got2)
+            self._claimed_by_grid[gid] = got2
 
     def _bitflag_get(self, flag_id: int):
         """Tra ve True/False neu da co full BitFlag, None neu server chua sync."""
@@ -4224,6 +4372,7 @@ class GameClient:
         self._observe_team_dungeon_packet(opcode, pkt)
         self._observe_npc40_packet(opcode, pkt)
         self._observe_loandau_packet(opcode, pkt)
+        self._observe_quest_event(opcode, pkt)
         # Su kien cong (cau Gioi kieu...) phai nghe o DAY, KHONG nhet trong _observe_npc40_packet:
         # ham do mo dau bang `if not self._npc40_started: return` nen chi chay khi DANG lam nhiem vu
         # 40 NPC. Qua cong thi co do TAT -> handler khong bao gio duoc goi. Day la ly do that su bot
@@ -4875,6 +5024,36 @@ class GameClient:
                 self._vo_gioi = _bc
                 log.info("[%s] SERVER BAO CHUYEN (vo gioi): %s:%s serverId=%s SN=%s",
                          self._label, _bc["host"], _bc["port"], _bc["server_id"], _bc["sn"])
+        # S:077-003 <入場結果> +結果(1) - tra loi `0x4d [select]` cua go_to_event (protocal.lua:12710).
+        # 0 OK | 1 can di bo (+scene+x+y) | 2 khong co activity | 3 sai scene dich
+        # | 4 chuc nang dang dong (string 22173) | 5 dang trong doi. Truoc 02/10 KHONG log -> 9121 lan "CHUA TOI" khong biet vi sao.
+        # S:077-001 <活動開始時間> +ID(2) +start(8) +end(8) / S:077-002 <活動狀態> +ID(2) +state(1)
+        # (0 khong 1 mo 2 ket thuc 3 dang ky). Client chi gui 077-003 khi state 1/3 (UIActivity.lua:248).
+        # Log 1 lan / gia tri / tien trinh - de biet GIO THAT server mo event, khong doan lich.
+        if opcode == 0x4d and len(pkt) >= 12 and pkt[7:9] in (b"\x01\x00", b"\x02\x00"):
+            try:
+                _aid = int.from_bytes(pkt[9:11], "little")
+                if pkt[7] == 1 and len(pkt) >= 27:
+                    import datetime as _dt
+                    _ole = lambda b: (_dt.datetime(1899, 12, 30) + _dt.timedelta(
+                        days=struct.unpack("<d", bytes(b))[0])).strftime("%a %d/%m %H:%M")
+                    _v = "gio %s -> %s" % (_ole(pkt[11:19]), _ole(pkt[19:27]))
+                else:
+                    _v = "state=%d" % pkt[11]
+                _seen = GameClient.__dict__.get("_ACT_LOGGED")
+                if _seen is None:
+                    _seen = set(); GameClient._ACT_LOGGED = _seen
+                if (_aid, _v) not in _seen:
+                    _seen.add((_aid, _v))
+                    log.info("[%s] ACTIVITY %d: %s", self._label, _aid, _v)
+            except Exception:
+                pass
+        if opcode == 0x4d and len(pkt) >= 10 and pkt[7:9] == b"\x03\x00":
+            _kq = pkt[9]
+            self._ket_qua_vao_event = _kq
+            log.info("[%s] VAO EVENT: server tra S:077-003 ma %s (%s) raw=%s", self._label, _kq,
+                     {0: "OK", 1: "can di bo", 2: "khong co activity", 3: "sai scene dich",
+                      4: "chuc nang dang dong (22173 功能關閉中)", 5: "dang trong doi"}.get(_kq, "?"), bytes(pkt[7:]).hex())
         # S:001-021 <通知連回原SERVER> GSID(2) = het event lien server, ve may cu.
         if opcode == 0x01 and pkt[7:9] == b"\x15\x00":
             log.info("[%s] SERVER BAO VE MAY CU (het event lien server)", self._label)
@@ -5329,6 +5508,9 @@ class GameClient:
                 pass
             at = self._pet_marker_to_atype(marker)
             if at is not None:
+                if pid:
+                    # atype -> pid: rule skill set RIENG tung pet (key = pid) moi tra dung con
+                    self.state.multi_pet_pid[at] = pid
                 sk = self.pet_usable_skills(pid)
                 if sk:
                     self.state.multi_pet_skills[at] = sk
@@ -8986,10 +9168,10 @@ class GameClient:
         """STATUS-DRIVEN: query 9 o -> o CHUA xong (bot lam duoc) thi LAM -> re-query -> claim
         hang/cot du 3 o (0x5b 03 00 01 00 [line][id]) + TONG KET neu du 6.
           heavy=True (mac dinh): lam ca nhiem vu NANG (boss the gioi o2 - teleport di) + nhe.
-          heavy=False: CHI nhiem vu NHE (gacha o4/o6, hop o7 - khong roi cho) + claim. Dung cho
+          heavy=False: CHI nhiem vu NHE (hop o7 - khong roi cho) + claim. Dung cho
             mode DI GIOI (goi sau khi VAO DG, tranh boss teleport van ra khoi DG; o1/o2/o5 nang
             se claim_daily_quests(heavy=True) goi SAU khi xong DG).
-        Chay moi login: o da xong -> bo qua; gacha thieu xu lan truoc -> login sau tu retry."""
+        Chay moi login: o da xong -> bo qua. (Gacha o4/o6 chay rieng o viec vat login.)"""
         # CHI tin trang thai server tra LUC NAY (KHONG cache): moi lan query server gui lai DAY DU o da
         # xong (020001010009...). Cache cu thua + tung POISON (parse sai o9 -> luu nham -> relogin van bao xong).
         self._quest_cells = set()
@@ -9000,12 +9182,10 @@ class GameClient:
             if self._claimed_loaded:
                 break
             time.sleep(0.2)
-        # lam cac nhiem vu con thieu (gacha tu check xu, hop tu check nguyen lieu)
+        # lam cac nhiem vu con thieu (hop tu check nguyen lieu).
+        # o 6/4 (gacha pet/card) KHONG lam o day: gacha chay o viec vat login (truoc van tieu),
+        # tu check counter shop RoleCount 0x11/0x12 + du xu - xem claim_gacha_pet.
         acted = False
-        if 6 not in done:
-            self.claim_gacha_pet();  acted = True   # o 6 = gacha pet (NHE)
-        if 4 not in done:
-            self.claim_gacha_card(); acted = True   # o 4 = gacha card (NHE)
         if 7 not in done:
             self.do_combine_item();  acted = True   # o 7 = hop vat pham (NHE)
         if heavy and 2 not in done:
@@ -9404,16 +9584,30 @@ class GameClient:
         while self.xu is None and time.time() - t0 < timeout:
             time.sleep(0.2)
 
+    # Counter mua/ngay cua banner gacha (shop 5 'Doro') - S2C 0x55 RoleCount, server ban ngay sau
+    # khi quay (gacha_cap.pcap: pet -> sid 0x11 = 1/1, card -> sid 0x12 = 1/1). Client
+    # (Mall.IsCanBuy) chan mua khi RoleCount.Get(flag) >= dayCount; chua co sid -> coi = 0.
+    GACHA_RC_PET = 0x11
+    GACHA_RC_CARD = 0x12
+
+    def _gacha_da_mua(self, sid: int) -> bool:
+        val, mx = self.role_counts.get(sid, (0, 1))
+        return val >= max(1, mx)
+
     def claim_gacha_pet(self):
         """Gacha PET hang ngay (1 lan/ngay). C2S 0x42 (draw) + 3x 0x5b (reveal) - replay client that.
-        Chi gacha khi xu >= 9000; thieu xu -> bo qua, login sau thu lai.
-        Goi tu claim_daily_quests khi o 6 CHUA xong (status-driven, khong gate _daily_done)."""
+        Check SHOP: counter RoleCount 0x11 da du -> bo qua; chua mua + du xu (>= 9000) -> quay.
+        Goi tu viec vat login (lam_login_chores, TRUOC van tieu) - khong con dua vao o bingo 6."""
+        if self._gacha_da_mua(self.GACHA_RC_PET):
+            log.info("[%s] Gacha pet: shop bao DA quay hom nay -> bo qua", self._label)
+            return
         self._wait_xu()
         if self.xu is None or self.xu < self.GACHA_COST:
             log.info("[%s] Gacha pet: thieu xu (%s < %d) -> bo qua",
                      self._label, self.xu, self.GACHA_COST)
             return
         self.send(0x42, bytes.fromhex("0100050101015bb22823010000"))
+        self.role_counts[self.GACHA_RC_PET] = (1, 1)   # server 0x55 se ghi de gia tri that
         time.sleep(0.5)
         for _ in range(3):
             self.send(0x5b, bytes.fromhex("0200010100063400"))
@@ -9422,14 +9616,17 @@ class GameClient:
         log.info("[%s] Gacha PET hang ngay (xu con ~%d)", self._label, self.xu)
 
     def claim_gacha_card(self):
-        """Gacha CARD hang ngay. Tuong tu gacha pet, banner id = 5cb2.
-        Goi tu claim_daily_quests khi o 4 CHUA xong (status-driven, khong gate _daily_done)."""
+        """Gacha CARD hang ngay. Tuong tu gacha pet, banner id = 5cb2, counter shop RoleCount 0x12."""
+        if self._gacha_da_mua(self.GACHA_RC_CARD):
+            log.info("[%s] Gacha card: shop bao DA quay hom nay -> bo qua", self._label)
+            return
         self._wait_xu()
         if self.xu is None or self.xu < self.GACHA_COST:
             log.info("[%s] Gacha card: thieu xu (%s < %d) -> bo qua",
                      self._label, self.xu, self.GACHA_COST)
             return
         self.send(0x42, bytes.fromhex("0100050101025cb22823010000"))
+        self.role_counts[self.GACHA_RC_CARD] = (1, 1)
         time.sleep(0.5)
         for _ in range(3):
             self.send(0x5b, bytes.fromhex("0200010100043200"))

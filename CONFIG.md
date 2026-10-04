@@ -55,7 +55,6 @@
 | `train` | Train map | map_id (trong train_maps.json) | `mob_index` (điểm quái) |
 | `city` | Tập trung về thành rồi đứng yên | city_id (trong cities.json) | `city_flag` |
 | `stand` | Login đâu đứng yên đó | 0 | — |
-| `cleanbag` | Dọn túi (chưa làm) | 0 | — |
 
 ### Quy ước accounts
 - **Dòng đầu = chủ PT (leader)** — bot tự mời + dẫn train + set quân sư.

@@ -1,0 +1,491 @@
+{
+ "cs1_cu_thu": {
+  "label": "Chuyển sinh 1 - Bát đại Cự Thú",
+  "quests": [
+   {
+    "id": 10324,
+    "bit": 174,
+    "name": "Thiên Độc Sơn Động",
+    "nhan": "Uyển Thành - Dự Châu",
+    "kich_ban": true,
+    "nhan_tai": {
+     "scene": 13243,
+     "x": 190,
+     "y": 470,
+     "npc": 1,
+     "chon": []
+    },
+    "steps": {
+     "1": {
+      "desc": "Đi thám thính kho báu ở động Thiên Độc",
+      "conds": [],
+      "scene": 13022,
+      "x": 830,
+      "y": 360,
+      "ev_kind": 1,
+      "ev_id": 2,
+      "team": false
+     },
+     "2": {
+      "desc": "Đi tìm kho báu ở động Thiên Độc",
+      "conds": [],
+      "scene": 13513,
+      "x": 1490,
+      "y": 290,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false,
+      "cua": 5
+     },
+     "3": {
+      "desc": "Đi tìm kho báu ở động Thiên Độc",
+      "conds": [],
+      "scene": 13519,
+      "x": 1760,
+      "y": 1000,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false,
+      "cua": 2,
+      "chon": [
+       30
+      ]
+     },
+     "4": {
+      "desc": "Tiếp tục đi tìm kho báu ở động Thiên Độc",
+      "conds": [],
+      "scene": 13519,
+      "x": 540,
+      "y": 1105,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false,
+      "cua": 3
+     },
+     "5": {
+      "desc": "Tiếp tục đi tìm kho báu ở động Thiên Độc",
+      "conds": [],
+      "scene": 13519,
+      "x": 540,
+      "y": 1105,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false
+     }
+    }
+   },
+   {
+    "id": 10326,
+    "bit": 175,
+    "name": "Phẫn Nộ Của Biển",
+    "nhan": "Làng Phùng Lai - Thanh Châu",
+    "kich_ban": true,
+    "nhan_tai": {
+     "scene": 11021,
+     "x": 970,
+     "y": 350,
+     "npc": 4,
+     "chon": [
+      30
+     ]
+    },
+    "steps": {
+     "1": {
+      "desc": "Đến Ngư Trường điều tra xem sự việc liên quan đến thần biển",
+      "conds": [],
+      "scene": 58000,
+      "x": 2207,
+      "y": 282,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false,
+      "cua": 2
+     },
+     "2": {
+      "desc": "Thành công đánh bại quái thú, xem xem đã xảy ra chuyển gì",
+      "conds": [],
+      "scene": 58000,
+      "x": 2207,
+      "y": 282,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false
+     },
+     "3": {
+      "desc": "Thành công đánh bại quái thú, xem xem đã xảy ra chuyển gì",
+      "conds": [],
+      "scene": 58000,
+      "x": 2207,
+      "y": 282,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false
+     }
+    }
+   },
+   {
+    "id": 10328,
+    "bit": 176,
+    "name": "Thú To Chạy Thoát",
+    "nhan": "Động Bạch Sơn - Cao Câu Ly",
+    "kich_ban": true,
+    "nhan_tai": {
+     "scene": 56501,
+     "x": 1170,
+     "y": 1330,
+     "cua": 4,
+     "chon": [
+      30
+     ]
+    },
+    "steps": {
+     "1": {
+      "desc": "Tiếp tục thám hiểm",
+      "conds": [],
+      "scene": 56517,
+      "x": 430,
+      "y": 380,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false,
+      "cua": 2
+     },
+     "2": {
+      "desc": "Hình như có vật gì xuất hiện",
+      "conds": [],
+      "scene": 56517,
+      "x": 430,
+      "y": 380,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false
+     },
+     "3": {
+      "desc": "Mau rời khỏi khu vực có quái thú xuất hiện",
+      "conds": [],
+      "scene": 56501,
+      "x": 1235,
+      "y": 1455,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false,
+      "cua": 5
+     },
+     "4": {
+      "desc": "Cuối cùng đã đánh bại được quái thú, đi đến xem nào",
+      "conds": [],
+      "scene": 56501,
+      "x": 1235,
+      "y": 1455,
+      "ev_kind": 0,
+      "ev_id": 0,
+      "team": false
+     }
+    }
+   },
+   {
+    "id": 10360,
+    "bit": 192,
+    "name": "Thú Lớn Hỏa Diệm",
+    "nhan": "Nhà Bắc Tinh Quân",
+    "kich_ban": true,
+    "nhan_tai": {
+     "scene": 55003,
+     "x": 390,
+     "y": 350,
+     "npc": 2,
+     "chon": [
+      30
+     ]
+    },
+    "steps": {
+     "1": {
+      "desc": "Đến Ngụy Quốc hải động tìm tung tích của Bàn Cổ Cự Thú",
+      "conds": [],
+      "scene": 57501,
+      "x": 500,
+      "y": 1000,
+      "ev_kind": 2,
+      "ev_id": 6,
+      "team": false
+     },
+     "2": {
+      "desc": "Tiếp tục tìm tung tích của Bàn Cổ Cự Thú ở Ngụy Quốc hải động",
+      "conds": [],
+      "scene": 57511,
+      "x": 620,
+      "y": 960,
+      "ev_kind": 2,
+      "ev_id": 2,
+      "team": true
+     },
+     "3": {
+      "desc": "Tiếp tục tìm tung tích của Bàn Cổ Cự Thú ở Ngụy Quốc hải động",
+      "conds": [],
+      "scene": 57511,
+      "x": 380,
+      "y": 240,
+      "ev_kind": 2,
+      "ev_id": 3,
+      "team": true,
+      "chon": [
+       31
+      ]
+     },
+     "4": {
+      "desc": "Bạn chọn làm bộ hạ của Bàn Cổ Cự Thú, đến lãnh thường nào",
+      "conds": [],
+      "scene": 57511,
+      "x": 380,
+      "y": 240,
+      "ev_kind": 1,
+      "ev_id": 5,
+      "team": false
+     },
+     "5": {
+      "desc": "Về phùng lai tiên đảo tìm bắc đẩu tinh quân",
+      "conds": [],
+      "scene": 55003,
+      "x": 400,
+      "y": 400,
+      "ev_kind": 1,
+      "ev_id": 2,
+      "team": false
+     },
+     "6": {
+      "desc": "Về phùng lai tiên đảo tìm bắc đẩu tinh quân",
+      "conds": [],
+      "scene": 55003,
+      "x": 400,
+      "y": 400,
+      "ev_kind": 1,
+      "ev_id": 2,
+      "team": false
+     }
+    }
+   },
+   {
+    "id": 10384,
+    "bit": 204,
+    "name": "Hang Sâu Tuyết Động",
+    "nhan": "Thôn Vọng Bình - Liêu Đông",
+    "kich_ban": true,
+    "nhan_tai": {
+     "scene": 19011,
+     "x": 610,
+     "y": 810,
+     "npc": 1,
+     "chon": []
+    },
+    "steps": {
+     "1": {
+      "desc": "Đi tìm Lương Mậu hỏi tin tức Cự Thú",
+      "conds": [],
+      "scene": 19174,
+      "x": 450,
+      "y": 350,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": false
+     },
+     "2": {
+      "desc": "Đến tuyế động Liêu Đông điều tra tung tích Cự Thú",
+      "conds": [],
+      "scene": 19506,
+      "x": 610,
+      "y": 330,
+      "ev_kind": 1,
+      "ev_id": 2,
+      "team": true
+     },
+     "3": {
+      "desc": "Về làng Vọng Bình báo kết quả cho Lương Mậu",
+      "conds": [],
+      "scene": 19174,
+      "x": 450,
+      "y": 350,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": false
+     }
+    }
+   },
+   {
+    "id": 10528,
+    "bit": 280,
+    "name": "Sâm Lan Thái Hồ",
+    "nhan": "Đại lộ Kiến Nghiệp - Giang Đông",
+    "kich_ban": true,
+    "nhan_tai": {
+     "scene": 18001,
+     "x": 1310,
+     "y": 250,
+     "npc": 4,
+     "chon": []
+    },
+    "steps": {
+     "1": {
+      "desc": "Đi đến quan phủ Kiến Nghiệp kiếm Trình Phổ",
+      "conds": [],
+      "scene": 18301,
+      "x": 310,
+      "y": 450,
+      "ev_kind": 1,
+      "ev_id": 4,
+      "team": false,
+      "chon": [
+       30
+      ]
+     },
+     "2": {
+      "desc": "Thám thính thủy động Thái Hồ",
+      "conds": [],
+      "scene": 18506,
+      "x": 3660,
+      "y": 360,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": false,
+      "chon": [
+       30
+      ],
+      "truoc": [
+       {
+        "cua": 3,
+        "x": 3651,
+        "y": 365
+       }
+      ]
+     },
+     "3": {
+      "desc": "Nói chuyện với Hỏa Đức Tinh Quân",
+      "conds": [],
+      "scene": 18506,
+      "x": 3660,
+      "y": 360,
+      "ev_kind": 1,
+      "ev_id": 2,
+      "team": false
+     },
+     "4": {
+      "desc": "Về quan phủ Kiến Nghiệp báo cáo",
+      "conds": [],
+      "scene": 18301,
+      "x": 310,
+      "y": 450,
+      "ev_kind": 1,
+      "ev_id": 4,
+      "team": false
+     }
+    }
+   },
+   {
+    "id": 10564,
+    "bit": 298,
+    "name": "Lễ Tế Thần Nước Cao Lệ",
+    "nhan": "Quế Lâu Bộ - Cao Câu Ly",
+    "kich_ban": true,
+    "nhan_tai": {
+     "scene": 56101,
+     "x": 330,
+     "y": 350,
+     "npc": 1,
+     "chon": [
+      30
+     ]
+    },
+    "steps": {
+     "1": {
+      "desc": "Đến sơn động Thần Vĩ điều tra",
+      "conds": [],
+      "scene": 56528,
+      "x": 2110,
+      "y": 1110,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": true
+     },
+     "2": {
+      "desc": "Đánh bại nhóm Khung Thương Cự Thú",
+      "conds": [],
+      "scene": 56528,
+      "x": 2110,
+      "y": 1110,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": true
+     },
+     "3": {
+      "desc": "Chỉnh trang lại rồi tiếp tục chiến đấu",
+      "conds": [],
+      "scene": 56528,
+      "x": 2110,
+      "y": 1110,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": true
+     },
+     "4": {
+      "desc": "Về Quế Lâu Bộ báo kết thành quả với Bác Cố",
+      "conds": [],
+      "scene": 56101,
+      "x": 330,
+      "y": 380,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": false
+     }
+    }
+   },
+   {
+    "id": 10806,
+    "bit": 428,
+    "name": "Khung Thương Loạn Vũ",
+    "nhan": "Trướng Ô Hoàn - Liêu Đông",
+    "kich_ban": true,
+    "nhan_tai": {
+     "scene": 19176,
+     "x": 490,
+     "y": 330,
+     "npc": 1,
+     "chon": []
+    },
+    "steps": {
+     "1": {
+      "desc": "Đến đại trướng thiền vu tìm Đạp Đốn",
+      "conds": [],
+      "scene": 19175,
+      "x": 330,
+      "y": 410,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": false,
+      "chon": [
+       30
+      ]
+     },
+     "2": {
+      "desc": "Đến tuyết động Bạch Lang tìm tông tích của cự đại quái thú",
+      "conds": [],
+      "scene": 19525,
+      "x": 290,
+      "y": 430,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": true
+     },
+     "3": {
+      "desc": "Về đại trướng thiền vu tìm Đạp Đốn hồi báo",
+      "conds": [],
+      "scene": 19175,
+      "x": 330,
+      "y": 410,
+      "ev_kind": 1,
+      "ev_id": 1,
+      "team": false
+     }
+    }
+   }
+  ]
+ }
+}

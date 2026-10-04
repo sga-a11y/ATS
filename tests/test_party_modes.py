@@ -47,12 +47,10 @@ class DecideModeTests(unittest.TestCase):
         self.assertEqual(decide_mode("city", {"a": "ve_map"}, [acc("a", 12)]),
                          {"a": "nghi"})
 
-    def test_stand_and_cleanbag_do_not_travel_or_train(self):
+    def test_stand_does_not_travel_or_train(self):
         original = {"a": "ve_map", "b": "lap_party", "c": "train"}
         people = [acc("a", 12), acc("b", 12), acc("c", 12)]
         self.assertEqual(decide_mode("stand", original, people),
-                         {"a": "nghi", "b": "lap_party", "c": "nghi"})
-        self.assertEqual(decide_mode("cleanbag", original, people),
                          {"a": "nghi", "b": "lap_party", "c": "nghi"})
 
     def test_daily_and_manual_commands_keep_priority(self):

@@ -959,6 +959,9 @@ fun TsBotApp(
             initialBagExpandGold = partyBeingEdited.bagExpandGold,
             initialAutoBankExpand = partyBeingEdited.autoBankExpand,
             initialBankExpandGold = partyBeingEdited.bankExpandGold,
+            initialQuestKey = partyBeingEdited.questKey,
+            initialQuestLeader = partyBeingEdited.questLeader,
+            accountNames = partyBeingEdited.accounts.filter { it.enabled }.map { it.username },
             onApplyDiGioiLevel = { idx ->
                 parties.indexOf(partyBeingEdited).let { if (it >= 0) service?.setDiGioiLevel(it, idx) }
             },
@@ -2090,6 +2093,11 @@ fun AddPartyDialog(
     initialBagExpandGold: Int = 0,
     initialAutoBankExpand: Boolean = false,
     initialBankExpandGold: Int = 0,
+    // MODE LAM QUEST: chuoi quest + chu party user chi dinh. `accountNames` = acc dang tick cua
+    // party (party moi tao chua co acc -> rong -> Python lay acc dau danh sach).
+    initialQuestKey: String = "cs1_cu_thu",
+    initialQuestLeader: String = "",
+    accountNames: List<String> = emptyList(),
     onApplyAdvancedToAll: ((Party) -> Int)? = null,
     onApplyDiGioiLevel: ((Int) -> Unit)? = null,
     onApplyModeToAll: ((Party) -> Int)? = null,
@@ -2106,6 +2114,12 @@ fun AddPartyDialog(
     var selectedCity by remember { mutableStateOf(initialCityKey) }
     // LOAN DAU: chi vao danh MOT tran roi thoat event. Mac dinh TAT.
     var loanDauMotTran by remember { mutableStateOf(initialLoanDauMotTran) }
+    val dialogContext = LocalContext.current
+    val questChains = remember { loadQuestChains(dialogContext) }
+    var questKey by remember { mutableStateOf(initialQuestKey) }
+    var questExpanded by remember { mutableStateOf(false) }
+    var questLeader by remember { mutableStateOf(initialQuestLeader) }
+    var questLeaderExpanded by remember { mutableStateOf(false) }
     var autoBagExpand by remember { mutableStateOf(initialAutoBagExpand) }
     var bagExpandGoldText by remember { mutableStateOf(initialBagExpandGold.toString()) }
     // TU MO RONG TIEN TRANG - mac dinh TAT, giong tick tui do.
@@ -2236,6 +2250,8 @@ fun AddPartyDialog(
         diGioiLevel = diGioiLevel,
         diGioiPick = diGioiPick,
         loanDauMotTran = loanDauMotTran,
+        questKey = questKey,
+        questLeader = questLeader,
         autoBagExpand = autoBagExpand,
         bagExpandGold = bagExpandGoldText.toIntOrNull() ?: 0,
         autoBankExpand = autoBankExpand,
@@ -2803,6 +2819,65 @@ fun AddPartyDialog(
                                     onClick = {
                                         selectedCity = key
                                         cityExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                // MODE LAM QUEST: chon chuoi quest (doc quests.json) + CHU PARTY (acc trong party).
+                if (selectedMode == RunModes.QUEST) {
+                    Spacer(Modifier.height(8.dp))
+                    ExposedDropdownMenuBox(
+                        expanded = questExpanded,
+                        onExpandedChange = { questExpanded = it },
+                    ) {
+                        OutlinedTextField(
+                            value = questChains.firstOrNull { it.first == questKey }?.second ?: questKey,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Quest") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = questExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        )
+                        DropdownMenu(
+                            expanded = questExpanded,
+                            onDismissRequest = { questExpanded = false },
+                        ) {
+                            questChains.forEach { (key, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        questKey = key
+                                        questExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    ExposedDropdownMenuBox(
+                        expanded = questLeaderExpanded,
+                        onExpandedChange = { questLeaderExpanded = it },
+                    ) {
+                        OutlinedTextField(
+                            value = questLeader.ifBlank { accountNames.firstOrNull() ?: "" },
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Chủ party") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = questLeaderExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        )
+                        DropdownMenu(
+                            expanded = questLeaderExpanded,
+                            onDismissRequest = { questLeaderExpanded = false },
+                        ) {
+                            accountNames.forEach { u ->
+                                DropdownMenuItem(
+                                    text = { Text(u) },
+                                    onClick = {
+                                        questLeader = u
+                                        questLeaderExpanded = false
                                     },
                                 )
                             }
@@ -3831,6 +3906,16 @@ data class PetScroll(
         val nm = if (extra.isEmpty()) name else "$name — " + extra.joinToString(" · ")
         return if (vkcd) "$nm ★" else nm
     }
+}
+
+/** [(key, label)] chuoi quest trong quests.json (mode LAM QUEST) - doc THANG file chung PC/APK,
+ *  khong chep thanh hang so (CLAUDE.md: "chep tay o dau la lech o do"). */
+fun loadQuestChains(context: android.content.Context): List<Pair<String, String>> = try {
+    val root = JSONObject(String(
+        context.assets.open("train_bot_data/quests.json").readBytes(), Charsets.UTF_8))
+    root.keys().asSequence().map { k -> k to root.getJSONObject(k).optString("label", k) }.toList()
+} catch (e: Exception) {
+    emptyList()
 }
 
 /** Doc pet_scrolls.json tu assets -> list TAT CA cuon goi vo tuong (cache).

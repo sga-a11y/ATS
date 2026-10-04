@@ -48,7 +48,7 @@ object Events {
     val ALL: Map<String, Info> get() = loaded ?: FALLBACK
 
     private val FALLBACK: Map<String, Info> = linkedMapOf(
-        "nhi_kieu" to Info("Nhị Kiều"),
+        "nhi_kieu" to Info("Nhị Kiều", games = listOf("vtc", "tsm")),
         "npc_40" to Info("40 NPC"),
         "loan_dau" to Info("Loạn đấu", motTranDuoc = true),
     )

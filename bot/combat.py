@@ -1123,21 +1123,22 @@ def _lowest_hp_enemy(state, offered):
 _CUSTOM_AUTO = object()
 
 
-def _battle_rules(state, unit_key):
+def _battle_rules(state, unit_key, pet_id=None):
+    """pet_id: pet CU THE can tra rule (Di Gioi solo nhieu pet). None = pet dang xuat chien."""
     cfg = getattr(state, "battle_config", {}) or {}
     raw = cfg.get(unit_key)
     if unit_key == "pet":
+        pid = pet_id if pet_id is not None else getattr(state, "active_pet_id", None)
         pets_cfg = cfg.get("pets")
         if isinstance(pets_cfg, dict):
             # Format MOI: rule RIENG TUNG PET (GUI 4 tab), key = str(pet id). Pet chua co
             # config -> auto (list rong), KHONG roi ve bo "pet" chung.
-            pid = getattr(state, "active_pet_id", None)
             raw = pets_cfg.get(str(pid)) if pid is not None else None
         elif raw is not None:
             # Format CU (chi co "pet" chung): rule do la cua PET USER DANG DUNG luc set config
             # (config cu khong ghi pet id) -> chi ap cho pet DAU TIEN thay sau login
             # (pet_cfg_owner); doi pet khac -> auto. (Yeu cau user khi len ban per-pet.)
-            if getattr(state, "active_pet_id", None) != getattr(state, "pet_cfg_owner", None):
+            if pid != getattr(state, "pet_cfg_owner", None):
                 raw = None
     if isinstance(raw, list):
         return [r for r in raw if isinstance(r, dict) and r.get("enabled", True) is not False]
@@ -1339,8 +1340,8 @@ def _can_attack_new_enemy_gen(state, unit, atype=None):
     return True
 
 
-def _custom_decision(state, unit, unit_key, skills, stat, options, atype=None):
-    rules = _battle_rules(state, unit_key)
+def _custom_decision(state, unit, unit_key, skills, stat, options, atype=None, pet_id=None):
+    rules = _battle_rules(state, unit_key, pet_id=pet_id)
     if not rules:
         return None
     at = state.my_atype if atype is None else atype
@@ -1492,7 +1493,10 @@ def decide_multipet(state, atype, skills, stat, options):
     es = state.enemy_slots
     if not es:
         return None
-    custom = _custom_decision(state, config.UNIT_PET, "pet", skills, stat, options, atype=atype)
+    # Rule skill tra theo PET CUA ATYPE NAY, khong phai pet dang xuat chien: truoc day moi con deu
+    # doc rule cua active pet -> skill user set cho 3 con con lai khong bao gio duoc dung.
+    custom = _custom_decision(state, config.UNIT_PET, "pet", skills, stat, options, atype=atype,
+                              pet_id=getattr(state, "multi_pet_pid", {}).get(atype))
     if custom is _CUSTOM_AUTO:
         pass
     elif custom is not None:

@@ -119,6 +119,10 @@ data class Party(
     // Chi lam duoc luc tien trang DANG MO nen bot lam ngay trong luot di cat do.
     val autoBankExpand: Boolean = false,
     val bankExpandGold: Int = 0,
+    // MODE LAM QUEST: chuoi quest (key trong quests.json) + username CHU PARTY user chi dinh.
+    // "" = chua chon -> Python lay acc dau danh sach. Thanh tap ket: Python tu chon theo quest.
+    val questKey: String = "cs1_cu_thu",
+    val questLeader: String = "",
     val accounts: List<Account> = emptyList(),
 )
 
@@ -143,6 +147,8 @@ fun Party.copyModeFrom(source: Party): Party {
         // EVENT dung chung field cityKey lam event key.
         RunModes.EVENT -> p = p.copy(cityKey = source.cityKey, loanDauMotTran = source.loanDauMotTran)
         RunModes.STAND_STILL -> if (runMode != RunModes.STAND_STILL) p = p.copy(cityKey = source.cityKey)
+        // Chuoi quest theo party mau; CHU PARTY la acc rieng tung party -> khong chep.
+        RunModes.QUEST -> p = p.copy(questKey = source.questKey)
     }
     return p
 }

@@ -137,6 +137,7 @@ class BattleState:
         self.tran_mot_minh = None
         self.multi_pet = {}          # atype (0,1,3,4) -> Unit (HP/SP tung pet, tu update_0x33)
         self.multi_pet_skills = {}   # atype -> [skill id] (tu pets.json, xem client._on_pet_list)
+        self.multi_pet_pid = {}      # atype -> pet id (de tra rule skill rieng tung pet)
         self.last_atk_gen_multipet = {}   # atype -> enemy_gen da danh (tranh danh lap khi 0x33 cu)
         # (row,col)->set(skill_id): trang thai bao ve hien co, tu 0x35 status-list.
         # row 0/1=dich, 2=pet minh, 3=char minh.

@@ -13,6 +13,11 @@ Cài đặt nâng cao
         ☐ Tự phân giải cuộn VT rác [List]  auto_decompose_scrolls (mặc định TẮT)
 ```
 
+> **Đã bỏ mode "Dọn dẹp túi đồ (chưa làm)"** (`cleanbag`, 04/10/2026) khỏi ô "Chế độ" của party:
+> nó chỉ là placeholder chạy y hệt "Login đâu đứng yên đó". Dọn túi giờ **chỉ** qua tick này.
+> Config cũ còn lưu `cleanbag` → tự thành `stand` (`_MODE_CU` trong `gui.py`, lúc nạp ở
+> `bot/config.py` + bản APK).
+
 Tắt công tổng → cả 3 mục con ngưng, không cần bỏ tick từng cái. Cấu hình **theo party**
 (nằm trong Cài đặt nâng cao nên có sẵn nút "Áp dụng cho các party khác").
 

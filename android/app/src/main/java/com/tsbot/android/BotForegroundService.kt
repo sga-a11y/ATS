@@ -264,6 +264,9 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
         //   16:30:15..16:38:21 (member) pos=None map=12922 combat=False   <- 8 phut, moi 5 giay
         // Ban PC khong dinh vi `gui.py` doc dung `no_leader_var`.
         RunModes.EVENT -> ModeCfg("event", 0, 0, -1, party.cityKey, "party", !party.noLeader)
+        // LAM QUEST: LUON co chu party (khong doc noLeader). KHONG co thanh tap ket: Python tu gom
+        // party ve thanh gan buoc ke tiep cua chu party (user 03/10).
+        RunModes.QUEST -> ModeCfg("quest", 0, 0, -1, "", "party", true)
         else -> ModeCfg("stand", 0, 0, -1, "", "party", false)
     }
 
@@ -357,6 +360,8 @@ logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c,
                 party.autoPetFaith,
                 // TICK 'QUAI LINH HON'. THEM O CUOI CUNG (goi theo VI TRI).
                 party.mobSoul,
+                // MODE LAM QUEST: chuoi quest + chu party. THEM O CUOI CUNG (goi theo VI TRI).
+                party.questKey, party.questLeader,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,

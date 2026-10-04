@@ -83,7 +83,8 @@ BAN_THI_CHO = (VIEC_VE_MAP, VIEC_VE_THANH, VIEC_DOI_KENH, VIEC_LAP_PARTY, VIEC_R
                 VIEC_2K_DANH, VIEC_2K_LEN_TANG, VIEC_LENH_TAY,
                 "city", "solo_event_enter", "solo_event_run", "solo_event_exit",
                 "route_gather", "route_source", "route_dest", "route_finish",
-                "roi_party_la", "boss_quan_doan", "quet_bai_train", "ve_safe", "ve_safe_cho")
+                "roi_party_la", "boss_quan_doan", "quet_bai_train", "ve_safe", "ve_safe_cho",
+                "quest")
 
 # ---------------------------------------------------------------- viec CAP PARTY cua engine cu
 #
@@ -2016,8 +2017,11 @@ class PartyEngine:
                     and viec[a.username] != "solo_event_run"
                     and not (viec[a.username] == "boss_quan_doan"
                              and a.viec_dang_lam == "boss_quan_doan" and a.dang_ban)
-                    and not (viec[a.username] in ("route_source", "route_dest")
+                    and not (viec[a.username] in ("route_source", "route_dest", "quest")
                              and a.viec_dang_lam == viec[a.username] and a.dang_ban)):
+                # "quest": chu party DANG di quest ma dinh tran quai doc duong -> giu viec, quest
+                # tu cho danh xong roi di tiep. Truoc day bi doi sang `nghi` -> huy giua duong ->
+                # chay lai tu map giua duong -> tele -> ROI DOI (log party 7, 04/10 03:12:43 x4).
                 viec[a.username] = VIEC_NGHI
         self.nhip_dem += 1
         for username, v in viec.items():
@@ -2228,7 +2232,8 @@ class PartyEngine:
     def _lam_viec(self, client, viec, con_lam):
         if viec in ("city", "solo_event_enter", "solo_event_run", "solo_event_exit",
                     "route_gather", "route_source", "route_dest", "route_finish",
-                    "roi_party_la", "boss_quan_doan", "quet_bai_train", "ve_safe", "ve_safe_cho"):
+                    "roi_party_la", "boss_quan_doan", "quet_bai_train", "ve_safe", "ve_safe_cho",
+                    "quest"):
             if self._mode_action_fn is None:
                 raise RuntimeError("ENGINE: thieu mode_action_fn cho %s" % viec)
             return self._mode_action_fn(client, viec, con_lam)

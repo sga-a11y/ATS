@@ -136,6 +136,27 @@ khác đúng hai byte (`select` và `npc_option`), xem bảng ở mục trên.
 Vì hai ngày lệch nửa tiếng, `in_event_window` phải so **cả phút** — `20 <= now.hour < 22`
 không biểu diễn được 20:30.
 
+### `select` = `C:077-003 <傳送入場> +活動ID(2)` — đo 02/10/2026
+
+`0x4d 0300 [id u16]` là lệnh vào hoạt động theo **ID trong `ActivityInfo_C.dat`** (`UIActivity.lua:248`),
+không phải số thứ tự danh sách. Giải `ActivityInfo_C.dat` bản VTC (34 bản ghi, đọc khớp 1194/1194 byte)
+và gói `S:077-001` server gửi lúc login:
+
+| id | kind | lv | giờ server báo (tuần 02/10) |
+|---|---|---|---|
+| 2 | 31 `MixVS` 團P (loạn đấu đội) | 15 | T6 14:30–16:30 |
+| 3 | 32 `ChaosVS` 亂鬥擂台 | 15 | T3 20:00–22:00 |
+| 4 | 33 `DareNpc` 挑戰擂台賽 | 15 | T6 20:00–22:00 |
+| 90 | 102 | 15 | T7 20:30–22:30 |
+
+Phản hồi `S:077-003 <入場結果>`: 0 OK · 1 phải đi bộ (+scene+x+y) · 2 không có ID · 3 sai scene đích ·
+**4 = string 22173 「功能關閉中」 (chức năng đang đóng)** · 5 đang trong đội. Bot log dòng
+`VAO EVENT: server tra S:077-003 ma X`; trạng thái/giờ hoạt động log dòng `ACTIVITY <id>: ...`.
+
+**Ca 02/10 (CHƯA chốt nguyên nhân):** 16:16–16:23 bot gửi id 2 → 306/306 lần mã 4, trong khi server
+báo `ACTIVITY 2: state=1` (đang mở). Thử tay 15:57 cùng id 2 → mã 0. Chưa có lần thử tay và bot
+**cùng lúc** nên chưa tách được lỗi ở bot hay cửa vào đóng theo đợt.
+
 ### ⚠️ Hai giả định CHƯA kiểm
 
 - **Điểm NPC (1630, 430)** là toạ độ dừng cuối khi user đi bộ trong capture, **không** đọc từ
