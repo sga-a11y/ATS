@@ -38,7 +38,8 @@ class _Client:
 
 
 class _Worker:
-    def __init__(self):
+    def __init__(self, client):
+        self.client = client
         self.sent = []
 
     def dang_ban(self):
@@ -116,7 +117,7 @@ class TestMotLuongQuyetDinh(unittest.TestCase):
                                          enumerate(zip(names, clients))],
                             doc_party=_anh_cap, ap_dung_party=lambda *_: None,
                             doc_kenh_dich=lambda: 2)
-        eng.workers = {u: _Worker() for u in names}
+        eng.workers = {u: _Worker(c) for u, c in zip(names, clients)}
         decisions = eng.nhip()
         self.assertEqual(decisions["left"], E.VIEC_DOI_KENH)
         self.assertEqual(decisions["right"], E.VIEC_TRAIN)
@@ -129,7 +130,7 @@ class TestMotLuongQuyetDinh(unittest.TestCase):
         eng = E.PartyEngine(0, lambda: [("u", client, True)],
                             doc_party=_anh_cap, ap_dung_party=lambda *_: None,
                             doc_kenh_dich=lambda: 2)
-        eng.workers["u"] = _Worker()
+        eng.workers["u"] = _Worker(client)
         self.assertNotEqual(eng.nhip()["u"], E.VIEC_DOI_KENH)
         client._lenh_tay_kenh_dang_chay = False
         client.in_combat = lambda: True
@@ -162,7 +163,7 @@ class TestMotLuongQuyetDinh(unittest.TestCase):
         eng = E.PartyEngine(0, lambda: [("u", client, True)],
                             doc_party=_anh_cap, ap_dung_party=lambda *_: None,
                             doc_kenh_dich=lambda: 2, doc_lenh_tay=lambda: 3)
-        eng.workers["u"] = _Worker()
+        eng.workers["u"] = _Worker(client)
         self.assertEqual(eng.nhip()["u"], E.VIEC_DOI_KENH)
 
     def test_mode_khong_duoc_gui_lenh_di_chuyen_giua_tran(self):
@@ -171,7 +172,7 @@ class TestMotLuongQuyetDinh(unittest.TestCase):
         eng = E.PartyEngine(0, lambda: [("u", client, True)],
                             doc_party=_anh_cap, ap_dung_party=lambda *_: None,
                             mode_fn=lambda anh, viec: {"u": "route_dest"})
-        eng.workers["u"] = _Worker()
+        eng.workers["u"] = _Worker(client)
         self.assertEqual(eng.nhip()["u"], E.VIEC_NGHI)
 
     def test_boss_da_chay_tiep_tuc_qua_tran_nhung_khong_khoi_dong_moi(self):
@@ -180,7 +181,7 @@ class TestMotLuongQuyetDinh(unittest.TestCase):
         eng = E.PartyEngine(0, lambda: [("u", client, True)],
                             doc_party=_anh_cap, ap_dung_party=lambda *_: None,
                             mode_fn=lambda anh, viec: {"u": "boss_quan_doan"})
-        worker = _Worker()
+        worker = _Worker(client)
         eng.workers["u"] = worker
         self.assertEqual(eng.nhip()["u"], E.VIEC_NGHI)
         eng.viec_hien_tai["u"] = "boss_quan_doan"
@@ -202,7 +203,7 @@ class TestMotLuongQuyetDinh(unittest.TestCase):
                                         ("follower", follower, False)],
                             doc_party=_anh_cap, ap_dung_party=lambda *_: None,
                             mode_fn=route_mode)
-        worker = _Worker()
+        worker = _Worker(leader)
         worker.dang_ban = lambda: True
         eng.workers["leader"] = worker
         eng.viec_hien_tai["leader"] = "route_dest"
@@ -215,7 +216,7 @@ class TestMotLuongQuyetDinh(unittest.TestCase):
         eng = E.PartyEngine(0, lambda: [("u", client, True)],
                             doc_party=_anh_cap, ap_dung_party=lambda *_: None,
                             mode_fn=lambda anh, viec: {"u": "route_dest"})
-        worker = _Worker()
+        worker = _Worker(client)
         eng.workers["u"] = worker
         self.assertEqual(eng.nhip()["u"], E.VIEC_NGHI)
         eng.viec_hien_tai["u"] = "route_dest"
@@ -248,7 +249,7 @@ class TestMotLuongQuyetDinh(unittest.TestCase):
                                         ("missing", None, False)],
                             doc_party=_anh_cap, ap_dung_party=lambda *_: None,
                             mode_fn=lambda anh, viec: {"inside": E.VIEC_TRAIN})
-        eng.workers["inside"] = _Worker()
+        eng.workers["inside"] = _Worker(client)
         self.assertEqual(eng.nhip()["inside"], E.VIEC_THOAT_PB)
 
     def test_placeholder_dang_reconnect_giu_controller_song(self):

@@ -174,6 +174,37 @@ class TestChotKenhKhongSoDen(unittest.TestCase):
     def test_khong_con_so_den(self):
         self.assertFalse(hasattr(R, "_SoDen"))
 
+    def test_kenh_dong_member_nhat_day_thi_chon_kenh_con_du_cho_nguoi_chuyen(self):
+        song = self._song([5, 5, 9], {5: (20, 20), 9: (18, 20)})
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 9)
+
+    def test_kenh_dong_member_nhat_chi_can_cho_cho_nguoi_chua_toi(self):
+        song = self._song([5, 5, 9], {5: (19, 20), 9: (18, 20)})
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 5)
+
+    def test_moi_kenh_thieu_cho_thi_cho_danh_sach_moi_roi_tu_tiep_tuc(self):
+        song = self._song([5, 5, 9], {5: (20, 20), 9: (19, 20)},
+                          nhan_luc=time.time() - 5)
+        self.st['kenh_dich'] = 5
+        self.st['kenh_dich_luc'] = time.time()
+        self._ket_qua('c', 5, 4, luc=time.time() - 1)
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, self.st, song))
+        for _, c in song:
+            c._ds_kenh_nhan_luc = time.time()
+        # Het cho phai xoa dich cu, ca cac nhip sau cung khong chot lai kenh day.
+        for _ in range(10):
+            self.assertIsNone(R._engine_chot_kenh(self.PARTY, self.st, song))
+            self.assertIsNone(self.st['kenh_dich'])
+        self.assertEqual(sum(c.hoi for _, c in song), 1)
+        for _, c in song:
+            c.channels[5] = (19, 20)
+            c._ds_kenh_nhan_luc = time.time()
+        self.assertEqual(R._engine_chot_kenh(self.PARTY, self.st, song), 5)
+
+    def test_bang_co_kenh_nhung_khong_co_kenh_party_thi_khong_chot_bua(self):
+        song = self._song([5, 5, 9], {3: (20, 20)})
+        self.assertIsNone(R._engine_chot_kenh(self.PARTY, self.st, song))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1839,7 +1839,7 @@ class PartyEngine:
         self._start_lock = threading.Lock()
         self._restart_requested = False
         self.nhip_dem = 0
-        self._dem_lap = {}               # username -> (viec, so lan giao lai lien tiep)
+        self._dem_lap = {}               # username -> (viec, so lan giao lai, trang thai)
         self.viec_hien_tai = {}              # username -> viec (GUI doc)
 
     # -- chup anh --
@@ -2024,12 +2024,15 @@ class PartyEngine:
                 # chay lai tu map giua duong -> tele -> ROI DOI (log party 7, 04/10 03:12:43 x4).
                 viec[a.username] = VIEC_NGHI
         self.nhip_dem += 1
+        giao_moi = set()
         for username, v in viec.items():
             w = self.workers.get(username)
             if w is None:
                 continue
-            if w.giao(v) and self._log is not None:
-                self._log.info("[party %d] ENGINE: %s -> %s", self.pidx + 1, username, v)
+            if w.giao(v):
+                giao_moi.add(username)
+                if self._log is not None:
+                    self._log.info("[party %d] ENGINE: %s -> %s", self.pidx + 1, username, v)
         # BAO GUI CHI KHI VIEC DOI.
         #
         # `set_account_activity` mac dinh tao TASK MOI (tang `_ACC_TASK_SEQ`, dat lai `start`).
@@ -2048,19 +2051,29 @@ class PartyEngine:
                 except Exception:
                     pass
         self.viec_hien_tai = dict(viec)
-        # CANH BAO VIEC QUAY VONG: cung mot viec duoc giao lai qua nhieu lan lien tiep = no chay
-        # xong ngay roi khong doi duoc gi (vd `ve_map` ma dich la chinh cho dang dung). Truoc day
-        # kieu nay quay CA NGAY trong im lang, phai doc log ENGINE moi thay.
+        # Chi dem lan worker NHAN LAI viec, khong dem nhip quan sat viec dang chay/xep hang.
+        # Co tien trien tren client thi bat dau lai; viec chan lau khong phai quay vong.
+        anh_acc = {a.username: a for a in anh.accs}
         for _u, _v in viec.items():
-            if _v in (VIEC_NGHI, VIEC_TRAIN):
+            w = self.workers.get(_u)
+            if _v in (VIEC_NGHI, VIEC_TRAIN) or w is None:
                 self._dem_lap.pop(_u, None)
                 continue
+            a = anh_acc[_u]
+            trang_thai = (a.map_id, a.kenh, a.so_member,
+                          getattr(w.client, "pos", None),
+                          dict(getattr(w.client, "mission_steps", None) or {}))
             _c = self._dem_lap.get(_u)
-            self._dem_lap[_u] = (_v, (_c[1] + 1) if (_c and _c[0] == _v) else 1)
-            _n = self._dem_lap[_u][1]
+            if not _c or _c[0] != _v or _c[2] != trang_thai:
+                self._dem_lap[_u] = (_v, 0, trang_thai)
+                continue
+            if _u not in giao_moi:
+                continue
+            _n = _c[1] + 1
+            self._dem_lap[_u] = (_v, _n, trang_thai)
             if _n % LAP_CANH_BAO == 0 and self._log is not None:
                 self._log.warning("[party %d] ENGINE: '%s' giao lai %d lan lien tiep cho %s - viec "
-                                  "chay xong ngay ma khong doi duoc gi (dang quay vong?)",
+                                  "da ket thuc nhung trang thai khong tien trien (dang quay vong?)",
                                   self.pidx + 1, _v, _n, _u)
         return viec
 

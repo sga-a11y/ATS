@@ -8298,15 +8298,22 @@ def _engine_chot_kenh(pidx, st, song, kh=None, *, manual_route=False):
         # 57 kenh do deu day that, hay bi so den nuot, hay suc chua doc sai - ba nguyen nhan khac
         # han nhau. Gio in thang: bao nhieu kenh trong bang va kenh RONG NHAT con may cho.
         _rong_nhat = max((con for _ch, (_d, con) in _bang.items()), default=None)
-        log.info("[party %d] DIEU PHOI: khong kenh nao du %d cho - bang %d kenh, kenh rong nhat "
-                 "con %s cho", pidx + 1, _can, len(_bang),
-                 _rong_nhat if _rong_nhat is not None else "?")
-        _co_that = [ch for ch in dem if ch in _bang]
-        _nguon = {ch: _n for ch, _n in dem.items() if ch in _bang} if (_bang and _co_that) else dem
+        if time.time() - st.get("kenh_thieu_cho_log", 0.0) >= DS_KENH_LAM_MOI_SEC:
+            st["kenh_thieu_cho_log"] = time.time()
+            log.info("[party %d] DIEU PHOI: khong kenh nao du %d cho - bang %d kenh, kenh rong nhat "
+                     "con %s cho", pidx + 1, _can, len(_bang),
+                     _rong_nhat if _rong_nhat is not None else "?")
+        # Nguoi da o kenh khong can them cho; nguoi con lai PHAI vao duoc.
+        # Bang da co thi khong duoc roi ve `dem` va chon lai kenh day/khong ton tai.
+        _nguon = {ch: _n for ch, _n in dem.items()
+                  if ch in _bang and _bang[ch][1] >= _can - _n} if _bang else dem
         xep = [ch for ch, _n in sorted(_nguon.items(), key=lambda kv: (-kv[1], kv[0]))]
-        dich = xep[0] if xep else _kenh_trong_cho_ca_party(pidx, st, song)
+        dich = xep[0] if xep else None
         _vi_sao = "khong kenh nao du cho ca team -> lay kenh dang NHIEU MEMBER NHAT"
     if not dich:
+        with st["lock"]:
+            st["kenh_dich"] = None
+            st["kenh_dich_luc"] = 0.0
         return None                          # moi kenh party dang dung deu day -> cho nhip sau
     with st["lock"]:
         st["kenh_dich"] = dich

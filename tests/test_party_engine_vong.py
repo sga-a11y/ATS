@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -958,7 +959,7 @@ class TestKEU_LEN_khi_viec_QUAY_VONG(unittest.TestCase):
     "dung yen khong lam gi" (party 41, 16/09, ba lan lien tiep trong mot ngay).
     """
 
-    def test_giao_lai_qua_nhieu_lan_thi_CANH_BAO(self):
+    def _ca_khong_toi(self):
         bao = []
 
         class _Log:
@@ -980,10 +981,70 @@ class TestKEU_LEN_khi_viec_QUAY_VONG(unittest.TestCase):
 
         cl = [("l", _Cli(map_id=23851, members=2)), ("m1", _KhongToi(map_id=23011))]
         eng = _engine(cl, can=1, log=_Log)
+        eng.workers['m1'] = E.AccWorker('m1', cl[1][1], eng._lam_viec, log=_Log)
+        return eng, cl[1][1], bao
+
+    def _chay_mot_luot(self, eng):
+        w = eng.workers['m1']
+        # Chay vong worker that mot luot; chi bo thoi gian ngu giua hai luot.
+        with mock.patch.object(E, 'NHIP_WORKER_SEC', 0):
+            w.chay_o_day(nen_dung=lambda: w._viec_moi is None
+                         and w.viec_hien_tai() == E.VIEC_NGHI)
+        self.assertEqual(w.viec_hien_tai(), E.VIEC_NGHI)
+
+    def test_giao_lai_qua_nhieu_lan_thi_CANH_BAO(self):
+        eng, c, bao = self._ca_khong_toi()
         for _ in range(E.LAP_CANH_BAO + 1):
             eng.nhip()
+            self._chay_mot_luot(eng)
         self.assertTrue([b for b in bao if "quay vong" in str(b)],
                         "viec giao lai %d lan ma khong keu" % E.LAP_CANH_BAO)
+
+    def test_viec_dang_xep_hang_chua_chay_khong_bao_quay_vong(self):
+        eng, c, bao = self._ca_khong_toi()
+        for _ in range(E.LAP_CANH_BAO + 1):
+            eng.nhip()
+        self.assertFalse([b for b in bao if 'quay vong' in str(b)])
+
+    def test_worker_dang_di_duong_khong_bao_quay_vong(self):
+        eng, c, bao = self._ca_khong_toi()
+        bat_dau, ket_thuc = threading.Event(), threading.Event()
+
+        def di_cham(*a, **k):
+            bat_dau.set()
+            ket_thuc.wait(5)
+            return False
+
+        c.follow_smart_route = di_cham
+        eng.nhip()
+        w = eng.workers['m1']
+        w.start()
+        try:
+            self.assertTrue(bat_dau.wait(2))
+            for _ in range(E.LAP_CANH_BAO + 1):
+                eng.nhip()
+            self.assertFalse([b for b in bao if 'quay vong' in str(b)])
+        finally:
+            w.stop()
+            ket_thuc.set()
+            w._th.join(2)
+
+    def test_lam_tiep_co_doi_vi_tri_thi_dem_lai(self):
+        eng, c, bao = self._ca_khong_toi()
+        for i in range(E.LAP_CANH_BAO + 1):
+            c.pos = (i, 100)
+            eng.nhip()
+            self._chay_mot_luot(eng)
+        self.assertFalse([b for b in bao if 'quay vong' in str(b)])
+
+    def test_len_buoc_quest_cung_map_thi_dem_lai(self):
+        eng, c, bao = self._ca_khong_toi()
+        c.mission_steps = {123: 0}
+        for i in range(E.LAP_CANH_BAO + 1):
+            c.mission_steps[123] = i
+            eng.nhip()
+            self._chay_mot_luot(eng)
+        self.assertFalse([b for b in bao if 'quay vong' in str(b)])
 
     def test_viec_DOI_thi_dem_lai_tu_dau(self):
         eng = _engine([("l", _Cli(members=2))], can=1)
