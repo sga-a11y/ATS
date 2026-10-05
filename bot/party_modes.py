@@ -19,11 +19,10 @@ def decide_mode(mode, decisions, accs, *, target_map=None, event_kind=None,
     result = dict(decisions)
     if mode == "event" and event_kind != "chaos_vs" and not has_leader:
         return _event_cho_moi(result, accs)
-    if mode not in ("city", "stand", "quest") and not (
+    if mode not in ("city", "stand") and not (
             mode == "event" and event_kind == "chaos_vs"):
         return result
 
-    du_doi = _quest_du_doi(accs) if mode == "quest" else False
     manual_pending = set(manual_pending)
     event_done = set(event_done)
     for account in accs:
@@ -37,16 +36,11 @@ def decide_mode(mode, decisions, accs, *, target_map=None, event_kind=None,
         if current in _PRIORITY:
             continue
         if account.dang_danh:
-            _dang = (getattr(account, "dang_ban", False)
-                     and getattr(account, "viec_dang_lam", None))
-            if mode == "event" and event_kind == "chaos_vs" and _dang == "solo_event_run":
-                result[user] = "solo_event_run"
-            elif mode == "quest" and _dang == "quest":
-                # Chu party dinh tran quai DOC DUONG di quest -> giu `quest` (quest tu cho danh
-                # xong). Doi sang `nghi` = huy giua duong roi tele lai = ROI DOI (party 7, 04/10).
-                result[user] = "quest"
-            else:
-                result[user] = "nghi"
+            result[user] = ("solo_event_run"
+                            if mode == "event" and event_kind == "chaos_vs"
+                            and getattr(account, "dang_ban", False)
+                            and getattr(account, "viec_dang_lam", None) == "solo_event_run"
+                            else "nghi")
             continue
         if mode == "city":
             if target_map is None or account.map_id is None:
@@ -60,8 +54,6 @@ def decide_mode(mode, decisions, accs, *, target_map=None, event_kind=None,
                 result[user] = "city"
             else:
                 result[user] = current if current in _GROUP_AT_REST else "nghi"
-        elif mode == "quest":
-            result[user] = _quest_viec(account, current, du_doi, target_map)
         elif mode == "stand":
             result[user] = current if current in _GROUP_AT_REST else "nghi"
         elif user in event_done or not event_open:
@@ -75,37 +67,57 @@ def decide_mode(mode, decisions, accs, *, target_map=None, event_kind=None,
     return result
 
 
-def _quest_du_doi(accs):
-    """Mode quest: roster SERVER cua chu party da du moi acc dang song chua.
+def quest_du_doi(accs):
+    """Roster SERVER phai du ca acc dang login lai (chi acc tat han moi bi loai khoi snapshot).
 
     Doc `so_member` cua chu party (roster `S:013-006`, CORE_FLOW rule 4) - khong tu dem.
     """
     leader = next((a for a in accs if getattr(a, "la_leader", False)), None)
-    if leader is None or not leader.song:
+    if leader is None or any(not a.song for a in accs):
         return False
-    can = sum(1 for a in accs if a.song) - 1
+    can = len(accs) - 1
     return int(getattr(leader, "so_member", 0) or 0) >= can
 
 
-def _quest_viec(account, current, du_doi, target_map):
-    """Mode quest (documents/QUEST_CHUYEN_SINH.md):
-    - du doi (L0)  -> chu party `quest`, member `nghi` (dung trong doi, di theo + danh ho tro)
-    - chua du doi  -> gom ve THANH TAP KET nhu mode city roi lap party.
-    Khac mode city o hai cho:
-      * chu party DANG TRONG DOI nhung thieu nguoi thi van phai gom/moi - mode city cho `nghi` vi o
-        do "trong doi" nghia la dang theo nguoi khac keo.
-      * tai thanh tap ket ma chua du doi thi ep `lap_party` (chu moi, member mo cua) thay vi doi
-        engine tinh ra - nhanh co ban cua engine danh cho train, khong biet mode nay can doi.
+def decide_quest(decisions, accs, *, trang_thai, manual_pending=(), hoan_viec_le=False):
+    """Mode quest - viec tung acc KHI KHONG CO lenh di map dang chay.
+
+    DI CHUYEN (gom, lap doi, keo ca doi toi map buoc quest) KHONG o day: dung LAI lenh "DI MAP"
+    co san (`party_route_maps` -> `party_route.decide_route`), nhu mode city dung khi thanh chua mo.
+    trang_thai (run_party_digioi `_quest_den_dich`):
+      "lam" : du doi + ca doi DA O map buoc quest -> chu `quest`, member `nghi`
+      "moi" : ca doi o map buoc quest nhung CHUA du doi -> `lap_party` (chu moi, member mo cua)
+      khac  : dang cho / vua ra lenh di map -> `nghi`
+    Chu party DANG lam `quest` ma dinh tran (quai trong map) -> giu `quest`, quest tu cho danh xong
+    (log party 7, 04/10: doi sang `nghi` = huy giua chung).
     """
-    if du_doi:
-        return "quest" if getattr(account, "la_leader", False) else "nghi"
-    if not getattr(account, "la_leader", False) and getattr(account, "so_member", 0):
-        return "nghi"
-    if target_map is None or account.map_id is None:
-        return "nghi"
-    if int(account.map_id) != int(target_map):
-        return "city"
-    return current if current in _GROUP_AT_REST else "lap_party"
+    result = dict(decisions)
+    manual_pending = set(manual_pending)
+    dong_bo = trang_thai == "moi" and "doi_kenh" in result.values()
+    for account in accs:
+        user = account.username
+        if user not in result or not account.song:
+            continue
+        current = result[user]
+        if user in manual_pending or current == "lenh_tay":
+            result[user] = "lenh_tay"
+            continue
+        if current in _PRIORITY and (not hoan_viec_le or (
+                account.dang_ban and account.viec_dang_lam == current)):
+            continue
+        la_chu = getattr(account, "la_leader", False)
+        if account.dang_danh:
+            dang_quest = (getattr(account, "dang_ban", False)
+                          and getattr(account, "viec_dang_lam", None) == "quest")
+            result[user] = "quest" if dang_quest else "nghi"
+        elif trang_thai == "lam":
+            result[user] = "quest" if la_chu else "nghi"
+        elif trang_thai == "moi":
+            # Giu lenh kenh cua engine; moi trong luc member chua dong bo se ket moi doi.
+            result[user] = (current if current == "doi_kenh" else "nghi") if dong_bo else "lap_party"
+        else:
+            result[user] = "nghi"
+    return result
 
 
 # Event xong / het gio / stop: phai di duoc ke ca khi khong co leader bot (y engine cu).

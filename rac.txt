@@ -1,0 +1,15 @@
+  158 x  Ám Yêu Thủ             fc=0    mat=5   kd=12 
+  147 x  Tường Diễm Oản         fc=0    mat=6   kd=12 
+  144 x  Kiếm Quang Hợp         fc=0    mat=1   kd=2  
+  141 x  Viêm Hoàng Oản         fc=50   mat=6   kd=12 
+  136 x  Tiếp Yếu Binh Pháp     fc=0    mat=37  kd=9  
+  134 x  Ngũ Sắc Chẩn           fc=0    mat=37  kd=9  
+  133 x  Kích Diệu Nhật         fc=50   mat=1   kd=3  
+  132 x  Hằng Huy Bào           fc=50   mat=5   kd=10 
+  127 x  Quỷ Đạo Cân            fc=50   mat=5   kd=11 
+  126 x  Đạo Băng Ngoa          fc=50   mat=5   kd=13 
+  124 x  Đạp Lang Khôi          fc=50   mat=6   kd=11 
+  121 x  Thương Lâm Lý          fc=50   mat=5   kd=13 
+  116 x  Áo Tường Hạc           fc=50   mat=5   kd=10 
+  113 x  Phong Vũ Hài           fc=50   mat=5   kd=13 
+  113 x  Hắc Đoạn Quan          fc=50   mat=5   kd=11 

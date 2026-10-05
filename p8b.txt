@@ -1,0 +1,40 @@
+=== lbumot
+   17:55:14 smart path map 12928: (290, 730) -> (510,330), 1 waypoint, 5 move-point
+   17:55:17 da toi diem (510,330) sau 5 lenh move
+   17:55:18 (LEADER) pos=(510, 330) map=12928 combat=False
+   17:55:20 2K: tang 5 - Thang Tháp (12928) chi danh duoc 0/3 tran -> van thu qua cong
+   17:55:20 smart path map 12928: (510, 330) -> (790,190), 1 waypoint, 4 move-point
+   17:55:22 da toi diem (790,190) sau 4 lenh move
+   17:55:22 _enter_gate idx=2 @(790,190): lan thu 1 (t=0s, map van 12928)
+=== lubba
+   17:54:48 (member) pos=(650, 430) map=12934 combat=False
+   17:54:53 (member) pos=(650, 430) map=12934 combat=False
+   17:54:58 (member) pos=(650, 430) map=12934 combat=False
+   17:55:03 (member) pos=(650, 430) map=12934 combat=False
+   17:55:08 (member) pos=(650, 430) map=12934 combat=False
+   17:55:13 (member) pos=(650, 430) map=12934 combat=False
+   17:55:18 (member) pos=(650, 430) map=12934 combat=False
+=== lubbon
+   17:54:48 (member) pos=(650, 430) map=12934 combat=False
+   17:54:53 (member) pos=(650, 430) map=12934 combat=False
+   17:54:58 (member) pos=(650, 430) map=12934 combat=False
+   17:55:03 (member) pos=(650, 430) map=12934 combat=False
+   17:55:08 (member) pos=(650, 430) map=12934 combat=False
+   17:55:13 (member) pos=(650, 430) map=12934 combat=False
+   17:55:18 (member) pos=(650, 430) map=12934 combat=False
+=== lubhai
+   17:54:48 (member) pos=(650, 430) map=12934 combat=False
+   17:54:53 (member) pos=(650, 430) map=12934 combat=False
+   17:54:58 (member) pos=(650, 430) map=12934 combat=False
+   17:55:03 (member) pos=(650, 430) map=12934 combat=False
+   17:55:08 (member) pos=(650, 430) map=12934 combat=False
+   17:55:13 (member) pos=(650, 430) map=12934 combat=False
+   17:55:18 (member) pos=(650, 430) map=12934 combat=False
+=== lubnam
+   17:54:48 (member) pos=(650, 430) map=12934 combat=False
+   17:54:53 (member) pos=(650, 430) map=12934 combat=False
+   17:54:58 (member) pos=(650, 430) map=12934 combat=False
+   17:55:03 (member) pos=(650, 430) map=12934 combat=False
+   17:55:08 (member) pos=(650, 430) map=12934 combat=False
+   17:55:13 (member) pos=(650, 430) map=12934 combat=False
+   17:55:18 (member) pos=(650, 430) map=12934 combat=False

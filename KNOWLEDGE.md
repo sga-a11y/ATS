@@ -530,6 +530,21 @@ Hệ quả cho code hồi máu: sau trận cứ `heal_full(force=True)` là đ�
 
 ## 6. STATS PACKETS
 
+### Số dư nguyên bảo (vàng mua vé dungeon) — 05/10/2026
+
+- `[CAPTURE]` `captures/tsm_login_20260929.pcap`: S:035-005 body
+  `0500 64000000 00000000` = 100 nguyên bảo, 0 nguyên bảo khóa.
+- `_lua_dec/Common/protocal.lua` `[35][5]`: hai số UInt32 LE (thực, khóa), gọi
+  `Role.SetPoint` / `Role.SetLockPoint`. Opcode decimal 35 = **0x23**, không phải 0x35 battle.
+- Cùng file `[35][4]`: hai Int32 A/B, số dư = A*100+B; `[23][76]`: itemId u16,
+  điểm tiêu i32, điểm còn i32, kết quả u8; client cập nhật số dư từ điểm còn.
+- `Role.CheckCurrency(ECurrency.Gold, value)` dùng `Role.GetPoint()`; không dùng xu (`0x1a`),
+  cũng không cộng nguyên bảo khóa vào số nguyên bảo thường.
+- `[LOG]` 05/10 01:16:25 `vumtam`: báo giá vé dungeon là **10 nguyên bảo** (sellId 13, kind 1).
+  Bot đọc giá server, chỉ chặn mua khi đã nhận số dư và số dư thấp hơn giá. `None` = chưa biết.
+  `GameClient._observe_gold` lưu `nguyen_bao` / `nguyen_bao_khoa`, log khi số dư thay đổi;
+  không tự trừ lần nữa sau khi mua vì server cập nhật số dư. Test: `tests/test_dungeon_gold.py`.
+
 ### LƯỚI BATTLE: 4 HÀNG × tối đa 5 CỘT (KEY cho target + buff)
 Mỗi entity trong 0x33 = block `[00][b1][b2][type][2B][00]`. **b1 = HÀNG, b2 = CỘT.**
 

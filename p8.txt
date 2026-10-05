@@ -1,0 +1,22 @@
+17:38:29 DIEU PHOI: ca party da chung kenh 2 nhung doi chi con 3/4 -> LAP LAI PARTY
+17:38:29 REFORM gen -> 4 (bump tai run_party_digioi.py:8348) - chung kenh roi ma doi khong du -> lap lai party
+17:38:31 DIEU PHOI gen 8: pha=event map=12922 kenh=2 viec=lam
+17:39:46 DIEU PHOI gen 9: pha=event map=12923 kenh=1 viec=lam
+17:40:06 DIEU PHOI gen 10: pha=event map=12924 kenh=1 viec=lam
+17:40:39 DIEU PHOI gen 11: pha=event map=12925 kenh=1 viec=lam
+17:41:13 DIEU PHOI gen 12: pha=event map=12926 kenh=1 viec=lam
+17:41:47 DIEU PHOI gen 13: pha=event map=12927 kenh=1 viec=lam
+17:42:21 DIEU PHOI gen 14: pha=event map=12928 kenh=1 viec=lam
+17:42:55 DIEU PHOI gen 15: pha=event map=12929 kenh=1 viec=lam
+17:43:29 DIEU PHOI gen 16: pha=event map=12930 kenh=1 viec=lam
+17:44:03 DIEU PHOI gen 17: pha=event map=12931 kenh=1 viec=lam
+17:44:37 DIEU PHOI gen 18: pha=event map=12932 kenh=1 viec=lam
+17:45:11 DIEU PHOI gen 19: pha=event map=12933 kenh=1 viec=lam
+17:45:46 DIEU PHOI gen 20: pha=event map=12934 kenh=2 viec=lam
+17:46:06 DIEU PHOI gen 21: pha=event map=12934 kenh=None viec=lam
+17:46:50 DIEU PHOI gen 22: pha=event map=12934 kenh=2 viec=lam
+17:47:08 DIEU PHOI gen 23: pha=event map=12934 kenh=2 viec=gom - party dang o 2 MAP khac nhau [12932, 12934]
+17:47:08 REFORM gen -> 5 (bump tai run_party_digioi.py:8231) - dieu phoi: party dang o 2 MAP khac nhau [12932, 12934] -> gom ve cung map/kenh
+17:47:19 DIEU PHOI gen 24: pha=event map=12934 kenh=None viec=gom - party dang o 2 MAP khac nhau [12931, 12934]
+17:51:05 DIEU PHOI gen 25: pha=event map=12934 kenh=2 viec=gom - party dang o 2 MAP khac nhau [12922, 12934]
+17:51:05 REFORM gen -> 6 (bump tai run_party_digioi.py:8231) - dieu phoi: party dang o 2 MAP khac nhau [12922, 12934] -> gom ve cung map/kenh

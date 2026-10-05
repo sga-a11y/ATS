@@ -4629,7 +4629,7 @@ def _ap_chu_party_quest(pidx, chu=None):
 
     Doi THU TU trong `config.PARTIES` + `PARTY_LEADER_ACC` thay vi them nhanh "ai la leader" moi:
     ca bo may leader/member (moi doi, gom, dieu phoi) da doc slot 0 tu truoc, va acc nhan
-    `is_leader` luc START - nen doi chu party = chi dinh lai roi start lai party (`_quest_doi_chu`).
+    `is_leader` luc START. Doi chu giua chung: `_quest_doi_chu` goi lai ham nay roi doi TAI CHO.
     Thu tu GOC user dat giu o `pcfg["_quest_thu_tu"]` (de chon chu ke tiep dung thu tu danh sach);
     KHONG ghi nguoc ra accounts.json - lan mo sau van la lua chon cua user.
     """
@@ -4662,7 +4662,7 @@ def start_party(pidx, stagger=1.5, skip_running=False, quest_leader=None):
 
     skip_running=True (START TAT CA goi): acc DANG CHAY thi BO QUA, khong dung-roi-chay-lai.
     Mac dinh False cho nut "Start party" rieng: van restart de ap config moi (doi map/mode).
-    quest_leader: mode quest - chu party CHI DINH LAI luc xoay vong (`_quest_doi_chu`); None = lay
+    quest_leader: mode quest - chu party chi dinh khac config (test/goi tay); None = lay
     `quest_leader` user dat trong config.
     """
     generation = _start_cancel_generation
@@ -6789,10 +6789,13 @@ def _quest_dieu_phoi(pidx, pcfg):
               if u in clients]
     tt = {u: quest_runner.xong_het(clients.get(u), ch) for u in thu_tu}
     chu = config.PARTY_LEADER_ACC.get(pidx)
+    # Log p28 04/10 18:03:12: co 8/8 toi truoc S:020-008; doi chu ngay huy thoai cuoi.
+    if quest_runner.dang_su_kien(clients.get(chu)):
+        return False
     hanh, ke = quest_runner.chon_chu_party(thu_tu, tt, chu)
     if hanh in ("giu", "cho"):
         return False
-    st["quest_ket_thuc"] = True
+    st["quest_ket_thuc"] = True     # doi chu: `_quest_doi_chu` ha co khi xong; thoat: giu
     xong = [u for u in thu_tu if tt.get(u)]
     if hanh == "doi":
         log.info("[party %d] QUEST: %s xong het '%s' -> CHI DINH %s lam chu party "
@@ -6808,60 +6811,157 @@ def _quest_dieu_phoi(pidx, pcfg):
     return True
 
 
-def _quest_thanh_tap_ket(pidx, pcfg):
-    """(thanh, flag) party mode quest gom ve = thanh TELE gan BUOC KE TIEP cua chu party nhat.
+def _quest_den_dich(pidx, anh, pcfg):
+    """Mode quest: dua CA DOI toi map cua buoc ke tiep cua chu party bang lenh "DI MAP" CO SAN.
 
-    User 03/10: "moi quest gan 1 thanh khac nhau ... ko can cai chon thanh tap ket, quest nao thi bot
-    tu chon thanh gan nhat". Lay thanh xuat phat ma bo tim duong co san (`build_route`) chon cho map
-    cua buoc do. Tinh lai khi chu party sang buoc/quest khac; ket qua de o `st["quest_thanh"]` cho
-    viec `city`. None = chu party chua nhan co / khong con quest co kich ban -> party dung cho.
+    User 04/10: "moi co che deu co san roi, chon quest cu thu -> tele thanh gan nhat, thanh gan nhat
+    chua mo tele thi di mo thanh do ... m dung lai hay code moi". Ban dau t tu viet chon thanh +
+    di chuyen rieng, sai lien tiep: chon thanh chua mo (party 9/11 `CHUA MO` x3684), chot thanh khi
+    moi 1/5 acc vao (party 27 x1624), chu tu tele roi doi (party 13: 22 vong `ROI DOI`). Gio DUNG LAI
+    dung co che mode city dung khi thanh chua mo (`_ra_lenh_di_bo_ve_thanh`):
+        party_route_maps(thanh CA PARTY DA MO gan map nhat, map buoc quest)
+    -> `_engine_route_decisions` / `party_route.decide_route`: tele ve thanh, gom, lap doi, CHU KEO
+    ca doi di bo (`follow_smart_scene_route`), toi noi KHONG giai tan doi (doi that, khong tam).
+
+    Tra: "lam" (du doi + ca doi o map buoc) | "moi" (ca doi o map buoc, chua du doi) | "cho".
     """
     st = _pstate(pidx)
     ch = quest_runner.chuoi(pcfg.get("quest_key"))
     chu = config.PARTY_LEADER_ACC.get(pidx)
     c = account_clients.get(chu) if chu else None
+    # CHU PARTY DANG LAM DO SU KIEN QUEST -> de no chay HET su kien (S:020-008) roi moi di tiep.
+    # Kiem TRUOC MOI NHANH: party 13 (04/10 17:25:44) buoc moi (2) chua co kich ban -> tra "cho"
+    # som -> engine doi chu sang `nghi` -> huy su kien B1 giua chung (`su kien dung`).
+    # Server bao len buoc (0x18 sub01) TRUOC khi su kien het; ra lenh DI MAP luc do la engine doi
+    # viec chu sang `route_gather` -> huy hoi thoai giua chung -> server coi chu VAN trong su kien,
+    # tele bi nuot. Ca that party 11, 04/10:
+    #   17:35:49 [luusau] QUEST: Sâm Lan Thái Hồ buoc 1 -> su kien dung, buoc 1 -> 2
+    #   17:35:50..17:38:xx [luusau] Teleport -> city 12001 (moi 2s)  <- ket o Quan Phu 18301
+    #   4 member da ve Hoi Ke 18021 -> party nam 2 noi.
+    _chu = next((a for a in anh.accs if a.username == chu), None)
+    if quest_runner.dang_su_kien(c):
+        return "lam"
+    if getattr(anh, "thieu_acc_song", False) or any(not a.song for a in anh.accs):
+        return "cho"
+    co_day_du = all(cl is not None and getattr(cl, "_mark_flags_loaded", False)
+                   for _u, cl in _clients_cua_party(pidx))
     q, step, d = quest_runner.diem_ke_tiep(c, ch) if (c is not None and ch) else (None, None, None)
-    sig = (chu, q["id"] if q else None, step, d is not None)
-    if st.get("quest_thanh_sig") == sig:
-        return st.get("quest_thanh")
-    th = None
+    song = [a for a in anh.accs if a.song]
+    du = party_modes.quest_du_doi(anh.accs)
+    if (du and co_day_du and _chu is not None and _chu.dang_ban
+            and _chu.viec_dang_lam == "quest"):
+        return "lam"
     if d is not None:
-        try:
-            th = quest_runner.thanh_tap_ket(d["scene"], d["x"], d["y"])
-        except Exception:
-            log.exception("[party %d] QUEST: loi tim thanh tap ket", pidx + 1)
-            th = None
-    st["quest_thanh_sig"], st["quest_thanh"] = sig, th
-    if q is not None:
-        log.info("[party %d] QUEST: thanh tap ket = %s theo %s %s (map %s)", pidx + 1,
-                 ("%s flag %s" % th) if th else "KHONG TIM DUOC", q["name"],
-                 "nhan quest" if step is None else "buoc %s" % step,
-                 d["scene"] if d else "?")
-    return th
+        dich = int(d["scene"])
+        ly_do = "%s %s" % (q["name"], "nhan quest" if step is None else "buoc %s" % step)
+    else:
+        _sig = (q["id"], step) if q else None
+        if q is not None and st.get("quest_ket_log") != _sig:
+            st["quest_ket_log"] = _sig
+            log.warning("[party %d] QUEST: %s buoc %s CHUA CO CACH LAM (chua capture) -> dung cho",
+                        pidx + 1, q["name"], step)
+        # LUAT TOI THUONG L0 (RULE_DIEU_PHOI): "du party roi lam gi thi lam; party hong thi phai gom
+        # lai BANG DUOC". Khong co buoc nao lam duoc thi doi van phai GIU: du doi -> dung cho; chua
+        # du -> gom ve CHO CHU PARTY dang dung. Truoc day "cho" = ca party `nghi`: party 13 (04/10)
+        # dung o Bot Hai ~30 phut roster 0/4, khong ai moi ai.
+        if du:
+            return "cho"
+        dich = next((a.map_id for a in song if a.username == chu), None)
+        if dich is None:
+            return "cho"
+        dich, ly_do = int(dich), "gom doi ve cho chu party (chua co buoc lam duoc)"
+    if song and all(a.map_id is not None and int(a.map_id) == dich for a in song):
+        st["quest_route"] = None
+        if not du:
+            return "moi"
+        return "lam" if d is not None and co_day_du else "cho"
+    # Chua du ca party vao world + nhan co nhiem vu -> chua chon thanh (`_pick_start_city` bo qua
+    # acc chua co client: party 27, 04/10 chot 15001 khi moi 1/5 acc vao).
+    if not co_day_du:
+        return "cho"
+    # Moi dich ra lenh MOT lan; lenh xong (toi noi) ma ca doi van chua o do (rot, bi keo...) thi
+    # ra lai sau 30s - lenh la cua CA PARTY, ra lien tuc la khoi dong lai route giua chung.
+    _cu = st.get("quest_route")
+    if _cu and _cu[0] == dich and time.time() - _cu[1] < 30.0:
+        return "cho"
+    xuat_phat = _pick_start_city(pidx, dich)
+    st["quest_route"] = (dich, time.time())
+    if not xuat_phat:
+        log.warning("[party %d] QUEST: khong thanh nao CA PARTY da mo di toi map %s duoc -> cho",
+                    pidx + 1, dich)
+        return "cho"
+    log.info("[party %d] QUEST: %s o map %s -> lenh DI MAP %s -> %s (co che san co: gom, "
+             "lap doi, chu keo ca doi di bo)", pidx + 1, ly_do, dich, xuat_phat, dich)
+    party_route_maps(pidx, xuat_phat, dich)
+    return "cho"
 
 
-def _quest_doi_chu(pidx, chu_moi, cho_toi_da=120.0):
-    """Dung ca party roi START LAI voi chu party moi.
+def _quest_doi_chu(pidx, chu_moi):
+    """DOI CHU PARTY NGAY TAI CHO - KHONG logout ai.
 
-    Vai leader/member gan cho tung acc luc START (`run_account(is_leader)`, `_pe_la_leader`), nen
-    doi chu = di lai dung con duong user chi dinh tu dau - khong vá co leader tren acc dang chay.
+    User 04/10: "co dua login vao la thoat game luon, dung logic thi phai ca party da xong 8 quest
+    cu thu thi moi thoat, thang nao xong roi van online de ho tro". Ban dau t dung ca party roi
+    start lai (party 3/4/5 04/10: moi lan doi chu ca 5 acc STOP; dung hut thi bo luon -
+    `120s van con acc chua dung ['sieugaaa'] -> KHONG start lai`, party tat han).
+    Engine doc vai leader THANG tu `config.PARTY_LEADER_ACC` moi nhip (`doc_clients`), nen chi can:
+      1. dua chu moi len slot 0 (`_ap_chu_party_quest`)
+      2. gan lai `_pe_la_leader` cho acc dang chay (cung viec `_start_locked` lam luc nhan acc)
+      3. chu CU roi doi -> doi cu tan; luong co san (`lap_party`) de chu moi moi lai.
     """
-    users = [u for u, *_ in party_accounts(pidx)]
-    # Dung TUNG ACC (y nhanh thoat game / mode digioi `thoat_acc=stop_account`), khong goi
-    # `stop_party`: luat test_khong_lenh_thi_acc_khong_di - `stop_party` chi danh cho nut Stop GUI.
-    # Day la quyet dinh cua DIEU PHOI doc co ca party theo luat user chot, khong phai mot acc tu
-    # tat party theo tinh trang rieng.
-    for u in users:
-        stop_account(u, reason="Quest: doi chu party -> %s" % chu_moi)
-    het = time.time() + cho_toi_da
-    while time.time() < het and any(is_account_running(u) for u in users):
-        time.sleep(1.0)
-    con = [u for u in users if is_account_running(u)]
-    if con:
-        log.warning("[party %d] QUEST: %ds van con acc chua dung %s -> KHONG start lai (tranh 2 "
-                    "thread 1 acc), bam Start party de chay tiep", pidx + 1, int(cho_toi_da), con)
-        return
-    start_party(pidx, quest_leader=chu_moi)
+    chu_cu = config.PARTY_LEADER_ACC.get(pidx)
+    st = _pstate(pidx)
+    try:
+        _ap_chu_party_quest(pidx, chu_moi)
+        for u, cl in _clients_cua_party(pidx):
+            if cl is not None:
+                cl._pe_la_leader = (u == chu_moi)
+        st["quest_route"] = None
+        c_cu = account_clients.get(chu_cu) if chu_cu else None
+        if c_cu is not None and chu_cu != chu_moi:
+            try:
+                c_cu._wait_combat_clear(idle=1.0, cap=120.0)
+                c_cu.leave_party()
+            except Exception as e:
+                log.warning("[party %d] QUEST: %s roi doi loi: %s", pidx + 1, chu_cu, e)
+        log.info("[party %d] QUEST: DA DOI chu party %s -> %s tai cho (khong logout)", pidx + 1,
+                 chu_cu, chu_moi)
+    finally:
+        st["quest_ket_thuc"] = False
+
+
+def _quest_cho_viec_dau(pidx, anh, decisions):
+    """Lam xong chores/daily cua CA DOI truoc lenh DI MAP dau tien, dung worker san co."""
+    st = _pstate(pidx)
+    if any(v == "lenh_tay" for v in decisions.values()):
+        return decisions
+    # Tiep tuc hoi thoai dang mo neu mode duoc ap vao mot phien dang chay.
+    if any(quest_runner.dang_su_kien(c) for _u, c in _clients_cua_party(pidx)):
+        st["quest_da_bat_dau"] = True
+    started = bool(st.get("quest_da_bat_dau"))
+    result = {}
+    pending = not started and (bool(anh.thieu_acc_song) or not anh.accs)
+    for a in anh.accs:
+        if not a.song:
+            pending = pending or not started
+            continue
+        if a.dang_ban and a.viec_dang_lam in ("login_chore", "daily", "viec_vat"):
+            action = a.viec_dang_lam
+        elif not started and not a.xong_chore:
+            action = "login_chore"
+        elif not started and not a.xong_daily:
+            action = "daily"
+        else:
+            action = "nghi"
+        result[a.username] = action
+        pending = pending or action != "nghi"
+    if pending:
+        # P27 05/10 00:51:13: DI MAP cat ngang daily; toi dich moi daily -> ROI DOI vao PB.
+        for a in anh.accs:
+            if a.song and quest_runner.dang_su_kien(account_clients.get(a.username)):
+                result[a.username] = "quest"
+        return result
+    st["quest_da_bat_dau"] = True
+    return None
 
 
 def _engine_mode_decisions(pidx, anh, decisions):
@@ -6872,8 +6972,20 @@ def _engine_mode_decisions(pidx, anh, decisions):
         return _engine_route_decisions(pidx, anh, cmd)
     pcfg = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
     mode = pcfg.get("mode") or "stand"
-    if mode == "quest" and _quest_dieu_phoi(pidx, pcfg):
-        return {u: "nghi" for u in decisions}
+    if mode == "quest":
+        cho_viec = _quest_cho_viec_dau(pidx, anh, decisions)
+        if cho_viec is not None:
+            return cho_viec
+        if _quest_dieu_phoi(pidx, pcfg):
+            return {u: "nghi" for u in decisions}
+        _pending = {a.username for a in anh.accs
+                    if anh.lenh_tay_gen and a.lenh_tay_da_lam < anh.lenh_tay_gen}
+        result = party_modes.decide_quest(decisions, anh.accs,
+                                          trang_thai=_quest_den_dich(pidx, anh, pcfg),
+                                          manual_pending=_pending, hoan_viec_le=True)
+        result = _engine_routine_decisions(pidx, anh, result, pcfg)
+        result = _engine_rally_decisions(pidx, anh, result)
+        return _engine_cho_login_decisions(pidx, anh, result)
     ev = _event_cua_party(pidx) if mode == "event" else {}
     kind = ((ev or {}).get("party_battle") or {}).get("kind")
     no_leader = mode == "event" and kind != "chaos_vs" and not config.PARTY_LEADER_ACC.get(pidx)
@@ -6885,14 +6997,9 @@ def _engine_mode_decisions(pidx, anh, decisions):
             if c is not None and getattr(c, "_loandau_done", False)} if kind == "chaos_vs" else ()
     pending = {a.username for a in anh.accs
                if anh.lenh_tay_gen and a.lenh_tay_da_lam < anh.lenh_tay_gen}
-    _dich_gom = int(pcfg.get("start_city_id") or 0) or None
-    if mode == "quest":
-        # Mode quest KHONG co o chon thanh: gom ve thanh gan buoc ke tiep cua chu party.
-        _th = _quest_thanh_tap_ket(pidx, pcfg)
-        _dich_gom = _th[0] if _th else None
     result = party_modes.decide_mode(
         mode, decisions, anh.accs,
-        target_map=_dich_gom,
+        target_map=int(pcfg.get("start_city_id") or 0) or None,
         event_kind=kind, event_map=(ev or {}).get("dest_map"),
         event_open=loandau.in_event_window(ev=ev) if kind == "chaos_vs" else True,
         event_done=done, manual_pending=pending,
@@ -7014,7 +7121,7 @@ def _engine_routine_decisions(pidx, anh, decisions, pcfg):
                 continue
         if (action in ("nghi", "train")
                 and getattr(anh, "dp_viec", None) in (None, party_engine.DP_LAM)
-                and pcfg.get("mode") not in ("event", "digioi")
+                and pcfg.get("mode") not in ("event", "digioi", "quest")
                 and getattr(anh, "pha", None) == party_engine.PHA_TRAIN
                 and pcfg.get("fight_legion_boss", True)
                 and client.legion_boss_available()):
@@ -7121,6 +7228,19 @@ def _engine_run_chaos(c, point, abort, before_repeat, one_battle, event):
         c._loandau_started = False
 
 
+def _quest_du_party(pidx, c):
+    """Cua L0 ngay truoc kich hoat: doc client/roster song, khong dung anh chup nhip cu."""
+    chu = config.PARTY_LEADER_ACC.get(pidx)
+    clients = dict(_clients_cua_party(pidx))
+    if not chu or clients.get(chu) is not c or not getattr(c, "current_map", None):
+        return False
+    if any(cl is None or not getattr(cl, "running", False)
+           or not getattr(cl, "_mark_flags_loaded", False)
+           or getattr(cl, "current_map", None) != c.current_map for cl in clients.values()):
+        return False
+    return len(getattr(c, "party_members", None) or ()) >= len(clients) - 1
+
+
 def _engine_mode_action(pidx, c, action, con_lam):
     if not con_lam():
         return False
@@ -7147,7 +7267,8 @@ def _engine_mode_action(pidx, c, action, con_lam):
         return True
     if action == "quest":
         _qcfg = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
-        return quest_runner.chay(c, _qcfg.get("quest_key"), abort=lambda: not con_lam(), log=log)
+        return quest_runner.chay(c, _qcfg.get("quest_key"), abort=lambda: not con_lam(), log=log,
+                                 du_party=lambda: _quest_du_party(pidx, c))
     if action == "boss_quan_doan":
         c.flee_mode = True
         try:
@@ -7182,12 +7303,9 @@ def _engine_mode_action(pidx, c, action, con_lam):
         if c.running and not c.state.in_battle:
             c.heal_npc40_between_battles()
 
-    _dich, _flag = int(pcfg.get("start_city_id") or 0) or None, int(pcfg.get("city_flag") or 0)
-    if pcfg.get("mode") == "quest":
-        _dich, _flag = _pstate(pidx).get("quest_thanh") or (None, 0)
     return party_modes.execute_mode_action(
-        action, c, target_map=_dich,
-        city_flag=_flag, event=_event_cua_party(pidx),
+        action, c, target_map=int(pcfg.get("start_city_id") or 0) or None,
+        city_flag=int(pcfg.get("city_flag") or 0), event=_event_cua_party(pidx),
         abort=lambda: not con_lam(),
         go_to_city=lambda cli, dest, flag: _ve_thanh_tap_trung(cli, pidx, label, dest, flag),
         run_chaos=_engine_run_chaos,
@@ -8522,8 +8640,8 @@ def party_route_maps(pidx, source_map=0, dest_map=0):
     """GUI ra lenh: lap/keo party di tu map source_map toi dest_map bang smart world route.
     source_map=0 -> leader tu chon thanh gan dest_map nhat lam diem bat dau."""
     mode = (config.PARTY_CONFIG.get(int(pidx), {}) or {}).get("mode")
-    if mode not in ("city", "stand"):
-        log.warning(">>> PARTY %s: bo qua lenh DI MAP vi mode=%s khong phai city/stand",
+    if mode not in ("city", "stand", "quest"):
+        log.warning(">>> PARTY %s: bo qua lenh DI MAP vi mode=%s khong phai city/stand/quest",
                     int(pidx) + 1, mode)
         return
     source_map = int(source_map or 0)

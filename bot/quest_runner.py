@@ -130,10 +130,31 @@ def _diem(q, step):
         # so cua lay tu capture (kich ban `cua`).
         kieu, idx = "cua", s["cua"]
     else:
-        return None          # chua capture buoc nay
+        cua = _cua_cung_cho(q, s)
+        if cua is None:
+            return None      # chua capture buoc nay
+        kieu, idx = "cua", cua
     return {"scene": s["scene"], "x": s["x"], "y": s["y"], "kieu": kieu, "idx": idx,
             "chon": list(s.get("chon") or ()), "truoc": list(s.get("truoc") or ()),
             "ten": "buoc %s" % step}
+
+
+def _cua_cung_cho(q, s):
+    """Buoc GOP (binh thuong server lam luon trong su kien buoc truoc) ma char lo KET o day: dung
+    lai cua da co kich ban cua buoc khac CUNG QUEST, CUNG map + toa do.
+
+    [nghi - chua capture] Ca that party 13, 04/10: su kien B1 Phan No Cua Bien (cua 2, Bot Hai) bi
+    huy giua chung luc server bao len buoc 2 -> ket buoc 2 (data: ev_kind 0 tai DUNG (2207,282) cua
+    B1) -> ca party dung im ~30 phut. Cham cua khong co su kien thi server chi tra `S:020-008`
+    kind 0x23 (vo hai, capture 10528); server bat CHON thi `quest_hoi_thoai` dung, khong doan.
+    """
+    for k, s2 in (q.get("steps") or {}).items():
+        if s2 is s or not s2.get("cua"):
+            continue
+        if (int(s2["scene"]), int(s2["x"]), int(s2["y"])) == (int(s["scene"]), int(s["x"]),
+                                                              int(s["y"])):
+            return int(s2["cua"])
+    return None
 
 
 def diem_ke_tiep(client, ch):
@@ -144,102 +165,82 @@ def diem_ke_tiep(client, ch):
     return (q, step, _diem(q, step))
 
 
-def thanh_tap_ket(scene, x, y, router=None):
-    """(thanh, flag) TELE gan map `scene` nhat = thanh xuat phat ma bo tim duong co san chon
-    (`build_route`). User 03/10: "quest nao thi bot tu chon thanh gan nhat" - khong co o chon thanh.
-    None = khong tim duoc duong."""
-    if router is None:
-        from .client import _smart_world_router
-        router = _smart_world_router()
-    if router is None:
-        return None
-    rt = router.build_route(int(scene), (int(x), int(y)))
-    if not rt:
-        return None
-    return (int(rt["city"]), int(rt.get("flag") or 0))
+def dang_su_kien(client):
+    """Worker chua nhan xong ket qua hoi thoai; khong bao gom di bo/cho retry.
 
-
-def _di_bo_tiep(client, scene, x, y):
-    """True = DI BO tu map dang dung qua cong, KHONG tele.
-
-    Tele khi dang trong doi = client bat ROI DOI truoc (`go_to_town`) -> doi tan. Log party 7, 04/10
-    (x4): dinh tran o 15402 giua duong -> chay lai -> `follow_smart_route` tele ve 15001 -> roi doi.
-    Nen: con duong di bo tu cho dang dung KHONG dai hon duong tele (tinh theo so cong) thi di bo.
-    Tele chi khi di bo dai hon (vd sang quest vung khac) - user 03/10 "doan nao tele cho nhanh thi lam".
+    P40 05/10 00:57:07: het=True nhung worker chua doc -> doi chu huy no truoc khi tra xong.
+    quest_hoi_thoai tu xoa _qev trong finally sau khi da chon ket qua.
     """
-    cur = int(getattr(client, "current_map", 0) or 0)
-    try:
-        walk = client.build_smart_scene_route(cur, int(scene), (int(x), int(y)))
-    except Exception:
-        walk = None
-    if not walk:
-        return False
-    try:
-        from .client import _smart_world_router
-        router = _smart_world_router()
-        tele = router.build_route(int(scene), (int(x), int(y))) if router is not None else None
-    except Exception:
-        tele = None
-    if not tele:
-        return True
-    if int(tele.get("city") or 0) == cur:
-        return False          # dang o dung thanh xuat phat: follow_smart_route di bo, khong tele
-    return len(walk.get("legs") or ()) <= len(tele.get("legs") or ())
+    return getattr(client, "_qev", None) is not None
 
 
 def _toi(client, scene, x, y, abort, log):
-    """Toi (scene, x, y). Khac map: di bo tiep neu khong xa hon (`_di_bo_tiep`, khong tan doi), con
-    lai `follow_smart_route` = TELE ve thanh gan nhat roi di cong (user 03/10: "doan nao tele ve
-    thanh di cho nhanh thi cu lam"). Cung map -> di bo thang."""
+    """Di bo toi (x, y) TRONG map `scene`. Chuyen map KHONG lam o day: engine da dua ca doi toi map
+    nay bang lenh "DI MAP" co san (run_party_digioi `_quest_den_dich`)."""
     label = getattr(client, "_label", "?")
-    cur = int(getattr(client, "current_map", 0) or 0)
-    if cur != int(scene) and _di_bo_tiep(client, scene, x, y):
+    if int(getattr(client, "current_map", 0) or 0) != int(scene):
         if log is not None:
-            log.info("[%s] QUEST: di bo tiep tu map %s -> %s (khong tele, giu doi)", label, cur,
-                     scene)
-        if not client.follow_smart_scene_route(cur, int(scene), (int(x), int(y)),
-                                               abort=abort, flee=True):
-            if log is not None:
-                log.warning("[%s] QUEST: khong toi duoc map %s", label, scene)
-            return False
-    elif cur != int(scene):
-        if not client.follow_smart_route(int(scene), (int(x), int(y)), abort=abort, flee=True):
-            if log is not None:
-                log.warning("[%s] QUEST: khong toi duoc map %s", label, scene)
-            return False
-    else:
-        client.navigate_to(int(x), int(y), abort=abort, flee=True)
-    return bool(client.running) and int(getattr(client, "current_map", 0) or 0) == int(scene)
+            log.info("[%s] QUEST: chua o map %s (dang %s) -> cho lenh DI MAP dua doi toi", label,
+                     scene, getattr(client, "current_map", None))
+        return False
+    if abort is not None and abort():
+        return False
+    arrived = client.navigate_to(int(x), int(y), abort=abort, flee=True)
+    return (bool(arrived) and bool(client.running)
+            and int(getattr(client, "current_map", 0) or 0) == int(scene)
+            and not (abort is not None and abort()))
 
 
-def lam_buoc(client, q, step, abort=None, log=None):
-    """Lam MOT buoc (hoac nhan quest khi step=None). Tra True khi server bao da len buoc/xong."""
+def lam_buoc(client, q, step, abort=None, log=None, du_party=None):
+    """Lam mot buoc; chi thanh cong khi su kien da dong VA server bao len buoc/xong."""
+    def dung_di():
+        return (not client.running or (abort is not None and abort())
+                or (du_party is not None and not du_party()))
+
     label = getattr(client, "_label", "?")
     d = _diem(q, step)
-    if d is None:
+    if d is None or dung_di():
         return False
     if log is not None:
         log.info("[%s] QUEST: %s %s -> map %s (%s,%s) %s %s", label, q["name"], d["ten"],
                  d["scene"], d["x"], d["y"], d["kieu"], d["idx"])
     if not client._wait_combat_clear(idle=1.0, cap=120.0):
         return False
-    if not _toi(client, d["scene"], d["x"], d["y"], abort, log):
+    if not _toi(client, d["scene"], d["x"], d["y"], dung_di, log):
         return False
     for t in d["truoc"]:
         # Cua su kien rieng cua quest (vd 18506 cua 3, Thai Ho buoc 2) - client that cham truoc NPC.
-        client.navigate_to(int(t["x"]), int(t["y"]), abort=abort, flee=True)
+        if not _toi(client, d["scene"], t["x"], t["y"], dung_di, log) or dung_di():
+            return False
         client.quest_kich_hoat("cua", int(t["cua"]))
         kq = client.quest_hoi_thoai(abort=abort, im_lang=15.0)
         if log is not None:
             log.info("[%s] QUEST: cham cua %s truoc -> %s", label, t["cua"], kq)
-        client.navigate_to(int(d["x"]), int(d["y"]), abort=abort, flee=True)
+        if kq != "xong" or not _toi(client, d["scene"], d["x"], d["y"], dung_di, log):
+            return False
     qid = int(q["id"])
     truoc = int((getattr(client, "mission_steps", None) or {}).get(qid, 0))
+    # Review 04/10: roster co the tut ngay sau khi di toi, truoc nhip engine ke tiep.
+    if dung_di():
+        return False
     client.quest_kich_hoat(d["kieu"], d["idx"])
     kq = client.quest_hoi_thoai(chon=d["chon"], abort=abort)
     sau = int((getattr(client, "mission_steps", None) or {}).get(qid, 0))
     xong = bool(client.mark_flag_get(int(q["bit"])))
-    ok = xong or sau > truoc
+    ok = kq == "xong" and (xong or sau > truoc)
+    sig = (qid, step)
+    if ok:
+        client._quest_khong_tien = None
+    elif kq == "xong":
+        # mhmmot 05/10 00:50..00:58: 15 lan thoai xong nhung buoc van 0. Khong doan ma chon.
+        cu = getattr(client, "_quest_khong_tien", None)
+        lan = cu[1] + 1 if cu and cu[0] == sig else 1
+        client._quest_khong_tien = (sig, lan)
+        if lan == 3 and log is not None:
+            log.warning("[%s] QUEST: %s buoc %s - 3 lan hoi thoai xong nhung KHONG LEN BUOC; "
+                        "DUNG THU LAI buoc nay. Chua biet dieu kien thieu/ly do server tu choi; "
+                        "kiem tra trong game/capture, khoi dong lai acc de thu lai.", label,
+                        q["name"], step)
     if log is not None:
         (log.info if ok else log.warning)(
             "[%s] QUEST: %s %s -> su kien %s, buoc %d -> %d%s", label, q["name"], d["ten"], kq,
@@ -247,7 +248,7 @@ def lam_buoc(client, q, step, abort=None, log=None):
     return ok
 
 
-def chay(client, key, abort=None, log=None, cho=30.0):
+def chay(client, key, abort=None, log=None, cho=30.0, du_party=None):
     """Chu party lam 1 nhip quest: lam mot buoc cua quest tiep theo.
 
     Khong lam duoc gi (chua nhan co, quest con lai chua co kich ban, buoc hong) -> log MOT lan roi
@@ -267,7 +268,9 @@ def chay(client, key, abort=None, log=None, cho=30.0):
         except Exception:
             pass
         sig = (q["id"], step)
-        if lam_buoc(client, q, step, abort=abort, log=log):
+        cu = getattr(client, "_quest_khong_tien", None)
+        bi_chan = cu is not None and cu[0] == sig and cu[1] >= 3
+        if not bi_chan and lam_buoc(client, q, step, abort=abort, log=log, du_party=du_party):
             client._quest_hong = None
             return True
         if getattr(client, "_quest_hong", None) != sig:

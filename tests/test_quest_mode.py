@@ -103,8 +103,12 @@ class TestTrangThai(unittest.TestCase):
         self.assertEqual(b2["truoc"], [{"cua": 3, "x": 3651, "y": 365}])
 
     def test_buoc_chi_co_toa_do_chua_capture_thi_chua_lam(self):
-        q = next(x for x in CH["quests"] if x["id"] == 10328)   # B2 chua capture (ev_kind 0)
-        self.assertIsNone(Q._diem(q, 2))
+        # Thu To B2 (ev_kind 0, chua capture rieng) cung toa do cua 2 cua B1 -> dung lai cua 2
+        q = next(x for x in CH["quests"] if x["id"] == 10328)
+        self.assertEqual(Q._diem(q, 2)["idx"], 2)
+        # buoc khong co toa do trung cua nao -> van chua lam
+        fake = {"id": 1, "steps": {"1": {"scene": 1, "x": 1, "y": 1, "ev_kind": 0, "ev_id": 0}}}
+        self.assertIsNone(Q._diem(fake, 1))
 
     def test_nhan_quest_bang_cua_an(self):
         q = next(x for x in CH["quests"] if x["id"] == 10328)
@@ -143,41 +147,6 @@ class TestChonChuParty(unittest.TestCase):
 def _acc(u, la_leader=False, map_id=12061, so_member=0, song=True, dang_danh=False):
     return PE.AnhAcc(u, la_leader=la_leader, song=song, map_id=map_id, so_member=so_member,
                      dang_danh=dang_danh)
-
-
-class TestDecideModeQuest(unittest.TestCase):
-    def _run(self, accs, base=None):
-        base = base or {a.username: "nghi" for a in accs}
-        return party_modes.decide_mode("quest", base, accs, target_map=12061)
-
-    def test_du_doi_chu_lam_quest_member_dung_trong_doi(self):
-        accs = [_acc("b", True, map_id=56517, so_member=2), _acc("a", so_member=2),
-                _acc("c", so_member=2)]
-        self.assertEqual(self._run(accs), {"b": "quest", "a": "nghi", "c": "nghi"})
-
-    def test_chua_du_doi_tai_thanh_tap_ket_thi_lap_party(self):
-        accs = [_acc("b", True), _acc("a"), _acc("c")]
-        self.assertEqual(set(self._run(accs).values()), {"lap_party"})
-
-    def test_chua_du_doi_lech_map_thi_ve_thanh_tap_ket(self):
-        accs = [_acc("b", True), _acc("a", map_id=12001), _acc("c")]
-        self.assertEqual(self._run(accs)["a"], "city")
-
-    def test_chu_trong_doi_thieu_nguoi_van_phai_gom(self):
-        # mode city cho "trong doi" = nghi (dang theo nguoi khac keo); mode quest chu party thieu
-        # nguoi thi van phai moi/gom - L0
-        accs = [_acc("b", True, map_id=56517, so_member=1), _acc("a", so_member=1),
-                _acc("c", map_id=12001)]
-        r = self._run(accs)
-        self.assertEqual(r["b"], "city")
-        self.assertEqual(r["a"], "nghi")
-
-    def test_dang_danh_thi_nghi(self):
-        accs = [_acc("b", True, so_member=1, dang_danh=True), _acc("a", so_member=1)]
-        self.assertEqual(self._run(accs)["b"], "nghi")
-
-    def test_quest_la_viec_ban_thi_cho(self):
-        self.assertIn("quest", PE.BAN_THI_CHO)
 
 
 class TestChiDinhChuParty(unittest.TestCase):
@@ -296,6 +265,7 @@ class _ClientBuoc(FakeClient):
 
     def navigate_to(self, x, y, abort=None, flee=True):
         self.goi.append(("di", x, y))
+        return True
 
     def quest_kich_hoat(self, kieu, idx):
         self.goi.append((kieu, idx))
@@ -311,10 +281,15 @@ class _ClientBuoc(FakeClient):
 class TestLamBuoc(unittest.TestCase):
     Q = staticmethod(lambda: next(x for x in CH["quests"] if x["id"] == 10528))
 
-    def test_khac_map_thi_tele_route_roi_cham_cua_truoc_npc(self):
+    def test_khac_map_thi_KHONG_tu_di_cho_lenh_di_map(self):
         c = _ClientBuoc(12001, steps={10528: 2})
+        self.assertFalse(Q.lam_buoc(c, self.Q(), 2))
+        self.assertEqual(c.goi, [])
+
+    def test_dung_map_thi_cham_cua_truoc_roi_npc(self):
+        c = _ClientBuoc(18506, steps={10528: 2})
         self.assertTrue(Q.lam_buoc(c, self.Q(), 2))
-        self.assertEqual(c.goi, [("tele+route", 18506, (3660, 360)),
+        self.assertEqual(c.goi, [("di", 3660, 360),
                                  ("di", 3651, 365), ("cua", 3), ("thoai", []),
                                  ("di", 3660, 360), ("npc", 1), ("thoai", [30])])
 
@@ -329,9 +304,60 @@ class TestLamBuoc(unittest.TestCase):
         self.assertFalse(Q.lam_buoc(c, self.Q(), 1))
 
 
-class TestThanhTapKet(unittest.TestCase):
-    """User 03/10: KHONG co o chon thanh - gom ve thanh gan buoc ke tiep cua chu party."""
-    PIDX = 994
+
+
+def _acc(u, la_leader=False, map_id=12061, so_member=0, song=True, dang_danh=False, **kw):
+    return PE.AnhAcc(u, la_leader=la_leader, song=song, map_id=map_id, so_member=so_member,
+                     dang_danh=dang_danh, **kw)
+
+
+class TestDecideQuest(unittest.TestCase):
+    """Viec tung acc khi khong co lenh DI MAP dang chay (di chuyen do lenh DI MAP co san lo)."""
+
+    def _r(self, accs, trang_thai):
+        return party_modes.decide_quest({a.username: "nghi" for a in accs}, accs,
+                                        trang_thai=trang_thai)
+
+    def test_toi_noi_du_doi_chu_lam_member_dung(self):
+        accs = [_acc("b", True, so_member=1), _acc("a", so_member=1)]
+        self.assertEqual(self._r(accs, "lam"), {"b": "quest", "a": "nghi"})
+
+    def test_toi_noi_chua_du_doi_thi_lap_party(self):
+        accs = [_acc("b", True), _acc("a")]
+        self.assertEqual(set(self._r(accs, "moi").values()), {"lap_party"})
+
+    def test_dang_cho_lenh_di_map_thi_nghi(self):
+        accs = [_acc("b", True), _acc("a")]
+        self.assertEqual(set(self._r(accs, "cho").values()), {"nghi"})
+
+    def test_chu_dang_lam_quest_dinh_tran_thi_giu_quest(self):
+        # log party 7, 04/10: doi sang `nghi` = huy giua chung
+        lead = _acc("b", True, so_member=1, dang_danh=True, dang_ban=True, viec_dang_lam="quest")
+        self.assertEqual(self._r([lead, _acc("a", so_member=1)], "lam")["b"], "quest")
+
+    def test_dinh_tran_khong_dang_lam_quest_thi_nghi(self):
+        lead = _acc("b", True, so_member=1, dang_danh=True)
+        self.assertEqual(self._r([lead], "lam")["b"], "nghi")
+
+    def test_viec_uu_tien_giu_nguyen(self):
+        accs = [_acc("b", True), _acc("a")]
+        r = party_modes.decide_quest({"b": "daily", "a": "login_chore"}, accs, trang_thai="lam")
+        self.assertEqual(r, {"b": "daily", "a": "login_chore"})
+
+    def test_decide_mode_khong_con_nhanh_quest(self):
+        accs = [_acc("b", True)]
+        self.assertEqual(party_modes.decide_mode("quest", {"b": "train"}, accs), {"b": "train"})
+
+    def test_engine_mien_tru_quest_dang_lam_do(self):
+        src = open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8").read()
+        self.assertIn('("route_source", "route_dest", "quest")', src)
+        self.assertIn("quest", PE.BAN_THI_CHO)
+
+
+class TestDenDichBangLenhDiMap(unittest.TestCase):
+    """User 04/10: "moi co che deu co san ... m dung lai hay code moi". Mode quest dua doi toi map
+    buoc quest bang lenh DI MAP co san: party_route_maps(thanh CA PARTY da mo gan nhat, map)."""
+    PIDX = 996
 
     def setUp(self):
         R._party_state.pop(self.PIDX, None)
@@ -343,82 +369,224 @@ class TestThanhTapKet(unittest.TestCase):
         R._party_state.pop(self.PIDX, None)
         config.PARTY_LEADER_ACC.clear(); config.PARTY_LEADER_ACC.update(self._lead)
 
-    def _thanh(self, client, router_city=13001):
-        router = mock.Mock()
-        router.build_route.return_value = {"city": router_city, "flag": 2}
-        with mock.patch.dict(R.account_clients, {"a": client}), \
-                mock.patch("bot.client._smart_world_router", return_value=router):
-            return R._quest_thanh_tap_ket(self.PIDX, self.cfg), router
+    def _goi(self, accs, clients, city=15001):
+        anh = SimpleNamespace(accs=accs)
+        with mock.patch.dict(R.account_clients, {"a": clients["a"]}), \
+                mock.patch.object(R, "_clients_cua_party", return_value=list(clients.items())), \
+                mock.patch.object(R, "_pick_start_city", return_value=city) as pick, \
+                mock.patch.object(R, "party_route_maps") as route:
+            return R._quest_den_dich(self.PIDX, anh, self.cfg), pick, route
 
-    def test_theo_diem_nhan_quest_dau_tien(self):
-        th, router = self._thanh(FakeClient())
-        self.assertEqual(th, (13001, 2))
+    def test_chua_o_map_thi_ra_lenh_di_map_tu_thanh_da_mo(self):
         # chua nhan quest nao -> Thien Doc, nhan o Quan tro Uyen Thanh 13243
-        self.assertEqual(router.build_route.call_args.args, (13243, (190, 470)))
+        accs = [_acc("a", True, map_id=12061), _acc("b", map_id=12061)]
+        kq, pick, route = self._goi(accs, {"a": FakeClient(), "b": FakeClient()})
+        self.assertEqual(kq, "cho")
+        self.assertEqual(pick.call_args.args, (self.PIDX, 13243))
+        route.assert_called_once_with(self.PIDX, 15001, 13243)
 
-    def test_theo_buoc_dang_lam(self):
-        th, router = self._thanh(FakeClient([174], steps={10326: 1}), router_city=11011)
-        self.assertEqual(th, (11011, 2))
-        self.assertEqual(router.build_route.call_args.args[0], 58000)   # Phan No Cua Bien B1
+    def test_khong_ra_lenh_lien_tuc(self):
+        accs = [_acc("a", True, map_id=12061), _acc("b", map_id=12061)]
+        cl = {"a": FakeClient(), "b": FakeClient()}
+        self._goi(accs, cl)
+        _kq, _pick, route = self._goi(accs, cl)
+        route.assert_not_called()
 
-    def test_chu_chua_nhan_co_thi_chua_co_thanh(self):
-        th, router = self._thanh(FakeClient(loaded=False))
-        self.assertIsNone(th)
-        router.build_route.assert_not_called()
+    def test_member_chua_vao_world_thi_chua_ra_lenh(self):
+        # party 27, 04/10: chot thanh khi moi 1/5 acc vao -> member chua mo thanh do
+        accs = [_acc("a", True, map_id=12061), _acc("b", map_id=None, song=False)]
+        kq, pick, route = self._goi(accs, {"a": FakeClient(), "b": None})
+        self.assertEqual(kq, "cho")
+        pick.assert_not_called()
+        route.assert_not_called()
 
-    def test_quest_mode_khong_dung_start_city_id(self):
-        # decide_mode nhan dich gom tu _quest_thanh_tap_ket, khong phai start_city_id cu
+    def test_ca_doi_o_map_du_doi_thi_lam(self):
+        accs = [_acc("a", True, map_id=13243, so_member=1), _acc("b", map_id=13243, so_member=1)]
+        kq, _pick, route = self._goi(accs, {"a": FakeClient(), "b": FakeClient()})
+        self.assertEqual(kq, "lam")
+        route.assert_not_called()
+
+    def test_ca_doi_o_map_chua_du_doi_thi_moi(self):
+        accs = [_acc("a", True, map_id=13243), _acc("b", map_id=13243)]
+        kq, _pick, route = self._goi(accs, {"a": FakeClient(), "b": FakeClient()})
+        self.assertEqual(kq, "moi")
+        route.assert_not_called()
+
+    def test_party_route_maps_cho_phep_mode_quest(self):
         src = open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8").read()
-        self.assertIn("_th = _quest_thanh_tap_ket(pidx, pcfg)", src)
+        self.assertIn('if mode not in ("city", "stand", "quest"):', src)
+        self.assertNotIn("_quest_thanh_tap_ket", src)
+        self.assertNotIn("_di_bo_tiep", open(os.path.join(ROOT, "bot", "quest_runner.py"),
+                                              encoding="utf-8").read())
 
 
-class TestKhongTanDoiGiuaDuong(unittest.TestCase):
-    """Log party 7, 04/10 (lap 4/4 vong):
-        03:12:43 [party 7] ENGINE: taot006 -> nghi          <- dinh tran quai o 15402 giua duong
-        03:12:43 [ttsau] navigate_to: abort (reform moi/stop) -> dung
-        03:12:59 [ttsau] Teleport: dang o to doi (4 member) -> ROI DOI truoc
+class TestDoiChuTaiCho(unittest.TestCase):
+    """User 04/10: "thang nao xong roi van online de ho tro", chi thoat khi CA party xong.
+    Log party 3/4/5 04/10: doi chu = STOP ca 5 acc + start lai; dung hut thi party tat han:
+        17:21:21 [sga017..chihao188] STOP: Quest: doi chu party -> sga018
+        17:03:25 [party 3] QUEST: 120s van con acc chua dung [...] -> KHONG start lai
     """
+    PIDX = 997
 
-    def test_chu_dang_lam_quest_dinh_tran_thi_giu_quest(self):
-        lead = PE.AnhAcc("b", la_leader=True, map_id=15402, so_member=1, dang_danh=True,
-                         dang_ban=True, viec_dang_lam="quest")
-        r = party_modes.decide_mode("quest", {"b": "nghi", "a": "nghi"},
-                                    [lead, _acc("a", map_id=15402, so_member=1)],
-                                    target_map=15001)
-        self.assertEqual(r["b"], "quest")
+    def setUp(self):
+        while len(config.PARTIES) <= self.PIDX:
+            config.PARTIES.append([])
+        self._old = (config.PARTIES[self.PIDX], dict(config.PARTY_CONFIG),
+                     dict(config.PARTY_LEADER_ACC))
+        config.PARTIES[self.PIDX] = [("a", "pa"), ("b", "pb"), ("c", "pc")]
+        config.PARTY_CONFIG[self.PIDX] = {"mode": "quest", "quest_key": "cs1_cu_thu",
+                                          "quest_leader": "a"}
+        config.PARTY_LEADER_ACC[self.PIDX] = "a"
+        R._party_state.pop(self.PIDX, None)
 
-    def test_dinh_tran_ma_khong_dang_lam_quest_thi_van_nghi(self):
-        lead = PE.AnhAcc("b", la_leader=True, so_member=1, dang_danh=True, dang_ban=False,
-                         viec_dang_lam="quest")
-        r = party_modes.decide_mode("quest", {"b": "nghi"}, [lead], target_map=12061)
-        self.assertEqual(r["b"], "nghi")
+    def tearDown(self):
+        config.PARTIES[self.PIDX] = self._old[0]
+        config.PARTY_CONFIG.clear(); config.PARTY_CONFIG.update(self._old[1])
+        config.PARTY_LEADER_ACC.clear(); config.PARTY_LEADER_ACC.update(self._old[2])
+        R._party_state.pop(self.PIDX, None)
 
-    def test_engine_mien_tru_quest_dang_lam_do(self):
-        src = open(os.path.join(ROOT, "bot", "party_engine.py"), encoding="utf-8").read()
-        self.assertIn('("route_source", "route_dest", "quest")', src)
+    def test_doi_chu_khong_stop_acc_nao(self):
+        cl = {u: mock.Mock(_pe_la_leader=(u == "a")) for u in "abc"}
+        R._pstate(self.PIDX)["quest_ket_thuc"] = True
+        with mock.patch.object(R, "_clients_cua_party", return_value=list(cl.items())), \
+                mock.patch.dict(R.account_clients, cl), \
+                mock.patch.object(R, "stop_account") as stop, \
+                mock.patch.object(R, "start_party") as start:
+            R._quest_doi_chu(self.PIDX, "b")
+        stop.assert_not_called()
+        start.assert_not_called()
+        self.assertEqual(config.PARTY_LEADER_ACC[self.PIDX], "b")
+        self.assertEqual({u: c._pe_la_leader for u, c in cl.items()},
+                         {"a": False, "b": True, "c": False})
+        cl["a"].leave_party.assert_called_once()        # chu cu roi doi -> doi cu tan
+        cl["b"].leave_party.assert_not_called()
+        self.assertFalse(R._pstate(self.PIDX)["quest_ket_thuc"])   # dieu phoi chay tiep
 
-    def _client(self, cur, walk_legs):
-        c = mock.Mock()
-        c.current_map = cur
-        c.build_smart_scene_route.return_value = (None if walk_legs is None
-                                                  else {"legs": [0] * walk_legs})
-        return c
+    def test_engine_doc_vai_leader_tu_config_moi_nhip(self):
+        src = open(os.path.join(ROOT, "run_party_digioi.py"), encoding="utf-8").read()
+        self.assertIn("lambda _p=pidx: [(u, cl, u == config.PARTY_LEADER_ACC.get(_p))", src)
 
-    def _di_bo(self, c, tele_city, tele_legs):
-        router = mock.Mock()
-        router.build_route.return_value = {"city": tele_city, "legs": [0] * tele_legs}
-        with mock.patch("bot.client._smart_world_router", return_value=router):
-            return Q._di_bo_tiep(c, 13243, 190, 470)
 
-    def test_giua_duong_di_bo_tiep_khong_tele(self):
-        # o 15402: con 3 cong toi dich; tele ve 15001 phai di 7 cong -> di bo
-        self.assertTrue(self._di_bo(self._client(15402, 3), 15001, 7))
+class TestKhongDiMapKhiDangSuKien(unittest.TestCase):
+    """Log party 11, 04/10: len buoc (0x18 sub01) toi TRUOC khi su kien het -> ra lenh DI MAP ngay
+    -> huy hoi thoai giua chung -> chu ket trong su kien, tele bi nuot:
+        17:35:49 [luusau] QUEST: Sâm Lan Thái Hồ buoc 1 -> su kien dung, buoc 1 -> 2
+        17:35:50.. [luusau] Teleport -> city 12001   (moi 2s, ket o Quan Phu 18301)
+    """
+    PIDX = 998
 
-    def test_di_bo_xa_hon_thi_tele(self):
-        self.assertFalse(self._di_bo(self._client(19000, 12), 15001, 7))
+    def setUp(self):
+        R._party_state.pop(self.PIDX, None)
+        self._lead = dict(config.PARTY_LEADER_ACC)
+        config.PARTY_LEADER_ACC[self.PIDX] = "a"
 
-    def test_dang_o_thanh_xuat_phat_thi_de_follow_smart_route(self):
-        self.assertFalse(self._di_bo(self._client(15001, 7), 15001, 7))
+    def tearDown(self):
+        R._party_state.pop(self.PIDX, None)
+        config.PARTY_LEADER_ACC.clear(); config.PARTY_LEADER_ACC.update(self._lead)
 
-    def test_khong_co_duong_di_bo_thi_tele(self):
-        self.assertFalse(self._di_bo(self._client(15402, None), 15001, 7))
+    def test_chu_dang_lam_quest_thi_khong_ra_lenh_di_map(self):
+        accs = [_acc("a", True, map_id=18301, so_member=1, dang_ban=True, viec_dang_lam="quest"),
+                _acc("b", map_id=18301, so_member=1)]
+        c = FakeClient([174, 175, 176, 192, 204], steps={10528: 2})   # buoc 2 o 18506
+        with mock.patch.dict(R.account_clients, {"a": c}), \
+                mock.patch.object(R, "_clients_cua_party", return_value=[("a", c), ("b", c)]), \
+                mock.patch.object(R, "party_route_maps") as route:
+            kq = R._quest_den_dich(self.PIDX, SimpleNamespace(accs=accs),
+                                   {"mode": "quest", "quest_key": "cs1_cu_thu"})
+        self.assertEqual(kq, "lam")
+        route.assert_not_called()
+
+
+class TestParty13BotHai(unittest.TestCase):
+    """Log party 13, 04/10:
+        17:25:44 [tonba] QUEST: Phẫn Nộ Của Biển buoc 1 -> su kien dung, buoc 1 -> 2
+        -> ket buoc 2 (chua kich ban), ca party `nghi` o Bot Hai ~30 phut, roster 0/4.
+    """
+    PIDX = 999
+
+    def setUp(self):
+        R._party_state.pop(self.PIDX, None)
+        self._lead = dict(config.PARTY_LEADER_ACC)
+        config.PARTY_LEADER_ACC[self.PIDX] = "a"
+        self.cfg = {"mode": "quest", "quest_key": "cs1_cu_thu"}
+
+    def tearDown(self):
+        R._party_state.pop(self.PIDX, None)
+        config.PARTY_LEADER_ACC.clear(); config.PARTY_LEADER_ACC.update(self._lead)
+
+    def _goi(self, accs, c):
+        with mock.patch.dict(R.account_clients, {"a": c}), \
+                mock.patch.object(R, "_clients_cua_party", return_value=[("a", c), ("b", c)]), \
+                mock.patch.object(R, "party_route_maps") as route:
+            return R._quest_den_dich(self.PIDX, SimpleNamespace(accs=accs), self.cfg), route
+
+    def test_buoc_gop_ket_dung_lai_cua_cung_toa_do(self):
+        q = next(x for x in CH["quests"] if x["id"] == 10326)
+        d = Q._diem(q, 2)                         # B2 data ev_kind 0 tai (2207,282) = cua 2 cua B1
+        self.assertEqual((d["scene"], d["kieu"], d["idx"]), (58000, "cua", 2))
+        q2 = next(x for x in CH["quests"] if x["id"] == 10328)
+        self.assertEqual(Q._diem(q2, 4)["idx"], 5)   # Thu To B4 = cua 5 cua B3
+
+    def test_ket_buoc_2_o_bot_hai_thi_lap_doi_roi_lam(self):
+        c = FakeClient([174], steps={10326: 2})
+        accs = [_acc("a", True, map_id=58000), _acc("b", map_id=58000)]
+        kq, route = self._goi(accs, c)
+        self.assertEqual(kq, "moi")               # truoc day "cho" -> ca party nghi
+        route.assert_not_called()
+
+    def test_chu_dang_lam_quest_kiem_truoc_moi_nhanh(self):
+        c = FakeClient([174, 175, 176, 192, 204, 280, 298], steps={})   # khong con gi lam
+        accs = [_acc("a", True, map_id=58000, dang_ban=True, viec_dang_lam="quest")]
+        kq, _route = self._goi(accs, c)
+        self.assertEqual(kq, "lam")
+
+    def test_cho_ma_cung_map_chua_du_doi_van_lap_doi(self):
+        c2 = FakeClient(loaded=False)             # chu chua nhan co -> chua biet buoc -> d None
+        accs = [_acc("a", True, map_id=58000), _acc("b", map_id=58000)]
+        kq, _route = self._goi(accs, c2)
+        self.assertEqual(kq, "moi")
+
+
+class TestLuatToiThuongL0(unittest.TestCase):
+    """RULE_DIEU_PHOI L0: "du party roi lam gi thi lam; party hong thi phai gom lai BANG DUOC".
+    Mode quest KHONG duoc co nhanh de party le dung im (party 13, 04/10: 0/4 suot ~30 phut)."""
+    PIDX = 993
+
+    def setUp(self):
+        R._party_state.pop(self.PIDX, None)
+        self._lead = dict(config.PARTY_LEADER_ACC)
+        config.PARTY_LEADER_ACC[self.PIDX] = "a"
+        self.cfg = {"mode": "quest", "quest_key": "cs1_cu_thu"}
+
+    def tearDown(self):
+        R._party_state.pop(self.PIDX, None)
+        config.PARTY_LEADER_ACC.clear(); config.PARTY_LEADER_ACC.update(self._lead)
+
+    def _goi(self, accs, c):
+        with mock.patch.dict(R.account_clients, {"a": c}), \
+                mock.patch.object(R, "_clients_cua_party", return_value=[("a", c), ("b", c)]), \
+                mock.patch.object(R, "_pick_start_city", return_value=11011), \
+                mock.patch.object(R, "party_route_maps") as route:
+            return R._quest_den_dich(self.PIDX, SimpleNamespace(accs=accs), self.cfg), route
+
+    def test_khong_co_buoc_lam_duoc_khac_map_thi_gom_ve_cho_chu(self):
+        c = FakeClient(_all_bits())                       # chu xong het -> khong co buoc
+        accs = [_acc("a", True, map_id=58000), _acc("b", map_id=12001)]
+        kq, route = self._goi(accs, c)
+        self.assertEqual(kq, "cho")
+        route.assert_called_once_with(self.PIDX, 11011, 58000)
+
+    def test_khong_co_buoc_lam_duoc_du_doi_thi_giu_doi_dung_cho(self):
+        c = FakeClient(_all_bits())
+        accs = [_acc("a", True, map_id=58000, so_member=1), _acc("b", map_id=12001, so_member=1)]
+        kq, route = self._goi(accs, c)
+        self.assertEqual(kq, "cho")
+        route.assert_not_called()
+
+    def test_moi_nhanh_chua_du_doi_deu_gom_hoac_moi(self):
+        c = FakeClient([174], steps={10326: 2})
+        for accs in ([_acc("a", True, map_id=58000), _acc("b", map_id=58000)],
+                     [_acc("a", True, map_id=12001), _acc("b", map_id=18001)]):
+            R._party_state.pop(self.PIDX, None)
+            kq, route = self._goi(accs, c)
+            self.assertTrue(kq == "moi" or route.called, (kq, accs))

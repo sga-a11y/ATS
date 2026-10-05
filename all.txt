@@ -1,0 +1,46 @@
+p4   23:08:49 EP DONG BO NANG (watcher: ca party cho nhau) -> sync_epoch=40, moi acc RELOGIN bam leader
+p5   23:08:51 REFORM gen -> 7796 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p6   23:08:51 REFORM gen -> 7792 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p7   23:07:33 EP DONG BO NHE (watcher: ca party cho nhau) -> reform_gen=7978, gom ve cung map/kenh (KHONG relogin)
+p8   23:08:51 REFORM gen -> 8014 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p9   23:08:51 REFORM gen -> 7922 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p10  23:08:51 REFORM gen -> 7855 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p11  23:06:37 EP DONG BO NANG (watcher: ca party cho nhau) -> sync_epoch=38, moi acc RELOGIN bam leader
+p12  23:08:51 REFORM gen -> 7734 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p13  23:08:51 REFORM gen -> 7936 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p14  23:08:51 REFORM gen -> 7868 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p15  23:08:51 REFORM gen -> 7972 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p16  23:08:51 REFORM gen -> 7974 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p17  23:08:51 REFORM gen -> 7825 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p19  23:06:49 EP DONG BO NHE (watcher: ca party cho nhau) -> reform_gen=7963, gom ve cung map/kenh (KHONG relogin)
+p20  23:08:51 REFORM gen -> 8019 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p21  23:08:51 REFORM gen -> 7636 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p22  23:08:51 REFORM gen -> 7890 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p23  23:08:51 REFORM gen -> 8035 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p24  23:07:28 EP DONG BO NHE (watcher: ca party cho nhau) -> reform_gen=7716, gom ve cung map/kenh (KHONG relogin)
+p25  23:08:51 REFORM gen -> 7754 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p26  23:08:51 REFORM gen -> 8032 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p27  23:08:51 REFORM gen -> 7922 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p28  23:08:51 REFORM gen -> 8541 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p29  23:08:51 REFORM gen -> 8439 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p30  23:08:51 REFORM gen -> 7996 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p31  23:08:44 WATCH: ms406 lam viec le 'nhiem vu hang ngay' da 302 phut -> qua lau
+p32  23:08:51 REFORM gen -> 7971 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p33  23:08:51 REFORM gen -> 7987 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p34  23:08:27 DIEU PHOI gen 85: pha=train map=23001 kenh=1 viec=lam
+p35  23:08:37 EP DONG BO NHE (watcher: ca party cho nhau) -> reform_gen=7532, gom ve cung map/kenh (KHONG relogin)
+p36  23:08:51 REFORM gen -> 7539 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p37  23:08:51 REFORM gen -> 3493 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p38  23:08:37 DIEU PHOI: kenh dich 3 qua 45s van chua gom xong ({1: 2, 3: 3}) -> chot lai
+p39  23:08:51 REFORM gen -> 8614 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p40  23:08:51 REFORM gen -> 7105 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p41  23:08:51 REFORM gen -> 5018 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p42  23:08:51 REFORM gen -> 7542 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p43  23:08:51 REFORM gen -> 7801 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p44  23:08:20 DIEU PHOI gen 82: pha=train map=18021 kenh=1 viec=lam
+p45  23:08:51 REFORM gen -> 6703 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p46  23:06:29 EP DONG BO NANG (watcher: ca party cho nhau) -> sync_epoch=32, moi acc RELOGIN bam leader
+p47  23:08:51 REFORM gen -> 2967 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party
+p49  20:44:10 EP DONG BO NANG (watcher: ca party cho nhau) -> sync_epoch=21, moi acc RELOGIN bam leader
+p50  23:08:42 DIEU PHOI gen 766: pha=train map=12831 kenh=1 viec=lam
+p51  23:08:51 REFORM gen -> 7969 (bump tai run_party_digioi.py:8419) - chung kenh roi ma doi khong du -> lap lai party

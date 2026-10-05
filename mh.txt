@@ -1,0 +1,8 @@
+23:22:34 [ttmmot] MO HOP: Túi Thập Thường x10 (o trong 56)
+23:22:37 [ttmmot] MO HOP: khong thay do roi ra -> dung
+23:22:50 [tlsau] MO HOP: Túi Thập Thường x10 (o trong 61)
+23:22:52 [tlsau] MO HOP: khong thay do roi ra -> dung
+23:23:09 [tlsau] Nhan item: Xu Đỏ
+23:23:09 [tlsau] Nhan item: Túi Lông Cấp 1
+23:23:28 [tonqmot] MO HOP: Túi Thập Thường x10 (o trong 71)
+23:23:30 [tonqmot] MO HOP: khong thay do roi ra -> dung

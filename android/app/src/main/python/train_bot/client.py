@@ -2560,6 +2560,8 @@ class GameClient:
         self.shop_bao_hop_max = 1
         self.dungeon_runs_today = None  # so luot dungeon da danh hom nay (S2C 0x55 stat 0x9b)
         self.xu = None               # so XU hien co (tu S2C 0x1a id=4) - None = chua nhan
+        self.nguyen_bao = None       # vang mua ve: S:035-005, KHAC xu (0x1a)
+        self.nguyen_bao_khoa = None  # None = chua nhan so du, khong phai 0
         self._decompose_seq = 0      # tang moi khi nhan S2C 0x59 (xac nhan phan giai 1 cuon xong)
         self.furnace_shop = None     # ket qua soi lo (熔爐): {base_rate, active_rate, tabs:{kind:[items]}}
         self._furnace_seq = 0        # tang moi khi nhan S2C 0x59 sub01 (xac nhan soi lo xong)
@@ -4325,8 +4327,35 @@ class GameClient:
                 self._refresh_online_claimed_from_bitflags()
                 self._refresh_quest_claimed_from_bitflags()
 
+    def _observe_gold(self, opcode: int, pkt: bytes):
+        """So du server: protocal.lua [35][4/5], [23][76]; login capture 29/09.
+
+        Khong tu tru theo gia mua: server day so du moi, tu tru nua se tinh hai lan.
+        """
+        sub = pkt[7:9]
+        gold = locked = None
+        if opcode == 0x23 and len(pkt) >= 17:
+            if sub == b"\x05\x00":
+                gold = int.from_bytes(pkt[9:13], "little")
+                locked = int.from_bytes(pkt[13:17], "little")
+            elif sub == b"\x04\x00":
+                gold = (int.from_bytes(pkt[9:13], "little", signed=True) * 100
+                        + int.from_bytes(pkt[13:17], "little", signed=True))
+        elif opcode == 0x17 and sub == b"\x4c\x00" and len(pkt) >= 20:
+            gold = int.from_bytes(pkt[15:19], "little", signed=True)
+        if gold is None or gold < 0:
+            return
+        old = (getattr(self, "nguyen_bao", None), getattr(self, "nguyen_bao_khoa", None))
+        self.nguyen_bao = gold
+        if locked is not None:
+            self.nguyen_bao_khoa = locked
+        if old != (self.nguyen_bao, getattr(self, "nguyen_bao_khoa", None)):
+            log.info("[%s] VANG: nguyen bao=%d, khoa=%s (so du server)", self._label,
+                     gold, getattr(self, "nguyen_bao_khoa", None))
+
     def _dispatch(self, opcode: int, pkt: bytes):
         log.debug("[%s] RECV op=0x%02x len=%d %s", self._label, opcode, len(pkt), pkt.hex())
+        self._observe_gold(opcode, pkt)
         self._chot_minh_chet(opcode)
         # `S:002-003 <密頻訊息>`: tin nhan rieng -> lenh dieu khien tu xa (bot/remote_cmd.py).
         if opcode == 0x02 and pkt[7:9] == b"\x03\x00":
@@ -9475,6 +9504,11 @@ class GameClient:
                 _gia = int.from_bytes(q[5:9], "little") if len(q) >= 9 else 0
                 log.info("[%s] Mua luot dungeon: gia %d %s", self._label, _gia,
                          self.UISELL_MONEY.get(kind, "tien la (kind=%d)" % kind))
+                vang = getattr(self, "nguyen_bao", None)
+                if kind == 1 and vang is not None and vang < _gia:
+                    log.info("[%s] Dungeon: KHONG DU VANG - con %d nguyen bao, ve can %d -> "
+                             "bo qua mua", self._label, vang, _gia)
+                    return False
         self._dg_query = None                                          # cho doi tra loi MUA
         # C:084-002 = [sub 02 00][tong loai 1B: 1=vat pham 2=diem][sellId 2B][bagIndex neu loai 1][arg 2B]
         self.send(0x54, b"\x02\x00" + bytes([_kieu]) + b"\x0d\x00" + _duoi + bytes([tier]) + b"\x00")
