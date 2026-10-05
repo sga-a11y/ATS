@@ -299,7 +299,22 @@ fun TsBotApp(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val privacyOrdinals = remember(parties) { accountOrdinalMap(parties) }
-    var currentCoreVersion by remember { mutableStateOf(ApkUpdater.effectiveVersion(context)) }
+    remember { ApkUpdater.effectiveVersion(context) }
+    val downloadedCoreVersion by ApkUpdater.availableCoreVersion.collectAsState()
+    val loadedCoreVersion by ApkUpdater.loadedCoreVersion.collectAsState()
+    val loadedCoreLabel = loadedCoreVersion?.let { "v${ApkUpdater.realVersion(it)}" }
+        ?: "chưa xác nhận"
+    val pendingCoreVersion = downloadedCoreVersion.takeIf {
+        loadedCoreVersion != null && ApkUpdater.realVersion(it) != ApkUpdater.realVersion(loadedCoreVersion!!)
+    }
+    fun coreVersionDetails(): String {
+        val loaded = ApkUpdater.loadedCoreVersion.value?.let { ApkUpdater.realVersion(it) }
+        val downloaded = ApkUpdater.realVersion(ApkUpdater.availableCoreVersion.value)
+        return "Core đã nạp: ${loaded?.let { "v$it" } ?: "chưa xác nhận"}\nAPK: v${BuildConfig.VERSION_NAME}" +
+            if (downloaded != loaded) {
+                "\nĐã tải v$downloaded — chờ áp dụng. Dừng tất cả rồi chạy lại."
+            } else ""
+    }
     var updateInfo by remember { mutableStateOf<ApkUpdateInfo?>(null) }
     var updateBusyText by remember { mutableStateOf<String?>(null) }
     var updateMessage by remember { mutableStateOf<UpdateDialogMessage?>(null) }
@@ -332,11 +347,11 @@ fun TsBotApp(
     fun checkApkUpdate(manual: Boolean) {
         if (updateBusyText != null) return
         if (!ApkUpdater.isAutoUpdate(context)) {
-            currentCoreVersion = ApkUpdater.effectiveVersion(context)
+            ApkUpdater.effectiveVersion(context)
             if (manual) {
                 updateMessage = UpdateDialogMessage(
                     "Update",
-                    "Đang TẮT tự động update (core v${ApkUpdater.realVersion(currentCoreVersion)}).\n" +
+                    "${coreVersionDetails()}\nĐang TẮT tự động update.\n" +
                         "Tick 'Tự động update' để lên bản mới nhất.",
                 )
             }
@@ -350,21 +365,21 @@ fun TsBotApp(
                         ApkUpdater.updateBundleIfNeeded(context.applicationContext)
                     }
                     if (bundleUpdated) {
-                        currentCoreVersion = ApkUpdater.effectiveVersion(context)
+                        ApkUpdater.effectiveVersion(context)
                     }
                 } else {
-                    currentCoreVersion = ApkUpdater.effectiveVersion(context)
+                    ApkUpdater.effectiveVersion(context)
                 }
                 val info = withContext(Dispatchers.IO) {
                     ApkUpdater.checkUpdate(BuildConfig.VERSION_NAME)
                 }
-                currentCoreVersion = ApkUpdater.effectiveVersion(context)
+                ApkUpdater.effectiveVersion(context)
                 if (info != null) {
                     updateInfo = info
                 } else if (manual) {
                     updateMessage = UpdateDialogMessage(
                         "Update",
-                        "Đang là bản mới nhất: core v$currentCoreVersion\nAPK: v${BuildConfig.VERSION_NAME}",
+                        "Đã kiểm tra cập nhật.\n${coreVersionDetails()}",
                     )
                 }
             } catch (e: Exception) {
@@ -451,12 +466,20 @@ fun TsBotApp(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("aTSBot", fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(6.dp))
-                        Text(
-                            "v${ApkUpdater.realVersion(currentCoreVersion)}" +
-                                if (autoUpdate) "" else " (tắt update)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Column {
+                            Text(
+                                loadedCoreLabel + if (autoUpdate) "" else " (tắt update)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            pendingCoreVersion?.let {
+                                Text(
+                                    "v${ApkUpdater.realVersion(it)} chờ áp dụng",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = StatusConnecting,
+                                )
+                            }
+                        }
                         Spacer(Modifier.width(10.dp))
                         if (totalAccounts > 0) {
                             StatusDot(allPartiesColor)
@@ -712,14 +735,14 @@ fun TsBotApp(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "APK v${BuildConfig.VERSION_NAME} · core v${ApkUpdater.realVersion(currentCoreVersion)}",
+                        coreVersionDetails(),
                         fontWeight = FontWeight.SemiBold,
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoUpdate, onCheckedChange = { on ->
                             ApkUpdater.setAutoUpdate(context, on)
                             autoUpdate = on
-                            currentCoreVersion = ApkUpdater.effectiveVersion(context)
+                            ApkUpdater.effectiveVersion(context)
                             if (on) {
                                 showUpdatePanel = false
                                 checkApkUpdate(manual = true)
@@ -746,7 +769,7 @@ fun TsBotApp(
                     }
                     val list = oldReleases
                     if (list != null) {
-                        val cur = ApkUpdater.realVersion(currentCoreVersion)
+                        val cur = loadedCoreVersion?.let { ApkUpdater.realVersion(it) }
                         LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
                             items(list) { (ver, day) ->
                                 Text(
@@ -763,8 +786,8 @@ fun TsBotApp(
                                                     ApkUpdater.installOldBundle(context.applicationContext, ver)
                                                 }
                                                 autoUpdate = false
-                                                currentCoreVersion = ApkUpdater.effectiveVersion(context)
-                                                oldReleasesText = "Đã cài core v$ver. Bấm Start để chạy bản này."
+                                                ApkUpdater.effectiveVersion(context)
+                                                oldReleasesText = "Đã tải core v$ver — chờ áp dụng. Bấm Start để nạp bản này."
                                             } catch (e: Exception) {
                                                 oldReleasesText = "Lỗi: ${e.message ?: e.javaClass.simpleName}"
                                             } finally {

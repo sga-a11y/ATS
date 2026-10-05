@@ -62,6 +62,12 @@ class BotForegroundService : Service() {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
         }
+        val py = Python.getInstance()
+        py.getModule("train_bot.client")
+        py.getModule("builtins").callAttr("exec", "import sys\n" +
+            "if not hasattr(sys, '__ats_core_loaded__'): " +
+            "sys.__ats_core_loaded__ = '${BuildConfig.VERSION_NAME}'")
+        publishLoadedCoreVersion()
         installPythonBundlePath()
         startForeground(1, buildNotification())
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -113,8 +119,6 @@ import sys, logging
 _p = ${'"'}${'"'}${'"'}$p${'"'}${'"'}${'"'}
 _ver = ${'"'}${'"'}${'"'}$coreVer${'"'}${'"'}${'"'}
 _prev = getattr(sys, "__ats_core_loaded__", None)
-if _p not in sys.path:
-    sys.path.insert(0, _p)
 if (not ${if (purge) "True" else "False"}) and _prev is not None and _prev != _ver:
     # Co core MOI tren dia nhung dang co acc chay -> KHONG dam purge (thread dang chay giu tham
     # chieu module cu; purge nua chung se thanh nua cu nua moi). Bao TO ra de user biet phai dung
@@ -123,6 +127,9 @@ if (not ${if (purge) "True" else "False"}) and _prev is not None and _prev != _v
         "CORE MOI v%s DA TAI nhung dang co acc CHAY -> VAN chay code cu v%s. "
         "DUNG TAT CA roi chay lai de ap dung.", _ver, _prev)
 if ${if (purge) "True" else "False"}:
+    sys.__ats_core_loaded__ = None
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
     _stale = [_n for _n, _m in list(sys.modules.items())
               if _n == "train_bot" or _n.startswith("train_bot.")]
     for _n in _stale:
@@ -130,14 +137,21 @@ if ${if (purge) "True" else "False"}:
     if _stale:
         logging.getLogger("bot").warning("CORE RELOAD: bo %d module de nap lai tu bundle: %s",
                                          len(_stale), sorted(_stale))
-import train_bot.client as _c
-sys.__ats_core_loaded__ = _ver
-logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c, "__file__", "?"))
+    import train_bot.client as _c
+    sys.__ats_core_loaded__ = _ver
+    logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c, "__file__", "?"))
 """.trimIndent()
             py.getModule("builtins").callAttr("exec", code)
         } catch (e: Exception) {
             android.util.Log.w("aTSBot", "install bundle path failed: ${e.message}", e)
+        } finally {
+            publishLoadedCoreVersion()
         }
+    }
+
+    private fun publishLoadedCoreVersion() {
+        val value = Python.getInstance().getModule("sys").get("__ats_core_loaded__")
+        ApkUpdater.recordLoadedCoreVersion(value?.toJava(String::class.java))
     }
 
     private fun materializeSmartNavAssets() {

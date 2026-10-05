@@ -13,6 +13,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.util.zip.ZipInputStream
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 data class ApkUpdateInfo(
     val version: String,
@@ -27,6 +29,15 @@ data class BundleUpdateInfo(
 )
 
 object ApkUpdater {
+    private val _loadedCoreVersion = MutableStateFlow<String?>(null)
+    val loadedCoreVersion = _loadedCoreVersion.asStateFlow()
+    private val _availableCoreVersion = MutableStateFlow(BuildConfig.VERSION_NAME)
+    val availableCoreVersion = _availableCoreVersion.asStateFlow()
+
+    internal fun recordLoadedCoreVersion(version: String?) {
+        _loadedCoreVersion.value = version
+    }
+
     private const val VERSION_URL =
         "https://github.com/sgagamee-oss/atsbot-release/releases/latest/download/version.json"
     private const val GOOGLE_DRIVE_VERSION_URL =
@@ -200,7 +211,9 @@ object ApkUpdater {
     fun effectiveVersion(context: Context): String {
         val bundle = installedBundleVersion(context)
         val apk = BuildConfig.VERSION_NAME
-        return if (isNewerVersion(bundle, apk)) bundle else apk
+        val available = if (isNewerVersion(bundle, apk)) bundle else apk
+        _availableCoreVersion.value = available
+        return available
     }
 
     private fun downloadAndInstallBundle(context: Context, info: BundleUpdateInfo) {
@@ -244,6 +257,7 @@ object ApkUpdater {
             stage.deleteRecursively()
         }
         File(base, "version.txt").writeText(version, Charsets.UTF_8)
+        effectiveVersion(context)
     }
 
     private fun unzipSafe(zip: File, dest: File) {
