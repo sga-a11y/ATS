@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CoreUpdateRestart.recoverInterruptedInstall(this)
         Servers.init(applicationContext)   // danh sach server doc tu assets/servers.json
         // TU PHAT HIEN SERVER MOI tu CDN tai nguyen cua game (thread nen, khong chan mo app).
         // CDN co server moi TRUOC CA KHI server game mo lai, nen bot biet ngay ngay dau.
@@ -156,11 +157,25 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             withContext(Dispatchers.IO) {
-                runCatching { ApkUpdater.updateBundleIfNeeded(applicationContext) }
+                runCatching {
+                    // A version that failed to load is skipped inside updateBundleIfNeeded.
+                    if (!CoreUpdateRestart.hasPending(applicationContext))
+                        ApkUpdater.updateBundleIfNeeded(applicationContext)
+                }
                     .onFailure { android.util.Log.w("aTSBot", "bundle update failed: ${it.message}", it) }
             }
-            startAndBindBotService()
+            if (!CoreUpdateRestart.scheduled) startAndBindBotService()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        CoreUpdateRestart.activityVisible = true
+    }
+
+    override fun onPause() {
+        CoreUpdateRestart.activityVisible = false
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -302,6 +317,8 @@ fun TsBotApp(
     remember { ApkUpdater.effectiveVersion(context) }
     val downloadedCoreVersion by ApkUpdater.availableCoreVersion.collectAsState()
     val loadedCoreVersion by ApkUpdater.loadedCoreVersion.collectAsState()
+    val coreUpdateStatus by ApkUpdater.coreUpdateStatus.collectAsState()
+    val deferredCoreVersion by ApkUpdater.deferredCoreVersion.collectAsState()
     val loadedCoreLabel = loadedCoreVersion?.let { "v${ApkUpdater.realVersion(it)}" }
         ?: "chưa xác nhận"
     val pendingCoreVersion = downloadedCoreVersion.takeIf {
@@ -311,9 +328,15 @@ fun TsBotApp(
         val loaded = ApkUpdater.loadedCoreVersion.value?.let { ApkUpdater.realVersion(it) }
         val downloaded = ApkUpdater.realVersion(ApkUpdater.availableCoreVersion.value)
         return "Core đã nạp: ${loaded?.let { "v$it" } ?: "chưa xác nhận"}\nAPK: v${BuildConfig.VERSION_NAME}" +
-            if (downloaded != loaded) {
-                "\nĐã tải v$downloaded — chờ áp dụng. Dừng tất cả rồi chạy lại."
-            } else ""
+            (if (downloaded != loaded) {
+                "\nBản tải về: v$downloaded. ${ApkUpdater.coreUpdateStatus.value ?: "Đang tự nạp core…"}"
+            } else "") +
+            (ApkUpdater.deferredCoreVersion.value?.let {
+                "\nCó core v${ApkUpdater.realVersion(it)} mới — đang có acc chạy nên chưa áp dụng."
+            } ?: "") +
+            (CoreUpdateRestart.failedVersion(context)?.let {
+                "\nCore v${ApkUpdater.realVersion(it)} nạp lỗi nên đã quay về bản trước; chờ bản mới hơn."
+            } ?: "")
     }
     var updateInfo by remember { mutableStateOf<ApkUpdateInfo?>(null) }
     var updateBusyText by remember { mutableStateOf<String?>(null) }
@@ -395,6 +418,27 @@ fun TsBotApp(
         }
     }
 
+    // User chose to apply the newer core now: running accounts are stopped, then log in again on it.
+    fun applyDeferredCore() {
+        if (updateBusyText != null) return
+        scope.launch {
+            updateBusyText = "Đang tải và áp dụng core mới..."
+            try {
+                withContext(Dispatchers.IO) {
+                    ApkUpdater.updateBundleIfNeeded(context.applicationContext, applyWhileRunning = true)
+                }
+                ApkUpdater.effectiveVersion(context)
+            } catch (e: Exception) {
+                updateMessage = manualUpdateMessage(
+                    "Lỗi cập nhật",
+                    "Không áp dụng được core mới:\n${e.message ?: e.javaClass.simpleName}",
+                )
+            } finally {
+                updateBusyText = null
+            }
+        }
+    }
+
     fun downloadAndInstall(info: ApkUpdateInfo) {
         if (updateBusyText != null) return
         updateInfo = null
@@ -472,9 +516,13 @@ fun TsBotApp(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            pendingCoreVersion?.let {
+                            if (coreUpdateStatus != null || pendingCoreVersion != null || deferredCoreVersion != null) {
                                 Text(
-                                    "v${ApkUpdater.realVersion(it)} chờ áp dụng",
+                                    when {
+                                        coreUpdateStatus?.startsWith("Đang") == false -> "Cập nhật lỗi — xem chi tiết"
+                                        coreUpdateStatus != null || pendingCoreVersion != null -> "Đang tự cập nhật core…"
+                                        else -> "Có core mới — bấm Check Update để áp dụng"
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = StatusConnecting,
                                 )
@@ -727,10 +775,17 @@ fun TsBotApp(
 
     // Nut Check Update: dang dung v... + tick Tu dong update + Kiem tra ban moi + Chon ban cu
     // (tai core bundle cua tag cu, ghim "9." - xem documents/CHAY_BAN_CU.md). Giong bang PC.
+    // Shown once in the Update panel; afterwards the title bar stops saying "Cập nhật lỗi".
+    fun closeUpdatePanel() {
+        showUpdatePanel = false
+        if (ApkUpdater.coreUpdateStatus.value?.startsWith("Đang") == false) {
+            CoreUpdateRestart.acknowledgeError(context)
+            ApkUpdater.reportCoreUpdate(null)
+        }
+    }
     if (showUpdatePanel) {
-        val botRunning = runningCount > 0 || anyConnecting
         AlertDialog(
-            onDismissRequest = { showUpdatePanel = false },
+            onDismissRequest = { closeUpdatePanel() },
             title = { Text("Cập nhật") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -738,6 +793,13 @@ fun TsBotApp(
                         coreVersionDetails(),
                         fontWeight = FontWeight.SemiBold,
                     )
+                    coreUpdateStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    if (deferredCoreVersion != null) {
+                        TextButton(
+                            enabled = updateBusyText == null,
+                            onClick = { applyDeferredCore() },
+                        ) { Text("Áp dụng ngay (acc sẽ login lại)") }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = autoUpdate, onCheckedChange = { on ->
                             ApkUpdater.setAutoUpdate(context, on)
@@ -757,7 +819,8 @@ fun TsBotApp(
                             scope.launch {
                                 try {
                                     oldReleases = withContext(Dispatchers.IO) { ApkUpdater.listReleases() }
-                                    oldReleasesText = "Chọn bản: tắt tự động update, tải core bản đó."
+                                    oldReleasesText = "Chọn bản: tắt tự động update, tải và áp dụng core bản đó " +
+                                        "(acc đang chạy sẽ login lại)."
                                 } catch (e: Exception) {
                                     oldReleasesText = "Không lấy được danh sách: ${e.message ?: e.javaClass.simpleName}"
                                 }
@@ -775,10 +838,6 @@ fun TsBotApp(
                                 Text(
                                     "v$ver  ($day)" + if (ver == cur) "  ← đang dùng" else "",
                                     modifier = Modifier.fillMaxWidth().clickable(enabled = updateBusyText == null) {
-                                        if (botRunning) {
-                                            oldReleasesText = "Đang có acc chạy. Dừng hết rồi mới đổi bản."
-                                            return@clickable
-                                        }
                                         scope.launch {
                                             updateBusyText = "Đang tải core v$ver..."
                                             try {
@@ -787,7 +846,7 @@ fun TsBotApp(
                                                 }
                                                 autoUpdate = false
                                                 ApkUpdater.effectiveVersion(context)
-                                                oldReleasesText = "Đã tải core v$ver — chờ áp dụng. Bấm Start để nạp bản này."
+                                                oldReleasesText = "Đã cập nhật core v$ver."
                                             } catch (e: Exception) {
                                                 oldReleasesText = "Lỗi: ${e.message ?: e.javaClass.simpleName}"
                                             } finally {
@@ -810,7 +869,7 @@ fun TsBotApp(
             },
             dismissButton = {
                 TextButton(onClick = {
-                    showUpdatePanel = false
+                    closeUpdatePanel()
                     oldReleases = null
                     oldReleasesText = ""
                 }) { Text("Đóng") }

@@ -20,6 +20,8 @@
         </activity>
         <service android:name=".BotForegroundService" android:exported="false"
                  android:foregroundServiceType="dataSync" />
+        <service android:name=".CoreRestartService" android:exported="false"
+                 android:process=":core_restart" android:foregroundServiceType="dataSync" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

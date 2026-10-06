@@ -29,6 +29,18 @@ data class BundleUpdateInfo(
 )
 
 object ApkUpdater {
+    @Volatile internal var activateBundle: ((String, () -> Unit) -> Unit)? = null
+    /** Set by the bot service; null means no service in this process, hence nothing running. */
+    @Volatile internal var hasActiveAccounts: (() -> Boolean)? = null
+    private val _deferredCoreVersion = MutableStateFlow<String?>(null)
+    /** Newer core known but not applied because accounts are running; only the user may apply it. */
+    val deferredCoreVersion = _deferredCoreVersion.asStateFlow()
+    private val _coreUpdateStatus = MutableStateFlow<String?>(null)
+    val coreUpdateStatus = _coreUpdateStatus.asStateFlow()
+
+    internal fun reportCoreUpdate(message: String?) { _coreUpdateStatus.value = message }
+
+    private class CoreActivationException(cause: Exception) : RuntimeException(cause.message, cause)
     private val _loadedCoreVersion = MutableStateFlow<String?>(null)
     val loadedCoreVersion = _loadedCoreVersion.asStateFlow()
     private val _availableCoreVersion = MutableStateFlow(BuildConfig.VERSION_NAME)
@@ -88,7 +100,9 @@ object ApkUpdater {
     }
 
     fun checkBundleUpdate(context: Context): BundleUpdateInfo? {
-        val currentVersion = installedBundleVersion(context).ifBlank { BuildConfig.VERSION_NAME }
+        // Compare with the core that actually runs: a bundle not newer than the APK is never loaded,
+        // so applying it would restart every account for nothing.
+        val currentVersion = effectiveVersion(context)
         val sources = listOf(VERSION_URL, GOOGLE_DRIVE_VERSION_URL)
         val errors = mutableListOf<String>()
         var sawSource = false
@@ -172,25 +186,46 @@ object ApkUpdater {
         return out.sortedByDescending { it.first }
     }
 
-    /** Tai core cua tag v<version> -> ghim "9.<version>" + tat tu dong update. Phai dung het acc truoc. */
+    /** Tai, tu nap core cua tag v<version>, ghim "9.<version>" va tat tu dong update. */
+    @Synchronized
     fun installOldBundle(context: Context, version: String) {
         val ver = realVersion(version)
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         val target = File(dir, "aTSBot-bundle-old-$ver.zip")
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val wasAuto = prefs.getBoolean(KEY_AUTO, true)
         try {
             downloadToFile("https://github.com/$RELEASE_REPO/releases/download/v$ver/aTSBot-bundle.zip", target)
             if (!looksLikeZip(target)) throw RuntimeException("File tải về không phải ZIP")
+            // Saved before activating: this process is killed shortly after a successful install.
+            prefs.edit().putBoolean(KEY_AUTO, false).commit()
             installBundleZip(context, target, PIN_PREFIX + ver)
+        } catch (e: Exception) {
+            prefs.edit().putBoolean(KEY_AUTO, wasAuto).commit()
+            throw e
         } finally {
             target.delete()
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_AUTO, false).apply()
     }
 
-    fun updateBundleIfNeeded(context: Context): Boolean {
+    /** Applying restarts the bot process, so with accounts running (dungeon, boss...) it waits for
+     *  the user's "Áp dụng ngay" ([applyWhileRunning] = true) instead of cutting them off. */
+    @Synchronized
+    fun updateBundleIfNeeded(context: Context, applyWhileRunning: Boolean = false): Boolean {
         if (!isAutoUpdate(context)) return false
-        val info = checkBundleUpdate(context) ?: return false
+        val info = checkBundleUpdate(context)
+        if (info == null) {
+            _deferredCoreVersion.value = null
+            return false
+        }
+        // Its code already failed to load here (rolled back): wait for the next release.
+        if (!applyWhileRunning && info.version == CoreUpdateRestart.failedVersion(context)) return false
+        if (!applyWhileRunning && hasActiveAccounts?.invoke() == true) {
+            _deferredCoreVersion.value = info.version
+            return false
+        }
         downloadAndInstallBundle(context, info)
+        _deferredCoreVersion.value = null
         return true
     }
 
@@ -232,6 +267,7 @@ object ApkUpdater {
                 return
             } catch (e: Exception) {
                 target.delete()
+                if (e is CoreActivationException) throw e
                 errors += "${normalizeDownloadUrl(rawUrl)}: ${e.message ?: e.javaClass.simpleName}"
             }
         }
@@ -239,6 +275,9 @@ object ApkUpdater {
     }
 
     private fun installBundleZip(context: Context, zip: File, version: String) {
+        if (CoreUpdateRestart.hasPending(context)) {
+            throw CoreActivationException(IllegalStateException("Một lần cập nhật core đang hoàn tất"))
+        }
         val base = File(context.filesDir, "bot_bundle").apply { mkdirs() }
         val stage = File(base, "stage")
         val current = File(base, "current")
@@ -251,13 +290,39 @@ object ApkUpdater {
         if (!File(stage, "android/train_bot/config.py").isFile) {
             throw RuntimeException("Bundle thiếu android/train_bot/config.py")
         }
-        current.deleteRecursively()
-        if (!stage.renameTo(current)) {
-            stage.copyRecursively(current, overwrite = true)
+        val backup = File(base, "previous")
+        val versionFile = File(base, "version.txt")
+        val install = {
+            backup.deleteRecursively()
+            check(!current.exists() || current.renameTo(backup)) { "Không sao lưu được core cũ" }
+            check(stage.renameTo(current)) { "Không cài được core mới" }
+            versionFile.writeText(version, Charsets.UTF_8)
+            effectiveVersion(context)
+            Unit
+        }
+        try {
+            val activate = activateBundle
+            // The service owns recovery once it has prepared the journal (restore + restart accounts).
+            if (activate != null) activate(version, install) else {
+                CoreUpdateRestart.prepare(context, version, emptyList())
+                try {
+                    install()
+                    CoreUpdateRestart.installed(context)
+                    CoreUpdateRestart.schedule(context)
+                } catch (e: Exception) {
+                    // No service, so no account to resume: restore the files and drop the journal.
+                    runCatching { CoreUpdateRestart.rollback(context, "Cập nhật core lỗi: ${e.message}") }
+                        .onFailure { e.addSuppressed(it) }
+                    CoreUpdateRestart.discard(context)
+                    effectiveVersion(context)
+                    throw e
+                }
+            }
+        } catch (e: Exception) {
+            throw if (e is CoreActivationException) e else CoreActivationException(e)
+        } finally {
             stage.deleteRecursively()
         }
-        File(base, "version.txt").writeText(version, Charsets.UTF_8)
-        effectiveVersion(context)
     }
 
     private fun unzipSafe(zip: File, dest: File) {

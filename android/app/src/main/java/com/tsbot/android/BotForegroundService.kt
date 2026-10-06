@@ -16,6 +16,7 @@ import com.chaquo.python.android.AndroidPlatform
 import org.json.JSONArray
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -34,6 +35,15 @@ class BotForegroundService : Service() {
     private val userPidx = ConcurrentHashMap<String, Int>()
     private val runningPidx = ConcurrentHashMap.newKeySet<Int>()
     private val startingPidx = ConcurrentHashMap.newKeySet<Int>()
+    private val updateControl = Any()
+    @Volatile private var applyingCore = false
+    private val stoppedDuringUpdate = ConcurrentHashMap.newKeySet<String>()
+    private val bundleActivator: (String, () -> Unit) -> Unit = { version, install ->
+        restartForCore(version, install)
+    }
+    // startParty/startAll threads not yet past startingPidx.add: they count as running too.
+    private val pendingStarts = AtomicInteger(0)
+    private val activeAccountsProbe: () -> Boolean = { hasActiveAccounts() }
 
     private val _status = MutableStateFlow<Map<String, AccountStatus>>(emptyMap())
     val status: StateFlow<Map<String, AccountStatus>> = _status
@@ -56,24 +66,116 @@ class BotForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        startForeground(1, buildNotification())
+        CoreUpdateRestart.recoverInterruptedInstall(this)
         Servers.init(applicationContext)   // danh sach server doc tu assets/servers.json
         Events.init(applicationContext)    // danh sach event doc tu assets/events.json
         materializeSmartNavAssets()
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
         }
-        val py = Python.getInstance()
-        py.getModule("train_bot.client")
-        executePython("import sys\n" +
-            "if not hasattr(sys, '__ats_core_loaded__'): " +
-            "sys.__ats_core_loaded__ = '${BuildConfig.VERSION_NAME}'")
-        publishLoadedCoreVersion()
-        installPythonBundlePath()
-        startForeground(1, buildNotification())
+        var resume = emptyList<Party>()
+        try {
+            val py = Python.getInstance()
+            py.getModule("train_bot.client")
+            executePython("import sys\n" +
+                "if not hasattr(sys, '__ats_core_loaded__'): " +
+                "sys.__ats_core_loaded__ = '${BuildConfig.VERSION_NAME}'")
+            publishLoadedCoreVersion()
+            installPythonBundlePath()
+            rpd()
+            resume = CoreUpdateRestart.consumeResume(this)
+        } catch (e: Exception) {
+            val message = "Không nạp được core: ${e.message}"
+            ApkUpdater.reportCoreUpdate(message)
+            android.util.Log.e("aTSBot", message, e)
+            // Nothing here may throw: onCreate failing again after a sticky restart would loop.
+            val restored = try { CoreUpdateRestart.rollback(this, message, loadFailed = true) }
+                catch (r: Exception) { android.util.Log.e("aTSBot", "core rollback failed", r); false }
+            if (restored) {
+                try { CoreUpdateRestart.schedule(this); return }
+                catch (s: Exception) { android.util.Log.e("aTSBot", "core restart failed", s) }
+            }
+            CoreUpdateRestart.discard(this)
+        }
+        ApkUpdater.activateBundle = bundleActivator
+        ApkUpdater.hasActiveAccounts = activeAccountsProbe
+        CoreUpdateRestart.lastError(this)?.let { ApkUpdater.reportCoreUpdate(it) }
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "aTSBot:botService").apply {
             setReferenceCounted(false)
             acquire()
+        }
+        if (resume.isNotEmpty()) startAll(resume)
+    }
+
+    @Synchronized
+    private fun restartForCore(version: String, install: () -> Unit) {
+        val runtime = Python.getInstance().getModule("core_update_runtime")
+        val core = rpd()
+        val generation: Int
+        val resume: List<Party>
+        synchronized(updateControl) {
+            applyingCore = true
+            stoppedDuringUpdate.clear()
+            startGeneration += 1
+            generation = startGeneration
+            try {
+                val active = runtime.callAttr("active_accounts", core)!!.asList().map { it.toString() }.toSet()
+                // The configuration saved NOW, at its current positions: a party deleted or an
+                // account moved since Start must not come back from what was running back then.
+                resume = PartyStore(this).load().map { party ->
+                    party.copy(accounts = party.accounts.map { it.copy(enabled = it.username in active) })
+                }
+                CoreUpdateRestart.prepare(this, version, resume)
+            } catch (e: Exception) {
+                applyingCore = false
+                throw e
+            }
+        }
+        var quiet = false
+        try {
+            ApkUpdater.reportCoreUpdate("Đang tự áp dụng core và khởi động lại bot…")
+            quiet = try { runtime.callAttr("quiesce", core, QUIESCE_SECONDS); true }
+            catch (e: Exception) { android.util.Log.w("aTSBot", "restart will terminate remaining old threads", e); false }
+            runtime.callAttr("flush_caches")
+            install()
+            CoreUpdateRestart.installed(this)
+            CoreUpdateRestart.schedule(this)
+        } catch (e: Exception) {
+            recoverFailedActivation(e, generation, resume, quiet)
+            throw e
+        }
+    }
+
+    /** Activation failed after the journal was prepared: restore the old core and bring the
+     *  accounts back. Preferably in a fresh process, where no old thread can linger. */
+    private fun recoverFailedActivation(error: Exception, generation: Int, resume: List<Party>, quiet: Boolean) {
+        val message = "Cập nhật core lỗi: ${error.message}"
+        val restored = try { CoreUpdateRestart.rollback(this, message) }
+            catch (r: Exception) { error.addSuppressed(r); false }
+        ApkUpdater.effectiveVersion(this)
+        ApkUpdater.reportCoreUpdate(message)
+        if (restored) {
+            try { CoreUpdateRestart.schedule(this); return } catch (s: Exception) { error.addSuppressed(s) }
+            CoreUpdateRestart.discard(this)
+        }   // not restored: the journal stays so the next start retries the rollback
+        // Same process: modules were never replaced here, so the old core is still the one loaded.
+        synchronized(updateControl) {
+            applyingCore = false
+            runningPidx.clear()
+            startingPidx.clear()
+            userPidx.clear()
+            _status.value = emptyMap()   // stopped accounts must not stay shown as running
+            // Old threads still alive would make start_account give up after 12s: leave them stopped.
+            if (!quiet || generation != startGeneration) return
+        }
+        resume.forEachIndexed { pidx, party ->
+            val server = Servers.ALL[party.serverKey] ?: return@forEachIndexed
+            val filtered = party.copy(accounts = party.accounts.map {
+                it.copy(enabled = it.enabled && it.username !in stoppedDuringUpdate)
+            })
+            startPartyNow(pidx, filtered, server.ip, server.serverId, generation)
         }
     }
 
@@ -207,7 +309,18 @@ if ${if (purge) "True" else "False"}:
 
     private fun rpd(): PyObject = Python.getInstance().getModule("train_bot.run_party_digioi")
 
+    /** Same truth as the resume plan of restartForCore: live account threads not asked to stop. */
+    private fun hasActiveAccounts(): Boolean =
+        pendingStarts.get() > 0 || startingPidx.isNotEmpty() || try {
+            Python.getInstance().getModule("core_update_runtime")
+                .callAttr("active_accounts", rpd())!!.asList().isNotEmpty()
+        } catch (_: Exception) { runningPidx.isNotEmpty() }
+
     companion object {
+        // stop_account force-closes a stuck socket after 25s (members wait for the leader to reach
+        // safe first); the threads then need a few more seconds to exit.
+        private const val QUIESCE_SECONDS = 45
+
         private fun rpdStatic(): PyObject =
             Python.getInstance().getModule("train_bot.run_party_digioi")
 
@@ -298,10 +411,10 @@ if ${if (purge) "True" else "False"}:
         serverId: Int,
         generation: Int,
     ) {
+        if (generation != startGeneration || applyingCore || CoreUpdateRestart.scheduled) return
         val activeAccounts = party.accounts.filter { it.enabled }
         if (activeAccounts.isEmpty() || pidx in runningPidx || !startingPidx.add(pidx)) return
-        // Moi lan Start: cam lai bundle + purge module cu (neu vua update core ma process chua chet)
-        installPythonBundlePath(excludePidx = pidx)
+        // Core is activated only in a fresh process; starting accounts never replaces modules.
         activeAccounts.forEach { account ->
             _status.update { it + (account.username to AccountStatus(RunState.CONNECTING)) }
         }
@@ -432,8 +545,10 @@ if ${if (purge) "True" else "False"}:
     /** Khoi dong 1 PARTY (pidx = vi tri party trong danh sach app - on dinh trong phien). */
     fun startParty(pidx: Int, party: Party, serverIp: String, serverId: Int) {
         val generation = startGeneration
+        pendingStarts.incrementAndGet()
         Thread({
-            startPartyNow(pidx, party, serverIp, serverId, generation)
+            try { startPartyNow(pidx, party, serverIp, serverId, generation) }
+            finally { pendingStarts.decrementAndGet() }
         }).also {
             it.name = "aTSBot-start-party-$pidx"
             it.isDaemon = true
@@ -444,12 +559,15 @@ if ${if (purge) "True" else "False"}:
     /** Khoi dong lan luot de setup runtime cua cac party khong ghi de nhau. */
     fun startAll(parties: List<Party>) {
         val generation = startGeneration
+        pendingStarts.incrementAndGet()
         Thread({
-            parties.forEachIndexed { pidx, party ->
-                if (generation != startGeneration) return@Thread
-                val server = Servers.ALL[party.serverKey] ?: return@forEachIndexed
-                startPartyNow(pidx, party, server.ip, server.serverId, generation)
-            }
+            try {
+                parties.forEachIndexed { pidx, party ->
+                    if (generation != startGeneration) return@Thread
+                    val server = Servers.ALL[party.serverKey] ?: return@forEachIndexed
+                    startPartyNow(pidx, party, server.ip, server.serverId, generation)
+                }
+            } finally { pendingStarts.decrementAndGet() }
         }).also {
             it.name = "aTSBot-start-all"
             it.isDaemon = true
@@ -737,17 +855,37 @@ if ${if (purge) "True" else "False"}:
         catch (_: Exception) { false }
 
     fun stopParty(pidx: Int) {
+        synchronized(updateControl) {
+            if (applyingCore) {
+                // The party the user sees at this position now, plus whatever was started there.
+                val saved = try { PartyStore(this).load().getOrNull(pidx)?.accounts?.map { it.username } }
+                    catch (_: Exception) { null } ?: emptyList()
+                (saved + userPidx.filterValues { it == pidx }.keys).toSet().forEach {
+                    stoppedDuringUpdate.add(it)
+                    CoreUpdateRestart.cancelResume(this, it)
+                }
+                return
+            }
+        }
         try { rpd().callAttr("stop_party", pidx) } catch (_: Exception) { }
         runningPidx.remove(pidx)
         userPidx.filterValues { it == pidx }.keys.forEach { userPidx.remove(it) }
     }
 
     fun stopAccount(username: String) {
-        try { rpd().callAttr("stop_account", username) } catch (_: Exception) { }
+        synchronized(updateControl) {
+            stoppedDuringUpdate.add(username)
+            CoreUpdateRestart.cancelResume(this, username)
+            if (!applyingCore) try { rpd().callAttr("stop_account", username) } catch (_: Exception) { }
+        }
     }
 
     fun stopAll() {
-        startGeneration += 1
+        synchronized(updateControl) {
+            startGeneration += 1
+            CoreUpdateRestart.cancelResume(this)
+            if (applyingCore) return
+        }
         // Dung lai CHINH flow stopParty da hoat dong on dinh. Snapshot truoc vi stopParty se
         // xoa runningPidx/userPidx trong luc lap.
         val partiesToStop = (
@@ -1000,6 +1138,8 @@ if ${if (purge) "True" else "False"}:
     }
 
     override fun onDestroy() {
+        if (ApkUpdater.activateBundle === bundleActivator) ApkUpdater.activateBundle = null
+        if (ApkUpdater.hasActiveAccounts === activeAccountsProbe) ApkUpdater.hasActiveAccounts = null
         polling = false
         stopAll()
         wakeLock?.let { if (it.isHeld) it.release() }

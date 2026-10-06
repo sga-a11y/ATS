@@ -1,6 +1,410 @@
 {
  "_note": "AUTO-SINH khi bot nhan S:124-000 (doi thuong su kien). GUI doc file nay de hien danh sach cho user tick. Su kien doi -> tu cap nhat. CHI chua phan DUNG CHUNG (danh sach/gia/thuong/gioi han); so lan DA DOI la rieng tung acc nen khong ghi o day.",
  "activities": {
+  "83": {
+   "title": "羈絆促銷活動",
+   "kind": 3,
+   "open": true,
+   "until": "2026-10-14 23:59",
+   "missions": [
+    {
+     "id": 83213,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 10
+      }
+     ],
+     "award": [
+      {
+       "item": 51714,
+       "kind": 2,
+       "name": "Bí Cấp Trần Cung",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83209,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 40
+      }
+     ],
+     "award": [
+      {
+       "item": 51148,
+       "kind": 2,
+       "name": "T.Tinh Điêu Thuyền",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83203,
+     "cond": 1,
+     "limit": 60,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 3
+      }
+     ],
+     "award": [
+      {
+       "item": 34851,
+       "kind": 2,
+       "name": "Túi Phúc Âu Hoàng 3",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83205,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 30
+      }
+     ],
+     "award": [
+      {
+       "item": 47082,
+       "kind": 2,
+       "name": "K.Tỏa Lữ Bố",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83206,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 40
+      }
+     ],
+     "award": [
+      {
+       "item": 51271,
+       "kind": 2,
+       "name": "T.Tinh Lữ Bố",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83208,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 30
+      }
+     ],
+     "award": [
+      {
+       "item": 47083,
+       "kind": 2,
+       "name": "K.Tỏa Điêu Thuyền",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83201,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 150
+      }
+     ],
+     "award": [
+      {
+       "item": 34650,
+       "kind": 2,
+       "name": "Hộp quà Bí Bảo Đỏ",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83207,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 20
+      }
+     ],
+     "award": [
+      {
+       "item": 51744,
+       "kind": 2,
+       "name": "Bí Cấp Điêu Thuyền",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83214,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 20
+      }
+     ],
+     "award": [
+      {
+       "item": 47113,
+       "kind": 2,
+       "name": "K.Tỏa Trần Cung",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83202,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 50
+      }
+     ],
+     "award": [
+      {
+       "item": 45940,
+       "kind": 2,
+       "name": "Phiếu Vũ Khí",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83212,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 30
+      }
+     ],
+     "award": [
+      {
+       "item": 51005,
+       "kind": 2,
+       "name": "T.Tinh Cao Thuận",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83215,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 30
+      }
+     ],
+     "award": [
+      {
+       "item": 51081,
+       "kind": 2,
+       "name": "T.Tinh Trần Cung",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83204,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 20
+      }
+     ],
+     "award": [
+      {
+       "item": 51701,
+       "kind": 2,
+       "name": "Bí Cấp Lữ Bố",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83210,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 10
+      }
+     ],
+     "award": [
+      {
+       "item": 51740,
+       "kind": 2,
+       "name": "Bí Cấp Cao Thuận",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83217,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 20
+      }
+     ],
+     "award": [
+      {
+       "item": 47147,
+       "kind": 2,
+       "name": "K.Tỏa Hoa Hùng",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83211,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 20
+      }
+     ],
+     "award": [
+      {
+       "item": 47089,
+       "kind": 2,
+       "name": "K.Tỏa Cao Thuận",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83218,
+     "cond": 1,
+     "limit": 1,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 30
+      }
+     ],
+     "award": [
+      {
+       "item": 51090,
+       "kind": 2,
+       "name": "T.Tinh Hoa Hùng",
+       "quant": 1
+      }
+     ]
+    },
+    {
+     "id": 83216,
+     "cond": 1,
+     "limit": 3,
+     "need": 0,
+     "cost": [
+      {
+       "item": 181,
+       "kind": 1,
+       "name": "微笑",
+       "quant": 10
+      }
+     ],
+     "award": [
+      {
+       "item": 51716,
+       "kind": 2,
+       "name": "Bí Cấp Hoa Hùng",
+       "quant": 1
+      }
+     ]
+    }
+   ]
+  },
   "81": {
    "title": "八週年登入活動",
    "kind": 3,

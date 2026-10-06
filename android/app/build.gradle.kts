@@ -111,6 +111,7 @@ android {
     }
 
     buildTypes {
+        getByName("debug") { applicationIdSuffix = ".verification" }
         release {
             isMinifyEnabled = true
             signingConfig = signingConfigs.getByName("atsRelease")

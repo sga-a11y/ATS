@@ -7,8 +7,8 @@ import java.io.File
 
 /** Luu/doc parties.json - moi Party co 1 server rieng (chon 1 lan luc tao Party), cac
  * account trong Party chi can username/password (khong hoi server tung acc nua). */
-class PartyStore(private val context: Context) {
-    private val file = File(context.filesDir, "parties.json")
+class PartyStore(private val context: Context, fileName: String = "parties.json") {
+    private val file = File(context.filesDir, fileName)
 
     private fun stringList(o: JSONObject, key: String): List<String> {
         val arr = o.optJSONArray(key) ?: return emptyList()

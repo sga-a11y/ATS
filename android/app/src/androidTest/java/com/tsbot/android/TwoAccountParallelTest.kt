@@ -80,8 +80,8 @@ class TwoAccountParallelTest {
         val info1 = Servers.ALL[acc1ServerKey]!!
         val info2 = Servers.ALL[acc2ServerKey]!!
         try {
-            svc!!.startAccount(acc1, info1.ip, info1.serverId, RunModes.STAND_STILL, Cities.ALL.keys.first(), false)
-            svc!!.startAccount(acc2, info2.ip, info2.serverId, RunModes.STAND_STILL, Cities.ALL.keys.first(), false)
+            svc!!.startParty(0, Party("test-1", acc1ServerKey, accounts = listOf(acc1), doDaily = false), info1.ip, info1.serverId)
+            svc!!.startParty(1, Party("test-2", acc2ServerKey, accounts = listOf(acc2), doDaily = false), info2.ip, info2.serverId)
 
             // 30s: du cho 2 login HTTP that + ket noi TCP game song song (thuong ~10-15s/acc
             // theo quan sat thu cong), nhan doi lam bien do de tranh flaky tren mang cham.

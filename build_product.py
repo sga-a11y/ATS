@@ -166,6 +166,7 @@ def _app_shell_hashes():
         "android/app/src/main/AndroidManifest.xml",
     ]
     android_shell += _glob_files("android/app/src/main/java", (".kt", ".java"))
+    android_shell += ["android/app/src/main/python/core_update_runtime.py"]
     android_shell += _glob_files("android/app/src/main/res", None)
     return {
         "pc_shell": _hash_files(pc_shell),

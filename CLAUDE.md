@@ -206,7 +206,8 @@ mới **vẫn chạy code cũ**, không dấu hiệu gì ngoài lỗi giữa ch�
 relogin liên tục, dính mã 19. Giờ so `installedBundleVersion` với `BuildConfig.VERSION_NAME`,
 không mới hơn thì bỏ qua bundle và ghi log rõ đang chạy bản nào.
 
-### APK: cập nhật core phải DỪNG HẾT party trước
-Dọn `sys.modules` chỉ chạy khi không acc nào đang chạy. Update core lúc đang chạy → vẫn chạy code
-cũ, log sẽ báo `CORE MOI v... nhung dang co acc CHAY -> VAN chay code cu v...`. Dấu hiệu core đã
-nạp đúng: `CORE LOAD: core=v<version> client=/data/.../bot_bundle/current/android/train_bot/client.py`.
+### APK: core mới chỉ nạp trong TIẾN TRÌNH MỚI (06/10)
+Không bao giờ thay module Python giữa lúc chạy nữa: áp dụng core = dừng acc → đổi thư mục bundle →
+`CoreRestartService` giết tiến trình cũ, bật tiến trình mới → chạy lại đúng các acc đang chạy. Đang có
+acc chạy thì **không tự áp dụng**, chỉ báo và chờ user bấm "Áp dụng ngay". Chi tiết + cách test:
+`documents/CHAY_BAN_CU.md` mục "APK: tự áp dụng core". Dấu hiệu core đã nạp đúng: `CORE LOAD: core=v<version> client=/data/.../bot_bundle/current/android/train_bot/client.py`.
