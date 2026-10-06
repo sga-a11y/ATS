@@ -9,6 +9,13 @@ SOURCE = Path(__file__).resolve().parents[1] / "android/app/src/main/java/com/ts
 
 
 class LoadedCoreVersionTests(unittest.TestCase):
+    def test_android_exec_bridge_always_supplies_a_globals_dictionary(self):
+        source = SOURCE.read_text(encoding='utf-8')
+        calls = [line.strip() for line in source.splitlines() if '.callAttr("exec",' in line]
+        self.assertEqual(calls, [
+            'py.getModule("builtins").callAttr("exec", code, py.getModule("builtins").callAttr("dict"))'
+        ])
+
     def run_loader(self, purge, previous="old", fail_import=False):
         source = SOURCE.read_text(encoding="utf-8")
         code = source.split('val code = """', 1)[1].split('""".trimIndent()', 1)[0]

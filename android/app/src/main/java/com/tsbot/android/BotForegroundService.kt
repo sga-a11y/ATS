@@ -64,7 +64,7 @@ class BotForegroundService : Service() {
         }
         val py = Python.getInstance()
         py.getModule("train_bot.client")
-        py.getModule("builtins").callAttr("exec", "import sys\n" +
+        executePython("import sys\n" +
             "if not hasattr(sys, '__ats_core_loaded__'): " +
             "sys.__ats_core_loaded__ = '${BuildConfig.VERSION_NAME}'")
         publishLoadedCoreVersion()
@@ -141,7 +141,7 @@ if ${if (purge) "True" else "False"}:
     sys.__ats_core_loaded__ = _ver
     logging.getLogger("bot").info("CORE LOAD: core=v%s client=%s", _ver, getattr(_c, "__file__", "?"))
 """.trimIndent()
-            py.getModule("builtins").callAttr("exec", code)
+            executePython(code)
         } catch (e: Exception) {
             android.util.Log.w("aTSBot", "install bundle path failed: ${e.message}", e)
         } finally {
@@ -152,6 +152,12 @@ if ${if (purge) "True" else "False"}:
     private fun publishLoadedCoreVersion() {
         val value = Python.getInstance().getModule("sys").get("__ats_core_loaded__")
         ApkUpdater.recordLoadedCoreVersion(value?.toJava(String::class.java))
+    }
+
+    private fun executePython(code: String) {
+        val py = Python.getInstance()
+        // Java calls have no Python caller frame from which exec can infer globals.
+        py.getModule("builtins").callAttr("exec", code, py.getModule("builtins").callAttr("dict"))
     }
 
     private fun materializeSmartNavAssets() {
