@@ -123,29 +123,135 @@ class _BundleFirstFinder:
         return None
 
 
-def _bootstrap_bundle_path():
+# Trang thai nap core (bot_bundle). Ghi lai luc boot, log ra party.log sau khi logging san sang.
+_CORE_DANG_DUNG = False   # True = dang chay code trong bot_bundle, False = code compiled trong exe
+_CORE_PC = ""             # duong dan bot_bundle/current/pc da cam (de go ra khi core loi)
+_CORE_CANH_BAO = []       # cau log "update: ..." can ghi sau khi run_party_digioi dung logging
+
+
+def _app_base_dir():
     cand = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
     if cand and "python" not in os.path.basename(cand).lower() and os.path.isfile(cand):
-        base = os.path.dirname(cand)
-    else:
-        base = os.path.dirname(os.path.abspath(__file__))
+        return os.path.dirname(cand)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _version_that(v):
+    v = str(v or "").strip()
+    return v[2:] if v.startswith("9.") else v     # '9.<ban>' = ban ghim (bot/updater.py PIN_PREFIX)
+
+
+def _version_exe():
+    """Version compiled trong CHINH exe nay (chua cam finder nen khong lay nham ban core). Nap xong
+    go 'bot' khoi sys.modules de neu dung core thi package bot duoc nap lai tu core."""
+    try:
+        from bot._version import VERSION
+        return str(VERSION)
+    except Exception:
+        return ""
+    finally:
+        for k in ("bot._version", "bot"):
+            sys.modules.pop(k, None)
+
+
+def _core_cu_hon_exe(core_ver, exe_ver):
+    """Core tai ve CU HON exe -> bo qua (cai exe moi ma bot_bundle cu con sot -> dung de code cu
+    len exe moi). Khong biet version (dev '1.1.dev', '?', thieu file) -> khong chan."""
+    core_ver, exe_ver = _version_that(core_ver), _version_that(exe_ver)
+    if not core_ver or not exe_ver or not exe_ver[:1].isdigit() or exe_ver.endswith(".dev"):
+        return False
+    return core_ver < exe_ver
+
+
+def _bootstrap_bundle_path(base=None, exe_ver=None):
+    global _CORE_DANG_DUNG, _CORE_PC
+    base = base or _app_base_dir()
     bundle_pc = os.path.join(base, "bot_bundle", "current", "pc")
-    if (os.path.isfile(os.path.join(bundle_pc, "run_party_digioi.py"))
+    if not (os.path.isfile(os.path.join(bundle_pc, "run_party_digioi.py"))
             and os.path.isfile(os.path.join(bundle_pc, "bot", "config.py"))):
-        sys.path.insert(0, bundle_pc)
-        # Chen TRUOC importer cua Nuitka (xem _BundleFirstFinder) - bat buoc, neu khong bundle
-        # chi nam trong sys.path va khong bao gio duoc dung.
+        return
+    try:
+        with open(os.path.join(base, "bot_bundle", "version.txt"), encoding="utf-8") as f:
+            core_ver = f.read().strip()
+    except Exception:
+        core_ver = ""
+    exe_ver = _version_exe() if exe_ver is None else exe_ver
+    if _core_cu_hon_exe(core_ver, exe_ver):
+        _CORE_CANH_BAO.append("core v%s CU HON exe v%s -> bo qua core, chay code trong exe"
+                              % (core_ver, exe_ver))
+        return
+    sys.path.insert(0, bundle_pc)
+    _CORE_PC = bundle_pc
+    _CORE_DANG_DUNG = True
+    # Chen TRUOC importer cua Nuitka (xem _BundleFirstFinder) - bat buoc, neu khong bundle
+    # chi nam trong sys.path va khong bao gio duoc dung.
+    try:
+        if not any(isinstance(f, _BundleFirstFinder) for f in sys.meta_path):
+            sys.meta_path.insert(0, _BundleFirstFinder(bundle_pc))
+    except Exception:
+        pass   # loi cam finder -> van chay duoc bang code compiled trong exe
+
+
+def _go_core():
+    """Go core khoi duong import -> lan import sau lay code compiled trong exe."""
+    global _CORE_DANG_DUNG
+    sys.meta_path[:] = [f for f in sys.meta_path if not isinstance(f, _BundleFirstFinder)]
+    sys.path[:] = [p for p in sys.path if p != _CORE_PC]
+    for k in list(sys.modules):
+        if k in ("run_party_digioi", "bot") or k.startswith("bot."):
+            del sys.modules[k]
+    _CORE_DANG_DUNG = False
+
+
+# Module bot ma gui.py import o CAP MODULE (ngoai ham) - phai nap thu trong _nap_core, loi o day
+# cung la exe chet im lang. tests/test_gui_core_loi_van_mo_duoc.py ep danh sach phu du.
+_BOT_GUI_NAP_NGAY = ("idle_stats", "config", "_appdir", "train_pick", "bag_tabs", "region")
+
+
+def _nap_core():
+    """Nap run_party_digioi + module bot GUI dung ngay. Core loi luc nap -> quay ve code trong exe.
+
+    Ca that 07/10 (v1.1.202610071122): core moi `import uuid`, exe 28/09 khong dong goi `uuid` ->
+    ModuleNotFoundError o day -> exe khong console chet im lang, bam mo "khong co gi xay ra", va
+    vi chet TRUOC buoc check update nen user khong tu thoat duoc. Gio: ghi traceback ra
+    core_loi.log, go core, chay code trong exe -> app van mo, van hoi cai exe moi duoc."""
+    import logging as _lg
+    goc = list(_lg.getLogger().handlers)
+    try:
+        import run_party_digioi as _ctrl
+        for _ten in _BOT_GUI_NAP_NGAY:
+            importlib.import_module("bot." + _ten)
+        return _ctrl
+    except Exception as e:
+        if not _CORE_DANG_DUNG:
+            raise
+        import traceback
         try:
-            if not any(isinstance(f, _BundleFirstFinder) for f in sys.meta_path):
-                sys.meta_path.insert(0, _BundleFirstFinder(bundle_pc))
+            with open(os.path.join(_app_base_dir(), "core_loi.log"), "w", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
         except Exception:
-            pass   # loi cam finder -> van chay duoc bang code compiled trong exe
+            pass
+        _CORE_CANH_BAO.append("CORE TAI VE LOI KHI NAP (%s: %s) -> chay code trong exe, chi tiet "
+                              "core_loi.log" % (type(e).__name__, e))
+        # core loi giua chung co the da gan handler log (basicConfig) -> go, de ban exe gan lai
+        for h in list(_lg.getLogger().handlers):
+            if h not in goc:
+                _lg.getLogger().removeHandler(h)
+                try:
+                    h.close()
+                except Exception:
+                    pass
+    _go_core()
+    import run_party_digioi as _ctrl
+    return _ctrl
 
 
 _bootstrap_bundle_path()
 _gui_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(1 if sys.path and os.path.basename(sys.path[0]) == "pc" else 0, _gui_dir)
-import run_party_digioi as ctrl          # module dieu khien (da refactor)
+ctrl = _nap_core()                       # module dieu khien (da refactor)
+for _m in _CORE_CANH_BAO:
+    logging.getLogger("bot").warning("update: %s", _m)
 from bot.idle_stats import fmt_time
 from bot import config
 from bot._appdir import app_dir as _app_dir   # thu muc goc (dev=project, frozen=canh .exe)
@@ -702,6 +808,8 @@ class BotGUI(tk.Tk):
             if _updater.is_frozen():
                 self._app_version = _updater.installed_app_version(_VER)
                 self._version = _updater.effective_version(_VER)
+                if not _CORE_DANG_DUNG:   # core bi bo qua / loi -> dang chay code TRONG exe
+                    self._version = self._app_version
         except Exception:
             pass
         self.title(self._title_text())

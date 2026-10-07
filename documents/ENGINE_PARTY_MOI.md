@@ -50,6 +50,20 @@ Mã Python PC/APK đã đồng bộ. Việc kiểm tra mã và unit test không 
   Thiếu hai cờ này thì party không có leader bot đánh event bằng combo train, và pet bị trả về
   vai train. Test: `tests/test_event_quest_mode_engine.py`.
 
+### Sửa 07/10 — mode `stand` / `city` không đi phó bản đội
+
+- Báo lỗi `BL-1007-8C5F` (party 1, mode stand: "login tại chỗ k đi phó bản đội"). Cả 4 acc xong
+  daily lúc 13:35:43, ô 5 chưa làm, engine ra `pb_doi`/`pb_doi_theo`. Nhưng `party_modes.decide_mode`
+  của stand (và city) ép mọi việc ngoài `lap_party`/`doi_kenh` thành `nghi`. Worker đang `nghi` sẵn
+  nên log im hẳn. Lỗi có từ 26/09 (`90bfb10`). Engine cũ thì vẫn chạy PB đội lúc login cho cả hai mode.
+- Giờ stand/city cho `pb_doi`/`pb_doi_theo` đi qua (kể cả lúc đang đánh, giống mode train). Event
+  `chaos_vs` không đổi.
+- Stand/city **đánh PB tại chỗ**: bỏ bước "về thành tập kết trước" của nhánh PB (cờ
+  `pb_tai_cho`, đặt trong `_cap_nhat_engine` theo `mode`). Thành tập kết ở hai mode này có thể là
+  thành còn sót lại từ phiên train trước, còn `ve_thanh` thì bị ép thành `nghi` → kẹt mãi. Mode
+  train vẫn về thành trước (user chốt 21/09).
+- Test: `tests/test_stand_city_pb_doi.py`.
+
 Phần dưới ghi lại thiết kế ban đầu và các tình huống lịch sử. Những mô tả
 chạy song song hoặc fallback engine cũ trong lịch sử không còn áp dụng.
 

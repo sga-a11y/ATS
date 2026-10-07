@@ -68,6 +68,8 @@ Sinh ra 07/10: user báo bug mà không có gì để xem → không sửa đư�
   Zip có sẵn (vd user gửi qua Zalo) → `python tools/bug_inbox.py <file.zip>`.
 - Đã chạy thật 07/10: `BL-1007-73E9` (party 3, digioi_train) kéo về đủ 3 file, 40.040 dòng log có
   cả dòng nhãn tên nhân vật, config 59 trường party + config riêng 5 acc, không có trường `p`.
+- Script tự đặt stdout/stderr UTF-8: console Windows mặc định cp1252 nên trước đây in mô tả tiếng
+  Việt là văng `UnicodeEncodeError` (gặp ở BL-1007-8C5F, file vẫn giải nén đủ).
 - Đọc lỗi: "xem lỗi BL-xxxx" → đọc `bug_reports/BL-xxxx/` theo luật CORE_FLOW.
 
 ## Kỹ thuật

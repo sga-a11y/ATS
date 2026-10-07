@@ -24,6 +24,7 @@ Bấm **Check Update** sẽ mở bảng gồm:
 - **Chọn bản cũ**: `download_and_swap(zip của tag v<bản>, pin_version=<bản>)`. Luồng giống update thường (stage → `_update.bat` kill exe → xcopy đè → mở lại), thêm 2 bước:
   - ghim `version.json` trong stage thành `9.<bản>`;
   - bat **xóa `bot_bundle`** trước khi chép. `gui.py` luôn nạp `bot_bundle/current` nếu có, nên để lại thì core mới đè lên code bản cũ.
+  - Từ 07/10 bat **luôn** xóa `bot_bundle`, kể cả update thường (xem `AUTO_UPDATE.md`).
 - Bản cũ phát hành trước tính năng này không có bảng. Để bật lại update: xóa `version.json` cạnh exe rồi bấm Check Update. Hướng dẫn ghi trong `DANG_DUNG_BAN_CU.txt`.
 
 ## APK

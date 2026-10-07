@@ -11636,10 +11636,15 @@ class GameClient:
                 if not fast:
                     time.sleep(0.2)
 
-    def scan_furnace(self, wait: float = 3.0):
+    def scan_furnace(self, wait: float = 60.0):
         """SOI LO thuong (熔爐): gui C:089-001 (0x59 sub01, khong payload) -> server tra S:089-001
         -> _parse_furnace_shop() luu self.furnace_shop + log 3 tab. Pha 1: CHI doc/log, chua mua.
-        Tra True neu nhan duoc data trong `wait` giay."""
+        Tra True neu nhan duoc data trong `wait` giay.
+
+        `wait` 60s chu KHONG phai 3s: server lag thi goi lo ve TRE. Ca 07/10 party 40: cho 3s ->
+        5/5 acc "khong nhan duoc data" trong khi goi ve sau 7-20s -> mat sach "Chu y" lo. Do tre 95
+        ca: 3-5s:16 6-10s:35 11-20s:19 21-30s:8 31-45s:11 >45s:6 (documents/SOI_LO.md). Goi ve
+        ngay thi vong cho thoat ngay, khong cham gi."""
         self.furnace_shop = None
         seq0 = self._furnace_seq
         log.info("[%s] SOI LO: gui query (0x59 sub01)...", self._label)
@@ -11651,6 +11656,9 @@ class GameClient:
             log.warning("[%s] SOI LO: khong nhan duoc data sau %.0fs (lo dong / khong o gan lo?)",
                         self._label, wait)
             return False
+        _tre = time.time() - t0
+        if _tre > 3.0:
+            log.info("[%s] SOI LO: goi ve TRE %.0fs (server lag)", self._label, _tre)
         return self.furnace_shop is not None
 
     # (Ghi nho protocol: kind lo thuong = 1 Vo Tuong / 2 Trang Bi / 5 Chuyen Sinh; hoang kim

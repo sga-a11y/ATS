@@ -20,7 +20,6 @@ import threading
 import time
 import urllib.error
 import urllib.request
-import uuid
 import zipfile
 
 log = logging.getLogger("bot")
@@ -269,7 +268,9 @@ def dong_goi(zip_path, info, cfg_snap, dong_log):
 
 
 def _multipart(fields, file_field, file_name, data):
-    bien = uuid.uuid4().hex
+    # KHONG dung uuid: exe Nuitka cu khong dong goi module nay -> core moi import la exe cu chet
+    # ngay luc mo (ca that 07/10, tools/do_module_exe.py).
+    bien = os.urandom(16).hex()
     out = []
     for k, v in fields.items():
         out.append(("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n"

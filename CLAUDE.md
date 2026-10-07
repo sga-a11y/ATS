@@ -163,6 +163,11 @@ khi lệnh con lỗi. Nên các lỗi dưới đây KHÔNG thể lọt ra bản 
 | `Servers.kt FALLBACK thieu server` | Thêm server vào `servers.json` mà quên `Servers.kt` | Thêm vào `FALLBACK` trong `Servers.kt` |
 | `asset APK chua khai bao trong DATA_JSON cua build_product.py` | File có trong `SHARED_ASSETS` (APK có) nhưng bản **exe** không đóng gói | Thêm vào `DATA_JSON` trong `build_product.py` |
 | `ban APK cua config.py THIEU ham ma code dung chung goi` | Thêm hàm vào `bot/config.py` mà quên bản APK | Chép tay sang `android/.../train_bot/config.py` |
+| `core import module EXE CU KHONG CO` | Core (`bot/*`, `run_party_digioi.py`) import module thư viện chuẩn mà exe Nuitka cũ không đóng gói → exe cũ nạp core là chết im lúc mở | Dùng module có sẵn, hoặc bọc `try/except ImportError`. Xem `documents/AUTO_UPDATE.md` |
+
+**Cổng thứ 8 (07/10)**: release v1.1.202610071122 thêm `import uuid` vào `bug_report.py` → mọi exe
+cũ bật tự update tải core về là **bấm mở không có gì xảy ra** (crash trước cả bước check update nên
+user kẹt hẳn). Baseline module đo THẬT trên exe cũ bằng `tools/do_module_exe.py`.
 
 **Tái phạm lần 4 (2026-09-06)** — cổng thứ 7 sinh ra từ đây. `config.py` nằm trong `PC_ONLY`
 (bản APK đọc asset, cấu trúc khác hẳn) nên sync **không** chép nó — tức nó là một chỗ chép tay nữa.

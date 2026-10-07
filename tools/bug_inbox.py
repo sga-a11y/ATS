@@ -162,4 +162,10 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    # Console Windows mac dinh cp1252 -> in mo ta tieng Viet la UnicodeEncodeError (BL-1007-8C5F).
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     sys.exit(main(sys.argv[1:]))

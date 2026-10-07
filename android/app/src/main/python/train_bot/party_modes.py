@@ -7,6 +7,9 @@ only chooses bounded account work; it never starts a controller thread.
 
 _PRIORITY = frozenset(("lenh_tay", "login_chore", "daily", "viec_vat"))
 _GROUP_AT_REST = frozenset(("lap_party", "doi_kenh"))
+# PHO BAN TO DOI: stand/city van di nhu engine cu (`_do_startup_team` khong loai mode nao).
+# Ep `nghi` la party khong bao gio vao PB (bao loi BL-1007-8C5F, party 1 mode stand, 07/10).
+_PB_DOI = frozenset(("pb_doi", "pb_doi_theo"))
 
 
 def decide_mode(mode, decisions, accs, *, target_map=None, event_kind=None,
@@ -35,6 +38,8 @@ def decide_mode(mode, decisions, accs, *, target_map=None, event_kind=None,
             continue
         if current in _PRIORITY:
             continue
+        if mode in ("city", "stand") and current in _PB_DOI:
+            continue        # dang danh thi engine tu xu ly, y nhu mode train
         if account.dang_danh:
             result[user] = ("solo_event_run"
                             if mode == "event" and event_kind == "chaos_vs"

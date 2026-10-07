@@ -7396,6 +7396,7 @@ def _cap_nhat_engine(eng, pidx):
     eng.pcfg = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
     eng.map_event = _map_event_engine_moi(pidx)
     eng.co_pha_train = eng.pcfg.get("mode") == "digioi_train"
+    eng.pb_tai_cho = eng.pcfg.get("mode") in ("stand", "city")
     # Chot MAP TRAIN + BAI QUAI: hai so nay do `_engine_chot_map` va `run_account` ghi - ca hai
     # deu KHONG chay voi party engine moi (cua chan 1 va 2). Thieu chung thi party gom du xong se
     # DUNG IM o thanh: khong biet di map nao, khong biet ra bai nao.

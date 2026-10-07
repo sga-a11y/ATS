@@ -195,13 +195,15 @@ class AnhParty:
     __slots__ = ("pidx", "accs", "can_bao_nhieu", "map_dich", "luc", "pha", "co_spot",
                  "pb_doi_level", "co_pha_train", "thanh_di_ngang", "cho_ly_do",
                  "dp_viec", "event_xong", "reform_moi", "resync_moi", "nguoi_keo",
-                 "thanh_dich", "thieu_acc_song", "tang_gom", "fc_buoc", "lenh_tay_gen")
+                 "thanh_dich", "thieu_acc_song", "tang_gom", "fc_buoc", "lenh_tay_gen",
+                 "pb_tai_cho")
 
     def __init__(self, pidx, accs, can_bao_nhieu=0, map_dich=None, luc=None,
                  pha=PHA_TRAIN, co_spot=False, pb_doi_level=None, co_pha_train=True,
                  thanh_di_ngang=False, cho_ly_do="", dp_viec=None, event_xong=False,
                  reform_moi=False, resync_moi=False, nguoi_keo="*", thanh_dich=None,
-                 thieu_acc_song=False, tang_gom=None, fc_buoc=None, lenh_tay_gen=0):
+                 thieu_acc_song=False, tang_gom=None, fc_buoc=None, lenh_tay_gen=0,
+                 pb_tai_cho=False):
         self.pidx = int(pidx)
         self.accs = list(accs)
         self.can_bao_nhieu = int(can_bao_nhieu or 0)   # so member can (khong ke leader)
@@ -211,6 +213,7 @@ class AnhParty:
         self.co_spot = bool(co_spot)                   # da chot duoc tam bai quai chua
         self.pb_doi_level = pb_doi_level               # level PB to doi con luot (None = het)
         self.co_pha_train = bool(co_pha_train)         # mode `digioi` thuan: xong DG la THOAT
+        self.pb_tai_cho = bool(pb_tai_cho)             # mode stand/city: PB doi KHONG ve thanh truoc
         self.thanh_di_ngang = bool(thanh_di_ngang)     # dang o thanh TRUNG GIAN -> chua lap party
         self.cho_ly_do = cho_ly_do or ""               # != "" -> chua nen ra lenh, ca party cho
         self.dp_viec = dp_viec                         # viec CAP PARTY do `_dieu_phoi_quyet` chot
@@ -733,8 +736,11 @@ def _quyet_dinh_goc(anh: AnhParty):
         #   05:31:26 [nasau] pre-route: tele trung gian ve thanh 12061 truoc
         #   05:31:26 [nasau] go_to_town: DANG TRONG pho ban to doi (map=62012) -> khong teleport
         # Buoc "ve thanh truoc" chi de danh cho luc CHUA vao phong.
+        # Mode stand/city (`pb_tai_cho`) DANH TAI CHO nhu engine cu: thanh tap ket o do co the la
+        # thanh sot tu phien train truoc, va mode do ep `ve_thanh` thanh `nghi` -> ket vinh vien
+        # (bao loi BL-1007-8C5F, 07/10).
         _thanh = anh.thanh_dich
-        if _thanh and not any(a.trong_pb for a in con_lai):
+        if _thanh and not anh.pb_tai_cho and not any(a.trong_pb for a in con_lai):
             _chua_ve = [a for a in con_lai
                         if a.map_id is not None and int(a.map_id) != int(_thanh)]
             if _chua_ve:
@@ -1791,6 +1797,7 @@ class PartyEngine:
         self._cap_nhat = cap_nhat        # (engine) -> None : doc lai cau hinh + chot bai, moi nhip
         self._moi_party = moi_party      # (client, train_on_map) -> None : `_invite_party_participants`
         self.co_pha_train = bool(co_pha_train)   # mode `digioi` thuan: het gio DG la HET, khong train
+        self.pb_tai_cho = False                  # mode stand/city: danh PB doi tai cho (`_cap_nhat`)
         self._thoat_acc = thoat_acc      # (username, ly_do) -> None : `stop_account` cua engine cu
         self.pcfg = dict(pcfg or {})     # config party (co bat/tat tung tinh nang cua user)
         self._doc_duong = doc_duong      # () -> [buoc] | None : MOB_PATHS toi tam quai (leader keo)
@@ -1909,6 +1916,7 @@ class PartyEngine:
                         co_spot=self._spot() is not None,
                         pb_doi_level=_pb_lv,
                         co_pha_train=self.co_pha_train,
+                        pb_tai_cho=self.pb_tai_cho,
                         event_xong=bool(self.hoi_event_xong() if self.hoi_event_xong else False),
                         tang_gom=self._tang_gom(), fc_buoc=self._fc_buoc(),
                         lenh_tay_gen=self._lenh_tay_gen())

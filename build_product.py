@@ -92,6 +92,26 @@ def validate_pc_data_covers_shared(root=ROOT):
             % ", ".join(missing))
 
 
+def validate_core_imports(root=ROOT):
+    """DUNG BUILD neu core (bot/*.py, run_party_digioi.py) import module ma EXE CU khong co.
+
+    Core bundle chay TREN exe user dang cai. Ca that 07/10 (v1.1.202610071122): bug_report.py them
+    `import uuid`, exe 28/09 khong dong goi uuid -> exe cu nap core moi la chet im lang luc mo, user
+    ket han (crash truoc buoc check update). Baseline do THAT tren exe cu: tools/do_module_exe.py.
+    """
+    sys.path.insert(0, os.path.join(root, "tools"))
+    try:
+        from do_module_exe import kiem_import_core
+    except Exception as exc:
+        raise SystemExit("Khong nap duoc tools/do_module_exe.py de kiem import core: %s" % exc)
+    loi = kiem_import_core(root)
+    if loi:
+        raise SystemExit(
+            "core import module EXE CU KHONG CO -> user dang exe cu nap core se chet luc mo:\n  "
+            + "\n  ".join(loi)
+            + "\n  -> doi cach viet (dung module da co), xem documents/AUTO_UPDATE.md")
+
+
 def validate_navigation_assets(root=ROOT):
     required = ["world_nav.json", *DATA_FILES]
     missing = [name for name in required if not os.path.isfile(os.path.join(root, name))]
@@ -705,6 +725,7 @@ if __name__ == "__main__":
     print("=== BUILD PRODUCT (PyArmor + PyInstaller onefile) ===")
     validate_pc_data_covers_shared()
     validate_navigation_assets()
+    validate_core_imports()
     ver = _build_version()
     clean()
     stage(ver)

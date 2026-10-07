@@ -93,6 +93,7 @@ aTSBot-bundle.zip
 aTSBot-drive.zip
 .build_app_required_state.json
 legion_boss_state.json
+legion_damage.json
 shop_state.json
 scan_maps/
 mob_packets_*.jsonl

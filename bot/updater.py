@@ -259,6 +259,13 @@ def check_bundle_update(current_app_version: str):
             errors.append("%s: %s" % (name, e))
             continue
         ver = str(d.get("bundle_version") or "").strip()
+        # Server bat CAI LAI EXE ma exe nay chua dat moc -> KHONG ap core ngam: core moi viet cho vo
+        # (gui.py) moi, co the can thu exe cu khong co. Ca that 07/10: ap core truoc -> restart ->
+        # exe cu thieu module `uuid` -> chet ngay luc mo, khong bao gio toi buoc hoi cai exe.
+        # Bo qua o day -> gui.py goi tiep check_update() -> hoi cai exe.
+        required_ver = str(d.get("pc_app_required_version") or "").strip()
+        if required_ver and _is_newer_version(required_ver, current_app_version):
+            continue
         if ver and _is_newer_version(ver, current_bundle):
             cand = (ver, _bundle_urls_from_version(d), str(d.get("notes", "")))
             if best is None or ver > best[0]:
@@ -397,6 +404,34 @@ def _merge_user_config(live_dir: str, stage_dir: str):
             pass
 
 
+def _noi_dung_update_bat(exe_name: str, pin_version: str = "") -> str:
+    """TASKKILL exe (bootstrap onefile khong tu chet bang os._exit -> giu khoa file) -> xcopy stage
+    GHI DE folder, RETRY toi khi het khoa -> chay lai. KHONG cho theo PID/ten process nua (Nuitka
+    onefile co process cha giu khoa, PID payload chet nhung khoa van con -> treo). taskkill BO QUA
+    neu exe_name la python* (dev) -> khong lo dinh python khac.
+
+    LUON xoa `bot_bundle`: zip vua tai la ban DAY DU, exe moi da co san dung code ban do. De core cu
+    lai thi gui.py nap no de len exe moi (ban cu hon exe). Truoc day chi xoa khi chay ban cu (ghim);
+    tu 07/10 updater bo qua core khi bat cai exe (check_bundle_update) nen core con lai luon cu hon."""
+    _kill = "" if "python" in exe_name.lower() else \
+        'taskkill /f /im "%s" >nul 2>&1\r\n' % exe_name
+    return (
+        "@echo off\r\n"
+        "chcp 65001 >nul\r\n"
+        "timeout /t 2 /nobreak >nul\r\n"   # cho app kip dong cua so
+        + _kill                            # kill exe -> nha khoa file (neu la ban build)
+        + 'if exist "bot_bundle" rmdir /s /q "bot_bundle"\r\n'
+        + ":copy\r\n"
+        "timeout /t 1 /nobreak >nul\r\n"
+        'xcopy /e /y /q /i "_update_stage\\*" "." >nul\r\n'
+        'if errorlevel 1 goto copy\r\n'    # exe con khoa (chua kill xong) -> thu lai toi khi duoc
+        'rmdir /s /q "_update_stage"\r\n'
+        'del /q "aTSBot_update.zip"\r\n'
+        'start "" "%s"\r\n'
+        'del "%%~f0"\r\n' % exe_name
+    )
+
+
 def download_and_swap(url: str, on_progress=None, pin_version: str = ""):
     """Tai aTSBot.zip (CA FOLDER: exe + JSON config) ve -> giai nen ra _update_stage -> viet
     _update.bat: cho app thoat -> xcopy stage GHI DE folder (exe + json moi) -> chay lai -> don.
@@ -454,29 +489,9 @@ def download_and_swap(url: str, on_progress=None, pin_version: str = ""):
     if pin_version:
         pin_version_file(os.path.join(stage, "version.json"), pin_version)
 
-    # 3) bat: TASKKILL exe (bootstrap onefile khong tu chet bang os._exit -> giu khoa file) -> xcopy
-    # stage GHI DE folder, RETRY toi khi het khoa -> chay lai. KHONG cho theo PID/ten process nua
-    # (Nuitka onefile co process cha giu khoa, PID payload chet nhung khoa van con -> treo).
-    # taskkill BO QUA neu exe_name la python* (dev) -> khong lo dinh python khac.
-    _kill = "" if "python" in exe_name.lower() else \
-        'taskkill /f /im "%s" >nul 2>&1\r\n' % exe_name
     bat = os.path.join(d, "_update.bat")
     with open(bat, "w", encoding="ascii") as f:
-        f.write(
-            "@echo off\r\n"
-            "chcp 65001 >nul\r\n"
-            "timeout /t 2 /nobreak >nul\r\n"   # cho app kip dong cua so
-            + _kill                            # kill exe -> nha khoa file (neu la ban build)
-            + ('if exist "bot_bundle" rmdir /s /q "bot_bundle"\r\n' if pin_version else "")
-            + ":copy\r\n"
-            "timeout /t 1 /nobreak >nul\r\n"
-            'xcopy /e /y /q /i "_update_stage\\*" "." >nul\r\n'
-            'if errorlevel 1 goto copy\r\n'    # exe con khoa (chua kill xong) -> thu lai toi khi duoc
-            'rmdir /s /q "_update_stage"\r\n'
-            'del /q "aTSBot_update.zip"\r\n'
-            'start "" "%s"\r\n'
-            'del "%%~f0"\r\n' % exe_name
-        )
+        f.write(_noi_dung_update_bat(exe_name, pin_version))
     # DETACHED_PROCESS (0x8) | CREATE_NO_WINDOW (0x08000000): bat chay ngam, song sau khi app thoat
     subprocess.Popen(["cmd", "/c", bat], cwd=d,
                      creationflags=0x00000008 | 0x08000000, close_fds=True)

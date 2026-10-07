@@ -5,6 +5,25 @@ Bot soi lò một lần lúc login (`process_furnace`), gói `0x59`:
 
 `kind` = tab: **1 = Võ tướng, 2 = Trang bị, 5 = Chuyển sinh** (`FURNACE_TAB_KIND`).
 
+## Chờ gói lò: 60s, không phải 3s (sửa 07/10)
+
+`scan_furnace(wait=60.0)`. Gói về ngay thì vòng chờ thoát ngay; chỉ lúc server lag mới chờ lâu.
+Về trễ hơn 3s thì log `SOI LO: goi ve TRE Ns (server lag)` để sau đếm được.
+
+Ca sinh ra luật: 07/10 party 40 không có "Chú ý" lò. Lò **có** món cần báo (10:18 soi ra 34 món ở
+chế độ báo), nhưng GUI khởi động lại lúc 11:11 (danh sách nằm trong RAM nên mất). Các lần soi sau
+đó, server lag, gói lò về **trễ 7–20s**, bot chỉ chờ 3s rồi trả list rỗng:
+```
+11:26:50 [dtmot~dt801] SOI LO: gui query (0x59 sub01)...
+11:26:53 [dtmot~dt801] SOI LO: khong nhan duoc data sau 3s
+11:27:10 [dtmot~dt801] LO HOANG KIM tab GoldNpc(vo tuong) ...   <- gói về trễ 20s
+```
+Đo trên log: sau 11:11 có 85 acc dính, 77 acc sau đó **vẫn nhận được gói**. Đối chứng: 11:12–11:14
+có 178 lượt soi, 0 lỗi; dòng `toi TRE`/`IM LANG` ở 10:1x là 0, lên 162 ở 11:1x. Độ trễ 95 ca trên
+2 file log: 3–5s: 16 · 6–10s: 35 · 11–20s: 19 · 21–30s: 8 · 31–45s: 11 · >45s: 6.
+
+> Hạn chế: ca trễ hơn 60s vẫn lọt (không soi lại sau). `tests/test_soi_lo_cho_goi_tre.py` giữ mốc 60s.
+
 ## Ba chế độ mỗi item
 
 | Chế độ | Nghĩa |
