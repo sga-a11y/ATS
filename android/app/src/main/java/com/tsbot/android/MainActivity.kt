@@ -662,6 +662,7 @@ fun TsBotApp(
                         onSendCity = { id, flag -> parties.indexOf(party).let { if (it >= 0) service?.sendCity(it, id, flag) } },
                         onSendRouteMaps = { source, dest -> parties.indexOf(party).let { if (it >= 0) service?.sendRouteMaps(it, source, dest) } },
                         onSendGiftcode = { code -> parties.indexOf(party).let { if (it >= 0) service?.sendGiftcode(it, code) } },
+                        onBugReport = { moTa -> parties.indexOf(party).let { if (it >= 0) service?.bugReport(it, moTa) ?: "" else "" } },
                         onGetChannels = {
                             // pidx suy tu vi tri party trong list (giong startPartyIn /
                             // onFurnaceNotify), va truyen THANG cho `getChannels` - GIONG BAN PC
@@ -1415,6 +1416,8 @@ fun PartyCard(
     onSendCity: (Int, Int) -> Unit,
     onSendRouteMaps: (Int, Int) -> Unit,
     onSendGiftcode: (String) -> Unit,
+    // BAO LOI: BLOCKING (goi tu Dispatchers.IO), tra chuoi JSON {"ok","ma","loi","file"}
+    onBugReport: (String) -> String = { _ -> "" },
     onGetChannels: () -> List<Triple<Int, Int?, Int?>>,
     // SOI LO - thong bao "Chu y": lay danh sach / mua / bo qua (goi xuong Python qua service)
     onFurnaceNotify: () -> List<Map<String, String>> = { emptyList() },
@@ -1536,6 +1539,7 @@ fun PartyCard(
             var showChannelDialog by remember { mutableStateOf(false) }
             var showCityDialog by remember { mutableStateOf(false) }
             var showGiftcodeDialog by remember { mutableStateOf(false) }
+            var showBugDialog by remember { mutableStateOf(false) }
             var showAgiDialog by remember { mutableStateOf(false) }
             var showIdleStats by remember { mutableStateOf(false) }
             var showNotifyDialog by remember { mutableStateOf(false) }
@@ -1575,6 +1579,11 @@ fun PartyCard(
                         onClick = { showGiftcodeDialog = true },
                         modifier = Modifier.weight(1f).height(60.dp),
                     ) { Text("Giftcode", maxLines = 2) }
+                    // BAO LOI (documents/BAO_LOI.md): gan voi party cua the nay, giong nut tab PC.
+                    OutlinedButton(
+                        onClick = { showBugDialog = true },
+                        modifier = Modifier.weight(1f).height(60.dp),
+                    ) { Text("🐞 Báo lỗi", maxLines = 2) }
                 }
                 Spacer(Modifier.height(6.dp))
                 // Check AGI THU GON (weight) de nhuong cho nut "Chu y" cung hang. Nut Chu y chi
@@ -1638,6 +1647,13 @@ fun PartyCard(
                     allowRouteMaps = party.runMode == RunModes.STAND_STILL || party.runMode == RunModes.STAY_LOGIN,
                     onPick = { info -> onSendCity(info.cityId, info.flag); showCityDialog = false },
                     onRouteMaps = { source, dest -> onSendRouteMaps(source, dest); showCityDialog = false },
+                )
+            }
+            if (showBugDialog) {
+                BugReportDialog(
+                    title = party.name,
+                    onDismiss = { showBugDialog = false },
+                    onSend = onBugReport,
                 )
             }
             if (showGiftcodeDialog) {
@@ -6547,6 +6563,103 @@ fun CityDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
     )
+}
+
+/** Hop bao loi (documents/BAO_LOI.md). Gui hong ma con zip -> nut Chia se de user gui tay. */
+@Composable
+fun BugReportDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onSend: (String) -> String,
+) {
+    var moTa by remember { mutableStateOf("") }
+    var dangGui by remember { mutableStateOf(false) }
+    var ketQua by remember { mutableStateOf<JSONObject?>(null) }
+    val daGui = ketQua?.optBoolean("ok") == true
+    val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = { if (!dangGui) onDismiss() },
+        title = { Text("Báo lỗi — $title") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = moTa,
+                    onValueChange = { moTa = it },
+                    label = { Text("Mô tả lỗi (party bị gì, từ lúc nào)") },
+                    minLines = 3,
+                    enabled = !dangGui && !daGui,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Gửi kèm: version, cấu hình party/acc và log của party này. KHÔNG gửi mật khẩu.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (dangGui) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Đang đóng gói và gửi...")
+                }
+                ketQua?.let { kq ->
+                    Spacer(Modifier.height(8.dp))
+                    if (kq.optBoolean("ok")) {
+                        Text("Đã gửi! Gửi mã này cho admin:", color = Color(0xFF2E7D32))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(kq.optString("ma"), fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium)
+                            TextButton(onClick = { clipboard.setText(AnnotatedString(kq.optString("ma"))) }) {
+                                Text("Copy mã")
+                            }
+                        }
+                    } else {
+                        Text("Gửi thất bại: ${kq.optString("loi")}", color = MaterialTheme.colorScheme.error)
+                        val f = kq.optString("file")
+                        if (f.isNotEmpty()) {
+                            TextButton(onClick = { shareBugZip(context, File(f)) }) {
+                                Text("Chia sẻ file báo lỗi (Zalo...)")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (!daGui) {
+                Button(enabled = !dangGui, onClick = {
+                    dangGui = true
+                    ketQua = null
+                    scope.launch {
+                        val s = withContext(Dispatchers.IO) { onSend(moTa.trim()) }
+                        ketQua = try {
+                            JSONObject(s)
+                        } catch (_: Exception) {
+                            JSONObject().put("ok", false).put("loi", "app chưa sẵn sàng, thử lại sau")
+                        }
+                        dangGui = false
+                    }
+                }) { Text("Gửi") }
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !dangGui, onClick = onDismiss) { Text("Đóng") }
+        },
+    )
+}
+
+private fun shareBugZip(context: android.content.Context, file: File) {
+    try {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", file)
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("application/zip")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        context.startActivity(Intent.createChooser(send, "Gửi file báo lỗi")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (e: Exception) {
+        android.util.Log.w("aTSBot", "shareBugZip loi: ${e.message}", e)
+    }
 }
 
 @Composable

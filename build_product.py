@@ -22,6 +22,11 @@ RELEASE_REPO = "sgagamee-oss/atsbot-release"   # repo PUBLIC phat hanh (upload e
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STAGE = os.path.join(ROOT, "_stage")        # source sach (config.example -> config)
+# Token bot Telegram BAO LOI (documents/BAO_LOI.md). File gitignore, dev tu tao; build nhung vao
+# TRONG ban phat hanh duoi dang module `_bao_loi_bot.py` (khong de file roi canh exe).
+BAO_LOI_BOT_JSON = os.path.join(ROOT, "bao_loi_bot.json")
+APK_BAO_LOI_BOT = os.path.join(ROOT, "android", "app", "src", "main", "python", "train_bot",
+                               "_bao_loi_bot.py")
 WORK = os.path.join(ROOT, "_work")          # Nuitka build temp
 DIST = os.path.join(ROOT, "aTSBot")         # output cuoi cung (thu muc gui di)
 NAME = "aTSBot"
@@ -250,8 +255,35 @@ def stage(ver=None):
     with open(os.path.join(bot_dst, "_version.py"), "w", encoding="utf-8") as f:
         f.write('"""Phien ban app - TU SINH luc build (build_product.py), KHONG sua tay."""\n')
         f.write('VERSION = "%s"\n' % ver)
+    write_bao_loi_bot(bot_dst)
     print("staged source (config.py placeholder, account that o accounts.json) - version=%s" % ver)
     return ver
+
+
+def write_bao_loi_bot(stage_bot, src=BAO_LOI_BOT_JSON, apk_dst=APK_BAO_LOI_BOT):
+    """Sinh `_bao_loi_bot.py` (BOT = {token, chat_id}) cho ca exe (stage/bot -> Nuitka bien dich vao
+    trong exe, + bundle) lan APK (train_bot). Thieu `bao_loi_bot.json` -> build VAN chay, ban do chi
+    luu zip de gui tay; XOA module cu de khong sot token cu vao ban moi."""
+    try:
+        with open(src, encoding="utf-8") as fh:
+            d = json.load(fh)
+        bot = {"token": str(d["token"]), "chat_id": str(d.get("chat_id") or "")}
+    except FileNotFoundError:
+        bot = None
+        print("!! thieu %s -> ban nay KHONG gui duoc bao loi (chi luu zip)" % os.path.basename(src))
+    except (ValueError, KeyError, TypeError) as e:
+        raise SystemExit("%s hong (%s) - can {\"token\": \"...\", \"chat_id\": \"...\"}" % (src, e))
+    for dst in (os.path.join(stage_bot, "_bao_loi_bot.py"), apk_dst):
+        if bot is None:
+            if os.path.exists(dst):
+                os.remove(dst)
+            continue
+        with open(dst, "w", encoding="utf-8") as f:
+            f.write('"""TU SINH luc build tu bao_loi_bot.json (build_product.py) - KHONG sua tay, '
+                    'KHONG commit."""\n')
+            f.write("BOT = %r\n" % bot)
+    if bot is not None:
+        print("bao loi: da nhung bot Telegram vao ban build")
 
 
 def package():

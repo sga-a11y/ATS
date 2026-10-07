@@ -81,8 +81,11 @@ class BattleSnapshot:
 
 
 class BattleTracker:
-    def __init__(self, local_role_id: bytes = b"", region=None):
+    def __init__(self, local_role_id: bytes = b"", region=None, nhan_fn=None):
         self.local_role_id = bytes(local_role_id)
+        # Nhan log cua acc so huu tracker (client._label doi tu username -> ten nhan vat nen phai la
+        # ham). Khong co nhan thi dong canh bao khong gan duoc vao party nao -> bao loi loc mat.
+        self._nhan_fn = nhan_fn
         # Encoding ten unit theo BAN TS (VTC utf-16 / TSM big5). Sai encoding -> doc ngoai hinh
         # nguoi choi hong -> tracker khong bao gio active (TSM 29/09: PB bi ngat ma 47).
         self.encoding = (region or _region.get()).encoding
@@ -679,7 +682,14 @@ class BattleTracker:
         if len(self._end_warned) > 200:
             self._end_warned.clear()
         self._end_warned.add(key)
-        log.warning("[BATTLE g=%s] BO goi KET TRAN (0x0b sub0): %s", self.generation, ly_do)
+        nhan = ""
+        if self._nhan_fn is not None:
+            try:
+                nhan = self._nhan_fn() or ""
+            except Exception:
+                nhan = ""
+        log.warning("%s[BATTLE g=%s] BO goi KET TRAN (0x0b sub0): %s",
+                    "[%s] " % nhan if nhan else "", self.generation, ly_do)
 
     def _exit(self, data: bytes):
         if len(data) != 2:

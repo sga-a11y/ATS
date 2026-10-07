@@ -866,7 +866,9 @@ Pattern entries: `03 02 [type] [4-byte LE]`
     - Auto-train cua chinh game (`MachineBox`, routine kiem tra Phuc Than) lam dung thu tu: thay
       `damage >= Damaged` -> doi chieu `damagedItemId` -> `C:023-013` VUT -> `SendUseEquip` deo ngoc
       moi; con item tieu hao chi dung khi `godMission < 1`. Bot theo huong nay, nguong rong hon theo
-      yeu cau user: dung khi `< 5`, toi da 10 cai/luot (TONG, uu tien Dai Phuc Than truoc).
+      yeu cau user: dung khi `< 5`, toi da 10 cai/luot (TONG ca 3 loai). Thu tu: `0xB49A` Chan Phuc
+      Than (15 luot/cai, exp x2) > `0xB3D6` Dai Phuc Than (10 luot) > `0xB3D5` Phuc Than (1 luot)
+      - ca 3 cung nhom `kd=38 sa=93`, la item TIEU HAO (bam dung), KHONG phai ngoc deo (them Chan 07/10).
     - **O NGOC = `equip_by_fit[6]`, NGUON DUY NHAT (sua 28/09).** Game KHONG co goi "hoi lai do dang
       mac" - client goc cung giu bang theo o, cap nhat bang goi XAC NHAN: snapshot login `sub0b00`,
       mac xong `S:023-017`, coi xong `S:023-016`, hong `sub2300`, vut `C:023-013` (khong co ack ->

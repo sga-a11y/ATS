@@ -26,6 +26,7 @@ from bot import party_engine
 from bot import party_modes
 from bot import quest_runner
 from bot import party_route
+from bot import bug_report
 from bot import remote_cmd
 from bot import train_pick as train_pick_mod   # alias: trong setup_party_runtime co tham so ten train_pick
 from bot.mob_scanner import MobScanSession, compute_regions, scan_full_map
@@ -660,10 +661,10 @@ def request_party_resync(pidx, reason="ép đồng bộ", cooldown=0.0, hard=Fal
             ep = _bump_reform(st, "ep dong bo (nhe): " + reason)
     if hard:
         log.warning("[party %s] EP DONG BO NANG (%s) -> sync_epoch=%d, moi acc RELOGIN bam leader",
-                    pidx, reason, ep)
+                    pidx + 1, reason, ep)
     else:
         log.warning("[party %s] EP DONG BO NHE (%s) -> reform_gen=%d, gom ve cung map/kenh "
-                    "(KHONG relogin)", pidx, reason, ep)
+                    "(KHONG relogin)", pidx + 1, reason, ep)
     return ep, hard
 
 
@@ -3430,9 +3431,9 @@ def _remote_off_party(c, sender_name, sender_id, minutes):
         c.send_whisper(sender_id, sender_name, "OK off %dp, quay lai luc %s" % (minutes, hh))
         time.sleep(1.0)     # cho tin xac nhan di het truoc khi dong socket
     except Exception as e:
-        log.warning("[party %d] DIEU KHIEN TU XA: gui xac nhan loi: %s", pidx, e)
+        log.warning("[party %d] DIEU KHIEN TU XA: gui xac nhan loi: %s", pidx + 1, e)
     log.warning("[party %d] DIEU KHIEN TU XA: '%s' -> OFF CA PARTY %d phut (toi %s): %s",
-                pidx, sender_name, minutes, hh, users)
+                pidx + 1, sender_name, minutes, hh, users)
     for u in users:
         cli = account_clients.get(u)
         if cli is not None:
@@ -4699,6 +4700,8 @@ def start_party(pidx, stagger=1.5, skip_running=False, quest_leader=None):
     # chung dang dua vao chinh nhung state do de phoi hop voi nhau.
     if not _fresh:
         return _start_party_accounts(pidx, accounts, generation, stagger, skip_running)
+    # MOC PHIEN: bao loi (bug_report.py) cat log tu day - lay 2 phien gan nhat cua party.
+    log.info(bug_report.dong_moc(pidx, [u for u, *_ in accounts]))
     for k in ("leader_ok", "leader_bad", "leader_gone", "invited", "channel_ready",
               "stop_leader_done", "route_party_ready", "route_done", "rally_ready",
               "path_done",
@@ -4719,6 +4722,32 @@ def start_party(pidx, stagger=1.5, skip_running=False, quest_leader=None):
         st["summary_done"] = False   # cho phep log lai dong tong ket o lan chay nay
     started += _start_party_accounts(pidx, accounts, generation, stagger, skip_running)
     return started
+
+
+def bao_loi(pidx, mo_ta, app_info=None):
+    """User bam "Bao loi" o tab party (gui.py / APK). BLOCKING (loc log + zip + upload) -> goi tu
+    thread nen. app_info: dict hoac chuoi JSON {app_version, core_version, nen_tang, ...}.
+    Xem documents/BAO_LOI.md."""
+    pidx = int(pidx)
+    if isinstance(app_info, str):
+        try:
+            app_info = json.loads(app_info) if app_info else {}
+        except Exception:
+            app_info = {}
+    accounts = party_accounts(pidx)
+    nhan = set()
+    for u, *_ in accounts:
+        c = account_clients.get(u)
+        for x in (getattr(c, "_label", ""), getattr(c, "char_name", "")):
+            if x:
+                nhan.add(x)
+    return bug_report.tao_bao_loi(pidx, mo_ta, accounts, nhan, config, _log_path,
+                                  os.path.dirname(os.path.abspath(_log_path)), app_info)
+
+
+def bao_loi_json(pidx, mo_ta, app_info_json=""):
+    """APK: Kotlin doc ket qua dang chuoi JSON (Chaquopy doi dict sang Kotlin kho dung)."""
+    return json.dumps(bao_loi(pidx, mo_ta, app_info_json), ensure_ascii=False)
 
 
 # ===================== DIEU PHOI PARTY: BOT QUYET DINH =====================

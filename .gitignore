@@ -117,3 +117,10 @@ servers_cdn.json
 train_block_stats.json.bak
 releases.json
 marks.json
+
+# Bao loi (documents/BAO_LOI.md): log cua user + zip gui hong + token bot (khong commit)
+bug_reports/
+bao_loi/
+bao_loi_bot.json
+bot/_bao_loi_bot.py
+android/app/src/main/python/train_bot/_bao_loi_bot.py

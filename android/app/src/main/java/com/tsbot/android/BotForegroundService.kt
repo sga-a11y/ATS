@@ -949,6 +949,24 @@ if ${if (purge) "True" else "False"}:
         }
     }
 
+    /** BAO LOI (documents/BAO_LOI.md): BLOCKING (loc log + zip + upload) - goi tu Dispatchers.IO.
+     *  Tra chuoi JSON {"ok","ma","loi","file"} cua `run_party_digioi.bao_loi_json`. Core version
+     *  Python tu doc (`sys.__ats_core_loaded__`), Kotlin chi them thong tin APK + may. */
+    fun bugReport(pidx: Int, moTa: String): String {
+        val info = org.json.JSONObject()
+            .put("app_version", BuildConfig.VERSION_NAME)
+            .put("nen_tang", "Android")
+            .put("thiet_bi", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+            .put("android", android.os.Build.VERSION.RELEASE)
+        return try {
+            rpd().callAttr("bao_loi_json", pidx, moTa, info.toString()).toString()
+        } catch (e: Exception) {
+            android.util.Log.w("aTSBot", "bugReport(p${pidx + 1}) loi: ${e.message}", e)
+            org.json.JSONObject().put("ok", false).put("ma", "")
+                .put("loi", e.message ?: "lỗi không rõ").put("file", "").toString()
+        }
+    }
+
     fun sendGiftcode(pidx: Int, code: String) {
         try { rpd().callAttr("redeem_giftcode_party", pidx, code) } catch (e: Exception) {
             android.util.Log.w("aTSBot", "sendGiftcode(p${pidx + 1}) loi: ${e.message}", e)

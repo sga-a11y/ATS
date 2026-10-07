@@ -12,6 +12,7 @@ GREAT_BAG = 0xB5F4
 NORMAL_BAG = 0xB650  # Tui Phuc Than thuong - mo sau Tui Dai
 GREAT_BLESSING = 0xB3D6
 BLESSING = 0xB3D5
+CHAN_BLESSING = 0xB49A  # Chan Phuc Than - 15 luot/cai, manh nhat nhom tieu hao
 BROKEN_GEM = 0x59F0
 BA_GEM = 0x5AAC      # Ngoc Ba Phuc Than   x3
 TIEU_GEM = 0x59EF    # Ngoc Tieu Phuc Than x1,5
@@ -171,6 +172,27 @@ class TestPhucThanPriority(unittest.TestCase):
         )
         self.assertEqual(equip, [2])
         self.assertEqual(used, [(3, 5, 0), (4, 7, 0)])
+
+    def test_chan_phuc_than_used_first_and_total_capped(self):
+        """Chan Phuc Than 0xB49A (15 luot/cai) dung TRUOC Dai/Phuc Than; cap 10 la TONG ca 3 loai."""
+        self.assertIn(CHAN_BLESSING, config.USE_LOGIN_ITEMS)
+        self.assertTrue(config.USE_LOGIN_ITEMS[CHAN_BLESSING]["phuc_than"])
+        self.assertNotIn(CHAN_BLESSING, client_module.PHUC_THAN_GEM_TIDS)
+        game = client_module.GameClient.__new__(client_module.GameClient)
+        game.god_mission = 2
+        game.phuc_than_tat = False
+        game._label = "test"
+        game.bag_slots = {1: [BLESSING, 30], 2: [GREAT_BLESSING, 20], 3: [CHAN_BLESSING, 4]}
+        seen = {}
+        game._use_items_from_cfg = lambda cfg, lbl: seen.update(cfg)
+        game.discard_junk_items = lambda: None
+        game.use_phuc_than_items()
+        self.assertEqual(seen[CHAN_BLESSING]["qty"], 4)
+        self.assertEqual(seen[GREAT_BLESSING]["qty"], 6)
+        self.assertNotIn(BLESSING, seen)
+        self.assertEqual(list(k for k in seen if k not in client_module.PHUC_THAN_GEM_TIDS
+                              and k not in client_module.PHUC_THAN_BAG_TIDS)[:2],
+                         [CHAN_BLESSING, GREAT_BLESSING])
 
     def test_desktop_and_android_define_the_same_priority(self):
         def read_priority(path):

@@ -359,11 +359,11 @@ EQUIP_POS_SPEC = 6
 # toi da moi luot.
 PHUC_THAN_LOW = 5
 PHUC_THAN_USE_MAX = 10
-# THU TU DUNG item tieu hao: manh truoc (Dai Phuc Than > Phuc Than) -> dung IT item hon cho cung
+# THU TU DUNG item tieu hao: manh truoc (Chan 15 luot > Dai 10 > Phuc Than 1) -> dung IT item hon cho cung
 # so luot buff. Item khong co trong bang nay xep sau cung. (KHONG sap theo "qty" trong
 # use_items.json: qty la so dung/luot, Phuc Than = 50 > Dai = 25 -> sap theo do la chon nham
 # loai YEU truoc.)
-PHUC_THAN_CONSUMABLE_ORDER = (0xB3D6, 0xB3D5)
+PHUC_THAN_CONSUMABLE_ORDER = (0xB49A, 0xB3D6, 0xB3D5)
 # `S:007-002 <換分區結果> +結果(1)` - chep DUNG tu protocal.lua:1091. LUU Y: 0 moi la THANH CONG
 # (client: nhanh `else` -> dong UI); 1..4 deu la THONG BAO LOI (ShowCenterMessage).
 #   1 不可換到同一區   3 組隊不可換分區
@@ -2414,7 +2414,7 @@ class GameClient:
         self._recent_recvs = collections.deque(maxlen=40)  # (ts, op, hex) goi server gui - debug kick
         self.running = False
         self.state = BattleState()
-        self.battle_tracker = BattleTracker(region=self.region)
+        self.battle_tracker = BattleTracker(region=self.region, nhan_fn=lambda: self._label)
         self.state.attach_tracker(self.battle_tracker)
         self._battle_party_key = None
         self._battle_party_coordinator = None
@@ -13342,7 +13342,11 @@ class GameClient:
             ds = list(chu.items())
         trung = len(ds) > 1
         for _u, _c in ds:
-            _c._label = _nhan_log(_u, nm, trung)
+            moi = _nhan_log(_u, nm, trung)
+            if _c._label != moi:
+                # Bao loi (bug_report.py) doc dong nay de biet nhan nao thuoc username nao.
+                log.info("[%s] NHAN LOG -> '%s'", _u, moi)
+            _c._label = moi
         if trung:
             log.info("[%s] ten nhan vat '%s' TRUNG voi acc khac (%s) -> nhan log = '%s' cho khoi lan",
                      u, nm, ", ".join(sorted(x for x, _ in ds if x != u)), self._label)

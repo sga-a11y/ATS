@@ -25,6 +25,7 @@
     "0xb5b5": "Giải Boss Quân Đoàn",
     "0xb590": {"name": "Thùng Dị Giới", "qty": 25},
     "0xb591": {"name": "Rương Hộ Phù Dị Giới", "qty": 25},
+    "0xb49a": {"name": "Chân Phúc Thần", "qty": 10, "phuc_than": true},
     "0xb3d6": {"name": "Đại Phúc Thần", "qty": 25, "phuc_than": true},
     "0xb3d5": {"name": "Phúc Thần", "qty": 50, "phuc_than": true},
     "0xb5f4": {"name": "Túi Đại Phúc Thần", "qty": 1, "phuc_than": true},

@@ -1549,6 +1549,10 @@ class BotGUI(tk.Tk):
                                bg="#fff3cd", fg="#8a6d00", activebackground="#ffe69c",
                                command=lambda p=pidx: self._show_party_notify(p))
         self.party_notify_buttons[pidx] = notify_btn   # chua pack -> an; _update_notify_buttons se hien
+        # BAO LOI (documents/BAO_LOI.md): side="right" -> luon sat mep phai, nut "Chu y" an/hien
+        # ben trai khong day no chay.
+        ttk.Button(btns, text="🐞 Báo lỗi",
+                   command=lambda p=pidx: self._bao_loi(p)).pack(side="right", padx=2)
         ttk.Style(self).configure("Party.Treeview", rowheight=28)   # rieng bang party (2 dong HP/SP)
         tree = ttk.Treeview(frame, columns=self._COLS, show="headings", height=max(len(accs), 3),
                             style="Party.Treeview")
@@ -1733,6 +1737,72 @@ class BotGUI(tk.Tk):
         messagebox.showinfo("Giftcode",
                             f"Đang nhập '{code}' cho {len(running)} acc của Party {pidx + 1}.\n"
                             "Quà về qua mail → bot tự nhận. Xem log để biết kết quả.")
+
+    def _bao_loi(self, pidx):
+        """Hop bao loi cua party: mo ta -> gui log + config (khong password) ve Telegram dev."""
+        win = tk.Toplevel(self)
+        win.title(f"Báo lỗi — Party {pidx + 1}")
+        win.transient(self)
+        win.resizable(False, False)
+        box = ttk.Frame(win, padding=10)
+        box.pack(fill="both", expand=True)
+        ttk.Label(box, text="Mô tả lỗi (party bị gì, từ lúc nào):").pack(anchor="w")
+        txt = tk.Text(box, width=60, height=6, wrap="word")
+        txt.pack(fill="both", pady=(4, 6))
+        ttk.Label(box, text="Gửi kèm: version, cấu hình party/acc và log của party này. "
+                            "KHÔNG gửi mật khẩu.", foreground="#666").pack(anchor="w")
+        trang_thai = ttk.Label(box, text="", wraplength=460, justify="left")
+        trang_thai.pack(anchor="w", pady=(6, 0))
+        ma_var = tk.StringVar()
+        ma_row = ttk.Frame(box)
+        ttk.Entry(ma_row, textvariable=ma_var, state="readonly", width=20,
+                  font=("Consolas", 11)).pack(side="left")
+
+        def _copy():
+            self.clipboard_clear()
+            self.clipboard_append(ma_var.get())
+        ttk.Button(ma_row, text="Copy mã", command=_copy).pack(side="left", padx=6)
+        nut = ttk.Frame(box)
+        nut.pack(fill="x", pady=(8, 0))
+        ttk.Button(nut, text="Đóng", command=win.destroy).pack(side="right")
+        gui_btn = ttk.Button(nut, text="Gửi")
+        gui_btn.pack(side="right", padx=6)
+        ket_qua = []
+
+        def _cho():
+            if not win.winfo_exists():
+                return
+            if not ket_qua:
+                win.after(300, _cho)
+                return
+            kq = ket_qua[0]
+            if kq.get("ok"):
+                trang_thai.configure(text="Đã gửi! Gửi mã này cho admin:", foreground="#0a0")
+                ma_var.set(kq["ma"])
+                ma_row.pack(anchor="w", pady=(4, 0), before=nut)
+                return
+            loi = "Gửi thất bại: %s" % kq.get("loi")
+            if kq.get("file"):
+                loi += "\nĐã lưu file: %s\n→ gửi file này cho admin qua Zalo." % kq["file"]
+                try:
+                    os.startfile(os.path.dirname(kq["file"]))
+                except Exception:
+                    pass
+            trang_thai.configure(text=loi, foreground="#c00")
+            gui_btn.configure(state="normal")
+
+        def _gui():
+            mo_ta = txt.get("1.0", "end").strip()
+            gui_btn.configure(state="disabled")
+            trang_thai.configure(text="Đang đóng gói và gửi...", foreground="#666")
+            ket_qua.clear()
+            info = {"app_version": self._app_version, "core_version": self._version,
+                    "nen_tang": "PC"}
+            threading.Thread(target=lambda: ket_qua.append(ctrl.bao_loi(pidx, mo_ta, info)),
+                             daemon=True).start()
+            win.after(300, _cho)
+        gui_btn.configure(command=_gui)
+        txt.focus_set()
 
     def _show_party_stats(self, pidx):
         IdleStatsDialog(self, pidx)
