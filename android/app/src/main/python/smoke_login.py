@@ -17,6 +17,11 @@ API_KEY = "17ade453e0892461edb01969b6e17e3a"
 LOGIN_URL = f"https://graph.mobiplay.vn/accountapiv4/server/login?api_key={API_KEY}"
 GAME_PORT = 6614
 OP_LOGIN = 0x01
+# API login client 1.4: them chu ky `sign` (boc tu libsplay_native_keys.so client 1.4).
+GAME_VERSION = "1.4"
+SDK_VERSION = "102"
+PACKAGE_NAME = "com.vtcmobile.gz06"
+LOGIN_PRIVATE_KEY = "f94724205c8bc6d7ba2157c494708fe3"
 
 # key -> (label, ip, server_id) - khop servers.json ban PC
 SERVERS = {
@@ -53,15 +58,28 @@ def _tracking_id_for(username: str) -> str:
     return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
 
 
+def _sign(request_id: str, device_id: str, username: str) -> str:
+    raw = (f"{request_id}.{API_KEY}.{device_id}.{username}"
+           f".{GAME_VERSION}.{SDK_VERSION}.{LOGIN_PRIVATE_KEY}")
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
 def http_login(username: str, password: str) -> dict:
     """Goi API login that (port dung tu bot/login.py). Tra {user_id, access_token}."""
+    import time
+    device_id = _device_id_for(username)
+    request_id = str(int(time.time() * 1000))
     params = {
         "username": username,
         "password": password,
-        "device_id": _device_id_for(username),
+        "device_id": device_id,
+        "package_name": PACKAGE_NAME,
+        "sdk_version": SDK_VERSION,
+        "requestId": request_id,
+        "sign": _sign(request_id, device_id, username),
         "agency_id": "1",
         "device_os_version": "Samsung SM-A528B 12",
-        "client_version": "1.1",
+        "client_version": GAME_VERSION,
         "lang": "vi",
         "device_os": "android",
         "local_agency_id": "1",

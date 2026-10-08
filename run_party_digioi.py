@@ -1412,6 +1412,23 @@ def _party_is_in_train_phase(pcfg, st):
     return pcfg.get("start_city_id") in getattr(config, "TRAIN_MAPS", {})
 
 
+def _kenh_dung_safe(pidx, st, map_id=None):
+    """Kenh ghim cua che do 'DUNG YEN O SAFE' khi party o pha train TAI MAP TRAIN; 0 = khong.
+
+    Chi ghim o MAP TRAIN (ke ca mode DG+Train: chi pha train): moi map mot danh sach kenh, nen so
+    kenh user chon chi co nghia o map train - o thanh tap ket / Di Gioi la kenh cua map khac.
+    `map_id` = map party dang dung chung (None = khong kiem).
+    """
+    pcfg = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
+    ch = train_pick.dung_safe_kenh(pcfg)
+    if not ch or not _party_is_in_train_phase(pcfg, st):
+        return 0
+    dich = _map_train_dich(pidx, st)
+    if not dich or (map_id is not None and int(map_id) != int(dich)):
+        return 0
+    return ch
+
+
 def _average_party_levels(rows):
     levels = []
     for row in rows:
@@ -4395,7 +4412,9 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
                         # TICK 'QUAI LINH HON' (tu chon map chi chon map LH-). THEM O CUOI CUNG.
                         mob_soul=False,
                         # MODE LAM QUEST: chuoi quest + chu party user chi dinh. THEM O CUOI CUNG.
-                        quest_key="", quest_leader=""):
+                        quest_key="", quest_leader="",
+                        # DUNG YEN O SAFE (chen kenh) + kenh ghim. THEM O CUOI CUNG.
+                        stand_safe=False, stand_channel=0):
     """ANDROID: Kotlin goi de POPULATE config cho 1 party luc runtime (thay vi doc accounts.json
     nhu PC). accounts = 1 CHUOI STRING duy nhat dang "u1\\x01p1\\x01battle_json\\x01heal_json\\x01u2..." (KHONG phai
     list/List<String> - da xac nhan qua logcat that: Chaquopy KHONG convert dung List<String>
@@ -4472,6 +4491,7 @@ def setup_party_runtime(pidx, mode, server_ip, server_id, accounts,
         "buy_hp": bool(buy_hp), "hp_qty": int(hp_qty), "hp_thresh": int(hp_thresh),
         "buy_sp": bool(buy_sp), "sp_qty": int(sp_qty), "sp_thresh": int(sp_thresh),
         "quest_key": str(quest_key or ""), "quest_leader": str(quest_leader or ""),
+        "stand_safe": bool(stand_safe), "stand_channel": int(stand_channel or 0),
     }
     _region.chan_event_sai_game(config.PARTY_CONFIG[pidx], getattr(config, "EVENTS", {}))
     _flat = str(accounts).split("\x01") if accounts else []
@@ -5387,7 +5407,12 @@ def _chup_anh_cap_party(pidx, st, song, lech_tu):
         o_thanh_di_qua=_o_thanh_di_ngang,
         thanh_tap_ket=_thanh_tap_ket_dich(pidx, st),
         ca_party_o_thanh=_o_thanh,
-        acc_dung_hinh=_acc_dung_hinh(st, song, KE_HOACH_DUNG_HINH_SEC) if song else [],
+        # DUNG YEN O SAFE: ca party dung im o map train la DUNG VIEC, khong phai dung hinh -
+        # khong tat thi cu 240s lai bi gom ve thanh.
+        acc_dung_hinh=(_acc_dung_hinh(st, song, KE_HOACH_DUNG_HINH_SEC)
+                       if song and not (len(maps) == 1
+                                        and _kenh_dung_safe(pidx, st, next(iter(maps))))
+                       else []),
         viec_di_train=_viec_train, ly_do_di_train=_ly_train,
         tinh_hinh_doi=_tinh_hinh_doi(song),
         ly_do_lech=_ly_do_lech(maps, kenhs, _lech_kenh_that, "", _mot_minh),
@@ -5620,6 +5645,20 @@ def _chuan_bi_bai_train(c, st, pidx, label):
         return                              # chua toi map train -> chua doc duoc tam quai
     tm = getattr(config, "TRAIN_MAPS", {}).get(int(sc))
     if not tm:
+        return
+    if _kenh_dung_safe(pidx, st):
+        # DUNG YEN O SAFE: "bai" la SAFE DAU TIEN cua map (cung cho ra dung khi doi kenh), khong
+        # phai tam quai. Map chua hoc safe -> dung ngay cho dang dung (vua vao map = gan cong).
+        _safes = _safe_cua_map(sc)
+        spot = _safes[0] if _safes else tuple(int(v) for v in tuple(getattr(c, "pos", ()) or ())[:2])
+        if len(spot) != 2:
+            return
+        with st["lock"]:
+            st["mob_spot"] = spot
+            st["train_map_dich"] = int(sc)
+        log.info("[%s] ENGINE: DUNG YEN O SAFE - map %s kenh %s, dung tai %s%s", label, sc,
+                 _kenh_dung_safe(pidx, st), spot, "" if _safes else " (map CHUA co safe -> dung "
+                 "cho vua vao map)")
         return
     mobs = [tuple(point) for point in tm.get("mobs", ())]
     if not mobs:
@@ -7904,7 +7943,10 @@ def _engine_chot_kenh(pidx, st, song, kh=None, *, manual_route=False):
                          "nguoi khac o %s)", pidx + 1, getattr(c, "_label", _u), m, map_chung)
             return None                      # khac map thi so kenh vo nghia
         dem[int(ch)] = dem.get(int(ch), 0) + 1
-    pinned = st.get("kenh_ghim")
+    # Lenh tay doi kenh (`kenh_ghim`) thang; khong co thi DUNG YEN O SAFE ghim kenh user chon -
+    # KHONG bao gio tu chon "kenh it nguoi nhat" (muc dich la chen DAY dung kenh do). Kenh day
+    # (ma 4) thi cu gui lai toi khi co cho.
+    pinned = st.get("kenh_ghim") or _kenh_dung_safe(pidx, st, map_chung)
     if pinned and dem:
         with st["lock"]:
             if st.get("kenh_dich") != int(pinned):

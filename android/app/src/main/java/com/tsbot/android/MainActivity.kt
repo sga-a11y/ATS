@@ -1005,6 +1005,8 @@ fun TsBotApp(
             initialMobMax = partyBeingEdited.mobMax,
             initialMobElements = partyBeingEdited.mobElements,
             initialMobSoul = partyBeingEdited.mobSoul,
+            initialStandSafe = partyBeingEdited.standSafe,
+            initialStandChannel = partyBeingEdited.standChannel,
             initialUsePhucThan = partyBeingEdited.usePhucThan,
             initialUseDigioiHoPhu = partyBeingEdited.useDigioiHoPhu,
             initialFightLegionBoss = partyBeingEdited.fightLegionBoss,
@@ -2019,6 +2021,8 @@ val GAMES = listOf("vtc", "tsm")
 
 const val PICK_PREFIX = "pick:"
 const val PICK_GROUP = "\u2605 Bot tự chọn map"
+// Muc cuoi o "Quai" (map cu the): dung yen o safe, chen kenh. Mirror PC `_STAND_SAFE_LABEL`.
+const val STAND_SAFE_LABEL = "🛡 Đứng yên ở safe (chèn kênh)"
 
 private fun pyTrainPick() =
     com.chaquo.python.Python.getInstance().getModule("train_bot.train_pick")
@@ -2154,6 +2158,8 @@ fun AddPartyDialog(
     initialMobMax: Int = 4,
     initialMobElements: List<Int> = listOf(0, 1, 2, 3, 4, 5, 7, 8),
     initialMobSoul: Boolean = false,
+    initialStandSafe: Boolean = false,
+    initialStandChannel: Int = 1,
     initialUsePhucThan: Boolean = false,
     initialUseDigioiHoPhu: Boolean = false,
     initialFightLegionBoss: Boolean = true,
@@ -2245,6 +2251,8 @@ fun AddPartyDialog(
     var mobMax by remember { mutableStateOf(initialMobMax.toString()) }
     var mobElements by remember { mutableStateOf(initialMobElements.toSet()) }
     var mobSoul by remember { mutableStateOf(initialMobSoul) }
+    var standSafe by remember { mutableStateOf(initialStandSafe) }
+    var standChannel by remember { mutableStateOf(initialStandChannel.toString()) }
     var showElementList by remember { mutableStateOf(false) }
     val allElems = remember { allElementIds() }
     val isPickMode = trainMapKey.startsWith(PICK_PREFIX)
@@ -2317,6 +2325,8 @@ fun AddPartyDialog(
         mobMax = mobMax.toIntOrNull()?.coerceIn(1, 6) ?: 4,
         mobElements = (if (mobElements.isEmpty()) allElems.toSet() else mobElements).sorted(),
         mobSoul = mobSoul,
+        standSafe = !isPickMode && standSafe,
+        standChannel = standChannel.toIntOrNull()?.coerceIn(1, 99) ?: 1,
         usePhucThan = usePhucThan,
         useDigioiHoPhu = useDigioiHoPhu,
         fightLegionBoss = fightLegionBoss,
@@ -2874,7 +2884,8 @@ fun AddPartyDialog(
                         val mobOptions = trainMobOptions(trainMapKey)
                         ExposedDropdownMenuBox(expanded = trainMobExpanded, onExpandedChange = { trainMobExpanded = it }) {
                             OutlinedTextField(
-                                value = mobOptions.find { it.first == trainMobIndex }?.second ?: "Bot tự chọn",
+                                value = if (standSafe) STAND_SAFE_LABEL
+                                        else mobOptions.find { it.first == trainMobIndex }?.second ?: "Bot tự chọn",
                                 onValueChange = {},
                                 readOnly = true,
                                 label = { Text("Quái") },
@@ -2884,10 +2895,24 @@ fun AddPartyDialog(
                             DropdownMenu(expanded = trainMobExpanded, onDismissRequest = { trainMobExpanded = false }) {
                                 mobOptions.forEach { (idx, label) ->
                                     DropdownMenuItem(text = { Text(label) }, onClick = {
-                                        trainMobIndex = idx; trainMobExpanded = false
+                                        trainMobIndex = idx; standSafe = false; trainMobExpanded = false
                                     })
                                 }
+                                // Muc CUOI: co RIENG, khong phai chi so diem -> "Bot tu chon" khong
+                                // bao gio roi trung (mirror PC `_STAND_SAFE_LABEL`).
+                                DropdownMenuItem(text = { Text(STAND_SAFE_LABEL) }, onClick = {
+                                    trainMobIndex = -1; standSafe = true; trainMobExpanded = false
+                                })
                             }
+                        }
+                        if (standSafe) {
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = standChannel,
+                                onValueChange = { v -> standChannel = v.filter { it.isDigit() }.take(2) },
+                                label = { Text("Kênh đứng yên") }, singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
                     }
                 }

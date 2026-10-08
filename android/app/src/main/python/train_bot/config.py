@@ -114,6 +114,14 @@ PARTY_LEADERS = []  # vi du: ["chihao", "haabo", "nasau"]
 API_KEY = "17ade453e0892461edb01969b6e17e3a"
 LOGIN_URL = f"https://graph.mobiplay.vn/accountapiv4/server/login?api_key={API_KEY}"
 
+# API login client 1.4 (08/10/2026): server bat buoc co chu ky `sign`, thieu -> error_code 3
+# "Chu ky khong hop le". Cong thuc + hang so boc tu libsplay_native_keys.so client 1.4.
+GAME_VERSION = "1.4"                 # == client_version; sign dung dung version nay
+SDK_VERSION = "102"
+PACKAGE_NAME = "com.vtcmobile.gz06"
+# PRIVATE_KEY = XOR 3 bang hang so 32B trong libsplay_native_keys.so (getPrivateKey).
+LOGIN_PRIVATE_KEY = "f94724205c8bc6d7ba2157c494708fe3"
+
 # Game server TCP - co dinh, KHONG can sua
 GAME_HOST = "103.82.28.98"
 GAME_PORT = 6614

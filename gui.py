@@ -1627,6 +1627,9 @@ class BotGUI(tk.Tk):
         mlbl = {"digioi": "Dị Giới", "train": "Train map", "digioi_train": "DG + Train",
                 "city": "Về thành",
                 "stand": "Đứng yên", "event": "Event", "quest": "Làm quest"}.get(pmode, pmode)
+        _ch_safe = _TP.dung_safe_kenh(config.PARTY_CONFIG.get(pidx, {}))
+        if _ch_safe:
+            mlbl += f" · Safe k{_ch_safe}"
         frame = ttk.Frame(sub_nb, padding=4)
         sub_nb.add(frame, text=f"P{pidx + 1} · {mlbl} ({len(accs)})",
                    image=self._dot_off, compound="left")
@@ -5660,6 +5663,12 @@ class PartyConfigFrame(ttk.Frame):
                           if saved_el else set(_TP.ALL_ELEMENTS)) or set(_TP.ALL_ELEMENTS)
         # Tick 'Quai linh hon': tu chon map CHI chon map LH-. Mac dinh khong tick = chi map thuong.
         self.mob_soul = bool(self._preset.get("mob_soul"))
+        # DUNG YEN O SAFE (chen kenh): muc CUOI cua o Diem + o Kenh. Lay theo map train RIENG cua
+        # party (`train_last`) de doi qua mode khac roi quay lai khong mat.
+        _tl0 = _train_last_of(self._preset) or {}
+        self.stand_channel_var = tk.StringVar(
+            value=str(_tl0.get("stand_channel") or self._preset.get("stand_channel") or 1))
+        self.stand_box = None
         # EVENT: list (key, label) tu events.json -> picker khi mode=event. Bo qua event co
         # "hidden": true (an tam - chua lam xong; giu data, bo co de hien lai).
         # Chi event CO O GAME dang chon (`"games"` trong events.json; khong khai = chi VTC).
@@ -7871,7 +7880,7 @@ class PartyConfigFrame(ttk.Frame):
             # Chi dung mob_index DA LUU neu preset von la 'train'/'digioi_train'. Doi tu mode khac
             # sang -> mac dinh "Bot tu chon" (-1), KHONG lay mob_index=0 (rac) cua mode khac.
             pmob = _tl.get("mob_index", -1) if was_train else -1
-            self._fill_mobs(pmob)
+            self._fill_mobs(pmob, stand=bool(was_train and _tl.get("stand_safe")))
         elif mode == "city":
             ttk.Label(self.dyn, text="Thành:", width=10).pack(side="left")
             names = [n for (_i, _f, n) in self.cities]
@@ -7984,17 +7993,22 @@ class PartyConfigFrame(ttk.Frame):
         ttk.Button(bar, text="Lưu", command=save).pack(side="right")
         ttk.Button(bar, text="Hủy", command=top.destroy).pack(side="right", padx=(0, 6))
 
-    def _fill_mobs(self, preset_index=None):
+    def _fill_mobs(self, preset_index=None, stand=None):
         """Ve lai khung 'Quái' theo lua chon Map hien tai.
 
-        Map CU THE  -> dropdown chon diem (nhu cu, van chon tay duoc).
-        TU CHON MAP -> min/max so quai + nut He (bot tu tim diem theo train_pick.py).
+        Map CU THE  -> dropdown chon diem (nhu cu, van chon tay duoc) + muc CUOI "Dung yen o safe"
+                       (chon thi hien o Kenh).
+        TU CHON MAP -> min/max so quai + nut He (bot tu tim diem theo train_pick.py). KHONG co muc
+                       dung yen: tu chon thi luon di danh.
+        `stand` None = giu lua chon dung yen dang co (doi map khong lam mat).
         """
         if not getattr(self, "mob_box", None):
             return
+        if stand is None:
+            stand = self.mob_var.get() == _STAND_SAFE_LABEL
         for w in self.mob_box.winfo_children():
             w.destroy()
-        self.mob_cb = self.elem_btn = None
+        self.mob_cb = self.elem_btn = self.stand_box = None
         sel = self.map_var.get()
 
         if _pick_key(sel):
@@ -8013,16 +8027,29 @@ class PartyConfigFrame(ttk.Frame):
         info = _spot_infos(mid, mobs)
         # Toa do de CUOI: 'Điểm 1 | 2-3 | Thủy 111, Địa 112 | (1210, 550)' - phan hay doc nam truoc.
         opts = ["🎲 Bot tự chọn (ngẫu nhiên)"] + [
-            f"Điểm {i + 1}{info[i]} | {tuple(xy)}" for i, xy in enumerate(mobs)]
+            f"Điểm {i + 1}{info[i]} | {tuple(xy)}" for i, xy in enumerate(mobs)] + [_STAND_SAFE_LABEL]
         # Rong 40: Tk EP cua so dropdown bang dung be rong o dong (chinh -width cua listbox ben
         # trong KHONG an thua - da do: -width 20 va 66 deu ra popup 155px).
         self.mob_cb = ttk.Combobox(self.mob_box, textvariable=self.mob_var,
                                    state="readonly", width=40, values=opts)
         self.mob_cb.pack(side="left")
-        # preset_index: -1 (hoac None) -> auto (0); >=0 -> diem do (+1)
+        self.stand_box = ttk.Frame(self.mob_box)
+        ttk.Label(self.stand_box, text="Kênh:").pack(side="left", padx=(6, 2))
+        ttk.Spinbox(self.stand_box, from_=1, to=99, width=4,
+                    textvariable=self.stand_channel_var).pack(side="left")
+
+        def _hien_kenh(_e=None):
+            if self.mob_var.get() == _STAND_SAFE_LABEL:
+                self.stand_box.pack(side="left")
+            else:
+                self.stand_box.pack_forget()
+        self.mob_cb.bind("<<ComboboxSelected>>", _hien_kenh)
+        # preset_index: -1 (hoac None) -> auto (0); >=0 -> diem do (+1). Muc dung yen la muc CUOI,
+        # khong bao gio la mot chi so diem.
         ci = (preset_index + 1) if (preset_index is not None and preset_index >= 0) else 0
-        ci = min(ci, len(opts) - 1)
-        self.mob_var.set(opts[ci])
+        ci = min(ci, len(opts) - 2)
+        self.mob_var.set(_STAND_SAFE_LABEL if stand else opts[ci])
+        _hien_kenh()
 
     def _edit_maps(self):
         # Mo editor chon SAN map dang train (theo dropdown Map) cho tien sua ngay.
@@ -8068,6 +8095,7 @@ class PartyConfigFrame(ttk.Frame):
         sc, mob_index, city_flag = 0, 0, 0
         event_key = ""
         train_pick = ""
+        stand_safe = False
         if mode == "digioi":
             sc = 49942
         elif mode in ("train", "digioi_train"):
@@ -8079,8 +8107,11 @@ class PartyConfigFrame(ttk.Frame):
                 sc, mob_index = 0, -1
             else:
                 sc = next((mid for (mid, n, _m, _g) in self.train_maps if n == self.map_var.get()), 0)
-                cur = self.mob_cb.current() if self.mob_cb else 0
-                mob_index = (cur - 1) if cur >= 1 else -1   # 0 = "Bot tu chon" -> -1; k -> diem k-1
+                if self.mob_cb and self.mob_var.get() == _STAND_SAFE_LABEL:
+                    stand_safe, mob_index = True, -1    # co RIENG, khong phai chi so diem
+                else:
+                    cur = self.mob_cb.current() if self.mob_cb else 0
+                    mob_index = (cur - 1) if cur >= 1 else -1   # 0 = "Bot tu chon" -> -1; k -> diem k-1
         elif mode == "city":
             for (cid, f, n) in self.cities:
                 if n == self.city_var.get():
@@ -8118,6 +8149,10 @@ class PartyConfigFrame(ttk.Frame):
                 return max(1, min(6, int(str(var.get()).strip())))
             except Exception:
                 return dflt
+        try:
+            stand_channel = max(1, min(99, int(str(self.stand_channel_var.get()).strip())))
+        except Exception:
+            stand_channel = 1
         mob_min = _num(self.mob_min_var, _TP.DEFAULT_MOB_MIN)
         mob_max = _num(self.mob_max_var, _TP.DEFAULT_MOB_MAX)
         if mob_min > mob_max:
@@ -8126,6 +8161,7 @@ class PartyConfigFrame(ttk.Frame):
                 "train_pick": train_pick, "mob_min": mob_min, "mob_max": mob_max,
                 "mob_elements": sorted(self.mob_elems or _TP.ALL_ELEMENTS),
                 "mob_soul": bool(self.mob_soul),
+                "stand_safe": stand_safe, "stand_channel": stand_channel,
                 "city_flag": city_flag, "do_daily": bool(self.daily_var.get()),
                 "claim_offline_exp": bool(self.claim_offline_exp_var.get()),
                 "auto_world_boss": bool(self.auto_world_boss_var.get()),
@@ -8179,7 +8215,8 @@ class PartyConfigFrame(ttk.Frame):
         # MAP TRAIN BEN qua moi mode (xem _train_last_of): mode train -> lay map dang chon;
         # mode khac -> giu cai da luu, khong de mat khi doi qua lai.
         if mode in _TRAIN_LIKE_MODES:
-            data["train_last"] = {"pick": train_pick, "sc": sc, "mob_index": mob_index}
+            data["train_last"] = {"pick": train_pick, "sc": sc, "mob_index": mob_index,
+                                  "stand_safe": stand_safe, "stand_channel": stand_channel}
         else:
             _tl = _train_last_of(self._preset)
             if _tl is not None:
@@ -8197,6 +8234,8 @@ class PartyConfigFrame(ttk.Frame):
 
 
 _TRAIN_LIKE_MODES = ("train", "digioi_train")
+# Muc CUOI cua o Diem (map cu the): dung yen o safe, chen kenh (`stand_safe`/`stand_channel`).
+_STAND_SAFE_LABEL = "🛡 Đứng yên ở safe (chèn kênh)"
 
 
 def _train_last_of(preset):
@@ -8213,7 +8252,8 @@ def _train_last_of(preset):
         return tl
     if p.get("mode") in _TRAIN_LIKE_MODES:
         return {"pick": p.get("train_pick", "") or "", "sc": p.get("start_city_id", 0) or 0,
-                "mob_index": p.get("mob_index", -1)}
+                "mob_index": p.get("mob_index", -1),
+                "stand_safe": bool(p.get("stand_safe")), "stand_channel": p.get("stand_channel") or 1}
     return None
 
 
@@ -8241,6 +8281,8 @@ def _doi_che_do_preset(preset, src):
             d["train_pick"] = tl.get("pick", "") or ""
             d["start_city_id"] = tl.get("sc", 0) or 0
             d["mob_index"] = tl.get("mob_index", -1)
+            d["stand_safe"] = bool(tl.get("stand_safe"))
+            d["stand_channel"] = tl.get("stand_channel") or 1
             d["city_flag"] = 0
     elif new == "city":
         if old != "city":

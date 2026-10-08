@@ -30,6 +30,14 @@ def _tracking_id_for(username: str) -> str:
     return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
 
 
+def _sign(request_id: str, device_id: str, username: str) -> str:
+    """Chu ky login client 1.4 (boc tu Utils.getSignDevice + libsplay_native_keys.so):
+    md5(requestId . api_key . device_id . username . client_version . sdk_version . private_key)."""
+    raw = (f"{request_id}.{config.API_KEY}.{device_id}.{username}"
+           f".{config.GAME_VERSION}.{config.SDK_VERSION}.{config.LOGIN_PRIVATE_KEY}")
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
 def login(username: str = None, password: str = None, device_id: str = None) -> dict:
     """Goi API login, tra ve {user_id, access_token, username}.
 
@@ -39,13 +47,18 @@ def login(username: str = None, password: str = None, device_id: str = None) -> 
     password = password or config.PASSWORD
     device_id = device_id or _device_id_for(username)
 
+    request_id = str(int(time.time() * 1000))
     params = {
         "username": username,
         "password": password,
         "device_id": device_id,
+        "package_name": config.PACKAGE_NAME,
+        "sdk_version": config.SDK_VERSION,
+        "requestId": request_id,
+        "sign": _sign(request_id, device_id, username),
         "agency_id": "1",
         "device_os_version": "Samsung SM-A528B 12",
-        "client_version": "1.1",
+        "client_version": config.GAME_VERSION,
         "lang": "vi",
         "device_os": "android",
         "local_agency_id": "1",

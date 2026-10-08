@@ -12,6 +12,10 @@ Code: `bot/train_pick.py` (APK: `android/.../train_bot/train_pick.py` — giốn
 - Map LH phải có level ở cuối tên (vd `LH-Xxx 150-155`) thì bot mới tính được.
 - Chọn map TAY thì không bị bộ lọc này ảnh hưởng.
 
+## Đứng yên ở safe
+Chọn map TAY mới có mục `🛡 Đứng yên ở safe (chèn kênh)`; tự chọn map thì không bao giờ đứng yên.
+Chi tiết: `documents/DUNG_SAFE_CHEN_KENH.md`.
+
 ## Lưu cấu hình
 - Key `mob_soul` (bool) trong preset party (accounts.json / PartyStore APK).
 - APK truyền `party.mobSoul` vào `setup_party_runtime` ở vị trí CUỐI CÙNG.

@@ -122,6 +122,11 @@ DICH_VIEC = {
 
 
 # PHA cua party mode `digioi_train` (giong `st["dt_phase"]` cua engine cu)
+# DUNG YEN O SAFE: kenh ghim bao DAY (ma 4) thi cho bay lau moi gui lai lenh doi kenh.
+DUNG_SAFE_KENH_DAY_CHO_SEC = 30.0
+# DUNG YEN O SAFE: dung trong o vuong +-bay nhieu quanh safe la "da toi", khong di nua.
+DUNG_SAFE_BAN_KINH = 40
+
 PHA_DG = "digioi"        # con gio Di Gioi -> ca party vao DG danh
 PHA_TRAIN = "train"      # het gio DG -> ra map thuong gom party + train
 
@@ -1185,8 +1190,11 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
              safe_dich=None, kenh_doi_duoc=None, xe_dich=None, ghi_thong_ke=None,
              vao_event=None, danh_event=None, doi_thuong=None, fc_gom=None, fc_buoc_fn=None,
              lenh_tay_fn=None, fc_di_bo=None,
-             la_thanh=None, daily_fn=None):
+             la_thanh=None, daily_fn=None, dung_safe=False):
     """Lam mot viec. `con_lam()` False = co lenh moi -> NHA RA ngay (khong lam not).
+
+    `dung_safe` = che do DUNG YEN O SAFE (chen kenh) dang bat o pha train: `ra_spot` la di toi
+    SAFE (dich da la diem safe) va `train` la dung im - khong `combat_ready`, khong danh.
 
     `abort=` la duong huy da co san trong `client.py`; day la ly do engine moi khong can vong cho:
     lenh moi khong phai "doi acc nghe thay", ma la CAT NGANG viec dang lam.
@@ -1379,6 +1387,13 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
             _chac = True
         if int(getattr(client, "current_channel", 0) or 0) == int(dich) and _chac:
             return True
+        # DUNG YEN O SAFE: kenh ghim DAY (ma 4) la chuyen thuong - dang chen cho full ma. Gian
+        # cach gui lai, khong spam server moi nhip.
+        if (dung_safe and getattr(client, "_chan_switch_result", None) == 4
+                and getattr(client, "_chan_switch_target", None) == int(dich)
+                and time.time() - float(getattr(client, "_chan_switch_luc", 0.0) or 0.0)
+                < DUNG_SAFE_KENH_DAY_CHO_SEC):
+            return False
         # BA MOC AN TOAN TRUOC KHI DOI KENH - hoi `_kenh_doi_duoc_ngay` cua engine cu.
         #
         # Doi kenh = doi INSTANCE. Gui giua tran thi server BO QUA ma bot tuong da doi; gui giua
@@ -1471,6 +1486,34 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
         # cho loi moi party thuong lot vao giua luc dang cho phong PB.
         client.auto_accept_party = True
         client.flee_mode = True      # dung danh le trong luc cho leader keo vao phong
+        return True
+    if viec == VIEC_RA_SPOT and dung_safe:
+        # DUNG YEN O SAFE: `dich` la diem SAFE. Di bang flee (gap quai thi bo chay), khong theo
+        # duong capture ra bai quai, khong ghi thong ke chan, khong `combat_ready`.
+        if dich is None:
+            return False
+        client.flee_mode = True
+        _x, _y = int(dich[0]), int(dich[1])
+        # DA DUNG QUANH SAFE thi DUNG IM: viec nay duoc giao lai moi nhip, ma moi lan `xe_dich`
+        # ra mot toa do moi -> acc nhuc nhich quanh safe mai.
+        _pos = getattr(client, "pos", None)
+        if (_pos and len(_pos) >= 2 and abs(int(_pos[0]) - _x) <= DUNG_SAFE_BAN_KINH
+                and abs(int(_pos[1]) - _y) <= DUNG_SAFE_BAN_KINH):
+            return True
+        if xe_dich is not None:
+            try:
+                _x, _y = xe_dich((_x, _y))
+            except Exception:
+                pass
+        return bool(client.navigate_to(_x, _y, flee=True, abort=_abort))
+    if viec == VIEC_TRAIN and dung_safe:
+        # Da toi safe -> DUNG IM. Van duy tri Phuc Than / mua HP-SP nhu train thuong.
+        client.flee_mode = True
+        try:
+            client.stop_run_around()
+        except Exception:
+            pass
+        _duy_tri(client, log=log)
         return True
     if viec == VIEC_RA_SPOT:
         if dich is None:
@@ -2309,6 +2352,7 @@ class PartyEngine:
         elif viec == VIEC_PB_DOI:
             dich = self._pb_doi_level()
         thi_hanh(client, viec, con_lam, dich=dich, log=self._log, fc_di_bo=_fc_bo,
+                 dung_safe=self._dung_safe(),
                  la_thanh=self._la_thanh, daily_fn=self._daily_fn,
                  moi_party=self._moi_party, thoat_acc=self._thoat_acc,
                  duong_ra_spot=(self._duong() if viec == VIEC_RA_SPOT else None),
@@ -2456,6 +2500,13 @@ class PartyEngine:
             return self._doc_safe()
         except Exception:
             return None
+
+    def _dung_safe(self):
+        """Che do DUNG YEN O SAFE dang bat VA dang o pha train (DG+Train: pha DG van danh)."""
+        if self.pha != PHA_TRAIN:
+            return False
+        from . import train_pick    # import tai cho: module engine giu khong phu thuoc luc nap
+        return bool(train_pick.dung_safe_kenh(self.pcfg))
 
     def _spot(self):
         if self._doc_spot is None:

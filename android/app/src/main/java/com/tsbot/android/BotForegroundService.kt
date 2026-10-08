@@ -495,6 +495,8 @@ if ${if (purge) "True" else "False"}:
                 party.mobSoul,
                 // MODE LAM QUEST: chuoi quest + chu party. THEM O CUOI CUNG (goi theo VI TRI).
                 party.questKey, party.questLeader,
+                // DUNG YEN O SAFE (chen kenh). THEM O CUOI CUNG (goi theo VI TRI).
+                party.trainPick.isEmpty() && party.standSafe, party.standChannel,
             )
             // BANG TU CONG DIEM: day rieng, KHONG nhet vao chuoi `accountsFlat` - them truong vao
             // do la doi ca signature `setup_party_runtime` (code DUNG CHUNG voi ban PC). Ben PC,

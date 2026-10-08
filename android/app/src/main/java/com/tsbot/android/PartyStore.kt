@@ -102,6 +102,8 @@ class PartyStore(private val context: Context, fileName: String = "parties.json"
                     (0 until arr.length()).map { arr.getInt(it) }
                 } ?: listOf(0, 1, 2, 3, 4, 5, 7, 8),
                 mobSoul = o.optBoolean("mob_soul", false),
+                standSafe = o.optBoolean("stand_safe", false),
+                standChannel = o.optInt("stand_channel", 1),
                 usePhucThan = o.optBoolean("use_phuc_than", false),
                 useDigioiHoPhu = o.optBoolean("use_digioi_ho_phu", false),
                 fightLegionBoss = o.optBoolean("fight_legion_boss", true),
@@ -195,6 +197,8 @@ class PartyStore(private val context: Context, fileName: String = "parties.json"
             o.put("mob_max", p.mobMax)
             o.put("mob_elements", JSONArray().also { a -> p.mobElements.forEach { a.put(it) } })
             o.put("mob_soul", p.mobSoul)
+            o.put("stand_safe", p.standSafe)
+            o.put("stand_channel", p.standChannel)
             o.put("use_phuc_than", p.usePhucThan)
             o.put("use_digioi_ho_phu", p.useDigioiHoPhu)
             o.put("fight_legion_boss", p.fightLegionBoss)

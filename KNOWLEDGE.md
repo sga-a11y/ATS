@@ -54,9 +54,24 @@
 ### Login HTTP (Account API)
 ```
 POST https://graph.mobiplay.vn/accountapiv4/server/login?api_key=<API_KEY>
-Body: username=XXX&password=XXX&device_id=XXX&agency_id=1&client_version=1.1&lang=vi&device_os=android
-Response: access_token, account_id
+Body: username=XXX&password=XXX&device_id=XXX&package_name=com.vtcmobile.gz06
+      &sdk_version=102&requestId=<localtime_ms>&sign=<md5>&client_version=1.4
+      &agency_id=1&local_agency_id=1&lang=vi&device_os=android&tracking_id=XXX&carrier=
+Response: access_token, user_id
 ```
+**Chu ky `sign` (BAT BUOC tu client 1.4, 08/10/2026 - thieu/sai -> error_code 3 "Chu ky khong hop le"):**
+```
+sign = md5( requestId . api_key . device_id . username . client_version . sdk_version . private_key )
+```
+- `.` = dau cham literal; `client_version` = "1.4" (== version app, va PHAI trung voi client_version gui kem).
+- `sdk_version` = "102"; `requestId` = thoi gian local ms (nonce, server chi dung lai de verify sign).
+- `private_key = f94724205c8bc6d7ba2157c494708fe3` - HANG SO, boc tu `libsplay_native_keys.so`
+  (`NativeKeys.getPrivateKey` = XOR 3 bang hang so 32B tai VA 0xffc/0x101c/0x103c; co gate kiem
+  chu ky APK nhung gia tri tra ve van la hang so nay). Nguon: `Utils.getSignDevice` + disasm .so.
+- Bot da port: `bot/login.py::_sign` (+ `train_bot/login.py`, `smoke_login.py` giong het); hang so o
+  `config.GAME_VERSION/SDK_VERSION/PACKAGE_NAME/LOGIN_PRIVATE_KEY`.
+- Khi game update version moi: cap nhat `GAME_VERSION` cho khop (sign dung chinh no); neu doi
+  `private_key` thi boc lai tu `.so` (jadx + capstone).
 
 ### Auth Game Server (TCP)
 - Sau khi TCP connect đến 103.82.28.98:6614

@@ -44,6 +44,26 @@ ALL_ELEMENTS = [e for e, _n in ELEMENTS]
 DEFAULT_MOB_MIN = 3
 DEFAULT_MOB_MAX = 4
 
+# DUNG YEN O SAFE (chen kenh, them 08/10/2026): acc vao map train, ghim DUNG kenh user chon, ra
+# safe roi dung im - khong danh. De chen full kenh cho party chinh train khong bi quay.
+# Luu bang CO RIENG (`stand_safe`/`stand_channel`), KHONG phai mot gia tri `mob_index`: nho vay
+# "Bot tu chon (ngau nhien)" (mob_index -1) va TU CHON MAP khong bao gio roi trung che do nay.
+STAND_SAFE_MODES = ("train", "digioi_train")
+
+
+def dung_safe_kenh(pcfg) -> int:
+    """Kenh ghim cua che do 'Dung yen o safe'; 0 = khong bat.
+
+    TU CHON MAP (`train_pick`) thi LUON 0: che do nay chi co khi user chon map CU THE.
+    """
+    p = pcfg or {}
+    if p.get("mode") not in STAND_SAFE_MODES or p.get("train_pick") or not p.get("stand_safe"):
+        return 0
+    try:
+        return max(1, int(p.get("stand_channel") or 1))
+    except (TypeError, ValueError):
+        return 1
+
 
 # Cac MOC cap quai Di Gioi (goi 0x61 02 00 idx; idx = vi tri trong list + 1).
 DG_LEVELS = [10, 25, 40, 55, 70, 85, 100, 110, 120, 130, 140, 150, 160, 170, 180]

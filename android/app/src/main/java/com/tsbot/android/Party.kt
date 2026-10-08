@@ -43,6 +43,10 @@ data class Party(
     val mobElements: List<Int> = listOf(0, 1, 2, 3, 4, 5, 7, 8),
     // Tick 'Quai linh hon': tu chon map CHI chon map LH-. Mac dinh false = chi map thuong. Mirror PC mob_soul.
     val mobSoul: Boolean = false,
+    // DUNG YEN O SAFE (chen kenh): muc cuoi o "Quai" khi chon map CU THE - vao map train, ghim kenh
+    // `standChannel`, ra safe dung im khong danh. Tu chon map thi khong co. Mirror PC stand_safe/stand_channel.
+    val standSafe: Boolean = false,
+    val standChannel: Int = 1,
     // Su dung Phuc Than (item nhom "phuc_than" trong use_items.json, dung/trang bi dinh ky 30p/lan
     // - xem use_phuc_than_items() client.py). Mirror PC's use_phuc_than_var (gui.py). Mac dinh
     // KHONG tick (giong PC).
@@ -142,6 +146,7 @@ fun Party.copyModeFrom(source: Party): Party {
                 p = p.copy(
                     trainMapKey = source.trainMapKey, trainMobIndex = source.trainMobIndex,
                     trainPick = source.trainPick,
+                    standSafe = source.standSafe, standChannel = source.standChannel,
                 )
             }
         // EVENT dung chung field cityKey lam event key.
