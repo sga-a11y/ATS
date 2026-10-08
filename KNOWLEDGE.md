@@ -713,6 +713,35 @@ Pattern entries: `03 02 [type] [4-byte LE]`
   trong record `0x0f sub0800 +20`, cong EquipAgi (attribute 214, gom ca linh thach AGI/set),
   CollectStyle AGI va CollectCard AGI; horse khong ap dung cho pet. Nut Check AGI gom ca char va pet
   dang xuat chien cua rieng tung party, canh bao khi `max-min > 10`; pet khong xuat chien khong tinh.
+- **EquipX cua PET = SO SERVER `S:008-002` (sua 08/10).** `S:008-002 <設定人物屬性> +人物種類(1)
+  +人物索引(2) +種類(1) +正負號(1) +數值(4) +參數(4)`, humanKind=4 (`EHuman.FollowNpc`), index =
+  followIndex = marker slot 1..4. Client KHONG tu tinh EquipX cua pet (`Status.GetAgi` doc thang
+  `EAttribute.EquipAgi`; `S:023-023` pet mac do cung khong tinh lai) -> so server la so game hien.
+  Server gui NGAY SAU `0x0f sub0800` cho tung chi so KHAC 0 (4/4 pcap login), kind 207/208/210/211/
+  212/214/218/219 (+ 88/106/107/108... chi so phu). Da gom dong phu ma Item.dat KHONG co: 洗鍊
+  `affix1-3`, 升階 `Reinforced`, 專武 kind 87 `enhanceLv`, 天官裝備 kind 84 (Item.dat attr rong).
+  Doi chieu 10 pcap: VTC do thuong tu tinh khop het (vd -7/16/-2, -10, 15); `tsm_quangam_20261001`
+  slot3 deo 專武 64573 + 天官 23376: tu tinh Agi **0**, server **12** (Atk 67, Int 3, Hpx 3, Spx 2).
+  Bot: `GameClient._on_pet_equip_attr` -> `pet_equip_server[slot]`, reset moi lan nhan pet-list;
+  `pet_login_stats.apply_server_equip` ghi de kind nao server da gui, con lai giu so tu tinh.
+  **Kind server KHONG gui != 0**: pcap 04/08 Quan Vu deo 15098 (ATK+31) ma khong bat duoc goi 210
+  (pcap khong ghep TCP), UI van ATK 208 = 175+31+2 -> phai giu so tu tinh, khong coi la 0.
+  Tu tinh sau 08/10 khop server 140/145 tren 10 pcap; 5 cai lech = 4 do 專武/天官 + 1 goi roi.
+- Pet `Int/Atk/Def/Hpx/Spx` (client `Status.GetInt/...`) = base + EquipX + CollectStyle + CollectCard,
+  y nhu AGI (DrugBuff.GetAttribute luon `return 0`). `pet_stats()` truoc 08/10 thieu phan suu tap.
+- **Char `Atk/Def/Hpx/Spx`** (`Status.GetAtk/...` nhanh `Role.player`) = base + EquipX + Turn3X +
+  CollectStyle + CollectCard (+ `floor((Mounts.X + Mounts.EquipX) * collectionBonus)` CHI Atk/Def;
+  GetHpx/GetSpx khong co dong Mounts). Turn3 trong `0x05 sub0300`: `turn3_off + 9 + 2*i` voi
+  i = Int Atk Def Agi Hpx Spx. Mount base Atk/Def = `MountsGrow[cap].attrs[1|3].add` (cap tinh
+  bang `mount_attr_level`), Mount EquipAtk/Def = kind 210/211 trong `0x4f sub0800`. Chua cong:
+  buff thuoc co han `ETimeBuff.AtkUp...` (S:008-009), 星盤 Astrolabe, buff tam. Doi chieu UI char
+  lv148 pcap 04/08: `311/3/13/76/1/1` khop tuyet doi (ban cu ATK 0, DEF 10).
+- **`pet_stats.json` (tools/generate_pet_stat_data.py) sua 08/10:** truoc loc kind `(27,30,31,32)`
+  -> mat Atk/Def cua thoi trang + the; bang do thieu 210/211; `STONE_ATTRS` thieu loai 2/3. Client
+  `Item.StoneAttrKind = {212, 210, 211, 218, 219, 214, 226}`. Data .dat keo tu MuMu 08/10 con them
+  15 bo thoi trang moi (id 51-65) va 20 thu cuoi (mount_flags 73 -> 93) - ban cu dem THIEU diem
+  thoi trang va % thu cuoi cua ai co do moi. `CollectWarrior` (suu tap 武將) chi thuong vat pham,
+  KHONG cong chi so.
 
 ### S2C 0x0b — Full stats
 **Char/Pet:** `03 0X [HP_max 4B] [SP_max 4B] [HP_cur 4B] [SP_cur 4B]`
@@ -1077,6 +1106,9 @@ Bóc `Dungeon_C.dat` 15/09 (`adb pull .../files/Data/Dungeon_C.dat`, layout `Dat
   trong vòng. Ca 01/10 party 58: lv290/248 bị đọc thành 90/48 → gửi id 3/2 → `S:047-002 kq=2
   等級不符` → bot vẫn gửi `0x14 08` → **kick mã 10**. Bot nhận biết turn3 qua `char_turn3_element ∈ {7,8}`
   (chưa chọn hệ Quang/Ám thì =0 → vẫn thiếu 200, chưa đọc được trường `Turn` thật).
+- **Dưới lv 15 KHÔNG có id PB đơn nào** (id 2 bắt đầu từ 15). `_dungeon_tier()` vẫn trả id 2 cho
+  acc lv < 15 → nghi server trả `等級不符` như ca 01/10. Bot chặn `SOLO_DUNGEON_MIN_LEVEL = 15` ở đầu
+  `do_daily_dungeon` (user chốt 07/10, cùng đợt BL-1007-BA37), trước cả tháo ngọc / rời party.
 - **Free mỗi ngày chỉ 1 lượt**, và **cả 4 id PB đơn dùng CHUNG `dayilyFlag = 0x3030`**. Ô 1 bingo
   đòi 2 lượt ⇒ **lượt thứ hai BẮT BUỘC mua** — không phải lỗi.
 - **Còn free hay không thì BIẾT TRƯỚC, không phải thử-rồi-lỗi.** Công thức client
@@ -2434,6 +2466,14 @@ tố) còn logic lò chuyển sinh so theo **npc id**, không theo tên.
   `MarkManager.GetMission(12207).step` (xem `UI_UIMain.lua`, `Logic_Item.lua`). Packet sync là
   mission-step opcode `0x18`: init `sub0600`, tăng `sub0100`, giảm `sub0200`, xóa `sub0400`.
   Nếu mission `12207` không có trong bảng init thì coi là `0/5`.
+- **Cấp tối thiểu vào World Boss = 15** (ngưỡng SERVER, user xác nhận 07/10 — client không chứa,
+  server tự kiểm). Dưới cấp: bấm NPC boss `0x2d` (`0x20 020008` + `0x14 01002d00`) → server chỉ trả
+  **thoại** `S:020-001` resultType 1, resultMeanNo `0x609c = 24732` = *"Đẳng cấp của nhà ngươi thật
+  thấp, hãy về tập luyện lại rồi đến nhé!"* (đọc từ `Talk_C.dat`), **không mở menu**. Gói thật (báo
+  lỗi BL-1007-BA37, acc HP 83): `14 01 00 | 00 0000 01 01 03 2d00 00 00000000 9c60`. Gửi
+  `0x14 09 1e` lúc đó = chọn khi không có menu → `S:020-008` kind 1 + `0x00 mã 5` "sự kiện vi phạm"
+  → rớt (4/4 lần). Acc đủ cấp: server mở menu (resultType 6) nên `09 1e` hợp lệ (1445/1455 lượt
+  vào trận trong log 07/10, 0 lượt mã 5). Bot: chặn `char_level < 15` + đọc resultType trước khi chọn.
 - Item tăng lượt World Boss là nhóm `ItemUse_203`; client chỉ cho dùng khi `mission 12207.step >= 5`.
   User đã chốt item VN `0xb625 = Khiêu Chiến Boss`; bot chỉ dùng item này sau khi đã đủ `5/5`
   rồi đọc/ước lượng về `4/5` để đánh tiếp.

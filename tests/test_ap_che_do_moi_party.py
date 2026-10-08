@@ -46,6 +46,29 @@ class TestDoiCheDo(unittest.TestCase):
         self.assertEqual(d["mob_index"], -1)
         self.assertEqual(d["di_gioi_level"], 3)
 
+    def test_event_sang_dg_train_lay_lai_map_cu_cua_chinh_party(self):
+        # Ca that 07/10: 57 party Event -> DG+Train, ca 57 thanh map party mau.
+        p = {"mode": "event", "start_city_id": 0, "train_pick": "",
+             "train_last": {"pick": "", "sc": 21812, "mob_index": 3},
+             "mob_min": 4, "mob_max": 5, "mob_elements": [2], "mob_soul": True}
+        d = doi(p, SRC_DGT)
+        self.assertEqual((d["start_city_id"], d["mob_index"], d["train_pick"]), (21812, 3, ""))
+
+    def test_khong_chep_so_quai_min_max_he_linh_hon(self):
+        for p in ({"mode": "event", "mob_min": 4, "mob_max": 5, "mob_elements": [2], "mob_soul": True},
+                  {"mode": "digioi", "start_city_id": 49942, "mob_min": 4, "mob_max": 5,
+                   "mob_elements": [2], "mob_soul": True}):
+            d = doi(p, SRC_DGT)
+            self.assertEqual((d["mob_min"], d["mob_max"], d["mob_elements"], d["mob_soul"]),
+                             (4, 5, [2], True))
+
+    def test_roi_train_van_giu_map_de_quay_lai(self):
+        p = {"mode": "digioi_train", "start_city_id": 0, "train_pick": "min+10", "mob_index": -1}
+        ev = doi(p, {"mode": "event", "event_key": "npc_40"})
+        self.assertEqual(ev["train_last"]["pick"], "min+10")
+        back = doi(ev, SRC_DGT)
+        self.assertEqual(back["train_pick"], "min+10")
+
     def test_sang_dg_dat_lai_city_dg(self):
         p = {"mode": "train", "start_city_id": 12345, "di_gioi_level": 7}
         d = doi(p, {"mode": "digioi", "di_gioi_level": 1})

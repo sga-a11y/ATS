@@ -1976,6 +1976,38 @@ class PartyEngine:
                                "reform_gen" if _anh.reform_moi else "resync_gen")
         return _anh
 
+    def _bat_bo_chay_pb(self, anh):
+        """PB TO DOI VO (co acc van) -> bat `_pb_bo_chay` cho MOI client dang trong map PB.
+
+        User chot 07/10: *"co dua vang vi bat ky ly do gi thi cho thoat het PB, neu dang danh do
+        tran thi chuyen qua bo chay de thoat tran da"*.
+
+        Vi sao phai BAT CO chu khong chi giao `VIEC_THOAT_PB`:
+          * acc DANG DANH bi doi viec thanh `nghi` (`VIEC_LAM_DUOC_GIUA_TRAN`) -> doi het tran moi
+            thoat. Ca that 07/10 party 4: `minh` rot 15:00:34, `thoat_pb` toi 15:01:35 - mot phut
+            ngoi danh tran 3 cho xong.
+          * LEADER dang ban viec `pb_doi` (kich ban 5 tran) -> worker khong nhan viec moi; kich ban
+            tu doc co qua `_td_party_gone` o moi buoc/vong cho ket tran.
+        Ghi thang len client (L2: cung tien trinh), khong cho acc nao bao cao. Co tu ha khi acc da
+        ra khoi PB (`leave_team_dungeon`) hoac vao phien moi.
+        """
+        bat = []
+        for username, c, _la_leader in self._doc_clients():
+            if c is None:
+                continue
+            a = next((x for x in anh.accs if x.username == username), None)
+            if a is None or not (a.song and a.trong_pb):
+                continue
+            if not getattr(c, "_pb_bo_chay", False):
+                c._pb_bo_chay = True
+                bat.append(username)
+        if bat and self._log is not None:
+            self._log.warning(
+                "[party %d] PB TO DOI VO: acc van (%s) -> %s BO CHAY khoi tran + THOAT PB",
+                self.pidx + 1,
+                ", ".join(a.username for a in anh.accs if not a.song) or "?",
+                ", ".join(bat))
+
     # -- mot nhip --
     def nhip(self):
         if self._cap_nhat is not None:
@@ -2019,6 +2051,7 @@ class PartyEngine:
         if anh.thieu_acc_song and any(a.song and a.trong_pb for a in anh.accs):
             viec = {a.username: VIEC_THOAT_PB if a.trong_pb else VIEC_NGHI
                     for a in anh.accs if a.song}
+            self._bat_bo_chay_pb(anh)
         for a in anh.accs:
             if (a.song and a.dang_danh and a.username in viec
                     and viec[a.username] not in VIEC_LAM_DUOC_GIUA_TRAN

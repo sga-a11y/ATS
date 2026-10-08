@@ -7,7 +7,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "_work" / "pet_crack"
 OUT = ROOT / "pet_stats.json"
-RELEVANT = {207, 208, 212, 214, 218, 219}
+# 210/211 (EquipAtk/Def) them 08/10: truoc thieu -> Atk/Def tu do luon tinh = 0.
+RELEVANT = {207, 208, 210, 211, 212, 214, 218, 219}
+# Int Atk Def Agi Hpx Spx (EAttribute 27..32). Truoc 08/10 loc mat Atk/Def (28/29) ->
+# thoi trang/the cong Atk/Def cho char va pet bi bo qua.
+BASE_KINDS = (27, 28, 29, 30, 31, 32)
 
 
 def item_data(path):
@@ -90,7 +94,7 @@ def style_values(path):
             kind = data[off]
             value = struct.unpack_from("<H", data, off + 1)[0]
             off += 3
-            if kind in (27, 30, 31, 32) and value:
+            if kind in BASE_KINDS and value:
                 attrs.append([kind, value])
         result.append([score, attrs])
     return result
@@ -109,7 +113,7 @@ def card_data(path):
             kind = data[off]
             value, grow = struct.unpack_from("<HH", data, off + 1)
             off += 5
-            if kind in (27, 30, 31, 32) and (value or grow):
+            if kind in BASE_KINDS and (value or grow):
                 attrs.append([kind, value, grow])
         result[str(card_id)] = attrs
     return result

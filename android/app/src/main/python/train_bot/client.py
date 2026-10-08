@@ -1,5 +1,6 @@
 """TCP client TS Online: ket noi, auth, heartbeat, recv loop, dispatch + combat."""
 import functools
+import math
 import socket
 import struct
 import threading
@@ -392,11 +393,16 @@ TEAM_DUNGEONS = {
 # o 1 bingo doi 2 luot nen luot thu hai BUOC phai mua (khong phai loi). Xem KNOWLEDGE.md.
 SOLO_DUNGEON_IDS = ((80, 2), (150, 3), (200, 4), (450, 5))   # (level toi da, dungeonId)
 SOLO_DUNGEON_DAILY_FLAG = 0x3030
+SOLO_DUNGEON_MIN_LEVEL = 15     # PB don: cap toi thieu (user chot 07/10, cung dot BL-1007-BA37)
 SOLO_DUNGEON_DAILY_COUNT = 1
 ONLINE_GIFT_KIND = 0x03
 ONLINE_GIFT_ROLECOUNT = 10
 WORLD_BOSS_MISSION_ID = 12207
 WORLD_BOSS_MAX_ATTEMPTS = 5
+# Cap toi thieu de vao boss the gioi = NGUONG CUA SERVER (user xac nhan 07/10, BL-1007-BA37; client
+# khong chua nguong nay - server tu kiem). Duoi cap: bam NPC boss -> server chi tra thoai 24732
+# "Dang cap cua nha nguoi that thap..." chu khong mo menu. Xem KNOWLEDGE.md muc boss the gioi.
+WORLD_BOSS_MIN_LEVEL = 15
 WORLD_BOSS_CHALLENGE_TIDS = (0xB625,)
 VANTIEU_CLAIM_RESULT_TEXT = {
     1: "thanh cong",
@@ -2450,7 +2456,11 @@ class GameClient:
         self._mount_base_int = 0
         self._mount_equip_int = 0
         self._mount_equip_agi = 0
+        self._mount_equip_atk = 0
+        self._mount_equip_def = 0
         self._mount_collection_count = 0
+        # Diem chuyen sinh 3 cua char, khoa EAttribute 27..32 (goi login 0x05, sau turn3Exp).
+        self._char_turn3 = {}
         self.char_level = None       # cap nhan vat - tu S2C 0x05 (payload offset 21 = pkt[28])
         self.pet_level = None        # cap pet dang dung - tu S2C 0x0f sub=08
         self.pet_levels = {}         # pid -> cap CUA TUNG con mang theo (0x0f, byte +7)
@@ -2597,6 +2607,10 @@ class GameClient:
         # slot tui (1..4) -> ban ghi login cua TUNG pet (pet_login_stats.parse_record) + level/pid.
         # Co ban ghi nay thi tinh duoc HP/SP/AGI cua CA pet KHONG xuat chien.
         self.pet_login_records = {}
+        # slot pet (followIndex 1..4) -> {EAttribute: so} PHAN CONG TU TRANG BI do SERVER tinh
+        # (S:008-002, humanKind=4). Da gom moi dong phu (洗鍊/升階/專武/天官...) - xem
+        # _on_pet_equip_attr. Rong = chua co, dung so tu tinh tu ban ghi login.
+        self.pet_equip_server = {}
         self.equipped_items = []     # ThingData rut gon tu S2C 0x17 sub0b00 luc login.
         # SO PHUC THAN CON LAI (godMission trong client): tu S2C 0x18 sub0800
         # <設定衰神福神> [roleId i64][kind u16][count i32]. None = server chua gui.
@@ -2620,6 +2634,10 @@ class GameClient:
         # "dang o trong MAP pho ban": co nay bat ngay khi `S:047-002`/`S:047-003` tra 0, luc do
         # nhan vat van dung ngoai thanh. Chi doi theo goi SERVER, khong suy tu map.
         self._pb_trong_phong = False
+        # PB TO DOI VO (co acc van giua PB) -> BO CHAY khoi tran dang danh roi THOAT PB (user chot
+        # 07/10). ENGINE bat (`PartyEngine._bat_bo_chay_pb`), khong acc nao tu bat. Khac `flee_mode`:
+        # co nay bo chay CA KHI DANG TRONG PARTY - party da vo, bi day khoi party cung khong sao.
+        self._pb_bo_chay = False
         self._active_pet_login = None
         self._pet_login_logged = None   # chu ky dong log PET login gan nhat
         self._collect_style_flags = {}
@@ -2846,6 +2864,7 @@ class GameClient:
         # PHIEN MOI -> chua o phong PB nao. Giu co cu qua relogin thi `leave_team_dungeon` gui
         # `C:047-010` giua thanh - dung cai da lam RUNG ca 4 acc (log 17:56).
         self._pb_trong_phong = False
+        self._pb_bo_chay = False
         self._pb_tao_phong_kq = None
         # PHIEN MOI -> lenh doi kenh cua phien cu khong bao gio co ket qua nua, dung cho no.
         self._chan_switch_cho = None
@@ -3377,6 +3396,7 @@ class GameClient:
         if not in_instance_map(_map0) and not getattr(self, "_pb_trong_phong", False):
             log.info("[%s] khong o trong pho ban to doi (map=%s, chua vao phong) -> KHONG gui "
                      "C:047-010", self._label, _map0)
+            self._pb_bo_chay = False   # da o ngoai -> PB vo da xu xong, lan vao PB sau phai DANH
             return True     # coi nhu da o ngoai - dung muc dich cua caller
         _chi_lobby = not in_instance_map(_map0)
         log.info("[%s] THOAT PHO BAN TO DOI (C:047-010) - khong relogin%s",
@@ -3396,10 +3416,12 @@ class GameClient:
             if _chi_lobby:
                 if not getattr(self, "_pb_trong_phong", False):
                     log.info("[%s] -> da ra khoi PHONG pho ban (S:047-010)", self._label)
+                    self._pb_bo_chay = False
                     return True
             elif self.current_map != _map0:
                 log.info("[%s] -> da ra khoi pho ban (map %s -> %s)",
                          self._label, _map0, self.current_map)
+                self._pb_bo_chay = False
                 return True
             time.sleep(0.3)
         log.warning("[%s] -> gui C:047-010 roi ma %.0fs chua ra khoi %s",
@@ -4539,7 +4561,11 @@ class GameClient:
             # don -> server tra 等級不符 -> kick. Turn3 nhan biet qua he chuyen sinh 3 (7/8),
             # doc trong _parse_skill_list_0x05 nen phai tinh SAU no.
             if _lv_raw is not None:
+                _lv_cu = getattr(self, "char_level", None)
                 self.char_level = _lv_raw + (200 if self.char_turn3_element in (7, 8) else 0)
+                if self.char_level != _lv_cu:
+                    # In ra log: bao loi BL-1007-BA37 khong co dong nao ghi cap -> phai doan tu HP.
+                    log.info("[%s] CAP nhan vat = %d (0x05)", self._label, self.char_level)
         # PET dang dung: S2C 0x0f sub=0008 = danh sach pet mang theo, record DAU = pet active.
         elif opcode == 0x0f and pkt[7:9] == b"\x08\x00" and len(pkt) >= 49:
             self._cached_pet_list_pkt = pkt
@@ -4614,6 +4640,10 @@ class GameClient:
                     self._mount_equip_int = value
                 elif kind == 0xd6:  # EAttribute.EquipAgi (214)
                     self._mount_equip_agi = value
+                elif kind == 0xd2:  # EAttribute.EquipAtk (210)
+                    self._mount_equip_atk = value
+                elif kind == 0xd3:  # EAttribute.EquipDef (211)
+                    self._mount_equip_def = value
             self._refresh_char_int()
             self._refresh_char_agi()
         # Cap nhat INT khi cong diem (S2C 0x08: 01 00 1b 01 [val 2B])
@@ -4625,6 +4655,8 @@ class GameClient:
             # Ghi rieng, khong dung vao cac nhanh cu ben duoi.
             _v = int.from_bytes(pkt[11:15], "little", signed=True)
             self.char_attrs[pkt[9]] = -_v if pkt[10] == 2 else _v
+        if opcode == 0x08 and len(pkt) >= 18 and pkt[7:9] == b"\x02\x00":
+            self._on_pet_equip_attr(pkt)
         # EXP nhan duoc (char + pet) = dong client in ra chat: server GUI SAN qua S:002-010 <廣播訊息>
         # cau so 40476 ("%s nhan duoc %d exp"), tham so [ten][so exp]. Xac nhan pcap dienvi 21/07.
         if opcode == 0x02 and pkt[7:9] == b"\x0a\x00":
@@ -5452,6 +5484,10 @@ class GameClient:
         self.pet_levels = {}           # pid -> cap; dung lai moi lan doc (pet mang theo co the doi)
         self._pet_marker_pid = {}      # marker -> pid; dung lai moi lan doc (user doi cho pet)
         self._pet_skill_rows = []   # AUTO NANG SKILL PET: (slot,pid,petLv,skillPoint,[skillLv*3])
+        # Client dung lai pet tu dau (`Role.FollowNpcAppear` -> role moi, EquipX = 0) roi server
+        # day S:008-002 NGAY SAU goi nay cho tung chi so khac 0 (4/4 pcap login). Giu so cu thi
+        # chi so da ve 0 (doi cho pet, coi do luc offline) se dinh so cu mai.
+        self.pet_equip_server = {}
         for _ in range(n):
             if start + 33 > len(b):
                 break
@@ -5741,7 +5777,31 @@ class GameClient:
                      self._label, sent, cur, max_friends)
         return sent
 
-    def _refresh_active_pet_login_stats(self):
+    def _on_pet_equip_attr(self, pkt: bytes):
+        """S:008-002 <設定人物屬性> +人物種類(1) +人物索引(2) +種類(1) +正負號(1) +數值(4) +參數(4).
+
+        Voi humanKind=4 (EHuman.FollowNpc) day la NGUON DUY NHAT client dung cho EquipAtk/Def/Int/
+        Agi/Hpx/Spx/MaxHp/MaxSp cua pet - client KHONG tu tinh (`Status.GetAgi` doc thang
+        `EAttribute.EquipAgi`; `S:023-023` pet mac do cung khong tinh lai). So server da gom moi
+        dong phu cua trang bi: 洗鍊 affix, 升階 Reinforced, 專武 enhanceLv, 天官裝備... ma ban mau
+        Item.dat khong co (pcap tsm_quangam_20261001 slot3: tu tinh Agi 0, server 12).
+        """
+        if pkt[9] != 4:   # EHuman.FollowNpc
+            return
+        slot = int.from_bytes(pkt[10:12], "little")
+        kind = pkt[12]
+        value = int.from_bytes(pkt[14:18], "little", signed=True)
+        if pkt[13] == 2:
+            value = -value
+        if kind not in self.EQUIP_ATTR:
+            return
+        self.pet_equip_server.setdefault(slot, {})[kind] = value
+        active = getattr(self, "_active_pet_login", None)
+        if isinstance(active, dict) and active.get("marker") == slot:
+            # Giua phien: HP/SP hien tai dang chay theo 0x08/0x33, KHONG nap lai so luc login.
+            self._refresh_active_pet_login_stats(nap_hp_sp=False)
+
+    def _refresh_active_pet_login_stats(self, nap_hp_sp: bool = True):
         record = getattr(self, "_active_pet_login", None)
         if not record:
             return
@@ -5754,22 +5814,23 @@ class GameClient:
             getattr(self, "_collect_card_equipped", []),
             getattr(self, "_collect_card_levels", {}),
         )
-        hp_max, sp_max = pet_login_stats.calculate(record, data, style=style, cards=cards)
-        self.pet_agi = pet_login_stats.calculate_agi(
-            record,
+        server_equip = (getattr(self, "pet_equip_server", None) or {}).get(record.get("marker"))
+        hp_max, sp_max = pet_login_stats.calculate(record, data, style=style, cards=cards,
+                                                   server_equip=server_equip)
+        style_agi = pet_login_stats.style_attribute(
+            data, getattr(self, "_collect_style_flags", {}), 30)
+        card_agi = pet_login_stats.card_attribute(
             data,
-            style_agi=pet_login_stats.style_attribute(
-                data, getattr(self, "_collect_style_flags", {}), 30),
-            card_agi=pet_login_stats.card_attribute(
-                data,
-                getattr(self, "_collect_card_equipped", []),
-                getattr(self, "_collect_card_levels", {}),
-                30,
-            ),
+            getattr(self, "_collect_card_equipped", []),
+            getattr(self, "_collect_card_levels", {}),
+            30,
         )
+        self.pet_agi = pet_login_stats.calculate_agi(
+            record, data, style_agi=style_agi, card_agi=card_agi, server_equip=server_equip)
         p = self.state.pet
-        p.hp = record["hp"]
-        p.sp = record["sp"]
+        if nap_hp_sp:
+            p.hp = record["hp"]
+            p.sp = record["sp"]
         p.hp_max = hp_max
         p.sp_max = sp_max
         # Ham nay chay lai MOI LAN co them du lieu cong them (0x0f pet list, 0x5f sub04 co thoi
@@ -5778,9 +5839,13 @@ class GameClient:
         _sig = (record["marker"], record["id"], p.hp, p.hp_max, p.sp, p.sp_max, self.pet_agi)
         if _sig != getattr(self, "_pet_login_logged", None):
             self._pet_login_logged = _sig
-            log.info("[%s] PET login active slot=%d id=0x%x HP=%d/%d SP=%d/%d AGI=%d",
+            _equip_agi = self.pet_agi - record.get("agi", 0) - style_agi - card_agi
+            log.info("[%s] PET login active slot=%d id=0x%x HP=%d/%d SP=%d/%d AGI=%d "
+                     "(base=%d equip=%d[%s] style=%d card=%d)",
                      self._label, record["marker"], record["id"], p.hp, p.hp_max, p.sp, p.sp_max,
-                     self.pet_agi)
+                     self.pet_agi, record.get("agi", 0), _equip_agi,
+                     "server" if server_equip and self.ATTR_AGI in server_equip else "tu tinh",
+                     style_agi, card_agi)
 
     def _parse_char_login_int(self, pkt: bytes):
         body = pkt[7:]
@@ -5850,6 +5915,11 @@ class GameClient:
                                31: _i32(69), 32: _i32(73)}
         skill_count = int.from_bytes(body[96:98], "little")
         turn3_off = 98 + skill_count * 3
+        # `Role.ReceivePlayerData` (Logic/Role.lua:1687): Turn3Element(1) Turn3Exp(8) roi
+        # Int Atk Def Agi Hpx Spx (6 x u16) -> EAttribute 27..32 tai +9,+11,...,+19.
+        self._char_turn3 = {
+            27 + i: int.from_bytes(body[turn3_off + 9 + i * 2:turn3_off + 11 + i * 2], "little")
+            for i in range(6) if turn3_off + 11 + i * 2 <= len(body)}
         if turn3_off + 11 <= len(body):
             self._char_turn3_int = int.from_bytes(body[turn3_off + 9:turn3_off + 11], "little")
         if turn3_off + 17 <= len(body):
@@ -6728,7 +6798,12 @@ class GameClient:
             # FLEE MODE: bo chay thay vi danh. PHAI dung dung my_atype (vi tri cua MINH trong
             # party) - KHONG lay char_opts[0][0] (la atype cua VI TRI DAU danh sach, co the la
             # nguoi khac) -> sai atype thi server DA/KICK (Tao Thao kick luon).
-            if getattr(self, "flee_mode", False) and not self.party_members:
+            # PB TO DOI VO (`_pb_bo_chay`, engine bat): BO CHAY ca khi dang trong party - user chot
+            # 07/10 "co dua vang thi thoat het PB, dang danh do tran thi bo chay de thoat tran da".
+            # Chi trong map pho ban: ra ngoai roi ma co con sot thi KHONG duoc bo chay tran train.
+            _pb_vo = (bool(getattr(self, "_pb_bo_chay", False))
+                      and in_instance_map(getattr(self, "current_map", 0)))
+            if _pb_vo or (getattr(self, "flee_mode", False) and not self.party_members):
                 # flee_mode CHI ap dung khi DANH LE (chua co party): party_members rong. DANG TRONG
                 # PARTY (roster co member) -> KHONG flee du flee_mode=True: flee tran party bi server
                 # KICK khoi party -> nick van khoi party -> leader thay thieu -> reform -> vo party
@@ -6754,8 +6829,8 @@ class GameClient:
                     self._send_combat(combat.Decision(
                         config.UNIT_PET, a, a, config.SKILL_FLEE,
                         b=combat._hang_cua(self.state, config.UNIT_PET)))
-                log.info("[%s] BO CHAY (flee_mode, char_at=%s pet_at=%s my_atype=%s char_opts=%s pet_opts=%s)",
-                         self._label, a, (a if (a is not None and a in pet_atypes) else None),
+                log.info("[%s] BO CHAY (%s, char_at=%s pet_at=%s my_atype=%s char_opts=%s pet_opts=%s)",
+                         self._label, "PB VO -> thoat tran" if _pb_vo else "flee_mode", a, (a if (a is not None and a in pet_atypes) else None),
                          my_at, sorted({o[0] for o in char_opts}), sorted(pet_atypes))
                 # (in_battle ha o handler 0x14 0c00/0900/0800 = man BO CHAY tu server - khong doan o day.)
                 return
@@ -7411,23 +7486,32 @@ class GameClient:
             flags = getattr(self, "_collect_style_flags", {})
             eq = getattr(self, "_collect_card_equipped", [])
             lv = getattr(self, "_collect_card_levels", {})
+            # Phan trang bi: so SERVER (S:008-002) truoc - da gom dong phu 洗鍊/升階/專武/天官.
+            srv = (getattr(self, "pet_equip_server", None) or {}).get(int(slot))
             out["hp_max"], out["sp_max"] = pet_login_stats.calculate(
                 rec, data,
                 style=pet_login_stats.style_bonus(data, flags),
-                cards=pet_login_stats.card_bonus(data, eq, lv))
+                cards=pet_login_stats.card_bonus(data, eq, lv),
+                server_equip=srv)
             out["agi"] = pet_login_stats.calculate_agi(
                 rec, data,
                 style_agi=pet_login_stats.style_attribute(data, flags, 30),
-                card_agi=pet_login_stats.card_attribute(data, eq, lv, 30))
+                card_agi=pet_login_stats.card_attribute(data, eq, lv, 30),
+                server_equip=srv)
             # Int/Atk/Def/Hpx/Spx: ban ghi chi co so GOC (khac goi char - char co san truong
             # Equip* rieng). Cong them phan trang bi bang dung ham client van dung.
             _he = int((getattr(self, "char_attrs", None) or {}).get(24, 0) or 0)
-            b = pet_login_stats.equipment_bonus(rec, data, _he)
-            for _k, _ma in (("int", self.ATTR_INT), ("atk", self.ATTR_ATK),
-                            ("def", self.ATTR_DEF), ("hpx", self.ATTR_HPX),
-                            ("spx", self.ATTR_SPX)):
+            b = pet_login_stats.apply_server_equip(
+                pet_login_stats.equipment_bonus(rec, data, _he), srv)
+            # Roi cong SUU TAP (thoi trang + the) - client `Status.GetInt/GetAtk/GetDef/GetHpx/
+            # GetSpx` cong CollectStyle + CollectCard cho ca pet, y nhu AGI. Truoc day chi AGI co.
+            for _k, _ma, _ea in (("int", self.ATTR_INT, 27), ("atk", self.ATTR_ATK, 28),
+                                 ("def", self.ATTR_DEF, 29), ("hpx", self.ATTR_HPX, 31),
+                                 ("spx", self.ATTR_SPX, 32)):
                 if out.get(_k) is not None:
-                    out[_k] = int(out[_k]) + int(b.get(_ma, 0))
+                    out[_k] = (int(out[_k]) + int(b.get(_ma, 0))
+                               + pet_login_stats.style_attribute(data, flags, _ea)
+                               + pet_login_stats.card_attribute(data, eq, lv, _ea))
         except Exception as e:
             log.debug("[%s] pet_stats(slot=%s) loi: %s", self._label, slot, e)
         return out
@@ -8048,6 +8132,20 @@ class GameClient:
                 return ok
         return False
 
+    def _world_boss_ly_do_bo_qua(self):
+        """Ly do KHONG danh boss the gioi, None = danh duoc.
+
+        - Cap < WORLD_BOSS_MIN_LEVEL: nguong cua server (user xac nhan). Chua doc duoc cap (None)
+          thi van cho thu - lop chan thu hai trong `do_world_boss` doc phan hoi server.
+        - Server da tu choi trong phien nay (thoai thay vi menu): bam lai cung ket qua.
+        """
+        lv = getattr(self, "char_level", None)
+        if lv is not None and lv < WORLD_BOSS_MIN_LEVEL:
+            return "cap %d < %d" % (lv, WORLD_BOSS_MIN_LEVEL)
+        if getattr(self, "_world_boss_tu_choi", False):
+            return "server da tu choi trong phien nay"
+        return None
+
     @task_report("boss the gioi", PHASE_LOGIN_CHORE)
     def do_world_boss_all(self, max_loops: int = 20, cho_phep=None) -> bool:
         """Danh boss the gioi den 5/5; neu 5/5 co Khiêu Chiến Boss thi dung ve 4/5 roi danh tiep.
@@ -8061,6 +8159,10 @@ class GameClient:
         chot kenh dich 16 va dem 45 giay mot lan, muoi bon lan, khong ai nhuc nhich.
         """
         if not self._world_boss_event_open():
+            return False
+        _ly_do = self._world_boss_ly_do_bo_qua()
+        if _ly_do:
+            log.info("[%s] Boss the gioi: bo qua - %s", self._label, _ly_do)
             return False
         progress = self.query_world_boss_attempts()
         if progress is None:
@@ -8113,6 +8215,10 @@ class GameClient:
         -> bo qua. Xong thi teleport ve Trac Quan (12001) cho khoi ket map boss. Goi khi o2 chua xong."""
         if not self._world_boss_event_open():
             return False
+        _ly_do = self._world_boss_ly_do_bo_qua()
+        if _ly_do:
+            log.info("[%s] Boss the gioi: bo qua - %s", self._label, _ly_do)
+            return False
         # NGOC PHUC THAN: thao TRUOC khi danh (user chot 21/09). Ngoc chi de an EXP train, deo no
         # vao boss/PB la phi luot ben ngoc. CHI thao ra tui, KHONG vut/ban - `use_phuc_than_items`
         # se tu deo lai o chu ky sau.
@@ -8137,8 +8243,39 @@ class GameClient:
         #     Thieu 0x4d/0x0c -> server tu choi teleport (0x14 01002d00) -> tra loi 0x00 code7 -> kick.
         self.send(0x4d, b"\x03\x00\x05\x00");    time.sleep(0.4)   # mo/chon event boss
         self.send(0x0c, b"\x01\x00");            time.sleep(0.4)   # xin info
-        self.send(0x20, b"\x02\x00\x08");        time.sleep(0.5)   # chon diem teleport boss
-        self.send(0x14, b"\x01\x00\x2d\x00");    time.sleep(0.8)   # teleport map boss 0x2d
+        # Bam NPC boss 0x2d (= 0x20 020008 + 0x14 01002d00, qua bo theo doi su kien cua quest) roi
+        # DOC server tra gi truoc khi chon. Truoc day gui mu `0x14 09 1e` 0.8s sau khi bam: acc du
+        # cap thi server da mo menu (resultType 6) nen hop le; acc cap thap (BL-1007-BA37, HP 83)
+        # server chi tra THOAI 24732 "Dang cap ... that thap" (resultType 1) -> chon khi khong co
+        # menu = "su kien vi pham" ma 5 -> rot, relogin, lai danh boss, lai rot (4/4 lan trong log).
+        self.quest_kich_hoat("npc", 0x2d)
+        t_bam = time.time()          # nhip cu: 0.8s tu luc gui `0x14 01002d00` toi luc chon
+        q = self._qev
+        while self.running and time.time() - t_bam < 3.0:
+            if q["interacting"] or q["het"]:
+                break
+            if q["vet"] and time.time() - t_bam >= 0.8:   # da co buoc nhung het nhip cu chua co menu
+                break
+            time.sleep(0.05)
+        if not q["interacting"]:
+            # Khong co menu -> KHONG chon. Thoai thi tra `0x14 06` dung nhu client toi khi server
+            # dong su kien; menu toi SAU thoai (chua gap) thi `quest_hoi_thoai` tra "can_chon".
+            vet = list(q["vet"])
+            co_tra_loi = bool(vet) or q["het"]
+            kq = (self.quest_hoi_thoai(chon=(), im_lang=8.0, toi_da=20.0)
+                  if (q["vet"] and not q["het"]) else ("xong" if co_tra_loi else "im"))
+            self._qev = None
+            if kq != "can_chon":
+                # Server im (khong tra gi) thi khong khoa ca phien - lan sau thu lai.
+                self._world_boss_tu_choi = co_tra_loi
+                log.info("[%s] Boss the gioi: server KHONG mo menu (buoc=%s, ket=%s, cap=%s) -> "
+                         "KHONG chon, bo qua", self._label, vet, kq,
+                         getattr(self, "char_level", None))
+                self.state.boss_mode = False
+                return False
+        self._qev = None
+        log.info("[%s] Boss the gioi: server mo menu -> chon 30", self._label)
+        time.sleep(max(0.0, t_bam + 0.8 - time.time()))
         self.send(0x14, b"\x09\x00\x1e");        time.sleep(0.3)
         self.send(0x14, b"\x06\x00");            time.sleep(1.2)
         # (2) engage NPC boss
@@ -9549,6 +9686,12 @@ class GameClient:
             if _ly_do:
                 log.info("[%s] Dungeon: HOAN - %s", self._label, _ly_do)
                 return
+        # Cap toi thieu (user chot 07/10). Chan TRUOC thao ngoc / roi party - khong thi acc cap
+        # thap vo cua nao cung pha doi roi moi biet khong vao duoc. Chua doc duoc cap -> giu nhu cu.
+        _lv = getattr(self, "char_level", None)
+        if _lv is not None and _lv < SOLO_DUNGEON_MIN_LEVEL:
+            log.info("[%s] Dungeon: bo qua - cap %d < %d", self._label, _lv, SOLO_DUNGEON_MIN_LEVEL)
+            return
         runs_target = getattr(config, "DUNGEON_RUNS_PER_DAY", 2)
         # TIN HIEU SERVER THAT: o1 (solo 2 lan) DA XONG -> bo qua. Chua co trang thai -> tu query.
         if not self._quest_cells:
@@ -10609,10 +10752,45 @@ class GameClient:
         # Vd char phap su: ATK -6, DEF -2 (gay tang INT nhung tru ATK/DEF). TUYET DOI khong kep
         # ve 0 hay coi la loi parse - lam vay la bao sai so cho user.
         out = {k: int(base.get(k, 0)) + int(eq.get(k, 0)) for k in base}
+        # Atk/Def/Hpx/Spx: cong not phan NGOAI do y nhu client (Int/Agi da co san o duoi).
+        for _ea in (28, 29, 31, 32):
+            if _ea in out:
+                out[_ea] += sum(self._char_cong_ngoai_do(_ea).values())
         if getattr(self, "char_int", None) is not None:
             out[27] = int(self.char_int)
         if getattr(self, "char_agi", None) is not None:
             out[30] = int(self.char_agi)
+        return out
+
+    # EAttribute -> loai diem thu cuoi (Mounts.SetAttributePoint: 1=Atk 3=Def). Client chi cong
+    # thu cuoi vao Int/Atk/Def/Agi - `Status.GetHpx/GetSpx` khong co dong Mounts.
+    _MOUNT_KIND = {28: (1, "_mount_equip_atk"), 29: (3, "_mount_equip_def")}
+
+    def _char_cong_ngoai_do(self, ea: int) -> dict:
+        """Phan chi so char NGOAI trang bi cho Atk/Def/Hpx/Spx (EAttribute 28/29/31/32).
+
+        Theo `Status.GetAtk/GetDef/GetHpx/GetSpx` (Logic/Status.lua) nhanh `Role.player`:
+        Turn3X + CollectStyle + CollectCard, them `floor((Mounts.X + Mounts.EquipX) *
+        collectionBonus)` voi Atk/Def. Bo qua DrugBuff.GetAttribute (luon `return 0`), con
+        buff thuoc co han, 星盤 Astrolabe va buff tam thoi bot chua doc goi -> chua cong.
+        """
+        data = _load_pet_stat_data()
+        out = {
+            "turn3": int((getattr(self, "_char_turn3", None) or {}).get(ea, 0)),
+            "style": pet_login_stats.style_attribute(
+                data, getattr(self, "_collect_style_flags", {}), ea),
+            "card": pet_login_stats.card_attribute(
+                data, getattr(self, "_collect_card_equipped", []),
+                getattr(self, "_collect_card_levels", {}), ea),
+            "horse": 0,
+        }
+        if ea in self._MOUNT_KIND:
+            kind, equip_attr = self._MOUNT_KIND[ea]
+            lv = self.mount_attr_level(kind)[0] if getattr(self, "mount_points", None) else 0
+            grow = getattr(config, "MOUNTS_GROW", {}) or {}
+            base = int(((grow.get(lv) or {}).get("attrs") or {}).get(kind, {}).get("add", 0)) if lv else 0
+            bonus = 1 + 0.01 * getattr(self, "_mount_collection_count", 0)
+            out["horse"] = math.floor((base + getattr(self, equip_attr, 0)) * bonus)
         return out
 
     # ---------------- TANG DIEM TIEM NANG (xem KNOWLEDGE.md muc 7o) ----------------
@@ -16691,14 +16869,22 @@ class GameClient:
         ton 10-20 phut roi van fail. Bug that (log user 14:06): 4 member bi day ra relogin giua PB110
         ma leader van danh mot minh toi tran 4. Coordinator (run_party_digioi) da co san duong xu ly
         khi do_team_dungeon tra False: _mark_team_dungeon_broken + relogin CA PARTY roi danh lai.
+
+        ENGINE MOI khong cam callback ma bat `_pb_bo_chay` (L1: MOT cho quyet). Thieu cai nay leader
+        danh tiep mot minh: ca that 07/10 party 4 - 15:00:34 `minh` rot (ma 19), 3 member thoat PB
+        luc 15:01:35, `thba` van "PB110 tran 4: bat dau" -> "VAO TRAN 4/5" mot minh toi 15:12.
+        Dong "DONG DOI ROT giua pho ban" xuat hien 0 lan trong ca party.log ngay hom do.
         """
-        cb = getattr(self, "_td_party_broken", None)
-        if cb is None:
-            return False
-        try:
-            gone = bool(cb())
-        except Exception:
-            return False
+        if getattr(self, "_pb_bo_chay", False):
+            gone = True
+        else:
+            cb = getattr(self, "_td_party_broken", None)
+            if cb is None:
+                return False
+            try:
+                gone = bool(cb())
+            except Exception:
+                return False
         if gone:
             log.warning("[%s] (LEADER) DONG DOI ROT giua pho ban%s -> DUNG danh, bao FAIL de ca "
                         "party relogin danh lai", self._label, (" (%s)" % where) if where else "")

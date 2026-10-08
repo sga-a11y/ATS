@@ -5,7 +5,9 @@ import math
 
 
 STONE_VALUES = (1, 2, 3, 4, 5, 7, 9, 11, 13, 15, 18, 21, 24, 27, 30)
-STONE_ATTRS = {1: 212, 4: 218, 5: 219, 6: 214}
+# Item.StoneAttrKind (Logic/Item.lua:184) = {212, 210, 211, 218, 219, 214, 226}: loai 2/3 la
+# Atk/Def - truoc 08/10 thieu nen linh thach Atk/Def khong duoc cong.
+STONE_ATTRS = {1: 212, 2: 210, 3: 211, 4: 218, 5: 219, 6: 214}
 
 
 def parse_record(body: bytes, off: int) -> dict | None:
@@ -99,7 +101,7 @@ def card_bonus(data: dict, equipped: list[int], levels: dict[int, int]) -> tuple
 
 
 def equipment_bonus(record: dict, data: dict, element: int) -> dict[int, int]:
-    result = {207: 0, 208: 0, 212: 0, 214: 0, 218: 0, 219: 0}
+    result = {207: 0, 208: 0, 210: 0, 211: 0, 212: 0, 214: 0, 218: 0, 219: 0}
     items = data.get("items", {})
     suit_counts = {}
     loaded = []
@@ -136,9 +138,26 @@ def equipment_bonus(record: dict, data: dict, element: int) -> dict[int, int]:
     return result
 
 
-def calculate(record: dict, data: dict, style=(0, 0), cards=(0, 0)) -> tuple[int, int]:
+def apply_server_equip(equip: dict[int, int], server: dict[int, int] | None) -> dict[int, int]:
+    """Ghi de phan CONG TU TRANG BI bang so SERVER gui (S:008-002, humanKind=4 = pet).
+
+    Client KHONG tu tinh EquipX cua pet: `Status.GetAgi` doc thang `EAttribute.EquipAgi` ma server
+    day qua S:008-002. So do da gom moi dong phu ma `equipment_bonus` khong biet: 洗鍊 affix,
+    升階 Reinforced, 專武 enhanceLv (kind 87), 天官裝備 (kind 84)... Pcap tsm_quangam_20261001
+    slot3: tu tinh Agi 0, server 12. Kind nao server chua gui thi giu so tu tinh.
+    """
+    if not server:
+        return equip
+    out = dict(equip)
+    for kind, value in server.items():
+        out[kind] = value
+    return out
+
+
+def calculate(record: dict, data: dict, style=(0, 0), cards=(0, 0),
+              server_equip: dict[int, int] | None = None) -> tuple[int, int]:
     element, raw_turn = data.get("npcs", {}).get(str(record["id"]), [0, 0])
-    equip = equipment_bonus(record, data, element)
+    equip = apply_server_equip(equipment_bonus(record, data, element), server_equip)
     hpx = max(0, record["hpx"] + equip[218] + style[0] + cards[0])
     spx = max(0, record["spx"] + equip[219] + style[1] + cards[1])
     level = record["level"]
@@ -152,9 +171,10 @@ def calculate(record: dict, data: dict, style=(0, 0), cards=(0, 0)) -> tuple[int
     return max(1, hp), max(1, sp)
 
 
-def calculate_agi(record: dict, data: dict, style_agi=0, card_agi=0) -> int:
+def calculate_agi(record: dict, data: dict, style_agi=0, card_agi=0,
+                  server_equip: dict[int, int] | None = None) -> int:
     element = data.get("npcs", {}).get(str(record["id"]), [0, 0])[0]
-    equip = equipment_bonus(record, data, element)
+    equip = apply_server_equip(equipment_bonus(record, data, element), server_equip)
     return max(0, record.get("agi", 0) + equip[214] + style_agi + card_agi)
 
 

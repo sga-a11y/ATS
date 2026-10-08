@@ -7845,9 +7845,12 @@ class PartyConfigFrame(ttk.Frame):
             self.mob_box = ttk.Frame(self.dyn)
             self.mob_box.pack(side="left")
             ttk.Button(self.dyn, text="✎ Sửa map", command=self._edit_maps).pack(side="left", padx=(8, 0))
-            was_train = self._preset.get("mode") in ("train", "digioi_train")
-            pick = self._preset.get("train_pick", "") if was_train else _TP.DEFAULT_PICK
-            _sc_luu = self._preset.get("start_city_id")
+            # Map train da luu cua CHINH party nay (ke ca khi preset dang o mode khac - `train_last`).
+            # Chua tung co map train -> mac dinh nhu cu.
+            _tl = _train_last_of(self._preset)
+            was_train = _tl is not None
+            pick = (_tl.get("pick", "") or "") if was_train else _TP.DEFAULT_PICK
+            _sc_luu = _tl.get("sc") if was_train else None
             if pick in _TP.PICK_KEYS:
                 self.map_var.set(_pick_label(pick))
             elif was_train and not _sc_luu:
@@ -7867,7 +7870,7 @@ class PartyConfigFrame(ttk.Frame):
                     self.map_var.set(self.train_maps[idx][1])
             # Chi dung mob_index DA LUU neu preset von la 'train'/'digioi_train'. Doi tu mode khac
             # sang -> mac dinh "Bot tu chon" (-1), KHONG lay mob_index=0 (rac) cua mode khac.
-            pmob = self._preset.get("mob_index", -1) if was_train else -1
+            pmob = _tl.get("mob_index", -1) if was_train else -1
             self._fill_mobs(pmob)
         elif mode == "city":
             ttk.Label(self.dyn, text="Thành:", width=10).pack(side="left")
@@ -8173,6 +8176,14 @@ class PartyConfigFrame(ttk.Frame):
                 "di_gioi_pick": _pick_key(self.di_gioi_level_var.get()),
                 "di_gioi_level": _dg_level_to_idx(self.di_gioi_level_var.get()),
                 "leaders": leaders, "accounts": accs}
+        # MAP TRAIN BEN qua moi mode (xem _train_last_of): mode train -> lay map dang chon;
+        # mode khac -> giu cai da luu, khong de mat khi doi qua lai.
+        if mode in _TRAIN_LIKE_MODES:
+            data["train_last"] = {"pick": train_pick, "sc": sc, "mob_index": mob_index}
+        else:
+            _tl = _train_last_of(self._preset)
+            if _tl is not None:
+                data["train_last"] = dict(_tl)
         if mode == "digioi":
             data["digioi_mode"] = "solo" if self.digioi_solo_var.get() else "party"
         if mode == "event":
@@ -8188,25 +8199,48 @@ class PartyConfigFrame(ttk.Frame):
 _TRAIN_LIKE_MODES = ("train", "digioi_train")
 
 
+def _train_last_of(preset):
+    """MAP TRAIN BEN cua party: {"pick", "sc", "mob_index"} - None neu party chua tung co.
+
+    `start_city_id`/`train_pick` dung CHUNG cho moi mode -> sang Event/DG la map train bi ghi de.
+    Ca that 07/10: 57 party Event -> "Ap che do" DG+Train -> ca 57 thanh map cua party mau.
+    Nen `get_data` luu them `train_last` (giu nguyen qua moi mode). Preset cu chua co thi suy tu
+    preset dang o mode train.
+    """
+    p = preset or {}
+    tl = p.get("train_last")
+    if isinstance(tl, dict):
+        return tl
+    if p.get("mode") in _TRAIN_LIKE_MODES:
+        return {"pick": p.get("train_pick", "") or "", "sc": p.get("start_city_id", 0) or 0,
+                "mob_index": p.get("mob_index", -1)}
+    return None
+
+
 def _doi_che_do_preset(preset, src):
     """Preset party `preset` doi sang CHE DO cua `src` (get_data() party mau) - nut "Ap che do
     cho moi party".
 
-    User chot (02/10): DG/Train CHI doi che do, cap quai DG + map train van RIENG tung party;
-    mode event thi dong bo ve CUNG event. Party chua tung co map (vd dang DG thuan, sc=49942)
-    ma chuyen sang train -> muon map cua party mau, khong de sc rac thanh map train.
+    User chot (02/10, 07/10): DG/Train CHI doi che do - cap quai DG, map train, so quai min/max,
+    he quai, linh hon deu RIENG tung party; mode event thi dong bo ve CUNG event. Map train lay
+    lai tu `train_last` cua chinh party; CHI party chua tung co map train moi muon map party mau
+    (khong de sc=49942 cua DG thanh map train).
     """
     d = dict(preset or {})
     old, new = d.get("mode"), src.get("mode")
+    tl = _train_last_of(preset)
+    if tl is not None:
+        d["train_last"] = dict(tl)
     d["mode"] = new
     if new == "digioi":
         d["start_city_id"], d["city_flag"] = 49942, 0
     elif new in _TRAIN_LIKE_MODES:
         if old not in _TRAIN_LIKE_MODES:
-            for k in ("start_city_id", "mob_index", "train_pick", "mob_min", "mob_max",
-                      "mob_elements", "mob_soul"):
-                if k in src:
-                    d[k] = src[k]
+            if tl is None:
+                tl = _train_last_of(src) or {}
+            d["train_pick"] = tl.get("pick", "") or ""
+            d["start_city_id"] = tl.get("sc", 0) or 0
+            d["mob_index"] = tl.get("mob_index", -1)
             d["city_flag"] = 0
     elif new == "city":
         if old != "city":

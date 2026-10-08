@@ -261,7 +261,8 @@ class TestPetDayDuChiSo(unittest.TestCase):
     def test_pet_cong_them_phan_trang_bi(self):
         """Ban ghi pet chi co so GOC (khac goi char - char co truong Equip* rieng)."""
         s = _doc("bot", "client.py")
-        self.assertIn("b = pet_login_stats.equipment_bonus(rec, data, _he)", s)
+        # 08/10: phan trang bi uu tien so SERVER (S:008-002) - xem test_pet_chi_so_server_dong_phu.
+        self.assertIn("pet_login_stats.equipment_bonus(rec, data, _he), srv)", s)
 
 
 class TestChiSoAmLaHopLe(unittest.TestCase):

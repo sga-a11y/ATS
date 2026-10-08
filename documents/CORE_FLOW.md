@@ -429,6 +429,18 @@ thầm (member lệch kênh) thì vẫn báo ready.
 | PB vỡ thì server **KHÔNG** gửi gói kết thúc (`S:047-012`) | `[LOG]` | nên không acc nào tự biết đường ra |
 | Phải kéo **cả party** ra bằng `C:047-010` | `[LOG]` | p42 07/09: leader thoát cho riêng nó → leader đứng ngoài, member kẹt trong map 62xxx, `go_to_town` của họ bail vì "đang trong phó bản tổ đội" |
 | Chỉ kéo khi **có acc đang làm PB** | `[SUY ĐOÁN]` | không thì mỗi lần một acc relogin là cả party bị lôi ra oan |
+| Văng vì **BẤT KỲ lý do gì** (mã 19, rớt mạng, relogin...) đều tính | user chốt 07/10 | không phân biệt nguyên nhân |
+| Đang đánh dở trận → **BỎ CHẠY** khỏi trận trước, rồi mới thoát PB | user chốt 07/10 | bỏ chạy **cả khi đang trong party** (khác `flee_mode` thường) — party đã vỡ, bị đẩy khỏi party cũng không sao |
+| **Leader** cũng phải dừng ngay, không đánh tiếp trận sau | user chốt 07/10 · `[LOG]` | p4 07/10: `minh` văng 15:00:34, 3 member thoát 15:01:35, `thba` vẫn `PB110 tran 4: bat dau` → `VAO TRAN 4/5` **một mình** tới 15:12 |
+| Client cho bỏ chạy trong PB | `[CAPTURE]` `UIFight.lua` | client chỉ cấm bỏ chạy ở `LifePK` / `WorldBoss`. **Server có nhận bỏ chạy trong trận PB không: CHƯA ĐO** — xem log `BO CHAY (PB VO -> thoat tran` lần đầu chạy thật |
+
+**Cơ chế (07/10):** engine thấy *thiếu acc + có acc trong map PB* → ngoài lệnh `thoat_pb` còn **bật
+cờ `_pb_bo_chay` thẳng lên client** của mọi acc đang trong map PB (`PartyEngine._bat_bo_chay_pb`,
+một chỗ quyết — L1). Cờ làm hai việc: lượt đánh gửi **bỏ chạy**; kịch bản PB của leader thấy
+`_td_party_gone()` = True → **dừng ngay**. Hết trận thì `thoat_pb` chạy (`C:047-010`); ra khỏi PB /
+vào phiên mới thì **hạ cờ** — sót cờ thì lần vào PB sau acc bỏ chạy oan.
+Vì sao không chỉ giao `thoat_pb`: acc đang đánh thì engine đổi `thoat_pb` thành `nghi` (chờ hết
+trận — p4 mất 1 phút), còn leader đang bận chạy `pb_doi` nên không nhận việc mới.
 
 **Cấm** (đã thử, sai — xem comment tại chỗ trong `party_engine.quyet_dinh`):
 1. Giữ phiên PB bằng `any(viec_dang_lam == pb_doi_theo)` → cờ tự nuôi chính nó, khoá cứng party.
