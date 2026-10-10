@@ -1381,7 +1381,10 @@ def _load_gamedata_items() -> dict:
                                     "a1k": int(v.get("a1k", 0) or 0),
                                     "a1v": int(v.get("a1v", 0) or 0),
                                     "a2k": int(v.get("a2k", 0) or 0),
-                                    "a2v": int(v.get("a2v", 0) or 0)}
+                                    "a2v": int(v.get("a2v", 0) or 0),
+                                    # sa = specialAbility (ItemData [..]): 8 = 鋤頭 CUOC - quest dao
+                                    # khoang 11116 "ngươi và võ tướng phải trang bị Cuốc".
+                                    "sa": int(v.get("sa", 0) or 0)}
     return _gamedata_items
 
 
@@ -2621,12 +2624,18 @@ class GameClient:
         # khong phai cho het chu ky. Handler goi tin chi BAT co (chay o thread doc goi, khong duoc
         # gui/sleep o day); vong lap trong run_party_digioi TIEU THU khi khong con trong tran.
         self.phuc_than_pending = False
-        # True = TAT HAN Phuc Than cho acc nay (mode `event`): tick hay khong cung khong dung, va
+        # True = TAT HAN Phuc Than cho acc nay (mode `event` / `quest`): tick hay khong cung khong dung, va
         # dang deo ngoc thi thao ra. Dat trong `run_party_digioi` luc login (truoc cua re engine
         # moi) nen phu ca hai engine. Xem `use_phuc_than_items` / `thao_ngoc_phuc_than`.
         self.phuc_than_tat = False
-        # True = vua THAO ngoc cho boss/PB -> quay ve train deo lai ngay (xem thao_ngoc_phuc_than).
+        # True = con viec NGOC chua lam xong (vua thao cho boss/PB, vua mo tui ra ngoc, deo bi
+        # nuot, ngoc hong giua tran) -> lam o KHE TIEP TE ke tiep (xem `khe_thay_ngoc`).
         self.phuc_than_deo_lai = False
+        # Moc nhan S:065-010 <機關盒吃補品> gan nhat = KHE TIEP TE ngay sau ket tran. Client goc
+        # CHI thay ngoc trong MachineBox.Supply() (chay khi nhan goi nay). 0 = chua nhan lan nao.
+        self._khe_tiep_te = 0.0
+        # Moc mo Tui (Dai) Phuc Than gan nhat - chua thay ngoc ve thi KHONG mo them tui.
+        self._tui_ngoc_mo_luc = 0.0
         # Ket qua `S:047-002 <創建房間結果>` cua lan tao phong PB gan nhat (None = chua co).
         self._pb_tao_phong_kq = None
         self._pb_tao_phong_luc = 0.0
@@ -2681,6 +2690,14 @@ class GameClient:
         self.max_friend_count = None   # so ban TOI DA tung co (S:014-017) - dieu kien thanh tuu
         self.mark_flags = {}      # CO NHIEM VU (0x18 sub07/05): chi so BYTE -> gia tri byte
         self.pet_faith = {}          # pet_id -> TRUNG THANH (0..100), doc tu goi pet list
+        # O VO TUONG DANG DUNG (follow index 1..4): S:015-008 lam goc, S:015-001 them, S:015-002 xoa.
+        # None = chua nhan goi. Toi da Role.maxFollowNpc = 4 (Logic/Role.lua) - quest co NPC XIN GIA
+        # NHAP (10001 B3 Truong Phi, B4 Quan Vu) can o trong (user 08/10).
+        self.follow_slots = None
+        self.follow_npc = None      # {o vo tuong: npcId} - quest "dan NPC" (ngua 10023) biet NPC da theo chua
+        self._nha_tro_mo = 0.0      # luc nhan S:031-007 (bang nha tro mo) - quest gui vo tuong vao nha tro
+        self._nha_tro_kq = None     # (o nha tro, o di theo) server xac nhan S:031-003
+        self._nha_tro_cho = {}      # {o di theo: npcId} dang gui
         self.pet_special_skill = {}  # pet_id -> DA MO dac ky chua (bool)
         self._mark_flags_loaded = False
         self._acts_expired = set()   # id su kien server bao DA HET (duoc xoa khoi cache)
@@ -3100,6 +3117,9 @@ class GameClient:
             elif rtype == 6:
                 # style 0: conduct bat + cho chon; style 1 (doi truong): cho chon, KHONG bat conduct
                 q["interacting"] = True
+                # resultMeanNo = SURFACE dang hoi (pkt[22:24]). Capture 10806/10528/10360/10326: mean
+                # trung bang surface Eve.emg (main_quests.json `chon_map`) - tra loi THEO SURFACE.
+                q["surface"] = int.from_bytes(pkt[22:24], "little") if len(pkt) >= 24 else None
                 q["conduct"] = style == 0
                 q["ready"] = now + self.QEV_TALK_DELAY
         elif sub == 7:
@@ -3135,19 +3155,76 @@ class GameClient:
         else:
             self.send(0x14, b"\x08\x00" + int(idx).to_bytes(2, "little"))
 
+    def _cap_nhat_pet_mang_theo(self, them: bool, o: int, npc: int) -> None:
+        """S:015-001/002 them/xoa vo tuong GIUA PHIEN -> sua `state.carried_pets` (tab pet GUI, tui
+        do...) + cache acc tat. Truoc chi doc lai khi nhan nguyen danh sach pet luc login: vuchin
+        10/10 gui Cuu Soi vao nha tro (`VO TUONG XOA o 4`) ma tab pet van con Cuu Soi."""
+        st = getattr(self, "state", None)
+        if st is None or not npc:
+            return
+        ds = list(getattr(st, "carried_pets", None) or [])
+        co = [i for i, (pid, _nm) in enumerate(ds) if int(pid) == int(npc)]
+        mp = getattr(self, "_pet_marker_pid", None)
+        if them:
+            if co:
+                return
+            ds.append((int(npc), getattr(config, "PET_NAMES", {}).get(int(npc), "")))
+            if mp is not None:
+                mp[int(o)] = int(npc)
+        else:
+            if not co:
+                return
+            ds.pop(co[0])
+            if mp is not None:
+                mp.pop(int(o), None)
+        st.carried_pets = ds
+        log.info("[%s] PET MANG THEO %s NPC %s (o %d) -> %s", self._label,
+                 "them" if them else "bot", npc, o, [hex(int(p)) for p, _n in ds])
+        try:
+            save_skill_cache(getattr(self, "_username", None), skills_snapshot(st))
+        except Exception as e:
+            log.debug("[%s] cache skill loi: %s", self._label, e)
+
+    def nha_tro_gui(self, o: int, cho: float = 3.0) -> bool:
+        """Gui vo tuong o `o` (o di theo 1..4) vao NHA TRO khi bang da mo (S:031-007), roi dong bang.
+        Y client (UINpcInn.SendSaveInn / OnClose): C:031-003 +身上索引(1), C:031-010 <關閉隨身客棧>.
+        True = da gui: server xac nhan S:031-003 HOAC xoa o di theo (S:015-002). Log p52 10/10
+        vuchin: server KHONG gui S:031-003 ma gui `VO TUONG XOA o 4` + ca danh sach nha tro
+        (S:031-006) cung giay."""
+        self._nha_tro_kq = None
+        self._nha_tro_cho = {int(o): int((self.follow_npc or {}).get(int(o), 0) or 0)}
+
+        def _xong():
+            return self._nha_tro_kq is not None or (
+                self.follow_npc is not None and int(o) not in self.follow_npc)
+
+        if not _xong():                  # o da trong -> khong gui lenh cat o rong
+            self.send(0x1f, b"\x03\x00" + bytes([int(o)]))
+        han = time.time() + float(cho)
+        while not _xong() and time.time() < han and self.running:
+            time.sleep(0.1)
+        self.send(0x1f, b"\x0a\x00")
+        return _xong()
+
     def quest_hoi_thoai(self, chon=(), abort=None, im_lang: float = 60.0,
-                        toi_da: float = 600.0) -> str:
+                        toi_da: float = 600.0, nha_tro=None) -> str:
         """Chay su kien vua kich hoat toi khi server bao HET (S:020-008).
 
         chon: ma tra loi theo THU TU cho moi lan server dung cho chon (resultType 6) - lay tu
         capture, KHONG doan (doan sai = ngat ket noi). Het ma ma server van hoi -> dung, tra
         "can_chon".
         Tra: "xong" | "can_chon" | "im_lang" (server im qua `im_lang` giay) | "dung" | "het_gio".
+        nha_tro: o vo tuong can GUI VAO NHA TRO khi server mo bang (S:031-007, KQ `t7 c7 pst4`):
+        gui + dong bang roi bat conduct nhu client (UINpcInn.OnClose -> SetConduct(true)).
         """
         q = self._qev
         if q is None:
             return "dung"
-        chon = list(chon or ())
+        self._nha_tro_mo = 0.0
+        # chon dict {surface: ma} (quest chinh tuyen, sinh tu Eve.emg): tra loi theo SURFACE server
+        # hoi - mot NPC mang nhieu su kien, thu tu cau hoi khong co dinh (10806 B1). list = CS1.
+        theo_surface = isinstance(chon, dict)
+        chon = {str(k): int(v) for k, v in chon.items()} if theo_surface else list(chon or ())
         t0 = time.time()
         try:
             while True:
@@ -3165,15 +3242,30 @@ class GameClient:
                         time.sleep(0.3)
                         continue
                     q["tran"] = False
+                if nha_tro is not None and getattr(self, "_nha_tro_mo", 0.0):
+                    self._nha_tro_mo = 0.0
+                    ok = self.nha_tro_gui(int(nha_tro))
+                    log.info("[%s] QUEST: bang nha tro mo -> gui vo tuong o %s: %s", self._label,
+                             nha_tro, "OK" if ok else "server KHONG xac nhan")
+                    q["session"], q["conduct"] = False, True
+                    q["ready"] = q["t_last"] = time.time()
+                    continue
                 if q["interacting"]:
-                    if not chon:
-                        log.warning("[%s] QUEST: server CHO CHON nhung kich ban khong con ma "
-                                    "(vet=%s) -> DUNG, khong doan", self._label, q["vet"][-12:])
+                    if theo_surface:
+                        code = chon.get(str(q.get("surface")))
+                    else:
+                        code = chon[0] if chon else None
+                    if code is None:
+                        log.warning("[%s] QUEST: server CHO CHON (surface %s) nhung kich ban khong "
+                                    "co ma (vet=%s) -> DUNG, khong doan", self._label,
+                                    q.get("surface"), q["vet"][-12:])
                         return "can_chon"
                     if now < q["ready"]:
                         time.sleep(0.1)
                         continue
-                    code = int(chon.pop(0))
+                    if not theo_surface:
+                        chon.pop(0)
+                    code = int(code)
                     log.info("[%s] QUEST: chon ma %d", self._label, code)
                     # Dat co TRUOC khi gui: goi tra loi cua server co the toi (luong recv) truoc
                     # khi dong duoi chay -> dat sau la ghi de co server vua bat.
@@ -4566,9 +4658,38 @@ class GameClient:
                 if self.char_level != _lv_cu:
                     # In ra log: bao loi BL-1007-BA37 khong co dong nao ghi cap -> phai doan tu HP.
                     log.info("[%s] CAP nhan vat = %d (0x05)", self._label, self.char_level)
+        # S:015-001 <新增隨身武將> / S:015-002 <刪除隨身武將>: +玩家ID(8) +跟隨索引(1) ... - cap nhat o
+        # vo tuong cua CHINH MINH (quest chinh tuyen can o trong cho NPC xin gia nhap).
+        elif (opcode == 0x0f and pkt[7:9] in (b"\x01\x00", b"\x02\x00") and len(pkt) >= 18
+              and self.self_entity and bytes(pkt[9:17]) == bytes(self.self_entity)):
+            if self.follow_slots is not None:
+                if pkt[7] == 1:
+                    self.follow_slots.add(int(pkt[17]))
+                else:
+                    self.follow_slots.discard(int(pkt[17]))
+            _npc_o = int.from_bytes(pkt[18:22], "little") if pkt[7] == 1 and len(pkt) >= 22 \
+                else int((self.follow_npc or {}).get(int(pkt[17]), 0)
+                         or (getattr(self, "_pet_marker_pid", None) or {}).get(int(pkt[17]), 0) or 0)
+            if self.follow_npc is not None:
+                if pkt[7] == 1 and len(pkt) >= 22:
+                    self.follow_npc[int(pkt[17])] = _npc_o                               # +NPCID(4)
+                elif pkt[7] == 2:
+                    self.follow_npc.pop(int(pkt[17]), None)
+            self._cap_nhat_pet_mang_theo(pkt[7] == 1, int(pkt[17]), _npc_o)
+            log.info("[%s] VO TUONG %s o %d%s -> dang dung %s (NPC %s)", self._label,
+                     "THEM" if pkt[7] == 1 else "XOA", pkt[17],
+                     " NPC %d" % int.from_bytes(pkt[18:22], "little")
+                     if pkt[7] == 1 and len(pkt) >= 22 else "", self.follow_slots, self.follow_npc)
         # PET dang dung: S2C 0x0f sub=0008 = danh sach pet mang theo, record DAU = pet active.
         elif opcode == 0x0f and pkt[7:9] == b"\x08\x00" and len(pkt) >= 49:
             self._cached_pet_list_pkt = pkt
+            # Client dung lai pet tu dau (`Role.FollowNpcAppear` -> role moi, EquipX = 0) roi server
+            # day S:008-002 NGAY SAU goi nay cho tung chi so khac 0. Giu so cu thi chi so da ve 0
+            # (doi cho pet, coi do luc offline) se dinh so cu mai. Reset O DAY (goi MOI that), KHONG
+            # trong _on_pet_list: goi 0x13 toi SAU S:008-002 (7/7 pcap login: PL -> E2xx -> 13) va
+            # doc lai goi cache -> reset trong do xoa sach so server (BL-1008-0B07).
+            self.pet_equip_server = {}
+            self._pet_list_moi = True     # o vo tuong chi lay tu goi MOI (xem _on_pet_list)
             self._on_pet_list(pkt)
         # Collection style/card dung chung cho char + pet. Moi update deu tinh lai max cua pet active.
         # KET QUA VAO DI GIOI: S:097-001 <進入結果> +結果(1) (`protocal.lua:14111`).
@@ -4819,6 +4940,7 @@ class GameClient:
         # nhanh vao tran moi giua chung, hoi dang do.
         elif opcode == 0x41 and len(pkt) >= 9 and pkt[7:9] == b"\x0a\x00":
             _kind = pkt[9] if len(pkt) >= 10 else -1
+            self._khe_tiep_te = time.time()   # khe thay ngoc Phuc Than (xem `khe_thay_ngoc`)
             _end = float(getattr(self, "_genuine_end_seen", 0.0) or 0.0)
             log.info("[%s] HOP MAY: S:065-010 an thuoc kind=%d in_battle=%s cach_ket_tran=%s",
                      self._label, _kind, self.state.in_battle,
@@ -4921,6 +5043,17 @@ class GameClient:
                     self.bag_counts[it] = self.bag_counts.get(it, 0) + c
                 self._bag_time = time.time()   # moc nhan snapshot tui (cho log_bag_delayed adaptive)
                 self._ghi_cache_tui()   # snapshot DAY (login) - mot trong hai moc ghi cache
+                # NGOC VE TUI qua goi nay (mo Tui Dai Phuc Than: 145/145 lan KHONG co S:023-008, 09/10)
+                # -> o ngoc trong / kem hon thi deo o khe tiep te ke tiep.
+                _ngoc = [(s, t) for s, (t, c) in new_slots.items() if t in PHUC_THAN_GEM_TIDS]
+                _tot = min(_ngoc, key=lambda x: phuc_than_hang(x[1]), default=None)
+                if _tot and phuc_than_hang(_tot[1]) < phuc_than_hang(self._equipped_phuc_than_tid()):
+                    self.phuc_than_deo_lai = True
+                _mo = float(getattr(self, "_tui_ngoc_mo_luc", 0.0) or 0.0)
+                if _mo and time.time() - _mo <= self.PHUC_THAN_TUI_CHO_SEC:
+                    log.info("[%s] Tui ngoc: S:023-005 ve %.1fs sau khi mo tui, ngoc trong tui: %s",
+                             self._label, time.time() - _mo,
+                             ", ".join("o %d=0x%04x" % x for x in _ngoc) or "KHONG CO")
         # NHAN/DROP ITEM 1 SLOT: S2C 0x17 sub=0800 (023-008 <bag set item> [slot 1B][item data][showMsg]).
         # Server chi gui SLOT thay doi (khong phai ca tui). Layout id/count giong record snapshot:
         #   [slot][item_id 2B LE][count 4B LE]. CHI log TEN item khi count TANG (nhan duoc) - dung
@@ -5328,6 +5461,17 @@ class GameClient:
             self._on_vantieu(pkt)
         elif opcode == 0x1f and pkt[7:9] == b"\x06\x00":  # list pet KHO (vận tiêu) luc login
             self._on_vantieu_roster(pkt)
+        elif opcode == 0x1f and pkt[7:9] == b"\x07\x00":
+            # S:031-007 <開啟武將倉庫>: server MO bang nha tro (chon "Võ Tướng" o chu nha tro)
+            self._nha_tro_mo = time.time()
+        elif opcode == 0x1f and pkt[7:9] == b"\x03\x00" and len(pkt) >= 11:
+            # S:031-003 <客棧存武將> +客棧索引(1) +身上索引(1): DA GUI vo tuong o `pkt[10]` vao nha tro
+            npc = int((getattr(self, "_nha_tro_cho", None) or {}).get(int(pkt[10]), 0) or 0)
+            if npc:
+                self.vantieu_roster_ids = {**(self.vantieu_roster_ids or {}), int(pkt[9]): npc}
+            self._nha_tro_kq = (int(pkt[9]), int(pkt[10]))
+            log.info("[%s] NHA TRO: da gui vo tuong o %d (NPC %s) vao nha tro o %d", self._label,
+                     pkt[10], npc or "?", pkt[9])
         elif opcode == 0x1a and len(pkt) >= 13:   # currency: [id 2B][val 4B]
             sid = int.from_bytes(pkt[7:9], "little")
             val = int.from_bytes(pkt[9:13], "little")
@@ -5484,10 +5628,7 @@ class GameClient:
         self.pet_levels = {}           # pid -> cap; dung lai moi lan doc (pet mang theo co the doi)
         self._pet_marker_pid = {}      # marker -> pid; dung lai moi lan doc (user doi cho pet)
         self._pet_skill_rows = []   # AUTO NANG SKILL PET: (slot,pid,petLv,skillPoint,[skillLv*3])
-        # Client dung lai pet tu dau (`Role.FollowNpcAppear` -> role moi, EquipX = 0) roi server
-        # day S:008-002 NGAY SAU goi nay cho tung chi so khac 0 (4/4 pcap login). Giu so cu thi
-        # chi so da ve 0 (doi cho pet, coi do luc offline) se dinh so cu mai.
-        self.pet_equip_server = {}
+        # pet_equip_server KHONG reset o day - xem nhanh 0x0f sub08 trong _dispatch.
         for _ in range(n):
             if start + 33 > len(b):
                 break
@@ -5607,6 +5748,13 @@ class GameClient:
         log.info("[%s] PET-LIST parse: apid=%s records=%s -> active_pet_slot=%s",
                  self._label, hex(apid) if apid else None,
                  [(m, hex(p)) for m, p in _dbg], self.active_pet_slot)
+        if getattr(self, "_pet_list_moi", False):
+            # Chi goi MOI: _on_pet_list con doc lai goi CACHE khi 0x13 toi sau -> lay o tu cache se
+            # xoa mat o vua them bang S:015-001 (NPC quest gia nhap).
+            self._pet_list_moi = False
+            self.follow_slots = {int(m) for m, _p in _dbg if 1 <= int(m) <= 4}
+            # Record = id NPC (vumuoi 09/10: o 4 = 0x2ef4 = 12020 Truong Phi)
+            self.follow_npc = {int(m): int(p) for m, p in _dbg if 1 <= int(m) <= 4}
         if chosen is None or chosen + 33 > len(b):
             return
         chosen_pid = int.from_bytes(b[chosen + 1:chosen + 3], "little")
@@ -6088,7 +6236,7 @@ class GameClient:
             return
         if sub == 0x09 and self.auto_accept_party and len(pkt) >= 17:
             entity = pkt[9:17]   # entity nguoi MOI (leader), KHONG set lam self_entity
-            if not self.party_invite_ready:
+            if not self.party_invite_ready and self.dang_lam_viec_vat():
                 # DANG LAM VIEC VAT -> GIU LOI MOI, KHONG nhan. Nhan bay gio la bo do viec vat
                 # (user 14/09: "dang lam do ma vao pt roi bi keo di luon thi no hong viec vat").
                 #
@@ -6103,6 +6251,15 @@ class GameClient:
                 # do luon trung - tuc hang rao nay coi nhu khong ton tai, va moi acc deu bi keo vao
                 # giua luc lam viec vat (dong "GIU loi moi" xuat hien DUNG 0 LAN trong ca file log
                 # 14/09). Da bo ngoai le; thay bang cho nha chac chan o tren.
+                #
+                # CHI GIU KHI DANG LAM VIEC VAT THAT (`dang_lam_viec_vat` doc pha, khong ket duoc).
+                # Co `party_invite_ready` chi duoc bat khi viec vat KET THUC MA DA CO loi moi bi giu
+                # -> loi moi toi SAU khi viec vat xong thi khong con ai nha, giu VINH VIEN.
+                # Ca that 09/10 party 21 (che do dung yen, user moi tay; user: "phai moi that som
+                # thi no moi vao a"):
+                #   23:56:04 [dieutam] ENGINE: XONG nhiem vu ngay
+                #   23:56:12 [dieutam] Chua san sang vao party -> GIU loi moi ...  (lap toi 23:57:59)
+                # Ba acc kia duoc moi luc CON dang viec vat -> `__exit__` nha ra -> vao doi.
                 self._pending_party_invites[bytes(entity)] = time.time()
                 log.info("[%s] Chua san sang vao party -> GIU loi moi entity=%s, se accept sau viec vat",
                          self._label, entity.hex()[:12])
@@ -8089,6 +8246,13 @@ class GameClient:
         log.info("[%s] Hop vat pham: %s(slot%d) + %s(slot%d)", self._label,
                  items.get(t1, {}).get("name", hex(t1)), i1, items.get(t2, {}).get("name", hex(t2)), i2)
 
+    def combine_slots(self, slot1: int, slot2: int) -> None:
+        """HOP 2 o tui (cung o = hop 2 cai cua stack do). Goi y `do_combine_item`:
+        C2S 0x17: 0e 00 [cid1 2B] 00 00 00 [cid2 2B] 00*8 01, cid = 0x0100 + o tui."""
+        pkt = (b"\x0e\x00" + struct.pack("<H", 0x100 + int(slot1)) + b"\x00\x00\x00"
+               + struct.pack("<H", 0x100 + int(slot2)) + b"\x00" * 8 + b"\x01")
+        self.send(0x17, pkt)
+
     def _world_boss_event_open(self) -> bool:
         import datetime
         vn_hour = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).hour
@@ -9941,12 +10105,21 @@ class GameClient:
         # Moi lan chi chon 1 bao ho. Tinh ca ngoc dang deo tu snapshot login de khong thay ngang cap,
         # ha Ngoc Sieu xuong Ngoc Dai, hoac mo tui oan.
         priority_tids = {tid for tid, _action in PHUC_THAN_PROTECTION_PRIORITY}
+        # VIEC NGOC (vut Ngoc Hu / deo / mo tui ra ngoc) CHI lam o KHE TIEP TE - giong client goc.
+        # Ngoc chi mon trong tran nen luc no hong la DANG DANH; deo ngay luc do server nuot lenh
+        # (09/10: 50% hong khi tran moi da bat dau, 5% neu gui 0-2s sau S:065-010), thu lai 3 lan
+        # cung roi vao tran -> bot bo cuoc toi khi login lai. Chua toi khe -> de co, khe sau lam.
+        _lam_ngoc = self._can_lam_ngoc(cfg)
+        if _lam_ngoc and not self.khe_thay_ngoc():
+            self.phuc_than_deo_lai = True
+            _lam_ngoc = False
         # Ngoc da HONG (Ngoc Hu) van chiem O NGOC -> phai VUT truoc, khong thi deo ngoc moi khong
         # duoc. Day la dung thu tu client goc lam (MachineBox 檢查福神: C:023-013 roi SendUseEquip).
-        self._drop_broken_gem()
+        if _lam_ngoc:
+            self._drop_broken_gem()
         equipped_tid = self._equipped_phuc_than_tid()
         _hang_dang_deo = phuc_than_hang(equipped_tid)
-        if _hang_dang_deo != 0:      # da deo cai TOT NHAT (Ngoc Ba) -> khong dong toi
+        if _lam_ngoc and _hang_dang_deo != 0:      # da deo cai TOT NHAT (Ngoc Ba) -> khong dong toi
             for tid, action in PHUC_THAN_PROTECTION_PRIORITY:
                 if tid not in cfg:
                     continue
@@ -9959,12 +10132,26 @@ class GameClient:
                 _slot = next((s for s, (t, c) in self.bag_slots.items() if t == tid and c > 0), None)
                 if _slot is None:
                     continue
+                if action == "use":
+                    _mo = float(getattr(self, "_tui_ngoc_mo_luc", 0.0) or 0.0)
+                    if _mo and time.time() - _mo < self.PHUC_THAN_TUI_CHO_SEC:
+                        # Vua mo tui ma ngoc chua ve tui -> CHO, khong mo them tui (09/10: 21 ca
+                        # mo tui thu hai trong khi ngoc tui truoc dang nam trong tui).
+                        self.phuc_than_deo_lai = True
+                        log.info("[%s] Phuc Than: vua mo tui %.0fs truoc, ngoc chua ve tui -> cho, "
+                                 "khong mo them", self._label, time.time() - _mo)
+                        break
                 if action == "equip":
                     done = 1 if self.equip_item(_slot) else 0
                     if done:
+                        self._tui_ngoc_mo_luc = 0.0   # ngoc da co de deo -> het cho tui
                         self._kiem_deo_ngoc(tid, _slot)
                 else:
                     done = 1 if self.use_slot(_slot, qty=1) else 0
+                    if done:
+                        # Ngoc tu tui KHONG ve bang S:023-008 -> tu giu co, khe sau deo.
+                        self._tui_ngoc_mo_luc = time.time()
+                        self.phuc_than_deo_lai = True
                 total += done
                 # DEO NGOC: KHONG tu don tui / tu ghi do dang mac o day. Server xac nhan S:023-017
                 # -> `_on_equip_done` cap nhat CA tui LAN o ngoc (equip_by_fit[6]). Truoc day don
@@ -10142,31 +10329,75 @@ class GameClient:
         time.sleep(0.4)
         return True
 
-    PHUC_THAN_DEO_THU_LAI = 3   # that bai lien tiep toi da bay nhieu lan thi thoi, cho login lai
+    # That bai lien tiep bay nhieu lan thi GIAN thu lai ra PHUC_THAN_THU_THUA_SEC (KHONG bo cuoc:
+    # truoc day lan 3 la "THOI (cho login lai)" -> 25 lan/22 acc ngay 09/10 train khong ngoc).
+    PHUC_THAN_DEO_THU_LAI = 3
+    PHUC_THAN_THU_THUA_SEC = 300.0
+    # Sau S:065-010 bao lau van tinh la khe tiep te (nhip worker engine 1s -> du bat).
+    PHUC_THAN_KHE_SEC = 4.0
+    # Khong thay S:065-010 lau vay (dung safe khong danh / server khong gui) -> lam khi ngoai tran.
+    PHUC_THAN_KHE_MAT_SEC = 180.0
+    # Mo tui ra ngoc xong cho ngoc ve tui toi da bay lau, chua thay moi mo tui khac.
+    PHUC_THAN_TUI_CHO_SEC = 300.0
+
+    def khe_thay_ngoc(self) -> bool:
+        """True = luc nay duoc lam viec NGOC: ngoai tran VA vua nhan S:065-010 (khe tiep te, dung
+        moc client goc goi MachineBox.Supply). Server khong gui goi do (chua lan nao / lau qua) thi
+        chi can ngoai tran."""
+        if time.time() < float(getattr(self, "_ngoc_thu_lai_sau", 0.0) or 0.0):
+            return False
+        st = getattr(self, "state", None)
+        if st is not None and getattr(st, "in_battle", False):
+            return False
+        khe = float(getattr(self, "_khe_tiep_te", 0.0) or 0.0)
+        if not khe:
+            return True
+        da = time.time() - khe
+        return da <= self.PHUC_THAN_KHE_SEC or da >= self.PHUC_THAN_KHE_MAT_SEC
+
+    def _can_lam_ngoc(self, cfg) -> bool:
+        """Co viec NGOC khong: o ngoc dang la Ngoc Hu, hoac trong tui co ngoc TOT HON cai dang deo,
+        hoac khong deo ngoc ma con tui ra ngoc. Khong co thi khong bat co / khong cho khe."""
+        rec = self._gem_record()
+        if rec is not None and (rec.get("damage", 0) >= 250 or rec.get("id") == BROKEN_PHUC_THAN_TID):
+            return True
+        dang = self._equipped_phuc_than_tid()
+        hang = phuc_than_hang(dang)
+        for t, c in list((self.bag_slots or {}).values()):
+            if c <= 0 or t not in cfg:
+                continue
+            if t in PHUC_THAN_GEM_TIDS and phuc_than_hang(t) < hang:
+                return True
+            if t in PHUC_THAN_BAG_TIDS and not dang:
+                return True
+        return False
 
     def _kiem_deo_ngoc(self, tid: int, slot: int, cho: float = 6.0):
         """Gui lenh deo xong, CHO server xac nhan (S:023-017 -> o 6 = tid). Khong thay = lenh bi
-        nuot: log ro + bat co deo lai. Truoc day log "OK" chi nghia la GOI DA GUI (nanam 29/09 log OK
-        ma khong deo)."""
+        nuot: log ro + bat co deo lai o khe tiep te sau. Truoc day log "OK" chi nghia la GOI DA GUI
+        (nanam 29/09 log OK ma khong deo)."""
         def _run():
             t0 = time.time()
             while self.running and time.time() - t0 < cho:
                 if self._equipped_phuc_than_tid() == tid:
                     self._deo_ngoc_that_bai = 0
+                    self._ngoc_thu_lai_sau = 0.0
                     return
                 time.sleep(0.3)
             if not self.running:
                 return
             n = int(getattr(self, "_deo_ngoc_that_bai", 0)) + 1
             self._deo_ngoc_that_bai = n
-            thu_lai = n < self.PHUC_THAN_DEO_THU_LAI
-            if thu_lai:
-                self.phuc_than_deo_lai = True
+            self.phuc_than_deo_lai = True
+            thua = n >= self.PHUC_THAN_DEO_THU_LAI
+            if thua:
+                self._ngoc_thu_lai_sau = time.time() + self.PHUC_THAN_THU_THUA_SEC
             _o = (self.bag_slots or {}).get(slot)
             log.warning("[%s] DEO NGOC THAT BAI: gui deo o tui %d (0x%04x) ma %.0fs khong thay server "
                         "xac nhan; bot dang nghi o %d = %s; lan %d -> %s", self._label, slot, tid, cho,
                         slot, ("0x%04x" % _o[0]) if _o else "trong", n,
-                        "thu lai o vong train" if thu_lai else "THOI (cho login lai)")
+                        ("thu lai sau %.0fs" % self.PHUC_THAN_THU_THUA_SEC) if thua
+                        else "thu lai o khe tiep te sau")
         threading.Thread(target=_run, daemon=True).start()
 
     def _equipped_phuc_than_tid(self) -> int:
@@ -10543,12 +10774,12 @@ class GameClient:
         use_items.json - CHI khi party bat cong tac "Su dung Phuc Than" (xem run_party_digioi.py,
         goi ham nay moi X phut thay vi 1 lan). Tach rieng khoi use_login_items() vi nhom item nay
         can dinh ky check lai (vd nhat/mua them giua chung), khong phai loai dung 1 lan roi thoi."""
-        # MODE EVENT: TAT HAN - tick hay khong cung khong dung (user chot 21/09). Cua nay dat o
-        # DAY, khong phai o tung noi goi: co ba duong goi ham nay (login, vong keepalive engine
+        # MODE EVENT/QUEST: TAT HAN - tick hay khong cung khong dung (user chot 21/09, quest
+        # 10/10). Cua nay dat o DAY, khong phai o tung noi goi: co ba duong goi ham nay (login, vong keepalive engine
         # cu, `_duy_tri` cua engine moi) - chan o tung duong la som muon sot mot cai.
         if getattr(self, "phuc_than_tat", False):
             self.phuc_than_pending = False
-            self.thao_ngoc_phuc_than("mode event - khong dung Phuc Than")
+            self.thao_ngoc_phuc_than("mode event/quest - khong dung Phuc Than")
             return
         cfg = {tid: v for tid, v in (getattr(config, "USE_LOGIN_ITEMS", {}) or {}).items()
                if v.get("phuc_than")}
@@ -10575,8 +10806,12 @@ class GameClient:
             # truoc (Dai Phuc Than > Phuc Than) = dung it item hon cho cung so luot buff.
             _budget = PHUC_THAN_USE_MAX
             _have = {}
+            # NGOC va TUI RA NGOC khong phai item tieu hao -> KHONG tinh vao cap. Truoc day tui bi
+            # xep sau Dai Phuc Than nen dung du 10 cai la tui bi loai, khong ngoc cung khong mo
+            # (AnhXanh BL-1009-FF31: 10:30 dung 10 Dai Phuc Than khong mo tui, 10:51 dung 5 thi mo).
+            _ngoai_cap = PHUC_THAN_GEM_TIDS | PHUC_THAN_BAG_TIDS
             for _s, (_t, _n) in self.bag_slots.items():
-                if _n > 0 and _t in cfg and _t not in PHUC_THAN_GEM_TIDS:
+                if _n > 0 and _t in cfg and _t not in _ngoai_cap:
                     _have[_t] = _have.get(_t, 0) + _n
             _new = {}
             def _order(kv):
@@ -10585,7 +10820,7 @@ class GameClient:
                 except ValueError:
                     return len(PHUC_THAN_CONSUMABLE_ORDER)
             for _t, _v in sorted(cfg.items(), key=_order):
-                if _t in PHUC_THAN_GEM_TIDS:
+                if _t in _ngoai_cap:
                     _new[_t] = _v
                     continue
                 _take = min(_budget, _have.get(_t, 0))

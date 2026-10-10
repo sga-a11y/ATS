@@ -132,7 +132,7 @@ LEADER_NAME = "ten_chu_party"   # ten chu party (tham khao/log)
 # START_CITY_ID: thanh ve sau khi login. 12061=Ng.Thanh | 12001=Trac Quan | 12011=Cu Loc
 #   = 0  -> KHONG teleport: dung yen tai cho login (van chuyen CHANNEL, van tu danh khi vao tran).
 #   = MAP ID trung voi map LUC LOGIN -> vao che do PARTY-TRAIN tren map do (chay toi TRAIN_SAFE,
-#     dong bo kenh, moi party, leader ra TRAIN_MOB_SPOTS dung cay). Xem log "MAP HIEN TAI" luc login.
+#     dong bo kenh, moi party, leader ra TRAIN_MOB_SPOTS dung cay). Them map dang dung (ban dev): bam header "Map" o bang party.
 START_CITY_ID = 12061
 # Data map party-train doc tu train_maps.json (map_id -> {safe, mobs}).
 #   START_CITY_ID CO trong data  -> MAP-TRAIN (chay toi safe, lap party, ra mobs cay)

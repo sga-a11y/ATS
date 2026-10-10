@@ -142,6 +142,15 @@ class TestModeEventTatHan(unittest.TestCase):
         i = s.find("c.phuc_than_tat = (")
         self.assertIn("thao_ngoc_phuc_than(", s[i:i + 500])
 
+    def test_mode_quest_cung_tat(self):
+        """User 10/10: "che do lam Q cu thu va chinh tuyen thi se ko dung Phuc than, thang nao dang
+        deo ngoc thi thao ra" - mode `quest` (2 chuoi cs1_cu_thu + chinh_tuyen) y mode event."""
+        import run_party_digioi as R
+        self.assertEqual(set(R.MODE_KHONG_PHUC_THAN), {"event", "quest"})
+        s = _doc("run_party_digioi.py")
+        i = s.find("c.phuc_than_tat = (")
+        self.assertIn("MODE_KHONG_PHUC_THAN", s[i - 200:i + 200])
+
     def test_use_phuc_than_items_TU_CHAN(self):
         """Chan o TUNG NOI GOI (3 duong: login / keepalive engine cu / `_duy_tri` engine moi) thi
         som muon sot mot cai -> chan ngay trong ham."""

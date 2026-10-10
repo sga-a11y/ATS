@@ -140,6 +140,7 @@ xong vòng đồng bộ trước đó thì không bao giờ biết đích đã �
 | Khi nào mời | Leader mời vô hạn | Leader hỏi `viec` trước mỗi vòng |
 | Chốt cấp quái DG | Acc login trước chốt | `_dieu_phoi_chot_map`, chỉ chốt khi đủ level cả party |
 | Chốt map train | Acc login trước chốt | Như trên |
+| Mode city: thành đích chưa mở thì đi từ đâu (09/10) | Acc nhận `city` tự chọn thành xuất phát + tự ra lệnh DI MAP, đánh dấu 1 lần rồi khoá | Engine `_engine_city_decisions`: còn acc đang login / chưa biết thì `nghi`, chưa chốt; đủ dữ liệu mới ra lệnh; không khoá (`CITY_LENH_LAI_SEC` = 120s ra lại). Ca p21 09/10: 307 lần `CHUA MO`, 0 lệnh đi bộ |
 
 ### `_het_gio_dg` — điểm mấu chốt
 

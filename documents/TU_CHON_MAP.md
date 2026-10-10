@@ -19,3 +19,13 @@ Chi tiết: `documents/DUNG_SAFE_CHEN_KENH.md`.
 ## Lưu cấu hình
 - Key `mob_soul` (bool) trong preset party (accounts.json / PartyStore APK).
 - APK truyền `party.mobSoul` vào `setup_party_runtime` ở vị trí CUỐI CÙNG.
+
+## Thêm map đang đứng vào Map train (chỉ bản dev, 10/10/2026)
+- Thay cho log `MAP HIEN TAI` cũ (mất từ commit `90bfb10` 26/09 khi bỏ engine cũ).
+- Bảng party → bấm header **Map ↧** → popup "Teleport về thành" → nút
+  **📍 Thêm map đang đứng vào Map train**. Chỉ hiện khi chạy `python gui.py`
+  (`updater.is_frozen()` = False); bản exe không có nút này. APK không làm.
+- Lấy `current_map` của leader (không có thì acc đang chạy đầu tiên của party).
+- Thành → báo không train được. Đã có → báo đã có. Còn lại hỏi xác nhận rồi thêm map **rỗng**
+  (tên theo game, nhóm "Chưa phân nhóm") qua `train_maps_store.add_empty_map` — không bao giờ
+  ghi đè map đã có. Lần đầu party tới map đó bot tự AUTO LEARN bãi quái/safe.

@@ -1,0 +1,8 @@
+{
+ "_ghi_chu": "Quest CO TRAN duoc phep DI LE (user danh dau tay, documents/QUEST_CHINH_TUYEN.md). Quest khong co tran tu di le, khong can ghi o day. Quest co tran KHONG co trong danh sach -> dung yen + Chu y 'can party'.",
+ "_solo_het": "User 09/10: 'nhung quest dau nay cu cho solo het, den khi nao t bao di party thi luc do moi can' -> true = MOI quest di le (bo qua danh sach). Doi false de quay lai luat danh sach. CHI ap cho CHINH TUYEN (chay_chinh_tuyen); quest Cu Thu CS1 van chay party nhu cu.",
+ "solo_het": true,
+ "chinh_tuyen": [
+  10001
+ ]
+}

@@ -351,3 +351,51 @@ Giờ đầu `thi_hanh`: việc khác `VIEC_TRAIN` mà client đang chạy vòng
 Đủ party, engine giao lại `train` → nhánh train tự bật lại vòng chạy.
 Chưa chốt: vì sao gom party trong DG thất bại >1 tiếng (leader báo server CHƯA HỀ thấy member quanh mình).
 Test: `tests/test_party_engine_vong.py::TestKhongPhaiTrainThiDungChayLongVong`.
+
+## Dị Giới SOLO — làm y engine cũ (09/10)
+Ca thật BL-1008-C452 (08/10, APK, party 1 tick Dị Giới Solo): cả 5 acc `(member) vao world` (solo →
+không có leader), engine vẫn đếm cần 5 member và giao `lap_party` **511 lần** trong 1,5 phút, 0 lần
+`Run-around` → cả party đứng im trong DG 49942 tới khi user Stop. Engine mới (90bfb10, 26/09) làm rơi
+mất toàn bộ nhánh `elif digioi_solo` của engine cũ.
+Giờ (giống engine cũ):
+- `_mode_can_lap_doi()` trả `False` khi `mode == "digioi"` và `digioi_mode == "solo"` → `n_members = 0`,
+  điều phối `lam`, không chốt/đồng bộ kênh, không lập đội, không reform (chung cửa với Loạn Đấu).
+- `quyet_dinh` pha DG: `can_bao_nhieu <= 0` → acc nào đã vào DG và còn giờ là `train` ngay, không chờ
+  acc khác vào, không đứng vì acc khác hết giờ. (Party 1 acc cũng ra 0 nhưng kết quả như cũ.)
+- `thi_hanh` `train` cho acc DG solo (`_train_dg_solo`): tự `start_run_around()` (party thật vẫn chỉ
+  leader chạy). Bảo hiểm thuốc: thiếu HP hoặc SP → `flee_mode` + đứng yên; có lại → chạy tiếp.
+  Log: `Di Gioi SOLO -> tu chay long vong ...` / `Di Gioi SOLO -> THIEU thuoc ... -> DUNG YEN`.
+Test: `tests/test_dg_solo_engine_moi.py`.
+
+## Cửa nhận lời mời party: chỉ giữ khi ĐANG làm việc vặt thật (10/10)
+
+Ca thật 09/10 party 21 (chế độ đứng yên, user mời tay): ba acc được mời lúc **còn** đang làm việc vặt
+→ `account_task.__exit__` nhả lời mời ra → vào đội. Riêng `dieutam` xong việc vặt lúc 23:56:04, lời mời
+tới lúc 23:56:12 → `Chua san sang vao party -> GIU loi moi` lặp tới 23:57:59, không bao giờ vào.
+
+Gốc: cờ `party_invite_ready` mặc định `False` mỗi lần relogin, chỉ bật khi (a) việc vặt kết thúc mà
+**lúc đó đã có** lời mời bị giữ, hoặc (b) engine giao `lap_party`. Lời mời tới **sau** việc vặt thì
+không còn ai nhả → phải "mời thật sớm" mới vào được.
+
+Sửa (`client.py` nhánh `0x0d sub09`): giữ lời mời chỉ khi `not party_invite_ready and
+dang_lam_viec_vat()` — pha việc vặt đọc từ báo cáo task, không kẹt được. Acc rảnh thì accept ngay
+(vẫn qua lọc whitelist `PARTY_LEADERS` trong `_accept_party_invite` như cũ).
+Test: `tests/test_party_invite_gate.py` (`test_loi_moi_toi_SAU_khi_viec_vat_xong_van_vao`).
+
+## Pha train mà acc đang trong Dị Giới → về thành trước (10/10)
+Ca thật 10/10 party 25 (mode train, cả 5 acc login vào đã ở DG 49942): điều phối thấy "cùng map, lệch
+kênh [1, 4, 5]" → `dong_bo` → giao `doi_kenh` **232 lần** trong ~6 phút, đổi kênh thành công **0 lần**
+(6 lần `result=3`, còn lại server im). Chỉ ra khỏi DG khi `DUNG HINH qua 240s` ép `gom`. Party 23 cùng
+ngày: 1 acc (gclm10) kẹt trong DG ~9 phút.
+
+Engine cũ (`on-20260914-1802`): login không ở map train (kể cả DG) = **sai map** → "CA PARTY ve thanh
+don nhau roi KEO toi map train" (`_do_reform` → `go_to_town` → `RA KHOI DG truoc`). Luật "lệch kênh
+trong DG thì đồng bộ tại chỗ" chỉ dành cho **pha DG**. Engine mới bỏ bước setup đó nên rơi vào bậc kênh.
+
+Sửa (`party_engine._quyet_dinh_goc`, nhánh `(0c2)`, sau pha DG, trước PB tổ đội / chuỗi điều phối):
+- `pha == PHA_TRAIN` và **không** phải mode stand/city (`pb_tai_cho`) → acc nào `trong_dg` nhận
+  `ve_thanh`; acc còn lại đi tiếp chuỗi điều phối như cũ. Đang trong trận thì vẫn hoãn (`nghi`) như mọi
+  việc di chuyển khác.
+- `thi_hanh(ve_thanh)` chưa chốt được thành tập kết mà đang trong DG → vẫn `exit_di_gioi()` (đi bộ ra
+  cổng, `flee_mode`), nhịp sau về thành tiếp. Ngoài DG thì giữ nguyên: lệnh rỗng.
+Test: `tests/test_pha_train_trong_dg_thi_ve_thanh.py`.

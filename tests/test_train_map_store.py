@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from bot.train_maps_store import merge_baseline, save_learned_regions
+from bot.train_maps_store import add_empty_map, merge_baseline, save_learned_regions
 
 
 class TestTrainMapStore(unittest.TestCase):
@@ -39,6 +39,29 @@ class TestTrainMapStore(unittest.TestCase):
         self.assertEqual(data["maps"]["20801"]["mobs"], [[300, 400]])
         self.assertIn("99", data["maps"])
         self.assertFalse(os.path.exists(self.path + ".tmp"))
+
+    def test_add_empty_map_appends_without_touching_other_maps(self):
+        self.write({"maps": {"99": {"name": "keep", "safe": [[1, 2]], "mobs": [[3, 4]]}}})
+
+        added = add_empty_map(self.path, 20801, "Rung Cay")
+        data = self.read()
+
+        self.assertTrue(added)
+        self.assertEqual(data["maps"]["20801"], {"name": "Rung Cay", "safe": [], "mobs": []})
+        self.assertEqual(data["maps"]["99"]["mobs"], [[3, 4]])
+
+    def test_add_empty_map_never_overwrites_existing_map(self):
+        self.write({"maps": {"20801": {"name": "RCN1", "group": "A", "safe": [[1, 2]], "mobs": [[3, 4]]}}})
+
+        added = add_empty_map(self.path, 20801, "Ten moi")
+
+        self.assertFalse(added)
+        self.assertEqual(self.read()["maps"]["20801"]["name"], "RCN1")
+        self.assertEqual(self.read()["maps"]["20801"]["mobs"], [[3, 4]])
+
+    def test_add_empty_map_creates_file_when_missing(self):
+        self.assertTrue(add_empty_map(self.path, 777, "Map 777"))
+        self.assertIn("777", self.read()["maps"])
 
     def test_nonempty_configured_mobs_are_not_overwritten(self):
         self.write({

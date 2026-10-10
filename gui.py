@@ -1439,6 +1439,51 @@ class BotGUI(tk.Tk):
             win.destroy()
         lb.bind("<Double-1>", lambda _e: _go())
         ttk.Button(win, text="Chọn", command=_go).pack(pady=8)
+        # CHI ban dev (python gui.py): cong cu de dev them map train moi, user ban exe khong can.
+        from bot import updater as _updater
+        if not _updater.is_frozen():
+            ttk.Button(win, text="📍 Thêm map đang đứng vào Map train",
+                       command=lambda: self._them_map_dang_dung(pidx, win)).pack(pady=(0, 8))
+
+    def _them_map_dang_dung(self, pidx, win):
+        """Them map party DANG DUNG (leader truoc, khong co thi acc dang chay dau tien) vao
+        train_maps.json - map rong, lan dau party toi thi bot tu AUTO LEARN bai quai."""
+        import tkinter.messagebox as mb
+        from bot.train_maps_store import add_empty_map
+        mid = None
+        accs = sorted(ctrl.party_accounts(pidx), key=lambda a: not a[2])   # leader len dau
+        for (_u, _p, _lead, _pick) in accs:
+            _c = ctrl.account_clients.get(_u)
+            _m = getattr(_c, "current_map", None) if _c is not None else None
+            if _m:
+                mid = int(_m)
+                break
+        if mid is None:
+            mb.showwarning("Thêm map train", "Party chưa có acc nào đang chạy / chưa biết đang ở map nào.",
+                           parent=win)
+            return
+        name = config.scene_name(mid, with_id=False)
+        if name == str(mid):
+            name = "Map %d" % mid
+        if any(int(cid) == mid for (cid, _f, _n) in self.cities):
+            mb.showwarning("Thêm map train", f"{name} ({mid}) là thành, không train được.", parent=win)
+            return
+        known = _load_json("train_maps.json").get("maps", {})
+        if str(mid) in known:
+            mb.showinfo("Thêm map train",
+                        f"{known[str(mid)].get('name', mid)} ({mid}) đã có trong Map train rồi.", parent=win)
+            return
+        if not mb.askyesno("Thêm map train",
+                           f"Thêm {name} ({mid}) vào Map train?\n\nBãi quái để trống - lần đầu party tới "
+                           "map này bot sẽ tự quét rồi ghi vào.", parent=win):
+            return
+        try:
+            add_empty_map(TrainMapEditor.TM_PATH, mid, name)
+        except Exception as e:
+            mb.showerror("Thêm map train", f"Không ghi được train_maps.json: {e}", parent=win)
+            return
+        _MAP_NAMES[mid] = name
+        mb.showinfo("Thêm map train", f"Đã thêm {name} ({mid}) vào nhóm '{_DEFAULT_GROUP}'.", parent=win)
 
     def _popup_route_maps(self, pidx):
         import tkinter.messagebox as mb
@@ -2094,7 +2139,10 @@ class BotGUI(tk.Tk):
                                 "diem": it["diem"], "lan": it["lan"]})
                   for it in ctrl.diem_quai_canh_bao_items(pidx)]
                + [(it["user"], {"_pet_roi_chuc": True, "pid": it["pid"], "ten": it["ten"]})
-                  for it in ctrl.pet_roi_chuc_notify_items(pidx)])
+                  for it in ctrl.pet_roi_chuc_notify_items(pidx)]
+               + [(it["user"], {"_quest_ket": True, "id": it["id"], "ten": it["ten"],
+                                "buoc": it["buoc"], "ly_do": it["ly_do"]})
+                  for it in ctrl.quest_ket_notify_items(pidx)])
         try:
             accs = ctrl.party_accounts(pidx)
         except Exception:
@@ -2187,6 +2235,19 @@ class BotGUI(tk.Tk):
 
         def _add_row(u, it):
             rowf = ttk.Frame(inner); rowf.pack(fill="x", pady=2)
+            # --- QUEST CHINH TUYEN DUNG YEN (buoc chua lam duoc) - documents/QUEST_CHINH_TUYEN.md ---
+            if it.get("_quest_ket"):
+                def _skip_quest(_u=u, _it=it, _r=rowf):
+                    ctrl.quest_ket_notify_skip(_u, _it["id"], _it["buoc"]); _r.destroy()
+                _skips.append((rowf, _skip_quest))
+                ttk.Button(rowf, text="Bỏ qua", width=7,
+                           command=_skip_quest).pack(side="right", padx=2)
+                ttk.Label(rowf, wraplength=380, justify="left", foreground="#b45309",
+                          font=(None, 9, "bold"),
+                          text="%s: quest %s bước %s đứng yên - %s"
+                               % (self._mask_user(u), it["ten"], it["buoc"], it["ly_do"])
+                          ).pack(side="left", fill="x", expand=True)
+                return
             # --- BA DAU SAP HET HAN (con duoi 1 ngay) ---
             if it.get("_ba_dau"):
                 def _skip_ba_dau(_u=u, _r=rowf):
@@ -8378,7 +8439,7 @@ class TrainMapEditor(tk.Toplevel):
 
         right = ttk.Frame(self, padding=6); right.pack(side="left", fill="both", expand=True)
         mapid_row = ttk.Frame(right); mapid_row.pack(anchor="w", fill="x")
-        ttk.Label(mapid_row, text="Map ID (log 'MAP HIEN TAI'):").pack(side="left")
+        ttk.Label(mapid_row, text="Map ID:").pack(side="left")
         self.id_var = tk.StringVar()
         ttk.Entry(mapid_row, textvariable=self.id_var, width=16).pack(side="left", padx=(8, 8))
         ttk.Button(mapid_row, text="Thống kê block",

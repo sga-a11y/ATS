@@ -12,6 +12,8 @@ Sinh ra 07/10: user báo bug mà không có gì để xem → không sửa đư�
    user nhắn mã đó cho dev.
 4. Gửi lỗi (mất mạng, Telegram bị chặn) → báo thất bại và **lưu zip cạnh exe/app** để gửi tay.
 5. Chống spam: mỗi máy cách nhau ≥ 2 phút mới gửi tiếp được (gửi hỏng thì không tính).
+6. APK màn ngang (09/10): bàn phím từng che nút Gửi → cửa sổ dialog đặt `SOFT_INPUT_ADJUST_RESIZE`
+   (co lại khi bàn phím hiện) và nội dung cuộn được, hàng nút Gửi/Đóng luôn nằm trên bàn phím.
 
 ## Gói zip gửi đi
 

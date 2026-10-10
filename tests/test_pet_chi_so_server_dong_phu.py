@@ -184,6 +184,19 @@ class TestChiSoCharDayDu(unittest.TestCase):
         self.assertEqual(g._char_cong_ngoai_do(31)["horse"], 0)
 
 
+@unittest.skipUnless(os.path.exists(PCAP), "thieu pcap tsm_quangam")
+class TestThuTuGoiLogin(unittest.TestCase):
+    """BL-1008-0B07 "van ko dung agi voi ingame": login that ra `PL -> S:008-002 -> 0x13`; 0x13 doc
+    lai goi pet-list cache, ma reset pet_equip_server nam trong _on_pet_list -> xoa sach so server.
+    Test cu goi thang _on_pet_equip_attr nen khong bat duoc - test nay di qua _dispatch that."""
+
+    def test_so_server_con_sau_0x13(self):
+        g = _replay_char(PCAP)
+        self.assertEqual(g._active_pet_login["marker"], 3)
+        self.assertEqual(g.pet_equip_server.get(3, {}).get(214), 12)
+        self.assertEqual(g.pet_agi, 119)   # tu tinh 107 = thieu 12 cua 專武/天官
+
+
 class TestDuLieu(unittest.TestCase):
     def setUp(self):
         with open(os.path.join(ROOT, "pet_stats.json"), encoding="utf-8") as fh:

@@ -127,6 +127,18 @@
    "city_id": 26011,
    "flag": 20,
    "hex": "659b"
+  },
+  "thien_thuy": {
+   "name": "Thiên Thủy",
+   "city_id": 24001,
+   "flag": 21,
+   "hex": "5dc1"
+  },
+  "don_hoang": {
+   "name": "Đôn Hoàng",
+   "city_id": 24011,
+   "flag": 22,
+   "hex": "5dcb"
   }
  },
  "special_maps": {

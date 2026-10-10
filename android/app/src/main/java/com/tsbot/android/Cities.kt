@@ -30,6 +30,11 @@ object Cities {
         "ta_ma_dai" to Info("Tả Mã Đài", 57001, 16),
         "truong_sa" to Info("Trường Sa", 23001, 17),
         "linh_lang" to Info("Linh Lăng", 23011, 18),
+        // flag = chi so ban ghi trong Warp_C.dat (xem tests/test_cities_khop_warp_dat.py).
+        "phien_ngu" to Info("Phiên Ngu", 26001, 19),
+        "y_chau" to Info("Y Châu", 26011, 20),
+        "thien_thuy" to Info("Thiên Thủy", 24001, 21),
+        "don_hoang" to Info("Đôn Hoàng", 24011, 22),
     )
 
     /** Nha Nam Tinh Quan (55002) KHONG phai thanh: bot ve Bac Hai roi keo party di bo len (Python

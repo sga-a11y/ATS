@@ -110,9 +110,13 @@ def main():
                        "kich_ban": bool(kb), "nhan_tai": (kb or {}).get("nhan"),
                        "steps": steps})
         out[key] = {"label": ch["label"], "quests": qs}
+    # Chuoi sinh tu Eve.emg (documents/QUEST_CHINH_TUYEN.md): data o main_quests.json
+    # (tools/crack_eve_quest.py); o day chi giu label de GUI/APK doc CHUNG mot danh sach chuoi.
+    # Phu tuyen chua lam -> chua hien (user 08/10).
+    out["chinh_tuyen"] = {"label": "Chính tuyến", "nguon": "main_quests.json"}
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
-    print(f"{OUT}: " + ", ".join(f"{k}={len(v['quests'])} quest" for k, v in out.items()))
+    print(f"{OUT}: " + ", ".join(f"{k}={len(v.get('quests') or ())} quest" for k, v in out.items()))
 
 
 if __name__ == "__main__":

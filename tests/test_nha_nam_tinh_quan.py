@@ -23,8 +23,7 @@ class TestNhaNamTinhQuan(unittest.TestCase):
     def test_da_mo_bac_hai_di_thang(self):
         with mock.patch.object(rp, "_party_city_unlocked", return_value=([], [])), \
              mock.patch.object(rp, "party_route_maps") as prm:
-            rp._ra_lenh_di_nha_nam_tinh(self.pidx)
-            rp._ra_lenh_di_nha_nam_tinh(self.pidx)     # lan 2 khong dat lai lenh
+            self.assertTrue(rp._ra_lenh_di_nha_nam_tinh(self.pidx))
         prm.assert_called_once_with(self.pidx, 11011, 55002)
 
     def test_chua_mo_bac_hai_di_mo_truoc(self):
@@ -46,7 +45,7 @@ class TestNhaNamTinhQuan(unittest.TestCase):
         with mock.patch.object(rp, "_ra_lenh_di_nha_nam_tinh") as ra:
             self.assertFalse(rp._ve_thanh_tap_trung(c, self.pidx, "t", 55002, 1))
         c.go_to_town.assert_not_called()
-        ra.assert_called_once()
+        ra.assert_not_called()      # lenh di bo do ENGINE ra (`_engine_city_decisions`)
         c.current_map = 55002
         self.assertTrue(rp._ve_thanh_tap_trung(c, self.pidx, "t", 55002, 1))
 

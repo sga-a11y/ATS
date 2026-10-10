@@ -89,6 +89,9 @@ class BattleState:
         self.enemy_pos_names = {}       # pos(row*10+col) -> set ten quai, neu 0x0b co row/col
         self.enemy_pos_tids = {}        # pos(row*10+col) -> set template_id
         self.mineral_battle = False    # True neu tran co quai khoang (bat theo ten hoac template id)
+        # Quest chinh tuyen DAO MO co deo Cuoc: toi moc nay KHONG bo chay quai khoang (combat
+        # `_chay_quai_khoang`). Tu het han - khong reset theo tran.
+        self.danh_khoang_den = 0.0
         self.self_slot = None          # B2 (vi tri tran) cua minh - tu 0x0b battle (entity-based)
         # --- PHE TRONG TRAN ---
         # Moi tran thuong (train / PB / Di Gioi / 40NPC / 2K) deu xep PHE TA o hang 2-3 va DICH o

@@ -43,6 +43,16 @@ phép làm là **gom lại**.
 
 Ngoài ba lý do đó, **mọi trạng thái thiếu người đều phải quay về gom**, kể cả khi đã thử 10 lần.
 
+### Ngoại lệ duy nhất (user chốt 08/10): mode quest chuỗi CHÍNH TUYẾN, pha ĐI LẺ
+
+User 08/10: *"nhóm quest A này bỏ party đi lẻ"* — quest không có trận (hoặc có trận nhưng user đã
+đánh dấu solo trong `quest_solo.json`) do **mỗi acc tự làm một mình**: acc tự rời party, tự đi
+map, không gom, không lập đội (`run_party_digioi._chinh_tuyen_quyet`). Chỉ người kích hoạt được
+tính quest (`gainWay = 0`) nên đi cả đội cũng không ai được thêm gì. Ngoại lệ **chỉ** cho mode
+`quest` + chuỗi chính tuyến (`quest_runner.la_chinh_tuyen`); quest có trận chưa đánh dấu solo thì
+acc **đứng yên + "Chú ý"**, chưa đi party. Mọi mode/chuỗi khác vẫn theo L0 nguyên vẹn. Chi tiết:
+`documents/QUEST_CHINH_TUYEN.md`.
+
 ### Ba ca chết thật sinh ra luật này (06/09)
 
 | Ca | Vi phạm vế nào |

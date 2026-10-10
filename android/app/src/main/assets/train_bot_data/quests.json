@@ -487,5 +487,9 @@
     }
    }
   ]
+ },
+ "chinh_tuyen": {
+  "label": "Chính tuyến",
+  "nguon": "main_quests.json"
  }
 }

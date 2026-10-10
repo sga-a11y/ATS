@@ -95,6 +95,9 @@ def dung_engine_moi(pidx) -> bool:
 # la LUOI AN TOAN khi server khong gui goi - truoc day la 1800 (30 phut) va la duong CHINH nen
 # phan ung rat cham (ngoc hong phut thu 1 -> mat he so EXP toi 29 phut).
 PHUC_THAN_CHECK_SEC = 300
+# Mode TAT HAN Phuc Than (tick hay khong cung khong dung, dang deo thi thao): event (user 21/09),
+# quest = Cu Thu + chinh tuyen (user 10/10). Xem documents/CORE_FLOW.md "Ngoc Phuc Than".
+MODE_KHONG_PHUC_THAN = ("event", "quest")
 
 
 def _map_cau_hinh(raw, gia_tri_bool=False):
@@ -1151,9 +1154,15 @@ def _mode_can_lap_doi(pidx):
     User 10/09: "ko phai chan, ma dieu phoi phai biet mode nay deo can lap pt". Truoc do toi di vao
     lam guard rai rac o tung ham - moi guard la mot cho co the quen, va da quen that: chan o
     `_engine_chot_kenh` roi nhung `_dieu_phoi_quyet` van ra `viec=moi/gom/dong_bo` (party 24).
+
+    Mode thu hai: DI GIOI SOLO (`digioi_mode == "solo"`). Engine cu: khong sync kenh, khong mo
+    cua nhan moi, moi acc tu chay long vong. Engine moi thieu dong nay -> `n_members` = 5 ma khong
+    ai la leader -> giao `lap_party` 511 lan, ca party dung im trong DG (BL-1008-C452, 08/10).
     """
     try:
         _pc = getattr(config, "PARTY_CONFIG", {}).get(pidx, {}) or {}
+        if _pc.get("mode") == "digioi" and _pc.get("digioi_mode") == "solo":
+            return False
         if _pc.get("mode") != "event":
             return True
         _ev = config.event_hom_nay(_pc.get("event_key") or "")
@@ -1973,63 +1982,41 @@ def _nhip_cho_kenh(st):
 
 
 def _ve_thanh_tap_trung(c, pidx, label, dest_city, dest_flag):
-    """Mode CITY: ve thanh tap trung; thanh CHUA MO tele -> ra lenh DI MAP (party keo nhau di bo).
+    """Mode CITY - viec CUA MOT ACC: tele ve thanh dich. Chi vay thoi.
 
-    Truoc day mode city chi goi `go_to_town(sc, flag)` tron: thanh chua mo thi `go_to_town` bo cuoc
-    NGAY ("thanh %s CHUA MO tele -> bo qua ngay") va acc DUNG IM tai cho login. Log 01/09 party 48
-    (dt901-905) + party 49 (gclm*): ra khoi Di Gioi ve map 12003 (quang truong Trac Quan) roi nam
-    do ca tieng (user: "party 48 49 no ko ve thanh, no dung yen o quang truong, t chon Ng thanh ma").
+    Thanh CHUA MO tele thi engine KHONG giao `city` (xem `_engine_city_decisions`): engine tu ra
+    lenh DI MAP cho ca party. Acc KHONG tu quyet viec cap party o day nua.
 
-    KHONG tu di bo LE tung acc. Ban dau lam the va no HONG dung nhu mode train da biet tu lau: cong
-    co hoi thoai (cau Gioi kieu, map 63000 cong 10) chi MOT nguoi tra loi duoc, 5 acc di le thi moi
-    acc tu bam mot ma -> ket ca lu o cau (log 11:31-11:35, user: "leader chon thoi, lien quan me gi
-    den 5 acc" / "m dang cho di le a").
-    Dung LAI dung co che da co va da chay tot: lenh "DI MAP AAA -> BBB" (`_do_manual_route`) - no
-    gom ca party ve thanh xuat phat, lap party TAM (ke ca party khong co chu PT thi picker dong vai
-    leader), LEADER KEO qua tung cong con member follow, den noi thi giai tan. Y het cach mode train
-    xu ly "thanh gan bai chua mo" (`_reform_via_nghiep`: gom o thanh da mo roi leader keo di bo).
+    Da sai o day (party 21, 09/10, chon Thien Thuy 24001 vua mo): ham nay tung tu chon thanh xuat
+    phat + tu ra lenh DI MAP, acc nao chay toi truoc thi quyet. `dieubay` quyet luc 11:38:00 khi
+    `dieuchin`/`dieumuoi` con dang login -> "khong thanh nao ca party da mo" -> danh dau da ra lenh
+    -> KHOA ca phien: 307 lan `go_to_town 24001 CHUA MO`, 0 lan ra lenh di bo,
+    `'city' giao lai 80 lan lien tiep`. Engine thi da biet "moi 3/5 acc login xong -> chua ket luan".
+
+    Nha Nam Tinh Quan (55002) khong phai thanh, khong tele duoc -> chi bao da toi hay chua.
     """
     dest_city = int(dest_city)
-
-    def _toi_noi():
-        # Da o thanh dich -> xoa dau lenh cu de lan sau (bi day ra khoi thanh) con ra lenh lai duoc.
-        st = _pstate(pidx)
-        with st["lock"]:
-            if st.get("route_ve_thanh_dest") == dest_city:
-                st["route_ve_thanh_dest"] = None
-        return True
-
     if dest_city == NHA_NAM_TINH_QUAN:
-        # KHONG PHAI THANH (khong teleport duoc): ve Bac Hai roi leader keo ca party di bo len.
-        if int(getattr(c, "current_map", 0) or 0) == dest_city:
-            return _toi_noi()
-        _ra_lenh_di_nha_nam_tinh(pidx, label)
-        return False
+        return int(getattr(c, "current_map", 0) or 0) == dest_city
     try:
         if c.go_to_town(dest_city, int(dest_flag)):
-            return _toi_noi()
+            return True
     except Exception as e:
         log.warning("[%s] loi ve thanh %s: %s", label, dest_city, e)
-    if c.current_map == dest_city:
-        return _toi_noi()
-    if c.city_unlocked(dest_city) is not False:
-        return False        # that bai vi ly do khac (battle chan tele...) - go_to_town da lap du
-    _ra_lenh_di_bo_ve_thanh(pidx, dest_city, label)
-    return False
+    return int(getattr(c, "current_map", 0) or 0) == dest_city
 
 
-def _ra_lenh_di_bo_ve_thanh(pidx, dest_city, label):
-    """Dat lenh DI MAP <thanh ca party da mo> -> <thanh user chon> cho CA PARTY.
+def _ra_lenh_di_mo_thanh(pidx, dest_city, label):
+    """Ra lenh DI MAP <thanh ca party da mo, gan dich nhat> -> dest_city cho CA PARTY.
 
-    Dat MOT LAN cho moi dich (khong phai moi acc, khong phai moi vong): lenh la cua ca party, moi
-    acc deu chay nhanh route cua no; acc nao cung dat thi cmd_gen nhay lien tuc -> route bi khoi
-    dong lai giua chung mai mai.
+    CHI ENGINE goi (`_engine_city_decisions`), khi da du du lieu ca party. Tra True neu da ra lenh.
+    KHONG tu danh dau "da ra lenh" o day: danh dau truoc khi chon duoc thanh xuat phat la khoa
+    ca phien khi chon hong (party 21, 09/10). Nhip lenh do engine giu (`CITY_LENH_LAI_SEC`).
+
+    Dung LAI lenh "DI MAP" (`party_route_maps`), KHONG tu di bo le tung acc: cong co hoi thoai (cau
+    Gioi kieu, map 63000 cong 10) chi MOT nguoi tra loi duoc, 5 acc di le thi ket ca lu o cau
+    (log 01/09 11:31-11:35, user: "leader chon thoi, lien quan me gi den 5 acc").
     """
-    st = _pstate(pidx)
-    with st["lock"]:
-        if st.get("route_ve_thanh_dest") == int(dest_city):
-            return False
-        st["route_ve_thanh_dest"] = int(dest_city)
     xuat_phat = _pick_start_city(pidx, dest_city)
     if not xuat_phat:
         log.warning("[%s] thanh %s CHUA MO tele va KHONG thanh nao ca party da mo di toi do duoc "
@@ -2048,21 +2035,17 @@ BAC_HAI = 11011
 
 
 def _ra_lenh_di_nha_nam_tinh(pidx, label="GUI"):
-    """Dat lenh cho CA PARTY len Nha Nam Tinh Quan (55002).
+    """Dat lenh cho CA PARTY len Nha Nam Tinh Quan (55002). Tra True neu da ra lenh.
 
     Ca party da mo Bac Hai -> DI MAP 11011 -> 55002 (tele Bac Hai, leader keo di bo).
     Co acc CHUA MO Bac Hai -> keo ca lu di bo MO Bac Hai truoc (DI MAP <thanh da mo> -> 11011),
     toi noi thi `_engine_route_decisions` tu noi tiep chang 11011 -> 55002 (co `nha_nt_tiep`).
-    Dat MOT LAN moi dich nhu `_ra_lenh_di_bo_ve_thanh` (dung chung `route_ve_thanh_dest`).
+    Nhip lenh do engine giu (`_engine_city_decisions`) / GUI bam la ra lenh moi.
     """
     st = _pstate(pidx)
     chua_mo, chua_biet = _party_city_unlocked(pidx, BAC_HAI)
     if chua_biet:
         return False            # chua nhan co nhiem vu -> nhip sau tinh lai, khong ket luan oan
-    with st["lock"]:
-        if st.get("route_ve_thanh_dest") == NHA_NAM_TINH_QUAN:
-            return False
-        st["route_ve_thanh_dest"] = NHA_NAM_TINH_QUAN
     if not chua_mo:
         log.info("[%s] Nha Nam Tinh Quan: ca party da mo Bac Hai -> DI MAP %s -> %s",
                  label, BAC_HAI, NHA_NAM_TINH_QUAN)
@@ -2084,10 +2067,70 @@ def _ra_lenh_di_nha_nam_tinh(pidx, label="GUI"):
 
 def party_go_nha_nam_tinh(pidx):
     """GUI (popup teleport, mode city/stand): ca party len Nha Nam Tinh Quan."""
-    st = _pstate(pidx)
-    with st["lock"]:
-        st["route_ve_thanh_dest"] = None     # lenh tay -> luon ra lenh moi
     _ra_lenh_di_nha_nam_tinh(pidx, "P%d GUI" % (int(pidx) + 1))
+
+
+# Mode city: ra lenh DI MAP xong ma party van chua toi / van con acc chua mo thanh dich thi bao lau
+# sau moi ra lenh lai. KHONG khoa vinh vien (L0: gom bang duoc) - chi chan spam khi lenh hong ngay.
+CITY_LENH_LAI_SEC = 120.0
+
+
+def _engine_city_decisions(pidx, anh, result, dest_city):
+    """Mode CITY: ENGINE quyet "thanh dich chua mo thi di tu dau", khong acc nao tu quyet.
+
+    Chi xet acc dang duoc giao `city` (`party_modes.decide_mode`: chua o thanh dich, chua trong doi):
+      - con acc CHUA LOGIN XONG / CHUA BIET da mo thanh chua -> `nghi`, CHUA CHOT (cung luat chot
+        cap quai / map train: thieu du lieu ca party thi khong chot - DIEU_PHOI_PARTY.md muc 4);
+      - ca party da mo -> giu `city` (acc tele thang);
+      - co acc chua mo -> engine ra lenh DI MAP <thanh ca party da mo> -> dich, giao `nghi`; lenh
+        route chay o `_engine_route_decisions` (nhanh dau `_engine_mode_decisions`).
+    Nha Nam Tinh Quan (55002) khong tele duoc -> luon di bang lenh DI MAP qua Bac Hai.
+
+    Truoc 09/10 viec nay nam trong luong ACC (`_ve_thanh_tap_trung`) -> acc login xong truoc chot
+    cho ca party. Party 21 chon Thien Thuy (24001): chot luc 3/5 acc -> "khong thanh nao" -> khoa
+    ca phien, 307 lan `go_to_town 24001 CHUA MO`, khong lan nao ra lenh di bo.
+    """
+    can_di = [u for u, v in result.items() if v == "city"]
+    if not can_di or not dest_city:
+        return result
+    dest_city = int(dest_city)
+    st = _pstate(pidx)
+    out = dict(result)
+
+    def _cho(ly_do):
+        if st.get("city_cho_log") != (dest_city, ly_do):
+            st["city_cho_log"] = (dest_city, ly_do)
+            log.info("[party %d] ENGINE: ve thanh %s - %s", pidx + 1, dest_city, ly_do)
+        for u in can_di:
+            out[u] = "nghi"
+        return out
+
+    # Nha Nam Tinh Quan khong tele duoc -> luon di bo, duong len qua Bac Hai nen xet Bac Hai.
+    xet = BAC_HAI if dest_city == NHA_NAM_TINH_QUAN else dest_city
+    chua_mo, chua_biet = _party_city_unlocked(pidx, xet)
+    if dest_city != NHA_NAM_TINH_QUAN and not chua_mo and not chua_biet:
+        # Ca party (acc dang chay) da mo -> acc tele thang. Acc dang login thi login xong tu tele,
+        # khong can cho ai.
+        st["city_cho_log"] = None
+        return result
+    chua_dang_nhap = sorted(a.username for a in anh.accs if not a.song)
+    if chua_dang_nhap:
+        return _cho("cho %s login xong roi moi chot thanh xuat phat" % chua_dang_nhap)
+    if chua_biet:
+        return _cho("chua biet %s da mo thanh %s chua -> chua chot" % (sorted(chua_biet), xet))
+    lenh = st.get("city_lenh") or {}
+    if lenh.get("dest") == dest_city and time.time() - float(lenh.get("luc", 0)) < CITY_LENH_LAI_SEC:
+        return _cho("da ra lenh DI MAP, cho lenh chay (ra lai sau %.0fs neu van chua toi)"
+                    % CITY_LENH_LAI_SEC)
+    label = "P%d ENGINE" % (pidx + 1)
+    if dest_city == NHA_NAM_TINH_QUAN:
+        da_ra = _ra_lenh_di_nha_nam_tinh(pidx, label)
+    else:
+        da_ra = _ra_lenh_di_mo_thanh(pidx, dest_city, label)
+    # Ra lenh hong (khong co duong / chua biet Bac Hai) cung giu nhip: lan sau sau CITY_LENH_LAI_SEC,
+    # khong log canh bao moi giay.
+    st["city_lenh"] = {"dest": dest_city, "luc": time.time(), "da_ra": bool(da_ra)}
+    return _cho("da ra lenh DI MAP" if da_ra else "chua ra duoc lenh DI MAP, thu lai sau")
 
 
 def _thanh_dong_acc_nhat(pidx):
@@ -2566,9 +2609,11 @@ def _pstate(pidx):
                               # NHIP TIM cua picker: time.time() moi vong no THU chon kenh. Member
                               # cho theo cai nay chu KHONG theo dong ho tuyet doi - xem `_nhip_cho_kenh`.
                               "kenh_nhip": 0.0,
-                              # thanh dich da ra lenh DI MAP (mode city, thanh chua mo tele) - de
-                              # khong acc nao ra lenh lai lien tuc. Xem `_ra_lenh_di_bo_ve_thanh`.
-                              "route_ve_thanh_dest": None,
+                              # mode city, thanh dich chua mo: lenh DI MAP engine ra lan cuoi
+                              # {"dest", "luc", "da_ra"} + ly do dang cho da log. Xem
+                              # `_engine_city_decisions`.
+                              "city_lenh": None,
+                              "city_cho_log": None,
                               "kenh_dich_luc": 0.0,  # luc chot kenh dich (giu KENH_DICH_KIEN_NHAN_SEC)
                               # 2K: tang gom da chot + luc chot (giu TANG_GOM_KIEN_NHAN_SEC, dung
                               # tinh lai moi nhip keo dich tut theo buoc chan member).
@@ -2996,7 +3041,7 @@ def lam_login_chores(c, username, label, role, pcfg, mode="", login_map=None):
             account_furnace_notify[username] = _notify   # GUI doc de popup hoi mua
     except Exception as e:
         log.warning("[%s] loi soi/mua lo: %s", label, e)
-    if pcfg.get("auto_donate_materials", True):
+    if _cho_donate_nguyen_lieu(pcfg):
         c.donate_legion()       # donate nguyen lieu cho quan doan (list edit duoc, mac dinh het) -> don tui
     # RUONG TRANG BI: mo -> phan giai duoc thi phan giai, khong thi donate quan doan.
     # DAT NGAY SAU donate nguyen lieu (user chot 03/09) de tan dung ket qua "co donate
@@ -3286,11 +3331,14 @@ def run_account(username, password, pidx, is_leader, is_picker=False, is_reconne
         # User: "no thao ra roi ma lan chay sau van thao tuc la no van con tren nguoi".
         #
         # Cho nay chay cho MOI acc, MOI lan login, va VAN o truoc cua re engine moi ben duoi.
+        # Mode QUEST (Cu Thu + chinh tuyen) cung tat (user 10/10: "che do lam Q cu thu va chinh
+        # tuyen thi se ko dung Phuc than, thang nao dang deo ngoc thi thao ra", giong mode event).
         try:
-            c.phuc_than_tat = ((getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {})
-                               or {}).get("mode") == "event"
+            _mode_pt = ((getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {})
+                        or {}).get("mode")
+            c.phuc_than_tat = (_mode_pt in MODE_KHONG_PHUC_THAN)
             if c.phuc_than_tat:
-                c.thao_ngoc_phuc_than("mode event - khong dung Phuc Than")
+                c.thao_ngoc_phuc_than("mode %s - khong dung Phuc Than" % _mode_pt)
         except Exception as e:
             log.warning("[%s] loi tat/thao Phuc Than: %s", label, e)
         # === CUA RE SANG ENGINE MOI (documents/ENGINE_PARTY_MOI.md) ==========================
@@ -4954,7 +5002,7 @@ def _ghi_ke_hoach(st, pidx, moi, ly_do=""):
         moi["luc"] = time.time()
         moi["ly_do"] = ly_do
         st["ke_hoach"] = moi
-    log.info("[party %d] DIEU PHOI gen %d: pha=%s map=%s kenh=%s viec=%s%s",
+    log.info("[party %d] ENGINE KE HOACH gen %d: pha=%s map=%s kenh=%s viec=%s%s",
              pidx + 1, moi["gen"], moi.get("pha"), moi.get("map"), moi.get("kenh"),
              moi.get("viec"), (" - " + ly_do) if ly_do else "")
     _log_trang_thai(st, pidx)
@@ -6886,7 +6934,7 @@ def _quest_den_dich(pidx, anh, pcfg):
     chua mo tele thi di mo thanh do ... m dung lai hay code moi". Ban dau t tu viet chon thanh +
     di chuyen rieng, sai lien tiep: chon thanh chua mo (party 9/11 `CHUA MO` x3684), chot thanh khi
     moi 1/5 acc vao (party 27 x1624), chu tu tele roi doi (party 13: 22 vong `ROI DOI`). Gio DUNG LAI
-    dung co che mode city dung khi thanh chua mo (`_ra_lenh_di_bo_ve_thanh`):
+    dung co che mode city dung khi thanh chua mo (`_ra_lenh_di_mo_thanh`):
         party_route_maps(thanh CA PARTY DA MO gan map nhat, map buoc quest)
     -> `_engine_route_decisions` / `party_route.decide_route`: tele ve thanh, gom, lap doi, CHU KEO
     ca doi di bo (`follow_smart_scene_route`), toi noi KHONG giai tan doi (doi that, khong tam).
@@ -7001,7 +7049,17 @@ def _quest_cho_viec_dau(pidx, anh, decisions):
     """Lam xong chores/daily cua CA DOI truoc lenh DI MAP dau tien, dung worker san co."""
     st = _pstate(pidx)
     if any(v == "lenh_tay" for v in decisions.values()):
-        return decisions
+        # Acc DANG DO su kien quest giu `quest` (y nhanh `pending` duoi). Log p52 09/10: qv810
+        # relogin -> worker moi chua lam lenh tay -> `lenh_tay` -> ca party ve quyet dinh goc:
+        #   11:27:19 ENGINE: qv810 -> lenh_tay / qv809 -> nghi / qv811 -> nghi
+        #   11:27:19 [vuchin][vummot] QUEST CT: ... su kien dung  <- huy giua tran Doc Buu
+        # roi server LO moi lan bam NPC (`server im 60s`, vet=[]) vi van coi 2 acc dang trong su kien.
+        out = dict(decisions)
+        for a in anh.accs:
+            if (a.song and out.get(a.username) != "lenh_tay"
+                    and quest_runner.dang_su_kien(account_clients.get(a.username))):
+                out[a.username] = "quest"
+        return out
     # Tiep tuc hoi thoai dang mo neu mode duoc ap vao mot phien dang chay.
     if any(quest_runner.dang_su_kien(c) for _u, c in _clients_cua_party(pidx)):
         st["quest_da_bat_dau"] = True
@@ -7032,6 +7090,49 @@ def _quest_cho_viec_dau(pidx, anh, decisions):
     return None
 
 
+def _chinh_tuyen_quyet(pidx, anh, decisions):
+    """MODE QUEST chuoi CHINH TUYEN (documents/QUEST_CHINH_TUYEN.md) - NAC B (08/10): DI LE LAM THAT.
+
+    Moi acc song, khong dang danh -> `quest` (worker goi `quest_runner.chay_chinh_tuyen`: tu roi
+    party, tu di map, lam buoc quest [Chinh] trong so nhiem vu). KHONG lap party / DI MAP party /
+    xoay chu: user 08/10 "quest khong co tran bo party di le", ngoai le L0 ghi RULE_DIEU_PHOI.md.
+    Dung lai viec `quest` co san (da khai bao BAN_THI_CHO/_lam_viec) thay vi dat ten viec moi.
+    Acc het quest lam duoc (`_qct_het`) -> TAT GAME (user 08/10 "dung va tat game").
+    """
+    st = _pstate(pidx)
+    da_tat = st.setdefault("qct_da_tat", set())
+    result = dict(decisions)
+    for a in anh.accs:
+        u = a.username
+        if u not in result or not a.song:
+            continue
+        c = account_clients.get(u)
+        if result[u] == "lenh_tay" or (anh.lenh_tay_gen and a.lenh_tay_da_lam < anh.lenh_tay_gen):
+            result[u] = "lenh_tay"
+        elif c is not None and getattr(c, "_qct_het", False):
+            result[u] = "nghi"
+            if u not in da_tat:
+                da_tat.add(u)
+                stop_account(u, reason="Quest chinh tuyen: het quest lam duoc")
+        elif (a.dang_danh and not (a.dang_ban and a.viec_dang_lam == "quest")
+              and not quest_runner.dang_su_kien(c)):
+            result[u] = "nghi"
+        else:
+            # Dang lam quest ma dinh tran (boss quest / quai doc duong) -> GIU `quest` (log party 7,
+            # 04/10: doi sang `nghi` = huy su kien giua chung).
+            result[u] = "quest"
+    return result
+
+
+def _cho_donate_nguyen_lieu(pcfg) -> bool:
+    """Tick "tu dong gop nguyen lieu quan doan", TRU mode quest CHINH TUYEN (user 10/10: "che do
+    lam nhiem vu nay thi ko donate nguyen lieu cho quan doan" - quest can nguyen lieu khoang vd
+    15 Vo Danh Tich Sa 11116, donate la mat do quest)."""
+    if pcfg.get("mode") == "quest" and quest_runner.la_chinh_tuyen(pcfg.get("quest_key")):
+        return False
+    return bool(pcfg.get("auto_donate_materials", True))
+
+
 def _engine_mode_decisions(pidx, anh, decisions):
     st = _pstate(pidx)
     cmd = st.get("cmd")
@@ -7044,6 +7145,8 @@ def _engine_mode_decisions(pidx, anh, decisions):
         cho_viec = _quest_cho_viec_dau(pidx, anh, decisions)
         if cho_viec is not None:
             return cho_viec
+        if quest_runner.la_chinh_tuyen(pcfg.get("quest_key")):
+            return _chinh_tuyen_quyet(pidx, anh, decisions)
         if _quest_dieu_phoi(pidx, pcfg):
             return {u: "nghi" for u in decisions}
         _pending = {a.username for a in anh.accs
@@ -7072,6 +7175,8 @@ def _engine_mode_decisions(pidx, anh, decisions):
         event_open=loandau.in_event_window(ev=ev) if kind == "chaos_vs" else True,
         event_done=done, manual_pending=pending,
         has_leader=bool(config.PARTY_LEADER_ACC.get(pidx)))
+    if mode == "city":
+        result = _engine_city_decisions(pidx, anh, result, pcfg.get("start_city_id"))
 
     result = _engine_routine_decisions(pidx, anh, result, pcfg)
     result = _engine_rally_decisions(pidx, anh, result)
@@ -7335,6 +7440,9 @@ def _engine_mode_action(pidx, c, action, con_lam):
         return True
     if action == "quest":
         _qcfg = (getattr(config, "PARTY_CONFIG", {}) or {}).get(pidx, {}) or {}
+        if quest_runner.la_chinh_tuyen(_qcfg.get("quest_key")):
+            return quest_runner.chay_chinh_tuyen(c, _qcfg.get("quest_key"),
+                                                 abort=lambda: not con_lam(), log=log)
         return quest_runner.chay(c, _qcfg.get("quest_key"), abort=lambda: not con_lam(), log=log,
                                  du_party=lambda: _quest_du_party(pidx, c))
     if action == "boss_quan_doan":
@@ -7390,7 +7498,7 @@ def _cap_nhat_tuy_chon_client(c, pcfg):
     c.auto_discard_junk = bool(pcfg.get("auto_discard_junk", True))
     c.auto_decompose_scrolls = bool(pcfg.get("auto_decompose_scrolls", False))
     c.scroll_modes = _scroll_modes_map(pcfg.get("scroll_modes"))
-    c.auto_donate_materials = bool(pcfg.get("auto_donate_materials", True))
+    c.auto_donate_materials = _cho_donate_nguyen_lieu(pcfg)
     c.material_modes = _scroll_modes_map(pcfg.get("material_modes"))
     c.auto_event_exchange = bool(pcfg.get("auto_event_exchange", False))
     c.event_exchange_items = list(pcfg.get("event_exchange_items") or [])
@@ -9315,6 +9423,34 @@ def ba_dau_notify_items(pidx):
         if luc:
             out.append({"user": u, "kind": "ba_dau", "luc": luc})
     return out
+
+
+quest_ket_notify_dismissed = set()     # {(username, quest_id, buoc)} user bam "Bo qua"
+
+
+def quest_ket_notify_items(pidx):
+    """[{user, kind:'quest_ket', id, ten, buoc, ly_do}] - acc mode quest chinh tuyen DUNG YEN vi buoc
+    chua lam duoc (can item / can party / data thieu / 3 lan khong len buoc). User 08/10: "dung
+    yen, ban thong bao vao Chu y". Nguon: `client._qct_chu_y` (quest_runner.chay_chinh_tuyen)."""
+    out = []
+    try:
+        accs = party_accounts(pidx)
+    except Exception:
+        return out
+    for tpl in accs:
+        u = tpl[0] if isinstance(tpl, (tuple, list)) else tpl
+        c = account_clients.get(u)
+        for k in list(getattr(c, "_qct_chu_y", None) or ()):
+            if (u, str(k["id"]), k["buoc"]) in quest_ket_notify_dismissed:
+                continue
+            out.append({"user": u, "kind": "quest_ket", "id": str(k["id"]), "ten": k["ten"],
+                        "buoc": k["buoc"], "ly_do": k["ly_do"]})
+    return out
+
+
+def quest_ket_notify_skip(username, quest_id, buoc):
+    quest_ket_notify_dismissed.add((username, str(quest_id), str(buoc)))
+    return True
 
 
 def ba_dau_notify_skip(username):

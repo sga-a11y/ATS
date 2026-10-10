@@ -742,6 +742,10 @@ Pattern entries: `03 02 [type] [4-byte LE]`
   **Kind server KHONG gui != 0**: pcap 04/08 Quan Vu deo 15098 (ATK+31) ma khong bat duoc goi 210
   (pcap khong ghep TCP), UI van ATK 208 = 175+31+2 -> phai giu so tu tinh, khong coi la 0.
   Tu tinh sau 08/10 khop server 140/145 tren 10 pcap; 5 cai lech = 4 do 專武/天官 + 1 goi roi.
+  **THU TU GOI LOGIN: `0x0f sub0800` -> cac `S:008-002` -> `0x13`** (7/7 pcap). Bot doc lai goi
+  pet-list cache khi `0x13` toi -> reset `pet_equip_server` PHAI nam o nhanh nhan goi `0x0f` MOI,
+  khong duoc nam trong `_on_pet_list` (BL-1008-0B07: reset trong do xoa sach so server, ban fix
+  08/10 sang chua lan nao co tac dung; tsm_quangam slot3 hien 107 thay vi 119).
 - Pet `Int/Atk/Def/Hpx/Spx` (client `Status.GetInt/...`) = base + EquipX + CollectStyle + CollectCard,
   y nhu AGI (DrugBuff.GetAttribute luon `return 0`). `pet_stats()` truoc 08/10 thieu phan suu tap.
 - **Char `Atk/Def/Hpx/Spx`** (`Status.GetAtk/...` nhanh `Role.player`) = base + EquipX + Turn3X +
@@ -934,6 +938,31 @@ Pattern entries: `03 02 [type] [4-byte LE]`
       (`PHUC_THAN_CHECK_SEC = 300`) cho server khong gui goi. Truoc day cho mu 1800s -> ngoc hong
       phut thu 1 la mat he so EXP toi 29 phut.
     - **Mode EVENT (40NPC/2K): KHONG dung Phuc Than** (yeu cau user - vao event khong an he so nay).
+    - **VIEC NGOC CHI LAM O KHE TIEP TE (sua 09/10, BL-1009-FF31 "relog thi deo, train ngoc hu
+      khong thay").** Client goc chi thay ngoc trong `MachineBox.Supply()` = luc nhan `S:065-010`
+      (ngay sau ket tran, MachineBox.lua:880). Ngoc chi mon trong tran nen luc hong la DANG DANH;
+      bot cu deo ngay -> server nuot. Do party.log 09/10 (788 lan gui deo): gui 0-2s sau `S:065-010`
+      hong **5%** (3/60), gui khi tran moi da bat dau hong **50%** (173/344); thu lai ~7s cung roi
+      vao tran -> 3 lan -> "THOI (cho login lai)" 25 lan / 22 acc. Gio: `S:065-010` ghi
+      `_khe_tiep_te`; `khe_thay_ngoc()` = ngoai tran VA <= 4s sau goi do (chua nhan / > 180s thi
+      chi can ngoai tran). Ngoai khe -> giu co `phuc_than_deo_lai`, `_duy_tri` chi goi lai khi co
+      khe (item TIEU HAO van dung ngay nhu cu). Deo that bai KHONG bo cuoc: thu o khe sau, qua 3
+      lan lien thi gian 300s.
+    - **Mo Tui Dai Phuc Than (0xB5F4 "mo ra nhan 1 huy hieu Dai Phuc Than") -> ngoc ve bang
+      `S:023-005`, KHONG phai `S:023-008`.** Client (protocal.lua:3709) co 3 goi them item vao tui:
+      `S:023-005 <背包所有物品> +是否獲得新物品(1) +數量(2) <<+索引(1)+ThingData>>` (byte dau = "vua
+      nhan item moi"), `S:023-008 <背包設定物品>` (1 o), `S:023-063 <網站金錢物品>`. Log 09/10: mo tui
+      145 lan, 0 lan co `S:023-008` ngoc (bot log "Nhan item: Ngoc..." moi lan nhan 008); chubay
+      04:00 ngoc ve o 129 ma tui van con o 168 Phuc Than -> goi 005 do la CA TUI (bot thay the
+      `bag_slots` khong mat gi). Client xu ly 005 kieu CONG DON (`Item.SetBagItem` tung ban ghi,
+      khong xoa) con bot THAY THE - dung vi server gui ca tui; neu co ca 005 chi chua item moi thi
+      bot se mat tui (chua thay xay ra). Pcap: 87 lan dung item, KHONG lan nao la mo tui -> muon
+      xem byte that thi capture mo tui tren MuMu. Log `Tui ngoc: S:023-005 ve Xs sau khi mo tui`
+      in moi lan. Mo tui xong tu giu co; chua thay ngoc thi 300s khong mo tui khac. Tui va ngoc
+      KHONG tinh vao cap 10 cai cua item tieu hao (truoc day dung du 10 Dai Phuc Than la tui bi
+      loai).
+    - Mo tui GIUA TRAN khong ra gi: chubay 03:57:25 mo tui trong tran g=230 -> 2 phut sau tui o 59
+      van con, khong co ngoc; lan 2 ngay sau KET TRAN (03:59:59) thi ngoc ve.
 
 ### S2C 0x08 sub0200 — current HP/SP sau khi dung item len pet
 - Xac nhan `captures/pet_heal_20260715.pcap`: sau C2S `0x17` dung item vao pet target N,
@@ -1421,6 +1450,10 @@ C2S 0x44: c0 91 0c 00 00 00 44 01 00 [city_id 2B LE] [flag 1B]
 | Trác Quận | 0x2ee1 | 12001 |
 | Ng.Thành | 0x2f1d | 12061 |
 | Cự Lộc | 0x2eeb | 12011 |
+
+Danh sách đủ ở `cities.json` (23 thành, 09/10). **flag = chỉ số bản ghi trong `Warp_C.dat`**
+(= thứ tự trong `warp_points.json`), `UITeleport.SendUseWarp(sceneId, no)` → thành mới mở không
+cần capture. Lương Châu (VTC mở 09/10): Thiên Thủy 24001 flag 21, Đôn Hoàng 24011 flag 22.
 
 Lưu ý: phải thoát/giải tán party mới teleport được.
 
@@ -1959,8 +1992,17 @@ tool render row-major (`grid[y*w+x]`), trong khi `MapData.lua` doc va luu **X-ma
 
 - Smart routing la duong CHINH cho moi train map. `train_routes.json` chi con la fallback tam thoi
   trong giai doan live acceptance va co the xoa sau khi da test on dinh.
-- `world_nav.json` la asset generated, versioned: chua 16 thanh co flag teleport da xac minh,
-  scene/area graph va tam gate lay tu `Warp_C.dat`, `DoorGroupData.dat`, `Eve.emg`.
+- `world_nav.json` la asset generated, versioned: chua cac thanh co flag teleport (lay tu
+  `cities.json`; 23 thanh tu 10/10), scene/area graph va tam gate lay tu `Warp_C.dat`,
+  `DoorGroupData.dat`, `Eve.emg`.
+- **THEM THANH VAO `cities.json` THI PHAI BUILD LAI `world_nav.json`** (router chi chon thanh
+  co trong `world_nav`, khong doc `cities.json`):
+  `python tools/build_world_nav.py --warp gamedata/Warp_C.dat --doors gamedata/DoorGroupData.dat --eve gamedata/Eve.emg --cities cities.json --output world_nav.json`
+  roi **doi duoi fingerprint `-citiesN`** (N = so thanh) - fingerprint chi hash 3 file game,
+  khong tinh cities, khong doi thi `smart_routes.json` van dung duong cu.
+  Quen la router khong biet thanh moi: 23/07 map 23811 bay ve Hoi Ke thay Truong Sa; 10/10 moi
+  map Luong Chau xuat phat tu Truong An (24131: 9 cong thay vi 2 tu Thien Thuy) va engine khong
+  bao gio di mo Thien Thuy. `tests/test_build_world_nav.py` gio chan ca hai.
 - `gamedata/Ground.mmg` (27 MB) la collision data runtime. File nay quan trong va duoc track/ship
   trong desktop release; khong rut gon thanh subset nua.
 - `smart_routes.json` la cache runtime disposable, duoc fingerprint theo navigation data va ghi
@@ -2338,8 +2380,12 @@ khi lap party; run_party_digioi mode map-train doc train_maps.json.
   ⚠️ `L` là độ dài VÙNG chứ không phải độ dài tên → phải cắt tên tại `\0` đầu tiên rồi nhảy
   nguyên `L` byte, đừng nhảy theo độ dài tên. `protocal.lua:6798` ghi thiếu trường exp (4B) so với
   gói thật, nên đọc theo bảng này chứ đừng theo dòng mô tả đó.
-- Nhà trọ còn 2 gói **CHƯA DÙNG** (note để sau): `S:031-003 <客棧存武將>` +index nhà trọ(1)
-  +index trên người(1) = GỬI pet vào nhà trọ; `S:031-004 <客棧刪武將>` +index nhà trọ(1) = LẤY pet
+- **Gửi võ tướng vào nhà trọ (ĐÃ DÙNG 10/10, quest 12290 B7)**: chủ nhà trọ chọn "Võ Tướng" →
+  `S:031-007 <開啟武將倉庫>` (0x1f sub 7) mở bảng → client gửi `C:031-003 <客棧存武將> +身上索引(1)`
+  = `0x1f 03 00 [ô đi theo]` (UINpcInn.SendSaveInn) → server `S:031-003` +index nhà trọ(1)
+  +index trên người(1) → đóng bảng `C:031-010` = `0x1f 0a 00` (UINpcInn.OnClose, kèm
+  `EventManager.SetConduct(true)` → bot gửi `0x14 06` đi tiếp sự kiện). Chưa đo trên game thật.
+  Còn `S:031-004 <客棧刪武將>` +index nhà trọ(1) = LẤY pet ra / xoá khỏi nhà trọ (chưa dùng); `S:031-004 <客棧刪武將>` +index nhà trọ(1) = LẤY pet
   ra / xoá khỏi nhà trọ. Bắt được 2 gói này thì cập nhật được roster lúc đang chạy mà không cần
   login lại. Phía client còn `C:031-001..004` tương ứng.
 - Client game hiển thị doanh đầu tiên là **Huỳnh** (không phải Hoàng). Quy ước data bot hiện dùng
@@ -3803,3 +3849,83 @@ session=True; mọi gói sự kiện S2C đến đặt session=False.
 **ĐỦ 8/8 quest Bát đại Cự Thú có kịch bản** (03/10). Mẫu chung rút ra từ 8 capture: chỉ có `0x14 06`
 và `0x14 09 30/31`; bước data ghi `ev_kind 0` = cửa ẩn tại đúng toạ độ; server hay làm luôn nhiều bước
 trong một sự kiện (nhảy +2/+3).
+
+### KỊCH BẢN SERVER TRONG `Eve.emg` (crack 08/10/2026) — quest không cần capture nữa
+
+Phần `NpcEvent` + `Fight` của mỗi scene trong `CompreseData/Eve.emg` là **nguyên điều kiện + kết quả
+server** của từng NPC/cửa (client đọc vào, không dùng). `tools/crack_eve_quest.py` → `main_quests.json`;
+`tests/test_main_quests_khop_capture.py` giữ khớp 8/8 capture Cự Thú (chỗ nhận, cửa ẩn, mã chọn, cửa
+"chạm trước", bước trả quest, boss, bitId).
+
+Cấu trúc (`_lua_dec/Data/Eve/*.lua`): Npc → Goods → Door → Mine → Surface → SceneInfo → Group →
+NpcEvent → Fight. NpcEvent `[EveNo u16][tên 9B][when 4×bool][n u8]` × Condition
+`[no][cls][par u16][pst][ops][val i32][ctime f64][toRes][and][sub u16][n]` × Result
+`[grp u16][no][type][cls][par u16][pst][val i32][mean u16]`. `and` = số điều kiện LIỀN NHAU AND với
+nhau, kết quả nằm ở điều kiện đầu nhóm. Fight `[EveNo u16][type][bk][link][nL u16]×[no u16][npcId u16]
+[pos][ai] [nR u16]×… [nEv u16]×([no u16][9B][n u8]×13B) [limit u32]`.
+> Bẫy parse (đã dính): `r.i += r.f("B") * 13` SAI — vế trái đọc `r.i` trước khi `f()` tăng 1 byte.
+
+| Mã | Nghĩa | Mức chắc |
+|---|---|---|
+| ĐK `cls2 pst1` | bước mission | đo được |
+| ĐK `cls2 pst2 ops0` | chưa nhận mission | đo được |
+| ĐK `cls2 pst3` | cờ xong (bitId của mã) | đo được |
+| ĐK `cls10 par=surface pst=N` | đã chọn mã N | đo được |
+| ĐK `cls8 pst1/2/3` | thắng / thua / chạy trận | đo được |
+| ĐK `cls7 pst1` | cấp nhân vật (cặp `>19`/`<20`…) | nghi |
+| ĐK `cls1 par=item` | số item (nghi) · `cls0` luôn đúng | nghi |
+| ĐK `cls9 par0 pst1 val=npcId` | ops5 = NPC đó ĐANG đi theo · ops6 = KHÔNG đi theo (10023 B1 Mã Phu đòi `==18005` ngựa; sự kiện "gia nhập lại" 10001 B4-B6 dùng `!=12020`) | nghi mạnh |
+| ĐK `cls7 par5 pst1/pst2 ops0` | đội võ tướng ĐẦY / CÒN CHỖ: nhóm `pst1` chỉ nói Talk 10563 "Ðội ngũ của ngươi đã đầy rồi!", mọi sự kiện NPC xin gia nhập đều kèm `pst2` | đo được (text) |
+| ĐK `cls7 par6 pst3 ops5 val=npcId` | NPC đó ĐANG Ở NHÀ TRỌ (`ops6` = không ở): 12290 B7 nhóm `==14096` Cửu Sởi ra Talk 53108 "Ta đã gửi Cửu Sởi cô nương vào nhà trọ!", nhóm `!=` ra 53107 "hãy gửi Cửu Sởi vào Nhà Trọ" (user 10/10 xác nhận) | đo được (text) |
+| KQ `t7 c7 pst4` / `pst5` | chủ nhà trọ: chọn "Võ Tướng" → server mở bảng gửi võ tướng (`S:031-007`) / "Nơi ở" → nghỉ trọ (`S:031-002` hỏi tiền). Client KHÔNG có `EventHandler[7]` → kết quả này server tự xử | nghi mạnh |
+| KQ `t0 c3 par K pst1` | NPC K của scene XIN GIA NHẬP (vào ô võ tướng) | đo được |
+| KQ `t0 c8 par npcId pst1/pst2` | server THÊM / XOÁ thẳng NPC đi theo theo id (10023 trả quest: `pst2 18005` lấy lại ngựa) | nghi |
+| ops | 1 `<` · 2 `>` · 3 `<=` · 4 `>=` · 5 `==` · 6 `!=` | nghi |
+| KQ `t0 c2 pst1 val N` | mission +N bước; trên mã LẺ = bật cờ xong | đo được |
+| KQ `t0 c2 pst3 val0` | xoá mission | đo được |
+| KQ `t0 c3 par K pst4` | hiện NPC K (gói capture 10528 cửa 3: class 3, param 1, style 4, value 2000) | đo được |
+| KQ `t3 mean M` | vào trận `Fight[M]` · `t6 mean S` chờ CHỌN trên surface S · `t5` movie | đo được |
+
+- **Một NPC mang NHIỀU sự kiện, server chạy CẢ** (capture 10806 B1: NPC 1 ở 19175 mang sự kiện 2 của
+  quest 10600 + sự kiện 4 của 10806; chọn 30 là trả lời câu "nhận 10600?"). → trả lời chọn theo
+  **surface** server gửi (`resultMeanNo`), bảng `chon_map` trong `main_quests.json`.
+- Quest chính tuyến hay được **giao tự động** khi xong bước cuối quest trước (vd 12280 B5 → 12282 →
+  12284 → 12286), không có NPC phát riêng.
+- Mark `kind` → NHÃN TRONG GAME (`string.GetMissionKind` → `TextData_C.dat` 20149/20150/20151, đọc
+  `[count i32]` + `[id u32][len u16][UTF-16LE]`): 1 **[Chính]** 400 quest có bước · 2 **[Hướng Dẫn]**
+  90 (12290 Trác Quận hướng dẫn, 12292 Hương Dũng, 12296 Giúp Lưu Yên đưa thư… có NPC/bước thật;
+  trước ghi nhầm "quest khung") · 3 **[Phụ]** 388 · 6 [S.Kiện] · 4/5 [Phó Bản]. Sổ nhiệm vụ client
+  xếp `kind` rồi mã, ẩn kind 8 và mission không có bước (`MarkManager.UpdateShowMission`).
+- Mã quest KHÔNG theo cặp chẵn/lẻ cố định: 10001 Đào Viên là mã LẺ có bước (cờ xong 10002).
+- **Ô võ tướng (NPC đi theo)**: `S:015-001 <新增隨身武將> +玩家ID(8) +跟隨索引(1) +NPCID(4) ...` →
+  `pkt[9:17]` entity, `pkt[17]` ô, `pkt[18:22]` id NPC; `S:015-002` xoá (`pkt[17]` ô). Record của
+  `S:015-008` (`0x0f` sub0800) mang id NPC ở `[start+1:start+3]`: log vumuoi 09/10 ô 4 = `0x2ef4` =
+  12020 Trương Phi (đo được). Bot giữ `client.follow_npc = {ô: npcId}`.
+- **NPC cần dắt mà bước trước không tự đưa** → phải đi lấy riêng: 10023 "Tìm Tiểu Bạch Mã" — Mã Phu
+  (12001 NPC 6) đòi `cls9 == 18005`; ngựa = NPC 9 cùng map (2250,1540), surface 11
+  (10377 "Ủa? Con ngựa trắng…") chọn 30 "Bắt về cho hắn xem thử vậy" → `t0 c3 par9 pst1`. Log p52
+  09/10: bot bấm thẳng Mã Phu 3 lần không lên bước. `tools/crack_eve_quest.py` giờ ghi `lay_npc`
+  cho bước như vậy (chính tuyến 194/219 bước có `can` NPC tìm ra chỗ đưa).
+- **Client TỰ DẪN ĐƯỜNG tới chỗ lấy item / NPC** (`MarkManager.Navigation`, đo được Lua): duyệt 5 điều
+  kiện của bước, cái đầu tiên CHƯA đạt (kind 1 `Role.GetFollowNpc`, kind 3 `Item.GetItemCount >=
+  count`, kind 2 "擊殺npc" không kiểm) → đi tới `condition.sceneId/areaId/position`; `eventKind` 1 =
+  tới nơi tự `OnInteractive(Trig)` NPC `eventId`, 2 = cửa. Toạ độ 0 → báo 21264 không dẫn. Client
+  KHÔNG có bảng rơi đồ (chỉ `S:053-004 <戰鬥掉寶>` sau trận) → quái để đánh = chỗ client chỉ.
+  Sự kiện NPC `when` = [click, stroke, area, serStroke]: 12808 NPC 13 Bánh Bao Thịt chỉ có
+  serStroke (quái tự chạm người) → không bấm, đứng yên bật hộp máy cho quái lao vào.
+- **Map MỎ** (`Eve.emg` Mine: `[id u16][n u16][events n×u8][gridX][gridY][gridW][gridH i32][sizeKind]`,
+  px = `(grid-1)*20`): KHÔNG có trận gặp ngẫu nhiên; mỏ là "địa lôi" SERVER tự kích hoạt khi đi
+  trong vùng (`EventManager.lua` `Mine = 7 --地雷(現在由Server觸發)`), mỗi mỏ một bộ trận. 12591 (mỏ
+  Trác Quận): mỏ 2 x980–1500 y200–560 (Khoáng Chì lv2 + Đồng lv3), mỏ 3 x960–1560 y1480–1860 (toàn
+  Khoáng Chì lv2), mỏ 1 grid (1,1,1,1) = góc map, bỏ. Đứng ngoài vùng = 0 trận (log p52 09/10).
+  Mỏ `o=1` ở góc (1,1,1,1) có ở MỌI map quái, mang các Fight thường của map → nghi = trận gặp
+  ngẫu nhiên KHI ĐI trên toàn map: 12582 chỉ có mỏ 1 (Fight 1–11 Trưởng Lính Ma lv19 / Người Đạo Mộ
+  lv21); log p52 10/10 đứng yên (1300,1000) 21 phút 0 trận, đang đi thì 6s gặp trận (đo được).
+  Quái "chạm là đánh" = NPC có sự kiện `serStroke` (`when[3]`) kèm KQ vào trận (12841 Hắc Sơn
+  GiápBinh): đứng gần nó là vào trận. Quest farm: không có loại này trong 400px → đi lại.
+- **Cuốc** = item `specialAbility 8` (鋤頭, `items_gamedata` `sa`): 10001 Cuốc, 10497/10530-10534…
+  `FightField.HaveHoe` → `Item.CheckHaveHoe(followIndex)` xét đồ ĐANG ĐEO của char/võ tướng; quái
+  khoáng mà không có cuốc → `ShowCenterMessage(21563)`, auto bỏ chạy (`CheckMineralMobEscape`).
+- Client KHÔNG có công thức hợp (`DataManager.lua` dòng nạp `Compound.Dat` bị comment) → server tính.
+  Công thức đã chốt (user 10/10): **2 × 37407 Vô Danh Tích Sa → 44042 Vô Danh Tích Thạch** (quest
+  11120, có thể thất bại). Gói hợp = `0x17 0e00 [0x100+o1] 000000 [0x100+o2] 00*8 01`.

@@ -92,6 +92,24 @@ def materialize_train_maps(
         return merged
 
 
+def add_empty_map(path: str, map_id: int, name: str) -> bool:
+    """Them map RONG (chua co bai) vao train_maps. Map da co thi KHONG dong vao (tra False).
+    Bai quai/safe de trong: lan dau party toi map nay bot tu AUTO LEARN roi ghi vao."""
+    with _LOCK:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except FileNotFoundError:
+            data = {"maps": {}}
+        maps = data.setdefault("maps", {})
+        key = str(int(map_id))
+        if key in maps:
+            return False
+        maps[key] = {"name": str(name), "safe": [], "mobs": []}
+        _atomic_write(path, data)
+    return True
+
+
 def save_learned_regions(path: str, map_id: int, safes, centers) -> bool:
     safe_points = _points(safes)
     center_points = _points(centers)

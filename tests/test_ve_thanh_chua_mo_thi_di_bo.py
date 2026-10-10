@@ -58,18 +58,17 @@ class _Bot:
 
 
 class TestDiBoKhiThanhChuaMo(unittest.TestCase):
+    """Luong ACC chi tele. Thanh chua mo -> ENGINE ra lenh DI MAP, acc khong tu ra (tu 09/10, ca
+    party 21: acc ra lenh luc ca party chua login xong -> khoa ca phien). Xem
+    `tests/test_city_thanh_chua_mo_engine.py`."""
+
     def setUp(self):
-        self._pick = rpd._pick_start_city
         self._route = rpd.party_route_maps
         self.lenh = []
-        rpd._pick_start_city = lambda pidx, dest: 12001      # Trac Quan (ca party da mo)
         rpd.party_route_maps = lambda pidx, a, b: self.lenh.append((pidx, a, b))
-        rpd._pstate(0)["route_ve_thanh_dest"] = None
 
     def tearDown(self):
-        rpd._pick_start_city = self._pick
         rpd.party_route_maps = self._route
-        rpd._pstate(0)["route_ve_thanh_dest"] = None
 
     def test_thanh_DA_MO_thi_tele_thang_khong_ra_lenh(self):
         c = _Bot(map_id=12003, mo=(12001, 12061))
@@ -77,36 +76,10 @@ class TestDiBoKhiThanhChuaMo(unittest.TestCase):
         self.assertEqual(c.current_map, 12061)
         self.assertEqual(self.lenh, [], "thanh da mo ma van keo di bo -> cham vo ich")
 
-    def test_thanh_CHUA_MO_thi_RA_LENH_DI_MAP_cho_ca_party(self):
-        """KHONG tu di bo le: cong co hoi thoai (cau Gioi kieu) chi MOT nguoi tra loi duoc."""
+    def test_thanh_CHUA_MO_thi_acc_KHONG_tu_ra_lenh(self):
         c = _Bot(map_id=12003, mo=(12001,))
         self.assertFalse(rpd._ve_thanh_tap_trung(c, 0, "t", 12061, 2))
-        self.assertEqual(self.lenh, [(0, 12001, 12061)])
-
-    def test_xuat_phat_la_thanh_CA_PARTY_da_mo(self):
-        c = _Bot(map_id=12003, mo=(12001,))
-        rpd._ve_thanh_tap_trung(c, 0, "t", 12061, 2)
-        self.assertEqual(self.lenh[0][1], 12001, "phai la thanh _pick_start_city chon")
-
-    def test_ra_lenh_MOT_LAN_du_ca_5_acc_cung_goi(self):
-        """Moi acc deu chay ham nay; acc nao cung ra lenh thi cmd_gen nhay lien tuc -> route bi
-        khoi dong lai giua chung mai mai."""
-        for _ in range(5):
-            rpd._ve_thanh_tap_trung(_Bot(map_id=12003, mo=(12001,)), 0, "t", 12061, 2)
-        self.assertEqual(len(self.lenh), 1)
-
-    def test_toi_noi_roi_thi_XOA_dau_de_lan_sau_con_ra_lenh_lai(self):
-        rpd._ve_thanh_tap_trung(_Bot(map_id=12003, mo=(12001,)), 0, "t", 12061, 2)
-        rpd._ve_thanh_tap_trung(_Bot(map_id=12003, mo=(12001, 12061)), 0, "t", 12061, 2)
-        self.assertIsNone(rpd._pstate(0)["route_ve_thanh_dest"])
-        rpd._ve_thanh_tap_trung(_Bot(map_id=12003, mo=(12001,)), 0, "t", 12061, 2)
-        self.assertEqual(len(self.lenh), 2, "bi day ra khoi thanh lan nua thi phai keo lai duoc")
-
-    def test_khong_thanh_nao_di_toi_duoc_thi_KHONG_ra_lenh(self):
-        rpd._pick_start_city = lambda pidx, dest: None
-        c = _Bot(map_id=12003, mo=(12001,))
-        self.assertFalse(rpd._ve_thanh_tap_trung(c, 0, "t", 12061, 2))
-        self.assertEqual(self.lenh, [])
+        self.assertEqual(self.lenh, [], "viec cap party la cua engine")
 
     def test_tele_that_bai_vi_LY_DO_KHAC_thi_KHONG_ra_lenh(self):
         """Thanh DA MO ma tele khong an = dang bi battle chan -> `go_to_town` da lap du roi."""
@@ -122,7 +95,7 @@ class TestDungLaiCoCheDaCo(unittest.TestCase):
             self.src = fh.read()
 
     def test_dung_LENH_DI_MAP_chu_khong_tu_di_bo(self):
-        i = self.src.find("def _ra_lenh_di_bo_ve_thanh(")
+        i = self.src.find("def _ra_lenh_di_mo_thanh(")
         than = self.src[i:self.src.find("\ndef ", i + 10)]
         self.assertIn("party_route_maps(pidx, xuat_phat, dest_city)", than)
         self.assertNotIn("follow_smart_scene_route", than,

@@ -50,7 +50,7 @@ PC_ONLY = ["config.py",        # APK doc tu asset, cau truc khac han
 # Asset UI cua APK doc TRUC TIEP tu assets/train_bot_data (khong qua bundle) -> phai sync tu
 # ban goc o repo root. Truoc day chi liet ke 5 file, 14 file con lai duoc chep TAY -> lech am
 # tham y het vu party_battle.py. _check_assets_covered() gio chan viec do.
-SHARED_ASSETS = ["achievements.json", "mark_bitids.json", "quests.json", "events.json", "npc_names.json", "use_items.json", "mounts_grow.json", "dangerous_npcs.json",
+SHARED_ASSETS = ["achievements.json", "mark_bitids.json", "quests.json", "main_quests.json", "quest_solo.json", "events.json", "npc_names.json", "use_items.json", "mounts_grow.json", "dangerous_npcs.json",
                  "scene_names.json", "npc_table.json", "warp_points.json",
                  "cities.json", "collect_style.json", "donate_items.json", "donate_materials.json", "mineral_npcs.json", "jiugongge.json", "furnace_pool.json", "bliss_bag.json",
                  "exchange.json", "eq_affix.json",

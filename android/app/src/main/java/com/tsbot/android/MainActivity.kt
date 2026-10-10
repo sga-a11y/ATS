@@ -7,6 +7,7 @@ import android.content.ServiceConnection
 import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -92,6 +93,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
@@ -686,6 +689,7 @@ fun TsBotApp(
                                     (service?.legionNotifyItems(_pi) ?: emptyList()) +
                                     (service?.diemDuNotifyItems(_pi) ?: emptyList()) +
                                     (service?.petRoiChucNotifyItems(_pi) ?: emptyList()) +
+                                    (service?.questKetNotifyItems(_pi) ?: emptyList()) +
                                     (service?.furnaceNotifyItems(_pi) ?: emptyList())
                             else emptyList()
                         },
@@ -698,6 +702,7 @@ fun TsBotApp(
                         onBaDauSkip = { u -> service?.baDauNotifySkip(u) ?: false },
                         onDiemDuSkip = { u -> service?.diemDuNotifySkip(u) ?: false },
                         onPetRoiChucSkip = { u, pid -> service?.petRoiChucNotifySkip(u, pid) ?: false },
+                        onQuestKetSkip = { u, id, buoc -> service?.questKetNotifySkip(u, id, buoc) ?: false },
                         onCurrentChannel = {
                             party.accounts.firstOrNull { service?.isRunning(it.username) == true }
                                 ?.let { service?.currentChannel(it.username) }
@@ -1432,6 +1437,7 @@ fun PartyCard(
     onBaDauSkip: (String) -> Boolean = { _ -> false },
     onDiemDuSkip: (String) -> Boolean = { _ -> false },
     onPetRoiChucSkip: (String, String) -> Boolean = { _, _ -> false },
+    onQuestKetSkip: (String, String, String) -> Boolean = { _, _, _ -> false },
     onCurrentChannel: () -> Int?,
     onGetLog: (String) -> String = { "" },
     onIdleStats: () -> String = { "" },
@@ -1677,6 +1683,7 @@ fun PartyCard(
                     onBaDauSkip = { u -> onBaDauSkip(u) },
                     onDiemDuSkip = { u -> onDiemDuSkip(u) },
                     onPetRoiChucSkip = { u, pid -> onPetRoiChucSkip(u, pid) },
+                    onQuestKetSkip = { u, id, buoc -> onQuestKetSkip(u, id, buoc) },
                     onRefresh = {
                         val n = onFurnaceNotify(); notifyItems = n; notifyCount = n.size
                     },
@@ -4733,6 +4740,7 @@ fun FurnaceNotifyDialog(
     onBaDauSkip: (String) -> Boolean = { _ -> false },
     onDiemDuSkip: (String) -> Boolean = { _ -> false },
     onPetRoiChucSkip: (String, String) -> Boolean = { _, _ -> false },
+    onQuestKetSkip: (String, String, String) -> Boolean = { _, _, _ -> false },
     onRefresh: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -4758,6 +4766,29 @@ fun FurnaceNotifyDialog(
                                     TextButton(onClick = {
                                         scope.launch {
                                             withContext(Dispatchers.IO) { onBaDauSkip(u) }
+                                            onRefresh()
+                                        }
+                                    }) { Text("Bỏ qua") }
+                                }
+                                HorizontalDivider()
+                            }
+                            return@items
+                        }
+                        // Quest chinh tuyen DUNG YEN - mirror gui.py `_quest_ket`
+                        // (documents/QUEST_CHINH_TUYEN.md).
+                        if (it0["kind"] == "quest_ket") {
+                            val _qid = it0["id"] ?: ""
+                            val _buoc = it0["buoc"] ?: ""
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Text("$u: quest ${it0["ten"]} bước $_buoc đứng yên - ${it0["ly_do"]}",
+                                     style = MaterialTheme.typography.bodySmall,
+                                     fontWeight = FontWeight.Bold,
+                                     color = StatusConnecting)
+                                Row(horizontalArrangement = Arrangement.End,
+                                    modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) { onQuestKetSkip(u, _qid, _buoc) }
                                             onRefresh()
                                         }
                                     }) { Text("Bỏ qua") }
@@ -6608,7 +6639,13 @@ fun BugReportDialog(
         onDismissRequest = { if (!dangGui) onDismiss() },
         title = { Text("Báo lỗi — $title") },
         text = {
-            Column {
+            // Man ngang: ban phim che nut Gui -> cho cua so dialog co lai khi ban phim hien,
+            // noi dung cuon duoc de hang nut luon nam tren ban phim.
+            val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+            LaunchedEffect(dialogWindow) {
+                dialogWindow?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            }
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = moTa,
                     onValueChange = { moTa = it },

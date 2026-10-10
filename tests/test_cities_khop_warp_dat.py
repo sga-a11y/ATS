@@ -55,6 +55,27 @@ class TestHaiThanhYChau(unittest.TestCase):
         self.assertEqual(c["y_chau"]["flag"], 20)
 
 
+class TestHaiThanhLuongChau(unittest.TestCase):
+    """VTC mo khu Luong Chau (24000) 09/10: Thien Thuy (24001, no 21) + Don Hoang (24011, no 22)."""
+
+    def test_co_du_2_thanh(self):
+        c = _cities()
+        self.assertEqual((c["thien_thuy"]["city_id"], c["thien_thuy"]["flag"]), (24001, 21))
+        self.assertEqual((c["don_hoang"]["city_id"], c["don_hoang"]["flag"]), (24011, 22))
+
+
+class TestKhopWarpPointsJson(unittest.TestCase):
+    """warp_points.json (sinh tu Warp_C.dat, CO theo repo) -> doi chieu duoc ca khi thieu file .dat."""
+
+    def test_flag_la_chi_so_trong_warp_points(self):
+        with io.open(os.path.join(ROOT, "warp_points.json"), encoding="utf-8") as fh:
+            warps = json.load(fh)["warps"]
+        theo_scene = {w["scene"]: i for i, w in enumerate(warps)}
+        lech = ["%s: flag=%d, warp_points=%s" % (k, v["flag"], theo_scene.get(v["city_id"]))
+                for k, v in _cities().items() if theo_scene.get(v["city_id"]) != v["flag"]]
+        self.assertEqual(lech, [])
+
+
 class TestKhongTrungLap(unittest.TestCase):
     def test_city_id_va_flag_deu_duy_nhat(self):
         """Trung flag = 2 thanh cung mot 'no' -> chac chan mot cai tele sai."""

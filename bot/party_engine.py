@@ -655,12 +655,43 @@ def _quyet_dinh_goc(anh: AnhParty):
             # "Het gio" o day cung phai xet ho phu, y nhu `_het_gio` o tren: dua con ho phu thi
             # con vao DG tiep duoc, khong phai ly do de ca party dung im.
             _co_dua_het_gio = any(not a.con_gio_dg and not a.con_ho_phu for a in con_lai)
+            # KHONG CAN LAP DOI (DG SOLO: `n_members` = 0) -> moi acc DOC LAP, y engine cu nhanh
+            # `elif digioi_solo`: vao DG la tu danh, khong cho ai vao, khong dung vi ai het gio.
+            # Party 1 acc cung ra 0 nhung acc do la ca party nen ket qua nhu cu.
+            if anh.can_bao_nhieu <= 0:
+                for a in _trong:
+                    ket[a.username] = VIEC_TRAIN
+                return ket
             for a in _trong:
                 if _co_dua_het_gio:
                     ket[a.username] = VIEC_NGHI
                 else:
                     ket[a.username] = VIEC_TRAIN if (_du_vao and _du_doi) else VIEC_LAP_PARTY
         return ket
+
+    # (0c2) PHA TRAIN MA CON ACC TRONG DI GIOI -> acc do VE THANH TRUOC, chua den luot gom kenh.
+    #
+    # LAM Y ENGINE CU (on-20260914-1802, nhanh setup train cua `run_account`): login khong o map
+    # train - ke ca dang o DG 49942 - la SAI MAP -> "CA PARTY ve thanh don nhau roi KEO toi map
+    # train" (`_do_reform` -> `go_to_town` -> `RA KHOI DG truoc`). Luat "lech kenh trong DG thi
+    # DONG BO TAI CHO" cua engine cu chi danh cho PHA DG (`if pha == "digioi": VIEC_DONG_BO`).
+    # Engine moi bo buoc setup do, nen ca party cung o 49942 bi tinh la "cung map" va rot xuong
+    # bac `cung map nhung LECH KENH -> gom kenh truoc khi moi`.
+    # Ca that 10/10 party 25 (user: "login vao thi dang dung o map DG, ko chay ra khoi DG"):
+    #   04:28:54 gen 39: pha=train map=49942 viec=dong_bo - cung map nhung LECH KENH [1, 4, 5]
+    #   04:24:33 -> 04:30: doi kenh THANH CONG 0 lan, 6 lan `result=3`, 232 lan giao `doi_kenh`
+    #   chi ra khoi DG khi `DUNG HINH qua 240s` ep 'gom' (04:28:33), 04:30:58 moi co 1 acc ra.
+    # Party 23 cung ngay: 1 acc (gclm10) trong DG, ket ~9 phut.
+    #
+    # Mode stand/city (`pb_tai_cho`) DUNG TAI CHO LOGIN - khong dung toi.
+    if anh.pha == PHA_TRAIN and not anh.pb_tai_cho:
+        for a in con_lai:
+            if a.trong_dg:
+                ket[a.username] = VIEC_VE_THANH
+        if ket:
+            con_lai = [a for a in song if a.username not in ket]
+            if not con_lai:
+                return ket
 
     # QUYET DINH CAP PARTY: LAY TU DIEU PHOI CU (`_dieu_phoi_quyet`).
     #
@@ -1258,6 +1289,14 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
         # Bac Hai 1, Kien Nghiep 9... Truyen thieu la bay ve NHAM THANH.
         # Ca that 16/09 party 41 (user: "deo gi ma tele lien tuc lai con bi sai flag").
         if not dich:
+            # CHUA CHOT THANH ma dang trong DI GIOI -> van RA KHOI DG (y `go_to_town`: "ra khoi
+            # DG la viec PHAI LAM bat ke ve duoc thanh nao hay khong"). Thanh chot sau thi nhip
+            # sau ve tiep. Khong o DG thi giu nguyen: lenh rong, `return False`.
+            try:
+                if client.in_di_gioi():
+                    client.exit_di_gioi()
+            except Exception:
+                pass
             return False
         _city, _flag = (int(dich[0]), int(dich[1])) if isinstance(dich, (tuple, list))             else (int(dich), 0)
         if int(getattr(client, "current_map", 0) or 0) == _city:
@@ -1560,6 +1599,8 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
             except Exception:
                 pass
         return _ok
+    if viec == VIEC_TRAIN and _la_dg_solo(client):
+        return _train_dg_solo(client, log=log)
     if viec == VIEC_TRAIN:
         client.flee_mode = False
         try:
@@ -1645,6 +1686,59 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
     return True
 
 
+def _la_dg_solo(client):
+    """Acc nay dang chay DI GIOI SOLO (`digioi_mode == "solo"`) - doc pcfg engine da gan san."""
+    _cfg = getattr(client, "_pe_pcfg", None) or {}
+    return _cfg.get("mode") == "digioi" and _cfg.get("digioi_mode") == "solo"
+
+
+def _train_dg_solo(client, log=None):
+    """DI GIOI SOLO - LAM Y ENGINE CU (nhanh `elif digioi_solo` + kiem lai moi 30s trong keepalive).
+
+    Moi acc TU chay long vong (khong co leader de di theo). BAO HIEM: solo khong ai cuu, thieu
+    thuoc HP hoac SP trong tui thi DUNG YEN (flee); co thuoc lai thi tu chay tiep.
+    Ca that BL-1008-C452 (08/10): engine moi chi cho LEADER chay long vong -> DG solo dung im.
+    """
+    _lab = getattr(client, "_label", "?")
+    try:
+        _trong_dg = bool(client.in_di_gioi())
+    except Exception:
+        _trong_dg = False
+    try:
+        _du_thuoc = bool(client.has_hp_and_sp_items())
+    except Exception:
+        _du_thuoc = True
+    _thieu_cu = getattr(client, "_pe_solo_thieu_thuoc", None)
+    if _du_thuoc:
+        client.flee_mode = False
+        try:
+            client.combat_ready()
+        except Exception:
+            pass
+        try:
+            if _trong_dg:
+                client.start_run_around()
+            else:
+                client.stop_run_around()
+        except Exception:
+            pass
+        if _thieu_cu is not False and log is not None:
+            log.info("[%s] Di Gioi SOLO -> tu chay long vong (khong lap party, khong dong bo kenh)",
+                     _lab)
+    else:
+        client.flee_mode = True
+        try:
+            client.stop_run_around()
+        except Exception:
+            pass
+        if _thieu_cu is not True and log is not None:
+            log.warning("[%s] Di Gioi SOLO -> THIEU thuoc hoi HP hoac SP trong tui -> DUNG YEN "
+                        "(khong chay long vong, tranh chet/can SP khong ai cuu)", _lab)
+    client._pe_solo_thieu_thuoc = not _du_thuoc
+    _duy_tri(client, log=log)
+    return True
+
+
 def _duy_tri(client, log=None):
     """Viec DINH KY trong luc train: Phuc Than + mua HP/SP khi du tru tut duoi nguong.
 
@@ -1653,9 +1747,12 @@ def _duy_tri(client, log=None):
     da tut va het thuoc hoi - khong bao gio bao loi, chi kem dan.
     """
     _cfg = getattr(client, "_pe_pcfg", None) or {}
-    # `phuc_than_deo_lai`: vua THAO ngoc cho boss/PB -> ve train la deo lai ngay (user 28/09).
-    if _cfg.get("use_phuc_than") and (getattr(client, "phuc_than_pending", False)
-                                      or getattr(client, "phuc_than_deo_lai", False)):
+    # `phuc_than_pending`: su kien moi (buff < 5 / ngoc hong) -> goi ngay; viec NGOC trong do tu
+    # hoan toi khe tiep te. `phuc_than_deo_lai`: con viec ngoc (vua thao cho boss/PB, vua mo tui,
+    # deo bi nuot) -> CHI goi o khe tiep te (`khe_thay_ngoc`), khong thi moi nhip 1s goi mot lan.
+    _khe = getattr(client, "khe_thay_ngoc", None)
+    _deo_lai = getattr(client, "phuc_than_deo_lai", False) and (_khe is None or _khe())
+    if _cfg.get("use_phuc_than") and (getattr(client, "phuc_than_pending", False) or _deo_lai):
         try:
             client.use_phuc_than_items()
         except Exception as e:

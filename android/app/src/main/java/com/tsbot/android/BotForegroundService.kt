@@ -817,6 +817,15 @@ if ${if (purge) "True" else "False"}:
         try { rpd().callAttr("pet_roi_chuc_notify_skip", username, pid)?.toBoolean() ?: false }
         catch (_: Exception) { false }
 
+    /** Quest chinh tuyen DUNG YEN - [{user, kind:'quest_ket', id, ten, buoc, ly_do}].
+     *  Luat o `quest_ket_notify_items` (dung chung voi GUI PC). */
+    fun questKetNotifyItems(pidx: Int): List<Map<String, String>> =
+        notifyRows("quest_ket_notify_items", pidx)
+
+    fun questKetNotifySkip(username: String, questId: String, buoc: String): Boolean =
+        try { rpd().callAttr("quest_ket_notify_skip", username, questId, buoc)?.toBoolean() ?: false }
+        catch (_: Exception) { false }
+
     /** Ba Dau sap het han (con duoi 1 ngay) - [{user, kind:'ba_dau', luc}]. Xem KNOWLEDGE.md 7p. */
     fun baDauNotifyItems(pidx: Int): List<Map<String, String>> = notifyRows("ba_dau_notify_items", pidx)
 

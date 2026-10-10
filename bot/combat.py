@@ -1213,6 +1213,15 @@ def _is_mineral_battle(state):
     return False
 
 
+def _chay_quai_khoang(state):
+    """Tran co quai khoang -> BO CHAY, TRU khi quest chinh tuyen dang DAO MO co deo Cuoc (11116,
+    user 10/10 "phai deo cuoc vao de danh quai khoang, ko bo chay"). Co `danh_khoang_den` tu het
+    han (quest_runner gia han moi lan di trong mo) -> roi mo la quay ve bo chay nhu cu."""
+    if not _is_mineral_battle(state):
+        return False
+    return time.time() >= float(getattr(state, "danh_khoang_den", 0.0) or 0.0)
+
+
 def _rule_condition_ok(rule, state, stat, unit=None):
     cond = (rule or {}).get("condition", "always") if isinstance(rule, dict) else (rule or "always")
     cond = str(cond or "always")
@@ -1433,7 +1442,7 @@ def _combat_attack(state, unit, skills, stat, options, spam_attr, fire_min):
         # 1 goi 0x35 "tan du" sau khi thang). User xac nhan qua quan sat truc tiep man hinh: end
         # battle -> bot van gui atk 1 lan nua. Return None -> _make_decisions bo qua, khong gui gi.
         return None
-    if _is_mineral_battle(state):
+    if _chay_quai_khoang(state):
         return Decision(unit, at, at, config.SKILL_FLEE,
                         b=_hang_cua(state, unit))
 
@@ -1501,7 +1510,7 @@ def decide_multipet(state, atype, skills, stat, options):
         pass
     elif custom is not None:
         return custom
-    if _is_mineral_battle(state):
+    if _chay_quai_khoang(state):
         return Decision(config.UNIT_PET, atype, atype, config.SKILL_FLEE, b=_hang_pet_ta(state))
     # CHI danh khi CO du lieu quai MOI rieng cho ATYPE nay (tranh danh lap tren 0x33 cu - xem
     # _combat_attack ban goc; o day dung dict rieng theo atype vi 4 pet KHONG the dung chung 1
@@ -1565,7 +1574,7 @@ def decide_char(state, options, first_turn=False):
     br = _try_break_enemy_protect(state, config.UNIT_CHAR, state.skills_char, state.char, options)
     if br is not None:
         return br
-    if _is_mineral_battle(state):
+    if _chay_quai_khoang(state):
         # BO CHAY nham CHINH MINH -> hang phai la hang cua MINH (loan dau = 0, khong phai 3).
         return Decision(config.UNIT_CHAR, at, at, config.SKILL_FLEE, b=_hang_char_ta(state))
     return _combat_attack(state, config.UNIT_CHAR, state.skills_char, state.char, options,
@@ -1615,7 +1624,7 @@ def decide_pet(state, options, first_turn=False):
     br = _try_break_enemy_protect(state, config.UNIT_PET, state.pet_skills, state.pet, options)
     if br is not None:
         return br
-    if _is_mineral_battle(state):
+    if _chay_quai_khoang(state):
         return Decision(config.UNIT_PET, at, at, config.SKILL_FLEE, b=_hang_pet_ta(state))
     return _combat_attack(state, config.UNIT_PET, state.pet_skills, state.pet, options,
                           "pet_spam", config.PET_FIRE_MIN_SP)

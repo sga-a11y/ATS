@@ -461,6 +461,7 @@ Thứ tự: `pre_route_town_hop()` nếu đích **không phải** Trác Quận/N
 | Đủ đội rồi thì **người kéo được đi**, không ép về | `[LOG]` | p42 17/09 *"đi về thành tập trung đúng rồi, nhưng sau đó ko đi ra bãi train"* |
 | Đang đánh thì không tele | `[LOG]` | p56 17/09 *"sao vừa đánh vừa đòi tele về thành là sao"*; teleport giữa trận = server kick |
 | **Chưa chốt được thành đích thì ĐỪNG giao `ve_thanh`** | `[LOG]` | L3 — lệnh phải có mục tiêu đo được. Không có đích thì `thi_hanh` trả `False` ngay → engine giao lại **mỗi giây, mãi mãi**. p5 21/09: `ve_thanh` giao lại **4320 lần liên tiếp** (04:02→05:15, hơn một tiếng), p3 3780 lần. Không có đích → `VIEC_NGHI` |
+| **Mode city, thành đích CHƯA MỞ với acc nào đó → ENGINE ra lệnh DI MAP** từ thành cả party đã mở; còn acc đang login / chưa biết đã mở chưa thì **chưa chốt** (`nghi`). Acc chỉ tele, **không** tự chọn thành, không tự ra lệnh | `[LOG]` | p21 09/10 chọn Thiên Thủy 24001: acc tự chốt lúc 3/5 acc login → "không thành nào" → khoá cả phiên: **307** lần `go_to_town 24001 CHUA MO`, **0** lần ra lệnh đi bộ, `'city' giao lai 80 lan`. Code: `_engine_city_decisions` |
 
 > **Dấu hiệu nhận ra loại lỗi này trong log:** dòng
 > `ENGINE: '<viec>' giao lai N lan lien tiep ... viec chay xong ngay ma khong doi duoc gi`.
@@ -507,6 +508,7 @@ Gói: `0x61 010001` rồi `0x61 02 00 [idx]` (`client.py:14910`, `:14914`). `[CA
 | **Pha DG kết thúc khi hết time VÀ không còn Dị Giới Hộ Phù** | user chốt 22/09 | còn hộ phù thì chưa hết việc ở DG — giữ pha DG để `VIEC_DI_GIOI` gọi hộ phù rồi vào tiếp |
 | Hết giờ **mà còn hộ phù** → vẫn giao `VIEC_DI_GIOI`, **không** cho `nghi` | `[LOG]` | p1 22/09 *"vẫn đứng ở bãi cho quái đánh"* — cho `nghi` là đứng im tại bãi quái, và không ai gọi hộ phù nữa → kẹt vĩnh viễn |
 | Đang pha DG, chưa vào DG mà **đứng bãi quái → về thành trước** | `[LOG]` | user 22/09 *"đang pha DG nếu log vào thì về thành cho t, đừng đứng bãi quái nữa"*. Đứng bãi là bị kéo trận ngay → `enter_di_gioi` bị trận chặn, hộ phù bị `in_combat()` loại. p1: `nasau`/`baybay` ở map 49942 dùng được hộ phù, `nanam` ở 56802 thì `BATTLE SEND` liên tục, không một dòng hộ phù |
+| **Đứng YÊN trong DG thì KHÔNG bị quái đánh** — chỉ **chạy lòng vòng** trong DG mới gặp quái | user chốt 10/10 | Cấm giải thích "đứng trong DG nên bọ kéo trận liên tục". Thấy acc trong DG đánh liên tục thì đi tìm **cái gì đang bắt nó chạy** (việc engine giao, `run_around`...), đừng đổ cho "đứng trong DG" |
 
 ## Event (`VIEC_VAO_EVENT`, `VIEC_FC_GOM`)
 
@@ -540,6 +542,9 @@ Ngọc chỉ để ăn hệ số EXP lúc train. Đeo nó vào boss/phó bản l
 **Hai luật user chốt 21/09:**
 
 1. **Mode `event`: tắt hẳn.** Tick hay không tick đều **không dùng**, và đang đeo thì **tháo ra**.
+   **Mode `quest`** (Cự Thú + chính tuyến) cũng y hệt — user chốt 10/10: *"chế độ làm Q cự thú và
+   chính tuyến thì sẽ ko dùng Phúc thần, thằng nào đang đeo ngọc thì tháo ra"*. Danh sách mode ở
+   `run_party_digioi.MODE_KHONG_PHUC_THAN`.
 2. **Mode khác:** trước khi đánh **boss thế giới / boss Quân Đoàn / PB đơn / PB tổ đội** thì kiểm
    tra, đang đeo là tháo.
 
