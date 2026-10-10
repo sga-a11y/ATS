@@ -6867,6 +6867,18 @@ def _chay_pb_doi_engine_moi(c, pidx, level):
     """
     return bool(c.do_team_dungeon(int(level)))
 
+
+def _thoat_pb_engine_moi(c):
+    """Viec `thoat_pb` cua engine moi: DUNG LAI `_exit_pb_or_reconnect` cua engine cu.
+
+    Thu `C:047-010` truoc; khong ra duoc thi relogin - dang trong PB ma relogin la ra map thuong
+    (user chot 11/10, CORE_FLOW Buoc 7). Relogin di qua supervisor san co (dong socket), khong
+    them thread nao. Ca that 11/10 p1: `baybay` ket mot minh trong 62012, gui 047-010 14 lan khong ra.
+    """
+    _exit_pb_or_reconnect(c._username, c,
+                          "engine: thoat PB (047-010 khong ra -> relogin)")
+    return True
+
 def _duong_ra_spot_engine_moi(pidx):
     """Duong capture tu rally toi tam quai (`MOB_PATHS`), None = khong co -> navigate thang.
 
@@ -7727,6 +7739,7 @@ def _dang_ky_engine_moi(username, c, pidx, is_leader, label, stopped_fn, is_reco
                 # no lo retry, `team_dungeon_skip_all`, dong doi rot giua PB, doi qua su kien
                 # truoc PB. Goi `do_team_dungeon` tho la vut het nhung cai do.
                 chay_pb_doi=lambda _cli, _lv, _p=pidx: _chay_pb_doi_engine_moi(_cli, _p, _lv),
+                thoat_pb_fn=_thoat_pb_engine_moi,
                 # Y FLOW CU nhanh `elif is_digioi`: Ho Phu khi con <15 phut, va CAP QUAI DG do
                 # dieu phoi chot (`_doc_cap_dg`) - acc chi DOC con so do (L1).
                 ho_phu=_ho_phu_engine_moi,

@@ -433,6 +433,22 @@ thầm (member lệch kênh) thì vẫn báo ready.
 | Đang đánh dở trận → **BỎ CHẠY** khỏi trận trước, rồi mới thoát PB | user chốt 07/10 | bỏ chạy **cả khi đang trong party** (khác `flee_mode` thường) — party đã vỡ, bị đẩy khỏi party cũng không sao |
 | **Leader** cũng phải dừng ngay, không đánh tiếp trận sau | user chốt 07/10 · `[LOG]` | p4 07/10: `minh` văng 15:00:34, 3 member thoát 15:01:35, `thba` vẫn `PB110 tran 4: bat dau` → `VAO TRAN 4/5` **một mình** tới 15:12 |
 | Client cho bỏ chạy trong PB | `[CAPTURE]` `UIFight.lua` | client chỉ cấm bỏ chạy ở `LifePK` / `WorldBoss`. **Server có nhận bỏ chạy trong trận PB không: CHƯA ĐO** — xem log `BO CHAY (PB VO -> thoat tran` lần đầu chạy thật |
+| **Đang trong map PB mà RELOGIN → ra map thường luôn** | user chốt 11/10 | cách thoát PB chắc chắn nhất, dùng khi `C:047-010` không ra được (vd acc kẹt lại **một mình**) |
+| Chỉ có `C:047-010` thì **không ra khỏi map PB** — cả 58 lần thoát được trong phiên đều đi qua **rời tổ đội** (`C:013-004`) | `[LOG]` p1 11/10 | `baybay` gửi `047-010` 14 lần, cả 14 lần đều `chua ra khoi map 62012` |
+| Acc còn trong map PB mà **không ở tổ đội nào** → không rời đội được → **phải relogin** | `[LOG]` p1 11/10 · user chốt | bot chặn `013-004` khi roster rỗng (`KHONG o party nao -> KHONG gui 013-004`) → không còn đường ra |
+| Engine phải kéo acc ra **cả khi không còn acc nào tắt** | `[LOG]` p1 11/10 | luật `thoat_pb` cũ chỉ chạy khi `thieu_acc_song`; leader login lại xong là tắt luôn → đứa còn kẹt trong PB không được kéo ra nữa |
+
+`[LOG]` party 1, 11/10 — leader `sga005` cứ vào PB ~45s là rớt mạng, lặp 8 lần. Lần cuối:
+```
+00:53:05 [baybay] Party roster: 4 member, minh LA LEADER (atype=2)   <- leader cũ rớt, nó lên leader
+00:53:07 [party 1] ENGINE: sga005 da relogin -> tao worker MOI      <- hết acc tắt -> ngừng giao thoat_pb
+00:53:17 [baybay] PARTY: f4d0d7f8 ROI doi (S:013-004) -> roster con 0 nguoi   <- 3 đứa kia ra, nó ở lại
+00:55:49 [baybay] KHONG o party nao ... -> KHONG gui 013-004 [... map=62012 kenh=25]
+00:55:45 (LEADER) lv80 SERVER moi cong nhan 3/4 member vao phong sau 40.3s -> KHONG start, HUY de gom lai
+```
+Leader mời phòng mới, `baybay` vẫn bấm đồng ý nhưng server chỉ tính 3/4, nên huỷ rồi tạo lại **13 lần**
+tới lúc user bấm Stop (01:07). Trong lúc đó `ve_thanh` cũng không đi được:
+`go_to_town: DANG TRONG pho ban to doi -> khong teleport`.
 
 **Cơ chế (07/10):** engine thấy *thiếu acc + có acc trong map PB* → ngoài lệnh `thoat_pb` còn **bật
 cờ `_pb_bo_chay` thẳng lên client** của mọi acc đang trong map PB (`PartyEngine._bat_bo_chay_pb`,

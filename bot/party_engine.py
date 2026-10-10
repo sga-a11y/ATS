@@ -201,14 +201,14 @@ class AnhParty:
                  "pb_doi_level", "co_pha_train", "thanh_di_ngang", "cho_ly_do",
                  "dp_viec", "event_xong", "reform_moi", "resync_moi", "nguoi_keo",
                  "thanh_dich", "thieu_acc_song", "tang_gom", "fc_buoc", "lenh_tay_gen",
-                 "pb_tai_cho")
+                 "pb_tai_cho", "ket_pb")
 
     def __init__(self, pidx, accs, can_bao_nhieu=0, map_dich=None, luc=None,
                  pha=PHA_TRAIN, co_spot=False, pb_doi_level=None, co_pha_train=True,
                  thanh_di_ngang=False, cho_ly_do="", dp_viec=None, event_xong=False,
                  reform_moi=False, resync_moi=False, nguoi_keo="*", thanh_dich=None,
                  thieu_acc_song=False, tang_gom=None, fc_buoc=None, lenh_tay_gen=0,
-                 pb_tai_cho=False):
+                 pb_tai_cho=False, ket_pb=()):
         self.pidx = int(pidx)
         self.accs = list(accs)
         self.can_bao_nhieu = int(can_bao_nhieu or 0)   # so member can (khong ke leader)
@@ -258,6 +258,10 @@ class AnhParty:
         # acc con trong party ma chua vao world (`song=False`) thi party chua du.
         # `_clients_cua_party` da bo acc TAT HAN roi, nen khong so cho vinh vien.
         self.thieu_acc_song = bool(thieu_acc_song) or any(not a.song for a in self.accs)
+        # KET PB: acc con trong map PB to doi trong khi acc song khac DA O NGOAI, keo dai qua
+        # `KET_PB_GRACE_SEC` (engine tu dem trong `PartyEngine._tim_ket_pb`). Party da vo ma no
+        # khong tu ra duoc -> phai giao `thoat_pb` du khong con acc nao tat (`thieu_acc_song`).
+        self.ket_pb = tuple(ket_pb or ())
 
     # --- doc tinh hinh: CHI tinh acc dang song va KHONG lam viec vat ---
     #
@@ -406,6 +410,19 @@ def quyet_dinh(anh: AnhParty):
     return ket
 
 
+def _viec_thoat_ket_pb(anh, song):
+    """Acc KET lai trong map PB (party da ra ngoai) -> `thoat_pb` cho no, ca party NGHI cho.
+
+    Ca that 11/10 party 1: leader rot giua PB roi login lai -> het `thieu_acc_song` -> engine thoi
+    giao `thoat_pb`. Ba dua kia roi doi nen ra duoc, `baybay` o lai MOT MINH trong map 62012;
+    leader tao phong moi 13 lan, lan nao server cung chi cong nhan 3/4 roi HUY.
+    Cac acc khac NGHI: mo phong khi con mot dua ket thi chi quay vong "3/4 -> HUY" (L0: gom du
+    roi moi lam).
+    """
+    ket = set(anh.ket_pb)
+    return {a.username: VIEC_THOAT_PB if a.username in ket else VIEC_NGHI for a in song}
+
+
 def _quyet_dinh_goc(anh: AnhParty):
     """Chuoi quyet dinh that - xem `quyet_dinh` (no chi loc them cua "dang trong tran")."""
     song = [a for a in anh.accs if a.song]
@@ -413,6 +430,8 @@ def _quyet_dinh_goc(anh: AnhParty):
         return {}
     if anh.thieu_acc_song and any(a.trong_pb for a in song):
         return {a.username: VIEC_THOAT_PB if a.trong_pb else VIEC_NGHI for a in song}
+    if anh.ket_pb:
+        return _viec_thoat_ket_pb(anh, song)
 
     # (0-) LENH TAY CUA USER - CAT TRUOC MOI THU, ke ca cua "chua nen ra lenh".
     #
@@ -1218,7 +1237,7 @@ def _sau_khi_vao_dg(client, log=None):
 
 def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_acc=None,
              duong_ra_spot=None, chay_pb_doi=None, ho_phu=None, cap_dg=None, chore_fn=None,
-             safe_dich=None, kenh_doi_duoc=None, xe_dich=None, ghi_thong_ke=None,
+             thoat_pb_fn=None, safe_dich=None, kenh_doi_duoc=None, xe_dich=None, ghi_thong_ke=None,
              vao_event=None, danh_event=None, doi_thuong=None, fc_gom=None, fc_buoc_fn=None,
              lenh_tay_fn=None, fc_di_bo=None,
              la_thanh=None, daily_fn=None, dung_safe=False):
@@ -1246,6 +1265,12 @@ def thi_hanh(client, viec, con_lam, dich=None, log=None, moi_party=None, thoat_a
     if viec == VIEC_THOAT_PB:
         if _abort():
             return False
+        # `047-010` KHONG phai luc nao cung dua ra khoi map PB (11/10 p1: `baybay` gui 14 lan, ca 14
+        # lan `chua ra khoi map 62012`). Dang trong PB ma RELOGIN la ra map thuong (user chot 11/10,
+        # CORE_FLOW Buoc 7) -> dung lai `_exit_pb_or_reconnect` cua engine cu: thu 047-010 truoc,
+        # khong ra moi relogin (qua supervisor san co, khong them thread).
+        if thoat_pb_fn is not None:
+            return bool(thoat_pb_fn(client))
         return bool(client.leave_team_dungeon())
     if viec == VIEC_RESYNC:
         # RESYNC (tu `dong_bo`): member ROI PARTY + sync kenh lai NGAY TAI CHO, roi cho leader moi
@@ -1887,6 +1912,10 @@ def _goi(client, ten, mac_dinh=None):
 # ---------------------------------------------------------------- PartyEngine (1 thread / party)
 
 NHIP_SEC = 1.0
+# Acc con trong map PB ma acc song khac da ra ngoai: cho bao lau moi coi la KET. Luc START ca doi
+# vao map, luc danh xong ca doi ra - lech nhau vai giay la binh thuong. 30s lay theo `grace` cua
+# `_ai_lech_instance` (engine cu).
+KET_PB_GRACE_SEC = 30.0
 # Nhip toi thieu cua worker: viec tra ve NGAY (train / pb_doi_theo / viec_vat) khong duoc phep
 # lam vong quay nong. Xem ghi chu trong `AccWorker._vong`.
 NHIP_WORKER_SEC = 1.0
@@ -1921,7 +1950,7 @@ class PartyEngine:
                  ghi_thong_ke=None, vao_event=None, danh_event=None, doi_thuong=None,
                  map_event=(), hoi_event_xong=None, fc_gom=None, doc_tang_gom=None,
                  fc_buoc_fn=None, doc_fc_buoc=None, lenh_tay_fn=None, doc_lenh_tay=None,
-                 mode_fn=None, mode_action_fn=None):
+                 mode_fn=None, mode_action_fn=None, thoat_pb_fn=None):
         self.pidx = int(pidx)
         self._doc_clients = doc_clients      # () -> [(username, client, la_leader)]
         self.can_bao_nhieu = int(can_bao_nhieu or 0)
@@ -1942,6 +1971,9 @@ class PartyEngine:
         self.pcfg = dict(pcfg or {})     # config party (co bat/tat tung tinh nang cua user)
         self._doc_duong = doc_duong      # () -> [buoc] | None : MOB_PATHS toi tam quai (leader keo)
         self._chay_pb_doi = chay_pb_doi  # (client, level) -> bool : `_handle_auto_team_dungeon`
+        self._thoat_pb_fn = thoat_pb_fn  # (client) -> bool : `_exit_pb_or_reconnect` (047-010, ko ra -> relogin)
+        self._ket_pb_tu = {}             # username -> luc bat dau thay KET mot minh trong PB
+        self._ket_pb_da_log = ()         # danh sach KET da log (chi log khi doi)
         self._ho_phu = ho_phu            # (client) -> None : dung Di Gioi Ho Phu khi con < 15 phut
         self._doc_cap_dg = doc_cap_dg or (lambda: None)   # () -> cap quai DG dieu phoi da chot
         self._chore_fn = chore_fn        # (client) -> None : `lam_login_chores` cua engine cu
@@ -2057,6 +2089,7 @@ class PartyEngine:
                         pb_doi_level=_pb_lv,
                         co_pha_train=self.co_pha_train,
                         pb_tai_cho=self.pb_tai_cho,
+                        ket_pb=self._tim_ket_pb(accs),
                         event_xong=bool(self.hoi_event_xong() if self.hoi_event_xong else False),
                         tang_gom=self._tang_gom(), fc_buoc=self._fc_buoc(),
                         lenh_tay_gen=self._lenh_tay_gen())
@@ -2116,6 +2149,33 @@ class PartyEngine:
                                "reform_gen" if _anh.reform_moi else "resync_gen")
         return _anh
 
+    def _tim_ket_pb(self, accs):
+        """Acc nao dang KET trong map PB: no trong PB, acc song khac DA O NGOAI, keo dai >= 30s.
+
+        Engine tu dem gio (mot thread, trong nhip) - khong hoi ai bao cao (L2).
+        """
+        song = [a for a in accs if a.song]
+        trong = [a.username for a in song if a.trong_pb]
+        if not trong or len(trong) == len(song):
+            self._ket_pb_tu.clear()
+            return ()
+        bay = time.time()
+        for u in list(self._ket_pb_tu):
+            if u not in trong:
+                del self._ket_pb_tu[u]
+        ra = []
+        for u in trong:
+            t0 = self._ket_pb_tu.setdefault(u, bay)
+            if bay - t0 >= KET_PB_GRACE_SEC:
+                ra.append(u)
+        if ra and self._log is not None and self._ket_pb_da_log != tuple(ra):
+            self._log.warning("[party %d] PB KET: %s con trong map PB >= %.0fs trong khi %s da o "
+                              "ngoai -> giao thoat_pb (047-010, khong ra thi relogin)",
+                              self.pidx + 1, ", ".join(ra), KET_PB_GRACE_SEC,
+                              ", ".join(a.username for a in song if not a.trong_pb))
+        self._ket_pb_da_log = tuple(ra)
+        return tuple(ra)
+
     def _bat_bo_chay_pb(self, anh):
         """PB TO DOI VO (co acc van) -> bat `_pb_bo_chay` cho MOI client dang trong map PB.
 
@@ -2145,7 +2205,8 @@ class PartyEngine:
             self._log.warning(
                 "[party %d] PB TO DOI VO: acc van (%s) -> %s BO CHAY khoi tran + THOAT PB",
                 self.pidx + 1,
-                ", ".join(a.username for a in anh.accs if not a.song) or "?",
+                ", ".join(a.username for a in anh.accs if not a.song)
+                or "khong co - acc KET mot minh trong PB",
                 ", ".join(bat))
 
     # -- mot nhip --
@@ -2191,6 +2252,9 @@ class PartyEngine:
         if anh.thieu_acc_song and any(a.song and a.trong_pb for a in anh.accs):
             viec = {a.username: VIEC_THOAT_PB if a.trong_pb else VIEC_NGHI
                     for a in anh.accs if a.song}
+            self._bat_bo_chay_pb(anh)
+        elif anh.ket_pb:
+            viec = _viec_thoat_ket_pb(anh, [a for a in anh.accs if a.song])
             self._bat_bo_chay_pb(anh)
         for a in anh.accs:
             if (a.song and a.dang_danh and a.username in viec
@@ -2453,7 +2517,8 @@ class PartyEngine:
                  la_thanh=self._la_thanh, daily_fn=self._daily_fn,
                  moi_party=self._moi_party, thoat_acc=self._thoat_acc,
                  duong_ra_spot=(self._duong() if viec == VIEC_RA_SPOT else None),
-                 chay_pb_doi=self._chay_pb_doi, ho_phu=self._ho_phu,
+                 chay_pb_doi=self._chay_pb_doi, thoat_pb_fn=self._thoat_pb_fn,
+                 ho_phu=self._ho_phu,
                  cap_dg=(self._doc_cap_dg() if viec == VIEC_DI_GIOI else None),
                  chore_fn=self._chore_fn,
                  safe_dich=(self._safe_dich() if viec == VIEC_VE_MAP else None),
